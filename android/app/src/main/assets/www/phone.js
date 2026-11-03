@@ -407,7 +407,7 @@
             try {
               const r = await phone('net.login', { address: b.address, code: pass.value });
               pass.value = '';
-              msg.textContent = { ok: "You're in.", wrong: "That's not the passcode.", busy: 'Too many tries. Wait a minute.', 'not-let-in': `${b.name} isn't letting other devices in yet. On the PC: Settings, Let my other devices in.` }[r] || `Something went wrong (${r}).`;
+              msg.textContent = { ok: "You're in.", wrong: "That's not the passcode.", busy: 'Too many tries. Wait a minute.', 'not-let-in': `${b.name} isn't letting other devices in yet. On the PC: Settings, Show advanced settings, Connections, Let my other devices in.` }[r] || `Couldn't log in (${r}). Check that Tailscale is on on both devices, then try again.`;
               if (r === 'ok') refreshBob(b.base);
             } catch (e) { msg.textContent = `Can't reach ${b.name}: is the PC on and Tailscale connected? (${e.message})`; }
           } }) : el('button', { text: 'Check again', onclick: () => refreshBob(b.base) }),
@@ -537,7 +537,7 @@
         lend.passcodeSet ? el('p', { class: 'help-line', text: 'A new passcode signs out every Bob that used the old one.' }) : null),
       el('div', { class: 'box' },
         el('div', { class: 'title', text: 'Address for your other Bobs' }), el('p', { class: 'help-line' }, addr),
-        el('p', { class: 'help-line', text: 'On the PC: Settings, Share brains with my other Bobs, Borrow a brain. Add this address and the passcode there.' })),
+        el('p', { class: 'help-line', text: 'On the PC: Settings, Show advanced settings, Connections, Share brains with my other Bobs, Borrow a brain. Add this address and the passcode there.' })),
       lend.on ? el('p', { class: 'help-line', role: 'status', text: [lend.now && lend.now !== 'off' ? LEND_WHY[lend.now] || '' : '', lend.last || ''].filter(Boolean).join(' ') }) : null,
       el('div', { class: 'box' },
         el('div', { class: 'title', text: 'Let Bob work with the screen off' }),
