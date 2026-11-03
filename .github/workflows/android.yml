@@ -26,10 +26,10 @@ jobs:
         run: node test/run-android-test.js
       - name: Fetch llama.cpp (pinned)
         run: sh android/tools/fetch-llama.sh
-      - name: Android tools (NDK and CMake the llama.cpp library asks for)
+      - name: Android tools (the NDK and CMake named in android/app/build.gradle.kts)
         run: |
-          NDK=$(sed -n 's/.*ndkVersion = "\(.*\)".*/\1/p' android/third_party/llama.cpp/examples/llama.android/lib/build.gradle.kts)
-          CMAKE=$(sed -n 's/.*version = "\(3[0-9.]*\)".*/\1/p' android/third_party/llama.cpp/examples/llama.android/lib/build.gradle.kts | head -1)
+          NDK=$(sed -n 's/.*ndkVersion = "\(.*\)".*/\1/p' android/app/build.gradle.kts)
+          CMAKE=$(sed -n 's/.*version = "\(3[0-9.]*\)".*/\1/p' android/app/build.gradle.kts | head -1)
           echo "NDK $NDK, CMake $CMAKE"
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK" "cmake;$CMAKE" "platforms;android-36" "build-tools;36.0.0" > /dev/null

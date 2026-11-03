@@ -71,11 +71,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
+        (application as BobApp).bobVisible = false
         bridge.onBackground()
     }
 
     override fun onStart() {
         super.onStart()
+        (application as BobApp).bobVisible = true
         if (::bridge.isInitialized) bridge.onForeground()
     }
 

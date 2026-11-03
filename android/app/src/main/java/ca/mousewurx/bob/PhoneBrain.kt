@@ -2,49 +2,56 @@ package ca.mousewurx.bob
 
 import android.app.ActivityManager
 import android.content.Context
-import com.arm.aichat.AiChat
-import com.arm.aichat.InferenceEngine
-import com.arm.aichat.InferenceEngine.State
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
 import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicReference
 
-// The phone brain (opt-in): a small model run on the phone with llama.cpp. It loads only when a message needs it
-// and, with "Free memory when Bob is idle" on (the starting position), unloads after a quiet spell.
-class PhoneBrain(private val context: Context, private val emit: (Map<String, Any?>) -> Unit) {
+// The phone brain (opt-in): a small model run on the phone with llama.cpp (Llama.kt). It loads only when a message
+// needs it and, with "Free memory when Bob is idle" on (the starting position), unloads after a quiet spell.
+// It thinks for one thing at a time: your chat on the phone, or (with "Lend my brain" on) one reply for another Bob.
+// One per app (BobApp), so lending carries on when Bob's screen is closed.
+class PhoneBrain(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lock = Mutex()
-    private var engine: InferenceEngine? = null
-    private var loadedFile: String? = null
-    private var loadedChat: String? = null
+    @Volatile private var loadedFile: String? = null
     private var reply: Job? = null
-    private var lastUse = 0L
+    @Volatile private var lastUse = 0L
     @Volatile var freeWhenIdle = true
     @Volatile var idleMinutes = 5
     private var download: Job? = null
+    /** What the brain is doing right now: null, "chat" (you, on the phone) or "lend" (another Bob). */
+    val working = AtomicReference<String?>(null)
+    @Volatile private var stopAsked = false
+
+    // The phone page listens here (Bridge sets it while Bob's screen exists).
+    @Volatile var listener: ((Map<String, Any?>) -> Unit)? = null
+    private fun emit(m: Map<String, Any?>) { listener?.invoke(m) }
 
     val modelsDir: File get() = File(context.filesDir, "models").apply { mkdirs() }
+
+    class Busy(val why: String) : Exception(why)
 
     init {
         scope.launch {
             while (true) {
                 delay(30_000)
-                if (freeWhenIdle && loadedFile != null && reply?.isActive != true &&
+                if (freeWhenIdle && loadedFile != null && working.get() == null &&
                     System.currentTimeMillis() - lastUse > idleMinutes * 60_000L) {
                     unload("idle")
                 }
@@ -52,21 +59,19 @@ class PhoneBrain(private val context: Context, private val emit: (Map<String, An
         }
     }
 
-    private suspend fun engine(): InferenceEngine {
-        val e = engine ?: AiChat.getInferenceEngine(context.applicationContext).also { engine = it }
-        // The engine starts itself up in the background the first time; wait for that.
-        withTimeoutOrNull(30_000) { e.state.first { it !is State.Uninitialized && it !is State.Initializing } }
-        return e
+    private fun memInfo(): ActivityManager.MemoryInfo {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        return ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
     }
 
     fun status(): Map<String, Any?> {
-        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val mi = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
+        val mi = memInfo()
         val files = modelsDir.listFiles()?.filter { it.name.endsWith(".gguf") }?.associate { it.name to it.length() } ?: emptyMap()
         return mapOf(
             "files" to files,
             "loaded" to loadedFile,
-            "busy" to (reply?.isActive == true),
+            "busy" to (working.get() != null),
+            "working" to working.get(),
             "downloading" to (download?.isActive == true),
             "ramTotalMB" to mi.totalMem / 1_048_576,
             "ramFreeMB" to mi.availMem / 1_048_576,
@@ -74,6 +79,10 @@ class PhoneBrain(private val context: Context, private val emit: (Map<String, An
             "freeSpaceMB" to modelsDir.usableSpace / 1_048_576
         )
     }
+
+    fun lowMemory(): Boolean = memInfo().lowMemory
+
+    fun hasFile(file: String): Boolean = runCatching { File(modelsDir, safeName(file)).isFile }.getOrDefault(false)
 
     private fun safeName(name: String): String {
         require(Regex("""^[A-Za-z0-9._-]{1,120}\.gguf$""").matches(name)) { "Bad model file name" }
@@ -158,88 +167,147 @@ class PhoneBrain(private val context: Context, private val emit: (Map<String, An
         return File(modelsDir, name).delete()
     }
 
-    private suspend fun stopReply() {
-        engine?.let { e -> reply?.let { it.cancelAndJoin() }; withTimeoutOrNull(10_000) { e.state.first { it !is State.Generating && it !is State.ProcessingUserPrompt } } }
-    }
-
-    suspend fun unload(why: String) = lock.withLock {
-        stopReply()
-        val e = engine ?: return@withLock
-        if (loadedFile != null || e.state.value is State.Error) runCatching { e.cleanUp() }
-        if (loadedFile != null) emit(mapOf("type" to "brain", "state" to "unloaded", "why" to why))
-        loadedFile = null; loadedChat = null
-    }
-
-    /** One reply from the phone brain. `system` is Bob's phone persona plus a short recap of the chat so far. */
-    fun chat(file: String, chatId: String, system: String, text: String, maxTokens: Int) {
-        val name = safeName(file)
-        if (reply?.isActive == true) { emit(mapOf("type" to "brain", "state" to "error", "text" to "busy")); return }
-        reply = scope.launch {
-            try {
-                lock.withLock {
-                    val e = engine()
-                    // A different brain or a different chat starts fresh: the engine keeps one conversation at a time.
-                    if (loadedFile != name || loadedChat != chatId || e.state.value !is State.ModelReady) {
-                        if (loadedFile != null || e.state.value is State.Error) runCatching { e.cleanUp() }
-                        loadedFile = null; loadedChat = null
-                        val f = File(modelsDir, name)
-                        if (!f.isFile) throw Exception("the phone brain isn't downloaded")
-                        emit(mapOf("type" to "brain", "state" to "loading"))
-                        val t0 = System.currentTimeMillis()
-                        e.loadModel(f.absolutePath)
-                        e.setSystemPrompt(system)
-                        loadedFile = name; loadedChat = chatId
-                        emit(mapOf("type" to "brain", "state" to "loaded", "ms" to System.currentTimeMillis() - t0))
-                    }
-                }
-                val e = engine!!
-                lastUse = System.currentTimeMillis()
-                val t0 = System.currentTimeMillis()
-                var first = 0L; var n = 0
-                emit(mapOf("type" to "brain", "state" to "thinking"))
-                e.sendUserPrompt(text, maxTokens.coerceIn(64, 2048)).collect { tok ->
-                    if (n == 0) first = System.currentTimeMillis() - t0
-                    n++
-                    emit(mapOf("type" to "token", "text" to tok))
-                }
-                val secs = (System.currentTimeMillis() - t0 - first).coerceAtLeast(1) / 1000.0
-                lastUse = System.currentTimeMillis()
-                emit(mapOf("type" to "done", "tokens" to n, "firstMs" to first, "tokPerSec" to if (n > 1) (n - 1) / secs else 0.0))
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                emit(mapOf("type" to "done", "stopped" to true))
-            } catch (e: Throwable) {
-                loadedChat = null // start the chat fresh next time
-                emit(mapOf("type" to "error", "text" to (e.message ?: e.javaClass.simpleName)))
+    suspend fun unload(why: String) {
+        stopAsked = true; Llama.abort(true)
+        reply?.cancelAndJoin()
+        lock.withLock {
+            if (loadedFile != null) {
+                Llama.unload()
+                loadedFile = null
+                emit(mapOf("type" to "brain", "state" to "unloaded", "why" to why))
             }
         }
     }
 
-    fun stop() { scope.launch { reply?.cancelAndJoin() } }
+    // A phone with 8 GB or more gets room for Bob's longer instructions (lending); smaller phones the usual 8K.
+    private fun contextSize(): Int = if (memInfo().totalMem >= 7L * 1024 * 1024 * 1024) 12288 else 8192
 
-    /** Test Bob's speed: llama.cpp's own benchmark (reading 128 words, writing 64). */
+    // Call with the lock held.
+    private suspend fun ensureLoaded(name: String, onLoading: () -> Unit) {
+        if (loadedFile == name) return
+        if (loadedFile != null) { Llama.unload(); loadedFile = null }
+        val f = File(modelsDir, name)
+        if (!f.isFile) throw Exception("the phone brain isn't downloaded")
+        onLoading()
+        emit(mapOf("type" to "brain", "state" to "loading"))
+        val t0 = System.currentTimeMillis()
+        Llama.load(f.absolutePath, contextSize(), context.applicationInfo.nativeLibraryDir)
+        loadedFile = name
+        emit(mapOf("type" to "brain", "state" to "loaded", "ms" to System.currentTimeMillis() - t0))
+    }
+
+    /** Runs one reply, dropping the oldest turns when the chat is too long for the phone's memory. */
+    private suspend fun think(
+        messages: JSONArray, tools: JSONArray, maxNew: Int,
+        reading: (Int, Int) -> Unit, words: (String) -> Unit
+    ): Llama.Reply {
+        var msgs = ChatShape.toModel(messages)
+        while (true) {
+            try {
+                return Llama.reply(msgs, tools, maxNew, keepGoing = { !stopAsked }, reading = reading, words = words)
+            } catch (e: Llama.TooLong) {
+                msgs = ChatShape.trimOldest(msgs) ?: throw Busy("too long")
+            }
+        }
+    }
+
+    /**
+     * One reply on the phone, for the phone page. `system` is Bob's phone persona (it stays the same, so the phone
+     * doesn't re-read it), `history` the chat so far ({role, content}), `note` the time and such, folded into your turn.
+     */
+    fun chat(file: String, system: String, history: JSONArray, text: String, note: String, maxTokens: Int) {
+        val name = safeName(file)
+        if (!working.compareAndSet(null, "chat")) {
+            emit(mapOf("type" to "error", "text" to if (working.get() == "lend") "the phone brain is thinking for another Bob right now; try again in a moment" else "busy"))
+            return
+        }
+        stopAsked = false
+        reply = scope.launch {
+            try {
+                val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", system))
+                for (j in 0 until history.length()) history.optJSONObject(j)?.let { m ->
+                    val role = m.optString("role")
+                    if ((role == "user" || role == "assistant") && m.optString("content").isNotBlank()) msgs.put(JSONObject().put("role", role).put("content", m.optString("content")))
+                }
+                if (note.isNotBlank()) msgs.put(JSONObject().put("role", "system").put("content", note))
+                msgs.put(JSONObject().put("role", "user").put("content", text))
+                lock.withLock {
+                    ensureLoaded(name) {}
+                    lastUse = System.currentTimeMillis()
+                    emit(mapOf("type" to "brain", "state" to "thinking"))
+                    val t0 = System.currentTimeMillis()
+                    var first = 0L; var n = 0
+                    val r = think(msgs, JSONArray(), maxTokens.coerceIn(64, 2048), reading = { _, _ -> }) { w ->
+                        if (n == 0) first = System.currentTimeMillis() - t0
+                        n++
+                        emit(mapOf("type" to "token", "text" to w))
+                    }
+                    if (n == 0 && r.content.isNotEmpty()) emit(mapOf("type" to "token", "text" to r.content))
+                    val secs = (System.currentTimeMillis() - t0 - first).coerceAtLeast(1) / 1000.0
+                    lastUse = System.currentTimeMillis()
+                    if (stopAsked || r.stop == "stopped") emit(mapOf("type" to "done", "stopped" to true))
+                    else emit(mapOf("type" to "done", "tokens" to r.tokens, "firstMs" to first, "tokPerSec" to if (r.tokens > 1) (r.tokens - 1) / secs else 0.0))
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                emit(mapOf("type" to "done", "stopped" to true))
+            } catch (e: Busy) {
+                emit(mapOf("type" to "error", "text" to "this chat is too long for the phone brain; start a new chat"))
+            } catch (e: Throwable) {
+                emit(mapOf("type" to "error", "text" to (e.message ?: e.javaClass.simpleName)))
+            } finally {
+                working.compareAndSet("chat", null)
+            }
+        }
+    }
+
+    /**
+     * One reply for another Bob (Lend protocol v1). Words in, words and tool calls out; nothing runs here and
+     * nothing is kept. `event` gets loading/reading/token events as they happen. Throws Busy when it won't.
+     */
+    suspend fun lend(file: String, messages: JSONArray, tools: JSONArray, gone: () -> Boolean, event: (JSONObject) -> Unit): JSONObject {
+        val name = safeName(file)
+        if (!working.compareAndSet(null, "lend")) throw Busy("busy")
+        stopAsked = false
+        try {
+            return lock.withLock {
+                ensureLoaded(name) { event(JSONObject().put("type", "loading")) }
+                lastUse = System.currentTimeMillis()
+                var lastBeat = 0L
+                val r = Llama.reply(
+                    ChatShape.toModel(messages), tools, 1024,
+                    keepGoing = { !stopAsked && !gone() },
+                    reading = { done, of ->
+                        val now = System.currentTimeMillis()
+                        if (now - lastBeat > 2000) { lastBeat = now; event(JSONObject().put("type", "reading").put("done", done).put("of", of)) }
+                    },
+                    words = { w -> event(JSONObject().put("type", "token").put("text", w)) }
+                )
+                lastUse = System.currentTimeMillis()
+                if (r.stop == "stopped" || r.stop == "error") throw Exception(if (stopAsked || gone()) "stopped" else "the phone brain stopped")
+                JSONObject().put("content", r.content).put("tool_calls", ChatShape.callsOut(r.toolCalls))
+            }
+        } catch (e: Llama.TooLong) {
+            throw Busy("too long")
+        } finally {
+            working.compareAndSet("lend", null)
+        }
+    }
+
+    fun stop() { stopAsked = true; Llama.abort(true) }
+
+    /** Test speed: how many words a second this phone reads and writes with this brain. */
     fun bench(file: String) {
         val name = safeName(file)
         scope.launch {
+            if (!working.compareAndSet(null, "bench")) { emit(mapOf("type" to "bench", "error" to "the phone brain is busy")); return@launch }
             try {
-                val out = lock.withLock {
-                    val e = engine()
-                    if (loadedFile != name || e.state.value !is State.ModelReady) {
-                        if (loadedFile != null || e.state.value is State.Error) runCatching { e.cleanUp() }
-                        loadedFile = null; loadedChat = null
-                        emit(mapOf("type" to "brain", "state" to "loading"))
-                        e.loadModel(File(modelsDir, name).absolutePath)
-                        e.setSystemPrompt("You are Bob.")
-                        loadedFile = name
-                    }
-                    e.bench(128, 64, 1, 1)
-                }
+                val r = lock.withLock { ensureLoaded(name) {}; Llama.bench() }
                 lastUse = System.currentTimeMillis()
-                emit(mapOf("type" to "bench", "text" to out))
+                if (r.has("error")) emit(mapOf("type" to "bench", "error" to r.getString("error")))
+                else emit(mapOf("type" to "bench", "read" to r.optDouble("pp"), "write" to r.optDouble("tg")))
             } catch (e: Throwable) {
                 emit(mapOf("type" to "bench", "error" to (e.message ?: "speed test failed")))
-            }
+            } finally { working.compareAndSet("bench", null) }
         }
     }
-
-    fun close() { runCatching { engine?.destroy() } }
 }

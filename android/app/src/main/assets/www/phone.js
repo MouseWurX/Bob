@@ -259,12 +259,13 @@
     if (!phoneReady()) { note(nobodyWhy('phone-missing'), true); return pump(); }
     current = startReply(c, 'phone', 'phone', text);
     store.set('pending', { chatId: c.id, text });
-    const recap = c.msgs.filter((m) => m.who === 'you' || (m.who === 'bob' && m.text)).slice(0, -2);
-    const system = L.phoneSystem({
-      persona: S.persona, user: settings.userName, cat: S.cat, now: new Date().toLocaleString(), memory,
-      recap, bigBob: bobs[0]?.name || ''
-    });
-    phone('brain.chat', { file: model.file.name, chatId: c.id, system, text, maxTokens: model.maxTokens || 768 })
+    // The chat so far goes along each time; the phone brain only re-reads what changed since its last reply.
+    // Bob's instructions stay the same from reply to reply; the time travels with your message instead.
+    const history = c.msgs.slice(0, -2).filter((m) => m.who === 'you' || (m.who === 'bob' && m.text)).slice(-24)
+      .map((m) => ({ role: m.who === 'you' ? 'user' : 'assistant', content: String(m.text).slice(0, 4000) }));
+    const system = L.phoneSystem({ persona: S.persona, user: settings.userName, cat: S.cat, memory, bigBob: bobs[0]?.name || '' });
+    const note = `Current date and time for ${(settings.userName || '').trim() || 'the user'}: ${new Date().toLocaleString()}.`;
+    phone('brain.chat', { file: model.file.name, system, history, text, note, maxTokens: model.maxTokens || 768 })
       .catch((e) => { grow(`*(The phone brain couldn't start: ${e.message})*`); finish(); });
     drawStatus();
   }
@@ -361,6 +362,7 @@
     if (id === 'new') { newChat(); return; }
     $(id).classList.remove('hidden');
     ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, memory: drawMemory, settings: drawSettings, help: drawHelp }[id] || (() => {}))();
+    if (id === 'brain') watchLend();
   }
   document.querySelectorAll('.panel .back').forEach((b) => b.addEventListener('click', () => b.closest('.panel').classList.add('hidden')));
   document.querySelectorAll('#menu [data-go]').forEach((b) => b.addEventListener('click', () => open(b.dataset.go)));
@@ -405,7 +407,7 @@
             try {
               const r = await phone('net.login', { address: b.address, code: pass.value });
               pass.value = '';
-              msg.textContent = { ok: "You're in.", wrong: "That's not the passcode.", busy: 'Too many tries. Wait a minute.', 'not-let-in': `${b.name} isn't letting phones in yet. On the PC: Settings, Let my phone in.` }[r] || `Something went wrong (${r}).`;
+              msg.textContent = { ok: "You're in.", wrong: "That's not the passcode.", busy: 'Too many tries. Wait a minute.', 'not-let-in': `${b.name} isn't letting other devices in yet. On the PC: Settings, Let my other devices in.` }[r] || `Something went wrong (${r}).`;
               if (r === 'ok') refreshBob(b.base);
             } catch (e) { msg.textContent = `Can't reach ${b.name}: is the PC on and Tailscale connected? (${e.message})`; }
           } }) : el('button', { text: 'Check again', onclick: () => refreshBob(b.base) }),
@@ -465,7 +467,7 @@
         going ? el('div', {}, el('div', { class: 'bar' }, (() => { const i = el('i'); i.style.width = `${Math.round((dl.have / dl.bytes) * 100)}%`; return i; })()),
           el('p', { class: 'help-line', text: dl.state === 'checking' ? 'Checking the file…' : dl.state === 'paused' ? `Paused at ${L.size(dl.have)} of ${L.size(dl.bytes)}` : dl.state === 'error' ? `Stopped: ${dl.text}` : `${L.size(dl.have)} of ${L.size(dl.bytes)}` })) : null,
         el('div', { class: 'btns' },
-          have ? (using ? null : el('button', { class: 'main', text: 'Use this one', onclick: () => { settings.phoneModel = m.id; saveSettings(); phone('brain.unload').catch(() => {}); drawBrain(); drawWho(); } }))
+          have ? (using ? null : el('button', { class: 'main', text: 'Use this one', onclick: () => { settings.phoneModel = m.id; saveSettings(); phone('brain.unload').catch(() => {}); tellLendBrain(); drawBrain(); drawWho(); } }))
             : going && dl.state === 'going' ? el('button', { text: 'Pause', onclick: () => phone('brain.pause') })
             : el('button', { class: 'main', text: going && dl.state === 'paused' ? 'Resume' : `Download (${L.size(m.file.bytes)})`, onclick: () => confirm.classList.remove('hidden') }),
           going && dl.state !== 'checking' ? el('button', { text: 'Cancel', onclick: () => { phone('brain.cancel', { file: m.file.name }); dl = null; drawBrain(); } }) : null,
@@ -479,6 +481,7 @@
       box.append(b);
     }
     const s = phoneStatus;
+    drawLend();
     $('brain-ram').textContent = s.ramTotalMB ? `This phone: ${(s.ramTotalMB / 1024).toFixed(1)} GB memory, ${(s.ramFreeMB / 1024).toFixed(1)} GB free right now${s.loaded ? ' (phone brain loaded)' : ''}. ${(s.freeSpaceMB / 1024).toFixed(0)} GB storage free.` : '';
   }
   function onDownload(m) {
@@ -489,12 +492,64 @@
   }
   function onBench(m) {
     const name = phoneModel().file.name;
-    // llama-bench's table: "pp128 | 45.1 ± 0.2" and "tg64 | 12.3 ± 0.1". Turn it into words.
-    const num = (k) => { const r = String(m.text || '').match(new RegExp(`${k}\\s*\\|\\s*([\\d.]+)`)); return r ? Number(r[1]) : null; };
-    const read = num('pp128'), write = num('tg64');
-    bench[name] = m.error ? `Speed test failed: ${m.error}` : read || write ? `Reads about ${Math.round(read)} words a second and writes about ${write.toFixed(1)}. Anything over 8 feels like chatting.` : String(m.text).slice(0, 300);
+    const read = Number(m.read) || 0, write = Number(m.write) || 0;
+    bench[name] = m.error ? `Speed test failed: ${m.error}` : `Reads about ${Math.round(read)} words a second and writes about ${write.toFixed(1)}. Anything over 8 feels like chatting.`;
     if (!$('brain').classList.contains('hidden')) drawBrain();
   }
+
+  // ---------- Lend my brain (off unless you turn it on) ----------
+  let lend = {}; // what the phone says: { on, state, address, passcodeSet, last, now, screenOffOk }
+  let lendCode = ''; // a new passcode, shown once
+  let lendTimer = null;
+  const LEND_WHY = {
+    'no brain': 'Download a phone brain above first.',
+    busy: 'Busy with your own chat on the phone right now.',
+    'in use': "Says no while you're using the phone for something else.",
+    'too warm': "Says no while the phone is warm. He'll say yes again once it cools down.",
+    'low battery': 'Says no below 25% battery, unless the phone is charging.'
+  };
+  // While the Phone brain screen is open, the lending line stays up to date.
+  function watchLend() {
+    refreshLend();
+    clearInterval(lendTimer);
+    lendTimer = setInterval(() => { if ($('brain').classList.contains('hidden')) clearInterval(lendTimer); else refreshLend(); }, 5000);
+  }
+  function tellLendBrain() { const m = phoneModel(); if (m) phone('lend.brain', { file: m.file.name, label: m.name }).catch(() => {}); }
+  async function refreshLend() {
+    try { lend = await phone('lend.status'); } catch { lend = {}; }
+    if (!$('brain').classList.contains('hidden')) drawLend();
+  }
+  function drawLend() {
+    $('lend-on').checked = Boolean(lend.on);
+    const box = $('lend-box');
+    box.textContent = '';
+    const addr = lend.state === 'open' && lend.address ? el('code', { text: lend.address })
+      : lend.on ? el('span', { class: 'dim', text: lend.state === 'waiting' ? 'Waiting for Tailscale on this phone. Switch Tailscale on.' : 'Opening…' })
+      : el('span', { class: 'dim', text: 'Shown here once Lend my brain is on.' });
+    box.append(
+      el('div', { class: 'box' },
+        el('div', { class: 'title', text: 'Passcode' }),
+        el('p', { class: 'help-line', text: lendCode ? `${lendCode}  Type it into your other Bob now: it isn't shown again.` : lend.passcodeSet ? "Set (it's only shown once, when you make it)." : 'Not set yet. Make one before you turn this on.' }),
+        el('div', { class: 'btns' }, el('button', { text: lend.passcodeSet ? 'Make a new passcode' : 'Make a passcode', onclick: async () => {
+          try { lendCode = await phone('lend.newPasscode'); } catch (e) { toast(e.message); }
+          refreshLend();
+        } })),
+        lend.passcodeSet ? el('p', { class: 'help-line', text: 'A new passcode signs out every Bob that used the old one.' }) : null),
+      el('div', { class: 'box' },
+        el('div', { class: 'title', text: 'Address for your other Bobs' }), el('p', { class: 'help-line' }, addr),
+        el('p', { class: 'help-line', text: 'On the PC: Settings, Share brains with my other Bobs, Borrow a brain. Add this address and the passcode there.' })),
+      lend.on ? el('p', { class: 'help-line', role: 'status', text: [lend.now && lend.now !== 'off' ? LEND_WHY[lend.now] || '' : '', lend.last || ''].filter(Boolean).join(' ') }) : null,
+      el('div', { class: 'box' },
+        el('div', { class: 'title', text: 'Let Bob work with the screen off' }),
+        el('p', { class: 'help-line', text: lend.screenOffOk ? 'Done: Android lets Bob answer with the screen off.' : "Android may stop Bob answering when the screen is off. This opens Android's battery list: pick Bob, then Allow (or Unrestricted)." }),
+        lend.screenOffOk ? null : el('div', { class: 'btns' }, el('button', { text: 'Open battery settings', onclick: () => phone('lend.screenOff').catch(() => {}) }))));
+  }
+  $('lend-on').addEventListener('change', async (e) => {
+    const on = e.target.checked;
+    if (on) tellLendBrain();
+    try { await phone('lend.on', { on }); } catch (err) { e.target.checked = false; toast(`Lend my brain: ${err.message}.`); }
+    setTimeout(refreshLend, 800);
+  });
   $('phone-on').addEventListener('change', (e) => { settings.phoneOn = e.target.checked; saveSettings(); drawWho(); });
   $('free-idle').addEventListener('change', (e) => { settings.freeWhenIdle = e.target.checked; saveSettings(); sendBrainConfig(); });
   $('idle-min').addEventListener('change', (e) => { settings.idleMinutes = Number(e.target.value); saveSettings(); sendBrainConfig(); });

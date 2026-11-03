@@ -8,6 +8,11 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Only asked for when Bob first wants to tell you something (a finished job, an OK card). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Only while "Lend my brain" is on: the notification that keeps the door open, and keeping the phone awake
+         while it thinks one reply for another Bob. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <queries>
         <intent>
@@ -19,6 +24,7 @@
     </queries>
 
     <application
+        android:name=".BobApp"
         android:allowBackup="false"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -37,5 +43,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".LendService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Answers chat requests from the owner's own Bob apps over their private Tailscale network, only while the owner has Lend my brain switched on." />
+        </service>
     </application>
 </manifest>

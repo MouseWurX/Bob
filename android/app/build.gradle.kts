@@ -14,6 +14,8 @@ val bobBuild = ((pkg["bob"] as Map<String, Any>)["build"] as Number).toInt()
 android {
     namespace = "ca.mousewurx.bob"
     compileSdk = 36
+    // The NDK and CMake that llama.cpp's own Android example uses (GitHub's build reads these two lines).
+    ndkVersion = "29.0.13113456"
 
     defaultConfig {
         applicationId = "ca.mousewurx.bob"
@@ -22,6 +24,25 @@ android {
         versionCode = bobBuild
         versionName = bobVersion
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        externalNativeBuild {
+            cmake {
+                arguments += "-DCMAKE_BUILD_TYPE=Release"
+                arguments += "-DBUILD_SHARED_LIBS=ON"
+                arguments += "-DLLAMA_BUILD_APP=OFF"
+                arguments += "-DLLAMA_BUILD_COMMON=ON"
+                arguments += "-DLLAMA_OPENSSL=OFF"
+                arguments += "-DGGML_NATIVE=OFF"
+                arguments += "-DGGML_BACKEND_DL=ON"
+                arguments += "-DGGML_CPU_ALL_VARIANTS=ON"
+                arguments += "-DGGML_LLAMAFILE=OFF"
+            }
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path("src/main/cpp/CMakeLists.txt")
+            version = "3.31.6"
+        }
     }
 
     buildTypes {
@@ -48,7 +69,6 @@ val copyShared by tasks.registering(Copy::class) {
 tasks.named("preBuild") { dependsOn(copyShared) }
 
 dependencies {
-    implementation(project(":llama"))
     implementation(libs.androidx.activity)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)

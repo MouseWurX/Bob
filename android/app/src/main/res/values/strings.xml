@@ -1,4 +1,7 @@
 <resources>
     <string name="app_name">Bob</string>
     <string name="notify_channel">Bob needs you</string>
+    <string name="lend_channel">Lend my brain</string>
+    <string name="lend_title">Bob is lending his brain</string>
+    <string name="lend_stop">Stop lending</string>
 </resources>

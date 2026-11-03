@@ -7,7 +7,7 @@ globalThis.BobHelp = {
       html: `<p>I'm the pocket edition of Bob. On the phone I can do two things:</p>
 <ul><li><strong>Talk to a Bob on your network.</strong> That's your PC's Bob (or any other Bob you add). He has the big brains and all the tools, and I pass your messages along and show you what he makes.</li>
 <li><strong>Think on the phone.</strong> A small brain right here, for when no other Bob is reachable. Chat and memory only. It's off until you switch it on.</li></ul>
-<p>To set up the first one: on the PC, open my Settings and turn on <strong>Let my phone in</strong>. It shows an address and a passcode. Here, open the menu, <strong>Bobs on your network</strong>, add that address, type the passcode and tap <strong>Log in</strong>. Both the PC and the phone need Tailscale switched on.</p>`
+<p>To set up the first one: on the PC, open my Settings and turn on <strong>Let my other devices in</strong>. It shows an address and a passcode. Here, open the menu, <strong>Bobs on your network</strong>, add that address, type the passcode and tap <strong>Log in</strong>. Both the PC and the phone need Tailscale switched on.</p>`
     },
     {
       id: 'chat', title: 'Chatting',
@@ -39,7 +39,7 @@ globalThis.BobHelp = {
     },
     {
       id: 'bobs', title: 'Bobs on your network',
-      html: `<p>Menu, <strong>Bobs on your network</strong>. Add a Bob with a name and his Tailscale address: either the name ending in <code>.ts.net</code> or the number starting <code>100.</code>, as the PC's <strong>Let my phone in</strong> setting shows it. Then type his passcode and tap <strong>Log in</strong>.</p>
+      html: `<p>Menu, <strong>Bobs on your network</strong>. Add a Bob with a name and his Tailscale address: either the name ending in <code>.ts.net</code> or the number starting <code>100.</code>, as the PC's <strong>Let my other devices in</strong> setting shows it. Then type his passcode and tap <strong>Log in</strong>.</p>
 <p>I only connect to Tailscale addresses. Tailscale scrambles everything between your phone and the PC, so the passcode never crosses the café Wi-Fi in the open. The passcode is used once to log in and isn't kept on the phone; the PC hands back a key I keep instead.</p>
 <p>With more than one Bob, the one at the top is the <strong>First choice</strong>. <strong>Make first choice</strong> moves another one up. <strong>Remove</strong> forgets him and his key (tap twice).</p>
 <p>When he needs your OK for something (a file to move, a program to run), the card shows up here too, with <strong>Allow</strong> and <strong>Deny</strong>. If a job needs several OKs, the phone has <strong>Allow all</strong> and <strong>Deny all</strong>; to tick some and not others, use the card on the PC.</p>`
@@ -65,6 +65,18 @@ globalThis.BobHelp = {
       id: 'free-memory', title: 'Free memory when Bob is idle',
       html: `<p>Phone brain, <strong>Free memory when Bob is idle</strong> (on to start with), and <strong>Let go after</strong> (5 minutes to start with). After that long without a message, the phone brain lets go of its memory so your other apps stay quick. The next message takes a few seconds longer while it wakes up. <strong>Free it now</strong> does it straight away.</p>
 <p>When it wakes up, it gets a short recap of the chat so far, so it doesn't lose the thread.</p>`
+    },
+    {
+      id: 'lend', title: 'Lend my brain',
+      html: `<p>Phone brain, <strong>Lend my brain</strong> (off to start with). With it on, your other Bobs can ask this phone to think quick replies for them. The main use: while you're gaming on the PC, I think his small replies here, so the PC's processor and graphics card stay with the game.</p>
+<p>Only words travel. The other Bob sends the chat and the list of tools he has; I send back words, or "please run this tool". The tool runs on his side, with his own checks and OK cards. Nothing runs on the phone, and nothing is kept here: not the chat, not a log of it. The only line I keep is "Thought a reply for (that Bob) in so many seconds".</p>
+<p>To set it up:</p>
+<ul><li><strong>Make a passcode</strong> here. It's shown once; type it into your other Bob straight away.</li>
+<li>Turn on <strong>Lend my brain</strong>. Android shows a notification for as long as it's on; <strong>Stop lending</strong> on it turns it off.</li>
+<li>On the PC: Settings, <strong>Share brains with my other Bobs</strong>, <strong>Borrow a brain</strong>. Add the <strong>Address for your other Bobs</strong> shown here, and the passcode.</li></ul>
+<p>I use the phone brain picked above (<strong>Use this one</strong>). I say no, and the other Bob thinks for himself, when: you're using the phone for something else, the phone is warm, the battery is under 25% and not charging, or the phone brain is busy with your own chat. Only Tailscale devices that know the passcode get in, and only on this phone's Tailscale address. <strong>Make a new passcode</strong> signs out every Bob that used the old one.</p>
+<p><strong>Let Bob work with the screen off</strong>: Android may stop apps answering when the screen is off. <strong>Open battery settings</strong> takes you to Android's list; pick Bob and allow him.</p>
+<p>The first borrowed reply is slow, because I read his instructions and tools once. After that I keep them in mind and only read what's new, so replies start much sooner.</p>`
     },
     {
       id: 'memory', title: 'What Bob remembers',
@@ -93,7 +105,7 @@ globalThis.BobHelp = {
     },
     {
       id: 'privacy', title: 'Privacy',
-      html: `<p>Everything on the phone stays on the phone: chats, my memory file and the phone brain. Android's cloud backup is told to leave them out. I only talk to the Bobs you add (over Tailscale) and, when you say yes to a download, to huggingface.co for the phone brain. No tracking, no ads, nothing else.</p>`
+      html: `<p>Everything on the phone stays on the phone: chats, my memory file and the phone brain. Android's cloud backup is told to leave them out. I only talk to the Bobs you add (over Tailscale) and, when you say yes to a download, to huggingface.co for the phone brain. With <strong>Lend my brain</strong> on, your own Bobs that know its passcode can also ask me to think a reply; I don't keep what they send. No tracking, no ads, nothing else.</p>`
     },
     {
       id: 'glossary', title: 'Glossary',
@@ -101,7 +113,9 @@ globalThis.BobHelp = {
 <dt>Bob on your network</dt><dd>A Bob running on one of your computers that lets this phone in. He does the heavy lifting.</dd>
 <dt>Phone brain</dt><dd>A small AI model that runs on this phone, without the internet.</dd>
 <dt>Tailscale</dt><dd>A free app that makes a private, scrambled link between your own devices, wherever they are.</dd>
-<dt>Passcode</dt><dd>The code you set on the PC under Let my phone in. It proves the phone is yours.</dd>
+<dt>Passcode</dt><dd>The code you make on the PC under Let my other devices in (or on the phone under Lend my brain). It proves the device asking is yours.</dd>
+<dt>Lend my brain</dt><dd>This phone thinks quick replies for your other Bobs. They send words; the phone sends words back. Nothing runs on the phone and nothing is kept.</dd>
+<dt>Borrowed brain</dt><dd>What your PC calls it when another of your devices thinks a reply for him.</dd>
 <dt>Effort</dt><dd>How hard a Bob on your network works on an answer: bigger brains and checking at higher levels.</dd>
 <dt>Pinned download</dt><dd>A download from one exact version of a file, checked against its fingerprint (checksum), so nobody can swap it.</dd>
 <dt>Free memory when idle</dt><dd>The phone brain unloads after a quiet spell, so the phone stays quick.</dd>
@@ -113,8 +127,10 @@ globalThis.BobHelp = {
       html: `<table>
 <tr><th>What happens</th><th>What to do</th></tr>
 <tr><td>The pill says Nobody home</td><td>Tap it. Usually the PC is asleep, or Tailscale is off on the phone or the PC.</td></tr>
-<tr><td>"Isn't letting phones in yet"</td><td>On the PC: Bob's Settings, Let my phone in. Turn it on, then restart Bob on the PC.</td></tr>
-<tr><td>"That isn't a Tailscale address"</td><td>Use the address the PC's Let my phone in setting shows: a name ending in .ts.net, or a number starting 100.</td></tr>
+<tr><td>"Isn't letting other devices in yet"</td><td>On the PC: Bob's Settings, Let my other devices in. Turn it on, then restart Bob on the PC.</td></tr>
+<tr><td>"That isn't a Tailscale address"</td><td>Use the address the PC's Let my other devices in setting shows: a name ending in .ts.net, or a number starting 100.</td></tr>
+<tr><td>The PC says the phone didn't answer in time</td><td>The first borrowed reply is the slow one: the phone reads my whole instructions and tool list once. After that it only reads what's new. If it keeps happening, check Phone brain, Lend my brain for a reason (warm, low battery, in use), and tap Open battery settings there.</td></tr>
+<tr><td>Can the PC borrow the phone while I game?</td><td>Yes: that's what Lend my brain is for. Turn it on here, then on the PC: Settings, Share brains with my other Bobs, Borrow a brain. Keep the phone on its charger with the screen off.</td></tr>
 <tr><td>It asks for the passcode again</td><td>The passcode was changed on the PC. Type the new one under Bobs on your network.</td></tr>
 <tr><td>The phone brain is slow or stops</td><td>Close big apps (games, the camera), let the phone cool down, or try Test speed. Gemma 4 E2B is the quicker one.</td></tr>
 <tr><td>The download stopped</td><td>Tap Resume. It carries on where it stopped. If it says the checksum didn't match, the file was damaged on the way and was deleted: download it again on Wi-Fi.</td></tr>

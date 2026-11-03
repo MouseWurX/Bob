@@ -74,15 +74,16 @@
     return true;
   }
 
-  // The phone brain's instructions: Bob's shared persona, what the phone can't do, the time, his memory file,
-  // and a short recap of this chat (the engine forgets the chat when it unloads to free memory).
+  // The phone brain's instructions: Bob's shared persona, what the phone can't do and his memory file. They stay the
+  // same from reply to reply, so the phone brain reads them once; the time goes with each message instead (phone.js).
+  // (`now` and `recap` are still accepted, for a brain that can't keep the chat.)
   function phoneSystem({ persona, user, cat, now, memory = '', recap = [], bigBob = '' }) {
     const who = (user || '').trim() || 'the user';
     const parts = [
       String(persona || '').replace('{{ABOUT}}', ''),
       `Right now you're running on ${who}'s phone with a small brain, so keep replies short. On the phone you can chat, remember things and help think things through. You can't make pictures, video, music or sound, touch files, run programs or convert documents here. When ${who} asks for one of those, say so in one line${bigBob ? ` and that ${bigBob} on their network can do it: the app shows a button to send it there` : ' and that a bigger Bob on their network could do it'}. Never pretend you made something.`,
-      `Current date and time for ${who}: ${now}.`
     ];
+    if (now) parts.push(`Current date and time for ${who}: ${now}.`);
     if (memory.trim()) parts.push(`Things you remember about ${who} (from your memory file):\n${memory.trim().slice(0, 3000)}`);
     const r = recap.slice(-6).map((m) => `${m.who === 'you' ? who : 'Bob'}: ${String(m.text).replace(/\s+/g, ' ').slice(0, 400)}`);
     if (r.length) parts.push(`Earlier in this chat:\n${r.join('\n')}`);

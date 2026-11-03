@@ -55,6 +55,8 @@ const sys = L.phoneSystem({ persona: S.persona, user: 'Sam', cat: 'Patches', now
 check('phone instructions: name filled in, no placeholders left', sys.includes('Sam') && !/\{\{/.test(sys));
 check('phone instructions: says what the phone cannot do and never to pretend', /can't make pictures/.test(sys) && /Never pretend/.test(sys));
 check('phone instructions: memory and recap included', sys.includes('Likes tea') && sys.includes('Sam: hi') && sys.includes('Bob: hello'));
+const steady = L.phoneSystem({ persona: S.persona, user: 'Sam', cat: 'Patches', memory: 'Likes tea', bigBob: 'Bob on my PC' });
+check('phone instructions without a time stay the same from reply to reply (prompt cache)', !/Current date and time/.test(steady) && steady === L.phoneSystem({ persona: S.persona, user: 'Sam', cat: 'Patches', memory: 'Likes tea', bigBob: 'Bob on my PC' }));
 check('phone instructions stay small (under about 1,200 tokens)', sys.length / 4 < 1200, `${Math.round(sys.length / 4)}`);
 
 // Replies are escaped: nothing a model writes becomes HTML.
@@ -65,7 +67,7 @@ check('markdown links: only http(s), opened by the phone', !/javascript:/.test(m
 // Help covers every setting and screen on the page.
 const html = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
 const ids = H.sections.map((s) => s.id);
-const need = { 'phone-on': 'phone-brain', 'free-idle': 'free-memory', 'idle-min': 'free-memory', mode: 'who', 'user-name': 'user-name', 'read-aloud': 'read-aloud', theme: 'theme', resume: 'resume', mic: 'mic', effort: 'effort', bobs: 'bobs', memory: 'memory', chats: 'past-chats' };
+const need = { 'phone-on': 'phone-brain', 'free-idle': 'free-memory', 'idle-min': 'free-memory', mode: 'who', 'user-name': 'user-name', 'read-aloud': 'read-aloud', theme: 'theme', resume: 'resume', mic: 'mic', effort: 'effort', bobs: 'bobs', memory: 'memory', chats: 'past-chats', 'lend-on': 'lend' };
 for (const [ctl, sec] of Object.entries(need)) check(`help covers ${ctl}`, (html.includes(`id="${ctl}"`) || html.includes(`name="${ctl}"`)) && ids.includes(sec));
 const controls = [...html.matchAll(/<(?:input|select)[^>]*(?:id|name)="([\w-]+)"/g)].map((m) => m[1]).filter((x) => !['chat-search', 'help-search', 'add-name', 'add-address', 'memory-text'].includes(x));
 for (const c of new Set(controls)) check(`setting ${c} has a help entry`, c in need);
@@ -77,10 +79,33 @@ const defaults = js.match(/const DEFAULTS = (\{[^}]+\})/)[1];
 check('opt-in: phone brain, read aloud, pick up after close start off', /phoneOn: false/.test(defaults) && /readAloud: false/.test(defaults) && /resume: false/.test(defaults));
 check('free memory when idle starts on (lightweight rule)', /freeWhenIdle: true/.test(defaults));
 
+check('opt-in: Lend my brain starts off', /getBoolean\("on", false\)/.test(fs.readFileSync(path.join(root, 'android/app/src/main/java/ca/mousewurx/bob/LendServer.kt'), 'utf8')));
+
+// The phone brain gets the chat so far and the time beside your message, not inside his instructions.
+check('phone chat sends history and the time as a note', /brain\.chat', \{ file: model\.file\.name, system, history, text, note/.test(js));
+
+// Lend my brain: the door's rules (Lend protocol v1, same as a desktop lender's).
+const ktf = (f) => fs.readFileSync(path.join(root, 'android/app/src/main/java/ca/mousewurx/bob', f), 'utf8');
+const lendKt = ktf('LendServer.kt');
+check('lend: opens only on the phone\'s Tailscale address', /ss\.bind\(InetSocketAddress\(ip, PORT\)/.test(lendKt) && /isTailscale\(la\.address\)/.test(lendKt));
+check('lend: refuses anyone not on Tailscale, and a Host that isn\'t a Tailscale name', /if \(!isTailscale\(remote\)\) return reply\(out, 403/.test(lendKt) && /if \(!okHost\(req\.headers\["host"\]\)\) return reply\(out, 403/.test(lendKt));
+check('lend: passcode stored only as a slow hash, login keys only as fingerprints', /PBKDF2WithHmacSHA256/.test(lendKt) && /sha\(k\)/.test(lendKt) && !/putString\("code"/.test(lendKt));
+check('lend: too many wrong passcodes get 429', /reply\(out, 429/.test(lendKt));
+check('lend: hello and chat need the login cookie', /"\/api\/lend\/hello" && req\.method == "GET" -> \{ if \(signedIn\(req, out\)\)/.test(lendKt) && /"\/api\/lend\/chat" && req\.method == "POST" -> \{ if \(signedIn\(req, out\)\)/.test(lendKt));
+check('lend: chat needs the x-bob header (no web page can send it)', /req\.headers\["x-bob"\] != "1"/.test(lendKt));
+check('lend: says no with 409 and a reason', /reply\(out, 409, JSONObject\(\)\.put\("busy"/.test(lendKt) && ['in use', 'too warm', 'low battery', 'no brain', 'busy'].every((w) => lendKt.includes(`"${w}"`)));
+check('lend: keeps nothing (no files, no logging of the words)', !/FileOutputStream|openFileOutput|Log\.[dive]\(|appendText|writeText/.test(lendKt));
+check('lend: answers in protocol v1 events', /put\("type", "done"\)\.put\("reply", r\)/.test(lendKt) && /"type", "token"/.test(ktf('PhoneBrain.kt')));
+check('lend: tool calls go back to the other Bob, never run here', /ChatShape\.callsOut\(r\.toolCalls\)/.test(ktf('PhoneBrain.kt')) && !/Runtime\.getRuntime\(\)\.exec|ProcessBuilder/.test(lendKt + ktf('PhoneBrain.kt') + ktf('ChatShape.kt')));
+const manifest = fs.readFileSync(path.join(root, 'android/app/src/main/AndroidManifest.xml'), 'utf8');
+check('lend: a notification shows for as long as it\'s on (foreground service, not exported)', /android:name="\.LendService"\s+android:exported="false"\s+android:foregroundServiceType="specialUse"/.test(manifest));
+check('phone page says "Let my other devices in", like the PC', !files0().some((f) => /Let my phone in/.test(fs.readFileSync(f, 'utf8'))));
+
 // The page's lock: no inline scripts or styles, no network from the page itself.
 check('page has a strict Content-Security-Policy', /script-src 'self'/.test(html) && /connect-src 'none'/.test(html) && !/<script>(?!<)/.test(html.replace(/<script src[^>]*><\/script>/g, '')) && !/ style="/.test(html));
 
 // Nothing personal in the phone app.
+function files0() { const out = []; const w = (d) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { if (f.name !== 'third_party' && f.name !== 'build') w(p); } else if (/\.(js|kt|html)$/.test(f.name)) out.push(p); } }; w(path.join(root, 'android')); return out; }
 const files = [];
 const walk = (d) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { if (f.name !== 'third_party' && f.name !== 'build') walk(p); } else if (/\.(js|mjs|kt|kts|html|css|json|xml|md|sh|ps1)$/.test(f.name)) files.push(p); } };
 walk(path.join(root, 'android'));

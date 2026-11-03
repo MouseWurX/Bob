@@ -9,7 +9,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-// Talks to a Bob on your network (desktop Bob with "Let my phone in" on), over Tailscale only.
+// Talks to a Bob on your network (desktop Bob with "Let my other devices in" on), over Tailscale only.
 // Desktop Bob checks the same things on his side: the Tailscale range, his address list, the passcode cookie,
 // the x-bob header and a JSON content type. The passcode is used once to log in and is never stored;
 // only the login cookie desktop Bob hands back is kept (in the app's private storage).

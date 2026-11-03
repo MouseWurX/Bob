@@ -29,7 +29,8 @@ import java.util.concurrent.ConcurrentHashMap
 class Bridge(private val activity: MainActivity, private val web: WebView) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val net = NetBob(activity)
-    private val brain = PhoneBrain(activity) { send(JSONObject(it).put("event", "brain")) }
+    private val app = activity.application as BobApp
+    private val brain = app.brain.also { b -> b.listener = { send(JSONObject(it).put("event", "brain")) } }
     private val listening = ConcurrentHashMap<String, Boolean>()
     private var tts: TextToSpeech? = null
     private var ttsReady = false
@@ -89,10 +90,25 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                     "brain.pause" -> { brain.pauseDownload(); answer(id, true) }
                     "brain.cancel" -> { brain.cancelDownload(o.getString("file")); answer(id, true) }
                     "brain.delete" -> answer(id, brain.delete(o.getString("file")))
-                    "brain.chat" -> { brain.chat(o.getString("file"), o.getString("chatId"), o.getString("system"), o.getString("text"), o.optInt("maxTokens", 768)); answer(id, true) }
+                    "brain.chat" -> { brain.chat(o.getString("file"), o.getString("system"), o.optJSONArray("history") ?: org.json.JSONArray(), o.getString("text"), o.optString("note"), o.optInt("maxTokens", 768)); answer(id, true) }
                     "brain.stop" -> { brain.stop(); answer(id, true) }
                     "brain.unload" -> { brain.unload("asked"); answer(id, true) }
                     "brain.bench" -> { brain.bench(o.getString("file")); answer(id, true) }
+
+                    // ---- Lend my brain (off unless you turn it on) ----
+                    "lend.status" -> answer(id, app.lend.status())
+                    "lend.brain" -> { app.lend.setBrain(o.getString("file"), o.optString("label")); answer(id, true) }
+                    "lend.on" -> {
+                        val on = o.getBoolean("on")
+                        if (on && !app.lend.settings.passcodeSet) fail(id, "make a passcode first")
+                        else { activity.runOnUiThread { app.lend.setOn(on) }; answer(id, true) }
+                    }
+                    "lend.newPasscode" -> answer(id, app.lend.newPasscode())
+                    "lend.screenOff" -> activity.runOnUiThread {
+                        // Android's own list of apps allowed to work with the screen off: Bob, Battery, Unrestricted.
+                        runCatching { activity.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+                        answer(id, true)
+                    }
 
                     // ---- Microphone and voice (Android's own) ----
                     "speech.listen" -> activity.runOnUiThread { listen(id) }
@@ -183,9 +199,9 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     fun onForeground() { inBackground = false; send(JSONObject().put("event", "app").put("visible", true)) }
 
     fun close() {
+        brain.listener = null // the phone brain stays (it may be lending); only this screen goes
         listening.keys.forEach { listening[it] = false }
         tts?.shutdown()
-        brain.close()
         scope.cancel()
     }
 }
