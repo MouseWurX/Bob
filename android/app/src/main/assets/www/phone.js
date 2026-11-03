@@ -456,7 +456,8 @@
       const confirm = el('div', { class: 'hidden' },
         el('p', { class: 'help-line', text: `Download ${L.size(m.file.bytes)} from huggingface.co? Wi-Fi is best. The file is checked against its pinned checksum before Bob uses it.` }),
         el('div', { class: 'btns' },
-          el('button', { class: 'main', text: 'Yes, download', onclick: () => { dl = { file: m.file.name, have: 0, bytes: m.file.bytes, state: 'going' }; phone('brain.download', m.file).catch((e) => toast(e.message)); drawBrain(); } }),
+          el('button', { class: 'main', text: 'Yes, download', onclick: () => { dl = { file: m.file.name, have: 0, bytes: m.file.bytes, state: 'going' }; phone('brain.download', { file: m.file.name, url: m.file.url, bytes: m.file.bytes, sha256: m.file.sha256 })
+            .catch((e) => { dl = { ...dl, state: 'error', text: e.message }; drawBrain(); }); drawBrain(); } }),
           el('button', { text: 'Not now', onclick: () => confirm.classList.add('hidden') })));
       const b = el('div', { class: 'box' },
         el('div', { class: 'title' }, m.name,

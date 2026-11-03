@@ -101,6 +101,17 @@ const manifest = fs.readFileSync(path.join(root, 'android/app/src/main/AndroidMa
 check('lend: a notification shows for as long as it\'s on (foreground service, not exported)', /android:name="\.LendService"\s+android:exported="false"\s+android:foregroundServiceType="specialUse"/.test(manifest));
 check('phone page says "Let my other devices in", like the PC', !files0().some((f) => /Let my phone in/.test(fs.readFileSync(f, 'utf8'))));
 
+// Every call the page makes carries the fields the Android side reads (the first phone test caught a download
+// that sent the model's file entry as it was, without "file").
+const bridge = fs.readFileSync(path.join(root, 'android/app/src/main/java/ca/mousewurx/bob/Bridge.kt'), 'utf8');
+for (const [, op, body] of bridge.matchAll(/"([\w.]+)" -> \{?([^\n]*)/g)) {
+  const need = [...body.matchAll(/o\.get(?:String|Long|Int|Boolean|JSONArray)\("(\w+)"\)/g)].map((m) => m[1]);
+  for (const call of js.matchAll(new RegExp(`phone\\('${op.replace('.', '\\.')}'(?:, \\{([^}]*)\\}|, ([\\w.]+))?`, 'g'))) {
+    const keys = call[1] !== undefined ? [...call[1].matchAll(/(\w+)(?=\s*[:,]|\s*$)/g)].map((m) => m[1]) : [];
+    check(`phone('${op}') sends ${need.join(', ') || 'nothing it needs'}`, call[2] === undefined && need.every((k) => keys.includes(k)), call[0]);
+  }
+}
+
 // The page's lock: no inline scripts or styles, no network from the page itself.
 check('page has a strict Content-Security-Policy', /script-src 'self'/.test(html) && /connect-src 'none'/.test(html) && !/<script>(?!<)/.test(html.replace(/<script src[^>]*><\/script>/g, '')) && !/ style="/.test(html));
 
