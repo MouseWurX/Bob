@@ -430,7 +430,7 @@ export function createCellar() {
     const home = settings.home || '';
     return settings.os === 'mac'
       ? `<div class="remove-bob"><p>To remove Bob from this Mac: quit Bob (Bob menu, Quit Bob), then drag <strong>Bob</strong> from Applications to the Bin. His chats, settings, models and engines stay in <code>${esc(home || '~/Library/Application Support/Bob/home')}</code>; drag that folder to the Bin too if you want them gone. If you turned on "Launch Bob on start-up", turn it off first (or remove Bob in System Settings, General, Login Items).</p></div>`
-      : `<div class="remove-bob"><p>To remove Bob: quit him, then delete the Bob program you downloaded. His chats, settings and models are in <code>${esc(home)}</code>; delete that folder too if you want them gone.</p></div>`;
+      : `<div class="remove-bob"><p>To remove Bob: turn off "Launch Bob on start-up" if you turned it on, quit Bob, then delete the Bob AppImage file you downloaded. His chats, settings, models and engines stay in <code>${esc(home || '~/.local/share/bob')}</code>; delete that folder too if you want them gone.</p></div>`;
   }
 
   // 1.5.32: a three-position switch for how the Gaming session uses the graphics card.

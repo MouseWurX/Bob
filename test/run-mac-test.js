@@ -78,7 +78,7 @@ check('model cards: Piper and whisper.cpp models are marked as not for a Mac yet
 // ---------------------------------------------------------------- Hands
 check('Hands on a Mac: no Apps hand (it drives Windows apps)', !handsHere('mac').some((h) => h.id === 'apps') && handsHere('win').some((h) => h.id === 'apps') && !handHere('apps', 'mac'));
 check('Hands on a Mac: the Security hand talks about the Mac, not Defender', /FileVault/.test(handsHere('mac').find((h) => h.id === 'security').what) && !/Defender/.test(handsHere('mac').find((h) => h.id === 'security').what));
-check('defender_scan only exists on Windows', HANDS.security.toolsOnlyOn.defender_scan.join() === 'win');
+check('defender_scan exists on Windows (Defender) and Linux (ClamAV), never on a Mac', HANDS.security.toolsOnlyOn.defender_scan.join() === 'win,linux');
 {
   const cfg = { hands: { enabled: true, run: { on: true } } };
   const no = (cmd, args) => checkCommand(cfg, { cmd, args, cwd: tmp });
