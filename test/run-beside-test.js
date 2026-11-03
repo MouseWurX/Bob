@@ -52,8 +52,8 @@ check('the Coding session counts as big', besideBigOk(fakeBrain({ cfg: { ...fake
   const started = [];
   const g = { ...fakeBrain(), saveQueue() {}, startTurn(s, t, r, j, lane) { started.push(`${j.id}@${lane}`); this.turns.set(lane, {}); } };
   g.queue.push(job('hi', 'waiting'), job('hi2', 'waiting'));
-  const freemem = os.freemem; os.freemem = () => 16 * GB;
-  try { Brain.prototype.pump.call(g); } finally { os.freemem = freemem; }
+  const freemem = os.freemem; os.freemem = () => 16 * GB; process.env.BOB_FREE_MEM_GB = '16'; // the env value is how a Mac's reading is set
+  try { Brain.prototype.pump.call(g); } finally { os.freemem = freemem; delete process.env.BOB_FREE_MEM_GB; }
   check('pump: the chat starts in the side lane, on the second server', started.join() === 'hi@side' && g.queue[1].side === true && g.queue[1].beside === true && g.queue[2].state === 'waiting', started.join());
 }
 

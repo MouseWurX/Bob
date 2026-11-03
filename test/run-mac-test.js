@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { osKey, exeName, venvPython, defaultHome, killTree, supports, features, unifiedGraphicsGB, gpuInfo, machineWord } from '../src/platform.js';
+import { osKey, exeName, venvPython, defaultHome, killTree, supports, features, unifiedGraphicsGB, gpuInfo, machineWord, parseVmStat, freeMemNow } from '../src/platform.js';
 import { ENGINES, engineFor, pickAsset, unpackCommand, makeRunnable } from '../src/engines.js';
 import { handsHere, handHere, HANDS } from '../src/hands-settings.js';
 import { parseLsof, sayMacNetwork, sayMacOverview, judgeMacStartup, sayMacStartup, readOverview, readStartup, macCheck, MAC_THREATS } from '../src/security-mac.js';
@@ -32,6 +32,11 @@ check('defaultHome on Windows: LOCALAPPDATA\\Bob', defaultHome({ LOCALAPPDATA: '
 }
 check('features: Windows-only parts are off on a Mac', !supports('defender', 'mac') && !supports('appsHand', 'mac') && !supports('gamingCard', 'mac') && !supports('updateBob', 'mac') && supports('ownEngines', 'mac') && features('win').defender === true);
 check('a Mac shares memory: about two thirds for graphics, three quarters from 36 GB', unifiedGraphicsGB(16 * 1024 ** 3) === 10 && unifiedGraphicsGB(64 * 1024 ** 3) === 48);
+{
+  const vm = 'Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                               10000.\nPages active:                             90000.\nPages inactive:                           50000.\nPages speculative:                         2000.\nPages purgeable:                           3000.\n';
+  check('free memory on a Mac counts free, inactive, speculative and purgeable pages (vm_stat)', parseVmStat(vm) === 65000 * 16384);
+  check('free memory on Windows and Linux is os.freemem() as before', freeMemNow({ os_: 'win' }) === os.freemem() || Math.abs(freeMemNow({ os_: 'win' }) - os.freemem()) < 64 * 1024 ** 2);
+}
 check('the words Bob uses: this Mac', machineWord('mac') === 'Mac' && machineWord('win') === 'PC');
 {
   const fake = (out) => (f, a, o, cb) => cb(null, out);

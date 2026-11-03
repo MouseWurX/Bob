@@ -27,6 +27,7 @@ import { spawn, execFile } from 'node:child_process';
 import { paint as paintCli, modelArgs, sizeFor, framesFor, checkOutput } from './painter.js';
 import { bigGraceMs } from './brain-mode.js';
 import { paintFlags, pictureFitFailed } from './tuning.js';
+import { freeMemNow } from './platform.js';
 
 export const CODES = ['painter_unavailable', 'painter_load_failed', 'painter_timeout', 'stopped'];
 export const STATES = ['off', 'loading', 'ready', 'busy', 'error', 'unavailable'];
@@ -81,7 +82,7 @@ export class PainterServer extends EventEmitter {
     this.fetch = opts.fetchImpl || ((...a) => fetch(...a));
     this.vramOf = opts.vramOf || vramOfPid;
     this.freeVram = opts.freeVram || freeVram;
-    this.freeRam = opts.freeRam || (() => os.freemem());
+    this.freeRam = opts.freeRam || (() => freeMemNow());
     this.now = opts.now || (() => Date.now());
     this.log = opts.log || (() => {});
     this.child = null;

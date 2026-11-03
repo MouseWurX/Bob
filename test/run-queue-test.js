@@ -1,5 +1,8 @@
 // Tests Bob's task list: drag-to-reorder, Queued -> In progress -> Delegated -> Completed, clearing.
 import { Brain } from '../src/brain.js';
+// "Room in RAM" is this test's starting point (the RAM check itself has its own tests with set values), so a small
+// CI machine (GitHub's Mac runners have 7 GB) doesn't change what is being tested.
+process.env.BOB_FREE_MEM_GB = '24';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };

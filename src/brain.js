@@ -46,6 +46,7 @@ import { WEB_TOOLS, WEB_OFF, webOn, webPrompt } from './web.js';
 import { autoSessionOn, pickSessionTool, autoSessionPrompt, switchLine, switchedNote, idleSession, cardBusy, IDLE_CHECK_MS } from './auto-session.js';
 import { readCard } from './gaming-card.js';
 import { askTogether, takeEarlier, askTogetherTool } from './together.js';
+import { freeMemNow } from './platform.js';
 
 const MAX_STEPS = 8;
 
@@ -61,7 +62,7 @@ const HAND_TOOLS = new Set(Object.values(HANDS).flatMap((h) => h.tools));
 // message runs in a "side" lane on the small brain on the processor, if there's room in RAM. Nothing big is loaded
 // for it. The media job waits for that reply before it loads its own brain back (Gate.needBrain).
 export const SIDE_LANE = 'side';
-export function sideOk(brain, job, { freeMem = os.freemem() } = {}) {
+export function sideOk(brain, job, { freeMem = freeMemNow() } = {}) {
   const cfg = brain.cfg || {};
   if (cfg.chatWhileBusy === false || !job || job.kind !== 'chat') return false;
   if (job.refs?.length || (job.effort && job.effort !== 'low')) return false;
@@ -101,7 +102,7 @@ function besideBytes(brain, model, ctx) {
   try { const f = brain.engine?.resolve?.(model)?.gguf; if (f) return Math.round(fs.statSync(f).size * 1.1 + Math.min(ctx || 32768, 131072) * 60 * 1024); } catch {}
   return 6 * GB; // unknown: a 4B brain and its memory for the chat
 }
-export function besideBigOk(brain, job, { freeMem = os.freemem(), now = Date.now() } = {}) {
+export function besideBigOk(brain, job, { freeMem = freeMemNow(), now = Date.now() } = {}) {
   const cfg = brain.cfg || {};
   if (cfg.chatWhileBusy === false || !job || job.kind !== 'chat' || job.noBeside) return false;
   if (job.refs?.length || (job.effort && job.effort !== 'low')) return false;
@@ -132,7 +133,7 @@ export function besideLater(brain, now = Date.now()) {
   return due;
 }
 
-export function mootBesideOk(brain, model, ctx, { freeMem = os.freemem() } = {}) {
+export function mootBesideOk(brain, model, ctx, { freeMem = freeMemNow() } = {}) {
   const cfg = brain.cfg || {};
   if (cfg.mootBeside !== true || cfg.engine !== 'llamacpp' || typeof brain.engine?.besideServer !== 'function' || !model) return false;
   if (currentSession(cfg).id === 'light') return false;
@@ -169,7 +170,7 @@ export function claimsObservation(text) {
 export const OBSERVE_CORRECTION = 'Nothing was actually checked in that reply. Bob said he checked, but no check ran.';
 const OBSERVE_NUDGE = 'You described noticing, watching or checking something on the PC, but no tool ran this turn, so it was invented. Answer again in a line or two, using only the "Right now" line, the chat, or what {{USER}} said. No made-up system details, and no question unless you need the answer.';
 // The only things he knows about the PC without a tool, so small talk has something true to stand on.
-export function realState({ model, session, waiting = 0, cat, turn = 0, mem = { free: os.freemem(), total: os.totalmem() } }) {
+export function realState({ model, session, waiting = 0, cat, turn = 0, mem = { free: freeMemNow(), total: os.totalmem() } }) {
   const gb = (b) => (b / 1e9).toFixed(1);
   return `Right now (real, from the app): you're thinking on ${model || 'no brain'}${session ? ` in the ${session} session` : ''}; ${waiting ? `${waiting} more message${waiting === 1 ? '' : 's'} waiting` : 'nothing else waiting'}; the PC's RAM is ${gb(mem.total - mem.free)} of ${gb(mem.total)} GB in use; ${catMoment(cat, turn)}.`;
 }

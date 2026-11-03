@@ -111,3 +111,24 @@ export async function gpuInfo({ os_ = OS, execImpl = execFile, arch = process.ar
   const [name, mb] = out.split('\n')[0].split(',').map((s) => s.trim());
   return name ? { name, vramGB: Math.round(Number(mb) / 1024) } : null;
 }
+
+// Memory that's free to use right now, in bytes. Windows and Linux: os.freemem() (on Linux that is MemAvailable).
+// A Mac: os.freemem() counts only pages nobody has touched, which is usually a few hundred MB even on an idle Mac,
+// because macOS keeps recently used files in memory until something needs it. vm_stat's free, inactive,
+// speculative and purgeable pages are what a new program can really get. The reading is kept for 5 seconds.
+let macFree = { at: 0, bytes: 0 };
+export function parseVmStat(text = '') {
+  const page = Number((String(text).match(/page size of (\d+) bytes/) || [])[1]) || 16384;
+  const n = (k) => Number((String(text).match(new RegExp(`Pages ${k}:\\s+(\\d+)`)) || [])[1]) || 0;
+  return (n('free') + n('inactive') + n('speculative') + n('purgeable')) * page;
+}
+export function freeMemNow({ os_ = OS, now = Date.now(), run = () => spawnSync('/usr/bin/vm_stat', [], { encoding: 'utf8', timeout: 2000 }).stdout } = {}) {
+  // Tests that are about something else set how much is free, so the computer running them doesn't decide.
+  if (process.env.BOB_FREE_MEM_GB) return Number(process.env.BOB_FREE_MEM_GB) * 1024 ** 3;
+  if (os_ !== 'mac') return os.freemem();
+  if (now - macFree.at < 5000 && macFree.bytes) return macFree.bytes;
+  let bytes = 0;
+  try { bytes = parseVmStat(run()); } catch {}
+  macFree = { at: now, bytes: bytes > 0 ? Math.min(bytes, os.totalmem()) : os.freemem() };
+  return macFree.bytes;
+}
