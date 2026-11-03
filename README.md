@@ -47,6 +47,8 @@ Bob's program and his things live apart, so updating Bob never touches your mode
 
 New to Bob? The **[user guide](docs/USER-GUIDE.md)** walks through everything in plain English: starter sets for your graphics card, Equip Bob, his personality dials, Topics and housekeeping, and the opt-in Hands.
 
+Wondering how Bob compares with other AI apps? See **[Bob and similar projects](docs/COMPARISON.md)**.
+
 Curious how Bob stays fast and light (the Gaming brain pick, memory freeing, engine tuning, with measured numbers)? See **[How Bob stays fast and light](docs/PERFORMANCE.md)**.
 
 The menu is on the left (fold it to icons with ‹ or Ctrl+B), the chat is in the middle, and **Now running** is on the right: tasks, downloads and graphics card memory (hide it with Ctrl+J, drag its edge to resize). Bob remembers how you leave them.
