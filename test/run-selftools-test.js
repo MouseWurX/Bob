@@ -97,6 +97,17 @@ export async function run(i, { workDir }) {
   check('a tool can\'t write a folder it may only read', o.write === 'ERR_ACCESS_DENIED');
   check('a tool can write its own work folder', o.work === 'ok' && fs.existsSync(path.join(dir, 'work', 'ok.txt')));
   check('a tool gets no keys and no fetch without internet', o.keys === 0 && o.fetch === 'undefined');
+  // A Mac's temp folder is reached through a link (/var -> /private/var); a tool in a linked folder must still run.
+  {
+    const linked = path.join(tmp, 'linked');
+    try { fs.symlinkSync(path.dirname(dir), linked, 'junction'); } catch {}
+    if (fs.existsSync(linked)) {
+      const ld = path.join(linked, path.basename(dir));
+      fs.writeFileSync(path.join(dir, 'tool.mjs'), 'export async function run(){ return "linked ok"; }');
+      const lr = await runSandboxed({ dir: ld, input: {}, reads: [path.join(linked, 'nothing')] });
+      check('a tool in a folder reached through a link still runs (the Mac temp folder)', lr.ok && lr.out === 'linked ok', JSON.stringify(lr));
+    }
+  }
   fs.writeFileSync(path.join(dir, 'tool.mjs'), 'export async function run(){ while (true) {} }');
   const slow = await runSandboxed({ dir, input: {}, timeoutSec: 5 });
   check('a tool that runs too long is stopped', !slow.ok && slow.timedOut);

@@ -250,6 +250,12 @@ function sandboxEnv(work) {
 // Runs a tool's code in the sandbox. dir = the tool's folder (tool.mjs, files\, work\). Resolves
 // { ok, out, error, blocked, timedOut, log } and never throws for the tool's own failure.
 export function runSandboxed({ dir, input = {}, reads = [], writes = [], internet = false, timeoutSec = 60, signal } = {}) {
+  // Real paths only: on a Mac the temp folder (/var/folders/...) goes through the link /var -> /private/var, and
+  // following that link to load the tool is itself a read the sandbox refuses (it stopped "FileSystemRead: /var").
+  const real = (f) => { try { return fs.realpathSync(f); } catch { return f; } };
+  // A tool may still be handed a path through the link (a test file under /var/...), so its folders are allowed both ways.
+  const both = (list) => [...new Set(list.flatMap((f) => [f, real(f)]))];
+  dir = real(dir); reads = both(reads); writes = both(writes);
   return new Promise((resolve) => {
     const work = path.join(dir, 'work');
     fs.mkdirSync(work, { recursive: true });
@@ -257,14 +263,11 @@ export function runSandboxed({ dir, input = {}, reads = [], writes = [], interne
     const inFile = path.join(work, `.in-${id}.json`), outFile = path.join(work, `.out-${id}.json`);
     fs.writeFileSync(inFile, JSON.stringify(input ?? {}));
     const { file, env } = nodeCmd();
-    // Each folder as given and as its real path: on a Mac the temp folder (/var/folders/...) is a link to /private/var/...,
-    // and the sandbox checks the real path, so a folder named only by its link would be shut.
-    const both = (f) => { let r = f; try { r = fs.realpathSync(f); } catch {} return [...new Set([f, r])]; };
-    const rd = (f) => both(f).map((x) => `--allow-fs-read=${x}`), wr = (f) => both(f).map((x) => `--allow-fs-write=${x}`);
-    const args = ['--permission', ...rd(RUNNER), ...rd(dir), ...[...reads, ...writes].flatMap(rd),
-      ...wr(work), ...writes.flatMap(wr), '--max-old-space-size=512', '--disable-proto=throw'];
+    const runner = real(RUNNER);
+    const args = ['--permission', `--allow-fs-read=${runner}`, `--allow-fs-read=${dir}`, ...[...reads, ...writes].map((f) => `--allow-fs-read=${f}`),
+      `--allow-fs-write=${work}`, ...writes.map((f) => `--allow-fs-write=${f}`), '--max-old-space-size=512', '--disable-proto=throw'];
     if (internet && netGuard()) args.push('--allow-net');
-    args.push(RUNNER, path.join(dir, 'tool.mjs'), inFile, outFile, internet ? '1' : '0');
+    args.push(runner, path.join(dir, 'tool.mjs'), inFile, outFile, internet ? '1' : '0');
     let log = '', timedOut = false, done = false, child;
     const finish = (r) => {
       if (done) return; done = true;
