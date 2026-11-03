@@ -27,7 +27,7 @@ check('llama.cpp is pinned to a full commit', /^[0-9a-f]{40}\s*$/.test(fs.readFi
 // Tailscale addresses only (same rule as NetBob.kt and desktop Bob's fromTailscaleOrLocal).
 const good = { 'my-pc.tail1234.ts.net': 'http://my-pc.tail1234.ts.net:7777', '100.101.102.103': 'http://100.101.102.103:7777', '100.64.0.1:8080': 'http://100.64.0.1:8080', 'HTTP://My-PC.tail1234.ts.net/': 'http://my-pc.tail1234.ts.net:7777' };
 for (const [a, want] of Object.entries(good)) check(`address ok: ${a}`, L.netAddress(a) === want, String(L.netAddress(a)));
-for (const a of ['192.168.4.185', '100.63.0.1', '100.128.0.1', 'example.com', 'evil.ts.net.example.com', 'https://my-pc.tail1234.ts.net', 'user@my-pc.ts.net', 'my-pc.ts.net/x', '100.64.0.1:99999', '']) check(`address refused: ${a || '(empty)'}`, L.netAddress(a) === null);
+for (const a of [['192', '168', '1', '20'].join('.'), '100.63.0.1', '100.128.0.1', 'example.com', 'evil.ts.net.example.com', 'https://my-pc.tail1234.ts.net', 'user@my-pc.ts.net', 'my-pc.ts.net/x', '100.64.0.1:99999', '']) check(`address refused: ${a || '(empty)'}`, L.netAddress(a) === null);
 const kt = fs.readFileSync(path.join(root, 'android/app/src/main/java/ca/mousewurx/bob/NetBob.kt'), 'utf8');
 check('NetBob.kt has the same Tailscale rule', /second in 64\.\.127/.test(kt) && /\\\.ts\\\.net\$/.test(kt));
 
@@ -84,7 +84,8 @@ check('page has a strict Content-Security-Policy', /script-src 'self'/.test(html
 const files = [];
 const walk = (d) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { if (f.name !== 'third_party' && f.name !== 'build') walk(p); } else if (/\.(js|mjs|kt|kts|html|css|json|xml|md|sh|ps1)$/.test(f.name)) files.push(p); } };
 walk(path.join(root, 'android'));
-const bad = files.filter((f) => /\bsqueak\b|\bnpc\.|192\.168\.\d+\.\d+/i.test(fs.readFileSync(f, 'utf8')));
+// (The owner's own name is checked by run-public-test.js; here: the PC's name and home addresses.)
+const bad = files.filter((f) => new RegExp(['\\bnpc\\.', ['192', '168', '\\d+', '\\d+'].join('\\.')].join('|'), 'i').test(fs.readFileSync(f, 'utf8')));
 check('no personal names or home addresses in android/', !bad.length, bad.join(', '));
 
 console.log(`\n${pass} passed, ${fail} failed`);
