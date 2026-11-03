@@ -1,0 +1,46 @@
+# Builds Bob for Android (the android/ folder) into an APK: on every push that changes it, and on demand.
+#  1. Runs the phone page's own tests (node test/run-android-test.js).
+#  2. Fetches llama.cpp at the exact commit in android/llama.cpp.pin (the phone brain's engine).
+#  3. Builds the APK with Gradle and keeps it as a download on the run's page.
+# Releases stay with the Windows build; this only makes the APK to try.
+# Every action is pinned to a full commit SHA (the tag is in the comment), like build.yml.
+name: Android
+
+on:
+  push:
+    paths: ['android/**', '.github/workflows/android.yml', 'public/icons/**', 'public/fonts/**', 'src/persona.js', 'catalog.json', 'test/run-android-test.js']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Phone page tests
+        run: node test/run-android-test.js
+      - name: Fetch llama.cpp (pinned)
+        run: sh android/tools/fetch-llama.sh
+      - name: Android tools (NDK and CMake the llama.cpp library asks for)
+        run: |
+          NDK=$(sed -n 's/.*ndkVersion = "\(.*\)".*/\1/p' android/third_party/llama.cpp/examples/llama.android/lib/build.gradle.kts)
+          CMAKE=$(sed -n 's/.*version = "\(3[0-9.]*\)".*/\1/p' android/third_party/llama.cpp/examples/llama.android/lib/build.gradle.kts | head -1)
+          echo "NDK $NDK, CMake $CMAKE"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK" "cmake;$CMAKE" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+      - name: Build the APK
+        working-directory: android
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          ./gradlew --no-daemon --stacktrace assembleDebug
+      - name: Keep the APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Bob-android-${{ github.sha }}
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

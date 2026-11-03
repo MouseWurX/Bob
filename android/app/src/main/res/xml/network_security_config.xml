@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bob on the PC speaks plain http on his port. The app only ever connects to Tailscale addresses
+     (100.64.0.0/10 or *.ts.net, checked in NetBob.kt), and Tailscale encrypts everything between
+     the phone and the PC, so plain http is allowed here. Downloads use https. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

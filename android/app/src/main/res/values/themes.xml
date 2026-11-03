@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.Bob" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/inn</item>
+        <item name="android:statusBarColor">@color/inn</item>
+        <item name="android:navigationBarColor">@color/inn</item>
+    </style>
+    <color name="inn">#1d1510</color>
+</resources>

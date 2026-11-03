@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Bob</string>
+    <string name="notify_channel">Bob needs you</string>
+</resources>
