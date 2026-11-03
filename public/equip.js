@@ -95,9 +95,9 @@ function slotHtml(slot, ctx) {
 
 const REC_TAG = '<span class="tag rec">★ Recommended for this job on your PC</span>';
 const FIT_TAG = '<span class="tag">Fits your card</span>';
-function fitTags(f) {
+function fitTags(f, ctx = {}) {
   if (f.level === 'unknown') return '<span class="muted fit-why">Not in Bob\'s list, so he can\'t say how well it runs here.</span>';
-  const tags = `${f.rec ? `${REC_TAG}<span class="muted fit-why">${esc(f.recWhy)}</span>` : ''}${f.fits && !f.rec ? FIT_TAG : ''}${f.level !== 'ok' && !f.rec ? `<span class="tag warn">${f.level === 'blocked' ? 'Can\'t install on this PC' : 'Doesn\'t suit this PC'}</span>` : ''}`;
+  const tags = `${f.rec ? `${REC_TAG}<span class="muted fit-why">${esc(f.recWhy)}</span>` : ''}${f.fits && !f.rec ? (ctx?.unified ? FIT_TAG.replace('your card', 'your Mac') : FIT_TAG) : ''}${f.level !== 'ok' && !f.rec ? `<span class="tag warn">${f.level === 'blocked' ? 'Can\'t install on this PC' : 'Doesn\'t suit this PC'}</span>` : ''}`;
   return `${tags}${f.why ? `<span class="muted fit-why">${esc(f.why)}</span>` : ''}`;
 }
 
@@ -114,12 +114,12 @@ function kitHtml(slot, ctx) {
     const e = k.entry;
     const tip = stats(e, k.installed ? 'On this PC' : '');
     if (!k.installed) {
-      return `<li class="kit shop model${f.level !== 'ok' && !f.rec ? ' dim' : ''}" title="${esc(tip)}"><span class="kit-name">${esc(k.label)}</span><span class="muted">${esc(tip)}</span>${fitTags(f)}
+      return `<li class="kit shop model${f.level !== 'ok' && !f.rec ? ' dim' : ''}" title="${esc(tip)}"><span class="kit-name">${esc(k.label)}</span><span class="muted">${esc(tip)}</span>${fitTags(f, ctx)}
         <button type="button" class="get" data-get="${esc(k.value)}">Get</button><div class="confirm" hidden></div></li>`;
     }
     const heavy = f.level === 'slow' || f.level === 'no';
     return `<li class="kit${k.value === cur ? ' worn' : ''}${heavy ? ' heavy' : ''}" draggable="true" data-equip="${esc(k.value)}" data-kind="${esc(slot.kind)}" title="${esc(tip)}">
-      <button type="button" class="kit-btn" data-equip="${esc(k.value)}" ${k.value === cur ? 'aria-current="true"' : ''}><span class="kit-name">${esc(k.label)}</span><span class="muted">${esc(tip)}</span>${fitTags(f)}${k.value === cur ? '<span class="tag good">equipped</span>' : ''}</button></li>`;
+      <button type="button" class="kit-btn" data-equip="${esc(k.value)}" ${k.value === cur ? 'aria-current="true"' : ''}><span class="kit-name">${esc(k.label)}</span><span class="muted">${esc(tip)}</span>${fitTags(f, ctx)}${k.value === cur ? '<span class="tag good">equipped</span>' : ''}</button></li>`;
   }).join('');
   const more = hiddenOnes.length
     ? `<p class="muted unsuited-note">${ctx.showUnsuited ? 'Showing models that don\'t suit this PC.' : `${hiddenOnes.length} more for this job ${hiddenOnes.length === 1 ? 'doesn\'t' : 'don\'t'} suit this PC.`} <button type="button" class="link" data-unsuited>${ctx.showUnsuited ? 'Hide them' : 'Show them'}</button></p>` : '';

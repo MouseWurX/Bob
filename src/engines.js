@@ -41,8 +41,8 @@ export const ENGINES = [
     // Newer CUDA zips are named whisper-bin-win-cuda-12.4-x64.zip, older ones whisper-cublas-12.4.0-bin-x64.zip.
     nvidia: [], other: [/^whisper-bin-x64\.zip$/, /^whisper-blas-bin-x64\.zip$/, /^whisper-(?:cublas-(\d+)[\d.]*-bin|bin-win-cuda-(\d+)[\d.]*)-x64\.zip$/],
     runtime: () => null,
-    // whisper.cpp only posts a Mac framework for app makers, not the whisper-cli program, so there is nothing to fetch.
-    mac: { unavailable: 'whisper.cpp doesn\'t post a ready-made Mac program. On a Mac, Bob hears you through Ollama or a cloud helper instead (Voice & conversation, Hearing).' }
+    // whisper.cpp only posts a Mac framework for app makers, not the whisper-cli program, so there's nothing to fetch.
+    mac: { unavailable: 'There\'s no ready-made Mac download of whisper.cpp. On a Mac, Bob hears you through Ollama or a cloud helper instead (Voice & conversation, Hearing).' }
   },
   {
     // Piper's last Windows build. The repo is archived, so this release is fixed rather than "latest".
@@ -91,7 +91,7 @@ export const ENGINES = [
     nvidia: [], other: [/^ffmpeg-[\d.]+-essentials_build\.zip$/],
     runtime: () => null,
     // No official Mac build on GitHub to pin, so on a Mac Bob uses one that's installed (Homebrew: brew install ffmpeg).
-    mac: { unavailable: 'There\'s no pinned FFmpeg download for Mac. Install it with Homebrew (brew install ffmpeg) or from ffmpeg.org, and Bob finds it by himself.' },
+    mac: { unavailable: 'There\'s no pinned FFmpeg download for Mac yet. Get it from ffmpeg.org, or with Homebrew (brew install ffmpeg) if you use it, and Bob finds it by himself.' },
     ready: (cfg) => Boolean(findFfmpeg(cfg)),
     found: (cfg) => { const f = findFfmpeg(cfg); return f && f.where !== 'own' ? `found on this PC (${f.exe})` : ''; }
   },

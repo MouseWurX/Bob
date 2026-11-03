@@ -103,7 +103,7 @@ export function createCellar() {
     // Three separate things: Bob's pick for a job on this PC (★), fits the card (quiet), or doesn't suit (with why).
     const badge = covered(m) ? '<span class="tag good">Faster replies after voice notes</span>'
       : mine.length ? `<span class="tag rec">★ Recommended for your PC: ${esc(mine.map((id) => SLOT_NAMES[id]).join(', '))}</span>`
-      : fit.level === 'ok' ? (fit.fits ? '<span class="tag">Fits your card</span>' : '')
+      : fit.level === 'ok' ? (fit.fits ? `<span class="tag">${hw?.gpu?.unified ? 'Fits your Mac' : 'Fits your card'}</span>` : '')
       : fit.level === 'blocked' ? '<span class="tag bad">Can\'t install on this PC</span>' : '<span class="tag warn">Doesn\'t suit this PC</span>';
     const dim = fit.level !== 'ok' && !mine.length && m.status.state !== 'installed' ? ' dim' : '';
     const jobs = jobNames(m);
@@ -160,10 +160,11 @@ export function createCellar() {
   // Top of every model page: what Bob judged this PC by, what the badges mean, and the switch.
   function fitBanner() {
     // Same detection as Now running and the Settings footer; a size set by hand in Bob's settings says so.
-    const card = hw?.gpu ? `${esc(hw.gpu.name)} (${hw.gpu.vramGB} GB graphics memory)` : hw?.vramGB ? `a ${hw.vramGB} GB graphics card (set in Bob's settings; not detected right now)` : 'no graphics card found';
+    // A Mac: one memory pool shared with graphics, and models are sized against the part macOS lets graphics use.
+    const card = hw?.gpu?.unified ? `${esc(hw.gpu.name.replace(/ \(shared memory\)$/, ''))}, memory shared with graphics (about ${hw.gpu.vramGB} GB of it for models)` : hw?.gpu ? `${esc(hw.gpu.name)} (${hw.gpu.vramGB} GB graphics memory)` : hw?.vramGB ? `a ${hw.vramGB} GB graphics card (set in Bob's settings; not detected right now)` : 'no graphics card found';
     return `<div class="fit-banner"><p><strong>Picked for this PC:</strong> ${card}${hw?.ramGB ? `, ${hw.ramGB} GB RAM` : ''}. <button type="button" class="mini help-link" data-help="recommended" aria-label="Help: how Bob picks models">? How Bob picks</button></p>
       ${picksSummary()}
-      <p class="muted"><span class="tag rec">★ Recommended</span>: Bob's pick for that job on your PC. <span class="tag">Fits your card</span>: also runs well here, just not the first pick.</p>
+      <p class="muted"><span class="tag rec">★ Recommended</span>: Bob's pick for that job on your PC. <span class="tag">${hw?.gpu?.unified ? 'Fits your Mac' : 'Fits your card'}</span>: also runs well here, just not the first pick.</p>
       ${pillSwitch('unsuitedsw', showUnsuited, 'Show models that don\'t suit this PC', 'Off unless you turn it on. Each one says why it doesn\'t suit.')}</div>`;
   }
   function groupHtml(g) {
@@ -623,7 +624,7 @@ export function createCellar() {
   let houseFocus = null; // 1.5.34: "Change" on a "Used your house style" line opens that House style box
   let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-equip-view') || 'doll'; } catch { return 'doll'; } })();
   function eqCtx() {
-    return { roles, models: data?.models || [], brains: settings?.sessionBrains || {}, embed: roles?.current?.embed || '', selected: eqSelected, vramGB: hw?.vramGB || hw?.gpu?.vramGB || null, ramGB: hw?.ramGB || null, freeGB: hw?.freeGB ?? null, platform: settings?.platform, showUnsuited,
+    return { roles, models: data?.models || [], brains: settings?.sessionBrains || {}, embed: roles?.current?.embed || '', selected: eqSelected, vramGB: hw?.vramGB || hw?.gpu?.vramGB || null, unified: Boolean(hw?.gpu?.unified), ramGB: hw?.ramGB || null, freeGB: hw?.freeGB ?? null, platform: settings?.platform, showUnsuited,
       packs: data?.packs || [], packId: starterPack, picks: starterPicks, engines: data?.engines || [], starterOpen,
       houseStyle: settings?.houseStyle || {},
       attributes: settings ? attributesHtml({ personality: settings.personality, look: settings.look, lookText: settings.lookText, lookComments: settings.lookComments, user: settings.userName, callMe: settings.callMe, windowsName: settings.windowsName }) : '' };
