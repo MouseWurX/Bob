@@ -257,8 +257,12 @@ export function runSandboxed({ dir, input = {}, reads = [], writes = [], interne
     const inFile = path.join(work, `.in-${id}.json`), outFile = path.join(work, `.out-${id}.json`);
     fs.writeFileSync(inFile, JSON.stringify(input ?? {}));
     const { file, env } = nodeCmd();
-    const args = ['--permission', `--allow-fs-read=${RUNNER}`, `--allow-fs-read=${dir}`, ...[...reads, ...writes].map((f) => `--allow-fs-read=${f}`),
-      `--allow-fs-write=${work}`, ...writes.map((f) => `--allow-fs-write=${f}`), '--max-old-space-size=512', '--disable-proto=throw'];
+    // Each folder as given and as its real path: on a Mac the temp folder (/var/folders/...) is a link to /private/var/...,
+    // and the sandbox checks the real path, so a folder named only by its link would be shut.
+    const both = (f) => { let r = f; try { r = fs.realpathSync(f); } catch {} return [...new Set([f, r])]; };
+    const rd = (f) => both(f).map((x) => `--allow-fs-read=${x}`), wr = (f) => both(f).map((x) => `--allow-fs-write=${x}`);
+    const args = ['--permission', ...rd(RUNNER), ...rd(dir), ...[...reads, ...writes].flatMap(rd),
+      ...wr(work), ...writes.flatMap(wr), '--max-old-space-size=512', '--disable-proto=throw'];
     if (internet && netGuard()) args.push('--allow-net');
     args.push(RUNNER, path.join(dir, 'tool.mjs'), inFile, outFile, internet ? '1' : '0');
     let log = '', timedOut = false, done = false, child;
