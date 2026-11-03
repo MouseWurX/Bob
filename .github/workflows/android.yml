@@ -2,14 +2,21 @@
 #  1. Runs the phone page's own tests (node test/run-android-test.js).
 #  2. Fetches llama.cpp at the exact commit in android/llama.cpp.pin (the phone brain's engine).
 #  3. Builds the APK with Gradle and keeps it as a download on the run's page.
-# Releases stay with the Windows build; this only makes the APK to try.
+#  4. On a new version on main (or by hand): waits for the Windows job to publish release vX.Y.Z, then adds
+#     Bob-<version>-android.apk and its checksum to it, like the Linux job does with the AppImage.
 # Every action is pinned to a full commit SHA (the tag is in the comment), like build.yml.
 name: Android
 
 on:
   push:
-    paths: ['android/**', '.github/workflows/android.yml', 'public/icons/**', 'public/fonts/**', 'src/persona.js', 'catalog.json', 'test/run-android-test.js']
+    tags: ['v*']
+    branches: [main, 'claude/**']
   workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Commit or branch to build (default: main)'
+        required: false
+        default: main
 
 permissions:
   contents: read
@@ -17,8 +24,12 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # only used by "Add to the GitHub release", on main, version tags and by hand
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -38,9 +49,27 @@ jobs:
         run: |
           export JAVA_HOME="$JAVA_HOME_17_X64"
           ./gradlew --no-daemon --stacktrace assembleDebug
+      - name: Name it and checksum
+        run: |
+          v=$(node -p "require('./package.json').version")
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk "dist/Bob-$v-android.apk"
+          cd dist && sha256sum "Bob-$v-android.apk" | awk '{print $1}' > "Bob-$v-android.apk.sha256" && ls -la
       - name: Keep the APK
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Bob-android-${{ github.sha }}
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: |
+            dist/Bob-*-android.apk
+            dist/Bob-*-android.apk.sha256
           if-no-files-found: error
+      - name: Add to the GitHub release
+        # The Windows job (build.yml) makes release vX.Y.Z; this waits for it (up to 30 minutes) and adds the APK.
+        if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then v="$GITHUB_REF_NAME"; else v="v$(node -p "require('./package.json').version")"; fi
+          for i in $(seq 1 60); do gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 && break; sleep 30; done
+          gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 || { echo "Release $v didn't appear; the APK is in this run's artifacts."; exit 0; }
+          gh release upload "$v" dist/Bob-*-android.apk dist/Bob-*-android.apk.sha256 --clobber -R "$GITHUB_REPOSITORY"
