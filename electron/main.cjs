@@ -23,6 +23,17 @@ if (!app.requestSingleInstanceLock()) { app.quit(); return; }
 // this off by default; it costs nothing (Windows already tracks which windows are covered).
 app.commandLine.appendSwitch('enable-features', 'CalculateNativeWinOcclusion');
 
+// Linux AppImage: Chromium's sandbox needs unprivileged user namespaces, which Ubuntu 24.04+ (AppArmor) blocks for
+// programs it doesn't know, and an AppImage can't carry the setuid helper. Without this Bob wouldn't open at all there.
+// Only then is the extra sandbox switched off: Bob's window only ever shows Bob's own page from 127.0.0.1, with
+// context isolation and no Node in the page, and links to the web open in the normal browser.
+if (process.platform === 'linux' && process.env.APPIMAGE) {
+  let blocked = false;
+  try { blocked = fs.readFileSync('/proc/sys/kernel/apparmor_restrict_unprivileged_userns', 'utf8').trim() === '1'; } catch {}
+  try { if (fs.readFileSync('/proc/sys/kernel/unprivileged_userns_clone', 'utf8').trim() === '0') blocked = true; } catch {}
+  if (blocked) app.commandLine.appendSwitch('no-sandbox');
+}
+
 const root = path.join(__dirname, '..');
 const MAC = process.platform === 'darwin';
 
@@ -33,7 +44,8 @@ if (MAC) {
   for (const d of ['/opt/homebrew/bin', '/opt/homebrew/sbin', '/usr/local/bin']) if (!have.includes(d)) have.push(d);
   process.env.PATH = have.join(':');
 }
-const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath);
+// Linux: the AppImage file's own folder (APPIMAGE), not the read-only place it is mounted while it runs.
+const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || (process.env.APPIMAGE && path.dirname(process.env.APPIMAGE)) || path.dirname(process.execPath);
 
 function readHome() {
   for (const f of [path.join(exeDir, 'home.json'), path.join(app.getPath('appData'), 'Bob', 'home.json')]) {

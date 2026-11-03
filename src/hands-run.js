@@ -24,7 +24,16 @@ const NEVER_PROGRAMS = new Map(Object.entries({
   secedit: 'changes security policy', gpedit: 'changes group policy', lusrmgr: 'manages user accounts', mpcmdrun: 'controls Windows antivirus',
   sc: 'controls Windows services', cipher: 'can wipe free disk space', syskey: 'changes system security', reagentc: 'changes Windows recovery',
   mkfs: 'formats a disk', fdisk: 'changes disk partitions', dd: 'writes raw disks', passwd: 'changes passwords', useradd: 'manages user accounts',
-  userdel: 'manages user accounts', reboot: 'restarts the PC', poweroff: 'shuts down the PC', halt: 'shuts down the PC', chown: 'changes file ownership'
+  userdel: 'manages user accounts', reboot: 'restarts the PC', poweroff: 'shuts down the PC', halt: 'shuts down the PC', chown: 'changes file ownership',
+  // Linux (and Mac) programs with the same reach as the Windows ones above.
+  pkexec: 'runs as administrator', doas: 'runs as administrator', su: 'runs as another user or administrator', visudo: 'changes who may be administrator',
+  usermod: 'manages user accounts', groupadd: 'manages user accounts', groupdel: 'manages user accounts', chpasswd: 'changes passwords',
+  systemctl: 'controls system services', service: 'controls system services', launchctl: 'controls system services', crontab: 'makes a scheduled task (that is the Schedules Hand\'s job)',
+  mount: 'changes disk mounts', umount: 'changes disk mounts', parted: 'changes disk partitions', gdisk: 'changes disk partitions', sgdisk: 'changes disk partitions',
+  wipefs: 'wipes disks', shred: 'destroys files beyond recovery', modprobe: 'changes the system core (kernel)', insmod: 'changes the system core (kernel)',
+  rmmod: 'changes the system core (kernel)', setenforce: 'changes system security', chattr: 'changes protected file flags', iptables: 'changes the firewall',
+  nft: 'changes the firewall', ufw: 'changes the firewall', firewalld: 'changes the firewall', 'firewall-cmd': 'changes the firewall',
+  'grub-install': 'changes how the PC boots', 'update-grub': 'changes how the PC boots', efibootmgr: 'changes how the PC boots'
 }));
 
 // Text that is refused anywhere in the command line (and inside a script Bob is asked to run).
@@ -48,7 +57,15 @@ const NEVER_TEXT = [
   [/\b(rd|rmdir)\s+(\/s|\/q)|\bdel(\.exe)?\s+[^\n]*\/s\b|\bremove-item\b[^\n]*-recurse|\brm\s+-[a-z]*r[a-z]*f|\brm\s+-[a-z]*f[a-z]*r/i, 'deletes many files at once (Bob throws things away through the Files Hand, to the Recycle Bin)'],
   [/\bcipher\s+\/w\b/i, 'wipes disk space'],
   [/\b(invoke-webrequest|iwr|curl|wget|invoke-restmethod|irm)\b[^\n|]*\|\s*(iex|invoke-expression|sh|bash|cmd|powershell|pwsh)\b/i, 'downloads and runs code in one go'],
-  [/\bmkfs\b|\bdd\s+[^\n]*of=\/dev\//i, 'writes raw disks']
+  [/\bmkfs\b|\bdd\s+[^\n]*of=\/dev\//i, 'writes raw disks'],
+  // Linux and Mac shells.
+  [/\b(pkexec|doas)\b|\bsu\s+(-|root\b)/i, 'asks for administrator rights'],
+  [/\brm\s+(-[a-z]*r|--recursive)\b|\bfind\b[^\n]*\s-delete\b|--no-preserve-root/i, 'deletes many files at once (Bob throws things away through the Files Hand, to the Trash)'],
+  [/>\s*\/dev\/(sd|nvme|hd|vd|mmcblk|disk)/i, 'writes raw disks'],
+  [/(>|\btee\b[^\n]*)\s*\/(etc|boot|usr|bin|sbin|lib|lib64|sys|proc)\//i, 'changes system files'],
+  [/\b(chmod|chown|chgrp)\s+(-[a-z]*R|--recursive)\b[^\n]*\s\/(\s|$)/i, 'changes permissions on the whole system'],
+  [/\bcrontab\b|\bsystemctl\b|\blaunchctl\b/i, 'makes or changes a system task or service (that is the Schedules Hand\'s job)'],
+  [/:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/, 'would freeze the PC (fork bomb)']
 ];
 
 // macOS's own system tools that wipe disks, change startup or security, or manage accounts (on every computer, so a

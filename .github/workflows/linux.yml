@@ -1,0 +1,84 @@
+# Bob for Linux: builds the AppImage on every new version on main (and on version tags, branch work and by hand).
+#  1. Runs all of Bob's tests on Linux.
+#  2. Builds Bob-<version>-linux-x86_64.AppImage with electron-builder (official Electron, Bob's files inside).
+#  3. Starts it on a virtual screen and checks Bob answers on 127.0.0.1:7777 (a real start, not just a build).
+#  4. On a new version on main: waits for the Windows job to publish release vX.Y.Z, then adds the AppImage and its
+#     checksum to it. Nothing here touches the Windows build.
+#
+# Every action is pinned to a full commit SHA (the tag is in the comment). `npm run check:release` fails if one isn't.
+name: Linux
+
+on:
+  push:
+    tags: ['v*']
+    branches: [main, 'claude/**']
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Commit or branch to build (default: main)'
+        required: false
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  appimage:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # only used by "Add to the GitHub release", on main and version tags
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Build tools
+        run: npm ci --no-audit --no-fund
+      - name: Tests
+        run: npm test
+      - name: Release check (licences, pinned actions)
+        run: npm run check:release
+      - name: Build the AppImage
+        run: npx electron-builder --linux AppImage --x64 --publish never
+      - name: Checksum
+        run: |
+          cd dist
+          for f in Bob-*-linux-*.AppImage; do sha256sum "$f" | awk '{print $1}' > "$f.sha256"; done
+          ls -la Bob-*-linux-*
+      - name: Start it and check Bob answers
+        # A virtual screen (Xvfb), and the AppImage unpacked in place of mounting it (runners have no FUSE).
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb > /dev/null
+          export HOME="$RUNNER_TEMP/home" && mkdir -p "$HOME"
+          app=$(ls dist/Bob-*-linux-*.AppImage | head -1) && chmod +x "$app"
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$app" --no-sandbox > "$RUNNER_TEMP/bob.log" 2>&1 &
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:7777/api/status > "$RUNNER_TEMP/status.json"; then ok=1; break; fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/bob.log" | tail -40
+          test "$ok" = 1 || { echo "Bob didn't answer on 7777"; exit 1; }
+          head -c 400 "$RUNNER_TEMP/status.json"; echo
+          test -f "$HOME/.local/share/bob/config.json" || { echo "Bob didn't make his home in ~/.local/share/bob"; exit 1; }
+          pkill -f "$app" || true
+      - name: Upload the AppImage
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Bob-${{ github.ref_name == 'main' && 'main' || github.sha }}-linux-x86_64
+          path: |
+            dist/Bob-*-linux-*.AppImage
+            dist/Bob-*-linux-*.AppImage.sha256
+          if-no-files-found: error
+      - name: Add to the GitHub release
+        # The Windows job (build.yml) makes release vX.Y.Z; this waits for it (up to 30 minutes) and adds the AppImage.
+        if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then v="$GITHUB_REF_NAME"; else v="v$(node -p "require('./package.json').version")"; fi
+          for i in $(seq 1 60); do gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 && break; sleep 30; done
+          gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 || { echo "Release $v didn't appear; the AppImage is in this run's artifacts."; exit 0; }
+          gh release upload "$v" dist/Bob-*-linux-*.AppImage dist/Bob-*-linux-*.AppImage.sha256 --clobber -R "$GITHUB_REPOSITORY"

@@ -16,6 +16,7 @@ import { webOn, WEB_OFF } from './web.js';
 import { canRead, canWrite, officeDir } from './hands-office.js';
 import { findFfmpeg } from './office.js';
 import { spawn } from 'node:child_process';
+import { linuxCheck, clamscan, clamPlan, runClam, sayClam } from './security-linux.js';
 import { PS, runPs, sayOverview, sayThreats, sayStartup, sayNetwork, mpCmdRun, scanArgs, runScan, sayScan } from './security-pc.js';
 import { extOf, realKind, SAME, nameTricks, markOfTheWeb, sha256, scanScript, SCRIPT_EXT, readEmail, linkSigns, hiddenDetails, CLEANABLE, cleanJpeg, cleanPng, cleanWebp, cleanOffice } from './security-files.js';
 import { cleanDomain, rdapDomain, rdapIp, dnsFacts, certHistory, followLink, breachesForSite, sayDomain, saySender, sayLink, sayIp, sayBreachesForSite, isPrivateHost } from './security-web.js';
@@ -174,19 +175,22 @@ export async function cleanOne(src, out, { ffmpeg, signal } = {}) {
 
 // ---------------------------------------------------------------- the tools
 
-export function securityTools(brain, { env = process.env, fetchImpl, resolver, ps = runPs, scan = runScan, os_ = handsOs(), macRun } = {}) {
+export function securityTools(brain, { env = process.env, fetchImpl, resolver, ps = runPs, scan = runScan, os_ = handsOs(), macRun, linux = {} } = {}) {
   const cfg = brain.cfg;
+  // Linux: the same tools, read the Linux way (security-linux.js), and ClamAV in place of Defender.
+  const LINUX = os_ === 'linux';
   const log = (k, t) => brain.log?.(k, t);
   const t = {};
 
   t.security_check = {
-    schema: fn('security_check', os_ === 'mac' ? 'Check this Mac\'s security (read-only, changes nothing): overview = firewall, FileVault, Gatekeeper, System Integrity Protection, updates; threats = what macOS does about malware; startup = what starts at login or with the Mac, with anything suspicious marked; network = programs listening for connections.' : 'Check this PC\'s security (read-only, changes nothing): overview = antivirus, firewall, updates; threats = what Defender found lately, explained; startup = what starts with Windows, with anything suspicious marked; network = programs listening for connections.', {
+    schema: fn('security_check', os_ === 'linux' ? 'Check this PC\'s security (read-only, changes nothing): overview = antivirus (ClamAV if installed), firewall, updates; threats = explains there is no antivirus history on Linux; startup = what starts when you sign in, with anything suspicious marked; network = programs listening for connections.' : os_ === 'mac' ? 'Check this Mac\'s security (read-only, changes nothing): overview = firewall, FileVault, Gatekeeper, System Integrity Protection, updates; threats = what macOS does about malware; startup = what starts at login or with the Mac, with anything suspicious marked; network = programs listening for connections.' : 'Check this PC\'s security (read-only, changes nothing): overview = antivirus, firewall, updates; threats = what Defender found lately, explained; startup = what starts with Windows, with anything suspicious marked; network = programs listening for connections.', {
       area: str('overview, threats, startup or network', { enum: ['overview', 'threats', 'startup', 'network'] })
     }),
     async run({ area = 'overview' }, ctx) {
       off(cfg);
       const a = ['overview', 'threats', 'startup', 'network'].includes(area) ? area : 'overview';
       if (os_ === 'mac') { const said = await macCheck(a, macRun); log('security', `checked ${a} (Mac)`); return said; }
+      if (LINUX) { const text = await linuxCheck(a, { env, ...linux }); log('security', `checked ${a}`); return text; }
       const r = await ps(PS[a], { env, signal: ctx?.signal, timeoutMs: a === 'startup' ? 120_000 : 60_000 });
       log('security', `checked ${a}`);
       return a === 'overview' ? sayOverview(r) : a === 'threats' ? sayThreats(r) : a === 'startup' ? sayStartup(r) : sayNetwork(r);
@@ -202,11 +206,15 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
       if (!args.path || !(path.isAbsolute(String(args.path)) || /^[a-zA-Z]:[\\/]/.test(String(args.path)))) throw new Error('A one-file scan needs the full path of a file or folder.');
       if (!fs.existsSync(target)) throw new Error(`There's nothing at ${target}.`);
     }
+    if (LINUX) { clamPlan(kind, target, { home: env.HOME }); if (!clamscan(env)) throw new Error('ClamAV isn\'t installed, so I can\'t scan. Install "ClamAV" from your software centre and ask again.'); return { kind, target, args: [] }; }
     if (!mpCmdRun(env)) throw new Error('Microsoft Defender\'s scanner isn\'t on this PC (another antivirus may be in charge), so I can\'t start a scan. Use that antivirus\'s own window.');
     return { kind, target, args: scanArgs(kind, target) };
   };
   t.defender_scan = {
-    schema: fn('defender_scan', 'Start a Microsoft Defender scan or update its virus definitions. quick = a few minutes, the usual places; full = the whole PC, an hour or more, runs in the background; file = one file or folder (like a download); update = fetch the newest definitions. Defender deals with anything it finds as it is set to. {{USER}} sees a card first.', {
+    schema: LINUX ? fn('defender_scan', 'Scan with ClamAV, if it is installed (Linux has no Defender). quick = the Downloads and Desktop folders; file = one file or folder (like a download). ClamAV only reports what it finds; it moves nothing. full and update need administrator rights on Linux, so they are left to the user. {{USER}} sees a card first.', {
+      kind: str('quick or file', { enum: ['quick', 'file'] }),
+      path: str('file only: full path of the file or folder to scan.')
+    }, ['kind']) : fn('defender_scan', 'Start a Microsoft Defender scan or update its virus definitions. quick = a few minutes, the usual places; full = the whole PC, an hour or more, runs in the background; file = one file or folder (like a download); update = fetch the newest definitions. Defender deals with anything it finds as it is set to. {{USER}} sees a card first.', {
       kind: str('quick, full, file or update', { enum: ['quick', 'full', 'file', 'update'] }),
       path: str('file only: full path of the file or folder to scan.')
     }, ['kind']),
@@ -214,12 +222,19 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
     check(args) {
       off(cfg);
       const p = scanPlan(args);
+      if (LINUX) return { text: `${p.kind === 'file' ? `Scan with ClamAV (just this): ${p.target}` : 'Scan Downloads and Desktop with ClamAV'}. It only reports what it finds; nothing is moved or deleted.`, command: ['clamscan', ...clamPlan(p.kind, p.target, { home: env.HOME })].join(' ') };
       const what = { quick: 'Scan with Defender (quick, a few minutes)', full: 'Scan with Defender (full: the whole PC, an hour or more, in the background)', file: `Scan with Defender (just this): ${p.target}`, update: 'Update Defender\'s virus definitions' }[p.kind];
       return { text: `${what}. Defender handles anything it finds the way it is set to (usually quarantine).`, command: ['MpCmdRun.exe', ...p.args].join(' ') };
     },
     async run(args, ctx) {
       off(cfg);
       const p = scanPlan(args);
+      if (LINUX) {
+        ctx?.emit?.({ type: 'status', text: 'ClamAV is scanning…' });
+        const r = await (linux.clam || runClam)(p.kind, p.target, { env, signal: ctx?.signal });
+        log('security', `clamav ${p.kind}${p.target ? ` ${p.target}` : ''}: exit ${r.code}`);
+        return sayClam(p.kind, r);
+      }
       ctx?.emit?.({ type: 'status', text: p.kind === 'update' ? 'Updating Defender…' : 'Defender is scanning…' });
       const r = await scan(p.kind, p.target, { env, signal: ctx?.signal });
       log('security', `defender ${p.kind}${p.target ? ` ${p.target}` : ''}: ${r.started ? 'started' : `exit ${r.code}`}`);

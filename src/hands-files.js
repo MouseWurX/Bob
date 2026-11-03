@@ -8,7 +8,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { insideAny, isInside, appDir } from './config.js';
 import { isSensitive } from './tools.js';
-import { recycle } from './recycle.js';
+import { recycle, forgetTrashInfo } from './recycle.js';
 import { collect, writeZip, unzip, readZipList } from './zip.js';
 import { handsSettings, readOnlyRoots, limitOn } from './hands-settings.js';
 
@@ -331,7 +331,7 @@ export function undoJob(cfg, id) {
       } else if (s.op === 'mkdir') {
         try { fs.rmdirSync(s.path); done.push(`Removed the empty folder ${s.path}`); } catch { /* not empty any more: leave it */ }
       } else if (s.op === 'recycle') {
-        if (s.trashedTo && fs.existsSync(s.trashedTo) && !fs.existsSync(s.from)) { moveOne(s.trashedTo, s.from); done.push(`Put back: ${s.from}`); }
+        if (s.trashedTo && fs.existsSync(s.trashedTo) && !fs.existsSync(s.from)) { moveOne(s.trashedTo, s.from); forgetTrashInfo(s.trashedTo); done.push(`Put back: ${s.from}`); }
         else manual.push(s.from);
       } else if (s.op === 'deleted') {
         failed.push(`${s.from} was deleted for good, so it can't come back.`);

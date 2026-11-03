@@ -40,8 +40,8 @@ export const HANDS = {
     label: 'Security and privacy',
     what: 'Checks this PC\'s protection, explains Defender alerts and runs scans, looks at suspicious files and links without opening them, and makes clean copies of photos before you share. He never turns protection off and never researches private people. Online look-ups need "Let Bob search the web".',
     tools: ['security_check', 'defender_scan', 'inspect_file', 'strip_metadata', 'osint_lookup', 'check_exposure', 'security_tips'],
-    whatOn: { mac: 'Checks this Mac\'s protection (firewall, FileVault, Gatekeeper, System Integrity Protection, what starts at login, what listens on the network), looks at suspicious files and links without opening them, and makes clean copies of photos before you share. He never turns protection off and never researches private people. Online look-ups need "Let Bob search the web".' },
-    toolsOnlyOn: { defender_scan: ['win'] }
+    whatOn: { linux: 'Checks this PC\'s protection (firewall, updates, what starts when you sign in, what listens on the network), scans with ClamAV if it is installed, looks at suspicious files and links without opening them, and makes clean copies of photos before you share. He never turns protection off and never researches private people. Online look-ups need "Let Bob search the web".', mac: 'Checks this Mac\'s protection (firewall, FileVault, Gatekeeper, System Integrity Protection, what starts at login, what listens on the network), looks at suspicious files and links without opening them, and makes clean copies of photos before you share. He never turns protection off and never researches private people. Online look-ups need "Let Bob search the web".' },
+    toolsOnlyOn: { defender_scan: ['win', 'linux'] } // Linux: ClamAV, when it's installed
   },
   maker: {
     label: 'Make his own tools',
