@@ -38,6 +38,8 @@ class PhoneBrain(private val context: Context) {
     /** What the brain is doing right now: null, "chat" (you, on the phone) or "lend" (another Bob). */
     val working = AtomicReference<String?>(null)
     @Volatile private var stopAsked = false
+    /** Words (tokens) a second in the last reply or speed test, for other Bobs choosing who to ask. 0 = not known yet. */
+    @Volatile var lastSpeed = 0.0
 
     // The phone page listens here (Bridge sets it while Bob's screen exists).
     @Volatile var listener: ((Map<String, Any?>) -> Unit)? = null
@@ -180,7 +182,7 @@ class PhoneBrain(private val context: Context) {
     }
 
     // A phone with 8 GB or more gets room for Bob's longer instructions (lending); smaller phones the usual 8K.
-    private fun contextSize(): Int = if (memInfo().totalMem >= 7L * 1024 * 1024 * 1024) 12288 else 8192
+    fun contextSize(): Int = if (memInfo().totalMem >= 7L * 1024 * 1024 * 1024) 12288 else 8192
 
     // Call with the lock held.
     private suspend fun ensureLoaded(name: String, onLoading: () -> Unit) {
@@ -244,6 +246,7 @@ class PhoneBrain(private val context: Context) {
                     }
                     if (n == 0 && r.content.isNotEmpty()) emit(mapOf("type" to "token", "text" to r.content))
                     val secs = (System.currentTimeMillis() - t0 - first).coerceAtLeast(1) / 1000.0
+                    if (r.tokens > 8) lastSpeed = (r.tokens - 1) / secs
                     lastUse = System.currentTimeMillis()
                     if (stopAsked || r.stop == "stopped") emit(mapOf("type" to "done", "stopped" to true))
                     else emit(mapOf("type" to "done", "tokens" to r.tokens, "firstMs" to first, "tokPerSec" to if (r.tokens > 1) (r.tokens - 1) / secs else 0.0))
@@ -273,6 +276,7 @@ class PhoneBrain(private val context: Context) {
                 ensureLoaded(name) { event(JSONObject().put("type", "loading")) }
                 lastUse = System.currentTimeMillis()
                 var lastBeat = 0L
+                var firstAt = 0L
                 val r = Llama.reply(
                     ChatShape.toModel(messages), tools, 1024,
                     keepGoing = { !stopAsked && !gone() },
@@ -280,9 +284,10 @@ class PhoneBrain(private val context: Context) {
                         val now = System.currentTimeMillis()
                         if (now - lastBeat > 2000) { lastBeat = now; event(JSONObject().put("type", "reading").put("done", done).put("of", of)) }
                     },
-                    words = { w -> event(JSONObject().put("type", "token").put("text", w)) }
+                    words = { w -> if (firstAt == 0L) firstAt = System.currentTimeMillis(); event(JSONObject().put("type", "token").put("text", w)) }
                 )
                 lastUse = System.currentTimeMillis()
+                if (firstAt > 0 && r.tokens > 8) lastSpeed = (r.tokens - 1) / ((lastUse - firstAt).coerceAtLeast(1) / 1000.0)
                 if (r.stop == "stopped" || r.stop == "error") throw Exception(if (stopAsked || gone()) "stopped" else "the phone brain stopped")
                 JSONObject().put("content", r.content).put("tool_calls", ChatShape.callsOut(r.toolCalls))
             }
@@ -304,7 +309,7 @@ class PhoneBrain(private val context: Context) {
                 val r = lock.withLock { ensureLoaded(name) {}; Llama.bench() }
                 lastUse = System.currentTimeMillis()
                 if (r.has("error")) emit(mapOf("type" to "bench", "error" to r.getString("error")))
-                else emit(mapOf("type" to "bench", "read" to r.optDouble("pp"), "write" to r.optDouble("tg")))
+                else { lastSpeed = r.optDouble("tg"); emit(mapOf("type" to "bench", "read" to r.optDouble("pp"), "write" to r.optDouble("tg"))) }
             } catch (e: Throwable) {
                 emit(mapOf("type" to "bench", "error" to (e.message ?: "speed test failed")))
             } finally { working.compareAndSet("bench", null) }

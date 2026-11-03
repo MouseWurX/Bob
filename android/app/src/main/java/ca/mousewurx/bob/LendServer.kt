@@ -305,6 +305,10 @@ class LendServer(private val app: BobApp) {
         val why = refusal()
         val o = JSONObject().put("protocol", PROTOCOL).put("lend", settings.on).put("brain", settings.label.ifEmpty { "phone brain" })
             .put("device", "phone").put("version", app.version)
+            // What the other Bob needs to choose well: room for the chat, and how fast this phone writes.
+            // Whole jobs stay on desktop Bobs (files and tools live there), so the phone never takes them.
+            .put("ctx", app.brain.contextSize()).put("takesJobs", false)
+        if (app.brain.lastSpeed > 0) o.put("speed", Math.round(app.brain.lastSpeed * 10) / 10.0)
         if (why != null && why != "off") o.put("busy", why)
         reply(out, 200, o)
     }
@@ -339,7 +343,8 @@ class LendServer(private val app: BobApp) {
             send(JSONObject().put("type", "done").put("reply", r))
             lastLent = "Thought a reply for $from in ${"%.1f".format((System.currentTimeMillis() - t0) / 1000.0)} s"
         } catch (e: PhoneBrain.Busy) {
-            send(JSONObject().put("type", "error").put("error", e.why))
+            // "too long" can only be known once the chat is read, after the 200: same fields as a 409 would carry.
+            send(JSONObject().put("type", "error").put("error", e.why).put("busy", e.why).put("ctx", app.brain.contextSize()))
             lastLent = "Couldn't think for $from (${e.why})."
         } catch (e: Exception) {
             send(JSONObject().put("type", "error").put("error", (e.message ?: "failed").take(200)))
