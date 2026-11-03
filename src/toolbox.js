@@ -40,6 +40,7 @@ const HAND_WORDS = {
   run: /\b(run|execute|command|script|terminal|powershell|cmd|install|build|npm|python|node|git|recipe)\b/i,
   schedules: /\b(schedules?|scheduled|every (?:day|morning|afternoon|evening|night|week|weekday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|month|hour|\d+)|each (?:day|morning|evening|night|week|weekday|hour)|daily|nightly|weekly|hourly|on a timer)\b/i,
   office: /\b(convert\w*|turn (?:it|this|that|them|these) into|save (?:it |this |that )?as|export\w*|pdf|docx?|xlsx?|pptx?|odt|ods|odp|word (?:doc\w*|file)|excel|powerpoint|libre ?office|open ?office|writer|calc|impress|slides?|presentation|slideshow|deck|spreadsheet|sheet|cells?|template|mp3|mp4|wav|webm|webp|flac|ogg|mkv|gif|jpe?g|png)\b/i,
+  security: /\b(secur\w*|virus\w*|malware|antivirus|defender|scan(?:s|ning)?|threats?|quarantin\w*|trojan|ransomware|spyware|adware|hack(?:ed|er|ers|ing)|phish\w*|scam\w*|suspicious|dodgy|sketchy|legit\w*|genuine|fake|spoof\w*|firewall|start(?:s|ing)? (?:up )?with windows|startup (?:apps?|items?|programs?)|open ports?|breach\w*|pwned|leak(?:ed|s)?|password|2fa|two.?factor|privacy|op.?sec|metadata|exif|gps|location data|hidden (?:details|info)|osint|who owns|whois|is (?:this|that|it) (?:real|safe|legit)|look ?up (?:this|that|a) (?:site|website|link|sender|email|ip)|footprint|dork\w*)\b/i,
   apps: /\b(open|launch|click|press|button|type (?:in|into)|app|apps|notepad|browser|chrome|explorer|blender|paint\.net|drive|driving|take (?:the )?(?:wheel|control|over)|screen control|control (?:my|the) (?:pc|computer|screen)|use my (?:screen|pc|computer|mouse|keyboard)|do it in)\b/i
 };
 
@@ -48,7 +49,8 @@ const HAND_WHAT = {
   run: 'run commands, scripts, programs',
   schedules: 'repeat a job at set times (every morning...)',
   apps: 'open apps and click, type or press keys in them',
-  office: 'convert files (documents, PDF, pictures, sound, video), read, make and change Word, Excel, PowerPoint and LibreOffice files'
+  office: 'convert files (documents, PDF, pictures, sound, video), read, make and change Word, Excel, PowerPoint and LibreOffice files',
+  security: 'check the PC\'s protection, Defender scans and alerts, inspect suspicious files, emails and links, remove hidden details from photos, check if a site is genuine or was breached, safety and op-sec notes'
 };
 // What each picture-group tool adds, so the group says only what this PC can really make.
 const PICTURE_WHAT = { make_image: 'make pictures', make_video: 'make video clips', make_music: 'make music', make_sound: 'make sound effects', save_reference: 'save reference pictures', workshop_run: 'run ComfyUI workflows' };
@@ -79,7 +81,7 @@ export function guessGroups(brain, text) {
 }
 
 // The chat chip when a group is added (clarity reviewer's words; Hands match their names in Settings).
-const CHIP = { pictures: 'Using his picture, video and music tools', documents: 'Using his document tools', files: 'Using his file tools', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', office: 'Using Hands: office and converting', memory: 'Forgetting a topic', cloud: 'Using a cloud helper' };
+const CHIP = { pictures: 'Using his picture, video and music tools', documents: 'Using his document tools', files: 'Using his file tools', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', memory: 'Forgetting a topic', cloud: 'Using a cloud helper' };
 
 export const allToolsOn = (cfg) => cfg.allTools === true;
 

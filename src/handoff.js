@@ -90,7 +90,7 @@ export function slimHandoff(h) {
 }
 
 // Tools that change something outside Bob's own chat (a restart must not redo these blindly).
-export const SIDE_EFFECT = /^(app_|open_app|convert_file|office_make|office_edit|edit_file|write_file|file_hands|undo_files|move_|copy_|rename_|delete_|recycle|zip|unzip|run_command|run_recipe|save_|schedule_|make_)/; // file_hands/undo_files: 1.5.38
+export const SIDE_EFFECT = /^(app_|open_app|convert_file|strip_metadata|defender_scan|office_make|office_edit|edit_file|write_file|file_hands|undo_files|move_|copy_|rename_|delete_|recycle|zip|unzip|run_command|run_recipe|save_|schedule_|make_)/; // file_hands/undo_files: 1.5.38
 // A job that was cut off by a restart can be picked up again on its own when nothing it did changed the PC.
 export function safeToResume(job) {
   const done = job?.handoff?.actions || [];

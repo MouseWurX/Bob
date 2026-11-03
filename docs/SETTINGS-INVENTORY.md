@@ -32,7 +32,8 @@ Update this file in the same handover as any change to settings.
 | Connections | Let Bob use ComfyUI; ComfyUI port | off unless you turn it on | off, 8188 | ok |
 | Connections | Cloud helpers (per provider on/off + model) | Key found / No key yet | all off | ok |
 | Hands | Let Bob use Hands (master switch) | Off = every Hand below is off. | off | ok |
-| Hands | Files; Run programs and scripts; Schedules; Open and use apps; Office documents and converting | long "what" text each | all off | ok (1.5.2; Office added, needs sign-off) |
+| Hands | Files; Run programs and scripts; Schedules; Open and use apps; Office documents and converting; Security and privacy | long "what" text each | all off | ok (1.5.2; Office signed off; Security and privacy added, needs sign-off) |
+| Hands > Check a password safely | box + Check button under Security and privacy | password field (not saved) | empty | needs sign-off |
 | Hands | Folders the Files Hand may work in; Stop a command after | | none | ok |
 | Housekeeping | Tidy up old things by himself | Only while he's idle (10 minutes quiet, nothing running)… | off | ok (1.5.2) |
 | Housekeeping | Load a brain for it if none is loaded | Off: … so a game keeps the graphics card. | off | ok (1.5.2) |

@@ -50,7 +50,7 @@ export function writeZip(zipFile, entries) {
   try {
     for (const e of entries) {
       const name = Buffer.from(e.name, 'utf8');
-      const raw = e.dir ? Buffer.alloc(0) : fs.readFileSync(e.abs);
+      const raw = e.dir ? Buffer.alloc(0) : (e.data || fs.readFileSync(e.abs)); // e.data: a file made in memory (security-files.js)
       const crc = e.dir ? 0 : crc32(raw);
       let data = raw, method = 0;
       if (!e.dir && raw.length > 64) { const z = zlib.deflateRawSync(raw, { level: 6 }); if (z.length < raw.length) { data = z; method = 8; } }

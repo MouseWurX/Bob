@@ -267,6 +267,7 @@ ${set('Alerts', 'Off', 'Pops up a Windows notification when I need you, for exam
   { id: 'research', group: 'Using Bob', title: 'Web research and the web search switch', words: 'web search research look up duckduckgo page sources links internet online switch let bob search the web off',
     html: `<dl>${set('🌐 Web search (chat page) / Let Bob search the web (Settings)', 'Off', 'One setting in two places: the <strong>🌐 Web search</strong> switch next to Effort on the chat page, and the switch on the everyday Settings page. Flip either and both change. Off: I never go online to look things up. If a question needs the internet, I say so and tell you where the switch is. On: when a question needs it, I search DuckDuckGo and read the best pages by myself, without a card each time.')}</dl>
 <p>With it on, ask me to look something up, or press <strong>Look up…</strong>. My web research copy searches, reads the pages, and answers with a link for every claim, plus what it couldn't confirm. No link, no claim. That's the rule.</p>
+<p><strong>How I search.</strong> I use search operators, the same tricks researchers use (some people call it "Google dorking"): <code>"exact phrase"</code> for error messages and names, <code>site:</code> to stay on one site (site:gc.ca for Canadian government pages, site:github.com for code issues), <code>filetype:pdf</code> for manuals and reports, <code>-word</code> to leave things out, and a past day, week, month or year for fresh news. You can type them into <strong>Look up…</strong> yourself too. I use them to find things faster, never to dig up private files or other people's details.</p>
 <p>Only the search words go to DuckDuckGo, and only the page address goes to the site I read. Nothing else from your chats is sent. I never open addresses on your home network.</p>` },
 
   { id: 'housekeeping', group: 'Using Bob', title: 'Housekeeping', words: 'housekeeping tidy old chats pictures logs recycle bin pinned summary topics memory idle',
@@ -307,7 +308,7 @@ ${set('Alerts', 'Off', 'Pops up a Windows notification when I need you, for exam
 
   // ---------------- Hands and safety ----------------
   { id: 'hands', group: 'Hands and safety', title: 'Hands: letting Bob do things on your PC', words: 'hands files run commands schedules apps permission preview allow undo stop everything kill switch self-test read-only without asking free unimpeded hard limits delete secrets passwords send out upload',
-    html: `<p>Hands let me do things on your PC instead of only talking about them: <strong>Files</strong> (zip, move, copy, rename, tidy folders), <strong>Run</strong> (programs and scripts), <strong>Schedules</strong> (a job at a set time), <strong>Apps</strong> (click and type in another program) and <strong>Office documents and converting</strong> (Word, Excel, PowerPoint and PDF, pictures, sound and video). I'll be straight with you: I'm careful with these, and I've been built to be.</p>
+    html: `<p>Hands let me do things on your PC instead of only talking about them: <strong>Files</strong> (zip, move, copy, rename, tidy folders), <strong>Run</strong> (programs and scripts), <strong>Schedules</strong> (a job at a set time), <strong>Apps</strong> (click and type in another program) <strong>Office documents and converting</strong> (Word, Excel, PowerPoint and PDF, pictures, sound and video) and <strong>Security and privacy</strong> (checking the PC's protection, suspicious files and emails, hidden details in photos, whether a site is genuine). I'll be straight with you: I'm careful with these, and I've been built to be.</p>
 <ul><li><strong>Every Hand is off</strong> until you switch it on in Settings, Show advanced settings, Hands.</li>
 <li><strong>I show exactly what I'm about to do</strong> on a card and wait for your click. "Allow the rest of this job" is your choice and ends with the job.</li>
 <li><strong>✋ Hands</strong> at the top of the chat is a kill switch: anything running stops, waiting cards are answered No, and it shows <em>Stopped</em>. Click it again to let me carry on. It never switches a Hand on: if Hands are off in Settings it says <em>Off in Settings</em>.</li>
@@ -366,6 +367,28 @@ ${set('Alerts', 'Off', 'Pops up a Windows notification when I need you, for exam
 <li>LibreOffice and FFmpeg run only while they have a job, then close. They're not sitting in your memory between jobs.</li></ul>
 <p><strong>Getting the helpers.</strong> If LibreOffice, Apache OpenOffice or FFmpeg is already installed, I find it by myself. If not, get them in Settings, Show advanced settings, Engines &amp; speed, Engine downloads. Pictures need nothing extra. OpenOffice can read Word, Excel and PowerPoint files but can't save them, so with OpenOffice I save as PDF or OpenDocument instead.</p>` },
 
+  { id: 'hands-security', group: 'Hands and safety', title: 'The Security and privacy Hand', words: 'security privacy safe safety virus malware antivirus defender scan threat quarantine alert trojan pua startup firewall updates ports suspicious download script email phishing scam fake link genuine legit metadata exif gps location photo share clean breach pwned password check osint research who owns website domain sender ip op-sec opsec footprint check a password safely',
+    html: `<p>With <strong>Security and privacy</strong> on, I'm your security sidekick. I'm not an antivirus and I won't pretend to be one: Microsoft Defender (or whatever antivirus you use) does the guarding. What I do is help you understand it, use it, and spot trouble it can't see, like a convincing fake email. Some things to ask:</p>
+<ul><li>"Is my PC protected?" I check Defender, the firewall, Windows updates and a few settings, and tell you what's fine and what isn't, in plain words.</li>
+<li>"Defender found something, what is it?" I read its recent detections and explain each one: what kind of threat, how sure Defender was, and what it did about it.</li>
+<li>"Run a quick scan", "scan my Downloads folder", "update Defender". I start Defender for you, after a card.</li>
+<li>"What starts with Windows?" I list everything that starts by itself and point out anything odd (unsigned, hiding in AppData, running scrambled commands). "What's listening on my network?" shows which programs accept connections.</li>
+<li>"Is this download safe?", "check this script before I run it", "is this email real?" (paste it, ideally with its headers: "Show original" in Gmail, "View source" in Outlook). I look without opening or running anything.</li>
+<li>"What's hidden in this photo?", "clean this before I post it". Phone photos can carry the exact spot they were taken, and Word files carry your name and company. I make clean copies.</li>
+<li>"Is this website legit?", "where does this link really go?", "who's behind this sender?" I check public records: how old the site is, who sold the name, its certificates, its email settings, and whether its name imitates a big brand.</li>
+<li>"Was Adobe ever breached?" I check Have I Been Pwned's public list. "How do I stay safe on public Wi-Fi?" I have notes on passwords, two-step sign-in, backups, scams, op-sec habits and more.</li></ul>
+<p><strong>Check a password safely.</strong> Under the Hand's switch in Settings there's a box for this. Type a password and press Check: it's scrambled right there in the window, and only the first 5 characters of the scramble go to Have I Been Pwned, which sends back a list of matching scrambles for the window to compare. The password itself never leaves the box, never reaches me, and isn't saved. Please don't type passwords into the chat: chats are saved.</p>
+<p><strong>What I won't do</strong></p>
+<ul><li>Switch Defender, the firewall or any protection off, add exclusions, or allow or restore a threat. If something is a false alarm, I'll tell you where to click in Windows Security, and the choice stays yours.</li>
+<li>Switch off startup items. I'll show you how in Task Manager.</li>
+<li>Research private people: where someone lives, who's behind a username, their phone number. Checking websites, companies, links, senders and your own footprint is fine. Digging up a person is how stalking starts, so I don't, whatever the reason given.</li>
+<li>Open, run or "test" a suspicious file. I only read its bytes.</li></ul>
+<p><strong>How it stays safe and light</strong></p>
+<ul><li>Checks are read-only and change nothing. Scans and clean copies show a card first. Clean copies are new files (photo-clean.jpg) and never overwrite; they save next to the original if that folder is ticked for Hands, otherwise in my own Documents folder.</li>
+<li>Looking at files happens entirely on this PC. Online look-ups (site records, link hops, breach lists) need <strong>Let Bob search the web</strong> on, and only the site name, link or address you asked about goes out. Following a link's hops contacts that site, so I only do it when you ask.</li>
+<li>Nothing extra to download. It uses what Windows already has; cleaning sound and video uses FFmpeg if you have it.</li></ul>
+<p>Clean copies of Word, Excel and PowerPoint files lose the author, last-saved-by and company, but comments and tracked changes stay, because removing them changes the document. Remove those in Office (Review, Delete all comments; accept or reject the changes). I can't clean PDFs yet.</p>` },
+
   { id: 'quarantine', group: 'Hands and safety', title: 'Quarantine', words: 'quarantine reviewer off track loop rogue crazy release stop',
     html: `<p>Even I can go off the rails. Off unless you turn on <strong>Let the reviewer quarantine Bob</strong> (Settings, Show advanced settings, Hands). Then my reviewer copy watches for me going off track: trying again after you said no, doing the same thing over and over, failing again and again, pushing against your limits, saying I did things that never ran, or racing through actions while working without asking. At High or Extreme effort its check can flag me too. Watching is simple counting, so no extra brain loads.</p><p>When it spots one, I stop at my next action and a card asks you: <strong>Quarantine</strong> or <strong>Let him carry on</strong>. Nothing happens without your click. If nobody answers, that job stops but I'm not quarantined. In quarantine I can still talk, read and search, but every action is refused. Nothing I did is undone and the logbook keeps everything. A copy can be quarantined on its own. Click <strong>Release</strong> on the banner above the chat (or in Settings) to let me act again. <strong>Last quarantines</strong> in Settings lists past ones.</p>` },
 
@@ -373,6 +396,7 @@ ${set('Alerts', 'Off', 'Pops up a Windows notification when I need you, for exam
     html: `<p>I have no accounts, no analytics and no telemetry. Your chats, notes, settings and models stay in folders on your PC.</p>
 <p><strong>When I go online:</strong></p>
 <ul><li><strong>Web searches</strong>, only if you turn on <strong>Let Bob search the web</strong> (off to start with). Then, when a question needs it, I search DuckDuckGo and read pages by myself. Only the search words and the page address go out. Nothing else from your chats is sent.</li>
+<li><strong>Security look-ups</strong>, only with the Security and privacy Hand on and web search on: the site name, link or internet address you asked me to check goes to public record services (rdap.org, crt.sh, Have I Been Pwned) and DNS. The "Check a password safely" box sends only the first 5 characters of the password's scramble, never the password.</li>
 <li><strong>Things you click:</strong> downloads you confirm (the address is shown first), voice samples from a voice's publisher, links (they open in your normal browser) and "Search the web" on the right-click menu.</li>
 <li><strong>Cloud helpers</strong> you switch on with your own key. Each use asks first, shows the rough cost and exactly what text would leave your PC. I never store your keys.</li></ul>
 <p><strong>Never online:</strong> Check for updates (it only looks at the folder I was built from on this PC), Check this PC, Test Bob's speed, the Hands self-test, housekeeping and Topics.</p>
@@ -447,7 +471,8 @@ ${set('Files', 'Off', go('hands-files', 'The Files Hand') + '.')}
 ${set('Run programs and scripts', 'Off', go('hands-run', 'The Run Hand') + '.')}
 ${set('Schedules', 'Off', go('hands-schedules', 'The Schedules Hand') + '.')}
 ${set('Open and use apps', 'Off', go('hands-apps', 'The Apps Hand') + '.')}
-${set('Office documents and converting', 'Off', go('hands-office', 'The Office documents and converting Hand') + '. Under it, <strong>Office helpers</strong> shows whether I found LibreOffice (or OpenOffice) and FFmpeg on this PC.')}</dl>
+${set('Office documents and converting', 'Off', go('hands-office', 'The Office documents and converting Hand') + '. Under it, <strong>Office helpers</strong> shows whether I found LibreOffice (or OpenOffice) and FFmpeg on this PC.')}
+${set('Security and privacy', 'Off', go('hands-security', 'The Security and privacy Hand') + '. Under it, <strong>Check a password safely</strong> checks a password against known breaches without the password leaving the box.')}</dl>
 <p><strong>Hard limits</strong> hold whether or not I ask first. Switch one off only if you need what it blocks; an orange line then says what it allows.</p>
 <dl>${set('Recycle Bin only', 'On', 'Things I throw away go to the Recycle Bin, so you can get them back. Off: I can delete for good.')}
 ${set('Keep secret files private', 'On', 'I never read, list, move, zip or write files with keys or passwords (.env, keystores, SSH keys, password databases).')}
@@ -515,6 +540,12 @@ ${set('Load a brain for it if none is loaded', 'Off', 'Loads a brain just for ti
   // ---------------- FAQ ----------------
   { id: 'faq-convert', group: 'FAQ', title: 'Can Bob convert my files?', words: 'faq convert pdf word excel powerpoint mp3 mp4 gif picture turn into export',
     html: `<p>Yes, once you switch on ${go('hands-office', 'Office documents and converting')} in Settings, Show advanced settings, Hands, and tick the folders I may save in. Then ask: "turn this into a PDF", "make these mp3s", "convert the clip to a GIF". You see each file on a card before I start. Pictures work straight away; documents need LibreOffice and sound or video need FFmpeg, both free and both offered in Engines &amp; speed if you don't have them.</p>` },
+  { id: 'faq-antivirus', group: 'FAQ', title: 'Can Bob replace my antivirus?', words: 'faq antivirus replace defender norton mcafee protect virus malware security',
+    html: `<p>No, and anyone who tells you a chat assistant can is selling something. Keep Microsoft Defender (it's built into Windows and it's good) or your own antivirus. With ${go('hands-security', 'Security and privacy')} on, I help you use it: I explain its alerts, start scans, check your settings, look at suspicious files and emails before you open them, and catch the scams no antivirus can, like a convincing fake email asking you to "verify your account".</p>` },
+  { id: 'faq-find-person', group: 'FAQ', title: 'Can Bob find out who is behind an account or where someone lives?', words: 'faq osint find person who is behind username address phone track dox locate',
+    html: `<p>No. I check websites, links, email senders, companies and your own footprint, using public records. I don't research private people: not where they live, not who's behind a username, not their phone number. That kind of digging hurts people even when it starts as curiosity. If someone is harassing or threatening you, keep the messages and report them to the platform and the police; they can get records I never could.</p>` },
+  { id: 'faq-password-check', group: 'FAQ', title: 'Is my password sent anywhere when I check it?', words: 'faq password check pwned breach safe send leak',
+    html: `<p>No. In <strong>Check a password safely</strong> the password is scrambled (SHA-1) in the window, and only the first 5 of its 40 characters go to Have I Been Pwned. They send back every leaked scramble starting with those 5, and the window finds the match itself. Neither they nor I ever see the password, and nothing is saved. Just don't type passwords into the chat itself.</p>` },
   { id: 'faq-ms-office', group: 'FAQ', title: 'Do I need Microsoft Office for Bob to work with Word and Excel files?', words: 'faq microsoft office word excel powerpoint need buy libreoffice openoffice free',
     html: `<p>No. I use LibreOffice, which is free and open source, and it reads and saves Word, Excel and PowerPoint files. If you already have it, or Apache OpenOffice, I use that. Microsoft Office can stay installed or not; I don't touch it.</p>` },
   { id: 'faq-online', group: 'FAQ', title: 'Does Bob send my chats anywhere?', words: 'faq privacy send chats online internet telemetry',
@@ -593,6 +624,7 @@ ${set('Load a brain for it if none is loaded', 'Off', 'Loads a brain just for ti
 <dt>Context</dt><dd>How much I keep in mind at once, counted in tokens. More context reads longer files but uses more memory.</dd>
 <dt>Copy (of Bob)</dt><dd>A helper version of me for one kind of job, with its own Bob-pun name.</dd>
 <dt>Draft brain</dt><dd>A small brain that guesses ahead for a big one (speculative decoding).</dd>
+<dt>Defender</dt><dd>Microsoft Defender, the antivirus built into Windows. I can explain its alerts and start its scans; I never switch it off.</dd>
 <dt>Effort</dt><dd>How hard I work on each message: Low, Medium, High or Extreme.</dd>
 <dt>Convert</dt><dd>Turning a file into another kind (Word into PDF, a WAV into an MP3). The original stays as it is.</dd>
 <dt>Engine</dt><dd>The program that runs a kind of model, such as llama.cpp for brains. I offer it when a model needs it.</dd>
@@ -606,17 +638,25 @@ ${set('Load a brain for it if none is loaded', 'Off', 'Loads a brain just for ti
 <dt>LibreOffice</dt><dd>A free office suite that reads and saves Word, Excel and PowerPoint files. I use it, hidden, to convert, read, make and change documents.</dd>
 <dt>llama.cpp</dt><dd>My own engine for brains. Needs nothing else installed.</dd>
 <dt>Logbook</dt><dd>The file (inn\\logbook.md) where I write down every action I take.</dd>
+<dt>Metadata (hidden details)</dt><dd>Information tucked inside a file: GPS location and camera in a photo, author and company in a document. I can find it and make clean copies.</dd>
 <dt>Model</dt><dd>The file that does one kind of AI job: a brain, a painter, a voice.</dd>
 <dt>Moot</dt><dd>A meeting of my copies at High and Extreme effort: one drafts, the reviewer checks.</dd>
 <dt>Now running</dt><dd>The right-hand panel: tasks, downloads and memory.</dd>
+<dt>OSINT</dt><dd>Open-source intelligence: research using only public sources. I use it to check whether a website, link or sender is genuine, never to look into private people.</dd>
+<dt>Op-sec</dt><dd>Operational security: habits that stop strangers piecing together your life from small public bits.</dd>
 <dt>Ollama</dt><dd>A separate program that can run brains. I can use it if you already have it.</dd>
+<dt>Phishing</dt><dd>A fake email, text or page that tries to get a password, a payment or a download out of you.</dd>
 <dt>Processor (CPU)</dt><dd>Your PC's main chip. I can run small brains on it to leave the graphics card free, more slowly.</dd>
 <dt>Quarantine</dt><dd>My reviewer stopping me from acting after I go off track, only with your OK.</dd>
 <dt>RAM</dt><dd>Your PC's main memory. A brain too big for the graphics card can keep the rest here. It works, but more slowly.</dd>
+<dt>RDAP</dt><dd>The official public record of who sold a website's name and when it was bought (it replaced WHOIS).</dd>
 <dt>Recipe</dt><dd>A saved command for the Run Hand.</dd>
 <dt>Reference</dt><dd>A picture on the References shelf that I paint from to keep a look the same.</dd>
+<dt>Search operators</dt><dd>Little commands in a search, like "exact phrase", site:, filetype: and -word, that find the right pages faster.</dd>
 <dt>Session</dt><dd>What the graphics card is kept for: Normal, Art, Coding, Office, Gaming.</dd>
+<dt>SHA-256</dt><dd>A file's fingerprint. Paste it into virustotal.com to see what many antiviruses think of the file, without uploading it.</dd>
 <dt>Slot</dt><dd>One job in Equip Bob, such as Brain or Painter, that a model fills.</dd>
+<dt>SPF, DKIM, DMARC</dt><dd>Checks that show whether an email really came from the address it claims. A fail is a strong sign of a fake.</dd>
 <dt>Squeezed version</dt><dd>A smaller copy of a model (GGUF) that fits small cards, with a little less detail.</dd>
 <dt>Starter set</dt><dd>A ready-made set of models for your kind of graphics card.</dd>
 <dt>The Idle Process</dt><dd>My little virtual workspace: a coffee machine, a reading chair, a wall of books, and a cat who ignores me. Named after what your PC does when nobody's using it.</dd>

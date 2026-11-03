@@ -12,7 +12,7 @@ Bob is a free, open-source AI helper for Windows 10 and 11 that runs on your own
 
 - chat, plans, reminders, research and coding help, using AI models that run on your PC
 - pictures, short video, music, sound effects and a speaking voice, from models he downloads only when you confirm
-- "Hands" (each one off until you switch it on): file jobs, running programs you approve, schedules, and clicking and typing in other apps, with an approval card for each action unless you choose otherwise
+- "Hands" (each one off until you switch it on): file jobs, running programs you approve, schedules, and clicking and typing in other apps, office documents, and a security and privacy sidekick (Defender checks, suspicious files and emails, hidden photo details, website checks), with an approval card for each action unless you choose otherwise
 - sessions (Normal, Art, Coding, Office, Gaming) that decide how Bob shares your PC, including a Gaming session that keeps the graphics card for your games
 - a character: a dry-humoured digital engineer with his own looks, voices and personality settings
 

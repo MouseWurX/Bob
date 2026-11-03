@@ -19,7 +19,7 @@ export function kindOf(d) {
 }
 
 // Paths a tool's result says it saved, e.g. "Saved C:\...\list.csv (4 lines)". Only for tools that make files.
-const SAVERS = new Set(['write_file', 'edit_file', 'save_spreadsheet', 'convert_file', 'office_make', 'office_edit']);
+const SAVERS = new Set(['write_file', 'edit_file', 'save_spreadsheet', 'convert_file', 'office_make', 'office_edit', 'strip_metadata']);
 const WIN_PATH = /[A-Za-z]:\\[^\n\r"<>|*?]*?\.[A-Za-z0-9]{1,8}(?=$|[\s.,;:)'"]|\.\s)/g;
 const POSIX_PATH = /(?:^|\s)(\/[^\s"'<>]+\.[A-Za-z0-9]{1,8})(?=$|[\s.,;:)'"])/g;
 export function pathsIn(text) {

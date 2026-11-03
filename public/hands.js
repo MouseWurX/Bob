@@ -2,7 +2,7 @@
 // and the Hands section in Settings. Big buttons on purpose (remote desktop).
 import { esc } from './rich.js';
 
-const OPS = { move: 'Move', copy: 'Copy', zip: 'Zip', unzip: 'Unzip', recycle: 'Recycle Bin', delete: 'Delete for good', convert: 'Convert', create: 'Make', edit: 'Change' };
+const OPS = { move: 'Move', copy: 'Copy', zip: 'Zip', unzip: 'Unzip', recycle: 'Recycle Bin', delete: 'Delete for good', convert: 'Convert', create: 'Make', edit: 'Change', clean: 'Clean copy' };
 const when = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const post = async (url, data) => {
   const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify(data || {}) });
@@ -10,6 +10,30 @@ const post = async (url, data) => {
   if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
   return j;
 };
+
+// Under the Security switch: check a password against known breaches. The password is scrambled (SHA-1) here in
+// the window; only the first 5 characters of the scramble go out, and the match is found here too.
+function securityLine(on) {
+  return `<div class="hands-security muted${on ? '' : ' dim'}"><strong>Check a password safely</strong><br>
+    <span>Has a password turned up in a known breach? It's scrambled on this PC and only the first 5 characters of the scramble go to Have I Been Pwned, so the password never leaves. Nothing is saved.</span>
+    <div class="row"><input type="password" data-hpw autocomplete="off" spellcheck="false" placeholder="Type a password" aria-label="Password to check" style="flex:1" ${on ? '' : 'disabled'}><button type="button" data-hpwcheck ${on ? '' : 'disabled'}>Check</button></div>
+    <span class="hpw-out" role="status"></span></div>`;
+}
+async function checkPassword(box) {
+  const input = box.querySelector('[data-hpw]'), out = box.querySelector('.hpw-out');
+  const pw = input.value;
+  if (!pw) { out.textContent = 'Type a password first.'; return; }
+  if (!globalThis.crypto?.subtle) { out.textContent = 'This only works in Bob\'s window on the PC itself.'; return; }
+  out.textContent = 'Checking…';
+  try {
+    const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-1', new TextEncoder().encode(pw)))].map((b) => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+    input.value = '';
+    const r = await post('/api/hands/pwned', { prefix: hash.slice(0, 5) });
+    const line = String(r.range || '').split(/\r?\n/).find((l) => l.split(':')[0] === hash.slice(5));
+    const n = line ? Number(line.split(':')[1]) : 0;
+    out.innerHTML = n ? `<span class="warn-text">⚠ Seen ${n.toLocaleString()} times in breaches. Stop using it, and change it everywhere you did.</span>` : '✓ Not in any known breach. Still use it for one account only.';
+  } catch (e) { out.textContent = `Couldn't check: ${e.message}`; }
+}
 
 // Under the Office switch: which helpers Bob found on this PC, so it's clear what works before asking.
 function officeLine(o, on) {
@@ -202,6 +226,7 @@ export async function mountHandsSettings(box) {
       <div class="hands-free${s.free ? ' on' : ''}"><label class="switch${s.enabled ? '' : ' dim'}"><input type="checkbox" data-hfree ${s.free ? 'checked' : ''} ${s.enabled ? '' : 'disabled'}><span><strong>Let Bob work without asking</strong> <span class="tag">off unless you turn it on</span><br><span class="muted">No approval cards: he just does the job and tells you what he did. The hard limits below still apply, every action is still in the chat and the logbook, and the ✋ Hands button on the chat page stops him at once. Cloud helpers still ask, because they cost money. Scheduled jobs also run by themselves.</span>${s.free && s.enabled ? '<br><span class="warn-text">On: Bob is working without asking.</span>' : ''}</span></label></div>
       ${v.hands.map((h) => { const [first, ...rest] = String(h.what || '').split(/(?<=\.)\s+/); return `<label class="switch${s.enabled ? '' : ' dim'}"><input type="checkbox" data-hand="${esc(h.id)}" ${s[h.id]?.on ? 'checked' : ''} ${s.enabled ? '' : 'disabled'}><span><strong>${esc(h.label)}</strong><br><span class="muted">${esc(first)}</span></span></label>${rest.length ? `<details class="more"><summary>More</summary><p class="muted">${esc(rest.join(' '))}</p></details>` : ''}`; }).join('')}
       ${officeLine(v.office, s.enabled && s.office?.on)}
+      ${securityLine(s.enabled && s.security?.on)}
       <div class="hands-limits"><strong>Hard limits</strong> <span class="tag">all on to start with</span>
         <p class="muted">These hold whether or not Bob asks first. Switch one off only if you need what it blocks.</p>
         ${(v.limits || []).map((l) => `<label class="switch small"><input type="checkbox" data-hlimit="${esc(l.id)}" ${s.limits?.[l.id] !== false ? 'checked' : ''}><span><strong>${esc(l.label)}</strong><br><span class="muted">${esc(l.on)}</span>${l.more ? `<details class="more"><summary>More</summary><span class="muted">${esc(l.more)}</span></details>` : ''}${s.limits?.[l.id] === false ? `<br><span class="warn-text">Off: ${esc(l.off)}</span>` : ''}${l.id === 'readOnly' ? `<br><span class="muted">Read-only right now: ${v.readOnly?.length ? esc(v.readOnly.join('; ')) : 'none (add folders to "readOnlyRoots" in config.json)'}</span>` : ''}</span></label>`).join('')}
@@ -281,6 +306,7 @@ export async function mountHandsSettings(box) {
         say(v.settings.folders.length > before ? 'Added.' : 'That isn\'t a full folder path (like C:\\Users\\you\\Pictures).');
         return;
       }
+      if ('hpwcheck' in b.dataset) return await checkPassword(box);
       if (b.dataset.hgetengine) { b.disabled = true; try { await post('/api/models/download', { id: 'engine:' + b.dataset.hgetengine }); say('Downloading. It shows in Downloads; this line turns to ✓ when it\'s ready.'); } catch (e) { b.disabled = false; say(e.message); } return; }
       if ('hselftest' in b.dataset) { b.disabled = true; say('Running the self-test (about 10 seconds)…'); selftest = await post('/api/hands/selftest'); draw(); say(`Self-test: ${selftest.passed} of ${selftest.total} passed.`); return; }
       if (b.dataset.hscheddel) { sched = await post('/api/hands/schedules', { remove: b.dataset.hscheddel }); draw(); say('Schedule removed.'); return; }

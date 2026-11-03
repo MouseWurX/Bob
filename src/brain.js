@@ -31,6 +31,7 @@ import { stampMessages, keepOlder, readSummary } from './chats.js';
 import { Housekeeper, hkSettings, forgetTopicTool } from './housekeeping.js';
 import { handsTools, handsPrompt } from './hands.js';
 import { officeTools } from './hands-office.js';
+import { securityTools } from './hands-security.js';
 import { Made, madePaths, showMadeTool } from './made.js';
 import { imageInfoOf, sizeLike } from './imageinfo.js';
 import { scheduleTools } from './hands-schedules.js';
@@ -200,7 +201,7 @@ export class Brain {
     this.reminderTimer.unref?.();
     this.housekeeper = new Housekeeper(cfg, this);
     this.tools.forget_topic = forgetTopicTool(this);
-    Object.assign(this.tools, handsTools(this), scheduleTools(this), officeTools(this)); // Hands: off until the user turns them on (see hands-settings.js)
+    Object.assign(this.tools, handsTools(this), scheduleTools(this), officeTools(this), securityTools(this)); // Hands: off until the user turns them on (see hands-settings.js)
     this.tools.use_tools = useToolsTool(this);
     this.tools.ask_together = askTogetherTool(this); // 1.5.42: every OK a job needs on one card (together.js) // the toolbox (toolbox.js): groups added only when a job needs them
     this.tools.pick_session = pickSessionTool(this); // 1.5.43: Bob changes session himself (auto-session.js)

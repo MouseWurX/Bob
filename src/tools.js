@@ -252,9 +252,10 @@ export function buildTools(cfg) {
   };
 
   t.web_search = {
-    schema: fn('web_search', 'Search the web (DuckDuckGo). Returns titles, links and snippets.', { query: str('Search words.') }),
-    async run({ query }, { signal }) {
-      const res = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query), {
+    schema: fn('web_search', 'Search the web (DuckDuckGo). Returns titles, links and snippets. Operators work: "exact phrase", -leaveout, site:example.com, filetype:pdf, intitle:word, OR.', { query: str('Search words, with operators if they help.'), when: str('Optional: only results from the past day, week, month or year.', { enum: ['day', 'week', 'month', 'year'] }) }, ['query']),
+    async run({ query, when }, { signal }) {
+      const df = { day: 'd', week: 'w', month: 'm', year: 'y' }[String(when || '').toLowerCase()];
+      const res = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query) + (df ? `&df=${df}` : ''), {
         headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' }, signal
       });
       const html = await res.text();
@@ -270,7 +271,7 @@ export function buildTools(cfg) {
       }
       return out.length ? out.join('\n') : 'No results (or the search page changed). Try different words.';
     },
-    summary: ({ query }) => `search: ${query}`
+    summary: ({ query, when }) => `search: ${query}${when ? ` (past ${when})` : ''}`
   };
 
   t.fetch_page = {

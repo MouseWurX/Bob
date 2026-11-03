@@ -10,12 +10,16 @@
 //   POST /api/hands/undo       { id? }    undo a file job (the user's own click is the approval)
 //   POST /api/hands/recipes    { save: { name, cmd, args, cwd } } or { remove: name }
 //   POST /api/hands/selftest   run the self-test in a throwaway folder (the user's click; nothing of theirs is touched)
+//   POST /api/hands/pwned      { prefix } the "Check a password safely" box: the first 5 characters of the password's
+//                              SHA-1 (made in the window) go to Have I Been Pwned; the list comes back to the window,
+//                              which finds the match itself. The password and its full scramble never reach Bob.
 //   POST /api/hands/run-recipe { name }  run a recipe now (the user's click is the approval; output goes to the chat)
 import { handsView, stopRun, stopEverything, holdHands, saveRecipe, removeRecipe, loadRecipes, runApproved } from './hands.js';
 import { handsSettings, cleanHands, HANDS, LIMITS, handOn } from './hands-settings.js';
 import fs from 'node:fs';
 import { undoJob } from './hands-files.js';
 import { selfTest } from './hands-selftest.js';
+import { pwnedRange } from './security-web.js';
 const isDir = (f) => { try { return fs.statSync(f).isDirectory(); } catch { return false; } };
 
 export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res }) {
@@ -56,6 +60,11 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
       const r = undoJob(cfg, b.id ? String(b.id) : '');
       brain.log('hands', `undo (your click): ${r.job.label}: ${r.done.length} done${r.failed.length ? `, ${r.failed.length} failed` : ''}`);
       send(res, 200, { done: r.done, failed: r.failed, manual: r.manual, ...handsView(cfg) });
+      return true;
+    }
+    if (p === '/api/hands/pwned') {
+      if (!handOn(cfg, 'security')) throw new Error('Turn on Hands and "Security and privacy" first.');
+      send(res, 200, { range: await pwnedRange(String(b.prefix || '')) }); // nothing about it goes in the logbook
       return true;
     }
     if (p === '/api/hands/selftest') { send(res, 200, await selfTest(cfg, { log: (k, t) => brain.log(k, t) })); return true; }

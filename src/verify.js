@@ -222,7 +222,7 @@ export async function afterTool(name, args, text, ctx = {}) {
     if (notDone) return { ok: true, partly: true, why: `${done} done, some not: ${notDone[1].slice(0, 160)}`, retry: false };
     return { ok: true, why: `${Number.isNaN(done) ? 'done' : `${done} done`}`, retry: false };
   }
-  if (name === 'convert_file' || name === 'office_make' || name === 'office_edit') {
+  if (name === 'convert_file' || name === 'office_make' || name === 'office_edit' || name === 'strip_metadata') {
     const files = [...s.matchAll(/^Saved (.+?) \([\d.]+ [KM]B\)/gm)].map((m) => m[1]);
     if (!files.length) return fail('no file came out', { text: `Error: ${name} finished, but no new file came out of it. (Checked by the app.) Don't say it was made.` });
     const bad = [];
@@ -254,9 +254,9 @@ const MEDIA_OF = { picture: 'image', show: 'image', video: 'video', music: 'audi
 const TOOL_OF = { picture: 'make_image', show: 'make_image', video: 'make_video', music: 'make_music', sound: 'make_sound', file: 'write_file', app: 'open_app' };
 const GROUPS_OF = { picture: ['pictures'], show: ['pictures'], video: ['pictures'], music: ['pictures'], sound: ['pictures'], file: ['documents'], app: ['apps'] };
 const WHAT = { picture: 'a picture', show: 'a picture', video: 'a clip', music: 'some music', sound: 'a sound', file: 'a file saved', app: 'something done in an app' };
-const FILE_TOOLS = new Set(['write_file', 'edit_file', 'save_spreadsheet', 'file_hands', 'convert_file', 'office_make', 'office_edit']);
+const FILE_TOOLS = new Set(['write_file', 'edit_file', 'save_spreadsheet', 'file_hands', 'convert_file', 'office_make', 'office_edit', 'strip_metadata']);
 const APP_TOOLS = new Set(['open_app', 'app_act']);
-const LOOKS = new Set(['app_look', 'list_schedules', 'read_file', 'list_files', 'search_files', 'workshop_list', 'use_tools', 'recall', 'web_search', 'fetch_page', 'bob_help']);
+const LOOKS = new Set(['app_look', 'list_schedules', 'read_file', 'list_files', 'search_files', 'workshop_list', 'use_tools', 'recall', 'web_search', 'fetch_page', 'security_check', 'inspect_file', 'osint_lookup', 'check_exposure', 'security_tips', 'bob_help']);
 const isDoing = (n) => n in MEDIA || FILE_TOOLS.has(n) || APP_TOOLS.has(n) || ['run_command', 'run_recipe', 'schedule_job', 'change_schedule', 'undo_files'].includes(n);
 
 // Plain words for what an action was, for the user's note.
@@ -278,6 +278,8 @@ export function describe(name, args = {}) {
     case 'convert_file': return `Converting ${[].concat(args.paths || []).length === 1 ? base([].concat(args.paths)[0]) : 'the files'}${args.to ? ` to ${String(args.to).toUpperCase()}` : ''}`;
     case 'office_make': return `Making the ${({ writer: 'document', calc: 'spreadsheet', impress: 'presentation' })[args.kind] || 'document'}`;
     case 'office_edit': return `Changing ${base(args.path)}`;
+    case 'strip_metadata': return 'Making clean copies';
+    case 'defender_scan': return args.kind === 'update' ? 'Updating Defender' : 'The Defender scan';
     case 'open_app': return `Opening ${args.name || 'the app'}`;
     case 'app_act': return `${args.action === 'type' ? 'Typing' : args.action === 'click' ? `Clicking${args.name ? ` "${args.name}"` : ''}` : args.action === 'keys' ? `Pressing ${args.keys || 'keys'}` : 'The step'} in ${args.window || 'the app'}`;
     case 'run_command': return `Running ${args.cmd || 'the command'}`;
