@@ -26,14 +26,14 @@ const NEVER_PROGRAMS = new Map(Object.entries({
   mkfs: 'formats a disk', fdisk: 'changes disk partitions', dd: 'writes raw disks', passwd: 'changes passwords', useradd: 'manages user accounts',
   userdel: 'manages user accounts', reboot: 'restarts the PC', poweroff: 'shuts down the PC', halt: 'shuts down the PC', chown: 'changes file ownership',
   // Linux (and Mac) programs with the same reach as the Windows ones above.
-  pkexec: 'runs as administrator', doas: 'runs as administrator', su: 'runs as another user or administrator', visudo: 'changes who may be administrator',
-  usermod: 'manages user accounts', groupadd: 'manages user accounts', groupdel: 'manages user accounts', chpasswd: 'changes passwords',
-  systemctl: 'controls system services', service: 'controls system services', launchctl: 'controls system services', crontab: 'makes a scheduled task (that is the Schedules Hand\'s job)',
-  mount: 'changes disk mounts', umount: 'changes disk mounts', parted: 'changes disk partitions', gdisk: 'changes disk partitions', sgdisk: 'changes disk partitions',
-  wipefs: 'wipes disks', shred: 'destroys files beyond recovery', modprobe: 'changes the system core (kernel)', insmod: 'changes the system core (kernel)',
-  rmmod: 'changes the system core (kernel)', setenforce: 'changes system security', chattr: 'changes protected file flags', iptables: 'changes the firewall',
-  nft: 'changes the firewall', ufw: 'changes the firewall', firewalld: 'changes the firewall', 'firewall-cmd': 'changes the firewall',
-  'grub-install': 'changes how the PC boots', 'update-grub': 'changes how the PC boots', efibootmgr: 'changes how the PC boots'
+  pkexec: 'runs as administrator (run it yourself in a terminal if you need it)', doas: 'runs as administrator (run it yourself in a terminal if you need it)', su: 'runs as another user or administrator (run it yourself in a terminal if you need it)', visudo: 'changes who may be administrator (run it yourself in a terminal if you need it)',
+  usermod: 'manages user accounts (run it yourself in a terminal if you need it)', groupadd: 'manages user accounts (run it yourself in a terminal if you need it)', groupdel: 'manages user accounts (run it yourself in a terminal if you need it)', chpasswd: 'changes passwords (run it yourself in a terminal if you need it)',
+  systemctl: 'controls system services (run it yourself in a terminal if you need it)', service: 'controls system services (run it yourself in a terminal if you need it)', launchctl: 'controls system services (run it yourself in a terminal if you need it)', crontab: 'makes a scheduled task (that is the Schedules Hand\'s job)',
+  mount: 'changes disk mounts (use your distro\'s Disks app yourself if you need it)', umount: 'changes disk mounts (use your distro\'s Disks app yourself if you need it)', parted: 'changes disk partitions (use your distro\'s Disks app yourself if you need it)', gdisk: 'changes disk partitions (use your distro\'s Disks app yourself if you need it)', sgdisk: 'changes disk partitions (use your distro\'s Disks app yourself if you need it)',
+  wipefs: 'wipes disks (use your distro\'s Disks app yourself if you need it)', shred: 'destroys files beyond recovery (ask me to put it in the Trash instead)', modprobe: 'changes the system core, the kernel (run it yourself in a terminal if you need it)', insmod: 'changes the system core, the kernel (run it yourself in a terminal if you need it)',
+  rmmod: 'changes the system core, the kernel (run it yourself in a terminal if you need it)', setenforce: 'changes system security (run it yourself in a terminal if you need it)', chattr: 'changes protected file flags (run it yourself in a terminal if you need it)', iptables: 'changes the firewall (use your distro\'s firewall settings yourself)',
+  nft: 'changes the firewall (use your distro\'s firewall settings yourself)', ufw: 'changes the firewall (use your distro\'s firewall settings yourself)', firewalld: 'changes the firewall (use your distro\'s firewall settings yourself)', 'firewall-cmd': 'changes the firewall (use your distro\'s firewall settings yourself)',
+  'grub-install': 'changes how the PC boots (run it yourself in a terminal if you need it)', 'update-grub': 'changes how the PC boots (run it yourself in a terminal if you need it)', efibootmgr: 'changes how the PC boots (run it yourself in a terminal if you need it)'
 }));
 
 // Text that is refused anywhere in the command line (and inside a script Bob is asked to run).
@@ -59,13 +59,13 @@ const NEVER_TEXT = [
   [/\b(invoke-webrequest|iwr|curl|wget|invoke-restmethod|irm)\b[^\n|]*\|\s*(iex|invoke-expression|sh|bash|cmd|powershell|pwsh)\b/i, 'downloads and runs code in one go'],
   [/\bmkfs\b|\bdd\s+[^\n]*of=\/dev\//i, 'writes raw disks'],
   // Linux and Mac shells.
-  [/\b(pkexec|doas)\b|\bsu\s+(-|root\b)/i, 'asks for administrator rights'],
+  [/\b(pkexec|doas)\b|\bsu\s+(-|root\b)/i, 'asks for administrator rights (run it yourself in a terminal if you need it)'],
   [/\brm\s+(-[a-z]*r|--recursive)\b|\bfind\b[^\n]*\s-delete\b|--no-preserve-root/i, 'deletes many files at once (Bob throws things away through the Files Hand, to the Trash)'],
-  [/>\s*\/dev\/(sd|nvme|hd|vd|mmcblk|disk)/i, 'writes raw disks'],
-  [/(>|\btee\b[^\n]*)\s*\/(etc|boot|usr|bin|sbin|lib|lib64|sys|proc)\//i, 'changes system files'],
-  [/\b(chmod|chown|chgrp)\s+(-[a-z]*R|--recursive)\b[^\n]*\s\/(\s|$)/i, 'changes permissions on the whole system'],
+  [/>\s*\/dev\/(sd|nvme|hd|vd|mmcblk|disk)/i, 'writes raw disks (use your distro\'s Disks app yourself if you need it)'],
+  [/(>|\btee\b[^\n]*)\s*\/(etc|boot|usr|bin|sbin|lib|lib64|sys|proc)\//i, 'changes system files (edit them yourself with administrator rights if you mean to)'],
+  [/\b(chmod|chown|chgrp)\s+(-[a-z]*R|--recursive)\b[^\n]*\s\/(\s|$)/i, 'changes permissions on the whole system (change them only on the files you need, yourself)'],
   [/\bcrontab\b|\bsystemctl\b|\blaunchctl\b/i, 'makes or changes a system task or service (that is the Schedules Hand\'s job)'],
-  [/:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/, 'would freeze the PC (fork bomb)']
+  [/:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/, 'would freeze the PC (a fork bomb: there is nothing useful to run instead)']
 ];
 
 // macOS's own system tools that wipe disks, change startup or security, or manage accounts (on every computer, so a
