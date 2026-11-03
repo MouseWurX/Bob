@@ -1,0 +1,28 @@
+{
+  "note": "The phone brain's choices. Every file is pinned to an exact Hugging Face commit with its size and sha256, like catalog.json. fromCatalog copies a desktop catalog entry's file, so the two never disagree.",
+  "models": [
+    {
+      "id": "gemma4-e2b",
+      "name": "Gemma 4 E2B",
+      "pick": "recommended",
+      "what": "Quick and light. About 3 GB. Best pick for phones with 8 GB.",
+      "license": "Apache 2.0",
+      "maxTokens": 768,
+      "file": {
+        "name": "gemma-4-E2B-it-Q4_0.gguf",
+        "url": "https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF/resolve/b4243c156154b6dca9324415f8c7ccc098b4aed1/gemma-4-E2B-it-Q4_0.gguf",
+        "bytes": 2841481184,
+        "sha256": "8e30dff3ac4c8434c49a7036fa15564bdbb6044e42bf04550bf1a096ad7e6a52"
+      }
+    },
+    {
+      "id": "qwen3-4b",
+      "name": "Qwen3 4B Instruct",
+      "pick": "second",
+      "what": "A little better at step-by-step thinking, but slower and the phone runs warmer. About 2.5 GB.",
+      "license": "Apache 2.0",
+      "maxTokens": 768,
+      "fromCatalog": "qwen3-4b"
+    }
+  ]
+}

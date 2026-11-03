@@ -32,7 +32,7 @@ class NetBob(context: Context) {
             return h.length <= 253 && TS_NAME.matches(h)
         }
 
-        /** "npc.tail1234.ts.net" or "100.101.102.103:7777" -> "http://host:port", or null if it isn't a Tailscale address. */
+        /** "my-pc.tail1234.ts.net" or "100.101.102.103:7777" -> "http://host:port", or null if it isn't a Tailscale address. */
         fun base(address: String): String? {
             var a = address.trim().lowercase().removePrefix("http://").removeSuffix("/")
             if (a.isEmpty() || a.contains('/') || a.contains('@') || a.startsWith("https://")) return null
