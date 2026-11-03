@@ -29,6 +29,7 @@
     "note": "Version = <release>.<patch> from 1.0.0 (formatVersion in src/config.js): 1.0.1 for fixes, 1.1.0 (release 1.1, patch 0) for new features, a letter for unmerged branch work (1.0.1a). Before 1.0 it was 0.9.<build>. build goes up by one with every drop and never resets; the update check compares it. Git tags are v<version>."
   },
   "main": "electron/main.cjs",
+  "desktopName": "bob.desktop",
   "author": "MouseWurX",
   "devDependencies": {
     "electron": "44.9.0",
@@ -67,6 +68,7 @@
       "artifactName": "Bob-${version}-${arch}.${ext}"
     },
     "linux": {
+      "syncDesktopName": true,
       "icon": "public/icons/bob-512.png",
       "target": [
         "AppImage"

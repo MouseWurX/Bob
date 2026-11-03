@@ -7,7 +7,8 @@ import { execFile } from 'node:child_process';
 import { hostAllowed } from './models.js';
 import { setupWorkshop, setupVoice, audioReady, voicesReady } from './audio.js';
 import { findOffice, findFfmpeg } from './office.js';
-import { OS, exeName } from './platform.js';
+import { OS, exeName, onPath } from './platform.js';
+import { unzip } from './zip.js';
 
 // The opt-in office helpers are pinned to exact versions and checksums (src/office-pins.json, installer/pin-office.js).
 export function officePins() {
@@ -25,7 +26,12 @@ export const ENGINES = [
     runtime: (asset) => { const m = asset.match(/cuda-?(\d+(?:\.\d+)?)/); return m ? new RegExp(`^cudart-.*cuda-?${m[1].replace('.', '\\.')}-x64\\.zip$`) : null; },
     // Apple Silicon: one build, with Metal (the Mac's graphics) built in.
     mac: { other: [/bin-macos-arm64\.(?:zip|tar\.gz)$/] },
-    linux: { nvidia: [], other: [/bin-ubuntu-vulkan-x64\.(?:zip|tar\.gz)$/, /bin-ubuntu-x64\.(?:zip|tar\.gz)$/] }
+    // Linux (checked against the real releases in CI, installer/check-linux-engines.js): Ubuntu CUDA builds with a
+    // separate CUDA runtime file, like on Windows (newest CUDA first, x64 only), else Vulkan (any card), else the processor.
+    linux: {
+      nvidia: [/bin-ubuntu-cuda-?(\d+(?:\.\d+)?)-x64\.(?:zip|tar\.gz)$/], other: [/bin-ubuntu-vulkan-x64\.(?:zip|tar\.gz)$/, /bin-ubuntu-x64\.(?:zip|tar\.gz)$/],
+      runtime: (asset) => { const m = asset.match(/ubuntu-cuda-?(\d+(?:\.\d+)?)-x64/); return m ? new RegExp(`^cudart-.*ubuntu-cuda-?${m[1].replace('.', '\\.')}-x64\\.(?:zip|tar\\.gz)$`) : null; }
+    }
   },
   {
     id: 'sdcpp', name: 'stable-diffusion.cpp', what: 'Painter: makes pictures and clips without ComfyUI.', repo: 'leejet/stable-diffusion.cpp', dir: 'sd.cpp', exe: 'sd-cli.exe', aka: ['sd.exe'],
@@ -33,7 +39,8 @@ export const ENGINES = [
     runtime: () => /^cudart-.*-x64\.zip$/,
     // Apple Silicon builds are named for the macOS they were built on (sd-master-...-bin-Darwin-macOS-15.x-arm64.zip).
     mac: { other: [/bin-Darwin-macOS-[\d.]+-arm64\.(?:zip|tar\.gz)$/i, /-bin-(?:darwin|macos)[^/]*-arm64\.(?:zip|tar\.gz)$/i] },
-    linux: { nvidia: [], other: [/bin-Linux-Ubuntu-[\d.]+-x86_64-vulkan\.(?:zip|tar\.gz)$/i, /bin-Linux-Ubuntu-[\d.]+-x86_64\.(?:zip|tar\.gz)$/i] }
+    // Linux: Vulkan (NVIDIA, AMD and Intel cards all run it; there is no Linux CUDA build), else the processor build.
+    linux: { nvidia: [/bin-Linux-Ubuntu-[\d.]+-x86_64-vulkan\.(?:zip|tar\.gz)$/i], other: [/bin-Linux-Ubuntu-[\d.]+-x86_64-vulkan\.(?:zip|tar\.gz)$/i, /bin-Linux-Ubuntu-[\d.]+-x86_64\.(?:zip|tar\.gz)$/i] }
   },
   {
     id: 'whispercpp', name: 'whisper.cpp', what: 'Hearing you: turns your voice into text without Ollama.', repo: 'ggml-org/whisper.cpp', dir: 'whisper.cpp', exe: 'whisper-cli.exe',
@@ -42,7 +49,9 @@ export const ENGINES = [
     nvidia: [], other: [/^whisper-bin-x64\.zip$/, /^whisper-blas-bin-x64\.zip$/, /^whisper-(?:cublas-(\d+)[\d.]*-bin|bin-win-cuda-(\d+)[\d.]*)-x64\.zip$/],
     runtime: () => null,
     // whisper.cpp only posts a Mac framework for app makers, not the whisper-cli program, so there's nothing to fetch.
-    mac: { unavailable: 'There\'s no ready-made Mac download of whisper.cpp. On a Mac, Bob hears you through Ollama or a cloud helper instead (Voice & conversation, Hearing).' }
+    mac: { unavailable: 'There\'s no ready-made Mac download of whisper.cpp. On a Mac, Bob hears you through Ollama or a cloud helper instead (Voice & conversation, Hearing).' },
+    // Linux: the Ubuntu processor build (whisper-bin-ubuntu-x64.tar.gz).
+    linux: { other: [/^whisper-bin-ubuntu-x64\.tar\.gz$/] }
   },
   {
     // Piper's last Windows build. The repo is archived, so this release is fixed rather than "latest".
@@ -50,7 +59,9 @@ export const ENGINES = [
     nvidia: [], other: [/^piper_windows_amd64\.zip$/],
     runtime: () => null,
     // Piper's 2023 Mac build is known not to start on current macOS (a missing espeak-ng library), so Bob doesn't offer it.
-    mac: { unavailable: 'Piper\'s last Mac build doesn\'t start on current macOS. Use Kokoro voices instead: they run well on a Mac.' }
+    mac: { unavailable: 'Piper\'s last Mac build doesn\'t start on current macOS. Use Kokoro voices instead: they run well on a Mac.' },
+    // Linux: the same fixed release; the file has no GitHub checksum, so it carries its own pin (computed in CI, 2026-11-03).
+    linux: { tag: '2023.11.14-2', sha256: 'a50cb45f355b7af1f6d758c1b360717877ba0a398cc8cbe6d2a7a3a26e225992', other: [/^piper_linux_x86_64\.tar\.gz$/] }
   },
   {
     // uv builds Bob a private Python for music and sound effects; nothing touches other Pythons on the PC.
@@ -92,6 +103,7 @@ export const ENGINES = [
     runtime: () => null,
     // No official Mac build on GitHub to pin, so on a Mac Bob uses one that's installed (Homebrew: brew install ffmpeg).
     mac: { unavailable: 'There\'s no pinned FFmpeg download for Mac yet. Get it from ffmpeg.org, or with Homebrew (brew install ffmpeg) if you use it, and Bob finds it by himself.' },
+    linux: { unavailable: 'On Linux, install FFmpeg from your software centre (or: sudo apt install ffmpeg), and Bob finds it by himself.' },
     ready: (cfg) => Boolean(findFfmpeg(cfg)),
     found: (cfg) => { const f = findFfmpeg(cfg); return f && f.where !== 'own' ? `found on this PC (${f.exe})` : ''; }
   },
@@ -106,7 +118,8 @@ export const ENGINES = [
     version: (cfg) => { const o = findOffice(cfg); return o?.version || null; },
     install: installLibreOffice,
     // The Mac download is a disk image to drag into Applications, which is the user's to do; Bob finds it there.
-    mac: { unavailable: 'On a Mac, install LibreOffice from libreoffice.org (drag it into Applications), and Bob finds it by himself.' }
+    mac: { unavailable: 'On a Mac, install LibreOffice from libreoffice.org (drag it into Applications), and Bob finds it by himself.' },
+    linux: { unavailable: 'On Linux, install LibreOffice from your software centre (most distros already have it), and Bob finds it by himself.' }
   }
 ];
 
@@ -128,6 +141,8 @@ export function engineExe(cfg, e0) {
   const e = engineFor(e0);
   const dir = path.join(cfg.agentDir, e.dir);
   for (const sub of ['', 'bin', 'Release']) for (const n of [e.exe, ...(e.aka || [])]) { const p = path.join(dir, sub, n); if (fs.existsSync(p)) return p; }
+  // Linux: one the distro installed (llama-server, whisper-cli, piper from the package manager) counts too.
+  if (e.os === 'linux') for (const n of [e.exe, ...(e.aka || [])]) { const p = onPath(n); if (p) return p; }
   return null;
 }
 
@@ -189,6 +204,16 @@ async function grab(asset, folder, pub, signal, tick, { allowed = hostAllowed, u
   pub.phase = 'unpacking'; tick();
   // Windows 10+ and macOS ship bsdtar, which unpacks zip and tar.gz files. Linux's GNU tar doesn't read zip: unzip does.
   const [prog, args] = unpackCommand(asset.name, zip, folder);
+  // Linux without the unzip program: Bob's own unzip, then the files are moved in.
+  if (prog === 'unzip' && !onPath('unzip')) {
+    const tmp = folder + '.unzip';
+    fs.rmSync(tmp, { recursive: true, force: true });
+    unzip(zip, tmp);
+    fs.cpSync(tmp, folder, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(zip, { force: true });
+    return;
+  }
   await new Promise((resolve, reject) => execFile(prog, args, { windowsHide: true, timeout: 300000 }, (err) => (err ? reject(new Error('Couldn\'t unpack ' + asset.name + ': ' + err.message)) : resolve())));
   fs.rmSync(zip, { force: true });
 }
@@ -208,6 +233,18 @@ export function makeRunnable(folder) {
     if (path.extname(ent.name) && !/\.(dylib|so(\.\d+)*)$/i.test(ent.name) && !/\.so\./.test(ent.name)) continue;
     try { fs.chmodSync(path.join(folder, ent.name), 0o755); } catch {}
   }
+}
+
+// Linux: the CUDA runtime file may keep its libraries in a subfolder; llama.cpp looks for them next to itself.
+export function liftLibraries(folder) {
+  const walk = (d, depth) => {
+    for (const ent of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, ent.name);
+      if (ent.isDirectory() && depth < 3) walk(p, depth + 1);
+      else if (depth > 0 && /\.so(\.\d+)*$/.test(ent.name) && !fs.existsSync(path.join(folder, ent.name))) fs.renameSync(p, path.join(folder, ent.name));
+    }
+  };
+  try { walk(folder, 0); } catch {}
 }
 
 // Some zips put the programs in a subfolder (e.g. Release\). Move them up next to each other.
@@ -267,6 +304,7 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick }) {
   await grab(asset, folder, pub, signal, tick);
   if (rt) await grab(rt, folder, pub, signal, tick);
   flatten(folder, [e.exe, ...(e.aka || [])]);
+  if (e.os === 'linux' && rt) liftLibraries(folder);
   if (e.os !== 'win') makeRunnable(folder);
   if (!engineExe(cfg, e)) throw new Error(`${e.name} unpacked, but ${e.exe} isn't in it. The release layout may have changed.`);
   if (e.after) await e.after(cfg, { pub, tick, signal });

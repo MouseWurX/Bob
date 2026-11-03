@@ -7,6 +7,9 @@ import { recycle, forgetTrashInfo, usesBin } from '../src/recycle.js';
 import { checkCommand } from '../src/hands-run.js';
 import { gatherStartup, gatherNetwork, gatherOverview, sayOverviewLinux, sayStartupLinux, sayNetworkLinux, judgeStartupLinux, clamPlan, sayClam } from '../src/security-linux.js';
 import { securityTools } from '../src/hands-security.js';
+import { ENGINES, pickAsset, engineFor, liftLibraries, makeRunnable } from '../src/engines.js';
+import { onPath } from '../src/platform.js';
+import { findExe } from '../src/config.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra) => { if (ok) { pass++; console.log(`PASS ${name}`); } else { fail++; console.log(`FAIL ${name}${extra ? ` (${String(extra).slice(0, 300)})` : ''}`); } };
@@ -93,6 +96,36 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-linux-'));
   check('Linux: no ClamAV says how to get it', process.platform !== 'linux' || fs.existsSync('/usr/bin/clamscan') || (() => { try { noClam.defender_scan.check({ kind: 'quick' }); return false; } catch (e) { return /software centre/.test(e.message); } })());
   check('Linux: security_check answers the Linux way', /things start when you sign in/.test(await t.security_check.run({ area: 'startup' }, {})) && /no antivirus history/.test(await t.security_check.run({ area: 'threats' }, {})));
   check('clean ClamAV result says so', /found nothing/.test(sayClam('quick', { code: 0, out: '' })));
+}
+
+// ---------- engines: the Linux files from each release ----------
+{
+  const side = (id) => engineFor(ENGINES.find((e) => e.id === id), 'linux');
+  const llama = ['llama-b7000-bin-ubuntu-cuda-12.8-x64.tar.gz', 'llama-b7000-bin-ubuntu-cuda-13.4-x64.tar.gz', 'llama-b7000-bin-ubuntu-cuda-13.4-arm64.tar.gz', 'cudart-llama-b7000-bin-ubuntu-cuda-13.4-x64.tar.gz', 'llama-b7000-bin-win-cuda-13.1-x64.zip', 'llama-b7000-bin-win-vulkan-x64.zip', 'llama-b7000-bin-macos-arm64.tar.gz', 'llama-b7000-bin-ubuntu-x64.tar.gz', 'llama-b7000-bin-ubuntu-vulkan-x64.tar.gz', 'llama-b7000-bin-ubuntu-s390x.tar.gz'].map((name) => ({ name }));
+  const L = side('llamacpp'), cuda = pickAsset(llama, L, true);
+  check('engines: llama.cpp on Linux with an NVIDIA card takes the newest Ubuntu CUDA build (x64, not arm64)', cuda?.name === 'llama-b7000-bin-ubuntu-cuda-13.4-x64.tar.gz', cuda?.name);
+  check('engines: and the CUDA runtime file that goes with it', llama.filter((a) => L.runtime(cuda.name)?.test(a.name)).map((a) => a.name).join() === 'cudart-llama-b7000-bin-ubuntu-cuda-13.4-x64.tar.gz');
+  check('engines: other cards take the Vulkan build; NVIDIA falls back to it when there is no CUDA one', pickAsset(llama, L, false).name === 'llama-b7000-bin-ubuntu-vulkan-x64.tar.gz' && pickAsset(llama.filter((a) => !/cuda/.test(a.name)), L, true).name === 'llama-b7000-bin-ubuntu-vulkan-x64.tar.gz');
+  check('engines: llama.cpp falls back to the processor build, and older .zip names still match', pickAsset(llama.filter((a) => !/vulkan|cuda/.test(a.name)), L, false).name === 'llama-b7000-bin-ubuntu-x64.tar.gz' && pickAsset([{ name: 'llama-b5000-bin-ubuntu-vulkan-x64.zip' }], L, true));
+  const sd = ['sd-master-abc1234-bin-win-cuda12-x64.zip', 'sd-master-abc1234-bin-Linux-Ubuntu-24.04-x86_64.zip', 'sd-master-abc1234-bin-Linux-Ubuntu-24.04-x86_64-vulkan.zip', 'sd-master-abc1234-bin-Linux-Ubuntu-24.04-x86_64-rocm-7.0.zip', 'sd-master-abc1234-bin-Darwin-macOS-15-arm64.zip'].map((name) => ({ name }));
+  check('engines: stable-diffusion.cpp on Linux takes the Vulkan build on any card, else the plain one', pickAsset(sd, side('sdcpp'), true).name.endsWith('x86_64-vulkan.zip') && pickAsset(sd, side('sdcpp'), false).name.endsWith('x86_64-vulkan.zip') && pickAsset(sd.filter((a) => !/vulkan/.test(a.name)), side('sdcpp'), false).name.endsWith('24.04-x86_64.zip'));
+  check('engines: a Windows file is never picked on Linux', !pickAsset([{ name: 'llama-b7000-bin-win-vulkan-x64.zip' }], L, true) && !pickAsset([{ name: 'uv-x86_64-pc-windows-msvc.zip' }], side('audio'), false));
+  check('engines: uv, Piper and whisper.cpp have Linux files', pickAsset([{ name: 'uv-x86_64-unknown-linux-gnu.tar.gz' }], side('audio'), false) && pickAsset([{ name: 'piper_linux_x86_64.tar.gz' }], side('piper'), false) && pickAsset([{ name: 'whisper-bin-ubuntu-arm64.tar.gz' }, { name: 'whisper-bin-ubuntu-x64.tar.gz' }], side('whispercpp'), true)?.name === 'whisper-bin-ubuntu-x64.tar.gz');
+  check('engines: the Linux Piper file has its own pinned checksum and release, never the Windows one', /^[0-9a-f]{64}$/.test(side('piper').sha256) && side('piper').sha256 !== ENGINES.find((e) => e.id === 'piper').sha256 && side('piper').tag === '2023.11.14-2');
+  check('engines: FFmpeg and LibreOffice come from the distro, with how to get them', ['ffmpeg', 'libreoffice'].every((id) => /software centre/.test(side(id).unavailable || '')));
+  check('engines: every engine has a Linux side or a reason', ENGINES.every((e) => e.linux), ENGINES.filter((e) => !e.linux).map((e) => e.id).join(', '));
+  check('engines: Linux program names have no .exe', L.exe === 'llama-server' && side('sdcpp').aka.includes('sd'));
+
+  // A zip doesn't keep the "may run" mark; the CUDA runtime may keep its libraries in a subfolder.
+  const into = path.join(tmp, 'llama.cpp'); fs.mkdirSync(path.join(into, 'cuda-libs'), { recursive: true });
+  fs.writeFileSync(path.join(into, 'llama-server'), '#!/bin/sh\n'); fs.writeFileSync(path.join(into, 'libggml-cuda.so'), 'x'); fs.writeFileSync(path.join(into, 'cuda-libs', 'libcudart.so.13'), 'x');
+  liftLibraries(into); makeRunnable(into);
+  check('engines: CUDA runtime libraries end up next to llama-server', fs.existsSync(path.join(into, 'libcudart.so.13')));
+  check('engines: the program and its libraries can run after unpacking', process.platform === 'win32' || ((fs.statSync(path.join(into, 'llama-server')).mode & 0o111) && (fs.statSync(path.join(into, 'libcudart.so.13')).mode & 0o111)));
+  const deep = path.join(tmp, 'deep', 'build', 'bin'); fs.mkdirSync(deep, { recursive: true }); fs.writeFileSync(path.join(deep, 'llama-server'), '');
+  check('config: Linux finds llama-server (no .exe) in build/bin', findExe('', path.join(tmp, 'deep'), ['llama-server']) === path.join(deep, 'llama-server'));
+  const pathDir = path.join(tmp, 'usr-bin'); fs.mkdirSync(pathDir); fs.writeFileSync(path.join(pathDir, 'whisper-cli'), ''); fs.chmodSync(path.join(pathDir, 'whisper-cli'), 0o755);
+  check('engines: one the distro installed is found on the PATH', process.platform === 'win32' || onPath('whisper-cli', { PATH: pathDir }) === path.join(pathDir, 'whisper-cli'));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

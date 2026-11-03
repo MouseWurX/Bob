@@ -3,6 +3,7 @@
 // Bob's home folder goes, where a Python venv keeps python, stopping a program and all it started, the
 // graphics memory reading, and which features exist at all on this computer.
 // Shared with the Linux work: each function has a Windows, a Mac and a Linux answer.
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFile, spawnSync } from 'node:child_process';
@@ -28,6 +29,15 @@ export function fileManagerName(os_ = OS) { return os_ === 'mac' ? 'Finder' : os
 export function exeName(base, os_ = OS) {
   const b = String(base || '').replace(/\.exe$/i, '');
   return os_ === 'win' ? `${b}.exe` : b;
+}
+
+// A program on the PATH (Linux and Mac: one the package manager installed), or null. No shell, nothing run.
+export function onPath(name, env = process.env) {
+  for (const dir of String(env.PATH || env.Path || '').split(path.delimiter).filter(Boolean)) {
+    const p = path.join(dir, name);
+    try { if (fs.statSync(p).isFile()) { fs.accessSync(p, fs.constants.X_OK); return p; } } catch {}
+  }
+  return null;
 }
 
 // Where a Python venv keeps its python: venv\Scripts\python.exe on Windows, venv/bin/python elsewhere.

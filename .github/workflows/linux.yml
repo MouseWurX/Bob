@@ -40,6 +40,12 @@ jobs:
         run: npm test
       - name: Release check (licences, pinned actions)
         run: npm run check:release
+      - name: Linux engine files upstream (what Bob would download)
+        # Information, and an early warning when a project renames its Linux files. Doesn't stop the build.
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node installer/check-linux-engines.js
       - name: Build the AppImage
         run: npx electron-builder --linux AppImage --x64 --publish never
       - name: Checksum
@@ -59,7 +65,7 @@ jobs:
             if curl -fsS http://127.0.0.1:7777/api/status > "$RUNNER_TEMP/status.json"; then ok=1; break; fi
             sleep 2
           done
-          cat "$RUNNER_TEMP/bob.log" | tail -40
+          grep -v appimage_extracted "$RUNNER_TEMP/bob.log" | tail -40
           test "$ok" = 1 || { echo "Bob didn't answer on 7777"; exit 1; }
           head -c 400 "$RUNNER_TEMP/status.json"; echo
           test -f "$HOME/.local/share/bob/config.json" || { echo "Bob didn't make his home in ~/.local/share/bob"; exit 1; }
