@@ -21,6 +21,6 @@ try {
   answer({ ok: true, out: String(out).slice(0, 20000) });
 } catch (e) {
   const blocked = e?.code === 'ERR_ACCESS_DENIED';
-  answer({ ok: false, blocked, error: String(blocked ? `The sandbox stopped it: ${e.message}` : e?.message || e).slice(0, 2000) });
+  answer({ ok: false, blocked, error: String(blocked ? `The sandbox stopped it: ${e.message}${e.resource ? ` (${e.permission || 'access'}: ${e.resource})` : ''}` : e?.message || e).slice(0, 2000) });
   process.exitCode = 1;
 }
