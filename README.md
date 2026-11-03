@@ -12,6 +12,8 @@ Your chats stay on your PC. Bob only looks things up on the web (DuckDuckGo) if 
 
 Windows 10 or 11, 64-bit. An NVIDIA graphics card helps a lot but isn't required: Bob suggests models that fit your PC.
 
+**Mac (preview):** a Mac with Apple Silicon (M1 or newer). Download `Bob-<version>-mac-arm64.zip`, drag Bob into Applications, and the first time click **Open Anyway** in System Settings > Privacy & Security (Bob isn't signed with an Apple developer account yet). Bob keeps his things in `~/Library/Application Support/Bob/home`. A few Windows-only parts (the Apps Hand, Defender scans, the Gaming card switch, Update Bob) are hidden on a Mac. The Mac build is tested on GitHub's Mac machines; tell us how it goes on yours.
+
 ## Getting Bob
 
 ### Install Bob in five steps (Windows 10 or 11)

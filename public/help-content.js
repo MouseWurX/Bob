@@ -23,6 +23,22 @@ export const HELP = [
 <p>Two promises I take seriously: <strong>nothing extra is switched on until you switch it on</strong>, and <strong>nothing downloads until you confirm it</strong>. ${go('privacy', 'What stays on your PC')} lists exactly when I go online.</p>
 <p>To see the first-time setup again: Settings, <strong>Run first-time setup</strong>. I won't mind meeting you twice.</p>` },
 
+  { id: 'mac', group: 'Getting started', title: 'Bob on a Mac', words: 'mac macos apple silicon m1 m2 m3 m4 metal open anyway gatekeeper damaged unidentified developer finder dock applications library application support homebrew brew ffmpeg libreoffice kokoro update remove uninstall',
+    html: `<p>I run on Macs with Apple Silicon (M1 and newer). Same Bob, different hardware: the Mac's graphics (Metal) do the heavy lifting.</p>
+<ol><li>Download <strong>Bob-&lt;version&gt;-mac-arm64.zip</strong> from github.com/MouseWurX/Bob/releases, open it, and drag <strong>Bob</strong> into Applications.</li>
+<li>The first time, macOS says it can't check me. That's because I'm not signed with a paid Apple developer account yet, not because anything is wrong. Open <strong>System Settings, Privacy &amp; Security</strong>, scroll down, and click <strong>Open Anyway</strong> next to Bob. You only do this once.</li>
+<li>After that, open me from Applications, Launchpad or the Dock like any app.</li></ol>
+<p><strong>What's different on a Mac:</strong></p>
+<ul><li><strong>Memory.</strong> A Mac shares one pool of memory between the chip and the graphics. I count about two thirds of it (three quarters from 36 GB up) as "graphics memory" when I suggest models, because that's what macOS lets the graphics use.</li>
+<li><strong>My things</strong> (models, engines, chats, settings) live in <code>~/Library/Application Support/Bob/home</code>. Settings shows the exact folder.</li>
+<li><strong>Engines.</strong> llama.cpp and stable-diffusion.cpp have Mac builds with Metal, and I fetch them when you click Get, as on Windows. whisper.cpp and Piper don't have Mac builds I can use: for hearing you, use Ollama or a cloud helper; for my voice, Kokoro voices work well. FFmpeg and LibreOffice: install them yourself (Homebrew's <code>brew install ffmpeg</code>, and LibreOffice from libreoffice.org into Applications) and I find them.</li>
+<li><strong>Converting pictures</strong> uses macOS's own tools, and reads iPhone photos (HEIC) too.</li>
+<li><strong>Not on a Mac:</strong> the Open and use apps Hand, Defender scans, the Gaming session's graphics card switch, waking me with Windows Task Scheduler, Check this PC, and Update Bob. The Security and privacy Hand checks the Mac's own protection instead: firewall, FileVault, Gatekeeper, System Integrity Protection, what starts at login, and what listens on the network.</li>
+<li><strong>Copy and paste</strong> are Cmd+C and Cmd+V, and the Bob menu at the top has Quit Bob.</li>
+<li><strong>Launch Bob on start-up</strong> adds me to System Settings, General, Login Items. On a Mac I open with my window showing.</li></ul>
+<p><strong>Updating:</strong> download the newest Mac zip and replace me in Applications. Your chats, settings and models stay where they are. <strong>Removing:</strong> quit me, drag Bob from Applications to the Bin, and if you want everything gone, the folder above too.</p>
+<p>Honest note: the Mac build is tested by GitHub's Mac machines (they download my engines and start me), but nobody on the team has tried it on their own Mac yet. If something looks odd, tell me what you saw.</p>` },
+
   { id: 'around', group: 'Getting started', title: 'Finding your way around', words: 'menu layout now running chat copy paste fold panel left right',
     html: `<p>My window has three parts. Think of it as a very small starship bridge.</p>
 <ul><li><strong>The menu on the left.</strong> My picture and what I'm doing right now, then New chat, Chat, Tasks, Downloads, References, Made by Bob, Topics and Tidy up. Under <em>Setup</em>: Get models, Settings, Style and Help. Then the Listen, Read aloud and Alerts switches, and the Session picker at the bottom. Fold the menu to icons with ‹ or Ctrl+B.</li>

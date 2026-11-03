@@ -30,6 +30,16 @@ You can close Bob while things download. Unfinished downloads wait, paused, and 
 
 ---
 
+### Bob on a Mac
+
+Bob runs on Macs with Apple Silicon (M1 and newer), using the Mac's graphics (Metal).
+
+1. Download `Bob-<version>-mac-arm64.zip` from the releases page, open it, and drag **Bob** into Applications.
+2. The first time, macOS says it can't check Bob (he isn't signed with a paid Apple developer account yet). Open **System Settings > Privacy & Security**, scroll down and click **Open Anyway** next to Bob. Once only.
+3. Bob keeps his things in `~/Library/Application Support/Bob/home`.
+
+On a Mac, llama.cpp and stable-diffusion.cpp download as usual. whisper.cpp and Piper have no Mac builds Bob can use (hear through Ollama or a cloud helper; speak with Kokoro voices). Install FFmpeg (Homebrew) and LibreOffice yourself and Bob finds them. The Apps Hand, Defender scans, the Gaming card switch, Windows Task Scheduler, Check this PC and Update Bob are hidden; the Security Hand checks the firewall, FileVault, Gatekeeper, System Integrity Protection, login items and listening programs instead. To update, replace Bob in Applications with the newest zip; to remove him, drag him to the Bin (and the folder above, if you want everything gone).
+
 ## 2. Finding your way around
 
 Bob's window has three parts:
