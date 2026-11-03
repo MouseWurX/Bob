@@ -7,12 +7,13 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { voicePython, voicesReady } from './audio.js';
 import { unpackedDir } from './config.js';
+import { exeName } from './platform.js';
 
 const exists = (p) => Boolean(p) && fs.existsSync(p);
 
 export function piperExe(cfg) {
   const t = cfg.tts || {};
-  return t.exe || path.join(cfg.agentDir, 'piper', 'piper.exe');
+  return t.exe || path.join(cfg.agentDir, 'piper', exeName('piper'));
 }
 
 export function ttsReady(cfg) {

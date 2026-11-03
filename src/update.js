@@ -34,7 +34,8 @@ export function checkUpdate() {
   return {
     current, available, newer, source: source || null,
     canRun: process.platform === 'win32' && Boolean(script && fs.existsSync(script)),
-    why: !source ? 'Bob doesn\'t know which folder he was built from. Run Install Bob.cmd from the new source folder once.' : process.platform !== 'win32' ? 'Updating Bob only works on Windows.' : ''
+    // A Mac or Linux Bob is a download, not a build: the new version comes from the same page as the first one.
+    why: process.platform === 'darwin' ? 'On a Mac, Bob updates by downloading the newest Bob for Mac from github.com/MouseWurX/Bob/releases and replacing the old one in Applications. Your chats, settings and models stay where they are.' : process.platform !== 'win32' ? 'On this computer, Bob updates by downloading the newest version from github.com/MouseWurX/Bob/releases. Your chats, settings and models stay where they are.' : !source ? 'Bob doesn\'t know which folder he was built from. Run Install Bob.cmd from the new source folder once.' : ''
   };
 }
 

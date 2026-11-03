@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { exeName } from './platform.js';
 
 export const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Files other programs run (Python scripts) can't be read from inside Bob.exe's app.asar, so the build
@@ -33,12 +34,12 @@ export function loadConfig() {
   cfg.painter = cfg.painter || { engine: 'comfy' };
   cfg.painter.sdcpp = cfg.painter.sdcpp || {};
   // Engine programs: zips differ (some put them in bin\ or Release\), so look in each likely place.
-  cfg.painter.sdcpp.exe = findExe(cfg.painter.sdcpp.exe, path.join(cfg.agentDir, 'sd.cpp'), ['sd-cli.exe', 'sd.exe']);
+  cfg.painter.sdcpp.exe = findExe(cfg.painter.sdcpp.exe, path.join(cfg.agentDir, 'sd.cpp'), [exeName('sd-cli'), exeName('sd')]);
   cfg.llamacpp = cfg.llamacpp || {};
-  cfg.llamacpp.exe = findExe(cfg.llamacpp.exe, path.join(cfg.agentDir, 'llama.cpp'), ['llama-server.exe']);
-  if (cfg.stt?.provider === 'whispercpp') cfg.stt.exe = findExe(cfg.stt.exe, path.join(cfg.agentDir, 'whisper.cpp'), ['whisper-cli.exe']);
+  cfg.llamacpp.exe = findExe(cfg.llamacpp.exe, path.join(cfg.agentDir, 'llama.cpp'), [exeName('llama-server')]);
+  if (cfg.stt?.provider === 'whispercpp') cfg.stt.exe = findExe(cfg.stt.exe, path.join(cfg.agentDir, 'whisper.cpp'), [exeName('whisper-cli')]);
   cfg.tts = cfg.tts || {};
-  cfg.tts.exe = findExe(cfg.tts.exe, path.join(cfg.agentDir, 'piper'), ['piper.exe']);
+  cfg.tts.exe = findExe(cfg.tts.exe, path.join(cfg.agentDir, 'piper'), [exeName('piper')]);
 
   cfg.innDir = cfg.innDir || path.join(cfg.agentDir, 'inn');
   cfg.dataDir = path.join(cfg.innDir, 'bob');

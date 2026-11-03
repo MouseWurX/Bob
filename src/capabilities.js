@@ -5,6 +5,7 @@ import path from 'node:path';
 import { ttsReady } from './tts.js';
 import { audioReady } from './audio.js';
 import { workshopOn } from './workshop.js';
+import { exeName } from './platform.js';
 
 const exists = (p) => Boolean(p) && fs.existsSync(p);
 
@@ -25,7 +26,7 @@ function sdcppReady(cfg, kind) {
 export function capabilities(cfg) {
   const stt = cfg.stt || {};
   let hearing = false;
-  if (stt.provider === 'whispercpp') hearing = exists(stt.exe || path.join(cfg.agentDir, 'whisper.cpp', 'whisper-cli.exe')) && exists(stt.model);
+  if (stt.provider === 'whispercpp') hearing = exists(stt.exe || path.join(cfg.agentDir, 'whisper.cpp', exeName('whisper-cli'))) && exists(stt.model);
   else if (stt.provider === 'http') hearing = Boolean(stt.url);
   else hearing = ollamaHas(cfg, stt.model || 'gemma4:e4b');
 

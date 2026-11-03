@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const UNO_SCRIPT = path.join(here, 'office-uno.py');
 const WIN = process.platform === 'win32';
+const MAC = process.platform === 'darwin';
 
 // ---------------------------------------------------------------- kinds of file
 
@@ -87,7 +88,7 @@ export function officeCandidates(cfg, env = process.env) {
     }
     for (const base of ['C:\\PortableApps', path.join(os.homedir(), 'PortableApps')]) list.push({ dir: path.join(base, 'LibreOfficePortable', 'App', 'libreoffice', 'program'), where: 'pc' });
   } else {
-    for (const d of ['/usr/lib/libreoffice/program', '/opt/libreoffice/program', '/usr/lib64/libreoffice/program', '/Applications/LibreOffice.app/Contents/MacOS']) list.push({ dir: d, where: 'pc' });
+    for (const d of ['/usr/lib/libreoffice/program', '/opt/libreoffice/program', '/usr/lib64/libreoffice/program', '/Applications/LibreOffice.app/Contents/MacOS', path.join(os.homedir(), 'Applications', 'LibreOffice.app', 'Contents', 'MacOS'), '/Applications/OpenOffice.app/Contents/MacOS']) list.push({ dir: d, where: 'pc' });
   }
   return list;
 }
@@ -119,7 +120,8 @@ export function findOffice(cfg, env = process.env) {
     if (!soffice) continue;
     // LibreOffice and OpenOffice for Windows bring their own Python (with the office bridge, "uno") in program\.
     // On Linux the bridge is the system python3 package (python3-uno).
-    const py = ['python.exe', 'python', 'python3'].map((n) => path.join(c.dir, n)).find(exists) || (WIN ? null : exists('/usr/bin/python3') ? '/usr/bin/python3' : 'python3');
+    // On a Mac, LibreOffice.app keeps its Python (with uno) in Contents/Resources/python, next to Contents/MacOS.
+    const py = ['python.exe', 'python', 'python3'].map((n) => path.join(c.dir, n)).find(exists) || (c.dir.endsWith(path.join('Contents', 'MacOS')) && exists(path.join(c.dir, '..', 'Resources', 'python')) ? path.join(c.dir, '..', 'Resources', 'python') : null) || (WIN ? null : exists('/usr/bin/python3') ? '/usr/bin/python3' : 'python3');
     if (!py) continue;
     const open = /openoffice/i.test(c.dir);
     return { soffice, python: py, name: open ? 'Apache OpenOffice' : 'LibreOffice', version: versionIn(c.dir), where: c.where, dir: c.dir };
@@ -223,8 +225,28 @@ try {
   Write-Output "$($nw)x$($nh)"
 } finally { $img.Dispose() }`;
 
+// Mac: sips (part of macOS) reads and writes these, and reads iPhone photos (HEIC) too.
+const SIPS_FORMAT = { png: 'png', jpg: 'jpeg', jpeg: 'jpeg', bmp: 'bmp', gif: 'gif', tif: 'tiff', tiff: 'tiff' };
+export function sipsArgs({ src, out, width = 0, quality = 90 }) {
+  const to = SIPS_FORMAT[extOf(out)];
+  const w = Math.max(0, Math.round(Number(width) || 0));
+  return ['-s', 'format', to, ...(to === 'jpeg' ? ['-s', 'formatOptions', String(Math.min(100, Math.max(30, Number(quality) || 90)))] : []), ...(w ? ['--resampleWidth', String(w)] : []), src, '--out', out];
+}
+function sipsJob(job, { signal, timeoutMs }) {
+  return new Promise((resolve, reject) => {
+    const child = execFile('/usr/bin/sips', sipsArgs(job), { timeout: timeoutMs }, (e, stdout, stderr) => {
+      signal?.removeEventListener?.('abort', stop);
+      if (e) return reject(new Error(`macOS couldn't convert that picture: ${String(stderr || e.message).trim().split(/\r?\n/).pop()}`));
+      resolve({ size: '' });
+    });
+    const stop = () => killTree(child);
+    signal?.addEventListener?.('abort', stop, { once: true });
+  });
+}
+
 export function pictureJob({ src, out, width = 0, quality = 90 }, { signal, timeoutMs = 60_000, ffmpeg = null } = {}) {
   const a = extOf(src), b = extOf(out);
+  if (MAC && (BUILTIN_PICTURES.includes(a) || ['heic', 'heif'].includes(a)) && BUILTIN_PICTURES.includes(b)) return sipsJob({ src, out, width, quality }, { signal, timeoutMs });
   const builtin = WIN && BUILTIN_PICTURES.includes(a) && BUILTIN_PICTURES.includes(b);
   if (!builtin) {
     if (!ffmpeg) return Promise.reject(new Error(WIN ? FFMPEG_MISSING : 'Pictures need FFmpeg on this system.'));
@@ -315,7 +337,7 @@ export function officeView(cfg) {
   return {
     office: o ? { name: o.name, version: o.version, where: o.where, dir: o.dir } : null,
     ffmpeg: f ? { where: f.where, exe: f.exe } : null,
-    pictures: WIN ? 'built in' : (f ? 'FFmpeg' : null)
+    pictures: WIN || MAC ? 'built in' : (f ? 'FFmpeg' : null)
   };
 }
 

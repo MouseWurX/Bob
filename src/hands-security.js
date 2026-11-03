@@ -10,7 +10,8 @@
 // items, or researches private people (where they live, who is behind a username, their phone number).
 import fs from 'node:fs';
 import path from 'node:path';
-import { handOn, handOffWhy } from './hands-settings.js';
+import { handOn, handOffWhy, handsOs } from './hands-settings.js';
+import { macCheck } from './security-mac.js';
 import { webOn, WEB_OFF } from './web.js';
 import { canRead, canWrite, officeDir } from './hands-office.js';
 import { findFfmpeg } from './office.js';
@@ -173,18 +174,19 @@ export async function cleanOne(src, out, { ffmpeg, signal } = {}) {
 
 // ---------------------------------------------------------------- the tools
 
-export function securityTools(brain, { env = process.env, fetchImpl, resolver, ps = runPs, scan = runScan } = {}) {
+export function securityTools(brain, { env = process.env, fetchImpl, resolver, ps = runPs, scan = runScan, os_ = handsOs(), macRun } = {}) {
   const cfg = brain.cfg;
   const log = (k, t) => brain.log?.(k, t);
   const t = {};
 
   t.security_check = {
-    schema: fn('security_check', 'Check this PC\'s security (read-only, changes nothing): overview = antivirus, firewall, updates; threats = what Defender found lately, explained; startup = what starts with Windows, with anything suspicious marked; network = programs listening for connections.', {
+    schema: fn('security_check', os_ === 'mac' ? 'Check this Mac\'s security (read-only, changes nothing): overview = firewall, FileVault, Gatekeeper, System Integrity Protection, updates; threats = what macOS does about malware; startup = what starts at login or with the Mac, with anything suspicious marked; network = programs listening for connections.' : 'Check this PC\'s security (read-only, changes nothing): overview = antivirus, firewall, updates; threats = what Defender found lately, explained; startup = what starts with Windows, with anything suspicious marked; network = programs listening for connections.', {
       area: str('overview, threats, startup or network', { enum: ['overview', 'threats', 'startup', 'network'] })
     }),
     async run({ area = 'overview' }, ctx) {
       off(cfg);
       const a = ['overview', 'threats', 'startup', 'network'].includes(area) ? area : 'overview';
+      if (os_ === 'mac') { const said = await macCheck(a, macRun); log('security', `checked ${a} (Mac)`); return said; }
       const r = await ps(PS[a], { env, signal: ctx?.signal, timeoutMs: a === 'startup' ? 120_000 : 60_000 });
       log('security', `checked ${a}`);
       return a === 'overview' ? sayOverview(r) : a === 'threats' ? sayThreats(r) : a === 'startup' ? sayStartup(r) : sayNetwork(r);

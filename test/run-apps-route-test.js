@@ -6,6 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { Brain, realPcPrompt, ALT_ROUTE_NUDGE } from '../src/brain.js';
 import { guessGroups } from '../src/toolbox.js';
+// The Apps hand only exists on Windows (src/hands-settings.js platforms); its logic is tested everywhere with a stand-in helper.
+process.env.BOB_PLATFORM = 'win32';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };

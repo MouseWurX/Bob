@@ -5,6 +5,8 @@
 //   2. otherwise a Bob folder Bob.exe sits inside (it has an "inn" folder), e.g. Agent 00\Bob app\Bob.exe
 // Bob.exe is Electron's official electron.exe, only renamed; Bob's files are in Bob app\resources\app.
 //   3. otherwise %LOCALAPPDATA%\Bob, with a fresh config.json made from config.example.json.
+// On a Mac (Bob.app, the same official Electron renamed, Bob's files in Bob.app/Contents/Resources/app) step 3 is
+// ~/Library/Application Support/Bob/home, and on Linux ~/.local/share/bob (src/platform.js defaultHome).
 const { app, BrowserWindow, shell, Menu, dialog, clipboard } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -22,6 +24,15 @@ if (!app.requestSingleInstanceLock()) { app.quit(); return; }
 app.commandLine.appendSwitch('enable-features', 'CalculateNativeWinOcclusion');
 
 const root = path.join(__dirname, '..');
+const MAC = process.platform === 'darwin';
+
+// A Mac app opened from Finder or the Dock gets a bare PATH (/usr/bin:/bin:/usr/sbin:/sbin), so programs from
+// Homebrew (FFmpeg, Ollama, Python) wouldn't be found. Add the usual places, after what's already there.
+if (MAC) {
+  const have = String(process.env.PATH || '').split(':').filter(Boolean);
+  for (const d of ['/opt/homebrew/bin', '/opt/homebrew/sbin', '/usr/local/bin']) if (!have.includes(d)) have.push(d);
+  process.env.PATH = have.join(':');
+}
 const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath);
 
 function readHome() {
@@ -47,10 +58,11 @@ function findNearbyHome() {
   return {};
 }
 
-function setUpHome() {
+async function setUpHome() {
   let home = readHome();
   if (!home.agentDir) home = { ...findNearbyHome(), ...home };
-  const agentDir = home.agentDir || path.join(process.env.LOCALAPPDATA || app.getPath('userData'), 'Bob');
+  const { defaultHome } = await import(pathToFileURL(path.join(root, 'src', 'platform.js')).href);
+  const agentDir = home.agentDir || (process.platform === 'win32' && !process.env.LOCALAPPDATA ? path.join(app.getPath('userData'), 'Bob') : defaultHome());
   fs.mkdirSync(agentDir, { recursive: true });
   const config = home.config || path.join(agentDir, 'config.json');
   if (!fs.existsSync(config)) fs.copyFileSync(path.join(root, 'config.example.json'), config);
@@ -140,11 +152,22 @@ async function up(port) {
 }
 
 let win = null;
+// A Mac needs a menu bar: without one, Copy, Paste, Undo and Quit (Cmd+C, Cmd+V, Cmd+Z, Cmd+Q) don't work.
+// Windows and Linux keep Bob's window free of a menu, as before.
+function macMenu() {
+  return Menu.buildFromTemplate([
+    { role: 'appMenu' },
+    { role: 'editMenu' },
+    { label: 'View', submenu: [{ role: 'reload' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] },
+    { role: 'windowMenu' }
+  ]);
+}
+
 async function start() {
-  Menu.setApplicationMenu(null);
+  Menu.setApplicationMenu(MAC ? macMenu() : null);
   if (handOverToNewBob()) { app.quit(); return; }
   let home;
-  try { home = setUpHome(); } catch (e) { dialog.showErrorBox('Bob', `Bob couldn't set up his folder: ${e.message}`); app.quit(); return; }
+  try { home = await setUpHome(); } catch (e) { dialog.showErrorBox('Bob', `Bob couldn't set up his folder: ${e.message}`); app.quit(); return; }
   // An older Bob (from before Bob.exe) may already be running on the port: use it rather than fight it.
   if (!(await up(home.port))) {
     try { await import(pathToFileURL(path.join(root, 'src', 'server.js')).href); }
@@ -153,7 +176,7 @@ async function start() {
   }
   win = new BrowserWindow({
     width: 1200, height: 820, minWidth: 360, minHeight: 480,
-    title: 'Bob', icon: path.join(root, 'public', 'icons', 'bob.ico'),
+    title: 'Bob', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'),
     backgroundColor: '#1d1510', autoHideMenuBar: true, show: !process.argv.includes('--hidden'),
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }
   });
@@ -169,5 +192,7 @@ async function start() {
 }
 
 app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
+// Mac: clicking Bob in the Dock brings his window back (it may have been started hidden at login).
+app.on('activate', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
 app.on('window-all-closed', () => app.quit());
 app.whenReady().then(start);

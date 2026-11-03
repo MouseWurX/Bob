@@ -41,10 +41,15 @@ export function canDo(slotId, { entry, name, caps } = {}) {
 // The jobs a catalog model can do, by name ("Brain, Coding, Review"), for the Get models cards.
 export const jobNames = (entry) => (entry?.jobs || []).map((id) => SLOT_NAMES[id]).filter(Boolean);
 
+// Which computers each of Bob's own engines runs on (src/engines.js has the builds; this is for the model cards).
+// Not listed = Windows, Mac and Linux.
+export const ENGINE_PLATFORMS = { 'whisper.cpp': ['win32', 'linux'], Piper: ['win32', 'linux'] };
+export const engineRunsOn = (name, platform) => !platform || (ENGINE_PLATFORMS[name] || ['win32', 'darwin', 'linux']).includes(platform);
+
 // How well a model runs on this PC. hw: { vramGB, ramGB, freeGB }. Each answer that isn't ok has a one-line reason.
 export function suit(m, hw = {}, platform = '') {
   if (hw.freeGB != null && m.status?.state !== 'installed' && m.sizeGB > hw.freeGB) return { level: 'blocked', why: `Needs ${gb(m.sizeGB)} of disk space; ${hw.freeGB} GB is free.` };
-  if (m.needs && platform && platform !== 'win32') return { level: 'blocked', why: `${m.needs} only runs on Windows.` };
+  if (m.needs && platform && !engineRunsOn(m.needs, platform)) return { level: 'blocked', why: `${m.needs} doesn't run on ${platform === 'darwin' ? 'a Mac' : 'this computer'} yet.` };
   const v = hw.vramGB;
   // A brain bigger than the card keeps the rest in RAM. Too much for the RAM, and it won't run well at all.
   if (m.ollama && v && hw.ramGB && m.vramGB > v) {

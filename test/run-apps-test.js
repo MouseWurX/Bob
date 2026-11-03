@@ -10,6 +10,8 @@ import { cleanHands, handOn, toolsOff, HANDS } from '../src/hands-settings.js';
 import { handsTools, stopEverything, handsPrompt, runningNow } from '../src/hands.js';
 import { AppsDriver, blockedWindow, blockedApp, keysFor, BLOCKED_PROCESSES, plainText, LONG_TYPING } from '../src/hands-apps.js';
 import { Brain, staleHandErrors, claimsPcAction, CLAIM_CORRECTION } from '../src/brain.js';
+// The Apps hand only exists on Windows (src/hands-settings.js platforms); its logic is tested everywhere with a stand-in helper.
+process.env.BOB_PLATFORM = 'win32';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };

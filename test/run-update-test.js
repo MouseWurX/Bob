@@ -20,7 +20,7 @@ fs.mkdirSync(cfg.dataDir, { recursive: true });
 let c = checkUpdate();
 check('a newer build in the source folder is found', c.newer && c.available.build === 999 && c.source === src);
 if (process.platform !== 'win32') {
-  check('updating is Windows only', !c.canRun && /Windows/.test(c.why));
+  check('off Windows, updating means downloading the new version', !c.canRun && /releases/.test(c.why));
   let threw = false; try { startUpdate(cfg); } catch { threw = true; }
   check('so it refuses to start here', threw);
 }

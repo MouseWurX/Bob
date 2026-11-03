@@ -4,6 +4,10 @@
 // "Let Bob work without asking" (free, off by default). The hard limits (LIMITS) are each on by default and each
 // can be switched off by the user alone. Bob's own settings, code and the ✋ kill switch are never a limit he can lift.
 //
+// platforms (optional): the computers a Hand works on ('win', 'mac', 'linux'). Elsewhere it is hidden and stays off.
+// whatOn (optional): a different description for one computer, e.g. { mac: '...' }.
+// toolsOnlyOn (optional): tools inside a Hand that only exist on some computers, e.g. { defender_scan: ['win'] }.
+//
 // To add a Hand, add an entry to HANDS. Its switch, its line in Settings and its tool filtering all follow from it.
 export const HANDS = {
   files: {
@@ -24,7 +28,8 @@ export const HANDS = {
   apps: {
     label: 'Open and use apps',
     what: 'Open apps from your Start menu, read a window\'s buttons and fields, and click, type or press keys in it, one approved action at a time. A red "Bob is driving" bar shows while he does; move the mouse or press Esc to stop him at once. Never terminals, admin tools, password managers, password fields, sign-in or security prompts, or his own window.',
-    tools: ['open_app', 'app_look', 'app_act']
+    tools: ['open_app', 'app_look', 'app_act'],
+    platforms: ['win'] // Windows UI Automation (installer/bob-apps.ps1)
   },
   office: {
     label: 'Office documents and converting',
@@ -34,7 +39,9 @@ export const HANDS = {
   security: {
     label: 'Security and privacy',
     what: 'Checks this PC\'s protection, explains Defender alerts and runs scans, looks at suspicious files and links without opening them, and makes clean copies of photos before you share. He never turns protection off and never researches private people. Online look-ups need "Let Bob search the web".',
-    tools: ['security_check', 'defender_scan', 'inspect_file', 'strip_metadata', 'osint_lookup', 'check_exposure', 'security_tips']
+    tools: ['security_check', 'defender_scan', 'inspect_file', 'strip_metadata', 'osint_lookup', 'check_exposure', 'security_tips'],
+    whatOn: { mac: 'Checks this Mac\'s protection (firewall, FileVault, Gatekeeper, System Integrity Protection, what starts at login, what listens on the network), looks at suspicious files and links without opening them, and makes clean copies of photos before you share. He never turns protection off and never researches private people. Online look-ups need "Let Bob search the web".' },
+    toolsOnlyOn: { defender_scan: ['win'] }
   },
   maker: {
     label: 'Make his own tools',
@@ -53,6 +60,15 @@ export const LIMITS = {
   sendOut: { label: "Don't send anything out", on: 'Bob\'s Hands never send your things off the PC: no uploads, posts, git push, or typing and Send in browsers, email or chat apps.', more: 'Web searches and opening a page still work (the search words and the address go to that site). Cloud helpers have their own switch.', off: 'Bob can upload files, post to websites, push code and type or send in browsers, email and chat apps.' },
   passwords: { label: 'Never type into password fields', on: 'Bob never types into a password box in an app.', off: 'Bob can type into password boxes in apps (he still can\'t read what is in them).' }
 };
+
+// 'win', 'mac' or 'linux' (the same as src/platform.js osKey; this file has no imports). BOB_PLATFORM is for tests.
+export function handsOs(platform = (typeof process !== 'undefined' && (process.env.BOB_PLATFORM || process.platform)) || 'win32') {
+  return platform === 'win32' || platform === 'win' ? 'win' : platform === 'darwin' || platform === 'mac' ? 'mac' : 'linux';
+}
+// Does this Hand exist on this computer?
+export const handHere = (id, os_ = handsOs()) => Boolean(HANDS[id]) && (!HANDS[id].platforms || HANDS[id].platforms.includes(os_));
+// The Hands this computer has, with their description for it.
+export const handsHere = (os_ = handsOs()) => Object.entries(HANDS).filter(([id]) => handHere(id, os_)).map(([id, h]) => ({ id, label: h.label, what: h.whatOn?.[os_] || h.what }));
 
 const isAbs = (p) => typeof p === 'string' && p.length < 400 && !p.includes('\0') && (/^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('/'));
 
@@ -73,7 +89,7 @@ export const handsSettings = (cfg) => cleanHands(cfg.hands || {});
 // Is this Hand usable right now? The master switch and its own switch must be on, and the chat-page switch not stopped.
 export function handOn(cfg, id) {
   const h = handsSettings(cfg);
-  return h.enabled && !h.held && h[id]?.on === true;
+  return handHere(id) && h.enabled && !h.held && h[id]?.on === true;
 }
 // Is Bob working without asking right now? Needs the master switch, the free switch, and the ✋ switch not stopped.
 export function freeOn(cfg) {
@@ -93,6 +109,7 @@ export function readOnlyRoots(cfg) {
 export function handOffWhy(cfg, id) {
   const who = cfg.userName || 'The user', h = handsSettings(cfg);
   const label = HANDS[id].label;
+  if (!handHere(id)) return `The "${label}" Hand only works on ${HANDS[id].platforms.map((o) => ({ win: 'Windows', mac: 'a Mac', linux: 'Linux' })[o]).join(' and ')}, so it isn't on this computer.`;
   if (h.enabled && h.held && h[id]?.on) return `Hands are stopped with the Hands switch on the chat page. ${who} can switch them back on there.`;
   if (!h.enabled && h[id]?.on) return `Hands are off in Settings (the "Let Bob use Hands" switch). ${who} can turn it on in Settings, Show advanced settings, Hands.`;
   if (!h.enabled) return `Hands are off in Settings. ${who} can turn on "Let Bob use Hands" and "${label}" in Settings, Show advanced settings, Hands.`;
@@ -102,6 +119,10 @@ export function handOffWhy(cfg, id) {
 // The tool names that belong to Hands that are off right now (brain.toolSchemas hides them; each tool checks again when run).
 export function toolsOff(cfg) {
   const off = [];
-  for (const [id, hand] of Object.entries(HANDS)) if (!handOn(cfg, id)) off.push(...hand.tools);
+  const os_ = handsOs();
+  for (const [id, hand] of Object.entries(HANDS)) {
+    if (!handOn(cfg, id)) off.push(...hand.tools);
+    else for (const [tool, where] of Object.entries(hand.toolsOnlyOn || {})) if (!where.includes(os_)) off.push(tool);
+  }
   return off;
 }

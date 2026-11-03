@@ -277,7 +277,10 @@ export class PainterServer extends EventEmitter {
           execFile('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { windowsHide: true, timeout: 3000 }, (e2, o2) => resolve(e2 ? '' : String(o2)));
         });
       } else {
-        try { resolve(fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8')); } catch { resolve(''); }
+        // Linux: /proc. A Mac has no /proc, so ask ps for that one process's command line.
+        try { resolve(fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8')); } catch {
+          execFile('ps', ['-o', 'command=', '-p', String(pid)], { timeout: 3000 }, (e, o) => resolve(e ? '' : String(o)));
+        }
       }
     });
     if (!/sd-server|mock-sd-server/i.test(name)) return;

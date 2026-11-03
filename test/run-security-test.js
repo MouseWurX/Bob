@@ -88,7 +88,7 @@ const brain = { cfg, log: (k, t) => logs.push(`${k}: ${t}`) };
   check('a scan runs Defender and reads the result', ran?.k === 'file' && ran.target === path.resolve(work) && /found nothing/.test(r), r);
   const none = securityTools(brain, { env: {} });
   check('no Defender scanner: says another antivirus may be in charge', process.platform === 'win32' || (() => { try { none.defender_scan.check({ kind: 'quick' }); return false; } catch (e) { return /another antivirus/.test(e.message); } })());
-  const c = securityTools(brain, { ps: async (script) => (script === PS.overview ? { defender: { on: true, realtime: true, tamper: true, sigAgeDays: 0 }, firewall: [{ name: 'Public', on: true }] } : { detections: [] }) });
+  const c = securityTools(brain, { os_: 'win', ps: async (script) => (script === PS.overview ? { defender: { on: true, realtime: true, tamper: true, sigAgeDays: 0 }, firewall: [{ name: 'Public', on: true }] } : { detections: [] }) });
   check('security_check runs the fixed script and answers in words', /Defender antivirus is on/.test(await c.security_check.run({ area: 'overview' }, {})) && /no detections/.test(await c.security_check.run({ area: 'threats' }, {})));
   check('security_check has no card (it only reads)', !c.security_check.check && !c.inspect_file.check && !c.osint_lookup.check);
 }

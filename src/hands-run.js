@@ -51,6 +51,22 @@ const NEVER_TEXT = [
   [/\bmkfs\b|\bdd\s+[^\n]*of=\/dev\//i, 'writes raw disks']
 ];
 
+// macOS's own system tools that wipe disks, change startup or security, or manage accounts (on every computer, so a
+// command typed for a Mac is refused the same way wherever it is checked).
+for (const [k, v] of Object.entries({
+  diskutil: 'erases or changes disks', asr: 'restores whole disks', csrutil: 'changes macOS system protection', spctl: 'changes Gatekeeper (which apps may open)',
+  nvram: 'changes start-up memory', bless: 'changes how the Mac starts', fdesetup: 'changes disk encryption', sysadminctl: 'manages user accounts',
+  dscl: 'manages user accounts', dseditgroup: 'manages user groups', createhomedir: 'manages user accounts', pmset: 'changes power and sleep settings',
+  systemsetup: 'changes system settings', kextload: 'loads system extensions', kmutil: 'loads system extensions', tmutil: 'manages Time Machine backups'
+})) NEVER_PROGRAMS.set(k, v);
+NEVER_TEXT.push(
+  [/\bdiskutil\s+(erase\w*|partition\w*|zeroDisk|randomDisk|secureErase|apfs\s+delete\w*|reformat)\b/i, 'erases or changes disks'],
+  [/\bcsrutil\s+(disable|clear|authenticated-root)\b|\bspctl\s+--master-disable\b|\bspctl\s+--global-disable\b/i, 'switches macOS protection off'],
+  [/\blaunchctl\s+(bootstrap|bootout|load|unload|enable|disable)\s+system\b|\/Library\/LaunchDaemons\//i, 'changes what starts with the Mac'],
+  [/\bosascript\b[^\n]*with administrator privileges/i, 'asks for administrator rights'],
+  [/\bxattr\s+[^\n]*-[a-z]*d[a-z]*\s+com\.apple\.quarantine\b|\bxattr\s+-c\b/i, 'removes the "downloaded from the internet" check from files']
+);
+
 // "Don't send anything out" (a hard limit, on by default): commands that upload or post the user's things.
 // The line: a command that sends a body, a file or a push to another computer is refused; plain downloads
 // (curl URL, git pull/clone/fetch, npm install) are reads and stay allowed.

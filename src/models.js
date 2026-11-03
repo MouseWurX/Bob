@@ -11,6 +11,7 @@ import { appDir, saveSettings } from './config.js';
 import { ENGINES, engineStatus, installEngine, latestEngine } from './engines.js';
 import { audioReady, voicesReady, aceModelsDir, aceFileOk, tidyAceCache } from './audio.js';
 import { maestroModels } from './maestro.js';
+import { gpuInfo } from './platform.js';
 
 const MODEL_EXT = new Set(['.gguf', '.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.sft']);
 const SKIP = new Set(['node_modules', '.git', '__pycache__', 'site-packages', 'venv', '.venv', 'env', 'cache', '.cache', 'Lib', 'include', 'temp', 'tmp', 'logs', 'blobs']);
@@ -248,13 +249,8 @@ export class ModelShop {
   }
 
   async hardware() {
-    const gpu = await new Promise((resolve) => {
-      execFile('nvidia-smi', ['--query-gpu=name,memory.total', '--format=csv,noheader,nounits'], { timeout: 5000, windowsHide: true }, (err, out) => {
-        if (err) return resolve(null);
-        const [name, mb] = String(out).split('\n')[0].split(',').map((s) => s.trim());
-        resolve(name ? { name, vramGB: Math.round(Number(mb) / 1024) } : null);
-      });
-    });
+    // NVIDIA cards through nvidia-smi; a Mac's share of its shared memory (src/platform.js).
+    const gpu = await gpuInfo();
     let freeGB = null;
     try { const s = fs.statfsSync(this.cfg.agentDir); freeGB = Math.round((s.bavail * s.bsize) / 1e9); } catch {}
     const vram = gpu?.vramGB ?? this.cfg.gpuVramGB ?? 0;
