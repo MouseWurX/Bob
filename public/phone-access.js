@@ -20,11 +20,11 @@ export async function mountPhoneAccess(box) {
     const hosts = v.hosts.length ? v.hosts : v.found;
     box.innerHTML = `<strong>Let my phone in</strong> <span class="tag">off unless you turn it on</span>
       <label class="switch"><input type="checkbox" data-phone-on ${v.enabled ? 'checked' : ''}><span><strong>Let my phone in</strong><br><span class="muted">Bob for Android, or your phone's browser, can talk to this Bob over Tailscale with the passcode below. Nothing else on your network can.</span></span></label>
-      <div class="row"><strong>Passcode</strong> <span class="muted">${shown ? `<code>${esc(shown)}</code> Type it into the phone now: it isn't shown again.` : v.passcodeSet ? 'Set.' : 'Not set yet.'}</span>
+      ${restart || (v.enabled !== v.live) ? '<p class="muted"><strong>Restart Bob to apply this.</strong> Close his window and open him again from the Start menu.</p>' : ''}
+      <div class="row"><strong>Passcode</strong> <span class="muted">${shown ? `<code>${esc(shown)}</code> Type it into the phone now: it isn't shown again.` : v.passcodeSet ? 'set (it\'s only shown once, when you make it).' : 'Not set yet.'}</span>
         <button type="button" data-phone-newcode>${v.passcodeSet ? 'Make a new passcode' : 'Make a passcode'}</button></div>
       <div class="row"><strong>Address for the phone</strong> ${hosts.length ? hosts.map((h) => `<code>${esc(h)}</code>`).join(' or ') : '<span class="muted">No Tailscale address found on this PC. Install Tailscale and sign in, then check again.</span>'}
         <button type="button" data-phone-find>Check again</button></div>
-      ${restart || (v.enabled !== v.live) ? '<p class="muted"><strong>Restart Bob to apply this.</strong> Close his window and open him again from the Start menu.</p>' : ''}
       ${msg ? `<p class="muted" role="status">${esc(msg)}</p>` : ''}
       <details class="more"><summary>More</summary><p class="muted">On the phone: install Tailscale and sign in with the same account, open Bob for Android, Menu, Bobs on your network, and add the address above. Then type the passcode and tap Log in. Making a new passcode signs every phone out. Turning this off closes the door again after a restart.</p></details>`;
   };

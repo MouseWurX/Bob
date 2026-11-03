@@ -12,7 +12,7 @@ globalThis.BobHelp = {
     {
       id: 'chat', title: 'Chatting',
       html: `<p>Type at the bottom and tap ➤. Send as many as you like: each waits its turn, and the line above the box says how many are waiting. While I'm answering, ➤ turns into ■, which stops me.</p>
-<p>The pill at the top right says who's answering: a green dot is a Bob on your network, blue is the phone brain, red is nobody. Tap it to see why or fix it.</p>
+<p>The pill at the top right says who's answering: a green dot is a Bob on your network, blue is the phone brain, grey is nobody (No Bob reachable). Tap it to see why or fix it.</p>
 <p>Under each reply: <strong>Copy</strong>, <strong>Read aloud</strong>, and, for a phone-brain reply when a Bob on your network is reachable, <strong>Ask (that Bob) instead</strong> to get a second opinion from the big brain.</p>
 <p>Code blocks have their own Copy button. Links open in your phone's browser, never inside me.</p>`
     },
@@ -81,7 +81,7 @@ globalThis.BobHelp = {
     },
     {
       id: 'theme', title: 'Theme',
-      html: `<p>Settings, <strong>Theme</strong>: Inn (dark, the starting position), Light, or Follow the phone (matches Android's dark mode).</p>`
+      html: `<p>Settings, <strong>Theme</strong>: Bob's Inn (dark, the starting position), Light, or Follow the phone (matches Android's dark mode).</p>`
     },
     {
       id: 'resume', title: 'Pick up where Bob left off',

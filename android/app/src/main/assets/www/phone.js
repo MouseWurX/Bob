@@ -85,7 +85,7 @@
     const who = settings.userName ? `, ${settings.userName}` : '';
     const a = answerer();
     let line;
-    if (a.kind === 'net') line = `Hi${who}. I'm patched through to ${a.bob.name}, so I've got the whole workshop: pictures, music, Hands, the big brains.`;
+    if (a.kind === 'net') line = `Hi${who}. I'm patched through to "${a.bob.name}", so I've got the whole workshop: pictures, music, Hands, the big brains.`;
     else if (a.kind === 'phone') line = `Hi${who}. Pocket edition today: the phone brain is on. Chat, memory, thinking things through. Big jobs need a Bob on your network.`;
     else if (!bobs.length && !settings.phoneOn) line = `Hi${who}. I'm not wired to anything yet. Add your PC's Bob under Bobs on your network, or switch on the phone brain. Help (in the menu) walks you through both.`;
     else line = `Hi${who}. Nobody's home right now: ${nobodyWhy(a.why)}`;
@@ -165,7 +165,10 @@
   function drawWho() {
     const a = answerer();
     $('who-dot').className = `dot ${a.kind}`;
-    $('who-text').textContent = a.kind === 'net' ? a.bob.name : a.kind === 'phone' ? 'Phone brain' : 'Nobody home';
+    $('who-text').textContent = a.kind === 'net' ? a.bob.name : a.kind === 'phone' ? 'Phone brain' : 'No Bob reachable';
+    // The greeting says who answers too: redraw it when that changes, so the two never disagree.
+    if ((!chat || !chat.msgs.length) && drawWho.last !== a.kind + (a.bob?.base || '')) drawChat();
+    drawWho.last = a.kind + (a.bob?.base || '');
     $('effort').classList.toggle('hidden', a.kind !== 'net');
     $('effort').textContent = `Effort: ${settings.effort[0].toUpperCase()}${settings.effort.slice(1)}`;
     drawStatus();
@@ -202,7 +205,7 @@
   // "That's a job for a bigger Bob." Nothing is sent without this tap.
   function offerCard(text, job, bob) {
     const card = el('div', { class: 'card' },
-      el('div', { class: 'q', text: `That needs a bigger Bob: I can't ${job.what} on the phone. Send it to ${bob.name}?` }),
+      el('div', { class: 'q', text: `That needs a bigger Bob: I can't ${job.what} on the phone. Send it to "${bob.name}"?` }),
       el('div', { class: 'row' },
         el('button', { class: 'main', text: `Send to ${bob.name}`, onclick: () => { card.remove(); queue.push({ chatId: chat.id, text, to: bob.base }); pump(); } }),
         el('button', { text: 'Keep it here', onclick: () => { card.remove(); queue.push({ chatId: chat.id, text, to: 'phone' }); pump(); } })));
@@ -292,10 +295,10 @@
     const b = bobs.find((x) => x.base === base);
     phone('net.post', { address: b.address, path: '/api/chat', body: JSON.stringify({ sessionId: `phone-${c.id}`, text, effort: settings.effort }) })
       .then((r) => {
-        if (r.status === 401) { live[base].signedIn = false; grow(`*(${b.name} wants the passcode again. It's under Bobs on your network.)*`); finish(); drawWho(); }
-        else if (r.status >= 400) { grow(`*(${b.name} said no: ${shortError(r.body)})*`); finish(); }
+        if (r.status === 401) { live[base].signedIn = false; grow(`*("${b.name}" wants the passcode again. It's under Bobs on your network.)*`); finish(); drawWho(); }
+        else if (r.status >= 400) { grow(`*("${b.name}" said no: ${shortError(r.body)})*`); finish(); }
       })
-      .catch((e) => { grow(`*(Couldn't reach ${b.name}: ${e.message})*`); finish(); });
+      .catch((e) => { grow(`*(Couldn't reach "${b.name}": ${e.message})*`); finish(); });
     drawStatus();
   }
   const shortError = (body) => { try { return JSON.parse(body).error || 'unknown'; } catch { return String(body).slice(0, 120); } };
@@ -325,7 +328,7 @@
     const what = ev.together ? `${ev.together.length} things for one job` : ev.command ? `run: ${ev.command}` : '';
     const answer = (allow) => phone('net.post', { address: b.address, path: '/api/approve', body: JSON.stringify({ id: ev.id, allow }) }).then(() => card.remove()).catch(() => toast("Couldn't reach the PC"));
     const card = el('div', { class: 'card', 'data-approval': ev.id },
-      el('div', { class: 'q' }, el('strong', { text: `${name} needs your OK` }), el('div', { text: ev.text || '' })),
+      el('div', { class: 'q' }, el('strong', { text: `"${name}" needs your OK` }), el('div', { text: ev.text || '' })),
       what ? el('pre', { text: what }) : null,
       ev.together ? el('p', { class: 'help-line', text: 'To tick some and not others, use the card on the PC.' }) : null,
       el('div', { class: 'row' },
@@ -386,6 +389,7 @@
     const list = $('bob-list');
     list.textContent = '';
     if (!bobs.length) list.append(el('p', { class: 'dim', text: 'None yet. Add your PC\'s Bob below.' }));
+    else list.append(el('p', { class: 'help-line', text: bobs.length > 1 ? 'The First choice answers when more than one Bob is reachable. Make first choice on another Bob moves him to the top.' : 'The First choice answers when more than one Bob is reachable. Add another Bob to choose between them.' }));
     bobs.forEach((b, i) => {
       const st = live[b.base] || {};
       const state = !st.signedIn ? 'Needs the passcode' : st.up ? 'Reachable' : "Can't reach right now";
@@ -467,7 +471,7 @@
           going && dl.state !== 'checking' ? el('button', { text: 'Cancel', onclick: () => { phone('brain.cancel', { file: m.file.name }); dl = null; drawBrain(); } }) : null,
           have ? el('button', { text: 'Test speed', onclick: () => { bench[m.file.name] = 'Testing… (about a minute)'; phone('brain.bench', { file: m.file.name }); drawBrain(); } }) : null,
           have ? el('button', { text: 'Delete', onclick: (e) => {
-            if (!e.currentTarget.dataset.sure) { e.currentTarget.dataset.sure = '1'; e.currentTarget.textContent = `Sure? Frees ${L.size(m.file.bytes)}`; return; }
+            if (!e.currentTarget.dataset.sure) { e.currentTarget.dataset.sure = '1'; e.currentTarget.textContent = using ? `Delete ${m.name} (${L.size(m.file.bytes)})? The phone brain stops until you download one again. Tap again to delete.` : `Delete ${m.name} (${L.size(m.file.bytes)})? Tap again to delete.`; return; }
             phone('brain.delete', { file: m.file.name }).then(refreshPhone);
           } }) : null),
         bench[m.file.name] ? el('p', { class: 'help-line', text: bench[m.file.name] }) : null,

@@ -76,7 +76,7 @@
 
 <section class="panel hidden" id="settings"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Settings</h2></div><div class="body">
   <h3>Who answers</h3>
-  <label class="choice"><input type="radio" name="mode" value="auto"><div><strong>Automatic</strong><p class="help-line">A Bob on your network when one is reachable, otherwise the phone brain (if it's on).</p></div></label>
+  <label class="choice"><input type="radio" name="mode" value="auto"><div><strong>Automatic</strong> <span class="dim small">(to start with)</span><p class="help-line">A Bob on your network when one is reachable, otherwise the phone brain (if it's on).</p></div></label>
   <label class="choice"><input type="radio" name="mode" value="net"><div><strong>Always a Bob on your network</strong><p class="help-line">Never the phone brain. If no Bob is reachable, Bob says so and nothing is sent.</p></div></label>
   <label class="choice"><input type="radio" name="mode" value="phone"><div><strong>Always the phone</strong><p class="help-line">Stays on the phone. Bob still offers to send big jobs to another Bob, and waits for your tap.</p></div></label>
   <h3>You</h3>
@@ -86,7 +86,7 @@
   <label class="switch"><div class="words"><strong>Read replies aloud</strong><p class="help-line">Uses your phone's own voice. Off to start with.</p></div><span class="pill"><input type="checkbox" id="read-aloud"><span></span></span></label>
   <h3>Look</h3>
   <label class="field" for="theme">Theme</label>
-  <select id="theme"><option value="inn">Inn (dark)</option><option value="light">Light</option><option value="phone">Follow the phone</option></select>
+  <select id="theme"><option value="inn">Bob's Inn (dark)</option><option value="light">Light</option><option value="phone">Follow the phone</option></select>
   <h3>After Bob is closed</h3>
   <label class="switch"><div class="words"><strong>Pick up where Bob left off</strong><p class="help-line">If Android closes Bob in the middle of a phone-brain reply, he asks again when you come back. Off to start with.</p></div><span class="pill"><input type="checkbox" id="resume"><span></span></span></label>
 </div></section>
