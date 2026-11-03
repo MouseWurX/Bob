@@ -106,6 +106,7 @@ Update this file in the same handover as any change to settings.
 | Get models > 🎵 Music | ACE-Step 1.5 music models card (about 10.1 GB, download on click only) | not downloaded | ok (approved with edits, 1.5.37) |
 | Settings > Advanced > Engines & speed | Pick up where Bob left off after a restart (was "Pick up unfinished jobs after a restart") | off | ok (approved with edits, 1.5.38) |
 | Settings > Everyday > 💾 Where Bob saves things | saveDir: Folder, Browse…, Save here, Show in folder, Use Bob's own folder | Bob's own folder (Made by Bob) | ok (approved with edits, songs) |
-| Settings > Advanced > Engines & speed | Keep chatting while Bob is busy | ON (the owner's explicit exception to opt-in, 2026-11-03) | ok (approved with edits, 1.5.41) |
+| Settings > Advanced > Engines & speed | Keep chatting while Bob is busy (1.5.51: also beside long text jobs, on a second llama-server on the processor) | ON (the owner's explicit exception to opt-in, 2026-11-03) | ok (approved with edits, 1.5.41; 1.5.51 approved with edits) |
+| Settings > Advanced > Engines & speed | Let the reviewer sit beside Bob's main brain (mootBeside) | off | ok (approved with edits, 1.5.51) |
 | Settings > Everyday | Let Bob pick the session | ON (the owner's explicit exception to opt-in) | ok (approved with edits, 1.5.41/42) |
 | Chat page > Effort row | 🎮 Gaming button (Off/On): locks Gaming, clears big brains from the card, parks jobs in Tasks | off | ok (approved with edits, 1.5.41/42) |

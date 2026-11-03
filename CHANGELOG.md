@@ -4,6 +4,24 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.52
+
+### Fix: some brains failed with "System message must be at the beginning"
+- Some brains (Qwen 3.8, for one) only accept Bob's own instructions at the very start of a chat. When Bob added a short note mid-chat (for example "Thinking time is up" at Medium effort, or a nudge to use his tools), Bob's engine refused the request with an error, and the job failed.
+- Now, when a brain refuses like that, Bob sends the request again with those notes folded into the chat as marked notes from his own system, and he remembers to do that for that brain from then on. Other brains are unchanged.
+
+## 1.5.51
+
+### A second brain beside long jobs
+- **Keep chatting while Bob is busy** now also works while Bob is on a long text job: Medium effort and up, the Coding session, or anything that has run 20 seconds. A plain chat message is answered by his small brain on a second engine beside the job: on the graphics card when it has room for both and isn't busy, otherwise on the processor. His main brain stays on the graphics card and keeps working; nothing is swapped. The chat says which.
+- On the processor, the second engine never touches the graphics card and uses half the cores at lower priority. If a picture needs the card, a second brain on the card steps over to the processor. It only starts when there's enough free memory, and goes again as soon as the job is done.
+- If there isn't room, the main brain is on the processor itself, or the second engine won't start, the message waits for the job as before, and Bob says so.
+- Not in the Gaming session, and only on Bob's own engine.
+
+### Let the reviewer sit beside Bob's main brain (new, off to start with)
+- Settings > Show advanced settings > Engines & speed. At High and Extreme effort the reviewer normally swaps in for the main brain. With this on, and enough free RAM, the reviewer loads beside it instead (on the graphics card if there's room, otherwise the processor), so the moot is a true add and the main brain carries on straight after. Reviews on the processor are slower, so this suits a small Review brain best.
+- When the setting is off, the moot says "My main brain steps out and the review brain comes in". The first time that happens, it also shows a one-time tip about where to find the setting.
+
 ## 1.5.50
 
 ### Make his own tools (new Hand, off to start with)

@@ -75,7 +75,75 @@ function sideBrainBytes(brain) {
 }
 
 // A side-lane reply: always the small brain on the processor, so it never touches the card the painter holds.
-export const sideBrain = (cfg) => ({ model: sessionBrains(cfg).small, cpu: true });
+// 1.5.51: beside a big text job it goes to the engine's second server (beside: true), so the main brain stays loaded.
+export const sideBrain = (cfg, job) => ({ model: sessionBrains(cfg).small, cpu: true, ...(job?.beside ? { beside: true } : {}) });
+
+// 1.5.51 "Keep chatting while Bob is busy", part 2: beside a big text job (Medium effort and up, the Coding session, or
+// any job that has run 20 seconds), a plain chat message is answered by the small brain on a second llama-server, on
+// the processor only, if there's room in RAM. The main brain stays on the card and carries on; nothing is swapped.
+// A short job isn't worth it: the quick brain on the processor takes up to half a minute to its first word, while the
+// card answers in a few seconds once the job is done.
+export const BIG_AFTER_MS = 20000;
+export const MOVE_TO_CPU = 'Moving my quick brain to the processor so the picture can use the graphics card. Replies will be a little slower.';
+export const BESIDE_FAILED = "My second brain wouldn't start beside the job (probably not enough free RAM), so this message waits its turn. I'll answer as soon as the job is done.";
+const GB = 1024 ** 3;
+export function mainJob(brain) {
+  return brain.queue?.find((j) => j.state === 'working' && !j.side && laneOf(brain.cfg || {}, j) === 'talk') || null;
+}
+export function bigJob(brain, now = Date.now()) {
+  const j = mainJob(brain);
+  if (!j) return false;
+  return bigThinker(j) || bigSession(brain.cfg || {}) || now - (j.startedAt || now) >= BIG_AFTER_MS;
+}
+function besideBytes(brain, model, ctx) {
+  const est = brain.gate?.brainBytes?.(model, { ctx });
+  if (est) return est;
+  try { const f = brain.engine?.resolve?.(model)?.gguf; if (f) return Math.round(fs.statSync(f).size * 1.1 + Math.min(ctx || 32768, 131072) * 60 * 1024); } catch {}
+  return 6 * GB; // unknown: a 4B brain and its memory for the chat
+}
+export function besideBigOk(brain, job, { freeMem = os.freemem(), now = Date.now() } = {}) {
+  const cfg = brain.cfg || {};
+  if (cfg.chatWhileBusy === false || !job || job.kind !== 'chat' || job.noBeside) return false;
+  if (job.refs?.length || (job.effort && job.effort !== 'low')) return false;
+  if (cfg.engine !== 'llamacpp' || typeof brain.engine?.besideServer !== 'function') return false;
+  if (currentSession(cfg).id === 'light') return false; // Gaming: the processor is the game's
+  if (!brain.turns?.has('talk') || brain.turns.has(SIDE_LANE)) return false;
+  if (brain.state?.state === 'painting') return false; // part 1 (sideOk) answers beside a media step
+  if (brain.engine.currentCpu) return false; // the main brain is on the processor itself: two would fight over it
+  const small = sessionBrains(cfg).small;
+  if (!small) return false;
+  const held = brain.engine.beside?.current; // the second server holds the reviewer for a moot: leave it be
+  if (held && !sameModel(held, small)) return false;
+  if (!bigJob(brain, now)) return false;
+  return freeMem >= besideBytes(brain, small, chatBrain(cfg).ctx) + 2 * GB;
+}
+
+// 1.5.51 opt-in "Let the reviewer sit beside the main brain" (mootBeside): at High and Extreme effort the reviewer
+// loads on the second server, on the processor, instead of swapping the main brain out, when there's room in RAM.
+// A chat waiting behind a job that isn't big yet goes beside it once the job has run BIG_AFTER_MS: one pump then.
+export function besideLater(brain, now = Date.now()) {
+  if (brain.bigTimer || brain.cfg?.chatWhileBusy === false || brain.cfg?.engine !== 'llamacpp' || brain.turns?.has(SIDE_LANE)) return null;
+  const main = mainJob(brain);
+  if (!main?.startedAt || !brain.queue.some((j) => j.state === 'waiting' && j.kind === 'chat' && !j.noBeside)) return null;
+  const due = main.startedAt + BIG_AFTER_MS - now;
+  if (due <= 0) return null;
+  brain.bigTimer = setTimeout(() => { brain.bigTimer = null; brain.pump?.(); }, due + 50);
+  brain.bigTimer.unref?.();
+  return due;
+}
+
+export function mootBesideOk(brain, model, ctx, { freeMem = os.freemem() } = {}) {
+  const cfg = brain.cfg || {};
+  if (cfg.mootBeside !== true || cfg.engine !== 'llamacpp' || typeof brain.engine?.besideServer !== 'function' || !model) return false;
+  if (currentSession(cfg).id === 'light') return false;
+  const main = brain.engine.current;
+  if (!main || brain.engine.currentCpu || sameModel(main, model)) return false; // nothing to keep, or it's already loaded
+  const side = brain.turns?.get?.(SIDE_LANE);
+  if (side?.beside) return false; // a quick reply is using the second server right now
+  const held = brain.engine.beside?.current;
+  if (held && sameModel(held, model)) return true; // already beside from the last check
+  return freeMem >= besideBytes(brain, model, ctx) + 2 * GB;
+}
 
 export function besideOk(brain, job, lane) {
   if (brain.cfg?.engine !== 'llamacpp' || !brain.turns?.size || brain.turns.has(lane)) return true;
@@ -173,16 +241,21 @@ export function loadMode(plan) {
   return 'load';
 }
 // The chat line for a brain load. A reviewer joining is the moot, said plainly.
-export function loadLine({ mode, who, model, from, copy, secs, label, single = false, what = 'the answer' }) {
+export function loadLine({ mode, who, model, from, copy, secs, label, single = false, what = 'the answer', beside = false, onCard = false, besideOn = false, tip = false }) {
   const lc = (t) => t.charAt(0).toLowerCase() + t.slice(1); // "Coding brain (Qwen3 Coder 30B)" -> "coding brain (...)"
   const mine = (t) => lc(t).replace(/^brain \(/, 'main brain ('); // Bob's main slot reads "my main brain (...)"
   const now = lc(label(model, who)), old = from ? mine(label(from)) : '';
   if (who === 'reviewer') {
+    if (mode === 'add' && beside && !onCard) return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, on the processor, about ${secs} seconds. Reviews there are slower than on the graphics card.`;
     if (mode === 'add') return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, about ${secs} seconds.`;
     // Settings sign-off (1.5.49): the real reason. Bob's own engine runs one brain whatever its size; Ollama is about memory.
-    if (mode === 'swap' && old) return `🛰 Moot: ${copy} checks ${what}. ${single ? 'My engine runs one brain at a time' : 'Only one big brain fits right now'}, so my ${old} steps out and the ${now} comes in, about ${secs} seconds.`;
+    // Settings sign-off (1.5.51): switch off = a plain swap line; the tip about the switch shows once only (tip).
+    if (mode === 'swap' && old && single && !besideOn) return `🛰 Moot: ${copy} checks ${what}. My ${old} steps out and the ${now} comes in, about ${secs} seconds.${tip ? ' (To keep both loaded, turn on "Let the reviewer sit beside Bob\'s main brain" in Settings, Show advanced settings, Engines & speed.)' : ''}`;
+    if (mode === 'swap' && old) return `🛰 Moot: ${copy} checks ${what}. ${single ? 'There isn\'t room for both right now' : 'Only one big brain fits right now'}, so my ${old} steps out and the ${now} comes in, about ${secs} seconds.`;
     return `🛰 Moot: ${copy} checks ${what}, on the ${now}. Loading it, about ${secs} seconds.`;
   }
+  if (mode === 'add' && old && beside && onCard) return `Adding the ${now} beside my ${old} on the graphics card, which has room for both. About ${secs} seconds.`;
+  if (mode === 'add' && old && beside) return `Adding the ${now} on the processor, so my ${old} keeps working on the graphics card. About ${secs} seconds, and this reply starts slower than usual.`;
   if (mode === 'add' && old) return `Adding the ${now} beside my ${old}, which stays loaded. About ${secs} seconds.`;
   if (mode === 'load' || !old) return `Loading the ${now}. Back in about ${secs} seconds.`;
   return `Swapping brains: my ${old} goes out and the ${now} comes in. Back in about ${secs} seconds.`;
@@ -286,6 +359,7 @@ export class Brain {
     const gone = [];
     for (const m of loaded) {
       if (this.turns.size) break; // a new job started: leave the rest to it
+      if (m.beside) { gone.push(...(await this.engine.dropBeside?.().catch(() => []) || [])); continue; } // 1.5.51: the second server goes after every job
       if (!isBobs(this.cfg, m.name) && !sameModel(m.name, chat)) continue;
       if (sameModel(m.name, chat)) continue; // the chat brain: held, or let go by the idle timer / grace below
       gone.push(...(await (this.engine.unload ? this.engine.unload(m.name) : this.engine.unloadAll()).catch(() => [])));
@@ -334,7 +408,7 @@ export class Brain {
       const split = m.split !== false && m.size > 0;
       const ramGB = split ? gb(Math.max(0, m.size - (m.vram || 0))) : null;
       // estimate: llama.cpp without a per-process figure from nvidia-smi (common on Windows) only knows the file size.
-      return { name: m.name, ...(m.own ? { label: `${m.name} (Bob's own copy)` } : {}), gb: split ? gb(m.vram || 0) : gb(m.vram || m.size), ramGB, estimate: !split && !m.vram, ctx: m.ctx || null, onCard: m.vram > 0 || (!m.vram && !chat.cpu && !split), chat: sameModel(m.name, chat.model) };
+      return { name: m.name, ...(m.beside ? { label: `${m.name} (beside, ${m.onCard ? 'on the graphics card' : 'on the processor'})`, beside: true } : m.own ? { label: `${m.name} (Bob's own copy)` } : {}), gb: split ? gb(m.vram || 0) : gb(m.vram || m.size), ramGB, estimate: !split && !m.vram, ctx: m.ctx || null, onCard: m.beside ? Boolean(m.onCard) : (m.vram > 0 || (!m.vram && !chat.cpu && !split)), chat: !m.beside && sameModel(m.name, chat.model) };
     });
     const ramKnown = models.some((m) => m.ramGB != null);
     const state = this.waking ? 'waking' : this.turns.size ? 'working' : models.length ? 'awake' : 'asleep';
@@ -430,13 +504,13 @@ export class Brain {
     const used = await this.gate.need({ id: 'brain', model, opts }, {
       signal, emit, who,
       announce: async (m, attempt) => {
-        const secs = await this.engine.estimateLoad(m).catch(() => 15);
+        const secs = await this.engine.estimateLoad(m, opts).catch(() => 15);
         // 1.5.49: say whether this brain replaces one (swap), joins one (add), or fills an empty head (load).
         const plan = await this.engine.loadPlan?.(m, opts).catch(() => null) || null;
         const mode = loadMode(plan);
-        const text = attempt ? `That didn't load right. Trying the ${this.brainLabel(m, who)} again, about ${secs} seconds.` : loadLine({ mode, who, model: m, from: plan?.drop?.[0] || plan?.keep?.[0] || '', copy: who === 'reviewer' ? copyName(this.cfg, 'reviewer', 'second look') : '', secs, label: (x, w) => this.brainLabel(x, w), single: Boolean(plan?.single), ...(opts?.what ? { what: opts.what } : {}) });
+        const text = attempt ? `That didn't load right. Trying the ${this.brainLabel(m, who)} again, about ${secs} seconds.` : loadLine({ mode, who, model: m, from: plan?.drop?.[0] || plan?.keep?.[0] || '', copy: who === 'reviewer' ? copyName(this.cfg, 'reviewer', 'second look') : '', secs, label: (x, w) => this.brainLabel(x, w), single: Boolean(plan?.single), beside: Boolean(plan?.beside), onCard: Boolean(plan?.onCard), besideOn: this.cfg.mootBeside === true, tip: who === 'reviewer' && mode === 'swap' && Boolean(plan?.single) && this.cfg.mootBeside !== true && this.besideTipOnce(), ...(opts?.what ? { what: opts.what } : {}) });
         emit({ type: 'announce', text, seconds: secs });
-        this.setState('loading', text, m, { mode: attempt ? 'swap' : mode, from: plan?.drop?.[0] || plan?.keep?.[0] || '' });
+        this.setState('loading', text, m, { mode: attempt ? 'swap' : mode, from: plan?.drop?.[0] || plan?.keep?.[0] || '', ...(plan?.beside ? { beside: true } : {}) });
       }
     }).catch((e) => {
       if (/^Stopped\.$/.test(e.message)) throw e;
@@ -446,6 +520,15 @@ export class Brain {
     this.state.model = used;
     if (this.state.state === 'loading' || this.state.state === 'waiting') { this.log('model', `loaded ${used}`); this.setState('thinking', '', used); }
     return used;
+  }
+
+  // 1.5.51: the tip about "Let the reviewer sit beside Bob's main brain" shows the first time a moot swaps, then never
+  // again (a marker in Bob's data folder remembers it across restarts).
+  besideTipOnce() {
+    const f = path.join(this.cfg.dataDir || '.', 'moot-beside-tip-shown');
+    try { if (fs.existsSync(f)) return false; fs.writeFileSync(f, new Date().toISOString()); } catch { if (this.besideTipShown) return false; }
+    this.besideTipShown = true;
+    return true;
   }
 
   // How a brain is named to the user: its Equip slot and its catalog name, never a model id.
@@ -525,12 +608,12 @@ export class Brain {
     catch (e) {
       if (opts.signal?.aborted) throw e;
       let alive = true;
-      try { alive = await this.engine.isLoaded(opts.model, { cpu: opts.cpu, ctx: opts.ctx }); } catch { alive = false; }
+      try { alive = await this.engine.isLoaded(opts.model, { cpu: opts.cpu, ctx: opts.ctx, beside: opts.beside }); } catch { alive = false; }
       if (alive && !/ECONNRESET|socket hang up|fetch failed|terminated|ECONNREFUSED/i.test(e.message)) throw e;
       this.log('handoff', `${opts.model} dropped out mid-answer (${e.message}); loading it again`);
       this.gate.ledgerOf(opts.signal)?.step('retry', { what: opts.model, why: e.message }).done();
       emit?.({ type: 'token', text: '\n\nMy brain dropped out there. Loading it again and picking up where I left off.\n\n' });
-      const model = (await this.ensureModel(opts.model, emit || (() => {}), opts.signal, who, { cpu: opts.cpu, ctx: opts.ctx })) || opts.model;
+      const model = (await this.ensureModel(opts.model, emit || (() => {}), opts.signal, who, { cpu: opts.cpu, ctx: opts.ctx, ...(opts.beside ? { beside: true } : {}) })) || opts.model;
       return this.engine.chat({ ...opts, model });
     }
   }
@@ -728,6 +811,9 @@ export class Brain {
   // GPU-only models leave for the painter; in an Art session the chat brain on the processor stays.
   async clearGpu() {
     // 1.5.41: a quick reply running beside a job on the processor brain keeps going too.
+    // 1.5.51: a quick brain beside the job on the card moves to the processor; the reply says why it slows down.
+    const side = this.turns?.get?.(SIDE_LANE);
+    if (side?.beside && this.engine.beside?.currentCard === 'whole') this.broadcast({ type: 'announce', text: MOVE_TO_CPU, turnId: side.turnId, sessionId: side.sessionId });
     if ((currentSession(this.cfg).cpu || this.turns?.has(SIDE_LANE)) && this.engine.unloadGpu) return this.engine.unloadGpu();
     return this.engine.unloadAll();
   }
@@ -1164,15 +1250,17 @@ export class Brain {
       if (waitsForGaming(this.cfg, job)) { this.gamingProbe?.(); continue; } // 1.5.23: waits in Tasks until the session isn't Gaming
       if (job.after && !this.downloadReady(job)) continue; // 1.5.38: waits for the download it needs
       let lane = laneOf(this.cfg, job);
-      if (lane === 'talk' && this.turns.has('talk') && !seen.has(SIDE_LANE) && sideOk(this, job)) lane = SIDE_LANE;
+      let beside = false;
+      if (lane === 'talk' && this.turns.has('talk') && !seen.has(SIDE_LANE) && (sideOk(this, job) || (beside = besideBigOk(this, job)))) lane = SIDE_LANE;
       if (seen.has(lane)) continue;
       seen.add(lane);
       if (this.turns.has(lane)) continue;
       if (!besideOk(this, job, lane)) continue; // 1.5.40: waits for the other lane, see besideOk
-      job.side = lane === SIDE_LANE; job.state = 'working'; job.startedAt = Date.now(); job.steps = [];
+      job.side = lane === SIDE_LANE; job.beside = job.side && beside; job.state = 'working'; job.startedAt = Date.now(); job.steps = [];
       this.saveQueue();
       this.startTurn(job.sessionId, job.text, job.refs, job, lane);
     }
+    besideLater(this);
   }
 
   // Runs one job. Progress goes out as events; when it ends, the next job starts.
@@ -1182,7 +1270,7 @@ export class Brain {
     const controller = new AbortController();
     let flagged = false; // an error or correction note under this reply: no sleepy aside (never joke about a real failure)
     const emit = (ev) => { if (['error', 'correction', 'held', 'waiting'].includes(ev.type)) flagged = true; this.broadcast({ ...ev, turnId, sessionId }); };
-    this.turns.set(lane, { turnId, controller });
+    this.turns.set(lane, { turnId, sessionId, controller, ...(job?.beside ? { beside: true } : {}) });
     emit({ type: 'start', text: text.slice(0, 140) });
     if (job?.pickUp) emit({ type: 'announce', text: carryOnLine(job) }); // 1.5.38: picked up after a restart
     const pics = [].concat(attach || []).map((id) => this.refs.find(String(id))).filter(Boolean).slice(0, 4);
@@ -1190,7 +1278,12 @@ export class Brain {
     this.run(sessionId, text, emit, controller.signal, pics, job)
       .then(() => { ok = true; if (job) job.state = 'done'; })
       .catch((e) => {
-        if (controller.signal.aborted && job?.parked) this.parkJob(job, emit); // 1.5.41: the 🎮 Gaming button, not a stop
+        if (e?.code === 'beside' && job && !controller.signal.aborted) { // 1.5.51: the second brain wouldn't start: wait in line
+          emit({ type: 'announce', text: BESIDE_FAILED });
+          this.log('handoff', `second brain beside the job wouldn't start (${e.message}); the message waits for the job`);
+          Object.assign(job, { requeued: true, noBeside: true, side: false, beside: false });
+        }
+        else if (controller.signal.aborted && job?.parked) this.parkJob(job, emit); // 1.5.41: the 🎮 Gaming button, not a stop
         else if (controller.signal.aborted) { emit({ type: 'token', text: '\n\n*(Stopped.)*' }); if (job) job.state = 'cancelled'; }
         else { emit({ type: 'error', text: e.message }); this.log('error', e.message); if (job) { job.state = 'failed'; job.error = e.message.slice(0, 200); } }
       })
@@ -1200,6 +1293,7 @@ export class Brain {
         if (job?.handoff) job.handoff = slimHandoff(job.handoff); // finished: keep what it did, drop the load-by-load steps
         // 1.5.38: carried on (or not) once; the note isn't used again. A job told to wait for a download goes back in line.
         if (job && job.state !== 'interrupted' && !job.after && !job.parked) { job.carryOn = null; job.before = undefined; job.cutStep = undefined; job.pickUp = false; }
+        if (job?.requeued) { job.requeued = false; Object.assign(job, { state: 'waiting', error: undefined, steps: [] }); this.queue = [job, ...this.queue.filter((x) => x !== job)]; }
         if (job?.after && job.state !== 'cancelled') { job.state = 'waiting'; job.error = undefined; job.at = Date.now(); this.queue = [...this.queue.filter((x) => x !== job), job]; }
         // 1.5.41: Bob picked another session for this job: it goes back to the front of the line and runs there.
         const switchTo = job?.switchTo && job.state === 'done' ? job.switchTo : null;
@@ -1214,7 +1308,7 @@ export class Brain {
         }
         emit({ type: 'done' });
         if (!this.turns.size) this.setState('idle', '');
-        if (job && !switchTo && !job.parked) { job.doneAt = Date.now(); for (const st of job.steps || []) if (st.state === 'in progress') st.state = job.state === 'done' ? 'completed' : job.state; this.saveQueue(); }
+        if (job && !switchTo && !job.parked && job.state !== 'waiting') { job.doneAt = Date.now(); for (const st of job.steps || []) if (st.state === 'in progress') st.state = job.state === 'done' ? 'completed' : job.state; this.saveQueue(); }
         if (switchTo) { this.saveQueue(); this.autoSwitch(switchTo.id, 'bob', switchTo.why).catch((e) => this.log('error', `session switch: ${e.message}`)).finally(() => this.pump()); return; }
         setTimeout(() => this.pump(), 0);
         setTimeout(() => this.settle().catch(() => {}), 0); // after pump, so a waiting job keeps its brain
@@ -1335,7 +1429,7 @@ export class Brain {
     out.ctx = ctx;
     const used = new Set();
     // High and Extreme effort draft on the big brain; Low is the usual chat brain.
-    let { model, cpu, think, ctx: wantCtx } = job?.side ? sideBrain(this.cfg) : (bigThinker(job) && draftBrain(this.cfg, job.effort)) || modelFor(this.cfg, 'bob');
+    let { model, cpu, think, ctx: wantCtx, beside } = job?.side ? sideBrain(this.cfg, job) : (bigThinker(job) && draftBrain(this.cfg, job.effort)) || modelFor(this.cfg, 'bob');
     // 1.5.16: a Low-effort chat reply doesn't think first (gemma4 and others think by default, which delays every reply).
     // Medium and up, and sessions that set a level (Deep thought), keep their thinking.
     if (think === undefined && !bigThinker(job)) think = false;
@@ -1349,12 +1443,12 @@ export class Brain {
     const earlier = await this.recall(sessionId, text);
 
     for (let step = 0; step < MAX_STEPS; step++) {
-      model = (await this.ensureModel(model, emit, signal, 'bob', { cpu, ctx: brainCtx })) || model;
+      model = (await this.ensureModel(model, emit, signal, 'bob', { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}) })) || model;
       this.setState('thinking', '', model);
       const tools = this.frontDeskTools(ctx.loaded);
       const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: this.now(), memory: this.memory(), user: this.cfg.userName, backstory: this.backstory(), about: this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
       const reply = await this.chatSafe({
-        model, messages: [sys, ...staleHandErrors(msgs, turnStart)], tools, signal, cpu, think, ctx: brainCtx,
+        model, messages: [sys, ...staleHandErrors(msgs, turnStart)], tools, signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
         onToken: (t) => emit({ type: 'token', text: t })
       }, { emit });
       // He's seen the new look once; that's enough.
@@ -1558,19 +1652,21 @@ export class Brain {
     // "One brain" mode: every hat runs on the main model, so there's no brain swap (about 20 s each) mid-chat.
     // Normal session: the hat's own brain (or the main one with "One brain"). Other sessions: the session's brain.
     // A moot (High/Extreme effort) passes force: the reviewer always runs on the Review slot brain.
-    const { model, cpu, think, ctx: wantCtx } = ctx.job?.side ? sideBrain(this.cfg) : force || (bigThinker(ctx.job) && hat !== 'reviewer' && hatBrain(this.cfg, hat, ctx.job.effort)) || modelFor(this.cfg, hat);
+    let { model, cpu, think, ctx: wantCtx, beside } = ctx.job?.side ? sideBrain(this.cfg, ctx.job) : force || (bigThinker(ctx.job) && hat !== 'reviewer' && hatBrain(this.cfg, hat, ctx.job.effort)) || modelFor(this.cfg, hat);
     const brainCtx = await this.fitCtx(model, wantCtx);
+    // 1.5.51 (opt-in): the reviewer sits beside the main brain on the processor instead of swapping it out.
+    if (hat === 'reviewer' && force && !ctx.job?.side && mootBesideOk(this, model, brainCtx)) { beside = true; cpu = true; }
     const copy = copyName(this.cfg, hat, HATS[hat].label);
     // Settings sign-off (1.5.49): one moot line per review. If the review brain still has to load, the load line
     // ("🛰 Moot: ... checks the answer ...") says it all, so the chat skips the reviewer's own line.
-    const loadsFirst = hat === 'reviewer' && !(await Promise.resolve(this.engine.isLoaded?.(model, { cpu, ctx: brainCtx }) ?? true).catch(() => true));
+    const loadsFirst = hat === 'reviewer' && !(await Promise.resolve(this.engine.isLoaded?.(model, { cpu, ctx: brainCtx, beside }) ?? true).catch(() => true));
     ctx.emit({ type: 'hat', hat, label: PLAIN_HATS[hat] || HATS[hat].label, copy, ...(loadsFirst ? { quiet: true } : {}) });
     // The Tasks panel: this job is now delegated to a copy (in progress) until the copy hands back.
     const step = { hat, label: PLAIN_HATS[hat] || HATS[hat].label, copy, task: String(task).slice(0, 140), state: 'in progress', at: Date.now() };
     if (ctx.job) { (ctx.job.steps ||= []).push(step); this.saveQueue(); }
     const wasHat = ctx.hatNow;
     ctx.hatNow = hat; // so quarantine knows which copy did what
-    try { return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy }); }
+    try { return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside }); }
     catch (e) { step.state = ctx.signal?.aborted ? 'cancelled' : 'failed'; throw e; }
     finally {
       ctx.hatNow = wasHat;
@@ -1580,8 +1676,8 @@ export class Brain {
     }
   }
 
-  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy }) {
-    model = (await this.ensureModel(model, ctx.emit, ctx.signal, hat, { cpu, ctx: brainCtx })) || model;
+  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside }) {
+    model = (await this.ensureModel(model, ctx.emit, ctx.signal, hat, { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}) })) || model;
     this.setState('busy', `${copy} is on it (${PLAIN_HATS[hat] || HATS[hat].label})`, model);
     const hatTools = {
       ledger: ['save_spreadsheet', 'read_file', 'list_folder'],
@@ -1604,7 +1700,7 @@ export class Brain {
     const did = []; // what this copy did, handed back to the main conversation afterwards
     for (let step = 0; step < maxSteps; step++) {
       const reply = await this.chatSafe({
-        model, messages, tools: this.toolSchemas(hatTools), signal: ctx.signal, cpu, think, ctx: brainCtx,
+        model, messages, tools: this.toolSchemas(hatTools), signal: ctx.signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
         onToken: (t) => ctx.emit({ type: 'token', text: t })
       }, { emit: ctx.emit, who: hat });
       messages.push(reply);
