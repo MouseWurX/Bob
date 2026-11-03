@@ -2,7 +2,7 @@
 // and the Hands section in Settings. Big buttons on purpose (remote desktop).
 import { esc } from './rich.js';
 
-const OPS = { move: 'Move', copy: 'Copy', zip: 'Zip', unzip: 'Unzip', recycle: 'Recycle Bin', delete: 'Delete for good', convert: 'Convert', create: 'Make', edit: 'Change', clean: 'Clean copy' };
+const OPS = { move: 'Move', copy: 'Copy', zip: 'Zip', unzip: 'Unzip', recycle: 'Recycle Bin', delete: 'Delete for good', convert: 'Convert', create: 'Make', edit: 'Change', clean: 'Make a clean copy' };
 const when = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const post = async (url, data) => {
   const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify(data || {}) });
@@ -15,7 +15,7 @@ const post = async (url, data) => {
 // the window; only the first 5 characters of the scramble go out, and the match is found here too.
 function securityLine(on) {
   return `<div class="hands-security muted${on ? '' : ' dim'}"><strong>Check a password safely</strong><br>
-    <span>Has a password turned up in a known breach? It's scrambled on this PC and only the first 5 characters of the scramble go to Have I Been Pwned, so the password never leaves. Nothing is saved.</span>
+    <span>Has a password turned up in a known breach? It's scrambled on this PC, and only the first 5 characters of the scramble are sent to Have I Been Pwned (haveibeenpwned.com) when you press Check, so the password never leaves. Nothing is saved.</span>${on ? '' : '<br><span>Turn on the Security and privacy Hand above to use this.</span>'}
     <div class="row"><input type="password" data-hpw autocomplete="off" spellcheck="false" placeholder="Type a password" aria-label="Password to check" style="flex:1" ${on ? '' : 'disabled'}><button type="button" data-hpwcheck ${on ? '' : 'disabled'}>Check</button></div>
     <span class="hpw-out" role="status"></span></div>`;
 }
@@ -31,8 +31,8 @@ async function checkPassword(box) {
     const r = await post('/api/hands/pwned', { prefix: hash.slice(0, 5) });
     const line = String(r.range || '').split(/\r?\n/).find((l) => l.split(':')[0] === hash.slice(5));
     const n = line ? Number(line.split(':')[1]) : 0;
-    out.innerHTML = n ? `<span class="warn-text">⚠ Seen ${n.toLocaleString()} times in breaches. Stop using it, and change it everywhere you did.</span>` : '✓ Not in any known breach. Still use it for one account only.';
-  } catch (e) { out.textContent = `Couldn't check: ${e.message}`; }
+    out.innerHTML = n ? `<span class="warn-text">⚠ Seen ${n.toLocaleString()} times in breaches. Stop using it, and change it everywhere you did.</span>` : '✓ Not in any known breach. That doesn\'t make it strong; use it for one account only.';
+  } catch (e) { out.textContent = 'Couldn\'t check right now (no internet?). Try again in a minute.'; }
 }
 
 // Under the Office switch: which helpers Bob found on this PC, so it's clear what works before asking.

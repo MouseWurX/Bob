@@ -82,7 +82,7 @@ const brain = { cfg, log: (k, t) => logs.push(`${k}: ${t}`) };
   let ran = null;
   const t = securityTools(brain, { env: { BOB_MPCMDRUN: fake }, scan: async (k, target) => { ran = { k, target }; return { code: 0, out: '' }; } });
   const card = t.defender_scan.check({ kind: 'quick' });
-  check('a scan shows a card with the exact command', /quick Defender scan/.test(card.text) && card.command === 'MpCmdRun.exe -Scan -ScanType 1');
+  check('a scan shows a card with the exact command', /Scan with Defender \(quick/.test(card.text) && card.command === 'MpCmdRun.exe -Scan -ScanType 1');
   check('a one-file scan needs a real path', (() => { try { t.defender_scan.check({ kind: 'file', path: path.join(work, 'nope.exe') }); return false; } catch (e) { return /nothing at/.test(e.message); } })());
   const r = await t.defender_scan.run({ kind: 'file', path: work }, {});
   check('a scan runs Defender and reads the result', ran?.k === 'file' && ran.target === path.resolve(work) && /found nothing/.test(r), r);
@@ -214,7 +214,7 @@ function exifJpeg({ turn = 6 } = {}) {
   const t = securityTools(brain);
   const ctx = {};
   const card = t.strip_metadata.check({ paths: [path.join(work, 'holiday.jpg'), path.join(work, 'Invoice.pdf')] }, ctx);
-  check('cleaning shows a card with a row per file', card.plan.length === 2 && card.plan[0].op === 'clean' && /holiday-clean\.jpg$/.test(card.plan[0].to) && /GPS location/.test(card.plan[0].note));
+  check('cleaning shows a card with a row per file', card.plan.length === 2 && card.plan[0].op === 'clean' && /holiday-clean\.jpg$/.test(card.plan[0].to) && /GPS location/.test(card.plan[0].note) && /the original isn't touched/.test(card.plan[0].note));
   check('a PDF row is blocked with a reason', /PDF/.test(card.plan[1].blocked || ''));
   const r = await t.strip_metadata.run({ paths: [path.join(work, 'holiday.jpg')] }, ctx);
   check('the clean copy is saved next to the original, and the original is untouched', /Saved .*holiday-clean\.jpg/.test(r) && fs.existsSync(path.join(work, 'holiday-clean.jpg')) && hiddenDetails(path.join(work, 'holiday.jpg')).found.length > 0, r);

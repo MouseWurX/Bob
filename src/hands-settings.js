@@ -33,7 +33,7 @@ export const HANDS = {
   },
   security: {
     label: 'Security and privacy',
-    what: 'Checks this PC\'s protection (Defender, firewall, updates, what starts with Windows), explains Defender alerts and starts Defender scans, and looks at suspicious downloads, scripts and emails without opening them. He finds hidden details like GPS in photos and makes clean copies before you share, checks whether a website or link is genuine from public records, and tells you if a site you use was breached. He never switches protection off, never allows or restores a threat, and never researches private people. Look-ups online need "Let Bob search the web" on.',
+    what: 'Checks this PC\'s protection, explains Defender alerts and runs scans, looks at suspicious files and links without opening them, and makes clean copies of photos before you share. He never turns protection off and never researches private people. Online look-ups need "Let Bob search the web".',
     tools: ['security_check', 'defender_scan', 'inspect_file', 'strip_metadata', 'osint_lookup', 'check_exposure', 'security_tips']
   }
 };

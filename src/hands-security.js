@@ -139,7 +139,7 @@ export function planStrip(cfg, args, env = process.env) {
       taken.add(to.toLowerCase());
       row.to = to;
       const d = CLEANABLE.includes(ext) ? hiddenDetails(row.from) : { found: [] };
-      row.note = d.found.length ? `Removes: ${[...new Set(d.found.map((x) => x.what))].slice(0, 6).join(', ')}${/^(docx|xlsx|pptx|docm|xlsm|pptm)$/.test(ext) ? ' (comments and tracked changes stay: remove those in Office)' : ''}` : MEDIA.includes(ext) ? 'Removes tags like title, artist, location and recording device (with FFmpeg)' : 'Nothing personal found, but a clean copy is made anyway';
+      row.note = `${d.found.length ? `${[...new Set(d.found.map((x) => x.what))].slice(0, 6).join(', ')} removed${/^(docx|xlsx|pptx|docm|xlsm|pptm)$/.test(ext) ? ' (comments and tracked changes stay: remove those in Office)' : ''}` : MEDIA.includes(ext) ? 'Tags like title, artist, location and recording device removed (with FFmpeg)' : 'Nothing personal found, but a clean copy is made anyway'}; the original isn't touched`;
       row.media = MEDIA.includes(ext);
     } catch (e) { row.blocked = e.message; }
     return row;
@@ -212,7 +212,7 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
     check(args) {
       off(cfg);
       const p = scanPlan(args);
-      const what = { quick: 'Start a quick Defender scan (a few minutes)', full: 'Start a full Defender scan of the whole PC (an hour or more, in the background)', file: `Scan ${p.target} with Defender`, update: 'Update Defender\'s virus definitions' }[p.kind];
+      const what = { quick: 'Scan with Defender (quick, a few minutes)', full: 'Scan with Defender (full: the whole PC, an hour or more, in the background)', file: `Scan with Defender (just this): ${p.target}`, update: 'Update Defender\'s virus definitions' }[p.kind];
       return { text: `${what}. Defender handles anything it finds the way it is set to (usually quarantine).`, command: ['MpCmdRun.exe', ...p.args].join(' ') };
     },
     async run(args, ctx) {
