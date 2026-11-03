@@ -316,7 +316,7 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 - **Music and sound effects**: extra downloads for the audio tools.
 - **Extra voices.**
 - **Advanced workshop**: if you use ComfyUI, Bob can run its workflows for you.
-- **Phone access** over Tailscale (advanced: set in config.json).
+- **Let my phone in** (Settings, Show advanced settings, Connections; off): Bob for Android, or your phone's browser, talks to Bob over Tailscale with a passcode. Make a passcode, add the address it shows to the phone, then restart Bob. Only Tailscale addresses get in.
 - **Check for updates when Bob starts.** Updating always waits for your click.
 
 ---

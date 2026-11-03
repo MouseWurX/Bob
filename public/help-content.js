@@ -470,10 +470,11 @@ ${set('Fit to free graphics memory', 'On, recommended', 'Fits each brain around 
 ${set('Speculative decoding', 'Off, experimental', 'A small "draft" brain guesses ahead and the big one checks: often 1.5 to 2 times faster, same answers. Pick a <strong>Draft brain</strong> from the same family, and how many words it may <strong>Guess up to</strong> and <strong>At least</strong>. Check that I actually got faster.')}
 ${set('Extra settings for one brain', 'None', 'llama.cpp flags for one model, for example <code>--n-cpu-moe 8</code>. The exact command I used is in inn\\bob\\llama-server-args.txt.')}</dl>` },
 
-  { id: 'settings-connections', group: 'Settings', title: 'Settings: Connections', words: 'comfyui workflows port cloud helpers api key environment variable anthropic openai gemini openrouter',
+  { id: 'settings-connections', group: 'Settings', title: 'Settings: Connections', words: 'comfyui workflows port cloud helpers api key environment variable anthropic openai gemini openrouter phone android tailscale passcode let my phone in',
     html: `<dl>${set('Let Bob use ComfyUI', 'Off', 'For jobs my own engines can\'t do. ComfyUI must be running on this PC. See ' + go('workshop', 'ComfyUI workflows') + '.')}
 ${set('ComfyUI port', '8188', 'Only change this if you changed ComfyUI\'s port.')}
-${set('Cloud helpers', 'All off', 'Paid online AIs I can hand one big job to. Each provider has its own switch and model. I ask every time, and show the rough cost and exactly what text would leave your PC.')}</dl>
+${set('Cloud helpers', 'All off', 'Paid online AIs I can hand one big job to. Each provider has its own switch and model. I ask every time, and show the rough cost and exactly what text would leave your PC.')}
+${set('Let my phone in', 'Off', 'Lets Bob for Android (or your phone\'s browser) talk to me over Tailscale. <strong>Make a passcode</strong> gives you an 8-digit code, shown once. <strong>Address for the phone</strong> is what you type into the phone. Only Tailscale addresses get in, and only with the passcode. A new passcode signs every phone out. Restart me after changing it.')}</dl>
 <p><strong>Adding a key:</strong> I never store or see your keys. In Windows, open Settings, System, About, Advanced system settings, Environment Variables, and add a <em>User variable</em> with the name I show (for example ANTHROPIC_API_KEY). The switch turns from <em>No key yet</em> to <em>Key found</em>. What you send to a cloud helper is covered by that provider's own privacy policy.</p>` },
 
   { id: 'settings-hands', group: 'Settings', title: 'Settings: Hands', words: 'hands folders read-only stop command after recipes self-test master switch without asking hard limits recent jobs',

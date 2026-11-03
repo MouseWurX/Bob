@@ -8,6 +8,7 @@ import { suit as fitSuit, picksOf, unsuited, jobNames, SLOT_NAMES } from './fit.
 import { drawBob } from './bob-sprite.js';
 import { handsSettingsHtml, mountHandsSettings } from './hands.js';
 import { quarantineSettingsHtml, mountQuarantineSettings } from './quarantine.js';
+import { phoneAccessHtml, mountPhoneAccess } from './phone-access.js';
 import { findTheme } from './themes.js';
 import { attributesHtml, cleanPersonality, greeting, PRESETS, DEFAULTS, isDefault } from './personality.js';
 
@@ -494,7 +495,8 @@ export function createCellar() {
         ${cloud.map((c) => `<div class="cloud row${c.keyFound ? '' : ' dim'}">
           <label class="switch"><input type="checkbox" data-cloud="${esc(c.id)}" ${c.enabled ? 'checked' : ''} ${c.keyFound ? '' : 'disabled'}><span><strong>${esc(c.name)}</strong><br><span class="muted">${c.keyFound ? `Key found (${esc(c.apiKeyEnv)})` : `No key yet. Add a user variable named ${esc(c.apiKeyEnv)}.`}</span></span></label>
           ${c.models.length ? `<select data-cloudmodel="${esc(c.id)}" aria-label="${esc(c.name)} model" ${c.keyFound ? '' : 'disabled'}>${c.models.map((m) => `<option ${m === c.model ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>` : `<input data-cloudmodel="${esc(c.id)}" aria-label="${esc(c.name)} model" placeholder="model name" value="${esc(c.model)}" ${c.keyFound ? '' : 'disabled'}>`}
-        </div>`).join('')}</div>`;
+        </div>`).join('')}</div>
+      ${phoneAccessHtml()}`;
   }
 
   function voiceDetailsHtml() {
@@ -519,7 +521,7 @@ export function createCellar() {
     ['voice', '🔊 Voice details', 'kokoro chatterbox speed hey bob read aloud listen', () => voiceDetailsHtml()],
     ['look', '🎨 Look & feel', 'theme editor now running layout', () => lookExtrasHtml()],
     ['engines', '⚙ Engines & speed', 'unload idle keep alive graphics memory vram engine ollama llama.cpp downloads fit memory speculative decoding draft flags threads batch gaming graphics card borrow automatic never always', () => enginesHtml()],
-    ['connections', '🔌 Connections', 'comfyui workflows port cloud helpers api', () => connectionsHtml()],
+    ['connections', '🔌 Connections', 'comfyui workflows port cloud helpers api phone android tailscale passcode let my phone in', () => connectionsHtml()],
     ['hands', '✋ Hands', 'files run commands schedules apps permission quarantine reviewer', () => handsSettingsHtml() + quarantineSettingsHtml()],
     ['housekeeping', '🧹 Housekeeping', 'tidy old chats pictures logs', () => housekeepingHtml()],
     ['remove', '🗑 Remove Bob', 'uninstall remove', () => `<div class="remove-bob">${more('Takes off Bob\'s program, his Start menu shortcut and "Launch on start-up". His chats, settings and models stay unless you tick them. Nothing else in the inn folder or in Windows is touched.')}<button data-removebob>Remove Bob…</button><div class="remove-confirm" hidden></div></div>`]
@@ -587,6 +589,7 @@ export function createCellar() {
     dlg.classList.toggle('wide', mode === 'shop' && tab === 'roles' && eqView !== 'list');
     mountHandsSettings(dlg.querySelector('.hands-box')); // loads its own data; does nothing off the Settings tab
     mountQuarantineSettings(dlg.querySelector('.q-box'));
+    mountPhoneAccess(dlg.querySelector('.phone-box')); // Connections: Let my phone in
     const page = mode === 'welcome' ? 'Welcome' : tab === 'settings' ? 'Settings' : tab === 'style' ? 'Style' : 'Get models';
     $('cellar-title').textContent = page;
     for (const [id, on] of [['cellarBtn', page === 'Get models'], ['settingsBtn', page === 'Settings'], ['styleBtn', page === 'Style'], ['chatBtn', false]]) $(id)?.classList.toggle('on', on);

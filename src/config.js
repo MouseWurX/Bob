@@ -20,6 +20,7 @@ export function loadConfig() {
   // A fresh copy of the source has no config.json (it's never published): start from the example.
   if (!process.env.BOB_CONFIG && !fs.existsSync(file)) fs.copyFileSync(path.join(appDir, 'config.example.json'), file);
   const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+  cfg.configFile = file;
   if (process.env.BOB_AGENT_DIR) cfg.agentDir = process.env.BOB_AGENT_DIR;
   if (process.env.BOB_OLLAMA_URL) cfg.ollamaUrl = process.env.BOB_OLLAMA_URL;
   if (process.env.BOB_PORT) cfg.port = Number(process.env.BOB_PORT);
@@ -340,6 +341,15 @@ export function replaceSettings(cfg, patch) {
 }
 
 // Apply a change now and remember it.
+// Let my phone in (src/phone-access.js): phone access lives in config.json only, never in settings.json, so nothing that
+// can write Bob's settings file can open the door. Only the Settings page on this PC calls this (server.js, local only).
+export function saveRemote(cfg, remote) {
+  const raw = JSON.parse(fs.readFileSync(cfg.configFile, 'utf8'));
+  raw.remote = { ...(raw.remote || {}), ...remote };
+  fs.writeFileSync(cfg.configFile, JSON.stringify(raw, null, 2));
+  cfg.remote = raw.remote;
+}
+
 export function saveSettings(cfg, patch) {
   const safe = clean(patch);
   let saved = {};
