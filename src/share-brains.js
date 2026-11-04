@@ -24,6 +24,10 @@ export const WHEN = ['gaming', 'busy', 'always'];
 export const HELLO_MS = 2500; // "are you there?" gets this long
 export const FIRST_WORD_MS = 12000; // a lender that hasn't started answering by then is dropped for this reply
 export const QUIET_MS = 20000; // and one that goes quiet mid-answer
+// 1.5.92: a lender loading his brain says "still loading" this often, so a cold handheld or laptop isn't dropped
+// as too slow at 12 s. The asker still gives up if no word has come by FIRST_WORD_MAX_MS, signals or not.
+export const LIFE_MS = 4000;
+export const FIRST_WORD_MAX_MS = 45000;
 const GOOD_FOR = 30000, DOWN_FOR = 60000;
 const MAX_BOBS = 6;
 const TS_NAME = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.ts\.net$/;
@@ -127,23 +131,32 @@ export async function lendChat(brain, req, res, b, deps) {
   const room = deps.quickBrain(brain)?.ctx || 32768;
   if (roughTokens(ask) + REPLY_ROOM > room) { res.writeHead(409, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ busy: 'too long', ctx: room })); }
   const stop = new AbortController();
-  req.on('close', () => { if (!res.writableEnded) stop.abort(); });
+  // 1.5.92: the asking Bob giving up (too slow, or his owner pressed Stop) closes the line: stop thinking then.
+  // This listens on res, not req: the request body is already read by now, so req has closed and never says so again.
+  res.on('close', () => { if (!res.writableEnded) stop.abort(); });
   brain.lending = { since: Date.now(), for: cleanName(b.from) || 'another Bob' };
   brain.broadcast?.({ type: 'lending', on: true, for: brain.lending.for });
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
   const send = (ev) => { if (!res.writableEnded) res.write(`data: ${JSON.stringify(ev)}\n\n`); };
   const t0 = Date.now();
+  // Until the first word: "still loading" every few seconds (the phone lender does the same).
+  send({ type: 'loading' });
+  let life = setInterval(() => send({ type: 'loading' }), deps.lifeMs || LIFE_MS);
+  const quietNow = () => { if (life) { clearInterval(life); life = null; } };
   try {
     const { model, cpu, ctx } = deps.quickBrain(brain);
     const fit = await brain.fitCtx(model, ctx);
     const use = (await brain.ensureModel(model, () => {}, stop.signal, 'bob', { cpu, ctx: fit })) || model;
+    if (stop.signal.aborted) throw new Error('stopped');
     send({ type: 'brain', label: brain.brainLabel?.(use) || use });
-    const reply = await brain.chatSafe({ model: use, messages: ask.messages, tools: ask.tools.length ? ask.tools : undefined, signal: stop.signal, cpu, think: false, ctx: fit, onToken: (t) => send({ type: 'token', text: t }) });
+    const reply = await brain.chatSafe({ model: use, messages: ask.messages, tools: ask.tools.length ? ask.tools : undefined, signal: stop.signal, cpu, think: false, ctx: fit, onToken: (t) => { quietNow(); send({ type: 'token', text: t }); } });
     send({ type: 'done', reply: { content: reply.content || '', tool_calls: reply.tool_calls } });
     brain.log?.('lend', `thought a reply for ${brain.lending.for} in ${((Date.now() - t0) / 1000).toFixed(1)} s`); // never the words
   } catch (e) {
     send({ type: 'error', error: stop.signal.aborted ? 'stopped' : String(e.message || e).slice(0, 200) });
   } finally {
+    quietNow();
+    brain.gate?.done(stop.signal); // 1.5.92: give the graphics card back, or his own and guest jobs wait for it forever
     const who = brain.lending?.for;
     brain.lending = null;
     brain.broadcast?.({ type: 'lending', on: false, for: who });
@@ -166,8 +179,8 @@ export function wantsBorrow(cfg, { session, busy, job, pics }) {
 }
 
 export class Lenders {
-  constructor(cfg, { fetchFn = globalThis.fetch, now = Date.now, firstWordMs = FIRST_WORD_MS, quietMs = QUIET_MS } = {}) {
-    this.cfg = cfg; this.fetch = fetchFn; this.now = now; this.firstWordMs = firstWordMs; this.quietMs = quietMs;
+  constructor(cfg, { fetchFn = globalThis.fetch, now = Date.now, firstWordMs = FIRST_WORD_MS, quietMs = QUIET_MS, firstWordMaxMs = FIRST_WORD_MAX_MS } = {}) {
+    this.cfg = cfg; this.fetch = fetchFn; this.now = now; this.firstWordMs = firstWordMs; this.quietMs = quietMs; this.firstWordMaxMs = firstWordMaxMs;
     this.cookies = new Map(); // address -> bob_auth cookie (memory only)
     this.state = new Map(); // address -> { ok, at, brain, why }
     // 1.5.72: Bobs thinking for us right now (address -> held until), so two replies at once go to two different Bobs.
@@ -283,6 +296,7 @@ export class Lenders {
     this.hold(bob.address, 24 * 3600 * 1000); // while it thinks; released below
     const t0 = this.now();
     let firstAt = 0, words = 0;
+    const cap = setTimeout(() => { if (!firstAt) quiet.abort(); }, this.firstWordMaxMs); // "still loading" can't hold a reply forever
     try {
       const r = await this.call(bob, '/api/lend/chat', { method: 'POST', body: { protocol: PROTOCOL, from, messages: plain, tools: tools || [] }, signal: sig, timeout: this.firstWordMs });
       if (r.status === 409) {
@@ -320,7 +334,7 @@ export class Lenders {
       if (signal?.aborted) throw e;
       if (e.why !== 'too long') this.markDown(bob, e.busy ? (e.why || 'busy') : quiet.signal.aborted ? 'too slow' : 'not reachable'); // too long: he's still fine for shorter chats
       throw quiet.signal.aborted ? new Error('too slow') : e;
-    } finally { clearTimeout(timer); this.hold(bob.address, 5000); }
+    } finally { clearTimeout(timer); clearTimeout(cap); this.hold(bob.address, 5000); }
   }
 }
 
