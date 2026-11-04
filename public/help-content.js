@@ -49,7 +49,7 @@ export const HELP = [
 <ul><li><strong>Everything runs on the processor.</strong> A Pi's graphics are slower than its processor for brains, so I don't use them. Replies come at a few words a second.</li>
 <li><strong>Small brains only.</strong> The starter sets for an ARM board are made to leave room for the system. A brain that wants more memory than the board can spare is marked as not suiting it. Keep jobs small: chatting, planning, short notes, reading a picture.</li>
 <li><strong>No painting or filming.</strong> stable-diffusion.cpp has no ARM Linux download, and a Pi would take many minutes a picture anyway. On Bob-Net, I can send a picture job to the Bob on your PC.</li>
-<li><strong>Hearing you</strong> works with Whisper base (whisper.cpp has an ARM build). <strong>My voice:</strong> Piper for ARM isn't checked yet, so it isn't offered; Kokoro voices may work but are slow on a Pi.</li>
+<li><strong>Hearing you</strong> works with Whisper base (whisper.cpp has an ARM build). <strong>My voice:</strong> Piper, which is light and made for small computers like this one. Kokoro voices may work but are slow on a Pi.</li>
 <li><strong>A bigger Bob nearby?</strong> With Bob-Net (see ${go('faq-borrow', 'Can my Bobs think for each other on Bob-Net?')}) I can borrow a brain from the Bob on your other replicant matrix (your PC, say) and think much faster, while the Pi stays the one you talk to.</li>
 <li>Everything else is as in ${go('linux', 'Bob on Linux')}: where my things live, the Trash, start-up and the Hands.</li></ul>
 <p>Honest note: GitHub's ARM machines build me, run all my tests and start me up for every version, but nobody on the team has tried me on a real Raspberry Pi yet. If something looks odd, tell me what you saw.</p>` },

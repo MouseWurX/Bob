@@ -16,8 +16,8 @@ export function officePins() {
   try { return JSON.parse(fs.readFileSync(new URL('./office-pins.json', import.meta.url), 'utf8')); } catch { return {}; }
 }
 const PIN = officePins();
-// Piper's ARM Linux file has no GitHub checksum; this pin is filled from the ARM CI run (empty = not offered yet).
-const PIPER_ARM64_SHA = '';
+// Piper's ARM Linux file has no GitHub checksum; this pin was computed in CI (installer/check-linux-engines.js, 2026-11-04).
+const PIPER_ARM64_SHA = 'fea0fd2d87c54dbc7078d0f878289f404bd4d6eea6e7444a77835d1537ab88eb';
 // 1.5.83: the llama.cpp release every speed test and brain race used (package.json bob.bundledLlamaTag, also the one
 // bundled in the download). Get and Get Bob ready install this one; "Check for a newer build" can still fetch the newest.
 export const TESTED_LLAMA = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.bundledLlamaTag || ''; } catch { return ''; } })();
@@ -74,8 +74,7 @@ export const ENGINES = [
     mac: { unavailable: 'Piper\'s last Mac build doesn\'t start on current macOS. Use Kokoro voices instead: they run well on a Mac.' },
     // Linux: the same fixed release; the file has no GitHub checksum, so it carries its own pin (computed in CI, 2026-11-03).
     linux: { tag: '2023.11.14-2', sha256: 'a50cb45f355b7af1f6d758c1b360717877ba0a398cc8cbe6d2a7a3a26e225992', other: [/^piper_linux_x86_64\.tar\.gz$/] },
-    // ARM Linux: the same release's aarch64 file. Until its own checksum is pinned (installer/check-linux-engines.js
-    // prints it on the ARM runner), Bob refuses it rather than run an unchecked download.
+    // ARM Linux: the same release's aarch64 file, with its own pinned checksum (empty would mean "not offered").
     linuxArm64: { tag: '2023.11.14-2', sha256: PIPER_ARM64_SHA, other: [/^piper_linux_aarch64\.tar\.gz$/], ...(PIPER_ARM64_SHA ? {} : { unavailable: 'Piper for ARM Linux isn\'t checked yet, so Bob doesn\'t offer it. Use Kokoro voices instead.' }) }
   },
   {
