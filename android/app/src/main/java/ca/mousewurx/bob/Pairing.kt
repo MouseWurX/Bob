@@ -135,6 +135,8 @@ class Pairing(private val app: BobApp) {
         outgoing?.let { if (it.optString("address") == address && it.optString("state") == "waiting") return it }
         val mine = app.lend.myTailscaleIp() ?: return JSONObject().put("error", "This phone isn't on Tailscale right now. Open Tailscale and switch it on, then try again.")
         val code = (1000 + rnd.nextInt(9000)).toString()
+        // His name, for "Waiting for a yes on <name>" (the hello needs no passcode).
+        val theirName = runCatching { clean(JSONObject(net.get(base, "/api/pair/hello").body).optString("name")) }.getOrDefault("")
         val r = runCatching {
             net.post(base, "/api/pair/ask", JSONObject().put("pair", PAIR).put("name", myName()).put("address", "$mine:${LendServer.PORT}").put("code", code).toString())
         }.getOrElse { return JSONObject().put("error", "No Bob answered there. Is Bob open on it, with \"Let my other replicant matrices in\" on?") }
@@ -143,7 +145,7 @@ class Pairing(private val app: BobApp) {
         if (r.status == 404) return JSONObject().put("error", "That Bob is too old to pair. Update him, or add him with his passcode instead.")
         val id = j.optString("id")
         if (r.status != 200 || id.isEmpty()) return JSONObject().put("error", j.optString("error").ifEmpty { "That Bob said no (${r.status})." })
-        val job = JSONObject().put("type", "pair-state").put("address", address).put("state", "waiting").put("number", code)
+        val job = JSONObject().put("type", "pair-state").put("address", address).put("state", "waiting").put("number", code).put("name", theirName)
         outgoing = job
         Thread({ collect(base, address, id, job) }, "bob-pair").apply { isDaemon = true; start() }
         return job

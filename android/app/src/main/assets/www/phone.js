@@ -556,7 +556,9 @@
     if (!L.netAddress(address)) { $('add-msg').textContent = "That isn't a Tailscale address. It looks like my-computer.your-tailnet.ts.net or 100.x.y.z (Bob's Settings on your other replicant matrix shows it)."; return; }
     $('add-msg').textContent = 'Asking…';
     phone('pair.with', { address }).then((r) => {
-      $('add-msg').textContent = r.error ? r.error : `Waiting for a yes over there. Its screen shows the number ${r.number}.`;
+      if (r.error) { $('add-msg').textContent = r.error; return; }
+      const who = r.name || 'that Bob';
+      $('add-msg').replaceChildren(`Waiting for a yes on ${who}. Its card shows the number `, el('strong', { text: String(r.number) }), ': check it matches, then tap Yes, pair us over there.');
     }).catch((e) => { $('add-msg').textContent = `Couldn't ask: ${e.message}.`; });
   });
 
@@ -568,7 +570,7 @@
     else bobs.push({ name: String(name || 'Bob').slice(0, 40), address: base.replace('http://', ''), base });
     store.set('bobs', bobs);
     refreshBob(base);
-    if (!$('bobs').classList.contains('hidden')) drawBobs();
+    drawBobs(); drawWho(); // the new Bob shows up straight away
   }
 
   function onPair(ev) {
@@ -580,7 +582,7 @@
       const say = (yes) => phone('pair.answer', { id: ev.id, yes }).then((r) => { if (r.ok) card.remove(); else toast(r.why || "Couldn't answer."); }).catch(() => toast("Couldn't answer."));
       const card = el('div', { class: 'card', 'data-pair': ev.id },
         el('div', { class: 'q' }, el('strong', { text: `🤝 ${name} wants to join your Bob-Net.` }),
-          el('div', { text: `It shows the number ${ev.number}. If ${name}'s screen shows that number too, tap Yes. We swap passcodes, so each Bob can ask the other. Nothing else switches on.` })),
+          el('div', {}, `${name}'s screen should show the number `, el('strong', { text: String(ev.number) }), `. If it does, tap Yes, pair us; if not, tap No. This phone and ${name} swap passcodes so each can reach the other. Nothing else switches on.`)),
         el('div', { class: 'row' },
           el('button', { class: 'main', text: 'Yes, pair us', onclick: () => say(true) }),
           el('button', { text: 'No', onclick: () => say(false) })));

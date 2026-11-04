@@ -158,6 +158,7 @@ check('photo: never goes to the phone brain', /if \(photo && !to\)/.test(js) && 
   check('pair: each pairing gets its own passcode, kept as a fingerprint; a new passcode drops them', /fun pairPasscode/.test(lendKt2) && /putString\("pairs", "\[\]"\)/.test(lendKt2) && !/putString\("code"/.test(lendKt2));
   check('pair: our passcode goes over only after their yes, and only while Lend my brain is on', /"yes" -> \{[\s\S]*?if \(app\.lend\.state == "open"\) app\.lend\.pairPasscode/.test(pairKt));
   check('pair: Yes refused while the door is shut', /if \(yes && app\.lend\.state != "open"\)/.test(pairKt));
+  check('pair: the reviewed card and waiting words', /should show the number/.test(js) && /Waiting for a yes on \$\{who\}/.test(js));
   check('pair: the card, Pair with this Bob, and nothing switched on', /'Yes, pair us'/.test(js) && /id="pair-bob"/.test(html) && !/setOn\(true\)/.test(pairKt) && !/settings\.(phoneOn|mode)\s*=/.test((js.match(/function onPair[\s\S]*?\n  \}\n/) || [''])[0]));
 }
 
