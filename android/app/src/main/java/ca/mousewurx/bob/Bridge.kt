@@ -39,6 +39,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     private val net = NetBob(activity)
     private val app = activity.application as BobApp
     private val brain = app.brain.also { b -> b.listener = { send(JSONObject(it).put("event", "brain")) } }
+    init { app.pair.listener = { send(JSONObject().put("event", "pair").put("data", it)) } }
     private val listening = ConcurrentHashMap<String, Boolean>()
     private var tts: TextToSpeech? = null
     private var ttsReady = false
@@ -96,6 +97,10 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                         if (r.status == 200) photo = null
                         answer(id, JSONObject().put("status", r.status).put("body", r.body))
                     }
+                    // ---- Pair with my other Bobs ----
+                    "pair.with" -> answer(id, app.pair.pairWith(o.getString("address")))
+                    "pair.answer" -> answer(id, app.pair.answer(o.getString("id"), o.getBoolean("yes")))
+                    "pair.waiting" -> answer(id, JSONArray(app.pair.waiting() + app.pair.takeMissed()))
                     "net.media" -> answer(id, net.media(base(o), o.getString("path")))
                     "net.listen" -> {
                         val b = base(o)
@@ -261,6 +266,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
 
     fun close() {
         brain.listener = null // the phone brain stays (it may be lending); only this screen goes
+        app.pair.listener = null
         listening.keys.forEach { listening[it] = false }
         tts?.shutdown()
         scope.cancel()

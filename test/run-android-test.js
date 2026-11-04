@@ -150,6 +150,17 @@ check('photo: 📎 picks with the system photo picker (no permission)', /<button
 check('photo: uploads to /api/refs as kind chat, then /api/chat carries the ref', /\/api\/refs\?kind=chat/.test(bridge) && /phone\('photo\.upload'/.test(js) && /refs\.length \? \{ refs \}/.test(js));
 check('photo: never goes to the phone brain', /if \(photo && !to\)/.test(js) && !/brain\.chat[^\n]*photo/.test(js));
 
+// Bob-Net pairing v1: the four routes before the passcode, a card here, Pair by address, nothing switched on.
+{
+  const lendKt2 = ktf('LendServer.kt'), pairKt = ktf('Pairing.kt');
+  check('pair: hello/ask/status/finish served on the lend door, before the passcode', /"\/api\/pair\/hello"/.test(lendKt2) && /startsWith\("\/api\/pair\/"\)/.test(lendKt2) && /"\/api\/pair\/ask"[\s\S]*"\/api\/pair\/status"[\s\S]*"\/api\/pair\/finish"/.test(lendKt2));
+  check('pair: the asker must call from the address it gives, 4-digit number, 3 asks a minute', /address\.substringBefore\(':'\) != remoteIp/.test(pairKt) && /\\\\d\{4\}/.test(pairKt) && /ASKS_A_MINUTE = 3/.test(pairKt));
+  check('pair: each pairing gets its own passcode, kept as a fingerprint; a new passcode drops them', /fun pairPasscode/.test(lendKt2) && /putString\("pairs", "\[\]"\)/.test(lendKt2) && !/putString\("code"/.test(lendKt2));
+  check('pair: our passcode goes over only after their yes, and only while Lend my brain is on', /"yes" -> \{[\s\S]*?if \(app\.lend\.state == "open"\) app\.lend\.pairPasscode/.test(pairKt));
+  check('pair: Yes refused while the door is shut', /if \(yes && app\.lend\.state != "open"\)/.test(pairKt));
+  check('pair: the card, Pair with this Bob, and nothing switched on', /'Yes, pair us'/.test(js) && /id="pair-bob"/.test(html) && !/setOn\(true\)/.test(pairKt) && !/settings\.(phoneOn|mode)\s*=/.test((js.match(/function onPair[\s\S]*?\n  \}\n/) || [''])[0]));
+}
+
 // The page's lock: no inline scripts or styles, no network from the page itself.
 check('page has a strict Content-Security-Policy', /script-src 'self'/.test(html) && /connect-src 'none'/.test(html) && !/<script>(?!<)/.test(html.replace(/<script src[^>]*><\/script>/g, '')) && !/ style="/.test(html));
 

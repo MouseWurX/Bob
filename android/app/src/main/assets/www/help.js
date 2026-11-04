@@ -103,6 +103,13 @@ globalThis.BobHelp = {
       html: `<p>When I'm in the background and a Bob on your network needs your OK, or has a check-in for you, Android shows a notification. The first time, Android asks if that's all right. Tap the notification to come back to me.</p><p>Check-ins are set up on your other replicant matrix (Settings, Show advanced settings, 🔔 Check-ins). The phone only shows them.</p>`
     },
     {
+      id: 'pair', title: 'Pair with my other Bobs',
+      html: `<p>The quick way to join this phone to a Bob on your other replicant matrix, with no passcode to type.</p>
+<ul><li>From the phone: Menu, <strong>Bobs on your network</strong>, type that Bob's Tailscale address and tap <strong>Pair with this Bob</strong>. He shows a card with a number; if it matches the one here, press <strong>Yes, pair us</strong> there.</li>
+<li>From the other Bob: press <strong>Pair</strong> there (he finds this phone on Tailscale while <strong>Lend my brain</strong> is on). A card shows up here; check the number and tap <strong>Yes, pair us</strong>.</li></ul>
+<p>We swap passcodes over Tailscale and each of us adds the other. Nothing else switches on. For the other Bob to ask this phone too, <strong>Lend my brain</strong> has to be on here; for this phone to ask him, <strong>Let my other replicant matrices in</strong> has to be on there. Each pairing gets a passcode of its own; <strong>Make a new passcode</strong> signs them all out.</p>`
+    },
+    {
       id: 'photos', title: 'Photos',
       html: `<p>Tap <strong>📎</strong> next to the message box to pick a photo, then say what to do with it ("make the sky orange", "turn this into a poster"). The photo and your message go to a Bob on your other replicant matrix, who does the work and sends the result back here. The phone brain can't see pictures, so with no Bob reachable the photo waits until you remove it (✕) or one is back. The photo is kept on that replicant matrix (your computer), in its References page, like one you added there.</p>`
     },

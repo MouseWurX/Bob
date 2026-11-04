@@ -53,6 +53,7 @@
       if (m.event === 'net') onNetEvent(m.base, m.data);
       else if (m.event === 'net-state') { const st = (live[m.base] ||= {}); const was = st.up; st.up = m.up; if (m.up && !was) refreshBob(m.base, { listen: false }); drawWho(); }
       else if (m.event === 'brain') onBrainEvent(m);
+      else if (m.event === 'pair') onPair(m.data);
       else if (m.event === 'app' && m.visible) { refreshAll(); }
     },
     back() {
@@ -469,7 +470,7 @@
     drawWho();
     if (!$('bobs').classList.contains('hidden')) drawBobs();
   }
-  function refreshAll() { bobs.forEach((b) => refreshBob(b.base)); refreshPhone(); }
+  function refreshAll() { bobs.forEach((b) => refreshBob(b.base)); refreshPhone(); phone('pair.waiting').then((l) => (l || []).forEach(onPair)).catch(() => {}); }
 
   // ---------- Panels ----------
   function open(id) {
@@ -548,6 +549,60 @@
     $('add-msg').textContent = `Added. Now type ${name}'s passcode and tap Log in.`;
     drawBobs(); drawWho();
   });
+
+  // ---------- Pair with my other Bobs (Bob-Net pairing v1) ----------
+  $('pair-bob').addEventListener('click', () => {
+    const address = $('add-address').value.trim();
+    if (!L.netAddress(address)) { $('add-msg').textContent = "That isn't a Tailscale address. It looks like my-computer.your-tailnet.ts.net or 100.x.y.z (Bob's Settings on your other replicant matrix shows it)."; return; }
+    $('add-msg').textContent = 'Asking…';
+    phone('pair.with', { address }).then((r) => {
+      $('add-msg').textContent = r.error ? r.error : `Waiting for a yes over there. Its screen shows the number ${r.number}.`;
+    }).catch((e) => { $('add-msg').textContent = `Couldn't ask: ${e.message}.`; });
+  });
+
+  function addPaired(name, address) {
+    const base = L.netAddress(address);
+    if (!base) return;
+    const had = bobs.find((b) => b.base === base);
+    if (had) had.name = had.name || name;
+    else bobs.push({ name: String(name || 'Bob').slice(0, 40), address: base.replace('http://', ''), base });
+    store.set('bobs', bobs);
+    refreshBob(base);
+    if (!$('bobs').classList.contains('hidden')) drawBobs();
+  }
+
+  function onPair(ev) {
+    if (!ev || typeof ev !== 'object') return;
+    if (ev.type === 'pair-gone') { document.querySelector(`[data-pair="${CSS.escape(String(ev.id))}"]`)?.remove(); return; }
+    if (ev.type === 'pair-ask') {
+      if (document.querySelector(`[data-pair="${CSS.escape(String(ev.id))}"]`)) return;
+      const name = String(ev.name || 'Another Bob');
+      const say = (yes) => phone('pair.answer', { id: ev.id, yes }).then((r) => { if (r.ok) card.remove(); else toast(r.why || "Couldn't answer."); }).catch(() => toast("Couldn't answer."));
+      const card = el('div', { class: 'card', 'data-pair': ev.id },
+        el('div', { class: 'q' }, el('strong', { text: `🤝 ${name} wants to join your Bob-Net.` }),
+          el('div', { text: `It shows the number ${ev.number}. If ${name}'s screen shows that number too, tap Yes. We swap passcodes, so each Bob can ask the other. Nothing else switches on.` })),
+        el('div', { class: 'row' },
+          el('button', { class: 'main', text: 'Yes, pair us', onclick: () => say(true) }),
+          el('button', { text: 'No', onclick: () => say(false) })));
+      $('chat').append(card);
+      card.scrollIntoView({ block: 'end' });
+      return;
+    }
+    if (ev.type === 'pair-done') {
+      const name = String(ev.name || 'that Bob');
+      if (ev.added) addPaired(name, ev.address);
+      let t;
+      if (ev.asker) t = ev.both ? `Paired with ${name}, both ways.` : `Paired with ${name}. This phone can ask ${name} now. For ${name} to ask this phone too, turn on Lend my brain here, then pair again.`;
+      else t = ev.added ? `Paired with ${name}, both ways.` : `Paired with ${name} one way: ${name} can ask this phone, but this phone can't ask ${name} until "Let my other replicant matrices in" is on there. Then pair again.`;
+      note(t);
+      if (!$('bobs').classList.contains('hidden')) $('add-msg').textContent = t;
+      return;
+    }
+    if (ev.type === 'pair-state' && ev.state !== 'paired') {
+      const t = { no: 'That Bob said no.', timeout: 'Nobody answered in time. Tap Pair with this Bob to try again.', failed: `Couldn't pair${ev.why ? `: ${ev.why}` : ''}.` }[ev.state];
+      if (t) { $('add-msg').textContent = t; toast(t); }
+    }
+  }
 
   // ---------- Phone brain panel ----------
   let dl = null; // { file, have, bytes, state, text }

@@ -89,7 +89,20 @@ class LendServer(private val app: BobApp) {
         val rnd = SecureRandom()
         val code = (1..8).joinToString("") { rnd.nextInt(10).toString() }
         val salt = ByteArray(16).also { rnd.nextBytes(it) }
-        prefs.edit().putString("salt", hex(salt)).putString("hash", hex(pbkdf2(code, salt))).putString("keys", "[]").apply()
+        prefs.edit().putString("salt", hex(salt)).putString("hash", hex(pbkdf2(code, salt))).putString("keys", "[]").putString("pairs", "[]").apply()
+        return code
+    }
+
+    // Pairing passcodes: one per Bob paired by "Pair with my other Bobs", kept as fingerprints like the main one
+    // (up to 8; the oldest goes first). "Make a new passcode" drops them all.
+    private fun pairs(): JSONArray = runCatching { JSONArray(prefs.getString("pairs", "[]")) }.getOrDefault(JSONArray())
+    @Synchronized fun pairPasscode(forName: String): String {
+        val rnd = SecureRandom()
+        val code = (1..8).joinToString("") { rnd.nextInt(10).toString() }
+        val salt = ByteArray(16).also { rnd.nextBytes(it) }
+        val old = pairs().let { a -> (0 until a.length()).map { a.getJSONObject(it) } }.takeLast(7)
+        val list = JSONArray(old + JSONObject().put("salt", hex(salt)).put("hash", hex(pbkdf2(code, salt))).put("name", forName.take(40)))
+        prefs.edit().putString("pairs", list.toString()).apply()
         return code
     }
 
@@ -97,10 +110,12 @@ class LendServer(private val app: BobApp) {
         SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(PBEKeySpec(code.toCharArray(), salt, 60_000, 256)).encoded
 
     private fun checkPasscode(code: String): Boolean {
+        if (code.isEmpty() || code.length > 64) return false
         val salt = unhex(prefs.getString("salt", null) ?: return false)
         val want = unhex(prefs.getString("hash", null) ?: return false)
-        if (code.isEmpty() || code.length > 64) return false
-        return MessageDigest.isEqual(pbkdf2(code, salt), want)
+        if (MessageDigest.isEqual(pbkdf2(code, salt), want)) return true
+        val a = pairs()
+        return (0 until a.length()).any { i -> a.optJSONObject(i)?.let { MessageDigest.isEqual(pbkdf2(code, unhex(it.getString("salt"))), unhex(it.getString("hash"))) } == true }
     }
 
     // Login keys: only their fingerprints are kept, up to 8 (the oldest goes first).
@@ -157,6 +172,9 @@ class LendServer(private val app: BobApp) {
         server = null; address = null; state = "off"
         app.brain.let { if (it.working.get() == "lend") it.stop() }
     }
+
+    /** This phone's Tailscale address as text, for pairing. */
+    fun myTailscaleIp(): String? = tailscaleIp()?.hostAddress
 
     /** This phone's Tailscale address: from the VPN's link, or failing that from the network interfaces. */
     private fun tailscaleIp(): InetAddress? {
@@ -237,6 +255,9 @@ class LendServer(private val app: BobApp) {
                 if (!okHost(req.headers["host"])) return reply(out, 403, JSONObject().put("error", "wrong host"))
                 when {
                     req.method == "POST" && req.path == "/login" -> login(out, req, remote.hostAddress ?: "")
+                    // Pairing comes before the passcode: the asker doesn't know it yet (that's the point).
+                    req.path == "/api/pair/hello" && req.method == "GET" -> reply(out, 200, app.pair.hello())
+                    req.path.startsWith("/api/pair/") && req.method == "POST" -> pair(out, req, remote.hostAddress ?: "")
                     req.path == "/api/lend/hello" && req.method == "GET" -> { if (signedIn(req, out)) hello(out) }
                     req.path == "/api/lend/chat" && req.method == "POST" -> { if (signedIn(req, out)) chat(sock, out, req) }
                     else -> reply(out, 404, JSONObject().put("error", "not here"))
@@ -292,6 +313,18 @@ class LendServer(private val app: BobApp) {
         out.write(("HTTP/1.1 303 See Other\r\nLocation: /\r\nSet-Cookie: bob_auth=$key; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000\r\n" +
             "Content-Length: ${b.size}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n").toByteArray())
         out.flush()
+    }
+
+    private fun pair(out: OutputStream, req: Req, who: String) {
+        if (req.headers["x-bob"] != "1" || req.headers["content-type"]?.startsWith("application/json") != true)
+            return reply(out, 403, JSONObject().put("error", "missing x-bob"))
+        val b = runCatching { JSONObject(String(req.body, Charsets.UTF_8)) }.getOrNull() ?: return reply(out, 400, JSONObject().put("error", "bad JSON"))
+        when (req.path) {
+            "/api/pair/ask" -> { val (code, body) = app.pair.ask(b, who); reply(out, code, body) }
+            "/api/pair/status" -> reply(out, 200, app.pair.status(b, who))
+            "/api/pair/finish" -> reply(out, 200, app.pair.finish(b, who))
+            else -> reply(out, 404, JSONObject().put("error", "not here"))
+        }
     }
 
     private fun signedIn(req: Req, out: OutputStream): Boolean {
