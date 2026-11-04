@@ -80,7 +80,7 @@ globalThis.BobHelp = {
     },
     {
       id: 'memory', title: 'What Bob remembers',
-      html: `<p>Menu, <strong>What Bob remembers</strong>: lasting facts for the phone brain, one per line, yours to edit. It's used from the next new chat. It stays on this phone; your PC's Bob keeps his own memory file. Don't put passwords in it.</p>`
+      html: `<p>Menu, <strong>What Bob remembers</strong>: lasting facts for the phone brain, one per line, yours to edit. It's used from the next new chat. It stays on this phone; your PC's Bob keeps his own memory file. Don't put passwords in it.</p><p>If <strong>Remember only what fits</strong> is on in the PC's Settings, Engines &amp; speed, then while I can reach the PC, the PC Bob hands me the few lines of his memory that fit what you just asked, for that one reply. I keep none of them. With the PC out of reach, I make do with this phone's list.</p>`
     },
     {
       id: 'past-chats', title: 'Past chats',

@@ -264,10 +264,27 @@
     const history = c.msgs.slice(0, -2).filter((m) => m.who === 'you' || (m.who === 'bob' && m.text)).slice(-24)
       .map((m) => ({ role: m.who === 'you' ? 'user' : 'assistant', content: String(m.text).slice(0, 4000) }));
     const system = L.phoneSystem({ persona: S.persona, user: settings.userName, cat: S.cat, memory, bigBob: bobs[0]?.name || '' });
-    const note = `Current date and time for ${(settings.userName || '').trim() || 'the user'}: ${new Date().toLocaleString()}.`;
-    phone('brain.chat', { file: model.file.name, system, history, text, note, maxTokens: model.maxTokens || 768 })
-      .catch((e) => { grow(`*(The phone brain couldn't start: ${e.message})*`); finish(); });
+    const now = `Current date and time for ${(settings.userName || '').trim() || 'the user'}: ${new Date().toLocaleString()}.`;
+    pcRecall(text, c.id).then((recalled) => {
+      const note = recalled ? `${now}\n\n${recalled}` : now;
+      return phone('brain.chat', { file: model.file.name, system, history, text, note, maxTokens: model.maxTokens || 768 });
+    }).catch((e) => { grow(`*(The phone brain couldn't start: ${e.message})*`); finish(); });
     drawStatus();
+  }
+
+  // "Remember only what fits" on the PC: when the first Bob on your network is reachable, he hands over the memory
+  // lines that fit this message (nothing while that setting is off). Two seconds at most; no PC, no extra memory.
+  function pcRecall(text, chatId) {
+    const b = bobs.find((x) => live[x.base]?.up && live[x.base]?.signedIn);
+    if (!b) return Promise.resolve('');
+    const ask = phone('net.post', { address: b.address, path: '/api/memory/recall', body: JSON.stringify({ text: String(text).slice(0, 4000), session: `phone-${chatId}` }) })
+      .then((r) => {
+        if (r.status !== 200) return '';
+        const m = JSON.parse(r.body);
+        if (!m.on) return '';
+        return [m.always, m.text].filter((x) => typeof x === 'string' && x.trim()).join('\n').slice(0, 6000);
+      }).catch(() => '');
+    return Promise.race([ask, new Promise((ok) => setTimeout(() => ok(''), 2000))]);
   }
 
   function onBrainEvent(m) {
