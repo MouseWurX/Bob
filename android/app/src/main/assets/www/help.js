@@ -105,7 +105,7 @@ globalThis.BobHelp = {
     },
     {
       id: 'howtos', title: 'How-tos',
-      html: `<p>When a Bob on your network finishes a bigger job well, he may offer to keep the steps as a how-to, and the card shows up here too. Tap <strong>Save how-to</strong> (you can rename it first) or <strong>Not now</strong>. Next time you ask for something like it, he follows those steps. He only offers when <strong>Let Bob learn how-tos</strong> is on in his Settings. Changing or deleting how-tos is done on the PC, in Settings, How Bob works, 📒 How-tos.</p>`
+      html: `<p>When a Bob on your network finishes a bigger job well, he may offer to keep the steps as a how-to, and the card shows up here too. Tap <strong>Save how-to</strong> (you can rename it first) or <strong>Not now</strong>. Next time you ask for something like it, he follows those steps. He only offers when <strong>Let Bob learn how-tos</strong> is on in his Settings. Changing or deleting how-tos is done on the PC, in Settings, 📒 How-tos.</p>`
     },
     {
       id: 'privacy', title: 'Privacy',

@@ -411,7 +411,7 @@
       .then((r) => {
         let out = {}; try { out = JSON.parse(r.body); } catch { /* not JSON */ }
         if (save && out.ok) {
-          card.replaceChildren(el('p', { text: `Saved the how-to "${out.saved?.name || name.value.trim()}". You can change or delete it in Settings, How Bob works, 📒 How-tos.` }));
+          card.replaceChildren(el('p', { text: `Saved the how-to "${out.saved?.name || name.value.trim()}". You can change or delete it in Settings, 📒 How-tos.` }));
           setTimeout(() => card.remove(), 8000);
         } else if (save) toast(out.why || "Couldn't save the how-to");
         else card.remove();
