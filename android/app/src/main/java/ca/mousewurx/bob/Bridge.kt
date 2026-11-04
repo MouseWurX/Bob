@@ -6,7 +6,12 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
+import android.net.Uri
 import android.os.Build
+import android.provider.MediaStore
+import android.util.Base64
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
 import android.webkit.JavascriptInterface
@@ -21,6 +26,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.net.URLEncoder
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
@@ -36,6 +43,8 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var micCall: String? = null
+    private var photoCall: String? = null
+    @Volatile private var photo: ByteArray? = null // the picked photo, until it's sent or cleared
     private var pendingMicStart: (() -> Unit)? = null
     private var pendingNotify: (() -> Unit)? = null
     @Volatile private var inBackground = false
@@ -44,6 +53,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         const val MIC_REQUEST = 7001
         const val MIC_PERMISSION = 7002
         const val NOTIFY_PERMISSION = 7003
+        const val PHOTO_REQUEST = 7004
         const val CHANNEL = "bob"
     }
 
@@ -71,6 +81,21 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                     "net.forget" -> { val b = base(o); listening[b] = false; net.forget(b); answer(id, true) }
                     "net.get" -> { val r = net.get(base(o), o.getString("path")); answer(id, JSONObject().put("status", r.status).put("body", r.body)) }
                     "net.post" -> { val r = net.post(base(o), o.getString("path"), o.optString("body", "{}")); answer(id, JSONObject().put("status", r.status).put("body", r.body)) }
+                    // ---- A photo for a Bob on your network to work on (Android's own photo picker: no permission needed) ----
+                    "photo.pick" -> activity.runOnUiThread {
+                        photoCall?.let { fail(it, "replaced") }
+                        photoCall = id
+                        runCatching { activity.startActivityForResult(Intent(MediaStore.ACTION_PICK_IMAGES).setType("image/*"), PHOTO_REQUEST) }
+                            .onFailure { photoCall = null; fail(id, "this phone has no photo picker") }
+                    }
+                    "photo.clear" -> { photo = null; answer(id, true) }
+                    "photo.upload" -> {
+                        val bytes = photo ?: throw IllegalStateException("no photo picked")
+                        val name = URLEncoder.encode(o.optString("name", "Photo from the phone").take(60), "UTF-8")
+                        val r = net.upload(base(o), "/api/refs?kind=chat&name=$name", bytes, "image/jpeg")
+                        if (r.status == 200) photo = null
+                        answer(id, JSONObject().put("status", r.status).put("body", r.body))
+                    }
                     "net.media" -> answer(id, net.media(base(o), o.getString("path")))
                     "net.listen" -> {
                         val b = base(o)
@@ -151,11 +176,41 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     }
 
     fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == PHOTO_REQUEST) {
+            val id = photoCall ?: return
+            photoCall = null
+            val uri = data?.data ?: return answer(id, null) // picker closed: nothing picked
+            scope.launch {
+                try { answer(id, readPhoto(uri)) } catch (e: Exception) { fail(id, "that picture wouldn't open") }
+            }
+            return
+        }
         if (requestCode != MIC_REQUEST) return
         val id = micCall ?: return
         micCall = null
         val text = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
         answer(id, text ?: "")
+    }
+
+    // Reads the picked photo upright (ImageDecoder follows the camera's rotation), at most 2048 px on its long side,
+    // as a JPEG kept for photo.upload. The page gets a small preview only.
+    private fun readPhoto(uri: Uri): JSONObject {
+        fun decode(max: Int): Bitmap = ImageDecoder.decodeBitmap(ImageDecoder.createSource(activity.contentResolver, uri)) { d, info, _ ->
+            val w = info.size.width; val h = info.size.height
+            val scale = minOf(1.0, max.toDouble() / maxOf(w, h))
+            d.setTargetSize(maxOf(1, (w * scale).toInt()), maxOf(1, (h * scale).toInt()))
+            d.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+        }
+        fun jpeg(b: Bitmap, q: Int) = ByteArrayOutputStream().also { b.compress(Bitmap.CompressFormat.JPEG, q, it) }.toByteArray()
+        val big = decode(2048)
+        val bytes = jpeg(big, 90)
+        big.recycle()
+        if (bytes.size > 14_000_000) throw IllegalStateException("too big")
+        photo = bytes
+        val small = decode(256)
+        val preview = "data:image/jpeg;base64," + Base64.encodeToString(jpeg(small, 75), Base64.NO_WRAP)
+        small.recycle()
+        return JSONObject().put("preview", preview).put("bytes", bytes.size)
     }
 
     fun onPermission(requestCode: Int, grants: IntArray) {

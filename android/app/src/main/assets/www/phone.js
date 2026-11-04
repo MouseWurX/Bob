@@ -190,6 +190,26 @@
     text = String(text || '').trim();
     if (!text) return;
     ensureChat(text);
+    // A photo only goes to a Bob on your other replicant matrix: the phone brain can't see pictures.
+    if (photo && !to) {
+      const job = L.bigJob(text) || { id: 'pictures', what: 'work on a photo' };
+      const a = answerer(job);
+      const bob = a.kind === 'net' ? a.bob : a.offer || null;
+      if (!bob) { toast("Photos go to a Bob on your other replicant matrix, and none is reachable right now. The photo is still attached."); return false; }
+      addMsg({ who: 'you', text: `📷 ${text}` });
+      const withPhoto = () => { queue.push({ chatId: chat.id, text, to: bob.base, photo: true }); dropPhoto(false); pump(); };
+      if (a.kind === 'net') withPhoto();
+      else {
+        const card = el('div', { class: 'card' },
+          el('div', { class: 'q', text: `The phone brain can't see pictures. Send this and the photo to "${bob.name}"?` }),
+          el('div', { class: 'row' },
+            el('button', { class: 'main', text: `Send to ${bob.name}`, onclick: () => { card.remove(); withPhoto(); } }),
+            el('button', { text: 'Not now', onclick: () => card.remove() })));
+        $('chat').append(card);
+        card.scrollIntoView({ block: 'end' });
+      }
+      return true;
+    }
     if (!to) {
       const job = L.bigJob(text);
       const a = answerer(job);
@@ -220,7 +240,7 @@
     const c = chats.find((x) => x.id === job.chatId);
     if (!c) return pump();
     if (job.to === 'phone') return askPhone(c, job.text);
-    return askNet(c, job.text, job.to);
+    return askNet(c, job.text, job.to, job.photo);
   }
 
   function finish() {
@@ -307,11 +327,18 @@
   }
 
   // ---------- Bobs on the network ----------
-  function askNet(c, text, base) {
+  function askNet(c, text, base, withPhoto = false) {
     current = startReply(c, 'net', base, text);
     current.base = base;
     const b = bobs.find((x) => x.base === base);
-    phone('net.post', { address: b.address, path: '/api/chat', body: JSON.stringify({ sessionId: `phone-${c.id}`, text, effort: settings.effort }) })
+    // The photo goes first (to that Bob's reference shelf, kind "chat"); the message then points at it.
+    const upload = withPhoto
+      ? phone('photo.upload', { address: b.address }).then((r) => {
+        if (r.status !== 200) throw new Error(`the photo didn't arrive (${shortError(r.body)})`);
+        return [JSON.parse(r.body).id];
+      })
+      : Promise.resolve([]);
+    upload.then((refs) => phone('net.post', { address: b.address, path: '/api/chat', body: JSON.stringify({ sessionId: `phone-${c.id}`, text, effort: settings.effort, ...(refs.length ? { refs } : {}) }) }))
       .then((r) => {
         if (r.status === 401) { live[base].signedIn = false; grow(`*("${b.name}" wants the passcode again. It's under Bobs on your network.)*`); finish(); drawWho(); }
         else if (r.status >= 400) { grow(`*("${b.name}" said no: ${shortError(r.body)})*`); finish(); }
@@ -688,8 +715,17 @@
   box.addEventListener('input', () => { box.style.height = 'auto'; box.style.height = `${Math.min(box.scrollHeight, 140)}px`; });
   $('send').addEventListener('click', () => {
     if (current) return stopReply();
-    const t = box.value; box.value = ''; box.style.height = 'auto'; send(t);
+    const t = box.value; box.value = ''; box.style.height = 'auto'; if (send(t) === false) box.value = t;
   });
+  // ---------- A photo for a Bob on your network ----------
+  let photo = null; // { preview } while one is attached
+  function drawPhoto() {
+    $('photo-chip').classList.toggle('hidden', !photo);
+    if (photo) $('photo-preview').src = photo.preview;
+  }
+  function dropPhoto(tellAndroid = true) { photo = null; drawPhoto(); if (tellAndroid) phone('photo.clear').catch(() => {}); }
+  $('photo').addEventListener('click', () => phone('photo.pick').then((p) => { if (p && p.preview) { photo = p; drawPhoto(); box.focus(); } }).catch((e) => { if (e.message !== 'replaced') toast(`Couldn't add the photo: ${e.message}.`); }));
+  $('photo-drop').addEventListener('click', () => dropPhoto());
   $('mic').addEventListener('click', () => phone('speech.listen').then((t) => { if (t) send(t); }).catch((e) => toast(e.message)));
   function stopReply() {
     if (!current) return;

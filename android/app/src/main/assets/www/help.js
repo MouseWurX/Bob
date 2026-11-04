@@ -103,6 +103,10 @@ globalThis.BobHelp = {
       html: `<p>When I'm in the background and a Bob on your network needs your OK, or has a check-in for you, Android shows a notification. The first time, Android asks if that's all right. Tap the notification to come back to me.</p><p>Check-ins are set up on your other replicant matrix (Settings, Show advanced settings, 🔔 Check-ins). The phone only shows them.</p>`
     },
     {
+      id: 'photos', title: 'Photos',
+      html: `<p>Tap <strong>📎</strong> next to the message box to pick a photo, then say what to do with it ("make the sky orange", "turn this into a poster"). The photo and your message go to a Bob on your other replicant matrix, who does the work and sends the result back here. The phone brain can't see pictures, so with no Bob reachable the photo waits until you remove it (✕) or one is back. The photo is kept on that replicant matrix (your computer), in its References page, like one you added there.</p>`
+    },
+    {
       id: 'howtos', title: 'How-tos',
       html: `<p>When a Bob on your network finishes a bigger job well, he may offer to keep the steps as a how-to, and the card shows up here too. Tap <strong>Save how-to</strong> (you can rename it first) or <strong>Not now</strong>. Next time you ask for something like it, he follows those steps. He only offers when <strong>Let Bob learn how-tos</strong> is on in his Settings. Changing or deleting how-tos is done on your other replicant matrix, in Settings, 📒 How-tos.</p>`
     },

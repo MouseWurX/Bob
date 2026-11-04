@@ -103,6 +103,17 @@ class NetBob(context: Context) {
         return read(c)
     }
 
+    /** Sends a picture (bytes) to that Bob, e.g. /api/refs for a photo to work on. */
+    fun upload(base: String, path: String, bytes: ByteArray, type: String): Reply {
+        val c = open(base, path, "POST", 60000)
+        c.doOutput = true
+        c.setFixedLengthStreamingMode(bytes.size)
+        c.setRequestProperty("Content-Type", type)
+        c.setRequestProperty("x-bob", "1")
+        c.outputStream.use { it.write(bytes) }
+        return read(c)
+    }
+
     private fun read(c: HttpURLConnection): Reply {
         try {
             val status = c.responseCode
