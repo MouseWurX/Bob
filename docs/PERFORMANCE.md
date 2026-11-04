@@ -36,6 +36,10 @@ In the Gaming session the brain lives in system RAM and thinks on the processor.
 
 ---
 
+## Picking the main brains
+
+The everyday, Coding, Office and Deep thinking brains were each picked in a race against the brain they'd replace, on the reference PC. Full tables, settings and caveats: **[Brain races](BRAIN-RACES.md)**.
+
 ## Picking the Gaming brain
 
 The Gaming session's promise is simple: **the graphics card belongs to your game.** Bob's brain stays off it; at most he borrows about 0.6 GB to read messages quickly, and only while the game leaves room (1.5.32). If the processor is maxed out, his small brain moves onto the card when it fits with room to spare, because a maxed processor took 56 s to say hi. He still chats and listens, but on the processor (CPU), with a small brain in system RAM. Pictures, clips, music and anything at Medium effort or higher wait in Tasks until you switch back. Nothing is dropped.

@@ -210,7 +210,8 @@ export class Gate {
     // 1.5.41: a quick reply is running beside this job on the small brain (Keep chatting while Bob is busy). Let it
     // finish before loading another brain, which would stop it mid-sentence.
     const side = this.brain.turns?.get?.('side');
-    if (side && side.controller?.signal !== signal) {
+    // 1.5.51: a reply on the second server (beside: true) has its own llama-server, so loading this brain doesn't touch it.
+    if (side && !side.beside && !opts.beside && side.controller?.signal !== signal) {
       this.brain.setState?.('waiting', 'Finishing a quick reply first');
       await this.brain.sideIdle?.(signal);
       if (signal?.aborted) throw new Error('Stopped.');
@@ -225,7 +226,7 @@ export class Gate {
         if (attempt) {
           const st = ledger?.step('retry', { what: m, attempt: attempt + 1 });
           this.brain.log?.('handoff', `loading ${m} again (try ${attempt + 1}): ${last?.message || 'not ready after loading'}`);
-          await this.engine.unload?.(m).catch?.(() => {});
+          await this.engine.unload?.(m, o).catch?.(() => {});
           await sleep(this.delays[attempt - 1], signal);
           st?.done();
         }
@@ -255,6 +256,9 @@ export class Gate {
       return model;
     } catch (e) {
       if (/^Stopped\.$/.test(e.message) || signal?.aborted) throw e;
+      // 1.5.51: the second brain beside a job won't start. Never fall back to the main brain here: that would swap the
+      // big job's brain out from under it. The message goes back in line instead (Brain.startTurn).
+      if (opts.beside) { const b = new Error(e.message); b.code = 'beside'; throw b; }
       // Another brain won't load: the main brain does the job instead, and says so.
       const main = this.brain.fallbackBrain?.();
       if (!main?.model || sameModel(main.model, model)) throw e;

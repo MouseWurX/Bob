@@ -5,11 +5,16 @@
 //   pickFor: which model is Bob's pick for that job on this PC? (scored for brains; the starter set otherwise)
 const gb = (n) => (n >= 1 ? `${(+n).toFixed(n >= 10 ? 0 : 1)} GB` : `${Math.round(n * 1000)} MB`);
 
-export const SLOT_NAMES = { bob: 'Brain', small: 'Quick brain', deep: 'Deep thinking', tinker: 'Coding', reviewer: 'Review', eyes: 'Seeing pictures', embed: 'Memory (finding past chats)', voice: 'Hearing you', speech: 'Voice', image: 'Painter', edit: 'Picture editor', video: 'Video', music: 'Music', sfx: 'Sound effects', ledger: 'Spreadsheets', scout: 'Research', painter: 'Prompt writer' };
-export const BRAIN_SLOTS = ['bob', 'small', 'deep', 'tinker', 'reviewer', 'eyes', 'ledger', 'scout', 'painter'];
+export const SLOT_NAMES = { bob: 'Brain', small: 'Quick brain', gaming: 'Gaming', deep: 'Deep thinking', tinker: 'Coding', reviewer: 'Review', eyes: 'Seeing pictures', embed: 'Memory (finding past chats)', voice: 'Hearing you', speech: 'Voice', image: 'Painter', edit: 'Picture editor', video: 'Video', music: 'Music', sfx: 'Sound effects', ledger: 'Spreadsheets', scout: 'Research', painter: 'Prompt writer', office: 'Office', phone: 'Phone' };
+export const BRAIN_SLOTS = ['bob', 'small', 'gaming', 'deep', 'tinker', 'reviewer', 'office', 'eyes', 'ledger', 'scout', 'painter'];
+// 1.5.56: the owner's rule: the Gaming brain is only ever Qwen3 4B Instruct 2507 (catalog id qwen3-4b), timed on a
+// busy processor. Gemma 4 E4B never runs during a game. Only catalog entries with the "gaming" job go in that slot.
+const isE4b = (...names) => names.some((n) => /e4b/i.test(String(n || '')));
 
 // The starter set for this PC's graphics card.
-export const packFor = (packs, vramGB) => packs.find((p) => (vramGB || 0) >= p.minVramGB) || packs.at(-1);
+// 1.5.71: graphics built into the processor (shared memory) get the set made for them; cards are picked by size.
+export const packFor = (packs, vramGB, integrated = false) => (integrated && packs.find((p) => p.integrated))
+  || packs.filter((p) => !p.integrated).find((p) => (vramGB || 0) >= p.minVramGB) || packs.filter((p) => !p.integrated).at(-1);
 
 // Billions of parameters from a model name (gemma4:e4b, qwen3-coder:30b, gpt-oss:20b), or null.
 export function paramsB(name) {
@@ -20,6 +25,7 @@ export function paramsB(name) {
 // Can this model do this job? Models in Bob's list say so themselves (catalog "jobs"). Others are judged by what
 // their engine reports (Ollama: completion, vision, tools, thinking, embedding), then by their name.
 export function canDo(slotId, { entry, name, caps } = {}) {
+  if (slotId === 'gaming') return Boolean(entry?.jobs?.includes('gaming')) && !isE4b(name, entry?.id, entry?.ollama);
   if (entry?.jobs) return entry.jobs.includes(slotId);
   if (entry && !['chat', 'coding', 'vision'].includes(entry.category)) return false;
   const c = caps || [];
@@ -34,6 +40,7 @@ export function canDo(slotId, { entry, name, caps } = {}) {
     case 'bob': return !known || c.includes('tools'); // the main brain uses Bob's tools
     case 'deep': case 'reviewer': return p == null || p >= 12; // careful thinking needs a bigger brain
     case 'tinker': return p == null || p >= 7 || /cod(e|er)/i.test(label);
+    case 'office': return !known || c.includes('tools'); // Office does everything with Bob's tools
     default: return BRAIN_SLOTS.includes(slotId); // helpers: any brain that chats
   }
 }
@@ -41,11 +48,18 @@ export function canDo(slotId, { entry, name, caps } = {}) {
 // The jobs a catalog model can do, by name ("Brain, Coding, Review"), for the Get models cards.
 export const jobNames = (entry) => (entry?.jobs || []).map((id) => SLOT_NAMES[id]).filter(Boolean);
 
+// Which computers each of Bob's own engines runs on (src/engines.js has the builds; this is for the model cards).
+// Not listed = Windows, Mac and Linux.
+export const ENGINE_PLATFORMS = { 'whisper.cpp': ['win32', 'linux'], Piper: ['win32', 'linux'] };
+export const engineRunsOn = (name, platform) => !platform || (ENGINE_PLATFORMS[name] || ['win32', 'darwin', 'linux']).includes(platform);
+
 // How well a model runs on this PC. hw: { vramGB, ramGB, freeGB }. Each answer that isn't ok has a one-line reason.
 export function suit(m, hw = {}, platform = '') {
   if (hw.freeGB != null && m.status?.state !== 'installed' && m.sizeGB > hw.freeGB) return { level: 'blocked', why: `Needs ${gb(m.sizeGB)} of disk space; ${hw.freeGB} GB is free.` };
-  if (m.needs && platform && platform !== 'win32') return { level: 'blocked', why: `${m.needs} only runs on Windows.` };
+  if (m.needs && platform && !engineRunsOn(m.needs, platform)) return { level: 'blocked', why: `${m.needs} doesn't run on ${platform === 'darwin' ? 'a Mac' : 'this computer'} yet.` };
   const v = hw.vramGB;
+  // 1.5.64: a squeezed (Q3) brain is only for small cards. On a bigger card the full (Q4 or better) version runs.
+  if (m.maxCardGB && v > m.maxCardGB) return { level: 'no', squeezed: true, why: `Made for cards of ${m.maxCardGB} GB or less. Your card runs the full version, which is sharper.` };
   // A brain bigger than the card keeps the rest in RAM. Too much for the RAM, and it won't run well at all.
   if (m.ollama && v && hw.ramGB && m.vramGB > v) {
     const spill = Math.ceil(m.vramGB - v);
@@ -68,12 +82,16 @@ export function suit(m, hw = {}, platform = '') {
 // Small cards (8 GB or less): a brain that fills most of the card leaves no room for longer chats, so it pays
 // extra. On a 6 GB laptop that makes the light Qwen3 4B the Brain and Quick brain, and Gemma 4 E4B the one that
 // sees pictures and hears you.
-const QUALITY = { bob: 4, deep: 5, tinker: 5, reviewer: 4, eyes: 2, ledger: 1, scout: 2, painter: 1, small: 0 };
+const QUALITY = { bob: 4, deep: 5, tinker: 5, reviewer: 4, office: 3, eyes: 2, ledger: 1, scout: 2, painter: 1, small: 0, gaming: 0 };
 export const W = { cover: 2, weight: 6, spill: 10, room: 12, smallCard: 8 };
 
+// 1.5.56: jobs that save swaps in everyday use. The session brains (Gaming, Office) and the phone don't count, so
+// listing a small brain for them doesn't push it ahead of brains that do more on the PC.
+const NOT_COVER = new Set(['gaming', 'office', 'phone']);
+export const coverJobs = (m) => (m.jobs || []).filter((j) => !NOT_COVER.has(j));
 export function scoreFor(m, slotId, hw = {}) {
-  const jobs = (m.jobs || []).length;
-  const p = paramsB(m.ollama) || 4;
+  const jobs = coverJobs(m).length;
+  const p = m.params || paramsB(m.ollama) || 4;
   const card = hw.vramGB || 0;
   const weight = card ? (m.vramGB || 0) / card : (m.sizeGB || 0) / (hw.ramGB || 16);
   const spill = card && m.vramGB > card ? W.spill : 0;
@@ -81,21 +99,29 @@ export function scoreFor(m, slotId, hw = {}) {
   return W.cover * jobs + (QUALITY[slotId] ?? 1) * Math.log2(p) - W.weight * weight - spill - room;
 }
 
+// 1.5.64, the owner's rule: never below Q4, except on small cards. A squeezed (Q3) version only takes part when
+// its full version wouldn't run well on this PC.
+export function fullRunsHere(m, models, hw = {}, platform = '') {
+  const full = m.squeezedOf && models.find((x) => x.id === m.squeezedOf);
+  return Boolean(full) && suit(full, hw, platform).level === 'ok';
+}
+
 // Bob's pick for a job on this PC: { id, why } or null.
 export function pickFor(slotId, models, ctx = {}) {
   const hw = { vramGB: ctx.vramGB, ramGB: ctx.ramGB, freeGB: ctx.freeGB };
   if (BRAIN_SLOTS.includes(slotId)) {
-    const able = models.filter((m) => m.jobs?.includes(slotId) && !m.gated);
+    // 1.5.56: new brains (trial: true) are listed but not recommended until they've been tried on a real PC.
+    const able = models.filter((m) => canDo(slotId, { entry: m }) && !m.gated && !m.trial && !fullRunsHere(m, models, hw, ctx.platform));
     const pool = able.filter((m) => suit(m, hw, ctx.platform).level === 'ok');
     if (!pool.length) return null;
     const best = pool.map((m) => ({ m, s: scoreFor(m, slotId, hw) })).sort((a, b) => b.s - a.s)[0].m;
-    const n = (best.jobs || []).length;
+    const n = coverJobs(best).length;
     const load = best.vramGB ? `${gb(best.vramGB)} of graphics memory` : 'runs on the processor';
     // Won over a model that covers more jobs: it was picked for being light.
-    const light = pool.some((m) => (m.jobs || []).length > n);
+    const light = pool.some((m) => coverJobs(m).length > n);
     return { id: best.id, why: `${light ? 'Light, so it leaves room on your card for longer chats' : n > 1 ? `Covers ${n} jobs, so fewer brain swaps` : 'Made for this job'} · ${load}` };
   }
-  const pack = ctx.packs?.length ? packFor(ctx.packs, ctx.vramGB) : null;
+  const pack = ctx.packs?.length ? packFor(ctx.packs, ctx.vramGB, ctx.integrated) : null;
   const id = Object.entries(pack?.slots || {}).find(([, slots]) => slots.includes(slotId))?.[0];
   const m = id && models.find((x) => x.id === id);
   if (!m) return null;
@@ -111,3 +137,28 @@ export function picksOf(m, models, ctx = {}) {
 
 // Hidden unless "Show models that don't suit this PC" is on: not on this PC, not Bob's pick, and won't run well.
 export const unsuited = (m, picks, s) => m.status?.state !== 'installed' && !picks.length && s.level !== 'ok';
+
+// ---- 1.5.56: how a model would do on other machines, for the Brain catalogue ----
+// Fixed example machines, so the catalogue can say "fits an 8 GB card" without that machine being here.
+export const DEVICES = [
+  { id: 'big', label: '16 GB graphics card', vramGB: 16, ramGB: 32 },
+  { id: 'mid', label: '8 GB graphics card', vramGB: 8, ramGB: 16 },
+  { id: 'small', label: '6 GB laptop card', vramGB: 6, ramGB: 16 },
+  { id: 'cpu', label: 'No graphics card', vramGB: 0, ramGB: 16 }
+];
+const WORD = { ok: 'Runs well', slow: 'Runs, slowly', no: "Won't run well", blocked: "Can't install" };
+export function deviceFit(m) {
+  const rows = DEVICES.map((d) => { const s = suit({ ...m, status: { state: 'installed' } }, d); return { id: d.id, label: d.label, level: s.level, word: s.squeezed ? 'Uses the full version' : WORD[s.level] || s.level }; });
+  if (m.jobs?.includes('phone') || m.phoneFit) rows.push({ id: 'phone', label: 'Phone (8 GB)', level: 'ok', word: m.phoneFit || 'Fits the phone app' });
+  else if ((m.jobs || []).length) rows.push({ id: 'phone', label: 'Phone (8 GB)', level: 'no', word: 'Too big for a phone' });
+  return rows;
+}
+
+// Where a catalog model comes from, as a page a person can open: the exact Hugging Face commit, or Ollama's page.
+export function sourceOf(m) {
+  const f = (m.files || []).find((x) => /^https:\/\/huggingface\.co\//.test(x.url || ''));
+  const hit = f && f.url.match(/^https:\/\/huggingface\.co\/([\w.-]+\/[\w.-]+)\/resolve\/([0-9a-f]{40})\//);
+  if (hit) return { url: `https://huggingface.co/${hit[1]}/tree/${hit[2]}`, label: `${hit[1]} @ ${hit[2].slice(0, 7)}` };
+  if (m.ollama) { const name = m.ollama.split(':')[0]; return { url: `https://ollama.com/library/${encodeURIComponent(name)}`, label: `Ollama: ${m.ollama}` }; }
+  return null;
+}

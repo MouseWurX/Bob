@@ -5,6 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { ModelShop, guessKind, ownerOf, hostAllowed } from '../src/models.js';
 import { mergeSettings } from '../src/config.js';
+import { exeName } from '../src/platform.js';
 import { ENGINES, pickAsset, engineStatus } from '../src/engines.js';
 import { capabilities } from '../src/capabilities.js';
 
@@ -52,7 +53,7 @@ check('Z-Image from ComfyUI counts as installed', z.status.state === 'installed'
 const g = list.models.find((m) => m.id === 'gemma4-26b');
 check('Ollama models are found from manifests even with Ollama off', g.status.state === 'installed' && g.status.where[0] === 'Ollama');
 check('Maestro video file shows under "also on this PC"', list.extras.some((f) => f.owner === 'Maestro' && f.kind === 'video'));
-check('Ollama-only model can\'t download while Ollama is off', !list.models.find((m) => m.id === 'gemma4-e4b').status.canDownload);
+check('1.5.72: a model Ollama also has (Gemma 4 E4B) still downloads while Ollama is off, from its pinned link', list.models.find((m) => m.id === 'gemma4-e4b').status.canDownload);
 
 // --- use: point the painter at ComfyUI's files
 const patch = await shop.use('z-image-turbo');
@@ -114,12 +115,12 @@ check('engine pick: Vulkan build for other cards', pickAsset(llamaAssets, L, fal
 check('engine pick: matching CUDA runtime is found', llamaAssets.some((a) => L.runtime('llama-b7000-bin-win-cuda-13.1-x64.zip').test(a.name)));
 const W = ENGINES.find((e) => e.id === 'whispercpp');
 check('engine pick: whisper.cpp CPU build (Bob listens on the processor)', pickAsset(['whisper-bin-x64.zip', 'whisper-cublas-12.4.0-bin-x64.zip', 'whisper-bin-Win32.zip'].map((name) => ({ name })), W, true).name === 'whisper-bin-x64.zip');
-fs.mkdirSync(path.join(agent, 'sd.cpp'), { recursive: true }); fs.writeFileSync(path.join(agent, 'sd.cpp', 'sd.exe'), 'x');
+fs.mkdirSync(path.join(agent, 'sd.cpp'), { recursive: true }); fs.writeFileSync(path.join(agent, 'sd.cpp', exeName('sd')), 'x');
 const es = engineStatus(cfg);
 check('engine status sees an older sd.exe build as installed', es.find((e) => e.id === 'sdcpp').installed && !es.find((e) => e.id === 'llamacpp').installed);
 
 // --- what Bob can do here
-const cap0 = capabilities({ agentDir: agent, stt: { provider: 'whispercpp', model: path.join(agent, 'nope.bin') }, painter: { engine: 'sdcpp', sdcpp: { exe: path.join(agent, 'sd.cpp', 'sd.exe'), image: cfg.painter.sdcpp.image } } });
+const cap0 = capabilities({ agentDir: agent, stt: { provider: 'whispercpp', model: path.join(agent, 'nope.bin') }, painter: { engine: 'sdcpp', sdcpp: { exe: path.join(agent, 'sd.cpp', exeName('sd')), image: cfg.painter.sdcpp.image } } });
 check('pictures count only when the painter program and every model file exist', cap0.pictures === true && cap0.video === false && cap0.hearing === false, JSON.stringify(cap0));
 const cap1 = capabilities({ agentDir: agent, stt: { provider: 'ollama', model: 'gemma4:26b' }, painter: { engine: 'comfy', comfy: {} } });
 check('hearing through Ollama counts when the model is pulled; no ComfyUI workflow means no pictures', cap1.hearing === true && cap1.pictures === false, JSON.stringify(cap1));

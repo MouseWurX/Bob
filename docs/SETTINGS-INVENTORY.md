@@ -49,6 +49,7 @@ Update this file in the same handover as any change to settings.
 | Style | Theme groups, your own theme (name, colours, font, corners, blueprint, outlined), avatars (133), Layout | Bob's Inn | ok (1.5.2) |
 | Personality | What should Bob call you?; personality preset; sliders (humour, puns, side trips, mood, nerd references, talkative, manner…) | Factory Bob | ok, labels are plain |
 | First-time setup | What should I call you?; Setup pack; model ticks | suggested pack | ok |
+| First-time setup, Step 1 (1.5.75) | Get Bob ready (about X GB): core engines (llama.cpp, stable-diffusion.cpp, whisper.cpp) + one starter brain (E4B, or E2B on small cards / 8 GB Macs); size and free disk shown first; Pause, Stop, Try again; won't start with less than size + 2 GB free; each engine test-started (✓ works or the reason) | one click, never automatic (not an opt-in exception) | approved with edits (1.5.75) |
 
 ## Not yet reviewed
 - 1.5.3 chat page: ✋ Hands kill switch (On / Stopped / Off in Settings; only stops, never switches on) and the Memory section (Graphics card + RAM meters, Brain: friendly name).
@@ -58,6 +59,7 @@ Update this file in the same handover as any change to settings.
 | Page | Setting | Default | Review |
 |---|---|---|---|
 | Get models / Equip Bob | Show models that don't suit this PC | off (remembered) | Approved with edits: use the pill switch style |
+| Get models / Brain catalogue | Active (one switch per model, `activeModels`) | on for models on this PC, off for models not downloaded | 1.5.56, pending review |
 | Help (menu, F1) | Search Help | | ok |
 | Settings > Advanced > Engines & speed | Give Bob all his tools at once: "Sends every tool with each message, which leaves less room for the chat. Leave off to keep chats light." | off | ok (approved with edits, slim tools) |
 | Settings > Advanced > Engines & speed | Pick up unfinished jobs after a restart: "If Bob closes mid-job, he starts it again next time. Jobs that had already changed something wait in Tasks for you to press Retry." | off | ok (approved with edits, handoffs) |
@@ -88,7 +90,7 @@ Update this file in the same handover as any change to settings.
 | Session picker | 🎮 Gaming (was Light / gaming, id still `light`): "Keeps the graphics card for your games. Bob chats and listens on the processor with a small brain, which usually starts answering within a few seconds. Pictures and big jobs wait until you switch back. How much of the card he may borrow is set in Settings, Engines & speed (Automatic to start with)." | off (Normal) | ok |
 | Chat page, Effort | In Gaming, Medium/High/Extreme are greyed out: "Gaming keeps the graphics card free. Switch session to use more effort." | Low | ok |
 | Tasks | In Gaming, picture/clip/music and Medium-and-up jobs wait: "Waiting · Gaming is on", "Switch the session to Normal to run it." | — | ok |
-| Settings > Equip, Session brains | Gaming session brain (`sessionBrains.gaming`), default Qwen3 4B Instruct 2507 (1.5.25: picked on time to first word and to a full answer on the processor) | qwen3-4b | ok |
+| Settings > Equip, Session brains | Gaming session brain (`sessionBrains.gaming`), default Qwen3 4B Instruct 2507 (1.5.25: picked on time to first word and to a full answer on the processor) | qwen3-4b | ok (1.5.56: also a 🎮 Gaming slot in Equip Bob; only takes catalog brains timed for gaming, never Gemma 4 E4B) |
 | Help, Sessions and Effort | "Session: what the graphics card is kept for. Effort: how hard Bob works on each message." | — | ok |
 | Settings > Advanced > Engines & speed > Speed for this PC | Get Bob ready while you type · Let games go first · Match picture settings to my graphics card | all off | ok (approved with edits, hw tuning) |
 | Settings > Advanced > Engines & speed | Test Bob's speed (button + last 6 results) | | ok (approved with edits) |
@@ -107,6 +109,16 @@ Update this file in the same handover as any change to settings.
 | Get models > 🎵 Music | ACE-Step 1.5 music models card (about 10.1 GB, download on click only) | not downloaded | ok (approved with edits, 1.5.37) |
 | Settings > Advanced > Engines & speed | Pick up where Bob left off after a restart (was "Pick up unfinished jobs after a restart") | off | ok (approved with edits, 1.5.38) |
 | Settings > Everyday > 💾 Where Bob saves things | saveDir: Folder, Browse…, Save here, Show in folder, Use Bob's own folder | Bob's own folder (Made by Bob) | ok (approved with edits, songs) |
-| Settings > Advanced > Engines & speed | Keep chatting while Bob is busy | ON (the owner's explicit exception to opt-in, 2026-11-03) | ok (approved with edits, 1.5.41) |
+| Settings > Advanced > Engines & speed | Keep chatting while Bob is busy (1.5.51: also beside long text jobs, on a second llama-server on the processor) | ON (the owner's explicit exception to opt-in, 2026-11-03) | ok (approved with edits, 1.5.41; 1.5.51 approved with edits) |
+| Settings > Advanced > Engines & speed | Let the reviewer sit beside Bob's main brain (mootBeside) | off | ok (approved with edits, 1.5.51) |
 | Settings > Everyday | Let Bob pick the session | ON (the owner's explicit exception to opt-in) | ok (approved with edits, 1.5.41/42) |
 | Chat page > Effort row | 🎮 Gaming button (Off/On): locks Gaming, clears big brains from the card, parks jobs in Tasks | off | ok (approved with edits, 1.5.41/42) |
+
+## Added in 1.5.53 (Bob's thinking window), approved with edits by the design thread
+| Setting | Hint | Default | Review |
+|---|---|---|---|
+| 💭 Bob's thinking (chat bar button) | Opens a small always-on-top window showing Bob's thinking, which brain is working, moots and every step. Nothing runs for it while it's closed. | closed (opens on demand) | ok (1.5.53, clear with edits) |
+| Bob's thinking > Follow along | On: the window keeps up with the newest lines. Off: it stays where you scrolled to. (Scrolling up turns it off by itself.) | on | ok |
+| Bob's thinking > Clear | Empty this window. Nothing else changes. | button | ok |
+| Settings > Advanced > Engines & speed | "Keep the graphics card free for quick answers" (1.5.69) adds "A message with a link still goes to your main Brain, which reads web pages better." before "Applies in the Normal session; Gaming always does this." Chat line when it happens: "This one has a link in it, so my main Brain takes it." (adds "(loading it, about N seconds)" when the Brain isn't loaded) | off | ok (approved with edits, 1.5.69) |
+| Get models > Setup / Equip Bob > Set (1.5.71) | New starter set "Built-in graphics (handhelds and thin laptops)", suggested when Bob finds built-in AMD (laptop/handheld Ryzen) or Intel Arc/Iris Xe graphics and no NVIDIA card. Brains only; its note: "Not yet measured on built-in graphics. Pictures and video are left out of this set until they've been tried there." Hardware line: "Built-in graphics: <chip>, about N GB of memory shared with it"; tag "Fits your PC". | suggested by detection | pending sign-off |

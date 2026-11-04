@@ -30,6 +30,16 @@ You can close Bob while things download. Unfinished downloads wait, paused, and 
 
 ---
 
+### Bob on a Mac
+
+Bob runs on Macs with Apple Silicon (M1 and newer), using the Mac's graphics (Metal).
+
+1. Download `Bob-<version>-mac-arm64.zip` from the releases page, open it, and drag **Bob** into Applications.
+2. The first time, macOS says it can't check Bob (official Mac builds are ad-hoc signed: sealed so macOS can tell if a file was changed, but not with a paid Apple developer account, and that won't change). Open **System Settings > Privacy & Security**, scroll down and click **Open Anyway** next to Bob. Once only.
+3. Bob keeps his things in `~/Library/Application Support/Bob/home`.
+
+On a Mac, llama.cpp and stable-diffusion.cpp download as usual. whisper.cpp and Piper have no Mac builds Bob can use (hear through Ollama or a cloud helper; speak with Kokoro voices). Install FFmpeg (Homebrew) and LibreOffice yourself and Bob finds them. The Apps Hand, Defender scans, the Gaming card switch, Windows Task Scheduler, Check this PC and Update Bob are hidden; the Security Hand checks the firewall, FileVault, Gatekeeper, System Integrity Protection, login items and listening programs instead. To update, replace Bob in Applications with the newest zip; to remove him, drag him to the Bin (and the folder above, if you want everything gone).
+
 ## 2. Finding your way around
 
 Bob's window has three parts:
@@ -76,9 +86,11 @@ Bob uses different AI **models** for different jobs, the way a person might use 
 |---|---|
 | 🧠 Brain | Thinks, chats and plans. Everything else hangs off this one. |
 | ⚡ Quick brain | A small, fast brain for Low effort and the Art session. |
+| 🎮 Gaming | Chats on the processor while you play, so your game keeps the graphics card. Only Qwen3 4B Instruct 2507 goes here (it was timed on a busy processor); Gemma 4 E4B never does. |
 | 🔭 Deep thinking | The strongest thinker, for Medium, High and Extreme effort. Optional. |
 | 🔨 Coding | Writes and fixes code. If it's empty, the Brain codes. |
 | 🧐 Review | Checks code and plans before you rely on them. Optional. |
+| 📊 Office | The one all-rounder that does everything in the Office session. |
 | 👁 Seeing pictures | Looks at pictures and screenshots you attach. |
 | 🗂 Memory (finding past chats) | Helps Topics and search find things by meaning, not just exact words. |
 | 👂 Hearing you | Turns your voice into text. |
@@ -91,17 +103,29 @@ Bob uses different AI **models** for different jobs, the way a person might use 
 ### How to equip something
 
 - **Click a slot**, then click a model in the list to put it there. You can also **drag** a model onto a slot.
-- Models already on your PC are ready to go. Models you don't have yet show a **Get** button. Nothing downloads until you confirm.
+- Each slot lists only **active** models, one line each. Point at the little **i** (or tap it) for the size, licence and Bob's reasons.
+- **📚 Get more**, at the end of each list, opens the Brain catalogue at that job.
+- Models already on your PC are ready to go. Active models you don't have yet show a **Get** button. Nothing downloads until you confirm.
 - **One model can fill several slots.** For example, Gemma 4 E4B can be the Brain, the Quick brain, Seeing pictures and Hearing you all at once. Bob offers this with "Also use it for…". That's the trick that makes small PCs work well.
 - To empty a slot, use the **✕** on it. The Brain can't be emptied, because Bob needs something to think with.
 - The bar along the bottom shows whether everything fits on your graphics card at the same time. If it doesn't, that's fine: Bob takes turns, putting one model away while another works.
 - Prefer a plain list? There's a button for that at the top.
 
-Each slot only lists models that can do its job: a brain that can't see pictures never shows under Seeing pictures, and a big brain never shows under Quick brain.
+Each slot only lists active models that can do its job: a brain that can't see pictures never shows under Seeing pictures, and a big brain never shows under Quick brain. What's equipped always shows.
+
+### The Brain catalogue
+
+**📚 Brain catalogue** (on the Get models bar, or **📚 Get more** under any slot) is Bob's full list of models, sorted by job: Quick brain, Gaming, Brain, Deep thinking, Review, Coding, Office, Seeing pictures, Phone, then hearing, voices, pictures, video, music and memory.
+
+- Each model is one line: name, download size and a tag or two. The **i** holds the rest: what it's good at, how much graphics memory it wants, how it does on a 16 GB card, an 8 GB card, a 6 GB laptop card, no graphics card and an 8 GB phone, its licence and its source. The **↗** opens that source: the exact Hugging Face commit Bob downloads from, or the model's Ollama page.
+- **Active** (on for models on your PC, off for the rest): active models show in the Equip Bob slots and the brain menus; the rest stay in the catalogue. Switching one off only hides it. It stays on your PC, and if it's equipped it stays equipped.
+- **Get** downloads it after asking first. **Equip** puts a model that's already here into that job's slot.
+- **New** marks a model Bob lists but doesn't recommend until it's been tried on a real PC.
+- **Phone** lists the brains the Bob phone app can run; the phone app gets its own copy.
 
 ### Recommended, Fits your card, Doesn't suit this PC
 
-- **★ Recommended for this job on your PC:** Bob's pick for that slot. For brains, a model scores higher the more jobs it covers (fewer brain swaps) and the less graphics memory it takes, and much lower if it would spill into RAM. Bigger brains get a bonus for jobs that need careful thinking. On small cards (8 GB or less), a brain that fills most of the card scores lower, because it leaves no room for longer chats. For pictures, video and voices, the pick comes from the starter set for your card.
+- **★ Recommended:** Bob's pick for that slot (the reason is behind the **i**). For brains, a model scores higher the more jobs it covers (fewer brain swaps) and the less graphics memory it takes, and much lower if it would spill into RAM. Bigger brains get a bonus for jobs that need careful thinking. On small cards (8 GB or less), a brain that fills most of the card scores lower, because it leaves no room for longer chats. For pictures, video and voices, the pick comes from the starter set for your card.
 - **Fits your card:** runs well here too, just not the first pick.
 - **Doesn't suit this PC:** needs more graphics memory or RAM than you have. These are hidden until you turn on **Show models that don't suit this PC** (off unless you turn it on), and each says why.
 
@@ -127,13 +151,15 @@ With just these, Bob can chat, plan, research the web, read pictures, hear you a
 
 | Job | 16 GB card or more | 8 GB card | 6 GB card (most laptops) |
 |---|---|---|---|
-| Brain | Gemma 4 26B | Gemma 4 E4B | Qwen3 4B (light, leaves room for longer chats; Gemma 4 E4B still sees pictures and hears you) |
-| Coding | Qwen3 Coder 30B | Qwen3 Coder 30B (slower, runs mostly in RAM) | Qwen2.5 Coder 7B |
+| Brain | Qwen3.6 35B-A3B (answers Low-effort chat straight off; Gemma 4 26B does Office and Deep thinking) | Gemma 4 E4B | Qwen3 4B (light, leaves room for longer chats; Gemma 4 E4B still sees pictures and hears you) |
+| Coding | Qwen3.6 35B-A3B (a big context (128K, how much it keeps in mind); always thinks coding jobs through) | Qwen3 Coder 30B (slower, runs mostly in RAM) | Qwen2.5 Coder 7B |
 | Painter | Z-Image Turbo | Z-Image Turbo, 8 GB version | Z-Image Turbo, 6 GB version |
 | Picture editor | Qwen Image Edit | FLUX.2 klein 4B | FLUX.2 klein 4B, 6 GB version |
 | Video | Wan 2.2 5B | Wan 2.2 5B, small card version | the same, left unticked (very slow) |
 
 The "8 GB" and "6 GB" versions are the same models **squeezed** to fit smaller cards. Pictures lose a little fine detail but look much the same.
+
+Brains stay at Q4 or better, except on cards of 8 GB or less. There, when a brain's full file wouldn't run well, the Brain catalogue offers an **8 GB card version** packed at Q3 (for example Qwen3.6 35B-A3B). It's smaller and a little less sharp. Bigger cards always get the full version.
 
 **How long things take** on a small card is a rough guess for now (these haven't been timed on every card yet). On an 8 GB card, expect roughly half a minute to a minute per picture, a minute or two per edit, and ten minutes or more for a few seconds of video. A 6 GB card is slower again. While Bob paints, he puts his chat brain away to make room, so chat waits until the picture is done.
 
@@ -189,6 +215,10 @@ Above the chat box, **Effort** sets how hard Bob works on your next messages. It
 - **Extreme (Slowest):** like High, and coding goes research, plan, then changes, with a check after each step.
 
 High and Extreme end with **moot minutes**: who checked what, and what's still open.
+
+### Watching Bob think
+
+**💭 Bob's thinking**, at the top of the chat, opens a small window that stays on top of your other windows. It shows, live: what Bob is doing, which brains he holds and where (graphics card or processor), his thinking as it streams (his copies too, so you can watch a moot), brain loads and swaps, each tool step and the notes he keeps for himself. Low effort replies skip thinking, so there you mostly see steps. Bob only sends his thinking along while the window is open, and nothing in it is saved.
 
 ---
 
@@ -316,7 +346,7 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 - **Music and sound effects**: extra downloads for the audio tools.
 - **Extra voices.**
 - **Advanced workshop**: if you use ComfyUI, Bob can run its workflows for you.
-- **Let my phone in** (Settings, Show advanced settings, Connections; off): Bob for Android, or your phone's browser, talks to Bob over Tailscale with a passcode. Make a passcode, add the address it shows to the phone, then restart Bob. Only Tailscale addresses get in.
+- **Let my other devices in** (Settings, Show advanced settings, Connections; off): Bob for Android, or your phone's browser, talks to Bob over Tailscale with a passcode. Make a passcode, add the address it shows to the phone, then restart Bob. Only Tailscale addresses get in.
 - **Check for updates when Bob starts.** Updating always waits for your click.
 
 ---
@@ -355,6 +385,7 @@ The full glossary and an FAQ are in Help inside Bob (left menu, or F1).
 - **Graphics card (GPU) and graphics memory (VRAM):** the part of your PC that makes AI fast. The amount of graphics memory (6 GB, 8 GB, 16 GB) decides which models fit.
 - **RAM:** your PC's main memory. Bob can use it for parts of a model that don't fit on the graphics card. It works, but more slowly.
 - **Squeezed (GGUF) version:** a smaller copy of a model that fits small cards, with a little less detail.
+- **Brain catalogue:** Bob's full list of models, sorted by job. **Active** models show in the slots and menus; the rest wait there.
 - **Engine:** the program that runs a kind of model, for example the painter engine for pictures. Bob offers it when a model needs it.
 - **Commercial use:** using what you make for money. All starter set models allow it. A few optional extras don't, and Bob marks those.
 

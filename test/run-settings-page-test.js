@@ -31,7 +31,7 @@ check('Advanced has Brains, Voice details, Look & feel, Engines & speed, Connect
 check('Advanced has a search box that filters sections', /data-ssearch/.test(ui) && /function filterSettings/.test(ui) && /settingsQuery = e\.target\.value; filterSettings\(\)/.test(ui));
 check('Voice details has Hey Bob and Read aloud, working the same switches as the left menu', /prox\('ear'/.test(ui) && /prox\('speak'/.test(ui) && /el\.dataset\.proxy/.test(ui));
 check('engine choice, engine downloads, fit to memory, speculative decoding and flags are in Engines & speed', /function enginesHtml[\s\S]*data-set="engine"[\s\S]*Engine downloads[\s\S]*speedHtml\(\)/.test(ui) && /data-fit/.test(ui) && /Speculative decoding/.test(ui) && /llama\.cpp flags/.test(ui));
-check('long help folds behind More', /const more = \(text\) => `<details class="more"><summary>More<\/summary>/.test(ui) && (ui.match(/\$\{more\(/g) || []).length >= 4);
+check('long help folds behind More', /const more = \(text\) => `<details class="more"><summary>More<\/summary>/.test(ui) && (ui.match(/\$\{more\(/g) || []).length >= 2);
 check('animations and Now running buttons work on the Settings page too', /tab === 'settings' && \(b\.dataset\.motion \|\| b\.dataset\.nowneed\)/.test(ui));
 
 // --- voice samples

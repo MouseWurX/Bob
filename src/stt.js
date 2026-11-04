@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
+import { exeName } from './platform.js';
 
 const PROMPT = 'Transcribe this audio exactly as spoken, in English. Reply with only the spoken words, no quotes, no notes. If nothing is said, reply with nothing.';
 
@@ -52,7 +53,7 @@ async function viaHttp(stt, wav) {
 }
 
 async function viaWhisperCpp(cfg, stt, wav) {
-  const exe = stt.exe || path.join(cfg.agentDir, 'whisper.cpp', 'whisper-cli.exe');
+  const exe = stt.exe || path.join(cfg.agentDir, 'whisper.cpp', exeName('whisper-cli'));
   if (!stt.model || !fs.existsSync(stt.model)) throw new Error('I have no ears yet. Pick a "Hearing you" model in Get models (left menu).');
   const tmp = path.join(os.tmpdir(), `bob-${crypto.randomUUID()}.wav`);
   fs.writeFileSync(tmp, Buffer.from(wav));

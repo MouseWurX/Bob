@@ -5,7 +5,7 @@
 const $ = (id) => document.getElementById(id);
 const KEY = 'bob-effort';
 export const HINTS = {
-  low: 'Quick answer from the Quick brain. Nothing extra loads.',
+  low: 'A quick answer, without thinking it over first. Nothing extra loads.',
   medium: 'One big brain thinks it through on the graphics card. No second check. Takes a little longer.',
   high: 'A big brain drafts the answer, then the Review brain checks it. Slower. Big brains are freed afterwards.',
   extreme: 'Like High, and for code the Review brain also checks the research and the plan before anything changes. Slowest: every check swaps brains (about 20 seconds each).'
@@ -38,12 +38,13 @@ export function createEffort() {
       const on = b.dataset.effort === now;
       b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1;
       const off = locked && b.dataset.effort !== 'low';
-      b.disabled = off; b.title = off ? GAMING_HINT : '';
+      b.disabled = off; b.dataset.tip = off ? GAMING_HINT : HINTS[b.dataset.effort]; // 1.5.56: in the bubble, not under the row
     }
-    $('effortHint').textContent = locked ? GAMING_HINT : HINTS[level];
+    // 1.5.56: only the Gaming lock stays written out; what each level does is in the bubble on the Effort button.
+    const hint = $('effortHint'); hint.textContent = locked ? GAMING_HINT : `Effort ${level}: ${HINTS[level]}`; hint.classList.toggle('sr-only', !locked);
     box.dataset.level = now;
     if (nowEl) nowEl.textContent = `${btns.find((b) => b.dataset.effort === now)?.querySelector('b')?.textContent || now}${locked ? ' · locked in Gaming' : ''}`;
-    if (toggle) { toggle.disabled = locked; toggle.title = locked ? GAMING_HINT : ''; }
+    if (toggle) { toggle.disabled = locked; toggle.dataset.tip = locked ? GAMING_HINT : HINTS[level]; }
     if (locked && isOpen()) open(false, false);
   }
   function set(v, focus = false) {

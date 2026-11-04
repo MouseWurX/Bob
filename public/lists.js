@@ -1,6 +1,7 @@
 // The Tasks panel and the Downloads manager. Both are lists you can reorder: drag a row, or use the
 // ▲ ▼ buttons (handy over Remote Desktop, where dragging can be fiddly).
 import { size, clock } from './progress.js';
+import { headTip } from './tips.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const when = (t) => {
@@ -59,7 +60,7 @@ const ICON = { chat: '💬', picture: '🎨', video: '🎬', research: '🔎', c
 export function taskRow(j, { movable, full }) {
   const status = j.status || j.state;
   // 1.5.23: a job that needs the graphics card waits while the Gaming session is on.
-  const tag = j.gaming ? `<span class="tag queued gaming">${esc(j.gaming.tag)}</span>` : j.waitsFor ? '<span class="tag queued">Waiting for a download</span>' : `<span class="tag ${status.replace(' ', '-')}">${esc(STATUS[status] || status)}${status === 'delegated' && j.delegatedTo ? `: ${esc(j.delegatedTo.copy)}` : ''}</span>`;
+  const tag = j.gaming ? `<span class="tag queued gaming">${esc(j.gaming.tag)}</span>` : j.waitsFor ? '<span class="tag queued">Waiting for a download</span>' : `<span class="tag ${status.replace(' ', '-')}">${j.delegatedTo?.sent && status === 'delegated' ? `Sent to ${esc(j.delegatedTo.copy)}` : `${esc(STATUS[status] || status)}${status === 'delegated' && j.delegatedTo ? `: ${esc(j.delegatedTo.copy)}` : ''}`}</span>`;
   const sub = status === 'delegated' && j.delegatedTo ? `${esc(j.delegatedTo.copy)} (${esc(j.delegatedTo.label)}) is on it`
     : status === 'completed' ? `Completed ${when(j.doneAt)}`
     : j.gaming ? esc(j.gaming.hint)
@@ -97,8 +98,8 @@ export function createTasks({ post }) {
     const done = jobs.filter((j) => j.state === 'done');
     const other = jobs.filter((j) => !isOpen(j) && j.state !== 'done');
     const shown = filter === 'open' ? open : filter === 'completed' ? done.slice().reverse() : filter === 'problems' ? other.slice().reverse() : jobs;
-    body.innerHTML = `<p class="muted">Every message is a task. Bob does them top to bottom; drag a waiting one up or down to change what he does next. When he hands one to a copy it shows as Delegated, and Completed when it's done.</p>
-      <div class="ttabs" role="tablist">
+    headTip(document.getElementById('tasks-title'), `Every message is a task. Bob does them top to bottom; drag a waiting one up or down to change what he does next. When he hands one to a copy it shows as Delegated, and Completed when it's done.`, 'Tasks');
+    body.innerHTML = `      <div class="ttabs" role="tablist">
         <button type="button" data-f="open" aria-pressed="${filter === 'open'}">Open (${open.length})</button>
         <button type="button" data-f="completed" aria-pressed="${filter === 'completed'}">Completed (${done.length})</button>
         <button type="button" data-f="problems" aria-pressed="${filter === 'problems'}">Stopped or failed (${other.length})</button>
@@ -174,8 +175,8 @@ export function createDownloads({ api, post }) {
     last = Date.now();
     const open = items.filter((d) => !['done', 'cancelled'].includes(d.state));
     const finished = items.filter((d) => ['done', 'cancelled'].includes(d.state));
-    body.innerHTML = `<p class="muted">Everything you've said yes to downloading. ${settings.concurrent === 2 ? 'Two run' : 'One runs'} at a time, top first; drag one up to have it next. Pause keeps what has downloaded, so a 20 GB model doesn't start over. Cancel deletes the half-done file.</p>
-      <ol class="tlist">${open.map(downloadRow).join('') || '<li class="muted">Nothing downloading. Get them from Get models in the left menu.</li>'}</ol>
+    headTip(document.getElementById('downloads-title'), `Everything you've said yes to downloading. ${settings.concurrent === 2 ? 'Two run' : 'One runs'} at a time, top first; drag one up to have it next. Pause keeps what has downloaded, so a 20 GB model doesn't start over. Cancel deletes the half-done file.`, 'Downloads');
+    body.innerHTML = `      <ol class="tlist">${open.map(downloadRow).join('') || '<li class="muted">Nothing downloading. Get them from Get models in the left menu.</li>'}</ol>
       ${finished.length ? `<div class="ttabs"><strong>Finished</strong><span class="spacer"></span><button type="button" data-clear>Clear finished</button></div><ol class="tlist">${finished.slice().reverse().map(downloadRow).join('')}</ol>` : ''}
       <div class="dl-settings">
         <strong>Settings</strong>

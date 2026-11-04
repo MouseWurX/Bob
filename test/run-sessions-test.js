@@ -141,8 +141,9 @@ check('asking for a picture is still a picture job', Brain.guessKind('paint a dr
 // 1.5.41 "Keep chatting while Bob is busy": a plain chat goes beside a media step, on the small processor brain.
 {
   const GB = 1024 ** 3;
-  const base = (over = {}) => ({ cfg: { engine: 'llamacpp', chatWhileBusy: true, models: { bob: 'big', small: 'small' }, sessionBrains: { small: 'small' } }, turns: new Map([['talk', {}]]), state: { state: 'painting' }, engine: {}, ...over });
+  const base = (over = {}) => ({ cfg: { engine: 'llamacpp', chatWhileBusy: true, models: { bob: 'big', small: 'small' }, sessionBrains: { small: 'small' } }, turns: new Map([['talk', {}]]), state: { state: 'painting' }, engine: { resolve: () => ({ gguf: '/x' }) }, ...over });
   const chat = { kind: 'chat', refs: [], effort: 'low' };
+  check('1.5.54: no Qwen3 4B Instruct 2507 on the PC: the chat waits (E4B never on the processor)', !sideOk(base({ engine: { resolve: () => { throw new Error('none'); } } }), chat, { freeMem: 16 * GB }));
   check('busy switch on, painting, room in RAM: a chat goes beside', sideOk(base(), chat, { freeMem: 16 * GB }));
   check('on to start with (no setting saved)', sideOk(base({ cfg: { ...base().cfg, chatWhileBusy: undefined } }), chat, { freeMem: 16 * GB }));
   check('switched off: it waits', !sideOk(base({ cfg: { ...base().cfg, chatWhileBusy: false } }), chat, { freeMem: 16 * GB }));

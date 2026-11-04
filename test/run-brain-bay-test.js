@@ -18,7 +18,7 @@ const add = loadLine({ mode: 'add', who: 'bob', model: 'b', from: 'a', secs: 5, 
 check('add line says the other stays loaded', /Adding the brain \(b\) beside my main brain \(a\), which stays loaded/.test(add), add);
 check('load line', /^Loading the brain \(b\)\./.test(loadLine({ mode: 'load', who: 'bob', model: 'b', from: '', secs: 5, label })));
 const ms = loadLine({ mode: 'swap', who: 'reviewer', model: 'gpt-oss', from: 'gemma4', copy: 'Bobby', secs: 30, label, single: true });
-check('reviewer swap on Bob\'s own engine gives the real reason (one brain at a time)', /^🛰 Moot: Bobby checks the answer\. My engine runs one brain at a time, so my main brain \(gemma4\) steps out/.test(ms), ms);
+check('reviewer swap on Bob\'s own engine: a plain swap line', /^🛰 Moot: Bobby checks the answer\. My main brain \(gemma4\) steps out and the review brain \(gpt-oss\) comes in/.test(ms), ms);
 check('reviewer swap on Ollama says memory is the reason', /Only one big brain fits right now/.test(loadLine({ mode: 'swap', who: 'reviewer', model: 'r', from: 'a', copy: 'B', secs: 3, label })));
 check('reviewer add is called a moot and loads beside', /^🛰 Moot: Bobby joins me.*loads beside mine/.test(loadLine({ mode: 'add', who: 'reviewer', model: 'r', from: 'a', copy: 'Bobby', secs: 3, label })));
 

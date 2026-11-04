@@ -34,3 +34,31 @@ export function catPrompt({ cat, turn, dials = {}, user = 'the user' }) {
   if (Math.abs(Math.floor(turn)) % 5 !== 2) return '';
   return `Right now in The Idle Process: ${catMoment(cat, turn)}. If it fits, mention it in a few words at the end of your reply; skip it if ${user} is busy, stressed or the topic is serious.`;
 }
+
+// 1.5.53: a line for each of the cat's antics by Bob's picture, so the words match what the cat is doing.
+export const ANTIC_LINES = {
+  nap: ['{{CAT}} is asleep, one paw over the nose', '{{CAT}} is napping in the warm spot by the fan exhaust'],
+  swat: ['{{CAT}} is swatting at something only cats can see', '{{CAT}} is boxing a dust mote and losing on points'],
+  pounce: ['{{CAT}} pounced on a shadow. The shadow got away', '{{CAT}} is hunting the blinking cursor'],
+  stroll: ['{{CAT}} is doing a slow lap of the room to inspect things', '{{CAT}} is patrolling the desk, very official'],
+  stare: ['{{CAT}} is staring at you. No reason given', '{{CAT}} is staring at the wall. Something is clearly there'],
+  groom: ['{{CAT}} is washing one ear with great care', '{{CAT}} stopped mid-wash to stare at nothing, tongue out'],
+  spin: ['{{CAT}} is chasing a tail and gaining on it', '{{CAT}} spun around three times and still found the same tail'],
+  loaf: ['{{CAT}} has folded into a perfect loaf', '{{CAT}} is in loaf mode. Paws are not available right now'],
+  zoomies: ['{{CAT}} has the zoomies. Nobody knows why', '{{CAT}} just sprinted across the room and back for no reason'],
+  perch: ['{{CAT}} is sitting on Bob\'s head. Bob is pretending this is fine', '{{CAT}} climbed onto Bob for a better view'],
+  yarn: ['{{CAT}} found a ball of yarn and is unravelling a project', '{{CAT}} is wrestling a ball of yarn. The yarn is losing'],
+  butterfly: ['{{CAT}} is watching a pixel butterfly very, very closely', '{{CAT}} is chattering at a butterfly on the screen'],
+  knock: ['{{CAT}} pushed a pencil off the desk to check gravity still works', '{{CAT}} knocked something over and looked at you about it'],
+  box: ['{{CAT}} found an empty box and moved in', '{{CAT}} is peeking out of a box like it was always there'],
+  birds: ['{{CAT}} is watching birds out the window and making little chirping sounds', '{{CAT}} spotted a bird and is planning something'],
+  stretch: ['{{CAT}} did a big stretch, front paws first', '{{CAT}} stretched so far that one leg went somewhere new'],
+  headbutt: ['{{CAT}} headbutted Bob\'s elbow. That counts as affection', '{{CAT}} is rubbing against Bob\'s chair, claiming it again']
+};
+export const ANTIC_IDS = Object.keys(ANTIC_LINES);
+
+export function anticLine(antic, cat, n = 0) {
+  const lines = ANTIC_LINES[antic];
+  if (!lines) return catMoment(cat, n);
+  return fill(lines[Math.abs(Math.floor(n)) % lines.length], cat);
+}

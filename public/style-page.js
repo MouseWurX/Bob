@@ -1,6 +1,7 @@
 // The Style page: themes (MouseHole, MouseWurX, Bob's own, yours), a "make your own"
 // editor with a live preview, and Bob's look, including every avatar in avatars.js.
 import { LOOKS, LOOK_ID, setLook, drawBob } from './bob-sprite.js';
+import { tip } from './tips.js';
 import { AVATAR_GROUPS, avatar } from './avatars.js';
 import { PRESETS, TOKENS, FONTS, findTheme, resolve, fullColors, applyStyle, applyTheme, swatch, isLight } from './themes.js';
 
@@ -18,7 +19,7 @@ export function createStylePage({ api, redraw, flash }) {
   }
 
   function editorHtml() {
-    if (!draft) return `<p class="row"><button data-newtheme>🎨 Make your own theme</button><span class="muted">Starts from the one you're using now. You see every change straight away.</span></p>`;
+    if (!draft) return `<p class="row"><button data-newtheme>🎨 Make your own theme</button> ${tip('Starts from the one you\'re using now. You see every change straight away.', 'Make your own theme')}</p>`;
     return `<div class="model"><header><strong>${draft.id ? 'Edit your theme' : 'Your new theme'}</strong></header>
       <label class="pick"><span>Name</span><input type="text" data-dname maxlength="30" value="${esc(draft.name)}" style="width:16em"></label>
       <div class="editor">${TOKENS.map(([k, label]) => `<label><input type="color" data-dcolor="${k}" value="${esc(draft.colors[k])}"> ${esc(label)}</label>`).join('')}</div>
@@ -49,16 +50,16 @@ export function createStylePage({ api, redraw, flash }) {
     const motion = style.motion || 'on';
     const opt = (key, val, label, on) => `<button role="radio" aria-checked="${on}" aria-pressed="${on}" data-${key}="${val}">${label}</button>`;
     return `<section class="settings">
-      <div><strong>Animations</strong><p class="muted">Bob breathes and blinks, the download Bobs hop, the brain machine runs. Remote Desktop usually turns Windows' animation effects off, so "On" ignores that.</p>
+      <div><strong>Animations</strong> ${tip(`Bob breathes and blinks, the download Bobs hop, the brain machine runs. Remote Desktop usually turns Windows' animation effects off, so "On" ignores that.`, 'Animations')}
         <div class="ttabs" role="radiogroup" aria-label="Animations">${opt('motion', 'on', 'On', motion === 'on')}${opt('motion', 'system', 'Follow Windows', motion === 'system')}${opt('motion', 'off', 'Off', motion === 'off')}</div></div>
-      <div><strong>Layout</strong><p class="muted">The menu on the left folds to icons with ‹ or Ctrl+B. The Now running panel on the right hides with Hide or Ctrl+J, and you can drag its edge to make it wider. Bob remembers how you leave them.</p>
+      <div><strong>Layout</strong> ${tip(`The menu on the left folds to icons with ‹ or Ctrl+B. The Now running panel on the right hides with Hide or Ctrl+J, and you can drag its edge to make it wider. Bob remembers how you leave them.`, 'Layout')}
         <div class="ttabs" role="radiogroup" aria-label="Open Now running when a task needs me">${opt('nowneed', '0', 'Leave Now running as it is', style.openNowOnNeed !== true)}${opt('nowneed', '1', 'Open Now running when a task needs me', style.openNowOnNeed === true)}</div></div>
       <div><strong>Theme</strong>
         ${groups.map(([g, label]) => `<h3>${label}</h3><div class="themes" role="radiogroup" aria-label="${label}">${PRESETS.filter((t) => t.group === g).map((t) => themeButton(t, style)).join('')}</div>`).join('')}
         ${mine.length ? `<h3>Yours</h3><div class="themes" role="radiogroup" aria-label="Your themes">${mine.map((t) => themeButton(t, style)).join('')}</div>${mine.some((t) => t.id === style.theme) ? '<p><button data-edittheme>Edit the selected theme</button></p>' : ''}` : ''}
         ${editorHtml()}
       </div>
-      <div><strong>Bob's look</strong><p class="muted">Every one blinks and talks. ${AVATAR_GROUPS.reduce((n, g) => n + g.count, 0) + Object.keys(LOOKS).length} to pick from, all drawn on this PC.</p>${avatarsHtml()}</div>
+      <div><strong>Bob's look</strong> ${tip(`Every one blinks and talks. ${AVATAR_GROUPS.reduce((n, g) => n + g.count, 0) + Object.keys(LOOKS).length} to pick from, all drawn on this PC.`, 'Bob\'s look')}${avatarsHtml()}</div>
     </section>`;
   }
 

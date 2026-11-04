@@ -13,8 +13,10 @@ their licences sit beside the GPL. Bob's own code has no runtime npm dependencie
 
 ## Downloaded only when you click
 
-Bob never ships these. Each one is fetched only when you press its button, after a confirm that shows
-its size and licence, and runs as a separate program:
+Bob's download carries one of these: a basic build of llama.cpp (MIT; Vulkan on Windows and Linux, Metal on a
+Mac, with its licence file), unchanged from its GitHub release and checked against GitHub's sha256. The rest are
+fetched only when you press their button, after a confirm that shows their size and licence. Each runs as a
+separate program:
 
 | Part | Licence |
 | --- | --- |

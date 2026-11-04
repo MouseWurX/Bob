@@ -24,7 +24,16 @@ const NEVER_PROGRAMS = new Map(Object.entries({
   secedit: 'changes security policy', gpedit: 'changes group policy', lusrmgr: 'manages user accounts', mpcmdrun: 'controls Windows antivirus',
   sc: 'controls Windows services', cipher: 'can wipe free disk space', syskey: 'changes system security', reagentc: 'changes Windows recovery',
   mkfs: 'formats a disk', fdisk: 'changes disk partitions', dd: 'writes raw disks', passwd: 'changes passwords', useradd: 'manages user accounts',
-  userdel: 'manages user accounts', reboot: 'restarts the PC', poweroff: 'shuts down the PC', halt: 'shuts down the PC', chown: 'changes file ownership'
+  userdel: 'manages user accounts', reboot: 'restarts the PC', poweroff: 'shuts down the PC', halt: 'shuts down the PC', chown: 'changes file ownership',
+  // Linux (and Mac) programs with the same reach as the Windows ones above.
+  pkexec: 'runs as administrator (run it yourself in a terminal if you need it)', doas: 'runs as administrator (run it yourself in a terminal if you need it)', su: 'runs as another user or administrator (run it yourself in a terminal if you need it)', visudo: 'changes who may be administrator (run it yourself in a terminal if you need it)',
+  usermod: 'manages user accounts (run it yourself in a terminal if you need it)', groupadd: 'manages user accounts (run it yourself in a terminal if you need it)', groupdel: 'manages user accounts (run it yourself in a terminal if you need it)', chpasswd: 'changes passwords (run it yourself in a terminal if you need it)',
+  systemctl: 'controls system services (run it yourself in a terminal if you need it)', service: 'controls system services (run it yourself in a terminal if you need it)', launchctl: 'controls system services (run it yourself in a terminal if you need it)', crontab: 'makes a scheduled task (that is the Schedules Hand\'s job)',
+  mount: 'changes disk mounts (use your distro\'s Disks app yourself if you need it)', umount: 'changes disk mounts (use your distro\'s Disks app yourself if you need it)', parted: 'changes disk partitions (use your distro\'s Disks app yourself if you need it)', gdisk: 'changes disk partitions (use your distro\'s Disks app yourself if you need it)', sgdisk: 'changes disk partitions (use your distro\'s Disks app yourself if you need it)',
+  wipefs: 'wipes disks (use your distro\'s Disks app yourself if you need it)', shred: 'destroys files beyond recovery (ask me to put it in the Trash instead)', modprobe: 'changes the system core, the kernel (run it yourself in a terminal if you need it)', insmod: 'changes the system core, the kernel (run it yourself in a terminal if you need it)',
+  rmmod: 'changes the system core, the kernel (run it yourself in a terminal if you need it)', setenforce: 'changes system security (run it yourself in a terminal if you need it)', chattr: 'changes protected file flags (run it yourself in a terminal if you need it)', iptables: 'changes the firewall (use your distro\'s firewall settings yourself)',
+  nft: 'changes the firewall (use your distro\'s firewall settings yourself)', ufw: 'changes the firewall (use your distro\'s firewall settings yourself)', firewalld: 'changes the firewall (use your distro\'s firewall settings yourself)', 'firewall-cmd': 'changes the firewall (use your distro\'s firewall settings yourself)',
+  'grub-install': 'changes how the PC boots (run it yourself in a terminal if you need it)', 'update-grub': 'changes how the PC boots (run it yourself in a terminal if you need it)', efibootmgr: 'changes how the PC boots (run it yourself in a terminal if you need it)'
 }));
 
 // Text that is refused anywhere in the command line (and inside a script Bob is asked to run).
@@ -48,8 +57,32 @@ const NEVER_TEXT = [
   [/\b(rd|rmdir)\s+(\/s|\/q)|\bdel(\.exe)?\s+[^\n]*\/s\b|\bremove-item\b[^\n]*-recurse|\brm\s+-[a-z]*r[a-z]*f|\brm\s+-[a-z]*f[a-z]*r/i, 'deletes many files at once (Bob throws things away through the Files Hand, to the Recycle Bin)'],
   [/\bcipher\s+\/w\b/i, 'wipes disk space'],
   [/\b(invoke-webrequest|iwr|curl|wget|invoke-restmethod|irm)\b[^\n|]*\|\s*(iex|invoke-expression|sh|bash|cmd|powershell|pwsh)\b/i, 'downloads and runs code in one go'],
-  [/\bmkfs\b|\bdd\s+[^\n]*of=\/dev\//i, 'writes raw disks']
+  [/\bmkfs\b|\bdd\s+[^\n]*of=\/dev\//i, 'writes raw disks'],
+  // Linux and Mac shells.
+  [/\b(pkexec|doas)\b|\bsu\s+(-|root\b)/i, 'asks for administrator rights (run it yourself in a terminal if you need it)'],
+  [/\brm\s+(-[a-z]*r|--recursive)\b|\bfind\b[^\n]*\s-delete\b|--no-preserve-root/i, 'deletes many files at once (Bob throws things away through the Files Hand, to the Trash)'],
+  [/>\s*\/dev\/(sd|nvme|hd|vd|mmcblk|disk)/i, 'writes raw disks (use your distro\'s Disks app yourself if you need it)'],
+  [/(>|\btee\b[^\n]*)\s*\/(etc|boot|usr|bin|sbin|lib|lib64|sys|proc)\//i, 'changes system files (edit them yourself with administrator rights if you mean to)'],
+  [/\b(chmod|chown|chgrp)\s+(-[a-z]*R|--recursive)\b[^\n]*\s\/(\s|$)/i, 'changes permissions on the whole system (change them only on the files you need, yourself)'],
+  [/\bcrontab\b|\bsystemctl\b|\blaunchctl\b/i, 'makes or changes a system task or service (that is the Schedules Hand\'s job)'],
+  [/:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/, 'would freeze the PC (a fork bomb: there is nothing useful to run instead)']
 ];
+
+// macOS's own system tools that wipe disks, change startup or security, or manage accounts (on every computer, so a
+// command typed for a Mac is refused the same way wherever it is checked).
+for (const [k, v] of Object.entries({
+  diskutil: 'erases or changes disks', asr: 'restores whole disks', csrutil: 'changes macOS system protection', spctl: 'changes Gatekeeper (which apps may open)',
+  nvram: 'changes start-up memory', bless: 'changes how the Mac starts', fdesetup: 'changes disk encryption', sysadminctl: 'manages user accounts',
+  dscl: 'manages user accounts', dseditgroup: 'manages user groups', createhomedir: 'manages user accounts', pmset: 'changes power and sleep settings',
+  systemsetup: 'changes system settings', kextload: 'loads system extensions', kmutil: 'loads system extensions', tmutil: 'manages Time Machine backups'
+})) NEVER_PROGRAMS.set(k, v);
+NEVER_TEXT.push(
+  [/\bdiskutil\s+(erase\w*|partition\w*|zeroDisk|randomDisk|secureErase|apfs\s+delete\w*|reformat)\b/i, 'erases or changes disks'],
+  [/\bcsrutil\s+(disable|clear|authenticated-root)\b|\bspctl\s+--master-disable\b|\bspctl\s+--global-disable\b/i, 'switches macOS protection off'],
+  [/\blaunchctl\s+(bootstrap|bootout|load|unload|enable|disable)\s+system\b|\/Library\/LaunchDaemons\//i, 'changes what starts with the Mac'],
+  [/\bosascript\b[^\n]*with administrator privileges/i, 'asks for administrator rights'],
+  [/\bxattr\s+[^\n]*-[a-z]*d[a-z]*\s+com\.apple\.quarantine\b|\bxattr\s+-c\b/i, 'removes the "downloaded from the internet" check from files']
+);
 
 // "Don't send anything out" (a hard limit, on by default): commands that upload or post the user's things.
 // The line: a command that sends a body, a file or a push to another computer is refused; plain downloads

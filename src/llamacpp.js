@@ -3,14 +3,17 @@
 // Models are found by Ollama name in Ollama's model folder (no duplicate downloads), or set by path in config.
 import { replyStats } from './speed-stats.js';
 import fs from 'node:fs';
+import { saveNameOf, idFolderFile } from './models.js';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn, execFile } from 'node:child_process';
 import { tidySchema } from './toolbox.js';
 import { templateFor, samplingFor } from './model-family.js';
-import { gaming } from './sessions.js';
-import { gamingCard, decideCard } from './gaming-card.js';
+import { gaming, LONG_CODER } from './sessions.js';
+import { gamingCard, decideCard, readCard, CARD_BUSY_PCT, CARD_MIN_FREE_MB } from './gaming-card.js';
 import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts } from './tuning.js';
+import { exeName } from './platform.js';
+import { Embedder } from './embedder.js';
 
 // 1.5.19: the context a brain gets when nothing else picks one. 32K fits a 26B brain on a 16 GB card.
 
@@ -46,9 +49,20 @@ export function textCalls(content, names) {
   for (const c of Array.isArray(o) ? o : [o]) if (c && typeof c === 'object' && typeof c.name === 'string') add(c.name, c.arguments ?? c.parameters ?? {});
   return calls.length ? { calls, text: '' } : null;
 }
+const samePath = (a, b) => Boolean(a && b) && path.resolve(String(a)).toLowerCase() === path.resolve(String(b)).toLowerCase();
 export const DEFAULT_CTX = 32768;
 // 1.5.19: Medium thinks, but only this long (tokens of thinking), then it is asked to answer.
 export const THINK_BUDGET = { medium: 1536 };
+// 1.5.68: the always-thinking Coding copy (Qwen3.6) gets a budget at every effort too. On the PC it once thought for
+// 10 minutes (about 45K tokens) on a small hand-off without answering; in the race every task finished in under
+// 6,400 tokens. Medium keeps its shorter budget above.
+export const LONG_THINK_BUDGET = 12288;
+// And every request has a ceiling on how much it may write (thinking plus answer), so no single reply runs forever.
+export const MAX_REPLY_TOKENS = 32768;
+export function thinkBudget(model, think) {
+  if (think === false) return 0;
+  return THINK_BUDGET[think] || (LONG_CODER.test(String(model || '')) ? LONG_THINK_BUDGET : 0);
+}
 
 // How long a brain may sit unused in memory: the shared setting ollamaKeepAlive ("10m", "30m", "1h", or "-1" for never).
 // Both engines use it: Ollama through keep_alive, Bob's own engine through the idle check below (1.5.2).
@@ -59,13 +73,54 @@ export function keepAliveMs(cfg) {
   return m ? Number(m[1]) * { s: 1000, m: 60000, h: 3600000 }[m[2]] : 300000;
 }
 
+// 1.5.51 "second brain beside big jobs": Bob's engine can run a second llama-server beside the main one. It holds a
+// quick chat reply's small brain while a big job keeps the main brain on the card, and (opt-in) the reviewer for a moot.
+// Where it goes (the owner, 2026-11-03: "maybe e4b shouldnt be on the processor if theres lots of gpu available"): on
+// the graphics card when the card has room for it as well (and isn't busy), otherwise on the processor, where it never
+// sees the card (CUDA_VISIBLE_DEVICES=-1). Never in Gaming. Below normal priority, half the cores, and let go as soon as
+// nothing needs it. A call goes to it when its options carry beside: true.
+export const BESIDE = 'beside';
+export function besideThreads(cpus = os.cpus()) {
+  const logical = cpus.length || 2;
+  const pairs = /AMD|Intel/i.test(String(cpus[0]?.model || '')) && logical % 2 === 0 && logical >= 4;
+  return Math.max(2, Math.floor((pairs ? logical / 2 : logical) / 2));
+}
+
+// 1.5.52 / 1.5.61: the mid-chat system note fold lives in system-notes.js, so Ollama uses it too.
+import { MID_SYSTEM_REFUSED, foldSystem } from './system-notes.js';
+export { MID_SYSTEM_REFUSED, foldSystem };
+
+// 1.5.35 (a function since 1.5.72, so the housekeeper can find the embedding file too): see catalogFile below.
+export function catalogFileFor(cfg, id) {
+  if (!/^[\w.:/-]+$/.test(id)) return null;
+  try {
+    const cat = JSON.parse(fs.readFileSync(cfg.catalogFile || new URL('../catalog.json', import.meta.url), 'utf8'));
+    const e = cat.models.find((m) => m.id === id) || cat.models.find((m) => m.ollama && (m.ollama === id || `${m.ollama}:latest` === id || m.ollama === `${id}:latest`));
+    const f = e?.files?.find((x) => x.role === 'gguf');
+    if (!f) return null;
+    const root = cfg.bobModelsDir || path.join(cfg.agentDir, 'models', 'bob');
+    let dirs = [e.category];
+    try { dirs = [e.category, ...fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name)]; } catch {}
+    // Its own folder first; an older Bob may have filed it under another one (for example chat instead of coding).
+    const find = (x) => { const name = saveNameOf(x); return dirs.map((dir) => path.join(root, dir, name)).find((p) => fs.existsSync(p) && !fs.existsSync(p + '.part')) || idFolderFile(cfg, e, x); };
+    const file = find(f);
+    if (!file) return null;
+    // 1.5.56: a brain that sees pictures has a second file, its picture reader (mmproj), saved under its own name.
+    const pj = e.files.find((x) => x.role === 'mmproj');
+    const mmproj = pj ? find(pj) : null;
+    return mmproj ? { gguf: file, mmproj } : { gguf: file };
+  } catch { return null; }
+}
+
 export class LlamaCpp {
   // Read fresh each time, so speed settings changed in the app apply to the next brain load.
   get lc() { return this.cfg.llamacpp || {}; }
 
-  constructor(cfg) {
+  constructor(cfg, { role = 'main' } = {}) {
     this.cfg = cfg;
-    this.port = this.lc.port || 8091;
+    this.role = role;
+    this.tag = role === BESIDE ? '-beside' : '';
+    this.port = role === BESIDE ? (this.lc.besidePort || (this.lc.port || 8091) + 1) : (this.lc.port || 8091);
     this.url = `http://127.0.0.1:${this.port}`;
     this.child = null;
     this.current = null;
@@ -77,36 +132,65 @@ export class LlamaCpp {
     // Unload the brain once it has been idle longer than the keep-alive, so a quiet Bob gives the graphics card back.
     this.idleTimer = setInterval(() => { this.idleTick().catch(() => {}); }, 60_000);
     this.idleTimer.unref?.();
-    this.timesFile = path.join(cfg.dataDir, 'load-times-llamacpp.json');
+    this.timesFile = path.join(cfg.dataDir, `load-times-llamacpp${this.tag}.json`);
     try { this.loadTimes = JSON.parse(fs.readFileSync(this.timesFile, 'utf8')); } catch { this.loadTimes = {}; }
     const stop = () => { try { this.child && this.child.kill(); } catch {} };
     process.on('exit', stop);
     for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { stop(); process.exit(0); });
   }
 
+  // The second server, made the first time something asks for it. Only the main engine has one.
+  besideServer() {
+    if (this.role === BESIDE) return this;
+    if (!this.beside) {
+      this.beside = new LlamaCpp(this.cfg, { role: BESIDE });
+      this.beside.log = (k, t) => this.log?.(k, t);
+      this.beside.resolve = (m) => this.resolve(m); // same model files (tests replace resolve on the main engine)
+      this.beside.catalogFile = (id) => this.catalogFile(id);
+      this.beside.main = this; // so a card reader set on the main engine (tests) also counts for the second server
+      // 1.5.53: the brain hears when a second brain joins or leaves (chat page: second-brain events, Bob's head grows).
+      this.beside.changed = (ev) => { try { this.onBeside?.(ev); } catch {} };
+    }
+    return this.beside;
+  }
+  // 1.5.51: 'whole' (on the graphics card) or 'none' (processor only) for a brain on the second server. The card is
+  // used only when it's not busy and has room for the brain, its chat memory and the usual 1.5 GB to spare.
+  async besidePlace(model, ctx) {
+    const b = this.role === BESIDE ? this : this.besideServer();
+    if (gaming(this.cfg) || this.lc.besideOnCard === false) return 'none';
+    let mb = 0;
+    try { mb = fs.statSync(this.resolve(model).gguf).size / 1048576; } catch { return 'none'; }
+    const card = await (b.cardReaders?.card || this.cardReaders?.card || this.main?.cardReaders?.card || readCard)().catch(() => null);
+    if (!card) return 'none';
+    const need = mb * 1.15 + Math.min(ctx || this.lc.ctx || DEFAULT_CTX, 131072) * 60 / 1024 + CARD_MIN_FREE_MB;
+    const place = card.util < CARD_BUSY_PCT && card.freeMB >= need ? 'whole' : 'none';
+    b.placed = { model, place, at: Date.now() };
+    return place;
+  }
+
+  // Where a call goes: beside: true sends it to the second server (made on demand), always on the processor.
+  route(opts) { return opts?.beside && this.role !== BESIDE ? this.besideServer() : null; }
+  besideLoaded() { return Boolean(this.beside?.current && this.beside.child && this.beside.child.exitCode === null); }
+  // Let go of the second server's brain. Returns the names unloaded.
+  async dropBeside() {
+    if (!this.beside?.current) { await this.beside?.stopServer?.(); return []; }
+    const was = this.beside.current;
+    await this.beside.stopServer();
+    return [was];
+  }
+
   // 1.5.35: also by Ollama name (like "gpt-oss:20b"): when Bob's own pinned copy of that model is downloaded, his engine
   // uses it instead of Ollama's copy. Measured: Ollama's gpt-oss blob has no chat template and got 2 of 25 tool jobs
   // right on llama.cpp; the official file got 25 of 25.
-  catalogFile(id) {
-    if (!/^[\w.:/-]+$/.test(id)) return null;
-    try {
-      const cat = JSON.parse(fs.readFileSync(this.cfg.catalogFile || new URL('../catalog.json', import.meta.url), 'utf8'));
-      const e = cat.models.find((m) => m.id === id) || cat.models.find((m) => m.ollama && (m.ollama === id || `${m.ollama}:latest` === id || m.ollama === `${id}:latest`));
-      const f = e?.files?.find((x) => x.role === 'gguf');
-      if (!f) return null;
-      const root = this.cfg.bobModelsDir || path.join(this.cfg.agentDir, 'models', 'bob');
-      const name = decodeURIComponent(f.url.split('/').pop().split('?')[0]);
-      // Its own folder first; an older Bob may have filed it under another one (for example chat instead of coding).
-      const file = [e.category, ...fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name)]
-        .map((dir) => path.join(root, dir, name)).find((x) => fs.existsSync(x) && !fs.existsSync(x + '.part'));
-      return file ? { gguf: file } : null;
-    } catch { return null; }
-  }
+  catalogFile(id) { return catalogFileFor(this.cfg, id); }
 
   // Ollama name -> GGUF file (+ vision projector), by reading Ollama's manifest.
   resolve(model) {
     const override = this.lc.models?.[model];
-    if (override) return typeof override === 'string' ? { gguf: override } : override;
+    if (override && typeof override !== 'string') return override;
+    // 1.5.74: an Equip from before 1.5.74 saved only the file path, which dropped the picture reader (mmproj). When
+    // that path is Bob's own copy of a catalogue model, use the full copy (with its picture reader) instead.
+    if (override) { const own = this.catalogFile(model); return own && samePath(own.gguf, override) ? own : { gguf: override }; }
     // 1.5.25: a Get models id (like "qwen3-4b") that was downloaded but never picked in a slot: its file in Bob's models folder.
     const own = this.catalogFile(model);
     if (own) return own;
@@ -131,18 +215,28 @@ export class LlamaCpp {
 
   // 1.5.49: what loading this brain does to the ones already loaded. Bob's own engine holds one brain at a time,
   // so a different brain always swaps the current one out (the picture engine is separate and isn't touched).
-  async loadPlan(model) {
-    const now = (await this.loaded()).map((m) => m.name);
-    return { before: now, drop: now.filter((n) => n !== model), keep: [], single: true };
+  // 1.5.51: beside: true loads it on the second server, so the main brain stays (an add).
+  async loadPlan(model, opts = {}) {
+    const all = await this.loaded();
+    const now = all.map((m) => m.name);
+    if (this.route(opts)) {
+      const main = all.filter((m) => !m.beside).map((m) => m.name);
+      const besideNow = all.filter((m) => m.beside && m.name !== model).map((m) => m.name);
+      const onCard = (await this.besidePlace(model, opts.ctx)) === 'whole';
+      return { before: now, drop: besideNow, keep: main, single: false, beside: true, onCard };
+    }
+    const mainNow = all.filter((m) => !m.beside).map((m) => m.name);
+    return { before: now, drop: mainNow.filter((n) => n !== model), keep: [], single: true };
   }
 
   async loaded() {
-    if (!(this.current && this.child && this.child.exitCode === null)) return [];
+    const side = this.role !== BESIDE && this.beside ? (await this.beside.loaded()).map((m) => ({ ...m, beside: true, onCard: this.beside.currentCard === 'whole', ...(this.beside.currentCard === 'whole' ? {} : { vram: 0, split: true }) })) : [];
+    if (!(this.current && this.child && this.child.exitCode === null)) return side;
     let size = 0;
     try { size = fs.statSync(this.resolve(this.current).gguf).size; } catch {}
-    const vram = await this.vramOf(this.child.pid);
+    const vram = this.role === BESIDE && this.currentCard !== 'whole' ? 0 : await this.vramOf(this.child.pid);
     // Without a per-process figure from nvidia-smi, how the model splits between card and RAM is unknown.
-    return [{ name: this.current, own: Boolean(this.currentOwn), size, vram, split: vram > 0, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX }];
+    return [{ name: this.current, own: Boolean(this.currentOwn), size, vram, split: vram > 0, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX }, ...side];
   }
 
   // Graphics memory llama-server holds, in bytes, from nvidia-smi (ships with the NVIDIA driver). 0 when unknown.
@@ -189,7 +283,9 @@ export class LlamaCpp {
 
   // ctx: the session's context size. A different size means restarting llama-server with it.
   // cpu (1.5.12, Low effort on the processor): the same model on the card is a different load, and the other way round.
-  async isLoaded(model, { ctx, cpu = false } = {}) {
+  async isLoaded(model, { ctx, cpu = false, beside = false } = {}) {
+    const b = this.route({ beside });
+    if (b) return b.isLoaded(model, { ctx, cpu: true });
     return this.current === model && (!ctx || this.currentCtx === ctx) && Boolean(this.currentCpu) === Boolean(cpu) && this.child && this.child.exitCode === null && (await this.health());
   }
 
@@ -223,6 +319,7 @@ export class LlamaCpp {
 
   // Everything llama-server is started with, in one place so it can be tested.
   buildArgs(model, { ctx, cpu = false, card } = {}) {
+    if (this.role === BESIDE) cpu = true;
     const lc = this.lc;
     const { gguf, mmproj, args: modelArgs } = this.resolve(model);
     const num = (v, flag) => (Number.isInteger(v) && v > 0 ? [flag, String(v)] : []);
@@ -233,7 +330,7 @@ export class LlamaCpp {
       '-c', String(ctx || lc.ctx || DEFAULT_CTX), ...this.layerArgs(cpu, card), '--jinja',
       ...(mmproj && lc.vision !== false ? ['--mmproj', mmproj] : []),
       ...(lc.args || ['-fa', 'on', '-ctk', 'q8_0', '-ctv', 'q8_0']),
-      ...(cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : num(lc.threads, '-t')),
+      ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : num(lc.threads, '-t')),
       ...num(lc.batch, '-b'), ...num(lc.ubatch, '-ub'),
       // 1.5.24 "Get Bob ready while you type": on the processor, his reading of the instructions is kept on disk.
       ...(cpu && tuning(this.cfg).readyWhileTyping ? ['--slot-save-path', startDir(this.cfg)] : []),
@@ -318,7 +415,9 @@ export class LlamaCpp {
     } finally { this.active--; this.lastUse = this.now(); }
   }
 
-  async estimateLoad(model) {
+  async estimateLoad(model, opts) {
+    const b = this.route(opts);
+    if (b) return b.estimateLoad(model);
     if (this.loadTimes[model]) return Math.round(this.loadTimes[model]);
     try {
       const gb = fs.statSync(this.resolve(model).gguf).size / 1e9;
@@ -327,30 +426,45 @@ export class LlamaCpp {
   }
 
   // Lets go of one brain (Bob's own engine holds one at a time). Returns the names unloaded.
-  async unload(model) {
+  // 1.5.51: beside: true only the second server's; otherwise the main one's (the second server is let go by dropBeside).
+  async unload(model, opts) {
+    if (this.route(opts)) return this.beside?.current === model ? this.dropBeside() : [];
     if (!this.current || this.current !== model) return [];
     await this.stopServer();
     return [model];
   }
 
   // Counts as use, so the idle clock starts again (someone is typing).
-  touch() { this.lastUse = this.now(); }
+  touch(model, opts) { const b = this.route(opts); if (b) return b.touch(); this.lastUse = this.now(); }
 
   // 1.5.40: make room on the graphics card. A brain running on the processor stays (Art keeps chatting on it while a
   // picture paints); one on the card goes.
   async unloadGpu() {
-    if (this.current && this.currentCpu && !['whole', 'borrow'].includes(this.currentCard)) return [];
-    return this.unloadAll();
+    const side = this.beside?.currentCard === 'whole' ? await this.dropBeside() : []; // 1.5.51: the second server only if it sits on the card
+    if (this.current && this.currentCpu && !['whole', 'borrow'].includes(this.currentCard)) return side;
+    const was = this.current;
+    await this.stopServer();
+    return [...(was ? [was] : []), ...side];
   }
+
+  // 1.5.72: the Memory slot's embedding model, on its own small server (src/embedder.js). Same call as Ollama's.
+  embedder() {
+    if (this.role === BESIDE) return this.main.embedder();
+    return (this.embedServer ||= new Embedder(this.cfg, { resolve: (m) => this.catalogFile(m), port: this.lc.embedPort || this.port + 2 }));
+  }
+  async embed(model, input) { return this.embedder().embed(model, input); }
 
   async unloadAll() {
     const was = this.current;
+    if (this.role !== BESIDE) this.embedServer?.stop();
+    const side = this.role !== BESIDE ? await this.dropBeside() : [];
     await this.stopServer();
-    return was ? [was] : [];
+    return [...(was ? [was] : []), ...side];
   }
 
   async stopServer() {
     const c = this.child;
+    if (this.role === BESIDE && this.current) this.changed?.({ action: 'leave', model: this.current });
     this.child = null;
     this.current = null;
     this.currentCtx = null;
@@ -360,25 +474,31 @@ export class LlamaCpp {
     await new Promise((r) => { c.once('exit', r); c.kill(); setTimeout(r, 5000); });
   }
 
-  async preload(model, signal, { ctx, cpu = false } = {}) {
+  async preload(model, signal, { ctx, cpu = false, beside = false } = {}) {
+    const b = this.route({ beside });
+    if (b) return b.preload(model, signal, { ctx, cpu: true });
+    if (this.role === BESIDE) cpu = true;
     const t0 = Date.now();
     this.lastUse = this.now();
     // 1.5.32: in the Gaming session the "Gaming: graphics card" switch decides how much of the card the brain may use.
-    const card = cpu && gaming(this.cfg) ? await this.gamingCardPlan(model) : null;
+    // 1.5.51: the second server: the place picked for the load line (if fresh), or a new look at the card.
+    const fresh = this.placed && this.placed.model === model && Date.now() - this.placed.at < 60000 ? this.placed.place : null;
+    const card = this.role === BESIDE ? (fresh || (await this.besidePlace(model, ctx))) : cpu && gaming(this.cfg) ? await this.gamingCardPlan(model) : null;
+    this.placed = null;
     const args = this.buildArgs(model, { ctx, cpu, card });
     await this.stopServer();
     // A llama-server left over from a crash would hold the port: stop it first.
-    const pidFile = path.join(this.cfg.dataDir, 'llama-server.pid');
+    const pidFile = path.join(this.cfg.dataDir, `llama-server${this.tag}.pid`);
     try { process.kill(Number(fs.readFileSync(pidFile, 'utf8')), 'SIGTERM'); await new Promise((r) => setTimeout(r, 800)); } catch {}
-    const exe = this.lc.exe || path.join(this.cfg.agentDir, 'llama.cpp', 'llama-server.exe');
+    const exe = this.lc.exe || path.join(this.cfg.agentDir, 'llama.cpp', exeName('llama-server'));
     // The exact command, so speed settings can be checked (e.g. that the draft model really went in).
-    try { fs.writeFileSync(path.join(this.cfg.dataDir, 'llama-server-args.txt'), [exe, ...args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ') + '\n'); } catch {}
+    try { fs.writeFileSync(path.join(this.cfg.dataDir, `llama-server${this.tag}-args.txt`), [exe, ...args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ') + '\n'); } catch {}
     let log = '';
     if (args.includes('--slot-save-path')) { try { fs.mkdirSync(startDir(this.cfg), { recursive: true }); } catch {} }
     const env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
     const child = spawn(exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
     // 1.5.24 "Let games go first": on the processor, the engine yields to games (below normal priority).
-    if (cpu && cpuPlan(this.cfg)?.lowPriority) { try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {} }
+    if (this.role === BESIDE || (cpu && cpuPlan(this.cfg)?.lowPriority)) { try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {} }
     child.stdout.on('data', (d) => { log = (log + d).slice(-4000); });
     child.stderr.on('data', (d) => { log = (log + d).slice(-4000); });
     const started = new Promise((_, reject) => {
@@ -415,6 +535,7 @@ export class LlamaCpp {
     if (cpu && tuning(this.cfg).readyWhileTyping) await this.restoreStart(model, ctx);
     const secs = (Date.now() - t0) / 1000;
     this.loadTimes[model] = secs;
+    if (this.role === BESIDE) this.changed?.({ action: 'join', model, where: card === 'whole' ? 'card' : 'processor' });
     try { fs.writeFileSync(this.timesFile, JSON.stringify(this.loadTimes, null, 2)); } catch {}
     return secs;
   }
@@ -449,15 +570,17 @@ export class LlamaCpp {
   }
 
   async chat(opts) {
+    const b = this.route(opts);
+    if (b) return b.chat({ ...opts, beside: false, cpu: true });
     this.active++;
     this.lastUse = this.now();
     try { return await this.chatOnce(opts); } finally { this.active--; this.lastUse = this.now(); }
   }
 
-  // 1.5.19: Medium has a thinking budget. Once the brain has thought that long, the request stops and is asked again
+  // 1.5.19: Medium has a thinking budget (1.5.68: so does Qwen3.6 at every effort, see thinkBudget). Once the brain has thought that long, the request stops and is asked again
   // with thinking off and a note to answer now (llama-server keeps the prompt cached, so the retry starts quickly).
   async chatOnce(opts) {
-    const budget = THINK_BUDGET[opts.think];
+    const budget = thinkBudget(opts.model, opts.think);
     if (!budget) return this.chatStream(opts);
     const stop = new AbortController();
     const onAbort = () => stop.abort();
@@ -471,17 +594,52 @@ export class LlamaCpp {
     } finally { opts.signal?.removeEventListener?.('abort', onAbort); }
   }
 
-  async chatStream({ model, messages, tools, signal, onToken, think, budget, onOver }) {
-    const res = await fetch(this.url + '/v1/chat/completions', {
+  async chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver }) {
+    // 1.5.52: a brain whose template refused a mid-chat system note gets them folded in from then on (foldSystem).
+    this.noMidSystem ||= new Set();
+    // 1.5.60: ask the loaded brain's chat template up front, so a template that refuses mid-chat system notes is
+    // folded from the very first request (the retry below stays as a second line of defence).
+    this.templateRead ||= new Set();
+    if (!this.templateRead.has(model)) {
+      this.templateRead.add(model);
+      try {
+        const props = await (await fetch(this.url + '/props', { signal: AbortSignal.timeout(3000) })).json();
+        if (MID_SYSTEM_REFUSED.test(String(props?.chat_template || ''))) {
+          this.noMidSystem.add(model);
+          this.log?.('engine', `${model}: its chat template only takes a system message first, so Bob's notes go in as user notes`);
+        }
+      } catch {}
+    }
+    if (this.noMidSystem.has(model)) messages = foldSystem(messages);
+    const res = await this.post(model, messages, tools, signal, think);
+    if (!res.ok) {
+      // 1.5.60: the template's refusal sits deep in a long error (after the template source), so look at all of it.
+      const full = await res.text();
+      const text = full.slice(0, 300);
+      if (!this.noMidSystem.has(model) && MID_SYSTEM_REFUSED.test(full)) {
+        this.noMidSystem.add(model);
+        this.log?.('engine', `${model}: its chat template only takes a system message first, so Bob's notes go in as user notes from now on`);
+        return this.chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver });
+      }
+      if (MID_SYSTEM_REFUSED.test(full)) this.log?.('engine', `${model}: refused a system message even after folding (roles ${(messages || []).map((m) => (m.role || '?')[0]).join('')}, ${full.length} chars of error)`);
+      throw new Error(`llama-server returned ${res.status}: ${text}`);
+    }
+    return this.readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver });
+  }
+
+  post(model, messages, tools, signal, think) {
+    return fetch(this.url + '/v1/chat/completions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, // 1.5.26: no empty enums (llama.cpp rejects them)
+      body: JSON.stringify({ model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, max_tokens: MAX_REPLY_TOKENS, // 1.5.26: no empty enums (llama.cpp rejects them)
         ...this.sampling(model, { tools: !!tools?.length, think }),
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
         ...(think === false ? { chat_template_kwargs: { enable_thinking: false } } : {}) }),
       signal
     });
-    if (!res.ok) throw new Error(`llama-server returned ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  }
+
+  async readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver }) {
     let content = '';
     let held = null; // null: not decided yet; false: streaming normally; a string: held back
     let thought = 0;
@@ -503,6 +661,7 @@ export class LlamaCpp {
         if (ev.timings) this.lastStats = replyStats({ model: this.current || model, messages, promptTokens: (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0), outTokens: ev.timings.predicted_n, tokPerSec: ev.timings.predicted_per_second, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX }) || this.lastStats;
         const d = ev.choices?.[0]?.delta || {};
         if (budget && d.reasoning_content && ++thought > budget && !content) onOver(); // stop.over marks it, so real errors aren't retried
+        if (d.reasoning_content && onThink) onThink(d.reasoning_content); // 1.5.53: only while the thinking window is open
         if (d.content) {
           content += d.content;
           // 1.5.29: a reply that starts like a tool call written as text is held back until the end, so a rescued

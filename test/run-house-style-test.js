@@ -76,8 +76,12 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-house-'));
 // Folder picker
 {
   let err = '';
-  try { await pickFolder({ platform: 'linux' }); } catch (e) { err = e.message; }
-  check('folder picker: plain message off Windows', /only works on Windows/.test(err));
+  try { await pickFolder({ platform: 'sunos' }); } catch (e) { err = e.message; }
+  check('folder picker: plain message where there is none', /only works on Windows, Mac and Linux/.test(err));
+  let macArgs = null;
+  const mac = await pickFolder({ platform: 'darwin', run: (exe, args, o, cb) => { macArgs = [exe, ...args]; cb(null, '/Users/me/Projects/Game/\n'); } });
+  const macNone = await pickFolder({ platform: 'darwin', run: (exe, args, o, cb) => { cb(Object.assign(new Error('x'), { code: 1 }), '', 'execution error: User canceled. (-128)'); } });
+  check('folder picker on a Mac: AppleScript choose folder, trailing slash dropped, cancel = empty', macArgs[0] === '/usr/bin/osascript' && /choose folder/.test(macArgs[2]) && mac === '/Users/me/Projects/Game' && macNone === '');
   const got = await pickFolder({ platform: 'win32', run: (exe, args, o, cb) => { cb(null, 'C:\\Games\\Game\r\n'); } });
   const none = await pickFolder({ platform: 'win32', run: (exe, args, o, cb) => { cb(null, ''); } });
   check('folder picker: returns the folder, or empty when cancelled', got === 'C:\\Games\\Game' && none === '');

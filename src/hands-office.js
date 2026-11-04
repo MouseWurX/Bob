@@ -84,7 +84,7 @@ export function planConvert(cfg, args, env = process.env) {
       const r = routeFor(from, to);
       if (r.why) throw new Error(r.why);
       if (r.route === 'office' && !office) throw new Error(OFFICE_MISSING.split('. The user')[0] + '.');
-      if ((r.route === 'media' || (r.route === 'picture' && (process.platform !== 'win32' || from === 'webp' || to === 'webp'))) && !ffmpeg) throw new Error(FFMPEG_MISSING.split('. The user')[0] + '.');
+      if ((r.route === 'media' || (r.route === 'picture' && (!['win32', 'darwin'].includes(process.platform) || from === 'webp' || to === 'webp'))) && !ffmpeg) throw new Error(FFMPEG_MISSING.split('. The user')[0] + '.');
       row.to = canWrite(cfg, outFor(cfg, row.from, to, args.folder, taken));
       taken.add(row.to.toLowerCase());
       row.route = r.route;

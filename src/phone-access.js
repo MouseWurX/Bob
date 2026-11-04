@@ -2,6 +2,7 @@
 // over Tailscale with a passcode. Off unless you turn it on. Before this it could only be set in config.json
 // ("remote"); the setting writes the same keys, and server.js checks them the same way:
 // Tailscale addresses only (100.64.0.0/10), Host must be on the list, passcode cookie, x-bob header.
+import fs from 'node:fs';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
@@ -30,8 +31,18 @@ export async function findAddresses(port, { run = tailscaleName } = {}) {
   return [...new Set([...(name ? [name] : []), ...ips])].map((h) => cleanHost(h, port)).filter(Boolean);
 }
 
+// Where the tailscale program is. Windows: its installer's folder. Mac: the Tailscale app keeps it inside itself
+// (the App Store and the download from tailscale.com both), or Homebrew's folder. Linux: on PATH.
+export function tailscaleExe(platform = process.platform, exists = fs.existsSync) {
+  if (platform === 'win32') return 'C:\\Program Files\\Tailscale\\tailscale.exe';
+  if (platform === 'darwin') {
+    for (const f of ['/Applications/Tailscale.app/Contents/MacOS/Tailscale', '/opt/homebrew/bin/tailscale', '/usr/local/bin/tailscale']) if (exists(f)) return f;
+  }
+  return 'tailscale';
+}
+
 function tailscaleName() {
-  const exe = process.platform === 'win32' ? 'C:\\Program Files\\Tailscale\\tailscale.exe' : 'tailscale';
+  const exe = tailscaleExe();
   return new Promise((resolve) => {
     execFile(exe, ['status', '--json', '--self=true', '--peers=false'], { timeout: 3000, windowsHide: true, maxBuffer: 1e6 }, (err, out) => {
       if (err) return resolve('');

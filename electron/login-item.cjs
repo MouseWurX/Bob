@@ -1,7 +1,39 @@
 // "Launch on start-up" (Settings). Bob registers himself with '--hidden' so he starts in the tray. Windows matches
 // the entry together with its arguments, so it is read both with and without them, and switching off clears both.
+// Linux has no login items in Electron, so there Bob writes the desktop's own autostart file instead
+// (~/.config/autostart/ca.mousewurx.bob.desktop, the freedesktop.org way GNOME, KDE and the rest read), pointing at
+// the AppImage. Off unless the user turns it on, like everywhere else.
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
 const LOGIN_ARGS = ['--hidden'];
-function loginItem(app) {
+
+function autostartFile(env = process.env) {
+  return path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'autostart', 'ca.mousewurx.bob.desktop');
+}
+
+// Exec= quoting from the Desktop Entry spec: the program in double quotes, with " ` $ \ escaped.
+const execQuote = (p) => `"${String(p).replace(/(["`$\\])/g, '\\$1')}"`;
+
+function linuxLoginItem({ env = process.env, exe } = {}) {
+  const file = autostartFile(env);
+  // The AppImage itself (APPIMAGE), never the mount point it runs from, which changes every start.
+  const program = () => exe || env.APPIMAGE || process.execPath;
+  return {
+    file,
+    // On when the file is there and hasn't been switched off in the desktop's own settings (Hidden or GNOME's flag).
+    get: () => { try { return !/^\s*(Hidden\s*=\s*true|X-GNOME-Autostart-enabled\s*=\s*false)\s*$/im.test(fs.readFileSync(file, 'utf8')); } catch { return false; } },
+    set: (on) => {
+      if (!on) { fs.rmSync(file, { force: true }); return; }
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, ['[Desktop Entry]', 'Type=Application', 'Name=Bob', 'Comment=Bob, a local AI who lives on your PC',
+        `Exec=${execQuote(program())} ${LOGIN_ARGS.join(' ')}`, 'Icon=bob', 'Terminal=false', 'X-GNOME-Autostart-enabled=true', ''].join('\n'));
+    }
+  };
+}
+
+function loginItem(app, opts = {}) {
+  if ((opts.platform || process.platform) === 'linux') return linuxLoginItem(opts);
   return {
     get: () => Boolean(app.getLoginItemSettings({ args: LOGIN_ARGS }).openAtLogin || app.getLoginItemSettings().openAtLogin),
     set: (on) => {
@@ -10,4 +42,4 @@ function loginItem(app) {
     }
   };
 }
-module.exports = { loginItem, LOGIN_ARGS };
+module.exports = { loginItem, linuxLoginItem, autostartFile, LOGIN_ARGS };

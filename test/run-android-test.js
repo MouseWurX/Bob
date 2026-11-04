@@ -15,7 +15,7 @@ const L = globalThis.BobLogic, S = globalThis.BobShared, H = globalThis.BobHelp;
 
 // Shared with desktop Bob: persona and pinned models are made from src/persona.js and catalog.json.
 const { buildShared, OUT } = await import(pathToFileURL(path.join(root, 'android/tools/make-shared.mjs')));
-check('shared.js is up to date (node android/tools/make-shared.mjs)', fs.readFileSync(OUT, 'utf8') === buildShared());
+check('shared.js is up to date (node android/tools/make-shared.mjs)', fs.readFileSync(OUT, 'utf8').replace(/\r\n/g, '\n') === buildShared().replace(/\r\n/g, '\n'));
 check('phone persona is Bob, on a phone, without the PC-only parts', /You are Bob/.test(S.persona) && /phone/.test(S.persona) && !/front desk|spin up copies|Idle Process|notice board/i.test(S.persona));
 for (const m of S.models) {
   const f = m.file || {};

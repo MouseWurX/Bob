@@ -15,6 +15,8 @@ import { UNITS, KINDS, ageMs, cleanHousekeeping, hkSettings } from './hk-setting
 export { UNITS, KINDS, ageMs, cleanHousekeeping, hkSettings };
 import { recycle, backupToBin, mayRecycle } from './recycle.js';
 import { Topics, normName, topicText } from './topics.js';
+import { Embedder } from './embedder.js';
+import { catalogFileFor } from './llamacpp.js';
 import {
   chatIds, chatInfo, chatFiles, wholeChat, readChat, readOlder, writeChat, writeOlder, readSummary, writeSummary,
   spoken, said, stampMessages, safeId
@@ -70,6 +72,7 @@ export class Housekeeper {
     this.working = false;
     this.controller = null;
     this.noEmbed = false;
+    this.now = () => Date.now();
     this.timer = setInterval(() => this.tick().catch(() => {}), 5 * 60e3);
     this.timer.unref?.();
   }
@@ -272,9 +275,19 @@ export class Housekeeper {
   }
 
   async embed(texts) {
-    if (this.noEmbed || !this.brain.engine.embed) return null;
-    try { return await this.brain.engine.embed(this.cfg.housekeeping?.embedModel || 'nomic-embed-text', texts); }
-    catch { this.noEmbed = true; return null; } // not on this PC: names and words are matched instead
+    // 1.5.72: a miss is tried again after 10 minutes (the model may have been downloaded since), not never again.
+    if (this.noEmbed && this.now() - (this.noEmbedAt ?? Infinity) < 600e3) return null;
+    const model = this.cfg.housekeeping?.embedModel || 'nomic-embed-text';
+    const eng = this.brain.engine;
+    // With Ollama as the engine, a downloaded nomic-embed-text file still works through Bob's own llama-server.
+    const own = eng.embedder ? null : (this.ownEmbed ||= new Embedder(this.cfg, { resolve: (m) => catalogFileFor(this.cfg, m) }));
+    try {
+      if (eng.embed) { try { const v = await eng.embed(model, texts); this.noEmbed = false; return v; } catch (e) { if (!own?.ready(model)) throw e; } }
+      if (!own?.ready(model)) throw new Error('no embedding model');
+      const v = await own.embed(model, texts);
+      this.noEmbed = false;
+      return v;
+    } catch { this.noEmbed = true; this.noEmbedAt = this.now(); return null; } // not on this PC: names and words are matched instead
   }
 
   // Facts Bob should keep go to the memory file, tagged with their topic, without repeats.

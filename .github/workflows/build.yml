@@ -3,6 +3,10 @@
 #  1. Runs all of Bob's tests.
 #  2. Makes the release zip in the installed layout: Electron's official electron.exe, unchanged and
 #     renamed Bob.exe, with Bob's files in resources\app (installer\make-release.ps1).
+#  2b. On a Mac runner (Apple Silicon): runs the tests again, makes Bob.app (installer/make-release-mac.sh: Electron's
+#     official Mac app, renamed, with Bob's files inside, signed ad hoc), checks that Bob's own engines for Mac
+#     download and start (installer/mac-smoke.mjs), opens Bob.app once to see his brain answers, and adds
+#     Bob-<version>-mac-arm64.zip to the same release. A failure here never holds back the Windows release.
 #  3. Builds Bob.exe from source with electron-builder (Bob's own name and icon) and, once SignPath is set
 #     up, sends it to SignPath Foundation to be signed. Signing is skipped until the repository variable
 #     SIGNPATH_ENABLED is "true" and the secrets/variables below exist.
@@ -17,6 +21,8 @@ on:
     # A new version on main publishes its own release (the "Publish the release" step below).
     branches: [main]
     paths: ['package.json']
+  # A pull request runs every check (Windows and Mac) but never publishes or changes a release.
+  pull_request:
   workflow_dispatch:
     inputs:
       ref:
@@ -45,20 +51,22 @@ jobs:
         run: npm test
       - name: Release check (licences, pinned actions)
         run: npm run check:release
-      - name: Release zip (official Electron + Bob's files)
+      - name: Release zip (official Electron + Bob's files + the basic llama.cpp)
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: ./installer/make-release.ps1 -Out dist
       - name: Upload release zip
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: Bob-${{ github.ref_name }}-win-x64
+          name: Bob-${{ github.event_name == 'pull_request' && format('pr{0}', github.event.number) || github.ref_name }}-win-x64
           path: |
             dist/Bob-*-win-x64.zip
             dist/Bob-*-win-x64.zip.sha256
           if-no-files-found: error
       - name: Attach to the GitHub release
         # When the owner publishes a release on GitHub (tag v1.0.0 and so on), its zip and checksum are added to it.
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -67,7 +75,7 @@ jobs:
         # A new version on main, or a run started by hand: release vX.Y.Z (from package.json) with the zip and
         # checksum, marked Latest. Notes come from docs/releases/vX.Y.Z.md when there is one, else GitHub writes them.
         # Nothing happens when that release already exists.
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/v') }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,6 +89,65 @@ jobs:
           if (Test-Path $notes) { gh release create $v $files --target $sha --title "Bob $($v.Substring(1))" --notes-file $notes --latest -R "${{ github.repository }}" }
           else { gh release create $v $files --target $sha --title "Bob $($v.Substring(1))" --generate-notes --latest -R "${{ github.repository }}" }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  mac:
+    # Bob for Mac (Apple Silicon). Runs after the Windows job, so the release it adds to already exists.
+    needs: build
+    runs-on: macos-15
+    permissions:
+      contents: write # only used to add the Mac zip to the release
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Tests (on macOS)
+        run: npm test
+      - name: Make Bob.app
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash installer/make-release-mac.sh dist arm64
+      - name: Bob's engines for Mac download and start
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node installer/mac-smoke.mjs
+      - name: Bob.app opens and his brain answers
+        run: |
+          rm -rf dist/mac-arm64/check && mkdir -p dist/mac-arm64/check
+          ditto -x -k dist/Bob-*-mac-arm64.zip dist/mac-arm64/check
+          codesign --verify --deep --strict dist/mac-arm64/check/Bob.app
+          dist/mac-arm64/check/Bob.app/Contents/MacOS/Electron --hidden > dist/mac-arm64/check/log.txt 2>&1 &
+          pid=$!
+          ok=0
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:7777/api/status > dist/mac-arm64/check/status.json 2>/dev/null; then ok=1; break; fi
+            sleep 1
+          done
+          kill $pid 2>/dev/null || true
+          cat dist/mac-arm64/check/log.txt | tail -40
+          if [ $ok = 1 ]; then echo "Bob answered:"; head -c 600 dist/mac-arm64/check/status.json; echo; else echo "Bob.app didn't answer on port 7777 within 90 s"; exit 1; fi
+          ls "$HOME/Library/Application Support/Bob/home"
+      - name: Upload Mac zip
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Bob-${{ github.event_name == 'pull_request' && format('pr{0}', github.event.number) || github.ref_name }}-mac-arm64
+          path: |
+            dist/Bob-*-mac-arm64.zip
+            dist/Bob-*-mac-arm64.zip.sha256
+          if-no-files-found: error
+      - name: Add to the GitHub release
+        # The release the Windows job made (or the one the owner published for a tag). Nothing happens without one,
+        # and never for a pull request.
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="$GITHUB_REF_NAME"; else v="v$(node -p "require('./package.json').version")"; fi
+          if ! gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then echo "No release $v yet, so the Mac zip is only an artifact of this run."; exit 0; fi
+          gh release upload "$v" dist/Bob-*-mac-arm64.zip dist/Bob-*-mac-arm64.zip.sha256 --clobber -R "$GITHUB_REPOSITORY"
 
   signed-build:
     # Off until SignPath Foundation has approved the project and the settings below are in place:
@@ -121,6 +188,6 @@ jobs:
       - name: Upload signed build
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: Bob-${{ github.ref_name }}-win-x64-signed
+          name: Bob-${{ github.event_name == 'pull_request' && format('pr{0}', github.event.number) || github.ref_name }}-win-x64-signed
           path: dist/signed
           if-no-files-found: error

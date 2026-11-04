@@ -6,6 +6,23 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { exeName, onPath } from './platform.js';
+
+// Where Ollama keeps its models on this PC: OLLAMA_MODELS if it's set, else Bob's own models folder if Ollama's files
+// are there (how the installer sets Ollama up), else Ollama's usual folder in the user's home (~/.ollama/models).
+export function ollamaModelsDir({ agentDir, env = process.env, home = os.homedir(), exists = fs.existsSync } = {}) {
+  if (env.OLLAMA_MODELS) return env.OLLAMA_MODELS;
+  const own = agentDir && path.join(agentDir, 'models');
+  if (own && exists(path.join(own, 'manifests'))) return own;
+  const usual = path.join(home, '.ollama', 'models');
+  return exists(usual) || !own ? usual : own;
+}
+// Pinokio's usual homes (it asks where on first run): the root of any drive, or the user's home.
+export function pinokioRoots({ home = os.homedir(), exists = fs.existsSync, platform = process.platform } = {}) {
+  const homes = platform === 'win32' ? [...'CDEFG'].map((d) => `${d}:\\pinokio`) : [];
+  homes.push(path.join(home, 'pinokio'));
+  return homes.filter((h) => exists(h)).flatMap((h) => [path.join(h, 'api'), path.join(h, 'drive')]);
+}
 
 export const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Files other programs run (Python scripts) can't be read from inside Bob.exe's app.asar, so the build
@@ -34,12 +51,12 @@ export function loadConfig() {
   cfg.painter = cfg.painter || { engine: 'comfy' };
   cfg.painter.sdcpp = cfg.painter.sdcpp || {};
   // Engine programs: zips differ (some put them in bin\ or Release\), so look in each likely place.
-  cfg.painter.sdcpp.exe = findExe(cfg.painter.sdcpp.exe, path.join(cfg.agentDir, 'sd.cpp'), ['sd-cli.exe', 'sd.exe']);
+  cfg.painter.sdcpp.exe = findExe(cfg.painter.sdcpp.exe, path.join(cfg.agentDir, 'sd.cpp'), [exeName('sd-cli'), exeName('sd')]);
   cfg.llamacpp = cfg.llamacpp || {};
-  cfg.llamacpp.exe = findExe(cfg.llamacpp.exe, path.join(cfg.agentDir, 'llama.cpp'), ['llama-server.exe']);
-  if (cfg.stt?.provider === 'whispercpp') cfg.stt.exe = findExe(cfg.stt.exe, path.join(cfg.agentDir, 'whisper.cpp'), ['whisper-cli.exe']);
+  cfg.llamacpp.exe = findExe(cfg.llamacpp.exe, path.join(cfg.agentDir, 'llama.cpp'), [exeName('llama-server')]);
+  if (cfg.stt?.provider === 'whispercpp') cfg.stt.exe = findExe(cfg.stt.exe, path.join(cfg.agentDir, 'whisper.cpp'), [exeName('whisper-cli')]);
   cfg.tts = cfg.tts || {};
-  cfg.tts.exe = findExe(cfg.tts.exe, path.join(cfg.agentDir, 'piper'), ['piper.exe']);
+  cfg.tts.exe = findExe(cfg.tts.exe, path.join(cfg.agentDir, 'piper'), [exeName('piper')]);
 
   cfg.innDir = cfg.innDir || path.join(cfg.agentDir, 'inn');
   cfg.dataDir = path.join(cfg.innDir, 'bob');
@@ -66,7 +83,11 @@ export function loadConfig() {
     cfg.comfy.workflowFile = path.join(appDir, cfg.comfy.workflowFile);
   }
   cfg.bobModelsDir = cfg.bobModelsDir || path.join(cfg.agentDir, 'models', 'bob');
-  cfg.modelSearchRoots = cfg.modelSearchRoots || [path.join(cfg.agentDir, 'models'), 'C:\\pinokio\\api', 'C:\\pinokio\\drive'];
+  // 1.5.56: no assumption that this PC is laid out like the one Bob was made on. Ollama's models are wherever
+  // Ollama keeps them (OLLAMA_MODELS, else its own folder in the user's home), and the other-apps scan looks for
+  // Pinokio wherever it's commonly installed. config.json can still name either by hand.
+  cfg.llamacpp.ollamaModelsDir = cfg.llamacpp.ollamaModelsDir || ollamaModelsDir({ agentDir: cfg.agentDir });
+  cfg.modelSearchRoots = cfg.modelSearchRoots || [path.join(cfg.agentDir, 'models'), cfg.llamacpp.ollamaModelsDir, ...pinokioRoots()];
   for (const d of [cfg.innDir, cfg.dataDir, cfg.ledgerDir, cfg.painterDir, cfg.archiveDir]) {
     fs.mkdirSync(d, { recursive: true });
   }
@@ -91,11 +112,14 @@ export function loadConfig() {
 }
 
 // The configured program if it exists; otherwise the first match in the engine folder, its bin\ or Release\ subfolder.
-export function findExe(configured, dir, names) {
+export function findExe(configured, dir, names, platform = process.platform) {
   if (configured && fs.existsSync(configured)) return configured;
+  // Linux and Mac programs have no .exe; on Linux one the distro installed (on the PATH) counts too.
+  if (platform !== 'win32') names = [...new Set(names.map((n) => n.replace(/\.exe$/i, '')))];
   for (const sub of ['', 'bin', 'Release', path.join('build', 'bin')]) {
     for (const n of names) { const p = path.join(dir, sub, n); if (fs.existsSync(p)) return p; }
   }
+  if (platform === 'linux') for (const n of names) { const p = onPath(n); if (p) return p; }
   return configured || path.join(dir, names[0]);
 }
 
@@ -116,7 +140,7 @@ export const VERSION = (() => {
   } catch { return { release: '0.9', branch: '', build: 0, label: '0.9.0' }; }
 })();
 
-export const SETTING_KEYS = ['engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'gamingCard', 'houseStyle', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed'];
+export const SETTING_KEYS = ['engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'gamingCard', 'houseStyle', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -144,6 +168,7 @@ function clean(patch) {
   if ('resumeJobs' in out) out.resumeJobs = out.resumeJobs === true; // 1.5.16, off unless switched on
   if ('quickOnCpu' in out) out.quickOnCpu = out.quickOnCpu === true;
   if ('chatWhileBusy' in out) out.chatWhileBusy = out.chatWhileBusy !== false;
+  if ('mootBeside' in out) out.mootBeside = out.mootBeside === true; // 1.5.51, off unless switched on
   if ('webSearch' in out) out.webSearch = out.webSearch === true;
   if ('houseStyle' in out) out.houseStyle = cleanHouseStyle(out.houseStyle); // 1.5.34 House style (public/house-style.js)
   if ('projectList' in out) out.projectList = cleanProjects(out.projectList); // 1.5.34 Projects in Settings
@@ -166,6 +191,13 @@ function clean(patch) {
     const sb = out.sessionBrains || {};
     out.sessionBrains = {};
     for (const k of ['small', 'gaming', 'coding', 'office', 'deep']) if (typeof sb[k] === 'string' && /^[\w.:/-]{1,100}$/.test(sb[k])) out.sessionBrains[k] = sb[k];
+    // 1.5.56: the owner's rule, kept here too: Gemma 4 E4B is never the Gaming brain, whatever asks for it.
+    if (/e4b/i.test(out.sessionBrains.gaming || '')) delete out.sessionBrains.gaming;
+  }
+  // 1.5.56: Active models (the Brain catalogue's switches): { "<catalog id or engine name>": true | false }.
+  if ('activeModels' in out) {
+    const a = out.activeModels && typeof out.activeModels === 'object' ? out.activeModels : {};
+    out.activeModels = Object.fromEntries(Object.entries(a).filter(([k, v]) => /^[\w.:/-]{1,100}$/.test(k) && typeof v === 'boolean').slice(0, 300));
   }
   if ('style' in out) out.style = cleanStyle(out.style);
   if ('catName' in out) out.catName = typeof out.catName === 'string' && /^[\p{L}\p{N}' .-]{1,24}$/u.test(out.catName.trim()) ? out.catName.trim() : undefined;

@@ -6,10 +6,11 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn, execFile } from 'node:child_process';
 import { unpackedDir } from './config.js';
+import { OS, exeName, venvPython, killTree as killAll } from './platform.js';
 
 export const workshopDir = (cfg) => path.join(cfg.agentDir, 'audio-workshop');
-export const uvExe = (cfg) => path.join(workshopDir(cfg), 'uv.exe');
-export const pythonExe = (cfg) => cfg.audio?.python || path.join(workshopDir(cfg), 'venv', 'Scripts', 'python.exe');
+export const uvExe = (cfg) => path.join(workshopDir(cfg), exeName('uv'));
+export const pythonExe = (cfg) => cfg.audio?.python || venvPython(path.join(workshopDir(cfg), 'venv'));
 export const aceDir = (cfg) => path.join(workshopDir(cfg), 'ace-step-1.5');
 // 1.5.37: ACE-Step looks for its models in its own checkpoints folder. Bob fills it through his Downloads (pinned to a
 // commit, each big file sha-checked, only when the user asks), so ACE-Step never fetches anything on its own.
@@ -39,7 +40,7 @@ export function aceModelsEntry(cfg) {
   try { return JSON.parse(fs.readFileSync(cfg.catalogFile || path.join(unpackedDir, 'catalog.json'), 'utf8')).models.find((m) => m.id === ACE_MODELS_ID) || null; } catch { return null; }
 }
 // Extra voices, each in its own small Python so their packages never clash with music or each other.
-export const voicePython = (cfg, which) => cfg.audio?.voicePython?.[which] || path.join(workshopDir(cfg), `venv-${which}`, 'Scripts', 'python.exe');
+export const voicePython = (cfg, which) => cfg.audio?.voicePython?.[which] || venvPython(path.join(workshopDir(cfg), `venv-${which}`));
 const marker = (cfg) => path.join(workshopDir(cfg), 'ready.json');
 // uv only uses the PC's own signed Python (from python.org). The Python uv downloads by itself is unsigned,
 // and Windows Smart App Control blocks it (error 0xc0e90002), so Bob never asks uv to fetch one.
@@ -54,11 +55,19 @@ function savedPython(cfg) {
   try { return JSON.parse(fs.readFileSync(marker(cfg), 'utf8')).python || null; } catch { return null; }
 }
 
-export const PYTHON_DOWNLOAD = 'https://www.python.org/downloads/windows/';
+export const PYTHON_DOWNLOAD = OS === 'mac' ? 'https://www.python.org/downloads/macos/' : OS === 'linux' ? 'https://www.python.org/downloads/source/' : 'https://www.python.org/downloads/windows/';
+
+// Mac and Linux: Python 3.12 or 3.11 from python.org, Homebrew or the system, in the usual places.
+export function unixPythonGuesses(os_ = OS) {
+  const vs = ['3.12', '3.11'];
+  if (os_ === 'mac') return vs.flatMap((v) => [`/Library/Frameworks/Python.framework/Versions/${v}/bin/python${v}`, `/opt/homebrew/bin/python${v}`, `/usr/local/bin/python${v}`]);
+  return vs.flatMap((v) => [`/usr/bin/python${v}`, `/usr/local/bin/python${v}`]);
+}
 
 // Finds Python 3.12 or 3.11 installed the normal way (python.org installer or the py launcher).
 export async function findSystemPython(cfg, runImpl = run) {
   if (cfg.audio?.systemPython && fs.existsSync(cfg.audio.systemPython)) return cfg.audio.systemPython;
+  if (OS !== 'win') return unixPythonGuesses().find((g) => fs.existsSync(g)) || null;
   for (const v of ['3.12', '3.11']) {
     try {
       const out = await runImpl('py', [`-${v}`, '-c', 'import sys; print(sys.executable)'], {});
@@ -240,7 +249,7 @@ async function aceUp(cfg) {
 function killTree(child) {
   if (!child?.pid) return;
   if (process.platform === 'win32') execFile('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 8000 }, () => {});
-  else { try { child.kill(); } catch {} }
+  else killAll(child); // Mac and Linux: the whole group (the music engine is started detached, so it leads one)
 }
 
 // A music engine still answering on Bob's port that this job didn't start (left from an older Bob, a crash or an
@@ -262,7 +271,7 @@ async function startAce(cfg, signal, onProgress) {
   }
   // 1.5.37: offline, so ACE-Step can't quietly download models (gigabytes, with no progress shown) in the middle of a song.
   const env = { ...process.env, ...uvEnv(cfg), ACESTEP_API_HOST: '127.0.0.1', ACESTEP_API_PORT: String(ACE_PORT), HF_HOME: path.join(cfg.bobModelsDir || path.join(cfg.agentDir, 'models'), 'audio'), HF_HUB_OFFLINE: '1', TRANSFORMERS_OFFLINE: '1', ACESTEP_DOWNLOAD_SOURCE: 'huggingface' };
-  const child = spawn(uvExe(cfg), ['run', 'acestep-api'], { cwd: aceDir(cfg), env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(uvExe(cfg), ['run', 'acestep-api'], { cwd: aceDir(cfg), env, windowsHide: true, detached: OS !== 'win', stdio: ['ignore', 'pipe', 'pipe'] });
   let tail = '';
   child.stdout.on('data', (d) => { tail = (tail + d).slice(-2000); });
   child.stderr.on('data', (d) => { tail = (tail + d).slice(-2000); });

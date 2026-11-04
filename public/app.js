@@ -16,11 +16,13 @@ import { createHelp } from './help.js';
 import { handsApproval, togetherApproval, onHandsEvent } from './hands.js';
 import { createBrainBar } from './brain-bar.js';
 import { createHandsSwitch } from './hands-switch.js';
+import { installTips } from './tips.js';
 import { createWebSwitch } from './web-switch.js';
 import { createGameLock } from './game-lock.js';
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
 import { createEffort } from './effort.js';
 import { createCatAntics } from './cat-antics.js';
+import { createBobLife } from './bob-life.js';
 import { createViewer, outCard, fillPeeks } from './viewer.js';
 import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
@@ -34,6 +36,7 @@ const api = async (url, data) => {
 };
 const tasks = createTasks({ post: (u, d) => post(u, d) });
 const downloads = createDownloads({ api, post: (u, d) => post(u, d) });
+installTips();
 const layout = createLayout({ post: (u, d) => post(u, d), openTasks: () => tasks.open(), openDownloads: () => downloads.open() });
 
 const $ = (id) => document.getElementById(id);
@@ -44,7 +47,7 @@ const webSwitch = createWebSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button
 const qBanner = createQuarantineBanner({ note: (t, k) => note(t, k) });
 const effort = createEffort();
-const catAntics = createCatAntics();
+const catAntics = createCatAntics({ onAntic: () => life.react('cat'), sleepy: () => life.dozing });
 const viewer = createViewer({ post: (u, d) => post(u, d), note: (t, k) => note(t, k) });
 const bobCanvas = $('bob'), bobCtx = bobCanvas.getContext('2d');
 bobCtx.imageSmoothingEnabled = false;
@@ -64,7 +67,11 @@ let lastModel = null;
 
 // ---------- Bob's face ----------
 // Idle life: he breathes (a one-pixel rise every couple of seconds) and blinks every 2.5 to 6 seconds,
-// sometimes twice. Animations off (Style page) keeps him still but still lets him talk.
+// sometimes twice. 1.5.53: little habits and reactions on top (public/bob-life.js), and a prop by his picture.
+// Animations off (Style page) keeps him still but still lets him talk. About 12 frames a second, and the picture
+// is only repainted when something changed.
+const life = createBobLife();
+const propEl = $('bobProp');
 let blink = false;
 (function blinker() {
   const twice = Math.random() < 0.25;
@@ -72,23 +79,40 @@ let blink = false;
   setTimeout(() => { blink = false; if (twice) setTimeout(() => { blink = true; setTimeout(() => { blink = false; }, 120); }, 160); }, 140);
   setTimeout(blinker, 2500 + Math.random() * 3500);
 })();
-let lastFrame = '';
+let lastFrame = '', lastProp = '';
 (function animate() {
   const now = Date.now();
   const still = document.body.classList.contains('still');
+  life.setStill(still);
+  const f = life.frame(now);
   const talk = now < talkingUntil && Math.floor(now / 140) % 2 === 0;
-  const rise = !still && !talk && Math.floor(now / 1100) % 2 === 1 ? 1 : 0;
-  const key = `${blink && !still}${talk}${rise}`;
+  const rise = !still && !talk && !f.shut && Math.floor(now / 1100) % 2 === 1 ? 1 : 0;
+  const shut = !still && (blink || f.shut);
+  const key = `${shut}${talk}${rise}${f.look}${f.wink}${f.dx}${f.dy}${f.head.toFixed(3)}`;
   if (key !== lastFrame) { // only repaint when something changed
     lastFrame = key;
     bobCtx.clearRect(0, 0, 56, 56);
     bobCtx.save();
-    bobCtx.translate(0, -rise * 2);
-    drawBob(bobCtx, 56, { blink: blink && !still, talk });
+    bobCtx.translate(f.dx * 2, (f.dy - rise) * 2);
+    drawBob(bobCtx, 56, { blink: shut, talk, look: f.look, wink: f.wink, head: f.head });
     bobCtx.restore();
   }
-  requestAnimationFrame(animate);
+  const prop = `${f.prop}|${f.propClass}`;
+  if (propEl && prop !== lastProp) {
+    lastProp = prop;
+    propEl.textContent = f.prop;
+    propEl.className = `bob-prop${f.prop ? ` p-${f.propClass}` : ''}`;
+    propEl.hidden = !f.prop;
+  }
+  setTimeout(animate, document.hidden ? 1000 : 80);
 })();
+// Two brains loaded at once (from the brain readings): a bigger head. Back to one: normal again.
+window.addEventListener('bob-brain-status', (e) => { const n = (e.detail?.models || []).filter((m) => m?.name).length; life.brains(n); });
+// A dozing Bob wakes when you come back to the window.
+let lifePoked = 0;
+const wakeBob = () => { const t = Date.now(); if (t - lifePoked > 2000) { lifePoked = t; life.poke(); } };
+for (const ev of ['pointermove', 'keydown', 'focus']) window.addEventListener(ev, wakeBob, { passive: true });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeBob(); });
 
 // ---------- Rendering ----------
 function scrollDown() { log.scrollTop = log.scrollHeight; }
@@ -171,6 +195,7 @@ function setStatus(s) {
   statusEl.className = `status ${s.state}`;
   statusEl.textContent = s.detail || STATUS_TEXT[s.state] || s.state;
   catAntics.idle(s.state === 'idle');
+  life.state(s.state);
   document.title = s.state === 'idle' ? 'Bob' : `Bob · ${STATUS_TEXT[s.state] || s.state}`;
   if (s.state === 'loading') showSwap(s.from || lastModel || 'old', s.model || 'new', s.mode);
   else hideSwap();
@@ -368,6 +393,13 @@ dlbar.onclick = () => downloads.open();
 dlbar.title = 'Open Downloads: pause, resume, reorder';
 function drawDownloadsBadge(items) { countBadge($('dlBtn'), items.filter((d) => ['queued', 'downloading'].includes(d.state)).length); }
 
+// 1.5.53: "Bob's thinking" (public/mind.html): a small window on top. Bob.exe opens it as its own window; in a
+// browser it opens as a pop-up. Pressing the button again brings the open one to the front.
+$('mindBtn')?.addEventListener('click', () => {
+  const w = window.open('/mind.html', 'bob-mind', 'popup,width=380,height=480');
+  try { w?.focus(); } catch {}
+});
+
 // ---------- Events from the brain ----------
 let brainSoon = null;
 function onEvent(ev) {
@@ -451,6 +483,16 @@ function onEvent(ev) {
       if (ev.hat === 'reviewer') add('note hat moot', `🛰 Moot: Bob calls in ${esc(ev.copy || 'his reviewer')}, his reviewer, for a second look`);
       else add('note hat', ev.copy ? `Bob hands this to ${esc(ev.copy)}, his ${esc(ev.label)} copy` : `Bob switches to ${esc(ev.label)}`);
       break;
+    case 'borrow': // 1.5.55 Share brains: another of your Bobs thinks this reply (src/share-brains.js)
+      endReply(ev);
+      if (ev.action === 'start') add('note borrow', `📡 Borrowed brain: ${esc(ev.name)}${ev.brain ? ` (${esc(ev.brain)})` : ''} thinks this one. The tools still run here.`);
+      else add('note borrow', `📡 ${esc(ev.name)} ${ev.why === 'too slow' ? 'didn\'t answer in time' : ev.partial ? 'dropped out mid-answer' : 'couldn\'t take it'}, so Bob thinks this one himself.`);
+      break;
+    case 'away': // 1.5.72 Share jobs: this whole job runs on another of your Bobs (src/share-jobs.js)
+      endReply(ev);
+      if (ev.action === 'start') add('note borrow', `📡 Sent to ${esc(ev.name)}: ${ev.why === 'cant' ? `I can't ${esc(ev.what)} on this computer, and ${esc(ev.name)} can` : ev.why === 'gaming' ? `I'd have to wait while you game, and ${esc(ev.name)} is free` : `I'm busy, and ${esc(ev.name)} can ${esc(ev.what)} now`}. OK cards and finished files come back here.`);
+      else add('note borrow', `📡 ${esc(ev.name)} ${esc(ev.why || 'couldn\'t take it')}, so I'll do this one here.`);
+      break;
     case 'tool':
       if (!/^hat:/.test(ev.summary)) note(`· ${ev.summary}`);
       endReply(ev);
@@ -507,6 +549,7 @@ function onEvent(ev) {
       break;
     case 'error':
       endReply(ev);
+      life.react('oops');
       note(ev.text, 'error');
       break;
     case 'correction':
@@ -535,6 +578,7 @@ function onEvent(ev) {
       endReply(ev);
       running.delete(ev.turnId);
       setBusy(running.size > 0);
+      if (rep?.media?.length) life.react('proud'); else if (finished) life.react('done');
       if (finished) { speak(finished); if (aside) speak(sayAside(aside)); ping('Bob replied', finished.slice(0, 120)); }
       break;
     }
@@ -581,7 +625,7 @@ function drawQueue(jobs) {
   countBadge($('tasksBtn'), open.length);
   for (const j of jobs) {
     const tag = jobBubbles.get(j.id)?.querySelector('.qtag');
-    if (tag) { const st = j.status || STATE_LABEL[j.state] || j.state; tag.textContent = (j.gaming ? j.gaming.tag : st === 'delegated' && j.delegatedTo ? `delegated to ${j.delegatedTo.copy}` : st) + (j.effort && j.effort !== 'low' ? ` · ${j.effort[0].toUpperCase()}${j.effort.slice(1)} effort` : ''); tag.className = `qtag ${j.state}`; }
+    if (tag) { const st = j.status || STATE_LABEL[j.state] || j.state; tag.textContent = (j.gaming ? j.gaming.tag : st === 'delegated' && j.delegatedTo ? `${j.delegatedTo.sent ? 'sent' : 'delegated'} to ${j.delegatedTo.copy}` : st) + (j.effort && j.effort !== 'low' ? ` · ${j.effort[0].toUpperCase()}${j.effort.slice(1)} effort` : ''); tag.className = `qtag ${j.state}`; }
   }
   const show = jobs.filter((j) => j.state === 'waiting' || j.state === 'working' || ((j.state === 'failed' || j.state === 'interrupted') && Date.now() - j.at < 3600e3));
   qbox.hidden = !show.length;
@@ -775,6 +819,7 @@ $('composer').onsubmit = async (e) => {
   const tag = bubble.querySelector('.qtag');
   if (!r.ok) { tag.textContent = 'not sent'; tag.classList.add('bad'); note(r.data.error || 'Something went wrong.', 'error'); return; }
   jobBubbles.set(r.data.jobId, bubble);
+  life.react('heard');
   tag.textContent = (r.data.ahead ? `queued, ${r.data.ahead} ahead` : 'queued') + (level === 'low' ? '' : ` · ${level[0].toUpperCase()}${level.slice(1)} effort`);
   if (lastJobs.some((j) => j.id === r.data.jobId && j.state !== 'waiting')) drawQueue(lastJobs); // it may already have run
 };
@@ -849,14 +894,15 @@ async function start() {
   try {
     const s = await (await fetch('/api/status')).json();
     setStatus(s);
+    if (s.state === 'idle') life.react('hello');
     if (s.version) $('ver').textContent = `Bob ${s.version.label}`;
     if (s.busy) setBusy(true);
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
   try {
     const st = await (await fetch('/api/settings')).json(); winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); autoSession = st.autoSession !== false; drawSessions(st.sessions, st.session, st.sessionBy);
-    // Opt-in: tell the user a newer Bob is ready to build. Never updates by itself.
-    if (st.updates?.autoCheck) { const c = await (await fetch('/api/update/check')).json(); if (c.newer) note(`A newer Bob (${c.available.label}) is ready. Settings, Check for updates.`); }
+    // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
+    if (st.updates?.autoCheck) { const c = await (await fetch('/api/update/check')).json(); if (c.newer) note(`A newer Bob (${c.available.label}) is out${c.from === 'github' ? ' on GitHub' : ''}. Settings, This PC and updates, Check for updates.`); }
   } catch {}
   try { drawQueue(await (await fetch('/api/queue')).json()); } catch {}
   try { const d = await (await fetch('/api/downloads')).json(); downloads.update(d); layout.downloads(d); drawDownloadsBadge(d); for (const x of d) if (x.state === 'downloading') showDownload({ ...x, phase: 'downloading' }); } catch {}
@@ -880,6 +926,7 @@ function watchUpdateReady() {
   clearTimeout(updWatch);
   fetch('/api/update/status').then((r) => r.json()).then((st) => {
     if (st?.error) return note(`Update: ${st.error}`, 'error');
+    if (st?.manual) return note(`The new Bob (${st.version}) is downloaded and checked. ${st.log || ''}`);
     if (st?.ready && !updAsked) { updAsked = true; return askRestart(st); }
     if (!st?.done) updWatch = setTimeout(watchUpdateReady, 3000);
   }).catch(() => { updWatch = setTimeout(watchUpdateReady, 5000); });
@@ -890,10 +937,10 @@ async function askRestart(st) {
   let pickUp = false;
   if (busyWith) { try { pickUp = (await (await fetch('/api/settings')).json()).resumeJobs === true; } catch {} }
   const after = pickUp ? 'if I restart now, I pick up where I left off when I open again.' : 'if I restart now, it stops and waits in Tasks or Downloads for you to start it again. (Turn on "Pick up where Bob left off after a restart" in Settings, Show advanced settings, Engines & speed, and I\'ll carry on by myself.)';
-  const el = add('suggest', `<span>The new Bob (${esc(st.version || 'update')}) is built.${busyWith ? ` I'm working on ${esc(busyWith)}; ${esc(after)}` : ''}</span>
+  const el = add('suggest', `<span>The new Bob (${esc(st.version || 'update')}) is ready.${busyWith ? ` I'm working on ${esc(busyWith)}; ${esc(after)}` : ''}</span>
     <button type="button" data-r="now">${busyWith ? 'Restart anyway' : 'Restart Bob now'}</button>${busyWith ? '<button type="button" data-r="done">Wait until I\'m done</button>' : ''}<button type="button" class="link" data-r="later">Later</button>`);
   for (const b of el.querySelectorAll('button')) b.onclick = async () => {
-    if (b.dataset.r === 'later') { el.remove(); note('OK. The new Bob takes over the next time Bob starts, or press Restart in the update window.'); return; }
+    if (b.dataset.r === 'later') { el.remove(); note(st.mode === 'github' ? 'OK. Press "Restart Bob now" whenever you like: Settings, This PC and updates, Check for updates.' : 'OK. The new Bob takes over the next time Bob starts, or press Restart in the update window.'); return; }
     const r = await post('/api/update/restart', { when: b.dataset.r });
     el.remove();
     note(r.ok ? (b.dataset.r === 'done' ? 'I\'ll restart as soon as I\'ve finished.' : 'Restarting...') : (r.data.error || 'The update window didn\'t answer.'), r.ok ? '' : 'error');

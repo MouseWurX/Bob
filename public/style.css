@@ -748,7 +748,55 @@ details.more > summary:hover { color: var(--accent); }
 @keyframes cat-pounce { 40% { transform: translate(-10px, -12px); } 70% { transform: translate(-16px, 0); } }
 @keyframes cat-stroll { 0% { transform: translateX(0); } 45% { transform: translateX(-56px); } 50% { transform: translateX(-56px) scaleX(-1); } 95% { transform: translateX(0) scaleX(-1); } 100% { transform: none; } }
 @keyframes cat-stare { 50% { transform: translateX(-2px); } }
-@media (prefers-reduced-motion: reduce) { .cat[class*="antic-"] { animation: none; } }
+/* 1.5.53 more antics. Transforms and opacity only (cheap); the extras are ::before/::after on the same span. */
+.cat::before, .cat::after { position: absolute; pointer-events: none; }
+.cat.antic-groom { animation: cat-groom .5s ease-in-out 12; transform-origin: 50% 100%; }
+.cat.antic-spin { animation: cat-spin 1.1s linear 5; }
+.cat.antic-loaf { animation: cat-loaf 8s ease-in-out 1; transform-origin: 50% 100%; }
+.cat.antic-zoomies { animation: cat-zoomies 1.6s cubic-bezier(.5,0,.5,1) 4; }
+.cat.antic-perch { animation: cat-perch 8s ease-in-out 1; }
+.cat.antic-yarn { animation: cat-swat .5s ease-in-out 12; }
+.cat.antic-yarn::before { content: "🧶"; font-size: 10px; left: -12px; bottom: 0; animation: yarn-roll 2s ease-in-out infinite; }
+.cat.antic-butterfly { animation: cat-stare 1.2s steps(2) infinite; }
+.cat.antic-butterfly::before { content: "🦋"; font-size: 10px; left: -14px; top: -16px; animation: flutter 2.6s ease-in-out infinite; }
+.cat.antic-knock::before { content: "✏️"; font-size: 9px; left: -8px; top: -2px; animation: knock-fall 2.6s ease-in 1 forwards; }
+.cat.antic-knock { animation: cat-swat .5s ease-in-out 2; }
+.cat.antic-box::after { content: "🐈"; font-size: 11px; left: 3px; top: -6px; animation: box-peek 2.6s ease-in-out infinite; }
+.cat.antic-birds { animation: cat-birds 1.4s steps(2) infinite; transform-origin: 50% 100%; }
+.cat.antic-birds::before { content: "🐦"; font-size: 9px; left: -40px; top: -22px; animation: bird-fly 8s linear 1; }
+.cat.antic-stretch { animation: cat-stretch 2.6s ease-in-out 3; transform-origin: 100% 100%; }
+.cat.antic-headbutt { animation: cat-headbutt 1.3s ease-in-out 5; }
+.cat.antic-headbutt::after { content: "♥"; font-size: 9px; color: #e8708a; left: -6px; top: -10px; animation: heart-up 1.3s ease-out 5; }
+@keyframes cat-groom { 50% { transform: rotate(8deg) translateY(1px); } }
+@keyframes cat-spin { to { transform: rotate(360deg); } }
+@keyframes cat-loaf { 15%, 85% { transform: scale(1.12, .78); } }
+@keyframes cat-zoomies { 0%, 100% { transform: none; } 45% { transform: translateX(-60px); } 50% { transform: translateX(-60px) scaleX(-1); } 95% { transform: scaleX(-1); } }
+@keyframes cat-perch { 0%, 100% { transform: none; } 15% { transform: translate(-6px, -20px); } 25%, 80% { transform: translate(-18px, -46px); } 90% { transform: translate(-8px, -14px); } }
+@keyframes yarn-roll { 50% { transform: translateX(-10px) rotate(-200deg); } }
+@keyframes flutter { 0%, 100% { transform: translate(0, 0) scaleX(1); } 25% { transform: translate(-6px, -4px) scaleX(.5); } 50% { transform: translate(-2px, -8px) scaleX(1); } 75% { transform: translate(4px, -3px) scaleX(.5); } }
+@keyframes knock-fall { 0%, 30% { transform: none; opacity: 1; } 60% { transform: translate(-6px, 18px) rotate(160deg); opacity: 1; } 100% { transform: translate(-6px, 18px) rotate(180deg); opacity: 0; } }
+@keyframes box-peek { 0%, 20%, 100% { transform: translateY(6px); opacity: 0; } 40%, 80% { transform: none; opacity: 1; } }
+@keyframes cat-birds { 50% { transform: rotate(-6deg); } }
+@keyframes bird-fly { from { transform: translateX(-30px); } to { transform: translateX(60px); } }
+@keyframes cat-stretch { 40%, 60% { transform: scale(1.3, .85); } }
+@keyframes cat-headbutt { 40% { transform: translateX(-8px) rotate(-12deg); } }
+@keyframes heart-up { 0% { transform: none; opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(-10px); opacity: 0; } }
+/* 1.5.53 Bob's prop: one emoji by his picture (coffee, thought bubble, Zs, a wave). */
+.bob-prop { position: absolute; top: -9px; right: -11px; font-size: 13px; line-height: 1; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); white-space: nowrap; }
+.bob-prop.p-zz { font: 700 11px/1 var(--mono, monospace); color: var(--muted); top: -6px; animation: prop-float 1.5s ease-out infinite; }
+.bob-prop.p-float, .bob-prop.p-ponder, .bob-prop.p-idea { animation: prop-float 2.8s ease-in-out infinite; }
+.bob-prop.p-hum { animation: prop-float 1.6s ease-in-out infinite; }
+.bob-prop.p-hello, .bob-prop.p-wave { animation: prop-wave .6s ease-in-out infinite; transform-origin: 70% 90%; }
+.bob-prop.p-work { animation: prop-wave 1.4s ease-in-out infinite; transform-origin: 70% 90%; }
+.bob-prop.p-sip { top: auto; bottom: 6px; right: -8px; animation: prop-sip 2.6s ease-in-out 1; }
+.bob-prop.p-proud, .bob-prop.p-startle { animation: prop-pop .5s ease-out 1; }
+.bob-prop.p-oops { top: -4px; right: -6px; animation: prop-pop .4s ease-out 1; }
+@keyframes prop-float { 0% { transform: translateY(2px); opacity: .4; } 50% { transform: translateY(-2px); opacity: 1; } 100% { transform: translateY(2px); opacity: .4; } }
+@keyframes prop-wave { 50% { transform: rotate(-18deg); } }
+@keyframes prop-sip { 0%, 100% { transform: none; } 30%, 65% { transform: translate(-12px, -8px) rotate(-20deg); } }
+@keyframes prop-pop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: none; } }
+body.left-folded .bob-prop { top: -6px; right: -6px; font-size: 11px; }
+@media (prefers-reduced-motion: reduce) { .cat[class*="antic-"], .cat::before, .cat::after, .bob-prop { animation: none; } }
 body.left-folded .cat-line { display: none; }
 
 /* ---------- Side panel: things Bob made open here, beside the chat ---------- */
@@ -992,3 +1040,37 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .brain-bay { display: grid; gap: 2px; margin: 2px 0 6px; font-size: 12px; }
 .brain-bay canvas { width: 100%; max-width: 320px; image-rendering: pixelated; display: block; }
 .brain-bay .bay-text { color: var(--text); }
+
+/* 1.5.56 Brain catalogue (public/catalogue.js) and Active models */
+.cat-top { margin-bottom: 8px; }
+.cat-nav { display: flex; flex-wrap: wrap; gap: 6px; }
+.cat-nav button[aria-current="true"] { border-color: var(--accent); }
+.cat-job { margin: 14px 0; scroll-margin-top: calc(var(--cellar-head-h, 56px) + var(--cellar-tabs-h, 0px) + 8px); }
+.cat-job h3 { display: flex; align-items: center; gap: 6px; }
+.cat-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
+.cat-row.dim { opacity: 0.75; }
+.cat-row .confirm { flex-basis: 100%; }
+.cat-act { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.src-link { text-decoration: none; color: var(--muted); padding: 0 4px; }
+.mini-switch { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 2px 8px; font: inherit; font-size: 12px; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
+.mini-switch .st { font-weight: 700; text-transform: uppercase; font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--line); }
+.mini-switch[aria-checked="true"] { color: var(--text); border-color: var(--good); }
+.mini-switch[aria-checked="true"] .st { background: var(--good); color: var(--on-accent, #fff); }
+.get-more { margin: 8px 0 0; }
+.get-more-btn { white-space: nowrap; }
+.kit:not(.shop) { display: flex; align-items: center; padding-right: 8px; }
+.kit:not(.shop) .kit-btn { flex: 1; }
+/* 1.5.56 Tips: explanations wait behind a small ⓘ and show in one bubble on hover, on keyboard focus, or on tap. */
+button.tip-i, .cellar button.tip-i { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; min-height: 0; min-width: 0; padding: 0; margin: -6px -4px; vertical-align: middle; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font: 600 12px/1 var(--font, inherit); cursor: help; flex: none; }
+/* The circle you see is 20 px; the button you can hit is 32 px (rule 10, Parsec and thumbs). */
+.tip-i::before { content: "i"; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line); box-sizing: border-box; font-style: normal; }
+button.tip-i:hover, button.tip-i:focus-visible, button.tip-i[aria-expanded="true"] { color: var(--text); }
+button.tip-i:hover::before, button.tip-i:focus-visible::before, button.tip-i[aria-expanded="true"]::before { border-color: var(--accent); }
+button.tip-i:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tip-bubble { position: fixed; z-index: 10000; max-width: 340px; padding: 8px 11px; border-radius: var(--r, 8px); border: 1px solid var(--accent); background: var(--panel); color: var(--text); font-size: 13px; line-height: 1.45; font-weight: 400; text-align: left; white-space: normal; box-shadow: 0 6px 22px rgba(0,0,0,.35); pointer-events: none; }
+.tip-bubble .muted { color: var(--text); }
+.tip-bubble[hidden] { display: none; }
+@media (forced-colors: active) { .tip-bubble, .tip-i::before { border: 1px solid CanvasText; } }
+@media (pointer: coarse) { button.tip-i, .cellar button.tip-i { width: 40px; height: 40px; margin: -10px -8px; } }
+.sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.cellar-head h2 + .tip-i { margin: 0 auto 0 8px; }

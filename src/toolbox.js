@@ -155,5 +155,7 @@ export function toolboxPrompt(brain, loaded) {
 // An empty reply (no words, no tool call) counts too: the router test and a real "show me a picture" both hit it.
 export function saysCant(text) {
   if (!String(text || '').trim()) return true;
+  // 1.5.65: "I don't have live web access" / "no internet access" (Qwen3 4B, asked about a link) counts too.
+  if (/\b(?:no|don(?:'|\u2019)?t\s+have|do\s+not\s+have)\s+(?:live\s+|real-time\s+)?(?:web|internet|online)\s+access\b/i.test(String(text))) return true;
   return /\b(?:I\s*(?:can(?:'|\u2019)?t|cannot|am not able to|'m not able to|am unable to|'m unable to)|I\s+don(?:'|\u2019)?t\s+have\s+(?:a|the|any)\s+(?:tool|way|ability|access))\b/i.test(String(text || ''));
 }

@@ -17,3 +17,15 @@ Thanks for helping. A few house rules:
   (`0.9.<build>`).
 
 Run Bob from source with `npm install` then `npm start`, or just the server with `npm run server`.
+
+## Signed Mac builds
+
+Official Mac builds stay ad-hoc signed: every file in Bob.app is sealed, but not with a paid Apple Developer ID,
+so macOS asks once for **Open Anyway**. The project has no Mac and won't pay for an Apple developer account.
+The Mac code is kept working and is tested on GitHub's Mac machines only. Nobody on the project has tried it on a real Mac.
+
+If you want a signed and notarized Mac build, you're welcome to make one on a fork, from this or any version of
+Bob, under the GPL. `installer/make-release-mac.sh` signs with `codesign --sign -`; put your own Developer ID
+there and add `xcrun notarytool` and `xcrun stapler`. Please publish it under your own name (see
+[TRADEMARKS.md](TRADEMARKS.md)), say it's based on Bob by MouseWurX, and link back here. Open an issue if you'd
+like your signed build listed in the README.

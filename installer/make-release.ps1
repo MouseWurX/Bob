@@ -35,6 +35,9 @@ foreach ($f in $AppFiles) {
   if (-not (Test-Path -LiteralPath $from)) { throw "Missing $f" }
   Copy-Item -LiteralPath $from -Destination $app -Recurse -Force
 }
+# 1.5.76: the basic llama.cpp comes inside the download (installer\bundle-engine.mjs; checked against GitHub's sha256).
+& node (Join-Path $PSScriptRoot 'bundle-engine.mjs') $app
+if ($LASTEXITCODE -ne 0) { throw 'Bundling llama.cpp failed.' }
 Copy-Item -LiteralPath (Join-Path $Source 'public\icons\bob.ico') -Destination (Join-Path $stage 'bob.ico') -Force
 
 $zip = Join-Path $Out "Bob-$version-win-x64.zip"

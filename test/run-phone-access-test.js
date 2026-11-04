@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { cleanHost, cleanPhonePatch, findAddresses, newPasscode, phoneView, isTailscaleIp } from '../src/phone-access.js';
+import { cleanHost, cleanPhonePatch, findAddresses, newPasscode, phoneView, isTailscaleIp, tailscaleExe } from '../src/phone-access.js';
 import { saveRemote, mergeSettings } from '../src/config.js';
 
 let pass = 0, fail = 0;
@@ -36,5 +36,8 @@ mergeSettings(c2, { remote: { enabled: true, passcode: 'x', hosts: ['a:1'] } });
 check('settings.json still cannot turn phone access on', c2.remote.enabled === false);
 fs.rmSync(dir, { recursive: true, force: true });
 
+check('a Mac finds tailscale inside the Tailscale app', tailscaleExe('darwin', (f) => f.startsWith('/Applications/Tailscale.app')) === '/Applications/Tailscale.app/Contents/MacOS/Tailscale');
+check('a Mac with Homebrew\'s tailscale finds that', tailscaleExe('darwin', (f) => f === '/opt/homebrew/bin/tailscale') === '/opt/homebrew/bin/tailscale');
+check('Windows uses the installer folder', /Program Files\\Tailscale\\tailscale\.exe$/.test(tailscaleExe('win32')));
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

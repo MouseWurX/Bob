@@ -22,7 +22,7 @@ fs.mkdirSync(secret, { recursive: true });
 fs.writeFileSync(path.join(work, 'in.csv'), 'a,b\n1,2\n');
 fs.writeFileSync(path.join(secret, 'diary.txt'), 'private');
 const on = { enabled: true, maker: { on: true }, folders: [work] };
-const cfg = { innDir: inn, dataDir: path.join(inn, 'bob'), agentDir: tmp, readOnlyRoots: [], readRoots: [work], userName: 'Sam', hands: on, models: { bob: 'gemma4:e4b', reviewer: 'gpt-oss:20b' } };
+const cfg = { innDir: inn, dataDir: path.join(inn, 'bob'), agentDir: tmp, recycleBin: false, readOnlyRoots: [], readRoots: [work], userName: 'Sam', hands: on, models: { bob: 'gemma4:e4b', reviewer: 'gpt-oss:20b' } };
 
 // ---------- the Hand ----------
 check('there is a Make his own tools Hand with its three tools', HANDS.maker?.label === 'Make his own tools' && ['make_tool', 'use_my_tool', 'my_tools'].every((t) => HANDS.maker.tools.includes(t)));
@@ -97,6 +97,17 @@ export async function run(i, { workDir }) {
   check('a tool can\'t write a folder it may only read', o.write === 'ERR_ACCESS_DENIED');
   check('a tool can write its own work folder', o.work === 'ok' && fs.existsSync(path.join(dir, 'work', 'ok.txt')));
   check('a tool gets no keys and no fetch without internet', o.keys === 0 && o.fetch === 'undefined');
+  // A Mac's temp folder is reached through a link (/var -> /private/var); a tool in a linked folder must still run.
+  {
+    const linked = path.join(tmp, 'linked');
+    try { fs.symlinkSync(path.dirname(dir), linked, 'junction'); } catch {}
+    if (fs.existsSync(linked)) {
+      const ld = path.join(linked, path.basename(dir));
+      fs.writeFileSync(path.join(dir, 'tool.mjs'), 'export async function run(){ return "linked ok"; }');
+      const lr = await runSandboxed({ dir: ld, input: {}, reads: [path.join(linked, 'nothing')] });
+      check('a tool in a folder reached through a link still runs (the Mac temp folder)', lr.ok && lr.out === 'linked ok', JSON.stringify(lr));
+    }
+  }
   fs.writeFileSync(path.join(dir, 'tool.mjs'), 'export async function run(){ while (true) {} }');
   const slow = await runSandboxed({ dir, input: {}, timeoutSec: 5 });
   check('a tool that runs too long is stopped', !slow.ok && slow.timedOut);

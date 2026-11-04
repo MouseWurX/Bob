@@ -2,7 +2,7 @@
 
 Bob is a local AI who lives on your PC. Chat, plans and reminders, research, coding help, spreadsheets, pictures, video, music, sound effects and voice, all on your own hardware. He's a self-aware digital engineer with a dry sense of humour, a little virtual workspace called The Idle Process, and a cat named Patches.
 
-Your chats stay on your PC. Bob only looks things up on the web (DuckDuckGo) if you turn on **Let Bob search the web**, and nothing downloads until you click and confirm.
+Your chats stay on your PC. Bob only looks things up on the web (DuckDuckGo) if you turn on **Let Bob search the web**, and nothing downloads until you click and confirm. The first start is one click too: **Get Bob ready** fetches the programs Bob runs on and one starter brain, checked against their checksums.
 
 **[Install Bob (5 steps)](#install-bob-in-five-steps-windows-10-or-11)** · **[Privacy policy](PRIVACY.md)** · **[Download the latest release](https://github.com/MouseWurX/Bob/releases/latest)** · **[What's new (changelog)](CHANGELOG.md)**
 
@@ -11,6 +11,8 @@ Your chats stay on your PC. Bob only looks things up on the web (DuckDuckGo) if 
 ![Bob's window the first time he opens: the menu on the left, the chat in the middle, Now running on the right, and Bob suggesting models for this PC](docs/screenshot.png)
 
 Windows 10 or 11, 64-bit. An NVIDIA graphics card helps a lot but isn't required: Bob suggests models that fit your PC.
+
+**Mac (preview):** a Mac with Apple Silicon (M1 or newer). Download `Bob-<version>-mac-arm64.zip`, drag Bob into Applications, and the first time click **Open Anyway** in System Settings > Privacy & Security (official Mac builds are ad-hoc signed: sealed so macOS can tell if a file was changed, but not with a paid Apple developer account; see [Signed Mac builds](CONTRIBUTING.md#signed-mac-builds)). Bob keeps his things in `~/Library/Application Support/Bob/home`. A few Windows-only parts (the Apps Hand, Defender scans, the Gaming card switch) are hidden on a Mac. **Update Bob** works on a Mac too: it downloads the newest Mac zip from GitHub, checks its .sha256 and Bob.app's seal, and swaps it in on restart. The Mac build is tested only on GitHub's Mac machines (nobody on the project has a Mac), so tell us how it goes on yours.
 
 ## Getting Bob
 
@@ -22,7 +24,7 @@ Windows 10 or 11, 64-bit. An NVIDIA graphics card helps a lot but isn't required
 4. **Start Bob.** Open the `Bob` folder and double-click **Bob.exe**. Bob opens in his own window. To find him again, right-click Bob.exe and choose **Pin to Start**.
 5. **Pick his brains.** The first time, Bob suggests models for your graphics card. Click **Get models**, choose, and he downloads them with a progress bar. Nothing big downloads until you pick it.
 
-To update later: download the new zip from Releases, unblock it, and unzip it over your old `Bob` folder (or into a new folder; delete the old one afterwards). Your models, chats and settings are kept, because they live in `%LOCALAPPDATA%\Bob`, not in the Bob folder. ("Check for updates" in Settings is for copies built from source.)
+To update later: Settings, This PC and updates, **Check for updates**, then **Update Bob**. Bob downloads the newest release zip from GitHub, checks it against its `.sha256`, and puts it in place with the update window (no Node.js needed). You can still unzip a new release over your old `Bob` folder by hand. Your models, chats and settings are kept, because they live in `%LOCALAPPDATA%\Bob`, not in the Bob folder.
 
 **Download:** get `Bob-<version>-win-x64.zip` from the Releases page, unzip it anywhere and run `Bob.exe`. `Bob-<version>-win-x64.zip.sha256` has the checksum.
 
@@ -49,7 +51,7 @@ New to Bob? The **[user guide](docs/USER-GUIDE.md)** walks through everything in
 
 Wondering how Bob compares with other AI apps? See **[Bob and similar projects](docs/COMPARISON.md)**.
 
-Curious how Bob stays fast and light (the Gaming brain pick, memory freeing, engine tuning, with measured numbers)? See **[How Bob stays fast and light](docs/PERFORMANCE.md)**.
+Curious how Bob stays fast and light (the Gaming brain pick, memory freeing, engine tuning, with measured numbers)? See **[How Bob stays fast and light](docs/PERFORMANCE.md)**. How each brain in the starter set was picked: **[Brain races](docs/BRAIN-RACES.md)**.
 
 The menu is on the left (fold it to icons with ‹ or Ctrl+B), the chat is in the middle, and **Now running** is on the right: tasks, downloads and graphics card memory (hide it with Ctrl+J, drag its edge to resize). Bob remembers how you leave them.
 
@@ -87,7 +89,7 @@ npm run dist:portable   # optional, by hand only: a single portable Bob-<version
 
 On Windows, double-click **Install Bob.cmd**. A window shows each step with a tick, a progress bar, the live log line, the time taken and what the step is for: checking Node.js, getting Electron (its official Windows zip, about 110 MB, checked against Electron's SHASUMS256.txt or the pin in `package.json` `bob.electronSha256`, kept in `inn\bob\electron` so it's only downloaded when the Electron version changes), testing, then putting Bob in `<home>\Bob app` with a Start menu shortcut that carries Bob's icon and app id (`ca.mousewurx.bob`, so the taskbar shows Bob). If a step fails, nothing outside the source folder changes and "Show the full log" says why. (**Double-click to build Bob.cmd** does the same.) To check the shortcut writer on Windows: `installer\bob-shortcut.ps1 -SelfTest`. To try the installer without touching a real install, run `installer\bob-build-window.ps1 -Mode install -AppDir <test folder> -NoShortcut`.
 
-**Updating:** Settings, "Check for updates". When the source folder Bob was built from has a newer build, "Update Bob" opens the same window and shows the same steps in Bob's own window. When it's built, the window pops up and Bob asks in the chat too. "Restart Bob now" closes him straight away, swaps in the new files (the old ones stay as `resources\app-previous`; if Electron itself changed, the old exe stays as `Bob-previous.exe`) and opens him again. If he's in the middle of a task or a download you choose: restart anyway (he picks up where he left off), wait until he's done, or not now. "Later" leaves the new Bob waiting; it takes over the next time Bob starts. Checking when Bob starts is off unless you turn it on, and updating always takes your click.
+**Updating:** Settings, "Check for updates". Bob asks GitHub for the Latest release of MouseWurX/Bob and looks at the source folder he was built from; the newer one wins (a tie goes to the source folder). A GitHub release is downloaded, checked against its `.sha256` (and GitHub's own checksum when it gives one), unpacked, and handed to the update window with `-Prebuilt`, which skips Node.js and the tests (GitHub ran them before publishing). On a Mac, Bob checks Bob.app with `codesign --verify` and swaps the bundle on restart; on Linux, the new AppImage takes the running one's place on restart (the old one stays as `.previous`). When the source folder has the newer build, "Update Bob" opens the same window and shows the same steps in Bob's own window. When it's built, the window pops up and Bob asks in the chat too. "Restart Bob now" closes him straight away, swaps in the new files (the old ones stay as `resources\app-previous`; if Electron itself changed, the old exe stays as `Bob-previous.exe`) and opens him again. If he's in the middle of a task or a download you choose: restart anyway (he picks up where he left off), wait until he's done, or not now. "Later" leaves the new Bob waiting; it takes over the next time Bob starts. Checking when Bob starts is off unless you turn it on, and updating always takes your click.
 
 **Model downloads are pinned:** every file in `catalog.json` carries its size and sha256 (a few tiny Piper `.onnx.json` files carry only their size). If a file on the website has changed since that Bob was made, he stops before downloading and says so; a download that comes through the wrong size or checksum is deleted.
 

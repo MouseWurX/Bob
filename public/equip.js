@@ -4,6 +4,7 @@
 // Nothing is ever equipped by itself. Pure HTML builders; cellar.js handles the clicks.
 import { packFor, canDo, suit, pickFor } from './fit.js';
 import { houseStyleHtml, houseGroupOf } from './house-style.js';
+import { tip } from './tips.js';
 export { packFor };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const gb = (n) => (n == null ? '' : n >= 1 ? `${(+n).toFixed(n >= 10 ? 0 : 1)} GB` : `${Math.round(n * 1000)} MB`);
@@ -12,19 +13,22 @@ const gb = (n) => (n == null ? '' : n >= 1 ? `${(+n).toFixed(n >= 10 ? 0 : 1)} G
 // embed = housekeeping's topic matcher). cats: catalog categories that fit. off: can it be emptied, and what then.
 export const SLOTS = [
   { id: 'bob', name: 'Brain', icon: '🧠', side: 'L', how: 'job', kind: 'llm', cats: ['chat', 'coding'], does: 'Thinks, chats and plans. Everything else hangs off this.', empty: "No brain: Bob can't think or chat" },
-  { id: 'small', name: 'Quick brain', icon: '⚡', side: 'L', how: 'brain', kind: 'llm', cats: ['chat'], does: 'A small, fast brain for quick answers and the Art session, so games and the painter keep the card.', empty: 'No quick brain: Art and Light sessions have nothing small to run' },
+  { id: 'small', name: 'Quick brain', icon: '⚡', side: 'L', how: 'brain', kind: 'llm', cats: ['chat'], does: 'A small, fast brain for quick answers and the Art session, so the painter keeps the card.', empty: 'No quick brain: the Art session has nothing small to run' },
+  // 1.5.56: the session brains are slots too, so every brain is equipped in one place.
+  { id: 'gaming', name: 'Gaming', icon: '🎮', side: 'L', how: 'brain', kind: 'llm', cats: ['chat'], does: 'Chats on the processor while you play, so your game keeps the graphics card. Only brains timed for that go here.', empty: 'No gaming brain: chat waits while Gaming is on' },
   { id: 'deep', name: 'Deep thinking', icon: '🔭', side: 'L', how: 'brain', kind: 'llm', cats: ['chat', 'coding'], does: 'The strongest thinker, for Medium, High and Extreme effort.', empty: 'Uses the Review or main brain' },
   { id: 'tinker', name: 'Coding', icon: '🔨', side: 'L', how: 'job', kind: 'llm', cats: ['coding', 'chat'], does: 'Writes and fixes code.', empty: 'No coding brain: the main brain codes', off: true },
   { id: 'reviewer', name: 'Review', icon: '🧐', side: 'L', how: 'job', kind: 'llm', cats: ['chat', 'coding'], does: 'Checks code and plans carefully before you rely on them.', empty: 'Empty: the main brain checks its own work', off: true },
+  { id: 'office', name: 'Office', icon: '📊', side: 'L', how: 'brain', kind: 'llm', cats: ['chat', 'coding'], does: 'One all-rounder that does everything in the Office session: writing, spreadsheets, research and planning.', empty: 'Uses the Spreadsheets helper or the main brain' },
   { id: 'eyes', name: 'Seeing pictures', icon: '👁', side: 'L', how: 'job', kind: 'llm', cats: ['vision'], does: 'Looks at pictures and screenshots you attach.', empty: "Empty: the main brain must see pictures itself, or Bob can't", off: true },
-  { id: 'embed', name: 'Memory (finding past chats)', icon: '🗂', side: 'L', how: 'embed', kind: 'embed', cats: ['embed'], does: 'Matches what you say to past Topics by meaning, not just words.', empty: 'Topics are matched by words (works, a bit less clever)' },
   { id: 'voice', name: 'Hearing you', icon: '👂', side: 'R', how: 'job', kind: 'voice', cats: ['voice'], does: 'Turns your voice into text (🎙 and "Hey Bob").', empty: "Empty: Bob can't hear you" },
   { id: 'speech', name: 'Voice', icon: '🔊', side: 'R', how: 'job', kind: 'speech', cats: ['speech'], does: 'Reads his replies aloud.', empty: 'Uses the Windows voice', off: 'windows' },
-  { id: 'image', name: 'Painter', icon: '🎨', side: 'R', how: 'job', kind: 'images', cats: ['images'], does: 'Paints new pictures.', empty: "No painter: Bob can't make pictures" },
-  { id: 'edit', name: 'Picture editor', icon: '✂', side: 'R', how: 'job', kind: 'edit', cats: ['images'], editOnly: true, does: 'Edits a picture, or keeps a character looking the same.', empty: "No editor: Bob can paint new pictures but can't edit them" },
-  { id: 'video', name: 'Video', icon: '🎞', side: 'R', how: 'job', kind: 'video', cats: ['video'], does: 'Films short clips.', empty: "No camera: Bob can't make clips" },
-  { id: 'music', name: 'Music', icon: '🎵', side: 'R', how: 'job', kind: 'music', cats: [], engine: 'audio', does: 'Composes songs and background music.', empty: "No music: Bob can't compose" },
-  { id: 'sfx', name: 'Sound effects', icon: '💥', side: 'R', how: 'job', kind: 'sfx', cats: [], engine: 'audio', does: 'Makes short sounds for games and videos.', empty: "No sound effects: Bob can't make them" }
+  { id: 'image', name: 'Painter', icon: '🎨', side: 'R', how: 'job', kind: 'images', cats: ['images'], does: 'Paints new pictures.', empty: "Empty: Bob can't make pictures" },
+  { id: 'edit', name: 'Picture editor', icon: '✂', side: 'R', how: 'job', kind: 'edit', cats: ['images'], editOnly: true, does: 'Edits a picture, or keeps a character looking the same.', empty: "Empty: Bob can paint new pictures but can't edit them" },
+  { id: 'video', name: 'Video', icon: '🎞', side: 'R', how: 'job', kind: 'video', cats: ['video'], does: 'Films short clips.', empty: "Empty: Bob can't make clips" },
+  { id: 'music', name: 'Music', icon: '🎵', side: 'R', how: 'job', kind: 'music', cats: [], engine: 'audio', does: 'Composes songs and background music.', empty: "Empty: Bob can't compose" },
+  { id: 'sfx', name: 'Sound effects', icon: '💥', side: 'R', how: 'job', kind: 'sfx', cats: [], engine: 'audio', does: 'Makes short sounds for games and videos.', empty: "Empty: Bob can't make sound effects" },
+  { id: 'embed', name: 'Memory (finding past chats)', icon: '🗂', side: 'R', how: 'embed', kind: 'embed', cats: ['embed'], does: 'Matches what you say to past Topics by meaning, not just words.', empty: 'Topics are matched by words (works, a bit less clever)' }
 ];
 export const HELPERS = [
   { id: 'ledger', name: 'Spreadsheets', icon: '📊', how: 'job', kind: 'llm', cats: ['chat'], does: 'Data entry and spreadsheets.', empty: 'Uses the main brain', off: true },
@@ -95,39 +99,65 @@ function slotHtml(slot, ctx) {
 
 const REC_TAG = '<span class="tag rec">★ Recommended for this job on your PC</span>';
 const FIT_TAG = '<span class="tag">Fits your card</span>';
-function fitTags(f) {
+function fitTags(f, ctx = {}) {
   if (f.level === 'unknown') return '<span class="muted fit-why">Not in Bob\'s list, so he can\'t say how well it runs here.</span>';
-  const tags = `${f.rec ? `${REC_TAG}<span class="muted fit-why">${esc(f.recWhy)}</span>` : ''}${f.fits && !f.rec ? FIT_TAG : ''}${f.level !== 'ok' && !f.rec ? `<span class="tag warn">${f.level === 'blocked' ? 'Can\'t install on this PC' : 'Doesn\'t suit this PC'}</span>` : ''}`;
+  const tags = `${f.rec ? `${REC_TAG}<span class="muted fit-why">${esc(f.recWhy)}</span>` : ''}${f.fits && !f.rec ? (ctx?.integrated ? FIT_TAG.replace('your card', 'your PC') : ctx?.unified ? FIT_TAG.replace('your card', 'your Mac') : FIT_TAG) : ''}${f.level !== 'ok' && !f.rec ? `<span class="tag warn">${f.level === 'blocked' ? 'Can\'t install on this PC' : 'Doesn\'t suit this PC'}</span>` : ''}`;
   return `${tags}${f.why ? `<span class="muted fit-why">${esc(f.why)}</span>` : ''}`;
+}
+
+// 1.5.56: Active models. The Brain catalogue has an Active switch on each model; only active ones show in the slots and
+// menus, so the pickers stay short. Not set yet: a model on this PC is active, one that isn't downloaded isn't.
+// What's equipped always shows. Keys are catalog ids, or the engine's name for models that aren't in Bob's list.
+export const activeKey = (k) => k.entry?.id || k.value;
+export function isActive(k, active = {}) {
+  const v = active?.[activeKey(k)];
+  return typeof v === 'boolean' ? v : Boolean(k.installed);
+}
+
+// A little "i" with the detail: the shared tip bubble (public/tips.js) opens it on hover, keyboard focus and tap.
+// Plain text in; each new line becomes a line in the bubble.
+export const tipHtml = (text, about = '') => text ? tip(esc(text).replace(/\n/g, '<br>'), String(about).replace(/^About /, '')) : '';
+
+// Which kit shows for a slot: active models that can do the job, what's equipped, and Bob's pick while the slot is empty.
+export function shownKit(slot, ctx) {
+  const cur = equipped(slot, ctx);
+  const rank = (f) => (f.rec ? 0 : f.level === 'ok' ? 1 : f.level === 'unknown' ? 2 : 3);
+  const all = kitFor(slot, ctx).map((k) => ({ k, f: kitFit(k, slot, ctx) })).sort((a, b) => rank(a.f) - rank(b.f));
+  const shown = all.filter(({ k, f }) => k.value === cur || isActive(k, ctx.active) || (!cur && f.rec));
+  return { shown, hidden: all.length - shown.length };
 }
 
 function kitHtml(slot, ctx) {
   if (!slot) return '<p class="muted">Pick a slot around Bob to see what fits it.</p>';
   const cur = equipped(slot, ctx);
   // Bob's pick first, then what fits, then the rest. What's equipped stays where it is in that order.
-  const rank = (f) => (f.rec ? 0 : f.level === 'ok' ? 1 : f.level === 'unknown' ? 2 : 3);
-  const all = kitFor(slot, ctx).map((k) => ({ k, f: kitFit(k, slot, ctx) })).sort((a, b) => rank(a.f) - rank(b.f));
+  const { shown: all, hidden } = shownKit(slot, ctx);
   // Downloads that won't run well here wait behind "Show models that don't suit this PC" (off unless you turn it on).
   const hiddenOnes = all.filter(({ k, f }) => !k.installed && !f.rec && f.level !== 'ok');
   const kit = ctx.showUnsuited ? all : all.filter((x) => !hiddenOnes.includes(x));
   const items = kit.map(({ k, f }) => {
     const e = k.entry;
-    const tip = stats(e, k.installed ? 'On this PC' : '');
+    // 1.5.56: one short line per model; the size, licence and Bob's reasons sit behind ⓘ (and in the hover tip).
+    const tip = [stats(e, k.installed ? 'On this PC' : ''), f.rec ? f.recWhy : '', f.why, f.level === 'unknown' ? 'Not in Bob\'s list, so he can\'t say how well it runs here' : '', e?.trial ? 'New: not tried on a PC yet' : ''].filter(Boolean).join(' · ');
+    const tag = f.rec ? '<span class="tag rec">★ Recommended</span>' : f.level === 'unknown' ? '' : f.level !== 'ok' ? `<span class="tag warn">${f.level === 'blocked' ? 'Can\'t install here' : 'Doesn\'t suit this PC'}</span>` : '';
+    const weight = e?.vramGB ? `<span class="weight muted">${gb(e.vramGB)}</span>` : '';
     if (!k.installed) {
-      return `<li class="kit shop model${f.level !== 'ok' && !f.rec ? ' dim' : ''}" title="${esc(tip)}"><span class="kit-name">${esc(k.label)}</span><span class="muted">${esc(tip)}</span>${fitTags(f)}
+      return `<li class="kit shop model${f.level !== 'ok' && !f.rec ? ' dim' : ''}" title="${esc(tip)}"><span class="kit-name">${esc(k.label)}</span>${weight}${tag}${tipHtml(tip, `About ${k.label}`)}
         <button type="button" class="get" data-get="${esc(k.value)}">Get</button><div class="confirm" hidden></div></li>`;
     }
     const heavy = f.level === 'slow' || f.level === 'no';
     return `<li class="kit${k.value === cur ? ' worn' : ''}${heavy ? ' heavy' : ''}" draggable="true" data-equip="${esc(k.value)}" data-kind="${esc(slot.kind)}" title="${esc(tip)}">
-      <button type="button" class="kit-btn" data-equip="${esc(k.value)}" ${k.value === cur ? 'aria-current="true"' : ''}><span class="kit-name">${esc(k.label)}</span><span class="muted">${esc(tip)}</span>${fitTags(f)}${k.value === cur ? '<span class="tag good">equipped</span>' : ''}</button></li>`;
+      <button type="button" class="kit-btn" data-equip="${esc(k.value)}" ${k.value === cur ? 'aria-current="true"' : ''}><span class="kit-name">${esc(k.label)}</span>${weight}${tag}${k.value === cur ? '<span class="tag good">equipped</span>' : ''}</button>${tipHtml(tip, `About ${k.label}`)}</li>`;
   }).join('');
   const more = hiddenOnes.length
     ? `<p class="muted unsuited-note">${ctx.showUnsuited ? 'Showing models that don\'t suit this PC.' : `${hiddenOnes.length} more for this job ${hiddenOnes.length === 1 ? 'doesn\'t' : 'don\'t'} suit this PC.`} <button type="button" class="link" data-unsuited>${ctx.showUnsuited ? 'Hide them' : 'Show them'}</button></p>` : '';
+  // 1.5.56: everything else for this job is in the Brain catalogue, one press away.
+  const getMore = slot.how === 'embed' && !all.length ? '' : `<p class="get-more"><button type="button" class="get-more-btn" data-catjob="${esc(slot.id)}">📚 Get more${hidden ? ` (${hidden} in the catalogue)` : ''}</button></p>`;
   const engine = slot.engine && !(ctx.roles?.options?.[slot.kind] || []).length
     ? `<div class="model engine-step"><p>${esc(slot.name)} comes with the audio tools.</p><button class="get" data-engine="${esc(slot.engine)}">Get the audio tools</button><div class="confirm" hidden></div></div>` : '';
-  const embedTip = slot.how === 'embed' && !all.length ? '<p class="muted">Nothing here yet. An embedding model such as nomic-embed-text in Ollama shows up here once it is on this PC.</p>' : '';
+  const embedTip = slot.how === 'embed' && !all.length ? '<p class="muted">Nothing here yet. Nomic Embed Text (in the catalogue, about 0.3 GB) shows up here once it is downloaded.</p>' : '';
   const house = houseGroupOf(slot.id) ? houseStyleHtml(houseGroupOf(slot.id), ctx.houseStyle) : ''; // 1.5.34 House style
-  return `<h3>${slot.icon} ${esc(slot.name)}</h3><p class="muted">${esc(slot.does)}</p>${house}${engine}${embedTip}<ol class="kit-list">${items || (engine || embedTip ? '' : '<li class="muted">Nothing that does this job runs well on this PC yet.</li>')}</ol>${more}`;
+  return `<h3>${slot.icon} ${esc(slot.name)} ${tipHtml(slot.does, `About ${slot.name}`)}</h3>${house}${engine}${embedTip}<ol class="kit-list">${items || (engine || embedTip ? '' : '<li class="muted">Nothing active for this job yet.</li>')}</ol>${more}${getMore}`;
 }
 
 // Everything equipped against the card: they don't all have to be loaded at once (Bob swaps), but it shows what fits together.
@@ -174,16 +204,28 @@ export function starterPlan(pack, models, engines, picked) {
     if (!m) continue;
     plan[id] = pack.slots?.[id] || [];
     if (m.status?.state !== 'installed') ids.push(id);
-    const eng = m.needs && engines.find((e) => e.name === m.needs);
-    if (eng && !eng.installed && !ids.includes('engine:' + eng.id)) ids.push('engine:' + eng.id);
+    for (const e of enginesFor([m], engines)) if (!ids.includes(e)) ids.push(e);
   }
   return { ids, plan };
+}
+
+// 1.5.72: the engines picked models run on that aren't here yet, as download ids ("engine:llamacpp"): a model's own
+// `needs`, and llama.cpp for brain files (GGUF). They download with the models, so first-time setup is one button.
+export function enginesFor(list, engines) {
+  const out = [];
+  const add = (e) => { if (e && !e.installed && e.available !== false && !out.includes('engine:' + e.id)) out.push('engine:' + e.id); };
+  for (const m of list) {
+    if (!m) continue;
+    add(m.needs && engines.find((e) => e.name === m.needs));
+    if ((m.files || []).some((f) => f.role === 'gguf')) add(engines.find((e) => e.id === 'llamacpp'));
+  }
+  return out;
 }
 
 export function starterHtml(ctx) {
   const packs = ctx.packs || [];
   if (!packs.length) return '';
-  const pack = packs.find((p) => p.id === ctx.packId) || packFor(packs, ctx.vramGB);
+  const pack = packs.find((p) => p.id === ctx.packId) || packFor(packs, ctx.vramGB, ctx.integrated);
   const picked = ctx.picks || starterTicks(pack, ctx.models, ctx.vramGB);
   const { ids } = starterPlan(pack, ctx.models, ctx.engines || [], picked);
   const total = ids.reduce((n, id) => n + (ctx.models.find((m) => m.id === id)?.sizeGB || 0), 0);
@@ -212,7 +254,7 @@ export function starterHtml(ctx) {
 export function equipHtml(ctx) {
   const sel = allSlots().find((s) => s.id === ctx.selected);
   const col = (side) => SLOTS.filter((s) => s.side === side).map((s) => slotHtml(s, ctx)).join('');
-  return `<div class="equip-top"><p class="muted">Pick a slot, then click a model in the kit (or drag it onto the slot). Each slot only lists models that can do its job. Nothing is equipped without you. <button type="button" class="mini help-link" data-help="recommended" aria-label="Help: how Bob picks models">? How Bob picks</button></p>
+  return `<div class="equip-top"><p class="muted">Pick a slot, then a model for it. ${tipHtml('Click a model in the kit, or drag it onto the slot. Each slot only lists active models that can do its job; Get more opens the Brain catalogue. Nothing is equipped without you.', 'How Equip Bob works')} <button type="button" class="mini help-link" data-help="recommended" aria-label="Help: how Bob picks models">? How Bob picks</button></p>
       <button type="button" class="link" data-eqview="list">Plain list instead</button></div>
     ${starterHtml(ctx)}
     ${weightHtml(ctx)}
@@ -225,4 +267,22 @@ export function equipHtml(ctx) {
       </div>
       <section class="kit-panel" aria-live="polite"><div class="kit-head muted">Inventory</div>${kitHtml(sel, ctx)}</section>
     </div>`;
+}
+
+// 1.5.74 "engines first": what first start gets before anything else, so Bob can talk and help with the rest.
+// The three core engines (where this computer has a build of them) and one small starter brain for this device:
+// Gemma 4 E4B with room for it (a card of 8 GB or more, or 16 GB of shared memory on a Mac or built-in graphics),
+// otherwise Gemma 4 E2B.
+export const CORE_ENGINES = ['llamacpp', 'sdcpp', 'whispercpp'];
+export function starterBrain({ vramGB, ramGB, unified, integrated } = {}) {
+  if (unified || integrated) return (ramGB || 0) >= 16 ? 'gemma4-e4b' : 'gemma4-e2b';
+  return (vramGB || 0) >= 8 ? 'gemma4-e4b' : 'gemma4-e2b';
+}
+export function readyPlan(hwCtx, models, engines) {
+  const eng = CORE_ENGINES.map((id) => engines.find((e) => e.id === id)).filter((e) => e && e.available !== false);
+  // 1.5.76: the llama.cpp that came with Bob is the basic build; with an NVIDIA card the faster CUDA build replaces it.
+  const ids = eng.filter((e) => !e.installed || (e.bundled && hwCtx.nvidia)).map((e) => 'engine:' + e.id);
+  const brain = models.find((m) => m.id === starterBrain(hwCtx)) || null;
+  if (brain && brain.status?.state !== 'installed') ids.push(brain.id);
+  return { ids, engines: eng, brain };
 }

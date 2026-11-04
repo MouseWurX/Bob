@@ -26,7 +26,7 @@ import { copyName } from './clan.js';
 import { RefShelf } from './refs.js';
 import { makeAudio, songTitle, aceMissingFiles, aceModelsEntry, ACE_MODELS_ID } from './audio.js';
 import { runWorkflow } from './workshop.js';
-import { currentSession, modelFor, laneOf, suggestSession, SESSIONS, sessionBrains, waitsForGaming, GAMING_TAG, GAMING_HINT } from './sessions.js';
+import { currentSession, modelFor, quickOnCpu, laneOf, suggestSession, SESSIONS, sessionBrains, brainDefaults, CTX_CHOICES, LONG_CODER, waitsForGaming, GAMING_TAG, GAMING_HINT } from './sessions.js';
 import { stampMessages, keepOlder, readSummary } from './chats.js';
 import { Housekeeper, hkSettings, forgetTopicTool } from './housekeeping.js';
 import { handsTools, handsPrompt } from './hands.js';
@@ -42,10 +42,13 @@ import { CORE, groupsFor, groupOf, guessGroups, allToolsOn, useToolsTool, fillUs
 import { Gate, Ledger, safeToResume, interruptedNote, withRetry, slimHandoff, carryOnPlan, carryOnLine, finishedSteps, MAX_AUTO_RESUMES } from './handoff.js';
 import { expectFrom, verifyOutput, afterTool, afterTurn } from './verify.js';
 import { brainMode, chatBrain, holdsChatBrain, bigSession, isBobs, sameModel, sleepAfterText, bigGraceMs, msText } from './brain-mode.js';
-import { WEB_TOOLS, WEB_OFF, webOn, webPrompt } from './web.js';
+import { WEB_TOOLS, WEB_OFF, webOn, webPrompt, linkPrompt, findLinks, refersToLink, linkTurn } from './web.js';
 import { autoSessionOn, pickSessionTool, autoSessionPrompt, switchLine, switchedNote, idleSession, cardBusy, IDLE_CHECK_MS } from './auto-session.js';
 import { readCard } from './gaming-card.js';
+import { Lenders, wantsBorrow, roughTokens } from './share-brains.js';
+import { GuestJobs, awayPlan, sendAway, stopAway, guestTools, guestNote, GUEST_TOOLS, canHere, NEEDS_LIST, awayWaitLine } from './share-jobs.js';
 import { askTogether, takeEarlier, askTogetherTool } from './together.js';
+import { freeMemNow } from './platform.js';
 
 const MAX_STEPS = 8;
 
@@ -61,21 +64,115 @@ const HAND_TOOLS = new Set(Object.values(HANDS).flatMap((h) => h.tools));
 // message runs in a "side" lane on the small brain on the processor, if there's room in RAM. Nothing big is loaded
 // for it. The media job waits for that reply before it loads its own brain back (Gate.needBrain).
 export const SIDE_LANE = 'side';
-export function sideOk(brain, job, { freeMem = os.freemem() } = {}) {
+export function sideOk(brain, job, { freeMem = freeMemNow() } = {}) {
   const cfg = brain.cfg || {};
   if (cfg.chatWhileBusy === false || !job || job.kind !== 'chat') return false;
   if (job.refs?.length || (job.effort && job.effort !== 'low')) return false;
   if (currentSession(cfg).id === 'light') return false; // Gaming: the processor is the game's
   if (!brain.turns?.has('talk') || brain.turns.has(SIDE_LANE) || brain.state?.state !== 'painting') return false;
+  if (brain.cfg?.engine === 'llamacpp' && !talkerModel(brain)) return false; // 1.5.54: no Instruct, no E4B on the processor: it waits
   return freeMem >= sideBrainBytes(brain) + 2 * 1024 ** 3;
 }
 function sideBrainBytes(brain) {
-  try { const f = brain.engine?.resolve?.(sessionBrains(brain.cfg).small)?.gguf; if (f) return fs.statSync(f).size; } catch {}
+  try { const f = brain.engine?.resolve?.(talkerModel(brain))?.gguf; if (f) return fs.statSync(f).size; } catch {}
   return 4 * 1024 ** 3; // unknown: assume a 4B brain
 }
 
 // A side-lane reply: always the small brain on the processor, so it never touches the card the painter holds.
-export const sideBrain = (cfg) => ({ model: sessionBrains(cfg).small, cpu: true });
+// 1.5.51: beside a big text job it goes to the engine's second server (beside: true), so the main brain stays loaded.
+export const sideBrain = (cfg, job) => ({ model: sessionBrains(cfg).small, cpu: true, ...(job?.beside ? { beside: true } : {}) });
+
+// 1.5.53 (the owner, 2026-11-03: E4B should not run on the processor, and never during a game; Instruct can): the
+// talker for quick replies beside a job. On the processor it's Qwen3 4B Instruct 2507 (the Gaming slot, no thinking,
+// 2 to 7 s to the first word on an idle processor) when it's downloaded; E4B only when it goes on the graphics card.
+const runnable = (brain, m) => { try { return Boolean(m && brain.engine?.resolve?.(m)?.gguf); } catch { return false; } };
+// Not on the PC: null, and quick replies beside a job wait (E4B never runs on the processor; settings sign-off 1.5.54).
+export function talkerModel(brain) {
+  const sb = sessionBrains(brain.cfg || {});
+  return sb.gaming && runnable(brain, sb.gaming) ? sb.gaming : null;
+}
+export const isTalker = (brain, m) => { const sb = sessionBrains(brain.cfg || {}); return Boolean(m) && (sameModel(m, sb.small) || sameModel(m, sb.gaming)); };
+export async function sidePick(brain, job) {
+  const sb = sessionBrains(brain.cfg || {});
+  const base = { cpu: true, ...(job?.beside ? { beside: true } : {}) };
+  if (job?.beside) {
+    const held = brain.engine?.beside?.current;
+    if (held && isTalker(brain, held) && brain.engine.besideLoaded?.()) return { model: held, ...base }; // already there: no load
+    const place = sb.small && brain.engine?.besidePlace ? await brain.engine.besidePlace(sb.small, chatBrain(brain.cfg).ctx).catch(() => 'none') : 'none';
+    if (place === 'whole' && currentSession(brain.cfg || {}).id !== 'light') return { model: sb.small, ...base }; // E4B never in Gaming
+  }
+  return { model: talkerModel(brain) || sb.small, ...base }; // sideOk / besideBigOk only start a side reply when a talker exists
+}
+const fullName = (name) => (/^Qwen3 4B Instruct$/.test(name) ? `${name} 2507` : name); // the name Get models and Equip use
+export const TALKER_LINE = (name) => `Keeping a small brain (${fullName(name)}) on the processor, so we can keep talking while the big one works.`;
+
+// 1.5.51 "Keep chatting while Bob is busy", part 2: beside a big text job (Medium effort and up, the Coding session, or
+// any job that has run 20 seconds), a plain chat message is answered by the small brain on a second llama-server, on
+// the processor only, if there's room in RAM. The main brain stays on the card and carries on; nothing is swapped.
+// A short job isn't worth it: the quick brain on the processor takes up to half a minute to its first word, while the
+// card answers in a few seconds once the job is done.
+export const BIG_AFTER_MS = 20000;
+export const MOVE_TO_CPU = 'Moving my quick brain to the processor so the picture can use the graphics card. Replies will be a little slower.';
+export const BESIDE_FAILED = "My second brain wouldn't start beside the job (probably not enough free RAM), so this message waits its turn. I'll answer as soon as the job is done.";
+const GB = 1024 ** 3;
+export function mainJob(brain) {
+  return brain.queue?.find((j) => j.state === 'working' && !j.side && laneOf(brain.cfg || {}, j) === 'talk') || null;
+}
+export function bigJob(brain, now = Date.now()) {
+  const j = mainJob(brain);
+  if (!j) return false;
+  return bigThinker(j) || bigSession(brain.cfg || {}) || now - (j.startedAt || now) >= BIG_AFTER_MS;
+}
+function besideBytes(brain, model, ctx) {
+  const est = brain.gate?.brainBytes?.(model, { ctx });
+  if (est) return est;
+  try { const f = brain.engine?.resolve?.(model)?.gguf; if (f) return Math.round(fs.statSync(f).size * 1.1 + Math.min(ctx || 32768, 131072) * 60 * 1024); } catch {}
+  return 6 * GB; // unknown: a 4B brain and its memory for the chat
+}
+export function besideBigOk(brain, job, { freeMem = freeMemNow(), now = Date.now() } = {}) {
+  const cfg = brain.cfg || {};
+  if (cfg.chatWhileBusy === false || !job || job.kind !== 'chat' || job.noBeside) return false;
+  if (job.refs?.length || (job.effort && job.effort !== 'low')) return false;
+  if (cfg.engine !== 'llamacpp' || typeof brain.engine?.besideServer !== 'function') return false;
+  if (currentSession(cfg).id === 'light') return false; // Gaming: the processor is the game's
+  if (!brain.turns?.has('talk') || brain.turns.has(SIDE_LANE)) return false;
+  if (brain.state?.state === 'painting') return false; // part 1 (sideOk) answers beside a media step
+  if (brain.engine.currentCpu) return false; // the main brain is on the processor itself: two would fight over it
+  const talker = talkerModel(brain);
+  if (!talker) return false;
+  const held = brain.engine.beside?.current; // the second server holds the reviewer for a moot: leave it be
+  if (held && !isTalker(brain, held)) return false;
+  if (held && brain.engine.besideLoaded?.()) return true; // 1.5.53: a talker is already waiting beside the job
+  if (!bigJob(brain, now)) return false;
+  return freeMem >= besideBytes(brain, talker, chatBrain(cfg).ctx) + 2 * GB;
+}
+
+// 1.5.51 opt-in "Let the reviewer sit beside the main brain" (mootBeside): at High and Extreme effort the reviewer
+// loads on the second server, on the processor, instead of swapping the main brain out, when there's room in RAM.
+// A chat waiting behind a job that isn't big yet goes beside it once the job has run BIG_AFTER_MS: one pump then.
+export function besideLater(brain, now = Date.now()) {
+  if (brain.bigTimer || brain.cfg?.chatWhileBusy === false || brain.cfg?.engine !== 'llamacpp' || brain.turns?.has(SIDE_LANE)) return null;
+  const main = mainJob(brain);
+  if (!main?.startedAt || !brain.queue.some((j) => j.state === 'waiting' && j.kind === 'chat' && !j.noBeside)) return null;
+  const due = main.startedAt + BIG_AFTER_MS - now;
+  if (due <= 0) return null;
+  brain.bigTimer = setTimeout(() => { brain.bigTimer = null; brain.pump?.(); }, due + 50);
+  brain.bigTimer.unref?.();
+  return due;
+}
+
+export function mootBesideOk(brain, model, ctx, { freeMem = freeMemNow() } = {}) {
+  const cfg = brain.cfg || {};
+  if (cfg.mootBeside !== true || cfg.engine !== 'llamacpp' || typeof brain.engine?.besideServer !== 'function' || !model) return false;
+  if (currentSession(cfg).id === 'light') return false;
+  const main = brain.engine.current;
+  if (!main || brain.engine.currentCpu || sameModel(main, model)) return false; // nothing to keep, or it's already loaded
+  const side = brain.turns?.get?.(SIDE_LANE);
+  if (side?.beside) return false; // a quick reply is using the second server right now
+  const held = brain.engine.beside?.current;
+  if (held && sameModel(held, model)) return true; // already beside from the last check
+  return freeMem >= besideBytes(brain, model, ctx) + 2 * GB;
+}
 
 export function besideOk(brain, job, lane) {
   if (brain.cfg?.engine !== 'llamacpp' || !brain.turns?.size || brain.turns.has(lane)) return true;
@@ -101,7 +198,7 @@ export function claimsObservation(text) {
 export const OBSERVE_CORRECTION = 'Nothing was actually checked in that reply. Bob said he checked, but no check ran.';
 const OBSERVE_NUDGE = 'You described noticing, watching or checking something on the PC, but no tool ran this turn, so it was invented. Answer again in a line or two, using only the "Right now" line, the chat, or what {{USER}} said. No made-up system details, and no question unless you need the answer.';
 // The only things he knows about the PC without a tool, so small talk has something true to stand on.
-export function realState({ model, session, waiting = 0, cat, turn = 0, mem = { free: os.freemem(), total: os.totalmem() } }) {
+export function realState({ model, session, waiting = 0, cat, turn = 0, mem = { free: freeMemNow(), total: os.totalmem() } }) {
   const gb = (b) => (b / 1e9).toFixed(1);
   return `Right now (real, from the app): you're thinking on ${model || 'no brain'}${session ? ` in the ${session} session` : ''}; ${waiting ? `${waiting} more message${waiting === 1 ? '' : 's'} waiting` : 'nothing else waiting'}; the PC's RAM is ${gb(mem.total - mem.free)} of ${gb(mem.total)} GB in use; ${catMoment(cat, turn)}.`;
 }
@@ -147,6 +244,7 @@ export function quickHandBack(cfg, ctx, reply) {
   return p.kind === 'video' ? "Here's the clip. Tell me what to change, or ask for another." : "Here's the picture. Tell me what to change, or ask for another.";
 }
 const callKey = (name, args) => { let a = args; if (typeof a === 'string') { try { a = JSON.parse(a); } catch {} } return `${name}|${JSON.stringify(a ?? {})}`; };
+const LINK_NUDGE = 'Web search is on, and the page from the link is just above (the fetch_page result). Answer from it now; never say you have no web access.';
 const CANT_NUDGE = 'You now have every tool you can use on this PC. If one of them does what was asked, call it now. If none does, say so in one line; don\'t repeat yourself.';
 const EMPTY_NUDGE = 'Your last reply was empty. You now have every tool you can use on this PC. Do what was asked: call the right tool now (for a picture, make_image), or answer in words.';
 export const EMPTY_NOTE = 'Bob didn\'t answer that one. Send it again, or put it another way.';
@@ -173,19 +271,32 @@ export function loadMode(plan) {
   return 'load';
 }
 // The chat line for a brain load. A reviewer joining is the moot, said plainly.
-export function loadLine({ mode, who, model, from, copy, secs, label, single = false, what = 'the answer' }) {
+export function loadLine({ mode, who, model, from, copy, secs, label, single = false, what = 'the answer', beside = false, onCard = false, besideOn = false, tip = false }) {
   const lc = (t) => t.charAt(0).toLowerCase() + t.slice(1); // "Coding brain (Qwen3 Coder 30B)" -> "coding brain (...)"
   const mine = (t) => lc(t).replace(/^brain \(/, 'main brain ('); // Bob's main slot reads "my main brain (...)"
   const now = lc(label(model, who)), old = from ? mine(label(from)) : '';
   if (who === 'reviewer') {
+    if (mode === 'add' && beside && !onCard) return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, on the processor, about ${secs} seconds. Reviews there are slower than on the graphics card.`;
     if (mode === 'add') return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, about ${secs} seconds.`;
     // Settings sign-off (1.5.49): the real reason. Bob's own engine runs one brain whatever its size; Ollama is about memory.
-    if (mode === 'swap' && old) return `🛰 Moot: ${copy} checks ${what}. ${single ? 'My engine runs one brain at a time' : 'Only one big brain fits right now'}, so my ${old} steps out and the ${now} comes in, about ${secs} seconds.`;
+    // Settings sign-off (1.5.51): switch off = a plain swap line; the tip about the switch shows once only (tip).
+    if (mode === 'swap' && old && single && !besideOn) return `🛰 Moot: ${copy} checks ${what}. My ${old} steps out and the ${now} comes in, about ${secs} seconds.${tip ? ' (To keep both loaded, turn on "Let the reviewer sit beside Bob\'s main brain" in Settings, Show advanced settings, Engines & speed.)' : ''}`;
+    if (mode === 'swap' && old) return `🛰 Moot: ${copy} checks ${what}. ${single ? 'There isn\'t room for both right now' : 'Only one big brain fits right now'}, so my ${old} steps out and the ${now} comes in, about ${secs} seconds.`;
     return `🛰 Moot: ${copy} checks ${what}, on the ${now}. Loading it, about ${secs} seconds.`;
   }
+  if (mode === 'add' && old && beside && onCard) return `Adding the ${now} beside my ${old} on the graphics card, which has room for both. About ${secs} seconds.`;
+  if (mode === 'add' && old && beside) return `Adding the ${now} on the processor, so my ${old} keeps working on the graphics card. About ${secs} seconds, and this reply starts slower than usual.`;
   if (mode === 'add' && old) return `Adding the ${now} beside my ${old}, which stays loaded. About ${secs} seconds.`;
   if (mode === 'load' || !old) return `Loading the ${now}. Back in about ${secs} seconds.`;
   return `Swapping brains: my ${old} goes out and the ${now} comes in. Back in about ${secs} seconds.`;
+}
+
+// 1.5.53: thinking goes to the "Bob's thinking" window in small batches (about 8 a second), not token by token.
+export function thinkStream(emit, who, model, every = 120) {
+  // The window's box for this brain call starts with the first thought, so a reply with no thinking leaves no empty box.
+  let buf = '', timer = null, started = false;
+  const flush = () => { clearTimeout(timer); timer = null; if (buf) { emit({ type: 'think', who, model, text: buf }); buf = ''; } };
+  return { push: (t) => { if (!started) { started = true; emit({ type: 'think-start', who, model }); } buf += t; if (!timer) timer = setTimeout(flush, every); }, flush };
 }
 
 export class Brain {
@@ -194,6 +305,8 @@ export class Brain {
     this.broadcast = broadcast;
     this.engine = cfg.engine === 'llamacpp' ? new LlamaCpp(cfg) : new Ollama(cfg);
     this.engine.log = (kind, text) => this.log(kind, text); // 1.5.35: the engine can note things in the logbook
+    // 1.5.53: a second brain joined or left (chat page: Bob's head grows / shrinks; see public docs in the HANDOFF).
+    this.engine.onBeside = (ev) => { this.broadcast({ type: 'second-brain', ...ev, label: ev.model ? this.brainLabel(ev.model) : '' }); this.broadcast({ type: 'brain' }); };
     this.sleepy = { since: 0, recent: [] }; // Gaming-session asides (public/sleepy.js)
     // Bob's own engine unloads its brain when idle; it asks here first so it never does that mid-job.
     if (this.engine instanceof LlamaCpp) this.engine.isBusy = () => this.turns.size > 0 || this.queue.some((j) => j.state === 'working');
@@ -203,6 +316,17 @@ export class Brain {
     this.waking = null;
     this.graceTimer = null;
     this.engineName = cfg.engine === 'llamacpp' ? 'llama.cpp' : 'Ollama';
+    // Share brains (1.5.55, src/share-brains.js): another Bob of yours may think quick replies for this one, and this one
+    // may lend. A lender only ever uses his quick brain (never a big one), on the card, and says no while gaming or busy.
+    this.lenders = new Lenders(cfg);
+    this.lending = null;
+    // 1.5.72 Share jobs (src/share-jobs.js): jobs this Bob sent away, their OK cards, and jobs other Bobs sent here.
+    this.awayJobs = new Map();
+    this.awayApprovals = new Map();
+    this.guests = new GuestJobs(this, { canNow: () => this.guestCanNow() });
+    const raw = this.broadcast;
+    this.broadcast = (ev) => { raw(ev); try { this.guests.watch(ev); } catch {} };
+    this.lendDeps = { currentSession, quickBrain: (b) => { const sb = sessionBrains(b.cfg); const m = sb.small && runnable(b, sb.small) ? sb.small : (b.cfg.engine === 'llamacpp' ? null : sb.small); return m ? { model: m, cpu: false, ctx: Math.min(chatBrain(b.cfg).ctx || 32768, 32768) } : null; } };
     this.tools = buildTools(cfg);
     this.refs = new RefShelf(cfg);
     this.sessions = new Map();
@@ -237,12 +361,23 @@ export class Brain {
     if (holdsChatBrain(cfg)) { const t = setTimeout(() => this.wake('always on').catch(() => {}), 4000); t.unref?.(); }
   }
 
+  // ---------- Share jobs (1.5.72) ----------
+  // A big brain for Medium-and-up work that's really here (the file is on disk), not just picked in Equip Bob.
+  guestBigBrain() { const d = draftBrain(this.cfg, 'medium'); if (!d?.model) return false; return this.cfg.engine === 'llamacpp' ? runnable(this, d.model) : true; }
+  guestCanNow() { const can = capabilities(this.cfg); return NEEDS_LIST.filter((n) => canHere(this, n, { can, webOn: webOn(this.cfg) })); }
+
+  // ---------- Share brains (1.5.55) ----------
+  borrowCase(job, pics) { return { session: currentSession(this.cfg).id, busy: this.turns.size > 1 || this.queue.some((j) => j.state === 'working' && j !== job), job, pics }; }
+  borrowLikely() { return wantsBorrow(this.cfg, this.borrowCase(null, [])) && this.lenders.likely(); }
+  lenderStatus() { return this.lenders.bobs().map((b) => { const s = this.lenders.state.get(b.address); return { address: b.address, name: b.name, ok: s ? s.ok : null, why: s?.why || '', brain: s?.brain || '', device: s?.device || '', ctx: s?.ctx || 0, speed: s?.measured?.tokPerSec || s?.speed || 0, jobs: s?.jobs || [], jobsBusy: s?.jobsBusy || '' }; }); }
+
   // ---------- Keep Bob light (1.5.2) ----------
   // Loads the chat brain ahead of a message: someone started typing, or "Always on" wants it back after a job.
   // Never during a job. Returns true when it loaded something.
   async wake(reason = 'typing') {
     if (this.waking) return this.waking;
     if (this.turns.size) return false;
+    if (reason === 'typing' && this.borrowLikely()) return false; // another Bob will think this one: stay light
     const { model, cpu, ctx: want } = chatBrain(this.cfg);
     if (!model) return false;
     clearTimeout(this.graceTimer);
@@ -286,6 +421,7 @@ export class Brain {
     const gone = [];
     for (const m of loaded) {
       if (this.turns.size) break; // a new job started: leave the rest to it
+      if (m.beside) { gone.push(...(await this.engine.dropBeside?.().catch(() => []) || [])); continue; } // 1.5.51: the second server goes after every job
       if (!isBobs(this.cfg, m.name) && !sameModel(m.name, chat)) continue;
       if (sameModel(m.name, chat)) continue; // the chat brain: held, or let go by the idle timer / grace below
       gone.push(...(await (this.engine.unload ? this.engine.unload(m.name) : this.engine.unloadAll()).catch(() => [])));
@@ -334,7 +470,7 @@ export class Brain {
       const split = m.split !== false && m.size > 0;
       const ramGB = split ? gb(Math.max(0, m.size - (m.vram || 0))) : null;
       // estimate: llama.cpp without a per-process figure from nvidia-smi (common on Windows) only knows the file size.
-      return { name: m.name, ...(m.own ? { label: `${m.name} (Bob's own copy)` } : {}), gb: split ? gb(m.vram || 0) : gb(m.vram || m.size), ramGB, estimate: !split && !m.vram, ctx: m.ctx || null, onCard: m.vram > 0 || (!m.vram && !chat.cpu && !split), chat: sameModel(m.name, chat.model) };
+      return { name: m.name, ...(m.beside ? { label: `${m.name} (beside, ${m.onCard ? 'on the graphics card' : 'on the processor'})`, beside: true } : m.own ? { label: `${m.name} (Bob's own copy)` } : {}), gb: split ? gb(m.vram || 0) : gb(m.vram || m.size), ramGB, estimate: !split && !m.vram, ctx: m.ctx || null, onCard: m.beside ? Boolean(m.onCard) : (m.vram > 0 || (!m.vram && !chat.cpu && !split)), chat: !m.beside && sameModel(m.name, chat.model) };
     });
     const ramKnown = models.some((m) => m.ramGB != null);
     const state = this.waking ? 'waking' : this.turns.size ? 'working' : models.length ? 'awake' : 'asleep';
@@ -425,18 +561,19 @@ export class Brain {
   async ensureModel(model, emit, signal, who = 'bob', opts = {}) {
     if (this.waking) await this.waking.catch(() => {}); // typing already started loading it: don't load twice
     clearTimeout(this.graceTimer);
+    if (!opts.beside) await this.keepTalker(model, opts, emit, { signal });
     if (!signal) { try { await this.engine.isLoaded(model, opts); } catch (e) { throw new Error(`I can't reach my engine, ${this.engineName} (${e.message}).`); } }
     const name = BRAIN_NAMES[who] || who;
     const used = await this.gate.need({ id: 'brain', model, opts }, {
       signal, emit, who,
       announce: async (m, attempt) => {
-        const secs = await this.engine.estimateLoad(m).catch(() => 15);
+        const secs = await this.engine.estimateLoad(m, opts).catch(() => 15);
         // 1.5.49: say whether this brain replaces one (swap), joins one (add), or fills an empty head (load).
         const plan = await this.engine.loadPlan?.(m, opts).catch(() => null) || null;
         const mode = loadMode(plan);
-        const text = attempt ? `That didn't load right. Trying the ${this.brainLabel(m, who)} again, about ${secs} seconds.` : loadLine({ mode, who, model: m, from: plan?.drop?.[0] || plan?.keep?.[0] || '', copy: who === 'reviewer' ? copyName(this.cfg, 'reviewer', 'second look') : '', secs, label: (x, w) => this.brainLabel(x, w), single: Boolean(plan?.single), ...(opts?.what ? { what: opts.what } : {}) });
+        const text = attempt ? `That didn't load right. Trying the ${this.brainLabel(m, who)} again, about ${secs} seconds.` : loadLine({ mode, who, model: m, from: plan?.drop?.[0] || plan?.keep?.[0] || '', copy: who === 'reviewer' ? copyName(this.cfg, 'reviewer', 'second look') : '', secs, label: (x, w) => this.brainLabel(x, w), single: Boolean(plan?.single), beside: Boolean(plan?.beside), onCard: Boolean(plan?.onCard), besideOn: this.cfg.mootBeside === true, tip: who === 'reviewer' && mode === 'swap' && Boolean(plan?.single) && this.cfg.mootBeside !== true && this.besideTipOnce(), ...(opts?.what ? { what: opts.what } : {}) });
         emit({ type: 'announce', text, seconds: secs });
-        this.setState('loading', text, m, { mode: attempt ? 'swap' : mode, from: plan?.drop?.[0] || plan?.keep?.[0] || '' });
+        this.setState('loading', text, m, { mode: attempt ? 'swap' : mode, from: plan?.drop?.[0] || plan?.keep?.[0] || '', ...(plan?.beside ? { beside: true } : {}) });
       }
     }).catch((e) => {
       if (/^Stopped\.$/.test(e.message)) throw e;
@@ -446,6 +583,41 @@ export class Brain {
     this.state.model = used;
     if (this.state.state === 'loading' || this.state.state === 'waiting') { this.log('model', `loaded ${used}`); this.setState('thinking', '', used); }
     return used;
+  }
+
+  // 1.5.51: the tip about "Let the reviewer sit beside Bob's main brain" shows the first time a moot swaps, then never
+  // again (a marker in Bob's data folder remembers it across restarts).
+  besideTipOnce() {
+    const f = path.join(this.cfg.dataDir || '.', 'moot-beside-tip-shown');
+    try { if (fs.existsSync(f)) return false; fs.writeFileSync(f, new Date().toISOString()); } catch { if (this.besideTipShown) return false; }
+    this.besideTipShown = true;
+    return true;
+  }
+
+  // 1.5.53 (the owner's idea): before a big brain pushes the quick brain off the card, a small talker starts on the
+  // processor beside it (second server), so chat carries on during the job. The chat page gets second-brain events and
+  // the brain bay shows the add. Under "Keep chatting while Bob is busy"; never in Gaming; only with room in RAM.
+  async keepTalker(model, opts = {}, emit = () => {}, { freeMem = freeMemNow(), signal = null } = {}) {
+    const cfg = this.cfg;
+    if (cfg.chatWhileBusy === false || cfg.engine !== 'llamacpp' || typeof this.engine.besideServer !== 'function') return false;
+    if (currentSession(cfg).id === 'light' || opts.cpu) return false; // Gaming, or a brain on the processor (two would fight)
+    const talker = talkerModel(this);
+    if (!talker || !model || isTalker(this, model) || !runnable(this, talker)) return false;
+    if (this.engine.besideLoaded?.() || this.talking) return false;
+    let main = [];
+    try { main = (await this.engine.loaded()).filter((m) => !m.beside).map((m) => m.name); } catch {}
+    if (main.some((n) => sameModel(n, model))) return false; // already loaded: nothing gets pushed out
+    const ctx = chatBrain(cfg).ctx;
+    if (freeMem < besideBytes(this, talker, ctx) + 2 * GB) return false;
+    this.talking = true;
+    try {
+      await this.engine.preload(talker, undefined, { beside: true, cpu: true, ctx });
+      if (!signal || this.talkerSaid !== signal) emit({ type: 'announce', text: TALKER_LINE(this.brainLabel(talker).replace(/^.*?\((.*)\)$/, '$1')) }); // once per job
+      this.talkerSaid = signal;
+      this.log('model', `kept ${talker} on the processor beside the job, for chat`);
+      return true;
+    } catch (e) { this.log('model', `couldn't keep a talker beside the job: ${e.message}`); return false; }
+    finally { this.talking = false; }
   }
 
   // How a brain is named to the user: its Equip slot and its catalog name, never a model id.
@@ -521,16 +693,23 @@ export class Brain {
 
   // A chat call that survives the engine dropping out mid-answer: the brain is loaded again and the call made once more.
   async chatSafe(opts, { emit, who = 'bob' } = {}) {
+    // 1.5.53: while a "Bob's thinking" window is open, his thinking streams to it, a few times a second (never saved).
+    const mind = emit && this.mindWatchers?.() ? thinkStream(emit, who, opts.model) : null;
+    if (mind) opts = { ...opts, onThink: mind.push };
+    try { return await this.chatRetry(opts, { emit, who }); } finally { mind?.flush(); }
+  }
+
+  async chatRetry(opts, { emit, who }) {
     try { return await this.engine.chat(opts); }
     catch (e) {
       if (opts.signal?.aborted) throw e;
       let alive = true;
-      try { alive = await this.engine.isLoaded(opts.model, { cpu: opts.cpu, ctx: opts.ctx }); } catch { alive = false; }
+      try { alive = await this.engine.isLoaded(opts.model, { cpu: opts.cpu, ctx: opts.ctx, beside: opts.beside }); } catch { alive = false; }
       if (alive && !/ECONNRESET|socket hang up|fetch failed|terminated|ECONNREFUSED/i.test(e.message)) throw e;
       this.log('handoff', `${opts.model} dropped out mid-answer (${e.message}); loading it again`);
       this.gate.ledgerOf(opts.signal)?.step('retry', { what: opts.model, why: e.message }).done();
       emit?.({ type: 'token', text: '\n\nMy brain dropped out there. Loading it again and picking up where I left off.\n\n' });
-      const model = (await this.ensureModel(opts.model, emit || (() => {}), opts.signal, who, { cpu: opts.cpu, ctx: opts.ctx })) || opts.model;
+      const model = (await this.ensureModel(opts.model, emit || (() => {}), opts.signal, who, { cpu: opts.cpu, ctx: opts.ctx, ...(opts.beside ? { beside: true } : {}) })) || opts.model;
       return this.engine.chat({ ...opts, model });
     }
   }
@@ -728,6 +907,9 @@ export class Brain {
   // GPU-only models leave for the painter; in an Art session the chat brain on the processor stays.
   async clearGpu() {
     // 1.5.41: a quick reply running beside a job on the processor brain keeps going too.
+    // 1.5.51: a quick brain beside the job on the card moves to the processor; the reply says why it slows down.
+    const side = this.turns?.get?.(SIDE_LANE);
+    if (side?.beside && this.engine.beside?.currentCard === 'whole') this.broadcast({ type: 'announce', text: MOVE_TO_CPU, turnId: side.turnId, sessionId: side.sessionId });
     if ((currentSession(this.cfg).cpu || this.turns?.has(SIDE_LANE)) && this.engine.unloadGpu) return this.engine.unloadGpu();
     return this.engine.unloadAll();
   }
@@ -746,6 +928,8 @@ export class Brain {
 
   async runToolNow(name, args, ctx, tool) {
     if (!tool) return { text: `Error: there is no tool called ${name}.` };
+    // 1.5.72: a job from another of your Bobs only thinks, searches and makes pictures, clips, music and sounds here.
+    if (ctx?.job?.guest && !GUEST_TOOLS.has(name)) return { text: `Not for this job: it came from ${ctx.job.guest.from}, another Bob, so here I can only think, search the web and make pictures, clips, music and sounds. Say what's left for ${ctx.job.guest.from} to do himself.` };
     if (!this.usable(name)) {
       if (WEB_TOOLS.includes(name) && !webOn(this.cfg)) return { text: WEB_OFF };
       const hand = Object.entries(HANDS).find(([, h]) => h.tools.includes(name))?.[0];
@@ -906,7 +1090,7 @@ export class Brain {
     // The Hands line only when a Hand group is added (or for hats and "all tools at once"); otherwise use_tools lists them.
     if (!loaded || allToolsOn(this.cfg) || Object.keys(HANDS).some((h) => loaded.has(h))) prompt += handsPrompt(this.cfg);
     if (loaded) prompt += realPcPrompt(this.cfg) + toolboxPrompt(this, loaded);
-    prompt += webPrompt(this.cfg);
+    prompt += webPrompt(this.cfg) + linkPrompt(this.cfg);
     if (loaded) prompt += autoSessionPrompt(this.cfg); // front desk only: hats don't change the session
     prompt += houseStylePrompt(this.cfg.houseStyle, this.cfg.userName || 'the user');
     if (this.cfg.defaultProject && this.cfg.projects?.[this.cfg.defaultProject]) prompt += `\n\n${this.cfg.userName || 'The user'}'s main project is ${this.cfg.defaultProject}. When they say "my project" without a name, it's that one.`;
@@ -980,6 +1164,8 @@ export class Brain {
     // step: finished steps aren't done again, and the step that was cut off is done again from the start. A cut-off
     // step that can be left half done (typing into an app, moving files, a command...) waits in Tasks for Carry on.
     // Off, every cut-off job waits in Tasks; Carry on (the Tasks button) picks up the same way.
+    for (const j of q) if (j.guest && (j.state === 'working' || j.state === 'waiting')) { j.state = 'cancelled'; j.error = 'Bob was closed; the other Bob runs it again.'; } // 1.5.72
+    for (const j of q) if (j.away && j.state !== 'working') j.away = undefined;
     for (const j of q) if (j.state === 'working') {
       const plan = carryOnPlan(j);
       j.before = finishedSteps(j); j.cutStep = plan.cut; j.carryOn = plan.note;
@@ -1007,12 +1193,13 @@ export class Brain {
   }
 
   queueView() {
-    return this.queue.map(({ id, sessionId, text, state, at, error, refs, kind, startedAt, doneAt, steps, effort, after, pickUp }) => {
+    return this.queue.map(({ id, sessionId, text, state, at, error, refs, kind, startedAt, doneAt, steps, effort, after, pickUp, away, guest }) => {
       const out = (steps || []).find((x) => x.state === 'in progress');
       // Plain status for the Tasks panel: Queued, In progress, Delegated (to which copy), Completed...
-      const status = state === 'waiting' ? 'queued' : state === 'working' ? (out ? 'delegated' : 'in progress') : state === 'done' ? 'completed' : state;
-      return { id, sessionId, kind, text: text.slice(0, 140), state, status, at, startedAt, doneAt, error, pics: (refs || []).length,
-        delegatedTo: out ? { hat: out.hat, label: out.label, copy: out.copy } : null, gaming: state === 'waiting' && waitsForGaming(this.cfg, { kind, effort }) ? { tag: GAMING_TAG, hint: GAMING_HINT } : undefined, steps: (steps || []).slice(-8), effort: effort || 'low',
+      const awayNow = state === 'working' && away?.name; // 1.5.72: with another of your Bobs
+      const status = state === 'waiting' ? 'queued' : state === 'working' ? (out || awayNow ? 'delegated' : 'in progress') : state === 'done' ? 'completed' : state;
+      return { id, sessionId, kind, text: (guest ? `From ${guest.from}: ` : '') + text.slice(0, 140), state, status, at, startedAt, doneAt, error, pics: (refs || []).length,
+        delegatedTo: awayNow ? { hat: 'away', label: 'another of your Bobs', copy: away.name, sent: true } : out ? { hat: out.hat, label: out.label, copy: out.copy } : null, gaming: state === 'waiting' && !away && waitsForGaming(this.cfg, { kind, effort }) ? { tag: GAMING_TAG, hint: GAMING_HINT } : undefined, steps: (steps || []).slice(-8), effort: effort || 'low',
         waitsFor: state === 'waiting' && after ? after.name : undefined, pickUp: state === 'waiting' && pickUp ? true : undefined };
     });
   }
@@ -1059,11 +1246,11 @@ export class Brain {
     return 'chat';
   }
 
-  enqueue(sessionId, text, attach = [], effort = 'low') {
+  enqueue(sessionId, text, attach = [], effort = 'low', extra = {}) {
     this.lastActivity = Date.now();
     this.housekeeper?.pause(); // anything the housekeeper was asking the brain gives way at once
     this.endMore(null, 'new job'); // a new message answers "Make another picture?"; the job loads what it needs
-    const job = { id: crypto.randomUUID(), sessionId, text, refs: [].concat(attach || []).slice(0, 4), state: 'waiting', at: Date.now(), kind: Brain.guessKind(text, [].concat(attach || []).length > 0), effort: cleanEffort(effort) };
+    const job = { id: crypto.randomUUID(), sessionId, text, refs: [].concat(attach || []).slice(0, 4), state: 'waiting', at: Date.now(), kind: extra.kind || Brain.guessKind(text, [].concat(attach || []).length > 0), effort: cleanEffort(effort), ...(extra.guest ? { guest: extra.guest } : {}) };
     this.queue.push(job);
     this.saveQueue();
     this.log('queue', `${job.kind}: ${text}`);
@@ -1095,6 +1282,7 @@ export class Brain {
   cancelJob(id) {
     const j = this.queue.find((x) => x.id === id);
     if (!j) return false;
+    if (j.away && stopAway(this, j.id)) return true; // 1.5.72: with another Bob: he's told to stop
     if (j.state === 'working') return this.stop(j.id);
     if (j.state !== 'waiting') return false;
     j.state = 'cancelled';
@@ -1161,18 +1349,47 @@ export class Brain {
     for (const job of this.queue) {
       if (job.state !== 'waiting') continue;
       if (job.parked && this.cfg.gamingLock === true) continue; // 1.5.41: put aside by the 🎮 Gaming button, waits for it to go off
+      // 1.5.72 Share jobs: a job this Bob can't do, or that would wait, goes to one of your Bobs who says he can do it.
+      if (job.awayHold && job.awayHold > Date.now()) continue; // waiting for one of your Bobs who can do it
+      if (!job.away && this.cfg.share?.borrow?.jobs === true) {
+        const plan = awayPlan(this, job, { can: capabilities(this.cfg), webOn: webOn(this.cfg), waitsForGaming: waitsForGaming(this.cfg, job), laneBusy: this.turns.has(laneOf(this.cfg, job)) });
+        if (plan) {
+          job.away = { pending: true }; // held while we ask around, so the next pump doesn't start it here too
+          const nobody = () => {
+            if (job.away?.pending) job.away = undefined;
+            job.awayAfter = Date.now() + 60000; // ask around again in a minute
+            // Bob can't do this one here at all: it waits in Tasks for a Bob who can (up to 10 minutes), then he says so.
+            if (plan.why === 'cant' && !this.lenders.anyCould(plan.need)) job.noAway = true; // none of them ever can: Bob says so now
+            else if (plan.why === 'cant' && (job.awayWaits = (job.awayWaits || 0) + 1) <= 10) {
+              job.awayHold = job.awayAfter;
+              if (job.awayWaits === 1) this.broadcast({ type: 'busy-note', sessionId: job.sessionId, jobId: job.id, text: awayWaitLine(plan.need) });
+              setTimeout(() => this.pump(), 61000).unref?.();
+            } else if (plan.why === 'cant') job.noAway = true;
+            setTimeout(() => this.pump(), 0);
+          };
+          sendAway(this, job, plan).then((went) => { if (!went) nobody(); }).catch((e) => { this.log('away', `couldn't send a job: ${e.message}`); nobody(); });
+          continue;
+        }
+      }
+      if (job.away) continue; // with another Bob (or being sent)
       if (waitsForGaming(this.cfg, job)) { this.gamingProbe?.(); continue; } // 1.5.23: waits in Tasks until the session isn't Gaming
       if (job.after && !this.downloadReady(job)) continue; // 1.5.38: waits for the download it needs
       let lane = laneOf(this.cfg, job);
-      if (lane === 'talk' && this.turns.has('talk') && !seen.has(SIDE_LANE) && sideOk(this, job)) lane = SIDE_LANE;
+      let beside = false;
+      if (lane === 'talk' && this.turns.has('talk') && !seen.has(SIDE_LANE) && (sideOk(this, job) || (beside = besideBigOk(this, job)))) {
+        lane = SIDE_LANE;
+        // 1.5.53: a talker already loaded beside the job answers there, even during a picture.
+        if (!beside && this.engine?.besideLoaded?.() && isTalker(this, this.engine.beside?.current)) beside = true;
+      }
       if (seen.has(lane)) continue;
       seen.add(lane);
       if (this.turns.has(lane)) continue;
       if (!besideOk(this, job, lane)) continue; // 1.5.40: waits for the other lane, see besideOk
-      job.side = lane === SIDE_LANE; job.state = 'working'; job.startedAt = Date.now(); job.steps = [];
+      job.side = lane === SIDE_LANE; job.beside = job.side && beside; job.state = 'working'; job.startedAt = Date.now(); job.steps = [];
       this.saveQueue();
       this.startTurn(job.sessionId, job.text, job.refs, job, lane);
     }
+    besideLater(this);
   }
 
   // Runs one job. Progress goes out as events; when it ends, the next job starts.
@@ -1182,7 +1399,7 @@ export class Brain {
     const controller = new AbortController();
     let flagged = false; // an error or correction note under this reply: no sleepy aside (never joke about a real failure)
     const emit = (ev) => { if (['error', 'correction', 'held', 'waiting'].includes(ev.type)) flagged = true; this.broadcast({ ...ev, turnId, sessionId }); };
-    this.turns.set(lane, { turnId, controller });
+    this.turns.set(lane, { turnId, sessionId, controller, ...(job?.beside ? { beside: true } : {}) });
     emit({ type: 'start', text: text.slice(0, 140) });
     if (job?.pickUp) emit({ type: 'announce', text: carryOnLine(job) }); // 1.5.38: picked up after a restart
     const pics = [].concat(attach || []).map((id) => this.refs.find(String(id))).filter(Boolean).slice(0, 4);
@@ -1190,16 +1407,22 @@ export class Brain {
     this.run(sessionId, text, emit, controller.signal, pics, job)
       .then(() => { ok = true; if (job) job.state = 'done'; })
       .catch((e) => {
-        if (controller.signal.aborted && job?.parked) this.parkJob(job, emit); // 1.5.41: the 🎮 Gaming button, not a stop
+        if (e?.code === 'beside' && job && !controller.signal.aborted) { // 1.5.51: the second brain wouldn't start: wait in line
+          emit({ type: 'announce', text: BESIDE_FAILED });
+          this.log('handoff', `second brain beside the job wouldn't start (${e.message}); the message waits for the job`);
+          Object.assign(job, { requeued: true, noBeside: true, side: false, beside: false });
+        }
+        else if (controller.signal.aborted && job?.parked) this.parkJob(job, emit); // 1.5.41: the 🎮 Gaming button, not a stop
         else if (controller.signal.aborted) { emit({ type: 'token', text: '\n\n*(Stopped.)*' }); if (job) job.state = 'cancelled'; }
         else { emit({ type: 'error', text: e.message }); this.log('error', e.message); if (job) { job.state = 'failed'; job.error = e.message.slice(0, 200); } }
       })
       .finally(() => {
-        this.saveSession(sessionId);
+        if (!job?.guest) this.saveSession(sessionId); // 1.5.72: a job from another Bob isn't kept as a chat here
         this.gate.done(controller.signal); // the graphics card goes to the next job waiting for it
         if (job?.handoff) job.handoff = slimHandoff(job.handoff); // finished: keep what it did, drop the load-by-load steps
         // 1.5.38: carried on (or not) once; the note isn't used again. A job told to wait for a download goes back in line.
         if (job && job.state !== 'interrupted' && !job.after && !job.parked) { job.carryOn = null; job.before = undefined; job.cutStep = undefined; job.pickUp = false; }
+        if (job?.requeued) { job.requeued = false; Object.assign(job, { state: 'waiting', error: undefined, steps: [] }); this.queue = [job, ...this.queue.filter((x) => x !== job)]; }
         if (job?.after && job.state !== 'cancelled') { job.state = 'waiting'; job.error = undefined; job.at = Date.now(); this.queue = [...this.queue.filter((x) => x !== job), job]; }
         // 1.5.41: Bob picked another session for this job: it goes back to the front of the line and runs there.
         const switchTo = job?.switchTo && job.state === 'done' ? job.switchTo : null;
@@ -1214,7 +1437,7 @@ export class Brain {
         }
         emit({ type: 'done' });
         if (!this.turns.size) this.setState('idle', '');
-        if (job && !switchTo && !job.parked) { job.doneAt = Date.now(); for (const st of job.steps || []) if (st.state === 'in progress') st.state = job.state === 'done' ? 'completed' : job.state; this.saveQueue(); }
+        if (job && !switchTo && !job.parked && job.state !== 'waiting') { job.doneAt = Date.now(); for (const st of job.steps || []) if (st.state === 'in progress') st.state = job.state === 'done' ? 'completed' : job.state; this.saveQueue(); }
         if (switchTo) { this.saveQueue(); this.autoSwitch(switchTo.id, 'bob', switchTo.why).catch((e) => this.log('error', `session switch: ${e.message}`)).finally(() => this.pump()); return; }
         setTimeout(() => this.pump(), 0);
         setTimeout(() => this.settle().catch(() => {}), 0); // after pump, so a waiting job keeps its brain
@@ -1335,28 +1558,137 @@ export class Brain {
     out.ctx = ctx;
     const used = new Set();
     // High and Extreme effort draft on the big brain; Low is the usual chat brain.
-    let { model, cpu, think, ctx: wantCtx } = job?.side ? sideBrain(this.cfg) : (bigThinker(job) && draftBrain(this.cfg, job.effort)) || modelFor(this.cfg, 'bob');
+    if (job?.side && !job.sidePick) job.sidePick = await sidePick(this, job);
+    let { model, cpu, think, ctx: wantCtx, beside } = job?.side ? job.sidePick : (bigThinker(job) && draftBrain(this.cfg, job.effort)) || modelFor(this.cfg, 'bob');
     // 1.5.16: a Low-effort chat reply doesn't think first (gemma4 and others think by default, which delays every reply).
     // Medium and up, and sessions that set a level (Deep thought), keep their thinking.
     if (think === undefined && !bigThinker(job)) think = false;
+    // 1.5.66: Qwen3.6 as the main Brain (everyday chat): no thinking first, and the same 128K load its Coding copy
+    // uses, so chat and coding don't reload the brain between them. A context picked by hand for Normal still wins.
+    if (!job?.side && !bigThinker(job) && currentSession(this.cfg).id === 'normal' && !CTX_CHOICES.includes(this.cfg.sessionCtx?.normal)) {
+      const d = brainDefaults(model, 'bob');
+      if (d.ctx) wantCtx = d.ctx;
+      if ('think' in d) think = d.think;
+    }
+    // 1.5.69: with "Keep the graphics card free for quick answers" on, Low chat runs on the small Quick brain, which is
+    // poor at reading web pages. A message with a link in it (or one about a link from earlier) goes to the main Brain
+    // instead, like any other hand-off. Normal session only: Gaming keeps its own small brain (never E4B, never the card).
+    if (!job?.side && !bigThinker(job) && !again && quickOnCpu(this.cfg) && currentSession(this.cfg).id === 'normal'
+      && webOn(this.cfg) && this.usable('fetch_page') && linkTurn(text, msgs.slice(0, turnStart))) {
+      const main = modelFor({ ...this.cfg, quickOnCpu: false }, 'bob');
+      if (main.model && !sameModel(main.model, model)) {
+        ({ model, cpu, ctx: wantCtx } = main);
+        think = false; // a Low chat reply, on whichever brain
+        // Settings review: a load costs time, so say how long when the main Brain isn't loaded yet.
+        let loaded = false, secs = null;
+        try { loaded = await this.engine.isLoaded(model, { cpu, ctx: wantCtx }); } catch {}
+        if (!loaded) { try { secs = await this.engine.estimateLoad?.(model, { cpu, ctx: wantCtx }); } catch {} }
+        emit({ type: 'announce', text: `This one has a link in it, so my main Brain takes it${loaded ? '' : secs ? ` (loading it, about ${Math.round(secs)} seconds)` : ' (loading it)'}.` });
+        this.log('chat', `a link: the main Brain (${model}) answers instead of the Quick brain`);
+      }
+    }
     // Small extras, only on some turns: the effort note (High/Extreme) and now and then a moment with the cat.
     const turnNo = msgs.filter((m) => m.role === 'user').length;
     const state = realState({ model, session: currentSession(this.cfg).label, waiting: this.queue.filter((j) => j.state === 'waiting').length, cat: this.cfg.catName, turn: turnNo });
-    const extras = [state, effortPrompt(job?.effort), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
+    const extras = [state, guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
     const brainCtx = await this.fitCtx(model, wantCtx);
     if (!model) throw new Error('I don\'t have a brain yet. Open Get models (in the menu on the left) and pick one; the first-time setup suggests the right one for this PC.');
     this.setState('thinking', '', this.state.model);
     const earlier = await this.recall(sessionId, text);
 
+    // Share brains (1.5.55): with "Borrow a brain" on and the owner's "when" met, one of his other Bobs thinks this reply.
+    // The tools still run here, with this Bob's own checks and OK cards. No answer in time: this Bob thinks for himself.
+    // 1.5.72: with several Bobs on the list, a Bob that's already thinking for us (or says busy) is skipped for the next.
+    const tried = [];
+    // 1.5.72: the Bob is picked once the chat is put together, so only Bobs with room for it are asked (Lenders.pick).
+    let borrowing = wantsBorrow(this.cfg, this.borrowCase(job, pics));
+    let lender = null;
+
+    // 1.5.60: a link in the message, with web search on: open it first, so even a small brain that would say
+    // "I have no web access" answers from the page. Only the first link; it shows as a normal 🔧 Read the page line.
+    // 1.5.65: "check out the page I told you about" has no link in it: then the newest link from the last few
+    // messages counts. And if he still says he can't, he gets that page and one more go (see saysCant below).
+    const webLinks = !again && webOn(this.cfg) && this.usable('fetch_page');
+    const openLink = async (url, why) => {
+      ctx.linkOpened = true;
+      const res = await this.runTool('fetch_page', { url }, ctx).catch((e) => ({ text: `Error: ${e.message}` }));
+      msgs.push({ role: 'assistant', content: '', tool_calls: [{ function: { name: 'fetch_page', arguments: { url } } }] });
+      msgs.push({ role: 'tool', tool_name: 'fetch_page', content: String(res.text) });
+      this.log('tool', `${why}: ${url}`);
+    };
+    const earlierLink = () => {
+      const users = msgs.slice(0, turnStart).filter((m) => m.role === 'user').slice(-4).reverse();
+      for (const m of users) { const [u] = findLinks(m.text ?? m.content, 1); if (u) return u; }
+      return null;
+    };
+    if (webLinks) {
+      const [url] = findLinks(text, 1);
+      if (url) await openLink(url, 'opened the link in the message first');
+      else if (refersToLink(text)) { const u = earlierLink(); if (u) await openLink(u, 'opened the link from earlier in the chat first'); }
+    }
+
     for (let step = 0; step < MAX_STEPS; step++) {
-      model = (await this.ensureModel(model, emit, signal, 'bob', { cpu, ctx: brainCtx })) || model;
-      this.setState('thinking', '', model);
-      const tools = this.frontDeskTools(ctx.loaded);
+      const tools = guestTools(job, this.frontDeskTools(ctx.loaded));
+      // 1.5.66: Bob's own one-more-go after a reply that missed. On Qwen3.6 (everyday chat answers without thinking)
+      // the retry thinks it through: thinking is set per request, so the same loaded brain does it, no reload.
+      if (ctx.retrying && think === false && LONG_CODER.test(String(model || ''))) {
+        think = undefined;
+        emit({ type: 'announce', text: 'Trying again, thinking it through this time.' });
+        this.log('chat', 'one more go, with thinking on');
+      }
+      ctx.retrying = false;
       const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: this.now(), memory: this.memory(), user: this.cfg.userName, backstory: this.backstory(), about: this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
-      const reply = await this.chatSafe({
-        model, messages: [sys, ...staleHandErrors(msgs, turnStart)], tools, signal, cpu, think, ctx: brainCtx,
-        onToken: (t) => emit({ type: 'token', text: t })
-      }, { emit });
+      let reply = null;
+      // A lender keeps the start of the chat it read last time (its prompt cache), so what changes every turn (the time,
+      // the Right now line, recalled bits) goes in a short note just before the latest message, not in the instructions.
+      let lentMsgs = null, lentSize = 0;
+      if (borrowing) {
+        const who = this.cfg.userName || 'the user';
+        const lentSys = { role: 'system', content: this.withLimits(systemPrompt({ now: 'given in the note just before the latest message', memory: this.memory(), user: this.cfg.userName, backstory: this.backstory(), about: this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, who) }), ctx.loaded) };
+        const hist = staleHandErrors(msgs, turnStart);
+        const at = hist.findLastIndex((m) => m.role === 'user');
+        const note = { role: 'system', content: `Current date and time for ${who}: ${this.now()}.${extras}${earlier ? `\n\n${earlier}` : ''}` };
+        lentMsgs = at < 0 ? [lentSys, ...hist, note] : [lentSys, ...hist.slice(0, at), note, ...hist.slice(at)];
+        lentSize = roughTokens({ messages: lentMsgs, tools });
+        if (!lender) {
+          lender = await this.lenders.pick({ skip: tried, tokens: lentSize }).catch(() => null);
+          if (lender) { tried.push(lender.address); emit({ type: 'borrow', action: 'start', name: lender.name, brain: lender.brain, device: lender.device }); }
+          else {
+            borrowing = false; // nobody free with room: this Bob thinks it, quietly (nothing went wrong)
+            const small = this.lenders.tooBigFor(lentSize);
+            this.log('borrow', small.length ? `this chat is too long for ${small.join(', ')} (about ${lentSize} tokens); thinking it myself` : 'none of my other Bobs is free; thinking it myself');
+          }
+        }
+      }
+      if (lender) {
+        this.setState('thinking', `${lender.name} is thinking`, this.state.model);
+        let said = false;
+        try {
+          reply = await this.lenders.chat(lender, { messages: lentMsgs, tools, signal, from: this.cfg.windowsName || 'Bob', onToken: (t) => { said = true; emit({ type: 'token', text: t }); } });
+        } catch (e) {
+          if (signal?.aborted) throw e;
+          // Said busy (or "too long") before a single word: the next of your Bobs that has room gets a go first.
+          const next = e.busy && !said ? await this.lenders.pick({ skip: tried, tokens: lentSize }).catch(() => null) : null;
+          if (next) {
+            tried.push(next.address);
+            this.log('borrow', `${lender.name} was busy; asking ${next.name}`);
+            emit({ type: 'borrow', action: 'start', name: next.name, brain: next.brain, device: next.device });
+            lender = next;
+            step--; continue; // same step again, with the next Bob
+          }
+          this.log('borrow', `${lender.name} couldn't think this one (${e.message}); thinking it myself`);
+          emit({ type: 'borrow', action: 'back', name: lender.name, why: e.why === 'too long' ? 'too long' : e.message, partial: said });
+          lender = null; borrowing = false;
+        }
+      }
+      if (!reply) {
+        model = (await this.ensureModel(model, emit, signal, 'bob', { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}) })) || model;
+        this.setState('thinking', '', model);
+        reply = await this.chatSafe({
+          model, messages: [sys, ...staleHandErrors(msgs, turnStart)], tools, signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
+          onToken: (t) => emit({ type: 'token', text: t })
+        }, { emit });
+      }
       // He's seen the new look once; that's enough.
       if (this.cfg.lookChange) { try { saveSettings(this.cfg, { lookChange: null }); } catch {} this.cfg.lookChange = null; }
       msgs.push(reply);
@@ -1368,7 +1700,7 @@ export class Brain {
         // Shown by the app as its own note line under the reply (not as Bob's words), and kept with the reply for reloads.
         emit({ type: 'correction', text: CLAIM_CORRECTION });
         reply.correction = CLAIM_CORRECTION;
-        msgs.push({ role: 'system', content: CLAIM_NUDGE, hidden: true });
+        msgs.push({ role: 'system', content: CLAIM_NUDGE, hidden: true }); ctx.retrying = true;
         this.log('honesty', 'Bob claimed a PC action with no tool result; corrected and asked to retry');
         noteStrike(this, ctx, 'claims', 'said he did something on the PC that no tool did');
         await qAsk(this, ctx);
@@ -1379,7 +1711,7 @@ export class Brain {
         ctx.observeChecked = true;
         emit({ type: 'correction', text: OBSERVE_CORRECTION });
         reply.correction = OBSERVE_CORRECTION;
-        msgs.push({ role: 'system', content: OBSERVE_NUDGE.replaceAll('{{USER}}', this.cfg.userName || 'the user'), hidden: true });
+        msgs.push({ role: 'system', content: OBSERVE_NUDGE.replaceAll('{{USER}}', this.cfg.userName || 'the user'), hidden: true }); ctx.retrying = true;
         this.log('honesty', 'Bob described an observation with no tool result; corrected and asked to answer again');
         noteStrike(this, ctx, 'claims', 'described something on the PC with no tool behind it');
         await qAsk(this, ctx);
@@ -1388,6 +1720,15 @@ export class Brain {
       // "I can't..." with groups still not added: add them all and give him one more go (router test fix).
       const empty = !reply.tool_calls && !String(reply.content || '').trim();
       if (!reply.tool_calls && !ctx.cantRetried && saysCant(reply.content)) {
+        // 1.5.65: web search is on and a link is there (this message or a recent one): open it and give him one more go.
+        const u = webLinks && !ctx.linkOpened && String(reply.content || '').trim() ? (findLinks(text, 1)[0] || earlierLink()) : null;
+        if (u) {
+          ctx.cantRetried = true;
+          await openLink(u, 'Bob said he could not; opened the link and asked again');
+          msgs.push({ role: 'system', content: LINK_NUDGE, hidden: true }); ctx.retrying = true;
+          emit({ type: 'token', text: '\n\n' });
+          continue;
+        }
         const missing = allToolsOn(this.cfg) ? [] : Object.keys(groupsFor(this)).filter((g) => !ctx.loaded.has(g));
         // An empty reply always gets its one more go, even with every tool already there.
         if (missing.length || empty) {
@@ -1395,7 +1736,7 @@ export class Brain {
           missing.forEach((g) => ctx.loaded.add(g));
           if (missing.length) emit({ type: 'tool', name: 'use_tools', summary: 'Trying again with all his tools' });
           if (empty) msgs.pop(); // an empty reply isn't worth keeping in the chat
-          msgs.push({ role: 'system', content: empty ? EMPTY_NUDGE : CANT_NUDGE, hidden: true });
+          msgs.push({ role: 'system', content: empty ? EMPTY_NUDGE : CANT_NUDGE, hidden: true }); ctx.retrying = true;
           this.log('toolbox', empty ? 'Bob gave an empty reply; added every tool group and asked again' : 'Bob said he could not; added every tool group and asked again');
           emit({ type: 'token', text: '\n\n' });
           continue;
@@ -1411,7 +1752,7 @@ export class Brain {
           msgs.push({ role: 'assistant', content: '', correction: EMPTY_NOTE });
         }
         this.log('toolbox', 'Bob gave an empty reply twice');
-      } else if (!reply.tool_calls && this.checkTurn(ctx, reply, true)) continue; // asked for something that didn't happen: one more go
+      } else if (!reply.tool_calls && this.checkTurn(ctx, reply, true)) { ctx.retrying = true; continue; } // asked for something that didn't happen: one more go
       if (!reply.tool_calls) { this.keepGroups(sessionId, used); return; }
       let ended = false;
       ctx.painted = null; // what the painter made in this round (for the quick hand-back below)
@@ -1558,19 +1899,22 @@ export class Brain {
     // "One brain" mode: every hat runs on the main model, so there's no brain swap (about 20 s each) mid-chat.
     // Normal session: the hat's own brain (or the main one with "One brain"). Other sessions: the session's brain.
     // A moot (High/Extreme effort) passes force: the reviewer always runs on the Review slot brain.
-    const { model, cpu, think, ctx: wantCtx } = ctx.job?.side ? sideBrain(this.cfg) : force || (bigThinker(ctx.job) && hat !== 'reviewer' && hatBrain(this.cfg, hat, ctx.job.effort)) || modelFor(this.cfg, hat);
+    let { model, cpu, think, ctx: wantCtx, beside } = ctx.job?.side ? (ctx.job.sidePick || await sidePick(this, ctx.job)) : force || (bigThinker(ctx.job) && hat !== 'reviewer' && hatBrain(this.cfg, hat, ctx.job.effort)) || modelFor(this.cfg, hat);
+    { const d = brainDefaults(model, hat, cleanEffort(ctx.job?.effort)); if (d.ctx && (wantCtx == null || (currentSession(this.cfg).id === 'normal' && !CTX_CHOICES.includes(this.cfg.sessionCtx?.normal)))) wantCtx = d.ctx; if (think === undefined && 'think' in d) think = d.think; }
     const brainCtx = await this.fitCtx(model, wantCtx);
+    // 1.5.51 (opt-in): the reviewer sits beside the main brain on the processor instead of swapping it out.
+    if (hat === 'reviewer' && force && !ctx.job?.side && mootBesideOk(this, model, brainCtx)) { beside = true; cpu = true; }
     const copy = copyName(this.cfg, hat, HATS[hat].label);
     // Settings sign-off (1.5.49): one moot line per review. If the review brain still has to load, the load line
     // ("🛰 Moot: ... checks the answer ...") says it all, so the chat skips the reviewer's own line.
-    const loadsFirst = hat === 'reviewer' && !(await Promise.resolve(this.engine.isLoaded?.(model, { cpu, ctx: brainCtx }) ?? true).catch(() => true));
+    const loadsFirst = hat === 'reviewer' && !(await Promise.resolve(this.engine.isLoaded?.(model, { cpu, ctx: brainCtx, beside }) ?? true).catch(() => true));
     ctx.emit({ type: 'hat', hat, label: PLAIN_HATS[hat] || HATS[hat].label, copy, ...(loadsFirst ? { quiet: true } : {}) });
     // The Tasks panel: this job is now delegated to a copy (in progress) until the copy hands back.
     const step = { hat, label: PLAIN_HATS[hat] || HATS[hat].label, copy, task: String(task).slice(0, 140), state: 'in progress', at: Date.now() };
     if (ctx.job) { (ctx.job.steps ||= []).push(step); this.saveQueue(); }
     const wasHat = ctx.hatNow;
     ctx.hatNow = hat; // so quarantine knows which copy did what
-    try { return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy }); }
+    try { return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside }); }
     catch (e) { step.state = ctx.signal?.aborted ? 'cancelled' : 'failed'; throw e; }
     finally {
       ctx.hatNow = wasHat;
@@ -1580,8 +1924,8 @@ export class Brain {
     }
   }
 
-  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy }) {
-    model = (await this.ensureModel(model, ctx.emit, ctx.signal, hat, { cpu, ctx: brainCtx })) || model;
+  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside }) {
+    model = (await this.ensureModel(model, ctx.emit, ctx.signal, hat, { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}) })) || model;
     this.setState('busy', `${copy} is on it (${PLAIN_HATS[hat] || HATS[hat].label})`, model);
     const hatTools = {
       ledger: ['save_spreadsheet', 'read_file', 'list_folder'],
@@ -1604,7 +1948,7 @@ export class Brain {
     const did = []; // what this copy did, handed back to the main conversation afterwards
     for (let step = 0; step < maxSteps; step++) {
       const reply = await this.chatSafe({
-        model, messages, tools: this.toolSchemas(hatTools), signal: ctx.signal, cpu, think, ctx: brainCtx,
+        model, messages, tools: this.toolSchemas(hatTools), signal: ctx.signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
         onToken: (t) => ctx.emit({ type: 'token', text: t })
       }, { emit: ctx.emit, who: hat });
       messages.push(reply);

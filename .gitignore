@@ -9,3 +9,5 @@ dist/
 node_modules/
 *.log
 *.part
+# 1.5.76: the bundled llama.cpp, made at release time (installer/bundle-engine.mjs)
+engines/

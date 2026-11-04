@@ -13,7 +13,7 @@
   <div class="app">
   <nav id="side" class="side" aria-label="Bob's menu">
     <div class="side-top">
-      <div class="bob-wrap"><canvas id="bob" width="56" height="56" aria-label="Bob"></canvas><span id="cat" class="cat" aria-hidden="true">🐈</span></div>
+      <div class="bob-wrap"><canvas id="bob" width="56" height="56" aria-label="Bob"></canvas><span id="cat" class="cat" aria-hidden="true">🐈</span><span id="bobProp" class="bob-prop" aria-hidden="true" hidden></span></div>
       <div class="who"><div class="name">Bob</div><div id="status" class="status" role="status">Getting the fire going...</div><div id="catLine" class="cat-line" aria-hidden="true" hidden></div></div>
       <button id="foldLeft" type="button" class="fold" title="Fold the menu (Ctrl+B)" aria-label="Fold the menu" aria-expanded="true"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 6l-6 6 6 6"/></svg></button>
     </div>
@@ -45,6 +45,7 @@
         <div id="brainPop" class="brain-pop" hidden></div>
         <button id="brainFree" type="button" class="brain-switch" role="switch" aria-checked="true"><span class="lbl">Free memory when Bob is idle</span><span class="st" id="brainFreeSt">On</span></button>
         <button id="handsBtn" type="button" class="brain-switch hands-btn" data-on="false" data-state="settings-off" aria-pressed="false"><span class="lbl">✋ Hands</span><span class="st" id="handsBtnSt">Off in Settings</span></button>
+        <button id="mindBtn" type="button" class="brain-switch mind-btn" title="Opens a small always-on-top window showing Bob's thinking, which brain is working, moots and every step. Nothing runs for it while it's closed."><span class="lbl">💭 Bob's thinking</span></button>
       </div>
       <button id="dlbar" class="dlbar" type="button" hidden title="Open Downloads"><span class="meter moving"><i></i></span><span class="dlbar-text"></span></button>
       <span class="ctx-fill"></span>
@@ -99,7 +100,7 @@
   <div id="grab" class="grab" role="separator" aria-orientation="vertical" aria-label="Drag to resize Now running" tabindex="0"></div>
   <aside id="now" class="now" aria-label="Now running">
     <div class="now-head"><strong>Now running</strong><span class="ctx-fill"></span><button id="hideRight" type="button" class="link" title="Hide (Ctrl+J)">Hide »</button></div>
-    <section><div class="now-sec">Tasks <span class="muted">drag to reorder</span><span class="ctx-fill"></span><button type="button" class="link" data-alltasks>See all</button></div><ol id="nowTasks" class="tlist"></ol></section>
+    <section><div class="now-sec">Tasks <button type="button" class="tip-i" aria-label="About Tasks" aria-expanded="false"><span class="tip-src" hidden>What Bob is doing and what waits its turn. Drag one to change the order.</span></button><span class="ctx-fill"></span><button type="button" class="link" data-alltasks>See all</button></div><ol id="nowTasks" class="tlist"></ol></section>
     <section><div class="now-sec">Downloads<span class="ctx-fill"></span><button type="button" class="link" data-alldl>Manage</button></div><ol id="nowDl" class="tlist"></ol></section>
     <section><div class="now-sec">Memory</div><div id="brainBay" class="brain-bay" hidden></div><div id="nowGpu" class="muted now-gpu">Checking...</div></section>
   </aside>

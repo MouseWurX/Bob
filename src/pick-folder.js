@@ -1,5 +1,6 @@
 // 1.5.34: Windows' own "pick a folder" window, for Settings > Projects (so nobody has to type a path).
-// Runs PowerShell's FolderBrowserDialog on top of Bob's window. Returns the folder, or '' if cancelled.
+// Windows: PowerShell's FolderBrowserDialog on top of Bob's window. Mac: AppleScript's choose folder. Linux: zenity or kdialog.
+// Returns the folder, or '' if cancelled.
 import { execFile } from 'node:child_process';
 
 // 1.5.41: also for Settings > Where Bob saves things ('save'), where making a new folder is allowed.
@@ -14,8 +15,36 @@ const script = (purpose) => [
   '$owner.Dispose()'
 ].join('; ');
 
+// Mac: AppleScript's "choose folder" (part of macOS). The prompt is fixed text, never anything typed by someone.
+const macScript = (purpose) => `POSIX path of (choose folder with prompt "${purpose === 'save' ? 'Pick the folder Bob saves pictures, clips, songs and sounds in' : 'Pick a project folder for Bob'}")`;
+
 export function pickFolder({ run = execFile, platform = process.platform, purpose = 'project' } = {}) {
-  if (platform !== 'win32') return Promise.reject(new Error('Picking a folder this way only works on Windows. Type the folder instead.'));
+  if (platform === 'darwin') {
+    return new Promise((resolve, reject) => {
+      run('/usr/bin/osascript', ['-e', macScript(purpose === 'save' ? 'save' : 'project')], { timeout: 10 * 60e3 }, (err, out, stderr) => {
+        // Cancel is error -128: not a failure, just no folder.
+        if (err && /-128/.test(String(stderr || err.message))) return resolve('');
+        if (err) return reject(new Error("The Mac's folder picker didn't open. Type the folder instead."));
+        const p = String(out || '').trim();
+        resolve(p.length > 1 ? p.replace(/\/$/, '') : p);
+      });
+    });
+  }
+  if (platform === 'linux') {
+    // zenity (GNOME and most desktops), else kdialog (KDE).
+    const tries = [['zenity', ['--file-selection', '--directory', '--title', purpose === 'save' ? 'Pick the folder Bob saves things in' : 'Pick a project folder for Bob']], ['kdialog', ['--getexistingdirectory', process.env.HOME || '/']]];
+    return new Promise((resolve, reject) => {
+      const next = (i) => {
+        if (i >= tries.length) return reject(new Error('No folder picker (zenity or kdialog) on this computer. Type the folder instead.'));
+        run(tries[i][0], tries[i][1], { timeout: 10 * 60e3 }, (err, out) => {
+          if (err && err.code === 'ENOENT') return next(i + 1);
+          resolve(err ? '' : String(out || '').trim()); // exit code 1 = cancelled
+        });
+      };
+      next(0);
+    });
+  }
+  if (platform !== 'win32') return Promise.reject(new Error('Picking a folder this way only works on Windows, Mac and Linux. Type the folder instead.'));
   return new Promise((resolve, reject) => {
     run('powershell.exe', ['-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-Command', script(purpose === 'save' ? 'save' : 'project')], { timeout: 10 * 60e3, windowsHide: true }, (err, out) => {
       if (err && !String(out || '').trim()) return reject(new Error("Windows' folder picker didn't open. Type the folder instead."));

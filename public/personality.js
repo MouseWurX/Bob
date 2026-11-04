@@ -1,6 +1,7 @@
 // Bob's personality dials. Each one runs 0 to 4; 2 is how Bob already is, and adds nothing to his prompt, so the
 // defaults are exactly the Bob everyone knows. Turning a dial adds one short line to his instructions. The dials
 // only shape tone: honesty, safety and "ask before doing" are fixed and stated after them, whatever they say.
+import { tip } from './tips.js';
 // All wording here is original. Used by the server (prompt) and the page (sliders, preview).
 
 export const DIALS = [
@@ -172,6 +173,6 @@ export function attributesHtml({ personality, look, lookText, lookComments = tru
     <p class="greet" aria-live="polite"><span class="muted">He'd say hello like this:</span><br>"${esc(greeting(p, user))}"</p>
     <label class="pick"><span class="muted">Presets</span> <select data-preset aria-label="Personality preset"><option value="">${preset ? '' : 'Your own mix'}</option>${PRESETS.map((x) => `<option value="${x.id}" ${preset?.id === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
     <div class="row"><button type="button" data-resetbob ${isDefault(p) ? 'disabled' : ''}>Reset to Bob</button></div>
-    <p class="muted small">Dials change his tone only. Honesty, safety and asking before doing things never change.</p>
+    <p class="muted small">Dials change his tone only. ${tip('Honesty, safety and asking before doing things never change.', 'Dials')}</p>
   </details>`;
 }

@@ -1,12 +1,15 @@
-// "Update Bob": test the newest Bob from the source folder he came from and copy his files in next to the
-// running ones, in the same window the installer uses (installer\bob-build-window.ps1), then swap them in
-// when the user says "Restart Bob now". Bob.exe itself (Electron's official, unchanged exe) stays as it is,
-// so Smart App Control never sees a new program.
+// "Update Bob": the newest Bob comes from GitHub (the Latest release on github.com/MouseWurX/Bob, see
+// github-update.js), or from the source folder he was built from when that holds a newer build. A source build is
+// tested, then his files are copied in next to the running ones, in the same window the installer uses
+// (installer\bob-build-window.ps1); a GitHub download is already tested and checked against its .sha256, so the
+// window only puts it in place (-Prebuilt). "Restart Bob now" swaps them in. Bob.exe itself (Electron's official,
+// unchanged exe) stays as it is, so Smart App Control never sees a new program.
 // Checking for a newer build only happens by itself if the user turns that on; updating always takes a click.
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { appDir, VERSION, formatVersion } from './config.js';
+import { latestRelease, compareVersions, selfUpdate, startGithubUpdate, restartIntoNew, restartWhenIdle, hasGithubSwap, RELEASES_PAGE } from './github-update.js';
 
 // The source folder: home.json's "source" (passed on by Bob.exe), or this folder when Bob runs from source.
 export function sourceDir() {
@@ -34,7 +37,8 @@ export function checkUpdate() {
   return {
     current, available, newer, source: source || null,
     canRun: process.platform === 'win32' && Boolean(script && fs.existsSync(script)),
-    why: !source ? 'Bob doesn\'t know which folder he was built from. Run Install Bob.cmd from the new source folder once.' : process.platform !== 'win32' ? 'Updating Bob only works on Windows.' : ''
+    // A Mac or Linux Bob is a download, not a build: the new version comes from the same page as the first one.
+    why: process.platform === 'darwin' ? 'On a Mac, Bob updates by downloading the newest Bob for Mac from github.com/MouseWurX/Bob/releases and replacing the old one in Applications. Your chats, settings and models stay where they are.' : process.platform !== 'win32' ? 'On Linux, Bob updates by downloading the newest Bob AppImage from github.com/MouseWurX/Bob/releases and putting it in place of the old one (if you turned on "Launch Bob on start-up", switch it off and on once so it points at the new file). Your chats, settings and models stay where they are.' : !source ? 'Bob doesn\'t know which folder he was built from. Run Install Bob.cmd from the new source folder once.' : ''
   };
 }
 
@@ -72,16 +76,52 @@ export function cleanEnv(env = process.env) {
   return out;
 }
 
-export function startUpdate(cfg, { spawnImpl = spawn } = {}) {
-  const c = checkUpdate();
+// "Check for updates": the source folder (as before) and GitHub's Latest release. Whichever is newer wins;
+// a tie goes to the source folder (it's the one on this PC). If GitHub can't be reached, the source folder
+// still answers and `githubError` says why.
+export async function checkAll(opts = {}) {
+  const local = checkUpdate();
+  const current = local.current;
+  // A Mac or Linux GitHub update that's downloaded and waiting for "Restart Bob now".
+  if (process.platform !== 'win32' && hasGithubSwap()) return { ...local, waiting: true, newer: false, why: '' };
+  let gh = null, githubError = '';
+  try { gh = await latestRelease(opts); } catch (e) { githubError = e.message; }
+  const ghNewer = Boolean(gh && compareVersions(gh.label, current.label) > 0);
+  const srcNewer = local.newer;
+  const useGithub = ghNewer && (!srcNewer || compareVersions(gh.label, local.available?.label) > 0);
+  const github = gh && { label: gh.label, page: gh.page, file: gh.asset?.name || '', sizeMB: gh.asset ? Math.round(gh.asset.size / 1e6) : 0, newer: ghNewer, why: gh.why };
+  if (useGithub) {
+    const can = selfUpdate(opts.env, opts.platform, opts.execPath, 'electron' in opts ? opts.electron : process.versions.electron);
+    const why = gh.why || (can.ok ? '' : can.why);
+    return { ...local, from: 'github', available: { label: gh.label }, sourceLabel: local.available?.label || '', newer: true, canRun: !why, why, github, githubError };
+  }
+  return { ...local, from: srcNewer ? 'source' : '', why: srcNewer ? local.why : '', github, githubError, page: RELEASES_PAGE };
+}
+
+// "Update Bob": from GitHub or the source folder, whichever checkAll picked.
+export async function startAny(cfg, opts = {}) {
+  const c = await checkAll(opts);
+  if (!c.newer) throw new Error(`You already have the newest Bob (${c.current.label}).`);
+  if (!c.canRun) throw new Error(c.why || 'I can\'t update myself here.');
+  if (c.from === 'github') {
+    const r = await startGithubUpdate(cfg, { ...opts, handOff: (source) => startUpdate(cfg, { ...opts, source, prebuilt: true }) });
+    return { ...r, from: c.current, to: c.available, via: 'github' };
+  }
+  return { ...startUpdate(cfg, opts), via: 'source' };
+}
+
+export function startUpdate(cfg, { spawnImpl = spawn, source = '', prebuilt = false } = {}) {
+  const c = source ? { canRun: process.platform === 'win32' && fs.existsSync(path.join(source, 'installer', 'bob-build-window.ps1')), source, current: checkUpdate().current, available: versionOf(source), why: 'The downloaded Bob has no update window in it.' } : checkUpdate();
   if (!c.canRun) throw new Error(c.why || 'The update window isn\'t in the source folder.');
   const st = updateStatus(cfg);
   // A window that wrote in the last 30 seconds and hasn't finished is still at work.
-  if (st && !st.done && !st.error && st.id !== 'starting' && Date.now() - Date.parse(st.updatedAt || 0) < 30e3) throw new Error('An update is already running.');
+  if (!prebuilt && st && !st.done && !st.error && st.id !== 'starting' && Date.now() - Date.parse(st.updatedAt || 0) < 30e3) throw new Error('An update is already running.');
   const now = new Date().toISOString();
-  writeStatus(cfg, { mode: 'update', step: 0, of: 5, id: 'starting', text: 'Starting the update window...', done: false, error: '', steps: [], startedAt: now, updatedAt: now });
+  writeStatus(cfg, { mode: 'update', ...(prebuilt ? { source: 'github' } : {}), step: 0, of: 5, id: 'starting', text: 'Starting the update window...', done: false, error: '', steps: [], startedAt: now, updatedAt: now });
   const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', path.join(c.source, 'installer', 'bob-build-window.ps1'),
     '-Mode', 'update', '-Source', c.source, '-BobHome', cfg.agentDir, '-StatusFile', statusFile(cfg), '-Port', String(cfg.port || 7777)];
+  // A GitHub release is already tested (GitHub runs every check before publishing it): no Node.js or tests needed.
+  if (prebuilt) args.push('-Prebuilt');
   // Swap the Bob.exe that's actually running, wherever it lives.
   if (process.env.BOB_APP_DIR) args.push('-AppDir', process.env.BOB_APP_DIR);
   try { fs.writeFileSync(launchLog(cfg), `${now} ${launchCommand(args).join(' ')}\n`); } catch {}
@@ -102,7 +142,10 @@ export function startUpdate(cfg, { spawnImpl = spawn } = {}) {
 }
 
 // Bob's own "Restart now" / "When he's done" buttons: the update window picks this up within a second.
-export function requestRestart(cfg, when = 'now') {
+// On a Mac or Linux a GitHub update is swapped in by Bob himself (github-update.js); `isBusy` says whether he's
+// still working, for "Wait until I'm done".
+export function requestRestart(cfg, when = 'now', { isBusy = () => false } = {}) {
+  if (process.platform !== 'win32' && hasGithubSwap()) return when === 'done' ? restartWhenIdle(cfg, isBusy) : restartIntoNew(cfg);
   const st = updateStatus(cfg);
   if (!st?.ready) throw new Error('There is no new Bob ready to switch to yet.');
   fs.writeFileSync(path.join(path.dirname(statusFile(cfg)), 'update-restart.flag'), when === 'done' ? 'done' : 'now');

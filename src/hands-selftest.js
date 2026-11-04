@@ -12,6 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { planFiles, applyFiles, undoJob } from './hands-files.js';
 import { runCommand } from './hands-run.js';
 import { appDir } from './config.js';
+import { usesBin } from './recycle.js';
 
 const WIN = process.platform === 'win32';
 const alive = (pid) => { if (!pid) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
@@ -46,7 +47,7 @@ export async function selfTest(cfg, { log = () => {}, run = runCommand, platform
     const done = applyFiles(tcfg, plan);
     if (!done.job || fs.existsSync(f)) return { ok: false, says: `It didn't go${done.failed[0] ? `: ${done.failed[0].why}` : '.'}` };
     const u = undoJob(tcfg, done.job.id);
-    if (fs.existsSync(f)) return { ok: true, says: tcfg.recycleBin ?? (platform === 'win32') ? 'It went to the Recycle Bin and came back.' : 'It went to Bob\'s trash folder and came back.' };
+    if (fs.existsSync(f)) return { ok: true, says: !usesBin(tcfg, platform) ? 'It went to Bob\'s trash folder and came back.' : platform === 'win32' ? 'It went to the Recycle Bin and came back.' : 'It went to the Trash and came back.' };
     if (u.manual.includes(f) && platform === 'win32' && restoreFromBin(f) && fs.existsSync(f)) return { ok: true, says: 'It went to the Windows Recycle Bin, and came back out of it.' };
     return { ok: false, says: u.manual.length ? 'It went to the Recycle Bin but Bob couldn\'t bring it back: restore "selftest-recycle.txt" from there.' : `Undo didn't bring it back${u.failed[0] ? `: ${u.failed[0]}` : '.'}` };
   });

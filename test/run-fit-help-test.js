@@ -16,7 +16,7 @@ const slot = (id) => allSlots().find((s) => s.id === id);
 // ---- what each model can do ----
 {
   check('every brain in the catalog says which jobs it can do', models.filter((m) => ['chat', 'coding', 'vision'].includes(m.category)).every((m) => Array.isArray(m.jobs) && m.jobs.length));
-  check('catalog jobs are real slot ids', models.flatMap((m) => m.jobs || []).every((id) => allSlots().some((s) => s.id === id)));
+  check('catalog jobs are real slot ids (or the phone app)', models.flatMap((m) => m.jobs || []).every((id) => id === 'phone' || allSlots().some((s) => s.id === id)));
   check('a text-only coder is never offered as Eyes', !canDo('eyes', { entry: byId('qwen3-coder-30b') }));
   check('a big brain is never offered as the Quick brain', !canDo('small', { entry: byId('gemma4-26b') }));
   check('a vision model is offered as Eyes', canDo('eyes', { entry: byId('qwen2.5-vl-7b') }));
@@ -43,7 +43,7 @@ const slot = (id) => allSlots().find((s) => s.id === id);
   const big = pc(16, 32);
   check('16 GB card: Gemma 4 26B is the Brain (covers the most jobs, fits the card)', pickFor('bob', models, big)?.id === 'gemma4-26b');
   check('16 GB card: the Quick brain is the light Gemma 4 E4B', pickFor('small', models, big)?.id === 'gemma4-e4b');
-  check('one model covering several jobs wins Coding over a coder that only codes', pickFor('tinker', models, big)?.id === 'gemma4-26b');
+  check('16 GB card: Coding is Qwen3.6 35B-A3B (it won the race, 1.5.63)', pickFor('tinker', models, big)?.id === 'qwen3.6-35b-a3b', pickFor('tinker', models, big)?.id);
   check('8 GB card: nothing too big is picked', ['bob', 'small', 'tinker', 'eyes'].every((s) => { const p = pickFor(s, models, pc(8, 32)); return !p || byId(p.id).vramGB <= 8; }));
   check('8 GB card: no Deep thinking pick (nothing strong enough fits)', pickFor('deep', models, pc(8, 32)) === null);
   check('6 GB card (a laptop): the light Qwen3 4B is the Brain and the Quick brain', pickFor('bob', models, pc(6, 32))?.id === 'qwen3-4b' && pickFor('small', models, pc(6, 32))?.id === 'qwen3-4b');
@@ -67,12 +67,21 @@ const slot = (id) => allSlots().find((s) => s.id === id);
   const eyes = kitFor(slot('eyes'), ctx).map((k) => k.value);
   check('Eyes lists models that see, and not the text-only coder', eyes.includes('gemma4:26b') && eyes.includes('llava:13b') && !eyes.includes('qwen3-coder:30b') && !eyes.includes('qwen3-4b'));
   check('Quick brain doesn\'t list the 26B', !kitFor(slot('small'), ctx).some((k) => k.value === 'gemma4:26b' || k.value === 'gemma4-26b'));
-  check('the slot\'s pick carries "Recommended for this job on your PC"', kitFit({ entry: byId('gemma4-26b') }, slot('bob'), ctx).rec && /Recommended for this job on your PC/.test(equipHtml({ ...ctx, selected: 'bob' })));
-  check('"Fits your card" is separate from Recommended', /Fits your card/.test(equipHtml({ ...ctx, selected: 'tinker' })));
-  check('a model not in Bob\'s list says Bob can\'t judge it', /can't say how well it runs/.test(equipHtml(ctx)));
-  const small = { ...ctx, ...pc(8, 16), selected: 'bob' };
-  check('downloads that don\'t suit are hidden behind a button', !/data-get="gpt-oss-20b"/.test(equipHtml(small)) && /(don't|doesn't) suit this PC\. <button type="button" class="link" data-unsuited>Show them/.test(equipHtml(small)));
+  check('the slot\'s pick carries "★ Recommended", with why in its tip', kitFit({ entry: byId('gemma4-26b') }, slot('bob'), ctx).rec && /★ Recommended/.test(equipHtml({ ...ctx, selected: 'bob' })) && /Covers \d+ jobs/.test(equipHtml({ ...ctx, selected: 'bob' })));
+  check('each kit row is one line; its size and licence sit in an "i" tip', /class="tip-i"[^>]*><span class="tip-src" hidden>[^<]*licence Apache 2\.0/.test(equipHtml({ ...ctx, selected: 'tinker' })));
+  check('a model not in Bob\'s list says Bob can\'t judge it', /can&#39;t say how well it runs/.test(equipHtml(ctx)));
+  const small = { ...ctx, ...pc(8, 16), selected: 'bob', active: { 'gpt-oss-20b': true } };
+  check('active downloads that don\'t suit are hidden behind a button', !/data-get="gpt-oss-20b"/.test(equipHtml(small)) && /(don't|doesn't) suit this PC\. <button type="button" class="link" data-unsuited>Show them/.test(equipHtml(small)));
   check('...and shown, with the reason, when asked', /data-get="gpt-oss-20b"/.test(equipHtml({ ...small, showUnsuited: true })) && /Doesn't suit this PC/.test(equipHtml({ ...small, showUnsuited: true })));
+  // 1.5.56: Active models and Get more
+  const doll = (extra) => equipHtml({ ...ctx, selected: 'bob', ...extra });
+  check('models not downloaded stay out of the slots until made active', !/data-get="qwen3.6-35b-a3b"/.test(doll()) && /data-get="qwen3.6-35b-a3b"/.test(doll({ active: { 'qwen3.6-35b-a3b': true } })));
+  check('a model on this PC can be made inactive, and then it is hidden', /data-equip="qwen3-coder:30b"/.test(doll()) && !/data-equip="qwen3-coder:30b"/.test(doll({ active: { 'qwen3-coder-30b': false } })));
+  check('what is equipped always shows, even when made inactive', /data-equip="gemma4:26b"/.test(doll({ active: { 'gemma4-26b': false } })));
+  check('every kit ends with Get more, saying how many wait in the catalogue', /data-catjob="bob">📚 Get more \(\d+ in the catalogue\)/.test(doll()));
+  check('Gaming takes only the timed Qwen3 4B Instruct 2507, never E4B or another brain', canDo('gaming', { entry: byId('qwen3-4b') }) && !canDo('gaming', { entry: byId('gemma4-e4b') }) && !canDo('gaming', { name: 'gemma4:e4b' }) && !canDo('gaming', { entry: { ...byId('gemma4-e4b'), jobs: ['gaming'] } }) && !canDo('gaming', { name: 'qwen3:1.7b' }) && kitFor(slot('gaming'), { ...ctx, models }).every((k) => k.entry?.id === 'qwen3-4b'));
+  check('Gaming and Office are slots on the paper doll', ['gaming', 'office'].every((id) => slot(id)?.how === 'brain'));
+  check('new brains are listed but not recommended until tried', models.filter((m) => m.trial).every((m) => !picksOf(m, models, pc(16, 32)).length && !picksOf(m, models, pc(8, 16)).length && !picksOf(m, models, pc(6, 16)).length));
   check('dragging only lands on slots that can do the job', !slotTakes(slot('eyes'), 'qwen3-coder:30b', ctx) && slotTakes(slot('bob'), 'qwen3-coder:30b', ctx) && slotTakes(slot('image'), 'anything', ctx));
   check('a "?" on Equip Bob opens Help at how models are picked', /data-help="recommended"/.test(equipHtml(ctx)));
 }

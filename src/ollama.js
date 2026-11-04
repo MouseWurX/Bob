@@ -1,6 +1,7 @@
 // Talks to the local Ollama server: chat streaming, what's loaded, loading and unloading.
 import { replyStats } from './speed-stats.js';
 import { readCard } from './gaming-card.js';
+import { MID_SYSTEM_REFUSED, foldSystem } from './system-notes.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -166,8 +167,23 @@ export class Ollama {
     return r.embeddings;
   }
 
-  // Streams a chat. Calls onToken(text) for visible text. Returns the final assistant message.
-  async chat({ model, messages, tools, signal, onToken, cpu = false, think, ctx }) {
+  // Streams a chat. Calls onToken(text) for visible text, and onThink(text) for the model's thinking (1.5.53, only
+  // passed while the "Bob's thinking" window is open). Returns the final assistant message.
+  async chat(args) {
+    // 1.5.61: the same fold as llama.cpp (system-notes.js). Ollama runs some brains' own chat templates (Qwen 3.8), and
+    // those refuse a system message anywhere but first; it was never caught here, so Medium effort failed with a 500.
+    this.noMidSystem ||= new Set();
+    const { model } = args;
+    if (this.noMidSystem.has(model)) return this.chatOnce({ ...args, messages: foldSystem(args.messages) });
+    try { return await this.chatOnce(args); } catch (e) {
+      if (args.signal?.aborted || !MID_SYSTEM_REFUSED.test(String(e.full || e.message))) throw e;
+      this.noMidSystem.add(model);
+      this.log?.('engine', `${model}: its chat template only takes a system message first, so Bob's notes go in as user notes from now on`);
+      return this.chatOnce({ ...args, messages: foldSystem(args.messages) });
+    }
+  }
+
+  async chatOnce({ model, messages, tools, signal, onToken, onThink, cpu = false, think, ctx }) {
     const thinkSend = await this.thinkField(model, think);
     const res = await fetch(this.url + '/api/chat', {
       method: 'POST',
@@ -177,7 +193,7 @@ export class Ollama {
         think: thinkSend }),
       signal
     });
-    if (!res.ok) throw new Error(`Ollama chat returned ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    if (!res.ok) { const full = await res.text(); throw Object.assign(new Error(`Ollama chat returned ${res.status}: ${full.slice(0, 300)}`), { full }); }
     let content = '';
     const toolCalls = [];
     let buf = '';
@@ -192,6 +208,7 @@ export class Ollama {
         const ev = JSON.parse(line);
         if (ev.error) throw new Error('Ollama: ' + ev.error);
         const msg = ev.message || {};
+        if (msg.thinking && onThink) onThink(msg.thinking);
         if (msg.content) { content += msg.content; onToken && onToken(msg.content); }
         if (msg.tool_calls) toolCalls.push(...msg.tool_calls);
         // 1.5.30: the last line carries the reply's numbers; kept for Now running (no extra work for Ollama).

@@ -10,7 +10,7 @@ export const SESSIONS = {
   // 1.5.23: Deep thought is gone (Effort Medium/High does that job); Light is now Gaming, and keeps Effort on Low.
   // Gaming (some games use 14 of 16 GB): nothing loads on the card. Chat and hearing run on the processor;
   // pictures, video, music and Medium-and-up jobs wait in Tasks until the session changes.
-  light: { label: 'Gaming', icon: '🎮', what: 'Keeps the graphics card for your games. Bob chats and listens on the processor with a small brain, which usually starts answering within a few seconds. Pictures and big jobs wait until you switch back. How much of the card he may borrow is set in Settings, Engines & speed (Automatic to start with).', brain: 'gaming', cpu: true, effortLow: true }
+  light: { label: 'Gaming', icon: '🎮', what: 'Keeps the graphics card for your games. Bob chats and listens on the processor with a small brain, which usually starts answering within a few seconds. Pictures and big jobs wait until you switch back. How much of the card he may borrow is set in Settings, Engines & speed (Automatic to start with).', whatMac: 'Keeps memory free for your games. Bob chats and listens on the processor with a small brain, which usually starts answering within a few seconds. Pictures and big jobs wait until you switch back.', brain: 'gaming', cpu: true, effortLow: true }
 };
 
 // Which model each session's brain is. the user can change these on the Sessions tab; the defaults come
@@ -23,7 +23,7 @@ export function sessionBrains(cfg) {
     // 1.5.23: Gaming chats on the processor, so a smaller brain answers sooner. 1.5.25: Qwen3 4B Instruct 2507 (Get models
     // id "qwen3-4b"), picked on time to first word and to a full answer: about 0.1-2 s / 2-7 s on the processor. Ollama's
     // qwen3:4b thinks first even when asked not to (about 30 s for "hi"). If it isn't on the PC, the hand-off falls back.
-    gaming: s.gaming || 'qwen3-4b',
+    gaming: s.gaming && !/e4b/i.test(s.gaming) ? s.gaming : 'qwen3-4b', // 1.5.56: never E4B, even from an old settings file
     coding: s.coding || m.tinker || m.bob,
     office: s.office || m.ledger || m.bob,
     deep: s.deep || m.reviewer || m.bob
@@ -54,11 +54,27 @@ export function sessionCtx(cfg, id, hat) {
 // Setting quickOnCpu (Settings > Everyday): OFF unless switched on. Measured 2026-11-02 on a 9800X3D (gemma4:e4b, 4.3K-token
 // prompt): about 31 s to the first word on the processor vs about 4 s on the card, because reading the prompt is slow there.
 export const quickOnCpu = (cfg) => cfg?.quickOnCpu === true;
+// 1.5.63 / 1.5.66: Qwen3.6 35B-A3B, the owner's lineup (2026-11-03): the Coding copy thinks at every effort, the main
+// Brain (everyday chat) never thinks first. Both run at 128K, so chat and coding share one load of the same file
+// instead of swapping between a 32K and a 128K load (measured: 14.7 GB on a 16 GB card, the rest in RAM).
+export const LONG_CODER = /qwen3\.6[-_ ]?35b/i;
+export function brainDefaults(model, hat, effort) {
+  if (!LONG_CODER.test(String(model || ''))) return {};
+  // Every copy that runs on it gets 128K too, so a hand-off to any copy on the same file never reloads it.
+  return hat === 'bob' ? { ctx: 131072, think: false } : { ctx: 131072 };
+}
+
 export function modelFor(cfg, hat) {
   const s = currentSession(cfg);
   const ctx = sessionCtx(cfg, s.id, hat);
   if (s.id === 'normal' && hat === 'bob' && quickOnCpu(cfg)) return { model: sessionBrains(cfg).small, cpu: true, ctx };
-  if (s.id === 'normal') return { model: cfg.oneBrain ? cfg.models.bob : (cfg.models[hat] || cfg.models.bob), cpu: false, ctx };
+  if (s.id === 'normal') {
+    const model = cfg.oneBrain ? cfg.models.bob : (cfg.models[hat] || cfg.models.bob);
+    // 1.5.67: Qwen3.6's 128K applies here too, not only inside a job, so waking or priming the chat brain after a
+    // job loads the same 128K the job used (it was reloading at 32K after every job). A context picked by hand wins.
+    const d = CTX_CHOICES.includes(cfg.sessionCtx?.normal) ? {} : brainDefaults(model, hat);
+    return { model, cpu: false, ctx: d.ctx || ctx };
+  }
   const model = sessionBrains(cfg)[s.brain] || cfg.models.bob;
   return { model, cpu: Boolean(s.cpu), think: s.think, ctx };
 }

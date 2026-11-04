@@ -2,6 +2,7 @@
 // Also past chats (open, pin) and one search box over chats, summaries, topics, pictures and notes.
 // Drag a message onto another topic to move it. Forget a topic with a preview first.
 import { esc } from './rich.js';
+import { tip } from './tips.js';
 
 const $ = (id) => document.getElementById(id);
 const day = (ms) => (ms ? new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '');
@@ -32,7 +33,7 @@ export function createTopics({ api, openChat }) {
         <button type="button" class="mini" data-tpin aria-pressed="${t.pinned}" title="${t.pinned ? 'Pinned: housekeeping never touches it' : 'Pin: housekeeping never touches it'}">${t.pinned ? '★ Pinned' : '☆ Pin'}</button></header>
       <p class="topic-line">${esc(t.summary || (t.note || '').slice(0, 140) || 'No note yet.')}</p>
       ${isOpen ? `<div class="topic-more">
-        <label class="wide"><strong>Where we landed</strong> <span class="muted">(yours to edit; this is what survives tidying)</span><textarea data-note rows="4" maxlength="1500">${esc(t.note || '')}</textarea></label>
+        <label class="wide"><strong>Where we landed</strong> ${tip('Yours to edit. This is what survives tidying.', 'Where we landed')}<textarea data-note rows="4" maxlength="1500">${esc(t.note || '')}</textarea></label>
         ${t.suggested ? `<div class="suggest-note"><span class="muted">Bob's update (not applied, since you edited the note):</span> ${esc(t.suggested.note || t.suggested.summary)} <button type="button" class="mini" data-accept>Use Bob's update</button></div>` : ''}
         ${(t.open || []).length ? `<div><strong>Still open</strong><ul>${t.open.map((o) => `<li>${esc(o)}</li>`).join('')}</ul></div>` : ''}
         ${(t.pics || []).length ? `<div class="topic-pics">${t.pics.slice(0, 12).map((u) => `<img src="${esc(u)}" alt="" loading="lazy">`).join('')}</div>` : ''}
@@ -44,7 +45,7 @@ export function createTopics({ api, openChat }) {
           <button type="button" data-forget>Forget…</button>
         </div>
         <div class="forget-box" hidden></div>
-        <div><strong>Where it came up</strong> <span class="muted">drag a message onto another topic to move it</span><ol class="topic-msgs" data-msgs><li class="muted">Loading…</li></ol></div>
+        <div><strong>Where it came up</strong> ${tip('Drag a message onto another topic to move it.', 'Where it came up')}<ol class="topic-msgs" data-msgs><li class="muted">Loading…</li></ol></div>
       </div>` : ''}
     </article>`;
   }

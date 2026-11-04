@@ -1,4 +1,4 @@
-// Settings, Connections: "Let my phone in" (src/phone-access.js). Off unless you turn it on.
+// Settings, Connections: "Let my other devices in" (src/phone-access.js). Off unless you turn it on.
 // Bob for Android (or a browser on your phone) reaches this Bob over Tailscale with the passcode.
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -10,7 +10,7 @@ async function api(url, data) {
 }
 
 export function phoneAccessHtml() {
-  return '<div class="phone-box"><strong>Let my phone in</strong><p class="muted">Loading…</p></div>';
+  return '<div class="phone-box"><strong>Let my other devices in</strong><p class="muted">Loading…</p></div>';
 }
 
 export async function mountPhoneAccess(box) {
@@ -18,8 +18,8 @@ export async function mountPhoneAccess(box) {
   let v, shown = '', msg = '', restart = false;
   const draw = () => {
     const hosts = v.hosts.length ? v.hosts : v.found;
-    box.innerHTML = `<strong>Let my phone in</strong> <span class="tag">off unless you turn it on</span>
-      <label class="switch"><input type="checkbox" data-phone-on ${v.enabled ? 'checked' : ''}><span><strong>Let my phone in</strong><br><span class="muted">Bob for Android, or your phone's browser, can talk to this Bob over Tailscale with the passcode below. Nothing else on your network can.</span></span></label>
+    box.innerHTML = `<strong>Let my other devices in</strong> <span class="tag">off unless you turn it on</span>
+      <label class="switch"><input type="checkbox" data-phone-on ${v.enabled ? 'checked' : ''}><span><strong>Let my other devices in</strong><br><span class="muted">Your phone (Bob for Android) and your other Bobs can reach this Bob over Tailscale with the passcode below. Nothing else on your network can.</span></span></label>
       ${restart || (v.enabled !== v.live) ? '<p class="muted"><strong>Restart Bob to apply this.</strong> Close his window and open him again from the Start menu.</p>' : ''}
       <div class="row"><strong>Passcode</strong> <span class="muted">${shown ? `<code>${esc(shown)}</code> Type it into the phone now: it isn't shown again.` : v.passcodeSet ? 'set (it\'s only shown once, when you make it).' : 'Not set yet.'}</span>
         <button type="button" data-phone-newcode>${v.passcodeSet ? 'Make a new passcode' : 'Make a passcode'}</button></div>
@@ -39,5 +39,5 @@ export async function mountPhoneAccess(box) {
     if (e.target.closest('[data-phone-newcode]')) change({ newPasscode: true });
     if (e.target.closest('[data-phone-find]')) load().then(() => change({ hosts: v.found }));
   });
-  try { await load(); } catch (e) { box.innerHTML = `<strong>Let my phone in</strong><p class="muted">${esc(e.message)}</p>`; }
+  try { await load(); } catch (e) { box.innerHTML = `<strong>Let my other devices in</strong><p class="muted">${esc(e.message)}</p>`; }
 }

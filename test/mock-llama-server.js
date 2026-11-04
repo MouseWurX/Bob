@@ -24,6 +24,14 @@ http.createServer(async (req, res) => {
     if (action === 'save') { fs.writeFileSync(path.join(dir, name), 'KV'); res.writeHead(200); return res.end('{"n_saved":10}'); }
     if (action === 'restore') { const ok = fs.existsSync(path.join(dir, name)); res.writeHead(ok ? 200 : 400); return res.end(ok ? '{"n_restored":10}' : '{}'); }
   }
+  // 1.5.72: the embedding server (--embedding): one short vector per input, from its length; and the flags it got.
+  if (req.url === '/test-args') { res.writeHead(200); return res.end(JSON.stringify({ argv, cuda: process.env.CUDA_VISIBLE_DEVICES ?? null })); }
+  if (req.url === '/v1/embeddings') {
+    if (!argv.includes('--embedding')) { res.writeHead(501); return res.end('{}'); }
+    const input = [].concat(JSON.parse(body).input);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    return res.end(JSON.stringify({ data: input.map((t, index) => ({ index, embedding: [String(t).length, 1, 0] })).reverse() }));
+  }
   if (req.url === '/v1/chat/completions') {
     const j = JSON.parse(body);
     res.writeHead(200, { 'content-type': 'text/event-stream' });

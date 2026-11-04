@@ -52,7 +52,10 @@ const SAMPLING = {
   qwen3: { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0 },
   'qwen3-thinking': { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0 },
   'qwen3-coder': { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0, repeat_penalty: 1.05 },
-  'qwen3.5': { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0 },
+  // 1.5.63: Qwen3.5/3.6 cards: no-think 0.7/0.8/20 with presence_penalty 1.5; thinking 0.6/0.95/20.
+  'qwen3.5': { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0, presence_penalty: 1.5 },
+  // 1.5.68: thinking also gets presence_penalty 1.5 (Qwen's guidance; without it Qwen3.6 can think in circles).
+  'qwen3.5-thinking': { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0, presence_penalty: 1.5 },
   'qwen2.5': { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0, repeat_penalty: 1.05 }
 };
 export const TOOL_TEMP = 0.6;
@@ -65,7 +68,8 @@ export function samplingFor(lc, model, gguf, { tools = false, think } = {}) {
   const fam = familyOf(model, info);
   // Qwen3 hybrid brains think unless told not to; their thinking mode has its own settings. Instruct 2507 never thinks.
   const key = fam === 'qwen3' && think !== false && !/instruct/i.test(`${model} ${info?.name || ''}`) ? 'qwen3-thinking' : fam;
-  const base = { ...(SAMPLING[key] || {}), ...(lc?.sampling?.[fam] || {}), ...(lc?.sampling?.[model] || {}) };
+  const key2 = fam === 'qwen3.5' && think !== false ? 'qwen3.5-thinking' : key;
+  const base = { ...(SAMPLING[key2] || {}), ...(lc?.sampling?.[fam] || {}), ...(lc?.sampling?.[model] || {}) };
   if (!Object.keys(base).length) return {};
   if (tools && typeof base.temperature === 'number') base.temperature = Math.min(base.temperature, lc?.toolTemp ?? TOOL_TEMP);
   return base;

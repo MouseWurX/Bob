@@ -62,7 +62,7 @@ const missing = (labels) => [...new Set(labels)].filter((l) => !helpText.include
   check('the scouting copy says where the switch is instead of researching', /hat === 'scout' && !webOn\(this\.cfg\)\) return WEB_OFF/.test(brain));
   check('his prompt carries the web line', /prompt \+= webPrompt\(this\.cfg\)/.test(brain));
   const cellar = read('public/cellar.js');
-  check('the switch is on the everyday Settings page, off unless turned on', /sswitch\('webSearch', settings\.webSearch === true, 'Let Bob search the web', 'Off unless you turn it on/.test(cellar));
+  check('the switch is on the everyday Settings page, off unless turned on', /sswitch\('webSearch', settings\.webSearch === true, 'Let Bob search the web', keep\('Off unless you turn it on/.test(cellar));
   const server = read('src/server.js');
   check('the server saves and shows it', /typeof b\.webSearch === 'boolean'/.test(server) && /webSearch: cfg\.webSearch === true/.test(server));
   const privacy = read('PRIVACY.md');

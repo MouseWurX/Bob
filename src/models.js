@@ -11,6 +11,8 @@ import { appDir, saveSettings } from './config.js';
 import { ENGINES, engineStatus, installEngine, latestEngine } from './engines.js';
 import { audioReady, voicesReady, aceModelsDir, aceFileOk, tidyAceCache } from './audio.js';
 import { maestroModels } from './maestro.js';
+import { gpuInfo } from './platform.js';
+import { packFor } from '../public/fit.js';
 
 const MODEL_EXT = new Set(['.gguf', '.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.sft']);
 const SKIP = new Set(['node_modules', '.git', '__pycache__', 'site-packages', 'venv', '.venv', 'env', 'cache', '.cache', 'Lib', 'include', 'temp', 'tmp', 'logs', 'blobs']);
@@ -43,12 +45,38 @@ export function ownerOf(p) {
   if (/comfy/.test(s)) return 'ComfyUI';
   if (/maestro|wan2gp|wangp/.test(s)) return 'Maestro';
   if (/pinokio/.test(s)) return 'Pinokio';
-  if (/ollama|\/models\//.test(s)) return 'Ollama';
+  // 1.5.66: only Ollama's own folders (blobs, manifests) are Ollama's; models\<id>\ copies are Bob's (idFolderFile).
+  if (/ollama|\/models\/(?:blobs|manifests)\//.test(s)) return 'Ollama';
+  if (/\/models\/[\w.-]+\/[^/]+\.gguf$/.test(s)) return 'Bob';
   return 'other';
 }
 
 export function fileNameOf(url) {
   return decodeURIComponent(new URL(url).pathname.split('/').pop());
+}
+// 1.5.56: the name a catalog file is saved under. Several repos call their picture reader "mmproj-F16.gguf", so those
+// entries give it a name of their own (saveAs, a plain file name only); everything else keeps the name in the link.
+export function saveNameOf(f) {
+  return typeof f?.saveAs === 'string' && /^[\w][\w.+-]{0,150}$/.test(f.saveAs) ? f.saveAs : fileNameOf(f.url);
+}
+
+// 1.5.65: a copy that was put in a folder named after the model, next to Bob's own folder
+// (Agent 00\models\<id>\, as a hand download or a test lands), counts too: the saved name or the name in the link,
+// at the right size when the catalog knows it, and not half downloaded. Then Get models doesn't fetch it again.
+export function idFolderFile(cfg, entry, f) {
+  if (!entry?.id || !/^[\w.-]+$/.test(entry.id) || !f?.url) return null;
+  const bobDir = cfg.bobModelsDir || path.join(cfg.agentDir || '', 'models', 'bob');
+  const dir = path.join(path.dirname(bobDir), entry.id);
+  for (const name of [...new Set([saveNameOf(f), fileNameOf(f.url)])]) {
+    const p = path.join(dir, name);
+    try {
+      if (fs.existsSync(p + '.part')) continue;
+      const size = fs.statSync(p).size;
+      if (f.bytes && size !== f.bytes) continue;
+      return p;
+    } catch {}
+  }
+  return null;
 }
 
 // Fill in "$model" and "$file:role" in an entry's "use" block.
@@ -199,7 +227,7 @@ export class ModelShop {
       if (!p.startsWith(path.resolve(root) + path.sep)) throw new Error('A catalog file pointed outside its folder.');
       return p;
     }
-    return path.join(this.dir, entry.category, fileNameOf(f.url));
+    return path.join(this.dir, entry.category, saveNameOf(f));
   }
 
   // Where each of an entry's files is on this PC, if anywhere. Bob's own folder first, then anything the scan found.
@@ -211,9 +239,11 @@ export class ModelShop {
         try { const size = fs.statSync(p).size; if (!f.bytes || aceFileOk(f, size)) out[f.role] = p; } catch {}
         continue;
       }
-      const name = fileNameOf(f.url);
+      const name = saveNameOf(f);
       const mine = path.join(this.dir, entry.category, name);
       if (fs.existsSync(mine)) { out[f.role] = mine; continue; }
+      const byId = idFolderFile(this.cfg, entry, f);
+      if (byId) { out[f.role] = byId; continue; }
       const alt = [name, ...(f.aka || [])].map((n) => n.toLowerCase());
       const hit = this.found.files.find((x) => alt.includes(x.name.toLowerCase()));
       if (hit && fs.existsSync(hit.path)) out[f.role] = hit.path; // the scan can be out of date
@@ -237,7 +267,7 @@ export class ModelShop {
   async list() {
     const ollama = await this.ollamaNames();
     const models = [];
-    for (const m of this.catalog.models) models.push({ ...m, files: (m.files || []).map((f) => ({ name: fileNameOf(f.url), role: f.role })), status: await this.statusOf(m, ollama) });
+    for (const m of this.catalog.models) models.push({ ...m, files: (m.files || []).map((f) => ({ name: saveNameOf(f), role: f.role })), status: await this.statusOf(m, ollama) });
     const known = new Set(models.flatMap((m) => Object.values(m.status.located).map((p) => p.toLowerCase())));
     const extras = this.found.files.filter((f) => !known.has(f.path.toLowerCase()) && f.owner !== 'Ollama');
     return {
@@ -248,17 +278,13 @@ export class ModelShop {
   }
 
   async hardware() {
-    const gpu = await new Promise((resolve) => {
-      execFile('nvidia-smi', ['--query-gpu=name,memory.total', '--format=csv,noheader,nounits'], { timeout: 5000, windowsHide: true }, (err, out) => {
-        if (err) return resolve(null);
-        const [name, mb] = String(out).split('\n')[0].split(',').map((s) => s.trim());
-        resolve(name ? { name, vramGB: Math.round(Number(mb) / 1024) } : null);
-      });
-    });
+    // NVIDIA cards through nvidia-smi; a Mac's share of its shared memory; built-in graphics (src/platform.js).
+    const gpu = await gpuInfo();
     let freeGB = null;
     try { const s = fs.statfsSync(this.cfg.agentDir); freeGB = Math.round((s.bavail * s.bsize) / 1e9); } catch {}
     const vram = gpu?.vramGB ?? this.cfg.gpuVramGB ?? 0;
-    const pack = this.catalog.packs.find((p) => vram >= p.minVramGB) || this.catalog.packs.at(-1);
+    // 1.5.71: built-in graphics get their own set (brains only: pictures and video aren't tested there yet).
+    const pack = packFor(this.catalog.packs, vram, Boolean(gpu?.integrated));
     const ramGB = Math.round(os.totalmem() / 1024 ** 3) || null; // for brains that spill out of the graphics card into RAM
     return { gpu, freeGB, vramGB: vram || null, ramGB, suggestedPack: pack.id };
   }
@@ -533,7 +559,7 @@ export class ModelShop {
     pub.total = total || pub.total;
     pub.done = 0;
     for (const [i, h] of heads.entries()) {
-      const name = fileNameOf(h.f.url);
+      const name = saveNameOf(h.f);
       pub.file = name; pub.fileIndex = i + 1;
       pub.phase = 'downloading';
       const final = this.dest(entry, h.f);
@@ -620,6 +646,7 @@ export class ModelShop {
     // Brains not in Bob's list: ask the engine what each can do (vision, tools...), so Equip Bob only offers
     // them for jobs they can do. Asked once per name.
     await Promise.all(llms.filter((o) => !this.catalog.models.some((x) => x.ollama === o.value)).map(async (o) => { o.caps = await this.capsOf(o.value); }));
+    const ownEmbed = []; // 1.5.72: an embedding model downloaded as a file (nomic-embed-text), for Bob's own engine
     const opts = { images: [], edit: [], video: [], voice: [], speech: [{ value: 'windows', label: 'Windows voices (built in)' }], music: [], sfx: [] };
     const aw = audioReady(this.cfg);
     if (aw.music) opts.music.push({ value: 'ace-step', label: 'ACE-Step (audio tools)' });
@@ -628,6 +655,7 @@ export class ModelShop {
     for (const m of this.catalog.models) {
       const st = await this.statusOf(m, ollama);
       if (st.state !== 'installed') continue;
+      if (m.category === 'embed') { if (st.located.gguf) ownEmbed.push({ value: m.id, label: `${m.name} (Bob's own engine)` }); continue; }
       if (st.located.gguf && !llms.some((l) => l.value === m.id)) llms.push({ value: m.id, label: `${m.name} (Bob's own engine)` });
       if (m.use?.painter?.sdcpp?.edit) opts.edit.push({ value: m.id, label: m.name });
       else if (opts[m.category]) opts[m.category].push({ value: m.id, label: m.name });
@@ -653,8 +681,8 @@ export class ModelShop {
     const speechNow = tp === 'piper' || tp === 'kokoro' ? (this.cfg.tts?.model && this.catalog.models.find((m) => m.category === 'speech' && m.use?.tts?.provider === tp && this.locate(m).model === this.cfg.tts.model)?.id) || (tp === 'kokoro' ? 'kokoro-v1' : '') : tp === 'chatterbox' ? 'chatterbox' : 'windows';
     const editNow = this.catalog.models.find((m) => m.use?.painter?.sdcpp?.edit && p.sdcpp?.edit?.diffusionModel && this.locate(m).diffusionModel === p.sdcpp.edit.diffusionModel)?.id || '';
     const current = { ...Object.fromEntries(ModelShop.JOBS.filter((j) => j.kind === 'llm').map((j) => [j.id, this.cfg.models?.[j.id] || ''])), image: imgCur, edit: editNow, video: vidCur, voice: sttNow, speech: speechNow, music: aw.music ? 'ace-step' : '', sfx: aw.sfx ? 'audioldm2' : '' };
-    // Embedding models (for matching Topics by meaning), from Ollama only; never downloaded by Bob.
-    const embed = [...names].filter((n) => /embed/.test(n)).sort().map((n) => ({ value: n, label: n }));
+    // Embedding models (for matching Topics by meaning): Bob's own downloaded file first, then any in Ollama.
+    const embed = [...ownEmbed, ...[...names].filter((n) => /embed/.test(n)).sort().map((n) => ({ value: n, label: n }))];
     const embNow = this.cfg.housekeeping?.embedModel || 'nomic-embed-text';
     current.embed = embed.find((o) => o.value === embNow || o.value.split(':')[0] === embNow)?.value || '';
     return { jobs: ModelShop.JOBS, options: { llm: llms, ...opts, embed }, current, maestroRunning: maestro.length > 0 };
@@ -674,7 +702,7 @@ export class ModelShop {
       // it once flipped a PC to llama.cpp). If the model needs the other engine, the app asks.
       const inOllama = new Set([...((await this.ollamaNames()) || []), ...this.ollamaManifests()]).has(value);
       let needsEngine = null;
-      if (entry) { const loc = this.locate(entry); if (loc.gguf) { patch.llamacpp = { models: { [value]: loc.gguf } }; if (this.cfg.engine !== 'llamacpp' && !inOllama) needsEngine = 'llamacpp'; } }
+      if (entry) { const loc = this.locate(entry); if (loc.gguf) { patch.llamacpp = { models: { [value]: loc.mmproj ? { gguf: loc.gguf, mmproj: loc.mmproj } : loc.gguf } }; /* 1.5.74: keep its picture reader */ if (this.cfg.engine !== 'llamacpp' && !inOllama) needsEngine = 'llamacpp'; } }
       saveSettings(this.cfg, patch);
       return needsEngine ? { ...patch, needsEngine } : patch;
     }

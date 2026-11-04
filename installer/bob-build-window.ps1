@@ -14,6 +14,9 @@
 #   -Mode update   From Bob's "Update Bob" button: test, put the new Bob next to the old one
 #                  (resources\app.new), then "Restart Bob now" closes Bob, swaps and opens him again. If the
 #                  window is closed instead, the new Bob waits and takes over the next time Bob starts.
+#   -Prebuilt      With -Mode update: -Source is a Bob downloaded from GitHub (the release zip's resources\app),
+#                  already tested by GitHub and checked against its .sha256 by Bob. No Node.js, no tests: it only
+#                  goes next to the old one. home.json keeps pointing at the source folder it had.
 #   -Mode swap     Started by Bob himself when he finds a waiting update (renamed to *.pending): wait for
 #                  Bob to close, swap, reopen.
 #
@@ -30,7 +33,8 @@ param(
   [string] $StatusFile = '',
   [int] $Port = 0,
   [string] $AppDir = '',      # where Bob.exe goes (default: "<home>\Bob app", or %LOCALAPPDATA%\Programs\Bob)
-  [switch] $NoShortcut         # don't add or change the Start menu shortcut (for trying the installer in a sandbox)
+  [switch] $NoShortcut,        # don't add or change the Start menu shortcut (for trying the installer in a sandbox)
+  [switch] $Prebuilt           # -Mode update with a release downloaded from GitHub (no Node.js, no tests)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -84,6 +88,12 @@ $Steps = @(
   @{ id = 'app';     label = $(if ($Mode -eq 'install') { 'Putting Bob in place' } else { 'Getting the new Bob ready' }); hint = $(if ($Mode -eq 'install') { 'Copies Bob''s files next to Bob.exe and adds Bob to the Start menu.' } else { 'Puts the new Bob next to the old one. He takes over when Bob restarts.' }) },
   @{ id = 'done';    label = 'Ready'; hint = '' }
 )
+if ($Prebuilt -and $Mode -eq 'update') {
+  $Steps = @(
+    @{ id = 'verify';  label = 'Checking the Bob from GitHub'; hint = 'Downloaded from GitHub and checked against its .sha256. GitHub ran all of Bob''s checks before publishing it.' },
+    $Steps[1], $Steps[3], $Steps[4]
+  )
+}
 if ($Mode -eq 'swap') {
   $Steps = @(
     @{ id = 'swap'; label = 'Swapping in the new Bob'; hint = 'Waits for Bob to close, then swaps in the new Bob (the old one is kept as app-previous).' },
@@ -108,7 +118,7 @@ if (Test-Path -LiteralPath $ico) { try { $form.Icon = New-Object System.Drawing.
 
 $title = New-Object System.Windows.Forms.Label
 $title.Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold)
-$title.Text = $(if ($Mode -eq 'install') { "Installing Bob $version" } else { "Updating Bob to $version" })
+$title.Text = $(if ($Mode -eq 'install') { "Installing Bob $version" } elseif ($Prebuilt) { "Updating Bob to $version from GitHub" } else { "Updating Bob to $version" })
 $title.SetBounds(20, 14, 560, 28); $form.Controls.Add($title)
 
 $rows = @()
@@ -216,6 +226,8 @@ function Ask-Bob-To-Close {
 }
 
 function Write-HomeJson {
+  # Only a real source folder goes in home.json, never the copy of this window a GitHub update runs from.
+  if ($Prebuilt -or -not (Test-Path -LiteralPath (Join-Path $Source 'src\server.js'))) { return }
   New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
   $h = [ordered]@{ source = $Source }
   if ($BobHome) { $h.agentDir = $BobHome; $cfg = Join-Path $BobHome 'bob\config.json'; if (Test-Path -LiteralPath $cfg) { $h.config = $cfg } }
@@ -302,10 +314,11 @@ function Run-Quick($id) {
   switch ($id) {
     'verify' {
       $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+      if ($Prebuilt) { $npm = $true }
       if (-not $npm) { throw 'Node.js isn''t installed. Get the LTS version from https://nodejs.org, then press Try again.' }
       foreach ($f in @('package.json', 'src\server.js', 'electron\main.cjs', 'installer\bob-runtime.ps1')) { if (-not (Test-Path -LiteralPath (Join-Path $Source $f))) { throw "The source folder is missing $f." } }
       if ($ElectronVersion -notmatch '^\d+\.\d+\.\d+$') { throw "package.json doesn't name an exact Electron version (found '$ElectronVersion')." }
-      Log "Node.js $(& node -v), source $Source, Electron $ElectronVersion"
+      if ($Prebuilt) { Log "Bob $version from GitHub, in $Source, Electron $ElectronVersion" } else { Log "Node.js $(& node -v), source $Source, Electron $ElectronVersion" }
     }
     'app' {
       New-Item -ItemType Directory -Force -Path $Res | Out-Null
@@ -319,7 +332,8 @@ function Run-Quick($id) {
         else { Add-StartMenu; Log "Bob is in $AppDir, with a Start menu shortcut." }
       } else {
         Stage-App
-        Write-HomeJson
+        # A GitHub download lives in a scratch folder: home.json keeps the source folder it had.
+        if (-not $Prebuilt) { Write-HomeJson }
         Log 'The new Bob is ready next to the old one.'
       }
     }
