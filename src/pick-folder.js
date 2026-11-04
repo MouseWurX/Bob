@@ -35,7 +35,7 @@ export function pickFolder({ run = execFile, platform = process.platform, purpos
     const tries = [['zenity', ['--file-selection', '--directory', '--title', purpose === 'save' ? 'Pick the folder Bob saves things in' : 'Pick a project folder for Bob']], ['kdialog', ['--getexistingdirectory', process.env.HOME || '/']]];
     return new Promise((resolve, reject) => {
       const next = (i) => {
-        if (i >= tries.length) return reject(new Error('No folder picker (zenity or kdialog) on this computer. Type the folder instead.'));
+        if (i >= tries.length) return reject(new Error('No folder picker (zenity or kdialog) on this replicant matrix. Type the folder instead.'));
         run(tries[i][0], tries[i][1], { timeout: 10 * 60e3 }, (err, out) => {
           if (err && err.code === 'ENOENT') return next(i + 1);
           resolve(err ? '' : String(out || '').trim()); // exit code 1 = cancelled

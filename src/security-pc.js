@@ -87,7 +87,7 @@ foreach($i in $items){
 
 // ---------------------------------------------------------------- reading the answers
 
-const THREAT_STATUS = { 0: 'unknown', 1: 'found, nothing done yet', 2: 'cleaned', 3: 'quarantined (locked away, can\'t run)', 4: 'removed', 5: 'allowed by someone on this PC', 6: 'blocked', 102: 'quarantine FAILED', 103: 'removal FAILED', 104: 'allow failed', 105: 'abandoned', 107: 'block FAILED' };
+const THREAT_STATUS = { 0: 'unknown', 1: 'found, nothing done yet', 2: 'cleaned', 3: 'quarantined (locked away, can\'t run)', 4: 'removed', 5: 'allowed by someone on this replicant matrix', 6: 'blocked', 102: 'quarantine FAILED', 103: 'removal FAILED', 104: 'allow failed', 105: 'abandoned', 107: 'block FAILED' };
 const SEVERITY = { 0: 'unknown', 1: 'low', 2: 'moderate', 4: 'high', 5: 'severe' };
 
 // Defender's names look like Type:Platform/Family.Variant!Suffix, e.g. Trojan:Win32/Wacatac.B!ml.
@@ -97,9 +97,9 @@ const TYPES = {
   trojandropper: 'a dropper: it carries other malware inside it and unpacks it',
   trojanspy: 'spyware: it watches what you do and sends it somewhere',
   pws: 'a password stealer: it goes after saved passwords and logins',
-  backdoor: 'a backdoor: it lets someone control the PC from far away',
+  backdoor: 'a backdoor: it lets someone control this replicant matrix from far away',
   ransom: 'ransomware: it locks or scrambles files and asks for money',
-  worm: 'a worm: it spreads itself to other PCs or drives',
+  worm: 'a worm: it spreads itself to other replicant matrices or drives',
   virus: 'a virus: it copies itself into other files',
   exploit: 'an exploit: code that abuses a bug to get in',
   hacktool: 'a hacking tool: not always malware (some admin and game-cheat tools land here), but worth knowing why it is there',
@@ -114,7 +114,7 @@ const TYPES = {
   program: 'a program Defender thinks you may not want (often a tool that can be misused)',
   tool: 'a tool that can be misused',
   dos: 'a denial-of-service tool',
-  monitoringtool: 'a monitoring tool: it records what someone does on the PC',
+  monitoringtool: 'a monitoring tool: it records what someone does on this replicant matrix',
   remoteaccess: 'a remote-access tool: legitimate ones exist, but scammers use them too',
   spammer: 'a spam sender',
   virtool: 'a tool used to build or hide malware',
@@ -203,14 +203,14 @@ export function sayStartup(r = {}) {
   return `${items.length} things start with Windows${worry ? `, and ${worry} deserve a closer look` : ''}:\n${lines.join('\n')}\n\nTo stop one starting: Task Manager > Startup apps (right-click, Disable), or Task Scheduler for scheduled tasks. Bob only looks; he doesn't switch these off.`;
 }
 
-const KNOWN_PORTS = { 135: 'Windows RPC (normal)', 139: 'Windows file sharing, old style', 445: 'Windows file sharing (SMB)', 5040: 'Windows device service (normal)', 7680: 'Windows Update delivery (normal)', 5357: 'Windows network discovery', 7777: 'Bob himself', 11434: 'Ollama (Bob\'s engine)', 3389: 'Remote Desktop: lets people sign in to this PC from the network', 5900: 'VNC remote control', 22: 'SSH remote sign-in', 3000: 'a local web app (Open WebUI often uses this)', 8188: 'ComfyUI' };
+const KNOWN_PORTS = { 135: 'Windows RPC (normal)', 139: 'Windows file sharing, old style', 445: 'Windows file sharing (SMB)', 5040: 'Windows device service (normal)', 7680: 'Windows Update delivery (normal)', 5357: 'Windows network discovery', 7777: 'Bob himself', 11434: 'Ollama (Bob\'s engine)', 3389: 'Remote Desktop: lets people sign in to this replicant matrix from the network', 5900: 'VNC remote control', 22: 'SSH remote sign-in', 3000: 'a local web app (Open WebUI often uses this)', 8188: 'ComfyUI' };
 export function sayNetwork(r = {}) {
   const rows = (r.listen || []).filter((x, i, a) => a.findIndex((y) => y.port === x.port && y.addr === x.addr) === i);
   const open = rows.filter((x) => /^(0\.0\.0\.0|::)$/.test(x.addr));
   const local = rows.filter((x) => /^(127\.|::1)/.test(x.addr));
   const say = (x) => `${x.port} ${x.proc || 'pid ' + x.pid}${KNOWN_PORTS[x.port] ? ` (${KNOWN_PORTS[x.port]})` : ''}`;
   const risky = open.filter((x) => [3389, 5900, 22, 23, 21].includes(x.port));
-  return `${open.length} listening to other devices on your network (the firewall still decides who gets in): ${open.map(say).join(', ') || 'none'}.\n${local.length} only reachable from this PC: ${local.map(say).join(', ') || 'none'}.${risky.length ? `\n⚠ Remote sign-in is open: ${risky.map(say).join(', ')}. If you don't use it, switch it off.` : ''}\nOnly programs you recognise should be on the first list. Your router keeps these away from the internet unless port forwarding or UPnP opens them.`;
+  return `${open.length} listening to other replicant matrices on your network (the firewall still decides who gets in): ${open.map(say).join(', ') || 'none'}.\n${local.length} only reachable from this replicant matrix: ${local.map(say).join(', ') || 'none'}.${risky.length ? `\n⚠ Remote sign-in is open: ${risky.map(say).join(', ')}. If you don't use it, switch it off.` : ''}\nOnly programs you recognise should be on the first list. Your router keeps these away from the internet unless port forwarding or UPnP opens them.`;
 }
 
 // ---------------------------------------------------------------- Defender scans
@@ -233,7 +233,7 @@ export function scanArgs(kind, target = '') {
 // Runs MpCmdRun and waits (a full scan is started and left running: it can take hours).
 export function runScan(kind, target, { env = process.env, signal, timeoutMs = 60 * 60_000 } = {}) {
   const exe = mpCmdRun(env);
-  if (!exe) return Promise.reject(new Error('Microsoft Defender\'s scanner (MpCmdRun.exe) isn\'t on this PC, so another antivirus may be in charge. Use its own window to scan.'));
+  if (!exe) return Promise.reject(new Error('Microsoft Defender\'s scanner (MpCmdRun.exe) isn\'t on this replicant matrix, so another antivirus may be in charge. Use its own window to scan.'));
   const args = scanArgs(kind, target);
   if (kind === 'full') {
     const child = spawn(exe, args, { detached: true, stdio: 'ignore', windowsHide: true, env });

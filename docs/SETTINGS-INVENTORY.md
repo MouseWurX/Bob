@@ -16,7 +16,7 @@ Update this file in the same handover as any change to settings.
 | Launch Bob on start-up | Off unless you turn it on. | off | ok |
 | Check for updates when Bob starts | Off unless you turn it on. Bob only tells you; updating always takes your click. | off | ok |
 | (footer) Version, graphics card, free disk; Check for updates; Run first-time setup | | | ok |
-| Show advanced settings | Brains, voice details, engines and speed, connections, Hands, housekeeping. | off (remembered per PC) | ok |
+| Show advanced settings | Brains, voice details, engines and speed, connections, Hands, housekeeping, check-ins. | off (remembered per PC) | ok |
 
 ## Settings: Advanced
 | Section | Setting | Hint / notes | Default | Review |
@@ -32,13 +32,21 @@ Update this file in the same handover as any change to settings.
 | Connections | Let Bob use ComfyUI; ComfyUI port | off unless you turn it on | off, 8188 | ok |
 | Connections | Cloud helpers (per provider on/off + model) | Key found / No key yet | all off | ok |
 | Connections | Let my phone in; Make a passcode; Address for the phone (Check again) | off unless you turn it on | off, no passcode | new (Android), awaiting review |
+| Connections | Talk to Bob on Telegram; Bot token (BOB_TELEGRAM_TOKEN user variable); Your Telegram account (pairing code, New code, Forget my Telegram account); Send pictures Bob makes; Answer Bob's OK cards on Telegram | off unless you turn it on | all off, not paired | ok (approved with edits) |
 | Hands | Let Bob use Hands (master switch) | Off = every Hand below is off. | off | ok |
 | Hands | Files; Run programs and scripts; Schedules; Open and use apps; Office documents and converting; Security and privacy | long "what" text each | all off | ok (1.5.2; Office signed off; Security and privacy added, needs sign-off) |
 | Hands > Check a password safely | box + Check button under Security and privacy | password field (not saved) | empty | needs sign-off |
+| Hands | Connected apps (MCP) | long "what" text | off | ok (clear with edits, 2026-11-04) |
+| Hands > Connected apps | per app: On switch, Check, Show tools, Remove, Get uv for me (when uv is missing); card: Allow / Allow the rest of this job / Deny, Show details, This one always asks; Add a connected app (Fill in for Blender, Fill in for Unreal Engine, Name, Program to start, Arguments, Or its address, Add app); Paste a setup from another app (Add these) | each app off when added | no apps | ok (clear with edits, 2026-11-04) |
 | Hands | Folders the Files Hand may work in; Stop a command after | | none | ok |
 | Housekeeping | Tidy up old things by himself | Only while he's idle (10 minutes quiet, nothing running)… | off | ok (1.5.2) |
 | Housekeeping | Load a brain for it if none is loaded | Off: … so a game keeps the graphics card. | off | ok (1.5.2) |
 | Housekeeping | Per item: Chats 3 months, Pictures and clips 6 months, Sounds and music 3 months, Finished tasks 3 days, Logbook 3 months | | as listed | ok |
+| Check-ins | Check in on a schedule | Bob looks over his downloads, tasks and schedules when you choose, and only tells you (a card in the chat) when something needs you. Looking never changes anything. Only while Bob is open. | off | ok (1.5.78, approved with edits) |
+| Check-ins | How often | Every day / Every weekday (at a time) / Every few hours (1-24) | Every day at 09:00 | ok (1.5.78, approved with edits) |
+| Check-ins | What Bob checks | Downloads that failed or stopped moving; Tasks that failed or wait for your OK; Scheduled jobs that didn't finish; Disk space running low | all ticked (nothing runs until the main switch is on) | ok (1.5.78, approved with edits) |
+| Check-ins | Your own checks (Save my checks) | one per line, up to 8; quick brain on the processor, idle only, never in Gaming | none | ok (1.5.78, approved with edits) |
+| Check-ins | Check in now | button: one round now, result shown under it | | ok (1.5.78, approved with edits) |
 | Remove Bob | Remove Bob (keeps chats, settings and models unless ticked) | More text | | ok |
 
 ## Other pages
@@ -91,11 +99,13 @@ Update this file in the same handover as any change to settings.
 | Chat page, Effort | In Gaming, Medium/High/Extreme are greyed out: "Gaming keeps the graphics card free. Switch session to use more effort." | Low | ok |
 | Tasks | In Gaming, picture/clip/music and Medium-and-up jobs wait: "Waiting · Gaming is on", "Switch the session to Normal to run it." | — | ok |
 | Settings > Equip, Session brains | Gaming session brain (`sessionBrains.gaming`), default Qwen3 4B Instruct 2507 (1.5.25: picked on time to first word and to a full answer on the processor) | qwen3-4b | ok (1.5.56: also a 🎮 Gaming slot in Equip Bob; only takes catalog brains timed for gaming, never Gemma 4 E4B) |
+| Settings > Brains (1.5.87) | **Pick how much each brain keeps in mind** (`brainCtxOn`): "Off to start with: Bob picks for each brain. On: pick a size for each brain you use. Each menu only lists sizes that brain was made for. A size you pick here is used for that brain everywhere, instead of the session sizes above." When on, one menu per equipped brain (`brainCtx` {model: size}): "Bob's pick (NK)" then 8K up to the most the model was made for (read from the GGUF header / Ollama), marked "(the most it was made for)" and 32K "(enough for most chats)"; limit unknown = up to 32K. "i" tip per brain: "Made for up to NK. Bob uses NK unless you pick. Bigger reads longer files and chats, but uses more memory and takes longer to read when it's full." (unknown limit: "Bob couldn't read how much this brain was made for, so the menu only goes up to 32K, which every brain handles."; the Gaming brain adds that Bob keeps it at 32K while you play). In a Gaming session a pick never grows the brain past the session's size. | off | ok (approved with edits) |
 | Help, Sessions and Effort | "Session: what the graphics card is kept for. Effort: how hard Bob works on each message." | — | ok |
-| Settings > Advanced > Engines & speed > Speed for this PC | Get Bob ready while you type · Let games go first · Match picture settings to my graphics card | all off | ok (approved with edits, hw tuning) |
+| Settings > Advanced > Engines & speed > Speed for this replicant matrix | Get Bob ready while you type · Let games go first · Match picture settings to my graphics card | all off | ok (approved with edits, hw tuning) |
 | Settings > Advanced > Engines & speed | Test Bob's speed (button + last 6 results) | | ok (approved with edits) |
-| Settings > Everyday footer | Check this PC (read-only tips) | | ok (approved with edits) |
+| Settings > Everyday footer | Check this replicant matrix (read-only tips) | | ok (approved with edits) |
 | Settings > Everyday | Let Bob search the web: "Off unless you turn it on. Bob looks things up on DuckDuckGo and reads pages when a question needs it. Only the search words and page addresses leave your PC." | off | ok (approved with edits, docs/help) |
+| Settings > Everyday (How Bob works) | Show Bob's plan before big jobs: "Off unless you turn it on. Before a job with several steps, or any step that changes files or runs programs, Bob shows every step on one card and waits for you. Any OKs the job needs are ticked on the same card." Closed panel: "Plans before big jobs: on/off". Chat card: Go ahead / Go ahead with ticked (n of m OKs) / Change something (What should Bob change? + Send to Bob / Back) / Not now (Bob drops this job) | off | ok (approved with edits, plan card) |
 
 ## Added in 1.5.27 (docs, Help and web search), approved by the settings thread (with edits)
 | Where | What | Default | Review |
@@ -121,4 +131,21 @@ Update this file in the same handover as any change to settings.
 | Bob's thinking > Follow along | On: the window keeps up with the newest lines. Off: it stays where you scrolled to. (Scrolling up turns it off by itself.) | on | ok |
 | Bob's thinking > Clear | Empty this window. Nothing else changes. | button | ok |
 | Settings > Advanced > Engines & speed | "Keep the graphics card free for quick answers" (1.5.69) adds "A message with a link still goes to your main Brain, which reads web pages better." before "Applies in the Normal session; Gaming always does this." Chat line when it happens: "This one has a link in it, so my main Brain takes it." (adds "(loading it, about N seconds)" when the Brain isn't loaded) | off | ok (approved with edits, 1.5.69) |
-| Get models > Setup / Equip Bob > Set (1.5.71) | New starter set "Built-in graphics (handhelds and thin laptops)", suggested when Bob finds built-in AMD (laptop/handheld Ryzen) or Intel Arc/Iris Xe graphics and no NVIDIA card. Brains only; its note: "Not yet measured on built-in graphics. Pictures and video are left out of this set until they've been tried there." Hardware line: "Built-in graphics: <chip>, about N GB of memory shared with it"; tag "Fits your PC". | suggested by detection | pending sign-off |
+| Get models > Setup / Equip Bob > Set (1.5.71) | New starter set "Built-in graphics (handhelds and thin laptops)", suggested when Bob finds built-in AMD (laptop/handheld Ryzen) or Intel Arc/Iris Xe graphics and no NVIDIA card. Brains only; its note: "Not yet measured on built-in graphics. Pictures and video are left out of this set until they've been tried there." Hardware line: "Built-in graphics: <chip>, about N GB of memory shared with it"; tag "Fits your replicant matrix". | suggested by detection | pending sign-off |
+| Get models > Setup / Equip Bob > Set (handheld pictures) | The "Built-in graphics" set now also offers Z-Image Turbo (6 GB card version) for pictures and FLUX.2 klein 4B (picture edits, 6 GB card version), both ticked, and Wan 2.2 TI2V 5B (small card version) for clips, left unticked ("clips are very slow on built-in graphics"). **Match picture settings to my graphics card** (still Off by default) makes pictures 768 px on built-in graphics. The set marked (this PC) is now the built-in one on handhelds. |
+
+## Added in 1.5.80 (how-tos)
+
+| Where | Setting / text | Default | Status |
+|---|---|---|---|
+| Settings > Everyday > How Bob works | Let Bob learn how-tos: "Off unless you turn it on. After a job with a few steps goes well, Bob offers to keep the steps as a how-to, and follows them next time you ask for something like it. Nothing is kept without your click. Your how-tos are in 📒 How-tos below." | off | ok (approved with edits, 1.5.80) |
+| Settings > Everyday | 📒 How-tos panel: list (name, For:, steps, used N times), Edit (Name, What it's for, Steps one per line, Save changes / Cancel), Delete then Delete for good / Keep it. Closed: "N how-tos · Learning: on/off" | — | ok (approved with edits, 1.5.80) |
+| Chat page | Card: "📒 That worked. Keep the steps as a how-to?" + "Next time you ask for something like this, I'll follow them." + Name box + steps + Save how-to / Not now. After: "Saved the how-to "…". You can change or delete it in Settings, 📒 How-tos." | — | ok (approved with edits, 1.5.80) |
+| Chat page | Line when used: "📒 Following my how-to "…"" | — | ok (approved with edits, 1.5.80) |
+
+
+## Replicant matrix wording (1.5.89, owner's ask)
+
+| Where | Setting / text | Default | Status |
+|---|---|---|---|
+| Everywhere (desktop, phone, Help, Bob's chat lines) | The machine Bob runs on is his "replicant matrix", with a spec line beside the first mention on a screen; "(your computer)" after leaves/stays lines. Renamed above: This replicant matrix and updates, Check this replicant matrix, Speed for this replicant matrix, Fits your replicant matrix, Let my other replicant matrices in (was Let my phone in / Let my other devices in). Glossary "Replicant matrix", FAQ "What's a replicant matrix?", Welcome line. Model prompts still say PC on purpose. Spec: replicant-matrix-WORDING.md | — | ok (owner's exception to rule 1) |

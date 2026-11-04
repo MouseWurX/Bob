@@ -47,7 +47,7 @@ export function sendOutBlock(cfg, w, action, target = {}) {
   if (!limitOn(cfg, 'sendOut')) return '';
   const proc = String(w?.process || '').toLowerCase().replace(/\.exe$/, '');
   if (!SEND_PROCESSES.test(proc)) return '';
-  const what = `${w.process} can send things off your PC, and "Don't send anything out" is on (Settings, Hands)`;
+  const what = `${w.process} can send things off your replicant matrix (your computer), and "Don't send anything out" is on (Settings, Hands)`;
   if (action === 'type' || action === 'keys') return `${what}, so Bob doesn't type or press keys there.`;
   if (action === 'click' && SEND_BUTTON.test(`${target.name || ''} ${target.id || ''}`)) return `${what}, so Bob doesn't click that.`;
   return '';

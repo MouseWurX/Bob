@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import { saveNameOf, idFolderFile } from './models.js';
 import path from 'node:path';
 import os from 'node:os';
-import { spawn, execFile } from 'node:child_process';
+import { spawn, execFile, spawnSync } from 'node:child_process';
 import { tidySchema } from './toolbox.js';
 import { templateFor, samplingFor } from './model-family.js';
 import { gaming, LONG_CODER } from './sessions.js';
@@ -14,6 +14,7 @@ import { gamingCard, decideCard, readCard, CARD_BUSY_PCT, CARD_MIN_FREE_MB } fro
 import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts } from './tuning.js';
 import { exeName } from './platform.js';
 import { Embedder } from './embedder.js';
+import { ggufInfo } from './gguf.js';
 
 // 1.5.19: the context a brain gets when nothing else picks one. 32K fits a 26B brain on a 16 GB card.
 
@@ -184,6 +185,11 @@ export class LlamaCpp {
   // right on llama.cpp; the official file got 25 of 25.
   catalogFile(id) { return catalogFileFor(this.cfg, id); }
 
+  // 1.5.87: the longest context a model was made for, from its GGUF header, so nothing asks for more (null: unknown).
+  async maxCtx(model) {
+    try { return ggufInfo(this.resolve(model).gguf)?.ctxTrain || null; } catch { return null; }
+  }
+
   // Ollama name -> GGUF file (+ vision projector), by reading Ollama's manifest.
   resolve(model) {
     const override = this.lc.models?.[model];
@@ -292,11 +298,47 @@ export class LlamaCpp {
   // --fit came in with newer llama.cpp builds; older ones would refuse to start with it.
   fitOn() {
     if (typeof this.lc.fit === 'boolean') return this.lc.fit;
-    try {
-      const v = JSON.parse(fs.readFileSync(path.join(this.cfg.agentDir, 'llama.cpp', 'bob-llamacpp.json'), 'utf8')).version;
-      return Number(String(v).replace(/^b/, '')) >= 12000;
-    } catch { return false; }
+    return this.buildNo() >= 12000; // 1.5.91: the same marker lookup as the load flag
   }
+
+  // The llama-server Bob starts: the one set by hand, or the one in his engine folder.
+  exePath() { return this.lc.exe || path.join(this.cfg.agentDir, 'llama.cpp', exeName('llama-server')); }
+  // llama.cpp build number (0 when unknown). 1.5.91: the marker next to the exe first (the bundled engine and an
+  // engine set by hand carry their own), then the one in Bob's engine folder.
+  buildNo() {
+    for (const dir of [path.dirname(this.exePath()), path.join(this.cfg.agentDir, 'llama.cpp')]) {
+      try { const n = Number(String(JSON.parse(fs.readFileSync(path.join(dir, 'bob-llamacpp.json'), 'utf8')).version).replace(/^b/, '')); if (n) return n; } catch {}
+    }
+    return 0;
+  }
+  // 1.5.91: with no marker, ask the engine itself once (its --help) which load flag it knows. Only a real
+  // llama-server is asked; anything else, or no answer within 5 s, counts as unknown.
+  loadFlag() {
+    const n = this.buildNo();
+    if (n) return n >= 12032 ? 'load-mode' : 'no-mmap';
+    const exe = this.exePath();
+    if (this._loadFlag && this._loadFlag.exe === exe) return this._loadFlag.flag; // asked once per exe
+    let flag = null;
+    if (/llama-server/i.test(path.basename(exe)) && fs.existsSync(exe)) {
+      try {
+        const r = spawnSync(exe, ['--help'], { timeout: 5000, encoding: 'utf8', windowsHide: true });
+        const text = `${r.stdout || ''}${r.stderr || ''}`;
+        flag = /--load-mode\b/.test(text) ? 'load-mode' : /--no-mmap\b/.test(text) ? 'no-mmap' : null;
+      } catch {}
+    }
+    this._loadFlag = { exe, flag };
+    return flag;
+  }
+
+  // 1.5.90: no memory-mapping when some of the brain is placed in RAM on the card route (see buildArgs).
+  readsWhole(args, cpu) {
+    if (cpu || this.lc.loadMode === 'mmap') return false;
+    if (args.some((a) => ['--mmap', '--no-mmap', '--load-mode', '-lm'].includes(a))) return false; // set by hand
+    return args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a));
+  }
+  // --load-mode is in the builds Bob ships (b12032, the one tested); older builds only know --no-mmap.
+  // 1.5.91: when the build can't be told, no flag at all (b12032 refuses --no-mmap, so a guess can stop the engine).
+  noMmapArgs() { const f = this.loadFlag(); return f === 'load-mode' ? ['--load-mode', 'none'] : f === 'no-mmap' ? ['--no-mmap'] : []; }
 
   // A model can see pictures when it has a vision projector (mmproj) and vision isn't switched off.
   async hasVision(model) {
@@ -344,6 +386,10 @@ export class LlamaCpp {
     // Without fit, every layer goes on the card as before.
     if (this.fitsItself(args, cpu)) args.push('--fit', 'on');
     else if (!args.includes('-ngl')) args.push('-ngl', '999');
+    // When part of the brain stays in RAM (fit, or experts kept on the processor), read it all in at load instead of
+    // letting Windows page it in during the first request. PC test 2026-11-04 (Qwen3.6, --fit, 128K): first reply
+    // 27 s -> 1.4 s and RAM 21 -> 12 GB, for about 10 s more load. llamacpp.loadMode "mmap" keeps the old way.
+    if (this.readsWhole(args, cpu)) args.push(...this.noMmapArgs());
     // 1.5.19: one conversation at a time, so it gets the whole context (more slots split it into small pieces).
     if (!args.some((a) => ['-np', '--parallel'].includes(a))) args.push('-np', '1');
     args.push(...this.templateArgs(model, gguf, args));
@@ -490,7 +536,7 @@ export class LlamaCpp {
     // A llama-server left over from a crash would hold the port: stop it first.
     const pidFile = path.join(this.cfg.dataDir, `llama-server${this.tag}.pid`);
     try { process.kill(Number(fs.readFileSync(pidFile, 'utf8')), 'SIGTERM'); await new Promise((r) => setTimeout(r, 800)); } catch {}
-    const exe = this.lc.exe || path.join(this.cfg.agentDir, 'llama.cpp', exeName('llama-server'));
+    const exe = this.exePath();
     // The exact command, so speed settings can be checked (e.g. that the draft model really went in).
     try { fs.writeFileSync(path.join(this.cfg.dataDir, `llama-server${this.tag}-args.txt`), [exe, ...args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ') + '\n'); } catch {}
     let log = '';

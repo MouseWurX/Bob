@@ -38,7 +38,7 @@ Bob runs on Macs with Apple Silicon (M1 and newer), using the Mac's graphics (Me
 2. The first time, macOS says it can't check Bob (official Mac builds are ad-hoc signed: sealed so macOS can tell if a file was changed, but not with a paid Apple developer account, and that won't change). Open **System Settings > Privacy & Security**, scroll down and click **Open Anyway** next to Bob. Once only.
 3. Bob keeps his things in `~/Library/Application Support/Bob/home`.
 
-On a Mac, llama.cpp and stable-diffusion.cpp download as usual. whisper.cpp and Piper have no Mac builds Bob can use (hear through Ollama or a cloud helper; speak with Kokoro voices). Install FFmpeg (Homebrew) and LibreOffice yourself and Bob finds them. The Apps Hand, Defender scans, the Gaming card switch, Windows Task Scheduler, Check this PC and Update Bob are hidden; the Security Hand checks the firewall, FileVault, Gatekeeper, System Integrity Protection, login items and listening programs instead. To update, replace Bob in Applications with the newest zip; to remove him, drag him to the Bin (and the folder above, if you want everything gone).
+On a Mac, llama.cpp and stable-diffusion.cpp download as usual. whisper.cpp and Piper have no Mac builds Bob can use (hear through Ollama or a cloud helper; speak with Kokoro voices). Install FFmpeg (Homebrew) and LibreOffice yourself and Bob finds them. The Apps Hand, Defender scans, the Gaming card switch, Windows Task Scheduler, Check this replicant matrix and Update Bob are hidden; the Security Hand checks the firewall, FileVault, Gatekeeper, System Integrity Protection, login items and listening programs instead. To update, replace Bob in Applications with the newest zip; to remove him, drag him to the Bin (and the folder above, if you want everything gone).
 
 ## 2. Finding your way around
 
@@ -63,14 +63,14 @@ Handy things in the chat:
 These open as a page in the middle of the window, in place of the chat. **← Back to chat** (or Esc, or Chat in the menu) takes you back. A bar along the top of the page, which stays put while you scroll, jumps between Equip Bob, the model pages, Style and Settings, so clicking Bob's picture gets you everywhere too.
 
 - **Get models:** Equip Bob, the model shops (Voice & conversation, Coding, Seeing pictures, Pictures & video) and **On this PC**.
-- **Settings** starts as one short page showing what's set now: Bob's voice (with **Play sample** and **Change**), his look, the colours, animations, the cat's name, one brain, launch on start-up, Projects, **Where Bob saves things**, **Let Bob search the web** and checking for updates (all three off unless you turn them on), and the version, graphics card and disk space, with **Check for updates**, **Run first-time setup** and **Check this PC**.
-- **Show advanced settings** (off unless you turn it on, and remembered) adds a search box and the rest: Brains (model roles, session brains, context), Voice details, Look & feel, Engines & speed, Connections (ComfyUI, cloud helpers), Hands, Housekeeping and Remove Bob. Longer explanations fold behind **More**.
+- **Settings** starts as one short page showing what's set now: Bob's voice (with **Play sample** and **Change**), his look, the colours, animations, the cat's name, one brain, launch on start-up, Projects, **Where Bob saves things**, **Let Bob search the web**, **Show Bob's plan before big jobs** and checking for updates (off unless you turn them on), and the version, graphics card and disk space, with **Check for updates**, **Run first-time setup** and **Check this replicant matrix**.
+- **Show advanced settings** (off unless you turn it on, and remembered) adds a search box and the rest: Brains (model roles, session brains, context), Voice details, Look & feel, Engines & speed, Connections (ComfyUI, cloud helpers), Hands, Housekeeping, Check-ins and Remove Bob. Longer explanations fold behind **More**.
 
 ---
 
 ### Making Bob faster on your PC
 
-- **Check this PC** (Settings, bottom of the Everyday page) looks for things that slow Bob down and shows how to fix each one: memory below its rated speed (turn on EXPO or XMP in the BIOS), an old NVIDIA driver, a laptop on battery, models on a slow drive, other apps holding graphics memory. Bob only looks; he never changes Windows or driver settings.
+- **Check this replicant matrix** (Settings, bottom of the Everyday page) looks for things that slow Bob down and shows how to fix each one: memory below its rated speed (turn on EXPO or XMP in the BIOS), an old NVIDIA driver, a laptop on battery, models on a slow drive, other apps holding graphics memory. Bob only looks; he never changes Windows or driver settings.
 - **Test Bob's speed** (Advanced, Engines & speed) times the first word and the full answer, and keeps your last results so you can compare before and after a change.
 - Three switches, off until you turn them on: **Get Bob ready while you type**, **Let games go first** and **Match picture settings to my graphics card**.
 
@@ -152,7 +152,7 @@ With just these, Bob can chat, plan, research the web, read pictures, hear you a
 | Job | 16 GB card or more | 8 GB card | 6 GB card (most laptops) |
 |---|---|---|---|
 | Brain | Qwen3.6 35B-A3B (answers Low-effort chat straight off; Gemma 4 26B does Office and Deep thinking) | Gemma 4 E4B | Qwen3 4B (light, leaves room for longer chats; Gemma 4 E4B still sees pictures and hears you) |
-| Coding | Qwen3.6 35B-A3B (a big context (128K, how much it keeps in mind); always thinks coding jobs through) | Qwen3 Coder 30B (slower, runs mostly in RAM) | Qwen2.5 Coder 7B |
+| Coding | Qwen3.6 35B-A3B (a big context (256K, how much it keeps in mind); always thinks coding jobs through) | Qwen3 Coder 30B (slower, runs mostly in RAM) | Qwen2.5 Coder 7B |
 | Painter | Z-Image Turbo | Z-Image Turbo, 8 GB version | Z-Image Turbo, 6 GB version |
 | Picture editor | Qwen Image Edit | FLUX.2 klein 4B | FLUX.2 klein 4B, 6 GB version |
 | Video | Wan 2.2 5B | Wan 2.2 5B, small card version | the same, left unticked (very slow) |
@@ -256,6 +256,20 @@ Safety nets:
 
 There's also a **Tidy up** button if you'd rather do it now, by hand.
 
+### Check-ins (off unless you turn it on)
+
+Settings, Show advanced settings, **🔔 Check-ins**. On a schedule you pick (**Every day** or **Every weekday** at a time, or **Every few hours**), Bob does a quick round and only speaks up when something needs you. If everything is fine, he says nothing; **Last check-in** in Settings and his logbook show each round.
+
+What he looks at (each can be unticked under **What Bob checks**):
+
+- Downloads that failed or stopped moving (no progress for 15 minutes).
+- Tasks that failed or wait for your OK.
+- Scheduled jobs that didn't finish.
+- Disk space running low (under 10 GB free where his models live).
+- **Your own checks**: up to 8 lines such as "Did the build finish?". His quick brain answers them from his tasks, downloads, schedules and logbook only, on the processor, only while he's idle and never in the Gaming session. A brain loaded just for this is let go straight after.
+
+When something needs you, a Check-in card appears in the chat (and a notification if **Alerts** is on). The same thing isn't repeated until a day has passed. A check-in never changes, retries or downloads anything, and nothing goes online. Check-ins happen while Bob is open (Windows, Mac and Linux alike); a missed one is done once when he's back. **Check in now** does a round on the spot.
+
 ---
 
 ## 7. Pictures, edits and video
@@ -288,6 +302,18 @@ Hands are Bob's way of doing things for you on your PC rather than just talking 
 - **Apps:** click and type in another program for you.
 - **Office documents and converting:** convert files (Word, Excel, PowerPoint and OpenDocument to and from each other or to PDF; pictures; sound; video), read office files, make new documents, spreadsheets and slides, and change them (fill cells, add rows and slides, replace text, fill a template).
 - **Security and privacy:** check the PC's protection, explain Defender alerts and start scans, look at suspicious downloads, scripts and emails without opening them, find and remove hidden details (like GPS in photos) before sharing, and check whether a website, link or sender is genuine from public records.
+- **Connected apps (MCP):** work inside Unreal Engine, Blender and other apps that offer their tools through an MCP add-on.
+
+### Connected apps (MCP)
+
+Apps with an MCP add-on (Unreal Engine and Blender have them) can offer Bob their own tools. Ask things like "in Blender, add a cube at the origin and make it red", "what's in the scene?" or "list the actors in my Unreal level".
+
+- Install the app's MCP add-on and switch it on in the app first (for Blender: the Blender MCP add-on, Connect in its panel, plus uv: **Get uv for me** fetches it; for Unreal: your Unreal MCP plugin with the editor open).
+- Settings → Show advanced settings → Hands: switch on **Connected apps (MCP)**, then under **Connected apps** use **Add a connected app** (**Fill in for Blender** / **Fill in for Unreal Engine** fill in a common setup) or **Paste a setup from another app** (the "mcpServers" block from the add-on's instructions, Claude Desktop, Cline, Cursor or OpenCode). Press **Check**, then tick **On** for the app. New apps always come in switched off.
+- Bob starts or reaches an app only when a job needs it and lets it go after 5 minutes unused, when you switch it off, or when you press ✋ Hands.
+- Every step shows a card that says in plain words what Bob will do, with the exact tool and inputs under **Show details** (**Allow** / **Allow the rest of this job** / **Deny**), unless "Let Bob work without asking" is on. Tools that run code inside the app or can delete things show the code and always ask (no "rest of this job"). The hard limits apply to the inputs, including the blocked-commands list on any code a tool would run inside the app.
+- While **Don't send anything out** is on, Bob only talks to apps on this computer (localhost / 127.0.0.1).
+- Works the same on Windows, Mac and Linux. The phone app shows the same cards for jobs sent from the phone; the apps themselves run on the PC.
 
 ### Office documents and converting
 
@@ -340,13 +366,15 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 
 ## 10. Optional extras (all off until you turn them on)
 
+- **Show Bob's plan before big jobs**: before a job with several steps, or any step that changes files or runs programs (also a video clip, a song or a cloud helper), Bob shows every step on one card and waits. Steps that need an OK have their own tick box on that card. Press **Go ahead**, **Change something** (type what you want different, and he makes a new plan) or **Not now (Bob drops this job)**. Each step is still checked when he gets to it, and anything not on the plan asks on its own card. Off unless you turn it on.
 - **Let Bob search the web**: Bob looks things up on DuckDuckGo and reads pages when a question needs it. Only the search words and page address leave your PC. Off: he tells you when a question needs the internet and where this switch is. The same setting is the **🌐 Web search** switch next to Effort on the chat page; flip either and both change.
+- **Let Bob learn how-tos**: after a job with a few steps goes well, Bob offers one card to keep the steps as a how-to, and follows them next time you ask for something like it. Nothing is kept until you press **Save how-to**. Edit or delete them in Settings, **📒 How-tos**. A how-to is plain text: Hands still ask for your OK as usual. They stay on your PC.
 - **Launch on start-up**: Bob opens when Windows starts.
 - **Cloud helpers**: hand a very big job to a paid online AI, using your own key. Bob asks you each time, because it costs money and sends that job off your PC.
 - **Music and sound effects**: extra downloads for the audio tools.
 - **Extra voices.**
 - **Advanced workshop**: if you use ComfyUI, Bob can run its workflows for you.
-- **Let my other devices in** (Settings, Show advanced settings, Connections; off): Bob for Android, or your phone's browser, talks to Bob over Tailscale with a passcode. Make a passcode, add the address it shows to the phone, then restart Bob. Only Tailscale addresses get in.
+- **Let my other replicant matrices in** (Settings, Show advanced settings, Connections; off): Bob for Android, or your phone's browser, talks to Bob over Tailscale with a passcode. Make a passcode, add the address it shows to the phone, then restart Bob. Only Tailscale addresses get in.
 - **Check for updates when Bob starts.** Updating always waits for your click.
 
 ---
@@ -366,7 +394,7 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 | What you see | What to try |
 |---|---|
 | A download stopped | Press **Resume** in Now running. It carries on from where it stopped. |
-| Pictures or video are very slow | Normal on small cards. Use the **Art** session, keep clips short, or turn on **Match picture settings to my graphics card**. Run **Check this PC**. |
+| Pictures or video are very slow | Normal on small cards. Use the **Art** session, keep clips short, or turn on **Match picture settings to my graphics card**. Run **Check this replicant matrix**. |
 | Bob says he can't look things up | Click **🌐 Web search** next to Effort (or turn on **Let Bob search the web** in Settings). |
 | The memory numbers at the top and on the right differ | The top counts Bob's brain only; the meters on the right count the whole graphics card and RAM. The line under them shows Bob's share. |
 | "Out of graphics memory" | Close games or other graphics-heavy apps, or pick the smaller (6 GB) version of the model in Equip Bob. |

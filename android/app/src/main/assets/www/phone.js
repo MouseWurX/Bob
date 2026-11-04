@@ -87,7 +87,7 @@
     let line;
     if (a.kind === 'net') line = `Hi${who}. I'm patched through to "${a.bob.name}", so I've got the whole workshop: pictures, music, Hands, the big brains.`;
     else if (a.kind === 'phone') line = `Hi${who}. Pocket edition today: the phone brain is on. Chat, memory, thinking things through. Big jobs need a Bob on your network.`;
-    else if (!bobs.length && !settings.phoneOn) line = `Hi${who}. I'm not wired to anything yet. Add your PC's Bob under Bobs on your network, or switch on the phone brain. Help (in the menu) walks you through both.`;
+    else if (!bobs.length && !settings.phoneOn) line = `Hi${who}. I'm not wired to anything yet. Add your other replicant matrix's Bob under Bobs on your network, or switch on the phone brain. Help (in the menu) walks you through both.`;
     else line = `Hi${who}. Nobody's home right now: ${nobodyWhy(a.why)}`;
     return el('div', { class: 'msg bob' }, el('div', { html: L.markdown(line) }));
   }
@@ -113,11 +113,11 @@
   }
 
   function mediaNode(x) {
-    const holder = el('div', { class: 'small dim', text: x.kind === 'audio' ? 'Getting the song…' : 'Getting it from the PC…' });
+    const holder = el('div', { class: 'small dim', text: x.kind === 'audio' ? 'Getting the song…' : 'Getting it from your other replicant matrix…' });
     phone('net.media', { address: x.base.replace('http://', ''), path: x.url }).then((data) => {
-      if (!data) { holder.textContent = 'Too big to show on the phone. It is on the PC.'; return; }
+      if (!data) { holder.textContent = 'Too big to show on the phone. It is on your other replicant matrix.'; return; }
       holder.replaceWith(mediaEl(x.kind, data));
-    }).catch(() => { holder.textContent = "Couldn't fetch it from the PC."; });
+    }).catch(() => { holder.textContent = "Couldn't fetch it from your other replicant matrix."; });
     return holder;
   }
   function mediaEl(kind, src) {
@@ -156,7 +156,7 @@
     return {
       'phone-off': 'the phone brain is off and Settings says to stay on the phone. Switch it on under Phone brain.',
       'phone-missing': "the phone brain isn't downloaded yet. It's under Phone brain in the menu.",
-      'net-down': "I can't reach any Bob on your network. Is the PC on, and is Tailscale connected on both?",
+      'net-down': "I can't reach any Bob on your network. Is your other replicant matrix on, and is Tailscale connected on both?",
       'no-bobs': 'no Bob on your network is added yet. Add one under Bobs on your network.',
       nobody: "I can't reach a Bob on your network and the phone brain is off."
     }[why] || "I can't answer right now.";
@@ -346,12 +346,12 @@
     if (ev.planCard) return planCard(base, ev);
     const name = bobName(base);
     const b = bobs.find((x) => x.base === base);
-    const what = ev.together ? `${ev.together.length} things for one job` : ev.command ? `run: ${ev.command}` : '';
-    const answer = (allow) => phone('net.post', { address: b.address, path: '/api/approve', body: JSON.stringify({ id: ev.id, allow }) }).then(() => card.remove()).catch(() => toast("Couldn't reach the PC"));
+    const what = ev.together ? `${ev.together.length} things for one job` : ev.mcp ? `${ev.mcp.app}: ${ev.command}` : ev.command ? `run: ${ev.command}` : '';
+    const answer = (allow) => phone('net.post', { address: b.address, path: '/api/approve', body: JSON.stringify({ id: ev.id, allow }) }).then(() => card.remove()).catch(() => toast("Couldn't reach your other replicant matrix"));
     const card = el('div', { class: 'card', 'data-approval': ev.id },
       el('div', { class: 'q' }, el('strong', { text: `"${name}" needs your OK` }), el('div', { text: ev.text || '' })),
       what ? el('pre', { text: what }) : null,
-      ev.together ? el('p', { class: 'help-line', text: 'To tick some and not others, use the card on the PC.' }) : null,
+      ev.together ? el('p', { class: 'help-line', text: 'To tick some and not others, use the card on your other replicant matrix.' }) : null,
       el('div', { class: 'row' },
         el('button', { class: 'main', text: ev.together ? 'Allow all' : 'Allow', onclick: () => answer(true) }),
         el('button', { text: ev.together ? 'Deny all' : 'Deny', onclick: () => answer(false) })));
@@ -365,7 +365,7 @@
     const b = bobs.find((x) => x.base === base);
     const p = ev.planCard || {};
     const send = (body) => phone('net.post', { address: b.address, path: '/api/approve', body: JSON.stringify({ id: ev.id, ...body }) })
-      .then(() => card.remove()).catch(() => toast("Couldn't reach the PC"));
+      .then(() => card.remove()).catch(() => toast("Couldn't reach your other replicant matrix"));
     const note = el('textarea', { rows: 3, maxlength: 500, placeholder: 'What should Bob change?' });
     const change = el('div', { class: 'hidden' }, note,
       el('div', { class: 'row' }, el('button', { class: 'main', text: 'Send to Bob', onclick: () => {
@@ -380,7 +380,7 @@
       p.fromSystem ? el('p', { class: 'help-line', text: 'Bob started this job without showing his plan, so these are the steps he was about to do. Check them before you go ahead.' }) : null,
       p.time ? el('p', { class: 'help-line', text: String(p.time) }) : null,
       steps,
-      ev.together ? el('p', { class: 'help-line', text: '✔ means that step needs your OK. Go ahead allows them all. To tick some and not others, use the card on the PC.' }) : null,
+      ev.together ? el('p', { class: 'help-line', text: '✔ means that step needs your OK. Go ahead allows them all. To tick some and not others, use the card on your other replicant matrix.' }) : null,
       el('div', { class: 'row' },
         el('button', { class: 'main', text: 'Go ahead', onclick: () => send({ allow: true, items: null }) }),
         el('button', { text: 'Change something', onclick: () => { change.classList.remove('hidden'); note.focus(); } }),
@@ -415,7 +415,7 @@
           setTimeout(() => card.remove(), 8000);
         } else if (save) toast(out.why || "Couldn't save the how-to");
         else card.remove();
-      }).catch(() => toast("Couldn't reach the PC"));
+      }).catch(() => toast("Couldn't reach your other replicant matrix"));
     const card = el('div', { class: 'card' },
       el('div', { class: 'q' }, el('strong', { text: '📒 That worked. Keep the steps as a how-to?' }), el('div', { text: "Next time you ask for something like this, I'll follow them." })),
       el('label', { text: 'Name' }), name,
@@ -478,7 +478,7 @@
   function drawBobs() {
     const list = $('bob-list');
     list.textContent = '';
-    if (!bobs.length) list.append(el('p', { class: 'dim', text: 'None yet. Add your PC\'s Bob below.' }));
+    if (!bobs.length) list.append(el('p', { class: 'dim', text: 'None yet. Add your other replicant matrix\'s Bob below.' }));
     else list.append(el('p', { class: 'help-line', text: bobs.length > 1 ? 'The First choice answers when more than one Bob is reachable. Make first choice on another Bob moves him to the top.' : 'The First choice answers when more than one Bob is reachable. Add another Bob to choose between them.' }));
     bobs.forEach((b, i) => {
       const st = live[b.base] || {};
@@ -495,9 +495,9 @@
             try {
               const r = await phone('net.login', { address: b.address, code: pass.value });
               pass.value = '';
-              msg.textContent = { ok: "You're in.", wrong: "That's not the passcode.", busy: 'Too many tries. Wait a minute.', 'not-let-in': `${b.name} isn't letting other devices in yet. On the PC: Settings, Show advanced settings, Connections, Let my other devices in.` }[r] || `Couldn't log in (${r}). Check that Tailscale is on on both devices, then try again.`;
+              msg.textContent = { ok: "You're in.", wrong: "That's not the passcode.", busy: 'Too many tries. Wait a minute.', 'not-let-in': `${b.name} isn't letting other replicant matrices in yet. On your other replicant matrix: Settings, Show advanced settings, Connections, Let my other replicant matrices in.` }[r] || `Couldn't log in (${r}). Check that Tailscale is on on both devices, then try again.`;
               if (r === 'ok') refreshBob(b.base);
-            } catch (e) { msg.textContent = `Can't reach ${b.name}: is the PC on and Tailscale connected? (${e.message})`; }
+            } catch (e) { msg.textContent = `Can't reach ${b.name}: is your other replicant matrix on and Tailscale connected? (${e.message})`; }
           } }) : el('button', { text: 'Check again', onclick: () => refreshBob(b.base) }),
           i > 0 ? el('button', { text: 'Make first choice', onclick: () => { bobs.splice(i, 1); bobs.unshift(b); store.set('bobs', bobs); drawBobs(); drawWho(); } }) : null,
           el('button', { text: 'Remove', onclick: (e) => {
@@ -513,7 +513,7 @@
     const name = $('add-name').value.trim().slice(0, 40) || 'Bob on my PC';
     const address = $('add-address').value.trim();
     const base = L.netAddress(address);
-    if (!base) { $('add-msg').textContent = "That isn't a Tailscale address. It looks like my-pc.your-tailnet.ts.net or 100.x.y.z (Bob's Settings on the PC shows it)."; return; }
+    if (!base) { $('add-msg').textContent = "That isn't a Tailscale address. It looks like my-pc.your-tailnet.ts.net or 100.x.y.z (Bob's Settings on your other replicant matrix shows it)."; return; }
     if (bobs.some((b) => b.base === base)) { $('add-msg').textContent = 'That Bob is already on the list.'; return; }
     bobs.push({ name, address: base.replace('http://', ''), base });
     store.set('bobs', bobs);
@@ -571,7 +571,7 @@
     }
     const s = phoneStatus;
     drawLend();
-    $('brain-ram').textContent = s.ramTotalMB ? `This phone: ${(s.ramTotalMB / 1024).toFixed(1)} GB memory, ${(s.ramFreeMB / 1024).toFixed(1)} GB free right now${s.loaded ? ' (phone brain loaded)' : ''}. ${(s.freeSpaceMB / 1024).toFixed(0)} GB storage free.` : '';
+    $('brain-ram').textContent = s.ramTotalMB ? `This replicant matrix (this phone): ${deviceModel || 'Android phone'} · ${Math.round(s.ramTotalMB / 1024)} GB RAM. ${(s.ramFreeMB / 1024).toFixed(1)} GB free right now${s.loaded ? ' (phone brain loaded)' : ''}. ${(s.freeSpaceMB / 1024).toFixed(0)} GB storage free.` : '';
   }
   function onDownload(m) {
     dl = { ...(dl || {}), ...m };
@@ -627,7 +627,7 @@
         lend.passcodeSet ? el('p', { class: 'help-line', text: 'A new passcode signs out every Bob that used the old one.' }) : null),
       el('div', { class: 'box' },
         el('div', { class: 'title', text: 'Address for your other Bobs' }), el('p', { class: 'help-line' }, addr),
-        el('p', { class: 'help-line', text: 'On the PC: Settings, Show advanced settings, Connections, Share brains with my other Bobs, Borrow a brain. Add this address and the passcode there.' })),
+        el('p', { class: 'help-line', text: 'On your other replicant matrix: Settings, Show advanced settings, Connections, Bob-Net: share work with my other Bobs, Borrow a brain. Add this address and the passcode there.' })),
       lend.on ? el('p', { class: 'help-line', role: 'status', text: [lend.now && lend.now !== 'off' ? LEND_WHY[lend.now] || '' : '', lend.last || ''].filter(Boolean).join(' ') }) : null,
       el('div', { class: 'box' },
         el('div', { class: 'title', text: 'Let Bob work with the screen off' }),
@@ -704,11 +704,13 @@
   });
 
   // ---------- Start ----------
+  // 1.5.89: the phone's own spec line names it as this replicant matrix (this phone).
+  var deviceModel = '';
   applyTheme();
   drawChat();
   drawWho();
   sendBrainConfig();
-  phone('device').then((d) => { $('about').textContent = `Bob ${d.version} for Android · ${d.maker} ${d.model}, Android ${d.android}`; }).catch(() => {});
+  phone('device').then((d) => { deviceModel = String(d.model || ''); $('about').textContent = `Bob ${d.version} for Android · ${d.maker} ${d.model}, Android ${d.android}`; }).catch(() => {});
   refreshAll();
   // Pick up where Bob left off (opt-in): a phone-brain reply Android cut short is asked again.
   const pending = store.get('pending', null);

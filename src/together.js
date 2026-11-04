@@ -54,7 +54,7 @@ function sameNeed(a, b) {
 
 // When a step can't be checked yet (it depends on an earlier one: an app that isn't open, a file not made yet),
 // the card shows what Bob will do from the step itself.
-const SHOW = { cmd: 'Program', args: 'With', cwd: 'In', path: 'File', paths: 'Files', to: 'To', name: 'Name', window: 'Window', action: 'Action', text: 'Text', keys: 'Keys', provider: 'Helper', task: 'Job', find: 'Replace', replace: 'With', content: 'Content' };
+const SHOW = { app: 'App', tool: 'Tool', inputs: 'Inputs', cmd: 'Program', args: 'With', cwd: 'In', path: 'File', paths: 'Files', to: 'To', name: 'Name', window: 'Window', action: 'Action', text: 'Text', keys: 'Keys', provider: 'Helper', task: 'Job', find: 'Replace', replace: 'With', content: 'Content' };
 const KINDS = { Button: 'Button', MenuItem: 'Menu item', TabItem: 'Tab', CheckBox: 'Check box', ListItem: 'List item', Edit: 'Field', Hyperlink: 'Link' };
 const kindOf = (args) => KINDS[String(args?.type || '').replace(/[^A-Za-z]/g, '')] || '';
 function details(args) {
@@ -71,7 +71,7 @@ function details(args) {
 
 // A step that can't be checked yet, said in words (capital first): "Click the Save button in Notepad".
 const cap = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
-function describe(name, args, tool, say) {
+export function describe(name, args, tool, say) {
   if (name === 'app_act') {
     const kind = kindOf(args).toLowerCase(), what = args.name ? `the ${args.name}${kind ? ` ${kind}` : ''}` : '';
     const w = args.window ? ` in ${args.window}` : '';
@@ -83,7 +83,7 @@ function describe(name, args, tool, say) {
   return cap(say || (tool.summary ? tool.summary(args) : name));
 }
 
-const parse = (a) => { if (typeof a === 'string') { try { return JSON.parse(a) || {}; } catch { return {}; } } return a || {}; };
+export const parse = (a) => { if (typeof a === 'string') { try { return JSON.parse(a) || {}; } catch { return {}; } } return a || {}; };
 
 // Goes through the steps and returns the ones that need an OK, each with its card details.
 // Each check runs on a scratch copy of the job, so nothing it notes down leaks into the real run.
@@ -96,6 +96,7 @@ export async function gather(brain, steps, ctx) {
     if (!tool?.check || !brain.usable(name)) continue; // nothing to ask (or not a tool he can use): the real call says why
     if (tool.alone) continue; // 1.5.48: a new tool Bob made gets its own card after its own checks (selftools.js)
     const key = stepKey(name, args);
+    if (ctx.preOk?.get(key)?.length) continue; // 1.5.78: already allowed on an earlier card this job (the plan card)
     if (ctx.allowAll?.has(typeof tool.approvalGroup === 'function' ? tool.approvalGroup(args) : tool.approvalGroup)) continue;
     let need, later = '';
     try { need = await tool.check(args, { ...ctx, handsPlan: null, appsOpen: null, appsTarget: null }); }
@@ -119,6 +120,12 @@ export async function askOnce(brain, items, ctx, { why = '' } = {}) {
   const text = 'Here they all are, so you can see the whole job before any of it starts.';
   if (why) brain.log('approval', `together, Bob says it's for: ${String(why).slice(0, 300)}`);
   const answer = await brain.approve({ text, together: items }, ctx.emit, ctx.signal, null, { hand: true, id });
+  return keepAnswers(brain, items, answer, ctx);
+}
+
+// Notes down what the person said on a card with OKs on it (this one, or the plan card in plan.js): allowed steps go
+// in ctx.preOk, denied ones in ctx.preNo, one use each.
+export function keepAnswers(brain, items, answer, ctx) {
   const picks = answer?.items; // null when the person pressed Allow all or Deny all
   ctx.preOk ||= new Map();
   ctx.preNo ||= new Map();

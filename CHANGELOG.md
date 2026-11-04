@@ -4,6 +4,107 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.91
+
+### Fixes from the live test
+- A brain that spills into RAM starts again on every engine. 1.5.90 guessed the old --no-mmap flag when it couldn't find which llama.cpp build it had, and the tested build (b12032) refuses that flag, so the engine didn't start. Bob now reads the build note next to the engine itself, asks the engine once if there's none, and adds no flag at all if he still can't tell.
+- The spec line beside **This replicant matrix** shows the processor's short name on Windows too ("Ryzen 7 9800X3D", without "8-Core Processor").
+- The spec line shows RAM as it's sold: 32 GB installed now reads 32 GB, not 31. Bob's memory maths still uses the real number.
+
+## 1.5.90
+
+### Faster first reply for big brains that spill into RAM
+- When part of a brain has to sit in RAM (for example Qwen3.6 on a 16 GB card), Bob now reads it all in while loading instead of fetching pieces from disk later. On a 16 GB card the first reply after a load came in about 1.4 seconds instead of 27, and the brain used about 12 GB of RAM instead of 21. Loading takes about 10 seconds longer.
+- Tests: the Telegram test's made-up bot token no longer looks like a real one, and the public check now also catches real Telegram bot tokens.
+
+## 1.5.89
+
+### The replicant matrix
+- Bob now calls the computer he runs on his **replicant matrix**, on Windows, Mac, Linux and the phone. It's still your computer: nothing about it changes, it's just his name for his home.
+- Wherever Settings names it, a short line with its specs sits beside it (for example "Ryzen 7 9800X3D · RTX 5070 Ti 16 GB · 32 GB RAM"), so you always know which machine he means. The phone shows its own model and memory.
+- Renamed: **💻 This replicant matrix and updates** (was This PC and updates), **Check this replicant matrix** (was Check this PC), **Speed for this replicant matrix**, and **Let my other replicant matrices in** (was Let my other devices in). The switches work exactly as before.
+- Lines about what stays on, or leaves, your replicant matrix also say "(your computer)", so privacy notes stay plain.
+- Help has a new glossary entry and an FAQ, "What's a replicant matrix?". Searching Help for PC, computer, laptop or device still finds everything.
+
+## 1.5.88
+
+### How much each brain keeps in mind
+- Qwen3.6 35B-A3B now keeps 256K in mind by default (it was 128K), on every copy, still as one shared load. On a 16 GB card that measured 15.0 GB on the card, about 49 tok/s on a short write, and it found a fact hidden 201K tokens in. The 8 GB card version stays at 128K until it's been tried on a real small card.
+- New switch in Settings, Brains: **Pick how much each brain keeps in mind** (off). When it's on, each brain you've equipped gets its own menu, which only goes up to the most that brain was made for, with a tip on what suits it. In a Gaming session a pick is capped at the Gaming size, so your game keeps its memory.
+- Bob never loads a brain past its own limit now, on his own engine as well as Ollama.
+
+## 1.5.87
+
+### Talk to Bob on Telegram (off by default)
+- New in Settings, Connections: **Talk to Bob on Telegram**. Chat with Bob from the Telegram app through your own bot, wherever you are. Make a bot with @BotFather, add its token as the Windows user variable `BOB_TELEGRAM_TOKEN`, turn the switch on and send Bob the 6-digit pairing code. Only the one Telegram account you pair can talk to him; anyone else is ignored. Bob never stores or shows the token.
+- Two extra switches, both off: **Send pictures Bob makes** and **Answer Bob's OK cards on Telegram**. Bob's hard limits still hold either way.
+- With the switch off, Bob sends nothing to Telegram at all. Not yet tried against a real Telegram bot.
+
+## 1.5.86
+
+### Bob-Net
+- The sharing panel is now called **Bob-Net: share work with my other Bobs**. The switches inside it keep their names. Help has a new glossary entry for Bob-Net.
+
+## 1.5.85
+
+### Tested llama.cpp by default
+- Get llama.cpp and Get Bob ready now install the tested llama.cpp build (b12032, the one every speed test used) instead of whatever was newest that day. Get newer build is still there, and Go back to the tested build undoes it.
+
+## 1.5.84
+
+### Passcode made when you switch on
+- Turning on **Let my other devices in** for the first time now makes the passcode for you and shows it once under **Passcode**. There's no separate **Make a passcode** step first. The passcode lock works exactly as before.
+- On the phone, turning on **Lend my brain** does the same: the first time, it makes the passcode and shows it once.
+
+## 1.5.83
+
+### Phone brain fix
+- The phone brain loads again. Before this, every phone said "the brain file wouldn't open", even after downloading the brain again. The brain file was fine: the phone app was missing the engine parts that run it, because Android wasn't unpacking them. The app now unpacks them when it's installed.
+- If the engine ever fails to start again, the phone says so plainly ("the phone brain's engine didn't start") instead of blaming the brain file.
+- With **Lend my brain** off, the phone's panel no longer shows a stray word "null" under the address card.
+
+## 1.5.82
+
+### Pictures on built-in graphics
+- The **Built-in graphics (handhelds and thin laptops)** starter set now also offers pictures, picture edits and short clips, using the versions made for 6 GB cards. Clips are listed but left unticked, because they're very slow on built-in graphics.
+- With **Match picture settings to my graphics card** on, Bob paints a little smaller (768 px) and more carefully on built-in graphics. Times there are rough guesses until someone measures them on a real handheld.
+- On a handheld, Get models now marks the built-in graphics set as the one for this PC.
+
+## 1.5.81
+
+### New
+- **Connected apps (MCP)**, a new Hand (off until you switch it on): Bob can work inside apps that offer their tools through an MCP add-on, such as Unreal Engine and Blender. Add an app in Settings, Show advanced settings, Hands, Connected apps (fill in for Blender or Unreal, type it in, or paste an "mcpServers" setup), press Check, then switch it on. Every app comes in switched off.
+- Bob starts or reaches an app only when a job needs it, and lets it go after 5 minutes unused. Every step shows a card that says in plain words what he'll do (the exact inputs under Show details); tools that run code inside the app or can delete things show the code and always ask. Blender's add-on needs uv: "Get uv for me" fetches it. The hard limits apply to the inputs, and while "Don't send anything out" is on he only talks to apps on this computer.
+- Works on Windows, Mac and Linux (on Mac and Linux he also looks in ~/.local/bin and Homebrew's folder for programs like uvx). The phone app's cards name the app.
+
+## 1.5.80
+
+### How-tos: Bob keeps the steps of jobs that worked
+- New switch in Settings, How Bob works: **Let Bob learn how-tos** (off unless you turn it on).
+- After a job with at least three steps goes well, Bob puts one card under his reply: **📒 That worked. Keep the steps as a how-to?** You can change the name, then press **Save how-to** or **Not now**. Nothing is kept without that click. You can also say "keep those steps" after a job.
+- When you ask for something like it again, the chat shows **📒 Following my how-to "…"** and Bob follows those steps, fitted to what you asked this time.
+- **📒 How-tos** in Settings lists them, with **Edit** and **Delete**.
+- A how-to is plain text. It can't run anything or say yes for you: Hands that ask for your OK still ask. How-tos stay on your PC (inn\bob\howtos.json) and never go online.
+- Light by design: only the one how-to that fits goes along, and only on that message. It's matched by words, and by meaning when Housekeeping is on. No extra model runs for it.
+- Works the same on Windows, Mac and Linux.
+
+## 1.5.79
+
+### New (off unless you turn it on)
+- **Remember only what fits** (Settings → Engines & speed). With each message, Bob reads only the memories that fit it (up to 8, about 1,500 characters at most) instead of his whole memory file, so chats stay light as his memory grows.
+- **Memory banks.** Each project in Settings → Projects gets its own bank. While a chat is about one project (named in the message, the chat's project so far, the project of the closest topic, or the main project), Bob reads that bank and the general memories and leaves the other projects' memories out. "Remember" can save a fact to a project's bank, and facts filed while tidying go to their topic's project.
+- Add `[always]` to a line in the memory file and Bob reads it with every message. **Open Bob's memory file** sits under the switch, with a count for each bank and what the last message recalled.
+- Matching is by meaning with the 🗂 Memory (finding past chats) model (CPU only, never in the Gaming session), and by words otherwise. Memory lines get their meanings while Bob is idle, so a message only waits for its own (1.5 seconds at most). No database or extra program: banks are tags in the same plain-text file, and the meanings are a small file next to it.
+- Help: "Memory banks and Remember only what fits", a glossary entry and an FAQ.
+
+## 1.5.78
+
+### New
+- **Show Bob's plan before big jobs** (Settings, How Bob works; off unless you turn it on). Before a long or risky job, Bob shows every step on one card and waits. Any OKs the job needs are ticked on that same card. Press Go ahead, Change something (say what, and he makes a new plan) or Not now (Bob drops this job). On Windows, Mac and Linux, and the phone app shows the same card for a Bob on your network.
+- **Check-ins** (Settings, Show advanced settings, 🔔 Check-ins; off unless you turn it on). On a schedule you pick (every day or every weekday at a time, or every few hours), Bob looks over his downloads, tasks, schedules and disk space, plus up to 8 checks you write yourself ("Did the build finish?"), and only speaks up when something needs you: a Check-in card in the chat, and a notification if Alerts is on. The same thing isn't repeated until a day has passed. A check-in only looks: it never changes, retries or downloads anything, and nothing goes online.
+- Staying light: the built-in checks use no brain at all. Your own checks use the quick brain on the processor, beside the main brain so nothing is swapped out, only while Bob is idle and never in the Gaming session; a brain loaded just for this is let go straight after. Works the same on Windows, Mac and Linux, while Bob is open; a missed check-in is done once when he's back.
+- Help in Bob's voice for Check-ins and its settings, a glossary line and two FAQs. Bob knows the setting when you ask him how he's set up.
+
 ## 1.5.77
 
 ### Fix

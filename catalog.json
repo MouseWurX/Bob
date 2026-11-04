@@ -465,7 +465,7 @@
       "license": "Apache 2.0",
       "commercial": true,
       "pick": "best",
-      "raced": "Beat Qwen3 Coder 30B on a 16 GB card (2026-11-03): 128K fits with part of it in RAM.",
+      "raced": "Beat Qwen3 Coder 30B on a 16 GB card (2026-11-03). At 256K (2026-11-04) it uses 15.0 GB on the card with the rest in RAM, writes about 49 tok/s, and found a fact hidden 201K tokens in.",
       "files": [
         {
           "url": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/a483e9e6cbd595906af30beda3187c2663a1118c/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
@@ -1582,7 +1582,7 @@
       },
       "notes": {
         "gemma4-e4b": "the quick brain, and it sees pictures and hears you",
-        "qwen3.6-35b-a3b": "everyday chat and coding in one load: a big context (128K, how much it keeps in mind). It answers Low-effort chat straight off and always thinks coding jobs through",
+        "qwen3.6-35b-a3b": "everyday chat and coding in one load: a big context (256K, how much it keeps in mind). It answers Low-effort chat straight off and always thinks coding jobs through",
         "gemma4-26b": "Office and Deep thinking"
       },
       "times": "Pictures take about 10 seconds each, clips a few minutes.",
@@ -1698,20 +1698,27 @@
       "label": "Built-in graphics (handhelds and thin laptops)",
       "integrated": true,
       "minVramGB": 999,
-      "models": ["qwen3-4b", "gemma4-e4b", "kokoro-v1", "nomic-embed-text", "qwen2.5-coder-7b"],
+      "models": ["qwen3-4b", "gemma4-e4b", "kokoro-v1", "nomic-embed-text", "qwen2.5-coder-7b", "z-image-turbo-q4", "flux2-klein-4b-q4", "wan2.2-ti2v-5b-q4"],
       "slots": {
         "qwen3-4b": ["bob", "small"],
         "gemma4-e4b": ["eyes", "voice"],
         "kokoro-v1": ["speech"],
         "nomic-embed-text": ["embed"],
-        "qwen2.5-coder-7b": ["tinker"]
+        "qwen2.5-coder-7b": ["tinker"],
+        "z-image-turbo-q4": ["image"],
+        "flux2-klein-4b-q4": ["edit"],
+        "wan2.2-ti2v-5b-q4": ["video"]
       },
+      "untick": ["wan2.2-ti2v-5b-q4"],
       "notes": {
         "qwen3-4b": "the everyday brain: small and quick on built-in graphics",
         "gemma4-e4b": "sees pictures and hears you; it loads only for those jobs",
-        "qwen2.5-coder-7b": "small, quick coder"
+        "qwen2.5-coder-7b": "small, quick coder",
+        "z-image-turbo-q4": "the small painter: a picture takes a few minutes on built-in graphics",
+        "flux2-klein-4b-q4": "a small editor: change a picture with words, or keep a look from references",
+        "wan2.2-ti2v-5b-q4": "clips are very slow on built-in graphics, so it is left unticked; tick it if you want short clips anyway"
       },
-      "times": "Not yet measured on built-in graphics. Pictures and video are left out of this set until they've been tried there.",
+      "times": "Rough guesses, not yet measured on built-in graphics: a few minutes a picture or an edit, and a long wait for a short clip. Bob puts his brain away while he paints, so chat waits until the picture is done. Turning on Match picture settings to my graphics card (Settings, Show advanced settings, Engines & speed) makes pictures 768 px, which is quicker.",
       "cardGB": 0
     },
     {

@@ -92,7 +92,7 @@ export async function runWorkflow(cfg, name, { prompt, negative, refs = [] }, { 
   const wf = JSON.parse(fs.readFileSync(path.join(workshopDir(cfg), w.name + '.json'), 'utf8'));
   const base = comfyBase(cfg);
   try { await fetch(base + '/system_stats', { signal: AbortSignal.timeout(3000) }); }
-  catch { throw new Error(`ComfyUI isn't running on this PC (port ${Number(cfg.workshop?.port) || 8188}). Start it in Pinokio, then ask me again.`); }
+  catch { throw new Error(`ComfyUI isn't running on this replicant matrix (port ${Number(cfg.workshop?.port) || 8188}). Start it in Pinokio, then ask me again.`); }
 
   const p = promptNodes(wf);
   if (prompt && p.pos) wf[p.pos.id].inputs[p.pos.key] = String(prompt).slice(0, 4000);

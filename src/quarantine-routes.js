@@ -10,7 +10,7 @@ export async function quarantineRoute({ req, p, isLocal, brain, cfg, body, send,
   if (p !== '/api/quarantine' && !p.startsWith('/api/quarantine/')) return false;
   if (req.method === 'GET' && p === '/api/quarantine') { send(res, 200, quarantineView(cfg)); return true; }
   if (req.method !== 'POST') { send(res, 404, { error: 'not found' }); return true; }
-  if (!isLocal) { send(res, 403, { error: 'Quarantine can only be changed on the PC itself.' }); return true; }
+  if (!isLocal) { send(res, 403, { error: 'Quarantine can only be changed on this replicant matrix itself.' }); return true; }
   const b = await body(req);
   if (p === '/api/quarantine/settings') {
     saveSettings(cfg, { quarantine: { on: b.on === true } });

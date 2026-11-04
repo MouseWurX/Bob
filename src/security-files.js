@@ -57,7 +57,7 @@ export function markOfTheWeb(file) {
   try {
     const t = fs.readFileSync(`${file}:Zone.Identifier`, 'utf8');
     const zone = Number((t.match(/ZoneId=(\d)/) || [])[1]);
-    return { zone, from: (t.match(/HostUrl=(.+)/) || [])[1]?.replace(/\0+$/, '').trim() || '', page: (t.match(/ReferrerUrl=(.+)/) || [])[1]?.replace(/\0+$/, '').trim() || '', says: { 0: 'this PC', 1: 'your local network', 2: 'a trusted site', 3: 'the internet', 4: 'a restricted (blocked) site' }[zone] || 'somewhere unknown' };
+    return { zone, from: (t.match(/HostUrl=(.+)/) || [])[1]?.replace(/\0+$/, '').trim() || '', page: (t.match(/ReferrerUrl=(.+)/) || [])[1]?.replace(/\0+$/, '').trim() || '', says: { 0: 'this replicant matrix', 1: 'your local network', 2: 'a trusted site', 3: 'the internet', 4: 'a restricted (blocked) site' }[zone] || 'somewhere unknown' };
   } catch { return null; }
 }
 
@@ -85,7 +85,7 @@ export const SCRIPT_SIGNS = [
   [/Login Data|\\Cookies|Local State|Web Data|wallet\.dat|\.kdbx|\blsass\b|mimikatz|sekurlsa|Get-Credential|\\Microsoft\\Protect\\|logins\.json|key4\.db/i, 3, 'goes after saved passwords, browser cookies or crypto wallets'],
   [/discord(app)?\.com\/api\/webhooks|api\.telegram\.org\/bot|pastebin\.com\/raw|ngrok\.io|transfer\.sh|anonfiles/i, 3, 'sends things to (or fetches from) a chat app or paste site, a common way to steal data'],
   [/Net\.Sockets\.TCPClient|\bnc(at)?(\.exe)?\s+(-e|-c)|\/dev\/tcp\/|reverse.?shell/i, 3, 'opens a remote control connection (a "reverse shell")'],
-  [/xmrig|stratum\+tcp|cryptonight|coinhive|minerd/i, 3, 'mines cryptocurrency with your PC'],
+  [/xmrig|stratum\+tcp|cryptonight|coinhive|minerd/i, 3, 'mines cryptocurrency with your replicant matrix'],
   [/netsh\s+advfirewall\s+set[^\n]*state\s+off|Set-NetFirewallProfile[^\n]*-Enabled\s+(False|0)/i, 3, 'switches the firewall off'],
   [/\[char\]\s*\d+\s*\+|-join\s*\(|FromBase64String|-bxor|\[Convert\]::|\w`\w`\w|\^[a-z]\^[a-z]|[A-Za-z0-9+/]{300,}={0,2}/i, 2, 'scrambles its own text so you can\'t easily read what it does'],
   [/WScript\.Shell|Shell\.Application|ADODB\.Stream|MSXML2\.(Server)?XMLHTTP|WinHttp\.WinHttpRequest|CreateObject\(/i, 1, 'drives Windows from a script (normal in admin scripts, common in malware)'],

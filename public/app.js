@@ -14,6 +14,7 @@ import { createTopics } from './topics.js';
 import { createTidy } from './tidy.js';
 import { createHelp } from './help.js';
 import { handsApproval, togetherApproval, onHandsEvent } from './hands.js';
+import { planApproval } from './plan-card.js';
 import { createBrainBar } from './brain-bar.js';
 import { createHandsSwitch } from './hands-switch.js';
 import { installTips } from './tips.js';
@@ -429,6 +430,25 @@ function onEvent(ev) {
       no.onclick = () => el.remove();
       return;
     }
+    case 'howto-offer': { // 1.5.79: one card after a job that worked. Nothing is kept until Save how-to is pressed.
+      const steps = (ev.steps || []).map((x, i) => `<li>${esc(x)}</li>`).join('');
+      const el = add('suggest howto-card', `<div><strong>📒 That worked. Keep the steps as a how-to?</strong> <span class="muted">Next time you ask for something like this, I'll follow them.</span>
+        <label class="howto-name">Name <input maxlength="60" value="${esc(ev.name || '')}" aria-label="How-to name"></label>
+        <ol class="howto-steps">${steps}</ol></div><div class="howto-actions"><button type="button">Save how-to</button><button type="button" class="link">Not now</button></div>`);
+      const [yes, no] = el.querySelectorAll('button');
+      const answer = async (save) => {
+        yes.disabled = no.disabled = true;
+        try {
+          const r = await api('/api/howtos/answer', { id: ev.id, save, name: el.querySelector('input')?.value || '' });
+          el.remove();
+          if (!r.ok) note(r.why || 'That card is too old now.', 'error');
+          else if (save && r.saved) { window.dispatchEvent(new CustomEvent('bob-howto-saved')); } if (r.ok && save && r.saved) note(`Saved the how-to "${r.saved.name}". You can change or delete it in Settings, 📒 How-tos.`);
+        } catch (e) { yes.disabled = no.disabled = false; note(e.message, 'error'); }
+      };
+      yes.onclick = () => answer(true);
+      no.onclick = () => answer(false);
+      return;
+    }
     case 'offer-download': { // 1.5.37: a job needs a model that isn't here yet. Nothing downloads until this is pressed.
       const sz = ev.sizeGB ? `about ${ev.sizeGB} GB, ` : '';
       const el = add('suggest', `<span>${esc(ev.why === 'music' ? 'Music needs its models first' : 'This needs a model first')}: ${esc(ev.name)} (${esc(sz)}one time only). You can watch it in Downloads.</span><button type="button">${esc(ev.why === 'music' ? 'Download the music models' : 'Download it')}</button><button type="button" class="link">Not now</button>`);
@@ -490,7 +510,7 @@ function onEvent(ev) {
       break;
     case 'away': // 1.5.72 Share jobs: this whole job runs on another of your Bobs (src/share-jobs.js)
       endReply(ev);
-      if (ev.action === 'start') add('note borrow', `📡 Sent to ${esc(ev.name)}: ${ev.why === 'cant' ? `I can't ${esc(ev.what)} on this computer, and ${esc(ev.name)} can` : ev.why === 'gaming' ? `I'd have to wait while you game, and ${esc(ev.name)} is free` : `I'm busy, and ${esc(ev.name)} can ${esc(ev.what)} now`}. OK cards and finished files come back here.`);
+      if (ev.action === 'start') add('note borrow', `📡 Sent to ${esc(ev.name)}: ${ev.why === 'cant' ? `I can't ${esc(ev.what)} on this replicant matrix, and ${esc(ev.name)} can` : ev.why === 'gaming' ? `I'd have to wait while you game, and ${esc(ev.name)} is free` : `I'm busy, and ${esc(ev.name)} can ${esc(ev.what)} now`}. OK cards and finished files come back here.`);
       else add('note borrow', `📡 ${esc(ev.name)} ${esc(ev.why || 'couldn\'t take it')}, so I'll do this one here.`);
       break;
     case 'tool':
@@ -510,6 +530,8 @@ function onEvent(ev) {
       endReply(ev);
       // The reviewer asks whether to quarantine Bob (quarantine.js, opt-in).
       if (quarantineCard(ev, { add, answer: (q) => post('/api/approve', { id: ev.id, allow: q }) })) { ping('Bob\'s reviewer needs you', ev.text); layout.needsYou(); break; }
+      // 1.5.78: Bob's plan for a big job, with its OKs on the same card (plan-card.js).
+      if (planApproval(ev, { add, answer: (allow, items, note) => post('/api/approve', { id: ev.id, allow, items, note }) })) { ping('Bob has a plan for you to check', ev.text); layout.needsYou(); break; }
       // 1.5.41: every OK a job needs, on one card (hands.js togetherApproval).
       if (togetherApproval(ev, { add, answer: (allow, items) => post('/api/approve', { id: ev.id, allow, items }) })) { ping('Bob needs your OK', `${ev.together.length} things for one job`); layout.needsYou(); break; }
       // Hands cards: rows to tick (files) or the exact command (run).
@@ -547,6 +569,14 @@ function onEvent(ev) {
       badge(true);
       try { if ('Notification' in window && Notification.permission === 'granted' && store.get('bob-alerts', '1') === '1') new Notification('Bob: reminder', { body: ev.text, icon: '/icons/bob-192.png', requireInteraction: true }); } catch {}
       break;
+    case 'checkin': {
+      // 1.5.78 Check-ins: only sent when something needs you (src/checkins.js). Nothing is changed by it.
+      const items = ev.items || [];
+      add('approval', `<p><strong>Check-in:</strong> ${items.length} thing${items.length === 1 ? '' : 's'} need${items.length === 1 ? 's' : ''} you.</p><ul>${items.map((i) => `<li><strong>${esc(i.title)}</strong>${i.detail ? ` <span class="muted">${esc(i.detail)}</span>` : ''}</li>`).join('')}</ul><div class="done">${esc(ev.at ? new Date(ev.at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '')}</div>`); // same style as Settings, Check-ins
+      badge(true);
+      try { if ('Notification' in window && Notification.permission === 'granted' && store.get('bob-alerts', '1') === '1') new Notification('Bob: check-in', { body: items.map((i) => i.title).join('\n').slice(0, 300), icon: '/icons/bob-192.png' }); } catch {}
+      break;
+    }
     case 'error':
       endReply(ev);
       life.react('oops');
@@ -902,7 +932,7 @@ async function start() {
   try {
     const st = await (await fetch('/api/settings')).json(); winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); autoSession = st.autoSession !== false; drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
-    if (st.updates?.autoCheck) { const c = await (await fetch('/api/update/check')).json(); if (c.newer) note(`A newer Bob (${c.available.label}) is out${c.from === 'github' ? ' on GitHub' : ''}. Settings, This PC and updates, Check for updates.`); }
+    if (st.updates?.autoCheck) { const c = await (await fetch('/api/update/check')).json(); if (c.newer) note(`A newer Bob (${c.available.label}) is out${c.from === 'github' ? ' on GitHub' : ''}. Settings, This replicant matrix and updates, Check for updates.`); }
   } catch {}
   try { drawQueue(await (await fetch('/api/queue')).json()); } catch {}
   try { const d = await (await fetch('/api/downloads')).json(); downloads.update(d); layout.downloads(d); drawDownloadsBadge(d); for (const x of d) if (x.state === 'downloading') showDownload({ ...x, phase: 'downloading' }); } catch {}
@@ -940,7 +970,7 @@ async function askRestart(st) {
   const el = add('suggest', `<span>The new Bob (${esc(st.version || 'update')}) is ready.${busyWith ? ` I'm working on ${esc(busyWith)}; ${esc(after)}` : ''}</span>
     <button type="button" data-r="now">${busyWith ? 'Restart anyway' : 'Restart Bob now'}</button>${busyWith ? '<button type="button" data-r="done">Wait until I\'m done</button>' : ''}<button type="button" class="link" data-r="later">Later</button>`);
   for (const b of el.querySelectorAll('button')) b.onclick = async () => {
-    if (b.dataset.r === 'later') { el.remove(); note(st.mode === 'github' ? 'OK. Press "Restart Bob now" whenever you like: Settings, This PC and updates, Check for updates.' : 'OK. The new Bob takes over the next time Bob starts, or press Restart in the update window.'); return; }
+    if (b.dataset.r === 'later') { el.remove(); note(st.mode === 'github' ? 'OK. Press "Restart Bob now" whenever you like: Settings, This replicant matrix and updates, Check for updates.' : 'OK. The new Bob takes over the next time Bob starts, or press Restart in the update window.'); return; }
     const r = await post('/api/update/restart', { when: b.dataset.r });
     el.remove();
     note(r.ok ? (b.dataset.r === 'done' ? 'I\'ll restart as soon as I\'ve finished.' : 'Restarting...') : (r.data.error || 'The update window didn\'t answer.'), r.ok ? '' : 'error');

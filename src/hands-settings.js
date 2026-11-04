@@ -22,7 +22,7 @@ export const HANDS = {
   },
   schedules: {
     label: 'Schedules',
-    what: 'Do a job by himself at set times (once, daily, weekly, or every so many minutes) while Bob is open. You approve each schedule, and every action inside a run still asks for your OK, so a run with nobody at the PC just waits and then does nothing (unless "Let Bob work without asking" is on: then runs go ahead by themselves). Waking Bob when he is closed is a separate switch.',
+    what: 'Do a job by himself at set times (once, daily, weekly, or every so many minutes) while Bob is open. You approve each schedule, and every action inside a run still asks for your OK, so a run with nobody at this replicant matrix just waits and then does nothing (unless "Let Bob work without asking" is on: then runs go ahead by themselves). Waking Bob when he is closed is a separate switch.',
     tools: ['schedule_job', 'list_schedules', 'change_schedule']
   },
   apps: {
@@ -33,20 +33,25 @@ export const HANDS = {
   },
   office: {
     label: 'Office documents and converting',
-    what: 'Converts files (Word, Excel, PowerPoint, PDF, pictures, sound, video), reads office files, and makes or changes documents, spreadsheets and slides. Every file he makes or changes is shown on a card first; he never overwrites and backs up before changing. Documents use LibreOffice (or OpenOffice) and sound and video use FFmpeg, found on your PC or got in Settings, Show advanced settings, Engines & speed; each runs only while it has a job. He saves only in the folders ticked below, plus his own Documents folder.',
+    what: 'Converts files (Word, Excel, PowerPoint, PDF, pictures, sound, video), reads office files, and makes or changes documents, spreadsheets and slides. Every file he makes or changes is shown on a card first; he never overwrites and backs up before changing. Documents use LibreOffice (or OpenOffice) and sound and video use FFmpeg, found on your replicant matrix or got in Settings, Show advanced settings, Engines & speed; each runs only while it has a job. He saves only in the folders ticked below, plus his own Documents folder.',
     tools: ['convert_file', 'office_read', 'office_make', 'office_edit']
   },
   security: {
     label: 'Security and privacy',
-    what: 'Checks this PC\'s protection, explains Defender alerts and runs scans, looks at suspicious files and links without opening them, and makes clean copies of photos before you share. He never turns protection off and never researches private people. Online look-ups need "Let Bob search the web".',
+    what: 'Checks this replicant matrix\'s protection, explains Defender alerts and runs scans, looks at suspicious files and links without opening them, and makes clean copies of photos before you share. He never turns protection off and never researches private people. Online look-ups need "Let Bob search the web".',
     tools: ['security_check', 'defender_scan', 'inspect_file', 'strip_metadata', 'osint_lookup', 'check_exposure', 'security_tips'],
-    whatOn: { linux: 'Checks this PC\'s protection (firewall, updates, what starts when you sign in, what listens on the network), scans with ClamAV if it is installed, looks at suspicious files and links without opening them, and makes clean copies of photos before you share. He never turns protection off and never researches private people. Online look-ups need "Let Bob search the web".', mac: 'Checks this Mac\'s protection (firewall, FileVault, Gatekeeper, System Integrity Protection, what starts at login, what listens on the network), looks at suspicious files and links without opening them, and makes clean copies of photos before you share. He never turns protection off and never researches private people. Online look-ups need "Let Bob search the web".' },
+    whatOn: { linux: 'Checks this replicant matrix\'s protection (firewall, updates, what starts when you sign in, what listens on the network), scans with ClamAV if it is installed, looks at suspicious files and links without opening them, and makes clean copies of photos before you share. He never turns protection off and never researches private people. Online look-ups need "Let Bob search the web".', mac: 'Checks this Mac\'s protection (firewall, FileVault, Gatekeeper, System Integrity Protection, what starts at login, what listens on the network), looks at suspicious files and links without opening them, and makes clean copies of photos before you share. He never turns protection off and never researches private people. Online look-ups need "Let Bob search the web".' },
     toolsOnlyOn: { defender_scan: ['win', 'linux'] } // Linux: ClamAV, when it's installed
   },
   maker: {
     label: 'Make his own tools',
     what: 'When none of his tools fits a job, Bob can write a small new one, tested in a sandbox and read by his reviewer, and you see one card before it\'s added. A tool he made can only use its own folder and the folders listed on its card, can\'t start other programs, and only uses the internet if the card says so. Any downloads are pinned to one exact file. Tools he made are listed under Tools Bob made, where you can turn one off, see its code or remove it.',
     tools: ['make_tool', 'use_my_tool', 'my_tools']
+  },
+  mcp: {
+    label: 'Connected apps (MCP)',
+    what: 'Works inside apps that offer Bob their tools through MCP, such as Unreal Engine or Blender with their MCP add-on: placing things in a level, changing a scene, reading what is there. You add each app below and switch it on; Bob starts or reaches it only when a job needs it and lets it go after 5 minutes unused. Every step shows a card with the app, the tool and its exact inputs. Only apps on this replicant matrix while "Don\'t send anything out" is on.',
+    tools: ['mcp_tools', 'mcp_use']
   }
 };
 
@@ -56,8 +61,8 @@ export const LIMITS = {
   recycleOnly: { label: 'Recycle Bin only', on: 'Things Bob throws away go to the Recycle Bin, so you can get them back.', off: 'Bob can delete files for good with the Files Hand. They skip the Recycle Bin and can\'t be undone.' },
   secrets: { label: 'Keep secret files private', on: 'Bob never reads, lists, moves, zips or writes files with keys or passwords (.env, keystores, SSH keys, password databases).', off: 'Bob can read, move and change files with keys and passwords, and run commands that touch them.' },
   readOnly: { label: 'Read-only projects stay read-only', on: 'Folders you marked read-only in config.json can be read but never changed.', off: 'Bob can change files in projects you marked read-only. His own code and settings stay locked.' },
-  commands: { label: 'Block dangerous commands', on: 'Commands that format disks, change boot or the system registry, touch antivirus or user accounts, ask for admin, shut down, or delete many files at once are refused.', off: 'Bob can run any command, including ones that wipe disks, change the registry or shut down the PC.' },
-  sendOut: { label: "Don't send anything out", on: 'Bob\'s Hands never send your things off the PC: no uploads, posts, git push, or typing and Send in browsers, email or chat apps.', more: 'Web searches and opening a page still work (the search words and the address go to that site). Cloud helpers have their own switch.', off: 'Bob can upload files, post to websites, push code and type or send in browsers, email and chat apps.' },
+  commands: { label: 'Block dangerous commands', on: 'Commands that format disks, change boot or the system registry, touch antivirus or user accounts, ask for admin, shut down, or delete many files at once are refused.', off: 'Bob can run any command, including ones that wipe disks, change the registry or shut down this replicant matrix.' },
+  sendOut: { label: "Don't send anything out", on: 'Bob\'s Hands never send your things off this replicant matrix (your computer): no uploads, posts, git push, or typing and Send in browsers, email or chat apps.', more: 'Web searches and opening a page still work (the search words and the address go to that site). Cloud helpers have their own switch.', off: 'Bob can upload files, post to websites, push code and type or send in browsers, email and chat apps.' },
   passwords: { label: 'Never type into password fields', on: 'Bob never types into a password box in an app.', off: 'Bob can type into password boxes in apps (he still can\'t read what is in them).' }
 };
 
@@ -109,7 +114,7 @@ export function readOnlyRoots(cfg) {
 export function handOffWhy(cfg, id) {
   const who = cfg.userName || 'The user', h = handsSettings(cfg);
   const label = HANDS[id].label;
-  if (!handHere(id)) return `The "${label}" Hand only works on ${HANDS[id].platforms.map((o) => ({ win: 'Windows', mac: 'a Mac', linux: 'Linux' })[o]).join(' and ')}, so it isn't on this computer.`;
+  if (!handHere(id)) return `The "${label}" Hand only works on ${HANDS[id].platforms.map((o) => ({ win: 'Windows', mac: 'a Mac', linux: 'Linux' })[o]).join(' and ')}, so it isn't on this replicant matrix.`;
   if (h.enabled && h.held && h[id]?.on) return `Hands are stopped with the Hands switch on the chat page. ${who} can switch them back on there.`;
   if (!h.enabled && h[id]?.on) return `Hands are off in Settings (the "Let Bob use Hands" switch). ${who} can turn it on in Settings, Show advanced settings, Hands.`;
   if (!h.enabled) return `Hands are off in Settings. ${who} can turn on "Let Bob use Hands" and "${label}" in Settings, Show advanced settings, Hands.`;

@@ -55,13 +55,21 @@ export function sessionCtx(cfg, id, hat) {
 // prompt): about 31 s to the first word on the processor vs about 4 s on the card, because reading the prompt is slow there.
 export const quickOnCpu = (cfg) => cfg?.quickOnCpu === true;
 // 1.5.63 / 1.5.66: Qwen3.6 35B-A3B, the owner's lineup (2026-11-03): the Coding copy thinks at every effort, the main
-// Brain (everyday chat) never thinks first. Both run at 128K, so chat and coding share one load of the same file
-// instead of swapping between a 32K and a 128K load (measured: 14.7 GB on a 16 GB card, the rest in RAM).
+// Brain (everyday chat) never thinks first. Both share one load of the same file instead of swapping between a
+// 32K and a longer load.
+// 1.5.86 (the owner's pick, 2026-11-04): 256K by default. Measured on a 16 GB card with q8_0 KV: 15.0 GB on the card
+// and 21.2 GB in RAM (128K: 14.9 / 20.4), 49.1 vs 50.2 tok/s on a short write, 55.4 vs 60.7 after 12K, and it found a
+// needle at 201K. --fit moves the extra experts (about 0.8 GB) to RAM. The 8 GB card (Q3) version stays at 128K
+// until someone tries 256K on a real small card.
 export const LONG_CODER = /qwen3\.6[-_ ]?35b/i;
+export const LONG_CTX = 262144;
+export const SQUEEZED_CTX = 131072;
 export function brainDefaults(model, hat, effort) {
-  if (!LONG_CODER.test(String(model || ''))) return {};
-  // Every copy that runs on it gets 128K too, so a hand-off to any copy on the same file never reloads it.
-  return hat === 'bob' ? { ctx: 131072, think: false } : { ctx: 131072 };
+  const id = String(model || '');
+  if (!LONG_CODER.test(id)) return {};
+  const ctx = /[-_]q3\b/i.test(id) ? SQUEEZED_CTX : LONG_CTX;
+  // Every copy that runs on it gets the same context, so a hand-off to any copy on the same file never reloads it.
+  return hat === 'bob' ? { ctx, think: false } : { ctx };
 }
 
 export function modelFor(cfg, hat) {
@@ -70,8 +78,8 @@ export function modelFor(cfg, hat) {
   if (s.id === 'normal' && hat === 'bob' && quickOnCpu(cfg)) return { model: sessionBrains(cfg).small, cpu: true, ctx };
   if (s.id === 'normal') {
     const model = cfg.oneBrain ? cfg.models.bob : (cfg.models[hat] || cfg.models.bob);
-    // 1.5.67: Qwen3.6's 128K applies here too, not only inside a job, so waking or priming the chat brain after a
-    // job loads the same 128K the job used (it was reloading at 32K after every job). A context picked by hand wins.
+    // 1.5.67: Qwen3.6's long context (256K since 1.5.86) applies here too, not only inside a job, so waking or priming the chat brain after a
+    // job loads the same context the job used (it was reloading at 32K after every job). A context picked by hand wins.
     const d = CTX_CHOICES.includes(cfg.sessionCtx?.normal) ? {} : brainDefaults(model, hat);
     return { model, cpu: false, ctx: d.ctx || ctx };
   }

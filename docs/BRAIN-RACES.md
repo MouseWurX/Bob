@@ -13,7 +13,7 @@ Before a brain gets a slot in Bob's starter set, it races the brain it would rep
 | Office | Gemma 4 26B | Reads long documents about 45% faster and answers follow-ups about 3 times faster |
 | Deep thinking | Gemma 4 26B in the starter set; Qwen 3.8 27B if you can wait | Qwen 3.8 solved planning tasks Gemma ran out of room on and handles 128K, but writes about 6 times slower |
 
-Every Qwen3.6 copy runs at 128K context, so chat and coding share one load of the same file.
+Every Qwen3.6 copy runs at 256K context (128K until 1.5.86), so chat and coding share one load of the same file. The 8 GB card version stays at 128K until it has been tried on a real small card.
 
 Words used below: **pass@1** means one try per task. **Thinking** is the brain working the problem through quietly before it answers. **`--n-cpu-moe`** is how many expert layers of a mixture-of-experts brain stay in system memory instead of on the card (lower is faster). **Cut off** means the brain was still thinking when it hit its token cap and never wrote an answer.
 
@@ -216,9 +216,25 @@ Qwen 3.8 at 128K: a 114K-token prompt read in 196 s, writing at 5 tok/s, and it 
 
 What it showed: the same tool reliability, with Gemma about 6 times faster; the score gap was the thinking cap, not skill. Qwen 3.8 suits Deep thinking, for jobs where waiting is fine: it solved two planning tasks Gemma ran out of room on, and it handles 128K.
 
+## 3. Qwen3.6 35B-A3B at 256K vs 128K context (2026-11-03)
+
+Same file (UD-Q4_K_XL), llama.cpp b12032, RTX 5070 Ti 16 GB, 32 GB RAM, q8_0 KV cache, flash attention on, `--fit` placing the experts. The rig used no `-b/-ub 2048` and no `-t 8`, so absolute speeds are lower than Bob's own launch; 128K and 256K ran on the same rig, so they compare fairly. One run each.
+
+| | 128K | 256K |
+|---|---|---|
+| Load | 7.4 s | 7.1 s |
+| Graphics memory | 14.9 GB | 15.0 GB |
+| RAM | 20.4 GB | 21.2 GB |
+| Short reply | 50.2 tok/s | 49.1 tok/s |
+| Reply after a 12K prompt | 60.7 tok/s | 55.4 tok/s |
+| Reading a 12K prompt | 882 tok/s | 861 tok/s |
+| 201,456-token needle | not run | found (read 875 tok/s, about 230 s; reply 32.0 tok/s) |
+
+Only 10 of the model's 40 layers keep a full memory of the chat, so the cache is small: 1.33 GiB at 128K, 2.66 GiB at 256K (q8). `--fit` keeps the card flat by moving about 0.8 GB more of the experts to RAM. That's why 256K is the default.
+
 ---
 
 ## Not measured yet
 
 - **The smaller Q3 file for 8 GB cards** (Qwen3.6 35B-A3B UD-Q3_K_XL, 16.8 GB). Only its download was checked: the size and checksum match the file pinned in Get models. It hasn't been run, so there are no speed, memory or quality numbers for it yet, and nothing has been tested on a card smaller than 16 GB.
-- **256K context** on Qwen3.6: queued.
+- **256K with q4_0 KV** on Qwen3.6: it passed the 201K needle, but the run was noisy (a test suite was starting). 256K with q8 KV (the default) is measured above.

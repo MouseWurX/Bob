@@ -110,7 +110,7 @@ export function schedulesView(brain) {
 export async function schedulesRoute({ req, p, isLocal, brain, body, send, res }) {
   if (p !== '/api/hands/schedules') return false;
   if (req.method === 'GET') { send(res, 200, schedulesView(brain)); return true; }
-  if (!isLocal) { send(res, 403, { error: 'Schedules can only be changed on the PC itself.' }); return true; }
+  if (!isLocal) { send(res, 403, { error: 'Schedules can only be changed on this replicant matrix itself.' }); return true; }
   const b = await body(req);
   try {
     const s = schedulesFor(brain);

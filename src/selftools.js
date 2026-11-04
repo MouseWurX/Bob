@@ -461,7 +461,7 @@ export async function useTool(cfg, name, input, { signal } = {}) {
   if (t.state === 'changed') throw new Error(`I turned ${name} off because its files changed since it was OK'd. It has to be checked again before I use it.`);
   if (t.state === 'missing') throw new Error(`${name}'s folder is gone.`);
   const holds = await sandboxHolds(cfg);
-  if (!holds.ok) throw new Error(`The sandbox doesn't hold on this PC (${holds.why}), so I won't run tools I made.`);
+  if (!holds.ok) throw new Error(`The sandbox doesn't hold on this replicant matrix (${holds.why}), so I won't run tools I made.`);
   const res = await runSandboxed({ dir: t.dir, input: input && typeof input === 'object' ? input : {}, reads: a.reads, writes: a.writes, internet: a.internet, timeoutSec: a.timeoutSec || 60, signal });
   all[name].lastUsed = Date.now();
   saveApproved(cfg, all);
@@ -510,7 +510,7 @@ export function selfToolsTools(brain) {
     async check(args, ctx = {}) {
       off(cfg);
       const holds = await sandboxHolds(cfg);
-      if (!holds.ok) throw new Error(`The sandbox doesn't hold on this PC (${holds.why}), so I can't make tools here.`);
+      if (!holds.ok) throw new Error(`The sandbox doesn't hold on this replicant matrix (${holds.why}), so I can't make tools here.`);
       const { spec, problems } = cleanSpec(cfg, args);
       const code = String(args.code || '');
       problems.push(...codeProblems(cfg, code, spec));
@@ -536,7 +536,7 @@ export function selfToolsTools(brain) {
       const draft = { spec, code, test, review };
       if (ctx) ctx.toolDraft = draft;
       const replaces = Boolean(have[spec.name]);
-      const net = spec.internet ? (holds.net ? 'Yes (only this tool, only while it runs)' : 'Yes. This PC can\'t switch the internet off for one program, so the code was checked for it instead') : 'No';
+      const net = spec.internet ? (holds.net ? 'Yes (only this tool, only while it runs)' : 'Yes. This replicant matrix can\'t switch the internet off for one program, so the code was checked for it instead') : 'No';
       return {
         text: `${replaces ? 'Replace my tool' : 'Add a tool I made'}: ${spec.name}. ${spec.what}`,
         button: replaces ? 'Replace tool' : 'Add tool',

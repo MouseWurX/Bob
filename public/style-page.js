@@ -59,7 +59,7 @@ export function createStylePage({ api, redraw, flash }) {
         ${mine.length ? `<h3>Yours</h3><div class="themes" role="radiogroup" aria-label="Your themes">${mine.map((t) => themeButton(t, style)).join('')}</div>${mine.some((t) => t.id === style.theme) ? '<p><button data-edittheme>Edit the selected theme</button></p>' : ''}` : ''}
         ${editorHtml()}
       </div>
-      <div><strong>Bob's look</strong> ${tip(`Every one blinks and talks. ${AVATAR_GROUPS.reduce((n, g) => n + g.count, 0) + Object.keys(LOOKS).length} to pick from, all drawn on this PC.`, 'Bob\'s look')}${avatarsHtml()}</div>
+      <div><strong>Bob's look</strong> ${tip(`Every one blinks and talks. ${AVATAR_GROUPS.reduce((n, g) => n + g.count, 0) + Object.keys(LOOKS).length} to pick from, all drawn on this replicant matrix.`, 'Bob\'s look')}${avatarsHtml()}</div>
     </section>`;
   }
 

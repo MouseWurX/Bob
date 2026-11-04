@@ -13,8 +13,8 @@ Already clicked or typed a password? Change that password now (and anywhere you 
   passwords: {
     title: 'Passwords that hold up',
     words: 'password passphrase manager reuse strong',
-    text: `One different password for every account; reuse is how one breach becomes ten. A password manager makes that painless (Bitwarden is free and open source; KeePassXC keeps everything offline; browser managers beat reusing). For things you must remember (the manager itself, your PC), use a passphrase of 4-6 random words. Length beats symbols.
-Never give a password to anyone who contacts you, Bob included: Bob never needs one. Check whether a password has leaked with the "Check a password safely" box under the Security Hand in Settings: only 5 characters of a scrambled fingerprint leave the PC.`
+    text: `One different password for every account; reuse is how one breach becomes ten. A password manager makes that painless (Bitwarden is free and open source; KeePassXC keeps everything offline; browser managers beat reusing). For things you must remember (the manager itself, your replicant matrix), use a passphrase of 4-6 random words. Length beats symbols.
+Never give a password to anyone who contacts you, Bob included: Bob never needs one. Check whether a password has leaked with the "Check a password safely" box under the Security Hand in Settings: only 5 characters of a scrambled fingerprint leave this replicant matrix (your computer).`
   },
   '2fa': {
     title: 'Two-step sign-in (2FA)',
@@ -30,7 +30,7 @@ Save the recovery codes somewhere safe and offline. No real company asks you to 
   backups: {
     title: 'Backups (your undo button for ransomware and dead drives)',
     words: 'backup restore ransomware 3-2-1 copy drive cloud',
-    text: `The 3-2-1 habit: 3 copies of what matters, on 2 different kinds of storage, 1 kept away from the PC (cloud, or a drive at a friend's or unplugged in a drawer). An always-plugged-in drive can be encrypted along with the PC, so unplug it after a backup. Windows: File History or Windows Backup; for projects, a git remote counts as one copy. Test a restore now and then: a backup you've never restored is a hope, not a backup.`
+    text: `The 3-2-1 habit: 3 copies of what matters, on 2 different kinds of storage, 1 kept away from this replicant matrix (cloud, or a drive at a friend's or unplugged in a drawer). An always-plugged-in drive can be encrypted along with this replicant matrix, so unplug it after a backup. Windows: File History or Windows Backup; for projects, a git remote counts as one copy. Test a restore now and then: a backup you've never restored is a hope, not a backup.`
   },
   wifi: {
     title: 'Wi-Fi and public networks',
@@ -40,7 +40,7 @@ Save the recovery codes somewhere safe and offline. No real company asks you to 
   router: {
     title: 'Your home router',
     words: 'router modem home network wifi password admin upnp port forwarding firmware',
-    text: `Change the router's admin password from the one on the sticker, keep its firmware updated (or replace it if it no longer gets updates), use WPA2 or WPA3 with a long Wi-Fi password, switch off WPS, and turn off UPnP unless a game truly needs it (it lets programs open doors to the internet by themselves). Remove port forwards you don't use. A guest network for visitors and smart gadgets keeps them away from your PCs. Bob's web page is LAN-only; never forward its port to the internet.`
+    text: `Change the router's admin password from the one on the sticker, keep its firmware updated (or replace it if it no longer gets updates), use WPA2 or WPA3 with a long Wi-Fi password, switch off WPS, and turn off UPnP unless a game truly needs it (it lets programs open doors to the internet by themselves). Remove port forwards you don't use. A guest network for visitors and smart gadgets keeps them away from your replicant matrices. Bob's web page is LAN-only; never forward its port to the internet.`
   },
   sharing: {
     title: 'Before you share a photo or document',
@@ -61,7 +61,7 @@ Quarantined means locked away and harmless; leave it unless you are sure it's a 
   hacked: {
     title: 'I think I have been hacked: what now',
     words: 'hacked compromised account taken over virus infected stolen breach help',
-    text: `From a device you trust (your phone if the PC is suspect): 1. Change your email password first, then the account in trouble, then any place sharing that password. 2. Turn on two-step sign-in and sign out all other sessions (most sites have "sign out everywhere"). 3. Check the account's recovery email/phone and forwarding rules in email (attackers add a rule to hide replies). 4. On the PC: run a Defender full scan and the Microsoft Defender Offline scan (Windows Security > Scan options), check startup items (security_check startup), and remove programs you don't recognise. Remote-control apps (AnyDesk, TeamViewer, etc.) you didn't install should go. 5. Tell your bank if money or cards are involved; tell friends if the account messaged them. 6. If it keeps coming back, back up your files (not programs) and reset Windows. Report fraud to the Canadian Anti-Fraud Centre.`
+    text: `From a device you trust (your phone if this replicant matrix is suspect): 1. Change your email password first, then the account in trouble, then any place sharing that password. 2. Turn on two-step sign-in and sign out all other sessions (most sites have "sign out everywhere"). 3. Check the account's recovery email/phone and forwarding rules in email (attackers add a rule to hide replies). 4. On this replicant matrix: run a Defender full scan and the Microsoft Defender Offline scan (Windows Security > Scan options), check startup items (security_check startup), and remove programs you don't recognise. Remote-control apps (AnyDesk, TeamViewer, etc.) you didn't install should go. 5. Tell your bank if money or cards are involved; tell friends if the account messaged them. 6. If it keeps coming back, back up your files (not programs) and reset Windows. Report fraud to the Canadian Anti-Fraud Centre.`
   },
   ransomware: {
     title: 'Ransomware',

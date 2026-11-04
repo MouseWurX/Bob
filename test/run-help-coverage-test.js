@@ -23,7 +23,7 @@ const missing = (labels) => [...new Set(labels)].filter((l) => !helpText.include
   const gone = missing(switches);
   check('every switch on the Settings page has Help', !gone.length, gone.join(' | '));
   // Every bold label in the settings and model pages, minus a few that are headings, not settings.
-  const SKIP = new Set(['Picked for this PC', 'Setup', 'Also use it for', 'What should I call you?']);
+  const SKIP = new Set(['Picked for this replicant matrix', 'Setup', 'Also use it for', 'What should I call you?']);
   const strong = [...cellar.matchAll(/<strong>([^<$]{3,60})<\/strong>/g)].map((m) => m[1].replace(/\\'/g, "'").replace(/\s*\([^)]*\)$/, '').replace(/:$/, '')).filter((l) => !SKIP.has(l));
   const gone2 = missing(strong);
   check('every other labelled setting in Settings has Help', strong.length >= 15 && !gone2.length, gone2.join(' | '));
@@ -32,7 +32,7 @@ const missing = (labels) => [...new Set(labels)].filter((l) => !helpText.include
   check('every Hand, hard limit and Hands setting has Help', !gone3.length, gone3.join(' | '));
   const hands2 = read('public/hands.js');
   check('the Hands page still shows these labels', ['Let Bob use Hands', 'Let Bob work without asking', 'Folders the Files Hand may work in', 'Stop a command after'].every((l) => hands2.includes(l)));
-  const elsewhere = ['Free memory when Bob is idle', 'Show models that don\'t suit this PC', 'At once', 'Carry on unfinished downloads when Bob starts', 'Listen', 'Read aloud', 'Alerts', 'Animations', 'Session', 'Effort'];
+  const elsewhere = ['Free memory when Bob is idle', 'Show models that don\'t suit this replicant matrix', 'At once', 'Carry on unfinished downloads when Bob starts', 'Listen', 'Read aloud', 'Alerts', 'Animations', 'Session', 'Effort'];
   const gone4 = missing(elsewhere);
   check('chat page, menu, Downloads and Get models settings have Help', !gone4.length, gone4.join(' | '));
   const menu = [...read('public/index.html').matchAll(/<span class="lbl">([^<]+)<\/span>/g)].map((m) => m[1]).filter((l) => !/Session:/.test(l));

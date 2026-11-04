@@ -67,7 +67,7 @@ export function createBrainBar({ post, note }) {
   sw.onclick = async () => {
     const mode = sw.getAttribute('aria-checked') === 'true' ? 'always' : 'wake';
     const r = await post('/api/settings', { brainMode: mode });
-    if (!r.ok) { note(r.data.error || 'Couldn\'t change "Free memory when Bob is idle". It can only be changed on the PC itself.', 'error'); return; }
+    if (!r.ok) { note(r.data.error || 'Couldn\'t change "Free memory when Bob is idle". It can only be changed on this replicant matrix itself.', 'error'); return; }
     if (st) { st.mode = r.data.brainMode; draw(); }
     setTimeout(refresh, 400);
   };

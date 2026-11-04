@@ -56,7 +56,7 @@ export function tipsFrom(facts, { today = new Date() } = {}) {
     if (now && rated > now + 200) {
       tips.push({ id: 'memory-speed', level: 'fix', title: `Your memory runs at ${now} MT/s, but it's rated for ${rated}`,
         why: 'Faster memory makes Bob quicker when he works on the processor or a brain doesn\'t fit the graphics card.',
-        steps: ['This is a BIOS setting (EXPO on AMD boards, XMP on Intel boards). Bob can\'t change it.', 'Restart the PC and open the BIOS (usually by pressing Delete or F2 while it starts).', 'Turn on the memory profile: EXPO on AMD boards, XMP on Intel boards.', 'Save and restart. If the PC won\'t start, the BIOS goes back to the old setting on its own after a few tries.'] });
+        steps: ['This is a BIOS setting (EXPO on AMD boards, XMP on Intel boards). Bob can\'t change it.', 'Restart this replicant matrix and open the BIOS (usually by pressing Delete or F2 while it starts).', 'Turn on the memory profile: EXPO on AMD boards, XMP on Intel boards.', 'Save and restart. If this replicant matrix won\'t start, the BIOS goes back to the old setting on its own after a few tries.'] });
     } else if (now) fine.push(`Memory runs at ${now} MT/s${rated > now ? '' : rated ? ' (its rated speed)' : ''}.`);
   }
   const bat = (facts.battery || []).filter(Boolean);
@@ -74,7 +74,7 @@ export function tipsFrom(facts, { today = new Date() } = {}) {
   const d = facts.disk;
   if (d && (/hdd/i.test(d.media) || /usb/i.test(d.bus))) {
     tips.push({ id: 'disk', level: 'fix', title: `Bob's models are on a ${/usb/i.test(d.bus) ? 'USB drive' : 'hard drive'} (${facts.drive}:)`, why: 'Brains load from disk each time Bob wakes, so a slow drive adds many seconds to every first reply.',
-      steps: ['Move the models folder to your fastest drive (an SSD inside the PC).', 'In Bob, open Settings, then Show advanced settings, and point Bob at the new folder.'] });
+      steps: ['Move the models folder to your fastest drive (an SSD inside this replicant matrix).', 'In Bob, open Settings, then Show advanced settings, and point Bob at the new folder.'] });
   } else if (d?.media) fine.push(`Models are on a fast drive (${facts.drive}:).`);
   if (facts.nvidia) {
     const others = (facts.nvidia.apps || []).filter((a) => a.gb >= 0.5);

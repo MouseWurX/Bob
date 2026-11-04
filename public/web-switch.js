@@ -11,7 +11,7 @@ export function createWebSwitch({ note }) {
   function draw() {
     btn.setAttribute('aria-checked', String(on));
     st.textContent = on ? 'On' : 'Off';
-    btn.title = on ? 'Bob can search the web (DuckDuckGo) and read pages when a question needs it. Only the search words and page addresses leave your PC. Click to turn it off.'
+    btn.title = on ? 'Bob can search the web (DuckDuckGo) and read pages when a question needs it. Only the search words and page addresses leave your replicant matrix (your computer). Click to turn it off.'
       : 'Bob won\'t go online to look things up. Click to let him search the web when a question needs it. Same switch as "Let Bob search the web" in Settings.';
   }
 

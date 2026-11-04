@@ -55,7 +55,7 @@ export function openFile(cfg, p, { reveal = false } = {}) {
   if (!reveal && !canOpen(file, fs.statSync(file).isDirectory())) throw new Error('Bob doesn\'t open that kind of file (programs, scripts, shortcuts and web pages stay shut). Use Show in folder instead.');
   const sh = globalThis.bobShell;
   if (sh) { reveal ? sh.showItemInFolder(file) : sh.openPath(file); return { ok: true, file }; }
-  if (process.platform !== 'win32') throw new Error('Opening files works on the PC itself.');
+  if (process.platform !== 'win32') throw new Error('Opening files works on this replicant matrix itself.');
   const explorer = path.join(process.env.SystemRoot || 'C:\\Windows', 'explorer.exe');
   spawn(explorer, reveal ? [`/select,${file}`] : [file], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
   return { ok: true, file };

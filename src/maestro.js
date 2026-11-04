@@ -12,7 +12,7 @@ export function maestroUrl(cfg) {
   const u = (cfg.maestro && cfg.maestro.url) || 'http://127.0.0.1:42003';
   const url = new URL(u);
   // Maestro must be on this PC: never send prompts elsewhere through this bridge.
-  if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) throw new Error('Maestro has to be on this PC.');
+  if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) throw new Error('Maestro has to be on this replicant matrix.');
   return url.origin;
 }
 

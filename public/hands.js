@@ -16,7 +16,7 @@ const post = async (url, data) => {
 // the window; only the first 5 characters of the scramble go out, and the match is found here too.
 function securityLine(on) {
   return `<div class="hands-security muted${on ? '' : ' dim'}"><strong>Check a password safely</strong><br>
-    <span>Has a password turned up in a known breach? It's scrambled on this PC, and only the first 5 characters of the scramble are sent to Have I Been Pwned (haveibeenpwned.com) when you press Check, so the password never leaves. Nothing is saved.</span>${on ? '' : '<br><span>Turn on the Security and privacy Hand above to use this.</span>'}
+    <span>Has a password turned up in a known breach? It's scrambled on this replicant matrix, and only the first 5 characters of the scramble are sent to Have I Been Pwned (haveibeenpwned.com) when you press Check, so the password never leaves. Nothing is saved.</span>${on ? '' : '<br><span>Turn on the Security and privacy Hand above to use this.</span>'}
     <div class="row"><input type="password" data-hpw autocomplete="off" spellcheck="false" placeholder="Type a password" aria-label="Password to check" style="flex:1" ${on ? '' : 'disabled'}><button type="button" data-hpwcheck ${on ? '' : 'disabled'}>Check</button></div>
     <span class="hpw-out" role="status"></span></div>`;
 }
@@ -24,7 +24,7 @@ async function checkPassword(box) {
   const input = box.querySelector('[data-hpw]'), out = box.querySelector('.hpw-out');
   const pw = input.value;
   if (!pw) { out.textContent = 'Type a password first.'; return; }
-  if (!globalThis.crypto?.subtle) { out.textContent = 'This only works in Bob\'s window on the PC itself.'; return; }
+  if (!globalThis.crypto?.subtle) { out.textContent = 'This only works in Bob\'s window on this replicant matrix itself.'; return; }
   out.textContent = 'Checking…';
   try {
     const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-1', new TextEncoder().encode(pw)))].map((b) => b.toString(16).padStart(2, '0')).join('').toUpperCase();
@@ -39,8 +39,8 @@ async function checkPassword(box) {
 // Under the Office switch: which helpers Bob found on this PC, so it's clear what works before asking.
 function officeLine(o, on) {
   if (!o) return '';
-  const doc = o.office ? `✓ ${esc(o.office.name)}${o.office.version ? ` ${esc(o.office.version)}` : ''} ${o.office.where === 'own' ? '(Bob\'s own copy)' : '(found on this PC)'}` : '✗ No LibreOffice or OpenOffice found: documents, spreadsheets and slides need one. <button type="button" data-hgetengine="libreoffice">Get LibreOffice (about 350 MB)</button>';
-  const media = o.ffmpeg ? `✓ FFmpeg ${o.ffmpeg.where === 'own' ? '(Bob\'s own copy)' : '(found on this PC)'}` : '✗ No FFmpeg: sound, video and WebP pictures need it. <button type="button" data-hgetengine="ffmpeg">Get FFmpeg (about 100 MB)</button>';
+  const doc = o.office ? `✓ ${esc(o.office.name)}${o.office.version ? ` ${esc(o.office.version)}` : ''} ${o.office.where === 'own' ? '(Bob\'s own copy)' : '(found on this replicant matrix)'}` : '✗ No LibreOffice or OpenOffice found: documents, spreadsheets and slides need one. <button type="button" data-hgetengine="libreoffice">Get LibreOffice (about 350 MB)</button>';
+  const media = o.ffmpeg ? `✓ FFmpeg ${o.ffmpeg.where === 'own' ? '(Bob\'s own copy)' : '(found on this replicant matrix)'}` : '✗ No FFmpeg: sound, video and WebP pictures need it. <button type="button" data-hgetengine="ffmpeg">Get FFmpeg (about 100 MB)</button>';
   return `<div class="hands-office muted${on ? '' : ' dim'}"><strong>Office helpers</strong><br>${doc}<br>${media}<br>${o.pictures === 'built in' ? `✓ Pictures (PNG, JPG, BMP, GIF, TIFF): built into ${/Mac/.test(navigator.userAgent) ? 'macOS' : 'Windows'}` : ''}</div>`;
 }
 
@@ -58,6 +58,9 @@ export function handsApproval(ev, { add, answer }) {
         <td>${esc(OPS[r.op] || r.op)}${r.note ? `<br><span class="muted">${esc(r.note)}</span>` : ''}</td><td class="path">${esc(r.from)}</td>
         <td class="path">${esc(r.to)}${r.blocked ? `<br><span class="why">✗ ${esc(r.blocked)}</span>` : ''}</td></tr>`).join('')}
       </tbody></table></div>`;
+  } else if (ev.mcp) {
+    // Connected apps: plain words in the first line; code a tool would run is shown as it is; the exact call under Show details.
+    body = `${ev.mcp.code ? `<pre class="cmd"><code>${esc(ev.mcp.code)}</code></pre>` : ''}<details><summary>Show details</summary><pre class="cmd"><code>${esc(ev.command)}</code></pre></details><p class="muted">${esc(ev.where || '')}</p>${ev.mcp.always ? '<p class="warn-text">This one always asks.</p>' : ''}`;
   } else {
     body = `<pre class="cmd"><code>${esc(ev.command)}</code></pre><p class="muted">In ${esc(ev.cwd || '')}</p>`;
   }
@@ -117,20 +120,47 @@ function selfToolsHtml(st, on) {
   if (!st) return '';
   const rows = st.tools.map((t) => `<li class="mytool"><label class="switch small"><input type="checkbox" data-hmytool="${esc(t.name)}" ${t.state === 'on' ? 'checked' : ''} ${t.state === 'changed' || t.state === 'missing' ? 'disabled' : ''}><span><strong>${esc(t.name)}</strong> ${TOOL_STATE[t.state] ? `<span class="warn-text">${esc(TOOL_STATE[t.state])}</span>` : ''}<br><span class="muted">${esc(t.what)}</span><br><span class="muted">Can change: ${esc(t.writes.join('; ') || 'nothing outside its folder')}. Internet: ${t.internet ? 'yes' : 'no'}. Made ${esc(when(t.at))}${t.lastUsed ? `, last used ${esc(when(t.lastUsed))}` : ', not used yet'}.</span></span></label>
       <div class="row"><button type="button" data-hmytoolcode="${esc(t.name)}">Show code</button><button type="button" data-hmytooldel="${esc(t.name)}">Remove</button></div><pre class="cmd mytool-code" hidden></pre></li>`).join('');
-  const sb = st.sandbox ? (st.sandbox.ok ? `Sandbox holds ✓ <span class="muted">checked ${esc(when(st.sandbox.at || Date.now()))}</span>` : `<span class="warn-text">Making and using tools is refused: the sandbox didn't hold on this PC (${esc(st.sandbox.why)}).</span>`) : '<span class="muted">Sandbox not checked yet.</span>';
+  const sb = st.sandbox ? (st.sandbox.ok ? `Sandbox holds ✓ <span class="muted">checked ${esc(when(st.sandbox.at || Date.now()))}</span>` : `<span class="warn-text">Making and using tools is refused: the sandbox didn't hold on this replicant matrix (${esc(st.sandbox.why)}).</span>`) : '<span class="muted">Sandbox not checked yet.</span>';
   return `<div class="hands-mytools${on ? '' : ' dim'}"><strong>Tools Bob made</strong> <span class="muted">${st.tools.length} of ${st.max}</span>
     ${st.tools.length ? `<ul>${rows}</ul>` : '<p class="muted">None yet. With "Make his own tools" on, Bob makes one when none of his tools fits a job, and shows you a card first.</p>'}
-    <p class="muted">${st.netGuard ? 'Tools without internet on their card are cut off from it.' : 'This PC can\'t cut one program off the internet without administrator rights, so the code is checked for it instead. That check isn\'t airtight.'}</p>
+    <p class="muted">${st.netGuard ? 'Tools without internet on their card are cut off from it.' : 'This replicant matrix can\'t cut one program off the internet without administrator rights, so the code is checked for it instead. That check isn\'t airtight.'}</p>
     <div class="row"><button type="button" data-hsandbox>Check the sandbox</button> <span>${sb}</span></div></div>`;
+}
+
+// Settings, Hands: Connected apps (MCP, src/mcp.js). Each app has its own switch (off when added), a Check button
+// (reaches it once and lists its tools), and Remove. Adding: fill in for Blender or Unreal, type it in, or paste the
+// setup block from the add-on's instructions.
+function mcpHtml(m, on) {
+  if (!m) return '';
+  const rows = m.servers.map((s) => `<li class="mcp-app"><label class="switch small"><input type="checkbox" data-hmcp="${esc(s.id)}" ${s.on ? 'checked' : ''} aria-label="${esc(s.name)} on"><span><strong>${esc(s.name)}</strong> <span class="muted">On</span>${s.running ? ' <span class="tag">running</span>' : ''}<br>
+      <span class="muted mcp-starts">${s.url ? `Address: ${esc(s.url)}` : `Starts: <code>${esc([s.cmd, ...s.args].join(' '))}</code>${s.cwd ? ` in ${esc(s.cwd)}` : ''}`}${s.env.length ? `. Its settings: ${esc(s.env.join(', '))}` : ''}</span><br>
+      <span class="muted">${s.error ? `<span class="warn-text">Last check: ${esc(s.error)}</span>` : s.checked ? `Last check: ${s.tools.length} tool${s.tools.length === 1 ? '' : 's'}, ${esc(when(s.checked))}` : 'Not checked yet.'}</span>${s.problem ? `<br><span class="warn-text">Bob won't start it: ${esc(s.problem)}</span>` : ''}${/^uvx?(\.exe)?$/i.test(s.cmd) && !m.uv ? '<br><span class="warn-text">It needs uv, which isn\'t on this replicant matrix yet.</span> <button type="button" data-hgetengine="uv">Get uv for me</button>' : ''}</span></label>
+      <div class="row"><button type="button" data-hmcpcheck="${esc(s.id)}">Check</button>${s.tools.length ? `<button type="button" data-hmcptools="${esc(s.id)}">Show tools</button>` : ''}<button type="button" data-hmcpdel="${esc(s.id)}">Remove</button></div>
+      <ul class="mcp-tools muted" hidden>${s.tools.map((t) => `<li><code>${esc(t.name)}</code>${t.readOnly ? ' (only looks)' : t.code ? ' <span class="warn-text">(runs code: can change anything in the app)</span>' : t.risky ? ' <span class="warn-text">(can delete or overwrite)</span>' : ''}: ${esc(t.what)}</li>`).join('')}</ul></li>`).join('');
+  return `<div class="hands-mcp${on ? '' : ' dim'}"><strong>Connected apps</strong>
+    <p class="muted">Apps with an MCP add-on can offer Bob their tools. Each app here starts switched off. Bob only starts or reaches one when a job needs it, and lets it go after ${m.idleMin} minutes unused.${on ? '' : ' Turn on the Connected apps (MCP) Hand above to use these.'}</p>
+    ${m.servers.length ? `<ul>${rows}</ul>` : '<p class="muted">None yet.</p>'}
+    <details class="mcp-add"><summary>Add a connected app</summary>
+      <div class="row"><button type="button" data-hmcppreset="blender">Fill in for Blender</button><button type="button" data-hmcppreset="unreal">Fill in for Unreal Engine</button></div>
+      <p class="muted mcp-presetnote"></p>${m.uv ? '' : '<p class="muted mcp-uv" hidden>uv isn\'t on this replicant matrix yet. <button type="button" data-hgetengine="uv">Get uv for me</button></p>'}
+      <label class="pick"><span>Name</span><input data-hm="name" placeholder="Blender"></label>
+      <label class="pick"><span>Program to start</span><input data-hm="cmd" placeholder="uvx"></label>
+      <label class="pick"><span>Arguments (one per line)</span><textarea data-hm="args" rows="2" placeholder="blender-mcp"></textarea></label>
+      <label class="pick"><span>Or its address</span><input data-hm="url" placeholder="http://127.0.0.1:8000/mcp"></label>
+      <p class="muted">Fill in a program or an address, not both. Your add-on's instructions say which.</p>
+      <button type="button" data-hmcpadd>Add app</button></details>
+    <details class="mcp-paste"><summary>Paste a setup from another app</summary>
+      <p class="muted">Add-on instructions, and apps like Claude Desktop, Cline or OpenCode, keep these in a block called "mcpServers". Paste the whole block. Every app in it comes in switched off.</p>
+      <textarea data-hmcppaste rows="5" spellcheck="false" placeholder='{ "mcpServers": { "blender": { "command": "uvx", "args": ["blender-mcp"] } } }' style="width:100%"></textarea>
+      <button type="button" data-hmcpimport>Add these</button></details></div>`;
 }
 
 // ---- One card with every OK a job needs (1.5.42, src/together.js) ----
 // Each step has its own tick box (and its own rows to tick, for files), so the person can see the whole job and
 // allow all of it, some of it, or none. Returns the card, or null if this isn't one.
 const lower = (t) => (t && !/^[A-Z]{2}/.test(t) ? t[0].toLowerCase() + t.slice(1) : t);
-export function togetherApproval(ev, { add, answer }) {
-  if (!Array.isArray(ev.together)) return null;
-  const step = (it) => {
+// A step's details on a card (the exact command, the files to tick, the change), shared with the plan card (plan-card.js).
+export function stepBody(it) {
     let body = '';
     if (it.later) body = `${it.details ? `<pre class="cmd"><code>${esc(it.details)}</code></pre>` : ''}<p class="muted">Bob can't check this one until the steps before it are done (${esc(lower(String(it.later).replace(/[.\s]+$/, '')))}). He checks again when he gets there, and if anything doesn't match, he asks you again.</p>`;
     else if (it.plan) body = `<div class="hands-plan"><table><thead><tr><th></th><th>What</th><th>From</th><th>To</th></tr></thead><tbody>
@@ -140,6 +170,12 @@ export function togetherApproval(ev, { add, answer }) {
       </tbody></table></div>`;
     else if (it.command) body = `<pre class="cmd"><code>${esc(it.command)}</code></pre><p class="muted">In ${esc(it.cwd || '')}</p>`;
     else if (it.diff) body = `<pre class="diff"><code>${esc(it.diff)}</code></pre>`;
+    return body;
+}
+export function togetherApproval(ev, { add, answer }) {
+  if (!Array.isArray(ev.together) || ev.planCard) return null;
+  const step = (it) => {
+    const body = stepBody(it);
     return `<li class="together-step"><label class="together-head"><input type="checkbox" class="pick" data-n="${it.n}" checked aria-label="Allow step ${it.n}"><span><strong>${it.n}.</strong> ${esc(it.text)}</span></label>${body}</li>`;
   };
   const card = add('approval hands-card together', `<p><strong>Bob wants to do ${ev.together.length} things, all for one job.</strong> ${esc(ev.text)}</p>
@@ -263,13 +299,14 @@ export async function mountHandsSettings(box) {
     const s = v.settings;
     const folders = [...new Set([...(v.candidates || []), ...s.folders])];
     box.innerHTML = `<strong>Hands</strong> <span class="tag">off unless you turn them on</span>
-      <p class="muted">Hands let Bob do things on this PC, not just talk about them. Each one is off until you switch it on. Even then he shows you exactly what he'll do (every file, or the exact command) and waits for your click every time, unless you turn on "Let Bob work without asking" below. "Allow the rest of this job" only covers the same kind of thing until that job ends. The hard limits below are all on to start with. He never changes his own code or settings. Everything goes in the logbook.</p>
+      <p class="muted">Hands let Bob do things on this replicant matrix, not just talk about them. Each one is off until you switch it on. Even then he shows you exactly what he'll do (every file, or the exact command) and waits for your click every time, unless you turn on "Let Bob work without asking" below. "Allow the rest of this job" only covers the same kind of thing until that job ends. The hard limits below are all on to start with. He never changes his own code or settings. Everything goes in the logbook.</p>
       <label class="switch"><input type="checkbox" data-hmaster ${s.enabled ? 'checked' : ''}><span><strong>Let Bob use Hands</strong> ${tip('The master switch. Off turns every Hand below off.', 'Let Bob use Hands')}${s.enabled && s.held ? '<br><span class="warn-text">Stopped right now with the Hands switch on the chat page. Click it there to carry on.</span>' : ''}</span></label>
       <div class="hands-free${s.free ? ' on' : ''}"><label class="switch${s.enabled ? '' : ' dim'}"><input type="checkbox" data-hfree ${s.free ? 'checked' : ''} ${s.enabled ? '' : 'disabled'}><span><strong>Let Bob work without asking</strong> <span class="tag">off unless you turn it on</span><br><span class="muted">No approval cards: he just does the job and tells you what he did. The hard limits below still apply, every action is still in the chat and the logbook, and the ✋ Hands button on the chat page stops him at once. Cloud helpers still ask, because they cost money. Scheduled jobs also run by themselves.</span>${s.free && s.enabled ? '<br><span class="warn-text">On: Bob is working without asking.</span>' : ''}</span></label></div>
       ${v.hands.map((h) => `<label class="switch${s.enabled ? '' : ' dim'}"><input type="checkbox" data-hand="${esc(h.id)}" ${s[h.id]?.on ? 'checked' : ''} ${s.enabled ? '' : 'disabled'}><span><strong>${esc(h.label)}</strong> ${tip(esc(h.what || ''), h.label)}</span></label>`).join('')}
       ${officeLine(v.office, s.enabled && s.office?.on)}
       ${securityLine(s.enabled && s.security?.on)}
       ${selfToolsHtml(v.selfTools, s.enabled && s.maker?.on)}
+      ${mcpHtml(v.mcp, s.enabled && s.mcp?.on)}
       <div class="hands-limits"><strong>Hard limits</strong> <span class="tag">all on to start with</span>
         <p class="muted">These hold whether or not Bob asks first. Switch one off only if you need what it blocks.</p>
         ${(v.limits || []).map((l) => `<label class="switch small"><input type="checkbox" data-hlimit="${esc(l.id)}" ${s.limits?.[l.id] !== false ? 'checked' : ''}><span><strong>${esc(l.label)}</strong><br><span class="muted">${esc(l.on)}</span>${l.more ? `<details class="more"><summary>More</summary><span class="muted">${esc(l.more)}</span></details>` : ''}${s.limits?.[l.id] === false ? `<br><span class="warn-text">Off: ${esc(l.off)}</span>` : ''}${l.id === 'readOnly' ? `<br><span class="muted">Read-only right now: ${v.readOnly?.length ? esc(v.readOnly.join('; ')) : 'none (add folders to "readOnlyRoots" in config.json)'}</span>` : ''}</span></label>`).join('')}
@@ -293,7 +330,7 @@ export async function mountHandsSettings(box) {
         <strong>Recent commands</strong>
         ${v.runs.length ? `<ul>${v.runs.map((r) => `<li>${esc(when(r.at))}: <code>${esc(r.line)}</code> <span class="muted">${r.why ? "didn't start" : r.killed ? esc(r.killed) : `exit ${r.code}`}</span></li>`).join('')}</ul>` : '<p class="muted">None yet.</p>'}
         <p class="muted">Every action is also in the logbook (inn\\logbook.md).</p></div>
-      <div class="hands-selftest"><strong>Self-test</strong> <span class="muted">Checks that Recycle Bin and Undo, tidying, running a program and Stop work on this PC. Uses a throwaway folder of dummy files, which is removed afterwards. Nothing of yours is touched, and no Hand needs to be on.</span>
+      <div class="hands-selftest"><strong>Self-test</strong> <span class="muted">Checks that Recycle Bin and Undo, tidying, running a program and Stop work on this replicant matrix. Uses a throwaway folder of dummy files, which is removed afterwards. Nothing of yours is touched, and no Hand needs to be on.</span>
         <div class="row"><button type="button" data-hselftest>Run the self-test</button></div>
         ${selftest ? `<ul class="selftest">${selftest.results.map((r) => `<li>${r.ok ? '✅' : '❌'} <strong>${esc(r.name)}</strong>: ${esc(r.says)}</li>`).join('')}</ul><p class="muted">${selftest.passed} of ${selftest.total} passed.${selftest.cleaned ? ' The throwaway folder is gone.' : ` Couldn't remove ${esc(selftest.folder)}.`}</p>` : ''}</div>
       <p class="muted hands-out" role="status"></p>`;
@@ -330,6 +367,7 @@ export async function mountHandsSettings(box) {
       if (el.dataset.hfolder) { const f = el.dataset.hfolder; return await set({ folders: el.checked ? [...v.settings.folders, f] : v.settings.folders.filter((x) => x !== f) }); }
       if ('htimeout' in el.dataset) return await set({ timeoutMin: Number(el.value) });
       if (el.dataset.hmytool) { v = await post('/api/hands/mytools', { name: el.dataset.hmytool, on: el.checked }); draw(); return say(el.checked ? 'Tool on.' : 'Tool off. Bob won\'t use it until you turn it back on.'); }
+      if (el.dataset.hmcp) { const r = await post('/api/hands/mcp', { id: el.dataset.hmcp, on: el.checked }); v = r; draw(); return say(r.note); }
       if (el.dataset.hsched) { sched = await post('/api/hands/schedules', { id: el.dataset.hsched, on: el.checked }); draw(); return say(el.checked ? 'Schedule on.' : 'Schedule off.'); }
       if ('hschedtask' in el.dataset) { try { sched = await post('/api/hands/schedules', { windowsTask: el.checked }); draw(); say(el.checked ? 'Added the "Bob schedules" task: Windows wakes Bob (hidden) when a schedule is due. Remove Bob takes it away too.' : 'Removed the Windows task.'); } catch (err) { el.checked = !el.checked; say(err.message); } return; }
     } catch (err) { say(err.message); }
@@ -355,6 +393,26 @@ export async function mountHandsSettings(box) {
       if (b.dataset.hmytoolcode) { const pre = b.closest('li').querySelector('.mytool-code'); if (!pre.hidden) { pre.hidden = true; b.textContent = 'Show code'; return; } const r = await post('/api/hands/mytools', { name: b.dataset.hmytoolcode, code: true }); pre.textContent = r.code; pre.hidden = false; b.textContent = 'Hide code'; return; }
       if (b.dataset.hmytooldel) { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to remove'; return; } v = await post('/api/hands/mytools', { name: b.dataset.hmytooldel, remove: true }); draw(); return say('Removed. Its folder is in the Recycle Bin.'); }
       if ('hsandbox' in b.dataset) { b.disabled = true; say('Checking the sandbox (a few seconds)…'); v = await post('/api/hands/sandbox'); draw(); return say(v.sandbox?.ok ? 'The sandbox holds.' : `The sandbox didn't hold: ${v.sandbox?.why || 'unknown'}.`); }
+      if (b.dataset.hmcpcheck) { b.disabled = true; say('Checking (the first time can take a minute while it gets ready)…'); const r = await post('/api/hands/mcp', { id: b.dataset.hmcpcheck, check: true }); v = r; draw(); return say(r.note); }
+      if (b.dataset.hmcptools) { const ul = b.closest('li').querySelector('.mcp-tools'); ul.hidden = !ul.hidden; b.textContent = ul.hidden ? 'Show tools' : 'Hide tools'; return; }
+      if (b.dataset.hmcpdel) { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to remove'; return; } const r = await post('/api/hands/mcp', { id: b.dataset.hmcpdel, remove: true }); v = r; draw(); return say(r.note); }
+      if (b.dataset.hmcppreset) {
+        const pr = v.mcp?.presets?.[b.dataset.hmcppreset];
+        if (!pr) return;
+        const f = (k) => box.querySelector(`[data-hm="${k}"]`);
+        f('name').value = pr.name; f('cmd').value = pr.cmd || ''; f('args').value = (pr.args || []).join('\n'); f('url').value = pr.url || '';
+        box.querySelector('.mcp-presetnote').textContent = pr.note || '';
+        const uv = box.querySelector('.mcp-uv');
+        if (uv) uv.hidden = !pr.needsUv;
+        return;
+      }
+      if ('hmcpadd' in b.dataset) {
+        const g = (k) => box.querySelector(`[data-hm="${k}"]`).value.trim();
+        if (g('cmd') && g('url')) return say('Fill in a program or an address, not both.');
+        const r = await post('/api/hands/mcp', { add: { name: g('name'), cmd: g('cmd'), args: g('args') ? g('args').split(/\r?\n/).map((x) => x.trim()).filter(Boolean) : [], url: g('url') } });
+        v = r; draw(); return say(r.note);
+      }
+      if ('hmcpimport' in b.dataset) { const r = await post('/api/hands/mcp', { paste: box.querySelector('[data-hmcppaste]').value }); v = r; draw(); return say(r.note); }
       if ('hselftest' in b.dataset) { b.disabled = true; say('Running the self-test (about 10 seconds)…'); selftest = await post('/api/hands/selftest'); draw(); say(`Self-test: ${selftest.passed} of ${selftest.total} passed.`); return; }
       if (b.dataset.hscheddel) { sched = await post('/api/hands/schedules', { remove: b.dataset.hscheddel }); draw(); say('Schedule removed.'); return; }
       if (b.dataset.hundo) { const r = await post('/api/hands/undo', { id: b.dataset.hundo }); v = r; draw(); say(`Undone.${r.manual?.length ? ` ${r.manual.length} thing(s) are in the Recycle Bin: restore from there.` : ''}${r.failed?.length ? ` Couldn't undo: ${r.failed.join('; ')}` : ''}`); return; }

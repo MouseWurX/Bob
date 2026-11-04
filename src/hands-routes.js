@@ -16,6 +16,8 @@
 //   POST /api/hands/run-recipe { name }  run a recipe now (the user's click is the approval; output goes to the chat)
 //   POST /api/hands/mytools    { name, on } | { name, remove: true } | { name, code: true }  the tools Bob made (1.5.48)
 //   POST /api/hands/sandbox    check again that the sandbox for Bob's own tools holds on this PC
+//   POST /api/hands/mcp        connected apps (src/mcp.js): { add: { name, cmd, args, cwd } | { name, url } } | { paste: text }
+//                              | { id, on } | { id, remove: true } | { id, check: true }  (new apps come in switched off)
 import { handsView, stopRun, stopEverything, holdHands, saveRecipe, removeRecipe, loadRecipes, runApproved } from './hands.js';
 import { handsSettings, cleanHands, HANDS, LIMITS, handOn } from './hands-settings.js';
 import fs from 'node:fs';
@@ -23,6 +25,9 @@ import { undoJob } from './hands-files.js';
 import { selfTest } from './hands-selftest.js';
 import { pwnedRange } from './security-web.js';
 import { setToolOn, removeTool, toolCode, sandboxHolds } from './selftools.js';
+import { addServer, importSetup, setServerOn, removeServer, checkServer } from './mcp.js';
+import { track } from './hands.js';
+import { VERSION } from './config.js';
 const isDir = (f) => { try { return fs.statSync(f).isDirectory(); } catch { return false; } };
 
 export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res }) {
@@ -33,7 +38,7 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
   if (p === '/api/hands/stop-all') { send(res, 200, { stopped: stopEverything(brain), ...handsView(cfg) }); return true; }
   if (p === '/api/hands/hold' && b.held === true) { send(res, 200, { stopped: holdHands(brain, true), ...handsView(cfg) }); return true; }
   if (p === '/api/hands/stop') { const ok = stopRun(String(b.runId || '')); if (ok) brain.log('hands', `Stop pressed on run ${b.runId}`); send(res, ok ? 200 : 404, { ok }); return true; }
-  if (!isLocal) { send(res, 403, { error: 'Hands can only be changed on the PC itself.' }); return true; }
+  if (!isLocal) { send(res, 403, { error: 'Hands can only be changed on this replicant matrix itself.' }); return true; }
   try {
     if (p === '/api/hands/settings') {
       const cur = handsSettings(cfg);
@@ -76,6 +81,20 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
       if (b.remove) { removeTool(cfg, name); brain.log('selftools', `removed ${name} (your click)`); }
       else if ('on' in b) { setToolOn(cfg, name, b.on === true); brain.log('selftools', `${name} turned ${b.on ? 'on' : 'off'} (your click)`); }
       send(res, 200, handsView(cfg));
+      return true;
+    }
+    if (p === '/api/hands/mcp') {
+      let note = '';
+      if (b.add) { const s = addServer(cfg, b.add); brain.log('hands', `connected app added (switched off): ${s.name}`); note = `Added ${s.name}, switched off. Press Check to see if Bob can reach it, then switch it on.`; }
+      else if (typeof b.paste === 'string') { const list = importSetup(cfg, b.paste); brain.log('hands', `connected apps added from a pasted setup (switched off): ${list.map((s) => s.name).join(', ')}`); note = `Added ${list.map((s) => s.name).join(', ')}, switched off. Press Check on each, then switch on the ones you want.`; }
+      else if (b.id && b.remove) { removeServer(cfg, String(b.id)); brain.log('hands', `connected app removed: ${b.id}`); note = 'Removed.'; }
+      else if (b.id && 'on' in b) { setServerOn(cfg, String(b.id), b.on === true); brain.log('hands', `connected app ${b.id} switched ${b.on ? 'on' : 'off'}`); note = b.on ? 'On. Bob still asks before each step.' : 'Off. Bob stopped it if it was running.'; }
+      else if (b.id && b.check) {
+        const r = await checkServer(cfg, String(b.id), { log: (k, t) => brain.log(k, t), track, version: VERSION.label });
+        brain.log('hands', `connected app ${b.id} checked: ${r.ok ? `${r.tools} tools` : r.why}`);
+        note = r.ok ? `Reached it: ${r.tools} tool${r.tools === 1 ? '' : 's'}.` : `Couldn't reach it: ${r.why}`;
+      }
+      send(res, 200, { note, ...handsView(cfg) });
       return true;
     }
     if (p === '/api/hands/sandbox') { send(res, 200, { sandbox: await sandboxHolds(cfg, { fresh: true }), ...handsView(cfg) }); return true; }

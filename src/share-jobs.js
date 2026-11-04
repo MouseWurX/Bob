@@ -10,7 +10,7 @@
 //   - a job that needs this computer (attached pictures, files, folders, programs, Hands, reminders, memory) never leaves.
 // The reply, the OK cards and the finished files come back here; the files are copied into this Bob's save folder.
 //
-// "Take jobs from my other Bobs" (the Bob doing the work): only through the "Let my other devices in" door. A job from
+// "Take jobs from my other Bobs" (the Bob doing the work): only through the "Let my other replicant matrices in" door. A job from
 // another Bob runs with thinking, web search (if it's on here) and the picture, clip, music and sound tools only: no
 // files, folders, programs, Hands, memory or reminders on this computer. It isn't saved as a chat here. Its files stay in
 // this Bob's save folder too (Made by Bob lists them), and only that job's own files can be fetched.
@@ -167,7 +167,7 @@ export async function guestRoute({ req, res, p, url, brain, body, send, serveFil
 // ---------- The asking Bob: send a job, bring back its reply, cards and files ----------
 const WORDS = { pictures: 'make pictures', video: 'make clips', music: 'make music', sfx: 'make sound effects', web: 'search the web', think: 'think it through' };
 export const needWords = (n) => WORDS[n] || 'do it';
-export const awayWaitLine = (need) => `I can't ${needWords(need)} on this computer, and none of your other Bobs who can is free right now. It waits in Tasks, and I'll send it as soon as one is.`;
+export const awayWaitLine = (need) => `I can't ${needWords(need)} on this replicant matrix, and none of your other Bobs who can is free right now. It waits in Tasks, and I'll send it as soon as one is.`;
 const NOT_STARTED_MS = 120000, QUIET_MS = 60000, RECONNECTS = 3;
 
 function uniqueFile(dir, name) {

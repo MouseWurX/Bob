@@ -190,7 +190,7 @@ const run = (cmd, args) => ({ tool: 'run_command', args: { cmd, args, cwd: work 
   const server = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
   check('the chat page draws the combined card before the single ones', app.indexOf('togetherApproval(ev') > 0 && app.indexOf('togetherApproval(ev') < app.indexOf('handsApproval(ev'));
   check('the card has Allow all, Allow ticked and Deny all, with a box per step', /Allow all/.test(hands) && /Allow ticked/.test(hands) && /Deny all/.test(hands) && /class="pick"/.test(hands));
-  check('the server passes the ticked steps on', /answerApproval\(id, allow, rows, items\)/.test(server));
+  check('the server passes the ticked steps on', /answerApproval\(id, allow, rows, items(, note)?\)/.test(server));
   const help = fs.readFileSync(new URL('../public/help-content.js', import.meta.url), 'utf8');
   check('Help explains the combined card', /all on one card/i.test(help));
 }

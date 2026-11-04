@@ -31,7 +31,7 @@ const ctx = { roles, models, brains: { small: 'gemma4:e4b' }, embed: '', selecte
 // ---- kit ----
 {
   const brainKit = kitFor(SLOTS[0], ctx);
-  check('the kit for a brain lists what is on this PC', brainKit.filter((k) => k.installed).map((k) => k.value).join() === 'gemma4:e4b,qwen3-coder:30b');
+  check('the kit for a brain lists what is on this replicant matrix', brainKit.filter((k) => k.installed).map((k) => k.value).join() === 'gemma4:e4b,qwen3-coder:30b');
   check('and catalog brains not downloaded yet, as Get', brainKit.some((k) => !k.installed && k.value === 'gemma4-26b'));
   check('a downloaded brain isn\'t offered again as Get', !brainKit.some((k) => !k.installed && k.value === 'gemma4-e4b'));
   const editKit = kitFor(SLOTS.find((s) => s.id === 'edit'), ctx);
@@ -82,11 +82,11 @@ const ctx = { roles, models, brains: { small: 'gemma4:e4b' }, embed: '', selecte
   check('the engine a model needs is downloaded with it', ids.includes('kokoro-v1') && ids.includes('engine:kokoro') && !ids.includes('engine:sdcpp'));
   check('unticked models are left out entirely', !ids.includes('wan2.2-ti2v-5b-q4') && !plan['wan2.2-ti2v-5b-q4']);
   const html = starterHtml({ ...ctx, packs, engines });
-  check('the starter box shows the sets with yours marked, and one button', /8 GB card \(this PC\)/.test(html) && /data-starter="mid"/.test(html) && /to download\)/.test(html));
+  check('the starter box shows the sets with yours marked, and one button', /8 GB card \(this replicant matrix\)/.test(html) && /data-starter="mid"/.test(html) && /to download\)/.test(html));
   check('it opens by itself only when Bob has no brain', !/<details class="starter" open/.test(html) && /<details class="starter" open/.test(starterHtml({ ...ctx, packs, roles: { ...roles, current: { ...roles.current, bob: '' } } })));
   const e4b = models.find((m) => m.id === 'gemma4-e4b'), nomic = models.find((m) => m.id === 'nomic-embed-text');
   check('slot values: Ollama name for brains, ollama: for ears, :latest tags match', slotValue(SLOTS[0], e4b, roles) === 'gemma4:e4b' && slotValue(SLOTS.find((s) => s.id === 'voice'), e4b, roles) === 'ollama:gemma4:e4b' && slotValue(SLOTS.find((s) => s.id === 'embed'), nomic, roles) === 'nomic-embed-text:latest');
-  check('nothing to put in a slot until it\'s on this PC', slotValue(SLOTS.find((s) => s.id === 'video'), models.find((m) => m.id === 'wan2.2-ti2v-5b'), roles) === '');
+  check('nothing to put in a slot until it\'s on this replicant matrix', slotValue(SLOTS.find((s) => s.id === 'video'), models.find((m) => m.id === 'wan2.2-ti2v-5b'), roles) === '');
 }
 
 // ---- small-card versions (8 GB and 6 GB) ----

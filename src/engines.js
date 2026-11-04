@@ -16,13 +16,16 @@ export function officePins() {
   try { return JSON.parse(fs.readFileSync(new URL('./office-pins.json', import.meta.url), 'utf8')); } catch { return {}; }
 }
 const PIN = officePins();
+// 1.5.83: the llama.cpp release every speed test and brain race used (package.json bob.bundledLlamaTag, also the one
+// bundled in the download). Get and Get Bob ready install this one; "Check for a newer build" can still fetch the newest.
+export const TESTED_LLAMA = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.bundledLlamaTag || ''; } catch { return ''; } })();
 // LibreOffice comes from The Document Foundation's own archive, not GitHub.
 const TDF_HOSTS = [/^downloadarchive\.documentfoundation\.org$/, /^download\.documentfoundation\.org$/];
 const tdfAllowed = (u) => { try { const x = new URL(u); return x.protocol === 'https:' && TDF_HOSTS.some((r) => r.test(x.hostname)); } catch { return false; } };
 
 export const ENGINES = [
   {
-    id: 'llamacpp', name: 'llama.cpp', what: 'Thinking engine: runs the chat and coding brains without Ollama.', repo: 'ggml-org/llama.cpp', dir: 'llama.cpp', exe: 'llama-server.exe',
+    id: 'llamacpp', name: 'llama.cpp', what: 'Thinking engine: runs the chat and coding brains without Ollama.', repo: 'ggml-org/llama.cpp', tested: TESTED_LLAMA, dir: 'llama.cpp', exe: 'llama-server.exe',
     nvidia: [/bin-win-cuda-?(\d+(?:\.\d+)?)-x64\.zip$/], other: [/bin-win-vulkan-x64\.zip$/, /bin-win-cpu-x64\.zip$/],
     runtime: (asset) => { const m = asset.match(/cuda-?(\d+(?:\.\d+)?)/); return m ? new RegExp(`^cudart-.*cuda-?${m[1].replace('.', '\\.')}-x64\\.zip$`) : null; },
     // Apple Silicon: one build, with Metal (the Mac's graphics) built in.
@@ -97,8 +100,19 @@ export const ENGINES = [
     ready: (cfg) => voicesReady(cfg).chatterbox
   },
   {
+    // 1.5.78: the same uv, for the Connected apps (MCP) Hand: uvx starts MCP add-ons that come as Python packages
+    // (Blender MCP is "uvx blender-mcp"). One already on the PC counts.
+    id: 'uv', name: 'uv (for connected apps)', what: 'Starts MCP add-ons that come as Python packages, like Blender MCP, for the Connected apps (MCP) Hand. About 20 MB. If uv is already on your replicant matrix, Bob uses that one.',
+    repo: 'astral-sh/uv', dir: 'audio-workshop', exe: 'uv.exe',
+    nvidia: [], other: [/^uv-x86_64-pc-windows-msvc\.zip$/],
+    runtime: () => null,
+    mac: { other: [/^uv-aarch64-apple-darwin\.tar\.gz$/] },
+    linux: { other: [/^uv-x86_64-unknown-linux-gnu\.tar\.gz$/] },
+    ready: (cfg) => Boolean(onPath(exeName('uvx')) || (cfg.agentDir && fs.existsSync(path.join(cfg.agentDir, 'audio-workshop', exeName('uvx')))))
+  },
+  {
     // Gyan's "essentials" Windows build of FFmpeg, a numbered release pinned with its sha256. One already on the PC counts.
-    id: 'ffmpeg', name: 'FFmpeg', what: 'Converting sound and video (mp3, wav, mp4, webm, GIF...) and WebP pictures, for the Office documents and converting Hand. About 100 MB. Runs only while it converts. If FFmpeg is already on your PC, Bob uses that one.',
+    id: 'ffmpeg', name: 'FFmpeg', what: 'Converting sound and video (mp3, wav, mp4, webm, GIF...) and WebP pictures, for the Office documents and converting Hand. About 100 MB. Runs only while it converts. If FFmpeg is already on your replicant matrix, Bob uses that one.',
     repo: PIN.ffmpeg?.repo || 'GyanD/codexffmpeg', tag: PIN.ffmpeg?.tag || '', sha256: PIN.ffmpeg?.sha256 || '', needsPin: true, pinned: true, dir: 'ffmpeg', exe: 'ffmpeg.exe',
     nvidia: [], other: [/^ffmpeg-[\d.]+-essentials_build\.zip$/],
     runtime: () => null,
@@ -106,16 +120,16 @@ export const ENGINES = [
     mac: { unavailable: 'There\'s no pinned FFmpeg download for Mac yet. Get it from ffmpeg.org, or with Homebrew (brew install ffmpeg) if you use it, and Bob finds it by himself.' },
     linux: { unavailable: 'On Linux, install FFmpeg from your software centre (or: sudo apt install ffmpeg), and Bob finds it by himself.' },
     ready: (cfg) => Boolean(findFfmpeg(cfg)),
-    found: (cfg) => { const f = findFfmpeg(cfg); return f && f.where !== 'own' ? `found on this PC (${f.exe})` : ''; }
+    found: (cfg) => { const f = findFfmpeg(cfg); return f && f.where !== 'own' ? `found on this replicant matrix (${f.exe})` : ''; }
   },
   {
     // LibreOffice (MPL-2.0) for documents, spreadsheets and slides. One already installed (or Apache OpenOffice) counts.
     // Bob's copy is unpacked from the official installer into his own folder (msiexec /a: nothing is installed,
     // no admin, nothing in the Start menu). Deleting its folder removes it.
-    id: 'libreoffice', name: 'LibreOffice', what: 'Documents, spreadsheets and slides for the Office documents and converting Hand: convert Word, Excel and PowerPoint files to and from PDF and OpenDocument, read them, make new ones and change them. About 350 MB download, about 1 GB unpacked. Runs hidden only while it has a job. If LibreOffice or OpenOffice is already on your PC, Bob uses that instead.',
+    id: 'libreoffice', name: 'LibreOffice', what: 'Documents, spreadsheets and slides for the Office documents and converting Hand: convert Word, Excel and PowerPoint files to and from PDF and OpenDocument, read them, make new ones and change them. About 350 MB download, about 1 GB unpacked. Runs hidden only while it has a job. If LibreOffice or OpenOffice is already on your replicant matrix, Bob uses that instead.',
     pinned: true, dir: 'libreoffice', exe: 'soffice.exe',
     ready: (cfg) => Boolean(findOffice(cfg)),
-    found: (cfg) => { const o = findOffice(cfg); return o && o.where !== 'own' ? `found on this PC: ${o.name}${o.version ? ' ' + o.version : ''}` : ''; },
+    found: (cfg) => { const o = findOffice(cfg); return o && o.where !== 'own' ? `found on this replicant matrix: ${o.name}${o.version ? ' ' + o.version : ''}` : ''; },
     version: (cfg) => { const o = findOffice(cfg); return o?.version || null; },
     install: installLibreOffice,
     // The Mac download is a disk image to drag into Applications, which is the user's to do; Bob finds it there.
@@ -129,7 +143,7 @@ export const ENGINES = [
 // with the reason to show instead of a Get button.
 export function engineFor(e, os_ = OS) {
   if (!e || e.os === os_) return e;
-  const over = os_ === 'win' ? {} : e[os_] || { unavailable: `There's no ${e.name} build for this computer yet.` };
+  const over = os_ === 'win' ? {} : e[os_] || { unavailable: `There's no ${e.name} build for this replicant matrix yet.` };
   // A Windows pin (tag + sha256) is for the Windows file only; another computer needs its own.
   const v = { ...e, nvidia: [], runtime: () => null, ...(os_ === 'win' ? {} : { sha256: '', tag: e.sha256 ? '' : e.tag }), ...over, os: os_ };
   if (os_ === 'win') Object.assign(v, { nvidia: e.nvidia, runtime: e.runtime });
@@ -156,7 +170,7 @@ export function installedVersion(cfg, e) {
 // NVIDIA build with its CUDA runtime (other builds are smaller); the rest follow each engine's own "About" text.
 export const ENGINE_GB = { llamacpp: 0.6, sdcpp: 0.5, whispercpp: 0.1, piper: 0.1, audio: 12, kokoro: 0.1, chatterbox: 4, ffmpeg: 0.1, libreoffice: 0.35 };
 export function engineStatus(cfg) {
-  return ENGINES.map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.tag || e.pinned), found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir) }));
+  return ENGINES.map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.tag || e.pinned), tested: e.tested || null, found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir) }));
 }
 
 // The newest release with a Windows build, for "Get newer build". Same rules as installing.
@@ -165,7 +179,7 @@ export async function latestEngine(cfg, id, nvidia, fetchImpl = fetch) {
   if (!e) throw new Error('No such engine.');
   if (e.unavailable) throw new Error(e.unavailable);
   const { rel, asset } = await findRelease(e, nvidia, undefined, fetchImpl);
-  return { id, installed: installedVersion(cfg, e), latest: rel.tag_name, asset: asset.name, newer: installedVersion(cfg, e) !== rel.tag_name };
+  return { id, installed: installedVersion(cfg, e), tested: e.tested || null, latest: rel.tag_name, asset: asset.name, newer: installedVersion(cfg, e) !== rel.tag_name };
 }
 
 // Pick the right zip from a release's asset list for this graphics card. Highest CUDA version wins.
@@ -279,7 +293,7 @@ export async function findRelease(e, nvidia, signal, fetchImpl = fetch) {
   if (e.tag) {
     const rel = await get(`https://api.github.com/repos/${e.repo}/releases/tags/${e.tag}`);
     const asset = pickAsset(rel.assets || [], e, nvidia);
-    if (!asset) throw new Error(`The pinned ${e.name} release (${e.tag}) has no build for this computer.`);
+    if (!asset) throw new Error(`The pinned ${e.name} release (${e.tag}) has no build for this replicant matrix.`);
     return { rel, asset };
   }
   const list = await get(`https://api.github.com/repos/${e.repo}/releases?per_page=15`);
@@ -288,7 +302,7 @@ export async function findRelease(e, nvidia, signal, fetchImpl = fetch) {
     const asset = pickAsset(rel.assets || [], e, nvidia);
     if (asset) return { rel, asset };
   }
-  throw new Error(`None of the last 15 ${e.name} releases has a build for this computer, so there's nothing safe to install. Clicking again won't help; Bob will pick it up once the project posts one.`);
+  throw new Error(`None of the last 15 ${e.name} releases has a build for this replicant matrix, so there's nothing safe to install. Clicking again won't help; Bob will pick it up once the project posts one.`);
 }
 
 // 1.5.74: does an installed engine actually start? It is run once with --help (it prints and exits, loading
@@ -333,20 +347,22 @@ export function seedBundledEngine(cfg, from = BUNDLE_DIR) {
   return Boolean(engineExe(cfg, e));
 }
 
-export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag } = {}) {
+export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, newest = false } = {}) {
   const e0 = engineFor(ENGINES.find((x) => x.id === id));
   if (!e0) throw new Error('No such engine.');
-  const e = tag ? { ...e0, tag } : e0;
+  // 1.5.83: the tested release unless a tag is given or the user asked for the newest build.
+  const pick = tag || (!newest && e0.tested) || '';
+  const e = pick ? { ...e0, tag: pick } : e0;
   // Replacing the bundled build: its files go first, so two builds' graphics libraries never sit side by side.
   if (id === 'llamacpp' && bundledEngine(cfg)) {
     try { fs.rmSync(path.join(cfg.agentDir, e.dir), { recursive: true, force: true }); }
     catch (err) { throw new Error(`llama.cpp is in use right now (${err.code || err.message}). Press Unload everything (or wait for the brain to go idle), then Try again.`); }
   }
   if (e.unavailable) throw new Error(e.unavailable);
-  if (e.install && e.os !== 'win') throw new Error(`${e.name} can't be fetched on this computer. Install it yourself and Bob finds it.`);
+  if (e.install && e.os !== 'win') throw new Error(`${e.name} can't be fetched on this replicant matrix. Install it yourself and Bob finds it.`);
   if (e.install) return e.install(cfg, { pub, signal, tick });
   // Office helpers: only the exact pinned release with its checksum, never "the newest".
-  if (e.needsPin && !(e.tag && /^[0-9a-f]{64}$/.test(e.sha256 || ''))) throw new Error(`${e.name} isn't pinned to a checked version in this build of Bob yet, so I won't download it. If it's already on your PC, I use that one.`);
+  if (e.needsPin && !(e.tag && /^[0-9a-f]{64}$/.test(e.sha256 || ''))) throw new Error(`${e.name} isn't pinned to a checked version in this build of Bob yet, so I won't download it. If it's already on your replicant matrix, I use that one.`);
   const { rel, asset } = await findRelease(e, nvidia, signal);
   const rtRe = nvidia && e.runtime(asset.name);
   const rt = rtRe ? (rel.assets || []).find((a) => rtRe.test(a.name)) : null;

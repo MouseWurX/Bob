@@ -97,11 +97,11 @@ function slotHtml(slot, ctx) {
     </button>${canOff ? `<button type="button" class="mini unequip" data-unequip="${esc(slot.id)}" title="Take it off" aria-label="Take ${esc(name)} off ${esc(slot.name)}">✕</button>` : ''}</div>`;
 }
 
-const REC_TAG = '<span class="tag rec">★ Recommended for this job on your PC</span>';
+const REC_TAG = '<span class="tag rec">★ Recommended for this job on your replicant matrix</span>';
 const FIT_TAG = '<span class="tag">Fits your card</span>';
 function fitTags(f, ctx = {}) {
   if (f.level === 'unknown') return '<span class="muted fit-why">Not in Bob\'s list, so he can\'t say how well it runs here.</span>';
-  const tags = `${f.rec ? `${REC_TAG}<span class="muted fit-why">${esc(f.recWhy)}</span>` : ''}${f.fits && !f.rec ? (ctx?.integrated ? FIT_TAG.replace('your card', 'your PC') : ctx?.unified ? FIT_TAG.replace('your card', 'your Mac') : FIT_TAG) : ''}${f.level !== 'ok' && !f.rec ? `<span class="tag warn">${f.level === 'blocked' ? 'Can\'t install on this PC' : 'Doesn\'t suit this PC'}</span>` : ''}`;
+  const tags = `${f.rec ? `${REC_TAG}<span class="muted fit-why">${esc(f.recWhy)}</span>` : ''}${f.fits && !f.rec ? (ctx?.integrated ? FIT_TAG.replace('your card', 'your replicant matrix') : ctx?.unified ? FIT_TAG.replace('your card', 'your Mac') : FIT_TAG) : ''}${f.level !== 'ok' && !f.rec ? `<span class="tag warn">${f.level === 'blocked' ? 'Can\'t install on this replicant matrix' : 'Doesn\'t suit this replicant matrix'}</span>` : ''}`;
   return `${tags}${f.why ? `<span class="muted fit-why">${esc(f.why)}</span>` : ''}`;
 }
 
@@ -138,8 +138,8 @@ function kitHtml(slot, ctx) {
   const items = kit.map(({ k, f }) => {
     const e = k.entry;
     // 1.5.56: one short line per model; the size, licence and Bob's reasons sit behind ⓘ (and in the hover tip).
-    const tip = [stats(e, k.installed ? 'On this PC' : ''), f.rec ? f.recWhy : '', f.why, f.level === 'unknown' ? 'Not in Bob\'s list, so he can\'t say how well it runs here' : '', e?.trial ? 'New: not tried on a PC yet' : ''].filter(Boolean).join(' · ');
-    const tag = f.rec ? '<span class="tag rec">★ Recommended</span>' : f.level === 'unknown' ? '' : f.level !== 'ok' ? `<span class="tag warn">${f.level === 'blocked' ? 'Can\'t install here' : 'Doesn\'t suit this PC'}</span>` : '';
+    const tip = [stats(e, k.installed ? 'On this replicant matrix' : ''), f.rec ? f.recWhy : '', f.why, f.level === 'unknown' ? 'Not in Bob\'s list, so he can\'t say how well it runs here' : '', e?.trial ? 'New: not tried on a PC yet' : ''].filter(Boolean).join(' · ');
+    const tag = f.rec ? '<span class="tag rec">★ Recommended</span>' : f.level === 'unknown' ? '' : f.level !== 'ok' ? `<span class="tag warn">${f.level === 'blocked' ? 'Can\'t install here' : 'Doesn\'t suit this replicant matrix'}</span>` : '';
     const weight = e?.vramGB ? `<span class="weight muted">${gb(e.vramGB)}</span>` : '';
     if (!k.installed) {
       return `<li class="kit shop model${f.level !== 'ok' && !f.rec ? ' dim' : ''}" title="${esc(tip)}"><span class="kit-name">${esc(k.label)}</span>${weight}${tag}${tipHtml(tip, `About ${k.label}`)}
@@ -150,7 +150,7 @@ function kitHtml(slot, ctx) {
       <button type="button" class="kit-btn" data-equip="${esc(k.value)}" ${k.value === cur ? 'aria-current="true"' : ''}><span class="kit-name">${esc(k.label)}</span>${weight}${tag}${k.value === cur ? '<span class="tag good">equipped</span>' : ''}</button>${tipHtml(tip, `About ${k.label}`)}</li>`;
   }).join('');
   const more = hiddenOnes.length
-    ? `<p class="muted unsuited-note">${ctx.showUnsuited ? 'Showing models that don\'t suit this PC.' : `${hiddenOnes.length} more for this job ${hiddenOnes.length === 1 ? 'doesn\'t' : 'don\'t'} suit this PC.`} <button type="button" class="link" data-unsuited>${ctx.showUnsuited ? 'Hide them' : 'Show them'}</button></p>` : '';
+    ? `<p class="muted unsuited-note">${ctx.showUnsuited ? 'Showing models that don\'t suit this replicant matrix.' : `${hiddenOnes.length} more for this job ${hiddenOnes.length === 1 ? 'doesn\'t' : 'don\'t'} suit this replicant matrix.`} <button type="button" class="link" data-unsuited>${ctx.showUnsuited ? 'Hide them' : 'Show them'}</button></p>` : '';
   // 1.5.56: everything else for this job is in the Brain catalogue, one press away.
   const getMore = slot.how === 'embed' && !all.length ? '' : `<p class="get-more"><button type="button" class="get-more-btn" data-catjob="${esc(slot.id)}">📚 Get more${hidden ? ` (${hidden} in the catalogue)` : ''}</button></p>`;
   const engine = slot.engine && !(ctx.roles?.options?.[slot.kind] || []).length
@@ -186,11 +186,13 @@ export function slotValue(slot, entry, roles) {
   return hit?.value || '';
 }
 
-// Ticked by default: what fits the card, plus what the set says to tick anyway.
+// Ticked by default: what fits the card, plus what the set says to tick anyway, minus what it says to leave unticked
+// (1.5.79: clips on built-in graphics, which are very slow there).
 export function starterTicks(pack, models, vramGB) {
   vramGB = vramGB || pack.cardGB || 0; // no card detected: judge by the card the set is for
   return new Set(pack.models.filter((id) => {
     const m = models.find((x) => x.id === id);
+    if (m && m.status?.state !== 'installed' && (pack.untick || []).includes(id)) return false;
     return m && (m.status?.state === 'installed' || (pack.tick || []).includes(id) || !vramGB || !m.vramGB || m.vramGB <= vramGB);
   }));
 }
@@ -242,9 +244,9 @@ export function starterHtml(ctx) {
       ${pack.notes?.[id] ? `<br><span class="${big ? 'warn-text' : 'muted'}">${esc(pack.notes[id])}</span>` : big ? '<br><span class="warn-text">more than your card: slow</span>' : ''}</span></label></li>`;
   }).join('');
   const open = ctx.starterOpen ?? !equipped(SLOTS[0], ctx);
-  return `<details class="starter"${open ? ' open' : ''}><summary>⭐ Starter set for your PC</summary>
+  return `<details class="starter"${open ? ' open' : ''}><summary>⭐ Starter set for your replicant matrix</summary>
     <p class="muted">A small set that lets Bob chat, plan, research, code, see pictures, speak${pack.id === 'cpu' ? '' : ', paint and film'}. All free for commercial use. Pick the set, untick what you don't want, then press the button: you see the full list before anything downloads.</p>
-    <label class="pick"><strong>Set</strong> <select data-starterpack aria-label="Starter set">${packs.map((p) => `<option value="${esc(p.id)}" ${p.id === pack.id ? 'selected' : ''}>${esc(p.label)}${p.id === packFor(packs, ctx.vramGB).id ? ' (this PC)' : ''}</option>`).join('')}</select></label>
+    <label class="pick"><strong>Set</strong> <select data-starterpack aria-label="Starter set">${packs.map((p) => `<option value="${esc(p.id)}" ${p.id === pack.id ? 'selected' : ''}>${esc(p.label)}${p.id === packFor(packs, ctx.vramGB, ctx.integrated).id ? ' (this replicant matrix)' : ''}</option>`).join('')}</select></label>
     <ul class="packlist">${rows}</ul>
     ${pack.times ? `<p class="muted">⏱ ${esc(pack.times)}</p>` : ''}
     <div class="row"><button type="button" class="get" data-starter="${esc(pack.id)}" ${picked.size ? '' : 'disabled'}>Equip starter set${ids.length ? ` (${gb(total)} to download)` : ''}</button></div>

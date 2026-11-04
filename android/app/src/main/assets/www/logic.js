@@ -31,10 +31,10 @@
     { id: 'pictures', what: 'make or change pictures', words: /\b(draw|paint|sketch|illustrate|render)\b|\b(make|create|generate|design|give me|do)\b[^.?!]{0,40}\b(picture|image|photo|pic|portrait|wallpaper|logo|icon|sprite|artwork|drawing|painting)s?\b|\b(picture|image|photo|pic|drawing|painting|portrait)s? of\b|\b(edit|change|fix|touch up|upscale)\b[^.?!]{0,30}\b(picture|image|photo|pic)s?\b/i },
     { id: 'video', what: 'make video clips', words: /\b(make|create|generate|animate|render)\b[^.?!]{0,40}\b(video|clip|animation|gif)s?\b|\banimate\b/i },
     { id: 'music', what: 'make music and sound effects', words: /\b(make|create|generate|write|compose|produce)\b[^.?!]{0,40}\b(song|music|tune|melody|beat|soundtrack|jingle|chiptune|sound effect|sfx)s?\b/i },
-    { id: 'files', what: 'work with files on the PC', words: /\b(on|from|in) (my|the) (pc|computer|desktop|laptop)\b|\b(move|copy|rename|zip|unzip|tidy|organi[sz]e)\b[^.?!]{0,30}\b(files?|folders?|downloads)\b/i },
+    { id: 'files', what: 'work with files on your other replicant matrix', words: /\b(on|from|in) (my|the) (pc|computer|desktop|laptop)\b|\b(move|copy|rename|zip|unzip|tidy|organi[sz]e)\b[^.?!]{0,30}\b(files?|folders?|downloads)\b/i },
     { id: 'programs', what: 'run programs and scripts', words: /\b(run|execute|launch|install|build)\b[^.?!]{0,30}\b(script|program|command|app|npm|python|game|project)s?\b/i },
     { id: 'office', what: 'make or convert documents', words: /\b(convert|export)\b|\b(make|create|save)\b[^.?!]{0,30}\b(pdf|docx?|word doc\w*|spreadsheet|xlsx|excel|powerpoint|slides?|presentation)s?\b/i },
-    { id: 'security', what: 'check the PC for viruses and threats', words: /\b(scan|check)\b[^.?!]{0,30}\b(pc|computer|laptop)\b[^.?!]{0,30}\b(virus|viruses|malware|threats?)\b|\b(scan|check) (my|the) (pc|computer|laptop)\b|\b(defender|antivirus) scan\b/i }
+    { id: 'security', what: 'check your other replicant matrix for viruses and threats', words: /\b(scan|check)\b[^.?!]{0,30}\b(pc|computer|laptop)\b[^.?!]{0,30}\b(virus|viruses|malware|threats?)\b|\b(scan|check) (my|the) (pc|computer|laptop)\b|\b(defender|antivirus) scan\b/i }
   ];
 
   function bigJob(text) {

@@ -9,6 +9,7 @@ import { copyName } from './clan.js';
 import { limitOn, readOnlyRoots } from './hands-settings.js';
 import { listWorkflows, workshopDir } from './workshop.js';
 import { bobHelp } from './self-help.js';
+import { recallOn, tagLine } from './recall.js';
 
 const MAX_READ = 20000;
 const BLOCKED_EXT = new Set(['.exe', '.msi', '.bat', '.cmd', '.ps1', '.vbs', '.js', '.jse', '.wsf', '.scr', '.lnk', '.reg', '.dll', '.com']);
@@ -129,16 +130,23 @@ export function buildTools(cfg) {
   };
 
   t.remember = {
-    schema: fn('remember', 'Save a lasting fact about {{USER}} (a preference, a plan, a detail that will matter later). Never secrets or passwords.', {
-      fact: str('One short sentence.')
-    }),
-    async run({ fact }) {
-      if (!fact) throw new Error('Nothing to remember.');
-      const line = `- ${String(fact).replace(/\s+/g, ' ').trim()} (${today(cfg)})\n`;
-      fs.appendFileSync(cfg.memoryFile, line);
-      return 'Remembered.';
+    // 1.5.79: with "Remember only what fits" on, a fact can go to one project's memory bank (the project field
+    // is only offered then, so the tool costs nothing extra while the setting is off).
+    get schema() {
+      const banks = recallOn(cfg) ? Object.keys(cfg.projects || {}) : [];
+      return fn('remember', 'Save a lasting fact about {{USER}} (a preference, a plan, a detail that will matter later). Never secrets or passwords.', {
+        fact: str('One short sentence.'),
+        ...(recallOn(cfg) ? { project: str(`Only for a fact about one project: its name${banks.length ? ` (${banks.join(', ')})` : ''}. Leave out for anything general.`) } : {})
+      }, ['fact']);
     },
-    summary: ({ fact }) => `remember: ${String(fact).slice(0, 80)}`
+    async run({ fact, project }) {
+      if (!fact) throw new Error('Nothing to remember.');
+      const clean = String(fact).replace(/\s+/g, ' ').trim();
+      const line = `- ${recallOn(cfg) ? tagLine(`${clean} (${today(cfg)})`, project) : `${clean} (${today(cfg)})`}\n`;
+      fs.appendFileSync(cfg.memoryFile, line);
+      return recallOn(cfg) && project ? `Remembered, in the ${String(project).replace(/[\][]/g, '').trim()} memory bank.` : 'Remembered.';
+    },
+    summary: ({ fact, project }) => `remember: ${String(fact).slice(0, 80)}${project ? ` (${project})` : ''}`
   };
 
   t.reminders = {

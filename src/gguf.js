@@ -51,7 +51,7 @@ class Reader {
 
 const cache = new Map();
 
-// { arch, name, template, toolTemplate } or null when the file can't be read as GGUF.
+// { arch, name, template, toolTemplate, ctxTrain } or null when the file can't be read as GGUF.
 export function ggufInfo(file) {
   let st;
   try { st = fs.statSync(file); } catch { return null; }
@@ -73,14 +73,16 @@ export function ggufInfo(file) {
     for (let i = 0; i < kvs; i++) {
       const k = r.str();
       const type = r.u32();
-      const v = r.value(type, WANT.has(k));
+      const v = r.value(type, WANT.has(k) || k.endsWith('.context_length'));
       if (v !== undefined) kv[k] = v;
     }
     out = {
       arch: kv['general.architecture'] || '',
       name: [kv['general.name'], kv['general.basename'], kv['general.size_label']].filter(Boolean).join(' '),
       template: kv['tokenizer.chat_template'] || '',
-      toolTemplate: kv['tokenizer.chat_template.tool_use'] || ''
+      toolTemplate: kv['tokenizer.chat_template.tool_use'] || '',
+      // 1.5.87: the longest context the model was made for (<arch>.context_length), or null.
+      ctxTrain: Number(kv[`${kv['general.architecture']}.context_length`]) || null
     };
   } catch { out = null; } finally { if (fd !== undefined) try { fs.closeSync(fd); } catch {} }
   cache.set(key, out);

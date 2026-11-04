@@ -72,7 +72,7 @@ export async function latestRelease({ fetchImpl = fetch, signal, platform = proc
     tag: rel.tag_name, label, page: rel.html_url || RELEASES_PAGE, publishedAt: rel.published_at || '',
     kind: want?.kind || '', asset: asset && { name: asset.name, size: asset.size || 0, url: asset.browser_download_url, digest: String(asset.digest || '').replace(/^sha256:/, '') },
     sha: sha && { name: sha.name, url: sha.browser_download_url },
-    why: !want ? 'There\'s no Bob for this kind of computer on GitHub yet.' : !asset ? `Bob ${label} on GitHub doesn't have the file for this computer yet (GitHub builds it a few minutes after the Windows one). Try again shortly.` : !sha ? `Bob ${label} on GitHub has no .sha256 file for ${asset.name}, so I can't check it and won't use it.` : ''
+    why: !want ? 'There\'s no Bob for this kind of computer on GitHub yet.' : !asset ? `Bob ${label} on GitHub doesn't have the file for this replicant matrix yet (GitHub builds it a few minutes after the Windows one). Try again shortly.` : !sha ? `Bob ${label} on GitHub has no .sha256 file for ${asset.name}, so I can't check it and won't use it.` : ''
   };
 }
 

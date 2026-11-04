@@ -12,7 +12,7 @@ export function sampleButton(engine, voice, label = 'Hear a sample', hint = '') 
 export function sampleHint(v) {
   if (!v) return '';
   if (!v.installed && v.filesHere && v.have !== 'saved' && v.have !== 'bundled') return `Voices downloaded. One more step: get the Kokoro engine (Settings), then this plays.${v.have === 'online' ? ` Until then: the official sample from ${v.source}.` : ''}`;
-  return { saved: 'Plays at once (made on this PC before).', bundled: 'Plays at once (comes with Bob).', make: 'Bob makes it with the voice on this PC: a few seconds the first time.', online: `Not on this PC yet: plays the official sample from ${v.source}.`, none: 'No sample until this voice is on the PC.' }[v.have] || '';
+  return { saved: 'Plays at once (made on this replicant matrix before).', bundled: 'Plays at once (comes with Bob).', make: 'Bob makes it with the voice on this replicant matrix: a few seconds the first time.', online: `Not on this replicant matrix yet: plays the official sample from ${v.source}.`, none: 'No sample until this voice is on this replicant matrix.' }[v.have] || '';
 }
 
 export function createSampler() {
@@ -63,7 +63,7 @@ export function createSampler() {
         return await start(btn, j.online, `Couldn't load the official sample from ${j.source}.`, j.page).catch(() => {});
       }
       reset();
-      note(btn, 'No sample until this voice is on the PC.', j.page);
+      note(btn, 'No sample until this voice is on this replicant matrix.', j.page);
     } catch (e) { stop(); note(btn, `Couldn't play it (${e.message}).`); }
   }
 

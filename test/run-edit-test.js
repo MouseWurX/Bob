@@ -1,5 +1,5 @@
 // Picture edits: Bob never quietly paints a new picture when an edit was meant, and says when an edit model
-// is on the PC but not assigned.
+// is on this replicant matrix but not assigned.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -35,12 +35,12 @@ const ctx = (pics = []) => ({ pics, emit() {}, signal: new AbortController().sig
 {
   const b = bob();
   const r = await b.makeImage({ prompt: 'watercolour', reference: ['photo'] }, ctx([photo]));
-  check('an edit with no edit model: nothing painted, and it says so with the way to fix it', !b.painted.length && /Didn't paint anything/.test(r) && /No picture-edit model is on this PC/.test(r) && /start_from/.test(r));
+  check('an edit with no edit model: nothing painted, and it says so with the way to fix it', !b.painted.length && /Didn't paint anything/.test(r) && /No picture-edit model is on this replicant matrix/.test(r) && /start_from/.test(r));
 }
 {
   const b = bob({ waiting: 'Qwen Image Edit 2509' });
   const r = await b.makeImage({ prompt: 'watercolour', reference: ['photo'] }, ctx([photo]));
-  check('an edit model on the PC but not assigned is named, with where to assign it', !b.painted.length && /Qwen Image Edit 2509 is on this PC but isn't assigned to "Picture edits"/.test(r) && /Equip Bob/.test(r));
+  check('an edit model on this replicant matrix but not assigned is named, with where to assign it', !b.painted.length && /Qwen Image Edit 2509 is on this replicant matrix but isn't assigned to "Picture edits"/.test(r) && /Equip Bob/.test(r));
 }
 {
   const b = bob();
@@ -143,7 +143,7 @@ const { editPrompt } = await import('../src/brain.js');
 }
 
 const ui = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
-check('Model roles shows a model that is on the PC but not assigned, with a Use button', /On this PC, not assigned yet/.test(ui) && /data-userole=/.test(ui) && /b\.dataset\.userole/.test(ui));
+check('Model roles shows a model that is on this replicant matrix but not assigned, with a Use button', /On this replicant matrix, not assigned yet/.test(ui) && /data-userole=/.test(ui) && /b\.dataset\.userole/.test(ui));
 const tools = fs.readFileSync(new URL('../src/tools.js', import.meta.url), 'utf8');
 check('make_image offers mode new', /enum: \['keep_look', 'start_from', 'new'\]/.test(tools));
 

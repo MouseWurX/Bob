@@ -1,4 +1,4 @@
-// Settings, Connections: "Let my other devices in" (src/phone-access.js). Off unless you turn it on.
+// Settings, Connections: "Let my other replicant matrices in" (src/phone-access.js). Off unless you turn it on.
 // Bob for Android (or a browser on your phone) reaches this Bob over Tailscale with the passcode.
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -10,7 +10,7 @@ async function api(url, data) {
 }
 
 export function phoneAccessHtml() {
-  return '<div class="phone-box"><strong>Let my other devices in</strong><p class="muted">Loading…</p></div>';
+  return '<div class="phone-box"><strong>Let my other replicant matrices in</strong><p class="muted">Loading…</p></div>';
 }
 
 export async function mountPhoneAccess(box) {
@@ -18,12 +18,12 @@ export async function mountPhoneAccess(box) {
   let v, shown = '', msg = '', restart = false;
   const draw = () => {
     const hosts = v.hosts.length ? v.hosts : v.found;
-    box.innerHTML = `<strong>Let my other devices in</strong> <span class="tag">off unless you turn it on</span>
-      <label class="switch"><input type="checkbox" data-phone-on ${v.enabled ? 'checked' : ''}><span><strong>Let my other devices in</strong><br><span class="muted">Your phone (Bob for Android) and your other Bobs can reach this Bob over Tailscale with the passcode below. Nothing else on your network can.</span></span></label>
+    box.innerHTML = `<strong>Let my other replicant matrices in</strong> <span class="tag">off unless you turn it on</span>
+      <label class="switch"><input type="checkbox" data-phone-on ${v.enabled ? 'checked' : ''}><span><strong>Let my other replicant matrices in</strong><br><span class="muted">Your phone (Bob for Android) and your other Bobs can reach this Bob over Tailscale with the passcode below. Nothing else on your network can.</span></span></label>
       ${restart || (v.enabled !== v.live) ? '<p class="muted"><strong>Restart Bob to apply this.</strong> Close his window and open him again from the Start menu.</p>' : ''}
-      <div class="row"><strong>Passcode</strong> <span class="muted">${shown ? `<code>${esc(shown)}</code> Type it into the phone now: it isn't shown again.` : v.passcodeSet ? 'set (it\'s only shown once, when you make it).' : 'Not set yet.'}</span>
+      <div class="row"><strong>Passcode</strong> <span class="muted">${shown ? `<code>${esc(shown)}</code> Type it into your phone or other Bob now: it isn't shown again.` : v.passcodeSet ? 'set (it\'s only shown once, when you make it).' : 'Not set yet. Turning on Let my other replicant matrices in makes one for you.'}</span>
         <button type="button" data-phone-newcode>${v.passcodeSet ? 'Make a new passcode' : 'Make a passcode'}</button></div>
-      <div class="row"><strong>Address for the phone</strong> ${hosts.length ? hosts.map((h) => `<code>${esc(h)}</code>`).join(' or ') : '<span class="muted">No Tailscale address found on this PC. Install Tailscale and sign in, then check again.</span>'}
+      <div class="row"><strong>Address for the phone</strong> ${hosts.length ? hosts.map((h) => `<code>${esc(h)}</code>`).join(' or ') : '<span class="muted">No Tailscale address found on this replicant matrix. Install Tailscale and sign in, then check again.</span>'}
         <button type="button" data-phone-find>Check again</button></div>
       ${msg ? `<p class="muted" role="status">${esc(msg)}</p>` : ''}
       <details class="more"><summary>More</summary><p class="muted">On the phone: install Tailscale and sign in with the same account, open Bob for Android, Menu, Bobs on your network, and add the address above. Then type the passcode and tap Log in. Making a new passcode signs every phone out. Turning this off closes the door again after a restart.</p></details>`;
@@ -34,10 +34,10 @@ export async function mountPhoneAccess(box) {
     catch (e) { msg = e.message; }
     draw();
   };
-  box.addEventListener('change', (e) => { if (e.target.matches('[data-phone-on]')) change({ enabled: e.target.checked }); });
+  box.addEventListener('change', (e) => { if (e.target.matches('[data-phone-on]')) change(e.target.checked && !v.passcodeSet ? { enabled: true, newPasscode: true } : { enabled: e.target.checked }); });
   box.addEventListener('click', (e) => {
     if (e.target.closest('[data-phone-newcode]')) change({ newPasscode: true });
     if (e.target.closest('[data-phone-find]')) load().then(() => change({ hosts: v.found }));
   });
-  try { await load(); } catch (e) { box.innerHTML = `<strong>Let my other devices in</strong><p class="muted">${esc(e.message)}</p>`; }
+  try { await load(); } catch (e) { box.innerHTML = `<strong>Let my other replicant matrices in</strong><p class="muted">${esc(e.message)}</p>`; }
 }

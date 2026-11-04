@@ -50,8 +50,8 @@ const ctx = { roles, models, brains: {}, active: {}, vramGB: 16, ramGB: 32, free
   check('New models carry the New tag and are never ★ Recommended', /cat-tinker-qwen3.6-35b-a3b[^]*?<span class="tag">New<\/span>/.test(html) && !Object.keys(Object.fromEntries(catJobs().map((j) => [j.id, 1]))).some((j) => models.filter((m) => m.trial).some((m) => pickFor(j, models, ctx)?.id === m.id)));
   check('the detail sits in an "i" tip: size on other machines, licence and source', /class="tip-i"[^>]*><span class="tip-src" hidden>[^<]*(<br>[^<]*)*6 GB laptop card: [^]*?Licence Apache 2\.0[^]*?From unsloth\/Qwen3\.6-35B-A3B-GGUF @ a483e9e/.test(html));
   check('the source link opens the exact commit', /href="https:\/\/huggingface\.co\/unsloth\/Qwen3\.6-35B-A3B-GGUF\/tree\/a483e9e6cbd595906af30beda3187c2663a1118c"/.test(html) && /href="https:\/\/huggingface\.co\/unsloth\/Qwen3\.8-27B-GGUF\/tree\/4ca720788d1e01f1bff70c033e0d0028fd02e502"/.test(catalogueHtml({ ...ctx, showUnsuited: true })));
-  check('models that don\'t suit this PC wait behind Show them', !/id="cat-deep-qwen3.8-27b"/.test(html) && /id="cat-deep-qwen3.8-27b"/.test(catalogueHtml({ ...ctx, showUnsuited: true })) && /data-unsuited>Show them/.test(html));
-  check('brains not in Bob\'s list get their own Active switch', /Other brains on this PC[^]*data-active="mystery:7b"/.test(html));
+  check('models that don\'t suit this replicant matrix wait behind Show them', !/id="cat-deep-qwen3.8-27b"/.test(html) && /id="cat-deep-qwen3.8-27b"/.test(catalogueHtml({ ...ctx, showUnsuited: true })) && /data-unsuited>Show them/.test(html));
+  check('brains not in Bob\'s list get their own Active switch', /Other brains on this replicant matrix[^]*data-active="mystery:7b"/.test(html));
   check('the phone section has no Active switch or Get', !/id="cat-phone-[^"]*"[^]*?data-active[^]*?<\/li>/.test(html.slice(html.indexOf('catjob-phone'), html.indexOf('catjob-voice'))));
   check('nothing nasty gets through a model name', !/<script/.test(catalogueHtml({ ...ctx, roles: { ...roles, options: { llm: [{ value: 'x', label: '<script>x</script>' }] } } })));
 }
@@ -66,7 +66,7 @@ const ctx = { roles, models, brains: {}, active: {}, vramGB: 16, ramGB: 32, free
 
 // ---- Active models ----
 {
-  check('not set: on this PC means active, not downloaded means not', isActive({ value: 'a', installed: true }) && !isActive({ value: 'b', installed: false }));
+  check('not set: on this replicant matrix means active, not downloaded means not', isActive({ value: 'a', installed: true }) && !isActive({ value: 'b', installed: false }));
   check('a saved switch wins', !isActive({ value: 'a', installed: true }, { a: false }) && isActive({ value: 'b' }, { b: true }));
   const saved = mergeSettings({}, { activeModels: { 'qwen3.6-35b-a3b': true, 'gemma4:26b': false, 'bad key!': true, x: 'yes' } }).activeModels;
   check('only true/false switches with plain names are saved', saved['qwen3.6-35b-a3b'] === true && saved['gemma4:26b'] === false && !('bad key!' in saved) && !('x' in saved));
@@ -97,7 +97,7 @@ const ctx = { roles, models, brains: {}, active: {}, vramGB: 16, ramGB: 32, free
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
-// ---- no assumptions about how this PC is laid out ----
+// ---- no assumptions about how this replicant matrix is laid out ----
 {
   const no = () => false;
   check('Ollama models: OLLAMA_MODELS wins', ollamaModelsDir({ agentDir: '/bob', env: { OLLAMA_MODELS: '/big/ollama' }, home: '/h', exists: no }) === '/big/ollama');

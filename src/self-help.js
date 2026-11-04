@@ -8,6 +8,7 @@ import { currentSession } from './sessions.js';
 import { gamingCard } from './gaming-card.js';
 import { brainMode } from './brain-mode.js';
 import { handsSettings, HANDS } from './hands-settings.js';
+import { checkinSettings } from './checkin-settings.js';
 
 const ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&nbsp;': ' ' };
 export function plainText(html) {
@@ -31,6 +32,13 @@ export function findHelp(query, list = HELP, max = 3) {
 }
 
 const onOff = (v) => (v ? 'on' : 'off');
+// 1.5.78: "on, every day at 09:00, 2 of your own checks"
+function checkinsNow(cfg) {
+  const c = checkinSettings(cfg);
+  if (!c.enabled) return 'off';
+  const when = c.how === 'hours' ? `every ${c.hours === 1 ? 'hour' : `${c.hours} hours`}` : `${c.how === 'weekdays' ? 'every weekday' : 'every day'} at ${c.at}`;
+  return `on, ${when}, ${c.own.length} of your own check${c.own.length === 1 ? '' : 's'}`;
+}
 // What is set right now, in the words Settings uses. Window-only switches (Listen, Read aloud, Alerts) live in the
 // window, so they aren't listed.
 export function settingsNow(cfg) {
@@ -39,16 +47,19 @@ export function settingsNow(cfg) {
   const cloud = (cfg.cloud || []).filter((c) => c.enabled).map((c) => c.name);
   return [
     `Let Bob search the web: ${onOff(webOn(cfg))}`,
+    `Let Bob learn how-tos: ${onOff(cfg.howtos === true)}`,
     `Session: ${currentSession(cfg).label}; Let Bob pick the session: ${onOff(cfg.autoSession !== false)}; 🎮 Gaming button (chat page): ${onOff(cfg.gamingLock === true)}`,
     `Free memory when Bob is idle: ${onOff(brainMode(cfg) !== 'always')}`,
     `One brain (snappier): ${onOff(cfg.oneBrain === true)}`,
     `Launch Bob on start-up: ${onOff(cfg.autostart === true)}`,
     `Check for updates when Bob starts: ${onOff(cfg.updates?.autoCheck === true)}`,
+    `Show Bob's plan before big jobs: ${onOff(cfg.planFirst === true)}`,
     `Pick up where Bob left off after a restart: ${onOff(cfg.resumeJobs === true)}; Carry on unfinished downloads when Bob starts: ${onOff(cfg.downloads?.resumeOnStart === true || cfg.resumeJobs === true)}`,
     `Bob's engine: ${cfg.engine === 'ollama' ? 'Ollama' : "Bob's own (llama.cpp)"}`,
     `Voice: ${cfg.tts?.provider || 'Windows voice'}`,
     `Hands: ${hands}${h.enabled ? `; Let Bob work without asking ${onOff(h.free)}` : ''}`,
     `Housekeeping: ${onOff(cfg.housekeeping?.enabled === true)}`,
+    `Check-ins: ${checkinsNow(cfg)}`,
     `ComfyUI: ${onOff(cfg.workshop?.enabled === true)}`,
     `Cloud helpers on: ${cloud.length ? cloud.join(', ') : 'none'}`,
     `Keep the graphics card free for quick answers: ${onOff(cfg.quickOnCpu === true)}`,
@@ -58,7 +69,7 @@ export function settingsNow(cfg) {
     `House style (Equip Bob): ${houseStylePrompt(cfg.houseStyle).replace(/^\s+/, '').replace(/^.*?: /, '') || 'none set (Bob picks)'}`,
     `Projects (Settings): ${Object.keys(cfg.projects || {}).join(', ') || 'none'}${cfg.defaultProject ? `; main project ${cfg.defaultProject}` : ''}`,
     `Where Bob saves things (Settings): ${cfg.saveDirMissing ? `the picked folder ${cfg.saveDir} is missing, so saving in Bob's own folder ${cfg.painterDir} for now` : cfg.saveDir ? cfg.painterDir : `Bob's own folder (Made by Bob), ${cfg.painterDir || 'inn\\painter'}`}`,
-    `Speed for this PC: Get Bob ready while you type ${onOff(cfg.readyWhileTyping === true)}, Let games go first ${onOff(cfg.gamesFirst === true)}, Match picture settings to my graphics card ${onOff(cfg.pictureFit === true)}`
+    `Speed for this replicant matrix: Get Bob ready while you type ${onOff(cfg.readyWhileTyping === true)}, Let games go first ${onOff(cfg.gamesFirst === true)}, Match picture settings to my graphics card ${onOff(cfg.pictureFit === true)}`
   ].join('\n');
 }
 
@@ -67,5 +78,5 @@ export function bobHelp(cfg, query, max = 3) {
   const body = hits.length
     ? hits.map((e) => `## ${e.title}\n${plainText(e.html)}`).join('\n\n').slice(0, 5000)
     : `Nothing in Help matches "${query}". Help topics: ${[...new Set(HELP.map((e) => e.group))].join(', ')}.`;
-  return `${body}\n\n## Set right now on this PC\n${settingsNow(cfg)}\n\n(Help opens with F1 or Help in the left menu.)`;
+  return `${body}\n\n## Set right now on this replicant matrix\n${settingsNow(cfg)}\n\n(Help opens with F1 or Help in the left menu.)`;
 }

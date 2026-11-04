@@ -44,7 +44,7 @@ export function createHandsSwitch({ note }) {
       s = r.settings; draw();
       note(s.held ? `Hands stopped.${r.stopped ? ` Stopped ${r.stopped} thing${r.stopped === 1 ? '' : 's'}.` : ''} Bob only talks until you click Hands again.` : s.free ? 'Hands are on again, and Bob is working without asking (that switch is still on in Settings).' : 'Hands are on again. Bob still asks before every action.');
       window.dispatchEvent(new CustomEvent('bob-hands', { detail: s }));
-    } catch (err) { note(err.message || 'Hands can only be switched back on at the PC itself.', 'error'); }
+    } catch (err) { note(err.message || 'Hands can only be switched back on at this replicant matrix itself.', 'error'); }
     btn.disabled = false;
   }
   btn.onclick = toggle;

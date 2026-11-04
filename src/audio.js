@@ -211,7 +211,7 @@ export async function setupVoice(cfg, which, opts) {
 async function setupSteps(cfg, { pub, tick, signal }, STEPS) {
   pub.steps = ['finding', 'downloading', 'checking', 'unpacking', 'setup', 'done'];
   pub.fileCount = STEPS.length;
-  pub.phase = 'setup'; pub.file = 'Looking for Python 3.12 or 3.11 on this PC'; tick();
+  pub.phase = 'setup'; pub.file = 'Looking for Python 3.12 or 3.11 on this replicant matrix'; tick();
   const py = await findSystemPython(cfg);
   if (!py) throw new Error(`Music and sound effects need Python 3.12 or 3.11 (free, from python.org). Install it from ${PYTHON_DOWNLOAD} with the normal installer, then click Get again. Bob uses it only inside his own folder.`);
   cfg.audio = { ...(cfg.audio || {}), systemPython: py };
@@ -267,7 +267,7 @@ async function startAce(cfg, signal, onProgress) {
   if (cfg.audio?.aceUrl) return null; // tests and hand-made setups run their own
   if (await aceUp(cfg)) {
     await stopStrayAce(cfg);
-    if (await aceUp(cfg)) throw new Error(`Another music engine is still running on port ${ACE_PORT} and wouldn't stop. Restart the PC, then ask for the song again.`);
+    if (await aceUp(cfg)) throw new Error(`Another music engine is still running on port ${ACE_PORT} and wouldn't stop. Restart this replicant matrix, then ask for the song again.`);
   }
   // 1.5.37: offline, so ACE-Step can't quietly download models (gigabytes, with no progress shown) in the middle of a song.
   const env = { ...process.env, ...uvEnv(cfg), ACESTEP_API_HOST: '127.0.0.1', ACESTEP_API_PORT: String(ACE_PORT), HF_HOME: path.join(cfg.bobModelsDir || path.join(cfg.agentDir, 'models'), 'audio'), HF_HUB_OFFLINE: '1', TRANSFORMERS_OFFLINE: '1', ACESTEP_DOWNLOAD_SOURCE: 'huggingface' };
@@ -314,7 +314,7 @@ async function makeMusic(cfg, job, { signal, onProgress }) {
       const first = Array.isArray(res) ? res[0] : res;
       if (!first?.file) { const found = newestSong(cfg, t0 - 5000); if (found) { fs.copyFileSync(found, job.out); onProgress?.(100, 100); return { file: job.out, name: path.basename(job.out) }; } throw Object.assign(new Error('The music engine said the song was finished but didn\'t hand over a file. Ask me again; if it keeps happening, restart Bob.'), { details: `query_result finished with no file: ${JSON.stringify(item).slice(0, 300)}` }); }
       const audioUrl = new URL(first.file, aceBase(cfg));
-      if (!/^(127\.0\.0\.1|localhost)$/.test(audioUrl.hostname)) throw new Error('The music engine pointed somewhere other than this PC.');
+      if (!/^(127\.0\.0\.1|localhost)$/.test(audioUrl.hostname)) throw new Error('The music engine pointed somewhere other than this replicant matrix.');
       const buf = Buffer.from(await (await fetch(audioUrl, { signal })).arrayBuffer());
       fs.writeFileSync(job.out, buf);
       onProgress?.(100, 100);

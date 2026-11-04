@@ -16,6 +16,8 @@ export { UNITS, KINDS, ageMs, cleanHousekeeping, hkSettings };
 import { recycle, backupToBin, mayRecycle } from './recycle.js';
 import { Topics, normName, topicText } from './topics.js';
 import { Embedder } from './embedder.js';
+import { recallOn, parseMemory, MemoryVectors } from './recall.js';
+import { gaming } from './sessions.js';
 import { catalogFileFor } from './llamacpp.js';
 import {
   chatIds, chatInfo, chatFiles, wholeChat, readChat, readOlder, writeChat, writeOlder, readSummary, writeSummary,
@@ -48,7 +50,7 @@ export function parseJson(text) {
 }
 
 // Memory lines are "- fact (date)" or "- fact (date) [topic: Name]". Repeats compare without the date and tag.
-const memKey = (line) => normName(line.replace(/^\s*-\s*/, '').replace(/\[topic:[^\]]*\]/gi, '').replace(/\(\d{4}-\d{2}-\d{2}\)/g, ''));
+const memKey = (line) => normName(line.replace(/^\s*-\s*/, '').replace(/\[(?:topic|project):[^\]]*\]|\[always\]/gi, '').replace(/\(\d{4}-\d{2}-\d{2}\)/g, ''));
 export function memoryRepeats(text) {
   const seen = new Set();
   let n = 0;
@@ -133,7 +135,7 @@ export class Housekeeper {
       add({ key: `ref:${r.id}`, kind: 'pictures', ref: `ref:${r.id}`, label: r.name, detail: `attached in a chat, ${dateOf(t)}`, bytes: sizeOf(f), touched: t, url: `/refs/${encodeURIComponent(r.file)}`, actions: ['delete'], def: 'delete', refId: r.id });
     }
     const vs = path.join(cfg.dataDir, 'voice-samples');
-    if (fs.existsSync(vs) && old('sounds', mtime(vs))) add({ key: 'voice-samples', kind: 'sounds', label: 'Voice samples made on this PC', detail: 'made again the next time you press ▶ Hear a sample', bytes: sizeOf(vs), touched: mtime(vs), actions: ['delete'], def: 'delete', paths: [vs] });
+    if (fs.existsSync(vs) && old('sounds', mtime(vs))) add({ key: 'voice-samples', kind: 'sounds', label: 'Voice samples made on this replicant matrix', detail: 'made again the next time you press ▶ Hear a sample', bytes: sizeOf(vs), touched: mtime(vs), actions: ['delete'], def: 'delete', paths: [vs] });
 
     const done = (this.brain.queue || []).filter((j) => ['done', 'failed', 'cancelled'].includes(j.state) && old('tasks', j.doneAt || j.at || 0));
     if (done.length) add({ key: 'tasks', kind: 'tasks', label: `${done.length} finished task${done.length === 1 ? '' : 's'}`, detail: 'from the Tasks list (the chats keep what was said)', bytes: 0, touched: Math.max(...done.map((j) => j.doneAt || j.at || 0)), actions: ['delete'], def: 'delete' });
@@ -287,18 +289,19 @@ export class Housekeeper {
       const v = await own.embed(model, texts);
       this.noEmbed = false;
       return v;
-    } catch { this.noEmbed = true; this.noEmbedAt = this.now(); return null; } // not on this PC: names and words are matched instead
+    } catch { this.noEmbed = true; this.noEmbedAt = this.now(); return null; } // not on this replicant matrix: names and words are matched instead
   }
 
   // Facts Bob should keep go to the memory file, tagged with their topic, without repeats.
-  addFacts(facts, topic = '') {
+  // 1.5.79: with "Remember only what fits" on, a fact from a project's topic goes to that project's memory bank.
+  addFacts(facts, topic = '', project = '') {
     const list = [].concat(facts || []).map((f) => String(f).replace(/\s+/g, ' ').trim()).filter((f) => f.length > 3 && f.length < 300).slice(0, 8);
     if (!list.length) return 0;
     let text = '';
     try { text = fs.readFileSync(this.cfg.memoryFile, 'utf8'); } catch {}
     const have = new Set(text.split('\n').map(memKey).filter(Boolean));
     const day = dateOf(Date.now());
-    const add = list.filter((f) => { const k = memKey(f); if (have.has(k)) return false; have.add(k); return true; }).map((f) => `- ${f} (${day})${topic ? ` [topic: ${topic.replace(/[\][]/g, '')}]` : ''}\n`);
+    const add = list.filter((f) => { const k = memKey(f); if (have.has(k)) return false; have.add(k); return true; }).map((f) => `- ${f} (${day})${topic ? ` [topic: ${topic.replace(/[\][]/g, '')}]` : ''}${project && recallOn(this.cfg) ? ` [project: ${String(project).replace(/[\][]/g, '').slice(0, 60)}]` : ''}\n`);
     if (add.length) fs.appendFileSync(this.cfg.memoryFile, (text && !text.endsWith('\n') ? '\n' : '') + add.join(''));
     return add.length;
   }
@@ -342,7 +345,7 @@ export class Housekeeper {
         return best;
       }
     });
-    for (const g of groups) this.addFacts(g.facts, g.name);
+    for (const g of groups) this.addFacts(g.facts, g.name, g.project);
     this.topics.setCursor(id, Math.max(...fresh.map((m) => m.at || 0)));
     await this.refreshVectors();
     if (touched.length) this.log(`filed chat ${id} under ${touched.length} topic${touched.length === 1 ? '' : 's'}`);
@@ -475,7 +478,19 @@ export class Housekeeper {
   }
 
   // force: the user pressed "Tidy up now" (runs even if Bob isn't idle or his brain isn't loaded).
+  // 1.5.79: "Remember only what fits" matches memory lines by meaning. Their vectors are made here, while Bob is
+  // idle (never in the Gaming session), so a message only waits for its own. Works with housekeeping off.
+  async fillMemoryVectors() {
+    if (!recallOn(this.cfg) || gaming(this.cfg)) return 0;
+    let text = '';
+    try { text = fs.readFileSync(this.cfg.memoryFile, 'utf8'); } catch { return 0; }
+    const model = this.cfg.housekeeping?.embedModel || 'nomic-embed-text';
+    this.memVecs ||= new MemoryVectors(this.cfg);
+    return this.memVecs.fill(parseMemory(text), (texts) => this.embed(texts), model);
+  }
+
   async tick({ force = false } = {}) {
+    if (recallOn(this.cfg) && (force || this.idle()) && !this.working) { try { await this.fillMemoryVectors(); } catch {} }
     const hk = this.settings;
     if (!force && (!hk.enabled || !this.idle())) return { skipped: true };
     if (this.working) return { busy: true };

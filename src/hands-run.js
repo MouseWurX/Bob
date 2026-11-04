@@ -20,11 +20,11 @@ const NEVER_PROGRAMS = new Map(Object.entries({
   bcdboot: 'changes how Windows boots', mountvol: 'changes disk mounts', vssadmin: 'manages restore points and shadow copies', wbadmin: 'manages system backups',
   regedit: 'edits the registry', regedt32: 'edits the registry', runas: 'runs as another user or administrator', psexec: 'runs as another user or administrator',
   psexec64: 'runs as another user or administrator', sudo: 'runs as administrator', gsudo: 'runs as administrator', nircmd: 'can run things elevated',
-  shutdown: 'shuts down or restarts the PC', takeown: 'takes ownership of files', icacls: 'changes file permissions', cacls: 'changes file permissions',
+  shutdown: 'shuts down or restarts this replicant matrix', takeown: 'takes ownership of files', icacls: 'changes file permissions', cacls: 'changes file permissions',
   secedit: 'changes security policy', gpedit: 'changes group policy', lusrmgr: 'manages user accounts', mpcmdrun: 'controls Windows antivirus',
   sc: 'controls Windows services', cipher: 'can wipe free disk space', syskey: 'changes system security', reagentc: 'changes Windows recovery',
   mkfs: 'formats a disk', fdisk: 'changes disk partitions', dd: 'writes raw disks', passwd: 'changes passwords', useradd: 'manages user accounts',
-  userdel: 'manages user accounts', reboot: 'restarts the PC', poweroff: 'shuts down the PC', halt: 'shuts down the PC', chown: 'changes file ownership',
+  userdel: 'manages user accounts', reboot: 'restarts this replicant matrix', poweroff: 'shuts down this replicant matrix', halt: 'shuts down this replicant matrix', chown: 'changes file ownership',
   // Linux (and Mac) programs with the same reach as the Windows ones above.
   pkexec: 'runs as administrator (run it yourself in a terminal if you need it)', doas: 'runs as administrator (run it yourself in a terminal if you need it)', su: 'runs as another user or administrator (run it yourself in a terminal if you need it)', visudo: 'changes who may be administrator (run it yourself in a terminal if you need it)',
   usermod: 'manages user accounts (run it yourself in a terminal if you need it)', groupadd: 'manages user accounts (run it yourself in a terminal if you need it)', groupdel: 'manages user accounts (run it yourself in a terminal if you need it)', chpasswd: 'changes passwords (run it yourself in a terminal if you need it)',
@@ -33,7 +33,7 @@ const NEVER_PROGRAMS = new Map(Object.entries({
   wipefs: 'wipes disks (use your distro\'s Disks app yourself if you need it)', shred: 'destroys files beyond recovery (ask me to put it in the Trash instead)', modprobe: 'changes the system core, the kernel (run it yourself in a terminal if you need it)', insmod: 'changes the system core, the kernel (run it yourself in a terminal if you need it)',
   rmmod: 'changes the system core, the kernel (run it yourself in a terminal if you need it)', setenforce: 'changes system security (run it yourself in a terminal if you need it)', chattr: 'changes protected file flags (run it yourself in a terminal if you need it)', iptables: 'changes the firewall (use your distro\'s firewall settings yourself)',
   nft: 'changes the firewall (use your distro\'s firewall settings yourself)', ufw: 'changes the firewall (use your distro\'s firewall settings yourself)', firewalld: 'changes the firewall (use your distro\'s firewall settings yourself)', 'firewall-cmd': 'changes the firewall (use your distro\'s firewall settings yourself)',
-  'grub-install': 'changes how the PC boots (run it yourself in a terminal if you need it)', 'update-grub': 'changes how the PC boots (run it yourself in a terminal if you need it)', efibootmgr: 'changes how the PC boots (run it yourself in a terminal if you need it)'
+  'grub-install': 'changes how this replicant matrix boots (run it yourself in a terminal if you need it)', 'update-grub': 'changes how this replicant matrix boots (run it yourself in a terminal if you need it)', efibootmgr: 'changes how this replicant matrix boots (run it yourself in a terminal if you need it)'
 }));
 
 // Text that is refused anywhere in the command line (and inside a script Bob is asked to run).
@@ -47,7 +47,7 @@ const NEVER_TEXT = [
   [/\b(set|add|remove)-mppreference\b|\bmpcmdrun\b|\bwindefend\b|disablerealtimemonitoring|\bwindows defender\b|\bdefender\b.*\b(disable|exclu|stop|off)/i, 'touches Windows antivirus'],
   [/\bnet1?(\.exe)?\s+(user|localgroup|group|accounts)\b/i, 'manages user accounts'],
   [/\b(new|set|remove|disable|enable|add)-local(user|group(member)?)\b/i, 'manages user accounts'],
-  [/\bshutdown(\.exe)?\b|\b(stop|restart)-computer\b/i, 'shuts down or restarts the PC'],
+  [/\bshutdown(\.exe)?\b|\b(stop|restart)-computer\b/i, 'shuts down or restarts this replicant matrix'],
   [/\brunas\b|-verb\s+['"]?runas|\bstart-process\b[^\n]*-verb\b|\bsudo\b|\bgsudo\b|\bpsexec/i, 'asks for administrator rights'],
   [/\b(set-executionpolicy)\b/i, 'changes the script security setting'],
   [/-e(nc(odedcommand)?|c)\s+[A-Za-z0-9+/=]{16,}/i, 'hides what it runs (encoded command)'],
@@ -65,7 +65,7 @@ const NEVER_TEXT = [
   [/(>|\btee\b[^\n]*)\s*\/(etc|boot|usr|bin|sbin|lib|lib64|sys|proc)\//i, 'changes system files (edit them yourself with administrator rights if you mean to)'],
   [/\b(chmod|chown|chgrp)\s+(-[a-z]*R|--recursive)\b[^\n]*\s\/(\s|$)/i, 'changes permissions on the whole system (change them only on the files you need, yourself)'],
   [/\bcrontab\b|\bsystemctl\b|\blaunchctl\b/i, 'makes or changes a system task or service (that is the Schedules Hand\'s job)'],
-  [/:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/, 'would freeze the PC (a fork bomb: there is nothing useful to run instead)']
+  [/:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/, 'would freeze this replicant matrix (a fork bomb: there is nothing useful to run instead)']
 ];
 
 // macOS's own system tools that wipe disks, change startup or security, or manage accounts (on every computer, so a
@@ -88,16 +88,16 @@ NEVER_TEXT.push(
 // The line: a command that sends a body, a file or a push to another computer is refused; plain downloads
 // (curl URL, git pull/clone/fetch, npm install) are reads and stay allowed.
 const SEND_PROGRAMS = new Map(Object.entries({
-  scp: 'copies files to another computer', sftp: 'copies files to another computer', ftp: 'copies files to another computer',
-  rsync: 'can copy files to another computer', rclone: 'copies files to cloud storage', azcopy: 'copies files to cloud storage',
-  gsutil: 'copies files to cloud storage', ssh: 'opens a link to another computer', nc: 'sends data over the network', ncat: 'sends data over the network',
+  scp: 'copies files to another replicant matrix', sftp: 'copies files to another replicant matrix', ftp: 'copies files to another replicant matrix',
+  rsync: 'can copy files to another replicant matrix', rclone: 'copies files to cloud storage', azcopy: 'copies files to cloud storage',
+  gsutil: 'copies files to cloud storage', ssh: 'opens a link to another replicant matrix', nc: 'sends data over the network', ncat: 'sends data over the network',
   telnet: 'sends data over the network', sendmail: 'sends email', mail: 'sends email', mutt: 'sends email'
 }));
 const SEND_TEXT = [
   [/\bcurl\b[^\n]*\s(-d|--data[\w-]*|-F|--form[\w-]*|-T|--upload-file|--json|-X\s*['"]?(POST|PUT|PATCH)|--request\s+['"]?(POST|PUT|PATCH))(?=[\s'"=]|$)/i, 'sends data to a website'],
   [/\bwget\b[^\n]*--(post|body)-(data|file)\b/i, 'sends data to a website'],
   [/\b(invoke-webrequest|iwr|invoke-restmethod|irm)\b[^\n]*-(body|infile|method\s+['"]?(post|put|patch))\b/i, 'sends data to a website'],
-  [/\bgit\b[^\n]*\b(push|send-email|request-pull)\b/i, 'pushes or sends code to another computer'],
+  [/\bgit\b[^\n]*\b(push|send-email|request-pull)\b/i, 'pushes or sends code to another replicant matrix'],
   [/\b(npm|pnpm|yarn|cargo|twine|gem|nuget)\b[^\n]*\b(publish|push|upload)\b/i, 'publishes to the internet'],
   [/\bgh\b[^\n]*\b(pr|issue|release|gist|repo|api)\b[^\n]*\b(create|edit|comment|upload|post)\b/i, 'posts to GitHub'],
   [/\bsend-mailmessage\b|\bsmtpclient\b/i, 'sends email'],

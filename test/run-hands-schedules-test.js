@@ -44,7 +44,7 @@ check('the window gets the list, and the Windows task is off by default', v.list
 const ui = fs.readFileSync(new URL('../public/hands.js', import.meta.url), 'utf8');
 check('Settings shows each schedule with a switch, Remove, and the separate Windows-task opt-in', /data-hsched=/.test(ui) && /data-hscheddel=/.test(ui) && /data-hschedtask/.test(ui) && /Off by default/.test(ui));
 const srv = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
-check('the ticker starts with Bob, and changes are PC-only', /startSchedules\(brain\)/.test(srv) && /Schedules can only be changed on the PC itself/.test(fs.readFileSync(new URL('../src/hands-schedules.js', import.meta.url), 'utf8')));
+check('the ticker starts with Bob, and changes are PC-only', /startSchedules\(brain\)/.test(srv) && /Schedules can only be changed on this replicant matrix itself/.test(fs.readFileSync(new URL('../src/hands-schedules.js', import.meta.url), 'utf8')));
 
 fs.rmSync(dir, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

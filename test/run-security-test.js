@@ -70,7 +70,7 @@ const brain = { cfg, log: (k, t) => logs.push(`${k}: ${t}`) };
   const st = sayStartup({ items: [{ name: 'Steam', where: 'Your account', command: 'x', exists: true, sig: 'Valid', signer: 'Valve' }, { name: 'svch0st', where: 'Your account', command: 'C:\\Users\\you\\AppData\\Roaming\\svch0st.exe', exe: 'C:\\Users\\you\\AppData\\Roaming\\svch0st.exe', exists: true, sig: 'NotSigned' }] });
   check('the startup list puts the worrying one first and says how to stop one', st.indexOf('svch0st') < st.indexOf('Steam') && /Task Manager > Startup apps/.test(st) && /doesn't switch these off/.test(st));
   const n = sayNetwork({ listen: [{ addr: '0.0.0.0', port: 3389, proc: 'svchost' }, { addr: '127.0.0.1', port: 11434, proc: 'ollama' }, { addr: '0.0.0.0', port: 7777, proc: 'Bob' }] });
-  check('open Remote Desktop is flagged; local-only things are told apart', /Remote sign-in is open/.test(n) && /only reachable from this PC: 11434/.test(n) && /Bob himself/.test(n));
+  check('open Remote Desktop is flagged; local-only things are told apart', /Remote sign-in is open/.test(n) && /only reachable from this replicant matrix: 11434/.test(n) && /Bob himself/.test(n));
   check('the PowerShell checks are fixed text with no way in for chat words', Object.values(PS).every((s) => !/\$\{|BOB_ARG/.test(s)) && /\$env:BOB_SRC/.test(PS.signature));
   check('the checks never change settings (no Set-, Add-, Remove- or Disable- commands)', !Object.values(PS).some((s) => /\b(Set-Mp|Add-Mp|Remove-|Disable-|Stop-|New-ItemProperty|Set-ItemProperty)/.test(s)));
 }
@@ -284,7 +284,7 @@ function exifJpeg({ turn = 6 } = {}) {
   check('privacy Help says what security look-ups send', /Security look-ups/.test(HELP.find((e) => e.id === 'privacy').html));
 }
 
-// 1.5.49 fixes from the PC checks
+// 1.5.49 fixes from this replicant matrix checks
 check('a brand hidden with swapped letters (paypa1-login) is rated a fake (level 3)', linkSigns('https://paypa1-login.com/x').signs.some((x) => x.level === 3 && /swapped letters/.test(x.says)));
 check('a plain brand-in-name (paypal-login) stays a caution (level 2)', linkSigns('https://paypal-login.com/x').signs.some((x) => x.level === 2 && /puts paypal/.test(x.says)));
 check('conhost startup items say the signature is the host\'s, not the command\'s', judgeStartup({ command: 'C:\\Windows\\System32\\conhost.exe --headless foo.cmd', exe: 'C:\\Windows\\System32\\conhost.exe', exists: true, sig: 'Valid' }).why.some((w) => /conhost\.exe, the Windows console host/.test(w)));

@@ -62,7 +62,7 @@ export function cloudStatus(cfg, env = keyEnv()) {
 
 export async function askCloud(c, task, signal, env = keyEnv()) {
   const key = env[c.apiKeyEnv];
-  if (!key) throw new Error(`No key for ${c.name} on this PC.`);
+  if (!key) throw new Error(`No key for ${c.name} on this replicant matrix.`);
   if (c.type === 'anthropic') {
     const res = await fetch(`${c.baseUrl}/messages`, {
       method: 'POST', signal,

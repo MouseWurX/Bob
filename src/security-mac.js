@@ -139,7 +139,7 @@ export function sayMacNetwork(r = {}) {
   const local = rows.filter((x) => /^(127\.|::1|localhost)/.test(x.addr));
   const say = (x) => `${x.port} ${x.proc || 'pid ' + x.pid}${MAC_PORTS[x.port] ? ` (${MAC_PORTS[x.port]})` : ''}`;
   const risky = open.filter((x) => [22, 5900, 3283, 23, 21].includes(x.port));
-  return `${open.length} listening to other devices on your network (the firewall still decides who gets in): ${open.map(say).join(', ') || 'none'}.\n${local.length} only reachable from this Mac: ${local.map(say).join(', ') || 'none'}.${risky.length ? `\n⚠ Remote sign-in or screen sharing is open: ${risky.map(say).join(', ')}. If you don't use it, switch it off in System Settings > General > Sharing.` : ''}\nOnly programs you recognise should be on the first list.`;
+  return `${open.length} listening to other replicant matrices on your network (the firewall still decides who gets in): ${open.map(say).join(', ') || 'none'}.\n${local.length} only reachable from this Mac: ${local.map(say).join(', ') || 'none'}.${risky.length ? `\n⚠ Remote sign-in or screen sharing is open: ${risky.map(say).join(', ')}. If you don't use it, switch it off in System Settings > General > Sharing.` : ''}\nOnly programs you recognise should be on the first list.`;
 }
 
 // ---------------------------------------------------------------- threats

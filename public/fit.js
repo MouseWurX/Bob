@@ -56,7 +56,7 @@ export const engineRunsOn = (name, platform) => !platform || (ENGINE_PLATFORMS[n
 // How well a model runs on this PC. hw: { vramGB, ramGB, freeGB }. Each answer that isn't ok has a one-line reason.
 export function suit(m, hw = {}, platform = '') {
   if (hw.freeGB != null && m.status?.state !== 'installed' && m.sizeGB > hw.freeGB) return { level: 'blocked', why: `Needs ${gb(m.sizeGB)} of disk space; ${hw.freeGB} GB is free.` };
-  if (m.needs && platform && !engineRunsOn(m.needs, platform)) return { level: 'blocked', why: `${m.needs} doesn't run on ${platform === 'darwin' ? 'a Mac' : 'this computer'} yet.` };
+  if (m.needs && platform && !engineRunsOn(m.needs, platform)) return { level: 'blocked', why: `${m.needs} doesn't run on ${platform === 'darwin' ? 'a Mac' : 'this replicant matrix'} yet.` };
   const v = hw.vramGB;
   // 1.5.64: a squeezed (Q3) brain is only for small cards. On a bigger card the full (Q4 or better) version runs.
   if (m.maxCardGB && v > m.maxCardGB) return { level: 'no', squeezed: true, why: `Made for cards of ${m.maxCardGB} GB or less. Your card runs the full version, which is sharper.` };

@@ -11,7 +11,7 @@ import { appDir, saveSettings } from './config.js';
 import { ENGINES, engineStatus, installEngine, latestEngine } from './engines.js';
 import { audioReady, voicesReady, aceModelsDir, aceFileOk, tidyAceCache } from './audio.js';
 import { maestroModels } from './maestro.js';
-import { gpuInfo } from './platform.js';
+import { gpuInfo, cpuName, specLine, shownRamGB } from './platform.js';
 import { packFor } from '../public/fit.js';
 
 const MODEL_EXT = new Set(['.gguf', '.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.sft']);
@@ -286,7 +286,9 @@ export class ModelShop {
     // 1.5.71: built-in graphics get their own set (brains only: pictures and video aren't tested there yet).
     const pack = packFor(this.catalog.packs, vram, Boolean(gpu?.integrated));
     const ramGB = Math.round(os.totalmem() / 1024 ** 3) || null; // for brains that spill out of the graphics card into RAM
-    return { gpu, freeGB, vramGB: vram || null, ramGB, suggestedPack: pack.id };
+    // 1.5.89: the replicant matrix's name tag (processor, graphics, memory) for the muted spec line beside its name.
+    const cpu = cpuName() || null;
+    return { gpu, freeGB, vramGB: vram || null, ramGB, suggestedPack: pack.id, cpu, spec: specLine({ cpu, gpu, ramGB: shownRamGB(os.totalmem()) || ramGB }) };
   }
 
   // ---- The download manager ----
@@ -330,7 +332,7 @@ export class ModelShop {
 
   describe(id) {
     if (id.startsWith('engine:')) {
-      const e = ENGINES.find((x) => x.id === id.slice(7));
+      const e = ENGINES.find((x) => x.id === id.slice(7).replace(/@newest$/, ''));
       if (!e) throw new Error('No such engine.');
       return { id, name: e.name, kind: 'engine' };
     }
@@ -420,11 +422,14 @@ export class ModelShop {
     throw new Error(`${entry.name} comes through Ollama, and Ollama isn't running.`);
   }
 
-  async runEngine(eid, pub, signal, tick) {
+  async runEngine(eid0, pub, signal, tick) {
+    // 1.5.83: "engine:llamacpp@newest" is the "Get newer build" button; plain "engine:llamacpp" gets the tested build.
+    const newest = eid0.endsWith('@newest');
+    const eid = eid0.replace(/@newest$/, '');
     const hw = await this.hardware();
     // A newer llama.cpp can't overwrite files the running llama-server holds open: let go of it first.
     if (eid === 'llamacpp' && this.engine?.stopServer) await this.engine.stopServer();
-    const r = await installEngine(this.cfg, eid, { nvidia: /nvidia|geforce|rtx/i.test(hw.gpu?.name || ''), pub, signal, tick });
+    const r = await installEngine(this.cfg, eid, { nvidia: /nvidia|geforce|rtx/i.test(hw.gpu?.name || ''), pub, signal, tick, newest });
     pub.note = `${r.asset} (${r.version})`;
   }
 
@@ -695,7 +700,7 @@ export class ModelShop {
     if (j.kind === 'llm' && value === '' && job !== 'bob') { saveSettings(this.cfg, { models: { [job]: '' } }); return { models: { [job]: '' } }; }
     if (j.kind === 'llm') {
       const { options } = await this.roles();
-      if (!options.llm.some((o) => o.value === value)) throw new Error(`${value} isn't on this PC.`);
+      if (!options.llm.some((o) => o.value === value)) throw new Error(`${value} isn't on this replicant matrix.`);
       const entry = this.catalog.models.find((m) => m.id === value);
       const patch = { models: { [job]: value } };
       // A GGUF file is noted for Bob's own engine, but Bob never switches engines by himself (opt-in rule;
@@ -730,7 +735,7 @@ export class ModelShop {
     const entry = this.catalog.models.find((m) => m.id === id);
     if (!entry?.use) throw new Error('That model has nothing to switch to.');
     const st = await this.statusOf(entry, await this.ollamaNames());
-    if (st.state !== 'installed') throw new Error(`${entry.name} isn't fully on this PC yet.`);
+    if (st.state !== 'installed') throw new Error(`${entry.name} isn't fully on this replicant matrix yet.`);
     const pulled = st.where.includes('Ollama');
     let model = entry.ollama;
     const extra = {};

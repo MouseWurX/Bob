@@ -77,7 +77,11 @@ export function paintFlags(cfg, kind, spec = {}, { gb = cardGB(cfg), files = mod
   const hand = spec.extraArgs || s.extraArgs;
   const clip = spec.clipOnCpu ?? s.clipOnCpu;
   const safe = { extra: hand || SAFE_PAINT, clipOnCpu: Boolean(clip), size: null, fit: 'safe' };
-  if (hand || !tuning(cfg).pictureFit || fitBroken || !gb) return safe;
+  if (hand || !tuning(cfg).pictureFit || fitBroken) return safe;
+  // 1.5.79: built-in graphics (a handheld's): pictures at 768 px, which is much quicker there. The text encoder stays
+  // on the graphics, since it shares the same memory anyway and the graphics are faster. Clips keep their own size.
+  if (cfg?.sharedGraphics && !gb) return { extra: SAFE_PAINT, clipOnCpu: Boolean(clip), size: kind === 'video' ? null : 768, fit: 'shared' };
+  if (!gb) return safe;
   if (gb <= 8) return { extra: SAFE_PAINT, clipOnCpu: clip ?? true, size: kind === 'video' ? null : 768, fit: 'small' };
   if (kind === 'video' || gb < 12) return safe;
   // The whole model on the card when it fits with about 3 GB to spare for the work itself.

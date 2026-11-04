@@ -39,7 +39,7 @@ export function quarantineResult(ev) {
 
 let logbook = '';
 async function openLog(note) {
-  try { await post('/api/open', { path: logbook }); } catch (err) { note(err.message || 'The logbook opens on the PC itself.', 'error'); }
+  try { await post('/api/open', { path: logbook }); } catch (err) { note(err.message || 'The logbook opens on this replicant matrix itself.', 'error'); }
 }
 
 // ---- The banner above the chat while someone is in quarantine ----
@@ -61,7 +61,7 @@ export function createQuarantineBanner({ note }) {
     el.querySelector('[data-qrelease]').onclick = async (e) => {
       e.target.disabled = true;
       try { const r = await post('/api/quarantine/release'); active = r.active; draw(); note(`${r.released || 'Bob'} is released and can act again (he still asks first, as before).`); window.dispatchEvent(new CustomEvent('bob-quarantine', { detail: r })); }
-      catch (err) { e.target.disabled = false; note(err.message || 'Bob can only be released at the PC itself.', 'error'); }
+      catch (err) { e.target.disabled = false; note(err.message || 'Bob can only be released at this replicant matrix itself.', 'error'); }
     };
   };
   const load = async () => { try { const v = await (await fetch('/api/quarantine')).json(); logbook = v.logbook; active = v.active; draw(); } catch {} };

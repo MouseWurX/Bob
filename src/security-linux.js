@@ -129,7 +129,7 @@ export function sayNetworkLinux(r = {}) {
   const local = rows.filter((x) => /^(127\.|::1)/.test(x.addr));
   const say = (x) => `${x.port} ${x.proc || '(a system program)'}${KNOWN_PORTS_LINUX[x.port] ? ` (${KNOWN_PORTS_LINUX[x.port]})` : ''}`;
   const risky = open.filter((x) => [3389, 5900, 22, 23, 21].includes(x.port));
-  return `${open.length} listening to other devices on your network (a firewall, if one is on, still decides who gets in): ${open.map(say).join(', ') || 'none'}.\n${local.length} only reachable from this PC: ${local.map(say).join(', ') || 'none'}.${risky.length ? `\n⚠ Remote sign-in is open: ${risky.map(say).join(', ')}. If you don't use it, switch it off.` : ''}\nOnly programs you recognise should be on the first list.`;
+  return `${open.length} listening to other replicant matrices on your network (a firewall, if one is on, still decides who gets in): ${open.map(say).join(', ') || 'none'}.\n${local.length} only reachable from this replicant matrix: ${local.map(say).join(', ') || 'none'}.${risky.length ? `\n⚠ Remote sign-in is open: ${risky.map(say).join(', ')}. If you don't use it, switch it off.` : ''}\nOnly programs you recognise should be on the first list.`;
 }
 
 export async function linuxCheck(area, opts = {}) {
@@ -144,7 +144,7 @@ export async function linuxCheck(area, opts = {}) {
 export function clamPlan(kind, target = '', { home = os.homedir() } = {}) {
   if (kind === 'file') return ['--recursive', '--infected', '--no-summary', target];
   if (kind === 'quick') return ['--recursive', '--infected', '--no-summary', ...['Downloads', 'Desktop'].map((d) => path.join(home, d)).filter((d) => fs.existsSync(d))];
-  throw new Error(kind === 'update' ? 'On Linux, ClamAV\'s definitions are updated by the system (the clamav-freshclam service, or "sudo freshclam"), which needs administrator rights, so I leave it to you.' : 'A full scan of the whole PC isn\'t something I start on Linux (it needs administrator rights to read everything). I can scan your Downloads and Desktop (quick) or a folder you name (file).');
+  throw new Error(kind === 'update' ? 'On Linux, ClamAV\'s definitions are updated by the system (the clamav-freshclam service, or "sudo freshclam"), which needs administrator rights, so I leave it to you.' : 'A full scan of the whole replicant matrix isn\'t something I start on Linux (it needs administrator rights to read everything). I can scan your Downloads and Desktop (quick) or a folder you name (file).');
 }
 
 export function runClam(kind, target, { env = process.env, signal, timeoutMs = 60 * 60_000 } = {}) {

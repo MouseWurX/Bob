@@ -90,7 +90,7 @@ export function slimHandoff(h) {
 }
 
 // Tools that change something outside Bob's own chat (a restart must not redo these blindly).
-export const SIDE_EFFECT = /^(app_|open_app|convert_file|strip_metadata|defender_scan|office_make|office_edit|edit_file|write_file|file_hands|undo_files|move_|copy_|rename_|delete_|recycle|zip|unzip|run_command|run_recipe|save_|schedule_|make_)/; // file_hands/undo_files: 1.5.38
+export const SIDE_EFFECT = /^(app_|open_app|convert_file|strip_metadata|defender_scan|office_make|office_edit|edit_file|write_file|file_hands|undo_files|move_|copy_|rename_|delete_|recycle|zip|unzip|run_command|run_recipe|save_|schedule_|make_|mcp_use)/; // file_hands/undo_files: 1.5.38
 // A job that was cut off by a restart can be picked up again on its own when nothing it did changed the PC.
 export function safeToResume(job) {
   const done = job?.handoff?.actions || [];
@@ -111,7 +111,7 @@ export function interruptedNote(job) {
 // Finished steps are never done again. The cut-off step is done again from the start, with the same settings,
 // unless it's one that can be left half done (typing into an app, moving or deleting files, running a command, an edit):
 // then the job waits in Tasks so the user can look first.
-export const WAIT_IF_CUT = /^(app_|office_edit|edit_file|file_hands|undo_files|move_|rename_|delete_|recycle|unzip|run_command|run_recipe|schedule_)/;
+export const WAIT_IF_CUT = /^(app_|office_edit|edit_file|file_hands|undo_files|move_|rename_|delete_|recycle|unzip|run_command|run_recipe|schedule_|mcp_use)/;
 export const MAX_AUTO_RESUMES = 2; // a job that keeps getting cut off (or keeps crashing Bob) stops coming back on its own
 const plainStep = (a) => { try { return describe(a.name, parseArgs(a.args)).replace(/^\w/, (c) => c.toLowerCase()); } catch { return a.name; } };
 const parseArgs = (x) => { try { return typeof x === 'string' ? JSON.parse(x || '{}') : (x || {}); } catch { return {}; } };

@@ -333,7 +333,7 @@ const HAND_OF = { app: 'apps' };
 const cantNote = (kind) => {
   if (MODEL_FOR[kind]) return `Bob can't make ${MODEL_FOR[kind]} yet: he needs ${MODEL_NAME[kind]}. Get one in Get models.`;
   if (HAND_OF[kind]) return `Bob can't do that yet: the ${HANDS[HAND_OF[kind]].label} Hand is off. Turn it on in Settings, Show advanced settings, Hands.`;
-  return 'Bob can\'t do that on this PC yet.';
+  return 'Bob can\'t do that on this replicant matrix yet.';
 };
 const DIDNT = { picture: 'make a picture', show: 'make a picture', video: 'make a clip', music: 'make the music', sound: 'make the sound', file: 'save the file', app: 'do it in the app' };
 

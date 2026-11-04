@@ -73,7 +73,7 @@ export function cleanPhonePatch(cfg, b) {
   if ('enabled' in b) {
     next.enabled = b.enabled === true;
     if (next.enabled && next.passcode.length < MIN_PASSCODE) return { error: 'Set a passcode first.' };
-    if (next.enabled && !next.hosts.length) return { error: 'No Tailscale address found. Is Tailscale installed and connected on this PC?' };
+    if (next.enabled && !next.hosts.length) return { error: 'No Tailscale address found. Is Tailscale installed and connected on this replicant matrix?' };
   }
   return { remote: next };
 }

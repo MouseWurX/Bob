@@ -247,7 +247,7 @@ These are all **off until you turn them on** (Settings, Show advanced settings, 
 
 - **Get Bob ready while you type**: starts loading and reading his instructions as soon as you start typing. On the processor he also keeps a copy of that reading on disk, so the next start is quicker.
 - **Let games go first**: when Bob works on the processor, he uses fewer cores at lower priority. His replies may be a little slower; your frame rate stays smooth. Worth turning on if you game with Bob open.
-- **Match picture settings to my graphics card**: big cards keep the picture model in graphics memory (faster). Cards with 8 GB or less make pictures at 768 px so they fit. If a picture fails with these settings, Bob goes back to the usual ones.
+- **Match picture settings to my graphics card**: big cards keep the picture model in graphics memory (faster). Cards with 8 GB or less, and built-in graphics like a handheld's, make pictures at 768 px so they fit and come quicker. If a picture fails with these settings, Bob goes back to the usual ones.
 
 ---
 

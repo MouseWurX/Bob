@@ -19,6 +19,7 @@ import { checkCommand, runCommand } from './hands-run.js';
 import { appsTools } from './hands-apps.js';
 import { officeView } from './office.js';
 import { makerPrompt, selfToolsView } from './selftools.js';
+import { mcpTools, mcpPrompt, mcpView, stopAllServers } from './mcp.js';
 
 const fn = (name, description, properties, required = Object.keys(properties)) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
@@ -54,6 +55,7 @@ export function holdHands(brain, held) {
 export function stopEverything(brain) {
   let n = 0;
   for (const r of running.values()) { r.controller.abort(); n++; }
+  stopAllServers(); // connected apps Bob started (they're in running too; this catches any still starting)
   if (brain) {
     n += brain.denyHands?.() || 0;
     const next = cleanHands({ ...handsSettings(brain.cfg), enabled: false, free: false }); // asks again next time
@@ -232,7 +234,7 @@ export function handsTools(brain, opts = {}) {
     summary: ({ action, name }) => `recipe: ${action}${name ? ' ' + name : ''}`
   };
 
-  Object.assign(t, appsTools(brain, { track, ...(opts.apps || {}) }));
+  Object.assign(t, appsTools(brain, { track, ...(opts.apps || {}) }), mcpTools(brain, { track }));
   return t;
 }
 
@@ -247,7 +249,7 @@ export function handsPrompt(cfg) {
   const realLine = `\n\nNever say you did something on the PC (opened, typed, clicked, moved, ran) unless a tool result in this turn says it was done. Hands act on ${cfg.userName || 'the user'}'s real Windows PC: the apps, windows and files are real, not a simulation. When a Hand tool fails, tell ${cfg.userName || 'the user'} the error it gave you, in plain words, and never blame a simulation or a virtual OS. If an earlier try in this chat failed, call the tool again instead of repeating that result: you may have been updated since.`;
   if (!on.length) return realLine + offLine;
   const roots = handsRoots(cfg);
-  return `\n\nHands ${cfg.userName || 'the user'} switched on: ${on.map(([, h]) => h.label).join('; ')}.${handOn(cfg, 'files') ? ` Files: only in ${roots.join('; ') || '(no folders ticked yet)'}. To undo a file job, call undo_files; it keeps the record, so don't answer from memory.` : ''}${handOn(cfg, 'office') ? ` Office: convert_file converts (documents with LibreOffice, sound and video with FFmpeg); read Word, Excel, PowerPoint or PDF with office_read, not read_file; office_make makes new ones; office_edit changes them (read first). It saves in ${[...roots, path.join(cfg.innDir || '', 'documents')].join('; ')}.` : ''}${handOn(cfg, 'security') ? ' Security: you are a defensive sidekick. security_check reads the PC\'s protection (changes nothing); inspect_file checks a file or pasted email/command without opening it; strip_metadata makes clean copies; osint_lookup checks sites, links, senders and IPs from public records; read security_tips before giving safety advice. Never switch protection off, allow or restore threats, or research private people; say how the user does those first ones in Windows Security.' : ''}${handOn(cfg, 'apps') ? ' Apps: open with open_app, read the window with app_look, then do one step at a time with app_act using the names app_look gave you.' : ''}${makerPrompt(cfg)} ${freeOn(cfg) ? ` ${cfg.userName || 'The user'} switched on "work without asking": there are no approval cards right now, so just do the job step by step with the tools and say what you did. Don't ask in words first either. The hard limits still apply: when a tool refuses, say why plainly and don't try a way round it.${limitsLine(cfg)}` : ` Every action shows a card and waits for a click, so describe the plan briefly and call the tool; don't ask in words first. When a job needs two or more of these OKs, call ask_together first with every one of those steps (the exact tool and arguments), so ${cfg.userName || 'the user'} sees the whole job on one card, then do the steps with the same arguments. If ${cfg.userName || 'the user'} says no, don't try another way round.`}${realLine}${offLine}`;
+  return `\n\nHands ${cfg.userName || 'the user'} switched on: ${on.map(([, h]) => h.label).join('; ')}.${handOn(cfg, 'files') ? ` Files: only in ${roots.join('; ') || '(no folders ticked yet)'}. To undo a file job, call undo_files; it keeps the record, so don't answer from memory.` : ''}${handOn(cfg, 'office') ? ` Office: convert_file converts (documents with LibreOffice, sound and video with FFmpeg); read Word, Excel, PowerPoint or PDF with office_read, not read_file; office_make makes new ones; office_edit changes them (read first). It saves in ${[...roots, path.join(cfg.innDir || '', 'documents')].join('; ')}.` : ''}${handOn(cfg, 'security') ? ' Security: you are a defensive sidekick. security_check reads the PC\'s protection (changes nothing); inspect_file checks a file or pasted email/command without opening it; strip_metadata makes clean copies; osint_lookup checks sites, links, senders and IPs from public records; read security_tips before giving safety advice. Never switch protection off, allow or restore threats, or research private people; say how the user does those first ones in Windows Security.' : ''}${handOn(cfg, 'apps') ? ' Apps: open with open_app, read the window with app_look, then do one step at a time with app_act using the names app_look gave you.' : ''}${mcpPrompt(cfg)}${makerPrompt(cfg)} ${freeOn(cfg) ? ` ${cfg.userName || 'The user'} switched on "work without asking": there are no approval cards right now, so just do the job step by step with the tools and say what you did. Don't ask in words first either. The hard limits still apply: when a tool refuses, say why plainly and don't try a way round it.${limitsLine(cfg)}` : ` Every action shows a card and waits for a click, so describe the plan briefly and call the tool; don't ask in words first. When a job needs two or more of these OKs, call ask_together first with every one of those steps (the exact tool and arguments), so ${cfg.userName || 'the user'} sees the whole job on one card, then do the steps with the same arguments. If ${cfg.userName || 'the user'} says no, don't try another way round.`}${realLine}${offLine}`;
 }
 
 // Hard limits the user switched off, so Bob knows what he may now do (and that nothing else changed).
@@ -266,5 +268,5 @@ export function folderCandidates(cfg) {
 }
 
 export function handsView(cfg) {
-  return { candidates: folderCandidates(cfg), settings: handsSettings(cfg), hands: handsHere(), limits: Object.entries(LIMITS).map(([id, l]) => ({ id, ...l })), readOnly: (cfg.readOnlyRoots || []).filter((f) => !(cfg.ownReadOnlyRoots || []).includes(f)), roots: handsRoots(cfg), recipes: loadRecipes(cfg), journal: loadJournal(cfg).slice(-15).reverse().map((j) => ({ id: j.id, at: j.at, label: j.label, steps: j.steps.length, undone: Boolean(j.undone) })), runs: loadRuns(cfg).slice(-15).reverse(), running: runningNow(), office: officeView(cfg), selfTools: selfToolsView(cfg) };
+  return { candidates: folderCandidates(cfg), settings: handsSettings(cfg), hands: handsHere(), limits: Object.entries(LIMITS).map(([id, l]) => ({ id, ...l })), readOnly: (cfg.readOnlyRoots || []).filter((f) => !(cfg.ownReadOnlyRoots || []).includes(f)), roots: handsRoots(cfg), recipes: loadRecipes(cfg), journal: loadJournal(cfg).slice(-15).reverse().map((j) => ({ id: j.id, at: j.at, label: j.label, steps: j.steps.length, undone: Boolean(j.undone) })), runs: loadRuns(cfg).slice(-15).reverse(), running: runningNow(), office: officeView(cfg), selfTools: selfToolsView(cfg), mcp: mcpView(cfg) };
 }

@@ -14,9 +14,9 @@ check('the 16 GB starter set equips it for Brain and Coding, Gemma 4 26B for Off
 check('Qwen3 Coder 30B is still in the catalogue to pick', cat.models.some((m) => m.id === 'qwen3-coder-30b' && m.jobs.includes('tinker')));
 
 const id = 'qwen3.6-35b-a3b';
-check('Coding thinks at every effort, at 128K', ['low', 'medium', 'high', 'extreme'].every((e) => JSON.stringify(brainDefaults(id, 'tinker', e)) === JSON.stringify({ ctx: 131072 })));
-check('everyday chat (Brain) never thinks first, and uses the same 128K load', ['low', 'medium', 'high'].every((e) => JSON.stringify(brainDefaults(id, 'bob', e)) === JSON.stringify({ ctx: 131072, think: false })));
-check('every other copy on it gets 128K too, so a hand-off never reloads it', brainDefaults(id, 'scout', 'low').ctx === 131072 && !('think' in brainDefaults(id, 'scout', 'low')));
+check('Coding thinks at every effort, at 256K', ['low', 'medium', 'high', 'extreme'].every((e) => JSON.stringify(brainDefaults(id, 'tinker', e)) === JSON.stringify({ ctx: 262144 })));
+check('everyday chat (Brain) never thinks first, and uses the same 256K load', ['low', 'medium', 'high'].every((e) => JSON.stringify(brainDefaults(id, 'bob', e)) === JSON.stringify({ ctx: 262144, think: false })));
+check('every other copy on it gets 256K too, so a hand-off never reloads it', brainDefaults(id, 'scout', 'low').ctx === 262144 && !('think' in brainDefaults(id, 'scout', 'low')));
 check('other brains are untouched', JSON.stringify(brainDefaults('qwen3-coder:30b', 'tinker', 'low')) === '{}' && JSON.stringify(brainDefaults('gemma4:26b', 'bob', 'low')) === '{}');
 
 check('family is the Qwen3.5/3.6 one', familyOf(id, null) === 'qwen3.5');
@@ -48,8 +48,8 @@ check('the glossary says coding always thinks and chat doesn\'t', /Thinking firs
   const run = async (b) => { const evs = []; await b.brain.runOn([], 'what is six times seven', (e) => evs.push(e), new AbortController().signal, [], null, 's1'); return evs; };
   const q = make('qwen3.6-35b-a3b');
   const evs = await run(q);
-  check('everyday chat on Qwen3.6: the first answer doesn\'t think, at 128K', q.calls[0]?.think === false && q.calls[0]?.ctx === 131072, JSON.stringify(q.calls));
-  check('his one more go thinks it through, on the same 128K load', q.calls.length === 2 && q.calls[1].think !== false && q.calls[1].ctx === 131072, JSON.stringify(q.calls));
+  check('everyday chat on Qwen3.6: the first answer doesn\'t think, at 256K', q.calls[0]?.think === false && q.calls[0]?.ctx === 262144, JSON.stringify(q.calls));
+  check('his one more go thinks it through, on the same 256K load', q.calls.length === 2 && q.calls[1].think !== false && q.calls[1].ctx === 262144, JSON.stringify(q.calls));
   check('the chat says so plainly', evs.some((e) => e.type === 'announce' && /thinking it through this time/.test(e.text)));
   const g = make('gemma4:26b');
   const gevs = await run(g);
@@ -58,7 +58,7 @@ check('the glossary says coding always thinks and chat doesn\'t', /Thinking firs
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
-// ---------- 1.5.67: waking the chat brain after a job loads the job's 128K (no 32K reload in between) ----------
+// ---------- 1.5.67: waking the chat brain after a job loads the job's 256K (no 32K reload in between) ----------
 {
   const os = await import('node:os'); const path = await import('node:path');
   const { Brain } = await import('../src/brain.js');
@@ -78,9 +78,9 @@ check('the glossary says coding always thinks and chat doesn\'t', /Thinking firs
   const q = make('qwen3.6-35b-a3b');
   await q.brain.runOn([], 'hi', () => {}, new AbortController().signal, [], null, 's1');
   await q.brain.wake('back to the quick brain after a job');
-  check('Qwen3.6: waking the chat brain after a job uses the job\'s 128K, so it doesn\'t reload', q.calls[0] === 131072 && q.wakes[0] === q.calls[0], JSON.stringify({ job: q.calls, wake: q.wakes }));
-  check('the chat brain itself is 128K (wake, read-ahead, room checks, lending and the speed test all use it)', chatBrain(q.brain.cfg).ctx === 131072);
-  check('every copy on it in Normal is 128K too', modelFor({ models: { bob: 'qwen3.6-35b-a3b', tinker: 'qwen3.6-35b-a3b' } }, 'tinker').ctx === 131072);
+  check('Qwen3.6: waking the chat brain after a job uses the job\'s 256K, so it doesn\'t reload', q.calls[0] === 262144 && q.wakes[0] === q.calls[0], JSON.stringify({ job: q.calls, wake: q.wakes }));
+  check('the chat brain itself is 256K (wake, read-ahead, room checks, lending and the speed test all use it)', chatBrain(q.brain.cfg).ctx === 262144);
+  check('every copy on it in Normal is 256K too', modelFor({ models: { bob: 'qwen3.6-35b-a3b', tinker: 'qwen3.6-35b-a3b' } }, 'tinker').ctx === 262144);
   const hand = make('qwen3.6-35b-a3b', { sessionCtx: { normal: 32768 } });
   check('a context picked by hand for Normal still wins', chatBrain(hand.brain.cfg).ctx === 32768);
   const g = make('gemma4:26b');
