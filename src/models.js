@@ -11,7 +11,7 @@ import { appDir, saveSettings } from './config.js';
 import { ENGINES, engineStatus, installEngine, latestEngine } from './engines.js';
 import { audioReady, voicesReady, aceModelsDir, aceFileOk, tidyAceCache } from './audio.js';
 import { maestroModels } from './maestro.js';
-import { gpuInfo, cpuName, specLine, shownRamGB } from './platform.js';
+import { gpuInfo, cpuName, specLine, shownRamGB, OS } from './platform.js';
 import { packFor } from '../public/fit.js';
 
 const MODEL_EXT = new Set(['.gguf', '.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.sft']);
@@ -284,11 +284,13 @@ export class ModelShop {
     try { const s = fs.statfsSync(this.cfg.agentDir); freeGB = Math.round((s.bavail * s.bsize) / 1e9); } catch {}
     const vram = gpu?.vramGB ?? this.cfg.gpuVramGB ?? 0;
     // 1.5.71: built-in graphics get their own set (brains only: pictures and video aren't tested there yet).
-    const pack = packFor(this.catalog.packs, vram, Boolean(gpu?.integrated));
     const ramGB = Math.round(os.totalmem() / 1024 ** 3) || null; // for brains that spill out of the graphics card into RAM
+    // ARM Linux (Raspberry Pi 5 and other 64-bit ARM boards): Bob runs on the processor there and gets the small sets.
+    const board = OS === 'linux' && process.arch === 'arm64' ? 'arm' : null;
+    const pack = packFor(this.catalog.packs, vram, Boolean(gpu?.integrated), { arm: Boolean(board), ramGB });
     // 1.5.89: the replicant matrix's name tag (processor, graphics, memory) for the muted spec line beside its name.
     const cpu = cpuName() || null;
-    return { gpu, freeGB, vramGB: vram || null, ramGB, suggestedPack: pack.id, cpu, spec: specLine({ cpu, gpu, ramGB: shownRamGB(os.totalmem()) || ramGB }) };
+    return { gpu, freeGB, vramGB: vram || null, ramGB, board, suggestedPack: pack.id, cpu, spec: specLine({ cpu, gpu, ramGB: shownRamGB(os.totalmem()) || ramGB }) };
   }
 
   // ---- The download manager ----

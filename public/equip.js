@@ -2,7 +2,7 @@
 // are his kit. Pick a slot, then click a model in the kit (or drag it onto the slot) to equip it. Only kit that
 // fits a slot goes in it. Empty slots say what Bob can't do yet, with a Get button for a recommended model.
 // Nothing is ever equipped by itself. Pure HTML builders; cellar.js handles the clicks.
-import { packFor, canDo, suit, pickFor } from './fit.js';
+import { packFor, packsFor, canDo, suit, pickFor } from './fit.js';
 import { houseStyleHtml, houseGroupOf } from './house-style.js';
 import { tip } from './tips.js';
 export { packFor };
@@ -227,7 +227,8 @@ export function enginesFor(list, engines) {
 export function starterHtml(ctx) {
   const packs = ctx.packs || [];
   if (!packs.length) return '';
-  const pack = packs.find((p) => p.id === ctx.packId) || packFor(packs, ctx.vramGB, ctx.integrated);
+  const fitOpts = { arm: ctx.arm, ramGB: ctx.ramGB };
+  const pack = packs.find((p) => p.id === ctx.packId) || packFor(packs, ctx.vramGB, ctx.integrated, fitOpts);
   const picked = ctx.picks || starterTicks(pack, ctx.models, ctx.vramGB);
   const { ids } = starterPlan(pack, ctx.models, ctx.engines || [], picked);
   const total = ids.reduce((n, id) => n + (ctx.models.find((m) => m.id === id)?.sizeGB || 0), 0);
@@ -245,8 +246,8 @@ export function starterHtml(ctx) {
   }).join('');
   const open = ctx.starterOpen ?? !equipped(SLOTS[0], ctx);
   return `<details class="starter"${open ? ' open' : ''}><summary>⭐ Starter set for your replicant matrix</summary>
-    <p class="muted">A small set that lets Bob chat, plan, research, code, see pictures, speak${pack.id === 'cpu' ? '' : ', paint and film'}. All free for commercial use. Pick the set, untick what you don't want, then press the button: you see the full list before anything downloads.</p>
-    <label class="pick"><strong>Set</strong> <select data-starterpack aria-label="Starter set">${packs.map((p) => `<option value="${esc(p.id)}" ${p.id === pack.id ? 'selected' : ''}>${esc(p.label)}${p.id === packFor(packs, ctx.vramGB, ctx.integrated).id ? ' (this replicant matrix)' : ''}</option>`).join('')}</select></label>
+    <p class="muted">${pack.blurb ? esc(pack.blurb) : `A small set that lets Bob chat, plan, research, code, see pictures, speak${pack.id === 'cpu' ? '' : ', paint and film'}.`} All free for commercial use. Pick the set, untick what you don't want, then press the button: you see the full list before anything downloads.</p>
+    <label class="pick"><strong>Set</strong> <select data-starterpack aria-label="Starter set">${packsFor(packs, ctx.arm).map((p) => `<option value="${esc(p.id)}" ${p.id === pack.id ? 'selected' : ''}>${esc(p.label)}${p.id === packFor(packs, ctx.vramGB, ctx.integrated, fitOpts).id ? ' (this replicant matrix)' : ''}</option>`).join('')}</select></label>
     <ul class="packlist">${rows}</ul>
     ${pack.times ? `<p class="muted">⏱ ${esc(pack.times)}</p>` : ''}
     <div class="row"><button type="button" class="get" data-starter="${esc(pack.id)}" ${picked.size ? '' : 'disabled'}>Equip starter set${ids.length ? ` (${gb(total)} to download)` : ''}</button></div>
@@ -274,9 +275,10 @@ export function equipHtml(ctx) {
 // 1.5.74 "engines first": what first start gets before anything else, so Bob can talk and help with the rest.
 // The three core engines (where this computer has a build of them) and one small starter brain for this device:
 // Gemma 4 E4B with room for it (a card of 8 GB or more, or 16 GB of shared memory on a Mac or built-in graphics),
-// otherwise Gemma 4 E2B.
+// otherwise Gemma 4 E2B. An ARM board (Raspberry Pi 5): Qwen3.5 2B with 4 GB, Gemma 4 E2B with 8 GB, on the processor.
 export const CORE_ENGINES = ['llamacpp', 'sdcpp', 'whispercpp'];
-export function starterBrain({ vramGB, ramGB, unified, integrated } = {}) {
+export function starterBrain({ vramGB, ramGB, unified, integrated, arm } = {}) {
+  if (arm) return (ramGB || 0) >= 6 ? 'gemma4-e2b' : 'qwen3.5-2b';
   if (unified || integrated) return (ramGB || 0) >= 16 ? 'gemma4-e4b' : 'gemma4-e2b';
   return (vramGB || 0) >= 8 ? 'gemma4-e4b' : 'gemma4-e2b';
 }

@@ -13,8 +13,14 @@ const isE4b = (...names) => names.some((n) => /e4b/i.test(String(n || '')));
 
 // The starter set for this PC's graphics card.
 // 1.5.71: graphics built into the processor (shared memory) get the set made for them; cards are picked by size.
-export const packFor = (packs, vramGB, integrated = false) => (integrated && packs.find((p) => p.integrated))
-  || packs.filter((p) => !p.integrated).find((p) => (vramGB || 0) >= p.minVramGB) || packs.filter((p) => !p.integrated).at(-1);
+// ARM boards (a Raspberry Pi 5 and the like) get the sets made for them, picked by how much memory the board has;
+// those sets never show up for a PC or a Mac.
+export const packsFor = (packs = [], arm = false) => packs.filter((p) => Boolean(p.arm) === Boolean(arm));
+export const packFor = (packs, vramGB, integrated = false, { arm = false, ramGB = 0 } = {}) => {
+  if (arm) { const a = packsFor(packs, true); if (a.length) return a.find((p) => (ramGB || 0) >= p.minRamGB) || a.at(-1); }
+  const pc = packsFor(packs, false);
+  return (integrated && pc.find((p) => p.integrated)) || pc.filter((p) => !p.integrated).find((p) => (vramGB || 0) >= p.minVramGB) || pc.filter((p) => !p.integrated).at(-1);
+};
 
 // Billions of parameters from a model name (gemma4:e4b, qwen3-coder:30b, gpt-oss:20b), or null.
 export function paramsB(name) {
@@ -66,6 +72,8 @@ export function suit(m, hw = {}, platform = '') {
     if (spill > hw.ramGB / 2) return { level: 'no', ram: true, why: `About ${spill} GB of it won't fit on your graphics card, and your ${hw.ramGB} GB of RAM can't spare that much.` };
   }
   if (!m.vramGB) return { level: 'ok' };
+  // An ARM board (Raspberry Pi 5) has no card and little memory: a brain needs room in it beside the system.
+  if (!v && hw.arm && hw.ramGB && m.vramGB > hw.ramGB * 0.6) return { level: 'no', why: `Wants about ${m.vramGB} GB of memory; this board has ${hw.ramGB} GB. It probably won't run well.` };
   if (!v) return m.vramGB > 8 ? { level: 'slow', why: 'No graphics card found, so a model this big is very slow on the processor.' } : { level: 'ok' };
   if (m.vramGB <= v) return { level: 'ok', fits: true };
   if (m.vramGB <= v * 1.5) return { level: 'slow', why: `Wants ${m.vramGB} GB of graphics memory; your card has ${v} GB. It runs, but slowly.` };
@@ -108,8 +116,9 @@ export function fullRunsHere(m, models, hw = {}, platform = '') {
 
 // Bob's pick for a job on this PC: { id, why } or null.
 export function pickFor(slotId, models, ctx = {}) {
-  const hw = { vramGB: ctx.vramGB, ramGB: ctx.ramGB, freeGB: ctx.freeGB };
-  if (BRAIN_SLOTS.includes(slotId)) {
+  const hw = { vramGB: ctx.vramGB, ramGB: ctx.ramGB, freeGB: ctx.freeGB, arm: ctx.arm };
+  // On an ARM board the picks are the board's starter set (Qwen3.5 2B or Gemma 4 E2B), not the scored brains.
+  if (BRAIN_SLOTS.includes(slotId) && !ctx.arm) {
     // 1.5.56: new brains (trial: true) are listed but not recommended until they've been tried on a real PC.
     const able = models.filter((m) => canDo(slotId, { entry: m }) && !m.gated && !m.trial && !fullRunsHere(m, models, hw, ctx.platform));
     const pool = able.filter((m) => suit(m, hw, ctx.platform).level === 'ok');
@@ -121,7 +130,7 @@ export function pickFor(slotId, models, ctx = {}) {
     const light = pool.some((m) => coverJobs(m).length > n);
     return { id: best.id, why: `${light ? 'Light, so it leaves room on your card for longer chats' : n > 1 ? `Covers ${n} jobs, so fewer brain swaps` : 'Made for this job'} · ${load}` };
   }
-  const pack = ctx.packs?.length ? packFor(ctx.packs, ctx.vramGB, ctx.integrated) : null;
+  const pack = ctx.packs?.length ? packFor(ctx.packs, ctx.vramGB, ctx.integrated, { arm: ctx.arm, ramGB: ctx.ramGB }) : null;
   const id = Object.entries(pack?.slots || {}).find(([, slots]) => slots.includes(slotId))?.[0];
   const m = id && models.find((x) => x.id === id);
   if (!m) return null;

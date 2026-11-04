@@ -4,7 +4,7 @@ import { progressHtml, animateWorkers } from './progress.js';
 import { createStylePage } from './style-page.js';
 import { createSampler, sampleButton, sampleHint } from './voice-samples.js';
 import { equipHtml, allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml } from './equip.js';
-import { suit as fitSuit, picksOf, unsuited, jobNames, SLOT_NAMES, canDo } from './fit.js';
+import { suit as fitSuit, picksOf, unsuited, jobNames, SLOT_NAMES, canDo, packsFor } from './fit.js';
 import { catalogueHtml } from './catalogue.js';
 import { drawBob } from './bob-sprite.js';
 import { handsSettingsHtml, mountHandsSettings } from './hands.js';
@@ -42,10 +42,10 @@ export function createCellar() {
   });
 
   // How well a model suits this PC (public/fit.js): ok, slow, no or blocked, each with a plain reason.
-  const hwNow = () => ({ vramGB: hw?.vramGB, ramGB: hw?.ramGB, freeGB: hw?.freeGB });
+  const hwNow = () => ({ vramGB: hw?.vramGB, ramGB: hw?.ramGB, freeGB: hw?.freeGB, arm: hw?.board === 'arm' });
   const suit = (m) => fitSuit(m, hwNow(), settings?.platform);
   // Bob's pick for each job on this PC, and whether models that don't suit it are shown (off unless you turn it on).
-  const pickCtx = () => ({ ...hwNow(), packs: data?.packs || [], platform: settings?.platform });
+  const pickCtx = () => ({ ...hwNow(), arm: hw?.board === 'arm', packs: data?.packs || [], platform: settings?.platform });
   const picks = (m) => picksOf(m, data.models, pickCtx());
   let showUnsuited = (() => { try { return localStorage.getItem('bob-show-unsuited') === '1'; } catch { return false; } })();
   const setShowUnsuited = (on) => { showUnsuited = on; try { localStorage.setItem('bob-show-unsuited', on ? '1' : '0'); } catch {} };
@@ -685,7 +685,7 @@ export function createCellar() {
       ${step1}
       <h3>Step 2: the rest of my models</h3>
       <p>Then the models for the jobs I do. Here's what I'd pick for this replicant matrix <span class="muted spec">(${esc(hw.spec || 'specs not read yet')})</span>:</p>
-      <label class="pick"><strong>Setup</strong><select data-pack>${data.packs.map((p) => `<option value="${p.id}" ${p.id === pack.id ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}</select></label>
+      <label class="pick"><strong>Setup</strong><select data-pack>${packsFor(data.packs, hw?.board === 'arm').map((p) => `<option value="${p.id}" ${p.id === pack.id ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}</select></label>
       <ul class="packlist">${items.map((m) => { const extra = covered(m); return `<li><label><input type="checkbox" data-pick="${esc(m.id)}" ${m.status.state === 'installed' ? 'checked disabled' : extra ? '' : suit(m).level === 'ok' ? 'checked' : suit(m).level === 'blocked' ? 'disabled' : ''}> ${esc(m.name)} <span class="muted">· ${esc(data.categories.find((c) => c.id === m.category)?.label)} · ${m.status.state === 'installed' ? 'already here' : gb(m.sizeGB)}${extra ? ` · ${esc(extra)}` : m.status.state !== 'installed' && suit(m).level !== 'ok' ? ' · not recommended for this replicant matrix' : ''}</span></label></li>`; }).join('')}</ul>
       <p class="muted">${needed.length ? `About ${gb(total)} to download${engNames.length ? `, including the programs they run on (${esc(engNames.join(', '))})` : ''}. Free disk: ${hw.freeGB ?? '?'} GB. You can change any of this later in Get models (left menu).` : items.some((m) => m.status.state !== 'installed') ? 'Everything you need is already here. The rest is optional: tick it if you want it.' : 'Everything is already on this replicant matrix.'}</p>
       ${job ? progress() : ''}
@@ -722,7 +722,7 @@ export function createCellar() {
 
   // 1.5.74 "engines first": the Welcome's step 1 (core engines + a small starter brain), and whether each engine starts.
   let checks = null;
-  const hwCtx = () => ({ vramGB: hw?.vramGB, ramGB: hw?.ramGB, unified: Boolean(hw?.gpu?.unified), integrated: Boolean(hw?.gpu?.integrated), nvidia: Boolean(hw?.gpu && !hw.gpu.unified && !hw.gpu.integrated) });
+  const hwCtx = () => ({ vramGB: hw?.vramGB, ramGB: hw?.ramGB, unified: Boolean(hw?.gpu?.unified), integrated: Boolean(hw?.gpu?.integrated), arm: hw?.board === 'arm', nvidia: Boolean(hw?.gpu && !hw.gpu.unified && !hw.gpu.integrated && hw?.board !== 'arm') });
   // GB still to free on disk before step 1 may start (its size plus 2 GB to spare), or 0.
   const readyFits = (needGB) => (needGB && hw?.freeGB != null && hw.freeGB < needGB + 2 ? Math.ceil(needGB + 2 - hw.freeGB) : 0);
   const readyIds = () => { const p = readyPlan(hwCtx(), data.models, data.engines || []); return [...p.engines.map((e) => 'engine:' + e.id), ...(p.brain ? [p.brain.id] : [])]; };
@@ -759,7 +759,7 @@ export function createCellar() {
   let houseFocus = null; // 1.5.34: "Change" on a "Used your house style" line opens that House style box
   let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-equip-view') || 'doll'; } catch { return 'doll'; } })();
   function eqCtx() {
-    return { roles, models: data?.models || [], brains: settings?.sessionBrains || {}, embed: roles?.current?.embed || '', selected: eqSelected, vramGB: hw?.vramGB || hw?.gpu?.vramGB || null, unified: Boolean(hw?.gpu?.unified), integrated: Boolean(hw?.gpu?.integrated), ramGB: hw?.ramGB || null, freeGB: hw?.freeGB ?? null, platform: settings?.platform, showUnsuited,
+    return { roles, models: data?.models || [], brains: settings?.sessionBrains || {}, embed: roles?.current?.embed || '', selected: eqSelected, vramGB: hw?.vramGB || hw?.gpu?.vramGB || null, unified: Boolean(hw?.gpu?.unified), integrated: Boolean(hw?.gpu?.integrated), arm: hw?.board === 'arm', ramGB: hw?.ramGB || null, freeGB: hw?.freeGB ?? null, platform: settings?.platform, showUnsuited,
       packs: data?.packs || [], packId: starterPack, picks: starterPicks, engines: data?.engines || [], starterOpen,
       houseStyle: settings?.houseStyle || {}, active: settings?.activeModels || {},
       attributes: settings ? attributesHtml({ personality: settings.personality, look: settings.look, lookText: settings.lookText, lookComments: settings.lookComments, user: settings.userName, callMe: settings.callMe, windowsName: settings.windowsName }) : '' };
@@ -769,7 +769,7 @@ export function createCellar() {
   const PLAN_KEY = 'bob-starter-plan';
   const readPlan = () => { try { return JSON.parse(localStorage.getItem(PLAN_KEY) || '{}'); } catch { return {}; } };
   const savePlan = (p) => { try { Object.keys(p).length ? localStorage.setItem(PLAN_KEY, JSON.stringify(p)) : localStorage.removeItem(PLAN_KEY); } catch {} };
-  const currentPack = () => { const ps = data?.packs || []; return ps.find((p) => p.id === starterPack) || packFor(ps, eqCtx().vramGB, eqCtx().integrated); };
+  const currentPack = () => { const ps = data?.packs || []; return ps.find((p) => p.id === starterPack) || packFor(ps, eqCtx().vramGB, eqCtx().integrated, { arm: eqCtx().arm, ramGB: eqCtx().ramGB }); };
   const currentPicks = () => starterPicks || starterTicks(currentPack(), data.models, eqCtx().vramGB);
   // Put each starter model that is now on this PC into its slots (the person pressed "Equip starter set" for this).
   async function applyStarter() {

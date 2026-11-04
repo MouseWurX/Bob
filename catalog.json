@@ -297,7 +297,7 @@
     {
       "id": "qwen3.5-2b",
       "category": "chat",
-      "jobs": ["small", "eyes", "phone"],
+      "jobs": ["bob", "small", "eyes", "phone"],
       "name": "Qwen3.5 2B",
       "what": "The smallest brain here. Quick on a phone or an old laptop, and it sees pictures; keep the questions simple.",
       "sizeGB": 1.9,
@@ -334,7 +334,7 @@
     {
       "id": "gemma4-e2b",
       "category": "chat",
-      "jobs": ["small", "eyes", "phone", "scout", "painter"],
+      "jobs": ["bob", "small", "eyes", "phone", "scout", "painter"],
       "name": "Gemma 4 E2B",
       "what": "Gemma 4's smallest brain. The phone app's brain, and a light Quick brain on a PC; it sees pictures.",
       "sizeGB": 3.4,
@@ -1748,6 +1748,44 @@
         "gemma4-e4b": "chats, plans, researches, sees pictures and hears you, all on the processor"
       },
       "times": "Without a graphics card Bob can talk, plan, research, read pictures and speak, but not paint or film.",
+      "cardGB": 0
+    },
+    {
+      "id": "pi8",
+      "label": "Raspberry Pi or ARM board, 8 GB or more",
+      "arm": true,
+      "minRamGB": 6,
+      "minVramGB": 999,
+      "models": ["gemma4-e2b", "whisper-base-en", "nomic-embed-text"],
+      "slots": {
+        "gemma4-e2b": ["bob", "small", "eyes"],
+        "whisper-base-en": ["voice"],
+        "nomic-embed-text": ["embed"]
+      },
+      "notes": {
+        "gemma4-e2b": "chats, plans and sees pictures, all on the processor; keep the jobs small",
+        "whisper-base-en": "hears you (English), on the processor"
+      },
+      "blurb": "A small set that lets Bob chat, plan, research, see pictures and hear you on the board's processor.",
+      "times": "On a Raspberry Pi 5 a reply starts in a few seconds and comes at a few words a second. There's no painting or filming on an ARM board.",
+      "cardGB": 0
+    },
+    {
+      "id": "pi4",
+      "label": "Raspberry Pi or ARM board, 4 GB",
+      "arm": true,
+      "minRamGB": 0,
+      "minVramGB": 999,
+      "models": ["qwen3.5-2b", "nomic-embed-text"],
+      "slots": {
+        "qwen3.5-2b": ["bob", "small", "eyes"],
+        "nomic-embed-text": ["embed"]
+      },
+      "notes": {
+        "qwen3.5-2b": "the lightest brain: chats and sees pictures on the processor; keep the questions simple"
+      },
+      "blurb": "The lightest set: Bob chats, plans and sees pictures on the board's processor, with room left for the system.",
+      "times": "On a Raspberry Pi 5 a reply comes at a few words a second. There's no painting or filming on an ARM board.",
       "cardGB": 0
     }
   ]

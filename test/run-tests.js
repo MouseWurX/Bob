@@ -232,7 +232,7 @@ try {
   const noHeader = await fetch(base + '/api/settings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"autostart":true}' });
   check(noHeader.status === 403, 'settings need the x-bob header');
   const shopList = await (await fetch(base + '/api/models')).json();
-  check(shopList.categories.length === 8 && shopList.models.length >= 10 && shopList.packs.length === 5, 'model shop lists categories, models and starter sets');
+  check(shopList.categories.length === 8 && shopList.models.length >= 10 && shopList.packs.length === 7, 'model shop lists categories, models and starter sets');
   check((await post('/api/models/download', { id: 'does-not-exist' })).status === 409, 'unknown model download refused');
   check((await post('/api/settings', { setupDone: true })).status === 200 && (await (await fetch(base + '/api/settings')).json()).setupDone === true, 'finishing setup is remembered');
   // Every setting the app changes goes through the server both ways (keep-alive was once dropped).
