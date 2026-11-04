@@ -354,17 +354,19 @@
         const t = note.value.trim().slice(0, 500);
         if (!t) { note.focus(); return; }
         send({ allow: false, items: null, note: t });
-      } })));
+      } }),
+      el('button', { text: 'Back', onclick: () => change.classList.add('hidden') })));
     const steps = el('ol', {}, (p.steps || []).map((s) => el('li', { text: `${s.text || ''}${s.ok ? ' ✔' : ''}` })));
     const card = el('div', { class: 'card', 'data-approval': ev.id },
       el('div', { class: 'q' }, el('strong', { text: `"${name}" has a plan` }), el('div', { text: ev.text || (p.goal ? `Bob's plan: ${p.goal}` : '') })),
+      p.fromSystem ? el('p', { class: 'help-line', text: 'Bob started this job without showing his plan, so these are the steps he was about to do. Check them before you go ahead.' }) : null,
       p.time ? el('p', { class: 'help-line', text: String(p.time) }) : null,
       steps,
       ev.together ? el('p', { class: 'help-line', text: '✔ means that step needs your OK. Go ahead allows them all. To tick some and not others, use the card on the PC.' }) : null,
       el('div', { class: 'row' },
         el('button', { class: 'main', text: 'Go ahead', onclick: () => send({ allow: true, items: null }) }),
         el('button', { text: 'Change something', onclick: () => { change.classList.remove('hidden'); note.focus(); } }),
-        el('button', { text: 'Not now', onclick: () => send({ allow: false }) })),
+        el('button', { text: 'Not now (Bob drops this job)', onclick: () => send({ allow: false }) })),
       change);
     $('chat').append(card);
     card.scrollIntoView({ block: 'end' });
