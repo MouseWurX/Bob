@@ -997,7 +997,7 @@ export function createCellar() {
       else if (b.dataset.checkengine) {
         b.textContent = 'Checking...';
         const r = await api(`/api/engines/latest?id=${encodeURIComponent(b.dataset.checkengine)}`);
-        b.outerHTML = r.newer ? `<button class="get" data-engine="${esc(r.id)}" data-newest="1">Get newer build: ${esc(r.latest)}${r.installed ? ` (you have ${esc(r.installed)}${r.tested && r.installed === r.tested ? ', the tested one' : ''})` : ''}</button>${r.tested ? `<span class="muted">Newer builds haven't been through my speed tests yet. If one gives trouble, Go back to the tested build puts ${esc(r.tested)} back.</span>` : ''}` : `<span class="muted">Up to date (${esc(r.latest)}).</span>`;
+        b.outerHTML = r.newer ? `<button class="get" data-engine="${esc(r.id)}" data-newest="1">Get newer build: ${esc(r.latest)}${r.installed ? ` (you have ${esc(r.installed)}${r.tested && r.installed === r.tested ? ', the tested one' : ''})` : ''}</button>${r.tested ? `<span class="muted">Newer builds haven't been through Bob's speed tests yet. If one gives trouble, <strong>Go back to the tested build</strong> puts ${esc(r.tested)} back.</span>` : ''}` : `<span class="muted">Up to date (${esc(r.latest)}).</span>`;
       }
       else if (b.dataset.switchengine) { await api('/api/settings', { engine: b.dataset.switchengine }); settings.engine = b.dataset.switchengine; b.closest('.confirm').outerHTML = '<span class="have">Switched. Restart Bob to use his own engine.</span>'; }
       else if ('scan' in b.dataset) { b.textContent = 'Looking...'; await api('/api/models/scan', {}); await load(); }
