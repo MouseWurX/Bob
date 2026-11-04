@@ -16,13 +16,16 @@ export function officePins() {
   try { return JSON.parse(fs.readFileSync(new URL('./office-pins.json', import.meta.url), 'utf8')); } catch { return {}; }
 }
 const PIN = officePins();
+// 1.5.83: the llama.cpp release every speed test and brain race used (package.json bob.bundledLlamaTag, also the one
+// bundled in the download). Get and Get Bob ready install this one; "Check for a newer build" can still fetch the newest.
+export const TESTED_LLAMA = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.bundledLlamaTag || ''; } catch { return ''; } })();
 // LibreOffice comes from The Document Foundation's own archive, not GitHub.
 const TDF_HOSTS = [/^downloadarchive\.documentfoundation\.org$/, /^download\.documentfoundation\.org$/];
 const tdfAllowed = (u) => { try { const x = new URL(u); return x.protocol === 'https:' && TDF_HOSTS.some((r) => r.test(x.hostname)); } catch { return false; } };
 
 export const ENGINES = [
   {
-    id: 'llamacpp', name: 'llama.cpp', what: 'Thinking engine: runs the chat and coding brains without Ollama.', repo: 'ggml-org/llama.cpp', dir: 'llama.cpp', exe: 'llama-server.exe',
+    id: 'llamacpp', name: 'llama.cpp', what: 'Thinking engine: runs the chat and coding brains without Ollama.', repo: 'ggml-org/llama.cpp', tested: TESTED_LLAMA, dir: 'llama.cpp', exe: 'llama-server.exe',
     nvidia: [/bin-win-cuda-?(\d+(?:\.\d+)?)-x64\.zip$/], other: [/bin-win-vulkan-x64\.zip$/, /bin-win-cpu-x64\.zip$/],
     runtime: (asset) => { const m = asset.match(/cuda-?(\d+(?:\.\d+)?)/); return m ? new RegExp(`^cudart-.*cuda-?${m[1].replace('.', '\\.')}-x64\\.zip$`) : null; },
     // Apple Silicon: one build, with Metal (the Mac's graphics) built in.
@@ -167,7 +170,7 @@ export function installedVersion(cfg, e) {
 // NVIDIA build with its CUDA runtime (other builds are smaller); the rest follow each engine's own "About" text.
 export const ENGINE_GB = { llamacpp: 0.6, sdcpp: 0.5, whispercpp: 0.1, piper: 0.1, audio: 12, kokoro: 0.1, chatterbox: 4, ffmpeg: 0.1, libreoffice: 0.35 };
 export function engineStatus(cfg) {
-  return ENGINES.map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.tag || e.pinned), found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir) }));
+  return ENGINES.map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.tag || e.pinned), tested: e.tested || null, found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir) }));
 }
 
 // The newest release with a Windows build, for "Get newer build". Same rules as installing.
@@ -176,7 +179,7 @@ export async function latestEngine(cfg, id, nvidia, fetchImpl = fetch) {
   if (!e) throw new Error('No such engine.');
   if (e.unavailable) throw new Error(e.unavailable);
   const { rel, asset } = await findRelease(e, nvidia, undefined, fetchImpl);
-  return { id, installed: installedVersion(cfg, e), latest: rel.tag_name, asset: asset.name, newer: installedVersion(cfg, e) !== rel.tag_name };
+  return { id, installed: installedVersion(cfg, e), tested: e.tested || null, latest: rel.tag_name, asset: asset.name, newer: installedVersion(cfg, e) !== rel.tag_name };
 }
 
 // Pick the right zip from a release's asset list for this graphics card. Highest CUDA version wins.
@@ -344,10 +347,12 @@ export function seedBundledEngine(cfg, from = BUNDLE_DIR) {
   return Boolean(engineExe(cfg, e));
 }
 
-export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag } = {}) {
+export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, newest = false } = {}) {
   const e0 = engineFor(ENGINES.find((x) => x.id === id));
   if (!e0) throw new Error('No such engine.');
-  const e = tag ? { ...e0, tag } : e0;
+  // 1.5.83: the tested release unless a tag is given or the user asked for the newest build.
+  const pick = tag || (!newest && e0.tested) || '';
+  const e = pick ? { ...e0, tag: pick } : e0;
   // Replacing the bundled build: its files go first, so two builds' graphics libraries never sit side by side.
   if (id === 'llamacpp' && bundledEngine(cfg)) {
     try { fs.rmSync(path.join(cfg.agentDir, e.dir), { recursive: true, force: true }); }

@@ -505,7 +505,7 @@ export function createCellar() {
         <span class="muted">Takes effect next time Bob starts.</span></label>
       <div><strong>Engine downloads</strong> ${tip('The programs that run the models, from their official GitHub pages, matched to your graphics card.', 'Engine downloads')}
         ${(data.engines || []).map((e) => `<article class="model" id="m-engine:${esc(e.id)}"><header><strong>${esc(e.name)}</strong></header><p>${esc(e.what)}</p>
-          <div class="act">${live.has('engine:' + e.id) ? progress(live.get('engine:' + e.id)) : e.installed ? `<div class="have">✓ ${e.found ? esc(e.found[0].toUpperCase() + e.found.slice(1)) : `Installed${e.version ? ` (${esc(e.version)})` : ''}`}</div>${e.pinned || e.available === false ? '' : `<button data-checkengine="${esc(e.id)}">Check for a newer build</button>`}` : e.available === false ? `<div class="muted">${esc(e.note || 'Not for this computer yet.')}</div>` : `<button class="get" data-engine="${esc(e.id)}">Get ${esc(e.name)}</button>`}</div><div class="confirm" hidden></div></article>`).join('')}</div>
+          <div class="act">${live.has('engine:' + e.id) ? progress(live.get('engine:' + e.id)) : e.installed ? `<div class="have">✓ ${e.found ? esc(e.found[0].toUpperCase() + e.found.slice(1)) : `Installed${e.version ? ` (${esc(e.version)})` : ''}`}</div>${e.pinned || e.available === false ? '' : `<button data-checkengine="${esc(e.id)}">Check for a newer build</button>`}${e.tested && e.version && e.version !== e.tested && !e.found ? `<button data-engine="${esc(e.id)}">Go back to the tested build (${esc(e.tested)})</button>` : ''}` : e.available === false ? `<div class="muted">${esc(e.note || 'Not for this computer yet.')}</div>` : `<button class="get" data-engine="${esc(e.id)}">Get ${esc(e.name)}</button>`}</div><div class="confirm" hidden></div></article>`).join('')}</div>
       ${sswitch('resumeJobs', settings.resumeJobs, 'Pick up where Bob left off after a restart', 'If Bob closes in the middle of a job (an update, a restart or a crash), he carries on when he opens again. Steps that finished aren\'t done again, and the step that got cut off is done again from the start. Unfinished downloads carry on too. If the cut-off step was typing into an app, moving or deleting files, editing a file or running a command, the job waits in Tasks so you can check first.')}
       ${sswitch('allTools', settings.allTools, 'Give Bob all his tools at once', 'Sends every tool with each message, which leaves less room for the chat. Leave off to keep chats light.')}
       ${sswitch('memoryRecall', settings.memoryRecall === true, 'Remember only what fits', 'With each message, Bob reads only the memories that fit it (up to 8), not his whole memory file, so chats stay light. Off: he reads all of it every time.')}
@@ -952,7 +952,7 @@ export function createCellar() {
           : b.dataset.engine === 'ffmpeg'
           ? `<p>Download FFmpeg ${esc(eng?.pin || '')} (Gyan's essentials build, about 100 MB) from GitHub, checked against its pinned checksum, into Bob's own folder. It runs only while it converts.</p>`
           : `<p>Download ${esc(({ llamacpp: 'llama.cpp', sdcpp: 'stable-diffusion.cpp', whispercpp: 'whisper.cpp', piper: 'Piper' })[b.dataset.engine] || b.dataset.engine)} from GitHub (usually 20 to 600 MB, more with NVIDIA runtime files).</p>`;
-        box.innerHTML += `<div class="row"><button class="get" data-yes="engine:${esc(b.dataset.engine)}">Yes, download</button><button data-no>Cancel</button></div>`;
+        box.innerHTML += `<div class="row"><button class="get" data-yes="engine:${esc(b.dataset.engine)}${b.dataset.newest ? '@newest' : ''}">Yes, download</button><button data-no>Cancel</button></div>`;
       }
       else if ('no' in b.dataset) b.closest('.confirm').hidden = true;
       else if (b.dataset.yes) { job = await api('/api/models/download', { id: b.dataset.yes }); draw(); }
@@ -997,7 +997,7 @@ export function createCellar() {
       else if (b.dataset.checkengine) {
         b.textContent = 'Checking...';
         const r = await api(`/api/engines/latest?id=${encodeURIComponent(b.dataset.checkengine)}`);
-        b.outerHTML = r.newer ? `<button class="get" data-engine="${esc(r.id)}">Get newer build: ${esc(r.latest)}${r.installed ? ` (you have ${esc(r.installed)})` : ''}</button>` : `<span class="muted">Up to date (${esc(r.latest)}).</span>`;
+        b.outerHTML = r.newer ? `<button class="get" data-engine="${esc(r.id)}" data-newest="1">Get newer build: ${esc(r.latest)}${r.installed ? ` (you have ${esc(r.installed)}${r.tested && r.installed === r.tested ? ', the tested one' : ''})` : ''}</button>${r.tested ? `<span class="muted">Newer builds haven't been through my speed tests yet. If one gives trouble, Go back to the tested build puts ${esc(r.tested)} back.</span>` : ''}` : `<span class="muted">Up to date (${esc(r.latest)}).</span>`;
       }
       else if (b.dataset.switchengine) { await api('/api/settings', { engine: b.dataset.switchengine }); settings.engine = b.dataset.switchengine; b.closest('.confirm').outerHTML = '<span class="have">Switched. Restart Bob to use his own engine.</span>'; }
       else if ('scan' in b.dataset) { b.textContent = 'Looking...'; await api('/api/models/scan', {}); await load(); }

@@ -330,7 +330,7 @@ export class ModelShop {
 
   describe(id) {
     if (id.startsWith('engine:')) {
-      const e = ENGINES.find((x) => x.id === id.slice(7));
+      const e = ENGINES.find((x) => x.id === id.slice(7).replace(/@newest$/, ''));
       if (!e) throw new Error('No such engine.');
       return { id, name: e.name, kind: 'engine' };
     }
@@ -420,11 +420,14 @@ export class ModelShop {
     throw new Error(`${entry.name} comes through Ollama, and Ollama isn't running.`);
   }
 
-  async runEngine(eid, pub, signal, tick) {
+  async runEngine(eid0, pub, signal, tick) {
+    // 1.5.83: "engine:llamacpp@newest" is the "Get newer build" button; plain "engine:llamacpp" gets the tested build.
+    const newest = eid0.endsWith('@newest');
+    const eid = eid0.replace(/@newest$/, '');
     const hw = await this.hardware();
     // A newer llama.cpp can't overwrite files the running llama-server holds open: let go of it first.
     if (eid === 'llamacpp' && this.engine?.stopServer) await this.engine.stopServer();
-    const r = await installEngine(this.cfg, eid, { nvidia: /nvidia|geforce|rtx/i.test(hw.gpu?.name || ''), pub, signal, tick });
+    const r = await installEngine(this.cfg, eid, { nvidia: /nvidia|geforce|rtx/i.test(hw.gpu?.name || ''), pub, signal, tick, newest });
     pub.note = `${r.asset} (${r.version})`;
   }
 
