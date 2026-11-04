@@ -619,7 +619,7 @@
     box.append(...[
       el('div', { class: 'box' },
         el('div', { class: 'title', text: 'Passcode' }),
-        el('p', { class: 'help-line', text: lendCode ? `${lendCode}  Type it into your other Bob now: it isn't shown again.` : lend.passcodeSet ? "Set (it's only shown once, when you make it)." : 'Not set yet. Make one before you turn this on.' }),
+        el('p', { class: 'help-line', text: lendCode ? `${lendCode}  Type it into your other Bob now: it isn't shown again.` : lend.passcodeSet ? "Set (it's only shown once, when you make it)." : 'Not set yet. Turning on Lend my brain makes one for you.' }),
         el('div', { class: 'btns' }, el('button', { text: lend.passcodeSet ? 'Make a new passcode' : 'Make a passcode', onclick: async () => {
           try { lendCode = await phone('lend.newPasscode'); } catch (e) { toast(e.message); }
           refreshLend();
@@ -637,7 +637,11 @@
   $('lend-on').addEventListener('change', async (e) => {
     const on = e.target.checked;
     if (on) tellLendBrain();
-    try { await phone('lend.on', { on }); } catch (err) { e.target.checked = false; toast(`Lend my brain: ${err.message}.`); }
+    try {
+      // No passcode yet: make it now, as part of turning this on (it's shown above, once).
+      if (on && !lend.passcodeSet) { lendCode = await phone('lend.newPasscode'); lend.passcodeSet = true; }
+      await phone('lend.on', { on });
+    } catch (err) { e.target.checked = false; toast(`Lend my brain: ${err.message}.`); }
     setTimeout(refreshLend, 800);
   });
   $('phone-on').addEventListener('change', (e) => { settings.phoneOn = e.target.checked; saveSettings(); drawWho(); });

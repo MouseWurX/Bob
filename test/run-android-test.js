@@ -142,6 +142,9 @@ check('how-to: the phone never edits or deletes how-tos', !/\/api\/howtos(?!\/an
 // A part that may be missing never reaches append() as null (it would show the word "null").
 check('lend panel: no stray "null" when Lend my brain is off', /box\.append\(\.\.\.\[[\s\S]*?\]\.filter\(Boolean\)\)/.test(js));
 
+// Turning on Lend my brain makes the passcode when there isn't one yet (no separate step first).
+check('lend: turning it on makes the passcode if none is set', /if \(on && !lend\.passcodeSet\) \{ lendCode = await phone\('lend\.newPasscode'\)/.test(js));
+
 // The page's lock: no inline scripts or styles, no network from the page itself.
 check('page has a strict Content-Security-Policy', /script-src 'self'/.test(html) && /connect-src 'none'/.test(html) && !/<script>(?!<)/.test(html.replace(/<script src[^>]*><\/script>/g, '')) && !/ style="/.test(html));
 
