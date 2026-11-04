@@ -308,6 +308,7 @@
     if (!ev || typeof ev !== 'object') return;
     const mine = current && current.kind === 'net' && current.base === base && ev.sessionId === `phone-${current.chatId}`;
     if (ev.type === 'approval' && String(ev.sessionId || '').startsWith('phone-')) return approvalCard(base, ev);
+    if (ev.type === 'checkin') return checkinCard(base, ev);
     if (ev.type === 'approval-result') { document.querySelector(`[data-approval="${CSS.escape(String(ev.id))}"]`)?.remove(); return; }
     if (!mine) return;
     if (ev.type === 'start') current.turnId = ev.turnId;
@@ -324,6 +325,7 @@
 
   // A networked Bob asks for an OK. Every OK for one job is on one card, like on the PC.
   function approvalCard(base, ev) {
+    if (ev.planCard) return planCard(base, ev);
     const name = bobName(base);
     const b = bobs.find((x) => x.base === base);
     const what = ev.together ? `${ev.together.length} things for one job` : ev.command ? `run: ${ev.command}` : '';
@@ -335,6 +337,47 @@
       el('div', { class: 'row' },
         el('button', { class: 'main', text: ev.together ? 'Allow all' : 'Allow', onclick: () => answer(true) }),
         el('button', { text: ev.together ? 'Deny all' : 'Deny', onclick: () => answer(false) })));
+    $('chat').append(card);
+    card.scrollIntoView({ block: 'end' });
+  }
+
+  // A networked Bob shows his plan before a big job: Go ahead, Change something, or Not now (like the PC's plan card).
+  function planCard(base, ev) {
+    const name = bobName(base);
+    const b = bobs.find((x) => x.base === base);
+    const p = ev.planCard || {};
+    const send = (body) => phone('net.post', { address: b.address, path: '/api/approve', body: JSON.stringify({ id: ev.id, ...body }) })
+      .then(() => card.remove()).catch(() => toast("Couldn't reach the PC"));
+    const note = el('textarea', { rows: 3, maxlength: 500, placeholder: 'What should Bob change?' });
+    const change = el('div', { class: 'hidden' }, note,
+      el('div', { class: 'row' }, el('button', { class: 'main', text: 'Send to Bob', onclick: () => {
+        const t = note.value.trim().slice(0, 500);
+        if (!t) { note.focus(); return; }
+        send({ allow: false, items: null, note: t });
+      } })));
+    const steps = el('ol', {}, (p.steps || []).map((s) => el('li', { text: `${s.text || ''}${s.ok ? ' ✔' : ''}` })));
+    const card = el('div', { class: 'card', 'data-approval': ev.id },
+      el('div', { class: 'q' }, el('strong', { text: `"${name}" has a plan` }), el('div', { text: ev.text || (p.goal ? `Bob's plan: ${p.goal}` : '') })),
+      p.time ? el('p', { class: 'help-line', text: String(p.time) }) : null,
+      steps,
+      ev.together ? el('p', { class: 'help-line', text: '✔ means that step needs your OK. Go ahead allows them all. To tick some and not others, use the card on the PC.' }) : null,
+      el('div', { class: 'row' },
+        el('button', { class: 'main', text: 'Go ahead', onclick: () => send({ allow: true, items: null }) }),
+        el('button', { text: 'Change something', onclick: () => { change.classList.remove('hidden'); note.focus(); } }),
+        el('button', { text: 'Not now', onclick: () => send({ allow: false }) })),
+      change);
+    $('chat').append(card);
+    card.scrollIntoView({ block: 'end' });
+  }
+
+  // A networked Bob's check-in (set up on the PC): what needs you, shown in chat like a reminder. Read-only here.
+  function checkinCard(base, ev) {
+    const items = Array.isArray(ev.items) ? ev.items.slice(0, 20) : [];
+    if (!items.length) return;
+    const card = el('div', { class: 'card' },
+      el('div', { class: 'q' }, el('strong', { text: `"${bobName(base)}" check-in` })),
+      el('ul', {}, items.map((it) => el('li', {}, el('strong', { text: String(it.title || '') }), it.detail ? el('div', { text: String(it.detail) }) : null))),
+      el('div', { class: 'row' }, el('button', { text: 'Got it', onclick: () => card.remove() })));
     $('chat').append(card);
     card.scrollIntoView({ block: 'end' });
   }

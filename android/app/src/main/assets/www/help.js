@@ -101,7 +101,7 @@ globalThis.BobHelp = {
     },
     {
       id: 'alerts', title: 'Alerts',
-      html: `<p>When I'm in the background and a Bob on your network needs your OK, Android shows a notification. The first time, Android asks if that's all right. Tap the notification to come back to me.</p>`
+      html: `<p>When I'm in the background and a Bob on your network needs your OK, or has a check-in for you, Android shows a notification. The first time, Android asks if that's all right. Tap the notification to come back to me.</p><p>Check-ins are set up on the PC (Help there has the details). The phone only shows them.</p>`
     },
     {
       id: 'privacy', title: 'Privacy',

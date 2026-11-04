@@ -112,6 +112,20 @@ for (const [, op, body] of bridge.matchAll(/"([\w.]+)" -> \{?([^\n]*)/g)) {
   }
 }
 
+// A networked Bob's plan card: the steps, and Go ahead / Change something / Not now, answered the PC's way.
+{
+  const pc = (js.match(/function planCard\([\s\S]*?\n  \}\n/) || [''])[0];
+  check('plan card: shown when the OK carries a plan', /if \(ev\.planCard\) return planCard\(base, ev\)/.test(js));
+  check('plan card: Go ahead, Change something, Not now', ['Go ahead', 'Change something', 'Not now', 'Send to Bob'].every((w) => pc.includes(`'${w}'`)));
+  check('plan card: Go ahead allows all, Change sends a note of up to 500 characters', /allow: true, items: null/.test(pc) && /allow: false, items: null, note: t/.test(pc) && /slice\(0, 500\)/.test(pc) && /'\/api\/approve'/.test(pc));
+  check('plan card: says ticking some steps is on the PC', pc.includes('To tick some and not others, use the card on the PC.'));
+}
+
+// Check-ins from a networked Bob: a card in chat and, in the background, a notification. Nothing changes them here.
+check('check-in: a card in chat', /if \(ev\.type === 'checkin'\) return checkinCard\(base, ev\)/.test(js) && /function checkinCard\(/.test(js));
+check('check-in: a notification in the background ("Bob: check-in", the titles)', /"checkin" -> \{[\s\S]*?notifyNow\("Bob: check-in", titles/.test(bridge));
+check('check-in: the phone never changes check-ins', !/\/api\/checkins/.test(js));
+
 // The page's lock: no inline scripts or styles, no network from the page itself.
 check('page has a strict Content-Security-Policy', /script-src 'self'/.test(html) && /connect-src 'none'/.test(html) && !/<script>(?!<)/.test(html.replace(/<script src[^>]*><\/script>/g, '')) && !/ style="/.test(html));
 
