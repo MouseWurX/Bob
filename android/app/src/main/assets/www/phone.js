@@ -326,6 +326,7 @@
     const mine = current && current.kind === 'net' && current.base === base && ev.sessionId === `phone-${current.chatId}`;
     if (ev.type === 'approval' && String(ev.sessionId || '').startsWith('phone-')) return approvalCard(base, ev);
     if (ev.type === 'checkin') return checkinCard(base, ev);
+    if (ev.type === 'howto-offer' && String(ev.sessionId || '').startsWith('phone-')) return howtoCard(base, ev);
     if (ev.type === 'approval-result') { document.querySelector(`[data-approval="${CSS.escape(String(ev.id))}"]`)?.remove(); return; }
     if (!mine) return;
     if (ev.type === 'start') current.turnId = ev.turnId;
@@ -397,6 +398,31 @@
       el('div', { class: 'q' }, el('strong', { text: `"${bobName(base)}" check-in` })),
       el('ul', {}, items.map((it) => el('li', {}, el('strong', { text: String(it.title || '') }), it.detail ? el('div', { text: String(it.detail) }) : null))),
       el('div', { class: 'row' }, el('button', { text: 'Got it', onclick: () => card.remove() })));
+    $('chat').append(card);
+    card.scrollIntoView({ block: 'end' });
+  }
+
+  // A networked Bob offers to keep the steps of a job that went well. Changing or deleting how-tos is on the PC.
+  function howtoCard(base, ev) {
+    const b = bobs.find((x) => x.base === base);
+    const steps = Array.isArray(ev.steps) ? ev.steps.slice(0, 30) : [];
+    const name = el('input', { type: 'text', maxlength: 60, value: String(ev.name || '').slice(0, 60) });
+    const answer = (save) => phone('net.post', { address: b.address, path: '/api/howtos/answer', body: JSON.stringify({ id: ev.id, save, name: name.value.trim().slice(0, 60) }) })
+      .then((r) => {
+        let out = {}; try { out = JSON.parse(r.body); } catch { /* not JSON */ }
+        if (save && out.ok) {
+          card.replaceChildren(el('p', { text: `Saved the how-to "${out.saved?.name || name.value.trim()}". You can change or delete it in Settings, How Bob works, 📒 How-tos.` }));
+          setTimeout(() => card.remove(), 8000);
+        } else if (save) toast(out.why || "Couldn't save the how-to");
+        else card.remove();
+      }).catch(() => toast("Couldn't reach the PC"));
+    const card = el('div', { class: 'card' },
+      el('div', { class: 'q' }, el('strong', { text: '📒 That worked. Keep the steps as a how-to?' }), el('div', { text: "Next time you ask for something like this, I'll follow them." })),
+      el('label', { text: 'Name' }), name,
+      el('ol', {}, steps.map((t) => el('li', { text: String(t) }))),
+      el('div', { class: 'row' },
+        el('button', { class: 'main', text: 'Save how-to', onclick: () => answer(true) }),
+        el('button', { text: 'Not now', onclick: () => answer(false) })));
     $('chat').append(card);
     card.scrollIntoView({ block: 'end' });
   }

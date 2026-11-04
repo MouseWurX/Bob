@@ -104,6 +104,10 @@ globalThis.BobHelp = {
       html: `<p>When I'm in the background and a Bob on your network needs your OK, or has a check-in for you, Android shows a notification. The first time, Android asks if that's all right. Tap the notification to come back to me.</p><p>Check-ins are set up on the PC (Help there has the details). The phone only shows them.</p>`
     },
     {
+      id: 'howtos', title: 'How-tos',
+      html: `<p>When a Bob on your network finishes a bigger job well, he may offer to keep the steps as a how-to, and the card shows up here too. Tap <strong>Save how-to</strong> (you can rename it first) or <strong>Not now</strong>. Next time you ask for something like it, he follows those steps. He only offers when <strong>Let Bob learn how-tos</strong> is on in his Settings. Changing or deleting how-tos is done on the PC, in Settings, How Bob works, 📒 How-tos.</p>`
+    },
+    {
       id: 'privacy', title: 'Privacy',
       html: `<p>Everything on the phone stays on the phone: chats, my memory file and the phone brain. Android's cloud backup is told to leave them out. I only talk to the Bobs you add (over Tailscale) and, when you say yes to a download, to huggingface.co for the phone brain. With <strong>Lend my brain</strong> on, your own Bobs send the chat so far and what they remember about you. The phone thinks a reply and keeps none of it. No tracking, no ads, nothing else.</p>`
     },

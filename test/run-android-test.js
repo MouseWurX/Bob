@@ -129,6 +129,10 @@ check('check-in: the phone never changes check-ins', !/\/api\/checkins/.test(js)
 // "Remember only what fits": on-phone replies ask the PC for the lines that fit, briefly, and carry on without.
 check('memory: on-phone replies ask the PC for what fits (2 s at most)', /'\/api\/memory\/recall'/.test(js) && /setTimeout\(\(\) => ok\(''\), 2000\)/.test(js) && /if \(!m\.on\) return ''/.test(js));
 
+// How-tos: the phone shows the offer card and answers it; changing or deleting is on the PC.
+check('how-to: the offer card answers /api/howtos/answer with id, save, name', /function howtoCard\(/.test(js) && /'\/api\/howtos\/answer'/.test(js) && /\{ id: ev\.id, save, name:/.test(js));
+check('how-to: the phone never edits or deletes how-tos', !/\/api\/howtos(?!\/answer)/.test(js));
+
 // The page's lock: no inline scripts or styles, no network from the page itself.
 check('page has a strict Content-Security-Policy', /script-src 'self'/.test(html) && /connect-src 'none'/.test(html) && !/<script>(?!<)/.test(html.replace(/<script src[^>]*><\/script>/g, '')) && !/ style="/.test(html));
 
