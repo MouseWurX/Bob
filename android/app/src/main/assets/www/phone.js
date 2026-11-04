@@ -615,7 +615,8 @@
     const addr = lend.state === 'open' && lend.address ? el('code', { text: lend.address })
       : lend.on ? el('span', { class: 'dim', text: lend.state === 'waiting' ? 'Waiting for Tailscale on this phone. Switch Tailscale on.' : 'Opening…' })
       : el('span', { class: 'dim', text: 'Shown here once Lend my brain is on.' });
-    box.append(
+    // (DOM append prints a null as the word "null", so the parts that may be missing are filtered out.)
+    box.append(...[
       el('div', { class: 'box' },
         el('div', { class: 'title', text: 'Passcode' }),
         el('p', { class: 'help-line', text: lendCode ? `${lendCode}  Type it into your other Bob now: it isn't shown again.` : lend.passcodeSet ? "Set (it's only shown once, when you make it)." : 'Not set yet. Make one before you turn this on.' }),
@@ -631,7 +632,7 @@
       el('div', { class: 'box' },
         el('div', { class: 'title', text: 'Let Bob work with the screen off' }),
         el('p', { class: 'help-line', text: lend.screenOffOk ? 'Done: Android lets Bob answer with the screen off.' : "Android may stop Bob answering when the screen is off. This opens Android's battery list: pick Bob, then Allow (or Unrestricted)." }),
-        lend.screenOffOk ? null : el('div', { class: 'btns' }, el('button', { text: 'Open battery settings', onclick: () => phone('lend.screenOff').catch(() => {}) }))));
+        lend.screenOffOk ? null : el('div', { class: 'btns' }, el('button', { text: 'Open battery settings', onclick: () => phone('lend.screenOff').catch(() => {}) })))].filter(Boolean));
   }
   $('lend-on').addEventListener('change', async (e) => {
     const on = e.target.checked;

@@ -139,6 +139,9 @@ check('how-to: the phone never edits or deletes how-tos', !/\/api\/howtos(?!\/an
   check('engine: native libraries are unpacked so llama.cpp can load its CPU parts', !/GGML_BACKEND_DL=ON/.test(gradle) || /useLegacyPackaging = true/.test(gradle));
 }
 
+// A part that may be missing never reaches append() as null (it would show the word "null").
+check('lend panel: no stray "null" when Lend my brain is off', /box\.append\(\.\.\.\[[\s\S]*?\]\.filter\(Boolean\)\)/.test(js));
+
 // The page's lock: no inline scripts or styles, no network from the page itself.
 check('page has a strict Content-Security-Policy', /script-src 'self'/.test(html) && /connect-src 'none'/.test(html) && !/<script>(?!<)/.test(html.replace(/<script src[^>]*><\/script>/g, '')) && !/ style="/.test(html));
 
