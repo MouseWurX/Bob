@@ -105,10 +105,11 @@ Java_ca_mousewurx_bob_Llama_nativeInit(JNIEnv * env, jobject, jbyteArray libDir)
     LOGI("backends loaded from %s", dir.c_str());
 }
 
-// 0 ok, 1 model didn't load, 2 no room for its memory
+// 0 ok, 1 model didn't load, 2 no room for its memory, 3 no engine to run it on
 extern "C" JNIEXPORT jint JNICALL
 Java_ca_mousewurx_bob_Llama_nativeLoad(JNIEnv * env, jobject, jbyteArray path, jint nCtx, jint threads) {
     const std::string p = bytes_in(env, path);
+    if (ggml_backend_dev_count() == 0) return 3; // the engine's CPU part didn't load: nothing can run a brain
     llama_model_params mp = llama_model_default_params();
     g_model = llama_model_load_from_file(p.c_str(), mp);
     if (!g_model) return 1;

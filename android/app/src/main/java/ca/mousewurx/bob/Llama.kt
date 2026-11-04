@@ -37,6 +37,7 @@ object Llama {
         when (nativeLoad(path.bytes(), nCtx, threads)) {
             0 -> Unit
             1 -> throw Exception("the brain file wouldn't open (it may be damaged: delete it and download it again)")
+            3 -> throw Exception("the phone brain's engine didn't start (a problem in this version of Bob, not the brain file)")
             else -> throw Exception("not enough free memory for the phone brain right now")
         }
     }

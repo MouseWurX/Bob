@@ -133,6 +133,12 @@ check('memory: on-phone replies ask the PC for what fits (2 s at most)', /'\/api
 check('how-to: the offer card answers /api/howtos/answer with id, save, name', /function howtoCard\(/.test(js) && /'\/api\/howtos\/answer'/.test(js) && /\{ id: ev\.id, save, name:/.test(js));
 check('how-to: the phone never edits or deletes how-tos', !/\/api\/howtos(?!\/answer)/.test(js));
 
+// The CPU engine parts are loaded from the app's library folder, so Android must unpack them at install.
+{
+  const gradle = fs.readFileSync(path.join(root, 'android/app/build.gradle.kts'), 'utf8');
+  check('engine: native libraries are unpacked so llama.cpp can load its CPU parts', !/GGML_BACKEND_DL=ON/.test(gradle) || /useLegacyPackaging = true/.test(gradle));
+}
+
 // The page's lock: no inline scripts or styles, no network from the page itself.
 check('page has a strict Content-Security-Policy', /script-src 'self'/.test(html) && /connect-src 'none'/.test(html) && !/<script>(?!<)/.test(html.replace(/<script src[^>]*><\/script>/g, '')) && !/ style="/.test(html));
 

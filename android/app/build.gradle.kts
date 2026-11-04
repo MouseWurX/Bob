@@ -45,6 +45,10 @@ android {
         }
     }
 
+    // llama.cpp loads its CPU engine parts (libggml-cpu-*.so, one per kind of phone chip) from the app's library
+    // folder at run time. Android only puts them there when the libraries are unpacked at install, so unpack them.
+    packaging { jniLibs { useLegacyPackaging = true } }
+
     buildTypes {
         release {
             isMinifyEnabled = false
