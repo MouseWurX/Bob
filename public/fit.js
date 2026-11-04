@@ -73,7 +73,7 @@ export function suit(m, hw = {}, platform = '') {
   }
   if (!m.vramGB) return { level: 'ok' };
   // An ARM board (Raspberry Pi 5) has no card and little memory: a brain needs room in it beside the system.
-  if (!v && hw.arm && hw.ramGB && m.vramGB > hw.ramGB * 0.6) return { level: 'no', why: `Wants about ${m.vramGB} GB of memory; this board has ${hw.ramGB} GB. It probably won't run well.` };
+  if (!v && hw.arm && hw.ramGB && m.vramGB > hw.ramGB * 0.6) return { level: 'no', why: `Wants about ${m.vramGB} GB of memory; this replicant matrix has ${hw.ramGB} GB. It probably won't run well.` };
   if (!v) return m.vramGB > 8 ? { level: 'slow', why: 'No graphics card found, so a model this big is very slow on the processor.' } : { level: 'ok' };
   if (m.vramGB <= v) return { level: 'ok', fits: true };
   if (m.vramGB <= v * 1.5) return { level: 'slow', why: `Wants ${m.vramGB} GB of graphics memory; your card has ${v} GB. It runs, but slowly.` };

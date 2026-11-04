@@ -51,7 +51,7 @@ export const ENGINES = [
     // Linux: Vulkan (NVIDIA, AMD and Intel cards all run it; there is no Linux CUDA build), else the processor build.
     linux: { nvidia: [/bin-Linux-Ubuntu-[\d.]+-x86_64-vulkan\.(?:zip|tar\.gz)$/i], other: [/bin-Linux-Ubuntu-[\d.]+-x86_64-vulkan\.(?:zip|tar\.gz)$/i, /bin-Linux-Ubuntu-[\d.]+-x86_64\.(?:zip|tar\.gz)$/i] },
     // stable-diffusion.cpp posts no ARM Linux build, and a Raspberry Pi would take many minutes a picture anyway.
-    linuxArm64: { unavailable: 'There\'s no ready-made ARM Linux download of stable-diffusion.cpp, so on a Raspberry Pi or other ARM board Bob doesn\'t paint. A cloud helper can paint for him (Pictures and video).' }
+    linuxArm64: { unavailable: 'There\'s no ready-made ARM Linux download of stable-diffusion.cpp, so on a Raspberry Pi or other ARM board Bob doesn\'t paint. On Bob-Net, a Bob on your other replicant matrix can paint for him (Send jobs).' }
   },
   {
     id: 'whispercpp', name: 'whisper.cpp', what: 'Hearing you: turns your voice into text without Ollama.', repo: 'ggml-org/whisper.cpp', dir: 'whisper.cpp', exe: 'whisper-cli.exe',
