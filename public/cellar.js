@@ -195,7 +195,10 @@ export function createCellar() {
     const cats = [], seen = new Set();
     for (const c of data.categories) { const g = groupOf(c.id); const item = g || c; if (!seen.has(item.id)) { seen.add(item.id); cats.push(item); } }
     const tabs = [{ id: 'roles', label: 'Equip Bob', icon: '🧰' }, { id: 'catalogue', label: 'Brain catalogue', icon: '📚' }, ...cats, { id: 'found', label: 'On this replicant matrix', icon: '🔎' }, { id: 'style', label: 'Style', icon: '🎨' }, { id: 'settings', label: 'Settings', icon: '⚙' }];
-    const bar = `<nav class="tabs cellar-tabs" role="tablist" aria-label="Get models, Style and Settings pages">${tabs.map((c) => `<button role="tab" aria-selected="${c.id === tab}" data-tab="${c.id}">${c.icon} ${esc(c.label)}</button>`).join('')}</nav>`;
+    // 1.5.117: two labelled rows, so Settings and Style don't read as the last two "Get models" pages.
+    const tabBtn = (c) => `<button role="tab" aria-selected="${c.id === tab}" data-tab="${c.id}">${c.icon} ${esc(c.label)}</button>`;
+    const setup = new Set(['style', 'settings']);
+    const bar = `<nav class="tabs cellar-tabs" role="tablist" aria-label="Get models, Style and Settings pages"><span class="tabs-row"><span class="tabs-label" aria-hidden="true">Get models:</span>${tabs.filter((c) => !setup.has(c.id)).map(tabBtn).join('')}</span><span class="tabs-row"><span class="tabs-label" aria-hidden="true">Set up:</span>${tabs.filter((c) => setup.has(c.id)).map(tabBtn).join('')}</span></nav>`;
     let body = '';
     if (tab === 'settings') body = settingsHtml();
     else if (tab === 'style') body = stylePage.html(settings);
@@ -244,14 +247,14 @@ export function createCellar() {
     return `<p class="muted">Pick which brain thinks for each job, and which model makes the pictures, clips and hearing. ${tipHtml('Using one brain for several jobs is faster; a different brain means a short swap (the brain machine), usually 10 to 20 seconds.', 'About swaps')} Only active models are listed: the <button type="button" class="link" data-tab="catalogue">📚 Brain catalogue</button> has every model, sorted by job.</p>
       <h3>Thinking (writes, plans, codes, writes prompts)</h3><table class="roles">${thinkers.map(row).join('')}</table>
       <h3>Making (does the actual work)</h3><table class="roles">${makers.map(row).join('')}</table>
-      <h3>Session brains</h3><p class="muted">Pick a session from the menu next to Bob's name. Each one keeps a set of brains that fit in your graphics card together, so there are no swaps. Art runs the small brain on the processor so the painter keeps the card.</p>
+      ${fold('Session brains', [['small', 'Quick'], ['gaming', 'Gaming'], ['deep', 'Deep thinking'], ['coding', 'Coding'], ['office', 'Office']].map(([k, l]) => `${l}: ${settings.sessionBrains?.[k] ? (entryOf(data.models, settings.sessionBrains[k])?.name || settings.sessionBrains[k]) : 'Bob\'s pick'}`).join(', '), `<p class="muted">Pick a session from the menu next to Bob's name. Each one keeps a set of brains that fit in your graphics card together, so there are no swaps. Art runs the small brain on the processor so the painter keeps the card.</p>
       <table class="roles">${[['small', 'Quick brain', 'The Art session', 'small'], ['gaming', 'Gaming', 'Chats on the processor while you play (Qwen3 4B Instruct 2507)', 'gaming'], ['deep', 'Deep thinking', 'Medium, High and Extreme effort', 'deep'], ['coding', 'Coding session', 'The brain used when the session is Coding. The Coding slot on the paper doll is the copy Bob hands code jobs to in any session.', 'tinker'], ['office', 'Office', 'Does everything in an Office session', 'office']].map(([k, label, what, job]) => {
         const cur = settings.sessionBrains?.[k] || '';
         const list = listFor('llm', job, cur);
         return `<tr><th scope="row">${esc(label)} ${tipHtml(what, `About ${label}`)}</th><td><select data-sbrain="${k}" aria-label="${esc(label)}">${list.some((o) => o.value === cur) || !cur ? '' : `<option value="${esc(cur)}" selected>${esc(entryOf(data.models, cur)?.name || cur)} (not downloaded)</option>`}${optsHtml(list, cur)}</select>${getMore(job)}</td></tr>`;
-      }).join('')}</table>
-      <h3>How much each session keeps in mind</h3><p class="muted">Context (how much he keeps in mind): more lets Bob read longer files and chats, but uses more graphics memory and loads slower. Default uses the engine's own setting.</p>
-      <table class="roles">${(settings.sessions || []).map((x) => `<tr><th scope="row">${x.icon} ${esc(x.label)}</th><td><select data-sctx="${esc(x.id)}" aria-label="${esc(x.label)} context"><option value="">Default${({ normal: ' (32K)', light: ' (32K)', art: ' (32K)', office: ' (64K)' })[x.id] || ' (engine\'s own)'}</option>${[8192, 16384, 32768, 65536, 131072, 262144].map((v) => `<option value="${v}" ${settings.sessionCtx?.[x.id] === v ? 'selected' : ''}>${v / 1024}K${v === 262144 ? ' (slow to read when it\'s full)' : ''}</option>`).join('')}</select></td></tr>`).join('')}</table>
+      }).join('')}</table>`)}
+      ${fold('How much each session keeps in mind', (settings.sessions || []).map((x) => `${x.label}: ${settings.sessionCtx?.[x.id] ? `${settings.sessionCtx[x.id] / 1024}K` : 'Default'}`).join(', '), `<p class="muted">Context (how much he keeps in mind): more lets Bob read longer files and chats, but uses more graphics memory and loads slower. Default uses the engine's own setting.</p>
+      <table class="roles">${(settings.sessions || []).map((x) => `<tr><th scope="row">${x.icon} ${esc(x.label)}</th><td><select data-sctx="${esc(x.id)}" aria-label="${esc(x.label)} context"><option value="">Default${({ normal: ' (32K)', light: ' (32K)', art: ' (32K)', office: ' (64K)' })[x.id] || ' (engine\'s own)'}</option>${[8192, 16384, 32768, 65536, 131072, 262144].map((v) => `<option value="${v}" ${settings.sessionCtx?.[x.id] === v ? 'selected' : ''}>${v / 1024}K${v === 262144 ? ' (slow to read when it\'s full)' : ''}</option>`).join('')}</select></td></tr>`).join('')}</table>`)}
       <div data-bctxbox>${brainCtxHtml()}</div>
       <p class="muted">Missing something? Press 📚 Get more next to it.</p>`;
   }
@@ -266,9 +269,9 @@ export function createCellar() {
       const opts = b.choices.map((v) => `<option value="${v}" ${b.picked === v ? 'selected' : ''}>${k(v)}${v === top && b.max ? ' (the most it was made for)' : ''}${v === 32768 ? ' (enough for most chats)' : ''}</option>`).join('');
       return `<tr><th scope="row">${esc(b.name)} ${tipHtml(b.guide, `About ${b.name}`)}<div class="muted">${esc(b.jobs.join(', '))}</div></th><td><select data-bctx="${esc(b.model)}" aria-label="${esc(b.name)}: how much it keeps in mind"><option value="">Bob's pick (${k(b.bobPick)})</option>${opts}</select></td></tr>`;
     }).join('');
-    return `<h3>How much each brain keeps in mind</h3>
+    return fold('How much each brain keeps in mind', on ? 'you pick, per brain' : 'Bob picks', `
       <label class="switch srow-switch"><input type="checkbox" data-set="brainCtxOn" ${on ? 'checked' : ''}><span><strong>Pick how much each brain keeps in mind</strong>${noteOrTip('Off to start with: Bob picks for each brain. On: pick a size for each brain you use. Each menu only lists sizes that brain was made for. A size you pick here is used for that brain everywhere, instead of the session sizes above.', 'Pick how much each brain keeps in mind')}</span></label>
-      ${on ? (rows ? `<table class="roles">${rows}</table>` : '<p class="muted">No brains equipped yet.</p>') : ''}`;
+      ${on ? (rows ? `<table class="roles">${rows}</table>` : '<p class="muted">No brains equipped yet.</p>') : ''}`, on);
   }
 
   // Bob's own voice: which Kokoro voice and how fast. Piper voices and Chatterbox are picked in Model roles.
@@ -428,6 +431,8 @@ export function createCellar() {
   // Settings (1.5.0): an Everyday page of rows that show what's set now, and "Show advanced settings"
   // for everything else, with a search box. Long help folds behind "More".
   const more = (text) => `<details class="more"><summary>More</summary><p class="muted">${text}</p></details>`;
+  // 1.5.117: a long table folds, with what's set now on its one summary line (open it to change).
+  const fold = (title, now, body, open = false) => `<details class="fold" ${open ? 'open' : ''}><summary><strong>${esc(title)}</strong> <span class="muted">· ${esc(now)}</span></summary>${body}</details>`;
   let advanced = (() => { try { return localStorage.getItem('bob-settings-advanced') === '1'; } catch { return false; } })();
   let settingsQuery = '';
   function voiceNow() {
@@ -446,15 +451,16 @@ export function createCellar() {
   const OPEN_KEY = 'bob-settings-open';
   let openPanels = (() => { try { const v = JSON.parse(localStorage.getItem(OPEN_KEY)); return Array.isArray(v) ? new Set(v.map((id) => (id === 'adv-connections' ? 'adv-bobnet' : id))) : new Set(['ev-bob']); } catch { return new Set(['ev-bob']); } })();
   const saveOpen = () => { try { localStorage.setItem(OPEN_KEY, JSON.stringify([...openPanels])); } catch {} };
-  const panel = (id, label, note, body, help = '') => `<details class="spanel" data-panel="${esc(id)}" id="sub-${esc(id)}" ${openPanels.has(id) ? 'open' : ''}><summary><span class="spanel-title">${esc(label)}</span>${help}<span class="muted spanel-note">${esc(note)}</span></summary><div class="spanel-body">${body}</div></details>`;
+  // 1.5.117: rawNote = the note is HTML (buttons allowed) and stays on the summary line while the panel is open.
+  const panel = (id, label, note, body, help = '', rawNote = false) => `<details class="spanel" data-panel="${esc(id)}" id="sub-${esc(id)}" ${openPanels.has(id) ? 'open' : ''}><summary><span class="spanel-title">${esc(label)}</span>${help}<span class="muted spanel-note${rawNote ? ' keep' : ''}">${rawNote ? note : esc(note)}</span></summary><div class="spanel-body">${body}</div></details>`;
   // More everyday panels slot in here as [id, label, note, () => html] (for example Projects), between How Bob works and This PC.
   // 1.5.34 Projects (folders Bob searches for "my project"), its own panel in the everyday settings.
   // The note is what a closed panel shows: what's set now.
   const EVERY_EXTRA = [['ev-projects', '📁 Projects', () => { const n = (settings?.projectList || []).length; return n ? `${n} project${n === 1 ? '' : 's'} · Main: ${settings.defaultProject || 'none'}` : 'No projects yet. Add the folders Bob searches when you say "my project".'; }, () => projectsHtml()],
     // 1.5.41 Where Bob saves things (closed, it shows the folder in use).
     // 1.5.79 How-tos (closed, it shows how many and whether he learns new ones).
-    ['ev-howtos', '📒 How-tos', () => { const n = howtosList ? howtosList.length : (settings?.howtoCount || 0); return `${n ? `${n} how-to${n === 1 ? '' : 's'}` : 'No how-tos yet'} · Learning: ${settings?.howtos === true ? 'on' : 'off'}`; }, () => howtosHtml()],
-    ['ev-save', '💾 Where Bob saves things', () => { const sd = settings?.saveDir || {}; return sd.missing ? 'Picked folder not found · saving in Bob\'s own folder' : sd.custom ? sd.folder : 'Bob\'s own folder (Made by Bob)'; }, () => saveDirHtml()]];
+    ['ev-save', '💾 Where Bob saves things', () => { const sd = settings?.saveDir || {}; return sd.missing ? 'Picked folder not found · saving in Bob\'s own folder' : sd.custom ? sd.folder : 'Bob\'s own folder (Made by Bob)'; }, () => saveDirHtml()],
+    ['ev-howtos', '📒 How-tos', () => { const n = howtosList ? howtosList.length : (settings?.howtoCount || 0); return `${n ? `${n} how-to${n === 1 ? '' : 's'}` : 'No how-tos yet'} · Learning: ${settings?.howtos === true ? 'on' : 'off'}`; }, () => howtosHtml()]];
 
   function everydayHtml() {
     const st = settings.style || {};
@@ -468,8 +474,13 @@ export function createCellar() {
     const voiceSum = t.provider === 'kokoro' ? `Kokoro, ${((settings.kokoroVoices || []).find(([id]) => id === (t.voice || 'am_michael'))?.[1] || t.voice).replace(/ \(.*$/, '')}` : t.provider === 'piper' ? 'Piper' : t.provider === 'chatterbox' ? 'Chatterbox' : 'Windows';
     const bobSum = `Voice: ${voiceSum} · Look: ${lookName} · Theme: ${theme?.name || 'Bob\'s Inn'}`;
     const howSum = `Bob picks the session: ${onoff(settings.autoSession !== false)} · One brain: ${onoff(settings.oneBrain)} · Starts with Windows: ${onoff(settings.autostart)} · Keeps to the tray: ${onoff(settings.tray === true)} · Web search: ${onoff(settings.webSearch === true)} · Plans before big jobs: ${onoff(settings.planFirst === true)} · How-tos: ${onoff(settings.howtos === true)} · Update checks: ${onoff(settings.updates?.autoCheck)}`;
-    const pcSum = `${hw?.spec || 'specs not read yet'} · Bob ${settings.version?.label || ''} · graphics card: ${hw?.gpu ? `${hw.gpu.name}, ${hw.gpu.vramGB} GB` : 'not detected'} · ${hw?.freeGB ?? '?'} GB free`;
-    return `<div class="everyday">${panel('ev-bob', '🙂 Bob himself', bobSum, `
+    // 1.5.117: the version and Check for updates sit on the closed panel's line, so no scrolling to check.
+    const pcSum = `<span class="pc-ver">Bob ${esc(settings.version?.label || '')}</span> <button type="button" class="mini" data-checkupdate>Check for updates</button> <span class="update-out"></span><span class="pc-spec">· ${esc(hw?.spec || 'specs not read yet')} · graphics card: ${hw?.gpu ? `${esc(hw.gpu.name)}, ${hw.gpu.vramGB} GB` : 'not detected'} · ${hw?.freeGB ?? '?'} GB free</span>`;
+    return `<div class="everyday">${panel('ev-pc', '💻 This replicant matrix and updates', pcSum, `
+      <div class="updates srow-foot"><span class="muted">${hw?.gpu?.integrated ? `Built-in graphics: ${esc(hw.gpu.name.replace(/ \(shared memory\)$/, ''))}, about ${hw.gpu.vramGB} GB of memory shared with it` : hw?.gpu?.unified ? `Chip: ${esc(hw.gpu.name)}, about ${hw.gpu.vramGB} GB of it for graphics` : `Graphics card: ${hw?.gpu ? `${esc(hw.gpu.name)}, ${hw.gpu.vramGB} GB` : 'not detected'}`} · Free disk: ${hw?.freeGB ?? '?'} GB</span>
+        ${sswitch('autoCheck', settings.updates?.autoCheck, 'Check for updates when Bob starts', 'Off unless you turn it on. Bob looks at his GitHub page for a newer version and only tells you; updating always takes your click.')}
+        <div class="row"><button type="button" data-welcome>Run first-time setup</button>${settings.features?.pcCheck === false ? '' : '<button type="button" data-pccheck>Check this replicant matrix</button>'}</div>
+        <div class="update-steps"></div><div class="pc-check" aria-live="polite"></div></div>`, '', true)}${panel('ev-bob', '🙂 Bob himself', bobSum, `
       ${srow('Bob\'s voice', voicePickHtml(), '<button type="button" class="mini" data-tab="speech">More voice settings</button>')}
       ${srow('Bob\'s look', esc(lookName), '<button type="button" class="mini" data-tab="style">Change</button>')}
       ${sswitch('lookIcon', settings.lookIcon === true, 'Use Bob\'s look as his icon', `Off unless you turn it on. His icon on the ${settings.platform === 'darwin' ? 'Dock' : 'taskbar'}, in the tray and in the corner of his window shows the look you picked, and changes when you change it.${settings.trayHere ? '' : ' Only in Bob\'s own window, not in a browser.'}`, settings.trayHere ? '' : 'disabled')}
@@ -488,11 +499,7 @@ export function createCellar() {
       ${sswitch('tray', settings.tray === true, 'Keep Bob in the tray', `Off unless you turn it on. Closing or minimising Bob's window tucks him into ${settings.platform === 'darwin' ? 'the menu bar at the top of the screen' : settings.platform === 'win32' ? 'the tray by the clock' : 'your desktop\'s tray'} instead of closing him, so he keeps running. Click his icon to open him again. To close him fully, ${settings.platform === 'darwin' ? 'click' : 'right-click'} his icon and pick <strong>Quit Bob</strong>.${settings.trayHere ? '' : ' Only in Bob\'s own window, not in a browser.'}`, settings.trayHere ? '' : 'disabled')}
       <h4 class="ssub">Going online</h4>
       ${sswitch('webSearch', settings.webSearch === true, 'Let Bob search the web', keep('Off unless you turn it on. Bob looks things up on DuckDuckGo and reads pages when a question needs it. Only the search words and page addresses leave your replicant matrix (your computer).'))}
-`)}${EVERY_EXTRA.map(([id, label, note, body]) => panel(id, label, typeof note === 'function' ? note() : note, body())).join('')}${panel('ev-pc', '💻 This replicant matrix and updates', pcSum, `
-      <div class="updates srow-foot"><span class="muted">Bob ${esc(settings.version?.label || '')} · ${hw?.gpu?.integrated ? `Built-in graphics: ${esc(hw.gpu.name.replace(/ \(shared memory\)$/, ''))}, about ${hw.gpu.vramGB} GB of memory shared with it` : hw?.gpu?.unified ? `Chip: ${esc(hw.gpu.name)}, about ${hw.gpu.vramGB} GB of it for graphics` : `Graphics card: ${hw?.gpu ? `${esc(hw.gpu.name)}, ${hw.gpu.vramGB} GB` : 'not detected'}`} · Free disk: ${hw?.freeGB ?? '?'} GB</span>
-        ${sswitch('autoCheck', settings.updates?.autoCheck, 'Check for updates when Bob starts', 'Off unless you turn it on. Bob looks at his GitHub page for a newer version and only tells you; updating always takes your click.')}
-        <div class="row"><button type="button" data-checkupdate>Check for updates</button><button type="button" data-welcome>Run first-time setup</button>${settings.features?.pcCheck === false ? '' : '<button type="button" data-pccheck>Check this replicant matrix</button>'}<span class="update-out muted"></span></div>
-        <div class="update-steps"></div><div class="pc-check" aria-live="polite"></div></div>`)}
+`)}${EVERY_EXTRA.map(([id, label, note, body]) => panel(id, label, typeof note === 'function' ? note() : note, body())).join('')}
     </div>`;
   }
 
@@ -749,6 +756,7 @@ export function createCellar() {
     mountTelegram(dlg.querySelector('.telegram-box')); // Online services: Talk to Bob on Telegram
     mountCheckins(dlg.querySelector('.checkins-box')); // 1.5.78 Check-ins
     mountShareBrains(dlg.querySelector('.share-box')); // Bob-Net: My other Bobs and What they share
+    readyLine(); // 1.5.117: "Bob 1.5.117 is ready · Restart Bob now" on the updates line when a new Bob waits
     const page = mode === 'welcome' ? 'Welcome' : tab === 'settings' ? 'Settings' : tab === 'style' ? 'Style' : 'Get models';
     $('cellar-title').textContent = page;
     for (const [id, on] of [['cellarBtn', page === 'Get models'], ['settingsBtn', page === 'Settings'], ['styleBtn', page === 'Style'], ['chatBtn', false]]) $(id)?.classList.toggle('on', on);
@@ -881,6 +889,7 @@ export function createCellar() {
   dlg.addEventListener('click', async (e) => {
     const b = e.target.closest('button, input, select');
     if (!b) return;
+    if (b.tagName === 'BUTTON' && b.closest('summary')) e.preventDefault(); // 1.5.117: Check for updates on a panel's line
     try {
       if ((tab === 'style' || (tab === 'settings' && (b.dataset.motion || b.dataset.nowneed))) && mode === 'shop' && await stylePage.onClick(b, settings)) return;
       if (b.dataset.sampleEngine) { sampler.play(b); return; }
@@ -1203,6 +1212,15 @@ export function createCellar() {
   });
 
   // The update's steps, read from the same status file the update window writes.
+  // 1.5.117: a downloaded, checked update shows on the closed updates panel's line, with Restart Bob now.
+  function readyLine() {
+    const out = dlg.querySelector('#sub-ev-pc .spanel-note .update-out');
+    if (!out) return;
+    api('/api/update/status').then((st) => {
+      if (!out.isConnected || !st || !(st.ready || st.waiting) || st.done === false) return;
+      out.innerHTML = `Bob ${esc(st.version || '')} is ready · <button type="button" class="mini get" data-restartnow>Restart Bob now</button>`;
+    }).catch(() => {});
+  }
   let updTimer = null;
   function watchUpdate() {
     clearTimeout(updTimer);

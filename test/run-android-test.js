@@ -192,6 +192,11 @@ check('save: files stream to the phone, not held in memory', (() => { const net 
   check('help bundle: button, PC zip or phone-only HANDOFF.md, scrubbed', /id="help-bundle">Save a help bundle</.test(html) && /path = '\/api\/help-bundle'/.test(js) && /# HANDOFF\.md/.test(js) && /assume the worst/.test(js) && /<tailscale address>/.test(js) && /'the owner'/.test(js) && !/lendCode/.test(js.slice(js.indexOf('function phoneHandoff'), js.indexOf("$('help-bundle')"))) && /Content-Disposition/.test(net) && /optInt\("timeoutMs"/.test(bridge));
   check('help bundle: Help entry, FAQ row and glossary', /id: 'help-bundle', title: 'Save a help bundle'/.test(help) && /How do I get help with my Bob\?/.test(help) && /<dt>Help bundle<\/dt>/.test(help) && /<dt>Handoff file \(HANDOFF\.md\)<\/dt>/.test(help)); }
 
+// 🎲 Adventure: the page shows your other Bob's table and plays your turns (cards, a second card with Back, the flair line); nothing starts by itself.
+{ const help = fs.readFileSync(path.join(www, 'help.js'), 'utf8'), css = fs.readFileSync(path.join(www, 'phone.css'), 'utf8');
+  check('adventure: menu entry, table from /api/adventure, cards with Back and flair, fate, live events', /data-go="adventure"><span class="ico">🎲<\/span>Adventure</.test(html) && /id="adv-body"/.test(html) && /advApi\('\/api\/adventure'\)/.test(js) && /'\/api\/adventure\/act'/.test(js) && /'\/api\/adventure\/fate'/.test(js) && /'\/api\/adventure\/start'/.test(js) && /'\/api\/adventure\/players'/.test(js) && /text: '← Back'/.test(js) && /'Skip the flair'/.test(js) && /'🎲 Roll it'/.test(js) && /ev\.type === 'adventure'\) return onAdvEvent/.test(js) && !/adventure\/settings/.test(js) && /\.adv-cards \{/.test(css));
+  check('adventure: Help says the phone brain is too small to be game master; glossary lines', /id: 'adventure', title: 'Adventure'/.test(help) && /too small to be game master/.test(help) && /<dt>Game master<\/dt>/.test(help) && /<dt>Plot armour<\/dt>/.test(help) && /<dt>Action card<\/dt>/.test(help) && /<dt>Hearts<\/dt>/.test(help)); }
+
 // The page's lock: no inline scripts or styles, no network from the page itself.
 check('page has a strict Content-Security-Policy', /script-src 'self'/.test(html) && /connect-src 'none'/.test(html) && !/<script>(?!<)/.test(html.replace(/<script src[^>]*><\/script>/g, '')) && !/ style="/.test(html));
 

@@ -154,7 +154,8 @@ check('the phone app has the same Mermaid', fs.existsSync(path.join(root, 'andro
 const appJs = fs.readFileSync(path.join(root, 'public/app.js'), 'utf8');
 {
   const sa = fs.readFileSync(path.join(root, 'public/save-as.js'), 'utf8'), ph = fs.readFileSync(path.join(root, 'android/app/src/main/assets/www/phone.js'), 'utf8');
-  check('the type it already is reads "· original" with no tick (✓ only for saved copies), on the PC and the phone', /· original<\/span>/.test(sa) && !/class="save-have"[^>]*>✓/.test(sa) && /· original /.test(ph));
+  check('on the PC the type it already is reads "· original" with no tick (✓ only for saved copies)', /· original<\/span>/.test(sa) && !/class="save-have"[^>]*>✓/.test(sa));
+  check('on the phone it is a button, "PNG (original)", because the file isn\'t on the phone yet (1.5.115)', /\(f === have \? ' \(original\)' : ''\)/.test(ph) && !/· original /.test(ph));
   check('what each type is good for is in the button\'s aria-label (no hover needed), and a long-press on the phone', /aria-label="Save as \$\{label\(f\)\}: /.test(sa) && /oncontextmenu: \(e\) => \{ e\.preventDefault\(\); toast\(/.test(ph));
 }
 check('the chat draws diagrams and shows Save as rows', /case 'diagram'/.test(appJs) && /saveRowsHtml\(items\)/.test(appJs) && /watchSaveAs\(log\)/.test(appJs));

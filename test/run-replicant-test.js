@@ -17,7 +17,7 @@ check('a padded Windows processor name still comes out short', cpuName('AMD Ryze
 check('RAM shows the size installed (31.1 GB reported reads 32 GB)', shownRamGB(31.12 * 1024 ** 3) === 32 && shownRamGB(15.6 * 1024 ** 3) === 16 && shownRamGB(7.7 * 1024 ** 3) === 8 && shownRamGB(0) === null);
 
 const cellar = read('public/cellar.js');
-check('Settings panel has the same name on every platform, with the spec line beside it', /'💻 This replicant matrix and updates'/.test(cellar) && !/This Mac and updates/.test(cellar) && /const pcSum = `\$\{hw\?\.spec/.test(cellar));
+check('Settings panel has the same name on every platform, with the spec line beside it', /'💻 This replicant matrix and updates'/.test(cellar) && !/This Mac and updates/.test(cellar) && /const pcSum = `<span class="pc-ver">Bob \$\{esc\(settings\.version\?\.label[^\n]*\$\{esc\(hw\?\.spec/.test(cellar));
 check('Welcome says the name once, with the spec line', /I call this computer my replicant matrix\. You'll see that name around the app\./.test(cellar));
 check('the setting is Let my other replicant matrices in', /<strong>Let my other replicant matrices in<\/strong>/.test(read('public/phone-access.js')) && !/Let my other devices in/.test(read('public/phone-access.js')));
 

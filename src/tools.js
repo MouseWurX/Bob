@@ -15,7 +15,17 @@ import { saveAsTool } from './save-as.js';
 import { isPrivateHost } from './security-web.js';
 
 const MAX_READ = 20000;
-const BLOCKED_EXT = new Set(['.exe', '.msi', '.bat', '.cmd', '.ps1', '.vbs', '.js', '.jse', '.wsf', '.scr', '.lnk', '.reg', '.dll', '.com']);
+// Runnable file types Bob won't write outside a project, on every platform (Windows, Mac and Linux kinds together).
+const BLOCKED_EXT = new Set(['.exe', '.msi', '.bat', '.cmd', '.ps1', '.psm1', '.vbs', '.js', '.mjs', '.cjs', '.jse', '.wsf', '.hta', '.scr', '.lnk', '.reg', '.dll', '.com', '.jar', '.sh', '.bash', '.zsh', '.py', '.pyw', '.command', '.desktop', '.app']);
+// read_file refuses files over this many bytes: a multi-GB file would otherwise be read whole into memory.
+const MAX_READ_BYTES = 20 * 1024 * 1024;
+// fetch_page stops reading a page after this many bytes (the text is cut to 15,000 characters anyway).
+const MAX_PAGE_BYTES = 2 * 1024 * 1024;
+async function readCapped(res, max) {
+  const parts = []; let n = 0;
+  for await (const chunk of res.body || []) { parts.push(chunk); n += chunk.length; if (n >= max) break; }
+  return Buffer.concat(parts).subarray(0, max).toString('utf8');
+}
 
 // Secrets Bob must never list, read, search or write: signing keys, API keys, databases, his own config.
 const SECRET_NAME = /^(local\.properties|keystore\.properties|google-services\.json|credentials\.json|\.env(\..*)?|\.npmrc|\.git-credentials|id_(rsa|dsa|ecdsa|ed25519).*)$/i;
@@ -197,6 +207,8 @@ export function buildTools(cfg) {
       const file = resolveUserPath(p);
       if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to read ${file}.`);
       if (isSensitive(cfg, file)) throw new Error(SECRET_MSG);
+      const size = fs.statSync(file).size;
+      if (size > MAX_READ_BYTES) throw new Error(`That file is ${Math.round(size / 1048576)} MB, too big to read as text. I read files up to 20 MB.`);
       const buf = fs.readFileSync(file);
       if (buf.subarray(0, 4096).includes(0)) return '(That looks like a binary file, so I can\'t read it as text.)';
       const text = buf.toString('utf8');
@@ -281,13 +293,20 @@ export function buildTools(cfg) {
   t.fetch_page = {
     schema: fn('fetch_page', 'Read a web page as text.', { url: str('http or https link.') }),
     async run({ url }, { signal }) {
-      const u = new URL(url);
-      if (!/^https?:$/.test(u.protocol)) throw new Error('Only http and https links.');
-      if (isPrivateHost(u.hostname)) throw new Error('I don\'t open addresses on the home network.');
-      const res = await fetch(u, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' }, redirect: 'follow', signal });
+      // Redirects are followed by hand so every hop gets the same home-network check as the first address.
+      let u = new URL(url), res;
+      for (let hop = 0; ; hop++) {
+        if (!/^https?:$/.test(u.protocol)) throw new Error('Only http and https links.');
+        if (isPrivateHost(u.hostname)) throw new Error('I don\'t open addresses on the home network.');
+        res = await fetch(u, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' }, redirect: 'manual', signal });
+        const next = res.status >= 300 && res.status < 400 && res.headers.get('location');
+        if (!next) break;
+        if (hop >= 5) throw new Error('That link redirects too many times.');
+        u = new URL(next, u);
+      }
       const type = res.headers.get('content-type') || '';
       if (!/text|html|json|xml/.test(type)) return `That link is a ${type || 'file'}, not a page. I won't download it.`;
-      const text = htmlToText(await res.text());
+      const text = htmlToText(await readCapped(res, MAX_PAGE_BYTES));
       return text.length > 15000 ? text.slice(0, 15000) + '\n[cut]' : text;
     },
     summary: ({ url }) => `read page: ${url}`

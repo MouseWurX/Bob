@@ -375,11 +375,10 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
   // 1.5.83: the tested release unless a tag is given or the user asked for the newest build.
   const pick = tag || (!newest && e0.tested) || '';
   const e = pick ? { ...e0, tag: pick } : e0;
-  // Replacing the bundled build: its files go first, so two builds' graphics libraries never sit side by side.
-  if (id === 'llamacpp' && bundledEngine(cfg)) {
-    try { fs.rmSync(path.join(cfg.agentDir, e.dir), { recursive: true, force: true }); }
-    catch (err) { throw new Error(`llama.cpp is in use right now (${err.code || err.message}). Press Unload everything (or wait for the brain to go idle), then Try again.`); }
-  }
+  // Replacing the bundled build: the new one downloads into a side folder first, then takes the bundled one's
+  // place in one step, so a failed download never leaves Bob with no engine and two builds' graphics libraries
+  // never sit side by side.
+  const replacing = id === 'llamacpp' && Boolean(bundledEngine(cfg));
   if (e.unavailable) throw new Error(e.unavailable);
   if (e.install && e.os !== 'win') throw new Error(`${e.name} can't be fetched on this replicant matrix. Install it yourself and Bob finds it.`);
   if (e.install) return e.install(cfg, { pub, signal, tick });
@@ -391,13 +390,21 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
   pub.total = asset.size + (rt?.size || 0);
   pub.done = 0;
   const folder = path.join(cfg.agentDir, e.dir);
-  fs.mkdirSync(folder, { recursive: true });
+  const stage = replacing ? folder + '.new' : folder;
+  fs.rmSync(folder + '.new', { recursive: true, force: true });
+  fs.mkdirSync(stage, { recursive: true });
   if (e.sha256) asset.pinnedSha256 = e.sha256; // old releases without a GitHub digest: checked against our own pin
-  await grab(asset, folder, pub, signal, tick);
-  if (rt) await grab(rt, folder, pub, signal, tick);
-  flatten(folder, [e.exe, ...(e.aka || [])]);
-  if (e.os === 'linux' && rt) liftLibraries(folder);
-  if (e.os !== 'win') makeRunnable(folder);
+  try {
+    await grab(asset, stage, pub, signal, tick);
+    if (rt) await grab(rt, stage, pub, signal, tick);
+    flatten(stage, [e.exe, ...(e.aka || [])]);
+    if (e.os === 'linux' && rt) liftLibraries(stage);
+    if (e.os !== 'win') makeRunnable(stage);
+  } catch (err) { if (replacing) fs.rmSync(stage, { recursive: true, force: true }); throw err; }
+  if (replacing) {
+    try { fs.rmSync(folder, { recursive: true, force: true }); fs.renameSync(stage, folder); }
+    catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`llama.cpp is in use right now (${err.code || err.message}). Press Unload everything (or wait for the brain to go idle), then Try again.`); }
+  }
   if (!engineExe(cfg, e)) throw new Error(`${e.name} unpacked, but ${e.exe} isn't in it. The release layout may have changed.`);
   if (e.after) await e.after(cfg, { pub, tick, signal });
   // Older stable-diffusion.cpp builds call the program sd.exe.

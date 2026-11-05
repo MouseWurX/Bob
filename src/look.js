@@ -17,6 +17,6 @@ export function lookText(id) {
 export function lookPrompt(cfg) {
   const now = `Your look: {{USER}} picked a little 16x16 pixel-art avatar for you, shown blinking and talking in the corner of the app. Right now it is ${lookText(cfg.look)}. You know this is how you appear and you have opinions about it; if asked what you look like, describe it.`;
   const ch = cfg.lookChange;
-  if (!ch || cfg.lookComments === false) return now;
+  if (!ch || cfg.lookComments !== true) return now; // 1.5.116: opt-in
   return `${now}\n{{USER}} just changed your look from ${lookText(ch.from)} to ${lookText(ch.to)}. In this reply, after answering, add one short in-character line with your honest opinion of the new look. Only this once.`;
 }

@@ -1,0 +1,13 @@
+--- android/app/src/main/assets/www/help.js
++++ android/app/src/main/assets/www/help.js
+@@ -157,6 +164,10 @@
+ <dt>Effort</dt><dd>How hard a Bob on your network works on an answer: bigger brains and checking at higher levels.</dd>
+ <dt>Pinned download</dt><dd>A download from one exact version of a file, checked against its fingerprint (checksum), so nobody can swap it.</dd>
+ <dt>Free memory when idle</dt><dd>The phone brain unloads after a quiet spell, so the phone stays quick.</dd>
++<dt>Game master</dt><dd>Your other Bob, when he runs an Adventure: he sets the scenes, plays everyone who isn't at the table, and says what the dice mean. The phone brain can't be one.</dd>
++<dt>Hearts</dt><dd>A character's health in an Adventure. A miss can cost one; at zero hearts you choose Go out in style or Wake up captured.</dd>
++<dt>Plot armour</dt><dd>How safe a character is from bad dice in an Adventure: None, Some, Lots or Legendary. Asked for every character at the start of every game.</dd>
++<dt>Action card</dt><dd>One of your choices on your turn in an Adventure (Attack, Talk, Magic, Use item and so on). Some open a second card with the details. Bobs don't get cards; they just say what they do.</dd>
+ <dt>Help bundle</dt><dd>One file from Save a help bundle (Settings, Save a help bundle): my logs, errors, last chats, settings without their secrets and this replicant matrix's facts, with a HANDOFF.md on top. I never send it anywhere.</dd>
+ <dt>Handoff file (HANDOFF.md)</dt><dd>The first file in a help bundle, written for whoever helps (a person or an AI agent): what I am, my exact version and public code, what's wrong as far as I can tell, and what to try first.</dd>
+ <dt>OK card</dt><dd>A Bob on your network asking before he does something outside his own folder.</dd>

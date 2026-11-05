@@ -1,6 +1,7 @@
 // Bob's brain: runs a conversation turn, picks the right model, announces swaps,
 // calls tools, asks the user for approval when needed, and keeps a logbook.
 import fs from 'node:fs';
+import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import os from 'node:os';
@@ -641,7 +642,7 @@ export class Brain {
     while (msgs.length && msgs[0].role !== 'user') dropped.push(msgs.shift()); // never start mid tool-call
     if (dropped.length) { try { keepOlder(this.cfg, id, dropped); } catch {} }
     for (const m of msgs) delete m.images; // pictures stay on the shelf; Bob keeps the description
-    try { fs.writeFileSync(this.sessionFile(id), JSON.stringify(msgs)); } catch {}
+    try { writeJsonAtomic(this.sessionFile(id), msgs, 0); } catch {}
   }
 
   history(id) {
@@ -831,7 +832,7 @@ export class Brain {
     if (hand) this.handApprovals.add(id);
     let picked = null, steps = null, note = '';
     const allowed = await new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(false), APPROVAL_TIMEOUT_MS);
+      const timer = setTimeout(() => done(false), APPROVAL_TIMEOUT_MS); // through done(), so the card leaves the list too
       const done = (v, rows, items, said) => { clearTimeout(timer); this.approvals.delete(id); this.handApprovals.delete(id); picked = rows ?? null; steps = items ?? null; note = typeof said === 'string' ? said.slice(0, 500) : ''; resolve(v); };
       this.approvals.set(id, done);
       signal.addEventListener('abort', () => done(false), { once: true });
@@ -1331,7 +1332,7 @@ export class Brain {
     const drop = new Set(finished.filter((j) => (j.doneAt || j.at) < keep).map((j) => j.id));
     for (const j of finished.slice(0, Math.max(0, finished.length - 200))) drop.add(j.id);
     this.queue = this.queue.filter((j) => !drop.has(j.id));
-    try { fs.writeFileSync(this.queueFile, JSON.stringify(this.queue, null, 1)); } catch {}
+    try { writeJsonAtomic(this.queueFile, this.queue); } catch {}
     this.broadcast({ type: 'queue', jobs: this.queueView() });
   }
 

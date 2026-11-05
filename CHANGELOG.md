@@ -4,6 +4,42 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.117
+
+A second pass over the Settings layout. Nothing is renamed or switched; things sit where you look for them.
+
+- **Check for updates without scrolling.** This replicant matrix and updates is now the first thing in Settings, closed. Its line shows your version and a Check for updates button that works right there. When a new Bob is downloaded and checked, the line reads "Bob 1.5.x is ready · Restart Bob now".
+- **Shorter panels.** In Hands, Add a connected app and Paste a setup from another app sit under More once the Hand is on; Add a recipe sits under More once Run programs is on; Check the sandbox, Run the self-test and Quarantine are together under Checks. In Brains, the three long tables (Session brains, How much each session keeps in mind, How much each brain keeps in mind) fold closed with what's set now on their line. In Bob-Net, the sharing switches' explanations are behind ⓘ; the sentence about what leaves your replicant matrix stays written out.
+- **Read-only projects without a file.** Under the Read-only projects stay read-only limit there is now a list with Remove, and a Browse… / Add row, like Projects. config.json is no longer mentioned on screen.
+- **Make a new passcode** is the button's name in both states.
+- **Two labelled rows** at the top of the page: Get models (Equip Bob … On this replicant matrix) and Set up (Style · Settings).
+- **How Bob works** shows its three subheadings (How he works, Starting and closing, Going online) as headings.
+- **Where Bob saves things** sits under Projects, since both are folders.
+- **Phone app: Save to this phone streams the file** from the other Bob straight into the phone's media library instead of holding it in memory (up to 200 MB).
+
+## 1.5.116
+
+A code review of the whole app, with its fixes. Nothing new to switch on; everything here is Bob being safer and sturdier.
+
+- **Settings survive a crash or power cut.** Settings, the task queue, chat sessions, saved recipes, memory banks and the other files Bob keeps are now written to a side file first and swapped in one step. A crash mid-write can no longer leave a half file that quietly resets your settings or stops Bob starting.
+- **Web pages: every redirect is checked.** With "Let Bob search the web" on, a page that redirected Bob to an address on the home network (or his own door) could be read. Each hop is now checked the same way as the first address, redirects stop after five, and a page is read up to 2 MB.
+- **Let my other replicant matrices in: Tailscale addresses only, also at start-up.** When the door was already open when Bob started, he listened on every network address of the replicant matrix. He now listens on 127.0.0.1 and the Tailscale addresses only, the same as when the door is opened while he runs.
+- **Program and script files are refused on every platform.** Bob doesn't write or edit runnable files outside a project; the list now covers Mac and Linux kinds too (.sh, .py, .command, .desktop and friends), not only Windows ones.
+- **Big files are refused plainly.** Reading a file over 20 MB as text now gets a short sentence instead of Bob holding the whole file in memory.
+- **Folder rules follow links.** A shortcut, symlink or junction inside an allowed folder that points outside it no longer counts as inside.
+- **Music on Linux.** Setting up the music engine unpacked its download with a tool that reads zips on Windows and Mac but not on Linux, so it failed there (the Raspberry Pi too). Bob now unpacks it himself.
+- **A leftover brain process is checked before it is stopped.** After a crash and a reboot, the number Bob remembered for his brain server could belong to another program. He now checks it really is llama-server first.
+- **Replacing the engine can't leave you without one.** The new llama.cpp build downloads fully first and only then takes the bundled one's place.
+- **Sturdier replies.** One odd line from the brain server no longer loses the whole reply; a music job with an odd result, or voice input with no Ollama, gets a plain sentence instead of an error code.
+- **An OK card that times out is cleared properly**, so the quick "ok" and the check-in count are right afterwards.
+- **He comments once when you change his look** is now off unless you turn it on (Get models, Equip Bob, Attributes), like every other extra.
+- **A new test** covers all of the above (`test/run-review-fixes-test.js`).
+
+## 1.5.115
+
+- **Phone app: Save to this phone works for every type.** Under a picture, clip, song or diagram a Bob on your Bob-Net made, **Save to this phone as** now has the original type as a button too (for example "PNG (original)"), so you can keep the file as it is. It goes into your Bob folders on the phone, with a short note when it's saved. A copy stays on that replicant matrix too.
+- **Phone app: one 🌐 Bob-Net page.** Your other Bobs, adding a Bob and lending your brain now sit together on one page with the same name as the Bob-Net panel on your replicant matrix, in three sections: My other Bobs, Add a Bob and Lend my brain.
+
 ## 1.5.114
 
 - **Credits.** The README and a new Help page, Credits (on the desktop and in the phone app), thank Dennis E. Taylor, whose books inspired Bob, and say plainly that Bob is an independent fan project with no connection to the author or his publishers, and that the rights in the books stay theirs. TRADEMARKS.md says the same.

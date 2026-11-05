@@ -8,6 +8,7 @@
 // otherwise (always in the Gaming session, where the embedder never starts). No database, no service: the vectors
 // are a small JSON file in inn\bob, filled in by housekeeping when Bob is idle, so a turn only embeds the message.
 import fs from 'node:fs';
+import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { normName, overlap, cosine } from './topics.js';
@@ -111,7 +112,7 @@ export class MemoryVectors {
     if (!this.cache.vecs || (model && this.cache.model && this.cache.model !== model)) this.cache = { model, vecs: {} };
     return this.cache.vecs;
   }
-  save() { try { fs.mkdirSync(path.dirname(this.file), { recursive: true }); fs.writeFileSync(this.file, JSON.stringify(this.cache)); } catch {} }
+  save() { try { writeJsonAtomic(this.file, this.cache, 0); } catch {} }
   // embed(texts) -> vectors or null. Returns how many lines got a vector.
   async fill(lines, embed, model) {
     const vecs = this.load(model);

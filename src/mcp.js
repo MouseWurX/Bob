@@ -17,6 +17,7 @@
 // and the hard limits apply to the inputs: no secret files, nothing of Bob's own, read-only projects only for tools
 // the app marks as read-only, and the command blocklist on any text (some tools run code inside the app).
 import fs from 'node:fs';
+import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
@@ -77,7 +78,7 @@ export function loadServers(cfg) {
 }
 function saveServers(cfg, list) {
   fs.mkdirSync(cfg.dataDir, { recursive: true });
-  fs.writeFileSync(file(cfg), JSON.stringify({ servers: list.slice(0, MAX_SERVERS) }, null, 1));
+  writeJsonAtomic(file(cfg), { servers: list.slice(0, MAX_SERVERS) });
   return list;
 }
 const uniqueId = (list, id) => { let n = 2, out = id; while (list.some((s) => s.id === out)) out = `${id}-${n++}`; return out; };

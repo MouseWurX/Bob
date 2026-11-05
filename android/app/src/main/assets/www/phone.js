@@ -426,6 +426,7 @@
   const shortError = (body) => { try { return JSON.parse(body).error || 'unknown'; } catch { return String(body).slice(0, 120); } };
 
   function onNetEvent(base, ev) {
+    if (ev.type === 'adventure') return onAdvEvent(base, ev); // 🎲 the table on your other Bob
     if (!ev || typeof ev !== 'object') return;
     const mine = current && current.kind === 'net' && current.base === base && ev.sessionId === `phone-${current.chatId}`;
     if (ev.type === 'approval' && String(ev.sessionId || '').startsWith('phone-')) return approvalCard(base, ev);
@@ -590,7 +591,7 @@
     document.querySelectorAll('.panel').forEach((p) => p.classList.add('hidden'));
     if (id === 'new') { newChat(); return; }
     $(id).classList.remove('hidden');
-    ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, memory: drawMemory, settings: drawSettings, help: drawHelp }[id] || (() => {}))();
+    ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, adventure: drawAdventure, memory: drawMemory, settings: drawSettings, help: drawHelp }[id] || (() => {}))();
     if (id === 'bobs') watchLend();
   }
   document.querySelectorAll('.panel .back').forEach((b) => b.addEventListener('click', () => b.closest('.panel').classList.add('hidden')));
@@ -936,7 +937,7 @@ ${chatOut}
         const where = await phone('media.save', { address, path, name, timeoutMs });
         msg.textContent = `Saved ${where.split('/').pop()} in Downloads (${where}). Give it to whoever is helping, or open an issue at github.com/MouseWurX/Bob/issues.`;
       } else {
-        msg.textContent = 'No Bob on your network is reachable, so this is the phone-only bundle: one HANDOFF.md.';
+        msg.textContent = 'No Bob on your Bob-Net is reachable, so this is the phone-only bundle: one HANDOFF.md.';
         let d = {}; try { d = await phone('device'); } catch { /* tests */ }
         const fname = `bob-help-bundle-${new Date().toISOString().slice(0, 16).replace(/[-T:]/g, '').replace(/^(\d{8})(\d{4})$/, '$1-$2')}.md`;
         const mime = 'text/markdown', data = btoa(unescape(encodeURIComponent(phoneHandoff(d))));
@@ -949,6 +950,192 @@ ${chatOut}
 
   const EFFORTS = ['low', 'medium', 'high', 'extreme'];
   $('effort').addEventListener('click', () => { settings.effort = EFFORTS[(EFFORTS.indexOf(settings.effort) + 1) % EFFORTS.length]; saveSettings(); drawWho(); });
+
+  // ---------- 🎲 Adventure: the table lives on your other Bob; this page shows it and plays your turns ----------
+  // Nothing here decides anything: the view comes from his /api/adventure, the dice are rolled there, and the phone
+  // brain is never the game master (too small). Nothing starts a game by itself.
+  const ADV = {
+    icons: { attack: '⚔', defend: '🛡', sneak: '🤫', talk: '💬', magic: '✨', item: '🎒', look: '🔍', help: '🤝', run: '🏃', other: '✍' },
+    names: { attack: 'Attack', defend: 'Defend', sneak: 'Sneak', talk: 'Talk', magic: 'Magic', item: 'Use item', look: 'Look closer', help: 'Help an ally', run: 'Run', other: 'Something else' },
+    stats: { attack: 'Might', defend: 'Might', sneak: 'Wits', talk: 'Charm', magic: 'Wits', item: 'Luck', look: 'Wits', help: 'Charm', run: 'Luck', other: 'Luck' },
+    classes: { fighter: 'Fighter', rogue: 'Rogue', wizard: 'Wizard', cleric: 'Cleric', ranger: 'Ranger', bard: 'Bard' },
+    classStats: { fighter: 'Might 5 · Wits 2 · Charm 2 · Luck 3', rogue: 'Might 2 · Wits 4 · Charm 3 · Luck 3', wizard: 'Might 1 · Wits 5 · Charm 2 · Luck 4', cleric: 'Might 3 · Wits 3 · Charm 4 · Luck 2', ranger: 'Might 3 · Wits 4 · Charm 1 · Luck 4', bard: 'Might 1 · Wits 3 · Charm 5 · Luck 3' },
+    armour: { none: ['None', 'The dice decide. A bad run can kill the character.'], some: ['Some', 'One bad roll a scene is rolled again.'], lots: ['Lots', "Can't die. A terrible roll still costs something."], legendary: ['Legendary', 'Nothing worse than a close call, ever.'] },
+    settings: { fantasy: 'Classic fantasy', space: 'Space', spooky: 'Spooky', pick: 'Pick for me', own: 'My own' },
+    paces: { short: 'Short (3 scenes)', evening: 'Evening (6 scenes)', campaign: 'Campaign (saved between sittings)' },
+    heroes: ['Wren', 'Tobin', 'Mara', 'Quill', 'Hesper', 'Dax', 'Ilse', 'Corvin', 'Pip', 'Sable', 'Juno', 'Oswin'],
+    traits: ['never leaves a door unopened', 'collects teeth, politely', 'owes money in three towns', 'talks to the horse first', 'afraid of nothing but geese', 'keeps a list of grudges, alphabetical']
+  };
+  const adv = { v: null, players: null, msg: '', picked: null, live: new Map(), journal: false, base: null, timer: null, last: '' };
+  const advYou = { name: '', cls: 'fighter', trait: '', armour: 'some', setting: 'fantasy', settingText: '', pace: 'evening' };
+  const advParty = new Map(); // player key -> { ticked, armour, cls }
+  const hearts = (n, max = 5) => '♥'.repeat(Math.max(0, n)) + '♡'.repeat(Math.max(0, max - n));
+  const pickOne = (a) => a[Math.floor(Math.random() * a.length)];
+  const advOpen = () => !$('adventure').classList.contains('hidden');
+  function advBob() { const a = answerer(); return a.kind === 'net' ? a.bob : liveBobs()[0] || null; }
+  async function advApi(path, data) {
+    const b = advBob(); if (!b) throw new Error('No Bob on your Bob-Net is reachable. The table lives on your other replicant matrix.');
+    const r = data === undefined ? await phone('net.get', { address: b.address, path }) : await phone('net.post', { address: b.address, path, body: JSON.stringify(data) });
+    let out = {}; try { out = JSON.parse(r.body || '{}'); } catch { /* not JSON */ }
+    if (r.status >= 400) throw new Error(out.error || `"${b.name}" said no (${r.status})`);
+    return out;
+  }
+  function drawAdventure() {
+    const body = $('adv-body'), b = advBob();
+    adv.base = b ? b.base : null; adv.last = '';
+    body.textContent = '';
+    if (!b) { body.append(el('p', { class: 'help-line', text: "No Bob on your Bob-Net is reachable, and the table lives on your other replicant matrix: get him on Tailscale and come back. I'm too small to be game master myself." })); return; }
+    body.append(el('p', { class: 'dim', text: adv.v ? 'Checking the table…' : 'Setting the table…' }));
+    advLoad();
+  }
+  async function advLoad() {
+    try { adv.v = await advApi('/api/adventure'); adv.last = JSON.stringify(adv.v); adv.msg = ''; } catch (e) { adv.msg = e.message; }
+    if (adv.v && !adv.v.game && !adv.players) {
+      try { adv.players = (await advApi('/api/adventure/players')).players || []; } catch { adv.players = []; }
+      adv.players.forEach((p, i) => { const k = p.address || p.name; if (!advParty.has(k)) advParty.set(k, { ticked: p.who === 'bob' ? i === 0 : p.ok === true, armour: 'some', cls: ['rogue', 'wizard', 'cleric', 'ranger', 'bard'][i % 5] }); });
+    }
+    advDraw();
+    clearTimeout(adv.timer); adv.timer = setTimeout(advTick, adv.v?.busy ? 2000 : 5000);
+  }
+  // The live events do most of the work; this poll is the safety net (2 s while a brain is busy, 5 s otherwise).
+  async function advTick() {
+    if (!advOpen()) return;
+    try {
+      const v = await advApi('/api/adventure'); const key = JSON.stringify(v);
+      if (key !== adv.last) { adv.last = key; adv.v = { ...adv.v, ...v }; if (!v.waitingFor) adv.picked = null; advDraw(); }
+    } catch (e) { if (!adv.v) { adv.msg = e.message; advDraw(); } }
+    clearTimeout(adv.timer); adv.timer = setTimeout(advTick, adv.v?.busy ? 2000 : 5000);
+  }
+  async function advCall(path, data) {
+    try { adv.v = { ...adv.v, ...(await advApi(path, data)) }; adv.msg = ''; } catch (e) { adv.msg = e.message; }
+    advDraw();
+  }
+  function advDraw() {
+    if (!advOpen()) return;
+    const body = $('adv-body'); body.textContent = '';
+    const g = adv.v?.game;
+    body.append(...(g ? advTable(g) : [advStart()]).flat().filter(Boolean));
+    const log = $('adv-log'); if (log) log.scrollTop = log.scrollHeight;
+    for (const [who, x] of adv.live) if (x.text) advShowLive(el('span', { class: 'adv-who', text: advWho(who) }), el('p', { text: x.text }));
+  }
+  const advWho = (id) => id === 'gm' ? '🎲 Game master' : adv.v?.game?.party.find((c) => c.id === id)?.name || 'A Bob';
+  function advShowLive(...kids) { const l = $('adv-live'); if (!l) return; l.classList.remove('hidden'); l.textContent = ''; l.append(...kids); l.scrollIntoView({ block: 'end' }); }
+  // Streamed words from the other Bob: shown as they come, then replaced by the saved line on the next state.
+  function onAdvEvent(base, ev) {
+    if (!advOpen() || base !== adv.base) return;
+    if (ev.ev === 'state') {
+      const { type, ev: kind, ...rest } = ev; adv.v = { ...adv.v, ...rest }; adv.last = JSON.stringify(rest); adv.live = new Map(); adv.msg = '';
+      if (!adv.v.waitingFor) adv.picked = null;
+      if (rest.game && !rest.busy && !rest.waitingFor && adv.v.fate && rest.game.status !== 'playing') adv.v.fate = null;
+      advDraw(); return;
+    }
+    if (ev.ev === 'token') { const cur = adv.live.get(ev.who) || { text: '' }; cur.text += ev.text || ''; adv.live.set(ev.who, cur); advShowLive(el('span', { class: 'adv-who', text: advWho(ev.who) }), el('p', { text: cur.text.replace(/<<<[\s\S]*$/, '') })); return; }
+    if (ev.ev === 'roll') { advShowLive(el('p', { class: 'adv-dice', text: `🎲 ${ev.name}: ${ev.text}` })); return; }
+    if (ev.ev === 'fate') { adv.v = { ...adv.v, fate: { who: ev.who, name: ev.name } }; advDraw(); return; }
+    if (ev.ev === 'standin') { adv.msg = ev.text || ''; advDraw(); return; }
+    if (ev.ev === 'announce') advShowLive(el('p', { class: 'note', text: ev.text || '' }));
+  }
+  // ---- the start card ----
+  function advSelect(opts, cur, label, onchange) {
+    const s = el('select', { 'aria-label': label, onchange: (e) => onchange(e.target.value) });
+    for (const [id, n] of Object.entries(opts)) s.append(el('option', { value: id, selected: cur === id, text: Array.isArray(n) ? n[0] : n }));
+    return s;
+  }
+  function advChips(opts, cur, label, onpick) {
+    return el('div', { class: 'chips', role: 'radiogroup', 'aria-label': label }, Object.entries(opts).map(([id, n]) => el('button', { class: `chip${cur === id ? ' on' : ''}`, role: 'radio', 'aria-checked': String(cur === id), text: n, onclick: () => onpick(id) })));
+  }
+  function advStart() {
+    const v = adv.v, saved = v?.saved || [];
+    return el('div', {},
+      v?.refusal ? el('p', { class: 'note bad', text: v.refusal }) : null,
+      el('p', { class: 'help-line', text: 'Your other Bob runs the table. You play a character, and so do his other Bobs. Every action is rolled by the app: d20 plus a stat. 15 or more is a hit, 10 to 14 a hit at a cost, under 10 a miss. Nothing loads until you press Start a new game.' }),
+      el('h3', { text: 'Setting' }),
+      advChips(ADV.settings, advYou.setting, 'Setting', (id) => { advYou.setting = id; advDraw(); }),
+      advYou.setting === 'own' ? el('input', { type: 'text', maxlength: 300, placeholder: 'A sunken city, a heist, a haunted train…', value: advYou.settingText, 'aria-label': 'Your own setting', onchange: (e) => { advYou.settingText = e.target.value; } }) : null,
+      el('h3', { text: 'Your character' }),
+      el('label', { class: 'field', text: 'Name' }), el('input', { type: 'text', maxlength: 40, value: advYou.name, placeholder: settings.userName || 'Hero', 'aria-label': 'Name', onchange: (e) => { advYou.name = e.target.value; } }),
+      el('label', { class: 'field', text: 'Class' }), advSelect(ADV.classes, advYou.cls, 'Class', (x) => { advYou.cls = x; advDraw(); }),
+      el('p', { class: 'help-line', text: ADV.classStats[advYou.cls] }),
+      el('label', { class: 'field', text: 'One thing about them' }), el('input', { type: 'text', maxlength: 120, value: advYou.trait, placeholder: 'never leaves a door unopened', 'aria-label': 'One thing about them', onchange: (e) => { advYou.trait = e.target.value; } }),
+      el('label', { class: 'field', text: 'Plot armour' }), advSelect(ADV.armour, advYou.armour, 'Plot armour', (x) => { advYou.armour = x; advDraw(); }),
+      el('p', { class: 'help-line', text: ADV.armour[advYou.armour][1] }),
+      el('div', { class: 'btns' }, el('button', { text: '🎲 Roll one for me', onclick: () => { advYou.name = pickOne(ADV.heroes); advYou.cls = pickOne(Object.keys(ADV.classes)); advYou.trait = pickOne(ADV.traits); advDraw(); } })),
+      el('h3', { text: 'Who plays' }),
+      el('p', { class: 'help-line', text: 'Tick the Bobs at the table. A Bob on your Bob-Net plays himself over there; a copy of your other Bob is played by the game master brain. Each gets their own plot armour.' }),
+      adv.players === null ? el('p', { class: 'dim', text: 'Looking for your other Bobs…' }) : null,
+      (adv.players || []).map((p) => {
+        const k = p.address || p.name, st = advParty.get(k);
+        return el('div', { class: `box${p.ok === false ? ' dim' : ''}` },
+          el('label', { class: 'choice' }, el('input', { type: 'checkbox', checked: st.ticked, disabled: p.ok === false, onchange: (e) => { st.ticked = e.target.checked; } }), el('div', {}, el('strong', { text: p.name }), el('p', { class: 'help-line', text: p.note || '' }))),
+          el('div', { class: 'row2' }, advSelect(ADV.classes, st.cls, `${p.name}'s class`, (x) => { st.cls = x; }), advSelect(ADV.armour, st.armour, `${p.name}'s plot armour`, (x) => { st.armour = x; })));
+      }),
+      el('h3', { text: 'How long' }),
+      advChips(ADV.paces, advYou.pace, 'How long', (id) => { advYou.pace = id; advDraw(); }),
+      el('div', { class: 'btns' }, el('button', { class: 'main', text: '🎲 Start a new game', disabled: Boolean(v?.refusal), onclick: advStartGame })),
+      el('p', { class: 'help-line', text: 'Loads the game master brain on your other replicant matrix. Pause or End lets it go again. The first turn takes longest: the game master reads the rules and the party first.' }),
+      adv.msg ? el('p', { class: 'note bad', role: 'alert', text: adv.msg }) : null,
+      saved.length ? el('h3', { text: 'Continue a campaign' }) : null,
+      saved.map((s) => el('div', { class: 'box' }, el('div', { class: 'title', text: s.title }),
+        el('p', { class: 'help-line', text: `${s.setting} · ${s.scenes} scene${s.scenes === 1 ? '' : 's'} · ${(s.party || []).join(', ')}${s.status === 'over' ? ' · ended' : ''}` }),
+        el('div', { class: 'btns' },
+          el('button', { class: 'main', text: 'Continue', disabled: Boolean(v?.refusal), onclick: () => advCall('/api/adventure/continue', { id: s.id }) }),
+          el('button', { text: 'Delete', onclick: (e) => { const t = e.currentTarget; if (!t.dataset.sure) { t.dataset.sure = '1'; t.textContent = 'Sure? Tap again'; return; } advCall('/api/adventure/delete', { id: s.id }); } })))));
+  }
+  async function advStartGame(e) {
+    const bobsIn = (adv.players || []).filter((p) => advParty.get(p.address || p.name)?.ticked && p.ok !== false)
+      .map((p) => { const st = advParty.get(p.address || p.name); return { who: p.who, name: p.name, address: p.address || '', armour: st.armour, cls: st.cls }; });
+    e.currentTarget.disabled = true;
+    await advCall('/api/adventure/start', { setting: advYou.setting, settingText: advYou.settingText, pace: advYou.pace, you: { name: advYou.name || settings.userName || 'Hero', cls: advYou.cls, trait: advYou.trait, armour: advYou.armour }, bobs: bobsIn });
+  }
+  // ---- the table ----
+  function advTable(g) {
+    const v = adv.v;
+    const busy = v.busy === 'gm' ? '🎲 The game master is thinking…' : v.busy === 'player' ? `${g.party[g.turn]?.name || 'A Bob'} is deciding…` : '';
+    const scene = g.scenes[g.scenes.length - 1];
+    const top = el('div', { class: 'box' }, el('div', { class: 'title', text: g.title }),
+      el('p', { class: 'help-line', text: `${g.settingText}${scene ? ` · Scene ${scene.n}: ${scene.title}` : ''} · round ${g.round}` }),
+      el('div', { class: 'btns' },
+        g.status === 'playing' ? el('button', { text: '⏸ Pause', onclick: () => advCall('/api/adventure/pause', {}) }) : g.status === 'paused' ? el('button', { class: 'main', text: '▶ Resume', onclick: () => advCall('/api/adventure/resume', {}) }) : null,
+        el('button', { text: '📖 Journal', 'aria-pressed': String(adv.journal), onclick: () => { adv.journal = !adv.journal; advDraw(); } }),
+        el('button', { text: g.status === 'over' ? 'Close' : '🏁 End game', onclick: async (e) => { const t = e.currentTarget; if (g.status !== 'over' && !t.dataset.sure) { t.dataset.sure = '1'; t.textContent = 'Sure? It stays under Continue'; return; } await advCall('/api/adventure/end', { keep: true }); adv.players = null; advLoad(); } })));
+    const journal = adv.journal ? el('div', { class: 'box' }, el('strong', { text: 'The story so far' }), el('p', { text: g.summary || 'Nothing written down yet; the game master sums things up every three scenes.' }),
+      g.scenes.length ? el('p', { class: 'help-line', text: g.scenes.map((s) => `Scene ${s.n}: ${s.title}`).join(' · ') }) : null) : null;
+    const party = el('div', { class: 'adv-party' }, g.party.map((c, i) => el('div', { class: `adv-member${i === g.turn && g.status === 'playing' ? ' turn' : ''}${c.out ? ' out' : ''}`, title: c.trait || '' },
+      el('strong', { text: c.name }), el('span', { class: 'dim small', text: `${c.className}${c.who === 'you' ? ' · you' : ''}` }),
+      el('span', { class: 'adv-hearts', 'aria-label': `${c.hearts} of 5 hearts`, text: hearts(c.hearts) }),
+      c.out ? el('span', { class: 'badge quiet', text: 'out' }) : i === g.turn && g.status === 'playing' ? el('span', { class: 'badge', text: 'turn' }) : null)));
+    const log = el('div', { class: 'adv-log', id: 'adv-log' }, g.log.map((l) => {
+      if (l.who === 'gm') return el('div', { class: 'adv-gm' }, el('span', { class: 'adv-who', text: '🎲 Game master' }), el('div', { html: L.markdown(l.text || '') }));
+      if (l.who === 'app') return el('p', { class: 'note', text: l.text || '' });
+      return el('div', { class: `adv-turn${l.who === 'you' ? ' you' : ''}` }, el('span', { class: 'adv-who', text: `${l.name || ''}${l.by === 'net' ? ' · his own Bob' : l.who === 'player' ? ' · played by the game master' : ''}` }), el('p', { text: l.text || '' }), l.dice ? el('p', { class: 'adv-dice', text: `🎲 ${l.dice}` }) : null);
+    }), el('div', { class: 'adv-live hidden', id: 'adv-live' }));
+    const fate = v.fate ? el('div', { class: 'card' }, el('div', { class: 'q' }, el('strong', { text: `${v.fate.name} is at zero hearts.` }), el('div', { text: 'Your call.' })),
+      el('div', { class: 'row' }, el('button', { text: 'Go out in style', onclick: () => { adv.v.fate = null; advCall('/api/adventure/fate', { choice: 'style' }); } }), el('button', { class: 'main', text: 'Wake up captured', onclick: () => { adv.v.fate = null; advCall('/api/adventure/fate', { choice: 'captured' }); } }))) : null;
+    return [top, journal, party, log, busy ? el('p', { class: 'note', text: busy }) : null, fate, g.status === 'playing' ? advHand(g) : null, adv.msg ? el('p', { class: 'note bad', role: 'alert', text: adv.msg }) : null];
+  }
+  // Your hand: the cards, a second card for the ones that need details (with ← Back), then the flair box.
+  function advHand(g) {
+    const v = adv.v; if (!v.waitingFor) return null;
+    const me = g.party.find((c) => c.id === v.waitingFor), p = adv.picked;
+    if (p && p.card && !p.done) {
+      const sec = g.second?.[p.card];
+      if (sec && !p.pick && !p.skipSecond) {
+        return el('div', { class: 'card' }, el('div', { class: 'q' }, el('strong', { text: `${ADV.icons[p.card]} ${ADV.names[p.card]}: ${sec.ask || ''}` })),
+          el('div', { class: 'adv-cards' }, (sec.choices || []).map((c) => el('button', { class: 'adv-card', text: c, onclick: () => { adv.picked = { ...p, pick: c }; advDraw(); } })),
+            el('button', { class: 'adv-card other', text: sec.free || 'Something else', onclick: () => { adv.picked = { ...p, pick: '', skipSecond: true }; advDraw(); } })),
+          el('div', { class: 'btns' }, el('button', { text: '← Back', onclick: () => { adv.picked = null; advDraw(); } })));
+      }
+      const flair = el('textarea', { rows: 2, maxlength: 400, 'aria-label': 'How does it play out?', placeholder: p.card === 'other' ? 'Say what you do…' : 'Add some flair…' });
+      return el('div', { class: 'card' }, el('div', { class: 'q' }, el('strong', { text: `${ADV.icons[p.card]} ${ADV.names[p.card]}${p.pick ? ` (${p.pick})` : ''}` }), el('span', { class: 'dim small', text: ` rolls ${ADV.stats[p.card]}` })),
+        el('label', { class: 'field', text: 'How does it play out?' }), el('p', { class: 'help-line', text: 'Optional. A good line earns +2.' }), flair,
+        el('div', { class: 'btns' }, el('button', { class: 'main', text: '🎲 Roll it', onclick: () => advGo(flair.value) }), el('button', { text: 'Skip the flair', onclick: () => advGo('') }),
+          el('button', { text: '← Back', onclick: () => { adv.picked = (p.pick || p.skipSecond) && g.second?.[p.card] ? { card: p.card } : null; advDraw(); } })));
+    }
+    return el('div', { class: 'card' }, el('div', { class: 'q' }, el('strong', { text: `${me?.name || 'Your'}'s turn.` }), el('div', { class: 'help-line', text: "Pick a card; the app rolls for you. Cards that don't fit this scene are left out." })),
+      el('div', { class: 'adv-cards' }, (g.cards || []).map((c) => el('button', { class: `adv-card${c === 'other' ? ' other' : ''}`, onclick: () => { adv.picked = { card: c }; advDraw(); } },
+        el('span', { class: 'adv-ico', text: ADV.icons[c] || '' }), el('span', { text: ADV.names[c] || c }), el('span', { class: 'dim small', text: `${ADV.stats[c] || ''}${g.second?.[c] ? ' ›' : ''}` })))));
+  }
+  async function advGo(flair) { const p = adv.picked; adv.picked = { ...p, done: true }; await advCall('/api/adventure/act', { card: p.card, pick: p.pick || '', flair: String(flair || '').slice(0, 400) }); }
 
   // ---------- Help ----------
   function drawHelp() {

@@ -3,6 +3,7 @@
 // Models are found by Ollama name in Ollama's model folder (no duplicate downloads), or set by path in config.
 import { replyStats } from './speed-stats.js';
 import fs from 'node:fs';
+import { commandLineOf } from './util.js';
 import { saveNameOf, idFolderFile } from './models.js';
 import path from 'node:path';
 import os from 'node:os';
@@ -535,7 +536,11 @@ export class LlamaCpp {
     await this.stopServer();
     // A llama-server left over from a crash would hold the port: stop it first.
     const pidFile = path.join(this.cfg.dataDir, `llama-server${this.tag}.pid`);
-    try { process.kill(Number(fs.readFileSync(pidFile, 'utf8')), 'SIGTERM'); await new Promise((r) => setTimeout(r, 800)); } catch {}
+    try {
+      const old = Number(fs.readFileSync(pidFile, 'utf8'));
+      fs.rmSync(pidFile, { force: true });
+      if (old && old !== process.pid && /llama-server/i.test(await commandLineOf(old))) { process.kill(old, 'SIGTERM'); await new Promise((r) => setTimeout(r, 800)); }
+    } catch {}
     const exe = this.exePath();
     // The exact command, so speed settings can be checked (e.g. that the draft model really went in).
     try { fs.writeFileSync(path.join(this.cfg.dataDir, `llama-server${this.tag}-args.txt`), [exe, ...args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ') + '\n'); } catch {}
@@ -701,7 +706,8 @@ export class LlamaCpp {
         if (!line.startsWith('data:')) continue;
         const data = line.slice(5).trim();
         if (data === '[DONE]') continue;
-        const ev = JSON.parse(data);
+        const ev = parseJson(data);
+        if (!ev) continue; // a cut or odd line from the server: skip it rather than lose the whole reply
         if (ev.error) throw new Error('llama-server: ' + (ev.error.message || JSON.stringify(ev.error)));
         // 1.5.30: llama-server puts the reply's timings on its last chunk; kept for Now running.
         if (ev.timings) this.lastStats = replyStats({ model: this.current || model, messages, promptTokens: (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0), outTokens: ev.timings.predicted_n, tokPerSec: ev.timings.predicted_per_second, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX }) || this.lastStats;

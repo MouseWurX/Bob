@@ -37,6 +37,15 @@ async function checkPassword(box) {
 }
 
 // Under the Office switch: which helpers Bob found on this PC, so it's clear what works before asking.
+// 1.5.117: the read-only projects, added here (Browse… or type a path), never in a file by hand.
+function readOnlyHtml(v, s) {
+  const mine = s.readOnlyFolders || [];
+  const fixed = (v.readOnly || []).filter((f) => !mine.includes(f));
+  return `<br><span class="hands-ro"><span class="muted">Read-only projects:</span>
+      ${[...fixed.map((f) => `<span class="ro-item"><code>${esc(f)}</code></span>`), ...mine.map((f) => `<span class="ro-item"><code>${esc(f)}</code> <button type="button" class="link" data-hrodel="${esc(f)}">Remove</button></span>`)].join('') || '<span class="muted">none yet</span>'}
+      <span class="row"><input type="text" data-hnewro placeholder="A project folder Bob may read but never change" aria-label="Add a read-only project" style="flex:1"><button type="button" class="mini" data-hrobrowse>Browse…</button><button type="button" class="mini" data-hroadd>Add</button></span>
+      <span class="muted">Bob's own folders are always read-only.</span></span>`;
+}
 function officeLine(o, on) {
   if (!o) return '';
   const doc = o.office ? `✓ ${esc(o.office.name)}${o.office.version ? ` ${esc(o.office.version)}` : ''} ${o.office.where === 'own' ? '(Bob\'s own copy)' : '(found on this replicant matrix)'}` : '✗ No LibreOffice or OpenOffice found: documents, spreadsheets and slides need one. <button type="button" data-hgetengine="libreoffice">Get LibreOffice (about 350 MB)</button>';
@@ -120,10 +129,16 @@ function selfToolsHtml(st, on) {
   if (!st) return '';
   const rows = st.tools.map((t) => `<li class="mytool"><label class="switch small"><input type="checkbox" data-hmytool="${esc(t.name)}" ${t.state === 'on' ? 'checked' : ''} ${t.state === 'changed' || t.state === 'missing' ? 'disabled' : ''}><span><strong>${esc(t.name)}</strong> ${TOOL_STATE[t.state] ? `<span class="warn-text">${esc(TOOL_STATE[t.state])}</span>` : ''}<br><span class="muted">${esc(t.what)}</span><br><span class="muted">Can change: ${esc(t.writes.join('; ') || 'nothing outside its folder')}. Internet: ${t.internet ? 'yes' : 'no'}. Made ${esc(when(t.at))}${t.lastUsed ? `, last used ${esc(when(t.lastUsed))}` : ', not used yet'}.</span></span></label>
       <div class="row"><button type="button" data-hmytoolcode="${esc(t.name)}">Show code</button><button type="button" data-hmytooldel="${esc(t.name)}">Remove</button></div><pre class="cmd mytool-code" hidden></pre></li>`).join('');
-  const sb = st.sandbox ? (st.sandbox.ok ? `Sandbox holds ✓ <span class="muted">checked ${esc(when(st.sandbox.at || Date.now()))}</span>` : `<span class="warn-text">Making and using tools is refused: the sandbox didn't hold on this replicant matrix (${esc(st.sandbox.why)}).</span>`) : '<span class="muted">Sandbox not checked yet.</span>';
   return `<div class="hands-mytools${on ? '' : ' dim'}"><strong>Tools Bob made</strong> <span class="muted">${st.tools.length} of ${st.max}</span>
     ${st.tools.length ? `<ul>${rows}</ul>` : '<p class="muted">None yet. With "Make his own tools" on, Bob makes one when none of his tools fits a job, and shows you a card first.</p>'}
     <p class="muted">${st.netGuard ? 'Tools without internet on their card are cut off from it.' : 'This replicant matrix can\'t cut one program off the internet without administrator rights, so the code is checked for it instead. That check isn\'t airtight.'}</p>
+</div>`;
+}
+// 1.5.117: the sandbox check sits under Checks, with the self-test.
+function sandboxRow(st) {
+  if (!st) return '';
+  const sb = st.sandbox ? (st.sandbox.ok ? `Sandbox holds ✓ <span class="muted">checked ${esc(when(st.sandbox.at || Date.now()))}</span>` : `<span class="warn-text">Making and using tools is refused: the sandbox didn't hold on this replicant matrix (${esc(st.sandbox.why)}).</span>`) : '<span class="muted">Sandbox not checked yet.</span>';
+  return `<div class="hands-sandbox"><strong>Sandbox</strong> <span class="muted">The locked room where tools Bob made run. This checks it still holds.</span>
     <div class="row"><button type="button" data-hsandbox>Check the sandbox</button> <span>${sb}</span></div></div>`;
 }
 
@@ -140,7 +155,7 @@ function mcpHtml(m, on) {
   return `<div class="hands-mcp${on ? '' : ' dim'}"><strong>Connected apps</strong>
     <p class="muted">Apps with an MCP add-on can offer Bob their tools. Each app here starts switched off. Bob only starts or reaches one when a job needs it, and lets it go after ${m.idleMin} minutes unused.${on ? '' : ' Turn on the Connected apps (MCP) Hand above to use these.'}</p>
     ${m.servers.length ? `<ul>${rows}</ul>` : '<p class="muted">None yet.</p>'}
-    <details class="mcp-add"><summary>Add a connected app</summary>
+    ${on ? `<details class="more"><summary>More</summary>    <details class="mcp-add"><summary>Add a connected app</summary>
       <div class="row"><button type="button" data-hmcppreset="blender">Fill in for Blender</button><button type="button" data-hmcppreset="unreal">Fill in for Unreal Engine</button></div>
       <p class="muted mcp-presetnote"></p>${m.uv ? '' : '<p class="muted mcp-uv" hidden>uv isn\'t on this replicant matrix yet. <button type="button" data-hgetengine="uv">Get uv for me</button></p>'}
       <label class="pick"><span>Name</span><input data-hm="name" placeholder="Blender"></label>
@@ -152,7 +167,7 @@ function mcpHtml(m, on) {
     <details class="mcp-paste"><summary>Paste a setup from another app</summary>
       <p class="muted">Add-on instructions, and apps like Claude Desktop, Cline or OpenCode, keep these in a block called "mcpServers". Paste the whole block. Every app in it comes in switched off.</p>
       <textarea data-hmcppaste rows="5" spellcheck="false" placeholder='{ "mcpServers": { "blender": { "command": "uvx", "args": ["blender-mcp"] } } }' style="width:100%"></textarea>
-      <button type="button" data-hmcpimport>Add these</button></details></div>`;
+      <button type="button" data-hmcpimport>Add these</button></details></details>` : ''}</div>`;
 }
 
 // ---- One card with every OK a job needs (1.5.42, src/together.js) ----
@@ -309,7 +324,7 @@ export async function mountHandsSettings(box) {
       ${mcpHtml(v.mcp, s.enabled && s.mcp?.on)}
       <div class="hands-limits"><h4 class="ssub">Limits that always apply <span class="tag">all on to start with</span></h4>
         <p class="muted">These hard limits hold whether or not Bob asks first. Switch one off only if you need what it blocks.</p>
-        ${(v.limits || []).map((l) => `<label class="switch small"><input type="checkbox" data-hlimit="${esc(l.id)}" ${s.limits?.[l.id] !== false ? 'checked' : ''}><span><strong>${esc(l.label)}</strong><br><span class="muted">${esc(l.on)}</span>${l.more ? `<details class="more"><summary>More</summary><span class="muted">${esc(l.more)}</span></details>` : ''}${s.limits?.[l.id] === false ? `<br><span class="warn-text">Off: ${esc(l.off)}</span>` : ''}${l.id === 'readOnly' ? `<br><span class="muted">Read-only right now: ${v.readOnly?.length ? esc(v.readOnly.join('; ')) : 'none (add folders to "readOnlyRoots" in config.json)'}</span>` : ''}</span></label>`).join('')}
+        ${(v.limits || []).map((l) => `<label class="switch small"><input type="checkbox" data-hlimit="${esc(l.id)}" ${s.limits?.[l.id] !== false ? 'checked' : ''}><span><strong>${esc(l.label)}</strong><br><span class="muted">${esc(l.on)}</span>${l.more ? `<details class="more"><summary>More</summary><span class="muted">${esc(l.more)}</span></details>` : ''}${s.limits?.[l.id] === false ? `<br><span class="warn-text">Off: ${esc(l.off)}</span>` : ''}${l.id === 'readOnly' ? readOnlyHtml(v, s) : ''}</span></label>`).join('')}
         <p class="muted">Always on, whatever you pick: Bob can't change his own code, settings or this page, never runs as administrator, stays out of terminals, admin tools, password managers and sign-in prompts, and the ✋ Hands button always stops him.</p></div>
       <div class="hands-folders"><strong>Folders the Files Hand may work in</strong>
         ${folders.length ? folders.map((f) => `<label class="switch small"><input type="checkbox" data-hfolder="${esc(f)}" ${s.folders.includes(f) ? 'checked' : ''}><span>${esc(f)}</span></label>`).join('') : '<p class="muted">No folders yet.</p>'}
@@ -318,18 +333,20 @@ export async function mountHandsSettings(box) {
       <label class="pick"><strong>Stop a command after</strong><select data-htimeout>${[1, 5, 15, 30, 60, 120].map((m) => `<option value="${m}" ${m === s.timeoutMin ? 'selected' : ''}>${m < 60 ? `${m} minute${m === 1 ? '' : 's'}` : `${m / 60} hour${m === 60 ? '' : 's'}`}</option>`).join('')}</select></label>
       <div class="hands-recipes"><strong>Recipes</strong> <span class="muted">Saved commands you can run in one click, or ask Bob for by name ("run my build recipe"). He still asks before each run, unless he's working without asking.</span>
         ${v.recipes.length ? `<ul>${v.recipes.map((r) => `<li><button type="button" class="big" data-hrun="${esc(r.name)}" ${s.enabled && s.run?.on ? '' : 'disabled'}>▶ ${esc(r.name)}</button> <code>${esc([r.cmd, ...(r.args || [])].join(' '))}</code> <span class="muted">in ${esc(r.cwd)}</span> <button type="button" class="link" data-hdelrecipe="${esc(r.name)}">Remove</button></li>`).join('')}</ul>` : ''}
-        <details><summary>Add a recipe</summary><div class="hands-newrecipe">
+        ${s.enabled && s.run?.on ? `<details class="more"><summary>More</summary><strong>Add a recipe</strong><div class="hands-newrecipe">
           <label class="pick"><span>Name</span><input data-hr="name" placeholder="Build my app"></label>
           <label class="pick"><span>Program</span><input data-hr="cmd" placeholder="gradlew.bat"></label>
           <label class="pick"><span>Arguments (one per line)</span><textarea data-hr="args" rows="2" placeholder="assembleDebug"></textarea></label>
           <label class="pick"><span>In folder</span><input data-hr="cwd" placeholder="C:\\Users\\you\\Projects\\app"></label>
-          <button type="button" data-hsaverecipe>Save recipe</button><span class="muted hr-out"></span></div></details></div>
+          <button type="button" data-hsaverecipe>Save recipe</button><span class="muted hr-out"></span></div></details>` : '<p class="muted">Turn on the Run programs Hand above to add one.</p>'}</div>
       ${schedHtml(sched, s)}
       <div class="hands-journal"><strong>Recent file jobs</strong>
         ${v.journal.length ? `<ul>${v.journal.map((j) => `<li>${esc(when(j.at))}: ${esc(j.label)} ${j.undone ? '<span class="muted">(undone)</span>' : `<button type="button" data-hundo="${esc(j.id)}">Undo</button>`}</li>`).join('')}</ul>` : '<p class="muted">None yet.</p>'}
         <strong>Recent commands</strong>
         ${v.runs.length ? `<ul>${v.runs.map((r) => `<li>${esc(when(r.at))}: <code>${esc(r.line)}</code> <span class="muted">${r.why ? "didn't start" : r.killed ? esc(r.killed) : `exit ${r.code}`}</span></li>`).join('')}</ul>` : '<p class="muted">None yet.</p>'}
         <p class="muted">Every action is also in the logbook (inn\\logbook.md).</p></div>
+      <h4 class="ssub">Checks</h4>
+      ${sandboxRow(v.selfTools)}
       <div class="hands-selftest"><strong>Self-test</strong> <span class="muted">Checks that Recycle Bin and Undo, tidying, running a program and Stop work on this replicant matrix. Uses a throwaway folder of dummy files, which is removed afterwards. Nothing of yours is touched, and no Hand needs to be on.</span>
         <div class="row"><button type="button" data-hselftest>Run the self-test</button></div>
         ${selftest ? `<ul class="selftest">${selftest.results.map((r) => `<li>${r.ok ? '✅' : '❌'} <strong>${esc(r.name)}</strong>: ${esc(r.says)}</li>`).join('')}</ul><p class="muted">${selftest.passed} of ${selftest.total} passed.${selftest.cleaned ? ' The throwaway folder is gone.' : ` Couldn't remove ${esc(selftest.folder)}.`}</p>` : ''}</div>
@@ -380,6 +397,16 @@ export async function mountHandsSettings(box) {
       if ('hfreeyes' in b.dataset) return await set({ free: true }, 'On. Bob works without asking now. The hard limits still apply, and ✋ Hands on the chat page stops him.');
       if ('hfreeno' in b.dataset) { b.closest('.free-confirm')?.remove(); return say('Left off. Bob still asks before every action.'); }
       if ('hstopall' in b.dataset) { const r = await post('/api/hands/stop-all'); v = r; draw(); say(`Stopped ${r.stopped} thing${r.stopped === 1 ? '' : 's'}. All Hands are off.`); showStopAll(false); return; }
+      if ('hrobrowse' in b.dataset) { const r = await post('/api/pick-folder', {}); const inp = box.querySelector('[data-hnewro]'); if (r.folder && inp) inp.value = r.folder; return; }
+      if ('hroadd' in b.dataset) {
+        const f = box.querySelector('[data-hnewro]').value.trim();
+        if (!f) return;
+        const before = (v.settings.readOnlyFolders || []).length;
+        await set({ readOnlyFolders: [...(v.settings.readOnlyFolders || []), f] });
+        say((v.settings.readOnlyFolders || []).length > before ? 'Added. Bob can read it but never change it.' : 'That isn\'t a folder that exists (like C:\\Users\\you\\Projects\\app).');
+        return;
+      }
+      if (b.dataset.hrodel) { await set({ readOnlyFolders: (v.settings.readOnlyFolders || []).filter((f) => f !== b.dataset.hrodel) }, 'Removed. The usual Hands rules apply to it again.'); return; }
       if ('haddfolder' in b.dataset) {
         const f = box.querySelector('[data-hnewfolder]').value.trim();
         if (!f) return;

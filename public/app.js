@@ -1039,7 +1039,7 @@ async function askRestart(st) {
   const el = add('suggest', `<span>The new Bob (${esc(st.version || 'update')}) is ready.${busyWith ? ` I'm working on ${esc(busyWith)}; ${esc(after)}` : ''}</span>
     <button type="button" data-r="now">${busyWith ? 'Restart anyway' : 'Restart Bob now'}</button>${busyWith ? '<button type="button" data-r="done">Wait until I\'m done</button>' : ''}<button type="button" class="link" data-r="later">Later</button>`);
   for (const b of el.querySelectorAll('button')) b.onclick = async () => {
-    if (b.dataset.r === 'later') { el.remove(); note(st.mode === 'github' ? 'OK. Press "Restart Bob now" whenever you like: Settings, This replicant matrix and updates, Check for updates.' : 'OK. The new Bob takes over the next time Bob starts, or press Restart in the update window.'); return; }
+    if (b.dataset.r === 'later') { el.remove(); note(st.mode === 'github' ? 'OK. Press "Restart Bob now" whenever you like: it\'s on the top line of Settings, This replicant matrix and updates.' : 'OK. The new Bob takes over the next time Bob starts, or press Restart in the update window.'); return; }
     const r = await post('/api/update/restart', { when: b.dataset.r });
     el.remove();
     note(r.ok ? (b.dataset.r === 'done' ? 'I\'ll restart as soon as I\'ve finished.' : 'Restarting...') : (r.data.error || 'The update window didn\'t answer.'), r.ok ? '' : 'error');

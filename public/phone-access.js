@@ -35,7 +35,7 @@ export async function mountPhoneAccess(box) {
       <div class="row"><strong>Address</strong> <span class="muted">Type this into your phone or your other Bob.</span> ${hosts.length ? hosts.map((h) => `<code>${esc(h)}</code>`).join(' or ') : '<span class="muted">No Tailscale address found on this replicant matrix. Install Tailscale and sign in, then check again.</span>'}
         <button type="button" data-phone-find>Check again</button></div>
       <div class="row"><strong>Passcode</strong> <span class="muted">${shown ? `<code>${esc(shown)}</code> Type it into your phone or other Bob now: it isn't shown again.` : v.passcodeSet ? 'set (it\'s only shown once, when you make it).' : 'Not set yet. Turning on Let my other replicant matrices in makes one for you.'}</span>
-        <button type="button" data-phone-newcode>${v.passcodeSet ? 'Make a new passcode' : 'Make a passcode'}</button></div>
+        <button type="button" data-phone-newcode>Make a new passcode</button></div>
       ${v.enabled ? firewallHtml(v.firewall, v.port) : ''}
       ${msg ? `<p class="muted" role="status">${esc(msg)}</p>` : ''}
       <details class="more"><summary>More</summary><p class="muted">On the phone: install Tailscale and sign in with the same account, open Bob for Android, Menu, Bobs on your network, and add the Address above. Then type the passcode and tap Log in. Making a new passcode signs every phone out. Turning this off closes the door straight away.</p></details>`;
