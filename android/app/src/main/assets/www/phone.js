@@ -1061,7 +1061,7 @@ ${chatOut}
       el('p', { class: 'help-line', text: ADV.armour[advYou.armour][1] }),
       el('div', { class: 'btns' }, el('button', { text: '🎲 Roll one for me', onclick: () => { advYou.name = pickOne(ADV.heroes); advYou.cls = pickOne(Object.keys(ADV.classes)); advYou.trait = pickOne(ADV.traits); advDraw(); } })),
       el('h3', { text: 'Who plays' }),
-      el('p', { class: 'help-line', text: 'Tick the Bobs at the table. A Bob on your Bob-Net plays himself over there; a copy of your other Bob is played by the game master brain. Each gets their own plot armour.' }),
+      el('p', { class: 'help-line', text: 'Tick the Bobs at the table. A Bob on your Bob-Net plays himself over there; a copy of your other Bob is played by the game master brain. What goes to him: the scene so far and his character\'s sheet, over Tailscale to your own Bob only; nothing else from your other replicant matrix. Each gets their own plot armour.' }),
       adv.players === null ? el('p', { class: 'dim', text: 'Looking for your other Bobs…' }) : null,
       (adv.players || []).map((p) => {
         const k = p.address || p.name, st = advParty.get(k);
@@ -1079,7 +1079,7 @@ ${chatOut}
         el('p', { class: 'help-line', text: `${s.setting} · ${s.scenes} scene${s.scenes === 1 ? '' : 's'} · ${(s.party || []).join(', ')}${s.status === 'over' ? ' · ended' : ''}` }),
         el('div', { class: 'btns' },
           el('button', { class: 'main', text: 'Continue', disabled: Boolean(v?.refusal), onclick: () => advCall('/api/adventure/continue', { id: s.id }) }),
-          el('button', { text: 'Delete', onclick: (e) => { const t = e.currentTarget; if (!t.dataset.sure) { t.dataset.sure = '1'; t.textContent = 'Sure? Tap again'; return; } advCall('/api/adventure/delete', { id: s.id }); } })))));
+          el('button', { text: 'Delete', onclick: (e) => { const t = e.currentTarget; if (!t.dataset.sure) { t.dataset.sure = '1'; t.textContent = 'Delete this campaign? Tap again to delete it.'; return; } advCall('/api/adventure/delete', { id: s.id }); } })))));
   }
   async function advStartGame(e) {
     const bobsIn = (adv.players || []).filter((p) => advParty.get(p.address || p.name)?.ticked && p.ok !== false)
@@ -1097,7 +1097,7 @@ ${chatOut}
       el('div', { class: 'btns' },
         g.status === 'playing' ? el('button', { text: '⏸ Pause', onclick: () => advCall('/api/adventure/pause', {}) }) : g.status === 'paused' ? el('button', { class: 'main', text: '▶ Resume', onclick: () => advCall('/api/adventure/resume', {}) }) : null,
         el('button', { text: '📖 Journal', 'aria-pressed': String(adv.journal), onclick: () => { adv.journal = !adv.journal; advDraw(); } }),
-        el('button', { text: g.status === 'over' ? 'Close' : '🏁 End game', onclick: async (e) => { const t = e.currentTarget; if (g.status !== 'over' && !t.dataset.sure) { t.dataset.sure = '1'; t.textContent = 'Sure? It stays under Continue'; return; } await advCall('/api/adventure/end', { keep: true }); adv.players = null; advLoad(); } })));
+        el('button', { text: g.status === 'over' ? 'Close' : '🏁 End game', onclick: async (e) => { const t = e.currentTarget; if (g.status !== 'over' && !t.dataset.sure) { t.dataset.sure = '1'; t.textContent = 'End this game? It stays under Continue. Tap again to end it.'; return; } await advCall('/api/adventure/end', { keep: true }); adv.players = null; advLoad(); } })));
     const journal = adv.journal ? el('div', { class: 'box' }, el('strong', { text: 'The story so far' }), el('p', { text: g.summary || 'Nothing written down yet; the game master sums things up every three scenes.' }),
       g.scenes.length ? el('p', { class: 'help-line', text: g.scenes.map((s) => `Scene ${s.n}: ${s.title}`).join(' · ') }) : null) : null;
     const party = el('div', { class: 'adv-party' }, g.party.map((c, i) => el('div', { class: `adv-member${i === g.turn && g.status === 'playing' ? ' turn' : ''}${c.out ? ' out' : ''}`, title: c.trait || '' },
