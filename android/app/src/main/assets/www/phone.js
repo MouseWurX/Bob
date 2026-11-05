@@ -30,6 +30,14 @@
   // ---------- The bridge to Android ----------
   const waiting = new Map();
   let seq = 0;
+  // The last things that went wrong on the phone (for Save a help bundle). Words only, never a passcode.
+  let errors = store.get('errors', []); // [{ at, where, text }]
+  function logError(where, text) {
+    errors.push({ at: new Date().toISOString(), where, text: String(text || '').slice(0, 300) });
+    errors = errors.slice(-50); store.set('errors', errors);
+  }
+  window.addEventListener('error', (e) => logError('page', e.message));
+  window.addEventListener('unhandledrejection', (e) => logError('page', e.reason?.message || e.reason));
   const phone = (op, args = {}) => new Promise((resolve, reject) => {
     if (!globalThis.BobPhone) return reject(new Error('no phone bridge'));
     const id = `c${++seq}`;
@@ -156,7 +164,7 @@
           }
           btn.replaceWith(el('span', { text: ` ✓ ${label} ` }));
           toast(`Saved on this phone: ${where}`);
-        } catch (e) { btn.disabled = false; toast(`Couldn't save it on this phone: ${e.message}`); }
+        } catch (e) { btn.disabled = false; logError('save', e.message); toast(`Couldn't save it on this phone: ${e.message}`); }
       } });
       row.append(btn);
     }
@@ -631,7 +639,7 @@
               pass.value = '';
               msg.textContent = { ok: "You're in.", wrong: "That's not the passcode.", busy: 'Too many tries. Wait a minute.', 'not-let-in': `${b.name} isn't letting other replicant matrices in yet. On your other replicant matrix: Settings, Show advanced settings, Bob-Net, Let my other replicant matrices in.` }[r] || `Couldn't log in (${r}). Check that Tailscale is on on both devices, then try again.`;
               if (r === 'ok') refreshBob(b.base);
-            } catch (e) { msg.textContent = `Can't reach ${b.name}: is your other replicant matrix on and Tailscale connected? (${e.message})`; }
+            } catch (e) { logError('bobs', e.message); msg.textContent = `Can't reach ${b.name}: is your other replicant matrix on and Tailscale connected? (${e.message})`; }
           } }) : el('button', { text: 'Check again', onclick: () => refreshBob(b.base) }),
           i > 0 ? el('button', { text: 'Make first choice', onclick: () => { bobs.splice(i, 1); bobs.unshift(b); store.set('bobs', bobs); drawBobs(); drawWho(); } }) : null,
           el('button', { text: 'Remove', onclick: (e) => {
@@ -851,7 +859,7 @@
       // No passcode yet: make it now, as part of turning this on (it's shown above, once).
       if (on && !lend.passcodeSet) { lendCode = await phone('lend.newPasscode'); lend.passcodeSet = true; }
       await phone('lend.on', { on });
-    } catch (err) { e.target.checked = false; toast(`Lend my brain: ${err.message}.`); }
+    } catch (err) { e.target.checked = false; logError('lend', err.message); toast(`Lend my brain: ${err.message}.`); }
     setTimeout(refreshLend, 800);
   });
   $('phone-on').addEventListener('change', (e) => { settings.phoneOn = e.target.checked; saveSettings(); drawWho(); });
@@ -877,6 +885,67 @@
   $('theme').addEventListener('change', (e) => { settings.theme = e.target.value; saveSettings(); applyTheme(); });
   $('resume').addEventListener('change', (e) => { settings.resume = e.target.checked; saveSettings(); });
   const applyTheme = () => document.documentElement.setAttribute('data-theme', settings.theme);
+
+  // ---------- Save a help bundle ----------
+  // From a Bob on your network: his zip (he scrubs it). Phone only: one HANDOFF.md written here, scrubbed here.
+  const scrub = (t) => String(t)
+    .replace(/\b100\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, '<tailscale address>')
+    .replace(/\b[\w.-]+\.ts\.net\b/g, '<tailscale address>')
+    .replace(settings.userName ? new RegExp(settings.userName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi') : /$^/, 'the owner');
+  function phoneHandoff(d) {
+    const stamp = new Date().toISOString();
+    const brain = phoneStatus.loaded ? `${phoneStatus.loaded} (loaded)` : Object.keys(phoneStatus.files || {}).length ? `${Object.keys(phoneStatus.files).join(', ')} (downloaded, not loaded)` : 'none downloaded';
+    const errs = errors.length ? errors.map((e) => `- ${e.at} [${e.where}] ${e.text}`).join('\n') : '- none recorded';
+    const chatOut = chats.slice(0, 3).map((c) => `## ${c.title || 'Chat'} (${new Date(c.at).toISOString()})\n` + c.msgs.slice(-40).map((m) => `**${m.who === 'you' ? 'owner' : 'Bob'}${m.by ? ` (${m.by})` : ''}:** ${String(m.text || '').slice(0, 2000)}`).join('\n\n')).join('\n\n') || '(no chats yet)';
+    return scrub(`# HANDOFF.md: Bob on Android, phone-only help bundle
+
+Read this first. I'm Bob, a free local AI helper: public code at https://github.com/MouseWurX/Bob (folder android/), version ${d.version || '?'}. This bundle was put together on the phone alone: no Bob on the owner's network was reachable, so there's no logbook from the owner's other replicant matrix here and no note from my brain. Assume the worst and start with the phone brain.
+
+## This replicant matrix (the phone)
+- ${d.maker || ''} ${d.model || ''}, Android ${d.android || '?'}
+- Bob for Android ${d.version || '?'}
+- Phone brain: ${brain}
+- Who answers: ${settings.mode}; phone brain on: ${settings.phoneOn ? 'yes' : 'no'}; Bobs added: ${bobs.length}
+- Written: ${stamp}
+
+## Where to start, agent
+1. Read the errors below; the newest is last.
+2. If the brain file wouldn't open or replies never come: android/app/src/main/java/ca/mousewurx/bob/Llama.kt and PhoneBrain.kt, then android/bob_llama.cpp.
+3. If a Bob on the network can't be reached: NetBob.kt (Tailscale-only, passcode cookie) and the Bob-Net page in phone.js.
+4. If Lend my brain misbehaves: LendServer.kt and LendService.kt.
+5. The page is android/app/src/main/assets/www (phone.js, index.html); tests in test/run-android-test.js.
+
+## What Bob himself thinks
+The phone brain did not write a note; assume the worst.
+
+## Errors (last 50)
+${errs}
+
+## Last chats (3, up to 40 messages each)
+${chatOut}
+`);
+  }
+  $('help-bundle').addEventListener('click', async () => {
+    const btn = $('help-bundle'), msg = $('bundle-msg');
+    btn.disabled = true;
+    try {
+      const b = liveBobs()[0];
+      if (b) {
+        msg.textContent = "Putting the bundle together... up to a minute if my brain adds its own note.";
+        const address = b.base, path = '/api/help-bundle', name = '', timeoutMs = 150000;
+        const where = await phone('media.save', { address, path, name, timeoutMs });
+        msg.textContent = `Saved ${where.split('/').pop()} in Downloads (${where}). Give it to whoever is helping, or open an issue at github.com/MouseWurX/Bob/issues.`;
+      } else {
+        msg.textContent = 'No Bob on your network is reachable, so this is the phone-only bundle: one HANDOFF.md.';
+        let d = {}; try { d = await phone('device'); } catch { /* tests */ }
+        const fname = `bob-help-bundle-${new Date().toISOString().slice(0, 16).replace(/[-T:]/g, '').replace(/^(\d{8})(\d{4})$/, '$1-$2')}.md`;
+        const mime = 'text/markdown', data = btoa(unescape(encodeURIComponent(phoneHandoff(d))));
+        const where = await phone('media.saveData', { name: fname, mime, data });
+        msg.textContent = `Saved ${fname} in Downloads (${where}). It's the phone-only bundle: no logbook from your other replicant matrix, no note from my brain. Give it to whoever is helping, or open an issue at github.com/MouseWurX/Bob/issues.`;
+      }
+    } catch (e) { logError('help-bundle', e.message); msg.textContent = `Couldn't save the bundle: ${e.message}`; }
+    btn.disabled = false;
+  });
 
   const EFFORTS = ['low', 'medium', 'high', 'extreme'];
   $('effort').addEventListener('click', () => { settings.effort = EFFORTS[(EFFORTS.indexOf(settings.effort) + 1) % EFFORTS.length]; saveSettings(); drawWho(); });

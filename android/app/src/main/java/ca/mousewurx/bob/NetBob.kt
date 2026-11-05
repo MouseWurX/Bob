@@ -141,13 +141,15 @@ class NetBob(context: Context) {
 
     /** A file from that Bob as bytes and its type (up to 200 MB), for saving it on this phone. */
     /** Streams a file from that Bob straight to [write] (nothing is held in memory): null when it's gone or over 200 MB. */
-    fun stream(base: String, path: String, write: (java.io.InputStream, String) -> Unit): Boolean {
-        val c = open(base, path, "GET", 60000)
+    fun stream(base: String, path: String, timeoutMs: Int = 60000, write: (java.io.InputStream, String, String) -> Unit): Boolean {
+        val c = open(base, path, "GET", timeoutMs)
         try {
             if (c.responseCode != 200) return false
             if (c.contentLengthLong > 200_000_000) return false
             val mime = (c.contentType ?: "application/octet-stream").substringBefore(';').trim()
-            c.inputStream.use { s -> write(Limited(s, 200_000_000), mime) }
+            // The name that Bob gave the file, when he gave one (Content-Disposition: attachment; filename="...").
+            val named = Regex("filename=\"?([^\";]+)").find(c.getHeaderField("Content-Disposition") ?: "")?.groupValues?.get(1)?.trim() ?: ""
+            c.inputStream.use { s -> write(Limited(s, 200_000_000), mime, named) }
             return true
         } finally { c.disconnect() }
     }

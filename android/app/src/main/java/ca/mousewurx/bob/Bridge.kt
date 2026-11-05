@@ -104,7 +104,9 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                     // ---- Save something Bob made on this phone (Pictures, Movies, Music or Download, in a Bob folder) ----
                     "media.save" -> {
                         var where = ""
-                        val ok = net.stream(base(o), o.getString("path")) { s, mime -> where = saveToPhone(o.getString("name"), mime) { out -> s.copyTo(out) } }
+                        val ok = net.stream(base(o), o.getString("path"), o.optInt("timeoutMs", 60000).coerceIn(5000, 180000)) { s, mime, named ->
+                            where = saveToPhone(o.optString("name").ifBlank { named }, mime) { out -> s.copyTo(out) }
+                        }
                         if (!ok) throw IllegalStateException("too big or gone")
                         answer(id, where)
                     }

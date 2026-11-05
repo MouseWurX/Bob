@@ -122,6 +122,13 @@ globalThis.BobHelp = {
       html: `<p>When a Bob on your network finishes a bigger job well, he may offer to keep the steps as a how-to, and the card shows up here too. Tap <strong>Save how-to</strong> (you can rename it first) or <strong>Not now</strong>. Next time you ask for something like it, he follows those steps. He only offers when <strong>Let Bob learn how-tos</strong> is on in his Settings. Changing or deleting how-tos is done on your other replicant matrix, in Settings, 📒 How-tos.</p>`
     },
     {
+      id: 'help-bundle', title: 'Save a help bundle',
+      html: `<p>When I'm not working right and neither of us can see why, Settings, <strong>Save a help bundle</strong> packs what a helper needs into one file in this phone's Downloads (folder Bob). The helper can be a person, or an AI agent such as Claude or ChatGPT: the first thing in it, HANDOFF.md, is written for an agent to read first. It says what I am, points at my public code (github.com/MouseWurX/Bob) and the exact version, and lists where to look and what to try, in order. You hand it over; I never send it anywhere myself.</p>
+<p>Two kinds, depending on who's home. With a Bob on your network reachable, I ask him for his zip: his logbook, every error, his last chats, his settings without their secrets, this replicant matrix's facts and, if his brain is loaded and idle, a short note on what he thinks is wrong. That takes up to a minute. With nobody home, the phone writes a smaller bundle on its own: one HANDOFF.md with this phone's facts, which phone brain is downloaded or loaded, the last 50 things that went wrong here, and my last three chats here (40 messages each). No note from my brain in that one; it tells the helper to assume the worst.</p>
+<p>Taken out before anything is written: your name, every passcode and key, and Tailscale addresses. Read the file yourself before you share it if you like; it's plain text. If something personal slipped through, that's a bug: please tell me at github.com/MouseWurX/Bob/issues.</p>
+<p>Where to take it: paste HANDOFF.md, or the whole file, to the agent that's helping you, or open an issue at github.com/MouseWurX/Bob/issues and attach it; say what you saw and what you expected.</p>`
+    },
+    {
       id: 'privacy', title: 'Privacy',
       html: `<p>Everything on the phone stays on the phone: chats, my memory file and the phone brain. Android's cloud backup is told to leave them out. I only talk to the Bobs you add (over Tailscale) and, when you say yes to a download, to huggingface.co for the phone brain. With <strong>Lend my brain</strong> on, your own Bobs send the chat so far and what they remember about you. The phone thinks a reply and keeps none of it. No tracking, no ads, nothing else.</p>`
     },
@@ -143,6 +150,8 @@ globalThis.BobHelp = {
 <dt>Effort</dt><dd>How hard a Bob on your network works on an answer: bigger brains and checking at higher levels.</dd>
 <dt>Pinned download</dt><dd>A download from one exact version of a file, checked against its fingerprint (checksum), so nobody can swap it.</dd>
 <dt>Free memory when idle</dt><dd>The phone brain unloads after a quiet spell, so the phone stays quick.</dd>
+<dt>Help bundle</dt><dd>One file from Save a help bundle: my logs, errors, last chats and this replicant matrix's facts, scrubbed, for whoever is helping you fix me.</dd>
+<dt>Handoff file (HANDOFF.md)</dt><dd>The first thing in a help bundle: a summary written for an AI agent or a person to read first, with my public code and version and where to look.</dd>
 <dt>OK card</dt><dd>A Bob on your network asking before he does something outside his own folder.</dd>
 </dl>`
     },
@@ -160,6 +169,7 @@ globalThis.BobHelp = {
 <tr><td>The download stopped</td><td>Tap Resume. It carries on where it stopped. If it says the checksum didn't match, the file was damaged on the way and was deleted: download it again on Wi-Fi.</td></tr>
 <tr><td>Pictures don't show</td><td>Very big files stay on your other replicant matrix; they're in Made by Bob there.</td></tr>
 <tr><td>Can the phone brain see pictures?</td><td>Not yet on the phone. Send them to a Bob on your network for now.</td></tr>
+<tr><td>How do I get help with my Bob?</td><td>First try the rows above, then ask me in the chat. If I'm the one not working, Settings, Save a help bundle: one file with my logs, errors, last chats and this replicant matrix's facts, with your name, passcodes, keys and Tailscale addresses taken out, written for a helper (a person or an AI agent) to read first. Paste it to the agent you use, or open an issue at github.com/MouseWurX/Bob/issues with it attached and a line about what you saw. Bob is free software made by volunteers, so an issue is a request, not a ticket; the bundle makes it one that can be answered. See Save a help bundle.</td></tr>
 <tr><td>Can I use the phone away from home?</td><td>Yes, as long as your other replicant matrix is on and Tailscale is on at both ends. Without that, the phone brain can still chat.</td></tr>
 </table>`
     }
