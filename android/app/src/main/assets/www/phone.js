@@ -1214,7 +1214,8 @@ ${chatOut}
       gam.msg ? el('p', { class: 'note bad', role: 'alert', text: gam.msg }) : null,
       played.length ? el('h3', { text: 'Scoreboard' }) : null,
       played.length ? el('table', { class: 'scores' }, el('tr', {}, ['Game', 'Played', 'You won', 'I won', 'Shared', 'Best run'].map((h) => el('th', { text: h }))),
-        played.map((k) => { const s = scores[k]; return el('tr', {}, el('td', { text: `${info[k]?.icon || ''} ${info[k]?.name || k}` }), el('td', { text: String(s.played) }), el('td', { text: String(s.won) }), el('td', { text: String(s.lost) }), el('td', { text: String(s.drawn) }), el('td', { text: String(s.best) })); })) : null
+        played.map((k) => { const s = scores[k]; return el('tr', {}, el('td', { text: `${info[k]?.icon || ''} ${info[k]?.name || k}` }), el('td', { text: String(s.played) }), el('td', { text: String(s.won) }), el('td', { text: String(s.lost) }), el('td', { text: String(s.drawn) }), el('td', { text: String(s.best) })); })) : null,
+      played.length ? el('p', { class: 'help-line', text: 'Best run: the fewest guesses, questions or steps to a win, and the longest story.' }) : null
     ];
   }
   // ---- a game ----
@@ -1241,7 +1242,7 @@ ${chatOut}
     const tag = over ? (g.won === 'you' ? '🏆 Your point.' : g.won === 'bob' ? 'My point.' : g.won === 'both' ? 'A shared one.' : 'Unfinished.') : '';
     const top = el('div', { class: 'box' }, el('div', { class: 'title' }, el('span', { text: g.icon || '' }), el('span', { text: g.name || g.kind }), tag ? el('span', { class: 'badge', text: tag }) : null),
       el('div', { class: 'btns' }, over ? el('button', { class: 'main', text: 'Back to the games', onclick: () => gamCall('/api/games/close', {}) })
-        : el('button', { text: '🏁 Stop', onclick: (e) => { const t = e.currentTarget; if (!t.dataset.sure) { t.dataset.sure = '1'; t.textContent = 'Stop this game? It counts as unfinished. Tap again.'; return; } gamCall('/api/games/end', {}); } })));
+        : el('button', { text: '🏁 Stop', onclick: (e) => { const t = e.currentTarget; if (!t.dataset.sure) { t.dataset.sure = '1'; t.textContent = 'Stop this game? It counts as unfinished. Tap again to stop.'; return; } gamCall('/api/games/end', {}); } })));
     const busy = v.busy ? el('p', { class: 'note', text: 'Bob is thinking…' }) : null;
     const msg = gam.msg ? el('p', { class: 'note bad', role: 'alert', text: gam.msg }) : null;
     const controls = over ? null : el('div', { class: 'card' }, ...({ twenty: gamTwenty, hangman: gamHangman, ladder: gamLadder, letters: gamLetters, story: gamStory }[g.kind] || (() => []))(g).flat().filter(Boolean));
