@@ -164,3 +164,22 @@ label.field { display: block; margin: 10px 0 4px; font-weight: 600; }
 .adv-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 .adv-card { min-height: 56px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 8px 12px; text-align: left; line-height: 1.2; }
 .adv-card .adv-ico { font-size: 18px; } .adv-card.other { grid-column: 1 / -1; }
+
+/* 🧩 Games: the board from your other Bob */
+.scores { border-collapse: collapse; width: 100%; font-size: 14px; }
+.scores td, .scores th { border-top: 1px solid var(--line); padding: 6px 4px; text-align: left; }
+.masked { font: 700 28px/1.2 'Plex', monospace; text-align: center; letter-spacing: 2px; margin: 4px 0 8px; }
+.keys { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.keyrow { display: flex; gap: 4px; justify-content: center; }
+.key { min-height: 40px; min-width: 30px; padding: 0 4px; font-weight: 700; flex: 1; max-width: 38px; }
+.key.tried { opacity: .35; } .key.hit { background: var(--good); color: #122; border-color: var(--good); } .key.near { background: var(--warn); color: #221; border-color: var(--warn); }
+.rungs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
+.rung { font-family: 'Plex', monospace; font-weight: 700; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.rung.last { border-color: var(--accent); color: var(--accent); } .rung.goal { border-style: dashed; margin-left: auto; font-weight: 400; }
+.board { display: flex; flex-direction: column; gap: 4px; align-items: center; margin-bottom: 8px; }
+.tiles { display: flex; gap: 4px; }
+.tile { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; font: 700 20px/1 system-ui, sans-serif; border: 1px solid var(--line); border-radius: 6px; }
+.tile.g { background: var(--good); color: #122; border-color: var(--good); } .tile.y { background: var(--warn); color: #221; border-color: var(--warn); } .tile.b { background: var(--raise); color: var(--dim); }
+.tile.hint { border-style: dashed; color: var(--dim); }
+.chip.die { display: inline-flex; align-items: center; min-height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; }
+.chip.die.in { text-decoration: line-through; color: var(--dim); }

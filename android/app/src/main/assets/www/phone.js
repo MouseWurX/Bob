@@ -427,6 +427,7 @@
 
   function onNetEvent(base, ev) {
     if (ev.type === 'adventure') return onAdvEvent(base, ev); // 🎲 the table on your other Bob
+    if (ev.type === 'games') return onGamEvent(base, ev); // 🧩 a game on your other Bob
     if (!ev || typeof ev !== 'object') return;
     const mine = current && current.kind === 'net' && current.base === base && ev.sessionId === `phone-${current.chatId}`;
     if (ev.type === 'approval' && String(ev.sessionId || '').startsWith('phone-')) return approvalCard(base, ev);
@@ -591,7 +592,7 @@
     document.querySelectorAll('.panel').forEach((p) => p.classList.add('hidden'));
     if (id === 'new') { newChat(); return; }
     $(id).classList.remove('hidden');
-    ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, adventure: drawAdventure, memory: drawMemory, settings: drawSettings, help: drawHelp }[id] || (() => {}))();
+    ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, adventure: drawAdventure, games: drawGames, memory: drawMemory, settings: drawSettings, help: drawHelp }[id] || (() => {}))();
     if (id === 'bobs') watchLend();
   }
   document.querySelectorAll('.panel .back').forEach((b) => b.addEventListener('click', () => b.closest('.panel').classList.add('hidden')));
@@ -1136,6 +1137,166 @@ ${chatOut}
         el('span', { class: 'adv-ico', text: ADV.icons[c] || '' }), el('span', { text: ADV.names[c] || c }), el('span', { class: 'dim small', text: `${ADV.stats[c] || ''}${g.second?.[c] ? ' ›' : ''}` })))));
   }
   async function advGo(flair) { const p = adv.picked; adv.picked = { ...p, done: true }; await advCall('/api/adventure/act', { card: p.card, pick: p.pick || '', flair: String(flair || '').slice(0, 400) }); }
+
+  // ---------- 🧩 Games: small games your other Bob plays with you (the app there runs the game; the phone draws the board) ----------
+  // The phone brain is never used for a game. Nothing starts until you press ▶ Start.
+  const GAMES = {
+    order: ['twenty', 'hangman', 'ladder', 'letters', 'story'],
+    shelves: { any: 'Any shelf', animals: 'Animals', food: 'Food and drink', house: 'Around the house', outside: 'Out of doors', jobs: 'Jobs people do', moves: 'Things that move' },
+    rows: ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM']
+  };
+  const gam = { v: null, msg: '', live: '', base: null, timer: null, last: '', draft: '', opts: { role: 'guess', shelf: 'any', together: false, bobStarts: false } };
+  const gamOpen = () => !$('games').classList.contains('hidden');
+  function drawGames() {
+    const body = $('games-body'), b = advBob();
+    gam.base = b ? b.base : null; gam.last = '';
+    body.textContent = '';
+    if (!b) { body.append(el('p', { class: 'help-line', text: "No Bob on your Bob-Net is reachable, and the games live on your other replicant matrix: get him on Tailscale and come back. The phone brain doesn't play these." })); return; }
+    body.append(el('p', { class: 'dim', text: 'Getting the games down…' }));
+    gamLoad();
+  }
+  async function gamLoad() {
+    try { gam.v = await advApi('/api/games'); gam.last = JSON.stringify(gam.v); gam.msg = ''; } catch (e) { gam.msg = e.message; }
+    gamDraw();
+    clearTimeout(gam.timer); gam.timer = setTimeout(gamTick, gam.v?.busy ? 2000 : 5000);
+  }
+  async function gamTick() {
+    if (!gamOpen()) return;
+    try {
+      const v = await advApi('/api/games'); const key = JSON.stringify(v);
+      if (key !== gam.last) { gam.last = key; if (v.game?.id !== gam.v?.game?.id) gam.draft = ''; gam.v = v; gam.live = ''; gamDraw(); }
+    } catch (e) { if (!gam.v) { gam.msg = e.message; gamDraw(); } }
+    clearTimeout(gam.timer); gam.timer = setTimeout(gamTick, gam.v?.busy ? 2000 : 5000);
+  }
+  // A refused move comes back as 409 with a plain line; nothing is lost and the box keeps your words.
+  async function gamCall(path, data) {
+    try { const out = await advApi(path, data); if (out && 'game' in out) { gam.v = { ...gam.v, ...out }; gam.last = JSON.stringify(gam.v); } gam.msg = ''; gam.draft = ''; gam.live = ''; }
+    catch (e) { gam.msg = e.message; }
+    gamDraw();
+  }
+  const gamAct = (data) => gamCall('/api/games/act', data);
+  function onGamEvent(base, ev) {
+    if (!gamOpen() || base !== gam.base) return;
+    if (ev.ev === 'state') { const { type, ev: kind, ...rest } = ev; if (rest.game?.id !== gam.v?.game?.id) gam.draft = ''; gam.v = { ...gam.v, ...rest }; gam.last = JSON.stringify(rest); gam.live = ''; gamDraw(); return; }
+    if (ev.ev === 'token') { gam.live += ev.text || ''; const l = $('gam-live'); if (l) { l.classList.remove('hidden'); l.textContent = ''; l.append(el('span', { class: 'adv-who', text: 'Bob' }), el('p', { text: gam.live })); l.scrollIntoView({ block: 'end' }); } return; }
+    if (ev.ev === 'announce') { const l = $('gam-live'); if (l) { l.classList.remove('hidden'); l.textContent = ''; l.append(el('p', { class: 'note', text: ev.text || '' })); } }
+  }
+  function gamDraw() {
+    if (!gamOpen()) return;
+    const body = $('games-body'); body.textContent = '';
+    const v = gam.v;
+    if (!v) { body.append(el('p', { class: 'note bad', role: 'alert', text: gam.msg || 'Nothing yet.' })); return; }
+    body.append(...(v.game ? gamBoard(v.game) : gamShelf()).flat().filter(Boolean));
+    const log = $('gam-log'); if (log) log.scrollTop = log.scrollHeight;
+    if (gam.live) { const l = $('gam-live'); if (l) { l.classList.remove('hidden'); l.append(el('span', { class: 'adv-who', text: 'Bob' }), el('p', { text: gam.live })); } }
+  }
+  // ---- the shelf ----
+  function gamShelf() {
+    const v = gam.v, o = gam.opts, info = v.games || {};
+    const chips = (pairs, cur, label, onpick) => el('div', { class: 'chips', role: 'radiogroup', 'aria-label': label }, pairs.map(([id, n]) => el('button', { class: `chip${String(cur) === String(id) ? ' on' : ''}`, role: 'radio', 'aria-checked': String(String(cur) === String(id)), text: n, onclick: () => onpick(id) })));
+    const row = (kind, options) => {
+      const g = info[kind] || {};
+      return el('div', { class: 'box' }, el('div', { class: 'title' }, el('span', { text: g.icon || '' }), el('span', { text: g.name || kind })),
+        el('p', { class: 'help-line', text: g.what || '' }), options,
+        el('div', { class: 'btns' }, el('button', { class: 'main', text: '▶ Start', disabled: Boolean(v.refusal), onclick: () => gamCall('/api/games/start', { kind, role: o.role, shelf: o.shelf, together: o.together, bobStarts: o.bobStarts }) })));
+    };
+    const shelfSel = el('select', { 'aria-label': 'Shelf', onchange: (e) => { o.shelf = e.target.value; } });
+    for (const [id, n] of Object.entries(GAMES.shelves)) shelfSel.append(el('option', { value: id, selected: o.shelf === id, text: n }));
+    const scores = v.scores || {}, played = GAMES.order.filter((k) => scores[k]?.played);
+    return [
+      v.refusal ? el('p', { class: 'note bad', text: v.refusal }) : null,
+      el('p', { class: 'help-line', text: "Pick a game. The app on your other replicant matrix runs it: it picks the secret word, checks every guess, counts the lives and keeps the score. His quick brain only talks. Nothing loads until you press Start, and the brain is let go when the game ends. The phone brain doesn't play these." }),
+      row('twenty', chips([['guess', 'I think, you guess'], ['think', 'You think, I guess']], o.role, 'Who guesses', (id) => { o.role = id; gamDraw(); })),
+      row('hangman', el('div', {}, el('label', { class: 'field', text: 'Shelf' }), shelfSel)),
+      row('ladder', chips([[false, 'You climb, I cheer'], [true, 'Climb together, turn about']], o.together, 'How to climb', (id) => { o.together = id; gamDraw(); })),
+      row('letters', null),
+      row('story', chips([[true, 'I open'], [false, 'You open']], o.bobStarts, 'Who opens', (id) => { o.bobStarts = id; gamDraw(); })),
+      gam.msg ? el('p', { class: 'note bad', role: 'alert', text: gam.msg }) : null,
+      played.length ? el('h3', { text: 'Scoreboard' }) : null,
+      played.length ? el('table', { class: 'scores' }, el('tr', {}, ['Game', 'Played', 'You won', 'I won', 'Shared', 'Best run'].map((h) => el('th', { text: h }))),
+        played.map((k) => { const s = scores[k]; return el('tr', {}, el('td', { text: `${info[k]?.icon || ''} ${info[k]?.name || k}` }), el('td', { text: String(s.played) }), el('td', { text: String(s.won) }), el('td', { text: String(s.lost) }), el('td', { text: String(s.drawn) }), el('td', { text: String(s.best) })); })) : null
+    ];
+  }
+  // ---- a game ----
+  function gamLog(g) {
+    return el('div', { class: 'adv-log', id: 'gam-log' }, (g.log || []).map((l) => {
+      if (l.who === 'app') return el('p', { class: 'note', text: l.text || '' });
+      return el('div', { class: `adv-turn${l.who === 'you' ? ' you' : ''}` },
+        el('span', { class: 'adv-who' }, el('span', { text: l.who === 'you' ? 'You' : 'Bob' }), l.hint ? el('span', { class: 'badge quiet', text: 'hint' }) : null, l.guess ? el('span', { class: 'badge quiet', text: 'a guess' }) : null),
+        el('p', { text: l.text || '' }));
+    }), el('div', { class: 'adv-live hidden', id: 'gam-live' }));
+  }
+  function gamBox(placeholder, label, onsend, extra = []) {
+    const box = el('input', { type: 'text', placeholder, 'aria-label': label, value: gam.draft, autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false', oninput: (e) => { gam.draft = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); onsend(box.value); } } });
+    return [box, el('div', { class: 'btns' }, el('button', { class: 'main', text: label, onclick: () => onsend(box.value) }), ...extra)];
+  }
+  function gamKeys(tried, hits, onkey, marks = {}) {
+    return el('div', { class: 'keys' }, GAMES.rows.map((r) => el('div', { class: 'keyrow' }, [...r].map((k) => {
+      const m = marks[k.toLowerCase()];
+      return el('button', { class: `key${hits.has(k) || m === 'g' ? ' hit' : m === 'y' ? ' near' : tried.has(k) || m === 'b' ? ' tried' : ''}`, text: k, disabled: tried.has(k), onclick: () => onkey(k) });
+    }))));
+  }
+  function gamBoard(g) {
+    const v = gam.v, over = g.status === 'over';
+    const tag = over ? (g.won === 'you' ? '🏆 Your point.' : g.won === 'bob' ? 'My point.' : g.won === 'both' ? 'A shared one.' : 'Unfinished.') : '';
+    const top = el('div', { class: 'box' }, el('div', { class: 'title' }, el('span', { text: g.icon || '' }), el('span', { text: g.name || g.kind }), tag ? el('span', { class: 'badge', text: tag }) : null),
+      el('div', { class: 'btns' }, over ? el('button', { class: 'main', text: 'Back to the games', onclick: () => gamCall('/api/games/close', {}) })
+        : el('button', { text: '🏁 Stop', onclick: (e) => { const t = e.currentTarget; if (!t.dataset.sure) { t.dataset.sure = '1'; t.textContent = 'Stop this game? It counts as unfinished. Tap again.'; return; } gamCall('/api/games/end', {}); } })));
+    const busy = v.busy ? el('p', { class: 'note', text: 'Bob is thinking…' }) : null;
+    const msg = gam.msg ? el('p', { class: 'note bad', role: 'alert', text: gam.msg }) : null;
+    const controls = over ? null : el('div', { class: 'card' }, ...({ twenty: gamTwenty, hangman: gamHangman, ladder: gamLadder, letters: gamLetters, story: gamStory }[g.kind] || (() => []))(g).flat().filter(Boolean));
+    return [top, gamLog(g), busy, msg, controls];
+  }
+  function gamTwenty(g) {
+    const n = Math.min((g.asked || 0) + 1, g.max || 20);
+    if (g.role === 'guess') {
+      return [el('div', { class: 'q' }, el('strong', { text: `Question ${n} of ${g.max || 20}.` }), el('div', { class: 'help-line', text: 'Ask anything with a yes-or-no answer, or take a guess.' })),
+        gamBox('Is it bigger than a cat?', 'Ask', (t) => { if (t.trim() && !gam.v.busy) gamAct({ ask: t.trim() }); }, [el('button', { text: "That's my guess", disabled: Boolean(gam.v.busy), onclick: () => { const t = gam.draft.trim(); if (t) gamAct({ guess: t }); } })])];
+    }
+    if (g.guessing) {
+      return [el('div', { class: 'q' }, el('strong', { text: `Is it ${g.pendingGuess || 'that'}?` })),
+        el('div', { class: 'row' }, el('button', { class: 'main', text: 'Right!', onclick: () => gamAct({ right: true }) }), el('button', { text: 'Wrong', onclick: () => gamAct({ right: false }) }))];
+    }
+    return [el('div', { class: 'q' }, el('strong', { text: `Question ${g.asked || 0} of ${g.max || 20}.` }), el('div', { class: 'help-line', text: 'Your answer.' })),
+      el('div', { class: 'row' }, [['yes', 'Yes'], ['no', 'No'], ['sortof', 'Sort of'], ['dunno', "I don't know"]].map(([id, t]) => el('button', { text: t, disabled: Boolean(gam.v.busy), onclick: () => gamAct({ answer: id }) })))];
+  }
+  function gamHangman(g) {
+    const masked = String(g.masked || ''), tried = new Set((g.guessed || []).map((x) => String(x).toUpperCase())), hits = new Set([...masked.toUpperCase()].filter((c) => /[A-Z]/.test(c)));
+    const lives = g.lives || 7, wrong = g.wrong || 0;
+    return [el('p', { class: 'masked', text: masked.split('').join(' ') }),
+      el('p', { class: 'help-line', text: `Shelf: ${GAMES.shelves[g.shelf] || g.shelf || 'any'} · ${'●'.repeat(Math.max(0, lives - wrong))}${'○'.repeat(Math.min(lives, wrong))}` }),
+      gamKeys(tried, hits, (k) => gamAct({ letter: k.toLowerCase() })),
+      gamBox('Or guess the whole word…', 'Guess the word', (t) => { if (t.trim()) gamAct({ word: t.trim() }); }, [el('button', { text: 'Hint (costs a life)', onclick: () => gamAct({ hint: true }) })])];
+  }
+  function gamLadder(g) {
+    const rungs = (g.steps || []).length ? g.steps : [g.start].filter(Boolean), sofar = Math.max(0, rungs.length - 1);
+    const line = `${sofar} step${sofar === 1 ? '' : 's'} so far; shortest ${g.shortest || '?'}.${g.together ? ' Turn about: you, then me.' : ''}`;
+    const yourTurn = (!g.together || g.whose !== 'bob') && !gam.v.busy;
+    return [el('div', { class: 'rungs' }, rungs.map((w, i) => el('span', { class: `rung${i === rungs.length - 1 ? ' last' : ''}`, text: String(w).toUpperCase() })), el('span', { class: 'rung goal', text: `${String(g.end || '').toUpperCase()} goal` })),
+      el('p', { class: 'help-line', text: line }),
+      yourTurn ? gamBox('Next word…', 'Climb', (t) => { if (t.trim()) gamAct({ word: t.trim() }); }, [el('button', { text: 'Hint', onclick: () => gamAct({ hint: true }) }), el('button', { text: 'Back a rung', onclick: () => gamAct({ back: true }) })]) : el('p', { class: 'note', text: 'My rung.' })];
+  }
+  function gamLetters(g) {
+    const rows = [], best = {}, max = g.max || 6;
+    for (let i = 0; i < max; i++) {
+      const t = (g.guesses || [])[i];
+      if (t?.hint) rows.push(el('div', { class: 'tiles' }, Array.from({ length: 5 }, () => el('span', { class: 'tile hint', text: '?' }))));
+      else if (t?.word) rows.push(el('div', { class: 'tiles' }, [...String(t.word).toUpperCase()].slice(0, 5).map((c, j) => { const m = String(t.marks || '')[j] || 'b'; const k = c.toLowerCase(); if (m === 'g' || (m === 'y' && best[k] !== 'g') || !best[k]) best[k] = m; return el('span', { class: `tile ${m}`, text: c }); })));
+      else rows.push(el('div', { class: 'tiles' }, Array.from({ length: 5 }, () => el('span', { class: 'tile' }))));
+    }
+    const box = gamBox('Five letters…', 'Try', (t) => { if (t.trim()) gamAct({ word: t.trim() }); }, [el('button', { text: 'Hint (costs a try)', onclick: () => gamAct({ hint: true }) })]);
+    return [el('div', { class: 'board' }, rows), el('p', { class: 'help-line', text: 'Green: right spot. Yellow: in the word somewhere else. Grey: not in it.' }),
+      gamKeys(new Set(), new Set(), (k) => { const b = box[0]; if (b.value.length < 5) { b.value += k; gam.draft = b.value; } }, best), ...box];
+  }
+  function gamStory(g) {
+    const dice = el('div', { class: 'chips' }, (g.dice || []).map(([icon, word], i) => el('span', { class: `chip die${g.used?.[i] ? ' in' : ''}`, text: `${icon} ${word}${g.used?.[i] ? ' · in' : ''}` })));
+    const mine = g.whose === 'you' && !gam.v.busy;
+    const line = `${mine ? 'Your line.' : 'My line.'} Round ${Math.min((g.round || 0) + 1, g.max || 6)} of ${g.max || 6}. Work a die in when you can.`;
+    const box = el('textarea', { rows: 2, maxlength: 400, placeholder: 'And then…', 'aria-label': 'Your line', oninput: (e) => { gam.draft = e.target.value; } });
+    box.value = gam.draft;
+    return [dice, el('p', { class: 'help-line', text: line }), mine ? box : null,
+      el('div', { class: 'btns' }, mine ? el('button', { class: 'main', text: 'Add my line', onclick: () => { if (box.value.trim()) gamAct({ line: box.value.trim() }); } }) : null, el('button', { text: 'Wrap it up', onclick: () => gamAct({ end: true }) }))];
+  }
 
   // ---------- Help ----------
   function drawHelp() {
