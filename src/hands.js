@@ -9,6 +9,7 @@
 // - No administrator rights, no passwords, never secret files or read-only folders, never his own settings.
 // - Everything goes in the logbook; file jobs can be undone.
 import fs from 'node:fs';
+import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import os from 'node:os';
@@ -78,12 +79,12 @@ export function saveRecipe(cfg, { name, cmd, args = [], cwd }) {
   const all = loadRecipes(cfg).filter((r) => r.name.toLowerCase() !== name.toLowerCase());
   all.push({ name, cmd, args, cwd, saved: Date.now() });
   fs.mkdirSync(cfg.dataDir, { recursive: true });
-  fs.writeFileSync(recipesFile(cfg), JSON.stringify(all.slice(-50), null, 1));
+  writeJsonAtomic(recipesFile(cfg), all.slice(-50));
   return all;
 }
 export function removeRecipe(cfg, name) {
   const all = loadRecipes(cfg).filter((r) => r.name.toLowerCase() !== String(name).toLowerCase());
-  fs.writeFileSync(recipesFile(cfg), JSON.stringify(all, null, 1));
+  writeJsonAtomic(recipesFile(cfg), all);
   return all;
 }
 
@@ -92,7 +93,7 @@ const runsFile = (cfg) => path.join(cfg.dataDir, 'hands-runs.json');
 export function loadRuns(cfg) { try { const r = JSON.parse(fs.readFileSync(runsFile(cfg), 'utf8')); return Array.isArray(r) ? r : []; } catch { return []; } }
 function saveRun(cfg, r) {
   fs.mkdirSync(cfg.dataDir, { recursive: true });
-  fs.writeFileSync(runsFile(cfg), JSON.stringify([...loadRuns(cfg), r].slice(-50), null, 1));
+  writeJsonAtomic(runsFile(cfg), [...loadRuns(cfg), r].slice(-50));
 }
 
 // Runs an approved command: live output to the chat (emit), registered so Stop can reach it.

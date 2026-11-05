@@ -139,6 +139,18 @@ class NetBob(context: Context) {
         } finally { c.disconnect() }
     }
 
+    /** A file from that Bob as bytes and its type (up to 200 MB), for saving it on this phone. */
+    fun bytes(base: String, path: String): Pair<ByteArray, String>? {
+        val c = open(base, path, "GET", 60000)
+        try {
+            if (c.responseCode != 200) return null
+            if (c.contentLengthLong > 200_000_000) return null
+            val bytes = c.inputStream.use { s -> s.readNBytes(200_000_001) }
+            if (bytes.size > 200_000_000) return null
+            return bytes to (c.contentType ?: "application/octet-stream").substringBefore(';').trim()
+        } finally { c.disconnect() }
+    }
+
     /** Follows that Bob's live events (replies as they're written, OK cards, job progress) until stopped. */
     fun listen(base: String, stop: () -> Boolean, onEvent: (JSONObject) -> Unit, onState: (Boolean) -> Unit) {
         var wait = 1000L

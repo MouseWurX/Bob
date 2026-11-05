@@ -23,7 +23,7 @@ import {
   chatIds, chatInfo, chatFiles, wholeChat, readChat, readOlder, writeChat, writeOlder, readSummary, writeSummary,
   spoken, said, stampMessages, safeId
 } from './chats.js';
-import { parseJson } from './util.js';
+import { parseJson, writeJsonAtomic } from './util.js';
 
 const IDLE_MS = 10 * 60e3;       // quiet this long before any housekeeping
 const SCAN_EVERY = 6 * 3600e3;   // look for old things at most this often
@@ -85,7 +85,7 @@ export class Housekeeper {
     try { s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8')); } catch {}
     return { pins: { chats: [], pictures: [], ...(s.pins || {}) }, kept: s.kept || {}, lastScan: s.lastScan || 0, lastAsk: s.lastAsk || 0, lastRun: s.lastRun || 0 };
   }
-  saveState(s) { fs.mkdirSync(this.cfg.dataDir, { recursive: true }); fs.writeFileSync(this.stateFile, JSON.stringify(s, null, 1)); }
+  saveState(s) { writeJsonAtomic(this.stateFile, s); }
   log(text) { this.brain.log('housekeeping', text); }
 
   pin(kind, id, on) {
@@ -369,7 +369,7 @@ export class Housekeeper {
     } catch { /* no brain right now: keep the title and dates only */ }
     const list = this.summaries();
     list.unshift({ id, title: all.length ? chatTitleOf(all) : id, summary: summary || '(Bob had no brain loaded when this chat was tidied, so only its title and dates were kept.)', from: all[0]?.at || 0, to: all.at(-1)?.at || 0, removed: Date.now() });
-    fs.writeFileSync(this.summariesFile, JSON.stringify(list.slice(0, 2000)));
+    writeJsonAtomic(this.summariesFile, list.slice(0, 2000), 0);
     return summary;
   }
 

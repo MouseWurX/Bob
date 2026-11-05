@@ -2,6 +2,7 @@
 // Files live in inn\references, with a small index (refs.json). Pictures attached in chat land here too,
 // under "From chats", so Bob can find them again by name.
 import fs from 'node:fs';
+import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { imageInfo, imageInfoOf } from './imageinfo.js';
@@ -34,7 +35,7 @@ export class RefShelf {
     try { return JSON.parse(fs.readFileSync(this.index, 'utf8')); } catch { return []; }
   }
 
-  save(list) { fs.writeFileSync(this.index, JSON.stringify(list, null, 2)); }
+  save(list) { writeJsonAtomic(this.index, list, 2); }
 
   add(buf, { name, kind, notes } = {}) {
     if (!buf || !buf.length) throw new Error('That picture is empty.');

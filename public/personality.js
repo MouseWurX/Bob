@@ -153,7 +153,7 @@ export function bobTake(lookId) {
   return TAKES[id] || TAKES[id.split('-')[0]] || TAKES.sysop;
 }
 
-export function attributesHtml({ personality, look, lookText, lookComments = true, user, callMe = '', windowsName = '' }) {
+export function attributesHtml({ personality, look, lookText, lookComments = false, user, callMe = '', windowsName = '' }) {
   const p = cleanPersonality(personality);
   const preset = PRESETS.find((x) => DIALS.every((d) => (x.set[d.id] ?? 2) === p[d.id]));
   return `<details class="attributes" open><summary><h3>Attributes</h3></summary>

@@ -240,8 +240,7 @@ async function fetchAce(cfg, { pub, tick, signal }) {
   fs.writeFileSync(zip, buf);
   const tmp = path.join(workshopDir(cfg), 'ace-tmp');
   fs.rmSync(tmp, { recursive: true, force: true });
-  fs.mkdirSync(tmp, { recursive: true });
-  await run('tar', ['-xf', zip, '-C', tmp], { signal });
+  unzip(zip, tmp); // Bob's own unzip: GNU tar on Linux doesn't read zips (bsdtar on Windows and Mac does)
   const inner = fs.readdirSync(tmp).map((d) => path.join(tmp, d)).find((d) => fs.existsSync(path.join(d, 'pyproject.toml')));
   if (!inner) throw new Error('The ACE-Step 1.5 download had no project in it.');
   fs.renameSync(inner, aceDir(cfg));
@@ -384,7 +383,8 @@ async function makeMusic(cfg, job, { signal, onProgress }) {
       const item = list.find((x) => x && x.task_id === task_id);
       if (!item || item.status === 0) continue;
       if (item.status === 2) throw new Error(`The music engine couldn't make it: ${String(item.result || item.error || '').slice(0, 200)}`);
-      const res = typeof item.result === 'string' ? JSON.parse(item.result) : item.result;
+      let res = item.result;
+      if (typeof res === 'string') { try { res = JSON.parse(res); } catch { res = null; } }
       const first = Array.isArray(res) ? res[0] : res;
       if (!first?.file) { const found = newestSong(cfg, t0 - 5000); if (found) { fs.copyFileSync(found, job.out); onProgress?.(100, 100); return { file: job.out, name: path.basename(job.out) }; } throw Object.assign(new Error('The music engine said the song was finished but didn\'t hand over a file. Ask me again; if it keeps happening, restart Bob.'), { details: `query_result finished with no file: ${JSON.stringify(item).slice(0, 300)}` }); }
       const audioUrl = new URL(first.file, aceBase(cfg));

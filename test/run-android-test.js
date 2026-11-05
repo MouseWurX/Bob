@@ -176,6 +176,14 @@ check('photo: never goes to the phone brain', /if \(photo && !to\)/.test(js) && 
   check('families: the picker groups them under headers that open and close (remembered)', /el\('details', \{ class: 'fam'/.test(js) && /store\.set\('openFamilies'/.test(js));
 }
 
+// Save to this phone: every type is a button (the original too), and the file lands on the phone, not only on the PC.
+check('save: every type, original included, saves on this phone', /'Save to this phone as '/.test(js) && /f === have \? ' \(original\)'/.test(js) && /phone\('media\.save'/.test(js) && /phone\('media\.saveData'/.test(js) && /MediaStore\.Images\.Media\.EXTERNAL_CONTENT_URI to "Pictures\/Bob"/.test(bridge));
+check('save: no storage permission asked', !/WRITE_EXTERNAL_STORAGE|MANAGE_EXTERNAL_STORAGE/.test(fs.readFileSync(path.join(root, 'android/app/src/main/AndroidManifest.xml'), 'utf8')));
+
+// One Bob-Net page: your other Bobs, adding/pairing and Lend my brain together (not split with Phone brain).
+{ const net = (html.match(/<section[^>]*id="bobs"[\s\S]*?<\/section>/) || [''])[0], brainP = (html.match(/<section[^>]*id="brain"[\s\S]*?<\/section>/) || [''])[0];
+  check('bob-net: one page holds other Bobs, pairing and Lend my brain', /<h2>Bob-Net<\/h2>/.test(net) && /id="bob-list"/.test(net) && /id="pair-bob"/.test(net) && /id="lend-on"/.test(net) && /id="lend-box"/.test(net) && !/lend-/.test(brainP) && /data-go="bobs"><span class="ico">🌐<\/span>Bob-Net</.test(html) && /if \(id === 'bobs'\) watchLend\(\)/.test(js) && !/Bobs on your network/.test(html + js + fs.readFileSync(path.join(www, 'help.js'), 'utf8'))); }
+
 // The page's lock: no inline scripts or styles, no network from the page itself.
 check('page has a strict Content-Security-Policy', /script-src 'self'/.test(html) && /connect-src 'none'/.test(html) && !/<script>(?!<)/.test(html.replace(/<script src[^>]*><\/script>/g, '')) && !/ style="/.test(html));
 

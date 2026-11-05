@@ -5,6 +5,7 @@ import { cleanBrainCtx } from './model-ctx.js';
 import { cleanCheckins } from './checkin-settings.js';
 import { cleanHands } from './hands-settings.js';
 import fs from 'node:fs';
+import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -378,7 +379,7 @@ export function replaceSettings(cfg, patch) {
   let saved = {};
   try { saved = JSON.parse(fs.readFileSync(cfg.settingsFile, 'utf8')); } catch {}
   for (const [k, v] of Object.entries(safe)) { saved[k] = v; cfg[k] = v; }
-  fs.writeFileSync(cfg.settingsFile, JSON.stringify(saved, null, 2));
+  writeJsonAtomic(cfg.settingsFile, saved, 2);
   applyProjects(cfg);
   return saved;
 }
@@ -389,7 +390,7 @@ export function replaceSettings(cfg, patch) {
 export function saveRemote(cfg, remote) {
   const raw = JSON.parse(fs.readFileSync(cfg.configFile, 'utf8'));
   raw.remote = { ...(raw.remote || {}), ...remote };
-  fs.writeFileSync(cfg.configFile, JSON.stringify(raw, null, 2));
+  writeJsonAtomic(cfg.configFile, raw, 2);
   cfg.remote = raw.remote;
 }
 
@@ -398,14 +399,22 @@ export function saveSettings(cfg, patch) {
   let saved = {};
   try { saved = JSON.parse(fs.readFileSync(cfg.settingsFile, 'utf8')); } catch {}
   deepMerge(saved, safe);
-  fs.writeFileSync(cfg.settingsFile, JSON.stringify(saved, null, 2));
+  writeJsonAtomic(cfg.settingsFile, saved, 2);
   deepMerge(cfg, safe);
   return saved;
 }
 
 // Windows paths are case-insensitive; compare normalised forms.
+// A symlink or junction inside an allowed folder may point outside it, so both sides use the real path when
+// it exists (a file that is not there yet keeps its parent's real path).
+const real = (p) => {
+  try { return fs.realpathSync.native(p); } catch {}
+  const parent = path.dirname(p);
+  if (parent === p) return p;
+  return path.join(real(parent), path.basename(p));
+};
 const norm = (p) => {
-  const r = path.resolve(p);
+  const r = real(path.resolve(p));
   return process.platform === 'win32' ? r.toLowerCase() : r;
 };
 

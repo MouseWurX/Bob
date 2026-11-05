@@ -75,7 +75,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         scope.launch {
             try {
                 when (o.getString("op")) {
-                    // ---- Bobs on your network ----
+                    // ---- Bob-Net: other Bobs ----
                     "net.check" -> answer(id, JSONObject().put("base", NetBob.base(o.getString("address")) ?: JSONObject.NULL))
                     "net.login" -> answer(id, net.login(base(o), o.getString("code")))
                     "net.signedIn" -> answer(id, net.signedIn(base(o)))
@@ -101,6 +101,12 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                     "pair.with" -> answer(id, app.pair.pairWith(o.getString("address")))
                     "pair.answer" -> answer(id, app.pair.answer(o.getString("id"), o.getBoolean("yes")))
                     "pair.waiting" -> answer(id, JSONArray(app.pair.waiting() + app.pair.takeMissed()))
+                    // ---- Save something Bob made on this phone (Pictures, Movies, Music or Download, in a Bob folder) ----
+                    "media.save" -> {
+                        val got = net.bytes(base(o), o.getString("path")) ?: throw IllegalStateException("too big or gone")
+                        answer(id, saveToPhone(o.getString("name"), got.second, got.first))
+                    }
+                    "media.saveData" -> answer(id, saveToPhone(o.getString("name"), o.getString("mime"), Base64.decode(o.getString("data"), Base64.DEFAULT)))
                     "net.media" -> answer(id, net.media(base(o), o.getString("path")))
                     "net.listen" -> {
                         val b = base(o)
@@ -216,6 +222,32 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         val preview = "data:image/jpeg;base64," + Base64.encodeToString(jpeg(small, 75), Base64.NO_WRAP)
         small.recycle()
         return JSONObject().put("preview", preview).put("bytes", bytes.size)
+    }
+
+    // No storage permission needed: Android lets an app add its own files to the shared folders.
+    private fun saveToPhone(nameIn: String, mimeIn: String, bytes: ByteArray): String {
+        val name = nameIn.replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001f]"), "_").trim().take(120).ifEmpty { "bob-file" }
+        val ext = name.substringAfterLast('.', "").lowercase()
+        val mime = if (mimeIn.isBlank() || mimeIn == "application/octet-stream") android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream" else mimeIn
+        val (collection, folder) = when {
+            mime.startsWith("image/") -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI to "Pictures/Bob"
+            mime.startsWith("video/") -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI to "Movies/Bob"
+            mime.startsWith("audio/") -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI to "Music/Bob"
+            else -> MediaStore.Downloads.EXTERNAL_CONTENT_URI to "Download/Bob"
+        }
+        val values = android.content.ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.MIME_TYPE, mime)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val cr = activity.contentResolver
+        val uri = cr.insert(collection, values) ?: throw IllegalStateException("the phone wouldn't make the file")
+        try {
+            cr.openOutputStream(uri)?.use { it.write(bytes) } ?: throw IllegalStateException("the phone wouldn't open the file")
+            cr.update(uri, android.content.ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+        } catch (e: Exception) { cr.delete(uri, null, null); throw e }
+        return "$folder/$name"
     }
 
     fun onPermission(requestCode: Int, grants: IntArray) {
