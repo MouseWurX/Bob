@@ -167,6 +167,11 @@ globalThis.BobHelp = {
 <dt>Hearts</dt><dd>A character's health in an Adventure. A miss can cost one; at zero hearts you choose Go out in style or Wake up captured.</dd>
 <dt>Plot armour</dt><dd>How safe a character is from bad dice in an Adventure: None, Some, Lots or Legendary. Asked for every character at the start of every game.</dd>
 <dt>Action card</dt><dd>One of your choices on your turn in an Adventure (Attack, Talk, Magic, Use item and so on). Some open a second card with the details. Bobs don't get cards; they just say what they do.</dd>
+<dt>Twenty questions</dt><dd>One of us thinks of something; the other asks yes-or-no questions, twenty at most, then guesses.</dd>
+<dt>Shelf</dt><dd>A list of Hangman words on one subject (Animals, Food and drink, Around the house, Out of doors, Jobs people do, Things that move), or Any shelf.</dd>
+<dt>Word ladder</dt><dd>Climb from one four-letter word to another, changing one letter a step; every rung must be a real word.</dd>
+<dt>Five letters</dt><dd>Guess a five-letter word in six tries. Each try colours its letters: green right spot, yellow in the word elsewhere, grey not in it.</dd>
+<dt>Story dice</dt><dd>Six picture dice come up; we tell a story a line each until every die is in it. Always a shared point.</dd>
 <dt>Help bundle</dt><dd>One file from Save a help bundle: my logs, errors, last chats and this replicant matrix's facts, scrubbed, for whoever is helping you fix me.</dd>
 <dt>Handoff file (HANDOFF.md)</dt><dd>The first thing in a help bundle: a summary written for an AI agent or a person to read first, with my public code and version and where to look.</dd>
 <dt>OK card</dt><dd>A Bob on your network asking before he does something outside his own folder.</dd>
