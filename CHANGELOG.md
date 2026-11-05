@@ -4,6 +4,48 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.122
+
+The character screen: build Bob's look from parts, and give your Adventure hero a look of their own.
+
+- **🧍 Make your own look** (Style, under Bob's look; also **Change his look** under the doll on Equip Bob). A paper doll built from parts with a live preview that blinks as you go: Body (Man, Robot, Alien), Build (Slim, Regular, Broad), Hair style and Hair colour, Skin, Beard, Glasses, Outfit and Outfit colour, Armour (Leather, Chain mail, Plate, Robe), Weapon (Sword, Axe, Bow, Staff, Dagger, Spear, Hammer) and Shield (Round, Tall). **🎲 Surprise me**, **Start over**, **Wear this**. The result is a look like any other (it blinks, talks, glances and fits the tray icon), listed under **Your own design**, and Bob can describe it when asked what he looks like. Bob is a guy, so his own screen offers no dresses; the same parts dress anyone on the Adventure card.
+- **🎲 Adventure: your character's own look.** The start card shows **Looks like** with **🧍 Change the look**, which opens the same screen with every body on it (Woman included). The look is saved with the game and drawn on the party strip; Bob's avatar is never changed by the game. Before this, the card borrowed Bob's look from Style, so playing as a woman meant turning Bob into one.
+- **Saved characters.** **💾 Save this character** keeps the name, class, the one thing about them, plot armour and look in one small file beside the campaigns (up to 24); **Saved characters** on the start card picks one back, **Delete this character** removes it.
+- Help: Style and Adventure entries, a glossary line (Character screen), an FAQ entry ("Can my Adventure character look different from Bob?"). A new test (`test/run-character-test.js`).
+- Phone (Bob for Android): the start card's look and saved characters come through the PC's Bob; the Android side follows in its own drop.
+
+## 1.5.121
+
+Five small games, for the days you want to play rather than work.
+
+- **🧩 Games: small games Bob plays with you.** A new page in the menu with five games: **Twenty questions** (either way round; when it's Bob's secret the app picks it and checks your guess, so a right answer always counts), **Hangman** (a word from a shelf you pick: Animals, Food and drink, Around the house, Out of doors, Jobs people do, Things that move; seven lives; a Hint costs a life), **Word ladder** (four-letter words, one letter a step, every rung a real word from a list of about a thousand; Hint, Back a rung, or climb together turn about), **Five letters** (guess a five-letter word in six tries, letters coloured green, yellow and grey; a Hint costs a try) and **Story dice** (six picture dice come up and you tell a story a line each until every die is in; Wrap it up ends it, Bob writes the last line and a title). A scoreboard counts, per game, your wins, Bob's, shared ones and your best run.
+- **The app plays, Bob talks.** The app holds the secret, checks every move, counts lives and tries and keeps the score; Bob's quick brain only asks, answers, teases and tells the story. That's why the games play well on the smallest brain, in the Gaming session (on the Gaming brain, on the processor, so the graphics card stays with your game) and on the phone. Nothing runs until you press **▶ Start**, and the brain is let go when a game ends, like after any job.
+- **Settings, Show advanced settings, 🧩 Games:** Which brain plays games (Quick brain, or Main Brain for wittier lines) and How often Bob chips in (After every move, Now and then, Only at the end). Neither is a switch; both just have a default.
+- Help: "Games: small games I play with you", "Settings: Games", three FAQ entries, glossary lines for Twenty questions, Word ladder, Five letters, Story dice and Shelf. The phone app gets the same games through the Bob on your PC. A new test (`test/run-games-test.js`) plays every game through with a stand-in brain.
+- Phone (Bob for Android): the same games on the phone through your PC's Bob (Games in the phone's menu); the phone brain is never used.
+
+## 1.5.120
+
+- **🎲 Adventure: three fixes from the first live game.** A Short game can no longer end early: a scene only counts as new when it has a new title and everyone at the table has had a turn since the last one started. The game master stays the narrator (second person to the players, third person for everyone else) instead of slipping into a character's voice. And the game master thinks no more before each turn: on a 16 GB card the first turn took six minutes with thinking on, and the story reads no better for it. The start card says the first turn takes longest.
+- Phone (Bob for Android): the same table on the phone through your PC's Bob (Adventure in the phone's menu; the phone brain is too small to be game master, and says so).
+- Two more from the first live game: the game master's hidden line still reads when a brain drops its closing `>>>` or adds a stray brace, and Pause or End no longer wake the everyday brain straight back (a paused game is idle time).
+
+## 1.5.119
+
+- **🎲 Adventure: Bob runs a tabletop game.** A new page in the menu. Bob is the game master; the party is you plus your other Bobs (a Bob on your Bob-Net plays himself over there; a copy of Bob is played by the game master brain). Nothing runs until you press **Start a new game**, and the game master brain is let go on Pause or End. One start card asks for the setting, your character, who plays, how long, and plot armour for every character. Everyone has a turn in order. On your turn you get action cards, only the ones that fit, some with a second card (the attacks your kit allows, your spells, your items, who's here, the ways out) and a Back button, then an optional line of flair. The app rolls the dice for every action. Loose rules on purpose: four stats, hearts not hit points, no inventory weight, no spell slots, no initiative; long travel is one montage line. Campaigns are saved in their own files and continue from the start card. Not in the Gaming session. Help: Adventure: I run a tabletop game.
+- **Settings, Show advanced settings, 🎲 Adventure:** Which brain is the game master (Biggest brain) and Who plays the other Bobs (Their own Bob when reachable). Neither is a switch; both just have a default.
+- Pause and End take the game master's brain off the graphics card when the game loaded it (one that was there before the game is left to its usual idle timer). The release check now refuses leftover merge files (*.orig, *.rej).
+
+## 1.5.118
+
+One new button, for the day Bob isn't working and nobody can see why.
+
+- **Save a help bundle** (Settings, This replicant matrix and updates). One click packs everything a helper needs into one zip: a HANDOFF.md written for an AI agent to read first (it names Bob's version, links the public code at github.com/MouseWurX/Bob and says what to check in which order), every error and the last 3,000 lines of Bob's logbook, his settings without their secrets, the machine's facts (processor, memory, graphics card, free disk, whether each engine starts, which brain is in each slot), unfinished or failed jobs, and the last three chats as a plain readout. You pick the folder, the zip is shown there, and nothing is sent anywhere.
+- **Two ways it is written.** If Bob's chat brain is already loaded and idle, Bob reads the facts himself and adds a short note on what he thinks is wrong and what to try first. If the brain isn't there (the engine won't start, nothing is downloaded, Bob is busy, or it's a Gaming session), the bundle is put together without any brain and tells the helper to assume the worst. Bob never loads a brain for this, so the button works on a broken Bob.
+- **Scrubbed first.** The owner's name and user name, the machine's name, the home folder, every passcode, API key and bot token, and Tailscale addresses are taken out of every file before it is written; the settings file drops any value that looks like a secret.
+- **From a phone or another device**, the same zip downloads to that device instead (`GET /api/help-bundle`, for the Bob app on Android).
+- Help: "Save a help bundle", a last row in "When something goes wrong", glossary entries Help bundle and Handoff file, and the FAQ "How do I get help with my Bob?". A new test (`test/run-help-bundle-test.js`) covers the scrubbing, both ways of writing the handoff, and the zip.
+
 ## 1.5.117
 
 A second pass over the Settings layout. Nothing is renamed or switched; things sit where you look for them.

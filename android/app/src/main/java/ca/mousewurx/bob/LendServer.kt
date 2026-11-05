@@ -73,6 +73,8 @@ class LendServer(private val app: BobApp) {
         val file: String? get() = prefs.getString("file", null)
         val label: String get() = prefs.getString("label", "") ?: ""
         val passcodeSet: Boolean get() = prefs.getString("hash", null) != null
+        /** "Pass my Bob-Net along" (off): this phone takes introductions from your other Bobs and pairs with no card. */
+        val passAlong: Boolean get() = prefs.getBoolean("passAlong", false)
     }
     val settings = Settings()
 
@@ -80,6 +82,8 @@ class LendServer(private val app: BobApp) {
         prefs.edit().putBoolean("on", on).apply()
         if (on) app.startLending() else app.stopLending()
     }
+
+    fun setPassAlong(on: Boolean) { prefs.edit().putBoolean("passAlong", on).apply() }
 
     /** Which phone brain lends (the one picked under Phone brain). */
     fun setBrain(file: String, label: String) { prefs.edit().putString("file", file).putString("label", label.take(60)).apply() }
@@ -156,7 +160,7 @@ class LendServer(private val app: BobApp) {
 
     fun status(): JSONObject = JSONObject()
         .put("on", settings.on).put("state", state).put("address", address ?: JSONObject.NULL)
-        .put("passcodeSet", settings.passcodeSet).put("last", lastLent).put("now", refusal() ?: "")
+        .put("passcodeSet", settings.passcodeSet).put("passAlong", settings.passAlong).put("last", lastLent).put("now", refusal() ?: "")
         .put("file", settings.file ?: JSONObject.NULL)
         .put("screenOffOk", (app.getSystemService(Context.POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(app.packageName))
 
@@ -260,6 +264,8 @@ class LendServer(private val app: BobApp) {
                     req.path.startsWith("/api/pair/") && req.method == "POST" -> pair(out, req, remote.hostAddress ?: "")
                     req.path == "/api/lend/hello" && req.method == "GET" -> { if (signedIn(req, out)) hello(out) }
                     req.path == "/api/lend/chat" && req.method == "POST" -> { if (signedIn(req, out)) chat(sock, out, req) }
+                    // Pass my Bob-Net along: one of your Bobs (signed in) introduces another; the phone only answers.
+                    req.path == "/api/bob-net/introduce" && req.method == "POST" -> { if (signedIn(req, out)) introduce(out, req, remote.hostAddress ?: "") }
                     else -> reply(out, 404, JSONObject().put("error", "not here"))
                 }
             } catch (_: Exception) { /* the other Bob went away; nothing to keep */ }
@@ -327,6 +333,14 @@ class LendServer(private val app: BobApp) {
         }
     }
 
+    private fun introduce(out: OutputStream, req: Req, who: String) {
+        if (req.headers["x-bob"] != "1" || req.headers["content-type"]?.startsWith("application/json") != true)
+            return reply(out, 403, JSONObject().put("error", "missing x-bob"))
+        val b = runCatching { JSONObject(String(req.body, Charsets.UTF_8)) }.getOrNull() ?: return reply(out, 400, JSONObject().put("error", "bad JSON"))
+        val (code, body) = app.pair.introduce(b, who, settings.passAlong && state == "open")
+        reply(out, code, body)
+    }
+
     private fun signedIn(req: Req, out: OutputStream): Boolean {
         val key = (req.headers["cookie"] ?: "").split(";").map { it.trim() }.firstOrNull { it.startsWith("bob_auth=") }?.substringAfter("=")
         if (keyOk(key)) return true
@@ -338,6 +352,8 @@ class LendServer(private val app: BobApp) {
         val why = refusal()
         val o = JSONObject().put("protocol", PROTOCOL).put("lend", settings.on).put("brain", settings.label.ifEmpty { "phone brain" })
             .put("device", "phone").put("version", app.version)
+            // For the Bob-Net list in his Now running pane, and so he knows whether this phone takes introductions.
+            .put("name", app.pair.myName()).put("passAlong", settings.passAlong)
             // What the other Bob needs to choose well: room for the chat, and how fast this phone writes.
             // Whole jobs stay on desktop Bobs (files and tools live there), so the phone never takes them.
             .put("ctx", app.brain.contextSize()).put("takesJobs", false)

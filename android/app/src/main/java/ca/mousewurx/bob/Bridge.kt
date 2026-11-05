@@ -145,6 +145,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                         else { activity.runOnUiThread { app.lend.setOn(on) }; answer(id, true) }
                     }
                     "lend.newPasscode" -> answer(id, app.lend.newPasscode())
+                    "lend.passAlong" -> { app.lend.setPassAlong(o.getBoolean("on")); answer(id, true) } // Pass my Bob-Net along (off unless you turn it on)
                     "lend.screenOff" -> activity.runOnUiThread {
                         // Android's own list of apps allowed to work with the screen off: Bob, Battery, Unrestricted.
                         runCatching { activity.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }

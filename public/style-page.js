@@ -5,11 +5,14 @@ import { tip } from './tips.js';
 import { AVATAR_GROUPS, avatar } from './avatars.js';
 import { PRESETS, TOKENS, FONTS, findTheme, resolve, fullColors, applyStyle, applyTheme, swatch, isLight } from './themes.js';
 import { esc } from './util.js';
+import { characterHtml, mountCharacter, BOB_BODIES, partsOf } from './character.js';
 
 
 export function createStylePage({ api, redraw, flash }) {
   let draft = null; // the theme being made in the editor, or null when the editor is closed
   let avatarFilter = 'all';
+  let making = false; // 1.5.122: the character screen (Make your own look) is open under Bob's look
+  let makingParts = null;
 
   function themeButton(t, style) {
     const on = (style.theme || 'inn') === t.id;
@@ -34,7 +37,8 @@ export function createStylePage({ api, redraw, flash }) {
   }
 
   function avatarsHtml() {
-    const groups = [{ id: 'bob', label: 'Bob\'s own', ids: Object.keys(LOOKS) }, ...AVATAR_GROUPS.map((g) => ({ id: g.id, label: g.label, ids: Array.from({ length: g.count }, (_, i) => `${g.id}-${i}`) }))];
+    const mine = LOOK_ID.startsWith('c:') ? [{ id: 'mine', label: 'Your own design', ids: [LOOK_ID] }] : [];
+    const groups = [...mine, { id: 'bob', label: 'Bob\'s own', ids: Object.keys(LOOKS) }, ...AVATAR_GROUPS.map((g) => ({ id: g.id, label: g.label, ids: Array.from({ length: g.count }, (_, i) => `${g.id}-${i}`) }))];
     const shown = avatarFilter === 'all' ? groups : groups.filter((g) => g.id === avatarFilter);
     return `<div class="avatars"><div class="tabs" role="tablist" aria-label="Avatar groups">${[{ id: 'all', label: 'All' }, ...groups].map((g) => `<button role="tab" aria-selected="${g.id === avatarFilter}" data-avgroup="${g.id}">${esc(g.label)}</button>`).join('')}</div>
       ${shown.map((g) => {
@@ -64,13 +68,23 @@ export function createStylePage({ api, redraw, flash }) {
         ${mine.length ? `<h3>Yours</h3><div class="themes" role="radiogroup" aria-label="Your themes">${mine.map((t) => themeButton(t, style)).join('')}</div>${mine.some((t) => t.id === style.theme) ? '<p><button data-edittheme>Edit the selected theme</button></p>' : ''}` : ''}
         ${editorHtml()}
       </div>
-      <div><strong>Bob's look</strong> ${tip(`Every one blinks and talks. ${AVATAR_GROUPS.reduce((n, g) => n + g.count, 0) + Object.keys(LOOKS).length} to pick from, all drawn on this replicant matrix.`, 'Bob\'s look')}${avatarsHtml()}</div>
+      <div><strong>Bob's look</strong> ${tip(`Every one blinks and talks. ${AVATAR_GROUPS.reduce((n, g) => n + g.count, 0) + Object.keys(LOOKS).length} to pick from, all drawn on this replicant matrix, or make your own from parts.`, 'Bob\'s look')}
+        <p><button type="button" data-makelook aria-expanded="${making}">🧍 ${LOOK_ID.startsWith('c:') ? 'Change your own design' : 'Make your own look'}</button> <span class="muted">Body, build, hair, outfit, armour and weapon. This one's me, so the bodies are man, robot and alien; your Adventure character gets the full set.</span></p>
+        ${making ? '<div class="char-box"></div>' : ''}
+        ${avatarsHtml()}</div>
     </section>`;
   }
 
-  function paintPreviews(root) {
+  function paintPreviews(root, settings) {
     for (const c of root.querySelectorAll('canvas[data-preview]')) {
       const x = c.getContext('2d'); x.imageSmoothingEnabled = false; drawBob(x, c.width, {}, c.dataset.preview);
+    }
+    const box = root.querySelector('.char-box');
+    if (box && making && !box.dataset.mounted) {
+      box.dataset.mounted = '1';
+      const live = mountCharacter(box, { parts: makingParts, bodies: BOB_BODIES, useLabel: 'Wear this', onCancel() { making = false; redraw(); },
+        async onUse(id) { making = false; makingParts = null; const r = await api('/api/settings', { look: id }); setLook(id); if (settings) { settings.look = id; if (r.lookText) settings.lookText = r.lookText; } redraw(); flash('Done. That\'s me now.'); } });
+      box.addEventListener('change', () => { makingParts = live.parts; }); box.addEventListener('click', () => { makingParts = live.parts; });
     }
   }
 
@@ -103,6 +117,7 @@ export function createStylePage({ api, redraw, flash }) {
     if (b.dataset.theme) { draft = null; await save(settings, { theme: b.dataset.theme }); redraw(); return true; }
     if (b.dataset.look) { const r = await api('/api/settings', { look: b.dataset.look }); setLook(b.dataset.look); settings.look = b.dataset.look; if (r.lookText) settings.lookText = r.lookText; redraw(); return true; }
     if (b.dataset.avgroup) { avatarFilter = b.dataset.avgroup; redraw(); return true; }
+    if ('makelook' in b.dataset) { making = !making; if (making) makingParts = partsOf(settings.look || LOOK_ID); redraw(); return true; }
     if ('newtheme' in b.dataset) { startDraft(settings); redraw(); return true; }
     if ('edittheme' in b.dataset) { startDraft(settings, findTheme(style.theme, style.custom)); redraw(); return true; }
     if ('canceltheme' in b.dataset) { draft = null; applyStyle(style); redraw(); return true; }

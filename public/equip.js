@@ -263,7 +263,7 @@ export function equipHtml(ctx) {
     <div class="equip-page">
       ${ctx.attributes || ''}
       <div class="equip-mid">
-        <div class="doll"><div class="doll-col">${col('L')}</div><div class="doll-mid"><canvas class="doll-bob" width="160" height="160" aria-label="Bob"></canvas><div class="muted">Bob</div></div><div class="doll-col">${col('R')}</div></div>
+        <div class="doll"><div class="doll-col">${col('L')}</div><div class="doll-mid"><canvas class="doll-bob" width="160" height="160" aria-label="Bob"></canvas><div class="muted">Bob</div><button type="button" class="mini" data-tab="style">Change his look</button></div><div class="doll-col">${col('R')}</div></div>
         <details class="helpers"${HELPERS.some((h) => h.id === ctx.selected) ? ' open' : ''}><summary>Helpers (optional: each uses the main brain unless you pick one)</summary><div class="helper-row">${HELPERS.map((s) => slotHtml(s, ctx)).join('')}</div></details>
         ${houseStyleHtml('times', ctx.houseStyle)}
       </div>

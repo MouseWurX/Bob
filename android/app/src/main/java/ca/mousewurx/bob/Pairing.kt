@@ -18,6 +18,13 @@ import java.util.concurrent.ConcurrentHashMap
 // fingerprint like the main one). "Make a new passcode" drops them all.
 // This phone asking ("Pair by address", since the phone can't list Tailscale devices): ask, wait for the yes, log in
 // with the other Bob's passcode, then hand over a pairing passcode of ours if "Lend my brain" is on.
+//
+// "Pass my Bob-Net along" (off): a Bob of yours that is paired with this phone and with a third Bob introduces them
+// (the same addition desktop Bob speaks, src/bob-net-party.js). The phone only answers, never introduces:
+//   POST /api/bob-net/introduce {pair, token, role, from, bob: {name, address, device}}   (signed in, through the door)
+//        -> {ok, expecting: true} | 409 {busy: 'off'} | 400. The token is kept for that address for 3 minutes, once.
+//   POST /api/pair/ask carrying that token -> yes at once, no card; a token nobody here handed out -> 403, nothing kept.
+// Passcodes still pass only between the two Bobs being paired, after that yes, exactly as with the card.
 class Pairing(private val app: BobApp) {
     companion object {
         const val PAIR = 1
@@ -30,9 +37,12 @@ class Pairing(private val app: BobApp) {
         @Volatile var state = "waiting"
         @Volatile var handed = false
         @Volatile var finished = false
+        @Volatile var by: String? = null // the Bob that introduced this asker (Pass my Bob-Net along), else null
     }
+    private class Expect(val token: String, val from: String, val name: String, val at: Long = System.currentTimeMillis())
 
     private val asks = ConcurrentHashMap<String, Ask>()
+    private val expected = ConcurrentHashMap<String, Expect>() // address -> the introduction this phone was told to expect
     private val askTimes = ArrayList<Long>()
     private val rnd = SecureRandom()
     private val net by lazy { NetBob(app) }
@@ -59,6 +69,7 @@ class Pairing(private val app: BobApp) {
     private fun tidy() {
         val now = System.currentTimeMillis()
         for (a in asks.values) if (now - a.at > ASK_FOR_MS) { asks.remove(a.id); if (a.state == "waiting") tell(JSONObject().put("type", "pair-gone").put("id", a.id)) }
+        for ((k, e) in expected) if (now - e.at > ASK_FOR_MS) expected.remove(k)
     }
 
     private fun card(a: Ask) = JSONObject().put("type", "pair-ask").put("id", a.id).put("name", a.name).put("address", a.address).put("number", a.code)
@@ -79,9 +90,43 @@ class Pairing(private val app: BobApp) {
         askTimes.add(now)
         val id = ByteArray(16).also { rnd.nextBytes(it) }.joinToString("") { "%02x".format(it) }
         val a = Ask(id, clean(b.optString("name")).ifEmpty { remoteIp }, address, remoteIp, code)
+        // An ask carrying the token one of your Bobs gave us for this address is a yes at once, no card. A token
+        // nobody gave us is refused outright (never a card for a stranger's guess).
+        if (b.has("token")) {
+            val by = vouched(base.removePrefix("http://"), b.optString("token")) ?: return 403 to JSONObject().put("error", "Nobody here is expecting that introduction.")
+            a.state = "yes"; a.by = by
+            asks[id] = a
+            return 200 to JSONObject().put("id", id)
+        }
         asks[id] = a
         tell(card(a))
         return 200 to JSONObject().put("id", id)
+    }
+
+    // ---------- Pass my Bob-Net along: this phone being introduced to a third Bob ----------
+    /** Returns (HTTP status, body). `open` = the switch is on and the door is open. */
+    @Synchronized fun introduce(b: JSONObject, remoteIp: String, open: Boolean): Pair<Int, JSONObject> {
+        tidy()
+        if (!open) return 409 to JSONObject().put("busy", "off")
+        if (b.optInt("pair") != PAIR) return 400 to JSONObject().put("error", "Different Bob-Net pairing. Update both Bobs.")
+        val token = b.optString("token")
+        if (!Regex("^[0-9a-f]{32}$").matches(token)) return 400 to JSONObject().put("error", "no token")
+        val bob = b.optJSONObject("bob") ?: JSONObject()
+        val base = NetBob.base(clean(bob.optString("address"), 80)) ?: return 400 to JSONObject().put("error", "That isn't a Tailscale address.")
+        val address = base.removePrefix("http://")
+        if (address.substringBefore(':') == remoteIp || address.substringBefore(':') == app.lend.myTailscaleIp()) return 400 to JSONObject().put("error", "That's you.")
+        val from = clean(b.optString("from")).ifEmpty { remoteIp }
+        // The phone never asks, so the role makes no difference here: whoever is introduced may ask us with this token.
+        expected[address] = Expect(token, from, clean(bob.optString("name")).ifEmpty { address.substringBefore(':') })
+        return 200 to JSONObject().put("ok", true).put("expecting", true)
+    }
+
+    /** The name of the Bob that vouched for this address with this token, or null. The token is good once. */
+    private fun vouched(address: String, token: String): String? {
+        val e = expected[address] ?: return null
+        if (e.token != token || token.isEmpty()) return null
+        expected.remove(address)
+        return e.from
     }
 
     /** Cards still waiting, for Bob's screen when it opens after the ask came in. */
@@ -121,7 +166,7 @@ class Pairing(private val app: BobApp) {
             val base = NetBob.base(a.address)
             added = base != null && runCatching { net.login(base, passcode) }.getOrNull() == "ok"
         }
-        tell(JSONObject().put("type", "pair-done").put("name", a.name).put("address", a.address).put("both", added).put("added", added))
+        tell(JSONObject().put("type", "pair-done").put("name", a.name).put("address", a.address).put("both", added).put("added", added).apply { a.by?.let { put("by", it) } })
         return JSONObject().put("ok", true).put("added", added)
     }
 

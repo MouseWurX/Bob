@@ -12,6 +12,8 @@ import { createLayout } from './layout.js';
 import { esc, render, renderRich } from './rich.js';
 import { createTopics } from './topics.js';
 import { createTidy } from './tidy.js';
+import { createAdventure } from './adventure.js';
+import { createGames } from './games.js';
 import { createHelp } from './help.js';
 import { handsApproval, togetherApproval, onHandsEvent } from './hands.js';
 import { planApproval } from './plan-card.js';
@@ -330,6 +332,10 @@ const topicsPage = createTopics({ api, openChat: (id, msgId) => openChat(id, msg
 const tidyPage = createTidy({ api, onCount: (n) => countBadge($('tidyBtn'), n) });
 $('topicsBtn').onclick = () => topicsPage.open();
 $('tidyBtn').onclick = () => tidyPage.open();
+const adventurePage = createAdventure({ api }); // 1.5.117 🎲 Adventure
+$('adventureBtn').onclick = () => adventurePage.open();
+const gamesPage = createGames({ api }); // 1.5.121 🧩 Games
+$('gamesBtn').onclick = () => gamesPage.open();
 const helpPage = createHelp();
 $('helpBtn').onclick = () => helpPage.open();
 window.addEventListener('bob-tidy', () => tidyPage.open());
@@ -657,6 +663,8 @@ function onEvent(ev) {
     case 'gaming-lock': // 1.5.41: changed by the button in another window, or by picking another session
       gameLock.update(ev.on);
       return;
+    case 'adventure': window.dispatchEvent(new CustomEvent('bob-adventure', { detail: ev })); return; // 1.5.117: the Adventure page draws it
+    case 'games': window.dispatchEvent(new CustomEvent('bob-games', { detail: ev })); return; // 1.5.121: the Games page draws it
     case 'aside': {
       // Gaming-session sleepy aside (public/sleepy.js): scripted, not part of the reply, not saved in the chat.
       const rep = ev.turnId && replies.get(ev.turnId);

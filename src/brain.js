@@ -432,7 +432,7 @@ export class Brain {
 
   // After a job: big brains go right away; the chat brain stays only if "Always on" holds it (and comes back
   // if a big brain pushed it out). Only Bob's own brains are touched, never another app's.
-  async settle() {
+  async settle({ noWake = false } = {}) {
     if (this.turns.size || this.waking || this.queue.some((j) => j.state === 'waiting')) return [];
     this.armIdleCheck(); // 1.5.41: back to the lightest session once Bob has been quiet a while
     const chat = chatBrain(this.cfg).model;
@@ -464,7 +464,7 @@ export class Brain {
     // 1.5.21: after any job (a picture, a big brain, a helper) Bob goes back to his quick chat brain in the
     // background, so a follow-up is answered fast instead of waiting for the next message to load it. The usual
     // idle timer still frees it once he's been quiet. Not in Coding / Deep thought, whose chat brain is a big one.
-    else if (!bigSession(this.cfg) && !this.turns.size) await this.wake('back to the quick brain after a job');
+    else if (!noWake && !bigSession(this.cfg) && !this.turns.size) await this.wake('back to the quick brain after a job'); // 1.5.120: not after a game (Adventure)
     this.broadcast({ type: 'brain' });
     return gone;
   }

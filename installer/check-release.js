@@ -27,5 +27,11 @@ if (!/## Code signing policy/.test(fs.readFileSync(path.join(root, 'README.md'),
   if (!fs.existsSync(path.join(root, 'docs', 'releases', `v${pkg.version}.md`))) problems.push(`docs/releases/v${pkg.version}.md is missing`);
   if (have !== buildChangelog()) problems.push('CHANGELOG.md is out of date: run node installer/make-changelog.js');
 }
+// 1.5.119: merge leftovers (*.orig, *.rej, *.bak) never ship.
+{
+  const skip = new Set(['node_modules', '.git', 'models', 'dist', 'out']);
+  const walk = (dir, rel = '') => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { if (skip.has(e.name)) continue; const r = rel ? `${rel}/${e.name}` : e.name; if (e.isDirectory()) walk(path.join(dir, e.name), r); else if (/\.(orig|rej|bak)$/.test(e.name)) problems.push(`leftover file ${r} (remove it)`); } };
+  walk(root);
+}
 if (problems.length) { console.log(problems.map((p) => `FAIL ${p}`).join('\n')); process.exit(1); }
 console.log('PASS release check');

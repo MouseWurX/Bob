@@ -9,19 +9,19 @@ const script = (purpose) => [
   'Add-Type -AssemblyName System.Windows.Forms',
   '$owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true; ShowInTaskbar = $false }',
   '$d = New-Object System.Windows.Forms.FolderBrowserDialog',
-  purpose === 'save' ? "$d.Description = 'Pick the folder Bob saves pictures, clips, songs and sounds in'" : "$d.Description = 'Pick a project folder for Bob'",
-  purpose === 'save' ? '$d.ShowNewFolderButton = $true' : '$d.ShowNewFolderButton = $false',
+  purpose === 'bundle' ? "$d.Description = 'Pick where Bob saves the help bundle'" : purpose === 'save' ? "$d.Description = 'Pick the folder Bob saves pictures, clips, songs and sounds in'" : "$d.Description = 'Pick a project folder for Bob'",
+  purpose === 'save' || purpose === 'bundle' ? '$d.ShowNewFolderButton = $true' : '$d.ShowNewFolderButton = $false',
   "if ($d.ShowDialog($owner) -eq 'OK') { [Console]::Out.Write($d.SelectedPath) }",
   '$owner.Dispose()'
 ].join('; ');
 
 // Mac: AppleScript's "choose folder" (part of macOS). The prompt is fixed text, never anything typed by someone.
-const macScript = (purpose) => `POSIX path of (choose folder with prompt "${purpose === 'save' ? 'Pick the folder Bob saves pictures, clips, songs and sounds in' : 'Pick a project folder for Bob'}")`;
+const macScript = (purpose) => `POSIX path of (choose folder with prompt "${purpose === 'bundle' ? 'Pick where Bob saves the help bundle' : purpose === 'save' ? 'Pick the folder Bob saves pictures, clips, songs and sounds in' : 'Pick a project folder for Bob'}")`;
 
 export function pickFolder({ run = execFile, platform = process.platform, purpose = 'project' } = {}) {
   if (platform === 'darwin') {
     return new Promise((resolve, reject) => {
-      run('/usr/bin/osascript', ['-e', macScript(purpose === 'save' ? 'save' : 'project')], { timeout: 10 * 60e3 }, (err, out, stderr) => {
+      run('/usr/bin/osascript', ['-e', macScript(purpose)], { timeout: 10 * 60e3 }, (err, out, stderr) => {
         // Cancel is error -128: not a failure, just no folder.
         if (err && /-128/.test(String(stderr || err.message))) return resolve('');
         if (err) return reject(new Error("The Mac's folder picker didn't open. Type the folder instead."));
@@ -32,7 +32,7 @@ export function pickFolder({ run = execFile, platform = process.platform, purpos
   }
   if (platform === 'linux') {
     // zenity (GNOME and most desktops), else kdialog (KDE).
-    const tries = [['zenity', ['--file-selection', '--directory', '--title', purpose === 'save' ? 'Pick the folder Bob saves things in' : 'Pick a project folder for Bob']], ['kdialog', ['--getexistingdirectory', process.env.HOME || '/']]];
+    const tries = [['zenity', ['--file-selection', '--directory', '--title', purpose === 'bundle' ? 'Pick where Bob saves the help bundle' : purpose === 'save' ? 'Pick the folder Bob saves things in' : 'Pick a project folder for Bob']], ['kdialog', ['--getexistingdirectory', process.env.HOME || '/']]];
     return new Promise((resolve, reject) => {
       const next = (i) => {
         if (i >= tries.length) return reject(new Error('No folder picker (zenity or kdialog) on this replicant matrix. Type the folder instead.'));
@@ -46,7 +46,7 @@ export function pickFolder({ run = execFile, platform = process.platform, purpos
   }
   if (platform !== 'win32') return Promise.reject(new Error('Picking a folder this way only works on Windows, Mac and Linux. Type the folder instead.'));
   return new Promise((resolve, reject) => {
-    run('powershell.exe', ['-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-Command', script(purpose === 'save' ? 'save' : 'project')], { timeout: 10 * 60e3, windowsHide: true }, (err, out) => {
+    run('powershell.exe', ['-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-Command', script(purpose)], { timeout: 10 * 60e3, windowsHide: true }, (err, out) => {
       if (err && !String(out || '').trim()) return reject(new Error("Windows' folder picker didn't open. Type the folder instead."));
       resolve(String(out || '').trim());
     });

@@ -219,6 +219,13 @@ const cache = new Map();
 // Ids look like "m-07", "f-12", "alien-3", "robot-0", "pc-5", "odd-9".
 export function avatar(id) {
   if (cache.has(id)) return cache.get(id);
+  if (String(id).startsWith('c:')) { // 1.5.122: a look made on the character screen
+    const parts = decodeParts(id);
+    if (!parts) return null;
+    const look = compose(parts);
+    cache.set(id, look);
+    return look;
+  }
   const m = String(id).match(/^([a-z]+)-(\d+)$/);
   const grp = m && AVATAR_GROUPS.find((x) => x.id === m[1]);
   const n = m ? Number(m[2]) : -1;
@@ -233,4 +240,137 @@ export function avatar(id) {
 
 export function allAvatarIds() {
   return AVATAR_GROUPS.flatMap((g) => Array.from({ length: g.count }, (_, i) => `${g.id}-${i}`));
+}
+
+// ---------- The character screen (1.5.122): a look built from named parts ----------
+// The same parts the people above are made of, picked one by one instead of by recipe, plus three overlays
+// (armour, weapon, shield) and a build. A robot or alien head takes the same body rows, so outfits and kit fit
+// every body. Every part is a letter on the 16x16 map, so the result blinks and talks like any other look.
+const COLOUR_NAMES = {
+  hair: ['Black', 'Dark brown', 'Brown', 'Auburn', 'Blond', 'White', 'Red', 'Grey', 'Blue', 'Pink', 'Purple', 'Green'],
+  skin: ['Fair', 'Light', 'Tan', 'Olive', 'Brown', 'Dark brown', 'Deep brown', 'Ebony'],
+  cloth: ['Slate', 'Maroon', 'Forest', 'Plum', 'Charcoal', 'Mustard', 'Navy', 'Berry', 'Silver', 'Crimson'],
+  metal: ['Steel', 'Brass', 'Chrome', 'Red', 'Sky', 'Green', 'Violet', 'Gold'],
+  alien: ['Green', 'Violet', 'Cyan', 'Grey', 'Orange', 'Lime', 'Pink', 'Blue']
+};
+export const HAIR_STYLES = { ...HAIR_M, ...HAIR_F };
+const ARMOURS = {
+  none: null,
+  leather(g) { rect(g, 3, 11, 12, 11, 'J'); rect(g, 3, 12, 12, 14, 'J'); rect(g, 5, 12, 5, 14, 'I'); rect(g, 10, 12, 10, 14, 'I'); rect(g, 7, 13, 8, 13, 'I'); },
+  chain(g) { for (let y = 11; y <= 15; y++) for (let x = 3; x <= 12; x++) if (g[y][x] !== '.') put(g, x, y, (x + y) % 2 ? 'F' : 'I'); },
+  plate(g) { rect(g, 3, 11, 12, 11, 'T'); rect(g, 2, 12, 13, 15, 'T'); rect(g, 5, 12, 10, 14, 'F'); put(g, 7, 13, 'Z'); put(g, 8, 13, 'Z'); rect(g, 2, 12, 2, 12, 'Z'); rect(g, 13, 12, 13, 12, 'Z'); },
+  robe(g) { rect(g, 3, 11, 12, 11, 'V'); rect(g, 2, 12, 13, 15, 'V'); rect(g, 7, 11, 8, 15, 'Z'); put(g, 5, 15, 'Z'); put(g, 10, 15, 'Z'); }
+};
+const WEAPONS = {
+  none: null,
+  sword(g) { for (let y = 6; y <= 11; y++) put(g, 0, y, 'T'); rect(g, 0, 12, 1, 12, 'Z'); put(g, 0, 13, 'U'); put(g, 0, 14, 'U'); },
+  axe(g) { for (let y = 7; y <= 14; y++) put(g, 0, y, 'U'); rect(g, 0, 7, 1, 8, 'T'); put(g, 1, 9, 'T'); },
+  bow(g) { for (let y = 7; y <= 13; y++) put(g, 0, y, 'U'); put(g, 1, 6, 'U'); put(g, 1, 14, 'U'); for (let y = 7; y <= 13; y++) if (g[y][1] === '.') put(g, 1, y, 'W'); },
+  staff(g) { for (let y = 4; y <= 15; y++) put(g, 0, y, 'U'); put(g, 0, 3, 'Z'); },
+  dagger(g) { for (let y = 10; y <= 12; y++) put(g, 0, y, 'T'); put(g, 0, 13, 'Z'); put(g, 0, 14, 'U'); },
+  spear(g) { for (let y = 4; y <= 15; y++) put(g, 0, y, 'U'); put(g, 0, 2, 'T'); put(g, 0, 3, 'T'); },
+  hammer(g) { for (let y = 8; y <= 14; y++) put(g, 0, y, 'U'); rect(g, 0, 6, 1, 7, 'T'); }
+};
+const SHIELDS = {
+  none: null,
+  round(g) { rect(g, 14, 10, 15, 14, 'T'); put(g, 14, 10, '.'); put(g, 14, 14, '.'); put(g, 15, 12, 'Z'); },
+  tall(g) { rect(g, 14, 9, 15, 15, 'T'); put(g, 14, 15, '.'); rect(g, 15, 11, 15, 13, 'Z'); }
+};
+const HAIR_WORDS = { short: 'short * hair', buzz: 'buzz-cut * hair', spiky: 'spiky * hair', sidepart: 'side-parted * hair', bald: 'a bald top and * sides', mohawk: 'a * mohawk', curly: 'curly * hair', tied: 'tied-back * hair', long: 'long * hair', bob: 'bobbed * hair', ponytail: '* hair in a ponytail', bun: '* hair in a bun', pixie: 'pixie-cut * hair', curls: 'curly * hair', braids: 'braided * hair', swept: 'swept * hair' };
+const hairWords = (style, colour) => style === 'none' ? 'no hair' : (HAIR_WORDS[style] || `${style} * hair`).replace('*', colour);
+const FACE_WORDS = ['calm', 'keen', 'wide-eyed', 'squinting', 'bright', 'sleepy', 'fierce', 'friendly'];
+const PART_NAMES = { body: 'Body', build: 'Build', face: 'Face', hair: 'Hair', hc: 'Hair colour', skin: 'Skin', beard: 'Beard', glasses: 'Glasses', outfit: 'Outfit', cloth: 'Outfit colour', armour: 'Armour', weapon: 'Weapon', shield: 'Shield' };
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+// What the screen offers for each part: [value, label]. body: which bodies the screen shows (Bob's own screen
+// leaves out "woman": Bob is a guy; a character for a game can be anyone).
+export const PARTS = {
+  body: [['m', 'Man'], ['f', 'Woman'], ['robot', 'Robot'], ['alien', 'Alien']],
+  build: [['slim', 'Slim'], ['regular', 'Regular'], ['broad', 'Broad']],
+  face: FACE_WORDS.map((w, i) => [String(i), cap(w)]),
+  hair: [['none', 'None'], ...Object.keys(HAIR_STYLES).map((k) => [k, cap(k)])],
+  hc: HAIR.map((_, i) => [String(i), COLOUR_NAMES.hair[i]]),
+  skin: SKIN.map((_, i) => [String(i), COLOUR_NAMES.skin[i]]),
+  beard: [['none', 'None'], ['stubble', 'Stubble'], ['mustache', 'Moustache'], ['goatee', 'Goatee'], ['full', 'Full']],
+  glasses: [['0', 'None'], ['1', 'Glasses']],
+  outfit: Object.keys(OUTFITS).map((k) => [k, k === 'labcoat' ? 'Lab coat' : k === 'armor' ? 'Armour' : cap(k)]),
+  cloth: CLOTH.map((_, i) => [String(i), COLOUR_NAMES.cloth[i]]),
+  armour: [['none', 'None'], ['leather', 'Leather'], ['chain', 'Chain mail'], ['plate', 'Plate'], ['robe', 'Robe']],
+  weapon: [['none', 'None'], ['sword', 'Sword'], ['axe', 'Axe'], ['bow', 'Bow'], ['staff', 'Staff'], ['dagger', 'Dagger'], ['spear', 'Spear'], ['hammer', 'Hammer']],
+  shield: [['none', 'None'], ['round', 'Round shield'], ['tall', 'Tall shield']]
+};
+export const PART_ORDER = Object.keys(PARTS);
+export const DEFAULT_PARTS = { body: 'm', build: 'regular', face: '0', hair: 'short', hc: '1', skin: '1', beard: 'none', glasses: '0', outfit: 'tee', cloth: '0', armour: 'none', weapon: 'none', shield: 'none' };
+// Colour swatches for the screen (hex per value), so the picker can show the colour rather than only its name.
+export const PART_COLOURS = { hc: HAIR, skin: SKIN.map((s) => s[0]), cloth: CLOTH.map((c) => c[0]), metal: METAL.map((m) => m[0]), alien: ALIEN_SKIN.map((a) => a[0]) };
+export const partName = (k) => PART_NAMES[k] || k;
+// Which parts apply to a body: a robot has no hair or skin tone (its skin picker is the metal), an alien no hair.
+export function partsFor(body) {
+  if (body === 'robot') return PART_ORDER.filter((k) => !['hair', 'hc', 'beard', 'glasses'].includes(k));
+  if (body === 'alien') return PART_ORDER.filter((k) => !['hair', 'hc', 'beard'].includes(k));
+  return PART_ORDER.filter((k) => k !== 'face');
+}
+
+const ok = (k, v) => PARTS[k].some(([val]) => val === String(v));
+export function cleanParts(p = {}) {
+  const out = {};
+  for (const k of PART_ORDER) out[k] = ok(k, p[k]) ? String(p[k]) : DEFAULT_PARTS[k];
+  return out;
+}
+// "c:" then the parts in order, dotted: c:m.regular.0.short.1.1.none.0.tee.0.none.none.none
+export function encodeParts(p) { const c = cleanParts(p); return `c:${PART_ORDER.map((k) => c[k]).join('.')}`; }
+export function decodeParts(id) {
+  const m = /^c:([a-z0-9.]{1,80})$/.exec(String(id || ''));
+  if (!m) return null;
+  const vals = m[1].split('.');
+  if (vals.length !== PART_ORDER.length) return null;
+  const p = {};
+  PART_ORDER.forEach((k, i) => { p[k] = vals[i]; });
+  if (PART_ORDER.some((k) => !ok(k, p[k]))) return null;
+  return p;
+}
+
+export function compose(parts) {
+  const p = cleanParts(parts);
+  const g = grid();
+  const palette = { E: '#1b2a33', X: '#6b2f22', O: '#3a1410', R: '#e89a8a', G: '#9aa3ad', A: '#9aa3ad', Y: '#ffd166', W: '#efe6d2', D: '#e7a64a', N: '#c9946a', B: '#3b2416', J: '#6b4423', I: '#4a2e18', F: '#9aa3ad', T: '#c8d0d8', Z: '#ffd166', U: '#8a5a2b', V: '#3a2a7a' };
+  let blinkTo = 'L';
+  const words = [];
+  const n = Number(p.face) % 8;
+  if (p.body === 'robot' || p.body === 'alien') {
+    // The head rows of a robot or alien from the groups above (face picks which), on the same body rows as everyone.
+    const base = (p.body === 'robot' ? robot : alien)(n);
+    for (let y = 0; y <= 10; y++) g[y] = [...base.map[y]];
+    Object.assign(palette, base.palette);
+    blinkTo = base.blinkTo;
+    if (p.body === 'robot') { const m = METAL[Number(p.skin) % METAL.length]; palette.C = m[0]; palette.M = m[1]; palette.S = m[0]; palette.L = m[1]; words.push(`a ${COLOUR_NAMES.metal[Number(p.skin) % METAL.length].toLowerCase()} robot with a ${FACE_WORDS[n]} face`); }
+    else { const sk = ALIEN_SKIN[Number(p.skin) % ALIEN_SKIN.length]; palette.S = sk[0]; palette.L = sk[1]; words.push(`a ${COLOUR_NAMES.alien[Number(p.skin) % ALIEN_SKIN.length].toLowerCase()} alien with a ${FACE_WORDS[n]} face`); if (p.glasses === '1') { rect(g, 4, 5, 6, 5, 'G'); rect(g, 9, 5, 11, 5, 'G'); } }
+    rect(g, 6, 11, 9, 11, 'S'); // a neck, so the body rows start clean
+  } else {
+    const skin = SKIN[Number(p.skin)];
+    const hair = HAIR[Number(p.hc)];
+    face(g, { beard: p.beard, glasses: p.glasses === '1', freckles: false, headset: false, earring: false });
+    if (p.hair !== 'none') HAIR_STYLES[p.hair](g);
+    Object.assign(palette, { S: skin[0], L: skin[1], N: skin[1], H: hair, B: hair === '#e8e0d0' ? '#a8a29a' : hair });
+    words.push(`${p.build === 'regular' ? 'a' : p.build === 'slim' ? 'a slim' : 'a broad'} ${p.body === 'f' ? 'woman' : 'man'} with ${hairWords(p.hair, COLOUR_NAMES.hair[Number(p.hc)].toLowerCase())}${p.beard !== 'none' ? ` and a ${p.beard === 'full' ? 'full beard' : p.beard === 'mustache' ? 'moustache' : p.beard}` : ''}${p.glasses === '1' ? ', glasses' : ''}`);
+  }
+  const cloth = CLOTH[Number(p.cloth)];
+  palette.P = cloth[0]; palette.Q = cloth[1];
+  OUTFITS[p.outfit](g);
+  if (ARMOURS[p.armour]) ARMOURS[p.armour](g);
+  // Build: slim takes the outer column off each side of the body; broad adds one.
+  for (let y = 11; y <= 15; y++) {
+    if (p.build === 'slim') { put(g, 2, y, '.'); put(g, 13, y, '.'); }
+    if (p.build === 'broad') { if (g[y][2] !== '.') put(g, 1, y, g[y][2]); if (g[y][13] !== '.') put(g, 14, y, g[y][13]); }
+  }
+  if (WEAPONS[p.weapon]) WEAPONS[p.weapon](g);
+  if (SHIELDS[p.shield]) SHIELDS[p.shield](g);
+  const kit = [];
+  kit.push(p.armour === 'none' ? `in ${p.outfit === 'labcoat' ? 'a lab coat' : p.outfit === 'armor' ? 'armour' : `a ${p.outfit}`}` : `in ${p.armour === 'chain' ? 'chain mail' : p.armour === 'robe' ? 'a robe' : `${p.armour} armour`}`);
+  if (p.weapon !== 'none') kit.push(`with a${p.weapon === 'axe' ? 'n' : ''} ${p.weapon}${p.shield !== 'none' ? ' and a shield' : ''}`);
+  else if (p.shield !== 'none') kit.push('with a shield');
+  const what = `${words.join('')}, ${kit.join(', ')}`;
+  const map = rows(g);
+  for (const row of map) for (const ch of row) if (ch !== '.' && !palette[ch]) palette[ch] = '#808080';
+  return { name: 'Your own design', what: what.charAt(0).toUpperCase() + what.slice(1), palette, blinkTo, map, parts: p };
 }

@@ -12,6 +12,8 @@ import { quarantineSettingsHtml, mountQuarantineSettings } from './quarantine.js
 import { phoneAccessHtml, mountPhoneAccess } from './phone-access.js';
 import { telegramHtml, mountTelegram } from './telegram.js';
 import { checkinsHtml, mountCheckins } from './checkins.js';
+import { adventureSettingsHtml, mountAdventureSettings } from './adventure.js';
+import { gamesSettingsHtml, mountGamesSettings } from './games.js';
 import { shareBrainsHtml, mountShareBrains } from './share-brains.js';
 import { findTheme } from './themes.js';
 import { tip, noteOrTip, stripTags, keep } from './tips.js';
@@ -479,8 +481,8 @@ export function createCellar() {
     return `<div class="everyday">${panel('ev-pc', '💻 This replicant matrix and updates', pcSum, `
       <div class="updates srow-foot"><span class="muted">${hw?.gpu?.integrated ? `Built-in graphics: ${esc(hw.gpu.name.replace(/ \(shared memory\)$/, ''))}, about ${hw.gpu.vramGB} GB of memory shared with it` : hw?.gpu?.unified ? `Chip: ${esc(hw.gpu.name)}, about ${hw.gpu.vramGB} GB of it for graphics` : `Graphics card: ${hw?.gpu ? `${esc(hw.gpu.name)}, ${hw.gpu.vramGB} GB` : 'not detected'}`} · Free disk: ${hw?.freeGB ?? '?'} GB</span>
         ${sswitch('autoCheck', settings.updates?.autoCheck, 'Check for updates when Bob starts', 'Off unless you turn it on. Bob looks at his GitHub page for a newer version and only tells you; updating always takes your click.')}
-        <div class="row"><button type="button" data-welcome>Run first-time setup</button>${settings.features?.pcCheck === false ? '' : '<button type="button" data-pccheck>Check this replicant matrix</button>'}</div>
-        <div class="update-steps"></div><div class="pc-check" aria-live="polite"></div></div>`, '', true)}${panel('ev-bob', '🙂 Bob himself', bobSum, `
+        <div class="row"><button type="button" data-welcome>Run first-time setup</button><button type="button" data-helpbundle>Save a help bundle</button>${tip('Saves one zip with Bob\'s logs, the last chats, errors and this replicant matrix\'s facts, scrubbed of passcodes, keys and your name, so an agent or a person can work out what\'s wrong. Nothing is sent anywhere: you pick where it goes.', 'Save a help bundle')}${settings.features?.pcCheck === false ? '' : '<button type="button" data-pccheck>Check this replicant matrix</button>'}</div>
+        <div class="help-bundle muted" aria-live="polite"></div><div class="update-steps"></div><div class="pc-check" aria-live="polite"></div></div>`, '', true)}${panel('ev-bob', '🙂 Bob himself', bobSum, `
       ${srow('Bob\'s voice', voicePickHtml(), '<button type="button" class="mini" data-tab="speech">More voice settings</button>')}
       ${srow('Bob\'s look', esc(lookName), '<button type="button" class="mini" data-tab="style">Change</button>')}
       ${sswitch('lookIcon', settings.lookIcon === true, 'Use Bob\'s look as his icon', `Off unless you turn it on. His icon on the ${settings.platform === 'darwin' ? 'Dock' : 'taskbar'}, in the tray and in the corner of his window shows the look you picked, and changes when you change it.${settings.trayHere ? '' : ' Only in Bob\'s own window, not in a browser.'}`, settings.trayHere ? '' : 'disabled')}
@@ -650,6 +652,8 @@ export function createCellar() {
     ['apps', '🔌 Other apps', 'other apps comfyui workflows port unreal blender mcp', () => otherAppsHtml()],
     ['hands', '✋ Hands', 'files run commands schedules apps permission quarantine reviewer', () => handsSettingsHtml() + quarantineSettingsHtml()],
     ['housekeeping', '🧹 Housekeeping', 'tidy old chats pictures logs', () => housekeepingHtml()],
+    ['adventure', '🎲 Adventure', 'adventure game tabletop role-playing dice game master party bobs cards plot armour campaign', () => `<div class="adventure-box">${adventureSettingsHtml(settings.adventure || {})}</div>`],
+    ['games', '🧩 Games', 'games twenty questions hangman word ladder five letters story dice quick brain banter chip in', () => `<div class="games-box">${gamesSettingsHtml(settings.games || {})}</div>`],
     ['checkins', '🔔 Check-ins', 'check in heartbeat schedule morning every day weekday hours notify alert tap shoulder downloads stuck failed tasks disk space own checks build finished', () => checkinsHtml()],
     ['remove', '🗑 Remove Bob', 'uninstall remove', () => settings.features?.uninstall === false ? macRemoveHtml() : `<div class="remove-bob">${more('Takes off Bob\'s program, his Start menu shortcut and "Launch on start-up". His chats, settings and models stay unless you tick them. Nothing else in the inn folder or in Windows is touched.')}<button data-removebob>Remove Bob…</button><div class="remove-confirm" hidden></div></div>`]
   ];
@@ -744,7 +748,7 @@ export function createCellar() {
     if (!data) { $('cellar-body').innerHTML = '<p class="muted">Loading...</p>'; return; }
     $('cellar-body').innerHTML = mode === 'welcome' ? welcomeHtml() : shopHtml();
     if (mode === 'welcome') dlg.querySelector('[data-getready]')?.focus(); // 1.5.75: the first button is Get Bob ready
-    stylePage.paintPreviews(dlg);
+    stylePage.paintPreviews(dlg, settings);
     const doll = dlg.querySelector('.doll-bob');
     if (doll) { const c = doll.getContext('2d'); c.imageSmoothingEnabled = false; try { drawBob(c, 160, {}, settings?.look); } catch {} }
     const mini = dlg.querySelector('.attr-avatar');
@@ -755,6 +759,8 @@ export function createCellar() {
     mountPhoneAccess(dlg.querySelector('.phone-box')); // Bob-Net, This Bob: Let my other replicant matrices in
     mountTelegram(dlg.querySelector('.telegram-box')); // Online services: Talk to Bob on Telegram
     mountCheckins(dlg.querySelector('.checkins-box')); // 1.5.78 Check-ins
+    mountAdventureSettings(dlg.querySelector('.adventure-box'), { api, settings }); // 1.5.117 🎲 Adventure
+    mountGamesSettings(dlg.querySelector('.games-box'), { api, settings }); // 1.5.121 🧩 Games
     mountShareBrains(dlg.querySelector('.share-box')); // Bob-Net: My other Bobs and What they share
     readyLine(); // 1.5.117: "Bob 1.5.117 is ready · Restart Bob now" on the updates line when a new Bob waits
     const page = mode === 'welcome' ? 'Welcome' : tab === 'settings' ? 'Settings' : tab === 'style' ? 'Style' : 'Get models';
@@ -1026,6 +1032,22 @@ export function createCellar() {
       else if (b.dataset.yes) { job = await api('/api/models/download', { id: b.dataset.yes }); draw(); }
       else if ('cancel' in b.dataset) await api('/api/models/cancel', b.dataset.cancel ? { id: b.dataset.cancel } : {});
       else if (b.dataset.pausedl) await api('/api/models/pause', { id: b.dataset.pausedl });
+      // 1.5.118 Save a help bundle: one zip for whoever helps with this Bob (help-bundle.js). The folder opens afterwards.
+      else if ('helpbundle' in b.dataset) {
+        const box = b.closest('.updates').querySelector('.help-bundle');
+        b.disabled = true; box.textContent = 'Putting the bundle together... Pick a folder when the window opens. Up to a minute if my brain adds its own note.';
+        try {
+          const r = await api('/api/help-bundle', {});
+          if (r.cancelled) box.textContent = 'Nothing saved: you closed the folder window.';
+          else if (!r.ok) box.textContent = `Couldn't save the bundle: ${r.why || 'unknown reason'}`;
+          else box.innerHTML = `Saved <strong>${esc(r.file.split(/[\\/]/).pop())}</strong> in ${esc(r.folder)}${r.pickedFolder ? '' : ' (no folder picker here, so it went in my own folder)'}. ${r.brainNote ? 'I added my own note about what I think is wrong.' : 'My brain couldn\'t add a note, so the bundle was put together automatically.'} Give the zip to whoever is helping, or open an issue at github.com/MouseWurX/Bob/issues.`;
+        } catch (e) {
+          // From a phone or another device there is no folder to pick on this replicant matrix: the zip downloads instead.
+          if (/Only on this replicant matrix/.test(e.message)) { box.textContent = 'Downloading the bundle here...'; location.href = '/api/help-bundle'; }
+          else box.textContent = `Couldn't save the bundle: ${esc(e.message)}`;
+        }
+        b.disabled = false;
+      }
       else if ('pccheck' in b.dataset) {
         const box = b.closest('.updates').querySelector('.pc-check');
         b.disabled = true; box.innerHTML = '<p class="muted">Checking this replicant matrix...</p>';

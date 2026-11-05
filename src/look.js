@@ -4,6 +4,9 @@
 import { getLook, DEFAULT_LOOK, LOOKS } from '../public/bob-sprite.js';
 import { AVATAR_GROUPS } from '../public/avatars.js';
 
+// A look id: one of Bob's own ("sysop"), an avatar ("robot-3") or a design from the character screen ("c:" + parts).
+export const LOOK_ID_RE = /^(?:[a-z]{1,20}(?:-\d{1,2})?|c:[a-z0-9.]{1,80})$/;
+
 const GROUP_WORD = { m: 'a man', f: 'a woman', alien: 'an alien', robot: 'a robot', pc: 'a computer', odd: 'an oddity' };
 
 export function lookText(id) {

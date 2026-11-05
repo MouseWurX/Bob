@@ -63,6 +63,8 @@
   <h3>Lend my brain</h3>
   <label class="switch"><div class="words"><strong>Lend my brain</strong><p class="help-line">Your other Bobs (like the one on your other replicant matrix while you're gaming) can ask this phone to think quick replies. The phone only thinks: no tools, files or programs run here for them, and nothing is kept. Off to start with.</p></div><span class="pill"><input type="checkbox" id="lend-on"><span></span></span></label>
   <div id="lend-box"></div>
+  <label class="switch"><div class="words"><strong>Pass my Bob-Net along</strong><p class="help-line">Your Bobs with this on introduce each other. A Bob of yours that's paired with this phone and with another Bob tells this phone that Bob's name and Tailscale address, and the two pair by themselves: no card to tap. The phone only answers introductions; it never makes them. Needs Lend my brain on. Off to start with.</p></div><span class="pill"><input type="checkbox" id="pass-along"><span></span></span></label>
+  <p class="help-line" id="pass-along-msg" role="status"></p>
 </div></section>
 
 <section class="panel hidden" id="brain"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Phone brain</h2></div><div class="body">
@@ -118,6 +120,7 @@
 </div></section>
 
 <script src="shared.js"></script>
+<script src="avatars.js"></script>
 <script src="logic.js"></script>
 <script src="help.js"></script>
 <script src="diagram-core.js"></script>

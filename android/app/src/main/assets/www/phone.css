@@ -150,6 +150,13 @@ label.field { display: block; margin: 10px 0 4px; font-weight: 600; }
 .chips button { min-height: 40px; border-radius: 999px; }
 .chips button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
 .row2 { display: flex; gap: 8px; margin-top: 8px; } .row2 select { flex: 1; min-width: 0; }
+.adv-face { image-rendering: pixelated; border-radius: 8px; background: var(--panel); flex: none; }
+.adv-look { display: flex; gap: 12px; align-items: flex-start; margin: 10px 0; } .adv-look button { margin-top: 6px; }
+.char-preview { display: flex; gap: 12px; align-items: center; } .char-preview canvas { width: 128px; height: 128px; }
+.char-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; } .char-label { flex: none; width: 96px; font-weight: 600; } .char-row select { flex: 1; min-width: 0; }
+.char-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.char-swatches button { width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 50%; border: 2px solid var(--line); }
+.char-swatches button[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 .adv-party { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 10px; }
 .adv-member { flex: none; min-width: 120px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
 .adv-member.turn { border-color: var(--accent); } .adv-member.out { opacity: .55; }
