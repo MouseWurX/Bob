@@ -110,6 +110,10 @@ globalThis.BobHelp = {
 <p>We swap passcodes over Tailscale and each of us adds the other. Nothing else switches on. For the other Bob to ask this phone too, <strong>Lend my brain</strong> has to be on here; for this phone to ask him, <strong>Let my other replicant matrices in</strong> has to be on there. Each pairing gets a passcode of its own; <strong>Make a new passcode</strong> signs them all out.</p>`
     },
     {
+      id: 'save-phone', title: 'Save to this phone',
+      html: `<p>Under a picture, clip or song a Bob on your network made, <strong>Save to this phone as</strong> keeps it on the phone, in a Bob folder in Pictures, Movies, Music or Download. Tap the type you want; <strong>(original)</strong> is the one he made. Another type is made by that Bob first, so a copy stays on that replicant matrix (your computer) too. Press and hold a type to see what it's good for.</p>`
+    },
+    {
       id: 'photos', title: 'Photos',
       html: `<p>Tap <strong>📎</strong> next to the message box to pick a photo, then say what to do with it ("make the sky orange", "turn this into a poster"). The photo and your message go to a Bob on your other replicant matrix, who does the work and sends the result back here. The phone brain can't see pictures, so with no Bob reachable the photo waits until you remove it (✕) or one is back. The photo is kept on that replicant matrix (your computer), in its References page, like one you added there.</p>`
     },

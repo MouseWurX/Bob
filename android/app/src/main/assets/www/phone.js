@@ -113,37 +113,50 @@
     return t;
   }
 
-  // 1.5.95 Save as: keep something Bob made as another file type, on the replicant matrix that made it (same as the PC).
+  // Save to this phone: keep something Bob made on the phone (Pictures, Movies, Music or Download, in a Bob folder),
+  // as it is or as another file type. Another type is made by the Bob that made it (a copy stays there too).
   const SAVE_AS = { image: ['png', 'jpg', 'webp', 'gif'], video: ['mp4', 'webm', 'gif'], audio: ['wav', 'mp3', 'ogg', 'flac'], diagram: ['png', 'svg', 'pdf'] };
   const SAVE_NOTE = { png: 'sharp, no quality lost', jpg: 'small, for photos', webp: 'small, for the web', gif: 'plays anywhere, low colour', mp4: 'plays anywhere', webm: 'small, for the web', wav: 'full quality, large', mp3: 'small, plays anywhere', ogg: 'small, open format', flac: 'full quality, smaller than WAV', svg: 'scales to any size', pdf: 'for printing and sharing' };
+  const MIME = { png: 'image/png', svg: 'image/svg+xml', pdf: 'application/pdf' };
   const fileOf = (x) => decodeURIComponent(String(x.url || '').split('/').pop() || '');
   function saveRow(x, figure = null) {
     if (!SAVE_AS[x.kind] || !x.base) return null;
     const name = fileOf(x), have = x.kind === 'diagram' ? '' : name.split('.').pop().toLowerCase().replace('jpeg', 'jpg');
     const b = () => bobs.find((y) => y.base === x.base);
-    const row = el('div', { class: 'save-as small' }, el('span', { class: 'dim', text: 'Save as ' }));
+    const row = el('div', { class: 'save-as small' }, el('span', { class: 'dim', text: 'Save to this phone as ' }));
     for (const f of SAVE_AS[x.kind]) {
-      const label = f === 'webp' ? 'WebP' : f.toUpperCase();
-      if (f === have) { row.append(el('span', { class: 'dim', text: ` ${label} · original ` })); continue; }
+      const label = (f === 'webp' ? 'WebP' : f.toUpperCase()) + (f === have ? ' (original)' : '');
       // Long-press shows what the type is good for (no hover on a phone).
-      const btn = el('button', { text: label, 'aria-label': `Save as ${label}: ${SAVE_NOTE[f]}`, oncontextmenu: (e) => { e.preventDefault(); toast(`${label}: ${SAVE_NOTE[f]}`); }, onclick: async () => {
+      const btn = el('button', { text: label, 'aria-label': `Save to this phone as ${label}: ${SAVE_NOTE[f]}`, oncontextmenu: (e) => { e.preventDefault(); toast(`${label}: ${SAVE_NOTE[f]}`); }, onclick: async () => {
         btn.disabled = true;
         try {
-          let path = '/api/save-as', body = { name, format: f };
+          let where;
           if (x.kind === 'diagram') {
+            // Drawn here on the phone, so it's saved straight from here.
             const svg = figure?.querySelector('svg');
             if (!svg) throw new Error('not drawn');
             const file = BobDiagram.svgFile(svg);
-            body.data = f === 'svg' ? btoa(unescape(encodeURIComponent(file))) : f === 'png' ? await BobDiagram.pngData(file) : await BobDiagram.pdfData(file);
-            path = '/api/diagram/save';
+            const data = f === 'svg' ? btoa(unescape(encodeURIComponent(file))) : f === 'png' ? await BobDiagram.pngData(file) : await BobDiagram.pdfData(file);
+            const fname = `${name.replace(/\.[^.]+$/, '') || 'diagram'}.${f}`, mime = MIME[f], b64 = String(data).replace(/^data:[^,]*,/, '');
+            where = await phone('media.saveData', { name: fname, mime, data: b64 });
+          } else {
+            let url = x.url, file = name;
+            if (f !== have) {
+              // The other Bob makes the new type (he has the tools for it), then the phone fetches it.
+              const r = await phone('net.post', { address: b().address, path: '/api/save-as', body: JSON.stringify({ name, format: f }) });
+              let out = {}; try { out = JSON.parse(r.body); } catch { /* not JSON */ }
+              if (!out.ok) {
+                btn.disabled = false;
+                if (out.need === 'ffmpeg' && out.offer) return setupCard(x.base, out.offer);
+                return toast(out.why || "That didn't save.");
+              }
+              url = out.url || x.url.replace(/[^/]*$/, encodeURIComponent(out.name)); file = out.name;
+            }
+            where = await phone('media.save', { address: b().address, path: url, name: file });
           }
-          const r = await phone('net.post', { address: b().address, path, body: JSON.stringify(body) });
-          let out = {}; try { out = JSON.parse(r.body); } catch { /* not JSON */ }
-          if (out.ok) { btn.replaceWith(el('span', { text: ` ✓ ${label} ` })); toast(`Saved on "${bobName(x.base)}": ${out.name}`); return; }
-          btn.disabled = false;
-          if (out.need === 'ffmpeg' && out.offer) return setupCard(x.base, out.offer);
-          toast(out.why || "That didn't save.");
-        } catch { btn.disabled = false; toast("Couldn't save it on your other replicant matrix"); }
+          btn.replaceWith(el('span', { text: ` ✓ ${label} ` }));
+          toast(`Saved on this phone: ${where}`);
+        } catch (e) { btn.disabled = false; toast(`Couldn't save it on this phone: ${e.message}`); }
       } });
       row.append(btn);
     }

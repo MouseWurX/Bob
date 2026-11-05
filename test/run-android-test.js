@@ -176,6 +176,10 @@ check('photo: never goes to the phone brain', /if \(photo && !to\)/.test(js) && 
   check('families: the picker groups them under headers that open and close (remembered)', /el\('details', \{ class: 'fam'/.test(js) && /store\.set\('openFamilies'/.test(js));
 }
 
+// Save to this phone: every type is a button (the original too), and the file lands on the phone, not only on the PC.
+check('save: every type, original included, saves on this phone', /'Save to this phone as '/.test(js) && /f === have \? ' \(original\)'/.test(js) && /phone\('media\.save'/.test(js) && /phone\('media\.saveData'/.test(js) && /MediaStore\.Images\.Media\.EXTERNAL_CONTENT_URI to "Pictures\/Bob"/.test(bridge));
+check('save: no storage permission asked', !/WRITE_EXTERNAL_STORAGE|MANAGE_EXTERNAL_STORAGE/.test(fs.readFileSync(path.join(root, 'android/app/src/main/AndroidManifest.xml'), 'utf8')));
+
 // The page's lock: no inline scripts or styles, no network from the page itself.
 check('page has a strict Content-Security-Policy', /script-src 'self'/.test(html) && /connect-src 'none'/.test(html) && !/<script>(?!<)/.test(html.replace(/<script src[^>]*><\/script>/g, '')) && !/ style="/.test(html));
 
