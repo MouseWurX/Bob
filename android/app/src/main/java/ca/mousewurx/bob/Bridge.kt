@@ -103,10 +103,12 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                     "pair.waiting" -> answer(id, JSONArray(app.pair.waiting() + app.pair.takeMissed()))
                     // ---- Save something Bob made on this phone (Pictures, Movies, Music or Download, in a Bob folder) ----
                     "media.save" -> {
-                        val got = net.bytes(base(o), o.getString("path")) ?: throw IllegalStateException("too big or gone")
-                        answer(id, saveToPhone(o.getString("name"), got.second, got.first))
+                        var where = ""
+                        val ok = net.stream(base(o), o.getString("path")) { s, mime -> where = saveToPhone(o.getString("name"), mime) { out -> s.copyTo(out) } }
+                        if (!ok) throw IllegalStateException("too big or gone")
+                        answer(id, where)
                     }
-                    "media.saveData" -> answer(id, saveToPhone(o.getString("name"), o.getString("mime"), Base64.decode(o.getString("data"), Base64.DEFAULT)))
+                    "media.saveData" -> answer(id, saveToPhone(o.getString("name"), o.getString("mime")) { out -> out.write(Base64.decode(o.getString("data"), Base64.DEFAULT)) })
                     "net.media" -> answer(id, net.media(base(o), o.getString("path")))
                     "net.listen" -> {
                         val b = base(o)
@@ -225,7 +227,8 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     }
 
     // No storage permission needed: Android lets an app add its own files to the shared folders.
-    private fun saveToPhone(nameIn: String, mimeIn: String, bytes: ByteArray): String {
+    /** Makes the file in the phone's media library and lets [write] fill it as a stream (a long clip never sits in memory). */
+    private fun saveToPhone(nameIn: String, mimeIn: String, write: (java.io.OutputStream) -> Unit): String {
         val name = nameIn.replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001f]"), "_").trim().take(120).ifEmpty { "bob-file" }
         val ext = name.substringAfterLast('.', "").lowercase()
         val mime = if (mimeIn.isBlank() || mimeIn == "application/octet-stream") android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream" else mimeIn
@@ -244,7 +247,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         val cr = activity.contentResolver
         val uri = cr.insert(collection, values) ?: throw IllegalStateException("the phone wouldn't make the file")
         try {
-            cr.openOutputStream(uri)?.use { it.write(bytes) } ?: throw IllegalStateException("the phone wouldn't open the file")
+            cr.openOutputStream(uri)?.use { write(it) } ?: throw IllegalStateException("the phone wouldn't open the file")
             cr.update(uri, android.content.ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
         } catch (e: Exception) { cr.delete(uri, null, null); throw e }
         return "$folder/$name"

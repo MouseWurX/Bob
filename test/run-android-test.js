@@ -184,6 +184,9 @@ check('save: no storage permission asked', !/WRITE_EXTERNAL_STORAGE|MANAGE_EXTER
 { const net = (html.match(/<section[^>]*id="bobs"[\s\S]*?<\/section>/) || [''])[0], brainP = (html.match(/<section[^>]*id="brain"[\s\S]*?<\/section>/) || [''])[0];
   check('bob-net: one page holds other Bobs, pairing and Lend my brain', /<h2>Bob-Net<\/h2>/.test(net) && /id="bob-list"/.test(net) && /id="pair-bob"/.test(net) && /id="lend-on"/.test(net) && /id="lend-box"/.test(net) && !/lend-/.test(brainP) && /data-go="bobs"><span class="ico">🌐<\/span>Bob-Net</.test(html) && /if \(id === 'bobs'\) watchLend\(\)/.test(js) && !/Bobs on your network/.test(html + js + fs.readFileSync(path.join(www, 'help.js'), 'utf8'))); }
 
+// A saved file streams from that Bob into the phone's media library; it never sits whole in memory.
+check('save: files stream to the phone, not held in memory', (() => { const net = fs.readFileSync(path.join(root, 'android/app/src/main/java/ca/mousewurx/bob/NetBob.kt'), 'utf8'); return /fun stream\(base: String, path: String, write:/.test(net) && /s\.copyTo\(out\)/.test(bridge) && !/fun bytes\(/.test(net) && !/readNBytes\(200_000_001\)/.test(net); })());
+
 // The page's lock: no inline scripts or styles, no network from the page itself.
 check('page has a strict Content-Security-Policy', /script-src 'self'/.test(html) && /connect-src 'none'/.test(html) && !/<script>(?!<)/.test(html.replace(/<script src[^>]*><\/script>/g, '')) && !/ style="/.test(html));
 

@@ -140,15 +140,24 @@ class NetBob(context: Context) {
     }
 
     /** A file from that Bob as bytes and its type (up to 200 MB), for saving it on this phone. */
-    fun bytes(base: String, path: String): Pair<ByteArray, String>? {
+    /** Streams a file from that Bob straight to [write] (nothing is held in memory): null when it's gone or over 200 MB. */
+    fun stream(base: String, path: String, write: (java.io.InputStream, String) -> Unit): Boolean {
         val c = open(base, path, "GET", 60000)
         try {
-            if (c.responseCode != 200) return null
-            if (c.contentLengthLong > 200_000_000) return null
-            val bytes = c.inputStream.use { s -> s.readNBytes(200_000_001) }
-            if (bytes.size > 200_000_000) return null
-            return bytes to (c.contentType ?: "application/octet-stream").substringBefore(';').trim()
+            if (c.responseCode != 200) return false
+            if (c.contentLengthLong > 200_000_000) return false
+            val mime = (c.contentType ?: "application/octet-stream").substringBefore(';').trim()
+            c.inputStream.use { s -> write(Limited(s, 200_000_000), mime) }
+            return true
         } finally { c.disconnect() }
+    }
+
+    /** An input stream that stops at [max] bytes (a Bob that keeps sending can't fill the phone). */
+    private class Limited(private val s: java.io.InputStream, private val max: Long) : java.io.InputStream() {
+        private var seen = 0L
+        private fun over(): Nothing = throw IllegalStateException("too big")
+        override fun read(): Int { val b = s.read(); if (b >= 0 && ++seen > max) over(); return b }
+        override fun read(b: ByteArray, off: Int, len: Int): Int { val n = s.read(b, off, len); if (n > 0) { seen += n; if (seen > max) over() }; return n }
     }
 
     /** Follows that Bob's live events (replies as they're written, OK cards, job progress) until stopped. */
