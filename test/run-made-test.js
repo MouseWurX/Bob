@@ -35,7 +35,7 @@ fs.writeFileSync(path.join(work, '.env'), 'KEY=secret');
 check('peek never shows a secrets file', !peek(cfg, path.join(work, '.env')).ok);
 
 // ---------- Paths in tool results ----------
-check('a Windows path in "Saved ..." is found', pathsIn('Saved C:\\Unreal Projects\\Agent 00\\inn\\ledger\\list.csv (4 lines including the header).')[0] === 'C:\\Unreal Projects\\Agent 00\\inn\\ledger\\list.csv');
+check('a Windows path in "Saved ..." is found', pathsIn('Saved D:\\My Stuff\\Bob home\\inn\\ledger\\list.csv (4 lines including the header).')[0] === 'D:\\My Stuff\\Bob home\\inn\\ledger\\list.csv');
 check('a path at the end of a sentence loses the full stop', pathsIn('Saved C:\\x\\notes.txt.')[0] === 'C:\\x\\notes.txt');
 check('only saving tools count, and never on an error', madePaths('write_file', 'Saved /a/b.txt.').length === 1 && !madePaths('read_file', 'Saved /a/b.txt.').length && !madePaths('write_file', 'Error: Saved /a/b.txt').length);
 

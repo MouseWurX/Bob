@@ -332,7 +332,7 @@ export async function reviewTool(brain, spec, code, test, ctx = {}) {
   const rb = reviewBrain(brain.cfg);
   if (!rb) return { ok: false, text: 'No brain is set to check it (Equip Bob: the Review slot, Deep thinking or the main Brain).' };
   const who = copyName(brain.cfg, 'reviewer', 'second look');
-  // Clear in the chat (the owner, 2026-11-03): it's a moot, said in so many words, not "spinning up a copy".
+  // Clear in the chat: it's a moot, said in so many words, not "spinning up a copy".
   ctx.emit?.({ type: 'announce', text: `🛰 Bob calls a moot in The Idle Process: ${who} reads the new tool ${spec.name} (on ${rb.model}) before it can be added.` });
   const user = `Tool name: ${spec.name}\nWhat it says it does: ${spec.what}\nInputs: ${JSON.stringify(spec.inputs)}\nFolders it may read: ${spec.reads.join('; ') || 'none'}\nFolders it may change: ${spec.writes.join('; ') || 'none'}\nInternet: ${spec.internet ? 'yes' : 'no'}\nDownloads: ${spec.downloads.map((d) => `${d.file} from ${d.url}`).join('; ') || 'none'}\nTest input: ${JSON.stringify(spec.test).slice(0, 1000)}\nTest result: ${test ? (test.ok ? `worked: ${String(test.out).slice(0, 1200)}` : `failed: ${test.error}`) : 'not run yet (it needs its downloads first)'}\n\nThe code (tool.mjs):\n\`\`\`js\n${code}\n\`\`\``;
   try {

@@ -56,7 +56,7 @@ check('verifyOutput: an empty text file is still a file', (await verifyOutput(ol
 
 // ---- pathsIn / plainWhy / describe
 check('pathsIn: a Windows path in a result', pathsIn('Painted a picture, saved as C:\\Bob\\inn\\painter\\2026-11-02-ab.png. The user can see it.')[0] === 'C:\\Bob\\inn\\painter\\2026-11-02-ab.png');
-check('pathsIn: a Windows path with spaces', pathsIn('Saved C:\\Unreal Projects\\notes\\todo list.txt.')[0] === 'C:\\Unreal Projects\\notes\\todo list.txt');
+check('pathsIn: a Windows path with spaces', pathsIn('Saved D:\\My Stuff\\notes\\todo list.txt.')[0] === 'D:\\My Stuff\\notes\\todo list.txt');
 check('pathsIn: ComfyUI "saved in folder: a, b"', pathsIn('Painted 2 picture(s), saved in /x/p: a.png, b.png. The user can see it.').includes(path.join('/x/p', 'b.png')));
 check('plainWhy: drops the notes meant for Bob', plainWhy('Error: Access is denied. (That is the real reason, from Windows. Tell Sam it plainly; don\'t say it opened.)') === 'Access is denied.');
 check('describe: plain words for a typing step', describe('app_act', { action: 'type', window: 'Notepad' }) === 'Typing in Notepad');

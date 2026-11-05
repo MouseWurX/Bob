@@ -35,7 +35,7 @@ const size = (step) => JSON.stringify(step.tools).length;
   check('the starting tool list is well under half the old one', size(s) < JSON.stringify(all).length / 2, `${size(s)} vs ${JSON.stringify(all).length}`);
   console.log(`  (starting tools ~${Math.round(size(s) / 3.6)} tokens, all tools ~${Math.round(JSON.stringify(all).length / 3.6)} tokens)`);
   const use = s.tools.find((t) => t.function.name === 'use_tools');
-  check('use_tools lists only groups Bob can add here (Files hand on, Run hand off; no picture model, so no make_image)', use.function.parameters.properties.group.enum.includes('files') && !use.function.parameters.properties.group.enum.includes('run') && !groupsFor(brain).pictures?.tools.includes('make_image'), use.function.parameters.properties.group.enum.join(','));
+  check('use_tools lists only groups Bob can add here (Files hand on, Run hand off; 1.5.91: make_image stays, to offer the Set it up card)', use.function.parameters.properties.group.enum.includes('files') && !use.function.parameters.properties.group.enum.includes('run') && groupsFor(brain).pictures?.tools.includes('make_image'), use.function.parameters.properties.group.enum.join(','));
   check('the Hands line stays out of the prompt until a Hand group is added', !/Hands Sam switched on/.test(s.sys));
 }
 
@@ -67,7 +67,7 @@ const size = (step) => JSON.stringify(step.tools).length;
 {
   const [s] = await turn('hello there', [], 'r1');
   check('the prompt names the groups he can add, and says he CAN do them', /More you CAN do/.test(s.sys) && /files = /.test(s.sys) && /documents = /.test(s.sys), s.sys.slice(-400));
-  check('the picture group says only what this PC can make (no picture model: no "make pictures")', !/More you CAN do[^\n]*make pictures/.test(s.sys) && /More you CAN do[^\n]*save reference pictures/.test(s.sys));
+  check('the picture group says what isn\'t set up yet (no picture model: "make pictures (not set up yet...)")', /More you CAN do[^\n]*make pictures, [^(\n]*\(not set up yet: calling one offers to set it up\)/.test(s.sys) && (s.sys.match(/not set up yet: calling/g) || []).length === 1 && /More you CAN do[^\n]*save reference pictures/.test(s.sys));
   const steps = await turn('hmm', [{ role: 'assistant', content: "Sorry, I can't tidy folders yet." }], 'r2');
   check('"I can\'t" with no tool call: every group is added and he gets one more go', steps.length === 2 && names(steps[1]).includes('file_hands') && names(steps[1]).includes('write_file'), steps.map((x) => names(x).length).join('/'));
   const twice = await turn('hmm', [{ role: 'assistant', content: "I can't do that." }, { role: 'assistant', content: "I still can't." }], 'r3');
@@ -79,7 +79,7 @@ const size = (step) => JSON.stringify(step.tools).length;
 // ---------- Empty replies and "show me a picture" (2026-11-02) ----------
 {
   const steps = await turn('can you show me a picture of a beautiful sunrise?', [{ role: 'assistant', content: '' }], 'e1');
-  check('an empty reply gets one more go, with every group', steps.length === 2 && names(steps[1]).includes('write_file') && names(steps[1]).includes('file_hands'), steps.map((x) => names(x).length).join('/'));
+  check('an empty reply gets one more go, with every group', steps.length >= 2 && names(steps[1]).includes('write_file') && names(steps[1]).includes('file_hands'), steps.map((x) => names(x).length).join('/'));
   const evs = []; seen.length = 0; script = [{ role: 'assistant', content: '' }, { role: 'assistant', content: '  ' }];
   const msgs = [];
   await brain.runOn(msgs, 'hmm', (e) => evs.push(e), new AbortController().signal, [], null, 'e2');

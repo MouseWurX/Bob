@@ -1,4 +1,4 @@
-// 1.5.65: a verified copy in Agent 00\models\<id>\ (for example models\qwen3.6-35b-a3b\) is found, so Bob runs it
+// 1.5.65: a verified copy in Bob home\models\<id>\ (for example models\qwen3.6-35b-a3b\) is found, so Bob runs it
 // and Get models doesn't download it again. Half downloads and wrong sizes don't count.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -9,7 +9,7 @@ import { LlamaCpp } from '../src/llamacpp.js';
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob id folder '));
-const agentDir = path.join(tmp, 'Agent 00');
+const agentDir = path.join(tmp, 'Bob home');
 const bobModelsDir = path.join(agentDir, 'models', 'bob');
 fs.mkdirSync(bobModelsDir, { recursive: true });
 const gguf = { url: 'https://huggingface.co/x/y/resolve/abc/Model-Q4.gguf', role: 'gguf', bytes: 5 };
@@ -48,8 +48,8 @@ check('Bob\'s engine runs it from there, picture reader included', got?.gguf ===
 }
 check('a bad id never leaves the models folder', idFolderFile(cfg, { id: '../x', files: [] }, gguf) === null);
 
-check('1.5.66: Get models says such a copy is Bob\'s, not Ollama\'s', ownerOf('C:\\Agent 00\\models\\qwen3.6-35b-a3b\\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf') === 'Bob');
-check('Ollama\'s own blobs are still Ollama\'s', ownerOf('C:\\Agent 00\\models\\blobs\\sha256-abc') === 'Ollama' && ownerOf('C:\\Users\\you\\.ollama\\models\\blobs\\x') === 'Ollama');
+check('1.5.66: Get models says such a copy is Bob\'s, not Ollama\'s', ownerOf('C:\\Bob home\\models\\qwen3.6-35b-a3b\\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf') === 'Bob');
+check('Ollama\'s own blobs are still Ollama\'s', ownerOf('C:\\Bob home\\models\\blobs\\sha256-abc') === 'Ollama' && ownerOf('C:\\Users\\you\\.ollama\\models\\blobs\\x') === 'Ollama');
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

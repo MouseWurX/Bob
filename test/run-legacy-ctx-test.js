@@ -6,7 +6,7 @@ import path from 'node:path';
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-ctx-'));
-const agent = path.join(tmp, 'Agent 00');
+const agent = path.join(tmp, 'Bob home');
 fs.mkdirSync(agent, { recursive: true });
 const file = path.join(tmp, 'config.json');
 process.env.BOB_CONFIG = file; process.env.BOB_AGENT_DIR = agent;

@@ -18,6 +18,7 @@ const GB = 1024 ** 3;
 const job = (id, state, extra = {}) => ({ id, text: `job ${id}`, state, at: Date.now(), sessionId: 's', kind: 'chat', ...extra });
 const now = Date.now();
 const fakeBrain = (over = {}) => ({
+  waitOver() {}, // 1.5.111: pump takes the ⏳ line away when a job starts
   cfg: { session: 'normal', engine: 'llamacpp', chatWhileBusy: true, models: { small: 'small:4b', bob: 'big:26b' } },
   engine: { besideServer() {}, current: 'big:26b', currentCpu: false, resolve: () => ({ gguf: '/x' }) },
   gate: { brainBytes: () => 6 * GB },
@@ -84,7 +85,7 @@ const off = loadLine({ mode: 'swap', who: 'reviewer', model: 'rev', from: 'big',
 const on = loadLine({ mode: 'swap', who: 'reviewer', model: 'rev', from: 'big', copy: 'B', secs: 9, label, single: true, besideOn: true });
 check('moot swap, switch off: a plain swap line, no tip unless asked', /^🛰 Moot: B checks the answer\. My main brain \(big\) steps out and the review brain \(rev\) comes in, about 9 seconds\.$/.test(off), off);
 const tipped = loadLine({ mode: 'swap', who: 'reviewer', model: 'rev', from: 'big', copy: 'B', secs: 9, label, single: true, tip: true });
-check('moot swap, first time: the tip names the switch and its full path', /\(To keep both loaded, turn on "Let the reviewer sit beside Bob's main brain" in Settings, Show advanced settings, Engines & speed\.\)$/.test(tipped), tipped);
+check('moot swap, first time: the tip names the switch and its full path', /\(To keep both loaded, turn on "Let the reviewer sit beside Bob's main brain" in Settings, Show advanced settings, Brains\.\)$/.test(tipped), tipped);
 {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bob tip '));
   const fake = { cfg: { dataDir: dir } };

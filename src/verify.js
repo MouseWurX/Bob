@@ -36,6 +36,8 @@ const ASK = {
   file: rx(`\\b(?:save|write|create|make|put|export|store)\\b(?:\\s+${WHO})?\\s+(?:(?:${ART}|it|this|that|them|everything|all of (?:it|this|that))\\s+)?${GAP}(?:${FILE_NOUN}\\b|(?:as|to|in|into)\\s+(?:a\\s+)?(?:[A-Za-z]:\\\\|~|/|\\w+\\.(?:txt|md|csv|json|html|js|py|log))|on (?:my|the) desktop|in (?:my|the) (?:documents|downloads|desktop))`),
   saveIt: /\bsave\s+(?:it|this|that|them|the (?:text|list|notes?|story|poem|code|table|results?))\b/i,
   app: rx(`\\b(?:open|launch|start|fire up|bring up|pull up|load up)\\s+(?:up\\s+)?(?:the\\s+|an?\\s+|my\\s+)?${APPS}\\b|\\b(?:type|write|paste|put)\\b[^.?!\\n]{0,80}\\b(?:in|into)\\s+(?:the\\s+|a\\s+|an?\\s+new\\s+)?${APPS}\\b|\\b(?:take the wheel|take (?:over|control of) (?:my|the) (?:pc|screen|computer|mouse)|drive my (?:pc|screen|computer)|use my (?:screen|mouse|keyboard))\\b`),
+  // 1.5.95: a flowchart or diagram (drawn with make_diagram, not painted).
+  diagram: /\b(?:flow ?charts?|diagrams?|mind ?maps?|org(?:ani[sz]ation(?:al)?)? charts?|family trees?|decision trees?|process (?:map|chart)s?|gantt(?: chart)?s?|timelines?|pie charts?|swim ?lanes?)\b/i,
   // A picture is attached and the words want it changed.
   editPic: /\b(?:edit|change|restyle|recolou?r|retouch|fix|clean up|upscale|make (?:it|this|her|him|them|the \w+)|turn (?:it|this|her|him|them) into|add|remove|put|swap|replace|give (?:it|her|him|them))\b/i
 };
@@ -61,8 +63,11 @@ export function expectFrom(text, { pics = [] } = {}) {
     found.push({ kind, words });
   };
   if (!how) {
-    for (const kind of ['video', 'music', 'sound', 'show', 'picture', 'file', 'app']) add(kind, t.match(ASK[kind]));
-    if (!found.some((f) => f.kind === 'picture' || f.kind === 'show')) add('picture', t.match(ASK.drawCmd), true);
+    // 1.5.95: "draw me a flowchart" is a diagram, not a picture.
+    const diagram = /\b(?:make|draw|create|do|give|show|sketch|map|lay|chart|put together|build|design|whip up)\b/i.test(t) ? t.match(ASK.diagram) : null;
+    if (diagram) add('diagram', diagram, true);
+    for (const kind of ['video', 'music', 'sound', 'show', 'picture', 'file', 'app']) if (!(diagram && ['picture', 'show'].includes(kind))) add(kind, t.match(ASK[kind]));
+    if (!diagram && !found.some((f) => f.kind === 'picture' || f.kind === 'show')) add('picture', t.match(ASK.drawCmd), true);
     if (!found.some((f) => f.kind === 'file')) add('file', t.match(ASK.saveIt));
     if (pics.length && !found.some((f) => ['picture', 'show', 'video'].includes(f.kind))) add('picture', t.match(ASK.editPic), true);
   }
@@ -251,9 +256,9 @@ const SAVED_AT = /\b(?:saved|written|wrote|created|stored|exported|put)\s+(?:it\
 const APP_CLAIM = /\bI(?:'ve| have|)\s+(?:just\s+|now\s+|already\s+|successfully\s+|gone ahead and\s+)?(?:opened|launched|started|typed|clicked|pressed|pasted|entered|written)\b[^.!?\n]{0,60}?\b(?:notepad|paint|calculator|app|application|window|program|tab|in (?:the |a )?(?:text box|document|field))\b/i;
 
 const MEDIA_OF = { picture: 'image', show: 'image', video: 'video', music: 'audio', sound: 'audio' };
-const TOOL_OF = { picture: 'make_image', show: 'make_image', video: 'make_video', music: 'make_music', sound: 'make_sound', file: 'write_file', app: 'open_app' };
-const GROUPS_OF = { picture: ['pictures'], show: ['pictures'], video: ['pictures'], music: ['pictures'], sound: ['pictures'], file: ['documents'], app: ['apps'] };
-const WHAT = { picture: 'a picture', show: 'a picture', video: 'a clip', music: 'some music', sound: 'a sound', file: 'a file saved', app: 'something done in an app' };
+const TOOL_OF = { diagram: 'make_diagram', picture: 'make_image', show: 'make_image', video: 'make_video', music: 'make_music', sound: 'make_sound', file: 'write_file', app: 'open_app' };
+const GROUPS_OF = { diagram: ['diagrams'], picture: ['pictures'], show: ['pictures'], video: ['pictures'], music: ['pictures'], sound: ['pictures'], file: ['documents'], app: ['apps'] };
+const WHAT = { diagram: 'a diagram', picture: 'a picture', show: 'a picture', video: 'a clip', music: 'some music', sound: 'a sound', file: 'a file saved', app: 'something done in an app' };
 const FILE_TOOLS = new Set(['write_file', 'edit_file', 'save_spreadsheet', 'file_hands', 'convert_file', 'office_make', 'office_edit', 'strip_metadata']);
 const APP_TOOLS = new Set(['open_app', 'app_act']);
 const LOOKS = new Set(['app_look', 'list_schedules', 'read_file', 'list_files', 'search_files', 'workshop_list', 'use_tools', 'recall', 'web_search', 'fetch_page', 'security_check', 'inspect_file', 'osint_lookup', 'check_exposure', 'security_tips', 'bob_help']);
@@ -335,7 +340,7 @@ const cantNote = (kind) => {
   if (HAND_OF[kind]) return `Bob can't do that yet: the ${HANDS[HAND_OF[kind]].label} Hand is off. Turn it on in Settings, Show advanced settings, Hands.`;
   return 'Bob can\'t do that on this replicant matrix yet.';
 };
-const DIDNT = { picture: 'make a picture', show: 'make a picture', video: 'make a clip', music: 'make the music', sound: 'make the sound', file: 'save the file', app: 'do it in the app' };
+const DIDNT = { diagram: 'draw the diagram', picture: 'make a picture', show: 'make a picture', video: 'make a clip', music: 'make the music', sound: 'make the sound', file: 'save the file', app: 'do it in the app' };
 
 // When Bob stops. null: all good. { nudge, groups }: one hidden message to Bob and the tool groups he needs
 // for it (the lead gives him one more go, once per turn). { note }: a line the app shows the user, in its own
@@ -393,6 +398,9 @@ export function afterTurn(ctx = {}, replyText) {
     } else if (kind === 'file') {
       met = actions.some((a) => ok(a) && FILE_TOOLS.has(a.name)) || outputs.some((o) => o.type === 'file');
       tried = actions.some((a) => FILE_TOOLS.has(a.name));
+    } else if (kind === 'diagram') {
+      met = actions.some((a) => ok(a) && a.name === 'make_diagram') || outputs.some((o) => o.type === 'diagram');
+      tried = actions.some((a) => a.name === 'make_diagram');
     } else if (kind === 'app') {
       met = actions.some((a) => ok(a) && APP_TOOLS.has(a.name));
       tried = actions.some((a) => APP_TOOLS.has(a.name) || a.name === 'app_look');

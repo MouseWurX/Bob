@@ -10,11 +10,11 @@
 // "Big" here: a clip, a song or a cloud helper, or a third step this turn that changes something (a tool that asks
 // for an OK). Questions, chat and one small thing never get a plan card.
 import { gather, keepAnswers, describe, parse, stepKey } from './together.js';
+import { clip } from './util.js';
 
 export const planOn = (cfg) => cfg?.planFirst === true;
 export const BIG_TOOLS = new Set(['make_video', 'make_music', 'ask_cloud']);
 const MAX_STEPS = 20;
-const clip = (t, n) => String(t ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const who = (brain) => brain.cfg.userName || 'the user';
 
 // The line in Bob's instructions. Nothing at all while the setting is off (keeps his instructions light).

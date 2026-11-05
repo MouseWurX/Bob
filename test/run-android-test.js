@@ -32,7 +32,7 @@ const kt = fs.readFileSync(path.join(root, 'android/app/src/main/java/ca/mousewu
 check('NetBob.kt has the same Tailscale rule', /second in 64\.\.127/.test(kt) && /\\\.ts\\\.net\$/.test(kt));
 
 // Big jobs: the card only shows when it's clearly one.
-const big = { 'draw me a fox': 'pictures', 'make a picture of a castle at night': 'pictures', 'can you make a song about cats': 'music', 'make a short video of rain': 'video', 'tidy my downloads folder': 'files', 'run my build script': 'programs', 'convert this to pdf': 'office', 'scan my pc for viruses': 'security' };
+const big = { 'draw me a fox': 'pictures', 'make a picture of a castle at night': 'pictures', 'can you make a song about cats': 'music', 'make a short video of rain': 'video', 'tidy my downloads folder': 'files', 'run my build script': 'programs', 'convert this to pdf': 'office', 'scan my pc for viruses': 'security', 'edit my selfie so the sky is blue': 'pictures', 'restyle that photo as a comic': 'pictures', 'design a poster for my band': 'pictures', 'I want the picture to look like winter': 'pictures' };
 for (const [t, id] of Object.entries(big)) check(`big job: "${t}"`, L.bigJob(t)?.id === id, JSON.stringify(L.bigJob(t)));
 for (const t of ["what's a good song for a road trip?", 'I saw a nice picture yesterday', 'how do videos get compressed?', 'what is a virus, in biology?', 'remind me what we said about the fox'.replace('fox', 'garden')]) check(`not a big job: "${t}"`, L.bigJob(t) === null, JSON.stringify(L.bigJob(t)));
 
@@ -145,6 +145,13 @@ check('lend panel: no stray "null" when Lend my brain is off', /box\.append\(\.\
 // Turning on Lend my brain makes the passcode when there isn't one yet (no separate step first).
 check('lend: turning it on makes the passcode if none is set', /if \(on && !lend\.passcodeSet\) \{ lendCode = await phone\('lend\.newPasscode'\)/.test(js));
 
+// Replicant matrix wording: the phone page never calls the machine a "PC" on screen (comments and Bob's model prompt aside).
+{
+  const shown = html.replace(/<!--[\s\S]*?-->/g, '') + js.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n').replace(/\/(?:[^/\n\\]|\\.)+\/[gimsuy]*/g, '');
+  const hits = (shown.match(/[^\n]{0,40}\b(?:PCs?|my-pc)\b[^\n]{0,40}/g) || []);
+  check('replicant matrix: no "PC" in the phone page\'s own words', !hits.length, hits.join(' | '));
+}
+
 // Photos: picked with Android's own picker, sent to a networked Bob (never the phone brain), then the chat points at it.
 check('photo: 📎 picks with the system photo picker (no permission)', /<button id="photo" aria-label="Add a photo">/.test(html) && /MediaStore\.ACTION_PICK_IMAGES/.test(bridge) && !/READ_MEDIA_IMAGES|READ_EXTERNAL_STORAGE/.test(fs.readFileSync(path.join(root, 'android/app/src/main/AndroidManifest.xml'), 'utf8')));
 check('photo: uploads to /api/refs as kind chat, then /api/chat carries the ref', /\/api\/refs\?kind=chat/.test(bridge) && /phone\('photo\.upload'/.test(js) && /refs\.length \? \{ refs \}/.test(js));
@@ -160,6 +167,13 @@ check('photo: never goes to the phone brain', /if \(photo && !to\)/.test(js) && 
   check('pair: Yes refused while the door is shut', /if \(yes && app\.lend\.state != "open"\)/.test(pairKt));
   check('pair: the reviewed card and waiting words', /should show the number/.test(js) && /Waiting for a yes on \$\{who\}/.test(js));
   check('pair: the card, Pair with this Bob, and nothing switched on', /'Yes, pair us'/.test(js) && /id="pair-bob"/.test(html) && !/setOn\(true\)/.test(pairKt) && !/settings\.(phoneOn|mode)\s*=/.test((js.match(/function onPair[\s\S]*?\n  \}\n/) || [''])[0]));
+}
+
+// Model families: every phone brain names its family; the picker groups them under headers you open and close.
+{
+  const pm = JSON.parse(fs.readFileSync(path.join(root, 'android/phone-models.json'), 'utf8'));
+  check('families: every phone brain has a family', pm.models.every((m) => typeof m.family === 'string' && m.family.length > 0));
+  check('families: the picker groups them under headers that open and close (remembered)', /el\('details', \{ class: 'fam'/.test(js) && /store\.set\('openFamilies'/.test(js));
 }
 
 // The page's lock: no inline scripts or styles, no network from the page itself.

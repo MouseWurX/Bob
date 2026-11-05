@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { catalogueHtml, catJobs, modelsFor } from '../public/catalogue.js';
+import { catalogueHtml, catJobs, modelsFor, familyOf, FAMILIES } from '../public/catalogue.js';
 import { deviceFit, sourceOf, pickFor } from '../public/fit.js';
 import { allSlots, isActive } from '../public/equip.js';
 import { saveNameOf } from '../src/models.js';
@@ -48,12 +48,32 @@ const ctx = { roles, models, brains: {}, active: {}, vramGB: 16, ramGB: 32, free
   check('the switch follows what was saved', /aria-checked="true" data-active="qwen3.6-35b-a3b"/.test(catalogueHtml({ ...ctx, active: { 'qwen3.6-35b-a3b': true } })) && /aria-checked="false" data-active="gemma4-26b"/.test(catalogueHtml({ ...ctx, active: { 'gemma4-26b': false } })));
   check('models here get Equip (or say equipped); the rest get Get', /data-catequip="tinker" data-catvalue="gemma4:26b"/.test(html) && /equipped/.test(html) && /data-get="qwen3.6-35b-a3b"/.test(html));
   check('New models carry the New tag and are never ★ Recommended', /cat-tinker-qwen3.6-35b-a3b[^]*?<span class="tag">New<\/span>/.test(html) && !Object.keys(Object.fromEntries(catJobs().map((j) => [j.id, 1]))).some((j) => models.filter((m) => m.trial).some((m) => pickFor(j, models, ctx)?.id === m.id)));
-  check('the detail sits in an "i" tip: size on other machines, licence and source', /class="tip-i"[^>]*><span class="tip-src" hidden>[^<]*(<br>[^<]*)*6 GB laptop card: [^]*?Licence Apache 2\.0[^]*?From unsloth\/Qwen3\.6-35B-A3B-GGUF @ a483e9e/.test(html));
+  check('the detail sits in an "i" tip: size on other machines and licence; the source is on the ↗ (1.5.101: said once)', /class="tip-i"[^>]*><span class="tip-src" hidden>[^<]*(<br>[^<]*)*6 GB laptop card[^]*?Licence Apache 2\.0[^]*?data-tip="Where it comes from: unsloth\/Qwen3\.6-35B-A3B-GGUF @ a483e9e"/.test(html) && !/tip-src" hidden>[^]*?From unsloth/.test(html));
+check('each machine answer is said once (grouped), and Active is explained once at the top, not on every row', /Runs well on every card and with no graphics card|Runs well: /.test(html) && !/16 GB graphics card: Runs well · 8 GB graphics card: Runs well/.test(html) && !/data-active="[^"]*" data-tip=/.test(html));
   check('the source link opens the exact commit', /href="https:\/\/huggingface\.co\/unsloth\/Qwen3\.6-35B-A3B-GGUF\/tree\/a483e9e6cbd595906af30beda3187c2663a1118c"/.test(html) && /href="https:\/\/huggingface\.co\/unsloth\/Qwen3\.8-27B-GGUF\/tree\/4ca720788d1e01f1bff70c033e0d0028fd02e502"/.test(catalogueHtml({ ...ctx, showUnsuited: true })));
   check('models that don\'t suit this replicant matrix wait behind Show them', !/id="cat-deep-qwen3.8-27b"/.test(html) && /id="cat-deep-qwen3.8-27b"/.test(catalogueHtml({ ...ctx, showUnsuited: true })) && /data-unsuited>Show them/.test(html));
   check('brains not in Bob\'s list get their own Active switch', /Other brains on this replicant matrix[^]*data-active="mystery:7b"/.test(html));
   check('the phone section has no Active switch or Get', !/id="cat-phone-[^"]*"[^]*?data-active[^]*?<\/li>/.test(html.slice(html.indexOf('catjob-phone'), html.indexOf('catjob-voice'))));
   check('nothing nasty gets through a model name', !/<script/.test(catalogueHtml({ ...ctx, roles: { ...roles, options: { llm: [{ value: 'x', label: '<script>x</script>' }] } } })));
+}
+
+// ---- 1.5.101: model families, each behind its own header ----
+{
+  check('every catalog model names its family', models.every((m) => typeof m.family === 'string' && m.family), models.filter((m) => !m.family).map((m) => m.id).join(','));
+  check('every family has a line about who makes it', [...new Set(models.map(familyOf))].every((f) => FAMILIES[f]), [...new Set(models.map(familyOf))].filter((f) => !FAMILIES[f]).join(','));
+  check('a model without a family falls back to the first word of its name', familyOf({ name: 'Mistral Small 3' }) === 'Mistral');
+  const html = catalogueHtml(ctx);
+  const tinker = html.slice(html.indexOf('id="catjob-tinker"'), html.indexOf('id="catjob-office"'));
+  check('Coding has one header per family (Qwen, Gemma, GPT-OSS)', ['Qwen', 'Gemma', 'GPT-OSS'].every((f) => tinker.includes(`data-fam="tinker:${f}"`)));
+  check('families start closed', !/<details class="cat-fam"[^>]* open>/.test(html));
+  check('a family opened before stays open', /data-fam="tinker:Qwen" id="catfam-tinker-Qwen" open>/.test(catalogueHtml({ ...ctx, famOpen: { 'tinker:Qwen': true } })) && !/data-fam="bob:Qwen"[^>]* open>/.test(catalogueHtml({ ...ctx, famOpen: { 'tinker:Qwen': true } })));
+  check('each model row sits inside its family', /data-fam="tinker:Qwen"[^]*?id="cat-tinker-qwen3-coder-30b"[^]*?<\/details>/.test(tinker) && !/data-fam="tinker:Gemma"[^>]*>(?:(?!<\/details>)[^])*cat-tinker-qwen3-coder-30b/.test(tinker));
+  check('a closed header says how many, the size range, and what is here', /data-fam="tinker:Qwen"[^]*?<summary>[^]*?\d+ models · [\d.]+ (GB|MB) to [\d.]+ GB[^]*?On this replicant matrix|data-fam="tinker:Qwen"[^]*?<summary>[^]*?on this replicant matrix/.test(tinker));
+  const pick = byId(pickFor('tinker', models, ctx).id);
+  check('the header of the family holding Bob\'s pick says so', new RegExp(`data-fam="tinker:${familyOf(pick)}"[^>]*>\\s*<summary>(?:(?!</summary>)[^])*★ Recommended inside`).test(tinker));
+  check('the family with Bob\'s pick comes first', tinker.indexOf(`data-fam="tinker:${familyOf(pick)}"`) === tinker.indexOf('data-fam="tinker:'));
+  check('Open all families and Close all buttons are there', /data-famall="open">Open all families/.test(html) && /data-famall="close">Close all/.test(html));
+  check('a family name can\'t inject markup', !/<img/.test(catalogueHtml({ ...ctx, models: [...models, { ...byId('qwen3-4b'), id: 'evil', family: '<img src=x>' }] })));
 }
 
 // ---- fit on other machines ----

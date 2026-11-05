@@ -1,13 +1,14 @@
 // Bob.exe: double-click and Bob opens in his own window. No browser, no "install as an app", no PowerShell.
-// His brain (src/server.js) runs inside this program; closing the window closes Bob.
+// His brain (src/server.js) runs inside this program; closing the window closes Bob, unless "Keep Bob in the tray"
+// is on (1.5.94): then closing or minimising tucks him into the tray, and Quit Bob in the tray menu closes him fully.
 // Where Bob keeps his things (models, notes, settings) lives outside the program, so updates never touch it:
 //   1. home.json next to Bob.exe, or in %APPDATA%\Bob, can say { "agentDir": "...", "config": "..." }
-//   2. otherwise a Bob folder Bob.exe sits inside (it has an "inn" folder), e.g. Agent 00\Bob app\Bob.exe
+//   2. otherwise a Bob folder Bob.exe sits inside (it has an "inn" folder), e.g. Bob home\Bob app\Bob.exe
 // Bob.exe is Electron's official electron.exe, only renamed; Bob's files are in Bob app\resources\app.
 //   3. otherwise %LOCALAPPDATA%\Bob, with a fresh config.json made from config.example.json.
 // On a Mac (Bob.app, the same official Electron renamed, Bob's files in Bob.app/Contents/Resources/app) step 3 is
 // ~/Library/Application Support/Bob/home, and on Linux ~/.local/share/bob (src/platform.js defaultHome).
-const { app, BrowserWindow, shell, Menu, dialog, clipboard, screen } = require('electron');
+const { app, BrowserWindow, shell, Menu, dialog, clipboard, screen, Tray, nativeImage, Notification } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
@@ -54,7 +55,7 @@ function readHome() {
   return {};
 }
 
-// Bob.exe sitting somewhere inside an existing Bob folder (one with an "inn"), like Agent 00\Bob app or
+// Bob.exe sitting somewhere inside an existing Bob folder (one with an "inn"), like Bob home\Bob app or
 // bob\dist\win-unpacked: use that folder, so no home.json is needed.
 function findNearbyHome() {
   let dir = exeDir;
@@ -178,6 +179,91 @@ async function up(port) {
 }
 
 let win = null;
+
+// ---------- 1.5.94 the tray and Bob's icon ----------
+// "Keep Bob in the tray" (off unless turned on): a tray icon (Windows: by the clock; Mac: the menu bar; Linux: the
+// desktop's tray, where it has one). Closing or minimising his window hides it there; Quit Bob in its menu closes
+// him fully. Started hidden at sign-in ("Launch Bob on start-up"), he always shows the tray icon, so there's a way in.
+// "Use Bob's look as his icon" (off unless turned on): the tray, taskbar/Dock and window icon show his avatar.
+// The brain sends both switches and the pictures (src/app-icon.js windowState) at start-up and on every change.
+const STARTED_HIDDEN = process.argv.includes('--hidden');
+const iconFile = (f) => path.join(root, 'public', 'icons', f);
+let winState = { tray: false, lookIcon: false, lookName: '', icons: null };
+let tray = null;
+let quitting = false;
+app.on('before-quit', () => { quitting = true; });
+
+function showBob() {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function trayImage() {
+  const ic = winState.icons;
+  if (ic) {
+    if (process.platform === 'linux') return nativeImage.createFromBuffer(ic[32]);
+    const img = nativeImage.createEmpty();
+    img.addRepresentation({ scaleFactor: 1, buffer: ic[16] });
+    if (!MAC) img.addRepresentation({ scaleFactor: 1.5, buffer: ic[24] });
+    img.addRepresentation({ scaleFactor: 2, buffer: ic[32] });
+    return img;
+  }
+  if (process.platform === 'win32') return nativeImage.createFromPath(iconFile('bob.ico'));
+  if (MAC) return nativeImage.createFromBuffer(fs.readFileSync(iconFile('bob-32.png')), { scaleFactor: 2 });
+  return nativeImage.createFromPath(iconFile('bob-32.png'));
+}
+function bigImage() {
+  return winState.icons ? nativeImage.createFromBuffer(winState.icons[256]) : nativeImage.createFromPath(iconFile(process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'));
+}
+
+function trayMenu() {
+  return Menu.buildFromTemplate([
+    { label: 'Show Bob', click: showBob },
+    { type: 'separator' },
+    { label: 'Quit Bob (closes him fully)', click: () => { quitting = true; app.quit(); } }
+  ]);
+}
+
+const wantTray = () => winState.tray || STARTED_HIDDEN;
+
+function refreshWindowBits() {
+  try {
+    if (wantTray()) {
+      if (!tray) {
+        tray = new Tray(trayImage());
+        tray.setContextMenu(trayMenu());
+        tray.on('click', showBob); // Windows and Linux: a click opens him (Mac shows the menu)
+      } else tray.setImage(trayImage());
+      tray.setToolTip(MAC ? 'Bob' : 'Bob: click to open him, right-click to quit him');
+    } else if (tray) { tray.destroy(); tray = null; }
+    if (MAC) { if (app.dock) app.dock.setIcon(bigImage()); }
+    else if (win) win.setIcon(winState.icons ? bigImage() : iconFile(process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'));
+  } catch (e) { console.error('Bob: tray or icon', e.message); }
+}
+globalThis.bobWindow = { apply: (s) => { winState = { ...winState, ...s }; refreshWindowBits(); } };
+
+// The first time he goes to the tray, Bob says where he went and how to quit him (only once, ever).
+function trayHint() {
+  const flag = path.join(app.getPath('userData'), 'tray-hint-shown');
+  if (fs.existsSync(flag)) return;
+  try { fs.writeFileSync(flag, new Date().toISOString()); } catch {}
+  const where = MAC ? 'up in the menu bar' : process.platform === 'win32' ? 'in the tray by the clock (it may be under the ^ arrow)' : 'in the tray';
+  const content = `I'm still here, ${where}. Click me to open me again. To quit me fully, ${MAC ? 'click' : 'right-click'} my icon and pick Quit Bob.`;
+  try {
+    if (process.platform === 'win32' && tray) tray.displayBalloon({ title: 'Bob is still running', content, icon: trayImage() });
+    else if (Notification.isSupported()) new Notification({ title: 'Bob is still running', body: content, silent: true }).show();
+  } catch {}
+}
+
+function tuckAway(e) {
+  if (quitting || !winState.tray || !tray || !win) return false;
+  if (e) e.preventDefault();
+  win.hide();
+  trayHint();
+  return true;
+}
 let mindWin = null; // 1.5.53: "Bob's thinking", opened from the chat page; nothing runs for it while it's closed
 
 // Small, in the bottom-right corner of the screen Bob is on, so it sits beside a game or an editor.
@@ -245,11 +331,15 @@ async function start() {
   win.webContents.session.setPermissionRequestHandler((wc, perm, cb) => cb(['media', 'notifications'].includes(perm) && wc.getURL().startsWith(base)));
   contextMenu(win, base);
   win.loadURL(base + '/');
+  // 1.5.94: with "Keep Bob in the tray" on, the X and the minimise button tuck him into the tray instead.
+  win.on('close', (e) => { tuckAway(e); });
+  if (!MAC) win.on('minimize', () => { tuckAway(); });
+  refreshWindowBits();
   win.on('closed', () => { win = null; if (mindWin) mindWin.close(); }); // closing Bob closes his thinking window too
 }
 
-app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
+app.on('second-instance', showBob); // opening Bob again (Start menu, a shortcut) brings his window back, tray or not
 // Mac: clicking Bob in the Dock brings his window back (it may have been started hidden at login).
-app.on('activate', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
+app.on('activate', showBob);
 app.on('window-all-closed', () => app.quit());
 app.whenReady().then(start);

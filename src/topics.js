@@ -6,11 +6,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { clip } from './util.js';
 
 const MAX_TOPICS = 400;
 const MAX_NOTE = 1500;
 export const normName = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-const clip = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 export function cosine(a, b) {
   if (!a?.length || !b?.length || a.length !== b.length) return 0;

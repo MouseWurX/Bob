@@ -27,7 +27,7 @@ fs.writeFileSync(path.join(tmp, 'config.json'), JSON.stringify(cfg));
 
 const PORT = 7798;
 const bob = spawn(process.execPath, [path.join(here, '..', 'src', 'server.js')], {
-  env: { ...process.env, BOB_CONFIG: path.join(tmp, 'config.json'), BOB_AGENT_DIR: path.join(tmp, 'Agent 00'), BOB_PORT: String(PORT) },
+  env: { ...process.env, BOB_CONFIG: path.join(tmp, 'config.json'), BOB_AGENT_DIR: path.join(tmp, 'Bob home'), BOB_PORT: String(PORT) },
   stdio: ['ignore', 'pipe', 'inherit']
 });
 await new Promise((r) => bob.stdout.once('data', r));
@@ -71,7 +71,7 @@ try {
   evs = await turn('hello again');
   check(!evs.some((e) => e.type === 'announce'), 'no reload when the model is already running');
   evs = await turn('put a quest on my board');
-  const board = fs.readFileSync(path.join(tmp, 'Agent 00', 'inn', 'notice-board.md'), 'utf8');
+  const board = fs.readFileSync(path.join(tmp, 'Bob home', 'inn', 'notice-board.md'), 'utf8');
   check(board.includes('Llama quest'), 'tool calls work through llama-server (streamed in pieces)');
   check(/bad ids: 0/.test(text(evs)), 'tool results are linked to their tool calls');
   const st = await (await fetch(base + '/api/status')).json();

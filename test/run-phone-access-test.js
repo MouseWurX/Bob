@@ -1,4 +1,4 @@
-// Let my phone in (src/phone-access.js, Settings > Connections): addresses, passcode and switch rules,
+// Let my phone in (src/phone-access.js, Settings > Bob-Net): addresses, passcode and switch rules,
 // and that it is saved in config.json only (settings.json can never open the door).
 import fs from 'node:fs';
 import os from 'node:os';

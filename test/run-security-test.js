@@ -279,7 +279,7 @@ function exifJpeg({ turn = 6 } = {}) {
   check('the Hand has its own Help section', h && /Check a password safely/.test(h.html) && /What I won't do/.test(h.html) && /not an antivirus/.test(h.html));
   check('the FAQ answers antivirus, people-finding and the password box', ['faq-antivirus', 'faq-find-person', 'faq-password-check'].every((id) => HELP.some((e) => e.id === id)));
   const g = HELP.find((e) => e.id === 'glossary').html;
-  check('the glossary explains the new words', ['Defender', 'Metadata', 'OSINT', 'Op-sec', 'Phishing', 'RDAP', 'Search operators', 'SHA-256', 'SPF, DKIM, DMARC'].every((w) => g.includes(`<dt>${w}`)));
+  check('the glossary explains the new words', ['Defender', 'Metadata', 'OSINT', 'Op-sec', 'Phishing', 'RDAP', 'Search operators', 'Checksum (.sha256, SHA-256', 'SPF, DKIM, DMARC'].every((w) => g.includes(`<dt>${w}`)));
   check('web research Help explains search operators', /site:/.test(HELP.find((e) => e.id === 'research').html));
   check('privacy Help says what security look-ups send', /Security look-ups/.test(HELP.find((e) => e.id === 'privacy').html));
 }

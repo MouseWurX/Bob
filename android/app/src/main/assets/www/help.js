@@ -72,14 +72,14 @@ globalThis.BobHelp = {
 <p>Only words travel. The other Bob sends the chat and the list of tools he has; I send back words, or "please run this tool". The tool runs on his side, with his own checks and OK cards. The phone only thinks: no tools, files or programs run here for them, and nothing is kept: not the chat, not a log of it. The only line I keep is "Thought a reply for (that Bob) in so many seconds".</p>
 <p>To set it up:</p>
 <ul><li>Turn on <strong>Lend my brain</strong>. The first time, I make the passcode for you and show it once under <strong>Passcode</strong>: type it into your other Bob straight away. Android shows a notification for as long as lending is on; <strong>Stop lending</strong> on it turns it off.</li>
-<li>On your other replicant matrix: Settings, <strong>Show advanced settings</strong>, <strong>Connections</strong>, <strong>Bob-Net: share work with my other Bobs</strong>, <strong>Borrow a brain</strong>. Add the <strong>Address for your other Bobs</strong> shown here, and the passcode.</li></ul>
+<li>On your other replicant matrix: Settings, <strong>Show advanced settings</strong>, <strong>Bob-Net</strong>, <strong>Borrow a brain</strong>. Add the <strong>Address for your other Bobs</strong> shown here, and the passcode.</li></ul>
 <p>I use the phone brain picked above (<strong>Use this one</strong>). I say no, and the other Bob thinks for himself, when: you're using the phone for something else, the phone is warm, the battery is under 25% and not charging, or the phone brain is busy with your own chat. Only Tailscale devices that know the passcode get in, and only on this phone's Tailscale address. <strong>Make a new passcode</strong> signs out every Bob that used the old one.</p>
 <p><strong>Let Bob work with the screen off</strong>: Android may stop apps answering when the screen is off. <strong>Open battery settings</strong> takes you to Android's list; pick Bob and allow him.</p>
 <p>The first borrowed reply is slow, because I read his instructions and tools once. After that I keep them in mind and only read what's new, so replies start much sooner.</p>`
     },
     {
       id: 'memory', title: 'What Bob remembers',
-      html: `<p>Menu, <strong>What Bob remembers</strong>: lasting facts for the phone brain, one per line, yours to edit. It's used from the next new chat. It stays on this phone; your other replicant matrix's Bob keeps his own memory file. Don't put passwords in it.</p><p>If <strong>Remember only what fits</strong> is on in your other replicant matrix's Settings (Show advanced settings, Engines &amp; speed), then while I can reach your other replicant matrix, the Bob there hands me the few lines of his memory that fit what you just asked, for that one reply. I keep none of them. With your other replicant matrix out of reach, I make do with this phone's list.</p>`
+      html: `<p>Menu, <strong>What Bob remembers</strong>: lasting facts for the phone brain, one per line, yours to edit. It's used from the next new chat. It stays on this phone; your other replicant matrix's Bob keeps his own memory file. Don't put passwords in it.</p><p>If <strong>Remember only what fits</strong> is on in your other replicant matrix's Settings (Show advanced settings, Speed &amp; memory), then while I can reach your other replicant matrix, the Bob there hands me the few lines of his memory that fit what you just asked, for that one reply. I keep none of them. With your other replicant matrix out of reach, I make do with this phone's list.</p>`
     },
     {
       id: 'past-chats', title: 'Past chats',
@@ -122,11 +122,16 @@ globalThis.BobHelp = {
       html: `<p>Everything on the phone stays on the phone: chats, my memory file and the phone brain. Android's cloud backup is told to leave them out. I only talk to the Bobs you add (over Tailscale) and, when you say yes to a download, to huggingface.co for the phone brain. With <strong>Lend my brain</strong> on, your own Bobs send the chat so far and what they remember about you. The phone thinks a reply and keeps none of it. No tracking, no ads, nothing else.</p>`
     },
     {
+      id: 'credits', title: 'Credits and thanks',
+      html: `<p>Bob is inspired by the wonderful books of Dennis E. Taylor. Bob is an independent, fan-made project. It is not affiliated with, sponsored by or endorsed by Dennis E. Taylor or by his publishers, distributors or licensees. All characters, names, titles, stories and other rights in those books remain the property of their respective owners. Bob contains no text from the books; any similar names or ideas are used only as a tribute.</p><p>This app's code is free software (GPL 3 or later), and its art and writing are CC BY-SA 4.0. Those licences cover only MouseWurX's own work, not anything that belongs to the author or his publishers.</p>`
+    },
+    {
       id: 'glossary', title: 'Glossary',
       html: `<dl>
 <dt>Bob on your network</dt><dd>A Bob running on one of your replicant matrices that lets this phone in. He does the heavy lifting.</dd>
 <dt>Phone brain</dt><dd>A small AI model that runs on this phone, without the internet.</dd>
 <dt>Tailscale</dt><dd>A free app that makes a private, scrambled link between your own devices, wherever they are.</dd>
+<dt>Model family</dt><dd>Models made by the same team and built the same way, like Qwen or Gemma. One family comes in many sizes, from phone-sized to big. Under Phone brain each family has its own header you open and close.</dd>
 <dt>Replicant matrix</dt><dd>What I call the computer a Bob runs on. Here that's this replicant matrix (this phone); your other Bobs each live on their own, like your other replicant matrix at home. It's still your computer or phone; it's just my name for it.</dd>
 <dt>Passcode</dt><dd>The code you make on your other replicant matrix under Let my other replicant matrices in (or on the phone under Lend my brain). It proves the device asking is yours.</dd>
 <dt>Lend my brain</dt><dd>This phone thinks quick replies for your other Bobs. They send words; the phone sends words back. The phone only thinks: no tools, files or programs run here for them, and nothing is kept.</dd>
@@ -142,10 +147,10 @@ globalThis.BobHelp = {
       html: `<table>
 <tr><th>What happens</th><th>What to do</th></tr>
 <tr><td>The pill says Nobody home</td><td>Tap it. Usually your other replicant matrix is asleep, or Tailscale is off on the phone or your other replicant matrix.</td></tr>
-<tr><td>"Isn't letting other replicant matrices in yet"</td><td>On your other replicant matrix: Bob's Settings, Show advanced settings, Connections, Let my other replicant matrices in. Turn it on, then restart Bob on your other replicant matrix.</td></tr>
+<tr><td>"Isn't letting other replicant matrices in yet"</td><td>On your other replicant matrix: Bob's Settings, Show advanced settings, Bob-Net, Let my other replicant matrices in. Turn it on, then restart Bob on your other replicant matrix.</td></tr>
 <tr><td>"That isn't a Tailscale address"</td><td>Use the address your other replicant matrix's Let my other replicant matrices in setting shows: a name ending in .ts.net, or a number starting 100.</td></tr>
 <tr><td>Your other replicant matrix says the phone didn't answer in time</td><td>The first borrowed reply is the slow one: the phone reads my whole instructions and tool list once. After that it only reads what's new. If it keeps happening, check Phone brain, Lend my brain for a reason (warm, low battery, in use), and tap Open battery settings there.</td></tr>
-<tr><td>Can your other replicant matrix borrow the phone while I game?</td><td>Yes: that's what Lend my brain is for. Turn it on here, then on your other replicant matrix: Settings, Show advanced settings, Connections, Bob-Net: share work with my other Bobs, Borrow a brain. Keep the phone on its charger with the screen off.</td></tr>
+<tr><td>Can your other replicant matrix borrow the phone while I game?</td><td>Yes: that's what Lend my brain is for. Turn it on here, then on your other replicant matrix: Settings, Show advanced settings, Bob-Net, Borrow a brain. Keep the phone on its charger with the screen off.</td></tr>
 <tr><td>It asks for the passcode again</td><td>The passcode was changed on your other replicant matrix. Type the new one under Bobs on your network.</td></tr>
 <tr><td>The phone brain is slow or stops</td><td>Close big apps (games, the camera), let the phone cool down, or try Test speed. Gemma 4 E2B is the quicker one.</td></tr>
 <tr><td>The download stopped</td><td>Tap Resume. It carries on where it stopped. If it says the checksum didn't match, the file was damaged on the way and was deleted: download it again on Wi-Fi.</td></tr>

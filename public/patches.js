@@ -32,7 +32,8 @@ export function catMoment(cat, n = Math.floor(Date.now() / 600000)) {
 export function catPrompt({ cat, turn, dials = {}, user = 'the user' }) {
   if ((dials.wit ?? 2) === 0 || (dials.length ?? 2) === 0 || (dials.musing ?? 2) === 0) return '';
   if (Math.abs(Math.floor(turn)) % 5 !== 2) return '';
-  return `Right now in The Idle Process: ${catMoment(cat, turn)}. If it fits, mention it in a few words at the end of your reply; skip it if ${user} is busy, stressed or the topic is serious.`;
+  // 1.5.102: the Right now line already says what the cat is up to (realState, the same moment), so it isn't repeated here.
+  return `If it fits, mention what ${cat || 'the cat'} is up to (in the Right now line) in a few words at the end of your reply; skip it if ${user} is busy, stressed or the topic is serious.`;
 }
 
 // 1.5.53: a line for each of the cat's antics by Bob's picture, so the words match what the cat is doing.

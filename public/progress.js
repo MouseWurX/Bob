@@ -2,8 +2,8 @@
 // and a little Bob working away, so it never looks like nothing is happening.
 import { motionOff } from './themes.js';
 import { drawBob } from './bob-sprite.js';
+import { esc } from './util.js';
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export const STEP_LABEL = {
   finding: 'Finding the right build',

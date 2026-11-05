@@ -2,8 +2,8 @@
 // The owner's idea: set them once on the Equip Bob page, next to the slot they belong to, and Bob uses them when a
 // request doesn't say. Every box starts empty; empty means Bob picks something sensible and says what he picked.
 // Shared by the page (boxes), the server (cleaning what's saved) and the brain (prompt line, tool defaults).
+import { esc } from './util.js';
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // slot: the Equip Bob slot the boxes sit next to. Each field: label, kind (text | seconds | choice), limits.
 export const HOUSE = {

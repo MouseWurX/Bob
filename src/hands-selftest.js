@@ -13,10 +13,10 @@ import { planFiles, applyFiles, undoJob } from './hands-files.js';
 import { runCommand } from './hands-run.js';
 import { appDir } from './config.js';
 import { usesBin } from './recycle.js';
+import { sleep } from './util.js';
 
 const WIN = process.platform === 'win32';
 const alive = (pid) => { if (!pid) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Windows only: puts one file back from the Recycle Bin (the dummy one this test just threw away).
 function restoreFromBin(original) {

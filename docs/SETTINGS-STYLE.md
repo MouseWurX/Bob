@@ -24,7 +24,7 @@ Verdicts are **Approved**, **Approved with edits** (make the listed edits, no se
 6. **Opt-in and safe defaults.** Anything automatic, background, network, cloud, download, file or app-control setting ships **off**. Where that helps, the hint says "Off unless you turn it on." Defaults never cost the person data, money or GPU memory they didn't ask for.
 7. **Everyday or Advanced.**
    - **Everyday** is for things a non-technical person would change in the first week: voice, look, colours, animations, cat's name, one brain, start-up, updates.
-   - **Advanced** (behind "Show advanced settings", remembered, off by default) is for the rest, sorted into Brains, Voice details, Look & feel, Engines & speed, Connections, Hands, Housekeeping and Remove Bob.
+   - **Advanced** (behind "Show advanced settings", remembered, off by default) is for the rest, sorted into Brains, House style, Voice details, Look & feel, Speed & memory, Engines, Bob-Net, Online services, Other apps, Hands, Housekeeping, Check-ins and Remove Bob.
    - Models go on **Get models**. Live work goes in **Now running**, Tasks and Downloads.
 8. **Use the same names everywhere.** Use the words in the glossary below, and don't invent synonyms.
 9. **Use units people know.** Write GB, seconds, minutes and "about 20 seconds". Keep tokens, ports and flags to Advanced, each with a gloss.

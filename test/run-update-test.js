@@ -83,7 +83,7 @@ check('"Wait until he\'s done" needs only no job, nothing waiting, no download (
 check('the window pops to the front when the new Bob is built', /TopMost = \$true; \$form\.Activate\(\)/.test(ps));
 check('Bob\'s own Restart button reaches the window (flag file)', /update-restart\.flag/.test(ps));
 check('a Bob that is running but slow to answer counts as busy, never idle', /catch \{ return 'something \(he is slow to answer\)' \}/.test(ps) && /if \(-not \(Bob-Running\)\) \{ return '' \}/.test(ps));
-process.env.BOB_APP_DIR = 'C:\\Agent 00\\Bob app';
+process.env.BOB_APP_DIR = 'C:\\Bob home\\Bob app';
 fs.rmSync(statusFile(cfg), { force: true });
 fs.writeFileSync(path.join(src, 'package.json'), JSON.stringify({ bob: { release: '0.9', build: 999 } }));
 let call2 = null; startUpdate(cfg, { spawnImpl: (e, a) => { call2 = a; return {}; } });

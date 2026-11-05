@@ -447,6 +447,10 @@ button.danger { background: #a8432f; color: #fff; border-color: #a8432f; }
 .topic-msgs li > span:nth-child(2) { flex: 1; }
 .topic-msgs .grip { color: var(--muted); user-select: none; }
 .suggest-note { border-left: 3px solid var(--accent); padding-left: 8px; }
+/* 1.5.91 the Set it up card */
+.setup-offer { align-self: center; max-width: 520px; display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--accent); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+.setup-offer ul { margin: 0; padding-left: 18px; }
+.setup-offer .row { display: flex; gap: 8px; flex-wrap: wrap; }
 .chat-list, .search-hits, .tidy-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .chat-list li, .search-hits li { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 8px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: space-between; align-items: center; }
 .hit-thumb { width: 64px; height: 64px; object-fit: cover; border-radius: calc(var(--r) * .5); }
@@ -1064,6 +1068,15 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .cat-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
 .cat-row.dim { opacity: 0.75; }
 .cat-row .confirm { flex-basis: 100%; }
+/* 1.5.101: one header per model family inside each catalogue job; press it to open or close the list. */
+.cat-fam { border: 1px solid var(--line); border-radius: var(--r); margin: 0 0 8px; background: var(--card); scroll-margin-top: calc(var(--cellar-head-h, 56px) + var(--cellar-tabs-h, 0px) + 8px); }
+.cat-fam > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 48px; padding: 8px 12px; }
+.cat-fam > summary::-webkit-details-marker { display: none; }
+.cat-fam > summary::before { content: '▸'; font-size: 18px; width: 1em; transition: transform .15s; }
+.cat-fam[open] > summary::before { transform: rotate(90deg); }
+.cat-fam > summary:hover .fam-name { color: var(--accent); }
+.cat-fam .fam-name { font-weight: 600; }
+.cat-fam > .cat-list { margin: 0; padding: 0 10px 10px; }
 .cat-act { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .src-link { text-decoration: none; color: var(--muted); padding: 0 4px; }
 .mini-switch { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 2px 8px; font: inherit; font-size: 12px; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
@@ -1101,3 +1114,19 @@ button.tip-i:focus-visible { outline: 2px solid var(--accent); outline-offset: -
 .howto-row .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .howto-row button { min-height: 32px; }
 .howto-row textarea, .howto-row input { width: 100%; font: inherit; box-sizing: border-box; }
+
+/* 1.5.97: the ⏳ waiting line: muted, no buttons, so it never reads as a card */
+.note.wait { color: var(--muted, #888); font-style: italic; border: none; background: none; }
+/* 1.5.98: small subheadings inside a settings panel (How he works, This Bob, Limits that always apply). */
+.ssub { margin: 12px 0 2px; font-size: 13px; font-weight: 700; text-transform: none; color: var(--muted, inherit); }
+.ssub:first-child { margin-top: 4px; }
+/* 1.5.95 Diagrams and the Save as row (save-as.js). */
+.msg figure.diagram { margin: 8px 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: #222; overflow: auto; max-width: 100%; }
+.msg figure.diagram figcaption { font-weight: 600; font-size: 13px; margin-bottom: 6px; color: #333; }
+.msg figure.diagram .diagram-art svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+.msg figure.diagram .muted { color: #666; }
+.msg figure.diagram details pre { white-space: pre-wrap; font-size: 12px; }
+.msg .save-as { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 4px 0 2px; font-size: 12px; color: var(--muted); }
+.msg .save-as .save-label { margin-right: 4px; }
+.msg .save-as .save-done { color: var(--accent); }
+.msg .save-as .save-have { padding: 1px 7px; color: var(--muted); opacity: .8; }

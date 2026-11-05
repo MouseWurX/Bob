@@ -10,6 +10,8 @@ import { securityTools } from '../src/hands-security.js';
 import { ENGINES, pickAsset, engineFor, liftLibraries, makeRunnable } from '../src/engines.js';
 import { onPath } from '../src/platform.js';
 import { findExe } from '../src/config.js';
+import { packFor, packsFor, suit, pickFor } from '../public/fit.js';
+import { starterBrain, readyPlan } from '../public/equip.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra) => { if (ok) { pass++; console.log(`PASS ${name}`); } else { fail++; console.log(`FAIL ${name}${extra ? ` (${String(extra).slice(0, 300)})` : ''}`); } };
@@ -104,7 +106,8 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-linux-'));
 
 // ---------- engines: the Linux files from each release ----------
 {
-  const side = (id) => engineFor(ENGINES.find((e) => e.id === id), 'linux');
+  // x86_64 PCs; ARM boards are checked below (said outright, so the same checks pass on an ARM computer).
+  const side = (id) => engineFor(ENGINES.find((e) => e.id === id), 'linux', 'x64');
   const llama = ['llama-b7000-bin-ubuntu-cuda-12.8-x64.tar.gz', 'llama-b7000-bin-ubuntu-cuda-13.4-x64.tar.gz', 'llama-b7000-bin-ubuntu-cuda-13.4-arm64.tar.gz', 'cudart-llama-b7000-bin-ubuntu-cuda-13.4-x64.tar.gz', 'llama-b7000-bin-win-cuda-13.1-x64.zip', 'llama-b7000-bin-win-vulkan-x64.zip', 'llama-b7000-bin-macos-arm64.tar.gz', 'llama-b7000-bin-ubuntu-x64.tar.gz', 'llama-b7000-bin-ubuntu-vulkan-x64.tar.gz', 'llama-b7000-bin-ubuntu-s390x.tar.gz'].map((name) => ({ name }));
   const L = side('llamacpp'), cuda = pickAsset(llama, L, true);
   check('engines: llama.cpp on Linux with an NVIDIA card takes the newest Ubuntu CUDA build (x64, not arm64)', cuda?.name === 'llama-b7000-bin-ubuntu-cuda-13.4-x64.tar.gz', cuda?.name);
@@ -130,6 +133,36 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-linux-'));
   check('config: Linux finds llama-server (no .exe) in build/bin', findExe('', path.join(tmp, 'deep'), ['llama-server']) === path.join(deep, 'llama-server'));
   const pathDir = path.join(tmp, 'usr-bin'); fs.mkdirSync(pathDir); fs.writeFileSync(path.join(pathDir, 'whisper-cli'), ''); fs.chmodSync(path.join(pathDir, 'whisper-cli'), 0o755);
   check('engines: one the distro installed is found on the PATH', process.platform === 'win32' || onPath('whisper-cli', { PATH: pathDir }) === path.join(pathDir, 'whisper-cli'));
+}
+
+// ---------- ARM Linux (Raspberry Pi 5 and other 64-bit ARM boards) ----------
+{
+  const arm = (id) => engineFor(ENGINES.find((e) => e.id === id), 'linux', 'arm64');
+  const llama = ['llama-b12032-bin-ubuntu-x64.tar.gz', 'llama-b12032-bin-ubuntu-vulkan-x64.tar.gz', 'llama-b12032-bin-ubuntu-arm64.tar.gz', 'llama-b12032-bin-ubuntu-vulkan-arm64.tar.gz', 'llama-b12032-bin-ubuntu-cuda-13.4-arm64.tar.gz', 'llama-b12032-bin-linux-arm64-snapdragon.tar.gz', 'llama-b12032-bin-macos-arm64.tar.gz'].map((name) => ({ name }));
+  const L = arm('llamacpp');
+  check('ARM: llama.cpp takes the Ubuntu ARM processor build, with or without an NVIDIA card', pickAsset(llama, L, false)?.name === 'llama-b12032-bin-ubuntu-arm64.tar.gz' && pickAsset(llama, L, true)?.name === 'llama-b12032-bin-ubuntu-arm64.tar.gz');
+  check('ARM: never an x86_64, Mac or Snapdragon file', !pickAsset(llama.filter((a) => !/ubuntu-arm64/.test(a.name)), L, false));
+  check('ARM: llama.cpp is pinned to the tested release, like on a PC', L.tested === ENGINES.find((e) => e.id === 'llamacpp').tested && /^b\d+$/.test(L.tested));
+  check('ARM: x86_64 Linux keeps its own picks', pickAsset(llama, engineFor(ENGINES.find((e) => e.id === 'llamacpp'), 'linux', 'x64'), false)?.name === 'llama-b12032-bin-ubuntu-vulkan-x64.tar.gz');
+  check('ARM: whisper.cpp and uv take their ARM files', pickAsset([{ name: 'whisper-bin-ubuntu-x64.tar.gz' }, { name: 'whisper-bin-ubuntu-arm64.tar.gz' }], arm('whispercpp'), false)?.name === 'whisper-bin-ubuntu-arm64.tar.gz' && ['audio', 'kokoro', 'chatterbox', 'uv'].every((id) => pickAsset([{ name: 'uv-x86_64-unknown-linux-gnu.tar.gz' }, { name: 'uv-aarch64-unknown-linux-gnu.tar.gz' }], arm(id), false)?.name === 'uv-aarch64-unknown-linux-gnu.tar.gz'));
+  check('ARM: no picture engine, with the reason', /ARM Linux/.test(arm('sdcpp').unavailable || ''));
+  check('ARM: Piper is the aarch64 file, never the x86_64 checksum', pickAsset([{ name: 'piper_linux_x86_64.tar.gz' }, { name: 'piper_linux_aarch64.tar.gz' }], arm('piper'), false)?.name === 'piper_linux_aarch64.tar.gz' && arm('piper').sha256 !== engineFor(ENGINES.find((e) => e.id === 'piper'), 'linux', 'x64').sha256 && (arm('piper').sha256 ? /^[0-9a-f]{64}$/.test(arm('piper').sha256) : /Kokoro/.test(arm('piper').unavailable)));
+  check('ARM: FFmpeg and LibreOffice still come from the distro', ['ffmpeg', 'libreoffice'].every((id) => /software centre/.test(arm(id).unavailable || '')));
+  check('ARM: program names have no .exe', L.exe === 'llama-server' && arm('whispercpp').exe === 'whisper-cli');
+
+  const catalog = JSON.parse(fs.readFileSync(new URL('../catalog.json', import.meta.url), 'utf8'));
+  const packs = catalog.packs, models = catalog.models.map((m) => ({ ...m, status: { state: 'missing' } }));
+  check('ARM sets: a 4 GB board gets Qwen3.5 2B, an 8 GB or 16 GB board Gemma 4 E2B', packFor(packs, 0, false, { arm: true, ramGB: 4 }).id === 'pi4' && packFor(packs, 0, false, { arm: true, ramGB: 8 }).id === 'pi8' && packFor(packs, 0, false, { arm: true, ramGB: 16 }).id === 'pi8');
+  check('ARM sets: their brains are on the processor and in the Brain slot', packs.find((p) => p.id === 'pi4').slots['qwen3.5-2b'].includes('bob') && packs.find((p) => p.id === 'pi8').slots['gemma4-e2b'].includes('bob'));
+  check('ARM sets: nothing in them needs a graphics card or the picture engine', packsFor(packs, true).every((p) => p.models.every((id) => { const m = catalog.models.find((x) => x.id === id); return m && (m.vramGB || 0) <= 4 && m.needs !== 'stable-diffusion.cpp' && m.commercial === true; })));
+  check('ARM sets never show on a PC, and PC sets never on a board', packsFor(packs, false).every((p) => !p.arm) && packsFor(packs, true).every((p) => p.arm) && packFor(packs, 0).id === 'cpu' && packFor(packs, 16).id === 'big');
+  check('ARM: one-click first start fetches Qwen3.5 2B on 4 GB, Gemma 4 E2B on 8 GB', starterBrain({ arm: true, ramGB: 4 }) === 'qwen3.5-2b' && starterBrain({ arm: true, ramGB: 8 }) === 'gemma4-e2b' && starterBrain({ vramGB: 0, ramGB: 8 }) === 'gemma4-e2b');
+  const engines = [{ id: 'llamacpp', available: true, installed: true, bundled: true }, { id: 'sdcpp', available: false, installed: false }, { id: 'whispercpp', available: true, installed: false }];
+  const rp = readyPlan({ arm: true, ramGB: 4, nvidia: false }, models, engines);
+  check('ARM: Get Bob ready skips the picture engine and keeps the bundled llama.cpp', rp.ids.join() === 'engine:whispercpp,qwen3.5-2b', rp.ids.join());
+  check('ARM: a brain too big for the board doesn\'t suit it', suit(catalog.models.find((m) => m.id === 'gemma4-e4b'), { vramGB: 0, ramGB: 4, arm: true }).level === 'no' && suit(catalog.models.find((m) => m.id === 'qwen3.5-2b'), { vramGB: 0, ramGB: 4, arm: true }).level === 'ok');
+  const ctx = { vramGB: 0, ramGB: 4, arm: true, packs };
+  check('ARM: Bob\'s picks on a 4 GB board are the set\'s, not the big PC brains', pickFor('bob', models, ctx)?.id === 'qwen3.5-2b' && pickFor('eyes', models, ctx)?.id === 'qwen3.5-2b' && pickFor('deep', models, ctx) === null);
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

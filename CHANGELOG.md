@@ -4,6 +4,186 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.114
+
+- **Credits.** The README and a new Help page, Credits (on the desktop and in the phone app), thank Dennis E. Taylor, whose books inspired Bob, and say plainly that Bob is an independent fan project with no connection to the author or his publishers, and that the rights in the books stay theirs. TRADEMARKS.md says the same.
+
+## 1.5.113
+
+- **Bob says plainly when another program holds the graphics card.** When a brain or picture takes too long to load, Bob looks at the card once. If another program has filled it, he says so with a ⚠ line, naming the biggest programs when the card tells him (only programs the card lists as using it, never Windows itself, overlays or browsers; sizes only when the figures add up). Then he stops: one try instead of three five-minute ones, no other brain, and no "Waking up…" reload. Jobs waiting in line get the same answer straight away, and a chat that has already seen the line gets a short pointer to it instead of a repeat. He looks again before the next job, at most every 30 seconds, and carries on as normal once the card is free. Chats on the processor in Gaming keep going.
+
+## 1.5.112
+
+- **Every waiting chat gets its ⏳ line.** A message sent in the second before a picture started (while Bob was freeing the graphics card) now gets the line too, as soon as the painting begins.
+
+## 1.5.111
+
+- **The ⏳ line goes away when the wait is over.** Once Bob starts on the waiting message (or it is stopped in Tasks), its ⏳ line leaves the chat, so it no longer sits frozen above the answer.
+
+## 1.5.110
+
+- **The ⏳ line keeps up.** A chat waiting behind a picture or clip now sees the line move on from "loading the picture engine" to "making a picture, step 3 of 20", updated in place. Telegram and the phone app still show it once.
+
+## 1.5.109
+
+- **Picture and clip progress counts the real steps only.** While the picture engine loads, it prints counters of its own (for example 82/82), and those no longer show on the bar or in the ⏳ line. Until the first real step, Bob says he is loading the picture engine.
+
+## 1.5.108
+
+- Under the hood: shared helpers live in one place instead of being copied into many files.
+
+## 1.5.107
+
+### Tidy-up
+- The README now covers Linux, Raspberry Pi and the Android app, and says each install step once.
+- The web reader and the security Hand now share one check for home-network addresses, so the web reader also refuses link-local IPv6 and a few more home-network names.
+- On Mac and Linux, stopping an office job also stops the LibreOffice it started.
+- Docs use "replicant matrix" for the test machine, and the public privacy check is stronger.
+- Nothing new is switched on.
+
+## 1.5.106
+
+- Hover tips: each thing said once. Catalogue bubbles group the machine lines, the source sits on ↗ only, Active is explained once at the top, look groups share one line by their heading, theme tips no longer repeat the description, and Alerts says "a notification".
+- Release builds on Windows keep the bundled Mermaid file byte for byte (a .gitattributes rule), so its checksum check passes.
+
+## 1.5.105
+
+- Bob's instructions to his brains are trimmed: no repeated rules, the right computer name on Mac and Linux, and his copies get about a third fewer words, which leaves more room for the chat on small brains.
+- The ⏳ line for a chat waiting behind a long job now says what Bob is doing in plain words, for example "making a picture, step 12 of 30" or "making a song".
+
+## 1.5.104
+
+Fixes from a live test on the replicant matrix.
+
+- **One Set it up card per request.** When something Bob needs is switched off (web search, for example), you get one card and one short note, not a stack of cards and repeats.
+- **A Set it up card isn't a failure.** Bob no longer adds a "that didn't work" note after offering a card, and doesn't try the same thing again.
+- **Chats that wait behind a picture, clip, song or sound** now get a ⏳ line saying Bob is still on the last job and will answer when it's done. Typing "ok" there gets a plain answer instead of starting another job. Telegram shows the line once.
+- **The progress bar** no longer reads "Painting 82/82" before the first step.
+- **Brains and programs set by hand in config.json count as here.** A .gguf given in llamacpp.models, or a llama-server, sd, whisper or piper program path that's really there, shows as installed in the welcome screen and the brain list.
+
+## 1.5.103
+
+### Flowcharts and diagrams
+- **Ask for a flowchart, mind map, timeline, org chart, project plan or pie chart** in plain words ("map out how the login works") and Bob draws it right in the chat. It's drawn on your replicant matrix with Mermaid, which now comes with Bob: nothing goes online, no download, no graphics card needed.
+- Ask for a change and he redraws it. Each diagram's text is kept as a .mmd file in his folder.
+- The phone app draws diagrams too.
+
+### Save as: other file types
+- Everything Bob makes now has a **Save as** row under it: pictures as PNG, JPG, WebP or GIF; clips as MP4, WebM or GIF; songs and sounds as WAV, MP3, OGG or FLAC; diagrams as PNG, SVG or PDF. The original always stays.
+- Name the type when you ask ("a song about my cat as an mp3") and he saves it that way straight away. "Save that song as an mp3" works afterwards too.
+- Songs come out as WAV (about 10 MB a minute); an MP3 is about a tenth of that.
+- Converting uses FFmpeg. If it isn't set up, Bob shows a **Set it up** card instead of an error (on Mac and Linux, the card says how to install it).
+- Works in the phone app too: its Save as row keeps the file on the replicant matrix that made it.
+
+## 1.5.102
+
+### Model families in the Brain catalogue
+- Inside each job, models now sit under one header per family (Qwen, Gemma, GPT-OSS, Whisper, FLUX and so on). Every family starts closed: press its name to open the list, press again to fold it away. Bob remembers which ones you leave open, and **Open all families** / **Close all** are at the top.
+- Each header says how many models, the size range, **★ Recommended inside** when Bob's pick for that job is in that family, and how many are already on this replicant matrix. The family with Bob's pick comes first. The ⓘ says who makes it.
+- In Settings, Brains, the brain menus group their brains by family too.
+- Phone: Bob for Android's model list groups by family the same way, closed to start with and opening while one downloads.
+- Help: the catalogue page explains families, plus a new FAQ ("What's a model family?") and a glossary entry ("Model family").
+
+## 1.5.101
+
+### Bob on a Raspberry Pi and ARM Linux
+- New download on every release: **Bob-<version>-linux-arm64.AppImage**, for a Raspberry Pi 5 (or 4) and other 64-bit ARM Linux boards. It's built and test-started on an ARM runner, next to the usual x86_64 AppImage.
+- On a board, Bob runs on the processor: llama.cpp's ARM build (the same tested b12032 release), whisper.cpp, uv and Piper, each pinned. Making pictures (sd.cpp) isn't available on ARM yet, and Bob says why.
+- Two starter sets only ARM boards see: **8 GB or more** (Gemma 4 E2B, with Whisper for hearing) and **4 GB** (Qwen3.5 2B). A brain that wants more than about 60% of the board's memory is marked as unlikely to run well.
+- Help: new "Bob on a Raspberry Pi" page, an FAQ and a glossary entry ("ARM board"). Not tried on a real Pi yet; the Help says so.
+- Nothing changes on Windows, Mac or x86_64 Linux, and nothing new is switched on.
+
+## 1.5.100
+
+### Help, tidied
+- Help: repeats trimmed, short FAQ answers link to their full page, wrong facts fixed (phone access, sizes, chat while busy), privacy page lists Bob-Net and Telegram, platform-neutral wording.
+- Glossary: "Slot" appears once, "SHA-256" is part of "Checksum (.sha256, SHA-256)", and "Thinking (Bob's thinking window)" is part of "Thinking first".
+- No settings or behaviour changed.
+
+## 1.5.99
+
+### Pair with my other Bobs
+- Joining your Bobs is now two presses, with nothing to type. In Settings, Show advanced settings, 🌐 Bob-Net, at the top of My other Bobs: **Find my other Bobs** asks Tailscale which of your devices are online and knocks on each. Press **Pair** next to one, or **Pair with all of them**.
+- The other Bob shows a card, "🤝 … wants to join your Bob-Net", with a 4-digit number. This Bob shows the same number. If they match, press **Yes, pair us** over there. The two Bobs swap passcodes over Tailscale, and each puts the other in My other Bobs.
+- Pairing only fills the list. It switches nothing on: Lend, Borrow, Take jobs and Send jobs stay as they were.
+- If this Bob's door (Let my other replicant matrices in) is off, the pairing works one way and Bob says how to make it both ways.
+- No Tailscale program? Type the other Bob's Tailscale address and press Pair. Adding a Bob by hand (name, address, passcode) is under More, as **Add one by hand**.
+- A fix from the live test: the door also accepts this replicant matrix's own current Tailscale addresses, so an old saved address can't shut your other Bobs out.
+- Limits: 3 pairing asks a minute, one waiting card per asker, and cards and answers are forgotten after 3 minutes. Yes is refused while this Bob's door is off.
+
+### Phone: pair with this Bob
+- Bob for Android pairs the same way. Under Add a Bob, **Pair with this Bob** sits beside Add this Bob. The phone can also answer a pairing card from your computer, with a notification when Bob's screen is closed.
+- Each pairing gets its own passcode, kept on the phone only as a fingerprint. Make a new passcode drops them all. On Yes, the phone logs in to your computer's Bob by itself.
+- New Help entries on both: "How do I join my Bobs together?" (computer) and "Pair with my other Bobs" (phone). Glossary: "Pairing".
+
+## 1.5.98
+
+### Settings, laid out properly
+Nothing is renamed or switched on or off, only moved, so every setting keeps its name and its default.
+- **How Bob works** has three small headings: *How he works* (now with Pick up where Bob left off after a restart), *Starting and closing*, and *Going online*.
+- **Check for updates when Bob starts** sits in This replicant matrix and updates, next to the Check for updates button.
+- Off Windows, the Animations middle button says **Follow the system**.
+- The advanced panels, in order: 🧠 Brains (now also Let the reviewer sit beside Bob's main brain, Keep chatting while Bob is busy and Give Bob all his tools at once), 🖋 House style, 🔊 Voice details, 🌓 Look & feel, ⚡ Speed & memory, ⚙ Engines, 🌐 Bob-Net, ☁ Online services, 🔌 Other apps, ✋ Hands, 🧹 Housekeeping, 🔔 Check-ins, 🗑 Remove Bob.
+- **Engines & speed** is now two panels: Speed & memory (freeing memory, picture speed, Gaming, Remember only what fits, the speed test) and Engines (the engine and its downloads; the fine-tuning is under More).
+- **Connections** is now three panels. **Bob-Net** has your phone and your other Bobs in one place: This Bob (the door, **Address**, passcode, firewall), My other Bobs, and What they share. "Address for the phone" is now just **Address**, since your other Bobs use it too. **Online services** says at the top that each one sends something over the internet; it holds Cloud helpers and Telegram. **Other apps** holds ComfyUI and points to Hands for Unreal Engine and Blender.
+- Hands has a heading "Limits that always apply" above the hard limits.
+- No panel shows its title twice any more, and House style and Look & feel have their own icons.
+- Old links to Connections land on Bob-Net. New FAQ: "Where did Engines & speed and Connections go?", and a glossary entry for Online services. Help, the Bob-Net and setup messages, and the phone app's help now use the new paths.
+
+## 1.5.97
+
+### Waiting is plainly waiting
+- When a job waits for the graphics card, chat and Tasks now show one muted line that starts with ⏳ and says who has the card and that nothing is needed from you, for example: "⏳ The graphics card is busy: my Brain is finishing another job. Nothing for you to do; I carry on by myself when it's free. (waiting 2 min)". It updates in place, and after 5 minutes it adds that Stop cancels the job. It used to read like an OK card.
+- Typing "ok", "yes" or "go" while only a ⏳ line is showing gets a plain answer straight away: there's nothing to OK.
+- Glossary: new entry "⏳ line".
+
+### Bob-Net lending fixes (found on real devices)
+- A Bob lending his brain now stops thinking when the asking Bob gives up, and always hands the graphics card back afterwards. Before, the card could stay taken, and his own jobs and guests' jobs waited forever.
+- The lending Bob says "still loading" every few seconds until the first word, and the asking Bob gives up after 45 seconds with no first word.
+
+### Phone: send a photo
+- The phone app can attach a photo (📎) to a message for your Bob. The photo goes only to your own Bob, which keeps it on its References page. New Help entry: "Photos".
+
+## 1.5.96
+
+### Bob understands what you ask, in plain English
+- **Picture edits stay edits.** "Edit this picture", "change this picture", "I want this to look like a watercolour", "make her hair red" or "get rid of the guy on the left" now edit the picture you attached. Bob no longer paints a brand new picture when you meant a change, even if his brain forgets to say which picture.
+- **Follow-ups edit the picture from a moment ago.** Right after Bob makes a picture (or you send one), "now make the sky purple", "add a moon to that" or "lose the tree" edit that same picture. Ask for "a new picture" and he starts fresh.
+- **More ways of asking reach the right tools**: posters, banners, thumbnails, album covers, profile pictures, "show me what... looks like", little movies and gifs, lo-fi tracks and theme tunes, "start the server", "unpack that archive", "clear some space", "every weekday at 9am", "shrink this video", "is this link safe to click", "jot this down in a text file" and more.
+- A new check (test/run-phrasing-test.js) asks Bob about 175 everyday phrasings for every job he does (pictures, edits, clips, music, sounds, Hands, documents, memory, how-tos) and fails if one lands on the wrong tools.
+
+## 1.5.95
+
+### Bob in the tray, and his look as his icon (both off by default)
+- New in Settings, How Bob works: **Keep Bob in the tray**. With it on, closing or minimising Bob's window tucks him into the tray by the clock (the menu bar on a Mac, the desktop's tray on Linux). Click the icon to bring him back; **Quit Bob** in its menu closes him fully. The first time he goes there, he says where he went.
+- Started hidden with **Launch Bob on start-up**, Bob now always shows his tray icon, so his window can come back with one click.
+- New in Settings, Bob himself: **Use Bob's look as his icon**. The taskbar, title bar (Dock on a Mac) and tray show the look you picked for him.
+- Updating Bob still works with the tray on. The phone app has no tray.
+
+## 1.5.94
+
+### Bob-Net with no manual steps
+- **Let my other replicant matrices in** works the moment you turn it on: no restart. If Tailscale isn't running yet, Bob says so and picks it up within a minute once you sign in.
+- On Windows, one button, **Let Tailscale through the firewall**, adds a firewall rule that lets in Tailscale only (Windows asks once). It also switches off any rule that blocks Bob's own program (Windows makes one if Cancel was clicked on its earlier question). **Remove the firewall rule** undoes both.
+- On Linux, Bob shows the one line to run if a firewall is on. On a Mac, choose Allow when macOS asks.
+- New FAQ: "Why can't my phone or other Bob reach this one?"
+- Not yet tried on real hardware: the Windows prompt and rule.
+
+## 1.5.93
+
+### Bob ready in a few clicks
+- **Get Bob ready** is now one list: tick or untick every program and model, each with its job and size. The recommended ones are ticked. On built-in graphics with 32 GB or more of RAM, Gemma 4 26B and Qwen 3.8 27B are offered too, unticked.
+- Bob puts each model he downloads into its slot himself, so everything is ready to use when the downloads finish.
+- Bob gets his own Python when there's none on your replicant matrix (the official Python Software Foundation package on Windows, uv's standalone Python on Mac and Linux), so voices and the audio tools no longer ask you to install Python first.
+- When you ask for something Bob can't do yet (a clip, a picture, music, web search, a Hand that's off), he shows a **Set it up** card in the chat instead of an error. One press gets what's needed, and he carries on with what you asked. The phone app shows the same card.
+- Not yet tried on real hardware: Bob's own Python under Smart App Control, and the phone's Set it up card.
+
+## 1.5.92
+
+### Phone: replicant matrix wording on Bob-Net
+- The phone's **Bobs on your network** now says "Bobs on your other replicant matrices that let this phone in".
+- A new Bob on your network gets a name from its Tailscale address ("Bob on desktop" for desktop.your-tailnet.ts.net), or "Bob on my other replicant matrix" for a bare number address. The examples use my-computer.your-tailnet.ts.net.
+
 ## 1.5.91
 
 ### Fixes from the live test

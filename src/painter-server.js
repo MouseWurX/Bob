@@ -24,7 +24,7 @@ import net from 'node:net';
 import crypto from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { spawn, execFile } from 'node:child_process';
-import { paint as paintCli, modelArgs, sizeFor, framesFor, checkOutput } from './painter.js';
+import { paint as paintCli, modelArgs, sizeFor, framesFor, checkOutput, stepsFor } from './painter.js';
 import { bigGraceMs } from './brain-mode.js';
 import { paintFlags, pictureFitFailed } from './tuning.js';
 import { freeMemNow } from './platform.js';
@@ -363,7 +363,7 @@ export class PainterServer extends EventEmitter {
     const extra = flags.extra;
     const neg = negative ? String(negative).slice(0, 1000) : spec.negative || '';
     const sample = {
-      sample_steps: spec.steps || (video ? 10 : 8),
+      sample_steps: stepsFor(spec, kind),
       guidance: { txt_cfg: spec.cfg ?? (video ? 3.5 : 1.0) }
     };
     if (spec.sampler) sample.sample_method = spec.sampler;

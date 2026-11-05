@@ -10,10 +10,13 @@ const HOW = `click "${WEB_PILL}" next to Effort on the chat page, or turn on "${
 export const WEB_OFF = `Web search is off, so I can't look things up online. To let me, ${HOW}, then ask again.`;
 
 // One line for Bob's prompt while it's off, so he knows and can say so instead of guessing.
-export function webPrompt(cfg) {
+// 1.5.102: a copy of Bob (hat) has no offer_setup, so it only gets the facts, not the card.
+export function webPrompt(cfg, { hat = null } = {}) {
   if (webOn(cfg)) return '';
   const who = cfg?.userName || 'the user';
-  return `\n\nWeb search is OFF: you can't search the web or open web pages. If a question needs the internet (news, prices, versions, docs or facts you aren't sure of), say in one line that web search is off so you can't look it up, and that ${who} can ${HOW}. Always mention the switch; that's the way forward. Answer from what you know only if you're sure, and say it may be out of date. Never pretend you looked something up.`;
+  const tail = 'Answer from what you know only if you\'re sure, and say it may be out of date. Never pretend you looked something up.';
+  if (hat) return `\n\nWeb search is OFF: you can't search the web or open web pages. Say so in one line if the job needs the internet (${who} can ${HOW}). ${tail}`;
+  return `\n\nWeb search is OFF: you can't search the web or open web pages. If a question needs the internet (news, prices, versions, docs or facts you aren't sure of), say in one line that web search is off and call offer_setup with "web": the app shows a card that switches it on with one press, and you carry on after (or ${who} can ${HOW}). ${tail}`;
 }
 
 // 1.5.60: links in the user's message. Small brains (Qwen3 4B) often answer "I have no live web access" or "that

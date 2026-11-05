@@ -59,6 +59,9 @@ export function paintingAvailable(cfg, kind) {
 // kind: 'image' | 'edit' | 'video'. Returns { file, name }.
 // image: a start picture (img2img for pictures, first frame for video), with strength 0-1 (how much may change).
 // refs: reference pictures for edit models (Qwen Image Edit and friends), which keep a character or scene's look.
+// How many sampling steps a picture or clip takes: the number the progress bar counts to (1.5.109).
+export const stepsFor = (spec, kind) => Number(spec?.steps) || (kind === 'video' ? 10 : 8);
+
 export function paint(cfg, kind, { prompt, negative, width, height, seconds, image, strength, refs }, { signal, onProgress }) {
   const s = cfg.painter.sdcpp;
   const spec = s[kind];
@@ -73,7 +76,7 @@ export function paint(cfg, kind, { prompt, negative, width, height, seconds, ima
     '-p', String(prompt).slice(0, 2000),
     ...(negative ? ['-n', String(negative).slice(0, 1000)] : spec.negative ? ['-n', spec.negative] : []),
     '-W', String(W), '-H', String(H),
-    '--steps', String(spec.steps || (kind === 'video' ? 10 : 8)),
+    '--steps', String(stepsFor(spec, kind)),
     '--cfg-scale', String(spec.cfg ?? (kind === 'video' ? 3.5 : 1.0)),
     '-s', String(Math.floor(Math.random() * 2 ** 31)),
     '-o', out

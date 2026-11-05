@@ -41,10 +41,10 @@ check(plan.ids.join() === 'gemma4-e4b,engine:llamacpp,nomic-embed-text', `starte
 // The embedding server itself.
 check(embedArgs('x.gguf', 9).join(' ').includes('--embedding --pooling mean') && embedArgs('x.gguf', 9).includes('-ngl'), 'embedding server: --embedding, mean pooling, no card layers');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-embed-'));
-const own = path.join(tmp, 'Agent 00', 'models', 'bob', 'embed');
+const own = path.join(tmp, 'Bob home', 'models', 'bob', 'embed');
 fs.mkdirSync(own, { recursive: true });
 fs.writeFileSync(path.join(own, 'nomic-embed-text-v1.5.f16.gguf'), 'GGUF');
-const cfg = { agentDir: path.join(tmp, 'Agent 00'), dataDir: tmp, llamacpp: { exe: process.execPath, preArgs: [path.join(here, 'mock-llama-server.js')], port: 18391 } };
+const cfg = { agentDir: path.join(tmp, 'Bob home'), dataDir: tmp, llamacpp: { exe: process.execPath, preArgs: [path.join(here, 'mock-llama-server.js')], port: 18391 } };
 const eng = new LlamaCpp(cfg);
 const v = await eng.embed('nomic-embed-text', ['abc', 'hello']);
 check(JSON.stringify(v) === '[[3,1,0],[5,1,0]]', `vectors come back in input order (${JSON.stringify(v)})`);
@@ -96,7 +96,7 @@ hk3.ownEmbed?.stop(); hk3.stop();
 {
   const cellarSrc = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
   const { engineStatus, ENGINE_GB } = await import('../src/engines.js');
-  check(/About \$\{gb\(total\)\} to download\$\{engNames\.length \? `, including the programs they run on/.test(cellarSrc) && /engs\.reduce\(\(t, e\) => t \+ \(e\.sizeGB/.test(cellarSrc), 'Welcome: "About X GB to download, including the programs they run on (...)", and X counts them');
+  check(/About <strong>\$\{gb\(order\.sizeGB\)\}<\/strong> to download/.test(cellarSrc) && /<h4>Programs I run on<\/h4>/.test(cellarSrc), 'Welcome: "About X GB to download", the programs listed with the models, and X counts them (1.5.91)');
   check(ENGINE_GB.llamacpp > 0 && engineStatus({ agentDir: '/nowhere' }).every((e) => e.sizeGB > 0), 'every engine has a download size');
 }
 

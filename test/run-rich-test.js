@@ -28,8 +28,8 @@ const hrefs = (html) => [...html.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]
 
 // ---- file mentions ----
 {
-  const r = renderRich('Saved it to C:\\Unreal Projects\\Agent 00\\inn\\painter\\2026-11-01-1faa3800.png. Also `inn\\ledger\\budget.xlsx`, 2026-11-02-abc.wav and /images/x%20y.png).');
-  check('a Windows path with spaces is one clickable mention', r.files[0] === 'C:\\Unreal Projects\\Agent 00\\inn\\painter\\2026-11-01-1faa3800.png');
+  const r = renderRich('Saved it to D:\\My Stuff\\Bob home\\inn\\painter\\2026-11-01-1faa3800.png. Also `inn\\ledger\\budget.xlsx`, 2026-11-02-abc.wav and /images/x%20y.png).');
+  check('a Windows path with spaces is one clickable mention', r.files[0] === 'D:\\My Stuff\\Bob home\\inn\\painter\\2026-11-01-1faa3800.png');
   check('an inn\\ path inside code is a mention', r.files.includes('inn\\ledger\\budget.xlsx'));
   check('the bare name of something Bob made is a mention', r.files.includes('2026-11-02-abc.wav'));
   check('an /images/ link is a mention, without the ")"', r.files.includes('/images/x%20y.png'));

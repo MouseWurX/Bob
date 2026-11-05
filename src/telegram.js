@@ -1,4 +1,4 @@
-// Talk to Bob on Telegram (Settings, Connections). Off unless you turn it on.
+// Talk to Bob on Telegram (Settings, Online services). Off unless you turn it on.
 //
 // You make your own Telegram bot (with Telegram's @BotFather) and add its token as a Windows user environment
 // variable named BOB_TELEGRAM_TOKEN. Bob never stores or shows the token, the same as the cloud helpers' keys.
@@ -234,6 +234,7 @@ export class TelegramBridge {
     switch (ev.type) {
       case 'token': this.turns.set(id, (this.turns.get(id) || '') + String(ev.text || '')); break;
       case 'busy-note': case 'announce': this.say(String(ev.text || '')); break;
+      case 'waiting-line': if (!(this.waitSaid ||= new Set()).has(ev.id)) { this.waitSaid.add(ev.id); this.say(String(ev.text || '')); } break; // 1.5.104: once per wait
       case 'error': this.say(`That didn't work: ${String(ev.text || ev.error || 'something went wrong').slice(0, 500)}`); break;
       case 'image':
         if (s.pictures && ev.file) this.photo(ev.file);

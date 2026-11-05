@@ -76,7 +76,7 @@ export function keepAliveMs(cfg) {
 
 // 1.5.51 "second brain beside big jobs": Bob's engine can run a second llama-server beside the main one. It holds a
 // quick chat reply's small brain while a big job keeps the main brain on the card, and (opt-in) the reviewer for a moot.
-// Where it goes (the owner, 2026-11-03: "maybe e4b shouldnt be on the processor if theres lots of gpu available"): on
+// Where it goes (E4B belongs on the graphics card when it has room): on
 // the graphics card when the card has room for it as well (and isn't busy), otherwise on the processor, where it never
 // sees the card (CUDA_VISIBLE_DEVICES=-1). Never in Gaming. Below normal priority, half the cores, and let go as soon as
 // nothing needs it. A call goes to it when its options carry beside: true.

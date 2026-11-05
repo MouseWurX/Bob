@@ -22,6 +22,7 @@ import { extOf, realKind, SAME, nameTricks, markOfTheWeb, sha256, scanScript, SC
 import { cleanDomain, rdapDomain, rdapIp, dnsFacts, certHistory, followLink, breachesForSite, sayDomain, saySender, sayLink, sayIp, sayBreachesForSite, isPrivateHost } from './security-web.js';
 import { tipsFor } from './security-guide.js';
 import net from 'node:net';
+import { freeName } from './util.js';
 
 const fn = (name, description, properties, required = Object.keys(properties)) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
@@ -116,12 +117,6 @@ export function inspectText(t) {
 
 // ---------------------------------------------------------------- strip_metadata
 
-function freeName(p, taken = new Set()) {
-  const { dir, name, ext } = path.parse(p);
-  let c = p;
-  for (let i = 2; fs.existsSync(c) || taken.has(c.toLowerCase()); i++) c = path.join(dir, `${name}-${i}${ext}`);
-  return c;
-}
 
 export function planStrip(cfg, args, env = process.env) {
   const paths = [].concat(args.paths || args.path || []).filter(Boolean).map(String).slice(0, 51);
@@ -133,7 +128,7 @@ export function planStrip(cfg, args, env = process.env) {
     try {
       row.from = canRead(cfg, p);
       const ext = extOf(row.from);
-      if (!CLEANABLE.includes(ext) && !(MEDIA.includes(ext) && ffmpeg)) throw new Error(MEDIA.includes(ext) ? 'sound and video need FFmpeg (Settings, Show advanced settings, Engines & speed)' : ext === 'pdf' ? 'I can\'t clean PDFs yet; re-save it from the app that made it with its "remove personal information" option' : `I can clean pictures (jpg, png, webp), Word, Excel and PowerPoint files${ffmpeg ? ', and sound and video' : ''}, not .${ext}`);
+      if (!CLEANABLE.includes(ext) && !(MEDIA.includes(ext) && ffmpeg)) throw new Error(MEDIA.includes(ext) ? 'sound and video need FFmpeg (Settings, Show advanced settings, Engines)' : ext === 'pdf' ? 'I can\'t clean PDFs yet; re-save it from the app that made it with its "remove personal information" option' : `I can clean pictures (jpg, png, webp), Word, Excel and PowerPoint files${ffmpeg ? ', and sound and video' : ''}, not .${ext}`);
       const { name } = path.parse(row.from);
       const want = path.join(args.folder ? path.resolve(String(args.folder)) : path.dirname(row.from), `${name}-clean.${ext}`);
       let to;

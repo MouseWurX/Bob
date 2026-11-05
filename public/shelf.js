@@ -1,9 +1,9 @@
 // The reference shelf: pictures of characters, scenes and styles Bob paints and films from.
 // Add with the button, by dropping files on the shelf, or by saving a picture attached in chat.
+import { esc } from './util.js';
 const KIND_LABEL = { character: 'Character', scene: 'Scene', style: 'Style', object: 'Object', chat: 'From chats' };
 const ORDER = ['character', 'scene', 'style', 'object', 'chat'];
 
-function esc(s) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 // Phone photos are stored on their side with a "turn me" note that only viewers read; the painter reads the
 // raw pixels, so an edit would get a sideways person. Draw the photo the way it's shown and send that copy:

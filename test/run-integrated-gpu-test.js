@@ -55,7 +55,7 @@ check('clips keep their own size there', paintFlags(on, 'video', {}, { gb: 0, fi
 check('the switch off: the usual settings, as before', paintFlags({ sharedGraphics: true }, 'image', {}, { gb: 0 }).fit === 'safe');
 check('a real card is still judged by its size', paintFlags({ pictureFit: true, sharedGraphics: true }, 'image', {}, { gb: 16, files: 6 }).fit === 'big');
 const equipSrc = fs.readFileSync(new URL('../public/equip.js', import.meta.url), 'utf8');
-check('the set marked (this replicant matrix) is the built-in one on a handheld', /packFor\(packs, ctx\.vramGB, ctx\.integrated\)\.id \? ' \(this replicant matrix\)'/.test(equipSrc));
+check('the set marked (this replicant matrix) is the built-in one on a handheld', /packFor\(packs, ctx\.vramGB, ctx\.integrated, fitOpts\)\.id \? ' \(this replicant matrix\)'/.test(equipSrc));
 check('it still covers chat, quick brain, eyes, ears, voice, memory and coding', ['bob', 'small', 'eyes', 'voice', 'speech', 'embed', 'tinker'].every((s) => Object.values(shared.slots).flat().includes(s)));
 
 const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');

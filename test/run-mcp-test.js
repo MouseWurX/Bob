@@ -22,7 +22,7 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8');
 const MOCK = path.join(here, 'mock-mcp-server.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-mcp-'));
 const inn = path.join(tmp, 'inn');
-const ro = path.join(tmp, 'Fray');
+const ro = path.join(tmp, 'MyGame');
 fs.mkdirSync(ro, { recursive: true });
 const cfg = { innDir: inn, dataDir: path.join(inn, 'bob'), settingsFile: path.join(inn, 'bob', 'settings.json'), agentDir: tmp, readOnlyRoots: [ro], readRoots: [], userName: 'Sam', hands: { enabled: true, mcp: { on: true } } };
 const brain = { cfg, log: () => {}, usable: (n) => !toolsOff(cfg).includes(n) };

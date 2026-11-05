@@ -19,6 +19,7 @@ import { checkinSettings, cleanCheckins, CHECKS, LOW_DISK_GB } from './checkin-s
 import { saveSettings } from './config.js';
 import { sessionBrains, gaming } from './sessions.js';
 import { brainMode } from './brain-mode.js';
+import { parseJson } from './util.js';
 
 export { CHECKS, cleanCheckins, checkinSettings };
 export const STALL_MS = 15 * 60e3; // a download that hasn't moved for 15 minutes "stopped moving"
@@ -37,12 +38,7 @@ const short = (t, n = 80) => { const x = String(t || '').replace(/\s+/g, ' ').tr
 const gb = (b) => Math.round(b / 1e8) / 10;
 const sentence = (t) => { const x = String(t || '').trim(); return !x || /[.!?…]$/.test(x) ? x : `${x}.`; };
 
-export function parseJson(text) {
-  const s = String(text || '');
-  const a = s.indexOf('{'), b = s.lastIndexOf('}');
-  if (a < 0 || b <= a) return null;
-  try { return JSON.parse(s.slice(a, b + 1)); } catch { return null; }
-}
+export { parseJson };
 
 export class CheckIns {
   constructor(brain, { now = () => Date.now(), statfs = (p) => fs.statfsSync(p) } = {}) {

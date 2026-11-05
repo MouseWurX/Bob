@@ -23,6 +23,7 @@ import {
   chatIds, chatInfo, chatFiles, wholeChat, readChat, readOlder, writeChat, writeOlder, readSummary, writeSummary,
   spoken, said, stampMessages, safeId
 } from './chats.js';
+import { parseJson } from './util.js';
 
 const IDLE_MS = 10 * 60e3;       // quiet this long before any housekeeping
 const SCAN_EVERY = 6 * 3600e3;   // look for old things at most this often
@@ -42,12 +43,7 @@ const mtime = (p) => { try { return fs.statSync(p).mtimeMs; } catch { return 0; 
 const dateOf = (ms) => new Date(ms).toISOString().slice(0, 10);
 
 // Pulls the first JSON object out of a model's answer.
-export function parseJson(text) {
-  const s = String(text || '');
-  const a = s.indexOf('{'), b = s.lastIndexOf('}');
-  if (a < 0 || b <= a) return null;
-  try { return JSON.parse(s.slice(a, b + 1)); } catch { return null; }
-}
+export { parseJson };
 
 // Memory lines are "- fact (date)" or "- fact (date) [topic: Name]". Repeats compare without the date and tag.
 const memKey = (line) => normName(line.replace(/^\s*-\s*/, '').replace(/\[(?:topic|project):[^\]]*\]|\[always\]/gi, '').replace(/\(\d{4}-\d{2}-\d{2}\)/g, ''));

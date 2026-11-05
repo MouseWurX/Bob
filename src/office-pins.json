@@ -1,5 +1,5 @@
 {
-  "note": "Exact versions and checksums for the opt-in LibreOffice and FFmpeg downloads (Settings, Engines & speed). Filled in by installer/pin-office.js on a PC with internet; Bob refuses to download either while a field here is empty.",
+  "note": "Exact versions and checksums for the opt-in LibreOffice and FFmpeg downloads (Settings, Show advanced settings, Engines). Filled in by installer/pin-office.js on a PC with internet; Bob refuses to download either while a field here is empty.",
   "ffmpeg": {
     "repo": "GyanD/codexffmpeg",
     "tag": "9.0.2",

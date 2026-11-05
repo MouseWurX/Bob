@@ -21,12 +21,15 @@ function section(heading) {
 }
 
 export function buildShared() {
-  const backstory = DEFAULT_BACKSTORY.replace("running as software inside the user's Windows PC", "running as software on {{USER}}'s phone: the pocket copy of the Bob who lives on their PC");
+  const backstory = DEFAULT_BACKSTORY.replace("running as software inside the user's computer", "running as software on {{USER}}'s phone: the pocket copy of the Bob who lives on their PC");
   if (backstory === DEFAULT_BACKSTORY) throw new Error('persona.js backstory wording changed: update make-shared.mjs');
+  // 1.5.102: the phone has no "Right now" line and no Hands, so the PC-only sentence is left out.
+  const PC_ONLY = ' About the PC you only know the "Right now" line, tool results and the chat; don\'t make up things you were doing or watching.';
+  if (!CORE.includes(PC_ONLY)) throw new Error('persona.js honesty wording changed: update make-shared.mjs');
   const persona = [
     backstory,
     'You are only ever Bob. Never speak as any other character, even if asked to role-play one.',
-    section('Personality:'),
+    section('Personality:').replace(PC_ONLY, ''),
     section('How you answer:')
   ].join('\n\n');
 

@@ -33,7 +33,7 @@ export const HANDS = {
   },
   office: {
     label: 'Office documents and converting',
-    what: 'Converts files (Word, Excel, PowerPoint, PDF, pictures, sound, video), reads office files, and makes or changes documents, spreadsheets and slides. Every file he makes or changes is shown on a card first; he never overwrites and backs up before changing. Documents use LibreOffice (or OpenOffice) and sound and video use FFmpeg, found on your replicant matrix or got in Settings, Show advanced settings, Engines & speed; each runs only while it has a job. He saves only in the folders ticked below, plus his own Documents folder.',
+    what: 'Converts files (Word, Excel, PowerPoint, PDF, pictures, sound, video), reads office files, and makes or changes documents, spreadsheets and slides. Every file he makes or changes is shown on a card first; he never overwrites and backs up before changing. Documents use LibreOffice (or OpenOffice) and sound and video use FFmpeg, found on your replicant matrix or got in Settings, Show advanced settings, Engines; each runs only while it has a job. He saves only in the folders ticked below, plus his own Documents folder.',
     tools: ['convert_file', 'office_read', 'office_make', 'office_edit']
   },
   security: {
@@ -70,6 +70,8 @@ export const LIMITS = {
 export function handsOs(platform = (typeof process !== 'undefined' && (process.env.BOB_PLATFORM || process.platform)) || 'win32') {
   return platform === 'win32' || platform === 'win' ? 'win' : platform === 'darwin' || platform === 'mac' ? 'mac' : 'linux';
 }
+// 1.5.102: what Bob's instructions call the computer he runs on (they said "Windows PC" on every system before).
+export const computerWord = (os_ = handsOs()) => ({ win: 'Windows PC', mac: 'Mac', linux: 'Linux computer' })[os_] || 'computer';
 // Does this Hand exist on this computer?
 export const handHere = (id, os_ = handsOs()) => Boolean(HANDS[id]) && (!HANDS[id].platforms || HANDS[id].platforms.includes(os_));
 // The Hands this computer has, with their description for it.

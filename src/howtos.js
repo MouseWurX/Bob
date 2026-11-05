@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { cosine, overlap, words } from './topics.js';
+import { clip } from './util.js';
 
 export const MAX_HOWTOS = 100;
 export const MAX_STEPS = 12;
@@ -22,7 +23,6 @@ const WORD_MATCH = 0.6, MEANING_MATCH = 0.78;
 const NOT_STEPS = new Set(['use_tools', 'bob_help', 'notice_board', 'reminders', 'remember', 'pick_session', 'show_made', 'ask_together', 'save_howto', 'my_howtos', 'forget_topic', 'ask_specialist']);
 
 export const howtosOn = (cfg) => cfg?.howtos === true;
-const clip = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 // A short name from the request: its first sentence, cut at a word.
 export function nameFrom(text) {

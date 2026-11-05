@@ -52,6 +52,7 @@ export function settingsNow(cfg) {
     `Free memory when Bob is idle: ${onOff(brainMode(cfg) !== 'always')}`,
     `One brain (snappier): ${onOff(cfg.oneBrain === true)}`,
     `Launch Bob on start-up: ${onOff(cfg.autostart === true)}`,
+    `Keep Bob in the tray: ${onOff(cfg.tray === true)}; Use Bob's look as his icon: ${onOff(cfg.lookIcon === true)}`,
     `Check for updates when Bob starts: ${onOff(cfg.updates?.autoCheck === true)}`,
     `Show Bob's plan before big jobs: ${onOff(cfg.planFirst === true)}`,
     `Pick up where Bob left off after a restart: ${onOff(cfg.resumeJobs === true)}; Carry on unfinished downloads when Bob starts: ${onOff(cfg.downloads?.resumeOnStart === true || cfg.resumeJobs === true)}`,

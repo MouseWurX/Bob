@@ -107,7 +107,8 @@ check('family: unknown stays unknown', familyOf('llama3:8b', ggufInfo(odd)) === 
 }
 
 // Prompt: act, don't announce
-check('front desk: the tool call goes in the same reply as "I\'ll draw it"', /the tool call goes in that same reply/.test(FRONT_DESK) && /Call the tool first, in the same reply/.test(FRONT_DESK));
+// 1.5.102: the picture half is said once, in the brain's picture line (withLimits), not in FRONT_DESK as well.
+check('front desk: the tool call goes in the same reply as "I\'ll draw it"', /the tool call goes in that same reply/.test(FRONT_DESK) && /call make_image yourself straight away, in the same reply/.test(fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8')) && !/To make an actual picture/.test(FRONT_DESK));
 check('front desk: an assumption is enough to act on', /If you can say "I assume\.\.\.", you know enough: do it/.test(FRONT_DESK) && /a spreadsheet, a schedule/.test(FRONT_DESK) && /wrong guess would delete, overwrite, move or send something\. Then ask first/.test(FRONT_DESK));
 check('core: "mention it and ask" is only about extras nobody asked for', /only about extras nobody asked for/.test(CORE));
 
@@ -133,7 +134,7 @@ check('core: "mention it and ask" is only about extras nobody asked for', /only 
   check('no projects: a plain error with another way to look', /No projects are set up yet/.test(err));
   check('make_music: picks a style when none was given', /pick one that fits/.test(t.make_music.schema.function.parameters.properties.prompt.description));
   check('ask_specialist: passes the job on without asking for paths', /don't ask for paths or line numbers first/.test(t.ask_specialist.schema.function.parameters.properties.task.description));
-  check('web search off: always mention the switch', /Always mention the switch/.test(webPrompt({ userName: 'Sam' })));
+  check('web search off: offers the switch (1.5.91: the Set it up card)', /offer_setup with "web"/.test(webPrompt({ userName: 'Sam' })) && /switch/i.test(webPrompt({ userName: 'Sam' })));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

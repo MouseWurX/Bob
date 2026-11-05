@@ -7,6 +7,8 @@ import crypto from 'node:crypto';
 import { spawn, execFile } from 'node:child_process';
 import { unpackedDir } from './config.js';
 import { OS, exeName, venvPython, killTree as killAll } from './platform.js';
+import { unzip } from './zip.js';
+import { sleep } from './util.js';
 
 export const workshopDir = (cfg) => path.join(cfg.agentDir, 'audio-workshop');
 export const uvExe = (cfg) => path.join(workshopDir(cfg), exeName('uv'));
@@ -44,12 +46,18 @@ export const voicePython = (cfg, which) => cfg.audio?.voicePython?.[which] || ve
 const marker = (cfg) => path.join(workshopDir(cfg), 'ready.json');
 // uv only uses the PC's own signed Python (from python.org). The Python uv downloads by itself is unsigned,
 // and Windows Smart App Control blocks it (error 0xc0e90002), so Bob never asks uv to fetch one.
-const uvEnv = (cfg) => ({
-  UV_CACHE_DIR: path.join(workshopDir(cfg), 'cache'),
-  UV_PYTHON_PREFERENCE: 'only-system',
-  UV_PYTHON_DOWNLOADS: 'never',
-  ...(savedPython(cfg) ? { UV_PYTHON: savedPython(cfg) } : {})
-});
+// 1.5.91: on Mac and Linux, Bob's own Python is one uv got for him (in his folder), so uv may use it from there.
+const uvEnv = (cfg) => {
+  const py = savedPython(cfg);
+  const ownUv = OS !== 'win' && py && cfg.agentDir && py.startsWith(ownPythonDir(cfg));
+  return {
+    UV_CACHE_DIR: path.join(workshopDir(cfg), 'cache'),
+    UV_PYTHON_PREFERENCE: ownUv ? 'managed' : 'only-system',
+    UV_PYTHON_DOWNLOADS: 'never',
+    ...(ownUv ? { UV_PYTHON_INSTALL_DIR: ownPythonDir(cfg) } : {}),
+    ...(py ? { UV_PYTHON: py } : {})
+  };
+};
 function savedPython(cfg) {
   if (cfg.audio?.systemPython) return cfg.audio.systemPython;
   try { return JSON.parse(fs.readFileSync(marker(cfg), 'utf8')).python || null; } catch { return null; }
@@ -67,6 +75,8 @@ export function unixPythonGuesses(os_ = OS) {
 // Finds Python 3.12 or 3.11 installed the normal way (python.org installer or the py launcher).
 export async function findSystemPython(cfg, runImpl = run) {
   if (cfg.audio?.systemPython && fs.existsSync(cfg.audio.systemPython)) return cfg.audio.systemPython;
+  const own = cfg.agentDir ? ownPythonExe(cfg) : null; // 1.5.91: one Bob fetched for himself earlier
+  if (own && fs.existsSync(own)) return own;
   if (OS !== 'win') return unixPythonGuesses().find((g) => fs.existsSync(g)) || null;
   for (const v of ['3.12', '3.11']) {
     try {
@@ -86,6 +96,70 @@ export async function findSystemPython(cfg, runImpl = run) {
   return guesses.find((g) => fs.existsSync(g)) || null;
 }
 
+// 1.5.91 "Get Bob ready": no more "install Python first". When the replicant matrix has no Python 3.12 or 3.11, Bob
+// fetches his own, kept in his folder only (nothing is installed for the rest of the computer, no admin needed).
+// Windows: the official Python package signed by the Python Software Foundation (the same files as python.org's
+// installer, shipped as a zip on NuGet), pinned and sha256-checked, so Smart App Control lets it run.
+// Mac and Linux: uv's own build of Python 3.12 (uv checks its hash); nothing there blocks it.
+export const OWN_PYTHON = {
+  version: '3.12.10',
+  url: 'https://api.nuget.org/v3-flatcontainer/python/3.12.10/python.3.12.10.nupkg',
+  sha256: '0eb85c2dfccccf1b17352de4c397f69194035b7d37149eacc16f1147d93de3b8',
+  bytes: 14515433
+};
+export const ownPythonDir = (cfg) => path.join(cfg.agentDir, 'python');
+export function ownPythonExe(cfg, os_ = OS) {
+  const dir = ownPythonDir(cfg);
+  if (os_ === 'win') return path.join(dir, 'python.exe');
+  // uv puts it in <dir>/cpython-3.12.x-<platform>/bin/python3.12
+  try {
+    const d = fs.readdirSync(dir).filter((x) => /^cpython-3\.12\./.test(x)).sort().pop();
+    return d ? path.join(dir, d, 'bin', 'python3.12') : null;
+  } catch { return null; }
+}
+const nugetAllowed = (u) => { try { const x = new URL(u); return x.protocol === 'https:' && x.hostname === 'api.nuget.org'; } catch { return false; } };
+
+export async function getOwnPython(cfg, { pub = {}, tick = () => {}, signal, fetchImpl = fetch, runImpl = run } = {}) {
+  const have = ownPythonExe(cfg);
+  if (have && fs.existsSync(have)) return have;
+  const dir = ownPythonDir(cfg);
+  fs.mkdirSync(cfg.agentDir, { recursive: true });
+  if (OS !== 'win') {
+    pub.file = `Getting Bob's own Python ${OWN_PYTHON.version}`; tick();
+    await runImpl(uvExe(cfg), ['python', 'install', OWN_PYTHON.version], { cwd: workshopDir(cfg), env: { UV_PYTHON_INSTALL_DIR: dir, UV_PYTHON_DOWNLOADS: 'automatic', UV_CACHE_DIR: path.join(workshopDir(cfg), 'cache') }, signal, onLine: (l) => { pub.detail = l.slice(0, 120); tick(); } });
+    const exe = ownPythonExe(cfg);
+    if (!exe || !fs.existsSync(exe)) throw new Error('uv said it got Python, but I can\'t find it in my folder. Press Try again.');
+    return exe;
+  }
+  if (!nugetAllowed(OWN_PYTHON.url)) throw new Error('That Python download isn\'t from where it should be. Stopped.');
+  pub.file = `Python ${OWN_PYTHON.version} (signed by the Python Software Foundation)`; pub.phase = 'downloading'; tick();
+  const res = await fetchImpl(OWN_PYTHON.url, { redirect: 'follow', signal, headers: { 'user-agent': 'Bob' } });
+  if (!res.ok) throw new Error(`The Python download failed (${res.status}). Press Try again.`);
+  if (res.url && !nugetAllowed(res.url)) throw new Error('The Python download was redirected somewhere I don\'t trust. Stopped.');
+  const part = path.join(cfg.agentDir, 'python.nupkg.part');
+  const hash = crypto.createHash('sha256');
+  const out = fs.createWriteStream(part);
+  const base = pub.done || 0;
+  let got = 0;
+  try {
+    for await (const c of res.body) { hash.update(c); got += c.length; if (!out.write(c)) await new Promise((r) => out.once('drain', r)); pub.done = base + got; tick(); }
+  } finally { await new Promise((r) => out.end(r)); }
+  pub.phase = 'checking'; tick();
+  if (hash.digest('hex') !== OWN_PYTHON.sha256) { fs.rmSync(part, { force: true }); throw new Error('The Python download came through damaged (checksum didn\'t match). Press Try again.'); }
+  pub.phase = 'unpacking'; tick();
+  const tmp = dir + '.download';
+  fs.rmSync(tmp, { recursive: true, force: true });
+  try {
+    unzip(part, tmp);
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.renameSync(path.join(tmp, 'tools'), dir);
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); fs.rmSync(part, { force: true }); }
+  const exe = ownPythonExe(cfg);
+  if (!fs.existsSync(exe)) throw new Error('Python unpacked, but python.exe isn\'t where I expected. Press Try again.');
+  try { fs.writeFileSync(path.join(dir, 'bob-python.json'), JSON.stringify({ version: OWN_PYTHON.version, from: OWN_PYTHON.url, at: new Date().toISOString() }, null, 2)); } catch {}
+  return exe;
+}
+
 // Oldest first: an older interpreter has had more time to earn Smart App Control's trust.
 function byVersion(a, b) {
   const v = (d) => (d.match(/cpython-(\d+)\.(\d+)\.(\d+)/) || []).slice(1).map(Number);
@@ -95,7 +169,7 @@ function byVersion(a, b) {
 
 // Plain words for the errors people actually hit.
 export function explainSetupError(msg) {
-  if (/0xc0e90002/i.test(msg)) return `Windows Smart App Control blocked a downloaded program. Bob now uses the Python from python.org instead; install Python 3.12 from ${PYTHON_DOWNLOAD} (tick "Add python.exe to PATH"), then click Get again.`;
+  if (/0xc0e90002/i.test(msg)) return `Windows Smart App Control blocked a downloaded program. Press Try again: Windows sometimes checks a new program once. If it keeps happening, installing Python 3.12 from ${PYTHON_DOWNLOAD} also works, and I use that one instead.`;
   return msg;
 }
 
@@ -212,8 +286,9 @@ async function setupSteps(cfg, { pub, tick, signal }, STEPS) {
   pub.steps = ['finding', 'downloading', 'checking', 'unpacking', 'setup', 'done'];
   pub.fileCount = STEPS.length;
   pub.phase = 'setup'; pub.file = 'Looking for Python 3.12 or 3.11 on this replicant matrix'; tick();
-  const py = await findSystemPython(cfg);
-  if (!py) throw new Error(`Music and sound effects need Python 3.12 or 3.11 (free, from python.org). Install it from ${PYTHON_DOWNLOAD} with the normal installer, then click Get again. Bob uses it only inside his own folder.`);
+  let py = await findSystemPython(cfg);
+  // 1.5.91: none on this replicant matrix: Bob gets his own (part of the setup the user OK'd; about 15 MB).
+  if (!py) { pub.file = 'No Python here yet: getting my own (about 15 MB, kept in my folder)'; tick(); py = await getOwnPython(cfg, { pub, tick, signal }); }
   cfg.audio = { ...(cfg.audio || {}), systemPython: py };
   let made = {};
   try { made = JSON.parse(fs.readFileSync(marker(cfg), 'utf8')); } catch {} // keep what's already set up
@@ -238,7 +313,6 @@ async function setupSteps(cfg, { pub, tick, signal }, STEPS) {
 // ---- Music: ACE-Step 1.5's own local server, started for the job and stopped after so the card is free again ----
 const ACE_PORT = 8001;
 const aceBase = (cfg) => cfg.audio?.aceUrl || `http://127.0.0.1:${ACE_PORT}`;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function aceUp(cfg) {
   try { const r = await fetch(aceBase(cfg) + '/v1/models', { signal: AbortSignal.timeout(2000) }); return r.ok; } catch { return false; }
@@ -358,7 +432,7 @@ export function songFileName(title, now = new Date()) {
 // kind: 'music' | 'sfx'. Returns { file, name }.
 export async function makeAudio(cfg, kind, { prompt, lyrics, seconds, title }, { signal, onProgress }) {
   const can = audioReady(cfg);
-  if (!can[kind]) throw new Error(kind === 'music' ? 'Music isn\'t set up yet. Get the audio tools in Settings (left menu), Show advanced settings, Engines & speed.' : 'Sound effects aren\'t set up yet. Get the audio tools in Settings (left menu), Show advanced settings, Engines & speed.');
+  if (!can[kind]) throw new Error(kind === 'music' ? 'Music isn\'t set up yet. Get the audio tools in Settings (left menu), Show advanced settings, Engines.' : 'Sound effects aren\'t set up yet. Get the audio tools in Settings (left menu), Show advanced settings, Engines.');
   fs.mkdirSync(cfg.painterDir, { recursive: true });
   const name = songFileName(songTitle({ title, prompt }, kind));
   const out = path.join(cfg.painterDir, name);

@@ -27,6 +27,7 @@ import { createBobLife } from './bob-life.js';
 import { createViewer, outCard, fillPeeks } from './viewer.js';
 import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
+import { diagramHtml, saveRowsHtml, setupSaveAs, watchSaveAs } from './save-as.js';
 
 const cellar = createCellar();
 const api = async (url, data) => {
@@ -50,6 +51,9 @@ const qBanner = createQuarantineBanner({ note: (t, k) => note(t, k) });
 const effort = createEffort();
 const catAntics = createCatAntics({ onAntic: () => life.react('cat'), sleepy: () => life.dozing });
 const viewer = createViewer({ post: (u, d) => post(u, d), note: (t, k) => note(t, k) });
+// 1.5.95: diagrams get drawn and the Save as rows work, anywhere in the chat (save-as.js).
+setupSaveAs({ offer: (ev) => onEvent(ev), note: (t, k) => note(t, k), made: (items) => viewer.made(items) });
+watchSaveAs(log);
 const bobCanvas = $('bob'), bobCtx = bobCanvas.getContext('2d');
 bobCtx.imageSmoothingEnabled = false;
 
@@ -125,7 +129,17 @@ function add(cls, html) {
   scrollDown();
   return el;
 }
+const waitLines = new Map(); // 1.5.97: wait id -> its ⏳ line
 function note(text, kind = '') { return add(`note ${kind}`, esc(text)); }
+// 1.5.91 the Set it up card (the words were signed off by the settings thread; the phone app has the same card).
+function setupOfferHtml(ev) {
+  const gbs = (n) => (n >= 1 ? `${(+n).toFixed(n >= 10 ? 0 : 1)} GB` : `${Math.max(1, Math.round(n * 1000))} MB`);
+  const after = ev.carryOn ? ' Then I carry on with what you asked.' : '';
+  if (ev.kind === 'switch') return `<strong>"${esc(ev.name)}" is off</strong><span>It lets me ${esc(ev.what)}.${ev.privacy ? ' ' + esc(ev.privacy) : ''}${ev.free ? ' "Let Bob work without asking" is on, so it won\'t ask before each step.' : ev.name.startsWith('Let Bob use Hands') ? ' I still ask before every step.' : ''}${ev.folders ? ' Then tick the folders I may use in Settings, Hands.' : ''}${esc(after)} You can switch it off again in ${esc(ev.where)}.</span><div class="row"><button type="button" class="get">Switch it on</button><button type="button" class="link">Not now</button></div>`;
+  if (ev.kind === 'equip') return `<strong>I can't ${esc(ev.say)} yet</strong><span>${esc(ev.model?.name || '')} is already on this replicant matrix, it just isn't in its slot.${esc(after)}</span><div class="row"><button type="button" class="get">Use it</button><button type="button" class="link">Not now</button></div>`;
+  const items = (ev.items || []).map((i) => `<li>${esc(i.name)} <span class="muted">· ${gbs(i.sizeGB)}${i.engine ? ' · program' : ''}${i.license ? ` · ${esc(i.license)}` : ''}</span></li>`).join('');
+  return `<strong>I can't ${esc(ev.say)} yet</strong><span>I need ${esc(ev.what)} first. ${ev.need === 'ffmpeg' ? 'One press gets it and sets it up.' : 'One press gets it, sets it up and puts it in its slot.'}${esc(after)}</span><ul>${items}</ul><span class="muted">About ${esc(ev.size)} in all${ev.freeGB != null ? `, ${ev.freeGB} GB free` : ''}. One time only.${ev.note ? ' ' + esc(ev.note) : ''}</span>${ev.short ? `<span class="error">Not enough free disk: free up ${ev.short} GB first, then ask me again.</span>` : ''}<div class="row"><button type="button" class="get">Set it up (about ${esc(ev.size)})</button><button type="button" class="link">Not now</button></div>`;
+}
 
 function ensureReply(ev) {
   const k = ev?.turnId || '-';
@@ -149,9 +163,9 @@ function drawReply(r) {
 }
 function addMedia(ev, type) {
   const r = ensureReply(ev);
-  const item = { type, url: ev.url, name: decodeURIComponent(String(ev.url).split('/').pop() || ''), ...(ev.song?.title ? { title: ev.song.title, sound: ev.song.sound } : {}) };
+  const item = { type, url: ev.url, name: decodeURIComponent(String(ev.url).split('/').pop() || ''), ...(ev.song?.title ? { title: ev.song.title, sound: ev.song.sound } : {}), ...(type === 'diagram' ? { title: ev.title || '', ...(ev.format ? { format: ev.format } : {}) } : {}) };
   r.media.push(item); drawReply(r); scrollDown();
-  viewer.made([{ ...item, kind: type }]); // the side panel shows it too, if it's open
+  if (type !== 'diagram') viewer.made([{ ...item, kind: type }]); // the side panel shows it too, if it's open
   return r;
 }
 // Files he saved (documents, spreadsheets, copies, zips) and things called up with show_made: cards in the same bubble.
@@ -462,6 +476,58 @@ function onEvent(ev) {
       no.onclick = () => el.remove();
       return;
     }
+    case 'pair-ask': { // 1.5.97: another of your Bobs pressed Pair. Nothing is swapped until Yes is pressed here.
+      if (document.querySelector(`[data-pair-card="${CSS.escape(ev.id)}"]`)) return;
+      const el = add('setup-offer pair-card', `<strong>🤝 ${esc(ev.name)} wants to join your Bob-Net</strong><span>${esc(ev.name)}'s screen should show the number <strong>${esc(ev.number)}</strong>. If it does, press <strong>Yes, pair us</strong>; if not, press <strong>No</strong>. This Bob and ${esc(ev.name)} swap passcodes so each can reach the other. Nothing else switches on.${ev.already ? ' It\'s already on your list; this updates it.' : ''}</span><div class="row"><button type="button" class="get">Yes, pair us</button><button type="button" class="link">No</button></div>`);
+      el.dataset.pairCard = ev.id;
+      const [yes, no] = el.querySelectorAll('button');
+      const answer = async (ok) => {
+        yes.disabled = no.disabled = true;
+        try { const r = await api('/api/bob-net/answer', { id: ev.id, yes: ok }); el.remove(); if (!r.ok) note(r.why || 'That card is too old now.', 'error'); else if (ok) note(`Pairing with ${ev.name}…`); }
+        catch (e) { yes.disabled = no.disabled = false; note(e.message, 'error'); }
+      };
+      yes.onclick = () => answer(true);
+      no.onclick = () => answer(false);
+      scrollDown();
+      return;
+    }
+    case 'pair-gone': document.querySelector(`[data-pair-card="${CSS.escape(String(ev.id || ''))}"]`)?.remove(); return;
+    case 'pair-done': window.dispatchEvent(new CustomEvent('bob-pair-done')); note(ev.both ? `Paired with ${ev.name}. You're on each other's list under My other Bobs.` : ev.asker ? `Paired with ${ev.name}, one way: this Bob can use ${ev.name}, but not the other way round yet. Turn on "Let my other replicant matrices in" here, then pair again.` : `Paired with ${ev.name}, one way: ${ev.name} can use this Bob, but not the other way round yet. Turn on "Let my other replicant matrices in" on ${ev.name}, then pair again.`); return;
+    case 'offer-setup': { // 1.5.91: something a job needs isn't set up (or is switched off). Nothing changes until a button is pressed.
+      const el = add('setup-offer', setupOfferHtml(ev));
+      const [yes, no] = el.querySelectorAll('button');
+      const answer = async (ok) => {
+        yes.disabled = no.disabled = true;
+        try {
+          const r = await api('/api/setup/answer', { id: ev.id, yes: ok });
+          el.remove();
+          if (!r.ok) note(r.why || 'That card is too old now. Ask me again.', 'error');
+          else if (r.done === 'download') note(`Getting ${r.names.join(' and ')} (about ${r.size}). Progress is in Downloads.${ev.carryOn ? ' Your request waits in Tasks, and I carry on by myself as soon as it\'s in.' : ''}`);
+          else if (r.done === 'equip') note(ev.carryOn ? 'Done, it\'s in its slot. Carrying on with your request.' : 'Done, it\'s in its slot.');
+          else if (r.done === 'switch') note(ev.carryOn ? `Switched on "${ev.name}". Carrying on with your request.` : `Switched on "${ev.name}". You can switch it off again in ${ev.where}.`);
+        } catch (e) { yes.disabled = no.disabled = false; note(e.message, 'error'); }
+      };
+      yes.onclick = () => answer(true);
+      no.onclick = () => answer(false);
+      if (ev.short) yes.disabled = true;
+      scrollDown();
+      return;
+    }
+    case 'equipped': // 1.5.91: a download finished and Bob put it in its slot himself
+      if (Array.isArray(ev.items) && ev.items.length) note(`Put in its slot: ${[...new Set(ev.items.map((i) => i.value))].join(', ')}.`);
+      return;
+    case 'waiting-line': { // 1.5.97: one muted ⏳ line per wait, updated in place (it isn't a card: nothing to answer)
+      const el = waitLines.get(ev.id);
+      if (el) el.textContent = ev.text;
+      else waitLines.set(ev.id, note(ev.text, 'wait'));
+      scrollDown();
+      return;
+    }
+    case 'waiting-line-done': { // 1.5.111: the wait is over, so the ⏳ line goes
+      waitLines.get(ev.id)?.remove();
+      waitLines.delete(ev.id);
+      return;
+    }
     case 'busy-note': // 1.5.37: your message waits behind a picture, song or clip; Bob says so at once
       note(ev.text, 'announce');
       scrollDown();
@@ -525,6 +591,7 @@ function onEvent(ev) {
     case 'image': { addMedia(ev, 'image'); ping('Bob finished a picture', ev.file || ''); break; }
     case 'audio': { addMedia(ev, 'audio'); ping('Bob finished a sound', ev.file || ''); break; }
     case 'video': { addMedia(ev, 'video'); ping('Bob finished a clip', ev.file || ''); break; }
+    case 'diagram': { addMedia(ev, 'diagram'); break; } // 1.5.95 drawn by save-as.js
     case 'made': { addMade(ev); break; }
     case 'approval': {
       endReply(ev);
@@ -626,7 +693,7 @@ function connect() {
 async function catchUpMedia() {
   try {
     const h = await (await fetch('/api/history?session=' + encodeURIComponent(sessionId))).json();
-    const seen = new Set([...log.querySelectorAll('img[src], video[src], audio[src]')].map((el) => el.getAttribute('src')).concat([...log.querySelectorAll('[data-view-url]')].map((el) => el.dataset.viewUrl)));
+    const seen = new Set([...log.querySelectorAll('img[src], video[src], audio[src]')].map((el) => el.getAttribute('src')).concat([...log.querySelectorAll('[data-view-url]')].map((el) => el.dataset.viewUrl), [...log.querySelectorAll('[data-diagram]')].map((el) => el.dataset.diagram)));
     const missed = h.slice(-6).filter((m) => m.role === 'assistant').flatMap((m) => m.media || []).filter((m) => !seen.has(m.url));
     if (missed.length) { add('msg bob', mediaHtml(missed)); scrollDown(); }
   } catch {}
@@ -740,12 +807,14 @@ function mediaHtml(media) {
   const visual = items.filter((m) => m.kind === 'image' || m.kind === 'video');
   // 1.5.41: songs and sounds get the song player; two or more sit in a list that plays one after another.
   const songs = items.filter((m) => m.kind === 'audio' && m.url);
-  const rest = items.filter((m) => !visual.includes(m) && !songs.includes(m)).map(outCard).join('');
+  const diagrams = items.filter((m) => m.kind === 'diagram').map(diagramHtml).join(''); // 1.5.95
+  const rest = items.filter((m) => !visual.includes(m) && !songs.includes(m) && m.kind !== 'diagram').map(outCard).join('');
   const sounds = songs.length ? songListHtml(songs) : '';
-  if (visual.length < 2) return visual.map(outCard).join('') + sounds + rest;
+  const saveRows = saveRowsHtml(items); // 1.5.95: Save as, under everything Bob made
+  if (visual.length < 2) return diagrams + visual.map(outCard).join('') + sounds + rest + saveRows;
   const cols = Math.ceil(Math.sqrt(visual.length)), rows = Math.ceil(visual.length / cols);
   const grid = `<div class="media-grid" style="--cols:${cols};--rows:${rows}">${visual.map(outCard).join('')}</div>`;
-  return grid + sounds + rest;
+  return diagrams + grid + sounds + rest + saveRows;
 }
 // ---------- Copy buttons and file cards (right-click and Ctrl+C often don't get through remote desktop) ----------
 const rawText = new WeakMap();
@@ -966,7 +1035,7 @@ async function askRestart(st) {
   // 1.5.38: only promise to pick up where he left off when that switch is on.
   let pickUp = false;
   if (busyWith) { try { pickUp = (await (await fetch('/api/settings')).json()).resumeJobs === true; } catch {} }
-  const after = pickUp ? 'if I restart now, I pick up where I left off when I open again.' : 'if I restart now, it stops and waits in Tasks or Downloads for you to start it again. (Turn on "Pick up where Bob left off after a restart" in Settings, Show advanced settings, Engines & speed, and I\'ll carry on by myself.)';
+  const after = pickUp ? 'if I restart now, I pick up where I left off when I open again.' : 'if I restart now, it stops and waits in Tasks or Downloads for you to start it again. (Turn on "Pick up where Bob left off after a restart" in Settings, How Bob works, and I\'ll carry on by myself.)';
   const el = add('suggest', `<span>The new Bob (${esc(st.version || 'update')}) is ready.${busyWith ? ` I'm working on ${esc(busyWith)}; ${esc(after)}` : ''}</span>
     <button type="button" data-r="now">${busyWith ? 'Restart anyway' : 'Restart Bob now'}</button>${busyWith ? '<button type="button" data-r="done">Wait until I\'m done</button>' : ''}<button type="button" class="link" data-r="later">Later</button>`);
   for (const b of el.querySelectorAll('button')) b.onclick = async () => {

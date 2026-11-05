@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, execFile, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { killTree as stopGroup, groupSpawnOptions } from './platform.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const UNO_SCRIPT = path.join(here, 'office-uno.py');
@@ -158,7 +159,7 @@ const oneAtATime = (fn) => { const p = chain.then(fn, fn); chain = p.catch(() =>
 function killTree(child) {
   if (!child?.pid) return;
   if (WIN) execFile('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 8000 }, () => {});
-  else { try { child.kill('SIGKILL'); } catch {} }
+  else stopGroup(child); // Mac and Linux: the whole group, so a LibreOffice the helper started goes too
 }
 
 // Runs one job in LibreOffice through office-uno.py. Resolves the helper's answer; throws with a plain reason.
@@ -171,7 +172,7 @@ export function officeJob(cfg, job, { signal, timeoutMs = 180_000, office = find
     // LibreOffice's own Python needs its program folder first; a stray PYTHONHOME from another Python breaks it.
     delete env.PYTHONHOME; delete env.PYTHONPATH;
     if (WIN) env.PATH = `${office.dir}${path.delimiter}${env.PATH || env.Path || ''}`;
-    const child = spawn(office.python, [UNO_SCRIPT], { env, cwd: office.dir && fs.existsSync(office.dir) ? office.dir : undefined, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(office.python, [UNO_SCRIPT], { ...groupSpawnOptions(), env, cwd: office.dir && fs.existsSync(office.dir) ? office.dir : undefined, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '', err = '', done = false;
     const finish = (fn) => { if (done) return; done = true; clearTimeout(timer); signal?.removeEventListener?.('abort', onAbort); fn(); };
     const onAbort = () => finish(() => { killTree(child); reject(new Error('Stopped.')); });
@@ -192,8 +193,8 @@ export function officeJob(cfg, job, { signal, timeoutMs = 180_000, office = find
   }));
 }
 
-export const OFFICE_MISSING = 'There\'s no LibreOffice (or OpenOffice) on this PC that I can use. The user can install LibreOffice from libreoffice.org, or get it in Settings, Show advanced settings, Engines & speed, Engine downloads, "LibreOffice" (about 350 MB, opt-in). I find either by myself.';
-export const FFMPEG_MISSING = 'Audio, video and WebP conversions need FFmpeg, which isn\'t set up. The user can get it in Settings, Show advanced settings, Engines & speed, Engine downloads, "FFmpeg" (about 100 MB, opt-in).';
+export const OFFICE_MISSING = 'There\'s no LibreOffice (or OpenOffice) on this PC that I can use. The user can install LibreOffice from libreoffice.org, or get it in Settings, Show advanced settings, Engines, Engine downloads, "LibreOffice" (about 350 MB, opt-in). I find either by myself.';
+export const FFMPEG_MISSING = 'Audio, video and WebP conversions need FFmpeg, which isn\'t set up. The user can get it in Settings, Show advanced settings, Engines, Engine downloads, "FFmpeg" (about 100 MB, opt-in).';
 
 // ---------------------------------------------------------------- pictures, with what Windows has
 
@@ -315,7 +316,7 @@ export function mediaJob(args, { signal, timeoutMs = 30 * 60_000, ffmpeg, pictur
   let list;
   try { list = ffmpegArgs(args, { picture }); } catch (e) { return Promise.reject(e); }
   return new Promise((resolve, reject) => {
-    const child = spawn(ffmpeg.exe, list, { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawn(ffmpeg.exe, list, { ...groupSpawnOptions(), windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
     let err = '', done = false;
     const finish = (fn) => { if (done) return; done = true; clearTimeout(timer); signal?.removeEventListener?.('abort', onAbort); fn(); };
     const onAbort = () => finish(() => { killTree(child); try { fs.rmSync(args.out, { force: true }); } catch {} reject(new Error('Stopped.')); });

@@ -1,4 +1,4 @@
-// Share jobs with my other Bobs (1.5.72, Settings > Connections). Both switches are off unless you turn them on.
+// Share jobs with my other Bobs (1.5.72, Settings > Bob-Net). Both switches are off unless you turn them on.
 //
 // "Send jobs to my other Bobs" (the asking Bob): a whole job from Tasks (a picture, a clip, a song, a sound, web research,
 // or a Medium-and-up answer) goes to one of "My other Bobs" that can really do it, instead of waiting or failing here.

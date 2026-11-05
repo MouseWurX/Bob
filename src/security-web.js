@@ -10,9 +10,11 @@ import { linkSigns, registrable, lookalike } from './security-files.js';
 const UA = 'Bob-security-hand (local desktop assistant)';
 const FREEMAIL = /^(gmail|googlemail|outlook|hotmail|live|msn|yahoo|ymail|icloud|me|mac|proton|protonmail|pm|aol|gmx|mail|zoho|yandex|tutanota|fastmail)\.[a-z.]+$/i;
 
+// The one check for "is this a home or work network address?", used by the web reader (tools.js) and the security Hand.
 export function isPrivateHost(host) {
-  const h = String(host || '').toLowerCase().replace(/^\[|\]$/g, '');
-  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.lan') || h.endsWith('.home') || h.endsWith('.internal')) return true;
+  let h = String(host || '').toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  if (/^::ffff:\d+\.\d+\.\d+\.\d+$/.test(h)) h = h.slice(7); // an IPv4 address written the IPv6 way
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.lan') || h.endsWith('.home') || h.endsWith('.internal')) return true;
   if (net.isIP(h) === 4) return /^(10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/.test(h);
   if (net.isIP(h) === 6) return /^(::1?$|f[cd]|fe80)/.test(h);
   return false;

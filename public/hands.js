@@ -289,7 +289,7 @@ function schedHtml(sched, s) {
 }
 
 export function handsSettingsHtml() {
-  return '<div class="hands-box"><strong>Hands</strong> <span class="tag">off unless you turn them on</span><p class="muted">Loading…</p></div>';
+  return '<div class="hands-box"><span class="tag">off unless you turn them on</span><p class="muted">Loading…</p></div>';
 }
 
 export async function mountHandsSettings(box) {
@@ -298,7 +298,7 @@ export async function mountHandsSettings(box) {
   const draw = () => {
     const s = v.settings;
     const folders = [...new Set([...(v.candidates || []), ...s.folders])];
-    box.innerHTML = `<strong>Hands</strong> <span class="tag">off unless you turn them on</span>
+    box.innerHTML = `<span class="tag">off unless you turn them on</span>
       <p class="muted">Hands let Bob do things on this replicant matrix, not just talk about them. Each one is off until you switch it on. Even then he shows you exactly what he'll do (every file, or the exact command) and waits for your click every time, unless you turn on "Let Bob work without asking" below. "Allow the rest of this job" only covers the same kind of thing until that job ends. The hard limits below are all on to start with. He never changes his own code or settings. Everything goes in the logbook.</p>
       <label class="switch"><input type="checkbox" data-hmaster ${s.enabled ? 'checked' : ''}><span><strong>Let Bob use Hands</strong> ${tip('The master switch. Off turns every Hand below off.', 'Let Bob use Hands')}${s.enabled && s.held ? '<br><span class="warn-text">Stopped right now with the Hands switch on the chat page. Click it there to carry on.</span>' : ''}</span></label>
       <div class="hands-free${s.free ? ' on' : ''}"><label class="switch${s.enabled ? '' : ' dim'}"><input type="checkbox" data-hfree ${s.free ? 'checked' : ''} ${s.enabled ? '' : 'disabled'}><span><strong>Let Bob work without asking</strong> <span class="tag">off unless you turn it on</span><br><span class="muted">No approval cards: he just does the job and tells you what he did. The hard limits below still apply, every action is still in the chat and the logbook, and the ✋ Hands button on the chat page stops him at once. Cloud helpers still ask, because they cost money. Scheduled jobs also run by themselves.</span>${s.free && s.enabled ? '<br><span class="warn-text">On: Bob is working without asking.</span>' : ''}</span></label></div>
@@ -307,8 +307,8 @@ export async function mountHandsSettings(box) {
       ${securityLine(s.enabled && s.security?.on)}
       ${selfToolsHtml(v.selfTools, s.enabled && s.maker?.on)}
       ${mcpHtml(v.mcp, s.enabled && s.mcp?.on)}
-      <div class="hands-limits"><strong>Hard limits</strong> <span class="tag">all on to start with</span>
-        <p class="muted">These hold whether or not Bob asks first. Switch one off only if you need what it blocks.</p>
+      <div class="hands-limits"><h4 class="ssub">Limits that always apply <span class="tag">all on to start with</span></h4>
+        <p class="muted">These hard limits hold whether or not Bob asks first. Switch one off only if you need what it blocks.</p>
         ${(v.limits || []).map((l) => `<label class="switch small"><input type="checkbox" data-hlimit="${esc(l.id)}" ${s.limits?.[l.id] !== false ? 'checked' : ''}><span><strong>${esc(l.label)}</strong><br><span class="muted">${esc(l.on)}</span>${l.more ? `<details class="more"><summary>More</summary><span class="muted">${esc(l.more)}</span></details>` : ''}${s.limits?.[l.id] === false ? `<br><span class="warn-text">Off: ${esc(l.off)}</span>` : ''}${l.id === 'readOnly' ? `<br><span class="muted">Read-only right now: ${v.readOnly?.length ? esc(v.readOnly.join('; ')) : 'none (add folders to "readOnlyRoots" in config.json)'}</span>` : ''}</span></label>`).join('')}
         <p class="muted">Always on, whatever you pick: Bob can't change his own code, settings or this page, never runs as administrator, stays out of terminals, admin tools, password managers and sign-in prompts, and the ✋ Hands button always stops him.</p></div>
       <div class="hands-folders"><strong>Folders the Files Hand may work in</strong>

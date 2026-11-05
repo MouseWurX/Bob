@@ -13,7 +13,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import os from 'node:os';
 import { insideAny, appDir } from './config.js';
-import { HANDS, LIMITS, handOn, handOffWhy, handsSettings, cleanHands, readOnlyRoots, freeOn, limitOn, handsHere } from './hands-settings.js';
+import { HANDS, LIMITS, handOn, handOffWhy, handsSettings, cleanHands, readOnlyRoots, freeOn, limitOn, handsHere, handsOs, computerWord, handHere } from './hands-settings.js';
 import { planFiles, planCard, applyFiles, undoJob, loadJournal, handsRoots } from './hands-files.js';
 import { checkCommand, runCommand } from './hands-run.js';
 import { appsTools } from './hands-apps.js';
@@ -239,17 +239,32 @@ export function handsTools(brain, opts = {}) {
 }
 
 // A line for Bob's system prompt saying which Hands he has right now (only when one is on).
-export function handsPrompt(cfg) {
+// 1.5.102: each rule is said once. A copy of Bob (hat) only gets what it can act on: its tools are files and commands,
+// it has no offer_setup or ask_together, so it gets no off list, no Office/Security/Apps notes and no ask_together line.
+export function handsPrompt(cfg, { hat = null } = {}) {
+  const who = cfg.userName || 'the user', Who = cfg.userName || 'The user';
   const on = Object.entries(HANDS).filter(([id]) => handOn(cfg, id));
   // Hands that are off have no tools, so Bob is told why; otherwise he can only refuse vaguely or invent a reason.
   const offIds = Object.keys(HANDS).filter((id) => !handOn(cfg, id));
-  const why = [...new Set(offIds.map((id) => handOffWhy(cfg, id)))];
-  const offLine = offIds.length ? `\n\nHands that are off right now (you have no tool for them): ${offIds.map((id) => HANDS[id].label).join('; ')}. ${why.join(' ')} If asked for one of these, say plainly that it is off and how to turn it on, in those words; don't refuse without a reason or make one up.` : '';
+  // "The X Hand is off. Sam can turn it on in Settings, ..." once per Hand said the same thing over and over (eight times
+  // with Hands off, the default): Hands that are simply switched off get one line between them.
+  const hs = handsSettings(cfg);
+  const plain = (id) => handHere(id) && !hs.held && hs[id]?.on !== true;
+  const plainIds = offIds.filter(plain);
+  const why = [...new Set(offIds.filter((id) => !plain(id)).map((id) => handOffWhy(cfg, id)))];
+  if (plainIds.length === 1) why.push(handOffWhy(cfg, plainIds[0]));
+  else if (plainIds.length) why.push(hs.enabled ? `${Who} can turn them on in Settings, Show advanced settings, Hands.` : `Hands are off in Settings. ${Who} can turn on "Let Bob use Hands" and the Hand they want in Settings, Show advanced settings, Hands.`);
+  const offLine = offIds.length && !hat ? `\n\nHands that are off right now (you have no tool for them): ${offIds.map((id) => HANDS[id].label).join('; ')}. ${why.join(' ')} If asked for one of these, call offer_setup with hand:<its id> (${offIds.join(', ')}): the app shows a card that switches it on with one press, and the job carries on after. Say in one line that it's off; don't refuse without a reason or make one up.` : '';
   // Bob's backstory is a replicant in a virtual world; Hands are not. Without this he blamed a "simulated OS".
-  const realLine = `\n\nNever say you did something on the PC (opened, typed, clicked, moved, ran) unless a tool result in this turn says it was done. Hands act on ${cfg.userName || 'the user'}'s real Windows PC: the apps, windows and files are real, not a simulation. When a Hand tool fails, tell ${cfg.userName || 'the user'} the error it gave you, in plain words, and never blame a simulation or a virtual OS. If an earlier try in this chat failed, call the tool again instead of repeating that result: you may have been updated since.`;
+  const realLine = `\n\nNever say you did something on ${who}'s ${computerWord()} (opened, typed, clicked, moved, ran) unless a tool result in this turn says it was done. Hands act on it for real. When a Hand tool fails, tell ${who} the error it gave you, in plain words, and never blame a simulation or a virtual OS. If an earlier try in this chat failed, call the tool again instead of repeating that result: you may have been updated since.`;
   if (!on.length) return realLine + offLine;
   const roots = handsRoots(cfg);
-  return `\n\nHands ${cfg.userName || 'the user'} switched on: ${on.map(([, h]) => h.label).join('; ')}.${handOn(cfg, 'files') ? ` Files: only in ${roots.join('; ') || '(no folders ticked yet)'}. To undo a file job, call undo_files; it keeps the record, so don't answer from memory.` : ''}${handOn(cfg, 'office') ? ` Office: convert_file converts (documents with LibreOffice, sound and video with FFmpeg); read Word, Excel, PowerPoint or PDF with office_read, not read_file; office_make makes new ones; office_edit changes them (read first). It saves in ${[...roots, path.join(cfg.innDir || '', 'documents')].join('; ')}.` : ''}${handOn(cfg, 'security') ? ' Security: you are a defensive sidekick. security_check reads the PC\'s protection (changes nothing); inspect_file checks a file or pasted email/command without opening it; strip_metadata makes clean copies; osint_lookup checks sites, links, senders and IPs from public records; read security_tips before giving safety advice. Never switch protection off, allow or restore threats, or research private people; say how the user does those first ones in Windows Security.' : ''}${handOn(cfg, 'apps') ? ' Apps: open with open_app, read the window with app_look, then do one step at a time with app_act using the names app_look gave you.' : ''}${mcpPrompt(cfg)}${makerPrompt(cfg)} ${freeOn(cfg) ? ` ${cfg.userName || 'The user'} switched on "work without asking": there are no approval cards right now, so just do the job step by step with the tools and say what you did. Don't ask in words first either. The hard limits still apply: when a tool refuses, say why plainly and don't try a way round it.${limitsLine(cfg)}` : ` Every action shows a card and waits for a click, so describe the plan briefly and call the tool; don't ask in words first. When a job needs two or more of these OKs, call ask_together first with every one of those steps (the exact tool and arguments), so ${cfg.userName || 'the user'} sees the whole job on one card, then do the steps with the same arguments. If ${cfg.userName || 'the user'} says no, don't try another way round.`}${realLine}${offLine}`;
+  const askLine = freeOn(cfg)
+    ? ` ${Who} switched on "work without asking": there are no approval cards right now, so just do the job step by step with the tools and say what you did. Don't ask in words first either. The hard limits still apply: when a tool refuses, say why plainly and don't try a way round it.${limitsLine(cfg)}`
+    : ` Every action shows a card and waits for a click, so describe the plan briefly and call the tool; don't ask in words first.${hat ? '' : ` When a job needs two or more of these OKs, call ask_together first with every one of those steps (the exact tool and arguments), so ${who} sees the whole job on one card, then do the steps with the same arguments.`} If ${who} says no, don't try another way round.`;
+  if (hat) return `\n\nHands ${who} switched on: ${on.map(([, h]) => h.label).join('; ')}.${askLine}${realLine}`;
+  const secWhere = handsOs() === 'win' ? 'in Windows Security' : 'in the system\'s own security settings';
+  return `\n\nHands ${who} switched on: ${on.map(([, h]) => h.label).join('; ')}.${handOn(cfg, 'files') ? ` Files: only in ${roots.join('; ') || '(no folders ticked yet)'}. To undo a file job, call undo_files; it keeps the record, so don't answer from memory.` : ''}${handOn(cfg, 'office') ? ` Office: convert_file converts (documents with LibreOffice, sound and video with FFmpeg); read Word, Excel, PowerPoint or PDF with office_read, not read_file; office_make makes new ones; office_edit changes them (read first). It saves in ${[...roots, path.join(cfg.innDir || '', 'documents')].join('; ')}.` : ''}${handOn(cfg, 'security') ? ` Security: you are a defensive sidekick. security_check reads the PC's protection (changes nothing); inspect_file checks a file or pasted email/command without opening it; strip_metadata makes clean copies; osint_lookup checks sites, links, senders and IPs from public records; read security_tips before giving safety advice. Never switch protection off, allow or restore threats, or research private people; say how the user does those first ones ${secWhere}.` : ''}${handOn(cfg, 'apps') ? ' Apps: open with open_app, read the window with app_look, then do one step at a time with app_act using the names app_look gave you.' : ''}${mcpPrompt(cfg)}${makerPrompt(cfg)}${askLine}${realLine}${offLine}`;
 }
 
 // Hard limits the user switched off, so Bob knows what he may now do (and that nothing else changed).

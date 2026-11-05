@@ -2,8 +2,8 @@
 // ▲ ▼ buttons (handy over Remote Desktop, where dragging can be fiddly).
 import { size, clock } from './progress.js';
 import { headTip } from './tips.js';
+import { esc } from './util.js';
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const when = (t) => {
   if (!t) return '';
   const d = new Date(t), now = new Date();

@@ -17,6 +17,7 @@ import { transcribe } from './stt.js';
 import { ModelShop } from './models.js';
 import { checkEngine, seedBundledEngine } from './engines.js';
 import { autostartOn, setAutostart } from './autostart.js';
+import { applyWindowState } from './app-icon.js';
 import { capabilities } from './capabilities.js';
 import { cloudStatus } from './cloud.js';
 import { say, KOKORO_VOICES, stopVoices } from './tts.js';
@@ -45,10 +46,14 @@ import { handsSettings } from './hands-settings.js';
 import { tuning, TUNING_KEYS, pictureFitReset } from './tuning.js';
 import { gatherFacts, tipsFrom } from './pc-check.js';
 import { speedTest, speedHistory } from './speed-test.js';
-import { phoneView, cleanPhonePatch, findAddresses, newPasscode } from './phone-access.js';
+import { phoneView, cleanPhonePatch, findAddresses, newPasscode, isTailscaleIp } from './phone-access.js';
+import { firewallState, changeRule } from './firewall.js';
 import { shareView, cleanSharePatch, saveShare, lendChat, lendRefusal, helloFor } from './share-brains.js';
 import { guestRoute, answerAway } from './share-jobs.js';
+import { Pairing } from './bob-net-pair.js';
 import { OS, features } from './platform.js';
+import { saveExport } from './diagram.js';
+import { saveAs } from './save-as.js';
 
 const cfg = loadConfig();
 // 1.5.76: the basic llama.cpp that comes inside Bob's download goes into his engine folder, if he has none yet.
@@ -86,12 +91,24 @@ function broadcast(ev) {
 }
 
 const brain = new Brain(cfg, broadcast);
+// 1.5.97 Pair with my other Bobs (src/bob-net-pair.js): find them on Tailscale, a Yes card there, passcodes swapped.
+const pairing = new Pairing(cfg, { broadcast, log: (k, t) => brain.log(k, t), version: VERSION, ownAddresses: () => tailscaleIps().map((ip) => `${ip}:${cfg.port}`) });
 brain.mindWatchers = () => mindClients.size;
 // 1.5.38: when Downloads change, a job waiting for one (a song waiting for the music models) may be able to go.
 const shop = new ModelShop(cfg, (ev) => { broadcast(ev); if (ev?.type === 'downloads') brain.downloadsChanged(); }, brain.engine);
 // 1.5.24: the card's size, for picture settings matched to it (only used when that switch is on).
 if (!cfg.gpuVramGB) shop.hardware().then((h) => { if (h?.gpu?.vramGB && !h.gpu.integrated) cfg.cardGB = h.gpu.vramGB; /* 1.5.71: built-in graphics aren't a card for pictures */ if (h?.gpu?.integrated) cfg.sharedGraphics = true; /* 1.5.79: but they get their own picture settings */ }).catch(() => {});
 brain.shop = shop; // so Bob can tell when a model is on this replicant matrix but not assigned to a job
+// 1.5.91: Bob fills a slot himself once its download is in (Get Bob ready, the chat's Set it up card): the same saves
+// the window's Equip makes.
+shop.equipHook = async (slot, value) => {
+  if (slot.how === 'brain') return saveSettings(cfg, { sessionBrains: { ...sessionBrains(cfg), [slot.id]: value } });
+  if (slot.how === 'embed') { saveSettings(cfg, { housekeeping: cleanHousekeeping({ ...hkSettings(cfg), embedModel: value }) }); brain.housekeeper.noEmbed = false; return; }
+  const patch = await shop.setRole(slot.id, value);
+  brain.log('settings', `${slot.id} -> ${value} (put in its slot when its download finished)`);
+  return patch;
+};
+shop.applyEquip().catch(() => {}); // anything finished while Bob was closed
 startSchedules(brain); // ticks once a minute; nothing is ever due while the Schedules hand is off
 startCheckins(brain); // 1.5.78: ticks once a minute; does nothing while Check-ins are off
 telegram = startTelegram(brain); // does nothing (no request at all) unless Talk to Bob on Telegram is on and a bot token is set
@@ -103,7 +120,7 @@ function workshopView() {
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.webm': 'video/webm', '.mp4': 'video/mp4', '.avi': 'video/x-msvideo', '.svg': 'image/svg+xml',
+  '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.webm': 'video/webm', '.mp4': 'video/mp4', '.avi': 'video/x-msvideo', '.svg': 'image/svg+xml', '.mmd': 'text/plain; charset=utf-8',
   '.ico': 'image/x-icon', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.flac': 'audio/flac', '.ogg': 'audio/ogg',
   '.gif': 'image/gif', '.m4a': 'audio/mp4', '.mov': 'video/quicktime', '.pdf': 'application/pdf', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.csv': 'text/plain; charset=utf-8', '.log': 'text/plain; charset=utf-8'
 };
@@ -122,6 +139,13 @@ function serveFile(res, dir, rel, extra = {}) {
   });
 }
 
+// 1.5.95: a diagram file from the window that drew it (a PNG or PDF can be several MB as base64).
+async function bigBody(req, limit = 36e6) {
+  let s = '';
+  for await (const c of req) { s += c; if (s.length > limit) throw new Error('too big'); }
+  return s ? JSON.parse(s) : {};
+}
+
 async function body(req) {
   let s = '';
   for await (const c of req) { s += c; if (s.length > 1e6) throw new Error('too big'); }
@@ -131,10 +155,16 @@ async function body(req) {
 // Block other websites from talking to Bob: check Host (DNS rebinding) and require
 // a custom header on every POST (browsers won't send it cross-site without CORS, which we never grant).
 const localHosts = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`, `[::1]:${cfg.port}`]);
-const remote = cfg.remote || {};
-const remoteOn = Boolean(remote.enabled && remote.passcode && String(remote.passcode).length >= 6);
-const remoteHosts = new Set((remote.hosts || []).map((h) => String(h).toLowerCase()));
-const authToken = crypto.createHash('sha256').update('bob:' + (remote.passcode || '') + ':' + cfg.agentDir).digest('hex');
+// 1.5.94: read again whenever "Let my other replicant matrices in" changes, so it works without a restart.
+let remote, remoteOn, remoteHosts, authToken;
+function readRemote() {
+  remote = cfg.remote || {};
+  remoteOn = Boolean(remote.enabled && remote.passcode && String(remote.passcode).length >= 6);
+  remoteHosts = new Set((remote.hosts || []).map((h) => String(h).toLowerCase()));
+  authToken = crypto.createHash('sha256').update('bob:' + (remote.passcode || '') + ':' + cfg.agentDir).digest('hex');
+}
+readRemote();
+const startedWide = remoteOn; // listening on every address since start-up (the old way, still used when it was on at start)
 const loginTries = [];
 
 // Phone access over Tailscale only: loopback or the Tailscale range (100.64.0.0/10).
@@ -156,11 +186,25 @@ const server = http.createServer(async (req, res) => {
   try {
     const host = String(req.headers.host).toLowerCase();
     const isLocal = localHosts.has(host) && fromTailscaleOrLocal(req.socket.remoteAddress) && /^(127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)$/.test(req.socket.remoteAddress);
-    const isRemote = !isLocal && remoteOn && remoteHosts.has(host) && fromTailscaleOrLocal(req.socket.remoteAddress);
+    // 1.5.97: this replicant matrix's own Tailscale addresses always count, so a stale saved list (a renamed or re-joined
+    // device) can't shut your other Bobs out.
+    const isRemote = !isLocal && remoteOn && (remoteHosts.has(host) || ownTsHosts().has(host)) && fromTailscaleOrLocal(req.socket.remoteAddress);
     if (!isLocal && !isRemote) return send(res, 403, { error: 'bad host' });
     const url = new URL(req.url, `http://${req.headers.host}`);
     const p = url.pathname;
 
+    // 1.5.97 Bob-Net pairing: the other Bob doesn't know the passcode yet, so these four come before the passcode check.
+    // They only reach through the open door (Tailscale only), and the passcode is handed over only after your Yes here.
+    if (isRemote && p.startsWith('/api/pair/')) {
+      if (req.method === 'GET' && p === '/api/pair/hello') return send(res, 200, pairing.hello());
+      if (req.method === 'POST' && req.headers['x-bob'] === '1' && !refuseForeign(req, host)) {
+        const b = await body(req).catch(() => ({}));
+        if (p === '/api/pair/ask') { const r = pairing.ask(b, req.socket.remoteAddress); return send(res, r.code, r.error ? { error: r.error } : { id: r.id }); }
+        if (p === '/api/pair/status') return send(res, 200, pairing.status(b.id, req.socket.remoteAddress));
+        if (p === '/api/pair/finish') return send(res, 200, pairing.finish(b, req.socket.remoteAddress));
+      }
+      return send(res, 404, { error: 'not found' });
+    }
     if (isRemote && !hasCookie(req)) {
       if (p.startsWith('/icons/')) return serveFile(res, publicDir, p.slice(1));
       if (req.method === 'POST' && p === '/login') {
@@ -197,6 +241,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
       res.write(`data: ${JSON.stringify({ type: 'status', ...brain.state })}\n\n`);
+      if (isLocal) for (const c of pairing.waiting()) res.write(`data: ${JSON.stringify(c)}\n\n`); // 1.5.97: a pairing card that came in while the window was shut
       clients.add(res);
       const mind = url.searchParams.get('mind') === '1';
       if (mind) mindClients.add(res);
@@ -297,13 +342,13 @@ const server = http.createServer(async (req, res) => {
     // 1.5.74: whether the core engines start (first-run step 1, and Settings, Engines).
     if (req.method === 'GET' && p === '/api/engines/check') return send(res, 200, { checks: await Promise.all(['llamacpp', 'sdcpp', 'whispercpp'].map((id) => checkEngine(cfg, id))) });
     if (req.method === 'GET' && p === '/api/settings') {
-      return send(res, 200, { autostart: autostartOn(), setupDone: Boolean(cfg.setupDone), look: cfg.look || null, lookText: lookText(cfg.look), personality: cleanPersonality(cfg.personality), lookComments: cfg.lookComments !== false, userName: cfg.userName || '', callMe: cfg.callMe || '', windowsName: cfg.windowsName || '', engine: cfg.engine, workshop: workshopView(), catName: cfg.catName || 'Patches', version: VERSION, oneBrain: cfg.oneBrain === true, allTools: cfg.allTools === true, memoryRecall: cfg.memoryRecall === true, memoryBanks: memoryBanksView(), resumeJobs: cfg.resumeJobs === true, planFirst: cfg.planFirst === true, autoSession: autoSessionOn(cfg), gamingLock: cfg.gamingLock === true, sessionBy: cfg.sessionBy === 'bob' ? 'bob' : 'you', quickOnCpu: cfg.quickOnCpu === true, chatWhileBusy: cfg.chatWhileBusy !== false, mootBeside: cfg.mootBeside === true, webSearch: cfg.webSearch === true, howtos: cfg.howtos === true, howtoCount: brain.howtos?.load().length || 0, gamingCard: gamingCard(cfg), gamingCardNow: brain.engine?.currentCard || null, pictureNoWait: cfg.pictureNoWait !== false, ...tuning(cfg), downloads: { concurrent: cfg.downloads?.concurrent === 2 ? 2 : 1, resumeOnStart: cfg.downloads?.resumeOnStart === true }, updates: { autoCheck: cfg.updates?.autoCheck === true }, ollamaKeepAlive: keepTime(cfg), brainMode: brainMode(cfg), tts: { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice || 'am_michael', speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '', voicesFolder: path.join(cfg.innDir, 'voices') }, kokoroVoices: KOKORO_VOICES, session: currentSession(cfg), sessions: Object.entries(SESSIONS).map(([id, x]) => ({ id, ...x, ...(OS === 'mac' && x.whatMac ? { what: x.whatMac } : {}) })), sessionBrains: sessionBrains(cfg), activeModels: cfg.activeModels || {}, sessionCtx: cfg.sessionCtx || {}, brainCtxOn: cfg.brainCtxOn === true, brainCtx: cfg.brainCtx || {}, speed: speedView(), style: cfg.style || {}, painter: cfg.painter?.engine || 'comfy', platform: process.platform, os: OS, features: features(), home: cfg.agentDir, housekeeping: hkSettings(cfg), hands: handsSettings(cfg), houseStyle: cleanHouseStyle(cfg.houseStyle), projectList: Object.entries(cfg.projects || {}).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) })), defaultProject: cfg.defaultProject || '', saveDir: saveDirView() });
+      return send(res, 200, { autostart: autostartOn(), tray: cfg.tray === true, lookIcon: cfg.lookIcon === true, trayHere: Boolean(globalThis.bobWindow), setupDone: Boolean(cfg.setupDone), look: cfg.look || null, lookText: lookText(cfg.look), personality: cleanPersonality(cfg.personality), lookComments: cfg.lookComments !== false, userName: cfg.userName || '', callMe: cfg.callMe || '', windowsName: cfg.windowsName || '', engine: cfg.engine, workshop: workshopView(), catName: cfg.catName || 'Patches', version: VERSION, oneBrain: cfg.oneBrain === true, allTools: cfg.allTools === true, memoryRecall: cfg.memoryRecall === true, memoryBanks: memoryBanksView(), resumeJobs: cfg.resumeJobs === true, planFirst: cfg.planFirst === true, autoSession: autoSessionOn(cfg), gamingLock: cfg.gamingLock === true, sessionBy: cfg.sessionBy === 'bob' ? 'bob' : 'you', quickOnCpu: cfg.quickOnCpu === true, chatWhileBusy: cfg.chatWhileBusy !== false, mootBeside: cfg.mootBeside === true, webSearch: cfg.webSearch === true, howtos: cfg.howtos === true, howtoCount: brain.howtos?.load().length || 0, gamingCard: gamingCard(cfg), gamingCardNow: brain.engine?.currentCard || null, pictureNoWait: cfg.pictureNoWait !== false, ...tuning(cfg), downloads: { concurrent: cfg.downloads?.concurrent === 2 ? 2 : 1, resumeOnStart: cfg.downloads?.resumeOnStart === true }, updates: { autoCheck: cfg.updates?.autoCheck === true }, ollamaKeepAlive: keepTime(cfg), brainMode: brainMode(cfg), tts: { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice || 'am_michael', speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '', voicesFolder: path.join(cfg.innDir, 'voices') }, kokoroVoices: KOKORO_VOICES, session: currentSession(cfg), sessions: Object.entries(SESSIONS).map(([id, x]) => ({ id, ...x, ...(OS === 'mac' && x.whatMac ? { what: x.whatMac } : {}) })), sessionBrains: sessionBrains(cfg), activeModels: cfg.activeModels || {}, sessionCtx: cfg.sessionCtx || {}, brainCtxOn: cfg.brainCtxOn === true, brainCtx: cfg.brainCtx || {}, speed: speedView(), style: cfg.style || {}, painter: cfg.painter?.engine || 'comfy', platform: process.platform, os: OS, features: features(), home: cfg.agentDir, housekeeping: hkSettings(cfg), hands: handsSettings(cfg), houseStyle: cleanHouseStyle(cfg.houseStyle), projectList: Object.entries(cfg.projects || {}).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) })), defaultProject: cfg.defaultProject || '', saveDir: saveDirView() });
     }
-    // Let my phone in (Settings, Connections). Only from this PC; takes effect when Bob restarts.
+    // Let my phone in (Settings, Bob-Net). Only from this PC; takes effect when Bob restarts.
     if (p === '/api/phone-access' && (req.method === 'GET' || req.method === 'POST')) {
       if (!isLocal) return send(res, 403, { error: 'Phone access can only be changed on this replicant matrix itself.' });
       const found = await findAddresses(cfg.port);
-      if (req.method === 'GET') return send(res, 200, { ...phoneView(cfg), found, live: remoteOn });
+      if (req.method === 'GET') return send(res, 200, { ...phoneView(cfg), found, live: remoteLive(), firewall: await firewallState(cfg.port).catch(() => null) });
       const b = await body(req);
       let made = '';
       if (b.newPasscode === true) { made = newPasscode(); b.passcode = made; }
@@ -312,7 +357,16 @@ const server = http.createServer(async (req, res) => {
       if (out.error) return send(res, 400, { error: out.error });
       saveRemote(cfg, out.remote);
       brain.log('settings', `phone access: ${out.remote.enabled ? 'on' : 'off'}, ${out.remote.hosts.length} address(es)${made || 'passcode' in b ? ', new passcode' : ''}`);
-      return send(res, 200, { ...phoneView(cfg), found, live: remoteOn, passcode: made || undefined, restart: (cfg.remote.enabled === true) !== remoteOn || 'passcode' in b || 'hosts' in b });
+      applyRemote(); // 1.5.94: opens (or closes) the door now, no restart
+      return send(res, 200, { ...phoneView(cfg), found, live: remoteLive(), passcode: made || undefined, restart: false, firewall: await firewallState(cfg.port).catch(() => null) });
+    }
+    // 1.5.94: "Let Tailscale through the firewall" (Windows asks once) and "Remove the firewall rule".
+    if (p === '/api/phone-access/firewall' && req.method === 'POST') {
+      if (!isLocal) return send(res, 403, { error: 'The firewall can only be changed on this replicant matrix itself.' });
+      const b = await body(req);
+      const r = await changeRule(cfg.port, { add: b.add !== false, exe: process.versions.electron ? process.execPath : '' });
+      brain.log('settings', `firewall rule ${b.add !== false ? 'add' : 'remove'} (your click): ${r.ok ? 'done' : r.why}`);
+      return send(res, 200, { ...r, firewall: await firewallState(cfg.port).catch(() => null) });
     }
     // Share brains between your Bobs (src/share-brains.js). Settings only from this PC; lending only through the phone door.
     if (p === '/api/share-brains' && (req.method === 'GET' || req.method === 'POST')) {
@@ -326,6 +380,24 @@ const server = http.createServer(async (req, res) => {
       brain.log('settings', `share brains: lend ${out.share.lend ? 'on' : 'off'}, borrow ${out.share.borrow.on ? out.share.borrow.when : 'off'}, ${out.share.borrow.bobs.length} Bob(s)`);
       if (b.check) await Promise.all(brain.lenders.bobs().map((x) => brain.lenders.hello(x, { force: true })));
       return send(res, 200, { ...shareView(cfg), lenders: brain.lenderStatus() });
+    }
+    // 1.5.97 Pair with my other Bobs: Find, Pair, and the Yes/No card. Only on this replicant matrix itself.
+    if (p === '/api/bob-net/find' || p === '/api/bob-net/pair' || p === '/api/bob-net/answer') {
+      if (!isLocal) return send(res, 403, { error: 'Pairing can only be done on this replicant matrix itself.' });
+      if (req.method === 'GET' && p === '/api/bob-net/find') return send(res, 200, { ...(await pairing.find()), door: remoteOn, live: remoteLive(), here: tailscaleIps().length > 0 });
+      if (req.method === 'GET' && p === '/api/bob-net/pair') return send(res, 200, { pairing: pairing.outgoingView() });
+      if (req.method === 'POST' && p === '/api/bob-net/pair') {
+        const b = await body(req);
+        const r = await pairing.pairWith(b.address);
+        return send(res, r.error ? 400 : 200, r);
+      }
+      if (req.method === 'POST' && p === '/api/bob-net/answer') {
+        const b = await body(req);
+        const r = pairing.answer(b.id, b.yes === true);
+        if (r.ok && b.yes === true) brain.lenders.state.clear();
+        return send(res, 200, r);
+      }
+      return send(res, 404, { error: 'not found' });
     }
     if (req.method === 'GET' && p === '/api/lend/hello') {
       const why = lendRefusal(brain, brain.lendDeps);
@@ -352,6 +424,7 @@ const server = http.createServer(async (req, res) => {
         if (p === '/api/models/download') {
           const ids = [].concat(b.ids || b.id || []).map(String);
           if (!ids.length) return send(res, 400, { error: 'Nothing to download.' });
+          if (b.equip && typeof b.equip === 'object') shop.planEquip(b.equip); // 1.5.91: { modelId: [slot ids] }, filled when each is in
           const started = await shop.download(ids[0], { queue: ids.slice(1) });
           // 1.5.38: pressed from the chat's "Download it" button: that message waits in Tasks and runs once it's done.
           if (typeof b.thenJob === 'string') brain.waitForDownload(b.thenJob, ids[0]);
@@ -457,6 +530,10 @@ const server = http.createServer(async (req, res) => {
           if (typeof b.autoSession === 'boolean') { saveSettings(cfg, { autoSession: b.autoSession }); out.autoSession = autoSessionOn(cfg); brain.armIdleCheck(); }
           if (typeof b.webSearch === 'boolean') { saveSettings(cfg, { webSearch: b.webSearch }); out.webSearch = cfg.webSearch === true; }
           if (typeof b.howtos === 'boolean') { saveSettings(cfg, { howtos: b.howtos }); out.howtos = cfg.howtos === true; }
+          // 1.5.94 tray and icon: saved, then handed straight to the window program, so they work without a restart.
+          if (typeof b.tray === 'boolean') { saveSettings(cfg, { tray: b.tray }); out.tray = cfg.tray === true; }
+          if (typeof b.lookIcon === 'boolean') { saveSettings(cfg, { lookIcon: b.lookIcon }); out.lookIcon = cfg.lookIcon === true; }
+          if ('tray' in b || 'lookIcon' in b || 'look' in b) applyWindowState(cfg);
           if (GAMING_CARD.includes(b.gamingCard)) { saveSettings(cfg, { gamingCard: b.gamingCard }); out.gamingCard = gamingCard(cfg); out.gamingCardNow = brain.engine?.currentCard || null; }
           if (typeof b.mootBeside === 'boolean') { saveSettings(cfg, { mootBeside: b.mootBeside }); out.mootBeside = cfg.mootBeside === true; }
           if (typeof b.chatWhileBusy === 'boolean') { saveSettings(cfg, { chatWhileBusy: b.chatWhileBusy }); out.chatWhileBusy = cfg.chatWhileBusy !== false; brain.pump?.(); }
@@ -480,6 +557,30 @@ const server = http.createServer(async (req, res) => {
         }
       } catch (e) { return send(res, 409, { error: e.message }); }
       return send(res, 404, { error: 'not found' });
+    }
+    // 1.5.95 Save as: keep something Bob made as another file type (pictures, clips, songs; save-as.js).
+    if (req.method === 'POST' && p === '/api/save-as') {
+      const b = await body(req);
+      try {
+        const r = await saveAs(cfg, { name: b.name, format: b.format }, brain.saveAsOpts || {});
+        if (r.need === 'ffmpeg') { let offer = null; await brain.offerSetup('ffmpeg', { emit: (ev) => { offer = ev; } }, { quiet: true }).catch(() => ''); return send(res, 200, { ok: false, need: 'ffmpeg', offer }); }
+        try { brain.made.add(r.file, { tool: 'save_as' }); } catch {}
+        return send(res, 200, { ok: true, ...r });
+      } catch (e) { return send(res, 200, { ok: false, why: e.message }); }
+    }
+    // 1.5.95: a diagram drawn in a chat window, saved as PNG, SVG or PDF next to its text (diagram.js).
+    if (req.method === 'POST' && p === '/api/diagram/save') {
+      try {
+        const b = await bigBody(req);
+        const r = saveExport(cfg, { name: b.name, format: b.format, data: b.data });
+        try { brain.made.add(r.file, { tool: 'make_diagram' }); } catch {}
+        return send(res, 200, { ok: true, ...r });
+      } catch (e) { return send(res, 200, { ok: false, why: e.message }); }
+    }
+    // 1.5.91: the chat's Set it up card (the phone's too, like approval cards: the card's id is the permission).
+    if (req.method === 'POST' && p === '/api/setup/answer') {
+      const b = await body(req);
+      try { return send(res, 200, await brain.answerSetup(String(b.id || ''), b.yes === true)); } catch (e) { return send(res, 200, { ok: false, why: e.message }); }
     }
     if (req.method === 'POST' && p === '/api/approve') {
       const { id, allow, rows, items, note } = await body(req);
@@ -727,6 +828,7 @@ server.listen(cfg.port, remoteOn ? (remote.bindAddress || '0.0.0.0') : cfg.host,
   console.log(`Bob ${VERSION.label} is open for business at http://${cfg.host === '127.0.0.1' ? 'localhost' : cfg.host}:${cfg.port}`);
   console.log(`Inn folder: ${cfg.innDir}`);
   brain.log('start', `Bob started on port ${cfg.port}`);
+  applyWindowState(cfg); // 1.5.94 tray and icon, for Bob's own window (nothing in a browser)
 });
 // Browsers may send "localhost" to the IPv6 loopback (::1) first, so listen there too when Bob is local-only.
 if (!remoteOn && cfg.host === '127.0.0.1') {
@@ -734,6 +836,30 @@ if (!remoteOn && cfg.host === '127.0.0.1') {
   v6.on('error', () => {}); // no IPv6 on this replicant matrix: fine, 127.0.0.1 still works
   v6.listen(cfg.port, '::1');
 }
+// 1.5.94: when the door is opened after start-up, Bob listens on this replicant matrix's Tailscale addresses
+// (and only those), so it works without a restart. Tailscale can connect later, so it looks again every minute.
+const netServers = new Map(); // address -> server
+function tailscaleIps() {
+  const out = [];
+  for (const list of Object.values(os.networkInterfaces())) for (const n of list || []) if (n.family === 'IPv4' && isTailscaleIp(n.address)) out.push(n.address);
+  return out;
+}
+let ownTs = { at: 0, set: new Set() };
+function ownTsHosts() { if (Date.now() - ownTs.at > 30000) ownTs = { at: Date.now(), set: new Set(tailscaleIps().map((ip) => `${ip}:${cfg.port}`)) }; return ownTs.set; }
+function remoteLive() { return remoteOn && (startedWide || netServers.size > 0); }
+function applyRemote() {
+  readRemote();
+  const want = remoteOn && !startedWide ? tailscaleIps() : [];
+  for (const [ip, s] of netServers) if (!want.includes(ip)) { try { s.close(); } catch {} netServers.delete(ip); }
+  for (const ip of want) {
+    if (netServers.has(ip)) continue;
+    const s = http.createServer(server.listeners('request')[0]);
+    s.on('error', (e) => { netServers.delete(ip); brain.log('settings', `couldn't listen on ${ip}:${cfg.port} (${e.code || e.message})`); });
+    s.listen(cfg.port, ip, () => brain.log('settings', `listening on ${ip}:${cfg.port} for your other replicant matrices`));
+    netServers.set(ip, s);
+  }
+}
+setInterval(() => { if (remoteOn && !startedWide) applyRemote(); }, 60_000).unref();
 // One bad request or background job must never take Bob down: log it and keep serving.
 process.on('unhandledRejection', (e) => { console.error('Unhandled:', e); try { brain.log('error', String(e && e.stack || e).slice(0, 500)); } catch {} });
 process.on('uncaughtException', (e) => { console.error('Uncaught:', e); try { brain.log('error', String(e && e.stack || e).slice(0, 500)); } catch {} });

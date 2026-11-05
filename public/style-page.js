@@ -4,8 +4,8 @@ import { LOOKS, LOOK_ID, setLook, drawBob } from './bob-sprite.js';
 import { tip } from './tips.js';
 import { AVATAR_GROUPS, avatar } from './avatars.js';
 import { PRESETS, TOKENS, FONTS, findTheme, resolve, fullColors, applyStyle, applyTheme, swatch, isLight } from './themes.js';
+import { esc } from './util.js';
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export function createStylePage({ api, redraw, flash }) {
   let draft = null; // the theme being made in the editor, or null when the editor is closed
@@ -13,7 +13,7 @@ export function createStylePage({ api, redraw, flash }) {
 
   function themeButton(t, style) {
     const on = (style.theme || 'inn') === t.id;
-    return `<button role="radio" aria-checked="${on}" data-theme="${esc(t.id)}" title="${esc(t.what || '')}">
+    return `<button role="radio" aria-checked="${on}" data-theme="${esc(t.id)}">
       <span class="swatch">${swatch(t).map((c) => `<i style="background:${c}"></i>`).join('')}</span>
       <span><strong>${esc(t.name)}</strong>${t.what ? `<br><small>${esc(t.what)}</small>` : ''}</span></button>`;
   }
@@ -37,10 +37,15 @@ export function createStylePage({ api, redraw, flash }) {
     const groups = [{ id: 'bob', label: 'Bob\'s own', ids: Object.keys(LOOKS) }, ...AVATAR_GROUPS.map((g) => ({ id: g.id, label: g.label, ids: Array.from({ length: g.count }, (_, i) => `${g.id}-${i}`) }))];
     const shown = avatarFilter === 'all' ? groups : groups.filter((g) => g.id === avatarFilter);
     return `<div class="avatars"><div class="tabs" role="tablist" aria-label="Avatar groups">${[{ id: 'all', label: 'All' }, ...groups].map((g) => `<button role="tab" aria-selected="${g.id === avatarFilter}" data-avgroup="${g.id}">${esc(g.label)}</button>`).join('')}</div>
-      ${shown.map((g) => `<h4>${esc(g.label)} · ${g.ids.length}</h4><div class="looks" role="radiogroup" aria-label="${esc(g.label)}">${g.ids.map((id) => {
+      ${shown.map((g) => {
+        // 1.5.101: when every look in a group has the same line ("Visitor from elsewhere"), it shows once by the heading.
+        const whats = g.ids.map((id) => (LOOKS[id] || avatar(id)).what || '');
+        const shared = g.ids.length > 1 && whats.every((w) => w === whats[0]) ? whats[0] : '';
+        return `<h4>${esc(g.label)} · ${g.ids.length}${shared ? ` <small class="muted">${esc(shared)}</small>` : ''}</h4><div class="looks" role="radiogroup" aria-label="${esc(g.label)}">${g.ids.map((id) => {
         const l = LOOKS[id] || avatar(id);
-        return `<button role="radio" aria-checked="${id === LOOK_ID}" data-look="${id}" title="${esc(l.what)}"><canvas width="48" height="48" data-preview="${id}"></canvas><span>${esc(l.name)}</span></button>`;
-      }).join('')}</div>`).join('')}</div>`;
+        return `<button role="radio" aria-checked="${id === LOOK_ID}" data-look="${id}"${shared || !l.what ? '' : ` title="${esc(l.what)}"`}><canvas width="48" height="48" data-preview="${id}"></canvas><span>${esc(l.name)}</span></button>`;
+      }).join('')}</div>`;
+      }).join('')}</div>`;
   }
 
   function html(settings) {

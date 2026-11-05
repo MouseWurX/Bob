@@ -2,6 +2,7 @@
 // defaults are exactly the Bob everyone knows. Turning a dial adds one short line to his instructions. The dials
 // only shape tone: honesty, safety and "ask before doing" are fixed and stated after them, whatever they say.
 import { tip } from './tips.js';
+import { esc } from './util.js';
 // All wording here is original. Used by the server (prompt) and the page (sliders, preview).
 
 export const DIALS = [
@@ -132,7 +133,6 @@ export function greeting(p, user = 'there') {
 }
 
 // ---- The Attributes panel on Equip Bob: his look, what he makes of it, the dials, and how he'd say hello. ----
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // Bob's first impression of a look, in his own words. (In chat he gives his real opinion; this is the quick take.)
 const TAKES = {

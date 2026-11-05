@@ -44,14 +44,14 @@
 </div></section>
 
 <section class="panel hidden" id="bobs"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Bobs on your network</h2></div><div class="body">
-  <p class="help-line">Bobs on your PCs that let your phone in. Big jobs (pictures, music, Hands, harder thinking) go to them. They're reached over Tailscale only.</p>
+  <p class="help-line">Bobs on your other replicant matrices that let this phone in. Big jobs (pictures, music, Hands, harder thinking) go to them. They're reached over Tailscale only.</p>
   <div id="bob-list" class="gap"></div>
   <h3>Add a Bob</h3>
   <div class="box">
     <label class="field" for="add-name">Name</label>
-    <input type="text" id="add-name" placeholder="Bob on my PC" maxlength="40">
+    <input type="text" id="add-name" placeholder="Bob on my desktop" maxlength="40">
     <label class="field" for="add-address">Tailscale address</label>
-    <input type="text" id="add-address" placeholder="my-pc.your-tailnet.ts.net or 100.x.y.z" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <input type="text" id="add-address" placeholder="my-computer.your-tailnet.ts.net or 100.x.y.z" autocapitalize="off" autocorrect="off" spellcheck="false">
     <p class="help-line">On your other replicant matrix: Bob's Settings, <strong>Let my other replicant matrices in</strong>, shows this address and the passcode.</p>
     <div class="btns"><button class="main" id="pair-bob">Pair with this Bob</button><button id="add-bob">Add this Bob</button></div>
     <p class="help-line"><strong>Pair with this Bob</strong>: that Bob shows a card with a number, you check it matches the one here and say yes there, and nobody types a passcode. <strong>Add this Bob</strong> is the old way, with his passcode.</p>
@@ -105,6 +105,7 @@
 <script src="shared.js"></script>
 <script src="logic.js"></script>
 <script src="help.js"></script>
+<script src="diagram-core.js"></script>
 <script src="phone.js"></script>
 </body>
 </html>

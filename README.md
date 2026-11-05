@@ -14,6 +14,12 @@ Windows 10 or 11, 64-bit. An NVIDIA graphics card helps a lot but isn't required
 
 **Mac (preview):** a Mac with Apple Silicon (M1 or newer). Download `Bob-<version>-mac-arm64.zip`, drag Bob into Applications, and the first time click **Open Anyway** in System Settings > Privacy & Security (official Mac builds are ad-hoc signed: sealed so macOS can tell if a file was changed, but not with a paid Apple developer account; see [Signed Mac builds](CONTRIBUTING.md#signed-mac-builds)). Bob keeps his things in `~/Library/Application Support/Bob/home`. A few Windows-only parts (the Apps Hand, Defender scans, the Gaming card switch) are hidden on a Mac. **Update Bob** works on a Mac too: it downloads the newest Mac zip from GitHub, checks its .sha256 and Bob.app's seal, and swaps it in on restart. The Mac build is tested only on GitHub's Mac machines (nobody on the project has a Mac), so tell us how it goes on yours.
 
+**Linux (64-bit):** download `Bob-<version>-linux-x86_64.AppImage`, mark it as executable (right-click, Properties, "Allow executing as program"), and double-click it. Nothing is installed and nothing in your system changes. If nothing happens on an older distro, install `libfuse2` from your software centre. Bob keeps his things in `~/.local/share/bob`, and **Update Bob** fetches the newest AppImage and checks its .sha256. A few Windows-only parts are hidden on Linux.
+
+**Raspberry Pi and other ARM boards:** a Raspberry Pi 5 (or 4) or another 64-bit ARM board with a 64-bit Linux runs `Bob-<version>-linux-arm64.AppImage`, the same way. Bob runs small brains on the processor there (Qwen3.5 2B on a 4 GB board, Gemma 4 E2B on 8 GB or more), and making pictures isn't available on ARM yet. It's built and test-started on GitHub's ARM machines, but nobody on the project has tried it on a real Pi yet.
+
+**Android phone:** `Bob-<version>-android.apk` is Bob's phone app. It talks to your Bob on a computer over your own private Tailscale network, and it can run a small brain on the phone itself if you turn that on (off to start with). Open the .apk on the phone to install it; Android asks once to allow installs from your browser or file app.
+
 ## Getting Bob
 
 ### Install Bob in five steps (Windows 10 or 11)
@@ -26,13 +32,11 @@ Windows 10 or 11, 64-bit. An NVIDIA graphics card helps a lot but isn't required
 
 To update later: Settings, This replicant matrix and updates, **Check for updates**, then **Update Bob**. Bob downloads the newest release zip from GitHub, checks it against its `.sha256`, and puts it in place with the update window (no Node.js needed). You can still unzip a new release over your old `Bob` folder by hand. Your models, chats and settings are kept, because they live in `%LOCALAPPDATA%\Bob`, not in the Bob folder.
 
-**Download:** get `Bob-<version>-win-x64.zip` from the Releases page, unzip it anywhere and run `Bob.exe`. `Bob-<version>-win-x64.zip.sha256` has the checksum.
+Each download has a `.sha256` file next to it with its checksum.
 
 **From source:** on Windows, double-click **Install Bob.cmd** in Bob's folder. Bob opens in his own window and gets a Start menu entry. There is no browser step and no "install as an app".
 
 How Bob runs: `Bob app\Bob.exe` is Electron's official `electron.exe`, unchanged and only renamed, and Bob's own files sit next to it in `Bob app\resources\app`. Windows Smart App Control already knows Electron's program, so it doesn't block Bob, which can happen to a freshly built exe. Updates only change Bob's files, never the exe.
-
-The first time he opens, Bob suggests models for your graphics card. You pick, he downloads, and a progress bar shows every step.
 
 ## Where Bob keeps things
 
@@ -66,7 +70,7 @@ The menu is on the left (fold it to icons with ‹ or Ctrl+B), the chat is in th
 - **Housekeeping (off unless you turn it on):** while Bob is idle he sums up the older part of long chats instead of dropping it, files chats under Topics, moves lasting facts to his memory file, and finds what hasn't come up for a while: chats, pictures and sounds he made, finished tasks, old log lines, repeated memory lines. Each kind has its own age limit (minutes to months) and either "ask me first" (a list with a tick and a cross per item) or "tidy automatically". Everything removed goes to the Recycle Bin; pinned chats, pictures and topics are never touched; every action goes in the logbook. You can also say "forget what we said about X".
 - **Session (bottom of the menu):** Normal, Art (Bob keeps chatting on a small brain while pictures paint), Coding, Office, Gaming (keeps the graphics card for your games; Bob chats on the processor, borrows at most a little of the card when there's room, and bigger jobs wait). With **Let Bob pick the session** on (the starting position), Bob moves into the session that suits the job and goes back to Normal once he has been quiet for 2 minutes. You can still pick one yourself, and the 🎮 Gaming button next to Effort keeps him in Gaming.
 - **Hands (opt-in, Settings, Show advanced settings, Hands; with a Self-test button):** let Bob move, copy, rename, zip, unzip and tidy files in folders you tick (Recycle Bin only, every job can be undone), run programs and scripts you approve (exact command shown, live output, Stop button, never as administrator, dangerous system commands always refused), do jobs on a schedule, and click and type in other apps. Every Hand is off until you switch it on, every action shows a card and waits for your click, and ✋ Hands at the top of the chat stops them all at once. Six hard limits (Recycle Bin only, secret files private, read-only projects, dangerous commands blocked, nothing sent out, no password fields) start on, each with its own switch. "Let Bob work without asking" (off) skips the cards; the hard limits still hold and a banner shows the whole time.
-- **Settings (1.5.0):** a page in the main area. Everyday rows show what's set now (voice with Play sample, look, theme, animations, cat, one brain, start-up, web search, update check, version, Check this replicant matrix); **Show advanced settings** (off, remembered) adds a search box and Brains, Voice details, Look & feel, Engines & speed, Connections, Hands, Housekeeping and Remove Bob. Long help folds behind More.
+- **Settings:** a page in the main area. Everyday rows show what's set now (voice with Play sample, look, theme, animations, cat, one brain, start-up, web search, update check, version, Check this replicant matrix); **Show advanced settings** (off, remembered) adds a search box and Brains, House style, Voice details, Look & feel, Speed & memory, Engines, Bob-Net, Online services, Other apps, Hands, Housekeeping, Check-ins and Remove Bob. Long help folds behind More.
 - **Get models:** models by category (Voice & conversation holds his everyday brain, hearing you and his voice with its settings; Pictures & video holds the painter and clips, each as a subsection), Equip Bob (click Bob's picture to open it: Attributes on the left with his look, what he thinks of it and eleven personality dials with presets and a live greeting; a paper doll with a slot for every job: pick a slot, then click or drag a model onto it; one model can fill several slots, and a starter set for your graphics card is one button, with every download confirmed), On this PC, Style and Settings (engines and switches). Anything this PC can't run is greyed out and hidden from Bob.
 - **Style:** themes (MouseHole, MouseWurX and your own), 133 avatars, Animations (On, Follow Windows, Off; On by default because Remote Desktop turns Windows' animation effects off) and whether Now running opens by itself when a task needs you (off unless you turn it on).
 - **Alerts:** a Windows notification when Bob needs you.
@@ -110,6 +114,10 @@ The server has no runtime dependencies; `node src/server.js` runs it on its own 
 - if you don't want them any more: Bob's home folder (by default `%LOCALAPPDATA%\Bob`; it holds `inn`, his models and `config.json`)
 
 Bob installs no services or drivers and needs no admin rights. He adds a scheduled task ("Bob schedules") only if you turn on "Wake Bob for schedules when he's closed", and Remove Bob takes it away. The only thing he puts in the registry is Windows' own "start-up app" entry, and only if you turn on "Launch on start-up". Engines and models live inside his folders. Ollama, ComfyUI or Pinokio, if you installed them yourself, are separate programs with their own uninstallers.
+
+## Credits
+
+Bob is inspired by the wonderful books of Dennis E. Taylor. Bob is an independent, fan-made project. It is not affiliated with, sponsored by or endorsed by Dennis E. Taylor or by his publishers, distributors or licensees. All characters, names, titles, stories and other rights in those books remain the property of their respective owners. Bob contains no text from the books; any similar names or ideas are used only as a tribute. The licences below cover only MouseWurX's own original work in this repository, not anything that belongs to the author or his publishers. If you hold rights in those books and have a concern, please [open an issue](https://github.com/MouseWurX/Bob/issues) and we'll respond promptly.
 
 ## Licence
 

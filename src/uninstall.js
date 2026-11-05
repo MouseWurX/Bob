@@ -49,7 +49,7 @@ export function safeToRemove(dir, cfg, { source = '' } = {}) {
   const r = path.resolve(dir).toLowerCase();
   const inside = (a, b) => a === b || a.startsWith(b.endsWith(path.sep) ? b : b + path.sep);
   const keep = [cfg.agentDir, source, appDir.includes(`${path.sep}resources${path.sep}app`) ? '' : appDir, os.homedir(), process.env.SystemRoot || 'C:\\Windows', path.parse(r).root].filter(Boolean).map((p) => path.resolve(p).toLowerCase());
-  // The program folder may sit inside the home (Agent 00\Bob app), but the home itself, or anything above it, never goes.
+  // The program folder may sit inside the home (Bob home\Bob app), but the home itself, or anything above it, never goes.
   return !keep.some((k) => r === k || inside(k, r));
 }
 

@@ -10,6 +10,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { appDir, VERSION, formatVersion } from './config.js';
 import { latestRelease, compareVersions, selfUpdate, startGithubUpdate, restartIntoNew, restartWhenIdle, hasGithubSwap, RELEASES_PAGE } from './github-update.js';
+import { cleanEnv } from './github-update.js';
 
 // The source folder: home.json's "source" (passed on by Bob.exe), or this folder when Bob runs from source.
 export function sourceDir() {
@@ -70,11 +71,7 @@ export function launchCommand(args) {
 }
 
 // Electron's own settings must not leak into PowerShell (or any node/npm it starts for the build).
-export function cleanEnv(env = process.env) {
-  const out = {};
-  for (const [k, v] of Object.entries(env)) if (!/^(ELECTRON_|NODE_OPTIONS$|NODE_CHANNEL_FD$|ORIGINAL_XDG_|CHROME_)/i.test(k)) out[k] = v;
-  return out;
-}
+export { cleanEnv }; // one list of variables a new Bob mustn't inherit (github-update.js)
 
 // "Check for updates": the source folder (as before) and GitHub's Latest release. Whichever is newer wins;
 // a tie goes to the source folder (it's the one on this PC). If GitHub can't be reached, the source folder

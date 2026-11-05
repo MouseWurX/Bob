@@ -46,7 +46,7 @@ check('never Medium and up, never pictures', !wantsBorrow(on('always'), { sessio
 check('off means off', !wantsBorrow({ share: { borrow: { on: false, when: 'always', bobs: [{}] } } }, { session: 'light' }) && !wantsBorrow({}, { session: 'light' }));
 
 // ---------- lending rules ----------
-const deps = { currentSession: (c) => ({ id: c.session || 'normal' }), quickBrain: () => ({ model: 'gemma4-e4b', cpu: false, ctx: 8192 }) };
+const deps = { lifeMs: 100, currentSession: (c) => ({ id: c.session || 'normal' }), quickBrain: () => ({ model: 'gemma4-e4b', cpu: false, ctx: 8192 }) };
 const lb = (extra = {}) => ({ cfg: { share: { lend: true }, remote: { enabled: true, passcode: '12345678' }, ...extra.cfg }, turns: new Map(), queue: [], ...extra.b });
 check('lends when idle', lendRefusal(lb(), deps) === '');
 check('not without the phone door', lendRefusal(lb({ cfg: { remote: { enabled: false } } }), deps) === 'off');
@@ -60,13 +60,14 @@ check('a lent request needs a question', cleanLendRequest({ messages: [{ role: '
 
 // ---------- a pretend lender: the real lendChat behind a door like server.js's ----------
 const logs = [];
-let mode = 'ok', settled = 0;
+let mode = 'ok', settled = 0, hung = 0, aborted = 0, released = 0;
 const lender = {
   cfg: { share: { lend: true }, remote: { enabled: true, passcode: 'lend-1234' } }, turns: new Map(), queue: [], lending: null,
-  log: (k, t) => logs.push(`${k}: ${t}`), broadcast: () => {}, settle: async () => { settled++; },
+  log: (k, t) => logs.push(`${k}: ${t}`), broadcast: () => {}, settle: async () => { settled++; }, gate: { done: (sig) => { if (sig) released++; } },
   brainLabel: () => 'Gemma 4 E2B', fitCtx: async (m, c) => c,
-  ensureModel: async (m) => m,
-  chatSafe: async ({ messages, tools, onToken }) => {
+  ensureModel: async (m, _p, signal) => { if (mode === 'cold' || mode === 'forever') await new Promise((r) => { const t = setTimeout(r, mode === 'cold' ? 500 : 5000); signal?.addEventListener('abort', () => { clearTimeout(t); r(); }); }); return m; },
+  chatSafe: async ({ messages, tools, onToken, signal }) => {
+    if (mode === 'hang') { hung++; await new Promise((r, j) => { const t = setTimeout(r, 5000); signal?.addEventListener('abort', () => { clearTimeout(t); aborted++; j(new Error('aborted')); }); }); }
     if (mode === 'slow') await new Promise((r) => setTimeout(r, 400));
     if (mode === 'long') { for (const w of ['a', 'b', 'c', 'd', 'e']) { onToken(w); await new Promise((r) => setTimeout(r, 120)); } return { role: 'assistant', content: 'abcde' }; }
     if (mode === 'tool') return { role: 'assistant', content: '', tool_calls: [{ function: { name: tools[0].function.name, arguments: { path: 'C:/x' } } }] };
@@ -106,6 +107,7 @@ check('the reply streams back', streamed === 'Hello from the phone' && r1.conten
 check('the lender keeps no words in his logbook', logs.length === 1 && !logs[0].includes('hi') && /thought a reply/.test(logs[0]));
 check('the lender goes back to light after', await new Promise((r) => setTimeout(() => r(settled === 1), 20)));
 check('the lender is free again', lender.lending === null);
+check('the lender gives the graphics card back after lending', released === 1, `released ${released}`);
 mode = 'tool';
 const r2 = await L.chat(picked, { messages: [{ role: 'user', content: 'list my files' }], tools: [{ type: 'function', function: { name: 'list_files', parameters: {} } }] });
 check('tool calls come back to run here', r2.tool_calls?.[0]?.function?.name === 'list_files' && r2.tool_calls[0].function.arguments.path === 'C:/x');
@@ -132,9 +134,30 @@ try { long = (await quick.chat(bob, { messages: [{ role: 'user', content: 'hi' }
 check('a long streamed reply is not cut off', long === 'abcde', long);
 mode = 'slow';
 let slow = '';
-try { await new Lenders({ share: { borrow: { on: true, bobs: [bob] } } }, { fetchFn: viaLocal, firstWordMs: 150, quietMs: 150 }).chat(bob, { messages: [{ role: 'user', content: 'hi' }] }); } catch (e) { slow = e.message; }
+try { await new Lenders({ share: { borrow: { on: true, bobs: [bob] } } }, { fetchFn: viaLocal, firstWordMs: 150, quietMs: 150, firstWordMaxMs: 250 }).chat(bob, { messages: [{ role: 'user', content: 'hi' }] }); } catch (e) { slow = e.message; }
 check('no first word in time: too slow', slow === 'too slow', slow);
 await new Promise((r) => setTimeout(r, 500));
+
+// 1.5.92, found on real devices: the asker giving up must stop the lender, or he stays "busy" for everyone.
+mode = 'hang'; hung = 0; aborted = 0;
+let gaveUp = '';
+try { await new Lenders({ share: { borrow: { on: true, bobs: [bob] } } }, { fetchFn: viaLocal, firstWordMs: 150, quietMs: 150, firstWordMaxMs: 300 }).chat(bob, { messages: [{ role: 'user', content: 'hi' }] }); } catch (e) { gaveUp = e.message; }
+await new Promise((r) => setTimeout(r, 150));
+check('asker gives up on a stuck lender', gaveUp === 'too slow', gaveUp);
+check('the lender stops thinking when the asker gives up', hung === 1 && aborted === 1, `hung ${hung} aborted ${aborted}`);
+check('and is free to lend again', lender.lending === null);
+// A cold lender loading his brain says so, and isn't dropped at the first-word limit.
+mode = 'cold';
+let cold = '';
+try { cold = (await new Lenders({ share: { borrow: { on: true, bobs: [bob] } } }, { fetchFn: viaLocal, firstWordMs: 250, quietMs: 250 }).chat(bob, { messages: [{ role: 'user', content: 'hi' }] })).content; } catch (e) { cold = e.message; }
+check('a cold lender that says "still loading" gets his turn', cold === 'Hello from the phone (hi)', cold);
+// But "still loading" can't hold a reply forever.
+mode = 'forever';
+let forever = '';
+try { await new Lenders({ share: { borrow: { on: true, bobs: [bob] } } }, { fetchFn: viaLocal, firstWordMs: 250, quietMs: 250, firstWordMaxMs: 600 }).chat(bob, { messages: [{ role: 'user', content: 'hi' }] }); } catch (e) { forever = e.message; }
+check('no first word by the hard limit: too slow, even while loading', forever === 'too slow', forever);
+await new Promise((r) => setTimeout(r, 200));
+check('and that lender stopped loading too', lender.lending === null);
 
 srv.close();
 console.log(`\n${pass} passed, ${fail} failed`);

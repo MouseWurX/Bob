@@ -39,7 +39,7 @@ export function effortPrompt(effort) {
   const e = cleanEffort(effort);
   if (e === 'low') return '';
   if (e === 'medium') return 'Effort is Medium: {{USER}} wants a thought-through answer. Plan briefly, check facts with your tools when it matters, and answer completely.';
-  return `Effort is ${e === 'high' ? 'High' : 'Extreme'}: {{USER}} wants the best answer, not the fastest. Plan first, check facts with your tools, and answer completely. Writing: outline, draft, then re-read it for mistakes and clarity. Coding and research go to the matching hat. Your reviewer copy checks the result${e === 'extreme' ? ' (and, for code, the research and the plan first)' : ''}, so never claim something was tested or checked unless a tool result shows it.`;
+  return `Effort is ${e === 'high' ? 'High' : 'Extreme'}: {{USER}} wants the best answer, not the fastest. Plan first, check facts with your tools, and answer completely. Re-read your answer for mistakes and clarity before handing it over. Your reviewer copy checks the result${e === 'extreme' ? ' (and, for code, the research and the plan first)' : ''}, so never claim something was tested or checked unless a tool result shows it.`;
 }
 
 const LOOKS_RIGHT = /^\W*looks right/i;

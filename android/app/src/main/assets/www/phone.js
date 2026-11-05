@@ -113,11 +113,66 @@
     return t;
   }
 
+  // 1.5.95 Save as: keep something Bob made as another file type, on the replicant matrix that made it (same as the PC).
+  const SAVE_AS = { image: ['png', 'jpg', 'webp', 'gif'], video: ['mp4', 'webm', 'gif'], audio: ['wav', 'mp3', 'ogg', 'flac'], diagram: ['png', 'svg', 'pdf'] };
+  const SAVE_NOTE = { png: 'sharp, no quality lost', jpg: 'small, for photos', webp: 'small, for the web', gif: 'plays anywhere, low colour', mp4: 'plays anywhere', webm: 'small, for the web', wav: 'full quality, large', mp3: 'small, plays anywhere', ogg: 'small, open format', flac: 'full quality, smaller than WAV', svg: 'scales to any size', pdf: 'for printing and sharing' };
+  const fileOf = (x) => decodeURIComponent(String(x.url || '').split('/').pop() || '');
+  function saveRow(x, figure = null) {
+    if (!SAVE_AS[x.kind] || !x.base) return null;
+    const name = fileOf(x), have = x.kind === 'diagram' ? '' : name.split('.').pop().toLowerCase().replace('jpeg', 'jpg');
+    const b = () => bobs.find((y) => y.base === x.base);
+    const row = el('div', { class: 'save-as small' }, el('span', { class: 'dim', text: 'Save as ' }));
+    for (const f of SAVE_AS[x.kind]) {
+      const label = f === 'webp' ? 'WebP' : f.toUpperCase();
+      if (f === have) { row.append(el('span', { class: 'dim', text: ` ${label} · original ` })); continue; }
+      // Long-press shows what the type is good for (no hover on a phone).
+      const btn = el('button', { text: label, 'aria-label': `Save as ${label}: ${SAVE_NOTE[f]}`, oncontextmenu: (e) => { e.preventDefault(); toast(`${label}: ${SAVE_NOTE[f]}`); }, onclick: async () => {
+        btn.disabled = true;
+        try {
+          let path = '/api/save-as', body = { name, format: f };
+          if (x.kind === 'diagram') {
+            const svg = figure?.querySelector('svg');
+            if (!svg) throw new Error('not drawn');
+            const file = BobDiagram.svgFile(svg);
+            body.data = f === 'svg' ? btoa(unescape(encodeURIComponent(file))) : f === 'png' ? await BobDiagram.pngData(file) : await BobDiagram.pdfData(file);
+            path = '/api/diagram/save';
+          }
+          const r = await phone('net.post', { address: b().address, path, body: JSON.stringify(body) });
+          let out = {}; try { out = JSON.parse(r.body); } catch { /* not JSON */ }
+          if (out.ok) { btn.replaceWith(el('span', { text: ` ✓ ${label} ` })); toast(`Saved on "${bobName(x.base)}": ${out.name}`); return; }
+          btn.disabled = false;
+          if (out.need === 'ffmpeg' && out.offer) return setupCard(x.base, out.offer);
+          toast(out.why || "That didn't save.");
+        } catch { btn.disabled = false; toast("Couldn't save it on your other replicant matrix"); }
+      } });
+      row.append(btn);
+    }
+    return row;
+  }
+
+  // 1.5.95: a diagram, drawn here on the phone from its text (Mermaid is in the app, nothing goes online).
+  function diagramNode(x) {
+    const fig = el('div', { class: 'diagram' }, x.title ? el('strong', { text: x.title }) : null, el('div', { class: 'small dim', text: 'Drawing the diagram…' }));
+    const box = el('div', {}, fig);
+    phone('net.media', { address: x.base.replace('http://', ''), path: x.url }).then(async (data) => {
+      if (!data) throw new Error('none');
+      const bytes = atob(String(data).split(',')[1] || '');
+      const text = decodeURIComponent(escape(bytes));
+      const svg = await BobDiagram.draw('vendor/', text);
+      fig.lastChild.replaceWith(el('div', { class: 'diagram-art', html: svg }));
+      const row = saveRow(x, fig);
+      if (row) box.append(row);
+    }).catch(() => { fig.lastChild.textContent = "Couldn't draw this one here. It's on your other replicant matrix."; });
+    return box;
+  }
+
   function mediaNode(x) {
+    if (x.kind === 'diagram') return diagramNode(x);
     const holder = el('div', { class: 'small dim', text: x.kind === 'audio' ? 'Getting the song…' : 'Getting it from your other replicant matrix…' });
     phone('net.media', { address: x.base.replace('http://', ''), path: x.url }).then((data) => {
       if (!data) { holder.textContent = 'Too big to show on the phone. It is on your other replicant matrix.'; return; }
-      holder.replaceWith(mediaEl(x.kind, data));
+      const row = saveRow(x);
+      holder.replaceWith(row ? el('div', {}, mediaEl(x.kind, data), row) : mediaEl(x.kind, data));
     }).catch(() => { holder.textContent = "Couldn't fetch it from your other replicant matrix."; });
     return holder;
   }
@@ -344,7 +399,7 @@
         if (r.status === 401) { live[base].signedIn = false; grow(`*("${b.name}" wants the passcode again. It's under Bobs on your network.)*`); finish(); drawWho(); }
         else if (r.status >= 400) { grow(`*("${b.name}" said no: ${shortError(r.body)})*`); finish(); }
       })
-      .catch((e) => { grow(`*(Couldn't reach "${b.name}": ${e.message})*`); finish(); });
+      .catch((e) => { grow(`*(Couldn't reach "${b.name}": ${e.message}. Check that Tailscale is on here and there. On that replicant matrix, Settings, Show advanced settings, Bob-Net: "Let my other replicant matrices in" should be on, and on Windows press "Let Tailscale through the firewall" if it shows.)*`); finish(); });
     drawStatus();
   }
   const shortError = (body) => { try { return JSON.parse(body).error || 'unknown'; } catch { return String(body).slice(0, 120); } };
@@ -355,10 +410,12 @@
     if (ev.type === 'approval' && String(ev.sessionId || '').startsWith('phone-')) return approvalCard(base, ev);
     if (ev.type === 'checkin') return checkinCard(base, ev);
     if (ev.type === 'howto-offer' && String(ev.sessionId || '').startsWith('phone-')) return howtoCard(base, ev);
+    if (ev.type === 'offer-setup' && String(ev.sessionId || '').startsWith('phone-')) return setupCard(base, ev); // 1.5.91
     if (ev.type === 'approval-result') { document.querySelector(`[data-approval="${CSS.escape(String(ev.id))}"]`)?.remove(); return; }
     if (!mine) return;
     if (ev.type === 'start') current.turnId = ev.turnId;
     else if (ev.type === 'token') grow(ev.text || '');
+    else if (ev.type === 'diagram') { const x = { kind: 'diagram', url: ev.url, base, title: ev.title || '' }; current.media.push(x); current.node.append(mediaNode(x)); }
     else if (ev.type === 'image' || ev.type === 'video') { const x = { kind: ev.type, url: ev.url, base }; current.media.push(x); current.node.append(mediaNode(x)); }
     else if (ev.type === 'made') {
       for (const it of ev.items || []) if (it.kind === 'audio' && it.url) { const x = { kind: 'audio', url: it.url, base }; current.media.push(x); current.node.append(mediaNode(x)); }
@@ -366,6 +423,7 @@
     else if (ev.type === 'tool') toast(`${bobName(base)}: ${ev.summary || ev.name}`);
     else if (ev.type === 'error') grow(`\n\n*(${ev.text})*`);
     else if (ev.type === 'correction' || ev.type === 'busy-note' || ev.type === 'announce' || ev.type === 'aside') grow(`\n\n*${ev.text}*`);
+    else if (ev.type === 'waiting-line') { if (!seenWaits.has(ev.id)) { seenWaits.add(ev.id); grow(`\n\n*${ev.text}*`); } } // 1.5.97: once per wait
     else if (ev.type === 'done') finish();
   }
 
@@ -455,6 +513,40 @@
     card.scrollIntoView({ block: 'end' });
   }
 
+  // 1.5.91: a networked Bob can't do a job yet (a video maker isn't set up, Web search is off...). One press sets it up
+  // on that replicant matrix and he carries on by himself. Same words as the card on the PC.
+  function setupCard(base, ev) {
+    const b = bobs.find((x) => x.base === base);
+    const gbs = (n) => (n >= 1 ? `${(+n).toFixed(n >= 10 ? 0 : 1)} GB` : `${Math.max(1, Math.round(n * 1000))} MB`);
+    const after = ev.carryOn ? ' Then I carry on with what you asked.' : '';
+    const done = (text) => { card.replaceChildren(el('p', { text })); setTimeout(() => card.remove(), 8000); };
+    const answer = (yes) => phone('net.post', { address: b.address, path: '/api/setup/answer', body: JSON.stringify({ id: ev.id, yes }) })
+      .then((r) => {
+        let out = {}; try { out = JSON.parse(r.body); } catch { /* not JSON */ }
+        if (!yes) return card.remove();
+        if (!out.ok) return done(out.why || 'That card is too old now. Ask me again.');
+        if (out.done === 'download') done(`Getting ${(out.names || []).join(' and ')} (about ${out.size}) on "${bobName(base)}". ${ev.carryOn ? "Your request waits there, and I carry on as soon as it's in." : 'Ask me again when it is in.'}`);
+        else if (out.done === 'switch') done(`Switched on "${ev.name}".${ev.carryOn ? ' Carrying on with your request.' : ''}`);
+        else done(ev.carryOn ? "Done, it's in its slot. Carrying on with your request." : "Done, it's in its slot.");
+      }).catch(() => toast("Couldn't reach your other replicant matrix"));
+    let head, body, button, extra = null;
+    if (ev.kind === 'switch') { head = `"${ev.name}" is off`; body = `It lets me ${String(ev.what || '')}.${ev.privacy ? ' ' + ev.privacy : ''}${ev.folders ? ' Then tick the folders I may use in Settings, Hands, on that replicant matrix.' : ''}${after} You can switch it off again in ${ev.where}.`; button = 'Switch it on'; }
+    else if (ev.kind === 'equip') { head = `I can't ${ev.say} yet`; body = `${ev.model?.name || ''} is already on "${bobName(base)}", it just isn't in its slot.${after}`; button = 'Use it'; }
+    else {
+      head = `I can't ${ev.say} yet`; body = `I need ${ev.what} on "${bobName(base)}" first. ${ev.need === 'ffmpeg' ? 'One press gets it and sets it up.' : 'One press gets it, sets it up and puts it in its slot.'}${after}`; button = `Set it up (about ${ev.size})`;
+      extra = el('ul', {}, (ev.items || []).map((i) => el('li', { text: `${i.name} · ${gbs(i.sizeGB || 0)}${i.engine ? ' · program' : ''}` })));
+    }
+    const card = el('div', { class: 'card' },
+      el('div', { class: 'q' }, el('strong', { text: head }), el('div', { text: body })),
+      extra,
+      ev.kind === 'download' ? el('p', { class: 'help-line', text: `About ${ev.size} in all${ev.freeGB != null ? `, ${ev.freeGB} GB free` : ''}. One time only.${ev.note ? ' ' + ev.note : ''}${ev.short ? ` Not enough free disk: free up ${ev.short} GB first.` : ''}` }) : null,
+      el('div', { class: 'row' },
+        ev.short ? null : el('button', { class: 'main', text: button, onclick: () => answer(true) }),
+        el('button', { text: 'Not now', onclick: () => answer(false) })));
+    $('chat').append(card);
+    card.scrollIntoView({ block: 'end' });
+  }
+
   async function refreshBob(base, { listen = true } = {}) {
     const b = bobs.find((x) => x.base === base);
     if (!b) return;
@@ -523,7 +615,7 @@
             try {
               const r = await phone('net.login', { address: b.address, code: pass.value });
               pass.value = '';
-              msg.textContent = { ok: "You're in.", wrong: "That's not the passcode.", busy: 'Too many tries. Wait a minute.', 'not-let-in': `${b.name} isn't letting other replicant matrices in yet. On your other replicant matrix: Settings, Show advanced settings, Connections, Let my other replicant matrices in.` }[r] || `Couldn't log in (${r}). Check that Tailscale is on on both devices, then try again.`;
+              msg.textContent = { ok: "You're in.", wrong: "That's not the passcode.", busy: 'Too many tries. Wait a minute.', 'not-let-in': `${b.name} isn't letting other replicant matrices in yet. On your other replicant matrix: Settings, Show advanced settings, Bob-Net, Let my other replicant matrices in.` }[r] || `Couldn't log in (${r}). Check that Tailscale is on on both devices, then try again.`;
               if (r === 'ok') refreshBob(b.base);
             } catch (e) { msg.textContent = `Can't reach ${b.name}: is your other replicant matrix on and Tailscale connected? (${e.message})`; }
           } }) : el('button', { text: 'Check again', onclick: () => refreshBob(b.base) }),
@@ -538,10 +630,13 @@
     });
   }
   $('add-bob').addEventListener('click', () => {
-    const name = $('add-name').value.trim().slice(0, 40) || 'Bob on my PC';
     const address = $('add-address').value.trim();
     const base = L.netAddress(address);
-    if (!base) { $('add-msg').textContent = "That isn't a Tailscale address. It looks like my-pc.your-tailnet.ts.net or 100.x.y.z (Bob's Settings on your other replicant matrix shows it)."; return; }
+    // No name typed: "Bob on" that machine's Tailscale name (desktop.tailnet.ts.net -> "Bob on desktop").
+    const host = base ? base.replace(/^https?:\/\//, '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '') : '';
+    const short = /^[\d.]+$/.test(host) || host.includes(':') ? '' : host.split('.')[0];
+    const name = $('add-name').value.trim().slice(0, 40) || (short ? `Bob on ${short}`.slice(0, 40) : 'Bob on my other replicant matrix');
+    if (!base) { $('add-msg').textContent = "That isn't a Tailscale address. It looks like my-computer.your-tailnet.ts.net or 100.x.y.z (Bob's Settings on your other replicant matrix shows it)."; return; }
     if (bobs.some((b) => b.base === base)) { $('add-msg').textContent = 'That Bob is already on the list.'; return; }
     bobs.push({ name, address: base.replace('http://', ''), base });
     store.set('bobs', bobs);
@@ -620,6 +715,24 @@
     $('idle-min').value = String(settings.idleMinutes);
     const box = $('brain-models');
     box.textContent = '';
+    // Each model family (Gemma, Qwen, ...) behind its own header, closed until you open it, like the Brain catalogue.
+    const fams = new Map();
+    for (const m of S.models) { const f = m.family || 'Other brains'; if (!fams.has(f)) fams.set(f, []); fams.get(f).push(m); }
+    const openFams = new Set(store.get('openFamilies', []));
+    const famList = {};
+    for (const [f, list] of [...fams].sort((a, b) => Number(b[1].some((m) => m.pick === 'recommended')) - Number(a[1].some((m) => m.pick === 'recommended')))) {
+      const inUse = list.some((m) => settings.phoneModel === m.id && phoneStatus.files?.[m.file.name]);
+      const getting = list.some((m) => dl && dl.file === m.file.name);
+      const gb = list.map((m) => m.file.bytes);
+      const d = el('details', { class: 'fam', open: openFams.has(f) || getting },
+        el('summary', {}, el('strong', { text: f }),
+          el('span', { class: 'dim', text: `${list.length} ${list.length === 1 ? 'model' : 'models'} · ${list.length === 1 ? L.size(gb[0]) : `${L.size(Math.min(...gb))} to ${L.size(Math.max(...gb))}`}` }),
+          list.some((m) => m.pick === 'recommended') ? el('span', { class: 'badge', text: "★ Recommended inside" }) : null,
+          inUse ? el('span', { class: 'badge quiet', text: 'In use' }) : null),
+        famList[f] = el('div', { class: 'fam-list' }));
+      d.addEventListener('toggle', () => { const s = new Set(store.get('openFamilies', [])); if (d.open) s.add(f); else s.delete(f); store.set('openFamilies', [...s]); });
+      box.append(d);
+    }
     for (const m of S.models) {
       const have = Boolean(phoneStatus.files?.[m.file.name]);
       const fit = L.fits(m, phoneStatus.ramTotalMB);
@@ -651,7 +764,7 @@
           } }) : null),
         bench[m.file.name] ? el('p', { class: 'help-line', text: bench[m.file.name] }) : null,
         confirm);
-      box.append(b);
+      famList[m.family || 'Other brains'].append(b);
     }
     const s = phoneStatus;
     drawLend();
@@ -711,7 +824,7 @@
         lend.passcodeSet ? el('p', { class: 'help-line', text: 'A new passcode signs out every Bob that used the old one.' }) : null),
       el('div', { class: 'box' },
         el('div', { class: 'title', text: 'Address for your other Bobs' }), el('p', { class: 'help-line' }, addr),
-        el('p', { class: 'help-line', text: 'On your other replicant matrix: Settings, Show advanced settings, Connections, Bob-Net: share work with my other Bobs, Borrow a brain. Add this address and the passcode there.' })),
+        el('p', { class: 'help-line', text: 'On your other replicant matrix: Settings, Show advanced settings, Bob-Net, Borrow a brain. Add this address and the passcode there.' })),
       lend.on ? el('p', { class: 'help-line', role: 'status', text: [lend.now && lend.now !== 'off' ? LEND_WHY[lend.now] || '' : '', lend.last || ''].filter(Boolean).join(' ') }) : null,
       el('div', { class: 'box' },
         el('div', { class: 'title', text: 'Let Bob work with the screen off' }),
@@ -796,6 +909,8 @@
     if (copy) phone('copy', { text: copy.parentElement.querySelector('code').textContent }).then(() => toast('Copied'));
   });
 
+  // 1.5.97: each ⏳ waiting line shows once (the PC updates it every minute).
+  var seenWaits = new Set();
   // ---------- Start ----------
   // 1.5.89: the phone's own spec line names it as this replicant matrix (this phone).
   var deviceModel = '';
