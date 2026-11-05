@@ -157,6 +157,10 @@ globalThis.BobHelp = {
 <dt>Effort</dt><dd>How hard a Bob on your network works on an answer: bigger brains and checking at higher levels.</dd>
 <dt>Pinned download</dt><dd>A download from one exact version of a file, checked against its fingerprint (checksum), so nobody can swap it.</dd>
 <dt>Free memory when idle</dt><dd>The phone brain unloads after a quiet spell, so the phone stays quick.</dd>
+<dt>Game master</dt><dd>Your other Bob, when he runs an Adventure: he sets the scenes, plays everyone who isn't at the table, and says what the dice mean. The phone brain can't be one.</dd>
+<dt>Hearts</dt><dd>A character's health in an Adventure. A miss can cost one; at zero hearts you choose Go out in style or Wake up captured.</dd>
+<dt>Plot armour</dt><dd>How safe a character is from bad dice in an Adventure: None, Some, Lots or Legendary. Asked for every character at the start of every game.</dd>
+<dt>Action card</dt><dd>One of your choices on your turn in an Adventure (Attack, Talk, Magic, Use item and so on). Some open a second card with the details. Bobs don't get cards; they just say what they do.</dd>
 <dt>Help bundle</dt><dd>One file from Save a help bundle: my logs, errors, last chats and this replicant matrix's facts, scrubbed, for whoever is helping you fix me.</dd>
 <dt>Handoff file (HANDOFF.md)</dt><dd>The first thing in a help bundle: a summary written for an AI agent or a person to read first, with my public code and version and where to look.</dd>
 <dt>OK card</dt><dd>A Bob on your network asking before he does something outside his own folder.</dd>
