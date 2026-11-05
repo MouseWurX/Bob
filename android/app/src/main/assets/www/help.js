@@ -7,7 +7,7 @@ globalThis.BobHelp = {
       html: `<p>I'm the pocket edition of Bob. On the phone I can do two things:</p>
 <ul><li><strong>Talk to a Bob on your network.</strong> That's your other replicant matrix's Bob (or any other Bob you add). He has the big brains and all the tools, and I pass your messages along and show you what he makes.</li>
 <li><strong>Think on the phone.</strong> A small brain right here, for when no other Bob is reachable. Chat and memory only. It's off until you switch it on.</li></ul>
-<p>To set up the first one: on your other replicant matrix, open my Settings and turn on <strong>Let my other replicant matrices in</strong>. It shows an address and a passcode. Here, open the menu, <strong>Bobs on your network</strong>, add that address, type the passcode and tap <strong>Log in</strong>. Both your other replicant matrix and the phone need Tailscale switched on.</p>`
+<p>To set up the first one: on your other replicant matrix, open my Settings and turn on <strong>Let my other replicant matrices in</strong>. It shows an address and a passcode. Here, open the menu, <strong>Bob-Net</strong>, add that address, type the passcode and tap <strong>Log in</strong>. Both your other replicant matrix and the phone need Tailscale switched on.</p>`
     },
     {
       id: 'chat', title: 'Chatting',
@@ -38,8 +38,8 @@ globalThis.BobHelp = {
 <p>Pictures, clips and songs he makes show up right in the chat. They're also saved on your other replicant matrix.</p>`
     },
     {
-      id: 'bobs', title: 'Bobs on your network',
-      html: `<p>Menu, <strong>Bobs on your network</strong>. Add a Bob with a name and his Tailscale address: either the name ending in <code>.ts.net</code> or the number starting <code>100.</code>, as your other replicant matrix's <strong>Let my other replicant matrices in</strong> setting shows it. Then type his passcode and tap <strong>Log in</strong>.</p>
+      id: 'bobs', title: 'Bob-Net',
+      html: `<p>Menu, <strong>Bob-Net</strong>. Everything about your other Bobs is on this one page: the Bobs this phone can ask (<strong>My other Bobs</strong>), adding and pairing them, and <strong>Lend my brain</strong>. Add a Bob with a name and his Tailscale address: either the name ending in <code>.ts.net</code> or the number starting <code>100.</code>, as your other replicant matrix's <strong>Let my other replicant matrices in</strong> setting shows it. Then type his passcode and tap <strong>Log in</strong>.</p>
 <p>I only connect to Tailscale addresses. Tailscale scrambles everything between your phone and your other replicant matrix, so the passcode never crosses the café Wi-Fi in the open. The passcode is used once to log in and isn't kept on the phone; your other replicant matrix hands back a key I keep instead.</p>
 <p>With more than one Bob, the one at the top is the <strong>First choice</strong>. <strong>Make first choice</strong> moves another one up. <strong>Remove</strong> forgets him and his key (tap twice).</p>
 <p>When he needs your OK for something (a file to move, a program to run), the card shows up here too, with <strong>Allow</strong> and <strong>Deny</strong>. If a job needs several OKs, the phone has <strong>Allow all</strong> and <strong>Deny all</strong>; to tick some and not others, use the card on your other replicant matrix.</p>`
@@ -68,7 +68,7 @@ globalThis.BobHelp = {
     },
     {
       id: 'lend', title: 'Lend my brain',
-      html: `<p>Phone brain, <strong>Lend my brain</strong> (off to start with). With it on, your other Bobs can ask this phone to think quick replies for them. The main use: while you're gaming on your other replicant matrix, I think his small replies here, so your other replicant matrix's processor and graphics card stay with the game.</p>
+      html: `<p>Bob-Net, <strong>Lend my brain</strong> (off to start with). With it on, your other Bobs can ask this phone to think quick replies for them. The main use: while you're gaming on your other replicant matrix, I think his small replies here, so your other replicant matrix's processor and graphics card stay with the game.</p>
 <p>Only words travel. The other Bob sends the chat and the list of tools he has; I send back words, or "please run this tool". The tool runs on his side, with his own checks and OK cards. The phone only thinks: no tools, files or programs run here for them, and nothing is kept: not the chat, not a log of it. The only line I keep is "Thought a reply for (that Bob) in so many seconds".</p>
 <p>To set it up:</p>
 <ul><li>Turn on <strong>Lend my brain</strong>. The first time, I make the passcode for you and show it once under <strong>Passcode</strong>: type it into your other Bob straight away. Android shows a notification for as long as lending is on; <strong>Stop lending</strong> on it turns it off.</li>
@@ -105,13 +105,13 @@ globalThis.BobHelp = {
     {
       id: 'pair', title: 'Pair with my other Bobs',
       html: `<p>The quick way to join this phone to a Bob on your other replicant matrix, with no passcode to type.</p>
-<ul><li>From the phone: Menu, <strong>Bobs on your network</strong>, type that Bob's Tailscale address and tap <strong>Pair with this Bob</strong>. He shows a card with a number; if it matches the one here, press <strong>Yes, pair us</strong> there.</li>
+<ul><li>From the phone: Menu, <strong>Bob-Net</strong>, type that Bob's Tailscale address and tap <strong>Pair with this Bob</strong>. He shows a card with a number; if it matches the one here, press <strong>Yes, pair us</strong> there.</li>
 <li>From the other Bob: press <strong>Pair</strong> there (he finds this phone on Tailscale while <strong>Lend my brain</strong> is on). A card shows up here; check the number and tap <strong>Yes, pair us</strong>.</li></ul>
 <p>We swap passcodes over Tailscale and each of us adds the other. Nothing else switches on. For the other Bob to ask this phone too, <strong>Lend my brain</strong> has to be on here; for this phone to ask him, <strong>Let my other replicant matrices in</strong> has to be on there. Each pairing gets a passcode of its own; <strong>Make a new passcode</strong> signs them all out.</p>`
     },
     {
       id: 'save-phone', title: 'Save to this phone',
-      html: `<p>Under a picture, clip or song a Bob on your network made, <strong>Save to this phone as</strong> keeps it on the phone, in a Bob folder in Pictures, Movies, Music or Download. Tap the type you want; <strong>(original)</strong> is the one he made. Another type is made by that Bob first, so a copy stays on that replicant matrix (your computer) too. Press and hold a type to see what it's good for.</p>`
+      html: `<p>Under a picture, clip or song a Bob on your Bob-Net made, <strong>Save to this phone as</strong> keeps it on the phone, in a Bob folder in Pictures, Movies, Music or Download. Tap the type you want; <strong>(original)</strong> is the one he made. Another type is made by that Bob first, so a copy stays on that replicant matrix (your computer) too. Press and hold a type to see what it's good for.</p>`
     },
     {
       id: 'photos', title: 'Photos',
@@ -153,9 +153,9 @@ globalThis.BobHelp = {
 <tr><td>The pill says Nobody home</td><td>Tap it. Usually your other replicant matrix is asleep, or Tailscale is off on the phone or your other replicant matrix.</td></tr>
 <tr><td>"Isn't letting other replicant matrices in yet"</td><td>On your other replicant matrix: Bob's Settings, Show advanced settings, Bob-Net, Let my other replicant matrices in. Turn it on, then restart Bob on your other replicant matrix.</td></tr>
 <tr><td>"That isn't a Tailscale address"</td><td>Use the address your other replicant matrix's Let my other replicant matrices in setting shows: a name ending in .ts.net, or a number starting 100.</td></tr>
-<tr><td>Your other replicant matrix says the phone didn't answer in time</td><td>The first borrowed reply is the slow one: the phone reads my whole instructions and tool list once. After that it only reads what's new. If it keeps happening, check Phone brain, Lend my brain for a reason (warm, low battery, in use), and tap Open battery settings there.</td></tr>
+<tr><td>Your other replicant matrix says the phone didn't answer in time</td><td>The first borrowed reply is the slow one: the phone reads my whole instructions and tool list once. After that it only reads what's new. If it keeps happening, check Bob-Net, Lend my brain for a reason (warm, low battery, in use), and tap Open battery settings there.</td></tr>
 <tr><td>Can your other replicant matrix borrow the phone while I game?</td><td>Yes: that's what Lend my brain is for. Turn it on here, then on your other replicant matrix: Settings, Show advanced settings, Bob-Net, Borrow a brain. Keep the phone on its charger with the screen off.</td></tr>
-<tr><td>It asks for the passcode again</td><td>The passcode was changed on your other replicant matrix. Type the new one under Bobs on your network.</td></tr>
+<tr><td>It asks for the passcode again</td><td>The passcode was changed on your other replicant matrix. Type the new one under Bob-Net.</td></tr>
 <tr><td>The phone brain is slow or stops</td><td>Close big apps (games, the camera), let the phone cool down, or try Test speed. Gemma 4 E2B is the quicker one.</td></tr>
 <tr><td>The download stopped</td><td>Tap Resume. It carries on where it stopped. If it says the checksum didn't match, the file was damaged on the way and was deleted: download it again on Wi-Fi.</td></tr>
 <tr><td>Pictures don't show</td><td>Very big files stay on your other replicant matrix; they're in Made by Bob there.</td></tr>

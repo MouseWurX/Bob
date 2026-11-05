@@ -88,7 +88,7 @@
     let line;
     if (a.kind === 'net') line = `Hi${who}. I'm patched through to "${a.bob.name}", so I've got the whole workshop: pictures, music, Hands, the big brains.`;
     else if (a.kind === 'phone') line = `Hi${who}. Pocket edition today: the phone brain is on. Chat, memory, thinking things through. Big jobs need a Bob on your network.`;
-    else if (!bobs.length && !settings.phoneOn) line = `Hi${who}. I'm not wired to anything yet. Add your other replicant matrix's Bob under Bobs on your network, or switch on the phone brain. Help (in the menu) walks you through both.`;
+    else if (!bobs.length && !settings.phoneOn) line = `Hi${who}. I'm not wired to anything yet. Add your other replicant matrix's Bob under Bob-Net, or switch on the phone brain. Help (in the menu) walks you through both.`;
     else line = `Hi${who}. Nobody's home right now: ${nobodyWhy(a.why)}`;
     return el('div', { class: 'msg bob' }, el('div', { html: L.markdown(line) }));
   }
@@ -226,7 +226,7 @@
       'phone-off': 'the phone brain is off and Settings says to stay on the phone. Switch it on under Phone brain.',
       'phone-missing': "the phone brain isn't downloaded yet. It's under Phone brain in the menu.",
       'net-down': "I can't reach any Bob on your network. Is your other replicant matrix on, and is Tailscale connected on both?",
-      'no-bobs': 'no Bob on your network is added yet. Add one under Bobs on your network.',
+      'no-bobs': 'no Bob on your network is added yet. Add one under Bob-Net.',
       nobody: "I can't reach a Bob on your network and the phone brain is off."
     }[why] || "I can't answer right now.";
   }
@@ -409,7 +409,7 @@
       : Promise.resolve([]);
     upload.then((refs) => phone('net.post', { address: b.address, path: '/api/chat', body: JSON.stringify({ sessionId: `phone-${c.id}`, text, effort: settings.effort, ...(refs.length ? { refs } : {}) }) }))
       .then((r) => {
-        if (r.status === 401) { live[base].signedIn = false; grow(`*("${b.name}" wants the passcode again. It's under Bobs on your network.)*`); finish(); drawWho(); }
+        if (r.status === 401) { live[base].signedIn = false; grow(`*("${b.name}" wants the passcode again. It's under Bob-Net.)*`); finish(); drawWho(); }
         else if (r.status >= 400) { grow(`*("${b.name}" said no: ${shortError(r.body)})*`); finish(); }
       })
       .catch((e) => { grow(`*(Couldn't reach "${b.name}": ${e.message}. Check that Tailscale is on here and there. On that replicant matrix, Settings, Show advanced settings, Bob-Net: "Let my other replicant matrices in" should be on, and on Windows press "Let Tailscale through the firewall" if it shows.)*`); finish(); });
@@ -583,7 +583,7 @@
     if (id === 'new') { newChat(); return; }
     $(id).classList.remove('hidden');
     ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, memory: drawMemory, settings: drawSettings, help: drawHelp }[id] || (() => {}))();
-    if (id === 'brain') watchLend();
+    if (id === 'bobs') watchLend();
   }
   document.querySelectorAll('.panel .back').forEach((b) => b.addEventListener('click', () => b.closest('.panel').classList.add('hidden')));
   document.querySelectorAll('#menu [data-go]').forEach((b) => b.addEventListener('click', () => open(b.dataset.go)));
@@ -609,6 +609,7 @@
   $('chat-search').addEventListener('input', drawChats);
 
   function drawBobs() {
+    drawLend();
     const list = $('bob-list');
     list.textContent = '';
     if (!bobs.length) list.append(el('p', { class: 'dim', text: 'None yet. Add your other replicant matrix\'s Bob below.' }));
@@ -780,7 +781,6 @@
       famList[m.family || 'Other brains'].append(b);
     }
     const s = phoneStatus;
-    drawLend();
     $('brain-ram').textContent = s.ramTotalMB ? `This replicant matrix (this phone): ${deviceModel || 'Android phone'} · ${Math.round(s.ramTotalMB / 1024)} GB RAM. ${(s.ramFreeMB / 1024).toFixed(1)} GB free right now${s.loaded ? ' (phone brain loaded)' : ''}. ${(s.freeSpaceMB / 1024).toFixed(0)} GB storage free.` : '';
   }
   function onDownload(m) {
@@ -807,16 +807,16 @@
     'too warm': "Says no while the phone is warm. He'll say yes again once it cools down.",
     'low battery': 'Says no below 25% battery, unless the phone is charging.'
   };
-  // While the Phone brain screen is open, the lending line stays up to date.
+  // While the Bob-Net screen is open, the lending line stays up to date.
   function watchLend() {
     refreshLend();
     clearInterval(lendTimer);
-    lendTimer = setInterval(() => { if ($('brain').classList.contains('hidden')) clearInterval(lendTimer); else refreshLend(); }, 5000);
+    lendTimer = setInterval(() => { if ($('bobs').classList.contains('hidden')) clearInterval(lendTimer); else refreshLend(); }, 5000);
   }
   function tellLendBrain() { const m = phoneModel(); if (m) phone('lend.brain', { file: m.file.name, label: m.name }).catch(() => {}); }
   async function refreshLend() {
     try { lend = await phone('lend.status'); } catch { lend = {}; }
-    if (!$('brain').classList.contains('hidden')) drawLend();
+    if (!$('bobs').classList.contains('hidden')) drawLend();
   }
   function drawLend() {
     $('lend-on').checked = Boolean(lend.on);

@@ -109,7 +109,7 @@ class Pairing(private val app: BobApp) {
         return JSONObject().put("state", "yes").put("passcode", app.lend.pairPasscode(a.name)).put("name", myName()).put("address", app.lend.address ?: "")
     }
 
-    /** The other Bob's passcode, after our yes: this phone logs in to him and he joins "Bobs on your network". */
+    /** The other Bob's passcode, after our yes: this phone logs in to him and he joins the Bob-Net page. */
     fun finish(b: JSONObject, remoteIp: String): JSONObject {
         val a = asks[b.optString("id")]
         if (a == null || a.ip != remoteIp || a.state != "yes" || a.finished) return JSONObject().put("ok", false)

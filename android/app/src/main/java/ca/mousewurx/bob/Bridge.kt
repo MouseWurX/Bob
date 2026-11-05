@@ -75,7 +75,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         scope.launch {
             try {
                 when (o.getString("op")) {
-                    // ---- Bobs on your network ----
+                    // ---- Bob-Net: other Bobs ----
                     "net.check" -> answer(id, JSONObject().put("base", NetBob.base(o.getString("address")) ?: JSONObject.NULL))
                     "net.login" -> answer(id, net.login(base(o), o.getString("code")))
                     "net.signedIn" -> answer(id, net.signedIn(base(o)))
