@@ -58,10 +58,11 @@ export function buildAvatars() {
   if (/^import\s/m.test(src)) throw new Error('public/avatars.js imports something now: update make-shared.mjs');
   const names = [...src.matchAll(/^export (?:const|function) ([A-Za-z_]\w*)/gm)].map((m) => m[1]);
   if (!names.includes('compose') || !names.includes('PARTS')) throw new Error('public/avatars.js no longer exports compose/PARTS: update make-shared.mjs');
-  // COLOUR_NAMES isn't exported, but the phone's swatches name a robot's metal and an alien's skin by it.
-  if (!/^const COLOUR_NAMES = \{/m.test(src)) throw new Error('public/avatars.js has no COLOUR_NAMES any more: update make-shared.mjs');
+  // The phone's swatches name a robot's metal and an alien's skin by COLOUR_NAMES, exported or not.
+  if (!/^(?:export )?const COLOUR_NAMES = \{/m.test(src)) throw new Error('public/avatars.js has no COLOUR_NAMES any more: update make-shared.mjs');
+  if (!names.includes('COLOUR_NAMES')) names.push('COLOUR_NAMES');
   const body = src.replace(/^export (const|function) /gm, '$1 ');
-  return `// Made by android/tools/make-shared.mjs from public/avatars.js. Don't edit.\n(function () {\n${body}\nglobalThis.BobAvatars = { ${names.join(', ')}, COLOUR_NAMES };\n})();\n`;
+  return `// Made by android/tools/make-shared.mjs from public/avatars.js. Don't edit.\n(function () {\n${body}\nglobalThis.BobAvatars = { ${names.join(', ')} };\n})();\n`;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
