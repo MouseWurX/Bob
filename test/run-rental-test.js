@@ -189,6 +189,39 @@ const KEY = 'rpa_TESTKEY0123456789abcdefghijklmnop';
   check('services are named by what they do, with the key variable each uses', SERVICES.every((s) => s.what && (s.id === 'other' || /^[A-Z_]+$/.test(s.keyEnv))) && SERVICES.filter((s) => s.kind === 'machine').every((s) => /minute/.test(s.name)));
 }
 
+// ---- 1.5.128: the five fixes from the first live checks ----
+{
+  const appJs = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  check('the Hire it button is disabled in the card itself while hiring is blocked', /class="get"\$\{ev\.blocked \? ' disabled/.test(appJs) && /Not hired\. Doing it here instead\./.test(appJs));
+  const brainJs = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8');
+  check('Not now puts the job back in line to run here', /r\.done === 'none' && r\.jobId/.test(brainJs) && /j\.rent = false; j\.rentOk = false; j\.rentAgain = true; this\.carryOnNow/.test(brainJs));
+  const routes = fs.readFileSync(new URL('../src/rental-routes.js', import.meta.url), 'utf8');
+  check('adding into the empty slot and removing the slotted rental both tell the chat page', (routes.match(/action: 'slot'/g) || []).length === 3);
+  const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+  check('Add this rental says what is missing', /Type the model\\'s name first/.test(cellar) && /alertIn\(b, e\.message\)/.test(cellar));
+  // A tester's PC may hold a real key in its user variables (the PC thread's does), so those are set aside for the check
+  // and put back after: the check is about what rentKeyEnv reads, not about the machine running it.
+  const was = process.env.BOB_RENT_KEYS;
+  const hidden = ['RUNPOD_API_KEY', 'VAST_API_KEY', 'OPENROUTER_API_KEY', 'TOGETHER_API_KEY', 'LAMBDA_API_KEY'].map((k) => [k, process.env[k]]);
+  for (const [k] of hidden) delete process.env[k];
+  process.env.BOB_RENT_KEYS = 'off';
+  const off = rentKeyEnv({ RUNPOD_API_KEY: 'x' }, { VAST_API_KEY: 'y' });
+  process.env.BOB_RENT_KEYS = 'env';
+  const envOnly = rentKeyEnv({ RUNPOD_API_KEY: 'x' }, { VAST_API_KEY: 'y' });
+  if (was === undefined) delete process.env.BOB_RENT_KEYS; else process.env.BOB_RENT_KEYS = was;
+  for (const [k, v] of hidden) if (v !== undefined) process.env[k] = v;
+  check('BOB_RENT_KEYS=off hides every key; =env reads the process only', Object.keys(off).length === 0 && !envOnly.RUNPOD_API_KEY && !envOnly.VAST_API_KEY && envOnly.PATH === process.env.PATH);
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
+
+// 1.5.128 (PC thread): the message that drew the Hire it card is already in the chat once; the run after Hire it or Not now
+// adds only a hidden note, so a reload shows one bubble. And the greyed Hire it button looks greyed; a missing-field line is red.
+const brainSrc = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8');
+const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+check('the run after the card answer does not repeat the user message', /j\.rentAgain = true/.test(brainSrc) && /Boolean\(job\?\.rentAgain\)/.test(brainSrc) && /job\.rentAgain = false/.test(brainSrc));
+const css = fs.readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+check('a blocked Hire it button looks disabled', /\.rent-card button\.get:disabled \{ opacity: \.5; cursor: not-allowed; \}/.test(css));
+check('the missing-field line by Add this rental is red', /noteEl\.classList\.add\('error'\)/.test(cellar) && (cellar.match(/noteEl\.classList\.add\('error'\)/g) || []).length === 2);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

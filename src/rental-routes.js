@@ -44,8 +44,10 @@ export async function rentRoute({ req, res, p, isLocal, brain, cfg, body, send }
       } else priceNote = `No key for ${s.name} yet, so the price wasn't read. Add the key and press Check the price.`;
     }
     st.list.push(r);
-    if (!st.current && b.use !== false) st.current = r.id;
+    const slotted = !st.current && b.use !== false;
+    if (slotted) st.current = r.id;
     save(st);
+    if (slotted) brain.broadcast?.({ type: 'rent', action: 'slot', rental: r.name }); // 1.5.128: the chat page's 🏗 switch appears without a reload
     brain.log('settings', `rented brain added: ${r.name} (${s.name})`);
     return send(res, 200, { ...rentals.view(), added: r.id, priceNote }), true;
   }
@@ -77,8 +79,10 @@ export async function rentRoute({ req, res, p, isLocal, brain, cfg, body, send }
     const run = rentals.running.get(r.id);
     if (run) await rentals.stopRun(r, run, 'the rental was removed').catch(() => {});
     st.list = st.list.filter((x) => x.id !== b.id);
-    if (st.current === b.id) st.current = '';
+    const wasSlot = st.current === b.id;
+    if (wasSlot) st.current = '';
     save(st);
+    if (wasSlot) brain.broadcast?.({ type: 'rent', action: 'slot', rental: '' });
     brain.log('settings', `rented brain removed: ${r.name}`);
     return view(), true;
   }

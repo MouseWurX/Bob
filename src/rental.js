@@ -61,7 +61,12 @@ export function envFileVars({ home = os.homedir(), platform = process.platform, 
   envFileCache = { at: now, home, vars };
   return vars;
 }
+// For testing on a machine whose user variables hold a real key: BOB_RENT_KEYS=off makes Bob see no key at all;
+// BOB_RENT_KEYS=env makes him read process.env only (no Windows registry, no ~/.config/bob/env). Not a setting.
 export function rentKeyEnv(base = keyEnv(), file = envFileVars()) {
+  const mode = process.env.BOB_RENT_KEYS;
+  if (mode === 'off') return {};
+  if (mode === 'env') return { ...process.env };
   return new Proxy(base, { get(target, k) { if (typeof k !== 'string') return undefined; return target[k] || file[k] || undefined; } });
 }
 export const KEY_NAME_RE = /^[A-Z][A-Z0-9_]{2,63}$/;

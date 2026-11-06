@@ -1567,9 +1567,13 @@ export class Brain {
   // The Hire it card was answered (PC window or phone). yes: the job runs again, on the rented brain this time.
   answerRent(id, yes) {
     const r = this.rentals.answer(id, yes);
+    if (r.ok && r.done === 'none' && r.jobId) { // 1.5.128: Not now runs the request here instead of leaving it unanswered
+      const j = this.queue.find((x) => x.id === r.jobId);
+      if (j) { j.rent = false; j.rentOk = false; j.rentAgain = true; this.carryOnNow(j.id, '[Bob note, not from the user: the user pressed Not now on the rented brain card. Do what they asked here, on this computer, with the brains you have.]'); return { ...r, carryOn: true }; }
+    }
     if (!r.ok || r.done !== 'hired') return r;
     const j = this.queue.find((x) => x.id === r.jobId);
-    if (j) { j.rent = true; j.rentOk = true; this.carryOnNow(j.id, `[Bob note, not from the user: the user hired the rented brain (${r.rental.name}) for this. Do what they asked.]`); }
+    if (j) { j.rent = true; j.rentOk = true; j.rentAgain = true; this.carryOnNow(j.id, `[Bob note, not from the user: the user hired the rented brain (${r.rental.name}) for this. Do what they asked.]`); }
     this.broadcast?.({ type: 'settings-changed' });
     return { ok: true, done: 'hired', name: r.rental.name, carryOn: Boolean(j) };
   }
@@ -1905,9 +1909,12 @@ export class Brain {
     // 1.5.41: run again after Bob switched session: the user's message is already in the chat once, so the brain gets the
     // note only (hidden), and the turn starts at the user's message from before.
     const lastUser = [...msgs].reverse().find((m) => m.role === 'user');
-    const again = Boolean(job?.switchedTo) && Boolean(lastUser) && String(lastUser.text ?? lastUser.content ?? '').startsWith(text);
-    if (again) msgs.push({ role: 'system', content: switchedNote(job.switchedTo), hidden: true });
+    // 1.5.128: the same after a Hire it card (Hire it or Not now): the message that drew the card is in the chat already,
+    // so the re-run adds only the hidden note (the PC saw the user's bubble twice after a reload).
+    const again = (Boolean(job?.switchedTo) || Boolean(job?.rentAgain)) && Boolean(lastUser) && String(lastUser.text ?? lastUser.content ?? '').startsWith(text);
+    if (again) msgs.push({ role: 'system', content: job.switchedTo ? switchedNote(job.switchedTo) : job.carryOn || '', hidden: true });
     else msgs.push(user);
+    if (job) job.rentAgain = false;
     const turnStart = again ? msgs.map((m) => m.role).lastIndexOf('user') : msgs.length - 1;
     this.log('chat', `${this.cfg.userName || 'User'}: ${text}`);
     // The turn's pictures travel with it, so a hat Bob hands the job to can see them too.

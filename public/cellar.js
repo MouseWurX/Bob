@@ -1110,12 +1110,15 @@ export function createCellar() {
         const box = b.closest('.rent-add');
         const val = (k) => box.querySelector(`[data-rentadd="${k}"]`)?.value?.trim() || '';
         const noteEl = box.querySelector('.rent-add-note');
+        const svc = (rent.services || []).find((x) => x.id === val('service'));
+        const missing = !val('model') ? 'Type the model\'s name first, as the service lists it.' : svc?.id === 'other' && !/^https?:\/\//.test(val('address')) ? 'Type the service\'s web address first (https://…/v1).' : svc?.id === 'other' && !val('keyEnv') ? 'Name the variable that holds the key first.' : '';
+        if (missing) { alertIn(b, missing); if (noteEl) { noteEl.textContent = missing; noteEl.classList.remove('muted'); noteEl.classList.add('error'); } return; }
         try {
           const r = await api('/api/rent/add', { service: val('service'), model: val('model'), card: val('card'), cards: Number(val('cards')) || 1, address: val('address'), keyEnv: val('keyEnv'), name: val('name') });
           rent = r; draw();
           const added = (rent.rentals || []).find((x) => x.id === r.added);
           dlg.querySelector('#sub-adv-online .rent-add-note')?.replaceChildren(document.createTextNode(`Added ${added?.name || ''}${rent.current === r.added ? ' and put it in the Rented brain slot' : ''}.${r.priceNote ? ' ' + r.priceNote : ''}`));
-        } catch (e) { if (noteEl) noteEl.textContent = e.message; }
+        } catch (e) { alertIn(b, e.message); if (noteEl) { noteEl.textContent = e.message; noteEl.classList.remove('muted'); noteEl.classList.add('error'); } }
         return;
       }
       if ('chestbrowse' in b.dataset) { const r = await api('/api/pick-folder', { purpose: 'save' }); if (r.folder) await saveDirTo(r.folder); else if (r.error) { const eb = dlg.querySelector('.chest-error'); if (eb) { eb.textContent = r.error; eb.hidden = false; } } return; }
