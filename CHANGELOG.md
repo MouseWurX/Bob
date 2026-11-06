@@ -4,6 +4,14 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.125
+
+Fix: the window title no longer stays on "Bob · Thinking..." after an Adventure ends.
+
+- **End game and Pause** now put Bob back to idle, the same state a finished chat message reaches, so the title goes back to "Bob" straight away and a reload shows it too. Before, the game master's brain left Bob "thinking" until the next chat message.
+- Bob is only put back to idle when nothing else is running: no chat reply, no brain loading, no job waiting in line. The rule from 1.5.120 still holds: ending a game doesn't wake the quick chat brain.
+- New checks in `test/run-adventure-test.js`: End and Pause go back to idle, and End does not reset while a reply, a wake or a waiting job is still going.
+
 ## 1.5.124
 
 The bestiary: a Characters page in 🎲 Adventure, monster bodies on the character screen, and a dozen enemies the game master uses as written.

@@ -438,6 +438,12 @@ export class Adventure {
       }
       // No "back to the quick brain" wake after a game: a paused or finished game is idle time, not a job's end.
       try { await this.brain.settle?.({ noWake: true }); } catch {}
+      // 1.5.125: the game master's load left the status on "thinking", and the no-wake settle never resets it. Put it
+      // back to idle, as a finished chat turn does, but only when nothing else is running or about to run, and no new
+      // game has started (run() sets this.stop again; a game that started right after End owns the status).
+      if (!this.stop && !this.brain.turns?.size && !this.brain.waking && !this.brain.queue?.some((j) => j.state === 'waiting') && this.brain.state?.state !== 'idle') {
+        this.brain.setState?.('idle', '', this.brain.state?.model);
+      }
     }, 0);
   }
 
