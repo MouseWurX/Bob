@@ -28,7 +28,7 @@ check('with tools the temperature keeps Bob\'s 0.6 cap', samplingFor({}, id, nul
 
 const faq = HELP.find((h) => h.id === 'faq-coding-think');
 check('Help has the FAQ in Bob\'s voice: coding always thinks, chat answers straight off', faq && /For coding, always/.test(faq.html) && /straight off/.test(faq.html) && faq.title === 'When does Bob think things through first?');
-check('the glossary says coding always thinks and chat doesn\'t', /Thinking first<\/dt><dd>[^<]*coding jobs always do; everyday chat at Low answers straight away/.test(HELP.find((h) => h.id === 'glossary').html));
+check('the glossary says coding always thinks and chat doesn\'t', /Thinking first<\/dt><dd>[^<]*Low doesn't, and with Qwen3.6 coding jobs always do/.test(HELP.find((h) => h.id === 'glossary').html));
 // ---------- 1.5.66: his own one more go thinks it through ----------
 {
   const os = await import('node:os'); const path = await import('node:path');

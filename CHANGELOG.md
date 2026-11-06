@@ -4,6 +4,350 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.130
+
+Two Adventure fixes from the community. Thank you to miargue and bfs2021.
+
+- **End game and Pause** now put Bob back to idle, the same state a finished chat message reaches, so the window title goes back to "Bob" straight away and a reload shows it too. Before, the game master's brain left Bob "thinking" until the next chat message. (miargue, #13, fixes #7.)
+- Bob is only put back to idle when nothing else is running: no chat reply, no brain loading, no job waiting in line. The rule from 1.5.120 still holds: ending a game doesn't wake the quick chat brain.
+- **The Met tab keeps the scene.** A character named in the opening reply, or in the reply that starts a new scene, used to land on the Met tab with no scene or the old scene's title. Met entries are now written after the scene is on the books. (bfs2021, #11.)
+- New checks in `test/run-adventure-test.js`: End and Pause go back to idle, End does not reset while a reply, a wake or a waiting job is still going, and Met entries carry their scene.
+
+## 1.5.129
+
+A test fix only, so the 1.5.128 release could be built (its Windows build failed on one check).
+
+- The Rented brains key-override check compared the PATH variable by exact name; Windows spells it `Path` on some machines (GitHub's build runners among them), so the check failed there and no 1.5.128 release was made. The check now compares the variable count and the override itself. Nothing in Bob changed; 1.5.128's fixes are all in this release.
+
+## 1.5.128
+
+Five small fixes to Rented brains (1.5.127), from the first live checks.
+
+- **Not now** on the Hire it card now runs your request here, on this replicant matrix, and says "Not hired. Doing it here instead." Before, the message got no reply at all.
+- **The Hire it button is greyed out** while hiring is blocked (a service switched off, or a limit still at 0); the line above the buttons says what to fix. The phone already hid it.
+- **The 🏗 Rented brain switch appears straight away** when a rental goes into the empty slot from Add a rental, and goes when the rental in the slot is removed. Before, it needed a page reload.
+- **Add this rental says why** when the form isn't complete: "Type the model's name first, as the service lists it." (and the address or key-variable line for Another service), instead of doing nothing.
+- For testers: setting the environment variable `BOB_RENT_KEYS=off` makes Bob see no rented-brain key at all, and `BOB_RENT_KEYS=env` makes him read only the process's own variables (no Windows user variables, no `~/.config/bob/env`). It's a tester's switch, not a setting, so a test Bob on a computer that has a real key stops reading "Key found".
+- From the PC run: the greyed Hire it button looks greyed, the missing-field line by Add this rental is red, a reload after Not now shows your message once (the re-run adds only a hidden note), and the key-override check sets any real key variables aside while it runs.
+
+## 1.5.127
+
+Rented brains: for a job too big for the card in this replicant matrix, Bob can hire a brain from an online service for the length of the job, on your own account, with your say-so every time. Everything about it is off until you turn it on, and every spending limit starts at $0.
+
+- **A "Rented brain" slot on Equip Bob** (left column, 🏗). Empty, Bob runs on this replicant matrix as before. Put a rental in it and the chat page grows a "🏗 Rented brain" switch next to Web search. Bob also offers a rental himself when a request is too long for the brain's memory, or when the brain decides the job needs a bigger one (a new `hire_brain` tool, only when a rental is in the slot). Either way the first thing you see is the **Hire it** card: which service, which model, the price, roughly what this job will cost, how long the machine takes to start, and exactly what leaves this replicant matrix. Nothing is hired until you press it. "Not now" runs the job here.
+- **Three kinds of service, all in one drop.** Pay per answer (OpenRouter, Together AI, Lambda, or Another service with an address you type); RunPod serverless (billed by the second, switches itself off); a whole machine by the minute (RunPod, Vast.ai, Lambda). A machine runs vLLM for a model at full size or llama.cpp for a GGUF file (`hf:Owner/Repo/file.gguf`), so Bob's own models can be hired too. The tools still run here: the rented brain only thinks.
+- **Your keys never go into Bob.** Each service reads its key from an environment variable (`OPENROUTER_API_KEY`, `TOGETHER_API_KEY`, `LAMBDA_API_KEY`, `RUNPOD_API_KEY`, `VAST_API_KEY`), or on a Mac or Linux from `~/.config/bob/env`. Settings shows "key found" or "no key yet", never the key. Keys are scrubbed out of error lines, kept out of the log, Bob-Net, exports and Settings.
+- **Spending limits, all starting at 0:** the most Bob may spend this month, the most one job may cost, and the longest a hired machine may run. A rental can't start until each limit it uses is set. Every hired machine is started with a self-destruct timer (the longest run), so it stops itself even if this computer is switched off. Bob also stops it when the job is done, when a cap is reached, or when you press "Stop everything now", and warns five minutes before the timer. Machines Bob started and nobody stopped (named `bob-rental-…`) are listed with a Stop button on every start.
+- **Several cards on one machine, as an option behind a big warning.** Add a rental for a machine by the minute and "Cards on the machine" can be 2, 4 or 8, for a model that really doesn't fit one card (the giant mixture-of-experts models: an 8 × 141 GB machine holds the 2.4-trillion Qwen at Q4). Picking more than 1 brings up a large warning with the hourly and daily price; the count snaps back to 1 unless "I understand" is pressed. The Hire it card warns again, the price and the estimate are for the whole machine, vLLM is told to split the model over the cards, and the spending limits and the self-destruct timer apply as before. Serverless stays at one card.
+- **Settings, Show advanced settings, Online services, Rented brains:** the limits; a switch per service ("Let Bob hire from …", with a warning card the first time saying what will leave this replicant matrix); your rentals (Use this one, Take it off, Check the price, Remove); Add a rental; Machines running; Recent spending (what the service counted, or Bob's estimate marked as such). Prices on screen are estimates; the service's billing page is the real bill.
+- **Privacy wording, everywhere:** the README's first line now reads "Nothing goes online unless you turn it on"; PRIVACY.md, the guide, Help (Settings, Privacy, FAQ, glossary) and the phone's Help say the same and list rented brains with Web search, Cloud helpers and Bob-Net as the things that can send a chat out.
+- **Phone:** the Hire it card and the rented-brain notes show in the phone chat; the switch and Settings are on the computer.
+- Tests: `test/run-rental-test.js` (settings cleaning, limits at 0 block everything, keys only from the environment and never in a view or error, the card before any spend, the self-destruct timer, the OpenAI-style stream read like llama-server's, a machine started under Bob's name and stopped after the job, leftovers found by name only, Help and glossary).
+- **Not yet tried against the real services:** the RunPod pod and serverless calls, Vast.ai and Lambda machine starts, and the proxy addresses they hand back. Pay per answer is the same request shape as the cloud helpers. Please try a cheap pay-per-answer rental first.
+
+## 1.5.126
+
+Handhelds and laptops with built-in graphics: Bob now reads how their one pool of memory is really split, and never loads a brain that would leave Windows short.
+
+- **The memory set aside for graphics is read, not guessed.** A Legion Go showed RAM only and no graphics memory. The BIOS (or the maker's app, such as Legion Space or Armoury Crate) keeps part of the memory for the graphics alone (Auto, which is small, or 4 or 8 GB); Windows never sees that part, so a 16 GB Go set to 8 GB read as 7.7 GB. Bob now reads the set-aside from Windows's display driver entry on every start, and the installed memory from the memory sticks themselves. On Linux the set-aside comes from the graphics driver (amdgpu).
+- **Graphics memory for picking models** is the set-aside plus about half of what Windows can see, and the borrow never eats into the last 4 GB Windows keeps for itself. A 16 GB Go set to 8 GB counts 11 GB; on Auto (the recommended setting) it stays at the old half-of-visible figure. Nothing that fitted before stops fitting.
+- **What you see:** the spec line under the replicant matrix's name reads "Ryzen Z1 Extreme · Radeon built-in · 16 GB memory (8 GB set aside for graphics)" or "(shared with graphics as needed)"; Get models says "Memory: 16 GB shared, 8 GB set aside for graphics". `/api/hardware` carries `installedRamGB`, `reservedGraphicsGB` and `visibleRamGB`.
+- **A memory guard on shared-memory machines.** Before a brain loads, Bob checks the room (free RAM, plus whatever the load swaps out, minus 4 GB for Windows). Too tight: the chat memory is shortened first (halved, never below 8K). Still too tight: the brain isn't loaded and Bob says so in chat ("That brain needs about 9 GB and only about 6 GB is free once Windows keeps its share...") instead of risking an out-of-memory crash. Only with built-in graphics; a real graphics card is untouched.
+- Help: the built-in graphics FAQ explains the set-aside, glossary gets "Set aside for graphics". Tests: `test/run-integrated-gpu-test.js` (8 GB, 4 GB and Auto fixtures, Windows and Linux readings, the guard; NVIDIA, Mac and desktop chips unchanged).
+- The README's download row now names the 1.5.126 files, and `installer/check-release.js` fails when the row doesn't match the version (1.5.125's row still named 1.5.124).
+- Not yet measured on a real Go on Auto: the fixture uses a 512 MB set-aside; the Legion Go's own numbers go in when they're in.
+
+## 1.5.125
+
+A chest for everything Bob makes, and Bob's home folder chosen at install instead of by editing a file.
+
+- **🧰 Chest** on Equip Bob, under Bob on the paper doll, with a number for how many things are in it. Press it and the Inventory column becomes the **Chest**: everything Bob has made or saved, newest first, as little pictures with their names and when he made them. Pictures and clips show as themselves; songs, documents and other files as their icon with the title. Click one (or Tab to it and press Enter; every tile tells a screen reader the name, kind and time) to open it beside the chat. **New things are saved in** shows the folder new pictures, clips, songs and sounds go to, with **Change folder…** (the same picker as Settings, Where Bob saves things), **Use Bob's own folder** and **Show in folder**. **Open Made by Bob** for everything with filters and search.
+- **Thumbnails, made once and kept.** Pictures and clips in the chest and in Made by Bob are small copies Bob's window makes with its own image code (clips through FFmpeg where it's installed), kept in `inn\bob\thumbs`, so a long list opens in a blink and nothing is loaded into a brain for it. Where none can be made, the picture itself shows, shrunk, or the kind's icon.
+- **Bob's home folder is chosen at install.** The Windows install window asks "Where should Bob keep his things?" first, suggesting a `Bob` folder in your user folder, with Browse to any drive and the free space shown; Bob.exe, Bob.app and the AppImage ask the same the first time they open, and the first-run screen has the row at the top (**I keep my things in**) before the big downloads. AppData, Temp, the Caches folder and other temporary places are refused, so a "clear temporary files" button can never take 10 to 60 GB of models. A cloud-synced folder (OneDrive, Dropbox, Google Drive, iCloud and the like) is allowed but always recommended against, clearly, wherever the folder is picked or shown: every model would be uploaded, and a sync can break a model while Bob uses it. Older Bobs that kept everything in `%LOCALAPPDATA%\Bob` carry on from there.
+- **Settings, Bob's home folder** (Everyday): the folder, how much the models take, a red line if it is somewhere a clean-up tool empties, and **Browse…** / **Move here…** with one **Yes, move everything**. Bob closes, copies everything across (one rename on the same drive), and opens again from the new folder; the old one is removed only once every file is over.
+- README, user guide and Help: no more `home.json` snippet; the install step and the Settings row describe it. Help entries for the chest and Bob's home folder, glossary lines (Chest, Home, Thumbnail), FAQ "Where are Bob's models kept, and can a disk clean-up delete them?". New test `test/run-chest-test.js`.
+- **Phone (Bob for Android):** menu, **Chest**: the same list from your PC's Bob as thumbnails with names; tap one to see it, with Save to this phone. Nothing is kept on the phone unless you save it.
+
+## 1.5.124
+
+The bestiary: a Characters page in 🎲 Adventure, monster bodies on the character screen, and a dozen enemies the game master uses as written.
+
+- **📖 Characters** (on the Adventure start card and at the table). Four tabs. **You**: your saved heroes, with **➕ New character**, **Edit** (the character screen behind each) and **Delete this character** (asks in the page). **Party**: who's at the table now, or was last game, with hearts, kit and spells. **Met**: everyone and everything the game master names in a scene, drawn by Bob the moment they're named (people from their name, creatures by their kind, the same name always the same face); between games it holds every meeting across your campaigns, with **Forget** (which asks first). **Enemies**: the usual dozen (Goblin, Skeleton, Wolf, Bandit, Giant rat, Giant spider, Orc, Cultist, Slime, Ghost, Troll, Dragon), each with its hearts, how it attacks, the thing to know and a line from Bob.
+- **The game master knows the dozen.** Their sheets are in his rules, so a goblin has two hearts in every game and a dragon six; anything else he invents, and a boss simply has more. "Here" now lists creatures and enemies as well as people, which is how Met fills itself.
+- **Monster bodies on the character screen:** Big humanoid (takes armour, weapon and shield), Beast, Crawler and Blob, each with a Face (ears, horns, drips, tusks) and a **Hide** colour (Moss, Stone, Mud, Blood, Night, Bone, Frost, Ember). Bob's own screen on Style keeps to Man, Robot and Alien.
+- The preview on the character screen stops repainting when the page is hidden or it's scrolled out of view.
+- Help: the Adventure entry (Characters page, tab names word for word), glossary line (Bestiary), FAQ ("How tough are the enemies in an Adventure?"). New test `test/run-bestiary-test.js`.
+- **Phone (Bob for Android):** the same Characters page on the phone through your PC's Bob (You, Party, Met, Enemies; your other Bob draws each one; Forget asks first; hearts read out as a count). Nothing is saved on the phone.
+
+## 1.5.123
+
+Two more pieces of Bob-Net: who's at the table, and Bobs that introduce each other.
+
+- **Bob-Net in Now running.** Once you have a Bob under My other Bobs (or Lend my brain or Take jobs on), the right pane gets a **Bob-Net** section: one line for this Bob and one for each of your other Bobs, with what each is doing for the others right now (thinking a reply for me, making a picture for me, ready, gaming so not lending, busy, not reachable, door shut over there), the jobs he takes, when he last thought for this Bob, and whether he passes Bob-Net along. The dot by each name only repeats the words. It asks each Bob "are you there?" at most every half minute while the pane is open, and nothing while it's hidden or behind a game. Before you have any Bobs, the section isn't there.
+- **Pass my Bob-Net along** (Settings, Show advanced settings, Bob-Net, What they share; off). Your Bobs with it on introduce each other: a Bob paired with two of them tells each the other's name and Tailscale address, and the two pair with each other by themselves, with no card on either side. Phone paired with the handheld, handheld with the PC: with the switch on for all three, the phone and the PC meet by themselves. Passcodes still only pass between the two Bobs being paired, after the yes the introducer vouched for, as with the card. A Bob with it off, or too old to know it (Bob for Android doesn't yet), is left alone, and the panel says so. Nothing else switches on. Checked after each pairing, after a settings change, and once an hour.
+- Help: "Pass my Bob-Net along" under Settings: Bob-Net, two FAQ entries ("What is the Bob-Net list in Now running?", "Can my Bobs introduce each other?"), glossary "Introduced", and the Now running line in Finding your way around. PRIVACY.md says what an introduction carries. A new test (`test/run-bob-net-party-test.js`) walks three Bobs through an introduction over a pretend Tailscale, and checks the party reading.
+- Phone (Bob for Android): the phone can be introduced once the phone app learns the `/api/bob-net/introduce` route (it only ever answers; a computer asks). Until then the PC says "can't be introduced yet" and you pair the phone by hand as before.
+- Phone (Bob for Android): the Adventure character screen and an answer-only Pass my Bob-Net along switch (off; needs Lend my brain). Robot and alien swatches on the character screen have their own names (Steel, Brass; Green, Violet).
+
+## 1.5.122
+
+The character screen: build Bob's look from parts, and give your Adventure hero a look of their own.
+
+- **🧍 Make your own look** (Style, under Bob's look; also **Change his look** under the doll on Equip Bob). A paper doll built from parts with a live preview that blinks as you go: Body (Man, Robot, Alien), Build (Slim, Regular, Broad), Hair style and Hair colour, Skin, Beard, Glasses, Outfit and Outfit colour, Armour (Leather, Chain mail, Plate, Robe), Weapon (Sword, Axe, Bow, Staff, Dagger, Spear, Hammer) and Shield (Round, Tall). **🎲 Surprise me**, **Start over**, **Wear this**. The result is a look like any other (it blinks, talks, glances and fits the tray icon), listed under **Your own design**, and Bob can describe it when asked what he looks like. Bob is a guy, so his own screen offers no dresses; the same parts dress anyone on the Adventure card.
+- **🎲 Adventure: your character's own look.** The start card shows **Looks like** with **🧍 Change the look**, which opens the same screen with every body on it (Woman included). The look is saved with the game and drawn on the party strip; Bob's avatar is never changed by the game. Before this, the card borrowed Bob's look from Style, so playing as a woman meant turning Bob into one.
+- **Saved characters.** **💾 Save this character** keeps the name, class, the one thing about them, plot armour and look in one small file beside the campaigns (up to 24); **Saved characters** on the start card picks one back, **Delete this character** removes it.
+- Help: Style and Adventure entries, a glossary line (Character screen), an FAQ entry ("Can my Adventure character look different from Bob?"). A new test (`test/run-character-test.js`).
+- Phone (Bob for Android): the start card's look and saved characters come through the PC's Bob; the Android side follows in its own drop.
+- From the PC's live check: Change his look (Equip Bob) and Change look (Attributes) open the character screen; the preview blinks; "an orange alien"; Bob's own comment for a design of your own; an empty Name saves as Hero.
+
+## 1.5.121
+
+Five small games, for the days you want to play rather than work.
+
+- **🧩 Games: small games Bob plays with you.** A new page in the menu with five games: **Twenty questions** (either way round; when it's Bob's secret the app picks it and checks your guess, so a right answer always counts), **Hangman** (a word from a shelf you pick: Animals, Food and drink, Around the house, Out of doors, Jobs people do, Things that move; seven lives; a Hint costs a life), **Word ladder** (four-letter words, one letter a step, every rung a real word from a list of about a thousand; Hint, Back a rung, or climb together turn about), **Five letters** (guess a five-letter word in six tries, letters coloured green, yellow and grey; a Hint costs a try) and **Story dice** (six picture dice come up and you tell a story a line each until every die is in; Wrap it up ends it, Bob writes the last line and a title). A scoreboard counts, per game, your wins, Bob's, shared ones and your best run.
+- **The app plays, Bob talks.** The app holds the secret, checks every move, counts lives and tries and keeps the score; Bob's quick brain only asks, answers, teases and tells the story. That's why the games play well on the smallest brain, in the Gaming session (on the Gaming brain, on the processor, so the graphics card stays with your game) and on the phone. Nothing runs until you press **▶ Start**, and the brain is let go when a game ends, like after any job.
+- **Settings, Show advanced settings, 🧩 Games:** Which brain plays games (Quick brain, or Main Brain for wittier lines) and How often Bob chips in (After every move, Now and then, Only at the end). Neither is a switch; both just have a default.
+- Help: "Games: small games I play with you", "Settings: Games", three FAQ entries, glossary lines for Twenty questions, Word ladder, Five letters, Story dice and Shelf. The phone app gets the same games through the Bob on your PC. A new test (`test/run-games-test.js`) plays every game through with a stand-in brain.
+- Phone (Bob for Android): the same games on the phone through your PC's Bob (Games in the phone's menu); the phone brain is never used.
+
+## 1.5.120
+
+- **🎲 Adventure: three fixes from the first live game.** A Short game can no longer end early: a scene only counts as new when it has a new title and everyone at the table has had a turn since the last one started. The game master stays the narrator (second person to the players, third person for everyone else) instead of slipping into a character's voice. And the game master thinks no more before each turn: on a 16 GB card the first turn took six minutes with thinking on, and the story reads no better for it. The start card says the first turn takes longest.
+- Phone (Bob for Android): the same table on the phone through your PC's Bob (Adventure in the phone's menu; the phone brain is too small to be game master, and says so).
+- Two more from the first live game: the game master's hidden line still reads when a brain drops its closing `>>>` or adds a stray brace, and Pause or End no longer wake the everyday brain straight back (a paused game is idle time).
+
+## 1.5.119
+
+- **🎲 Adventure: Bob runs a tabletop game.** A new page in the menu. Bob is the game master; the party is you plus your other Bobs (a Bob on your Bob-Net plays himself over there; a copy of Bob is played by the game master brain). Nothing runs until you press **Start a new game**, and the game master brain is let go on Pause or End. One start card asks for the setting, your character, who plays, how long, and plot armour for every character. Everyone has a turn in order. On your turn you get action cards, only the ones that fit, some with a second card (the attacks your kit allows, your spells, your items, who's here, the ways out) and a Back button, then an optional line of flair. The app rolls the dice for every action. Loose rules on purpose: four stats, hearts not hit points, no inventory weight, no spell slots, no initiative; long travel is one montage line. Campaigns are saved in their own files and continue from the start card. Not in the Gaming session. Help: Adventure: I run a tabletop game.
+- **Settings, Show advanced settings, 🎲 Adventure:** Which brain is the game master (Biggest brain) and Who plays the other Bobs (Their own Bob when reachable). Neither is a switch; both just have a default.
+- Pause and End take the game master's brain off the graphics card when the game loaded it (one that was there before the game is left to its usual idle timer). The release check now refuses leftover merge files (*.orig, *.rej).
+
+## 1.5.118
+
+One new button, for the day Bob isn't working and nobody can see why.
+
+- **Save a help bundle** (Settings, This replicant matrix and updates). One click packs everything a helper needs into one zip: a HANDOFF.md written for an AI agent to read first (it names Bob's version, links the public code at github.com/MouseWurX/Bob and says what to check in which order), every error and the last 3,000 lines of Bob's logbook, his settings without their secrets, the machine's facts (processor, memory, graphics card, free disk, whether each engine starts, which brain is in each slot), unfinished or failed jobs, and the last three chats as a plain readout. You pick the folder, the zip is shown there, and nothing is sent anywhere.
+- **Two ways it is written.** If Bob's chat brain is already loaded and idle, Bob reads the facts himself and adds a short note on what he thinks is wrong and what to try first. If the brain isn't there (the engine won't start, nothing is downloaded, Bob is busy, or it's a Gaming session), the bundle is put together without any brain and tells the helper to assume the worst. Bob never loads a brain for this, so the button works on a broken Bob.
+- **Scrubbed first.** The owner's name and user name, the machine's name, the home folder, every passcode, API key and bot token, and Tailscale addresses are taken out of every file before it is written; the settings file drops any value that looks like a secret.
+- **From a phone or another device**, the same zip downloads to that device instead (`GET /api/help-bundle`, for the Bob app on Android).
+- Help: "Save a help bundle", a last row in "When something goes wrong", glossary entries Help bundle and Handoff file, and the FAQ "How do I get help with my Bob?". A new test (`test/run-help-bundle-test.js`) covers the scrubbing, both ways of writing the handoff, and the zip.
+
+## 1.5.117
+
+A second pass over the Settings layout. Nothing is renamed or switched; things sit where you look for them.
+
+- **Check for updates without scrolling.** This replicant matrix and updates is now the first thing in Settings, closed. Its line shows your version and a Check for updates button that works right there. When a new Bob is downloaded and checked, the line reads "Bob 1.5.x is ready · Restart Bob now".
+- **Shorter panels.** In Hands, Add a connected app and Paste a setup from another app sit under More once the Hand is on; Add a recipe sits under More once Run programs is on; Check the sandbox, Run the self-test and Quarantine are together under Checks. In Brains, the three long tables (Session brains, How much each session keeps in mind, How much each brain keeps in mind) fold closed with what's set now on their line. In Bob-Net, the sharing switches' explanations are behind ⓘ; the sentence about what leaves your replicant matrix stays written out.
+- **Read-only projects without a file.** Under the Read-only projects stay read-only limit there is now a list with Remove, and a Browse… / Add row, like Projects. config.json is no longer mentioned on screen.
+- **Make a new passcode** is the button's name in both states.
+- **Two labelled rows** at the top of the page: Get models (Equip Bob … On this replicant matrix) and Set up (Style · Settings).
+- **How Bob works** shows its three subheadings (How he works, Starting and closing, Going online) as headings.
+- **Where Bob saves things** sits under Projects, since both are folders.
+- **Phone app: Save to this phone streams the file** from the other Bob straight into the phone's media library instead of holding it in memory (up to 200 MB).
+
+## 1.5.116
+
+A code review of the whole app, with its fixes. Nothing new to switch on; everything here is Bob being safer and sturdier.
+
+- **Settings survive a crash or power cut.** Settings, the task queue, chat sessions, saved recipes, memory banks and the other files Bob keeps are now written to a side file first and swapped in one step. A crash mid-write can no longer leave a half file that quietly resets your settings or stops Bob starting.
+- **Web pages: every redirect is checked.** With "Let Bob search the web" on, a page that redirected Bob to an address on the home network (or his own door) could be read. Each hop is now checked the same way as the first address, redirects stop after five, and a page is read up to 2 MB.
+- **Let my other replicant matrices in: Tailscale addresses only, also at start-up.** When the door was already open when Bob started, he listened on every network address of the replicant matrix. He now listens on 127.0.0.1 and the Tailscale addresses only, the same as when the door is opened while he runs.
+- **Program and script files are refused on every platform.** Bob doesn't write or edit runnable files outside a project; the list now covers Mac and Linux kinds too (.sh, .py, .command, .desktop and friends), not only Windows ones.
+- **Big files are refused plainly.** Reading a file over 20 MB as text now gets a short sentence instead of Bob holding the whole file in memory.
+- **Folder rules follow links.** A shortcut, symlink or junction inside an allowed folder that points outside it no longer counts as inside.
+- **Music on Linux.** Setting up the music engine unpacked its download with a tool that reads zips on Windows and Mac but not on Linux, so it failed there (the Raspberry Pi too). Bob now unpacks it himself.
+- **A leftover brain process is checked before it is stopped.** After a crash and a reboot, the number Bob remembered for his brain server could belong to another program. He now checks it really is llama-server first.
+- **Replacing the engine can't leave you without one.** The new llama.cpp build downloads fully first and only then takes the bundled one's place.
+- **Sturdier replies.** One odd line from the brain server no longer loses the whole reply; a music job with an odd result, or voice input with no Ollama, gets a plain sentence instead of an error code.
+- **An OK card that times out is cleared properly**, so the quick "ok" and the check-in count are right afterwards.
+- **He comments once when you change his look** is now off unless you turn it on (Get models, Equip Bob, Attributes), like every other extra.
+- **A new test** covers all of the above (`test/run-review-fixes-test.js`).
+
+## 1.5.115
+
+- **Phone app: Save to this phone works for every type.** Under a picture, clip, song or diagram a Bob on your Bob-Net made, **Save to this phone as** now has the original type as a button too (for example "PNG (original)"), so you can keep the file as it is. It goes into your Bob folders on the phone, with a short note when it's saved. A copy stays on that replicant matrix too.
+- **Phone app: one 🌐 Bob-Net page.** Your other Bobs, adding a Bob and lending your brain now sit together on one page with the same name as the Bob-Net panel on your replicant matrix, in three sections: My other Bobs, Add a Bob and Lend my brain.
+
+## 1.5.114
+
+- **Credits.** The README and a new Help page, Credits (on the desktop and in the phone app), thank Dennis E. Taylor, whose books inspired Bob, and say plainly that Bob is an independent fan project with no connection to the author or his publishers, and that the rights in the books stay theirs. TRADEMARKS.md says the same.
+
+## 1.5.113
+
+- **Bob says plainly when another program holds the graphics card.** When a brain or picture takes too long to load, Bob looks at the card once. If another program has filled it, he says so with a ⚠ line, naming the biggest programs when the card tells him (only programs the card lists as using it, never Windows itself, overlays or browsers; sizes only when the figures add up). Then he stops: one try instead of three five-minute ones, no other brain, and no "Waking up…" reload. Jobs waiting in line get the same answer straight away, and a chat that has already seen the line gets a short pointer to it instead of a repeat. He looks again before the next job, at most every 30 seconds, and carries on as normal once the card is free. Chats on the processor in Gaming keep going.
+
+## 1.5.112
+
+- **Every waiting chat gets its ⏳ line.** A message sent in the second before a picture started (while Bob was freeing the graphics card) now gets the line too, as soon as the painting begins.
+
+## 1.5.111
+
+- **The ⏳ line goes away when the wait is over.** Once Bob starts on the waiting message (or it is stopped in Tasks), its ⏳ line leaves the chat, so it no longer sits frozen above the answer.
+
+## 1.5.110
+
+- **The ⏳ line keeps up.** A chat waiting behind a picture or clip now sees the line move on from "loading the picture engine" to "making a picture, step 3 of 20", updated in place. Telegram and the phone app still show it once.
+
+## 1.5.109
+
+- **Picture and clip progress counts the real steps only.** While the picture engine loads, it prints counters of its own (for example 82/82), and those no longer show on the bar or in the ⏳ line. Until the first real step, Bob says he is loading the picture engine.
+
+## 1.5.108
+
+- Under the hood: shared helpers live in one place instead of being copied into many files.
+
+## 1.5.107
+
+### Tidy-up
+- The README now covers Linux, Raspberry Pi and the Android app, and says each install step once.
+- The web reader and the security Hand now share one check for home-network addresses, so the web reader also refuses link-local IPv6 and a few more home-network names.
+- On Mac and Linux, stopping an office job also stops the LibreOffice it started.
+- Docs use "replicant matrix" for the test machine, and the public privacy check is stronger.
+- Nothing new is switched on.
+
+## 1.5.106
+
+- Hover tips: each thing said once. Catalogue bubbles group the machine lines, the source sits on ↗ only, Active is explained once at the top, look groups share one line by their heading, theme tips no longer repeat the description, and Alerts says "a notification".
+- Release builds on Windows keep the bundled Mermaid file byte for byte (a .gitattributes rule), so its checksum check passes.
+
+## 1.5.105
+
+- Bob's instructions to his brains are trimmed: no repeated rules, the right computer name on Mac and Linux, and his copies get about a third fewer words, which leaves more room for the chat on small brains.
+- The ⏳ line for a chat waiting behind a long job now says what Bob is doing in plain words, for example "making a picture, step 12 of 30" or "making a song".
+
+## 1.5.104
+
+Fixes from a live test on the replicant matrix.
+
+- **One Set it up card per request.** When something Bob needs is switched off (web search, for example), you get one card and one short note, not a stack of cards and repeats.
+- **A Set it up card isn't a failure.** Bob no longer adds a "that didn't work" note after offering a card, and doesn't try the same thing again.
+- **Chats that wait behind a picture, clip, song or sound** now get a ⏳ line saying Bob is still on the last job and will answer when it's done. Typing "ok" there gets a plain answer instead of starting another job. Telegram shows the line once.
+- **The progress bar** no longer reads "Painting 82/82" before the first step.
+- **Brains and programs set by hand in config.json count as here.** A .gguf given in llamacpp.models, or a llama-server, sd, whisper or piper program path that's really there, shows as installed in the welcome screen and the brain list.
+
+## 1.5.103
+
+### Flowcharts and diagrams
+- **Ask for a flowchart, mind map, timeline, org chart, project plan or pie chart** in plain words ("map out how the login works") and Bob draws it right in the chat. It's drawn on your replicant matrix with Mermaid, which now comes with Bob: nothing goes online, no download, no graphics card needed.
+- Ask for a change and he redraws it. Each diagram's text is kept as a .mmd file in his folder.
+- The phone app draws diagrams too.
+
+### Save as: other file types
+- Everything Bob makes now has a **Save as** row under it: pictures as PNG, JPG, WebP or GIF; clips as MP4, WebM or GIF; songs and sounds as WAV, MP3, OGG or FLAC; diagrams as PNG, SVG or PDF. The original always stays.
+- Name the type when you ask ("a song about my cat as an mp3") and he saves it that way straight away. "Save that song as an mp3" works afterwards too.
+- Songs come out as WAV (about 10 MB a minute); an MP3 is about a tenth of that.
+- Converting uses FFmpeg. If it isn't set up, Bob shows a **Set it up** card instead of an error (on Mac and Linux, the card says how to install it).
+- Works in the phone app too: its Save as row keeps the file on the replicant matrix that made it.
+
+## 1.5.102
+
+### Model families in the Brain catalogue
+- Inside each job, models now sit under one header per family (Qwen, Gemma, GPT-OSS, Whisper, FLUX and so on). Every family starts closed: press its name to open the list, press again to fold it away. Bob remembers which ones you leave open, and **Open all families** / **Close all** are at the top.
+- Each header says how many models, the size range, **★ Recommended inside** when Bob's pick for that job is in that family, and how many are already on this replicant matrix. The family with Bob's pick comes first. The ⓘ says who makes it.
+- In Settings, Brains, the brain menus group their brains by family too.
+- Phone: Bob for Android's model list groups by family the same way, closed to start with and opening while one downloads.
+- Help: the catalogue page explains families, plus a new FAQ ("What's a model family?") and a glossary entry ("Model family").
+
+## 1.5.101
+
+### Bob on a Raspberry Pi and ARM Linux
+- New download on every release: **Bob-<version>-linux-arm64.AppImage**, for a Raspberry Pi 5 (or 4) and other 64-bit ARM Linux boards. It's built and test-started on an ARM runner, next to the usual x86_64 AppImage.
+- On a board, Bob runs on the processor: llama.cpp's ARM build (the same tested b12032 release), whisper.cpp, uv and Piper, each pinned. Making pictures (sd.cpp) isn't available on ARM yet, and Bob says why.
+- Two starter sets only ARM boards see: **8 GB or more** (Gemma 4 E2B, with Whisper for hearing) and **4 GB** (Qwen3.5 2B). A brain that wants more than about 60% of the board's memory is marked as unlikely to run well.
+- Help: new "Bob on a Raspberry Pi" page, an FAQ and a glossary entry ("ARM board"). Not tried on a real Pi yet; the Help says so.
+- Nothing changes on Windows, Mac or x86_64 Linux, and nothing new is switched on.
+
+## 1.5.100
+
+### Help, tidied
+- Help: repeats trimmed, short FAQ answers link to their full page, wrong facts fixed (phone access, sizes, chat while busy), privacy page lists Bob-Net and Telegram, platform-neutral wording.
+- Glossary: "Slot" appears once, "SHA-256" is part of "Checksum (.sha256, SHA-256)", and "Thinking (Bob's thinking window)" is part of "Thinking first".
+- No settings or behaviour changed.
+
+## 1.5.99
+
+### Pair with my other Bobs
+- Joining your Bobs is now two presses, with nothing to type. In Settings, Show advanced settings, 🌐 Bob-Net, at the top of My other Bobs: **Find my other Bobs** asks Tailscale which of your devices are online and knocks on each. Press **Pair** next to one, or **Pair with all of them**.
+- The other Bob shows a card, "🤝 … wants to join your Bob-Net", with a 4-digit number. This Bob shows the same number. If they match, press **Yes, pair us** over there. The two Bobs swap passcodes over Tailscale, and each puts the other in My other Bobs.
+- Pairing only fills the list. It switches nothing on: Lend, Borrow, Take jobs and Send jobs stay as they were.
+- If this Bob's door (Let my other replicant matrices in) is off, the pairing works one way and Bob says how to make it both ways.
+- No Tailscale program? Type the other Bob's Tailscale address and press Pair. Adding a Bob by hand (name, address, passcode) is under More, as **Add one by hand**.
+- A fix from the live test: the door also accepts this replicant matrix's own current Tailscale addresses, so an old saved address can't shut your other Bobs out.
+- Limits: 3 pairing asks a minute, one waiting card per asker, and cards and answers are forgotten after 3 minutes. Yes is refused while this Bob's door is off.
+
+### Phone: pair with this Bob
+- Bob for Android pairs the same way. Under Add a Bob, **Pair with this Bob** sits beside Add this Bob. The phone can also answer a pairing card from your computer, with a notification when Bob's screen is closed.
+- Each pairing gets its own passcode, kept on the phone only as a fingerprint. Make a new passcode drops them all. On Yes, the phone logs in to your computer's Bob by itself.
+- New Help entries on both: "How do I join my Bobs together?" (computer) and "Pair with my other Bobs" (phone). Glossary: "Pairing".
+
+## 1.5.98
+
+### Settings, laid out properly
+Nothing is renamed or switched on or off, only moved, so every setting keeps its name and its default.
+- **How Bob works** has three small headings: *How he works* (now with Pick up where Bob left off after a restart), *Starting and closing*, and *Going online*.
+- **Check for updates when Bob starts** sits in This replicant matrix and updates, next to the Check for updates button.
+- Off Windows, the Animations middle button says **Follow the system**.
+- The advanced panels, in order: 🧠 Brains (now also Let the reviewer sit beside Bob's main brain, Keep chatting while Bob is busy and Give Bob all his tools at once), 🖋 House style, 🔊 Voice details, 🌓 Look & feel, ⚡ Speed & memory, ⚙ Engines, 🌐 Bob-Net, ☁ Online services, 🔌 Other apps, ✋ Hands, 🧹 Housekeeping, 🔔 Check-ins, 🗑 Remove Bob.
+- **Engines & speed** is now two panels: Speed & memory (freeing memory, picture speed, Gaming, Remember only what fits, the speed test) and Engines (the engine and its downloads; the fine-tuning is under More).
+- **Connections** is now three panels. **Bob-Net** has your phone and your other Bobs in one place: This Bob (the door, **Address**, passcode, firewall), My other Bobs, and What they share. "Address for the phone" is now just **Address**, since your other Bobs use it too. **Online services** says at the top that each one sends something over the internet; it holds Cloud helpers and Telegram. **Other apps** holds ComfyUI and points to Hands for Unreal Engine and Blender.
+- Hands has a heading "Limits that always apply" above the hard limits.
+- No panel shows its title twice any more, and House style and Look & feel have their own icons.
+- Old links to Connections land on Bob-Net. New FAQ: "Where did Engines & speed and Connections go?", and a glossary entry for Online services. Help, the Bob-Net and setup messages, and the phone app's help now use the new paths.
+
+## 1.5.97
+
+### Waiting is plainly waiting
+- When a job waits for the graphics card, chat and Tasks now show one muted line that starts with ⏳ and says who has the card and that nothing is needed from you, for example: "⏳ The graphics card is busy: my Brain is finishing another job. Nothing for you to do; I carry on by myself when it's free. (waiting 2 min)". It updates in place, and after 5 minutes it adds that Stop cancels the job. It used to read like an OK card.
+- Typing "ok", "yes" or "go" while only a ⏳ line is showing gets a plain answer straight away: there's nothing to OK.
+- Glossary: new entry "⏳ line".
+
+### Bob-Net lending fixes (found on real devices)
+- A Bob lending his brain now stops thinking when the asking Bob gives up, and always hands the graphics card back afterwards. Before, the card could stay taken, and his own jobs and guests' jobs waited forever.
+- The lending Bob says "still loading" every few seconds until the first word, and the asking Bob gives up after 45 seconds with no first word.
+
+### Phone: send a photo
+- The phone app can attach a photo (📎) to a message for your Bob. The photo goes only to your own Bob, which keeps it on its References page. New Help entry: "Photos".
+
+## 1.5.96
+
+### Bob understands what you ask, in plain English
+- **Picture edits stay edits.** "Edit this picture", "change this picture", "I want this to look like a watercolour", "make her hair red" or "get rid of the guy on the left" now edit the picture you attached. Bob no longer paints a brand new picture when you meant a change, even if his brain forgets to say which picture.
+- **Follow-ups edit the picture from a moment ago.** Right after Bob makes a picture (or you send one), "now make the sky purple", "add a moon to that" or "lose the tree" edit that same picture. Ask for "a new picture" and he starts fresh.
+- **More ways of asking reach the right tools**: posters, banners, thumbnails, album covers, profile pictures, "show me what... looks like", little movies and gifs, lo-fi tracks and theme tunes, "start the server", "unpack that archive", "clear some space", "every weekday at 9am", "shrink this video", "is this link safe to click", "jot this down in a text file" and more.
+- A new check (test/run-phrasing-test.js) asks Bob about 175 everyday phrasings for every job he does (pictures, edits, clips, music, sounds, Hands, documents, memory, how-tos) and fails if one lands on the wrong tools.
+
+## 1.5.95
+
+### Bob in the tray, and his look as his icon (both off by default)
+- New in Settings, How Bob works: **Keep Bob in the tray**. With it on, closing or minimising Bob's window tucks him into the tray by the clock (the menu bar on a Mac, the desktop's tray on Linux). Click the icon to bring him back; **Quit Bob** in its menu closes him fully. The first time he goes there, he says where he went.
+- Started hidden with **Launch Bob on start-up**, Bob now always shows his tray icon, so his window can come back with one click.
+- New in Settings, Bob himself: **Use Bob's look as his icon**. The taskbar, title bar (Dock on a Mac) and tray show the look you picked for him.
+- Updating Bob still works with the tray on. The phone app has no tray.
+
+## 1.5.94
+
+### Bob-Net with no manual steps
+- **Let my other replicant matrices in** works the moment you turn it on: no restart. If Tailscale isn't running yet, Bob says so and picks it up within a minute once you sign in.
+- On Windows, one button, **Let Tailscale through the firewall**, adds a firewall rule that lets in Tailscale only (Windows asks once). It also switches off any rule that blocks Bob's own program (Windows makes one if Cancel was clicked on its earlier question). **Remove the firewall rule** undoes both.
+- On Linux, Bob shows the one line to run if a firewall is on. On a Mac, choose Allow when macOS asks.
+- New FAQ: "Why can't my phone or other Bob reach this one?"
+- Not yet tried on real hardware: the Windows prompt and rule.
+
+## 1.5.93
+
+### Bob ready in a few clicks
+- **Get Bob ready** is now one list: tick or untick every program and model, each with its job and size. The recommended ones are ticked. On built-in graphics with 32 GB or more of RAM, Gemma 4 26B and Qwen 3.8 27B are offered too, unticked.
+- Bob puts each model he downloads into its slot himself, so everything is ready to use when the downloads finish.
+- Bob gets his own Python when there's none on your replicant matrix (the official Python Software Foundation package on Windows, uv's standalone Python on Mac and Linux), so voices and the audio tools no longer ask you to install Python first.
+- When you ask for something Bob can't do yet (a clip, a picture, music, web search, a Hand that's off), he shows a **Set it up** card in the chat instead of an error. One press gets what's needed, and he carries on with what you asked. The phone app shows the same card.
+- Not yet tried on real hardware: Bob's own Python under Smart App Control, and the phone's Set it up card.
+
+## 1.5.92
+
+### Phone: replicant matrix wording on Bob-Net
+- The phone's **Bobs on your network** now says "Bobs on your other replicant matrices that let this phone in".
+- A new Bob on your network gets a name from its Tailscale address ("Bob on desktop" for desktop.your-tailnet.ts.net), or "Bob on my other replicant matrix" for a bare number address. The examples use my-computer.your-tailnet.ts.net.
+
 ## 1.5.91
 
 ### Fixes from the live test

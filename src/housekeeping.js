@@ -23,6 +23,7 @@ import {
   chatIds, chatInfo, chatFiles, wholeChat, readChat, readOlder, writeChat, writeOlder, readSummary, writeSummary,
   spoken, said, stampMessages, safeId
 } from './chats.js';
+import { parseJson, writeJsonAtomic } from './util.js';
 
 const IDLE_MS = 10 * 60e3;       // quiet this long before any housekeeping
 const SCAN_EVERY = 6 * 3600e3;   // look for old things at most this often
@@ -42,12 +43,7 @@ const mtime = (p) => { try { return fs.statSync(p).mtimeMs; } catch { return 0; 
 const dateOf = (ms) => new Date(ms).toISOString().slice(0, 10);
 
 // Pulls the first JSON object out of a model's answer.
-export function parseJson(text) {
-  const s = String(text || '');
-  const a = s.indexOf('{'), b = s.lastIndexOf('}');
-  if (a < 0 || b <= a) return null;
-  try { return JSON.parse(s.slice(a, b + 1)); } catch { return null; }
-}
+export { parseJson };
 
 // Memory lines are "- fact (date)" or "- fact (date) [topic: Name]". Repeats compare without the date and tag.
 const memKey = (line) => normName(line.replace(/^\s*-\s*/, '').replace(/\[(?:topic|project):[^\]]*\]|\[always\]/gi, '').replace(/\(\d{4}-\d{2}-\d{2}\)/g, ''));
@@ -89,7 +85,7 @@ export class Housekeeper {
     try { s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8')); } catch {}
     return { pins: { chats: [], pictures: [], ...(s.pins || {}) }, kept: s.kept || {}, lastScan: s.lastScan || 0, lastAsk: s.lastAsk || 0, lastRun: s.lastRun || 0 };
   }
-  saveState(s) { fs.mkdirSync(this.cfg.dataDir, { recursive: true }); fs.writeFileSync(this.stateFile, JSON.stringify(s, null, 1)); }
+  saveState(s) { writeJsonAtomic(this.stateFile, s); }
   log(text) { this.brain.log('housekeeping', text); }
 
   pin(kind, id, on) {
@@ -373,7 +369,7 @@ export class Housekeeper {
     } catch { /* no brain right now: keep the title and dates only */ }
     const list = this.summaries();
     list.unshift({ id, title: all.length ? chatTitleOf(all) : id, summary: summary || '(Bob had no brain loaded when this chat was tidied, so only its title and dates were kept.)', from: all[0]?.at || 0, to: all.at(-1)?.at || 0, removed: Date.now() });
-    fs.writeFileSync(this.summariesFile, JSON.stringify(list.slice(0, 2000)));
+    writeJsonAtomic(this.summariesFile, list.slice(0, 2000), 0);
     return summary;
   }
 

@@ -7,7 +7,7 @@ import { plan, safeToRemove, startUninstall, programDir } from '../src/uninstall
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-rm-'));
-const home = path.join(tmp, 'Agent 00');
+const home = path.join(tmp, 'Bob home');
 const app = path.join(home, 'Bob app');
 fs.mkdirSync(path.join(app, 'resources', 'app'), { recursive: true });
 fs.writeFileSync(path.join(app, 'Bob.exe'), 'MZ');

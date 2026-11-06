@@ -56,9 +56,11 @@ const ctx = { roles, models, brains: { small: 'gemma4:e4b' }, embed: '', selecte
 
 // ---- starter sets ----
 {
-  const packs = catalog.packs;
+  const allPacks = catalog.packs;
+  const packs = allPacks.filter((p) => !p.arm); // a PC's or a Mac's sets; the ARM board sets are checked below
   const base = ['gemma4-e4b', 'kokoro-v1', 'nomic-embed-text'];
   check('five starter sets: 16, 8, 6 GB, built-in graphics and processor only', packs.map((p) => p.id).join() === 'big,mid,small,shared,cpu');
+  check('two ARM board sets after them: 8 GB, then 4 GB', allPacks.filter((p) => p.arm).map((p) => p.id).join() === 'pi8,pi4');
   check('every set includes the processor base (brain, voice, memory)', packs.every((p) => base.every((id) => p.models.includes(id))));
   check('every model in a set is in the catalog', packs.every((p) => p.models.every((id) => catalog.models.some((m) => m.id === id))));
   check('every set model is free for commercial use', packs.every((p) => p.models.every((id) => catalog.models.find((m) => m.id === id).commercial === true)));

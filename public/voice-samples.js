@@ -1,7 +1,7 @@
 // "Hear a sample" buttons. Nothing is loaded until a button is clicked: Bob plays a sample he has
 // (or makes one with the voice engine on this PC); for a voice that isn't on the PC yet he hands back
 // the publisher's own sample address, and only then does the window load it.
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+import { esc } from './util.js';
 export const SAMPLE_LINE = "Hello, I'm Bob. This is how I'll sound when I read my replies out loud.";
 
 export function sampleButton(engine, voice, label = 'Hear a sample', hint = '') {

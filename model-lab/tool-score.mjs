@@ -1,0 +1,116 @@
+// Tool score: how often a model makes the same tool decision as the full Qwen3.6 did, in real Bob conversations.
+// Uses the 5% of lessons that the forge holds out of training (same id hash as pod/data.py), replayed turn by turn with
+// the full history, Bob's real system prompt and the tools that were loaded at that moment. Each assistant turn is one
+// question: the right tool (same tool names as the original), the right arguments too, or correctly no tool at all.
+// The original answers came from the full Qwen3.6 itself, so this measures agreement with the teacher, not truth.
+//
+// node tool-score.mjs --models "full=<path>/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf,riker=<path>/24Bob-Q4_K_M.gguf" [--lessons out\lessons]
+//      [--llama <folder>] [--ctx 16384] [--experts 8] [--quick] [--no-think] [--extra "--n-cpu-moe 20"]
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { opts, locate, startServer, chat, stamp, readJsonl, moeShape } from './common.mjs';
+
+const o = opts({ ctx: 16384 });
+const L = locate(o);
+const lessonsDir = o.lessons || path.join(L.out, 'lessons');
+const HOLDOUT = 0.05;
+const isHoldout = (id) => parseInt(crypto.createHash('md5').update(String(id)).digest('hex').slice(0, 8), 16) / 0xFFFFFFFF < HOLDOUT;
+
+const sets = JSON.parse(fs.readFileSync(path.join(lessonsDir, 'toolsets.json'), 'utf8'));
+let lessons = readJsonl(path.join(lessonsDir, 'lessons.jsonl')).filter((l) => l.idea !== undefined && isHoldout(l.idea) && l.messages?.some((m) => m.role === 'assistant'));
+if (o.quick) lessons = lessons.filter((_, i) => i % 5 === 0);
+if (!lessons.length) { console.error(`no held-out lessons in ${lessonsDir}`); process.exit(1); }
+const models = String(o.models || '').split(',').map((s) => s.trim()).filter(Boolean).map((s) => { const i = s.indexOf('='); return i > 0 ? { name: s.slice(0, i), file: s.slice(i + 1) } : { name: path.basename(s, '.gguf'), file: s }; });
+if (!models.length) { console.error('--models "label=path.gguf,label2=path2.gguf" is needed'); process.exit(1); }
+for (const m of models) if (!fs.existsSync(m.file)) { console.error(`${m.name}: ${m.file} not found`); process.exit(1); }
+const extra = o.extra ? String(o.extra).split(/\s+/).filter(Boolean) : [];
+console.log(`${lessons.length} held-out lessons, ${lessons.reduce((n, l) => n + l.messages.filter((m) => m.role === 'assistant').length, 0)} assistant turns`);
+
+// ---- turning a saved lesson into the request the model sees at turn k ----
+function history(lesson, k) {
+  // messages before the k-th assistant turn, in OpenAI shape; system from the tool set of the first assistant turn
+  let system = null, tools = null, seen = 0;
+  const out = [];
+  for (const m of lesson.messages) {
+    if (m.role === 'assistant') {
+      if (system === null && sets[m.set]) { system = sets[m.set].system; tools = sets[m.set].tools; }
+      if (seen === k) break;
+      seen++;
+      out.push({ role: 'assistant', content: m.content || '', ...(m.tool_calls?.length ? { tool_calls: m.tool_calls.map((c, i) => ({ id: c.id || `call_${i}`, type: 'function', function: { name: c.function.name, arguments: typeof c.function.arguments === 'string' ? c.function.arguments : JSON.stringify(c.function.arguments || {}) } })) } : {}) });
+    } else if (m.role === 'tool') out.push({ role: 'tool', tool_call_id: m.tool_call_id || 'call_0', name: m.name, content: String(m.content || '') });
+    else out.push({ role: 'user', content: m.content || '' });
+  }
+  if (system === null) return null;
+  return { messages: [{ role: 'system', content: system }, ...out], tools };
+}
+const norm = (v) => (typeof v === 'string' ? v.trim().toLowerCase().replace(/\s+/g, ' ') : JSON.stringify(v));
+function parseArgs(a) { if (a && typeof a === 'object') return a; try { return JSON.parse(a || '{}'); } catch { return { input: String(a) }; } }
+function sameArgs(want, got) {
+  // every argument the original gave must be there with the same value (extra optional ones are fine); long free text only needs to overlap
+  for (const [k, v] of Object.entries(want)) {
+    if (!(k in got)) return false;
+    const a = norm(v), b = norm(got[k]);
+    if (a === b) continue;
+    if (a.length > 40 && b.length > 40) { const wa = new Set(a.split(/\W+/)); const hit = b.split(/\W+/).filter((w) => wa.has(w)).length; if (hit / wa.size >= 0.6) continue; }
+    return false;
+  }
+  return true;
+}
+
+async function score(m) {
+  const shape = moeShape(m.file);
+  const srv = await startServer({ server: L.server, model: m.file, mmproj: null, ctx: Number(o.ctx), extra: [...extra, ...(o.experts && shape.key ? ['--override-kv', `${shape.key}=int:${o.experts}`] : [])], logFile: path.join(L.out, 'llama-server-lab.log') });
+  const r = { name: m.name, file: m.file, toolTurns: 0, rightTool: 0, rightArgs: 0, noToolTurns: 0, rightNoTool: 0, errors: 0, tps: [], misses: [] };
+  const t0 = Date.now();
+  try {
+    let done = 0;
+    for (const l of lessons) {
+      const nTurns = l.messages.filter((x) => x.role === 'assistant').length;
+      for (let k = 0; k < nTurns; k++) {
+        const h = history(l, k); if (!h) continue;
+        const want = l.messages.filter((x) => x.role === 'assistant')[k];
+        const wantCalls = (want.tool_calls || []).map((c) => ({ name: c.function.name, args: parseArgs(c.function.arguments) }));
+        const think = o['no-think'] ? false : Boolean(l.think);
+        let msg, timings;
+        try { ({ msg, timings } = await chat(srv.url, { messages: h.messages, tools: h.tools, think, max: think ? 6000 : 1500, temperature: 0 })); }
+        catch (e) { r.errors++; r.misses.push(`${l.idea}/${k}: error ${e.message.slice(0, 80)}`); continue; }
+        if (timings?.predicted_per_second) r.tps.push(timings.predicted_per_second);
+        const got = (msg.tool_calls || []).map((c) => ({ name: c.function?.name, args: parseArgs(c.function?.arguments) }));
+        if (!wantCalls.length) {
+          r.noToolTurns++;
+          if (!got.length) r.rightNoTool++; else r.misses.push(`${l.idea}/${k}: expected no tool, got ${got.map((g) => g.name).join(',')}`);
+          continue;
+        }
+        r.toolTurns++;
+        const wantNames = [...new Set(wantCalls.map((c) => c.name))].sort().join(','), gotNames = [...new Set(got.map((c) => c.name))].sort().join(',');
+        if (wantNames !== gotNames) { r.misses.push(`${l.idea}/${k}: wanted ${wantNames}, got ${gotNames || 'no tool'}`); continue; }
+        r.rightTool++;
+        const argsOk = wantCalls.every((w) => got.some((g) => g.name === w.name && sameArgs(w.args, g.args)));
+        if (argsOk) r.rightArgs++; else r.misses.push(`${l.idea}/${k}: ${wantNames} right, arguments differ: wanted ${JSON.stringify(wantCalls.map((c) => c.args)).slice(0, 160)} got ${JSON.stringify(got.map((c) => c.args)).slice(0, 160)}`);
+      }
+      if (++done % 20 === 0) console.log(`  ${m.name}: ${done}/${lessons.length} lessons, tool ${r.rightTool}/${r.toolTurns}, args ${r.rightArgs}/${r.toolTurns}, no-tool ${r.rightNoTool}/${r.noToolTurns}`);
+    }
+  } finally { await srv.stop(); }
+  r.tpsAvg = r.tps.length ? r.tps.reduce((a, b) => a + b, 0) / r.tps.length : 0; delete r.tps;
+  r.minutes = (Date.now() - t0) / 60000; r.loadSec = srv.loadSec;
+  r.total = r.rightArgs + r.rightNoTool; r.totalN = r.toolTurns + r.noToolTurns;
+  return r;
+}
+
+const results = [];
+for (const m of models) {
+  console.log(`\n--- ${m.name} (${m.file}) ---`);
+  const r = await score(m); results.push(r);
+  console.log(`${m.name}: right tool ${r.rightTool}/${r.toolTurns}, right arguments ${r.rightArgs}/${r.toolTurns}, correctly no tool ${r.rightNoTool}/${r.noToolTurns}, overall ${r.total}/${r.totalN}, ${r.tpsAvg.toFixed(1)} tok/s, ${r.minutes.toFixed(0)} min`);
+}
+const when = stamp();
+const pct = (a, b) => `${a}/${b} (${Math.round((100 * a) / Math.max(b, 1))}%)`;
+fs.writeFileSync(path.join(L.out, `tool-score-${when}.json`), JSON.stringify({ lessons: lessons.length, experts: o.experts || 'default', think: o['no-think'] ? 'off' : 'as recorded', results }, null, 2));
+const md = [`# Tool score, ${when}`, '', `${lessons.length} held-out Bob conversations (never trained on), replayed turn by turn with full history. Right tool = same tool names as the full Qwen3.6 chose; right arguments = same values too; no tool = the turn was a plain reply and the model also made no call. Thinking ${o['no-think'] ? 'off' : 'as in each lesson'}${o.experts ? `, ${o.experts} experts per word` : ''}.`, '',
+  '| Model | Right tool | Right arguments | Correctly no tool | Overall | Speed | Load |', '|---|---|---|---|---|---|---|',
+  ...results.map((r) => `| ${r.name} | ${pct(r.rightTool, r.toolTurns)} | ${pct(r.rightArgs, r.toolTurns)} | ${pct(r.rightNoTool, r.noToolTurns)} | ${pct(r.total, r.totalN)} | ${r.tpsAvg.toFixed(1)} tok/s | ${r.loadSec.toFixed(0)} s |`), '',
+  '## Misses', ...results.flatMap((r) => [`### ${r.name}`, ...r.misses.slice(0, 200).map((x) => `- ${x}`), r.misses.length > 200 ? `- … ${r.misses.length - 200} more` : '', ''])].join('\n');
+fs.writeFileSync(path.join(L.out, `tool-score-${when}.md`), md);
+console.log(`\nReport: ${path.join(L.out, `tool-score-${when}.md`)}`);
+process.exit(0);

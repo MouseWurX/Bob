@@ -6,8 +6,8 @@ import { makeSortable, neighbour, taskRow, downloadRow } from './lists.js';
 import { currentStyle } from './themes.js';
 import { catMoment } from './patches.js';
 import { createBrainBay } from './brain-swap.js';
+import { esc } from './util.js';
 
-const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -24,6 +24,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   setInterval(() => { if (!jobs.some((j) => j.state === 'waiting' || j.state === 'working')) draw(); }, 600000).unref?.();
   const tl = $('nowTasks'), dl = $('nowDl');
   let gpuTimer = null;
+  let netTimer = null, netSoon = null; // 1.5.123 Bob-Net party (the section below)
   // 1.5.30: the readings' state lives up here too (pollGpu() can run before the section below; see 1.5.26).
   let lastGpu = null, showGraph = false, lastOk = 0;
   const hist = []; // the last 5 minutes of samples, for the graph (kept in this window only)
@@ -42,7 +43,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
     body.classList.toggle('right-hidden', hidden);
     $('foldRight').setAttribute('aria-expanded', String(!hidden));
     if (remember && !narrow()) store.set('bob-right', hidden ? 'hidden' : 'open');
-    if (!hidden) { draw(); pollGpu(); }
+    if (!hidden) { draw(); pollGpu(); pollNet(); }
   }
   setLeft(store.get('bob-left', window.innerWidth < 700 ? 'folded' : 'open') === 'folded', false);
   // A narrow window starts with the panel tucked away, whatever was remembered, so it never covers the chat by surprise.
@@ -273,6 +274,47 @@ export function createLayout({ post, openTasks, openDownloads }) {
     // the visibilitychange listener below starts the readings again the moment he can.
     gpuTimer = setTimeout(pollGpu, brainSt?.session === 'Gaming' ? 15000 : 5000);
   }
+  // ---- Bob-Net (1.5.123): your other Bobs, and what each is doing for the others right now ----
+  // Hidden until Bob-Net is in use (a Bob on the list, or Lend / Take jobs on), so a fresh Bob shows nothing new.
+  // Polled every 15 s while the pane is open (30 s in Gaming), and straight away after a lend, a borrow, a job sent away
+  // or a pairing (net() below, from app.js). Colour never stands alone: the words say the same thing.
+  const NEED = { pictures: 'a picture', video: 'a clip', music: 'music', sfx: 'a sound', web: 'web research', think: 'some thinking' };
+  const CAN = { pictures: 'pictures', video: 'clips', music: 'music', sfx: 'sounds', web: 'web research', think: 'thinking' };
+  const WHY = { gaming: 'gaming, so not lending', busy: 'busy with his own job', off: 'not lending', 'not reachable': 'not reachable', 'door closed': 'door shut over there', 'passcode not accepted': 'passcode not accepted', 'too slow': 'too slow last time', 'too long': 'no room for this chat', 'no brain': 'no quick brain' };
+  const sinceShort = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? 'just now' : m === 1 ? '1 min ago' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+  const netRow = (b) => {
+    let state, tone;
+    if (b.thinking) { state = 'thinking a reply for me'; tone = 'busy'; }
+    else if (b.doing) { state = `making ${NEED[b.doing] || b.doing} for me`; tone = 'busy'; }
+    else if (b.ok === true) { state = `ready${b.brain ? `, ${b.brain}` : ''}`; tone = 'ok'; }
+    else if (b.ok === false) { state = WHY[b.why] || b.why || 'not answering'; tone = 'down'; }
+    else { state = 'not checked yet'; tone = ''; }
+    const extra = [];
+    if (b.jobs?.length) extra.push(`takes ${b.jobs.map((j) => CAN[j] || j).join(', ')}`);
+    if (b.lastUsed) extra.push(`thought for me ${sinceShort(Date.now() - b.lastUsed)}`);
+    if (b.passAlong) extra.push('passes Bob-Net along');
+    return `<li class="titem net"><span class="net-dot ${tone}" aria-hidden="true"></span><span class="ttext"><strong>${b.device === 'phone' ? '📱' : '💻'} ${esc(b.name)}</strong> · ${esc(state)}${extra.length ? `<br><span class="muted">${esc(extra.join(' · '))}</span>` : ''}</span></li>`;
+  };
+  function drawNet(v) {
+    const sec = $('nowNet');
+    if (!sec) return;
+    sec.hidden = !v?.on;
+    if (!v?.on) return;
+    const h = v.here, doing = [];
+    if (h.lending) doing.push(`thinking a reply for ${h.lending.for}`);
+    for (const g of h.guests || []) doing.push(`${g.state === 'working' ? 'making' : 'about to make'} ${NEED[g.need] || g.need} for ${g.from}`);
+    const shares = [h.lend && 'lends his brain', h.takeJobs && 'takes jobs', h.passAlong && 'passes Bob-Net along'].filter(Boolean);
+    const mine = `<li class="titem net me"><span class="net-dot ${doing.length ? 'busy' : h.door ? 'ok' : ''}" aria-hidden="true"></span><span class="ttext"><strong>🏠 This Bob (${esc(h.name)})</strong> · ${esc(doing.join('; ') || (h.door ? 'nothing for the others right now' : 'door shut: the others can\'t reach him'))}${shares.length ? `<br><span class="muted">${esc(shares.join(' · '))}</span>` : ''}</span></li>`;
+    $('nowNetList').innerHTML = mine + (v.bobs || []).map(netRow).join('');
+  }
+  async function pollNet() {
+    clearTimeout(netTimer);
+    if (body.classList.contains('right-hidden') || document.hidden) return;
+    try { drawNet(await (await fetch('/api/bob-net/party')).json()); } catch {}
+    netTimer = setTimeout(pollNet, brainSt?.session === 'Gaming' ? 30000 : 15000);
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) pollNet(); });
+
   // A fresh brain reading also refreshes the meters, so both are read at the same moment.
   const bay = createBrainBay($('brainBay')); // 1.5.49: a short scene whenever a brain or the picture model comes or goes
   window.addEventListener('bob-brain-status', (e) => { brainSt = e.detail; try { bay(brainSt); } catch {} if (Date.now() - gpuAt > 1500) pollGpu(); else brainLine(); });
@@ -291,6 +333,8 @@ export function createLayout({ post, openTasks, openDownloads }) {
     },
     // "Open Now running when a task needs me" (Style page): off by default.
     needsYou() { if (currentStyle()?.openNowOnNeed === true && body.classList.contains('right-hidden')) setRight(false, false); },
-    showRight() { setRight(false); }
+    showRight() { setRight(false); },
+    // 1.5.123: something on Bob-Net changed (a lend, a borrow, a job sent away, a pairing): a fresh look, soon.
+    net() { clearTimeout(netSoon); netSoon = setTimeout(pollNet, 800); }
   };
 }

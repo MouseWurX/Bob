@@ -132,7 +132,7 @@ const un = fs.readFileSync(new URL('../src/uninstall.js', import.meta.url), 'utf
 check('Remove Bob deletes the Bob schedules task before the removal window starts', /import \{ removeTaskCommand \} from '\.\/schedules\.js'/.test(un) && un.indexOf('removeTaskCommand(env)') > 0 && un.indexOf('removeTaskCommand(env)') < un.indexOf('launchCommand(args)'));
 if (process.platform === 'win32') {
   const { startUninstall } = await import('../src/uninstall.js');
-  const home = path.join(tmp, 'Agent 00'); const app = path.join(home, 'Bob app');
+  const home = path.join(tmp, 'Bob home'); const app = path.join(home, 'Bob app');
   fs.mkdirSync(path.join(app, 'resources', 'app'), { recursive: true }); fs.writeFileSync(path.join(app, 'Bob.exe'), 'MZ');
   const calls = [];
   startUninstall({ agentDir: home, innDir: path.join(home, 'inn'), dataDir: path.join(home, 'inn', 'bob'), bobModelsDir: path.join(home, 'models', 'bob') }, {}, { env: { BOB_APP_DIR: app, APPDATA: path.join(tmp, 'R'), SystemRoot: 'C:\\Windows' }, spawnImpl: (exe, args) => { calls.push({ exe, args }); return { unref() {}, on() {} }; } });

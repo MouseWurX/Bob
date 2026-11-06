@@ -10,7 +10,7 @@ export const SESSIONS = {
   // 1.5.23: Deep thought is gone (Effort Medium/High does that job); Light is now Gaming, and keeps Effort on Low.
   // Gaming (some games use 14 of 16 GB): nothing loads on the card. Chat and hearing run on the processor;
   // pictures, video, music and Medium-and-up jobs wait in Tasks until the session changes.
-  light: { label: 'Gaming', icon: '🎮', what: 'Keeps the graphics card for your games. Bob chats and listens on the processor with a small brain, which usually starts answering within a few seconds. Pictures and big jobs wait until you switch back. How much of the card he may borrow is set in Settings, Engines & speed (Automatic to start with).', whatMac: 'Keeps memory free for your games. Bob chats and listens on the processor with a small brain, which usually starts answering within a few seconds. Pictures and big jobs wait until you switch back.', brain: 'gaming', cpu: true, effortLow: true }
+  light: { label: 'Gaming', icon: '🎮', what: 'Keeps the graphics card for your games. Bob chats and listens on the processor with a small brain, which usually starts answering within a few seconds. Pictures and big jobs wait until you switch back. How much of the card he may borrow is set in Settings, Show advanced settings, Speed & memory (Automatic to start with).', whatMac: 'Keeps memory free for your games. Bob chats and listens on the processor with a small brain, which usually starts answering within a few seconds. Pictures and big jobs wait until you switch back.', brain: 'gaming', cpu: true, effortLow: true }
 };
 
 // Which model each session's brain is. the user can change these on the Sessions tab; the defaults come
@@ -54,10 +54,10 @@ export function sessionCtx(cfg, id, hat) {
 // Setting quickOnCpu (Settings > Everyday): OFF unless switched on. Measured 2026-11-02 on a 9800X3D (gemma4:e4b, 4.3K-token
 // prompt): about 31 s to the first word on the processor vs about 4 s on the card, because reading the prompt is slow there.
 export const quickOnCpu = (cfg) => cfg?.quickOnCpu === true;
-// 1.5.63 / 1.5.66: Qwen3.6 35B-A3B, the owner's lineup (2026-11-03): the Coding copy thinks at every effort, the main
+// 1.5.63 / 1.5.66: Qwen3.6 35B-A3B, the lineup: the Coding copy thinks at every effort, the main
 // Brain (everyday chat) never thinks first. Both share one load of the same file instead of swapping between a
 // 32K and a longer load.
-// 1.5.86 (the owner's pick, 2026-11-04): 256K by default. Measured on a 16 GB card with q8_0 KV: 15.0 GB on the card
+// 1.5.86 (picked after the 256K test): 256K by default. Measured on a 16 GB card with q8_0 KV: 15.0 GB on the card
 // and 21.2 GB in RAM (128K: 14.9 / 20.4), 49.1 vs 50.2 tok/s on a short write, 55.4 vs 60.7 after 12K, and it found a
 // needle at 201K. --fit moves the extra experts (about 0.8 GB) to RAM. The 8 GB card (Q3) version stays at 128K
 // until someone tries 256K on a real small card.

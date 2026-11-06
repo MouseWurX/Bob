@@ -6,7 +6,12 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
+import android.net.Uri
 import android.os.Build
+import android.provider.MediaStore
+import android.util.Base64
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
 import android.webkit.JavascriptInterface
@@ -21,6 +26,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.net.URLEncoder
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
@@ -32,10 +39,13 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     private val net = NetBob(activity)
     private val app = activity.application as BobApp
     private val brain = app.brain.also { b -> b.listener = { send(JSONObject(it).put("event", "brain")) } }
+    init { app.pair.listener = { send(JSONObject().put("event", "pair").put("data", it)) } }
     private val listening = ConcurrentHashMap<String, Boolean>()
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var micCall: String? = null
+    private var photoCall: String? = null
+    @Volatile private var photo: ByteArray? = null // the picked photo, until it's sent or cleared
     private var pendingMicStart: (() -> Unit)? = null
     private var pendingNotify: (() -> Unit)? = null
     @Volatile private var inBackground = false
@@ -44,6 +54,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         const val MIC_REQUEST = 7001
         const val MIC_PERMISSION = 7002
         const val NOTIFY_PERMISSION = 7003
+        const val PHOTO_REQUEST = 7004
         const val CHANNEL = "bob"
     }
 
@@ -64,13 +75,42 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         scope.launch {
             try {
                 when (o.getString("op")) {
-                    // ---- Bobs on your network ----
+                    // ---- Bob-Net: other Bobs ----
                     "net.check" -> answer(id, JSONObject().put("base", NetBob.base(o.getString("address")) ?: JSONObject.NULL))
                     "net.login" -> answer(id, net.login(base(o), o.getString("code")))
                     "net.signedIn" -> answer(id, net.signedIn(base(o)))
                     "net.forget" -> { val b = base(o); listening[b] = false; net.forget(b); answer(id, true) }
                     "net.get" -> { val r = net.get(base(o), o.getString("path")); answer(id, JSONObject().put("status", r.status).put("body", r.body)) }
                     "net.post" -> { val r = net.post(base(o), o.getString("path"), o.optString("body", "{}")); answer(id, JSONObject().put("status", r.status).put("body", r.body)) }
+                    // ---- A photo for a Bob on your network to work on (Android's own photo picker: no permission needed) ----
+                    "photo.pick" -> activity.runOnUiThread {
+                        photoCall?.let { fail(it, "replaced") }
+                        photoCall = id
+                        runCatching { activity.startActivityForResult(Intent(MediaStore.ACTION_PICK_IMAGES).setType("image/*"), PHOTO_REQUEST) }
+                            .onFailure { photoCall = null; fail(id, "this phone has no photo picker") }
+                    }
+                    "photo.clear" -> { photo = null; answer(id, true) }
+                    "photo.upload" -> {
+                        val bytes = photo ?: throw IllegalStateException("no photo picked")
+                        val name = URLEncoder.encode(o.optString("name", "Photo from the phone").take(60), "UTF-8")
+                        val r = net.upload(base(o), "/api/refs?kind=chat&name=$name", bytes, "image/jpeg")
+                        if (r.status == 200) photo = null
+                        answer(id, JSONObject().put("status", r.status).put("body", r.body))
+                    }
+                    // ---- Pair with my other Bobs ----
+                    "pair.with" -> answer(id, app.pair.pairWith(o.getString("address")))
+                    "pair.answer" -> answer(id, app.pair.answer(o.getString("id"), o.getBoolean("yes")))
+                    "pair.waiting" -> answer(id, JSONArray(app.pair.waiting() + app.pair.takeMissed()))
+                    // ---- Save something Bob made on this phone (Pictures, Movies, Music or Download, in a Bob folder) ----
+                    "media.save" -> {
+                        var where = ""
+                        val ok = net.stream(base(o), o.getString("path"), o.optInt("timeoutMs", 60000).coerceIn(5000, 180000)) { s, mime, named ->
+                            where = saveToPhone(o.optString("name").ifBlank { named }, mime) { out -> s.copyTo(out) }
+                        }
+                        if (!ok) throw IllegalStateException("too big or gone")
+                        answer(id, where)
+                    }
+                    "media.saveData" -> answer(id, saveToPhone(o.getString("name"), o.getString("mime")) { out -> out.write(Base64.decode(o.getString("data"), Base64.DEFAULT)) })
                     "net.media" -> answer(id, net.media(base(o), o.getString("path")))
                     "net.listen" -> {
                         val b = base(o)
@@ -105,6 +145,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                         else { activity.runOnUiThread { app.lend.setOn(on) }; answer(id, true) }
                     }
                     "lend.newPasscode" -> answer(id, app.lend.newPasscode())
+                    "lend.passAlong" -> { app.lend.setPassAlong(o.getBoolean("on")); answer(id, true) } // Pass my Bob-Net along (off unless you turn it on)
                     "lend.screenOff" -> activity.runOnUiThread {
                         // Android's own list of apps allowed to work with the screen off: Bob, Battery, Unrestricted.
                         runCatching { activity.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
@@ -151,11 +192,68 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     }
 
     fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == PHOTO_REQUEST) {
+            val id = photoCall ?: return
+            photoCall = null
+            val uri = data?.data ?: return answer(id, null) // picker closed: nothing picked
+            scope.launch {
+                try { answer(id, readPhoto(uri)) } catch (e: Exception) { fail(id, "that picture wouldn't open") }
+            }
+            return
+        }
         if (requestCode != MIC_REQUEST) return
         val id = micCall ?: return
         micCall = null
         val text = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
         answer(id, text ?: "")
+    }
+
+    // Reads the picked photo upright (ImageDecoder follows the camera's rotation), at most 2048 px on its long side,
+    // as a JPEG kept for photo.upload. The page gets a small preview only.
+    private fun readPhoto(uri: Uri): JSONObject {
+        fun decode(max: Int): Bitmap = ImageDecoder.decodeBitmap(ImageDecoder.createSource(activity.contentResolver, uri)) { d, info, _ ->
+            val w = info.size.width; val h = info.size.height
+            val scale = minOf(1.0, max.toDouble() / maxOf(w, h))
+            d.setTargetSize(maxOf(1, (w * scale).toInt()), maxOf(1, (h * scale).toInt()))
+            d.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+        }
+        fun jpeg(b: Bitmap, q: Int) = ByteArrayOutputStream().also { b.compress(Bitmap.CompressFormat.JPEG, q, it) }.toByteArray()
+        val big = decode(2048)
+        val bytes = jpeg(big, 90)
+        big.recycle()
+        if (bytes.size > 14_000_000) throw IllegalStateException("too big")
+        photo = bytes
+        val small = decode(256)
+        val preview = "data:image/jpeg;base64," + Base64.encodeToString(jpeg(small, 75), Base64.NO_WRAP)
+        small.recycle()
+        return JSONObject().put("preview", preview).put("bytes", bytes.size)
+    }
+
+    // No storage permission needed: Android lets an app add its own files to the shared folders.
+    /** Makes the file in the phone's media library and lets [write] fill it as a stream (a long clip never sits in memory). */
+    private fun saveToPhone(nameIn: String, mimeIn: String, write: (java.io.OutputStream) -> Unit): String {
+        val name = nameIn.replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001f]"), "_").trim().take(120).ifEmpty { "bob-file" }
+        val ext = name.substringAfterLast('.', "").lowercase()
+        val mime = if (mimeIn.isBlank() || mimeIn == "application/octet-stream") android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream" else mimeIn
+        val (collection, folder) = when {
+            mime.startsWith("image/") -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI to "Pictures/Bob"
+            mime.startsWith("video/") -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI to "Movies/Bob"
+            mime.startsWith("audio/") -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI to "Music/Bob"
+            else -> MediaStore.Downloads.EXTERNAL_CONTENT_URI to "Download/Bob"
+        }
+        val values = android.content.ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.MIME_TYPE, mime)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val cr = activity.contentResolver
+        val uri = cr.insert(collection, values) ?: throw IllegalStateException("the phone wouldn't make the file")
+        try {
+            cr.openOutputStream(uri)?.use { write(it) } ?: throw IllegalStateException("the phone wouldn't open the file")
+            cr.update(uri, android.content.ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+        } catch (e: Exception) { cr.delete(uri, null, null); throw e }
+        return "$folder/$name"
     }
 
     fun onPermission(requestCode: Int, grants: IntArray) {
@@ -206,6 +304,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
 
     fun close() {
         brain.listener = null // the phone brain stays (it may be lending); only this screen goes
+        app.pair.listener = null
         listening.keys.forEach { listening[it] = false }
         tts?.shutdown()
         scope.cancel()

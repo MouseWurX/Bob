@@ -6,7 +6,7 @@ Bob is a helper who lives on your own PC. He chats, plans, researches, writes an
 
 Two promises run through everything Bob does:
 
-- **Nothing leaves your PC unless you say so.** Bob only goes online to download something you picked, to search the web if you turned on **Let Bob search the web**, or to use a cloud helper you switched on yourself.
+- **Nothing leaves your PC unless you say so.** Bob only goes online to download something you picked, to search the web if you turned on **Let Bob search the web**, to use a cloud helper you switched on yourself, or to run a job on a rented brain you hired with a card (see Optional extras).
 - **Nothing extra is switched on until you switch it on.** Anything optional starts off. Bob may suggest something, but you decide.
 
 ---
@@ -14,10 +14,11 @@ Two promises run through everything Bob does:
 ## 1. Getting started
 
 1. Download Bob's zip from the Releases page. Right-click it, choose Properties, tick **Unblock**, then unzip it somewhere you'll keep and double-click **Bob.exe**.
-2. Bob opens in his own window. The first time, he looks at your graphics card and suggests a **starter set**: the models that suit your PC.
-3. Click **Equip starter set**, look over the list, and confirm. Every download shows a progress bar, its size, its speed and how long is left.
-4. If you want Bob to look things up online, click **🌐 Web search** next to Effort, under the chat (the same switch, **Let Bob search the web**, is in Settings). It's off until you do.
-5. When the downloads finish, say hello. You can ask Bob himself how to set anything up: he knows all his settings and what's set right now.
+2. Bob opens in his own window. The first time, he looks at your graphics card and RAM and shows one list, **Get me ready**: the programs he runs on and a model for each job (chat, coding, pictures, picture edits, clips, his voice, memory), with his picks ticked. Every line has its own tick box and size. Music is listed too, unticked, since it's about 22 GB with its tools.
+3. Untick anything you don't want, then press **Get Bob ready**. The button shows the total and your free disk first. Every download shows a progress bar, its size, its speed and how long is left, and Bob puts each model in its slot himself when it's in. There's nothing to install by hand: if your PC has no Python for his voice or music, he gets his own copy (about 15 MB, kept in his folder).
+4. Skipped something? Ask for it anyway, say a clip, and Bob shows a **Set it up** card in the chat with what he needs and its size. One press gets it, and he carries on with your request by himself. If a setting is what's in the way (Let Bob search the web, a Hand that's off), the card switches just that setting on.
+5. If you want Bob to look things up online, click **🌐 Web search** next to Effort, under the chat (the same switch, **Let Bob search the web**, is in Settings). It's off until you do.
+6. When the downloads finish, say hello. You can ask Bob himself how to set anything up: he knows all his settings and what's set right now.
 
 You can close Bob while things download. Unfinished downloads wait, paused, and carry on when you press Resume.
 
@@ -25,7 +26,7 @@ You can close Bob while things download. Unfinished downloads wait, paused, and 
 
 - Windows 10 or 11 (64-bit).
 - **32 GB of memory (RAM)** is what the starter sets are planned around. Less can work for chat, but pictures and video need the room.
-- Space on your drive: about 8 GB for the basics, 30 to 60 GB if you want pictures and video too.
+- Space on your drive: it depends on your graphics card. Get me ready shows the total before anything downloads; on a 16 GB card the full set is about 105 GB, mostly pictures and clips, and smaller cards get smaller sets.
 - A graphics card is **optional**. Bob can chat, plan, research, read pictures and talk with no graphics card at all. An NVIDIA card makes him much faster and lets him paint and film.
 
 ---
@@ -38,7 +39,7 @@ Bob runs on Macs with Apple Silicon (M1 and newer), using the Mac's graphics (Me
 2. The first time, macOS says it can't check Bob (official Mac builds are ad-hoc signed: sealed so macOS can tell if a file was changed, but not with a paid Apple developer account, and that won't change). Open **System Settings > Privacy & Security**, scroll down and click **Open Anyway** next to Bob. Once only.
 3. Bob keeps his things in `~/Library/Application Support/Bob/home`.
 
-On a Mac, llama.cpp and stable-diffusion.cpp download as usual. whisper.cpp and Piper have no Mac builds Bob can use (hear through Ollama or a cloud helper; speak with Kokoro voices). Install FFmpeg (Homebrew) and LibreOffice yourself and Bob finds them. The Apps Hand, Defender scans, the Gaming card switch, Windows Task Scheduler, Check this replicant matrix and Update Bob are hidden; the Security Hand checks the firewall, FileVault, Gatekeeper, System Integrity Protection, login items and listening programs instead. To update, replace Bob in Applications with the newest zip; to remove him, drag him to the Bin (and the folder above, if you want everything gone).
+On a Mac, llama.cpp and stable-diffusion.cpp download as usual. whisper.cpp and Piper have no Mac builds Bob can use (hear through Ollama or a cloud helper; speak with Kokoro voices). Install FFmpeg (Homebrew) and LibreOffice yourself and Bob finds them. The Apps Hand, Defender scans, the Gaming card switch, Windows Task Scheduler, Check this replicant matrix is hidden (Update Bob works: it fetches the newest Mac zip from GitHub, checks it, and swaps it in on restart); the Security Hand checks the firewall, FileVault, Gatekeeper, System Integrity Protection, login items and listening programs instead. To update, use Settings, Update Bob, or replace Bob in Applications with the newest zip; to remove him, drag him to the Bin (and the folder above, if you want everything gone).
 
 ## 2. Finding your way around
 
@@ -63,15 +64,16 @@ Handy things in the chat:
 These open as a page in the middle of the window, in place of the chat. **← Back to chat** (or Esc, or Chat in the menu) takes you back. A bar along the top of the page, which stays put while you scroll, jumps between Equip Bob, the model pages, Style and Settings, so clicking Bob's picture gets you everywhere too.
 
 - **Get models:** Equip Bob, the model shops (Voice & conversation, Coding, Seeing pictures, Pictures & video) and **On this PC**.
-- **Settings** starts as one short page showing what's set now: Bob's voice (with **Play sample** and **Change**), his look, the colours, animations, the cat's name, one brain, launch on start-up, Projects, **Where Bob saves things**, **Let Bob search the web**, **Show Bob's plan before big jobs** and checking for updates (off unless you turn them on), and the version, graphics card and disk space, with **Check for updates**, **Run first-time setup** and **Check this replicant matrix**.
-- **Show advanced settings** (off unless you turn it on, and remembered) adds a search box and the rest: Brains (model roles, session brains, context), Voice details, Look & feel, Engines & speed, Connections (ComfyUI, cloud helpers), Hands, Housekeeping, Check-ins and Remove Bob. Longer explanations fold behind **More**.
+- **Settings** starts as one short page showing what's set now: Bob's voice (with **Play sample** and **Change**), his look, the colours, animations, the cat's name, one brain, launch on start-up, Projects, **Where Bob saves things**, **Let Bob search the web**, **Show Bob's plan before big jobs** and checking for updates (off unless you turn them on), and the version, graphics card and disk space, with **Check for updates**, **Run first-time setup**, **Save a help bundle** and **Check this replicant matrix**.
+- **Show advanced settings** (off unless you turn it on, and remembered) adds a search box and the rest: Brains (model roles, session brains, context), House style, Voice details, Look & feel, Speed & memory, Engines, Bob-Net (your phone and your other Bobs), Online services (cloud helpers, Telegram), Other apps (ComfyUI), Hands, Housekeeping, Check-ins and Remove Bob. Longer explanations fold behind **More**.
 
 ---
 
 ### Making Bob faster on your PC
 
+- **Save a help bundle** (Settings, This replicant matrix and updates) saves one zip for whoever is helping you get Bob working: a HANDOFF.md written for an AI agent (it links this repository and the exact version and says what to check in which order), every error and the last 3,000 lines of Bob's logbook, his settings without their secrets, this machine's facts, whether each engine starts, and the last three chats as a readout. If Bob's chat brain is loaded and idle it adds its own note about what it thinks is wrong; if not, the bundle is put together without any brain, so the button works on a broken Bob. The owner's name and user name, the home folder, the machine name, passcodes, API keys, bot tokens and Tailscale addresses are taken out first. You pick the folder; nothing is sent anywhere. Take the zip to your agent or attach it to an issue.
 - **Check this replicant matrix** (Settings, bottom of the Everyday page) looks for things that slow Bob down and shows how to fix each one: memory below its rated speed (turn on EXPO or XMP in the BIOS), an old NVIDIA driver, a laptop on battery, models on a slow drive, other apps holding graphics memory. Bob only looks; he never changes Windows or driver settings.
-- **Test Bob's speed** (Advanced, Engines & speed) times the first word and the full answer, and keeps your last results so you can compare before and after a change.
+- **Test Bob's speed** (Advanced, Speed & memory) times the first word and the full answer, and keeps your last results so you can compare before and after a change.
 - Three switches, off until you turn them on: **Get Bob ready while you type**, **Let games go first** and **Match picture settings to my graphics card**.
 
 ## 3. Equip Bob: choosing his models
@@ -118,6 +120,7 @@ Each slot only lists active models that can do its job: a brain that can't see p
 **📚 Brain catalogue** (on the Get models bar, or **📚 Get more** under any slot) is Bob's full list of models, sorted by job: Quick brain, Gaming, Brain, Deep thinking, Review, Coding, Office, Seeing pictures, Phone, then hearing, voices, pictures, video, music and memory.
 
 - Each model is one line: name, download size and a tag or two. The **i** holds the rest: what it's good at, how much graphics memory it wants, how it does on a 16 GB card, an 8 GB card, a 6 GB laptop card, no graphics card and an 8 GB phone, its licence and its source. The **↗** opens that source: the exact Hugging Face commit Bob downloads from, or the model's Ollama page.
+- **Families:** inside each job, models sit under one header per family (Qwen, Gemma, GPT-OSS...). Every family starts closed. Press a family's name to open its list, press it again to fold it away. The header shows how many models, the size range, **★ Recommended inside** when Bob's pick is inside, and how many are already on your PC. **Open all families** and **Close all** are at the top. Bob remembers which ones you left open. The brain menus in Settings, Brains are split by family too.
 - **Active** (on for models on your PC, off for the rest): active models show in the Equip Bob slots and the brain menus; the rest stay in the catalogue. Switching one off only hides it. It stays on your PC, and if it's equipped it stays equipped.
 - **Get** downloads it after asking first. **Equip** puts a model that's already here into that job's slot.
 - **New** marks a model Bob lists but doesn't recommend until it's been tried on a real PC.
@@ -165,6 +168,12 @@ Brains stay at Q4 or better, except on cards of 8 GB or less. There, when a brai
 
 ---
 
+### The chest
+
+Under Bob on the paper doll sits his **🧰 Chest**, with a number for how many things are in it. Press it and the Inventory on the right becomes the **Chest**: everything Bob has made or saved, newest first, each as a little picture (a thumbnail Bob makes once and keeps) with its name and when he made it. Songs, documents and other files show as an icon with their title. Click one (or Tab to it and press Enter) to open it beside the chat, the same as from Made by Bob.
+
+At the top of the chest, **New things are saved in** shows the folder new pictures, clips, songs and sounds go to. **Change folder…** opens your system's folder window and saves the pick straight away; it is the same setting as Settings, **Where Bob saves things**. **Use Bob's own folder** goes back and **Show in folder** opens the folder. Older things stay where they are. **Open Made by Bob** shows everything with filters and a search box. On the phone, menu, **Chest** shows the same list from your PC's Bob, with **Save to this phone**.
+
 ## 4. Bob's personality
 
 Bob has a dry, curious, slightly nerdy personality. You can turn that up or down.
@@ -199,7 +208,7 @@ At the bottom of the menu is the **session** picker. A session tells Bob how to 
 - **Art:** Bob keeps chatting on his Quick brain so the big graphics work (painting, video) gets the card.
 - **Coding:** the Coding brain leads.
 - **Office:** documents, spreadsheets and planning.
-- **Gaming:** keeps the graphics card for your games. How much of it Bob may borrow is set in **Gaming session: graphics card** (Settings, Show advanced settings, Engines & speed): Automatic (the starting position), Never use the card, or Always borrow a little. Bob chats and listens on the processor with a small brain (Qwen3 4B Instruct 2507 to start with), which usually starts answering within a few seconds. Now and then he adds a short, sleepy scripted aside. Pictures and big jobs wait until you switch back, and Effort stays on Low. Tip: turn on **Let games go first** (Settings, Show advanced settings, Engines & speed) so Bob uses fewer cores while you play.
+- **Gaming:** keeps the graphics card for your games. How much of it Bob may borrow is set in **Gaming session: graphics card** (Settings, Show advanced settings, Speed & memory): Automatic (the starting position), Never use the card, or Always borrow a little. Bob chats and listens on the processor with a small brain (Qwen3 4B Instruct 2507 to start with), which usually starts answering within a few seconds. Now and then he adds a short, sleepy scripted aside. Pictures and big jobs wait until you switch back, and Effort stays on Low. Tip: turn on **Let games go first** (Settings, Show advanced settings, Speed & memory) so Bob uses fewer cores while you play.
 
 Session: what the graphics card is kept for. Effort: how hard Bob works on each message.
 
@@ -286,9 +295,15 @@ If a slot is empty, Bob tells you which model would fill it.
 
 Ask for a song ("a chiptune boss theme, about a minute") or a sound effect ("a creaky wooden door"). It lands in the chat as a **song player**: a round ▶ button, its title, bars showing the song's shape (click or drag along them to jump around; arrow keys jump 5 seconds), the time, **Lyrics** if it has words, **Open in Made by Bob** for a bigger player in the side panel, and **Show in folder**. Several songs in one reply play one after another, and only one plays at a time. Each song is kept as a .wav file named with the date and its title.
 
+### Bob's home folder
+
+Bob's **home** is one folder with his models, the engines he runs on, his notes, chats and settings, apart from the program itself. You pick it when Bob is installed (the Windows install window asks first) or the first time Bob.exe, Bob.app or the AppImage opens: Bob suggests a `Bob` folder in your own user folder, and any drive works. He refuses temporary places like AppData, because a disk clean-up would take 10 to 60 GB of models with it. A cloud-synced folder (OneDrive, Dropbox, Google Drive, iCloud) is allowed, but Bob always recommends against it and says so wherever the folder is shown: every model would be uploaded, and a sync can break a model while he uses it. Pick a plain folder on the PC.
+
+Settings, **Bob's home folder** shows the folder and the size of the models (red if it is somewhere a clean-up tool empties, or a cloud-synced folder). To move it: **Browse…** or type a new folder, **Move here…**, then **Yes, move everything**. Bob closes, copies everything across (one quick rename on the same drive), and opens again from the new folder; the old one is removed only once every file is over. The same row sits at the top of the first-run screen under **My home folder**. Older Bobs that kept things in `%LOCALAPPDATA%\Bob` carry on from there until you move them.
+
 ### Where Bob saves things
 
-Settings, **Where Bob saves things** picks the folder for the pictures, clips, songs and sounds Bob makes. It starts as Bob's own folder (the one Made by Bob lists). **Browse…** picks another (or type one and press **Save here**), **Show in folder** opens it, and **Use Bob's own folder** goes back. Only new things go to a new folder; older ones stay put and still show in your chats. Tidy up only tidies Bob's own folder. If a picked folder goes missing (an unplugged drive), Bob saves in his own until it's back.
+Settings, **Where Bob saves things** picks the folder for the pictures, clips, songs and sounds Bob makes. It starts as Bob's own folder (the one Made by Bob lists). **Browse…** picks another (or type one and press **Save here**), **Show in folder** opens it, and **Use Bob's own folder** goes back. The chest under Bob on Equip Bob has the same folder with a **Change folder…** button. Only new things go to a new folder; older ones stay put and still show in your chats. Tidy up only tidies Bob's own folder. If a picked folder goes missing (an unplugged drive), Bob saves in his own until it's back.
 
 ---
 
@@ -309,7 +324,7 @@ Hands are Bob's way of doing things for you on your PC rather than just talking 
 Apps with an MCP add-on (Unreal Engine and Blender have them) can offer Bob their own tools. Ask things like "in Blender, add a cube at the origin and make it red", "what's in the scene?" or "list the actors in my Unreal level".
 
 - Install the app's MCP add-on and switch it on in the app first (for Blender: the Blender MCP add-on, Connect in its panel, plus uv: **Get uv for me** fetches it; for Unreal: your Unreal MCP plugin with the editor open).
-- Settings → Show advanced settings → Hands: switch on **Connected apps (MCP)**, then under **Connected apps** use **Add a connected app** (**Fill in for Blender** / **Fill in for Unreal Engine** fill in a common setup) or **Paste a setup from another app** (the "mcpServers" block from the add-on's instructions, Claude Desktop, Cline, Cursor or OpenCode). Press **Check**, then tick **On** for the app. New apps always come in switched off.
+- Settings → Show advanced settings → Hands: switch on **Connected apps (MCP)**, then under **Connected apps** open **More** and use **Add a connected app** (**Fill in for Blender** / **Fill in for Unreal Engine** fill in a common setup) or **Paste a setup from another app** (the "mcpServers" block from the add-on's instructions, Claude Desktop, Cline, Cursor or OpenCode). Press **Check**, then tick **On** for the app. New apps always come in switched off.
 - Bob starts or reaches an app only when a job needs it and lets it go after 5 minutes unused, when you switch it off, or when you press ✋ Hands.
 - Every step shows a card that says in plain words what Bob will do, with the exact tool and inputs under **Show details** (**Allow** / **Allow the rest of this job** / **Deny**), unless "Let Bob work without asking" is on. Tools that run code inside the app or can delete things show the code and always ask (no "rest of this job"). The hard limits apply to the inputs, including the blocked-commands list on any code a tool would run inside the app.
 - While **Don't send anything out** is on, Bob only talks to apps on this computer (localhost / 127.0.0.1).
@@ -319,7 +334,7 @@ Apps with an MCP add-on (Unreal Engine and Blender have them) can offer Bob thei
 
 Ask things like "turn report.docx into a PDF", "what's in budget.xlsx?", "make a 5-slide deck about the game", "set B4 to 1300 in budget.xlsx", "make this song an mp3" or "turn the clip into a GIF".
 
-- Documents, spreadsheets and slides use **LibreOffice** (free). If LibreOffice or Apache OpenOffice is already installed, Bob finds it. If not: Settings → Show advanced settings → Engines & speed → Engine downloads → **LibreOffice** (about 350 MB, pinned version and checksum, unpacked into Bob's folder with no admin rights).
+- Documents, spreadsheets and slides use **LibreOffice** (free). If LibreOffice or Apache OpenOffice is already installed, Bob finds it. If not: Settings → Show advanced settings → Engines → Engine downloads → **LibreOffice** (about 350 MB, pinned version and checksum, unpacked into Bob's folder with no admin rights).
 - Sound, video and WebP pictures use **FFmpeg**: one already on the PC, or **FFmpeg** in the same Engine downloads list (about 100 MB, pinned).
 - Other pictures (PNG, JPG, BMP, GIF, TIFF) need nothing extra: Windows does them.
 - Every file Bob makes or changes is on a card first, one row each (a new document in his own Documents folder, which shows in Made by Bob under Documents, needs no OK). Nothing is overwritten (report-2.pdf), conversions never change the original, and a file changed in place is backed up first.
@@ -353,7 +368,7 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 
 **Quarantine** (off unless you turn on "Let the reviewer quarantine Bob"): if Bob goes off track, his reviewer stops him and asks you whether to quarantine him. In quarantine he can talk but not act until you click **Release**.
 
-**Self-test:** Settings → Show advanced settings → Hands → **Run the self-test** checks, in a throwaway folder of dummy files, that the Recycle Bin and Undo, tidying, running a program and Stop all work on your PC. It shows a pass or fail list in plain words and removes the folder afterwards. No Hand needs to be on, and nothing of yours is touched.
+**Self-test:** Settings → Show advanced settings → Hands → Checks → **Run the self-test** checks, in a throwaway folder of dummy files, that the Recycle Bin and Undo, tidying, running a program and Stop all work on your PC. It shows a pass or fail list in plain words and removes the folder afterwards. No Hand needs to be on, and nothing of yours is touched.
 
 ---
 
@@ -371,11 +386,15 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 - **Let Bob learn how-tos**: after a job with a few steps goes well, Bob offers one card to keep the steps as a how-to, and follows them next time you ask for something like it. Nothing is kept until you press **Save how-to**. Edit or delete them in Settings, **📒 How-tos**. A how-to is plain text: Hands still ask for your OK as usual. They stay on your PC.
 - **Launch on start-up**: Bob opens when Windows starts.
 - **Cloud helpers**: hand a very big job to a paid online AI, using your own key. Bob asks you each time, because it costs money and sends that job off your PC.
+- **Rented brains** (Settings, Show advanced settings, Online services): hire a big brain for one job from a service you have an account with. Three kinds: pay per answer (OpenRouter, Together AI, Lambda, or any address plus key), RunPod serverless (per second, switches itself off) and a machine by the minute (RunPod, Vast.ai, Lambda; Bob starts and stops it, and it carries a timer so it stops on its own too). Set the **Spending limits** first: every one starts at $0 and nothing can be hired until they're set. Switch on **Let Bob hire from** a service (the first time, a card says what leaves your PC), add a rental (service plus model, and a card size for machines), and put it in the **🏗 Rented brain** slot on Equip Bob. Then use the **🏗 Rented brain** switch under the chat, or wait for Bob to offer it when a chat outgrows his brains here. Every hire starts from a **Hire it (about $…)** card that says the cost and exactly what leaves your PC: the chat of that job, the files you attached, Bob's instructions and what he remembers about you. His tools still run on your PC. Keys are environment variables Bob only reads (Mac and Linux: also `~/.config/bob/env`). Tasks shows the job as **Rented**; the Settings panel shows **Machines running** with **Stop everything now**. Bob's cost figures are estimates; the service's billing page is the real bill.
 - **Music and sound effects**: extra downloads for the audio tools.
 - **Extra voices.**
 - **Advanced workshop**: if you use ComfyUI, Bob can run its workflows for you.
-- **Let my other replicant matrices in** (Settings, Show advanced settings, Connections; off): Bob for Android, or your phone's browser, talks to Bob over Tailscale with a passcode. Make a passcode, add the address it shows to the phone, then restart Bob. Only Tailscale addresses get in.
+- **Let my other replicant matrices in** (Settings, Show advanced settings, Bob-Net; off): Bob for Android, or your phone's browser, talks to Bob over Tailscale with a passcode. Turn it on (the first time, it makes a passcode and shows it once), then add the address it shows to the phone. It works straight away, no restart (Bob listens on this replicant matrix's Tailscale addresses only, and picks Tailscale up within a minute if it connects later). On Windows, press **Let Tailscale through the firewall**: one Windows prompt adds the rule "Bob (Tailscale only)" for Bob's port, from Tailscale addresses (100.64.0.0/10) only; It also switches off any rule that blocks Bob's own program (Windows makes one if Cancel was clicked on its earlier question). **Remove the firewall rule** takes the rule away and switches those back on. On Linux with ufw or firewalld, Bob shows the one line to run. Only Tailscale addresses get in.
 - **Check for updates when Bob starts.** Updating always waits for your click.
+- **🧍 Make your own look** (Style, under Bob's look, and **Change his look** under the doll on Equip Bob): a character screen that builds Bob's avatar from parts (body: Man, Robot or Alien; build; hair style and colour; skin; beard; glasses; outfit and colour; armour; weapon; shield) with a live preview. **Wear this** makes it his look; it blinks and talks like every other look and shows under **Your own design**.
+- **🎲 Adventure** (menu page): a tabletop role-playing game with Bob as game master and a party of you plus your other Bobs. Nothing runs until you press **Start a new game**; the game master brain (Deep thinking, or the main Brain) loads for the game and is let go on Pause or End. One start card: setting, your character (with a look of its own from the character screen, any body, and **Save this character** for next time; Bob's avatar is never changed by the game), who plays (a Bob on your Bob-Net plays himself over there; a copy of Bob is played by the game master brain), how long, and **📖 Characters** (the bestiary: You = saved heroes, Party, Met = everyone the game master names, drawn as they appear, Enemies = the usual dozen with their hearts; the character screen also has monster bodies), and plot armour per character (None, Some, Lots, Legendary). Everyone has a turn in order. On your turn you get action cards (only the ones that fit), some with a second card (attacks your kit allows, your spells, your items, who's here, the ways out) and a Back button, then an optional line of flair. The app rolls d20 + a stat for every action: 15+ hits, 10-14 hits at a cost, under 10 misses. Loose rules: four stats, hearts not hit points, no inventory weight, no spell slots, no initiative; travel is one montage line. Campaigns are saved in their own files and continue from the start card. Not in the Gaming session.
+- **🧩 Games** (menu page): five small games Bob plays with you. The app runs the game and Bob only talks, so they play well on his quick brain, in the Gaming session (on the Gaming brain, on the processor) and on the phone. **Twenty questions** (either way round: the app picks the secret when it's Bob's, and checks your guess), **Hangman** (a word from a shelf you pick, seven lives, a Hint costs a life), **Word ladder** (four-letter words, one letter a step, every rung a real word; Hint, Back a rung, or climb together turn about), **Five letters** (a five-letter word in six tries, letters coloured green, yellow, grey; a Hint costs a try) and **Story dice** (six picture dice, a line each until every die is in; Wrap it up ends it, Bob writes the last line and a title). Nothing runs until you press **▶ Start**; the brain is let go when a game ends. A scoreboard counts wins per game. Settings (Show advanced settings, 🧩 Games): Which brain plays games (Quick brain) and How often Bob chips in (After every move).
 
 ---
 
@@ -413,6 +432,7 @@ The full glossary and an FAQ are in Help inside Bob (left menu, or F1).
 - **Graphics card (GPU) and graphics memory (VRAM):** the part of your PC that makes AI fast. The amount of graphics memory (6 GB, 8 GB, 16 GB) decides which models fit.
 - **RAM:** your PC's main memory. Bob can use it for parts of a model that don't fit on the graphics card. It works, but more slowly.
 - **Squeezed (GGUF) version:** a smaller copy of a model that fits small cards, with a little less detail.
+- **Model family:** models made by the same team the same way, like Qwen or Gemma, in many sizes. Each family has its own header in the Brain catalogue.
 - **Brain catalogue:** Bob's full list of models, sorted by job. **Active** models show in the slots and menus; the rest wait there.
 - **Engine:** the program that runs a kind of model, for example the painter engine for pictures. Bob offers it when a model needs it.
 - **Commercial use:** using what you make for money. All starter set models allow it. A few optional extras don't, and Bob marks those.

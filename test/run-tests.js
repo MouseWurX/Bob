@@ -33,7 +33,7 @@ fs.writeFileSync(path.join(tmp, 'config.json'), JSON.stringify(cfg));
   const sdir = path.join(tmp, 'Secrets');
   fs.mkdirSync(sdir);
   for (const f of ['local.properties', 'release.jks', '.env', 'notes.txt', 'google-services.json']) fs.writeFileSync(path.join(sdir, f), 'needle');
-  const gcfg = { readRoots: [sdir], readOnlyRoots: [], innDir: path.join(tmp, 'inn-x'), dataDir: path.join(tmp, 'inn-x', 'bob'), agentDir: path.join(tmp, 'Agent 00'), projects: { Secrets: sdir }, timeZone: 'America/Edmonton' };
+  const gcfg = { readRoots: [sdir], readOnlyRoots: [], innDir: path.join(tmp, 'inn-x'), dataDir: path.join(tmp, 'inn-x', 'bob'), agentDir: path.join(tmp, 'Bob home'), projects: { Secrets: sdir }, timeZone: 'America/Edmonton' };
   const gt = buildTools(gcfg);
   const refused = async (fnc) => { try { await fnc(); return false; } catch (e) { return /off-limits/.test(e.message); } };
   const listing = await gt.list_folder.run({ path: sdir });
@@ -48,7 +48,7 @@ fs.writeFileSync(path.join(tmp, 'config.json'), JSON.stringify(cfg));
   checkEarly(isSensitive(gcfg, path.join(gcfg.agentDir, 'open-webui-data', 'webui.db')), 'open-webui-data is off-limits');
   checkEarly(!isSensitive(gcfg, path.join(sdir, 'notes.txt')), 'ordinary files still readable');
   const { loadConfig } = await import('../src/config.js');
-  process.env.BOB_AGENT_DIR = path.join(tmp, 'Agent 00');
+  process.env.BOB_AGENT_DIR = path.join(tmp, 'Bob home');
   const lc = loadConfig();
   delete process.env.BOB_AGENT_DIR;
   checkEarly(lc.readOnlyRoots.some((r) => path.resolve(r) === path.resolve(here, '..')) && lc.readOnlyRoots.some((r) => /backup$/.test(r)), "Bob's folder and backup are read-only");
@@ -62,14 +62,14 @@ fs.writeFileSync(path.join(tmp, 'config.json'), JSON.stringify(cfg));
 
 const { server: mock, calls: mockCalls } = await startMockOllama(OLLAMA_PORT);
 const bob = spawn(process.execPath, [path.join(here, '..', 'src', 'server.js')], {
-  env: { ...process.env, BOB_CONFIG: path.join(tmp, 'config.json'), BOB_AGENT_DIR: path.join(tmp, 'Agent 00'), BOB_OLLAMA_URL: `http://127.0.0.1:${OLLAMA_PORT}`, BOB_PORT: String(BOB_PORT) },
+  env: { ...process.env, BOB_CONFIG: path.join(tmp, 'config.json'), BOB_AGENT_DIR: path.join(tmp, 'Bob home'), BOB_OLLAMA_URL: `http://127.0.0.1:${OLLAMA_PORT}`, BOB_PORT: String(BOB_PORT) },
   stdio: ['ignore', 'pipe', 'pipe']
 });
 bob.stderr.on('data', (d) => process.stderr.write(d));
 await new Promise((r) => bob.stdout.once('data', r));
 
 const base = `http://127.0.0.1:${BOB_PORT}`;
-const inn = path.join(tmp, 'Agent 00', 'inn');
+const inn = path.join(tmp, 'Bob home', 'inn');
 let failures = earlyFailures;
 const check = (ok, name) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`); if (!ok) failures++; };
 
@@ -232,7 +232,7 @@ try {
   const noHeader = await fetch(base + '/api/settings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"autostart":true}' });
   check(noHeader.status === 403, 'settings need the x-bob header');
   const shopList = await (await fetch(base + '/api/models')).json();
-  check(shopList.categories.length === 8 && shopList.models.length >= 10 && shopList.packs.length === 5, 'model shop lists categories, models and starter sets');
+  check(shopList.categories.length === 8 && shopList.models.length >= 10 && shopList.packs.length === 7, 'model shop lists categories, models and starter sets');
   check((await post('/api/models/download', { id: 'does-not-exist' })).status === 409, 'unknown model download refused');
   check((await post('/api/settings', { setupDone: true })).status === 200 && (await (await fetch(base + '/api/settings')).json()).setupDone === true, 'finishing setup is remembered');
   // Every setting the app changes goes through the server both ways (keep-alive was once dropped).

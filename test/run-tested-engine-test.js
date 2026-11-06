@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { installEngine, engineStatus, TESTED_LLAMA } from '../src/engines.js';
+import { installEngine, engineStatus, TESTED_LLAMA, ENGINES, engineFor } from '../src/engines.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let failures = 0;
@@ -28,8 +28,10 @@ check(asked.length === 1 && /releases\?per_page=15$/.test(asked[0]), '"Get newer
 await tryIt({ tag: 'b9999' });
 check(asked[0]?.endsWith('/releases/tags/b9999'), 'an explicit tag (the release bundler) still wins');
 asked.length = 0;
-try { await installEngine(cfg, 'sdcpp', { nvidia: true, pub: {}, tick: () => {} }); } catch {}
-check(/releases\?per_page=15$/.test(asked[0] || ''), 'other engines are unchanged (stable-diffusion.cpp still takes its newest build)');
+// stable-diffusion.cpp has no ARM Linux build, so on an ARM computer whisper.cpp stands in for "another engine".
+const other = engineFor(ENGINES.find((e) => e.id === 'sdcpp')).unavailable ? 'whispercpp' : 'sdcpp';
+try { await installEngine(cfg, other, { nvidia: true, pub: {}, tick: () => {} }); } catch {}
+check(/releases\?per_page=15$/.test(asked[0] || ''), `other engines are unchanged (${other} still takes its newest build)`);
 globalThis.fetch = realFetch;
 
 const st = engineStatus(cfg).find((e) => e.id === 'llamacpp');

@@ -7,7 +7,7 @@ Bob runs AI models on your own PC, and your PC has other jobs too: games, a brow
 
 This page explains what we did about both, with the numbers we measured. It's written for curious people and programmers. You don't need any of this to use Bob, because the defaults already do the right thing.
 
-**The reference PC** for every number here: Ryzen 7 9800X3D, RTX 5070 Ti (16 GB), 32 GB DDR5, NVMe SSD, Windows 11. Your numbers will differ, so Bob has a built-in **Test Bob's speed** button to measure your own (see [Measure it yourself](#measure-it-yourself)).
+**The replicant matrix** behind every number here: Ryzen 7 9800X3D, RTX 5070 Ti (16 GB), 32 GB DDR5, NVMe SSD, Windows 11. Your numbers will differ, so Bob has a built-in **Test Bob's speed** button to measure your own (see [Measure it yourself](#measure-it-yourself)).
 
 A few words used below:
 
@@ -28,7 +28,7 @@ A few words used below:
 | Gaming session, a 4,000-token chat, warm | (not usable) | **0.2 s / 2.8 s** |
 | 26B main brain, generation speed | 5 tok/s (spilled out of the card at 131K context) | **71 to 75 tok/s** (32K context, fits on the card) |
 | Quick replies on Low effort | about 200 tokens of thinking before the first word | no thinking step: the first word comes straight away |
-| Prompt reading on the 30B coding brain | about 1,500 tok/s | **about 2,800 tok/s** (engine tuning) |
+| Prompt reading on the old 30B coding brain (Qwen3 Coder) | about 1,500 tok/s | **about 2,800 tok/s** (engine tuning) |
 | Task queue file after a long day | 6.8 MB | **0.23 MB** |
 | Graphics memory Bob holds while idle | a whole brain, all day | **nothing** (Free memory when Bob is idle, on by default) |
 
@@ -38,7 +38,7 @@ In the Gaming session the brain lives in system RAM and thinks on the processor.
 
 ## Picking the main brains
 
-The everyday, Coding, Office and Deep thinking brains were each picked in a race against the brain they'd replace, on the reference PC. Full tables, settings and caveats: **[Brain races](BRAIN-RACES.md)**.
+The everyday, Coding, Office and Deep thinking brains were each picked in a race against the brain they'd replace, on the replicant matrix. Full tables, settings and caveats: **[Brain races](BRAIN-RACES.md)**.
 
 ## Picking the Gaming brain
 
@@ -155,11 +155,11 @@ Where each brain runs, in plain terms:
 | Office | the graphics card | One all-rounder brain, no swaps. |
 | Gaming | the processor (borrows a little of the card only when it's free) | The card belongs to your game. |
 
-**Why not run everything on the processor all the time?** Because long prompts are where the processor hurts. With a 4,300-token prompt, Gemma 4 E4B takes about **31 s** to the first word on the processor and about **4.4 s** on the card. Short chats on a small instruct brain are fine on the processor; long ones on a bigger brain are not. So in Normal it's a choice: **Keep the graphics card free for quick answers** (Settings, Engines & speed) moves Low-effort replies to the processor, and it is off by default.
+**Why not run everything on the processor all the time?** Because long prompts are where the processor hurts. With a 4,300-token prompt, Gemma 4 E4B takes about **31 s** to the first word on the processor and about **4.4 s** on the card. Short chats on a small instruct brain are fine on the processor; long ones on a bigger brain are not. So in Normal it's a choice: **Keep the graphics card free for quick answers** (Settings, Show advanced settings, Speed & memory) moves Low-effort replies to the processor, and it is off by default.
 
 ### Gaming and the graphics card
 
-Borrowing 0.6 GB is great when the card is idle-ish, and rude when a game is using every bit of it. Hiding the card entirely is polite, but slow. And when the *processor* is flat out (a game hammering all 8 cores), running the brain there gets painful: on the reference PC, with a stand-in "game" keeping all 16 logical cores busy, the processor brain was starved:
+Borrowing 0.6 GB is great when the card is idle-ish, and rude when a game is using every bit of it. Hiding the card entirely is polite, but slow. And when the *processor* is flat out (a game hammering all 8 cores), running the brain there gets painful: on the replicant matrix, with a stand-in "game" keeping all 16 logical cores busy, the processor brain was starved:
 
 | Gaming brain (2507) placed on | "hi" cold | "hi" warm | One-line question, warm | Writing speed | Game kept its speed | Graphics memory |
 |---|---|---|---|---|---|---|
@@ -168,12 +168,12 @@ Borrowing 0.6 GB is great when the card is idle-ish, and rude when a game is usi
 
 The game wins every fight for the processor, so a processor brain under full load is useless: over four minutes for a one-line answer. On the card, the same brain answers in about 2 seconds and costs the game 2 to 4%. When it's the card that's busy and the processor has room, the processor brain is fine (the idle tables above).
 
-So since Bob 1.5.32, **Gaming session: graphics card** (Settings, Show advanced settings, Engines & speed) is a three-position switch:
+So since Bob 1.5.32, **Gaming session: graphics card** (Settings, Show advanced settings, Speed & memory) is a three-position switch:
 
 | Position | What Bob does |
 |---|---|
 | **Automatic** (to start with) | Card busy (80% use or more, or under 1.5 GB free): processor only, and the card is hidden from the engine. Card has room: borrows about 0.6 GB to read messages. Processor at 90% or more and room on the card for the brain plus 2 GB: puts the whole small brain on the card (about 3.6 GB for the 2507 brain), because the processor would crawl. No NVIDIA card, or no reading: borrows, as before. |
-| **Never use the card** | Processor only. The card is all yours; the first reply after loading is much slower (about 26 s cold on the reference PC). |
+| **Never use the card** | Processor only. The card is all yours; the first reply after loading is much slower (about 26 s cold on the replicant matrix). |
 | **Always borrow a little** | About 0.6 GB, even while a game is using the card. How Gaming worked before 1.5.32. |
 
 Automatic checks each time the Gaming brain loads and again every quiet minute. If the answer changes, Bob unloads the brain and the next chat loads it the new way (about 1.5 s). He never switches mid-reply.
@@ -200,7 +200,7 @@ After a big job or a picture, Bob goes straight back to the small Quick brain. Y
 
 ### Pictures don't make you wait twice
 
-A picture with Z-Image Turbo (1024 px, 8 steps) takes about 28 to 31 s in total on the reference PC: about 6 to 8 s to load, 8 to 9 s to read the prompt, 16 to 18 s to paint and 1.7 s to decode, peaking at 13.5 GB.
+A picture with Z-Image Turbo (1024 px, 8 steps) takes about 28 to 31 s in total on the replicant matrix: about 6 to 8 s to load, 8 to 9 s to read the prompt, 16 to 18 s to paint and 1.7 s to decode, peaking at 13.5 GB.
 
 The painter and the chat brain can't share a 16 GB card, so Bob hands the card over. Three things keep that hand-off cheap:
 
@@ -221,13 +221,13 @@ Bob ships his own engine, **llama.cpp**, so he needs nothing else installed. (Ol
 - **Fit to free graphics memory** (`--fit`, on): llama.cpp places the model's layers around whatever else is using the card right now, instead of a fixed split. We found that forcing every layer onto the card (`-ngl 999`) quietly switched this off, so Bob no longer sets it.
 - **32K context by default.** At 131K, the 26B brain no longer fit on a 16 GB card. The overflow went to shared system memory, and speed fell to **5 tok/s**. At 32K it uses 13.8 GB on the card, runs at **71 to 75 tok/s** and is ready in about 23 s. For normal chats, 32K was also about 15% faster than 128K. Office keeps 64K, and Coding keeps the engine's full default. Each session can be changed in Settings, Brains.
 - **One chat gets the whole context** (`-np 1`), instead of splitting it across parallel slots Bob never uses.
-- **Threads and batch sizes**: 8 threads, batch and micro-batch 2048. Gemma 4 26B runs at about 74 tok/s, on a par with Ollama's 77. Prompt reading on the 30B coding brain went from about 1,500 to about 2,800 tok/s.
+- **Threads and batch sizes**: 8 threads, batch and micro-batch 2048. Gemma 4 26B runs at about 74 tok/s, on a par with Ollama's 77. Prompt reading on the old 30B coding brain (Qwen3 Coder) went from about 1,500 to about 2,800 tok/s.
 - **Compact memory for the chat history** (8-bit KV cache) and flash attention, so long chats take less graphics memory.
 - **A thinking cap on Medium effort**: at most about 1,500 tokens of thinking, then Bob is told to answer.
 - **No thinking on Low effort**: quick replies skip the thinking step entirely. Gemma 4 used to spend about 200 tokens thinking before the first word.
 - **Speculative decoding** (off, experimental): a small draft brain guesses ahead and the big one checks. It's often 1.5 to 2 times faster with identical answers, but it depends on the pair, so measure it.
 
-For tinkerers, every one of these is in Settings, Show advanced settings, Engines & speed. The exact command Bob used is saved next to his notes, so you can see what ran.
+For tinkerers, every one of these is in Settings, Show advanced settings, Engines. The exact command Bob used is saved next to his notes, so you can see what ran.
 
 ---
 
@@ -243,7 +243,7 @@ Every word Bob sends to the brain has to be read before the reply starts. So:
 
 ## Opt-in speed switches
 
-These are all **off until you turn them on** (Settings, Show advanced settings, Engines & speed). Bob never changes your PC's settings by himself.
+These are all **off until you turn them on** (Settings, Show advanced settings, Speed & memory). Bob never changes your PC's settings by himself.
 
 - **Get Bob ready while you type**: starts loading and reading his instructions as soon as you start typing. On the processor he also keeps a copy of that reading on disk, so the next start is quicker.
 - **Let games go first**: when Bob works on the processor, he uses fewer cores at lower priority. His replies may be a little slower; your frame rate stays smooth. Worth turning on if you game with Bob open.
@@ -254,7 +254,7 @@ These are all **off until you turn them on** (Settings, Show advanced settings, 
 ## Measure it yourself
 
 - **Test Bob's speed** (about a minute): Bob frees his brain, wakes it as if you'd started typing, and times the load, the first word, the full answer and a second reply. Your last 6 results are kept in a table along with the switches that were on, so you can test, change one thing, and test again.
-- **Check this PC**: looks for things that slow AI down and explains how to fix each one. It checks for memory running below its rated speed (EXPO or XMP off in the BIOS), an old NVIDIA driver, a laptop on battery, models on a slow drive, and other apps holding graphics memory. It only reads; it never changes Windows or driver settings.
+- **Check this replicant matrix**: looks for things that slow AI down and explains how to fix each one. It checks for memory running below its rated speed (EXPO or XMP off in the BIOS), an old NVIDIA driver, a laptop on battery, models on a slow drive, and other apps holding graphics memory. It only reads; it never changes Windows or driver settings.
 
 Neither one goes online.
 
@@ -292,7 +292,7 @@ Qwen3 4B Instruct 2507 (3.5 GB) matched the 27B Qwen 3.8 on tool use (22/25), an
 
 ### "Asking first" was the wording, not the engine
 
-Gemma 4 E4B scored 24/25 on Ollama in an early test and 14/25 on Bob's own engine, so we suspected the engine. A side-by-side test on the same PC showed E4B behaves the same on both. The real cause was Bob's instructions, which made brains cautious: most of E4B's misses were "which folder?" or "what style?" instead of just doing the job. Bob 1.5.30 tells his brains to get on with it using sensible defaults, say what they picked, and only ask when they truly can't guess. That alone turned 6 of E4B's 11 misses into real tool calls.
+Gemma 4 E4B scored 24/25 on Ollama in an early test and 14/25 on Bob's own engine, so we suspected the engine. A side-by-side test on the same replicant matrix showed E4B behaves the same on both. The real cause was Bob's instructions, which made brains cautious: most of E4B's misses were "which folder?" or "what style?" instead of just doing the job. Bob 1.5.30 tells his brains to get on with it using sensible defaults, say what they picked, and only ask when they truly can't guess. That alone turned 6 of E4B's 11 misses into real tool calls.
 
 ### Why tool calls failed, and the fixes
 
@@ -346,4 +346,4 @@ Ideas we've measured but are holding for later:
 - **A draft brain for the 26B** (multi-token prediction): about 1.25 to 1.3 times faster on code for about 1 GB more graphics memory. It needs engine support first, and it would be opt-in.
 - **Keeping the picture engine loaded between pictures**: it could skip 13 to 17 s of loading and prompt reading on repeat pictures, but only on cards big enough to hold the painter and a brain together.
 
-Numbers on this page come from Bob's own test runs. If yours look very different, run **Check this PC** first. It's usually memory speed or another app holding the card.
+Numbers on this page come from Bob's own test runs. If yours look very different, run **Check this replicant matrix** first. It's usually memory speed or another app holding the card.

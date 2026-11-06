@@ -72,7 +72,7 @@ const done2 = models.map((m) => (m.id === 'gemma4-e4b' ? { ...m, status: { state
 check(readyPlan({ vramGB: 16, nvidia: true }, done2, bEng).ids.join() === 'engine:llamacpp', 'NVIDIA card: Get Bob ready swaps in the faster CUDA build');
 check(readyPlan({ vramGB: 16, ramGB: 32, integrated: true }, done2, bEng).ids.length === 0, 'built-in graphics or no NVIDIA card: the bundled build is the right one');
 const engSrc = fs.readFileSync(path.join(here, '..', 'src', 'engines.js'), 'utf8');
-check(/bundledEngine\(cfg\)\) \{\s*try \{ fs\.rmSync/.test(engSrc), 'replacing the bundled build clears its files first (no two builds side by side)');
+check(/const replacing = id === 'llamacpp' && Boolean\(bundledEngine\(cfg\)\)/.test(engSrc) && /fs\.rmSync\(folder, \{ recursive: true, force: true \}\); fs\.renameSync\(stage, folder\)/.test(engSrc), 'replacing the bundled build: the new one downloads to a side folder, then takes its place in one step (1.5.116; no two builds side by side, and never no engine)');
 const mk = fs.readFileSync(path.join(here, '..', 'installer', 'make-release.ps1'), 'utf8');
 const mac = fs.readFileSync(path.join(here, '..', 'installer', 'make-release-mac.sh'), 'utf8');
 const lin = fs.readFileSync(path.join(here, '..', '.github', 'workflows', 'linux.yml'), 'utf8');
@@ -82,18 +82,19 @@ check(pk.build.asarUnpack.includes('engines/**') && pk.build.files.includes('eng
 
 // Welcome wiring.
 const cellar = fs.readFileSync(path.join(here, '..', 'public', 'cellar.js'), 'utf8');
-check(/Step 1: getting me ready/.test(cellar) && /data-getready/.test(cellar) && /\/api\/engines\/check/.test(cellar), 'Welcome has step 1 with its checks and Try again');
-check(!/readyTried/.test(cellar) && /Get Bob ready \(about \$\{gb\(readyGB\)\}\)/.test(cellar), 'step 1 is one click on Get Bob ready, with its size; never started by itself');
-check(/data-readypause/.test(cellar) && /data-readystop/.test(cellar) && /data-readyresume/.test(cellar), 'Pause, Stop and Resume sit in step 1');
-check(/Not enough free disk: free up \$\{short\} GB, then press Try again\./.test(cellar) && /needGB \+ 2/.test(cellar), 'won\'t start without its size plus 2 GB free');
-check(/Free disk: \$\{hw\.freeGB/.test(cellar.slice(cellar.indexOf('Step 1: getting me ready'))), 'size and free disk are shown before anything moves');
+// 1.5.91: one list (Get me ready) instead of step 1 and step 2.
+check(/<h3>Get me ready<\/h3>/.test(cellar) && /data-getready/.test(cellar) && /\/api\/engines\/check/.test(cellar), 'Welcome has the Get me ready list with its checks');
+check(!/readyTried/.test(cellar) && /Get Bob ready \(about \$\{gb\(order\.sizeGB\)\}\)/.test(cellar), 'one click on Get Bob ready, with its size; never started by itself');
+check(/data-readypause/.test(cellar) && /data-readystop/.test(cellar) && /data-readyresume/.test(cellar), 'Pause, Stop and Resume sit on the list');
+check(/Not enough free disk: free up \$\{short\} GB, or untick something, then press Try again\./.test(cellar) && /needGB \+ 2/.test(cellar), 'won\'t start without its size plus 2 GB free');
+check(/Free disk: \$\{hw\.freeGB/.test(cellar.slice(cellar.indexOf('Get me ready</h3>'))), 'size and free disk are shown before anything moves');
 const server = fs.readFileSync(path.join(here, '..', 'src', 'server.js'), 'utf8');
 check(/'\/api\/engines\/check'/.test(server), 'the server answers /api/engines/check');
 
 {
   const cel = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
   check(/came with me \(basic version\)/.test(cel) && !/basic build/.test(cel), 'Welcome row: "llama.cpp: came with me (basic version)", no jargon');
-  check(/rp\.ids\.includes\('engine:' \+ e\.id\) \? '<br><span class="muted">Get Bob ready swaps in the faster NVIDIA version\.<\/span>' : ''/.test(cel), 'the NVIDIA swap line shows only when the swap is planned (NVIDIA cards)');
+  check(/r\.swap \? 'came with me \(basic version\); this gets the faster NVIDIA version'/.test(cel) && /const swap = e\.bundled && hw\.nvidia/.test(fs.readFileSync(new URL('../public/equip.js', import.meta.url), 'utf8')), 'the NVIDIA swap line shows only when the swap is planned (NVIDIA cards)');
 }
 
 check(/^b\d+$/.test(JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.bundledLlamaTag || ''), 'the bundled llama.cpp is pinned to one release (bob.bundledLlamaTag), so every release carries the same tested build');

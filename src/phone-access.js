@@ -1,4 +1,4 @@
-// Let my phone in (Settings, Connections): Bob for Android, or a browser on your phone, can reach this Bob
+// Let my phone in (Settings, Bob-Net): Bob for Android, or a browser on your phone, can reach this Bob
 // over Tailscale with a passcode. Off unless you turn it on. Before this it could only be set in config.json
 // ("remote"); the setting writes the same keys, and server.js checks them the same way:
 // Tailscale addresses only (100.64.0.0/10), Host must be on the list, passcode cookie, x-bob header.

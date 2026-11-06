@@ -12,6 +12,7 @@ import { isSensitive, today } from './tools.js';
 import { handOn, handOffWhy, readOnlyRoots } from './hands-settings.js';
 import { handsRoots } from './hands-files.js';
 import { routeFor, extOf, kindName, docKindOf, DOC_KINDS, findOffice, findFfmpeg, officeJob, pictureJob, mediaJob, OFFICE_MISSING, FFMPEG_MISSING } from './office.js';
+import { fileSize, freeName } from './util.js';
 
 const fn = (name, description, properties, required = Object.keys(properties)) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
@@ -21,7 +22,7 @@ const MAX_FILES = 50;
 export const officeDir = (cfg) => path.join(cfg.innDir, 'documents');
 const off = (cfg) => { if (!handOn(cfg, 'office')) throw new Error(handOffWhy(cfg, 'office')); };
 const kb = (n) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-const sizeOf = (p) => { try { return fs.statSync(p).size; } catch { return 0; } };
+const sizeOf = fileSize;
 
 function full(p) {
   if (!p || typeof p !== 'string') throw new Error('A full file path is needed.');
@@ -50,12 +51,6 @@ export function canWrite(cfg, p) {
   return f;
 }
 
-function freeName(p, taken = new Set()) {
-  const { dir, name, ext } = path.parse(p);
-  let c = p;
-  for (let i = 2; fs.existsSync(c) || taken.has(c.toLowerCase()); i++) c = path.join(dir, `${name}-${i}${ext}`);
-  return c;
-}
 
 // Where a converted file goes: the folder asked for, else next to the original if Bob may save there, else his
 // Documents folder.

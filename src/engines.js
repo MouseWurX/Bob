@@ -16,6 +16,8 @@ export function officePins() {
   try { return JSON.parse(fs.readFileSync(new URL('./office-pins.json', import.meta.url), 'utf8')); } catch { return {}; }
 }
 const PIN = officePins();
+// Piper's ARM Linux file has no GitHub checksum; this pin was computed in CI (installer/check-linux-engines.js, 2026-11-04).
+const PIPER_ARM64_SHA = 'fea0fd2d87c54dbc7078d0f878289f404bd4d6eea6e7444a77835d1537ab88eb';
 // 1.5.83: the llama.cpp release every speed test and brain race used (package.json bob.bundledLlamaTag, also the one
 // bundled in the download). Get and Get Bob ready install this one; "Check for a newer build" can still fetch the newest.
 export const TESTED_LLAMA = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.bundledLlamaTag || ''; } catch { return ''; } })();
@@ -35,7 +37,10 @@ export const ENGINES = [
     linux: {
       nvidia: [/bin-ubuntu-cuda-?(\d+(?:\.\d+)?)-x64\.(?:zip|tar\.gz)$/], other: [/bin-ubuntu-vulkan-x64\.(?:zip|tar\.gz)$/, /bin-ubuntu-x64\.(?:zip|tar\.gz)$/],
       runtime: (asset) => { const m = asset.match(/ubuntu-cuda-?(\d+(?:\.\d+)?)-x64/); return m ? new RegExp(`^cudart-.*ubuntu-cuda-?${m[1].replace('.', '\\.')}-x64\\.(?:zip|tar\\.gz)$`) : null; }
-    }
+    },
+    // ARM Linux (Raspberry Pi 5 and other 64-bit ARM boards): the processor build only. A Pi's graphics are slower than
+    // its processor for brains, so there's no Vulkan pick here.
+    linuxArm64: { other: [/bin-ubuntu-arm64\.(?:zip|tar\.gz)$/] }
   },
   {
     id: 'sdcpp', name: 'stable-diffusion.cpp', what: 'Painter: makes pictures and clips without ComfyUI.', repo: 'leejet/stable-diffusion.cpp', dir: 'sd.cpp', exe: 'sd-cli.exe', aka: ['sd.exe'],
@@ -44,7 +49,9 @@ export const ENGINES = [
     // Apple Silicon builds are named for the macOS they were built on (sd-master-...-bin-Darwin-macOS-15.x-arm64.zip).
     mac: { other: [/bin-Darwin-macOS-[\d.]+-arm64\.(?:zip|tar\.gz)$/i, /-bin-(?:darwin|macos)[^/]*-arm64\.(?:zip|tar\.gz)$/i] },
     // Linux: Vulkan (NVIDIA, AMD and Intel cards all run it; there is no Linux CUDA build), else the processor build.
-    linux: { nvidia: [/bin-Linux-Ubuntu-[\d.]+-x86_64-vulkan\.(?:zip|tar\.gz)$/i], other: [/bin-Linux-Ubuntu-[\d.]+-x86_64-vulkan\.(?:zip|tar\.gz)$/i, /bin-Linux-Ubuntu-[\d.]+-x86_64\.(?:zip|tar\.gz)$/i] }
+    linux: { nvidia: [/bin-Linux-Ubuntu-[\d.]+-x86_64-vulkan\.(?:zip|tar\.gz)$/i], other: [/bin-Linux-Ubuntu-[\d.]+-x86_64-vulkan\.(?:zip|tar\.gz)$/i, /bin-Linux-Ubuntu-[\d.]+-x86_64\.(?:zip|tar\.gz)$/i] },
+    // stable-diffusion.cpp posts no ARM Linux build, and a Raspberry Pi would take many minutes a picture anyway.
+    linuxArm64: { unavailable: 'There\'s no ready-made ARM Linux download of stable-diffusion.cpp, so on a Raspberry Pi or other ARM board Bob doesn\'t paint. On Bob-Net, a Bob on your other replicant matrix can paint for him (Send jobs).' }
   },
   {
     id: 'whispercpp', name: 'whisper.cpp', what: 'Hearing you: turns your voice into text without Ollama.', repo: 'ggml-org/whisper.cpp', dir: 'whisper.cpp', exe: 'whisper-cli.exe',
@@ -55,7 +62,8 @@ export const ENGINES = [
     // whisper.cpp only posts a Mac framework for app makers, not the whisper-cli program, so there's nothing to fetch.
     mac: { unavailable: 'There\'s no ready-made Mac download of whisper.cpp. On a Mac, Bob hears you through Ollama or a cloud helper instead (Voice & conversation, Hearing).' },
     // Linux: the Ubuntu processor build (whisper-bin-ubuntu-x64.tar.gz).
-    linux: { other: [/^whisper-bin-ubuntu-x64\.tar\.gz$/] }
+    linux: { other: [/^whisper-bin-ubuntu-x64\.tar\.gz$/] },
+    linuxArm64: { other: [/^whisper-bin-ubuntu-arm64\.tar\.gz$/] }
   },
   {
     // Piper's last Windows build. The repo is archived, so this release is fixed rather than "latest".
@@ -65,37 +73,42 @@ export const ENGINES = [
     // Piper's 2023 Mac build is known not to start on current macOS (a missing espeak-ng library), so Bob doesn't offer it.
     mac: { unavailable: 'Piper\'s last Mac build doesn\'t start on current macOS. Use Kokoro voices instead: they run well on a Mac.' },
     // Linux: the same fixed release; the file has no GitHub checksum, so it carries its own pin (computed in CI, 2026-11-03).
-    linux: { tag: '2023.11.14-2', sha256: 'a50cb45f355b7af1f6d758c1b360717877ba0a398cc8cbe6d2a7a3a26e225992', other: [/^piper_linux_x86_64\.tar\.gz$/] }
+    linux: { tag: '2023.11.14-2', sha256: 'a50cb45f355b7af1f6d758c1b360717877ba0a398cc8cbe6d2a7a3a26e225992', other: [/^piper_linux_x86_64\.tar\.gz$/] },
+    // ARM Linux: the same release's aarch64 file, with its own pinned checksum (empty would mean "not offered").
+    linuxArm64: { tag: '2023.11.14-2', sha256: PIPER_ARM64_SHA, other: [/^piper_linux_aarch64\.tar\.gz$/], ...(PIPER_ARM64_SHA ? {} : { unavailable: 'Piper for ARM Linux isn\'t checked yet, so Bob doesn\'t offer it. Use Kokoro voices instead.' }) }
   },
   {
     // uv builds Bob a private Python for music and sound effects; nothing touches other Pythons on the PC.
-    id: 'audio', name: 'Audio tools', what: 'Music (ACE-Step 1.5) and sound effects (AudioLDM 2). About 12 GB with the models. Needs Python 3.12 from python.org installed first (free); Bob keeps his own copy of the packages.',
+    id: 'audio', name: 'Audio tools', what: 'Music (ACE-Step 1.5) and sound effects (AudioLDM 2). About 12 GB with the models. Bob keeps his own copy of the packages, and his own Python if this replicant matrix has none.',
     repo: 'astral-sh/uv', dir: 'audio-workshop', exe: 'uv.exe',
     nvidia: [], other: [/^uv-x86_64-pc-windows-msvc\.zip$/],
     runtime: () => null,
     mac: { other: [/^uv-aarch64-apple-darwin\.tar\.gz$/] },
     linux: { other: [/^uv-x86_64-unknown-linux-gnu\.tar\.gz$/] },
+    linuxArm64: { other: [/^uv-aarch64-unknown-linux-gnu\.tar\.gz$/] },
     after: setupWorkshop,
     ready: (cfg) => { const a = audioReady(cfg); return a.music || a.sfx; }
   },
   {
     // Same uv as the audio tools; only the small Kokoro package is added. The voice files come from Voice & conversation, Talking.
-    id: 'kokoro', name: 'Kokoro voices', what: 'Bob\'s voice: Kokoro-82M (Apache-2.0), natural-sounding and small, runs on the processor. About 100 MB, plus a 330 MB voice pack from Voice & conversation, Talking. Needs Python 3.12 or 3.11.',
+    id: 'kokoro', name: 'Kokoro voices', what: 'Bob\'s voice: Kokoro-82M (Apache-2.0), natural-sounding and small, runs on the processor. About 100 MB, plus a 330 MB voice pack from Voice & conversation, Talking. Uses Python 3.12 or 3.11 if it\'s here; otherwise Bob gets his own (about 15 MB).',
     repo: 'astral-sh/uv', dir: 'audio-workshop', exe: 'uv.exe',
     nvidia: [], other: [/^uv-x86_64-pc-windows-msvc\.zip$/],
     runtime: () => null,
     mac: { other: [/^uv-aarch64-apple-darwin\.tar\.gz$/] },
     linux: { other: [/^uv-x86_64-unknown-linux-gnu\.tar\.gz$/] },
+    linuxArm64: { other: [/^uv-aarch64-unknown-linux-gnu\.tar\.gz$/] },
     after: (cfg, o) => setupVoice(cfg, 'kokoro', o),
     ready: (cfg) => voicesReady(cfg).kokoro
   },
   {
-    id: 'chatterbox', name: 'Chatterbox voice', what: 'Bob\'s voice: Chatterbox (MIT, Resemble AI). Very natural, can copy a voice from a short recording, uses the graphics card (about 4 GB while talking). About 4 GB to set up, plus 3 GB of model on first use. Needs Python 3.12 or 3.11.',
+    id: 'chatterbox', name: 'Chatterbox voice', what: 'Bob\'s voice: Chatterbox (MIT, Resemble AI). Very natural, can copy a voice from a short recording, uses the graphics card (about 4 GB while talking). About 4 GB to set up, plus 3 GB of model on first use. Uses Python 3.12 or 3.11 if it\'s here; otherwise Bob gets his own (about 15 MB).',
     repo: 'astral-sh/uv', dir: 'audio-workshop', exe: 'uv.exe',
     nvidia: [], other: [/^uv-x86_64-pc-windows-msvc\.zip$/],
     runtime: () => null,
     mac: { other: [/^uv-aarch64-apple-darwin\.tar\.gz$/] },
     linux: { other: [/^uv-x86_64-unknown-linux-gnu\.tar\.gz$/] },
+    linuxArm64: { other: [/^uv-aarch64-unknown-linux-gnu\.tar\.gz$/] },
     after: (cfg, o) => setupVoice(cfg, 'chatterbox', o),
     ready: (cfg) => voicesReady(cfg).chatterbox
   },
@@ -108,6 +121,7 @@ export const ENGINES = [
     runtime: () => null,
     mac: { other: [/^uv-aarch64-apple-darwin\.tar\.gz$/] },
     linux: { other: [/^uv-x86_64-unknown-linux-gnu\.tar\.gz$/] },
+    linuxArm64: { other: [/^uv-aarch64-unknown-linux-gnu\.tar\.gz$/] },
     ready: (cfg) => Boolean(onPath(exeName('uvx')) || (cfg.agentDir && fs.existsSync(path.join(cfg.agentDir, 'audio-workshop', exeName('uvx')))))
   },
   {
@@ -141,11 +155,15 @@ export const ENGINES = [
 // The engine as this computer sees it: Windows uses the fields above; a Mac or Linux entry (mac: {...}, linux: {...})
 // replaces the build patterns, and program names lose .exe. unavailable = there's no build for this computer,
 // with the reason to show instead of a Get button.
-export function engineFor(e, os_ = OS) {
-  if (!e || e.os === os_) return e;
-  const over = os_ === 'win' ? {} : e[os_] || { unavailable: `There's no ${e.name} build for this replicant matrix yet.` };
+// Which Linux the engines are for: 'linux' (x86_64 PCs) or 'linuxArm64' (Raspberry Pi 5 and other 64-bit ARM boards).
+export const ARCH = process.arch;
+export function engineFor(e, os_ = OS, arch = ARCH) {
+  const key = os_ === 'linux' && arch === 'arm64' ? 'linuxArm64' : os_;
+  if (!e || (e.os === os_ && e.key === key)) return e;
+  // ARM Linux falls back to the Linux entry only when that says "use the distro's" (FFmpeg, LibreOffice).
+  const over = os_ === 'win' ? {} : e[key] || (key === 'linuxArm64' && e.linux?.unavailable ? e.linux : null) || { unavailable: `There's no ${e.name} build for this replicant matrix yet.` };
   // A Windows pin (tag + sha256) is for the Windows file only; another computer needs its own.
-  const v = { ...e, nvidia: [], runtime: () => null, ...(os_ === 'win' ? {} : { sha256: '', tag: e.sha256 ? '' : e.tag }), ...over, os: os_ };
+  const v = { ...e, nvidia: [], runtime: () => null, ...(os_ === 'win' ? {} : { sha256: '', tag: e.sha256 ? '' : e.tag }), ...over, os: os_, key };
   if (os_ === 'win') Object.assign(v, { nvidia: e.nvidia, runtime: e.runtime });
   v.exe = exeName(over.exe || e.exe, os_);
   v.aka = (over.aka || e.aka || []).map((n) => exeName(n, os_));
@@ -158,6 +176,10 @@ export function engineExe(cfg, e0) {
   for (const sub of ['', 'bin', 'Release']) for (const n of [e.exe, ...(e.aka || [])]) { const p = path.join(dir, sub, n); if (fs.existsSync(p)) return p; }
   // Linux: one the distro installed (llama-server, whisper-cli, piper from the package manager) counts too.
   if (e.os === 'linux') for (const n of [e.exe, ...(e.aka || [])]) { const p = onPath(n); if (p) return p; }
+  // 1.5.104: a program set by hand in config.json (llamacpp.exe, painter.sdcpp.exe, stt.exe, tts.exe) counts as here,
+  // so the Welcome list doesn't offer to download it again.
+  const set = { llamacpp: cfg.llamacpp?.exe, sdcpp: cfg.painter?.sdcpp?.exe, whispercpp: cfg.stt?.provider === 'whispercpp' ? cfg.stt?.exe : null, piper: cfg.tts?.exe }[e.id];
+  if (set && typeof set === 'string') { try { if (fs.statSync(set).isFile()) return set; } catch {} }
   return null;
 }
 
@@ -353,11 +375,10 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
   // 1.5.83: the tested release unless a tag is given or the user asked for the newest build.
   const pick = tag || (!newest && e0.tested) || '';
   const e = pick ? { ...e0, tag: pick } : e0;
-  // Replacing the bundled build: its files go first, so two builds' graphics libraries never sit side by side.
-  if (id === 'llamacpp' && bundledEngine(cfg)) {
-    try { fs.rmSync(path.join(cfg.agentDir, e.dir), { recursive: true, force: true }); }
-    catch (err) { throw new Error(`llama.cpp is in use right now (${err.code || err.message}). Press Unload everything (or wait for the brain to go idle), then Try again.`); }
-  }
+  // Replacing the bundled build: the new one downloads into a side folder first, then takes the bundled one's
+  // place in one step, so a failed download never leaves Bob with no engine and two builds' graphics libraries
+  // never sit side by side.
+  const replacing = id === 'llamacpp' && Boolean(bundledEngine(cfg));
   if (e.unavailable) throw new Error(e.unavailable);
   if (e.install && e.os !== 'win') throw new Error(`${e.name} can't be fetched on this replicant matrix. Install it yourself and Bob finds it.`);
   if (e.install) return e.install(cfg, { pub, signal, tick });
@@ -369,13 +390,21 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
   pub.total = asset.size + (rt?.size || 0);
   pub.done = 0;
   const folder = path.join(cfg.agentDir, e.dir);
-  fs.mkdirSync(folder, { recursive: true });
+  const stage = replacing ? folder + '.new' : folder;
+  fs.rmSync(folder + '.new', { recursive: true, force: true });
+  fs.mkdirSync(stage, { recursive: true });
   if (e.sha256) asset.pinnedSha256 = e.sha256; // old releases without a GitHub digest: checked against our own pin
-  await grab(asset, folder, pub, signal, tick);
-  if (rt) await grab(rt, folder, pub, signal, tick);
-  flatten(folder, [e.exe, ...(e.aka || [])]);
-  if (e.os === 'linux' && rt) liftLibraries(folder);
-  if (e.os !== 'win') makeRunnable(folder);
+  try {
+    await grab(asset, stage, pub, signal, tick);
+    if (rt) await grab(rt, stage, pub, signal, tick);
+    flatten(stage, [e.exe, ...(e.aka || [])]);
+    if (e.os === 'linux' && rt) liftLibraries(stage);
+    if (e.os !== 'win') makeRunnable(stage);
+  } catch (err) { if (replacing) fs.rmSync(stage, { recursive: true, force: true }); throw err; }
+  if (replacing) {
+    try { fs.rmSync(folder, { recursive: true, force: true }); fs.renameSync(stage, folder); }
+    catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`llama.cpp is in use right now (${err.code || err.message}). Press Unload everything (or wait for the brain to go idle), then Try again.`); }
+  }
   if (!engineExe(cfg, e)) throw new Error(`${e.name} unpacked, but ${e.exe} isn't in it. The release layout may have changed.`);
   if (e.after) await e.after(cfg, { pub, tick, signal });
   // Older stable-diffusion.cpp builds call the program sd.exe.

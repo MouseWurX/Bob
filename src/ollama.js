@@ -205,7 +205,8 @@ export class Ollama {
         const line = buf.slice(0, nl).trim();
         buf = buf.slice(nl + 1);
         if (!line) continue;
-        const ev = JSON.parse(line);
+        let ev;
+        try { ev = JSON.parse(line); } catch { continue; } // a cut or odd line: skip it rather than lose the whole reply
         if (ev.error) throw new Error('Ollama: ' + ev.error);
         const msg = ev.message || {};
         if (msg.thinking && onThink) onThink(msg.thinking);

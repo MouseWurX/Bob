@@ -10,19 +10,24 @@ import { HANDS, handOn, handOffWhy } from './hands-settings.js';
 import { makerWords, makerWhat } from './selftools.js';
 import { mcpWords, mcpWhat } from './mcp.js';
 
-export const CORE = ['notice_board', 'remember', 'reminders', 'list_folder', 'read_file', 'web_search', 'fetch_page', 'bob_help', 'ask_specialist', 'show_made', 'pick_session', 'use_tools'];
+export const CORE = ['notice_board', 'remember', 'reminders', 'list_folder', 'read_file', 'web_search', 'fetch_page', 'bob_help', 'ask_specialist', 'show_made', 'pick_session', 'offer_setup', 'use_tools'];
 
 // Groups Bob can add. `what` is what Bob reads in use_tools; `words` is the cheap pre-check on the user's message.
 const WORK_GROUPS = {
   pictures: {
     what: 'make pictures, video clips, music and sound effects; save reference pictures; ComfyUI workflows', // narrowed to what this PC has, see groupsFor
-    tools: ['make_image', 'make_video', 'save_reference', 'make_music', 'make_sound', 'workshop_list', 'workshop_run'],
-    words: /\b((?:picture|image|photo|pic)s? of|pic|pics|picture|image|photo|draw|drawing|paint|painting|render|sketch|artwork|art|portrait|wallpaper|logo|icon|sprite|concept|illustrat\w*|video|clip|animat\w*|music|song|tune|melody|beat|chiptune|soundtrack|jingle|sound|sfx|workflow|comfy\w*|reference|character sheet)s?\b/i
+    tools: ['make_image', 'make_video', 'save_reference', 'make_music', 'make_sound', 'save_as', 'workshop_list', 'workshop_run'],
+    words: /\b((?:picture|image|photo|pic)s? of|pic|pics|picture|image|photo|draw|drawing|paint|painting|render|sketch|artwork|art|portrait|wallpaper|logo|icon|sprite|concept|illustrat\w*|video|clip|animat\w*|music|song|tune|melody|beat|chiptune|soundtrack|jingle|sound|sfx|workflow|comfy\w*|reference|character sheet)s?\b|\b(?:visuali[sz]e|doodle|poster|banner|thumbnail|album (?:art|cover)|cover art|pfp|profile pic\w*|avatar|emoji|sticker|meme|comic|photoshop|show me what|movie|gif|mock ?up|(?:a )?cover for my (?:book|album|game|ep|single|podcast)|bring (?:it|this|that|him|her) to life|make (?:it|this|that|him|her) (?:move|dance|talk|walk)|lo-?fi|track|theme (?:song|tune|music)|(?:a|the) theme for|noise|sound effect|foley|save (?:it|that|this|them) as (?:an? )?(?:mp3|wav|ogg|flac|jpe?g|png|webp|gif|mp4|webm))\b/i // 1.5.94: plain-English phrasings (test/phrasings.js)
+  },
+  diagrams: { // 1.5.95 (diagram.js)
+    what: 'draw flowcharts and diagrams: steps, decisions, mind maps, timelines, org charts, project plans, pie charts',
+    tools: ['make_diagram'],
+    words: /\b(flow ?charts?|diagrams?|mind ?maps?|org(?:ani[sz]ation(?:al)?)? charts?|family trees?|decision trees?|process (?:map|chart)s?|gantt|timelines?|pie charts?|bar charts?|swim ?lanes?|wireframes?|boxes and arrows|map (?:it |this |that |them )?out|lay (?:it |this |that )?out visually|chart (?:out|how)|(?:draw|sketch|show) (?:me )?(?:how|the steps|the process|the flow)|visual(?:ly)? (?:show|map|lay)|mermaid|uml|er diagram|sequence)\b/i
   },
   documents: {
     what: 'write or edit files, save spreadsheets, search inside files',
     tools: ['write_file', 'edit_file', 'save_spreadsheet', 'search_files'],
-    words: /\b(save|write|edit|document|txt|csv|xlsx|spreadsheet|excel|search (?:my|the|in|for)|find (?:in|where)|grep)\b/i
+    words: /\b(save|write|edit|document|txt|csv|xlsx|spreadsheet|excel|search (?:my|the|in|for)|find (?:in|where)|grep|jot|text file|notes? file|(?:in|through) my files|where did I (?:mention|write|put|say))\b/i
   },
   memory: {
     what: 'forget a topic you keep notes on',
@@ -35,19 +40,19 @@ const WORK_GROUPS = {
     words: /\b(how-tos?|remember how (?:to|you|we)|(?:same|like) (?:way |as )?(?:as )?(?:last time|before)|keep (?:those|these|the) steps|save (?:those|these|the) steps)\b/i
   },
   cloud: {
-    what: 'hand a job to a paid cloud helper',
-    tools: ['ask_cloud'],
-    words: /\b(cloud|claude|gpt|openai|gemini|anthropic|online model|bigger model)\b/i
+    what: 'hand a job to a paid cloud helper, or hire a rented brain',
+    tools: ['ask_cloud', 'hire_brain'],
+    words: /\b(cloud|claude|gpt|openai|gemini|anthropic|online model|bigger model|rent|rented|hire|runpod|openrouter)\b/i
   }
 };
 
 // The Hands each get their own group, only when that Hand is switched on.
 const HAND_WORDS = {
-  files: /\b(move|copy|rename|zip|unzip|extract|tidy|organi[sz]e|sort|clean ?up|downloads|undo|folder|folders)\b/i,
-  run: /\b(run|execute|command|script|terminal|powershell|cmd|install|build|npm|python|node|git|recipe)\b/i,
-  schedules: /\b(schedules?|scheduled|every (?:day|morning|afternoon|evening|night|week|weekday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|month|hour|\d+)|each (?:day|morning|evening|night|week|weekday|hour)|daily|nightly|weekly|hourly|on a timer)\b/i,
-  office: /\b(convert\w*|turn (?:it|this|that|them|these) into|save (?:it |this |that )?as|export\w*|pdf|docx?|xlsx?|pptx?|odt|ods|odp|word (?:doc\w*|file)|excel|powerpoint|libre ?office|open ?office|writer|calc|impress|slides?|presentation|slideshow|deck|spreadsheet|sheet|cells?|template|mp3|mp4|wav|webm|webp|flac|ogg|mkv|gif|jpe?g|png)\b/i,
-  security: /\b(secur\w*|virus\w*|malware|antivirus|defender|scan(?:s|ning)?|threats?|quarantin\w*|trojan|ransomware|spyware|adware|hack(?:ed|er|ers|ing)|phish\w*|scam\w*|suspicious|dodgy|sketchy|legit\w*|genuine|fake|spoof\w*|firewall|start(?:s|ing)? (?:up )?with windows|startup (?:apps?|items?|programs?)|open ports?|breach\w*|pwned|leak(?:ed|s)?|password|2fa|two.?factor|privacy|op.?sec|metadata|exif|gps|location data|hidden (?:details|info)|osint|who owns|whois|is (?:this|that|it) (?:real|safe|legit)|look ?up (?:this|that|a) (?:site|website|link|sender|email|ip)|footprint|dork\w*)\b/i,
+  files: /\b(move|copy|rename|zip|unzip|unpack|archive|extract|(?:clear|free) (?:up )?(?:some )?(?:disk )?space|biggest files|disk space|tidy|organi[sz]e|sort|clean ?up|downloads|undo|folder|folders)\b/i,
+  run: /\b(run|execute|command|script|terminal|powershell|cmd|install|build|npm|python|node|git|recipe|(?:start|fire|spin|boot) (?:up )?(?:the |my |a )?(?:dev |local |web )?(?:server|app|game|project|bot)|dev server|compile)\b/i,
+  schedules: /\b(schedules?|scheduled|every (?:day|morning|afternoon|evening|night|week|weekday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|month|hour|\d+)|each (?:day|morning|evening|night|week|weekday|hour)|daily|nightly|weekly|hourly|on a timer|automatically|at \d{1,2}(?::\d\d)?\s*(?:am|pm)|(?:on |every )?weekdays|(?:on |every )?weekends)\b/i,
+  office: /\b(convert\w*|shrink|compress\w*|make (?:it|this|that) smaller|turn (?:it|this|that|them|these) into|save (?:it |this |that )?as|export\w*|pdf|docx?|xlsx?|pptx?|odt|ods|odp|word (?:doc\w*|file)|excel|powerpoint|libre ?office|open ?office|writer|calc|impress|slides?|presentation|slideshow|deck|spreadsheet|sheet|cells?|template|mp3|mp4|wav|webm|webp|flac|ogg|mkv|gif|jpe?g|png)\b/i,
+  security: /\b(secur\w*|virus\w*|malware|antivirus|defender|scan(?:s|ning)?|threats?|quarantin\w*|trojan|ransomware|spyware|adware|hack(?:s|ed|er|ers|ing)?|phish\w*|scam\w*|suspicious|dodgy|sketchy|legit\w*|genuine|fake|spoof\w*|firewall|start(?:s|ing)? (?:up )?with windows|startup (?:apps?|items?|programs?)|open ports?|breach\w*|pwned|leak(?:ed|s)?|password|2fa|two.?factor|privacy|op.?sec|metadata|exif|gps|location data|hidden (?:details|info)|osint|who owns|whois|is (?:this|that|it) (?:real|safe|legit)|look ?up (?:this|that|a) (?:site|website|link|sender|email|ip)|footprint|dork\w*|(?:is|are) (?:this|that|it|these|those) (?:\w+ )?safe|safe to (?:click|open|download|install|run|use)|infect\w*|feels? off with my (?:computer|pc|laptop)|location)\b/i,
   apps: /\b(open|launch|click|press|button|type (?:in|into)|app|apps|notepad|browser|chrome|explorer|blender|paint\.net|drive|driving|take (?:the )?(?:wheel|control|over)|screen control|control (?:my|the) (?:pc|computer|screen)|use my (?:screen|pc|computer|mouse|keyboard)|do it in)\b/i
 };
 
@@ -60,7 +65,7 @@ const HAND_WHAT = {
   security: 'check the PC\'s protection, Defender scans and alerts, inspect suspicious files, emails and links, remove hidden details from photos, check if a site is genuine or was breached, safety and op-sec notes'
 };
 // What each picture-group tool adds, so the group says only what this PC can really make.
-const PICTURE_WHAT = { make_image: 'make pictures', make_video: 'make video clips', make_music: 'make music', make_sound: 'make sound effects', save_reference: 'save reference pictures', workshop_run: 'run ComfyUI workflows' };
+const PICTURE_WHAT = { make_image: 'make pictures', make_video: 'make video clips', make_music: 'make music', make_sound: 'make sound effects', save_reference: 'save reference pictures', save_as: 'save what you made as another file type (mp3, jpg...)', workshop_run: 'run ComfyUI workflows' };
 
 export function groupsFor(brain) {
   const g = {};
@@ -78,7 +83,13 @@ export function groupsFor(brain) {
     const usable = x.tools.filter((n) => brain.usable(n));
     if (!usable.length) continue;
     out[id] = { ...x, tools: usable };
-    if (id === 'pictures') out[id].what = usable.map((n) => PICTURE_WHAT[n]).filter(Boolean).join(', ');
+    // 1.5.91: a maker that isn't set up is still listed (calling it shows the Set it up card), and says so.
+    // 1.5.102: the not-set-up note once for all of them, not after each one.
+    if (id === 'pictures') {
+      const named = usable.filter((n) => PICTURE_WHAT[n]);
+      const notYet = named.filter((n) => brain.notSetUp?.(n)), ready = named.filter((n) => !brain.notSetUp?.(n));
+      out[id].what = [notYet.length ? `${notYet.map((n) => PICTURE_WHAT[n]).join(', ')} (not set up yet: calling ${notYet.length > 1 ? 'one' : 'it'} offers to set it up)` : '', ready.map((n) => PICTURE_WHAT[n]).join(', ')].filter(Boolean).join(', ');
+    }
   }
   return out;
 }
@@ -92,7 +103,7 @@ export function guessGroups(brain, text) {
 }
 
 // The chat chip when a group is added (clarity reviewer's words; Hands match their names in Settings).
-const CHIP = { pictures: 'Using his picture, video and music tools', documents: 'Using his document tools', files: 'Using his file tools', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', cloud: 'Using a cloud helper' };
+const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', documents: 'Using his document tools', files: 'Using his file tools', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', cloud: 'Using a cloud helper' };
 
 export const allToolsOn = (cfg) => cfg.allTools === true;
 

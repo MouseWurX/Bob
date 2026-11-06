@@ -39,7 +39,7 @@ check('"Try again" puts a task at the back of the line', f3.queue.map((j) => j.i
 // 1.5.23: Gaming keeps the graphics card free. Jobs that need it wait (never dropped) and start when the session changes.
 {
   const started = [];
-  const g = { cfg: { session: 'light' }, turns: new Map(), queue: [job('pic', 'waiting', { kind: 'picture' }), job('med', 'waiting', { effort: 'medium' }), job('hi', 'waiting')], saveQueue() {}, startTurn(s, t, r, j) { started.push(j.id); this.turns.set('talk', {}); } };
+  const g = { waitOver() {}, cfg: { session: 'light' }, turns: new Map(), queue: [job('pic', 'waiting', { kind: 'picture' }), job('med', 'waiting', { effort: 'medium' }), job('hi', 'waiting')], saveQueue() {}, startTurn(s, t, r, j) { started.push(j.id); this.turns.set('talk', {}); } };
   P.pump.call(g);
   check('Gaming: a Low chat starts past the picture and Medium jobs waiting for the card', started.join() === 'hi' && g.queue[0].state === 'waiting' && g.queue[1].state === 'waiting', started.join());
   const gv = P.queueView.call(g);
@@ -51,7 +51,7 @@ check('"Try again" puts a task at the back of the line', f3.queue.map((j) => j.i
 // 1.5.41: Keep chatting while Bob is busy. A chat waiting behind a picture that's painting starts in the side lane.
 {
   const started = [];
-  const g = { cfg: { session: 'normal', engine: 'llamacpp', chatWhileBusy: true, models: { small: 's' } }, engine: { resolve: () => ({ gguf: '/x' }) }, state: { state: 'painting' }, turns: new Map([['talk', {}]]),
+  const g = { waitOver() {}, cfg: { session: 'normal', engine: 'llamacpp', chatWhileBusy: true, models: { small: 's' } }, engine: { resolve: () => ({ gguf: '/x' }) }, state: { state: 'painting' }, turns: new Map([['talk', {}]]),
     queue: [job('pic', 'working', { kind: 'picture' }), job('hi', 'waiting'), job('hi2', 'waiting')], saveQueue() {}, startTurn(s, t, r, j, lane) { started.push(`${j.id}@${lane}`); this.turns.set(lane, {}); } };
   P.pump.call(g);
   check('busy switch on: a chat behind a painting picture starts beside it (one at a time)', started.join() === 'hi@side' && g.queue[1].side === true && g.queue[2].state === 'waiting', started.join());

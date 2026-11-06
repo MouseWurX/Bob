@@ -119,7 +119,8 @@ jobs:
           rm -rf dist/mac-arm64/check && mkdir -p dist/mac-arm64/check
           ditto -x -k dist/Bob-*-mac-arm64.zip dist/mac-arm64/check
           codesign --verify --deep --strict dist/mac-arm64/check/Bob.app
-          dist/mac-arm64/check/Bob.app/Contents/MacOS/Electron --hidden > dist/mac-arm64/check/log.txt 2>&1 &
+          # 1.5.125: a fresh Bob asks where to keep his things (a window nobody here can answer); BOB_AGENT_DIR answers it.
+          BOB_AGENT_DIR="$HOME/Bob" dist/mac-arm64/check/Bob.app/Contents/MacOS/Electron --hidden > dist/mac-arm64/check/log.txt 2>&1 &
           pid=$!
           ok=0
           for i in $(seq 1 90); do
@@ -129,7 +130,7 @@ jobs:
           kill $pid 2>/dev/null || true
           cat dist/mac-arm64/check/log.txt | tail -40
           if [ $ok = 1 ]; then echo "Bob answered:"; head -c 600 dist/mac-arm64/check/status.json; echo; else echo "Bob.app didn't answer on port 7777 within 90 s"; exit 1; fi
-          ls "$HOME/Library/Application Support/Bob/home"
+          ls "$HOME/Bob"
       - name: Upload Mac zip
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

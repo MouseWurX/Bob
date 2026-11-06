@@ -11,6 +11,7 @@ import { isSensitive } from './tools.js';
 import { recycle, forgetTrashInfo } from './recycle.js';
 import { collect, writeZip, unzip, readZipList } from './zip.js';
 import { handsSettings, readOnlyRoots, limitOn } from './hands-settings.js';
+import { fileSize } from './util.js';
 
 const MAX_ROWS = 500;
 const ACTIONS = ['move', 'copy', 'rename', 'tidy', 'zip', 'unzip', 'recycle', 'delete'];
@@ -70,7 +71,7 @@ function secretsInside(cfg, dir) {
 }
 
 const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
-const sizeOf = (p) => { try { return fs.statSync(p).size; } catch { return 0; } };
+const sizeOf = fileSize;
 const listArg = (a) => [].concat(a || []).filter((x) => typeof x === 'string' && x.trim());
 const BAD_NAME = /[<>:"/\\|?*\x00-\x1f]|^\s|\s$|^\.+$|^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i;
 

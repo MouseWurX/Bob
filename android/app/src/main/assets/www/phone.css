@@ -76,6 +76,9 @@ footer { padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); background: 
 #status { font-size: 13px; color: var(--dim); min-height: 18px; padding: 0 4px 6px; display: flex; gap: 10px; align-items: center; }
 #status .effort { margin-left: auto; min-height: 30px; font-size: 13px; padding: 0 10px; border-radius: 999px; }
 .compose { display: flex; gap: 8px; align-items: flex-end; }
+.photo-chip { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.photo-chip img { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; }
+.photo-chip span { flex: 1; }
 .compose textarea { flex: 1; resize: none; max-height: 140px; min-height: 48px; border-radius: 14px; }
 .compose button { min-width: 48px; min-height: 48px; border-radius: 14px; font-size: 20px; padding: 0; }
 
@@ -87,6 +90,13 @@ footer { padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); background: 
 .panel h3 { margin: 18px 0 8px; font-size: 16px; }
 .panel h3:first-child { margin-top: 4px; }
 .box { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin-bottom: 10px; }
+.fam { border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; }
+.fam > summary { cursor: pointer; padding: 12px; min-height: 44px; list-style: none; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.fam > summary::-webkit-details-marker { display: none; }
+.fam > summary::before { content: '▸'; }
+.fam[open] > summary::before { content: '▾'; }
+.fam > summary strong { font-size: 1.05em; }
+.fam > .fam-list { padding: 0 8px 2px; }
 .box .title { font-weight: 700; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .badge { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--accent); color: var(--on-accent); }
 .badge.quiet { background: var(--raise); color: var(--dim); }
@@ -128,3 +138,67 @@ label.field { display: block; margin: 10px 0 4px; font-weight: 600; }
 .help dt { font-weight: 700; margin-top: 8px; }
 .help dd { margin: 2px 0 0; color: var(--dim); }
 .gap { margin-top: 10px; }
+
+/* 1.5.95 Diagrams and Save as */
+.msg .diagram { background: #fff; color: #222; border-radius: 10px; padding: 8px; margin-top: 8px; overflow: auto; }
+.msg .diagram svg { max-width: 100%; height: auto; display: block; }
+.msg .save-as { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.msg .save-as button { min-height: 36px; font-size: 13px; padding: 0 10px; }
+
+/* 🎲 Adventure: the table from your other Bob */
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chips button { min-height: 40px; border-radius: 999px; }
+.chips button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
+.row2 { display: flex; gap: 8px; margin-top: 8px; } .row2 select { flex: 1; min-width: 0; }
+.adv-face { image-rendering: pixelated; border-radius: 8px; background: var(--panel); flex: none; }
+.adv-look { display: flex; gap: 12px; align-items: flex-start; margin: 10px 0; } .adv-look button { margin-top: 6px; }
+.char-preview { display: flex; gap: 12px; align-items: center; } .char-preview canvas { width: 128px; height: 128px; }
+.char-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; } .char-label { flex: none; width: 96px; font-weight: 600; } .char-row select { flex: 1; min-width: 0; }
+.char-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.char-swatches button { width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 50%; border: 2px solid var(--line); }
+.char-swatches button[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.adv-chars-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; } .tabs button { min-height: 40px; border-radius: 999px; }
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
+.adv-char { display: flex; gap: 12px; align-items: flex-start; } .adv-char-words { flex: 1; min-width: 0; } .adv-char-words .btns { margin-top: 6px; }
+.adv-noface { width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; font-size: 32px; }
+.adv-party { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 10px; }
+.adv-member { flex: none; min-width: 120px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.adv-member.turn { border-color: var(--accent); } .adv-member.out { opacity: .55; }
+.adv-hearts { color: var(--bad); letter-spacing: 1px; }
+.adv-log { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+.adv-gm, .adv-turn, .adv-live { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; overflow-wrap: anywhere; }
+.adv-turn.you { background: var(--you); border-color: transparent; }
+.adv-live { border-style: dashed; }
+.adv-who { display: block; font-size: 12px; color: var(--dim); margin-bottom: 4px; }
+.adv-gm p, .adv-turn p, .adv-live p { margin: 0 0 6px; } .adv-gm p:last-child, .adv-turn p:last-child, .adv-live p:last-child { margin-bottom: 0; }
+.adv-dice { font-family: 'Plex', monospace; font-size: 13px; color: var(--warn); }
+.adv-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.adv-card { min-height: 56px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 8px 12px; text-align: left; line-height: 1.2; }
+.adv-card .adv-ico { font-size: 18px; } .adv-card.other { grid-column: 1 / -1; }
+
+/* 🧩 Games: the board from your other Bob */
+.scores { border-collapse: collapse; width: 100%; font-size: 14px; }
+.scores td, .scores th { border-top: 1px solid var(--line); padding: 6px 4px; text-align: left; }
+.masked { font: 700 28px/1.2 'Plex', monospace; text-align: center; letter-spacing: 2px; margin: 4px 0 8px; }
+.keys { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.keyrow { display: flex; gap: 4px; justify-content: center; }
+.key { min-height: 40px; min-width: 30px; padding: 0 4px; font-weight: 700; flex: 1; max-width: 38px; }
+.key.tried { opacity: .35; } .key.hit { background: var(--good); color: #122; border-color: var(--good); } .key.near { background: var(--warn); color: #221; border-color: var(--warn); }
+.rungs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
+.rung { font-family: 'Plex', monospace; font-weight: 700; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.rung.last { border-color: var(--accent); color: var(--accent); } .rung.goal { border-style: dashed; margin-left: auto; font-weight: 400; }
+.board { display: flex; flex-direction: column; gap: 4px; align-items: center; margin-bottom: 8px; }
+.tiles { display: flex; gap: 4px; }
+.tile { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; font: 700 20px/1 system-ui, sans-serif; border: 1px solid var(--line); border-radius: 6px; }
+.tile.g { background: var(--good); color: #122; border-color: var(--good); } .tile.y { background: var(--warn); color: #221; border-color: var(--warn); } .tile.b { background: var(--raise); color: var(--dim); }
+.tile.hint { border-style: dashed; color: var(--dim); }
+.chip.die { display: inline-flex; align-items: center; min-height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; }
+.chip.die.in { text-decoration: line-through; color: var(--dim); }
+
+/* 1.5.125 the chest: a grid of little pictures with names */
+.chest-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-top: 10px; }
+.chest-item { display: flex; flex-direction: column; gap: 4px; padding: 6px; min-width: 0; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.chest-pic { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: var(--raise); display: flex; align-items: center; justify-content: center; font-size: 32px; }
+.chest-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#chest-big img, #chest-big video { max-width: 100%; border-radius: 8px; }

@@ -41,13 +41,14 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
 // ---- his look ----
 {
   check('his own looks are described by name', /"Sysop"/.test(lookText('sysop')) && /Hoodie/.test(lookText('sysop')));
+  check('Bob has a take on a design of his own', /Your own design/.test(bobTake('c:m.regular.0.short.1.1.none.0.tee.0.none.none.none')));
   check('avatars say what kind they are', /drawn as a robot/.test(lookText('robot-3')) && /drawn as a computer/.test(lookText('pc-1')));
   check('an unknown look falls back to the default', lookText('nope') === lookText('sysop'));
   const now = lookPrompt({ look: 'bot' });
   check('he knows how he looks, and can describe it', /"Bot"/.test(now) && /describe it/.test(now) && !/just changed/.test(now));
-  const ch = lookPrompt({ look: 'bot', lookChange: { from: 'sysop', to: 'bot' } });
-  check('after a change: one in-character line about the new look, just once', /just changed your look from "Sysop"/.test(ch) && /to "Bot"/.test(ch) && /Only this once/.test(ch));
-  check('the comment can be switched off', !/just changed/.test(lookPrompt({ look: 'bot', lookChange: { from: 'sysop', to: 'bot' }, lookComments: false })));
+  const ch = lookPrompt({ look: 'bot', lookChange: { from: 'sysop', to: 'bot' }, lookComments: true });
+  check('after a change (with the switch on): one in-character line about the new look, just once', /just changed your look from "Sysop"/.test(ch) && /to "Bot"/.test(ch) && /Only this once/.test(ch));
+  check('the comment is off unless switched on (1.5.116)', !/just changed/.test(lookPrompt({ look: 'bot', lookChange: { from: 'sysop', to: 'bot' } })) && !/just changed/.test(lookPrompt({ look: 'bot', lookChange: { from: 'sysop', to: 'bot' }, lookComments: false })));
   const front = systemPrompt({ now: 'now', user: 'Sam', look: now, dials: personalityPrompt({ puns: 4 }, 'Sam') });
   const hat = systemPrompt({ hat: 'tinker', now: 'now', user: 'Sam', look: now, dials: personalityPrompt({ puns: 4 }, 'Sam') });
   check('the front desk knows the look and the dials', /"Bot"/.test(front) && /pun engine/.test(front) && /Sam picked/.test(front));

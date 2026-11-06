@@ -2,9 +2,8 @@
 // since right-click and Ctrl+C often don't get through a remote-desktop connection), and clickable file
 // mentions (paths, inn\... paths, /images/ links and the names of things he made) that get a preview card.
 // Pure functions, no DOM, so the tests can run them.
-export function esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
+import { esc } from './util.js';
+export { esc }; // kept for the files that import it from here
 
 const BAD = '\\\\/:*?"<>|\\r\\n`';
 const SEG = `[^${BAD}]+`;

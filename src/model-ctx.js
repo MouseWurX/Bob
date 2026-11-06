@@ -1,4 +1,4 @@
-// 1.5.87: how much each brain keeps in mind (context), picked per model. The owner's ask (2026-11-04): set it as
+// 1.5.87: how much each brain keeps in mind (context), picked per model. Asked for: set it as
 // the model loads, with a switch, and never offer a size the model wasn't made for. Off: Bob picks (his defaults per
 // model and session, sessions.js). On: a size picked for a brain wins everywhere that brain runs, so every copy
 // on the same file still shares one load. The menu only lists sizes up to the most the model was made for, read

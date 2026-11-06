@@ -4,11 +4,12 @@
 
 | Part | Where | Licence |
 | --- | --- | --- |
+| Mermaid 11.17.2 (draws diagrams; with the libraries bundled into its build, such as D3 and DOMPurify) | `public/vendor/mermaid.min.js` (and the phone app's `assets/www/vendor/`) | MIT (`public/vendor/mermaid-LICENSE.txt`) |
 | IBM Plex Mono (font) | `public/fonts/` | SIL Open Font License 1.1 (`public/fonts/IBM-Plex-Mono-OFL.txt`) |
 | Chat templates for model families (Gemma 4, GPT-OSS, Qwen) | `src/templates/` | Apache-2.0 (from each model's publisher), collected by llama.cpp (MIT); see `src/templates/README.md` |
 | Electron (Chromium and Node.js inside it) | the release zip: `Bob.exe` and the files beside it, Electron's official build, unchanged | MIT, with Chromium's notices in `LICENSES.chromium.html` in the same folder |
 
-The font, the chat templates and Electron are separate works distributed alongside Bob, not combined into his code, so
+The font, Mermaid, the chat templates and Electron are separate works distributed alongside Bob, not combined into his code, so
 their licences sit beside the GPL. Bob's own code has no runtime npm dependencies.
 
 ## Downloaded only when you click

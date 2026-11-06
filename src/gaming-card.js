@@ -1,4 +1,4 @@
-// 1.5.32: how the Gaming session uses the graphics card. A three-position switch (Settings > Engines & speed):
+// 1.5.32: how the Gaming session uses the graphics card. A three-position switch (Settings > Speed & memory):
 //   auto   (the starting position) — decide each time the Gaming brain loads, and again every minute while Bob is quiet;
 //   never  — processor only: the card isn't touched at all (first replies after a load are much slower);
 //   always — as in 1.5.23 to 1.5.31: the brain sits on the processor and borrows about 0.6 GB of the card to read prompts.

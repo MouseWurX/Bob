@@ -5,10 +5,12 @@ import { cleanBrainCtx } from './model-ctx.js';
 import { cleanCheckins } from './checkin-settings.js';
 import { cleanHands } from './hands-settings.js';
 import fs from 'node:fs';
+import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { exeName, onPath } from './platform.js';
+import { cleanRentals } from './rental.js'; // 1.5.127 rented brains
 
 // Where Ollama keeps its models on this PC: OLLAMA_MODELS if it's set, else Bob's own models folder if Ollama's files
 // are there (how the installer sets Ollama up), else Ollama's usual folder in the user's home (~/.ollama/models).
@@ -43,7 +45,7 @@ export function loadConfig() {
   if (process.env.BOB_AGENT_DIR) cfg.agentDir = process.env.BOB_AGENT_DIR;
   if (process.env.BOB_OLLAMA_URL) cfg.ollamaUrl = process.env.BOB_OLLAMA_URL;
   if (process.env.BOB_PORT) cfg.port = Number(process.env.BOB_PORT);
-  // Fresh installs: Bob's home is the folder above his code (for example Agent 00; %LOCALAPPDATA%\Bob otherwise).
+  // Fresh installs: Bob's home is the folder above his code (for example Bob home; %LOCALAPPDATA%\Bob otherwise).
   cfg.agentDir = cfg.agentDir || path.dirname(appDir);
   if (!cfg.readRoots || !cfg.readRoots.length) {
     const home = os.homedir();
@@ -98,11 +100,11 @@ export function loadConfig() {
   // 1.5.32: an older config.json can carry llamacpp.ctx 131072 from before 1.5.19. Staging never touches config.json, so
   // that old number made every brain start with a 131K context (slow, and a 26B brain spills off a 16 GB card). Anything
   // above the 32K default in config.json is set aside (kept as legacyCtx, and logged). A context picked in Bob's window
-  // (Settings, Engines & speed, saved in settings.json) still wins, because it is applied just below.
+  // (Settings, Speed & memory, saved in settings.json) still wins, because it is applied just below.
   if (Number(cfg.llamacpp?.ctx) > LEGACY_CTX_CAP) {
     cfg.llamacpp.legacyCtx = cfg.llamacpp.ctx;
     delete cfg.llamacpp.ctx;
-    console.error(`config.json asks for a ${cfg.llamacpp.legacyCtx}-token context for every brain; using each session's own size instead (pick one in Settings, Engines & speed to override).`);
+    console.error(`config.json asks for a ${cfg.llamacpp.legacyCtx}-token context for every brain; using each session's own size instead (pick one in Settings, Show advanced settings, Brains to override).`);
   }
   cfg.settingsFile = path.join(cfg.dataDir, 'settings.json');
   try { mergeSettings(cfg, JSON.parse(fs.readFileSync(cfg.settingsFile, 'utf8'))); } catch {}
@@ -142,7 +144,7 @@ export const VERSION = (() => {
   } catch { return { release: '0.9', branch: '', build: 0, label: '0.9.0' }; }
 })();
 
-export const SETTING_KEYS = ['planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtx'];
+export const SETTING_KEYS = ['planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -177,6 +179,8 @@ function clean(patch) {
   if ('mootBeside' in out) out.mootBeside = out.mootBeside === true; // 1.5.51, off unless switched on
   if ('webSearch' in out) out.webSearch = out.webSearch === true;
   if ('howtos' in out) out.howtos = out.howtos === true; // 1.5.79 "Let Bob learn how-tos", off by default
+  if ('tray' in out) out.tray = out.tray === true; // 1.5.94 "Keep Bob in the tray", off by default
+  if ('lookIcon' in out) out.lookIcon = out.lookIcon === true; // 1.5.94 "Use Bob's look as his icon", off by default
   if ('houseStyle' in out) out.houseStyle = cleanHouseStyle(out.houseStyle); // 1.5.34 House style (public/house-style.js)
   if ('projectList' in out) out.projectList = cleanProjects(out.projectList); // 1.5.34 Projects in Settings
   if ('saveDir' in out) out.saveDir = cleanDir(out.saveDir); // 1.5.41 Where Bob saves things ('' = Bob's own folder)
@@ -191,6 +195,8 @@ function clean(patch) {
   if ('updates' in out) out.updates = { autoCheck: out.updates?.autoCheck === true };
   if ('housekeeping' in out) out.housekeeping = cleanHousekeeping(out.housekeeping || {});
   if ('checkins' in out) out.checkins = cleanCheckins(out.checkins || {}); // 1.5.78 Check-ins, off unless switched on
+  if ('games' in out) { const g = out.games || {}; out.games = { brain: g.brain === 'main' ? 'main' : 'quick', talk: ['every', 'some', 'end'].includes(g.talk) ? g.talk : 'every' }; } // 1.5.121 🧩 Games (defaults, nothing on)
+  if ('adventure' in out) { const a = out.adventure || {}; out.adventure = { gm: a.gm === 'main' ? 'main' : 'biggest', players: a.players === 'gm' ? 'gm' : 'own' }; } // 1.5.117 🎲 Adventure (defaults, nothing on)
   if ('hands' in out) out.hands = cleanHands(out.hands || {});
   if ('quarantine' in out) out.quarantine = { on: out.quarantine?.on === true };
   if ('downloads' in out) { const d = out.downloads || {}; out.downloads = { concurrent: Number(d.concurrent) === 2 ? 2 : 1, resumeOnStart: d.resumeOnStart === true }; }
@@ -238,6 +244,7 @@ function clean(patch) {
     }
     out.cloudHelpers = ch;
   }
+  if (out.rentals) out.rentals = cleanRentals(out.rentals); // 1.5.127 rented brains: switches, limits, the list; never a key
   if (out.maestro) { out.maestro = { ...out.maestro }; delete out.maestro.url; delete out.maestro.outputsDir; }
   if (out.stt) { out.stt = { ...out.stt }; delete out.stt.url; delete out.stt.apiKey; delete out.stt.apiKeyEnv; }
   return out;
@@ -376,7 +383,7 @@ export function replaceSettings(cfg, patch) {
   let saved = {};
   try { saved = JSON.parse(fs.readFileSync(cfg.settingsFile, 'utf8')); } catch {}
   for (const [k, v] of Object.entries(safe)) { saved[k] = v; cfg[k] = v; }
-  fs.writeFileSync(cfg.settingsFile, JSON.stringify(saved, null, 2));
+  writeJsonAtomic(cfg.settingsFile, saved, 2);
   applyProjects(cfg);
   return saved;
 }
@@ -387,7 +394,7 @@ export function replaceSettings(cfg, patch) {
 export function saveRemote(cfg, remote) {
   const raw = JSON.parse(fs.readFileSync(cfg.configFile, 'utf8'));
   raw.remote = { ...(raw.remote || {}), ...remote };
-  fs.writeFileSync(cfg.configFile, JSON.stringify(raw, null, 2));
+  writeJsonAtomic(cfg.configFile, raw, 2);
   cfg.remote = raw.remote;
 }
 
@@ -396,14 +403,22 @@ export function saveSettings(cfg, patch) {
   let saved = {};
   try { saved = JSON.parse(fs.readFileSync(cfg.settingsFile, 'utf8')); } catch {}
   deepMerge(saved, safe);
-  fs.writeFileSync(cfg.settingsFile, JSON.stringify(saved, null, 2));
+  writeJsonAtomic(cfg.settingsFile, saved, 2);
   deepMerge(cfg, safe);
   return saved;
 }
 
 // Windows paths are case-insensitive; compare normalised forms.
+// A symlink or junction inside an allowed folder may point outside it, so both sides use the real path when
+// it exists (a file that is not there yet keeps its parent's real path).
+const real = (p) => {
+  try { return fs.realpathSync.native(p); } catch {}
+  const parent = path.dirname(p);
+  if (parent === p) return p;
+  return path.join(real(parent), path.basename(p));
+};
 const norm = (p) => {
-  const r = path.resolve(p);
+  const r = real(path.resolve(p));
   return process.platform === 'win32' ? r.toLowerCase() : r;
 };
 

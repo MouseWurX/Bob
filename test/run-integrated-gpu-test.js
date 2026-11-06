@@ -2,7 +2,8 @@
 // memory shared with graphics, and get a brains-only starter set. A separate card, or a desktop chip's tiny built-in
 // graphics, still counts as no graphics card. 1.5.79: the set paints too.
 import fs from 'node:fs';
-import { pickIntegrated, integratedGpu, sharedGraphicsGB, gpuInfo } from '../src/platform.js';
+import { pickIntegrated, integratedGpu, sharedGraphicsGB, gpuInfo, apuGraphicsGB, parseApuJson, apuMemory, specLine, APU_HEADROOM_GB } from '../src/platform.js';
+import { apuRoom, APU_NO_ROOM } from '../src/brain.js';
 import { packFor } from '../public/fit.js';
 
 let pass = 0, fail = 0;
@@ -55,7 +56,7 @@ check('clips keep their own size there', paintFlags(on, 'video', {}, { gb: 0, fi
 check('the switch off: the usual settings, as before', paintFlags({ sharedGraphics: true }, 'image', {}, { gb: 0 }).fit === 'safe');
 check('a real card is still judged by its size', paintFlags({ pictureFit: true, sharedGraphics: true }, 'image', {}, { gb: 16, files: 6 }).fit === 'big');
 const equipSrc = fs.readFileSync(new URL('../public/equip.js', import.meta.url), 'utf8');
-check('the set marked (this replicant matrix) is the built-in one on a handheld', /packFor\(packs, ctx\.vramGB, ctx\.integrated\)\.id \? ' \(this replicant matrix\)'/.test(equipSrc));
+check('the set marked (this replicant matrix) is the built-in one on a handheld', /packFor\(packs, ctx\.vramGB, ctx\.integrated, fitOpts\)\.id \? ' \(this replicant matrix\)'/.test(equipSrc));
 check('it still covers chat, quick brain, eyes, ears, voice, memory and coding', ['bob', 'small', 'eyes', 'voice', 'speech', 'embed', 'tinker'].every((s) => Object.values(shared.slots).flat().includes(s)));
 
 const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
@@ -63,6 +64,66 @@ check('Get models says "Fits your replicant matrix" and names the built-in graph
 const server = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
 check('built-in graphics are not treated as a card for pictures', /!h\.gpu\.integrated\) cfg\.cardGB/.test(server));
 check('built-in graphics are remembered for picture settings', /h\?\.gpu\?\.integrated\) cfg\.sharedGraphics = true/.test(server));
+
+
+// ---- 1.5.126: the memory really shared on a handheld (a Legion Go showed RAM only and no graphics memory) ----
+// The BIOS sets some memory aside for the graphics alone (Auto = small, or 4 / 8 GB); Windows never sees that part.
+const fixed8 = apuGraphicsGB({ installedBytes: 16 * GB, visibleBytes: 7.69 * GB, reservedBytes: 8 * GB });
+check('16 GB Legion Go with 8 GB set aside (Windows sees 7.7): at least the 8 GB counts, plus a careful borrow', fixed8.vramGB >= 8 && fixed8.vramGB === 11 && fixed8.reservedGraphicsGB === 8 && fixed8.installedRamGB === 16 && fixed8.visibleRamGB === 7.7 && fixed8.auto === false, JSON.stringify(fixed8));
+check('the borrow never eats into the last 4 GB Windows keeps', fixed8.borrowGB === 3 && APU_HEADROOM_GB === 4);
+const fixed4 = apuGraphicsGB({ installedBytes: 16 * GB, visibleBytes: 11.7 * GB, reservedBytes: 4 * GB });
+check('4 GB set aside: 4 plus half of the rest', fixed4.vramGB === 9 && fixed4.reservedGraphicsGB === 4 && fixed4.installedRamGB === 16, JSON.stringify(fixed4));
+const auto = apuGraphicsGB({ installedBytes: 16 * GB, visibleBytes: 15.4 * GB, reservedBytes: 512 * 1024 ** 2 });
+check('Auto (512 MB set aside, the recommended setting): back to the old half-of-visible estimate, and called auto', auto.vramGB === 7 && auto.vramGB === sharedGraphicsGB(15.4 * GB) && auto.auto === true && auto.reservedGraphicsGB === 0.5 && auto.installedRamGB === 16, JSON.stringify(auto));
+const unknown = apuGraphicsGB({ installedBytes: 0, visibleBytes: 32 * GB, reservedBytes: 0 });
+check('nothing readable: the old estimate, installed RAM taken as what is visible', unknown.vramGB === 16 && unknown.installedRamGB === 32 && unknown.reservedGraphicsGB === 0);
+// Windows: the registry's qwMemorySize (bytes), matched by driver name; MemorySize (32-bit) only when small; one JSON.
+const psJson = '{"installed":17179869184,"adapters":[{"desc":"AMD Radeon(TM) Graphics","qw":8589934592,"mem":0},{"desc":"Microsoft Remote Display Adapter","qw":0,"mem":0}]}';
+check('Windows registry JSON: the chip\'s set-aside and the sticks\' total', JSON.stringify(parseApuJson(psJson, 'AMD Radeon(TM) Graphics')) === JSON.stringify({ installed: 16 * GB, reserved: 8 * GB }));
+check('a single adapter comes back as an object, not a list: still read', parseApuJson('{"installed":17179869184,"adapters":{"desc":"AMD Radeon(TM) Graphics","qw":0,"mem":536870912}}', 'AMD Radeon(TM) Graphics').reserved === 512 * 1024 ** 2);
+check('a 32-bit MemorySize over 4 GB is a wrapped number, so it is not trusted', parseApuJson('{"installed":0,"adapters":[{"desc":"AMD Radeon(TM) Graphics","qw":0,"mem":4294967295}]}', 'AMD Radeon(TM) Graphics').reserved === 0);
+check('garbage from PowerShell: zeros, never a throw', JSON.stringify(parseApuJson('', 'x')) === JSON.stringify({ installed: 0, reserved: 0 }) && parseApuJson('not json', 'x').reserved === 0);
+// The whole Windows path: the adapter list first, then the memory question (told apart by what is asked), no real programs.
+const twoAsks = (names, json) => (file, args, opts, cb) => { if (file !== 'powershell.exe') return cb(new Error('not here')); cb(null, /Win32_PhysicalMemory/.test(args.join(' ')) ? json : names); };
+const go8 = await integratedGpu({ os_: 'win', execImpl: twoAsks('AMD Radeon(TM) Graphics\r\n', psJson), totalmem: 7.69 * GB, cpu: 'AMD Ryzen Z1 Extreme', fresh: true });
+check('Legion Go set to 8 GB: 11 GB for models, 16 GB installed, 8 set aside', go8?.integrated && go8.vramGB === 11 && go8.installedRamGB === 16 && go8.reservedGraphicsGB === 8 && go8.visibleRamGB === 7.7, JSON.stringify(go8));
+const goAuto = await integratedGpu({ os_: 'win', execImpl: twoAsks('AMD Radeon(TM) Graphics\r\n', '{"installed":17179869184,"adapters":[{"desc":"AMD Radeon(TM) Graphics","qw":536870912,"mem":0}]}'), totalmem: 15.4 * GB, cpu: 'AMD Ryzen Z1 Extreme', fresh: true });
+check('Legion Go on Auto: 7 GB for models, called auto', goAuto?.vramGB === 7 && goAuto.auto === true && goAuto.installedRamGB === 16, JSON.stringify(goAuto));
+const nv2 = await gpuInfo({ os_: 'win', execImpl: twoAsks('AMD Radeon(TM) Graphics', psJson), totalmem: 32 * GB, cpu: 'AMD Ryzen 7 9800X3D 8-Core Processor', fresh: true });
+check('a desktop with no NVIDIA card and a desktop Ryzen: still nothing (the memory question is never asked)', nv2 === null);
+const linMem = await apuMemory({ os_: 'linux', chip: 'Phoenix1', totalmem: 15.4 * GB, listDir: () => ['card0', 'card0-eDP-1', 'renderD128'], readFile: (f) => (f === '/sys/class/drm/card0/device/mem_info_vram_total' ? '536870912\n' : (() => { throw new Error('no'); })()) });
+check('Linux: amdgpu\'s set-aside from sysfs, installed = visible + set-aside', linMem.reserved === 512 * 1024 ** 2 && Math.round(linMem.installed / GB * 10) / 10 === 15.9, JSON.stringify(linMem));
+check('Linux with no sysfs at all: zeros', JSON.stringify(await apuMemory({ os_: 'linux', listDir: () => { throw new Error('no'); }, totalmem: 8 * GB })) === JSON.stringify({ installed: 8 * GB, reserved: 0 }));
+// The spec line and the Get models panel say how the one pool is split (wording approved by the settings review).
+const goGpu = { name: 'AMD Radeon(TM) Graphics (shared memory)', integrated: true, unified: true, ...fixed8 };
+check('spec line, 8 GB set aside', specLine({ cpu: 'Ryzen Z1 Extreme', gpu: goGpu, ramGB: 8 }) === 'Ryzen Z1 Extreme · Radeon built-in · 16 GB memory (8 GB set aside for graphics)', specLine({ cpu: 'Ryzen Z1 Extreme', gpu: goGpu, ramGB: 8 }));
+check('spec line on Auto', specLine({ cpu: 'Ryzen Z1 Extreme', gpu: { ...goGpu, ...auto }, ramGB: 16 }) === 'Ryzen Z1 Extreme · Radeon built-in · 16 GB memory (shared with graphics as needed)');
+check('Intel chips name theirs', /Arc built-in/.test(specLine({ cpu: 'Core Ultra 7 155H', gpu: { name: 'Intel(R) Arc(TM) Graphics (shared memory)', integrated: true, ...auto } })) && /Iris Xe built-in/.test(specLine({ cpu: 'i7', gpu: { name: 'Intel(R) Iris(R) Xe Graphics (shared memory)', integrated: true, ...auto } })));
+check('without the new readings the old line stays', specLine({ cpu: 'Ryzen Z1 Extreme', gpu: { name: 'AMD Radeon', integrated: true, vramGB: 16 }, ramGB: 32 }) === 'Ryzen Z1 Extreme · built-in graphics · 32 GB RAM');
+check('Get models panel: "Memory: 16 GB shared, 8 GB set aside for graphics" or "shared with graphics as needed"', /Memory: \$\{hw\.installedRamGB\} GB \$\{hw\.reservedGraphicsGB >= 2 \? `shared, \$\{hw\.reservedGraphicsGB\} GB set aside for graphics` : 'shared with graphics as needed'\}/.test(cellar));
+const modelsSrc = fs.readFileSync(new URL('../src/models.js', import.meta.url), 'utf8');
+check('/api/hardware carries installedRamGB, reservedGraphicsGB and visibleRamGB', /installedRamGB: gpu\.installedRamGB, reservedGraphicsGB: gpu\.reservedGraphicsGB, visibleRamGB: gpu\.visibleRamGB/.test(modelsSrc));
+const help = fs.readFileSync(new URL('../public/help-content.js', import.meta.url), 'utf8');
+check('Help: the FAQ explains the set-aside (BIOS or the maker\'s app) and the glossary has "Set aside for graphics"', /Auto, 4 GB or 8 GB in your BIOS or the maker's app, such as Legion Space or Armoury Crate/.test(help) && /<dt>Set aside for graphics<\/dt>/.test(help));
+
+// ---- 1.5.126: the memory guard on shared-memory machines: shorten the chat memory, or refuse, never crash ----
+const fakeBrain = (free, loaded = []) => ({ cfg: { sharedGraphics: true }, gate: { brainBytes: (m, { ctx }) => 6 * GB + Math.min(ctx || 32768, 131072) * 60 * 1024 }, engine: { loaded: async () => loaded } });
+let r = await apuRoom(fakeBrain(), 'qwen', 32768, { freeMem: 12 * GB });
+check('plenty of RAM: the brain loads as asked (6 GB brain + 32K chat memory, 12 GB free, 4 kept for Windows)', r.ok && r.ctx === 32768 && !r.shortened, JSON.stringify(r));
+r = await apuRoom(fakeBrain(), 'qwen', 32768, { freeMem: 10.6 * GB });
+check('a little tight: the chat memory is shortened (32K -> 8K), not refused', r.ok && r.shortened && r.ctx === 8192, JSON.stringify(r));
+r = await apuRoom(fakeBrain(), 'qwen', 32768, { freeMem: 10 * GB });
+check('too tight even at 8K: refused, with Bob\'s plain line', !r.ok && r.line === APU_NO_ROOM(r.needGB, r.roomGB) && /only about 6 GB is free once Windows keeps its share/.test(r.line) && /needs about 6\.5 GB/.test(r.line), r.line);
+r = await apuRoom(fakeBrain(), 'qwen', 32768, { freeMem: 4 * GB, loaded: [{ name: 'gemma', size: 8 * GB }] });
+check('the brain being swapped out counts as room', r.ok && r.ctx === 32768, JSON.stringify(r));
+r = await apuRoom(fakeBrain(), 'qwen', 32768, { freeMem: 1 * GB, loaded: [{ name: 'qwen', size: 6 * GB }] });
+check('already loaded: nothing to find room for', r.ok && !r.shortened);
+r = await apuRoom({ ...fakeBrain(), cfg: {} }, 'qwen', 32768, { freeMem: 1 * GB });
+check('a real graphics card: untouched (the card has its own memory)', r.ok && r.ctx === 32768);
+r = await apuRoom({ ...fakeBrain(), gate: { brainBytes: () => undefined } }, 'qwen', 32768, { freeMem: 1 * GB });
+check('a brain whose size is unknown goes the old way', r.ok && !r.shortened);
+const brainSrc = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8');
+check('the guard sits in fitCtx (shorten), ensureModel (refuse, in chat) and wake (stay quiet)', /const room = await apuRoom\(this, model, fit\);/.test(brainSrc) && /throw new Error\(room\.line\)/.test(brainSrc) && /not waking \$\{model\}: too little RAM/.test(brainSrc));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

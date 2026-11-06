@@ -103,6 +103,17 @@ class NetBob(context: Context) {
         return read(c)
     }
 
+    /** Sends a picture (bytes) to that Bob, e.g. /api/refs for a photo to work on. */
+    fun upload(base: String, path: String, bytes: ByteArray, type: String): Reply {
+        val c = open(base, path, "POST", 60000)
+        c.doOutput = true
+        c.setFixedLengthStreamingMode(bytes.size)
+        c.setRequestProperty("Content-Type", type)
+        c.setRequestProperty("x-bob", "1")
+        c.outputStream.use { it.write(bytes) }
+        return read(c)
+    }
+
     private fun read(c: HttpURLConnection): Reply {
         try {
             val status = c.responseCode
@@ -126,6 +137,29 @@ class NetBob(context: Context) {
             val type = (c.contentType ?: "application/octet-stream").substringBefore(';')
             return "data:$type;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
         } finally { c.disconnect() }
+    }
+
+    /** A file from that Bob as bytes and its type (up to 200 MB), for saving it on this phone. */
+    /** Streams a file from that Bob straight to [write] (nothing is held in memory): null when it's gone or over 200 MB. */
+    fun stream(base: String, path: String, timeoutMs: Int = 60000, write: (java.io.InputStream, String, String) -> Unit): Boolean {
+        val c = open(base, path, "GET", timeoutMs)
+        try {
+            if (c.responseCode != 200) return false
+            if (c.contentLengthLong > 200_000_000) return false
+            val mime = (c.contentType ?: "application/octet-stream").substringBefore(';').trim()
+            // The name that Bob gave the file, when he gave one (Content-Disposition: attachment; filename="...").
+            val named = Regex("filename=\"?([^\";]+)").find(c.getHeaderField("Content-Disposition") ?: "")?.groupValues?.get(1)?.trim() ?: ""
+            c.inputStream.use { s -> write(Limited(s, 200_000_000), mime, named) }
+            return true
+        } finally { c.disconnect() }
+    }
+
+    /** An input stream that stops at [max] bytes (a Bob that keeps sending can't fill the phone). */
+    private class Limited(private val s: java.io.InputStream, private val max: Long) : java.io.InputStream() {
+        private var seen = 0L
+        private fun over(): Nothing = throw IllegalStateException("too big")
+        override fun read(): Int { val b = s.read(); if (b >= 0 && ++seen > max) over(); return b }
+        override fun read(b: ByteArray, off: Int, len: Int): Int { val n = s.read(b, off, len); if (n > 0) { seen += n; if (seen > max) over() }; return n }
     }
 
     /** Follows that Bob's live events (replies as they're written, OK cards, job progress) until stopped. */

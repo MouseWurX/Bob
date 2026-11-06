@@ -16,6 +16,13 @@ const L = globalThis.BobLogic, S = globalThis.BobShared, H = globalThis.BobHelp;
 // Shared with desktop Bob: persona and pinned models are made from src/persona.js and catalog.json.
 const { buildShared, OUT } = await import(pathToFileURL(path.join(root, 'android/tools/make-shared.mjs')));
 check('shared.js is up to date (node android/tools/make-shared.mjs)', fs.readFileSync(OUT, 'utf8').replace(/\r\n/g, '\n') === buildShared().replace(/\r\n/g, '\n'));
+// 1.5.122: the character screen's parts and composer come word for word from public/avatars.js.
+const { buildAvatars, OUT_AVATARS } = await import(pathToFileURL(path.join(root, 'android/tools/make-shared.mjs')));
+check('avatars.js is up to date (node android/tools/make-shared.mjs)', fs.readFileSync(OUT_AVATARS, 'utf8').replace(/\r\n/g, '\n') === buildAvatars().replace(/\r\n/g, '\n'));
+await import(pathToFileURL(path.join(www, 'avatars.js')));
+{ const A = globalThis.BobAvatars, D = await import(pathToFileURL(path.join(root, 'public/avatars.js')));
+  const id = A.encodeParts({ ...A.DEFAULT_PARTS, body: 'f', hair: 'braids', armour: 'plate', weapon: 'sword', shield: 'round' });
+  check('avatars.js draws the same look as the desktop (same map, palette and sentence)', JSON.stringify(A.avatar(id)) === JSON.stringify(D.avatar(id)) && A.avatar(id).map.length === 16 && /woman with braided/.test(A.avatar(id).what) && A.PARTS.body.some(([v]) => v === 'f')); }
 check('phone persona is Bob, on a phone, without the PC-only parts', /You are Bob/.test(S.persona) && /phone/.test(S.persona) && !/front desk|spin up copies|Idle Process|notice board/i.test(S.persona));
 for (const m of S.models) {
   const f = m.file || {};
@@ -32,7 +39,7 @@ const kt = fs.readFileSync(path.join(root, 'android/app/src/main/java/ca/mousewu
 check('NetBob.kt has the same Tailscale rule', /second in 64\.\.127/.test(kt) && /\\\.ts\\\.net\$/.test(kt));
 
 // Big jobs: the card only shows when it's clearly one.
-const big = { 'draw me a fox': 'pictures', 'make a picture of a castle at night': 'pictures', 'can you make a song about cats': 'music', 'make a short video of rain': 'video', 'tidy my downloads folder': 'files', 'run my build script': 'programs', 'convert this to pdf': 'office', 'scan my pc for viruses': 'security' };
+const big = { 'draw me a fox': 'pictures', 'make a picture of a castle at night': 'pictures', 'can you make a song about cats': 'music', 'make a short video of rain': 'video', 'tidy my downloads folder': 'files', 'run my build script': 'programs', 'convert this to pdf': 'office', 'scan my pc for viruses': 'security', 'edit my selfie so the sky is blue': 'pictures', 'restyle that photo as a comic': 'pictures', 'design a poster for my band': 'pictures', 'I want the picture to look like winter': 'pictures' };
 for (const [t, id] of Object.entries(big)) check(`big job: "${t}"`, L.bigJob(t)?.id === id, JSON.stringify(L.bigJob(t)));
 for (const t of ["what's a good song for a road trip?", 'I saw a nice picture yesterday', 'how do videos get compressed?', 'what is a virus, in biology?', 'remind me what we said about the fox'.replace('fox', 'garden')]) check(`not a big job: "${t}"`, L.bigJob(t) === null, JSON.stringify(L.bigJob(t)));
 
@@ -67,7 +74,7 @@ check('markdown links: only http(s), opened by the phone', !/javascript:/.test(m
 // Help covers every setting and screen on the page.
 const html = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
 const ids = H.sections.map((s) => s.id);
-const need = { 'phone-on': 'phone-brain', 'free-idle': 'free-memory', 'idle-min': 'free-memory', mode: 'who', 'user-name': 'user-name', 'read-aloud': 'read-aloud', theme: 'theme', resume: 'resume', mic: 'mic', effort: 'effort', bobs: 'bobs', memory: 'memory', chats: 'past-chats', 'lend-on': 'lend' };
+const need = { 'phone-on': 'phone-brain', 'free-idle': 'free-memory', 'idle-min': 'free-memory', mode: 'who', 'user-name': 'user-name', 'read-aloud': 'read-aloud', theme: 'theme', resume: 'resume', mic: 'mic', effort: 'effort', bobs: 'bobs', memory: 'memory', chats: 'past-chats', 'lend-on': 'lend', 'pass-along': 'pass-along' };
 for (const [ctl, sec] of Object.entries(need)) check(`help covers ${ctl}`, (html.includes(`id="${ctl}"`) || html.includes(`name="${ctl}"`)) && ids.includes(sec));
 const controls = [...html.matchAll(/<(?:input|select)[^>]*(?:id|name)="([\w-]+)"/g)].map((m) => m[1]).filter((x) => !['chat-search', 'help-search', 'add-name', 'add-address', 'memory-text'].includes(x));
 for (const c of new Set(controls)) check(`setting ${c} has a help entry`, c in need);
@@ -85,7 +92,7 @@ check('opt-in: Lend my brain starts off', /getBoolean\("on", false\)/.test(fs.re
 check('phone chat sends history and the time as a note', /brain\.chat', \{ file: model\.file\.name, system, history, text, note/.test(js));
 
 // Lend my brain: the door's rules (Lend protocol v1, same as a desktop lender's).
-const ktf = (f) => fs.readFileSync(path.join(root, 'android/app/src/main/java/ca/mousewurx/bob', f), 'utf8');
+const ktf = (f) => fs.readFileSync(path.join(root, 'android/app/src/main/java/ca/mousewurx/bob', f), 'utf8').replace(/\r\n/g, '\n'); // Windows checkouts are CRLF
 const lendKt = ktf('LendServer.kt');
 check('lend: opens only on the phone\'s Tailscale address', /ss\.bind\(InetSocketAddress\(ip, PORT\)/.test(lendKt) && /isTailscale\(la\.address\)/.test(lendKt));
 check('lend: refuses anyone not on Tailscale, and a Host that isn\'t a Tailscale name', /if \(!isTailscale\(remote\)\) return reply\(out, 403/.test(lendKt) && /if \(!okHost\(req\.headers\["host"\]\)\) return reply\(out, 403/.test(lendKt));
@@ -144,6 +151,72 @@ check('lend panel: no stray "null" when Lend my brain is off', /box\.append\(\.\
 
 // Turning on Lend my brain makes the passcode when there isn't one yet (no separate step first).
 check('lend: turning it on makes the passcode if none is set', /if \(on && !lend\.passcodeSet\) \{ lendCode = await phone\('lend\.newPasscode'\)/.test(js));
+
+// Replicant matrix wording: the phone page never calls the machine a "PC" on screen (comments and Bob's model prompt aside).
+{
+  const shown = html.replace(/<!--[\s\S]*?-->/g, '') + js.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n').replace(/\/(?:[^/\n\\]|\\.)+\/[gimsuy]*/g, '');
+  const hits = (shown.match(/[^\n]{0,40}\b(?:PCs?|my-pc)\b[^\n]{0,40}/g) || []);
+  check('replicant matrix: no "PC" in the phone page\'s own words', !hits.length, hits.join(' | '));
+}
+
+// Photos: picked with Android's own picker, sent to a networked Bob (never the phone brain), then the chat points at it.
+check('photo: 📎 picks with the system photo picker (no permission)', /<button id="photo" aria-label="Add a photo">/.test(html) && /MediaStore\.ACTION_PICK_IMAGES/.test(bridge) && !/READ_MEDIA_IMAGES|READ_EXTERNAL_STORAGE/.test(fs.readFileSync(path.join(root, 'android/app/src/main/AndroidManifest.xml'), 'utf8')));
+check('photo: uploads to /api/refs as kind chat, then /api/chat carries the ref', /\/api\/refs\?kind=chat/.test(bridge) && /phone\('photo\.upload'/.test(js) && /refs\.length \? \{ refs \}/.test(js));
+check('photo: never goes to the phone brain', /if \(photo && !to\)/.test(js) && !/brain\.chat[^\n]*photo/.test(js));
+
+// Bob-Net pairing v1: the four routes before the passcode, a card here, Pair by address, nothing switched on.
+{
+  const lendKt2 = ktf('LendServer.kt'), pairKt = ktf('Pairing.kt');
+  check('pair: hello/ask/status/finish served on the lend door, before the passcode', /"\/api\/pair\/hello"/.test(lendKt2) && /startsWith\("\/api\/pair\/"\)/.test(lendKt2) && /"\/api\/pair\/ask"[\s\S]*"\/api\/pair\/status"[\s\S]*"\/api\/pair\/finish"/.test(lendKt2));
+  check('pair: the asker must call from the address it gives, 4-digit number, 3 asks a minute', /address\.substringBefore\(':'\) != remoteIp/.test(pairKt) && /\\\\d\{4\}/.test(pairKt) && /ASKS_A_MINUTE = 3/.test(pairKt));
+  check('pair: each pairing gets its own passcode, kept as a fingerprint; a new passcode drops them', /fun pairPasscode/.test(lendKt2) && /putString\("pairs", "\[\]"\)/.test(lendKt2) && !/putString\("code"/.test(lendKt2));
+  check('pair: our passcode goes over only after their yes, and only while Lend my brain is on', /"yes" -> \{[\s\S]*?if \(app\.lend\.state == "open"\) app\.lend\.pairPasscode/.test(pairKt));
+  check('pair: Yes refused while the door is shut', /if \(yes && app\.lend\.state != "open"\)/.test(pairKt));
+  check('pair: the reviewed card and waiting words', /should show the number/.test(js) && /Waiting for a yes on \$\{who\}/.test(js));
+  check('pair: the card, Pair with this Bob, and nothing switched on', /'Yes, pair us'/.test(js) && /id="pair-bob"/.test(html) && !/setOn\(true\)/.test(pairKt) && !/settings\.(phoneOn|mode)\s*=/.test((js.match(/function onPair[\s\S]*?\n  \}\n/) || [''])[0]));
+}
+
+// Model families: every phone brain names its family; the picker groups them under headers you open and close.
+{
+  const pm = JSON.parse(fs.readFileSync(path.join(root, 'android/phone-models.json'), 'utf8'));
+  check('families: every phone brain has a family', pm.models.every((m) => typeof m.family === 'string' && m.family.length > 0));
+  check('families: the picker groups them under headers that open and close (remembered)', /el\('details', \{ class: 'fam'/.test(js) && /store\.set\('openFamilies'/.test(js));
+}
+
+// Save to this phone: every type is a button (the original too), and the file lands on the phone, not only on the PC.
+check('save: every type, original included, saves on this phone', /'Save to this phone as '/.test(js) && /f === have \? ' \(original\)'/.test(js) && /phone\('media\.save'/.test(js) && /phone\('media\.saveData'/.test(js) && /MediaStore\.Images\.Media\.EXTERNAL_CONTENT_URI to "Pictures\/Bob"/.test(bridge));
+check('save: no storage permission asked', !/WRITE_EXTERNAL_STORAGE|MANAGE_EXTERNAL_STORAGE/.test(fs.readFileSync(path.join(root, 'android/app/src/main/AndroidManifest.xml'), 'utf8')));
+
+// One Bob-Net page: your other Bobs, adding/pairing and Lend my brain together (not split with Phone brain).
+{ const net = (html.match(/<section[^>]*id="bobs"[\s\S]*?<\/section>/) || [''])[0], brainP = (html.match(/<section[^>]*id="brain"[\s\S]*?<\/section>/) || [''])[0];
+  check('bob-net: one page holds other Bobs, pairing and Lend my brain', /<h2>Bob-Net<\/h2>/.test(net) && /id="bob-list"/.test(net) && /id="pair-bob"/.test(net) && /id="lend-on"/.test(net) && /id="lend-box"/.test(net) && !/lend-/.test(brainP) && /data-go="bobs"><span class="ico">🌐<\/span>Bob-Net</.test(html) && /if \(id === 'bobs'\) watchLend\(\)/.test(js) && !/Bobs on your network/.test(html + js + fs.readFileSync(path.join(www, 'help.js'), 'utf8'))); }
+
+// A saved file streams from that Bob into the phone's media library; it never sits whole in memory.
+check('save: files stream to the phone, not held in memory', (() => { const net = fs.readFileSync(path.join(root, 'android/app/src/main/java/ca/mousewurx/bob/NetBob.kt'), 'utf8'); return /fun stream\(base: String, path: String, timeoutMs: Int = 60000, write:/.test(net) && /s\.copyTo\(out\)/.test(bridge) && !/fun bytes\(/.test(net) && !/readNBytes\(200_000_001\)/.test(net); })());
+
+// Save a help bundle: the button on Settings, a networked Bob's zip (his name for it, a longer wait) or a phone-only HANDOFF.md, scrubbed; Help, FAQ and glossary.
+{ const help = fs.readFileSync(path.join(www, 'help.js'), 'utf8'), net = fs.readFileSync(path.join(root, 'android/app/src/main/java/ca/mousewurx/bob/NetBob.kt'), 'utf8');
+  check('help bundle: button, PC zip or phone-only HANDOFF.md, scrubbed', /id="help-bundle">Save a help bundle</.test(html) && /path = '\/api\/help-bundle'/.test(js) && /# HANDOFF\.md/.test(js) && /assume the worst/.test(js) && /<tailscale address>/.test(js) && /'the owner'/.test(js) && !/lendCode/.test(js.slice(js.indexOf('function phoneHandoff'), js.indexOf("$('help-bundle')"))) && /Content-Disposition/.test(net) && /optInt\("timeoutMs"/.test(bridge));
+  check('help bundle: Help entry, FAQ row and glossary', /id: 'help-bundle', title: 'Save a help bundle'/.test(help) && /How do I get help with my Bob\?/.test(help) && /<dt>Help bundle<\/dt>/.test(help) && /<dt>Handoff file \(HANDOFF\.md\)<\/dt>/.test(help)); }
+
+// Pass my Bob-Net along (off): the phone answers an introduction from one of its Bobs and pairs with no card; it never introduces.
+{ const lendKt2 = fs.readFileSync(path.join(root, 'android/app/src/main/java/ca/mousewurx/bob/LendServer.kt'), 'utf8').replace(/\r\n/g, '\n'), pairKt = fs.readFileSync(path.join(root, 'android/app/src/main/java/ca/mousewurx/bob/Pairing.kt'), 'utf8').replace(/\r\n/g, '\n'), help = fs.readFileSync(path.join(www, 'help.js'), 'utf8');
+  check('pass along: /api/bob-net/introduce needs the login cookie and x-bob; 409 off unless the switch is on and the door open', /"\/api\/bob-net\/introduce" && req\.method == "POST" -> \{ if \(signedIn\(req, out\)\) introduce/.test(lendKt2) && /private fun introduce\(out: OutputStream, req: Req, who: String\) \{\n\s+if \(req\.headers\["x-bob"\] != "1"/.test(lendKt2) && /settings\.passAlong && state == "open"/.test(lendKt2) && /if \(!open\) return 409 to JSONObject\(\)\.put\("busy", "off"\)/.test(pairKt));
+  check('pass along: a vouched token is a yes with no card, once, for 3 minutes; an unknown token is 403 and nothing is kept', /if \(b\.has\("token"\)\) \{\n\s+val by = vouched\(.*\) \?: return 403/.test(pairKt) && /a\.state = "yes"; a\.by = by\n\s+asks\[id\] = a\n\s+return 200/.test(pairKt) && /expected\.remove\(address\)\n\s+return e\.from/.test(pairKt) && /for \(\(k, e\) in expected\) if \(now - e\.at > ASK_FOR_MS\) expected\.remove\(k\)/.test(pairKt) && /\^\[0-9a-f\]\{32\}\$/.test(pairKt) && !/pairWith\(.*token/.test(pairKt));
+  check('pass along: the hello carries name and passAlong; the switch is off to start with and is a setting', /\.put\("name", app\.pair\.myName\(\)\)\.put\("passAlong", settings\.passAlong\)/.test(lendKt2) && /prefs\.getBoolean\("passAlong", false\)/.test(lendKt2) && /"lend\.passAlong" -> \{ app\.lend\.setPassAlong\(o\.getBoolean\("on"\)\)/.test(bridge) && /id="pass-along"/.test(html) && /phone\('lend\.passAlong', \{ on \}\)/.test(js) && /\$\('pass-along'\)\.checked = Boolean\(lend\.passAlong\)/.test(js));
+  check('pass along: the chat says who introduced whom; Help, FAQ and glossary', /\$\{ev\.by\} introduced \$\{name\}/.test(js) && /put\("by", it\)/.test(pairKt) && /id: 'pass-along', title: 'Pass my Bob-Net along'/.test(help) && /never makes them/.test(help) && /Can my Bobs introduce each other\?/.test(help) && /<dt>Introduced<\/dt>/.test(help)); }
+
+// 🎲 Adventure: the page shows your other Bob's table and plays your turns (cards, a second card with Back, the flair line); nothing starts by itself.
+{ const help = fs.readFileSync(path.join(www, 'help.js'), 'utf8'), css = fs.readFileSync(path.join(www, 'phone.css'), 'utf8');
+  check('adventure: menu entry, table from /api/adventure, cards with Back and flair, fate, live events', /data-go="adventure"><span class="ico">🎲<\/span>Adventure</.test(html) && /id="adv-body"/.test(html) && /advApi\('\/api\/adventure'\)/.test(js) && /'\/api\/adventure\/act'/.test(js) && /'\/api\/adventure\/fate'/.test(js) && /'\/api\/adventure\/start'/.test(js) && /'\/api\/adventure\/players'/.test(js) && /text: '← Back'/.test(js) && /'Skip the flair'/.test(js) && /'🎲 Roll it'/.test(js) && /ev\.type === 'adventure'\) return onAdvEvent/.test(js) && !/adventure\/settings/.test(js) && /\.adv-cards \{/.test(css));
+  check('adventure: character screen (every body, swatches, Use for this character), Looks like, saved characters, the look goes with start', /<script src="avatars\.js"><\/script>/.test(html) && /function advCharacter\(/.test(js) && /AV\.partsFor\(p\.body\)/.test(js) && /'🧍 Change the look'/.test(js) && /'🧍 Close the character screen'/.test(js) && /useLabel = 'Use for this character'/.test(js) && /'🎲 Surprise me'/.test(js) && /text: 'Start over'/.test(js) && /role: 'radio', 'aria-checked'/.test(js) && /'\/api\/adventure\/characters\/save'/.test(js) && /'\/api\/adventure\/characters\/delete'/.test(js) && /'💾 Save this character'/.test(js) && /'Delete for good'/.test(js) && /'Keep it'/.test(js) && /look: advYou\.look \|\| ''/.test(js) && !/'Wear this'/.test(js) && /\.char-swatches button\[aria-checked="true"\]/.test(css));
+  check('adventure: 📖 Characters page (You / Party / Met / Enemies), edit with the character screen, Forget between games, monster Hide swatches', /function advCharsPage\(/.test(js) && ['🧍 You', '👥 Party', '📖 Met', '⚔ Enemies'].every((t) => js.includes(`'${t}'`)) && !/'🎲 Party'/.test(js) && /text: '📖 Characters'/.test(js) && /text: '➕ New character'/.test(js) && /useLabel: 'Save this character'/.test(js) && /'\/api\/adventure\/met\/forget'/.test(js) && /text: 'Forget for good'/.test(js) && /`Forget \$\{m\.name\}\?`/.test(js) && /g \? null : ch\.ask === m\.id/.test(js) && /'aria-label': `\$\{e\.hearts\} hearts`/.test(js) && /v\.lastParty/.test(js) && /'monster'\) \? 'Hide'/.test(js) && /text: '📓 Journal'/.test(js) && /adv\.chars \? advCharsPage\(\)/.test(js) && /\.tabs button\[aria-selected="true"\]/.test(css));
+  check('adventure: Help says the phone brain is too small to be game master; glossary lines', /id: 'adventure', title: 'Adventure'/.test(help) && /too small to be game master/.test(help) && /<dt>Game master<\/dt>/.test(help) && /<dt>Plot armour<\/dt>/.test(help) && /<dt>Action card<\/dt>/.test(help) && /<dt>Hearts<\/dt>/.test(help) && /<dt>Character screen<\/dt>/.test(help) && /Can my Adventure character look different from Bob\?/.test(help) && /Change the look<\/strong>/.test(help) && /<dt>Bestiary<\/dt>/.test(help) && /How tough are the enemies in an Adventure\?/.test(help) && /Goblin, Skeleton, Wolf, Bandit, Giant rat, Giant spider, Orc, Cultist, Slime, Ghost, Troll, Dragon/.test(help)); }
+
+// 🧩 Games: the shelf and the five boards from your other Bob's /api/games; the phone brain is never used; no trademarked game names.
+{ const help = fs.readFileSync(path.join(www, 'help.js'), 'utf8'), css = fs.readFileSync(path.join(www, 'phone.css'), 'utf8');
+  check('games: menu entry, shelf with Start, the five boards, Stop/close, live events', /data-go="games"><span class="ico">🧩<\/span>Games</.test(html) && /id="games-body"/.test(html) && /advApi\('\/api\/games'\)/.test(js) && /'\/api\/games\/start'/.test(js) && /'\/api\/games\/act'/.test(js) && /'\/api\/games\/end'/.test(js) && /'\/api\/games\/close'/.test(js) && !/games\/settings/.test(js) && ['gamTwenty', 'gamHangman', 'gamLadder', 'gamLetters', 'gamStory'].every((f) => new RegExp(`function ${f}\\(`).test(js)) && /ev\.type === 'games'\) return onGamEvent/.test(js) && /text: '▶ Start'/.test(js) && /Stop this game\? It counts as unfinished/.test(js) && /\.tile\.g \{/.test(css) && /\.keyrow \{/.test(css));
+  check('games: Help, FAQ and glossary; no trademarked names', /id: 'games', title: 'Games'/.test(help) && /phone brain is never used for a game/.test(help) && /Can the phone brain play the games\?/.test(help) && ['Twenty questions', 'Shelf', 'Word ladder', 'Five letters', 'Story dice'].every((t) => new RegExp(`<dt>${t}</dt>`).test(help)) && !/wordle|scrabble|boggle|pictionary/i.test(js + help + html)); }
 
 // The page's lock: no inline scripts or styles, no network from the page itself.
 check('page has a strict Content-Security-Policy', /script-src 'self'/.test(html) && /connect-src 'none'/.test(html) && !/<script>(?!<)/.test(html.replace(/<script src[^>]*><\/script>/g, '')) && !/ style="/.test(html));

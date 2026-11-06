@@ -1,8 +1,8 @@
 # Brain races: how Bob's brains were picked
 
-Before a brain gets a slot in Bob's starter set, it races the brain it would replace, on the same PC, the same engine and the same jobs. This page has the full results of the races behind the current 16 GB lineup. The Gaming brain race is in [How Bob stays fast and light](PERFORMANCE.md#picking-the-gaming-brain).
+Before a brain gets a slot in Bob's starter set, it races the brain it would replace, on the same replicant matrix, the same engine and the same jobs. This page has the full results of the races behind the current 16 GB lineup. The Gaming brain race is in [How Bob stays fast and light](PERFORMANCE.md#picking-the-gaming-brain).
 
-**The reference PC** for every number here: Ryzen 7 9800X3D, RTX 5070 Ti (16 GB), 32 GB DDR5, NVMe SSD, Windows 11. **Engine:** Bob's own engine, llama.cpp b12032 (CUDA build), one brain at a time with nothing else on the card. Your numbers will differ; **Test Bob's speed** measures your own.
+**The replicant matrix** behind every number here: Ryzen 7 9800X3D, RTX 5070 Ti (16 GB), 32 GB DDR5, NVMe SSD, Windows 11. **Engine:** Bob's own engine, llama.cpp b12032 (CUDA build), one brain at a time with nothing else on the card. Your numbers will differ; **Test Bob's speed** measures your own.
 
 **The lineup these races chose (16 GB card):**
 

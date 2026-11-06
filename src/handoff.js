@@ -149,6 +149,50 @@ export function carryOnLine(job) {
   return `I was closed partway through this one. Picking up where I left off: ${bits.join(', and ')}.`;
 }
 
+// ---------- The waiting line (1.5.97) ----------
+// While a job waits for the graphics card, chat and Tasks show one muted ⏳ line that says who has the card and that
+// nothing is needed from the user (on the Legion Go the old line read like an OK card). Never the owner's name.
+export const WAIT_STILL = 'Still waiting. Stop cancels this job if you\'d rather not wait.';
+export const NOTHING_TO_OK = 'There\'s nothing to OK right now. I\'m just waiting for the graphics card, and I\'ll carry on by myself.';
+export function holderLine(label = '', lending = null) {
+  const l = String(label || '');
+  if (lending) return `I'm lending my brain to "${String(lending.for || 'another Bob').slice(0, 60)}"`;
+  if (/clip engine/i.test(l)) return "I'm making a clip";
+  if (/picture engine/i.test(l)) return "I'm making a picture";
+  if (/workshop|program/i.test(l)) return 'another program is using it';
+  if (/brain|\bBob/i.test(l)) return 'my Brain is finishing another job';
+  return 'something else is using it';
+}
+export function waitLine(holder, mins = 0) {
+  const n = Math.max(0, Math.floor(mins));
+  return `⏳ The graphics card is busy: ${holder}. Nothing for you to do; I carry on by myself when it's free. (waiting ${n} min)${n >= 5 ? ` ${WAIT_STILL}` : ''}`;
+}
+// 1.5.104: a chat that waits in the queue behind a picture, clip, song or sound gets the same kind of ⏳ line (it used
+// to get the older "I'm still on the last job" note, and "ok" after it was queued as a new job).
+export const NOTHING_TO_OK_BUSY = 'There\'s nothing to OK right now. I\'m still on the last job, and I\'ll answer you as soon as it\'s done.';
+// 1.5.105: the job in plain words for the ⏳ line ("making a picture, step 12 of 30"), from the status-bar detail.
+export function plainDoing(detail = '') {
+  const d = String(detail || '').trim();
+  const steps = (n, m) => (n && m ? `, step ${n} of ${m}` : '');
+  if (d === 'Loading the picture engine') return 'loading the picture engine';
+  let m = d.match(/^(Painting|Filming)(?: (\d+)\/(\d+))?$/);
+  if (m) return `making a ${m[1] === 'Filming' ? 'clip' : 'picture'}${steps(m[2], m[3])}`;
+  m = d.match(/^Maestro is (painting|filming)$/);
+  if (m) return `making a ${m[1] === 'filming' ? 'clip' : 'picture'} in Maestro`;
+  m = d.match(/^Maestro: .*?(?: (\d+)\/(\d+))?(?: \d+%)?$/);
+  if (m) return `working in Maestro${steps(m[1], m[2])}`;
+  m = d.match(/^(Composing|Making a sound)(?: (\d+)%)?$/);
+  if (m) return `making a ${m[1] === 'Composing' ? 'song' : 'sound'}${m[2] ? `, ${m[2]}% done` : ''}`;
+  m = d.match(/^Workshop: (.+?)(?: \(\d+ s\))?$/);
+  if (m) return `running ${m[1]} in the Workshop`;
+  return d;
+}
+export function queuedLine(doing = '') {
+  const d = String(doing || '').trim();
+  return `⏳ I'm still on the last job${d ? ` (${d})` : ''}. Nothing for you to do; I'll answer this as soon as it's done. If it can't wait, stop that job in Tasks.`;
+}
+export const isBareOk = (text) => /^\s*(ok(ay)?|yes|yep|yeah|go( ahead)?|sure|y)\s*[.!]*\s*$/i.test(String(text || ''));
+
 // ---------- The gate ----------
 // Errors that a second try won't fix: go straight to the fallback (or the user).
 const NO_RETRY = /can't find the model files|has no model file|Couldn't start llama-server|Stopped\./i;
@@ -184,12 +228,22 @@ export class Gate {
     await this.lease.acquire(signal, label, {
       signal,
       onWait: (who) => {
-        const text = `Waiting for ${who || 'the job before this one'} to finish with the graphics card.`;
-        emit?.({ type: 'announce', text });
-        this.brain.setState?.('waiting', text);
-        this.brain.log?.('handoff', text);
+        const since = Date.now();
+        const id = `wait-${since}-${Math.random().toString(36).slice(2, 8)}`;
+        const say = () => {
+          const text = waitLine(holderLine(who, this.brain.lending), (Date.now() - since) / 60000);
+          emit?.({ type: 'waiting-line', id, text });
+          this.brain.setState?.('waiting', text);
+          return text;
+        };
+        this.brain.log?.('handoff', say());
+        this.waitingNow = (this.waitingNow || 0) + 1;
+        const tick = setInterval(say, 60000);
+        tick.unref?.();
+        const stop = () => { clearInterval(tick); this.waitingNow = Math.max(0, (this.waitingNow || 1) - 1); };
+        this.pendingWaits = (this.pendingWaits || new Map()); this.pendingWaits.set(signal, stop);
       }
-    });
+    }).finally(() => { const stop = this.pendingWaits?.get(signal); if (stop) { stop(); this.pendingWaits.delete(signal); } });
   }
 
   // need({ id: 'brain', model, opts }, { signal, emit, who, announce }) -> the model that's loaded (it can be a fallback).
@@ -220,6 +274,8 @@ export class Gate {
     if (!opts.cpu) await this.hold(signal, `the ${this.label(model, who).replace(/ \(.*$/, '')}`, emit);
     const tryLoad = async (m, o) => {
       let last = null;
+      // 1.5.113: the card is known to be taken by another program: don't start a load that can't work.
+      if (!o.cpu && await this.brain.cardStillTaken?.({ kind: 'chat' })) throw Object.assign(new Error(this.brain.cardHeld.line), { code: 'card_held' });
       for (let attempt = 0; attempt <= this.delays.length; attempt++) {
         if (signal?.aborted) throw new Error('Stopped.');
         if (await this.isReady(m, o)) { this.ready.brain = m; return true; }
@@ -246,6 +302,8 @@ export class Gate {
           if (signal?.aborted) throw new Error('Stopped.');
           last = e;
           if (NO_RETRY.test(e.message)) break;
+          // 1.5.113: timed out because another program holds the card: one try, not three five-minute ones.
+          if (!o.cpu && await this.brain.cardTaken?.(e, null).catch?.(() => false)) { last = Object.assign(new Error(this.brain.cardHeld.line), { code: 'card_held' }); break; }
         } finally { this.loading = null; }
       }
       this.ready.brain = null;
@@ -255,7 +313,7 @@ export class Gate {
       await tryLoad(model, opts);
       return model;
     } catch (e) {
-      if (/^Stopped\.$/.test(e.message) || signal?.aborted) throw e;
+      if (/^Stopped\.$/.test(e.message) || signal?.aborted || e.code === 'card_held') throw e; // 1.5.113: no other brain either
       // 1.5.51: the second brain beside a job won't start. Never fall back to the main brain here: that would swap the
       // big job's brain out from under it. The message goes back in line instead (Brain.startTurn).
       if (opts.beside) { const b = new Error(e.message); b.code = 'beside'; throw b; }
@@ -295,7 +353,7 @@ export class Gate {
   // waits until the engine really reports them gone before the painter starts.
   async needCard({ id, kind }, { signal, emit }) {
     const ledger = this.ledgerOf(signal);
-    await this.hold(signal, id === 'painter' ? 'the picture engine' : 'the workshop', emit);
+    await this.hold(signal, id === 'painter' ? (/video|clip/i.test(String(kind || '')) ? 'the clip engine' : 'the picture engine') : 'the workshop', emit);
     const st = ledger?.step('load', { what: id === 'painter' ? `painter (${kind || 'image'})` : 'empty graphics card' });
     try {
       const gone = (await this.brain.clearGpu()) || [];
@@ -339,7 +397,7 @@ export async function withRetry(fn, { tries = 2, wait = 3000, signal, onRetry, r
     if (signal?.aborted) throw new Error('Stopped.');
     try { return await fn(i); } catch (e) {
       last = e;
-      if (signal?.aborted || e.code === 'stopped' || /^Stopped\.$/.test(e.message) || !retryable(e) || i === tries - 1) throw e;
+      if (signal?.aborted || e.code === 'stopped' || /^Stopped\.$/.test(e.message) || i === tries - 1 || !(await retryable(e))) throw e; // 1.5.113: retryable may be async
       onRetry?.(e, i);
       await sleep(wait, signal);
     }

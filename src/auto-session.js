@@ -2,13 +2,13 @@
 // as how Bob works ("this wouldn't be opt in"), the one exception to the opt-in rule. Off = only the picker changes it.
 // With it on, Bob changes session himself, from what the chat and the job are really about: his quick brain reads the
 // conversation and calls pick_session when a job would clearly go better in another session. There's no word list
-// deciding it (the owner: "the choice needs to make sense contextually").
+// deciding it (the choice has to make sense from the context).
 // A switch happens between jobs, never under one: the turn ends, the session changes (the old brains are let go), and the
 // same request runs again in the new session with a note saying so. The user's message isn't repeated in the chat.
 // After the work is done and Bob has been quiet for a short while (2 minutes, or less if "Free memory after Bob has been
 // quiet for" is shorter), he goes back to Normal, the lightest session: with "Free memory when Bob is idle" on, nothing
 // stays on the graphics card. Gaming is the exception: Bob never leaves it on his own when he goes quiet, because that
-// would load the card in the middle of a game. The owner: "as little input from the person as possible", so Bob never asks:
+// would load the card in the middle of a game. As little input from the person as possible, so Bob never asks:
 // he reads the graphics card himself (nvidia-smi). Busy with something else (a game) = he stays in Gaming, or goes into
 // Gaming when he goes quiet; free = he can leave it, and goes back to Normal when quiet.
 // The session picker on the chat page still works the same, and a hand-picked session is dropped back from too.

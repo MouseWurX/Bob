@@ -7,12 +7,12 @@ import { chatBrain } from './brain-mode.js';
 import { currentSession } from './sessions.js';
 import { tuning } from './tuning.js';
 import { VERSION } from './config.js';
+import { sleep } from './util.js';
 
 const QUESTIONS = ['In three short sentences, why is the sky blue?', 'Name three good habits for keeping code tidy, one line each.'];
 const fileOf = (cfg) => path.join(cfg.dataDir, 'speed-tests.json');
 export function speedHistory(cfg) { try { return JSON.parse(fs.readFileSync(fileOf(cfg), 'utf8')).slice(-20); } catch { return []; } }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const secs = (ms) => Math.round(ms / 100) / 10;
 
 async function ask(brain, model, opts, question) {

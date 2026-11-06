@@ -1,7 +1,7 @@
 // Keep Bob light (1.5.2): the "Free memory when Bob is idle" switch and the memory label at the top of the chat.
 // On (default): nothing stays on the graphics card while Bob is quiet; typing loads his small brain again.
 // Off: the small brain stays loaded. Big brains load for their job and go right after, either way.
-// Same setting as Advanced, Engines & speed, "Free memory after Bob has been quiet for" (Never = off).
+// Same setting as Advanced, Speed & memory, "Free memory after Bob has been quiet for" (Never = off).
 const $ = (id) => document.getElementById(id);
 
 export function createBrainBar({ post, note }) {
@@ -29,14 +29,14 @@ export function createBrainBar({ post, note }) {
     sw.setAttribute('aria-checked', String(on));
     swSt.textContent = on ? 'On' : 'Off';
     swLabel.title = on
-      ? `On: gives the graphics memory back after Bob has been quiet for ${st.sleepAfter || '5 minutes'}. Typing loads it again (${secs(st.wakeSeconds)}). Change the time in Settings, Advanced, Engines & speed.`
+      ? `On: gives the graphics memory back after Bob has been quiet for ${st.sleepAfter || '5 minutes'}. Typing loads it again (${secs(st.wakeSeconds)}). Change the time in Settings, Show advanced settings, Speed & memory.`
       : st.bigSession
         ? `Off: in the ${st.session} session Bob's brain is a big one, so it's still freed ${st.bigGrace || '2 minutes'} after each job.`
         : 'Off: Bob\'s small brain stays loaded so he answers straight away. Big brains (coding, deep thought, pictures, video) are still freed right after their job.';
     const chat = st.models.find((m) => m.chat);
     const mem = where(st.gb, st.ramGB, !(chat && !chat.onCard), st.models.some((m) => m.estimate));
     let text, title;
-    if (!st.engineOk) { text = 'Brain: engine not answering'; title = 'Bob can\'t reach his engine. Check it\'s running (Settings, Advanced, Engines & speed).'; }
+    if (!st.engineOk) { text = 'Brain: engine not answering'; title = 'Bob can\'t reach his engine. Check it\'s running (Settings, Show advanced settings, Engines).'; }
     else if (st.state === 'waking') { text = 'Brain: loading...'; title = `Loading the small brain (${secs(st.wakeSeconds)}).`; }
     else if (st.state === 'working') { text = `Brain: working · ${mem}`; title = `In memory now: ${list() || 'loading'}. Big brains are freed when the job is done.${whole}`; }
     else if (st.state === 'awake') {

@@ -1,6 +1,6 @@
-// Settings, Connections: "Let my other replicant matrices in" (src/phone-access.js). Off unless you turn it on.
+// Settings, Bob-Net, This Bob: "Let my other replicant matrices in" (src/phone-access.js). Off unless you turn it on.
 // Bob for Android (or a browser on your phone) reaches this Bob over Tailscale with the passcode.
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+import { esc } from './util.js';
 
 async function api(url, data) {
   const r = await fetch(url, data === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify(data) });
@@ -10,7 +10,18 @@ async function api(url, data) {
 }
 
 export function phoneAccessHtml() {
-  return '<div class="phone-box"><strong>Let my other replicant matrices in</strong><p class="muted">Loading…</p></div>';
+  return '<div class="phone-box"><p class="muted">Loading…</p></div>';
+}
+
+// 1.5.94: what's in the way on this replicant matrix's firewall, and the one button that fixes it.
+function firewallHtml(f, port) {
+  if (!f) return '';
+  if (f.os === 'win') return f.ruleHere
+    ? `<div class="row"><span class="muted">✓ Windows Firewall lets Tailscale through to Bob (the rule "Bob (Tailscale only)").</span><button type="button" data-fw="remove">Remove the firewall rule</button></div>`
+    : `<div class="row"><span><strong>Windows Firewall may block your other replicant matrices.</strong> <span class="muted">One rule fixes it: Bob's port${port ? ` (${esc(port)})` : ''}, only from Tailscale addresses (100.64.0.0/10), nothing else on your network. Windows asks you once to allow the change. It also switches off any rule that blocks Bob's own program (Windows makes one if Cancel was clicked on its earlier question).</span></span><button type="button" class="get" data-fw="add">Let Tailscale through the firewall</button></div>`;
+  if (f.os === 'linux' && f.line) return `<p class="muted">Your ${esc(f.firewall)} firewall is on and may block Tailscale. I can't change it myself (it needs your password). In a terminal: <code>${esc(f.line)}</code></p>`;
+  if (f.os === 'mac') return '<p class="muted">If the macOS firewall is on, it asks once whether Bob may accept incoming connections: choose Allow.</p>';
+  return '';
 }
 
 export async function mountPhoneAccess(box) {
@@ -18,24 +29,32 @@ export async function mountPhoneAccess(box) {
   let v, shown = '', msg = '', restart = false;
   const draw = () => {
     const hosts = v.hosts.length ? v.hosts : v.found;
-    box.innerHTML = `<strong>Let my other replicant matrices in</strong> <span class="tag">off unless you turn it on</span>
+    box.innerHTML = `<span class="tag">off unless you turn it on</span>
       <label class="switch"><input type="checkbox" data-phone-on ${v.enabled ? 'checked' : ''}><span><strong>Let my other replicant matrices in</strong><br><span class="muted">Your phone (Bob for Android) and your other Bobs can reach this Bob over Tailscale with the passcode below. Nothing else on your network can.</span></span></label>
-      ${restart || (v.enabled !== v.live) ? '<p class="muted"><strong>Restart Bob to apply this.</strong> Close his window and open him again from the Start menu.</p>' : ''}
-      <div class="row"><strong>Passcode</strong> <span class="muted">${shown ? `<code>${esc(shown)}</code> Type it into your phone or other Bob now: it isn't shown again.` : v.passcodeSet ? 'set (it\'s only shown once, when you make it).' : 'Not set yet. Turning on Let my other replicant matrices in makes one for you.'}</span>
-        <button type="button" data-phone-newcode>${v.passcodeSet ? 'Make a new passcode' : 'Make a passcode'}</button></div>
-      <div class="row"><strong>Address for the phone</strong> ${hosts.length ? hosts.map((h) => `<code>${esc(h)}</code>`).join(' or ') : '<span class="muted">No Tailscale address found on this replicant matrix. Install Tailscale and sign in, then check again.</span>'}
+      ${restart ? '<p class="muted"><strong>Restart Bob to apply this.</strong> Close his window and open him again from the Start menu.</p>' : v.enabled && !v.live ? '<p class="muted">On, but I\'m not on Tailscale yet. Start Tailscale and sign in: I pick it up within a minute, no restart.</p>' : ''}
+      <div class="row"><strong>Address</strong> <span class="muted">Type this into your phone or your other Bob.</span> ${hosts.length ? hosts.map((h) => `<code>${esc(h)}</code>`).join(' or ') : '<span class="muted">No Tailscale address found on this replicant matrix. Install Tailscale and sign in, then check again.</span>'}
         <button type="button" data-phone-find>Check again</button></div>
+      <div class="row"><strong>Passcode</strong> <span class="muted">${shown ? `<code>${esc(shown)}</code> Type it into your phone or other Bob now: it isn't shown again.` : v.passcodeSet ? 'set (it\'s only shown once, when you make it).' : 'Not set yet. Turning on Let my other replicant matrices in makes one for you.'}</span>
+        <button type="button" data-phone-newcode>Make a new passcode</button></div>
+      ${v.enabled ? firewallHtml(v.firewall, v.port) : ''}
       ${msg ? `<p class="muted" role="status">${esc(msg)}</p>` : ''}
-      <details class="more"><summary>More</summary><p class="muted">On the phone: install Tailscale and sign in with the same account, open Bob for Android, Menu, Bobs on your network, and add the address above. Then type the passcode and tap Log in. Making a new passcode signs every phone out. Turning this off closes the door again after a restart.</p></details>`;
+      <details class="more"><summary>More</summary><p class="muted">On the phone: install Tailscale and sign in with the same account, open Bob for Android, Menu, Bobs on your network, and add the Address above. Then type the passcode and tap Log in. Making a new passcode signs every phone out. Turning this off closes the door straight away.</p></details>`;
   };
   const load = async () => { v = await api('/api/phone-access'); draw(); };
   const change = async (patch) => {
-    try { const r = await api('/api/phone-access', patch); v = { ...v, ...r }; if (r.passcode) shown = r.passcode; restart = restart || r.restart; msg = ''; }
+    try { const r = await api('/api/phone-access', patch); v = { ...v, ...r }; if (r.passcode) shown = r.passcode; restart = restart || r.restart; msg = ''; document.dispatchEvent(new CustomEvent('bob-door')); }
     catch (e) { msg = e.message; }
     draw();
   };
   box.addEventListener('change', (e) => { if (e.target.matches('[data-phone-on]')) change(e.target.checked && !v.passcodeSet ? { enabled: true, newPasscode: true } : { enabled: e.target.checked }); });
-  box.addEventListener('click', (e) => {
+  box.addEventListener('click', async (e) => {
+    const fw = e.target.closest('[data-fw]');
+    if (fw) { // 1.5.94: Windows shows its own "make changes" prompt; nothing changes if the answer is No
+      fw.disabled = true; msg = 'Windows is asking you…'; draw();
+      try { const r = await api('/api/phone-access/firewall', { add: fw.dataset.fw === 'add' }); v.firewall = r.firewall; msg = r.ok ? (fw.dataset.fw === 'add' ? 'Done: Tailscale can get through the firewall now.' : 'Removed the firewall rule.') : r.why; }
+      catch (err) { msg = err.message; }
+      draw(); return;
+    }
     if (e.target.closest('[data-phone-newcode]')) change({ newPasscode: true });
     if (e.target.closest('[data-phone-find]')) load().then(() => change({ hosts: v.found }));
   });

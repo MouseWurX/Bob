@@ -1,4 +1,4 @@
-// 1.5.87: how much each brain keeps in mind, picked per brain (the owner's ask, 2026-11-04): a switch, off to start
+// 1.5.87: how much each brain keeps in mind, picked per brain : a switch, off to start
 // with; each menu only lists sizes the model was made for; a pick wins for every copy on that brain (one load).
 import fs from 'node:fs';
 import os from 'node:os';

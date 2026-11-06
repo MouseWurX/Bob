@@ -20,6 +20,7 @@ export async function transcribe(cfg, wav) {
 }
 
 async function viaOllama(cfg, stt, wav) {
+  if (!cfg.ollamaUrl) throw new Error('I have no ears yet. Pick a "Hearing you" model in Get models (left menu).');
   const model = stt.model || 'gemma4:e4b';
   const field = stt.audioField || 'images';
   const msg = { role: 'user', content: PROMPT, [field]: [Buffer.from(wav).toString('base64')] };

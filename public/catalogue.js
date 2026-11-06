@@ -5,9 +5,8 @@
 import { canDo, suit, pickFor, deviceFit, sourceOf, SLOT_NAMES } from './fit.js';
 import { allSlots, isActive, tipHtml, slotValue, equipped } from './equip.js';
 import { keep } from './tips.js';
+import { esc, gb } from './util.js';
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const gb = (n) => (n == null ? '' : n >= 1 ? `${(+n).toFixed(n >= 10 ? 0 : 1)} GB` : `${Math.round(n * 1000)} MB`);
 
 // The jobs, in the order the catalogue shows them. Names are the slot names on the paper doll.
 const BRAIN_JOBS = ['small', 'gaming', 'bob', 'deep', 'reviewer', 'tinker', 'office', 'eyes'];
@@ -25,6 +24,16 @@ export function modelsFor(job, models) {
   return models.filter((m) => (job.cats || []).includes(m.category) && Boolean(m.use?.painter?.sdcpp?.edit) === Boolean(job.editOnly));
 }
 
+// 1.5.101: how a model does on the example machines, said once per answer: "Runs well: 16 GB card, 8 GB card · Runs, slowly: 6 GB laptop card".
+const SHORT = { big: '16 GB card', mid: '8 GB card', small: '6 GB laptop card', cpu: 'no graphics card' };
+export function fitLines(rows) {
+  const pc = rows.filter((d) => d.id !== 'phone'), phone = rows.find((d) => d.id === 'phone');
+  const words = [...new Set(pc.map((d) => d.word))];
+  const parts = words.length === 1 && pc.length > 1 ? [`${words[0]} on every card and with no graphics card`]
+    : words.map((w) => `${w}: ${pc.filter((d) => d.word === w).map((d) => SHORT[d.id] || d.label).join(', ')}`);
+  return [parts.join(' · '), phone ? `${phone.label}: ${phone.word}` : ''].filter(Boolean).join('\n');
+}
+
 const LEVEL_TAG = { slow: '<span class="tag warn">Slow on this replicant matrix</span>', no: '<span class="tag warn">Doesn\'t suit this replicant matrix</span>', blocked: '<span class="tag bad">Can\'t install here</span>' };
 
 function rowHtml(m, job, ctx) {
@@ -33,12 +42,14 @@ function rowHtml(m, job, ctx) {
   const rec = job.id !== 'phone' && pickFor(job.id, ctx.models, ctx)?.id === m.id;
   const src = sourceOf(m);
   // Everything that explains (what it is, how it does on other machines, licence) goes in the tip; what you act on stays.
-  const fits = deviceFit(m).map((d) => `${d.label}: ${d.word}`).join(' · ');
-  const tip = [m.what, m.vramGB ? `Wants ${gb(m.vramGB)} of graphics memory` : 'Runs on the processor', m.trial ? `New: not tried on a PC yet. ${m.trialNote || ''}`.trim() : '', s.why, fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`, src ? `From ${src.label}` : ''].filter(Boolean).join('\n');
+  const fits = fitLines(deviceFit(m));
+  // 1.5.101: no line twice ("Runs on the processor" when the description already says so); the source is on the ↗ only.
+  const where = m.vramGB ? `Wants ${gb(m.vramGB)} of graphics memory` : /runs on the processor/i.test(m.what || '') ? '' : 'Runs on the processor';
+  const tip = [m.what, where, m.trial ? `New: not tried on a PC yet. ${m.trialNote || ''}`.trim() : '', s.why, fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`].filter(Boolean).join('\n');
   const tags = `${rec ? '<span class="tag rec">★ Recommended</span>' : ''}${m.trial ? '<span class="tag">New</span>' : ''}${!rec && s.level !== 'ok' ? LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
   const on = isActive({ entry: m, value: m.id, installed: here }, ctx.active);
   const sw = job.id === 'phone' ? '<span class="muted">In the phone app</span>'
-    : `<button type="button" class="mini-switch" role="switch" aria-checked="${on}" data-active="${esc(m.id)}" data-tip="${here ? 'Active: shows in Equip Bob and the brain menus. Off: hidden there. Nothing is deleted.' : 'Active: shows in Equip Bob and the brain menus as not downloaded, with a Get button. Off: only listed here.'}" aria-label="Active: ${esc(m.name)}">Active <span class="st">${on ? 'On' : 'Off'}</span></button>`;
+    : `<button type="button" class="mini-switch" role="switch" aria-checked="${on}" data-active="${esc(m.id)}" aria-label="Active: ${esc(m.name)}">Active <span class="st">${on ? 'On' : 'Off'}</span></button>`;
   const slot = allSlots().find((x) => x.id === job.id);
   const value = here && slot ? slotValue(slot, m, ctx.roles) : '';
   const worn = value && equipped(slot, ctx) === value;
@@ -50,6 +61,40 @@ function rowHtml(m, job, ctx) {
     <span class="cat-act">${sw}${act}</span><div class="confirm" hidden></div></li>`;
 }
 
+// 1.5.101: inside each job, models sit under one header per family (Qwen, Gemma and so on). Every family starts
+// closed; pressing its header opens the list to pick from. The header says how many there are, the size range, and
+// whether Bob's pick or something already here is inside, so a closed family still tells you what's in it.
+// Which families are open is remembered in this browser (ctx.famOpen, keyed job:family).
+export const FAMILIES = {
+  Qwen: 'Made by the Qwen team at Alibaba. The biggest family here: quick little brains, big coders and thinkers, a picture reader and a picture editor.',
+  Gemma: 'Made by Google. Brains that see pictures, from the phone-sized E2B to the 26B.',
+  'GPT-OSS': 'Made by OpenAI, open to download. A careful thinker and reviewer.',
+  Whisper: 'Made by OpenAI. Turns your voice into words.',
+  'Z-Image': 'Made by Alibaba\'s Tongyi lab. Quick picture making, in sizes for big and small cards.',
+  FLUX: 'Made by Black Forest Labs. Picture making and picture edits.',
+  LTX: 'Made by Lightricks. Short video clips.',
+  Wan: 'Made by Alibaba\'s Wan team. Short video clips that fit smaller cards.',
+  Piper: 'Voices from the Piper project. Small, quick and run on the processor.',
+  Kokoro: 'A pack of natural English voices.',
+  Nomic: 'Made by Nomic. Helps Bob find things in his memory.',
+  'ACE-Step': 'Made by ACE Studio and StepFun. Makes songs.',
+};
+export const familyOf = (m) => m.family || String(m.name || m.id || '').split(/[\s-]/)[0] || 'Other';
+export const famKey = (job, fam) => `${job}:${fam}`;
+
+function familyHtml(job, fam, list, ctx) {
+  const pick = job.id !== 'phone' && list.some((m) => pickFor(job.id, ctx.models, ctx)?.id === m.id);
+  const hereN = list.filter((m) => m.status?.state === 'installed').length;
+  const sizes = list.map((m) => m.sizeGB).filter((n) => n != null);
+  const lo = Math.min(...sizes), hi = Math.max(...sizes);
+  const range = !sizes.length ? '' : lo === hi ? gb(lo) : `${gb(lo)} to ${gb(hi)}`;
+  const open = ctx.famOpen?.[famKey(job.id, fam)] === true;
+  const about = FAMILIES[fam] ? tipHtml(FAMILIES[fam], `About the ${fam} family`) : '';
+  return `<details class="cat-fam" data-fam="${esc(famKey(job.id, fam))}" id="catfam-${esc(job.id)}-${esc(fam)}"${open ? ' open' : ''}>
+    <summary><span class="fam-name">${esc(fam)}</span><span class="muted">${list.length} ${list.length === 1 ? 'model' : 'models'}${range ? ` · ${range}` : ''}</span>${pick ? '<span class="tag rec">★ Recommended inside</span>' : ''}${hereN ? `<span class="tag good">${hereN} on this replicant matrix</span>` : ''}${about}</summary>
+    <ul class="kit-list cat-list">${list.map((m) => rowHtml(m, job, ctx)).join('')}</ul></details>`;
+}
+
 function jobHtml(job, ctx) {
   const list = modelsFor(job, ctx.models);
   // Bob's pick first, then what's here, then what fits, then the rest.
@@ -57,10 +102,14 @@ function jobHtml(job, ctx) {
   const sorted = [...list].sort((a, b) => rank(a) - rank(b));
   const hide = sorted.filter((m) => rank(m) === 3);
   const shown = ctx.showUnsuited ? sorted : sorted.filter((m) => !hide.includes(m));
+  // Families in the order of their best model (the one with Bob's pick first), then by name.
+  const fams = new Map();
+  for (const m of shown) { const f = familyOf(m); if (!fams.has(f)) fams.set(f, []); fams.get(f).push(m); }
+  const famOrder = [...fams.entries()].sort((a, b) => Math.min(...a[1].map(rank)) - Math.min(...b[1].map(rank)) || a[0].localeCompare(b[0]));
   const note = hide.length ? `<p class="muted unsuited-note">${ctx.showUnsuited ? '' : `${hide.length} more ${hide.length === 1 ? 'doesn\'t' : 'don\'t'} suit this replicant matrix. `}<button type="button" class="link" data-unsuited>${ctx.showUnsuited ? 'Hide the ones that don\'t suit' : 'Show them'}</button></p>` : '';
   const rule = job.id === 'gaming' ? '<p class="muted">Only brains timed answering quickly on a busy processor are listed here. Gemma 4 E4B isn\'t: it takes about half a minute there.</p>' : '';
   return `<section class="cat-job" id="catjob-${esc(job.id)}"><h3>${job.icon} ${esc(SLOT_NAMES[job.id] || job.name)} ${tipHtml(job.does, `About ${job.name}`)}</h3>${rule}
-    <ul class="kit-list cat-list">${shown.map((m) => rowHtml(m, job, ctx)).join('') || '<li class="muted">Nothing in Bob\'s list for this job yet.</li>'}</ul>${note}</section>`;
+    ${famOrder.map(([f, ms]) => familyHtml(job, f, ms, ctx)).join('') || '<ul class="kit-list cat-list"><li class="muted">Nothing in Bob\'s list for this job yet.</li></ul>'}${note}</section>`;
 }
 
 // Brains on this PC that aren't in Bob's list (pulled in Ollama by hand, say): they can be made active or not too.
@@ -77,7 +126,7 @@ function othersHtml(ctx) {
 export function catalogueHtml(ctx) {
   const jobs = catJobs();
   const card = ctx.vramGB ? `${ctx.vramGB} GB graphics card${ctx.ramGB ? `, ${ctx.ramGB} GB RAM` : ''}` : 'no graphics card found';
-  return `<div class="cat-top"><p class="muted">Every model Bob knows, by the job it does. Turn <strong>Active</strong> on for the ones you want to see in Equip Bob and the brain menus. ${tipHtml(`Picked for this replicant matrix: ${card}. ★ Recommended is Bob's pick for that job here. New ones are listed but not recommended until they've been tried on a PC. Turning Active off only hides a model; it stays on this replicant matrix (your computer).`, 'How the catalogue works')} ${keep('Downloads always ask first, with the size.')} <button type="button" class="mini help-link" data-help="catalogue" aria-label="Help: the Brain catalogue">? Help</button></p>
+  return `<div class="cat-top"><p class="muted">Every model Bob knows, by the job it does, then by family. Press a family's name to open its list. Turn <strong>Active</strong> on for the ones you want to see in Equip Bob and the brain menus. ${tipHtml(`Picked for this replicant matrix: ${card}. ★ Recommended is Bob's pick for that job here. New ones are listed but not recommended until they've been tried on real hardware. Turning Active off only hides a model; it stays on this replicant matrix (your computer). Turning it on for a model you don't have yet shows it in Equip Bob with a Get button.`, 'How the catalogue works')} ${keep('Downloads always ask first, with the size.')} <button type="button" class="mini" data-famall="open">Open all families</button> <button type="button" class="mini" data-famall="close">Close all</button> <button type="button" class="mini help-link" data-help="catalogue" aria-label="Help: the Brain catalogue">? Help</button></p>
     <nav class="subnav cat-nav" aria-label="Jobs">${jobs.map((j) => `<button type="button" data-catjump="${esc(j.id)}"${ctx.focus === j.id ? ' aria-current="true"' : ''}>${j.icon} ${esc(SLOT_NAMES[j.id] || j.name)}</button>`).join('')}</nav></div>
     ${jobs.map((j) => jobHtml(j, ctx)).join('')}${othersHtml(ctx)}`;
 }

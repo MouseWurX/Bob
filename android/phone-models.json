@@ -4,6 +4,7 @@
     {
       "id": "gemma4-e2b",
       "name": "Gemma 4 E2B",
+      "family": "Gemma",
       "pick": "recommended",
       "what": "Quick and light. About 3 GB. Best pick for phones with 8 GB.",
       "license": "Apache 2.0",
@@ -18,6 +19,7 @@
     {
       "id": "qwen3-4b",
       "name": "Qwen3 4B Instruct",
+      "family": "Qwen",
       "pick": "second",
       "what": "A little better at step-by-step thinking, but slower and the phone runs warmer. About 2.5 GB.",
       "license": "Apache 2.0",

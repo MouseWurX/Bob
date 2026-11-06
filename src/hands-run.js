@@ -10,6 +10,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { insideAny, isInside } from './config.js';
 import { isSensitive } from './tools.js';
 import { limitOn, readOnlyRoots } from './hands-settings.js';
+import { killTree as stopTree } from './platform.js';
 
 const MAX_OUT = 200_000; // characters of output kept for Bob (the chat gets all of it live)
 const WIN = process.platform === 'win32';
@@ -218,10 +219,7 @@ export function launchPlan(cmd, args) {
 export function killTree(child) {
   if (!child || child.exitCode !== null || child.killedTree) return;
   child.killedTree = true;
-  try {
-    if (WIN) spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 15000 });
-    else process.kill(-child.pid, 'SIGKILL');
-  } catch {}
+  try { stopTree(child); } catch {}
   try { child.kill('SIGKILL'); } catch {}
 }
 

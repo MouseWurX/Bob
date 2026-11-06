@@ -137,7 +137,7 @@ const realFetch = globalThis.fetch;
   check('Help is in Bob\'s voice (first person)', e && /\bmy\b|\bI\b/.test(e.html));
   check('Help is honest about Low effort and saving', e && /Low effort\) replies skip the thinking/.test(e.html) && /none of it is saved/.test(e.html));
   check('FAQ has it', HELP.some((h) => h.id === 'faq-mind' && h.group === 'FAQ'));
-  check('glossary has it', /Thinking \(Bob's thinking window\)/.test(HELP.find((h) => h.id === 'glossary').html));
+  check('glossary has it', /Thinking first<\/dt><dd>[^<]*Bob's thinking shows it live/.test(HELP.find((h) => h.id === 'glossary').html));
   check('settings inventory lists it', /Bob's thinking/.test(read('docs/SETTINGS-INVENTORY.md')));
 }
 

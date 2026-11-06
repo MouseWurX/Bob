@@ -54,6 +54,7 @@
   "models": [
     {
       "id": "gemma4-26b",
+      "family": "Gemma",
       "category": "chat",
       "jobs": ["bob", "deep", "tinker", "reviewer", "eyes", "ledger", "scout", "painter", "office"],
       "name": "Gemma 4 26B",
@@ -90,6 +91,7 @@
     },
     {
       "id": "gemma4-e4b",
+      "family": "Gemma",
       "category": "chat",
       "jobs": ["bob", "small", "eyes", "voice", "ledger", "scout", "painter", "office"],
       "name": "Gemma 4 E4B",
@@ -126,6 +128,7 @@
     },
     {
       "id": "qwen3-4b",
+      "family": "Qwen",
       "category": "chat",
       "jobs": ["bob", "small", "ledger", "scout", "painter", "gaming", "office", "phone"],
       "name": "Qwen3 4B Instruct 2507",
@@ -156,6 +159,7 @@
     },
     {
       "id": "qwen3.6-27b",
+      "family": "Qwen",
       "category": "chat",
       "jobs": ["deep", "reviewer", "tinker", "bob", "office", "eyes", "scout"],
       "name": "Qwen3.6 27B",
@@ -192,6 +196,7 @@
     },
     {
       "id": "qwen3.8-27b",
+      "family": "Qwen",
       "category": "chat",
       "jobs": ["deep", "reviewer", "bob", "tinker", "office"],
       "name": "Qwen 3.8 27B",
@@ -220,6 +225,7 @@
     },
     {
       "id": "qwen3.5-9b",
+      "family": "Qwen",
       "category": "chat",
       "jobs": ["bob", "tinker", "eyes", "office", "ledger", "scout", "painter"],
       "name": "Qwen3.5 9B",
@@ -258,6 +264,7 @@
     },
     {
       "id": "qwen3.5-4b",
+      "family": "Qwen",
       "category": "chat",
       "jobs": ["small", "bob", "eyes", "scout", "painter", "ledger"],
       "name": "Qwen3.5 4B",
@@ -296,8 +303,9 @@
     },
     {
       "id": "qwen3.5-2b",
+      "family": "Qwen",
       "category": "chat",
-      "jobs": ["small", "eyes", "phone"],
+      "jobs": ["bob", "small", "eyes", "phone"],
       "name": "Qwen3.5 2B",
       "what": "The smallest brain here. Quick on a phone or an old laptop, and it sees pictures; keep the questions simple.",
       "sizeGB": 1.9,
@@ -333,8 +341,9 @@
     },
     {
       "id": "gemma4-e2b",
+      "family": "Gemma",
       "category": "chat",
-      "jobs": ["small", "eyes", "phone", "scout", "painter"],
+      "jobs": ["bob", "small", "eyes", "phone", "scout", "painter"],
       "name": "Gemma 4 E2B",
       "what": "Gemma 4's smallest brain. The phone app's brain, and a light Quick brain on a PC; it sees pictures.",
       "sizeGB": 3.4,
@@ -369,6 +378,7 @@
     },
     {
       "id": "qwen3-coder-30b",
+      "family": "Qwen",
       "category": "coding",
       "jobs": ["tinker", "bob", "reviewer", "office", "deep"],
       "name": "Qwen3 Coder 30B",
@@ -397,6 +407,7 @@
     },
     {
       "id": "gpt-oss-20b",
+      "family": "GPT-OSS",
       "category": "coding",
       "jobs": ["deep", "reviewer", "tinker", "bob", "ledger", "scout", "office"],
       "name": "gpt-oss 20B",
@@ -427,6 +438,7 @@
     },
     {
       "id": "qwen2.5-coder-7b",
+      "family": "Qwen",
       "category": "coding",
       "jobs": ["tinker"],
       "name": "Qwen2.5 Coder 7B",
@@ -455,6 +467,7 @@
     },
     {
       "id": "qwen3.6-35b-a3b",
+      "family": "Qwen",
       "category": "coding",
       "jobs": ["tinker", "bob", "reviewer", "deep", "office", "eyes", "ledger", "scout"],
       "name": "Qwen3.6 35B-A3B",
@@ -491,6 +504,7 @@
     },
     {
       "id": "qwen3.6-35b-a3b-q3",
+      "family": "Qwen",
       "category": "coding",
       "jobs": ["tinker", "bob", "reviewer", "deep", "office", "eyes", "ledger", "scout"],
       "name": "Qwen3.6 35B-A3B (8 GB card version)",
@@ -529,6 +543,7 @@
     },
     {
       "id": "qwen2.5-vl-7b",
+      "family": "Qwen",
       "category": "vision",
       "jobs": ["eyes"],
       "name": "Qwen2.5 VL 7B",
@@ -559,6 +574,7 @@
     },
     {
       "id": "whisper-base-en",
+      "family": "Whisper",
       "category": "voice",
       "name": "Whisper base (English)",
       "what": "Small, quick speech-to-text. Runs on the processor.",
@@ -586,6 +602,7 @@
     },
     {
       "id": "whisper-large-v3-turbo",
+      "family": "Whisper",
       "category": "voice",
       "name": "Whisper large v3 turbo",
       "what": "Very accurate speech-to-text, still quick. Any language.",
@@ -613,6 +630,7 @@
     },
     {
       "id": "z-image-turbo",
+      "family": "Z-Image",
       "category": "images",
       "name": "Z-Image Turbo",
       "what": "Fast, sharp pictures in 8 steps. Good with text in images.",
@@ -662,6 +680,7 @@
     },
     {
       "id": "z-image-turbo-q8",
+      "family": "Z-Image",
       "category": "images",
       "name": "Z-Image Turbo (quick-load version)",
       "what": "The same fast picture model in a smaller file: about half the download (11 GB). It loads faster and leaves room on a 16 GB card for the Quick brain.",
@@ -708,6 +727,7 @@
     },
     {
       "id": "z-image-turbo-q5",
+      "family": "Z-Image",
       "category": "images",
       "name": "Z-Image Turbo (8 GB card version)",
       "what": "The same fast picture model, squeezed to fit an 8 GB card. Pictures look almost the same as the full one.",
@@ -754,6 +774,7 @@
     },
     {
       "id": "z-image-turbo-q4",
+      "family": "Z-Image",
       "category": "images",
       "name": "Z-Image Turbo (6 GB card version)",
       "what": "The fast picture model made small enough for 6 GB cards and laptops. A touch less detail than the bigger versions.",
@@ -800,6 +821,7 @@
     },
     {
       "id": "flux-schnell",
+      "family": "FLUX",
       "category": "images",
       "name": "FLUX.1 schnell",
       "what": "Quick, good-looking pictures in 4 steps. Big download.",
@@ -860,6 +882,7 @@
     },
     {
       "id": "qwen-image-edit-2509",
+      "family": "Qwen",
       "category": "images",
       "name": "Qwen Image Edit 2509",
       "what": "Picture edits from references: keeps a character or scene's look in new poses and places. Takes up to 3 reference pictures.",
@@ -918,6 +941,7 @@
     },
     {
       "id": "flux2-klein-4b",
+      "family": "FLUX",
       "category": "images",
       "name": "FLUX.2 klein 4B (picture edits)",
       "what": "Small, quick picture editor: change a picture with words, or keep a character's look from reference pictures. Fits an 8 GB card.",
@@ -964,6 +988,7 @@
     },
     {
       "id": "flux2-klein-4b-q4",
+      "family": "FLUX",
       "category": "images",
       "name": "FLUX.2 klein 4B (picture edits, 6 GB card version)",
       "what": "The small picture editor made even smaller for 6 GB cards and laptops.",
@@ -1010,6 +1035,7 @@
     },
     {
       "id": "ltx-2.3-22b",
+      "family": "LTX",
       "category": "video",
       "name": "LTX-2.3 22B",
       "what": "Higher quality clips with sound, from words or a picture. Big and slow on a 16 GB card.",
@@ -1079,6 +1105,7 @@
     },
     {
       "id": "wan2.2-ti2v-5b",
+      "family": "Wan",
       "category": "video",
       "name": "Wan 2.2 TI2V 5B",
       "what": "Short clips from words or a picture. Lighter and quicker than LTX.",
@@ -1128,6 +1155,7 @@
     },
     {
       "id": "wan2.2-ti2v-5b-q4",
+      "family": "Wan",
       "category": "video",
       "name": "Wan 2.2 TI2V 5B (small card version)",
       "what": "Short clips from words or a picture, squeezed for 8 GB cards. Slow, so keep clips to a few seconds.",
@@ -1177,6 +1205,7 @@
     },
     {
       "id": "piper-ryan-high",
+      "family": "Piper",
       "category": "speech",
       "name": "Ryan (US English, high quality)",
       "what": "A calm, clear American man's voice. Bob's default.",
@@ -1212,6 +1241,7 @@
     },
     {
       "id": "piper-alan-medium",
+      "family": "Piper",
       "category": "speech",
       "name": "Alan (British English)",
       "what": "A dry, low-key British man's voice. Very Bob.",
@@ -1247,6 +1277,7 @@
     },
     {
       "id": "piper-lessac-high",
+      "family": "Piper",
       "category": "speech",
       "name": "Lessac (US English, high quality)",
       "what": "A bright, expressive American voice.",
@@ -1282,12 +1313,13 @@
     },
     {
       "id": "kokoro-v1",
+      "family": "Kokoro",
       "category": "speech",
       "name": "Kokoro voice pack (22 English voices)",
       "what": "Natural-sounding voices that run on the processor: Michael, George, Lewis, Heart, Emma and more. Pick the voice in Settings after it's in. Bob's pick for his own voice.",
       "sizeGB": 0.354,
       "vramGB": 0,
-      "license": "Apache-2.0 (Kokoro-82M); MIT (ONNX export)",
+      "license": "Apache 2.0 + MIT",
       "commercial": true,
       "pick": "best",
       "needs": "Kokoro voices",
@@ -1318,6 +1350,7 @@
     },
     {
       "id": "nomic-embed-text",
+      "family": "Nomic",
       "category": "embed",
       "name": "Nomic Embed Text",
       "what": "Tiny helper that lets Topics and search find related things by meaning. Runs on the processor.",
@@ -1339,6 +1372,7 @@
     },
     {
       "id": "ace-step-music",
+      "family": "ACE-Step",
       "category": "music",
       "into": "ace-checkpoints",
       "name": "ACE-Step 1.5 music models",
@@ -1709,6 +1743,7 @@
         "flux2-klein-4b-q4": ["edit"],
         "wan2.2-ti2v-5b-q4": ["video"]
       },
+      "bigRam": { "minRamGB": 32, "models": ["gemma4-26b", "qwen3.8-27b"], "slots": { "gemma4-26b": ["deep", "office"], "qwen3.8-27b": ["deep"] }, "notes": { "gemma4-26b": "for Office and Deep thinking: fits in 32 GB of RAM, slower than the everyday brain, so it is left unticked", "qwen3.8-27b": "for Deep thinking: fits in 32 GB of RAM but reads all of itself for every word, so it is slow on built-in graphics (a few words a second). Left unticked" } },
       "untick": ["wan2.2-ti2v-5b-q4"],
       "notes": {
         "qwen3-4b": "the everyday brain: small and quick on built-in graphics",
@@ -1718,7 +1753,7 @@
         "flux2-klein-4b-q4": "a small editor: change a picture with words, or keep a look from references",
         "wan2.2-ti2v-5b-q4": "clips are very slow on built-in graphics, so it is left unticked; tick it if you want short clips anyway"
       },
-      "times": "Rough guesses, not yet measured on built-in graphics: a few minutes a picture or an edit, and a long wait for a short clip. Bob puts his brain away while he paints, so chat waits until the picture is done. Turning on Match picture settings to my graphics card (Settings, Show advanced settings, Engines & speed) makes pictures 768 px, which is quicker.",
+      "times": "Rough guesses, not yet measured on built-in graphics: a few minutes a picture or an edit, and a long wait for a short clip. Bob puts his brain away while he paints, so chat waits until the picture is done. Turning on Match picture settings to my graphics card (Settings, Show advanced settings, Speed & memory) makes pictures 768 px, which is quicker.",
       "cardGB": 0
     },
     {
@@ -1748,6 +1783,44 @@
         "gemma4-e4b": "chats, plans, researches, sees pictures and hears you, all on the processor"
       },
       "times": "Without a graphics card Bob can talk, plan, research, read pictures and speak, but not paint or film.",
+      "cardGB": 0
+    },
+    {
+      "id": "pi8",
+      "label": "Raspberry Pi or ARM board, 8 GB or more",
+      "arm": true,
+      "minRamGB": 6,
+      "minVramGB": 999,
+      "models": ["gemma4-e2b", "whisper-base-en", "nomic-embed-text"],
+      "slots": {
+        "gemma4-e2b": ["bob", "small", "eyes"],
+        "whisper-base-en": ["voice"],
+        "nomic-embed-text": ["embed"]
+      },
+      "notes": {
+        "gemma4-e2b": "chats, plans and sees pictures, all on the processor; keep the jobs small",
+        "whisper-base-en": "hears you (English), on the processor"
+      },
+      "blurb": "A small set that lets Bob chat, plan, research, see pictures and hear you on the board's processor.",
+      "times": "On a Raspberry Pi 5 a reply starts in a few seconds and comes at a few words a second. There's no painting or filming on an ARM board.",
+      "cardGB": 0
+    },
+    {
+      "id": "pi4",
+      "label": "Raspberry Pi or ARM board, 4 GB",
+      "arm": true,
+      "minRamGB": 0,
+      "minVramGB": 999,
+      "models": ["qwen3.5-2b", "nomic-embed-text"],
+      "slots": {
+        "qwen3.5-2b": ["bob", "small", "eyes"],
+        "nomic-embed-text": ["embed"]
+      },
+      "notes": {
+        "qwen3.5-2b": "the lightest brain: chats and sees pictures on the processor; keep the questions simple"
+      },
+      "blurb": "The lightest set: Bob chats, plans and sees pictures on the board's processor, with room left for the system.",
+      "times": "On a Raspberry Pi 5 a reply comes at a few words a second. There's no painting or filming on an ARM board.",
       "cardGB": 0
     }
   ]

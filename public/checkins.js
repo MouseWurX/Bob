@@ -1,7 +1,7 @@
 // Settings, Show advanced settings, 🔔 Check-ins (src/checkins.js). Off unless you turn it on.
 // On a schedule you pick, Bob looks over his downloads, tasks and schedules (and your own lines) and only taps
 // you on the shoulder when something needs you. The chat card for it is drawn in app.js ('checkin').
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+import { esc } from './util.js';
 export const when = (t) => new Date(t).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 async function api(url, data) {

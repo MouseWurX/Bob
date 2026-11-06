@@ -1,6 +1,7 @@
 // The Bob clan: every copy of Bob gets its own play on "Bob", and no two copies ever share a name.
 // The roll is kept in inn\bob\clan.json, so a name once given is never given again.
 import fs from 'node:fs';
+import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
 
 // The first copies, one per job.
@@ -54,6 +55,6 @@ export function copyName(cfg, key, role) {
   let name = FOUNDERS[key] && !roll.copies.some((c) => c.name === FOUNDERS[key].name) ? FOUNDERS[key].name : free(POOL) || free(BY_JOB[job]) || free(GENERAL) || free(Object.values(BY_JOB).flat());
   for (let n = roll.copies.length + 2; !name; n++) if (!used.has(`bob-${n}`)) name = `Bob-${n}`;
   roll.copies.push({ key, name, role: role || key, born: new Date().toISOString().slice(0, 10) });
-  try { fs.writeFileSync(rollFile(cfg), JSON.stringify(roll, null, 2)); } catch {}
+  try { writeJsonAtomic(rollFile(cfg), roll, 2); } catch {}
   return name;
 }

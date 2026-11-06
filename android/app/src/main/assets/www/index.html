@@ -18,8 +18,10 @@
 
 <footer>
   <div id="status"><span id="status-text"></span><button class="effort hidden" id="effort" aria-label="Effort"></button></div>
+  <div class="photo-chip hidden" id="photo-chip"><img id="photo-preview" alt="The photo you picked"><span>Photo for Bob to work on</span><button class="plain" id="photo-drop" aria-label="Remove the photo">✕</button></div>
   <div class="compose">
     <button id="mic" aria-label="Talk to Bob">🎙</button>
+    <button id="photo" aria-label="Add a photo">📎</button>
     <textarea id="text" rows="1" placeholder="Message Bob" aria-label="Message Bob"></textarea>
     <button class="main" id="send" aria-label="Send">➤</button>
   </div>
@@ -28,9 +30,12 @@
 <section class="panel hidden" id="menu"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Menu</h2></div><div class="body">
   <button data-go="new"><span class="ico">✚</span>New chat</button>
   <button data-go="chats"><span class="ico">🗂</span>Past chats</button>
-  <button data-go="bobs"><span class="ico">🖥</span>Bobs on your network</button>
+  <button data-go="bobs"><span class="ico">🌐</span>Bob-Net</button>
   <button data-go="brain"><span class="ico">📱</span>Phone brain</button>
   <button data-go="memory"><span class="ico">📝</span>What Bob remembers</button>
+  <button data-go="adventure"><span class="ico">🎲</span>Adventure</button>
+  <button data-go="games"><span class="ico">🧩</span>Games</button>
+  <button data-go="chest"><span class="ico">🧰</span>Chest</button>
   <button data-go="settings"><span class="ico">⚙</span>Settings</button>
   <button data-go="help"><span class="ico">❔</span>Help</button>
   <p class="help-line" id="about"></p>
@@ -41,19 +46,26 @@
   <div id="chat-list" class="gap"></div>
 </div></section>
 
-<section class="panel hidden" id="bobs"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Bobs on your network</h2></div><div class="body">
-  <p class="help-line">Bobs on your PCs that let your phone in. Big jobs (pictures, music, Hands, harder thinking) go to them. They're reached over Tailscale only.</p>
+<section class="panel hidden" id="bobs"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Bob-Net</h2></div><div class="body">
+  <h3>My other Bobs</h3>
+  <p class="help-line">Bobs on your other replicant matrices that let this phone in. Big jobs (pictures, music, Hands, harder thinking) go to them. They're reached over Tailscale only.</p>
   <div id="bob-list" class="gap"></div>
   <h3>Add a Bob</h3>
   <div class="box">
     <label class="field" for="add-name">Name</label>
-    <input type="text" id="add-name" placeholder="Bob on my PC" maxlength="40">
+    <input type="text" id="add-name" placeholder="Bob on my desktop" maxlength="40">
     <label class="field" for="add-address">Tailscale address</label>
-    <input type="text" id="add-address" placeholder="my-pc.your-tailnet.ts.net or 100.x.y.z" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <input type="text" id="add-address" placeholder="my-computer.your-tailnet.ts.net or 100.x.y.z" autocapitalize="off" autocorrect="off" spellcheck="false">
     <p class="help-line">On your other replicant matrix: Bob's Settings, <strong>Let my other replicant matrices in</strong>, shows this address and the passcode.</p>
-    <div class="btns"><button class="main" id="add-bob">Add this Bob</button></div>
+    <div class="btns"><button class="main" id="pair-bob">Pair with this Bob</button><button id="add-bob">Add this Bob</button></div>
+    <p class="help-line"><strong>Pair with this Bob</strong>: that Bob shows a card with a number, you check it matches the one here and say yes there, and nobody types a passcode. <strong>Add this Bob</strong> is the old way, with his passcode.</p>
     <p class="help-line" id="add-msg" role="status"></p>
   </div>
+  <h3>Lend my brain</h3>
+  <label class="switch"><div class="words"><strong>Lend my brain</strong><p class="help-line">Your other Bobs (like the one on your other replicant matrix while you're gaming) can ask this phone to think quick replies. The phone only thinks: no tools, files or programs run here for them, and nothing is kept. Off to start with.</p></div><span class="pill"><input type="checkbox" id="lend-on"><span></span></span></label>
+  <div id="lend-box"></div>
+  <label class="switch"><div class="words"><strong>Pass my Bob-Net along</strong><p class="help-line">Your Bobs with this on introduce each other. A Bob of yours that's paired with this phone and with another Bob tells this phone that Bob's name and Tailscale address, and the two pair by themselves: no card to tap. The phone only answers introductions; it never makes them. Needs Lend my brain on. Off to start with.</p></div><span class="pill"><input type="checkbox" id="pass-along"><span></span></span></label>
+  <p class="help-line" id="pass-along-msg" role="status"></p>
 </div></section>
 
 <section class="panel hidden" id="brain"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Phone brain</h2></div><div class="body">
@@ -65,9 +77,18 @@
   <select id="idle-min"><option value="2">2 minutes</option><option value="5">5 minutes</option><option value="15">15 minutes</option><option value="60">1 hour</option></select>
   <div class="btns"><button id="unload-now">Free it now</button></div>
   <p class="help-line" id="brain-ram"></p>
-  <h3>Lend my brain</h3>
-  <label class="switch"><div class="words"><strong>Lend my brain</strong><p class="help-line">Your other Bobs (like the one on your other replicant matrix while you're gaming) can ask this phone to think quick replies. The phone only thinks: no tools, files or programs run here for them, and nothing is kept. Off to start with.</p></div><span class="pill"><input type="checkbox" id="lend-on"><span></span></span></label>
-  <div id="lend-box"></div>
+</div></section>
+
+<section class="panel hidden" id="adventure"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Adventure</h2></div><div class="body">
+  <div id="adv-body"></div>
+</div></section>
+
+<section class="panel hidden" id="games"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Games</h2></div><div class="body">
+  <div id="games-body"></div>
+</div></section>
+
+<section class="panel hidden" id="chest"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Chest</h2></div><div class="body">
+  <div id="chest-body"></div>
 </div></section>
 
 <section class="panel hidden" id="memory"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>What Bob remembers</h2></div><div class="body">
@@ -90,6 +111,10 @@
   <h3>Look</h3>
   <label class="field" for="theme">Theme</label>
   <select id="theme"><option value="inn">Bob's Inn (dark)</option><option value="light">Light</option><option value="phone">Follow the phone</option></select>
+  <h3>When I'm not working right</h3>
+  <div class="btns"><button id="help-bundle">Save a help bundle</button></div>
+  <p class="help-line">Saves one file with Bob's logs, the last chats, errors and this replicant matrix's facts, scrubbed of passcodes, keys and your name, so an agent or a person can work out what's wrong. Nothing is sent anywhere: it saves to this phone's Downloads.</p>
+  <p class="help-line" id="bundle-msg" role="status"></p>
   <h3>After Bob is closed</h3>
   <label class="switch"><div class="words"><strong>Pick up where Bob left off</strong><p class="help-line">If Android closes Bob in the middle of a phone-brain reply, he asks again when you come back. Off to start with.</p></div><span class="pill"><input type="checkbox" id="resume"><span></span></span></label>
 </div></section>
@@ -100,8 +125,10 @@
 </div></section>
 
 <script src="shared.js"></script>
+<script src="avatars.js"></script>
 <script src="logic.js"></script>
 <script src="help.js"></script>
+<script src="diagram-core.js"></script>
 <script src="phone.js"></script>
 </body>
 </html>

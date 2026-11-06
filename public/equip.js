@@ -2,12 +2,12 @@
 // are his kit. Pick a slot, then click a model in the kit (or drag it onto the slot) to equip it. Only kit that
 // fits a slot goes in it. Empty slots say what Bob can't do yet, with a Get button for a recommended model.
 // Nothing is ever equipped by itself. Pure HTML builders; cellar.js handles the clicks.
-import { packFor, canDo, suit, pickFor } from './fit.js';
+import { packFor, packsFor, canDo, suit, pickFor } from './fit.js';
 import { houseStyleHtml, houseGroupOf } from './house-style.js';
 import { tip } from './tips.js';
+import { esc, gb } from './util.js';
+import { kindWord, kindIcon, when, thumbImg } from './viewer.js';
 export { packFor };
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const gb = (n) => (n == null ? '' : n >= 1 ? `${(+n).toFixed(n >= 10 ? 0 : 1)} GB` : `${Math.round(n * 1000)} MB`);
 
 // side: which column around Bob. how: where the choice is saved (job = Model roles, brain = a session brain,
 // embed = housekeeping's topic matcher). cats: catalog categories that fit. off: can it be emptied, and what then.
@@ -17,6 +17,8 @@ export const SLOTS = [
   // 1.5.56: the session brains are slots too, so every brain is equipped in one place.
   { id: 'gaming', name: 'Gaming', icon: '🎮', side: 'L', how: 'brain', kind: 'llm', cats: ['chat'], does: 'Chats on the processor while you play, so your game keeps the graphics card. Only brains timed for that go here.', empty: 'No gaming brain: chat waits while Gaming is on' },
   { id: 'deep', name: 'Deep thinking', icon: '🔭', side: 'L', how: 'brain', kind: 'llm', cats: ['chat', 'coding'], does: 'The strongest thinker, for Medium, High and Extreme effort.', empty: 'Uses the Review or main brain' },
+  // 1.5.127: a brain hired from an online service, for one job at a time. Only used when the owner says so (a card, or the chat page's 🏗 switch).
+  { id: 'rent', name: 'Rented brain', icon: '🏗', side: 'L', how: 'rent', kind: 'rent', cats: [], does: 'A big brain hired by the answer or by the minute from a service you have an account with. Only used when you say so, after a card with the cost.', empty: 'Empty: every job runs on this replicant matrix' },
   { id: 'tinker', name: 'Coding', icon: '🔨', side: 'L', how: 'job', kind: 'llm', cats: ['coding', 'chat'], does: 'Writes and fixes code.', empty: 'No coding brain: the main brain codes', off: true },
   { id: 'reviewer', name: 'Review', icon: '🧐', side: 'L', how: 'job', kind: 'llm', cats: ['chat', 'coding'], does: 'Checks code and plans carefully before you rely on them.', empty: 'Empty: the main brain checks its own work', off: true },
   { id: 'office', name: 'Office', icon: '📊', side: 'L', how: 'brain', kind: 'llm', cats: ['chat', 'coding'], does: 'One all-rounder that does everything in the Office session: writing, spreadsheets, research and planning.', empty: 'Uses the Spreadsheets helper or the main brain' },
@@ -44,9 +46,10 @@ export function entryOf(models, value) {
 }
 
 // What's in each slot now.
-export function equipped(slot, { roles, brains, embed }) {
+export function equipped(slot, { roles, brains, embed, rent }) {
   if (slot.how === 'brain') return brains?.[slot.id] || '';
   if (slot.how === 'embed') return embed || '';
+  if (slot.how === 'rent') return rent?.current || ''; // 1.5.127: the rental's id
   return roles?.current?.[slot.id] || '';
 }
 
@@ -86,7 +89,7 @@ function slotHtml(slot, ctx) {
   const cur = equipped(slot, ctx);
   const opt = cur && [...(ctx.roles?.options?.[slot.kind] || [])].find((o) => o.value === cur);
   const e = entryOf(ctx.models, cur);
-  const name = (opt && opt.label !== cur ? opt.label : e?.name) || cur;
+  const name = slot.how === 'rent' ? (ctx.rent?.rentals || []).find((r) => r.id === cur)?.name || cur : (opt && opt.label !== cur ? opt.label : e?.name) || cur; // 1.5.127
   const sel = ctx.selected === slot.id;
   const canOff = cur && slot.off && !(slot.off === 'windows' && cur === 'windows');
   const covers = cur && slot.kind === 'llm' ? allSlots().filter((s) => s.kind === 'llm' && equipped(s, ctx) === cur).length : 0;
@@ -129,6 +132,7 @@ export function shownKit(slot, ctx) {
 
 function kitHtml(slot, ctx) {
   if (!slot) return '<p class="muted">Pick a slot around Bob to see what fits it.</p>';
+  if (slot.how === 'rent') return rentKitHtml(slot, ctx); // 1.5.127
   const cur = equipped(slot, ctx);
   // Bob's pick first, then what fits, then the rest. What's equipped stays where it is in that order.
   const { shown: all, hidden } = shownKit(slot, ctx);
@@ -159,6 +163,22 @@ function kitHtml(slot, ctx) {
   const house = houseGroupOf(slot.id) ? houseStyleHtml(houseGroupOf(slot.id), ctx.houseStyle) : ''; // 1.5.34 House style
   return `<h3>${slot.icon} ${esc(slot.name)} ${tipHtml(slot.does, `About ${slot.name}`)}</h3>${house}${engine}${embedTip}<ol class="kit-list">${items || (engine || embedTip ? '' : '<li class="muted">Nothing active for this job yet.</li>')}</ol>${more}${getMore}`;
 }
+
+// 1.5.127 The Rented brain slot's kit: the rentals set up in Settings (Online services). "Use this one" puts one in the slot;
+// nothing is hired by that alone. Each line shows the service, the model, the rough price and whether its key is here.
+export function rentKitHtml(slot, ctx) {
+  const r = ctx.rent || {};
+  const cur = r.current || '';
+  const items = (r.rentals || []).map((x) => `<li class="kit${x.id === cur ? ' worn' : ''}"><button type="button" class="kit-btn" data-rentuse="${esc(x.id)}" ${x.id === cur ? 'aria-current="true"' : ''}><span class="kit-name">${esc(x.name)}</span><span class="weight muted">${esc(x.price || '')}</span>${x.id === cur ? '<span class="tag good">in the slot</span>' : ''}${x.ready?.ok ? '' : `<span class="tag warn">${esc(x.ready?.why || 'not ready')}</span>`}</button>${tipHtml(`${x.model} on ${x.serviceName}. ${x.price || ''}${x.kind === 'answer' ? '' : ` ${x.cardsText || `${x.card} GB card`}.`}`, `About ${x.name}`)}</li>`).join('');
+  const caps = r.caps || {};
+  const limits = !caps.month || !caps.job ? '<p class="muted">Every limit starts at 0, so nothing can be hired until you set the month cap and the per-job cap in Settings.</p>' : `<p class="muted">Limits: ${esc(money(caps.month))} a month (${esc(r.spentText || '$0.00')} spent so far), ${esc(money(caps.job))} a job${caps.minutes ? `, ${caps.minutes} min a machine` : ''}.</p>`;
+  return `<h3>${slot.icon} ${esc(slot.name)} ${tipHtml(slot.does + '\nWhat goes to the service: the chat of that job, the files you attach to it, my instructions and what I remember about you. My tools still run here. Your keys stay on this replicant matrix as environment variables; I never store them.', `About ${slot.name}`)}</h3>
+    ${items ? `<ol class="kit-list">${items}</ol>` : '<p class="muted">No rentals set up yet. A rental is a service plus a model, for example Qwen 3.6 35B on OpenRouter.</p>'}
+    ${cur ? '<p class="row"><button type="button" class="mini" data-rentuse="">Take it off</button></p>' : ''}
+    ${limits}
+    <p class="get-more"><button type="button" class="get-more-btn" data-rentsettings>☁ Set up rented brains in Settings</button></p>`;
+}
+const money = (n) => `$${(Math.round((Number(n) || 0) * 100) / 100).toFixed(2)}`;
 
 // Everything equipped against the card: they don't all have to be loaded at once (Bob swaps), but it shows what fits together.
 function weightHtml(ctx) {
@@ -227,7 +247,8 @@ export function enginesFor(list, engines) {
 export function starterHtml(ctx) {
   const packs = ctx.packs || [];
   if (!packs.length) return '';
-  const pack = packs.find((p) => p.id === ctx.packId) || packFor(packs, ctx.vramGB, ctx.integrated);
+  const fitOpts = { arm: ctx.arm, ramGB: ctx.ramGB };
+  const pack = packs.find((p) => p.id === ctx.packId) || packFor(packs, ctx.vramGB, ctx.integrated, fitOpts);
   const picked = ctx.picks || starterTicks(pack, ctx.models, ctx.vramGB);
   const { ids } = starterPlan(pack, ctx.models, ctx.engines || [], picked);
   const total = ids.reduce((n, id) => n + (ctx.models.find((m) => m.id === id)?.sizeGB || 0), 0);
@@ -245,12 +266,45 @@ export function starterHtml(ctx) {
   }).join('');
   const open = ctx.starterOpen ?? !equipped(SLOTS[0], ctx);
   return `<details class="starter"${open ? ' open' : ''}><summary>⭐ Starter set for your replicant matrix</summary>
-    <p class="muted">A small set that lets Bob chat, plan, research, code, see pictures, speak${pack.id === 'cpu' ? '' : ', paint and film'}. All free for commercial use. Pick the set, untick what you don't want, then press the button: you see the full list before anything downloads.</p>
-    <label class="pick"><strong>Set</strong> <select data-starterpack aria-label="Starter set">${packs.map((p) => `<option value="${esc(p.id)}" ${p.id === pack.id ? 'selected' : ''}>${esc(p.label)}${p.id === packFor(packs, ctx.vramGB, ctx.integrated).id ? ' (this replicant matrix)' : ''}</option>`).join('')}</select></label>
+    <p class="muted">${pack.blurb ? esc(pack.blurb) : `A small set that lets Bob chat, plan, research, code, see pictures, speak${pack.id === 'cpu' ? '' : ', paint and film'}.`} All free for commercial use. Pick the set, untick what you don't want, then press the button: you see the full list before anything downloads.</p>
+    <label class="pick"><strong>Set</strong> <select data-starterpack aria-label="Starter set">${packsFor(packs, ctx.arm).map((p) => `<option value="${esc(p.id)}" ${p.id === pack.id ? 'selected' : ''}>${esc(p.label)}${p.id === packFor(packs, ctx.vramGB, ctx.integrated, fitOpts).id ? ' (this replicant matrix)' : ''}</option>`).join('')}</select></label>
     <ul class="packlist">${rows}</ul>
     ${pack.times ? `<p class="muted">⏱ ${esc(pack.times)}</p>` : ''}
     <div class="row"><button type="button" class="get" data-starter="${esc(pack.id)}" ${picked.size ? '' : 'disabled'}>Equip starter set${ids.length ? ` (${gb(total)} to download)` : ''}</button></div>
     <div class="confirm starter-confirm" hidden></div></details>`;
+}
+
+// 1.5.125 The chest: what Bob has made (the Made by Bob list) as little pictures with names, on the paper doll
+// screen under Bob, and the folder new things go to with a Change folder button (the same picker as Settings,
+// Where Bob saves things). ctx.chest = { items, loaded, error }, ctx.saveDir = Settings' saveDir view.
+export const CHEST_SHOW = 24;
+export function chestTile(ctx) {
+  const n = ctx.chest?.items?.length;
+  const sel = ctx.selected === 'chest';
+  return `<button type="button" class="chest-tile${sel ? ' sel' : ''}" data-chest aria-pressed="${sel}" aria-label="Chest: what Bob made${n ? `, ${n}${n >= CHEST_SHOW ? ' or more' : ''} thing${n === 1 ? '' : 's'}` : ''}" title="What I've made, and where new things are saved"><span class="chest-icon" aria-hidden="true">${sel ? '📂' : '🧰'}</span><span class="chest-label">Chest</span>${n ? `<span class="chest-count">${n}${n >= CHEST_SHOW ? '+' : ''}</span>` : ''}</button>`;
+}
+export function chestItemHtml(x) {
+  const kind = x.kind === 'text' ? 'document' : x.kind || 'file';
+  const name = x.title || x.name || '';
+  const data = `data-view data-view-url="${esc(x.url || '')}" data-view-kind="${esc(kind)}" data-view-name="${esc(x.name || '')}" data-view-path="${esc(x.path || x.url || '')}" data-view-bytes="${esc(x.bytes ?? '')}"`;
+  const pic = kind === 'image' || kind === 'video' ? thumbImg(x, kind) : `<span class="made-ico" aria-hidden="true">${kindIcon(kind, x.name)}</span>`;
+  return `<li><button type="button" class="chest-item" ${data} aria-label="Open ${esc(name)}: ${esc(kindWord(kind, x.name).toLowerCase())}, ${esc(when(x.at))}" title="${esc(x.name || '')}">${pic}<span class="chest-name">${esc(name)}</span><span class="muted chest-when">${esc(kindWord(kind, x.name))} · ${esc(when(x.at))}</span></button></li>`;
+}
+export function chestHtml(ctx) {
+  const c = ctx.chest || {};
+  const sd = ctx.saveDir || {};
+  const items = c.items || [];
+  const folder = `<div class="chest-folder"><p><strong>New things are saved in</strong> <span class="save-path">${esc(sd.folder || '')}</span> ${sd.custom ? '' : '<span class="tag good">Bob\'s own folder</span>'}${sd.missing ? `<br><span class="error">I can't find ${esc(sd.picked)} right now (an unplugged drive, maybe). Until it's back, I save in my own folder.</span>` : ''}</p>
+    <div class="row"><button type="button" class="mini" data-chestbrowse>Change folder…</button>${sd.custom ? '<button type="button" class="mini" data-saveown>Use Bob\'s own folder</button>' : ''}<button type="button" class="mini" data-saveopen>Show in folder</button></div>
+    <p class="error chest-error" hidden></p></div>`;
+  const grid = c.error ? `<p class="error">${esc(c.error)}</p>`
+    : !c.loaded ? '<p class="muted">Opening the chest…</p>'
+      : !items.length ? '<p class="muted">Empty so far. Pictures, clips, songs, sounds and files I make land here, newest first.</p>'
+        : `<ul class="chest-grid" role="list" aria-label="What Bob made, newest first">${items.slice(0, CHEST_SHOW).map(chestItemHtml).join('')}</ul>`;
+  return `<h3>🧰 Chest ${tipHtml('Everything I\'ve made or saved, newest first, as little pictures with their names. Click one to open it beside the chat. Change folder… picks where new pictures, clips, songs and sounds go (the same as Settings, Where Bob saves things); older ones stay where they are and still show here. Documents and spreadsheets still go where you ask for them.', 'About the chest')}</h3>
+    ${folder}
+    ${grid}
+    <p class="row"><button type="button" class="mini" data-chestall>Open Made by Bob${items.length >= CHEST_SHOW ? ' (everything, with search)' : ''}</button>${c.loaded ? '<button type="button" class="mini" data-chestreload aria-label="Look again">↻</button>' : ''}</p>`;
 }
 
 export function equipHtml(ctx) {
@@ -263,20 +317,21 @@ export function equipHtml(ctx) {
     <div class="equip-page">
       ${ctx.attributes || ''}
       <div class="equip-mid">
-        <div class="doll"><div class="doll-col">${col('L')}</div><div class="doll-mid"><canvas class="doll-bob" width="160" height="160" aria-label="Bob"></canvas><div class="muted">Bob</div></div><div class="doll-col">${col('R')}</div></div>
+        <div class="doll"><div class="doll-col">${col('L')}</div><div class="doll-mid"><canvas class="doll-bob" width="160" height="160" aria-label="Bob"></canvas><div class="muted">Bob</div><button type="button" class="mini" data-golook>Change his look</button>${chestTile(ctx)}</div><div class="doll-col">${col('R')}</div></div>
         <details class="helpers"${HELPERS.some((h) => h.id === ctx.selected) ? ' open' : ''}><summary>Helpers (optional: each uses the main brain unless you pick one)</summary><div class="helper-row">${HELPERS.map((s) => slotHtml(s, ctx)).join('')}</div></details>
         ${houseStyleHtml('times', ctx.houseStyle)}
       </div>
-      <section class="kit-panel" aria-live="polite"><div class="kit-head muted">Inventory</div>${kitHtml(sel, ctx)}</section>
+      <section class="kit-panel" aria-live="polite"><div class="kit-head muted">${ctx.selected === 'chest' ? 'Chest' : 'Inventory'}</div>${ctx.selected === 'chest' ? chestHtml(ctx) : kitHtml(sel, ctx)}</section>
     </div>`;
 }
 
 // 1.5.74 "engines first": what first start gets before anything else, so Bob can talk and help with the rest.
 // The three core engines (where this computer has a build of them) and one small starter brain for this device:
 // Gemma 4 E4B with room for it (a card of 8 GB or more, or 16 GB of shared memory on a Mac or built-in graphics),
-// otherwise Gemma 4 E2B.
+// otherwise Gemma 4 E2B. An ARM board (Raspberry Pi 5): Qwen3.5 2B with 4 GB, Gemma 4 E2B with 8 GB, on the processor.
 export const CORE_ENGINES = ['llamacpp', 'sdcpp', 'whispercpp'];
-export function starterBrain({ vramGB, ramGB, unified, integrated } = {}) {
+export function starterBrain({ vramGB, ramGB, unified, integrated, arm } = {}) {
+  if (arm) return (ramGB || 0) >= 6 ? 'gemma4-e2b' : 'qwen3.5-2b';
   if (unified || integrated) return (ramGB || 0) >= 16 ? 'gemma4-e4b' : 'gemma4-e2b';
   return (vramGB || 0) >= 8 ? 'gemma4-e4b' : 'gemma4-e2b';
 }
@@ -287,4 +342,76 @@ export function readyPlan(hwCtx, models, engines) {
   const brain = models.find((m) => m.id === starterBrain(hwCtx)) || null;
   if (brain && brain.status?.state !== 'installed') ids.push(brain.id);
   return { ids, engines: eng, brain };
+}
+
+// ---- 1.5.91 "Get Bob ready": one list, every program and model with its own tick box, one OK ----
+// The owner asked for Bob to be fully working after a few clicks plus download time, with each engine and model
+// tickable. The recommended ones for this replicant matrix come ticked; nothing downloads until the button is pressed.
+export const MUSIC_ID = 'ace-step-music';
+// rows: [{ id, kind: 'engine' | 'model', name, sizeGB, here, rec, needs: ['engine:x'], slots, blocked }]
+export function readyList({ pack, models = [], engines = [], hw = {}, mainEmpty = true, bad = [] }) {
+  const vram = hw.integrated ? 0 : (hw.vramGB || 0);
+  const engById = (id) => engines.find((e) => e.id === id);
+  const rows = [];
+  const brain = models.find((m) => m.id === starterBrain(hw)) || null;
+  const list = [...new Set([...(brain && !(pack?.models || []).includes(brain.id) ? [brain.id] : []), ...(pack?.models || [])])].map((id) => models.find((m) => m.id === id)).filter(Boolean);
+  // Music on cards with room for it (8 GB or more), when the audio tools run here. Left unticked: about 22 GB with its
+  // tools, and large optional downloads always wait for the owner's own tick.
+  const music = models.find((m) => m.id === MUSIC_ID);
+  const audio = engById('audio');
+  if (music && audio && audio.available !== false && vram >= 8 && !list.includes(music)) list.push(music);
+  // 1.5.91: a set can list extra brains for machines with lots of RAM (Gemma 4 26B on a 32 GB handheld), unticked.
+  const big = pack?.bigRam && (hw.ramGB || 0) >= pack.bigRam.minRamGB ? pack.bigRam : null;
+  for (const id of big?.models || []) { const m = models.find((x) => x.id === id); if (m && !list.includes(m)) list.push(m); }
+  const ticks = pack ? starterTicks(pack, models, vram) : new Set();
+  for (const m of list) {
+    const needs = enginesFor([{ ...m, status: { state: 'missing' } }], engines.map((e) => ({ ...e, installed: false })));
+    const slots = m.id === MUSIC_ID ? ['music'] : pack?.slots?.[m.id] || big?.slots?.[m.id] || (m === brain ? [...(mainEmpty ? ['bob'] : []), ...(Object.values(pack?.slots || {}).some((x) => x.includes('small')) ? [] : ['small'])] : []);
+    const engBlocked = needs.map((id) => engById(id.slice(7))).find((e) => e && e.available === false);
+    rows.push({ id: m.id, kind: 'model', name: m.name, sizeGB: m.sizeGB || 0, here: m.status?.state === 'installed', needs, slots, license: m.license || '',
+      blocked: engBlocked ? engBlocked.note || `${engBlocked.name} doesn't run here` : '',
+      rec: !engBlocked && m.id !== MUSIC_ID && !big?.models.includes(m.id) && (m === brain || ticks.has(m.id)), note: big?.models.includes(m.id) ? big.notes?.[m.id] || big.note || '' : (pack?.untick || []).includes(m.id) ? pack?.notes?.[m.id] || '' : '' /* only notes that explain an untick; the rest repeat the slots */, category: m.category });
+  }
+  // The programs: the core three, plus whatever the listed models run on.
+  const engIds = [...new Set([...CORE_ENGINES.map((id) => 'engine:' + id), ...rows.flatMap((r) => r.needs)])];
+  const eng = [];
+  for (const id of engIds) {
+    const e = engById(id.slice(7));
+    if (!e || e.available === false) continue;
+    const broken = e.installed && bad.includes(e.id); // here but won't start: get it again
+    const swap = e.bundled && hw.nvidia; // the basic llama.cpp that came with Bob, swapped for the NVIDIA build
+    const neededBy = rows.filter((r) => r.rec && r.needs.includes(id));
+    eng.push({ id, kind: 'engine', name: e.name, sizeGB: e.sizeGB || 0, here: e.installed && !swap && !broken, swap, broken, rec: CORE_ENGINES.includes(e.id) || neededBy.length > 0, what: e.what || '' });
+  }
+  return [...eng, ...rows];
+}
+// The recommended ticks (what isn't here yet and is recommended; not what the window says won't suit this machine).
+export const readyDefaults = (rows) => {
+  const picks = new Set(rows.filter((r) => r.kind === 'model' && r.rec && !r.here && !r.blocked && !r.warn).map((r) => r.id));
+  // The core programs, and the ones a ticked model runs on.
+  for (const r of rows) if (r.kind === 'engine' && !r.here && (CORE_ENGINES.includes(r.id.slice(7)) || rows.some((m) => picks.has(m.id) && (m.needs || []).includes(r.id)))) picks.add(r.id);
+  return picks;
+};
+// Ticking a model ticks the programs it runs on.
+export function readyToggle(rows, picks, id, on) {
+  const next = new Set(picks);
+  if (on) next.add(id); else next.delete(id);
+  const r = rows.find((x) => x.id === id);
+  if (on && r?.kind === 'model') for (const e of r.needs) if (rows.find((x) => x.id === e && !x.here)) next.add(e);
+  return next;
+}
+// What to download (programs first) and which slots to fill: { ids, equip, sizeGB, missing: [{ model, engine }] }.
+export function readyOrder(rows, picks) {
+  const want = rows.filter((r) => picks.has(r.id) && !r.here && !r.blocked);
+  const ids = [...want.filter((r) => r.kind === 'engine'), ...want.filter((r) => r.kind === 'model')].map((r) => r.id);
+  const equip = {};
+  // When two ticked models are for the same slot, the later one on the list gets it (Qwen 3.8 27B over Gemma 4 26B for Deep thinking).
+  const owner = {};
+  for (const r of rows) if (r.kind === 'model' && picks.has(r.id) && !r.here && !r.blocked) for (const sl of r.slots || []) owner[sl] = r.id;
+  for (const r of rows) if (r.kind === 'model' && (picks.has(r.id) || r.here) && r.slots.length && !r.blocked) { const mine = r.slots.filter((sl) => !owner[sl] || owner[sl] === r.id); if (mine.length) equip[r.id] = mine; }
+  const sizeGB = Math.round(want.reduce((t, r) => t + r.sizeGB, 0) * 10) / 10;
+  // A ticked model whose program is unticked and not here: it would sit unused, so the screen says so.
+  const missing = [];
+  for (const r of rows) if (r.kind === 'model' && picks.has(r.id)) for (const e of r.needs) { const er = rows.find((x) => x.id === e); if (er && !er.here && !picks.has(e)) missing.push({ model: r.name, engine: er.name }); }
+  return { ids, equip, sizeGB, missing };
 }

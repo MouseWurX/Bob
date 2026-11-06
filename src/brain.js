@@ -1,6 +1,7 @@
 // Bob's brain: runs a conversation turn, picks the right model, announces swaps,
 // calls tools, asks the user for approval when needed, and keeps a logbook.
 import fs from 'node:fs';
+import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import os from 'node:os';
@@ -17,8 +18,9 @@ import { catPrompt, catMoment } from '../public/patches.js';
 import { sleepyAfterReply, sleepySwitch, SLEEPY_SESSION } from '../public/sleepy.js';
 import { cleanEffort, careful, bigThinker, draftBrain, hatBrain, effortPrompt, mootOpening, runMoot, phasedWork } from './moot.js';
 import { saveSettings, outputDirs, findOutput } from './config.js';
-import { paint, paintingAvailable } from './painter.js';
+import { paint, paintingAvailable, stepsFor } from './painter.js';
 import { PainterServer } from './painter-server.js';
+import { readCardUse, busyByOther, cardBusyLine, isLoadTimeout, RECHECK_MS, CARD_STILL_BUSY } from './card-busy.js';
 import { maestroMake } from './maestro.js';
 import { capabilities } from './capabilities.js';
 import { cloudHelpers } from './cloud.js';
@@ -38,21 +40,25 @@ import { selfToolsTools } from './selftools.js';
 import { Made, madePaths, showMadeTool } from './made.js';
 import { imageInfoOf, sizeLike } from './imageinfo.js';
 import { scheduleTools } from './hands-schedules.js';
-import { toolsOff, HANDS, handOn, handOffWhy, freeOn } from './hands-settings.js';
+import { toolsOff, HANDS, handOn, handOffWhy, freeOn, computerWord } from './hands-settings.js';
 import { gate as qGate, after as qAfter, maybeAsk as qAsk, noteStrike, copyHeld } from './quarantine.js';
+import { wantsPictureEdit, recentPicture, editHint } from './intent.js';
+import { SAVE_AS, namedType, saveAs } from './save-as.js';
 import { CORE, groupsFor, groupOf, guessGroups, allToolsOn, useToolsTool, fillUseTools, tidySchema, STICKY_TURNS, toolboxPrompt, saysCant } from './toolbox.js';
-import { Gate, Ledger, safeToResume, interruptedNote, withRetry, slimHandoff, carryOnPlan, carryOnLine, finishedSteps, MAX_AUTO_RESUMES } from './handoff.js';
+import { Gate, Ledger, safeToResume, interruptedNote, withRetry, slimHandoff, carryOnPlan, carryOnLine, finishedSteps, MAX_AUTO_RESUMES, isBareOk, NOTHING_TO_OK, NOTHING_TO_OK_BUSY, queuedLine, plainDoing } from './handoff.js';
 import { expectFrom, verifyOutput, afterTool, afterTurn } from './verify.js';
 import { brainMode, chatBrain, holdsChatBrain, bigSession, isBobs, sameModel, sleepAfterText, bigGraceMs, msText } from './brain-mode.js';
 import { WEB_TOOLS, WEB_OFF, webOn, webPrompt, linkPrompt, findLinks, refersToLink, linkTurn } from './web.js';
 import { autoSessionOn, pickSessionTool, autoSessionPrompt, switchLine, switchedNote, idleSession, cardBusy, IDLE_CHECK_MS } from './auto-session.js';
 import { readCard } from './gaming-card.js';
 import { Lenders, wantsBorrow, roughTokens } from './share-brains.js';
+import { Rentals, currentRental, saveEndpoint, estimateText } from './rental.js'; // 1.5.127 rented brains
 import { GuestJobs, awayPlan, sendAway, stopAway, guestTools, guestNote, GUEST_TOOLS, canHere, NEEDS_LIST, awayWaitLine } from './share-jobs.js';
 import { askTogether, takeEarlier, askTogetherTool } from './together.js';
 import { showPlanTool, planGate, planOn, planPrompt } from './plan.js';
-import { freeMemNow } from './platform.js';
+import { freeMemNow, APU_HEADROOM_GB } from './platform.js';
 import { HowTos, howtoTools, howtosOn, trailStep, worthOffering, howtoPrompt, usingLine } from './howtos.js';
+import { NEEDS, planFor, SetupOffers, switchFor, applySwitch, SWITCH_KEYS } from './setup-offer.js';
 
 const MAX_STEPS = 8;
 
@@ -63,7 +69,7 @@ const HAND_TOOLS = new Set(Object.values(HANDS).flatMap((h) => h.tools));
 // 1.5.40: Bob's own engine runs one brain. While the other lane is busy, a job that may need a different brain
 // (pictures attached for his eyes, or Medium effort and up with its reviewer) waits, so it never swaps the brain
 // out from under the other job. Everything else shares the small brain and runs beside it.
-// 1.5.41 "Keep chatting while Bob is busy" (chatWhileBusy, on unless switched off: the owner, 2026-11-03, "this wouldnt be opt in"): while the job in the main lane is
+// 1.5.41 "Keep chatting while Bob is busy" (chatWhileBusy, on unless switched off: an approved exception to opt-in): while the job in the main lane is
 // in a media step (painting, filming, composing: its brain is already let go so the card is free), a plain chat
 // message runs in a "side" lane on the small brain on the processor, if there's room in RAM. Nothing big is loaded
 // for it. The media job waits for that reply before it loads its own brain back (Gate.needBrain).
@@ -82,11 +88,39 @@ function sideBrainBytes(brain) {
   return 4 * 1024 ** 3; // unknown: assume a 4B brain
 }
 
+// 1.5.126: on a shared-memory machine (built-in graphics: handhelds, thin laptops) a brain and its chat memory come
+// out of the same RAM Windows runs on, and an 8 GB carve-out already leaves a 16 GB Legion Go with 7.7 GB. Before a
+// load, the room is: free RAM, plus whatever the load will drop, minus about 4 GB kept for Windows. Too tight:
+// the chat memory is shortened first (halved, never below 8K); still too tight: nothing loads, and Bob says so
+// plainly instead of risking an out-of-memory crash. Only with built-in graphics (cfg.sharedGraphics); unknown
+// sizes (no file to measure) go the old way. Settings review: approved 2026-11-06.
+export const APU_MIN_CTX = 8192;
+export const APU_NO_ROOM = (needGB, freeGB) => `That brain needs about ${needGB} GB and only about ${freeGB} GB is free once Windows keeps its share, so I haven't loaded it. Close something or pick a smaller brain in Equip Bob.`;
+export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loaded = null } = {}) {
+  if (!brain?.cfg?.sharedGraphics || !model) return { ok: true, ctx };
+  const bytes = (c) => brain.gate?.brainBytes?.(model, { ctx: c });
+  let need = bytes(ctx);
+  if (!need) return { ok: true, ctx };
+  let dropping = 0;
+  try {
+    const l = loaded || await brain.engine.loaded();
+    if (l.some((m) => !m.beside && sameModel(m.name, model))) return { ok: true, ctx }; // already in: nothing new to find room for
+    dropping = l.filter((m) => !m.beside).reduce((a, m) => a + (m.size || 0), 0);
+  } catch {}
+  const room = freeMem + dropping - APU_HEADROOM_GB * GB;
+  const start = ctx || 32768;
+  let c = start;
+  while (need > room && c > APU_MIN_CTX) { c = Math.max(APU_MIN_CTX, Math.floor(c / 2)); need = bytes(c); }
+  const gb = (b) => Math.round((Math.max(0, b) / GB) * 10) / 10;
+  if (need <= room) return { ok: true, ctx: c === start ? ctx : c, shortened: c !== start, needGB: gb(need), roomGB: gb(room) };
+  return { ok: false, ctx, needGB: gb(need), roomGB: gb(room), line: APU_NO_ROOM(gb(need), gb(room)) };
+}
+
 // A side-lane reply: always the small brain on the processor, so it never touches the card the painter holds.
 // 1.5.51: beside a big text job it goes to the engine's second server (beside: true), so the main brain stays loaded.
 export const sideBrain = (cfg, job) => ({ model: sessionBrains(cfg).small, cpu: true, ...(job?.beside ? { beside: true } : {}) });
 
-// 1.5.53 (the owner, 2026-11-03: E4B should not run on the processor, and never during a game; Instruct can): the
+// 1.5.53 (rule: E4B never runs on the processor, and never during a game; Instruct can): the
 // talker for quick replies beside a job. On the processor it's Qwen3 4B Instruct 2507 (the Gaming slot, no thinking,
 // 2 to 7 s to the first word on an idle processor) when it's downloaded; E4B only when it goes on the graphics card.
 const runnable = (brain, m) => { try { return Boolean(m && brain.engine?.resolve?.(m)?.gguf); } catch { return false; } };
@@ -209,11 +243,11 @@ export function realState({ model, session, waiting = 0, cat, turn = 0, mem = { 
 export const CLAIM_CORRECTION = 'Nothing was actually done on this replicant matrix in that reply. Bob said he did, but no action ran.';
 const CLAIM_NUDGE = 'You just said you did something on the PC, but no tool did it in this turn. Never claim that. If it should be done, call the right tool now; if you cannot, say plainly that you have not done it and why (the tool\'s own words if it gave an error).';
 // Always in the front desk's prompt (slim tools or not): he lives on a real PC and, with the Apps hand on, drives it.
-// The owner, 2026-11-02: "he should want to take control of the wheel". The model had said "I am the process inside
+// Bob should want to take the wheel himself. The model had said "I am the process inside
 // the computer, not a remote driver... simulated environment" right after two errors.
 export function realPcPrompt(cfg) {
   const who = cfg.userName || 'the user';
-  const base = `You live on ${who}'s real Windows PC; the apps, windows and files are real, not a simulation (only your Idle Process workspace is make-believe). Never call the PC simulated or virtual.`;
+  const base = `You live on ${who}'s real ${computerWord()}; the apps, windows and files are real, not a simulation (only your Idle Process workspace is make-believe). Never call the PC simulated or virtual.`;
   if (handOn(cfg, 'apps')) return `\n\n${base} Being inside the PC is exactly why you can drive it: with the Apps hand on you really do take the wheel. When ${who} says drive, take control, take the wheel, use my screen or do it in <an app>, be keen and start at once${freeOn(cfg) ? ' (you work without asking right now, so go ahead and do each step; each one is logged)' : " by showing the first step's card"}: open_app, then app_look, then app_act (add them with use_tools apps if they aren't here).${freeOn(cfg) ? '' : ` Nothing happens on the PC until ${who} clicks it.`} When the Apps hand is on, don't refuse to drive. If a step fails, tell ${who} exactly what failed and what to click, and never say a step worked unless its result says so.`;
   return `\n\n${base} Driving apps (open, click, type in them) needs the Apps hand, which is off: ${handOffWhy(cfg, 'apps')} If asked to drive, say that and offer to start as soon as it's on.`;
 }
@@ -284,7 +318,7 @@ export function loadLine({ mode, who, model, from, copy, secs, label, single = f
     if (mode === 'add') return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, about ${secs} seconds.`;
     // Settings sign-off (1.5.49): the real reason. Bob's own engine runs one brain whatever its size; Ollama is about memory.
     // Settings sign-off (1.5.51): switch off = a plain swap line; the tip about the switch shows once only (tip).
-    if (mode === 'swap' && old && single && !besideOn) return `🛰 Moot: ${copy} checks ${what}. My ${old} steps out and the ${now} comes in, about ${secs} seconds.${tip ? ' (To keep both loaded, turn on "Let the reviewer sit beside Bob\'s main brain" in Settings, Show advanced settings, Engines & speed.)' : ''}`;
+    if (mode === 'swap' && old && single && !besideOn) return `🛰 Moot: ${copy} checks ${what}. My ${old} steps out and the ${now} comes in, about ${secs} seconds.${tip ? ' (To keep both loaded, turn on "Let the reviewer sit beside Bob\'s main brain" in Settings, Show advanced settings, Brains.)' : ''}`;
     if (mode === 'swap' && old) return `🛰 Moot: ${copy} checks ${what}. ${single ? 'There isn\'t room for both right now' : 'Only one big brain fits right now'}, so my ${old} steps out and the ${now} comes in, about ${secs} seconds.`;
     return `🛰 Moot: ${copy} checks ${what}, on the ${now}. Loading it, about ${secs} seconds.`;
   }
@@ -323,6 +357,9 @@ export class Brain {
     // Share brains (1.5.55, src/share-brains.js): another Bob of yours may think quick replies for this one, and this one
     // may lend. A lender only ever uses his quick brain (never a big one), on the card, and says no while gaming or busy.
     this.lenders = new Lenders(cfg);
+    // 1.5.127 Rented brains: a big brain hired from an online service for one job, only after a card the owner pressed.
+    this.rentals = new Rentals(cfg, { log: (k, t) => this.log(k, t), broadcast: (ev) => this.broadcast(ev) });
+    this.rentals.rememberEndpoint = (id, endpointId) => { try { if (saveEndpoint(cfg, id, endpointId)) saveSettings(cfg, { rentals: cfg.rentals }); } catch {} };
     this.lending = null;
     // 1.5.72 Share jobs (src/share-jobs.js): jobs this Bob sent away, their OK cards, and jobs other Bobs sent here.
     this.awayJobs = new Map();
@@ -358,10 +395,17 @@ export class Brain {
     this.tools.show_plan = showPlanTool(this); // 1.5.78: the plan card before big jobs (plan.js), only with its setting on
     this.tools.ask_together = askTogetherTool(this); // 1.5.42: every OK a job needs on one card (together.js) // the toolbox (toolbox.js): groups added only when a job needs them
     this.tools.pick_session = pickSessionTool(this); // 1.5.43: Bob changes session himself (auto-session.js)
+    // 1.5.91: the Set it up card for something missing or switched off. Listed only while something is (offTools).
+    this.tools.offer_setup = {
+      schema: { type: 'function', function: { name: 'offer_setup', description: 'Something {{USER}} asked for needs a part that isn\'t set up or a setting that is off: show a card with one button that sets it up or switches it on, then the job carries on by itself. For pictures, video, music and sound effects, just call make_image, make_video, make_music or make_sound instead: they show the card themselves.', parameters: { type: 'object', properties: { what: { type: 'string', enum: [...Object.keys(NEEDS), ...SWITCH_KEYS], description: 'pictures, edits, video, music, sfx, voice (read replies aloud), hearing (hear {{USER}} talk), web (Web search), workshop (ComfyUI workflows), or hand:<id> for a Hand that is off (hand:files, hand:run, hand:schedules, hand:apps, hand:office, hand:security, hand:maker, hand:mcp)' } }, required: ['what'] } } },
+      run: ({ what }, ctx) => this.offerSetup(String(what || ''), ctx),
+      summary: ({ what }) => `offer to set up: ${what}`
+    };
     this.made = new Made(cfg); // Made by Bob (made.js): everything he made, for the side panel and show_made
     this.tools.show_made = showMadeTool(this);
     this.stickyGroups = new Map(); // chat id -> Map(group -> messages left)
     this.howtos = new HowTos(cfg); // 1.5.79: know-how from jobs that worked (off by default)
+    this.offers = new SetupOffers(); // 1.5.91: "Set it up" cards waiting for a click
     this.lastTrail = new Map(); // chat id -> the steps of its last job worth keeping, for save_howto
     this.handApprovals = new Set(); // approvals waiting that came from a Hand, so Stop everything can deny them
     // Always on: load the small brain shortly after start-up. Wake when I type (the default) loads nothing.
@@ -390,9 +434,11 @@ export class Brain {
     clearTimeout(this.graceTimer);
     this.waking = (async () => {
       const ctx = await this.fitCtx(model, want);
+      if (!(await apuRoom(this, model, ctx)).ok) { this.log('model', `not waking ${model}: too little RAM to spare on built-in graphics`); return false; }
       let loaded = false;
       try { loaded = await this.engine.isLoaded(model, { cpu, ctx }); } catch { return false; }
       if (loaded) { this.engine.touch?.(model, { cpu, ctx })?.catch?.(() => {}); return false; }
+      if (!cpu && await this.cardStillTaken({ kind: 'chat' })) return false; // 1.5.113: another program holds the card: don't load
       this.setState('waking', 'Waking up...', model);
       this.broadcast({ type: 'brain' });
       // Same manners as the gate: the picture engine (kept loaded after a picture) makes room first, unless both fit.
@@ -419,7 +465,7 @@ export class Brain {
 
   // After a job: big brains go right away; the chat brain stays only if "Always on" holds it (and comes back
   // if a big brain pushed it out). Only Bob's own brains are touched, never another app's.
-  async settle() {
+  async settle({ noWake = false } = {}) {
     if (this.turns.size || this.waking || this.queue.some((j) => j.state === 'waiting')) return [];
     this.armIdleCheck(); // 1.5.41: back to the lightest session once Bob has been quiet a while
     const chat = chatBrain(this.cfg).model;
@@ -451,7 +497,7 @@ export class Brain {
     // 1.5.21: after any job (a picture, a big brain, a helper) Bob goes back to his quick chat brain in the
     // background, so a follow-up is answered fast instead of waiting for the next message to load it. The usual
     // idle timer still frees it once he's been quiet. Not in Coding / Deep thought, whose chat brain is a big one.
-    else if (!bigSession(this.cfg) && !this.turns.size) await this.wake('back to the quick brain after a job');
+    else if (!noWake && !bigSession(this.cfg) && !this.turns.size) await this.wake('back to the quick brain after a job'); // 1.5.120: not after a game (Adventure)
     this.broadcast({ type: 'brain' });
     return gone;
   }
@@ -514,7 +560,54 @@ export class Brain {
     this.state = { state, detail, model, ...(extra || {}) }; // extra (1.5.49): how a brain loads, { mode, from }
     this.broadcast({ type: 'status', ...this.state });
     // 1.5.41: a media step just started; a chat message already waiting may now go beside it.
+    // 1.5.110: a chat waiting behind the job keeps its ⏳ line current ("loading the picture engine", then "step 3 of 20").
+    if (state === 'painting') for (const j of this.queue || []) {
+      if (j.state !== 'waiting') continue;
+      // 1.5.112: a chat sent in the second before the painter took over got no ⏳ line (busyLine said not yet); give it one now.
+      if (!j.queuedLine) { if (!this.busyLine(j)) continue; j.queuedLine = true; }
+      const text = queuedLine(plainDoing(detail));
+      if (text !== j.queuedText) { j.queuedText = text; this.broadcast({ type: 'waiting-line', sessionId: j.sessionId, jobId: j.id, id: `queued-${j.id}`, text }); }
+    }
     if (state === 'painting' && was !== 'painting' && this.cfg?.chatWhileBusy !== false && this.queue?.some((j) => j.state === 'waiting')) setTimeout(() => this.pump(), 0);
+  }
+
+  // 1.5.113: a load timed out. Is another program holding the graphics card? Then say so (once per chat) and don't retry.
+  async cardTaken(e, emit, sessionId) {
+    if (!isLoadTimeout(e)) return false;
+    const card = await (this.readCardUse || readCardUse)();
+    if (!busyByOther(card)) { this.cardHeld = null; return false; }
+    this.cardHeld = { at: Date.now(), line: cardBusyLine(card), said: this.cardHeld?.said || new Set() };
+    this.log('handoff', `graphics card taken by another program (${card.freeMB} MB free${card.others.length ? `: ${card.others.map((a) => a.name).join(', ')}` : ''}); not retrying`);
+    if (emit && sessionId != null && !this.cardHeld.said.has(sessionId)) { this.cardHeld.said.add(sessionId); emit({ type: 'announce', text: this.cardHeld.line }); }
+    return true;
+  }
+
+  // 1.5.113: the ⚠ line in full once per chat; after that, a short pointer to it.
+  cardLineFor(sessionId) {
+    const h = this.cardHeld;
+    if (!h) return '';
+    if (h.said.has(sessionId)) return CARD_STILL_BUSY;
+    h.said.add(sessionId);
+    return h.line;
+  }
+
+  // 1.5.113: before a job (or a wake-up) that needs the card, while it's known to be taken: look again (at most every
+  // 30 s). Still taken = the job ends at once with the plain line, instead of sitting through its own five-minute load.
+  async cardStillTaken(job) {
+    if (!this.cardHeld) return false;
+    if (currentSession(this.cfg).cpu && !['picture', 'video', 'edit'].includes(job?.kind)) return false; // chats on the processor
+    if (Date.now() - this.cardHeld.at < RECHECK_MS) return true;
+    const card = await (this.readCardUse || readCardUse)();
+    if (!busyByOther(card)) { this.cardHeld = null; this.log('handoff', 'the graphics card is free again'); return false; }
+    this.cardHeld = { at: Date.now(), line: cardBusyLine(card), said: this.cardHeld.said };
+    return true;
+  }
+
+  // 1.5.111: the waiting is over (the job started, or was stopped), so its ⏳ line leaves the chat.
+  waitOver(j) {
+    if (!j?.queuedLine) return;
+    j.queuedLine = false;
+    this.broadcast({ type: 'waiting-line-done', sessionId: j.sessionId, jobId: j.id, id: `queued-${j.id}` });
   }
 
   log(kind, text) {
@@ -582,7 +675,7 @@ export class Brain {
     while (msgs.length && msgs[0].role !== 'user') dropped.push(msgs.shift()); // never start mid tool-call
     if (dropped.length) { try { keepOlder(this.cfg, id, dropped); } catch {} }
     for (const m of msgs) delete m.images; // pictures stay on the shelf; Bob keeps the description
-    try { fs.writeFileSync(this.sessionFile(id), JSON.stringify(msgs)); } catch {}
+    try { writeJsonAtomic(this.sessionFile(id), msgs, 0); } catch {}
   }
 
   history(id) {
@@ -599,6 +692,9 @@ export class Brain {
     clearTimeout(this.graceTimer);
     if (!opts.beside) await this.keepTalker(model, opts, emit, { signal });
     if (!signal) { try { await this.engine.isLoaded(model, opts); } catch (e) { throw new Error(`I can't reach my engine, ${this.engineName} (${e.message}).`); } }
+    // 1.5.126: built-in graphics share Windows's RAM: no load that would leave Windows short (apuRoom).
+    const room = await apuRoom(this, model, opts.ctx);
+    if (!room.ok) { this.log('model', `not loading ${model}: needs ~${room.needGB} GB, room ~${room.roomGB} GB after Windows's ${APU_HEADROOM_GB} GB`); throw new Error(room.line); }
     const name = BRAIN_NAMES[who] || who;
     const used = await this.gate.need({ id: 'brain', model, opts }, {
       signal, emit, who,
@@ -772,7 +868,7 @@ export class Brain {
     if (hand) this.handApprovals.add(id);
     let picked = null, steps = null, note = '';
     const allowed = await new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(false), APPROVAL_TIMEOUT_MS);
+      const timer = setTimeout(() => done(false), APPROVAL_TIMEOUT_MS); // through done(), so the card leaves the list too
       const done = (v, rows, items, said) => { clearTimeout(timer); this.approvals.delete(id); this.handApprovals.delete(id); picked = rows ?? null; steps = items ?? null; note = typeof said === 'string' ? said.slice(0, 500) : ''; resolve(v); };
       this.approvals.set(id, done);
       signal.addEventListener('abort', () => done(false), { once: true });
@@ -830,7 +926,11 @@ export class Brain {
     // Settings review: in Gaming the brain is on the processor beside the game, so a pick never makes it bigger there.
     want = pick && gaming(this.cfg) ? Math.min(pick, want || GAMING_CTX) : pick || want;
     if (!want) return null;
-    return max ? Math.min(max, want) : want;
+    const fit = max ? Math.min(max, want) : want;
+    // 1.5.126: on built-in graphics, shorter still when the RAM says so (apuRoom above).
+    const room = await apuRoom(this, model, fit);
+    if (room.shortened) this.log('model', `shortened ${model}'s chat memory to ${room.ctx} to leave Windows about ${APU_HEADROOM_GB} GB (needs ~${room.needGB} GB, room ~${room.roomGB} GB)`);
+    return room.ok ? room.ctx : fit;
   }
 
   get turn() { return this.turns.values().next().value || null; }
@@ -968,8 +1068,25 @@ export class Brain {
     const held = await qGate(this, name, args, ctx, tool);
     if (held) { qAfter(this, name, args, held.text, ctx, tool); return held; }
     const res = await this.runToolNow(name, args, ctx, tool);
+    // 1.5.95: a file type named in the ask is saved before the tool's answer goes back, so Bob can say so.
+    if (ctx?.saves?.length) {
+      await Promise.allSettled(ctx.saves.splice(0));
+      if (ctx.savedAs?.length && res && typeof res.text === 'string') res.text += ` Also saved as ${ctx.savedAs.splice(0).join(', ')}, as asked (the original is kept too).`;
+    }
     qAfter(this, name, args, res.text, ctx, tool);
     return res;
+  }
+
+  // 1.5.95: the user named a file type ("a song as an mp3"): keep what was just made in that type as well.
+  autoSaveAs(ev, ctx) {
+    const kind = ev.type, to = ctx.wantType;
+    if (!SAVE_AS[kind]?.includes(to) || path.extname(ev.file).slice(1).toLowerCase() === to) return;
+    ctx.saves.push(saveAs(this.cfg, { name: path.basename(ev.file), format: to }, { signal: ctx.signal, ...(this.saveAsOpts || {}) }).then(async (r) => {
+      if (r.need === 'ffmpeg') { await this.offerSetup('ffmpeg', ctx).catch(() => ''); return; }
+      try { this.made.add(r.file, { tool: 'save_as', chat: ctx.sessionId || '' }); } catch {}
+      ctx.emit({ type: 'made', items: [{ kind: r.kind, url: r.url, name: r.name, path: r.file }] });
+      ctx.savedAs.push(r.name);
+    }).catch((e) => { ctx.emit({ type: 'announce', text: `Couldn't save it as ${to.toUpperCase()}: ${e.message}` }); }));
   }
 
   async runToolNow(name, args, ctx, tool) {
@@ -977,7 +1094,7 @@ export class Brain {
     // 1.5.72: a job from another of your Bobs only thinks, searches and makes pictures, clips, music and sounds here.
     if (ctx?.job?.guest && !GUEST_TOOLS.has(name)) return { text: `Not for this job: it came from ${ctx.job.guest.from}, another Bob, so here I can only think, search the web and make pictures, clips, music and sounds. Say what's left for ${ctx.job.guest.from} to do himself.` };
     if (!this.usable(name)) {
-      if (WEB_TOOLS.includes(name) && !webOn(this.cfg)) return { text: WEB_OFF };
+      if (WEB_TOOLS.includes(name) && !webOn(this.cfg)) return { text: ctx?.emit ? await this.offerSetup('web', ctx) : WEB_OFF }; // 1.5.91: the card, not a dead end
       const hand = Object.entries(HANDS).find(([, h]) => h.tools.includes(name))?.[0];
       return { text: hand ? handOffWhy(this.cfg, hand) : `Error: ${name} can't be used on this replicant matrix right now.` };
     }
@@ -1023,12 +1140,15 @@ export class Brain {
       ctx.made = null;
       ctx.ledger?.begin?.(name, args); // 1.5.38: so a restart knows this step was cut off
       let text;
+      ctx.offeredNow = false;
       try { text = String(await tool.run(args, ctx)); }
       catch (e) { if (ctx.signal.aborted) throw e; text = `Error: ${e.message}`; }
       // The system checks it really happened (verify.js): a missing or broken output, or an action that didn't take,
       // gets one more go before Bob is told it failed. Approvals aren't asked twice.
       if (ctx.ledger) ctx.ledger.toolStart = startedAt;
-      let v = await this.checkTool(name, args, text, ctx);
+      // 1.5.104: the tool put a Set it up card under the chat instead of doing the job. That's an answer, not a
+      // failure: no second try (it made a second card) and no "didn't work" note.
+      let v = ctx.offeredNow ? { ok: true } : await this.checkTool(name, args, text, ctx);
       if (v.retry && !ctx.signal.aborted) {
         this.log('handoff', `${name} didn't take (${v.why || 'no proof'}); trying it once more`);
         ctx.ledger?.step('retry', { what: name, why: v.why || '' }).done();
@@ -1129,32 +1249,50 @@ export class Brain {
   }
 
   // Tell Bob plainly what this PC can't do yet, so he offers the prompt and points to the cellar instead.
-  withLimits(prompt, loaded = null) {
+  // 1.5.102: hat = a copy of Bob (workbench, ledger...). A copy has only its own few tools (wearHat), so it isn't told
+  // about tools it doesn't have: no offer_setup, ask_cloud or picture lines (the painter copy has its own).
+  withLimits(prompt, loaded = null, hat = null) {
+    const who = this.cfg.userName || 'the user';
     const can = capabilities(this.cfg);
     const missing = [!can.pictures && 'make pictures', !can.video && 'make video clips', !can.music && 'make music', !can.sfx && 'make sound effects', !can.hearing && 'hear voice input'].filter(Boolean);
     const helpers = cloudHelpers(this.cfg);
+    const desk = !hat;
     // The Hands line only when a Hand group is added (or for hats and "all tools at once"); otherwise use_tools lists them.
-    if (!loaded || allToolsOn(this.cfg) || Object.keys(HANDS).some((h) => loaded.has(h))) prompt += handsPrompt(this.cfg);
+    const handsLine = !loaded || allToolsOn(this.cfg) || Object.keys(HANDS).some((h) => loaded.has(h));
+    if (handsLine) prompt += handsPrompt(this.cfg, { hat });
     if (loaded) prompt += realPcPrompt(this.cfg) + toolboxPrompt(this, loaded);
-    prompt += webPrompt(this.cfg) + linkPrompt(this.cfg);
+    prompt += webPrompt(this.cfg, { hat }) + linkPrompt(this.cfg);
     if (loaded) prompt += autoSessionPrompt(this.cfg); // front desk only: hats don't change the session
     if (loaded) prompt += planPrompt(this.cfg); // 1.5.78: front desk only, and nothing while the setting is off
-    prompt += houseStylePrompt(this.cfg.houseStyle, this.cfg.userName || 'the user');
+    prompt += houseStylePrompt(this.cfg.houseStyle, who);
     if (this.cfg.defaultProject && this.cfg.projects?.[this.cfg.defaultProject]) prompt += `\n\n${this.cfg.userName || 'The user'}'s main project is ${this.cfg.defaultProject}. When they say "my project" without a name, it's that one.`;
     // "Show me a picture of X" once got no answer at all (2026-11-02): say plainly that make_image is the way.
-    if ((!loaded || allToolsOn(this.cfg) || loaded.has('pictures')) && this.usable('make_image')) prompt += `\n\nWhen ${this.cfg.userName || 'the user'} asks to see, show, make, draw or paint a picture, call make_image yourself straight away with a good prompt. To change a picture (one attached, or one you made: reference "last"), call make_image with it as the reference and a short instruction saying only what to change, like "Replace the hard hat with a silver tiara", not a description of a whole new picture.`;
-    if (helpers.length) prompt += `\n\nCloud copies of you that ${this.cfg.userName || 'the user'} switched on (use ask_cloud only for jobs too big for you, or when asked; each use is approved and costs money): ${helpers.map((h) => `${h.id} = ${copyName(this.cfg, 'cloud:' + h.id, 'cloud helper')}, running on ${h.name} ${h.model}`).join('; ')}.`;
-    const shelf = this.refs.describe();
+    // 1.5.102: this is the one place the front desk is told about pictures and clips (it was in FRONT_DESK too).
+    if (desk && (!loaded || allToolsOn(this.cfg) || loaded.has('pictures')) && this.usable('make_image')) prompt += `\n\nWhen ${who} asks to see, show, make, draw or paint a picture, call make_image yourself straight away, in the same reply, with a good prompt; for a short clip, make_video (slow, minutes). Then tell ${who} the chat brain has to step out while the painter works. To change a picture (one attached, or one you made: reference "last"), call make_image with it as the reference and a short instruction saying only what to change, like "Replace the hard hat with a silver tiara", not a description of a whole new picture.`;
+    if (desk && helpers.length) prompt += `\n\nCloud copies of you that ${who} switched on (use ask_cloud only for jobs too big for you, or when asked; each use is approved and costs money): ${helpers.map((h) => `${h.id} = ${copyName(this.cfg, 'cloud:' + h.id, 'cloud helper')}, running on ${h.name} ${h.model}`).join('; ')}.`;
+    const rental = desk && this.rentals?.current();
+    if (rental) prompt += `\n\nA rented brain is in your Rented brain slot (${rental.name}). It costs ${who} money, so never use it on your own: when a job is too big for you here (a very long chat or file, or a model that isn't here), or when ${who} asks for it, call hire_brain once; the app shows a card and ${who} decides. Then stop: don't do the job here as well.`;
+    const pictureWork = desk || hat === 'painter';
+    const shelf = pictureWork ? this.refs.describe() : '';
     if (shelf) prompt += `\n\n${shelf}`;
-    if (can.pictures && !can.edits) prompt += '\n\nYour picture model can start from a reference picture but can\'t hold a character\'s exact look across new poses. If keeping a look matters, say a picture-edit model in Get models (left menu, Pictures & video) does that better.';
-    return missing.length ? `${prompt}\n\nOn this PC you can't ${missing.join(', ')} yet. If asked, say so in one line, offer to write the prompt or plan instead, and mention Get models (left menu) where the right model can be added.` : prompt;
+    // Web search, and Hands when the Hands line is in, already have their own line saying so (webPrompt, handsPrompt): not listed again here.
+    const offList = this.switchesOff().filter((k) => k.key !== 'web' && !(handsLine && /^hand:/.test(k.key)));
+    // "Let Bob use Hands, Files; Let Bob use Hands, Run programs...": the Hands are named once, then each one.
+    const handNames = offList.filter((k) => /^hand:/.test(k.key) && /^Let Bob use Hands, /.test(k.name)).map((k) => k.name.replace(/^Let Bob use Hands, /, ''));
+    const offNames = [...offList.filter((k) => !(/^hand:/.test(k.key) && /^Let Bob use Hands, /.test(k.name))).map((k) => k.name), ...(handNames.length ? [`Let Bob use Hands (${handNames.join(', ')})`] : [])];
+    if (desk && this.usable('offer_setup') && offList.length) prompt += `\n\nWhen a job needs something else that is switched off (${offNames.join('; ')}), call offer_setup with that setting: the app shows a card to switch it on, and the job carries on after the click. Say in one line what it does; never just refuse.`;
+    if (pictureWork && can.pictures && !can.edits) prompt += '\n\nYour picture model can start from a reference picture but can\'t hold a character\'s exact look across new poses. If keeping a look matters, say a picture-edit model in Get models (left menu, Pictures & video) does that better.';
+    // 1.5.91: never "I can't": the tool itself shows a Set it up card, so Bob calls it as if it were there.
+    const notHere = pictureWork ? missing : [];
+    return notHere.length ? `${prompt}\n\nNot set up on this replicant matrix yet: ${notHere.join(', ')}. When ${who} asks for one of these, still call its tool (make_image, make_video, make_music, make_sound) with a good prompt: the app then shows a Set it up card with the size, and carries on with the job by itself once it's set up. Never call it an error and don't send them to menus.${desk && notHere.includes('hear voice input') ? ' For hearing, call offer_setup with "hearing".' : ''}` : prompt;
   }
 
   // Tools this PC can't use right now (no picture model, Hand switched off, no cloud helper...).
   offTools() {
     let can = {};
     try { can = capabilities(this.cfg); } catch {}
-    return new Set([!can.pictures && 'make_image', !can.video && 'make_video', !can.music && 'make_music', !can.sfx && 'make_sound', !can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !cloudHelpers(this.cfg).length && 'ask_cloud', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), ...toolsOff(this.cfg)].filter(Boolean));
+    // 1.5.91: make_image, make_video, make_music and make_sound stay listed when they aren't set up: calling one shows the Set it up card.
+    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), ...toolsOff(this.cfg)].filter(Boolean));
   }
   usable(name, off = this.offTools()) { return Boolean(this.tools[name]) && !off.has(name); }
   // 1.5.41: whether OKs are asked on cards right now (so a job's OKs can go on one card). Not with "work without asking".
@@ -1236,16 +1374,16 @@ export class Brain {
     const drop = new Set(finished.filter((j) => (j.doneAt || j.at) < keep).map((j) => j.id));
     for (const j of finished.slice(0, Math.max(0, finished.length - 200))) drop.add(j.id);
     this.queue = this.queue.filter((j) => !drop.has(j.id));
-    try { fs.writeFileSync(this.queueFile, JSON.stringify(this.queue, null, 1)); } catch {}
+    try { writeJsonAtomic(this.queueFile, this.queue); } catch {}
     this.broadcast({ type: 'queue', jobs: this.queueView() });
   }
 
   queueView() {
-    return this.queue.map(({ id, sessionId, text, state, at, error, refs, kind, startedAt, doneAt, steps, effort, after, pickUp, away, guest }) => {
+    return this.queue.map(({ id, sessionId, text, state, at, error, refs, kind, startedAt, doneAt, steps, effort, after, pickUp, away, guest, rent, rentOk }) => {
       const out = (steps || []).find((x) => x.state === 'in progress');
       // Plain status for the Tasks panel: Queued, In progress, Delegated (to which copy), Completed...
       const awayNow = state === 'working' && away?.name; // 1.5.72: with another of your Bobs
-      const status = state === 'waiting' ? 'queued' : state === 'working' ? (out || awayNow ? 'delegated' : 'in progress') : state === 'done' ? 'completed' : state;
+      const status = state === 'waiting' ? 'queued' : state === 'working' ? (out || awayNow ? 'delegated' : rent && rentOk ? 'rented' : 'in progress') : state === 'done' ? 'completed' : state; // 1.5.127 rented
       return { id, sessionId, kind, text: (guest ? `From ${guest.from}: ` : '') + text.slice(0, 140), state, status, at, startedAt, doneAt, error, pics: (refs || []).length,
         delegatedTo: awayNow ? { hat: 'away', label: 'another of your Bobs', copy: away.name, sent: true } : out ? { hat: out.hat, label: out.label, copy: out.copy } : null, gaming: state === 'waiting' && !away && waitsForGaming(this.cfg, { kind, effort }) ? { tag: GAMING_TAG, hint: GAMING_HINT } : undefined, steps: (steps || []).slice(-8), effort: effort || 'low',
         waitsFor: state === 'waiting' && after ? after.name : undefined, pickUp: state === 'waiting' && pickUp ? true : undefined };
@@ -1296,9 +1434,18 @@ export class Brain {
 
   enqueue(sessionId, text, attach = [], effort = 'low', extra = {}) {
     this.lastActivity = Date.now();
+    // 1.5.97: "ok" while a job only waits for the graphics card (no card open) gets a plain answer at once, instead of
+    // queueing behind the wait it was meant to answer.
+    // 1.5.104: also while a chat of this session already waits behind a picture, clip, song or sound.
+    const queuedHere = this.state.state === 'painting' && this.queue.some((j) => j.state === 'waiting' && j.sessionId === sessionId && j.queuedLine);
+    if (!extra.guest && !(attach || []).length && isBareOk(text) && !this.approvals.size && (this.gate?.waitingNow > 0 || queuedHere)) {
+      const answer = this.gate?.waitingNow > 0 ? NOTHING_TO_OK : NOTHING_TO_OK_BUSY;
+      setTimeout(() => this.broadcast({ type: 'busy-note', sessionId, text: answer }), 0);
+      return { jobId: null, turnId: null, ahead: 0, answered: answer };
+    }
     this.housekeeper?.pause(); // anything the housekeeper was asking the brain gives way at once
     this.endMore(null, 'new job'); // a new message answers "Make another picture?"; the job loads what it needs
-    const job = { id: crypto.randomUUID(), sessionId, text, refs: [].concat(attach || []).slice(0, 4), state: 'waiting', at: Date.now(), kind: extra.kind || Brain.guessKind(text, [].concat(attach || []).length > 0), effort: cleanEffort(effort), ...(extra.guest ? { guest: extra.guest } : {}) };
+    const job = { id: crypto.randomUUID(), sessionId, text, refs: [].concat(attach || []).slice(0, 4), state: 'waiting', at: Date.now(), kind: extra.kind || Brain.guessKind(text, [].concat(attach || []).length > 0), effort: cleanEffort(effort), ...(extra.guest ? { guest: extra.guest } : {}), ...(extra.rent ? { rent: true } : {}) }; // 1.5.127 rent: the 🏗 switch on the chat page
     this.queue.push(job);
     this.saveQueue();
     this.log('queue', `${job.kind}: ${text}`);
@@ -1306,7 +1453,7 @@ export class Brain {
     // 1.5.37: a message sent while Bob is making a picture, song or clip waits for the card. Say so straight away
     // (a plain line, no brain needed), so a long job never looks like Bob has stopped answering.
     const busy = this.busyLine(job);
-    if (busy) setTimeout(() => this.broadcast({ type: 'busy-note', sessionId, jobId: job.id, text: busy }), 0);
+    if (busy) { job.queuedLine = true; job.queuedText = busy; setTimeout(() => this.broadcast({ type: 'waiting-line', sessionId, jobId: job.id, id: `queued-${job.id}`, text: busy }), 0); }
     queueMicrotask(() => this.pump());
     const tip = autoSessionOn(this.cfg) ? null : suggestSession(this.cfg, this.queue); // 1.5.41: Bob picks, so no tips
     if (tip && this.suggested !== tip.id) { this.suggested = tip.id; this.broadcast({ type: 'suggest', ...tip }); }
@@ -1323,8 +1470,7 @@ export class Brain {
     if (!this.turns.size || this.state.state !== 'painting') return null;
     if (sideOk(this, job)) return null; // 1.5.41: it's answered beside the job instead
     if (laneOf(this.cfg, job) !== 'talk' || !this.turns.has('talk')) return null; // it runs in its own lane: no wait
-    const what = String(this.state.detail || '').trim();
-    return `I'm still on the last job${what ? ` (${what})` : ''}. I'll answer this as soon as it's done. If this can't wait, stop it in Tasks.`;
+    return queuedLine(plainDoing(this.state.detail));
   }
 
   cancelJob(id) {
@@ -1334,6 +1480,7 @@ export class Brain {
     if (j.state === 'working') return this.stop(j.id);
     if (j.state !== 'waiting') return false;
     j.state = 'cancelled';
+    this.waitOver(j);
     this.saveQueue();
     return true;
   }
@@ -1357,12 +1504,134 @@ export class Brain {
   // ---- Jobs that wait for a download (1.5.38) ----
   // "Make me a song" with no music models yet: the user presses Download in the chat, and the song request waits
   // in Tasks until the download is done, then runs by itself. It's in queue.json, so it survives Bob closing too.
+  // ---- 1.5.91 Set it up for you ----
+  // Is anything Bob could offer missing or switched off right now? (offer_setup is only listed then.)
+  notSetUp(tool) {
+    const need = { make_image: 'pictures', make_video: 'video', make_music: 'music', make_sound: 'sfx' }[tool];
+    if (!need) return false;
+    try { return !capabilities(this.cfg)[need]; } catch { return false; }
+  }
+  switchesOff() { return SWITCH_KEYS.map((k) => switchFor(this.cfg, k)).filter(Boolean); }
+  offerNeeded() {
+    let can = {};
+    try { can = capabilities(this.cfg); } catch {}
+    return !can.hearing || !can.voice || this.switchesOff().length > 0;
+  }
+  // Show the Set it up card for a capability (NEEDS) or a setting (SWITCH_KEYS) and tell Bob what to say.
+  // Returns Bob's instructions as the tool result, never an error. quiet: return '' when no card could be made.
+  async offerSetup(what, ctx, { quiet = false } = {}) {
+    const who = this.cfg.userName || 'the user';
+    const jobId = ctx?.job?.id || null;
+    // A job from another of your Bobs: the card would land on the wrong replicant matrix, so just say it can't here.
+    if (ctx?.job?.guest) return quiet ? '' : `Not here: this replicant matrix can't ${NEEDS[what]?.say || 'do that'} yet. Say so; ${ctx.job.guest.from} can do it or set it up there.`;
+    // 1.5.104: one request, one card. A second offer for the same thing in the same turn (the tool, then Bob's own
+    // offer_setup) shows nothing new.
+    if (ctx && (ctx.offered ||= new Set()).has(what)) { ctx.offeredNow = true; return quiet ? '' : `The card for this is already under the chat. Don't call offer_setup again and don't repeat what you said: if you've told ${who} about the card, stop here.`; }
+    if (NEEDS[what]) {
+      const n = NEEDS[what];
+      if (!this.shop) return quiet ? '' : `Not done: this replicant matrix can't ${n.say} yet. Say so in one line and offer to write the prompt instead.`;
+      const [list, hw] = await Promise.all([this.shop.list(), this.shop.hardware().catch(() => ({}))]);
+      const plan = planFor(what, { list, hw });
+      if (plan.kind === 'none') return quiet ? '' : `Not done: this replicant matrix can't ${n.say}: ${plan.why} Tell ${who} that in one line and offer to write the prompt instead. Don't call the tool again now.`;
+      const id = (this.offers ||= new SetupOffers()).add({ plan, jobId });
+      if (ctx) { (ctx.offered ||= new Set()).add(what); ctx.offeredNow = true; }
+      ctx?.emit?.({ type: 'offer-setup', id, need: what, kind: plan.kind, say: n.say, what: n.what, items: plan.items || [], size: plan.size || '', sizeGB: plan.sizeGB || 0, freeGB: plan.freeGB ?? null, short: plan.short || 0, note: plan.note || '', model: plan.model || null, carryOn: Boolean(jobId) });
+      this.log('setup', `offered ${what}: ${plan.kind} ${(plan.ids || []).join(', ') || plan.model?.id || ''}`);
+      const say = plan.kind === 'equip'
+        ? `${plan.model.name} is already on this replicant matrix but isn't in its slot. A card with a "Use it" button is now under this chat.`
+        : `This replicant matrix can't ${n.say} yet: it needs ${n.what} (${plan.items.map((i) => i.name).join(' and ')}, about ${plan.size}). A card with a "Set it up" button is now under this chat.`;
+      return `Nothing made yet. ${say} Tell ${who} that in one or two short, friendly lines: what's missing, the size, and that one press sets it up and then you ${jobId ? 'carry on with this job by yourself, no need to ask again' : 'can do it'}. It isn't an error, so don't apologise for one, and don't call this tool again now.`;
+    }
+    const sw = switchFor(this.cfg, what);
+    if (!sw) return quiet ? '' : SWITCH_KEYS.includes(what) ? 'That setting is already on. Go ahead with the job.' : `There's no setting called ${what}. Settings you can offer: ${this.switchesOff().map((x) => x.key).join(', ') || 'none (everything is on)'}.`;
+    if (sw.held) return `The ${sw.name} Hand is stopped with ${sw.where}. Tell ${who} in one line: press that switch again to let Hands carry on, then ask again. Don't offer anything else.`;
+    const id = (this.offers ||= new SetupOffers()).add({ sw: what, jobId });
+    if (ctx) { (ctx.offered ||= new Set()).add(what); ctx.offeredNow = true; }
+    ctx?.emit?.({ type: 'offer-setup', id, need: what, kind: 'switch', name: sw.name, where: sw.where, what: sw.what, privacy: sw.privacy || '', free: Boolean(sw.free), folders: Boolean(sw.folders), carryOn: Boolean(jobId) });
+    this.log('setup', `offered to switch on ${what}`);
+    return `Not done yet: "${sw.name}" is off. A card with a "Switch it on" button is now under this chat. Tell ${who} in one or two short lines what it lets you do and that one press switches it on${sw.folders ? ' (they still tick which folders I may use, in Settings, Hands)' : ''}, then you ${jobId ? 'carry on with this job by yourself' : 'can do it'}. Don't call this tool again now.`;
+  }
+
+  // 1.5.127 Rented brains: the Hire it card for the rented brain in its slot. One card per turn; nothing is spent until it's pressed.
+  offerRent(ctx, { why = '', tokens = 0 } = {}) {
+    const rental = this.rentals.current();
+    if (!rental) return null;
+    if (ctx.rentOffered) return { already: true };
+    ctx.rentOffered = true;
+    const n = tokens || roughTokens({ messages: ctx.msgs || [] });
+    const view = this.rentals.view().rentals.find((r) => r.id === rental.id);
+    const id = this.rentals.offer(rental, { jobId: ctx.job?.id || null, tokens: n, why, emit: (ev) => ctx.emit?.({ ...ev, sessionId: ctx.sessionId }) });
+    const can = this.rentals.canStart(rental, 0);
+    return { id, est: estimateText(rental, n), blocked: can.ok ? '' : can.why, name: rental.name, service: view?.serviceName || '' };
+  }
+  // The Hire it card was answered (PC window or phone). yes: the job runs again, on the rented brain this time.
+  answerRent(id, yes) {
+    const r = this.rentals.answer(id, yes);
+    if (r.ok && r.done === 'none' && r.jobId) { // 1.5.128: Not now runs the request here instead of leaving it unanswered
+      const j = this.queue.find((x) => x.id === r.jobId);
+      if (j) { j.rent = false; j.rentOk = false; j.rentAgain = true; this.carryOnNow(j.id, '[Bob note, not from the user: the user pressed Not now on the rented brain card. Do what they asked here, on this computer, with the brains you have.]'); return { ...r, carryOn: true }; }
+    }
+    if (!r.ok || r.done !== 'hired') return r;
+    const j = this.queue.find((x) => x.id === r.jobId);
+    if (j) { j.rent = true; j.rentOk = true; j.rentAgain = true; this.carryOnNow(j.id, `[Bob note, not from the user: the user hired the rented brain (${r.rental.name}) for this. Do what they asked.]`); }
+    this.broadcast?.({ type: 'settings-changed' });
+    return { ok: true, done: 'hired', name: r.rental.name, carryOn: Boolean(j) };
+  }
+
+  // The card was answered (PC window or phone). yes: download / put in its slot / switch on, then carry on with the job.
+  async answerSetup(id, yes) {
+    const o = (this.offers ||= new SetupOffers()).take(id);
+    if (!o) return { ok: false, why: 'That card is too old now. Ask me again.' };
+    if (!yes) { this.log('setup', 'Not now'); return { ok: true, done: 'none' }; }
+    if (o.sw) {
+      const patch = applySwitch(this.cfg, o.sw, { saveHands: (h) => this.saveHands(h) });
+      if (!patch) return { ok: false, why: 'That setting couldn\'t be switched on from here. It\'s in Settings.' };
+      this.log('setup', `switched on ${o.sw} (your click)`);
+      if (o.jobId) this.carryOnNow(o.jobId, `[Bob note, not from the user: the user switched on ${switchFor({}, o.sw)?.name || o.sw} for this. Do what they asked.]`);
+      this.broadcast?.({ type: 'settings-changed' });
+      return { ok: true, done: 'switch' };
+    }
+    const plan = o.plan;
+    if (plan.kind === 'download') {
+      const hw = await this.shop.hardware().catch(() => ({}));
+      if (hw.freeGB != null && hw.freeGB < plan.sizeGB + 2) return { ok: false, why: `Not enough free disk: free up ${Math.ceil(plan.sizeGB + 2 - hw.freeGB)} GB, then ask me again.` };
+    }
+    this.shop.planEquip(plan.equip || {});
+    if (plan.kind === 'equip') {
+      await this.shop.applyEquip();
+      this.log('setup', `put ${plan.model?.id} in its slot (your click)`);
+      if (o.jobId) this.carryOnNow(o.jobId, `[Bob note, not from the user: ${plan.model?.name} is in its slot now. Do what they asked.]`);
+      return { ok: true, done: 'equip' };
+    }
+    await this.shop.download(plan.ids[0], { queue: plan.ids.slice(1) });
+    if (o.jobId) this.waitForDownload(o.jobId, plan.ids);
+    this.log('setup', `downloading ${plan.ids.join(', ')} (your click)`);
+    return { ok: true, done: 'download', names: plan.items.map((i) => i.name), size: plan.size };
+  }
+
+  // Put a job back in line straight away with a note (nothing to download first).
+  carryOnNow(jobId, note) {
+    const j = this.queue.find((x) => x.id === jobId);
+    if (!j) return false;
+    if (j.state === 'working') { j.again = note; return true; } // the end of this reply puts it back in line
+    j.carryOn = note; j.before = []; j.cutStep = null; j.pickUp = false;
+    {
+      Object.assign(j, { state: 'waiting', error: undefined, doneAt: undefined, steps: [], at: Date.now() });
+      this.queue = [...this.queue.filter((x) => x !== j), j];
+    }
+    this.saveQueue();
+    setTimeout(() => this.pump(), 0);
+    return true;
+  }
+
   waitForDownload(jobId, modelId) {
     const j = this.queue.find((x) => x.id === jobId);
-    if (!j || !modelId) return false;
-    let name = String(modelId);
-    try { name = this.shop?.describe(modelId)?.name || name; } catch {}
-    j.after = { id: String(modelId), name };
+    if (!j || !modelId || (Array.isArray(modelId) && !modelId.length)) return false;
+    // 1.5.91: a Set it up card can download several things (the program and the model); the job waits for all of them.
+    const ids = [].concat(modelId).map(String);
+    const nameOf = (x) => { try { return this.shop?.describe(x)?.name || x; } catch { return x; } };
+    const name = ids.map(nameOf).join(' and ');
+    j.after = { id: ids.at(-1), ids, name };
     j.carryOn = `[Bob note, not from the user: the ${name} the user downloaded for this are on the PC now. Do what they asked.]`;
     j.before = []; j.cutStep = null; j.pickUp = false;
     if (j.state !== 'working') { // still running: the end of the turn puts it back in line
@@ -1377,9 +1646,10 @@ export class Brain {
   // true once the download a waiting job needs is done. A download that failed or was cancelled sends the job to
   // Tasks as interrupted, with a plain reason (it never waits forever). Paused or queued: it keeps waiting.
   downloadReady(job) {
-    const d = (this.shop?.dl || []).find((x) => x.id === job.after.id);
-    if (d?.state === 'done') { job.after = undefined; return true; }
-    if (d && ['queued', 'downloading', 'paused'].includes(d.state)) return false;
+    const ds = (job.after.ids || [job.after.id]).map((id) => (this.shop?.dl || []).find((x) => x.id === id));
+    if (ds.every((d) => d?.state === 'done')) { job.after = undefined; return true; }
+    if (ds.some((d) => d && ['queued', 'downloading', 'paused'].includes(d.state)) && !ds.some((d) => !d || ['failed', 'cancelled'].includes(d.state))) return false;
+    const d = ds.find((x) => !x || x.state !== 'done');
     job.state = 'interrupted';
     job.error = `The ${job.after.name} download ${d?.state === 'cancelled' ? 'was cancelled' : d?.state === 'failed' ? 'failed' : 'isn\'t in Downloads any more'}, so this didn't run. Get it again in Downloads, then press Carry on.`;
     job.after = undefined;
@@ -1433,7 +1703,7 @@ export class Brain {
       seen.add(lane);
       if (this.turns.has(lane)) continue;
       if (!besideOk(this, job, lane)) continue; // 1.5.40: waits for the other lane, see besideOk
-      job.side = lane === SIDE_LANE; job.beside = job.side && beside; job.state = 'working'; job.startedAt = Date.now(); job.steps = [];
+      job.side = lane === SIDE_LANE; job.beside = job.side && beside; job.state = 'working'; job.startedAt = Date.now(); job.steps = []; this.waitOver(job);
       this.saveQueue();
       this.startTurn(job.sessionId, job.text, job.refs, job, lane);
     }
@@ -1452,9 +1722,14 @@ export class Brain {
     if (job?.pickUp) emit({ type: 'announce', text: carryOnLine(job) }); // 1.5.38: picked up after a restart
     const pics = [].concat(attach || []).map((id) => this.refs.find(String(id))).filter(Boolean).slice(0, 4);
     let ok = false;
-    this.run(sessionId, text, emit, controller.signal, pics, job)
+    (async () => {
+      if (await this.cardStillTaken(job)) throw Object.assign(new Error(this.cardLineFor(sessionId)), { code: 'card_busy' });
+      return this.run(sessionId, text, emit, controller.signal, pics, job);
+    })()
       .then(() => { ok = true; if (job) job.state = 'done'; })
-      .catch((e) => {
+      .catch(async (e) => {
+        // 1.5.113: a load that timed out because another program holds the card ends with the plain ⚠ line, once per chat.
+        if (!controller.signal.aborted && e?.code !== 'card_busy' && (e?.code === 'card_held' || await this.cardTaken(e, null).catch(() => false)) && this.cardHeld) e = Object.assign(new Error(this.cardLineFor(sessionId)), { code: 'card_busy' });
         if (e?.code === 'beside' && job && !controller.signal.aborted) { // 1.5.51: the second brain wouldn't start: wait in line
           emit({ type: 'announce', text: BESIDE_FAILED });
           this.log('handoff', `second brain beside the job wouldn't start (${e.message}); the message waits for the job`);
@@ -1471,11 +1746,13 @@ export class Brain {
         // 1.5.38: carried on (or not) once; the note isn't used again. A job told to wait for a download goes back in line.
         if (job && job.state !== 'interrupted' && !job.after && !job.parked) { job.carryOn = null; job.before = undefined; job.cutStep = undefined; job.pickUp = false; }
         if (job?.requeued) { job.requeued = false; Object.assign(job, { state: 'waiting', error: undefined, steps: [] }); this.queue = [job, ...this.queue.filter((x) => x !== job)]; }
+        if (job?.again && job.state !== 'cancelled') { job.carryOn = job.again; job.again = undefined; Object.assign(job, { state: 'waiting', error: undefined, doneAt: undefined, steps: [], at: Date.now() }); this.queue = [...this.queue.filter((x) => x !== job), job]; } // 1.5.91: Set it up pressed while this reply was still going
         if (job?.after && job.state !== 'cancelled') { job.state = 'waiting'; job.error = undefined; job.at = Date.now(); this.queue = [...this.queue.filter((x) => x !== job), job]; }
         // 1.5.41: Bob picked another session for this job: it goes back to the front of the line and runs there.
         const switchTo = job?.switchTo && job.state === 'done' ? job.switchTo : null;
         if (switchTo) { job.switchTo = undefined; job.switchedTo = switchTo.id; Object.assign(job, { state: 'waiting', error: undefined, doneAt: undefined, steps: [] }); this.queue = [job, ...this.queue.filter((x) => x !== job)]; }
         this.turns.delete(lane);
+        this.rentals?.turnDone(job); // 1.5.127: a hired machine stops once no job uses it
         this.lastActivity = Date.now();
         // Gaming: now and then a scripted sleepy aside under a normal finished reply (a feeling, never a fact about the job).
         // Never after an error or correction note, or for a job held back (e.g. "Waiting · Gaming is on").
@@ -1528,9 +1805,9 @@ export class Brain {
     let rough = false; // an error or correction note this turn: no how-to card
     const keep = (ev) => {
       if (['error', 'correction', 'held', 'waiting'].includes(ev?.type)) rough = true;
-      if (['image', 'video', 'audio'].includes(ev.type) && typeof ev.url === 'string' && ev.url.startsWith('/images/')) {
+      if (['image', 'video', 'audio', 'diagram'].includes(ev.type) && typeof ev.url === 'string' && ev.url.startsWith('/images/')) {
         if (media.some((m) => m.url === ev.url)) return; // delivered once already
-        media.push({ type: ev.type, url: ev.url, name: path.basename(decodeURIComponent(ev.url.slice(8))), ...(ev.song?.title ? { title: ev.song.title, sound: ev.song.sound } : {}) });
+        media.push({ type: ev.type, url: ev.url, name: path.basename(decodeURIComponent(ev.url.slice(8))), ...(ev.song?.title ? { title: ev.song.title, sound: ev.song.sound } : {}), ...(ev.type === 'diagram' ? { title: String(ev.title || ''), ...(ev.format ? { format: ev.format } : {}) } : {}) });
         out.ctx?.ledger?.output(ev, out.ctx.currentTool || null);
       }
       // Saved files and things called up with show_made: kept as cards with the reply.
@@ -1611,6 +1888,11 @@ export class Brain {
 
   async runOn(msgs, text, emit, signal, pics, job = null, sessionId = null, out = {}) {
     const user = { role: 'user', content: text, at: Date.now() };
+    // 1.5.94: a picture edit in plain English ("change this picture", "make her hair red", "now make the sky purple"):
+    // the picture attached now, or else the newest one in this chat (attached or made a moment ago).
+    let recent = null;
+    if (!pics.length) { try { recent = recentPicture(msgs, { findRef: (id) => { const r = this.refs.find(id); return r ? { ...r, path: this.refs.pathOf(r) } : null; }, findPainted: (n) => this.findPicture(n) }); } catch {} }
+    const wantsEdit = wantsPictureEdit(text, { pic: pics.length > 0, recent: Boolean(recent) });
     let picNote = '';
     if (pics.length) {
       const { note, images } = await this.look(pics, emit, signal);
@@ -1622,26 +1904,33 @@ export class Brain {
     }
     // 1.5.38: after a restart, the brain is told which steps already finished and which was cut off (the chat shows only
     // the user's own words).
+    if (wantsEdit) { user.content = `${user.content}\n\n${editHint(pics.length ? pics.map((r) => r.name) : [recent.name])}`; user.text = text; }
     if (job?.carryOn) { user.content = `${user.content}\n\n${job.carryOn}`; user.text = text; }
     // 1.5.41: run again after Bob switched session: the user's message is already in the chat once, so the brain gets the
     // note only (hidden), and the turn starts at the user's message from before.
     const lastUser = [...msgs].reverse().find((m) => m.role === 'user');
-    const again = Boolean(job?.switchedTo) && Boolean(lastUser) && String(lastUser.text ?? lastUser.content ?? '').startsWith(text);
-    if (again) msgs.push({ role: 'system', content: switchedNote(job.switchedTo), hidden: true });
+    // 1.5.128: the same after a Hire it card (Hire it or Not now): the message that drew the card is in the chat already,
+    // so the re-run adds only the hidden note (the PC saw the user's bubble twice after a reload).
+    const again = (Boolean(job?.switchedTo) || Boolean(job?.rentAgain)) && Boolean(lastUser) && String(lastUser.text ?? lastUser.content ?? '').startsWith(text);
+    if (again) msgs.push({ role: 'system', content: job.switchedTo ? switchedNote(job.switchedTo) : job.carryOn || '', hidden: true });
     else msgs.push(user);
+    if (job) job.rentAgain = false;
     const turnStart = again ? msgs.map((m) => m.role).lastIndexOf('user') : msgs.length - 1;
     this.log('chat', `${this.cfg.userName || 'User'}: ${text}`);
     // The turn's pictures travel with it, so a hat Bob hands the job to can see them too.
     // Every picture, clip or sound he makes goes on the Made by Bob list as it's announced.
     const emitMade = (ev) => {
       if (['image', 'video', 'audio'].includes(ev?.type) && ev.file) { try { this.made.add(ev.file, { tool: ev.type, chat: sessionId, song: ev.song || null }); } catch {} }
-      return emit(ev);
+      const sent = emit(ev);
+      if (['image', 'video', 'audio'].includes(ev?.type) && ev.file && ctx?.wantType) this.autoSaveAs(ev, ctx); // 1.5.95 "a song as an mp3"
+      return sent;
     };
-    const ctx = { emit: emitMade, signal, brain: this, cfg: this.cfg, allowAll: new Set(), pics, picNote, msgs, turnText: text, job, sessionId };
+    const ctx = { emit: emitMade, signal, brain: this, cfg: this.cfg, allowAll: new Set(), pics, picNote, msgs, turnText: text, job, sessionId, wantsEdit, editFrom: wantsEdit ? recent : null, wantType: namedType(text), saves: [], savedAs: [] };
     // The ledger (handoff.js): what was asked for, every load, tool and output this turn, kept by the system.
     ctx.ledger = new Ledger({ job, expect: expectFrom(text, { pics }), save: () => this.saveQueue() });
     this.gate.track(signal, ctx.ledger);
     ctx.loaded = this.startGroups(sessionId, text); // toolbox groups this turn (use_tools adds more)
+    if (wantsEdit && groupsFor(this).pictures) ctx.loaded.add('pictures'); // 1.5.94: an edit needs make_image at hand
     out.ctx = ctx;
     const used = new Set();
     // High and Extreme effort draft on the big brain; Low is the usual chat brain.
@@ -1679,6 +1968,14 @@ export class Brain {
     const state = realState({ model, session: currentSession(this.cfg).label, waiting: this.queue.filter((j) => j.state === 'waiting').length, cat: this.cfg.catName, turn: turnNo });
     const extras = [state, guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
     const brainCtx = await this.fitCtx(model, wantCtx);
+    // 1.5.127: a chat that no longer fits the biggest brain here, with a rented brain in its slot: offer it (the job carries on here meanwhile).
+    if (!job?.rent && !job?.side && !job?.guest && this.rentals.current() && !ctx.rentOffered) {
+      const tokens = roughTokens({ messages: msgs });
+      if (brainCtx && tokens > brainCtx * 0.9) {
+        this.offerRent(ctx, { tokens, why: `This chat and its files come to about ${Math.round(tokens / 1000)}K words, and my biggest brain here keeps ${Math.round(brainCtx / 1000)}K in mind.` });
+        emit({ type: 'announce', text: 'This one is getting big for my brains here. I\'ll try anyway; the card below hires a bigger brain for it.' });
+      }
+    }
     if (!model) throw new Error('I don\'t have a brain yet. Open Get models (in the menu on the left) and pick one; the first-time setup suggests the right one for this replicant matrix.');
     this.setState('thinking', '', this.state.model);
     let earlier = await this.recall(sessionId, text);
@@ -1702,6 +1999,19 @@ export class Brain {
     // 1.5.72: the Bob is picked once the chat is put together, so only Bobs with room for it are asked (Lenders.pick).
     let borrowing = wantsBorrow(this.cfg, this.borrowCase(job, pics));
     let lender = null;
+    // 1.5.127 Rented brains: a job marked for the rented brain (the 🏗 Rented brain switch, a Hire it card, or Bob's own
+    // hire_brain) thinks on the hired brain; the tools still run here. Not yet approved: the Hire it card, and nothing else.
+    let rented = null;
+    if (job?.rent && !job.side && !job.guest) {
+      const rental = this.rentals.current();
+      if (!rental) emit({ type: 'announce', text: 'No rented brain is in its slot (Equip Bob), so I\'m doing this one here.' });
+      else if (!this.rentals.approved(rental, job)) {
+        const r = this.offerRent(ctx, { why: 'You asked for the rented brain.' });
+        emit({ type: 'announce', text: r?.blocked ? `I can't hire ${rental.name} yet: ${r.blocked}` : `Press Hire it on the card below and I'll run this on ${rental.name}.` });
+        this.log('rent', 'waiting for the Hire it card');
+        return;
+      } else { rented = rental; borrowing = false; }
+    }
 
     // 1.5.60: a link in the message, with web search on: open it first, so even a small brain that would say
     // "I have no web access" answers from the page. Only the first link; it shows as a normal 🔧 Read the page line.
@@ -1757,6 +2067,19 @@ export class Brain {
             const small = this.lenders.tooBigFor(lentSize);
             this.log('borrow', small.length ? `this chat is too long for ${small.join(', ')} (about ${lentSize} tokens); thinking it myself` : 'none of my other Bobs is free; thinking it myself');
           }
+        }
+      }
+      if (rented) {
+        const rName = rented.name;
+        this.setState('thinking', `${rName} (rented) is thinking`, this.state.model);
+        if (!ctx.rentSaid) { ctx.rentSaid = true; emit({ type: 'rent', action: 'thinking', rental: rName, service: this.rentals.view().rentals.find((r) => r.id === rented.id)?.serviceName || '' }); }
+        try {
+          reply = await this.rentals.chat(rented, { messages: [sys, ...staleHandErrors(msgs, turnStart)], tools, signal, think, job, emit, onToken: (t) => emit({ type: 'token', text: t }) });
+        } catch (e) {
+          if (signal?.aborted) throw e;
+          this.log('rent', `${rName} couldn't take it (${e.message}); thinking it here`);
+          emit({ type: 'rent', action: 'back', rental: rName, why: e.message });
+          rented = null;
         }
       }
       if (lender) {
@@ -2053,7 +2376,7 @@ export class Brain {
     // Raw pictures only go to a brain that can see; any brain still gets the Eyes descriptions above.
     if (ctx.pics?.length && await this.engine.hasVision?.(model).catch(() => false)) userMsg.images = ctx.pics.map((r) => this.refs.base64(r));
     const messages = [
-      { role: 'system', content: this.withLimits(systemPrompt({ hat, now: this.now(), memory: this.memory(task), user: this.cfg.userName, backstory: this.backstory(), about: this.about(), copy, cat: this.cfg.catName, dials: personalityPrompt(this.cfg.personality, this.cfg.userName || 'the user') })) + (hat !== 'reviewer' && careful(ctx.job) ? `\n\n${effortPrompt(ctx.job.effort).replaceAll('{{USER}}', this.cfg.userName || 'the user')}` : '') },
+      { role: 'system', content: this.withLimits(systemPrompt({ hat, now: this.now(), memory: this.memory(task), user: this.cfg.userName, backstory: this.backstory(), about: this.about(), copy, cat: this.cfg.catName, dials: personalityPrompt(this.cfg.personality, this.cfg.userName || 'the user') }), null, hat) + (hat !== 'reviewer' && careful(ctx.job) ? `\n\n${effortPrompt(ctx.job.effort).replaceAll('{{USER}}', this.cfg.userName || 'the user')}` : '') },
       userMsg
     ];
     let final = '';
@@ -2095,7 +2418,12 @@ export class Brain {
     const unloaded = await this.gate.need({ id: 'painter', kind }, { signal: ctx.signal, emit: ctx.emit });
     this.setState('painting', video ? 'Filming' : 'Painting', null);
     this.log(kind, `unloaded ${unloaded.join(', ') || 'nothing'}; painting with ${this.painter?.paint ? 'the picture engine' : 'sd.cpp'}`);
-    const onProgress = (n, total) => this.setState('painting', `${video ? 'Filming' : 'Painting'} ${n}/${total}`, null);
+    // 1.5.109: while it loads, the picture engine prints counters of its own (82/82, 1/49, 119/519...), and after the
+    // last step it prints the decode (104/104). Only lines counting to this job's steps are the real ones; until the
+    // first of those the bar says it's loading.
+    const want = stepsFor(this.cfg.painter?.sdcpp?.[kind], kind);
+    this.setState('painting', 'Loading the picture engine', null);
+    const onProgress = (n, total) => { if (Number(total) !== want || !(n >= 1)) return; this.setState('painting', `${video ? 'Filming' : 'Painting'} ${Math.min(n, total)}/${total}`, null); };
     const type = video ? 'video' : 'image';
     const { file, name } = await withRetry(async () => {
       const made = this.painter?.paint ? await this.painter.paint(kind, args, { signal: ctx.signal, onProgress }) : await paint(this.cfg, kind, args, { signal: ctx.signal, onProgress });
@@ -2103,6 +2431,7 @@ export class Brain {
       return made;
     }, {
       signal: ctx.signal, wait: 3000,
+      retryable: async (e) => { if (!(await this.cardTaken(e, ctx.emit, ctx.sessionId))) return true; e.message = this.cardHeld.line; e.code = 'card_held'; return false; }, // 1.5.113
       onRetry: (e) => { this.log('handoff', `painting failed (${e.message.slice(0, 120)}); trying once more`); ctx.ledger?.step('retry', { what: 'painter', why: e.message }).done(); ctx.emit({ type: 'announce', text: `Making the ${video ? 'clip' : 'picture'} didn't work. Trying once more.` }); }
     });
     ctx.emit({ type, url: `/images/${encodeURIComponent(name)}`, file });
@@ -2134,6 +2463,8 @@ export class Brain {
   // Music and sound effects from the audio workshop. Same GPU manners as the painter.
   async makeSound(kind, args, ctx) {
     const music = kind === 'music';
+    const can = capabilities(this.cfg);
+    if (!this.cfg.audio?.aceUrl && !(music ? can.music : can.sfx)) return this.offerSetup(music ? 'music' : 'sfx', ctx); // 1.5.91
     // 1.5.37: music needs its models on the PC first. If they aren't, offer the download (the user's click) and stop here.
     if (music && !this.cfg.audio?.aceUrl) {
       const missing = aceMissingFiles(this.cfg);
@@ -2217,7 +2548,7 @@ export class Brain {
   async makeVideo({ reference, ...args }, ctx) {
     const refs = this.pickRefs(reference);
     if (this.cfg.maestro?.enabled && this.cfg.maestro?.video) return this.viaMaestro('video', args, ctx);
-    if (!paintingAvailable(this.cfg, 'video')) throw new Error('Video isn\'t set up yet. Pick a video maker in Get models (left menu, Equip Bob, Video slot). I can write the video prompt instead.');
+    if (!paintingAvailable(this.cfg, 'video')) return this.offerSetup('video', ctx); // 1.5.91: a Set it up card, never an error
     // The first reference becomes the opening frame; the clip moves on from there.
     if (refs.length) return this.paintOwn('video', { ...args, prompt: this.withLooks(args.prompt, refs), image: refs[0].path }, ctx);
     return this.paintOwn('video', args, ctx);
@@ -2232,7 +2563,11 @@ export class Brain {
   }
 
   // Why an edit can't be done faithfully, in words Bob passes on (instead of quietly painting something new).
-  async noEditModel(what) {
+  async noEditModel(what, ctx = null) {
+    if (ctx?.emit) { // 1.5.91: the card does the fixing (one click to put it in its slot, or get one)
+      const offered = await this.offerSetup('edits', ctx, { quiet: true }).catch(() => '');
+      if (offered) return `Didn't paint anything. Editing ${what} and keeping it looking the same needs a picture editor, and this replicant matrix doesn't have one in its slot yet. ${offered} Offer the alternative too: rework the picture from itself (make_image with mode start_from), where the look can drift.`;
+    }
     const waiting = await this.editModelWaiting();
     const fix = waiting
       ? `${waiting} is on this replicant matrix but isn't assigned to "Picture edits": Get models, Equip Bob, the Picture editor slot (one click).`
@@ -2241,7 +2576,13 @@ export class Brain {
   }
 
   async makeImage({ prompt, width, height, reference, mode, strength }, ctx) {
-    const refs = this.pickRefs(reference);
+    let refs = this.pickRefs(reference);
+    // 1.5.94: the user asked to change a picture but the brain named none (or asked for a new one): use that picture.
+    // A new picture only when the user's own words asked for one (intent.js), never because a small brain forgot.
+    if (!refs.length && ctx.wantsEdit) {
+      const from = ctx.pics?.length ? ctx.pics.map((r) => ({ ...r, path: this.refs.pathOf(r) })) : ctx.editFrom ? [ctx.editFrom] : [];
+      if (from.length) { refs = from; if (mode === 'new') mode = undefined; this.log('image', `edit meant: using ${from.map((r) => r.name).join(', ')}`); }
+    }
     // A picture is attached but none was named: never paint something new by mistake when an edit was meant.
     if (!refs.length && ctx.pics?.length && mode !== 'new') {
       const names = ctx.pics.map((r) => `"${r.name}"`).join(', ');
@@ -2257,17 +2598,15 @@ export class Brain {
       const editing = refs[0].painted || refs[0].kind === 'chat';
       const size = editing || mode === 'start_from' ? this.editSize(refs[0], { width, height }) : { width, height };
       if (can.edits && mode !== 'start_from') return this.paintOwn('edit', { prompt: editing ? editPrompt(prompt) : this.withLooks(prompt, refs), ...size, refs: files }, ctx);
-      if (!can.edits && mode !== 'start_from') return this.noEditModel(refs.map((r) => `"${r.name}"`).join(', '));
-      if (!paintingAvailable(this.cfg, 'image')) throw new Error('Painting from a reference needs Bob\'s own painter (a picture model from Get models).');
+      if (!can.edits && mode !== 'start_from') return this.noEditModel(refs.map((r) => `"${r.name}"`).join(', '), ctx);
+      if (!paintingAvailable(this.cfg, 'image')) return this.offerSetup('pictures', ctx);
       const out = await this.paintOwn('image', { prompt: this.withLooks(prompt, refs), ...size, image: files[0], strength: strength ?? (mode === 'start_from' ? 0.6 : 0.75) }, ctx);
       return can.edits ? out : `${out} (Reworked from ${refs[0].name} without a picture-edit model, so the look can drift.)`;
     }
     if (this.cfg.maestro?.enabled && this.cfg.painter?.engine === 'maestro' && this.cfg.maestro?.image) return this.viaMaestro('image', { prompt, width, height }, ctx);
     if (paintingAvailable(this.cfg, 'image')) return this.paintOwn('image', { prompt, width, height }, ctx);
     const c = this.cfg.comfy || {};
-    if (!c.url || !c.workflowFile || !fs.existsSync(c.workflowFile)) {
-      throw new Error('ComfyUI isn\'t hooked up yet (no workflow file). I can write the prompt instead.');
-    }
+    if (!c.url || !c.workflowFile || !fs.existsSync(c.workflowFile)) return this.offerSetup('pictures', ctx); // 1.5.91
     const wf = JSON.parse(fs.readFileSync(c.workflowFile, 'utf8'));
     const nodes = Object.entries(wf);
     const promptNode = c.promptNodeId ? wf[c.promptNodeId] : nodes.find(([, n]) => n.class_type === 'CLIPTextEncode')?.[1];
@@ -2326,6 +2665,6 @@ export class Brain {
     let loaded = [];
     let ollama = true;
     try { loaded = await this.engine.loaded(); } catch { ollama = false; }
-    return { ...this.state, busy: this.turns.size > 0, session: currentSession(this.cfg), waiting: this.queue.filter((j) => j.state === 'waiting').length, ollama, engine: this.engineName, loaded, models: this.cfg.models, cloud: cloudHelpers(this.cfg).length > 0 };
+    return { ...this.state, busy: this.turns.size > 0, session: currentSession(this.cfg), waiting: this.queue.filter((j) => j.state === 'waiting').length, ollama, engine: this.engineName, loaded, models: this.cfg.models, cloud: cloudHelpers(this.cfg).length > 0, rented: currentRental(this.cfg)?.name || '' };
   }
 }

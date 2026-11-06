@@ -55,6 +55,7 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
       }
       for (const id of Object.keys(HANDS)) if (b[id] && typeof b[id] === 'object' && 'on' in b[id]) next[id] = { on: b[id].on === true };
       if (Array.isArray(b.folders)) next.folders = b.folders.filter((f) => typeof f === 'string' && isDir(f)); // only folders that exist
+      if (Array.isArray(b.readOnlyFolders)) next.readOnlyFolders = b.readOnlyFolders.filter((f) => typeof f === 'string' && isDir(f)); // 1.5.117
       if ('timeoutMin' in b) next.timeoutMin = b.timeoutMin;
       const clean = cleanHands(next);
       brain.saveHands(clean);

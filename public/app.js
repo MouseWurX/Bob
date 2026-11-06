@@ -12,6 +12,8 @@ import { createLayout } from './layout.js';
 import { esc, render, renderRich } from './rich.js';
 import { createTopics } from './topics.js';
 import { createTidy } from './tidy.js';
+import { createAdventure } from './adventure.js';
+import { createGames } from './games.js';
 import { createHelp } from './help.js';
 import { handsApproval, togetherApproval, onHandsEvent } from './hands.js';
 import { planApproval } from './plan-card.js';
@@ -19,6 +21,7 @@ import { createBrainBar } from './brain-bar.js';
 import { createHandsSwitch } from './hands-switch.js';
 import { installTips } from './tips.js';
 import { createWebSwitch } from './web-switch.js';
+import { createRentSwitch } from './rent-switch.js'; // 1.5.127 rented brains
 import { createGameLock } from './game-lock.js';
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
 import { createEffort } from './effort.js';
@@ -27,6 +30,7 @@ import { createBobLife } from './bob-life.js';
 import { createViewer, outCard, fillPeeks } from './viewer.js';
 import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
+import { diagramHtml, saveRowsHtml, setupSaveAs, watchSaveAs } from './save-as.js';
 
 const cellar = createCellar();
 const api = async (url, data) => {
@@ -45,11 +49,15 @@ const log = $('log'), input = $('input'), sendBtn = $('send'), stopBtn = $('stop
 const brainBar = createBrainBar({ post: (u, d) => post(u, d), note: (t, k) => note(t, k) });
 const handsSwitch = createHandsSwitch({ note: (t, k) => note(t, k) });
 const webSwitch = createWebSwitch({ note: (t, k) => note(t, k) });
+const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button
 const qBanner = createQuarantineBanner({ note: (t, k) => note(t, k) });
 const effort = createEffort();
 const catAntics = createCatAntics({ onAntic: () => life.react('cat'), sleepy: () => life.dozing });
 const viewer = createViewer({ post: (u, d) => post(u, d), note: (t, k) => note(t, k) });
+// 1.5.95: diagrams get drawn and the Save as rows work, anywhere in the chat (save-as.js).
+setupSaveAs({ offer: (ev) => onEvent(ev), note: (t, k) => note(t, k), made: (items) => viewer.made(items) });
+watchSaveAs(log);
 const bobCanvas = $('bob'), bobCtx = bobCanvas.getContext('2d');
 bobCtx.imageSmoothingEnabled = false;
 
@@ -125,7 +133,27 @@ function add(cls, html) {
   scrollDown();
   return el;
 }
+const waitLines = new Map(); // 1.5.97: wait id -> its ⏳ line
 function note(text, kind = '') { return add(`note ${kind}`, esc(text)); }
+// 1.5.91 the Set it up card (the words were signed off by the settings thread; the phone app has the same card).
+function setupOfferHtml(ev) {
+  const gbs = (n) => (n >= 1 ? `${(+n).toFixed(n >= 10 ? 0 : 1)} GB` : `${Math.max(1, Math.round(n * 1000))} MB`);
+  const after = ev.carryOn ? ' Then I carry on with what you asked.' : '';
+  if (ev.kind === 'switch') return `<strong>"${esc(ev.name)}" is off</strong><span>It lets me ${esc(ev.what)}.${ev.privacy ? ' ' + esc(ev.privacy) : ''}${ev.free ? ' "Let Bob work without asking" is on, so it won\'t ask before each step.' : ev.name.startsWith('Let Bob use Hands') ? ' I still ask before every step.' : ''}${ev.folders ? ' Then tick the folders I may use in Settings, Hands.' : ''}${esc(after)} You can switch it off again in ${esc(ev.where)}.</span><div class="row"><button type="button" class="get">Switch it on</button><button type="button" class="link">Not now</button></div>`;
+  if (ev.kind === 'equip') return `<strong>I can't ${esc(ev.say)} yet</strong><span>${esc(ev.model?.name || '')} is already on this replicant matrix, it just isn't in its slot.${esc(after)}</span><div class="row"><button type="button" class="get">Use it</button><button type="button" class="link">Not now</button></div>`;
+  const items = (ev.items || []).map((i) => `<li>${esc(i.name)} <span class="muted">· ${gbs(i.sizeGB)}${i.engine ? ' · program' : ''}${i.license ? ` · ${esc(i.license)}` : ''}</span></li>`).join('');
+  return `<strong>I can't ${esc(ev.say)} yet</strong><span>I need ${esc(ev.what)} first. ${ev.need === 'ffmpeg' ? 'One press gets it and sets it up.' : 'One press gets it, sets it up and puts it in its slot.'}${esc(after)}</span><ul>${items}</ul><span class="muted">About ${esc(ev.size)} in all${ev.freeGB != null ? `, ${ev.freeGB} GB free` : ''}. One time only.${ev.note ? ' ' + esc(ev.note) : ''}</span>${ev.short ? `<span class="error">Not enough free disk: free up ${ev.short} GB first, then ask me again.</span>` : ''}<div class="row"><button type="button" class="get">Set it up (about ${esc(ev.size)})</button><button type="button" class="link">Not now</button></div>`;
+}
+
+// 1.5.127 Rented brains: the Hire it card. Says what it costs, how long it takes to start, and exactly what leaves this replicant matrix.
+function rentOfferHtml(ev) {
+  const r = ev.rental || {};
+  const start = ev.startMinutes ? ` It takes about ${ev.startMinutes} minute${ev.startMinutes === 1 ? '' : 's'} to start${r.kind === 'machine' ? ', and those minutes are billed too' : ''}.` : '';
+  const leaves = `What leaves this replicant matrix: this chat, the files you attached to it, my instructions and what I remember about you, to ${esc(r.service || 'the service')}${r.plain ? ' (over a plain, unencrypted connection to the hired machine)' : ''}. Their privacy policy covers it there.`;
+  const after = ev.carryOn ? ' Then I run your request there; my tools still run here, with the usual OK cards.' : ' Then your next messages run there.';
+  const multi = (r.cards || 1) > 1 ? `<span class="error"><strong>⚠️ This machine has ${r.cards} cards at once</strong> (${esc(r.cardsText || '')}): it costs about ${r.cards} times as much an hour as one card, busy or not.</span>` : '';
+  return `<strong>Hire ${esc(r.name || 'the rented brain')}?</strong><span>${esc(ev.why || '')} ${esc(r.model || '')} on ${esc(r.service || '')}: ${esc(ev.price || '')}.${start}${esc(after)}</span>${multi}<span class="muted">${leaves}</span>${ev.blocked ? `<span class="error">${esc(ev.blocked)}</span>` : ''}<div class="row"><button type="button" class="get"${ev.blocked ? ' disabled title="Fix the line above first"' : ''}>Hire it (${esc(ev.est || 'a few cents')})</button><button type="button" class="link">Not now</button></div>`;
+}
 
 function ensureReply(ev) {
   const k = ev?.turnId || '-';
@@ -149,9 +177,9 @@ function drawReply(r) {
 }
 function addMedia(ev, type) {
   const r = ensureReply(ev);
-  const item = { type, url: ev.url, name: decodeURIComponent(String(ev.url).split('/').pop() || ''), ...(ev.song?.title ? { title: ev.song.title, sound: ev.song.sound } : {}) };
+  const item = { type, url: ev.url, name: decodeURIComponent(String(ev.url).split('/').pop() || ''), ...(ev.song?.title ? { title: ev.song.title, sound: ev.song.sound } : {}), ...(type === 'diagram' ? { title: ev.title || '', ...(ev.format ? { format: ev.format } : {}) } : {}) };
   r.media.push(item); drawReply(r); scrollDown();
-  viewer.made([{ ...item, kind: type }]); // the side panel shows it too, if it's open
+  if (type !== 'diagram') viewer.made([{ ...item, kind: type }]); // the side panel shows it too, if it's open
   return r;
 }
 // Files he saved (documents, spreadsheets, copies, zips) and things called up with show_made: cards in the same bubble.
@@ -316,6 +344,10 @@ const topicsPage = createTopics({ api, openChat: (id, msgId) => openChat(id, msg
 const tidyPage = createTidy({ api, onCount: (n) => countBadge($('tidyBtn'), n) });
 $('topicsBtn').onclick = () => topicsPage.open();
 $('tidyBtn').onclick = () => tidyPage.open();
+const adventurePage = createAdventure({ api }); // 1.5.117 🎲 Adventure
+$('adventureBtn').onclick = () => adventurePage.open();
+const gamesPage = createGames({ api }); // 1.5.121 🧩 Games
+$('gamesBtn').onclick = () => gamesPage.open();
 const helpPage = createHelp();
 $('helpBtn').onclick = () => helpPage.open();
 window.addEventListener('bob-tidy', () => tidyPage.open());
@@ -411,6 +443,7 @@ function onEvent(ev) {
   if (ev.type === 'more-pictures' || ev.type === 'more-pictures-done') return more.handle(ev);
   if (ev.type === 'hands') handsSwitch.update(ev.settings);
   if (ev.type === 'quarantine') return qBanner.update(ev.active);
+  if (['lending', 'borrow', 'away', 'pair-done', 'queue'].includes(ev.type)) layout.net(); // 1.5.123: the Bob-Net party in Now running
   if (quarantineResult(ev)) return;
   if (onHandsEvent(ev, { add, scrollDown, note })) return;
   switch (ev.type) {
@@ -462,6 +495,58 @@ function onEvent(ev) {
       no.onclick = () => el.remove();
       return;
     }
+    case 'pair-ask': { // 1.5.97: another of your Bobs pressed Pair. Nothing is swapped until Yes is pressed here.
+      if (document.querySelector(`[data-pair-card="${CSS.escape(ev.id)}"]`)) return;
+      const el = add('setup-offer pair-card', `<strong>🤝 ${esc(ev.name)} wants to join your Bob-Net</strong><span>${esc(ev.name)}'s screen should show the number <strong>${esc(ev.number)}</strong>. If it does, press <strong>Yes, pair us</strong>; if not, press <strong>No</strong>. This Bob and ${esc(ev.name)} swap passcodes so each can reach the other. Nothing else switches on.${ev.already ? ' It\'s already on your list; this updates it.' : ''}</span><div class="row"><button type="button" class="get">Yes, pair us</button><button type="button" class="link">No</button></div>`);
+      el.dataset.pairCard = ev.id;
+      const [yes, no] = el.querySelectorAll('button');
+      const answer = async (ok) => {
+        yes.disabled = no.disabled = true;
+        try { const r = await api('/api/bob-net/answer', { id: ev.id, yes: ok }); el.remove(); if (!r.ok) note(r.why || 'That card is too old now.', 'error'); else if (ok) note(`Pairing with ${ev.name}…`); }
+        catch (e) { yes.disabled = no.disabled = false; note(e.message, 'error'); }
+      };
+      yes.onclick = () => answer(true);
+      no.onclick = () => answer(false);
+      scrollDown();
+      return;
+    }
+    case 'pair-gone': document.querySelector(`[data-pair-card="${CSS.escape(String(ev.id || ''))}"]`)?.remove(); return;
+    case 'pair-done': window.dispatchEvent(new CustomEvent('bob-pair-done')); note(ev.by ? `${esc(ev.by)} introduced ${esc(ev.name)}: paired${ev.both ? ', both ways' : ', one way for now'}. ${esc(ev.name)} is under My other Bobs.` : ev.both ? `Paired with ${ev.name}. You're on each other's list under My other Bobs.` : ev.asker ? `Paired with ${ev.name}, one way: this Bob can use ${ev.name}, but not the other way round yet. Turn on "Let my other replicant matrices in" here, then pair again.` : `Paired with ${ev.name}, one way: ${ev.name} can use this Bob, but not the other way round yet. Turn on "Let my other replicant matrices in" on ${ev.name}, then pair again.`); return;
+    case 'offer-setup': { // 1.5.91: something a job needs isn't set up (or is switched off). Nothing changes until a button is pressed.
+      const el = add('setup-offer', setupOfferHtml(ev));
+      const [yes, no] = el.querySelectorAll('button');
+      const answer = async (ok) => {
+        yes.disabled = no.disabled = true;
+        try {
+          const r = await api('/api/setup/answer', { id: ev.id, yes: ok });
+          el.remove();
+          if (!r.ok) note(r.why || 'That card is too old now. Ask me again.', 'error');
+          else if (r.done === 'download') note(`Getting ${r.names.join(' and ')} (about ${r.size}). Progress is in Downloads.${ev.carryOn ? ' Your request waits in Tasks, and I carry on by myself as soon as it\'s in.' : ''}`);
+          else if (r.done === 'equip') note(ev.carryOn ? 'Done, it\'s in its slot. Carrying on with your request.' : 'Done, it\'s in its slot.');
+          else if (r.done === 'switch') note(ev.carryOn ? `Switched on "${ev.name}". Carrying on with your request.` : `Switched on "${ev.name}". You can switch it off again in ${ev.where}.`);
+        } catch (e) { yes.disabled = no.disabled = false; note(e.message, 'error'); }
+      };
+      yes.onclick = () => answer(true);
+      no.onclick = () => answer(false);
+      if (ev.short) yes.disabled = true;
+      scrollDown();
+      return;
+    }
+    case 'equipped': // 1.5.91: a download finished and Bob put it in its slot himself
+      if (Array.isArray(ev.items) && ev.items.length) note(`Put in its slot: ${[...new Set(ev.items.map((i) => i.value))].join(', ')}.`);
+      return;
+    case 'waiting-line': { // 1.5.97: one muted ⏳ line per wait, updated in place (it isn't a card: nothing to answer)
+      const el = waitLines.get(ev.id);
+      if (el) el.textContent = ev.text;
+      else waitLines.set(ev.id, note(ev.text, 'wait'));
+      scrollDown();
+      return;
+    }
+    case 'waiting-line-done': { // 1.5.111: the wait is over, so the ⏳ line goes
+      waitLines.get(ev.id)?.remove();
+      waitLines.delete(ev.id);
+      return;
+    }
     case 'busy-note': // 1.5.37: your message waits behind a picture, song or clip; Bob says so at once
       note(ev.text, 'announce');
       scrollDown();
@@ -503,6 +588,35 @@ function onEvent(ev) {
       if (ev.hat === 'reviewer') add('note hat moot', `🛰 Moot: Bob calls in ${esc(ev.copy || 'his reviewer')}, his reviewer, for a second look`);
       else add('note hat', ev.copy ? `Bob hands this to ${esc(ev.copy)}, his ${esc(ev.label)} copy` : `Bob switches to ${esc(ev.label)}`);
       break;
+    case 'offer-rent': { // 1.5.127 Rented brains: the Hire it card. Nothing is hired until it's pressed.
+      const el = add('setup-offer rent-card', rentOfferHtml(ev));
+      const [yes, no] = el.querySelectorAll('button');
+      const answer = async (ok) => {
+        yes.disabled = no.disabled = true;
+        try {
+          const r = await api('/api/rent/answer', { id: ev.id, yes: ok });
+          el.remove();
+          if (!r.ok) note(r.why || 'That card is too old now. Ask me again.', 'error');
+          else if (r.done === 'hired') note(r.carryOn ? `Hired ${r.name}. Running your request there now; the tools still run here.` : `Hired ${r.name} for your next messages.`);
+          else if (r.done === 'none' && r.carryOn) note('Not hired. Doing it here instead.');
+        } catch (e) { yes.disabled = no.disabled = false; note(e.message, 'error'); }
+      };
+      yes.onclick = () => answer(true);
+      no.onclick = () => answer(false);
+      if (ev.blocked) yes.disabled = true;
+      scrollDown();
+      return;
+    }
+    case 'rent': // 1.5.127 Rented brains: what the hired brain is doing and what it has cost so far (src/rental.js)
+      if (ev.action === 'thinking') { endReply(ev); add('note borrow', `🏗 Rented brain: ${esc(ev.rental)}${ev.service ? ` on ${esc(ev.service)}` : ''} thinks this one. The tools still run here.`); }
+      else if (ev.action === 'back') { endReply(ev); add('note borrow', `🏗 ${esc(ev.rental)} couldn't take it (${esc(ev.why || '')}), so Bob thinks this one himself.`); }
+      else if (ev.action === 'start') add('note borrow', `🏗 Started a rented machine on ${esc(ev.service)} for ${esc(ev.rental)}. It stops when the job is done, or after ${ev.minutes} minutes whatever happens.`);
+      else if (ev.action === 'used') add('note borrow muted', `🏗 ${esc(ev.rental)}: about ${esc(ev.usd)} so far this job; ${esc(ev.monthUsd)} this month.`);
+      else if (ev.action === 'stop') add('note borrow', ev.stopped ? `🏗 Stopped the rented machine (${esc(ev.service)}) after ${ev.minutes} min, ${esc(ev.usd)}: ${esc(ev.why)}.` : `🏗 I couldn't stop the rented machine on ${esc(ev.service)} (${esc(ev.machine || '')}). Please stop it on their website so it doesn't keep billing.`);
+      else if (ev.action === 'warn') add('note borrow', `🏗 ${esc(ev.text)}`);
+      else if (ev.action === 'leftover') add('note borrow', `🏗 ${ev.machines.length === 1 ? 'A rented machine is' : `${ev.machines.length} rented machines are`} still running from before: ${ev.machines.map((m) => `${esc(m.service)} ${esc(m.id)}${m.perHour ? ` (about $${(+m.perHour).toFixed(2)} an hour)` : ''}`).join(', ')}. Stop them in Settings, Show advanced settings, Online services, Rented brains.`);
+      else if (ev.action === 'slot') { rentSwitch.update(ev.rental); window.dispatchEvent(new CustomEvent('bob-rent-slot', { detail: { rental: ev.rental } })); }
+      break;
     case 'borrow': // 1.5.55 Share brains: another of your Bobs thinks this reply (src/share-brains.js)
       endReply(ev);
       if (ev.action === 'start') add('note borrow', `📡 Borrowed brain: ${esc(ev.name)}${ev.brain ? ` (${esc(ev.brain)})` : ''} thinks this one. The tools still run here.`);
@@ -525,6 +639,7 @@ function onEvent(ev) {
     case 'image': { addMedia(ev, 'image'); ping('Bob finished a picture', ev.file || ''); break; }
     case 'audio': { addMedia(ev, 'audio'); ping('Bob finished a sound', ev.file || ''); break; }
     case 'video': { addMedia(ev, 'video'); ping('Bob finished a clip', ev.file || ''); break; }
+    case 'diagram': { addMedia(ev, 'diagram'); break; } // 1.5.95 drawn by save-as.js
     case 'made': { addMade(ev); break; }
     case 'approval': {
       endReply(ev);
@@ -590,6 +705,8 @@ function onEvent(ev) {
     case 'gaming-lock': // 1.5.41: changed by the button in another window, or by picking another session
       gameLock.update(ev.on);
       return;
+    case 'adventure': window.dispatchEvent(new CustomEvent('bob-adventure', { detail: ev })); return; // 1.5.117: the Adventure page draws it
+    case 'games': window.dispatchEvent(new CustomEvent('bob-games', { detail: ev })); return; // 1.5.121: the Games page draws it
     case 'aside': {
       // Gaming-session sleepy aside (public/sleepy.js): scripted, not part of the reply, not saved in the chat.
       const rep = ev.turnId && replies.get(ev.turnId);
@@ -626,7 +743,7 @@ function connect() {
 async function catchUpMedia() {
   try {
     const h = await (await fetch('/api/history?session=' + encodeURIComponent(sessionId))).json();
-    const seen = new Set([...log.querySelectorAll('img[src], video[src], audio[src]')].map((el) => el.getAttribute('src')).concat([...log.querySelectorAll('[data-view-url]')].map((el) => el.dataset.viewUrl)));
+    const seen = new Set([...log.querySelectorAll('img[src], video[src], audio[src]')].map((el) => el.getAttribute('src')).concat([...log.querySelectorAll('[data-view-url]')].map((el) => el.dataset.viewUrl), [...log.querySelectorAll('[data-diagram]')].map((el) => el.dataset.diagram)));
     const missed = h.slice(-6).filter((m) => m.role === 'assistant').flatMap((m) => m.media || []).filter((m) => !seen.has(m.url));
     if (missed.length) { add('msg bob', mediaHtml(missed)); scrollDown(); }
   } catch {}
@@ -644,7 +761,7 @@ function setBusy(b) {
 
 // ---------- The queue: what's waiting, what's running, what failed ----------
 // A short strip above the message box (open tasks only); the Tasks button shows the full list.
-const STATE_LABEL = { waiting: 'queued', working: 'in progress', done: 'completed', failed: 'failed', cancelled: 'cancelled', interrupted: 'interrupted' };
+const STATE_LABEL = { waiting: 'queued', working: 'in progress', rented: 'rented', done: 'completed', failed: 'failed', cancelled: 'cancelled', interrupted: 'interrupted' };
 let lastJobs = [];
 const qbox = $('queue');
 function drawQueue(jobs) {
@@ -740,12 +857,14 @@ function mediaHtml(media) {
   const visual = items.filter((m) => m.kind === 'image' || m.kind === 'video');
   // 1.5.41: songs and sounds get the song player; two or more sit in a list that plays one after another.
   const songs = items.filter((m) => m.kind === 'audio' && m.url);
-  const rest = items.filter((m) => !visual.includes(m) && !songs.includes(m)).map(outCard).join('');
+  const diagrams = items.filter((m) => m.kind === 'diagram').map(diagramHtml).join(''); // 1.5.95
+  const rest = items.filter((m) => !visual.includes(m) && !songs.includes(m) && m.kind !== 'diagram').map(outCard).join('');
   const sounds = songs.length ? songListHtml(songs) : '';
-  if (visual.length < 2) return visual.map(outCard).join('') + sounds + rest;
+  const saveRows = saveRowsHtml(items); // 1.5.95: Save as, under everything Bob made
+  if (visual.length < 2) return diagrams + visual.map(outCard).join('') + sounds + rest + saveRows;
   const cols = Math.ceil(Math.sqrt(visual.length)), rows = Math.ceil(visual.length / cols);
   const grid = `<div class="media-grid" style="--cols:${cols};--rows:${rows}">${visual.map(outCard).join('')}</div>`;
-  return grid + sounds + rest;
+  return diagrams + grid + sounds + rest + saveRows;
 }
 // ---------- Copy buttons and file cards (right-click and Ctrl+C often don't get through remote desktop) ----------
 const rawText = new WeakMap();
@@ -845,7 +964,7 @@ $('composer').onsubmit = async (e) => {
   pending = [];
   drawTray();
   const level = effort.get();
-  const r = await post('/api/chat', { sessionId, text, refs: pics.map((p) => p.id), effort: level }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
+  const r = await post('/api/chat', { sessionId, text, refs: pics.map((p) => p.id), effort: level, ...(rentSwitch.on() ? { rent: true } : {}) }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
   const tag = bubble.querySelector('.qtag');
   if (!r.ok) { tag.textContent = 'not sent'; tag.classList.add('bad'); note(r.data.error || 'Something went wrong.', 'error'); return; }
   jobBubbles.set(r.data.jobId, bubble);
@@ -926,6 +1045,7 @@ async function start() {
     setStatus(s);
     if (s.state === 'idle') life.react('hello');
     if (s.version) $('ver').textContent = `Bob ${s.version.label}`;
+    rentSwitch.update(s.rented || ''); // 1.5.127: the 🏗 switch shows only with a rented brain in its slot
     if (s.busy) setBusy(true);
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
@@ -966,11 +1086,11 @@ async function askRestart(st) {
   // 1.5.38: only promise to pick up where he left off when that switch is on.
   let pickUp = false;
   if (busyWith) { try { pickUp = (await (await fetch('/api/settings')).json()).resumeJobs === true; } catch {} }
-  const after = pickUp ? 'if I restart now, I pick up where I left off when I open again.' : 'if I restart now, it stops and waits in Tasks or Downloads for you to start it again. (Turn on "Pick up where Bob left off after a restart" in Settings, Show advanced settings, Engines & speed, and I\'ll carry on by myself.)';
+  const after = pickUp ? 'if I restart now, I pick up where I left off when I open again.' : 'if I restart now, it stops and waits in Tasks or Downloads for you to start it again. (Turn on "Pick up where Bob left off after a restart" in Settings, How Bob works, and I\'ll carry on by myself.)';
   const el = add('suggest', `<span>The new Bob (${esc(st.version || 'update')}) is ready.${busyWith ? ` I'm working on ${esc(busyWith)}; ${esc(after)}` : ''}</span>
     <button type="button" data-r="now">${busyWith ? 'Restart anyway' : 'Restart Bob now'}</button>${busyWith ? '<button type="button" data-r="done">Wait until I\'m done</button>' : ''}<button type="button" class="link" data-r="later">Later</button>`);
   for (const b of el.querySelectorAll('button')) b.onclick = async () => {
-    if (b.dataset.r === 'later') { el.remove(); note(st.mode === 'github' ? 'OK. Press "Restart Bob now" whenever you like: Settings, This replicant matrix and updates, Check for updates.' : 'OK. The new Bob takes over the next time Bob starts, or press Restart in the update window.'); return; }
+    if (b.dataset.r === 'later') { el.remove(); note(st.mode === 'github' ? 'OK. Press "Restart Bob now" whenever you like: it\'s on the top line of Settings, This replicant matrix and updates.' : 'OK. The new Bob takes over the next time Bob starts, or press Restart in the update window.'); return; }
     const r = await post('/api/update/restart', { when: b.dataset.r });
     el.remove();
     note(r.ok ? (b.dataset.r === 'done' ? 'I\'ll restart as soon as I\'ve finished.' : 'Restarting...') : (r.data.error || 'The update window didn\'t answer.'), r.ok ? '' : 'error');

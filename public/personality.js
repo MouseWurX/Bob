@@ -2,6 +2,7 @@
 // defaults are exactly the Bob everyone knows. Turning a dial adds one short line to his instructions. The dials
 // only shape tone: honesty, safety and "ask before doing" are fixed and stated after them, whatever they say.
 import { tip } from './tips.js';
+import { esc } from './util.js';
 // All wording here is original. Used by the server (prompt) and the page (sliders, preview).
 
 export const DIALS = [
@@ -132,7 +133,6 @@ export function greeting(p, user = 'there') {
 }
 
 // ---- The Attributes panel on Equip Bob: his look, what he makes of it, the dials, and how he'd say hello. ----
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // Bob's first impression of a look, in his own words. (In chat he gives his real opinion; this is the quick take.)
 const TAKES = {
@@ -146,14 +146,16 @@ const TAKES = {
   alien: 'I look like I took a wrong turn at a nebula. I\'m into it.',
   robot: 'Finally, a body that matches the job description.',
   pc: 'A computer wearing a computer. Very meta. I approve.',
-  odd: 'Spooky. I\'ll grow into it.'
+  odd: 'Spooky. I\'ll grow into it.',
+  c: 'Your own design. Built from parts, by you, for me. I\'ll wear it with pride and a little curiosity.'
 };
 export function bobTake(lookId) {
   const id = String(lookId || 'sysop');
+  if (id.startsWith('c:')) return TAKES.c; // 1.5.122: a design from the character screen
   return TAKES[id] || TAKES[id.split('-')[0]] || TAKES.sysop;
 }
 
-export function attributesHtml({ personality, look, lookText, lookComments = true, user, callMe = '', windowsName = '' }) {
+export function attributesHtml({ personality, look, lookText, lookComments = false, user, callMe = '', windowsName = '' }) {
   const p = cleanPersonality(personality);
   const preset = PRESETS.find((x) => DIALS.every((d) => (x.set[d.id] ?? 2) === p[d.id]));
   return `<details class="attributes" open><summary><h3>Attributes</h3></summary>
@@ -164,7 +166,7 @@ export function attributesHtml({ personality, look, lookText, lookComments = tru
       <canvas class="attr-avatar" width="64" height="64" aria-label="Bob's look"></canvas>
       <div><strong>Look:</strong> ${esc(lookText || '')}<br><span class="take">"${esc(bobTake(look))}"</span></div>
     </div>
-    <div class="row wrap"><button type="button" class="mini" data-tab="style">Change look</button><button type="button" class="mini" data-askbob="What do you think of how you look right now?">Ask Bob what he thinks</button></div>
+    <div class="row wrap"><button type="button" class="mini" data-golook>Change look</button><button type="button" class="mini" data-askbob="What do you think of how you look right now?">Ask Bob what he thinks</button></div>
     <button type="button" class="pill-switch" role="switch" aria-checked="${Boolean(lookComments)}" data-lookcomments><span class="ps-text">He comments once when you change his look</span><span class="st">${lookComments ? 'On' : 'Off'}</span></button>
     <h4>Personality</h4>
     ${DIALS.map((d) => `<label class="dial"><span class="dial-name">${esc(d.name)}</span>

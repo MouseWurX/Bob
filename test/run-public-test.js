@@ -2,6 +2,7 @@
 // Checks every file that isn't ignored by .gitignore, the way git would see a fresh clone.
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -26,13 +27,9 @@ const files = [];
 check('config.json, inn, models and legacy are kept out by .gitignore', ['config.json', 'inn/', 'models/', 'legacy/'].every((x) => ignore.includes(x)) && !files.includes('config.json') && files.includes('config.example.json'));
 check('no data from a Bob home folder (inn) is in the tree', !files.some((f) => /(^|\/)inn\/|bob-memory\.md$|notice-board\.md$|logbook\.md$|backstory\.md$|about-me\.md$/.test(f)));
 
-// Built from pieces so this file doesn't match itself.
-const j = (...a) => new RegExp(a.join(''), 'i');
 const patterns = [
-  ['the owner\'s Windows user name', j('sque', 'a')],
   ['e-mail addresses', /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.(?:com|ca|net|org|io|dev|me)\b/],
   ['a real user folder (only C:\\Users\\you is allowed)', /C:(?:\\\\|\\|\/)+Users(?:\\\\|\\|\/)+(?!you\b)[A-Za-z0-9._-]+/i],
-  ['the owner\'s private project names', j('\\b(HEL', 'IOS|CamPro', 'ject|The F', 'ray)\\b')],
   ['a home network address', /\b192\.168\.\d+\.\d+\b|\b10\.\d+\.\d+\.\d+\b/],
   ['API keys or tokens', /\b(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|hf_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}|xox[bp]-[A-Za-z0-9-]{20,}|\d{8,10}:AA[A-Za-z0-9_-]{30,})/],
   ['private keys', /-----BEGIN [A-Z ]*PRIVATE KEY-----/]
@@ -47,6 +44,29 @@ for (const [what, re] of patterns) {
   }
   check(`nothing personal: ${what}`, !hits.length, hits.slice(0, 8).join(' '));
 }
+// The owner's private words (user name, PC name, folders, project names) are checked by fingerprint only, so this
+// public file never spells them out. Each line's words are tried alone, in pairs, and as a host name ("word.").
+// To add one: node -e "console.log(require('crypto').createHash('sha256').update('<words in lower case>').digest('hex').slice(0, 16))"
+const PRIVATE = new Set(['f9af8736e120123d', 'f579545f36d024bd', 'fb846261cc0a4755', '48582bd628b7c800', '88fa095d398ba849',
+  'f7de5dcea4df47c0', '45c573ea8979b19f', 'e307e9c6cb773472', '89e2091d9a4946c1', '0aa7310ac6d2276d', '3700e50d8c5eccd3',
+  '58921660abd73582']);
+const fp = (s) => crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
+export function privateWords(line, set = PRIVATE) {
+  const low = line.toLowerCase();
+  const words = low.match(/[a-z0-9]+/g) || [];
+  const tries = [...words, ...words.slice(1).map((w, i) => `${words[i]} ${w}`), ...(low.match(/[a-z0-9-]+\./g) || [])];
+  return tries.some((t) => set.has(fp(t)));
+}
+{
+  const hits = [];
+  for (const f of text) fs.readFileSync(path.join(root, f), 'utf8').split(/\r?\n/).forEach((l, i) => { if (privateWords(l)) hits.push(`${f}:${i + 1}`); });
+  check('nothing personal: the owner\'s private names, PC name, folders and projects (checked by fingerprint)', !hits.length, hits.slice(0, 8).join(' '));
+}
+{ // A made-up stand-in, so the self-check doesn't spell out a real name either.
+  const planted = new Set([fp('secret place'), fp('mybox.')]);
+  check('the fingerprint check finds a planted name, in pairs and as a host', privateWords('Saved to D:\\Secret Place\\x', planted) && privateWords('https://mybox.tail1234.ts.net', planted) && !privateWords('a secret, the place', planted) && !privateWords('Bob, the NPC innkeeper'));
+}
+
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 check('licence files are there: GPL-3.0 code, CC BY-SA 4.0 art, trademarks, third parties', pkg.license === 'GPL-3.0-or-later' && ['LICENSE', 'LICENSE-ART', 'ASSETS-LICENSE.md', 'TRADEMARKS.md', 'THIRD-PARTY.md', 'SECURITY.md', 'CONTRIBUTING.md', 'PRIVACY.md'].every((f) => files.includes(f))
   && /GNU GENERAL PUBLIC LICENSE\s+Version 3, 29 June 2007/.test(fs.readFileSync(path.join(root, 'LICENSE'), 'utf8')) && /Attribution-ShareAlike 4\.0 International/.test(fs.readFileSync(path.join(root, 'LICENSE-ART'), 'utf8')));

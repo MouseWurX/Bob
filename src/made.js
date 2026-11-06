@@ -3,6 +3,7 @@
 // The list lives in inn\bob\made.json (newest first, at most 400). Pictures in the painter folder that
 // aren't in the list (older ones, or made before this list existed) are added from the folder itself.
 import fs from 'node:fs';
+import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
 import { describe, allowedFile } from './files.js';
 
@@ -42,7 +43,7 @@ export class Made {
   }
 
   save(list) {
-    try { fs.mkdirSync(path.dirname(this.file), { recursive: true }); fs.writeFileSync(this.file, JSON.stringify(list.slice(0, MAX), null, 1)); } catch {}
+    try { writeJsonAtomic(this.file, list.slice(0, MAX)); } catch {}
   }
 
   // Add one file Bob made. Returns what the chat shows for it (or null if it isn't there or isn't allowed).

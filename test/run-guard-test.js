@@ -16,7 +16,7 @@ check('cross-site is refused', refuseForeign(req({ 'sec-fetch-site': 'cross-site
 check('same-site is refused', refuseForeign(req({ 'sec-fetch-site': 'same-site' }), host) === 'other website');
 for (const t of ['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data; boundary=x', '']) check(`content type "${t || 'none'}" is refused`, refuseForeign({ headers: { 'content-type': t } }, host) === 'content type');
 for (const t of ['application/json; charset=utf-8', 'audio/wav', 'image/png', 'application/octet-stream']) check(`content type "${t}" is fine`, refuseForeign({ headers: { 'content-type': t } }, host) === '');
-check('the phone over Tailscale (https, its own host) is fine', refuseForeign(req({ origin: 'https://npc.tail1234.ts.net' }), 'npc.tail1234.ts.net') === '');
+check('the phone over Tailscale (https, its own host) is fine', refuseForeign(req({ origin: 'https://my-pc.tail1234.ts.net' }), 'my-pc.tail1234.ts.net') === '');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

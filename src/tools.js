@@ -10,9 +10,22 @@ import { limitOn, readOnlyRoots } from './hands-settings.js';
 import { listWorkflows, workshopDir } from './workshop.js';
 import { bobHelp } from './self-help.js';
 import { recallOn, tagLine } from './recall.js';
+import { diagramTool } from './diagram.js';
+import { saveAsTool } from './save-as.js';
+import { isPrivateHost } from './security-web.js';
 
 const MAX_READ = 20000;
-const BLOCKED_EXT = new Set(['.exe', '.msi', '.bat', '.cmd', '.ps1', '.vbs', '.js', '.jse', '.wsf', '.scr', '.lnk', '.reg', '.dll', '.com']);
+// Runnable file types Bob won't write outside a project, on every platform (Windows, Mac and Linux kinds together).
+const BLOCKED_EXT = new Set(['.exe', '.msi', '.bat', '.cmd', '.ps1', '.psm1', '.vbs', '.js', '.mjs', '.cjs', '.jse', '.wsf', '.hta', '.scr', '.lnk', '.reg', '.dll', '.com', '.jar', '.sh', '.bash', '.zsh', '.py', '.pyw', '.command', '.desktop', '.app']);
+// read_file refuses files over this many bytes: a multi-GB file would otherwise be read whole into memory.
+const MAX_READ_BYTES = 20 * 1024 * 1024;
+// fetch_page stops reading a page after this many bytes (the text is cut to 15,000 characters anyway).
+const MAX_PAGE_BYTES = 2 * 1024 * 1024;
+async function readCapped(res, max) {
+  const parts = []; let n = 0;
+  for await (const chunk of res.body || []) { parts.push(chunk); n += chunk.length; if (n >= max) break; }
+  return Buffer.concat(parts).subarray(0, max).toString('utf8');
+}
 
 // Secrets Bob must never list, read, search or write: signing keys, API keys, databases, his own config.
 const SECRET_NAME = /^(local\.properties|keystore\.properties|google-services\.json|credentials\.json|\.env(\..*)?|\.npmrc|\.git-credentials|id_(rsa|dsa|ecdsa|ed25519).*)$/i;
@@ -56,13 +69,6 @@ function resolveUserPath(p) {
   if (!p || typeof p !== 'string') throw new Error('A full file path is needed.');
   if (!path.isAbsolute(p)) throw new Error('Please give a full path, like C:\\Users\\you\\Documents\\notes.txt');
   return path.resolve(p);
-}
-
-function isPrivateHost(host) {
-  const h = host.toLowerCase().replace(/^\[|\]$/g, '');
-  return h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h === '::1' || h === '0.0.0.0' ||
-    /^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^169\.254\./.test(h) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(h) || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(h) || /^f[cd]/.test(h);
 }
 
 function htmlToText(html) {
@@ -201,6 +207,8 @@ export function buildTools(cfg) {
       const file = resolveUserPath(p);
       if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to read ${file}.`);
       if (isSensitive(cfg, file)) throw new Error(SECRET_MSG);
+      const size = fs.statSync(file).size;
+      if (size > MAX_READ_BYTES) throw new Error(`That file is ${Math.round(size / 1048576)} MB, too big to read as text. I read files up to 20 MB.`);
       const buf = fs.readFileSync(file);
       if (buf.subarray(0, 4096).includes(0)) return '(That looks like a binary file, so I can\'t read it as text.)';
       const text = buf.toString('utf8');
@@ -285,13 +293,20 @@ export function buildTools(cfg) {
   t.fetch_page = {
     schema: fn('fetch_page', 'Read a web page as text.', { url: str('http or https link.') }),
     async run({ url }, { signal }) {
-      const u = new URL(url);
-      if (!/^https?:$/.test(u.protocol)) throw new Error('Only http and https links.');
-      if (isPrivateHost(u.hostname)) throw new Error('I don\'t open addresses on the home network.');
-      const res = await fetch(u, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' }, redirect: 'follow', signal });
+      // Redirects are followed by hand so every hop gets the same home-network check as the first address.
+      let u = new URL(url), res;
+      for (let hop = 0; ; hop++) {
+        if (!/^https?:$/.test(u.protocol)) throw new Error('Only http and https links.');
+        if (isPrivateHost(u.hostname)) throw new Error('I don\'t open addresses on the home network.');
+        res = await fetch(u, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' }, redirect: 'manual', signal });
+        const next = res.status >= 300 && res.status < 400 && res.headers.get('location');
+        if (!next) break;
+        if (hop >= 5) throw new Error('That link redirects too many times.');
+        u = new URL(next, u);
+      }
       const type = res.headers.get('content-type') || '';
       if (!/text|html|json|xml/.test(type)) return `That link is a ${type || 'file'}, not a page. I won't download it.`;
-      const text = htmlToText(await res.text());
+      const text = htmlToText(await readCapped(res, MAX_PAGE_BYTES));
       return text.length > 15000 ? text.slice(0, 15000) + '\n[cut]' : text;
     },
     summary: ({ url }) => `read page: ${url}`
@@ -504,5 +519,23 @@ export function buildTools(cfg) {
     };
   }
 
+  // 1.5.127 Rented brains: Bob asks for the rented brain in his slot. The tool only shows the Hire it card; nothing is
+  // spent until the owner presses it, and then the whole job runs again on the rented brain (brain.answerRent).
+  t.hire_brain = {
+    schema: fn('hire_brain', 'Ask {{USER}} to run this job on the rented brain (a big brain hired from an online service, in the Rented brain slot). Shows a card with the cost; nothing is hired until they press it. Only when the job is too big for the brains on this replicant matrix (a very long chat or file, a model that is not here), or when {{USER}} asks for it.', {
+      why: str('One short line: why this job needs the rented brain')
+    }, []),
+    async run({ why }, ctx) {
+      const r = ctx.brain?.offerRent?.(ctx, { why: String(why || '').slice(0, 200) });
+      if (!r) return 'There is no rented brain in its slot (Equip Bob, Rented brain). Say so in one line and carry on here.';
+      if (r.already) return 'The Hire it card is already under the chat. Don\'t call this again now.';
+      return `A card with a "Hire it" button is now under this chat (${r.est}). Tell ${cfg.userName || 'the user'} in one line why this job needs the rented brain and that one press runs it there; stop after that and don't do the job here.`;
+    },
+    summary: () => 'offered the rented brain',
+    endsTurn: true
+  };
+
+  t.make_diagram = diagramTool(); // 1.5.95 flowcharts and diagrams (diagram.js)
+  t.save_as = saveAsTool(); // 1.5.95 keep something Bob made as another file type (save-as.js)
   return t;
 }
