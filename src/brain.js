@@ -55,7 +55,7 @@ import { Lenders, wantsBorrow, roughTokens } from './share-brains.js';
 import { GuestJobs, awayPlan, sendAway, stopAway, guestTools, guestNote, GUEST_TOOLS, canHere, NEEDS_LIST, awayWaitLine } from './share-jobs.js';
 import { askTogether, takeEarlier, askTogetherTool } from './together.js';
 import { showPlanTool, planGate, planOn, planPrompt } from './plan.js';
-import { freeMemNow } from './platform.js';
+import { freeMemNow, APU_HEADROOM_GB } from './platform.js';
 import { HowTos, howtoTools, howtosOn, trailStep, worthOffering, howtoPrompt, usingLine } from './howtos.js';
 import { NEEDS, planFor, SetupOffers, switchFor, applySwitch, SWITCH_KEYS } from './setup-offer.js';
 
@@ -85,6 +85,34 @@ export function sideOk(brain, job, { freeMem = freeMemNow() } = {}) {
 function sideBrainBytes(brain) {
   try { const f = brain.engine?.resolve?.(talkerModel(brain))?.gguf; if (f) return fs.statSync(f).size; } catch {}
   return 4 * 1024 ** 3; // unknown: assume a 4B brain
+}
+
+// 1.5.126: on a shared-memory machine (built-in graphics: handhelds, thin laptops) a brain and its chat memory come
+// out of the same RAM Windows runs on, and an 8 GB carve-out already leaves a 16 GB Legion Go with 7.7 GB. Before a
+// load, the room is: free RAM, plus whatever the load will drop, minus about 4 GB kept for Windows. Too tight:
+// the chat memory is shortened first (halved, never below 8K); still too tight: nothing loads, and Bob says so
+// plainly instead of risking an out-of-memory crash. Only with built-in graphics (cfg.sharedGraphics); unknown
+// sizes (no file to measure) go the old way. Settings review: approved 2026-11-06.
+export const APU_MIN_CTX = 8192;
+export const APU_NO_ROOM = (needGB, freeGB) => `That brain needs about ${needGB} GB and only about ${freeGB} GB is free once Windows keeps its share, so I haven't loaded it. Close something or pick a smaller brain in Equip Bob.`;
+export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loaded = null } = {}) {
+  if (!brain?.cfg?.sharedGraphics || !model) return { ok: true, ctx };
+  const bytes = (c) => brain.gate?.brainBytes?.(model, { ctx: c });
+  let need = bytes(ctx);
+  if (!need) return { ok: true, ctx };
+  let dropping = 0;
+  try {
+    const l = loaded || await brain.engine.loaded();
+    if (l.some((m) => !m.beside && sameModel(m.name, model))) return { ok: true, ctx }; // already in: nothing new to find room for
+    dropping = l.filter((m) => !m.beside).reduce((a, m) => a + (m.size || 0), 0);
+  } catch {}
+  const room = freeMem + dropping - APU_HEADROOM_GB * GB;
+  const start = ctx || 32768;
+  let c = start;
+  while (need > room && c > APU_MIN_CTX) { c = Math.max(APU_MIN_CTX, Math.floor(c / 2)); need = bytes(c); }
+  const gb = (b) => Math.round((Math.max(0, b) / GB) * 10) / 10;
+  if (need <= room) return { ok: true, ctx: c === start ? ctx : c, shortened: c !== start, needGB: gb(need), roomGB: gb(room) };
+  return { ok: false, ctx, needGB: gb(need), roomGB: gb(room), line: APU_NO_ROOM(gb(need), gb(room)) };
 }
 
 // A side-lane reply: always the small brain on the processor, so it never touches the card the painter holds.
@@ -402,6 +430,7 @@ export class Brain {
     clearTimeout(this.graceTimer);
     this.waking = (async () => {
       const ctx = await this.fitCtx(model, want);
+      if (!(await apuRoom(this, model, ctx)).ok) { this.log('model', `not waking ${model}: too little RAM to spare on built-in graphics`); return false; }
       let loaded = false;
       try { loaded = await this.engine.isLoaded(model, { cpu, ctx }); } catch { return false; }
       if (loaded) { this.engine.touch?.(model, { cpu, ctx })?.catch?.(() => {}); return false; }
@@ -659,6 +688,9 @@ export class Brain {
     clearTimeout(this.graceTimer);
     if (!opts.beside) await this.keepTalker(model, opts, emit, { signal });
     if (!signal) { try { await this.engine.isLoaded(model, opts); } catch (e) { throw new Error(`I can't reach my engine, ${this.engineName} (${e.message}).`); } }
+    // 1.5.126: built-in graphics share Windows's RAM: no load that would leave Windows short (apuRoom).
+    const room = await apuRoom(this, model, opts.ctx);
+    if (!room.ok) { this.log('model', `not loading ${model}: needs ~${room.needGB} GB, room ~${room.roomGB} GB after Windows's ${APU_HEADROOM_GB} GB`); throw new Error(room.line); }
     const name = BRAIN_NAMES[who] || who;
     const used = await this.gate.need({ id: 'brain', model, opts }, {
       signal, emit, who,
@@ -890,7 +922,11 @@ export class Brain {
     // Settings review: in Gaming the brain is on the processor beside the game, so a pick never makes it bigger there.
     want = pick && gaming(this.cfg) ? Math.min(pick, want || GAMING_CTX) : pick || want;
     if (!want) return null;
-    return max ? Math.min(max, want) : want;
+    const fit = max ? Math.min(max, want) : want;
+    // 1.5.126: on built-in graphics, shorter still when the RAM says so (apuRoom above).
+    const room = await apuRoom(this, model, fit);
+    if (room.shortened) this.log('model', `shortened ${model}'s chat memory to ${room.ctx} to leave Windows about ${APU_HEADROOM_GB} GB (needs ~${room.needGB} GB, room ~${room.roomGB} GB)`);
+    return room.ok ? room.ctx : fit;
   }
 
   get turn() { return this.turns.values().next().value || null; }

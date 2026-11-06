@@ -4,6 +4,18 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.126
+
+Handhelds and laptops with built-in graphics: Bob now reads how their one pool of memory is really split, and never loads a brain that would leave Windows short.
+
+- **The memory set aside for graphics is read, not guessed.** A Legion Go showed RAM only and no graphics memory. The BIOS (or the maker's app, such as Legion Space or Armoury Crate) keeps part of the memory for the graphics alone (Auto, which is small, or 4 or 8 GB); Windows never sees that part, so a 16 GB Go set to 8 GB read as 7.7 GB. Bob now reads the set-aside from Windows's display driver entry on every start, and the installed memory from the memory sticks themselves. On Linux the set-aside comes from the graphics driver (amdgpu).
+- **Graphics memory for picking models** is the set-aside plus about half of what Windows can see, and the borrow never eats into the last 4 GB Windows keeps for itself. A 16 GB Go set to 8 GB counts 11 GB; on Auto (the recommended setting) it stays at the old half-of-visible figure. Nothing that fitted before stops fitting.
+- **What you see:** the spec line under the replicant matrix's name reads "Ryzen Z1 Extreme · Radeon built-in · 16 GB memory (8 GB set aside for graphics)" or "(shared with graphics as needed)"; Get models says "Memory: 16 GB shared, 8 GB set aside for graphics". `/api/hardware` carries `installedRamGB`, `reservedGraphicsGB` and `visibleRamGB`.
+- **A memory guard on shared-memory machines.** Before a brain loads, Bob checks the room (free RAM, plus whatever the load swaps out, minus 4 GB for Windows). Too tight: the chat memory is shortened first (halved, never below 8K). Still too tight: the brain isn't loaded and Bob says so in chat ("That brain needs about 9 GB and only about 6 GB is free once Windows keeps its share...") instead of risking an out-of-memory crash. Only with built-in graphics; a real graphics card is untouched.
+- Help: the built-in graphics FAQ explains the set-aside, glossary gets "Set aside for graphics". Tests: `test/run-integrated-gpu-test.js` (8 GB, 4 GB and Auto fixtures, Windows and Linux readings, the guard; NVIDIA, Mac and desktop chips unchanged).
+- The README's download row now names the 1.5.126 files, and `installer/check-release.js` fails when the row doesn't match the version (1.5.125's row still named 1.5.124).
+- Not yet measured on a real Go on Auto: the fixture uses a 512 MB set-aside; the Legion Go's own numbers go in when they're in.
+
 ## 1.5.125
 
 A chest for everything Bob makes, and Bob's home folder chosen at install instead of by editing a file.
