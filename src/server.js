@@ -853,7 +853,7 @@ const server = http.createServer(async (req, res) => {
       if (!t.ok) return send(res, 404, { error: t.why });
       return serveFile(res, path.dirname(t.file), path.basename(t.file), { 'cache-control': 'private, max-age=86400' });
     }
-    // 1.5.125 Where Bob keeps his things: his home folder (models, programs, notes, settings) and a move to another one.
+    // 1.5.125 Bob's home folder: his home folder (models, programs, notes, settings) and a move to another one.
     if (req.method === 'GET' && p === '/api/home') {
       if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
       return send(res, 200, homeView(cfg));

@@ -388,7 +388,7 @@ export function createCellar() {
           <div class="row"><button type="button" class="mini" data-howtoedit="${esc(r.id)}">Edit</button>${howtoDeleting === r.id ? `<button type="button" class="mini danger" data-howtodel="${esc(r.id)}">Delete for good</button><button type="button" class="link" data-howtocancel>Keep it</button>` : `<button type="button" class="mini" data-howtoask="${esc(r.id)}">Delete</button>`}</div></div>`).join('');
     return `${intro}<div class="howtos-list">${rows || '<p class="muted">No how-tos yet.</p>'}</div>`;
   }
-  // 1.5.125 Where Bob keeps his things: Bob's home folder (models, programs, notes, settings), with Move.
+  // 1.5.125 Bob's home folder (models, programs, notes, settings), with Move. Settings text is third person; the first-run copy is Bob's own voice.
   function homeError(text) { for (const box of dlg.querySelectorAll('.home-error')) { box.textContent = text; box.hidden = false; } }
   async function homeAskFor(folder) {
     const r = await api('/api/home', { folder });
@@ -402,12 +402,12 @@ export function createCellar() {
     const h = homeInfo || {};
     const folder = h.folder || settings?.home || '';
     const size = h.loading || !h.modelsText ? '' : ` <span class="muted">· models ${esc(h.modelsText)}${h.enginesBytes ? `, with programs ${esc(h.totalText)}` : ''}</span>`;
-    const warn = h.tempLike ? `<p class="error">This is inside ${esc(h.tempLike)}, which clean-up tools empty. My models (${esc(h.modelsText || 'tens of GB')}) would be gone in one "clear temporary files". Move them to a folder of your own, like ${esc(h.suggested || '')}.</p>`
+    const warn = h.tempLike ? `<p class="error">This is inside ${esc(h.tempLike)}, which clean-up tools empty. ${welcome ? 'My' : 'Bob\'s'} models (${esc(h.modelsText || 'tens of GB')}) would be gone in one "clear temporary files". Move them to a folder of your own, like ${esc(h.suggested || '')}.</p>`
       : h.synced ? `<p class="warn-text">This folder is synced by ${esc(h.synced)}, so every model is uploaded to it too. Fine if you want that; a plain folder is lighter.</p>` : '';
-    const ask = homeAsk ? `<div class="confirm home-ask"><p>Move everything to <strong>${esc(homeAsk.folder)}</strong>? That's my models (${esc(homeAsk.modelsText || '?')}), programs, notes and settings${homeAsk.enginesBytes ? `, about ${esc(homeAsk.totalText)}` : ''}. I close, copy it all across, and open again from the new folder; the old one is removed only once every file is over. Big models take a while, and nothing else should use me meanwhile.</p>
+    const ask = homeAsk ? `<div class="confirm home-ask"><p>Move everything to <strong>${esc(homeAsk.folder)}</strong>? ${welcome ? `That's my models (${esc(homeAsk.modelsText || '?')}), programs, notes and settings${homeAsk.enginesBytes ? `, about ${esc(homeAsk.totalText)}` : ''}. I close, copy it all across, and open again from the new folder; the old one is removed only once every file is over. Big models take a while, and nothing else should use me meanwhile.` : `That's Bob's models (${esc(homeAsk.modelsText || '?')}), programs, notes and settings${homeAsk.enginesBytes ? `, about ${esc(homeAsk.totalText)}` : ''}. Bob closes, copies it all across, and opens again from the new folder; the old one is removed only once every file is over. Big models take a while, and nothing else should use Bob meanwhile.`}</p>
       <div class="row"><button type="button" class="get" data-homego>Yes, move everything</button><button type="button" data-homeno>Not now</button></div></div>` : '';
-    const how = h.canMove === false && !h.loading ? '<p class="muted">Moving works from my own window (Bob.exe, Bob.app or the AppImage), not from a browser tab.</p>' : '';
-    return `<p class="save-now"><strong>${welcome ? 'I keep my things in' : 'Kept in'}</strong> <span class="save-path">${esc(folder)}</span>${size} ${tip('My models, programs (engines), notes, chats and settings all live in this one folder, apart from the program itself, so updating me never touches them. Move to another folder… picks a new place (an empty or new folder on any drive; AppData and other temporary places are refused); I show the size and ask once, then close, copy everything across and open again. Where Bob saves things, below, is different: it is only where new pictures, clips and songs go.', 'Where Bob keeps his things')}</p>
+    const how = h.canMove === false && !h.loading ? `<p class="muted">Moving works from ${welcome ? 'my' : 'Bob\'s'} own window (Bob.exe, Bob.app or the AppImage), not from a browser tab.</p>` : '';
+    return `<p class="save-now"><strong>${welcome ? 'I keep my things in' : 'Kept in'}</strong> <span class="save-path">${esc(folder)}</span>${size} ${welcome ? tip('My models, programs (engines), notes, chats and settings all live in this one folder, apart from the program itself, so updating me never touches them. Move here… picks a new place (an empty or new folder on any drive; AppData and other temporary places are refused; a OneDrive folder works but uploads every model); I show the size and ask once, then close, copy everything across and open again.', 'My home folder') : tip('Bob\'s models, programs (engines), notes, chats and settings all live in this one folder, apart from the program itself, so updating Bob never touches them. Move here… picks a new place (an empty or new folder on any drive; AppData and other temporary places are refused; a OneDrive folder works but uploads every model); Bob shows the size and asks once, then closes, copies everything across and opens again. Where Bob saves things, below, is different: it is only where new pictures, clips and songs go.', 'Bob\'s home folder')}</p>
       ${warn}
       <div class="save-pick"><label for="home-path">New folder</label><input id="home-path" type="text" placeholder="${esc(h.suggested || 'D:\\Bob')}" aria-describedby="home-hint"> <button type="button" class="mini" data-homebrowse>Browse…</button>
         <button type="button" data-homemove>Move here…</button></div>
@@ -489,8 +489,8 @@ export function createCellar() {
   const EVERY_EXTRA = [['ev-projects', '📁 Projects', () => { const n = (settings?.projectList || []).length; return n ? `${n} project${n === 1 ? '' : 's'} · Main: ${settings.defaultProject || 'none'}` : 'No projects yet. Add the folders Bob searches when you say "my project".'; }, () => projectsHtml()],
     // 1.5.41 Where Bob saves things (closed, it shows the folder in use).
     // 1.5.79 How-tos (closed, it shows how many and whether he learns new ones).
-    // 1.5.125 Where Bob keeps his things (closed, it shows the home folder; red when it's somewhere temporary).
-    ['ev-home', '📦 Where Bob keeps his things', () => { const h = homeInfo || {}; return h.tempLike ? `${settings?.home || ''} · in ${h.tempLike}: move it` : `${h.folder || settings?.home || ''}${h.modelsText ? ` · models ${h.modelsText}` : ''}`; }, () => homeHtml()],
+    // 1.5.125 Bob's home folder (closed, it shows the home folder; red when it's somewhere temporary).
+    ['ev-home', '📦 Bob\'s home folder', () => { const h = homeInfo || {}; return h.tempLike ? `${settings?.home || ''} · in ${h.tempLike}: move it` : `${h.folder || settings?.home || ''}${h.modelsText ? ` · models ${h.modelsText}` : ''}`; }, () => homeHtml()],
     ['ev-save', '💾 Where Bob saves things', () => { const sd = settings?.saveDir || {}; return sd.missing ? 'Picked folder not found · saving in Bob\'s own folder' : sd.custom ? sd.folder : 'Bob\'s own folder (Made by Bob)'; }, () => saveDirHtml()],
     ['ev-howtos', '📒 How-tos', () => { const n = howtosList ? howtosList.length : (settings?.howtoCount || 0); return `${n ? `${n} how-to${n === 1 ? '' : 's'}` : 'No how-tos yet'} · Learning: ${settings?.howtos === true ? 'on' : 'off'}`; }, () => howtosHtml()]];
 
@@ -758,7 +758,7 @@ export function createCellar() {
     return `<div class="welcome">
       <h2>Welcome to Bob</h2>
       <label class="callme"><strong>What should I call you?</strong> <input type="text" data-callme maxlength="40" value="${esc(settings?.callMe || '')}" placeholder="${esc(settings?.windowsName || 'your name')}" aria-label="What should Bob call you?" autocomplete="off"></label>
-      <section class="ready home-first"><h3>Where I keep my things</h3>${homeHtml({ welcome: true })}</section>
+      <section class="ready home-first"><h3>My home folder</h3>${homeHtml({ welcome: true })}</section>
       <section class="ready"><h3>Get me ready</h3>
       <p class="muted">I call this computer my replicant matrix. You'll see that name around the app.</p>
       <p class="muted spec">${esc(hw.spec || 'specs not read yet')}</p>
@@ -847,7 +847,7 @@ export function createCellar() {
     catch (e) { chestState = { items: [], loaded: true, error: `I couldn't open the chest: ${e.message}` }; }
     if (eqSelected === 'chest') { const y = dlg.scrollTop; draw(); dlg.scrollTop = y; }
   }
-  // 1.5.125 Where Bob keeps his things (his home folder): sizes and warnings come from /api/home when the panel is opened.
+  // 1.5.125 Bob's home folder: sizes and warnings come from /api/home when the panel is opened.
   let homeInfo = null, homeAsk = null; // homeAsk: a folder waiting for "Yes, move everything"
   async function loadHome() {
     homeInfo = { loading: true };
@@ -1048,7 +1048,7 @@ export function createCellar() {
       if ('chestreload' in b.dataset) { chestState = { ...chestState, loaded: false }; draw(); loadChest(); return; }
       if ('chestall' in b.dataset) { $('madeBtn')?.click(); return; }
       if ('chestbrowse' in b.dataset) { const r = await api('/api/pick-folder', { purpose: 'save' }); if (r.folder) await saveDirTo(r.folder); else if (r.error) { const eb = dlg.querySelector('.chest-error'); if (eb) { eb.textContent = r.error; eb.hidden = false; } } return; }
-      // 1.5.125 Where Bob keeps his things: pick (or type) a folder, see the size, then one Yes before anything moves.
+      // 1.5.125 Bob's home folder: pick (or type) a folder, see the size, then one Yes before anything moves.
       if ('homebrowse' in b.dataset) { const r = await api('/api/pick-folder', { purpose: 'home' }); if (r.folder) await homeAskFor(r.folder); else if (r.error) homeError(r.error); return; }
       if ('homemove' in b.dataset) { const v = dlg.querySelector('#home-path')?.value.trim(); if (v) await homeAskFor(v); return; }
       if ('homeno' in b.dataset) { homeAsk = null; draw(); return; }

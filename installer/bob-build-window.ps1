@@ -55,7 +55,7 @@ if (-not $BobHome) {
 # else happens, instead of someone editing home.json later. Suggested: a Bob folder in the user's own folder.
 # Never AppData, Temp or the Windows folder: clean-up tools empty those, and the models in them take hours to get again.
 # Not asked when a Bob home was found beside the source, when -AppDir was given (tests, sandboxes), or when an old
-# Bob already keeps his things at %LOCALAPPDATA%\Bob (that Bob moves them from Settings, Where Bob keeps his things).
+# Bob already keeps his things at %LOCALAPPDATA%\Bob (that Bob moves them from Settings, Bob's home folder).
 function Test-BobHomeBad([string] $dir) {
   if (-not $dir) { return 'Pick a folder.' }
   $d = $dir.TrimEnd('\')
@@ -76,7 +76,7 @@ function Ask-BobHome {
   $suggest = Join-Path $env:USERPROFILE 'Bob'
   $f = New-Object System.Windows.Forms.Form -Property @{ Text = 'Where should Bob keep his things?'; Width = 560; Height = 290; FormBorderStyle = 'FixedDialog'; StartPosition = 'CenterScreen'; MaximizeBox = $false; MinimizeBox = $false; TopMost = $true }
   $f.Font = New-Object System.Drawing.Font('Segoe UI', 10)
-  $words = New-Object System.Windows.Forms.Label -Property @{ Left = 16; Top = 12; Width = 515; Height = 96; Text = "Bob's models, programs, notes and settings live in one folder, apart from the program, so updating him never touches them. Models are big (10 to 60 GB) and slow to download again, so pick a real folder of your own: not AppData or another temporary place, and not a OneDrive folder unless you want every model uploaded.`r`n`r`nYou can move it later in Settings, Where Bob keeps his things." }
+  $words = New-Object System.Windows.Forms.Label -Property @{ Left = 16; Top = 12; Width = 515; Height = 96; Text = "Bob's models, programs, notes and settings live in one folder, apart from the program, so updating him never touches them. Models are big (10 to 60 GB) and slow to download again, so pick a real folder of your own: not AppData or another temporary place, and not a OneDrive folder unless you want every model uploaded.`r`n`r`nYou can move it later in Settings, Bob's home folder." }
   $box = New-Object System.Windows.Forms.TextBox -Property @{ Left = 16; Top = 116; Width = 420; Text = $suggest }
   $browse = New-Object System.Windows.Forms.Button -Property @{ Left = 444; Top = 114; Width = 88; Height = 28; Text = 'Browse...' }
   $free = New-Object System.Windows.Forms.Label -Property @{ Left = 16; Top = 148; Width = 515; Height = 20; ForeColor = [System.Drawing.Color]::Gray }

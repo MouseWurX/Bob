@@ -75,7 +75,7 @@ Bob's program and his things live apart, so updating Bob never touches your mode
 
 - **You pick the folder when Bob is installed or first opened.** The Windows install window asks "Where should Bob keep his things?" before anything else; Bob.exe, Bob.app and the AppImage ask the same the first time they open. Bob suggests a `Bob` folder in your own user folder and takes any drive you like. He refuses temporary places (AppData, Temp, the Caches folder): models are 10 to 60 GB and slow to get again, and a "clear temporary files" button would take them.
 - That one folder holds his models, the engines he runs on, his notes and chats in `inn`, and `config.json`. The program itself goes in `<home>\Bob app` on Windows.
-- **To move it later:** Settings, **Where Bob keeps his things** shows the folder and the size of the models; **Browse…** or type a new folder, **Move here…**, and Bob copies everything across, then opens from the new place. No file to edit.
+- **To move it later:** Settings, **Bob's home folder** shows the folder and the size of the models; **Browse…** or type a new folder, **Move here…**, and Bob copies everything across, then opens from the new place. No file to edit.
 - **Where his pictures, clips, songs and sounds go** is a separate, smaller choice: the **chest** under Bob on Equip Bob (or Settings, **Where Bob saves things**) shows the folder with a **Change folder…** button, and lists everything he has made as thumbnails with names.
 - Older Bobs kept everything in `%LOCALAPPDATA%\Bob`; they carry on from there, and the Settings row above is how you move them somewhere safer.
 
@@ -137,7 +137,7 @@ The server has no runtime dependencies; `node src/server.js` runs it on its own 
 
 - the `Bob app` folder (or wherever `Bob.exe` is), and `Bob.lnk` in the Start menu (`%APPDATA%\Microsoft\Windows\Start Menu\Programs`)
 - `%APPDATA%\Bob` (window data)
-- if you don't want them any more: Bob's home folder (the one you picked at install; Settings, Where Bob keeps his things shows it; it holds `inn`, his models and `config.json`)
+- if you don't want them any more: Bob's home folder (the one you picked at install; Settings, Bob's home folder shows it; it holds `inn`, his models and `config.json`)
 
 Bob installs no services or drivers and needs no admin rights. He adds a scheduled task ("Bob schedules") only if you turn on "Wake Bob for schedules when he's closed", and Remove Bob takes it away. The only thing he puts in the registry is Windows' own "start-up app" entry, and only if you turn on "Launch on start-up". Engines and models live inside his folders. Ollama, ComfyUI or Pinokio, if you installed them yourself, are separate programs with their own uninstallers.
 

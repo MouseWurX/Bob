@@ -4,7 +4,7 @@
 import { execFile } from 'node:child_process';
 
 // 1.5.41: also for Settings > Where Bob saves things ('save'), where making a new folder is allowed.
-// 1.5.125: and for Where Bob keeps his things ('home'): his models, programs, notes and settings.
+// 1.5.125: and for Bob's home folder ('home'): his models, programs, notes and settings.
 const script = (purpose) => [
   '[Console]::OutputEncoding = [Text.Encoding]::UTF8',
   'Add-Type -AssemblyName System.Windows.Forms',

@@ -94,7 +94,7 @@ async function askForHome(suggested, homeProblem) {
     const r = await dialog.showMessageBox({
       type: 'question', title: 'Where should Bob keep his things?', buttons: [`Use ${suggested}`, 'Pick another folder…'], defaultId: 0, cancelId: 0, noLink: true,
       message: 'Where should I keep my things?',
-      detail: `My models, programs, notes and settings live in one folder, apart from the program, so updating me never touches them. Models are big (10 to 60 GB) and slow to download again, so the folder should be a real one of your own, not a temporary place like AppData.\n\nSuggested: ${suggested}\n\nYou can move it later in Settings, "Where Bob keeps his things".`
+      detail: `My models, programs, notes and settings live in one folder, apart from the program, so updating me never touches them. Models are big (10 to 60 GB) and slow to download again, so the folder should be a real one of your own, not a temporary place like AppData, and not a OneDrive folder unless you want every model uploaded.\n\nSuggested: ${suggested}\n\nYou can move it later in Settings, "Bob's home folder".`
     });
     if (r.response !== 1) return suggested;
     const pick = await dialog.showOpenDialog({ title: 'Pick a folder for Bob\'s things', buttonLabel: 'Keep my things here', properties: ['openDirectory', 'createDirectory', 'promptToCreate'], defaultPath: path.dirname(suggested) });
@@ -157,7 +157,7 @@ async function setUpHome() {
   if (!agentDir && process.env.BOB_AGENT_DIR) agentDir = process.env.BOB_AGENT_DIR;
   if (!agentDir) {
     // Bobs from before 1.5.125 kept their things at the old default (%LOCALAPPDATA%\Bob and friends): those stay
-    // where they are, with "Where Bob keeps his things" in Settings to move them. A fresh Bob is asked.
+    // where they are, with "Bob's home folder" in Settings to move them. A fresh Bob is asked.
     const old = process.platform === 'win32' && !process.env.LOCALAPPDATA ? path.join(app.getPath('userData'), 'Bob') : defaultHome();
     if (fs.existsSync(path.join(old, 'inn'))) agentDir = old;
     else {
@@ -166,7 +166,7 @@ async function setUpHome() {
     }
   }
   fs.mkdirSync(agentDir, { recursive: true });
-  // The brain's "Where Bob keeps his things": a move is noted in home.json and done by this file at the next start.
+  // The brain's "Bob's home folder": a move is noted in home.json and done by this file at the next start.
   globalThis.bobHome = {
     file: homeFile(),
     move: (to) => { writeHome({ ...readHome(), agentDir, moveTo: to }); app.relaunch(); setTimeout(() => app.quit(), 400); }
