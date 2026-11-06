@@ -60,7 +60,7 @@ It is not a new architecture and not training from scratch. Published work prune
 
 ### 24Bob Riker, line A (v1)
 
-Cut straight from the teacher, 176 of 256 experts per layer, healed in one session on a rented H100.
+Cut straight from the teacher, 176 of 256 experts per layer, healed on a rented H100. The session's clock cap stopped his healing at about 175 of 456 steps (1.75 hours), so v1 is a part-healed Bob.
 
 - Held-out loss 0.383 before healing, 0.355 after; the full Qwen scores 0.325.
 - Files on the test machine: Q4 15.05 GB, Q3 11.95 GB.
@@ -84,7 +84,7 @@ Verdict: tools and routing survive a 50% cut almost untouched even half-healed; 
 
 ### 24Bob Riker, line B (v2)
 
-Same cut as v1 (his exact keep list), healed for a complete pass of Bob's lessons plus the 717 coding and software-engineering lessons on a rented H200, 524 steps in 4.8 hours.
+Same cut as v1 (his exact keep list), healed for a complete pass of Bob's lessons plus the 717 coding and software-engineering lessons on a rented H200, 524 of 524 steps in 4.8 hours: the first full pass. So v1 against v2 is "part-healed on Bob lessons" against "fully healed on Bob plus coding lessons"; the held-out scores say the extra steps mostly made up for the harder mix.
 
 - Held-out loss 0.389 before, 0.356 after (v1: 0.355; full Qwen 0.324).
 - General-text loss 2.245 before, 2.221 after (v1: 2.224), so the coding lessons cost no general knowledge.
@@ -93,7 +93,7 @@ Same cut as v1 (his exact keep list), healed for a complete pass of Bob's lesson
 
 ### 18Bob Bill, line B (v2)
 
-Cut from the healed Riker v2 with his v1 keep list, full pass. Healing finished on 6 November 2026; export and benchmarks follow.
+Cut from the healed Riker v2 with his v1 keep list, full pass. Healing now (6 November 2026); export and benchmarks follow.
 
 ### What each session cost
 
