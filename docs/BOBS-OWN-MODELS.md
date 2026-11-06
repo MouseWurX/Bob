@@ -120,7 +120,7 @@ The full itemized list, including every rung still to come, is on [What Bob cost
 ## What comes next
 
 1. **Benchmarks of Riker v2 and Bill v2**: done (above). v2 is the line that continues.
-2. **A coding-aware expert count**, so the next cut keeps the experts coding leans on, then **12Bob Homer**, line B: cut to about 80 per layer, full-pass heal, export. About 5 hours on an H100, US $20 to 25. Then decide whether line A is worth continuing (its full-precision Riker was lost with its machine and would need one re-heal, about US $25).
+2. **A coding-aware expert count**, so the next cut keeps the experts coding leans on, then **12Bob Homer**, line B: cut to about 80 per layer, full-pass heal, export. About 5 hours on an H200, about US $29. Then decide whether line A is worth continuing (its full-precision Riker was lost with its machine and would need one re-heal, about US $25).
 3. **Down the ladder**: Milo, Mario, Luke, Calvin, Goku, each cut from the healed Bob above, then the four specialists, and 2Bob Bender last.
 4. **In the app.** Bob's own models become the default brains: when Bob suggests a starter set, a Bob is picked before a stock model of the same size. The Forge and the model lab are in this repository under [`model-lab/`](../model-lab/) (GPL, like the rest of Bob); the lessons, counts and finished Bobs they make stay on the machine that made them. The engine will turn on expert-in-RAM offloading by itself when a Bob is bigger than the card. Every Bob gets the "experts per word" dial (4 to 8).
 5. **Release.** All at once on Hugging Face, with model cards that say exactly what each Bob is cut from, how it was healed and how it scored, and pinned download links in Bob's catalogue. Until then: tested, not yet released.
