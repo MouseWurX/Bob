@@ -71,12 +71,113 @@ function findNearbyHome() {
   return {};
 }
 
+// 1.5.125: which home.json Bob writes when his home is chosen or moved: the one next to Bob.exe if that folder
+// can be written (a zip or portable Bob), else %APPDATA%\Bob\home.json (a pointer only; Bob's things aren't there).
+function homeFile() {
+  const here = path.join(exeDir, 'home.json');
+  if (fs.existsSync(here)) return here;
+  try { fs.accessSync(exeDir, fs.constants.W_OK); if (!MAC) return here; } catch {}
+  return path.join(app.getPath('appData'), 'Bob', 'home.json');
+}
+function writeHome(home) {
+  const f = homeFile();
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(f, JSON.stringify(home, null, 1));
+  return f;
+}
+
+// 1.5.125: a fresh Bob (no home.json, not inside a Bob folder, nothing at the old default) asks where to keep his
+// things before anything is downloaded. Suggested: a Bob folder in the user's own folder, visible and never emptied
+// by clean-up tools; AppData and the like are refused (src/home.js). Cancel keeps the suggestion.
+async function askForHome(suggested, homeProblem, { synced, cloudWarning }) {
+  for (;;) {
+    const r = await dialog.showMessageBox({
+      type: 'question', title: 'Where should Bob keep his things?', buttons: [`Use ${suggested}`, 'Pick another folder…'], defaultId: 0, cancelId: 0, noLink: true,
+      message: 'Where should I keep my things?',
+      detail: `My models, programs, notes and settings live in one folder, apart from the program, so updating me never touches them. Models are big (10 to 60 GB) and slow to download again, so the folder should be a real one of your own, not a temporary place like AppData, and not a cloud-synced folder (OneDrive, Dropbox, Google Drive, iCloud): I always recommend against those, because every model would be uploaded and a sync can break one while I'm using it.\n\nSuggested: ${suggested}\n\nYou can move it later in Settings, "Bob's home folder".`
+    });
+    if (r.response !== 1) return suggested;
+    const pick = await dialog.showOpenDialog({ title: 'Pick a folder for Bob\'s things', buttonLabel: 'Keep my things here', properties: ['openDirectory', 'createDirectory', 'promptToCreate'], defaultPath: path.dirname(suggested) });
+    if (pick.canceled || !pick.filePaths[0]) continue;
+    let dir = pick.filePaths[0];
+    // A folder with other things in it gets a Bob folder inside, so Bob's things stay separate.
+    let why = homeProblem(dir);
+    if (why && /other things in it/.test(why)) { dir = path.join(dir, 'Bob'); why = homeProblem(dir); }
+    if (!why) {
+      // A cloud-synced folder is allowed, but Bob says clearly that he recommends against it and offers to pick again.
+      const cloud = synced(dir);
+      if (!cloud) return dir;
+      const w = await dialog.showMessageBox({ type: 'warning', title: 'Bob', message: `That's a ${cloud} folder`, detail: cloudWarning(cloud, 'me'), buttons: ['Pick another folder…', 'Use it anyway'], defaultId: 0, cancelId: 0, noLink: true });
+      if (w.response === 1) return dir;
+      continue;
+    }
+    await dialog.showMessageBox({ type: 'warning', title: 'Bob', message: 'Not that folder', detail: why, buttons: ['OK'], noLink: true });
+  }
+}
+
+// 1.5.125: "Move Bob's things" (Settings) left a note in home.json: copy everything to the new folder, then point at it.
+// The old folder is only removed once every file is across, so a power cut mid-way loses nothing.
+async function finishMove(home, file) {
+  const from = home.agentDir, to = home.moveTo;
+  const note = (text) => { try { fs.writeFileSync(path.join(path.dirname(file), 'move-status.txt'), text); } catch {} };
+  let box = null;
+  try {
+    box = new BrowserWindow({ width: 460, height: 180, resizable: false, minimizable: false, frame: true, title: 'Bob', autoHideMenuBar: true, webPreferences: { sandbox: true } });
+    box.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`<body style="font:15px system-ui;background:#1d1510;color:#f1e9dc;padding:20px"><b>Moving my things…</b><p>From ${from}<br>to ${to}.</p><p>This takes a while with big models. Please leave me to it.</p></body>`));
+  } catch {}
+  try {
+    fs.mkdirSync(to, { recursive: true });
+    const same = path.parse(path.resolve(from)).root.toLowerCase() === path.parse(path.resolve(to)).root.toLowerCase();
+    let moved = false;
+    if (same) { try { fs.rmdirSync(to); fs.renameSync(from, to); moved = true; } catch {} } // same drive: one rename, instant
+    if (!moved) {
+      fs.cpSync(from, to, { recursive: true, preserveTimestamps: true, errorOnExist: false, force: true });
+      // Every file across? Count and compare before anything is removed.
+      const count = (d) => { let n = 0; const walk = (x) => { for (const e of fs.readdirSync(x, { withFileTypes: true })) { if (e.isDirectory()) walk(path.join(x, e.name)); else n++; } }; walk(d); return n; };
+      if (count(to) < count(from)) throw new Error('not every file came across');
+    }
+    const next = { ...home, agentDir: to };
+    delete next.moveTo;
+    if (next.config && path.resolve(next.config).toLowerCase().startsWith(path.resolve(from).toLowerCase() + path.sep)) next.config = path.join(to, path.relative(from, next.config));
+    fs.writeFileSync(file, JSON.stringify(next, null, 1));
+    if (!moved) fs.rmSync(from, { recursive: true, force: true });
+    note(`moved ${from} -> ${to} at ${new Date().toISOString()}`);
+    return next;
+  } catch (e) {
+    const next = { ...home };
+    delete next.moveTo;
+    fs.writeFileSync(file, JSON.stringify(next, null, 1));
+    note(`move failed: ${e.message}`);
+    dialog.showErrorBox('Bob', `I couldn't move my things to ${to}: ${e.message}\n\nEverything is still in ${from}, and I'll carry on from there. The half-copied folder can be deleted.`);
+    return next;
+  } finally { try { box?.close(); } catch {} }
+}
+
 async function setUpHome() {
   let home = readHome();
   if (!home.agentDir) home = { ...findNearbyHome(), ...home };
   const { defaultHome } = await import(pathToFileURL(path.join(root, 'src', 'platform.js')).href);
-  const agentDir = home.agentDir || (process.platform === 'win32' && !process.env.LOCALAPPDATA ? path.join(app.getPath('userData'), 'Bob') : defaultHome());
+  const { suggestedHome, homeProblem, synced, cloudWarning } = await import(pathToFileURL(path.join(root, 'src', 'home.js')).href);
+  if (home.agentDir && home.moveTo) home = await finishMove(home, homeFile());
+  let agentDir = home.agentDir;
+  // BOB_AGENT_DIR (a test start, the smoke checks on GitHub's machines): that folder, no question asked, nothing written.
+  if (!agentDir && process.env.BOB_AGENT_DIR) agentDir = process.env.BOB_AGENT_DIR;
+  if (!agentDir) {
+    // Bobs from before 1.5.125 kept their things at the old default (%LOCALAPPDATA%\Bob and friends): those stay
+    // where they are, with "Bob's home folder" in Settings to move them. A fresh Bob is asked.
+    const old = process.platform === 'win32' && !process.env.LOCALAPPDATA ? path.join(app.getPath('userData'), 'Bob') : defaultHome();
+    if (fs.existsSync(path.join(old, 'inn'))) agentDir = old;
+    else {
+      agentDir = await askForHome(suggestedHome(), (d) => homeProblem(d), { synced, cloudWarning });
+      try { writeHome({ ...home, agentDir }); } catch (e) { dialog.showErrorBox('Bob', `I couldn't note where my things are (${e.message}). I'll use ${agentDir} this time.`); }
+    }
+  }
   fs.mkdirSync(agentDir, { recursive: true });
+  // The brain's "Bob's home folder": a move is noted in home.json and done by this file at the next start.
+  globalThis.bobHome = {
+    file: homeFile(),
+    move: (to) => { writeHome({ ...readHome(), agentDir, moveTo: to }); app.relaunch(); setTimeout(() => app.quit(), 400); }
+  };
   const config = home.config || path.join(agentDir, 'config.json');
   if (!fs.existsSync(config)) fs.copyFileSync(path.join(root, 'config.example.json'), config);
   process.env.BOB_AGENT_DIR = agentDir;
@@ -142,6 +243,17 @@ globalThis.bobShell = {
   openPath: (f) => shell.openPath(f),
   showItemInFolder: (f) => shell.showItemInFolder(f),
   copy: (text) => clipboard.writeText(String(text))
+};
+// 1.5.125: small pictures for the chest and Made by Bob (src/thumbs.js), shrunk by Electron's own image code,
+// so no image library and no model is needed. PNG bytes, the longer side `size` pixels, or null.
+globalThis.bobImage = {
+  thumb: async (file, size = 192) => {
+    const img = nativeImage.createFromPath(file);
+    if (img.isEmpty()) return null;
+    const { width, height } = img.getSize();
+    const small = width >= height ? img.resize({ width: Math.min(size, width), quality: 'good' }) : img.resize({ height: Math.min(size, height), quality: 'good' });
+    return small.toPNG();
+  }
 };
 
 // Right-click: the usual Cut, Copy, Paste and Select all, plus links and pictures.

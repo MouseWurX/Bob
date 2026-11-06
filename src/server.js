@@ -33,6 +33,8 @@ import { voiceList, publicView, sampleFor, clearSamples } from './voice-samples.
 import { checkAll, startAny, updateStatus, requestRestart } from './update.js';
 import { describe as describeFile, openFile, peek as peekFile } from './files.js';
 import { wavePeaks } from './wave.js';
+import { thumbFor, canThumb } from './thumbs.js';
+import { homeView, homeProblem, synced, cloudWarning } from './home.js';
 import { refuseForeign } from './guard.js';
 import { search } from './search.js';
 import { hkSettings, cleanHousekeeping, KINDS, UNITS } from './housekeeping.js';
@@ -438,7 +440,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/gaming-lock') { const b = await body(req); return send(res, 200, await brain.setGamingLock(b.on === true)); }
     if (req.method === 'POST' && p === '/api/pick-folder') { // 1.5.34 Settings > Projects: "Browse..."
       if (!isLocal) return send(res, 403, { error: 'Folders can only be picked on this replicant matrix itself.' });
-      try { const b = await body(req).catch(() => ({})); return send(res, 200, { folder: await pickFolder({ purpose: b?.purpose === 'save' ? 'save' : 'project' }) }); } catch (e) { return send(res, 200, { error: e.message }); }
+      try { const b = await body(req).catch(() => ({})); return send(res, 200, { folder: await pickFolder({ purpose: ['save', 'home'].includes(b?.purpose) ? b.purpose : 'project' }) }); } catch (e) { return send(res, 200, { error: e.message }); }
     }
     if (req.method === 'POST' && p.startsWith('/api/models/') || req.method === 'POST' && p === '/api/settings') {
       if (!isLocal) return send(res, 403, { error: 'Downloads and settings can only be changed on this replicant matrix itself.' });
@@ -841,6 +843,37 @@ const server = http.createServer(async (req, res) => {
       const text = String(b.text || '').slice(0, 4000);
       const r = await brain.recall(String(b.session || '').replace(/[^\w-]/g, '').slice(0, 64) || null, text).catch(() => '');
       return send(res, 200, { on: true, text: r, always: brain.memory() });
+    }
+    // 1.5.125: a small picture for the chest and Made by Bob, made once and kept (src/thumbs.js). 404 means "show the
+    // file itself or the kind's icon". Same rules as /api/file: over the home network only what's in the inn or on the Made list.
+    if (req.method === 'GET' && p === '/api/thumb') {
+      const d = describeFile(cfg, url.searchParams.get('path') || '');
+      if (!d.ok || d.kind === 'folder' || !canThumb(d.name) || (!isLocal && !d.path.startsWith(path.resolve(cfg.innDir) + path.sep) && !brain.made.has(d.path))) return send(res, 404, { error: 'not found' });
+      const t = await thumbFor(cfg, d.path);
+      if (!t.ok) return send(res, 404, { error: t.why });
+      return serveFile(res, path.dirname(t.file), path.basename(t.file), { 'cache-control': 'private, max-age=86400' });
+    }
+    // 1.5.125 Bob's home folder: his home folder (models, programs, notes, settings) and a move to another one.
+    if (req.method === 'GET' && p === '/api/home') {
+      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
+      return send(res, 200, homeView(cfg));
+    }
+    if (req.method === 'POST' && p === '/api/home') {
+      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
+      const b = await body(req);
+      const folder = String(b.folder || '').trim();
+      const why = homeProblem(folder, { current: cfg.agentDir });
+      if (why) return send(res, 200, { ok: false, error: why });
+      if (path.resolve(folder).toLowerCase() === path.resolve(cfg.agentDir).toLowerCase()) return send(res, 200, { ok: true, same: true });
+      // The chosen folder goes AFTER homeView's spread (whose `folder` is the current home), so the confirm card and the move
+      // itself name the folder that was picked (PC test 2026-11-06: the card read "Move everything to <current home>?").
+      if (!b.confirm) return send(res, 200, { ok: true, ready: true, ...homeView(cfg), folder: path.resolve(folder), pickedCloud: synced(folder), pickedCloudWarning: cloudWarning(synced(folder)) });
+      if (!globalThis.bobHome?.move) return send(res, 200, { ok: false, error: 'Moving only works from Bob\'s own window (Bob.exe, Bob.app or the AppImage), not from a browser.' });
+      brain.log('settings', `moving Bob's home to ${folder}`);
+      brain.broadcast({ type: 'announce', text: `Moving my things to ${folder}. I'll close, copy everything across and open again. Big models take a while.` });
+      send(res, 200, { ok: true, moving: true });
+      setTimeout(() => globalThis.bobHome.move(path.resolve(folder)), 800);
+      return;
     }
     if (req.method === 'GET' && p === '/api/made') {
       const list = brain.made.list({ kind: url.searchParams.get('kind') || '', q: url.searchParams.get('q') || '', limit: Math.min(200, Number(url.searchParams.get('limit')) || 60) });

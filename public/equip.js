@@ -6,6 +6,7 @@ import { packFor, packsFor, canDo, suit, pickFor } from './fit.js';
 import { houseStyleHtml, houseGroupOf } from './house-style.js';
 import { tip } from './tips.js';
 import { esc, gb } from './util.js';
+import { kindWord, kindIcon, when, thumbImg } from './viewer.js';
 export { packFor };
 
 // side: which column around Bob. how: where the choice is saved (job = Model roles, brain = a session brain,
@@ -253,6 +254,39 @@ export function starterHtml(ctx) {
     <div class="confirm starter-confirm" hidden></div></details>`;
 }
 
+// 1.5.125 The chest: what Bob has made (the Made by Bob list) as little pictures with names, on the paper doll
+// screen under Bob, and the folder new things go to with a Change folder button (the same picker as Settings,
+// Where Bob saves things). ctx.chest = { items, loaded, error }, ctx.saveDir = Settings' saveDir view.
+export const CHEST_SHOW = 24;
+export function chestTile(ctx) {
+  const n = ctx.chest?.items?.length;
+  const sel = ctx.selected === 'chest';
+  return `<button type="button" class="chest-tile${sel ? ' sel' : ''}" data-chest aria-pressed="${sel}" aria-label="Chest: what Bob made${n ? `, ${n}${n >= CHEST_SHOW ? ' or more' : ''} thing${n === 1 ? '' : 's'}` : ''}" title="What I've made, and where new things are saved"><span class="chest-icon" aria-hidden="true">${sel ? '📂' : '🧰'}</span><span class="chest-label">Chest</span>${n ? `<span class="chest-count">${n}${n >= CHEST_SHOW ? '+' : ''}</span>` : ''}</button>`;
+}
+export function chestItemHtml(x) {
+  const kind = x.kind === 'text' ? 'document' : x.kind || 'file';
+  const name = x.title || x.name || '';
+  const data = `data-view data-view-url="${esc(x.url || '')}" data-view-kind="${esc(kind)}" data-view-name="${esc(x.name || '')}" data-view-path="${esc(x.path || x.url || '')}" data-view-bytes="${esc(x.bytes ?? '')}"`;
+  const pic = kind === 'image' || kind === 'video' ? thumbImg(x, kind) : `<span class="made-ico" aria-hidden="true">${kindIcon(kind, x.name)}</span>`;
+  return `<li><button type="button" class="chest-item" ${data} aria-label="Open ${esc(name)}: ${esc(kindWord(kind, x.name).toLowerCase())}, ${esc(when(x.at))}" title="${esc(x.name || '')}">${pic}<span class="chest-name">${esc(name)}</span><span class="muted chest-when">${esc(kindWord(kind, x.name))} · ${esc(when(x.at))}</span></button></li>`;
+}
+export function chestHtml(ctx) {
+  const c = ctx.chest || {};
+  const sd = ctx.saveDir || {};
+  const items = c.items || [];
+  const folder = `<div class="chest-folder"><p><strong>New things are saved in</strong> <span class="save-path">${esc(sd.folder || '')}</span> ${sd.custom ? '' : '<span class="tag good">Bob\'s own folder</span>'}${sd.missing ? `<br><span class="error">I can't find ${esc(sd.picked)} right now (an unplugged drive, maybe). Until it's back, I save in my own folder.</span>` : ''}</p>
+    <div class="row"><button type="button" class="mini" data-chestbrowse>Change folder…</button>${sd.custom ? '<button type="button" class="mini" data-saveown>Use Bob\'s own folder</button>' : ''}<button type="button" class="mini" data-saveopen>Show in folder</button></div>
+    <p class="error chest-error" hidden></p></div>`;
+  const grid = c.error ? `<p class="error">${esc(c.error)}</p>`
+    : !c.loaded ? '<p class="muted">Opening the chest…</p>'
+      : !items.length ? '<p class="muted">Empty so far. Pictures, clips, songs, sounds and files I make land here, newest first.</p>'
+        : `<ul class="chest-grid" role="list" aria-label="What Bob made, newest first">${items.slice(0, CHEST_SHOW).map(chestItemHtml).join('')}</ul>`;
+  return `<h3>🧰 Chest ${tipHtml('Everything I\'ve made or saved, newest first, as little pictures with their names. Click one to open it beside the chat. Change folder… picks where new pictures, clips, songs and sounds go (the same as Settings, Where Bob saves things); older ones stay where they are and still show here. Documents and spreadsheets still go where you ask for them.', 'About the chest')}</h3>
+    ${folder}
+    ${grid}
+    <p class="row"><button type="button" class="mini" data-chestall>Open Made by Bob${items.length >= CHEST_SHOW ? ' (everything, with search)' : ''}</button>${c.loaded ? '<button type="button" class="mini" data-chestreload aria-label="Look again">↻</button>' : ''}</p>`;
+}
+
 export function equipHtml(ctx) {
   const sel = allSlots().find((s) => s.id === ctx.selected);
   const col = (side) => SLOTS.filter((s) => s.side === side).map((s) => slotHtml(s, ctx)).join('');
@@ -263,11 +297,11 @@ export function equipHtml(ctx) {
     <div class="equip-page">
       ${ctx.attributes || ''}
       <div class="equip-mid">
-        <div class="doll"><div class="doll-col">${col('L')}</div><div class="doll-mid"><canvas class="doll-bob" width="160" height="160" aria-label="Bob"></canvas><div class="muted">Bob</div><button type="button" class="mini" data-golook>Change his look</button></div><div class="doll-col">${col('R')}</div></div>
+        <div class="doll"><div class="doll-col">${col('L')}</div><div class="doll-mid"><canvas class="doll-bob" width="160" height="160" aria-label="Bob"></canvas><div class="muted">Bob</div><button type="button" class="mini" data-golook>Change his look</button>${chestTile(ctx)}</div><div class="doll-col">${col('R')}</div></div>
         <details class="helpers"${HELPERS.some((h) => h.id === ctx.selected) ? ' open' : ''}><summary>Helpers (optional: each uses the main brain unless you pick one)</summary><div class="helper-row">${HELPERS.map((s) => slotHtml(s, ctx)).join('')}</div></details>
         ${houseStyleHtml('times', ctx.houseStyle)}
       </div>
-      <section class="kit-panel" aria-live="polite"><div class="kit-head muted">Inventory</div>${kitHtml(sel, ctx)}</section>
+      <section class="kit-panel" aria-live="polite"><div class="kit-head muted">${ctx.selected === 'chest' ? 'Chest' : 'Inventory'}</div>${ctx.selected === 'chest' ? chestHtml(ctx) : kitHtml(sel, ctx)}</section>
     </div>`;
 }
 
