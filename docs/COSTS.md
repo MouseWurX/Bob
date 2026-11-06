@@ -84,7 +84,7 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 |---|---|
 | Rented network drive, about 2 more months | about $14 |
 | Benchmarks, exports and the Hugging Face upload | $0 (done on the owner's PC) |
-| Re-runs: one allowed per rung if a heal scores badly | up to $20 each, inside the cap below |
+| Re-runs: one per rung if a heal scores badly | up to $20 each |
 | Code signing, when the project is visible enough | $0 (reapply to the SignPath Foundation, a free signing service for open-source projects), or about $10 a month for a cloud code-signing service, or $100 to $400 a year for a code-signing certificate |
 
 ### Totals
