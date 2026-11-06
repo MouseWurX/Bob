@@ -45,10 +45,57 @@ if (-not $Source) { $Source = Split-Path -Parent $PSScriptRoot }
 $Source = (Resolve-Path -LiteralPath $Source).Path
 
 # Where Bob lives: the folder above the source if it is a Bob home (it has an "inn" folder, like Bob home),
-# otherwise %LOCALAPPDATA%\Programs\Bob for the program (Bob then keeps his things in %LOCALAPPDATA%\Bob).
+# otherwise the folder the install window asks for (1.5.125; the program goes in <home>\Bob app).
 if (-not $BobHome) {
   $up = Split-Path -Parent $Source
   if (Test-Path -LiteralPath (Join-Path $up 'inn') -PathType Container) { $BobHome = $up }
+}
+
+# 1.5.125: a fresh install asks where Bob keeps his things (models, programs, notes, settings) before anything
+# else happens, instead of someone editing home.json later. Suggested: a Bob folder in the user's own folder.
+# Never AppData, Temp or the Windows folder: clean-up tools empty those, and the models in them take hours to get again.
+# Not asked when a Bob home was found beside the source, when -AppDir was given (tests, sandboxes), or when an old
+# Bob already keeps his things at %LOCALAPPDATA%\Bob (that Bob moves them from Settings, Where Bob keeps his things).
+function Test-BobHomeBad([string] $dir) {
+  if (-not $dir) { return 'Pick a folder.' }
+  $d = $dir.TrimEnd('\')
+  if ($d -match '^[A-Za-z]:$') { return 'Pick a folder, not a whole drive. A "Bob" folder on that drive is fine.' }
+  if (-not ($d -match '^[A-Za-z]:\\')) { return 'Give the whole path, like D:\Bob.' }
+  foreach ($bad in @($env:LOCALAPPDATA, $env:APPDATA, $env:TEMP, $env:TMP, $env:SystemRoot, $env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+    if ($bad -and ($d.ToLower() -eq $bad.ToLower() -or $d.ToLower().StartsWith($bad.TrimEnd('\').ToLower() + '\'))) { return "That's inside $bad, which clean-up tools empty (or Windows protects). Bob's models would be lost. Pick a folder of your own, like $env:USERPROFILE\Bob." }
+  }
+  if ($d -match '\\AppData\\') { return "That's inside AppData, which clean-up tools empty. Pick a folder of your own, like $env:USERPROFILE\Bob." }
+  if (Test-Path -LiteralPath $d -PathType Leaf) { return "That's a file, not a folder." }
+  if (Test-Path -LiteralPath $d -PathType Container) {
+    $names = @(Get-ChildItem -LiteralPath $d -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
+    if ($names.Count -gt 0 -and -not ($names -contains 'inn')) { return 'That folder already has other things in it. Pick an empty folder, or a new "Bob" folder inside it, so Bob''s things stay separate from yours.' }
+  }
+  return ''
+}
+function Ask-BobHome {
+  $suggest = Join-Path $env:USERPROFILE 'Bob'
+  $f = New-Object System.Windows.Forms.Form -Property @{ Text = 'Where should Bob keep his things?'; Width = 560; Height = 290; FormBorderStyle = 'FixedDialog'; StartPosition = 'CenterScreen'; MaximizeBox = $false; MinimizeBox = $false; TopMost = $true }
+  $f.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+  $words = New-Object System.Windows.Forms.Label -Property @{ Left = 16; Top = 12; Width = 515; Height = 96; Text = "Bob's models, programs, notes and settings live in one folder, apart from the program, so updating him never touches them. Models are big (10 to 60 GB) and slow to download again, so pick a real folder of your own: not AppData or another temporary place, and not a OneDrive folder unless you want every model uploaded.`r`n`r`nYou can move it later in Settings, Where Bob keeps his things." }
+  $box = New-Object System.Windows.Forms.TextBox -Property @{ Left = 16; Top = 116; Width = 420; Text = $suggest }
+  $browse = New-Object System.Windows.Forms.Button -Property @{ Left = 444; Top = 114; Width = 88; Height = 28; Text = 'Browse...' }
+  $free = New-Object System.Windows.Forms.Label -Property @{ Left = 16; Top = 148; Width = 515; Height = 20; ForeColor = [System.Drawing.Color]::Gray }
+  $err = New-Object System.Windows.Forms.Label -Property @{ Left = 16; Top = 170; Width = 515; Height = 40; ForeColor = [System.Drawing.Color]::Firebrick }
+  $ok = New-Object System.Windows.Forms.Button -Property @{ Left = 330; Top = 212; Width = 202; Height = 32; Text = 'Keep Bob''s things here' }
+  $f.Controls.AddRange(@($words, $box, $browse, $free, $err, $ok)); $f.AcceptButton = $ok
+  $showFree = { try { $root = [System.IO.Path]::GetPathRoot($box.Text); if ($root) { $dr = New-Object System.IO.DriveInfo($root); $free.Text = ('Free on {0} {1} GB' -f $root, [Math]::Round($dr.AvailableFreeSpace / 1e9)) } } catch { $free.Text = '' } }
+  $box.Add_TextChanged($showFree); & $showFree
+  $browse.Add_Click({ $d = New-Object System.Windows.Forms.FolderBrowserDialog -Property @{ Description = 'Pick the folder Bob keeps his things in (an empty folder, or a new one)'; ShowNewFolderButton = $true }
+    if ($d.ShowDialog($f) -eq 'OK') { $pick = $d.SelectedPath; $why = Test-BobHomeBad $pick; if ($why -match 'other things in it') { $pick = Join-Path $pick 'Bob' }; $box.Text = $pick } })
+  $ok.Add_Click({ $why = Test-BobHomeBad $box.Text; if ($why) { $err.Text = $why } else { $f.Tag = $box.Text.TrimEnd('\'); $f.DialogResult = 'OK'; $f.Close() } })
+  $f.Add_FormClosing({ param($s, $e) if ($f.DialogResult -ne 'OK') { $f.Tag = $null } })
+  [void]$f.ShowDialog()
+  return $f.Tag
+}
+if ($Mode -eq 'install' -and -not $BobHome -and -not $AppDir -and -not (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Bob\inn') -PathType Container)) {
+  $picked = Ask-BobHome
+  if (-not $picked) { exit 0 }   # the window was closed: nothing installed, nothing changed
+  $BobHome = $picked
 }
 if (-not $AppDir) { if ($BobHome) { $AppDir = Join-Path $BobHome 'Bob app' } else { $AppDir = Join-Path $env:LOCALAPPDATA 'Programs\Bob' } }
 $Exe = Join-Path $AppDir 'Bob.exe'

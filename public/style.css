@@ -1285,3 +1285,22 @@ details.fold > summary .muted { font-weight: 400; font-size: 13px; }
 .adv-char { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
 .adv-char canvas { width: 64px; height: 64px; flex: none; image-rendering: pixelated; background: var(--sprite-bg); border-radius: var(--r); }
 .adv-char .row { margin-top: 4px; }
+
+/* 1.5.125 The chest on Equip Bob: what Bob made, as little pictures with names, under Bob on the paper doll. */
+.chest-tile { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 6px 12px; border: 1px dashed var(--line); border-radius: var(--r); background: var(--bg); font-size: 13px; min-height: 32px; }
+.chest-tile:hover, .chest-tile:focus-visible { border-color: var(--accent); }
+.chest-tile.sel { outline: 2px solid var(--accent); outline-offset: 1px; border-style: solid; background: var(--card); }
+.chest-icon { font-size: 22px; line-height: 1; }
+.chest-count { background: var(--accent); color: var(--bg); border-radius: 999px; padding: 0 7px; font-size: 12px; font-weight: 600; min-width: 20px; text-align: center; }
+.chest-folder { margin: 6px 0 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
+.chest-folder p { margin: 0 0 6px; }
+.chest-folder .row { gap: 6px; flex-wrap: wrap; }
+.chest-grid { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.chest-item { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 6px; width: 100%; text-align: left; min-width: 0; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); }
+.chest-item:hover, .chest-item:focus-visible { border-color: var(--accent); }
+.chest-item img.thumb, .chest-item .made-ico { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: calc(var(--r) * 0.75); background: #0003; display: flex; align-items: center; justify-content: center; font-size: 36px; }
+.chest-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chest-when { font-size: 11px; }
+.made-item img.thumb { image-rendering: auto; }
+.home-first .save-pick { margin-top: 6px; }
+.home-ask { margin-top: 8px; }

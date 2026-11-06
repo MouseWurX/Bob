@@ -592,7 +592,7 @@
     document.querySelectorAll('.panel').forEach((p) => p.classList.add('hidden'));
     if (id === 'new') { newChat(); return; }
     $(id).classList.remove('hidden');
-    ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, adventure: drawAdventure, games: drawGames, memory: drawMemory, settings: drawSettings, help: drawHelp }[id] || (() => {}))();
+    ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, adventure: drawAdventure, games: drawGames, chest: drawChest, memory: drawMemory, settings: drawSettings, help: drawHelp }[id] || (() => {}))();
     if (id === 'bobs') watchLend();
   }
   document.querySelectorAll('.panel .back').forEach((b) => b.addEventListener('click', () => b.closest('.panel').classList.add('hidden')));
@@ -1280,6 +1280,47 @@ ${chatOut}
   };
   const gam = { v: null, msg: '', live: '', base: null, timer: null, last: '', draft: '', opts: { role: 'guess', shelf: 'any', together: false, bobStarts: false } };
   const gamOpen = () => !$('games').classList.contains('hidden');
+  // ---- 1.5.125 🧰 Chest: the newest things your other Bob made, as little pictures with names (his Made by Bob list).
+  // The pictures come small from /api/thumb (made once on your other replicant matrix, kept there); a tap shows the thing
+  // itself with Save to this phone. Nothing is kept on the phone unless you save it.
+  const chest = { open: null }; // the item being shown big, or null
+  async function drawChest() {
+    const body = $('chest-body'), b = advBob();
+    body.textContent = '';
+    if (!b) { body.append(el('p', { class: 'help-line', text: "No Bob on your Bob-Net is reachable, and the chest lives on your other replicant matrix: everything he makes is there. Get him on Tailscale and come back." })); return; }
+    body.append(el('p', { class: 'dim', text: 'Opening the chest…' }));
+    let items = [];
+    try { items = await advApi('/api/made?limit=24'); } catch (e) { body.textContent = ''; body.append(el('p', { class: 'help-line', text: `I couldn't open the chest: ${e.message}` })); return; }
+    body.textContent = '';
+    body.append(el('p', { class: 'help-line', text: `What ${b.name} has made, newest first. Tap one to see it here; Save to this phone keeps a copy. To change the folder new things are saved in, open Equip Bob on your other replicant matrix and press the chest under Bob.` }));
+    if (!items.length) { body.append(el('p', { class: 'dim', text: 'Empty so far. Pictures, clips, songs and files he makes land here.' })); return; }
+    const addr = b.address;
+    const grid = el('div', { class: 'chest-grid', role: 'list', 'aria-label': 'What Bob made, newest first' });
+    for (const x of items) {
+      const kind = x.kind === 'text' ? 'document' : x.kind || 'file';
+      const name = x.title || x.name || '';
+      const icon = { image: '🖼️', video: '🎞️', audio: '🔊', document: '📄', folder: '📁' }[kind] || '📦';
+      const pic = el('div', { class: 'chest-pic', 'aria-hidden': 'true', text: icon });
+      const tile = el('button', { class: 'chest-item', role: 'listitem', 'aria-label': `Open ${name}: ${kind === 'image' ? 'picture' : kind === 'video' ? 'clip' : kind === 'audio' ? 'sound' : kind}`, onclick: () => { chest.open = chest.open === x ? null : x; drawChestBig(body, addr); } }, pic, el('span', { class: 'chest-name', text: name }));
+      grid.append(tile);
+      if (kind === 'image' || kind === 'video') {
+        const thumbPath = x.url && x.url.startsWith('/api/file?') ? `/api/thumb?path=${encodeURIComponent(new URL(x.url, 'http://x').searchParams.get('path') || '')}` : `/api/thumb?path=${encodeURIComponent(x.url || '')}`;
+        phone('net.media', { address: addr, path: thumbPath }).then((data) => { if (data) pic.replaceWith(el('img', { class: 'chest-pic', src: data, alt: '' })); }).catch(() => {});
+      }
+    }
+    body.append(grid, el('div', { id: 'chest-big' }));
+  }
+  function drawChestBig(body, addr) {
+    const box = body.querySelector('#chest-big'); if (!box) return;
+    box.textContent = '';
+    const x = chest.open; if (!x) return;
+    const kind = x.kind === 'text' ? 'document' : x.kind || 'file';
+    box.append(el('h3', { text: x.title || x.name || '' }));
+    if (['image', 'video', 'audio'].includes(kind) && x.url) box.append(mediaNode({ kind, url: x.url, base: `http://${addr}` }));
+    else box.append(el('p', { class: 'help-line', text: 'I can\'t show this kind of file on the phone. It\'s in Made by Bob on your other replicant matrix.' }));
+    box.scrollIntoView({ block: 'nearest' });
+  }
+
   function drawGames() {
     const body = $('games-body'), b = advBob();
     gam.base = b ? b.base : null; gam.last = '';

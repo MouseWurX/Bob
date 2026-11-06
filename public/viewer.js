@@ -15,8 +15,8 @@ const narrow = () => window.innerWidth <= 900;
 const KIND_WORD = { image: 'Picture', video: 'Clip', audio: 'Sound', document: 'Document', text: 'Document', folder: 'Folder', file: 'File' };
 const ICON = { image: '🖼️', video: '🎞️', audio: '🔊', document: '📄', text: '📄', folder: '📁', file: '📦' };
 // The word on a card and in the panel: spreadsheets and web pages get their own word (clarity review).
-const kindWord = (kind, name = '') => (/\.(csv|tsv|xlsx?|ods)$/i.test(name) ? 'Spreadsheet' : /\.html?$/i.test(name) ? 'Web page' : KIND_WORD[kind] || 'File');
-const kindIcon = (kind, name = '') => (/\.(csv|tsv|xlsx?|ods)$/i.test(name) ? '📊' : /\.html?$/i.test(name) ? '🌐' : ICON[kind] || ICON.file);
+export const kindWord = (kind, name = '') => (/\.(csv|tsv|xlsx?|ods)$/i.test(name) ? 'Spreadsheet' : /\.html?$/i.test(name) ? 'Web page' : KIND_WORD[kind] || 'File');
+export const kindIcon = (kind, name = '') => (/\.(csv|tsv|xlsx?|ods)$/i.test(name) ? '📊' : /\.html?$/i.test(name) ? '🌐' : ICON[kind] || ICON.file);
 // Friendly sizes: "under 1 KB", "48 KB", "2.3 MB" (never bytes).
 export function friendlySize(n) {
   if (n == null || n === '') return '';
@@ -33,6 +33,22 @@ const kindOf = (x) => {
 };
 const isText = (name) => /\.(txt|md|csv|tsv|json|log|html?|css|m?js|cjs|tsx?|jsx|py|c|h|cpp|hpp|cs|rs|java|kts?|gradle|xml|ya?ml|ini|cfg|toml|ps1|bat|cmd|sh|lua|gd|sql|svg|srt|vtt)$/i.test(name || '');
 const pathFromUrl = (url) => { try { return url.startsWith('/api/file?') ? new URL(url, location.origin).searchParams.get('path') : url; } catch { return url; } };
+
+// 1.5.125: a small picture of a picture or clip, made once by the brain and kept (/api/thumb). If there's none to be had
+// (no FFmpeg for clips, a browser without Bob's window), the picture itself is shown, shrunk, or the kind's icon.
+export const thumbUrl = (x) => `/api/thumb?path=${encodeURIComponent(x.path || pathFromUrl(x.url || ''))}`;
+export function thumbImg(x, kind = 'image', alt = '') {
+  const full = kind === 'image' ? x.url || '' : '';
+  return `<img class="thumb" src="${esc(thumbUrl(x))}" data-full="${esc(full)}" alt="${esc(alt)}" loading="lazy" decoding="async">`;
+}
+// When a thumbnail can't be had, fall back to the file itself (pictures) or the kind's icon (clips).
+export function thumbFallback(img) {
+  if (!img?.classList?.contains('thumb') || img.dataset.fell) return;
+  img.dataset.fell = '1';
+  if (img.dataset.full) img.src = img.dataset.full;
+  else { const i = document.createElement('span'); i.className = 'made-ico'; i.setAttribute('aria-hidden', 'true'); i.textContent = '🎞️'; img.replaceWith(i); }
+}
+if (typeof document !== 'undefined') document.addEventListener('error', (e) => thumbFallback(e.target), true);
 
 // A chat card for something Bob made or mentioned: a preview plus "View" (opens the side panel).
 // item: { kind or type, url, name, path?, bytes? }. The mention is what Open / Show in folder pass to the server.
@@ -138,7 +154,7 @@ export function createViewer({ post, note }) {
     box.innerHTML = list.map((x) => {
       const kind = kindOf(x);
       const data = `data-view data-view-url="${esc(x.url)}" data-view-kind="${esc(kind)}" data-view-name="${esc(x.name)}" data-view-path="${esc(x.path || pathFromUrl(x.url))}" data-view-bytes="${esc(x.bytes ?? '')}"`;
-      const pic = kind === 'image' ? `<img src="${esc(x.url)}" alt="" loading="lazy">` : `<span class="made-ico" aria-hidden="true">${kindIcon(kind, x.name)}</span>`;
+      const pic = kind === 'image' || kind === 'video' ? thumbImg(x, kind) : `<span class="made-ico" aria-hidden="true">${kindIcon(kind, x.name)}</span>`;
       return `<button type="button" class="made-item" ${data} title="${esc(x.name)}">${pic}<span class="made-name">${esc(x.name)}</span><span class="muted made-when">${esc(kindWord(kind, x.name))} · ${esc(when(x.at))}</span></button>`;
     }).join('');
   }
@@ -285,7 +301,7 @@ export function createViewer({ post, note }) {
   };
 }
 
-function when(t) {
+export function when(t) {
   if (!t) return '';
   const m = Math.round((Date.now() - t) / 60000);
   if (m < 1) return 'just now';

@@ -168,6 +168,12 @@ Brains stay at Q4 or better, except on cards of 8 GB or less. There, when a brai
 
 ---
 
+### The chest
+
+Under Bob on the paper doll sits his **🧰 Chest**, with a number for how many things are in it. Press it and the Inventory on the right becomes the **Chest**: everything Bob has made or saved, newest first, each as a little picture (a thumbnail Bob makes once and keeps) with its name and when he made it. Songs, documents and other files show as an icon with their title. Click one (or Tab to it and press Enter) to open it beside the chat, the same as from Made by Bob.
+
+At the top of the chest, **New things are saved in** shows the folder new pictures, clips, songs and sounds go to. **Change folder…** opens your system's folder window and saves the pick straight away; it is the same setting as Settings, **Where Bob saves things**. **Use Bob's own folder** goes back and **Show in folder** opens the folder. Older things stay where they are. **Open Made by Bob** shows everything with filters and a search box. On the phone, menu, **Chest** shows the same list from your PC's Bob, with **Save to this phone**.
+
 ## 4. Bob's personality
 
 Bob has a dry, curious, slightly nerdy personality. You can turn that up or down.
@@ -289,9 +295,15 @@ If a slot is empty, Bob tells you which model would fill it.
 
 Ask for a song ("a chiptune boss theme, about a minute") or a sound effect ("a creaky wooden door"). It lands in the chat as a **song player**: a round ▶ button, its title, bars showing the song's shape (click or drag along them to jump around; arrow keys jump 5 seconds), the time, **Lyrics** if it has words, **Open in Made by Bob** for a bigger player in the side panel, and **Show in folder**. Several songs in one reply play one after another, and only one plays at a time. Each song is kept as a .wav file named with the date and its title.
 
+### Where Bob keeps his things
+
+Bob's **home** is one folder with his models, the engines he runs on, his notes, chats and settings, apart from the program itself. You pick it when Bob is installed (the Windows install window asks first) or the first time Bob.exe, Bob.app or the AppImage opens: Bob suggests a `Bob` folder in your own user folder, and any drive works. He refuses temporary places like AppData, because a disk clean-up would take 10 to 60 GB of models with it.
+
+Settings, **Where Bob keeps his things** shows the folder and the size of the models (red if it is somewhere a clean-up tool empties). To move it: **Browse…** or type a new folder, **Move here…**, then **Yes, move everything**. Bob closes, copies everything across (one quick rename on the same drive), and opens again from the new folder; the old one is removed only once every file is over. The same row sits at the top of the first-run screen as **I keep my things in**. Older Bobs that kept things in `%LOCALAPPDATA%\Bob` carry on from there until you move them.
+
 ### Where Bob saves things
 
-Settings, **Where Bob saves things** picks the folder for the pictures, clips, songs and sounds Bob makes. It starts as Bob's own folder (the one Made by Bob lists). **Browse…** picks another (or type one and press **Save here**), **Show in folder** opens it, and **Use Bob's own folder** goes back. Only new things go to a new folder; older ones stay put and still show in your chats. Tidy up only tidies Bob's own folder. If a picked folder goes missing (an unplugged drive), Bob saves in his own until it's back.
+Settings, **Where Bob saves things** picks the folder for the pictures, clips, songs and sounds Bob makes. It starts as Bob's own folder (the one Made by Bob lists). **Browse…** picks another (or type one and press **Save here**), **Show in folder** opens it, and **Use Bob's own folder** goes back. The chest under Bob on Equip Bob has the same folder with a **Change folder…** button. Only new things go to a new folder; older ones stay put and still show in your chats. Tidy up only tidies Bob's own folder. If a picked folder goes missing (an unplugged drive), Bob saves in his own until it's back.
 
 ---
 
