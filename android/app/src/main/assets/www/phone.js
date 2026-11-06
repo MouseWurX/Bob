@@ -981,6 +981,8 @@ ${chatOut}
   const AV = globalThis.BobAvatars;
   const advYou = { name: '', cls: 'fighter', trait: '', armour: 'some', setting: 'fantasy', settingText: '', pace: 'evening', look: AV.encodeParts(AV.DEFAULT_PARTS), savedId: '' };
   const advChar = { open: false, parts: null, delAsk: '' }; // the character screen: open, the parts being picked, "Delete <name>?" showing
+  // 1.5.124 The 📖 Characters page (the bestiary): null = not open; else { tab, edit: a saved character's id or 'new', draft, ask: id awaiting delete }.
+  adv.chars = null;
   const advParty = new Map(); // player key -> { ticked, armour, cls }
   const hearts = (n, max = 5) => '♥'.repeat(Math.max(0, n)) + '♡'.repeat(Math.max(0, max - n));
   const pickOne = (a) => a[Math.floor(Math.random() * a.length)];
@@ -1027,7 +1029,7 @@ ${chatOut}
     if (!advOpen()) return;
     const body = $('adv-body'); body.textContent = '';
     const g = adv.v?.game;
-    body.append(...(g ? advTable(g) : [advStart()]).flat().filter(Boolean));
+    body.append(...(adv.chars ? advCharsPage() : g ? advTable(g) : [advStart()]).flat().filter(Boolean));
     const log = $('adv-log'); if (log) log.scrollTop = log.scrollHeight;
     for (const [who, x] of adv.live) if (x.text) advShowLive(el('span', { class: 'adv-who', text: advWho(who) }), el('p', { text: x.text }));
   }
@@ -1062,15 +1064,16 @@ ${chatOut}
   }
   const advLookWhat = (lookId) => AV.avatar(lookId)?.what || '';
   // The character screen: the same rows, names and colours as the desktop's (public/character.js); every body.
-  function advCharacter() {
+  function advCharacter({ useLabel = 'Use for this character', onUse, onCancel } = {}) {
     const p = advChar.parts;
     const shown = AV.partsFor(p.body);
     const SW = { hc: 'hc', skin: 'skin', cloth: 'cloth' };
-    const swatchFor = (k) => (k === 'skin' && p.body === 'robot') ? 'metal' : (k === 'skin' && p.body === 'alien') ? 'alien' : SW[k];
+    const monster = (b) => (AV.MONSTER_BODIES || []).includes(b);
+    const swatchFor = (k) => (k === 'skin' && p.body === 'robot') ? 'metal' : (k === 'skin' && p.body === 'alien') ? 'alien' : (k === 'skin' && monster(p.body)) ? 'monster' : SW[k];
     const id = AV.encodeParts(p);
     const set = (k, v) => { p[k] = v; advChar.parts = AV.cleanParts(p); advDraw(); };
     const row = (k) => {
-      const opts = AV.PARTS[k], sw = swatchFor(k), name = AV.partName(k);
+      const opts = AV.PARTS[k], sw = swatchFor(k), name = (k === 'skin' && sw === 'metal') ? 'Metal' : (k === 'skin' && sw === 'monster') ? 'Hide' : AV.partName(k);
       if (sw) {
         const cols = AV.PART_COLOURS[sw], colNames = AV.COLOUR_NAMES[sw] || []; // a robot's skin swatches are metals (Steel, Brass...), an alien's its own colours
         return el('div', { class: 'char-row' }, el('span', { class: 'char-label', text: name }),
@@ -1085,8 +1088,66 @@ ${chatOut}
         el('button', { text: 'Start over', onclick: () => { advChar.parts = { ...AV.DEFAULT_PARTS }; advDraw(); } })),
       el('div', { class: 'char-parts' }, shown.map(row)),
       el('div', { class: 'btns' },
-        el('button', { class: 'main', text: 'Use for this character', onclick: () => { advYou.look = id; advChar.open = false; advDraw(); } }),
-        el('button', { text: 'Cancel', onclick: () => { advChar.open = false; advDraw(); } })));
+        el('button', { class: 'main', text: useLabel, onclick: () => (onUse || ((look) => { advYou.look = look; advChar.open = false; advDraw(); }))(id) }),
+        el('button', { text: 'Cancel', onclick: () => (onCancel || (() => { advChar.open = false; advDraw(); }))() })));
+  }
+  // ---- 📖 Characters: You / Party / Met / Enemies (the bestiary lives on your other Bob; this shows it) ----
+  function advCharsOpen(tab = 'you') { adv.chars = { tab, edit: null, draft: null, ask: '' }; advDraw(); }
+  function advCharsPage() {
+    const v = adv.v || {}, ch = adv.chars, g = v.game;
+    const tabs = [['you', '🧍 You'], ['party', '🎲 Party'], ['met', '📖 Met'], ['enemies', '⚔ Enemies']];
+    const bar = el('div', { class: 'adv-chars-top' }, el('button', { text: '← Back', onclick: () => { adv.chars = null; advDraw(); } }),
+      el('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Characters' }, tabs.map(([id, l]) => el('button', { role: 'tab', 'aria-selected': String(ch.tab === id), text: l, onclick: () => advCharsOpen(id) }))));
+    const card = (look, title, sub, ...extra) => el('div', { class: 'box adv-char' }, look ? advFace(look, 64) : el('div', { class: 'adv-face adv-noface', 'aria-hidden': 'true', text: '🖥' }),
+      el('div', { class: 'adv-char-words' }, el('strong', { text: title }), ...sub.map((t) => el('div', { class: 'help-line', text: t })), ...extra));
+    const out = [bar];
+    if (ch.tab === 'you') {
+      const list = v.characters || [];
+      if (ch.edit) {
+        const c = (ch.edit !== 'new' && list.find((x) => x.id === ch.edit)) || { id: '', name: '', cls: 'fighter', trait: '', armour: 'some', look: AV.encodeParts(AV.DEFAULT_PARTS) };
+        const d = ch.draft || (ch.draft = { ...c });
+        if (!advChar.parts) advChar.parts = AV.decodeParts(d.look) || { ...AV.DEFAULT_PARTS };
+        out.push(el('div', { class: 'box' },
+          el('label', { class: 'field', text: 'Name' }), el('input', { type: 'text', maxlength: 40, value: d.name, placeholder: 'Hero', 'aria-label': 'Name', onchange: (e) => { d.name = e.target.value; } }),
+          el('label', { class: 'field', text: 'Class' }), advSelect(ADV.classes, d.cls, 'Class', (x) => { d.cls = x; }),
+          el('label', { class: 'field', text: 'One thing about them' }), el('input', { type: 'text', maxlength: 120, value: d.trait || '', placeholder: 'never leaves a door unopened', 'aria-label': 'One thing about them', onchange: (e) => { d.trait = e.target.value; } }),
+          el('label', { class: 'field', text: 'Plot armour' }), advSelect(ADV.armour, d.armour, 'Plot armour', (x) => { d.armour = x; })),
+          advCharacter({ useLabel: 'Save this character', onUse: async (look) => {
+            try { const r = await advApi('/api/adventure/characters/save', { id: c.id || '', name: d.name || settings.userName || 'Hero', cls: d.cls, trait: d.trait, armour: d.armour, look }); adv.v = { ...adv.v, characters: r.characters }; adv.last = JSON.stringify(adv.v); adv.msg = ''; ch.edit = null; ch.draft = null; advChar.parts = null; } catch (e) { adv.msg = e.message; }
+            advDraw();
+          }, onCancel: () => { ch.edit = null; ch.draft = null; advChar.parts = null; advDraw(); } }));
+      } else {
+        out.push(el('p', { class: 'help-line', text: 'Your heroes, kept for the next game. Pick one on the start card under Saved characters.' }));
+        for (const c of list) out.push(card(c.look, c.name, [`${ADV.classes[c.cls] || c.cls} · plot armour ${ADV.armour[c.armour]?.[0] || 'Some'}${c.trait ? ` · ${c.trait}` : ''}`],
+          el('div', { class: 'btns' }, el('button', { text: 'Edit', onclick: () => { ch.edit = c.id; ch.draft = null; advChar.parts = null; advDraw(); } }),
+            ch.ask === c.id ? [el('span', { text: `Delete ${c.name}?` }),
+              el('button', { class: 'danger', text: 'Delete for good', onclick: async () => { ch.ask = ''; try { const r = await advApi('/api/adventure/characters/delete', { id: c.id }); adv.v = { ...adv.v, characters: r.characters }; adv.last = JSON.stringify(adv.v); if (advYou.savedId === c.id) advYou.savedId = ''; } catch (e) { adv.msg = e.message; } advDraw(); } }),
+              el('button', { text: 'Keep it', onclick: () => { ch.ask = ''; advDraw(); } })]
+            : el('button', { text: 'Delete this character', onclick: () => { ch.ask = c.id; advDraw(); } }))));
+        out.push(el('div', { class: 'btns' }, el('button', { class: 'main', text: '➕ New character', onclick: () => { ch.edit = 'new'; ch.draft = null; advChar.parts = null; advDraw(); } })));
+      }
+    } else if (ch.tab === 'party') {
+      const pg = g || v.lastParty;
+      if (!pg) out.push(el('p', { class: 'help-line', text: 'No party yet. Start a game and they turn up here.' }));
+      else {
+        out.push(el('p', { class: 'help-line', text: `${g ? 'At the table now' : `The last game, ${pg.title}`}. Each Bob plays with his own look.` }));
+        for (const c of pg.party) out.push(card(c.who === 'you' ? (c.look || AV.encodeParts(AV.DEFAULT_PARTS)) : '', c.name,
+          [`${c.className}${c.who === 'you' ? ' · you' : c.who === 'net' ? ' · his own Bob' : ' · played by the game master'} · ${hearts(c.hearts)}`, c.trait || '', c.items?.length ? `Carries ${c.items.join(', ')}` : '', c.spells?.length ? `Knows ${c.spells.join(', ')}` : ''].filter(Boolean)));
+      }
+    } else if (ch.tab === 'met') {
+      const inGame = Boolean(g?.met?.length), list = inGame ? g.met : (v.met || []);
+      if (!list.length) out.push(el('p', { class: 'help-line', text: 'Nobody yet. Whoever the game master names in a scene lands here, drawn.' }));
+      else {
+        out.push(el('p', { class: 'help-line', text: `${inGame ? 'Everyone the game master has brought on in this game.' : 'Everyone and everything you have run into, across your games.'} Drawn by me the moment they're named.` }));
+        for (const m of list) out.push(card(m.look, m.name, [`${m.kind === 'enemy' ? `⚔ ${(v.enemies || []).find((e) => e.id === m.type)?.name || 'enemy'}` : m.kind === 'creature' ? 'creature' : 'person'}${m.scene ? ` · met at ${m.scene}` : ''}${m.game && !g ? ` · ${m.game}` : ''}`],
+          g ? null : el('div', { class: 'btns' }, el('button', { text: 'Forget', onclick: async () => { try { const r = await advApi('/api/adventure/met/forget', { id: m.id }); adv.v = { ...adv.v, met: r.met }; adv.last = JSON.stringify(adv.v); } catch (e) { adv.msg = e.message; } advDraw(); } }))));
+      }
+    } else {
+      out.push(el('p', { class: 'help-line', text: 'The usual suspects, with how many hearts they have and what to know. The game master uses these as written and invents the rest.' }));
+      for (const e of v.enemies || []) out.push(card(e.look, e.name, [`${hearts(e.hearts, e.hearts)} · ${e.attack}`], el('em', { class: 'help-line', text: e.trick }), el('div', { class: 'help-line', text: e.flavour })));
+    }
+    if (adv.msg) out.push(el('p', { class: 'note bad', role: 'alert', text: adv.msg }));
+    return out;
   }
   function advSelect(opts, cur, label, onchange) {
     const s = el('select', { 'aria-label': label, onchange: (e) => onchange(e.target.value) });
@@ -1125,6 +1186,7 @@ ${chatOut}
         el('button', { class: 'danger', text: 'Delete for good', onclick: async () => { advChar.delAsk = ''; try { const r = await advApi('/api/adventure/characters/delete', { id: advYou.savedId }); adv.v = { ...adv.v, characters: r.characters }; adv.last = JSON.stringify(adv.v); advYou.savedId = ''; } catch (e) { adv.msg = e.message; } advDraw(); } }),
         el('button', { text: 'Keep it', onclick: () => { advChar.delAsk = ''; advDraw(); } })) : null,
       el('p', { class: 'help-line', text: 'Saved characters keep the name, class, the one thing about them, plot armour and the look, so you can pick the same hero next time. They live beside the saved campaigns on your other replicant matrix.' }),
+      el('div', { class: 'btns' }, el('button', { text: '📖 Characters', onclick: () => advCharsOpen('you') }), el('span', { class: 'help-line', text: "Your heroes, the party, everyone you've met, and the usual enemies." })),
       el('h3', { text: 'Who plays' }),
       el('p', { class: 'help-line', text: 'Tick the Bobs at the table. A Bob on your Bob-Net plays himself over there; a copy of your other Bob is played by the game master brain. Each gets their own plot armour.' }),
       el('p', { class: 'help-line', text: 'What goes to a Bob who plays himself: the scene so far and his character\'s sheet, over Tailscale to your own Bob only.' }),
@@ -1162,7 +1224,8 @@ ${chatOut}
       el('p', { class: 'help-line', text: `${g.settingText}${scene ? ` · Scene ${scene.n}: ${scene.title}` : ''} · round ${g.round}` }),
       el('div', { class: 'btns' },
         g.status === 'playing' ? el('button', { text: '⏸ Pause', onclick: () => advCall('/api/adventure/pause', {}) }) : g.status === 'paused' ? el('button', { class: 'main', text: '▶ Resume', onclick: () => advCall('/api/adventure/resume', {}) }) : null,
-        el('button', { text: '📖 Journal', 'aria-pressed': String(adv.journal), onclick: () => { adv.journal = !adv.journal; advDraw(); } }),
+        el('button', { text: '📓 Journal', 'aria-pressed': String(adv.journal), onclick: () => { adv.journal = !adv.journal; advDraw(); } }),
+        el('button', { text: '📖 Characters', onclick: () => advCharsOpen('party') }),
         el('button', { text: g.status === 'over' ? 'Close' : '🏁 End game', onclick: async (e) => { const t = e.currentTarget; if (g.status !== 'over' && !t.dataset.sure) { t.dataset.sure = '1'; t.textContent = 'End this game? It stays under Continue. Tap again to end it.'; return; } await advCall('/api/adventure/end', { keep: true }); adv.players = null; advLoad(); } })));
     const journal = adv.journal ? el('div', { class: 'box' }, el('strong', { text: 'The story so far' }), el('p', { text: g.summary || 'Nothing written down yet; the game master sums things up every three scenes.' }),
       g.scenes.length ? el('p', { class: 'help-line', text: g.scenes.map((s) => `Scene ${s.n}: ${s.title}`).join(' · ') }) : null) : null;

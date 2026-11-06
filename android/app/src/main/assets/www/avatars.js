@@ -253,8 +253,12 @@ const COLOUR_NAMES = {
   skin: ['Fair', 'Light', 'Tan', 'Olive', 'Brown', 'Dark brown', 'Deep brown', 'Ebony'],
   cloth: ['Slate', 'Maroon', 'Forest', 'Plum', 'Charcoal', 'Mustard', 'Navy', 'Berry', 'Silver', 'Crimson'],
   metal: ['Steel', 'Brass', 'Chrome', 'Red', 'Sky', 'Green', 'Violet', 'Gold'],
-  alien: ['Green', 'Violet', 'Cyan', 'Grey', 'Orange', 'Lime', 'Pink', 'Blue']
+  alien: ['Green', 'Violet', 'Cyan', 'Grey', 'Orange', 'Lime', 'Pink', 'Blue'],
+  monster: ['Moss', 'Stone', 'Mud', 'Blood', 'Night', 'Bone', 'Frost', 'Ember']
 };
+// 1.5.124 Monster bodies for the bestiary (beast, crawler, blob, big humanoid): hide and shade, eyes, mouth.
+const MONSTER = [['#4f7a3a', '#2f4d22'], ['#7e8a96', '#525c66'], ['#6b4a2b', '#3f2b18'], ['#8a2a2a', '#4f1515'], ['#2a2a3a', '#111118'], ['#e8e0c8', '#a8a088'], ['#9fd8e8', '#4f8aa0'], ['#e86a2a', '#8a3a12']];
+const MONSTER_EYES = ['#ffd166', '#ff4f4f', '#7dff9a', '#ffffff', '#3fd0ff', '#ff4fa3', '#14110f', '#e8fbff'];
 const HAIR_STYLES = { ...HAIR_M, ...HAIR_F };
 const ARMOURS = {
   none: null,
@@ -279,7 +283,50 @@ const SHIELDS = {
   tall(g) { rect(g, 14, 9, 15, 15, 'T'); put(g, 14, 15, '.'); rect(g, 15, 11, 15, 13, 'Z'); }
 };
 const HAIR_WORDS = { short: 'short * hair', buzz: 'buzz-cut * hair', spiky: 'spiky * hair', sidepart: 'side-parted * hair', bald: 'a bald top and * sides', mohawk: 'a * mohawk', curly: 'curly * hair', tied: 'tied-back * hair', long: 'long * hair', bob: 'bobbed * hair', ponytail: '* hair in a ponytail', bun: '* hair in a bun', pixie: 'pixie-cut * hair', curls: 'curly * hair', braids: 'braided * hair', swept: 'swept * hair' };
-const hairWords = (style, colour) => style === 'none' ? 'no hair' : (HAIR_WORDS[style] || `${style} * hair`).replace('*', colour);
+const an = (w) => `${/^[aeiou]/i.test(w) ? 'an' : 'a'} ${w}`; // a steel robot, an orange alien
+const hairWords = (style, colour) => style === 'none' ? 'no hair' : (HAIR_WORDS[style] || `${style} * hair`).replace('*', colour).replace(/^a ([aeiou])/i, 'an $1');
+const MONSTERS = {
+  // A four-legged thing seen from the side: muzzle left, tail right. Face picks ears/horns.
+  beast(g, n) {
+    const rows = [
+      '................', '................', '....SS......S...', '...SSSS....SS...', '..SEESSSSSSSS...', '..SSXSSSSSSSSS..', '...SSSSSSSSSSS..', '....SLSSSSSLSS..',
+      '....SSSSSSSSSS..', '.....SS....SS...', '.....SS....SS...', '.....LL....LL...', '................', '................', '................', '................'];
+    rows.forEach((r, y) => [...r].forEach((ch, x) => { if (ch !== '.') put(g, x, y, ch); }));
+    if (n % 4 === 1) { put(g, 4, 1, 'S'); put(g, 6, 1, 'S'); } // ears up
+    if (n % 4 === 2) { put(g, 3, 1, 'K'); put(g, 4, 0, 'K'); put(g, 7, 1, 'K'); put(g, 8, 0, 'K'); } // horns
+    if (n % 4 === 3) { rect(g, 4, 1, 7, 1, 'L'); put(g, 12, 1, 'S'); put(g, 13, 0, 'S'); } // crest and a raised tail
+    if (n >= 4) { rect(g, 9, 3, 12, 3, 'L'); } // a ridge along the back
+  },
+  // A round body on eight legs, eyes in a cluster.
+  crawler(g, n) {
+    const rows = [
+      '................', '................', '................', '......SSSS......', '.....SSSSSS.....', '....SSSEESSS....', 'S..SSSEEEESS..S.', '.S.SSSSXXSSS.S..',
+      '..SSSSSSSSSSSS..', '.S.SSSSSSSSS.S..', 'S..SSLSSSSLS..S.', '....S..SS..S....', '...S...SS...S...', '..S....LL....S..', '................', '................'];
+    rows.forEach((r, y) => [...r].forEach((ch, x) => { if (ch !== '.') put(g, x, y, ch); }));
+    if (n % 2) { put(g, 6, 2, 'K'); put(g, 9, 2, 'K'); } // fangs up
+    if (n >= 4) { rect(g, 6, 8, 9, 8, 'L'); } // a mark on the back
+  },
+  // A heap with eyes, drooping at the edges.
+  blob(g, n) {
+    const rows = [
+      '................', '................', '................', '......SSSS......', '....SSSSSSSS....', '...SSSSSSSSSS...', '...SSEESSEESS...', '..SSSSSSSSSSSS..',
+      '..SSSSXXXXSSSS..', '..SSSSSSSSSSSS..', '.SSSSSSSSSSSSSS.', '.SSSSLSSSSSLSSS.', 'SSSSSSSSSSSSSSSS', '.S.SSSSSSSSSS.S.', '................', '................'];
+    rows.forEach((r, y) => [...r].forEach((ch, x) => { if (ch !== '.') put(g, x, y, ch); }));
+    if (n % 2) { put(g, 7, 2, 'S'); put(g, 8, 1, 'S'); } // a drip on top
+    if (n >= 4) { put(g, 5, 9, 'K'); put(g, 10, 10, 'K'); } // things floating inside
+  },
+  // A big humanoid: small head, huge shoulders, the body rows take armour and kit like anyone's.
+  giant(g, n) {
+    const rows = [
+      '......SSSS......', '.....SSSSSS.....', '.....SESSES.....', '.....SSSSSS.....', '......SXXS......', '....SSSSSSSS....', '..SSSSSSSSSSSS..', '.SSSSSSSSSSSSSS.',
+      '.SSLSSSSSSSSLSS.', '.SS.SSSSSSSS.SS.', '.SS.SSSSSSSS.SS.', '....SSSSSSSS....', '....SSSSSSSS....', '....SSSLLSSS....', '....SSS..SSS....', '....LLL..LLL....'];
+    rows.forEach((r, y) => [...r].forEach((ch, x) => { if (ch !== '.') put(g, x, y, ch); }));
+    if (n % 3 === 1) { put(g, 5, 0, 'K'); put(g, 10, 0, 'K'); } // horns
+    if (n % 3 === 2) { rect(g, 6, 0, 9, 0, 'L'); } // a brow ridge
+    if (n >= 4) { put(g, 6, 4, 'W'); put(g, 9, 4, 'W'); } // tusks
+  }
+};
+const MONSTER_BODIES = Object.keys(MONSTERS);
 const FACE_WORDS = ['calm', 'keen', 'wide-eyed', 'squinting', 'bright', 'sleepy', 'fierce', 'friendly'];
 const PART_NAMES = { body: 'Body', build: 'Build', face: 'Face', hair: 'Hair', hc: 'Hair colour', skin: 'Skin', beard: 'Beard', glasses: 'Glasses', outfit: 'Outfit', cloth: 'Outfit colour', armour: 'Armour', weapon: 'Weapon', shield: 'Shield' };
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -287,7 +334,7 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 // What the screen offers for each part: [value, label]. body: which bodies the screen shows (Bob's own screen
 // leaves out "woman": Bob is a guy; a character for a game can be anyone).
 const PARTS = {
-  body: [['m', 'Man'], ['f', 'Woman'], ['robot', 'Robot'], ['alien', 'Alien']],
+  body: [['m', 'Man'], ['f', 'Woman'], ['robot', 'Robot'], ['alien', 'Alien'], ['giant', 'Big humanoid'], ['beast', 'Beast'], ['crawler', 'Crawler'], ['blob', 'Blob']],
   build: [['slim', 'Slim'], ['regular', 'Regular'], ['broad', 'Broad']],
   face: FACE_WORDS.map((w, i) => [String(i), cap(w)]),
   hair: [['none', 'None'], ...Object.keys(HAIR_STYLES).map((k) => [k, cap(k)])],
@@ -304,10 +351,12 @@ const PARTS = {
 const PART_ORDER = Object.keys(PARTS);
 const DEFAULT_PARTS = { body: 'm', build: 'regular', face: '0', hair: 'short', hc: '1', skin: '1', beard: 'none', glasses: '0', outfit: 'tee', cloth: '0', armour: 'none', weapon: 'none', shield: 'none' };
 // Colour swatches for the screen (hex per value), so the picker can show the colour rather than only its name.
-const PART_COLOURS = { hc: HAIR, skin: SKIN.map((s) => s[0]), cloth: CLOTH.map((c) => c[0]), metal: METAL.map((m) => m[0]), alien: ALIEN_SKIN.map((a) => a[0]) };
+const PART_COLOURS = { hc: HAIR, skin: SKIN.map((s) => s[0]), cloth: CLOTH.map((c) => c[0]), metal: METAL.map((m) => m[0]), alien: ALIEN_SKIN.map((a) => a[0]), monster: MONSTER.map((m) => m[0]) };
 const partName = (k) => PART_NAMES[k] || k;
 // Which parts apply to a body: a robot has no hair or skin tone (its skin picker is the metal), an alien no hair.
 function partsFor(body) {
+  if (body === 'giant') return ['body', 'face', 'skin', 'armour', 'weapon', 'shield'];
+  if (MONSTER_BODIES.includes(body)) return ['body', 'face', 'skin'];
   if (body === 'robot') return PART_ORDER.filter((k) => !['hair', 'hc', 'beard', 'glasses'].includes(k));
   if (body === 'alien') return PART_ORDER.filter((k) => !['hair', 'hc', 'beard'].includes(k));
   return PART_ORDER.filter((k) => k !== 'face');
@@ -339,14 +388,28 @@ function compose(parts) {
   let blinkTo = 'L';
   const words = [];
   const n = Number(p.face) % 8;
-  if (p.body === 'robot' || p.body === 'alien') {
+  if (MONSTERS[p.body]) {
+    const m = MONSTER[Number(p.skin) % MONSTER.length];
+    MONSTERS[p.body](g, n);
+    Object.assign(palette, { S: m[0], L: m[1], K: '#111118', E: MONSTER_EYES[n], X: '#14110f', O: '#3a1010', W: '#efe6d2' });
+    blinkTo = 'L';
+    const colour = COLOUR_NAMES.monster[Number(p.skin) % MONSTER.length].toLowerCase();
+    const kind = { beast: 'beast', crawler: 'crawler', blob: 'blob', giant: 'big humanoid' }[p.body];
+    words.push(`${an(`${colour}-coloured ${kind}`)} with ${FACE_WORDS[n]} eyes`);
+    if (p.body !== 'giant') {
+      const what = words.join('');
+      const map = rows(g);
+      for (const row of map) for (const ch of row) if (ch !== '.' && !palette[ch]) palette[ch] = '#808080';
+      return { name: 'Your own design', what: what.charAt(0).toUpperCase() + what.slice(1), palette, blinkTo, map, parts: p };
+    }
+  } else if (p.body === 'robot' || p.body === 'alien') {
     // The head rows of a robot or alien from the groups above (face picks which), on the same body rows as everyone.
     const base = (p.body === 'robot' ? robot : alien)(n);
     for (let y = 0; y <= 10; y++) g[y] = [...base.map[y]];
     Object.assign(palette, base.palette);
     blinkTo = base.blinkTo;
-    if (p.body === 'robot') { const m = METAL[Number(p.skin) % METAL.length]; palette.C = m[0]; palette.M = m[1]; palette.S = m[0]; palette.L = m[1]; words.push(`a ${COLOUR_NAMES.metal[Number(p.skin) % METAL.length].toLowerCase()} robot with a ${FACE_WORDS[n]} face`); }
-    else { const sk = ALIEN_SKIN[Number(p.skin) % ALIEN_SKIN.length]; palette.S = sk[0]; palette.L = sk[1]; words.push(`a ${COLOUR_NAMES.alien[Number(p.skin) % ALIEN_SKIN.length].toLowerCase()} alien with a ${FACE_WORDS[n]} face`); if (p.glasses === '1') { rect(g, 4, 5, 6, 5, 'G'); rect(g, 9, 5, 11, 5, 'G'); } }
+    if (p.body === 'robot') { const m = METAL[Number(p.skin) % METAL.length]; palette.C = m[0]; palette.M = m[1]; palette.S = m[0]; palette.L = m[1]; words.push(`${an(COLOUR_NAMES.metal[Number(p.skin) % METAL.length].toLowerCase())} robot with a ${FACE_WORDS[n]} face`); }
+    else { const sk = ALIEN_SKIN[Number(p.skin) % ALIEN_SKIN.length]; palette.S = sk[0]; palette.L = sk[1]; words.push(`${an(COLOUR_NAMES.alien[Number(p.skin) % ALIEN_SKIN.length].toLowerCase())} alien with a ${FACE_WORDS[n]} face`); if (p.glasses === '1') { rect(g, 4, 5, 6, 5, 'G'); rect(g, 9, 5, 11, 5, 'G'); } }
     rect(g, 6, 11, 9, 11, 'S'); // a neck, so the body rows start clean
   } else {
     const skin = SKIN[Number(p.skin)];
@@ -358,17 +421,19 @@ function compose(parts) {
   }
   const cloth = CLOTH[Number(p.cloth)];
   palette.P = cloth[0]; palette.Q = cloth[1];
-  OUTFITS[p.outfit](g);
+  if (p.body !== 'giant') OUTFITS[p.outfit](g);
+  const hide = p.body === 'giant' ? g.map((r) => r.map((ch) => ch !== '.')) : null; // armour follows a giant's own shape
   if (ARMOURS[p.armour]) ARMOURS[p.armour](g);
+  if (hide) for (let y = 11; y <= 15; y++) for (let x = 0; x < 16; x++) if (!hide[y][x]) g[y][x] = '.';
   // Build: slim takes the outer column off each side of the body; broad adds one.
-  for (let y = 11; y <= 15; y++) {
+  for (let y = 11; y <= 15 && p.body !== 'giant'; y++) {
     if (p.build === 'slim') { put(g, 2, y, '.'); put(g, 13, y, '.'); }
     if (p.build === 'broad') { if (g[y][2] !== '.') put(g, 1, y, g[y][2]); if (g[y][13] !== '.') put(g, 14, y, g[y][13]); }
   }
   if (WEAPONS[p.weapon]) WEAPONS[p.weapon](g);
   if (SHIELDS[p.shield]) SHIELDS[p.shield](g);
   const kit = [];
-  kit.push(p.armour === 'none' ? `in ${p.outfit === 'labcoat' ? 'a lab coat' : p.outfit === 'armor' ? 'armour' : `a ${p.outfit}`}` : `in ${p.armour === 'chain' ? 'chain mail' : p.armour === 'robe' ? 'a robe' : `${p.armour} armour`}`);
+  if (p.body === 'giant' && p.armour === 'none') kit.push('bare-chested'); else kit.push(p.armour === 'none' ? `in ${p.outfit === 'labcoat' ? 'a lab coat' : p.outfit === 'armor' ? 'armour' : `a ${p.outfit}`}` : `in ${p.armour === 'chain' ? 'chain mail' : p.armour === 'robe' ? 'a robe' : `${p.armour} armour`}`);
   if (p.weapon !== 'none') kit.push(`with a${p.weapon === 'axe' ? 'n' : ''} ${p.weapon}${p.shield !== 'none' ? ' and a shield' : ''}`);
   else if (p.shield !== 'none') kit.push('with a shield');
   const what = `${words.join('')}, ${kit.join(', ')}`;
@@ -377,5 +442,5 @@ function compose(parts) {
   return { name: 'Your own design', what: what.charAt(0).toUpperCase() + what.slice(1), palette, blinkTo, map, parts: p };
 }
 
-globalThis.BobAvatars = { AVATAR_GROUPS, avatar, allAvatarIds, HAIR_STYLES, PARTS, PART_ORDER, DEFAULT_PARTS, PART_COLOURS, partName, partsFor, cleanParts, encodeParts, decodeParts, compose, COLOUR_NAMES };
+globalThis.BobAvatars = { AVATAR_GROUPS, avatar, allAvatarIds, COLOUR_NAMES, HAIR_STYLES, MONSTER_BODIES, PARTS, PART_ORDER, DEFAULT_PARTS, PART_COLOURS, partName, partsFor, cleanParts, encodeParts, decodeParts, compose };
 })();

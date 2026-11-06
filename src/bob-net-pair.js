@@ -57,8 +57,9 @@ export function tailnetPeers({ exe = tailscaleExe(), run = execFile } = {}) {
 export const matchCode = () => String(crypto.randomInt(1000, 10000));
 
 export class Pairing {
-  constructor(cfg, { fetchFn = globalThis.fetch, now = Date.now, broadcast = () => {}, log = () => {}, version = '', peers = tailnetPeers, ownAddresses = () => [], pollMs = POLL_MS } = {}) {
-    Object.assign(this, { cfg, fetch: fetchFn, now, broadcast, log, version, peers, ownAddresses, pollMs });
+  // 1.5.123 vouched(address, token): the name of the Bob that introduced this caller (Pass my Bob-Net along), or ''.
+  constructor(cfg, { fetchFn = globalThis.fetch, now = Date.now, broadcast = () => {}, log = () => {}, version = '', peers = tailnetPeers, ownAddresses = () => [], pollMs = POLL_MS, vouched = () => '' } = {}) {
+    Object.assign(this, { cfg, fetch: fetchFn, now, broadcast, log, version, peers, ownAddresses, pollMs, vouched });
     this.asks = new Map(); // id -> { id, name, address, ip, code, at, state }  (cards on this Bob)
     this.askTimes = [];
     this.outgoing = new Map(); // address -> { state, code, name, why }  (this Bob asking others)
@@ -85,6 +86,16 @@ export class Pairing {
     for (const a of this.asks.values()) if (a.ip === ip && a.state === 'waiting') { this.asks.delete(a.id); this.broadcast({ type: 'pair-gone', id: a.id }); }
     this.askTimes.push(now);
     const ask = { id: crypto.randomBytes(16).toString('hex'), name: clean(b?.name) || ip, address, ip, code, at: now, state: 'waiting' };
+    // 1.5.123: an ask that carries the token one of your Bobs gave us for this address is a yes at once, no card.
+    // A token nobody gave us is refused outright (never a card for a stranger's guess).
+    if (b?.token !== undefined) {
+      const by = this.vouched(address, b.token);
+      if (!by) return { code: 403, error: 'Nobody here is expecting that introduction.' };
+      Object.assign(ask, { state: 'yes', by });
+      this.asks.set(ask.id, ask);
+      this.log('bob-net', `${by} introduced ${ask.name} (${ip}): pairing without a card`);
+      return { code: 200, id: ask.id };
+    }
     this.asks.set(ask.id, ask);
     this.broadcast(this.card(ask));
     this.log('bob-net', `${ask.name} (${ip}) asked to pair`);
@@ -133,7 +144,7 @@ export class Pairing {
       saveShare(this.cfg, out.share);
     }
     this.asks.delete(a.id);
-    this.broadcast({ type: 'pair-done', name: a.name, both: passcode.length >= 6 });
+    this.broadcast({ type: 'pair-done', name: a.name, both: passcode.length >= 6, by: a.by || undefined });
     return { ok: true, added: passcode.length >= 6 };
   }
 
@@ -162,7 +173,8 @@ export class Pairing {
   }
 
   // Ask one Bob. Returns at once with the number to match; the answer is collected in the background.
-  async pairWith(addressIn) {
+  // 1.5.123 { token, by }: pairing by introduction (Pass my Bob-Net along): the token goes with the ask, no card there.
+  async pairWith(addressIn, { token, by } = {}) {
     const address = cleanAddress(addressIn);
     if (!address) return { error: 'That isn\'t a Tailscale address. It looks like 100.x.y.z or name.something.ts.net.' };
     const cur = this.outgoing.get(address);
@@ -172,13 +184,13 @@ export class Pairing {
     const code = matchCode();
     let r, j;
     try {
-      r = await this.fetch(`http://${address}/api/pair/ask`, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(4000), headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ pair: PAIR, name: myName(), address: mine, code }) });
+      r = await this.fetch(`http://${address}/api/pair/ask`, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(4000), headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ pair: PAIR, name: myName(), address: mine, code, ...(token ? { token } : {}) }) });
       j = await r.json().catch(() => ({}));
     } catch { return { error: 'No Bob answered there. Is Bob open on it, with "Let my other replicant matrices in" on?' }; }
     if (r.status === 403) return { error: 'That Bob\'s door is shut. Turn on "Let my other replicant matrices in" there, then press Pair again.' };
     if (r.status === 404) return { error: 'That Bob is too old to pair. Update him, or add him by hand under More.' };
     if (!r.ok || !j.id) return { error: j.error || `That Bob said no (${r.status}).` };
-    const job = { state: 'waiting', code, since: this.now() };
+    const job = { state: 'waiting', code, since: this.now(), by: by || undefined };
     this.outgoing.set(address, job);
     this.collect(address, j.id, job).catch((e) => { job.state = 'failed'; job.why = String(e.message || e).slice(0, 120); });
     return { address, ...job };
@@ -204,12 +216,12 @@ export class Pairing {
       const ours = doorOpen(this.cfg) ? String(this.cfg.remote.passcode) : '';
       await post('/api/pair/finish', { id, passcode: ours });
       Object.assign(job, { state: 'paired', name, both: Boolean(ours) });
-      this.log('bob-net', `paired with ${name}${ours ? ' (both ways)' : ' (one way: this door is off)'}`);
-      this.broadcast({ type: 'pair-done', name, both: Boolean(ours), asker: true });
+      this.log('bob-net', `paired with ${name}${ours ? ' (both ways)' : ' (one way: this door is off)'}${job.by ? `, introduced by ${job.by}` : ''}`);
+      this.broadcast({ type: 'pair-done', name, both: Boolean(ours), asker: true, by: job.by });
       return;
     }
     job.state = 'timeout';
   }
 
-  outgoingView() { return Object.fromEntries([...this.outgoing].map(([a, j]) => [a, { state: j.state, code: j.code, name: j.name, both: j.both, why: j.why }])); }
+  outgoingView() { return Object.fromEntries([...this.outgoing].map(([a, j]) => [a, { state: j.state, code: j.code, name: j.name, both: j.both, why: j.why, by: j.by }])); }
 }

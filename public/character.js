@@ -1,7 +1,7 @@
 // The character screen (1.5.122): a paper doll built from parts. Bob's own look on the Style page uses it (no
 // "Woman" body there: Bob is a guy), and the 🎲 Adventure start card uses it for your character, which is saved with
 // the game, never as Bob's look. Pure HTML in, one id out ("c:" plus the parts), drawn by drawBob like any look.
-import { PARTS, PART_ORDER, PART_COLOURS, DEFAULT_PARTS, cleanParts, encodeParts, decodeParts, partsFor, partName, avatar } from './avatars.js';
+import { PARTS, PART_ORDER, PART_COLOURS, COLOUR_NAMES, DEFAULT_PARTS, MONSTER_BODIES, cleanParts, encodeParts, decodeParts, partsFor, partName, avatar } from './avatars.js';
 import { drawBob } from './bob-sprite.js';
 import { esc } from './util.js';
 
@@ -12,13 +12,16 @@ export function characterHtml(parts, { bodies = PARTS.body.map(([v]) => v), useL
   const p = cleanParts(parts);
   if (!bodies.includes(p.body)) p.body = bodies[0];
   const shown = partsFor(p.body);
-  const swatchFor = (k) => (k === 'skin' && p.body === 'robot') ? 'metal' : (k === 'skin' && p.body === 'alien') ? 'alien' : SWATCH[k];
+  const swatchFor = (k) => (k === 'skin' && p.body === 'robot') ? 'metal' : (k === 'skin' && p.body === 'alien') ? 'alien' : (k === 'skin' && MONSTER_BODIES.includes(p.body)) ? 'monster' : SWATCH[k];
   const row = (k) => {
     const opts = PARTS[k].filter(([v]) => k !== 'body' || bodies.includes(v));
     const sw = swatchFor(k);
     if (sw) {
       const cols = PART_COLOURS[sw];
-      return `<div class="char-row"><span class="char-label">${esc(partName(k))}</span><div class="char-swatches" role="radiogroup" aria-label="${esc(partName(k))}">${opts.map(([v, label], i) => `<button type="button" role="radio" aria-checked="${p[k] === v}" aria-label="${esc(label)}" title="${esc(label)}" data-part="${k}" data-val="${esc(v)}" style="background:${cols[i % cols.length]}"></button>`).join('')}</div></div>`;
+      // A robot's "skin" is its metal and an alien's its own colours: the names follow the swatches (Steel, Brass... / Green, Violet...).
+      const names = (sw === 'metal' || sw === 'alien' || sw === 'monster') ? COLOUR_NAMES[sw] : null;
+      const label0 = (k === 'skin' && sw === 'metal') ? 'Metal' : (k === 'skin' && sw === 'monster') ? 'Hide' : partName(k);
+      return `<div class="char-row"><span class="char-label">${esc(label0)}</span><div class="char-swatches" role="radiogroup" aria-label="${esc(label0)}">${opts.map(([v, label], i) => { const name = names ? names[i % names.length] : label; return `<button type="button" role="radio" aria-checked="${p[k] === v}" aria-label="${esc(name)}" title="${esc(name)}" data-part="${k}" data-val="${esc(v)}" style="background:${cols[i % cols.length]}"></button>`; }).join('')}</div></div>`;
     }
     return `<label class="char-row"><span class="char-label">${esc(partName(k))}</span><select data-part="${k}" aria-label="${esc(partName(k))}">${opts.map(([v, label]) => `<option value="${esc(v)}" ${p[k] === v ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>`;
   };
@@ -36,11 +39,21 @@ export function characterHtml(parts, { bodies = PARTS.body.map(([v]) => v), useL
 export function mountCharacter(root, { parts, bodies, useLabel, onUse, onCancel }) {
   const state = { parts: cleanParts(parts) };
   if (bodies && !bodies.includes(state.parts.body)) state.parts.body = bodies[0];
-  function paint() {
+  function paint(frame = {}) {
     const cv = root.querySelector('.char-doll'); if (!cv) return;
     const c = cv.getContext('2d'); c.imageSmoothingEnabled = false;
-    try { drawBob(c, cv.width, {}, encodeParts(state.parts)); } catch {}
+    try { drawBob(c, cv.width, frame, encodeParts(state.parts)); } catch {}
   }
+  // The preview blinks every few seconds (and glances now and then), like the real thing; the timer stops when the
+  // box leaves the page. Off when Animations (Style) keep Bob still (body.still, as for his habits).
+  const timer = setInterval(() => {
+    if (!root.isConnected || !root.querySelector('.char-doll')) { clearInterval(timer); return; }
+    if (typeof document !== 'undefined' && (document.hidden || document.body?.classList.contains('still'))) return;
+    const cv = root.querySelector('.char-doll'); if (!cv.offsetParent) return; // 1.5.124: the page is hidden
+    const r = cv.getBoundingClientRect(); if (r.bottom < 0 || r.top > (globalThis.innerHeight || 1e9)) return; // scrolled out of view
+    const glance = Math.random() < 0.3 ? (Math.random() < 0.5 ? -1 : 1) : 0;
+    paint({ blink: true, look: glance }); setTimeout(() => paint({ look: glance }), 120); if (glance) setTimeout(() => paint(), 900);
+  }, 2600 + Math.random() * 1400);
   function redraw(focusKey) {
     root.innerHTML = characterHtml(state.parts, { bodies, useLabel });
     paint();

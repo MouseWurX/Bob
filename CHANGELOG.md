@@ -4,6 +4,27 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.124
+
+The bestiary: a Characters page in 🎲 Adventure, monster bodies on the character screen, and a dozen enemies the game master uses as written.
+
+- **📖 Characters** (on the Adventure start card and at the table). Four tabs. **You**: your saved heroes, with **➕ New character**, **Edit** (the character screen behind each) and **Delete this character** (asks in the page). **Party**: who's at the table now, or was last game, with hearts, kit and spells. **Met**: everyone and everything the game master names in a scene, drawn by Bob the moment they're named (people from their name, creatures by their kind, the same name always the same face); between games it holds every meeting across your campaigns, with **Forget** (which asks first). **Enemies**: the usual dozen (Goblin, Skeleton, Wolf, Bandit, Giant rat, Giant spider, Orc, Cultist, Slime, Ghost, Troll, Dragon), each with its hearts, how it attacks, the thing to know and a line from Bob.
+- **The game master knows the dozen.** Their sheets are in his rules, so a goblin has two hearts in every game and a dragon six; anything else he invents, and a boss simply has more. "Here" now lists creatures and enemies as well as people, which is how Met fills itself.
+- **Monster bodies on the character screen:** Big humanoid (takes armour, weapon and shield), Beast, Crawler and Blob, each with a Face (ears, horns, drips, tusks) and a **Hide** colour (Moss, Stone, Mud, Blood, Night, Bone, Frost, Ember). Bob's own screen on Style keeps to Man, Robot and Alien.
+- The preview on the character screen stops repainting when the page is hidden or it's scrolled out of view.
+- Help: the Adventure entry (Characters page, tab names word for word), glossary line (Bestiary), FAQ ("How tough are the enemies in an Adventure?"). New test `test/run-bestiary-test.js`.
+- Phone (Bob for Android): the Characters page comes through the PC's Bob; the Android side follows in its own drop.
+
+## 1.5.123
+
+Two more pieces of Bob-Net: who's at the table, and Bobs that introduce each other.
+
+- **Bob-Net in Now running.** Once you have a Bob under My other Bobs (or Lend my brain or Take jobs on), the right pane gets a **Bob-Net** section: one line for this Bob and one for each of your other Bobs, with what each is doing for the others right now (thinking a reply for me, making a picture for me, ready, gaming so not lending, busy, not reachable, door shut over there), the jobs he takes, when he last thought for this Bob, and whether he passes Bob-Net along. The dot by each name only repeats the words. It asks each Bob "are you there?" at most every half minute while the pane is open, and nothing while it's hidden or behind a game. Before you have any Bobs, the section isn't there.
+- **Pass my Bob-Net along** (Settings, Show advanced settings, Bob-Net, What they share; off). Your Bobs with it on introduce each other: a Bob paired with two of them tells each the other's name and Tailscale address, and the two pair with each other by themselves, with no card on either side. Phone paired with the handheld, handheld with the PC: with the switch on for all three, the phone and the PC meet by themselves. Passcodes still only pass between the two Bobs being paired, after the yes the introducer vouched for, as with the card. A Bob with it off, or too old to know it (Bob for Android doesn't yet), is left alone, and the panel says so. Nothing else switches on. Checked after each pairing, after a settings change, and once an hour.
+- Help: "Pass my Bob-Net along" under Settings: Bob-Net, two FAQ entries ("What is the Bob-Net list in Now running?", "Can my Bobs introduce each other?"), glossary "Introduced", and the Now running line in Finding your way around. PRIVACY.md says what an introduction carries. A new test (`test/run-bob-net-party-test.js`) walks three Bobs through an introduction over a pretend Tailscale, and checks the party reading.
+- Phone (Bob for Android): the phone can be introduced once the phone app learns the `/api/bob-net/introduce` route (it only ever answers; a computer asks). Until then the PC says "can't be introduced yet" and you pair the phone by hand as before.
+- Phone (Bob for Android): the Adventure character screen and an answer-only Pass my Bob-Net along switch (off; needs Lend my brain). Robot and alien swatches on the character screen have their own names (Steel, Brass; Green, Violet).
+
 ## 1.5.122
 
 The character screen: build Bob's look from parts, and give your Adventure hero a look of their own.
@@ -13,6 +34,7 @@ The character screen: build Bob's look from parts, and give your Adventure hero 
 - **Saved characters.** **💾 Save this character** keeps the name, class, the one thing about them, plot armour and look in one small file beside the campaigns (up to 24); **Saved characters** on the start card picks one back, **Delete this character** removes it.
 - Help: Style and Adventure entries, a glossary line (Character screen), an FAQ entry ("Can my Adventure character look different from Bob?"). A new test (`test/run-character-test.js`).
 - Phone (Bob for Android): the start card's look and saved characters come through the PC's Bob; the Android side follows in its own drop.
+- From the PC's live check: Change his look (Equip Bob) and Change look (Attributes) open the character screen; the preview blinks; "an orange alien"; Bob's own comment for a design of your own; an empty Name saves as Hero.
 
 ## 1.5.121
 

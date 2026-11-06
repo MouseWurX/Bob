@@ -157,6 +157,11 @@ label.field { display: block; margin: 10px 0 4px; font-weight: 600; }
 .char-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
 .char-swatches button { width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 50%; border: 2px solid var(--line); }
 .char-swatches button[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.adv-chars-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; } .tabs button { min-height: 40px; border-radius: 999px; }
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
+.adv-char { display: flex; gap: 12px; align-items: flex-start; } .adv-char-words { flex: 1; min-width: 0; } .adv-char-words .btns { margin-top: 6px; }
+.adv-noface { width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; font-size: 32px; }
 .adv-party { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 10px; }
 .adv-member { flex: none; min-width: 120px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
 .adv-member.turn { border-color: var(--accent); } .adv-member.out { opacity: .55; }

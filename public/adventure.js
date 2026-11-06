@@ -31,6 +31,8 @@ export function createAdventure({ api }) {
   // 1.5.122: your character has a look of its own (the character screen, any body), never Bob's avatar.
   const you = { name: '', cls: 'fighter', trait: '', armour: 'some', look: encodeParts(DEFAULT_PARTS) };
   let lookOpen = false, delAsk = '';
+  // 1.5.124 The Characters page (📖): You / Party / Met / Enemies, over the start card or the table.
+  let chars = null; // null = not open; else { tab, edit: a saved character being edited (or 'new'), ask: id awaiting delete }
   const party = new Map(); // player key -> { ticked, armour, cls }
 
   async function load() {
@@ -66,7 +68,7 @@ export function createAdventure({ api }) {
       ${ownBox}
       <h3>Your character</h3>
       <div class="adv-you">
-        <label>Name <input type="text" data-you="name" value="${esc(you.name)}" maxlength="40" placeholder="${esc(settings().userName || 'Hero')}"></label>
+        <label>Name <input type="text" data-you="name" value="${esc(you.name)}" maxlength="40" placeholder="Hero"></label>
         <label>Class <select data-you="cls" aria-label="Class">${Object.entries(CLASSES).map(([id, n]) => `<option value="${id}" ${you.cls === id ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
         <span class="muted">${stats[you.cls]}</span>
         <label>One thing about them <input type="text" data-you="trait" value="${esc(you.trait)}" maxlength="120" placeholder="never leaves a door unopened"></label>
@@ -77,6 +79,7 @@ export function createAdventure({ api }) {
       ${lookOpen ? '<div class="char-box"></div>' : ''}
       <div class="adv-chars">${chars.length ? `<label>Saved characters <select data-saved-char aria-label="Saved characters"><option value="">Pick one…</option>${chars.map((c) => `<option value="${esc(c.id)}" ${c.id === you.savedId ? 'selected' : ''}>${esc(c.name)} (${esc(CLASSES[c.cls] || c.cls)})</option>`).join('')}</select></label>` : ''}
         <button type="button" class="mini" data-save-char>💾 Save this character</button>${you.savedId ? (delAsk === you.savedId ? `<span>Delete ${esc(chars.find((c) => c.id === you.savedId)?.name || 'this character')}?</span> <button type="button" class="mini danger" data-del-char="${esc(you.savedId)}">Delete for good</button><button type="button" class="link" data-del-keep>Keep it</button>` : `<button type="button" class="mini" data-del-ask="${esc(you.savedId)}">Delete this character</button>`) : ''} ${tip('Saved characters keep the name, class, the one thing about them, plot armour and the look, so you can pick the same hero next time. They live beside the saved campaigns on this replicant matrix.', 'Saved characters')}</div>
+      <p><button type="button" data-chars-open>📖 Characters</button> <span class="muted">Your heroes, the party, everyone you've met, and the usual enemies.</span></p>
       <h3>Who plays</h3>
       <p class="muted">Tick the Bobs at the table. A Bob on your Bob-Net plays himself over there; a copy of me is played by the game master brain. What goes to him: the scene so far and his character's sheet, over Tailscale to your own Bob only; nothing else from this replicant matrix. Each gets their own plot armour.</p>
       <ul class="adv-players">${(players || []).map((p) => { const k = p.address || p.name, st = party.get(k); return `<li class="${p.ok === false ? 'dim' : ''}"><label><input type="checkbox" data-player="${esc(k)}" ${st.ticked ? 'checked' : ''} ${p.ok === false ? 'disabled' : ''}> <strong>${esc(p.name)}</strong> <span class="muted">${esc(p.note)}</span></label>
@@ -88,6 +91,40 @@ export function createAdventure({ api }) {
       ${msg ? `<p class="adv-msg" role="alert">${esc(msg)}</p>` : ''}
       ${saved.length ? `<h3>Continue a campaign</h3><ul class="adv-saved">${saved.map((g) => `<li><strong>${esc(g.title)}</strong> <span class="muted">${esc(g.setting)} · ${g.scenes} scene${g.scenes === 1 ? '' : 's'} · ${esc(g.party.join(', '))}${g.status === 'over' ? ' · ended' : ''}</span> <button type="button" class="mini" data-continue="${esc(g.id)}" ${v?.refusal ? 'disabled' : ''}>Continue</button> <button type="button" class="mini" data-delete="${esc(g.id)}">Delete</button></li>`).join('')}</ul>` : ''}
     </section>`;
+  }
+
+  // ---------- The Characters page (1.5.124) ----------
+  function charsHtml() {
+    const tabs = [['you', '🧍 You'], ['party', '👥 Party'], ['met', '📖 Met'], ['enemies', '⚔ Enemies']];
+    const bar = `<div class="adv-chars-top"><button type="button" data-chars-back>← Back</button><div class="tabs" role="tablist" aria-label="Characters">${tabs.map(([id, l]) => `<button role="tab" aria-selected="${chars.tab === id}" data-chars-tab="${id}">${l}</button>`).join('')}</div></div>`;
+    const card = (look, title, sub, extra = '') => `<li class="adv-char"><canvas class="adv-face" width="64" height="64" data-look="${esc(look || encodeParts(DEFAULT_PARTS))}" aria-hidden="true"></canvas><div><strong>${esc(title)}</strong><br><span class="muted">${sub}</span>${extra}</div></li>`;
+    let bodyHtml = '';
+    if (chars.tab === 'you') {
+      const list = v?.characters || [];
+      if (chars.edit) {
+        const c = chars.edit === 'new' ? { name: '', cls: 'fighter', trait: '', armour: 'some', look: encodeParts(DEFAULT_PARTS) } : list.find((x) => x.id === chars.edit) || { name: '', cls: 'fighter', trait: '', armour: 'some', look: encodeParts(DEFAULT_PARTS) };
+        chars.draft = chars.draft || { ...c };
+        const d = chars.draft;
+        bodyHtml = `<div class="adv-you"><label>Name <input type="text" data-draft="name" value="${esc(d.name)}" maxlength="40" placeholder="Hero"></label>
+          <label>Class <select data-draft="cls" aria-label="Class">${Object.entries(CLASSES).map(([id, n]) => `<option value="${id}" ${d.cls === id ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+          <label>One thing about them <input type="text" data-draft="trait" value="${esc(d.trait || '')}" maxlength="120" placeholder="never leaves a door unopened"></label>
+          <label>Plot armour <select data-draft="armour" aria-label="Plot armour">${Object.entries(ARMOUR).map(([id, [n]]) => `<option value="${id}" ${d.armour === id ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>
+          <div class="char-box"></div>`;
+      } else {
+        bodyHtml = `<p class="muted">Your heroes, kept for the next game. Pick one on the start card under Saved characters.</p>
+          <ul class="adv-char-list">${list.map((c) => card(c.look, c.name, `${esc(CLASSES[c.cls] || c.cls)} · plot armour ${esc(ARMOUR[c.armour]?.[0] || 'Some')}${c.trait ? ` · ${esc(c.trait)}` : ''}`, `<div class="row"><button type="button" class="mini" data-chars-edit="${esc(c.id)}">Edit</button>${chars.ask === c.id ? `<span>Delete ${esc(c.name)}?</span> <button type="button" class="mini danger" data-chars-del="${esc(c.id)}">Delete for good</button><button type="button" class="link" data-chars-keep>Keep it</button>` : `<button type="button" class="mini" data-chars-ask="${esc(c.id)}">Delete this character</button>`}</div>`)).join('')}</ul>
+          <div class="row"><button type="button" class="yes" data-chars-edit="new">➕ New character</button></div>`;
+      }
+    } else if (chars.tab === 'party') {
+      const g = v?.game || v?.lastParty;
+      bodyHtml = g ? `<p class="muted">${v?.game ? 'At the table now' : `The last game, ${esc(g.title)}`}. Each Bob plays with his own look.</p><ul class="adv-char-list">${g.party.map((c) => card(c.who === 'you' ? (c.look || encodeParts(DEFAULT_PARTS)) : c.who === 'net' ? 'bot' : (settings().look || 'sysop'), c.name, `${esc(c.className)}${c.who === 'you' ? ' · you' : c.who === 'net' ? ' · his own Bob' : ' · played by the game master'} · <span aria-label="${c.hearts} of 5 hearts">${hearts(c.hearts)}</span>${c.trait ? `<br>${esc(c.trait)}` : ''}${c.items?.length ? `<br>Carries ${esc(c.items.join(', '))}` : ''}${c.spells?.length ? `<br>Knows ${esc(c.spells.join(', '))}` : ''}`)).join('')}</ul>` : '<p class="muted">No party yet. Start a game and they turn up here.</p>';
+    } else if (chars.tab === 'met') {
+      const list = v?.game?.met?.length ? v.game.met : (v?.met || []);
+      bodyHtml = list.length ? `<p class="muted">${v?.game?.met?.length ? 'Everyone the game master has brought on in this game.' : 'Everyone and everything you have run into, across your games.'} Drawn by me the moment they're named.</p><ul class="adv-char-list">${list.map((m) => card(m.look, m.name, `${m.kind === 'enemy' ? `⚔ ${esc(v?.enemies?.find((e) => e.id === m.type)?.name || 'enemy')}` : m.kind === 'creature' ? 'creature' : 'person'}${m.scene ? ` · met at ${esc(m.scene)}` : ''}${m.game && !v?.game ? ` · ${esc(m.game)}` : ''}`, v?.game ? '' : `<div class="row">${chars.ask === m.id ? `<span>Forget ${esc(m.name)}?</span> <button type="button" class="mini danger" data-met-forget="${esc(m.id)}">Forget for good</button><button type="button" class="link" data-chars-keep>Keep it</button>` : `<button type="button" class="mini" data-chars-ask="${esc(m.id)}">Forget</button>`}</div>`)).join('')}</ul>` : '<p class="muted">Nobody yet. Whoever the game master names in a scene lands here, drawn.</p>';
+    } else {
+      bodyHtml = `<p class="muted">The usual suspects, with how many hearts they have and what to know. The game master uses these as written and invents the rest.</p><ul class="adv-char-list">${(v?.enemies || []).map((e) => card(e.look, e.name, `<span aria-label="${e.hearts} heart${e.hearts === 1 ? '' : 's'}">${hearts(e.hearts, e.hearts)}</span> · ${esc(e.attack)}<br><em>${esc(e.trick)}</em><br>${esc(e.flavour)}`)).join('')}</ul>`;
+    }
+    return `<section class="adv-chars-page">${bar}${bodyHtml}${msg ? `<p class="adv-msg" role="alert">${esc(msg)}</p>` : ''}</section>`;
   }
 
   // ---------- The table ----------
@@ -126,7 +163,8 @@ export function createAdventure({ api }) {
       <div class="adv-top"><strong>${esc(g.title)}</strong> <span class="muted">${esc(g.settingText)}${scene ? ` · Scene ${scene.n}: ${esc(scene.title)}` : ''} · round ${g.round}</span>
         <span class="adv-fill"></span>
         ${g.status === 'playing' ? '<button type="button" data-pause>⏸ Pause</button>' : g.status === 'paused' ? '<button type="button" class="yes" data-resume>▶ Resume</button>' : ''}
-        <button type="button" data-journal aria-pressed="${journal}">📖 Journal</button>
+        <button type="button" data-journal aria-pressed="${journal}">📓 Journal</button>
+        <button type="button" data-chars-open>📖 Characters</button>
         <button type="button" data-end>${g.status === 'over' ? 'Close' : '🏁 End game'}</button></div>
       ${journal ? `<div class="adv-journal"><strong>The story so far</strong><p>${esc(g.summary || 'Nothing written down yet; I sum things up every three scenes.')}</p>${g.scenes.length ? `<p class="muted">${g.scenes.map((s) => `Scene ${s.n}: ${esc(s.title)}`).join(' · ')}</p>` : ''}</div>` : ''}
       ${partyHtml(g)}
@@ -141,10 +179,12 @@ export function createAdventure({ api }) {
   function draw() {
     if (!open) return;
     const g = v?.game;
-    body.innerHTML = g ? gameHtml(g) : startHtml();
+    body.innerHTML = chars ? charsHtml() : g ? gameHtml(g) : startHtml();
     drawFaces();
     const box = body.querySelector('.char-box');
-    if (box) mountCharacter(box, { parts: partsOf(you.look), useLabel: 'Use for this character', onUse(id) { you.look = id; lookOpen = false; draw(); }, onCancel() { lookOpen = false; draw(); } });
+    if (box && chars?.edit) {
+      mountCharacter(box, { parts: partsOf(chars.draft.look), useLabel: 'Save this character', async onUse(id) { try { const r = await api('/api/adventure/characters/save', { id: chars.edit === 'new' ? '' : chars.edit, name: chars.draft.name || 'Hero', cls: chars.draft.cls, trait: chars.draft.trait, armour: chars.draft.armour, look: id }); v = { ...v, characters: r.characters }; msg = ''; } catch (e) { msg = e.message; } chars.edit = null; chars.draft = null; draw(); }, onCancel() { chars.edit = null; chars.draft = null; draw(); } });
+    } else if (box) mountCharacter(box, { parts: partsOf(you.look), useLabel: 'Use for this character', onUse(id) { you.look = id; lookOpen = false; draw(); }, onCancel() { lookOpen = false; draw(); } });
     const log = $('adv-log'); if (log) log.scrollTop = log.scrollHeight;
     for (const [who, el] of live) if (el.text) { const l = $('adv-live'); if (l) { l.hidden = false; l.innerHTML = `<span class="adv-who">${who === 'gm' ? '🎲 Game master' : esc(g?.party.find((c) => c.id === who)?.name || 'A Bob')}</span><p>${esc(el.text)}</p>`; } }
   }
@@ -170,7 +210,15 @@ export function createAdventure({ api }) {
     if (t.dataset.setting) { you.setting = t.dataset.setting; draw(); return; }
     if (t.dataset.pace) { you.pace = t.dataset.pace; draw(); return; }
     if ('youLook' in t.dataset) { lookOpen = !lookOpen; draw(); return; }
-    if ('saveChar' in t.dataset) { try { const r = await api('/api/adventure/characters/save', { id: you.savedId || '', name: you.name || settings().userName || 'Hero', cls: you.cls, trait: you.trait, armour: you.armour, look: you.look }); v = { ...v, characters: r.characters }; you.savedId = r.characters[0]?.id; msg = ''; } catch (e) { msg = e.message; } draw(); return; }
+    if ('charsOpen' in t.dataset) { chars = { tab: 'you' }; draw(); return; }
+    if ('charsBack' in t.dataset) { chars = null; draw(); return; }
+    if (t.dataset.charsTab) { chars = { tab: t.dataset.charsTab }; draw(); return; }
+    if (t.dataset.charsEdit) { chars.edit = t.dataset.charsEdit; chars.draft = null; draw(); return; }
+    if (t.dataset.charsAsk) { chars.ask = t.dataset.charsAsk; draw(); return; }
+    if ('charsKeep' in t.dataset) { chars.ask = ''; draw(); return; }
+    if (t.dataset.charsDel) { chars.ask = ''; try { const r = await api('/api/adventure/characters/delete', { id: t.dataset.charsDel }); v = { ...v, characters: r.characters }; if (you.savedId === t.dataset.charsDel) you.savedId = ''; } catch (e) { msg = e.message; } draw(); return; }
+    if (t.dataset.metForget) { chars.ask = ''; try { const r = await api('/api/adventure/met/forget', { id: t.dataset.metForget }); v = { ...v, met: r.met }; } catch (e) { msg = e.message; } draw(); return; }
+    if ('saveChar' in t.dataset) { try { const r = await api('/api/adventure/characters/save', { id: you.savedId || '', name: you.name || 'Hero', cls: you.cls, trait: you.trait, armour: you.armour, look: you.look }); v = { ...v, characters: r.characters }; you.savedId = r.characters[0]?.id; msg = ''; } catch (e) { msg = e.message; } draw(); return; }
     if (t.dataset.delAsk) { delAsk = t.dataset.delAsk; draw(); return; }
     if ('delKeep' in t.dataset) { delAsk = ''; draw(); return; }
     if (t.dataset.delChar) { delAsk = ''; try { const r = await api('/api/adventure/characters/delete', { id: t.dataset.delChar }); v = { ...v, characters: r.characters }; you.savedId = ''; } catch (e) { msg = e.message; } draw(); return; }
@@ -178,7 +226,7 @@ export function createAdventure({ api }) {
     if ('start' in t.dataset) {
       const bobs = (players || []).filter((p) => party.get(p.address || p.name)?.ticked && p.ok !== false).map((p) => { const st = party.get(p.address || p.name); return { who: p.who, name: p.name, address: p.address || '', armour: st.armour, cls: st.cls }; });
       t.disabled = true;
-      await call('/api/adventure/start', { setting: you.setting || 'fantasy', settingText: body.querySelector('[data-setting-text]')?.value || '', pace: you.pace || 'evening', you: { name: you.name || settings().userName || 'Hero', cls: you.cls, trait: you.trait, armour: you.armour, look: you.look || '' }, bobs });
+      await call('/api/adventure/start', { setting: you.setting || 'fantasy', settingText: body.querySelector('[data-setting-text]')?.value || '', pace: you.pace || 'evening', you: { name: you.name || 'Hero', cls: you.cls, trait: you.trait, armour: you.armour, look: you.look || '' }, bobs });
       return;
     }
     if (t.dataset.continue) return call('/api/adventure/continue', { id: t.dataset.continue });
@@ -201,6 +249,7 @@ export function createAdventure({ api }) {
   body.addEventListener('change', (e) => {
     const el = e.target;
     if (el.dataset.you) { you[el.dataset.you] = el.value; if (el.dataset.you === 'cls') draw(); return; }
+    if (el.dataset.draft && chars?.draft) { chars.draft[el.dataset.draft] = el.value; return; }
     if ('savedChar' in el.dataset) { const c = (v?.characters || []).find((x) => x.id === el.value); if (c) { Object.assign(you, { name: c.name, cls: c.cls, trait: c.trait, armour: c.armour, look: c.look || you.look, savedId: c.id }); } draw(); return; }
     if (el.dataset.player) { party.get(el.dataset.player).ticked = el.checked; return; }
     if (el.dataset.playerCls) { party.get(el.dataset.playerCls).cls = el.value; return; }

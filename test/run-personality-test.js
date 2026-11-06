@@ -41,6 +41,7 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
 // ---- his look ----
 {
   check('his own looks are described by name', /"Sysop"/.test(lookText('sysop')) && /Hoodie/.test(lookText('sysop')));
+  check('Bob has a take on a design of his own', /Your own design/.test(bobTake('c:m.regular.0.short.1.1.none.0.tee.0.none.none.none')));
   check('avatars say what kind they are', /drawn as a robot/.test(lookText('robot-3')) && /drawn as a computer/.test(lookText('pc-1')));
   check('an unknown look falls back to the default', lookText('nope') === lookText('sysop'));
   const now = lookPrompt({ look: 'bot' });

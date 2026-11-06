@@ -21,6 +21,7 @@ import { copyName } from './clan.js';
 import { saveSettings } from './config.js';
 import { sameModel } from './brain-mode.js';
 import { LOOK_ID_RE } from './look.js';
+import { ENEMIES, enemyLine, meet, listMet, forgetMet } from './bestiary.js';
 
 export const STATS = { might: 'Might', wits: 'Wits', charm: 'Charm', luck: 'Luck' };
 export const STAT_IDS = Object.keys(STATS);
@@ -241,11 +242,12 @@ House rules (loose, for fun):
 - At zero hearts with no armour the character's player decides: go out in style, or wake up captured. Nobody dies to a roll they didn't see coming.
 - The owner's Attack, Magic, Use item, Talk, Help and Run cards open a second card: attacks their kit allows, their spells, their items, who's here, allies, the ways out. Keep "here" and "exits" true to the scene, hand out items with give, and a new spell now and then with teach.
 - You narrate; you are not a character. Address the players as "you" and describe everyone else in the third person. Never write "I" or "my" as the narrator, only inside a character's quoted speech.
+- Common enemies, as written (hearts and habits): ${ENEMIES.map(enemyLine).join(' ')} Anything else is yours to invent; a boss simply has more hearts.
 - Keep it moving: 60 to 120 words a turn, end on a question, a threat or a choice. Everyone gets a turn in order; enemies act when you say. Speak in Bob's own voice: dry, warm, a little nerdy, never cruel. Never use real people, brands or other games' names.
 
 End EVERY reply with one line of JSON between <<< and >>> that the app reads and nobody sees. The JSON line is the very last thing you write: one opening brace, one closing brace, then >>> and nothing after it. Never write anything after >>>.
 <<<{"cards":["attack","talk"],"hearts":{"Name":-1},"kind":"fight","next":"Name","scene":0,"title":"","here":["the innkeeper","a hooded stranger"],"exits":["the cellar door","back to the street"],"give":{"Name":["a rusty key"]},"take":{},"teach":{}}>>>
-cards: which of these fit the NEXT player's turn (owner only): ${CARD_IDS.join(', ')}. hearts: changes for party members only, by name, this turn (leave {} for none). kind: fight, talk, place, choice, montage, or end when the story is over. next: whose turn is next. scene: 1 only when the party moves to a new place or a new situation (a scene usually lasts a round or two, after everyone has had a turn), with its title; otherwise 0. here: who can be talked to right now. exits: the ways out of here. give/take: items a character gains or loses this turn, by name. teach: a new spell a character learns, by name (rarely).`;
+cards: which of these fit the NEXT player's turn (owner only): ${CARD_IDS.join(', ')}. hearts: changes for party members only, by name, this turn (leave {} for none). kind: fight, talk, place, choice, montage, or end when the story is over. next: whose turn is next. scene: 1 only when the party moves to a new place or a new situation (a scene usually lasts a round or two, after everyone has had a turn), with its title; otherwise 0. here: everyone and everything in the scene right now, people and creatures, enemies included (the app draws each one for the bestiary). exits: the ways out of here. give/take: items a character gains or loses this turn, by name. teach: a new spell a character learns, by name (rarely).`;
 }
 
 export function openingPrompt(game) {
@@ -273,6 +275,8 @@ export function listGames(cfg) {
       .filter((g) => g && g.id).map((g) => ({ id: g.id, title: g.title, setting: g.settingText, pace: g.pace, scenes: g.scenes.length, at: g.at, status: g.status, party: g.party.map((c) => c.name) })).sort((a, b) => b.at - a.at);
   } catch { return []; }
 }
+// The party of the newest saved game, for the Characters page's Party tab between games.
+export function lastParty(cfg) { const g = listGames(cfg)[0]; const full = g && loadGame(cfg, g.id); return full ? { title: full.title, party: full.party } : null; }
 export function loadGame(cfg, id) {
   if (!/^[a-z0-9-]{4,40}$/.test(String(id || ''))) return null;
   try { return JSON.parse(fs.readFileSync(path.join(dir(cfg), `${id}.json`), 'utf8')); } catch { return null; }
@@ -356,12 +360,12 @@ export class Adventure {
 
   view() {
     const g = this.game;
-    if (!g) return { game: null, busy: '', saved: listGames(this.cfg), characters: listCharacters(this.cfg), settings: cleanAdventure(this.cfg.adventure), refusal: refusal(this.cfg) };
+    if (!g) return { game: null, busy: '', saved: listGames(this.cfg), characters: listCharacters(this.cfg), met: listMet(this.cfg), enemies: ENEMIES, lastParty: lastParty(this.cfg), settings: cleanAdventure(this.cfg.adventure), refusal: refusal(this.cfg) };
     return {
-      game: { id: g.id, title: g.title, settingText: g.settingText, pace: g.pace, status: g.status, party: g.party, turn: g.turn, round: g.round, scenes: g.scenes.slice(-4), sceneCount: g.scenes.length, log: g.log.slice(-40).map(({ raw, ...l }) => l), summary: g.summary, cards: g.cards, kind: g.kind, here: g.here || [], exits: g.exits || [], at: g.at,
+      game: { id: g.id, title: g.title, settingText: g.settingText, pace: g.pace, status: g.status, party: g.party, turn: g.turn, round: g.round, scenes: g.scenes.slice(-4), sceneCount: g.scenes.length, log: g.log.slice(-40).map(({ raw, ...l }) => l), summary: g.summary, cards: g.cards, kind: g.kind, here: g.here || [], exits: g.exits || [], met: (g.met || []).slice(-30), at: g.at,
         // The second card behind each of the owner's cards, as things stand (Back on the page returns to the hand).
         second: this.waitingFor ? Object.fromEntries((g.cards || []).map((c) => [c, secondCard(c, g.party.find((x) => x.id === this.waitingFor) || g.party[0], g)]).filter(([, v]) => v)) : {} },
-      busy: this.busy, waitingFor: this.waitingFor, saved: listGames(this.cfg), settings: cleanAdventure(this.cfg.adventure), refusal: refusal(this.cfg)
+      busy: this.busy, waitingFor: this.waitingFor, saved: listGames(this.cfg), characters: listCharacters(this.cfg), met: listMet(this.cfg), enemies: ENEMIES, settings: cleanAdventure(this.cfg.adventure), refusal: refusal(this.cfg)
     };
   }
   push() { this.emit({ ev: 'state', ...this.view() }); }
@@ -545,7 +549,7 @@ export class Adventure {
     for (const [n, l] of Object.entries(p.give)) { const c = find(n); if (c) c.items = [...new Set([...c.items, ...l])].slice(0, 20); }
     for (const [n, l] of Object.entries(p.take)) { const c = find(n); if (c) c.items = c.items.filter((x) => !l.some((t) => x.toLowerCase() === t.toLowerCase())); }
     for (const [n, l] of Object.entries(p.teach)) { const c = find(n); if (c) c.spells = [...new Set([...c.spells, ...l])].slice(0, 12); }
-    if (p.here) g.here = p.here;
+    if (p.here) { g.here = p.here; meet(g, p.here, this.cfg); } // 1.5.124: the bestiary's Met tab
     if (p.exits) g.exits = p.exits;
     if (p.kind && p.kind !== 'end') g.kind = p.kind;
     // 1.5.120: a scene only counts when its title is new and everyone has had a turn since the last one started, so a game
@@ -692,6 +696,7 @@ export async function adventureRoute({ req, res, p, brain, body, send, isLocal =
     if (p === '/api/adventure/delete') return send(res, 200, a.remove(String(b.id || ''))), true;
     if (p === '/api/adventure/characters/save') return send(res, 200, { characters: saveCharacter(brain.cfg, b) }), true; // 1.5.122
     if (p === '/api/adventure/characters/delete') return send(res, 200, { characters: deleteCharacter(brain.cfg, String(b.id || '')) }), true;
+    if (p === '/api/adventure/met/forget') return send(res, 200, { met: forgetMet(brain.cfg, String(b.id || '')) }), true; // 1.5.124
     if (p === '/api/adventure/settings') { // Settings, 🎲 Adventure: only from this replicant matrix
       if (!isLocal) { send(res, 403, { error: 'Adventure settings can only be changed on this replicant matrix itself.' }); return true; }
       const next = cleanAdventure({ ...cleanAdventure(brain.cfg.adventure), ...b });

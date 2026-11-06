@@ -52,7 +52,8 @@ import { phoneView, cleanPhonePatch, findAddresses, newPasscode, isTailscaleIp }
 import { firewallState, changeRule } from './firewall.js';
 import { shareView, cleanSharePatch, saveShare, lendChat, lendRefusal, helloFor } from './share-brains.js';
 import { guestRoute, answerAway } from './share-jobs.js';
-import { Pairing } from './bob-net-pair.js';
+import { Pairing, myName } from './bob-net-pair.js';
+import { partyView, Introductions } from './bob-net-party.js';
 import { OS, features } from './platform.js';
 import { saveExport } from './diagram.js';
 import { saveAs } from './save-as.js';
@@ -91,11 +92,16 @@ function broadcast(ev) {
   const data = `data: ${JSON.stringify(ev)}\n\n`;
   for (const res of ev?.type === 'think' || ev?.type === 'think-start' ? mindClients : clients) res.write(data);
   try { telegram?.watch(ev); } catch {} // Talk to Bob on Telegram: only the Telegram chat's events, and only while it's on
+  if (ev?.type === 'pair-done') try { introductions.soon(); } catch {} // 1.5.123: a new Bob on the list meets the others
 }
 
 const brain = new Brain(cfg, broadcast);
 // 1.5.97 Pair with my other Bobs (src/bob-net-pair.js): find them on Tailscale, a Yes card there, passcodes swapped.
-const pairing = new Pairing(cfg, { broadcast, log: (k, t) => brain.log(k, t), version: VERSION, ownAddresses: () => tailscaleIps().map((ip) => `${ip}:${cfg.port}`) });
+const pairing = new Pairing(cfg, { broadcast, log: (k, t) => brain.log(k, t), version: VERSION, ownAddresses: () => tailscaleIps().map((ip) => `${ip}:${cfg.port}`), vouched: (a, t) => introductions.vouched(a, t) });
+// 1.5.123 Pass my Bob-Net along (src/bob-net-party.js): your Bobs introduce each other; also the party in Now running.
+const introductions = new Introductions(cfg, { lenders: brain.lenders, pairing, log: (k, t) => brain.log(k, t) });
+setTimeout(() => introductions.soon(0), 60_000).unref(); // once Bob is up, and then every hour
+setInterval(() => introductions.soon(0), 3600_000).unref();
 brain.mindWatchers = () => mindClients.size;
 // 1.5.38: when Downloads change, a job waiting for one (a song waiting for the music models) may be able to go.
 const shop = new ModelShop(cfg, (ev) => { broadcast(ev); if (ev?.type === 'downloads') brain.downloadsChanged(); }, brain.engine);
@@ -376,15 +382,28 @@ const server = http.createServer(async (req, res) => {
     // Share brains between your Bobs (src/share-brains.js). Settings only from this PC; lending only through the phone door.
     if (p === '/api/share-brains' && (req.method === 'GET' || req.method === 'POST')) {
       if (!isLocal) return send(res, 403, { error: 'Sharing brains can only be changed on this replicant matrix itself.' });
-      if (req.method === 'GET') return send(res, 200, { ...shareView(cfg), lenders: brain.lenderStatus() });
+      if (req.method === 'GET') return send(res, 200, { ...shareView(cfg), lenders: brain.lenderStatus(), introductions: introductions.view() });
       const b = await body(req);
       const out = cleanSharePatch(cfg, b);
       if (out.error) return send(res, 400, { error: out.error });
       saveShare(cfg, out.share);
       brain.lenders.state.clear();
-      brain.log('settings', `share brains: lend ${out.share.lend ? 'on' : 'off'}, borrow ${out.share.borrow.on ? out.share.borrow.when : 'off'}, ${out.share.borrow.bobs.length} Bob(s)`);
+      brain.log('settings', `share brains: lend ${out.share.lend ? 'on' : 'off'}, borrow ${out.share.borrow.on ? out.share.borrow.when : 'off'}, pass along ${out.share.passAlong ? 'on' : 'off'}, ${out.share.borrow.bobs.length} Bob(s)`);
       if (b.check) await Promise.all(brain.lenders.bobs().map((x) => brain.lenders.hello(x, { force: true })));
-      return send(res, 200, { ...shareView(cfg), lenders: brain.lenderStatus() });
+      if (out.share.passAlong) introductions.soon(500); // a new switch or a new Bob: introductions right away
+      return send(res, 200, { ...shareView(cfg), lenders: brain.lenderStatus(), introductions: introductions.view() });
+    }
+    // 1.5.123 The Bob-Net party in Now running: every Bob on the list and what he's doing for the others. This replicant matrix only.
+    if (req.method === 'GET' && p === '/api/bob-net/party') {
+      if (!isLocal) return send(res, 403, { error: 'this replicant matrix only' });
+      await Promise.all(brain.lenders.bobs().map((x) => brain.lenders.hello(x).catch(() => null))); // cached: 30 s good, 60 s down
+      return send(res, 200, partyView(brain));
+    }
+    // 1.5.123 Pass my Bob-Net along: another of your Bobs (signed in) introduces a third. Never from this window.
+    if (req.method === 'POST' && p === '/api/bob-net/introduce') {
+      if (!isRemote) return send(res, 403, { error: 'only from another of your Bobs' });
+      const r = introductions.receive(await body(req).catch(() => ({})), req.socket.remoteAddress);
+      return send(res, r.code, r);
     }
     // 1.5.97 Pair with my other Bobs: Find, Pair, and the Yes/No card. Only on this replicant matrix itself.
     if (p === '/api/bob-net/find' || p === '/api/bob-net/pair' || p === '/api/bob-net/answer') {
@@ -407,7 +426,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/lend/hello') {
       const why = lendRefusal(brain, brain.lendDeps);
       const q = why ? null : brain.lendDeps.quickBrain(brain);
-      return send(res, 200, helloFor(brain, { why, quick: q, can: capabilities(cfg), version: VERSION, label: (m) => brain.brainLabel(m), webOn: cfg.webSearch === true, bigBrain: brain.guestBigBrain() }));
+      return send(res, 200, helloFor(brain, { why, quick: q, can: capabilities(cfg), version: VERSION, label: (m) => brain.brainLabel(m), webOn: cfg.webSearch === true, bigBrain: brain.guestBigBrain(), name: myName() }));
     }
     // 1.5.72 Share jobs: whole jobs from your other Bobs (src/share-jobs.js). start() checks "Take jobs from my other Bobs".
     if (p.startsWith('/api/guest/jobs') && await guestRoute({ req, res, p, url, brain, body, send, serveFile, findOutput, cfg }) !== false) return;

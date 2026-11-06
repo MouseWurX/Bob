@@ -31,6 +31,7 @@ const check = (name, ok) => { if (ok) pass++; else fail++; console.log(`${ok ? '
   check('the weapon is on the left edge, the shield on the right, armour over the body', bare.map.every((r) => r[0] === '.') && look.map.some((r) => r[0] !== '.') && bare.map.every((r) => r[15] === '.') && look.map[12][15] !== '.' && bare.map[13].slice(3, 13) !== look.map[13].slice(3, 13));
   const robot = compose({ ...DEFAULT_PARTS, body: 'robot', skin: '3', face: '2', weapon: 'axe' });
   const alien = compose({ ...DEFAULT_PARTS, body: 'alien', skin: '1', face: '5', outfit: 'labcoat' });
+  check('a or an before the colour: an orange alien, a steel robot, an auburn mohawk', /^An orange alien/.test(compose({ ...DEFAULT_PARTS, body: 'alien', skin: '4' }).what) && /^A steel robot/.test(compose({ ...DEFAULT_PARTS, body: 'robot', skin: '0' }).what) && /an auburn mohawk/.test(compose({ ...DEFAULT_PARTS, hair: 'mohawk', hc: '3' }).what));
   check('a robot or alien keeps its own head on the shared body rows', /robot/.test(robot.what) && /an axe/.test(robot.what) && /alien/.test(alien.what) && /lab coat/.test(alien.what) && robot.map.some((r) => r.includes('E')) && alien.map.some((r) => r.includes('E')));
   check('the parts that fit a body: no hair on a robot, no face picker on a person', !partsFor('robot').includes('hair') && !partsFor('alien').includes('hc') && !partsFor('m').includes('face') && partsFor('f').includes('hair'));
   check('cleanParts fills gaps and throws out nonsense', cleanParts({ body: 'f', weapon: 'bazooka', hc: '99' }).weapon === 'none' && cleanParts({ body: 'f' }).body === 'f' && cleanParts({}).build === 'regular');
@@ -53,6 +54,7 @@ const check = (name, ok) => { if (ok) pass++; else fail++; console.log(`${ok ? '
   check('Surprise me, Start over, a preview and its words', /data-char-random/.test(html) && /data-char-reset/.test(html) && /char-doll/.test(html) && /short dark brown hair/.test(html));
   const robot = characterHtml({ ...DEFAULT_PARTS, body: 'robot' }, { bodies: BOB_BODIES });
   check('a robot body hides the hair and beard pickers and shows a face picker', !/data-part="hair"/.test(robot) && !/data-part="beard"/.test(robot) && /data-part="face"/.test(robot));
+  check('a robot\'s swatches are named for the metal (Steel, Brass...), an alien\'s for its colours, never the skin names', /aria-label="Steel"/.test(robot) && /aria-label="Brass"/.test(robot) && !/aria-label="Fair"/.test(robot) && /char-label">Metal</.test(robot) && /aria-label="Violet"/.test(characterHtml({ ...DEFAULT_PARTS, body: 'alien' })) && !/aria-label="Fair"/.test(characterHtml({ ...DEFAULT_PARTS, body: 'alien' })));
 }
 
 // ---- the look rule, Bob's words, the sheet ----
@@ -98,7 +100,9 @@ const check = (name, ok) => { if (ok) pass++; else fail++; console.log(`${ok ? '
   const adv = fs.readFileSync(new URL('../public/adventure.js', import.meta.url), 'utf8');
   const equip = fs.readFileSync(new URL('../public/equip.js', import.meta.url), 'utf8');
   check('Style has Make your own look, with Bob\'s bodies only, and shows a worn design under Your own design', /data-makelook/.test(style) && /BOB_BODIES/.test(style) && /Your own design/.test(style));
-  check('Equip Bob links to Style from under the doll', /doll-mid.*data-tab="style">Change his look/.test(equip));
+  check('Equip Bob opens the character screen from under the doll (and from Change look on Attributes)', /doll-mid.*data-golook>Change his look/.test(equip) && /data-golook>Change look/.test(fs.readFileSync(new URL('../public/personality.js', import.meta.url), 'utf8')) && /'golook' in b\.dataset.*openMaker/.test(fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8')) && /function openMaker/.test(style));
+  check('the preview blinks on a timer that stops when the box leaves the page', /setInterval/.test(fs.readFileSync(new URL('../public/character.js', import.meta.url), 'utf8')) && /blink: true/.test(fs.readFileSync(new URL('../public/character.js', import.meta.url), 'utf8')) && /root\.isConnected/.test(fs.readFileSync(new URL('../public/character.js', import.meta.url), 'utf8')));
+  check('a saved or started character with no name is Hero, never the account name', !/settings\(\)\.userName \|\| 'Hero'/.test(adv) && /name: you\.name \|\| 'Hero'/.test(adv));
   check("the start card has Looks like, Change the look, Save this character and Saved characters (Delete this character asks in the page), and never sends Bob's look as the character's", /data-you-look/.test(adv) && /data-save-char/.test(adv) && /data-saved-char/.test(adv) && /Delete this character/.test(adv) && /Delete for good/.test(adv) && /Keep it/.test(adv) && !/confirm\('Delete this character/.test(adv) && /look: you\.look \|\| ''/.test(adv) && !/look: settings\(\)\.look/.test(adv));
   check("the party strip draws the owner's character from its own look, not Bob's", /c\.who === 'you' \? \(c\.look \|\| encodeParts\(DEFAULT_PARTS\)\)/.test(adv));
   const h = (id) => HELP.find((e) => e.id === id);

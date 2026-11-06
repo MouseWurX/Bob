@@ -51,6 +51,7 @@ export function shareView(cfg) {
   return {
     lend: s.lend === true,
     takeJobs: s.takeJobs === true,
+    passAlong: s.passAlong === true, // 1.5.123 Pass my Bob-Net along (src/bob-net-party.js)
     doorOpen: doorOpen(cfg),
     borrow: { on: b.on === true, jobs: b.jobs === true, when: WHEN.includes(b.when) ? b.when : 'gaming', bobs: (b.bobs || []).map((x) => ({ name: x.name, address: x.address, passcodeSet: String(x.passcode || '').length >= 6 })) }
   };
@@ -62,9 +63,10 @@ export const doorOpen = (cfg) => Boolean(cfg.remote?.enabled && String(cfg.remot
 export function cleanSharePatch(cfg, b) {
   const cur = cfg.share || {};
   const cb = cur.borrow || {};
-  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, borrow: { on: cb.on === true, jobs: cb.jobs === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
+  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, borrow: { on: cb.on === true, jobs: cb.jobs === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
   if ('lend' in b) next.lend = b.lend === true;
   if ('takeJobs' in b) next.takeJobs = b.takeJobs === true; // 1.5.72, off unless switched on
+  if ('passAlong' in b) next.passAlong = b.passAlong === true; // 1.5.123, off unless switched on
   if ('sendJobs' in b) next.borrow.jobs = b.sendJobs === true; // 1.5.72, off unless switched on
   if ('when' in b) { if (!WHEN.includes(b.when)) return { error: 'Pick when to borrow.' }; next.borrow.when = b.when; }
   if (b.addBob) {
@@ -185,6 +187,7 @@ export class Lenders {
     this.state = new Map(); // address -> { ok, at, brain, why }
     // 1.5.72: Bobs thinking for us right now (address -> held until), so two replies at once go to two different Bobs.
     this.inUse = new Map();
+    this.live = new Map(); // 1.5.123: address -> 'thinking' while a reply streams from him (for the Bob-Net party in Now running)
   }
   busyHere(address) { const t = this.inUse.get(address); return t !== undefined && t > this.now(); }
   hold(address, ms = 15000) { this.inUse.set(address, this.now() + ms); }
@@ -294,6 +297,7 @@ export class Lenders {
     const kick = () => { clearTimeout(timer); timer = setTimeout(() => quiet.abort(), this.quietMs); };
     const plain = messages.map((m) => { const { images, hidden, correction, ...rest } = m; return rest; });
     this.hold(bob.address, 24 * 3600 * 1000); // while it thinks; released below
+    this.live.set(bob.address, 'thinking');
     const t0 = this.now();
     let firstAt = 0, words = 0;
     const cap = setTimeout(() => { if (!firstAt) quiet.abort(); }, this.firstWordMaxMs); // "still loading" can't hold a reply forever
@@ -334,7 +338,7 @@ export class Lenders {
       if (signal?.aborted) throw e;
       if (e.why !== 'too long') this.markDown(bob, e.busy ? (e.why || 'busy') : quiet.signal.aborted ? 'too slow' : 'not reachable'); // too long: he's still fine for shorter chats
       throw quiet.signal.aborted ? new Error('too slow') : e;
-    } finally { clearTimeout(timer); clearTimeout(cap); this.hold(bob.address, 5000); }
+    } finally { clearTimeout(timer); clearTimeout(cap); this.live.delete(bob.address); this.hold(bob.address, 5000); }
   }
 }
 
@@ -346,18 +350,21 @@ export function cleanAbilities(j) {
   out.jobs = out.takesJobs ? [].concat(j?.jobs || []).filter((x) => NEEDS.includes(x)) : [];
   out.jobsBusy = typeof j?.jobsBusy === 'string' ? j.jobsBusy.slice(0, 40) : '';
   out.queue = n(j?.queue, 999);
+  out.passAlong = j?.passAlong === true; // 1.5.123: he introduces his Bobs to each other
+  if (typeof j?.name === 'string' && j.name.trim()) out.hisName = j.name.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 40);
   return out;
 }
 
 // The hello a desktop lender gives: quick replies (lend) and, with "Take jobs from my other Bobs" on, the whole jobs he
 // can really do on this computer right now. Never a job he'd have to fake: no picture model, no pictures.
-export function helloFor(brain, { why, quick, can, version, label, webOn, bigBrain }) {
+export function helloFor(brain, { why, quick, can, version, label, webOn, bigBrain, name = '' }) {
   const takesJobs = brain.cfg.share?.takeJobs === true && doorOpen(brain.cfg);
   const jobs = takesJobs ? [can.pictures && 'pictures', can.video && 'video', can.music && 'music', can.sfx && 'sfx', webOn && bigBrain && 'web', bigBrain && 'think'].filter(Boolean) : [];
   return {
     protocol: PROTOCOL, lend: why !== 'off', busy: why === 'off' ? undefined : why || undefined,
     brain: quick ? label(quick.model) : '', ctx: quick?.ctx || 0, speed: brain.engine?.lastStats?.tokPerSec || 0,
-    device: 'computer', version, takesJobs, jobs, jobsBusy: takesJobs ? guestRefusal(brain) : '', queue: brain.queue?.filter?.((j) => j.state === 'waiting' || j.state === 'working').length || 0
+    device: 'computer', version, takesJobs, jobs, jobsBusy: takesJobs ? guestRefusal(brain) : '', queue: brain.queue?.filter?.((j) => j.state === 'waiting' || j.state === 'working').length || 0,
+    name, passAlong: brain.cfg.share?.passAlong === true // 1.5.123: for the party in Now running
   };
 }
 

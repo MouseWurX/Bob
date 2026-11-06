@@ -146,10 +146,12 @@ const TAKES = {
   alien: 'I look like I took a wrong turn at a nebula. I\'m into it.',
   robot: 'Finally, a body that matches the job description.',
   pc: 'A computer wearing a computer. Very meta. I approve.',
-  odd: 'Spooky. I\'ll grow into it.'
+  odd: 'Spooky. I\'ll grow into it.',
+  c: 'Your own design. Built from parts, by you, for me. I\'ll wear it with pride and a little curiosity.'
 };
 export function bobTake(lookId) {
   const id = String(lookId || 'sysop');
+  if (id.startsWith('c:')) return TAKES.c; // 1.5.122: a design from the character screen
   return TAKES[id] || TAKES[id.split('-')[0]] || TAKES.sysop;
 }
 
@@ -164,7 +166,7 @@ export function attributesHtml({ personality, look, lookText, lookComments = fal
       <canvas class="attr-avatar" width="64" height="64" aria-label="Bob's look"></canvas>
       <div><strong>Look:</strong> ${esc(lookText || '')}<br><span class="take">"${esc(bobTake(look))}"</span></div>
     </div>
-    <div class="row wrap"><button type="button" class="mini" data-tab="style">Change look</button><button type="button" class="mini" data-askbob="What do you think of how you look right now?">Ask Bob what he thinks</button></div>
+    <div class="row wrap"><button type="button" class="mini" data-golook>Change look</button><button type="button" class="mini" data-askbob="What do you think of how you look right now?">Ask Bob what he thinks</button></div>
     <button type="button" class="pill-switch" role="switch" aria-checked="${Boolean(lookComments)}" data-lookcomments><span class="ps-text">He comments once when you change his look</span><span class="st">${lookComments ? 'On' : 'Off'}</span></button>
     <h4>Personality</h4>
     ${DIALS.map((d) => `<label class="dial"><span class="dial-name">${esc(d.name)}</span>

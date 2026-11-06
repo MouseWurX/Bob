@@ -156,5 +156,7 @@ export function createStylePage({ api, redraw, flash }) {
     return true;
   }
 
-  return { html, onClick, onInput, paintPreviews, closing(settings) { if (draft) { draft = null; applyStyle(settings?.style); } } };
+  // 1.5.122: Equip Bob's "Change his look" opens the page with the character screen already open.
+  function openMaker(settings) { making = true; makingParts = partsOf(settings?.look || LOOK_ID); }
+  return { html, onClick, onInput, paintPreviews, openMaker, closing(settings) { if (draft) { draft = null; applyStyle(settings?.style); } } };
 }
