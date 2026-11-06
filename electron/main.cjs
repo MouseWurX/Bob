@@ -153,6 +153,8 @@ async function setUpHome() {
   const { suggestedHome, homeProblem } = await import(pathToFileURL(path.join(root, 'src', 'home.js')).href);
   if (home.agentDir && home.moveTo) home = await finishMove(home, homeFile());
   let agentDir = home.agentDir;
+  // BOB_AGENT_DIR (a test start, the smoke checks on GitHub's machines): that folder, no question asked, nothing written.
+  if (!agentDir && process.env.BOB_AGENT_DIR) agentDir = process.env.BOB_AGENT_DIR;
   if (!agentDir) {
     // Bobs from before 1.5.125 kept their things at the old default (%LOCALAPPDATA%\Bob and friends): those stay
     // where they are, with "Where Bob keeps his things" in Settings to move them. A fresh Bob is asked.
