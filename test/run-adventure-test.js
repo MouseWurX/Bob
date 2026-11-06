@@ -118,6 +118,7 @@ const until = async (f, n = 200) => { for (let i = 0; i < n; i++) { if (f()) ret
   let v = a.view();
   check("the opening scene is told, then it's the owner's turn with only the cards that fit (plus Something else)", v.game.log[0].who === 'gm' && v.game.log[0].text === 'The tavern is loud.' && v.waitingFor === v.game.party[0].id && JSON.stringify(v.game.cards) === '["talk","look","other"]' && v.game.scenes[0].title === 'The tavern');
   check("the second card behind Talk lists who's here", v.game.second.talk.choices[0] === 'the innkeeper' && !v.game.second.look);
+  check('the Met tab keeps the scene someone was met in, from the very first reply', v.game.met.some((m) => m.name === 'the innkeeper' && m.scene === 'The tavern') && v.game.met.every((m) => m.scene));
   check('the hidden JSON line is never in what the page gets', !events.some((e) => e.ev === 'state' && JSON.stringify(e).includes('<<<')) && !v.game.log.some((l) => /<<</.test(l.text)));
   let bad = ''; try { a.act({ card: 'attack' }); } catch (e) { bad = e.message; }
   check("a card that doesn't fit the scene is refused", /doesn't fit/.test(bad));
