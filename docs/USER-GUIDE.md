@@ -6,7 +6,7 @@ Bob is a helper who lives on your own PC. He chats, plans, researches, writes an
 
 Two promises run through everything Bob does:
 
-- **Nothing leaves your PC unless you say so.** Bob only goes online to download something you picked, to search the web if you turned on **Let Bob search the web**, or to use a cloud helper you switched on yourself.
+- **Nothing leaves your PC unless you say so.** Bob only goes online to download something you picked, to search the web if you turned on **Let Bob search the web**, to use a cloud helper you switched on yourself, or to run a job on a rented brain you hired with a card (see Optional extras).
 - **Nothing extra is switched on until you switch it on.** Anything optional starts off. Bob may suggest something, but you decide.
 
 ---
@@ -168,6 +168,12 @@ Brains stay at Q4 or better, except on cards of 8 GB or less. There, when a brai
 
 ---
 
+### The chest
+
+Under Bob on the paper doll sits his **🧰 Chest**, with a number for how many things are in it. Press it and the Inventory on the right becomes the **Chest**: everything Bob has made or saved, newest first, each as a little picture (a thumbnail Bob makes once and keeps) with its name and when he made it. Songs, documents and other files show as an icon with their title. Click one (or Tab to it and press Enter) to open it beside the chat, the same as from Made by Bob.
+
+At the top of the chest, **New things are saved in** shows the folder new pictures, clips, songs and sounds go to. **Change folder…** opens your system's folder window and saves the pick straight away; it is the same setting as Settings, **Where Bob saves things**. **Use Bob's own folder** goes back and **Show in folder** opens the folder. Older things stay where they are. **Open Made by Bob** shows everything with filters and a search box. On the phone, menu, **Chest** shows the same list from your PC's Bob, with **Save to this phone**.
+
 ## 4. Bob's personality
 
 Bob has a dry, curious, slightly nerdy personality. You can turn that up or down.
@@ -289,9 +295,15 @@ If a slot is empty, Bob tells you which model would fill it.
 
 Ask for a song ("a chiptune boss theme, about a minute") or a sound effect ("a creaky wooden door"). It lands in the chat as a **song player**: a round ▶ button, its title, bars showing the song's shape (click or drag along them to jump around; arrow keys jump 5 seconds), the time, **Lyrics** if it has words, **Open in Made by Bob** for a bigger player in the side panel, and **Show in folder**. Several songs in one reply play one after another, and only one plays at a time. Each song is kept as a .wav file named with the date and its title.
 
+### Bob's home folder
+
+Bob's **home** is one folder with his models, the engines he runs on, his notes, chats and settings, apart from the program itself. You pick it when Bob is installed (the Windows install window asks first) or the first time Bob.exe, Bob.app or the AppImage opens: Bob suggests a `Bob` folder in your own user folder, and any drive works. He refuses temporary places like AppData, because a disk clean-up would take 10 to 60 GB of models with it. A cloud-synced folder (OneDrive, Dropbox, Google Drive, iCloud) is allowed, but Bob always recommends against it and says so wherever the folder is shown: every model would be uploaded, and a sync can break a model while he uses it. Pick a plain folder on the PC.
+
+Settings, **Bob's home folder** shows the folder and the size of the models (red if it is somewhere a clean-up tool empties, or a cloud-synced folder). To move it: **Browse…** or type a new folder, **Move here…**, then **Yes, move everything**. Bob closes, copies everything across (one quick rename on the same drive), and opens again from the new folder; the old one is removed only once every file is over. The same row sits at the top of the first-run screen under **My home folder**. Older Bobs that kept things in `%LOCALAPPDATA%\Bob` carry on from there until you move them.
+
 ### Where Bob saves things
 
-Settings, **Where Bob saves things** picks the folder for the pictures, clips, songs and sounds Bob makes. It starts as Bob's own folder (the one Made by Bob lists). **Browse…** picks another (or type one and press **Save here**), **Show in folder** opens it, and **Use Bob's own folder** goes back. Only new things go to a new folder; older ones stay put and still show in your chats. Tidy up only tidies Bob's own folder. If a picked folder goes missing (an unplugged drive), Bob saves in his own until it's back.
+Settings, **Where Bob saves things** picks the folder for the pictures, clips, songs and sounds Bob makes. It starts as Bob's own folder (the one Made by Bob lists). **Browse…** picks another (or type one and press **Save here**), **Show in folder** opens it, and **Use Bob's own folder** goes back. The chest under Bob on Equip Bob has the same folder with a **Change folder…** button. Only new things go to a new folder; older ones stay put and still show in your chats. Tidy up only tidies Bob's own folder. If a picked folder goes missing (an unplugged drive), Bob saves in his own until it's back.
 
 ---
 
@@ -374,6 +386,7 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 - **Let Bob learn how-tos**: after a job with a few steps goes well, Bob offers one card to keep the steps as a how-to, and follows them next time you ask for something like it. Nothing is kept until you press **Save how-to**. Edit or delete them in Settings, **📒 How-tos**. A how-to is plain text: Hands still ask for your OK as usual. They stay on your PC.
 - **Launch on start-up**: Bob opens when Windows starts.
 - **Cloud helpers**: hand a very big job to a paid online AI, using your own key. Bob asks you each time, because it costs money and sends that job off your PC.
+- **Rented brains** (Settings, Show advanced settings, Online services): hire a big brain for one job from a service you have an account with. Three kinds: pay per answer (OpenRouter, Together AI, Lambda, or any address plus key), RunPod serverless (per second, switches itself off) and a machine by the minute (RunPod, Vast.ai, Lambda; Bob starts and stops it, and it carries a timer so it stops on its own too). Set the **Spending limits** first: every one starts at $0 and nothing can be hired until they're set. Switch on **Let Bob hire from** a service (the first time, a card says what leaves your PC), add a rental (service plus model, and a card size for machines), and put it in the **🏗 Rented brain** slot on Equip Bob. Then use the **🏗 Rented brain** switch under the chat, or wait for Bob to offer it when a chat outgrows his brains here. Every hire starts from a **Hire it (about $…)** card that says the cost and exactly what leaves your PC: the chat of that job, the files you attached, Bob's instructions and what he remembers about you. His tools still run on your PC. Keys are environment variables Bob only reads (Mac and Linux: also `~/.config/bob/env`). Tasks shows the job as **Rented**; the Settings panel shows **Machines running** with **Stop everything now**. Bob's cost figures are estimates; the service's billing page is the real bill.
 - **Music and sound effects**: extra downloads for the audio tools.
 - **Extra voices.**
 - **Advanced workshop**: if you use ComfyUI, Bob can run its workflows for you.

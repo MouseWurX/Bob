@@ -40,9 +40,9 @@ const WORK_GROUPS = {
     words: /\b(how-tos?|remember how (?:to|you|we)|(?:same|like) (?:way |as )?(?:as )?(?:last time|before)|keep (?:those|these|the) steps|save (?:those|these|the) steps)\b/i
   },
   cloud: {
-    what: 'hand a job to a paid cloud helper',
-    tools: ['ask_cloud'],
-    words: /\b(cloud|claude|gpt|openai|gemini|anthropic|online model|bigger model)\b/i
+    what: 'hand a job to a paid cloud helper, or hire a rented brain',
+    tools: ['ask_cloud', 'hire_brain'],
+    words: /\b(cloud|claude|gpt|openai|gemini|anthropic|online model|bigger model|rent|rented|hire|runpod|openrouter)\b/i
   }
 };
 

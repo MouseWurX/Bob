@@ -6,6 +6,7 @@ import { packFor, packsFor, canDo, suit, pickFor } from './fit.js';
 import { houseStyleHtml, houseGroupOf } from './house-style.js';
 import { tip } from './tips.js';
 import { esc, gb } from './util.js';
+import { kindWord, kindIcon, when, thumbImg } from './viewer.js';
 export { packFor };
 
 // side: which column around Bob. how: where the choice is saved (job = Model roles, brain = a session brain,
@@ -16,6 +17,8 @@ export const SLOTS = [
   // 1.5.56: the session brains are slots too, so every brain is equipped in one place.
   { id: 'gaming', name: 'Gaming', icon: '🎮', side: 'L', how: 'brain', kind: 'llm', cats: ['chat'], does: 'Chats on the processor while you play, so your game keeps the graphics card. Only brains timed for that go here.', empty: 'No gaming brain: chat waits while Gaming is on' },
   { id: 'deep', name: 'Deep thinking', icon: '🔭', side: 'L', how: 'brain', kind: 'llm', cats: ['chat', 'coding'], does: 'The strongest thinker, for Medium, High and Extreme effort.', empty: 'Uses the Review or main brain' },
+  // 1.5.127: a brain hired from an online service, for one job at a time. Only used when the owner says so (a card, or the chat page's 🏗 switch).
+  { id: 'rent', name: 'Rented brain', icon: '🏗', side: 'L', how: 'rent', kind: 'rent', cats: [], does: 'A big brain hired by the answer or by the minute from a service you have an account with. Only used when you say so, after a card with the cost.', empty: 'Empty: every job runs on this replicant matrix' },
   { id: 'tinker', name: 'Coding', icon: '🔨', side: 'L', how: 'job', kind: 'llm', cats: ['coding', 'chat'], does: 'Writes and fixes code.', empty: 'No coding brain: the main brain codes', off: true },
   { id: 'reviewer', name: 'Review', icon: '🧐', side: 'L', how: 'job', kind: 'llm', cats: ['chat', 'coding'], does: 'Checks code and plans carefully before you rely on them.', empty: 'Empty: the main brain checks its own work', off: true },
   { id: 'office', name: 'Office', icon: '📊', side: 'L', how: 'brain', kind: 'llm', cats: ['chat', 'coding'], does: 'One all-rounder that does everything in the Office session: writing, spreadsheets, research and planning.', empty: 'Uses the Spreadsheets helper or the main brain' },
@@ -43,9 +46,10 @@ export function entryOf(models, value) {
 }
 
 // What's in each slot now.
-export function equipped(slot, { roles, brains, embed }) {
+export function equipped(slot, { roles, brains, embed, rent }) {
   if (slot.how === 'brain') return brains?.[slot.id] || '';
   if (slot.how === 'embed') return embed || '';
+  if (slot.how === 'rent') return rent?.current || ''; // 1.5.127: the rental's id
   return roles?.current?.[slot.id] || '';
 }
 
@@ -85,7 +89,7 @@ function slotHtml(slot, ctx) {
   const cur = equipped(slot, ctx);
   const opt = cur && [...(ctx.roles?.options?.[slot.kind] || [])].find((o) => o.value === cur);
   const e = entryOf(ctx.models, cur);
-  const name = (opt && opt.label !== cur ? opt.label : e?.name) || cur;
+  const name = slot.how === 'rent' ? (ctx.rent?.rentals || []).find((r) => r.id === cur)?.name || cur : (opt && opt.label !== cur ? opt.label : e?.name) || cur; // 1.5.127
   const sel = ctx.selected === slot.id;
   const canOff = cur && slot.off && !(slot.off === 'windows' && cur === 'windows');
   const covers = cur && slot.kind === 'llm' ? allSlots().filter((s) => s.kind === 'llm' && equipped(s, ctx) === cur).length : 0;
@@ -128,6 +132,7 @@ export function shownKit(slot, ctx) {
 
 function kitHtml(slot, ctx) {
   if (!slot) return '<p class="muted">Pick a slot around Bob to see what fits it.</p>';
+  if (slot.how === 'rent') return rentKitHtml(slot, ctx); // 1.5.127
   const cur = equipped(slot, ctx);
   // Bob's pick first, then what fits, then the rest. What's equipped stays where it is in that order.
   const { shown: all, hidden } = shownKit(slot, ctx);
@@ -158,6 +163,22 @@ function kitHtml(slot, ctx) {
   const house = houseGroupOf(slot.id) ? houseStyleHtml(houseGroupOf(slot.id), ctx.houseStyle) : ''; // 1.5.34 House style
   return `<h3>${slot.icon} ${esc(slot.name)} ${tipHtml(slot.does, `About ${slot.name}`)}</h3>${house}${engine}${embedTip}<ol class="kit-list">${items || (engine || embedTip ? '' : '<li class="muted">Nothing active for this job yet.</li>')}</ol>${more}${getMore}`;
 }
+
+// 1.5.127 The Rented brain slot's kit: the rentals set up in Settings (Online services). "Use this one" puts one in the slot;
+// nothing is hired by that alone. Each line shows the service, the model, the rough price and whether its key is here.
+export function rentKitHtml(slot, ctx) {
+  const r = ctx.rent || {};
+  const cur = r.current || '';
+  const items = (r.rentals || []).map((x) => `<li class="kit${x.id === cur ? ' worn' : ''}"><button type="button" class="kit-btn" data-rentuse="${esc(x.id)}" ${x.id === cur ? 'aria-current="true"' : ''}><span class="kit-name">${esc(x.name)}</span><span class="weight muted">${esc(x.price || '')}</span>${x.id === cur ? '<span class="tag good">in the slot</span>' : ''}${x.ready?.ok ? '' : `<span class="tag warn">${esc(x.ready?.why || 'not ready')}</span>`}</button>${tipHtml(`${x.model} on ${x.serviceName}. ${x.price || ''}${x.kind === 'answer' ? '' : ` ${x.cardsText || `${x.card} GB card`}.`}`, `About ${x.name}`)}</li>`).join('');
+  const caps = r.caps || {};
+  const limits = !caps.month || !caps.job ? '<p class="muted">Every limit starts at 0, so nothing can be hired until you set the month cap and the per-job cap in Settings.</p>' : `<p class="muted">Limits: ${esc(money(caps.month))} a month (${esc(r.spentText || '$0.00')} spent so far), ${esc(money(caps.job))} a job${caps.minutes ? `, ${caps.minutes} min a machine` : ''}.</p>`;
+  return `<h3>${slot.icon} ${esc(slot.name)} ${tipHtml(slot.does + '\nWhat goes to the service: the chat of that job, the files you attach to it, my instructions and what I remember about you. My tools still run here. Your keys stay on this replicant matrix as environment variables; I never store them.', `About ${slot.name}`)}</h3>
+    ${items ? `<ol class="kit-list">${items}</ol>` : '<p class="muted">No rentals set up yet. A rental is a service plus a model, for example Qwen 3.6 35B on OpenRouter.</p>'}
+    ${cur ? '<p class="row"><button type="button" class="mini" data-rentuse="">Take it off</button></p>' : ''}
+    ${limits}
+    <p class="get-more"><button type="button" class="get-more-btn" data-rentsettings>☁ Set up rented brains in Settings</button></p>`;
+}
+const money = (n) => `$${(Math.round((Number(n) || 0) * 100) / 100).toFixed(2)}`;
 
 // Everything equipped against the card: they don't all have to be loaded at once (Bob swaps), but it shows what fits together.
 function weightHtml(ctx) {
@@ -253,6 +274,39 @@ export function starterHtml(ctx) {
     <div class="confirm starter-confirm" hidden></div></details>`;
 }
 
+// 1.5.125 The chest: what Bob has made (the Made by Bob list) as little pictures with names, on the paper doll
+// screen under Bob, and the folder new things go to with a Change folder button (the same picker as Settings,
+// Where Bob saves things). ctx.chest = { items, loaded, error }, ctx.saveDir = Settings' saveDir view.
+export const CHEST_SHOW = 24;
+export function chestTile(ctx) {
+  const n = ctx.chest?.items?.length;
+  const sel = ctx.selected === 'chest';
+  return `<button type="button" class="chest-tile${sel ? ' sel' : ''}" data-chest aria-pressed="${sel}" aria-label="Chest: what Bob made${n ? `, ${n}${n >= CHEST_SHOW ? ' or more' : ''} thing${n === 1 ? '' : 's'}` : ''}" title="What I've made, and where new things are saved"><span class="chest-icon" aria-hidden="true">${sel ? '📂' : '🧰'}</span><span class="chest-label">Chest</span>${n ? `<span class="chest-count">${n}${n >= CHEST_SHOW ? '+' : ''}</span>` : ''}</button>`;
+}
+export function chestItemHtml(x) {
+  const kind = x.kind === 'text' ? 'document' : x.kind || 'file';
+  const name = x.title || x.name || '';
+  const data = `data-view data-view-url="${esc(x.url || '')}" data-view-kind="${esc(kind)}" data-view-name="${esc(x.name || '')}" data-view-path="${esc(x.path || x.url || '')}" data-view-bytes="${esc(x.bytes ?? '')}"`;
+  const pic = kind === 'image' || kind === 'video' ? thumbImg(x, kind) : `<span class="made-ico" aria-hidden="true">${kindIcon(kind, x.name)}</span>`;
+  return `<li><button type="button" class="chest-item" ${data} aria-label="Open ${esc(name)}: ${esc(kindWord(kind, x.name).toLowerCase())}, ${esc(when(x.at))}" title="${esc(x.name || '')}">${pic}<span class="chest-name">${esc(name)}</span><span class="muted chest-when">${esc(kindWord(kind, x.name))} · ${esc(when(x.at))}</span></button></li>`;
+}
+export function chestHtml(ctx) {
+  const c = ctx.chest || {};
+  const sd = ctx.saveDir || {};
+  const items = c.items || [];
+  const folder = `<div class="chest-folder"><p><strong>New things are saved in</strong> <span class="save-path">${esc(sd.folder || '')}</span> ${sd.custom ? '' : '<span class="tag good">Bob\'s own folder</span>'}${sd.missing ? `<br><span class="error">I can't find ${esc(sd.picked)} right now (an unplugged drive, maybe). Until it's back, I save in my own folder.</span>` : ''}</p>
+    <div class="row"><button type="button" class="mini" data-chestbrowse>Change folder…</button>${sd.custom ? '<button type="button" class="mini" data-saveown>Use Bob\'s own folder</button>' : ''}<button type="button" class="mini" data-saveopen>Show in folder</button></div>
+    <p class="error chest-error" hidden></p></div>`;
+  const grid = c.error ? `<p class="error">${esc(c.error)}</p>`
+    : !c.loaded ? '<p class="muted">Opening the chest…</p>'
+      : !items.length ? '<p class="muted">Empty so far. Pictures, clips, songs, sounds and files I make land here, newest first.</p>'
+        : `<ul class="chest-grid" role="list" aria-label="What Bob made, newest first">${items.slice(0, CHEST_SHOW).map(chestItemHtml).join('')}</ul>`;
+  return `<h3>🧰 Chest ${tipHtml('Everything I\'ve made or saved, newest first, as little pictures with their names. Click one to open it beside the chat. Change folder… picks where new pictures, clips, songs and sounds go (the same as Settings, Where Bob saves things); older ones stay where they are and still show here. Documents and spreadsheets still go where you ask for them.', 'About the chest')}</h3>
+    ${folder}
+    ${grid}
+    <p class="row"><button type="button" class="mini" data-chestall>Open Made by Bob${items.length >= CHEST_SHOW ? ' (everything, with search)' : ''}</button>${c.loaded ? '<button type="button" class="mini" data-chestreload aria-label="Look again">↻</button>' : ''}</p>`;
+}
+
 export function equipHtml(ctx) {
   const sel = allSlots().find((s) => s.id === ctx.selected);
   const col = (side) => SLOTS.filter((s) => s.side === side).map((s) => slotHtml(s, ctx)).join('');
@@ -263,11 +317,11 @@ export function equipHtml(ctx) {
     <div class="equip-page">
       ${ctx.attributes || ''}
       <div class="equip-mid">
-        <div class="doll"><div class="doll-col">${col('L')}</div><div class="doll-mid"><canvas class="doll-bob" width="160" height="160" aria-label="Bob"></canvas><div class="muted">Bob</div><button type="button" class="mini" data-golook>Change his look</button></div><div class="doll-col">${col('R')}</div></div>
+        <div class="doll"><div class="doll-col">${col('L')}</div><div class="doll-mid"><canvas class="doll-bob" width="160" height="160" aria-label="Bob"></canvas><div class="muted">Bob</div><button type="button" class="mini" data-golook>Change his look</button>${chestTile(ctx)}</div><div class="doll-col">${col('R')}</div></div>
         <details class="helpers"${HELPERS.some((h) => h.id === ctx.selected) ? ' open' : ''}><summary>Helpers (optional: each uses the main brain unless you pick one)</summary><div class="helper-row">${HELPERS.map((s) => slotHtml(s, ctx)).join('')}</div></details>
         ${houseStyleHtml('times', ctx.houseStyle)}
       </div>
-      <section class="kit-panel" aria-live="polite"><div class="kit-head muted">Inventory</div>${kitHtml(sel, ctx)}</section>
+      <section class="kit-panel" aria-live="polite"><div class="kit-head muted">${ctx.selected === 'chest' ? 'Chest' : 'Inventory'}</div>${ctx.selected === 'chest' ? chestHtml(ctx) : kitHtml(sel, ctx)}</section>
     </div>`;
 }
 

@@ -4,6 +4,61 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.129
+
+A test fix only, so the 1.5.128 release could be built (its Windows build failed on one check).
+
+- The Rented brains key-override check compared the PATH variable by exact name; Windows spells it `Path` on some machines (GitHub's build runners among them), so the check failed there and no 1.5.128 release was made. The check now compares the variable count and the override itself. Nothing in Bob changed; 1.5.128's fixes are all in this release.
+
+## 1.5.128
+
+Five small fixes to Rented brains (1.5.127), from the first live checks.
+
+- **Not now** on the Hire it card now runs your request here, on this replicant matrix, and says "Not hired. Doing it here instead." Before, the message got no reply at all.
+- **The Hire it button is greyed out** while hiring is blocked (a service switched off, or a limit still at 0); the line above the buttons says what to fix. The phone already hid it.
+- **The 🏗 Rented brain switch appears straight away** when a rental goes into the empty slot from Add a rental, and goes when the rental in the slot is removed. Before, it needed a page reload.
+- **Add this rental says why** when the form isn't complete: "Type the model's name first, as the service lists it." (and the address or key-variable line for Another service), instead of doing nothing.
+- For testers: setting the environment variable `BOB_RENT_KEYS=off` makes Bob see no rented-brain key at all, and `BOB_RENT_KEYS=env` makes him read only the process's own variables (no Windows user variables, no `~/.config/bob/env`). It's a tester's switch, not a setting, so a test Bob on a computer that has a real key stops reading "Key found".
+- From the PC run: the greyed Hire it button looks greyed, the missing-field line by Add this rental is red, a reload after Not now shows your message once (the re-run adds only a hidden note), and the key-override check sets any real key variables aside while it runs.
+
+## 1.5.127
+
+Rented brains: for a job too big for the card in this replicant matrix, Bob can hire a brain from an online service for the length of the job, on your own account, with your say-so every time. Everything about it is off until you turn it on, and every spending limit starts at $0.
+
+- **A "Rented brain" slot on Equip Bob** (left column, 🏗). Empty, Bob runs on this replicant matrix as before. Put a rental in it and the chat page grows a "🏗 Rented brain" switch next to Web search. Bob also offers a rental himself when a request is too long for the brain's memory, or when the brain decides the job needs a bigger one (a new `hire_brain` tool, only when a rental is in the slot). Either way the first thing you see is the **Hire it** card: which service, which model, the price, roughly what this job will cost, how long the machine takes to start, and exactly what leaves this replicant matrix. Nothing is hired until you press it. "Not now" runs the job here.
+- **Three kinds of service, all in one drop.** Pay per answer (OpenRouter, Together AI, Lambda, or Another service with an address you type); RunPod serverless (billed by the second, switches itself off); a whole machine by the minute (RunPod, Vast.ai, Lambda). A machine runs vLLM for a model at full size or llama.cpp for a GGUF file (`hf:Owner/Repo/file.gguf`), so Bob's own models can be hired too. The tools still run here: the rented brain only thinks.
+- **Your keys never go into Bob.** Each service reads its key from an environment variable (`OPENROUTER_API_KEY`, `TOGETHER_API_KEY`, `LAMBDA_API_KEY`, `RUNPOD_API_KEY`, `VAST_API_KEY`), or on a Mac or Linux from `~/.config/bob/env`. Settings shows "key found" or "no key yet", never the key. Keys are scrubbed out of error lines, kept out of the log, Bob-Net, exports and Settings.
+- **Spending limits, all starting at 0:** the most Bob may spend this month, the most one job may cost, and the longest a hired machine may run. A rental can't start until each limit it uses is set. Every hired machine is started with a self-destruct timer (the longest run), so it stops itself even if this computer is switched off. Bob also stops it when the job is done, when a cap is reached, or when you press "Stop everything now", and warns five minutes before the timer. Machines Bob started and nobody stopped (named `bob-rental-…`) are listed with a Stop button on every start.
+- **Several cards on one machine, as an option behind a big warning.** Add a rental for a machine by the minute and "Cards on the machine" can be 2, 4 or 8, for a model that really doesn't fit one card (the giant mixture-of-experts models: an 8 × 141 GB machine holds the 2.4-trillion Qwen at Q4). Picking more than 1 brings up a large warning with the hourly and daily price; the count snaps back to 1 unless "I understand" is pressed. The Hire it card warns again, the price and the estimate are for the whole machine, vLLM is told to split the model over the cards, and the spending limits and the self-destruct timer apply as before. Serverless stays at one card.
+- **Settings, Show advanced settings, Online services, Rented brains:** the limits; a switch per service ("Let Bob hire from …", with a warning card the first time saying what will leave this replicant matrix); your rentals (Use this one, Take it off, Check the price, Remove); Add a rental; Machines running; Recent spending (what the service counted, or Bob's estimate marked as such). Prices on screen are estimates; the service's billing page is the real bill.
+- **Privacy wording, everywhere:** the README's first line now reads "Nothing goes online unless you turn it on"; PRIVACY.md, the guide, Help (Settings, Privacy, FAQ, glossary) and the phone's Help say the same and list rented brains with Web search, Cloud helpers and Bob-Net as the things that can send a chat out.
+- **Phone:** the Hire it card and the rented-brain notes show in the phone chat; the switch and Settings are on the computer.
+- Tests: `test/run-rental-test.js` (settings cleaning, limits at 0 block everything, keys only from the environment and never in a view or error, the card before any spend, the self-destruct timer, the OpenAI-style stream read like llama-server's, a machine started under Bob's name and stopped after the job, leftovers found by name only, Help and glossary).
+- **Not yet tried against the real services:** the RunPod pod and serverless calls, Vast.ai and Lambda machine starts, and the proxy addresses they hand back. Pay per answer is the same request shape as the cloud helpers. Please try a cheap pay-per-answer rental first.
+
+## 1.5.126
+
+Handhelds and laptops with built-in graphics: Bob now reads how their one pool of memory is really split, and never loads a brain that would leave Windows short.
+
+- **The memory set aside for graphics is read, not guessed.** A Legion Go showed RAM only and no graphics memory. The BIOS (or the maker's app, such as Legion Space or Armoury Crate) keeps part of the memory for the graphics alone (Auto, which is small, or 4 or 8 GB); Windows never sees that part, so a 16 GB Go set to 8 GB read as 7.7 GB. Bob now reads the set-aside from Windows's display driver entry on every start, and the installed memory from the memory sticks themselves. On Linux the set-aside comes from the graphics driver (amdgpu).
+- **Graphics memory for picking models** is the set-aside plus about half of what Windows can see, and the borrow never eats into the last 4 GB Windows keeps for itself. A 16 GB Go set to 8 GB counts 11 GB; on Auto (the recommended setting) it stays at the old half-of-visible figure. Nothing that fitted before stops fitting.
+- **What you see:** the spec line under the replicant matrix's name reads "Ryzen Z1 Extreme · Radeon built-in · 16 GB memory (8 GB set aside for graphics)" or "(shared with graphics as needed)"; Get models says "Memory: 16 GB shared, 8 GB set aside for graphics". `/api/hardware` carries `installedRamGB`, `reservedGraphicsGB` and `visibleRamGB`.
+- **A memory guard on shared-memory machines.** Before a brain loads, Bob checks the room (free RAM, plus whatever the load swaps out, minus 4 GB for Windows). Too tight: the chat memory is shortened first (halved, never below 8K). Still too tight: the brain isn't loaded and Bob says so in chat ("That brain needs about 9 GB and only about 6 GB is free once Windows keeps its share...") instead of risking an out-of-memory crash. Only with built-in graphics; a real graphics card is untouched.
+- Help: the built-in graphics FAQ explains the set-aside, glossary gets "Set aside for graphics". Tests: `test/run-integrated-gpu-test.js` (8 GB, 4 GB and Auto fixtures, Windows and Linux readings, the guard; NVIDIA, Mac and desktop chips unchanged).
+- The README's download row now names the 1.5.126 files, and `installer/check-release.js` fails when the row doesn't match the version (1.5.125's row still named 1.5.124).
+- Not yet measured on a real Go on Auto: the fixture uses a 512 MB set-aside; the Legion Go's own numbers go in when they're in.
+
+## 1.5.125
+
+A chest for everything Bob makes, and Bob's home folder chosen at install instead of by editing a file.
+
+- **🧰 Chest** on Equip Bob, under Bob on the paper doll, with a number for how many things are in it. Press it and the Inventory column becomes the **Chest**: everything Bob has made or saved, newest first, as little pictures with their names and when he made them. Pictures and clips show as themselves; songs, documents and other files as their icon with the title. Click one (or Tab to it and press Enter; every tile tells a screen reader the name, kind and time) to open it beside the chat. **New things are saved in** shows the folder new pictures, clips, songs and sounds go to, with **Change folder…** (the same picker as Settings, Where Bob saves things), **Use Bob's own folder** and **Show in folder**. **Open Made by Bob** for everything with filters and search.
+- **Thumbnails, made once and kept.** Pictures and clips in the chest and in Made by Bob are small copies Bob's window makes with its own image code (clips through FFmpeg where it's installed), kept in `inn\bob\thumbs`, so a long list opens in a blink and nothing is loaded into a brain for it. Where none can be made, the picture itself shows, shrunk, or the kind's icon.
+- **Bob's home folder is chosen at install.** The Windows install window asks "Where should Bob keep his things?" first, suggesting a `Bob` folder in your user folder, with Browse to any drive and the free space shown; Bob.exe, Bob.app and the AppImage ask the same the first time they open, and the first-run screen has the row at the top (**I keep my things in**) before the big downloads. AppData, Temp, the Caches folder and other temporary places are refused, so a "clear temporary files" button can never take 10 to 60 GB of models. A cloud-synced folder (OneDrive, Dropbox, Google Drive, iCloud and the like) is allowed but always recommended against, clearly, wherever the folder is picked or shown: every model would be uploaded, and a sync can break a model while Bob uses it. Older Bobs that kept everything in `%LOCALAPPDATA%\Bob` carry on from there.
+- **Settings, Bob's home folder** (Everyday): the folder, how much the models take, a red line if it is somewhere a clean-up tool empties, and **Browse…** / **Move here…** with one **Yes, move everything**. Bob closes, copies everything across (one rename on the same drive), and opens again from the new folder; the old one is removed only once every file is over.
+- README, user guide and Help: no more `home.json` snippet; the install step and the Settings row describe it. Help entries for the chest and Bob's home folder, glossary lines (Chest, Home, Thumbnail), FAQ "Where are Bob's models kept, and can a disk clean-up delete them?". New test `test/run-chest-test.js`.
+- **Phone (Bob for Android):** menu, **Chest**: the same list from your PC's Bob as thumbnails with names; tap one to see it, with Save to this phone. Nothing is kept on the phone unless you save it.
+
 ## 1.5.124
 
 The bestiary: a Characters page in 🎲 Adventure, monster bodies on the character screen, and a dozen enemies the game master uses as written.

@@ -110,7 +110,7 @@ function run(file, args, timeout = 4000, execImpl = execFile) {
 // The graphics chip and its memory, for picking models: { name, vramGB, unified } or null.
 //   Windows and Linux: nvidia-smi (ships with the NVIDIA driver).
 //   Mac (Apple Silicon): the chip's name from sysctl, and its share of the shared memory.
-export async function gpuInfo({ os_ = OS, execImpl = execFile, arch = process.arch, totalmem = os.totalmem() } = {}) {
+export async function gpuInfo({ os_ = OS, execImpl = execFile, arch = process.arch, totalmem = os.totalmem(), cpu = os.cpus()?.[0]?.model || '', fresh = false } = {}) {
   if (os_ === 'mac') {
     if (arch !== 'arm64') return null; // Intel Macs: Bob runs on the processor
     const chip = (await run('sysctl', ['-n', 'machdep.cpu.brand_string'], 3000, execImpl))?.trim() || 'Apple Silicon';
@@ -120,7 +120,7 @@ export async function gpuInfo({ os_ = OS, execImpl = execFile, arch = process.ar
   const [name, mb] = (out || '').split('\n')[0].split(',').map((s) => s.trim());
   if (name) return { name, vramGB: Math.round(Number(mb) / 1024) };
   // 1.5.71: no NVIDIA card: graphics built into the processor (handhelds, thin laptops), like the Radeon 780M.
-  return integratedGpu({ os_, execImpl, totalmem });
+  return integratedGpu({ os_, execImpl, totalmem, cpu, fresh });
 }
 
 // ---- 1.5.71: graphics built into the processor ----
@@ -141,7 +141,7 @@ export function pickIntegrated(names = [], cpu = '') {
   return list.find((n) => INTEL_GOOD.test(n)) || (AMD_MOBILE_CPU.test(cpu) ? list.find((n) => AMD_GPU.test(n)) : null) || null;
 }
 let integratedCache = null;
-export async function integratedGpu({ os_ = OS, execImpl = execFile, totalmem = os.totalmem(), cpu = os.cpus()?.[0]?.model || '', fresh = false } = {}) {
+export async function integratedGpu({ os_ = OS, execImpl = execFile, totalmem = os.totalmem(), cpu = os.cpus()?.[0]?.model || '', fresh = false, readFile = fs.readFileSync, listDir = fs.readdirSync } = {}) {
   if (os_ !== 'win' && os_ !== 'linux') return null;
   if (integratedCache && !fresh) return integratedCache.val;
   let names = [];
@@ -153,9 +153,64 @@ export async function integratedGpu({ os_ = OS, execImpl = execFile, totalmem = 
     names = String(out || '').split('\n').filter((l) => /VGA compatible|Display controller|3D controller/i.test(l)).map((l) => l.replace(/^\S+\s+[^:]+:\s*/, ''));
   }
   const chip = pickIntegrated(names, cpu);
-  const val = chip ? { name: `${chip.replace(/\s*\(rev [^)]*\)$/, '')} (shared memory)`, vramGB: sharedGraphicsGB(totalmem), unified: true, integrated: true } : null;
+  let val = null;
+  if (chip) {
+    // 1.5.126: the memory set aside for the graphics and the RAM really installed, read from the machine (below).
+    const mem = await apuMemory({ os_, execImpl, chip, totalmem, readFile, listDir });
+    const share = apuGraphicsGB({ installedBytes: mem.installed, visibleBytes: totalmem, reservedBytes: mem.reserved });
+    val = { name: `${chip.replace(/\s*\(rev [^)]*\)$/, '')} (shared memory)`, vramGB: share.vramGB, unified: true, integrated: true, ...share };
+  }
   integratedCache = { val };
   return val;
+}
+
+// ---- 1.5.126: how a handheld or laptop really shares its memory (asked for after a Legion Go showed RAM only) ----
+// A chip with built-in graphics has one pool of memory. The BIOS (or Armoury Crate, Legion Space) sets some of it
+// aside for the graphics alone ("UMA frame buffer": Auto, which is small, or 1 to 8 GB); Windows never sees that
+// part, so os.totalmem() on a 16 GB Legion Go set to 8 GB reads 7.7 GB. On top of that the graphics can borrow
+// about half of what Windows does see. Bob counts both as graphics memory, but only borrows while Windows keeps
+// about 4 GB to itself (an 8 GB carve-out left Windows with 7.7 GB and the Go got unstable when more went).
+export const APU_HEADROOM_GB = 4; // what Windows (or Linux) keeps for itself on a shared-memory machine
+export function apuGraphicsGB({ installedBytes = 0, visibleBytes = os.totalmem(), reservedBytes = 0 } = {}) {
+  const GB = 1024 ** 3;
+  const visibleGB = visibleBytes / GB;
+  const reservedGraphicsGB = Math.round(((reservedBytes || 0) / GB) * 10) / 10;
+  const installedRamGB = shownRamGB(installedBytes > visibleBytes ? installedBytes : visibleBytes + (reservedBytes || 0)) || Math.round(visibleGB);
+  // What the graphics may borrow from Windows's part: about half of it, and never into the last 4 GB.
+  const borrowGB = Math.max(0, Math.min(Math.floor(visibleGB / 2), Math.floor(visibleGB - APU_HEADROOM_GB)));
+  // Never less than the old estimate (half of what Windows sees), so nothing that fitted before stops fitting.
+  const vramGB = Math.max(Math.floor(reservedGraphicsGB + borrowGB), sharedGraphicsGB(visibleBytes));
+  // Under 2 GB set aside means "Auto": the graphics borrow as they go, which is the recommended setting on handhelds.
+  return { vramGB, reservedGraphicsGB, installedRamGB, visibleRamGB: Math.round(visibleGB * 10) / 10, borrowGB, auto: reservedGraphicsGB < 2 };
+}
+// Windows: the display adapter's "HardwareInformation.qwMemorySize" (the set-aside, in bytes; older drivers only
+// have the 32-bit MemorySize) from the display class in the registry, matched to the chip by its driver name, and
+// installed RAM as the sum of the memory sticks (Win32_PhysicalMemory). Linux: amdgpu's mem_info_vram_total under
+// /sys/class/drm; installed RAM is then what's visible plus the set-aside. Anything unreadable -> 0 (old estimate).
+const APU_PS = `$k='HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}';` +
+  `$a=@(Get-ChildItem $k -ErrorAction SilentlyContinue | ForEach-Object { $p=Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue; if ($p.DriverDesc) { [pscustomobject]@{ desc=[string]$p.DriverDesc; qw=[int64]($p.'HardwareInformation.qwMemorySize' -as [int64]); mem=[int64]($p.'HardwareInformation.MemorySize' -as [int64]) } } });` +
+  `$i=[int64](Get-CimInstance Win32_PhysicalMemory -ErrorAction SilentlyContinue | Measure-Object -Property Capacity -Sum).Sum;` +
+  `@{ installed=$i; adapters=$a } | ConvertTo-Json -Compress -Depth 3`;
+export function parseApuJson(text, chip = '') {
+  let j; try { j = JSON.parse(String(text || '').trim()); } catch { return { installed: 0, reserved: 0 }; }
+  const adapters = [].concat(j?.adapters || []).filter(Boolean);
+  const norm = (s) => String(s || '').toLowerCase().replace(/\(tm\)|\(r\)/g, '').replace(/\s+/g, ' ').trim();
+  const bytes = (a) => { const q = Number(a.qw) || 0; const m = Number(a.mem) || 0; return q > 0 ? q : m > 0 && m < 0xFFF00000 ? m : 0 /* a 32-bit field at 0xFFFFFFFF has wrapped */; };
+  const mine = adapters.find((a) => norm(a.desc) === norm(chip)) || adapters.find((a) => AMD_GPU.test(a.desc) || INTEL_GOOD.test(a.desc)) || (adapters.length === 1 ? adapters[0] : null);
+  return { installed: Number(j?.installed) || 0, reserved: mine ? bytes(mine) : 0 };
+}
+export async function apuMemory({ os_ = OS, execImpl = execFile, chip = '', totalmem = os.totalmem(), readFile = fs.readFileSync, listDir = fs.readdirSync } = {}) {
+  if (os_ === 'win') return parseApuJson(await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', APU_PS], 10000, execImpl), chip);
+  if (os_ === 'linux') {
+    let reserved = 0;
+    try {
+      for (const c of listDir('/sys/class/drm').filter((n) => /^card\d+$/.test(n))) {
+        try { reserved = Math.max(reserved, Number(String(readFile(`/sys/class/drm/${c}/device/mem_info_vram_total`, 'utf8')).trim()) || 0); } catch {}
+      }
+    } catch {}
+    return { installed: totalmem + reserved, reserved };
+  }
+  return { installed: 0, reserved: 0 };
 }
 
 // Memory that's free to use right now, in bytes. Windows and Linux: os.freemem() (on Linux that is MemAvailable).
@@ -194,9 +249,15 @@ export function shownRamGB(totalBytes) {
   if (!(gib > 0)) return null;
   return RAM_SIZES.find((n) => n >= gib - 0.05 && gib >= n * 0.85) || Math.ceil(gib);
 }
+export const builtInWord = (name = '') => (/Radeon|\bAMD\b/i.test(name) ? 'Radeon' : /Arc/i.test(name) ? 'Arc' : /Iris/i.test(name) ? 'Iris Xe' : 'graphics');
+// The second half of the line: set aside (4 GB, 8 GB) or Auto (small, borrowing as it goes).
+export const apuSplitWords = (gpu = {}) => (gpu.auto || !(gpu.reservedGraphicsGB >= 2) ? 'shared with graphics as needed' : `${Number.isInteger(gpu.reservedGraphicsGB) ? gpu.reservedGraphicsGB : gpu.reservedGraphicsGB.toFixed(1)} GB set aside for graphics`);
 export function specLine({ cpu, gpu, ramGB } = {}) {
   const parts = [];
   if (cpu) parts.push(cpu);
+  // 1.5.126: a handheld or laptop names its chip's graphics and how its one pool of memory is split:
+  // "Ryzen Z1 Extreme · Radeon built-in · 16 GB memory (8 GB set aside for graphics)", or "(shared with graphics as needed)".
+  if (gpu?.integrated && gpu.installedRamGB) return [cpu, `${builtInWord(gpu.name)} built-in`, `${gpu.installedRamGB} GB memory (${apuSplitWords(gpu)})`].filter(Boolean).join(' · ');
   if (gpu?.unified) return [String(gpu.name || cpu || '').replace(/\s*\(shared memory\)$/, ''), ramGB ? `${ramGB} GB memory` : ''].filter(Boolean).join(' · ') || 'specs not read yet';
   if (gpu?.integrated) parts.push('built-in graphics');
   else if (gpu?.name) parts.push(`${String(gpu.name).replace(/^NVIDIA\s+/i, '').replace(/^GeForce\s+/i, '')}${gpu.vramGB ? ` ${gpu.vramGB} GB` : ''}`);

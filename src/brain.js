@@ -52,10 +52,11 @@ import { WEB_TOOLS, WEB_OFF, webOn, webPrompt, linkPrompt, findLinks, refersToLi
 import { autoSessionOn, pickSessionTool, autoSessionPrompt, switchLine, switchedNote, idleSession, cardBusy, IDLE_CHECK_MS } from './auto-session.js';
 import { readCard } from './gaming-card.js';
 import { Lenders, wantsBorrow, roughTokens } from './share-brains.js';
+import { Rentals, currentRental, saveEndpoint, estimateText } from './rental.js'; // 1.5.127 rented brains
 import { GuestJobs, awayPlan, sendAway, stopAway, guestTools, guestNote, GUEST_TOOLS, canHere, NEEDS_LIST, awayWaitLine } from './share-jobs.js';
 import { askTogether, takeEarlier, askTogetherTool } from './together.js';
 import { showPlanTool, planGate, planOn, planPrompt } from './plan.js';
-import { freeMemNow } from './platform.js';
+import { freeMemNow, APU_HEADROOM_GB } from './platform.js';
 import { HowTos, howtoTools, howtosOn, trailStep, worthOffering, howtoPrompt, usingLine } from './howtos.js';
 import { NEEDS, planFor, SetupOffers, switchFor, applySwitch, SWITCH_KEYS } from './setup-offer.js';
 
@@ -85,6 +86,34 @@ export function sideOk(brain, job, { freeMem = freeMemNow() } = {}) {
 function sideBrainBytes(brain) {
   try { const f = brain.engine?.resolve?.(talkerModel(brain))?.gguf; if (f) return fs.statSync(f).size; } catch {}
   return 4 * 1024 ** 3; // unknown: assume a 4B brain
+}
+
+// 1.5.126: on a shared-memory machine (built-in graphics: handhelds, thin laptops) a brain and its chat memory come
+// out of the same RAM Windows runs on, and an 8 GB carve-out already leaves a 16 GB Legion Go with 7.7 GB. Before a
+// load, the room is: free RAM, plus whatever the load will drop, minus about 4 GB kept for Windows. Too tight:
+// the chat memory is shortened first (halved, never below 8K); still too tight: nothing loads, and Bob says so
+// plainly instead of risking an out-of-memory crash. Only with built-in graphics (cfg.sharedGraphics); unknown
+// sizes (no file to measure) go the old way. Settings review: approved 2026-11-06.
+export const APU_MIN_CTX = 8192;
+export const APU_NO_ROOM = (needGB, freeGB) => `That brain needs about ${needGB} GB and only about ${freeGB} GB is free once Windows keeps its share, so I haven't loaded it. Close something or pick a smaller brain in Equip Bob.`;
+export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loaded = null } = {}) {
+  if (!brain?.cfg?.sharedGraphics || !model) return { ok: true, ctx };
+  const bytes = (c) => brain.gate?.brainBytes?.(model, { ctx: c });
+  let need = bytes(ctx);
+  if (!need) return { ok: true, ctx };
+  let dropping = 0;
+  try {
+    const l = loaded || await brain.engine.loaded();
+    if (l.some((m) => !m.beside && sameModel(m.name, model))) return { ok: true, ctx }; // already in: nothing new to find room for
+    dropping = l.filter((m) => !m.beside).reduce((a, m) => a + (m.size || 0), 0);
+  } catch {}
+  const room = freeMem + dropping - APU_HEADROOM_GB * GB;
+  const start = ctx || 32768;
+  let c = start;
+  while (need > room && c > APU_MIN_CTX) { c = Math.max(APU_MIN_CTX, Math.floor(c / 2)); need = bytes(c); }
+  const gb = (b) => Math.round((Math.max(0, b) / GB) * 10) / 10;
+  if (need <= room) return { ok: true, ctx: c === start ? ctx : c, shortened: c !== start, needGB: gb(need), roomGB: gb(room) };
+  return { ok: false, ctx, needGB: gb(need), roomGB: gb(room), line: APU_NO_ROOM(gb(need), gb(room)) };
 }
 
 // A side-lane reply: always the small brain on the processor, so it never touches the card the painter holds.
@@ -328,6 +357,9 @@ export class Brain {
     // Share brains (1.5.55, src/share-brains.js): another Bob of yours may think quick replies for this one, and this one
     // may lend. A lender only ever uses his quick brain (never a big one), on the card, and says no while gaming or busy.
     this.lenders = new Lenders(cfg);
+    // 1.5.127 Rented brains: a big brain hired from an online service for one job, only after a card the owner pressed.
+    this.rentals = new Rentals(cfg, { log: (k, t) => this.log(k, t), broadcast: (ev) => this.broadcast(ev) });
+    this.rentals.rememberEndpoint = (id, endpointId) => { try { if (saveEndpoint(cfg, id, endpointId)) saveSettings(cfg, { rentals: cfg.rentals }); } catch {} };
     this.lending = null;
     // 1.5.72 Share jobs (src/share-jobs.js): jobs this Bob sent away, their OK cards, and jobs other Bobs sent here.
     this.awayJobs = new Map();
@@ -402,6 +434,7 @@ export class Brain {
     clearTimeout(this.graceTimer);
     this.waking = (async () => {
       const ctx = await this.fitCtx(model, want);
+      if (!(await apuRoom(this, model, ctx)).ok) { this.log('model', `not waking ${model}: too little RAM to spare on built-in graphics`); return false; }
       let loaded = false;
       try { loaded = await this.engine.isLoaded(model, { cpu, ctx }); } catch { return false; }
       if (loaded) { this.engine.touch?.(model, { cpu, ctx })?.catch?.(() => {}); return false; }
@@ -659,6 +692,9 @@ export class Brain {
     clearTimeout(this.graceTimer);
     if (!opts.beside) await this.keepTalker(model, opts, emit, { signal });
     if (!signal) { try { await this.engine.isLoaded(model, opts); } catch (e) { throw new Error(`I can't reach my engine, ${this.engineName} (${e.message}).`); } }
+    // 1.5.126: built-in graphics share Windows's RAM: no load that would leave Windows short (apuRoom).
+    const room = await apuRoom(this, model, opts.ctx);
+    if (!room.ok) { this.log('model', `not loading ${model}: needs ~${room.needGB} GB, room ~${room.roomGB} GB after Windows's ${APU_HEADROOM_GB} GB`); throw new Error(room.line); }
     const name = BRAIN_NAMES[who] || who;
     const used = await this.gate.need({ id: 'brain', model, opts }, {
       signal, emit, who,
@@ -890,7 +926,11 @@ export class Brain {
     // Settings review: in Gaming the brain is on the processor beside the game, so a pick never makes it bigger there.
     want = pick && gaming(this.cfg) ? Math.min(pick, want || GAMING_CTX) : pick || want;
     if (!want) return null;
-    return max ? Math.min(max, want) : want;
+    const fit = max ? Math.min(max, want) : want;
+    // 1.5.126: on built-in graphics, shorter still when the RAM says so (apuRoom above).
+    const room = await apuRoom(this, model, fit);
+    if (room.shortened) this.log('model', `shortened ${model}'s chat memory to ${room.ctx} to leave Windows about ${APU_HEADROOM_GB} GB (needs ~${room.needGB} GB, room ~${room.roomGB} GB)`);
+    return room.ok ? room.ctx : fit;
   }
 
   get turn() { return this.turns.values().next().value || null; }
@@ -1230,6 +1270,8 @@ export class Brain {
     // 1.5.102: this is the one place the front desk is told about pictures and clips (it was in FRONT_DESK too).
     if (desk && (!loaded || allToolsOn(this.cfg) || loaded.has('pictures')) && this.usable('make_image')) prompt += `\n\nWhen ${who} asks to see, show, make, draw or paint a picture, call make_image yourself straight away, in the same reply, with a good prompt; for a short clip, make_video (slow, minutes). Then tell ${who} the chat brain has to step out while the painter works. To change a picture (one attached, or one you made: reference "last"), call make_image with it as the reference and a short instruction saying only what to change, like "Replace the hard hat with a silver tiara", not a description of a whole new picture.`;
     if (desk && helpers.length) prompt += `\n\nCloud copies of you that ${who} switched on (use ask_cloud only for jobs too big for you, or when asked; each use is approved and costs money): ${helpers.map((h) => `${h.id} = ${copyName(this.cfg, 'cloud:' + h.id, 'cloud helper')}, running on ${h.name} ${h.model}`).join('; ')}.`;
+    const rental = desk && this.rentals?.current();
+    if (rental) prompt += `\n\nA rented brain is in your Rented brain slot (${rental.name}). It costs ${who} money, so never use it on your own: when a job is too big for you here (a very long chat or file, or a model that isn't here), or when ${who} asks for it, call hire_brain once; the app shows a card and ${who} decides. Then stop: don't do the job here as well.`;
     const pictureWork = desk || hat === 'painter';
     const shelf = pictureWork ? this.refs.describe() : '';
     if (shelf) prompt += `\n\n${shelf}`;
@@ -1250,7 +1292,7 @@ export class Brain {
     let can = {};
     try { can = capabilities(this.cfg); } catch {}
     // 1.5.91: make_image, make_video, make_music and make_sound stay listed when they aren't set up: calling one shows the Set it up card.
-    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), ...toolsOff(this.cfg)].filter(Boolean));
+    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), ...toolsOff(this.cfg)].filter(Boolean));
   }
   usable(name, off = this.offTools()) { return Boolean(this.tools[name]) && !off.has(name); }
   // 1.5.41: whether OKs are asked on cards right now (so a job's OKs can go on one card). Not with "work without asking".
@@ -1337,11 +1379,11 @@ export class Brain {
   }
 
   queueView() {
-    return this.queue.map(({ id, sessionId, text, state, at, error, refs, kind, startedAt, doneAt, steps, effort, after, pickUp, away, guest }) => {
+    return this.queue.map(({ id, sessionId, text, state, at, error, refs, kind, startedAt, doneAt, steps, effort, after, pickUp, away, guest, rent, rentOk }) => {
       const out = (steps || []).find((x) => x.state === 'in progress');
       // Plain status for the Tasks panel: Queued, In progress, Delegated (to which copy), Completed...
       const awayNow = state === 'working' && away?.name; // 1.5.72: with another of your Bobs
-      const status = state === 'waiting' ? 'queued' : state === 'working' ? (out || awayNow ? 'delegated' : 'in progress') : state === 'done' ? 'completed' : state;
+      const status = state === 'waiting' ? 'queued' : state === 'working' ? (out || awayNow ? 'delegated' : rent && rentOk ? 'rented' : 'in progress') : state === 'done' ? 'completed' : state; // 1.5.127 rented
       return { id, sessionId, kind, text: (guest ? `From ${guest.from}: ` : '') + text.slice(0, 140), state, status, at, startedAt, doneAt, error, pics: (refs || []).length,
         delegatedTo: awayNow ? { hat: 'away', label: 'another of your Bobs', copy: away.name, sent: true } : out ? { hat: out.hat, label: out.label, copy: out.copy } : null, gaming: state === 'waiting' && !away && waitsForGaming(this.cfg, { kind, effort }) ? { tag: GAMING_TAG, hint: GAMING_HINT } : undefined, steps: (steps || []).slice(-8), effort: effort || 'low',
         waitsFor: state === 'waiting' && after ? after.name : undefined, pickUp: state === 'waiting' && pickUp ? true : undefined };
@@ -1403,7 +1445,7 @@ export class Brain {
     }
     this.housekeeper?.pause(); // anything the housekeeper was asking the brain gives way at once
     this.endMore(null, 'new job'); // a new message answers "Make another picture?"; the job loads what it needs
-    const job = { id: crypto.randomUUID(), sessionId, text, refs: [].concat(attach || []).slice(0, 4), state: 'waiting', at: Date.now(), kind: extra.kind || Brain.guessKind(text, [].concat(attach || []).length > 0), effort: cleanEffort(effort), ...(extra.guest ? { guest: extra.guest } : {}) };
+    const job = { id: crypto.randomUUID(), sessionId, text, refs: [].concat(attach || []).slice(0, 4), state: 'waiting', at: Date.now(), kind: extra.kind || Brain.guessKind(text, [].concat(attach || []).length > 0), effort: cleanEffort(effort), ...(extra.guest ? { guest: extra.guest } : {}), ...(extra.rent ? { rent: true } : {}) }; // 1.5.127 rent: the 🏗 switch on the chat page
     this.queue.push(job);
     this.saveQueue();
     this.log('queue', `${job.kind}: ${text}`);
@@ -1508,6 +1550,32 @@ export class Brain {
     ctx?.emit?.({ type: 'offer-setup', id, need: what, kind: 'switch', name: sw.name, where: sw.where, what: sw.what, privacy: sw.privacy || '', free: Boolean(sw.free), folders: Boolean(sw.folders), carryOn: Boolean(jobId) });
     this.log('setup', `offered to switch on ${what}`);
     return `Not done yet: "${sw.name}" is off. A card with a "Switch it on" button is now under this chat. Tell ${who} in one or two short lines what it lets you do and that one press switches it on${sw.folders ? ' (they still tick which folders I may use, in Settings, Hands)' : ''}, then you ${jobId ? 'carry on with this job by yourself' : 'can do it'}. Don't call this tool again now.`;
+  }
+
+  // 1.5.127 Rented brains: the Hire it card for the rented brain in its slot. One card per turn; nothing is spent until it's pressed.
+  offerRent(ctx, { why = '', tokens = 0 } = {}) {
+    const rental = this.rentals.current();
+    if (!rental) return null;
+    if (ctx.rentOffered) return { already: true };
+    ctx.rentOffered = true;
+    const n = tokens || roughTokens({ messages: ctx.msgs || [] });
+    const view = this.rentals.view().rentals.find((r) => r.id === rental.id);
+    const id = this.rentals.offer(rental, { jobId: ctx.job?.id || null, tokens: n, why, emit: (ev) => ctx.emit?.({ ...ev, sessionId: ctx.sessionId }) });
+    const can = this.rentals.canStart(rental, 0);
+    return { id, est: estimateText(rental, n), blocked: can.ok ? '' : can.why, name: rental.name, service: view?.serviceName || '' };
+  }
+  // The Hire it card was answered (PC window or phone). yes: the job runs again, on the rented brain this time.
+  answerRent(id, yes) {
+    const r = this.rentals.answer(id, yes);
+    if (r.ok && r.done === 'none' && r.jobId) { // 1.5.128: Not now runs the request here instead of leaving it unanswered
+      const j = this.queue.find((x) => x.id === r.jobId);
+      if (j) { j.rent = false; j.rentOk = false; j.rentAgain = true; this.carryOnNow(j.id, '[Bob note, not from the user: the user pressed Not now on the rented brain card. Do what they asked here, on this computer, with the brains you have.]'); return { ...r, carryOn: true }; }
+    }
+    if (!r.ok || r.done !== 'hired') return r;
+    const j = this.queue.find((x) => x.id === r.jobId);
+    if (j) { j.rent = true; j.rentOk = true; j.rentAgain = true; this.carryOnNow(j.id, `[Bob note, not from the user: the user hired the rented brain (${r.rental.name}) for this. Do what they asked.]`); }
+    this.broadcast?.({ type: 'settings-changed' });
+    return { ok: true, done: 'hired', name: r.rental.name, carryOn: Boolean(j) };
   }
 
   // The card was answered (PC window or phone). yes: download / put in its slot / switch on, then carry on with the job.
@@ -1684,6 +1752,7 @@ export class Brain {
         const switchTo = job?.switchTo && job.state === 'done' ? job.switchTo : null;
         if (switchTo) { job.switchTo = undefined; job.switchedTo = switchTo.id; Object.assign(job, { state: 'waiting', error: undefined, doneAt: undefined, steps: [] }); this.queue = [job, ...this.queue.filter((x) => x !== job)]; }
         this.turns.delete(lane);
+        this.rentals?.turnDone(job); // 1.5.127: a hired machine stops once no job uses it
         this.lastActivity = Date.now();
         // Gaming: now and then a scripted sleepy aside under a normal finished reply (a feeling, never a fact about the job).
         // Never after an error or correction note, or for a job held back (e.g. "Waiting · Gaming is on").
@@ -1840,9 +1909,12 @@ export class Brain {
     // 1.5.41: run again after Bob switched session: the user's message is already in the chat once, so the brain gets the
     // note only (hidden), and the turn starts at the user's message from before.
     const lastUser = [...msgs].reverse().find((m) => m.role === 'user');
-    const again = Boolean(job?.switchedTo) && Boolean(lastUser) && String(lastUser.text ?? lastUser.content ?? '').startsWith(text);
-    if (again) msgs.push({ role: 'system', content: switchedNote(job.switchedTo), hidden: true });
+    // 1.5.128: the same after a Hire it card (Hire it or Not now): the message that drew the card is in the chat already,
+    // so the re-run adds only the hidden note (the PC saw the user's bubble twice after a reload).
+    const again = (Boolean(job?.switchedTo) || Boolean(job?.rentAgain)) && Boolean(lastUser) && String(lastUser.text ?? lastUser.content ?? '').startsWith(text);
+    if (again) msgs.push({ role: 'system', content: job.switchedTo ? switchedNote(job.switchedTo) : job.carryOn || '', hidden: true });
     else msgs.push(user);
+    if (job) job.rentAgain = false;
     const turnStart = again ? msgs.map((m) => m.role).lastIndexOf('user') : msgs.length - 1;
     this.log('chat', `${this.cfg.userName || 'User'}: ${text}`);
     // The turn's pictures travel with it, so a hat Bob hands the job to can see them too.
@@ -1896,6 +1968,14 @@ export class Brain {
     const state = realState({ model, session: currentSession(this.cfg).label, waiting: this.queue.filter((j) => j.state === 'waiting').length, cat: this.cfg.catName, turn: turnNo });
     const extras = [state, guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
     const brainCtx = await this.fitCtx(model, wantCtx);
+    // 1.5.127: a chat that no longer fits the biggest brain here, with a rented brain in its slot: offer it (the job carries on here meanwhile).
+    if (!job?.rent && !job?.side && !job?.guest && this.rentals.current() && !ctx.rentOffered) {
+      const tokens = roughTokens({ messages: msgs });
+      if (brainCtx && tokens > brainCtx * 0.9) {
+        this.offerRent(ctx, { tokens, why: `This chat and its files come to about ${Math.round(tokens / 1000)}K words, and my biggest brain here keeps ${Math.round(brainCtx / 1000)}K in mind.` });
+        emit({ type: 'announce', text: 'This one is getting big for my brains here. I\'ll try anyway; the card below hires a bigger brain for it.' });
+      }
+    }
     if (!model) throw new Error('I don\'t have a brain yet. Open Get models (in the menu on the left) and pick one; the first-time setup suggests the right one for this replicant matrix.');
     this.setState('thinking', '', this.state.model);
     let earlier = await this.recall(sessionId, text);
@@ -1919,6 +1999,19 @@ export class Brain {
     // 1.5.72: the Bob is picked once the chat is put together, so only Bobs with room for it are asked (Lenders.pick).
     let borrowing = wantsBorrow(this.cfg, this.borrowCase(job, pics));
     let lender = null;
+    // 1.5.127 Rented brains: a job marked for the rented brain (the 🏗 Rented brain switch, a Hire it card, or Bob's own
+    // hire_brain) thinks on the hired brain; the tools still run here. Not yet approved: the Hire it card, and nothing else.
+    let rented = null;
+    if (job?.rent && !job.side && !job.guest) {
+      const rental = this.rentals.current();
+      if (!rental) emit({ type: 'announce', text: 'No rented brain is in its slot (Equip Bob), so I\'m doing this one here.' });
+      else if (!this.rentals.approved(rental, job)) {
+        const r = this.offerRent(ctx, { why: 'You asked for the rented brain.' });
+        emit({ type: 'announce', text: r?.blocked ? `I can't hire ${rental.name} yet: ${r.blocked}` : `Press Hire it on the card below and I'll run this on ${rental.name}.` });
+        this.log('rent', 'waiting for the Hire it card');
+        return;
+      } else { rented = rental; borrowing = false; }
+    }
 
     // 1.5.60: a link in the message, with web search on: open it first, so even a small brain that would say
     // "I have no web access" answers from the page. Only the first link; it shows as a normal 🔧 Read the page line.
@@ -1974,6 +2067,19 @@ export class Brain {
             const small = this.lenders.tooBigFor(lentSize);
             this.log('borrow', small.length ? `this chat is too long for ${small.join(', ')} (about ${lentSize} tokens); thinking it myself` : 'none of my other Bobs is free; thinking it myself');
           }
+        }
+      }
+      if (rented) {
+        const rName = rented.name;
+        this.setState('thinking', `${rName} (rented) is thinking`, this.state.model);
+        if (!ctx.rentSaid) { ctx.rentSaid = true; emit({ type: 'rent', action: 'thinking', rental: rName, service: this.rentals.view().rentals.find((r) => r.id === rented.id)?.serviceName || '' }); }
+        try {
+          reply = await this.rentals.chat(rented, { messages: [sys, ...staleHandErrors(msgs, turnStart)], tools, signal, think, job, emit, onToken: (t) => emit({ type: 'token', text: t }) });
+        } catch (e) {
+          if (signal?.aborted) throw e;
+          this.log('rent', `${rName} couldn't take it (${e.message}); thinking it here`);
+          emit({ type: 'rent', action: 'back', rental: rName, why: e.message });
+          rented = null;
         }
       }
       if (lender) {
@@ -2559,6 +2665,6 @@ export class Brain {
     let loaded = [];
     let ollama = true;
     try { loaded = await this.engine.loaded(); } catch { ollama = false; }
-    return { ...this.state, busy: this.turns.size > 0, session: currentSession(this.cfg), waiting: this.queue.filter((j) => j.state === 'waiting').length, ollama, engine: this.engineName, loaded, models: this.cfg.models, cloud: cloudHelpers(this.cfg).length > 0 };
+    return { ...this.state, busy: this.turns.size > 0, session: currentSession(this.cfg), waiting: this.queue.filter((j) => j.state === 'waiting').length, ollama, engine: this.engineName, loaded, models: this.cfg.models, cloud: cloudHelpers(this.cfg).length > 0, rented: currentRental(this.cfg)?.name || '' };
   }
 }

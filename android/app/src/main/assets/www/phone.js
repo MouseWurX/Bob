@@ -434,6 +434,8 @@
     if (ev.type === 'checkin') return checkinCard(base, ev);
     if (ev.type === 'howto-offer' && String(ev.sessionId || '').startsWith('phone-')) return howtoCard(base, ev);
     if (ev.type === 'offer-setup' && String(ev.sessionId || '').startsWith('phone-')) return setupCard(base, ev); // 1.5.91
+    if (ev.type === 'offer-rent' && String(ev.sessionId || '').startsWith('phone-')) return rentCard(base, ev); // 1.5.127 rented brains
+    if (ev.type === 'rent' && ['thinking', 'back', 'start', 'used', 'stop', 'warn'].includes(ev.action)) { grow(`\n\n*🏗 ${rentLine(ev)}*`); return; }
     if (ev.type === 'approval-result') { document.querySelector(`[data-approval="${CSS.escape(String(ev.id))}"]`)?.remove(); return; }
     if (!mine) return;
     if (ev.type === 'start') current.turnId = ev.turnId;
@@ -570,6 +572,39 @@
     card.scrollIntoView({ block: 'end' });
   }
 
+  // 1.5.127 Rented brains: the Hire it card from your home Bob (same words as on the PC), and his one-line notes.
+  function rentLine(ev) {
+    if (ev.action === 'thinking') return `Rented brain: ${ev.rental} thinks this one. The tools still run on your other replicant matrix.`;
+    if (ev.action === 'back') return `${ev.rental} couldn't take it (${ev.why || ''}), so Bob thinks this one himself.`;
+    if (ev.action === 'start') return `Started a rented machine on ${ev.service}. It stops when the job is done, or after ${ev.minutes} minutes whatever happens.`;
+    if (ev.action === 'used') return `${ev.rental}: about ${ev.usd} so far this job; ${ev.monthUsd} this month.`;
+    if (ev.action === 'stop') return ev.stopped ? `Stopped the rented machine (${ev.service}) after ${ev.minutes} min, ${ev.usd}.` : `Couldn't stop the rented machine on ${ev.service}. Stop it on their website so it doesn't keep billing.`;
+    return ev.text || '';
+  }
+  function rentCard(base, ev) {
+    const b = bobs.find((x) => x.base === base);
+    const r = ev.rental || {};
+    const done = (text) => { card.replaceChildren(el('p', { text })); setTimeout(() => card.remove(), 8000); };
+    const answer = (yes) => phone('net.post', { address: b.address, path: '/api/rent/answer', body: JSON.stringify({ id: ev.id, yes }) })
+      .then((x) => {
+        let out = {}; try { out = JSON.parse(x.body); } catch { /* not JSON */ }
+        if (!yes) return card.remove();
+        if (!out.ok) return done(out.why || 'That card is too old now. Ask me again.');
+        done(out.carryOn ? `Hired ${out.name}. Running your request there now.` : `Hired ${out.name} for your next messages.`);
+      }).catch(() => toast("Couldn't reach your other replicant matrix"));
+    const start = ev.startMinutes ? ` It takes about ${ev.startMinutes} minute${ev.startMinutes === 1 ? '' : 's'} to start${r.kind === 'machine' ? ', and those minutes are billed too' : ''}.` : '';
+    const card = el('div', { class: 'card' },
+      el('div', { class: 'q' }, el('strong', { text: `Hire ${r.name || 'the rented brain'}?` }), el('div', { text: `${ev.why || ''} ${r.model || ''} on ${r.service || ''}: ${ev.price || ''}.${start}${ev.carryOn ? ' Then Bob runs your request there; his tools still run on your other replicant matrix.' : ' Then your next messages run there.'}` })),
+      el('p', { class: 'help-line', text: `What leaves your other replicant matrix: this chat, the files attached to it, Bob's instructions and what he remembers about you, to ${r.service || 'the service'}${r.plain ? ' (over a plain, unencrypted connection to the hired machine)' : ''}. Their privacy policy covers it there.` }),
+      (r.cards || 1) > 1 ? el('p', { class: 'help-line', text: `⚠️ This machine has ${r.cards} cards at once (${r.cardsText || ''}): about ${r.cards} times the hourly price of one card, busy or not.` }) : null,
+      ev.blocked ? el('p', { class: 'help-line', text: ev.blocked }) : null,
+      el('div', { class: 'row' },
+        ev.blocked ? null : el('button', { class: 'main', text: `Hire it (${ev.est || 'a few cents'})`, onclick: () => answer(true) }),
+        el('button', { text: 'Not now', onclick: () => answer(false) })));
+    $('chat').append(card);
+    card.scrollIntoView({ block: 'end' });
+  }
+
   async function refreshBob(base, { listen = true } = {}) {
     const b = bobs.find((x) => x.base === base);
     if (!b) return;
@@ -592,7 +627,7 @@
     document.querySelectorAll('.panel').forEach((p) => p.classList.add('hidden'));
     if (id === 'new') { newChat(); return; }
     $(id).classList.remove('hidden');
-    ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, adventure: drawAdventure, games: drawGames, memory: drawMemory, settings: drawSettings, help: drawHelp }[id] || (() => {}))();
+    ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, adventure: drawAdventure, games: drawGames, chest: drawChest, memory: drawMemory, settings: drawSettings, help: drawHelp }[id] || (() => {}))();
     if (id === 'bobs') watchLend();
   }
   document.querySelectorAll('.panel .back').forEach((b) => b.addEventListener('click', () => b.closest('.panel').classList.add('hidden')));
@@ -1280,6 +1315,47 @@ ${chatOut}
   };
   const gam = { v: null, msg: '', live: '', base: null, timer: null, last: '', draft: '', opts: { role: 'guess', shelf: 'any', together: false, bobStarts: false } };
   const gamOpen = () => !$('games').classList.contains('hidden');
+  // ---- 1.5.125 🧰 Chest: the newest things your other Bob made, as little pictures with names (his Made by Bob list).
+  // The pictures come small from /api/thumb (made once on your other replicant matrix, kept there); a tap shows the thing
+  // itself with Save to this phone. Nothing is kept on the phone unless you save it.
+  const chest = { open: null }; // the item being shown big, or null
+  async function drawChest() {
+    const body = $('chest-body'), b = advBob();
+    body.textContent = '';
+    if (!b) { body.append(el('p', { class: 'help-line', text: "No Bob on your Bob-Net is reachable, and the chest lives on your other replicant matrix: everything he makes is there. Get him on Tailscale and come back." })); return; }
+    body.append(el('p', { class: 'dim', text: 'Opening the chest…' }));
+    let items = [];
+    try { items = await advApi('/api/made?limit=24'); } catch (e) { body.textContent = ''; body.append(el('p', { class: 'help-line', text: `I couldn't open the chest: ${e.message}` })); return; }
+    body.textContent = '';
+    body.append(el('p', { class: 'help-line', text: `What ${b.name} has made, newest first. Tap one to see it here; Save to this phone keeps a copy. To change the folder new things are saved in, open Equip Bob on your other replicant matrix and press the chest under Bob.` }));
+    if (!items.length) { body.append(el('p', { class: 'dim', text: 'Empty so far. Pictures, clips, songs and files he makes land here.' })); return; }
+    const addr = b.address;
+    const grid = el('div', { class: 'chest-grid', role: 'list', 'aria-label': 'What Bob made, newest first' });
+    for (const x of items) {
+      const kind = x.kind === 'text' ? 'document' : x.kind || 'file';
+      const name = x.title || x.name || '';
+      const icon = { image: '🖼️', video: '🎞️', audio: '🔊', document: '📄', folder: '📁' }[kind] || '📦';
+      const pic = el('div', { class: 'chest-pic', 'aria-hidden': 'true', text: icon });
+      const tile = el('button', { class: 'chest-item', role: 'listitem', 'aria-label': `Open ${name}: ${kind === 'image' ? 'picture' : kind === 'video' ? 'clip' : kind === 'audio' ? 'sound' : kind}`, onclick: () => { chest.open = chest.open === x ? null : x; drawChestBig(body, addr); } }, pic, el('span', { class: 'chest-name', text: name }));
+      grid.append(tile);
+      if (kind === 'image' || kind === 'video') {
+        const thumbPath = x.url && x.url.startsWith('/api/file?') ? `/api/thumb?path=${encodeURIComponent(new URL(x.url, 'http://x').searchParams.get('path') || '')}` : `/api/thumb?path=${encodeURIComponent(x.url || '')}`;
+        phone('net.media', { address: addr, path: thumbPath }).then((data) => { if (data) pic.replaceWith(el('img', { class: 'chest-pic', src: data, alt: '' })); }).catch(() => {});
+      }
+    }
+    body.append(grid, el('div', { id: 'chest-big' }));
+  }
+  function drawChestBig(body, addr) {
+    const box = body.querySelector('#chest-big'); if (!box) return;
+    box.textContent = '';
+    const x = chest.open; if (!x) return;
+    const kind = x.kind === 'text' ? 'document' : x.kind || 'file';
+    box.append(el('h3', { text: x.title || x.name || '' }));
+    if (['image', 'video', 'audio'].includes(kind) && x.url) box.append(mediaNode({ kind, url: x.url, base: `http://${addr}` }));
+    else box.append(el('p', { class: 'help-line', text: 'I can\'t show this kind of file on the phone. It\'s in Made by Bob on your other replicant matrix.' }));
+    box.scrollIntoView({ block: 'nearest' });
+  }
+
   function drawGames() {
     const body = $('games-body'), b = advBob();
     gam.base = b ? b.base : null; gam.last = '';

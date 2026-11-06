@@ -304,7 +304,9 @@ export class ModelShop {
     const pack = packFor(this.catalog.packs, vram, Boolean(gpu?.integrated), { arm: Boolean(board), ramGB });
     // 1.5.89: the replicant matrix's name tag (processor, graphics, memory) for the muted spec line beside its name.
     const cpu = cpuName() || null;
-    return { gpu, freeGB, vramGB: vram || null, ramGB, board, suggestedPack: pack.id, cpu, spec: specLine({ cpu, gpu, ramGB: shownRamGB(os.totalmem()) || ramGB }) };
+    // 1.5.126: on a shared-memory machine, the RAM really installed, the part set aside for graphics and what Windows sees.
+    const apu = gpu?.integrated && gpu.installedRamGB ? { installedRamGB: gpu.installedRamGB, reservedGraphicsGB: gpu.reservedGraphicsGB, visibleRamGB: gpu.visibleRamGB } : {};
+    return { gpu, freeGB, vramGB: vram || null, ramGB, ...apu, board, suggestedPack: pack.id, cpu, spec: specLine({ cpu, gpu, ramGB: shownRamGB(os.totalmem()) || ramGB }) };
   }
 
   // ---- The download manager ----

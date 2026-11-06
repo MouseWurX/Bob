@@ -85,6 +85,8 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb > /dev/null
           export HOME="$RUNNER_TEMP/home" && mkdir -p "$HOME"
+          # 1.5.125: a fresh Bob asks where to keep his things (a window nobody here can answer); BOB_AGENT_DIR answers it.
+          export BOB_AGENT_DIR="$HOME/Bob"
           app=$(ls dist/Bob-*-linux-*.AppImage | head -1) && chmod +x "$app"
           APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$app" --no-sandbox > "$RUNNER_TEMP/bob.log" 2>&1 &
           ok=0
@@ -95,7 +97,7 @@ jobs:
           grep -v appimage_extracted "$RUNNER_TEMP/bob.log" | tail -40
           test "$ok" = 1 || { echo "Bob didn't answer on 7777"; exit 1; }
           head -c 400 "$RUNNER_TEMP/status.json"; echo
-          test -f "$HOME/.local/share/bob/config.json" || { echo "Bob didn't make his home in ~/.local/share/bob"; exit 1; }
+          test -f "$HOME/Bob/config.json" || { echo "Bob didn't make his home in the folder BOB_AGENT_DIR named"; exit 1; }
           pkill -f "$app" || true
       - name: Upload the AppImage
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

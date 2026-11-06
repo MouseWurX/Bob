@@ -78,6 +78,11 @@ globalThis.BobHelp = {
 <p>The first borrowed reply is slow, because I read his instructions and tools once. After that I keep them in mind and only read what's new, so replies start much sooner.</p>`
     },
     {
+      id: 'chest', title: 'Chest',
+      html: `<p>Menu, <strong>Chest</strong>: the newest things your other Bob has made (pictures, clips, songs, sounds, documents), as little pictures with their names, newest first. Tap one to see it right here, and <strong>Save to this phone</strong> keeps a copy in your Pictures or Music. Nothing is kept on the phone unless you save it; the chest itself lives on your other replicant matrix, so it needs a Bob on your Bob-Net.</p>
+<p>Where new things are saved is set on your other replicant matrix: open Equip Bob, press the chest under Bob, then <strong>Change folder…</strong>. Documents and spreadsheets still go wherever you asked for them.</p>`
+    },
+    {
       id: 'memory', title: 'What Bob remembers',
       html: `<p>Menu, <strong>What Bob remembers</strong>: lasting facts for the phone brain, one per line, yours to edit. It's used from the next new chat. It stays on this phone; your other replicant matrix's Bob keeps his own memory file. Don't put passwords in it.</p><p>If <strong>Remember only what fits</strong> is on in your other replicant matrix's Settings (Show advanced settings, Speed &amp; memory), then while I can reach your other replicant matrix, the Bob there hands me the few lines of his memory that fit what you just asked, for that one reply. I keep none of them. With your other replicant matrix out of reach, I make do with this phone's list.</p>`
     },
@@ -152,7 +157,7 @@ globalThis.BobHelp = {
     },
     {
       id: 'privacy', title: 'Privacy',
-      html: `<p>Everything on the phone stays on the phone: chats, my memory file and the phone brain. Android's cloud backup is told to leave them out. I only talk to the Bobs you add (over Tailscale) and, when you say yes to a download, to huggingface.co for the phone brain. With <strong>Lend my brain</strong> on, your own Bobs send the chat so far and what they remember about you. The phone thinks a reply and keeps none of it. No tracking, no ads, nothing else.</p>`
+      html: `<p>Everything on the phone stays on the phone: chats, my memory file and the phone brain. Android's cloud backup is told to leave them out. I only talk to the Bobs you add (over Tailscale) and, when you say yes to a download, to huggingface.co for the phone brain. With <strong>Lend my brain</strong> on, your own Bobs send the chat so far and what they remember about you. The phone thinks a reply and keeps none of it. If your home Bob has a rented brain (a big brain hired from an online service, off unless the owner turned it on there), a job you hire it for goes from that computer to that service; the phone only shows the card and the cost, and the key never leaves the computer. No tracking, no ads, nothing else.</p>`
     },
     {
       id: 'credits', title: 'Credits and thanks',
@@ -163,6 +168,7 @@ globalThis.BobHelp = {
       html: `<dl>
 <dt>Bob on your network</dt><dd>A Bob running on one of your replicant matrices that lets this phone in. He does the heavy lifting.</dd>
 <dt>Phone brain</dt><dd>A small AI model that runs on this phone, without the internet.</dd>
+<dt>Chest</dt><dd>The newest things your other Bob made, shown as little pictures with names. Menu, Chest here; under Bob on Equip Bob on your other replicant matrix.</dd>
 <dt>Tailscale</dt><dd>A free app that makes a private, scrambled link between your own devices, wherever they are.</dd>
 <dt>Model family</dt><dd>Models made by the same team and built the same way, like Qwen or Gemma. One family comes in many sizes, from phone-sized to big. Under Phone brain each family has its own header you open and close.</dd>
 <dt>Replicant matrix</dt><dd>What I call the computer a Bob runs on. Here that's this replicant matrix (this phone); your other Bobs each live on their own, like your other replicant matrix at home. It's still your computer or phone; it's just my name for it.</dd>
@@ -193,6 +199,7 @@ globalThis.BobHelp = {
       id: 'faq', title: 'Questions and fixes',
       html: `<table>
 <tr><th>What happens</th><th>What to do</th></tr>
+<tr><td>The chest is empty or says no Bob is reachable</td><td>The chest is your other Bob's Made by Bob list, so it needs him on Tailscale. Once he's reachable, open the menu and tap Chest again.</td></tr>
 <tr><td>The pill says Nobody home</td><td>Tap it. Usually your other replicant matrix is asleep, or Tailscale is off on the phone or your other replicant matrix.</td></tr>
 <tr><td>"Isn't letting other replicant matrices in yet"</td><td>On your other replicant matrix: Bob's Settings, Show advanced settings, Bob-Net, Let my other replicant matrices in. Turn it on, then restart Bob on your other replicant matrix.</td></tr>
 <tr><td>"That isn't a Tailscale address"</td><td>Use the address your other replicant matrix's Let my other replicant matrices in setting shows: a name ending in .ts.net, or a number starting 100.</td></tr>

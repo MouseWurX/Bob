@@ -3,7 +3,7 @@ import { setLook } from './bob-sprite.js';
 import { progressHtml, animateWorkers } from './progress.js';
 import { createStylePage } from './style-page.js';
 import { createSampler, sampleButton, sampleHint } from './voice-samples.js';
-import { equipHtml, allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml, readyList, readyDefaults, readyToggle, readyOrder } from './equip.js';
+import { equipHtml, allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml, readyList, readyDefaults, readyToggle, readyOrder, CHEST_SHOW } from './equip.js';
 import { suit as fitSuit, picksOf, unsuited, jobNames, SLOT_NAMES, canDo, packsFor } from './fit.js';
 import { catalogueHtml, familyOf } from './catalogue.js';
 import { drawBob } from './bob-sprite.js';
@@ -33,6 +33,7 @@ export function createCellar() {
   const dlg = $('cellar');
   let speedModel = '';
   let speedRuns = [];
+  let rent = { services: [], rentals: [], caps: {}, running: [], leftover: [], recent: [] }; // 1.5.127 rented brains
   let data = null, hw = null, settings = null, roles = null, cloud = [], caps = {}, bctx = { on: false, brains: [] }, tab = 'roles', job = null, mode = 'shop', voices = [];
   const sampler = createSampler();
   const live = new Map(); // downloads running now (one or two), by id
@@ -388,6 +389,34 @@ export function createCellar() {
           <div class="row"><button type="button" class="mini" data-howtoedit="${esc(r.id)}">Edit</button>${howtoDeleting === r.id ? `<button type="button" class="mini danger" data-howtodel="${esc(r.id)}">Delete for good</button><button type="button" class="link" data-howtocancel>Keep it</button>` : `<button type="button" class="mini" data-howtoask="${esc(r.id)}">Delete</button>`}</div></div>`).join('');
     return `${intro}<div class="howtos-list">${rows || '<p class="muted">No how-tos yet.</p>'}</div>`;
   }
+  // 1.5.125 Bob's home folder (models, programs, notes, settings), with Move. Settings text is third person; the first-run copy is Bob's own voice.
+  function homeError(text) { for (const box of dlg.querySelectorAll('.home-error')) { box.textContent = text; box.hidden = false; } }
+  async function homeAskFor(folder) {
+    const r = await api('/api/home', { folder });
+    if (!r.ok) return homeError(r.error || 'Not that folder.');
+    if (r.same) return homeError('That\'s where my things are already.');
+    homeAsk = r; draw();
+    dlg.querySelector('.home-ask')?.scrollIntoView({ block: 'nearest' });
+  }
+  function homeHtml({ welcome = false } = {}) {
+    if (!homeInfo) { loadHome(); }
+    const h = homeInfo || {};
+    const folder = h.folder || settings?.home || '';
+    const size = h.loading || !h.modelsText ? '' : ` <span class="muted">· models ${esc(h.modelsText)}${h.enginesBytes ? `, with programs ${esc(h.totalText)}` : ''}</span>`;
+    const warn = h.tempLike ? `<p class="error">This is inside ${esc(h.tempLike)}, which clean-up tools empty. ${welcome ? 'My' : 'Bob\'s'} models (${esc(h.modelsText || 'tens of GB')}) would be gone in one "clear temporary files". Move them to a folder of your own, like ${esc(h.suggested || '')}.</p>`
+      : h.synced ? `<p class="error">${esc(welcome ? h.cloudWarning.replace(/Bob's/g, 'my').replace('Bob recommends', 'I recommend').replace('Bob is', "I'm") : h.cloudWarning)} Move it with the row below.</p>` : '';
+    const ask = homeAsk ? `<div class="confirm home-ask">${homeAsk.pickedCloud ? `<p class="error">${esc(welcome ? homeAsk.pickedCloudWarning.replace(/Bob's/g, 'my').replace('Bob recommends', 'I recommend').replace('Bob is', "I'm") : homeAsk.pickedCloudWarning)}</p>` : ''}<p>Move everything to <strong>${esc(homeAsk.folder)}</strong>? ${welcome ? `That's my models (${esc(homeAsk.modelsText || '?')}), programs, notes and settings${homeAsk.enginesBytes ? `, about ${esc(homeAsk.totalText)}` : ''}. I close, copy it all across, and open again from the new folder; the old one is removed only once every file is over. Big models take a while, and nothing else should use me meanwhile.` : `That's Bob's models (${esc(homeAsk.modelsText || '?')}), programs, notes and settings${homeAsk.enginesBytes ? `, about ${esc(homeAsk.totalText)}` : ''}. Bob closes, copies it all across, and opens again from the new folder; the old one is removed only once every file is over. Big models take a while, and nothing else should use Bob meanwhile.`}</p>
+      <div class="row"><button type="button" class="${homeAsk.pickedCloud ? 'mini' : 'get'}" data-homego>${homeAsk.pickedCloud ? 'Move there anyway' : 'Yes, move everything'}</button><button type="button" data-homeno>Not now</button></div></div>` : '';
+    const how = h.canMove === false && !h.loading ? `<p class="muted">Moving works from ${welcome ? 'my' : 'Bob\'s'} own window (Bob.exe, Bob.app or the AppImage), not from a browser tab.</p>` : '';
+    return `<p class="save-now"><strong>${welcome ? 'I keep my things in' : 'Kept in'}</strong> <span class="save-path">${esc(folder)}</span>${size} ${welcome ? tip('My models, programs (engines), notes, chats and settings all live in this one folder, apart from the program itself, so updating me never touches them. Move here… picks a new place (an empty or new folder on any drive; AppData and other temporary places are refused; a cloud-synced folder like OneDrive, Dropbox, Google Drive or iCloud is allowed but I always recommend against it and say so); I show the size and ask once, then close, copy everything across and open again.', 'My home folder') : tip('Bob\'s models, programs (engines), notes, chats and settings all live in this one folder, apart from the program itself, so updating Bob never touches them. Move here… picks a new place (an empty or new folder on any drive; AppData and other temporary places are refused; a cloud-synced folder like OneDrive, Dropbox, Google Drive or iCloud is allowed but Bob always recommends against it and says so); Bob shows the size and asks once, then closes, copies everything across and opens again. Where Bob saves things, below, is different: it is only where new pictures, clips and songs go.', 'Bob\'s home folder')}</p>
+      ${warn}
+      <div class="save-pick"><label for="home-path">New folder</label><input id="home-path" type="text" placeholder="${esc(h.suggested || 'D:\\Bob')}" aria-describedby="home-hint"> <button type="button" class="mini" data-homebrowse>Browse…</button>
+        <button type="button" data-homemove>Move here…</button></div>
+      <p class="muted" id="home-hint">An empty folder or a new one, on any drive, not a cloud-synced one (OneDrive, Dropbox, Google Drive, iCloud). Free space matters more than speed.${welcome ? ' Best done now, before the big downloads.' : ''}</p>
+      ${how}
+      <p class="error home-error" hidden></p>
+      ${ask}`;
+  }
   // 1.5.41 Where Bob saves things: the folder for pictures, clips, songs and sounds. Bob's own folder unless one is picked.
   function saveDirHtml() {
     const sd = settings?.saveDir || {};
@@ -402,7 +431,7 @@ export function createCellar() {
   async function saveDirTo(folder) {
     const r = await api('/api/settings', { saveDir: folder });
     const eb = dlg.querySelector('.save-error');
-    if (r.saveDirError) { if (eb) { eb.textContent = r.saveDirError; eb.hidden = false; } return false; }
+    if (r.saveDirError) { for (const box of dlg.querySelectorAll('.save-error, .chest-error')) { box.textContent = r.saveDirError; box.hidden = false; } return false; }
     settings.saveDir = r.saveDir; draw(); return true;
   }
   const saveDirState = () => { const b = dlg.querySelector('[data-savedir]'); if (b) b.disabled = !dlg.querySelector('#save-path')?.value.trim(); };
@@ -461,6 +490,8 @@ export function createCellar() {
   const EVERY_EXTRA = [['ev-projects', '📁 Projects', () => { const n = (settings?.projectList || []).length; return n ? `${n} project${n === 1 ? '' : 's'} · Main: ${settings.defaultProject || 'none'}` : 'No projects yet. Add the folders Bob searches when you say "my project".'; }, () => projectsHtml()],
     // 1.5.41 Where Bob saves things (closed, it shows the folder in use).
     // 1.5.79 How-tos (closed, it shows how many and whether he learns new ones).
+    // 1.5.125 Bob's home folder (closed, it shows the home folder; red when it's somewhere temporary).
+    ['ev-home', '📦 Bob\'s home folder', () => { const h = homeInfo || {}; return h.tempLike ? `${settings?.home || ''} · in ${h.tempLike}: move it` : h.synced ? `${h.folder || settings?.home || ''} · a ${h.synced} folder, synced to the cloud: not recommended` : `${h.folder || settings?.home || ''}${h.modelsText ? ` · models ${h.modelsText}` : ''}`; }, () => homeHtml()],
     ['ev-save', '💾 Where Bob saves things', () => { const sd = settings?.saveDir || {}; return sd.missing ? 'Picked folder not found · saving in Bob\'s own folder' : sd.custom ? sd.folder : 'Bob\'s own folder (Made by Bob)'; }, () => saveDirHtml()],
     ['ev-howtos', '📒 How-tos', () => { const n = howtosList ? howtosList.length : (settings?.howtoCount || 0); return `${n ? `${n} how-to${n === 1 ? '' : 's'}` : 'No how-tos yet'} · Learning: ${settings?.howtos === true ? 'on' : 'off'}`; }, () => howtosHtml()]];
 
@@ -479,7 +510,7 @@ export function createCellar() {
     // 1.5.117: the version and Check for updates sit on the closed panel's line, so no scrolling to check.
     const pcSum = `<span class="pc-ver">Bob ${esc(settings.version?.label || '')}</span> <button type="button" class="mini" data-checkupdate>Check for updates</button> <span class="update-out"></span><span class="pc-spec">· ${esc(hw?.spec || 'specs not read yet')} · graphics card: ${hw?.gpu ? `${esc(hw.gpu.name)}, ${hw.gpu.vramGB} GB` : 'not detected'} · ${hw?.freeGB ?? '?'} GB free</span>`;
     return `<div class="everyday">${panel('ev-pc', '💻 This replicant matrix and updates', pcSum, `
-      <div class="updates srow-foot"><span class="muted">${hw?.gpu?.integrated ? `Built-in graphics: ${esc(hw.gpu.name.replace(/ \(shared memory\)$/, ''))}, about ${hw.gpu.vramGB} GB of memory shared with it` : hw?.gpu?.unified ? `Chip: ${esc(hw.gpu.name)}, about ${hw.gpu.vramGB} GB of it for graphics` : `Graphics card: ${hw?.gpu ? `${esc(hw.gpu.name)}, ${hw.gpu.vramGB} GB` : 'not detected'}`} · Free disk: ${hw?.freeGB ?? '?'} GB</span>
+      <div class="updates srow-foot"><span class="muted">${hw?.gpu?.integrated && hw.installedRamGB ? `Built-in graphics: ${esc(hw.gpu.name.replace(/ \(shared memory\)$/, ''))} · Memory: ${hw.installedRamGB} GB ${hw.reservedGraphicsGB >= 2 ? `shared, ${hw.reservedGraphicsGB} GB set aside for graphics` : 'shared with graphics as needed'} (about ${hw.gpu.vramGB} GB of it for models)` : hw?.gpu?.integrated ? `Built-in graphics: ${esc(hw.gpu.name.replace(/ \(shared memory\)$/, ''))}, about ${hw.gpu.vramGB} GB of memory shared with it` : hw?.gpu?.unified ? `Chip: ${esc(hw.gpu.name)}, about ${hw.gpu.vramGB} GB of it for graphics` : `Graphics card: ${hw?.gpu ? `${esc(hw.gpu.name)}, ${hw.gpu.vramGB} GB` : 'not detected'}`} · Free disk: ${hw?.freeGB ?? '?'} GB</span>
         ${sswitch('autoCheck', settings.updates?.autoCheck, 'Check for updates when Bob starts', 'Off unless you turn it on. Bob looks at his GitHub page for a newer version and only tells you; updating always takes your click.')}
         <div class="row"><button type="button" data-welcome>Run first-time setup</button><button type="button" data-helpbundle>Save a help bundle</button>${tip('Saves one zip with Bob\'s logs, the last chats, errors and this replicant matrix\'s facts, scrubbed of passcodes, keys and your name, so an agent or a person can work out what\'s wrong. Nothing is sent anywhere: you pick where it goes.', 'Save a help bundle')}${settings.features?.pcCheck === false ? '' : '<button type="button" data-pccheck>Check this replicant matrix</button>'}</div>
         <div class="help-bundle muted" aria-live="polite"></div><div class="update-steps"></div><div class="pc-check" aria-live="polite"></div></div>`, '', true)}${panel('ev-bob', '🙂 Bob himself', bobSum, `
@@ -603,8 +634,52 @@ export function createCellar() {
         <label class="pick"><strong>ComfyUI port</strong><input data-set="workshopPort" inputmode="numeric" value="${esc(settings.workshop?.port || 8188)}" aria-label="ComfyUI port" style="width:7em"></label></div>
       <p class="muted">Apps Bob works inside (Unreal Engine, Blender) are under Hands, Connected apps (MCP).</p>`;
   }
+  // 1.5.127 Rented brains: a big brain hired for one job from a service the owner has an account with.
+  function rentHtml() {
+    const r = rent || {};
+    const caps = r.caps || {};
+    const svc = (s) => {
+      const keyLine = s.id === 'other' ? 'You name the variable that holds each key when you add a rental.' : s.keyFound ? `Key found (${esc(s.keyEnv)})` : settings.platform === 'win32' ? `No key yet. Add a user variable named ${esc(s.keyEnv)}.` : `No key yet. Put a line ${esc(s.keyEnv)}=… in ~/.config/bob/env.`;
+      return `<div class="cloud row rent-service${s.keyFound === false ? ' dim' : ''}" data-rentsvc="${esc(s.id)}">
+        <label class="switch"><input type="checkbox" data-rentenable="${esc(s.id)}" ${s.enabled ? 'checked' : ''} ${s.keyFound === false ? 'disabled' : ''}><span><strong>Let Bob hire from ${esc(s.name)}</strong><br><span class="muted">${esc(s.what)} ${keyLine}${s.keyPage ? ` <a href="${esc(s.keyPage)}" target="_blank" rel="noopener">Get a key</a>` : ''}</span></span></label>
+        <div class="confirm rent-warn" hidden></div></div>`;
+    };
+    const rentalRow = (x) => `<li class="rent-row${x.id === r.current ? ' worn' : ''}"><strong>${esc(x.name)}</strong> <span class="muted">${esc(x.model)} on ${esc(x.serviceName)}${x.kind === 'answer' ? '' : `, ${esc(x.cardsText || `${x.card} GB card`)}`} · ${esc(x.price || '')}</span>${(x.cards || 1) > 1 ? '<span class="tag warn">Several cards: costs more</span>' : ''}${x.id === r.current ? '<span class="tag good">in the slot</span>' : ''}${x.ready?.ok ? '' : `<span class="tag warn">${esc(x.ready?.why || '')}</span>`}${x.running ? '<span class="tag">Running</span>' : ''}
+      <span class="row"><button type="button" class="mini" data-rentuse="${x.id === r.current ? '' : esc(x.id)}">${x.id === r.current ? 'Take it off' : 'Use this one'}</button>${x.kind === 'answer' ? `<button type="button" class="mini" data-rentprice="${esc(x.id)}">Check the price</button>` : ''}<button type="button" class="mini" data-rentremove="${esc(x.id)}">Remove</button></span></li>`;
+    const running = (r.running || []).map((m) => `<li>${esc((r.rentals || []).find((x) => x.id === m.rental)?.name || m.rental)}: ${m.starting ? 'starting' : `${m.minutes} min, about ${esc(m.usd)}`}</li>`).join('');
+    const leftover = (r.leftover || []).map((m) => `<li>${esc(m.serviceName)} ${esc(m.id)}${m.perHour ? ` (about $${(+m.perHour).toFixed(2)} an hour)` : ''}, started before Bob did <button type="button" class="mini danger" data-rentstopone="${esc(m.id)}">Stop it</button></li>`).join('');
+    const cardOpts = (r.cards || []).map((c) => `<option value="${esc(c.id)}" ${c.id === '48' ? 'selected' : ''}>${esc(c.name)} (about $${c.perHour.toFixed(2)} an hour): ${esc(c.say)}</option>`).join('');
+    const svcOpts = (r.services || []).map((s) => `<option value="${esc(s.id)}" ${s.enabled ? '' : 'disabled'}>${esc(s.name)}${s.enabled ? '' : ' (switch it on first)'}</option>`).join('');
+    return `<div class="rent-block"><strong>Rented brains</strong> <span class="tag">off unless you turn one on</span>
+      ${more('Hire a big brain for a big job, from any service you have an account with. A rental is a service plus a model (for example Qwen 3.6 35B on OpenRouter, or a full-size 24Bob on a RunPod card). Put one in the Rented brain slot on Equip Bob, then use it from the 🏗 Rented brain switch under the chat, or when Bob offers it for a job too big for this replicant matrix. You press a card before anything is spent, and it says the cost and exactly what leaves this replicant matrix: the chat of that job, the files you attach to it, Bob\'s instructions and what he remembers about you. Keys are environment variables Bob only reads (on Mac and Linux they can also go in ~/.config/bob/env); he never stores or shows one. Bob\'s figures are estimates from the service\'s price list; the service\'s own billing page is the real bill.')}
+      <h4 class="ssub">Spending limits</h4>
+      <p class="muted">Every limit starts at 0. Nothing can be hired until you set the ones a rental needs.</p>
+      <label class="pick"><strong>The most Bob may spend on rented brains this month</strong> $<input data-rentcap="month" inputmode="decimal" value="${esc(String(caps.month ?? 0))}" aria-label="Month cap in dollars" style="width:6em"> <span class="muted">Spent this month: ${esc(r.spentText || '$0.00')}. Resets on the 1st.</span></label>
+      <label class="pick"><strong>The most one job may cost</strong> $<input data-rentcap="job" inputmode="decimal" value="${esc(String(caps.job ?? 0))}" aria-label="Per-job cap in dollars" style="width:6em"></label>
+      <label class="pick"><strong>The longest a hired machine may run</strong> <input data-rentcap="minutes" inputmode="numeric" value="${esc(String(caps.minutes ?? 0))}" aria-label="Longest run in minutes" style="width:5em"> minutes <span class="muted">The machine carries this timer and stops itself when it runs out, even if this replicant matrix is off.</span></label>
+      <h4 class="ssub">Services</h4>
+      ${(r.services || []).map(svc).join('')}
+      <h4 class="ssub">Rentals</h4>
+      ${(r.rentals || []).length ? `<ul class="rent-list">${r.rentals.map(rentalRow).join('')}</ul>` : '<p class="muted">None yet.</p>'}
+      <details class="more rent-add"><summary>Add a rental</summary>
+        <label class="pick"><strong>Service</strong><select data-rentadd="service" aria-label="Service">${svcOpts}</select></label>
+        <label class="pick"><strong>Model</strong><input data-rentadd="model" placeholder="as the service lists it, e.g. qwen/qwen3.6-35b-a3b, or Owner/Repo/file.gguf" aria-label="Model name" style="width:24em"></label>
+        <label class="pick rent-card-pick"><strong>Card size</strong><select data-rentadd="card" aria-label="Card size">${cardOpts}</select></label>
+        <label class="pick rent-cards-pick"><strong>Cards on the machine</strong><select data-rentadd="cards" aria-label="How many cards on the machine">${(r.cardCounts || [1]).map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n === 1 ? '1 card (the usual)' : `${n} cards at once: ${n} times the hourly price`}</option>`).join('')}</select> <span class="muted">Only for a model too big for one card. The price and the limits apply to the whole machine.</span></label>
+        <div class="confirm rent-multi-warn" hidden></div>
+        <label class="pick rent-other"><strong>Web address</strong><input data-rentadd="address" placeholder="https://…/v1" aria-label="Web address" style="width:20em"></label>
+        <label class="pick rent-other"><strong>Variable that holds the key</strong><input data-rentadd="keyEnv" placeholder="MY_SERVICE_API_KEY" aria-label="Key variable name" style="width:16em"></label>
+        <label class="pick"><strong>Name</strong><input data-rentadd="name" placeholder="optional, e.g. Qwen 35B on OpenRouter" aria-label="Rental name" style="width:20em"></label>
+        <p class="row"><button type="button" class="get" data-rentaddgo>Add this rental</button><span class="muted rent-add-note"></span></p>
+      </details>
+      <h4 class="ssub">Machines running</h4>
+      ${running || leftover ? `<ul>${running}${leftover}</ul><p class="row"><button type="button" class="danger" data-rentstop>Stop everything now</button><button type="button" class="mini" data-rentcheck>Check the services again</button></p>` : `<p class="muted">None. <button type="button" class="link" data-rentcheck>Check the services again</button></p>`}
+      ${(r.recent || []).length ? `<details class="more"><summary>Recent spending</summary><ul>${r.recent.map((x) => `<li>${esc(new Date(x.at).toLocaleString())}: ${esc(x.name)}, ${esc(x.usd)}${x.minutes ? ` (${x.minutes} min)` : x.tokensIn ? ` (${x.tokensIn} words in, ${x.tokensOut} out)` : ''}${x.guessed ? ', estimated' : ''}</li>`).join('')}</ul></details>` : ''}
+    </div>`;
+  }
   function onlineHtml() {
     return `<p class="muted">Each of these sends something over the internet, and says what.</p>
+      ${rentHtml()}
       <div><strong>Cloud helpers</strong> <span class="tag">off unless you turn one on</span>
         ${more('Paid cloud AIs Bob can hand one job to, as a helper copy. He asks you every time, shows the rough cost and exactly what text would leave your replicant matrix (your computer). Bob never stores or sees your keys: you add a key as a Windows environment variable yourself (Settings, System, About, Advanced system settings, Environment Variables, under "User variables").')}
         ${cloud.map((c) => `<div class="cloud row${c.keyFound ? '' : ' dim'}">
@@ -648,7 +723,7 @@ export function createCellar() {
     ['speed', '⚡ Speed & memory', 'speed memory free memory quiet keep alive unload idle graphics card quick answers processor pictures without waiting ready while you type games go first picture settings gaming graphics card borrow automatic never always remember only what fits memory banks recall speed test', () => speedMemoryHtml()],
     ['engines', '⚙ Engines', 'engine ollama llama.cpp downloads newer build tested build fit to free graphics memory speculative decoding draft flags threads batch', () => enginesHtml()],
     ['bobnet', '🌐 Bob-Net', 'bob-net bobnet phone android tailscale address passcode firewall let my phone in let my other replicant matrices in other bobs share brains lend borrow take jobs send jobs', () => bobNetHtml()],
-    ['online', '☁ Online services', 'online internet cloud helpers api key anthropic openai gemini openrouter telegram bot token pairing', () => onlineHtml()],
+    ['online', '☁ Online services', 'online internet cloud helpers api key anthropic openai gemini openrouter telegram bot token pairing rented brains rent hire runpod vast lambda together spending cap limit machine', () => onlineHtml()],
     ['apps', '🔌 Other apps', 'other apps comfyui workflows port unreal blender mcp', () => otherAppsHtml()],
     ['hands', '✋ Hands', 'files run commands schedules apps permission quarantine reviewer', () => handsSettingsHtml() + quarantineSettingsHtml()],
     ['housekeeping', '🧹 Housekeeping', 'tidy old chats pictures logs', () => housekeepingHtml()],
@@ -728,6 +803,7 @@ export function createCellar() {
     return `<div class="welcome">
       <h2>Welcome to Bob</h2>
       <label class="callme"><strong>What should I call you?</strong> <input type="text" data-callme maxlength="40" value="${esc(settings?.callMe || '')}" placeholder="${esc(settings?.windowsName || 'your name')}" aria-label="What should Bob call you?" autocomplete="off"></label>
+      <section class="ready home-first"><h3>My home folder</h3>${homeHtml({ welcome: true })}</section>
       <section class="ready"><h3>Get me ready</h3>
       <p class="muted">I call this computer my replicant matrix. You'll see that name around the app.</p>
       <p class="muted spec">${esc(hw.spec || 'specs not read yet')}</p>
@@ -789,7 +865,7 @@ export function createCellar() {
     job = await api('/api/models/download', { ids: order.ids, equip: order.equip });
   }
   async function load() {
-    [data, hw, settings, roles, cloud, caps, bctx] = await Promise.all([api('/api/models'), api('/api/hardware'), api('/api/settings'), api('/api/roles'), api('/api/cloud'), api('/api/capabilities').catch(() => ({})), api('/api/brain-ctx').catch(() => ({ on: false, brains: [] }))]);
+    [data, hw, settings, roles, cloud, caps, bctx, rent] = await Promise.all([api('/api/models'), api('/api/hardware'), api('/api/settings'), api('/api/roles'), api('/api/cloud'), api('/api/capabilities').catch(() => ({})), api('/api/brain-ctx').catch(() => ({ on: false, brains: [] })), api('/api/rent').catch(() => rent)]);
     speedRuns = (await api('/api/speed-test').catch(() => ({}))).history || [];
     voices = (await api('/api/voice/samples').catch(() => ({}))).voices || [];
     job = data.job;
@@ -809,11 +885,26 @@ export function createCellar() {
   let famOpen = (() => { try { const v = JSON.parse(localStorage.getItem(FAM_KEY)); return v && typeof v === 'object' ? v : {}; } catch { return {}; } })();
   const saveFam = () => { try { localStorage.setItem(FAM_KEY, JSON.stringify(famOpen)); } catch {} };
   let houseFocus = null; // 1.5.34: "Change" on a "Used your house style" line opens that House style box
+  // 1.5.125 The chest on Equip Bob: the newest things Bob made (the Made by Bob list), loaded when the chest is opened.
+  let chestState = { items: [], loaded: false, error: '' };
+  async function loadChest() {
+    try { chestState = { items: await api(`/api/made?limit=${CHEST_SHOW}`), loaded: true, error: '' }; }
+    catch (e) { chestState = { items: [], loaded: true, error: `I couldn't open the chest: ${e.message}` }; }
+    if (eqSelected === 'chest') { const y = dlg.scrollTop; draw(); dlg.scrollTop = y; }
+  }
+  // 1.5.125 Bob's home folder: sizes and warnings come from /api/home when the panel is opened.
+  let homeInfo = null, homeAsk = null; // homeAsk: a folder waiting for "Yes, move everything"
+  async function loadHome() {
+    homeInfo = { loading: true };
+    try { homeInfo = await api('/api/home'); } catch (e) { homeInfo = { error: e.message, folder: settings?.home || '' }; }
+    const y = dlg.scrollTop; draw(); dlg.scrollTop = y;
+  }
   let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-equip-view') || 'doll'; } catch { return 'doll'; } })();
   function eqCtx() {
     return { roles, models: data?.models || [], brains: settings?.sessionBrains || {}, embed: roles?.current?.embed || '', selected: eqSelected, vramGB: hw?.vramGB || hw?.gpu?.vramGB || null, unified: Boolean(hw?.gpu?.unified), integrated: Boolean(hw?.gpu?.integrated), arm: hw?.board === 'arm', ramGB: hw?.ramGB || null, freeGB: hw?.freeGB ?? null, platform: settings?.platform, showUnsuited,
       famOpen, packs: data?.packs || [], packId: starterPack, picks: starterPicks, engines: data?.engines || [], starterOpen,
-      houseStyle: settings?.houseStyle || {}, active: settings?.activeModels || {},
+      houseStyle: settings?.houseStyle || {}, active: settings?.activeModels || {}, chest: chestState, saveDir: settings?.saveDir || {}, // 1.5.125 the chest
+      rent, // 1.5.127 the Rented brain slot
       attributes: settings ? attributesHtml({ personality: settings.personality, look: settings.look, lookText: settings.lookText, lookComments: settings.lookComments, user: settings.userName, callMe: settings.callMe, windowsName: settings.windowsName }) : '' };
   }
   // Starter set: which set, what's ticked (null = the defaults), and what still has to be equipped once it's downloaded.
@@ -998,6 +1089,44 @@ export function createCellar() {
       }
       if (b.dataset.catequip) { const y = dlg.scrollTop; await equip(b.dataset.catequip, b.dataset.catvalue, { offer: false }); dlg.scrollTop = y; return; }
       if (b.dataset.slotpick) { eqSelected = b.dataset.slotpick; draw(); dlg.querySelector('.kit-panel')?.scrollIntoView({ block: 'nearest' }); return; }
+      // 1.5.125 the chest
+      if ('chest' in b.dataset) { eqSelected = 'chest'; chestState = { ...chestState, loaded: false }; draw(); dlg.querySelector('.kit-panel')?.scrollIntoView({ block: 'nearest' }); loadChest(); return; }
+      if ('chestreload' in b.dataset) { chestState = { ...chestState, loaded: false }; draw(); loadChest(); return; }
+      if ('chestall' in b.dataset) { $('madeBtn')?.click(); return; }
+      // 1.5.127 rented brains
+      if ('rentuse' in b.dataset) { rent = await api('/api/rent/settings', { current: b.dataset.rentuse }); window.dispatchEvent(new CustomEvent('bob-rent-slot', { detail: { rental: (rent.rentals || []).find((x) => x.id === rent.current)?.name || '' } })); draw(); return; }
+      if ('rentsettings' in b.dataset) { sampler.stop(); setTab('settings'); advanced = true; try { localStorage.setItem('bob-settings-advanced', '1'); } catch {} jumpTo = 'adv-online'; draw(); return; }
+      if (b.dataset.rentwarnok) { rent = await api('/api/rent/settings', { enabled: { [b.dataset.rentwarnok]: true }, warned: { [b.dataset.rentwarnok]: true } }); draw(); return; }
+      if (b.dataset.rentwarnno) { const box = b.closest('.rent-warn'); if (box) box.hidden = true; return; }
+      // Several cards at once: the warning card's answer. Yes keeps the count; no puts it back to 1 card.
+      if (b.dataset.rentmultiok) { const box = b.closest('.rent-add'); box.querySelector('.rent-multi-warn').hidden = true; box.querySelector('[data-rentadd="cards"]').dataset.ok = b.dataset.rentmultiok; return; }
+      if ('rentmultino' in b.dataset) { const box = b.closest('.rent-add'); box.querySelector('.rent-multi-warn').hidden = true; const sel = box.querySelector('[data-rentadd="cards"]'); sel.value = '1'; delete sel.dataset.ok; return; }
+      if (b.dataset.rentremove) { rent = await api('/api/rent/remove', { id: b.dataset.rentremove }); draw(); return; }
+      if (b.dataset.rentprice) { try { rent = await api('/api/rent/price', { id: b.dataset.rentprice }); flash(b, 'Price read.'); } catch (e) { alertIn(b, e.message); } draw(); return; }
+      if ('rentstop' in b.dataset) { b.disabled = true; b.textContent = 'Stopping…'; rent = await api('/api/rent/stop', {}); draw(); return; }
+      if (b.dataset.rentstopone) { b.disabled = true; try { rent = await api('/api/rent/stop-leftover', { id: b.dataset.rentstopone }); } catch (e) { alertIn(b, e.message); } draw(); return; }
+      if ('rentcheck' in b.dataset) { b.disabled = true; rent = await api('/api/rent/check', {}); draw(); return; }
+      if ('rentaddgo' in b.dataset) {
+        const box = b.closest('.rent-add');
+        const val = (k) => box.querySelector(`[data-rentadd="${k}"]`)?.value?.trim() || '';
+        const noteEl = box.querySelector('.rent-add-note');
+        const svc = (rent.services || []).find((x) => x.id === val('service'));
+        const missing = !val('model') ? 'Type the model\'s name first, as the service lists it.' : svc?.id === 'other' && !/^https?:\/\//.test(val('address')) ? 'Type the service\'s web address first (https://…/v1).' : svc?.id === 'other' && !val('keyEnv') ? 'Name the variable that holds the key first.' : '';
+        if (missing) { alertIn(b, missing); if (noteEl) { noteEl.textContent = missing; noteEl.classList.remove('muted'); noteEl.classList.add('error'); } return; }
+        try {
+          const r = await api('/api/rent/add', { service: val('service'), model: val('model'), card: val('card'), cards: Number(val('cards')) || 1, address: val('address'), keyEnv: val('keyEnv'), name: val('name') });
+          rent = r; draw();
+          const added = (rent.rentals || []).find((x) => x.id === r.added);
+          dlg.querySelector('#sub-adv-online .rent-add-note')?.replaceChildren(document.createTextNode(`Added ${added?.name || ''}${rent.current === r.added ? ' and put it in the Rented brain slot' : ''}.${r.priceNote ? ' ' + r.priceNote : ''}`));
+        } catch (e) { alertIn(b, e.message); if (noteEl) { noteEl.textContent = e.message; noteEl.classList.remove('muted'); noteEl.classList.add('error'); } }
+        return;
+      }
+      if ('chestbrowse' in b.dataset) { const r = await api('/api/pick-folder', { purpose: 'save' }); if (r.folder) await saveDirTo(r.folder); else if (r.error) { const eb = dlg.querySelector('.chest-error'); if (eb) { eb.textContent = r.error; eb.hidden = false; } } return; }
+      // 1.5.125 Bob's home folder: pick (or type) a folder, see the size, then one Yes before anything moves.
+      if ('homebrowse' in b.dataset) { const r = await api('/api/pick-folder', { purpose: 'home' }); if (r.folder) await homeAskFor(r.folder); else if (r.error) homeError(r.error); return; }
+      if ('homemove' in b.dataset) { const v = dlg.querySelector('#home-path')?.value.trim(); if (v) await homeAskFor(v); return; }
+      if ('homeno' in b.dataset) { homeAsk = null; draw(); return; }
+      if ('homego' in b.dataset) { if (!homeAsk) return; b.disabled = true; b.textContent = 'Moving…'; const r = await api('/api/home', { folder: homeAsk.folder, confirm: true }); if (!r.ok) { homeError(r.error || 'Couldn\'t move.'); b.disabled = false; b.textContent = homeAsk?.pickedCloud ? 'Move there anyway' : 'Yes, move everything'; } return; }
       if (b.dataset.equip && b.tagName === 'BUTTON') { await equip(eqSelected, b.dataset.equip); return; }
       if (b.dataset.unequip) { const sl = allSlots().find((s) => s.id === b.dataset.unequip); await equip(sl.id, sl.off === 'windows' ? 'windows' : '', { offer: false }); return; }
       if (b.dataset.eqview) { eqView = b.dataset.eqview; try { localStorage.setItem('bob-equip-view', eqView); } catch {} draw(); return; }
@@ -1218,6 +1347,30 @@ export function createCellar() {
       if (el.dataset.hkkind) { const v = el.dataset.hkfield === 'n' ? Number(el.value) : el.value; const r = await api('/api/settings', { housekeeping: { [el.dataset.hkkind]: { [el.dataset.hkfield]: v } } }); settings.housekeeping = r.housekeeping; if (el.dataset.hkfield === 'n') el.value = r.housekeeping[el.dataset.hkkind].n; flash(el, el.dataset.hkfield === 'mode' && v === 'auto' ? 'Saved. Bob tidies these without asking (to the Recycle Bin).' : 'Saved.'); return; }
       if (el.dataset.set === 'autoCheck') { const r = await api('/api/settings', { updates: { autoCheck: el.checked } }); settings.updates = r.updates; el.checked = r.updates.autoCheck; return; }
       if (el.dataset.set === 'autostart') { const r = await api('/api/settings', { autostart: el.checked }); settings.autostart = r.autostart; el.checked = r.autostart; }
+      else if (el.dataset.rentenable) { // 1.5.127: the first time a service goes on, a warning card says what leaves this replicant matrix
+        const id = el.dataset.rentenable;
+        const s = (rent.services || []).find((x) => x.id === id);
+        if (el.checked && s && !s.warned) {
+          el.checked = false;
+          const box = el.closest('.rent-service')?.querySelector('.rent-warn');
+          if (box) { box.hidden = false; box.innerHTML = `<p><strong>This sends your chat to ${esc(s.name)}.</strong> When you hire a brain for a job, the chat of that job, the files you attach to it, Bob's instructions and what he remembers about you go to ${esc(s.name)} to be worked on there, and come under their privacy policy, not Bob's.${s.plain ? ' With a hired machine the chat travels over a plain, unencrypted connection.' : ''} Nothing goes until you press Hire it on a job, and Bob shuts the machine down when the job is done. Bob never stores your key.</p><div class="row"><button type="button" class="get" data-rentwarnok="${esc(id)}">I understand, turn it on</button><button type="button" data-rentwarnno="${esc(id)}">Leave it off</button></div>`; }
+          return;
+        }
+        rent = await api('/api/rent/settings', { enabled: { [id]: el.checked } }); flash(el.closest('.cloud'), el.checked ? 'On. Bob still asks before every hire.' : 'Off.'); draw(); return;
+      }
+      else if (el.dataset.rentcap) { const v = Number(String(el.value).replace(/[^0-9.]/g, '')) || 0; rent = await api('/api/rent/settings', { caps: { [el.dataset.rentcap]: v } }); el.value = String(rent.caps[el.dataset.rentcap]); flash(el, v ? 'Saved.' : 'Saved: 0 means nothing can be hired.'); return; }
+      else if (el.dataset.rentadd === 'service') { const s = (rent.services || []).find((x) => x.id === el.value); const box = el.closest('.rent-add'); box.querySelector('.rent-card-pick').hidden = !s || s.kind === 'answer'; box.querySelector('.rent-cards-pick').hidden = !s || s.kind !== 'machine'; box.querySelector('.rent-multi-warn').hidden = true; const sel = box.querySelector('[data-rentadd="cards"]'); sel.value = '1'; delete sel.dataset.ok; for (const o of box.querySelectorAll('.rent-other')) o.hidden = el.value !== 'other'; return; }
+      // 1.5.127: more than one card on a hired machine: a big warning first (the owner's rule). It snaps back to 1 until "I understand" is pressed.
+      else if (el.dataset.rentadd === 'cards') {
+        const n = Number(el.value) || 1; const box = el.closest('.rent-add'); const warn = box.querySelector('.rent-multi-warn');
+        if (n === 1 || el.dataset.ok === String(n)) { warn.hidden = true; return; }
+        const c = (rent.cards || []).find((x) => x.id === box.querySelector('[data-rentadd="card"]')?.value) || (rent.cards || [])[1] || { name: 'card', perHour: 2 };
+        const hour = n * c.perHour, day = hour * 24;
+        warn.hidden = false;
+        warn.innerHTML = `<p class="big"><strong>⚠️ ${n} cards at once costs about ${n} times as much.</strong></p><p><strong>About $${hour.toFixed(2)} an hour, about $${day.toFixed(0)} a day</strong> for ${n} × ${esc(c.name)}, billed whether or not the brain is busy, plus the minutes it takes to start (longer with more cards). Your spending limits still apply to the whole machine, and the timer from The longest a hired machine may run is the only thing that stops it if this replicant matrix goes off. Only pick this for a model that really doesn't fit one card.</p><div class="row"><button type="button" class="get" data-rentmultiok="${n}">I understand, ${n} cards</button><button type="button" data-rentmultino>Back to 1 card</button></div>`;
+        warn.scrollIntoView?.({ block: 'nearest' });
+        return;
+      }
       else if (el.dataset.cloud) { const r = await api('/api/settings', { cloudHelpers: { [el.dataset.cloud]: { enabled: el.checked } } }); cloud = r.cloud || cloud; flash(el.closest('.cloud'), el.checked ? 'On. Bob still asks every time.' : 'Off.'); }
       else if (el.dataset.cloudmodel) { const r = await api('/api/settings', { cloudHelpers: { [el.dataset.cloudmodel]: { model: el.value.trim() } } }); cloud = r.cloud || cloud; flash(el, 'Saved.'); }
       else if (el.dataset.set === 'engine') { await api('/api/settings', { engine: el.value }); settings.engine = el.value; }
