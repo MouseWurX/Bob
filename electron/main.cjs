@@ -293,10 +293,12 @@ async function up(port) {
 let win = null;
 
 // ---------- 1.5.94 the tray and Bob's icon ----------
-// "Keep Bob in the tray" (off unless turned on): a tray icon (Windows: by the clock; Mac: the menu bar; Linux: the
+// "Keep Bob in the tray" (on unless turned off since 1.5.134; off by default before): a tray icon (Windows: by the clock; Mac: the menu bar; Linux: the
 // desktop's tray, where it has one). Closing or minimising his window hides it there; Quit Bob in its menu closes
 // him fully. Started hidden at sign-in ("Launch Bob on start-up"), he always shows the tray icon, so there's a way in.
-// "Use Bob's look as his icon" (off unless turned on): the tray, taskbar/Dock and window icon show his avatar.
+// "Use Bob's look as his icon" (on unless turned off since 1.5.134): the tray, taskbar/Dock and window icon show his
+// avatar, redrawn the moment a look is saved (Style, or Equip Bob's "Change his look"). A shortcut pinned to the Windows
+// taskbar may keep the usual icon: Windows draws pinned buttons from the shortcut, not from the window.
 // The brain sends both switches and the pictures (src/app-icon.js windowState) at start-up and on every change.
 const STARTED_HIDDEN = process.argv.includes('--hidden');
 const iconFile = (f) => path.join(root, 'public', 'icons', f);
