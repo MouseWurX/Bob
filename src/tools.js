@@ -519,6 +519,22 @@ export function buildTools(cfg) {
     };
   }
 
+  // 1.5.127 Rented brains: Bob asks for the rented brain in his slot. The tool only shows the Hire it card; nothing is
+  // spent until the owner presses it, and then the whole job runs again on the rented brain (brain.answerRent).
+  t.hire_brain = {
+    schema: fn('hire_brain', 'Ask {{USER}} to run this job on the rented brain (a big brain hired from an online service, in the Rented brain slot). Shows a card with the cost; nothing is hired until they press it. Only when the job is too big for the brains on this replicant matrix (a very long chat or file, a model that is not here), or when {{USER}} asks for it.', {
+      why: str('One short line: why this job needs the rented brain')
+    }, []),
+    async run({ why }, ctx) {
+      const r = ctx.brain?.offerRent?.(ctx, { why: String(why || '').slice(0, 200) });
+      if (!r) return 'There is no rented brain in its slot (Equip Bob, Rented brain). Say so in one line and carry on here.';
+      if (r.already) return 'The Hire it card is already under the chat. Don\'t call this again now.';
+      return `A card with a "Hire it" button is now under this chat (${r.est}). Tell ${cfg.userName || 'the user'} in one line why this job needs the rented brain and that one press runs it there; stop after that and don't do the job here.`;
+    },
+    summary: () => 'offered the rented brain',
+    endsTurn: true
+  };
+
   t.make_diagram = diagramTool(); // 1.5.95 flowcharts and diagrams (diagram.js)
   t.save_as = saveAsTool(); // 1.5.95 keep something Bob made as another file type (save-as.js)
   return t;

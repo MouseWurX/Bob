@@ -54,7 +54,7 @@ export function neighbour(ids, id, dir) {
 }
 
 // ---------- Tasks ----------
-const STATUS = { 'needs you': 'Needs you', queued: 'Queued', 'in progress': 'In progress', delegated: 'Delegated', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', interrupted: 'Interrupted' };
+const STATUS = { 'needs you': 'Needs you', queued: 'Queued', 'in progress': 'In progress', delegated: 'Delegated', rented: 'Rented', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', interrupted: 'Interrupted' };
 const ICON = { chat: '💬', picture: '🎨', video: '🎬', research: '🔎', code: '🛠', data: '📊' };
 
 export function taskRow(j, { movable, full }) {

@@ -17,6 +17,8 @@ export const SLOTS = [
   // 1.5.56: the session brains are slots too, so every brain is equipped in one place.
   { id: 'gaming', name: 'Gaming', icon: '🎮', side: 'L', how: 'brain', kind: 'llm', cats: ['chat'], does: 'Chats on the processor while you play, so your game keeps the graphics card. Only brains timed for that go here.', empty: 'No gaming brain: chat waits while Gaming is on' },
   { id: 'deep', name: 'Deep thinking', icon: '🔭', side: 'L', how: 'brain', kind: 'llm', cats: ['chat', 'coding'], does: 'The strongest thinker, for Medium, High and Extreme effort.', empty: 'Uses the Review or main brain' },
+  // 1.5.127: a brain hired from an online service, for one job at a time. Only used when the owner says so (a card, or the chat page's 🏗 switch).
+  { id: 'rent', name: 'Rented brain', icon: '🏗', side: 'L', how: 'rent', kind: 'rent', cats: [], does: 'A big brain hired by the answer or by the minute from a service you have an account with. Only used when you say so, after a card with the cost.', empty: 'Empty: every job runs on this replicant matrix' },
   { id: 'tinker', name: 'Coding', icon: '🔨', side: 'L', how: 'job', kind: 'llm', cats: ['coding', 'chat'], does: 'Writes and fixes code.', empty: 'No coding brain: the main brain codes', off: true },
   { id: 'reviewer', name: 'Review', icon: '🧐', side: 'L', how: 'job', kind: 'llm', cats: ['chat', 'coding'], does: 'Checks code and plans carefully before you rely on them.', empty: 'Empty: the main brain checks its own work', off: true },
   { id: 'office', name: 'Office', icon: '📊', side: 'L', how: 'brain', kind: 'llm', cats: ['chat', 'coding'], does: 'One all-rounder that does everything in the Office session: writing, spreadsheets, research and planning.', empty: 'Uses the Spreadsheets helper or the main brain' },
@@ -44,9 +46,10 @@ export function entryOf(models, value) {
 }
 
 // What's in each slot now.
-export function equipped(slot, { roles, brains, embed }) {
+export function equipped(slot, { roles, brains, embed, rent }) {
   if (slot.how === 'brain') return brains?.[slot.id] || '';
   if (slot.how === 'embed') return embed || '';
+  if (slot.how === 'rent') return rent?.current || ''; // 1.5.127: the rental's id
   return roles?.current?.[slot.id] || '';
 }
 
@@ -86,7 +89,7 @@ function slotHtml(slot, ctx) {
   const cur = equipped(slot, ctx);
   const opt = cur && [...(ctx.roles?.options?.[slot.kind] || [])].find((o) => o.value === cur);
   const e = entryOf(ctx.models, cur);
-  const name = (opt && opt.label !== cur ? opt.label : e?.name) || cur;
+  const name = slot.how === 'rent' ? (ctx.rent?.rentals || []).find((r) => r.id === cur)?.name || cur : (opt && opt.label !== cur ? opt.label : e?.name) || cur; // 1.5.127
   const sel = ctx.selected === slot.id;
   const canOff = cur && slot.off && !(slot.off === 'windows' && cur === 'windows');
   const covers = cur && slot.kind === 'llm' ? allSlots().filter((s) => s.kind === 'llm' && equipped(s, ctx) === cur).length : 0;
@@ -129,6 +132,7 @@ export function shownKit(slot, ctx) {
 
 function kitHtml(slot, ctx) {
   if (!slot) return '<p class="muted">Pick a slot around Bob to see what fits it.</p>';
+  if (slot.how === 'rent') return rentKitHtml(slot, ctx); // 1.5.127
   const cur = equipped(slot, ctx);
   // Bob's pick first, then what fits, then the rest. What's equipped stays where it is in that order.
   const { shown: all, hidden } = shownKit(slot, ctx);
@@ -159,6 +163,22 @@ function kitHtml(slot, ctx) {
   const house = houseGroupOf(slot.id) ? houseStyleHtml(houseGroupOf(slot.id), ctx.houseStyle) : ''; // 1.5.34 House style
   return `<h3>${slot.icon} ${esc(slot.name)} ${tipHtml(slot.does, `About ${slot.name}`)}</h3>${house}${engine}${embedTip}<ol class="kit-list">${items || (engine || embedTip ? '' : '<li class="muted">Nothing active for this job yet.</li>')}</ol>${more}${getMore}`;
 }
+
+// 1.5.127 The Rented brain slot's kit: the rentals set up in Settings (Online services). "Use this one" puts one in the slot;
+// nothing is hired by that alone. Each line shows the service, the model, the rough price and whether its key is here.
+export function rentKitHtml(slot, ctx) {
+  const r = ctx.rent || {};
+  const cur = r.current || '';
+  const items = (r.rentals || []).map((x) => `<li class="kit${x.id === cur ? ' worn' : ''}"><button type="button" class="kit-btn" data-rentuse="${esc(x.id)}" ${x.id === cur ? 'aria-current="true"' : ''}><span class="kit-name">${esc(x.name)}</span><span class="weight muted">${esc(x.price || '')}</span>${x.id === cur ? '<span class="tag good">in the slot</span>' : ''}${x.ready?.ok ? '' : `<span class="tag warn">${esc(x.ready?.why || 'not ready')}</span>`}</button>${tipHtml(`${x.model} on ${x.serviceName}. ${x.price || ''}${x.kind === 'answer' ? '' : ` ${x.cardsText || `${x.card} GB card`}.`}`, `About ${x.name}`)}</li>`).join('');
+  const caps = r.caps || {};
+  const limits = !caps.month || !caps.job ? '<p class="muted">Every limit starts at 0, so nothing can be hired until you set the month cap and the per-job cap in Settings.</p>' : `<p class="muted">Limits: ${esc(money(caps.month))} a month (${esc(r.spentText || '$0.00')} spent so far), ${esc(money(caps.job))} a job${caps.minutes ? `, ${caps.minutes} min a machine` : ''}.</p>`;
+  return `<h3>${slot.icon} ${esc(slot.name)} ${tipHtml(slot.does + '\nWhat goes to the service: the chat of that job, the files you attach to it, my instructions and what I remember about you. My tools still run here. Your keys stay on this replicant matrix as environment variables; I never store them.', `About ${slot.name}`)}</h3>
+    ${items ? `<ol class="kit-list">${items}</ol>` : '<p class="muted">No rentals set up yet. A rental is a service plus a model, for example Qwen 3.6 35B on OpenRouter.</p>'}
+    ${cur ? '<p class="row"><button type="button" class="mini" data-rentuse="">Take it off</button></p>' : ''}
+    ${limits}
+    <p class="get-more"><button type="button" class="get-more-btn" data-rentsettings>☁ Set up rented brains in Settings</button></p>`;
+}
+const money = (n) => `$${(Math.round((Number(n) || 0) * 100) / 100).toFixed(2)}`;
 
 // Everything equipped against the card: they don't all have to be loaded at once (Bob swaps), but it shows what fits together.
 function weightHtml(ctx) {

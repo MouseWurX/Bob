@@ -20,6 +20,7 @@ import { autostartOn, setAutostart } from './autostart.js';
 import { applyWindowState } from './app-icon.js';
 import { capabilities } from './capabilities.js';
 import { cloudStatus } from './cloud.js';
+import { rentRoute } from './rental-routes.js'; // 1.5.127 rented brains
 import { say, KOKORO_VOICES, stopVoices } from './tts.js';
 process.on('exit', () => stopVoices()); // never leave a voice holding the graphics card
 import { workshopDir, listWorkflows, ensureWorkshop } from './workshop.js';
@@ -305,10 +306,10 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, brain.history(id));
     }
     if (req.method === 'POST' && p === '/api/chat') {
-      const { sessionId = 'main', text, refs = [], effort = 'low' } = await body(req);
+      const { sessionId = 'main', text, refs = [], effort = 'low', rent = false } = await body(req); // 1.5.127 rent: the 🏗 Rented brain switch
       if (!text || !String(text).trim()) return send(res, 400, { error: 'empty' });
       const attach = [].concat(refs).map(String).filter((id) => /^[0-9a-f]{8}$/.test(id) && brain.refs.list().some((r) => r.id === id));
-      return send(res, 200, brain.enqueue(String(sessionId), String(text).slice(0, 20000), attach, String(effort)));
+      return send(res, 200, brain.enqueue(String(sessionId), String(text).slice(0, 20000), attach, String(effort), rent === true ? { rent: true } : {}));
     }
     // Model shop and settings. Downloads and settings changes only from this PC, never from the phone.
     if (req.method === 'GET' && p === '/api/models') return send(res, 200, await shop.list());
@@ -645,6 +646,7 @@ const server = http.createServer(async (req, res) => {
     if (p.startsWith('/api/adventure') && await adventureRoute({ req, res, p, isLocal, brain, body, send })) return; // 1.5.117 🎲 Adventure
     if (p.startsWith('/api/games') && await gamesRoute({ req, res, p, isLocal, brain, body, send })) return; // 1.5.121 🧩 Games
     if (p === '/api/telegram' && await telegramRoute({ req, res, p, isLocal, brain, body, send })) return;
+    if (p.startsWith('/api/rent') && await rentRoute({ req, res, p, isLocal, brain, cfg, body, send })) return; // 1.5.127 rented brains
     if (p === '/api/hands/schedules' && await schedulesRoute({ req, res, p, isLocal, brain, body, send })) return;
     if (p.startsWith('/api/hands') && await handsRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
     if (p.startsWith('/api/quarantine') && await quarantineRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
@@ -915,6 +917,8 @@ server.listen(cfg.port, startedWide ? remote.bindAddress : cfg.host, () => {
   if (remoteOn && !startedWide) applyRemote(); // the Tailscale addresses, right away
   console.log(`Bob ${VERSION.label} is open for business at http://${cfg.host === '127.0.0.1' ? 'localhost' : cfg.host}:${cfg.port}`);
   console.log(`Inn folder: ${cfg.innDir}`);
+  // 1.5.127 Rented brains: a hired machine Bob started and nobody stopped (a crash, a power cut) is found and offered a Stop button.
+  setTimeout(() => brain.rentals?.findLeftovers().catch(() => {}), 5000).unref?.();
   brain.log('start', `Bob started on port ${cfg.port}`);
   applyWindowState(cfg); // 1.5.94 tray and icon, for Bob's own window (nothing in a browser)
 });

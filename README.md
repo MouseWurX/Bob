@@ -1,12 +1,12 @@
 # Bob of The Idle Process
 
-**A local AI assistant with a personality, who runs entirely on your own computer.** Chat, plans and reminders, research, coding help, spreadsheets, pictures, short video clips, music, sound effects and a voice, with nothing sent to a cloud. Bob is a self-aware digital engineer with a dry sense of humour, a small virtual workspace called The Idle Process, and a cat named Patches. He also runs a tabletop role-playing game, plays word games, and talks to his copies on your other devices.
+**A local AI assistant with a personality, who runs on your own computer. Nothing goes online unless you turn it on.** Chat, plans and reminders, research, coding help, spreadsheets, pictures, short video clips, music, sound effects and a voice, with nothing sent to a cloud. Bob is a self-aware digital engineer with a dry sense of humour, a small virtual workspace called The Idle Process, and a cat named Patches. He also runs a tabletop role-playing game, plays word games, and talks to his copies on your other devices.
 
 **Download the latest release ([what's new](CHANGELOG.md)):**
 
 | Windows 10 / 11 | Mac (Apple Silicon) | Linux | Raspberry Pi and ARM | Android |
 |---|---|---|---|---|
-| [`Bob-1.5.126-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.126-win-x64.zip) | [`Bob-1.5.126-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.126-mac-arm64.zip) | [`Bob-1.5.126-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.126-linux-x86_64.AppImage) | [`Bob-1.5.126-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.126-linux-arm64.AppImage) | [`Bob-1.5.126-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.126-android.apk) |
+| [`Bob-1.5.127-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.127-win-x64.zip) | [`Bob-1.5.127-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.127-mac-arm64.zip) | [`Bob-1.5.127-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.127-linux-x86_64.AppImage) | [`Bob-1.5.127-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.127-linux-arm64.AppImage) | [`Bob-1.5.127-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.127-android.apk) |
 
 All builds on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest), each with a `.sha256` checksum. Windows builds are **not code-signed yet** (see [Code signing policy](#code-signing-policy)): click **More info**, then **Run anyway** the first time. Install steps for each platform are under [Getting Bob](#getting-bob).
 
@@ -14,7 +14,7 @@ All builds on the [Releases page](https://github.com/MouseWurX/Bob/releases/late
 
 ## Why Bob
 
-- **Private by design.** No accounts, no analytics, no telemetry. Your chats, notes and models stay on your computer. Web search is off until you turn it on, and every download asks first and is checked against its checksum. Full [privacy policy](PRIVACY.md).
+- **Private by design.** No accounts, no analytics, no telemetry. Your chats, notes and models stay on your computer. Web search is off until you turn it on, and every download asks first and is checked against its checksum. If you choose to hire a big brain from a service you have an account with (off unless you turn it on, with spending limits that start at $0), the chat for that job goes to that service, and Bob tells you first. Full [privacy policy](PRIVACY.md).
 - **Ready in a few clicks.** Unzip, start, and Bob reads your graphics card and RAM and offers a starter set that fits. One button, **Get Bob ready**, fetches the engines he runs on (llama.cpp, stable-diffusion.cpp, whisper.cpp, Kokoro) and a brain, and he puts each model in its slot himself. No Python, no terminal, no Ollama needed (though he'll use yours if it's there).
 - **A character, not a chat box.** Bob has a look you can change (133 avatars, or build your own), a cat, a notice board, eleven personality dials and opinions about your code. Everything optional is off until you switch it on.
 - **Does real jobs.** Plans and reminders, documents and spreadsheets, web research with sources, code written and fixed, pictures painted and edited, clips, songs and sound effects, and opt-in **Hands** that can tidy files, run scripts you approve and click around other apps, every action shown on a card first.

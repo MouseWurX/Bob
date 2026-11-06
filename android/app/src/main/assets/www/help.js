@@ -157,7 +157,7 @@ globalThis.BobHelp = {
     },
     {
       id: 'privacy', title: 'Privacy',
-      html: `<p>Everything on the phone stays on the phone: chats, my memory file and the phone brain. Android's cloud backup is told to leave them out. I only talk to the Bobs you add (over Tailscale) and, when you say yes to a download, to huggingface.co for the phone brain. With <strong>Lend my brain</strong> on, your own Bobs send the chat so far and what they remember about you. The phone thinks a reply and keeps none of it. No tracking, no ads, nothing else.</p>`
+      html: `<p>Everything on the phone stays on the phone: chats, my memory file and the phone brain. Android's cloud backup is told to leave them out. I only talk to the Bobs you add (over Tailscale) and, when you say yes to a download, to huggingface.co for the phone brain. With <strong>Lend my brain</strong> on, your own Bobs send the chat so far and what they remember about you. The phone thinks a reply and keeps none of it. If your home Bob has a rented brain (a big brain hired from an online service, off unless the owner turned it on there), a job you hire it for goes from that computer to that service; the phone only shows the card and the cost, and the key never leaves the computer. No tracking, no ads, nothing else.</p>`
     },
     {
       id: 'credits', title: 'Credits and thanks',

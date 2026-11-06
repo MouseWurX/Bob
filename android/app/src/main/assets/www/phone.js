@@ -434,6 +434,8 @@
     if (ev.type === 'checkin') return checkinCard(base, ev);
     if (ev.type === 'howto-offer' && String(ev.sessionId || '').startsWith('phone-')) return howtoCard(base, ev);
     if (ev.type === 'offer-setup' && String(ev.sessionId || '').startsWith('phone-')) return setupCard(base, ev); // 1.5.91
+    if (ev.type === 'offer-rent' && String(ev.sessionId || '').startsWith('phone-')) return rentCard(base, ev); // 1.5.127 rented brains
+    if (ev.type === 'rent' && ['thinking', 'back', 'start', 'used', 'stop', 'warn'].includes(ev.action)) { grow(`\n\n*🏗 ${rentLine(ev)}*`); return; }
     if (ev.type === 'approval-result') { document.querySelector(`[data-approval="${CSS.escape(String(ev.id))}"]`)?.remove(); return; }
     if (!mine) return;
     if (ev.type === 'start') current.turnId = ev.turnId;
@@ -565,6 +567,39 @@
       ev.kind === 'download' ? el('p', { class: 'help-line', text: `About ${ev.size} in all${ev.freeGB != null ? `, ${ev.freeGB} GB free` : ''}. One time only.${ev.note ? ' ' + ev.note : ''}${ev.short ? ` Not enough free disk: free up ${ev.short} GB first.` : ''}` }) : null,
       el('div', { class: 'row' },
         ev.short ? null : el('button', { class: 'main', text: button, onclick: () => answer(true) }),
+        el('button', { text: 'Not now', onclick: () => answer(false) })));
+    $('chat').append(card);
+    card.scrollIntoView({ block: 'end' });
+  }
+
+  // 1.5.127 Rented brains: the Hire it card from your home Bob (same words as on the PC), and his one-line notes.
+  function rentLine(ev) {
+    if (ev.action === 'thinking') return `Rented brain: ${ev.rental} thinks this one. The tools still run on your other replicant matrix.`;
+    if (ev.action === 'back') return `${ev.rental} couldn't take it (${ev.why || ''}), so Bob thinks this one himself.`;
+    if (ev.action === 'start') return `Started a rented machine on ${ev.service}. It stops when the job is done, or after ${ev.minutes} minutes whatever happens.`;
+    if (ev.action === 'used') return `${ev.rental}: about ${ev.usd} so far this job; ${ev.monthUsd} this month.`;
+    if (ev.action === 'stop') return ev.stopped ? `Stopped the rented machine (${ev.service}) after ${ev.minutes} min, ${ev.usd}.` : `Couldn't stop the rented machine on ${ev.service}. Stop it on their website so it doesn't keep billing.`;
+    return ev.text || '';
+  }
+  function rentCard(base, ev) {
+    const b = bobs.find((x) => x.base === base);
+    const r = ev.rental || {};
+    const done = (text) => { card.replaceChildren(el('p', { text })); setTimeout(() => card.remove(), 8000); };
+    const answer = (yes) => phone('net.post', { address: b.address, path: '/api/rent/answer', body: JSON.stringify({ id: ev.id, yes }) })
+      .then((x) => {
+        let out = {}; try { out = JSON.parse(x.body); } catch { /* not JSON */ }
+        if (!yes) return card.remove();
+        if (!out.ok) return done(out.why || 'That card is too old now. Ask me again.');
+        done(out.carryOn ? `Hired ${out.name}. Running your request there now.` : `Hired ${out.name} for your next messages.`);
+      }).catch(() => toast("Couldn't reach your other replicant matrix"));
+    const start = ev.startMinutes ? ` It takes about ${ev.startMinutes} minute${ev.startMinutes === 1 ? '' : 's'} to start${r.kind === 'machine' ? ', and those minutes are billed too' : ''}.` : '';
+    const card = el('div', { class: 'card' },
+      el('div', { class: 'q' }, el('strong', { text: `Hire ${r.name || 'the rented brain'}?` }), el('div', { text: `${ev.why || ''} ${r.model || ''} on ${r.service || ''}: ${ev.price || ''}.${start}${ev.carryOn ? ' Then Bob runs your request there; his tools still run on your other replicant matrix.' : ' Then your next messages run there.'}` })),
+      el('p', { class: 'help-line', text: `What leaves your other replicant matrix: this chat, the files attached to it, Bob's instructions and what he remembers about you, to ${r.service || 'the service'}${r.plain ? ' (over a plain, unencrypted connection to the hired machine)' : ''}. Their privacy policy covers it there.` }),
+      (r.cards || 1) > 1 ? el('p', { class: 'help-line', text: `⚠️ This machine has ${r.cards} cards at once (${r.cardsText || ''}): about ${r.cards} times the hourly price of one card, busy or not.` }) : null,
+      ev.blocked ? el('p', { class: 'help-line', text: ev.blocked }) : null,
+      el('div', { class: 'row' },
+        ev.blocked ? null : el('button', { class: 'main', text: `Hire it (${ev.est || 'a few cents'})`, onclick: () => answer(true) }),
         el('button', { text: 'Not now', onclick: () => answer(false) })));
     $('chat').append(card);
     card.scrollIntoView({ block: 'end' });

@@ -21,6 +21,7 @@ import { createBrainBar } from './brain-bar.js';
 import { createHandsSwitch } from './hands-switch.js';
 import { installTips } from './tips.js';
 import { createWebSwitch } from './web-switch.js';
+import { createRentSwitch } from './rent-switch.js'; // 1.5.127 rented brains
 import { createGameLock } from './game-lock.js';
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
 import { createEffort } from './effort.js';
@@ -48,6 +49,7 @@ const log = $('log'), input = $('input'), sendBtn = $('send'), stopBtn = $('stop
 const brainBar = createBrainBar({ post: (u, d) => post(u, d), note: (t, k) => note(t, k) });
 const handsSwitch = createHandsSwitch({ note: (t, k) => note(t, k) });
 const webSwitch = createWebSwitch({ note: (t, k) => note(t, k) });
+const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button
 const qBanner = createQuarantineBanner({ note: (t, k) => note(t, k) });
 const effort = createEffort();
@@ -141,6 +143,16 @@ function setupOfferHtml(ev) {
   if (ev.kind === 'equip') return `<strong>I can't ${esc(ev.say)} yet</strong><span>${esc(ev.model?.name || '')} is already on this replicant matrix, it just isn't in its slot.${esc(after)}</span><div class="row"><button type="button" class="get">Use it</button><button type="button" class="link">Not now</button></div>`;
   const items = (ev.items || []).map((i) => `<li>${esc(i.name)} <span class="muted">· ${gbs(i.sizeGB)}${i.engine ? ' · program' : ''}${i.license ? ` · ${esc(i.license)}` : ''}</span></li>`).join('');
   return `<strong>I can't ${esc(ev.say)} yet</strong><span>I need ${esc(ev.what)} first. ${ev.need === 'ffmpeg' ? 'One press gets it and sets it up.' : 'One press gets it, sets it up and puts it in its slot.'}${esc(after)}</span><ul>${items}</ul><span class="muted">About ${esc(ev.size)} in all${ev.freeGB != null ? `, ${ev.freeGB} GB free` : ''}. One time only.${ev.note ? ' ' + esc(ev.note) : ''}</span>${ev.short ? `<span class="error">Not enough free disk: free up ${ev.short} GB first, then ask me again.</span>` : ''}<div class="row"><button type="button" class="get">Set it up (about ${esc(ev.size)})</button><button type="button" class="link">Not now</button></div>`;
+}
+
+// 1.5.127 Rented brains: the Hire it card. Says what it costs, how long it takes to start, and exactly what leaves this replicant matrix.
+function rentOfferHtml(ev) {
+  const r = ev.rental || {};
+  const start = ev.startMinutes ? ` It takes about ${ev.startMinutes} minute${ev.startMinutes === 1 ? '' : 's'} to start${r.kind === 'machine' ? ', and those minutes are billed too' : ''}.` : '';
+  const leaves = `What leaves this replicant matrix: this chat, the files you attached to it, my instructions and what I remember about you, to ${esc(r.service || 'the service')}${r.plain ? ' (over a plain, unencrypted connection to the hired machine)' : ''}. Their privacy policy covers it there.`;
+  const after = ev.carryOn ? ' Then I run your request there; my tools still run here, with the usual OK cards.' : ' Then your next messages run there.';
+  const multi = (r.cards || 1) > 1 ? `<span class="error"><strong>⚠️ This machine has ${r.cards} cards at once</strong> (${esc(r.cardsText || '')}): it costs about ${r.cards} times as much an hour as one card, busy or not.</span>` : '';
+  return `<strong>Hire ${esc(r.name || 'the rented brain')}?</strong><span>${esc(ev.why || '')} ${esc(r.model || '')} on ${esc(r.service || '')}: ${esc(ev.price || '')}.${start}${esc(after)}</span>${multi}<span class="muted">${leaves}</span>${ev.blocked ? `<span class="error">${esc(ev.blocked)}</span>` : ''}<div class="row"><button type="button" class="get">Hire it (${esc(ev.est || 'a few cents')})</button><button type="button" class="link">Not now</button></div>`;
 }
 
 function ensureReply(ev) {
@@ -576,6 +588,34 @@ function onEvent(ev) {
       if (ev.hat === 'reviewer') add('note hat moot', `🛰 Moot: Bob calls in ${esc(ev.copy || 'his reviewer')}, his reviewer, for a second look`);
       else add('note hat', ev.copy ? `Bob hands this to ${esc(ev.copy)}, his ${esc(ev.label)} copy` : `Bob switches to ${esc(ev.label)}`);
       break;
+    case 'offer-rent': { // 1.5.127 Rented brains: the Hire it card. Nothing is hired until it's pressed.
+      const el = add('setup-offer rent-card', rentOfferHtml(ev));
+      const [yes, no] = el.querySelectorAll('button');
+      const answer = async (ok) => {
+        yes.disabled = no.disabled = true;
+        try {
+          const r = await api('/api/rent/answer', { id: ev.id, yes: ok });
+          el.remove();
+          if (!r.ok) note(r.why || 'That card is too old now. Ask me again.', 'error');
+          else if (r.done === 'hired') note(r.carryOn ? `Hired ${r.name}. Running your request there now; the tools still run here.` : `Hired ${r.name} for your next messages.`);
+        } catch (e) { yes.disabled = no.disabled = false; note(e.message, 'error'); }
+      };
+      yes.onclick = () => answer(true);
+      no.onclick = () => answer(false);
+      if (ev.blocked) yes.disabled = true;
+      scrollDown();
+      return;
+    }
+    case 'rent': // 1.5.127 Rented brains: what the hired brain is doing and what it has cost so far (src/rental.js)
+      if (ev.action === 'thinking') { endReply(ev); add('note borrow', `🏗 Rented brain: ${esc(ev.rental)}${ev.service ? ` on ${esc(ev.service)}` : ''} thinks this one. The tools still run here.`); }
+      else if (ev.action === 'back') { endReply(ev); add('note borrow', `🏗 ${esc(ev.rental)} couldn't take it (${esc(ev.why || '')}), so Bob thinks this one himself.`); }
+      else if (ev.action === 'start') add('note borrow', `🏗 Started a rented machine on ${esc(ev.service)} for ${esc(ev.rental)}. It stops when the job is done, or after ${ev.minutes} minutes whatever happens.`);
+      else if (ev.action === 'used') add('note borrow muted', `🏗 ${esc(ev.rental)}: about ${esc(ev.usd)} so far this job; ${esc(ev.monthUsd)} this month.`);
+      else if (ev.action === 'stop') add('note borrow', ev.stopped ? `🏗 Stopped the rented machine (${esc(ev.service)}) after ${ev.minutes} min, ${esc(ev.usd)}: ${esc(ev.why)}.` : `🏗 I couldn't stop the rented machine on ${esc(ev.service)} (${esc(ev.machine || '')}). Please stop it on their website so it doesn't keep billing.`);
+      else if (ev.action === 'warn') add('note borrow', `🏗 ${esc(ev.text)}`);
+      else if (ev.action === 'leftover') add('note borrow', `🏗 ${ev.machines.length === 1 ? 'A rented machine is' : `${ev.machines.length} rented machines are`} still running from before: ${ev.machines.map((m) => `${esc(m.service)} ${esc(m.id)}${m.perHour ? ` (about $${(+m.perHour).toFixed(2)} an hour)` : ''}`).join(', ')}. Stop them in Settings, Show advanced settings, Online services, Rented brains.`);
+      else if (ev.action === 'slot') { rentSwitch.update(ev.rental); window.dispatchEvent(new CustomEvent('bob-rent-slot', { detail: { rental: ev.rental } })); }
+      break;
     case 'borrow': // 1.5.55 Share brains: another of your Bobs thinks this reply (src/share-brains.js)
       endReply(ev);
       if (ev.action === 'start') add('note borrow', `📡 Borrowed brain: ${esc(ev.name)}${ev.brain ? ` (${esc(ev.brain)})` : ''} thinks this one. The tools still run here.`);
@@ -720,7 +760,7 @@ function setBusy(b) {
 
 // ---------- The queue: what's waiting, what's running, what failed ----------
 // A short strip above the message box (open tasks only); the Tasks button shows the full list.
-const STATE_LABEL = { waiting: 'queued', working: 'in progress', done: 'completed', failed: 'failed', cancelled: 'cancelled', interrupted: 'interrupted' };
+const STATE_LABEL = { waiting: 'queued', working: 'in progress', rented: 'rented', done: 'completed', failed: 'failed', cancelled: 'cancelled', interrupted: 'interrupted' };
 let lastJobs = [];
 const qbox = $('queue');
 function drawQueue(jobs) {
@@ -923,7 +963,7 @@ $('composer').onsubmit = async (e) => {
   pending = [];
   drawTray();
   const level = effort.get();
-  const r = await post('/api/chat', { sessionId, text, refs: pics.map((p) => p.id), effort: level }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
+  const r = await post('/api/chat', { sessionId, text, refs: pics.map((p) => p.id), effort: level, ...(rentSwitch.on() ? { rent: true } : {}) }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
   const tag = bubble.querySelector('.qtag');
   if (!r.ok) { tag.textContent = 'not sent'; tag.classList.add('bad'); note(r.data.error || 'Something went wrong.', 'error'); return; }
   jobBubbles.set(r.data.jobId, bubble);
@@ -1004,6 +1044,7 @@ async function start() {
     setStatus(s);
     if (s.state === 'idle') life.react('hello');
     if (s.version) $('ver').textContent = `Bob ${s.version.label}`;
+    rentSwitch.update(s.rented || ''); // 1.5.127: the 🏗 switch shows only with a rented brain in its slot
     if (s.busy) setBusy(true);
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}

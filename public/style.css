@@ -1304,3 +1304,7 @@ details.fold > summary .muted { font-weight: 400; font-size: 13px; }
 .made-item img.thumb { image-rendering: auto; }
 .home-first .save-pick { margin-top: 6px; }
 .home-ask { margin-top: 8px; }
+/* 1.5.127 rented brains: the big warning before several cards at once can be picked (the owner asked for it to be huge). */
+.rent-multi-warn { border: 3px solid #c33; background: var(--danger-bg); padding: 14px 16px; margin-top: 10px; }
+.rent-multi-warn p.big { font-size: 1.35em; margin-bottom: 8px; }
+.rent-multi-warn .row button { min-height: 44px; font-size: 1.05em; }
