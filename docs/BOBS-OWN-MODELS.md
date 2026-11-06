@@ -84,16 +84,28 @@ Verdict: tools and routing survive a 50% cut almost untouched even half-healed; 
 
 ### 24Bob Riker, line B (v2)
 
-Same cut as v1 (his exact keep list), healed for a complete pass of Bob's lessons plus the 717 coding and software-engineering lessons on a rented H200, 524 of 524 steps in 4.8 hours: the first full pass. So v1 against v2 is "part-healed on Bob lessons" against "fully healed on Bob plus coding lessons"; the held-out scores say the extra steps mostly made up for the harder mix.
+Same cut as v1 (his exact keep list), healed for a complete pass of Bob's lessons plus the 717 coding and software-engineering lessons on a rented H200, 524 of 524 steps in 4.8 hours: the first full pass. So v1 against v2 is "part-healed on Bob lessons" against "fully healed on Bob plus coding lessons".
 
-- Held-out loss 0.389 before, 0.356 after (v1: 0.355; full Qwen 0.324).
+- Held-out loss 0.389 before, 0.356 after (v1: 0.355; full Qwen 0.324); distance from the teacher 0.060 (v1: 0.063).
 - General-text loss 2.245 before, 2.221 after (v1: 2.224), so the coding lessons cost no general knowledge.
 - Files: Q4 15.0 GB, Q3 11.9 GB, plus a 1.5 GB adapter.
-- Tool, routing and coding races against v1 are next; v1 stays as the fallback, and v2 is dropped if tools or routing slip by more than a point or two.
+- **Tool-calling score** 66% (206 of 314: 62 right tool, 40 right arguments, 166 correctly no tool), 151 tokens a second. Same as v1.
+- **Routing race** 16 of 17. Same as v1.
+- **Quick quiz**: tools 48 of 97 (v1: 53), facts 20 of 20, code 3 of 6 (v1: 4).
+- **Coding race**: 6 of 13 with thinking on (v1: 8) and 6 of 13 off (v1: 6), at 135 tokens a second.
+
+Verdict: v2 matches v1 on Bob's own work, with slightly better training scores, but the 717 coding lessons did not improve the coding race (6 of 13 against 8 of 13 is within one-try noise, but there is no gain). The likely limit is the expert cut itself, not the lessons: the experts coding needs were partly cut away, and lessons can't teach what isn't there. Next step before Homer is a coding-aware expert count, so the cut keeps what coding uses.
 
 ### 18Bob Bill, line B (v2)
 
-Cut from the healed Riker v2 with his v1 keep list, full pass. Healing now (6 November 2026); export and benchmarks follow.
+Cut from the healed Riker v2 with his v1 keep list, healed for a complete pass on the same H200.
+
+- Held-out loss 0.487 after healing (v1, clock-capped: 0.501).
+- **Tool-calling score** 66% (208 of 314: 63 right tool, 38 right arguments, 170 correctly no tool), 190 tokens a second, all on the card.
+- **Routing race** 17 of 17.
+- **Quick quiz**: tools 45 of 97, facts 11 of 20, code 0 of 6.
+
+Verdict: a fully healed Bill keeps tools and routing level with Riker and the full model at a size that fits a 16 GB card entirely; facts and coding are where half the experts show. He is the Bob to beat for the everyday slot on a 16 GB card if the longer chats matter more than facts.
 
 ### What each session cost
 
@@ -107,8 +119,8 @@ The full itemized list, including every rung still to come, is on [What Bob cost
 
 ## What comes next
 
-1. **Benchmark Riker v2 and Bill v2** against v1 and the stock models on the test machine: tool calls, routing, facts, coding, speed.
-2. **12Bob Homer**, line B: count Bill v2's experts, cut to about 80 per layer, full-pass heal, export. About 5 hours on an H100, US $20 to 25. Then decide whether line A is worth continuing (its full-precision Riker was lost with its machine and would need one re-heal, about US $25).
+1. **Benchmarks of Riker v2 and Bill v2**: done (above). v2 is the line that continues.
+2. **A coding-aware expert count**, so the next cut keeps the experts coding leans on, then **12Bob Homer**, line B: cut to about 80 per layer, full-pass heal, export. About 5 hours on an H100, US $20 to 25. Then decide whether line A is worth continuing (its full-precision Riker was lost with its machine and would need one re-heal, about US $25).
 3. **Down the ladder**: Milo, Mario, Luke, Calvin, Goku, each cut from the healed Bob above, then the four specialists, and 2Bob Bender last.
 4. **In the app.** Bob's own models become the default brains: when Bob suggests a starter set, a Bob is picked before a stock model of the same size. The Forge and the model lab are in this repository under [`model-lab/`](../model-lab/) (GPL, like the rest of Bob); the lessons, counts and finished Bobs they make stay on the machine that made them. The engine will turn on expert-in-RAM offloading by itself when a Bob is bigger than the card. Every Bob gets the "experts per word" dial (4 to 8).
 5. **Release.** All at once on Hugging Face, with model cards that say exactly what each Bob is cut from, how it was healed and how it scored, and pinned download links in Bob's catalogue. Until then: tested, not yet released.
