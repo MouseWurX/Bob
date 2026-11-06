@@ -7,6 +7,23 @@ import { allSlots, isActive, tipHtml, slotValue, equipped } from './equip.js';
 import { keep } from './tips.js';
 import { esc, gb } from './util.js';
 
+// 1.5.132: the naughty list. Catalogue entries marked `naughty: true` are uncensored community builds (heretic or
+// abliterated: the refusals cut out). They are listed nowhere until the Naughty list switch (setting naughtyList) is on.
+// `community` on an entry says who remixed it and from what; it's an explicit marker, never a guess from the name.
+export const isNaughty = (m) => m?.naughty === true;
+export const isCommunity = (m) => Boolean(m?.community && typeof m.community === 'object');
+// The models the rest of the window may see: the naughty ones only while the switch is on.
+export const visibleModels = (models, naughtyOn) => (naughtyOn ? models : (models || []).filter((m) => !isNaughty(m)));
+// One line of credit for a community build, for the "i" tip: who made it, from whose model, who packed the files.
+export function communityLine(m) {
+  if (!isCommunity(m)) return '';
+  const c = m.community;
+  const base = c.base ? ` from ${c.baseBy ? `${c.baseBy}'s ` : ''}${c.base}` : '';
+  const files = c.files && c.files !== c.by ? `; files packed by ${c.files}` : '';
+  return `Community build: ${isNaughty(m) ? 'uncensored ' : ''}remix by ${c.by || 'someone in the community'}${base}${files}. Not a release by ${c.baseBy || 'the original maker'}.`;
+}
+export const NAUGHTY_WARNING = 'The naughty list is other people\'s remixes of Qwen and Gemma brains with the refusals cut out ("heretic" or "abliterated"). They are not Alibaba\'s or Google\'s releases. A brain from here answers without refusing, so what it says is on you, and it can be a little rougher than the original. I never recommend one; you pick it yourself.';
+
 
 // The jobs, in the order the catalogue shows them. Names are the slot names on the paper doll.
 const BRAIN_JOBS = ['small', 'gaming', 'bob', 'deep', 'reviewer', 'tinker', 'office', 'eyes'];
@@ -45,8 +62,8 @@ function rowHtml(m, job, ctx) {
   const fits = fitLines(deviceFit(m));
   // 1.5.101: no line twice ("Runs on the processor" when the description already says so); the source is on the ↗ only.
   const where = m.vramGB ? `Wants ${gb(m.vramGB)} of graphics memory` : /runs on the processor/i.test(m.what || '') ? '' : 'Runs on the processor';
-  const tip = [m.what, where, m.trial ? `New: not tried on a PC yet. ${m.trialNote || ''}`.trim() : '', s.why, fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`].filter(Boolean).join('\n');
-  const tags = `${rec ? '<span class="tag rec">★ Recommended</span>' : ''}${m.trial ? '<span class="tag">New</span>' : ''}${!rec && s.level !== 'ok' ? LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
+  const tip = [m.what, communityLine(m), where, m.trial ? `New: not tried on a PC yet. ${m.trialNote || ''}`.trim() : '', s.why, fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`].filter(Boolean).join('\n');
+  const tags = `${rec ? '<span class="tag rec">★ Recommended</span>' : ''}${isNaughty(m) ? '<span class="tag warn">😈 Naughty list</span>' : isCommunity(m) ? '<span class="tag">Community</span>' : ''}${m.trial ? '<span class="tag">New</span>' : ''}${!rec && s.level !== 'ok' ? LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
   const on = isActive({ entry: m, value: m.id, installed: here }, ctx.active);
   const sw = job.id === 'phone' ? '<span class="muted">In the phone app</span>'
     : `<button type="button" class="mini-switch" role="switch" aria-checked="${on}" data-active="${esc(m.id)}" aria-label="Active: ${esc(m.name)}">Active <span class="st">${on ? 'On' : 'Off'}</span></button>`;
@@ -123,10 +140,22 @@ function othersHtml(ctx) {
   }).join('')}</ul></section>`;
 }
 
-export function catalogueHtml(ctx) {
+export function catalogueHtml(ctx0) {
+  // 1.5.132: the Well behaved / Naughty list toggle. Well behaved (the default) lists every model but the naughty ones.
+  // Naughty list, only once the switch is on, lists just those, under a warning in Bob's words.
+  const naughtyView = ctx0.naughtyOn === true && ctx0.naughtyView === true;
+  const ctx = { ...ctx0, models: naughtyView ? (ctx0.models || []).filter(isNaughty) : visibleModels(ctx0.models, false) };
   const jobs = catJobs();
   const card = ctx.vramGB ? `${ctx.vramGB} GB graphics card${ctx.ramGB ? `, ${ctx.ramGB} GB RAM` : ''}` : 'no graphics card found';
-  return `<div class="cat-top"><p class="muted">Every model Bob knows, by the job it does, then by family. Press a family's name to open its list. Turn <strong>Active</strong> on for the ones you want to see in Equip Bob and the brain menus. ${tipHtml(`Picked for this replicant matrix: ${card}. ★ Recommended is Bob's pick for that job here. New ones are listed but not recommended until they've been tried on real hardware. Turning Active off only hides a model; it stays on this replicant matrix (your computer). Turning it on for a model you don't have yet shows it in Equip Bob with a Get button.`, 'How the catalogue works')} ${keep('Downloads always ask first, with the size.')} <button type="button" class="mini" data-famall="open">Open all families</button> <button type="button" class="mini" data-famall="close">Close all</button> <button type="button" class="mini help-link" data-help="catalogue" aria-label="Help: the Brain catalogue">? Help</button></p>
+  const n = (ctx0.models || []).filter(isNaughty).length;
+  const toggle = `<div class="cat-which" role="radiogroup" aria-label="Which models to list"><span class="ttabs"><button type="button" role="radio" aria-checked="${!naughtyView}" data-naughtyview="off">😇 Well behaved</button><button type="button" role="radio" aria-checked="${naughtyView}" data-naughtyview="on"${ctx0.naughtyOn ? '' : ' aria-disabled="true"'}>😈 Naughty list${n ? ` (${n})` : ''}</button></span>${ctx0.naughtyOn ? tipHtml(NAUGHTY_WARNING, 'About the naughty list') : `<span class="muted">Off unless you turn it on: <button type="button" class="link" data-naughtyon>Show the naughty list</button> ${tipHtml(NAUGHTY_WARNING, 'About the naughty list')}</span>`}</div>`;
+  if (naughtyView) {
+    return `<div class="cat-top">${toggle}<p class="warn-text naughty-note">😈 ${esc(NAUGHTY_WARNING)} <button type="button" class="mini help-link" data-help="faq-naughty" aria-label="Help: the naughty list">? Help</button></p>
+    <p class="muted">By the job each one does. Turn <strong>Active</strong> on for the ones you want to see in Equip Bob and the brain menus. ${keep('Downloads always ask first, with the size.')} <button type="button" class="mini" data-famall="open">Open all</button> <button type="button" class="mini" data-famall="close">Close all</button></p>
+    <nav class="subnav cat-nav" aria-label="Jobs">${jobs.filter((j) => modelsFor(j, ctx.models).length).map((j) => `<button type="button" data-catjump="${esc(j.id)}"${ctx.focus === j.id ? ' aria-current="true"' : ''}>${j.icon} ${esc(SLOT_NAMES[j.id] || j.name)}</button>`).join('')}</nav></div>
+    ${jobs.filter((j) => modelsFor(j, ctx.models).length).map((j) => jobHtml(j, ctx)).join('') || '<p class="muted">Nothing on the naughty list yet.</p>'}`;
+  }
+  return `<div class="cat-top">${toggle}<p class="muted">Every model Bob knows, by the job it does, then by family. Press a family's name to open its list. Turn <strong>Active</strong> on for the ones you want to see in Equip Bob and the brain menus. ${tipHtml(`Picked for this replicant matrix: ${card}. ★ Recommended is Bob's pick for that job here. New ones are listed but not recommended until they've been tried on real hardware. Turning Active off only hides a model; it stays on this replicant matrix (your computer). Turning it on for a model you don't have yet shows it in Equip Bob with a Get button.`, 'How the catalogue works')} ${keep('Downloads always ask first, with the size.')} <button type="button" class="mini" data-famall="open">Open all families</button> <button type="button" class="mini" data-famall="close">Close all</button> <button type="button" class="mini help-link" data-help="catalogue" aria-label="Help: the Brain catalogue">? Help</button></p>
     <nav class="subnav cat-nav" aria-label="Jobs">${jobs.map((j) => `<button type="button" data-catjump="${esc(j.id)}"${ctx.focus === j.id ? ' aria-current="true"' : ''}>${j.icon} ${esc(SLOT_NAMES[j.id] || j.name)}</button>`).join('')}</nav></div>
     ${jobs.map((j) => jobHtml(j, ctx)).join('')}${othersHtml(ctx)}`;
 }

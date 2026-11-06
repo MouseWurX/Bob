@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Bob's model shop. Each entry says what it is for, how big it is, how much graphics memory it wants, and its licence. Every model has 'files', downloaded straight from a pinned link into models\\bob and checked against its sha256. An 'ollama' name as well means: pulled through Ollama instead when Ollama is Bob's engine (no second copy). Links marked verify:true still need checking on the PC before the Download button is shown.",
+  "note": "Bob's model shop. Each entry says what it is for, how big it is, how much graphics memory it wants, and its licence. Every model has 'files', downloaded straight from a pinned link into models\\bob and checked against its sha256. An 'ollama' name as well means: pulled through Ollama instead when Ollama is Bob's engine (no second copy). Links marked verify:true still need checking on the PC before the Download button is shown. 'community' marks a build made by someone other than the model's maker (who remixed it, from which base); 'naughty: true' marks an uncensored (heretic / abliterated) one, listed only while the Naughty list is switched on.",
   "categories": [
     {
       "id": "chat",
@@ -538,6 +538,277 @@
       "use": {
         "models": {
           "tinker": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.6-35b-a3b-heretic",
+      "family": "Qwen",
+      "category": "coding",
+      "jobs": ["tinker", "bob", "reviewer", "deep", "office", "eyes", "ledger", "scout"],
+      "name": "Qwen3.6 35B-A3B Heretic",
+      "what": "Qwen3.6 35B-A3B with the refusals cut out. Same quick coder and all-rounder underneath: sees pictures, thinks first, 256K in mind. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 22.1,
+      "vramGB": 16,
+      "params": 35,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "llmfan46",
+        "files": "mradermacher",
+        "base": "Qwen3.6 35B-A3B",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/mradermacher/Qwen3.6-35B-A3B-uncensored-heretic-GGUF/resolve/b55bbfd70d2fe810acd79825daa987eadcc48a51/Qwen3.6-35B-A3B-uncensored-heretic.Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 21166758784,
+          "sha256": "8919d0062d684624d5fab9cc4787cd8cb2510e6d6c14649a424b042938669f9a"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/a483e9e6cbd595906af30beda3187c2663a1118c/mmproj-F16.gguf",
+          "role": "mmproj",
+          "saveAs": "Qwen3.6-35B-A3B-mmproj-F16.gguf",
+          "verify": true,
+          "bytes": 899283680,
+          "sha256": "8971ee4f331ff0a4c609374f32984b3d4e6dc086c0aa35f1d637fad1829e887f"
+        }
+      ],
+      "use": {
+        "models": {
+          "tinker": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.6-27b-heretic",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["deep", "reviewer", "tinker", "bob", "office", "eyes", "scout"],
+      "name": "Qwen3.6 27B Heretic",
+      "what": "Qwen3.6 27B with the refusals cut out. A careful thinker for Deep thinking and reviews; a little of it sits in RAM on a 16 GB card, so replies are slower. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 18.1,
+      "vramGB": 18,
+      "params": 27,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "llmfan46",
+        "base": "Qwen3.6 27B",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/llmfan46/Qwen3.6-27B-uncensored-heretic-v2-Native-MTP-Preserved-GGUF/resolve/a6b6a6d9385fe7850644e56bfdc93a04a6cb2ee8/Qwen3.6-27B-uncensored-heretic-v2-Native-MTP-Preserved-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 17211797600,
+          "sha256": "c07c48d259126eb613df7618c4c073d5cb86c7946723a73d73d83ebd8f70033e"
+        },
+        {
+          "url": "https://huggingface.co/llmfan46/Qwen3.6-27B-uncensored-heretic-v2-Native-MTP-Preserved-GGUF/resolve/a6b6a6d9385fe7850644e56bfdc93a04a6cb2ee8/Qwen3.6-27B-mmproj-BF16.gguf",
+          "role": "mmproj",
+          "saveAs": "Qwen3.6-27B-Heretic-mmproj-BF16.gguf",
+          "verify": true,
+          "bytes": 931146048,
+          "sha256": "c5c8c41da6d155a61edd21b7e3aa50b6ef77f122d502d36afe4a4d5c3e494d4f"
+        }
+      ],
+      "use": {
+        "models": {
+          "reviewer": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.8-27b-heretic",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["deep", "reviewer", "bob", "tinker", "office", "eyes", "scout"],
+      "name": "Qwen 3.8 27B Heretic",
+      "what": "Qwen 3.8 27B with the refusals cut out. The slow but smart thinker, and this copy sees pictures too. About 10 words a second on a 16 GB card. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 17.2,
+      "vramGB": 18,
+      "params": 27,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "trohrbaugh and 0bserverx",
+        "base": "Qwen 3.8 27B",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/0bserverx/Qwen3.8-27B-Heretic-Abliterated-Uncensored-GGUF/resolve/ab8d7bd81d03117501e4da60cccdff4c80f0eea0/RVN-Q4_K_M-multilingual.gguf",
+          "role": "gguf",
+          "saveAs": "Qwen3.8-27B-Heretic-Q4_K_M-multilingual.gguf",
+          "verify": true,
+          "bytes": 16547400224,
+          "sha256": "9ed40ccc8b8432f38b9a85d0ca67928167f5719e8c10bd299e56d34facaf6e61"
+        },
+        {
+          "url": "https://huggingface.co/0bserverx/Qwen3.8-27B-Heretic-Abliterated-Uncensored-GGUF/resolve/ab8d7bd81d03117501e4da60cccdff4c80f0eea0/mmproj-Qwen3.8-27B-Q8_0.gguf",
+          "role": "mmproj",
+          "saveAs": "Qwen3.8-27B-Heretic-mmproj-Q8_0.gguf",
+          "verify": true,
+          "bytes": 629247008,
+          "sha256": "2e968a6af97ce35d8971890b257b9b7edabf20ad91450501fa53162a19ee33eb"
+        }
+      ],
+      "use": {
+        "models": {
+          "reviewer": "$model"
+        }
+      }
+    },
+    {
+      "id": "gemma4-26b-heretic",
+      "family": "Gemma",
+      "category": "chat",
+      "jobs": ["bob", "deep", "tinker", "reviewer", "eyes", "ledger", "scout", "painter", "office"],
+      "name": "Gemma 4 26B Heretic",
+      "what": "Gemma 4 26B with the refusals cut out. Fast, sees pictures, good with tools, like the original. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 17.6,
+      "vramGB": 16,
+      "params": 26,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "coder3101",
+        "files": "mradermacher",
+        "base": "Gemma 4 26B",
+        "baseBy": "Google",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/mradermacher/gemma-4-26B-A4B-it-heretic-GGUF/resolve/96ab8718fd84c63a6bb08e2a4d65dc1918c2e83f/gemma-4-26B-A4B-it-heretic.Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 16796011680,
+          "sha256": "b8b76e7206ab7343821f02ed4ad6b4927abe7767a0e7a648354c2e0b98d32b1e"
+        },
+        {
+          "url": "https://huggingface.co/ggml-org/gemma-4-26B-A4B-it-GGUF/resolve/bb4531cda34d1ea09d9814959ed4d5833cf2a4c8/mmproj-gemma-4-26B-A4B-it-Q8_0.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 806408320,
+          "sha256": "cc4e855736da450bf1e162d8cccfe0ad685727d0c9e04ef7dd8d884f3121039b"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model",
+          "scout": "$model",
+          "painter": "$model"
+        }
+      }
+    },
+    {
+      "id": "gemma4-31b-heretic",
+      "family": "Gemma",
+      "category": "chat",
+      "jobs": ["deep", "reviewer", "bob", "tinker", "eyes", "office", "scout"],
+      "name": "Gemma 4 31B Heretic",
+      "what": "Gemma 4 31B with the refusals cut out. The biggest Gemma: all 31B works at once, so a good part sits in RAM on a 16 GB card and it is slow. Sees pictures. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 18.6,
+      "vramGB": 20,
+      "params": 31,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "coder3101",
+        "files": "mradermacher",
+        "base": "Gemma 4 31B",
+        "baseBy": "Google",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/mradermacher/gemma-4-31B-it-heretic-GGUF/resolve/e7af550f408ef0d55644cd0bf65a188c738c6104/gemma-4-31B-it-heretic.Q4_K_S.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 17763160192,
+          "sha256": "684c37142dd6cd87f69b64343e0db6d679d3e3428cb3a1cb5f7b4ae2f5c96ccf"
+        },
+        {
+          "url": "https://huggingface.co/ggml-org/gemma-4-31B-it-GGUF/resolve/3d47a7e680fb9526dcac74335858f0f31acc9c27/mmproj-gemma-4-31B-it-Q8_0.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 809541728,
+          "sha256": "8872f1dd7ba6a750a039c04b45812511f4ecf004e229420cea58c8049a970fb6"
+        }
+      ],
+      "use": {
+        "models": {
+          "reviewer": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.5-9b-heretic",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["bob", "tinker", "eyes", "office", "ledger", "scout", "painter"],
+      "name": "Qwen3.5 9B Heretic",
+      "what": "Qwen3.5 9B with the refusals cut out. The small all-rounder for 8 GB cards: chats, codes a little, sees pictures. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 6.5,
+      "vramGB": 8,
+      "params": 9,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "darkc0de",
+        "files": "mradermacher",
+        "base": "Qwen3.5 9B",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/mradermacher/Qwen3.5-9B-heretic-GGUF/resolve/41cace1b7d93fbb8b524fd3a179a71a45fce5ff2/Qwen3.5-9B-heretic.Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 5627045280,
+          "sha256": "a22e706797f1fb976cc2274c8406321b049ed7f56f5886bbbaac6cf8d9ece6a0"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/3885219b6810b007914f3a7950a8d1b469d598a5/mmproj-F16.gguf",
+          "role": "mmproj",
+          "saveAs": "Qwen3.5-9B-mmproj-F16.gguf",
+          "verify": true,
+          "bytes": 918166080,
+          "sha256": "f70dc3509053962b0d0d3ee8a7eacebf5d60aa560cad78254ae8698516ae029f"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model",
+          "scout": "$model",
+          "painter": "$model"
         }
       }
     },
