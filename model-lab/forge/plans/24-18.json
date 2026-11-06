@@ -1,0 +1,34 @@
+{
+ "note": "First forge session: 24Bob and 18Bob, cut straight from the full Qwen3.6-35B-A3B. 18Bob is cut from the healed 24Bob. General text (30M tokens) is mixed in for the count and the heal so the big Bobs keep general knowledge.",
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "max_len": 8192,
+ "top": 32,
+ "quants": "Q4_K_M,Q3_K_M",
+ "heal": {
+  "experts": "lora",
+  "epochs": 1,
+  "hours": 1.75
+ },
+ "rungs": [
+  {
+   "name": "24Bob",
+   "keep": 176,
+   "from": "teacher",
+   "nickname": "Riker"
+  },
+  {
+   "name": "18Bob",
+   "keep": 128,
+   "from": "24Bob",
+   "nickname": "Bill",
+   "hours": 1.5
+  }
+ ],
+ "hours_max": 9,
+ "dollars_max": 40,
+ "disk_gb": 350,
+ "general_tokens": 10000000,
+ "teacher_hours": 2.0
+}

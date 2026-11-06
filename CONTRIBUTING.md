@@ -13,10 +13,23 @@ Thanks for helping. A few house rules:
 - **Licences.** Code you contribute is GPL-3.0-or-later; art and writing are CC BY-SA 4.0 (see
   ASSETS-LICENSE.md). Only add third-party parts whose licence allows this, and list them in
   THIRD-PARTY.md.
-- **Versions.** Each change that ships bumps `bob.build` and `version` in `package.json`
-  (`0.9.<build>`).
+- **Versions.** Each change that ships bumps `bob.build` and `version` in `package.json` (see
+  [Versions](README.md#versions)). Every release gets a note in `docs/releases/vX.Y.Z.md`.
+- **Every platform.** A feature reaches Windows, Mac, Linux and the Android app, or says plainly where it
+  doesn't. Help in the app (Bob's voice, the glossary and the FAQ) is updated with the feature, using the
+  names on screen.
 
 Run Bob from source with `npm install` then `npm start`, or just the server with `npm run server`.
+
+## Ways to help that need no code
+
+- **Try Bob on hardware we don't have** (a real Mac, a Raspberry Pi, an AMD or Intel card, a small laptop)
+  and open an issue with what happened, good or bad. Issues tagged
+  [good first issue](https://github.com/MouseWurX/Bob/labels/good%20first%20issue) are small, well-described
+  starting points.
+- **Read the Help and the user guide** and tell us where they lost you. Plain words matter here.
+- **Star the repository** if Bob is useful to you. Code signing for the Windows builds depends on the
+  project being visible enough for a free signing certificate, so a star genuinely helps.
 
 ## Signed Mac builds
 

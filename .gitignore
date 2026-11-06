@@ -11,3 +11,5 @@ node_modules/
 *.part
 # 1.5.76: the bundled llama.cpp, made at release time (installer/bundle-engine.mjs)
 engines/
+# Bob's model lab: lessons, counts, downloaded Bobs and Forge logs stay on the machine that made them
+model-lab/out/
