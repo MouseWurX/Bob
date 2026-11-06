@@ -34,7 +34,7 @@ import { checkAll, startAny, updateStatus, requestRestart } from './update.js';
 import { describe as describeFile, openFile, peek as peekFile } from './files.js';
 import { wavePeaks } from './wave.js';
 import { thumbFor, canThumb } from './thumbs.js';
-import { homeView, homeProblem } from './home.js';
+import { homeView, homeProblem, synced, cloudWarning } from './home.js';
 import { refuseForeign } from './guard.js';
 import { search } from './search.js';
 import { hkSettings, cleanHousekeeping, KINDS, UNITS } from './housekeeping.js';
@@ -865,7 +865,7 @@ const server = http.createServer(async (req, res) => {
       const why = homeProblem(folder, { current: cfg.agentDir });
       if (why) return send(res, 200, { ok: false, error: why });
       if (path.resolve(folder).toLowerCase() === path.resolve(cfg.agentDir).toLowerCase()) return send(res, 200, { ok: true, same: true });
-      if (!b.confirm) return send(res, 200, { ok: true, ready: true, folder: path.resolve(folder), ...homeView(cfg) });
+      if (!b.confirm) return send(res, 200, { ok: true, ready: true, folder: path.resolve(folder), ...homeView(cfg), pickedCloud: synced(folder), pickedCloudWarning: cloudWarning(synced(folder)) });
       if (!globalThis.bobHome?.move) return send(res, 200, { ok: false, error: 'Moving only works from Bob\'s own window (Bob.exe, Bob.app or the AppImage), not from a browser.' });
       brain.log('settings', `moving Bob's home to ${folder}`);
       brain.broadcast({ type: 'announce', text: `Moving my things to ${folder}. I'll close, copy everything across and open again. Big models take a while.` });

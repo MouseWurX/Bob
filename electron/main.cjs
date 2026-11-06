@@ -89,12 +89,12 @@ function writeHome(home) {
 // 1.5.125: a fresh Bob (no home.json, not inside a Bob folder, nothing at the old default) asks where to keep his
 // things before anything is downloaded. Suggested: a Bob folder in the user's own folder, visible and never emptied
 // by clean-up tools; AppData and the like are refused (src/home.js). Cancel keeps the suggestion.
-async function askForHome(suggested, homeProblem) {
+async function askForHome(suggested, homeProblem, { synced, cloudWarning }) {
   for (;;) {
     const r = await dialog.showMessageBox({
       type: 'question', title: 'Where should Bob keep his things?', buttons: [`Use ${suggested}`, 'Pick another folder…'], defaultId: 0, cancelId: 0, noLink: true,
       message: 'Where should I keep my things?',
-      detail: `My models, programs, notes and settings live in one folder, apart from the program, so updating me never touches them. Models are big (10 to 60 GB) and slow to download again, so the folder should be a real one of your own, not a temporary place like AppData, and not a OneDrive folder unless you want every model uploaded.\n\nSuggested: ${suggested}\n\nYou can move it later in Settings, "Bob's home folder".`
+      detail: `My models, programs, notes and settings live in one folder, apart from the program, so updating me never touches them. Models are big (10 to 60 GB) and slow to download again, so the folder should be a real one of your own, not a temporary place like AppData, and not a cloud-synced folder (OneDrive, Dropbox, Google Drive, iCloud): I always recommend against those, because every model would be uploaded and a sync can break one while I'm using it.\n\nSuggested: ${suggested}\n\nYou can move it later in Settings, "Bob's home folder".`
     });
     if (r.response !== 1) return suggested;
     const pick = await dialog.showOpenDialog({ title: 'Pick a folder for Bob\'s things', buttonLabel: 'Keep my things here', properties: ['openDirectory', 'createDirectory', 'promptToCreate'], defaultPath: path.dirname(suggested) });
@@ -103,7 +103,14 @@ async function askForHome(suggested, homeProblem) {
     // A folder with other things in it gets a Bob folder inside, so Bob's things stay separate.
     let why = homeProblem(dir);
     if (why && /other things in it/.test(why)) { dir = path.join(dir, 'Bob'); why = homeProblem(dir); }
-    if (!why) return dir;
+    if (!why) {
+      // A cloud-synced folder is allowed, but Bob says clearly that he recommends against it and offers to pick again.
+      const cloud = synced(dir);
+      if (!cloud) return dir;
+      const w = await dialog.showMessageBox({ type: 'warning', title: 'Bob', message: `That's a ${cloud} folder`, detail: cloudWarning(cloud, 'me'), buttons: ['Pick another folder…', 'Use it anyway'], defaultId: 0, cancelId: 0, noLink: true });
+      if (w.response === 1) return dir;
+      continue;
+    }
     await dialog.showMessageBox({ type: 'warning', title: 'Bob', message: 'Not that folder', detail: why, buttons: ['OK'], noLink: true });
   }
 }
@@ -150,7 +157,7 @@ async function setUpHome() {
   let home = readHome();
   if (!home.agentDir) home = { ...findNearbyHome(), ...home };
   const { defaultHome } = await import(pathToFileURL(path.join(root, 'src', 'platform.js')).href);
-  const { suggestedHome, homeProblem } = await import(pathToFileURL(path.join(root, 'src', 'home.js')).href);
+  const { suggestedHome, homeProblem, synced, cloudWarning } = await import(pathToFileURL(path.join(root, 'src', 'home.js')).href);
   if (home.agentDir && home.moveTo) home = await finishMove(home, homeFile());
   let agentDir = home.agentDir;
   // BOB_AGENT_DIR (a test start, the smoke checks on GitHub's machines): that folder, no question asked, nothing written.
@@ -161,7 +168,7 @@ async function setUpHome() {
     const old = process.platform === 'win32' && !process.env.LOCALAPPDATA ? path.join(app.getPath('userData'), 'Bob') : defaultHome();
     if (fs.existsSync(path.join(old, 'inn'))) agentDir = old;
     else {
-      agentDir = await askForHome(suggestedHome(), (d) => homeProblem(d));
+      agentDir = await askForHome(suggestedHome(), (d) => homeProblem(d), { synced, cloudWarning });
       try { writeHome({ ...home, agentDir }); } catch (e) { dialog.showErrorBox('Bob', `I couldn't note where my things are (${e.message}). I'll use ${agentDir} this time.`); }
     }
   }

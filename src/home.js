@@ -28,14 +28,20 @@ export function tempLike(dir, { home = os.homedir(), env = process.env, platform
   return '';
 }
 
-// A OneDrive, Dropbox or iCloud folder would sync every model to the cloud: allowed, but Bob says so.
+// A cloud-synced folder (OneDrive, Dropbox, Google Drive, iCloud and the like) would upload every model, and a sync
+// pause or a re-download can corrupt a model mid-use. Allowed, but Bob always recommends against it and says so
+// wherever the folder is shown or picked (owner's rule, 2026-11-06).
+const CLOUDS = [[/onedrive/i, 'OneDrive'], [/dropbox/i, 'Dropbox'], [/Mobile Documents|iCloud/i, 'iCloud'], [/google ?drive|GoogleDrive|My Drive/i, 'Google Drive'], [/\bbox(sync)?\b/i, 'Box'], [/pcloud/i, 'pCloud'], [/nextcloud|owncloud/i, 'Nextcloud'], [/proton ?drive/i, 'Proton Drive'], [/\bmega(sync)?\b/i, 'MEGA'], [/sync\.com|\bSync\b/, 'Sync.com'], [/\bidrive\b/i, 'IDrive']];
 export function synced(dir) {
   const d = String(dir || '');
-  if (/onedrive/i.test(d)) return 'OneDrive';
-  if (/dropbox/i.test(d)) return 'Dropbox';
-  if (/Mobile Documents|iCloud/i.test(d)) return 'iCloud';
-  if (/google drive/i.test(d)) return 'Google Drive';
+  for (const [re, name] of CLOUDS) if (re.test(d)) return name;
   return '';
+}
+// The warning Bob gives for a cloud-synced folder, in his voice (me) or Settings' third person (bob).
+export function cloudWarning(name, voice = 'bob') {
+  if (!name) return '';
+  const who = voice === 'me' ? 'my' : 'Bob\'s';
+  return `This is a ${name} folder, synced to the cloud. ${voice === 'me' ? 'I recommend' : 'Bob recommends'} against it: every model (tens of GB) would be uploaded, and a sync pause or re-download can break a model while ${voice === 'me' ? 'I\'m' : 'Bob is'} using it. A plain folder on this replicant matrix is better, like ${suggestedHome()}.`;
 }
 
 // Why a folder can't be Bob's home, or '' when it can. Checks the folder itself (or the nearest folder that exists,
@@ -105,7 +111,7 @@ export function homeView(cfg, { platform = process.platform, env = process.env, 
     modelsBytes: models.bytes, modelsText: gbText(models.bytes) + (models.partial ? '+' : ''),
     enginesBytes: engines, totalText: gbText(models.bytes + engines),
     tempLike: tempLike(dir, { platform, env, home, tmpDir }),
-    synced: synced(dir),
+    synced: synced(dir), cloudWarning: cloudWarning(synced(dir)),
     suggested: suggestedHome({ home, platform }),
     canMove: Boolean(globalThis.bobHome?.move)
   };

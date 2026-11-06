@@ -72,11 +72,17 @@ function Test-BobHomeBad([string] $dir) {
   }
   return ''
 }
+function Test-BobHomeCloud([string] $dir) {
+  foreach ($c in @(@('onedrive', 'OneDrive'), @('dropbox', 'Dropbox'), @('google ?drive|googledrive|my drive', 'Google Drive'), @('icloud', 'iCloud'), @('pcloud', 'pCloud'), @('nextcloud|owncloud', 'Nextcloud'), @('proton ?drive', 'Proton Drive'), @('\bmega(sync)?\b', 'MEGA'), @('\bbox(sync)?\b', 'Box'), @('\bidrive\b', 'IDrive'))) {
+    if ($dir -match ('(?i)' + $c[0])) { return $c[1] }
+  }
+  return ''
+}
 function Ask-BobHome {
   $suggest = Join-Path $env:USERPROFILE 'Bob'
   $f = New-Object System.Windows.Forms.Form -Property @{ Text = 'Where should Bob keep his things?'; Width = 560; Height = 290; FormBorderStyle = 'FixedDialog'; StartPosition = 'CenterScreen'; MaximizeBox = $false; MinimizeBox = $false; TopMost = $true }
   $f.Font = New-Object System.Drawing.Font('Segoe UI', 10)
-  $words = New-Object System.Windows.Forms.Label -Property @{ Left = 16; Top = 12; Width = 515; Height = 96; Text = "Bob's models, programs, notes and settings live in one folder, apart from the program, so updating him never touches them. Models are big (10 to 60 GB) and slow to download again, so pick a real folder of your own: not AppData or another temporary place, and not a OneDrive folder unless you want every model uploaded.`r`n`r`nYou can move it later in Settings, Bob's home folder." }
+  $words = New-Object System.Windows.Forms.Label -Property @{ Left = 16; Top = 12; Width = 515; Height = 96; Text = "Bob's models, programs, notes and settings live in one folder, apart from the program, so updating him never touches them. Models are big (10 to 60 GB) and slow to download again, so pick a real folder of your own: not AppData or another temporary place, and not a cloud-synced folder (OneDrive, Dropbox, Google Drive, iCloud): Bob always recommends against those, because every model would be uploaded and a sync can break one while he uses it.`r`n`r`nYou can move it later in Settings, Bob's home folder." }
   $box = New-Object System.Windows.Forms.TextBox -Property @{ Left = 16; Top = 116; Width = 420; Text = $suggest }
   $browse = New-Object System.Windows.Forms.Button -Property @{ Left = 444; Top = 114; Width = 88; Height = 28; Text = 'Browse...' }
   $free = New-Object System.Windows.Forms.Label -Property @{ Left = 16; Top = 148; Width = 515; Height = 20; ForeColor = [System.Drawing.Color]::Gray }
@@ -87,7 +93,14 @@ function Ask-BobHome {
   $box.Add_TextChanged($showFree); & $showFree
   $browse.Add_Click({ $d = New-Object System.Windows.Forms.FolderBrowserDialog -Property @{ Description = 'Pick the folder Bob keeps his things in (an empty folder, or a new one)'; ShowNewFolderButton = $true }
     if ($d.ShowDialog($f) -eq 'OK') { $pick = $d.SelectedPath; $why = Test-BobHomeBad $pick; if ($why -match 'other things in it') { $pick = Join-Path $pick 'Bob' }; $box.Text = $pick } })
-  $ok.Add_Click({ $why = Test-BobHomeBad $box.Text; if ($why) { $err.Text = $why } else { $f.Tag = $box.Text.TrimEnd('\'); $f.DialogResult = 'OK'; $f.Close() } })
+  # A cloud-synced folder is allowed, but the first press warns (orange) and the button becomes "Use it anyway".
+  $script:cloudWarned = ''
+  $box.Add_TextChanged({ if ($script:cloudWarned -and $box.Text -ne $script:cloudWarned) { $script:cloudWarned = ''; $ok.Text = 'Keep Bob''s things here'; $err.Text = ''; $err.ForeColor = [System.Drawing.Color]::Firebrick } })
+  $ok.Add_Click({ $why = Test-BobHomeBad $box.Text
+    if ($why) { $err.ForeColor = [System.Drawing.Color]::Firebrick; $err.Text = $why; return }
+    $cloud = Test-BobHomeCloud $box.Text
+    if ($cloud -and $script:cloudWarned -ne $box.Text) { $script:cloudWarned = $box.Text; $err.ForeColor = [System.Drawing.Color]::DarkOrange; $err.Text = "That's a $cloud folder, synced to the cloud. Bob recommends against it: every model (tens of GB) would be uploaded, and a sync can break a model while he uses it. Press again to use it anyway, or pick a plain folder like $env:USERPROFILE\Bob."; $ok.Text = 'Use it anyway'; return }
+    $f.Tag = $box.Text.TrimEnd('\'); $f.DialogResult = 'OK'; $f.Close() })
   $f.Add_FormClosing({ param($s, $e) if ($f.DialogResult -ne 'OK') { $f.Tag = $null } })
   [void]$f.ShowDialog()
   return $f.Tag
