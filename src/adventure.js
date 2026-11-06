@@ -549,7 +549,7 @@ export class Adventure {
     for (const [n, l] of Object.entries(p.give)) { const c = find(n); if (c) c.items = [...new Set([...c.items, ...l])].slice(0, 20); }
     for (const [n, l] of Object.entries(p.take)) { const c = find(n); if (c) c.items = c.items.filter((x) => !l.some((t) => x.toLowerCase() === t.toLowerCase())); }
     for (const [n, l] of Object.entries(p.teach)) { const c = find(n); if (c) c.spells = [...new Set([...c.spells, ...l])].slice(0, 12); }
-    if (p.here) { g.here = p.here; meet(g, p.here, this.cfg); } // 1.5.124: the bestiary's Met tab
+    if (p.here) g.here = p.here;
     if (p.exits) g.exits = p.exits;
     if (p.kind && p.kind !== 'end') g.kind = p.kind;
     // 1.5.120: a scene only counts when its title is new and everyone has had a turn since the last one started, so a game
@@ -563,6 +563,7 @@ export class Adventure {
       for (const c of g.party) c.rerollUsed = false; // the "Some" reroll comes back each scene
       if (p.kind === 'montage') for (const c of g.party) if (!c.out) c.hearts = HEARTS; // rests are free
     }
+    if (p.here) meet(g, p.here, this.cfg); // 1.5.124: the bestiary's Met tab, after the scene is on the books so the entries carry its title
     g.log.push({ who: 'gm', name: 'Game master', text: p.narration || '(The game master went quiet.)', raw, at: this.now() });
     const pace = PACES[g.pace];
     const limitHit = pace.scenes && g.scenes.length > pace.scenes && p.newScene;
