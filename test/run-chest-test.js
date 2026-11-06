@@ -13,7 +13,9 @@ let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
 const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8');
 // Not under os.tmpdir(): on GitHub's Windows runners that is inside AppData, which these checks rightly call temp-like.
-const tmp = fs.mkdtempSync(path.join(process.cwd(), '.bob-chest-test-'));
+// Nor under a cwd that is itself temp-like (a staging copy under AppData, PC 2026-11-06): the first place that isn't.
+const base = [process.cwd(), os.homedir(), os.tmpdir()].find((d) => !tempLike(d)) || process.cwd();
+const tmp = fs.mkdtempSync(path.join(base, '.bob-chest-test-'));
 process.on('exit', () => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} });
 const home = path.join(tmp, 'Users', 'you');
 const env = { LOCALAPPDATA: path.join(home, 'AppData', 'Local'), APPDATA: path.join(home, 'AppData', 'Roaming') };
