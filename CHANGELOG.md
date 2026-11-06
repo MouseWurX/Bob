@@ -4,6 +4,16 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.134
+
+Bob's icon follows his look, and he lives in the tray, without a trip to Settings first.
+
+- **Use Bob's look as his icon is on unless you turn it off.** It has been in Bob since 1.5.94, but off by default, so saving a new look changed nothing on the taskbar. Now the taskbar (Dock on a Mac), tray and window icon redraw the moment a look is saved, in Style or from Equip Bob's **Change his look**, including a look built from parts on the character screen. Off: the usual Bob icon.
+- **Keep Bob in the tray is on unless you turn it off.** Closing or minimising his window tucks him into the tray by the clock (the menu bar on a Mac; the desktop's tray on Linux) and he keeps running. The first time, he says where he went and how to close him fully: right-click his tray icon and pick **Quit Bob (closes him fully)**. Both switches are where they were: Settings, Bob himself and Settings, How Bob works.
+- **What can't follow, said plainly.** A shortcut pinned to the Windows taskbar or Start menu keeps the shortcut's own icon, even while Bob is open; unpin and pin him again from the running button, or look at the tray and the window corner. The phone app's icon stays the same: Android doesn't let an app redraw its icon. On Wayland desktops the window icon comes from the .desktop file; the tray icon still follows.
+- **Help:** Bob in the tray and the FAQ "Can Bob's icon show the look I picked?" rewritten for the new defaults; glossary entry *Taskbar icon*; settings inventory rows updated.
+- `test/run-tray-test.js`: both switches start on, only `false` turns one off, a parts-built look becomes an icon, the Help and inventory say so (36 checks).
+
 ## 1.5.131
 
 One wording fix in Equip Bob and the brain menus, so Bob stops looking like he claims other people's models.
