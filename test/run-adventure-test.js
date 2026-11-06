@@ -227,5 +227,85 @@ const until = async (f, n = 200) => { for (let i = 0; i < n; i++) { if (f()) ret
   check('the page draws cards for the owner only (a Bob player has no hand)', /Bobs don't get cards|Bob player just says/.test(fs.readFileSync(new URL('../public/adventure.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n')));
 }
 
+// 1.5.130: End or Pause while the game master is still writing must put the server status back to idle, the
+// same state a finished chat turn reaches. (Bug #7: the window title stayed "Bob · Thinking...".)
+// The brain here models the status: setState keeps this.state and broadcasts, as the real brain does.
+function statusSetup() {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-adv-status-'));
+  const cfg = { dataDir: tmp, agentDir: tmp, settingsFile: path.join(tmp, 'settings.json'), session: 'normal', userName: 'Sam', models: { bob: 'main' }, sessionBrains: { deep: 'big' } };
+  const events = [];
+  const calls = { settle: 0, settleOpts: undefined, setStates: [] };
+  const brain = {
+    cfg, log: () => {}, events,
+    state: { state: 'idle', detail: '', model: 'main' },
+    turns: new Map(), waking: null, queue: [],
+    setState(state, detail = '', model = this.state.model, extra = null) {
+      calls.setStates.push(state);
+      this.state = { state, detail, model, ...(extra || {}) };
+      this.broadcast({ type: 'status', ...this.state });
+    },
+    broadcast: (ev) => events.push(ev),
+    gate: { done: () => {} },
+    settle: async (o) => { calls.settle++; calls.settleOpts = o; },
+    engine: { loaded: async () => [], unload: async () => [] },
+    // The game master's model is not loaded yet: loading, then thinking (as src/brain.js ensureModel does).
+    async ensureModel(model) { this.setState('loading', '', model); this.setState('thinking', '', model); return model; },
+    // The game master's reply blocks until the game aborts it (End or Pause).
+    chatSafe(o) { return new Promise((_, rej) => o.signal.addEventListener('abort', () => rej(new Error('aborted')))); },
+  };
+  brain.setState = brain.setState.bind(brain);
+  const a = new Adventure(brain, { rnd: fixed(12) });
+  return { a, brain, calls };
+}
+const startOpts = { setting: 'fantasy', pace: 'short', you: { name: 'Sam' }, bobs: [{ who: 'bob', name: 'Bobert' }] };
+
+{ const { a, brain } = statusSetup();
+  await a.start(startOpts);
+  check('status: the game master is writing (thinking) before End', await until(() => brain.state.state === 'thinking'));
+  await a.end({ keep: true });
+  await until(() => brain.state.state !== 'thinking');
+  await tick(50);
+  check('status: End game returns the status to idle (no more "Thinking...")', brain.state.state === 'idle' && brain.state.detail === '', `(now ${brain.state.state})`);
+}
+
+{ const { a, brain } = statusSetup();
+  await a.start(startOpts);
+  await until(() => brain.state.state === 'thinking');
+  await a.pause();
+  await until(() => brain.state.state !== 'thinking');
+  await tick(50);
+  check('status: Pause returns the status to idle', brain.state.state === 'idle' && brain.state.detail === '', `(now ${brain.state.state})`);
+  await a.end({ keep: false });
+}
+
+// Guard tests (negative controls): a chat turn, a wake or a waiting job still running means the status is not Bob's to
+// reset. They pass before and after the fix as long as those guards exist.
+for (const busy of ['turn', 'waking', 'queued']) {
+  const { a, brain, calls } = statusSetup();
+  await a.start(startOpts);
+  await until(() => brain.state.state === 'thinking');
+  if (busy === 'turn') brain.turns.set('talk', { turnId: 'x', sessionId: 's', controller: new AbortController() });
+  if (busy === 'waking') brain.waking = new Promise(() => {});
+  if (busy === 'queued') brain.queue.push({ id: 'j1', state: 'waiting' });
+  await a.end({ keep: false });
+  await tick(80);
+  check(`status: End does not force idle while a ${busy} is running`, brain.state.state === 'thinking' && calls.settleOpts?.noWake === true, `(now ${brain.state.state})`);
+  brain.turns.clear(); brain.waking = null; brain.queue = [];
+}
+
+// A new game started right after End: the End reset is deferred, and must not overwrite the new game's status.
+// (The old game's aborted reply also reaches fail() here, which pauses the new game: a separate, pre-existing bug, not checked.)
+{ const { a, brain } = statusSetup();
+  await a.start(startOpts);
+  await until(() => brain.state.state === 'thinking');
+  await a.end({ keep: true });
+  const again = a.start(startOpts);
+  await until(() => brain.state.state === 'thinking');
+  await tick(50);
+  check('status: a new game started right after End keeps Thinking while it runs (the End reset does not clobber it)', brain.state.state === 'thinking', `(now ${brain.state.state})`);
+  await again;
+  await a.end({ keep: false });
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
