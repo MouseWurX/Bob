@@ -133,7 +133,7 @@ The four Bobs above are good at Bob's own work and fast, and they are still bein
 
 **The corrected rule: the coverage cut.** Count which experts each *job* uses, separately: chat, tool calls, coding, knowledge, maths, planning. For each job, keep enough experts in every layer to cover a set share of that job's routing (the proposal is 95%, and 99% for tool use, coding and exact formats). Then keep the union of those lists, padded to one size for every layer because the model file needs that. A coverage table is published for every Bob before anything is rented, and no job may fall under its target in any layer. No job loses its specialists just because it is a small share of the whole. From the counts already on hand: 99% of coding's routing needs 253 of 256 experts, 208 keeps about 97% (worst layer 91%), 176 keeps 93%, and 128 keeps 84% (worst layer 67%). So Riker v3 will likely be bigger than 176 experts per layer, and Bill, Homer and the rest are cut from the re-cut Bob above them. The rented run counts again with the new lessons and publishes the final coverage table for each Bob.
 
-**What it costs.** Riker and Bill have to be cut and healed again on line B before Homer can be made from them. The costs page lists the wasted run as a lesson learned and the re-runs as new lines, and the projected total is being revised upward to match.
+**What it costs.** Riker and Bill have to be cut and healed again on line B before Homer can be made from them. About US $70 to $75 on an H200, the same shape as the line B session, plus about $5 for the new lessons. The costs page lists the wasted run as a lesson learned, the re-run as a new line, and the projected total raised to match.
 
 ## What comes next
 
