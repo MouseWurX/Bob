@@ -2,7 +2,7 @@
 
 Cuts Bobs out of Qwen3.6-35B-A3B on a rented GPU and heals them against the full model. The method, the plan and the
 results so far are on [Bob's own models](../../docs/BOBS-OWN-MODELS.md). The Forge needs the model lab's step 0 outputs in
-`model-lab/out` (lessons and expert counts) and a RunPod API key in the environment variable `RUNPOD_API_KEY`.
+`model-lab/out` (lessons and expert counts) and an API key for the by-the-hour GPU rental service the Forge talks to, in the environment variable `RUNPOD_API_KEY`.
 No key is stored in this repository or in any file the Forge writes; it is read from the environment at start.
 
 ## One session
@@ -10,7 +10,7 @@ No key is stored in this repository or in any file the Forge writes; it is read 
     node forge.mjs --plan plans\24-18.json
 
 1. Shows the caps and asks you to type **yes** (that is the purchase; nothing is rented before it).
-2. Rents one H100 80GB (H200 / H100 PCIe / A100 if none is free), with a 350 GB disk, on RunPod Secure Cloud.
+2. Rents one H100 80GB (H200 / H100 PCIe / A100 if none is free), with a 350 GB disk, from the rental service's secure tier.
 3. Waits for the pod's door (a tiny upload/download server, `pod/bootstrap.py`, started by the pod itself).
 4. Sends the pod scripts, lessons.jsonl, toolsets.json, the expert counts and the plan, and starts `pod/run.sh`.
 5. Watches: prints the pod's phase and last log lines every minute into `out\forge\forge-<time>.log`.
@@ -56,7 +56,7 @@ deletes the pod, and the loss is the time spent.
 - Plan `plans/riker-v2.json`: Riker v2 + Bill v2 on the H200 NVL, nothing trimmed (max_len 16384).
 
 ## Build 13: network volume, adapters
-- `volume` in the plan `{gb, name}`: one RunPod network volume, made once (`out/forge/volume.json` remembers it) in a data centre that has the wanted card in stock (`node forge.mjs --places` shows them). It mounts at /workspace and keeps the teacher weights, general text, llama tools and every Bob's adapter (`/workspace/bobs/<name>/`). This run's big working files live on the pod's own disk (/forge) and go with the pod.
+- `volume` in the plan `{gb, name}`: one network volume at the rental service, made once (`out/forge/volume.json` remembers it) in a data centre that has the wanted card in stock (`node forge.mjs --places` shows them). It mounts at /workspace and keeps the teacher weights, general text, llama tools and every Bob's adapter (`/workspace/bobs/<name>/`). This run's big working files live on the pod's own disk (/forge) and go with the pod.
 - Every healed Bob also writes `<name>-adapter.pt` (LoRA + router, small) next to its GGUFs; it is downloaded to the PC. Adapter + keep list = the healed full-size Bob, rebuilt from the teacher in minutes (rebuild script: to do).
 - `keep_healed`: healed Bobs are not deleted at the end of a rung.
 - `run`: a name for this session's files.

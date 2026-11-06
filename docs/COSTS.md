@@ -1,12 +1,12 @@
 # What Bob costs to make
 
-*Every dollar the project has spent and every dollar it expects to spend, itemized. US dollars. Updated as each line lands. Rented hardware is named by the card (H100, H200), not by the company it's rented from.*
+*Every dollar the project has spent and every dollar it expects to spend, itemized. US dollars. Updated as each line lands. Rented hardware is described by the kind of service and the card (a GPU server rented by the hour, an H100 or H200), not by the company it's rented from.*
 
 Bob is a one-person project paid for out of the owner's pocket. Nothing here is a fundraiser; the page exists so that anyone can see what a family of custom models actually costs when it's done on rented cards by the hour, and so the plan on [Bob's own models](BOBS-OWN-MODELS.md) has a price tag next to every rung.
 
 ## Spent so far
 
-### Rented GPU time (Bob's own models)
+### GPU servers rented by the hour (Bob's own models)
 
 | Date | What | Card | Cost |
 |---|---|---|---|
@@ -14,19 +14,19 @@ Bob is a one-person project paid for out of the owner's pocket. Nothing here is 
 | 5 Nov 2026 | Three failed build attempts (tooling and download problems, nothing made) | H100, minutes each | $6.54 |
 | 5 Nov 2026 | Line A session: 24Bob Riker v1 and 18Bob Bill v1 (Bill clock-capped) | H100, one session | $30.35 |
 | 5 Nov 2026 | Leftover minutes on the above | | $0.30 |
-| 5 to 6 Nov 2026 | Line B session: 717 coding lessons, 24Bob Riker v2 and 18Bob Bill v2, plus the rented network drive | H200 SXM, one session | $72.67 |
+| 5 to 6 Nov 2026 | Line B session: 717 coding lessons, 24Bob Riker v2 and 18Bob Bill v2, plus the first hours of the rented network drive | H200 SXM, 13.6 hours at $5.29 an hour | $72.67 |
 | | **Rented GPU time, total** | | **$113.96** |
 
-Prepaid credit loaded: $250.00. Balance after the above: $136.04. A 100 GB rented network drive (keeps the teacher weights, general text and adapters between sessions) costs about $7 a month while it exists.
+Prepaid credit loaded with the rental service: $250.00. Balance after the above: $136.04. A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists.
 
 ### Tools and subscriptions
 
 | What | Cost |
 |---|---|
-| AI coding assistant subscription (the owner's, used for all of Bob's development) | $200 a month |
-| Extra usage bought on 5 Nov 2026 to finish the models and the app work together | $350 one-off |
+| Claude subscription (Anthropic): Claude is a contributor to the project and writes much of Bob's code, docs and Help alongside the owner | $200 a month |
+| Claude extra usage bought on 5 Nov 2026 to finish the models and the app work together | $350 one-off |
 | Code signing | $0 so far (SignPath Foundation application declined in Nov 2026 for lack of public visibility; builds stay unsigned) |
-| Model and release hosting (GitHub Releases now, Hugging Face later) | $0 |
+| Code and release hosting (GitHub) and, later, model hosting (Hugging Face) | $0 |
 | Electricity for the lessons, counts and benchmarks on the owner's own PC | not counted |
 
 ## Projected: the rest of the family
@@ -81,7 +81,7 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 | Rented network drive, about 2 more months | about $14 |
 | Benchmarks, exports and the Hugging Face upload | $0 (done on the owner's PC) |
 | Re-runs: one allowed per rung if a heal scores badly | up to $20 each, inside the cap below |
-| Code signing, when the project is visible enough | $0 (reapply to SignPath Foundation), or about $10 a month for a cloud signing service, or $100 to $400 a year for a certificate |
+| Code signing, when the project is visible enough | $0 (reapply to the SignPath Foundation, a free signing service for open-source projects), or about $10 a month for a cloud code-signing service, or $100 to $400 a year for a code-signing certificate |
 
 ### Totals
 
@@ -95,4 +95,4 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 | Line A as well, if kept | +$219 | +$229 |
 | **Both lines** | **about $606** | **about $626** |
 
-The agreed cap for the models is $500 of rented time. Line B with specialists fits under it; line A would push past it and is only started if the comparison after Homer earns it. Spending is capped three ways: prepaid credit the rental account cannot exceed, a cap in hours and dollars in every plan file that the Forge enforces, and a yes from the owner before any card is rented.
+The agreed cap for the models is $500 of rented time. Line B with specialists fits under it; line A would push past it and is only started if the comparison after Homer earns it. Spending is capped three ways: prepaid credit the rental service cannot spend past, a cap in hours and dollars in every plan file that the Forge enforces, and a yes from the owner before any card is rented.
