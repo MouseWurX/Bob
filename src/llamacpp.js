@@ -563,7 +563,7 @@ export class LlamaCpp {
     this.currentCard = card;
     // 1.5.35: picked by its Ollama name but running from Bob's own copy: say so (Now running) and log it once per model.
     this.currentOwn = model.includes(':') && !this.lc.models?.[model] && Boolean(this.catalogFile(model));
-    if (this.currentOwn && !(this.ownLogged ||= new Set()).has(model)) { this.ownLogged.add(model); try { this.log?.('engine', `${model}: running from Bob's own copy (${path.basename(this.catalogFile(model).gguf)}) instead of Ollama's`); } catch {} }
+    if (this.currentOwn && !(this.ownLogged ||= new Set()).has(model)) { this.ownLogged.add(model); try { this.log?.('engine', `${model}: running from Bob's downloaded copy (${path.basename(this.catalogFile(model).gguf)}) instead of Ollama's`); } catch {} }
     try { fs.writeFileSync(pidFile, String(child.pid)); } catch {}
     const deadline = Date.now() + (this.lc.loadTimeoutSeconds || 300) * 1000;
     const ready = (async () => {
