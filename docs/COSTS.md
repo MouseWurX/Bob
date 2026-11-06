@@ -2,7 +2,7 @@
 
 *Every dollar the project has spent and every dollar it expects to spend, itemized. US dollars. Updated as each line lands. Rented hardware is described by the kind of service and the card (a GPU server rented by the hour, an H100 or H200), not by the company it's rented from.*
 
-Bob is a one-person project paid for out of the owner's pocket. Nothing here is a fundraiser; the page exists so that anyone can see what a family of custom models actually costs when it's done on rented cards by the hour, and so the plan on [Bob's own models](BOBS-OWN-MODELS.md) has a price tag next to every rung.
+Bob is a one-person project. Nothing here is a fundraiser; the page exists so that anyone can see what a family of custom models actually costs when it's done on rented cards by the hour, and so the plan on [Bob's own models](BOBS-OWN-MODELS.md) has a price tag next to every rung.
 
 ## Spent so far
 
@@ -21,7 +21,7 @@ Every rental, including the ones that made nothing. Times are the owner's local 
 | 5 Nov 2026, morning to night | 1x H200 141 GB SXM | 13.6 h | $5.29/h | **Line B session.** The full model wrote 717 coding and software-engineering lessons; teacher pass; 24Bob Riker v2 full pass (524 of 524 steps, 4.8 h); 18Bob Bill v2 cut from Riker v2, full pass; exports and adapters. $71.94 of card time plus the 350 GB working disk and the first hours of the rented network drive. | $72.67 |
 | | | **24.0 h of card time** | | **Three failed attempts: $6.54. Four Bobs made.** | **$113.96** |
 
-Prepaid credit loaded with the rental service: $250.00. Balance after the above: $136.04 (the total is taken from the balance; the lines above are rounded to the cent). A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists.
+The total is taken from the rental service's statement; the lines above are rounded to the cent. A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists.
 
 ### Tools and subscriptions
 
@@ -35,7 +35,7 @@ Prepaid credit loaded with the rental service: $250.00. Balance after the above:
 
 ## Projected: the rest of the family
 
-These are estimates. They assume one full-pass heal with nothing trimmed at the 16k lesson length, about 5 to 5.5 hours of card time per rung, at by-the-hour rental rates from November 2026 that move weekly; each line is re-checked on the day it is rented. Every rental is agreed in advance with its cost and a hard cap.
+These are estimates. They assume one full-pass heal with nothing trimmed at the 16k lesson length, about 5 to 5.5 hours of card time per rung, at by-the-hour rental rates from November 2026 that move weekly; each line is re-checked on the day it is rented.
 
 ### Line B (Bob lessons + coding lessons), the line being built now
 
@@ -113,5 +113,3 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 | **Projected total, line B complete** | **about $1,137** | **about $1,207** |
 | Line A as well, if the comparison after Homer earns it | +$219 | +$229 |
 | **Projected total, both lines** | **about $1,356** | **about $1,436** |
-
-Of that, the rented GPU time for the models is capped at $500: $113.96 spent, $273 to $343 projected for line B with specialists and re-runs, which fits; line A would push past the cap and is only started if the comparison after Homer earns it. Spending is capped three ways: prepaid credit the rental service cannot spend past, a cap in hours and dollars in every plan file that the Forge enforces, and a yes from the owner before any card is rented.

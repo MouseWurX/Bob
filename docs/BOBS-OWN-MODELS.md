@@ -50,7 +50,7 @@ The Forge is the project's cut-and-heal program. One command rents a data-centre
 5. **Count again.** Which experts does the healed Bob use? The next rung is cut from *that* count, so each Bob is cut from the healed Bob above it ("step-down ladder"). Small steps lose less than one big cut, and every rung is a usable model on its own.
 6. **Export.** GGUF files at Q4_K_M and Q3_K_M, checksummed and downloaded home, plus a small adapter file that, with the keep list, rebuilds the full-precision Bob from the teacher in minutes. The teacher, the general text and the adapters live on a 100 GB network volume so a session needs no re-download.
 
-A plan file names the teacher, the lessons, the rungs (`keep` experts per layer, `from` the teacher or an earlier rung), the card wanted, the quants, and the caps in hours and dollars. The budget for the whole family is US $500; every rental is asked for first with its cost and cap. Every dollar spent and every rung still to pay for is itemized on [What Bob costs to make](COSTS.md).
+A plan file names the teacher, the lessons, the rungs (`keep` experts per layer, `from` the teacher or an earlier rung), the card wanted, the quants, and the caps in hours and dollars. Every dollar spent and every rung still to pay for is itemized on [What Bob costs to make](COSTS.md).
 
 ### What the Forge is not
 
@@ -118,7 +118,7 @@ The full itemized list, including every rung still to come, is on [What Bob cost
 - The top rungs (Riker, Bill) should be nearly as good as the teacher at Bob's own work and noticeably faster on a 16 GB card. Riker already is.
 - Coding is the first thing to go when experts are cut. The coding lessons in line B and the Cypher specialists are the two bets on getting it back; if neither works, Bob keeps a stock coding brain in that slot.
 - The small rungs (5Bob and below) will not match the teacher. The target is "a better 4B than the stock 4B at being Bob": right tool, right format, Bob's voice, on a phone.
-- Healing above about 5Bob is not practical on home hardware, so the family depends on short rentals, which is why every session has caps and every step is scored before the next one is paid for.
+- Healing above about 5Bob is not practical on home hardware, so the family depends on short rentals, and every step is scored before the next one is made.
 - Numbers on this page are from the project's own benchmarks on one test machine (a 16 GB NVIDIA card). They are for comparing Bobs with each other and with the models they replace, not for comparing with published leaderboards.
 
 ## Credits
