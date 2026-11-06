@@ -12,7 +12,9 @@ import { HELP } from '../public/help-content.js';
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
 const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8');
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-chest-'));
+// Not under os.tmpdir(): on GitHub's Windows runners that is inside AppData, which these checks rightly call temp-like.
+const tmp = fs.mkdtempSync(path.join(process.cwd(), '.bob-chest-test-'));
+process.on('exit', () => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} });
 const home = path.join(tmp, 'Users', 'you');
 const env = { LOCALAPPDATA: path.join(home, 'AppData', 'Local'), APPDATA: path.join(home, 'AppData', 'Roaming') };
 const tmpDir = path.join(tmp, 'Temp'); fs.mkdirSync(tmpDir, { recursive: true }); // the test folder itself sits in the real temp folder
