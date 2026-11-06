@@ -50,7 +50,7 @@ The Forge is the project's cut-and-heal program. One command rents a data-centre
 5. **Count again.** Which experts does the healed Bob use? The next rung is cut from *that* count, so each Bob is cut from the healed Bob above it ("step-down ladder"). Small steps lose less than one big cut, and every rung is a usable model on its own.
 6. **Export.** GGUF files at Q4_K_M and Q3_K_M, checksummed and downloaded home, plus a small adapter file that, with the keep list, rebuilds the full-precision Bob from the teacher in minutes. The teacher, the general text and the adapters live on a 100 GB network volume so a session needs no re-download.
 
-A plan file names the teacher, the lessons, the rungs (`keep` experts per layer, `from` the teacher or an earlier rung), the card wanted, the quants, and the caps in hours and dollars. The budget for the whole family is US $500; every rental is asked for first with its cost and cap.
+A plan file names the teacher, the lessons, the rungs (`keep` experts per layer, `from` the teacher or an earlier rung), the card wanted, the quants, and the caps in hours and dollars. The budget for the whole family is US $500; every rental is asked for first with its cost and cap. Every dollar spent and every rung still to pay for is itemized on [What Bob costs to make](COSTS.md).
 
 ### What the Forge is not
 
@@ -97,11 +97,13 @@ Cut from the healed Riker v2 with his v1 keep list, full pass. Healing now (6 No
 
 ### What each session cost
 
+The full itemized list, including every rung still to come, is on [What Bob costs to make](COSTS.md).
+
 | Session | Card | Made | Cost |
 |---|---|---|---|
 | Lessons | H100, 1 hour | 3,753 lessons | US $3.98 |
 | Line A | H100 | Riker v1, Bill v1 (capped) | US $30.35 |
-| Line B | H200 SXM + 100 GB volume | 717 coding lessons, Riker v2, Bill v2 | about US $81 |
+| Line B | H200 SXM + 100 GB drive | 717 coding lessons, Riker v2, Bill v2 | US $72.67 |
 
 ## What comes next
 

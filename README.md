@@ -34,7 +34,7 @@ All builds on the [Releases page](https://github.com/MouseWurX/Bob/releases/late
 
 **What runs where.** Windows 10 or 11 (64-bit) is the main platform. An NVIDIA graphics card helps a lot but isn't required: with no card, Bob chats, plans, researches, reads pictures and talks on the processor. Mac (Apple Silicon), Linux (x86_64 and ARM, including a Raspberry Pi 4 or 5) and Android are built and tested on GitHub's machines by every release; the Mac and Pi builds haven't been tried on real hardware by the project yet, so [tell us how they go](https://github.com/MouseWurX/Bob/issues).
 
-**Documentation:** the **[user guide](docs/USER-GUIDE.md)** (plain English, for everyone) · [Bob and similar projects](docs/COMPARISON.md) · [How Bob stays fast and light](docs/PERFORMANCE.md) · [Brain races](docs/BRAIN-RACES.md) · [Bob's own models](docs/BOBS-OWN-MODELS.md) · [Changelog](CHANGELOG.md). Inside the app, **Help** (menu, or F1) is written by Bob himself, with a section for every setting, a glossary and an FAQ.
+**Documentation:** the **[user guide](docs/USER-GUIDE.md)** (plain English, for everyone) · [Bob and similar projects](docs/COMPARISON.md) · [How Bob stays fast and light](docs/PERFORMANCE.md) · [Brain races](docs/BRAIN-RACES.md) · [Bob's own models](docs/BOBS-OWN-MODELS.md) · [What Bob costs to make](docs/COSTS.md) · [Changelog](CHANGELOG.md). Inside the app, **Help** (menu, or F1) is written by Bob himself, with a section for every setting, a glossary and an FAQ.
 
 ## Getting Bob
 
