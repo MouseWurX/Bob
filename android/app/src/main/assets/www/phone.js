@@ -1095,11 +1095,12 @@ ${chatOut}
   function advCharsOpen(tab = 'you') { adv.chars = { tab, edit: null, draft: null, ask: '' }; advDraw(); }
   function advCharsPage() {
     const v = adv.v || {}, ch = adv.chars, g = v.game;
-    const tabs = [['you', '🧍 You'], ['party', '🎲 Party'], ['met', '📖 Met'], ['enemies', '⚔ Enemies']];
+    const tabs = [['you', '🧍 You'], ['party', '👥 Party'], ['met', '📖 Met'], ['enemies', '⚔ Enemies']];
     const bar = el('div', { class: 'adv-chars-top' }, el('button', { text: '← Back', onclick: () => { adv.chars = null; advDraw(); } }),
       el('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Characters' }, tabs.map(([id, l]) => el('button', { role: 'tab', 'aria-selected': String(ch.tab === id), text: l, onclick: () => advCharsOpen(id) }))));
     const card = (look, title, sub, ...extra) => el('div', { class: 'box adv-char' }, look ? advFace(look, 64) : el('div', { class: 'adv-face adv-noface', 'aria-hidden': 'true', text: '🖥' }),
-      el('div', { class: 'adv-char-words' }, el('strong', { text: title }), ...sub.map((t) => el('div', { class: 'help-line', text: t })), ...extra));
+      el('div', { class: 'adv-char-words' }, el('strong', { text: title }), ...sub.map((t) => typeof t === 'string' ? el('div', { class: 'help-line', text: t }) : t), ...extra));
+    const heartLine = (n, max, ...rest) => el('div', { class: 'help-line' }, ...rest, el('span', { 'aria-label': `${n} hearts`, text: hearts(n, max) })); // TalkBack reads the number, not the symbols
     const out = [bar];
     if (ch.tab === 'you') {
       const list = v.characters || [];
@@ -1132,7 +1133,7 @@ ${chatOut}
       else {
         out.push(el('p', { class: 'help-line', text: `${g ? 'At the table now' : `The last game, ${pg.title}`}. Each Bob plays with his own look.` }));
         for (const c of pg.party) out.push(card(c.who === 'you' ? (c.look || AV.encodeParts(AV.DEFAULT_PARTS)) : '', c.name,
-          [`${c.className}${c.who === 'you' ? ' · you' : c.who === 'net' ? ' · his own Bob' : ' · played by the game master'} · ${hearts(c.hearts)}`, c.trait || '', c.items?.length ? `Carries ${c.items.join(', ')}` : '', c.spells?.length ? `Knows ${c.spells.join(', ')}` : ''].filter(Boolean)));
+          [heartLine(c.hearts, 5, `${c.className}${c.who === 'you' ? ' · you' : c.who === 'net' ? ' · his own Bob' : ' · played by the game master'} · `), c.trait || '', c.items?.length ? `Carries ${c.items.join(', ')}` : '', c.spells?.length ? `Knows ${c.spells.join(', ')}` : ''].filter(Boolean)));
       }
     } else if (ch.tab === 'met') {
       const inGame = Boolean(g?.met?.length), list = inGame ? g.met : (v.met || []);
@@ -1140,11 +1141,14 @@ ${chatOut}
       else {
         out.push(el('p', { class: 'help-line', text: `${inGame ? 'Everyone the game master has brought on in this game.' : 'Everyone and everything you have run into, across your games.'} Drawn by me the moment they're named.` }));
         for (const m of list) out.push(card(m.look, m.name, [`${m.kind === 'enemy' ? `⚔ ${(v.enemies || []).find((e) => e.id === m.type)?.name || 'enemy'}` : m.kind === 'creature' ? 'creature' : 'person'}${m.scene ? ` · met at ${m.scene}` : ''}${m.game && !g ? ` · ${m.game}` : ''}`],
-          g ? null : el('div', { class: 'btns' }, el('button', { text: 'Forget', onclick: async () => { try { const r = await advApi('/api/adventure/met/forget', { id: m.id }); adv.v = { ...adv.v, met: r.met }; adv.last = JSON.stringify(adv.v); } catch (e) { adv.msg = e.message; } advDraw(); } }))));
+          g ? null : ch.ask === m.id ? el('div', { class: 'btns' }, el('span', { text: `Forget ${m.name}?` }),
+            el('button', { class: 'danger', text: 'Forget for good', onclick: async () => { ch.ask = ''; try { const r = await advApi('/api/adventure/met/forget', { id: m.id }); adv.v = { ...adv.v, met: r.met }; adv.last = JSON.stringify(adv.v); } catch (e) { adv.msg = e.message; } advDraw(); } }),
+            el('button', { text: 'Keep it', onclick: () => { ch.ask = ''; advDraw(); } }))
+          : el('div', { class: 'btns' }, el('button', { text: 'Forget', onclick: () => { ch.ask = m.id; advDraw(); } }))));
       }
     } else {
       out.push(el('p', { class: 'help-line', text: 'The usual suspects, with how many hearts they have and what to know. The game master uses these as written and invents the rest.' }));
-      for (const e of v.enemies || []) out.push(card(e.look, e.name, [`${hearts(e.hearts, e.hearts)} · ${e.attack}`], el('em', { class: 'help-line', text: e.trick }), el('div', { class: 'help-line', text: e.flavour })));
+      for (const e of v.enemies || []) out.push(card(e.look, e.name, [el('div', { class: 'help-line' }, el('span', { 'aria-label': `${e.hearts} hearts`, text: hearts(e.hearts, e.hearts) }), ` · ${e.attack}`)], el('em', { class: 'help-line', text: e.trick }), el('div', { class: 'help-line', text: e.flavour })));
     }
     if (adv.msg) out.push(el('p', { class: 'note bad', role: 'alert', text: adv.msg }));
     return out;
