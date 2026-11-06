@@ -208,9 +208,10 @@ const KEY = 'rpa_TESTKEY0123456789abcdefghijklmnop';
   const off = rentKeyEnv({ RUNPOD_API_KEY: 'x' }, { VAST_API_KEY: 'y' });
   process.env.BOB_RENT_KEYS = 'env';
   const envOnly = rentKeyEnv({ RUNPOD_API_KEY: 'x' }, { VAST_API_KEY: 'y' });
+  const envOnlyIsProcess = envOnly.BOB_RENT_KEYS === 'env' && Object.keys(envOnly).length === Object.keys(process.env).length; // judged before the variables go back
   if (was === undefined) delete process.env.BOB_RENT_KEYS; else process.env.BOB_RENT_KEYS = was;
   for (const [k, v] of hidden) if (v !== undefined) process.env[k] = v;
-  check('BOB_RENT_KEYS=off hides every key; =env reads the process only', Object.keys(off).length === 0 && !envOnly.RUNPOD_API_KEY && !envOnly.VAST_API_KEY && envOnly.PATH === process.env.PATH);
+  check('BOB_RENT_KEYS=off hides every key; =env reads the process only', Object.keys(off).length === 0 && !envOnly.RUNPOD_API_KEY && !envOnly.VAST_API_KEY && envOnlyIsProcess); // not PATH: Windows spells it Path on some machines, and a plain copy keeps that spelling
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

@@ -4,6 +4,12 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.129
+
+A test fix only, so the 1.5.128 release could be built (its Windows build failed on one check).
+
+- The Rented brains key-override check compared the PATH variable by exact name; Windows spells it `Path` on some machines (GitHub's build runners among them), so the check failed there and no 1.5.128 release was made. The check now compares the variable count and the override itself. Nothing in Bob changed; 1.5.128's fixes are all in this release.
+
 ## 1.5.128
 
 Five small fixes to Rented brains (1.5.127), from the first live checks.
