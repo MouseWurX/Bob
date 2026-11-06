@@ -19,7 +19,7 @@ Every rental, including the ones that made nothing. Times are the owner's local 
 | 4 to 5 Nov 2026, overnight | 1x H100 80 GB SXM | 7.53 h | $3.99/h | **Line A session.** Teacher pass (71 min). 24Bob Riker v1: one crash in the heal (fixed, restarted), then 195 steps in 1.75 h, stopped by the clock cap; Q4 and Q3 exports. 18Bob Bill v1 cut from Riker, heal stopped by the clock cap at step 155 of 456 (1.5 h); Q4 and Q3 exports. Two Bobs home. $30.05 of card time plus the working disk. | $30.35 |
 | 5 Nov 2026 | none | | | A tail of working-disk minutes billed after that machine was deleted. | $0.30 |
 | 5 Nov 2026, morning to night | 1x H200 141 GB SXM | 13.6 h | $5.29/h | **Line B session.** The full model wrote 717 coding and software-engineering lessons; teacher pass; 24Bob Riker v2 full pass (524 of 524 steps, 4.8 h); 18Bob Bill v2 cut from Riker v2, full pass; exports and adapters. $71.94 of card time plus the 350 GB working disk and the first hours of the rented network drive. | $72.67 |
-| | | **24.7 h of card time** | | **Three failed attempts: $6.54. Four Bobs made.** | **$113.96** |
+| | | **24.0 h of card time** | | **Three failed attempts: $6.54. Four Bobs made.** | **$113.96** |
 
 Prepaid credit loaded with the rental service: $250.00. Balance after the above: $136.04 (the total is taken from the balance; the lines above are rounded to the cent). A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists.
 
