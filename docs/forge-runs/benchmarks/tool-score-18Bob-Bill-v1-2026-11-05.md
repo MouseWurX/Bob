@@ -95,7 +95,7 @@
 - i2832/0: make_image right, arguments differ: wanted [{"prompt":"A winding mountain road snaking through the Swiss Alps, dramatic snow-capped peaks in the background, clear blue sky, high-resolution landscape phot got [{"prompt":"A winding road through the Swiss Alps with snow-capped peaks in the background and a clear blue sky. High resolution, photorealistic, dramatic lands
 - i1643/0: expected no tool, got use_tools
 - i2236/1: expected no tool, got notice_board
-- i1495/0: write_file right, arguments differ: wanted [{"path":"C:\\Users\\<owner>\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn\\rename_files.py","content":"#!/usr/bin/env python3\n\"\"\"\nrename_files.py — batc got [{"input":"{\"content\":\"#!/usr/bin/env python3\\n# rename_files.py - Rename files in a folder using various strategies\\n\\nimport os\\nimport sys\\nimport ar
+- i1495/0: write_file right, arguments differ: wanted [{"path":"C:\\Users\\you\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn\\rename_files.py","content":"#!/usr/bin/env python3\n\"\"\"\nrename_files.py — batc got [{"input":"{\"content\":\"#!/usr/bin/env python3\\n# rename_files.py - Rename files in a folder using various strategies\\n\\nimport os\\nimport sys\\nimport ar
 - i2749/0: wanted pick_session, got no tool
 - i1634/0: expected no tool, got list_folder
 - i2580/0: expected no tool, got web_search
@@ -103,7 +103,7 @@
 - i1715/0: expected no tool, got ask_specialist
 - i2582/0: expected no tool, got web_search
 - i2527/0: wanted web_search, got no tool
-- i3052/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\<owner>\\Videos"},{"path":"C:\\"}] got [{"path":"C:\\Users\\<owner>\\Videos"},{"path":"D:\\"}]
+- i3052/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\you\\Videos"},{"path":"C:\\"}] got [{"path":"C:\\Users\\you\\Videos"},{"path":"D:\\"}]
 - i3052/1: expected no tool, got list_folder,list_folder
 - i2217/1: wanted list_folder, got no tool
 - i2217/3: list_folder right, arguments differ: wanted [{"path":"Documents\\Work"}] got [{"path":"Documents/Work"}]

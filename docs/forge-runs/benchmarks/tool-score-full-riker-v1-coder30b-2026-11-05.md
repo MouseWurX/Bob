@@ -89,7 +89,7 @@
 - i3123/3: wanted list_folder,read_file, got office_read
 - i3123/4: wanted read_file, got no tool
 - i2832/0: make_image right, arguments differ: wanted [{"prompt":"A winding mountain road snaking through the Swiss Alps, dramatic snow-capped peaks in the background, clear blue sky, high-resolution landscape phot got [{"prompt":"A winding road through the Swiss Alps with snow-capped peaks in the background and a clear blue sky. High resolution, photorealistic, dramatic lands
-- i1495/0: write_file right, arguments differ: wanted [{"path":"C:\\Users\\<owner>\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn\\rename_files.py","content":"#!/usr/bin/env python3\n\"\"\"\nrename_files.py — batc got [{"input":"{\"content\":\"#!/usr/bin/env python3\\n\\\"\\\"\\\"\\nrename_files.py - Rename files in a folder using various strategies.\\n\\nUsage:\\n    python 
+- i1495/0: write_file right, arguments differ: wanted [{"path":"C:\\Users\\you\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn\\rename_files.py","content":"#!/usr/bin/env python3\n\"\"\"\nrename_files.py — batc got [{"input":"{\"content\":\"#!/usr/bin/env python3\\n\\\"\\\"\\\"\\nrename_files.py - Rename files in a folder using various strategies.\\n\\nUsage:\\n    python 
 - i2749/0: wanted pick_session, got make_image
 - i2749/1: expected no tool, got make_image
 - i1634/0: expected no tool, got ask_specialist
@@ -97,7 +97,7 @@
 - i1715/0: expected no tool, got ask_specialist
 - i2527/0: web_search right, arguments differ: wanted [{"query":"new iPhone release date 2026"}] got [{"query":"new iPhone release date 2025","when":"month"}]
 - i3083/0: wanted file_hands, got list_folder
-- i3052/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\<owner>\\Videos"},{"path":"C:\\"}] got [{"path":"C:\\Users\\<owner>\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn"},{"path":"E:"}]
+- i3052/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\you\\Videos"},{"path":"C:\\"}] got [{"path":"C:\\Users\\you\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn"},{"path":"E:"}]
 - i3052/1: expected no tool, got list_folder
 - i2217/3: list_folder right, arguments differ: wanted [{"path":"Documents\\Work"}] got [{"path":"Documents/Work"}]
 - i2217/4: read_file right, arguments differ: wanted [{"path":"notices.txt"}] got [{"path":"Documents\\Work\\Budget_Forecast_2024.xlsx"}]
@@ -206,7 +206,7 @@
 - i1071/0: wanted ask_specialist, got no tool
 - i1715/0: expected no tool, got ask_specialist
 - i2527/0: wanted web_search, got no tool
-- i3052/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\<owner>\\Videos"},{"path":"C:\\"}] got [{"path":"C:\\Users\\<owner>\\Videos"},{"path":"E:\\"}]
+- i3052/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\you\\Videos"},{"path":"C:\\"}] got [{"path":"C:\\Users\\you\\Videos"},{"path":"E:\\"}]
 - i3052/1: expected no tool, got list_folder,list_folder,list_folder
 - i2217/1: wanted list_folder, got no tool
 - i2217/3: list_folder right, arguments differ: wanted [{"path":"Documents\\Work"}] got [{"path":"Documents/Work"}]
@@ -404,8 +404,8 @@
 - i2045/0: wanted ask_specialist, got notice_board
 - i2045/1: expected no tool, got notice_board
 - i784/0: expected no tool, got ask_specialist
-- i3077/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\<owner>\\Documents"}] got [{"path":"C:\\Users\\<owner>\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn\\documents"}]
-- i3077/1: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\<owner>\\Documents\\Work"},{"path":"C:\\Users\\<owner>\\Documents\\Personal"},{"path":"C:\\Users\\<owner>\\Documents\\Archives"},{"path":"C:\\Use got [{"path":"C:\\Users\\<owner>\\Documents\\Work"}]
+- i3077/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\you\\Documents"}] got [{"path":"C:\\Users\\you\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn\\documents"}]
+- i3077/1: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\you\\Documents\\Work"},{"path":"C:\\Users\\you\\Documents\\Personal"},{"path":"C:\\Users\\you\\Documents\\Archives"},{"path":"C:\\Use got [{"path":"C:\\Users\\you\\Documents\\Work"}]
 - i3077/2: wanted list_folder, got read_file
 - i3077/3: wanted list_folder, got read_file
 - i3077/4: wanted list_folder, got file_hands

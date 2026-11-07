@@ -93,7 +93,7 @@
 - i1643/0: expected no tool, got ask_specialist
 - i2236/1: expected no tool, got notice_board
 - i507/0: expected no tool, got ask_specialist
-- i1495/0: write_file right, arguments differ: wanted [{"path":"C:\\Users\\<owner>\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn\\rename_files.py","content":"#!/usr/bin/env python3\n\"\"\"\nrename_files.py — batc got [{"input":"{\"content\":\"#!/usr/bin/env python3\\n\\\"\\\"\\\"\\nFile Renamer - Rename files in a folder using various strategies.\\n\\\"\\\"\\\"\\n\\nimport o
+- i1495/0: write_file right, arguments differ: wanted [{"path":"C:\\Users\\you\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn\\rename_files.py","content":"#!/usr/bin/env python3\n\"\"\"\nrename_files.py — batc got [{"input":"{\"content\":\"#!/usr/bin/env python3\\n\\\"\\\"\\\"\\nFile Renamer - Rename files in a folder using various strategies.\\n\\\"\\\"\\\"\\n\\nimport o
 - i2749/0: wanted pick_session, got no tool
 - i2580/0: expected no tool, got web_search
 - i1071/0: wanted ask_specialist, got no tool
@@ -114,8 +114,8 @@
 - i3596/2: wanted defender_scan, got use_tools
 - i1701/0: expected no tool, got mcp_tools
 - i3099/0: wanted list_folder, got file_hands
-- i3077/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\<owner>\\Documents"}] got [{"path":"C:\\Users\\<owner>\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn"}]
-- i3077/3: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\<owner>\\Documents\\Work\\Projects\\2023_Archive"},{"path":"C:\\Users\\<owner>\\Documents\\Work\\Archives\\2021_Projects"},{"path":"C:\\Users\\ got [{"path":"C:\\Users\\<owner>\\Documents\\Work\\Projects\\2023_Archive"},{"path":"C:\\Users\\<owner>\\Documents\\Work\\Projects\\Active_Client_Site"},{"path":"C:\\Us
+- i3077/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\you\\Documents"}] got [{"path":"C:\\Users\\you\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn"}]
+- i3077/3: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\you\\Documents\\Work\\Projects\\2023_Archive"},{"path":"C:\\Users\\you\\Documents\\Work\\Archives\\2021_Projects"},{"path":"C:\\Users\\ got [{"path":"C:\\Users\\you\\Documents\\Work\\Projects\\2023_Archive"},{"path":"C:\\Users\\you\\Documents\\Work\\Projects\\Active_Client_Site"},{"path":"C:\\Us
 - i595/0: wanted ask_specialist, got web_search
 
 
@@ -210,7 +210,7 @@
 - i1071/0: wanted ask_specialist, got no tool
 - i1715/0: expected no tool, got ask_specialist
 - i2527/0: wanted web_search, got no tool
-- i3052/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\<owner>\\Videos"},{"path":"C:\\"}] got [{"path":"C:\\Users\\<owner>\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn"},{"path":"E:\\"}]
+- i3052/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\you\\Videos"},{"path":"C:\\"}] got [{"path":"C:\\Users\\you\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn"},{"path":"E:\\"}]
 - i3052/1: expected no tool, got list_folder,list_folder,list_folder
 - i2217/1: wanted list_folder, got no tool
 - i2217/3: list_folder right, arguments differ: wanted [{"path":"Documents\\Work"}] got [{"path":"Documents/Work"}]
@@ -224,6 +224,6 @@
 - i3596/1: wanted inspect_file, got ask_specialist
 - i3596/2: wanted defender_scan, got use_tools
 - i1701/0: expected no tool, got mcp_tools
-- i3077/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\<owner>\\Documents"}] got [{"path":"C:\\Users\\<owner>\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn"}]
-- i3077/3: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\<owner>\\Documents\\Work\\Projects\\2023_Archive"},{"path":"C:\\Users\\<owner>\\Documents\\Work\\Archives\\2021_Projects"},{"path":"C:\\Users\\ got [{"path":"C:\\Users\\<owner>\\Documents\\Personal\\Recipes\\Breakfast"},{"path":"C:\\Users\\<owner>\\Documents\\Personal\\Recipes\\Desserts"},{"path":"C:\\Users\\sq
+- i3077/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\you\\Documents"}] got [{"path":"C:\\Users\\you\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn"}]
+- i3077/3: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\you\\Documents\\Work\\Projects\\2023_Archive"},{"path":"C:\\Users\\you\\Documents\\Work\\Archives\\2021_Projects"},{"path":"C:\\Users\\ got [{"path":"C:\\Users\\you\\Documents\\Personal\\Recipes\\Breakfast"},{"path":"C:\\Users\\you\\Documents\\Personal\\Recipes\\Desserts"},{"path":"C:\\Users\\you
 
