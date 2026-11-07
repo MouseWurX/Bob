@@ -5,6 +5,10 @@ results so far are on [Bob's own models](../../docs/BOBS-OWN-MODELS.md). The For
 `model-lab/out` (lessons and expert counts) and an API key for the by-the-hour GPU rental service the Forge talks to, in the environment variable `RUNPOD_API_KEY`.
 No key is stored in this repository or in any file the Forge writes; it is read from the environment at start.
 
+## The lessons
+
+The lesson sets the Forge sends to the card are not in this repository (112 MB that every clone would download). They are a release asset: [lessons-v3](https://github.com/MouseWurX/Bob/releases/tag/lessons-v3), a zip with 16 folders of `lessons.jsonl` + `toolsets.json` and a checksum. Unzip it into `model-lab/out/` and the plan files' `lessons` and `extra_lessons` paths line up.
+
 ## One session
 
     node forge.mjs --plan plans\24-18.json
