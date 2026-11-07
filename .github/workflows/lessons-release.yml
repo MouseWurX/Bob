@@ -24,7 +24,7 @@ jobs:
         run: |
           set -e
           tag=$(sed -n 1p release-assets/release.txt); title=$(sed -n 2p release-assets/release.txt)
-          if gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo "$tag already exists; uploading the files to it"; gh release upload "$tag" release-assets/*.zip release-assets/*.sha256 --clobber -R "$GITHUB_REPOSITORY"; exit 0; fi
+          if gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo "$tag already exists; refreshing its files and notes"; gh release upload "$tag" release-assets/*.zip release-assets/*.sha256 --clobber -R "$GITHUB_REPOSITORY"; gh release edit "$tag" --title "$title" --notes-file release-assets/notes.md -R "$GITHUB_REPOSITORY"; exit 0; fi
           main=$(git rev-parse origin/main)
           gh release create "$tag" release-assets/*.zip release-assets/*.sha256 --draft --target "$main" --title "$title" --notes-file release-assets/notes.md -R "$GITHUB_REPOSITORY"
           echo "draft release $tag made; publish it from the Releases page when it looks right"
