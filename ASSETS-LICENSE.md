@@ -10,6 +10,7 @@ International licence (CC BY-SA 4.0): see [LICENSE-ART](LICENSE-ART). This cover
 - Bob's icons (`public/icons/`)
 - the colour themes and their names (`public/themes.js`, the theme parts of `public/style.css`)
 - Bob's character and shipped backstory, and the other texts he is given (`src/persona.js`)
+- Bob's lesson sets, the conversations written to teach Bob's own models (published as release assets, see `docs/FORGE-JOURNAL.md`)
 - the voice-sample clips Bob made and that ship with him (`public/voice-samples/`)
 
 Attribution: "Bob, by MouseWurX (CC BY-SA 4.0)", with a link to this project.
