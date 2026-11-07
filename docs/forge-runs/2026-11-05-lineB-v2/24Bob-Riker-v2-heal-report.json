@@ -1,0 +1,61 @@
+{
+ "model": "/forge/cut-24Bob",
+ "experts": "lora",
+ "args": {
+  "model": "/forge/cut-24Bob",
+  "lessons": "/forge/in",
+  "teacher": "/forge/out/teacher.pt",
+  "save": "/forge/healed-24Bob",
+  "experts": "lora",
+  "r": 32,
+  "r_experts": 8,
+  "lr": 0.0001,
+  "router_lr": 2e-05,
+  "epochs": 1.0,
+  "tokens_per_step": 65536,
+  "max_len": 16384,
+  "hours": 7.0,
+  "alpha": 0.7,
+  "eval_only": false,
+  "eval_lessons": 150,
+  "cache": "/forge/lessons-tok.pt",
+  "general": "/workspace/general",
+  "general_tokens": 10000000,
+  "report": "/forge/out/24Bob/heal-report.json",
+  "seed": 1,
+  "device": "cuda"
+ },
+ "before": {
+  "lessons": {
+   "ce": 0.3889451150897164,
+   "kd": 0.07333272291760352,
+   "answer_tokens": 88841,
+   "teacher_ce": 0.3243631330976863
+  },
+  "general": {
+   "ce": 2.2446512985637153,
+   "kd": 0.2981882134052261,
+   "answer_tokens": 120946,
+   "teacher_ce": 2.1005316518845043
+  }
+ },
+ "steps": 524,
+ "planned_steps": 524,
+ "tokens_seen": 35507829,
+ "minutes": 288.9886284470558,
+ "oom_skipped": 0,
+ "after": {
+  "lessons": {
+   "ce": 0.35615983792804573,
+   "kd": 0.060123467536129294,
+   "answer_tokens": 88841,
+   "teacher_ce": 0.3243631330976863
+  },
+  "general": {
+   "ce": 2.2204622872290956,
+   "kd": 0.22159639723280966,
+   "answer_tokens": 120946,
+   "teacher_ce": 2.1005316518845043
+  }
+ }
+}

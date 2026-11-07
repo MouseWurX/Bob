@@ -1,0 +1,247 @@
+{
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H200"
+ ],
+ "max_len": 16384,
+ "top": 32,
+ "quants": "Q4_K_M,Q3_K_M",
+ "disk_gb": 350,
+ "general_tokens": 10000000,
+ "volume": {
+  "gb": 100,
+  "name": "bob-forge"
+ },
+ "keep_healed": true,
+ "skills": {
+  "chat": [
+   "chat",
+   "advice"
+  ],
+  "tools": [
+   "reminders",
+   "memory",
+   "web",
+   "files",
+   "office",
+   "run",
+   "schedules",
+   "security",
+   "apps"
+  ],
+  "coding": [
+   "coding"
+  ],
+  "knowledge": [
+   "knowledge"
+  ],
+  "maths": [
+   "maths"
+  ],
+  "plans": [
+   "plans",
+   "schedules"
+  ],
+  "writing": [
+   "writing"
+  ],
+  "formats": [
+   "formats"
+  ],
+  "thinking": "thinking",
+  "general": "general",
+  "gamemaster": [
+   "gamemaster"
+  ],
+  "help": [
+   "help"
+  ],
+  "refusals": [
+   "refusals"
+  ],
+  "pictures": [
+   "pictures"
+  ],
+  "languages": [
+   "languages"
+  ],
+  "recover": [
+   "recover"
+  ],
+  "clarify": [
+   "clarify"
+  ],
+  "notes": [
+   "notes"
+  ],
+  "newtool": [
+   "newtool"
+  ],
+  "selfcheck": [
+   "selfcheck"
+  ],
+  "codefix": [
+   "codefix"
+  ],
+  "selfhelp": [
+   "selfhelp"
+  ],
+  "research": [
+   "research",
+   "web"
+  ],
+  "understand": [
+   "understand"
+  ]
+ },
+ "skill_pieces": 300,
+ "cover": 0.95,
+ "strong": [
+  "tools",
+  "coding",
+  "formats"
+ ],
+ "strong_cover": 0.99,
+ "note": "Rental 1 of the v3 plan, counts only: the full Qwen writes the new lesson sets on the card (the 2,632 better coding lessons from the first attempt go up from the PC; codefix/recover/clarify/notes/newtool/selfhelp/selfcheck/research/understand, formats, game master, refusals, other languages, reasoning), then every skill is counted on the full Qwen and the count files plus the ladder table (kept share per skill at every size) come back to the PC. No Bob is cut or healed; the sizes are chosen from the table, then rental 2 (plans/riker-v3.json) does the cut and heal.",
+ "extra_lessons": [
+  "out/lessons-coding",
+  "out/lessons-coding-2"
+ ],
+ "write_lessons": [
+  {
+   "jobs": "codefix",
+   "think": "all",
+   "dir": "lessons-codefix",
+   "count": 300,
+   "parallel": 16,
+   "hours": 0.6,
+   "min": 120,
+   "drop_tools": "ask_specialist,pick_session"
+  },
+  {
+   "jobs": "recover",
+   "think": "half",
+   "dir": "lessons-recover",
+   "count": 250,
+   "parallel": 16,
+   "hours": 0.6,
+   "min": 120
+  },
+  {
+   "jobs": "clarify",
+   "think": "half",
+   "dir": "lessons-clarify",
+   "count": 200,
+   "parallel": 16,
+   "hours": 0.5,
+   "min": 100
+  },
+  {
+   "jobs": "notes",
+   "think": "half",
+   "dir": "lessons-notes",
+   "count": 200,
+   "parallel": 16,
+   "hours": 0.5,
+   "min": 100
+  },
+  {
+   "jobs": "newtool",
+   "think": "half",
+   "dir": "lessons-newtool",
+   "count": 200,
+   "parallel": 16,
+   "hours": 0.5,
+   "min": 100
+  },
+  {
+   "jobs": "selfhelp",
+   "think": "half",
+   "dir": "lessons-selfhelp",
+   "count": 200,
+   "parallel": 16,
+   "hours": 0.5,
+   "min": 100
+  },
+  {
+   "jobs": "selfcheck",
+   "think": "all",
+   "dir": "lessons-selfcheck",
+   "count": 200,
+   "parallel": 16,
+   "hours": 0.5,
+   "min": 100
+  },
+  {
+   "jobs": "research",
+   "think": "half",
+   "dir": "lessons-research",
+   "count": 250,
+   "parallel": 16,
+   "hours": 0.6,
+   "min": 120
+  },
+  {
+   "jobs": "understand",
+   "think": "all",
+   "dir": "lessons-understand",
+   "count": 250,
+   "parallel": 16,
+   "hours": 0.6,
+   "min": 120
+  },
+  {
+   "jobs": "formats",
+   "think": "half",
+   "dir": "lessons-formats",
+   "count": 220,
+   "parallel": 16,
+   "hours": 0.6,
+   "min": 120
+  },
+  {
+   "jobs": "gamemaster",
+   "think": "half",
+   "dir": "lessons-gamemaster",
+   "count": 220,
+   "parallel": 16,
+   "hours": 0.6,
+   "min": 120
+  },
+  {
+   "jobs": "refusals",
+   "think": "half",
+   "dir": "lessons-refusals",
+   "count": 220,
+   "parallel": 16,
+   "hours": 0.6,
+   "min": 120
+  },
+  {
+   "jobs": "languages",
+   "think": "half",
+   "dir": "lessons-languages",
+   "count": 220,
+   "parallel": 16,
+   "hours": 0.6,
+   "min": 120
+  },
+  {
+   "jobs": "maths:2,knowledge:1",
+   "think": "all",
+   "dir": "lessons-reasoning",
+   "count": 220,
+   "parallel": 16,
+   "hours": 0.6,
+   "min": 120
+  }
+ ],
+ "lessons_min": 1500,
+ "ladder": "248,240,232,224,216,208,200,192,184,176,168,160,152,144,136,128,120,112,104,96,88,80,72,64,56,48,40,32,24,16",
+ "rungs": [],
+ "hours_max": 5,
+ "dollars_max": 30,
+ "run": "counts-v3"
+}

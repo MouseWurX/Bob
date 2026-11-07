@@ -1,0 +1,152 @@
+# The Forge journal
+
+*A lab journal for Bob's own models, kept as the work happens. Newest entry at the bottom. Every number here comes from a file the Forge wrote; the files themselves, with pod ids, addresses and the owner's paths taken out, are in [forge-runs/](forge-runs/). Money is on [What Bob costs to make](COSTS.md), method and results on [Bob's own models](BOBS-OWN-MODELS.md). Rented hardware is named by the card, never by the company it is rented from.*
+
+*Status at the last entry (7 November 2026): 28Bob Riker v3 is home and not yet benchmarked; 20Bob Bill v3 is not made; the Forge is at build 15, untested on a card since build 14j. Nothing is released.*
+
+## 1. The question
+
+Can one person, with a gaming PC and a few rented card-hours, cut a 35-billion-parameter mixture-of-experts model down to sizes that fit a handheld, a laptop and a phone, and have the small ones still do Bob's job (tool calls, chat, coding, thinking on and off, pictures)? And at what cost, in hours and dollars, honestly counted?
+
+The teacher is [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (Apache 2.0, Alibaba's Qwen team). The method is expert pruning plus distillation: keep the experts a job actually uses, then retrain the cut model to give the same next-word odds as the full one. The program that does it is the Forge, in [model-lab/forge](../model-lab/forge/).
+
+## 2. The plan, and the routes it may take
+
+### 2.1 The ladder as it stands
+
+The first ladder (4 November) had nine rungs named by billions of parameters: 24, 18, 12, 10, 8, 6, 5, 4 and 2. After the coverage table was measured (6 November, entry 11 below), the top rungs moved up and the ladder was redrawn. A Bob's name is its size; the nickname is a label and follows the rung, so "Riker" is now the 28-billion Bob.
+
+| Rung | Nickname | Experts kept per layer (of 256) | File at Q4, about | Meant for | State |
+|---|---|---|---|---|---|
+| 28Bob | Riker | 208 | 17.5 GB | a 16 GB card with experts spilling into RAM, or the Q3 file | v3 made 6 Nov, not benchmarked |
+| 20Bob | Bill | 144 | 12.7 GB | a 16 GB card entirely | v3 not made yet (v1 and v2 exist at 128) |
+| 14Bob | Homer | 96 | 9 GB | 8 GB cards and gaming handhelds | planned |
+| 10Bob | Milo | 64 | 6.6 GB | small cards, big phones | planned |
+| 7Bob | Luke | 40 | 4.6 GB | phones | planned |
+| 5Bob | Calvin | 24 | 3.3 GB | phones, the quick brain | planned, kept only if it beats a stock 4B model |
+| 2Bob | Bender | 8, then cut in depth and width too | ~1.3 GB | anything, including a Raspberry Pi | stretch goal, last |
+
+Each rung below Riker is cut from the healed Bob above it (step-down ladder), with the keep list built per skill so that every skill keeps about 95% of its routing in every layer (99% for tools, coding and formats). Every Bob ships at Q4 and Q3 and shares the teacher's vision file.
+
+### 2.2 Two lines, and specialists
+
+- **Line A**: healed on Bob's lessons only. **Line B**: Bob's lessons plus coding and software-engineering lessons. Same cuts, different lessons, compared at the end to see which tasks the extra lessons help. Line B is the one being built; line A continues only if the comparison says it is worth it.
+- **Specialists** at 8-billion and below, where every expert counts: Cypher (coding), Ponder (deep thinking), Audit (reviewing), Relay (the quick router brain). Each is cut from the general Bob one size up with its own expert count.
+
+### 2.3 Routes not taken yet (ideas, not decisions)
+
+None of these is scheduled or paid for. They are written down so the choice is visible when it comes.
+
+- **Bridget** (working name; "Garfield" was the other candidate): a second family taught by the newer, dense Qwen3.8-27B instead of the mixture-of-experts 3.6. A dense model has no experts to cut, so its Bobs would be made by depth-and-width pruning (the 2Bob method) and would be slower per token on handhelds. Worth it only if 3.8 is clearly the better teacher for Bob's work.
+- **Howard** (working name): a Bob healed against a teacher from a different model family, to learn whether a Bob can take another teacher's knowledge without losing Bob's tool habits. A base that was itself distilled from a closed model was advised against.
+- **Thoth** (working name): a cut of one of the community "uncensored" remixes. If it is ever made it lives only behind the opt-in naughty-list switch, never as a default brain, and carries no Bob nickname in the catalogue.
+- **Trimmed other models** (for example a mixture-of-experts Gemma trimmed by a quarter): possible with the same tools, but those are not Bobs and would be named plainly, "X trimmed to Y".
+- **Expert merging**: the small rungs lose about half of their routing in the worst layer no matter which experts are kept (see the ladder table). Merging rarely-used experts into kept ones, instead of dropping them, is the next lever to try there.
+
+### 2.4 The super-training path (ideas, not decisions)
+
+Everything above heals a Bob once, against Qwen3.6, in one pass. Two ways to go further have been worked out on paper:
+
+1. **Extra rounds on the adapters.** Each healed Bob is kept as an adapter plus keep list, which rebuilds the full-precision Bob from the teacher in minutes. So a Bob can be healed again later, with new lessons or a different teacher's odds, without redoing the cut. The first candidate is a second round for Riker with hard coding lessons.
+2. **A much bigger teacher.** The giant Qwen3.8 (2.4 trillion parameters, 95 billion active) cannot be cut into a Bob (its non-expert parts alone are bigger than Riker) and cannot sensibly be run on a rented machine for this project, but it can teach. Three ways, cheapest first: (a) it writes a small set of hard lessons through a hosted API, paid by the word, and a Bob healed with them is raced against one without (the recommended first test, after v3 proves itself); (b) one pass of the giant's odds over the whole lesson set on rented hardware, a far larger spend for an unproven gain; (c) on-policy distillation, where the giant grades the student live, which is out of reach for a one-person project. A middle-sized teacher (Qwen3.8-27B) is the fallback if the giant's lessons do not help. If any of this is bought, the costs page gets the line.
+
+The order agreed on paper: finish v3, benchmark it at home, then the by-the-word test, and only then decide.
+
+## 3. Methods in one place
+
+- **Lessons**: the full model writes Bob's own lessons from Bob's real system prompt and tool list, with neutral names, never anyone's real chats or files. Sets: chat, every tool, thinking on and off, pictures, coding and software engineering, formats, game master, refusals, other languages, and seven "grow on his own" skills (run-and-fix, recover, clarify, notes, new tool, self-check, self-help) plus research and understand. 5% of lessons are held out by id and never trained on.
+- **Expert counts**: run a skill's lessons through a model and record which experts each layer picked. The coverage rule turns counts into a keep list.
+- **Teacher pass**: the full model, in full precision, records its top-32 next words and their log-probabilities at every answer position of every lesson, plus a general-text sample (public web text and public chat data) so the Bobs keep general knowledge.
+- **Heal**: LoRA on every linear layer and on the experts, plus the router, trained to match the teacher's top-32 distribution (weight 0.7) and the real next word (0.3), answer tokens only, one pass; then folded into the weights. The report gives `ce` (how surprised the model is by the teacher's words, lower is better; a loss, not an error rate), `kd` (distance from the teacher) and `teacher_ce` (the teacher's own score, the floor), on held-out lessons and on general text, before and after.
+- **Benchmarks at home** (free, on the owner's 16 GB card): experts-per-word test (97 tool phrasings, 20 facts, 6 code tasks), tool score (196 held-out conversations replayed turn by turn, 314 turns), a 13-task coding race, a routing race. All in [forge-runs/benchmarks/](forge-runs/benchmarks/).
+
+## 4. Entries
+
+### 4 November: step 0, free, on the PC
+
+- **Experts-per-word test on the full model** ([report](forge-runs/benchmarks/experts-per-word-full-qwen-2026-11-04.md)): with 8, 6 or 4 experts per word the tool quiz, facts and code held steady (45/97, 20/20, 6/6); 3 hurt (26/97, 4/6); 2 collapsed (1/97, 0/6). Speed 82.7, 92.1, 102.5 tok/s. So cutting looked promising, and Bob's "experts per word" setting gets the range 4 to 8.
+- **Lesson writing** on the PC ran at about 60 s a lesson (79 overnight). The same job on a rented H100 served by vLLM wrote 3,753 lessons in 1.03 h, about 1.5 a second with 24 in parallel ([log](forge-runs/2026-11-04-lessons-night/lesson-writer.log)). 3,832 lessons in all, 88 ideas skipped for running out of room.
+- **Expert counts** (llama.cpp's importance counter, on the PC): the work is spread wide. Keeping the busiest 48 experts per layer covers 51.5% of picks (32: 39.6%, 16: 24.3%, 8: 14.4%); 90, 95 and 99% coverage need 155, 187 and 227 of 256. Coding's busiest 48 overlap the general top 48 by 80%, deep thinking's by 73%: specialists are worth it at small sizes.
+- **Decision**: build the Forge (Node on the PC, Python on the pod) and rent by the hour; nothing is rented until the owner types yes.
+
+### 4 to 5 November, night: three failed attempts
+
+Each one a few minutes of card time and one lesson ([logs](forge-runs/2026-11-05-failed-attempts/)):
+
+1. The machine image had no `git`, so the tool download broke. Fix: fetch with Python's own HTTP, pin llama.cpp to a tag.
+2. The prebuilt `llama-quantize` would not run on the image (archive ownership errors, a too-strict exit-code check). Fix: build the llama tools in the background, never fatally; export BF16 only if they fail.
+3. The teacher server (vLLM) died during the teacher pass, and the chat template had been skipping 45% of the tool-call lessons. Fix: score the teacher in-process with transformers in BF16 instead of through a server; parse tool-call arguments to dicts. Also learned: downloads are slow in some data centres.
+
+**Lesson**: the first paid run of any new pod-side code is its test. Keep the first run short and cheap, and salvage the pod's logs before deleting it (added to the Forge after attempt 3).
+
+### 5 November: line A, v1 (24Bob Riker, 18Bob Bill), one H100 80 GB
+
+[Watcher logs](forge-runs/2026-11-05-lineA-v1/), [Riker report](forge-runs/2026-11-05-lineA-v1/24Bob-Riker-v1-heal-report.json), [Bill report](forge-runs/2026-11-05-lineA-v1/18Bob-Bill-v1-heal-report.json).
+
+- Teacher pass: 71 min for 3,616 lessons (21 skipped) plus 10M general tokens.
+- Riker's first heal crashed at once (LoRA parameters left on the CPU). Restarted on the same pod with a `--restart` command added to the Forge. Then a wrong probe made the grouped matrix multiply fall back to a Python loop at about 10 minutes a step; fixed and restarted again.
+- 24Bob Riker v1 (176 experts): 195 of 456 planned steps in 1.75 h, stopped by the clock. Held-out lessons ce 0.383 to 0.355 (teacher 0.325), kd 0.068 to 0.063; general 2.245 to 2.224 (teacher 2.101).
+- 18Bob Bill v1 (128 experts, cut from healed Riker): 163 of 456 steps in 1.5 h, stopped by the clock. Lessons ce 0.585 to 0.501, kd 0.287 to 0.197; general 2.324 to 2.308. A half-cut starts much further from the teacher than a quarter-cut.
+- Found on the pod: its self-delete got a 403 because the rental service injects its own limited key into every pod (fixed: the Forge passes the owner's key under another name); the pod's watchdog read the host's uptime, not the container's (fixed). The H100's 80 GB was tight (68 GB in use with trimming of long lessons).
+- **Benchmarks** ([tool score](forge-runs/benchmarks/tool-score-full-riker-v1-coder30b-2026-11-05.md), [Riker experts test](forge-runs/benchmarks/experts-test-24Bob-Riker-v1-2026-11-05.md), [Bill](forge-runs/benchmarks/tool-score-18Bob-Bill-v1-2026-11-05.md)):
+
+| Model | Right tool | Right arguments | Correctly no tool | Overall | Speed |
+|---|---|---|---|---|---|
+| full Qwen3.6 | 72/123 | 44/123 | 167/191 | 211/314 (67%) | 84.7 tok/s |
+| 24Bob Riker v1 | 58/123 | 39/123 | 167/191 | 206/314 (66%) | 149.9 tok/s |
+| 18Bob Bill v1 | 64/123 | 39/123 | 166/191 | 205/314 (65%) | 190.2 tok/s |
+| Qwen3-Coder-30B (for scale) | 58/123 | 26/123 | 105/191 | 131/314 (42%) | 82.8 tok/s |
+
+  Experts test: Riker v1 53/97 tools, 20/20 facts, 4/6 code; Bill v1 45/97, 12/20, 0/6. Coding race (13 tasks): Riker v1 thinking 8/13, no-think 6/13, against the full model's 12/13 and 11/13. Routing race 16/17.
+- **Readings and decisions**: tool choice survived the cut; coding and, at 18Bob, facts did not. The owner's rules from here: no trimming of long lessons, no clock-capped heals, full passes, a bigger card. A rented network drive to keep the teacher, general text and healed weights between sessions. Two lines (A and B). The healed full-precision weights of v1 were lost with the pod (no drive yet).
+
+### 5 to 6 November: line B, v2 (Riker + Bill), one H200 141 GB, with the drive
+
+[Watcher log](forge-runs/2026-11-05-lineB-v2/forge-watcher.log), [Riker v2 report](forge-runs/2026-11-05-lineB-v2/24Bob-Riker-v2-heal-report.json), [Bill v2 report](forge-runs/2026-11-05-lineB-v2/18Bob-Bill-v2-heal-report.json).
+
+- The full model, served on the card, wrote 717 coding and software-engineering lessons in 16 min (16 in parallel; the idea list ran out at 751).
+- Teacher pass: 78 min; 4,315 train and 234 held-out pieces, 24.9M tokens; max length 16,384, nothing trimmed.
+- 24Bob Riker v2: full pass, 524 of 524 steps, 4.8 h, 35.5M tokens seen. Lessons ce 0.389 to 0.356, kd 0.073 to 0.060; general 2.245 to 2.220. Coverage of the keep list: 128 experts would keep 89% of its routing, 80: 69%, 48: 50%, 32: 38%.
+- 18Bob Bill v2 (cut from healed Riker v2): 524 steps, 4.5 h. Lessons ce 0.586 to 0.487, kd 0.287 to 0.186; general 2.319 to 2.300. Adapters (1.5 GB and 1.1 GB) came home for the first time.
+- **Benchmarks** ([tool score](forge-runs/benchmarks/tool-score-riker-v2-bill-v2-2026-11-06.md), [Riker v2 experts test](forge-runs/benchmarks/experts-test-24Bob-Riker-v2-2026-11-06.md), [Bill v2](forge-runs/benchmarks/experts-test-18Bob-Bill-v2-2026-11-06.md), [coding race](forge-runs/benchmarks/coding-race-riker-v2-2026-11-05.log)): tool score Riker v2 206/314 (66%), Bill v2 208/314 (66%); experts test Riker v2 48/97, 20/20, 3/6, Bill v2 45/97, 11/20, 0/6; coding race Riker v2 6/13 thinking and 6/13 not, no better than v1.
+- **What went wrong, found the same day**: 37% of the coding lessons taught the model to hand code off to a specialist tool rather than write it, so a full pass of them could not lift coding; and the keep list had been the busiest-overall experts, protecting no skill in particular. Both are written up on [Bob's own models](BOBS-OWN-MODELS.md#what-went-wrong-with-the-first-cut). Decision: re-cut Riker and Bill with a coverage rule and clean lessons (v3), measure what every size keeps first.
+
+### 6 November: the counts-only run, failed once, then done
+
+- First attempt ([logs](forge-runs/2026-11-06-counts-v3-failed-attempt/)): the lesson writer gave the new skill jobs a weight of zero, so they wrote nothing, and the Forge stopped the card to limit the loss. 2,329 improved coding lessons from it were kept after cleaning (hand-off answers removed).
+- Second run ([watcher log](forge-runs/2026-11-06-counts-v3/forge-watcher.log)): 2,898 lessons across 14 skill sets written on the card, then every one of 24 skills counted on the full model in one load. Result: [ladder.md](forge-runs/2026-11-06-counts-v3/ladder.md), the kept share per skill at every size, average layer and worst layer.
+- **Findings**: 23 of the 24 skills move together (at 208 experts: 97 to 98% average, 92 to 93% in the worst layer; at 144: 87 to 90% / 75 to 77%; at 96: 74 to 77% / 58 to 61%). General knowledge, counted on the outside text, breaks first (208: 90/84; 144: 66/56; 96: 48/38). The worst layer is layer 2 for every skill, an early layer with spread-out routing. The v1 keep lists were within a point of the new rule at the same size, so the v2 coding gap was the lessons, not the cut.
+- **Decision**: Riker v3 at 208 experts (28Bob), Bill v3 at 144 (20Bob), with the keep lists built on the PC from these counts; cover 95%, 99% for tools, coding and formats.
+
+### 6 to 7 November: line B, v3, first half (28Bob Riker made, 20Bob Bill not), one H200
+
+[Watcher log](forge-runs/2026-11-06-lineB-v3-riker/forge-watcher.log), [pod log](forge-runs/2026-11-06-lineB-v3-riker/pod-log.txt), [phases](forge-runs/2026-11-06-lineB-v3-riker/pod-status.json), [Riker v3 report](forge-runs/2026-11-06-lineB-v3-riker/28Bob-heal-report.json).
+
+- No H200 was free in the drive's data centre for 25 minutes, so the Forge, as it was then written, took one in another data centre **without the drive**. Everything that follows was therefore on the pod's own disk only.
+- Lessons merged: 5,227 extra lessons from 15 sets on top of the base set; 3,450 tool sets.
+- Teacher pass: 125 min, 26,628 pieces, 64.0M tokens, 73 GB peak, nothing skipped. The log shows `causal_conv1d_fn` falling back to the slow reference path at every model load (see 7 November).
+- 28Bob Riker v3 (208 experts, cut in 5 min): full pass, 929 of 929 steps, 5.9 h, 63.4M tokens, 2,975 tok/s at the end, 105 GB in use. Lessons ce 0.401 to 0.362, kd 0.087 to 0.067 (teacher 0.324); general ce 2.154 to 2.158 (up a hair), kd 0.178 to 0.132. Count 3 min, export to Q4 (17.5 GB) and Q3 (13.9 GB) 24 min, adapter 1.7 GB. All home.
+- Then Bill: the skill counts on the healed Riker took 21 min, and the keep-list step died on a shell bug (the plan reader could not see the whole plan inside a rung expression, so the coverage tool got an empty argument). The pod deleted itself as designed. With no drive, the full-precision healed Riker and the teacher's scores (2.5 h of card time) went with it.
+- **State**: Riker v3 home, not benchmarked. Bill v3 not made. The healed Riker can be rebuilt from the adapter and keep list when the rebuild script exists.
+- **Open question**: the general-text ce rose slightly while kd fell; the heal matched the teacher's distribution better and the raw next word slightly worse on outside text. Watch it on Bill v3; if it repeats, lower the teacher weight for general text.
+
+### 7 November: Forge build 15, written on paper only (no card until the owner says so)
+
+Fixes from the v3 log, all untested on a card:
+
+1. **The teacher's scores are kept.** The lesson set gets a key (hash of the merged lessons, tool sets, teacher, top-k, max length and general budget). The scores and the tokenised lessons are saved on the network drive under that key and downloaded to the PC as soon as the pass ends, while the first rung heals. A later run with the same lessons finds them on the drive, or the PC uploads them, and skips the pass.
+2. **The fast kernels were never used.** In every run so far `pip install causal-conv1d` reported success and transformers still said the kernel was not installed. The likely cause: pip builds it in an isolated environment against a different torch, so the compiled module fails to import, and transformers silently falls back to the slow path. Build 15 builds it against the image's own torch, counts it ready only when it imports, keeps the wheel on the drive per card type, and makes the teacher pass and every heal wait for it (up to 30 minutes). How much faster the heal gets is unknown until a run has it; the next pod log will say.
+3. **Renting rules.** A card is only ever taken in a data centre that has one of our network drives; if ours are out of cards, a drive is made where a card is, rather than running without one. After a wait, the next card up (B200 for the H200) is tried too, under the same rules. The old "any data centre, no drive" fallback is off unless the plan turns it on.
+4. The plan-reader bug that ended the v3 run (build 14j, same day) and a silently empty "strong skills" list in the counts-only ladder, which had used 95% for every skill.
+
+**Next**: benchmark Riker v3 at home (tool score, experts test, coding race, long-document and 128K needle), then Bill v3 alone from the teacher with the PC-built keep list, when the owner gives the word. Then Homer.
+
+## 5. Running tallies
+
+| | Count |
+|---|---|
+| Bobs made and home | 5 files sets: Riker v1, Bill v1, Riker v2, Bill v2, Riker v3 |
+| Bobs that are the current plan | Riker v3 (28Bob); Bill v3 pending |
+| Failed paid attempts | 4 (three on 4 to 5 Nov, one on 6 Nov) plus the half-run of 6 to 7 Nov |
+| Lessons written | about 9,500 across 17 sets |
+| Card time | on the costs page |

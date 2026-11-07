@@ -1,0 +1,16 @@
+{
+ "name": "28Bob",
+ "nickname": "Riker",
+ "files": [
+  {
+   "file": "28Bob-Q4_K_M.gguf",
+   "bytes": 17494120544,
+   "sha256": "fd03530ec19463910d927d0f86e91f5df9477316bf5cb79e09afb75325b55694"
+  },
+  {
+   "file": "28Bob-Q3_K_M.gguf",
+   "bytes": 13873840224,
+   "sha256": "80ab59a85a33282d583c159dd66a566a8e67a20fe6dee719281898fd253ce6ee"
+  }
+ ]
+}

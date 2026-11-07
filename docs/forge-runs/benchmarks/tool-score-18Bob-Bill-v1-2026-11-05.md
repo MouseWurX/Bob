@@ -1,0 +1,120 @@
+# Tool score, 2026-11-05T13-35-42
+
+196 held-out Bob conversations (never trained on), replayed turn by turn with full history. Right tool = same tool names as the full Qwen3.6 chose; right arguments = same values too; no tool = the turn was a plain reply and the model also made no call. Thinking off.
+
+| Model | Right tool | Right arguments | Correctly no tool | Overall | Speed | Load |
+|---|---|---|---|---|---|---|
+| bill | 64/123 (52%) | 39/123 (32%) | 166/191 (87%) | 205/314 (65%) | 190.2 tok/s | 5 s |
+
+## Misses
+### bill
+- i3623/0: wanted security_tips, got no tool
+- i3623/1: web_search right, arguments differ: wanted [{"query":"NIST password guidelines 2024 2025 current cryptographic standards strong password requirements"}] got [{"query":"NISTSPN 800 649 2024 password strength guidelines"},{"query":"RFC 7920 password hashing standards 2024"}]
+- i3623/3: expected no tool, got web_search
+- i2077/0: expected no tool, got use_tools
+- i2402/0: wanted forget_topic, got no tool
+- i2264/1: wanted list_folder, got no tool
+- i2264/2: expected no tool, got list_folder
+- i2908/2: wanted make_music, got use_tools
+- i2543/0: web_search right, arguments differ: wanted [{"query":"bitcoin price USD","when":"day"}] got [{"query":"bitcoin price right now","when":"day"}]
+- i2600/0: expected no tool, got web_search
+- i3724/0: app_look right, arguments differ: wanted [{"window":"Unreal Engine","picture":true}] got [{"window":"Unreal","picture":false}]
+- i3724/1: wanted app_act, got no tool
+- i3526/0: wanted security_tips, got no tool
+- i3411/0: wanted notice_board, got no tool
+- i3411/1: expected no tool, got ask_specialist
+- i1571/0: expected no tool, got mcp_tools
+- i3525/0: wanted pick_session, got no tool
+- i3512/0: wanted notice_board, got notice_board,reminders
+- i3681/0: wanted open_app, got app_look
+- i2900/0: make_music right, arguments differ: wanted [{"prompt":"upbeat modern pop-rock, driving beat, energetic, catchy commercial jingle","lyrics":"[verse]\nEngine humming, wheels in motion\nFeeling the wind, fe got [{"prompt":"upbeat commercial jingle, energetic rock/pop, driving electric guitar, bright brass accents, 140 bpm, catchy and memorable","seconds":30,"title":"Ca
+- i2662/1: web_search right, arguments differ: wanted [{"query":"S&P 500 October 2026 weekly performance"}] got [{"query":"S&P 500 weekly performance October 2026","when":"month"}]
+- i2662/2: wanted web_search, got no tool
+- i2662/3: wanted web_search, got no tool
+- i2662/4: web_search right, arguments differ: wanted [{"query":"S&P 500 performance this week November 2025","when":"week"}] got [{"query":"S&P 500 October 2023 weekly performance","when":"month"}]
+- i2742/0: make_music right, arguments differ: wanted [{"prompt":"ambient chill, smooth looping, soft pads, subtle rhythmic pulse, 90 bpm, atmospheric, seamless loop","seconds":30,"title":"Loop Segment"}] got [{"prompt":"chill ambient instrumental, lo-fi beats, relaxing, 100 bpm, soft piano and synth pads","seconds":30,"title":"Loop Segment"}]
+- i515/0: wanted web_search, got no tool
+- i515/1: wanted pick_session, got no tool
+- i3687/0: wanted open_app, got app_look
+- i3589/0: wanted security_check,security_tips, got notice_board,security_check
+- i2025/0: wanted ask_specialist,pick_session, got ask_specialist
+- i2025/1: expected no tool, got ask_specialist
+- i1461/0: expected no tool, got mcp_tools
+- i1500/0: wanted list_folder, got no tool
+- i1500/1: expected no tool, got list_folder
+- i1733/0: wanted notice_board, got no tool
+- i2479/0: wanted use_tools, got no tool
+- i1604/0: ask_specialist right, arguments differ: wanted [{"hat":"tinker","task":"A C program is crashing with a segmentation fault. Please analyze the code to find the cause. Common causes include:\n- Dereferencing a got [{"hat":"tinker","task":"Fix a C segmentation fault. The user hasn't provided the code yet, so I need to ask for it first."}]
+- i2822/0: make_music right, arguments differ: wanted [{"prompt":"ambient space, soft synth pads, slow evolving textures, distant ethereal chimes, weightless, meditative, 60 bpm","lyrics":"","seconds":180,"title":" got [{"prompt":"ambient space soundscape, soft synth pads, distant ethereal chimes, meditative, slow tempo, atmospheric","seconds":3,"title":"Space Floating"}]
+- i304/0: wanted web_search, got no tool
+- i304/1: web_search right, arguments differ: wanted [{"query":"best movies late 2025 2026 released","when":"month"}] got [{"query":"best movies to watch in 2026 November 2026","when":"month"}]
+- i304/2: web_search right, arguments differ: wanted [{"query":"best movies available to watch November 2026","when":"month"}] got [{"query":"best movies released 2024 2025 2026 critically acclaimed","when":"year"}]
+- i304/3: wanted web_search, got no tool
+- i304/4: web_search right, arguments differ: wanted [{"query":"best movies 2025 highly rated critic favorites"}] got [{"query":"best movies to watch right now 2026"}]
+- i2448/0: expected no tool, got notice_board,reminders
+- i2641/1: wanted web_search, got no tool
+- i2641/2: wanted web_search, got no tool
+- i3767/1: expected no tool, got bob_help
+- i3546/0: wanted use_tools, got no tool
+- i3546/1: expected no tool, got use_tools
+- i3364/0: expected no tool, got run_recipe
+- i976/0: wanted bob_help, got no tool
+- i2720/0: make_image right, arguments differ: wanted [{"prompt":"Vibrant abstract expressionist painting, bold splashes of teal, magenta, and gold, dynamic brushstrokes, textured canvas style, high contrast","widt got [{"prompt":"Abstract expressionist painting: vibrant splashes of color, deep blues and fiery oranges swirling together, bold brushstrokes, emotional intensity, 
+- i3177/0: office_make right, arguments differ: wanted [{"kind":"writer","name":"New Document","text":""}] got [{"kind":"writer","name":"new_doc"}]
+- i1424/0: wanted ask_specialist, got no tool
+- i3175/0: wanted notice_board, got no tool
+- i3191/0: wanted notice_board, got reminders
+- i53/0: office_make right, arguments differ: wanted [{"kind":"impress","name":"Pitch Deck","slides":[{"bullets":["Your Company Name","Tagline or one-line description","Presenter Name","Date"],"title":"Title Slide got [{"kind":"impress","name":"pitch_deck","slides":[{"title":"Title Slide","bullets":["Your Name","Your Title","Company/Organization","Date"],"notes":"Add your nam
+- i1547/0: wanted ask_specialist, got no tool
+- i66/0: wanted office_make, got save_spreadsheet
+- i2932/0: wanted list_folder, got read_file
+- i2932/1: wanted list_folder, got read_file
+- i2932/2: expected no tool, got list_folder
+- i1556/0: wanted use_tools, got no tool
+- i1556/1: wanted make_diagram, got ask_specialist
+- i1556/2: expected no tool, got use_tools
+- i55/0: wanted notice_board, got no tool
+- i557/0: expected no tool, got ask_specialist
+- i3132/0: office_make right, arguments differ: wanted [{"kind":"writer","name":"Professional_Letterhead","text":"# [YOUR COMPANY NAME]\n\n[Street Address] | [City, State ZIP]\n[Phone] | [Email] | [Website]\n\n---\n got [{"kind":"writer","name":"professional-letterhead","text":"# [Company Name]\n\n[Logo Placeholder]\n\n**Contact Information:**\n- Address: [Your Street Address]\
+- i1581/0: wanted ask_specialist, got no tool
+- i434/0: wanted ask_specialist, got no tool
+- i82/0: make_diagram right, arguments differ: wanted [{"title":"GPU Upgrade Decision","mermaid":"flowchart TD\n    A[Current GPU] --> B{Is it broken or\\nmissing drivers?}\n    B -->|Yes| C[Buy New GPU]\n    B --> got [{"input":"{\"mermaid\":\"flowchart TD\\n    A[Start: Want a new GPU?] --> B1[Is your current GPU broken or dead?] --> B1[Yes] --> C[Buy immediately]\\n    B1[N
+- i1209/0: wanted make_image, got no tool
+- i2620/0: web_search right, arguments differ: wanted [{"query":"Tesla TSLA stock price","when":"day"}] got [{"query":"Tesla stock price today","when":"day"}]
+- i2510/0: wanted ask_specialist, got web_search
+- i2510/2: expected no tool, got web_search
+- i2194/0: wanted ask_specialist,pick_session, got web_search
+- i83/0: make_diagram right, arguments differ: wanted [{"title":"Bob–Phone Communication","mermaid":"flowchart TD\n    A[Bob\\n(Your PC)] -->|Local network / USB| B[Handshake / Bridge]\n    B --> C[Phone App / Comp got [{"input":"{\"mermaid\":\"flowchart TD\\n    [Bob: The Idle Process]\\n    A[Idle Process]\\n    B[Notice Board]\\n    C[The Workbench]\\n    D[The Painter]\\n 
+- i49/0: wanted notice_board, got open_app
+- i2519/0: wanted ask_specialist, got web_search
+- i3123/0: wanted read_file, got office_read
+- i3123/1: wanted list_folder, got no tool
+- i3123/2: wanted list_folder, got no tool
+- i3123/3: wanted list_folder,read_file, got office_read
+- i3123/4: wanted read_file, got no tool
+- i2832/0: make_image right, arguments differ: wanted [{"prompt":"A winding mountain road snaking through the Swiss Alps, dramatic snow-capped peaks in the background, clear blue sky, high-resolution landscape phot got [{"prompt":"A winding road through the Swiss Alps with snow-capped peaks in the background and a clear blue sky. High resolution, photorealistic, dramatic lands
+- i1643/0: expected no tool, got use_tools
+- i2236/1: expected no tool, got notice_board
+- i1495/0: write_file right, arguments differ: wanted [{"path":"C:\\Users\\<owner>\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn\\rename_files.py","content":"#!/usr/bin/env python3\n\"\"\"\nrename_files.py — batc got [{"input":"{\"content\":\"#!/usr/bin/env python3\\n# rename_files.py - Rename files in a folder using various strategies\\n\\nimport os\\nimport sys\\nimport ar
+- i2749/0: wanted pick_session, got no tool
+- i1634/0: expected no tool, got list_folder
+- i2580/0: expected no tool, got web_search
+- i1071/0: wanted ask_specialist, got write_file
+- i1715/0: expected no tool, got ask_specialist
+- i2582/0: expected no tool, got web_search
+- i2527/0: wanted web_search, got no tool
+- i3052/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\<owner>\\Videos"},{"path":"C:\\"}] got [{"path":"C:\\Users\\<owner>\\Videos"},{"path":"D:\\"}]
+- i3052/1: expected no tool, got list_folder,list_folder
+- i2217/1: wanted list_folder, got no tool
+- i2217/3: list_folder right, arguments differ: wanted [{"path":"Documents\\Work"}] got [{"path":"Documents/Work"}]
+- i2217/4: read_file right, arguments differ: wanted [{"path":"notices.txt"}] got [{"path":"Documents\\Work\\Budget_Forecast_2024.xlsx"}]
+- i2804/0: make_video right, arguments differ: wanted [{"prompt":"A colorful 3D ball bouncing on a flat surface with realistic physics. The ball should squash and stretch as it bounces, showing energy loss with eac got [{"prompt":"A bright orange ball bouncing on a gray surface with realistic physics. The ball starts high, bounces down with gravity, then bounces back up. It sh
+- i751/0: wanted web_search, got no tool
+- i751/1: expected no tool, got web_search
+- i3043/0: wanted notice_board, got no tool
+- i2715/0: wanted make_image, got no tool
+- i3596/0: wanted use_tools, got no tool
+- i3596/1: wanted inspect_file, got ask_together
+- i3596/2: wanted defender_scan, got use_tools
+- i2045/0: wanted ask_specialist, got no tool
+

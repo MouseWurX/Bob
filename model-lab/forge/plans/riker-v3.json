@@ -1,0 +1,154 @@
+{
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H200"
+ ],
+ "max_len": 16384,
+ "top": 32,
+ "quants": "Q4_K_M,Q3_K_M",
+ "disk_gb": 350,
+ "general_tokens": 10000000,
+ "volume": {
+  "gb": 100,
+  "name": "bob-forge"
+ },
+ "keep_healed": true,
+ "skills": {
+  "chat": [
+   "chat",
+   "advice"
+  ],
+  "tools": [
+   "reminders",
+   "memory",
+   "web",
+   "files",
+   "office",
+   "run",
+   "schedules",
+   "security",
+   "apps"
+  ],
+  "coding": [
+   "coding"
+  ],
+  "knowledge": [
+   "knowledge"
+  ],
+  "maths": [
+   "maths"
+  ],
+  "plans": [
+   "plans",
+   "schedules"
+  ],
+  "writing": [
+   "writing"
+  ],
+  "formats": [
+   "formats"
+  ],
+  "thinking": "thinking",
+  "general": "general",
+  "gamemaster": [
+   "gamemaster"
+  ],
+  "help": [
+   "help"
+  ],
+  "refusals": [
+   "refusals"
+  ],
+  "pictures": [
+   "pictures"
+  ],
+  "languages": [
+   "languages"
+  ],
+  "recover": [
+   "recover"
+  ],
+  "clarify": [
+   "clarify"
+  ],
+  "notes": [
+   "notes"
+  ],
+  "newtool": [
+   "newtool"
+  ],
+  "selfcheck": [
+   "selfcheck"
+  ],
+  "codefix": [
+   "codefix"
+  ],
+  "selfhelp": [
+   "selfhelp"
+  ],
+  "research": [
+   "research",
+   "web"
+  ],
+  "understand": [
+   "understand"
+  ]
+ },
+ "skill_pieces": 300,
+ "cover": 0.95,
+ "strong": [
+  "tools",
+  "coding",
+  "formats"
+ ],
+ "strong_cover": 0.99,
+ "note": "Rental 2 of the v3 plan: Riker v3 and Bill v3 on the H200 SXM with the network volume, full passes, nothing trimmed. The lesson sets written in rental 1 go up from the PC (extra_lessons: 2,329 clean coding lessons + 2,898 across 14 skill sets; the old 717 hand-off-heavy coding lessons are left out). Riker (28Bob, 208 experts) is cut from the teacher with the keep list built on the PC from rental 1's counts (keep_file); Bill (20Bob, 144 experts) is counted on the healed Riker v3 on the card and cut with the coverage rule at keep_n experts. coverage.md comes back with each Bob. Adapters come back to the PC.",
+ "extra_lessons": [
+  "out/lessons-coding-2",
+  "out/lessons-codefix",
+  "out/lessons-recover",
+  "out/lessons-clarify",
+  "out/lessons-notes",
+  "out/lessons-newtool",
+  "out/lessons-selfhelp",
+  "out/lessons-selfcheck",
+  "out/lessons-research",
+  "out/lessons-understand",
+  "out/lessons-formats",
+  "out/lessons-gamemaster",
+  "out/lessons-refusals",
+  "out/lessons-languages",
+  "out/lessons-reasoning"
+ ],
+ "heal": {
+  "experts": "lora",
+  "epochs": 1,
+  "hours": 12.0
+ },
+ "rungs": [
+  {
+   "name": "28Bob",
+   "keep": 208,
+   "from": "teacher",
+   "nickname": "Riker",
+   "keep_file": "out/counts/counts-v3/keep-24Bob-208.json",
+   "hours": 12.0
+  },
+  {
+   "name": "20Bob",
+   "keep": "cover",
+   "from": "28Bob",
+   "nickname": "Bill",
+   "keep_n": 144,
+   "hours": 11.0
+  }
+ ],
+ "hours_max": 28,
+ "dollars_max": 150,
+ "teacher_hours": 4.5,
+ "run": "lineB-v3",
+ "rent_minutes": 180,
+ "volume_wait_minutes": 25
+}
