@@ -119,8 +119,9 @@ check('a small replicant matrix gets a reason, not the Lab', !labRoom(8 * 1024 *
 // ---- the whole job, fake steps ----
 const dataDir = path.join(tmp, 'data'); fs.mkdirSync(path.join(dataDir, 'sessions'), { recursive: true });
 fs.writeFileSync(path.join(dataDir, 'sessions', 'a.json'), JSON.stringify(Array.from({ length: 400 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: `message ${i} `.repeat(10) }))));
-const cfg = { dataDir, agentDir: tmp, bobModelsDir: path.join(tmp, 'models', 'bob'), settingsFile: path.join(dataDir, 'settings.json'), computerLab: true, llamacpp: { exe: path.join(tmp, 'eng', 'llama-server') } };
-fs.mkdirSync(path.join(tmp, 'eng')); for (const n of ['llama-server', 'llama-imatrix', 'llama-quantize']) fs.writeFileSync(path.join(tmp, 'eng', n), '');
+const exe = (n) => (process.platform === 'win32' ? `${n}.exe` : n); // the Lab looks for llama-imatrix.exe beside llama-server.exe on Windows
+const cfg = { dataDir, agentDir: tmp, bobModelsDir: path.join(tmp, 'models', 'bob'), settingsFile: path.join(dataDir, 'settings.json'), computerLab: true, llamacpp: { exe: path.join(tmp, 'eng', exe('llama-server')) } };
+fs.mkdirSync(path.join(tmp, 'eng')); for (const n of ['llama-server', 'llama-imatrix', 'llama-quantize']) fs.writeFileSync(path.join(tmp, 'eng', exe(n)), '');
 const catalog = { models: [{ id: 'test-moe', name: 'Test MoE', family: 'Test', category: 'chat', jobs: ['bob'], files: [{ role: 'gguf', url: 'https://x/moe.gguf' }] }] };
 const shop = { cfg, catalog, locate: (e) => (e.id === 'test-moe' ? { gguf: brainFile, mmproj: readerFile } : {}) };
 const events = [];
