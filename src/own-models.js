@@ -155,16 +155,18 @@ export const ownResolve = (o) => (o.mmproj ? { gguf: o.gguf, mmproj: o.mmproj } 
 
 // "Pick a file" window for a .gguf (the brain) or its picture reader. Windows: PowerShell's OpenFileDialog on top of
 // Bob's window. Mac: AppleScript's choose file. Linux: zenity, else kdialog. Returns the path, or '' if cancelled.
-const TITLE = { gguf: 'Pick the brain file (.gguf)', mmproj: 'Pick its picture reader (mmproj .gguf), or Cancel for none' };
+const TITLE = { gguf: 'Pick the brain file (.gguf)', mmproj: 'Pick its picture reader (mmproj .gguf), or Cancel for none', docs: 'Pick a document or chat log for the lesson builder' };
+// 1.5.148: kind 'docs' (the Lab's lesson builder) shows every file, not only brains.
 export function pickFileArgs(kind, platform) {
   const title = TITLE[kind] || TITLE.gguf;
+  const any = kind === 'docs';
   if (platform === 'win32') return ['powershell.exe', ['-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-Command', [
     '[Console]::OutputEncoding = [Text.Encoding]::UTF8', 'Add-Type -AssemblyName System.Windows.Forms',
     '$owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true; ShowInTaskbar = $false }',
-    '$d = New-Object System.Windows.Forms.OpenFileDialog', `$d.Title = '${title}'`, "$d.Filter = 'Brain files (*.gguf)|*.gguf'", '$d.Multiselect = $false',
+    '$d = New-Object System.Windows.Forms.OpenFileDialog', `$d.Title = '${title}'`, any ? "$d.Filter = 'Documents and chat logs|*.txt;*.md;*.docx;*.doc;*.odt;*.rtf;*.pdf;*.epub;*.html;*.htm;*.json;*.jsonl|All files (*.*)|*.*'" : "$d.Filter = 'Brain files (*.gguf)|*.gguf'", '$d.Multiselect = $false',
     "if ($d.ShowDialog($owner) -eq 'OK') { [Console]::Out.Write($d.FileName) }", '$owner.Dispose()'].join('; ')]];
   if (platform === 'darwin') return ['/usr/bin/osascript', ['-e', `POSIX path of (choose file with prompt "${title}")`]];
-  return [['zenity', ['--file-selection', '--title', title, '--file-filter=Brain files (*.gguf) | *.gguf *.GGUF']], ['kdialog', ['--getopenfilename', '.', '*.gguf|Brain files', '--title', title]]];
+  return [['zenity', ['--file-selection', '--title', title, ...(any ? [] : ['--file-filter=Brain files (*.gguf) | *.gguf *.GGUF'])]], ['kdialog', ['--getopenfilename', '.', any ? '*|All files' : '*.gguf|Brain files', '--title', title]]];
 }
 export function pickFile({ kind = 'gguf', run = execFile, platform = process.platform } = {}) {
   const args = pickFileArgs(kind, platform);
