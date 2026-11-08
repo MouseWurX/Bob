@@ -12,6 +12,9 @@ import { saveSettings } from './config.js';
 import { gaming } from './sessions.js';
 import { TEMPLATE_IDS, templateById } from '../public/lab-templates.js';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { nodeCmd } from './selftools.js';
+import { LESSON_SKILLS, SKILL_IDS } from './lab-skills.js';
 
 export const labOn = (cfg) => cfg?.computerLab === true;
 export const MIN_RAM_GB = 12;
@@ -105,8 +108,8 @@ export function cleanRecipe(r = {}) {
     template: TEMPLATE_IDS.includes(r.template) ? r.template : '',
     name: String(r.name || '').replace(/[\r\n]/g, ' ').trim().slice(0, 60),
     from: String(r.from || '').slice(0, 120),
-    lessons: { kind: ['file', 'chats', 'none'].includes(l.kind) ? l.kind : 'none', file: typeof l.file === 'string' ? l.file : '', chunks: Math.max(20, Math.min(2000, Number(l.chunks) || 200)) },
-    smaller: { sight: s.sight === true, hearing: s.hearing === true, cut, files: [...new Set([].concat(s.files || []).filter((t) => RUNNING_TYPES.includes(t)))], measure: s.measure === true },
+    lessons: { kind: ['file', 'chats', 'none', 'set'].includes(l.kind) ? l.kind : 'none', file: typeof l.file === 'string' ? l.file : '', set: l.kind === 'set' ? slugOf(l.set) : '', chunks: Math.max(20, Math.min(2000, Number(l.chunks) || 200)) },
+    smaller: { sight: s.sight === true, hearing: s.hearing === true, cut, files: [...new Set([].concat(s.files || []).filter((t) => RUNNING_TYPES.includes(t)))], measure: s.measure === true, try: Boolean(cut) && s.try === true, tryStop: Boolean(cut) && s.try === true && s.tryStop !== false },
     test: { compare: r.test?.compare !== false }
   };
 }
@@ -221,6 +224,12 @@ export function planRecipe(recipe, { brain, facts, tools, outDir, skillNamesFor 
       steps.push({ id: 'count', label: `Count which experts ${c.skill} uses`, cmd: `${q(tools.imatrix.path)} -m ${q(brain.gguf)} -f ${q(c.file)} -o ${q(counts)} -c 4096 --chunks ${r.lessons.chunks} --fit on`, corpus: c.file, counts, skill: c.skill, card: true });
     }
   }
+  if (s.try) {
+    // Try it first: Brain Engine runs the whole brain with only the kept experts switched on, so the Lab test shows
+    // what the cut will do before any file is written. The same run, with every expert on, is the "before" score.
+    if (!tools.brainEngine?.found) problems.push('Try it first needs Brain Engine, my own engine, on this replicant matrix. Get it in Get models, Engines, or untick Try it first.');
+    steps.push({ id: 'try', label: 'Try it first: test with only the kept experts switched on', cmd: `${q(tools.brainEngine?.path || 'brain-engine/llama-server')} -m ${q(brain.gguf)} -c 8192 --jinja --fit on\n# the Lab test with every expert on, then POST /expert-mask {"keep": <the keep list>} and the Lab test again${s.tryStop ? '\n# stop here if it scores more than 10 lower' : ''}`, gguf: brain.gguf, card: true });
+  }
   if (s.cut) {
     const out = path.join(dir, `${slug}-${s.cut.keep || 'cover'}x.gguf`);
     const n = s.cut.keep || 'the coverage number of';
@@ -263,7 +272,8 @@ export function planRecipe(recipe, { brain, facts, tools, outDir, skillNamesFor 
   }
   if (!finals.length) finals.push(file);
   steps.push({ id: 'test', label: 'Test the new brain', cmd: `${q(tools.server.path)} -m ${q(finals[0])}${reader ? ` --mmproj ${q(reader)}` : ''} -c 8192 --jinja --fit on\n# then the Lab test: ${Object.values(PARTS).join(', ')}`, gguf: finals[0], mmproj: reader, card: true });
-  if (r.test.compare) steps.push({ id: 'compare', label: `Test ${brain.name} too, to compare`, cmd: `${q(tools.server.path)} -m ${q(brain.gguf)} -c 8192 --jinja --fit on`, gguf: brain.gguf, mmproj: null, card: true });
+  if (r.test.compare && s.try) notes.push(`Try it first already tests ${brain.name} with every expert on, so that's the score to compare with.`);
+  if (r.test.compare && !s.try) steps.push({ id: 'compare', label: `Test ${brain.name} too, to compare`, cmd: `${q(tools.server.path)} -m ${q(brain.gguf)} -c 8192 --jinja --fit on`, gguf: brain.gguf, mmproj: null, card: true });
   if (finals[0] === brain.gguf && !s.cut && !s.files.length) notes.push(`The new brain uses ${brain.name}'s own brain file; only the reader changes. Nothing big is copied.`);
   return { recipe: r, problems, notes, steps, slug, dir, finals, reader };
 }
@@ -322,6 +332,12 @@ export function lessonSkillNames(lessons, fromFile = () => []) {
   return skillCache.get(key);
 }
 
+// Brain Engine's mask: one list per layer, null for a layer without experts (it keeps them all).
+export function maskFor(keep, facts) {
+  const n = Math.max(facts.layers || 0, keep?.length || 0);
+  return Array.from({ length: n }, (_, i) => (Array.isArray(keep?.[i]) ? keep[i] : null));
+}
+
 function run(exe, args, { signal, log }) {
   return new Promise((resolve, reject) => {
     log(`${path.basename(exe)} ${args.join(' ')}`);
@@ -334,6 +350,42 @@ function run(exe, args, { signal, log }) {
     c.once('error', (e) => reject(new Error(`Couldn't start ${path.basename(exe)}: ${e.message}`)));
     c.once('exit', (code) => { signal?.removeEventListener('abort', stop); if (signal?.aborted) reject(new Error('Stopped.')); else if (code === 0) resolve(tail); else reject(new Error(`${path.basename(exe)} stopped (code ${code}): ${tail.split('\n').filter(Boolean).slice(-2).join(' | ')}`)); });
   });
+}
+
+
+// 1.5.143 Lab 2a: write a new lesson set with a teacher brain on this replicant matrix. The lessons land in
+// <Bob's data>/lab/lessons/<name>/lessons.jsonl, one skill per lesson ("job"), so the coverage cut can count each one.
+export const lessonSetsDir = (cfg) => path.join(labDir(cfg), 'lessons');
+export const WRITER = path.join(path.dirname(fileURLToPath(import.meta.url)), 'lab-write.js');
+export const SECONDS_PER_LESSON = 25; // a rough guess for a 30B teacher on a 16 GB card; the job shows the real pace
+export function cleanWrite(w = {}) {
+  return {
+    name: String(w.name || '').replace(/[\r\n]/g, ' ').trim().slice(0, 60),
+    teacher: String(w.teacher || '').slice(0, 120),
+    skills: [...new Set([].concat(w.skills || []).filter((x) => SKILL_IDS.includes(x)))],
+    count: Math.max(100, Math.min(20000, Math.round(Number(w.count) || 500))),
+    think: ['on', 'off', 'half'].includes(w.think) ? w.think : 'half'
+  };
+}
+// A licence that lets the teacher's answers teach another brain. Apache and MIT do; an unknown one is checked by you.
+export function teacherLicence(license = '') {
+  const l = String(license).toLowerCase();
+  if (!l) return { ok: true, note: 'I don\'t know this teacher\'s licence. Check its model card says you may train other brains on what it writes.' };
+  if (/non-?commercial|research only|no derivatives|\bnc\b/.test(l)) return { ok: false, note: `This teacher's licence (${license}) doesn't allow it.` };
+  if (/apache|mit\b|^mit/.test(l)) return { ok: true, note: '' };
+  return { ok: true, note: `Check this teacher's licence (${license}) lets you train other brains on what it writes.` };
+}
+export function lessonSets(cfg) {
+  const root = lessonSetsDir(cfg), out = [];
+  let dirs = []; try { dirs = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch {}
+  for (const d of dirs) {
+    const file = path.join(root, d, 'lessons.jsonl');
+    if (!fs.existsSync(file)) continue;
+    const meta = readJson(path.join(root, d, 'write.json'), {});
+    let count = 0; try { count = fs.readFileSync(file, 'utf8').split('\n').filter((x) => x.trim()).length; } catch {}
+    out.push({ id: d, name: meta.name || d, file, count, want: meta.count || 0, skills: meta.skills || [], teacher: meta.teacherName || '', done: meta.done === true });
+  }
+  return out;
 }
 
 export class Lab {
@@ -351,7 +403,7 @@ export class Lab {
   tools() {
     const server = this.cfg.llamacpp?.exe || path.join(this.cfg.agentDir, 'llama.cpp', exeName('llama-server'));
     const dir = path.dirname(server);
-    const t = { server, imatrix: path.join(dir, exeName('llama-imatrix')), quantize: path.join(dir, exeName('llama-quantize')) };
+    const t = { server, imatrix: path.join(dir, exeName('llama-imatrix')), quantize: path.join(dir, exeName('llama-quantize')), brainEngine: path.join(this.cfg.agentDir, 'brain-engine', exeName('llama-server')) };
     return Object.fromEntries(Object.entries(t).map(([k, p]) => [k, { path: p, found: fs.existsSync(p) }]));
   }
 
@@ -388,18 +440,22 @@ export class Lab {
     const room = this.room();
     const cardGB = Number(this.cfg.gpuVramGB) || 0;
     const brains = this.brains().map((b) => { let f = null; try { f = inspect(b); } catch (e) { return { ...b, gguf: undefined, mmproj: undefined, error: e.message }; } return { id: b.id, name: b.name, family: b.family, community: b.community, naughty: b.naughty, madeInLab: b.madeInLab, license: b.license, facts: f && { arch: f.arch, experts: f.experts, used: f.used, groups: f.groups, layers: f.layers, fileType: f.fileType, fullSize: f.fullSize, sizeGB: f.sizeGB, sight: f.sight, hearing: f.hearing, readerGB: f.readerGB }, cuts: f ? cutSizes(f).map((c) => ({ ...c, fit: fitWords(c.gb, cardGB) })) : [], fit: f ? fitWords(f.sizeGB, cardGB) : '' }; });
-    return { on: labOn(this.cfg), room, cardGB, brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES };
+    return { on: labOn(this.cfg), room, cardGB, brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, brainEngine: this.tools().brainEngine.found };
   }
 
-  runView(r) { return { id: r.id, name: r.name, from: r.fromName, state: r.state, step: r.step, stepLabel: r.stepLabel, progress: r.progress, steps: r.steps?.map((s) => ({ id: s.id, label: s.label, state: s.state })), error: r.error, notes: r.notes || [], report: r.report, at: r.at, used: Boolean(r.used), sizeGB: r.sizeGB }; }
+  runView(r) { return { id: r.id, kind: r.kind || 'make', name: r.name, from: r.fromName, state: r.state, step: r.step, stepLabel: r.stepLabel, progress: r.progress, steps: r.steps?.map((s) => ({ id: s.id, label: s.label, state: s.state })), error: r.error, notes: r.notes || [], report: r.report, at: r.at, used: Boolean(r.used), sizeGB: r.sizeGB }; }
 
   plan(recipe) {
     const r = cleanRecipe(recipe);
+    // A lesson set Bob wrote is picked by its name; its file stays on this replicant matrix.
+    let setMissing = false;
+    if (r.lessons.kind === 'set') { const set = lessonSets(this.cfg).find((x) => x.id === r.lessons.set); if (set) r.lessons = { ...r.lessons, kind: 'file', file: set.file }; else { setMissing = true; r.lessons = { ...r.lessons, kind: 'none' }; } }
     const brain = this.brains().find((b) => b.id === r.from);
     let facts = null;
     if (brain) { try { facts = inspect(brain); } catch (e) { return { recipe: r, problems: [`Couldn't read ${brain.name}'s file: ${e.message}`], notes: [], steps: [] }; } }
     const p = planRecipe(r, { brain, facts: facts || {}, tools: this.tools(), outDir: labModelsDir(this.cfg) });
     p.skills = r.lessons.kind === 'none' ? [] : lessonSkillNames(r.lessons);
+    if (setMissing) p.problems.unshift('That lesson set isn\'t here any more. Pick another one in step 2.');
     if (p.slug && madeBrains(this.cfg).some((m) => m.id === `lab-${p.slug}`)) p.problems.push(`You already have a Lab brain called ${r.name}. Pick another name.`);
     p.text = p.steps.map((s, i) => `# ${i + 1}. ${s.label}\n${s.cmd}`).join('\n\n');
     const t = templateById(r.template);
@@ -442,6 +498,84 @@ export class Lab {
 
   stop() { if (!this.job) return { stopped: false }; this.job.ac.abort(); return { stopped: true }; }
 
+  // Write a new lesson set (its own Lab job: it takes hours, and any recipe can use the set after).
+  planWrite(w) {
+    const x = cleanWrite(w), problems = [], notes = [];
+    const t = this.brains().find((b) => b.id === x.teacher);
+    if (!x.name) problems.push('Give the lesson set a name.');
+    if (!t) problems.push('Pick a teacher.');
+    if (!x.skills.length) problems.push('Tick at least one skill.');
+    const slug = slugOf(x.name);
+    const dir = path.join(lessonSetsDir(this.cfg), slug);
+    const old = readJson(path.join(dir, 'write.json'), null);
+    if (old && old.teacher !== x.teacher) problems.push(`You already have a lesson set called ${x.name}, from another teacher. Pick another name.`);
+    if (old && old.teacher === x.teacher) notes.push(`There's already a lesson set called ${x.name} from this teacher. Bob carries on with it: the lessons it has stay, and he writes the rest.`);
+    if (t) {
+      const lic = teacherLicence(t.license);
+      if (!lic.ok) problems.push(lic.note); else if (lic.note) notes.push(lic.note);
+      if (t.naughty) notes.push(`${t.name} is on the naughty list, so its lessons teach its ways too.`);
+      if (!this.tools().server.found) problems.push(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it.`);
+    }
+    notes.push('A teacher teaches best when it\'s at least as good as the brain you\'ll teach: the brain you\'re going to cut is often the best teacher here.');
+    const hours = Math.max(1, Math.round((x.count * SECONDS_PER_LESSON) / 3600));
+    return { write: x, teacher: t, problems, notes, dir, slug, out: path.join(dir, 'lessons.jsonl'), hours };
+  }
+
+  async startWrite(w, { unload = false } = {}) {
+    if (!labOn(this.cfg)) throw new Error('The Computer Science Lab is off. Turn it on in Settings, How Bob works, Brains.');
+    if (this.job) throw new Error('The Lab is already busy with a job. Wait for it, or stop it.');
+    if (gaming(this.cfg)) throw new Error('Gaming is on, so the Lab waits. Switch the session to Normal to run it.');
+    const p = this.planWrite(w);
+    if (p.problems.length) throw new Error(p.problems[0]);
+    if (this.brain?.engine?.loaded) {
+      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+      if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
+      if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
+    }
+    fs.mkdirSync(p.dir, { recursive: true });
+    writeJson(path.join(p.dir, 'write.json'), { ...p.write, teacherName: p.teacher.name, at: this.now(), done: false });
+    const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'write', name: p.write.name, slug: p.slug, from: p.teacher.id, fromName: p.teacher.name, write: p.write, state: 'running', at: this.now(), steps: [{ id: 'teacher', label: `Start ${p.teacher.name} as the teacher`, state: 'waiting' }, { id: 'write', label: `Write ${p.write.count} lessons`, state: 'waiting' }], progress: 0 };
+    this.runs.push(runRec); this.save();
+    const ac = new AbortController();
+    this.job = { run: runRec, ac };
+    this.goWrite(runRec, p, ac.signal).catch(() => {});
+    return { started: this.runView(runRec) };
+  }
+
+  async goWrite(r, p, signal) {
+    const log = (t) => { try { fs.appendFileSync(path.join(p.dir, 'lab.log'), `${new Date().toISOString()} ${t}\n`); } catch {} };
+    const fx = { ...this.defaultSteps(this.tools(), log), ...this.stepFns };
+    let srv = null;
+    const set = (i, state) => { r.steps[i].state = state; r.step = r.steps[i].id; r.stepLabel = r.steps[i].label; this.tell(r); };
+    try {
+      set(0, 'running');
+      srv = await fx.serve({ gguf: p.teacher.gguf, ctx: 16384, signal, log });
+      set(0, 'done');
+      set(1, 'running');
+      const t0 = this.now();
+      let last = 0;
+      const n = await fx.write({ url: srv.url, out: p.out, skills: p.write.skills, count: p.write.count, think: p.write.think }, { signal, log, onProgress: (d, total) => {
+        r.progress = Math.round((100 * d) / total); r.stepLabel = `Write ${total} lessons: ${d} written`;
+        if (Date.now() - last > 2000) { last = Date.now(); this.broadcast({ type: 'lab', run: this.runView(r) }); }
+      } });
+      if (!n) throw new Error(`${p.teacher.name} didn't write any lessons Bob could use. A teacher that knows tools and answers in JSON works best.`);
+      set(1, 'done');
+      writeJson(path.join(p.dir, 'write.json'), { ...p.write, teacherName: p.teacher.name, at: this.now(), done: true, written: n });
+      r.files = { lessons: p.out };
+      r.report = { lessons: n, of: p.write.count, skills: p.write.skills, minutes: Math.round((this.now() - t0) / 60000) };
+      if (n < p.write.count) r.notes = [`${p.teacher.name} gave ${n} usable lessons of the ${p.write.count} asked for. Start it again with the same name to write more.`];
+      r.state = 'done'; r.step = ''; r.stepLabel = ''; r.progress = 100;
+      this.tell(r);
+      this.broadcast({ type: 'lab-done', name: r.name, ok: true });
+    } catch (e) {
+      r.state = signal.aborted ? 'stopped' : 'failed'; r.error = signal.aborted ? 'You stopped it. The lessons written so far are kept; start it again with the same name to carry on.' : e.message;
+      const i = r.steps.findIndex((x) => x.state === 'running'); if (i >= 0) r.steps[i].state = 'failed';
+      log(`failed: ${e.stack || e.message}`);
+      this.tell(r);
+      this.broadcast({ type: 'lab-done', name: r.name, ok: false, error: r.error });
+    } finally { srv?.stop(); this.job = null; }
+  }
+
   save() { writeJson(this.runsFile, this.runs.slice(-50)); }
   tell(r) { this.save(); this.broadcast({ type: 'lab', run: this.runView(r) }); }
 
@@ -449,7 +583,23 @@ export class Lab {
     const log = (t) => { try { fs.mkdirSync(p.dir, { recursive: true }); fs.appendFileSync(path.join(p.dir, 'lab.log'), `${new Date().toISOString()} ${t}\n`); } catch {} };
     const tools = this.tools();
     const fx = { ...this.defaultSteps(tools, log), ...this.stepFns };
-    let keep = null, coverage = null; const tests = {}; const skillCounts = [];
+    let keep = null, coverage = null, tried = null, keepDone = false; const tests = {}; const skillCounts = [];
+    // The keep list, worked out once (by Try it first, or by the cut): from the busiest count, an expert list, or the
+    // coverage rule over every skill's count.
+    const keepNow = (src) => {
+      keepDone = true;
+      const c = p.recipe.smaller.cut;
+      if (c.how === 'file') return readJson(c.file, {}).layers;
+      if (c.how !== 'cover') return keep;
+      const f = brainFacts(readGguf(src));
+      const cov = coverageKeep(skillCounts, { cover: c.cover, strong: c.strong, strongCover: 0.99, keep: c.keep, min: f.used });
+      if (cov.K >= f.experts) throw new Error(`Covering every skill at ${Math.round(c.cover * 100)}% needs all ${f.experts} experts in some layer, so there's nothing to cut. Pick 90%, or set how many experts to keep.`);
+      coverage = { experts: cov.K, of: f.experts, sizes: cov.sizes, skills: cov.shares.map((x) => ({ name: x.name, average: Math.round(1000 * x.average) / 10, worst: Math.round(1000 * x.worst) / 10, worstLayer: x.worstLayer })) };
+      writeJson(path.join(p.dir, `${p.slug}-keep.json`), { name: p.recipe.name, experts: cov.K, cover: c.cover, strong: c.strong, strong_cover: 0.99, skills: skillCounts.map((x) => x.name), layers: cov.keep });
+      writeJson(path.join(p.dir, 'coverage.json'), coverage);
+      log(`coverage cut: keeping ${cov.K} of ${f.experts}; ${coverage.skills.map((x) => `${x.name} ${x.average}% (worst ${x.worst}%)`).join(', ')}`);
+      return cov.keep;
+    };
     try {
       fs.mkdirSync(p.dir, { recursive: true });
       for (let i = 0; i < p.steps.length; i++) {
@@ -477,18 +627,15 @@ export class Lab {
             keep = busiest(counts, p.recipe.smaller.cut.keep);
             writeJson(path.join(p.dir, `${p.slug}-keep.json`), { name: p.recipe.name, experts: p.recipe.smaller.cut.keep, layers: keep });
           }
+        } else if (s.id === 'try') {
+          keep = keepNow(brain.gguf);
+          const t = await fx.try(s, { keep: maskFor(keep, brainFacts(readGguf(brain.gguf))), signal, onProgress });
+          tried = t;
+          r.report = { ...(r.report || {}), tried: { full: t.full.score, masked: t.masked.score } };
+          log(`try it first: every expert ${t.full.score}, kept experts only ${t.masked.score}`);
+          if (p.recipe.smaller.tryStop && t.masked.score < t.full.score - 10) throw new Error(`Tried first: with only the kept experts switched on it scored ${t.masked.score}, against ${t.full.score} with all of them, so I stopped before cutting. Keep more experts, or protect more skills.`);
         } else if (s.id === 'cut') {
-          if (p.recipe.smaller.cut.how === 'file') keep = readJson(p.recipe.smaller.cut.file, {}).layers;
-          if (p.recipe.smaller.cut.how === 'cover') {
-            const c = p.recipe.smaller.cut, f = brainFacts(readGguf(s.src));
-            const cov = coverageKeep(skillCounts, { cover: c.cover, strong: c.strong, strongCover: 0.99, keep: c.keep, min: f.used });
-            if (cov.K >= f.experts) throw new Error(`Covering every skill at ${Math.round(c.cover * 100)}% needs all ${f.experts} experts in some layer, so there's nothing to cut. Pick 90%, or set how many experts to keep.`);
-            keep = cov.keep;
-            coverage = { experts: cov.K, of: f.experts, sizes: cov.sizes, skills: cov.shares.map((x) => ({ name: x.name, average: Math.round(1000 * x.average) / 10, worst: Math.round(1000 * x.worst) / 10, worstLayer: x.worstLayer })) };
-            writeJson(path.join(p.dir, `${p.slug}-keep.json`), { name: p.recipe.name, experts: cov.K, cover: c.cover, strong: c.strong, strong_cover: 0.99, skills: skillCounts.map((x) => x.name), layers: keep });
-            writeJson(path.join(p.dir, 'coverage.json'), coverage);
-            log(`coverage cut: keeping ${cov.K} of ${f.experts}; ${coverage.skills.map((x) => `${x.name} ${x.average}% (worst ${x.worst}%)`).join(', ')}`);
-          }
+          if (!keepDone) keep = keepNow(s.src);
           const why = checkKeep(readGguf(s.src), keep);
           if (why) throw new Error(why);
           await fx.cut(s, { keep, onProgress, signal });
@@ -507,7 +654,8 @@ export class Lab {
       const size = (f) => { try { return fs.statSync(f).size; } catch { return 0; } };
       r.files = { gguf: p.finals[0], mmproj: p.reader || null };
       r.sizeGB = round1(size(p.finals[0]) / GB);
-      r.report = { made: tests.test, from: tests.compare || null, sizeGB: r.sizeGB, fromGB: round1(size(brain.gguf) / GB), at: this.now(), ...(coverage ? { coverage } : {}) };
+      if (tried && !tests.compare) tests.compare = { ...tried.full, engine: 'Brain Engine' };
+      r.report = { ...(tried ? { tried: { full: tried.full.score, masked: tried.masked.score } } : {}), made: tests.test, from: tests.compare || null, sizeGB: r.sizeGB, fromGB: round1(size(brain.gguf) / GB), at: this.now(), ...(coverage ? { coverage } : {}) };
       writeJson(path.join(p.dir, 'lab-report.json'), { name: r.name, from: brain.name, recipe: p.recipe, ...r.report });
       r.stepLabel = 'Write the measurement record'; this.tell(r);
       const facts = (() => { try { return brainFacts(readGguf(p.finals[0])); } catch { return {}; } })();
@@ -536,6 +684,30 @@ export class Lab {
       imatrix: (s, { recipe, signal }) => run(tools.imatrix.path, ['-m', s.src, '-f', s.corpus, '-o', s.out, '-c', '4096', '--chunks', String(recipe.lessons.chunks), '--fit', 'on'], { signal, log })
         .catch((e) => { if (signal.aborted) throw e; return run(tools.imatrix.path, ['-m', s.src, '-f', s.corpus, '-o', s.out, '-c', '4096', '--chunks', String(recipe.lessons.chunks), '-ngl', '0'], { signal, log }); }),
       quantize: (s, { signal }) => run(tools.quantize.path, [...(s.imatrix ? ['--imatrix', s.imatrix] : []), s.src, s.out, s.type], { signal, log }),
+      serve: ({ gguf, ctx, signal, log: l }) => startServer({ exe: tools.server.path, gguf, ctx, signal, log: l || log }),
+      // The writer runs as its own process: the throwaway Bob it builds never touches this Bob.
+      write: (job, { signal, onProgress }) => new Promise((resolve, reject) => {
+        const { file, env } = nodeCmd();
+        const c = spawn(file, [WRITER, JSON.stringify(job)], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, env: { ...process.env, ...env } });
+        let tail = '', buf = '', n = 0;
+        c.stdout.on('data', (d) => { buf += d; const lines = buf.split('\n'); buf = lines.pop(); for (const x of lines) { const m = x.match(/^progress (\d+) (\d+)/); if (m) onProgress(Number(m[1]), Number(m[2])); const k = x.match(/^done (\d+)/); if (k) n = Number(k[1]); } });
+        c.stderr.on('data', (d) => { tail = (tail + d).slice(-2000); });
+        const stop = () => { try { c.kill(); } catch {} };
+        signal?.addEventListener('abort', stop, { once: true });
+        c.once('error', (e) => reject(new Error(`Couldn't start the lesson writer: ${e.message}`)));
+        c.once('exit', (code) => { signal?.removeEventListener('abort', stop); if (signal?.aborted) reject(new Error('Stopped.')); else if (code === 0) resolve(n); else { log(tail); reject(new Error(`The lesson writer stopped: ${tail.trim().split('\n').slice(-1)[0] || `code ${code}`}`)); } });
+      }),
+      try: async (s, { keep, signal, onProgress }) => {
+        const srv = await startServer({ exe: tools.brainEngine.path, gguf: s.gguf, signal, log });
+        try {
+          const post = async (body) => { const res = await fetch(srv.url + '/expert-mask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }); if (!res.ok) throw new Error(`Brain Engine wouldn't switch the experts: ${(await res.text()).slice(0, 200)}`); };
+          await post({ keep: null });
+          const full = { ...(await runQuiz(srv.url, { signal, onStep: (d, t) => onProgress(d / t / 2) })), where: srv.where, engine: 'Brain Engine' };
+          await post({ keep });
+          const masked = { ...(await runQuiz(srv.url, { signal, onStep: (d, t) => onProgress(0.5 + d / t / 2) })), where: srv.where, engine: 'Brain Engine' };
+          return { full, masked };
+        } finally { srv.stop(); }
+      },
       test: async (s, { signal, onProgress }) => {
         const srv = await startServer({ exe: tools.server.path, gguf: s.gguf, mmproj: s.mmproj, signal, log });
         try {
@@ -576,8 +748,10 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }
     const b = await body(req);
     if (p === '/api/lab/compare' && !b.save) { send(res, 200, lab.compare(b.ids)); return true; }
-    if (!isLocal && !['/api/lab/plan'].includes(p)) { send(res, 403, { error: 'Lab jobs can only be started on this replicant matrix itself for now.' }); return true; }
+    if (!isLocal && !['/api/lab/plan', '/api/lab/write/plan'].includes(p)) { send(res, 403, { error: 'Lab jobs can only be started on this replicant matrix itself for now.' }); return true; }
     if (p === '/api/lab/plan') { const pl = lab.plan(b.recipe); send(res, 200, { problems: pl.problems, notes: pl.notes, skills: pl.skills || [], steps: pl.steps.map((s) => ({ id: s.id, label: s.label })), text: isLocal ? pl.text : '' }); return true; }
+    if (p === '/api/lab/write/plan') { const pl = lab.planWrite(b.write); send(res, 200, { problems: pl.problems, notes: pl.notes, hours: pl.hours, file: isLocal ? pl.out : '' }); return true; }
+    if (p === '/api/lab/write') { send(res, 200, await lab.startWrite(b.write, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/start') { send(res, 200, await lab.start(b.recipe, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/stop') { send(res, 200, lab.stop()); return true; }
     if (p === '/api/lab/use') { send(res, 200, lab.use(String(b.run || ''))); return true; }
