@@ -1,10 +1,13 @@
 // 1.5.141 🧪 Computer Science Lab (Lab 1): make your own brain from one on this replicant matrix, in five steps, with
 // checkboxes and radio buttons instead of command-line flags. Show the recipe shows the exact commands. 1.5.143 (Lab 2a):
 // keep every skill covered, and write a new lesson set with a teacher here. Rented cards are shown as "later", never offered.
+// 1.5.151 (Lab 3): the page has tabs. Make a brain is the five steps; Learn is guided experiments (public/lab-learn.js).
 import { esc } from './rich.js';
 import { TEMPLATES, templateById, templateWhyNot, applyTemplate } from './lab-templates.js';
+import { createLearn } from './lab-learn.js';
 
 const $ = (id) => document.getElementById(id);
+const TABS = [['make', 'Make a brain'], ['learn', 'Learn']];
 const STEPS = [['brain', '1 Pick a brain'], ['lessons', '2 Lessons'], ['smaller', '3 Make it smaller'], ['where', '4 Where it runs'], ['test', '5 Test and use']];
 const TYPE_NOTE = { Q4_K_M: 'Q4 (recommended)', Q5_K_M: 'Q5', Q6_K: 'Q6', Q8_0: 'Q8', Q3_K_M: 'Q3 (only for brains meant for 8 GB or less)' };
 const PARTS = { general: 'General knowledge', tools: 'Picking the right tool', coding: 'Coding', following: 'Following instructions' };
@@ -12,7 +15,8 @@ const PARTS = { general: 'General knowledge', tools: 'Picking the right tool', c
 export function createLab({ api, note }) {
   const dlg = $('lab'), body = $('lab-body');
   $('lab-close').onclick = () => dlg.close();
-  let view = null, step = 'brain', plan = null, showRecipe = false, msg = '', askUnload = null;
+  let view = null, step = 'brain', plan = null, showRecipe = false, msg = '', askUnload = null, tab = 'make';
+  const learn = createLearn({ api });
   let measures = [], picked = [], table = null, saved = '';
   const w = { name: '', teacher: '', skills: ['tools', 'coding', 'chat'], count: 500, think: 'half' };
   let wplan = null, writing = false;
@@ -171,10 +175,12 @@ export function createLab({ api, note }) {
   function draw() {
     if (!view) { body.innerHTML = `<p class="muted">${esc(msg || 'Loading...')}</p>`; return; }
     if (!view.on) { body.innerHTML = '<p>The Lab is off. Turn on <strong>Show the Computer Science Lab</strong> in Settings, How Bob works, Brains.</p>'; return; }
+    const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}<span class="lab-tab dim" aria-disabled="true">Playground <span class="lab-later">Later (Lab 3)</span></span><span class="lab-tab dim" aria-disabled="true">Challenges <span class="lab-later">Later (Lab 3)</span></span></div>`;
+    if (tab === 'learn') { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-learn" role="tabpanel" aria-labelledby="lab-tab-learn"></div></div>`; learn.mount($('lab-page-learn')); return; }
     const i = STEPS.findIndex(([id]) => id === step);
     const html = { brain: brainStep, lessons: lessonsStep, smaller: smallerStep, where: whereStep, test: testStep }[step]();
     const busy = running();
-    body.innerHTML = `<div class="lab">
+    body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-make" role="tabpanel" aria-labelledby="lab-tab-make">
       <p class="muted">Make your own brain from one on this replicant matrix. Each step says what it does and whether this replicant matrix can do it. Show the recipe shows the exact commands, if you want to learn them.</p>
       ${view.recipes.length ? `<p><label>Start from a saved recipe <select id="lab-recipe"><option value="">(none)</option>${view.recipes.map((x, n) => `<option value="${n}">${esc(x.name)}</option>`).join('')}</select></label></p>` : ''}
       ${runsHtml()}
@@ -192,7 +198,7 @@ export function createLab({ api, note }) {
       ${showRecipe ? `<div class="lab-recipe"><pre tabindex="0">${esc(plan?.text || 'Pick a brain first.')}</pre><button type="button" class="link" data-copy>Copy</button></div>` : ''}
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
       ${compareHtml()}
-    </div>`;
+    </div></div>`;
   }
 
   body.addEventListener('change', async (e) => {
@@ -233,6 +239,12 @@ export function createLab({ api, note }) {
     }
     await replan();
   });
+  body.addEventListener('keydown', (e) => { // left and right move between the tabs, as tabs should
+    if (!e.target.matches?.('[role=tab]') || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+    const ids = TABS.map(([id]) => id), n = ids.indexOf(tab);
+    tab = e.key === 'Home' ? ids[0] : e.key === 'End' ? ids[ids.length - 1] : ids[(n + (e.key === 'ArrowRight' ? 1 : ids.length - 1)) % ids.length];
+    e.preventDefault(); draw(); $(`lab-tab-${tab}`)?.focus();
+  });
   body.addEventListener('input', (e) => { // the slider and its number box move together
     if (e.target.id === 'lab-chunks') { const n = $('lab-chunks-n'); if (n) n.value = e.target.value; }
     if (e.target.id === 'lab-chunks-n') { const s = $('lab-chunks'); if (s) s.value = e.target.value; }
@@ -242,6 +254,7 @@ export function createLab({ api, note }) {
   body.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return;
     msg = '';
+    if (b.dataset.tab) { tab = b.dataset.tab; draw(); $(`lab-tab-${tab}`)?.focus(); return; }
     if (b.dataset.step) { step = b.dataset.step; return draw(); }
     if ('next' in b.dataset) { step = STEPS[Math.min(STEPS.length - 1, STEPS.findIndex(([id]) => id === step) + 1)][0]; return draw(); }
     if ('back' in b.dataset) { step = STEPS[Math.max(0, STEPS.findIndex(([id]) => id === step) - 1)][0]; return draw(); }
@@ -271,6 +284,6 @@ export function createLab({ api, note }) {
   return {
     async open() { dlg.showModal(); draw(); await load(); },
     // Progress from the Lab job (the server's 'lab' events).
-    update(run) { if (!view) return; const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
+    update(run) { if (!view) return; const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if (tab !== 'make') return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
   };
 }

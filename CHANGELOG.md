@@ -4,6 +4,19 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.151
+
+The Computer Science Lab, part 3 begins: a **Learn** tab, where you can see how I work with your own hands on the knobs. Free, on the brain I have loaded right now; nothing is downloaded, rented or saved.
+
+- **Tabs in the Lab.** **Make a brain** is the Lab as it was (the five steps, templates, Compare). **Learn** is new. **Playground** and **Challenges** are shown greyed out, as they're on the way. Left and right arrows move between the tabs.
+- **What is a token?** Type anything and press **Split it**: I show the pieces I actually read, one chip each with its number, and how many characters and tokens that was. Chips take turns solid and dashed so you can tell them apart without colour; a dotted chip is only part of a character.
+- **How do I pick the next word?** **Show my odds** lists my ten likeliest next tokens for the start of a sentence, as percentages and bars. Click one to make me say it, or **Let me choose** to watch me roll, for twelve words.
+- **What does temperature do?** A slider from 0 to 2 (with a number box), and **Write it three times** writes the same start three times at that setting, with my odds for the first word underneath so you can watch them flatten. **More knobs** adds **Cut the long tail** (min_p) and **Only the likeliest** (top_p).
+- Each card ends with **What you just saw**, a line from me that changes with what happened. Results are read out by screen readers when they land.
+- Needs my built-in engine (llama.cpp); with Ollama the tab says so. The Lab switch in Settings still turns it all on or off. While a card runs it counts as using my brain, so Free memory when Bob is idle leaves it loaded. A card's run pushes our chat out of my short-term memory, so my next chat reply starts a little slower while I read the conversation again.
+- Help: a new page, The Lab's Learn tab. `test/run-lab-test.js`: 151 checks.
+- Phone (Bob for Android): nothing changes yet. Learn comes to the phone in a later update.
+
 ## 1.5.150
 
 Qwen3.5 and 3.6 brains can keep more than 256K in mind, if you switch it on.

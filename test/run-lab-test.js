@@ -11,6 +11,7 @@ import crypto from 'node:crypto';
 import http from 'node:http';
 import { LESSON_SKILLS } from '../src/lab-skills.js';
 import { QUIZ, TOOLS, runQuiz } from '../src/lab-test.js';
+import { cleanLearn, learnBrain, tokenize, nextWords, tryTemperature, runLearn, sawTokens, sawNext, sawTemperature, LEARN_CARDS, MAX_TEXT } from '../src/lab-learn.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -305,6 +306,72 @@ const quiz = await runQuiz('http://fake');
 globalThis.fetch = fakeFetch;
 check('the quiz marks tool picks and answers, thinking stripped', quiz.parts.tools.score === 100 && quiz.parts.general.right === 1 && quiz.parts.following.right === 1 && quiz.tps === 20 && quiz.score > 0 && quiz.score < 100, JSON.stringify(quiz.parts));
 check('the quiz tools are made up, not Bob\'s real ones', TOOLS.every((t) => !/hands|files_|run_/.test(t.function.name)));
+
+// ---- 1.5.151 Learn: experiments on the loaded brain, against a pretend llama-server ----
+{
+  const calls = [];
+  const fake = async (url, init) => {
+    const body = JSON.parse(init.body); calls.push({ url: url.replace(/^http:\/\/fake/, ''), body });
+    const json = (j) => ({ ok: true, json: async () => j });
+    if (url.endsWith('/tokenize')) return json({ tokens: body.content === 'old' ? [1, 2] : [{ id: 33, piece: 'Bob' }, { id: 7, piece: '\'s' }, { id: 9, piece: [0xF0, 0x9F] }] });
+    if (url.endsWith('/detokenize')) return json({ content: `t${body.tokens[0]}` });
+    if (url.endsWith('/completion')) {
+      if (body.n_predict === 1) {
+        const step = body.post_sampling_probs
+          ? { token: ' the', prob: 0.5, top_probs: [{ token: ' the', prob: 0.5 }, { token: ' that', prob: 0.3 }, { token: ' how', prob: 0.2 }] }
+          : body.prompt === 'oldformat' ? { content: ' the', probs: [{ tok_str: ' the', prob: 0.7 }, { tok_str: ' a', prob: 0.1 }] }
+          : { token: ' the', logprob: Math.log(0.4), top_logprobs: [{ token: ' a', logprob: Math.log(0.1) }, { token: ' the', logprob: Math.log(0.4) }, { token: '', logprob: Math.log(0.5) }] };
+        return json({ content: ' the', completion_probabilities: [step] });
+      }
+      return json({ content: ` wet, seed ${body.seed}` });
+    }
+    return { ok: false, status: 404, json: async () => ({ error: { message: 'no such page' } }) };
+  };
+  const q = cleanLearn({ text: 'x'.repeat(MAX_TEXT + 50), temperature: 9, minP: -1, topP: 0.1, seed: 5 });
+  check('a Learn request is clamped: text length, temperature 0 to 2, min_p and top_p', q.text.length === MAX_TEXT && q.temperature === 2 && q.minP === 0 && q.topP === 0.5 && q.seed === 5);
+  check('a Learn request with rubbish falls back to the defaults', JSON.stringify(cleanLearn({ text: 5, temperature: 'hot' })) === JSON.stringify({ text: '', temperature: 0.8, minP: 0, topP: 1, seed: -1 }));
+  check('the three cards are listed for Help and the page', LEARN_CARDS.map((c) => c.id).join() === 'tokens,next,temperature');
+  const t = await tokenize('http://fake', 'Bob\'s 🐭', { fetch: fake });
+  check('tokenize gives each piece with its number, and marks a part of a character', t.tokens.length === 3 && t.tokens[0].id === 33 && t.tokens[0].text === 'Bob' && t.tokens[2].partial && !t.tokens[0].partial && t.characters === 7, JSON.stringify(t));
+  const t2 = await tokenize('http://fake', 'old', { fetch: fake });
+  check('an older engine that gives numbers only is asked for each piece', t2.tokens.map((x) => x.text).join() === 't1,t2');
+  check('an empty text is not sent at all', (await tokenize('http://fake', '   ', { fetch: fake })).tokens.length === 0 && !calls.some((c) => c.body.content === '   '));
+  const n = await nextWords('http://fake', 'The sea', { fetch: fake });
+  check('next-word odds come sorted, from log odds, without empty tokens', n.picked === ' the' && n.top.map((x) => x.token).join('|') === ' the| a' && Math.abs(n.top[0].odds - 0.4) < 1e-9, JSON.stringify(n));
+  check('the raw odds are asked for with temperature 1 and no cutting', (() => { const c = calls.find((c) => c.url === '/completion' && c.body.prompt === 'The sea').body; return c.n_probs === 10 && c.temperature === 1 && c.post_sampling_probs === false && c.top_k === 0 && c.min_p === 0 && c.top_p === 1 && c.n_predict === 1; })());
+  const o = await nextWords('http://fake', 'oldformat', { fetch: fake });
+  check('the older odds format (probs and tok_str) is read too', o.top.length === 2 && o.top[0].token === ' the' && o.top[0].odds === 0.7);
+  const tr = await tryTemperature('http://fake', 'The sea', { temperature: 1.5, minP: 0.1, topP: 0.9, fetch: fake });
+  check('the temperature card writes three tries with different seeds and the reshaped odds', tr.tries.length === 3 && new Set(tr.tries.map((x) => x.text)).size === 3 && tr.top.length === 3 && tr.top[0].odds === 0.5, JSON.stringify(tr));
+  check('the tries carry the temperature and knobs to the engine, with the odds after sampling', calls.filter((c) => c.body.n_predict === 20).every((c) => c.body.temperature === 1.5 && c.body.min_p === 0.1 && c.body.top_p === 0.9) && calls.some((c) => c.body.post_sampling_probs === true && c.body.temperature === 1.5));
+  check('an engine error comes back in words', await nextWords('http://fake', 'x', { fetch: async () => ({ ok: false, status: 500, json: async () => ({ error: { message: 'slot busy' } }) }) }).then(() => false, (e) => /slot busy/.test(e.message)));
+  // which brain the cards may use
+  const engine = { url: 'http://fake', current: 'qwen', child: { exitCode: null }, currentCtx: 8192, active: 0, now: () => 5, isBusy: () => false };
+  const brainFor = (cfg, eng = engine) => ({ cfg, engine: eng, brainLabel: (m) => `Friendly ${m}` });
+  check('Learn needs Bob\'s built-in engine', !learnBrain(brainFor({ engine: 'ollama' })).ready && /built-in engine/.test(learnBrain(brainFor({ engine: 'ollama' })).why));
+  check('Learn with no brain loaded says to say something in the chat', (() => { const b = learnBrain(brainFor({ engine: 'llamacpp' }, { ...engine, current: '' })); return !b.ready && b.wake && /Say anything to me in the chat/.test(b.why); })());
+  check('Learn waits while Bob is answering in the chat', (() => { const b = learnBrain(brainFor({ engine: 'llamacpp' }, { ...engine, isBusy: () => true })); return !b.ready && b.busy; })());
+  check('Learn finds the loaded brain, its address and its window', JSON.stringify(learnBrain(brainFor({ engine: 'llamacpp' }))) === JSON.stringify({ ready: true, url: 'http://fake', model: 'qwen', ctx: 8192 }));
+  let during = 0;
+  const counting = { ...engine, lastUse: 0 };
+  const r = await runLearn(brainFor({ engine: 'llamacpp' }, counting), 'tokens', { text: 'Bob' }, { fetch: async (u, i) => { during = counting.active; return fake(u, i); } });
+  check('a Learn run counts as use of the brain while it runs, so Keep Bob light leaves it alone', r.tokens.length === 3 && during === 1 && counting.active === 0 && counting.lastUse === 5);
+  check('an unknown experiment is refused in words', await runLearn(brainFor({ engine: 'llamacpp' }), 'nope', {}, { fetch: fake }).then(() => false, (e) => /don't know that experiment/.test(e.message)));
+  check('Bob\'s what-you-just-saw lines change with the numbers', /cheap/.test(sawTokens({ tokens: [{}, {}], characters: 10 })) && /part of a character/.test(sawTokens({ tokens: [{ partial: true }], characters: 2 })) && /nearly sure/.test(sawNext([{ odds: 0.7 }])) && /toss-up/.test(sawNext([{ odds: 0.1 }])) && /same or nearly/.test(sawTemperature(0)) && /usually sit/.test(sawTemperature(0.8)) && /falls apart/.test(sawTemperature(2)));
+  // the door
+  const sent = [];
+  const offLab = { cfg: { computerLab: false }, brain: brainFor({ engine: 'llamacpp' }) };
+  await labRoute({ req: fakeReq('POST'), res: {}, p: '/api/lab/learn/tokens', isLocal: false, lab: offLab, body: async () => ({ text: 'Bob' }), send: (res, code, j) => sent.push([code, j]) });
+  check('Learn calls are refused while the Lab is off', sent[0][0] === 403 && /Lab is off/.test(sent[0][1].error));
+  await labRoute({ req: fakeReq('GET'), res: {}, p: '/api/lab/learn', isLocal: false, lab: { cfg: { computerLab: true }, brain: brainFor({ engine: 'llamacpp' }) }, body: async () => ({}), send: (res, code, j) => sent.push([code, j]) });
+  check('the Learn view names the loaded brain the friendly way and lists the cards, from any device Bob lets in', sent[1][0] === 200 && sent[1][1].ready && sent[1][1].brain === 'Friendly qwen' && sent[1][1].cards.length === 3 && sent[1][1].on, JSON.stringify(sent[1]));
+  const page2 = read('public/lab-learn.js'), lab2 = read('public/lab.js');
+  check('the Lab page has real tabs, and Playground and Challenges shown as later', /role="tablist"/.test(lab2) && /role="tab"/.test(lab2) && /aria-selected/.test(lab2) && /Playground <span class="lab-later">Later/.test(lab2) && /Challenges <span class="lab-later">Later/.test(lab2) && /ArrowRight/.test(lab2));
+  check('the Learn cards use the reviewed words, a live result, and a slider with a number box', ['What is a token?', 'How do I pick the next word?', 'What does temperature do?', 'Split it', 'Show my odds', 'Let me choose', 'Write it three times', 'More knobs', 'Cut the long tail', 'Only the likeliest', 'What you just saw'].every((w) => page2.includes(w)) && /aria-live="polite"/.test(page2) && /id="learn-tp" type="range"[\s\S]{0,200}id="learn-tp-n" type="number"/.test(page2));
+  check('token chips take turns solid and dashed, not colour alone, and the odds are in text as well as bars', /learn-tok\.a \{[^}]*solid/.test(read('public/style.css')) && /learn-tok\.b \{[^}]*dashed/.test(read('public/style.css')) && /pct\(x\.odds\)/.test(page2));
+  check('Help has a Learn page in Bob\'s voice', /id: 'lab-learn'/.test(read('public/help-content.js')) && /Nothing you do here changes how I answer/.test(read('public/help-content.js')));
+  check('the Learn tab never sends anything to a rental', !/\/api\/rent|runpod/i.test(page2) && !/runpod|\brent/i.test(read('src/lab-learn.js')));
+}
 
 // ---- words and wiring ----
 const html = read('public/index.html'), app = read('public/app.js'), cellar = read('public/cellar.js'), page = read('public/lab.js'), help = read('public/help-content.js'), inv = read('docs/SETTINGS-INVENTORY.md');
