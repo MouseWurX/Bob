@@ -11,10 +11,10 @@ Thanks for helping. A few house rules:
 - **No personal data.** Never commit `config.json`, anything from an `inn` folder, real paths from your
   PC, e-mail addresses or keys. `npm test` checks for these (`test/run-public-test.js`).
 - **Licences.** Code you contribute is GPL-3.0-or-later; art and writing are CC BY-SA 4.0 (see
-  ASSETS-LICENSE.md). Only add third-party parts whose licence allows this, and list them in
-  THIRD-PARTY.md.
+  docs/legal/ASSETS-LICENSE.md). Only add third-party parts whose licence allows this, and list them in
+  docs/legal/THIRD-PARTY.md.
 - **Versions.** Each change that ships bumps `bob.build` and `version` in `package.json` (see
-  [Versions](README.md#versions)). Every release gets a note in `docs/releases/vX.Y.Z.md`.
+  [Versions](../README.md#versions)). Every release gets a note in `docs/releases/vX.Y.Z.md`.
 - **Every platform.** A feature reaches Windows, Mac, Linux and the Android app, or says plainly where it
   doesn't. Help in the app (Bob's voice, the glossary and the FAQ) is updated with the feature, using the
   names on screen.
@@ -40,5 +40,5 @@ The Mac code is kept working and is tested on GitHub's Mac machines only. Nobody
 If you want a signed and notarized Mac build, you're welcome to make one on a fork, from this or any version of
 Bob, under the GPL. `installer/make-release-mac.sh` signs with `codesign --sign -`; put your own Developer ID
 there and add `xcrun notarytool` and `xcrun stapler`. Please publish it under your own name (see
-[TRADEMARKS.md](TRADEMARKS.md)), say it's based on Bob by MouseWurX, and link back here. Open an issue if you'd
+[TRADEMARKS.md](../docs/legal/TRADEMARKS.md)), say it's based on Bob by MouseWurX, and link back here. Open an issue if you'd
 like your signed build listed in the README.

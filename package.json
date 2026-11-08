@@ -54,10 +54,10 @@
       "config.example.json",
       "package.json",
       "LICENSE",
-      "LICENSE-ART",
-      "ASSETS-LICENSE.md",
-      "TRADEMARKS.md",
-      "THIRD-PARTY.md",
+      {
+        "from": "docs/legal",
+        "to": "legal"
+      },
       "README.md",
       "engines/**"
     ],

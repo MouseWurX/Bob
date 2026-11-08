@@ -28,7 +28,7 @@ check('FAQ in Bob\'s voice', faq && faq.title === 'What\'s a replicant matrix?' 
 check('every Help entry that names it still finds pc, computer, laptop and device', HELP.filter((h) => /replicant matri/.test(h.html)).every((h) => ['pc', 'computer', 'laptop', 'device'].every((w) => (h.words || '').split(/\s+/).includes(w))));
 check('Help names the old setting once', (JSON.stringify(HELP).match(/was Let my phone in \/ Let my other devices in/g) || []).length === 1);
 check('privacy lines say (your computer)', /leave your replicant matrix \(your computer\)/.test(JSON.stringify(HELP)));
-check('PRIVACY.md keeps computer and adds the one line', /In the app, Bob calls your computer his replicant matrix\./.test(read('PRIVACY.md')));
+check('PRIVACY.md keeps computer and adds the one line', /In the app, Bob calls your computer his replicant matrix\./.test(read('docs/legal/PRIVACY.md')));
 check('Bob himself knows the name', /the computer you run on = your replicant matrix/.test(read('src/persona.js')));
 check('the phone names itself this replicant matrix (this phone)', /This replicant matrix \(this phone\)/.test(read('android/app/src/main/assets/www/phone.js')) && /<dt>Replicant matrix<\/dt>/.test(read('android/app/src/main/assets/www/help.js')));
 console.log(`\n${pass} passed, ${fail} failed`);
