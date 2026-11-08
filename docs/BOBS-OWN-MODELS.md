@@ -225,6 +225,8 @@ Bob's published lesson sets hold only the lessons this project wrote and paid fo
 
 Thank you to their makers for sharing them.
 
+What we found when we checked them (8 November 2026, details in [the journal](FORGE-JOURNAL.md)): the DeepSeek V4 Pro agent traces, the GLM-4.7 answers and most of the Kimi K2.5 traces are clean and complete; the GLM-5.1 agent traces mostly stop before an answer and their tool outputs often do not match the task, so we do not use them. Nothing in any of the sets looked like planted instructions.
+
 ## Credits
 
 Made from Qwen3.6-35B-A3B by Alibaba Cloud's Qwen team (Apache 2.0). Healing uses PyTorch, Hugging Face transformers and PEFT, and llama.cpp for counting, quantizing and running. Expert pruning follows the idea in Cerebras' REAP work; depth-and-width pruning for 2Bob follows NVIDIA's Minitron. Bob is inspired by the wonderful books of Dennis E. Taylor. Not affiliated with or endorsed by the author.

@@ -2,7 +2,7 @@
 
 *A lab journal for Bob's own models, kept as the work happens. Newest entry at the bottom. Every number here comes from a file the Forge wrote; the files themselves, with pod ids, addresses and the owner's paths taken out, are in [forge-runs/](forge-runs/). Money is on [What Bob costs to make](COSTS.md), method and results on [Bob's own models](BOBS-OWN-MODELS.md). Rented hardware is named by the card, never by the company it is rented from.*
 
-*Status at the last entry (8 November 2026): 28Bob Riker is home, benchmarked and kept; the first Riker and Bill (v1 and v2) are retired and deleted; 20Bob Bill is not made; the Forge is at build 15, untested on a card since build 14j. Nothing is released.*
+*Status at the last entry (8 November 2026): 28Bob Riker is home, benchmarked and kept; the first Riker and Bill (v1 and v2) are retired and deleted; 20Bob Bill is not made; the Forge is at build 17, untested on a card since build 14j; the lesson set is 18,118 (half Bob's own, half from other teachers' published sets) and the combined run (lessons, 35Bob Bobert, the odds) started 8 November. Nothing is released.*
 
 ## 1. The question
 
@@ -18,8 +18,9 @@ The first ladder (4 November) had nine rungs named by billions of parameters: 24
 
 | Rung | Nickname | Experts kept per layer (of 256) | File at Q4, about | Meant for | State |
 |---|---|---|---|---|---|
+| 35Bob | Bobert | 256 (no cut; trained on every lesson) | 21 GB | 24 GB cards, or 16 GB with experts in RAM; the teacher of every Bob below | in the making (run started 8 Nov) |
 | 28Bob | Riker | 208 | 17.5 GB | a 16 GB card with experts spilling into RAM, or the Q3 file | made 6 Nov, benchmarked and kept 8 Nov |
-| 20Bob | Bill | 144 | 12.7 GB | a 16 GB card entirely | not made yet (the 128-expert v1 and v2 were deleted 8 Nov) |
+| 20Bob | Bill | 144 | 12.7 GB | a 16 GB card entirely | not made yet (the 128-expert v1 and v2 were deleted 8 Nov); cut from Bobert, not from Riker |
 | 14Bob | Homer | 96 | 9 GB | 8 GB cards and gaming handhelds | planned |
 | 10Bob | Milo | 64 | 6.6 GB | small cards, big phones | planned |
 | 7Bob | Luke | 40 | 4.6 GB | phones | planned |
@@ -165,6 +166,22 @@ From this entry on he is just **Riker** (28Bob Riker); "v3" was the name of the 
 - **Speed note for the next run**: the pod lacked working `causal-conv1d` and `flash-linear-attention` kernels, so Qwen3.6's linear-attention layers ran the slow path for the whole teacher pass and heal (build 15, item 2).
 - **Decision**: keep Riker. Riker v1, Bill v1, Riker v2 and Bill v2 are retired and their files deleted. Next: one combined run (lessons, 35Bob Bobert, then 20Bob Bill cut from Bobert with the full rule), when the owner gives the word; see the build 17 entry.
 
+### 8 November: lessons from other teachers, a quality pass, the even rule, and build 16
+
+No card. Work on the lesson set and the Forge, all on paper and on the PC.
+
+- **Other teachers' lessons.** Five published answer sets from much bigger models were converted into Bob's lesson format (see [the list on the models page](BOBS-OWN-MODELS.md#lesson-sets-by-others-we-find-interesting)): Kimi K2.5 and GLM-5.1 agent traces (Apache 2.0), and DeepSeek V4 Pro agent, DeepSeek V4 Flash chat and GLM-4.7 answers (no licence stated, so they are used here for training only and are never redistributed). They were first capped so that their answer tokens matched Bob's own; the owner then asked for the two halves to be even **by count**, so the outside sets together now hold 9,059 lessons, the same as Bob's own 9,059, and the set is 18,118.
+- **Quality pass, with findings.** Every outside set was checked before it stayed in: does each trace end with a real answer, does it loop on one tool call, does it carry anything that looks like injected instructions, piped installers, secrets or destructive commands.
+  - GLM-5.1 agent (758 traces): **dropped**. Only 108 end with an answer; the rest stop mid tool-call, and the tool outputs often do not match the task (a TypeScript repository listing inside a TensorFlow job). Broken, not malicious.
+  - Kimi K2.5 agent: 1,171 of 1,207 kept; 36 dropped for never answering or looping on the same command.
+  - DeepSeek V4 Pro agent (2,553) and GLM-4.7 (864): kept whole. Every trace ends with an answer, no loops, tidy tool use; the agent traces include noticing and fixing their own bugs.
+  - DeepSeek V4 Flash chat: 4,471 of 6,290, a seeded sample, to make the total even.
+  - The scan for injected instructions found nothing beyond ordinary Dockerfile lines (`rm -rf /var/lib/apt/lists/*`) and package sites. That proves the absence of planted instructions, not the correctness of the content; the hold-out scores and benchmarks before and after a heal remain the real check, and every heal is an adapter that can be thrown away.
+- **Odds for the outside lessons.** In the Forge, every lesson is scored by the one teacher, Qwen3.6-35B, including lessons another model wrote. So a Bob learns Kimi's or DeepSeek's words but copies Qwen's judgement about which words were likely. Three ways to do better were costed and set aside for now: (a) run each author model and record its own odds: each needs an 8-card machine (about $35 to $45 an hour), roughly $60 to $120 per model, and the odds are over a different token alphabet, so they must be translated piece by piece, lossy and not built; (b) ask the hosted versions to re-answer the prompts with their odds switched on (a few dollars per million words, so $20 to $40 for all of them), fill the unseen tail of each distribution with a falling curve, then the same translation problem; (c) the free version: weight the words-as-written more heavily than Qwen's odds for the outside sets (50/50 instead of 70/30), a one-line change to the heal. Order chosen: (c) first, measured on Bill; (b) only if the outside sets prove their worth. Also noted: there is no measured number here for odds versus words-only healing on Bob's own set; published work puts the gap at three to five times the lessons for the same recovery, and a $10 two-way heal of one small Bob would settle it for this set.
+- **The nine thin sets.** The "grow on his own" skills (run-and-fix, recover, clarify, new tool, self-check, research, understand), formats and reasoning each have 180 to 280 lessons. The owner asked for about 1,000 each. The writer continues a set in place (it skips ideas already done and drops duplicate prompts), so these grow in the next rental, about 7,000 new lessons in roughly 3 hours of card time.
+- **Forge build 16** ([README](../model-lab/forge/README.md)): the merge of extra sets on the pod now tags each set by a hash of its content and merges in tag order, so the merged file, the teacher-score key and the piece ids are identical whether a set was written on the card or uploaded from the PC (without this, lessons written on the card and uploaded later would have missed the score cache). A plan with no rungs is a scores-only run. Everything a run uses or makes is kept on the network drive as well as the PC: lesson set, scores, logs, reports, kernel wheels.
+- **Plan for the next two rentals** (the owner's choice, after a costed set of routes): first a lessons-and-odds run (grow the nine sets, then one teacher pass over the whole set, about 9 hours on one H200, no cut, no heal), then Bill v3 healed from those scores with no pass. The same total as one combined run, split so the odds exist first. The network drive for it is 200 GB rather than 100, because it must hold the teacher model, the scores and a healed Bill at once.
+
 ## 5. Running tallies
 
 | | Count |
@@ -172,5 +189,14 @@ From this entry on he is just **Riker** (28Bob Riker); "v3" was the name of the 
 | Bobs made | 5: Riker v1, Bill v1, Riker v2, Bill v2 (all four retired and deleted 8 Nov), and Riker (28Bob) |
 | Bobs that are the current plan | Riker (28Bob), kept; Bobert (35Bob) and Bill (20Bob) next |
 | Failed paid attempts | 4 (three on 4 to 5 Nov, one on 6 Nov) plus the stopped Bill step of 6 to 7 Nov |
-| Lessons written | about 9,500 across 17 sets |
+| Outside lesson sets dropped for quality | 1 of 5 (GLM-5.1 agent traces, 8 Nov) |
+| Lessons written | about 9,500 across 17 sets (Bob's own); plus 9,059 taken from other teachers' published sets after a quality pass |
 | Card time | on the costs page |
+
+### 8 November, later: Bobert, and publishing from the card (build 17)
+
+- **Decision (the owner):** before Bill is cut, the full teacher is trained on every lesson and kept as a Bob of its own, **35Bob "Bobert"** (no cut, all 256 experts, about 35 B parameters, 3 B active). The order becomes: write lessons, train the teacher, score the odds *with Bobert*, cut Bill from Bobert, heal Bill against Bobert's odds. The odds must come from the trained teacher, or Bill would be healed toward a brain that no longer exists, so the lesson-set key now names the teacher by its adapter.
+- **Why:** Bob's habits go into the big brain once and every cut below inherits them; Bobert is also a brain for 24 GB cards. The risk is that a trained teacher's odds lean toward the lessons; the heal's general text is there to soften that.
+- **Build 17:** `train_teacher` (plain next-word training, no odds; heal.py with alpha 0), `teacher_model` for later runs, and `publish`: the pod uploads the teacher's odds to Hugging Face as a private dataset, keeps every GGUF on the drive and sends only the quant files named for testing down to the owner's PC; a Bob is uploaded (private, with a generated model card) only in a later run, after his home test, when the owner lists him. The owner's rule: lessons and odds may go up right away, no untested Bob. Bobert gets one full pass over every lesson (the owner's rule from 6 November: a full pass or nothing), about 16 hours on its own; the combined run (lessons, Bobert, export, odds) is estimated at 24 to 26 hours with caps at 30 hours; the drive grows to 300 GB.
+- **Bobert's ladder row:** 35Bob, 256 experts, about 21 GB at Q4 and 17 GB at Q3; meant for 24 GB cards, or a 16 GB card with experts in RAM. Benchmarked at home before he is the teacher of anything, like every Bob.
+- **Road map after this run (the owner, 8 November):** 1. lessons, Bobert (Q4 and Q3), odds; Bobert tested at home. 2. Bill cut from Bobert and healed, tested at home. 3. With all three in hand, one rental runs the same benchmarks on the big card, so every brain has a home number and a commercial-card number side by side. 4. Docs, then the GitHub and Hugging Face uploads. Lessons and odds may go up (private) right away; no Bob before his tests.

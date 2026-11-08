@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Turn a Bob (HF safetensors) into GGUF files Bob's llama.cpp can run: BF16 master, then Q4_K_M (and Q8_0 if asked).
   export.py --model <dir> --out <dir> --name 24Bob --llama <llama.cpp dir> [--quants Q4_K_M,Q8_0]
+Beside every GGUF it also writes a brain card, <file>.bob.json (28Bob-Q4_K_M.gguf -> 28Bob-Q4_K_M.bob.json): what the brain is,
+where it was cut from, how many experts it keeps, what it is for. Bob's catalogue reads the card when the GGUF is added as an own
+brain and files it under its jobs. Benchmarks are added to the card on the PC later (bob-card.mjs); the card holds no paths or names.
 """
 import argparse, hashlib, json, os, subprocess, sys
 
@@ -15,6 +18,10 @@ def main():
     ap.add_argument("--model", required=True); ap.add_argument("--out", required=True); ap.add_argument("--name", required=True)
     ap.add_argument("--llama", required=True); ap.add_argument("--quants", default="Q4_K_M"); ap.add_argument("--keep-bf16", action="store_true"); ap.add_argument("--nickname", default="")
     ap.add_argument("--merge", action="store_true", help="add to an existing <name>-files.json instead of replacing it (top-up quants)")
+    ap.add_argument("--teacher", default="", help="the model it was cut from, as a Hugging Face id (for the brain card)")
+    ap.add_argument("--jobs", default="bob,deep,tinker,reviewer,office,ledger,scout", help="catalogue job slots for the brain card")
+    ap.add_argument("--what", default="", help="one plain sentence for the brain card")
+    ap.add_argument("--pending", action="store_true", help="write <name>-files.json.pending; run.sh renames it once any publishing is done, so the PC does not download files that are going to Hugging Face")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     bf16 = os.path.join(a.out, f"{a.name}-BF16.gguf")
@@ -32,8 +39,8 @@ def main():
     quant = os.path.join(a.llama, "build", "bin", "llama-quantize")
     env = {**os.environ, "LD_LIBRARY_PATH": os.path.dirname(quant) + ":" + os.environ.get("LD_LIBRARY_PATH", "")}
     files = []
-    fj = os.path.join(a.out, f"{a.name}-files.json")
-    if a.merge and os.path.exists(fj): files = json.load(open(fj)).get("files", [])
+    done_fj = os.path.join(a.out, f"{a.name}-files.json"); fj = done_fj + (".pending" if a.pending else "")
+    if a.merge and os.path.exists(done_fj): files = json.load(open(done_fj)).get("files", [])
     have = {f["file"] for f in files}
     for q in [q for q in a.quants.split(",") if q and q.lower() != "none"]:
         out = os.path.join(a.out, f"{a.name}-{q}.gguf")
@@ -47,6 +54,40 @@ def main():
     if os.path.exists(keep):
         import shutil; shutil.copy(keep, os.path.join(a.out, f"{a.name}-keep.json"))
     json.dump({"name": a.name, "nickname": a.nickname, "files": files}, open(fj, "w"), indent=1)
+    for f in files:
+        if f["file"].endswith(".gguf"): write_card(a, f)
+
+def write_card(a, f):
+    """The brain card beside a GGUF. Only facts the pod knows; no paths, hosts or people."""
+    import datetime
+    cfg = {}
+    try: cfg = json.load(open(os.path.join(a.model, "config.json")))
+    except Exception: pass
+    bob = cfg.get("bob", {})
+    total = cfg.get("num_experts") or bob.get("experts_total")
+    kept = bob.get("experts_kept") or total   # no "bob" block in the config: nothing was cut (a trained full model)
+    # size rule from the ladder (docs/FORGE-JOURNAL.md): about 2 B of shared parts plus about 0.13 B per expert kept in every layer
+    params = round(2 + 0.13 * kept) if kept else None
+    quant = f["file"].rsplit("-", 1)[-1].replace(".gguf", "")
+    by = {"Qwen": "Alibaba"}.get(a.teacher.split("/")[0], a.teacher.split("/")[0]) if a.teacher else ""
+    short = a.teacher.split("/")[-1] if a.teacher else ""
+    what = a.what or (f"A Bob cut from {short} for Bob's own jobs: tools, coding, exact formats and everyday chat." if a.teacher else None)
+    card = {
+        "card": 1, "file": f["file"], "bytes": f["bytes"], "sha256": f["sha256"],
+        "name": f"{a.name} {a.nickname}".strip() + (f" ({quant})" if quant and quant != a.name else ""),
+        "nickname": a.nickname, "family": "Bob", "madeByBob": True,
+        "jobs": [j for j in a.jobs.split(",") if j],
+        "params": params, "activeParams": 3 if kept else None,
+        "vramGB": round(f["bytes"] / 1e9 + 1.5), "ctx": cfg.get("max_position_embeddings"),
+        "cutFrom": {"name": short.replace("-", " "), "by": by, "hf": a.teacher} if a.teacher else None,
+        "expertsKept": f"{kept} of {total}" if kept and total else None,
+        "published": datetime.date.today().isoformat(), "license": "Apache 2.0",
+        "what": what,
+    }
+    card = {k: v for k, v in card.items() if v is not None}
+    cf = os.path.join(a.out, f["file"][:-len(".gguf")] + ".bob.json")
+    json.dump(card, open(cf, "w"), indent=1)
+    print(f"{cf}: brain card written", flush=True)
 
 if __name__ == "__main__":
     main()
