@@ -12,9 +12,10 @@ The proposal is to give Bob a family of his own brains: **the same big model wit
 
 What is true today, 8 November 2026:
 
-- The method works at the top of the ladder. The first Bobs match the full model on Bob's own work (tool calls 66% against 67%, routing 16 of 17 against 15 of 16) and run almost twice as fast on a 16 GB card.
+- The method works at the top of the ladder. The first attempts (v1 and v2, now struck from the plan) matched the full model on Bob's own work (tool calls 66% against 67%, routing 16 of 17 against 15 of 16) and ran almost twice as fast on a 16 GB card. They taught the cut rule and the lesson rules that v3 uses.
+- **28Bob Riker v3 is the first viable candidate for the family, pending its benchmarks.** Every rung below it is cut from it, in order: Bill, Homer, Milo, Luke, Calvin, then the stretch goal Bender.
 - Coding and general knowledge are where a cut shows. The first cut rule and the first coding lessons were both weak; both have been measured, written up and replaced.
-- Five Bobs have been made on rented cards for about $183 of card time, failures included. The current plan keeps one of them (28Bob Riker v3) and remakes the rest with the corrected rule.
+- Five Bobs have been made on rented cards for about $183 of card time, failures included. Only Riker v3 is in the plan; the four earlier ones are kept as a control group and nothing more.
 - The whole family is expected to cost about $165 more in card time, under $900 in total with the tools that made it. Every dollar so far is itemised on the costs page.
 - Nothing is released. The family goes out together, on Hugging Face, under Apache 2.0, with model cards that say exactly what each Bob is and how it scored.
 
@@ -70,10 +71,10 @@ The full method, with the numbers behind every claim, is on [Bob's own models](B
 | Date | What was made | What it showed |
 |---|---|---|
 | 4 Nov | Free tests at home; 3,832 lessons (one rented hour, $3.98) | Quality holds at 8, 6 and 4 experts per word; the work is spread wide across experts, so the small rungs lean on the heal |
-| 4 to 5 Nov | Three failed rentals ($6.54), then line A: Riker v1 and Bill v1, both stopped by the clock cap ($30.35) | Even half-healed, tools and routing survive a 50% cut almost untouched; facts and coding do not |
-| 5 Nov | Line B: 717 coding lessons, Riker v2 and Bill v2 with full passes ($72.67) | The coding lessons did not lift coding (6 of 13 against 12 of 13 for the full model). 37% of them taught the model to hand code off instead of writing it |
+| 4 to 5 Nov | Three failed rentals ($6.54), then line A: Riker v1 and Bill v1, both stopped by the clock cap ($30.35). **Struck from the plan** | Even half-healed, tools and routing survive a 50% cut almost untouched; facts and coding do not |
+| 5 Nov | Line B: 717 coding lessons, Riker v2 and Bill v2 with full passes ($72.67). **Struck from the plan** | The coding lessons did not lift coding (6 of 13 against 12 of 13 for the full model). 37% of them taught the model to hand code off instead of writing it |
 | 6 Nov | 24 skill sets counted, 5,227 new lessons ($18.15, one failed try) | Twenty-three of twenty-four skills move together under a cut; general knowledge breaks first; the worst layer is always layer 2. The ladder was redrawn from this table |
-| 6 to 7 Nov | Riker v3 at 208 experts, a full pass ($51); Bill v3 lost to a bug and a machine without a drive | The cut rule is fixed; the renting rules are now hard in code (a drive always, or no card) |
+| 6 to 7 Nov | **Riker v3** at 208 experts, a full pass ($51): the first viable candidate, pending benchmarks. Bill v3 lost to a bug and a machine without a drive | The cut rule is fixed; the renting rules are now hard in code (a drive always, or no card) |
 | 7 Nov | Forge build 15, on paper | The teacher's scores are kept between runs; the fast kernels, never loaded in any run so far, are built properly |
 | 8 Nov | Thoth named; this proposal | |
 
@@ -134,7 +135,7 @@ Everything below exists today, is on the owner's machine or on GitHub, and would
 | **Lesson set v3** | 9,059 lessons in 16 skill sets, 5% held out, written by the full model from Bob's real tools and prompt; published as the `lessons-v3` release asset under CC BY-SA 4.0 | about $35 of card time and two days of cleaning |
 | **Expert counts for 24 skills** | which of the 10,240 experts each skill uses in the full model; the table every keep list is built from | $9 and a short rental |
 | **28Bob Riker v3** | the first Bob of the current plan: Q4 (17.5 GB) and Q3 (13.9 GB) files and the 1.7 GB adapter that rebuilds the full-precision model from the teacher in minutes | about $51 |
-| **Four earlier Bobs** | Riker v1 and v2, Bill v1 and v2, with the v2 adapters (1.5 GB and 1.1 GB): the control group for every comparison, and proof that tools and routing survive a cut | about $100 |
+| **Four struck Bobs** | Riker v1 and v2, Bill v1 and v2, with the v2 adapters (1.5 GB and 1.1 GB). Not in the family and never will be; kept only as the control group for comparisons and as proof that tools and routing survive a cut | not replaced if lost |
 | **Benchmarks** | the experts-per-word test, the tool score (314 turns), the coding race and the routing race, all runnable for free on a 16 GB card, with results for the full model and every Bob so far | a week of writing |
 | **Keep lists and coverage tables** | the per-skill cut rule and the keep lists for every planned rung, built on the PC from the counts, no rental needed | free to rebuild from the counts |
 | **The written record** | the method, results, costs and the day-by-day journal, public and checkable | |
