@@ -160,6 +160,7 @@ dl() { hf download "$@" >/dev/null 2>$OUT/hf-dl.log || { echo "download retry (p
 dl "$TEACHER" --local-dir $S/teacher || die "teacher download (see out/hf-dl.log)"
 [ -f $S/teacher/config.json ] && ls $S/teacher/*.safetensors >/dev/null 2>&1 || die "teacher download incomplete"
 du -sh $S/teacher
+[ "$S" != "$W" ] && echo "volume: $(df -h $S | awk 'NR==2{print $4" free of "$2}') (a trained teacher needs about 70 GB more; the odds about 20 GB)"
 GENERAL_TOKENS=$(plan ".get('general_tokens',30000000)")
 if [ "$GENERAL_TOKENS" -gt 0 ] && [ ! -d $S/general ]; then
   status download "general text (FineWeb-Edu sample + Tulu 3 chats)"
@@ -240,10 +241,19 @@ if [ -n "$TT" ]; then
       --epochs $(plan "['train_teacher'].get('epochs',1)") --hours $THOURS --max-len $(plan ".get('max_len',8192)") --cache $W/lessons-tok-train.pt \
       --report $OUT/$TNAME/train-report.json $GEN || die "$TNAME training"
     cp $W/healed-$TNAME/adapter.pt $OUT/$TNAME/$TNAME-adapter.pt; cp $W/healed-$TNAME/adapter.pt $S/bobs/$TNAME/adapter.pt
-    rm -rf $S/bobs/$TNAME/model; mv $W/healed-$TNAME $S/bobs/$TNAME/model || die "keeping $TNAME on the volume"
-    echo "$TNAME kept on the volume ($(du -sh $S/bobs/$TNAME | cut -f1)); the next run can name it as teacher_model: bobs/$TNAME/model"
+    # the full model goes to the volume only if there is room (8 Nov: a 100 GB drive was reused); otherwise it stays on the pod disk
+    # for this run and the adapter on the volume rebuilds it next time (heal.py --eval-only is not needed: stock teacher + adapter)
+    NEED=$(du -sm $W/healed-$TNAME | cut -f1); FREE=$(df -m $S | awk 'NR==2{print $4}')
+    if [ "$S" != "$W" ] && [ "${FREE:-0}" -gt $((NEED + 2048)) ]; then
+      rm -rf $S/bobs/$TNAME/model; mv $W/healed-$TNAME $S/bobs/$TNAME/model || die "keeping $TNAME on the volume"
+      echo "$TNAME kept on the volume ($(du -sh $S/bobs/$TNAME | cut -f1)); the next run can name it as teacher_model: bobs/$TNAME/model"
+    elif [ "$S" != "$W" ]; then
+      echo "WARNING: the volume has ${FREE} MB free and $TNAME needs ${NEED} MB: he stays on the pod disk for this run; his adapter is on the volume and the PC, so the next run can rebuild him (train_teacher with the same lessons finds the adapter)"
+      status train "$TNAME trained; volume too small to keep him, adapter kept (enlarge the drive before Bill's run)"
+      mkdir -p $S/bobs/$TNAME && ln -sfn $W/healed-$TNAME $S/bobs/$TNAME/model
+    else mkdir -p $S/bobs/$TNAME && ln -sfn $W/healed-$TNAME $S/bobs/$TNAME/model; fi
   fi
-  TEACHER_DIR=$S/bobs/$TNAME/model; TEACHER_ID="$TEACHER+$(sha256sum $S/bobs/$TNAME/adapter.pt | cut -c1-16)"
+  TEACHER_DIR=$(readlink -f $S/bobs/$TNAME/model); TEACHER_ID="$TEACHER+$(sha256sum $S/bobs/$TNAME/adapter.pt | cut -c1-16)"
   status export "$TNAME: making the GGUF files"
   for i in $(seq 1 90); do [ -f $S/llama-ready ] || [ -f $S/llama-failed ] && break; sleep 20; done
   if [ -f $S/llama-ready ]; then
