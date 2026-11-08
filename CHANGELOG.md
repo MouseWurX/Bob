@@ -4,6 +4,32 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.152
+
+The Computer Science Lab, part 3 continues: **Challenges**, a scoreboard for the brains on this replicant matrix, and **Save** for any Lab result. Free, here; nothing is rented.
+
+- **Challenges** is a real tab now. Pick a brain, tick challenges and press **Run the challenges**. It's a Lab job like the others: I ask before I unload my own brain, the Lab waits while Gaming is on, and you can stop it.
+- Six challenges, every question asked at temperature 0 with thinking off, so the same brain gets the same score twice: **Quick quiz** (the Lab test), **Riddles and reasoning**, **Sums**, **Follow the rules**, **Pick the tool** (four pretend tools, nothing really run) and **Code it** (tiny JavaScript functions). The questions are written for Bob, not copied from a published benchmark, and they ship with him so anyone can read them.
+- **Code it** runs a brain's code in the same sandbox as my self-made tools: no files, no programs, no internet, ten seconds at most. If the sandbox doesn't hold on this replicant matrix, the challenge is skipped and says why.
+- **Scoreboard**: every brain you've tested, its newest score for each challenge, its size and its words a second. Press a column's name to sort by it. Scores sit in the Lab's scores folder, one small file per brain, with a fingerprint of the brain file so other Lab tools can match them.
+- **Save…** under the scoreboard, a finished challenge, and every Learn card: a **Picture** (drawn here, offline), **Text** (a Markdown table), a **Spreadsheet** (CSV) or **Data** (JSON), in the Lab's results folder. It carries the title, the table, my version and the date. Never file paths, chats or names. **Include my graphics card and memory** is off unless you tick it.
+- The Help page says plainly that these scores only mean something next to each other, on the same replicant matrix, and aren't the numbers you see in papers.
+- Help: a new page, The Lab's Challenges tab. `test/run-lab-test.js`: 193 checks, including a brain's code really run in the sandbox (right code passes, a file outside is refused, an endless loop is stopped).
+- Phone (Bob for Android): nothing changes.
+
+## 1.5.151
+
+The Computer Science Lab, part 3 begins: a **Learn** tab, where you can see how I work with your own hands on the knobs. Free, on the brain I have loaded right now; nothing is downloaded, rented or saved.
+
+- **Tabs in the Lab.** **Make a brain** is the Lab as it was (the five steps, templates, Compare). **Learn** is new. **Playground** and **Challenges** are shown greyed out, as they're on the way. Left and right arrows move between the tabs.
+- **What is a token?** Type anything and press **Split it**: I show the pieces I actually read, one chip each with its number, and how many characters and tokens that was. Chips take turns solid and dashed so you can tell them apart without colour; a dotted chip is only part of a character.
+- **How do I pick the next word?** **Show my odds** lists my ten likeliest next tokens for the start of a sentence, as percentages and bars. Click one to make me say it, or **Let me choose** to watch me roll, for twelve words.
+- **What does temperature do?** A slider from 0 to 2 (with a number box), and **Write it three times** writes the same start three times at that setting, with my odds for the first word underneath so you can watch them flatten. **More knobs** adds **Cut the long tail** (min_p) and **Only the likeliest** (top_p).
+- Each card ends with **What you just saw**, a line from me that changes with what happened. Results are read out by screen readers when they land.
+- Needs my own engine (llama.cpp); with Ollama the tab says so. The Lab switch in Settings still turns it all on or off. While a card runs it counts as using my brain, so Free memory when Bob is idle leaves it loaded. A card's run takes my brain's place in its prompt memory, so the next chat message re-reads the conversation once.
+- Help: a new page, The Lab's Learn tab. `test/run-lab-test.js`: 151 checks.
+- Phone (Bob for Android): nothing changes yet. Learn comes to the phone in a later update.
+
 ## 1.5.143
 
 The Computer Science Lab, part 2a: keep every skill covered, write a new lesson set with a teacher here, and try a cut on Brain Engine before cutting. All free, on this replicant matrix; nothing is rented.
