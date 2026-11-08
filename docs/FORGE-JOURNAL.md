@@ -39,7 +39,7 @@ None of these is scheduled or paid for. They are written down so the choice is v
 
 - **Bridget** (working name; "Garfield" was the other candidate): a second family taught by the newer, dense Qwen3.8-27B instead of the mixture-of-experts 3.6. A dense model has no experts to cut, so its Bobs would be made by depth-and-width pruning (the 2Bob method) and would be slower per token on handhelds. Worth it only if 3.8 is clearly the better teacher for Bob's work.
 - **Howard** (working name): a Bob healed against a teacher from a different model family, to learn whether a Bob can take another teacher's knowledge without losing Bob's tool habits. A base that was itself distilled from a closed model was advised against.
-- **Thoth** (working name): a cut of one of the community "uncensored" remixes. If it is ever made it lives only behind the opt-in naughty-list switch, never as a default brain, and carries no Bob nickname in the catalogue.
+- **Thoth** (named 8 November; see that day's entry): a Bob cut from one of the community "uncensored" remixes of Qwen3.6-35B-A3B (the "heretic" builds on the naughty list), with the same expert cut and heal as the ladder. Its rungs are named by the cut, 18Thoth, 12Thoth and so on, never "18Bob Thoth". If it is ever made it lives only behind the opt-in naughty-list switch, is never a default brain, is never marked recommended or the quiet pick, carries its remixer's credit on the tag, and keeps the licence of the remix it came from. Two things differ from a Bob heal: the teacher must be the uncensored remix itself (a stock teacher would quietly put the refusals back), and any lesson whose answer is a refusal is dropped from the set first. For the small sizes, teaching a small heretic student (Qwen3.5 9B, 4B or 2B heretic, same vocabulary as the teacher) is likely better than cutting the 35B below about 8B, where the ladder loses half its routing; whether such a student may carry the Thoth name is not decided.
 - **Trimmed other models** (for example a mixture-of-experts Gemma trimmed by a quarter): possible with the same tools, but those are not Bobs and would be named plainly, "X trimmed to Y".
 - **Expert merging**: the small rungs lose about half of their routing in the worst layer no matter which experts are kept (see the ladder table). Merging rarely-used experts into kept ones, instead of dropping them, is the next lever to try there.
 
@@ -140,6 +140,10 @@ Fixes from the v3 log, all untested on a card:
 4. The plan-reader bug that ended the v3 run (build 14j, same day) and a silently empty "strong skills" list in the counts-only ladder, which had used 95% for every skill.
 
 **Next**: benchmark Riker v3 at home (tool score, experts test, coding race, long-document and 128K needle), then Bill v3 alone from the teacher with the PC-built keep list, when the owner gives the word. Then Homer.
+
+### 8 November: Thoth named, on paper only (nothing cut, nothing rented)
+
+The owner named the uncensored route **Thoth** and set how it would be made, if it is made at all. Written down in 2.3 above: a cut of a community heretic remix of Qwen3.6-35B-A3B, healed against that remix (not the stock 35B) on a lesson set scrubbed of refusals, rungs named by the cut (18Thoth, 12Thoth), listed only behind the naughty-list switch, never recommended, remixer credited. For the small end, a distilled small heretic student may beat a deep cut; the name for those is open. The Forge needs no new code for it: the teacher is set per plan file, and the refusal scrub is a short script over the lesson set. It waits behind Bill v3 and the current hold, and it costs about one heal run per size when it comes.
 
 ## 5. Running tallies
 
