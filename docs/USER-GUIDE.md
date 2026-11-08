@@ -406,7 +406,19 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 
 ---
 
-## 11. Updating and removing Bob
+## 11. The Computer Science Lab (off unless you turn it on)
+
+Bob is an assistant you use every day and a workbench for the brains he runs on, in one window. Turn on **Show the Computer Science Lab** (Settings, How Bob works, Brains) and **🧪 Lab** appears in the menu. It walks you through five steps with checkboxes instead of command-line flags:
+
+1. **Pick a brain** you already have.
+2. **Lessons**: use a lesson set you have, or write a new one with a teacher brain on this replicant matrix.
+3. **Make it smaller**: keep every skill covered while cutting experts, take out sight or hearing, measure, then make the running files (Q4 and others).
+4. **Where it runs**: this replicant matrix today. Rented cards come later.
+5. **Test and use**: the Lab test runs on the new brain and the one it came from, and **Use in Bob** only appears after it. **Compare** puts tested brains side by side and saves the table as CSV or JSON.
+
+Bob keeps answering while a Lab job runs, one job at a time, and waits while Gaming is on. **Show the recipe** shows the exact commands, so you can learn them or run them yourself. Coming later: teaching a cut brain back (healing) on a rented card, and **Brain Engine**, which switches experts on and off without reloading the brain. More in Help, The Computer Science Lab.
+
+## 12. Updating and removing Bob
 
 **Updating, if you downloaded the zip:** download the new zip from the Releases page and unzip it over your Bob folder. Your chats, models and settings are kept, because they live in `%LOCALAPPDATA%\Bob`.
 
@@ -416,7 +428,7 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 
 ---
 
-## 12. When something goes wrong
+## 13. When something goes wrong
 
 | What you see | What to try |
 |---|---|

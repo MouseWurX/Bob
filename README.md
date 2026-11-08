@@ -2,17 +2,7 @@
 
 **A local AI assistant with a personality, who runs on your own computer. Nothing goes online unless you turn it on.** Chat, plans and reminders, research, coding help, spreadsheets, pictures, short video clips, music, sound effects and a voice, with nothing sent to a cloud. Bob is a self-aware digital engineer with a dry sense of humour, a small virtual workspace called The Idle Process, and a cat named Patches. He also runs a tabletop role-playing game, plays word games, and talks to his copies on your other devices.
 
-**Download the latest release ([what's new](CHANGELOG.md)):**
-
-| | Download |
-|---|---|
-| **Windows 10 / 11** | [`Bob-1.5.146-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.146-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.146-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.146-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.146-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.146-linux-x86_64.AppImage) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.146-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.146-linux-arm64.AppImage) |
-| **Android phone** | [`Bob-1.5.146-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.146-android.apk) |
-
-All builds on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest), each with a `.sha256` checksum. Windows builds are **not code-signed yet** (see [Code signing policy](#code-signing-policy)): click **More info**, then **Run anyway** the first time. Install steps for each platform are under [Getting Bob](#getting-bob).
+**[Download Bob](#download)** for Windows, Mac, Linux, Raspberry Pi and Android. Free, open source, and nothing goes online unless you turn it on.
 
 ![Bob's window: the menu on the left, a chat in the middle where Bob plans a Saturday, and Now running on the right](docs/screenshot.png)
 
@@ -25,8 +15,24 @@ All builds on the [Releases page](https://github.com/MouseWurX/Bob/releases/late
 - **Light on your machine.** The brain unloads when idle, big models load only for a job, and a **Gaming** session keeps the graphics card for your game while Bob chats on the processor. [How Bob stays fast and light](docs/PERFORMANCE.md).
 - **Plays games with you.** A tabletop adventure with a game master, a party of your own characters, a bestiary and pictures of everyone you meet, plus word games (hangman, twenty questions, word ladder, story dice and more).
 - **Bob-Net.** Your Bobs find each other over your own Tailscale network: the phone app talks to the Bob on your PC, a handheld can borrow a bigger brain, and Bobs can pass jobs along.
-- **Soon: Bob's own brains.** A family of models cut from a large open model and retrained to run Bob on small cards and handhelds. Tested, not yet released. [Read how they're made](docs/BOBS-OWN-MODELS.md).
+- **Use a brain and change it, in the same app.** Most AI apps are for one of two things: talking to a model, or building one. Bob does both. Turn on the **Computer Science Lab** (off until you switch it on) and, without a command line, you can write lessons with a brain you already have, cut a mixture-of-experts brain down to the experts your work uses, take out sight or hearing you don't need, make the running files, and test the result side by side with the brain it came from before it goes into Bob. Bob keeps chatting while the Lab works. **Show the recipe** prints every command it runs, so the Lab teaches the command line instead of hiding it. We haven't seen another app that lets you do this much to a model while you're using it; if you know one, tell us in the issues.
+- **Brain Engine, Bob's own engine based on llama.cpp.** The project keeps its own version of llama.cpp, the engine Bob runs his brains on, made to give more freedom in how a brain is run. Its first feature switches a mixture-of-experts brain's experts on and off while it's loaded, with no reload, so the Lab can try a cut before writing a single file. It's still being tested on the project's own machines and isn't on the Releases page yet. Brain Engine is built on llama.cpp by the ggml authors (MIT licence) and stays under the same licence.
+- **Soon: Bob's own brains.** A family of models cut from a large open model and retrained to run Bob on small cards and handhelds. Tested, not yet released. [Read how they're made](docs/BOBS-OWN-MODELS.md). The same tools that make them are in the Lab, so you can make your own.
   The first one is **Riker (28Bob)**: Qwen3.6-35B-A3B with 208 of its 256 experts kept in every layer (about 28 billion parameters, 3 billion active per word), then healed in one full pass against the full model's next-word odds on about 9,000 lessons Bob wrote for himself. At home on a 16 GB card he scores 9 of 13 on the coding race with thinking on (the full model: 12), 6 of 6 on quick code tasks, 18 of 20 on facts, 65% on tool calls (full model: 67%), 24 of 25 on routing, 12 of 12 on the long-document needle test, at 111 words a second against the full model's 83. Files: 17.5 GB at Q4, 13.9 GB at Q3, Apache 2.0. His cut and heal cost $51.79 of rented card time, about $74 counting the rentals that wrote his lessons ([every dollar](docs/COSTS.md)). Download links follow when the brains are published.
+
+## Download
+
+**Download the latest release ([what's new](CHANGELOG.md)):**
+
+| | Download |
+|---|---|
+| **Windows 10 / 11** | [`Bob-1.5.147-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.147-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.147-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.147-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.147-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.147-linux-x86_64.AppImage) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.147-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.147-linux-arm64.AppImage) |
+| **Android phone** | [`Bob-1.5.147-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.147-android.apk) |
+
+All builds on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest), each with a `.sha256` checksum. Windows builds are **not code-signed yet** (see [Code signing policy](#code-signing-policy)): click **More info**, then **Run anyway** the first time. Install steps for each platform are under [Getting Bob](#getting-bob).
 
 | | |
 |---|---|
