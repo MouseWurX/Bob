@@ -15,7 +15,9 @@
 //
 // What's approved lives in Bob's own settings folder (selftools.json: the sha256 of every file), which no Hand or
 // tool can write. If a tool's files change after the OK, it's turned off until it goes through the checks again.
-// Tools are listed in Settings, Hands (turn off, show code, remove to the Recycle Bin) and Bob can list them too.
+// Tools are listed in Settings (🧰 Tools and how-tos Bob made: show code, delete; Hands: turn off, show code) and Bob
+// can list them too. 1.5.135: Delete puts a tool on the shelf (Recently deleted) for 30 days, off and out of Bob's
+// reach, with Put back and Delete for good; after 30 days (or Delete for good) its folder goes to the Recycle Bin.
 // Light: nothing runs in the background, the tools aren't in Bob's prompt until a job needs them (toolbox.js), and the
 // reviewer brain loads only while a tool is being made.
 import fs from 'node:fs';
@@ -34,6 +36,7 @@ import { copyName } from './clan.js';
 
 const WIN = process.platform === 'win32';
 export const MAX_TOOLS = 30;
+export const KEEP_DELETED_MS = 30 * 24 * 60 * 60_000;
 const MAX_CODE = 200_000;
 const MAX_DOWNLOAD = 200 * 1024 * 1024;
 const MAX_DOWNLOADS_TOTAL = 500 * 1024 * 1024;
@@ -82,9 +85,10 @@ function readSpec(dir) {
 
 // The tools Bob made, as the list shows them. state: on, off (turned off), changed (files changed since the OK),
 // missing (its folder is gone).
-export function listTools(cfg) {
+// The live tools (not the deleted ones on the shelf); { deleted: true } lists the shelf instead.
+export function listTools(cfg, { deleted = false } = {}) {
   const approved = loadApproved(cfg);
-  return Object.entries(approved).map(([name, a]) => {
+  return Object.entries(approved).filter(([, a]) => Boolean(a.deleted) === deleted).map(([name, a]) => {
     const dir = toolDir(cfg, name);
     const spec = readSpec(dir);
     let state = a.on === false ? 'off' : 'on';
@@ -92,7 +96,7 @@ export function listTools(cfg) {
     else if (!sameHashes(hashFiles(dir), a.hashes)) state = 'changed';
     let bytes = 0;
     try { for (const f of Object.keys(a.hashes || {})) bytes += fs.statSync(path.join(dir, f)).size; } catch {}
-    return { name, what: spec?.what || a.what || '', inputs: spec?.inputs || {}, reads: a.reads || [], writes: a.writes || [], internet: Boolean(a.internet), downloads: (a.downloads || []).length, at: a.at, lastUsed: a.lastUsed || 0, bytes, state, dir };
+    return { name, what: spec?.what || a.what || '', inputs: spec?.inputs || {}, reads: a.reads || [], writes: a.writes || [], internet: Boolean(a.internet), downloads: (a.downloads || []).length, at: a.at, lastUsed: a.lastUsed || 0, bytes, state, dir, ...(a.deleted ? { deleted: a.deleted, goneAt: a.deleted + KEEP_DELETED_MS } : {}) };
   }).sort((x, y) => x.name.localeCompare(y.name));
 }
 export const usableTools = (cfg) => listTools(cfg).filter((t) => t.state === 'on');
@@ -423,7 +427,7 @@ export async function addTool(cfg, draft, { signal, log = () => {} } = {}) {
 
 export function setToolOn(cfg, name, on) {
   const all = loadApproved(cfg);
-  if (!all[name]) throw new Error(`There's no tool called ${name}.`);
+  if (!all[name] || all[name].deleted) throw new Error(`There's no tool called ${name}.`);
   if (on) {
     const t = listTools(cfg).find((x) => x.name === name);
     if (t?.state === 'changed') throw new Error(`${name}'s files changed since you OK'd it, so it has to be checked again: ask Bob to make it again.`);
@@ -433,7 +437,29 @@ export function setToolOn(cfg, name, on) {
   saveApproved(cfg, all);
 }
 
-// Removes a tool: its folder (with its downloads) to the Recycle Bin, and its record.
+// Delete: the tool goes on the shelf for 30 days. Its folder stays where it is (so Put back gives back exactly what was
+// OK'd, hashes and all), but it's out of Bob's list and can't run. The shelf is swept on every look at the list.
+export function deleteTool(cfg, name) {
+  const all = loadApproved(cfg);
+  if (!all[name] || all[name].deleted) throw new Error(`There's no tool called ${name}.`);
+  all[name].deleted = Date.now();
+  saveApproved(cfg, all);
+}
+export function restoreTool(cfg, name) {
+  const all = loadApproved(cfg);
+  if (!all[name]?.deleted) throw new Error(`There's no deleted tool called ${name}.`);
+  if (Object.values(all).filter((a) => !a.deleted).length >= MAX_TOOLS) throw new Error(`I already keep ${MAX_TOOLS} tools, the most I can. Delete one first, then put this one back.`);
+  delete all[name].deleted;
+  saveApproved(cfg, all);
+}
+// Shelf sweep: anything deleted more than 30 days ago goes for good. Returns the names that went.
+export function sweepDeleted(cfg, now = Date.now()) {
+  const gone = [];
+  for (const [name, a] of Object.entries(loadApproved(cfg))) if (a.deleted && now - a.deleted > KEEP_DELETED_MS) { try { removeTool(cfg, name); gone.push(name); } catch {} }
+  return gone;
+}
+
+// Removes a tool for good: its folder (with its downloads) to the Recycle Bin, and its record.
 export function removeTool(cfg, name) {
   const all = loadApproved(cfg);
   if (!all[name]) throw new Error(`There's no tool called ${name}.`);
@@ -448,6 +474,7 @@ export function removeTool(cfg, name) {
 
 export function toolCode(cfg, name) {
   if (!loadApproved(cfg)[name]) throw new Error(`There's no tool called ${name}.`);
+  if (loadApproved(cfg)[name].deleted && !fs.existsSync(path.join(toolDir(cfg, name), 'tool.mjs'))) throw new Error(`${name} is on the Recently deleted shelf and its folder is gone.`);
   return fs.readFileSync(path.join(toolDir(cfg, name), 'tool.mjs'), 'utf8');
 }
 
@@ -456,6 +483,7 @@ export async function useTool(cfg, name, input, { signal } = {}) {
   const all = loadApproved(cfg);
   const a = all[name];
   const t = listTools(cfg).find((x) => x.name === name);
+  if (a?.deleted) throw new Error(`The ${name} tool was deleted. ${cfg.userName || 'The user'} can put it back within 30 days in Settings, 🧰 Tools and how-tos Bob made, Recently deleted.`);
   if (!a || !t) throw new Error(`There's no tool called ${name}. Tools I made: ${usableTools(cfg).map((x) => x.name).join(', ') || 'none yet'}.`);
   if (t.state === 'off') throw new Error(`The ${name} tool is turned off (Settings, Show advanced settings, Hands, Tools Bob made).`);
   if (t.state === 'changed') throw new Error(`I turned ${name} off because its files changed since it was OK'd. It has to be checked again before I use it.`);
@@ -515,7 +543,7 @@ export function selfToolsTools(brain) {
       const code = String(args.code || '');
       problems.push(...codeProblems(cfg, code, spec));
       const have = loadApproved(cfg);
-      if (!have[spec.name] && Object.keys(have).length >= MAX_TOOLS) problems.push(`I already have ${MAX_TOOLS} tools, the most I keep. Ask ${cfg.userName || 'the user'} which one to remove first.`);
+      if (!(have[spec.name] && !have[spec.name].deleted) && Object.values(have).filter((a) => !a.deleted).length >= MAX_TOOLS) problems.push(`I already have ${MAX_TOOLS} tools, the most I keep. Ask ${cfg.userName || 'the user'} which one to delete first.`);
       if (problems.length) throw new Error(`Not added yet. Fix these and call make_tool again:\n- ${problems.join('\n- ')}`);
       const dir = writeDraft(cfg, spec, code);
       let test = null;
@@ -596,20 +624,21 @@ export function selfToolsTools(brain) {
   };
 
   t.my_tools = {
-    schema: fn('my_tools', 'List the tools you made, or turn one off or remove one ({{USER}} OKs a remove).', {
+    schema: fn('my_tools', 'List the tools you made, or turn one off or delete one ({{USER}} OKs a delete; it can be put back for 30 days).', {
       action: str('What to do', { enum: ['list', 'off', 'remove'] }),
       name: str('The tool (for off and remove).')
     }, ['action']),
     check({ action, name }) {
       off(cfg);
       if (action !== 'remove') return false;
-      if (!loadApproved(cfg)[name]) throw new Error(`There's no tool called ${name}.`);
-      return `Remove my tool "${name}" (its folder and downloads go to the Recycle Bin).`;
+      const a = loadApproved(cfg)[name];
+      if (!a || a.deleted) throw new Error(`There's no tool called ${name}.`);
+      return `Delete my tool "${name}" (it waits 30 days under Recently deleted in Settings, where you can put it back; then its folder goes to the Recycle Bin).`;
     },
     async run({ action, name }) {
       off(cfg);
       if (action === 'off') { setToolOn(cfg, String(name), false); log('selftools', `turned off ${name}`); return `Turned ${name} off. ${cfg.userName || 'The user'} can turn it back on in Settings, Show advanced settings, Hands.`; }
-      if (action === 'remove') { removeTool(cfg, String(name)); log('selftools', `removed ${name}`); return `Removed ${name}.`; }
+      if (action === 'remove') { deleteTool(cfg, String(name)); log('selftools', `deleted ${name} (on the shelf 30 days)`); return `Deleted ${name}. ${cfg.userName || 'The user'} can put it back within 30 days in Settings, 🧰 Tools and how-tos Bob made, Recently deleted.`; }
       const all = listTools(cfg);
       if (!all.length) return 'No tools made yet.';
       const st = { on: 'on', off: 'turned off', changed: 'off: its files changed since the OK', missing: 'its folder is gone' };
@@ -629,6 +658,6 @@ export function makerPrompt(cfg) {
 // For the Settings page.
 export function selfToolsView(cfg) {
   let tools = [];
-  try { tools = listTools(cfg); } catch {}
+  try { sweepDeleted(cfg); tools = listTools(cfg); } catch {}
   return { tools: tools.map(({ dir, ...x }) => ({ ...x, folder: dir })), max: MAX_TOOLS, sandbox: probed, netGuard: netGuard() };
 }

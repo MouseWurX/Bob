@@ -146,7 +146,12 @@ globalThis.BobHelp = {
     },
     {
       id: 'howtos', title: 'How-tos',
-      html: `<p>When a Bob on your network finishes a bigger job well, he may offer to keep the steps as a how-to, and the card shows up here too. Tap <strong>Save how-to</strong> (you can rename it first) or <strong>Not now</strong>. Next time you ask for something like it, he follows those steps. He only offers when <strong>Let Bob learn how-tos</strong> is on in his Settings. Changing or deleting how-tos is done on your other replicant matrix, in Settings, 📒 How-tos.</p>`
+      html: `<p>When a Bob on your network finishes a bigger job well, he may offer to keep the steps as a how-to, and the card shows up here too. Tap <strong>Save how-to</strong> (you can rename it first) or <strong>Not now</strong>. Next time you ask for something like it, he follows those steps. He only offers when <strong>Let Bob learn how-tos</strong> is on in his Settings. Changing a how-to is done on your other replicant matrix, in Settings, 🧰 Tools and how-tos Bob made; here you can look at them and delete them (see Tools and how-tos Bob made).</p>`
+    },
+    {
+      id: 'own-kit', title: 'Tools and how-tos Bob made',
+      html: `<p>Settings, <strong>Tools and how-tos Bob made</strong> shows what the Bob on your network made for himself: the <strong>tools</strong> he wrote (small programs, only with Make his own tools on in his Settings) and the <strong>how-tos</strong> he kept (the steps of jobs that went well). Each tool says what it does, what it can change and whether it uses the internet.</p>
+<p><strong>Delete</strong> asks once more on the same row (Delete or Keep it). Then he stops using the thing at once and it waits 30 days under <strong>Recently deleted</strong>, where <strong>Put back</strong> brings it back exactly as it was. Right after a delete there's an <strong>Undo</strong> too. Delete for good, reading a tool's code and editing a how-to are done on your other replicant matrix itself, in the same panel. The list shows when a Bob is reachable; nothing is kept on the phone.</p>`
     },
     {
       id: 'help-bundle', title: 'Save a help bundle',

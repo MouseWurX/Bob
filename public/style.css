@@ -589,6 +589,20 @@ button.big { padding: 9px 18px; font-size: 15px; min-height: 40px; }
 .hands-mytools ul { list-style: none; padding: 0; margin: 6px 0; }
 .hands-mytools li.mytool { border-bottom: 1px solid var(--line); padding: 6px 0; }
 .hands-mytools.dim { opacity: 0.7; }
+/* 1.5.135 🧰 Tools and how-tos Bob made */
+.ownkit-list { list-style: none; padding: 0; margin: 6px 0; }
+.ownkit-list { display: flex; flex-direction: column; gap: 8px; }
+.ownkit-list li.ownkit-row { border: 1px solid var(--line, #444); border-radius: 6px; padding: 8px 10px; }
+.ownkit-list li.ownkit-row > .row { align-items: baseline; flex-wrap: wrap; gap: 6px 10px; }
+.ownkit-list li.ownkit-row .row button { min-height: 32px; }
+.ownkit-list .howto-steps { margin: 4px 0 4px 20px; }
+.ownkit-list pre.ownkit-code { max-height: 320px; overflow: auto; white-space: pre; }
+.ownkit-note { margin: 6px 0; padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--card); }
+.ownkit-note .mini { margin-left: 6px; }
+.ownkit-ask { font-weight: 600; }
+.ownkit-shelf { margin: 10px 0 4px; }
+.ownkit-shelf > summary { cursor: pointer; font-size: 15px; padding: 6px 0; }
+.ownkit-shelf > summary .muted { font-weight: 400; font-size: 13px; }
 .hands-mcp { margin-top: 10px; }
 .hands-mcp > ul { list-style: none; padding: 0; margin: 6px 0; }
 .hands-mcp li.mcp-app { border-bottom: 1px solid var(--line); padding: 6px 0; }

@@ -14,7 +14,7 @@
 //                              SHA-1 (made in the window) go to Have I Been Pwned; the list comes back to the window,
 //                              which finds the match itself. The password and its full scramble never reach Bob.
 //   POST /api/hands/run-recipe { name }  run a recipe now (the user's click is the approval; output goes to the chat)
-//   POST /api/hands/mytools    { name, on } | { name, remove: true } | { name, code: true }  the tools Bob made (1.5.48)
+//   POST /api/hands/mytools    { name, on } | { name, remove: true } | { name, code: true }  the tools Bob made (1.5.48; remove = to the shelf, 1.5.135)
 //   POST /api/hands/sandbox    check again that the sandbox for Bob's own tools holds on this PC
 //   POST /api/hands/mcp        connected apps (src/mcp.js): { add: { name, cmd, args, cwd } | { name, url } } | { paste: text }
 //                              | { id, on } | { id, remove: true } | { id, check: true }  (new apps come in switched off)
@@ -24,7 +24,7 @@ import fs from 'node:fs';
 import { undoJob } from './hands-files.js';
 import { selfTest } from './hands-selftest.js';
 import { pwnedRange } from './security-web.js';
-import { setToolOn, removeTool, toolCode, sandboxHolds } from './selftools.js';
+import { setToolOn, deleteTool, toolCode, sandboxHolds } from './selftools.js';
 import { addServer, importSetup, setServerOn, removeServer, checkServer } from './mcp.js';
 import { track } from './hands.js';
 import { VERSION } from './config.js';
@@ -79,7 +79,7 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
     if (p === '/api/hands/mytools') {
       const name = String(b.name || '');
       if (b.code) { send(res, 200, { name, code: toolCode(cfg, name) }); return true; }
-      if (b.remove) { removeTool(cfg, name); brain.log('selftools', `removed ${name} (your click)`); }
+      if (b.remove) { deleteTool(cfg, name); brain.log('selftools', `deleted ${name} (your click; on the shelf 30 days)`); } // 1.5.135: to the shelf, not straight to the Bin
       else if ('on' in b) { setToolOn(cfg, name, b.on === true); brain.log('selftools', `${name} turned ${b.on ? 'on' : 'off'} (your click)`); }
       send(res, 200, handsView(cfg));
       return true;
