@@ -307,7 +307,7 @@ globalThis.fetch = fakeFetch;
 check('the quiz marks tool picks and answers, thinking stripped', quiz.parts.tools.score === 100 && quiz.parts.general.right === 1 && quiz.parts.following.right === 1 && quiz.tps === 20 && quiz.score > 0 && quiz.score < 100, JSON.stringify(quiz.parts));
 check('the quiz tools are made up, not Bob\'s real ones', TOOLS.every((t) => !/hands|files_|run_/.test(t.function.name)));
 
-// ---- 1.5.148 Learn: experiments on the loaded brain, against a pretend llama-server ----
+// ---- 1.5.151 Learn: experiments on the loaded brain, against a pretend llama-server ----
 {
   const calls = [];
   const fake = async (url, init) => {
