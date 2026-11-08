@@ -46,8 +46,8 @@ export const ENGINES = [
     // 1.5.152 Brain Engine: Bob's Lab engine, a fork of llama.cpp (engine/README.md) with the expert switch, for the
     // Computer Science Lab's Try it first. Its test pre-release on Bob's own GitHub holds only the llama and server
     // files, so it goes on top of the official llama.cpp build of the same tag (base), in its own folder: Bob's
-    // everyday engine is never touched. Shown only while the Lab is on.
-    id: 'brainengine', name: 'Brain Engine (test build)', what: 'My Lab engine: llama.cpp with a switch to turn experts off without reloading, for the Lab\'s Try it first. A fork of llama.cpp, not an official build. Its own folder; my everyday engine stays as it is. Only shown while the Lab is on.',
+    // built-in engine is never touched. Shown only while the Lab is on.
+    id: 'brainengine', name: 'Brain Engine (test build)', what: 'Bob\'s Lab engine: llama.cpp with a switch that turns experts off without reloading, for the Lab\'s Try it first. Based on llama.cpp, not an official build. It has its own folder, so the built-in engine stays as it is. Only shown while the Lab is on.',
     repo: 'MouseWurX/Bob', tag: TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : '', base: 'llamacpp', labOnly: true, dir: 'brain-engine', exe: 'llama-server.exe',
     nvidia: [], other: [/^brain-engine-.*-win-x64\.zip$/], runtime: () => null,
     mac: { unavailable: 'Brain Engine has no Mac build yet.' },
@@ -461,7 +461,7 @@ async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
     fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify({ version: own.rel.tag_name, base: base.rel.tag_name, asset: own.asset.name, at: new Date().toISOString() }, null, 2));
   } catch (err) { fs.rmSync(stage, { recursive: true, force: true }); fs.rmSync(stage + '.own', { recursive: true, force: true }); throw err; }
   try { fs.rmSync(folder, { recursive: true, force: true }); fs.renameSync(stage, folder); }
-  catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Wait for the Lab job to finish, then Try again.`); }
+  catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Wait for the Lab job to finish, then try again.`); }
   return { version: own.rel.tag_name, asset: own.asset.name };
 }
 

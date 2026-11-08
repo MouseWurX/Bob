@@ -18,7 +18,7 @@ fs.mkdirSync(cfg.agentDir, { recursive: true });
 
 check(!engineStatus({ agentDir: cfg.agentDir }).some((e) => e.id === 'brainengine'), 'Brain Engine isn\'t listed while the Lab is off');
 const st = engineStatus(cfg).find((e) => e.id === 'brainengine');
-check(st && /test build/.test(st.name) && /fork of llama\.cpp/.test(st.what) && st.pinned, 'with the Lab on it is listed, named a test build and a fork, and pinned');
+check(st && /test build/.test(st.name) && /Based on llama\.cpp, not an official build/.test(st.what) && st.pinned, 'with the Lab on it is listed, named a test build, not official llama.cpp, and pinned');
 check(ENGINES.find((e) => e.id === 'brainengine').tag === `brain-engine-${TESTED_LLAMA}`, 'it is pinned to the pre-release for the tested llama.cpp tag');
 check(await installEngine({ ...cfg, computerLab: false }, 'brainengine', { pub: {}, tick: () => {} }).then(() => false, (e) => /Lab on first/.test(e.message)), 'Get is refused while the Lab is off');
 

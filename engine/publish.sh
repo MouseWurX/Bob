@@ -10,9 +10,9 @@ sha256sum "$file" | awk '{print $1}' > "$file.sha256"
 notes=$(cat <<NOTES
 **Test build.** Brain Engine is a fork of [llama.cpp](https://github.com/ggml-org/llama.cpp), created to give better flexibility when using AI models. It is not an official llama.cpp build.
 
-This is llama.cpp $tag with the patches in [engine/patches](https://github.com/$repo/tree/$GITHUB_SHA/engine/patches) (the expert switch: \`GET\`/\`POST /expert-mask\`). Only the llama and server files are here: put them over a copy of the official llama.cpp $tag zip for your card (the card backends are not changed). Bob does this for you under Get models, Engines.
+This is llama.cpp $tag with the patches in [engine/patches](https://github.com/$repo/tree/$GITHUB_SHA/engine/patches) (the expert switch: \`GET\`/\`POST /expert-mask\`). Only the llama and server files are here: put them over a copy of the official llama.cpp $tag download (zip or tar.gz) for your card (the card backends are not changed). Bob does this for you under Get models, Engines.
 
-llama.cpp is MIT licensed: Copyright (c) 2023-2026 The ggml authors. The licence text is in every file as LICENSE-llama.cpp.
+llama.cpp is MIT licensed: Copyright (c) 2023-2026 The ggml authors. The licence text is in every download as LICENSE-llama.cpp.
 NOTES
 )
 for i in 1 2 3; do
