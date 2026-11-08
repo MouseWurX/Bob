@@ -5,7 +5,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readGguf, brainFacts, readerFacts, writeGguf, checkKeep, busiest, isHearingTensor, readCounts } from '../src/lab-gguf.js';
-import { Lab, cleanRecipe, planRecipe, labRoom, labOn, cutSizes, fitWords, mergeMadeBrains, labRoute, RUNNING_TYPES } from '../src/lab.js';
+import { Lab, cleanRecipe, planRecipe, labRoom, labOn, cutSizes, fitWords, mergeMadeBrains, labRoute, RUNNING_TYPES , measureRecord, sha256File, compareTable, compareCsv } from '../src/lab.js';
+import { TEMPLATES, TEMPLATE_IDS, templateById, templateWhyNot, applyTemplate } from '../public/lab-templates.js';
+import crypto from 'node:crypto';
 import { QUIZ, TOOLS, runQuiz } from '../src/lab-test.js';
 
 let pass = 0, fail = 0;
@@ -115,6 +117,31 @@ check('taking out every sense leaves the reader behind and copies nothing big', 
 check('cut sizes go from under the brain\'s count down to its picks', (() => { const s = cutSizes({ experts: 256, used: 8, size: 20 * 1024 ** 3 }); return s.length > 2 && s.every((x) => x.keep < 256 && x.keep >= 8) && s[0].gb < 20; })());
 check('fit lines use words, not ticks or brand names', !/[✓✗]|Legion|Steam|PC\b/.test(fitWords(12.7, 16) + fitWords(3, 6) + fitWords(30, 16)) && /replicant matrix/.test(fitWords(12.7, 16)));
 
+// ---- Lab 1b: templates and Measure before making the running files ----
+check('the five methods and the two later ones are templates', ['plain-cut', 'lab-local-cut', 'coverage-cut-heal', 'train-teacher', 'outside-traces', 'merge-experts', 'layer-width-cut'].every((id) => TEMPLATE_IDS.includes(id)) && TEMPLATES.every((t) => t.title && t.help && ['here', 'rented', 'either'].includes(t.where)));
+check('rented templates are greyed out with the reason, never offered', TEMPLATES.filter((t) => t.where === 'rented').every((t) => templateWhyNot(t, facts) && !t.lab) && /rented card/.test(templateWhyNot(templateById('coverage-cut-heal'), facts)) && /Not built yet/.test(templateWhyNot(templateById('merge-experts'), facts)));
+check('a cutting template on an ordinary brain says why', /isn't a mixture-of-experts brain/.test(templateWhyNot(templateById('plain-cut'), { experts: 0 }, 'Plain')) && templateWhyNot(templateById('lab-local-cut'), facts) === '');
+const tpl = applyTemplate({ from: 'test-moe', name: '', lessons: { kind: 'none', chunks: 200 } }, templateById('lab-local-cut'), { keepDefault: 4, fullSize: true, brainName: 'Test MoE' });
+check('a template fills steps 2 to 5 and names the brain', tpl.template === 'lab-local-cut' && tpl.lessons.kind === 'chats' && tpl.smaller.cut.keep === 4 && tpl.smaller.files.includes('Q4_K_M') && tpl.smaller.measure === true && tpl.name === 'Test MoE Lab local cut' && tpl.from === 'test-moe');
+check('a template on a running file drops the running files and the measuring', (() => { const t = applyTemplate({}, templateById('lab-local-cut'), { fullSize: false }); return !t.smaller.files.length && !t.smaller.measure; })());
+check('only known templates get through', cleanRecipe({ template: 'rm -rf' }).template === '' && cleanRecipe({ template: 'plain-cut' }).template === 'plain-cut');
+const measured = plan({ name: 'Measured', from: 'test-moe', lessons: { kind: 'chats' }, smaller: { cut: { how: 'busiest', keep: 4 }, files: ['Q4_K_M'], measure: true } });
+check('Measure adds a step on the cut file before the running files', measured.problems.length === 0 && measured.steps.map((s) => s.id).join() === 'lessons,count,cut,reader,imatrix,quantize,test,compare' && measured.steps.find((s) => s.id === 'imatrix').src.endsWith('measured-4x.gguf'), measured.steps.map((s) => s.id).join() + ' ' + measured.problems.join(' | '));
+check('the running file is made with the measurement', /--imatrix .*imatrix\.gguf/.test(measured.steps.find((s) => s.id === 'quantize').cmd) && measured.steps.find((s) => s.id === 'quantize').imatrix.endsWith('imatrix.gguf'));
+check('Measure without lessons is refused, in words', plan({ name: 'x', smaller: { files: ['Q4_K_M'], measure: true } }).problems.some((x) => /needs lessons to measure on/.test(x)));
+check('Measure with an expert list still gathers the lessons first', plan({ name: 'x', lessons: { kind: 'chats' }, smaller: { files: ['Q4_K_M'], measure: true } }).steps[0].id === 'lessons');
+check('Measure is off unless ticked', cleanRecipe({ smaller: { files: ['Q4_K_M'] } }).smaller.measure === false);
+
+// ---- Lab 1b: the measurement record and Compare ----
+const rec = measureRecord({ name: 'A', sha256: 'ab', facts: { fileType: 'Q4_K_M', experts: 192 }, sizeGB: 16.2, template: 'plain-cut', parent: 'Big', test: { parts: { general: { score: 100 }, tools: { score: 50 } }, score: 75, tps: 77.4, prefillTps: 900, where: 'card', engine: 'Brain Engine' }, cfg: { gpuVramGB: 16 }, when: Date.UTC(2026, 10, 8) });
+check('the record has the design\'s shape', rec.brain.sha256 === 'ab' && rec.brain.quant === 'Q4_K_M' && rec.brain.expertsKept === 192 && rec.brain.parent === 'Big' && rec.where.place === 'home' && rec.where.card === '16 GB card' && rec.where.engine === 'Brain Engine' && rec.when === '2026-11-08' && rec.scores['General knowledge'] === 100 && rec.scores['Lab test (all)'] === 75 && rec.speed.tps === 77.4 && rec.speed.prefillTps === 900);
+check('missing parts are left out, not zeroed', (() => { const r = measureRecord({ name: 'B', test: { parts: {}, score: 0 } }); return !('speed' in r) && !('memory' in r) && !('sha256' in r.brain) && !('card' in r.where); })());
+const tbl = compareTable([rec, { ...rec, brain: { ...rec.brain, name: 'B', sizeGB: 20.8 }, speed: { tps: 65.7 } }]);
+check('Compare has a signed difference column with a percent', tbl.names.join() === 'A,B' && tbl.rows.find((x) => x.field === 'brain.sizeGB').diffText === '+4.6 (+28%)' && tbl.rows.find((x) => x.field === 'speed.tps').diffText === '-11.7 (-15%)');
+check('Compare puts the scores first and leaves out the hash', tbl.rows[0].field.startsWith('scores.') && !tbl.rows.some((x) => x.field === 'brain.sha256'));
+check('the CSV has a header row and the difference', /^Field,A,B,Difference\r\n/.test(compareCsv(tbl)) && compareCsv(tbl).includes('"-11.7 (-15%)"') === false && compareCsv(tbl).includes('-11.7 (-15%)'));
+check('the file hash is read in pieces and matches', await sha256File(brainFile) === crypto.createHash('sha256').update(fs.readFileSync(brainFile)).digest('hex'));
+
 // ---- the switch ----
 check('the Lab is off unless turned on', !labOn({}) && !labOn({ computerLab: 'yes' }) && labOn({ computerLab: true }));
 check('a small replicant matrix gets a reason, not the Lab', !labRoom(8 * 1024 ** 3).ok && /Bob-Net/.test(labRoom(8 * 1024 ** 3).why) && labRoom(32 * 1024 ** 3).ok);
@@ -148,6 +175,12 @@ const done = lab.runs.at(-1);
 check('the job finishes with a report', done.state === 'done' && done.report.made.score === 70 && done.report.from.score === 80, done.error || '');
 check('the made brain has 4 experts and keeps sight, not hearing', brainFacts(readGguf(done.files.gguf)).experts === 4 && readerFacts(readGguf(done.files.mmproj)).sight && !readerFacts(readGguf(done.files.mmproj)).hearing);
 check('the keep list and the report are saved beside it', fs.existsSync(path.join(path.dirname(done.files.gguf), 'little-test-keep.json')) && fs.existsSync(path.join(path.dirname(done.files.gguf), 'lab-report.json')));
+check('the job writes measure.json for the new brain and the one it came from', (() => { const d = path.dirname(done.files.gguf); const m = JSON.parse(fs.readFileSync(path.join(d, 'measure.json'), 'utf8')); const pm = JSON.parse(fs.readFileSync(path.join(d, 'measure-parent.json'), 'utf8')); return m.brain.sha256 === crypto.createHash('sha256').update(fs.readFileSync(done.files.gguf)).digest('hex') && m.brain.expertsKept === 4 && m.brain.parent === 'Test MoE' && m.scores['Lab test (all)'] === 70 && pm.brain.name === 'Test MoE' && pm.brain.expertsKept === 8 && !JSON.stringify(m).includes(tmp); })());
+const ms = lab.measures();
+check('Compare finds both records', ms.length === 2 && ms.some((m) => m.parentOf));
+const cmp = lab.compare(ms.map((m) => m.id), 'csv');
+check('Save as CSV writes a file in the Lab\'s compare folder', fs.existsSync(cmp.file) && path.basename(path.dirname(cmp.file)) === 'compare' && /Lab test \(all\)/.test(fs.readFileSync(cmp.file, 'utf8')));
+check('Compare needs two brains', (() => { try { lab.compare([ms[0].id]); return false; } catch (e) { return /at least two/.test(e.message); } })());
 check('the page heard each step', events.filter((e) => e.type === 'lab').length >= 7 && events.some((e) => e.type === 'lab-done' && e.ok));
 const used = lab.use(done.id);
 check('Use in Bob gives it an id Bob\'s engine runs', used.id === 'lab-little-test' && cfg.llamacpp.models['lab-little-test'].gguf === done.files.gguf);
@@ -174,6 +207,12 @@ await labRoute({ req: fakeReq('POST'), res: {}, p: '/api/lab/start', isLocal: fa
 check('a Lab job can\'t be started from another device yet', sent[0][0] === 403);
 await labRoute({ req: fakeReq('POST'), res: {}, p: '/api/lab/plan', isLocal: false, lab, body: async () => ({ recipe }), send: (res, code, j) => sent.push([code, j]) });
 check('another device gets the plan without the commands (no paths)', sent[1][0] === 200 && sent[1][1].text === '');
+await labRoute({ req: fakeReq('POST'), res: {}, p: '/api/lab/compare', isLocal: false, lab, body: async () => ({ ids: ms.map((m) => m.id), save: 'csv' }), send: (res, code, j) => sent.push([code, j]) });
+check('saving a comparison only from this replicant matrix', sent[2][0] === 403);
+await labRoute({ req: fakeReq('POST'), res: {}, p: '/api/lab/compare', isLocal: false, lab, body: async () => ({ ids: ms.map((m) => m.id) }), send: (res, code, j) => sent.push([code, j]) });
+check('looking at a comparison works from another device', sent[3][0] === 200 && sent[3][1].table.rows.length > 0);
+await labRoute({ req: fakeReq('GET'), res: {}, p: '/api/lab/measures', isLocal: true, lab, body: async () => ({}), send: (res, code, j) => sent.push([code, j]) });
+check('the measures list has no file contents or paths', sent[4][0] === 200 && sent[4][1].measures.length === 3 && !JSON.stringify(sent[4][1]).includes(tmp) && !('rec' in sent[4][1].measures[0]));
 
 // The quiz, against a fake server.
 const fakeFetch = globalThis.fetch;
@@ -196,6 +235,7 @@ check('the Lab button is in the left pane, hidden until the switch is on', /id="
 check('the switch is under How Bob works, Brains, off unless turned on', /sswitch\('computerLab', settings\.computerLab === true, 'Show the Computer Science Lab'/.test(cellar) && /Off unless you turn it on/.test(cellar.split("sswitch('computerLab'")[1].slice(0, 600)));
 check('a small replicant matrix sees the switch greyed out with the reason', /computerLabRoom/.test(cellar));
 check('the page uses real radio buttons and checkboxes with labels', /type="radio"/.test(page) && /type="checkbox"/.test(page) && /<label/.test(page));
+check('the page has the template picker, Measure and Compare with real header cells', /Start from a template/.test(page) && /Measure before making the running files/.test(page) && /Save as CSV/.test(page) && /Save as JSON/.test(page) && /<th scope="col">Difference<\/th>/.test(page));
 check('the page uses the reviewed words', ['Teach it back', 'Make it one file', 'Make the running files', 'Take out sight', 'Take out hearing', 'Show the recipe', 'Use in Bob', 'Test and use'].every((w) => page.includes(w)));
 check('the rented parts are shown as later, not offered', /Lab 2/.test(page) && !/\/api\/rent/.test(page));
 check('the slider has a number box beside it', /type="range"[\s\S]{0,400}type="number"|type="number"[\s\S]{0,400}type="range"/.test(page));

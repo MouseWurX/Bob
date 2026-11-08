@@ -4,6 +4,17 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.142
+
+The Computer Science Lab, part 1b: start from a template, measure before making the running files, and compare brains side by side, with the numbers saved as data.
+
+- **Start from a template.** A new first line on the Lab page fills steps 2 to 5 from a recipe I've used before: **Lab local cut** and **Plain cut** run here. **Coverage cut and heal**, **Train the teacher** and **Learn from outside traces** need a rented card, so they're greyed out with the reason (renting is Lab 2), and **Show the recipe** prints them as a Forge plan. **Merge experts** and **Layer or width cut** are listed as not built yet. Every box can still be changed. The templates ship with Bob (`public/lab-templates.js`), so they work offline.
+- **Measure before making the running files** (recommended, under Make the running files): llama-imatrix measures the cut brain itself on your lessons, and llama-quantize uses that measurement, so Q4 and Q3 files lose less. It's measured on the cut file, not the brain it came from, because the expert counts change in a cut.
+- **A measurement record for every Lab test.** `measure.json` beside the new brain, and `measure-parent.json` for the brain it came from: the file's sha256, file type, experts per layer, size, template, what it was made from, the four test scores, words a second and reading speed, and the engine (it says Brain Engine, Bob's Lab engine: a version of llama.cpp that can switch experts off, when the test server is that engine). Missing parts are left out, never zeroed. No file paths, host names or people.
+- **Compare**, under Lab jobs: tick two or more tested brains to see one table with real header cells, and a **Difference** column (the second minus the first, signed, with a percent) when there are two. **Save as CSV** and **Save as JSON** write to the Lab's compare folder. Saving only works on this replicant matrix; on another replicant matrix you can look but not save.
+- Help: the Lab page covers templates, Measure and Compare. `test/run-lab-test.js`: 95 checks.
+- Phone (Bob for Android): nothing changes; there's no Lab on the phone.
+
 ## 1.5.141
 
 The Computer Science Lab, part 1: make your own brain from one on this replicant matrix, for free, behind a switch that is off. And the Bob-Net heading opens Bob-Net settings.
