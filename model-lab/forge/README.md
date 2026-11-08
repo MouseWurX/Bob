@@ -98,3 +98,5 @@ deletes the pod, and the loss is the time spent (a few dollars).
 - Kept on the network volume as well as the PC: the whole merged lesson set and its parts (`lessons/<key>/`), every log and report of the run (`runs/<run>-<time>/`), beside the teacher scores (`teacher-cache/<key>/`) and the saved kernel wheels. The owner's rule: every input and output of a run is kept.
 - `extra_lessons` entries may name a `.jsonl` file instead of a folder (the toolsets.json beside it is used), for sets whose chosen file is not `lessons.jsonl`.
 - Untested on a pod, like build 15. bash -n and node --check pass; the merge was run on two folders with the same sets under different file names and gave the same bytes.
+
+- **Brain cards.** `export.py` writes a `<file>.bob.json` beside every GGUF (what the brain is, where it was cut from, experts kept, jobs, size), with no paths or names in it. `bob-card.mjs` adds the home benchmark block afterwards. Bob's catalogue reads the card when the GGUF is added as an own brain and files it under its jobs.

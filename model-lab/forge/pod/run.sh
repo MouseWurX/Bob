@@ -216,7 +216,7 @@ PY
 )
     if [ -n "$MISSING" ] && [ -d $W/healed-$NAME ] && [ -f $S/llama-ready ]; then
       status export "$NAME: adding the $MISSING files"
-      python3 export.py --model $W/healed-$NAME --out $OUT/$NAME --name "$NAME" --nickname "$NICK" --llama $S/llama.cpp --quants "$MISSING" --merge || echo "$NAME top-up failed (the earlier files stand)"
+      python3 export.py --model $W/healed-$NAME --out $OUT/$NAME --name "$NAME" --nickname "$NICK" --teacher "$(plan "['teacher']")" --llama $S/llama.cpp --quants "$MISSING" --merge || echo "$NAME top-up failed (the earlier files stand)"
       status ready "$NAME: $MISSING added"
     fi
     echo "$NAME already done"; continue
@@ -278,10 +278,10 @@ PY
   status export "$NAME: making the GGUF files"
   for i in $(seq 1 90); do [ -f $S/llama-ready ] || [ -f $S/llama-failed ] && break; sleep 20; done
   if [ -f $S/llama-ready ]; then
-    python3 export.py --model $W/healed-$NAME --out $OUT/$NAME --name "$NAME_OUT" --nickname "$NICK" --llama $S/llama.cpp --quants $QUANTS || die "$NAME export"
+    python3 export.py --model $W/healed-$NAME --out $OUT/$NAME --name "$NAME_OUT" --nickname "$NICK" --teacher "$(plan "['teacher']")" --jobs "$(plan ".get('jobs','bob,deep,tinker,reviewer,office,ledger,scout')")" --llama $S/llama.cpp --quants $QUANTS || die "$NAME export"
   else
     echo "llama-quantize unavailable: exporting BF16 GGUF only (bigger download; quantize on the PC with llama-quantize)"
-    python3 export.py --model $W/healed-$NAME --out $OUT/$NAME --name "$NAME_OUT" --nickname "$NICK" --llama $S/llama.cpp --quants none --keep-bf16 || die "$NAME export"
+    python3 export.py --model $W/healed-$NAME --out $OUT/$NAME --name "$NAME_OUT" --nickname "$NICK" --teacher "$(plan "['teacher']")" --llama $S/llama.cpp --quants none --keep-bf16 || die "$NAME export"
   fi
   status ready "$NAME_OUT ready to download"; unset RAW
   # free disk: keep only the newest healed Bob (the next rung is cut from it)
