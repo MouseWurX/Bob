@@ -1,6 +1,6 @@
 # Test results
 
-Measurements of Bob and its brains, newest first. Every test ran on one machine, the **replicant matrix**:
+Measurements of Bob and its brains, newest first. Unless a file says otherwise, every test ran on one machine, the **replicant matrix**:
 
 | Part | Spec |
 |---|---|
@@ -14,6 +14,7 @@ Your numbers will differ on other hardware. Small samples are noted in each file
 
 | Date | Result |
 |---|---|
+| 2026-11-04 | [Bob-Net: first live run between two replicant matrices](2026-11-04-bob-net-first-live-run.md) |
 | 2026-11-04 | [Engine check: every engine and brain](2026-11-04-engine-check.md) |
 | 2026-11-04 | [Why the first reply after a load is slow](2026-11-04-first-reply-warm-up.md) |
 | 2026-11-04 | [Hardware check and speed test](2026-11-04-hardware-check-and-speed-test.md) |
