@@ -19,18 +19,26 @@ json.dump(st,open(p,"w"))
 PY
 echo "== $(date -u +%H:%M:%S) $*"; }
 die() { status failed "$*"; echo "FAILED: $*"; exit 1; }
-# publish <out dir> <bob name> <nickname> (build 17): the GGUF files, their brain cards and a model card go to Hugging Face straight from
-# the card (plan.publish = {"user": "<account>", "private": true}); the PC then downloads only the small files. Needs in/hf-token from the PC.
-# Rule: never say the owner's name, host, budget or paths in the model card; the brain card already keeps to that.
-publish() {
-  local PUB; PUB=$(plan ".get('publish')"); [ -z "$PUB" ] && return 0
-  [ -s $IN/hf-token ] || { echo "publish: no Hugging Face token came from the PC; $2's files stay for download"; return 0; }
-  local REPO="$(plan "['publish']['user']")/$2${3:+-$3}"; local PRIV=""; [ "$(plan "['publish'].get('private',True)")" = "True" ] && PRIV="--private"
-  python3 - $OUT/$1 "$2" "$3" "$REPO" "$(plan "['teacher']")" <<'PY'
-import json,sys,glob,os; d,name,nick,repo,teacher=sys.argv[1:6]
-cards=[json.load(open(f)) for f in sorted(glob.glob(f"{d}/*.bob.json"))]
-c=cards[0] if cards else {}
+# --- Hugging Face from the card (build 17). The owner's rules: every output is kept on the volume; the odds may go up as a PRIVATE
+# dataset; NO Bob goes up until he has been tested at home and the owner lists him in plan.publish.models. Then the next run uploads
+# him from the volume. The token comes from the PC as in/hf-token and is never written anywhere else. No owner name, host or path in a card.
+hf_ok() { [ -n "$(plan ".get('publish')")" ] && [ -s $IN/hf-token ]; }
+publish_dir() {   # <local dir> <repo> <what> <model|dataset> <path in repo> [include globs...]
+  local D=$1 REPO=$2 WHAT=$3 TYPE=$4 SUB=$5; shift 5; local INC=(); for g in "$@"; do INC+=(--include "$g"); done
+  local PRIV=""; [ "$(plan "['publish'].get('private',True)")" = "True" ] && PRIV="--private"
+  status publish "$WHAT: uploading to Hugging Face ($REPO, private)"
+  if HF_TOKEN=$(cat $IN/hf-token) hf upload "$REPO" "$D" "$SUB" --repo-type $TYPE $PRIV "${INC[@]}" --commit-message "$WHAT from Bob's Forge" > $D/publish.log 2>&1; then
+    echo "$WHAT is on Hugging Face (private): https://huggingface.co/$( [ $TYPE = dataset ] && echo datasets/ )$REPO"; return 0
+  else echo "$WHAT: upload failed (see publish.log)"; tail -3 $D/publish.log; return 1; fi
+}
+write_model_card() {   # <dir with .bob.json cards> <name> <nickname>
+  python3 - "$1" "$2" "$3" "$(plan "['teacher']")" <<'PY'
+import json,sys,glob; d,name,nick,teacher=sys.argv[1:5]
+cards=[json.load(open(f)) for f in sorted(glob.glob(f"{d}/*.bob.json"))]; c=cards[0] if cards else {}
 rows="\n".join(f"| `{x['file']}` | {x['bytes']/1e9:.1f} GB | about {x.get('vramGB','?')} GB of card memory |" for x in cards)
+b=c.get("benchmark",{}); sc=b.get("scores",{}); base=b.get("baseline",{}).get("scores",{})
+bench=("\n## Home benchmarks (" + b.get("date","") + ")\n\n| Test | " + name + " | " + b.get("baseline",{}).get("name","base") + " |\n|---|---|---|\n" +
+       "\n".join(f"| {k} | {v} | {base.get(k,'')} |" for k,v in sc.items()) + "\n\nThe project's own tests on one machine, for comparing Bobs with each other and with the model they came from, not for leaderboards.\n") if sc else ""
 md=f"""---
 license: apache-2.0
 base_model: {teacher}
@@ -43,7 +51,7 @@ tags: [bob, gguf, mixture-of-experts, tool-use]
 
 Made by [Bob's Forge](https://github.com/MouseWurX/Bob/blob/main/docs/FORGE-JOURNAL.md) from [{teacher}](https://huggingface.co/{teacher})
 ({c.get('expertsKept','all')} experts kept per layer, about {c.get('params','?')} B parameters, {c.get('activeParams','?')} B active per word).
-Method, numbers and logs are in the Forge journal; the home benchmarks are added to the `.bob.json` card beside each file when they are run.
+Method, numbers and logs are in the Forge journal.
 
 ## Files
 
@@ -52,7 +60,7 @@ Method, numbers and logs are in the Forge journal; the home benchmarks are added
 {rows}
 
 Each GGUF has a `.bob.json` card beside it that Bob's catalogue reads when you add the file as your own brain.
-
+{bench}
 ## Licence and credit
 
 Apache 2.0, as the base model (Alibaba's Qwen team). The lessons it learned are Bob's own lesson sets (CC BY-SA 4.0) plus
@@ -61,18 +69,41 @@ the project is not affiliated with the author.
 """
 open(f"{d}/README.md","w").write(md)
 PY
-  status publish "$2: uploading the GGUF files to Hugging Face ($REPO)"
-  if HF_TOKEN=$(cat $IN/hf-token) hf upload "$REPO" $OUT/$1 . --repo-type model $PRIV --include "*.gguf" --include "*.bob.json" --include "README.md" --commit-message "$2 from Bob's Forge" > $OUT/$1/publish.log 2>&1; then
-    python3 - $OUT/$1/$2-files.json.pending "$REPO" <<'PY'
+}
+listed_for_publish() { python3 -c "import json,sys; sys.exit(0 if '$1' in (json.load(open('$IN/plan.json')).get('publish') or {}).get('models',[]) else 1)"; }
+# keep_bob <out dir> <name> <nickname>: after export. GGUF files + cards go to the volume; quants not in plan.download_quants stay there
+# (the PC skips them); the Bob is uploaded only if the owner listed him in publish.models (a tested Bob from an earlier run, or a redo).
+keep_bob() {
+  local D=$OUT/$1 NAME=$2 NICK=$3 FJ=$OUT/$1/$2-files.json.pending
+  if [ "$S" != "$W" ]; then mkdir -p $S/bobs/$1/gguf && cp $D/*.gguf $D/*.bob.json $S/bobs/$1/gguf/ 2>/dev/null && echo "$NAME's GGUF files and cards kept on the volume (bobs/$1/gguf)"; fi
+  [ -f "$FJ" ] && python3 - "$FJ" "$1" "$(plist ".get('download_quants',[])")" "$S" "$W" <<'PY'
+import json,sys; p,d,dq,S,W=sys.argv[1:6]; j=json.load(open(p)); dq=[q for q in dq.split(",") if q]
+for f in j["files"]:
+    if f["file"].endswith(".gguf") and dq and S!=W and not any(f["file"].endswith(f"-{q}.gguf") for q in dq): f["volume"]=f"bobs/{d}/gguf/{f['file']}"
+json.dump(j,open(p,"w"),indent=1)
+PY
+  if hf_ok && listed_for_publish "$NAME"; then
+    write_model_card $D "$NAME" "$NICK"
+    publish_dir $D "$(plan "['publish']['user']")/$NAME${NICK:+-$NICK}" "$NAME" model . "*.gguf" "*.bob.json" "README.md" && [ -f "$FJ" ] && python3 - "$FJ" "$(plan "['publish']['user']")/$NAME${NICK:+-$NICK}" <<'PY'
 import json,sys; p=sys.argv[1]; j=json.load(open(p))
 for f in j["files"]:
     if f["file"].endswith(".gguf"): f["published"]=f"https://huggingface.co/{sys.argv[2]}/blob/main/{f['file']}"
 j["repo"]=sys.argv[2]; json.dump(j,open(p,"w"),indent=1)
 PY
-    echo "$2 published at https://huggingface.co/$REPO (the PC skips those downloads)"
-  else echo "$2: upload failed (see $1/publish.log); the files stay for download"; tail -3 $OUT/$1/publish.log; fi
+  fi
+  return 0
 }
-# export.py writes <name>-files.json.pending; the PC only starts downloading once it is renamed, after any publishing
+# publish_tested: Bobs the owner listed in publish.models that sit on the volume from an earlier run (tested at home since) go up now
+publish_tested() {
+  hf_ok || return 0
+  for n in $(plist "['publish'].get('models',[])" | tr , ' '); do
+    [ -d $S/bobs/$n/gguf ] || continue; [ "$n" = "${TNAME:-}" ] && continue
+    local NICK; NICK=$(python3 -c "import json,glob; c=sorted(glob.glob('$S/bobs/$n/gguf/*.bob.json')); print(json.load(open(c[0])).get('nickname','') if c else '')")
+    write_model_card $S/bobs/$n/gguf "$n" "$NICK"
+    publish_dir $S/bobs/$n/gguf "$(plan "['publish']['user']")/$n${NICK:+-$NICK}" "$n" model . "*.gguf" "*.bob.json" "README.md" || true
+  done
+}
+# export.py writes <name>-files.json.pending; the PC only starts downloading once it is renamed, after keep_bob has marked the files
 release_files() { [ -f $OUT/$1/$2-files.json.pending ] && mv $OUT/$1/$2-files.json.pending $OUT/$1/$2-files.json; return 0; }
 plan() { python3 -c "import json,sys; p=json.load(open('$IN/plan.json')); v=p$1; print(json.dumps(v) if isinstance(v,(dict,list)) else ('' if v is None else v))" || echo "plan lookup failed: $1" >&2; }
 plist() { plan "$1" | python3 -c "import json,sys; d=sys.stdin.read().strip(); print(','.join(json.loads(d)) if d else '')"; }   # a list field as a,b,c
@@ -218,7 +249,7 @@ if [ -n "$TT" ]; then
   if [ -f $S/llama-ready ]; then
     python3 export.py --model $TEACHER_DIR --out $OUT/$TNAME --name "$TNAME" --nickname "$TNICK" --teacher "$TEACHER" --pending \
       --what "The full Qwen taught every one of Bob's lessons, no cut: the biggest Bob and the teacher of every smaller one." --llama $S/llama.cpp --quants $(plan ".get('quants','Q4_K_M')") || die "$TNAME export"
-    publish $TNAME $TNAME "$TNICK"
+    keep_bob $TNAME $TNAME "$TNICK"
   else echo "llama tools unavailable: $TNAME stays as safetensors on the volume (no GGUF this run)"; fi
   release_files $TNAME $TNAME
   status ready "$TNAME ready"
@@ -295,7 +326,23 @@ for f in ("teacher.pt","lessons-tok.pt","teacher-key.txt"):
 json.dump({"name":"teacher","key":sys.argv[2],"files":files},open(f"{d}/teacher-files.json","w"))
 PY
 status teacher "teacher scores ready ($KEY); the PC downloads them while the rungs run"
+# the odds may go to Hugging Face as a PRIVATE dataset (plan.publish.odds), one folder per lesson-set key
+if hf_ok && [ "$(plan "['publish'].get('odds','')")" = "True" ]; then
+  mkdir -p $W/odds-up && cp $TPT $CACHE $TDIR/teacher-key.txt $W/odds-up/ && python3 - $W/odds-up "$KEY" "$TEACHER_ID" "$(wc -l < $IN/lessons.jsonl)" <<'PY'
+import sys; d,key,tid,n=sys.argv[1:5]
+open(f"{d}/README.md","w").write(f"""# Teacher odds for lesson set {key}
 
+What the teacher ({tid.split('+')[0]}{' , trained' if '+' in tid else ''}) thinks at every answer word of {n} lessons: the top-32 next-word
+log-odds (`teacher.pt`) and the tokenised lessons they belong to (`lessons-tok.pt`). Bob's Forge heals a cut Bob against these
+instead of redoing the teacher pass. Made by [Bob's Forge](https://github.com/MouseWurX/Bob/blob/main/docs/FORGE-JOURNAL.md).
+The lessons themselves are in the `bob-lessons` dataset (CC BY-SA 4.0); the odds carry the base model's licence (Apache 2.0).
+""")
+PY
+  publish_dir $W/odds-up "$(plan "['publish']['user']")/bob-odds" "teacher odds $KEY" dataset "$KEY" || true
+  rm -rf $W/odds-up
+fi
+
+publish_tested
 # --- the rungs ---
 N=$(plan "['rungs'].__len__()")
 for i in $(seq 0 $((N-1))); do
@@ -373,7 +420,7 @@ PY
   for i in $(seq 1 90); do [ -f $S/llama-ready ] || [ -f $S/llama-failed ] && break; sleep 20; done
   if [ -f $S/llama-ready ]; then
     python3 export.py --model $W/healed-$NAME --out $OUT/$NAME --name "$NAME_OUT" --nickname "$NICK" --teacher "$(plan "['teacher']")" --jobs "$(plan ".get('jobs','bob,deep,tinker,reviewer,office,ledger,scout')")" --llama $S/llama.cpp --quants $QUANTS --pending || die "$NAME export"
-    publish $NAME "$NAME_OUT" "$NICK"
+    keep_bob $NAME "$NAME_OUT" "$NICK"
   else
     echo "llama-quantize unavailable: exporting BF16 GGUF only (bigger download; quantize on the PC with llama-quantize)"
     python3 export.py --model $W/healed-$NAME --out $OUT/$NAME --name "$NAME_OUT" --nickname "$NICK" --teacher "$(plan "['teacher']")" --llama $S/llama.cpp --quants none --keep-bf16 || die "$NAME export"

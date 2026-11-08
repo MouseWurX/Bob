@@ -151,6 +151,11 @@
  "publish": {
   "user": "MouseWurX",
   "private": true,
-  "note": "GGUF files are uploaded from the card to Hugging Face as private repos (<user>/<name>-<nickname>); the owner makes them public after a look. The token is forge/hf-token.txt on the PC, never in a plan or the repo."
- }
+  "odds": true,
+  "models": [],
+  "note": "The owner, 8 Nov: lessons and odds may go to Hugging Face right away as private repos; NO untested Bob. odds go up as a private dataset; Bobert's Q4 file comes to the PC for testing, his Q3 stays on the drive; no Bob is uploaded until tested and listed in publish.models. Token = forge/hf-token.txt on the PC (gitignored), never in a plan."
+ },
+ "download_quants": [
+  "Q4_K_M"
+ ]
 }

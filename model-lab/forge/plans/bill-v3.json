@@ -158,6 +158,12 @@
  "teacher_model": "bobs/35Bob/model",
  "publish": {
   "user": "MouseWurX",
-  "private": true
- }
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "The owner, 8 Nov: lessons and odds may go to Hugging Face right away as private repos; NO untested Bob. list a tested Bob here (e.g. \"35Bob\") and this run uploads him from the drive as a private repo; Bill himself comes to the PC for testing first. Token = forge/hf-token.txt on the PC (gitignored), never in a plan."
+ },
+ "download_quants": [
+  "Q4_K_M"
+ ]
 }
