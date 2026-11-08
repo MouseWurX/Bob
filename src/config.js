@@ -285,10 +285,12 @@ const HEX = /^#[0-9a-f]{6}$/i;
 const THEME_ID = /^[a-z0-9-]{2,40}$/;
 const COLOR_KEYS = ['bg', 'panel', 'card', 'you', 'line', 'text', 'muted', 'accent', 'onAccent', 'good', 'warn', 'bad', 'spriteBg'];
 const FONT_IDS = ['system', 'plex', 'mono', 'serif', 'rounded'];
+const OLD_THEME_IDS = { system: 'moondust', slate: 'moondust', midnight: 'nightside', 'mousehole-dark': 'otterbend', 'mousehole-light': 'homestead', paper: 'sandbar', 'mousewurx-light': 'drydock', 'mousewurx-dark': 'drydock-night' }; // mirrors public/themes.js OLD_IDS
 export function cleanStyle(st) {
   const out = {};
   if (!st || typeof st !== 'object') return out;
-  if (typeof st.theme === 'string' && THEME_ID.test(st.theme)) out.theme = st.theme;
+  // 1.5.137: themes were renamed after worlds; old saved names (and the dropped Match system) land on the new ones.
+  if (typeof st.theme === 'string' && THEME_ID.test(st.theme)) out.theme = OLD_THEME_IDS[st.theme] || st.theme;
   if (['on', 'system', 'off'].includes(st.motion)) out.motion = st.motion;
   if (typeof st.openNowOnNeed === 'boolean') out.openNowOnNeed = st.openNowOnNeed;
   if (Array.isArray(st.custom)) {

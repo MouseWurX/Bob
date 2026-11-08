@@ -1,9 +1,9 @@
-// The Style page: themes (MouseHole, MouseWurX, Bob's own, yours), a "make your own"
+// The Style page: themes (Bob's own, the worlds, high contrast, MouseWurX, yours), a "make your own"
 // editor with a live preview, and Bob's look, including every avatar in avatars.js.
 import { LOOKS, LOOK_ID, setLook, drawBob } from './bob-sprite.js';
 import { tip } from './tips.js';
 import { AVATAR_GROUPS, avatar } from './avatars.js';
-import { PRESETS, TOKENS, FONTS, findTheme, resolve, fullColors, applyStyle, applyTheme, swatch, isLight } from './themes.js';
+import { PRESETS, TOKENS, FONTS, DEFAULT_THEME, themeId, findTheme, resolve, fullColors, applyStyle, applyTheme, swatch, isLight } from './themes.js';
 import { esc } from './util.js';
 import { characterHtml, mountCharacter, BOB_BODIES, partsOf } from './character.js';
 
@@ -15,7 +15,7 @@ export function createStylePage({ api, redraw, flash }) {
   let makingParts = null;
 
   function themeButton(t, style) {
-    const on = (style.theme || 'inn') === t.id;
+    const on = themeId(style.theme || DEFAULT_THEME) === t.id;
     return `<button role="radio" aria-checked="${on}" data-theme="${esc(t.id)}">
       <span class="swatch">${swatch(t).map((c) => `<i style="background:${c}"></i>`).join('')}</span>
       <span><strong>${esc(t.name)}</strong>${t.what ? `<br><small>${esc(t.what)}</small>` : ''}</span></button>`;
@@ -54,7 +54,7 @@ export function createStylePage({ api, redraw, flash }) {
 
   function html(settings) {
     const style = settings.style || {};
-    const groups = [['Bob', 'Bob'], ['MouseHole', 'From MouseHole'], ['MouseWurX', 'From the MouseWurX website']];
+    const groups = [['Bob', 'Bob'], ['Worlds', 'Worlds and places'], ['Access', 'High contrast'], ['MouseWurX', 'From the MouseWurX website']];
     const mine = style.custom || [];
     const motion = style.motion || 'on';
     const opt = (key, val, label, on) => `<button role="radio" aria-checked="${on}" aria-pressed="${on}" data-${key}="${val}">${label}</button>`;
@@ -136,7 +136,7 @@ export function createStylePage({ api, redraw, flash }) {
       if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Sure? Click again to delete'; return true; }
       const custom = (style.custom || []).filter((x) => x.id !== draft.id);
       draft = null;
-      await save(settings, { custom, theme: style.theme && custom.some((x) => x.id === style.theme) ? style.theme : 'inn' });
+      await save(settings, { custom, theme: style.theme && custom.some((x) => x.id === style.theme) ? style.theme : DEFAULT_THEME });
       redraw();
       return true;
     }

@@ -241,7 +241,7 @@ try {
     [{ catName: 'Patches' }, (g) => g.catName === 'Patches'],
     [{ look: 'f-3' }, (g) => g.look === 'f-3'],
     [{ look: 'pc-12' }, (g) => g.look === 'pc-12'],
-    [{ style: { theme: 'midnight' } }, (g) => g.style.theme === 'midnight'],
+    [{ style: { theme: 'midnight' } }, (g) => g.style.theme === 'nightside'], // 1.5.137: old theme names are migrated on save
     [{ tts: { voice: 'bm_george', speed: 1.2 } }, (g) => g.tts.voice === 'bm_george' && g.tts.speed === 1.2],
     [{ session: 'office' }, (g) => g.session.id === 'office'],
     [{ session: 'normal' }, (g) => g.session.id === 'normal'],
