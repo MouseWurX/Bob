@@ -14,6 +14,15 @@ Bob's icon follows his look, and he lives in the tray, without a trip to Setting
 - **Help:** Bob in the tray and the FAQ "Can Bob's icon show the look I picked?" rewritten for the new defaults; glossary entry *Taskbar icon*; settings inventory rows updated.
 - `test/run-tray-test.js`: both switches start on, only `false` turns one off, a parts-built look becomes an icon, the Help and inventory say so (36 checks).
 
+## 1.5.132
+
+The naughty list: uncensored community remixes in the Brain catalogue, behind a switch that is off.
+
+- **😈 The naughty list.** The Brain catalogue has a toggle at the top, **😇 Well behaved / 😈 Naughty list**. Turn on **Show the naughty list** (there, or in Settings, How Bob works, Brains) and the 😈 side lists six remixes other people made from Qwen and Gemma brains with the refusals cut out ("heretic" or "abliterated" builds): Qwen3.6 35B-A3B Heretic, Qwen3.6 27B Heretic, Qwen 3.8 27B Heretic, Gemma 4 26B Heretic, Gemma 4 31B Heretic and Qwen3.5 9B Heretic. Each one's **i** says who remixed it and from what, every file is pinned to an exact Hugging Face commit, and they all see pictures. They are not Alibaba's or Google's releases, they answer without refusing, and they can be a little rougher than the originals, so Bob never recommends one. With the switch off (the default) they are listed nowhere.
+- **Community marker.** Catalogue entries can now say who made a build and from what, as an explicit marker rather than a guess from the name; a well-behaved community build gets a plain **Community** tag.
+- Help: the catalogue page, the Settings row, an FAQ "What's the naughty list?" and glossary lines for Naughty list, Abliterated (heretic) and Community build. 23 new checks in `test/run-catalogue-test.js`.
+- Phone (Bob for Android): nothing changes; the phone uses whatever brain the PC's Bob has equipped.
+
 ## 1.5.131
 
 One wording fix in Equip Bob and the brain menus, so Bob stops looking like he claims other people's models.

@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { catalogueHtml, catJobs, modelsFor, familyOf, FAMILIES } from '../public/catalogue.js';
+import { catalogueHtml, catJobs, modelsFor, familyOf, FAMILIES, isNaughty, isCommunity, visibleModels, communityLine, NAUGHTY_WARNING } from '../public/catalogue.js';
 import { deviceFit, sourceOf, pickFor } from '../public/fit.js';
 import { allSlots, isActive } from '../public/equip.js';
 import { saveNameOf } from '../src/models.js';
@@ -96,6 +96,43 @@ check('each machine answer is said once (grouped), and Active is explained once 
 {
   check('a saved E4B Gaming brain is refused', !('gaming' in (mergeSettings({}, { sessionBrains: { gaming: 'gemma4:e4b' } }).sessionBrains || {})));
   check('an old settings file with E4B in Gaming falls back to Qwen3 4B Instruct 2507', sessionBrains({ sessionBrains: { gaming: 'gemma4:e4b' } }).gaming === 'qwen3-4b' && sessionBrains({ sessionBrains: { gaming: 'qwen3-4b' } }).gaming === 'qwen3-4b');
+}
+
+// ---- 1.5.132: the naughty list (uncensored community builds) and the community marker ----
+{
+  const NAUGHTY = ['qwen3.6-35b-a3b-heretic', 'qwen3.6-27b-heretic', 'qwen3.8-27b-heretic', 'gemma4-26b-heretic', 'gemma4-31b-heretic', 'qwen3.5-9b-heretic'];
+  check('the six uncensored remixes are in the list', NAUGHTY.every((id) => byId(id)), NAUGHTY.filter((id) => !byId(id)).join(','));
+  check('each is marked naughty by an explicit field, not by its name', NAUGHTY.every((id) => byId(id).naughty === true && isNaughty(byId(id))) && !isNaughty({ name: 'Qwen Heretic Uncensored' }));
+  check('every naughty entry is a community build that says who made it and from what', models.filter(isNaughty).every((m) => isCommunity(m) && m.community.by && m.community.base && m.community.baseBy));
+  check('no stock model is marked naughty or community', !['gemma4-26b', 'qwen3.6-35b-a3b', 'qwen3.6-27b', 'qwen3.8-27b', 'qwen3.5-9b'].some((id) => isNaughty(byId(id)) || isCommunity(byId(id))));
+  check('naughty entries are never Bob\'s pick (trial) and sit under their base family (Qwen or Gemma), named after the base', models.filter(isNaughty).every((m) => m.trial && m.pick === 'optional' && ['Qwen', 'Gemma'].includes(m.family) && FAMILIES[m.family]) && ['qwen3.6-35b-a3b', 'qwen3.6-27b', 'qwen3.8-27b', 'gemma4-26b', 'qwen3.5-9b'].every((id) => byId(`${id}-heretic`).name === `${byId(id).name} Heretic` && byId(`${id}-heretic`).family === byId(id).family));
+  check('each naughty brain says what it is and warns in its blurb', models.filter(isNaughty).every((m) => /refusals cut out/.test(m.what) && /without refusing/.test(m.what)));
+  check('every naughty brain is Q4 or better and sees pictures through a picture reader', models.filter(isNaughty).every((m) => /Q4_K_[MS]|Q4_0/.test(m.files[0].url) && m.files.some((f) => f.role === 'mmproj')));
+  check('a shared picture reader is the very same file as the stock one', byId('qwen3.6-35b-a3b-heretic').files[1].sha256 === byId('qwen3.6-35b-a3b').files[1].sha256 && byId('gemma4-26b-heretic').files[1].sha256 === byId('gemma4-26b').files[1].sha256 && byId('qwen3.5-9b-heretic').files[1].sha256 === byId('qwen3.5-9b').files[1].sha256);
+  check('the credit line names the remixer, the base and its maker', /remix by llmfan46 from Alibaba's Qwen3.6 35B-A3B; files packed by mradermacher\. Not a release by Alibaba\./.test(communityLine(byId('qwen3.6-35b-a3b-heretic'))) && communityLine(byId('gemma4-26b')) === '');
+  // Off (the default): nowhere.
+  check('with the switch off, visibleModels drops every naughty entry and keeps the rest', !visibleModels(models, false).some(isNaughty) && visibleModels(models, false).length === models.length - NAUGHTY.length && visibleModels(models, true).length === models.length);
+  const off = catalogueHtml({ ...ctx, showUnsuited: true });
+  check('with the switch off, the catalogue lists no naughty brain, in any job', !NAUGHTY.some((id) => off.includes(`id="cat-`) && new RegExp(`id="cat-[a-z]+-${id.replace(/\./g, '\\.')}"`).test(off)));
+  check('the toggle shows, Naughty list greyed, with "Show the naughty list" and the warning in a tip', /data-naughtyview="off"[^>]*>😇 Well behaved/.test(off) && /aria-checked="false" data-naughtyview="on" aria-disabled="true">😈 Naughty list \(6\)/.test(off) && /data-naughtyon>Show the naughty list/.test(off) && off.includes('refusals cut out'));
+  // On, Well behaved side: still no naughty brain listed, toggle live.
+  const onWell = catalogueHtml({ ...ctx, showUnsuited: true, naughtyOn: true });
+  check('switch on, Well behaved side: no naughty brain listed, no greyed button, no "Show the naughty list" link', !/cat-[a-z]+-qwen3\.6-35b-a3b-heretic/.test(onWell) && !/aria-disabled/.test(onWell) && !/data-naughtyon/.test(onWell));
+  // On, Naughty list side: only the naughty ones, the warning in Bob's words, no stock model, no Other brains.
+  const on = catalogueHtml({ ...ctx, showUnsuited: true, naughtyOn: true, naughtyView: true });
+  check('Naughty list side lists all six and nothing else', NAUGHTY.every((id) => new RegExp(`id="cat-[a-z]+-${id.replace(/\./g, '\\.')}"`).test(on)) && !/id="cat-[a-z]+-gemma4-26b"/.test(on) && !/id="cat-[a-z]+-qwen3\.6-35b-a3b"/.test(on) && !/Other brains on this replicant matrix/.test(on));
+  check('the warning is at the top in Bob\'s words with a Help link, and no job is empty', on.includes('naughty-note') && on.includes('what it says is on you') && /data-help="faq-naughty"/.test(on) && !/Nothing in Bob's list for this job yet/.test(on) && !/catjob-gaming/.test(on));
+  check('each naughty row wears the 😈 tag, and its tip credits the remixer', /cat-tinker-qwen3\.6-35b-a3b-heretic[^]*?😈 Naughty list<\/span>/.test(on) && /Community build: uncensored remix by llmfan46/.test(on));
+  check('a naughty brain is never ★ Recommended, even on its own list', !/★ Recommended/.test(on));
+  check('the toggle on the Naughty side is checked and not greyed', /aria-checked="true" data-naughtyview="on">😈 Naughty list/.test(on) && !/aria-disabled/.test(on));
+  check('asking for the Naughty side with the switch off still shows Well behaved', !/cat-[a-z]+-qwen3\.6-35b-a3b-heretic/.test(catalogueHtml({ ...ctx, showUnsuited: true, naughtyView: true })));
+  check('the warning says they are not the makers\' releases and that the answers are on you', /not Alibaba's or Google's releases/.test(NAUGHTY_WARNING) && /what it says is on you/.test(NAUGHTY_WARNING));
+  // The setting itself.
+  check('naughtyList is a known setting, off unless true', mergeSettings({}, { naughtyList: 'yes' }).naughtyList === false && mergeSettings({}, { naughtyList: true }).naughtyList === true && mergeSettings({}, {}).naughtyList !== true);
+  const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+  check('the Settings switch is "Show the naughty list", off unless you turn it on, and the menus skip naughty brains while off', /sswitch\('naughtyList', settings\.naughtyList === true, 'Show the naughty list', keep\('Off unless you turn it on/.test(cellar) && /naughtyOn\(\) \|\| !isNaughty\(entryOf\(data\.models, o\.value\)\)/.test(cellar));
+  const help = fs.readFileSync(new URL('../public/help-content.js', import.meta.url), 'utf8');
+  check('Help has the FAQ, the glossary lines and the Settings row', /id: 'faq-naughty'/.test(help) && /<dt>Naughty list<\/dt>/.test(help) && /<dt>Abliterated \(heretic\)<\/dt>/.test(help) && /<dt>Community build<\/dt>/.test(help) && /set\('Show the naughty list', 'Off'/.test(help));
 }
 
 // ---- llama.cpp finds a downloaded brain's picture reader ----
