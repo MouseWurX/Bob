@@ -4,7 +4,7 @@
 // question: the right tool (same tool names as the original), the right arguments too, or correctly no tool at all.
 // The original answers came from the full Qwen3.6 itself, so this measures agreement with the teacher, not truth.
 //
-// node tool-score.mjs --models "full=<path>/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf,riker=<path>/24Bob-Q4_K_M.gguf" [--lessons out\lessons]
+// node tool-score.mjs --models "full=C:\...\Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf,riker=C:\...\24Bob-Q4_K_M.gguf" [--lessons out\lessons]
 //      [--llama <folder>] [--ctx 16384] [--experts 8] [--quick] [--no-think] [--extra "--n-cpu-moe 20"]
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,6 +12,8 @@ import crypto from 'node:crypto';
 import { opts, locate, startServer, chat, stamp, readJsonl, moeShape } from './common.mjs';
 
 const o = opts({ ctx: 16384 });
+if (o.url) process.env.LAB_URL = String(o.url);   // build 18: score a brain served elsewhere (the Forge's card); --models "label=served"
+const remote = Boolean(process.env.LAB_URL);
 const L = locate(o);
 const lessonsDir = o.lessons || path.join(L.out, 'lessons');
 const HOLDOUT = 0.05;
@@ -23,7 +25,7 @@ if (o.quick) lessons = lessons.filter((_, i) => i % 5 === 0);
 if (!lessons.length) { console.error(`no held-out lessons in ${lessonsDir}`); process.exit(1); }
 const models = String(o.models || '').split(',').map((s) => s.trim()).filter(Boolean).map((s) => { const i = s.indexOf('='); return i > 0 ? { name: s.slice(0, i), file: s.slice(i + 1) } : { name: path.basename(s, '.gguf'), file: s }; });
 if (!models.length) { console.error('--models "label=path.gguf,label2=path2.gguf" is needed'); process.exit(1); }
-for (const m of models) if (!fs.existsSync(m.file)) { console.error(`${m.name}: ${m.file} not found`); process.exit(1); }
+if (!remote) for (const m of models) if (!fs.existsSync(m.file)) { console.error(`${m.name}: ${m.file} not found`); process.exit(1); }
 const extra = o.extra ? String(o.extra).split(/\s+/).filter(Boolean) : [];
 console.log(`${lessons.length} held-out lessons, ${lessons.reduce((n, l) => n + l.messages.filter((m) => m.role === 'assistant').length, 0)} assistant turns`);
 
@@ -59,7 +61,7 @@ function sameArgs(want, got) {
 }
 
 async function score(m) {
-  const shape = moeShape(m.file);
+  const shape = fs.existsSync(m.file) ? moeShape(m.file) : { key: null };
   const srv = await startServer({ server: L.server, model: m.file, mmproj: null, ctx: Number(o.ctx), extra: [...extra, ...(o.experts && shape.key ? ['--override-kv', `${shape.key}=int:${o.experts}`] : [])], logFile: path.join(L.out, 'llama-server-lab.log') });
   const r = { name: m.name, file: m.file, toolTurns: 0, rightTool: 0, rightArgs: 0, noToolTurns: 0, rightNoTool: 0, errors: 0, tps: [], misses: [] };
   const t0 = Date.now();

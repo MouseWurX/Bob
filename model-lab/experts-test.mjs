@@ -9,10 +9,12 @@ import { opts, locate, moeShape, checkFree, startServer, chat, stamp } from './c
 import { loadBob } from './bob-kit.mjs';
 
 const o = opts({ counts: '8,6,4,3,2' });
+if (o.url) process.env.LAB_URL = String(o.url);   // build 18: test a server somebody else runs (the Forge's rented card); one pass, the count it was started with
+const remote = Boolean(process.env.LAB_URL);
 const L = locate(o);
-if (!L.model) { console.error('Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf not found under <parent>/models. Pass --model.'); process.exit(1); }
-checkFree(o);
-const shape = moeShape(L.model);
+if (!L.model && !remote) { console.error('Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf not found under Agent 00\\models. Pass --model.'); process.exit(1); }
+if (!remote) checkFree(o);
+const shape = L.model && fs.existsSync(L.model) ? moeShape(L.model) : { name: process.env.LAB_MODEL_NAME || 'served brain', layers: '?', experts: 256, used: Number(String(o.counts).split(',')[0]) || 8, key: null };
 console.log(`${shape.name}: ${shape.layers} layers, ${shape.experts} experts, ${shape.used} per word (key ${shape.key})`);
 const kit = await loadBob(L.bob);
 
@@ -73,11 +75,11 @@ async function quiz(url) {
   return r;
 }
 
-const counts = String(o.counts).split(',').map(Number).filter((n) => n > 0 && n <= (shape.experts || 256));
+const counts = remote ? [Number(String(o.counts).split(',')[0]) || 8] : String(o.counts).split(',').map(Number).filter((n) => n > 0 && n <= (shape.experts || 256));
 const results = [];
 for (const n of counts) {
   console.log(`\n--- ${n} experts per word ---`);
-  const srv = await startServer({ server: L.server, model: L.model, mmproj: null, ctx: 16384, extra: ['--override-kv', `${shape.key}=int:${n}`], logFile: path.join(L.out, 'llama-server-lab.log') });
+  const srv = await startServer({ server: L.server, model: L.model, mmproj: null, ctx: 16384, extra: shape.key ? ['--override-kv', `${shape.key}=int:${n}`] : [], logFile: path.join(L.out, 'llama-server-lab.log') });
   try {
     const r = await quiz(srv.url);
     results.push({ experts: n, ...r, loadSec: srv.loadSec });

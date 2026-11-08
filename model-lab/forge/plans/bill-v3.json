@@ -104,7 +104,7 @@
   "formats"
  ],
  "strong_cover": 0.99,
- "note": "Bill v3 on his own (rental 3): rental 2 made Riker v3 with a full heal, then Bill's step failed on a run.sh bug (the plan helper could not see 'p' inside rung expressions, so keep.py got an empty --cover) and the card was deleted with the healed Riker on it (no drive). Bill (20Bob, 144 experts) is therefore cut straight from the teacher with the keep list built on the PC from rental 1's counts (keep.py --keep 144, 99% for tools/coding/formats), then healed with the same lesson set as Riker, a full pass. coverage.md and the adapter come back to the PC. Build 15: the teacher's scores (teacher.pt + lessons-tok.pt) are saved on the network volume and downloaded to the PC (out/teacher/<key>/) as soon as the pass ends, so a later run with the same lessons skips the pass; the fast kernels are built before the pass and the heal; a card is only taken in a data centre with a network volume (a new volume is made where the card is if ours are out), and the B200 is the step-up if no H200 is free after volume_wait_minutes. | 8 Nov: the nine grown skill sets and the outside sets go up from the PC with the others (about 20,000 lessons). The teacher scores come from the lessons-and-odds run (volume or PC copy), so this run should skip the pass; teacher_hours 6 is only the fallback if the key does not match. Heal 12 h, caps 16 h / $90. | 8 Nov, build 17: the teacher is Bobert (teacher_model bobs/35Bob/model on the volume, made by the lessons-bobert-odds run); Bill is cut from him and healed against his odds, which the key finds on the volume. His GGUF files go to Hugging Face (publish), not to the PC. | 8 Nov, later: heal cap raised to 18 h (one full pass over ~27,000 lessons is about 16 h at Riker's token rate; the owner's rule is a full pass or nothing); caps 24 h / $130.",
+ "note": "Bill v3 on his own (rental 3): rental 2 made Riker v3 with a full heal, then Bill's step failed on a run.sh bug (the plan helper could not see 'p' inside rung expressions, so keep.py got an empty --cover) and the card was deleted with the healed Riker on it (no drive). Bill (20Bob, 144 experts) is therefore cut straight from the teacher with the keep list built on the PC from rental 1's counts (keep.py --keep 144, 99% for tools/coding/formats), then healed with the same lesson set as Riker, a full pass. coverage.md and the adapter come back to the PC. Build 15: the teacher's scores (teacher.pt + lessons-tok.pt) are saved on the network volume and downloaded to the PC (out/teacher/<key>/) as soon as the pass ends, so a later run with the same lessons skips the pass; the fast kernels are built before the pass and the heal; a card is only taken in a data centre with a network volume (a new volume is made where the card is if ours are out), and the B200 is the step-up if no H200 is free after volume_wait_minutes. | 8 Nov: the nine grown skill sets and the outside sets go up from the PC with the others (about 20,000 lessons). The teacher scores come from the lessons-and-odds run (volume or PC copy), so this run should skip the pass; teacher_hours 6 is only the fallback if the key does not match. Heal 12 h, caps 16 h / $90. | 8 Nov, build 17: the teacher is Bobert (teacher_model bobs/35Bob/model on the volume, made by the lessons-bobert-odds run); Bill is cut from him and healed against his odds, which the key finds on the volume. His GGUF files go to Hugging Face (publish), not to the PC. | 8 Nov, later: heal cap raised to 18 h (one full pass over ~27,000 lessons is about 16 h at Riker's token rate; the owner's rule is a full pass or nothing); caps 24 h / $130. | build 18: benchmark phase (Riker rebuilt, Bobert, Bill; ~3-4 h, ~$16-21); caps 28 h / $150.",
  "extra_lessons": [
   "out/lessons-coding-2",
   "out/lessons-codefix",
@@ -142,8 +142,8 @@
    "hours": 18.0
   }
  ],
- "hours_max": 24,
- "dollars_max": 130,
+ "hours_max": 28,
+ "dollars_max": 150,
  "teacher_hours": 6.0,
  "run": "lineB-v3-bill",
  "rent_minutes": 180,
@@ -160,10 +160,43 @@
   "user": "MouseWurX",
   "private": true,
   "odds": false,
-  "models": [],
-  "note": "The owner, 8 Nov: lessons and odds may go to Hugging Face right away as private repos; NO untested Bob. list a tested Bob here (e.g. \"35Bob\") and this run uploads him from the drive as a private repo; Bill himself comes to the PC for testing first. Token = forge/hf-token.txt on the PC (gitignored), never in a plan."
+  "models": [
+   "28Bob"
+  ],
+  "note": "The owner, 8 Nov: lessons and odds may go to Hugging Face right away as private repos; NO untested Bob. list a tested Bob here (e.g. \"35Bob\") and this run uploads him from the drive as a private repo; Bill himself comes to the PC for testing first. Token = forge/hf-token.txt on the PC (gitignored), never in a plan. | 8 Nov later: 28Bob Riker is tested and approved by the owner; he is rebuilt on the card for the benchmark and uploaded from the drive."
  },
  "download_quants": [
   "Q4_K_M"
- ]
+ ],
+ "benchmark": {
+  "note": "build 18: after Bill's export the card serves each brain in turn on port 8001 and the PC runs these commands against it ({{url}} {{name}} {{out}}); Riker is rebuilt from his keep list + adapter (no 17 GB upload) and, being listed in publish.models, goes to Hugging Face from the drive with his cards and model card.",
+  "hours_each": 2,
+  "models": [
+   {
+    "name": "28Bob",
+    "nickname": "Riker",
+    "file": "rebuild",
+    "keep_file": "hf:MouseWurX/28Bob-Riker:28Bob-keep.json",
+    "adapter": "hf:MouseWurX/28Bob-Riker:28Bob-adapter.pt",
+    "cards": "hf:MouseWurX/28Bob-Riker",
+    "quant": "Q4_K_M"
+   },
+   {
+    "name": "35Bob",
+    "nickname": "Bobert",
+    "file": "volume:bobs/35Bob/gguf/35Bob-Q4_K_M.gguf",
+    "quant": "Q4_K_M"
+   },
+   {
+    "name": "20Bob",
+    "nickname": "Bill",
+    "file": "out:20Bob/20Bob-Q4_K_M.gguf",
+    "quant": "Q4_K_M"
+   }
+  ],
+  "commands": [
+   "node experts-test.mjs --url {{url}} --counts 8 --out {{out}}",
+   "node tool-score.mjs --url {{url}} --models \"{{name}}=served\" --no-think --out {{out}}"
+  ]
+ }
 }

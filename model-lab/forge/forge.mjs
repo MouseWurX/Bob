@@ -3,6 +3,7 @@
 // node forge.mjs --resume <podId> --plan ...    carry on watching a pod that is already running
 // node forge.mjs --send-plan <podId> --plan ...  send an edited plan to a running pod (quants etc. for the rungs not started yet)
 // node forge.mjs --send-token <podId> --plan ...  hand forge/hf-token.txt to a running pod (build 17)
+// plan.benchmark (build 18): after the rungs the pod serves each listed brain (rebuilt from keep list + adapter if asked) and this PC runs the plan's test commands against it
 // node forge.mjs --restart <podId> --plan ...   stop the run on a pod, upload the current code + plan, start it again (finished steps are kept)
 // node forge.mjs --status | --kill               list pods / delete every forge pod
 // node forge.mjs --places [cards]               where the wanted cards are in stock with storage (read-only), and your network volumes
@@ -172,7 +173,7 @@ async function rent() {
           name: `bob-forge-${plan.rungs[0]?.name || 'counts'}`, imageName: plan.image || 'vllm/vllm-openai:v0.28.0', cloudType: 'SECURE',
           gpuTypeIds: cards, gpuTypePriority: 'custom', gpuCount: 1, volumeMountPath: '/workspace',
           ...(useVol ? { networkVolumeId: useVol.id, dataCenterIds: [useVol.dataCenterId], containerDiskInGb: plan.disk_gb || 350 } : { volumeInGb: plan.disk_gb || 350, containerDiskInGb: 40 }),
-          ports: plan.write_lessons ? ['8000/http', '8001/http'] : ['8000/http'], supportPublicIp: false,
+          ports: (plan.write_lessons || plan.benchmark) ? ['8000/http', '8001/http'] : ['8000/http'], supportPublicIp: false,
           // the PC's RunPod key goes in as FORGE_RUNPOD_KEY (RunPod injects its own limited RUNPOD_API_KEY into every pod, which cannot delete) so the pod can delete itself near the time cap even if this PC falls asleep.
           env: { FORGE_TOKEN: token, FORGE_RUNPOD_KEY: KEY, HF_HUB_ENABLE_HF_TRANSFER: '0', FORGE_HOURS_MAX: String(hoursMax), FORGE_ROOT: root, FORGE_SHARED: '/workspace' },
           dockerEntrypoint: ['bash', '-c'],
@@ -294,6 +295,11 @@ if (args.restart) {
     else { const tmp = path.join(outDir, 'forge', 'hf-token'); fs.writeFileSync(tmp, tok); await upload('hf-token', tmp); fs.unlinkSync(tmp); log(`Hugging Face token sent to the pod (uploads go to ${plan.publish.user}/...)`); }
   }
   for (const r of plan.rungs) if (r.keep_file) await upload(path.basename(r.keep_file), path.resolve(here, '..', r.keep_file)); // cut exactly like an earlier Bob
+  // build 18: a benchmark brain rebuilt from his keep list + adapter: files not on Hugging Face (no hf: prefix) go up from out/bobs/<name>/
+  for (const m of plan.benchmark?.models || []) if (m.file === 'rebuild') {
+    for (const k of ['keep_file', 'adapter']) if (m[k] && !/^hf:/.test(m[k])) await upload(m[k], path.join(outDir, 'bobs', m.name, m[k]));
+    if (!m.cards) for (const c of fs.existsSync(path.join(outDir, 'bobs', m.name)) ? fs.readdirSync(path.join(outDir, 'bobs', m.name)).filter((f) => f.endsWith('.bob.json')) : []) await upload(c, path.join(outDir, 'bobs', m.name, c));
+  }
   // lesson sets already on the PC (e.g. out/lessons-coding) go up as extra sets too; the pod merges them with the rest
   for (const [i, d] of (plan.extra_lessons || []).entries()) { // a folder (its lessons.jsonl) or a .jsonl file (with the toolsets.json beside it)
     const dd = path.resolve(here, '..', d); const lf = d.endsWith('.jsonl') ? dd : path.join(dd, 'lessons.jsonl'); const tf = path.join(path.dirname(lf), 'toolsets.json');
@@ -346,6 +352,24 @@ async function answerTeacherKey() {
     log('teacher scores uploaded; the pod carries on');
   } catch (e) { log(`teacher-key answer failed: ${e.message.slice(0, 120)} (the pod will do the teacher pass)`); }
 }
+// build 18: the pod serves one benchmark brain at a time; this PC runs the plan's commands against it ({{url}}, {{name}}, {{out}} are filled
+// in), saves what they print under out/bench/<run>/<name>/, then tells the pod to move on (in/bench-done-<name>).
+const benchDone = new Set();
+async function benchOnPod(name) {
+  const url = args.local ? 'http://127.0.0.1:8001' : `https://${podId}-8001.proxy.runpod.net`;
+  const dir = path.join(outDir, 'bench', plan.run || 'run', name); fs.mkdirSync(dir, { recursive: true });
+  const cmds = plan.benchmark.commands?.length ? plan.benchmark.commands : ['node experts-test.mjs --url {{url}} --counts 8 --out {{out}}'];
+  log(`benchmark: ${name} is served by the card; running ${cmds.length} test command(s) on this PC`);
+  for (const [i, c] of cmds.entries()) {
+    const cmd = c.replace(/{{url}}/g, url).replace(/{{name}}/g, name).replace(/{{out}}/g, dir).replace(/{{run}}/g, plan.run || 'run');
+    const lf = path.join(dir, `${String(i + 1).padStart(2, '0')}.log`); fs.writeFileSync(lf, `$ ${cmd}\n`);
+    log(`  ${cmd}`);
+    const code = await new Promise((res) => { const ch = spawn(cmd, { cwd: path.join(here, '..'), shell: true, windowsHide: true, env: { ...process.env, LAB_URL: url, LAB_API_KEY: hdr['X-Forge-Token'], LAB_MODEL_NAME: name, LAB_REMOTE: '1', LAB_OUT: dir } }); const w = (d) => { fs.appendFileSync(lf, d); process.stdout.write(d); }; ch.stdout.on('data', w); ch.stderr.on('data', w); ch.on('exit', res); ch.on('error', (e) => { w(`${e.message}\n`); res(1); }); });
+    fs.appendFileSync(lf, `\n[exit ${code}]\n`); if (code) log(`  command ${i + 1} ended with code ${code} (see ${lf})`);
+  }
+  const mk = path.join(outDir, 'forge', `bench-done-${name}`); fs.writeFileSync(mk, new Date().toISOString()); await upload(`bench-done-${name}`, mk);
+  benchDone.add(name); log(`benchmark: ${name} done; reports in ${dir}`);
+}
 while (true) {
   await sleep(args.local ? 3000 : 60000);
   let st = null;
@@ -383,6 +407,7 @@ while (true) {
       } catch (e) { log(`${name}: ${e.message.slice(0, 160)}`); }
     }
     if (st.status?.phase === 'lessons' && /^ready/.test(st.status?.detail || '') && !lessonsSent) { lessonsSent = true; await writeLessonsOnPod(); }
+    if (st.status?.phase === 'bench' && plan.benchmark) { const bm = (st.status.detail || '').match(/^(\S+) ready:/); if (bm && !benchDone.has(bm[1])) await benchOnPod(bm[1]); }
     const scoresOnly = !plan.rungs.length && !plan.skills; // no rungs, no counts: the run only writes lessons and makes the teacher scores
     const trained = plan.train_teacher ? (plan.train_teacher.name || '35Bob') : null; // build 17: the trained teacher comes back (or is published) like a Bob
     const gotTrained = !trained || done.has(trained);
