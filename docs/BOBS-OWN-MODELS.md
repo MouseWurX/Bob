@@ -1,5 +1,7 @@
 # Bob's own models
 
+*The day-by-day record, every run's numbers and the routes not taken yet are in [the Forge journal](FORGE-JOURNAL.md); the raw run files are in [forge-runs/](forge-runs/).*
+
 *Tested, not yet released. This page is the plan, the method and the results so far, including the mistakes. It is updated as each model lands. No downloads yet: the whole family goes up together when it is complete.*
 
 > **6 November 2026: the first four Bobs will be re-cut and re-healed.** Two findings: the coding lesson set mostly taught the model to hand code off rather than write it (the main cause of the v2 coding gap), and the cut rule protected no skill in particular, which turned out to matter less than feared but is fixed anyway, with a measured table below of what every size keeps. What happened, why, and the corrected rule are in [What went wrong with the first cut](#what-went-wrong-with-the-first-cut). The costs page carries the price of doing it again.
