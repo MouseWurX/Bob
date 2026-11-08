@@ -1,10 +1,13 @@
 # Builds Brain Engine (engine/README.md): llama.cpp at bundledLlamaTag with engine/patches/ applied.
-# Run by hand only. Windows x64: the llama.dll / llama-server.exe set, to put over a COPY of the official
+# Runs when engine/ or this file changes, and by hand. Windows x64: the llama.dll / llama-server.exe set, to put over a COPY of the official
 # CUDA or Vulkan zip for the same tag (the card backends are separate DLLs and are not changed).
 # Linux x64: the same set for checking. Every action is pinned to a full commit SHA, like build.yml.
 name: Brain Engine
 
 on:
+  push:
+    branches: [main, 'claude/**']
+    paths: ['engine/**', '.github/workflows/brain-engine.yml']
   workflow_dispatch:
 
 permissions:
