@@ -28,12 +28,15 @@ export function catMoment(cat, n = Math.floor(Date.now() / 600000)) {
   return fill(MOMENTS[Math.abs(Math.floor(n)) % MOMENTS.length], cat);
 }
 
-// About one chat turn in five gets a cat line, never when the dials ask for plain, terse replies.
+// About one chat turn in twenty gets a cat line (was one in five; issue #33, worked out by Bob), never when the dials
+// ask for plain, terse replies. catTurn is shared with the Right now line, so the cat only shows up there on these turns too.
+export const catTurn = (turn) => Math.abs(Math.floor(turn || 0)) % 20 === 7;
 export function catPrompt({ cat, turn, dials = {}, user = 'the user' }) {
   if ((dials.wit ?? 2) === 0 || (dials.length ?? 2) === 0 || (dials.musing ?? 2) === 0) return '';
-  if (Math.abs(Math.floor(turn)) % 5 !== 2) return '';
+  if (!catTurn(turn)) return '';
   // 1.5.102: the Right now line already says what the cat is up to (realState, the same moment), so it isn't repeated here.
-  return `If it fits, mention what ${cat || 'the cat'} is up to (in the Right now line) in a few words at the end of your reply; skip it if ${user} is busy, stressed or the topic is serious.`;
+  // #33: no "at the end of your reply", which made it a sign-off; and no emoji named, so small brains don't copy one.
+  return `If it fits naturally, mention what ${cat || 'the cat'} is up to (in the Right now line) in a few words, woven in, not as a sign-off; skip it if ${user} is busy, stressed or the topic is serious. Don't end the reply with an emoji.`;
 }
 
 // 1.5.53: a line for each of the cat's antics by Bob's picture, so the words match what the cat is doing.
