@@ -29,6 +29,7 @@ Update this file in the same handover as any change to settings.
 | Engines | Bob's engine: Ollama (if you already have it) / Bob's own (llama.cpp, nothing else needed) | Takes effect next time Bob starts. | llama.cpp | ok |
 | Engines | Engine downloads (Get / Check for a newer build) | More: from official GitHub pages | none | ok |
 | Engines (under More) | Fit to free graphics memory | recommended; one line + More | on | ok (1.5.2) |
+| Engines | How Qwen brains pick their words: Choose my own word settings + 3 sets (Temperature, Top P, Top K, Min P, Presence penalty, Repetition penalty), Back to Qwen's | Qwen3.6 Best Practices by mode | off (Qwen's) | ok (approved with edits, 1.5.148) |
 | Engines (under More) | Speculative decoding + Draft brain, Guess up to, At least | experimental; long hint | off | ok (1.5.2) |
 | Engines (under More) | Extra settings for one brain: llama.cpp flags | e.g. --n-cpu-moe 8 | none | ok (Advanced, has an example) |
 | Other apps | Let Bob use ComfyUI; ComfyUI port | off unless you turn it on | off, 8188 | ok |

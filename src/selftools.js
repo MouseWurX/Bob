@@ -341,7 +341,7 @@ export async function reviewTool(brain, spec, code, test, ctx = {}) {
   const user = `Tool name: ${spec.name}\nWhat it says it does: ${spec.what}\nInputs: ${JSON.stringify(spec.inputs)}\nFolders it may read: ${spec.reads.join('; ') || 'none'}\nFolders it may change: ${spec.writes.join('; ') || 'none'}\nInternet: ${spec.internet ? 'yes' : 'no'}\nDownloads: ${spec.downloads.map((d) => `${d.file} from ${d.url}`).join('; ') || 'none'}\nTest input: ${JSON.stringify(spec.test).slice(0, 1000)}\nTest result: ${test ? (test.ok ? `worked: ${String(test.out).slice(0, 1200)}` : `failed: ${test.error}`) : 'not run yet (it needs its downloads first)'}\n\nThe code (tool.mjs):\n\`\`\`js\n${code}\n\`\`\``;
   try {
     const model = (await brain.ensureModel(rb.model, ctx.emit || (() => {}), ctx.signal, 'reviewer', { cpu: false, what: `the new tool ${spec.name}` })) || rb.model;
-    const reply = await brain.chatSafe({ model, messages: [{ role: 'system', content: REVIEW_SYSTEM }, { role: 'user', content: user }], signal: ctx.signal, think: rb.think, cpu: false }, { emit: ctx.emit, who: 'reviewer' });
+    const reply = await brain.chatSafe({ model, messages: [{ role: 'system', content: REVIEW_SYSTEM }, { role: 'user', content: user }], signal: ctx.signal, think: rb.think, cpu: false, task: 'coding' }, { emit: ctx.emit, who: 'reviewer' });
     const text = String(reply?.content || '').trim();
     const first = text.replace(/^[^A-Za-z]+/, '').slice(0, 4).toUpperCase();
     ctx.emit?.({ type: 'announce', text: first === 'PASS' ? `🛰 Moot over: ${who} passed ${spec.name}.` : `🛰 Moot over: ${who} said no to ${spec.name}.` });
