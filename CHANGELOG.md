@@ -4,6 +4,16 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.153
+
+The Computer Science Lab: goals, a time-and-cost table before anything runs, and the usage map that shows which experts a brain uses for what. All free, on this replicant matrix; nothing is rented.
+
+- **Start from a goal** (above the template picker). Pick where the new brain will run (this replicant matrix, a 24, 16, 12, 8 or 6 GB graphics card, a 16 GB handheld, or a phone with 12 or 8 GB) and a goal: **Everything, smaller**, **Coding helper**, **Everyday chat**, **Game master** or **Tiny and fast**. Bob fills in steps 2 to 5: the number of experts that fits the device, the skills to protect at 99%, a Q4 running file (Q3 for devices with 8 GB or less), measuring before the running file, Try it first when Brain Engine is here, and the comparison test. Nothing starts until you press Start. **Fold instead of drop** is listed and greyed until it's built; **Just measure** opens the usage map.
+- **What it takes.** A table before every Lab job: how long it takes here, from the brain's size the first time and from your own past Lab jobs after that, and the space it needs. For a cut, a second column shows what teaching it back would take on a rented card (hours and dollars), from the measured rentals: about 0.6 hours per 1,000 lessons for a cut with 208 experts per layer, 2.5 hours for the teacher's scores, at about $5 an hour for a 141 GB card. Bob never suggests a cap: the Forge plan under the table carries a cap of $0, and nothing rents until you set one. Every number is a rough guess. Every Lab step now records how long it took.
+- **The usage map** (under Compare). Count which experts a brain uses for each thing you test it on: the four parts of the Lab test, your chats with Bob, a lesson set (one count for each skill), or a file or folder of your own text and code. It lists the cold experts (never used for anything tested), the faint ones (the last 5% of the work), the ones only one thing uses, a per-layer table, and how much of each thing a cut keeps at a few sizes. With Brain Engine, it can switch the cold and faint ones off and give the Lab test again. The counts are saved as `peek-counts.json` and a keep list, in the format the Lab's Peek inside will share; the goals build their cut from them when they're there.
+- Help: a new page, Goals, the estimate and the usage map. `test/run-lab-recipes-test.js`: new checks.
+- Phone (Bob for Android): nothing changes; there's no Lab on the phone.
+
 ## 1.5.143
 
 The Computer Science Lab, part 2a: keep every skill covered, write a new lesson set with a teacher here, and try a cut on Brain Engine before cutting. All free, on this replicant matrix; nothing is rented.
