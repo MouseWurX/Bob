@@ -24,6 +24,7 @@ import { findOffice } from './office.js';
 import { writeZip } from './zip.js';
 import { PACKS, PACK_IDS, runPack, mergeScores, readScores, scoreboard, scoreFile, codeTool } from './lab-challenges.js'; // 1.5.153 Challenges
 import { runSandboxed, sandboxHolds } from './selftools.js';
+import { LADDER, PLAY_MAX_GB, ladderTexts, ladderDiskGB, readPerplexity, ladderTable, ladderSaw, playDir, readLadders } from './lab-playground.js'; // 1.5.156 Playground
 import { recipesRoute } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
 
 export const labOn = (cfg) => cfg?.computerLab === true;
@@ -37,6 +38,7 @@ export function labRoom(totalBytes = os.totalmem()) {
 // Running files the Lab can make, best first. Q3 only for brains meant for 8 GB or less (the Q4-or-better rule).
 export const RUNNING_TYPES = ['Q4_K_M', 'Q5_K_M', 'Q6_K', 'Q8_0', 'Q3_K_M'];
 const exeName = (n) => (process.platform === 'win32' ? `${n}.exe` : n);
+const isInsideDir = (f, root) => { const rel = path.relative(path.resolve(root), path.resolve(String(f || ''))); return Boolean(rel) && !rel.startsWith('..') && !path.isAbsolute(rel); };
 export const slugOf = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'lab-brain';
 const GB = 1024 ** 3;
 const round1 = (x) => Math.round(x * 10) / 10;
@@ -471,7 +473,7 @@ export class Lab {
   tools() {
     const server = this.cfg.llamacpp?.exe || path.join(this.cfg.agentDir, 'llama.cpp', exeName('llama-server'));
     const dir = path.dirname(server);
-    const t = { server, imatrix: path.join(dir, exeName('llama-imatrix')), quantize: path.join(dir, exeName('llama-quantize')), brainEngine: path.join(this.cfg.agentDir, 'brain-engine', exeName('llama-server')) };
+    const t = { server, imatrix: path.join(dir, exeName('llama-imatrix')), quantize: path.join(dir, exeName('llama-quantize')), perplexity: path.join(dir, exeName('llama-perplexity')), brainEngine: path.join(this.cfg.agentDir, 'brain-engine', exeName('llama-server')) };
     return Object.fromEntries(Object.entries(t).map(([k, p]) => [k, { path: p, found: fs.existsSync(p) }]));
   }
 
@@ -508,7 +510,7 @@ export class Lab {
     const room = this.room();
     const cardGB = Number(this.cfg.gpuVramGB) || Number(this.cfg.cardGB) || 0; // the set size, or the card the hardware scan found
     const brains = this.brains().map((b) => { let f = null; try { f = inspect(b); } catch (e) { return { ...b, gguf: undefined, mmproj: undefined, error: e.message }; } return { id: b.id, name: b.name, family: b.family, community: b.community, naughty: b.naughty, madeInLab: b.madeInLab, license: b.license, facts: f && { arch: f.arch, experts: f.experts, used: f.used, groups: f.groups, layers: f.layers, fileType: f.fileType, fullSize: f.fullSize, sizeGB: f.sizeGB, sight: f.sight, hearing: f.hearing, readerGB: f.readerGB }, cuts: f ? cutSizes(f).map((c) => ({ ...c, fit: fitWords(c.gb, cardGB) })) : [], fit: f ? fitWords(f.sizeGB, cardGB) : '' }; });
-    return { on: labOn(this.cfg), room, cardGB, brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, lessonKinds: KINDS, sampleCount: SAMPLE_COUNT, buildMax: BUILD_MAX, officeOk: Boolean(this.officeFor()), brainEngine: this.tools().brainEngine.found, packs: PACKS, scores: this.scores(), hardware: hardwareLine(this.cfg), version: this.version || '' };
+    return { on: labOn(this.cfg), room, cardGB, brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, lessonKinds: KINDS, sampleCount: SAMPLE_COUNT, buildMax: BUILD_MAX, officeOk: Boolean(this.officeFor()), brainEngine: this.tools().brainEngine.found, packs: PACKS, scores: this.scores(), ladders: this.ladders(), playMaxGB: PLAY_MAX_GB, ladderSteps: LADDER.map(({ type, label }) => ({ type, label })), hardware: hardwareLine(this.cfg), version: this.version || '' };
   }
 
   runView(r) { return { id: r.id, kind: r.kind || 'make', name: r.name, from: r.fromName, state: r.state, step: r.step, stepLabel: r.stepLabel, progress: r.progress, steps: r.steps?.map((s) => ({ id: s.id, label: s.label, state: s.state })), error: r.error, notes: r.notes || [], report: r.report, at: r.at, used: Boolean(r.used), sizeGB: r.sizeGB }; }
@@ -869,6 +871,156 @@ export class Lab {
     } finally { srv?.stop(); this.job = null; }
   }
 
+  // 1.5.156 Playground: the quantization ladder. Results (small) in <data>/lab/playground/<slug>/ladder.json; the
+  // running files (big) in <Bob's models>/lab/playground/<slug>/, which Delete all removes.
+  ladders() {
+    return readLadders(playDir(labDir(this.cfg))).map((l) => ({ id: l.id, brain: l.brain, when: l.when, state: l.state, deleted: Boolean(l.deleted), diskGB: l.diskGB, rows: ladderTable(l.rungs || []), saw: ladderSaw(ladderTable(l.rungs || [])), asked: l.asked || null, notes: l.notes || [] }));
+  }
+
+  planLadder(from) {
+    const brain = this.brains().find((b) => b.id === String(from || ''));
+    const problems = [], notes = [];
+    if (!brain) return { problems: ['Pick a brain for the ladder.'], notes };
+    let f = null; try { f = inspect(brain); } catch (e) { problems.push(e.message); }
+    if (f && !f.fullSize) problems.push(`${brain.name} is already a running file (${f.fileType}). The ladder starts from the full-size copy (F16 or BF16).`);
+    if (f && f.sizeGB > PLAY_MAX_GB) problems.push(`${brain.name} is ${f.sizeGB} GB. The ladder is for small brains, up to ${PLAY_MAX_GB} GB full size, so it fits in an evening and on the disk.`);
+    const t = this.tools();
+    for (const k of ['quantize', 'imatrix', 'server']) if (!t[k].found) problems.push(`${path.basename(t[k].path)} isn't in the built-in engine's folder. Get models > Engines: the built-in engine has it; download the engine again if it's missing.`);
+    if (!t.perplexity.found) notes.push(`${path.basename(t.perplexity.path)} isn't in the built-in engine's folder, so the ladder skips the surprise score and uses the Lab test alone.`);
+    const diskGB = f ? ladderDiskGB(f.sizeGB) : 0;
+    const out = path.join(labModelsDir(this.cfg), 'playground', slugOf(brain.name));
+    let freeGB = null;
+    try { fs.mkdirSync(path.dirname(out), { recursive: true }); const st = fs.statfsSync(path.dirname(out)); freeGB = Math.round((st.bavail * st.bsize) / 1e9); } catch {}
+    if (freeGB !== null && freeGB < diskGB + 5) problems.push(`The ladder needs about ${diskGB} GB of disk and there's ${freeGB} GB free. Free some space first.`);
+    return { brain, facts: f, problems, notes, diskGB, out, slug: slugOf(brain.name) };
+  }
+
+  async startLadder(c = {}, { unload = false } = {}) {
+    if (!labOn(this.cfg)) throw new Error('The Computer Science Lab is off. Turn it on in Settings, How Bob works, Brains.');
+    const room = this.room();
+    if (!room.ok) throw new Error(room.why);
+    if (this.job) throw new Error('The Lab is already busy with a job. Wait for it, or stop it.');
+    if (gaming(this.cfg)) throw new Error('Gaming is on, so the Lab waits. Switch the session to Normal to run it.');
+    const p = this.planLadder(c.from);
+    if (p.problems.length) throw new Error(p.problems[0]);
+    if (this.brain?.engine?.loaded) {
+      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+      if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
+      if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
+    }
+    const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'ladder', name: `Ladder for ${p.brain.name}`, slug: p.slug, from: p.brain.id, fromName: p.brain.name, state: 'running', at: this.now(), steps: [{ id: 'measure', label: 'Measure which weights matter most', state: 'waiting' }, ...LADDER.map((x) => ({ id: x.type, label: `Make and test ${x.label}`, state: 'waiting' }))], progress: 0 };
+    this.runs.push(runRec); this.save();
+    const ac = new AbortController();
+    this.job = { run: runRec, ac };
+    this.goLadder(runRec, p, ac.signal).catch(() => {});
+    return { started: this.runView(runRec) };
+  }
+
+  async goLadder(r, p, signal) {
+    const dir = path.join(playDir(labDir(this.cfg)), p.slug);
+    const log = (t) => { try { fs.mkdirSync(dir, { recursive: true }); fs.appendFileSync(path.join(dir, 'lab.log'), `${new Date().toISOString()} ${t}\n`); } catch {} };
+    const fx = { ...this.defaultSteps(this.tools(), log), ...this.stepFns };
+    const set = (i, state) => { r.steps[i].state = state; r.step = r.steps[i].id; r.stepLabel = r.steps[i].label; this.tell(r); };
+    const texts = ladderTexts();
+    fs.mkdirSync(dir, { recursive: true }); fs.mkdirSync(p.out, { recursive: true });
+    const tune = path.join(dir, 'tune.txt'), score = path.join(dir, 'score.txt');
+    fs.writeFileSync(tune, texts.tune); fs.writeFileSync(score, texts.score);
+    const record = { brain: { name: p.brain.name, sizeGB: p.facts.sizeGB, quant: p.facts.fileType }, when: new Date(this.now()).toISOString().slice(0, 10), state: 'running', diskGB: p.diskGB, rungs: [], notes: p.notes, files: {} };
+    const keep = () => writeJson(path.join(dir, 'ladder.json'), record);
+    keep();
+    try {
+      set(0, 'running');
+      const imatrix = path.join(p.out, 'imatrix.gguf');
+      await fx.imatrix({ src: p.brain.gguf, corpus: tune, out: imatrix }, { recipe: { lessons: { chunks: 20 } }, signal });
+      set(0, 'done');
+      for (let i = 0; i < LADDER.length; i++) {
+        const x = LADDER[i];
+        set(i + 1, 'running');
+        const out = path.join(p.out, `${p.slug}-${x.type}.gguf`);
+        await fx.quantize({ src: p.brain.gguf, out, type: x.type, imatrix }, { signal });
+        let ppl = null;
+        if (this.tools().perplexity.found || this.stepFns.perplexity) ppl = await fx.perplexity({ gguf: out, text: score }, { signal }).catch((e) => { if (signal.aborted) throw e; log(`perplexity: ${e.message}`); return null; });
+        const t = await fx.test({ gguf: out }, { signal, onProgress: (d) => { r.progress = Math.round((100 * (i + 1 + d)) / (LADDER.length + 1)); } });
+        let size = 0; try { size = Math.round((fs.statSync(out).size / 1e9) * 10) / 10; } catch {}
+        record.rungs.push({ type: x.type, sizeGB: size, score: t.score, tps: t.tps || null, ppl });
+        record.files[x.type] = out;
+        keep();
+        set(i + 1, 'done');
+      }
+      record.state = 'done'; keep();
+      r.report = { ladder: ladderTable(record.rungs), saw: ladderSaw(ladderTable(record.rungs)), id: p.slug };
+      r.state = 'done'; r.step = ''; r.stepLabel = ''; r.progress = 100;
+      this.tell(r);
+      this.broadcast({ type: 'lab-done', name: r.name, ok: true });
+    } catch (e) {
+      record.state = signal.aborted ? 'stopped' : 'failed'; keep();
+      r.state = signal.aborted ? 'stopped' : 'failed'; r.error = signal.aborted ? 'You stopped it. The sizes finished so far are kept; Delete all takes them back.' : e.message;
+      const i = r.steps.findIndex((x) => x.state === 'running'); if (i >= 0) r.steps[i].state = 'failed';
+      log(`failed: ${e.stack || e.message}`);
+      this.tell(r);
+      this.broadcast({ type: 'lab-done', name: r.name, ok: false, error: r.error });
+    } finally { this.job = null; }
+  }
+
+  // The same question, asked of every size the ladder made, one after another at temperature 0.
+  async startLadderAsk(c = {}, { unload = false } = {}) {
+    if (!labOn(this.cfg)) throw new Error('The Computer Science Lab is off. Turn it on in Settings, How Bob works, Brains.');
+    if (this.job) throw new Error('The Lab is already busy with a job. Wait for it, or stop it.');
+    if (gaming(this.cfg)) throw new Error('Gaming is on, so the Lab waits. Switch the session to Normal to run it.');
+    const id = slugOf(c.id), question = String(c.question || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+    const file = path.join(playDir(labDir(this.cfg)), id, 'ladder.json');
+    const rec = readJson(file, null);
+    if (!rec?.brain) throw new Error('There\'s no ladder by that name. Make one first.');
+    if (rec.deleted) throw new Error('This ladder\'s files were deleted. Make it again to ask it questions.');
+    const have = LADDER.filter((x) => rec.files?.[x.type] && fs.existsSync(rec.files[x.type]));
+    if (!have.length) throw new Error('None of this ladder\'s files are here any more.');
+    if (!question) throw new Error('Type a question to ask every size.');
+    if (this.brain?.engine?.loaded) {
+      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+      if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
+      if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
+    }
+    const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'ladder-ask', name: `Same question, every size: ${rec.brain.name}`, from: id, fromName: rec.brain.name, state: 'running', at: this.now(), steps: have.map((x) => ({ id: x.type, label: `Ask ${x.label}`, state: 'waiting' })), progress: 0 };
+    this.runs.push(runRec); this.save();
+    const ac = new AbortController();
+    this.job = { run: runRec, ac };
+    (async () => {
+      const signal = ac.signal, fx = { ...this.defaultSteps(this.tools(), () => {}), ...this.stepFns };
+      const answers = [];
+      try {
+        for (let i = 0; i < have.length; i++) {
+          runRec.steps[i].state = 'running'; runRec.stepLabel = runRec.steps[i].label; this.tell(runRec);
+          const t0 = this.now();
+          const text = await fx.ask({ gguf: rec.files[have[i].type], question }, { signal });
+          answers.push({ type: have[i].type, label: have[i].label, text: String(text || '').slice(0, 4000), seconds: Math.round((this.now() - t0) / 100) / 10 });
+          runRec.steps[i].state = 'done'; runRec.progress = Math.round((100 * (i + 1)) / have.length); this.tell(runRec);
+        }
+        rec.asked = { question, answers, when: new Date(this.now()).toISOString().slice(0, 10) }; writeJson(file, rec);
+        runRec.report = { asked: rec.asked }; runRec.state = 'done'; runRec.stepLabel = '';
+      } catch (e) {
+        runRec.state = signal.aborted ? 'stopped' : 'failed'; runRec.error = signal.aborted ? 'You stopped it.' : e.message;
+      } finally { this.job = null; this.tell(runRec); this.broadcast({ type: 'lab-done', name: runRec.name, ok: runRec.state === 'done' }); }
+    })();
+    return { started: this.runView(runRec) };
+  }
+
+  // Delete all: the ladder's running files go; the small results stay, so the table is still there to look at.
+  deleteLadder(id) {
+    if (this.job?.run?.kind?.startsWith('ladder') && slugOf(this.job.run.slug || this.job.run.from) === slugOf(id)) throw new Error('This ladder is still running. Stop it first.');
+    const file = path.join(playDir(labDir(this.cfg)), slugOf(id), 'ladder.json');
+    const rec = readJson(file, null);
+    if (!rec?.brain) throw new Error('There\'s no ladder by that name.');
+    const root = path.join(labModelsDir(this.cfg), 'playground', slugOf(id));
+    let freed = 0;
+    for (const f of [...Object.values(rec.files || {}), path.join(root, 'imatrix.gguf')]) {
+      if (!isInsideDir(f, root)) continue; // only files the ladder made, in its own folder
+      try { freed += fs.statSync(f).size; fs.rmSync(f, { force: true }); } catch {}
+    }
+    try { fs.rmdirSync(root); } catch {}
+    rec.deleted = true; rec.files = {}; writeJson(file, rec);
+    return { freedGB: Math.round((freed / 1e9) * 10) / 10 };
+  }
+
   // Save a result the page sends (a table, or a picture of one) in the Lab's results folder. Returns the file name.
   saveResult(body, { version = '' } = {}) {
     const r = cleanResult(body);
@@ -998,6 +1150,19 @@ export class Lab {
       quantize: (s, { signal }) => run(tools.quantize.path, [...(s.imatrix ? ['--imatrix', s.imatrix] : []), s.src, s.out, s.type], { signal, log }),
       serve: ({ gguf, ctx, signal, log: l }) => startServer({ exe: tools.server.path, gguf, ctx, signal, log: l || log }),
       pack: (url, id, opts) => runPack(url, id, opts), // 1.5.153
+      perplexity: async (s, { signal }) => { // 1.5.156 the ladder's surprise score
+        const out = await run(tools.perplexity.path, ['-m', s.gguf, '-f', s.text, '-c', '512', '--fit', 'on'], { signal, log })
+          .catch((e) => { if (signal.aborted) throw e; return run(tools.perplexity.path, ['-m', s.gguf, '-f', s.text, '-c', '512', '-ngl', '0'], { signal, log }); });
+        return readPerplexity(out);
+      },
+      ask: async (s, { signal }) => {
+        const srv = await startServer({ exe: tools.server.path, gguf: s.gguf, ctx: 4096, signal, log });
+        try {
+          const res = await fetch(srv.url + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', content: s.question }], temperature: 0, max_tokens: 300, chat_template_kwargs: { enable_thinking: false } }), signal: AbortSignal.any([signal, AbortSignal.timeout(180e3)]) });
+          const j = await res.json();
+          return String(j.choices?.[0]?.message?.content || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        } finally { srv.stop(); }
+      },
       fingerprint: (file, signal) => sha256File(file, signal),
       // Code a brain wrote runs in the same sandbox as Bob's self-made tools, only if the sandbox holds on this machine.
       sandbox: async () => {
@@ -1102,6 +1267,10 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/use') { send(res, 200, lab.use(String(b.run || ''))); return true; }
     if (p === '/api/lab/compare') { const c = lab.compare(b.ids, b.save === 'csv' ? 'csv' : 'json'); send(res, 200, { table: c.table, file: path.basename(c.file) }); return true; }
     if (p === '/api/lab/challenge') { send(res, 200, await lab.startChallenge(b.challenge, { unload: b.unload === true })); return true; } // 1.5.153
+    if (p === '/api/lab/ladder/plan') { const pl = lab.planLadder(b.from); send(res, 200, { problems: pl.problems, notes: pl.notes, diskGB: pl.diskGB }); return true; } // 1.5.156
+    if (p === '/api/lab/ladder') { send(res, 200, await lab.startLadder({ from: b.from }, { unload: b.unload === true })); return true; }
+    if (p === '/api/lab/ladder/ask') { send(res, 200, await lab.startLadderAsk({ id: b.id, question: b.question }, { unload: b.unload === true })); return true; }
+    if (p === '/api/lab/ladder/delete') { send(res, 200, lab.deleteLadder(String(b.id || ''))); return true; }
     if (p === '/api/lab/save') { const out = lab.saveResult(b, { version: lab.version || '' }); send(res, 200, { file: out.file }); return true; }
     if (p === '/api/lab/recipe') { send(res, 200, { recipes: lab.saveRecipe(b.recipe) }); return true; }
     send(res, 404, { error: 'no' }); return true;

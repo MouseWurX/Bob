@@ -13,6 +13,7 @@ import { LESSON_SKILLS } from '../src/lab-skills.js';
 import { QUIZ, TOOLS, runQuiz } from '../src/lab-test.js';
 import { PACKS, PACK_IDS, REASONING, SUMS, RULES, PICK_TOOL, CODE, letterOf, numberOf, codeOf, codeTool, runPack, mergeScores, scoreboard } from '../src/lab-challenges.js';
 import { runSandboxed } from '../src/selftools.js';
+import { LADDER, PLAY_MAX_GB, ladderTexts, ladderDiskGB, readPerplexity, ladderTable, ladderSaw } from '../src/lab-playground.js';
 import { cleanResult, resultText, hardwareLine } from '../src/lab.js';
 import { cleanLearn, learnBrain, tokenize, nextWords, tryTemperature, runLearn, sawTokens, sawNext, sawTemperature, LEARN_CARDS, MAX_TEXT } from '../src/lab-learn.js';
 
@@ -402,6 +403,66 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   check('Help has a Challenges page in Bob\'s voice that says the scores aren\'t paper numbers', /id: 'lab-challenges'/.test(read('public/help-content.js')) && /aren't the numbers you see in papers/.test(read('public/help-content.js')));
 }
 
+// ---- 1.5.156 Playground: the quantization ladder ----
+{
+  check('the ladder is six sizes, Q8 down to Q2, biggest first', LADDER.map((x) => x.label).join() === 'Q8,Q6,Q5,Q4,Q3,Q2' && LADDER.every((x, i) => !i || x.share < LADDER[i - 1].share));
+  const tx = ladderTexts();
+  check('the ladder tunes on one part of the Help and scores on another, never the same text', tx.tune.length > 30000 && tx.score.length > 5000 && !tx.tune.includes(tx.score.slice(0, 200)) && !/<[a-z]/.test(tx.score));
+  check('the disk the ladder needs is shown from the brain\'s size', ladderDiskGB(8) > 16 && ladderDiskGB(8) < 18);
+  check('the surprise is read from llama-perplexity\'s last line', readPerplexity('[1]8.1,[2]8.3\nFinal estimate: PPL = 8.2345 +/- 0.11\n') === 8.2345 && readPerplexity('nothing here') === null);
+  const rows = ladderTable([{ type: 'Q8_0', sizeGB: 4.3, score: 80, tps: 50, ppl: 10 }, { type: 'Q6_K', sizeGB: 3.3, score: 80, tps: 60, ppl: 10.1 }, { type: 'Q4_K_M', sizeGB: 2.5, score: 78, tps: 70, ppl: 10.6 }, { type: 'Q3_K_M', sizeGB: 2, score: 70, tps: 75, ppl: 11.5 }, { type: 'Q2_K', sizeGB: 1.6, score: 40, tps: 80, ppl: 16 }]);
+  check('each size is compared with Q8 and given a verdict in words', rows[0].rel === 1 && rows[0].verdict === 'same quality' && rows[2].verdict === 'a little worse' && rows[3].verdict === 'noticeably worse' && rows[4].verdict === 'falls apart' && rows[4].scoreDrop === -40);
+  check('Bob names the smallest size that is still close, and where it slips', /^Q4 is the smallest size here that's still close to Q8, and it's 42% smaller\. From Q3 down it starts to slip/.test(ladderSaw(rows)));
+  check('without a surprise score there is no verdict, and no line', ladderTable([{ type: 'Q8_0', score: 80 }])[0].verdict === '' && ladderSaw(ladderTable([{ type: 'Q8_0', score: 80 }])) === '');
+
+  const made = [], asked = [];
+  const plLab = new Lab(cfg, { shop, room: big, broadcast: (e) => events.push(e), steps: {
+    imatrix: async (s) => { fs.writeFileSync(s.out, 'imatrix'); },
+    quantize: async (s) => { made.push(s.type); fs.writeFileSync(s.out, Buffer.alloc(1000 * (7 - made.length))); },
+    perplexity: async (s) => 10 + made.length * (made.length > 4 ? 3 : 0.1),
+    test: async () => fakeQuiz(80 - made.length),
+    ask: async (s) => { asked.push(path.basename(s.gguf)); return `answer from ${path.basename(s.gguf)}`; }
+  } });
+  const pl = plLab.planLadder('test-moe');
+  check('the ladder plan says the disk it needs and that the surprise tool is missing here', !pl.problems.length && pl.diskGB > 0 && pl.notes.some((n) => /skips the surprise score/.test(n)), pl.problems.join());
+  check('a brain that isn\'t here can\'t start a ladder', plLab.planLadder('nope').problems.length === 1);
+  check('the page gets the ladder limit and steps, no paths', plLab.view().playMaxGB === PLAY_MAX_GB && plLab.view().ladderSteps.length === 6 && !JSON.stringify(plLab.view().ladders).includes(tmp));
+  const be2 = { engine: { loaded: async () => [{ name: 'qwen', vram: 9e9 }], unloadAll: async () => {} } };
+  check('with Bob\'s brain on the card, the ladder asks first', (await new Lab(cfg, { shop, room: big, brain: be2 }).startLadder({ from: 'test-moe' })).needUnload === true);
+  check('Gaming on: the ladder waits', await new Lab({ ...cfg, session: 'light' }, { shop, room: big }).startLadder({ from: 'test-moe' }).then(() => false, (e) => /Gaming is on/.test(e.message)));
+  const ls = await plLab.startLadder({ from: 'test-moe' });
+  check('the ladder job starts with a measure step and one per size', ls.started?.kind === 'ladder' && ls.started.steps.length === 7);
+  while (plLab.job) await new Promise((r) => setTimeout(r, 20));
+  const lr = plLab.runs.at(-1);
+  check('the ladder makes all six sizes from the full-size file, with the importance file', lr.state === 'done' && made.join() === LADDER.map((x) => x.type).join(), lr.error || '');
+  const lv = plLab.view().ladders;
+  check('the ladder\'s results are kept, with the verdicts and Bob\'s line', lv.length === 1 && lv[0].rows.length === 6 && lv[0].rows[0].verdict === 'same quality' && lv[0].rows[5].verdict === 'falls apart' && /^Q4 is the smallest/.test(lv[0].saw) && lv[0].rows[4].verdict === 'falls apart', JSON.stringify(lv[0]?.rows?.map((r) => r.rel)));
+  check('the scoring text and the tuning text are written beside the results, not in Bob\'s models', fs.existsSync(path.join(dataDir, 'lab', 'playground', lv[0].id, 'score.txt')) && fs.existsSync(path.join(dataDir, 'lab', 'playground', lv[0].id, 'ladder.json')));
+  const qa = await plLab.startLadderAsk({ id: lv[0].id, question: '  What is a  black hole? ' });
+  check('the same question goes to every size', qa.started?.kind === 'ladder-ask' && qa.started.steps.length === 6);
+  while (plLab.job) await new Promise((r) => setTimeout(r, 20));
+  const la = plLab.view().ladders[0].asked;
+  check('every size\'s answer is kept with the question', la?.question === 'What is a black hole?' && la.answers.length === 6 && asked.length === 6 && la.answers[0].label === 'Q8');
+  check('an empty question isn\'t asked', await plLab.startLadderAsk({ id: lv[0].id, question: '  ' }).then(() => false, (e) => /Type a question/.test(e.message)));
+  const files = Object.values(JSON.parse(fs.readFileSync(path.join(dataDir, 'lab', 'playground', lv[0].id, 'ladder.json'), 'utf8')).files);
+  const del = plLab.deleteLadder(lv[0].id);
+  check('Delete all removes the six files and the importance file, and keeps the table', del.freedGB >= 0 && files.length === 6 && files.every((f) => !fs.existsSync(f)) && plLab.view().ladders[0].deleted && plLab.view().ladders[0].rows.length === 6);
+  check('a deleted ladder can\'t be asked again', await plLab.startLadderAsk({ id: lv[0].id, question: 'x' }).then(() => false, (e) => /were deleted/.test(e.message)));
+  // Delete all only ever removes files inside the ladder's own folder
+  const lj = path.join(dataDir, 'lab', 'playground', lv[0].id, 'ladder.json');
+  const outside = path.join(tmp, 'precious.txt'); fs.writeFileSync(outside, 'keep me');
+  const rec2 = JSON.parse(fs.readFileSync(lj, 'utf8')); rec2.deleted = false; rec2.files = { Q8_0: outside }; fs.writeFileSync(lj, JSON.stringify(rec2));
+  plLab.deleteLadder(lv[0].id);
+  check('Delete all never touches a file outside the ladder\'s folder', fs.existsSync(outside));
+  const sent3 = [];
+  for (const p of ['/api/lab/ladder', '/api/lab/ladder/ask', '/api/lab/ladder/delete']) await labRoute({ req: { method: 'POST' }, res: {}, p, isLocal: false, lab: plLab, body: async () => ({ from: 'test-moe', id: 'x' }), send: (res, code, j) => sent3.push([code, j]) });
+  check('the ladder only starts, asks and deletes from this replicant matrix itself', sent3.length === 3 && sent3.every(([code]) => code === 403));
+  const pg = read('public/lab-playground.js');
+  check('the Playground tab uses the reviewed words, a table as well as bars, and Save', ['How small can a brain get?', 'Make the ladder', 'Same question, every size', 'Ask every size', 'Delete all', 'What you just saw', 'Compared with Q8', 'Delete the six sizes for good? The table stays.', 'Delete them', 'Keep them', 'Bob takes one small brain', 'needs the graphics card'].every((w) => pg.includes(w)) && !/I take one|I show how much|ordinary writing/.test(pg) && /<th scope="col">/.test(pg) && /aria-hidden="true"/.test(pg) && /saveHtml\(/.test(pg));
+  check('Help has a Playground page in Bob\'s voice', /id: 'lab-playground'/.test(read('public/help-content.js')) && /how small can a brain get before it gets worse/.test(read('public/help-content.js')));
+  check('the Playground never sends anything to a rental', !/runpod|\brent/i.test(pg) && !/runpod|\brent/i.test(read('src/lab-playground.js')));
+}
+
 // The route: only this replicant matrix starts jobs.
 const sent = [];
 const fakeReq = (method) => ({ method });
@@ -490,7 +551,7 @@ check('the quiz tools are made up, not Bob\'s real ones', TOOLS.every((t) => !/h
   await labRoute({ req: fakeReq('GET'), res: {}, p: '/api/lab/learn', isLocal: false, lab: { cfg: { computerLab: true }, brain: brainFor({ engine: 'llamacpp' }) }, body: async () => ({}), send: (res, code, j) => sent.push([code, j]) });
   check('the Learn view names the loaded brain the friendly way and lists the cards, from any device Bob lets in', sent[1][0] === 200 && sent[1][1].ready && sent[1][1].brain === 'Friendly qwen' && sent[1][1].cards.length === 3 && sent[1][1].on, JSON.stringify(sent[1]));
   const page2 = read('public/lab-learn.js'), lab2 = read('public/lab.js');
-  check('the Lab page has real tabs, and Playground shown as later', /role="tablist"/.test(lab2) && /role="tab"/.test(lab2) && /aria-selected/.test(lab2) && /Playground <span class="lab-later">Later/.test(lab2) && /ArrowRight/.test(lab2));
+  check('the Lab page has real tabs, Playground among them', /role="tablist"/.test(lab2) && /role="tab"/.test(lab2) && /aria-selected/.test(lab2) && /\['playground', 'Playground'\]/.test(lab2) && /ArrowRight/.test(lab2));
   check('the Learn cards use the reviewed words, a live result, and a slider with a number box', ['What is a token?', 'How do I pick the next word?', 'What does temperature do?', 'Split it', 'Show my odds', 'Let me choose', 'Write it three times', 'More knobs', 'Cut the long tail', 'Only the likeliest', 'What you just saw'].every((w) => page2.includes(w)) && /aria-live="polite"/.test(page2) && /id="learn-tp" type="range"[\s\S]{0,200}id="learn-tp-n" type="number"/.test(page2));
   check('token chips take turns solid and dashed, not colour alone, and the odds are in text as well as bars', /learn-tok\.a \{[^}]*solid/.test(read('public/style.css')) && /learn-tok\.b \{[^}]*dashed/.test(read('public/style.css')) && /pct\(x\.odds\)/.test(page2));
   check('Help has a Learn page in Bob\'s voice', /id: 'lab-learn'/.test(read('public/help-content.js')) && /Nothing you do here changes how I answer/.test(read('public/help-content.js')));
