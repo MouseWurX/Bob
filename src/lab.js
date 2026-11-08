@@ -24,6 +24,7 @@ import { findOffice } from './office.js';
 import { writeZip } from './zip.js';
 import { PACKS, PACK_IDS, runPack, mergeScores, readScores, scoreboard, scoreFile, codeTool } from './lab-challenges.js'; // 1.5.153 Challenges
 import { runSandboxed, sandboxHolds } from './selftools.js';
+import { recipesRoute } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
 
 export const labOn = (cfg) => cfg?.computerLab === true;
 export const MIN_RAM_GB = 12;
@@ -452,6 +453,9 @@ export function cleanBuild(b = {}) {
   };
 }
 
+// The start brain's size, kept on the job so the estimate table can scale past step times to another brain (1.5.154).
+const facts0 = (b) => { try { return inspect(b)?.sizeGB || 0; } catch { return 0; } };
+
 export class Lab {
   constructor(cfg, { shop, brain, broadcast = () => {}, now = Date.now, steps = {}, room = () => labRoom() } = {}) {
     this.room = room; // tests pass their own, so the result doesn't depend on the tester's memory
@@ -552,7 +556,7 @@ export class Lab {
       if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
     }
     const brain = this.brains().find((b) => b.id === p.recipe.from);
-    const runRec = { id: `lab-${this.now().toString(36)}`, name: p.recipe.name, slug: p.slug, from: brain.id, fromName: brain.name, recipe: p.recipe, state: 'running', at: this.now(), steps: p.steps.map((s) => ({ id: s.id, label: s.label, state: 'waiting' })), progress: 0 };
+    const runRec = { id: `lab-${this.now().toString(36)}`, name: p.recipe.name, slug: p.slug, from: brain.id, fromName: brain.name, fromGB: facts0(brain), recipe: p.recipe, state: 'running', at: this.now(), steps: p.steps.map((s) => ({ id: s.id, label: s.label, state: 'waiting' })), progress: 0 };
     this.runs.push(runRec); this.save();
     const ac = new AbortController();
     this.job = { run: runRec, ac };
@@ -912,6 +916,7 @@ export class Lab {
       for (let i = 0; i < p.steps.length; i++) {
         const s = p.steps[i];
         r.step = s.id; r.stepLabel = s.label; r.steps[i].state = 'running'; r.progress = 0; this.tell(r);
+        const t0 = Date.now(); // 1.5.154: how long each step really took, for the estimate table
         const onProgress = (x) => { r.progress = Math.round(100 * x); this.broadcast({ type: 'lab', run: this.runView(r) }); };
         if (s.id === 'lessons') {
           const by = lessonSkills(this.cfg, p.recipe.lessons);
@@ -956,7 +961,7 @@ export class Lab {
         } else if (s.id === 'test' || s.id === 'compare') {
           tests[s.id] = await fx.test(s, { signal, onProgress });
         }
-        r.steps[i].state = 'done'; r.progress = 100; this.tell(r);
+        r.steps[i].state = 'done'; r.steps[i].ms = Date.now() - t0; r.progress = 100; this.tell(r);
       }
       const size = (f) => { try { return fs.statSync(f).size; } catch { return 0; } };
       r.files = { gguf: p.finals[0], mmproj: p.reader || null };
@@ -1071,6 +1076,7 @@ export class Lab {
 export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
   if (!p.startsWith('/api/lab')) return false;
   try {
+    if (await recipesRoute({ req, res, p, isLocal, lab, body, send })) return true; // 1.5.154
     if (req.method === 'GET' && p === '/api/lab') { send(res, 200, lab.view()); return true; }
     if (req.method === 'GET' && p === '/api/lab/measures') { send(res, 200, { measures: lab.measures().map(({ rec, ...m }) => m) }); return true; }
     // 1.5.151 Learn: experiments on the brain Bob has loaded. Read-only, nothing is written, so any device Bob lets in may use them.

@@ -7,6 +7,7 @@ import { esc } from './rich.js';
 import { TEMPLATES, templateById, templateWhyNot, applyTemplate } from './lab-templates.js';
 import { createLearn } from './lab-learn.js';
 import { saveHtml, saveResult } from './lab-save.js'; // 1.5.153 Save
+import { createRecipes } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
 
 const $ = (id) => document.getElementById(id);
 const TABS = [['make', 'Make a brain'], ['learn', 'Learn'], ['challenges', 'Challenges']];
@@ -30,6 +31,7 @@ export function createLab({ api, note }) {
   const bld = { name: '', teacher: '', items: [], kinds: ['material'], count: 300, think: 'half', resay: true, feedback: { dropFiles: [], notKinds: {}, badIdeas: [] } };
   let bplan = null, building = false, bsurvey = null, surveying = false, openPassage = new Set(), notLike = '', viewer = null, vq = { q: '', skill: '', file: '', kind: '' }, exportInfo = null, typedPath = '';
   const r = { template: '', name: '', from: '', lessons: { kind: 'none', file: '', chunks: 200 }, smaller: { sight: false, hearing: false, cut: null, files: [], measure: false }, test: { compare: true } };
+  const rc = createRecipes({ api, recipe: r, view: () => view, replan: () => replan(), draw: () => draw() });
   const brain = () => view?.brains.find((b) => b.id === r.from);
   const running = () => view?.runs.find((x) => x.state === 'running');
 
@@ -42,6 +44,7 @@ export function createLab({ api, note }) {
     try { plan = r.from ? await api('/api/lab/plan', { recipe: r }) : null; } catch (e) { plan = { problems: [e.message], notes: [], steps: [] }; }
     if (writing) { try { wplan = await api('/api/lab/write/plan', { write: w }); } catch (e) { wplan = { problems: [e.message], notes: [] }; } }
     if (building) { try { bplan = await api('/api/lab/build/plan', { build: bld }); } catch (e) { bplan = { problems: [e.message], notes: [], sample: [] }; } }
+    await rc.afterPlan();
     draw();
   }
 
@@ -333,10 +336,12 @@ export function createLab({ api, note }) {
       <p class="muted">Make your own brain from one on this replicant matrix. Each step says what it does and whether this replicant matrix can do it. Show the recipe shows the exact commands, if you want to learn them.</p>
       ${view.recipes.length ? `<p><label>Start from a saved recipe <select id="lab-recipe"><option value="">(none)</option>${view.recipes.map((x, n) => `<option value="${n}">${esc(x.name)}</option>`).join('')}</select></label></p>` : ''}
       ${runsHtml()}
+      ${rc.galleryHtml()}
       ${templateHtml()}
       <nav class="lab-steps" aria-label="Lab steps"><ol>${STEPS.map(([id, label], n) => `<li><button type="button" class="lab-step${id === step ? ' on' : ''}" data-step="${id}" ${id === step ? 'aria-current="step"' : ''} ${n > 0 && !r.from ? 'disabled' : ''}>${esc(label)}</button></li>`).join('')}</ol></nav>
       <div class="lab-panel" id="lab-panel">${html}</div>
       ${plan ? `<div class="lab-check" role="status">${plan.problems.length ? `<p><strong>Before it can start:</strong></p><ul>${plan.problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : `<p><strong>Ready.</strong> ${plan.steps.length} steps: ${plan.steps.map((s) => esc(s.label)).join(', ')}.</p>`}${plan.notes.map((n) => `<p class="muted">${esc(n)}</p>`).join('')}</div>` : ''}
+      ${rc.estimateHtml()}
       ${askUnload ? `<div class="setup-offer" role="alert"><strong>Bob's brain is on the card</strong><span>${esc(askUnload.join(', '))} is loaded. The Lab needs the card, so Bob unloads it first; it loads again the next time you chat (which slows the Lab down while it runs).</span><div class="row"><button type="button" class="get" data-unload>Unload it and start</button><button type="button" class="link" data-nounload>Not now</button></div></div>` : ''}
       <div class="row lab-actions">
         ${i > 0 ? '<button type="button" class="link" data-back>Back</button>' : ''}
@@ -347,6 +352,7 @@ export function createLab({ api, note }) {
       ${showRecipe ? `<div class="lab-recipe"><pre tabindex="0">${esc(plan?.text || 'Pick a brain first.')}</pre><button type="button" class="link" data-copy>Copy</button></div>` : ''}
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
       ${compareHtml()}
+      ${rc.usageHtml()}
     </div></div>`;
   }
 
@@ -357,6 +363,7 @@ export function createLab({ api, note }) {
     if (el.dataset.pack) { const k = el.dataset.pack; ch.packs = el.checked ? [...new Set([...ch.packs, k])] : ch.packs.filter((x) => x !== k); return draw(); }
     if (el.dataset.savefmt) { saveState(el.dataset.savefmt).format = el.value; return draw(); }
     if (el.dataset.savehw) { saveState(el.dataset.savehw).hardware = el.checked; return draw(); }
+    if (await rc.change(el)) return;
     if (el.name === 'from') { r.from = el.value; const b = brain(); if (!r.name && b) r.name = `${b.name} Lab`; r.smaller = { sight: false, hearing: false, cut: null, files: [], measure: false, try: false, tryStop: true }; r.template = ''; }
     else if (el.id === 'lab-template') {
       const t = templateById(el.value), b = brain();
@@ -438,6 +445,7 @@ export function createLab({ api, note }) {
       } catch (err) { msg = err.message; }
       return load();
     }
+    if (await rc.click(b)) return;
     if (b.dataset.step) { step = b.dataset.step; return draw(); }
     if ('next' in b.dataset) { step = STEPS[Math.min(STEPS.length - 1, STEPS.findIndex(([id]) => id === step) + 1)][0]; return draw(); }
     if ('back' in b.dataset) { step = STEPS[Math.max(0, STEPS.findIndex(([id]) => id === step) - 1)][0]; return draw(); }
@@ -496,6 +504,6 @@ export function createLab({ api, note }) {
   return {
     async open() { dlg.showModal(); draw(); await load(); },
     // Progress from the Lab job (the server's 'lab' events).
-    update(run) { if (!view) return; const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if (run.kind === 'challenge' && run.state === 'done') { load(); return; } if (tab === 'learn') return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
+    update(run) { if (!view) return; rc.runUpdate(run); const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if (run.kind === 'challenge' && run.state === 'done') { load(); return; } if (tab === 'learn') return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
   };
 }
