@@ -95,11 +95,11 @@ check('family: unknown stays unknown', familyOf('llama3:8b', ggufInfo(odd)) === 
   check('qwen3.6 thinking, general: 1.0 / 0.95 / 20, min_p 0, repetition 1.0', tg.temperature === 1.0 && tg.top_p === 0.95 && tg.top_k === 20 && tg.min_p === 0 && tg.repeat_penalty === 1.0);
   check('qwen3.6 thinking, coding: 0.6 / 0.95 / 20', tc.temperature === 0.6 && tc.top_p === 0.95 && tc.top_k === 20);
   check('qwen3.6 no-think: 0.7 / 0.8 / 20, presence 1.5', nt.temperature === 0.7 && nt.top_p === 0.8 && nt.top_k === 20 && nt.presence_penalty === 1.5);
-  check('qwen3.6 thinking keeps presence 1.5 (1.5.68 circles fix)', tg.presence_penalty === 1.5 && tc.presence_penalty === 1.5);
+  check('qwen3.6 thinking: presence 0, as Qwen lists', tg.presence_penalty === 0 && tc.presence_penalty === 0);
   check('qwen3.6 general thinking with tools: cooled to the tool temperature', q({ tools: true }).temperature === TOOL_TEMP);
   check('a coding task on another family changes nothing', samplingFor({}, 'gemma4:e4b', bare, { task: 'coding' }).temperature === 1.0);
-  const mine = { on: true, thinking: { temperature: 0.8, presence_penalty: 0 }, quick: { top_k: 999 } };
-  check('own presets: used only when switched on', q({ own: mine }).temperature === 0.8 && q({ own: mine }).presence_penalty === 0 && q({ own: { ...mine, on: false } }).temperature === 1.0);
+  const mine = { on: true, thinking: { temperature: 0.8, presence_penalty: 0.5 }, quick: { top_k: 999 } };
+  check('own presets: used only when switched on', q({ own: mine }).temperature === 0.8 && q({ own: mine }).presence_penalty === 0.5 && q({ own: { ...mine, on: false } }).temperature === 1.0);
   check('own presets: numbers kept in range', q({ think: false, own: mine }).top_k === 200);
   check('own presets: a hand-picked temperature is not cooled for tools', q({ tools: true, own: mine }).temperature === 0.8);
   check('own presets: junk is dropped', JSON.stringify(cleanPresets({ on: 'yes', coding: { temperature: 'hot', top_p: '' }, x: { temperature: 1 } })) === '{"on":false}');

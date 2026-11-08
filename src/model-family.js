@@ -53,12 +53,12 @@ const SAMPLING = {
   'qwen3-thinking': { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0 },
   'qwen3-coder': { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0, repeat_penalty: 1.05 },
   // 1.5.148: Qwen3.6's Best Practices, by mode. No-think (instruct): 0.7/0.8/20, presence 1.5. Thinking, general:
-  // 1.0/0.95/20. Thinking, precise coding: 0.6/0.95/20. Qwen lists presence 0 for both thinking sets and says it can
-  // be raised to 2 against endless repeats; Bob keeps 1.5 there (1.5.68: without it Qwen3.6 thought in circles for
-  // 10 minutes on a coding job). repetition_penalty 1.0 is llama-server's repeat_penalty, sent so nothing else changes it.
+  // 1.0/0.95/20. Thinking, precise coding: 0.6/0.95/20. Both thinking sets use presence 0, as Qwen lists (the owner's
+  // call; 1.5.68 had 1.5 there; the thinking budget in llamacpp.js still stops endless thinking).
+  // repetition_penalty 1.0 is llama-server's repeat_penalty, sent so nothing else changes it.
   'qwen3.5': { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0, presence_penalty: 1.5, repeat_penalty: 1.0 },
-  'qwen3.5-thinking': { temperature: 1.0, top_p: 0.95, top_k: 20, min_p: 0, presence_penalty: 1.5, repeat_penalty: 1.0 },
-  'qwen3.5-thinking-coding': { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0, presence_penalty: 1.5, repeat_penalty: 1.0 },
+  'qwen3.5-thinking': { temperature: 1.0, top_p: 0.95, top_k: 20, min_p: 0, presence_penalty: 0, repeat_penalty: 1.0 },
+  'qwen3.5-thinking-coding': { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0, presence_penalty: 0, repeat_penalty: 1.0 },
   'qwen2.5': { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0, repeat_penalty: 1.05 }
 };
 export const TOOL_TEMP = 0.6;

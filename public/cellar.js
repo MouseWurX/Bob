@@ -653,7 +653,7 @@ export function createCellar() {
         <button type="button" data-qreset="${esc(id)}" ${on ? '' : 'disabled'}>Back to Qwen's</button></fieldset>`;
     }).join('');
     return `<div class="qwen-presets" data-qbox><strong>How Qwen brains pick their words</strong> <span class="tag">Qwen's settings unless you change them</span>
-        ${tip('On Bob\'s own engine, Qwen3.6 brains, and the Bob brains made from them (Riker, Bill, Bobert and the rest), use the settings Qwen recommends: one set when they think it through, a cooler set when they think through code, and one for quick replies. Bob keeps a little presence penalty on the thinking sets so a brain doesn\'t go round in circles. Switch this on only if you want to try your own numbers.', 'How Qwen brains pick their words')}
+        ${tip('On Bob\'s own engine, Qwen3.6 brains, and the Bob brains made from them (Riker, Bill, Bobert and the rest), use the settings Qwen recommends: one set when they think it through, a cooler set when they think through code, and one for quick replies. Switch this on only if you want to try your own numbers.', 'How Qwen brains pick their words')}
         ${sswitch('qwenPresetsOn', on, 'Choose my own word settings', 'Off: Bob uses Qwen\'s. On: the numbers below are used instead, from the next reply.')}
         ${rows}</div>`;
   }
