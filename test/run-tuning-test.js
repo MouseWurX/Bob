@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { tuning, cpuPlan, paintFlags, pictureFitFailed, pictureFitReset, SAFE_PAINT, startFile, promptHash } from '../src/tuning.js';
-import { tipsFrom, ratedSpeed } from '../src/pc-check.js';
+import { tipsFrom, ratedSpeed, gatherFacts } from '../src/pc-check.js';
 import { LlamaCpp } from '../src/llamacpp.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -164,6 +164,31 @@ check(/Get Bob ready while you type/.test(html) && /Let games go first/.test(htm
   const left = fs.readdirSync(d).sort().join();
   check(MAX_STARTS === 2 && left === 'b-8192.bin,b-8192.json,c-8192.bin,c-8192.json', 'saved chat starts: one per brain, newest 2 brains only (' + left + ')');
   fs.rmSync(d, { recursive: true, force: true });
+}
+
+// ---- 1.5.133, by CitizenFog and Bob (#25): detect the cards Windows lists; nvidia-smi only when one is NVIDIA ----
+{
+  const fakeRun = (video, smi = '') => { const calls = []; return { calls, run: async (file) => { calls.push(file); if (/powershell/i.test(file)) return JSON.stringify({ video }); if (file === 'nvidia-smi') return smi || null; return null; } }; };
+  const cfg = { agentDir: 'C:\\Bob home' };
+  const amdOnly = fakeRun([{ name: 'AMD Radeon(TM) Graphics', date: '2026-09-01', vendor: 'Advanced Micro Devices, Inc.' }]);
+  const fa = await gatherFacts(cfg, { platform: 'win32', run: amdOnly.run });
+  const ta = tipsFrom(fa, { today });
+  check(!amdOnly.calls.includes('nvidia-smi') && !fa.nvidia, 'AMD only (a Legion Go): nvidia-smi is never asked');
+  check(ta.fine.includes('AMD graphics found: AMD Radeon Graphics.') && !ta.tips.some((t) => t.id === 'driver' || t.id === 'sysmem-fallback') && !ta.fine.some((f) => /NVIDIA/.test(f)), 'AMD only: "AMD graphics found" (without Windows\'s (TM) mark), and no NVIDIA tips');
+  const nv = fakeRun([{ name: 'NVIDIA GeForce RTX 5070 Ti', date: '2026-10-01', vendor: 'NVIDIA' }], 'NVIDIA GeForce RTX 5070 Ti, 581.0, 1024, 16303');
+  const fn = await gatherFacts(cfg, { platform: 'win32', run: nv.run });
+  const tn = tipsFrom(fn, { today });
+  check(nv.calls.includes('nvidia-smi') && fn.nvidia?.name === 'NVIDIA GeForce RTX 5070 Ti', 'NVIDIA: nvidia-smi is asked, as before');
+  check(tn.fine.some((f) => /^NVIDIA driver is recent/.test(f)) && tn.tips.some((t) => t.id === 'sysmem-fallback') && !tn.fine.some((f) => /AMD graphics/.test(f)), 'NVIDIA: the NVIDIA lines and the Sysmem Fallback tip, nothing about AMD');
+  const both = fakeRun([{ name: 'AMD Radeon 780M', date: '2026-08-01', vendor: 'Advanced Micro Devices, Inc.' }, { name: 'NVIDIA GeForce RTX 4060 Laptop GPU', date: '2025-01-01', vendor: 'NVIDIA' }], 'NVIDIA GeForce RTX 4060 Laptop GPU, 560.0, 200, 8188');
+  const fb = await gatherFacts(cfg, { platform: 'win32', run: both.run });
+  const tb = tipsFrom(fb, { today });
+  check(both.calls.includes('nvidia-smi') && fb.nvidia && tb.fine.includes('AMD graphics found: AMD Radeon 780M.') && tb.tips.some((t) => t.id === 'driver') && tb.tips.some((t) => t.id === 'sysmem-fallback'), 'AMD laptop with an NVIDIA card: both seen, NVIDIA tips for the NVIDIA card');
+  const intel = tipsFrom({ video: [{ name: 'Intel(R) Arc(TM) Graphics', vendor: 'Intel Corporation' }] }, { today });
+  check(intel.fine.includes('Intel graphics found: Intel Arc Graphics.'), 'Intel only: "Intel graphics found: Intel Arc Graphics."');
+  const linux = fakeRun(null, '');
+  await gatherFacts(cfg, { platform: 'linux', run: linux.run });
+  check(linux.calls.join() === 'nvidia-smi', 'Linux or Mac (no Windows list): nvidia-smi is still tried, nothing else runs');
 }
 
 console.log(failures ? `\n${failures} failed` : '\nAll tuning tests passed');

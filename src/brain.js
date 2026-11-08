@@ -95,6 +95,7 @@ function sideBrainBytes(brain) {
 // plainly instead of risking an out-of-memory crash. Only with built-in graphics (cfg.sharedGraphics); unknown
 // sizes (no file to measure) go the old way. Settings review: approved 2026-11-06.
 export const APU_MIN_CTX = 8192;
+export const APU_CARVE_MARGIN_GB = 0.5; // 1.5.133: kept free inside the set-aside for the picture reader and the driver
 export const APU_NO_ROOM = (needGB, freeGB) => `That brain needs about ${needGB} GB and only about ${freeGB} GB is free once Windows keeps its share, so I haven't loaded it. Close something or pick a smaller brain in Equip Bob.`;
 export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loaded = null } = {}) {
   if (!brain?.cfg?.sharedGraphics || !model) return { ok: true, ctx };
@@ -107,12 +108,19 @@ export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loade
     if (l.some((m) => !m.beside && sameModel(m.name, model))) return { ok: true, ctx }; // already in: nothing new to find room for
     dropping = l.filter((m) => !m.beside).reduce((a, m) => a + (m.size || 0), 0);
   } catch {}
-  const room = freeMem + dropping - APU_HEADROOM_GB * GB;
+  // 1.5.133 (Legion Go, UMA 8 GB: every brain was refused): the memory set aside for graphics is where the brain goes
+  // first, and Windows never counts it as free. So a brain up to the set-aside (less a small margin) needs no system RAM,
+  // and only what spills past it is checked against free RAM less Windows's 4 GB. On Auto the set-aside is tiny and the
+  // sum is the same as before. The brain being dropped frees its set-aside part and gives back only what it spilled.
+  const carve = Math.max(0, (Number(brain.cfg.reservedGraphicsGB) || 0) * GB - APU_CARVE_MARGIN_GB * GB);
+  const ram = freeMem + Math.max(0, dropping - carve) - APU_HEADROOM_GB * GB;
+  const room = carve + Math.max(0, ram);
+  const fits = (n) => Math.max(0, n - carve) <= Math.max(0, ram); // RAM short of Windows's share still leaves the set-aside
   const start = ctx || 32768;
   let c = start;
-  while (need > room && c > APU_MIN_CTX) { c = Math.max(APU_MIN_CTX, Math.floor(c / 2)); need = bytes(c); }
+  while (!fits(need) && c > APU_MIN_CTX) { c = Math.max(APU_MIN_CTX, Math.floor(c / 2)); need = bytes(c); }
   const gb = (b) => Math.round((Math.max(0, b) / GB) * 10) / 10;
-  if (need <= room) return { ok: true, ctx: c === start ? ctx : c, shortened: c !== start, needGB: gb(need), roomGB: gb(room) };
+  if (fits(need)) return { ok: true, ctx: c === start ? ctx : c, shortened: c !== start, needGB: gb(need), roomGB: gb(room) };
   return { ok: false, ctx, needGB: gb(need), roomGB: gb(room), line: APU_NO_ROOM(gb(need), gb(room)) };
 }
 
@@ -142,6 +150,10 @@ export async function sidePick(brain, job) {
   return { model: talkerModel(brain) || sb.small, ...base }; // sideOk / besideBigOk only start a side reply when a talker exists
 }
 const fullName = (name) => (/^Qwen3 4B Instruct$/.test(name) ? `${name} 2507` : name); // the name Get models and Equip use
+// 1.5.133: the talker kept beside a job always runs on the processor, with at most 32K of chat memory. Tried on the
+// owner's PC: any talker on the card (even 32K, 5.5 GB) made the 35B with its picture reader run out of card memory.
+export const TALKER_CTX = 32768;
+export const talkerCtx = (cfg) => Math.min(Number(chatBrain(cfg).ctx) || TALKER_CTX, TALKER_CTX);
 export const TALKER_LINE = (name) => `Keeping a small brain (${fullName(name)}) on the processor, so we can keep talking while the big one works.`;
 
 // 1.5.51 "Keep chatting while Bob is busy", part 2: beside a big text job (Medium effort and up, the Coding session, or
@@ -182,7 +194,7 @@ export function besideBigOk(brain, job, { freeMem = freeMemNow(), now = Date.now
   if (held && !isTalker(brain, held)) return false;
   if (held && brain.engine.besideLoaded?.()) return true; // 1.5.53: a talker is already waiting beside the job
   if (!bigJob(brain, now)) return false;
-  return freeMem >= besideBytes(brain, talker, chatBrain(cfg).ctx) + 2 * GB;
+  return freeMem >= besideBytes(brain, talker, talkerCtx(cfg)) + 2 * GB;
 }
 
 // 1.5.51 opt-in "Let the reviewer sit beside the main brain" (mootBeside): at High and Extreme effort the reviewer
@@ -415,7 +427,11 @@ export class Brain {
   // ---------- Share jobs (1.5.72) ----------
   // A big brain for Medium-and-up work that's really here (the file is on disk), not just picked in Equip Bob.
   guestBigBrain() { const d = draftBrain(this.cfg, 'medium'); if (!d?.model) return false; return this.cfg.engine === 'llamacpp' ? runnable(this, d.model) : true; }
-  guestCanNow() { const can = capabilities(this.cfg); return NEEDS_LIST.filter((n) => canHere(this, n, { can, webOn: webOn(this.cfg) })); }
+  guestCanNow() { const can = this.jobCan(); return NEEDS_LIST.filter((n) => canHere(this, n, { can, webOn: webOn(this.cfg) })); }
+  // 1.5.133 lost-song fix: what this Bob can really make right now. capabilities() says music once the audio workshop is
+  // set up, but a song also needs the music models (several GB, downloaded the first time). A Bob without them must not
+  // tell his other Bobs he takes music, and a Bob asking for a song sends it to one that has them.
+  jobCan() { const can = { ...capabilities(this.cfg) }; if (can.music && !this.cfg.audio?.aceUrl) { try { if (aceMissingFiles(this.cfg).length) can.music = false; } catch {} } return can; }
 
   // ---------- Share brains (1.5.55) ----------
   borrowCase(job, pics) { return { session: currentSession(this.cfg).id, busy: this.turns.size > 1 || this.queue.some((j) => j.state === 'working' && j !== job), job, pics }; }
@@ -739,14 +755,15 @@ export class Brain {
     let main = [];
     try { main = (await this.engine.loaded()).filter((m) => !m.beside).map((m) => m.name); } catch {}
     if (main.some((n) => sameModel(n, model))) return false; // already loaded: nothing gets pushed out
-    const ctx = chatBrain(cfg).ctx;
+    const ctx = talkerCtx(cfg);
     if (freeMem < besideBytes(this, talker, ctx) + 2 * GB) return false;
     this.talking = true;
     try {
-      await this.engine.preload(talker, undefined, { beside: true, cpu: true, ctx });
+      // 1.5.133: never on the card: the job's brain isn't loaded yet, so the card only looks empty.
+      await this.engine.preload(talker, undefined, { beside: true, cpu: true, ctx, place: 'none' });
       if (!signal || this.talkerSaid !== signal) emit({ type: 'announce', text: TALKER_LINE(this.brainLabel(talker).replace(/^.*?\((.*)\)$/, '$1')) }); // once per job
       this.talkerSaid = signal;
-      this.log('model', `kept ${talker} on the processor beside the job, for chat`);
+      this.log('model', `kept ${talker} on the processor beside the job, for chat (chat memory ${ctx})`);
       return true;
     } catch (e) { this.log('model', `couldn't keep a talker beside the job: ${e.message}`); return false; }
     finally { this.talking = false; }
@@ -1670,7 +1687,7 @@ export class Brain {
       // 1.5.72 Share jobs: a job this Bob can't do, or that would wait, goes to one of your Bobs who says he can do it.
       if (job.awayHold && job.awayHold > Date.now()) continue; // waiting for one of your Bobs who can do it
       if (!job.away && this.cfg.share?.borrow?.jobs === true) {
-        const plan = awayPlan(this, job, { can: capabilities(this.cfg), webOn: webOn(this.cfg), waitsForGaming: waitsForGaming(this.cfg, job), laneBusy: this.turns.has(laneOf(this.cfg, job)) });
+        const plan = awayPlan(this, job, { can: this.jobCan(), webOn: webOn(this.cfg), waitsForGaming: waitsForGaming(this.cfg, job), laneBusy: this.turns.has(laneOf(this.cfg, job)) });
         if (plan) {
           job.away = { pending: true }; // held while we ask around, so the next pump doesn't start it here too
           const nobody = () => {
@@ -2012,6 +2029,14 @@ export class Brain {
         return;
       } else { rented = rental; borrowing = false; }
     }
+    // 1.5.133 (Legion Go): when this Bob's own brain can't load here (the memory guard on built-in graphics says no),
+    // the job goes to a paired Bob, whatever "when" borrowing is set to, as long as borrowing is switched on at all.
+    // Nobody free: the plain "needs about N GB" line, as before. Never for a side lane, a guest, or a rented job.
+    let ownRefused = null;
+    if (!borrowing && !rented && !job?.side && !job?.guest && this.cfg.share?.borrow?.on === true && (this.cfg.share.borrow.bobs || []).length && !pics.length) {
+      const room = await apuRoom(this, model, brainCtx).catch(() => ({ ok: true }));
+      if (!room.ok) { ownRefused = room; borrowing = true; this.log('borrow', `my own brain won't fit here (needs ~${room.needGB} GB, room ~${room.roomGB} GB); asking another Bob`); }
+    }
 
     // 1.5.60: a link in the message, with web search on: open it first, so even a small brain that would say
     // "I have no web access" answers from the page. Only the first link; it shows as a normal 🔧 Read the page line.
@@ -2064,6 +2089,7 @@ export class Brain {
           if (lender) { tried.push(lender.address); emit({ type: 'borrow', action: 'start', name: lender.name, brain: lender.brain, device: lender.device }); }
           else {
             borrowing = false; // nobody free with room: this Bob thinks it, quietly (nothing went wrong)
+            if (ownRefused) { this.log('borrow', 'no other Bob is free, and my own brain does not fit'); throw new Error(ownRefused.line); }
             const small = this.lenders.tooBigFor(lentSize);
             this.log('borrow', small.length ? `this chat is too long for ${small.join(', ')} (about ${lentSize} tokens); thinking it myself` : 'none of my other Bobs is free; thinking it myself');
           }

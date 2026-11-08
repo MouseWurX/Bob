@@ -134,6 +134,9 @@ const call = (s) => ({ function: { name: s.tool, arguments: JSON.stringify(s.arg
   f3.tools.make_video = { schema: { type: 'function', function: { name: 'make_video' } }, run: async () => 'ok' };
   f3.usable = (n) => Boolean(f3.tools[n]);
   check('a video clip on its own counts as big', /Call show_plan first/.test((await planGate(f3, [{ function: { name: 'make_video', arguments: '{}' } }], c3))?.hold || ''));
+  const { fake: f5, ctx: c5 } = makeBob();
+  f5.tools.make_video = f3.tools.make_video; f5.usable = f3.usable; c5.job = { guest: { from: 'Go', need: 'video' } };
+  check('a job from another Bob is never held for a plan (1.5.133 lost song)', await planGate(f5, [{ function: { name: 'make_video', arguments: '{}' } }], c5) === null);
   const { fake: f4, ctx: c4 } = makeBob({ plan: false });
   check('with the setting off, nothing is ever held', await planGate(f4, [...big, ...big], c4) === null);
 }

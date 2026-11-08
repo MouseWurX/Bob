@@ -253,7 +253,9 @@ export async function buildBundle(cfg, deps = {}) {
     { name: 'bob/logbook.md', text: scrub(tail(logbook, LOG_LINES)) || '(no logbook yet)\n' },
     { name: 'bob/settings.json', text: JSON.stringify(settings, null, 2) },
     { name: 'bob/facts.json', text: scrub(JSON.stringify(scrubObject(facts, scrub), null, 2)) },
-    ...chats
+    ...chats,
+    // 1.5.133: the engine's whole output from the last load that fell over (main and second brain), when there is one.
+    ...['', '-beside'].map((tag) => { try { return { name: `bob/llama-server${tag}-load-failed.txt`, text: scrub(tail(fs.readFileSync(path.join(cfg.dataDir || '', `llama-server${tag}-load-failed.txt`), 'utf8'), 2000)) }; } catch { return null; } }).filter(Boolean)
   ];
   const entries = files.map((f) => { const data = Buffer.from(f.text, 'utf8'); return { name: f.name, data, size: data.length, mtime: now }; });
   return { entries, facts, note, chats: chats.length, errors: errors.length };

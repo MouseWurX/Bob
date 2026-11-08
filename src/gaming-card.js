@@ -41,21 +41,29 @@ export async function readCpu(ms = 500) {
 }
 
 // Pure rule, so it can be tested: 'none' (processor only), 'borrow' (about 0.6 GB for prompt reading) or 'whole' (the
-// whole small brain on the card). card is null when unknown (no NVIDIA card or no nvidia-smi): then as before, 'borrow'.
-export function cardPlan(mode, { card, cpuPct = 0, brainMB = 0 } = {}) {
+// whole small brain on the card). card is null when there's no reading (no NVIDIA card, no nvidia-smi):
+//   - sharedGraphics (built-in graphics, e.g. the Radeon 780M on a Legion Go): 'none', processor only. There is no
+//     NVIDIA card to borrow from, so claiming we "borrow a little" would be wrong, and Automatic can't see a game
+//     loading the card either (no telemetry), so it keeps its word by staying off it and saying so.
+//   - unknown hardware (no reading, not known shared graphics): 'borrow' as before, so no machine's behaviour changes.
+// 1.5.133: from Rook (a friend of the project), checked on a real Legion Go.
+export function cardPlan(mode, { card, cpuPct = 0, brainMB = 0, sharedGraphics = false } = {}) {
   if (mode === 'never') return 'none';
-  if (mode === 'always' || !card) return 'borrow';
+  if (mode === 'always') return 'borrow';
+  if (!card) return sharedGraphics ? 'none' : 'borrow';
   if (card.util >= CARD_BUSY_PCT || card.freeMB < CARD_MIN_FREE_MB) return 'none';
   if (cpuPct >= CPU_FULL_PCT && brainMB > 0 && card.freeMB >= brainMB + 2048) return 'whole';
   return 'borrow';
 }
 
-// What the Gaming brain should do right now. read lets tests pass fake readings.
+// What the Gaming brain should do right now. read lets tests pass fake readings. cfg.sharedGraphics (set by the
+// hardware scan) tells the rule the card is built into the processor, so a missing reading means "stay off it" not
+// "borrow a little".
 export async function decideCard(cfg, { brainMB = 0, read = { card: readCard, cpu: readCpu } } = {}) {
   const mode = gamingCard(cfg);
   if (mode !== 'auto') return cardPlan(mode);
   const [card, cpuPct] = await Promise.all([read.card(), read.cpu()]);
-  return cardPlan(mode, { card, cpuPct, brainMB });
+  return cardPlan(mode, { card, cpuPct, brainMB, sharedGraphics: cfg?.sharedGraphics === true });
 }
 
 // Wording shown in Settings, Help and Now running.

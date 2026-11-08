@@ -1,5 +1,6 @@
-// 1.5.94 "Keep Bob in the tray" and "Use Bob's look as his icon": both off unless turned on, the icon is drawn
-// from the avatar, the tray menu always has a clear way to close Bob fully, and the brain hands both to the window.
+// 1.5.94 "Keep Bob in the tray" and "Use Bob's look as his icon": the icon is drawn from the avatar (any look, including
+// one built from parts), the tray menu always has a clear way to close Bob fully, and the brain hands both to the window.
+// 1.5.134: both switches are ON unless turned off (the owner asked for Bob in the tray and his look on the taskbar).
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 import { lookPng, lookPixels, windowState, applyWindowState } from '../src/app-icon.js';
@@ -46,8 +47,11 @@ function decode(png) {
 
 // ---- the switches ----
 {
-  check('both switches start off', windowState({}).tray === false && windowState({}).lookIcon === false && windowState({}).icons === null);
-  check('only true turns them on when saved', mergeSettings({}, { tray: 'yes', lookIcon: 1 }).tray === false && mergeSettings({}, { tray: 'yes', lookIcon: 1 }).lookIcon === false && mergeSettings({}, { tray: true, lookIcon: true }).tray === true && mergeSettings({}, { lookIcon: true }).lookIcon === true);
+  check('both switches start on (1.5.134), with the usual look drawn as the icon', windowState({}).tray === true && windowState({}).lookIcon === true && windowState({}).icons !== null && windowState({}).icons[32].equals(lookPng('sysop', 32)));
+  check('only false turns them off when saved', mergeSettings({}, { tray: false, lookIcon: false }).tray === false && mergeSettings({}, { tray: false, lookIcon: false }).lookIcon === false && mergeSettings({}, { tray: 'no', lookIcon: 0 }).tray === true && mergeSettings({}, { tray: 'no', lookIcon: 0 }).lookIcon === true);
+  check('turned off, the window gets no pictures and no tray', windowState({ tray: false, lookIcon: false }).icons === null && windowState({ tray: false, lookIcon: false }).tray === false);
+  const own = windowState({ look: 'c:m.regular.0.short.1.1.none.0.tee.0.none.none.none' });
+  check('a look built from parts (the character screen) becomes the icon too', own.lookName === 'Your own design' && own.icons && !own.icons[32].equals(lookPng('sysop', 32)));
   const st = windowState({ lookIcon: true, look: 'pc-2' });
   check('with the look as his icon, the window gets every size it asks for', st.icons && [16, 24, 32, 48, 256].every((n) => Buffer.isBuffer(st.icons[n])));
   check('icons follow the look', windowState({ lookIcon: true, look: 'odd-1' }).icons[32].equals(lookPng('odd-1', 32)));
@@ -60,7 +64,7 @@ function decode(png) {
   check('a window-program hiccup never breaks saving settings', !threw);
   delete globalThis.bobWindow;
   check('in a browser (no window program) it does nothing', (() => { try { applyWindowState({ tray: true }); return true; } catch { return false; } })());
-  const now = String(settingsNow({ tray: true }));
+  const now = String(settingsNow({ lookIcon: false }));
   check('Bob can read both switches in his own settings', /Keep Bob in the tray: on/i.test(now) && /Use Bob's look as his icon: off/i.test(now));
 }
 
@@ -71,6 +75,7 @@ function decode(png) {
   check('Quit Bob really quits (not hide)', /Quit Bob \(closes him fully\)', click: \(\) => \{ quitting = true; app\.quit\(\); \}/.test(main));
   check('the X only hides him while the tray switch is on and the tray exists', /if \(quitting \|\| !winState\.tray \|\| !tray \|\| !win\) return false;/.test(main) && /win\.on\('close', \(e\) => \{ tuckAway\(e\); \}\)/.test(main));
   check('quitting for an update (before-quit) is never blocked by the tray', /app\.on\('before-quit', \(\) => \{ quitting = true; \}\)/.test(main));
+  check('Linux: the tray hint says how to bring him back when there is no tray icon', /If you don't see a tray icon, open Bob again from your apps menu to bring him back\./.test(main) && /!MAC && process\.platform !== 'win32'/.test(main));
   check('started hidden at sign-in, the tray icon is always there', /const wantTray = \(\) => winState\.tray \|\| STARTED_HIDDEN;/.test(main));
   check('the first trip to the tray says where he went and how to quit, once ever', /tray-hint-shown/.test(main) && /pick Quit Bob/.test(main));
   check('opening Bob again brings his window back', /app\.on\('second-instance', showBob\)/.test(main));
@@ -82,14 +87,18 @@ function decode(png) {
 // ---- Settings and Help ----
 {
   const cellar = read('public/cellar.js');
-  check('Settings has both switches, each saying it starts off', /sswitch\('tray', settings\.tray === true, 'Keep Bob in the tray', `Off unless you turn it on\./.test(cellar) && /sswitch\('lookIcon', settings\.lookIcon === true, 'Use Bob\\'s look as his icon', `Off unless you turn it on\./.test(cellar));
+  check('Settings has both switches, each saying it starts on', /sswitch\('tray', settings\.tray !== false, 'Keep Bob in the tray', `On unless you turn it off\./.test(cellar) && /sswitch\('lookIcon', settings\.lookIcon !== false, 'Use Bob\\'s look as his icon', `On unless you turn it off\./.test(cellar));
+  check('the icon note says a pinned taskbar shortcut is the one thing that may not follow', /pinned to the taskbar may keep the usual icon/.test(cellar));
   check('the tray note says how to close him fully', /pick <strong>Quit Bob<\/strong>/.test(cellar));
   const topic = HELP.find((e) => e.id === 'tray');
   check('Help has a tray topic covering quitting, Mac and Linux', topic && /Quit Bob \(closes him fully\)/.test(topic.html) && /menu bar/.test(topic.html) && /Linux/.test(topic.html));
   check('the FAQ answers "why is he still running" and the icon question', ['faq-tray-quit', 'faq-tray-icon'].every((id) => HELP.some((e) => e.id === id && e.group === 'FAQ')));
-  check('the glossary explains the tray', /<dt>Tray<\/dt>/.test(HELP.find((e) => e.id === 'glossary').html));
+  const faqIcon = HELP.find((e) => e.id === 'faq-tray-icon').html;
+  check('the icon FAQ says it follows a saved look, names the pinned-shortcut catch and the phone app', /redraw the moment you save/.test(faqIcon) && /pinned/.test(faqIcon) && /Android/.test(faqIcon));
+  check('the tray topic says both start on and covers the phone', /both on unless you turn them off/.test(topic.html) && /Android doesn't let an app redraw its own icon/.test(topic.html));
+  check('the glossary explains the tray and the taskbar icon', /<dt>Tray<\/dt>/.test(HELP.find((e) => e.id === 'glossary').html) && /<dt>Taskbar icon<\/dt>/.test(HELP.find((e) => e.id === 'glossary').html));
   const inv = read('docs/SETTINGS-INVENTORY.md');
-  check('the settings inventory lists both, off', /Keep Bob in the tray.*Off/.test(inv) && /Use Bob's look as his icon.*Off/.test(inv));
+  check('the settings inventory lists both, on', /\| Keep Bob in the tray \| On unless.*\| On \(was Off/.test(inv) && /\| Use Bob's look as his icon \| On unless.*\| On \(was Off/.test(inv));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

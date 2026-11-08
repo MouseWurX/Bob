@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Bob's model shop. Each entry says what it is for, how big it is, how much graphics memory it wants, and its licence. Every model has 'files', downloaded straight from a pinned link into models\\bob and checked against its sha256. An 'ollama' name as well means: pulled through Ollama instead when Ollama is Bob's engine (no second copy). Links marked verify:true still need checking on the PC before the Download button is shown. 'community' marks a build made by someone other than the model's maker (who remixed it, from which base); 'naughty: true' marks an uncensored (heretic / abliterated) one, listed only while the Naughty list is switched on.",
+  "note": "Bob's model shop. Each entry says what it is for, how big it is, how much graphics memory it wants, and its licence. Every model has 'files', downloaded straight from a pinned link into models\\bob and checked against its sha256. An 'ollama' name as well means: pulled through Ollama instead when Ollama is Bob's engine (no second copy). Links marked verify:true are re-checked before a release (size and sha256 at the pinned commit, by the release checklist's pin check); Bob himself doesn't read the flag. 'community' marks a build made by someone other than the model's maker: by (one person) or team + members, base, baseBy, kind, files (who packed the files); 'naughty: true' marks an uncensored (heretic / abliterated) one, listed only while the Naughty list is switched on.",
   "categories": [
     {
       "id": "chat",
@@ -570,6 +570,92 @@
           "verify": true,
           "bytes": 21166758784,
           "sha256": "8919d0062d684624d5fab9cc4787cd8cb2510e6d6c14649a424b042938669f9a"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/a483e9e6cbd595906af30beda3187c2663a1118c/mmproj-F16.gguf",
+          "role": "mmproj",
+          "saveAs": "Qwen3.6-35B-A3B-mmproj-F16.gguf",
+          "verify": true,
+          "bytes": 899283680,
+          "sha256": "8971ee4f331ff0a4c609374f32984b3d4e6dc086c0aa35f1d637fad1829e887f"
+        }
+      ],
+      "use": {
+        "models": {
+          "tinker": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.6-35b-a3b-opus-distilled",
+      "family": "Qwen",
+      "category": "coding",
+      "jobs": ["tinker", "bob", "reviewer", "deep", "office", "eyes", "ledger", "scout"],
+      "name": "Qwen3.6 35B-A3B Opus Reasoning Distilled",
+      "what": "Qwen3.6 35B-A3B taught to think the way a big cloud brain (Claude Opus) does, from its written-out reasoning. Same quick coder and all-rounder underneath: sees pictures, 256K in mind. Well spoken of: the most downloaded Qwen3.6 fine-tune on Hugging Face.",
+      "sizeGB": 22.1,
+      "vramGB": 16,
+      "params": 35,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "community": {
+        "by": "hesamation",
+        "base": "Qwen3.6 35B-A3B",
+        "baseBy": "Alibaba",
+        "kind": "distilled"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/hesamation/Qwen3.6-35B-A3B-Claude-4.6-Opus-Reasoning-Distilled-GGUF/resolve/21c5c33e749f78d01a12091301509f70d1565562/Qwen3.6-35B-A3B-Claude-4.6-Opus-Reasoning-Distilled.Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 21166759104,
+          "sha256": "fd3bf7586354890a2710d69357c30fb221a31eecf9f3cd9418257d9289e02765"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/a483e9e6cbd595906af30beda3187c2663a1118c/mmproj-F16.gguf",
+          "role": "mmproj",
+          "saveAs": "Qwen3.6-35B-A3B-mmproj-F16.gguf",
+          "verify": true,
+          "bytes": 899283680,
+          "sha256": "8971ee4f331ff0a4c609374f32984b3d4e6dc086c0aa35f1d637fad1829e887f"
+        }
+      ],
+      "use": {
+        "models": {
+          "tinker": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.6-35b-a3b-distill-3.8",
+      "family": "Qwen",
+      "category": "coding",
+      "jobs": ["tinker", "bob", "reviewer", "deep", "office", "eyes", "ledger", "scout"],
+      "name": "Qwen3.6 35B-A3B Distilled from Qwen 3.8 27B",
+      "what": "Qwen3.6 35B-A3B taught by the newer Qwen 3.8 27B, to pick up some of its smarts while staying quick. Sees pictures, 256K in mind. A small, newer build: not many people have tried it yet.",
+      "sizeGB": 23.8,
+      "vramGB": 16,
+      "params": 35,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "community": {
+        "by": "lododoai",
+        "base": "Qwen3.6 35B-A3B",
+        "baseBy": "Alibaba",
+        "kind": "distilled"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/lododoai/Qwen3.6-35B-A3B-Distill-Qwen3.8-27B-GGUF/resolve/3e0fbf2b8dada05c7c2eda3e265d329c4eb10ba3/Qwen3.6-35B-A3B-lododo-Distill-v1.0-UD-Q4_K_XL.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 22853663008,
+          "sha256": "c27e33b7921b0bf3f91f1598ed62481c6276a350d7435a6f4abc4eaf4b036260"
         },
         {
           "url": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/a483e9e6cbd595906af30beda3187c2663a1118c/mmproj-F16.gguf",

@@ -113,6 +113,9 @@ const HOLD = (u) => `(Not done yet: "Show Bob's plan before big jobs" is on and 
 // { hold: text } (don't run them; each call gets this text back).
 export async function planGate(brain, calls, ctx) {
   if (!planOn(brain.cfg) || ctx.planShown || !Array.isArray(calls) || !calls.length) return null;
+  // 1.5.133 lost-song fix: a job from another Bob is one job the owner already asked for over there, and the plan nudge
+  // here made the brain talk about the song instead of making it (the owner's PC, Nov 8: nudged, then no make_music at all).
+  if (ctx.job?.guest) return null;
   const names = calls.map((c) => String(c.function?.name || ''));
   if (names.includes('show_plan')) return null;
   const changing = names.filter((n) => brain.tools[n]?.check && brain.usable(n)).length;

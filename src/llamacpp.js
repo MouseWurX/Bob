@@ -53,6 +53,7 @@ export function textCalls(content, names) {
 }
 const samePath = (a, b) => Boolean(a && b) && path.resolve(String(a)).toLowerCase() === path.resolve(String(b)).toLowerCase();
 export const DEFAULT_CTX = 32768;
+const LOAD_LOG_MAX = 256 * 1024; // 1.5.133: how much llama-server output a failed load keeps
 // 1.5.19: Medium thinks, but only this long (tokens of thinking), then it is asked to answer.
 export const THINK_BUDGET = { medium: 1536 };
 // 1.5.68: the always-thinking Coding copy (Qwen3.6) gets a budget at every effort too. On the PC it once thought for
@@ -157,16 +158,22 @@ export class LlamaCpp {
   }
   // 1.5.51: 'whole' (on the graphics card) or 'none' (processor only) for a brain on the second server. The card is
   // used only when it's not busy and has room for the brain, its chat memory and the usual 1.5 GB to spare.
-  async besidePlace(model, ctx) {
+  // 1.5.133: the chat memory is counted in full (it was capped at 128K, so a 256K talker looked like it fitted), and
+  // reserveMB keeps room for the main brain that is about to load (the card looked empty because it wasn't loaded yet).
+  async besidePlace(model, ctx, { reserveMB = 0, why = '' } = {}) {
     const b = this.role === BESIDE ? this : this.besideServer();
-    if (gaming(this.cfg) || this.lc.besideOnCard === false) return 'none';
+    const say = (place, more) => { try { (b.log || this.log)?.('engine', `second brain ${model}: ${place === 'whole' ? 'on the graphics card' : 'on the processor'}, chat memory ${c}${more ? ` (${more})` : ''}${why ? ` [${why}]` : ''}`); } catch {} };
+    const c = ctx || this.lc.ctx || DEFAULT_CTX;
+    if (gaming(this.cfg) || this.lc.besideOnCard === false) { say('none', gaming(this.cfg) ? 'Gaming session' : 'card turned off for it'); return 'none'; }
     let mb = 0;
-    try { mb = fs.statSync(this.resolve(model).gguf).size / 1048576; } catch { return 'none'; }
+    try { mb = fs.statSync(this.resolve(model).gguf).size / 1048576; } catch { say('none', 'file size unknown'); return 'none'; }
     const card = await (b.cardReaders?.card || this.cardReaders?.card || this.main?.cardReaders?.card || readCard)().catch(() => null);
-    if (!card) return 'none';
-    const need = mb * 1.15 + Math.min(ctx || this.lc.ctx || DEFAULT_CTX, 131072) * 60 / 1024 + CARD_MIN_FREE_MB;
+    if (!card) { say('none', 'no card reading'); return 'none'; }
+    const keep = Math.max(0, Number(reserveMB) || 0);
+    const need = mb * 1.15 + c * 60 / 1024 + CARD_MIN_FREE_MB + keep;
     const place = card.util < CARD_BUSY_PCT && card.freeMB >= need ? 'whole' : 'none';
-    b.placed = { model, place, at: Date.now() };
+    b.placed = { model, place, at: Date.now(), reserveMB: keep };
+    say(place, `card free ${Math.round(card.freeMB)} MB, needs ${Math.round(need)} MB${keep ? ` incl. ${Math.round(keep)} MB kept for the main brain` : ''}${card.util >= CARD_BUSY_PCT ? `, card busy ${card.util}%` : ''}`);
     return place;
   }
 
@@ -277,6 +284,7 @@ export class LlamaCpp {
     if (hold && hold === this.current) { this.lastUse = this.now(); return false; }
     if (this.now() - this.lastUse <= keepAliveMs(this.cfg)) return false;
     this.idleUnloaded = this.current;
+    try { this.log?.('engine', `${this.current}: let go after ${Math.round((this.now() - this.lastUse) / 60000)} min unused${this.role === BESIDE ? ' (second brain)' : ''}`); } catch {} // 1.5.133
     await this.stopServer();
     return true;
   }
@@ -521,16 +529,19 @@ export class LlamaCpp {
     await new Promise((r) => { c.once('exit', r); c.kill(); setTimeout(r, 5000); });
   }
 
-  async preload(model, signal, { ctx, cpu = false, beside = false } = {}) {
+  async preload(model, signal, { ctx, cpu = false, beside = false, reserveMB = 0, place = null } = {}) {
     const b = this.route({ beside });
-    if (b) return b.preload(model, signal, { ctx, cpu: true });
+    if (b) return b.preload(model, signal, { ctx, cpu: true, reserveMB, place });
     if (this.role === BESIDE) cpu = true;
     const t0 = Date.now();
     this.lastUse = this.now();
     // 1.5.32: in the Gaming session the "Gaming: graphics card" switch decides how much of the card the brain may use.
     // 1.5.51: the second server: the place picked for the load line (if fresh), or a new look at the card.
-    const fresh = this.placed && this.placed.model === model && Date.now() - this.placed.at < 60000 ? this.placed.place : null;
-    const card = this.role === BESIDE ? (fresh || (await this.besidePlace(model, ctx))) : cpu && gaming(this.cfg) ? await this.gamingCardPlan(model) : null;
+    // 1.5.133: a pick made without room kept for the main brain doesn't count when the load asks to keep some.
+    const fresh = this.placed && this.placed.model === model && Date.now() - this.placed.at < 60000 && (this.placed.reserveMB || 0) >= (reserveMB || 0) ? this.placed.place : null;
+    // 1.5.133: place 'none' (the talker kept beside a job) means the processor, whatever the card looks like now.
+    if (this.role === BESIDE && place === 'none') { try { this.log?.('engine', `second brain ${model}: on the processor, chat memory ${ctx || this.lc.ctx || DEFAULT_CTX} (kept off the card beside a job)`); } catch {} }
+    const card = this.role === BESIDE ? (place === 'none' ? 'none' : fresh || (await this.besidePlace(model, ctx, { reserveMB }))) : cpu && gaming(this.cfg) ? await this.gamingCardPlan(model) : null;
     this.placed = null;
     const args = this.buildArgs(model, { ctx, cpu, card });
     await this.stopServer();
@@ -545,18 +556,26 @@ export class LlamaCpp {
     // The exact command, so speed settings can be checked (e.g. that the draft model really went in).
     try { fs.writeFileSync(path.join(this.cfg.dataDir, `llama-server${this.tag}-args.txt`), [exe, ...args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ') + '\n'); } catch {}
     let log = '';
+    let full = ''; // 1.5.133: the whole output (up to 256 KB) goes to a file when a load fails; the message keeps the end
     if (args.includes('--slot-save-path')) { try { fs.mkdirSync(startDir(this.cfg), { recursive: true }); } catch {} }
     const env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
     const child = spawn(exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
     // 1.5.24 "Let games go first": on the processor, the engine yields to games (below normal priority).
     if (this.role === BESIDE || (cpu && cpuPlan(this.cfg)?.lowPriority)) { try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {} }
-    child.stdout.on('data', (d) => { log = (log + d).slice(-4000); });
-    child.stderr.on('data', (d) => { log = (log + d).slice(-4000); });
+    const keep = (d) => { log = (log + d).slice(-4000); if (full.length < LOAD_LOG_MAX) full += d; };
+    child.stdout.on('data', keep);
+    child.stderr.on('data', keep);
+    const failFile = path.join(this.cfg.dataDir, `llama-server${this.tag}-load-failed.txt`);
+    const saveFail = (why) => {
+      try { fs.writeFileSync(failFile, `${new Date().toISOString()} ${model}: ${why}\n${[exe, ...args].join(' ')}\n\n${full}`); } catch {}
+      try { this.log?.('engine', `${model}: ${why}; full llama-server output saved to ${path.basename(failFile)}`); } catch {}
+    };
     const started = new Promise((_, reject) => {
       child.once('error', (e) => reject(new Error(`Couldn't start llama-server (${e.message}). Check llamacpp.exe in config.json.`)));
-      child.once('exit', (code) => reject(new Error(`llama-server stopped while loading ${model} (code ${code}). Last output: ${log.slice(-600)}`)));
+      child.once('exit', (code) => { if (this.child === child && this.current === model && !this.loadedOk) saveFail(`stopped while loading (code ${code})`); reject(new Error(`llama-server stopped while loading ${model} (code ${code}). Last output: ${log.slice(-600)}`)); });
     });
     this.child = child;
+    this.loadedOk = false;
     this.current = model;
     this.currentCtx = ctx || null;
     this.currentCpu = Boolean(cpu);
@@ -572,6 +591,7 @@ export class LlamaCpp {
         if (await this.health()) return;
         await new Promise((r) => setTimeout(r, 500));
       }
+      saveFail('took too long to load');
       throw new Error(`${model} took too long to load.`);
     })();
     try {
@@ -581,6 +601,7 @@ export class LlamaCpp {
       throw e;
     }
     started.catch(() => {}); // later exits are handled by isLoaded()
+    this.loadedOk = true;
     this.primedHash = null;
     // A saved reading of this brain's instructions comes back in about a second instead of being read again.
     if (cpu && tuning(this.cfg).readyWhileTyping) await this.restoreStart(model, ctx);
