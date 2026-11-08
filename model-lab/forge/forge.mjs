@@ -58,8 +58,17 @@ function saveVolumes(list) { fs.writeFileSync(volFile(), JSON.stringify({ volume
 // a volume in data centre dc (made now if there is none); the standing charge is about $0.07 per GB a month until deleted
 async function volumeIn(dc, name) {
   const have = knownVolumes().find((v) => v.dataCenterId === dc);
-  if (have) return have;
   const gb = plan.volume.gb || 100;
+  if (have) { // build 17: a volume we already have is enlarged to the plan's size first (RunPod enlarges, never shrinks); 8 Nov a 100 GB drive was reused for a 300 GB run
+    if ((have.size || 0) < gb) {
+      try {
+        await rp('PATCH', `/networkvolumes/${have.id}`, { size: gb });
+        have.size = gb; saveVolumes(knownVolumes().map((v) => v.id === have.id ? { ...v, size: gb, enlarged: new Date().toISOString() } : v));
+        log(`enlarged the network volume ${have.id} to ${gb} GB (about $${(gb * 0.07).toFixed(2)} a month)`);
+      } catch (e) { log(`could not enlarge the network volume ${have.id} from ${have.size || '?'} to ${gb} GB: ${e.message.slice(0, 120)}; the run may run out of room`); }
+    }
+    return have;
+  }
   const v = await rp('POST', '/networkvolumes', { name: plan.volume.name || 'bob-forge', size: gb, dataCenterId: dc });
   const rec = { id: v.id, size: v.size || gb, dataCenterId: v.dataCenterId || dc, name: name || dc, made: new Date().toISOString() };
   saveVolumes([rec, ...knownVolumes()]);
