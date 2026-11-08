@@ -8,7 +8,7 @@
 
 Can one person, with a gaming PC and a few rented card-hours, cut a 35-billion-parameter mixture-of-experts model down to sizes that fit a handheld, a laptop and a phone, and have the small ones still do Bob's job (tool calls, chat, coding, thinking on and off, pictures)? And at what cost, in hours and dollars, honestly counted?
 
-The teacher is [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (Apache 2.0, Alibaba's Qwen team). The method is expert pruning plus distillation: keep the experts a job actually uses, then retrain the cut model to give the same next-word odds as the full one. The program that does it is the Forge, in [model-lab/forge](../model-lab/forge/).
+The teacher is [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (Apache 2.0, Alibaba's Qwen team). The method is expert pruning plus distillation: keep the experts a job actually uses, then retrain the cut model to give the same next-word odds as the full one. The program that does it is the Forge, in [model-lab/forge](../model-lab/forge/). The plan written as a proposal, with milestones and assets in hand, is [PROPOSAL.md](PROPOSAL.md).
 
 ## 2. The plan, and the routes it may take
 
