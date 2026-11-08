@@ -16,7 +16,7 @@ What is true today, 8 November 2026:
 - **28Bob Riker v3 is the first viable candidate for the family, pending its benchmarks.** Every rung below it is cut from it, in order: Bill, Homer, Milo, Luke, Calvin, then the stretch goal Bender.
 - Coding and general knowledge are where a cut shows. The first cut rule and the first coding lessons were both weak; both have been measured, written up and replaced.
 - Five Bobs have been made on rented cards for about $183 of card time, failures included. Only Riker v3 is in the plan; the four earlier ones are kept as a control group and nothing more.
-- The whole family is expected to cost about $165 more in card time, under $900 in total with the tools that made it. Every dollar so far is itemised on the costs page.
+- The whole family is expected to cost about $165 more in card time, about $1,400 in total with the tools that made it. Every dollar so far is itemised on the costs page.
 - Nothing is released. The family goes out together, on Hugging Face, under Apache 2.0, with model cards that say exactly what each Bob is and how it scored.
 
 ## 2. The problem
@@ -103,13 +103,13 @@ Every dollar spent, including the runs that made nothing, is on [What Bob costs 
 |---|---|
 | Card time rented so far, about 37 hours over 10 rentals, 4 of them failures | about $183 |
 | Of which wasted on failed attempts | about $16, plus the half-run of 6 to 7 November |
-| Tools: Claude subscription and extra usage, November 2026 | $550 (Claude is a contributor and writes much of Bob's code and documents) |
+| Tools: Claude subscription and extra usage, November 2026 | $1,000 (Claude is a contributor and writes much of Bob's code and documents) |
 | Code and release hosting, model hosting | $0 |
 | Card time still expected for the ladder (Bill, Homer, Milo, Luke, Calvin) | about $165, plus about $7 a month for the network drive while it exists |
 | Allowed for re-runs if a heal scores badly | up to $20 a rung |
 | Specialists and line A, only if earned | about $25 a specialist; about $220 for line A |
 
-The whole family, at the cheapest route, comes to under $900 including the tools that made it. That is the cost of making a custom model family on rented cards by the hour, done by one person with an assistant, with the mistakes left in.
+The whole family, at the cheapest route, comes to about $1,400 including the tools that made it. That is the cost of making a custom model family on rented cards by the hour, done by one person with an assistant, with the mistakes left in.
 
 ## 8. What is invested, and what is already in hand
 
@@ -120,10 +120,10 @@ A proposal usually asks for everything up front. This one does not, because most
 | | Amount | Notes |
 |---|---|---|
 | Card time rented by the hour | about $183 | 10 rentals, 4 of them failures; every line on the costs page |
-| Claude subscription and extra usage, November 2026 | $550 | the assistant that wrote the Forge, the lesson writer, the benchmarks and these pages |
+| Claude subscription and extra usage, November 2026 | $1,000 | the assistant that wrote the Forge, the lesson writer, the benchmarks and these pages |
 | Owner's time | 4 to 8 November, not counted in dollars | lessons, counts and benchmarks on the home PC; every rental watched by hand |
 | Hosting, signing, model storage | $0 | GitHub and Hugging Face are free for a public project |
-| **Total cash in** | **about $733** | |
+| **Total cash in** | **about $1,183** | |
 
 ### 8.2 Assets in hand
 
