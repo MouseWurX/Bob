@@ -12,7 +12,7 @@ const o = opts({ counts: '8,6,4,3,2' });
 if (o.url) process.env.LAB_URL = String(o.url);   // build 18: test a server somebody else runs (the Forge's rented card); one pass, the count it was started with
 const remote = Boolean(process.env.LAB_URL);
 const L = locate(o);
-if (!L.model && !remote) { console.error('Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf not found under Agent 00\\models. Pass --model.'); process.exit(1); }
+if (!L.model && !remote) { console.error('Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf not found under <parent>/models. Pass --model.'); process.exit(1); }
 if (!remote) checkFree(o);
 const shape = L.model && fs.existsSync(L.model) ? moeShape(L.model) : { name: process.env.LAB_MODEL_NAME || 'served brain', layers: '?', experts: 256, used: Number(String(o.counts).split(',')[0]) || 8, key: null };
 console.log(`${shape.name}: ${shape.layers} layers, ${shape.experts} experts, ${shape.used} per word (key ${shape.key})`);

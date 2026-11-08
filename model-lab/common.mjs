@@ -2,8 +2,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-export const AGENT = process.env.BOB_AGENT_DIR || 'C:\\Unreal Projects\\Agent 00';
+// The lab sits next to Bob's source tree: <parent>/bob/model-lab, so the parent is two levels up.
+const here = path.dirname(fileURLToPath(import.meta.url));
+
+export const AGENT = process.env.BOB_AGENT_DIR || path.resolve(here, '..', '..');
 const exe = (n) => (process.platform === 'win32' ? `${n}.exe` : n);
 
 // --key value and --flag on the command line, over the defaults.
