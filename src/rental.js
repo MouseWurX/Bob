@@ -277,6 +277,28 @@ export async function readPrice(rental, key, fetchImpl = fetch) {
   return { inPerM: Number.isFinite(inPerM) ? inPerM : null, outPerM: Number.isFinite(outPerM) ? outPerM : null, context: m.context_length || m.context_window || null };
 }
 
+// 1.5.137: find a brain from Bob's list on a pay-per-answer service, so you don't have to know what the service calls
+// it. Its Hugging Face name (Owner/Repo) or its plain name is matched against the service's own model list, letters and
+// digits only: exact first, then one that starts with the other. Only when you press Find it, with the service on.
+const plainName = (x) => String(x || '').toLowerCase().replace(/[-_](fp8|bf16|fp16|mxfp8|gguf|awq|gptq)$/i, '').replace(/[^a-z0-9.]+/g, '');
+export function matchModel(list, { hf = '', name = '' } = {}) {
+  const want = [plainName(String(hf).split('/').pop()), plainName(name)].filter((w) => w.length >= 4);
+  const ids = (list || []).map((x) => ({ id: String(x.id || x.name || ''), keys: [plainName(String(x.id || '').split('/').pop()), plainName(x.name)].filter(Boolean) })).filter((x) => x.id);
+  for (const w of want) { const hit = ids.find((x) => x.keys.includes(w)); if (hit) return hit.id; }
+  for (const w of want) { const hit = ids.find((x) => x.keys.some((k) => k.length >= 6 && (k.startsWith(w) || w.startsWith(k)))); if (hit) return hit.id; }
+  return null;
+}
+export async function findModel(service, { hf, name, address = '' }, key, fetchImpl = fetch) {
+  const s = serviceOf(service);
+  if (!s || s.kind !== 'answer') return null;
+  const url = (address || s.baseUrl || '').replace(/\/$/, '') + '/models';
+  if (!/^https:\/\//.test(url)) return null;
+  const res = await fetchImpl(url, { headers: key ? { authorization: `Bearer ${key}` } : {}, signal: AbortSignal.timeout(15000) });
+  if (!res.ok) throw new Error(`${s.name} answered ${res.status} when asked for its model list`);
+  const j = await res.json();
+  return matchModel(Array.isArray(j) ? j : j.data || j.models || [], { hf, name });
+}
+
 // ---------- machines ----------
 // The server a hired machine runs: vLLM for a Hugging Face model at full size, llama.cpp for a GGUF file
 // ("hf:Owner/Repo/file.gguf"). Both answer the OpenAI-style API on port 8000. The command is wrapped in a timer (the

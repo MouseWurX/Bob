@@ -1,5 +1,6 @@
 // Bob's brain: runs a conversation turn, picks the right model, announces swaps,
 // calls tools, asks the user for approval when needed, and keeps a logbook.
+import { ownModels } from './own-models.js';
 import fs from 'node:fs';
 import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
@@ -14,7 +15,7 @@ import { lookPrompt } from './look.js';
 import { applyHouseStyle, usedLine, houseStylePrompt } from '../public/house-style.js';
 const houseGroupOfTool = (n) => ({ make_music: 'music', make_image: 'pictures', make_video: 'video', make_sound: 'sfx' }[n] || null);
 import { personalityPrompt, cleanPersonality } from '../public/personality.js';
-import { catPrompt, catMoment } from '../public/patches.js';
+import { catPrompt, catMoment, catTurn } from '../public/patches.js';
 import { sleepyAfterReply, sleepySwitch, SLEEPY_SESSION } from '../public/sleepy.js';
 import { cleanEffort, careful, bigThinker, draftBrain, hatBrain, effortPrompt, mootOpening, runMoot, phasedWork } from './moot.js';
 import { saveSettings, outputDirs, findOutput } from './config.js';
@@ -248,9 +249,10 @@ export function claimsObservation(text) {
 export const OBSERVE_CORRECTION = 'Nothing was actually checked in that reply. Bob said he checked, but no check ran.';
 const OBSERVE_NUDGE = 'You described noticing, watching or checking something on the PC, but no tool ran this turn, so it was invented. Answer again in a line or two, using only the "Right now" line, the chat, or what {{USER}} said. No made-up system details, and no question unless you need the answer.';
 // The only things he knows about the PC without a tool, so small talk has something true to stand on.
-export function realState({ model, session, waiting = 0, cat, turn = 0, mem = { free: freeMemNow(), total: os.totalmem() } }) {
+// #33: the cat is only in it when withCat (the cat turns), so Patches isn't in front of the brain every turn.
+export function realState({ model, session, waiting = 0, cat, turn = 0, withCat = true, mem = { free: freeMemNow(), total: os.totalmem() } }) {
   const gb = (b) => (b / 1e9).toFixed(1);
-  return `Right now (real, from the app): you're thinking on ${model || 'no brain'}${session ? ` in the ${session} session` : ''}; ${waiting ? `${waiting} more message${waiting === 1 ? '' : 's'} waiting` : 'nothing else waiting'}; the PC's RAM is ${gb(mem.total - mem.free)} of ${gb(mem.total)} GB in use; ${catMoment(cat, turn)}.`;
+  return `Right now (real, from the app): you're thinking on ${model || 'no brain'}${session ? ` in the ${session} session` : ''}; ${waiting ? `${waiting} more message${waiting === 1 ? '' : 's'} waiting` : 'nothing else waiting'}; the PC's RAM is ${gb(mem.total - mem.free)} of ${gb(mem.total)} GB in use${withCat ? `; ${catMoment(cat, turn)}` : ''}.`;
 }
 export const CLAIM_CORRECTION = 'Nothing was actually done on this replicant matrix in that reply. Bob said he did, but no action ran.';
 const CLAIM_NUDGE = 'You just said you did something on the PC, but no tool did it in this turn. Never claim that. If it should be done, call the right tool now; if you cannot, say plainly that you have not done it and why (the tool\'s own words if it gave an error).';
@@ -539,7 +541,7 @@ export class Brain {
       const split = m.split !== false && m.size > 0;
       const ramGB = split ? gb(Math.max(0, m.size - (m.vram || 0))) : null;
       // estimate: llama.cpp without a per-process figure from nvidia-smi (common on Windows) only knows the file size.
-      return { name: m.name, ...(m.beside ? { label: `${m.name} (beside, ${m.onCard ? 'on the graphics card' : 'on the processor'})`, beside: true } : m.own ? { label: `${m.name} (Bob's downloaded copy)` } : {}), gb: split ? gb(m.vram || 0) : gb(m.vram || m.size), ramGB, estimate: !split && !m.vram, ctx: m.ctx || null, onCard: m.beside ? Boolean(m.onCard) : (m.vram > 0 || (!m.vram && !chat.cpu && !split)), chat: !m.beside && sameModel(m.name, chat.model) };
+      return { name: m.name, ...(m.beside ? { label: `${m.name} (beside, ${m.onCard ? 'on the graphics card' : 'on the processor'})`, beside: true } : {}), gb: split ? gb(m.vram || 0) : gb(m.vram || m.size), ramGB, estimate: !split && !m.vram, ctx: m.ctx || null, onCard: m.beside ? Boolean(m.onCard) : (m.vram > 0 || (!m.vram && !chat.cpu && !split)), chat: !m.beside && sameModel(m.name, chat.model) };
     });
     const ramKnown = models.some((m) => m.ramGB != null);
     const state = this.waking ? 'waking' : this.turns.size ? 'working' : models.length ? 'awake' : 'asleep';
@@ -780,6 +782,7 @@ export class Brain {
     if (!this.catalogNames) {
       this.catalogNames = [];
       try { this.catalogNames = JSON.parse(fs.readFileSync(this.cfg.catalogFile || new URL('../catalog.json', import.meta.url), 'utf8')).models.filter((x) => x.ollama && x.name).map((x) => [x.ollama, x.name]); } catch {}
+      for (const o of ownModels(this.cfg)) this.catalogNames.push([o.id, o.name]); // 1.5.135 brains of your own, by their given name
     }
     const nice = this.catalogNames.find(([id]) => sameModel(id, model))?.[1] || String(model || '').replace(/:latest$/, '');
     return `${phrase} (${nice})`;
@@ -1982,7 +1985,7 @@ export class Brain {
     }
     // Small extras, only on some turns: the effort note (High/Extreme) and now and then a moment with the cat.
     const turnNo = msgs.filter((m) => m.role === 'user').length;
-    const state = realState({ model, session: currentSession(this.cfg).label, waiting: this.queue.filter((j) => j.state === 'waiting').length, cat: this.cfg.catName, turn: turnNo });
+    const state = realState({ model, session: currentSession(this.cfg).label, waiting: this.queue.filter((j) => j.state === 'waiting').length, cat: this.cfg.catName, turn: turnNo, withCat: catTurn(turnNo) });
     const extras = [state, guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
     const brainCtx = await this.fitCtx(model, wantCtx);
     // 1.5.127: a chat that no longer fits the biggest brain here, with a rented brain in its slot: offer it (the job carries on here meanwhile).
@@ -2226,8 +2229,13 @@ export class Brain {
           // The same action twice in a row (small brains do this): don't do it again.
           res = { text: `(Not done again: that exact call just ran. Its result: ${String(ctx.lastDoing.text).slice(0, 300)}) Report that result; don't repeat the call.` };
           this.log('tool', `skipped a repeat of ${name}`);
+        } else if (name === 'fetch_page' && ctx.pagesRead?.has(key)) {
+          // #48: the same page and part again in one turn gives the same text. Point him at the next part instead.
+          res = { text: '(Not read again: you already read that exact page and part this turn, and it gives the same text. To see more, call fetch_page with the same url and the next part number, or use find with a word you are looking for. If you have enough, answer now.)' };
+          this.log('tool', 'skipped a repeat page read');
         } else {
           res = await this.runTool(name, call.function?.arguments, ctx);
+          if (name === 'fetch_page') (ctx.pagesRead ||= new Set()).add(key);
           if (doing) {
             const failed = /^Error:/.test(String(res.text));
             const who = this.cfg.userName || 'the user';

@@ -19,6 +19,7 @@ for (const ok of ['I noticed you mentioned the art style.', 'Patches is asleep o
 
 const line = realState({ model: 'gemma4:e4b', session: 'Normal', waiting: 2, cat: 'Patches', turn: 3, mem: { free: 8e9, total: 32e9 } });
 check('the real-state line says the brain, session, queue, RAM and the cat', /gemma4:e4b/.test(line) && /Normal session/.test(line) && /2 more messages waiting/.test(line) && /24\.0 of 32\.0 GB/.test(line) && /Patches/.test(line), line);
+check('off the cat turns, the real-state line leaves the cat out (#33)', !/Patches/.test(realState({ model: 'm', cat: 'Patches', turn: 3, withCat: false, mem: { free: 8e9, total: 32e9 } })));
 check('the real-state line is short (under 70 tokens)', line.length / 3.8 < 70, String(line.length));
 
 check('persona: no claims of noticing or checking without a tool', /Never say you did, noticed, checked or measured something unless a tool result shows it/.test(CORE));

@@ -24,14 +24,14 @@ Every rental, including the ones that made nothing. Times are the owner's local 
 | 6 Nov 2026, morning to evening | 1x H200 141 GB SXM, no drive (none free in the drive's data centre) | 9.7 h | $5.29/h | **28Bob Riker.** Teacher pass (125 min, 26,628 pieces); 28Bob Riker (208 experts) cut and healed in a full pass (929 of 929 steps, 5.9 h); Q4, Q3 and adapter home. Benchmarked on 8 Nov and kept (see [Bob's own models](BOBS-OWN-MODELS.md#28bob-riker-the-one-that-stays)). Then a shell bug in the plan reader stopped 20Bob Bill v3 at its keep list and the machine deleted itself as designed, taking the full-precision Riker and the teacher's scores with it, because there was no drive. Both fixed in Forge build 15; the drive rule is now hard. Card time plus the working disk, from the rental service's statement. | $51.79 |
 | | | **37.1 h of card time** | | **Four failed attempts: $15.81, plus the stopped Bill step above. Five Bobs made; Riker (28Bob) is kept, the first Riker and Bill (v1 and v2) are retired and deleted, and Bill is next.** | **$183.90** |
 
-The total is taken from the rental service's statement; the lines above are rounded to the cent. A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists; the combined Bobert and Bill run needs it at 300 GB, about $21 a month.
+The total is taken from the rental service's statement; the lines above are rounded to the cent. Card time is paid from **prepaid credit**: the owner loads a balance onto the rental account in advance and each session draws it down, so that money is spent on the day it is loaded and used only when a card runs. The unused part is not shown here (no balances on these pages); it is already earmarked for the rungs still to make. A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists; the combined Bobert and Bill run needs it at 300 GB, about $21 a month.
 
 ### Tools and subscriptions
 
 | What | Cost |
 |---|---|
 | Claude subscription (Anthropic): Claude is a contributor to the project and writes much of Bob's code, docs and Help alongside the owner | $200 a month |
-| Claude extra usage bought on 5 Nov 2026 to finish the models and the app work together | $350 one-off |
+| Claude extra usage bought from 5 Nov 2026 on, to finish the models and the app work together | $800 so far |
 | Code signing | $0 so far (SignPath Foundation application declined in Nov 2026 for lack of public visibility; builds stay unsigned) |
 | Code and release hosting (GitHub) and, later, model hosting (Hugging Face) | $0 |
 | Electricity for the lessons, counts and benchmarks on the owner's own PC | not counted |
@@ -98,21 +98,21 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 | GPU servers rented by the hour (every session above, failures included) | $183.90 |
 | Rented network drive so far | included in the line B session line above |
 | Claude subscription, November 2026 | $200.00 |
-| Claude extra usage, bought 5 Nov 2026 | $350.00 |
+| Claude extra usage, bought from 5 Nov 2026 on | $800.00 |
 | Code signing, hosting | $0.00 |
-| **Total spent so far** | **$733.90** |
+| **Total spent so far** | **$1,183.90** |
 
 **Projected, whole plan**
 
 | | Low | High |
 |---|---|---|
-| Spent so far (above) | $733.90 | $733.90 |
+| Spent so far (above) | $1,183.90 | $1,183.90 |
 | Line B remaining rungs (Homer to Bender) | $119 | $129 |
 | New lessons, 35Bob Bobert and 20Bob Bill (one combined run) | $135 | $135 |
 | Specialists (four, with their lessons) | $100 | $100 |
 | Rented network drive, about 2 more months (100 to 300 GB) | $14 | $42 |
 | Re-runs allowed (one per rung if a heal scores badly) | $0 | $60 |
 | Claude subscription while the family is finished, about 1 more month | $200 | $200 |
-| **Projected total, line B complete** | **about $1,302** | **about $1,400** |
+| **Projected total, line B complete** | **about $1,752** | **about $1,850** |
 | Line A as well, if the comparison after Homer earns it | +$179 | +$189 |
-| **Projected total, both lines** | **about $1,481** | **about $1,589** |
+| **Projected total, both lines** | **about $1,931** | **about $2,039** |

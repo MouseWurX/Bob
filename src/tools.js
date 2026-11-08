@@ -19,13 +19,40 @@ const MAX_READ = 20000;
 const BLOCKED_EXT = new Set(['.exe', '.msi', '.bat', '.cmd', '.ps1', '.psm1', '.vbs', '.js', '.mjs', '.cjs', '.jse', '.wsf', '.hta', '.scr', '.lnk', '.reg', '.dll', '.com', '.jar', '.sh', '.bash', '.zsh', '.py', '.pyw', '.command', '.desktop', '.app']);
 // read_file refuses files over this many bytes: a multi-GB file would otherwise be read whole into memory.
 const MAX_READ_BYTES = 20 * 1024 * 1024;
-// fetch_page stops reading a page after this many bytes (the text is cut to 15,000 characters anyway).
+// fetch_page stops reading a page after this many bytes, and hands it over 15,000 characters at a time.
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
+const MAX_PAGE = 15000;
 async function readCapped(res, max) {
   const parts = []; let n = 0;
   for await (const chunk of res.body || []) { parts.push(chunk); n += chunk.length; if (n >= max) break; }
   return Buffer.concat(parts).subarray(0, max).toString('utf8');
 }
+
+// #48: a long page or file comes in parts, so Bob can read past the first piece instead of fetching the top again.
+// part = 1, 2, 3 ...; find = a word or phrase: give the part it is in. The note says the size and the exact next call.
+export function pieceOf(text, { part, find } = {}, size, again) {
+  const total = Math.max(1, Math.ceil(text.length / size));
+  let n = Math.max(1, Math.floor(Number(part)) || 1), note = '';
+  const word = String(find || '').trim();
+  if (word) {
+    const low = text.toLowerCase(), w = word.toLowerCase(), hits = [];
+    for (let i = low.indexOf(w); i >= 0 && hits.length < 200; i = low.indexOf(w, i + w.length)) hits.push(i);
+    if (!hits.length) return `"${word}" isn't anywhere in it (${text.length.toLocaleString('en')} characters, ${total} part${total > 1 ? 's' : ''}). Try a shorter or different word.`;
+    n = Math.floor(hits[0] / size) + 1;
+    const parts = [...new Set(hits.map((i) => Math.floor(i / size) + 1))];
+    note = `[Found "${word}" ${hits.length}${hits.length >= 200 ? '+' : ''} time${hits.length > 1 ? 's' : ''}, in part${parts.length > 1 ? 's' : ''} ${parts.slice(0, 20).join(', ')}${parts.length > 20 ? ' ...' : ''}. Showing part ${n}.]\n`;
+  }
+  if (total === 1) return note + text;
+  if (n > total) return `It only has ${total} parts (${text.length.toLocaleString('en')} characters). That was the end.`;
+  const body = text.slice((n - 1) * size, n * size);
+  const line = (c) => text.slice(0, c).split('\n').length;
+  const where = `[Part ${n} of ${total}: characters ${((n - 1) * size + 1).toLocaleString('en')} to ${Math.min(n * size, text.length).toLocaleString('en')} of ${text.length.toLocaleString('en')}, lines ${line((n - 1) * size)} to ${line(Math.min(n * size, text.length))}.`;
+  const next = n < total ? ` To read on, call ${again} part: ${n + 1}. To jump to a word, use find.]` : ' This is the last part.]';
+  return `${note}${body}\n\n${where}${next}`;
+}
+// Code, plain text and data are read as they are: the HTML cleaner would eat everything between a < and a >.
+const isPlain = (type, url) => /^(text\/(plain|markdown|csv|x-|javascript|css)|application\/(json|javascript|x-|xml|yaml|toml))/i.test(type) ||
+  /^(raw\.githubusercontent\.com|gist\.githubusercontent\.com)$/i.test(url.hostname);
 
 // Secrets Bob must never list, read, search or write: signing keys, API keys, databases, his own config.
 const SECRET_NAME = /^(local\.properties|keystore\.properties|google-services\.json|credentials\.json|\.env(\..*)?|\.npmrc|\.git-credentials|id_(rsa|dsa|ecdsa|ed25519).*)$/i;
@@ -202,8 +229,12 @@ export function buildTools(cfg) {
   };
 
   t.read_file = {
-    schema: fn('read_file', "Read a text file on {{USER}}'s PC.", { path: str('Full file path.') }),
-    async run({ path: p }) {
+    schema: fn('read_file', "Read a text file on {{USER}}'s PC. A long file comes in parts: the end of each part says how to read the next.", {
+      path: str('Full file path.'),
+      part: { type: 'integer', description: 'Optional: which part of a long file, 1, 2, 3 ... Default 1.' },
+      find: str('Optional: a word or phrase to look for. You get the part it is in.')
+    }, ['path']),
+    async run({ path: p, part, find }) {
       const file = resolveUserPath(p);
       if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to read ${file}.`);
       if (isSensitive(cfg, file)) throw new Error(SECRET_MSG);
@@ -212,9 +243,9 @@ export function buildTools(cfg) {
       const buf = fs.readFileSync(file);
       if (buf.subarray(0, 4096).includes(0)) return '(That looks like a binary file, so I can\'t read it as text.)';
       const text = buf.toString('utf8');
-      return text.length > MAX_READ ? text.slice(0, MAX_READ) + `\n\n[cut: file is ${text.length} characters, showed the first ${MAX_READ}]` : text;
+      return pieceOf(text, { part, find }, MAX_READ, 'read_file again with the same path and');
     },
-    summary: ({ path: p }) => `read ${p}`
+    summary: ({ path: p, part, find }) => `read ${p}${find ? ` (looking for ${find})` : part > 1 ? ` (part ${part})` : ''}`
   };
 
   t.write_file = {
@@ -291,8 +322,12 @@ export function buildTools(cfg) {
   };
 
   t.fetch_page = {
-    schema: fn('fetch_page', 'Read a web page as text.', { url: str('http or https link.') }),
-    async run({ url }, { signal }) {
+    schema: fn('fetch_page', 'Read a web page as text. A long page comes in parts: the end of each part says how to read the next. Code and raw GitHub files come as they are.', {
+      url: str('http or https link.'),
+      part: { type: 'integer', description: 'Optional: which part of a long page, 1, 2, 3 ... Default 1.' },
+      find: str('Optional: a word or phrase to look for, like a setting or function name. You get the part it is in.')
+    }, ['url']),
+    async run({ url, part, find }, { signal }) {
       // Redirects are followed by hand so every hop gets the same home-network check as the first address.
       let u = new URL(url), res;
       for (let hop = 0; ; hop++) {
@@ -306,10 +341,11 @@ export function buildTools(cfg) {
       }
       const type = res.headers.get('content-type') || '';
       if (!/text|html|json|xml/.test(type)) return `That link is a ${type || 'file'}, not a page. I won't download it.`;
-      const text = htmlToText(await readCapped(res, MAX_PAGE_BYTES));
-      return text.length > 15000 ? text.slice(0, 15000) + '\n[cut]' : text;
+      const raw = await readCapped(res, MAX_PAGE_BYTES);
+      const text = isPlain(type, u) ? raw : htmlToText(raw);
+      return pieceOf(text, { part, find }, MAX_PAGE, 'fetch_page again with the same url and');
     },
-    summary: ({ url }) => `read page: ${url}`
+    summary: ({ url, part, find }) => `read page: ${url}${find ? ` (looking for ${find})` : part > 1 ? ` (part ${part})` : ''}`
   };
 
   t.make_image = {
