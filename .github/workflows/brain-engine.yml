@@ -1,0 +1,77 @@
+# Builds Brain Engine (engine/README.md): llama.cpp at bundledLlamaTag with engine/patches/ applied.
+# Run by hand only. Windows x64: the llama.dll / llama-server.exe set, to put over a COPY of the official
+# CUDA or Vulkan zip for the same tag (the card backends are separate DLLs and are not changed).
+# Linux x64: the same set for checking. Every action is pinned to a full commit SHA, like build.yml.
+name: Brain Engine
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2025-vs2026
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fetch llama.cpp at the tested tag and apply the patches
+        shell: bash
+        run: |
+          tag=$(node -p "require('./package.json').bob.bundledLlamaTag")
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
+          for p in engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
+      - name: Install Ninja
+        run: choco install ninja
+      - name: Build (the official windows-cpu settings)
+        shell: cmd
+        working-directory: llama.cpp
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          cmake -S . -B build -G "Ninja Multi-Config" -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake -DLLAMA_BUILD_BORINGSSL=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_OPENMP=ON -DGGML_OPENMP_FETCH=ON
+          cmake --build build --config Release --target llama-server
+      - name: Pack (llama and server files only, never ggml)
+        shell: bash
+        run: |
+          out=brain-engine-$TAG-win-x64
+          mkdir "$out"
+          cd llama.cpp/build/bin/Release
+          cp llama-server.exe $(ls *.dll | grep -v '^ggml') "../../../../$out/"
+          cd ../../../..
+          cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
+          cp engine/README.md "$out/README-Brain-Engine.md"
+          ls -la "$out"
+          7z a "$out.zip" "./$out/*"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: brain-engine-win-x64
+          path: brain-engine-*-win-x64.zip
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fetch llama.cpp at the tested tag and apply the patches
+        run: |
+          tag=$(node -p "require('./package.json').bob.bundledLlamaTag")
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
+          for p in engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
+      - name: Build
+        working-directory: llama.cpp
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON
+          cmake --build build -j4 --target llama-server
+      - name: Pack
+        run: |
+          out=brain-engine-$TAG-linux-x64
+          mkdir "$out"
+          cp llama.cpp/build/bin/llama-server $(ls llama.cpp/build/bin/*.so* | grep -v '/libggml') "$out/"
+          cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
+          cp engine/README.md "$out/README-Brain-Engine.md"
+          tar czf "$out.tar.gz" "$out"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: brain-engine-linux-x64
+          path: brain-engine-*-linux-x64.tar.gz
