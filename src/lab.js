@@ -16,6 +16,8 @@ import { fileURLToPath } from 'node:url';
 import { nodeCmd } from './selftools.js';
 import { LESSON_SKILLS, SKILL_IDS } from './lab-skills.js';
 import { learnBrain, runLearn, LEARN_CARDS } from './lab-learn.js'; // 1.5.151 the Learn tab
+import { PACKS, PACK_IDS, runPack, mergeScores, readScores, scoreboard, scoreFile, codeTool } from './lab-challenges.js'; // 1.5.152 Challenges
+import { runSandboxed, sandboxHolds } from './selftools.js';
 
 export const labOn = (cfg) => cfg?.computerLab === true;
 export const MIN_RAM_GB = 12;
@@ -35,6 +37,29 @@ const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8'))
 const writeJson = (f, v) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f + '.part', JSON.stringify(v, null, 1)); fs.renameSync(f + '.part', f); };
 
 export const labDir = (cfg) => path.join(cfg.dataDir, 'lab');
+export const scoresDir = (cfg) => path.join(labDir(cfg), 'scores'); // 1.5.152 the Challenges scoreboard
+export const resultsDir = (cfg) => path.join(labDir(cfg), 'results'); // 1.5.152 what Save writes
+
+// 1.5.152 Save: a result table as Markdown, CSV or JSON (a picture is drawn by the page and sent as a PNG). Never
+// paths, chats or names: the page only sends titles, column names and cells, and every cell is cut to plain text.
+const cell = (v) => (v === null || v === undefined ? '' : String(v).replace(/[\r\n]+/g, ' ').slice(0, 200));
+export function cleanResult(b = {}) {
+  const head = [].concat(b.head || []).slice(0, 20).map(cell);
+  const rows = [].concat(b.rows || []).slice(0, 200).map((r) => [].concat(r || []).slice(0, head.length || 20).map(cell));
+  const format = ['md', 'csv', 'json', 'png'].includes(b.format) ? b.format : 'md';
+  return { title: cell(b.title).slice(0, 80) || 'Lab result', head, rows, note: cell(b.note), format, hardware: b.hardware === true };
+}
+export function hardwareLine(cfg, totalBytes = os.totalmem()) {
+  const card = Number(cfg.gpuVramGB) || Number(cfg.cardGB) || 0;
+  return `${card ? `${card} GB graphics card, ` : ''}${Math.round(totalBytes / 1024 ** 3)} GB RAM`;
+}
+export function resultText(r, { version = '', hardware = '', when = '' } = {}) {
+  const foot = [`Made with Bob${version ? ` ${version}` : ''}'s Computer Science Lab`, when, hardware].filter(Boolean).join(' · ');
+  if (r.format === 'csv') { const q = (v) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v); return [r.head, ...r.rows].map((l) => l.map(q).join(',')).join('\n') + '\n'; }
+  if (r.format === 'json') return JSON.stringify({ title: r.title, head: r.head, rows: r.rows, note: r.note || undefined, made: foot }, null, 1);
+  const esc = (v) => v.replace(/\|/g, '\\|');
+  return `# ${r.title}\n\n| ${r.head.map(esc).join(' | ')} |\n|${r.head.map(() => ' --- ').join('|')}|\n${r.rows.map((l) => `| ${l.map(esc).join(' | ')} |`).join('\n')}\n\n${r.note ? `${r.note}\n\n` : ''}_${foot}_\n`;
+}
 export const labModelsDir = (cfg) => path.join(cfg.bobModelsDir || path.join(cfg.agentDir, 'models', 'bob'), 'lab');
 export const madeFile = (cfg) => path.join(labDir(cfg), 'made.json');
 export const madeBrains = (cfg) => readJson(madeFile(cfg), []).filter((m) => m && m.id && m.gguf && fs.existsSync(m.gguf));
@@ -441,7 +466,7 @@ export class Lab {
     const room = this.room();
     const cardGB = Number(this.cfg.gpuVramGB) || Number(this.cfg.cardGB) || 0; // the set size, or the card the hardware scan found
     const brains = this.brains().map((b) => { let f = null; try { f = inspect(b); } catch (e) { return { ...b, gguf: undefined, mmproj: undefined, error: e.message }; } return { id: b.id, name: b.name, family: b.family, community: b.community, naughty: b.naughty, madeInLab: b.madeInLab, license: b.license, facts: f && { arch: f.arch, experts: f.experts, used: f.used, groups: f.groups, layers: f.layers, fileType: f.fileType, fullSize: f.fullSize, sizeGB: f.sizeGB, sight: f.sight, hearing: f.hearing, readerGB: f.readerGB }, cuts: f ? cutSizes(f).map((c) => ({ ...c, fit: fitWords(c.gb, cardGB) })) : [], fit: f ? fitWords(f.sizeGB, cardGB) : '' }; });
-    return { on: labOn(this.cfg), room, cardGB, brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, brainEngine: this.tools().brainEngine.found };
+    return { on: labOn(this.cfg), room, cardGB, brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, brainEngine: this.tools().brainEngine.found, packs: PACKS, scores: this.scores(), hardware: hardwareLine(this.cfg), version: this.version || '' };
   }
 
   runView(r) { return { id: r.id, kind: r.kind || 'make', name: r.name, from: r.fromName, state: r.state, step: r.step, stepLabel: r.stepLabel, progress: r.progress, steps: r.steps?.map((s) => ({ id: s.id, label: s.label, state: s.state })), error: r.error, notes: r.notes || [], report: r.report, at: r.at, used: Boolean(r.used), sizeGB: r.sizeGB }; }
@@ -577,6 +602,93 @@ export class Lab {
     } finally { srv?.stop(); this.job = null; }
   }
 
+  // 1.5.152 Challenges: run packs against one brain as a Lab job; the scoreboard keeps the newest score per pack.
+  scores() { return scoreboard(readScores(scoresDir(this.cfg))); }
+
+  async startChallenge(c = {}, { unload = false } = {}) {
+    if (!labOn(this.cfg)) throw new Error('The Computer Science Lab is off. Turn it on in Settings, How Bob works, Brains.');
+    const room = this.room();
+    if (!room.ok) throw new Error(room.why);
+    if (this.job) throw new Error('The Lab is already busy with a job. Wait for it, or stop it.');
+    if (gaming(this.cfg)) throw new Error('Gaming is on, so the Lab waits. Switch the session to Normal to run it.');
+    const brain = this.brains().find((b) => b.id === String(c.from || ''));
+    if (!brain) throw new Error('Pick a brain to challenge.');
+    const packs = [...new Set([].concat(c.packs || []).filter((id) => PACK_IDS.includes(id)))];
+    if (!packs.length) throw new Error('Tick at least one challenge.');
+    if (!this.tools().server.found) throw new Error(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it.`);
+    if (this.brain?.engine?.loaded) {
+      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+      if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
+      if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
+    }
+    const title = (id) => PACKS.find((p) => p.id === id).title;
+    const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'challenge', name: `Challenges for ${brain.name}`, from: brain.id, fromName: brain.name, packs, state: 'running', at: this.now(), steps: [{ id: 'serve', label: `Start ${brain.name}`, state: 'waiting' }, ...packs.map((id) => ({ id, label: title(id), state: 'waiting' }))], progress: 0 };
+    this.runs.push(runRec); this.save();
+    const ac = new AbortController();
+    this.job = { run: runRec, ac };
+    this.goChallenge(runRec, brain, packs, ac.signal).catch(() => {});
+    return { started: this.runView(runRec) };
+  }
+
+  async goChallenge(r, brain, packs, signal) {
+    const dir = path.join(labDir(this.cfg), 'challenges');
+    const log = (t) => { try { fs.mkdirSync(dir, { recursive: true }); fs.appendFileSync(path.join(dir, 'lab.log'), `${new Date().toISOString()} ${t}\n`); } catch {} };
+    const fx = { ...this.defaultSteps(this.tools(), log), ...this.stepFns };
+    let srv = null;
+    const set = (i, state) => { r.steps[i].state = state; r.step = r.steps[i].id; r.stepLabel = r.steps[i].label; this.tell(r); };
+    try {
+      set(0, 'running');
+      srv = await fx.serve({ gguf: brain.gguf, ctx: 8192, signal, log });
+      set(0, 'done');
+      const sandbox = packs.includes('code') ? await fx.sandbox({ signal }) : null;
+      const results = {}; let last = 0;
+      for (let i = 0; i < packs.length; i++) {
+        set(i + 1, 'running');
+        results[packs[i]] = await fx.pack(srv.url, packs[i], { signal, sandbox, onStep: (d, t) => {
+          r.progress = Math.round((100 * (i + d / t)) / packs.length);
+          if (Date.now() - last > 2000) { last = Date.now(); this.broadcast({ type: 'lab', run: this.runView(r) }); }
+        } });
+        set(i + 1, 'done');
+      }
+      let facts = {}; try { facts = inspect(brain); } catch {}
+      const sha256 = await fx.fingerprint(brain.gguf, signal).catch(() => '');
+      const speeds = Object.values(results).filter((x) => x.tps);
+      const tps = speeds.length ? Math.round((10 * speeds.reduce((a, x) => a + x.tps, 0)) / speeds.length) / 10 : 0;
+      const reads = Object.values(results).filter((x) => x.prefillTps);
+      const prefillTps = reads.length ? Math.round(reads.reduce((a, x) => a + x.prefillTps, 0) / reads.length) : 0;
+      const file = scoreFile(scoresDir(this.cfg), slugOf(brain.name));
+      writeJson(file, mergeScores(readJson(file, null), { name: brain.name, sha256, sizeGB: facts.sizeGB, quant: facts.fileType, packs: results, tps, prefillTps, when: new Date(this.now()).toISOString().slice(0, 10), engine: this.engineName(), where: srv.where }));
+      r.report = { challenges: packs.map((id) => ({ id, title: PACKS.find((p) => p.id === id).title, score: results[id].score, right: results[id].right, of: results[id].of, skipped: results[id].skipped || '' })), tps };
+      r.state = 'done'; r.step = ''; r.stepLabel = ''; r.progress = 100;
+      this.tell(r);
+      this.broadcast({ type: 'lab-done', name: r.name, ok: true });
+    } catch (e) {
+      r.state = signal.aborted ? 'stopped' : 'failed'; r.error = signal.aborted ? 'You stopped it. Nothing was added to the scoreboard.' : e.message;
+      const i = r.steps.findIndex((x) => x.state === 'running'); if (i >= 0) r.steps[i].state = 'failed';
+      log(`failed: ${e.stack || e.message}`);
+      this.tell(r);
+      this.broadcast({ type: 'lab-done', name: r.name, ok: false, error: r.error });
+    } finally { srv?.stop(); this.job = null; }
+  }
+
+  // Save a result the page sends (a table, or a picture of one) in the Lab's results folder. Returns the file name.
+  saveResult(body, { version = '' } = {}) {
+    const r = cleanResult(body);
+    if (!r.head.length) throw new Error('There\'s nothing to save yet.');
+    const dir = resultsDir(this.cfg);
+    fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date(this.now()).toISOString().replace(/[:T]/g, '-').slice(0, 19);
+    const file = path.join(dir, `${slugOf(r.title)}-${stamp}.${r.format}`);
+    if (r.format === 'png') {
+      const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(body.png || ''));
+      if (!m) throw new Error('The picture didn\'t come through. Try again.');
+      const buf = Buffer.from(m[1], 'base64');
+      if (buf.length > 8 * 1024 * 1024 || buf.subarray(1, 4).toString('latin1') !== 'PNG') throw new Error('That isn\'t a picture I can save.');
+      fs.writeFileSync(file, buf);
+    } else fs.writeFileSync(file, resultText(r, { version, hardware: r.hardware ? hardwareLine(this.cfg) : '', when: new Date(this.now()).toISOString().slice(0, 10) }));
+    return { file: path.basename(file), folder: dir };
+  }
+
   save() { writeJson(this.runsFile, this.runs.slice(-50)); }
   tell(r) { this.save(); this.broadcast({ type: 'lab', run: this.runView(r) }); }
 
@@ -686,6 +798,15 @@ export class Lab {
         .catch((e) => { if (signal.aborted) throw e; return run(tools.imatrix.path, ['-m', s.src, '-f', s.corpus, '-o', s.out, '-c', '4096', '--chunks', String(recipe.lessons.chunks), '-ngl', '0'], { signal, log }); }),
       quantize: (s, { signal }) => run(tools.quantize.path, [...(s.imatrix ? ['--imatrix', s.imatrix] : []), s.src, s.out, s.type], { signal, log }),
       serve: ({ gguf, ctx, signal, log: l }) => startServer({ exe: tools.server.path, gguf, ctx, signal, log: l || log }),
+      pack: (url, id, opts) => runPack(url, id, opts), // 1.5.152
+      fingerprint: (file, signal) => sha256File(file, signal),
+      // Code a brain wrote runs in the same sandbox as Bob's self-made tools, only if the sandbox holds on this machine.
+      sandbox: async () => {
+        const held = await sandboxHolds(this.cfg).catch(() => ({ ok: false }));
+        if (!held.ok) return null;
+        const dir = path.join(labDir(this.cfg), 'challenges', 'sandbox');
+        return { run: async (code, fn, cases) => { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, 'tool.mjs'), codeTool(code, fn)); const res = await runSandboxed({ dir, input: { cases }, timeoutSec: 10 }); try { return res.ok ? JSON.parse(res.out) : null; } catch { return null; } } };
+      },
       // The writer runs as its own process: the throwaway Bob it builds never touches this Bob.
       write: (job, { signal, onProgress }) => new Promise((resolve, reject) => {
         const { file, env } = nodeCmd();
@@ -760,6 +881,8 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/stop') { send(res, 200, lab.stop()); return true; }
     if (p === '/api/lab/use') { send(res, 200, lab.use(String(b.run || ''))); return true; }
     if (p === '/api/lab/compare') { const c = lab.compare(b.ids, b.save === 'csv' ? 'csv' : 'json'); send(res, 200, { table: c.table, file: path.basename(c.file) }); return true; }
+    if (p === '/api/lab/challenge') { send(res, 200, await lab.startChallenge(b.challenge, { unload: b.unload === true })); return true; } // 1.5.152
+    if (p === '/api/lab/save') { const out = lab.saveResult(b, { version: lab.version || '' }); send(res, 200, { file: out.file }); return true; }
     if (p === '/api/lab/recipe') { send(res, 200, { recipes: lab.saveRecipe(b.recipe) }); return true; }
     send(res, 404, { error: 'no' }); return true;
   } catch (e) { send(res, 400, { error: e.message }); return true; }

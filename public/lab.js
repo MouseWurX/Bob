@@ -5,9 +5,10 @@
 import { esc } from './rich.js';
 import { TEMPLATES, templateById, templateWhyNot, applyTemplate } from './lab-templates.js';
 import { createLearn } from './lab-learn.js';
+import { saveHtml, saveResult } from './lab-save.js'; // 1.5.152 Save
 
 const $ = (id) => document.getElementById(id);
-const TABS = [['make', 'Make a brain'], ['learn', 'Learn']];
+const TABS = [['make', 'Make a brain'], ['learn', 'Learn'], ['challenges', 'Challenges']];
 const STEPS = [['brain', '1 Pick a brain'], ['lessons', '2 Lessons'], ['smaller', '3 Make it smaller'], ['where', '4 Where it runs'], ['test', '5 Test and use']];
 const TYPE_NOTE = { Q4_K_M: 'Q4 (recommended)', Q5_K_M: 'Q5', Q6_K: 'Q6', Q8_0: 'Q8', Q3_K_M: 'Q3 (only for brains meant for 8 GB or less)' };
 const PARTS = { general: 'General knowledge', tools: 'Picking the right tool', coding: 'Coding', following: 'Following instructions' };
@@ -16,7 +17,11 @@ export function createLab({ api, note }) {
   const dlg = $('lab'), body = $('lab-body');
   $('lab-close').onclick = () => dlg.close();
   let view = null, step = 'brain', plan = null, showRecipe = false, msg = '', askUnload = null, tab = 'make';
-  const learn = createLearn({ api });
+  const learn = createLearn({ api, info: () => view, saves: () => saves });
+  // 1.5.152 Challenges: which brain, which packs, the scoreboard's sort, and the Save panels (one per result).
+  const ch = { from: '', packs: ['quiz', 'reasoning', 'sums', 'rules', 'tools', 'code'], sort: 'name', down: false };
+  const saves = {};
+  const saveState = (k) => (saves[k] ||= { open: false, format: 'png', hardware: false, saved: '', error: '' });
   let measures = [], picked = [], table = null, saved = '';
   const w = { name: '', teacher: '', skills: ['tools', 'coding', 'chat'], count: 500, think: 'half' };
   let wplan = null, writing = false;
@@ -159,12 +164,19 @@ export function createLab({ api, note }) {
     </fieldset>`;
   }
 
+  function runTable(id) { // a finished challenge run as a table for Save
+    const x = view.runs.find((r) => r.id === id);
+    if (!x?.report?.challenges) return { title: 'Lab result', head: [], rows: [] };
+    return { title: `Challenges for ${x.from}`, head: ['Challenge', 'Score (out of 100)', 'Right'], rows: x.report.challenges.map((c) => [c.title, c.score ?? '-', c.skipped ? 'skipped' : `${c.right} of ${c.of}`]), note: x.report.tps ? `${x.report.tps} words a second. Temperature 0, thinking off.` : 'Temperature 0, thinking off.' };
+  }
+
   function runsHtml() {
     if (!view.runs.length) return '';
-    return `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.kind === 'write' ? `lessons, taught by ${esc(x.from)}` : `from ${esc(x.from)}`} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
+    return `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.kind === 'write' ? `lessons, taught by ${esc(x.from)}` : x.kind === 'challenge' ? 'challenges' : `from ${esc(x.from)}`} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
       ${x.state === 'running' ? ' <button type="button" class="link" data-stop>Stop</button>' : ''}
       ${x.state === 'failed' || x.state === 'stopped' ? `<br><span class="muted">${esc(x.error || '')}</span>` : ''}
       ${(x.notes || []).map((n) => `<br><span class="muted">${esc(n)}</span>`).join('')}
+      ${x.kind === 'challenge' && x.report ? `<table class="lab-report"><caption class="muted">Challenges (out of 100)</caption><tr><th scope="col">Challenge</th><th scope="col">Score</th><th scope="col">Right</th></tr>${x.report.challenges.map((c) => `<tr><th scope="row">${esc(c.title)}</th><td>${c.score ?? '-'}</td><td>${c.skipped ? esc(c.skipped) : `${c.right} of ${c.of}`}</td></tr>`).join('')}</table>${saveHtml(x.id, saveState(x.id), view.hardware)}` : ''}
       ${x.kind === 'write' && x.report ? `<br><span class="muted">${x.report.lessons} lessons written in ${x.report.minutes} minutes. Pick it in step 2, under A lesson set I wrote here.</span>` : ''}
       ${x.report?.coverage ? `<table class="lab-report"><caption class="muted">Coverage cut: kept ${x.report.coverage.experts} of ${x.report.coverage.of} experts per layer</caption><tr><th scope="col">Skill</th><th scope="col">Kept, on average</th><th scope="col">Worst layer</th></tr>${x.report.coverage.skills.map((k) => `<tr><th scope="row">${esc(k.name)}</th><td>${k.average}%</td><td>${k.worst}% (layer ${k.worstLayer})</td></tr>`).join('')}</table>` : ''}
       ${x.report?.tried ? `<br><span class="muted">Tried first on Brain Engine: ${x.report.tried.masked} with only the kept experts, ${x.report.tried.full} with all of them.</span>` : ''}
@@ -172,11 +184,41 @@ export function createLab({ api, note }) {
         ${x.used ? '<span class="muted">In Bob, under Get models.</span>' : `<button type="button" class="get" data-use="${esc(x.id)}">Use in Bob</button>`}` : ''}</li>`).join('')}</ul></section>`;
   }
 
+  const PACK_COLS = () => (view?.packs || []).map((p) => [p.id, p.title]);
+  function boardTable() {
+    const rows = [...(view.scores || [])];
+    const key = ch.sort, val = (r) => (key === 'name' ? r.name.toLowerCase() : key === 'size' ? r.sizeGB ?? -1 : key === 'speed' ? r.tps ?? -1 : r.scores[key] ?? -1);
+    rows.sort((a, b) => { const x = val(a), y = val(b); const c = x < y ? -1 : x > y ? 1 : 0; return ch.down ? -c : c; });
+    const head = ['Brain', ...PACK_COLS().map(([, t]) => t), 'Size', 'Words a second'];
+    return { title: 'Lab scoreboard', head, rows: rows.map((r) => [r.name, ...PACK_COLS().map(([id]) => (r.scores[id] ?? '-')), r.sizeGB ? `${r.sizeGB} GB` : '-', r.tps ?? '-']), note: 'Scores out of 100, temperature 0, thinking off. Only comparable with other scores from the same replicant matrix.' };
+  }
+  function challengesHtml() {
+    const busy = running();
+    const brains = view.brains.filter((b) => b.facts);
+    const sortBtn = (key, label) => `<th scope="col" aria-sort="${ch.sort === key ? (ch.down ? 'descending' : 'ascending') : 'none'}"><button type="button" class="link lab-sort" data-sort="${key}">${esc(label)}${ch.sort === key ? (ch.down ? ' ↓' : ' ↑') : ''}</button></th>`;
+    const t = boardTable();
+    const board = view.scores?.length ? `<table class="lab-report lab-board"><caption class="muted">Scores out of 100. Press a column's name to sort by it.</caption>
+      <tr>${sortBtn('name', 'Brain')}${PACK_COLS().map(([id, title]) => sortBtn(id, title)).join('')}${sortBtn('size', 'Size')}${sortBtn('speed', 'Words a second')}</tr>
+      ${t.rows.map((r) => `<tr><th scope="row">${esc(r[0])}</th>${r.slice(1).map((c) => `<td>${esc(String(c))}</td>`).join('')}</tr>`).join('')}</table>
+      ${saveHtml('board', saveState('board'), view.hardware)}` : '<p class="muted">No scores yet. Pick a brain and run some challenges, and they show here.</p>';
+    return `<div id="lab-page-challenges" role="tabpanel" aria-labelledby="lab-tab-challenges">
+      <p class="muted">Short tests, out of 100, for any brain on this replicant matrix. I ask every question at temperature 0 with thinking off, so the same brain gets the same score twice. The scores only mean something next to each other, here: they aren't the numbers you see in papers.</p>
+      ${runsHtml()}
+      <fieldset><legend>Which brain?</legend>${brains.length ? brains.map((b) => radio('chfrom', b.id, ch.from === b.id, `${b.name}${b.madeInLab ? ' (made in the Lab)' : ''}`, `${b.facts.sizeGB} GB. ${b.fit}`)).join('') : '<p>There are no brains here the Lab can run yet. Get one in Get models first.</p>'}</fieldset>
+      <fieldset><legend>Challenges</legend>${(view.packs || []).map((p) => `<label class="lab-opt"><input type="checkbox" data-pack="${esc(p.id)}" ${ch.packs.includes(p.id) ? 'checked' : ''}> <span><strong>${esc(p.title)}</strong> <span class="muted">· ${p.count} questions · about ${p.minutes} min on a 16 GB card</span><br><span class="muted">${esc(p.what)}</span></span></label>`).join('')}</fieldset>
+      ${askUnload?.challenge ? `<div class="setup-offer" role="alert"><strong>Bob's brain is on the card</strong><span>${esc(askUnload.join(', '))} is loaded. The challenges need the card, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-unload>Unload it and start</button><button type="button" class="link" data-nounload>Not now</button></div></div>` : ''}
+      <div class="row"><button type="button" class="get" data-chgo ${ch.from && ch.packs.length && !busy ? '' : 'disabled'}>${busy ? 'The Lab is busy' : 'Run the challenges'}</button></div>
+      ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
+      <section class="lab-compare"><h3>Scoreboard</h3>${board}</section>
+    </div>`;
+  }
+
   function draw() {
     if (!view) { body.innerHTML = `<p class="muted">${esc(msg || 'Loading...')}</p>`; return; }
     if (!view.on) { body.innerHTML = '<p>The Lab is off. Turn on <strong>Show the Computer Science Lab</strong> in Settings, How Bob works, Brains.</p>'; return; }
-    const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}<span class="lab-tab dim" aria-disabled="true">Playground <span class="lab-later">Later (Lab 3)</span></span><span class="lab-tab dim" aria-disabled="true">Challenges <span class="lab-later">Later (Lab 3)</span></span></div>`;
+    const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}<span class="lab-tab dim" aria-disabled="true">Playground <span class="lab-later">Later (Lab 3)</span></span></div>`;
     if (tab === 'learn') { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-learn" role="tabpanel" aria-labelledby="lab-tab-learn"></div></div>`; learn.mount($('lab-page-learn')); return; }
+    if (tab === 'challenges') { body.innerHTML = `<div class="lab">${tabs}${challengesHtml()}</div>`; return; }
     const i = STEPS.findIndex(([id]) => id === step);
     const html = { brain: brainStep, lessons: lessonsStep, smaller: smallerStep, where: whereStep, test: testStep }[step]();
     const busy = running();
@@ -203,6 +245,11 @@ export function createLab({ api, note }) {
 
   body.addEventListener('change', async (e) => {
     const el = e.target; msg = '';
+    if (tab === 'learn') return; // the Learn tab listens for itself
+    if (el.name === 'chfrom') { ch.from = el.value; return draw(); }
+    if (el.dataset.pack) { const k = el.dataset.pack; ch.packs = el.checked ? [...new Set([...ch.packs, k])] : ch.packs.filter((x) => x !== k); return draw(); }
+    if (el.dataset.savefmt) { saveState(el.dataset.savefmt).format = el.value; return draw(); }
+    if (el.dataset.savehw) { saveState(el.dataset.savehw).hardware = el.checked; return draw(); }
     if (el.name === 'from') { r.from = el.value; const b = brain(); if (!r.name && b) r.name = `${b.name} Lab`; r.smaller = { sight: false, hearing: false, cut: null, files: [], measure: false, try: false, tryStop: true }; r.template = ''; }
     else if (el.id === 'lab-template') {
       const t = templateById(el.value), b = brain();
@@ -255,6 +302,24 @@ export function createLab({ api, note }) {
     const b = e.target.closest('button'); if (!b) return;
     msg = '';
     if (b.dataset.tab) { tab = b.dataset.tab; draw(); $(`lab-tab-${tab}`)?.focus(); return; }
+    if (tab === 'learn' && !b.dataset.tab) return;
+    if (b.dataset.sort) { ch.down = ch.sort === b.dataset.sort ? !ch.down : b.dataset.sort !== 'name'; ch.sort = b.dataset.sort; draw(); body.querySelector(`[data-sort="${ch.sort}"]`)?.focus(); return; }
+    if (b.dataset.saveopen) { Object.assign(saveState(b.dataset.saveopen), { open: true, saved: '', error: '' }); return draw(); }
+    if (b.dataset.saveclose) { saveState(b.dataset.saveclose).open = false; return draw(); }
+    if (b.dataset.savego) {
+      const k = b.dataset.savego, st = saveState(k);
+      const table = k === 'board' ? boardTable() : runTable(k);
+      try { st.saved = await saveResult(api, table, { format: st.format, hardware: st.hardware, version: view.version, hw: view.hardware }); st.error = ''; } catch (err) { st.error = err.message; st.saved = ''; }
+      return draw();
+    }
+    if ('chgo' in b.dataset || (askUnload?.challenge && 'unload' in b.dataset)) {
+      try {
+        const res = await api('/api/lab/challenge', { challenge: { from: ch.from, packs: ch.packs }, unload: 'unload' in b.dataset });
+        if (res.needUnload) { askUnload = Object.assign(res.names, { challenge: true }); return draw(); }
+        askUnload = null;
+      } catch (err) { msg = err.message; }
+      return load();
+    }
     if (b.dataset.step) { step = b.dataset.step; return draw(); }
     if ('next' in b.dataset) { step = STEPS[Math.min(STEPS.length - 1, STEPS.findIndex(([id]) => id === step) + 1)][0]; return draw(); }
     if ('back' in b.dataset) { step = STEPS[Math.max(0, STEPS.findIndex(([id]) => id === step) - 1)][0]; return draw(); }
@@ -284,6 +349,6 @@ export function createLab({ api, note }) {
   return {
     async open() { dlg.showModal(); draw(); await load(); },
     // Progress from the Lab job (the server's 'lab' events).
-    update(run) { if (!view) return; const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if (tab !== 'make') return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
+    update(run) { if (!view) return; const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if (run.kind === 'challenge' && run.state === 'done') { load(); return; } if (tab === 'learn') return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
   };
 }
