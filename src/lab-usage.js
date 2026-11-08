@@ -205,9 +205,9 @@ export async function startUsage(lab, req = {}, { unload = false, isLocal = true
   const ids = [].concat(req.things || []).map(String).filter((id) => isLocal || id !== 'path');
   if (!ids.length) throw new Error('Tick at least one thing to test it on.');
   const tools = lab.tools();
-  if (!tools.imatrix.found && !lab.stepFns.usageCount) throw new Error(`${path.basename(tools.imatrix.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it; download the engine again if it's missing.`);
+  if (!tools.imatrix.found && !lab.stepFns.usageCount) throw new Error(`${path.basename(tools.imatrix.path)} isn't in the built-in engine's folder. Get models, Engines: the built-in engine has it; download the engine again if it's missing.`);
   const tryWithout = req.tryWithout === true;
-  if (tryWithout && !tools.brainEngine.found && !lab.stepFns.try) throw new Error('Trying without the cold and faint experts needs Brain Engine, Bob\'s Lab engine, and it isn\'t on this replicant matrix yet. Untick it for now.');
+  if (tryWithout && !tools.brainEngine.found && !lab.stepFns.try) throw new Error('Trying without the cold and faint experts needs Brain Engine, the Lab\'s engine. It isn\'t ready yet. Untick it for now.');
   const things = thingTexts(cfg, ids, { file: req.file });
   if (lab.brain?.engine?.loaded) {
     const loaded = (await lab.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
@@ -242,7 +242,7 @@ async function goUsage(lab, r, { brain, facts, things, steps, chunks }, signal) 
         fs.writeFileSync(corpus, shape.text);
         const c = await fx.usageCount({ corpus, counts, ctx: shape.ctx, chunks: shape.chunks, thing: th.name }, { brain, signal });
         try { fs.rmSync(corpus, { force: true }); } catch {}
-        if (!c?.filter(Boolean).length) throw new Error('llama-imatrix gave no per-expert counts. Bob\'s engine may be too old for that; update it in Get models, Engines.');
+        if (!c?.filter(Boolean).length) throw new Error('llama-imatrix gave no per-expert counts. The built-in engine may be too old for that; update it in Get models, Engines.');
         const n = ints(c);
         const first = n.find(Boolean) || [];
         counted.push({ name: th.name, source: 'imatrix', tokens: Math.round(first.reduce((a, b) => a + b, 0) / (facts.used || 1)), counts: n });

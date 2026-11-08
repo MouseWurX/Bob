@@ -69,7 +69,8 @@ export function applyRecipe(lab, r = {}, recipeId, deviceId, { isLocal = true, b
   out.test = { compare: true };
   if (!facts.fullSize && out.smaller.cut) notes.push(`${brain.name}'s file is already a running file (${facts.fileType}), so the cut brain stays at that type. Start from the full-size copy for the smallest file.`);
   notes.push('Every goal at the same device size is about the same size: most experts work on every kind of job. What changes is what it protects and what it relearns when it\'s taught back.');
-  const forge = out.smaller.cut ? { rung: { keep: out.smaller.cut.keep || 'cover', cover: rc.cover, strong: rc.protect.filter((p) => /^[a-z]+$/.test(p)), strong_cover: 0.99 }, heal: { experts: 'lora', epochs: 1, alpha: 0.7 }, note: rc.heal } : null;
+  // The Forge plan for the teaching back. Its caps are 0 (the $0 rule): nothing rents until the owner sets them.
+  const forge = out.smaller.cut ? { rungs: [{ name: out.name, from: 'teacher', keep: out.smaller.cut.keep || 'cover', cover: rc.cover, strong: rc.protect.filter((p) => /^[a-z]+$/.test(p)), strong_cover: 0.99 }], heal: { experts: 'lora', epochs: 1, alpha: 0.7 }, hours_max: 0, dollars_max: 0, note: rc.heal } : null;
   return { recipe: out, notes, size: { ...size, device: device.label }, source, forge, recipeId: rc.id };
 }
 
@@ -87,7 +88,7 @@ export function estimateFor(lab, recipe, { recipeId = '', rented = true } = {}) 
   const last = lastRentedCost(lab.measures().map((m) => m.rec));
   const e = { here, rented: rent, last, recipeId };
   e.words = estimateWords(e);
-  if (rent) e.words.push('The teaching back needs a rented card, which the Lab can\'t start yet. Show the recipe prints it as a Forge plan, with this cap in it.');
+  if (rent) e.words.push('The teaching back needs a rented card, which the Lab can\'t start yet. The Forge plan for it is under the table. Its cap starts at $0, and nothing rents until you set one.');
   return e;
 }
 

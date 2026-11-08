@@ -32,13 +32,13 @@ check('a brain that already fits needs no cut', sizeFor({ ...qwen, sizeGB: 20 },
 check('a brain without experts is never cut', sizeFor({ experts: 0, sizeGB: 8, fullSize: true }, deviceBudget(deviceById('card16'))).keep === 0);
 check('this replicant matrix leaves room for the conversation', deviceBudget(deviceById('here'), 16).gb === 14.5 && deviceBudget(deviceById('here'), 8).q3 && !deviceBudget(deviceById('here'), 16).q3);
 check('the device list names real devices, not brands', DEVICES.length >= 8 && DEVICES.every((d) => !/nvidia|geforce|rtx|samsung|lenovo|legion/i.test(d.label)));
-check('seven recipes, Garfield greyed until it is built', RECIPES.length === 7 && recipeById('garfield').later && /Fold instead of drop/.test(recipeById('garfield').title) && recipeById('measure').measureOnly);
+check('seven goals, fold greyed until it is built, no ladder names', RECIPES.length === 7 && recipeById('fold').later && recipeById('fold').title === 'Fold instead of drop' && recipeById('measure').measureOnly && !/garfield|riker|bill|homer|milo|luke|calvin/i.test(JSON.stringify(RECIPES)));
 
 // ---- the estimate ----
 const rent = rentedEstimate({ lessons: 27000, experts: 208, files: ['Q4_K_M'] });
 const healH = rent.parts.find((p) => /Teach it back/.test(p.what)).hours;
 check('a full heal pass over Bob\'s lessons is about 16 hours at Riker\'s size (the measured rate)', healH > 15.5 && healH < 17, String(healH));
-check('the rented column is a range with a cap above its top', rent.hours[0] < rent.hours[1] && rent.cap.hours > rent.hours[1] && rent.dollars[0] < rent.dollars[1] && rent.cap.dollars >= rent.dollars[1], JSON.stringify(rent));
+check('the rented column is a range, and Bob never suggests a cap (the $0 rule)', rent.hours[0] < rent.hours[1] && rent.dollars[0] < rent.dollars[1] && !('cap' in rent), JSON.stringify(rent));
 check('the H200 list price is about $5 an hour', rent.perHour === 5 && /141 GB/.test(rent.card));
 check('scores already on the drive skip the teacher pass', rentedEstimate({ lessons: 27000, scoresCached: true }).parts.length === rent.parts.length - 1);
 check('a smaller cut heals faster', rentedEstimate({ experts: 96 }).hours[1] < rent.hours[1]);
@@ -52,7 +52,7 @@ const runs = [{ state: 'done', fromGB: 10, steps: [{ id: 'count', state: 'done',
 check('past Lab jobs teach the estimate, scaled to this brain', Math.abs(pastMinutes(runs, 'count', 20) - 24) < 0.01 && hereEstimate(steps, { sizeGB: 20, runs }).from === 'past');
 check('the last rented run on record is found', lastRentedCost([{ brain: { name: 'Riker' }, where: { place: 'rented' }, when: '2026-11-07', cost: { dollars: 51.79, hours: 9.7 } }, { where: { place: 'home' }, cost: { dollars: 0 } }]).dollars === 51.79);
 const words = estimateWords({ here: he, rented: rent, last: { dollars: 51.79 } });
-check('the estimate says the bill is the real number and names the cap', words.some((w) => /bill is the real number/.test(w) && /cap would be/.test(w) && /\$51\.79/.test(w)));
+check('the estimate says the bill is the real number and suggests no cap', words.some((w) => /bill is the real number/.test(w) && /\$51\.79/.test(w)) && !words.some((w) => /cap/.test(w)));
 
 // ---- the usage lists ----
 const E = 16;
@@ -167,10 +167,11 @@ check('without a usage map, the recipe counts the lessons skill by skill', fromL
 check('one skill of lessons says the recipe can\'t protect anything more', fromLessons.notes.some((n) => /one skill/.test(n)));
 check('tiny takes out sight only if the brain has it', !applyRecipe(lab, base, 'tiny', 'phone8', { budget: tight, sizeGB: 20 }).recipe.smaller.sight);
 check('a brain that already fits the device is not cut', applyRecipe(lab, base, 'chat', 'card24').recipe.smaller.cut === null);
-let later = ''; try { applyRecipe(lab, base, 'garfield', 'card16'); } catch (e) { later = e.message; }
-check('Garfield is refused until it is built', /isn't built yet/.test(later));
+let later = ''; try { applyRecipe(lab, base, 'fold', 'card16'); } catch (e) { later = e.message; }
+check('folding is refused until it is built', /isn't built yet/.test(later));
 const est = estimateFor(lab, fromLessons.recipe, { recipeId: 'everything' });
-check('the estimate has both columns for a cut, and the words', est.here && est.rented && est.words.length >= 3 && /Forge plan/.test(est.words.join(' ')));
+check('the estimate has both columns for a cut, and the words', est.here && est.rented && est.words.length >= 3 && /Forge plan/.test(est.words.join(' ')) && /starts at \$0/.test(est.words.join(' ')));
+check('the printed Forge plan has its caps at 0', fromLessons.forge.hours_max === 0 && fromLessons.forge.dollars_max === 0);
 check('no estimate for the rented part when nothing is cut', !estimateFor(lab, { ...base, smaller: { ...base.smaller, files: ['Q4_K_M'] } }).rented);
 
 // ---- the routes ----
@@ -189,13 +190,15 @@ const page = read('public/lab-recipes.js'), labPage = read('public/lab.js');
 check('the Lab page places the three blocks and hands over its events', /rc\.galleryHtml\(\)/.test(labPage) && /rc\.estimateHtml\(\)/.test(labPage) && /rc\.usageHtml\(\)/.test(labPage) && /await rc\.change\(el\)/.test(labPage) && /await rc\.click\(b\)/.test(labPage));
 check('the tables have header cells for screen readers', (page.match(/scope="col"/g) || []).length >= 6 && (page.match(/scope="row"/g) || []).length >= 3);
 check('the device select and the usage path are labelled', /<label for="lab-device">/.test(page) && /<label>File or folder <input id="lab-usage-path"/.test(page));
-check('nothing starts from a recipe: the owner presses Start', /nothing starts until you press Start/.test(page));
+check('nothing starts from a goal: the owner presses Start', /nothing starts until you press Start/.test(page) && /Start from a goal/.test(page) && /Use this goal/.test(page));
+check('the cap row keeps the $0 rule', /It starts at \$0, and nothing rents until you set one/.test(page));
+check('Lab screens speak of Bob in the third person', /Bob fills in steps 2 to 5/.test(page) && !/my experts/.test(page));
 check('the page says a cold expert is only cold for what was tested', /only cold for what you tested/.test(page));
-check('every number is "about"', /Every number is about/.test(page));
+check('every number is a rough guess', /Every number here is a rough guess/.test(page));
 const help = HELP.find((h) => h.id === 'lab-recipes');
-check('Help has a page for recipes, the estimate and the usage map', help && /usage map/i.test(help.html) && /Cut recipes/.test(help.html) && /cap/.test(help.html) && /Garfield/.test(help.html));
+check('Help has a page for goals, the estimate and the usage map', help && /usage map/i.test(help.html) && /Start from a goal/.test(help.html) && /starts at \$0/.test(help.html) && !/garfield|riker/i.test(help.html + help.words));
 check('Help says a goal-shaped brain is not much smaller', /won't be much smaller/.test(help.html));
-check('the release note exists', fs.existsSync(new URL('../docs/releases/v1.5.153.md', import.meta.url)));
+check('the release note exists, with no ladder names', fs.existsSync(new URL('../docs/releases/v1.5.153.md', import.meta.url)) && !/garfield|riker/i.test(read('docs/releases/v1.5.153.md')));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 fs.rmSync(tmp, { recursive: true, force: true });

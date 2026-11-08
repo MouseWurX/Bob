@@ -2,7 +2,7 @@
 // the rented part of a recipe (teaching it back, on a hired card) would take and cost, before anything runs. Hours on
 // a card come from measured runs (docs/FORGE-JOURNAL.md); local minutes from this replicant matrix's own past Lab jobs
 // when there are any, else from the brain's size. Every number is a range and says "about"; the service's bill is the
-// real bill, and the cap is what goes into the plan, so nothing runs past it.
+// real bill. Bob never suggests a cap: the Forge plan's cap starts at $0 and the owner sets it (the $0 rule).
 import { CARDS } from './rental.js';
 
 // Measured on the rentals of 6 to 8 November (H200): one full heal pass over about 27,000 lessons took about 16 hours
@@ -74,13 +74,11 @@ export function rentedEstimate(rented, { perHour } = {}) {
   ];
   const hours = parts.reduce((a, p) => a + p.hours, 0);
   const lo = hours * 0.85, hi = hours * 1.25;
-  const capHours = Math.ceil(hi * 1.3);
   return {
     card: card.name, perHour: ph,
     parts: parts.map((p) => ({ ...p, hours: Math.round(p.hours * 10) / 10 })),
     hours: [tidyH(lo), tidyH(hi)],
     dollars: [Math.round(lo * ph), Math.ceil(hi * ph)],
-    cap: { hours: capHours, dollars: Math.ceil((hi * ph * 1.3) / 5) * 5 },
     drive: R.driveMonthly,
     scoresCached: Boolean(rented.scoresCached)
   };
@@ -97,6 +95,6 @@ export function lastRentedCost(records = []) {
 export function estimateWords(e) {
   const out = [];
   if (e.here) out.push(`Here: about ${e.here.minutes[0]} to ${e.here.minutes[1]} minutes on this replicant matrix, free. ${e.here.from === 'past' ? 'From how long your last Lab jobs took.' : 'A first guess from the brain\'s size; it gets better after your first Lab job.'}`);
-  if (e.rented) out.push(`Rented: about ${e.rented.hours[0]} to ${e.rented.hours[1]} hours on a ${e.rented.card}, about $${e.rented.dollars[0]} to $${e.rented.dollars[1]}. The cap would be ${e.rented.cap.hours} hours or $${e.rented.cap.dollars}, whichever comes first.${e.last ? ` The last rented run on record cost $${e.last.dollars}.` : ''} The service's bill is the real number.`);
+  if (e.rented) out.push(`Rented: about ${e.rented.hours[0]} to ${e.rented.hours[1]} hours on a ${e.rented.card}, about $${e.rented.dollars[0]} to $${e.rented.dollars[1]}.${e.last ? ` The last rented run on record cost $${e.last.dollars}.` : ''} The service's bill is the real number.`);
   return out;
 }

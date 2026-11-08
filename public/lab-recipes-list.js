@@ -32,13 +32,13 @@ export const RECIPES = [
     help: 'Protects running a game and chat at 99%.'
   },
   {
-    id: 'tiny', title: 'Tiny and fast', for: 'Phones, a Raspberry Pi and small cards.', tiny: true,
+    id: 'tiny', title: 'Tiny and fast', for: 'Phones and small graphics cards.', tiny: true,
     protect: ['tools', 'chat', 'Picking the right tool'], cover: 0.9,
     heal: 'Bob\'s whole lesson set. Small brains need the teaching back most.',
     help: 'Keeps 90% of each skill\'s work and 99% for tools and chat, takes out sight and hearing, and makes a Q3 file for devices with 8 GB or less. General knowledge goes first at this size.'
   },
   {
-    id: 'garfield', title: 'Fold instead of drop (Garfield)', for: 'Small sizes that lose too much when experts are dropped.', later: true,
+    id: 'fold', title: 'Fold instead of drop', for: 'Small sizes that lose too much when experts are dropped.', later: true,
     protect: [], cover: 0.95, heal: '', help: 'Folds each rarely used expert into the kept expert most like it, instead of dropping it, then teaches it back. Needs a rented card. Not built yet.'
   },
   {
@@ -52,12 +52,12 @@ export const recipeById = (id) => RECIPES.find((r) => r.id === id) || null;
 // the rest of the computer). q3: Q3 is allowed (8 GB or less, the Q4-or-better rule).
 export const DEVICES = [
   { id: 'here', label: 'This replicant matrix', here: true },
-  { id: 'card24', label: 'A 24 GB card', gb: 22 },
-  { id: 'card16', label: 'A 16 GB card', gb: 14.5 },
-  { id: 'handheld16', label: 'A 16 GB handheld (memory shared with the screen)', gb: 10 },
-  { id: 'card12', label: 'A 12 GB card', gb: 10.5 },
-  { id: 'card8', label: 'An 8 GB card', gb: 6.5, q3: true },
-  { id: 'card6', label: 'A 6 GB card', gb: 4.8, q3: true },
+  { id: 'card24', label: 'A 24 GB graphics card', gb: 22 },
+  { id: 'card16', label: 'A 16 GB graphics card', gb: 14.5 },
+  { id: 'handheld16', label: 'A 16 GB handheld (the graphics share its memory)', gb: 10 },
+  { id: 'card12', label: 'A 12 GB graphics card', gb: 10.5 },
+  { id: 'card8', label: 'An 8 GB graphics card', gb: 6.5, q3: true },
+  { id: 'card6', label: 'A 6 GB graphics card', gb: 4.8, q3: true },
   { id: 'phone12', label: 'A phone with 12 GB', gb: 5, q3: true },
   { id: 'phone8', label: 'A phone with 8 GB', gb: 3.4, q3: true }
 ];
