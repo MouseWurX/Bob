@@ -35,7 +35,7 @@ check('the phone app does not either', !/own brain\)|own engine\)/.test(phone));
 const faq = HELP.find((e) => e.id === 'faq-downloaded-by-bob');
 check('Help has a FAQ entry for the tag', Boolean(faq) && faq.group === 'FAQ');
 check('it says the brackets are about where the file came from, and that Bob\'s own downloads have none', /where the file came from/.test(faq?.html || '') && /no brackets/.test(faq?.html || '') && !/<strong>\(downloaded by Bob\)<\/strong>/.test(faq?.html || ''));
-check('it says "Bob\'s own brain" is kept for brains made for Bob and none exist yet', /Bob's own brain/.test(faq?.html || '') && /aren't any/.test(faq?.html || ''));
+check('it says "Bob\'s own brain" is kept for brains made for Bob and none exist yet', /Bob's own brain/.test(faq?.html || '') && /aren't any in the catalogue/.test(faq?.html || '') && /brain card/.test(faq?.html || ''));
 check('it is in Bob\'s voice (first person)', /\bI fetched\b/.test(faq?.html || ''));
 
 console.log(`\n${pass} passed, ${fail} failed`);

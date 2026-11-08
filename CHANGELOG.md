@@ -4,6 +4,15 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.140
+
+Brains of your own can bring a brain card that tells Bob what they're for.
+
+- **Brain cards.** A brain you add from a file can bring a small card beside it (same name, ending .bob.json) that says what it's for. Bob then files it under the right jobs and family, uses its name, picture reader and size, and shows its benchmark in the i. Brains made in Bob's own workshop come with one and say "Bob's own brain". A card only counts if it names the file and its exact size. You still pick these yourself; Bob doesn't recommend them.
+- No card: nothing changes, the brain is added the same way as before.
+- Help: the "Your own brains" FAQ explains brain cards, and the brackets FAQ says when "(Bob's own brain)" appears. New `test/run-brain-card-test.js` (19 checks).
+- Phone (Bob for Android): nothing changes; brains of your own are a replicant matrix feature.
+
 ## 1.5.139
 
 Bob can now read long pages and files in parts, and code from GitHub keeps its < and > signs.

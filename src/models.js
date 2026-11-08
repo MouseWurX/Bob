@@ -757,7 +757,7 @@ export class ModelShop {
       else if (opts[m.category]) opts[m.category].push({ value: m.id, label: m.name });
     }
     // 1.5.135: brains of your own (files on this replicant matrix), by their id; the engine gets the file when equipped.
-    for (const e of ownEntries(this.cfg)) if (e.status.state === 'installed' && !llms.some((l) => l.value === e.id)) llms.push({ value: e.id, label: `${e.name} (your own file)`, caps: ['completion', 'tools', ...(e.ownMmproj ? ['vision'] : [])] });
+    for (const e of ownEntries(this.cfg)) if (e.status.state === 'installed' && !llms.some((l) => l.value === e.id)) llms.push({ value: e.id, label: `${e.name} (${e.madeByBob ? MADE_BY_BOB : YOUR_OWN_FILE})`, caps: ['completion', 'tools', ...(e.ownMmproj ? ['vision'] : [])] });
     if (this.cfg.comfy?.workflowFile && fs.existsSync(this.cfg.comfy.workflowFile)) opts.images.push({ value: 'comfy', label: 'ComfyUI (my own workflow)' });
     let maestro = [];
     // Maestro is opt-in (maestro.enabled): Bob paints and films himself by default.

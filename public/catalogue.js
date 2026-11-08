@@ -86,8 +86,8 @@ function rowHtml(m, job, ctx) {
   const isNew = ctx.newIds?.has(m.id) === true;
   const dated = datedLine(m, ctx.allModels || ctx.models);
   const roomy = !here && s.level !== 'ok' ? roomOn(m, ctx.bobNet) : '';
-  const tip = [m.what, communityLine(m), where, out, isNew ? 'New: one of the five newest releases in its family.' : '', dated, m.trial ? `${TRIAL_LINE} ${m.trialNote || ''}`.trim() : '', s.why, roomy ? `Fits ${roomy} on your Bob-Net.` : '', fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`].filter(Boolean).join('\n');
-  const tags = `${recTag}${makerTag(m)}${isOwn(m) ? '<span class="tag" data-tip="A brain you added from a file on this replicant matrix. Bob runs it from where it is and never recommends it over the ones he knows.">Your own file</span>' : ''}${isNew ? `<span class="tag new-tag" tabindex="0" data-tip="${esc(`New: one of the five newest releases in the ${familyOf(m)} family.${out ? ` ${out}.` : ''}`)}">New</span>` : ''}${dated ? `<span class="tag dated-tag" tabindex="0" data-tip="${esc(dated)}">Dated</span>` : ''}${!rec && s.level !== 'ok' ? LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
+  const tip = [m.what, communityLine(m), where, out, isNew ? 'New: one of the five newest releases in its family.' : '', dated, m.trial ? `${TRIAL_LINE} ${m.trialNote || ''}`.trim() : '', m.bench || '', s.why, roomy ? `Fits ${roomy} on your Bob-Net.` : '', fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`].filter(Boolean).join('\n');
+  const tags = `${recTag}${makerTag(m)}${isOwn(m) ? (m.madeByBob ? '<span class="tag own-bob" tabindex="0" data-tip="Its brain card says it was made for Bob in his own workshop. Bob runs it from where it is and leaves the pick to you.">Bob\'s own brain</span>' : '<span class="tag" data-tip="A brain you added from a file on this replicant matrix. Bob runs it from where it is and never recommends it over the ones he knows.">Your own file</span>') : ''}${isNew ? `<span class="tag new-tag" tabindex="0" data-tip="${esc(`New: one of the five newest releases in the ${familyOf(m)} family.${out ? ` ${out}.` : ''}`)}">New</span>` : ''}${dated ? `<span class="tag dated-tag" tabindex="0" data-tip="${esc(dated)}">Dated</span>` : ''}${!rec && s.level !== 'ok' ? LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
   const on = isActive({ entry: m, value: m.id, installed: here }, ctx.active);
   const sw = job.id === 'phone' ? '<span class="muted">In the phone app</span>'
     : `<button type="button" class="mini-switch" role="switch" aria-checked="${on}" data-active="${esc(m.id)}" aria-label="Active: ${esc(m.name)}">Active <span class="st">${on ? 'On' : 'Off'}</span></button>`;
@@ -102,7 +102,7 @@ function rowHtml(m, job, ctx) {
   const kind = isNaughty(m) ? ' naughty' : isCommunity(m) ? ' community' : '';
   return `<li class="cat-row model${kind}${!here && !rec && s.level !== 'ok' ? ' dim' : ''}" id="cat-${esc(job.id)}-${esc(m.id)}">
     <span class="kit-name">${esc(m.name)}</span><span class="muted">${gb(m.sizeGB)}</span>${tags}${tipHtml(tip, `About ${m.name}`)}${src ? `<a class="src-link" href="${esc(src.url)}" target="_blank" rel="noopener noreferrer" data-tip="Where it comes from: ${esc(src.label)}" aria-label="Where ${esc(m.name)} comes from">↗</a>` : ''}
-    <span class="cat-act">${sw}${act}</span><div class="confirm" hidden></div></li>`;
+    ${m.benchReport ? `<a class="src-link bench-link" href="${esc(m.benchReport)}" target="_blank" rel="noopener noreferrer" aria-label="Full report: how ${esc(m.name)} did in its benchmark">Full report</a>` : ''}<span class="cat-act">${sw}${act}</span><div class="confirm" hidden></div></li>`;
 }
 
 // 1.5.101: inside each job, models sit under one header per family (Qwen, Gemma and so on). Every family starts
@@ -126,6 +126,7 @@ export const FAMILIES = {
   Piper: 'Voices from the Piper project. Small, quick and run on the processor.',
   Kokoro: 'A pack of natural English voices.',
   Nomic: 'Made by Nomic. Helps Bob find things in his memory.',
+  Bob: 'Brains made for Bob in his own workshop: cut down from bigger open brains so they fit smaller cards, and benchmarked before they reach you. Added from a file with its brain card, under ➕ Your own brains.',
   'Your own': 'Brains you added from files on this replicant matrix (➕ Your own brains, at the end of the Well behaved list). Bob only knows what each file says about itself.',
   'ACE-Step': 'Made by ACE Studio and StepFun. Makes songs.',
 };
@@ -206,6 +207,7 @@ export function ownHtml(ctx) {
       <p><strong>${esc(f.name || 'Your brain')}</strong> <span class="muted">${f.sizeGB ? gb(f.sizeGB) : ''}${f.params ? ` · about ${f.params}B` : ''}</span><br><span class="muted own-path">${esc(f.file)}</span></p>
       <label>What Bob should call it <input type="text" data-ownname maxlength="60" value="${esc(f.name || '')}" required></label>
       <p class="muted">Picture reader: ${f.mmproj ? `<span class="own-path">${esc(f.mmproj)}</span> <button type="button" class="mini" data-ownmm="clear">None</button>` : `none <button type="button" class="mini" data-ownmm="pick">Pick its picture reader (optional)</button>`} ${tipHtml('If the brain can see pictures, its maker also gives a small "mmproj" file. Add it and the brain goes under Seeing pictures too. Without it the brain still works, just without sight.', 'About picture readers')}</p>
+      ${f.card ? `<p class="muted own-card">${esc(`Brain card found: it files under ${f.card.jobs?.length ? f.card.jobs.map((j) => SLOT_NAMES[j] || j).join(', ') : 'the jobs Bob guesses from its size'}${f.card.family ? `, in the ${f.card.family} family` : ''}${f.card.benchmarked ? ', with its benchmark' : ''}.`)}</p>` : ''}
       ${f.error ? `<p class="error">${esc(f.error)}</p>` : ''}
       <div class="row"><button type="submit" class="get" data-owndo ${f.busy ? 'disabled' : ''}>Add to Bob's list</button><button type="button" data-owncancel>Cancel</button></div></form>`;
   return `<section class="cat-job own-brains" id="catjob-own"><h3>➕ Your own brains ${tipHtml('A brain file (.gguf) already on this replicant matrix: something you downloaded yourself, made yourself, or a model Bob\'s list doesn\'t have. It joins his list with an Active switch and shows up in Equip Bob and the brain menus like any other, running on Bob\'s built-in engine from where the file is. Bob never moves, copies or deletes the file, and never recommends it over the brains he knows. Remove only takes it off his list.', 'About your own brains')}</h3>

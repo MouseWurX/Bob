@@ -11,6 +11,57 @@ import { ggufInfo } from './gguf.js';
 export const OWN_FAMILY = 'Your own';
 const MAX = 40;
 
+// 1.5.140: a brain card. A small JSON file beside a GGUF, named like it but ending .bob.json (28Bob.gguf ->
+// 28Bob.bob.json), that says what the brain is for: Bob's own workshop writes one for every brain it makes, and anyone
+// can write one by hand. With a card that matches the file (its name and exact size), the brain files under the card's
+// jobs and family, takes its name, picture reader and size, and shows its benchmark; without one, or with one that
+// doesn't match, Bob only knows what the file says (as before). The card is read, never trusted for more: it can't
+// point outside the GGUF's folder, and a card never makes a brain Bob's recommendation.
+export const CARD_JOBS = ['bob', 'small', 'deep', 'tinker', 'reviewer', 'office', 'eyes', 'ledger', 'scout', 'painter'];
+export const cardPathOf = (gguf) => String(gguf || '').replace(/\.gguf$/i, '.bob.json');
+const num = (x, max) => (Number.isFinite(Number(x)) && Number(x) > 0 && Number(x) <= max ? Math.round(Number(x) * 10) / 10 : null);
+const txt = (s, n) => (typeof s === 'string' ? s.replace(/[\u0000-\u001f<>{}`\\]/g, '').replace(/\s+/g, ' ').trim().slice(0, n) : '');
+const scoresOf = (o) => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {}).slice(0, 8).map(([k, v]) => [txt(k, 24), num(v, 100000)]).filter(([k, v]) => k && v != null));
+export function cleanCard(j, gguf, size) {
+  if (!j || typeof j !== 'object' || j.card !== 1) return null;
+  if (String(j.file || '').toLowerCase() !== path.basename(String(gguf || '')).toLowerCase()) return null;
+  if (!(Number.isInteger(j.bytes) && j.bytes === size)) return null;
+  const dir = path.dirname(gguf);
+  const mmName = typeof j.mmproj === 'string' && /^[\w .()+-]+\.gguf$/i.test(j.mmproj) && path.basename(j.mmproj) === j.mmproj ? j.mmproj : '';
+  const b = j.benchmark && typeof j.benchmark === 'object' ? j.benchmark : null;
+  const out = {
+    name: cleanName(j.name), nickname: txt(j.nickname, 30), family: txt(j.family, 30), madeByBob: j.madeByBob === true,
+    jobs: [...new Set([].concat(j.jobs || []).filter((x) => CARD_JOBS.includes(x)))],
+    mmproj: mmName ? path.join(dir, mmName) : '',
+    params: num(j.params, 5000), activeParams: num(j.activeParams, 5000), vramGB: num(j.vramGB, 4096), ctx: num(j.ctx, 1e8),
+    cutFrom: j.cutFrom && typeof j.cutFrom === 'object' ? { name: txt(j.cutFrom.name, 60), by: txt(j.cutFrom.by, 40), hf: /^[\w.-]+\/[\w.-]+$/.test(j.cutFrom.hf || '') ? j.cutFrom.hf : '' } : null,
+    expertsKept: txt(j.expertsKept, 40), published: /^\d{4}-\d{2}-\d{2}$/.test(j.published || '') ? j.published : '',
+    license: txt(j.license, 80), what: txt(j.what, 300)
+  };
+  if (b) {
+    const s = scoresOf(b.scores);
+    if (Object.keys(s).length) out.benchmark = { date: /^\d{4}-\d{2}-\d{2}$/.test(b.date || '') ? b.date : '', report: /^https:\/\/[^\s"<>]+$/.test(b.report || '') ? b.report.slice(0, 300) : '', scores: s, ...(b.baseline && typeof b.baseline === 'object' ? { baseline: { name: txt(b.baseline.name, 60), scores: scoresOf(b.baseline.scores) } } : {}) };
+  }
+  return out;
+}
+export function readCard(gguf, { read = fs.readFileSync, stat = fs.statSync } = {}) {
+  try {
+    const size = stat(gguf).size;
+    const t = String(read(cardPathOf(gguf), 'utf8'));
+    if (t.length > 65536) return null;
+    return cleanCard(JSON.parse(t), gguf, size);
+  } catch { return null; }
+}
+// The benchmark as one line for the tip: "Benchmarked November 8, 2026: Coding 81.2% (Qwen3.6 35B-A3B: 84%), Tools 93%."
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const day = (d) => (d ? ` ${MONTHS[Number(d.slice(5, 7)) - 1]} ${Number(d.slice(8, 10))}, ${d.slice(0, 4)}` : '');
+export function benchLine(b) {
+  if (!b?.scores) return '';
+  const base = b.baseline?.scores || {};
+  const parts = Object.entries(b.scores).map(([k, v]) => `${k} ${v}%${base[k] != null ? ` (${b.baseline.name || 'the brain it was cut from'}: ${base[k]}%)` : ''}`);
+  return `Benchmarked${day(b.date)}: ${parts.join(', ')}.`; // the report is a "Full report" link on the row
+}
+
 const cleanName = (s) => String(s || '').replace(/[\u0000-\u001f<>{}"`\\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60);
 const cleanPath = (p) => { const s = String(p || '').replace(/[\u0000-\u001f]/g, '').trim(); return s && path.isAbsolute(s) && /\.gguf$/i.test(s) ? s : ''; };
 
@@ -46,7 +97,7 @@ export function paramsOf(info, file) {
 }
 
 // What the file says about itself, for the Add form (name, size, how big) and the catalogue tip.
-export function inspectOwn(file, { stat = fs.statSync, info = ggufInfo } = {}) {
+export function inspectOwn(file, { stat = fs.statSync, info = ggufInfo, read = fs.readFileSync } = {}) {
   const p = cleanPath(file);
   if (!p) return { error: 'That isn\'t a .gguf file.' };
   let st;
@@ -55,7 +106,10 @@ export function inspectOwn(file, { stat = fs.statSync, info = ggufInfo } = {}) {
   const i = info(p);
   if (!i) return { error: 'That file isn\'t a GGUF brain Bob can read (it may be damaged, or not a model).' };
   const params = paramsOf(i, p);
-  return { file: p, name: cleanName(i.name) || path.basename(p, path.extname(p)), arch: i.arch || '', params, sizeGB: Math.round((st.size / 1e9) * 10) / 10, ctxTrain: i.ctxTrain || null };
+  const card = readCard(p, { read, stat }); // 1.5.140
+  const mm = card?.mmproj && (() => { try { return stat(card.mmproj).isFile(); } catch { return false; } })() ? card.mmproj : '';
+  return { file: p, name: card?.name || cleanName(i.name) || path.basename(p, path.extname(p)), arch: i.arch || '', params: card?.params || params, sizeGB: Math.round((st.size / 1e9) * 10) / 10, ctxTrain: i.ctxTrain || null,
+    ...(card ? { card: { family: card.family, jobs: card.jobs, madeByBob: card.madeByBob, benchmarked: card.benchmark?.date || (card.benchmark ? 'yes' : '') }, ...(mm ? { mmproj: mm } : {}) } : {}) };
 }
 
 // The jobs Bob offers it for, from its size and whether it has a picture reader. Honest and plain: a small brain is a
@@ -70,19 +124,25 @@ export function jobsFor(params, vision) {
 }
 
 // The catalogue-shaped entry Bob's lists use (public/catalogue.js, equip.js, fit.js). `own: true` is the marker.
-export function ownEntry(o, { stat = fs.statSync, info = ggufInfo } = {}) {
+export function ownEntry(o, { stat = fs.statSync, info = ggufInfo, read = fs.readFileSync } = {}) {
   let size = 0, here = false, i = null;
   try { const st = stat(o.gguf); here = st.isFile(); size = st.size; } catch {}
   if (here) { try { i = info(o.gguf); } catch {} }
-  const params = paramsOf(i, o.gguf);
+  const card = here ? readCard(o.gguf, { read, stat }) : null; // 1.5.140: a brain card beside the file
+  const params = card?.params || paramsOf(i, o.gguf);
   const sizeGB = Math.round((size / 1e9) * 10) / 10;
   const vision = Boolean(o.mmproj);
   const where = `From your own file: ${path.basename(o.gguf)}${vision ? `, with the picture reader ${path.basename(o.mmproj)}` : ''}.`;
+  const cardJobs = card?.jobs?.filter((j) => j !== 'eyes' || vision) || [];
+  const cut = card?.cutFrom?.name ? `Cut from ${card.cutFrom.by ? `${card.cutFrom.by}'s ` : ''}${card.cutFrom.name}${card.expertsKept ? `, keeping ${card.expertsKept} experts` : ''}.` : '';
+  const what = card
+    ? [card.what, cut, `${where} Its brain card says what it's for.`].filter(Boolean).join(' ')
+    : `${where} Bob only knows what the file says: ${params ? `about ${params}B` : 'size unknown'}${i?.arch ? `, ${i.arch}` : ''}${i?.ctxTrain ? `, made for up to ${Math.round(i.ctxTrain / 1024)}K` : ''}. How well it does its jobs is for you to judge.`;
   return {
-    id: o.id, name: o.name, family: OWN_FAMILY, category: 'chat', own: true, jobs: jobsFor(params, vision),
-    what: `${where} Bob only knows what the file says: ${params ? `about ${params}B` : 'size unknown'}${i?.arch ? `, ${i.arch}` : ''}${i?.ctxTrain ? `, made for up to ${Math.round(i.ctxTrain / 1024)}K` : ''}. How well it does its jobs is for you to judge.`,
-    sizeGB, vramGB: sizeGB ? Math.max(2, Math.ceil(sizeGB * 1.15)) : null, ...(params ? { params } : {}),
-    license: 'As its maker says', pick: 'optional', trial: true, trialNote: 'Your own file; Bob never recommends it over the ones he knows.',
+    id: o.id, name: o.name, family: card?.family || OWN_FAMILY, category: 'chat', own: true, jobs: cardJobs.length ? cardJobs : jobsFor(params, vision),
+    what, sizeGB, vramGB: card?.vramGB || (sizeGB ? Math.max(2, Math.ceil(sizeGB * 1.15)) : null), ...(params ? { params } : {}),
+    ...(card ? { card: true, ...(card.madeByBob ? { madeByBob: true } : {}), ...(card.published ? { published: card.published } : {}), ...(card.benchmark ? { bench: benchLine(card.benchmark), ...(card.benchmark.report ? { benchReport: card.benchmark.report } : {}) } : {}) } : {}),
+    license: card?.license || 'As its maker says', pick: 'optional', trial: true, trialNote: card ? 'Your own file; you pick it yourself, Bob never recommends it over the ones he knows.' : 'Your own file; Bob never recommends it over the ones he knows.',
     files: [], ownFile: o.gguf, ...(o.mmproj ? { ownMmproj: o.mmproj } : {}),
     status: here ? { state: 'installed', where: ['your file'], located: { gguf: o.gguf, ...(o.mmproj ? { mmproj: o.mmproj } : {}) }, canDownload: false }
       : { state: 'missing', where: [], located: {}, canDownload: false, gone: true }
