@@ -190,7 +190,7 @@ export async function readFile(file, { cfg = null, office = undefined, signal, r
   if (base.kind === 'chat') {
     let raw; try { raw = readText(file); } catch { return { ...base, skipped: 'could not be read' }; }
     const ex = parseChat(raw, file);
-    return ex?.length ? { ...base, exchanges: ex } : { ...base, skipped: 'not a chat log Bob knows (ChatGPT or Claude export, Bob session, or Name: lines)' };
+    return ex?.length ? { ...base, exchanges: ex } : { ...base, kind: 'other', skipped: 'not a chat log Bob knows (ChatGPT or Claude export, Bob session, or Name: lines)' }; // counted as other, not as a chat log
   }
   if (base.kind === 'office') {
     const off = office === undefined ? (cfg ? findOffice(cfg) : null) : office;

@@ -105,6 +105,7 @@ export function wouldLearn(sv, kinds, count, skills) {
   if (kinds.includes('material') && sv.passages) parts.push(`${pct('material')}% working with your material (${names.join(', ')}): answering questions about what I read in your files, in your words and units`);
   if (kinds.includes('voice') && sv.passages) parts.push(`${pct('voice')}% writing in your voice: your passages as the answers, so I pick up how you write`);
   if (kinds.includes('chats') && sv.exchanges) parts.push(`${pct('chats')}% your past conversations (${sv.exchanges} exchanges), re-said my way`);
-  const head = `From ${sv.files - sv.skipped.length} files (about ${sv.words.toLocaleString()} words), about ${want.toLocaleString()} lessons${skills?.length ? ` in ${skills.length} skill${skills.length === 1 ? '' : 's'}` : ''}: ${parts.join('; ') || 'nothing yet, add files or tick a lesson kind'}.`;
+  const used = sv.files - sv.skipped.length;
+  const head = `From ${used}${sv.skipped.length ? ` of ${sv.files}` : ''} file${sv.files === 1 ? '' : 's'} (about ${sv.words.toLocaleString()} words), about ${want.toLocaleString()} lessons${skills?.length ? ` in ${skills.length} skill${skills.length === 1 ? '' : 's'}` : ''}: ${parts.join('; ') || 'nothing yet, add files or tick a lesson kind'}.`;
   return `${head} I would practise habits, vocabulary and voice. I would not learn the facts in these files by heart; my notes and Recall do that.`;
 }
