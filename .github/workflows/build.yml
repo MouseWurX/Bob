@@ -43,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ inputs.ref || github.sha }} # this run's own commit, not the moving branch tip (a later push must not change its version)
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -106,7 +106,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ inputs.ref || github.sha }} # this run's own commit, not the moving branch tip (a later push must not change its version)
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -159,7 +159,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="$GITHUB_REF_NAME"; else v="v$(node -p "require('./package.json').version")"; fi
-          if ! gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then echo "No release $v yet, so the Mac zip is only an artifact of this run."; exit 0; fi
+          # The Windows job makes the release; wait for it (up to 30 minutes), like the Linux and Android jobs.
+          for i in $(seq 1 60); do gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 && break; sleep 30; done
+          if ! gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then echo "Release $v didn't appear, so the Mac zip is only an artifact of this run."; exit 0; fi
           gh release upload "$v" dist/Bob-*-mac-arm64.zip dist/Bob-*-mac-arm64.zip.sha256 --clobber -R "$GITHUB_REPOSITORY"
 
   signed-build:
