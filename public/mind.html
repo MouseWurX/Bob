@@ -19,6 +19,7 @@
   <footer class="mind-foot">
     <span class="mind-note">Shown while this window is open. Nothing here is saved.</span>
     <button id="mindFollow" type="button" class="brain-switch" role="switch" aria-checked="true" title="On: the window keeps up with the newest lines. Off: it stays where you scrolled to."><span class="lbl">Follow along</span><span class="st">On</span></button>
+    <label class="mind-order">Order <select id="mindOrder" aria-label="Order of the lines" title="Newest at the bottom (as they happen), newest at the top, or grouped by who was thinking: Bob first, then his copies."><option value="time">Newest at the bottom</option><option value="newest">Newest at the top</option><option value="who">Bob, then his copies</option></select></label>
     <button id="mindClear" type="button" class="brain-switch" title="Empty this window. Nothing else changes.">Clear</button>
   </footer>
   <script type="module" src="/mind.js"></script>

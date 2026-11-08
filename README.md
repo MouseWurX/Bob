@@ -26,11 +26,11 @@
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.148-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.148-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.148-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.148-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.148-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.148-linux-x86_64.AppImage) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.148-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.148-linux-arm64.AppImage) |
-| **Android phone** | [`Bob-1.5.148-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.148-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.149-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.149-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.149-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.149-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.149-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.149-linux-x86_64.AppImage) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.149-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.149-linux-arm64.AppImage) |
+| **Android phone** | [`Bob-1.5.149-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.149-android.apk) |
 
 All builds on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest), each with a `.sha256` checksum. Windows builds are **not code-signed yet** (see [Code signing policy](#code-signing-policy)): click **More info**, then **Run anyway** the first time. Install steps for each platform are under [Getting Bob](#getting-bob).
 
