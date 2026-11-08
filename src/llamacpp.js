@@ -12,10 +12,11 @@ import { tidySchema } from './toolbox.js';
 import { templateFor, samplingFor, replyTokens } from './model-family.js';
 import { gaming, LONG_CODER } from './sessions.js';
 import { gamingCard, decideCard, readCard, CARD_BUSY_PCT, CARD_MIN_FREE_MB } from './gaming-card.js';
-import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts } from './tuning.js';
+import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } from './tuning.js';
 import { exeName } from './platform.js';
 import { Embedder } from './embedder.js';
 import { ggufInfo } from './gguf.js';
+import { stretchOn, stretchMax as stretchMost, yarnArgs, needBytes, roomBytes } from './model-ctx.js';
 
 // 1.5.19: the context a brain gets when nothing else picks one. 32K fits a 26B brain on a 16 GB card.
 
@@ -209,6 +210,26 @@ export class LlamaCpp {
     try { return ggufInfo(this.resolve(model).gguf)?.ctxTrain || null; } catch { return null; }
   }
 
+  // Long memory (model-ctx.js): the most this brain can be stretched to with the switch on, or null.
+  // evenOff: whether it could be, with the switch off (Settings only shows the switch when a brain can).
+  async stretchMax(model, { evenOff = false } = {}) {
+    if (!stretchOn(this.cfg) && !evenOff) return null;
+    try { return stretchMost(ggufInfo(this.resolve(model).gguf)); } catch { return null; }
+  }
+
+  // Whether a context fits this machine (graphics card plus RAM, less the system's share), before loading it.
+  // { fits, needGB, roomGB }, or fits: null when Bob can't tell (no file, or a brain whose shape he can't read).
+  async roomFor(model, ctx, { ramBytes = os.totalmem(), cardBytes = cardGB(this.cfg) * 1024 ** 3 } = {}) {
+    const gb = (b) => Math.round((b / 1024 ** 3) * 10) / 10;
+    try {
+      const f = this.resolve(model).gguf;
+      const need = needBytes(fs.statSync(f).size, ggufInfo(f)?.shape, ctx, this.lc.args || ['-ctk', 'q8_0', '-ctv', 'q8_0']);
+      if (!need) return { fits: null };
+      const room = roomBytes(ramBytes, cardBytes);
+      return { fits: need <= room, needGB: gb(need), roomGB: gb(room) };
+    } catch { return { fits: null }; }
+  }
+
   // Ollama name -> GGUF file (+ vision projector), by reading Ollama's manifest.
   resolve(model) {
     const override = this.lc.models?.[model];
@@ -390,6 +411,8 @@ export class LlamaCpp {
       '-m', gguf, '--host', '127.0.0.1', '--port', String(this.port),
       // 1.5.19: 32K by default (131072 spilled a 26B brain past a 16 GB card into system RAM and crawled at 5 tok/s).
       '-c', String(ctx || lc.ctx || DEFAULT_CTX), ...this.layerArgs(cpu, card), '--jinja',
+      // Long memory: past what the brain was made for, its positions are stretched (YaRN) to the size picked.
+      ...this.stretchArgs(gguf, ctx || lc.ctx || DEFAULT_CTX),
       ...(mmproj && lc.vision !== false ? ['--mmproj', mmproj] : []),
       ...(lc.args || ['-fa', 'on', '-ctk', 'q8_0', '-ctv', 'q8_0']),
       ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : num(lc.threads, '-t')),
@@ -421,6 +444,15 @@ export class LlamaCpp {
       args.push('-md', draft, ...num(d.max ?? 16, '--draft-max'), ...num(d.min ?? 1, '--draft-min'), '-ngld', String(d.ngld ?? 99));
     }
     return args;
+  }
+
+  // Long memory (YaRN): only with the switch on, a brain the guide covers, and a size past what it was made for.
+  // Settings set by hand (llamacpp.args with --rope-scaling) win.
+  stretchArgs(gguf, ctx) {
+    if (!stretchOn(this.cfg) || (this.lc.args || []).includes('--rope-scaling')) return [];
+    let info = null;
+    try { info = ggufInfo(gguf); } catch {}
+    return stretchMost(info) && ctx <= stretchMost(info) ? yarnArgs(ctx, info.ctxTrain) : [];
   }
 
   // 1.5.32: a brain file with no chat template of its own gets its family's (model-family.js), so tool calls keep

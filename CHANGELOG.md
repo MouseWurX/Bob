@@ -4,6 +4,18 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.150
+
+Qwen3.5 and 3.6 brains can keep more than 256K in mind, if you switch it on.
+
+**New, and not tried on real hardware yet.** Long memory is off unless you switch it on, and we haven't run it on a real replicant matrix before this release. If you have a Qwen3.5 or 3.6 brain and the memory to spare, please try 512K or 1M and tell us how it went: whether it loaded and chatted, and how much graphics memory and RAM it used. Open an issue at github.com/MouseWurX/Bob/issues.
+
+- **Long memory** (Settings, Brains, under **Pick how much each brain keeps in mind**; off): on Bob's built-in engine, Qwen3.5 and 3.6 brains, and Bob's own brains made from them, can also offer 512K and 1M. Bob stretches how the brain counts positions (YaRN) only while a size past 256K is picked, because the stretch makes short chats a little worse.
+- **It says what it costs.** Each stretched size shows about how much memory it needs (on the 35B brains, about 3 GB more than 256K for 512K and about 8 GB more for 1M; the dense 27B needs about three times as much), and a size that won't fit on this replicant matrix is greyed out with the reason. If it doesn't fit when the brain loads, Bob loads it at 256K and says why. Reading a very long text takes a long time: a full 1M can take well over half an hour.
+- Not offered on a phone or a replicant matrix with 8 GB or less.
+- Help, an FAQ (*Can Bob keep more than 256K in mind?*), glossary entries for Context and YaRN, and the settings list explain it.
+- Phone (Bob for Android): nothing changes.
+
 ## 1.5.149
 
 Bob's thinking can show its lines in the order you like.
