@@ -393,6 +393,7 @@ export function createCellar() {
   const ownWhen = (t) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
   const when = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   const KIND_WORD = { tool: 'tool', howto: 'how-to' };
+  const binWord = () => (settings?.os === 'mac' ? 'the Trash' : settings?.os === 'linux' ? 'the trash' : 'the Recycle Bin'); // where thrown-away files go, by platform
   const TOOL_STATE = { on: '', off: 'turned off', changed: 'off: its files changed since you OK\'d it', missing: 'its folder is gone' };
   // Delete asks on the row itself: Delete, then "Delete / Keep it". No pop-up.
   const ownDelBtns = (kind, id, name) => ownSame(ownAsk, { kind, id })
@@ -401,7 +402,7 @@ export function createCellar() {
   function ownKitHtml() {
     if (ownKit === null) { loadOwnKit(); return '<p class="muted">Loading…</p>'; }
     const k = ownKit;
-    const intro = `<p class="muted">Everything Bob made for himself to work with: the tools he wrote and the how-tos he kept. Look them over and delete what you don't want him to have. Anything deleted waits 30 days under Recently deleted, where you can put it back. ${tip('Delete here stops Bob using the thing at once. A tool\'s files stay in his folder on the shelf, then go to the Recycle Bin after 30 days (or when you press Delete for good). A how-to is plain text, so it\'s simply forgotten. Nothing here leaves this replicant matrix (your computer).', 'Tools and how-tos Bob made')}</p>`;
+    const intro = `<p class="muted">Everything Bob made for himself to work with: the tools he wrote and the how-tos he kept. Look them over and delete what you don't want him to have. Anything deleted waits 30 days under Recently deleted, where you can put it back. ${tip('Delete here stops Bob using the thing at once. A tool\'s files stay in his folder on the shelf, then go to ' + binWord() + ' after 30 days (or when you press Delete for good). A how-to is plain text, so it\'s simply forgotten. Nothing here leaves this replicant matrix (your computer).', 'Tools and how-tos Bob made')}</p>`;
     const note = ownError ? `<p class="error ownkit-note" role="alert">${esc(ownError)}</p>`
       : ownLast ? `<p class="ownkit-note" role="status">${ownLast.put ? `Put the ${KIND_WORD[ownLast.kind]} "${esc(ownLast.name)}" back.` : `Deleted the ${KIND_WORD[ownLast.kind]} "${esc(ownLast.name)}". <button type="button" class="mini" data-ownundo="${esc(ownLast.kind)}:${esc(ownLast.id)}">Undo</button>`}</p>` : '<p class="ownkit-note" role="status" hidden></p>';
     const tools = k.tools.map((t) => `<li class="ownkit-row"><div class="row"><strong>${esc(t.name)}</strong>${TOOL_STATE[t.state] ? ` <span class="warn-text">${esc(TOOL_STATE[t.state])}</span>` : ''}<span class="muted">${t.lastUsed ? `used ${esc(when(t.lastUsed))}` : 'not used yet'}</span></div>
@@ -420,7 +421,7 @@ export function createCellar() {
     const shelf = k.deleted.map((d) => `<li class="ownkit-row"><div class="row"><strong>${esc(d.name)}</strong><span class="muted">${KIND_WORD[d.kind]}${d.kind === 'howto' ? ` · ${d.steps} steps` : ''} · gone for good ${esc(ownWhen(d.goneAt))}</span></div>
         ${d.what ? `<div class="muted">${esc(d.what)}</div>` : ''}
         <div class="row"><button type="button" class="mini" data-ownput="${esc(d.kind)}:${esc(d.id)}" aria-label="Put the ${KIND_WORD[d.kind]} ${esc(d.name)} back">Put back</button>${ownSame(ownPurgeAsk, d)
-          ? `<span class="ownkit-ask">Delete "${esc(d.name)}" for good? <span class="muted">${d.kind === 'tool' ? 'Its folder goes to the Recycle Bin.' : 'There\'s no getting it back.'}</span></span> <button type="button" class="mini danger" data-ownpurge="${esc(d.kind)}:${esc(d.id)}" aria-label="Yes, delete the ${KIND_WORD[d.kind]} ${esc(d.name)} for good">Delete for good</button><button type="button" class="link" data-owncancel>Keep it</button>`
+          ? `<span class="ownkit-ask">Delete "${esc(d.name)}" for good? <span class="muted">${d.kind === 'tool' ? `Its folder goes to ${binWord()}.` : 'There\'s no getting it back.'}</span></span> <button type="button" class="mini danger" data-ownpurge="${esc(d.kind)}:${esc(d.id)}" aria-label="Yes, delete the ${KIND_WORD[d.kind]} ${esc(d.name)} for good">Delete for good</button><button type="button" class="link" data-owncancel>Keep it</button>`
           : `<button type="button" class="mini" data-ownpurgeask="${esc(d.kind)}:${esc(d.id)}" aria-label="Delete the ${KIND_WORD[d.kind]} ${esc(d.name)} for good">Delete for good</button>`}</div></li>`).join('');
     return `${intro}${note}
       <h4 class="ssub">🔧 Tools he wrote <span class="muted">${k.tools.length} of ${k.maxTools}</span></h4>
