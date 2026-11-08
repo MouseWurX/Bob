@@ -1432,3 +1432,22 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 @media (prefers-reduced-motion: reduce) { .learn-caret { animation: none; } .learn-odd i { transition: none; } }
 .lab-compare .lab-report td, .lab-compare .lab-report th { padding: 0.2rem 0.6rem; text-align: left; }
 .lab-compare .lab-report { overflow-x: auto; display: block; max-width: 100%; }
+
+/* 1.5.152 Lab 2c: the lesson builder (survey, sample cards, the set viewer) */
+.lab-items { list-style: none; padding: 0; margin: 6px 0; }
+.lab-items li { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.lab-item-path { word-break: break-all; flex: 1 1 240px; }
+.lab-item-skill { width: 10em; }
+#lab-b-name, #lab-b-path, #lab-v-q { width: min(420px, 100%); }
+#lab-b-count-n { width: 6em; }
+.lab-survey, .lab-learn { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; margin: 8px 0; }
+.lab-learn { border-left-width: 3px; }
+.lab-survey details { margin: 4px 0; }
+.lab-survey summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
+.lab-cards { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 10px; }
+.lab-card { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; }
+.lab-card p { margin: 4px 0; white-space: pre-wrap; word-break: break-word; }
+.lab-card-head { margin-bottom: 4px; }
+.lab-passage { border-left: 3px solid var(--line); margin: 6px 0; padding: 4px 10px; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; font-size: 13px; }
+.lab-viewer .row label { display: inline-flex; gap: 4px; align-items: center; }
+.lab-sets { margin: 8px 0; }

@@ -4,6 +4,17 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.152
+
+The Computer Science Lab, part 2c: build a lesson set from your own files, with a survey and sample lessons before anything big runs. All free, on this replicant matrix; nothing is rented and nothing is uploaded.
+
+- **Build a new set from my files** (step 2). Add files or folders (plain text, Markdown, web pages, Word, OpenDocument, RTF, e-books and PDFs; chat logs from my own sessions, a ChatGPT or Claude export, or a "Name: line" transcript), name a skill for each, tick what I should learn from them, and pick a teacher brain you have. Three kinds of lesson: **Working with my material** (real questions about a passage, answered with the passage in front of me), **Writing in my voice** (your passage is the answer) and **My past conversations** (each exchange becomes a lesson, re-said in my voice unless you say otherwise). Each kind is its own skill, so the coverage cut protects it.
+- **Survey my files** first: what I found, what I'll skip and why, how many lessons your files can supply, repeated passages left out, and anything that looks like a password, key, card number, address or e-mail, **held back** before the teacher ever sees it. A plain box says what the brain would learn, from the counts.
+- **Show me 12 sample lessons**, each a card: the message, what I read, what I said, with **Keep** and **Not like this** (leave this file out, not this kind of lesson for this file, or the message is wrong for this passage). The clicks change the plan; nothing is trained from them. Then **Build the set**, a Lab job you can stop and carry on.
+- **Sets built from your files**: **Open the set** (every lesson, a search box, filters by skill, kind and file, Remove this lesson, Remove everything from a file) and **Export as a file**, the only way a set leaves the Lab: I replace your user folder, home-network and Tailscale addresses, e-mails and keys first, show you what changed, then write a zip where you choose. Files are read in place and never copied; no upload anywhere.
+- Help: the Lab page covers it, in my voice, with the honest line (a few hundred lessons teach habits and voice, not facts by heart; my notes and Recall do facts). FAQ: can I share a set I built from my files. `test/run-lab-build-test.js`.
+- Phone (Bob for Android): nothing changes; there's no Lab on the phone.
+
 ## 1.5.151
 
 The Computer Science Lab, part 3 begins: a **Learn** tab, where you can see how I work with your own hands on the knobs. Free, on the brain I have loaded right now; nothing is downloaded, rented or saved.

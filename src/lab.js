@@ -16,6 +16,12 @@ import { fileURLToPath } from 'node:url';
 import { nodeCmd } from './selftools.js';
 import { LESSON_SKILLS, SKILL_IDS } from './lab-skills.js';
 import { learnBrain, runLearn, LEARN_CARDS } from './lab-learn.js'; // 1.5.151 the Learn tab
+// 1.5.152 Lab 2c, the lesson builder: lessons from the owner's own files, with a preview before anything big runs.
+import { expandItems, readFile as readSource, KIND_WORDS, MAX_FILES } from './lab-build-read.js';
+import { survey, wouldLearn, scrub, userName } from './lab-build-scan.js';
+import { KINDS, KIND_IDS, SAMPLE_COUNT } from './lab-build-kinds.js';
+import { findOffice } from './office.js';
+import { writeZip } from './zip.js';
 
 export const labOn = (cfg) => cfg?.computerLab === true;
 export const MIN_RAM_GB = 12;
@@ -33,6 +39,16 @@ const GB = 1024 ** 3;
 const round1 = (x) => Math.round(x * 10) / 10;
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
 const writeJson = (f, v) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f + '.part', JSON.stringify(v, null, 1)); fs.renameSync(f + '.part', f); };
+const readJsonl = (f) => { try { return fs.readFileSync(f, 'utf8').split(/\r?\n/).filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); } catch { return []; } };
+// One lesson as the page shows it: the message, what Bob read, Bob's answer, the thinking (shortened), its skill and kind.
+export function lessonCard(l) {
+  const msgs = l.messages || [];
+  const user = msgs.find((m) => m.role === 'user')?.content || '';
+  const tool = msgs.find((m) => m.role === 'tool');
+  const last = [...msgs].reverse().find((m) => m.role === 'assistant' && m.content);
+  const clip = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n).replace(/\s+\S*$/, '') + ' ...' : s; };
+  return { key: String(l.idea || ''), skill: l.job || '', kind: l.kind || '', think: Boolean(l.think), source: l.source || null, user: clip(user, 600), read: tool ? clip(tool.content, 700) : '', answer: clip(last?.content, 1200), thinking: clip(last?.reasoning_content, 300), tools: msgs.filter((m) => m.tool_calls).flatMap((m) => m.tool_calls.map((c) => c.function?.name)).filter(Boolean) };
+}
 
 export const labDir = (cfg) => path.join(cfg.dataDir, 'lab');
 export const labModelsDir = (cfg) => path.join(cfg.bobModelsDir || path.join(cfg.agentDir, 'models', 'bob'), 'lab');
@@ -382,11 +398,33 @@ export function lessonSets(cfg) {
   for (const d of dirs) {
     const file = path.join(root, d, 'lessons.jsonl');
     if (!fs.existsSync(file)) continue;
-    const meta = readJson(path.join(root, d, 'write.json'), {});
+    const built = readJson(path.join(root, d, 'build.json'), null); // a set built from the owner's files (Lab 2c)
+    const meta = built || readJson(path.join(root, d, 'write.json'), {});
     let count = 0; try { count = fs.readFileSync(file, 'utf8').split('\n').filter((x) => x.trim()).length; } catch {}
-    out.push({ id: d, name: meta.name || d, file, count, want: meta.count || 0, skills: meta.skills || [], teacher: meta.teacherName || '', done: meta.done === true });
+    out.push({ id: d, name: meta.name || d, file, count, want: meta.count || 0, skills: built ? [...new Set((built.items || []).map((i) => i.skill).filter(Boolean))] : meta.skills || [], teacher: meta.teacherName || '', done: meta.done === true, built: Boolean(built), kinds: built?.kinds || [] });
   }
   return out;
+}
+
+// ---- Lab 2c: a lesson set built from the owner's own files ----
+export const BUILDER = path.join(path.dirname(fileURLToPath(import.meta.url)), 'lab-build.js');
+export const BUILD_MAX = 5000, BUILD_MIN = 20, BUILD_DEFAULT = 300;
+const skillName = (s) => String(s || '').replace(/[\r\n]/g, ' ').trim().slice(0, 40);
+// A skill name from a path: the folder's name (or the file's, without its ending), so C:\Notes\Woodworking gives Woodworking.
+export const skillFromPath = (p) => { const b = String(p || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop().replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim(); return skillName(b ? b[0].toUpperCase() + b.slice(1) : 'My files'); };
+export function cleanBuild(b = {}) {
+  const items = [].concat(b.items || []).filter((i) => i && typeof i.path === 'string' && i.path.trim()).slice(0, 200).map((i) => { const p = i.path.trim().replace(/^"|"$/g, ''); return { path: p, skill: skillName(i.skill) || skillFromPath(p) }; });
+  const fb = b.feedback || {};
+  return {
+    name: String(b.name || '').replace(/[\r\n]/g, ' ').trim().slice(0, 60),
+    teacher: String(b.teacher || '').slice(0, 120),
+    items,
+    kinds: [...new Set([].concat(b.kinds || []).filter((k) => KIND_IDS.includes(k)))],
+    count: Math.max(BUILD_MIN, Math.min(BUILD_MAX, Math.round(Number(b.count) || BUILD_DEFAULT))),
+    think: ['on', 'off', 'half'].includes(b.think) ? b.think : 'half',
+    resay: b.resay !== false,
+    feedback: { dropFiles: [].concat(fb.dropFiles || []).map(String).slice(0, 500), notKinds: Object.fromEntries(Object.entries(fb.notKinds || {}).slice(0, 500).map(([k, v]) => [String(k), [].concat(v).filter((x) => KIND_IDS.includes(x))])), badIdeas: [].concat(fb.badIdeas || []).map(String).slice(0, 500) }
+  };
 }
 
 export class Lab {
@@ -441,7 +479,7 @@ export class Lab {
     const room = this.room();
     const cardGB = Number(this.cfg.gpuVramGB) || Number(this.cfg.cardGB) || 0; // the set size, or the card the hardware scan found
     const brains = this.brains().map((b) => { let f = null; try { f = inspect(b); } catch (e) { return { ...b, gguf: undefined, mmproj: undefined, error: e.message }; } return { id: b.id, name: b.name, family: b.family, community: b.community, naughty: b.naughty, madeInLab: b.madeInLab, license: b.license, facts: f && { arch: f.arch, experts: f.experts, used: f.used, groups: f.groups, layers: f.layers, fileType: f.fileType, fullSize: f.fullSize, sizeGB: f.sizeGB, sight: f.sight, hearing: f.hearing, readerGB: f.readerGB }, cuts: f ? cutSizes(f).map((c) => ({ ...c, fit: fitWords(c.gb, cardGB) })) : [], fit: f ? fitWords(f.sizeGB, cardGB) : '' }; });
-    return { on: labOn(this.cfg), room, cardGB, brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, brainEngine: this.tools().brainEngine.found };
+    return { on: labOn(this.cfg), room, cardGB, brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, lessonKinds: KINDS, sampleCount: SAMPLE_COUNT, buildMax: BUILD_MAX, officeOk: Boolean(this.officeFor()), brainEngine: this.tools().brainEngine.found };
   }
 
   runView(r) { return { id: r.id, kind: r.kind || 'make', name: r.name, from: r.fromName, state: r.state, step: r.step, stepLabel: r.stepLabel, progress: r.progress, steps: r.steps?.map((s) => ({ id: s.id, label: s.label, state: s.state })), error: r.error, notes: r.notes || [], report: r.report, at: r.at, used: Boolean(r.used), sizeGB: r.sizeGB }; }
@@ -577,6 +615,162 @@ export class Lab {
     } finally { srv?.stop(); this.job = null; }
   }
 
+  // ---- Lab 2c: build a lesson set from the owner's own files ----
+  officeFor() { try { return findOffice(this.cfg); } catch { return null; } }
+  buildDir(slug) { return path.join(lessonSetsDir(this.cfg), slug); }
+
+  planBuild(b) {
+    const x = cleanBuild(b), problems = [], notes = [];
+    const t = this.brains().find((bb) => bb.id === x.teacher);
+    if (!x.name) problems.push('Give the lesson set a name.');
+    if (!x.items.length) problems.push('Add at least one file or folder.');
+    if (!x.kinds.length) problems.push('Tick at least one kind of lesson.');
+    if (!t) problems.push('Pick a teacher.');
+    const slug = slugOf(x.name), dir = this.buildDir(slug);
+    const old = readJson(path.join(dir, 'build.json'), null);
+    if (fs.existsSync(path.join(dir, 'write.json'))) problems.push(`You already have a lesson set called ${x.name} that Bob wrote. Pick another name.`);
+    if (old && old.teacher !== x.teacher) problems.push(`You already have a lesson set called ${x.name}, from another teacher. Pick another name.`);
+    if (old && old.teacher === x.teacher && old.done) notes.push(`There's already a set called ${x.name} from these files. Bob carries on with it: the lessons it has stay, and he builds the rest.`);
+    if (t) {
+      const lic = teacherLicence(t.license);
+      if (!lic.ok) problems.push(lic.note); else if (lic.note) notes.push(lic.note);
+      if (!this.tools().server.found) problems.push(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it.`);
+    }
+    const skills = [...new Set(x.items.map((i) => i.skill))];
+    if (skills.length > 12) problems.push(`That's ${skills.length} skills. Keep it to 12 or fewer, or the coverage cut has nothing to protect: give files that belong together the same skill name.`);
+    notes.push('Your files are read in place and never copied. Only the passages that become lessons are kept, here, in the Lab folder.');
+    const hours = Math.max(1, Math.round((x.count * SECONDS_PER_LESSON) / 3600));
+    return { build: x, teacher: t, problems, notes, dir, slug, out: path.join(dir, 'lessons.jsonl'), hours, skills, sample: readJsonl(path.join(dir, 'sample.jsonl')).map(lessonCard) };
+  }
+
+  // The survey (stage A of the preview): instant, no teacher. Text, Markdown, web pages and chat logs are read here;
+  // documents that need LibreOffice are read too when it's there, up to 40 of them (the rest are counted by size).
+  async surveyBuild(b, { signal, read = readSource } = {}) {
+    const x = cleanBuild(b);
+    const office = this.officeFor();
+    const { files, over } = expandItems(x.items);
+    const skillOf = (file) => files.find((f) => f.path === file)?.skill || 'My files';
+    const items = [];
+    let officeRead = 0, estimated = 0;
+    for (const f of files) {
+      if (signal?.aborted) throw new Error('Stopped.');
+      if (f.kind === 'office') {
+        if (!office) { items.push({ path: f.path, skill: skillOf(f.path), read: { file: f.path, name: f.name, kind: f.kind, passages: [], exchanges: [], skipped: 'needs LibreOffice to read (Settings, Engines)' } }); continue; }
+        if (officeRead >= 40) { estimated++; const w = Math.round(f.bytes / 8); items.push({ path: f.path, skill: skillOf(f.path), read: { file: f.path, name: f.name, kind: f.kind, passages: Array.from({ length: Math.max(1, Math.round(w / 450)) }, (_, i) => ({ text: '', at: i + 1, words: 450, estimated: true })), exchanges: [] } }); continue; }
+        officeRead++;
+      }
+      items.push({ path: f.path, skill: skillOf(f.path), read: await read(f.path, { cfg: this.cfg, office, signal }) });
+    }
+    const sv = survey(items, { user: userName() });
+    const kindsFound = Object.fromEntries(Object.entries(sv.byKind).map(([k, n]) => [KIND_WORDS[k] || k, n]));
+    return { ...sv, byKind: kindsFound, over, maxFiles: MAX_FILES, estimated, officeOk: Boolean(office), skills: Object.keys(sv.perSkill), wouldLearn: wouldLearn(sv, x.kinds, x.count, Object.keys(sv.perSkill)), supplyTotal: x.kinds.reduce((a, k) => a + (sv.supply[k] || 0), 0) };
+  }
+
+  // Start a build (sample = the 12 sample lessons of stage B; else the whole set). Its own Lab job, like the writer.
+  async startBuild(b, { unload = false, sample = false } = {}) {
+    if (!labOn(this.cfg)) throw new Error('The Computer Science Lab is off. Turn it on in Settings, How Bob works, Brains.');
+    if (this.job) throw new Error('The Lab is already busy with a job. Wait for it, or stop it.');
+    if (gaming(this.cfg)) throw new Error('Gaming is on, so the Lab waits. Switch the session to Normal to run it.');
+    const p = this.planBuild(b);
+    if (p.problems.length) throw new Error(p.problems[0]);
+    if (this.brain?.engine?.loaded) {
+      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+      if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
+      if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
+    }
+    fs.mkdirSync(p.dir, { recursive: true });
+    const old = readJson(path.join(p.dir, 'build.json'), {});
+    writeJson(path.join(p.dir, 'build.json'), { ...p.build, teacherName: p.teacher.name, at: this.now(), done: old.done === true && !sample ? false : old.done === true, written: old.written || 0 });
+    const label = sample ? `Make ${SAMPLE_COUNT} sample lessons from your files` : `Build ${p.build.count} lessons from your files`;
+    const runRec = { id: `lab-${this.now().toString(36)}`, kind: sample ? 'sample' : 'build', name: p.build.name, slug: p.slug, from: p.teacher.id, fromName: p.teacher.name, build: p.build, state: 'running', at: this.now(), steps: [{ id: 'teacher', label: `Start ${p.teacher.name} as the teacher`, state: 'waiting' }, { id: 'build', label, state: 'waiting' }], progress: 0 };
+    this.runs.push(runRec); this.save();
+    const ac = new AbortController();
+    this.job = { run: runRec, ac };
+    this.goBuild(runRec, p, ac.signal, sample).catch(() => {});
+    return { started: this.runView(runRec) };
+  }
+
+  async goBuild(r, p, signal, sample) {
+    const log = (t) => { try { fs.appendFileSync(path.join(p.dir, 'lab.log'), `${new Date().toISOString()} ${t}\n`); } catch {} };
+    const fx = { ...this.defaultSteps(this.tools(), log), ...this.stepFns };
+    let srv = null;
+    const set = (i, state) => { r.steps[i].state = state; r.step = r.steps[i].id; r.stepLabel = r.steps[i].label; this.tell(r); };
+    try {
+      set(0, 'running');
+      srv = await fx.serve({ gguf: p.teacher.gguf, ctx: 16384, signal, log });
+      set(0, 'done');
+      set(1, 'running');
+      const t0 = this.now();
+      let last = 0;
+      const office = this.officeFor();
+      const job = { url: srv.url, dir: p.dir, items: p.build.items, kinds: p.build.kinds, count: p.build.count, think: p.build.think, resay: p.build.resay, sample, feedback: p.build.feedback, office: office ? { soffice: office.soffice, python: office.python, dir: office.dir, name: office.name } : null, agentDir: this.cfg.agentDir, user: userName() };
+      const res = await fx.build(job, { signal, log, onProgress: (d, total) => {
+        r.progress = total ? Math.round((100 * d) / total) : 0; r.stepLabel = `${sample ? 'Sample' : 'Build'} ${total} lessons: ${d} made`;
+        if (Date.now() - last > 2000) { last = Date.now(); this.broadcast({ type: 'lab', run: this.runView(r) }); }
+      } });
+      const n = res.n;
+      if (!n) throw new Error(`${p.teacher.name} didn't make any lessons Bob could use from these files. Check the survey: were any passages left after the held-back ones and the skipped files?`);
+      set(1, 'done');
+      const sources = readJson(path.join(p.dir, 'sources.json'), {});
+      if (!sample) writeJson(path.join(p.dir, 'build.json'), { ...readJson(path.join(p.dir, 'build.json'), {}), done: true, written: n, at: this.now() });
+      r.files = { lessons: sample ? path.join(p.dir, 'sample.jsonl') : p.out };
+      r.report = { lessons: n, of: sample ? SAMPLE_COUNT : p.build.count, skills: p.skills, minutes: Math.round((this.now() - t0) / 60000), held: res.held ?? sources.held ?? 0, dupes: res.dupes ?? sources.dupes ?? 0, sample, ...(sample ? { cards: readJsonl(path.join(p.dir, 'sample.jsonl')).map(lessonCard) } : {}) };
+      if (!sample && n < p.build.count) r.notes = [`Your files gave ${n} lessons of the ${p.build.count} asked for${res.held ? ` (${res.held} passages held back)` : ''}. Add more files, or start it again with the same name after adding them.`];
+      r.state = 'done'; r.step = ''; r.stepLabel = ''; r.progress = 100;
+      this.tell(r);
+      this.broadcast({ type: 'lab-done', name: r.name, ok: true });
+    } catch (e) {
+      r.state = signal.aborted ? 'stopped' : 'failed'; r.error = signal.aborted ? 'You stopped it. The lessons made so far are kept; start it again with the same name to carry on.' : e.message;
+      const i = r.steps.findIndex((x) => x.state === 'running'); if (i >= 0) r.steps[i].state = 'failed';
+      log(`failed: ${e.stack || e.message}`);
+      this.tell(r);
+      this.broadcast({ type: 'lab-done', name: r.name, ok: false, error: r.error });
+    } finally { srv?.stop(); this.job = null; }
+  }
+
+  // The viewer: one built set's lessons as cards, with a search box and filters. Only sets built here (build.json).
+  setLessons(id, { q = '', skill = '', file = '', kind = '', from = 0, limit = 50 } = {}) {
+    const set = lessonSets(this.cfg).find((x) => x.id === slugOf(id));
+    if (!set) throw new Error('That lesson set isn\'t here any more.');
+    const all = readJsonl(set.file);
+    const needle = String(q || '').toLowerCase();
+    const hit = all.filter((l) => (!skill || l.job === skill) && (!file || l.source?.name === file) && (!kind || l.kind === kind) && (!needle || JSON.stringify(l.messages || []).toLowerCase().includes(needle)));
+    const files = [...new Set(all.map((l) => l.source?.name).filter(Boolean))].sort();
+    return { id: set.id, name: set.name, total: all.length, found: hit.length, from, files, skills: [...new Set(all.map((l) => l.job).filter(Boolean))], kinds: [...new Set(all.map((l) => l.kind).filter(Boolean))], cards: hit.slice(from, from + limit).map(lessonCard), sources: readJson(path.join(path.dirname(set.file), 'sources.json'), null) };
+  }
+
+  // Remove lessons by key, or every lesson from one file. The set is written again without them.
+  removeLessons(id, { keys = [], file = '' } = {}) {
+    const set = lessonSets(this.cfg).find((x) => x.id === slugOf(id));
+    if (!set || !set.built) throw new Error('Only a set built from your files can be edited here.');
+    const drop = new Set([].concat(keys || []).map(String));
+    const all = readJsonl(set.file);
+    const keep = all.filter((l) => !drop.has(String(l.idea)) && !(file && l.source?.name === file));
+    fs.writeFileSync(set.file + '.part', keep.map((l) => JSON.stringify(l)).join('\n') + (keep.length ? '\n' : ''));
+    fs.renameSync(set.file + '.part', set.file);
+    if (file) { const b = readJson(path.join(path.dirname(set.file), 'build.json'), null); if (b) { b.feedback = b.feedback || {}; b.feedback.dropFiles = [...new Set([...(b.feedback.dropFiles || []), file])]; writeJson(path.join(path.dirname(set.file), 'build.json'), b); } }
+    return { removed: all.length - keep.length, total: keep.length };
+  }
+
+  // Export as a file: the one way a set leaves the Lab folder. The release's scrub rules run first and what changed is
+  // returned, so the owner sees it. `check` only shows what would change, without writing anything.
+  exportSet(id, { folder = '', check = false } = {}) {
+    const set = lessonSets(this.cfg).find((x) => x.id === slugOf(id));
+    if (!set) throw new Error('That lesson set isn\'t here any more.');
+    const all = readJsonl(set.file);
+    const changes = new Map();
+    const lines = all.map((l) => { const { text, changes: c } = scrub(JSON.stringify({ ...l, source: l.source ? { name: path.basename(l.source.name || ''), at: l.source.at } : undefined }), { user: userName() }); for (const x of c) changes.set(x.what, (changes.get(x.what) || 0) + x.n); return text; });
+    const what = [...changes].map(([w, n]) => ({ what: w, n }));
+    if (check) return { lessons: all.length, changes: what };
+    if (!folder || !fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) throw new Error('Pick the folder to save the zip in.');
+    const zip = path.join(folder, `${set.id}-lessons.zip`);
+    if (fs.existsSync(zip)) throw new Error(`There's already a ${path.basename(zip)} in that folder. Move it first.`);
+    const readme = [`${set.name}: a lesson set built in Bob's Computer Science Lab from the owner's own files.`, '', `${all.length} lessons. Each line of lessons.jsonl is one lesson: a message, the assistant's answer (and the tools it used), the lesson's skill ("job") and kind.`, 'Names, addresses and e-mails were replaced before this file was written; check it yourself before you share it, it is your material.', '', `Made ${new Date(this.now()).toISOString().slice(0, 10)} with Bob (https://github.com/MouseWurX/Bob).`].join('\n');
+    const skills = { name: set.name, skills: set.skills, kinds: set.kinds, lessons: all.length, teacher: set.teacher };
+    writeZip(zip, [{ name: 'lessons.jsonl', data: Buffer.from(lines.join('\n') + '\n') }, { name: 'README.txt', data: Buffer.from(readme) }, { name: 'skills.json', data: Buffer.from(JSON.stringify(skills, null, 1)) }]);
+    return { file: zip, lessons: all.length, changes: what };
+  }
+
   save() { writeJson(this.runsFile, this.runs.slice(-50)); }
   tell(r) { this.save(); this.broadcast({ type: 'lab', run: this.runView(r) }); }
 
@@ -698,6 +892,18 @@ export class Lab {
         c.once('error', (e) => reject(new Error(`Couldn't start the lesson writer: ${e.message}`)));
         c.once('exit', (code) => { signal?.removeEventListener('abort', stop); if (signal?.aborted) reject(new Error('Stopped.')); else if (code === 0) resolve(n); else { log(tail); reject(new Error(`The lesson writer stopped: ${tail.trim().split('\n').slice(-1)[0] || `code ${code}`}`)); } });
       }),
+      // The lesson builder too (Lab 2c): same shape, its own script; it also prints "held <n>" and "dupes <n>".
+      build: (job, { signal, onProgress }) => new Promise((resolve, reject) => {
+        const { file, env } = nodeCmd();
+        const c = spawn(file, [BUILDER, JSON.stringify(job)], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, env: { ...process.env, ...env } });
+        let tail = '', buf = '', n = 0, held = 0, dupes = 0;
+        c.stdout.on('data', (d) => { buf += d; const lines = buf.split('\n'); buf = lines.pop(); for (const x of lines) { let m; if ((m = x.match(/^progress (\d+) (\d+)/))) onProgress(Number(m[1]), Number(m[2])); else if ((m = x.match(/^done (\d+)/))) n = Number(m[1]); else if ((m = x.match(/^held (\d+)/))) held = Number(m[1]); else if ((m = x.match(/^dupes (\d+)/))) dupes = Number(m[1]); } });
+        c.stderr.on('data', (d) => { tail = (tail + d).slice(-2000); });
+        const stop = () => { try { c.kill(); } catch {} };
+        signal?.addEventListener('abort', stop, { once: true });
+        c.once('error', (e) => reject(new Error(`Couldn't start the lesson builder: ${e.message}`)));
+        c.once('exit', (code) => { signal?.removeEventListener('abort', stop); if (signal?.aborted) reject(new Error('Stopped.')); else if (code === 0) resolve({ n, held, dupes }); else { log(tail); reject(new Error(`The lesson builder stopped: ${tail.trim().split('\n').slice(-1)[0] || `code ${code}`}`)); } });
+      }),
       try: async (s, { keep, signal, onProgress }) => {
         const srv = await startServer({ exe: tools.brainEngine.path, gguf: s.gguf, signal, log });
         try {
@@ -756,6 +962,14 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/plan') { const pl = lab.plan(b.recipe); send(res, 200, { problems: pl.problems, notes: pl.notes, skills: pl.skills || [], steps: pl.steps.map((s) => ({ id: s.id, label: s.label })), text: isLocal ? pl.text : '' }); return true; }
     if (p === '/api/lab/write/plan') { const pl = lab.planWrite(b.write); send(res, 200, { problems: pl.problems, notes: pl.notes, hours: pl.hours, file: isLocal ? pl.out : '' }); return true; }
     if (p === '/api/lab/write') { send(res, 200, await lab.startWrite(b.write, { unload: b.unload === true })); return true; }
+    // Lab 2c: the lesson builder (file paths, so this replicant matrix only).
+    if (p === '/api/lab/build/plan') { const pl = lab.planBuild(b.build); send(res, 200, { problems: pl.problems, notes: pl.notes, hours: pl.hours, skills: pl.skills, sample: pl.sample, file: pl.out }); return true; }
+    if (p === '/api/lab/build/survey') { send(res, 200, await lab.surveyBuild(b.build)); return true; }
+    if (p === '/api/lab/build/sample') { send(res, 200, await lab.startBuild(b.build, { unload: b.unload === true, sample: true })); return true; }
+    if (p === '/api/lab/build') { send(res, 200, await lab.startBuild(b.build, { unload: b.unload === true })); return true; }
+    if (p === '/api/lab/set') { send(res, 200, lab.setLessons(String(b.id || ''), b)); return true; }
+    if (p === '/api/lab/set/remove') { send(res, 200, lab.removeLessons(String(b.id || ''), b)); return true; }
+    if (p === '/api/lab/set/export') { send(res, 200, lab.exportSet(String(b.id || ''), { folder: String(b.folder || ''), check: b.check === true })); return true; }
     if (p === '/api/lab/start') { send(res, 200, await lab.start(b.recipe, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/stop') { send(res, 200, lab.stop()); return true; }
     if (p === '/api/lab/use') { send(res, 200, lab.use(String(b.run || ''))); return true; }
