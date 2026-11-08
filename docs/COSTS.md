@@ -31,7 +31,7 @@ The total is taken from the rental service's statement; the lines above are roun
 | What | Cost |
 |---|---|
 | Claude subscription (Anthropic): Claude is a contributor to the project and writes much of Bob's code, docs and Help alongside the owner | $200 a month |
-| Claude extra usage bought in November 2026 to finish the models and the app work together | $800 so far |
+| Claude extra usage bought from 5 Nov 2026 on, to finish the models and the app work together | $800 so far |
 | Code signing | $0 so far (SignPath Foundation application declined in Nov 2026 for lack of public visibility; builds stay unsigned) |
 | Code and release hosting (GitHub) and, later, model hosting (Hugging Face) | $0 |
 | Electricity for the lessons, counts and benchmarks on the owner's own PC | not counted |
@@ -98,7 +98,7 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 | GPU servers rented by the hour (every session above, failures included) | $183.90 |
 | Rented network drive so far | included in the line B session line above |
 | Claude subscription, November 2026 | $200.00 |
-| Claude extra usage, November 2026 so far | $800.00 |
+| Claude extra usage, bought from 5 Nov 2026 on | $800.00 |
 | Code signing, hosting | $0.00 |
 | **Total spent so far** | **$1,183.90** |
 
