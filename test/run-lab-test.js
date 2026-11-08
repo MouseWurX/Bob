@@ -1,0 +1,211 @@
+// 1.5.141 Computer Science Lab (Lab 1): Bob's own GGUF cutter on small made-up brain files (experts cut byte for
+// byte, settings copied, a sound reader taken out of a combined reader), the recipe checks, the whole job with fake
+// steps, Use in Bob, the switch (off unless turned on, greyed out on small replicant matrices) and the page's words.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { readGguf, brainFacts, readerFacts, writeGguf, checkKeep, busiest, isHearingTensor, readCounts } from '../src/lab-gguf.js';
+import { Lab, cleanRecipe, planRecipe, labRoom, labOn, cutSizes, fitWords, mergeMadeBrains, labRoute, RUNNING_TYPES } from '../src/lab.js';
+import { QUIZ, TOOLS, runQuiz } from '../src/lab-test.js';
+
+let pass = 0, fail = 0;
+const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
+const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-lab-'));
+
+// ---- a tiny GGUF writer for made-up brains ----
+function kv(key, type, value) {
+  const k = Buffer.from(key); const h = Buffer.alloc(12 + k.length); h.writeBigUInt64LE(BigInt(k.length)); k.copy(h, 8); h.writeUInt32LE(type, 8 + k.length);
+  let v;
+  if (type === 8) { const s = Buffer.from(value); v = Buffer.alloc(8 + s.length); v.writeBigUInt64LE(BigInt(s.length)); s.copy(v, 8); }
+  else if (type === 4) { v = Buffer.alloc(4); v.writeUInt32LE(value); }
+  else if (type === 7) { v = Buffer.from([value ? 1 : 0]); }
+  else if (type === 9) { v = Buffer.alloc(12 + 4 * value.length); v.writeUInt32LE(4); v.writeBigUInt64LE(BigInt(value.length), 4); value.forEach((x, i) => v.writeUInt32LE(x, 12 + 4 * i)); }
+  return Buffer.concat([h, v]);
+}
+function makeGguf(file, kvs, tensors) {
+  const parts = [Buffer.alloc(24)]; parts[0].write('GGUF', 0, 'latin1'); parts[0].writeUInt32LE(3, 4); parts[0].writeBigUInt64LE(BigInt(tensors.length), 8); parts[0].writeBigUInt64LE(BigInt(kvs.length), 16);
+  for (const [k, t, v] of kvs) parts.push(kv(k, t, v));
+  let off = 0; const datas = [];
+  for (const t of tensors) {
+    const n = Buffer.from(t.name); const b = Buffer.alloc(8 + n.length + 4 + 8 * t.dims.length + 12);
+    let o = 0; b.writeBigUInt64LE(BigInt(n.length), o); o += 8; n.copy(b, o); o += n.length; b.writeUInt32LE(t.dims.length, o); o += 4;
+    for (const d of t.dims) { b.writeBigUInt64LE(BigInt(d), o); o += 8; } b.writeUInt32LE(0, o); o += 4; b.writeBigUInt64LE(BigInt(off), o);
+    parts.push(b);
+    const count = t.dims.reduce((a, x) => a * x, 1); const d = Buffer.alloc(count * 4); for (let i = 0; i < count; i++) d.writeFloatLE(t.fill(i), i * 4);
+    const pad = Math.ceil(d.length / 32) * 32 - d.length; datas.push(Buffer.concat([d, Buffer.alloc(pad)])); off += d.length + pad;
+  }
+  let head = Buffer.concat(parts); head = Buffer.concat([head, Buffer.alloc(Math.ceil(head.length / 32) * 32 - head.length)]);
+  fs.writeFileSync(file, Buffer.concat([head, ...datas]));
+}
+const E = 8, EMB = 4, FF = 3;
+// Expert e's numbers in layer L are 1000*L + 100*e + i, so a cut file shows exactly which experts it kept.
+const expertT = (L, kind) => ({ name: `blk.${L}.ffn_${kind}_exps.weight`, dims: kind === 'down' ? [FF, EMB, E] : [EMB, FF, E], fill: (i) => 1000 * L + 100 * Math.floor(i / (EMB * FF)) + (i % (EMB * FF)) });
+const brainFile = path.join(tmp, 'moe.gguf');
+makeGguf(brainFile, [['general.architecture', 8, 'testmoe'], ['general.name', 8, 'Test MoE'], ['testmoe.block_count', 4, 2], ['testmoe.expert_count', 4, E], ['testmoe.expert_used_count', 4, 2], ['general.file_type', 4, 1], ['tokenizer.ggml.tokens_ids', 9, [1, 2, 3]]], [
+  { name: 'token_embd.weight', dims: [EMB, 5], fill: (i) => i },
+  ...[0, 1].flatMap((L) => [expertT(L, 'gate'), expertT(L, 'up'), expertT(L, 'down'), { name: `blk.${L}.ffn_gate_inp.weight`, dims: [EMB, E], fill: (i) => 1000 * L + 100 * Math.floor(i / EMB) + (i % EMB) }, { name: `blk.${L}.attn_q.weight`, dims: [EMB, EMB], fill: (i) => -i }])
+]);
+
+const g = readGguf(brainFile);
+const f = brainFacts(g);
+check('reads a made-up mixture-of-experts brain', f.arch === 'testmoe' && f.experts === 8 && f.used === 2 && f.layers === 2 && f.fullSize && f.expertLayers.join() === '0,1', JSON.stringify(f));
+const keep = [[1, 3, 5, 7], [0, 2, 4, 6]];
+check('a good keep list passes', checkKeep(g, keep) === '');
+check('a keep list smaller than the picks per word is refused', /at least 2/.test(checkKeep(g, [[1], [2]])));
+check('a keep list with a repeat is refused', /repeat/.test(checkKeep(g, [[1, 1, 3, 4], [0, 2, 4, 6]])));
+check('keeping every expert is refused', /nothing to cut/.test(checkKeep(g, [[0, 1, 2, 3, 4, 5, 6, 7], [0, 1, 2, 3, 4, 5, 6, 7]])));
+check('uneven layers are refused', /layer 1/.test(checkKeep(g, [[1, 3, 5, 7], [0, 2]])));
+
+const cutFile = path.join(tmp, 'moe-4x.gguf');
+let ticks = 0;
+let beats = 0; const beat = setInterval(() => beats++, 0);
+const cutting = writeGguf(brainFile, cutFile, { keep, onProgress: () => ticks++ });
+await cutting; clearInterval(beat);
+check('Bob keeps answering while a cut copies (the copy does not block)', beats > 0);
+const c = readGguf(cutFile);
+const cf = brainFacts(c);
+check('the cut brain says 4 experts', cf.experts === 4 && cf.used === 2 && c.meta['general.name'] === 'Test MoE' && c.tensors.length === g.tensors.length);
+check('other settings are copied (including lists)', c.kvs.length === g.kvs.length && c.kvs.find((k) => k.key === 'tokenizer.ggml.tokens_ids')?.value?.array === 3);
+const floats = (gg, file, name) => { const t = gg.tensors.find((x) => x.name === name); const b = Buffer.alloc(t.bytes); const fd = fs.openSync(file, 'r'); fs.readSync(fd, b, 0, b.length, gg.dataStart + t.offset); fs.closeSync(fd); return Array.from({ length: b.length / 4 }, (_, i) => b.readFloatLE(i * 4)); };
+const up1 = floats(c, cutFile, 'blk.1.ffn_up_exps.weight');
+check('expert slabs kept are exactly the chosen ones, in order', up1.length === 4 * EMB * FF && [0, 2, 4, 6].every((e, k) => up1[k * EMB * FF] === 1000 + 100 * e), up1.filter((_, i) => i % (EMB * FF) === 0).join());
+const r0 = floats(c, cutFile, 'blk.0.ffn_gate_inp.weight');
+check('the router keeps the same experts\' rows', [1, 3, 5, 7].every((e, k) => r0[k * EMB] === 100 * e));
+check('tensors without experts are copied unchanged', floats(c, cutFile, 'blk.1.attn_q.weight').join() === floats(g, brainFile, 'blk.1.attn_q.weight').join() && floats(c, cutFile, 'token_embd.weight').join() === floats(g, brainFile, 'token_embd.weight').join());
+check('the expert tensor dims say 4', c.tensors.find((t) => t.name === 'blk.0.ffn_down_exps.weight').dims.join() === `${FF},${EMB},4`);
+check('the cut file is smaller', fs.statSync(cutFile).size < fs.statSync(brainFile).size);
+check('no half-written .part file is left', !fs.existsSync(cutFile + '.part'));
+check('a stopped cut leaves nothing behind', await (async () => { const ac = new AbortController(); ac.abort(); try { await writeGguf(brainFile, path.join(tmp, 'stop.gguf'), { keep, signal: ac.signal }); return false; } catch { return !fs.existsSync(path.join(tmp, 'stop.gguf')) && !fs.existsSync(path.join(tmp, 'stop.gguf.part')); } })());
+check('busiest picks the most-used experts per layer', JSON.stringify(busiest([[5, 1, 9, 0, 7, 2, 3, 8], [0, 0, 0, 1, 1, 1, 1, 0]], 4)) === JSON.stringify([[0, 2, 4, 7], [3, 4, 5, 6]]));
+
+// A reader file holding sight and hearing: hearing taken out.
+const readerFile = path.join(tmp, 'mmproj.gguf');
+makeGguf(readerFile, [['general.architecture', 8, 'clip'], ['clip.has_vision_encoder', 7, true], ['clip.has_audio_encoder', 7, true]], [
+  { name: 'v.patch_embd.weight', dims: [4, 4], fill: (i) => i }, { name: 'mm.0.weight', dims: [4, 4], fill: (i) => i }, { name: 'a.conv1d.0.weight', dims: [4, 4], fill: (i) => i }, { name: 'mm.a.mlp.1.weight', dims: [4, 4], fill: (i) => i }]);
+check('reads which senses a reader file holds', JSON.stringify((({ sight, hearing }) => ({ sight, hearing }))(readerFacts(readGguf(readerFile)))) === '{"sight":true,"hearing":true}');
+const deaf = path.join(tmp, 'mmproj-sight.gguf');
+await writeGguf(readerFile, deaf, { drop: (t) => isHearingTensor(t.name), set: { 'clip.has_audio_encoder': false } });
+const dg = readGguf(deaf);
+check('taking out hearing leaves sight', dg.tensors.map((t) => t.name).join() === 'v.patch_embd.weight,mm.0.weight' && readerFacts(dg).sight && !readerFacts(dg).hearing && dg.meta['clip.has_audio_encoder'] === false);
+
+// imatrix counts file.
+const countsFile = path.join(tmp, 'counts.gguf');
+makeGguf(countsFile, [['general.type', 8, 'imatrix']], [0, 1].map((L) => ({ name: `blk.${L}.ffn_gate_exps.weight.counts`, dims: [E], fill: (i) => (L ? 8 - i : i) })));
+check('reads per-expert counts from llama-imatrix', JSON.stringify(readCounts(countsFile)) === JSON.stringify([[0, 1, 2, 3, 4, 5, 6, 7], [8, 7, 6, 5, 4, 3, 2, 1]]));
+
+// ---- recipes ----
+const tools = { server: { path: 'llama-server', found: true }, imatrix: { path: 'llama-imatrix', found: true }, quantize: { path: 'llama-quantize', found: true } };
+const brain = { id: 'test-moe', name: 'Test MoE', gguf: brainFile, mmproj: readerFile };
+const facts = { ...f, sight: true, hearing: true };
+const plan = (r, fx = facts, t = tools) => planRecipe(r, { brain, facts: fx, tools: t, outDir: path.join(tmp, 'out') });
+check('an empty recipe asks for a name and a way to make it smaller', (() => { const p = plan({ from: 'test-moe' }); return p.problems.some((x) => /name/.test(x)) && p.problems.some((x) => /at least one way/.test(x)); })());
+check('cutting experts on an ordinary brain is refused, in words', plan({ name: 'x', smaller: { cut: { how: 'file', keep: 4, file: 'k.json' } } }, { ...facts, experts: 0 }).problems.some((x) => /isn't a mixture-of-experts brain/.test(x)));
+check('busiest without lessons is refused', plan({ name: 'x', smaller: { cut: { how: 'busiest', keep: 4 } } }).problems.some((x) => /needs lessons/.test(x)));
+check('running files need a full-size copy', plan({ name: 'x', smaller: { files: ['Q4_K_M'] } }, { ...facts, fullSize: false, fileType: 'Q4_K_M' }).problems.some((x) => /full-size copy/.test(x)));
+check('taking out sight a brain doesn\'t have is refused', plan({ name: 'x', smaller: { sight: true } }, { ...facts, sight: false }).problems.some((x) => /no sight to take out/.test(x)));
+check('a missing tool is named', plan({ name: 'x', smaller: { files: ['Q4_K_M'] } }, facts, { ...tools, quantize: { path: '/e/llama-quantize', found: false } }).problems.some((x) => /llama-quantize isn't in Bob's engine folder/.test(x)));
+check('only known running types get through', JSON.stringify(cleanRecipe({ smaller: { files: ['Q4_K_M', 'rm -rf', 'Q8_0'] } }).smaller.files) === '["Q4_K_M","Q8_0"]' && RUNNING_TYPES.includes('Q4_K_M'));
+const full = plan({ name: 'My Small', from: 'test-moe', lessons: { kind: 'chats' }, smaller: { hearing: true, cut: { how: 'busiest', keep: 4 }, files: ['Q4_K_M', 'Q6_K'] } });
+check('a full recipe has every step in order', full.problems.length === 0 && full.steps.map((s) => s.id).join() === 'lessons,count,cut,reader,quantize,quantize,test,compare', full.steps.map((s) => s.id).join() + ' ' + full.problems.join(' | '));
+check('Show the recipe has the real commands', full.steps.find((s) => s.id === 'count').cmd.includes('-o') && full.steps.find((s) => s.id === 'quantize').cmd.endsWith('Q4_K_M') && /Bob's own cutter/.test(full.steps.find((s) => s.id === 'cut').cmd));
+check('the test runs on the first running file, with the reader that kept sight', full.steps.find((s) => s.id === 'test').gguf.endsWith('my-small-Q4_K_M.gguf') && full.steps.find((s) => s.id === 'test').mmproj.endsWith('my-small-reader.gguf'));
+const blind = plan({ name: 'No Eyes', smaller: { sight: true, hearing: true } });
+check('taking out every sense leaves the reader behind and copies nothing big', blind.problems.length === 0 && blind.finals[0] === brainFile && blind.reader === null && blind.notes.some((n) => /Nothing big is copied/.test(n)));
+check('cut sizes go from under the brain\'s count down to its picks', (() => { const s = cutSizes({ experts: 256, used: 8, size: 20 * 1024 ** 3 }); return s.length > 2 && s.every((x) => x.keep < 256 && x.keep >= 8) && s[0].gb < 20; })());
+check('fit lines use words, not ticks or brand names', !/[✓✗]|Legion|Steam|PC\b/.test(fitWords(12.7, 16) + fitWords(3, 6) + fitWords(30, 16)) && /replicant matrix/.test(fitWords(12.7, 16)));
+
+// ---- the switch ----
+check('the Lab is off unless turned on', !labOn({}) && !labOn({ computerLab: 'yes' }) && labOn({ computerLab: true }));
+check('a small replicant matrix gets a reason, not the Lab', !labRoom(8 * 1024 ** 3).ok && /Bob-Net/.test(labRoom(8 * 1024 ** 3).why) && labRoom(32 * 1024 ** 3).ok);
+
+// ---- the whole job, fake steps ----
+const dataDir = path.join(tmp, 'data'); fs.mkdirSync(path.join(dataDir, 'sessions'), { recursive: true });
+fs.writeFileSync(path.join(dataDir, 'sessions', 'a.json'), JSON.stringify(Array.from({ length: 400 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: `message ${i} `.repeat(10) }))));
+const exe = (n) => (process.platform === 'win32' ? `${n}.exe` : n); // the Lab looks for llama-imatrix.exe beside llama-server.exe on Windows
+const cfg = { dataDir, agentDir: tmp, bobModelsDir: path.join(tmp, 'models', 'bob'), settingsFile: path.join(dataDir, 'settings.json'), computerLab: true, llamacpp: { exe: path.join(tmp, 'eng', exe('llama-server')) } };
+fs.mkdirSync(path.join(tmp, 'eng')); for (const n of ['llama-server', 'llama-imatrix', 'llama-quantize']) fs.writeFileSync(path.join(tmp, 'eng', exe(n)), '');
+const catalog = { models: [{ id: 'test-moe', name: 'Test MoE', family: 'Test', category: 'chat', jobs: ['bob'], files: [{ role: 'gguf', url: 'https://x/moe.gguf' }] }] };
+const shop = { cfg, catalog, locate: (e) => (e.id === 'test-moe' ? { gguf: brainFile, mmproj: readerFile } : {}) };
+const events = [];
+const fakeQuiz = (score) => ({ parts: { general: { right: 1, of: 1, score } }, score, tps: 12 });
+const big = () => ({ ok: true, why: '' }); // the runner's own memory must not matter
+const lab = new Lab(cfg, { shop, room: big, broadcast: (e) => events.push(e), steps: {
+  count: async (s) => { fs.copyFileSync(countsFile, s.counts); },
+  quantize: async (s) => { fs.copyFileSync(s.src, s.out); },
+  test: async (s) => fakeQuiz(s.gguf === brainFile ? 80 : 70)
+} });
+const v = lab.view();
+check('the page lists the brain with what can be done to it', v.brains.length === 1 && v.brains[0].facts.experts === 8 && v.brains[0].facts.sight && v.brains[0].facts.hearing && !('gguf' in v.brains[0] && v.brains[0].gguf));
+check('the page never gets file paths for brains', !JSON.stringify(v.brains).includes(tmp));
+const recipe = { name: 'Little Test', from: 'test-moe', lessons: { kind: 'chats' }, smaller: { hearing: true, cut: { how: 'busiest', keep: 4 }, files: ['Q4_K_M'] } };
+check('Use in Bob before a test is refused', (() => { try { lab.use('nope'); return false; } catch (e) { return /finished its Lab test/.test(e.message); } })());
+const st = await lab.start(recipe);
+check('the job starts', st.started?.state === 'running');
+check('a second job waits its turn', await lab.start(recipe).then(() => false, (e) => /already busy/.test(e.message)));
+while (lab.job) await new Promise((r) => setTimeout(r, 20));
+const done = lab.runs.at(-1);
+check('the job finishes with a report', done.state === 'done' && done.report.made.score === 70 && done.report.from.score === 80, done.error || '');
+check('the made brain has 4 experts and keeps sight, not hearing', brainFacts(readGguf(done.files.gguf)).experts === 4 && readerFacts(readGguf(done.files.mmproj)).sight && !readerFacts(readGguf(done.files.mmproj)).hearing);
+check('the keep list and the report are saved beside it', fs.existsSync(path.join(path.dirname(done.files.gguf), 'little-test-keep.json')) && fs.existsSync(path.join(path.dirname(done.files.gguf), 'lab-report.json')));
+check('the page heard each step', events.filter((e) => e.type === 'lab').length >= 7 && events.some((e) => e.type === 'lab-done' && e.ok));
+const used = lab.use(done.id);
+check('Use in Bob gives it an id Bob\'s engine runs', used.id === 'lab-little-test' && cfg.llamacpp.models['lab-little-test'].gguf === done.files.gguf);
+check('it shows in the catalogue next to its family, with no download', catalog.models.some((m) => m.id === 'lab-little-test' && m.madeInLab && m.family === 'Test' && m.files.length === 0 && /Lab test: 70 out of 100 \(Test MoE: 80\)/.test(m.what)));
+check('a merged catalogue isn\'t merged twice', mergeMadeBrains(catalog, cfg).models.filter((m) => m.id === 'lab-little-test').length === 1);
+check('the same name can\'t be made twice', lab.plan(recipe).problems.some((x) => /already have a Lab brain/.test(x)));
+check('Gaming on: the Lab waits', await new Lab({ ...cfg, session: 'light' }, { shop, room: big }).start({ ...recipe, name: 'Other' }).then(() => false, (e) => /Gaming is on/.test(e.message)));
+check('Lab off: nothing starts', await new Lab({ ...cfg, computerLab: false }, { shop, room: big }).start({ ...recipe, name: 'Other' }).then(() => false, (e) => /Computer Science Lab is off/.test(e.message)));
+const busyEngine = { engine: { loaded: async () => [{ name: 'gemma4:26b', vram: 9e9 }], unloadAll: async () => { busyEngine.unloaded = true; } } };
+const lab2 = new Lab(cfg, { shop, room: big, brain: busyEngine, steps: { test: async () => fakeQuiz(50) } });
+const ask = await lab2.start({ name: 'Eyes Only', from: 'test-moe', smaller: { hearing: true }, test: { compare: false } });
+check('with Bob\'s brain on the card, the Lab asks first', ask.needUnload && ask.names[0] === 'gemma4:26b' && !busyEngine.unloaded);
+await lab2.start({ name: 'Eyes Only', from: 'test-moe', smaller: { hearing: true }, test: { compare: false } }, { unload: true });
+while (lab2.job) await new Promise((r) => setTimeout(r, 20));
+check('after a yes it unloads and runs', busyEngine.unloaded && lab2.runs.at(-1).state === 'done', lab2.runs.at(-1).error || '');
+check('a small replicant matrix can\'t start a Lab job', await new Lab(cfg, { shop, room: () => labRoom(8 * 1024 ** 3) }).start({ ...recipe, name: 'Other' }).then(() => false, (e) => /at least 12 GB/.test(e.message)));
+const saved = lab.saveRecipe({ ...recipe, lessons: { kind: 'file', file: path.join(tmp, 'secret', 'lessons.jsonl') } });
+check('a saved recipe keeps choices, not paths', !JSON.stringify(saved).includes(tmp) && saved.at(-1).smaller.cut.keep === 4);
+
+// The route: only this replicant matrix starts jobs.
+const sent = [];
+const fakeReq = (method) => ({ method });
+await labRoute({ req: fakeReq('POST'), res: {}, p: '/api/lab/start', isLocal: false, lab, body: async () => ({ recipe }), send: (res, code, j) => sent.push([code, j]) });
+check('a Lab job can\'t be started from another device yet', sent[0][0] === 403);
+await labRoute({ req: fakeReq('POST'), res: {}, p: '/api/lab/plan', isLocal: false, lab, body: async () => ({ recipe }), send: (res, code, j) => sent.push([code, j]) });
+check('another device gets the plan without the commands (no paths)', sent[1][0] === 200 && sent[1][1].text === '');
+
+// The quiz, against a fake server.
+const fakeFetch = globalThis.fetch;
+globalThis.fetch = async (url, o) => {
+  const q = JSON.parse(o.body).messages[0].content;
+  const tool = (n) => ({ choices: [{ message: { content: '', tool_calls: [{ function: { name: n } }] } }], timings: { predicted_per_second: 20 } });
+  const say = (t) => ({ choices: [{ message: { content: `<think>hmm</think>${t}` } }], timings: { predicted_per_second: 20 } });
+  const hit = QUIZ.tools.find(([x]) => x === q);
+  const body = hit ? tool(hit[1]) : /capital of France/.test(q) ? say('Paris') : /banana/.test(q) ? say('banana') : say('no idea');
+  return { ok: true, json: async () => body };
+};
+const quiz = await runQuiz('http://fake');
+globalThis.fetch = fakeFetch;
+check('the quiz marks tool picks and answers, thinking stripped', quiz.parts.tools.score === 100 && quiz.parts.general.right === 1 && quiz.parts.following.right === 1 && quiz.tps === 20 && quiz.score > 0 && quiz.score < 100, JSON.stringify(quiz.parts));
+check('the quiz tools are made up, not Bob\'s real ones', TOOLS.every((t) => !/hands|files_|run_/.test(t.function.name)));
+
+// ---- words and wiring ----
+const html = read('public/index.html'), app = read('public/app.js'), cellar = read('public/cellar.js'), page = read('public/lab.js'), help = read('public/help-content.js'), inv = read('docs/SETTINGS-INVENTORY.md');
+check('the Lab button is in the left pane, hidden until the switch is on', /id="labBtn"[^>]*hidden/.test(html) && /labBtn/.test(app));
+check('the switch is under How Bob works, Brains, off unless turned on', /sswitch\('computerLab', settings\.computerLab === true, 'Show the Computer Science Lab'/.test(cellar) && /Off unless you turn it on/.test(cellar.split("sswitch('computerLab'")[1].slice(0, 600)));
+check('a small replicant matrix sees the switch greyed out with the reason', /computerLabRoom/.test(cellar));
+check('the page uses real radio buttons and checkboxes with labels', /type="radio"/.test(page) && /type="checkbox"/.test(page) && /<label/.test(page));
+check('the page uses the reviewed words', ['Teach it back', 'Make it one file', 'Make the running files', 'Take out sight', 'Take out hearing', 'Show the recipe', 'Use in Bob', 'Test and use'].every((w) => page.includes(w)));
+check('the rented parts are shown as later, not offered', /Lab 2/.test(page) && !/\/api\/rent/.test(page));
+check('the slider has a number box beside it', /type="range"[\s\S]{0,400}type="number"|type="number"[\s\S]{0,400}type="range"/.test(page));
+check('Help has a Lab page in Bob\'s voice', /Computer Science Lab/.test(help) && /lab/.test(help));
+check('the settings inventory has the row', /Show the Computer Science Lab/.test(inv));
+check('the Bob-Net heading opens Bob-Net settings', /id="nowNetHead"[^>]*aria-label="Open Bob-Net settings"/.test(html) && /nowNetHead[\s\S]{0,200}jump: 'adv-bobnet'/.test(app) && /opts\.jump/.test(cellar) && /Press Bob-Net to set it up/.test(html));
+
+// review: the card size falls back to the hardware scan's reading; the quiz uses a neutral city; the route comment is right
+check('the card size is the set one, or the card the hardware scan found', /Number\(this\.cfg\.gpuVramGB\) \|\| Number\(this\.cfg\.cardGB\) \|\| 0/.test(read('src/lab.js')));
+check('the Lab test\'s weather question uses a neutral city', /weather like in Lisbon/.test(read('src/lab-test.js')));
+fs.rmSync(tmp, { recursive: true, force: true });
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);

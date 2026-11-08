@@ -12,6 +12,7 @@ import { createLayout } from './layout.js';
 import { esc, render, renderRich } from './rich.js';
 import { createTopics } from './topics.js';
 import { createTidy } from './tidy.js';
+import { createLab } from './lab.js'; // 1.5.141 Computer Science Lab
 import { createAdventure } from './adventure.js';
 import { createGames } from './games.js';
 import { createHelp } from './help.js';
@@ -334,6 +335,8 @@ syncNotify();
 
 $('cellarBtn').onclick = () => cellar.open('shop', 'roles');
 $('settingsBtn').onclick = () => cellar.open('settings');
+// 1.5.141: the Bob-Net heading in Now running opens Settings at Bob-Net (advanced shown, the section open).
+$('nowNetHead')?.addEventListener('click', () => cellar.open('settings', null, { jump: 'adv-bobnet' }));
 // Settings, Get models and Style are pages in the main area: Chat or New chat goes back to the chat.
 for (const id of ['chatBtn', 'newchat']) $(id).addEventListener('click', () => { if ($('cellar').open) $('cellar').close(); });
 $('styleBtn').onclick = () => cellar.open('shop', 'style');
@@ -344,6 +347,12 @@ const topicsPage = createTopics({ api, openChat: (id, msgId) => openChat(id, msg
 const tidyPage = createTidy({ api, onCount: (n) => countBadge($('tidyBtn'), n) });
 $('topicsBtn').onclick = () => topicsPage.open();
 $('tidyBtn').onclick = () => tidyPage.open();
+// 1.5.141: 🧪 Lab in the left pane, only while Show the Computer Science Lab is on.
+const labPage = createLab({ api, note: (t) => note(t) });
+$('labBtn').onclick = () => labPage.open();
+const showLab = (on) => { $('labBtn').hidden = !on; };
+window.addEventListener('bob-lab-switch', (e) => showLab(e.detail?.on === true));
+fetch('/api/settings').then((r) => r.json()).then((st) => showLab(st.computerLab === true)).catch(() => {});
 const adventurePage = createAdventure({ api }); // 1.5.117 🎲 Adventure
 $('adventureBtn').onclick = () => adventurePage.open();
 const gamesPage = createGames({ api }); // 1.5.121 🧩 Games
@@ -680,6 +689,8 @@ function onEvent(ev) {
       for (const b of el.querySelectorAll('button')) b.onclick = () => { el.remove(); if (b.dataset.t === 'look') tidyPage.open(); };
       break;
     }
+    case 'lab': labPage.update(ev.run); break; // 1.5.141
+    case 'lab-done': note(ev.ok ? `🧪 The Lab finished ${ev.name}${ev.score != null ? `: ${ev.score} out of 100 on the Lab test` : ''}. Open the Lab to see the report.` : `🧪 The Lab stopped on ${ev.name}: ${ev.error}`); break;
     case 'tidy-done':
       topicsPage.refresh();
       if (ev.error) note(`Housekeeping stopped: ${ev.error}`, 'error');

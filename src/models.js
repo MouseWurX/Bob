@@ -15,6 +15,7 @@ import { maestroModels } from './maestro.js';
 import { gpuInfo, cpuName, specLine, shownRamGB, OS } from './platform.js';
 import { packFor } from '../public/fit.js';
 import { allSlots, slotValue } from '../public/equip.js';
+import { mergeMadeBrains } from './lab.js'; // 1.5.141
 
 const MODEL_EXT = new Set(['.gguf', '.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.sft']);
 const SKIP = new Set(['node_modules', '.git', '__pycache__', 'site-packages', 'venv', '.venv', 'env', 'cache', '.cache', 'Lib', 'include', 'temp', 'tmp', 'logs', 'blobs']);
@@ -197,6 +198,7 @@ export class ModelShop {
     this.dir = cfg.bobModelsDir;
     this.scanFile = path.join(cfg.dataDir, 'model-scan.json');
     this.shipped = JSON.parse(fs.readFileSync(cfg.catalogFile || path.join(appDir, 'catalog.json'), 'utf8'));
+    mergeMadeBrains(this.shipped, cfg); // 1.5.141: brains made in the Lab and put into Bob (kept under any newer list)
     this.catalog = this.shipped; // 1.5.137: or the newest list from GitHub laid over it (src/catalog-update.js)
     try { this.found = JSON.parse(fs.readFileSync(this.scanFile, 'utf8')); } catch { this.found = { at: null, files: [] }; }
     this.active = new Map(); // downloads running now: id -> { ac, pub, kind }

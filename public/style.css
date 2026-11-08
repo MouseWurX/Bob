@@ -382,6 +382,8 @@ body:not(.right-hidden) .now-toggle .badge { display: none; }
 .now-head { display: flex; align-items: center; gap: 8px; }
 .now-sec { display: flex; align-items: baseline; gap: 6px; margin-top: 8px; font-weight: 700; font-size: 13px; }
 .now-sec .muted { font-weight: 400; font-size: 11px; }
+.now-sec .now-head { font: inherit; font-weight: 700; padding: 0; min-height: 24px; color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; } /* 1.5.141: opens Bob-Net settings */
+.now-sec .now-head:hover, .now-sec .now-head:focus-visible { text-decoration-style: solid; }
 .now .tlist { margin: 4px 0; }
 .now .titem { grid-template-columns: auto 1fr auto; padding: 6px 8px; gap: 2px 6px; font-size: 12.5px; }
 .now .titem > span[aria-hidden="true"]:not(.grip) { display: none; }
@@ -1360,3 +1362,23 @@ details.fold > summary .muted { font-weight: 400; font-size: 13px; }
   .now-sections > section.drop-before { box-shadow: 0 -3px 0 0 Highlight; }
   .mind-think { border-left-color: Highlight; }
 }
+/* 1.5.141 🧪 Computer Science Lab */
+.lab-dlg { width: min(860px, 96vw); }
+#lab-body { padding: 12px 16px 16px; }
+.lab fieldset { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; margin: 8px 0; }
+.lab legend { font-weight: 700; padding: 0 4px; }
+.lab-opt { display: flex; gap: 8px; align-items: flex-start; padding: 6px 2px; min-height: 32px; }
+.lab-opt input[type=radio], .lab-opt input[type=checkbox] { margin-top: 3px; min-width: 18px; min-height: 18px; }
+.lab-opt.dim { opacity: .65; }
+.lab-later { font-size: 11px; font-weight: 600; border: 1px dashed var(--line); border-radius: 999px; padding: 0 6px; margin-left: 4px; }
+.lab-sub { margin-left: 26px; }
+.lab-steps ol { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 10px 0; }
+.lab-step { border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; min-height: 32px; background: none; color: inherit; }
+.lab-step.on { font-weight: 700; border-width: 2px; text-decoration: underline; text-underline-offset: 3px; }
+.lab-check { border-left: 3px solid var(--line); padding: 2px 10px; margin: 8px 0; }
+.lab-actions { gap: 10px; flex-wrap: wrap; }
+.lab-recipe pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r); padding: 8px; }
+.lab-report { border-collapse: collapse; margin: 6px 0; font-size: 13px; }
+.lab-report th, .lab-report td { border: 1px solid var(--line); padding: 2px 8px; text-align: left; }
+#lab-chunks-n, #lab-keep-n { width: 6em; }
+#lab-name, #lab-lessons-file, #lab-keep-file { width: min(420px, 100%); }
