@@ -927,6 +927,7 @@
   $('memory-save').addEventListener('click', () => { memory = $('memory-text').value.slice(0, 6000); store.set('memory', memory); $('memory-msg').textContent = 'Saved. The phone brain uses it from the next new chat.'; });
 
   function drawSettings() {
+    drawOwnKit();
     document.querySelectorAll('input[name="mode"]').forEach((r) => { r.checked = r.value === settings.mode; });
     $('user-name').value = settings.userName;
     $('read-aloud').checked = settings.readAloud;
@@ -939,6 +940,54 @@
   $('theme').addEventListener('change', (e) => { settings.theme = e.target.value; saveSettings(); applyTheme(); });
   $('resume').addEventListener('change', (e) => { settings.resume = e.target.checked; saveSettings(); });
   const applyTheme = () => document.documentElement.setAttribute('data-theme', settings.theme);
+
+  // ---------- 1.5.144 Tools and how-tos Bob made (the other Bob's, through him) ----------
+  // The same list as his Settings panel. Delete asks on the row, then the thing waits 30 days under Recently deleted;
+  // Undo and Put back bring it back. Delete for good and Edit are on the other replicant matrix only.
+  const ownAsk = { kind: '', id: '' };
+  let ownLast = null;
+  async function drawOwnKit() {
+    const box = $('own-kit'), msg = $('own-kit-msg');
+    if (!box) return;
+    const b = liveBobs()[0];
+    box.textContent = '';
+    if (!b) { box.append(el('p', { class: 'dim', text: 'No Bob on your Bob-Net is reachable right now. His tools and how-tos show here when one is.' })); return; }
+    let k;
+    try { const r = await phone('net.get', { address: b.address, path: '/api/own-kit' }); if (r.status !== 200) throw new Error(`${b.name} answered ${r.status}`); k = JSON.parse(r.body); }
+    catch (e) { box.append(el('p', { class: 'dim', text: `Couldn't get the list from ${b.name} (${e.message}).` })); return; }
+    const kindWord = { tool: 'tool', howto: 'how-to' };
+    const act = async (path, kind, id, name) => {
+      msg.textContent = '';
+      try {
+        const r = await phone('net.post', { address: b.address, path: `/api/own-kit/${path}`, body: JSON.stringify({ kind, id }) });
+        let out = {}; try { out = JSON.parse(r.body); } catch { /* not JSON */ }
+        if (r.status !== 200) throw new Error(out.error || `${b.name} answered ${r.status}`);
+        ownLast = path === 'delete' ? { kind, id, name } : null;
+        ownAsk.kind = ownAsk.id = '';
+        await drawOwnKit();
+        msg.textContent = path === 'delete' ? `Deleted the ${kindWord[kind]} "${name}". It waits 30 days under Recently deleted.` : `Put the ${kindWord[kind]} "${name}" back.`;
+      } catch (e) { logError('own-kit', e.message); msg.textContent = `Couldn't do that: ${e.message}`; }
+    };
+    const delBtns = (kind, id, name) => ownAsk.kind === kind && ownAsk.id === id
+      ? [el('span', { class: 'small', text: `Delete "${name}"?` }), el('button', { class: 'main', text: 'Delete', 'aria-label': `Yes, delete the ${kindWord[kind]} ${name}`, onclick: () => act('delete', kind, id, name) }), el('button', { text: 'Keep it', onclick: () => { ownAsk.kind = ownAsk.id = ''; drawOwnKit(); } })]
+      : [el('button', { text: 'Delete', 'aria-label': `Delete the ${kindWord[kind]} ${name}`, onclick: () => { ownAsk.kind = kind; ownAsk.id = id; ownLast = null; drawOwnKit(); } })];
+    if (ownLast) box.append(el('div', { class: 'box' }, el('p', { class: 'help-line', text: `Deleted the ${kindWord[ownLast.kind]} "${ownLast.name}".` }), el('div', { class: 'btns' }, el('button', { text: 'Undo', onclick: () => act('restore', ownLast.kind, ownLast.id, ownLast.name) }))));
+    const section = (title, rows, none) => box.append(el('div', { class: 'box' }, el('div', { class: 'title', text: title }), rows.length ? rows : el('p', { class: 'help-line', text: none })));
+    const dayOf = (t) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const stateWord = { off: 'turned off', changed: 'off: its files changed', missing: 'its folder is gone' };
+    section(`Tools he wrote (${k.tools.length})`, k.tools.map((t) => el('div', { class: 'gap' },
+      el('div', {}, el('strong', { text: t.name }), stateWord[t.state] ? el('span', { class: 'dim small', text: ` · ${stateWord[t.state]}` }) : null),
+      el('p', { class: 'help-line', text: `${t.what} Can change: ${t.writes.join('; ') || 'nothing outside its folder'}. Internet: ${t.internet ? 'yes' : 'no'}.` }),
+      el('div', { class: 'btns' }, delBtns('tool', t.name, t.name)))), k.makerOn ? 'No tools yet.' : 'No tools yet. Making them is off in his Settings (Make his own tools).');
+    section(`How-tos he kept (${k.howtos.length})`, k.howtos.map((r) => el('div', { class: 'gap' },
+      el('div', {}, el('strong', { text: r.name }), el('span', { class: 'dim small', text: ` · ${r.steps.length} steps${r.used ? `, used ${r.used} time${r.used === 1 ? '' : 's'}` : ''}` })),
+      r.when && r.when !== r.name ? el('p', { class: 'help-line', text: `For: ${r.when}` }) : null,
+      el('div', { class: 'btns' }, delBtns('howto', r.id, r.name)))), k.howtosOn ? 'No how-tos yet.' : 'No how-tos yet. Learning them is off in his Settings (Let Bob learn how-tos).');
+    section(`Recently deleted (${k.deleted.length})`, k.deleted.map((d) => el('div', { class: 'gap' },
+      el('div', {}, el('strong', { text: d.name }), el('span', { class: 'dim small', text: ` · ${kindWord[d.kind]} · gone for good ${dayOf(d.goneAt)}` })),
+      el('div', { class: 'btns' }, el('button', { text: 'Put back', 'aria-label': `Put the ${kindWord[d.kind]} ${d.name} back`, onclick: () => act('restore', d.kind, d.id, d.name) })))), 'Nothing waiting. Each deleted thing waits here 30 days.');
+    if (k.deleted.length) box.append(el('p', { class: 'help-line', text: `Delete for good, and editing a how-to, are done on ${b.name} itself.` }));
+  }
 
   // ---------- Save a help bundle ----------
   // From a Bob on your network: his zip (he scrubs it). Phone only: one HANDOFF.md written here, scrubbed here.

@@ -328,19 +328,19 @@ export function loadLine({ mode, who, model, from, copy, secs, label, single = f
   const mine = (t) => lc(t).replace(/^brain \(/, 'main brain ('); // Bob's main slot reads "my main brain (...)"
   const now = lc(label(model, who)), old = from ? mine(label(from)) : '';
   if (who === 'reviewer') {
-    if (mode === 'add' && beside && !onCard) return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, on the processor, about ${secs} seconds. Reviews there are slower than on the graphics card.`;
-    if (mode === 'add') return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, about ${secs} seconds.`;
+    if (mode === 'add' && beside && !onCard) return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, on the processor, about ${secs} ${secs === 1 ? 'second' : 'seconds'}. Reviews there are slower than on the graphics card.`;
+    if (mode === 'add') return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, about ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
     // Settings sign-off (1.5.49): the real reason. Bob's own engine runs one brain whatever its size; Ollama is about memory.
     // Settings sign-off (1.5.51): switch off = a plain swap line; the tip about the switch shows once only (tip).
-    if (mode === 'swap' && old && single && !besideOn) return `🛰 Moot: ${copy} checks ${what}. My ${old} steps out and the ${now} comes in, about ${secs} seconds.${tip ? ' (To keep both loaded, turn on "Let the reviewer sit beside Bob\'s main brain" in Settings, Show advanced settings, Brains.)' : ''}`;
-    if (mode === 'swap' && old) return `🛰 Moot: ${copy} checks ${what}. ${single ? 'There isn\'t room for both right now' : 'Only one big brain fits right now'}, so my ${old} steps out and the ${now} comes in, about ${secs} seconds.`;
-    return `🛰 Moot: ${copy} checks ${what}, on the ${now}. Loading it, about ${secs} seconds.`;
+    if (mode === 'swap' && old && single && !besideOn) return `🛰 Moot: ${copy} checks ${what}. My ${old} steps out and the ${now} comes in, about ${secs} ${secs === 1 ? 'second' : 'seconds'}.${tip ? ' (To keep both loaded, turn on "Let the reviewer sit beside Bob\'s main brain" in Settings, Show advanced settings, Brains.)' : ''}`;
+    if (mode === 'swap' && old) return `🛰 Moot: ${copy} checks ${what}. ${single ? 'There isn\'t room for both right now' : 'Only one big brain fits right now'}, so my ${old} steps out and the ${now} comes in, about ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
+    return `🛰 Moot: ${copy} checks ${what}, on the ${now}. Loading it, about ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
   }
-  if (mode === 'add' && old && beside && onCard) return `Adding the ${now} beside my ${old} on the graphics card, which has room for both. About ${secs} seconds.`;
-  if (mode === 'add' && old && beside) return `Adding the ${now} on the processor, so my ${old} keeps working on the graphics card. About ${secs} seconds, and this reply starts slower than usual.`;
-  if (mode === 'add' && old) return `Adding the ${now} beside my ${old}, which stays loaded. About ${secs} seconds.`;
-  if (mode === 'load' || !old) return `Loading the ${now}. Back in about ${secs} seconds.`;
-  return `Swapping brains: my ${old} goes out and the ${now} comes in. Back in about ${secs} seconds.`;
+  if (mode === 'add' && old && beside && onCard) return `Adding the ${now} beside my ${old} on the graphics card, which has room for both. About ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
+  if (mode === 'add' && old && beside) return `Adding the ${now} on the processor, so my ${old} keeps working on the graphics card. About ${secs} ${secs === 1 ? 'second' : 'seconds'}, and this reply starts slower than usual.`;
+  if (mode === 'add' && old) return `Adding the ${now} beside my ${old}, which stays loaded. About ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
+  if (mode === 'load' || !old) return `Loading the ${now}. Back in about ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
+  return `Swapping brains: my ${old} goes out and the ${now} comes in. Back in about ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
 }
 
 // 1.5.53: thinking goes to the "Bob's thinking" window in small batches (about 8 a second), not token by token.
@@ -721,7 +721,7 @@ export class Brain {
         // 1.5.49: say whether this brain replaces one (swap), joins one (add), or fills an empty head (load).
         const plan = await this.engine.loadPlan?.(m, opts).catch(() => null) || null;
         const mode = loadMode(plan);
-        const text = attempt ? `That didn't load right. Trying the ${this.brainLabel(m, who)} again, about ${secs} seconds.` : loadLine({ mode, who, model: m, from: plan?.drop?.[0] || plan?.keep?.[0] || '', copy: who === 'reviewer' ? copyName(this.cfg, 'reviewer', 'second look') : '', secs, label: (x, w) => this.brainLabel(x, w), single: Boolean(plan?.single), beside: Boolean(plan?.beside), onCard: Boolean(plan?.onCard), besideOn: this.cfg.mootBeside === true, tip: who === 'reviewer' && mode === 'swap' && Boolean(plan?.single) && this.cfg.mootBeside !== true && this.besideTipOnce(), ...(opts?.what ? { what: opts.what } : {}) });
+        const text = attempt ? `That didn't load right. Trying the ${this.brainLabel(m, who)} again, about ${secs} ${secs === 1 ? 'second' : 'seconds'}.` : loadLine({ mode, who, model: m, from: plan?.drop?.[0] || plan?.keep?.[0] || '', copy: who === 'reviewer' ? copyName(this.cfg, 'reviewer', 'second look') : '', secs, label: (x, w) => this.brainLabel(x, w), single: Boolean(plan?.single), beside: Boolean(plan?.beside), onCard: Boolean(plan?.onCard), besideOn: this.cfg.mootBeside === true, tip: who === 'reviewer' && mode === 'swap' && Boolean(plan?.single) && this.cfg.mootBeside !== true && this.besideTipOnce(), ...(opts?.what ? { what: opts.what } : {}) });
         emit({ type: 'announce', text, seconds: secs });
         this.setState('loading', text, m, { mode: attempt ? 'swap' : mode, from: plan?.drop?.[0] || plan?.keep?.[0] || '', ...(plan?.beside ? { beside: true } : {}) });
       }
