@@ -156,11 +156,11 @@ export function createLab({ api, note }) {
       <p><label>Name for the lesson set <input id="lab-b-name" type="text" maxlength="60" value="${esc(bld.name)}" autocomplete="off"></label></p>
       <fieldset><legend>What to learn from</legend>
         ${bld.items.length ? `<ul class="lab-items">${bld.items.map((it, n) => `<li><span class="lab-item-path">${esc(it.path)}</span> <label>skill <input type="text" class="lab-item-skill" data-bskill="${n}" value="${esc(it.skill)}" maxlength="40" aria-label="Skill name for ${esc(it.path)}"></label> <button type="button" class="link" data-bremove="${n}">Remove</button></li>`).join('')}</ul>` : '<p class="muted">Nothing added yet.</p>'}
-        <div class="row"><button type="button" class="link" data-baddfolder>Add a folder</button><button type="button" class="link" data-baddfile>Add a file</button> <label>or type a path <input id="lab-b-path" type="text" value="${esc(typedPath)}" placeholder="C:\\Notes" aria-label="A file or folder path"></label><button type="button" class="link" data-baddpath>Add</button></div>
+        <div class="row"><button type="button" class="link" data-baddfolder>Add a folder</button><button type="button" class="link" data-baddfile>Add a file</button> <label>or type a path <input id="lab-b-path" type="text" value="${esc(typedPath)}" placeholder="${navigator.platform.startsWith('Win') ? 'C:\\Notes' : '~/Notes'}" aria-label="A file or folder path"></label><button type="button" class="link" data-baddpath>Add</button></div>
         <p class="muted">Bob reads: plain text, Markdown, web pages, Word, OpenDocument, RTF, e-books and PDFs${view.officeOk ? '' : ' (Word, PDF and the others need LibreOffice, Settings, Engines)'}; chat logs: my own sessions, a ChatGPT or Claude export (conversations.json), or a transcript with "Name: line" lines. Spreadsheets, code, pictures and sound come later.</p>
       </fieldset>
       <fieldset><legend>What the brain should learn</legend>${view.lessonKinds.map((k) => `<label class="lab-opt"><input type="checkbox" data-bkind="${esc(k.id)}" ${bld.kinds.includes(k.id) ? 'checked' : ''}> <span><strong>${esc(k.label)}</strong><br><span class="muted">${esc(k.hint)}</span></span></label>`).join('')}
-        ${bld.kinds.includes('chats') ? `<label class="lab-opt lab-sub"><input type="checkbox" data-bresay ${bld.resay ? 'checked' : ''}> <span><strong>Re-say other assistants' answers in my voice</strong><br><span class="muted">Untick to keep their answers word for word.</span></span></label>` : ''}
+        ${bld.kinds.includes('chats') ? `<label class="lab-opt lab-sub"><input type="checkbox" data-bresay ${bld.resay ? 'checked' : ''}> <span><strong>Re-say other assistants' answers in Bob's voice</strong><br><span class="muted">Untick to keep their answers word for word.</span></span></label>` : ''}
         ${later('My code', 'Explain this function, fix this from the error, from a repo of yours.')}
       </fieldset>
       <p><label for="lab-b-teacher">Teacher</label> <select id="lab-b-teacher"><option value="">(pick one)</option>${teachers.map((b) => `<option value="${esc(b.id)}" ${bld.teacher === b.id ? 'selected' : ''}>${esc(b.name)} (${b.facts.sizeGB} GB${b.license ? `, ${esc(b.license)}` : ''})</option>`).join('')}</select></p>
@@ -170,7 +170,7 @@ export function createLab({ api, note }) {
         ${radio('bthink', 'on', bld.think === 'on', 'All with thinking', 'Slower, and the brain learns to think first every time.')}
         ${radio('bthink', 'off', bld.think === 'off', 'None with thinking', 'Quickest.')}
       </fieldset>
-      ${later('A big rented brain as the teacher', 'A rented card runs a brain too big for this replicant matrix. Your passages would leave this machine, so it will say so in red and start off.')}
+      ${later('A big rented brain as the teacher', 'A rented card runs a brain too big for this replicant matrix. Your passages would leave this replicant matrix. It will say so in red and start switched off.')}
       <div class="row"><button type="button" class="link" data-bsurvey ${bld.items.length && !surveying ? '' : 'disabled'}>${bsurvey ? 'Survey my files again' : 'Survey my files'}</button></div>
       ${surveyHtml()}
       ${bplan ? `<div class="lab-check" role="status">${bplan.problems.length ? `<p><strong>Before it can start:</strong></p><ul>${bplan.problems.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p><strong>Ready.</strong></p>'}${bplan.notes.map((x) => `<p class="muted">${esc(x)}</p>`).join('')}</div>` : ''}

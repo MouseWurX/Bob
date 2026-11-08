@@ -1,6 +1,6 @@
 // Lab 2c, the lesson builder: the survey and the held-back scan. Pure functions: counts, duplicates, and the net that
 // catches passages that look like secrets or the owner's own details before the teacher ever sees them (keys, tokens,
-// passwords, card numbers, LAN and tailnet addresses, e-mail addresses, the user folder). The same word list the
+// passwords, card numbers, home-network and Tailscale addresses, e-mail addresses, the user folder). The same word list the
 // public lesson release was scrubbed with, so an exported set gets the same treatment. A net, not a guarantee.
 import os from 'node:os';
 import path from 'node:path';
@@ -11,7 +11,7 @@ const RULES = [
   ['looks like a key or token', /\b(?:sk|hf|ghp|gho|github_pat|xox[abp]|AKIA|AIza|rpa)_?[A-Za-z0-9_-]{16,}\b|\bBearer\s+[A-Za-z0-9._-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----/],
   ['looks like a password', /\b(?:password|passwd|pwd|passphrase|secret|api[_ -]?key|token)\s*[:=]\s*\S{4,}/i],
   ['looks like a card number', /\b(?:\d[ -]?){13,16}\b/],
-  ['has a LAN or tailnet address', new RegExp(`\\b(?:${[192, 168].join('\\.')}|10\\.\\d{1,3}|172\\.(?:1[6-9]|2\\d|3[01])|100\\.(?:6[4-9]|[7-9]\\d|1[01]\\d|12[0-7]))\\.\\d{1,3}\\.\\d{1,3}\\b`)],
+  ['has a home-network or Tailscale address', new RegExp(`\\b(?:${[192, 168].join('\\.')}|10\\.\\d{1,3}|172\\.(?:1[6-9]|2\\d|3[01])|100\\.(?:6[4-9]|[7-9]\\d|1[01]\\d|12[0-7]))\\.\\d{1,3}\\.\\d{1,3}\\b`)],
   ['has an e-mail address', /\b[\w.+-]+@[\w-]+\.[\w.-]+\b/]
 ];
 // A card number must also pass Luhn, or every long number (a serial, a phone) would be held back.
@@ -43,8 +43,8 @@ export function scrub(text, { user = userName() } = {}) {
   const u = userRe(user);
   if (u) swap(new RegExp(u.source, 'gi'), (m) => m.replace(/[\\/].*$/, (x) => x[0] + 'you'), 'your user folder to "you"');
   const lan = [192, 168, 0, 10].join('.'); // built from pieces, so the public-words check doesn't read it as a real address
-  swap(new RegExp(`\\b${[192, 168].join('\\.')}\\.\\d{1,3}\\.\\d{1,3}\\b`, 'g'), lan, `LAN addresses to ${lan}`);
-  swap(/\b100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b/g, '100.64.0.1', 'tailnet addresses to 100.64.0.1');
+  swap(new RegExp(`\\b${[192, 168].join('\\.')}\\.\\d{1,3}\\.\\d{1,3}\\b`, 'g'), lan, `home-network addresses to ${lan}`);
+  swap(/\b100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b/g, '100.64.0.1', 'Tailscale addresses to 100.64.0.1');
   const mail = ['you', 'example.com'].join('@'); // built from pieces, like the address above
   swap(/\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g, mail, `e-mail addresses to ${mail}`);
   swap(/\b(?:sk|hf|ghp|gho|github_pat|xox[abp]|AKIA|AIza|rpa)_?[A-Za-z0-9_-]{16,}\b/g, '[key removed]', 'keys and tokens removed');
