@@ -121,6 +121,7 @@ A proposal usually asks for everything up front. This one does not, because most
 |---|---|---|
 | Card time rented by the hour | about $183 | 10 rentals, 4 of them failures; every line on the costs page |
 | Claude subscription and extra usage, November 2026 | $1,000 | the assistant that wrote the Forge, the lesson writer, the benchmarks and these pages |
+| Prepaid card credit | loaded in advance, amount not shown | the rental account is paid up front and drawn down by each session; the card time above came out of it, and the unused part is already earmarked for the rungs still to make |
 | Owner's time | 4 to 8 November, not counted in dollars | lessons, counts and benchmarks on the home PC; every rental watched by hand |
 | Hosting, signing, model storage | $0 | GitHub and Hugging Face are free for a public project |
 | **Total cash in** | **about $1,183** | |

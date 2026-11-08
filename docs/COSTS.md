@@ -24,7 +24,7 @@ Every rental, including the ones that made nothing. Times are the owner's local 
 | 6 Nov 2026, morning to evening | 1x H200 141 GB SXM, no drive (none free in the drive's data centre) | 9.7 h | $5.29/h | **Line B v3, first half.** Teacher pass (125 min, 26,628 pieces); 28Bob Riker v3 (208 experts) cut and healed in a full pass (929 steps, 5.9 h); Q4, Q3 and adapter home. Then a shell bug in the plan reader stopped 20Bob Bill v3 at its keep list and the machine deleted itself as designed, taking the full-precision Riker and the teacher's scores with it, because there was no drive. Both fixed in Forge build 15; the drive rule is now hard. Card time plus the working disk; from the balance, to the cent on the next statement. | about $51 |
 | | | **about 37 h of card time** | | **Four failed attempts: $15.81, plus the half-run above. Five Bobs made; the current plan keeps Riker v3 and needs Bill v3.** | **about $183** |
 
-The total is taken from the rental service's statement; the lines above are rounded to the cent. A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists.
+The total is taken from the rental service's statement; the lines above are rounded to the cent. Card time is paid from **prepaid credit**: the owner loads a balance onto the rental account in advance and each session draws it down, so that money is spent on the day it is loaded and used only when a card runs. The unused part is not shown here (no balances on these pages); it is already earmarked for the rungs still to make. A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists.
 
 ### Tools and subscriptions
 
@@ -98,24 +98,24 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 
 | | |
 |---|---|
-| GPU servers rented by the hour (every session above, failures included) | $132.11 |
+| GPU servers rented by the hour (every session above, failures included; $132.11 on the statement plus the about $51 half-run still to appear on it) | about $183 |
 | Rented network drive so far | included in the line B session line above |
 | Claude subscription, November 2026 | $200.00 |
 | Claude extra usage, November 2026 so far | $800.00 |
 | Code signing, hosting | $0.00 |
-| **Total spent so far** | **$1,132.11** |
+| **Total spent so far** | **about $1,183** |
 
 **Projected, whole plan**
 
 | | Low | High |
 |---|---|---|
-| Spent so far (above) | $1,132.11 | $1,132.11 |
+| Spent so far (above) | $1,183 | $1,183 |
 | Line B remaining rungs (Homer to Bender) | $159 | $169 |
 | Riker and Bill re-cut and healed again (coverage cut) | $70 | $75 |
 | Specialists (four, with their lessons) | $100 | $100 |
 | Rented network drive, about 2 more months | $14 | $14 |
 | Re-runs allowed (one per rung if a heal scores badly) | $0 | $60 |
 | Claude subscription while the family is finished, about 1 more month | $200 | $200 |
-| **Projected total, line B complete** | **about $1,675** | **about $1,750** |
+| **Projected total, line B complete** | **about $1,726** | **about $1,801** |
 | Line A as well, if the comparison after Homer earns it | +$219 | +$229 |
-| **Projected total, both lines** | **about $1,894** | **about $1,979** |
+| **Projected total, both lines** | **about $1,945** | **about $2,030** |
