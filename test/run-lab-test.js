@@ -11,6 +11,9 @@ import crypto from 'node:crypto';
 import http from 'node:http';
 import { LESSON_SKILLS } from '../src/lab-skills.js';
 import { QUIZ, TOOLS, runQuiz } from '../src/lab-test.js';
+import { PACKS, PACK_IDS, REASONING, SUMS, RULES, PICK_TOOL, CODE, letterOf, numberOf, codeOf, codeTool, runPack, mergeScores, scoreboard } from '../src/lab-challenges.js';
+import { runSandboxed } from '../src/selftools.js';
+import { cleanResult, resultText, hardwareLine } from '../src/lab.js';
 import { cleanLearn, learnBrain, tokenize, nextWords, tryTemperature, runLearn, sawTokens, sawNext, sawTemperature, LEARN_CARDS, MAX_TEXT } from '../src/lab-learn.js';
 
 let pass = 0, fail = 0;
@@ -278,6 +281,110 @@ check('a small replicant matrix can\'t start a Lab job', await new Lab(cfg, { sh
 const saved = lab.saveRecipe({ ...recipe, lessons: { kind: 'file', file: path.join(tmp, 'secret', 'lessons.jsonl') } });
 check('a saved recipe keeps choices, not paths', !JSON.stringify(saved).includes(tmp) && saved.at(-1).smaller.cut.keep === 4);
 
+// ---- 1.5.153 Challenges and Save ----
+check('six packs, each with questions, a title and a time', PACKS.length === 6 && PACK_IDS.join() === 'quiz,reasoning,sums,rules,tools,code' && PACKS.every((x) => x.title && x.what && x.count > 0 && x.minutes > 0));
+check('every reasoning question has four choices and a letter answer', REASONING.every(([q, a]) => /A\) [\s\S]*B\) [\s\S]*C\) [\s\S]*D\) /.test(q) && /^[ABCD]$/.test(a)) && REASONING.length >= 20);
+check('every sum has a whole-number answer', SUMS.every(([, a]) => Number.isInteger(a)) && SUMS.length >= 15);
+check('the letter in a reply is found, with or without brackets, and thinking is ignored', letterOf('B') === 'B' && letterOf('(C)') === 'C' && letterOf('D) Gravity') === 'D' && letterOf('The answer is A.') === 'A' && letterOf('<think>A or B?</think>C') === 'C' && letterOf('no idea') === '');
+check('the last number in a reply is found, commas allowed', numberOf('That makes 16 apples.') === 16 && numberOf('5 x 6 = 1,250') === 1250 && numberOf('none') === null && numberOf('-3') === -3);
+check('code comes out of a fenced block, or the whole reply', codeOf('Here:\n```js\nfunction a(){}\n```\nDone') === 'function a(){}' && codeOf('function b(){}') === 'function b(){}');
+check('the rules checks are right about right and wrong answers', RULES.find(([q]) => /backwards/.test(q))[1]('eseehc') && !RULES.find(([q]) => /backwards/.test(q))[1]('cheese') && RULES.find(([q]) => /valid JSON/.test(q))[1]('```json\n{"name":"Bob"}\n```') && RULES.find(([q]) => /1 to 5/.test(q))[1]('1\n2\n3\n4\n5'));
+check('every pick-the-tool request names one of the four pretend tools', PICK_TOOL.every(([, t]) => TOOLS.some((x) => x.function.name === t)));
+check('every code challenge has a function name and cases', CODE.every((c) => /^[a-zA-Z]+$/.test(c.fn) && c.q.includes(c.fn) && c.cases.length >= 2));
+// a brain's code really runs in Bob's sandbox: right code passes, wrong code fails, and it can't read files
+{
+  const sdir = path.join(tmp, 'sbx'); fs.mkdirSync(sdir, { recursive: true });
+  const sandboxRun = async (code, fn, cases) => { fs.writeFileSync(path.join(sdir, 'tool.mjs'), codeTool(code, fn)); const r = await runSandboxed({ dir: sdir, input: { cases }, timeoutSec: 10 }); try { return r.ok ? JSON.parse(r.out) : null; } catch { return null; } };
+  const good = await sandboxRun('function add(a, b) { return a + b; }', 'add', [[2, 3], [1, 1]]);
+  check('a brain\'s right answer runs in the sandbox and gives its results', JSON.stringify(good) === '[{"ok":true,"v":5},{"ok":true,"v":2}]', JSON.stringify(good));
+  const missing = await sandboxRun('const nope = 1;', 'add', [[1, 2]]);
+  check('a reply without the function is marked, not crashed', missing?.missing === true);
+  fs.writeFileSync(path.join(tmp, 'secret.txt'), 'secret');
+  const sneaky = await sandboxRun(`function add() { return process.getBuiltinModule('node:fs').readFileSync(${JSON.stringify(path.join(tmp, 'secret.txt'))}, 'utf8'); }`, 'add', [[]]);
+  check('a brain\'s code can\'t read a file outside the sandbox', !JSON.stringify(sneaky || '').includes('secret"'), JSON.stringify(sneaky));
+  const slow = await runSandboxed({ dir: (fs.writeFileSync(path.join(sdir, 'tool.mjs'), codeTool('function add() { while (true) {} }', 'add')), sdir), input: { cases: [[]] }, timeoutSec: 2 });
+  check('a brain\'s endless loop is stopped', !slow.ok && slow.timedOut);
+}
+// runPack against a pretend server: each kind is marked the right way
+{
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const q = JSON.parse(init.body).messages[0].content;
+    const say = (content, calls) => ({ ok: true, json: async () => ({ choices: [{ message: { content, tool_calls: calls } }], timings: { predicted_per_second: 30, prompt_per_second: 600 } }) });
+    const r = REASONING.find(([x]) => x === q); if (r) return say(r === REASONING[0] ? 'A' : r[1]);
+    const m = SUMS.find(([x]) => x === q); if (m) return say(`It is ${m[1]}.`);
+    const t = PICK_TOOL.find(([x]) => x === q); if (t) return say('', [{ function: { name: t[1], arguments: '{}' } }]);
+    const c = CODE.find((x) => q.startsWith(x.q)); if (c) return say('```js\nfunction ' + c.fn + '(){}\n```');
+    return say('banana');
+  };
+  const rs = await runPack('http://fake', 'reasoning');
+  check('reasoning is marked by the letter: one wrong of twenty', rs.right === REASONING.length - 1 && rs.of === REASONING.length && rs.score === Math.round((100 * (REASONING.length - 1)) / REASONING.length) && rs.misses.length === 1 && rs.tps === 30);
+  check('sums are marked by the number', (await runPack('http://fake', 'sums')).score === 100);
+  check('pick the tool is marked by the tool called', (await runPack('http://fake', 'tools')).score === 100);
+  const noBox = await runPack('http://fake', 'code', { sandbox: null });
+  check('without a working sandbox, code is never run: the pack is skipped and says why', noBox.score === null && /sandbox/.test(noBox.skipped));
+  let ran = 0;
+  const cd = await runPack('http://fake', 'code', { sandbox: { run: async (code, fn, cases) => { ran++; return cases.map(() => ({ ok: true, v: 'wrong' })); } } });
+  check('code answers go to the sandbox and wrong results score 0', ran === CODE.length && cd.score === 0);
+  check('an unknown pack is refused', await runPack('http://fake', 'nope').then(() => false, (e) => /no challenge called nope/.test(e.message)));
+  globalThis.fetch = realFetch;
+}
+// the scoreboard keeps the newest score for each pack
+{
+  const a = mergeScores(null, { name: 'Riker', sha256: 'ab', sizeGB: 17.5, quant: 'Q4_K_M', packs: { sums: { score: 80, right: 12, of: 15 } }, tps: 40, when: '2026-11-08' });
+  const b = mergeScores(a, { name: 'Riker', packs: { reasoning: { score: 90, right: 18, of: 20 }, code: { score: null, right: 0, of: 8, skipped: 'no sandbox' } }, when: '2026-11-09' });
+  check('a second run keeps the first run\'s other packs and adds the new ones', b.packs.sums.score === 80 && b.packs.reasoning.score === 90 && b.packs.code.skipped && b.speed.tps === 40 && b.when === '2026-11-09');
+  const board = scoreboard([{ id: 'riker', ...b }, { id: 'bill', brain: { name: 'Bill' }, packs: { sums: { score: 70 } } }]);
+  check('the scoreboard has one row per brain, a cell per pack, empty where not run', board.length === 2 && board[0].name === 'Bill' && board[0].scores.sums === 70 && board[0].scores.reasoning === null && board[1].scores.reasoning === 90 && board[1].sizeGB === 17.5);
+}
+// a challenge job, fake steps
+{
+  const packsRun = [];
+  const chLab = new Lab(cfg, { shop, room: big, broadcast: (e) => events.push(e), steps: {
+    serve: async () => ({ url: 'http://fake', stop: () => {}, where: 'card' }),
+    pack: async (url, id, { onStep, sandbox }) => { packsRun.push([id, Boolean(sandbox)]); onStep(1, 1); return { score: id === 'sums' ? 60 : 90, right: 3, of: 5, misses: [], tps: 20, prefillTps: 500 }; },
+    sandbox: async () => ({ run: async () => [] }),
+    fingerprint: async () => 'cafe'
+  } });
+  check('a challenge needs a brain and a pack', await chLab.startChallenge({ from: 'nope', packs: ['sums'] }).then(() => false, (e) => /Pick a brain/.test(e.message)) && await chLab.startChallenge({ from: 'test-moe', packs: ['rm -rf'] }).then(() => false, (e) => /at least one challenge/.test(e.message)));
+  const cs = await chLab.startChallenge({ from: 'test-moe', packs: ['sums', 'code', 'sums'] });
+  check('the challenge job starts, packs once each', cs.started?.kind === 'challenge' && cs.started.steps.length === 3);
+  while (chLab.job) await new Promise((r) => setTimeout(r, 20));
+  const cr = chLab.runs.at(-1);
+  check('it runs each pack, with the sandbox only for code-it', cr.state === 'done' && packsRun.map((x) => x.join(':')).join() === 'sums:true,code:true' && cr.report.challenges.map((c) => c.score).join() === '60,90', cr.error || '');
+  const board = chLab.scores();
+  check('the scoreboard has the brain, its fingerprint file, size and speed, and no paths', board.length === 1 && board[0].name === 'Test MoE' && board[0].scores.sums === 60 && board[0].scores.code === 90 && board[0].tps === 20 && !JSON.stringify(board).includes(tmp) && JSON.parse(fs.readFileSync(path.join(dataDir, 'lab', 'scores', 'test-moe.json'), 'utf8')).brain.sha256 === 'cafe');
+  check('the page gets the packs, the scoreboard and the hardware line', chLab.view().packs.length === 6 && chLab.view().scores.length === 1 && /GB RAM/.test(chLab.view().hardware));
+  check('Gaming on: challenges wait too', await new Lab({ ...cfg, session: 'light' }, { shop, room: big }).startChallenge({ from: 'test-moe', packs: ['sums'] }).then(() => false, (e) => /Gaming is on/.test(e.message)));
+  const be = { engine: { loaded: async () => [{ name: 'qwen', vram: 9e9 }], unloadAll: async () => {} } };
+  check('with Bob\'s brain on the card, challenges ask first', (await new Lab(cfg, { shop, room: big, brain: be }).startChallenge({ from: 'test-moe', packs: ['sums'] })).needUnload === true);
+  // Save
+  const r1 = cleanResult({ title: 'Lab scoreboard', head: ['Brain', 'Sums'], rows: [['Riker\nX', 80]], format: 'exe' });
+  check('a result to save is cleaned: plain cells, a known format', r1.rows[0][0] === 'Riker X' && r1.rows[0][1] === '80' && r1.format === 'md');
+  const md = resultText({ ...r1, note: 'Out of 100.' }, { version: '1.5.153', hardware: '16 GB graphics card, 32 GB RAM', when: '2026-11-08' });
+  check('Text is a Markdown table with Bob\'s version, the date, and the hardware only when asked', /^# Lab scoreboard\n\n\| Brain \| Sums \|/.test(md) && /Riker X \| 80/.test(md) && /Bob 1\.5\.153's Computer Science Lab · 2026-11-08 · 16 GB graphics card/.test(md) && !/GB RAM/.test(resultText(r1, { version: '1', when: 'x' })));
+  check('Spreadsheet is CSV, quoted where it needs to be', resultText({ ...r1, rows: [['a, b', '1']], format: 'csv' }) === 'Brain,Sums\n"a, b",1\n');
+  check('the hardware line says the card and the RAM', hardwareLine({ gpuVramGB: 16 }, 32 * 1024 ** 3) === '16 GB graphics card, 32 GB RAM' && hardwareLine({}, 8 * 1024 ** 3) === '8 GB RAM');
+  const sv = chLab.saveResult({ title: 'Lab scoreboard', head: ['Brain'], rows: [['Riker']], format: 'csv' });
+  check('Save writes in the Lab\'s results folder and gives back only the file name', fs.existsSync(path.join(dataDir, 'lab', 'results', sv.file)) && !sv.file.includes(path.sep) && /^lab-scoreboard-.*\.csv$/.test(sv.file));
+  const png = Buffer.concat([Buffer.from([0x89]), Buffer.from('PNG\r\n\x1a\n', 'latin1'), Buffer.alloc(20)]).toString('base64');
+  check('a picture is saved as a PNG', /\.png$/.test(chLab.saveResult({ title: 'T', head: ['a'], rows: [], format: 'png', png: `data:image/png;base64,${png}` }).file));
+  check('something that isn\'t a PNG is refused', (() => { try { chLab.saveResult({ title: 'T', head: ['a'], rows: [], format: 'png', png: `data:image/png;base64,${Buffer.from('MZ not a png').toString('base64')}` }); return false; } catch (e) { return /isn't a picture/.test(e.message); } })());
+  check('an empty table isn\'t saved', (() => { try { chLab.saveResult({ title: 'T' }); return false; } catch (e) { return /nothing to save/.test(e.message); } })());
+  const sent2 = [];
+  await labRoute({ req: { method: 'POST' }, res: {}, p: '/api/lab/challenge', isLocal: false, lab: chLab, body: async () => ({ challenge: { from: 'test-moe', packs: ['sums'] } }), send: (res, code, j) => sent2.push([code, j]) });
+  await labRoute({ req: { method: 'POST' }, res: {}, p: '/api/lab/save', isLocal: false, lab: chLab, body: async () => ({ title: 'x', head: ['a'], format: 'md' }), send: (res, code, j) => sent2.push([code, j]) });
+  check('challenges and Save only from this replicant matrix itself', sent2.every(([code]) => code === 403));
+}
+{
+  const lab3 = read('public/lab.js'), save = read('public/lab-save.js'), learn3 = read('public/lab-learn.js');
+  check('the Challenges tab is a real tab now, with the reviewed words', /\['challenges', 'Challenges'\]/.test(lab3) && ['Run the challenges', 'Scoreboard', 'Which brain?', 'Press a column\'s name to sort by it.'].every((w) => lab3.includes(w)) && !/Challenges <span class="lab-later">/.test(lab3));
+  check('the scoreboard sorts with buttons in the column headers and says which way', /aria-sort=/.test(lab3) && /data-sort=/.test(lab3));
+  check('Save offers a picture, text, a spreadsheet and data, and the hardware only if ticked', ['Picture', 'Text', 'Spreadsheet', 'Data', 'Include my graphics card and memory', 'Never file paths, your chats or your name'].every((w) => save.includes(w)) && /hardware: false/.test(lab3) && /hardware: false/.test(learn3));
+  check('every Learn card can be saved', ['learn-tokens', 'learn-next', 'learn-temperature'].every((k) => learn3.includes(`saveBox('${k}')`)));
+  check('Help has a Challenges page in Bob\'s voice that says the scores aren\'t paper numbers', /id: 'lab-challenges'/.test(read('public/help-content.js')) && /aren't the numbers you see in papers/.test(read('public/help-content.js')));
+}
+
 // The route: only this replicant matrix starts jobs.
 const sent = [];
 const fakeReq = (method) => ({ method });
@@ -348,7 +455,7 @@ check('the quiz tools are made up, not Bob\'s real ones', TOOLS.every((t) => !/h
   // which brain the cards may use
   const engine = { url: 'http://fake', current: 'qwen', child: { exitCode: null }, currentCtx: 8192, active: 0, now: () => 5, isBusy: () => false };
   const brainFor = (cfg, eng = engine) => ({ cfg, engine: eng, brainLabel: (m) => `Friendly ${m}` });
-  check('Learn needs Bob\'s built-in engine', !learnBrain(brainFor({ engine: 'ollama' })).ready && /built-in engine/.test(learnBrain(brainFor({ engine: 'ollama' })).why));
+  check('Learn needs Bob\'s own engine', !learnBrain(brainFor({ engine: 'ollama' })).ready && /built-in engine \(llama\.cpp\)/.test(learnBrain(brainFor({ engine: 'ollama' })).why));
   check('Learn with no brain loaded says to say something in the chat', (() => { const b = learnBrain(brainFor({ engine: 'llamacpp' }, { ...engine, current: '' })); return !b.ready && b.wake && /Say anything to me in the chat/.test(b.why); })());
   check('Learn waits while Bob is answering in the chat', (() => { const b = learnBrain(brainFor({ engine: 'llamacpp' }, { ...engine, isBusy: () => true })); return !b.ready && b.busy; })());
   check('Learn finds the loaded brain, its address and its window', JSON.stringify(learnBrain(brainFor({ engine: 'llamacpp' }))) === JSON.stringify({ ready: true, url: 'http://fake', model: 'qwen', ctx: 8192 }));
@@ -366,7 +473,7 @@ check('the quiz tools are made up, not Bob\'s real ones', TOOLS.every((t) => !/h
   await labRoute({ req: fakeReq('GET'), res: {}, p: '/api/lab/learn', isLocal: false, lab: { cfg: { computerLab: true }, brain: brainFor({ engine: 'llamacpp' }) }, body: async () => ({}), send: (res, code, j) => sent.push([code, j]) });
   check('the Learn view names the loaded brain the friendly way and lists the cards, from any device Bob lets in', sent[1][0] === 200 && sent[1][1].ready && sent[1][1].brain === 'Friendly qwen' && sent[1][1].cards.length === 3 && sent[1][1].on, JSON.stringify(sent[1]));
   const page2 = read('public/lab-learn.js'), lab2 = read('public/lab.js');
-  check('the Lab page has real tabs, and Playground and Challenges shown as later', /role="tablist"/.test(lab2) && /role="tab"/.test(lab2) && /aria-selected/.test(lab2) && /Playground <span class="lab-later">Later/.test(lab2) && /Challenges <span class="lab-later">Later/.test(lab2) && /ArrowRight/.test(lab2));
+  check('the Lab page has real tabs, and Playground shown as later', /role="tablist"/.test(lab2) && /role="tab"/.test(lab2) && /aria-selected/.test(lab2) && /Playground <span class="lab-later">Later/.test(lab2) && /ArrowRight/.test(lab2));
   check('the Learn cards use the reviewed words, a live result, and a slider with a number box', ['What is a token?', 'How do I pick the next word?', 'What does temperature do?', 'Split it', 'Show my odds', 'Let me choose', 'Write it three times', 'More knobs', 'Cut the long tail', 'Only the likeliest', 'What you just saw'].every((w) => page2.includes(w)) && /aria-live="polite"/.test(page2) && /id="learn-tp" type="range"[\s\S]{0,200}id="learn-tp-n" type="number"/.test(page2));
   check('token chips take turns solid and dashed, not colour alone, and the odds are in text as well as bars', /learn-tok\.a \{[^}]*solid/.test(read('public/style.css')) && /learn-tok\.b \{[^}]*dashed/.test(read('public/style.css')) && /pct\(x\.odds\)/.test(page2));
   check('Help has a Learn page in Bob\'s voice', /id: 'lab-learn'/.test(read('public/help-content.js')) && /Nothing you do here changes how I answer/.test(read('public/help-content.js')));
