@@ -1,6 +1,7 @@
 // 1.5.151 🧪 Computer Science Lab, the Learn tab: guided experiments on the brain Bob has loaded right now. Each card
 // is one question, one control, one result, and a line from Bob about what you just saw. Nothing is saved.
 import { esc } from './rich.js';
+import { saveHtml, saveResult } from './lab-save.js'; // 1.5.153
 
 const TOKEN_START = 'Bob\'s favourite cheese is Wensleydale, obviously.';
 const WORD_START = 'The best thing about living by the sea is';
@@ -9,7 +10,9 @@ const pct = (x) => `${Math.round(x * 1000) / 10}%`;
 // A token's text, made visible: a leading space shows as ␣ and a line break as ⏎, so you can see them.
 const shown = (t) => t.replace(/^ /, '␣').replace(/\n/g, '⏎') || '∅';
 
-export function createLearn({ api }) {
+export function createLearn({ api, info = () => null, saves = () => ({}) }) {
+  const saveState = (k) => { const all = saves(); return (all[k] ||= { open: false, format: 'png', hardware: false, saved: '', error: '' }); };
+  const saveBox = (k) => saveHtml(k, saveState(k), info()?.hardware || '');
   let el = null, view = null, msg = '';
   const tok = { text: TOKEN_START, out: null, busy: false };
   const nx = { start: WORD_START, text: WORD_START, top: null, steps: 0, busy: false };
@@ -29,23 +32,26 @@ export function createLearn({ api }) {
     const o = tok.out;
     const result = o ? `<ol class="learn-tokens" aria-label="The pieces">${o.tokens.map((t, i) => `<li class="learn-tok ${i % 2 ? 'b' : 'a'}${t.partial ? ' part' : ''}" title="token ${t.id}" aria-label="${esc(shown(t.text))}, token number ${t.id}"><span class="learn-tok-text">${esc(shown(t.text))}</span><span class="learn-tok-id">${t.id}</span></li>`).join('')}</ol>
       <p>${o.characters} characters, ${o.tokens.length} token${o.tokens.length === 1 ? '' : 's'}${o.tokens.length ? ` (about ${Math.round((o.characters / o.tokens.length) * 10) / 10} characters a token)` : ''}.</p>${sawLine(saw.tokens(o))}` : '';
+    const more = o ? saveBox('learn-tokens') : '';
     return card('tokens', 'What is a token?', 'I don\'t read letters or words. I read pieces called tokens, and this is how I\'d split what you type. Try a long word, a number, an emoji, or a sentence in another language.',
       `<p><label for="learn-tok-text">Something to split</label></p><textarea id="learn-tok-text" rows="2" maxlength="2000" spellcheck="false">${esc(tok.text)}</textarea>
-      <div class="row"><button type="button" class="get" data-tokens ${tok.busy ? 'disabled' : ''}>${tok.busy ? 'Splitting...' : 'Split it'}</button><span class="muted">Try this: antidisestablishmentarianism · 1234567 · 🐭🧀 · Je ne parle pas français</span></div>`, result);
+      <div class="row"><button type="button" class="get" data-tokens ${tok.busy ? 'disabled' : ''}>${tok.busy ? 'Splitting…' : 'Split it'}</button><span class="muted">Try this: antidisestablishmentarianism · 1234567 · 🐭🧀 · Je ne parle pas français</span></div>`, result, more);
   }
 
   function nextCard() {
     const result = nx.top ? `<p class="learn-sofar" aria-label="The sentence so far"><code>${esc(nx.text)}</code><span class="learn-caret" aria-hidden="true">▮</span></p>${oddsList(nx.top, { pick: nx.steps < MAX_STEPS && !nx.busy })}
       <div class="row">${nx.steps < MAX_STEPS ? `<button type="button" class="get" data-letme ${nx.busy ? 'disabled' : ''}>Let me choose</button><span class="muted">or click a word above · step ${nx.steps + 1} of ${MAX_STEPS}</span>` : '<span class="muted">That\'s twelve words. Start again to try another sentence.</span>'}<button type="button" class="link" data-nextreset>Start again</button></div>${sawLine(saw.next(nx.top))}` : '';
+    const more = nx.top ? saveBox('learn-next') : '';
     return card('next', 'How do I pick the next word?', 'Every token I write comes from a list of odds over everything I could say next. Here are my top ten for the sentence below. Click one to make me say it, or let me choose the way I usually would.',
       `<p><label for="learn-nx-start">Start of a sentence</label> <input id="learn-nx-start" type="text" maxlength="300" value="${esc(nx.start)}" ${nx.top ? 'disabled' : ''}></p>
-      ${nx.top ? '' : `<div class="row"><button type="button" class="get" data-next ${nx.busy ? 'disabled' : ''}>${nx.busy ? 'Looking...' : 'Show my odds'}</button></div>`}`, result);
+      ${nx.top ? '' : `<div class="row"><button type="button" class="get" data-next ${nx.busy ? 'disabled' : ''}>${nx.busy ? 'Looking…' : 'Show my odds'}</button></div>`}`, result, more);
   }
 
   function temperatureCard() {
     const o = tp.out;
     const result = o ? `<div class="learn-tries">${o.tries.map((t, i) => `<div class="learn-try"><span class="muted">Try ${i + 1} · ${t.seconds}s</span><p><code>${esc(tp.start)}</code>${esc(t.text)}</p></div>`).join('')}</div>
       <p class="muted">My odds for the very first word, at this setting:</p>${oddsList(o.top)}${sawLine(saw.temperature(tp.temperature))}` : '';
+    const more = o ? saveBox('learn-temperature') : '';
     return card('temperature', 'What does temperature do?', 'Temperature reshapes my odds before I roll. Low makes the likeliest word even likelier; high flattens the odds so unlikely words get a turn. Slide it and I\'ll write the same start three times.',
       `<p><label for="learn-tp">Temperature</label> <input id="learn-tp" type="range" min="0" max="2" step="0.1" value="${tp.temperature}"> <input id="learn-tp-n" type="number" min="0" max="2" step="0.1" value="${tp.temperature}" aria-label="Temperature"> <span class="muted">${tp.temperature < 0.3 ? 'cold: the same every time' : tp.temperature <= 1 ? 'warm: where I usually sit' : tp.temperature <= 1.5 ? 'hot: I wander' : 'scorching: anything goes'}</span></p>
       <details ${tp.more ? 'open' : ''} data-more><summary>More knobs</summary>
@@ -53,7 +59,16 @@ export function createLearn({ api }) {
         <p><label for="learn-topp">Only the likeliest (top_p)</label> <input id="learn-topp" type="range" min="0.5" max="1" step="0.05" value="${tp.topP}"> <input id="learn-topp-n" type="number" min="0.5" max="1" step="0.05" value="${tp.topP}" aria-label="top_p"> <span class="muted">Keeps only the likeliest words that add up to this much of the odds. 1 keeps them all.</span></p>
       </details>
       <p><label for="learn-tp-start">Start of a sentence</label> <input id="learn-tp-start" type="text" maxlength="300" value="${esc(tp.start)}"></p>
-      <div class="row"><button type="button" class="get" data-try ${tp.busy ? 'disabled' : ''}>${tp.busy ? 'Writing…' : 'Write it three times'}</button></div>`, result);
+      <div class="row"><button type="button" class="get" data-try ${tp.busy ? 'disabled' : ''}>${tp.busy ? 'Writing…' : 'Write it three times'}</button></div>`, result, more);
+  }
+
+  // Each card's result as a table for Save.
+  function table(k) {
+    const brainName = view?.brain || '';
+    if (k === 'learn-tokens' && tok.out) return { title: 'What is a token?', head: ['Piece', 'Token number'], rows: tok.out.tokens.map((t) => [shown(t.text), t.id]), note: `${brainName}: ${tok.out.characters} characters, ${tok.out.tokens.length} tokens.` };
+    if (k === 'learn-next' && nx.top) return { title: 'How do I pick the next word?', head: ['Next token', 'Odds'], rows: nx.top.map((x) => [shown(x.token), pct(x.odds)]), note: `${brainName}, after: ${nx.text}` };
+    if (k === 'learn-temperature' && tp.out) return { title: `Temperature ${tp.temperature}`, head: ['Try', 'What I wrote'], rows: tp.out.tries.map((t, i) => [`Try ${i + 1}`, tp.start + t.text]), note: `${brainName}, min_p ${tp.minP}, top_p ${tp.topP}.` };
+    return { title: '', head: [], rows: [] };
   }
 
   function html() {
@@ -74,6 +89,8 @@ export function createLearn({ api }) {
 
   function onChange(e) {
     const t = e.target;
+    if (t.dataset.savefmt) { saveState(t.dataset.savefmt).format = t.value; return draw(); }
+    if (t.dataset.savehw) { saveState(t.dataset.savehw).hardware = t.checked; return draw(); }
     if (t.id === 'learn-tok-text') tok.text = t.value;
     else if (t.id === 'learn-nx-start') { nx.start = t.value; nx.text = t.value; }
     else if (t.id === 'learn-tp-start') tp.start = t.value;
@@ -87,6 +104,9 @@ export function createLearn({ api }) {
   }
   async function onClick(e) {
     const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.saveopen) { Object.assign(saveState(b.dataset.saveopen), { open: true, saved: '', error: '' }); return draw(); }
+    if (b.dataset.saveclose) { saveState(b.dataset.saveclose).open = false; return draw(); }
+    if (b.dataset.savego) { const k = b.dataset.savego, st = saveState(k); try { st.saved = await saveResult(api, table(k), { format: st.format, hardware: st.hardware, version: info()?.version || '', hw: info()?.hardware || '' }); st.error = ''; } catch (err) { st.error = err.message; st.saved = ''; } return draw(); }
     if ('tokens' in b.dataset) return run(tok, async () => { tok.out = await call('tokens', { text: tok.text }); });
     if ('next' in b.dataset) return run(nx, async () => { nx.text = nx.start; nx.steps = 0; nx.top = (await call('next', { text: nx.text })).top; });
     if ('nextreset' in b.dataset) { nx.top = null; nx.steps = 0; nx.text = nx.start; return draw(); }
