@@ -267,3 +267,52 @@ export function readCounts(file) {
 export function busiest(counts, n) {
   return counts.map((row) => (row ? row.map((v, i) => [v, i]).sort((a, b) => b[0] - a[0] || a[1] - b[1]).slice(0, n).map(([, i]) => i).sort((a, b) => a - b) : undefined));
 }
+
+// Lab 2a: the coverage cut (the Forge's keep.py, in JavaScript). skills = [{ name, counts }] with counts per layer.
+// For each layer and skill, keep the experts that handle `cover` of that skill's routing (`strongCover` for the skills
+// in `strong`); union over skills; every layer padded or trimmed to one size K (keep, or the biggest union, at most
+// `max`) by overall use, where every skill weighs the same. Returns { keep: [[ids]...], K, unions, shares }.
+export function coverageKeep(skills, { cover = 0.95, strong = [], strongCover = 0.99, keep = 0, max = 0, min = 0 } = {}) {
+  const L = Math.max(...skills.map((s) => s.counts.length));
+  const E = Math.max(...skills.flatMap((s) => s.counts.filter(Boolean).map((r) => r.length)));
+  const covering = (row, c) => {
+    const t = row.reduce((a, b) => a + b, 0); if (!t) return [];
+    const order = row.map((v, e) => [v, e]).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+    const out = []; let s = 0;
+    for (const [v, e] of order) { out.push(e); s += v; if (s / t >= c) break; }
+    return out;
+  };
+  const expertLayers = [];
+  const overall = [], unions = [];
+  for (let li = 0; li < L; li++) {
+    const rows = skills.map((s) => s.counts[li]).filter((r) => r && r.length);
+    if (!rows.length) { overall.push(null); unions.push(null); continue; }
+    expertLayers.push(li);
+    const o = new Array(E).fill(0);
+    for (const r of rows) { const t = r.reduce((a, b) => a + b, 0) || 1; r.forEach((v, e) => { o[e] += v / t; }); }
+    overall.push(o);
+    const u = new Set();
+    for (const s of skills) { const r = s.counts[li]; if (r && r.length) for (const e of covering(r, strong.includes(s.name) ? strongCover : cover)) u.add(e); }
+    unions.push(u);
+  }
+  const sizes = expertLayers.map((li) => unions[li].size);
+  let K = keep || Math.max(...sizes);
+  if (max && K > max) K = max;
+  if (min && K < min) K = min;
+  const byUse = (li) => (a, b) => overall[li][b] - overall[li][a] || a - b;
+  const out = [];
+  for (let li = 0; li < L; li++) {
+    if (!unions[li]) { out.push(undefined); continue; }
+    let ids = [...unions[li]];
+    if (ids.length > K) ids = ids.sort(byUse(li)).slice(0, K);
+    else for (const e of Array.from({ length: E }, (_, i) => i).sort(byUse(li))) { if (ids.length >= K) break; if (!unions[li].has(e)) ids.push(e); }
+    out.push(ids.sort((a, b) => a - b));
+  }
+  // How much of each skill's routing the keep list holds: average over layers and the worst layer.
+  const shares = skills.map((s) => {
+    const per = expertLayers.map((li) => { const r = s.counts[li]; if (!r || !r.length) return 1; const t = r.reduce((a, b) => a + b, 0) || 1; return out[li].reduce((a, e) => a + r[e], 0) / t; });
+    const worst = per.reduce((m, v, i) => (v < per[m] ? i : m), 0);
+    return { name: s.name, average: per.reduce((a, b) => a + b, 0) / per.length, worst: per[worst], worstLayer: expertLayers[worst] };
+  });
+  return { keep: out, K, sizes: { min: Math.min(...sizes), max: Math.max(...sizes), average: sizes.reduce((a, b) => a + b, 0) / sizes.length }, shares };
+}

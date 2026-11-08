@@ -1,6 +1,6 @@
 // 1.5.141 🧪 Computer Science Lab (Lab 1): make your own brain from one on this replicant matrix, in five steps, with
-// checkboxes and radio buttons instead of command-line flags. Show the recipe shows the exact commands. Rented cards
-// and writing new lesson sets come in Lab 2 and are shown as "later", never offered.
+// checkboxes and radio buttons instead of command-line flags. Show the recipe shows the exact commands. 1.5.143 (Lab 2a):
+// keep every skill covered, and write a new lesson set with a teacher here. Rented cards are shown as "later", never offered.
 import { esc } from './rich.js';
 import { TEMPLATES, templateById, templateWhyNot, applyTemplate } from './lab-templates.js';
 
@@ -14,6 +14,8 @@ export function createLab({ api, note }) {
   $('lab-close').onclick = () => dlg.close();
   let view = null, step = 'brain', plan = null, showRecipe = false, msg = '', askUnload = null;
   let measures = [], picked = [], table = null, saved = '';
+  const w = { name: '', teacher: '', skills: ['tools', 'coding', 'chat'], count: 500, think: 'half' };
+  let wplan = null, writing = false;
   const r = { template: '', name: '', from: '', lessons: { kind: 'none', file: '', chunks: 200 }, smaller: { sight: false, hearing: false, cut: null, files: [], measure: false }, test: { compare: true } };
   const brain = () => view?.brains.find((b) => b.id === r.from);
   const running = () => view?.runs.find((x) => x.state === 'running');
@@ -25,6 +27,7 @@ export function createLab({ api, note }) {
   }
   async function replan() {
     try { plan = r.from ? await api('/api/lab/plan', { recipe: r }) : null; } catch (e) { plan = { problems: [e.message], notes: [], steps: [] }; }
+    if (writing) { try { wplan = await api('/api/lab/write/plan', { write: w }); } catch (e) { wplan = { problems: [e.message], notes: [] }; } }
     draw();
   }
 
@@ -66,14 +69,41 @@ export function createLab({ api, note }) {
   function lessonsStep() {
     const l = r.lessons;
     return `<fieldset><legend>Lessons</legend>
-      <p class="muted">Lessons are what the new brain should be good at. In Lab 1 they're used to count which experts your kind of work uses, so an expert cut keeps those.</p>
+      <p class="muted">Lessons are what the new brain should be good at. Here they're used to count which experts your kind of work uses, so an expert cut keeps those.</p>
       ${radio('lessons', 'none', l.kind === 'none', 'No lessons', 'For steps that don\'t need them: take out sight or hearing, make the running files, or cut with an expert list you have.')}
       ${radio('lessons', 'chats', l.kind === 'chats', 'My chats with Bob', 'Your past chats, as they are. They stay on this replicant matrix.')}
+      ${view.lessonSets.length ? radio('lessons', 'set', l.kind === 'set', 'A lesson set I wrote here', 'One Bob wrote in the Lab with a teacher brain.') : ''}
+      ${l.kind === 'set' ? `<p><label>Lesson set <select id="lab-lessons-set"><option value="">(pick one)</option>${view.lessonSets.map((x) => `<option value="${esc(x.id)}" ${l.set === x.id ? 'selected' : ''}>${esc(x.name)}: ${x.count} lessons${x.skills.length ? ` (${esc(x.skills.map(skillLabel).join(', '))})` : ''}${x.done ? '' : ', not finished'}</option>`).join('')}</select></label></p>` : ''}
       ${radio('lessons', 'file', l.kind === 'file', 'A lesson set I have', 'A lessons.jsonl from the model lab, or any text file.')}
       ${l.kind === 'file' ? `<p><label>Lesson file <input id="lab-lessons-file" type="text" value="${esc(l.file)}" placeholder="C:\\...\\lessons.jsonl"></label></p>` : ''}
       ${l.kind !== 'none' ? `<p><label for="lab-chunks">How much of it to count on</label> <input id="lab-chunks" type="range" min="20" max="2000" step="20" value="${l.chunks}" aria-describedby="lab-chunks-note"> <input id="lab-chunks-n" type="number" min="20" max="2000" step="20" value="${l.chunks}" aria-label="Pieces to count on"> pieces <span id="lab-chunks-note" class="muted">(about ${Math.max(1, Math.round(l.chunks / 20))} minutes on a 16 GB card)</span></p>` : ''}
-      ${later('Write a new lesson set', 'Pick skills (tools, coding, thinking, games and more) and a teacher, and Bob writes the lessons.')}
+      ${writeHtml()}
       ${later('Record the teacher\'s odds', 'Bob saves the teacher\'s top 32 guesses for every word, not only its answer. A brain learns much more from the odds than from the words alone.')}
+    </fieldset>`;
+  }
+
+  const skillLabel = (id) => view?.lessonSkills.find((k) => k.id === id)?.label || id;
+  // Write a new lesson set: its own Lab job (it takes hours). When it's done, it shows under A lesson set I wrote here.
+  function writeHtml() {
+    if (!writing) return `<div class="lab-opt"><span><strong>Write a new lesson set</strong><br><span class="muted">Pick skills (tools, coding, thinking, games and more) and a teacher brain on this replicant matrix, and Bob writes the lessons. It's a Lab job of its own and takes hours, so start it before bed.</span><br><button type="button" class="link" data-writeopen aria-expanded="false">Write a lesson set</button></span></div>`;
+    const teachers = view.brains.filter((b) => b.facts);
+    const hours = Math.max(1, Math.round((w.count * (view.secondsPerLesson || 25)) / 3600));
+    return `<fieldset class="lab-write"><legend>Write a new lesson set</legend>
+      <p class="muted">Bob makes up messages for each skill, then the teacher answers each one as me, with my real tools and instructions. Tool results are played by the teacher too: nothing is really run. Everything stays on this replicant matrix.</p>
+      <p><label>Name for the lesson set <input id="lab-w-name" type="text" maxlength="60" value="${esc(w.name)}" autocomplete="off"></label></p>
+      <p><label for="lab-w-teacher">Teacher</label> <select id="lab-w-teacher"><option value="">(pick one)</option>${teachers.map((b) => `<option value="${esc(b.id)}" ${w.teacher === b.id ? 'selected' : ''}>${esc(b.name)} (${b.facts.sizeGB} GB${b.license ? `, ${esc(b.license)}` : ''})</option>`).join('')}</select></p>
+      <fieldset><legend>Skills to write lessons for</legend>${view.lessonSkills.map((k) => `<label class="lab-opt"><input type="checkbox" data-wskill="${esc(k.id)}" ${w.skills.includes(k.id) ? 'checked' : ''}> <span><strong>${esc(k.label)}</strong><br><span class="muted">${esc(k.hint)}</span></span></label>`).join('')}</fieldset>
+      <p><label for="lab-w-count">How many lessons</label> <input id="lab-w-count" type="range" min="100" max="20000" step="100" value="${w.count}" aria-describedby="lab-w-time"> <input id="lab-w-count-n" type="number" min="100" max="20000" step="100" value="${w.count}" aria-label="Lessons to write"> <span id="lab-w-time" class="muted">(roughly ${hours} hour${hours === 1 ? '' : 's'}; the job shows the real pace)</span></p>
+      <fieldset><legend>Thinking</legend>
+        ${radio('wthink', 'half', w.think === 'half', 'Half with thinking, half without (recommended)', 'So the new brain learns both ways. Maths and logic lessons always think.')}
+        ${radio('wthink', 'on', w.think === 'on', 'All with thinking', 'Slower to write, and the brain learns to think first every time.')}
+        ${radio('wthink', 'off', w.think === 'off', 'None with thinking', 'Quickest. Maths and logic lessons still think.')}
+      </fieldset>
+      ${later('Pay-per-answer teachers', 'A big brain from a pay-per-answer service as the teacher. Your key, your bill, shown before it starts.')}
+      ${later('A big rented brain as the teacher', 'A rented card runs a brain too big for this replicant matrix.')}
+      ${wplan ? `<div class="lab-check" role="status">${wplan.problems.length ? `<p><strong>Before it can start:</strong></p><ul>${wplan.problems.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p><strong>Ready to write.</strong></p>'}${wplan.notes.map((x) => `<p class="muted">${esc(x)}</p>`).join('')}</div>` : ''}
+      <div class="row"><button type="button" class="get" data-write ${wplan && !wplan.problems.length && !running() ? '' : 'disabled'}>${running() ? 'The Lab is busy' : 'Write the lessons'}</button><button type="button" class="link" data-writeclose>Close</button></div>
+      <p class="muted">The teacher writes as a stand-in Bob with his instructions and tools, and none of your chats, notes or names. Nothing it asks for is really run.</p>
     </fieldset>`;
   }
 
@@ -86,12 +116,18 @@ export function createLab({ api, note }) {
       ${box('hearing', s.hearing, 'Take out hearing', f.hearing ? 'The sound reader is left behind. The brain can\'t hear sound any more; everything else is the same.' : '', f.hearing ? '' : 'This brain can\'t hear sound.')}
       ${box('cut', Boolean(cut), 'Cut experts', 'Keeps the experts your work uses and drops the rest. Without Teach it back (Lab 2) it loses some general knowledge first, so test it.', f.experts ? '' : 'This brain isn\'t a mixture-of-experts brain.')}
       ${cut ? `<div class="lab-sub">
-        ${radio('cuthow', 'busiest', cut.how === 'busiest', 'Keep the busiest experts', 'Counted on the lessons from step 2.')}
+        ${radio('cuthow', 'cover', cut.how === 'cover', 'Keep every skill covered (recommended)', 'Counts each skill in your lessons on its own and keeps the experts every skill needs, not only the busiest overall. It\'s how Bob\'s own brains are cut.')}
+        ${cut.how === 'cover' ? `<div class="lab-sub"><fieldset><legend>How much of each skill to keep</legend>
+          ${[[0.95, '95% (recommended)', 'Each skill keeps the experts that do 95% of its work, in every layer.'], [0.9, '90%', 'Smaller, but every skill loses a little more.'], [0.99, '99%', 'Bigger. Almost nothing is lost.']].map(([v, l, h]) => radio('cover', String(v), cut.cover === v, l, h)).join('')}
+        </fieldset>
+        ${plan?.skills?.length > 1 ? `<fieldset><legend>Protect these skills more (99%)</legend>${plan.skills.map((k) => `<label class="lab-opt"><input type="checkbox" data-strong="${esc(k)}" ${cut.strong?.includes(k) ? 'checked' : ''}> <span>${esc(k)}</span></label>`).join('')}</fieldset>` : ''}</div>` : ''}
+        ${radio('cuthow', 'busiest', cut.how === 'busiest', 'Keep the busiest experts', 'Counted on all the lessons from step 2 together.')}
         ${radio('cuthow', 'file', cut.how === 'file', 'Use an expert list I have', 'A keep list from an earlier cut (for example a *-keep.json).')}
-        ${later('Keep every skill covered (recommended)', 'Counts each skill on its own and keeps the experts every skill needs.')}
         ${cut.how === 'file' ? `<p><label>Expert list file <input id="lab-keep-file" type="text" value="${esc(cut.file)}"></label></p>` : ''}
-        <fieldset><legend>How many experts to keep per layer</legend>${cutSizes.map((c) => radio('keep', String(c.keep), cut.keep === c.keep, `${c.keep} experts · about ${c.gb} GB`, c.fit)).join('')}
-        <label class="lab-opt"><input type="radio" name="keep" value="custom" ${cutSizes.some((c) => c.keep === cut.keep) ? '' : 'checked'}> <span><strong>Custom</strong> <input id="lab-keep-n" type="number" min="${f.used || 1}" max="${(f.experts || 2) - 1}" value="${cut.keep}" aria-label="Experts to keep per layer"></span></label></fieldset>
+        <fieldset><legend>How many experts to keep per layer</legend>${cut.how === 'cover' ? radio('keep', 'auto', !cut.keep, 'As many as the skills need (recommended)', 'Bob works it out after counting. The report says how many, and how much of each skill stayed.') : ''}${cutSizes.map((c) => radio('keep', String(c.keep), cut.keep === c.keep, `${c.keep} experts · about ${c.gb} GB`, c.fit)).join('')}
+        <label class="lab-opt"><input type="radio" name="keep" value="custom" ${!cut.keep || cutSizes.some((c) => c.keep === cut.keep) ? '' : 'checked'}> <span><strong>Custom</strong> <input id="lab-keep-n" type="number" min="${f.used || 1}" max="${(f.experts || 2) - 1}" value="${cut.keep || ''}" aria-label="Experts to keep per layer"></span></label></fieldset>
+        ${box('try', s.try, 'Try it first, before cutting', `Brain Engine runs ${b?.name || 'the brain'} with only the kept experts switched on and gives it the Lab test, so you see the score before any file is written. It counts as the test of ${b?.name || 'the brain'} too.`, view.brainEngine ? '' : 'Needs Brain Engine, Bob\'s Lab engine (a version of llama.cpp that can switch experts off). It isn\'t ready to download yet; it comes in a later update.')}
+        ${s.try ? `<div class="lab-sub">${box('tryStop', s.tryStop, 'Stop if it scores more than 10 points lower on the Lab test', 'Then nothing is cut, and you can keep more experts or protect more skills.')}</div>` : ''}
       </div>` : ''}
       ${later('Layer cut (Experimental)', 'Fewer layers: the least-used ones, measured on your lessons.')}
       ${later('Width cut (Experimental)', 'A narrower brain. This one hurts most and needs the longest teach-back.')}
@@ -121,9 +157,13 @@ export function createLab({ api, note }) {
 
   function runsHtml() {
     if (!view.runs.length) return '';
-    return `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">from ${esc(x.from)} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
+    return `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.kind === 'write' ? `lessons, taught by ${esc(x.from)}` : `from ${esc(x.from)}`} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
       ${x.state === 'running' ? ' <button type="button" class="link" data-stop>Stop</button>' : ''}
       ${x.state === 'failed' || x.state === 'stopped' ? `<br><span class="muted">${esc(x.error || '')}</span>` : ''}
+      ${(x.notes || []).map((n) => `<br><span class="muted">${esc(n)}</span>`).join('')}
+      ${x.kind === 'write' && x.report ? `<br><span class="muted">${x.report.lessons} lessons written in ${x.report.minutes} minutes. Pick it in step 2, under A lesson set I wrote here.</span>` : ''}
+      ${x.report?.coverage ? `<table class="lab-report"><caption class="muted">Coverage cut: kept ${x.report.coverage.experts} of ${x.report.coverage.of} experts per layer</caption><tr><th scope="col">Skill</th><th scope="col">Kept, on average</th><th scope="col">Worst layer</th></tr>${x.report.coverage.skills.map((k) => `<tr><th scope="row">${esc(k.name)}</th><td>${k.average}%</td><td>${k.worst}% (layer ${k.worstLayer})</td></tr>`).join('')}</table>` : ''}
+      ${x.report?.tried ? `<br><span class="muted">Tried first on Brain Engine: ${x.report.tried.masked} with only the kept experts, ${x.report.tried.full} with all of them.</span>` : ''}
       ${x.report?.made ? `<table class="lab-report"><caption class="muted">Lab test (out of 100)</caption><tr><th scope="col"></th><th scope="col">${esc(x.name)}</th>${x.report.from ? `<th scope="col">${esc(x.from)}</th>` : ''}</tr>${Object.keys(PARTS).map((k) => `<tr><th scope="row">${esc(PARTS[k])}</th><td>${x.report.made.parts[k]?.score ?? '-'}</td>${x.report.from ? `<td>${x.report.from.parts[k]?.score ?? '-'}</td>` : ''}</tr>`).join('')}<tr><th scope="row">All</th><td>${x.report.made.score}</td>${x.report.from ? `<td>${x.report.from.score}</td>` : ''}</tr><tr><th scope="row">Size</th><td>${x.report.sizeGB} GB</td>${x.report.from ? `<td>${x.report.fromGB} GB</td>` : ''}</tr><tr><th scope="row">Words a second</th><td>${x.report.made.tps || '-'}</td>${x.report.from ? `<td>${x.report.from.tps || '-'}</td>` : ''}</tr></table>
         ${x.used ? '<span class="muted">In Bob, under Get models.</span>' : `<button type="button" class="get" data-use="${esc(x.id)}">Use in Bob</button>`}` : ''}</li>`).join('')}</ul></section>`;
   }
@@ -157,7 +197,7 @@ export function createLab({ api, note }) {
 
   body.addEventListener('change', async (e) => {
     const el = e.target; msg = '';
-    if (el.name === 'from') { r.from = el.value; const b = brain(); if (!r.name && b) r.name = `${b.name} Lab`; r.smaller = { sight: false, hearing: false, cut: null, files: [], measure: false }; r.template = ''; }
+    if (el.name === 'from') { r.from = el.value; const b = brain(); if (!r.name && b) r.name = `${b.name} Lab`; r.smaller = { sight: false, hearing: false, cut: null, files: [], measure: false, try: false, tryStop: true }; r.template = ''; }
     else if (el.id === 'lab-template') {
       const t = templateById(el.value), b = brain();
       if (!t) r.template = '';
@@ -165,8 +205,16 @@ export function createLab({ api, note }) {
     }
     else if (el.dataset.measure) { picked = el.checked ? [...new Set([...picked, el.dataset.measure])] : picked.filter((x) => x !== el.dataset.measure); saved = ''; try { table = picked.length >= 2 ? (await api('/api/lab/compare', { ids: picked })).table : null; } catch (err) { msg = err.message; table = null; } return draw(); }
     else if (el.name === 'lessons') r.lessons.kind = el.value;
-    else if (el.name === 'cuthow') r.smaller.cut.how = el.value;
-    else if (el.name === 'keep') { if (el.value !== 'custom') r.smaller.cut.keep = Number(el.value); }
+    else if (el.id === 'lab-lessons-set') r.lessons.set = el.value;
+    else if (el.id === 'lab-w-name') w.name = el.value;
+    else if (el.id === 'lab-w-teacher') { w.teacher = el.value; if (!w.name) { const t = view.brains.find((b) => b.id === el.value); if (t) w.name = `Lessons from ${t.name}`.slice(0, 60); } }
+    else if (el.dataset.wskill) { const k = el.dataset.wskill; w.skills = el.checked ? [...new Set([...w.skills, k])] : w.skills.filter((x) => x !== k); }
+    else if (el.id === 'lab-w-count' || el.id === 'lab-w-count-n') w.count = Number(el.value);
+    else if (el.name === 'wthink') w.think = el.value;
+    else if (el.name === 'cuthow') { r.smaller.cut.how = el.value; if (el.value === 'cover') { r.smaller.cut.cover = r.smaller.cut.cover || 0.95; r.smaller.cut.strong = r.smaller.cut.strong || []; r.smaller.cut.keep = 0; } else if (!r.smaller.cut.keep) r.smaller.cut.keep = brain()?.cuts?.[1]?.keep || brain()?.cuts?.[0]?.keep || 8; }
+    else if (el.name === 'cover') r.smaller.cut.cover = Number(el.value);
+    else if (el.dataset.strong) { const k = el.dataset.strong; r.smaller.cut.strong = el.checked ? [...new Set([...(r.smaller.cut.strong || []), k])] : (r.smaller.cut.strong || []).filter((x) => x !== k); }
+    else if (el.name === 'keep') { if (el.value === 'auto') r.smaller.cut.keep = 0; else if (el.value !== 'custom') r.smaller.cut.keep = Number(el.value); }
     else if (el.id === 'lab-keep-n') r.smaller.cut.keep = Number(el.value);
     else if (el.id === 'lab-chunks' || el.id === 'lab-chunks-n') r.lessons.chunks = Number(el.value);
     else if (el.id === 'lab-name') r.name = el.value;
@@ -176,9 +224,11 @@ export function createLab({ api, note }) {
     else if (el.dataset.k) {
       const k = el.dataset.k;
       if (k === 'sight' || k === 'hearing') r.smaller[k] = el.checked;
-      else if (k === 'cut') r.smaller.cut = el.checked ? { how: 'busiest', keep: brain()?.cuts?.[1]?.keep || brain()?.cuts?.[0]?.keep || 8, file: '' } : null;
+      else if (k === 'cut') r.smaller.cut = el.checked ? { how: 'cover', keep: 0, cover: 0.95, strong: [], file: '' } : null;
       else if (k === 'compare') r.test.compare = el.checked;
       else if (k === 'measure') r.smaller.measure = el.checked;
+      else if (k === 'try') { r.smaller.try = el.checked; r.smaller.tryStop = el.checked; }
+      else if (k === 'tryStop') r.smaller.tryStop = el.checked;
       else if (k.startsWith('file:')) { const t = k.slice(5); const first = !r.smaller.files.length; r.smaller.files = el.checked ? [...new Set([...r.smaller.files, t])] : r.smaller.files.filter((x) => x !== t); if (first && el.checked && r.lessons.kind !== 'none') r.smaller.measure = true; if (!r.smaller.files.length) r.smaller.measure = false; }
     }
     await replan();
@@ -186,6 +236,8 @@ export function createLab({ api, note }) {
   body.addEventListener('input', (e) => { // the slider and its number box move together
     if (e.target.id === 'lab-chunks') { const n = $('lab-chunks-n'); if (n) n.value = e.target.value; }
     if (e.target.id === 'lab-chunks-n') { const s = $('lab-chunks'); if (s) s.value = e.target.value; }
+    if (e.target.id === 'lab-w-count') { const n = $('lab-w-count-n'); if (n) n.value = e.target.value; }
+    if (e.target.id === 'lab-w-count-n') { const s = $('lab-w-count'); if (s) s.value = e.target.value; }
   });
   body.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return;
@@ -196,9 +248,15 @@ export function createLab({ api, note }) {
     if ('recipe' in b.dataset) { showRecipe = !showRecipe; return draw(); }
     if ('copy' in b.dataset) { try { await navigator.clipboard.writeText(plan?.text || ''); b.textContent = 'Copied'; } catch { b.textContent = 'Couldn\'t copy'; } return; }
     if ('nounload' in b.dataset) { askUnload = null; return draw(); }
+    if ('writeopen' in b.dataset) { writing = true; await replan(); $('lab-w-name')?.focus(); return; }
+    if ('writeclose' in b.dataset) { writing = false; wplan = null; return draw(); }
     if ('csv' in b.dataset || 'json' in b.dataset) { try { saved = (await api('/api/lab/compare', { ids: picked, save: 'csv' in b.dataset ? 'csv' : 'json' })).file; } catch (err) { msg = err.message; } return draw(); }
     try {
-      if ('start' in b.dataset || 'unload' in b.dataset) {
+      if ('write' in b.dataset || (askUnload?.write && 'unload' in b.dataset)) {
+        const res = await api('/api/lab/write', { write: w, unload: 'unload' in b.dataset });
+        if (res.needUnload) { askUnload = Object.assign(res.names, { write: true }); return draw(); }
+        askUnload = null; writing = false; wplan = null;
+      } else if ('start' in b.dataset || 'unload' in b.dataset) {
         const res = await api('/api/lab/start', { recipe: r, unload: 'unload' in b.dataset });
         if (res.needUnload) { askUnload = res.names; return draw(); }
         askUnload = null;

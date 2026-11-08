@@ -4,10 +4,12 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readGguf, brainFacts, readerFacts, writeGguf, checkKeep, busiest, isHearingTensor, readCounts } from '../src/lab-gguf.js';
-import { Lab, cleanRecipe, planRecipe, labRoom, labOn, cutSizes, fitWords, mergeMadeBrains, labRoute, RUNNING_TYPES , measureRecord, sha256File, compareTable, compareCsv } from '../src/lab.js';
+import { readGguf, brainFacts, readerFacts, writeGguf, checkKeep, busiest, isHearingTensor, readCounts, coverageKeep } from '../src/lab-gguf.js';
+import { Lab, maskFor, cleanWrite, teacherLicence, lessonSets, cleanRecipe, planRecipe, labRoom, labOn, cutSizes, fitWords, mergeMadeBrains, labRoute, RUNNING_TYPES , measureRecord, sha256File, compareTable, compareCsv } from '../src/lab.js';
 import { TEMPLATES, TEMPLATE_IDS, templateById, templateWhyNot, applyTemplate } from '../public/lab-templates.js';
 import crypto from 'node:crypto';
+import http from 'node:http';
+import { LESSON_SKILLS } from '../src/lab-skills.js';
 import { QUIZ, TOOLS, runQuiz } from '../src/lab-test.js';
 
 let pass = 0, fail = 0;
@@ -132,6 +134,20 @@ check('Measure without lessons is refused, in words', plan({ name: 'x', smaller:
 check('Measure with an expert list still gathers the lessons first', plan({ name: 'x', lessons: { kind: 'chats' }, smaller: { files: ['Q4_K_M'], measure: true } }).steps[0].id === 'lessons');
 check('Measure is off unless ticked', cleanRecipe({ smaller: { files: ['Q4_K_M'] } }).smaller.measure === false);
 
+// ---- Lab 2a: keep every skill covered ----
+const cov = coverageKeep([{ name: 'a', counts: [[10, 0, 0, 0, 1, 1], [0, 0, 5, 5, 0, 0]] }, { name: 'b', counts: [[0, 10, 0, 0, 0, 0], [0, 0, 0, 0, 9, 1]] }], { cover: 0.9 });
+check('the coverage cut keeps what every skill needs, one size for all layers (the Forge\'s keep.py rule)', JSON.stringify(cov.keep) === '[[0,1,4],[2,3,4]]' && cov.K === 3 && cov.shares.every((x) => x.worst >= 0.9));
+check('a protected skill keeps more', coverageKeep([{ name: 'a', counts: [[10, 0, 0, 0, 1, 1]] }, { name: 'b', counts: [[0, 10, 0, 0, 0, 0]] }], { cover: 0.9, strong: ['a'], strongCover: 0.99 }).keep[0].length === 4);
+check('the coverage size can be set, and never drops under the picks', coverageKeep([{ name: 'a', counts: [[10, 9, 8, 7, 6, 5]] }], { cover: 0.5, keep: 5 }).keep[0].length === 5 && coverageKeep([{ name: 'a', counts: [[10, 0, 0, 0, 0, 0]] }], { cover: 0.5, min: 2 }).K === 2);
+const skillFile = path.join(tmp, 'skills-lessons.jsonl');
+fs.writeFileSync(skillFile, ['coding', 'chat', 'tools'].flatMap((job) => Array.from({ length: 40 }, (_, i) => JSON.stringify({ job, messages: [{ role: 'user', content: `${job} question ${i} `.repeat(20) }, { role: 'assistant', content: `${job} answer ${i} `.repeat(20) }] }))).join('\n'));
+const covPlan = plan({ name: 'Covered', lessons: { kind: 'file', file: skillFile }, smaller: { cut: { how: 'cover', cover: 0.95, strong: ['coding'] } } });
+check('a coverage recipe counts each skill on its own', covPlan.problems.length === 0 && covPlan.steps.filter((x) => x.id === 'count').map((x) => x.skill).join() === 'coding,chat,tools' && covPlan.steps[0].corpora.length === 3, covPlan.problems.join(' | '));
+check('the coverage size can be left to the skills', cleanRecipe({ smaller: { cut: { how: 'cover' } } }).smaller.cut.keep === 0 && /every skill needs/.test(covPlan.steps.find((x) => x.id === 'cut').label));
+check('protecting a skill the lessons don\'t have is refused', plan({ name: 'x', lessons: { kind: 'file', file: skillFile }, smaller: { cut: { how: 'cover', strong: ['juggling'] } } }).problems.some((x) => /no skill called juggling/.test(x)));
+check('chats are one skill, and the plan says so', plan({ name: 'x', lessons: { kind: 'chats' }, smaller: { cut: { how: 'cover' } } }).notes.some((x) => /one skill/.test(x)));
+check('a coverage cut needs lessons', plan({ name: 'x', smaller: { cut: { how: 'cover' } } }).problems.some((x) => /count each skill/.test(x)));
+
 // ---- Lab 1b: the measurement record and Compare ----
 const rec = measureRecord({ name: 'A', sha256: 'ab', facts: { fileType: 'Q4_K_M', experts: 192 }, sizeGB: 16.2, template: 'plain-cut', parent: 'Big', test: { parts: { general: { score: 100 }, tools: { score: 50 } }, score: 75, tps: 77.4, prefillTps: 900, where: 'card', engine: 'Brain Engine' }, cfg: { gpuVramGB: 16 }, when: Date.UTC(2026, 10, 8) });
 check('the record has the design\'s shape', rec.brain.sha256 === 'ab' && rec.brain.quant === 'Q4_K_M' && rec.brain.expertsKept === 192 && rec.brain.parent === 'Big' && rec.where.place === 'home' && rec.where.card === '16 GB card' && rec.where.engine === 'Brain Engine' && rec.when === '2026-11-08' && rec.scores['General knowledge'] === 100 && rec.scores['Lab test (all)'] === 75 && rec.speed.tps === 77.4 && rec.speed.prefillTps === 900);
@@ -181,12 +197,73 @@ check('Compare finds both records', ms.length === 2 && ms.some((m) => m.parentOf
 const cmp = lab.compare(ms.map((m) => m.id), 'csv');
 check('Save as CSV writes a file in the Lab\'s compare folder', fs.existsSync(cmp.file) && path.basename(path.dirname(cmp.file)) === 'compare' && /Lab test \(all\)/.test(fs.readFileSync(cmp.file, 'utf8')));
 check('Compare needs two brains', (() => { try { lab.compare([ms[0].id]); return false; } catch (e) { return /at least two/.test(e.message); } })());
+const covLab = new Lab(cfg, { shop, room: big, steps: { count: async (s) => { fs.copyFileSync(countsFile, s.counts); }, test: async () => fakeQuiz(60) } });
+await covLab.start({ name: 'Cover Test', from: 'test-moe', lessons: { kind: 'file', file: skillFile }, smaller: { cut: { how: 'cover', cover: 0.9 } }, test: { compare: false } });
+while (covLab.job) await new Promise((r) => setTimeout(r, 20));
+const cd = covLab.runs.at(-1);
+check('a coverage job cuts to what the skills need and reports each skill', cd.state === 'done' && cd.report.coverage?.skills.length === 3 && brainFacts(readGguf(cd.files.gguf)).experts === cd.report.coverage.experts && cd.report.coverage.experts < 8, cd.error || JSON.stringify(cd.report?.coverage));
+check('the coverage keep list names its rule and skills', (() => { const k = JSON.parse(fs.readFileSync(path.join(path.dirname(cd.files.gguf), 'cover-test-keep.json'), 'utf8')); return k.cover === 0.9 && k.skills.join() === 'coding,chat,tools' && k.layers.length === 2; })());
 check('the page heard each step', events.filter((e) => e.type === 'lab').length >= 7 && events.some((e) => e.type === 'lab-done' && e.ok));
 const used = lab.use(done.id);
 check('Use in Bob gives it an id Bob\'s engine runs', used.id === 'lab-little-test' && cfg.llamacpp.models['lab-little-test'].gguf === done.files.gguf);
 check('it shows in the catalogue next to its family, with no download', catalog.models.some((m) => m.id === 'lab-little-test' && m.madeInLab && m.family === 'Test' && m.files.length === 0 && /Lab test: 70 out of 100 \(Test MoE: 80\)/.test(m.what)));
 check('a merged catalogue isn\'t merged twice', mergeMadeBrains(catalog, cfg).models.filter((m) => m.id === 'lab-little-test').length === 1);
 check('the same name can\'t be made twice', lab.plan(recipe).problems.some((x) => /already have a Lab brain/.test(x)));
+// ---- Lab 2a: write a new lesson set (a fake teacher answers; the real writer process builds a throwaway Bob) ----
+check('the writer\'s choices are cleaned', (() => { const w = cleanWrite({ name: 'x\ny', skills: ['tools', 'nope', 'tools'], count: 5, think: 'maybe' }); return w.name === 'x y' && w.skills.join() === 'tools' && w.count === 100 && w.think === 'half' && cleanWrite({ count: 99999 }).count === 20000; })());
+check('Apache and MIT teachers may teach; a non-commercial one may not; an unknown one is a note', teacherLicence('Apache 2.0').ok && !teacherLicence('Apache 2.0').note && teacherLicence('MIT').ok && !teacherLicence('CC BY-NC 4.0').ok && teacherLicence('').ok && /model card/.test(teacherLicence('').note));
+check('every skill has a label, a hint and what to write about', LESSON_SKILLS.length >= 10 && LESSON_SKILLS.every((k) => k.id && k.label && k.hint && k.what));
+const pw = lab.planWrite({ name: '', teacher: 'nope', skills: [] });
+check('the lesson writer finds itself from a folder with a space in it (fileURLToPath, never a URL\'s pathname)', /fileURLToPath\(import\.meta\.url\)/.test(fs.readFileSync(new URL('../src/lab-write.js', import.meta.url), 'utf8')) && !/new URL\(import\.meta\.url\)\.pathname/.test(fs.readFileSync(new URL('../src/lab-write.js', import.meta.url), 'utf8')));
+check('writing lessons needs a name, a teacher and a skill', pw.problems.length === 3);
+check('the page gets the skills and the lesson sets', lab.view().lessonSkills.length === LESSON_SKILLS.length && Array.isArray(lab.view().lessonSets));
+let teacherCalls = 0;
+const teacher = http.createServer((req, res) => {
+  let b = ''; req.on('data', (d) => (b += d)); req.on('end', () => {
+    teacherCalls++;
+    const j = JSON.parse(b), last = j.messages.at(-1);
+    let msg;
+    if (/Write 25 different messages/.test(last.content || '')) msg = { content: JSON.stringify(Array.from({ length: 25 }, (_, i) => `please set reminder number ${i} for ${teacherCalls}`)) };
+    else if (/You are the "/.test(last.content || '')) msg = { content: 'Reminder set for 3pm.' };
+    else if (j.tools?.length && last.role === 'user') msg = { content: '', tool_calls: [{ id: 'c1', type: 'function', function: { name: j.tools[0].function.name, arguments: '{}' } }] };
+    else msg = { content: 'All set.', reasoning_content: j.chat_template_kwargs?.enable_thinking ? 'Thinking it over.' : undefined };
+    res.end(JSON.stringify({ choices: [{ message: msg }] }));
+  });
+});
+await new Promise((r) => teacher.listen(0, '127.0.0.1', r));
+const wLab = new Lab(cfg, { shop, room: big, steps: { serve: async () => ({ url: `http://127.0.0.1:${teacher.address().port}`, stop: () => {} }) } });
+const ws = await wLab.startWrite({ name: 'Reminder Lessons', teacher: 'test-moe', skills: ['tools', 'chat'], count: 120, think: 'half' });
+check('the writing job starts', ws.started?.state === 'running' && ws.started.kind === 'write');
+while (wLab.job) await new Promise((r) => setTimeout(r, 50));
+const wd = wLab.runs.at(-1);
+const lessonsOut = path.join(dataDir, 'lab', 'lessons', 'reminder-lessons', 'lessons.jsonl');
+const written = fs.existsSync(lessonsOut) ? fs.readFileSync(lessonsOut, 'utf8').trim().split('\n').map((x) => JSON.parse(x)) : [];
+check('the writer writes the lessons asked for', wd.state === 'done' && wd.report.lessons === 120 && written.length === 120, wd.error || '');
+check('each lesson is one Bob turn with his real system prompt\'s tools, a skill and a tool result', written.every((l) => ['tools', 'chat'].includes(l.job) && l.messages[0].role === 'user' && l.messages.at(-1).role === 'assistant') && written.some((l) => l.messages.some((m) => m.role === 'tool')));
+check('about half think, and the thinking is kept', written.some((l) => l.think && l.messages.at(-1).reasoning_content) && written.some((l) => !l.think));
+check('the lesson set is listed for step 2, with its skills', (() => { const set = lessonSets(cfg).find((x) => x.name === 'Reminder Lessons'); return set && set.count === 120 && set.done && set.skills.join() === 'tools,chat'; })());
+check('a coverage cut can count each written skill', (() => { const p = wLab.plan({ name: 'From Written', from: 'test-moe', lessons: { kind: 'file', file: lessonsOut }, smaller: { cut: { how: 'cover' } } }); return p.skills.sort().join() === 'chat,tools'; })());
+const again = wLab.planWrite({ name: 'Reminder Lessons', teacher: 'test-moe', skills: ['tools'] });
+check('the same name and teacher carries on instead of starting over', !again.problems.length && again.notes.some((n) => /carries on/.test(n)));
+teacher.close();
+// ---- Lab 2a: Try it first on Brain Engine (fake engine steps) ----
+check('Brain Engine\'s mask has one entry per layer, null where a layer has no experts', JSON.stringify(maskFor([undefined, [1, 2]], { layers: 3 })) === '[null,[1,2],null]');
+const tryRecipe = (name, extra = {}) => ({ name, from: 'test-moe', lessons: { kind: 'chats' }, smaller: { cut: { how: 'busiest', keep: 4 }, try: true, ...extra }, test: { compare: true } });
+check('Try it first needs Brain Engine on this replicant matrix', lab.plan(tryRecipe('Try A')).problems.some((x) => /Brain Engine/.test(x)));
+fs.mkdirSync(path.join(tmp, 'brain-engine'), { recursive: true }); fs.writeFileSync(path.join(tmp, 'brain-engine', exe('llama-server')), '');
+const tp = lab.plan(tryRecipe('Try A'));
+check('with Brain Engine, the try comes before the cut and replaces the separate compare test', !tp.problems.length && tp.steps.findIndex((x) => x.id === 'try') === tp.steps.findIndex((x) => x.id === 'cut') - 1 && !tp.steps.some((x) => x.id === 'compare'), JSON.stringify(tp.problems));
+let masks = [];
+const tryLab = (masked) => new Lab(cfg, { shop, room: big, steps: { count: async (s) => { fs.copyFileSync(countsFile, s.counts); }, try: async (s, { keep }) => { masks.push(keep); return { full: fakeQuiz(80), masked: fakeQuiz(masked) }; }, test: async () => fakeQuiz(72) } });
+const tl1 = tryLab(50); await tl1.start(tryRecipe('Try Worse')); while (tl1.job) await new Promise((r) => setTimeout(r, 20));
+const t1 = tl1.runs.at(-1);
+check('much worse when tried: it stops before cutting', t1.state === 'failed' && /stopped before cutting/.test(t1.error) && t1.report?.tried?.masked === 50 && !fs.existsSync(path.join(cfg.bobModelsDir, 'lab', 'try-worse', 'try-worse-4x.gguf')), t1.error);
+check('the mask sent has the 4 kept experts in every expert layer', masks[0]?.filter(Boolean).every((x) => x.length === 4) && masks[0].length === brainFacts(readGguf(brainFile)).layers);
+const tl2 = tryLab(75); await tl2.start(tryRecipe('Try Fine')); while (tl2.job) await new Promise((r) => setTimeout(r, 20));
+const t2 = tl2.runs.at(-1);
+check('close enough when tried: it cuts, and the full score is the one to compare with', t2.state === 'done' && t2.report.tried.full === 80 && t2.report.tried.masked === 75 && t2.report.from.score === 80 && t2.report.made.score === 72, t2.error || '');
+const tl3 = tryLab(40); await tl3.start(tryRecipe('Try Anyway', { tryStop: false })); while (tl3.job) await new Promise((r) => setTimeout(r, 20));
+check('with Stop unticked it carries on anyway', tl3.runs.at(-1).state === 'done');
 check('Gaming on: the Lab waits', await new Lab({ ...cfg, session: 'light' }, { shop, room: big }).start({ ...recipe, name: 'Other' }).then(() => false, (e) => /Gaming is on/.test(e.message)));
 check('Lab off: nothing starts', await new Lab({ ...cfg, computerLab: false }, { shop, room: big }).start({ ...recipe, name: 'Other' }).then(() => false, (e) => /Computer Science Lab is off/.test(e.message)));
 const busyEngine = { engine: { loaded: async () => [{ name: 'gemma4:26b', vram: 9e9 }], unloadAll: async () => { busyEngine.unloaded = true; } } };
@@ -212,7 +289,7 @@ check('saving a comparison only from this replicant matrix', sent[2][0] === 403)
 await labRoute({ req: fakeReq('POST'), res: {}, p: '/api/lab/compare', isLocal: false, lab, body: async () => ({ ids: ms.map((m) => m.id) }), send: (res, code, j) => sent.push([code, j]) });
 check('looking at a comparison works from another device', sent[3][0] === 200 && sent[3][1].table.rows.length > 0);
 await labRoute({ req: fakeReq('GET'), res: {}, p: '/api/lab/measures', isLocal: true, lab, body: async () => ({}), send: (res, code, j) => sent.push([code, j]) });
-check('the measures list has no file contents or paths', sent[4][0] === 200 && sent[4][1].measures.length === 3 && !JSON.stringify(sent[4][1]).includes(tmp) && !('rec' in sent[4][1].measures[0]));
+check('the measures list has no file contents or paths', sent[4][0] === 200 && sent[4][1].measures.length === lab.measures().length && !JSON.stringify(sent[4][1]).includes(tmp) && !('rec' in sent[4][1].measures[0]));
 
 // The quiz, against a fake server.
 const fakeFetch = globalThis.fetch;
