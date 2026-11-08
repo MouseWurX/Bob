@@ -163,14 +163,14 @@ From this entry on he is just **Riker** (28Bob Riker); "v3" was the name of the 
 - **Long-document needle test**: one fact at 25, 50 and 75% depth in 8K, 32K, 64K and 128K windows (prompts of about 7.1K, 27.9K, 55.9K and 111.6K tokens). Riker at Q3: 12/12. Full Qwen at Q4: 12/12. A 128K window fits a 16 GB card with partial offload.
 - **Reading**: the clean coding lessons worked (best Bob at code so far, level with the full model on the quick test, still below it on the long race). Tools level with v1 and v2. Two short-fact answers lost, to watch on Bill. Long context unharmed, as expected: it lives in the attention layers, which the cut does not touch. Slower than v2 because the bigger file spills further off the card.
 - **Speed note for the next run**: the pod lacked working `causal-conv1d` and `flash-linear-attention` kernels, so Qwen3.6's linear-attention layers ran the slow path for the whole teacher pass and heal (build 15, item 2).
-- **Decision**: keep Riker. Riker v1, Bill v1, Riker v2 and Bill v2 are retired and their files deleted. Next: 20Bob Bill at 144 from the teacher, with the full rule, when the owner gives the word.
+- **Decision**: keep Riker. Riker v1, Bill v1, Riker v2 and Bill v2 are retired and their files deleted. Next: one combined run (lessons, 35Bob Bobert, then 20Bob Bill cut from Bobert with the full rule), when the owner gives the word; see the build 17 entry.
 
 ## 5. Running tallies
 
 | | Count |
 |---|---|
 | Bobs made | 5: Riker v1, Bill v1, Riker v2, Bill v2 (all four retired and deleted 8 Nov), and Riker (28Bob) |
-| Bobs that are the current plan | Riker (28Bob), kept; Bill (20Bob) next |
+| Bobs that are the current plan | Riker (28Bob), kept; Bobert (35Bob) and Bill (20Bob) next |
 | Failed paid attempts | 4 (three on 4 to 5 Nov, one on 6 Nov) plus the stopped Bill step of 6 to 7 Nov |
 | Lessons written | about 9,500 across 17 sets |
 | Card time | on the costs page |

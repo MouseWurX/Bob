@@ -38,7 +38,7 @@ The total is taken from the rental service's statement; the lines above are roun
 
 ## Projected: the rest of the family
 
-> **Revised 8 November 2026.** The first cut rule protected no skill and the coding lessons were weak (see [What went wrong with the first cut](BOBS-OWN-MODELS.md#what-went-wrong-with-the-first-cut)), so Riker and Bill are cut and healed again before Homer, with new lessons. Riker is done and paid for ($51.79, above). Bill is next; his teacher pass has to be run again because the first one's scores were lost with the card, so his line is an estimate of about 2.5 hours of teacher pass plus about 5 hours of heal on an H200.
+> **Revised 8 November 2026.** The first cut rule protected no skill and the coding lessons were weak (see [What went wrong with the first cut](BOBS-OWN-MODELS.md#what-went-wrong-with-the-first-cut)), so Riker and Bill are cut and healed again before Homer, with new lessons. Riker is done and paid for ($51.79, above). Next is one combined run, waiting on the owner's yes: about 9,000 more lessons written on the card, one teacher pass, **35Bob Bobert** (the full model trained on every lesson, no cut) in a full pass of about 16 hours, then 20Bob Bill cut from Bobert and healed. The rungs below follow the current plan, a ladder of six redrawn on 6 November after the coverage table: Mario and Goku are dropped and Luke moves to 7Bob.
 
 These are estimates. They assume one full-pass heal with nothing trimmed at the 16k lesson length, about 5 to 5.5 hours of card time per rung, at by-the-hour rental rates from November 2026 that move weekly; each line is re-checked on the day it is rented.
 
@@ -46,16 +46,15 @@ These are estimates. They assume one full-pass heal with nothing trimmed at the 
 
 | Rung | Nickname | Experts kept per layer | Card | Projected |
 |---|---|---|---|---|
+| 35Bob | Bobert | 256, no cut: the teacher trained on every lesson | one combined run with Bill and about 9,000 new lessons: H200, 24 to 26 h | about $135 (with Bill) |
 | 28Bob | Riker | 208, coverage cut | done (above) | $0 |
-| 20Bob | Bill | 144, coverage cut, from the teacher with a keep list built on the owner's PC | H200 | $30 to $45 |
-| 12Bob | Homer | 80 | H200 | $29 |
+| 20Bob | Bill | 144, coverage cut, cut from Bobert | same run | included above |
+| 14Bob | Homer | 96 | H200 | $29 |
 | 10Bob | Milo | 64 | H100 | $20 |
-| 8Bob | Mario | 48 | H100 | $20 |
-| 6Bob | Luke | 32 | H100 | $20 |
-| 5Bob | Calvin | 24 | H100 | $20 |
-| 4Bob | Goku | 16 | H100 | $20 |
-| 2Bob | Bender | 8, plus depth and width cuts | H100, longest heal | $30 to $40 |
-| | **Line B, remaining rungs** | | | **$189 to $214** |
+| 7Bob | Luke | 40 | H100 | $20 |
+| 5Bob | Calvin | 24, kept only if it beats a stock 4B model | H100 | $20 |
+| 2Bob | Bender | 8, plus depth and width cuts (a stretch goal) | H100, longest heal | $30 to $40 |
+| | **Line B, remaining rungs** | | | **$254 to $264** |
 
 ### Specialists (line B, each cut from the general Bob one size up with its own expert count)
 
@@ -73,15 +72,13 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 
 | Rung | Nickname | Card | Projected |
 |---|---|---|---|
-| 24Bob Riker A and 18Bob Bill A, re-healed with full passes | | H100 or H200 | $60 |
-| 12Bob Homer A | Homer | H200 | $29 |
+| 28Bob Riker A and 20Bob Bill A, healed with full passes | | H100 or H200 | $60 |
+| 14Bob Homer A | Homer | H200 | $29 |
 | 10Bob Milo A | Milo | H100 | $20 |
-| 8Bob Mario A | Mario | H100 | $20 |
-| 6Bob Luke A | Luke | H100 | $20 |
+| 7Bob Luke A | Luke | H100 | $20 |
 | 5Bob Calvin A | Calvin | H100 | $20 |
-| 4Bob Goku A | Goku | H100 | $20 |
 | 2Bob Bender A | Bender | H100 | $30 to $40 |
-| | **Line A, total if kept** | | **$219 to $229** |
+| | **Line A, total if kept** | | **$179 to $189** |
 
 ### Other projected costs
 
@@ -110,12 +107,12 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 | | Low | High |
 |---|---|---|
 | Spent so far (above) | $733.90 | $733.90 |
-| Line B remaining rungs (Homer to Bender) | $159 | $169 |
-| 20Bob Bill, re-made with the coverage cut | $30 | $45 |
+| Line B remaining rungs (Homer to Bender) | $119 | $129 |
+| New lessons, 35Bob Bobert and 20Bob Bill (one combined run) | $135 | $135 |
 | Specialists (four, with their lessons) | $100 | $100 |
 | Rented network drive, about 2 more months | $14 | $14 |
 | Re-runs allowed (one per rung if a heal scores badly) | $0 | $60 |
 | Claude subscription while the family is finished, about 1 more month | $200 | $200 |
-| **Projected total, line B complete** | **about $1,237** | **about $1,322** |
-| Line A as well, if the comparison after Homer earns it | +$219 | +$229 |
-| **Projected total, both lines** | **about $1,456** | **about $1,551** |
+| **Projected total, line B complete** | **about $1,302** | **about $1,372** |
+| Line A as well, if the comparison after Homer earns it | +$179 | +$189 |
+| **Projected total, both lines** | **about $1,481** | **about $1,561** |

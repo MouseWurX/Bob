@@ -4,32 +4,31 @@
 
 *Tested, not yet released. This page is the plan, the method and the results so far, including the mistakes. It is updated as each model lands. No downloads yet: the whole family goes up together when it is complete.*
 
-> **8 November 2026: the re-cut Riker (28Bob) is made, benchmarked and kept.** He codes better than any Bob before him (9 of 13 on the coding race, 6 of 6 on the quick code test, against the full model's 12 and 6), keeps tool calls level, and finds a fact in a 128K-token document every time; see [28Bob Riker](#28bob-riker-the-one-that-stays). The first four Bobs are retired and deleted. Bill is next.
+> **8 November 2026: the re-cut Riker (28Bob) is made, benchmarked and kept.** He codes better than any Bob before him (9 of 13 on the coding race, 6 of 6 on the quick code test, against the full model's 12 and 6), keeps tool calls level, and finds a fact in a 128K-token document every time; see [28Bob Riker](#28bob-riker-the-one-that-stays). The first four Bobs are retired and deleted. Next is one run that makes Bobert (35Bob, the full model trained on every lesson) and Bill (20Bob, cut from Bobert); the first release will be those three.
 
 > **6 November 2026: the first four Bobs will be re-cut and re-healed.** Two findings: the coding lesson set mostly taught the model to hand code off rather than write it (the main cause of the v2 coding gap), and the cut rule protected no skill in particular, which turned out to matter less than feared but is fixed anyway, with a measured table below of what every size keeps. What happened, why, and the corrected rule are in [What went wrong with the first cut](#what-went-wrong-with-the-first-cut). The costs page carries the price of doing it again.
 
-Bob borrows his brains from other people's models. The best of them for a 16 GB graphics card, Qwen3.6-35B-A3B, is also too big for most of the devices Bob runs on: a gaming handheld with 8 GB to spare, a laptop with a 6 GB card, a phone, a Raspberry Pi. So we are making Bob a family of his own: **the same big model with its least-used parts cut away, then retrained with the big model as its teacher**, at sizes from 28 billion parameters down to 2. Every size keeps Bob's tool calls, his thinking on/off switch and his eyes (vision), and every size is called a Bob.
+Bob borrows his brains from other people's models. The best of them for a 16 GB graphics card, Qwen3.6-35B-A3B, is also too big for most of the devices Bob runs on: a gaming handheld with 8 GB to spare, a laptop with a 6 GB card, a phone, a Raspberry Pi. So we are making Bob a family of his own: **the same big model with its least-used parts cut away, then retrained with the big model as its teacher**, at sizes from 35 billion parameters down to 2. Every size keeps Bob's tool calls, his thinking on/off switch and his eyes (vision), and every size is called a Bob.
 
-The models are made from [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) by Alibaba's Qwen team, released under the Apache 2.0 licence, and each one will ship with that licence and a note saying it was modified. The Qwen name is not used as a brand: the models are called 28Bob, 20Bob and so on, "made from Qwen3.6-35B-A3B".
+The models are made from [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) by Alibaba's Qwen team, released under the Apache 2.0 licence, and each one will ship with that licence and a note saying it was modified. The Qwen name is not used as a brand: the models are called 35Bob, 28Bob and so on, "made from Qwen3.6-35B-A3B".
 
 The family's names come from a reading habit. Bob is inspired by the wonderful books of Dennis E. Taylor. Not affiliated with or endorsed by the author.
 
 ## The family
 
-Qwen3.6-35B-A3B is a mixture-of-experts model: each of its 40 layers holds 256 small networks ("experts"), and for every word it writes a router picks 8 of them. That is why it has 35 billion parameters but only about 3 billion working at once, and why it is fast. Many experts are rarely picked for the work Bob does. Keep only the busiest, and the model shrinks a lot while the parts that matter stay. The about-2-billion non-expert parts (word list, attention, router) stay in every Bob, and each expert kept per layer adds about 0.12 billion. That sets the ladder:
+Qwen3.6-35B-A3B is a mixture-of-experts model: each of its 40 layers holds 256 small networks ("experts"), and for every word it writes a router picks 8 of them. That is why it has 35 billion parameters but only about 3 billion working at once, and why it is fast. Many experts are rarely picked for the work Bob does. Keep only the busiest, and the model shrinks a lot while the parts that matter stay. The about-2-billion non-expert parts (word list, attention, router) stay in every Bob, and each expert kept per layer adds about 0.12 billion. That sets the ladder. This is the current plan: the first ladder had nine rungs from 24Bob down, was redrawn on 6 November after the coverage table below, and gained Bobert on top on 8 November.
 
 | Model | Nickname | Experts kept per layer (of 256) | File at Q4 | Meant for |
 |---|---|---|---|---|
 | Qwen3.6-35B-A3B (the teacher) | | 256 | 22.4 GB | a 16 GB card with experts spilling into RAM |
+| **35Bob** | Bobert | 256, no cut: the teacher trained on every lesson | ~21 GB (Q3 ~17 GB) | 24 GB cards, or a 16 GB card with experts in RAM; the teacher of every Bob below him |
 | **28Bob** | Riker | 208 | 17.5 GB (Q3 13.9 GB) | a 16 GB card with some experts in RAM, or the Q3 file: the everyday brain. Made and kept. |
 | **20Bob** | Bill | 144 | ~12.7 GB | a 16 GB card entirely, with room for long chats |
-| **12Bob** | Homer | 80 | ~7.5 GB | 8 GB cards and gaming handhelds |
-| **10Bob** | Milo | 64 | ~6.3 GB | 8 GB cards with room to spare |
-| **8Bob** | Mario | 48 | ~5 GB | handhelds, laptops, the PC's Gaming slot (on the processor) |
-| **6Bob** | Luke | 32 | ~4 GB | laptops and phones |
-| **5Bob** | Calvin | 24 | ~3.2 GB | phones and the quick brain |
-| **4Bob** | Goku | 16 | ~2.5 GB | phones and a Raspberry Pi |
-| **2Bob** | Bender | 8, then also cut in depth and width | ~1.3 GB | anything, including the Pi (the hardest cut, made last) |
+| **14Bob** | Homer | 96 | ~9 GB | 8 GB cards and gaming handhelds |
+| **10Bob** | Milo | 64 | ~6.6 GB | small cards and big phones |
+| **7Bob** | Luke | 40 | ~4.6 GB | phones |
+| **5Bob** | Calvin | 24 | ~3.3 GB | phones and the quick brain, kept only if it beats a stock 4B model |
+| **2Bob** | Bender | 8, then also cut in depth and width | ~1.3 GB | anything, including a Raspberry Pi (a stretch goal, made last) |
 
 Sizes for the models not yet made are estimates. Each Bob also comes at Q3 (a smaller compression of the same model, for cards of 8 GB and under) and shares the teacher's 0.9 GB vision file, downloaded once.
 
@@ -194,18 +193,18 @@ Q3 files are about 80% of the Q4 size. What the table says:
 3. **The worst layer is layer 2 for every skill**, an early layer with very spread-out routing, so a bigger keep list pays off there most.
 4. **The recommendation to the owner**, who chose it: Riker at 208 experts (every skill but general knowledge above 92% in its worst layer; needs experts in RAM on a 16 GB card at Q4, or the Q3 file) and Bill at 144 instead of 128 (four points everywhere and six on general knowledge for 1.3 GB, still fits a 16 GB card whole). The smaller rungs will lose half their routing or more in the worst layers whatever the rule; they are still worth making because healing recovers a lot (Bill v2 recovered most of the way from a 128 cut), but they are judged by the benchmarks after healing and nobody should expect them to know the wide world the way the full model does. Merging two similar experts within a layer is the next lever for the small rungs, worth a test after Homer.
 
-Bill, Homer and the rest are cut from the re-cut Bob above them, and each Bob's own coverage numbers are published with it.
+Bill is cut from Bobert and healed against Bobert's odds; Homer and the rest are cut from the healed Bob above them. Each Bob's own coverage numbers are published with it.
 
-**What it costs.** The new lessons and the per-skill counts cost $18.15 across two short rentals, one of them a failed first try. Riker's re-cut cost $51.79 on an H200. Bill is next, from the teacher, with a fresh teacher pass because the first one's scores were lost with the card. The costs page lists the wasted run as a lesson learned, each new run as its own line, and the projected total raised to match.
+**What it costs.** The new lessons and the per-skill counts cost $18.15 across two short rentals, one of them a failed first try. Riker's re-cut cost $51.79 on an H200. Bobert and Bill come next in one combined run, estimated at about $135. The costs page lists the wasted run as a lesson learned, each new run as its own line, and the projected total raised to match.
 
 ## What comes next
 
 1. **The coverage cut and Riker**: done (above). Riker is kept; the first four Bobs are deleted.
-2. **20Bob Bill** at 144 experts, from the teacher, with the full 99% rule for tools, coding and formats, when the owner gives the word. About 7.5 hours on an H200, the teacher pass included.
+2. **One combined run, when the owner gives the word**: about 9,000 more lessons written on the card, one teacher pass, then **35Bob Bobert**, the full model trained on every lesson in a full pass (about 16 hours), and **20Bob Bill** at 144 experts, cut from Bobert with the full 99% rule for tools, coding and formats and healed against Bobert's odds. About 24 to 26 hours on an H200. Bobert and Bill are each tested at home before anything else is built on them.
 3. **Then Homer**, cut from the healed Bill. Then decide whether line A is worth continuing at all.
-4. **Down the ladder**: Milo, Mario, Luke, Calvin, Goku, each cut from the healed Bob above, then the four specialists, and 2Bob Bender last.
+4. **Down the ladder**: Milo, Luke and Calvin, each cut from the healed Bob above, then the specialists, and 2Bob Bender last.
 5. **In the app.** Bob's own models become the default brains: when Bob suggests a starter set, a Bob is picked before a stock model of the same size. The Forge and the model lab are in this repository under [`model-lab/`](../model-lab/) (GPL, like the rest of Bob); the lessons, counts and finished Bobs they make stay on the machine that made them. The engine will turn on expert-in-RAM offloading by itself when a Bob is bigger than the card. Every Bob gets the "experts per word" dial (4 to 8).
-6. **Release.** All at once on Hugging Face, with model cards that say exactly what each Bob is cut from, how it was healed and how it scored, and pinned download links in Bob's catalogue. Until then: tested, not yet released.
+6. **Release.** The first release is three models, Bobert, Riker and Bill, on Hugging Face with model cards that say exactly what each Bob is cut from, how it was healed and how it scored, and pinned download links in Bob's catalogue. Until then: tested, not yet released.
 
 ## Expectations, honestly
 
