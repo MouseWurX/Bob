@@ -326,12 +326,22 @@ body.outlined .msg, body.outlined .model, body.outlined .ref, body.outlined .q-j
 body.still *, body.still *::before, body.still *::after { animation: none !important; transition: none !important; }
 
 /* ---------- Layout (build 24): menu left, chat middle, Now running right. ---------- */
-.app { flex: 1; display: flex; min-height: 0; }
+.app { flex: 1; display: flex; min-height: 0; position: relative; }
 .side { width: 184px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px; background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; }
-.side-top { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 2px 2px 8px; }
+/* keep top panel fixed so buttons never shift */
+.side-top { position: relative; display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 2px 2px 6px; margin-bottom: 6px; min-height: 52px; max-height: 52px; }
 .side-top #bob { width: 44px; height: 44px; }
-.side .who { min-width: 0; }
-.side .status { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 12px; }
+.side .who { min-width: 0; overflow: hidden; }
+.side .status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; cursor: default; }
+/* floating quirk bubble anchored right next to Bob's avatar rectangle */
+.quirk-bubble { position: absolute; top: 6px; left: 60px; width: 220px; z-index: 1000; background: var(--panel); color: var(--text); border: 1px solid var(--accent); border-radius: var(--r, 8px); padding: 7px 11px; font-size: 11.5px; line-height: 1.35; box-shadow: 0 6px 20px rgba(0,0,0,.45); pointer-events: none; word-wrap: break-word; white-space: normal; opacity: 0; transform: translateX(-4px); transition: opacity .2s ease, transform .2s ease; }
+.quirk-bubble.on { opacity: 1; transform: translateX(0); }
+/* thought-bubble dots pointing back to avatar */
+.quirk-bubble::before { content: ""; position: absolute; left: -9px; top: 14px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: -6px 4px 0 -1px var(--accent); }
+.quirk-bubble.cat-bubble::before { top: 20px; }
+body.left-folded .quirk-bubble { left: 56px; }
+body.still .quirk-bubble { transition: none !important; }
+@media (prefers-reduced-motion: reduce) { .quirk-bubble { transition: none !important; } }
 .fold { width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; align-self: start; }
 .fold .ico, .nav-item .ico, .nav-new .ico, .session-wrap .ico { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .nav-item, .nav-new { position: relative; display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 8px; border: 1px solid transparent; background: none; text-align: left; font-size: 13.5px; color: var(--text); }
@@ -352,7 +362,9 @@ body.still *, body.still *::before, body.still *::after { animation: none !impor
 
 /* Folded: a 58 px strip, each icon keeps a short word underneath. */
 body.left-folded .side { width: 62px; padding: 8px 4px; align-items: stretch; }
-body.left-folded .side-top { grid-template-columns: 1fr; justify-items: center; gap: 4px; }
+/* folded top panel sizing to fit avatar and fold button without clipping */
+body.left-folded .side-top { grid-template-columns: 1fr; justify-items: center; gap: 6px; min-height: 74px; max-height: 74px; padding: 2px 2px 4px; margin-bottom: 6px; }
+body.left-folded .cat { font-size: 13px; right: 0; bottom: 0; }
 body.left-folded .side-top #bob { width: 36px; height: 36px; }
 body.left-folded .side .who, body.left-folded .nav-head, body.left-folded .nav-item .lbl, body.left-folded .nav-new .lbl, body.left-folded .nav-item .st, body.left-folded .session-wrap .lbl { display: none; }
 body.left-folded .fold .ico { transform: scaleX(-1); }
@@ -755,18 +767,20 @@ details.more > summary:hover { color: var(--accent); }
 
 /* 1.5.7 the cat by Bob's picture: small antics while he's idle (no brain). Still for people who prefer less motion. */
 .bob-wrap { position: relative; flex: none; }
-.cat { position: absolute; right: -6px; bottom: -6px; font-size: 15px; line-height: 1; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); white-space: nowrap; }
-.cat-line { font-size: 11px; color: var(--muted); line-height: 1.3; margin-top: 2px; }
+/* make cat avatar transformable with clear origin and sit on avatar edge */
+.cat { display: inline-block; position: absolute; right: -2px; bottom: 0; font-size: 15px; line-height: 1; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); white-space: nowrap; transform-origin: 50% 100%; will-change: transform; }
+/* hide inline cat-line from flow to prevent button movement */
+.cat-line { display: none; }
 .cat.antic-nap { animation: cat-nap 2.4s ease-in-out infinite; }
 .cat.antic-swat { animation: cat-swat .6s ease-in-out 6; }
 .cat.antic-pounce { animation: cat-pounce 1s ease-out 4; }
 .cat.antic-stroll { animation: cat-stroll 8s linear 1; }
-.cat.antic-stare { animation: cat-stare 3s steps(2) infinite; }
-@keyframes cat-nap { 50% { transform: translateY(1px) scale(.96); } }
-@keyframes cat-swat { 50% { transform: rotate(-18deg) translateX(-3px); } }
-@keyframes cat-pounce { 40% { transform: translate(-10px, -12px); } 70% { transform: translate(-16px, 0); } }
-@keyframes cat-stroll { 0% { transform: translateX(0); } 45% { transform: translateX(-56px); } 50% { transform: translateX(-56px) scaleX(-1); } 95% { transform: translateX(0) scaleX(-1); } 100% { transform: none; } }
-@keyframes cat-stare { 50% { transform: translateX(-2px); } }
+.cat.antic-stare { animation: cat-stare 1.5s ease-in-out infinite; }
+@keyframes cat-nap { 50% { transform: scale(.93); } }
+@keyframes cat-swat { 25% { transform: rotate(-22deg) translateX(-2px); } 75% { transform: rotate(10deg) translateX(1px); } }
+@keyframes cat-pounce { 40% { transform: translate(-8px, -10px) rotate(-8deg); } 70% { transform: translate(-12px, 0); } }
+@keyframes cat-stroll { 0% { transform: translateX(0); } 45% { transform: translateX(-40px); } 50% { transform: translateX(-40px) scaleX(-1); } 95% { transform: translateX(0) scaleX(-1); } 100% { transform: none; } }
+@keyframes cat-stare { 25% { transform: rotate(-8deg) translateX(-2px); } 75% { transform: rotate(8deg) translateX(2px); } }
 /* 1.5.53 more antics. Transforms and opacity only (cheap); the extras are ::before/::after on the same span. */
 .cat::before, .cat::after { position: absolute; pointer-events: none; }
 .cat.antic-groom { animation: cat-groom .5s ease-in-out 12; transform-origin: 50% 100%; }
@@ -789,8 +803,9 @@ details.more > summary:hover { color: var(--accent); }
 @keyframes cat-groom { 50% { transform: rotate(8deg) translateY(1px); } }
 @keyframes cat-spin { to { transform: rotate(360deg); } }
 @keyframes cat-loaf { 15%, 85% { transform: scale(1.12, .78); } }
-@keyframes cat-zoomies { 0%, 100% { transform: none; } 45% { transform: translateX(-60px); } 50% { transform: translateX(-60px) scaleX(-1); } 95% { transform: scaleX(-1); } }
-@keyframes cat-perch { 0%, 100% { transform: none; } 15% { transform: translate(-6px, -20px); } 25%, 80% { transform: translate(-18px, -46px); } 90% { transform: translate(-8px, -14px); } }
+@keyframes cat-zoomies { 0%, 100% { transform: none; } 45% { transform: translateX(-4em); } 50% { transform: translateX(-4em) scaleX(-1); } 95% { transform: scaleX(-1); } }
+/* em units: 2.9em × 15px = 43.5px (full) or 2.9em × 13px = 37.7px (folded) — scales to avatar height automatically */
+@keyframes cat-perch { 0%, 100% { transform: none; } 15% { transform: translate(-0.4em, -1.3em); } 25%, 80% { transform: translate(-1.2em, -2.9em); } 90% { transform: translate(-0.5em, -0.9em); } }
 @keyframes yarn-roll { 50% { transform: translateX(-10px) rotate(-200deg); } }
 @keyframes flutter { 0%, 100% { transform: translate(0, 0) scaleX(1); } 25% { transform: translate(-6px, -4px) scaleX(.5); } 50% { transform: translate(-2px, -8px) scaleX(1); } 75% { transform: translate(4px, -3px) scaleX(.5); } }
 @keyframes knock-fall { 0%, 30% { transform: none; opacity: 1; } 60% { transform: translate(-6px, 18px) rotate(160deg); opacity: 1; } 100% { transform: translate(-6px, 18px) rotate(180deg); opacity: 0; } }

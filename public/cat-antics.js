@@ -9,6 +9,14 @@ export const ANTICS = ANTIC_IDS;
 // What shows in the cat's spot. Extras (butterfly, pencil, bird, yarn) are drawn by CSS around it.
 export const ICON = { nap: '🐈💤', box: '📦', yarn: '🐈' };
 
+// duration in ms matching each antic animation cycle
+const ANTIC_DURATIONS = {
+  swat: 3600, knock: 2800, pounce: 4000, groom: 5000,
+  spin: 5000, stroll: 7500, loaf: 6000, zoomies: 6000,
+  perch: 6500, yarn: 5000, butterfly: 5000, birds: 6000,
+  stretch: 6000, headbutt: 5000, stare: 4500, nap: 5500
+};
+
 export function pickAntic(recent, rnd = Math.random) {
   const pool = ANTICS.filter((a) => !recent.includes(a));
   return pool[Math.floor(rnd() * pool.length) % pool.length];
@@ -16,10 +24,20 @@ export function pickAntic(recent, rnd = Math.random) {
 
 export function createCatAntics({ onAntic = () => {}, sleepy = () => false } = {}) {
   const cat = document.getElementById('cat'), line = document.getElementById('catLine');
+  const bubble = document.getElementById('quirkBubble');
   if (!cat || !line) return { idle() {}, play() {} };
   let name = 'Patches', idle = false, timer = null, hide = null, n = Math.floor(Math.random() * 100), recent = [];
   fetch('/api/settings').then((r) => r.json()).then((s) => { if (s.catName) name = s.catName; }).catch(() => {});
-  const rest = () => { cat.className = 'cat'; cat.textContent = '🐈'; line.hidden = true; };
+  // reset cat sprite and hide floating bubble
+  const rest = () => {
+    cat.className = 'cat';
+    cat.textContent = '🐈';
+    line.hidden = true;
+    if (bubble) {
+      bubble.classList.remove('on');
+      setTimeout(() => { if (!bubble.classList.contains('on')) bubble.hidden = true; }, 200);
+    }
+  };
   const stop = () => { clearTimeout(timer); clearTimeout(hide); rest(); };
   function plan() {
     clearTimeout(timer);
@@ -33,10 +51,18 @@ export function createCatAntics({ onAntic = () => {}, sleepy = () => false } = {
     clearTimeout(hide);
     cat.className = `cat antic-${a}`;
     cat.textContent = ICON[a] || '🐈';
-    line.textContent = `${anticLine(a, name, n++)}.`;
+    const text = `${anticLine(a, name, n++)}.`;
+    line.textContent = text;
     line.hidden = false;
+    // float quirk message over panel without pushing buttons
+    if (bubble) {
+      bubble.textContent = text;
+      bubble.className = 'quirk-bubble cat-bubble on';
+      bubble.hidden = false;
+    }
     if (a !== 'nap') onAntic(a);
-    hide = setTimeout(() => { rest(); plan(); }, 8000);
+    const duration = ANTIC_DURATIONS[a] || 5000;
+    hide = setTimeout(() => { rest(); plan(); }, duration);
   }
   return {
     idle(on) {

@@ -11,12 +11,14 @@
 </head>
 <body>
   <div class="app">
-  <nav id="side" class="side" aria-label="Bob's menu">
-    <div class="side-top">
-      <div class="bob-wrap"><canvas id="bob" width="56" height="56" aria-label="Bob"></canvas><span id="cat" class="cat" aria-hidden="true">🐈</span><span id="bobProp" class="bob-prop" aria-hidden="true" hidden></span></div>
-      <div class="who"><div class="name">Bob</div><div id="status" class="status" role="status">Getting the fire going...</div><div id="catLine" class="cat-line" aria-hidden="true" hidden></div></div>
-      <button id="foldLeft" type="button" class="fold" title="Fold the menu (Ctrl+B)" aria-label="Fold the menu" aria-expanded="true"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 6l-6 6 6 6"/></svg></button>
-    </div>
+    <!-- floating quirk bubble anchored to app level so it never clips or hides behind panels -->
+    <div id="quirkBubble" class="quirk-bubble" role="status" aria-live="polite" hidden></div>
+    <nav id="side" class="side" aria-label="Bob's menu">
+      <div class="side-top">
+        <div class="bob-wrap"><canvas id="bob" width="56" height="56" aria-label="Bob"></canvas><span id="cat" class="cat" aria-hidden="true">🐈</span><span id="bobProp" class="bob-prop" aria-hidden="true" hidden></span></div>
+        <div class="who"><div class="name">Bob</div><div id="status" class="status" role="status">Getting the fire going...</div><div id="catLine" class="cat-line" aria-hidden="true" hidden></div></div>
+        <button id="foldLeft" type="button" class="fold" title="Fold the menu (Ctrl+B)" aria-label="Fold the menu" aria-expanded="true"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 6l-6 6 6 6"/></svg></button>
+      </div>
     <button id="newchat" type="button" class="nav-new" title="Start a new conversation" aria-label="New chat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg><span class="lbl">New chat</span><span class="short" aria-hidden="true">New</span></button>
     <button id="chatBtn" type="button" class="nav-item on" title="Back to the chat" aria-label="Chat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 5h16v11H9l-5 4z"/></svg><span class="lbl">Chat</span><span class="short" aria-hidden="true">Chat</span></button>
     <button id="tasksBtn" type="button" class="nav-item" title="Tasks: what Bob is doing, what is waiting, what is done" aria-label="Tasks"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5 2.5-2.5"/><circle cx="5" cy="18" r="1.3"/></svg><span class="lbl">Tasks</span><span class="short" aria-hidden="true">Tasks</span><span class="badge" hidden></span></button>

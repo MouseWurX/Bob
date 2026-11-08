@@ -219,10 +219,25 @@ async function switchSession(id) {
 }
 sessionSel.onchange = () => switchSession(sessionSel.value);
 
+let statusBubbleTimer = null;
 function setStatus(s) {
   if (s.session && sessionSel.value !== s.session.id) drawSessions(null, s.session);
   statusEl.className = `status ${s.state}`;
-  statusEl.textContent = s.detail || STATUS_TEXT[s.state] || s.state;
+  const text = s.detail || STATUS_TEXT[s.state] || s.state;
+  statusEl.textContent = text;
+  statusEl.title = text;
+  // show floating bubble for long status messages
+  const bubble = $('quirkBubble');
+  if (bubble && s.detail && s.detail.length > 25) {
+    bubble.textContent = s.detail;
+    bubble.className = 'quirk-bubble on';
+    bubble.hidden = false;
+    clearTimeout(statusBubbleTimer);
+    statusBubbleTimer = setTimeout(() => {
+      bubble.classList.remove('on');
+      setTimeout(() => { if (!bubble.classList.contains('on')) bubble.hidden = true; }, 200);
+    }, 6000);
+  }
   catAntics.idle(s.state === 'idle');
   life.state(s.state);
   document.title = s.state === 'idle' ? 'Bob' : `Bob · ${STATUS_TEXT[s.state] || s.state}`;
@@ -231,6 +246,19 @@ function setStatus(s) {
   if (s.model) lastModel = s.model;
   layout.status(s);
 }
+// click status line to pop up the full floating bubble
+statusEl.onclick = () => {
+  const bubble = $('quirkBubble');
+  if (!bubble || !statusEl.textContent) return;
+  bubble.textContent = statusEl.textContent;
+  bubble.className = 'quirk-bubble on';
+  bubble.hidden = false;
+  clearTimeout(statusBubbleTimer);
+  statusBubbleTimer = setTimeout(() => {
+    bubble.classList.remove('on');
+    setTimeout(() => { if (!bubble.classList.contains('on')) bubble.hidden = true; }, 200);
+  }, 5000);
+};
 function badge(on) {
   try { if (on) navigator.setAppBadge && navigator.setAppBadge(); else navigator.clearAppBadge && navigator.clearAppBadge(); } catch {}
 }
