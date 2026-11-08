@@ -1388,3 +1388,12 @@ details.fold > summary .muted { font-weight: 400; font-size: 13px; }
 .lab-compare { margin: 0.75rem 0; }
 .lab-compare .lab-report td, .lab-compare .lab-report th { padding: 0.2rem 0.6rem; text-align: left; }
 .lab-compare .lab-report { overflow-x: auto; display: block; max-width: 100%; }
+/* 1.5.153 Cut recipes, the estimate table and the usage map */
+.lab-recipes, .lab-estimate, .lab-usage { margin: 0.75rem 0; }
+.lab-recipe-list { list-style: none; padding: 0; margin: 0.4rem 0; display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.lab-recipe-card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.lab-recipe-card.dim { opacity: 0.65; }
+.lab-recipe-card button { min-height: 32px; }
+#lab-device { max-width: 100%; }
+.lab-estimate .lab-report, .lab-usage .lab-report { overflow-x: auto; display: block; max-width: 100%; }
+.lab-usage:focus { outline: 2px solid var(--line); outline-offset: 2px; }
