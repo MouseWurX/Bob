@@ -2,6 +2,7 @@
 // checkboxes and radio buttons instead of command-line flags. Show the recipe shows the exact commands. 1.5.143 (Lab 2a):
 // keep every skill covered, and write a new lesson set with a teacher here. Rented cards are shown as "later", never offered.
 // 1.5.151 (Lab 3): the page has tabs. Make a brain is the five steps; Learn is guided experiments (public/lab-learn.js).
+// 1.5.152 (Lab 2c): build a lesson set from your own files, with a survey and sample lessons before anything big runs.
 import { esc } from './rich.js';
 import { TEMPLATES, templateById, templateWhyNot, applyTemplate } from './lab-templates.js';
 import { createLearn } from './lab-learn.js';
@@ -20,6 +21,9 @@ export function createLab({ api, note }) {
   let measures = [], picked = [], table = null, saved = '';
   const w = { name: '', teacher: '', skills: ['tools', 'coding', 'chat'], count: 500, think: 'half' };
   let wplan = null, writing = false;
+  // Lab 2c: the lesson builder. bld is the plan the page sends; bsurvey is stage A of the preview; sample cards come from the plan.
+  const bld = { name: '', teacher: '', items: [], kinds: ['material'], count: 300, think: 'half', resay: true, feedback: { dropFiles: [], notKinds: {}, badIdeas: [] } };
+  let bplan = null, building = false, bsurvey = null, surveying = false, openPassage = new Set(), notLike = '', viewer = null, vq = { q: '', skill: '', file: '', kind: '' }, exportInfo = null, typedPath = '';
   const r = { template: '', name: '', from: '', lessons: { kind: 'none', file: '', chunks: 200 }, smaller: { sight: false, hearing: false, cut: null, files: [], measure: false }, test: { compare: true } };
   const brain = () => view?.brains.find((b) => b.id === r.from);
   const running = () => view?.runs.find((x) => x.state === 'running');
@@ -32,6 +36,7 @@ export function createLab({ api, note }) {
   async function replan() {
     try { plan = r.from ? await api('/api/lab/plan', { recipe: r }) : null; } catch (e) { plan = { problems: [e.message], notes: [], steps: [] }; }
     if (writing) { try { wplan = await api('/api/lab/write/plan', { write: w }); } catch (e) { wplan = { problems: [e.message], notes: [] }; } }
+    if (building) { try { bplan = await api('/api/lab/build/plan', { build: bld }); } catch (e) { bplan = { problems: [e.message], notes: [], sample: [] }; } }
     draw();
   }
 
@@ -76,12 +81,14 @@ export function createLab({ api, note }) {
       <p class="muted">Lessons are what the new brain should be good at. Here they're used to count which experts your kind of work uses, so an expert cut keeps those.</p>
       ${radio('lessons', 'none', l.kind === 'none', 'No lessons', 'For steps that don\'t need them: take out sight or hearing, make the running files, or cut with an expert list you have.')}
       ${radio('lessons', 'chats', l.kind === 'chats', 'My chats with Bob', 'Your past chats, as they are. They stay on this replicant matrix.')}
-      ${view.lessonSets.length ? radio('lessons', 'set', l.kind === 'set', 'A lesson set I wrote here', 'One Bob wrote in the Lab with a teacher brain.') : ''}
-      ${l.kind === 'set' ? `<p><label>Lesson set <select id="lab-lessons-set"><option value="">(pick one)</option>${view.lessonSets.map((x) => `<option value="${esc(x.id)}" ${l.set === x.id ? 'selected' : ''}>${esc(x.name)}: ${x.count} lessons${x.skills.length ? ` (${esc(x.skills.map(skillLabel).join(', '))})` : ''}${x.done ? '' : ', not finished'}</option>`).join('')}</select></label></p>` : ''}
+      ${view.lessonSets.length ? radio('lessons', 'set', l.kind === 'set', 'A lesson set I wrote or built here', 'One Bob wrote in the Lab with a teacher brain, or one built from your own files.') : ''}
+      ${l.kind === 'set' ? `<p><label>Lesson set <select id="lab-lessons-set"><option value="">(pick one)</option>${view.lessonSets.map((x) => `<option value="${esc(x.id)}" ${l.set === x.id ? 'selected' : ''}>${esc(x.name)}: ${x.count} lessons${x.skills.length ? ` (${esc(x.skills.map(skillLabel).join(', '))})` : ''}${x.built ? ', built from your files' : ''}${x.done ? '' : ', not finished'}</option>`).join('')}</select></label></p>` : ''}
       ${radio('lessons', 'file', l.kind === 'file', 'A lesson set I have', 'A lessons.jsonl from the model lab, or any text file.')}
       ${l.kind === 'file' ? `<p><label>Lesson file <input id="lab-lessons-file" type="text" value="${esc(l.file)}" placeholder="C:\\...\\lessons.jsonl"></label></p>` : ''}
       ${l.kind !== 'none' ? `<p><label for="lab-chunks">How much of it to count on</label> <input id="lab-chunks" type="range" min="20" max="2000" step="20" value="${l.chunks}" aria-describedby="lab-chunks-note"> <input id="lab-chunks-n" type="number" min="20" max="2000" step="20" value="${l.chunks}" aria-label="Pieces to count on"> pieces <span id="lab-chunks-note" class="muted">(about ${Math.max(1, Math.round(l.chunks / 20))} minutes on a 16 GB card)</span></p>` : ''}
       ${writeHtml()}
+      ${buildHtml()}
+      ${setsHtml()}
       ${later('Record the teacher\'s odds', 'Bob saves the teacher\'s top 32 guesses for every word, not only its answer. A brain learns much more from the odds than from the words alone.')}
     </fieldset>`;
   }
@@ -110,6 +117,104 @@ export function createLab({ api, note }) {
       <p class="muted">The teacher writes as a stand-in Bob with his instructions and tools, and none of your chats, notes or names. Nothing it asks for is really run.</p>
     </fieldset>`;
   }
+
+  // Lab 2c: build a new lesson set from your own files. Stage A (survey) and stage B (sample lessons) before the build.
+  const kindLabel = (id) => view?.lessonKinds.find((k) => k.id === id)?.label || id;
+  function cardHtml(c, { where = 'sample', set = '' } = {}) {
+    const open = openPassage.has(c.key);
+    return `<li class="lab-card" data-card="${esc(c.key)}"><div class="lab-card-head"><strong>${esc(c.skill || 'my files')}</strong> <span class="muted">· ${esc(kindLabel(c.kind))}${c.think ? ' · thinking on' : ''}${c.source?.name ? ` · from ${esc(c.source.name)}${c.source.at ? `, passage ${c.source.at}` : ''}` : ''}</span></div>
+      <p><span class="muted">Message:</span> ${esc(c.user)}</p>
+      ${c.read ? `<p><span class="muted">Bob reads:</span> ${esc(c.source?.name || 'the passage')} <button type="button" class="link" data-passage="${esc(c.key)}" aria-expanded="${open}">${open ? 'Hide the passage' : 'Open the passage'}</button></p>${open ? `<blockquote class="lab-passage">${esc(c.read)}</blockquote>` : ''}` : ''}
+      ${c.thinking ? `<p class="muted"><span class="muted">Thinking (start):</span> ${esc(c.thinking)}</p>` : ''}
+      <p><span class="muted">Bob says:</span> ${esc(c.answer)}</p>
+      ${where === 'sample' ? `<div class="row">${bld.feedback.badIdeas.includes(c.key) || bld.feedback.dropFiles.includes(c.source?.name) ? '<span class="muted">Noted: the full build does this one differently.</span>' : `<button type="button" class="link" data-keep="${esc(c.key)}">Keep</button><button type="button" class="link" data-notlike="${esc(c.key)}" aria-expanded="${notLike === c.key}">Not like this</button>`}</div>
+        ${notLike === c.key ? `<div class="lab-check" role="group" aria-label="What was wrong"><button type="button" class="link" data-fb="file" data-key="${esc(c.key)}" data-file="${esc(c.source?.name || '')}">Leave this file out</button> <button type="button" class="link" data-fb="kind" data-key="${esc(c.key)}" data-file="${esc(c.source?.name || '')}" data-kind="${esc(c.kind)}">Not this kind of lesson for this file</button> <button type="button" class="link" data-fb="idea" data-key="${esc(c.key)}">The message is wrong for this passage</button></div>` : ''}` : `<div class="row"><button type="button" class="link" data-rmlesson="${esc(c.key)}">Remove this lesson</button>${c.source?.name ? `<button type="button" class="link" data-rmfile="${esc(c.source.name)}">Remove everything from ${esc(c.source.name)}</button>` : ''}</div>`}
+    </li>`;
+  }
+  function surveyHtml() {
+    const sv = bsurvey;
+    if (surveying) return '<p class="muted" role="status">Reading your files...</p>';
+    if (!sv) return '';
+    const kinds = Object.entries(sv.byKind || {}).map(([k, n]) => `${n} ${k}${n === 1 ? '' : 's'}`).join(', ');
+    return `<div class="lab-survey" role="status" aria-live="polite"><h4>What Bob found</h4>
+      <p>${sv.files} file${sv.files === 1 ? '' : 's'}${kinds ? ` (${esc(kinds)})` : ''}${sv.over ? `, stopped at ${sv.maxFiles}` : ''}. About ${Number(sv.words).toLocaleString()} words of usable text in ${sv.passages} passage${sv.passages === 1 ? '' : 's'}${sv.exchanges ? ` and ${sv.exchanges} exchange${sv.exchanges === 1 ? '' : 's'} from chat logs` : ''}${sv.estimated ? ` (${sv.estimated} documents counted by size, read properly during the build)` : ''}.</p>
+      ${sv.skipped.length ? `<details><summary>${sv.skipped.length} file${sv.skipped.length === 1 ? '' : 's'} skipped</summary><ul>${sv.skipped.slice(0, 200).map((x) => `<li>${esc(x.name)}: ${esc(x.why)}</li>`).join('')}</ul></details>` : ''}
+      ${sv.dupes ? `<p class="muted">${sv.dupes} repeated passage${sv.dupes === 1 ? '' : 's'} left out.</p>` : ''}
+      ${sv.held.length ? `<details><summary><strong>Held back: ${sv.held.length}</strong> passage${sv.held.length === 1 ? '' : 's'} that look like a password, key, card number, address or e-mail. They never reach the teacher.</summary><ul>${sv.held.slice(0, 200).map((x) => `<li>${esc(x.name)}${x.at ? `, passage ${x.at}` : ''}: ${esc(x.why)}. <span class="muted">${esc(x.peek)}...</span></li>`).join('')}</ul></details>` : '<p class="muted">Nothing looked like a password, key, address or e-mail. (A net, not a guarantee.)</p>'}
+      ${sv.otherPeople ? '<p class="muted">These include other people\'s words. Lessons stay on this replicant matrix; if you share the set later, that\'s your call to make for them too.</p>' : ''}
+      <p><strong>Lessons your files can supply:</strong> ${Object.entries(sv.supply).filter(([k]) => bld.kinds.includes(k)).map(([k, n]) => `${esc(kindLabel(k))} ${n}`).join(', ') || 'tick a kind of lesson above'}${Object.keys(sv.perSkill).length > 1 ? `; by skill: ${Object.entries(sv.perSkill).map(([k, v]) => `${esc(k)} ${v.passages + v.exchanges}`).join(', ')}` : ''}.</p>
+      ${sv.samples.length ? `<details><summary>Ten passages Bob would use</summary><ul>${sv.samples.map((x) => `<li><strong>${esc(x.name)}</strong>${x.at ? `, passage ${x.at}` : ''}: <span class="muted">${esc(x.text)}${x.text.length >= 400 ? '...' : ''}</span></li>`).join('')}</ul></details>` : ''}
+      <div class="lab-learn"><strong>What the brain would learn.</strong> ${esc(sv.wouldLearn)}</div>
+    </div>`;
+  }
+  function buildHtml() {
+    if (!building) return `<div class="lab-opt"><span><strong>Build a new set from my files</strong><br><span class="muted">Your own documents, notes and chat logs become lessons, here, with a teacher brain you have. Bob shows a survey and 12 sample lessons before anything big runs. Your files never leave this replicant matrix.</span><br><button type="button" class="link" data-buildopen aria-expanded="false">Build a new set from my files</button></span></div>`;
+    const teachers = view.brains.filter((b) => b.facts);
+    const supply = bsurvey ? bsurvey.supplyTotal : 0;
+    const max = Math.max(20, Math.min(view.buildMax || 5000, supply || view.buildMax || 5000));
+    const hours = Math.max(1, Math.round((Math.min(bld.count, max) * (view.secondsPerLesson || 25)) / 3600));
+    const sample = bplan?.sample || [];
+    const ready = bplan && !bplan.problems.length && !running();
+    return `<fieldset class="lab-build"><legend>Build a new set from my files</legend>
+      <p class="muted">Add files or folders, tick what I should learn from them, and pick a teacher brain you have. First the survey, then ${view.sampleCount || 12} sample lessons, then the build. Files are read in place and never copied; only the passages that become lessons are kept, in the Lab folder.</p>
+      <p><label>Name for the lesson set <input id="lab-b-name" type="text" maxlength="60" value="${esc(bld.name)}" autocomplete="off"></label></p>
+      <fieldset><legend>What to learn from</legend>
+        ${bld.items.length ? `<ul class="lab-items">${bld.items.map((it, n) => `<li><span class="lab-item-path">${esc(it.path)}</span> <label>skill <input type="text" class="lab-item-skill" data-bskill="${n}" value="${esc(it.skill)}" maxlength="40" aria-label="Skill name for ${esc(it.path)}"></label> <button type="button" class="link" data-bremove="${n}">Remove</button></li>`).join('')}</ul>` : '<p class="muted">Nothing added yet.</p>'}
+        <div class="row"><button type="button" class="link" data-baddfolder>Add a folder</button><button type="button" class="link" data-baddfile>Add a file</button> <label>or type a path <input id="lab-b-path" type="text" value="${esc(typedPath)}" placeholder="${/win/i.test(navigator.userAgentData?.platform || navigator.platform || '') ? 'C:\\Notes' : '~/Notes'}" aria-label="A file or folder path"></label><button type="button" class="link" data-baddpath>Add</button></div>
+        <p class="muted">Bob reads: plain text, Markdown, web pages, Word, OpenDocument, RTF, e-books and PDFs${view.officeOk ? '' : ' (Word, PDF and the others need LibreOffice, Settings, Engines)'}; chat logs: my own sessions, a ChatGPT or Claude export (conversations.json), or a transcript with "Name: line" lines. Spreadsheets, code, pictures and sound come later.</p>
+      </fieldset>
+      <fieldset><legend>What the brain should learn</legend>${view.lessonKinds.map((k) => `<label class="lab-opt"><input type="checkbox" data-bkind="${esc(k.id)}" ${bld.kinds.includes(k.id) ? 'checked' : ''}> <span><strong>${esc(k.label)}</strong><br><span class="muted">${esc(k.hint)}</span></span></label>`).join('')}
+        ${bld.kinds.includes('chats') ? `<label class="lab-opt lab-sub"><input type="checkbox" data-bresay ${bld.resay ? 'checked' : ''}> <span><strong>Re-say other assistants' answers in Bob's voice</strong><br><span class="muted">Untick to keep their answers word for word.</span></span></label>` : ''}
+        ${later('My code', 'Explain this function, fix this from the error, from a repo of yours.')}
+      </fieldset>
+      <p><label for="lab-b-teacher">Teacher</label> <select id="lab-b-teacher"><option value="">(pick one)</option>${teachers.map((b) => `<option value="${esc(b.id)}" ${bld.teacher === b.id ? 'selected' : ''}>${esc(b.name)} (${b.facts.sizeGB} GB${b.license ? `, ${esc(b.license)}` : ''})</option>`).join('')}</select></p>
+      <p><label for="lab-b-count">How many lessons</label> <input id="lab-b-count" type="range" min="20" max="${max}" step="10" value="${Math.min(bld.count, max)}" aria-describedby="lab-b-time"> <input id="lab-b-count-n" type="number" min="20" max="${max}" step="10" value="${Math.min(bld.count, max)}" aria-label="Lessons to build"> <span id="lab-b-time" class="muted">(roughly ${hours} hour${hours === 1 ? '' : 's'}${supply ? `; your files can supply about ${supply}` : '; the survey says how many your files can supply'})</span></p>
+      <fieldset><legend>Thinking</legend>
+        ${radio('bthink', 'half', bld.think === 'half', 'Half with thinking, half without (recommended)', 'Writing-in-my-voice lessons never think: the answer is yours as written.')}
+        ${radio('bthink', 'on', bld.think === 'on', 'All with thinking', 'Slower, and the brain learns to think first every time.')}
+        ${radio('bthink', 'off', bld.think === 'off', 'None with thinking', 'Quickest.')}
+      </fieldset>
+      ${later('A big rented brain as the teacher', 'A rented card runs a brain too big for this replicant matrix. Your passages would leave this replicant matrix. It will say so in red and start switched off.')}
+      <div class="row"><button type="button" class="link" data-bsurvey ${bld.items.length && !surveying ? '' : 'disabled'}>${bsurvey ? 'Survey my files again' : 'Survey my files'}</button></div>
+      ${surveyHtml()}
+      ${bplan ? `<div class="lab-check" role="status">${bplan.problems.length ? `<p><strong>Before it can start:</strong></p><ul>${bplan.problems.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p><strong>Ready.</strong></p>'}${bplan.notes.map((x) => `<p class="muted">${esc(x)}</p>`).join('')}</div>` : ''}
+      <div class="row"><button type="button" class="get" data-bsample ${ready && bsurvey ? '' : 'disabled'}>${running() ? 'The Lab is busy' : `Show me ${view.sampleCount || 12} sample lessons`}</button>${!bsurvey ? '<span class="muted">Survey first, so you see what goes in.</span>' : ''}</div>
+      ${sample.length ? `<h4>Sample lessons</h4><p class="muted">${sample.length} lessons made from your files. Keep the ones that look right; Not like this changes the plan, nothing is trained from the clicks.</p><ul class="lab-cards">${sample.map((c) => cardHtml(c)).join('')}</ul>` : ''}
+      <div class="row"><button type="button" class="get" data-bbuild ${ready && sample.length ? '' : 'disabled'}>${running() ? 'The Lab is busy' : 'Build the set'}</button><button type="button" class="link" data-buildclose>Close</button>${!sample.length ? '<span class="muted">The sample comes first, so you see what a lesson from your files looks like.</span>' : ''}</div>
+      <p class="muted">No upload anywhere: not to Bob-Net, not to a rented card, not to Bob's own lesson sets. The only way a set leaves the Lab is Export as a file, below, which you press.</p>
+    </fieldset>`;
+  }
+  // The sets built from your files: open one (the viewer), export it as a file.
+  function setsHtml() {
+    const built = (view.lessonSets || []).filter((x) => x.built);
+    if (!built.length) return '';
+    return `<div class="lab-sets"><h4>Sets built from your files</h4><ul class="tlist">${built.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.count} lessons${x.skills.length ? `, ${esc(x.skills.join(', '))}` : ''}${x.teacher ? `, taught by ${esc(x.teacher)}` : ''}${x.done ? '' : ', not finished'}</span> <button type="button" class="link" data-openset="${esc(x.id)}" aria-expanded="${viewer?.id === x.id}">${viewer?.id === x.id ? 'Close the set' : 'Open the set'}</button> <button type="button" class="link" data-export="${esc(x.id)}">Export as a file</button></li>`).join('')}</ul>
+      ${exportInfo ? `<div class="lab-check" role="status">${exportInfo.file ? `<p><strong>Saved ${esc(exportInfo.file)}</strong> (${exportInfo.lessons} lessons).</p>` : `<p><strong>Before the zip is written</strong>, Bob replaces names and addresses: ${exportInfo.changes.length ? exportInfo.changes.map((c) => `${esc(c.what)} (${c.n})`).join(', ') : 'nothing to change in this set'}. The source files themselves are never in the zip.</p><div class="row"><button type="button" class="get" data-exportgo="${esc(exportInfo.id)}">Pick a folder and save the zip</button><button type="button" class="link" data-exportclose>Not now</button></div>`}${exportInfo.changes?.length && exportInfo.file ? `<p class="muted">Changed: ${exportInfo.changes.map((c) => `${esc(c.what)} (${c.n})`).join(', ')}.</p>` : ''}</div>` : ''}
+      ${viewer ? viewerHtml() : ''}</div>`;
+  }
+  function viewerHtml() {
+    const v = viewer;
+    return `<section class="lab-viewer" aria-label="Lessons in ${esc(v.name)}"><h4>${esc(v.name)}: ${v.found === v.total ? `${v.total} lessons` : `${v.found} of ${v.total} lessons`}</h4>
+      <div class="row"><label>Search <input id="lab-v-q" type="search" value="${esc(vq.q)}"></label>
+        ${v.skills.length > 1 ? `<label>Skill <select id="lab-v-skill"><option value="">all</option>${v.skills.map((k) => `<option value="${esc(k)}" ${vq.skill === k ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></label>` : ''}
+        ${v.kinds.length > 1 ? `<label>Kind <select id="lab-v-kind"><option value="">all</option>${v.kinds.map((k) => `<option value="${esc(k)}" ${vq.kind === k ? 'selected' : ''}>${esc(kindLabel(k))}</option>`).join('')}</select></label>` : ''}
+        ${v.files.length > 1 ? `<label>File <select id="lab-v-file"><option value="">all</option>${v.files.map((k) => `<option value="${esc(k)}" ${vq.file === k ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></label>` : ''}</div>
+      ${v.sources?.held ? `<p class="muted">${v.sources.held} passage${v.sources.held === 1 ? '' : 's'} held back during the build, ${v.sources.dupes || 0} repeated.</p>` : ''}
+      <ul class="lab-cards">${v.cards.map((c) => cardHtml(c, { where: 'set', set: v.id })).join('')}</ul>
+      ${v.found > v.from + v.cards.length ? `<button type="button" class="link" data-vmore>Show more</button>` : ''}
+    </section>`;
+  }
+  async function loadViewer(id, more = false) {
+    try { const from = more && viewer ? viewer.from + viewer.cards.length : 0; const v = await api('/api/lab/set', { id, ...vq, from }); viewer = more && viewer ? { ...v, from: viewer.from, cards: [...viewer.cards, ...v.cards] } : v; } catch (e) { msg = e.message; viewer = null; }
+  }
+  async function pickPath(kind) {
+    try {
+      const res = kind === 'folder' ? await api('/api/pick-folder', { purpose: 'project' }) : await api('/api/own-models/pick', { kind: 'docs' });
+      if (res.error) { msg = res.error; return ''; }
+      return res.folder || res.file || '';
+    } catch (e) { msg = e.message; return ''; }
+  }
+  const addItem = (p) => { if (!p || bld.items.some((i) => i.path === p)) return; const base = p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'My files'; const skill = base.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim(); bld.items.push({ path: p, skill: skill ? skill[0].toUpperCase() + skill.slice(1) : 'My files' }); if (!bld.name) bld.name = `Lessons from ${skill || 'my files'}`.slice(0, 60); bsurvey = null; };
 
   function smallerStep() {
     const b = brain(), f = b?.facts || {}, s = r.smaller;
@@ -161,11 +266,13 @@ export function createLab({ api, note }) {
 
   function runsHtml() {
     if (!view.runs.length) return '';
-    return `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.kind === 'write' ? `lessons, taught by ${esc(x.from)}` : `from ${esc(x.from)}`} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
+    return `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.kind === 'write' ? `lessons, taught by ${esc(x.from)}` : x.kind === 'build' || x.kind === 'sample' ? `${x.kind === 'sample' ? 'sample lessons' : 'lessons'} from your files, taught by ${esc(x.from)}` : `from ${esc(x.from)}`} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
       ${x.state === 'running' ? ' <button type="button" class="link" data-stop>Stop</button>' : ''}
       ${x.state === 'failed' || x.state === 'stopped' ? `<br><span class="muted">${esc(x.error || '')}</span>` : ''}
       ${(x.notes || []).map((n) => `<br><span class="muted">${esc(n)}</span>`).join('')}
-      ${x.kind === 'write' && x.report ? `<br><span class="muted">${x.report.lessons} lessons written in ${x.report.minutes} minutes. Pick it in step 2, under A lesson set I wrote here.</span>` : ''}
+      ${x.kind === 'write' && x.report ? `<br><span class="muted">${x.report.lessons} lessons written in ${x.report.minutes} minutes. Pick it in step 2, under A lesson set I wrote or built here.</span>` : ''}
+      ${x.kind === 'build' && x.report ? `<br><span class="muted">${x.report.lessons} lessons built in ${x.report.minutes} minutes${x.report.held ? `, ${x.report.held} passages held back` : ''}. Pick it in step 2, under A lesson set I wrote or built here, or open it under Sets built from your files.</span>` : ''}
+      ${x.kind === 'sample' && x.report ? `<br><span class="muted">${x.report.lessons} sample lessons in ${x.report.minutes} minutes${x.report.held ? `, ${x.report.held} passages held back` : ''}. They're under Build a new set from my files, in step 2.</span>` : ''}
       ${x.report?.coverage ? `<table class="lab-report"><caption class="muted">Coverage cut: kept ${x.report.coverage.experts} of ${x.report.coverage.of} experts per layer</caption><tr><th scope="col">Skill</th><th scope="col">Kept, on average</th><th scope="col">Worst layer</th></tr>${x.report.coverage.skills.map((k) => `<tr><th scope="row">${esc(k.name)}</th><td>${k.average}%</td><td>${k.worst}% (layer ${k.worstLayer})</td></tr>`).join('')}</table>` : ''}
       ${x.report?.tried ? `<br><span class="muted">Tried first on Brain Engine: ${x.report.tried.masked} with only the kept experts, ${x.report.tried.full} with all of them.</span>` : ''}
       ${x.report?.made ? `<table class="lab-report"><caption class="muted">Lab test (out of 100)</caption><tr><th scope="col"></th><th scope="col">${esc(x.name)}</th>${x.report.from ? `<th scope="col">${esc(x.from)}</th>` : ''}</tr>${Object.keys(PARTS).map((k) => `<tr><th scope="row">${esc(PARTS[k])}</th><td>${x.report.made.parts[k]?.score ?? '-'}</td>${x.report.from ? `<td>${x.report.from.parts[k]?.score ?? '-'}</td>` : ''}</tr>`).join('')}<tr><th scope="row">All</th><td>${x.report.made.score}</td>${x.report.from ? `<td>${x.report.from.score}</td>` : ''}</tr><tr><th scope="row">Size</th><td>${x.report.sizeGB} GB</td>${x.report.from ? `<td>${x.report.fromGB} GB</td>` : ''}</tr><tr><th scope="row">Words a second</th><td>${x.report.made.tps || '-'}</td>${x.report.from ? `<td>${x.report.from.tps || '-'}</td>` : ''}</tr></table>
@@ -217,6 +324,15 @@ export function createLab({ api, note }) {
     else if (el.dataset.wskill) { const k = el.dataset.wskill; w.skills = el.checked ? [...new Set([...w.skills, k])] : w.skills.filter((x) => x !== k); }
     else if (el.id === 'lab-w-count' || el.id === 'lab-w-count-n') w.count = Number(el.value);
     else if (el.name === 'wthink') w.think = el.value;
+    else if (el.id === 'lab-b-name') bld.name = el.value;
+    else if (el.id === 'lab-b-path') { typedPath = el.value; return; }
+    else if (el.id === 'lab-b-teacher') bld.teacher = el.value;
+    else if (el.dataset.bskill) { const it = bld.items[Number(el.dataset.bskill)]; if (it) it.skill = el.value; bsurvey = null; }
+    else if (el.dataset.bkind) { const k = el.dataset.bkind; bld.kinds = el.checked ? [...new Set([...bld.kinds, k])] : bld.kinds.filter((x) => x !== k); if (bsurvey) bsurvey = null; }
+    else if ('bresay' in el.dataset) bld.resay = el.checked;
+    else if (el.id === 'lab-b-count' || el.id === 'lab-b-count-n') bld.count = Number(el.value);
+    else if (el.name === 'bthink') bld.think = el.value;
+    else if (el.id === 'lab-v-q' || el.id === 'lab-v-skill' || el.id === 'lab-v-kind' || el.id === 'lab-v-file') { vq[{ 'lab-v-q': 'q', 'lab-v-skill': 'skill', 'lab-v-kind': 'kind', 'lab-v-file': 'file' }[el.id]] = el.value; if (viewer) await loadViewer(viewer.id); return draw(); }
     else if (el.name === 'cuthow') { r.smaller.cut.how = el.value; if (el.value === 'cover') { r.smaller.cut.cover = r.smaller.cut.cover || 0.95; r.smaller.cut.strong = r.smaller.cut.strong || []; r.smaller.cut.keep = 0; } else if (!r.smaller.cut.keep) r.smaller.cut.keep = brain()?.cuts?.[1]?.keep || brain()?.cuts?.[0]?.keep || 8; }
     else if (el.name === 'cover') r.smaller.cut.cover = Number(el.value);
     else if (el.dataset.strong) { const k = el.dataset.strong; r.smaller.cut.strong = el.checked ? [...new Set([...(r.smaller.cut.strong || []), k])] : (r.smaller.cut.strong || []).filter((x) => x !== k); }
@@ -250,6 +366,8 @@ export function createLab({ api, note }) {
     if (e.target.id === 'lab-chunks-n') { const s = $('lab-chunks'); if (s) s.value = e.target.value; }
     if (e.target.id === 'lab-w-count') { const n = $('lab-w-count-n'); if (n) n.value = e.target.value; }
     if (e.target.id === 'lab-w-count-n') { const s = $('lab-w-count'); if (s) s.value = e.target.value; }
+    if (e.target.id === 'lab-b-count') { const n = $('lab-b-count-n'); if (n) n.value = e.target.value; }
+    if (e.target.id === 'lab-b-count-n') { const s = $('lab-b-count'); if (s) s.value = e.target.value; }
   });
   body.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return;
@@ -263,12 +381,41 @@ export function createLab({ api, note }) {
     if ('nounload' in b.dataset) { askUnload = null; return draw(); }
     if ('writeopen' in b.dataset) { writing = true; await replan(); $('lab-w-name')?.focus(); return; }
     if ('writeclose' in b.dataset) { writing = false; wplan = null; return draw(); }
+    // Lab 2c: the lesson builder
+    if ('buildopen' in b.dataset) { building = true; await replan(); $('lab-b-name')?.focus(); return; }
+    if ('buildclose' in b.dataset) { building = false; bplan = null; return draw(); }
+    if ('baddfolder' in b.dataset || 'baddfile' in b.dataset) { const p = await pickPath('baddfolder' in b.dataset ? 'folder' : 'file'); if (p) addItem(p); return replan(); }
+    if ('baddpath' in b.dataset) { addItem(typedPath.trim().replace(/^"|"$/g, '')); typedPath = ''; return replan(); }
+    if (b.dataset.bremove) { bld.items.splice(Number(b.dataset.bremove), 1); bsurvey = null; return replan(); }
+    if ('bsurvey' in b.dataset) { surveying = true; draw(); try { bsurvey = await api('/api/lab/build/survey', { build: bld }); } catch (err) { msg = err.message; bsurvey = null; } surveying = false; return replan(); }
+    if (b.dataset.passage) { const k = b.dataset.passage; openPassage.has(k) ? openPassage.delete(k) : openPassage.add(k); return draw(); }
+    if (b.dataset.keep) { notLike = ''; b.textContent = 'Kept'; b.disabled = true; return; }
+    if (b.dataset.notlike) { notLike = notLike === b.dataset.notlike ? '' : b.dataset.notlike; return draw(); }
+    if (b.dataset.fb) {
+      const f = bld.feedback;
+      if (b.dataset.fb === 'file' && b.dataset.file) f.dropFiles = [...new Set([...f.dropFiles, b.dataset.file])];
+      else if (b.dataset.fb === 'kind' && b.dataset.file) f.notKinds[b.dataset.file] = [...new Set([...(f.notKinds[b.dataset.file] || []), b.dataset.kind])];
+      else if (b.dataset.fb === 'idea') f.badIdeas = [...new Set([...f.badIdeas, b.dataset.key])];
+      notLike = ''; bsurvey = null; return replan();
+    }
+    if (b.dataset.openset) { if (viewer?.id === b.dataset.openset) viewer = null; else { vq = { q: '', skill: '', file: '', kind: '' }; await loadViewer(b.dataset.openset); } return draw(); }
+    if ('vmore' in b.dataset && viewer) { await loadViewer(viewer.id, true); return draw(); }
+    if (b.dataset.rmlesson && viewer) { try { await api('/api/lab/set/remove', { id: viewer.id, keys: [b.dataset.rmlesson] }); } catch (err) { msg = err.message; } await loadViewer(viewer.id); await load(); return; }
+    if (b.dataset.rmfile && viewer) { try { await api('/api/lab/set/remove', { id: viewer.id, file: b.dataset.rmfile }); } catch (err) { msg = err.message; } await loadViewer(viewer.id); await load(); return; }
+    if (b.dataset.export) { try { exportInfo = { id: b.dataset.export, ...(await api('/api/lab/set/export', { id: b.dataset.export, check: true })) }; } catch (err) { msg = err.message; exportInfo = null; } return draw(); }
+    if ('exportclose' in b.dataset) { exportInfo = null; return draw(); }
+    if (b.dataset.exportgo) { const folder = await pickPath('folder'); if (!folder) return draw(); try { exportInfo = { id: b.dataset.exportgo, ...(await api('/api/lab/set/export', { id: b.dataset.exportgo, folder })) }; } catch (err) { msg = err.message; } return draw(); }
     if ('csv' in b.dataset || 'json' in b.dataset) { try { saved = (await api('/api/lab/compare', { ids: picked, save: 'csv' in b.dataset ? 'csv' : 'json' })).file; } catch (err) { msg = err.message; } return draw(); }
     try {
       if ('write' in b.dataset || (askUnload?.write && 'unload' in b.dataset)) {
         const res = await api('/api/lab/write', { write: w, unload: 'unload' in b.dataset });
         if (res.needUnload) { askUnload = Object.assign(res.names, { write: true }); return draw(); }
         askUnload = null; writing = false; wplan = null;
+      } else if ('bsample' in b.dataset || 'bbuild' in b.dataset || (askUnload?.build && 'unload' in b.dataset)) {
+        const sample = 'bsample' in b.dataset || askUnload?.build === 'sample';
+        const res = await api(sample ? '/api/lab/build/sample' : '/api/lab/build', { build: bld, unload: 'unload' in b.dataset });
+        if (res.needUnload) { askUnload = Object.assign(res.names, { build: sample ? 'sample' : 'build' }); return draw(); }
+        askUnload = null; if (!sample) { building = false; bplan = null; }
       } else if ('start' in b.dataset || 'unload' in b.dataset) {
         const res = await api('/api/lab/start', { recipe: r, unload: 'unload' in b.dataset });
         if (res.needUnload) { askUnload = res.names; return draw(); }

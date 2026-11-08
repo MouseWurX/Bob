@@ -488,7 +488,7 @@ const server = http.createServer(async (req, res) => {
     // 1.5.135: brains of your own. Pick a .gguf on this replicant matrix (local window only), add it to Bob's list, or take it off.
     if (req.method === 'POST' && p === '/api/own-models/pick') {
       if (!isLocal) return send(res, 403, { error: 'A file can only be picked on this replicant matrix itself.' });
-      try { const b = await body(req).catch(() => ({})); const file = await pickFile({ kind: b?.kind === 'mmproj' ? 'mmproj' : 'gguf' }); return send(res, 200, file ? { file, ...(b?.kind === 'mmproj' ? {} : inspectOwn(file)) } : { file: '' }); } catch (e) { return send(res, 200, { error: e.message }); }
+      try { const b = await body(req).catch(() => ({})); const kind = ['mmproj', 'docs'].includes(b?.kind) ? b.kind : 'gguf'; const file = await pickFile({ kind }); return send(res, 200, file ? { file, ...(kind === 'gguf' ? inspectOwn(file) : {}) } : { file: '' }); } catch (e) { return send(res, 200, { error: e.message }); }
     }
     if (req.method === 'POST' && p === '/api/own-models/inspect') {
       if (!isLocal) return send(res, 403, { error: `Brains of your own can only be added or removed on ${myName() || "the Bob's own replicant matrix"} itself, not from the phone.` });
