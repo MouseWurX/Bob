@@ -415,24 +415,56 @@ export function createCellar() {
         <label for="proj-path">Folder</label><input id="proj-path" type="text" placeholder="C:\\Projects\\MyGame"> <button type="button" class="mini" data-projbrowse>Browse…</button>
         <button type="button" data-projadd disabled>Add project</button><p class="error proj-error" hidden></p></div>`;
   }
-  // 1.5.79 How-tos: the steps Bob kept from jobs that worked. Loaded when the panel is drawn; edit and delete on the PC.
-  let howtosList = null, howtosLoading = false, howtoEditing = null, howtoDeleting = null;
-  window.addEventListener('bob-howto-saved', () => { howtosList = null; });
-  const loadHowtos = () => { if (howtosLoading) return; howtosLoading = true; api('/api/howtos').then((r) => { howtosList = r.howtos || []; }).catch(() => { howtosList = []; }).finally(() => { howtosLoading = false; draw(); }); };
-  function howtosHtml() {
-    const on = settings?.howtos === true;
-    if (howtosList === null) { loadHowtos(); return '<p class="muted">Loading…</p>'; }
-    const intro = `<p class="muted">${on ? 'After a job with a few steps goes well, Bob offers a card to keep the steps. When you ask for something like it again, he follows them.' : 'Off. Turn on "Let Bob learn how-tos" in How Bob works to have Bob offer them. How-tos you already saved stay here, and he doesn\'t use them while it\'s off.'} ${tip('A how-to is plain text: a name, what it\'s for, and the steps. It can\'t run anything by itself, and tools that ask for your OK still ask. How-tos stay on this replicant matrix (your computer).', 'How-tos')}</p>`;
-    const rows = howtosList.map((r) => howtoEditing === r.id
-      ? `<div class="howto-row" data-howto="${esc(r.id)}"><label>Name <input data-rname maxlength="60" value="${esc(r.name)}"></label>
+  // 1.5.79 How-tos: the steps Bob kept from jobs that worked. 1.5.144: one panel, 🧰 Tools and how-tos Bob made, for
+  // them and for the tools he wrote (src/own-kit.js). Loaded when the panel is drawn. Delete asks first, then the
+  // thing goes on the Recently deleted shelf for 30 days (Undo right away, or Put back from the shelf). Edit and
+  // Delete for good work on this PC only.
+  let ownKit = null, ownLoading = false, howtoEditing = null, ownAsk = null, ownPurgeAsk = null, ownLast = null, ownError = '';
+  const ownSame = (a, b) => a && b && a.kind === b.kind && a.id === b.id;
+  window.addEventListener('bob-howto-saved', () => { ownKit = null; });
+  const loadOwnKit = () => { if (ownLoading) return; ownLoading = true; api('/api/own-kit').then((r) => { ownKit = r; }).catch(() => { ownKit = { tools: [], howtos: [], deleted: [], maxTools: 30, maxHowtos: 100 }; }).finally(() => { ownLoading = false; draw(); }); };
+  const ownWhen = (t) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  const when = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const KIND_WORD = { tool: 'tool', howto: 'how-to' };
+  const binWord = () => (settings?.os === 'mac' ? 'the Trash' : settings?.os === 'linux' ? 'the trash' : 'the Recycle Bin'); // where thrown-away files go, by platform
+  const TOOL_STATE = { on: '', off: 'turned off', changed: 'off: its files changed since you OK\'d it', missing: 'its folder is gone' };
+  // Delete asks on the row itself: Delete, then "Delete / Keep it". No pop-up.
+  const ownDelBtns = (kind, id, name) => ownSame(ownAsk, { kind, id })
+    ? `<span class="ownkit-ask">Delete "${esc(name)}"? <span class="muted">It waits 30 days under Recently deleted.</span></span> <button type="button" class="mini danger" data-owndel="${esc(kind)}:${esc(id)}" aria-label="Yes, delete the ${KIND_WORD[kind]} ${esc(name)}">Delete</button><button type="button" class="link" data-owncancel>Keep it</button>`
+    : `<button type="button" class="mini" data-ownask="${esc(kind)}:${esc(id)}" aria-label="Delete the ${KIND_WORD[kind]} ${esc(name)}">Delete</button>`;
+  function ownKitHtml() {
+    if (ownKit === null) { loadOwnKit(); return '<p class="muted">Loading…</p>'; }
+    const k = ownKit;
+    const intro = `<p class="muted">Everything Bob made for himself to work with: the tools he wrote and the how-tos he kept. Look them over and delete what you don't want him to have. Anything deleted waits 30 days under Recently deleted, where you can put it back. ${tip('Delete here stops Bob using the thing at once. A tool\'s files stay in his folder on the shelf, then go to ' + binWord() + ' after 30 days (or when you press Delete for good). A how-to is plain text, so it\'s simply forgotten. Nothing here leaves this replicant matrix (your computer).', 'Tools and how-tos Bob made')}</p>`;
+    const note = ownError ? `<p class="error ownkit-note" role="alert">${esc(ownError)}</p>`
+      : ownLast ? `<p class="ownkit-note" role="status">${ownLast.put ? `Put the ${KIND_WORD[ownLast.kind]} "${esc(ownLast.name)}" back.` : `Deleted the ${KIND_WORD[ownLast.kind]} "${esc(ownLast.name)}". <button type="button" class="mini" data-ownundo="${esc(ownLast.kind)}:${esc(ownLast.id)}">Undo</button>`}</p>` : '<p class="ownkit-note" role="status" hidden></p>';
+    const tools = k.tools.map((t) => `<li class="ownkit-row"><div class="row"><strong>${esc(t.name)}</strong>${TOOL_STATE[t.state] ? ` <span class="warn-text">${esc(TOOL_STATE[t.state])}</span>` : ''}<span class="muted">${t.lastUsed ? `used ${esc(when(t.lastUsed))}` : 'not used yet'}</span></div>
+        <div class="muted">${esc(t.what)}</div>
+        <div class="muted">Can change: ${esc(t.writes.join('; ') || 'nothing outside its folder')}. Internet: ${t.internet ? 'yes' : 'no'}. Made ${esc(when(t.at))}.</div>
+        <div class="row"><button type="button" class="mini" data-owncode="${esc(t.name)}" aria-label="Show the code of ${esc(t.name)}">Show code</button>${ownDelBtns('tool', t.name, t.name)}</div><pre class="cmd ownkit-code" hidden></pre></li>`).join('');
+    const howtos = k.howtos.map((r) => howtoEditing === r.id
+      ? `<li class="ownkit-row howto-row" data-howto="${esc(r.id)}"><label>Name <input data-rname maxlength="60" value="${esc(r.name)}"></label>
           <label>What it's for <input data-rwhen maxlength="200" value="${esc(r.when || '')}"></label>
           <label>Steps (one per line) <textarea data-rsteps rows="${Math.min(12, r.steps.length + 1)}">${esc(r.steps.map((x) => x.did).join('\n'))}</textarea></label>
-          <div class="row"><button type="button" data-howtosave="${esc(r.id)}">Save changes</button><button type="button" class="link" data-howtocancel>Cancel</button></div><p class="error howto-error" hidden></p></div>`
-      : `<div class="howto-row"><div class="row"><strong>${esc(r.name)}</strong><span class="muted">${r.steps.length} steps${r.used ? ` · used ${r.used} time${r.used === 1 ? '' : 's'}` : ' · not used yet'}</span></div>
+          <div class="row"><button type="button" data-howtosave="${esc(r.id)}">Save changes</button><button type="button" class="link" data-howtocancel>Cancel</button></div><p class="error howto-error" hidden></p></li>`
+      : `<li class="ownkit-row howto-row"><div class="row"><strong>${esc(r.name)}</strong><span class="muted">${r.steps.length} steps${r.used ? ` · used ${r.used} time${r.used === 1 ? '' : 's'}` : ' · not used yet'}</span></div>
           ${r.when && r.when !== r.name ? `<div class="muted">For: ${esc(r.when)}</div>` : ''}
           <ol class="howto-steps">${r.steps.map((x) => `<li>${esc(x.did)}</li>`).join('')}</ol>
-          <div class="row"><button type="button" class="mini" data-howtoedit="${esc(r.id)}">Edit</button>${howtoDeleting === r.id ? `<button type="button" class="mini danger" data-howtodel="${esc(r.id)}">Delete for good</button><button type="button" class="link" data-howtocancel>Keep it</button>` : `<button type="button" class="mini" data-howtoask="${esc(r.id)}">Delete</button>`}</div></div>`).join('');
-    return `${intro}<div class="howtos-list">${rows || '<p class="muted">No how-tos yet.</p>'}</div>`;
+          <div class="row"><button type="button" class="mini" data-howtoedit="${esc(r.id)}" aria-label="Edit the how-to ${esc(r.name)}">Edit</button>${ownDelBtns('howto', r.id, r.name)}</div></li>`).join('');
+    const shelf = k.deleted.map((d) => `<li class="ownkit-row"><div class="row"><strong>${esc(d.name)}</strong><span class="muted">${KIND_WORD[d.kind]}${d.kind === 'howto' ? ` · ${d.steps} steps` : ''} · gone for good ${esc(ownWhen(d.goneAt))}</span></div>
+        ${d.what ? `<div class="muted">${esc(d.what)}</div>` : ''}
+        <div class="row"><button type="button" class="mini" data-ownput="${esc(d.kind)}:${esc(d.id)}" aria-label="Put the ${KIND_WORD[d.kind]} ${esc(d.name)} back">Put back</button>${ownSame(ownPurgeAsk, d)
+          ? `<span class="ownkit-ask">Delete "${esc(d.name)}" for good? <span class="muted">${d.kind === 'tool' ? `Its folder goes to ${binWord()}.` : 'There\'s no getting it back.'}</span></span> <button type="button" class="mini danger" data-ownpurge="${esc(d.kind)}:${esc(d.id)}" aria-label="Yes, delete the ${KIND_WORD[d.kind]} ${esc(d.name)} for good">Delete for good</button><button type="button" class="link" data-owncancel>Keep it</button>`
+          : `<button type="button" class="mini" data-ownpurgeask="${esc(d.kind)}:${esc(d.id)}" aria-label="Delete the ${KIND_WORD[d.kind]} ${esc(d.name)} for good">Delete for good</button>`}</div></li>`).join('');
+    return `${intro}${note}
+      <h4 class="ssub">🔧 Tools he wrote <span class="muted">${k.tools.length} of ${k.maxTools}</span></h4>
+      <p class="muted">${k.makerOn ? 'With "Make his own tools" on, Bob writes one when none of his tools fits a job, and shows you a card before it\'s added. Turn one off or on under Settings, Show advanced settings, Hands.' : 'Making new ones is off ("Make his own tools" under Settings, Show advanced settings, Hands). The ones he already made stay here.'}</p>
+      <ul class="ownkit-list">${tools || '<li class="muted">No tools yet.</li>'}</ul>
+      <h4 class="ssub">📒 How-tos he kept <span class="muted">${k.howtos.length} of ${k.maxHowtos}</span></h4>
+      <p class="muted">${k.howtosOn ? 'After a job with a few steps goes well, Bob offers a card to keep the steps. When you ask for something like it again, he follows them.' : 'Learning new ones is off ("Let Bob learn how-tos" in How Bob works). The ones you already saved stay here, and he doesn\'t use them while it\'s off.'}</p>
+      <ul class="ownkit-list">${howtos || '<li class="muted">No how-tos yet.</li>'}</ul>
+      <details class="ownkit-shelf" ${k.deleted.length && (ownPurgeAsk || ownLast) ? 'open' : ''}><summary><strong>🗑 Recently deleted</strong> <span class="muted">· ${k.deleted.length ? `${k.deleted.length} waiting · each kept 30 days` : 'nothing waiting'}</span></summary>
+        <ul class="ownkit-list">${shelf || '<li class="muted">Nothing here. Delete a tool or how-to above and it waits here for 30 days.</li>'}</ul></details>`;
   }
   // 1.5.125 Bob's home folder (models, programs, notes, settings), with Move. Settings text is third person; the first-run copy is Bob's own voice.
   function homeError(text) { for (const box of dlg.querySelectorAll('.home-error')) { box.textContent = text; box.hidden = false; } }
@@ -538,7 +570,8 @@ export function createCellar() {
     // 1.5.125 Bob's home folder (closed, it shows the home folder; red when it's somewhere temporary).
     ['ev-home', '📦 Bob\'s home folder', () => { const h = homeInfo || {}; return h.tempLike ? `${settings?.home || ''} · in ${h.tempLike}: move it` : h.synced ? `${h.folder || settings?.home || ''} · a ${h.synced} folder, synced to the cloud: not recommended` : `${h.folder || settings?.home || ''}${h.modelsText ? ` · models ${h.modelsText}` : ''}`; }, () => homeHtml()],
     ['ev-save', '💾 Where Bob saves things', () => { const sd = settings?.saveDir || {}; return sd.missing ? 'Picked folder not found · saving in Bob\'s own folder' : sd.custom ? sd.folder : 'Bob\'s own folder (Made by Bob)'; }, () => saveDirHtml()],
-    ['ev-howtos', '📒 How-tos', () => { const n = howtosList ? howtosList.length : (settings?.howtoCount || 0); return `${n ? `${n} how-to${n === 1 ? '' : 's'}` : 'No how-tos yet'} · Learning: ${settings?.howtos === true ? 'on' : 'off'}`; }, () => howtosHtml()]];
+    // 1.5.144 🧰 Tools and how-tos Bob made (closed, it shows how many of each and how many wait on the shelf).
+    ['ev-howtos', '🧰 Tools and how-tos Bob made', () => { const c = ownKit ? { tools: ownKit.tools.length, howtos: ownKit.howtos.length, deleted: ownKit.deleted.length } : (settings?.ownKit || { tools: 0, howtos: settings?.howtoCount || 0, deleted: 0 }); const bit = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`; return c.tools || c.howtos ? `${bit(c.tools, 'tool')} · ${bit(c.howtos, 'how-to')}${c.deleted ? ` · ${c.deleted} recently deleted` : ''}` : 'Nothing made yet'; }, () => ownKitHtml()]];
 
   function everydayHtml() {
     const st = settings.style || {};
@@ -570,7 +603,7 @@ export function createCellar() {
       ${sswitch('autoSession', settings.autoSession !== false, 'Let Bob pick the session', 'Bob moves into the session that suits the job (Art, Coding, Office or Gaming) and goes back to Normal, the lightest, once he has been quiet for 2 minutes. While something else is using the graphics card, like a game, he stays in Gaming. You can still pick a session yourself from the menu: Bob keeps it while you work, then goes back to Normal once he has been quiet for 2 minutes. To keep him in Gaming, press 🎮 Gaming next to Effort.')}
       ${sswitch('oneBrain', settings.oneBrain, 'One brain (snappier)', 'Every copy of Bob uses the main brain, so he never stops to swap brains (about 20 seconds).')}
       ${sswitch('planFirst', settings.planFirst === true, 'Show Bob\'s plan before big jobs', keep('Off unless you turn it on. Before a job with several steps, or any step that changes files or runs programs, Bob shows every step on one card and waits for you. Any OKs the job needs are ticked on the same card.'))}
-      ${sswitch('howtos', settings.howtos === true, 'Let Bob learn how-tos', 'Off unless you turn it on. After a job with a few steps goes well, Bob offers to keep the steps as a how-to, and follows them next time you ask for something like it. Nothing is kept without your click. Your how-tos are in 📒 How-tos below.')}
+      ${sswitch('howtos', settings.howtos === true, 'Let Bob learn how-tos', 'Off unless you turn it on. After a job with a few steps goes well, Bob offers to keep the steps as a how-to, and follows them next time you ask for something like it. Nothing is kept without your click. Your how-tos are in 🧰 Tools and how-tos Bob made below.')}
       ${sswitch('resumeJobs', settings.resumeJobs, 'Pick up where Bob left off after a restart', 'If Bob closes in the middle of a job (an update, a restart or a crash), he carries on when he opens again. Steps that finished aren\'t done again, and the step that got cut off is done again from the start. Unfinished downloads carry on too. If the cut-off step was typing into an app, moving or deleting files, editing a file or running a command, the job waits in Tasks so you can check first.')}
       <h4 class="ssub">Starting and closing</h4>
       ${sswitch('autostart', settings.autostart, 'Launch Bob on start-up', 'Off unless you turn it on.', settings.platform === 'win32' || settings.platform === 'darwin' || settings.loginItems ? '' : 'disabled')}
@@ -1095,16 +1128,33 @@ export function createCellar() {
         await saveProjects(list, settings.defaultProject || (list.length === 1 ? name : undefined));
         return;
       }
-      // 1.5.79 How-tos: edit, delete (two clicks, no pop-up), cancel.
-      if (b.dataset.howtoedit) { howtoEditing = b.dataset.howtoedit; howtoDeleting = null; draw(); return; }
-      if (b.dataset.howtoask) { howtoDeleting = b.dataset.howtoask; howtoEditing = null; draw(); return; }
-      if ('howtocancel' in b.dataset) { howtoEditing = howtoDeleting = null; draw(); return; }
-      if (b.dataset.howtodel) { await api('/api/howtos/delete', { id: b.dataset.howtodel }); howtoDeleting = null; howtosList = null; settings.howtoCount = Math.max(0, (settings.howtoCount || 1) - 1); draw(); return; }
+      // 1.5.79 How-tos: edit, cancel. 1.5.144 🧰 Tools and how-tos Bob made: Show code, Delete (asks on the row), Undo,
+      // Put back, Delete for good (asks on the row). Each answer redraws from what the PC sent back.
+      if (b.dataset.howtoedit) { howtoEditing = b.dataset.howtoedit; ownAsk = ownPurgeAsk = null; draw(); return; }
+      if ('howtocancel' in b.dataset) { howtoEditing = null; draw(); return; }
+      if ('owncancel' in b.dataset) { ownAsk = ownPurgeAsk = null; draw(); return; }
+      const ownPick = (v) => { const i = v.indexOf(':'); return { kind: v.slice(0, i), id: v.slice(i + 1) }; };
+      if (b.dataset.ownask) { ownAsk = ownPick(b.dataset.ownask); ownPurgeAsk = null; howtoEditing = null; ownLast = null; ownError = ''; draw(); dlg.querySelector('[data-owndel]')?.focus(); return; }
+      if (b.dataset.ownpurgeask) { ownPurgeAsk = ownPick(b.dataset.ownpurgeask); ownAsk = null; ownLast = null; ownError = ''; draw(); dlg.querySelector('[data-ownpurge]')?.focus(); return; }
+      if (b.dataset.owndel || b.dataset.ownundo || b.dataset.ownput || b.dataset.ownpurge) {
+        const act = b.dataset.owndel ? 'delete' : b.dataset.ownpurge ? 'purge' : 'restore';
+        const pick = ownPick(b.dataset.owndel || b.dataset.ownundo || b.dataset.ownput || b.dataset.ownpurge);
+        ownAsk = ownPurgeAsk = null; ownError = '';
+        try {
+          const r = await api(`/api/own-kit/${act}`, pick);
+          ownKit = r.view; ownLast = act === 'delete' ? { kind: r.kind, id: r.id, name: r.name } : act === 'restore' ? { kind: r.kind, id: r.id, name: r.name, put: true } : null;
+          if (settings) settings.ownKit = { tools: r.view.tools.length, howtos: r.view.howtos.length, deleted: r.view.deleted.length };
+        } catch (err) { ownError = err.message; ownKit = null; }
+        draw();
+        if (act === 'delete') dlg.querySelector('[data-ownundo]')?.focus(); else dlg.querySelector('#sub-ev-howtos .ownkit-note')?.focus?.();
+        return;
+      }
+      if (b.dataset.owncode) { const pre = b.closest('li').querySelector('.ownkit-code'); if (!pre.hidden) { pre.hidden = true; b.textContent = 'Show code'; return; } try { const r = await api('/api/hands/mytools', { name: b.dataset.owncode, code: true }); pre.textContent = r.code; pre.hidden = false; b.textContent = 'Hide code'; } catch (err) { pre.textContent = err.message; pre.hidden = false; } return; }
       if (b.dataset.howtosave) {
         const row = b.closest('.howto-row');
         try {
           await api('/api/howtos/edit', { id: b.dataset.howtosave, name: row.querySelector('[data-rname]').value, when: row.querySelector('[data-rwhen]').value, steps: row.querySelector('[data-rsteps]').value.split('\n') });
-          howtoEditing = null; howtosList = null; draw();
+          howtoEditing = null; ownKit = null; draw();
         } catch (err) { const eb = row.querySelector('.howto-error'); if (eb) { eb.textContent = err.message; eb.hidden = false; } }
         return;
       }
@@ -1435,7 +1485,7 @@ export function createCellar() {
       if (['readyWhileTyping', 'gamesFirst', 'pictureFit'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k]; flash(el, 'Saved. Applies when the brain or picture model next loads.'); return; }
       if (el.dataset.set === 'autoSession') { const r = await api('/api/settings', { autoSession: el.checked }); settings.autoSession = r.autoSession; el.checked = r.autoSession; window.dispatchEvent(new CustomEvent('bob-auto-session', { detail: { autoSession: r.autoSession } })); flash(el, r.autoSession ? 'On. Bob picks the session himself.' : 'Off. The session only changes when you pick one.'); return; }
       if (el.dataset.set === 'tray' || el.dataset.set === 'lookIcon') { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k]; return; }
-      if (el.dataset.set === 'howtos') { const r = await api('/api/settings', { howtos: el.checked }); settings.howtos = r.howtos; el.checked = r.howtos; flash(el, r.howtos ? 'On. After a job with a few steps goes well, Bob offers to keep them as a how-to.' : 'Off. Bob won\'t offer or use how-tos. Saved ones stay in 📒 How-tos.'); return; }
+      if (el.dataset.set === 'howtos') { const r = await api('/api/settings', { howtos: el.checked }); settings.howtos = r.howtos; el.checked = r.howtos; flash(el, r.howtos ? 'On. After a job with a few steps goes well, Bob offers to keep them as a how-to.' : 'Off. Bob won\'t offer or use how-tos. Saved ones stay in 🧰 Tools and how-tos Bob made.'); return; }
       if (el.dataset.set === 'computerLab') { const r = await api('/api/settings', { computerLab: el.checked }); settings.computerLab = r.computerLab === true; el.checked = settings.computerLab; window.dispatchEvent(new CustomEvent('bob-lab-switch', { detail: { on: settings.computerLab } })); flash(el, r.computerLabWhy || (settings.computerLab ? 'On. 🧪 Lab is in the left pane.' : 'Off. The Lab button is hidden; brains you made stay in Bob.')); return; } // 1.5.141
       if (el.dataset.set === 'naughtyList') { const r = await api('/api/settings', { naughtyList: el.checked }); settings.naughtyList = r.naughtyList === true; el.checked = settings.naughtyList; if (!settings.naughtyList && catView === 'naughty') setCatView('well'); flash(el, settings.naughtyList ? 'On. The Naughty list side (the red devil) is at the top of the Brain catalogue.' : 'Off. The naughty list is out of every list again.'); return; }
       if (el.dataset.set === 'catalogUpdates') { const r = await api('/api/settings', { catalogUpdates: el.checked }); settings.catalogUpdates = r.catalogUpdates === true; el.checked = settings.catalogUpdates; flash(el, settings.catalogUpdates ? (r.listCheck?.why ? `On. ${r.listCheck.why}` : 'On. Bob looks for a newer brain list once a day.') : 'Off. Bob uses the brain list that came with this version.'); await load().catch(() => {}); return; } // 1.5.137

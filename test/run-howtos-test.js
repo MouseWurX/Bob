@@ -136,7 +136,7 @@ let offer;
 {
   const cellar = read('public/cellar.js'), app = read('public/app.js'), server = read('src/server.js'), help = HELP.map((e) => e.html).join('\n');
   check('Settings: the switch on How Bob works, off unless turned on', /sswitch\('howtos', settings\.howtos === true, 'Let Bob learn how-tos', 'Off unless you turn it on\./.test(cellar));
-  check('Settings: the 📒 How-tos panel with Edit and a two-step Delete (no pop-up)', /'📒 How-tos'/.test(cellar) && /Delete for good/.test(cellar) && /Keep it/.test(cellar) && !/confirm\(/.test(cellar.slice(cellar.indexOf('function howtosHtml'), cellar.indexOf('function howtosHtml') + 3000)));
+  check('Settings: how-tos in the 🧰 Tools and how-tos Bob made panel with Edit and a two-step Delete (no pop-up; 1.5.144)', /'🧰 Tools and how-tos Bob made'/.test(cellar) && /How-tos he kept/.test(cellar) && /data-howtoedit/.test(cellar) && /Keep it/.test(cellar) && !/confirm\(/.test(cellar.slice(cellar.indexOf('function ownKitHtml'), cellar.indexOf('function ownKitHtml') + 8000)));
   check('the chat card has Save how-to and Not now', /Keep the steps as a how-to\?/.test(app) && /Save how-to/.test(app) && /Not now/.test(app));
   check('the server: list, answer, and PC-only edit and delete', /\/api\/howtos'/.test(server) && /\/api\/howtos\/answer/.test(server) && /Recipes can only|How-tos can only be changed on this replicant matrix itself/.test(server));
   check('Help has an entry, the setting, the glossary and two FAQs', HELP.some((e) => e.id === 'howtos') && /Let Bob learn how-tos/.test(help) && /<dt>How-to<\/dt>/.test(help) && HELP.some((e) => e.id === 'faq-howto-recipe') && HELP.some((e) => e.id === 'faq-howto-asking'));
