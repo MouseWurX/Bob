@@ -126,7 +126,8 @@ const catalog = { models: [{ id: 'test-moe', name: 'Test MoE', family: 'Test', c
 const shop = { cfg, catalog, locate: (e) => (e.id === 'test-moe' ? { gguf: brainFile, mmproj: readerFile } : {}) };
 const events = [];
 const fakeQuiz = (score) => ({ parts: { general: { right: 1, of: 1, score } }, score, tps: 12 });
-const lab = new Lab(cfg, { shop, broadcast: (e) => events.push(e), steps: {
+const big = () => ({ ok: true, why: '' }); // the runner's own memory must not matter
+const lab = new Lab(cfg, { shop, room: big, broadcast: (e) => events.push(e), steps: {
   count: async (s) => { fs.copyFileSync(countsFile, s.counts); },
   quantize: async (s) => { fs.copyFileSync(s.src, s.out); },
   test: async (s) => fakeQuiz(s.gguf === brainFile ? 80 : 70)
@@ -150,15 +151,16 @@ check('Use in Bob gives it an id Bob\'s engine runs', used.id === 'lab-little-te
 check('it shows in the catalogue next to its family, with no download', catalog.models.some((m) => m.id === 'lab-little-test' && m.madeInLab && m.family === 'Test' && m.files.length === 0 && /Lab test: 70 out of 100 \(Test MoE: 80\)/.test(m.what)));
 check('a merged catalogue isn\'t merged twice', mergeMadeBrains(catalog, cfg).models.filter((m) => m.id === 'lab-little-test').length === 1);
 check('the same name can\'t be made twice', lab.plan(recipe).problems.some((x) => /already have a Lab brain/.test(x)));
-check('Gaming on: the Lab waits', await new Lab({ ...cfg, session: 'light' }, { shop }).start({ ...recipe, name: 'Other' }).then(() => false, (e) => /Gaming is on/.test(e.message)));
-check('Lab off: nothing starts', await new Lab({ ...cfg, computerLab: false }, { shop }).start({ ...recipe, name: 'Other' }).then(() => false, (e) => /Computer Science Lab is off/.test(e.message)));
+check('Gaming on: the Lab waits', await new Lab({ ...cfg, session: 'light' }, { shop, room: big }).start({ ...recipe, name: 'Other' }).then(() => false, (e) => /Gaming is on/.test(e.message)));
+check('Lab off: nothing starts', await new Lab({ ...cfg, computerLab: false }, { shop, room: big }).start({ ...recipe, name: 'Other' }).then(() => false, (e) => /Computer Science Lab is off/.test(e.message)));
 const busyEngine = { engine: { loaded: async () => [{ name: 'gemma4:26b', vram: 9e9 }], unloadAll: async () => { busyEngine.unloaded = true; } } };
-const lab2 = new Lab(cfg, { shop, brain: busyEngine, steps: { test: async () => fakeQuiz(50) } });
+const lab2 = new Lab(cfg, { shop, room: big, brain: busyEngine, steps: { test: async () => fakeQuiz(50) } });
 const ask = await lab2.start({ name: 'Eyes Only', from: 'test-moe', smaller: { hearing: true }, test: { compare: false } });
 check('with Bob\'s brain on the card, the Lab asks first', ask.needUnload && ask.names[0] === 'gemma4:26b' && !busyEngine.unloaded);
 await lab2.start({ name: 'Eyes Only', from: 'test-moe', smaller: { hearing: true }, test: { compare: false } }, { unload: true });
 while (lab2.job) await new Promise((r) => setTimeout(r, 20));
 check('after a yes it unloads and runs', busyEngine.unloaded && lab2.runs.at(-1).state === 'done', lab2.runs.at(-1).error || '');
+check('a small replicant matrix can\'t start a Lab job', await new Lab(cfg, { shop, room: () => labRoom(8 * 1024 ** 3) }).start({ ...recipe, name: 'Other' }).then(() => false, (e) => /at least 12 GB/.test(e.message)));
 const saved = lab.saveRecipe({ ...recipe, lessons: { kind: 'file', file: path.join(tmp, 'secret', 'lessons.jsonl') } });
 check('a saved recipe keeps choices, not paths', !JSON.stringify(saved).includes(tmp) && saved.at(-1).smaller.cut.keep === 4);
 

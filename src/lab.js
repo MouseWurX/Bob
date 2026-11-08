@@ -206,7 +206,8 @@ function run(exe, args, { signal, log }) {
 }
 
 export class Lab {
-  constructor(cfg, { shop, brain, broadcast = () => {}, now = Date.now, steps = {} } = {}) {
+  constructor(cfg, { shop, brain, broadcast = () => {}, now = Date.now, steps = {}, room = () => labRoom() } = {}) {
+    this.room = room; // tests pass their own, so the result doesn't depend on the tester's memory
     this.cfg = cfg; this.shop = shop; this.brain = brain; this.broadcast = broadcast; this.now = now;
     this.runsFile = path.join(labDir(cfg), 'runs.json');
     this.recipesFile = path.join(labDir(cfg), 'recipes.json');
@@ -226,7 +227,7 @@ export class Lab {
   brains() { return labBrains(this.shop); }
 
   view() {
-    const room = labRoom();
+    const room = this.room();
     const cardGB = Number(this.cfg.gpuVramGB) || 0;
     const brains = this.brains().map((b) => { let f = null; try { f = inspect(b); } catch (e) { return { ...b, gguf: undefined, mmproj: undefined, error: e.message }; } return { id: b.id, name: b.name, family: b.family, community: b.community, naughty: b.naughty, madeInLab: b.madeInLab, license: b.license, facts: f && { arch: f.arch, experts: f.experts, used: f.used, groups: f.groups, layers: f.layers, fileType: f.fileType, fullSize: f.fullSize, sizeGB: f.sizeGB, sight: f.sight, hearing: f.hearing, readerGB: f.readerGB }, cuts: f ? cutSizes(f).map((c) => ({ ...c, fit: fitWords(c.gb, cardGB) })) : [], fit: f ? fitWords(f.sizeGB, cardGB) : '' }; });
     return { on: labOn(this.cfg), room, cardGB, brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES };
@@ -258,7 +259,8 @@ export class Lab {
 
   async start(recipe, { unload = false } = {}) {
     if (!labOn(this.cfg)) throw new Error('The Computer Science Lab is off. Turn it on in Settings, How Bob works, Brains.');
-    if (!labRoom().ok) throw new Error(labRoom().why);
+    const room = this.room();
+    if (!room.ok) throw new Error(room.why);
     if (this.job) throw new Error('The Lab is already busy with a job. Wait for it, or stop it.');
     if (gaming(this.cfg)) throw new Error('Gaming is on, so the Lab waits. Switch the session to Normal to run it.');
     const p = this.plan(recipe);
