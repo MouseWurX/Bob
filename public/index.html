@@ -27,6 +27,7 @@
     <button id="tidyBtn" type="button" class="nav-item" title="Tidy up: old chats, pictures and logs Bob can clear away (asks first)" aria-label="Tidy up"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3l-2 8"/><path d="M6 13h12l-1 8H7z"/><path d="M9 17v2M12 17v2M15 17v2"/></svg><span class="lbl">Tidy up</span><span class="short" aria-hidden="true">Tidy</span><span class="badge" hidden></span></button>
     <button id="adventureBtn" type="button" class="nav-item" title="Adventure: Bob runs a tabletop game for you and your other Bobs" aria-label="Adventure"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/><circle cx="8" cy="10" r=".8"/><circle cx="16" cy="10" r=".8"/><circle cx="12" cy="16" r=".8"/></svg><span class="lbl">Adventure</span><span class="short" aria-hidden="true">Adventure</span></button>
     <button id="gamesBtn" type="button" class="nav-item" title="Games: small games Bob plays with you (word games, twenty questions, story dice)" aria-label="Games"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="7" width="18" height="11" rx="3"/><path d="M8 10v5M5.5 12.5h5"/><circle cx="16" cy="11" r=".9"/><circle cx="18.5" cy="13.5" r=".9"/></svg><span class="lbl">Games</span><span class="short" aria-hidden="true">Games</span></button>
+    <button id="labBtn" type="button" class="nav-item" title="Computer Science Lab: make your own brain from one in the catalogue" aria-label="Lab" hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/></svg><span class="lbl">Lab</span><span class="short" aria-hidden="true">Lab</span></button>
     <div class="nav-head">Setup</div>
     <button id="cellarBtn" type="button" class="nav-item" title="Get models: Equip Bob, the model shops and what's on this replicant matrix" aria-label="Get models"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7l8-4 8 4v10l-8 4-8-4z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg><span class="lbl">Get models</span><span class="short" aria-hidden="true">Models</span></button>
     <button id="settingsBtn" type="button" class="nav-item" title="Settings: everyday, plus advanced if you want it" aria-label="Settings"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span class="lbl">Settings</span><span class="short" aria-hidden="true">Settings</span></button>
@@ -104,7 +105,7 @@
   <aside id="now" class="now" aria-label="Now running">
     <div class="now-head"><strong>Now running</strong><span class="ctx-fill"></span><button id="hideRight" type="button" class="link" title="Hide (Ctrl+J)">Hide »</button></div>
     <section><div class="now-sec">Tasks <button type="button" class="tip-i" aria-label="About Tasks" aria-expanded="false"><span class="tip-src" hidden>What Bob is doing and what waits its turn. Drag one to change the order.</span></button><span class="ctx-fill"></span><button type="button" class="link" data-alltasks>See all</button></div><ol id="nowTasks" class="tlist"></ol></section>
-    <section id="nowNet" hidden><div class="now-sec">Bob-Net <button type="button" class="tip-i" aria-label="About Bob-Net" aria-expanded="false"><span class="tip-src" hidden>Your other Bobs, and what each is doing for the others right now: thinking a reply, making a picture, ready, gaming, not reachable. The top line is this Bob. Set it up in Settings, Show advanced settings, Bob-Net.</span></button></div><ul id="nowNetList" class="tlist net-list"></ul></section>
+    <section id="nowNet" hidden><div class="now-sec"><button type="button" id="nowNetHead" class="link now-head" title="Bob-Net settings" aria-label="Open Bob-Net settings">Bob-Net</button> <button type="button" class="tip-i" aria-label="About Bob-Net" aria-expanded="false"><span class="tip-src" hidden>Your other Bobs, and what each is doing for the others right now: thinking a reply, making a picture, ready, gaming, not reachable. The top line is this Bob. Press Bob-Net to set it up.</span></button></div><ul id="nowNetList" class="tlist net-list"></ul></section>
     <section><div class="now-sec">Downloads<span class="ctx-fill"></span><button type="button" class="link" data-alldl>Manage</button></div><ol id="nowDl" class="tlist"></ol></section>
     <section><div class="now-sec">Memory</div><div id="brainBay" class="brain-bay" hidden></div><div id="nowGpu" class="muted now-gpu">Checking...</div></section>
   </aside>
@@ -139,6 +140,10 @@
     <div id="games-body"></div>
   </dialog>
 
+  <dialog id="lab" class="cellar lab-dlg" aria-labelledby="lab-title">
+    <div class="cellar-head"><h2 id="lab-title">🧪 Computer Science Lab</h2><button id="lab-close" class="icon" title="Close" aria-label="Close">✕</button></div>
+    <div id="lab-body"></div>
+  </dialog>
   <dialog id="tidy" class="cellar" aria-labelledby="tidy-title">
     <div class="cellar-head"><h2 id="tidy-title">Tidy up</h2><button id="tidy-close" class="icon" title="Close" aria-label="Close">✕</button></div>
     <div id="tidy-body"></div>
