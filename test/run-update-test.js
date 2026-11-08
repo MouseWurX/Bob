@@ -51,7 +51,7 @@ check('nothing is built: no electron-builder, no npm install, no dist folder on 
 check('failure is decided by exit codes, not by text on stderr', /ExitCode/.test(ps) && /2>&1/.test(ps));
 check('keeps the previous Bob (resources\\app-previous, and Bob-previous.exe when Electron changes)', /Rename-Item -LiteralPath \$cur -NewName 'app-previous'/.test(ps) && /Bob-previous\.exe/.test(ps));
 check('an update stages Bob in resources\\app.new and swaps only once Bob has closed', /Join-Path \$Res 'app\.new'/.test(ps) && /-not \(Bob-Running\) -and \(Apply-Update 'new'\)/.test(ps) && /-not \(Bob-Running\) -and \(Apply-Update 'pending'\)/.test(ps));
-check('Bob\'s files are the tested list, never config.json', /\$AppFiles = @\('electron', 'src', 'public', 'audio', 'installer', 'catalog\.json', 'config\.example\.json', 'package\.json', 'LICENSE', 'LICENSE-ART', 'ASSETS-LICENSE\.md', 'TRADEMARKS\.md', 'THIRD-PARTY\.md', 'README\.md'\)/.test(ps)
+check('Bob\'s files are the tested list, never config.json', /\$AppFiles = @\('electron', 'src', 'public', 'audio', 'installer', 'catalog\.json', 'config\.example\.json', 'package\.json', 'LICENSE', 'docs\/legal', 'README\.md'\)/.test(ps)
   && ps.match(/\$AppFiles = (@\([^)]*\))/)[1] === fs.readFileSync(new URL('../installer/make-release.ps1', import.meta.url), 'utf8').match(/\$AppFiles = (@\([^)]*\))/)?.[1] && !/'config\.json'/.test(ps.split('$AppFiles')[1].split('\n')[0]));
 check('Electron\'s default app is removed so resources\\app opens', /default_app\.asar/.test(ps));
 check('waits until Bob is idle before closing him', /api\/idle/.test(ps) && /api\/quit/.test(ps));

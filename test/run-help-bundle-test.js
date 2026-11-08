@@ -130,6 +130,12 @@ const scrub = scrubber(cfg, scrubOpts);
   check('the same minute twice does not overwrite', /already exists/.test(threw), threw);
   const z = await bundleBytes(cfg, { brain: deadBrain, shop, checkEngine, scrubOpts, brainNote: false });
   check('bundleBytes gives the zip as bytes for the phone, and leaves no temp file behind', Buffer.isBuffer(z.data) && z.data.readUInt32LE(0) === 0x04034b50 && /^bob-help-bundle-/.test(z.name) && z.brainNote === false && !fs.readdirSync(os.tmpdir()).some((f) => f.startsWith(`bob-help-${process.pid}-`)));
+  // 1.5.133: the last load that fell over goes in whole, scrubbed (names and home folder taken out); none, nothing added.
+  fs.writeFileSync(path.join(cfg.dataDir, 'llama-server-load-failed.txt'), `2026-11-08 big: stopped while loading (code 3)\n${HOME}\\llama-server.exe -m ${HOME}\\big.gguf\n\nCUDA error: out of memory\n`);
+  const bf = await buildBundle(cfg, { brainNote: false, scrubOpts });
+  const lf = bf.entries.find((e) => e.name === 'bob/llama-server-load-failed.txt')?.data.toString('utf8') || '';
+  check('a failed load\'s whole engine output goes in the bundle, scrubbed', /CUDA error: out of memory/.test(lf) && !lf.includes(USER) && !bf.entries.some((e) => e.name === 'bob/llama-server-beside-load-failed.txt'), lf.slice(0, 200));
+  fs.rmSync(path.join(cfg.dataDir, 'llama-server-load-failed.txt'));
   check('brainNote: false skips the brain entirely', (await buildBundle(cfg, { brain: liveBrain, shop, checkEngine, scrubOpts, brainNote: false })).note.why === 'not asked');
   const b2 = await buildBundle({ ...cfg, logbook: path.join(tmp, 'none.md'), dataDir: path.join(tmp, 'nodata') }, { brainNote: false, scrubOpts });
   check('no logbook, no chats, no brain, no shop: the bundle still comes out', b2.entries.length === 5 && b2.entries.find((e) => e.name === 'bob/logbook.md').data.toString().includes('no logbook yet') && /not a programmer/.test(b2.entries[0].data.toString()), b2.entries.map((e) => e.name).join(' '));

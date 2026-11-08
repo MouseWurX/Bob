@@ -1,0 +1,367 @@
+# Experts-per-word test, 2026-11-04T19-15-14
+
+Model: Qwen3.6-35B-A3B (40 layers, 256 experts, 8 per word by default). Thinking off. Tool quiz: Bob's real prompt and all his tools, 97 plain requests from test/phrasings.js.
+
+| Experts per word | Right tool | Facts | Code runs | Writing speed |
+|---|---|---|---|---|
+| 8 | 45/97 (46%) | 20/20 (100%) | 6/6 (100%) | 82.7 tok/s |
+| 6 | 45/97 (46%) | 20/20 (100%) | 6/6 (100%) | 92.1 tok/s |
+| 4 | 44/97 (45%) | 20/20 (100%) | 6/6 (100%) | 102.5 tok/s |
+| 3 | 26/97 (27%) | 19/20 (95%) | 4/6 (67%) | 106.7 tok/s |
+| 2 | 1/97 (1%) | 11/20 (55%) | 0/6 (0%) | 106.0 tok/s |
+
+## Misses
+### 8 per word
+- [picture] "make a logo for my website" -> no tool
+- [picture] "design a poster for my band" -> no tool
+- [picture] "can I get a banner for my twitch" -> no tool
+- [music] "make me a song about my cat" -> no tool
+- [files] "clean up my downloads" -> list_folder
+- [files] "put all the pdfs in one folder" -> list_folder
+- [files] "rename these photos by date" -> list_folder
+- [files] "zip up my project" -> list_folder
+- [files] "unpack that archive" -> list_folder
+- [files] "move my screenshots to pictures" -> list_folder
+- [files] "undo that" -> no tool
+- [files] "my desktop is a mess, sort it out" -> list_folder
+- [run] "run the tests" -> notice_board
+- [run] "install the dependencies" -> list_folder
+- [run] "start the server" -> no tool
+- [run] "git pull the latest" -> list_folder
+- [run] "fire up the dev server" -> no tool
+- [schedules] "do this every friday" -> no tool
+- [schedules] "each night back up my notes" -> notice_board
+- [schedules] "can you do that automatically at 9am on weekdays" -> no tool
+- [apps] "take over my mouse and do it" -> no tool
+- [office] "turn this into a pdf" -> no tool
+- [office] "convert my essay to word" -> no tool
+- [office] "read this excel file and tell me the total" -> no tool
+- [office] "change cell B2 to 40" -> no tool
+- [office] "convert this mp4 to mp3" -> no tool
+- [office] "shrink this video so I can email it" -> list_folder
+- [security] "is this email a scam?" -> no tool
+- [security] "is this link safe to click" -> no tool
+- [security] "has my email been in a breach" -> no tool
+- [documents] "write that to a file" -> no tool
+- [documents] "save this as notes.txt" -> no tool
+- [documents] "jot this down in a text file" -> no tool
+- [howtos] "remember how you did that" -> no tool
+- [howtos] "do it the same way as last time" -> no tool
+- [diagram] "can bob make flowcharts?" -> no tool
+- [diagram] "draw a diagram of my game loop" -> search_files
+- [diagram] "map out how the login works" -> no tool
+- [diagram] "org chart for my small team" -> no tool
+- [diagram] "show me the steps visually" -> no tool
+- [diagram] "make a gantt chart for the next 6 weeks" -> no tool
+- [diagram] "pie chart of where my money goes" -> notice_board
+- [diagram] "boxes and arrows showing how Bob talks to the phone" -> no tool
+- [save-as] "save it as a jpg" -> show_made
+- [save-as] "can you save this as webm" -> show_made
+- [picture] "sketch out a character for my game" -> no tool
+- [picture] "I want a picture of my dog as a knight" -> no tool
+- [picture] "mock up a cover for my book" -> no tool
+- [files] "find my biggest files and clear space" -> list_folder
+- [run] "compile the game" -> list_folder
+- [office] "export this as a word doc" -> no tool
+- [documents] "write a letter to my landlord and save it" -> no tool
+
+### 6 per word
+- [picture] "make a logo for my website" -> no tool
+- [picture] "design a poster for my band" -> no tool
+- [picture] "I need a thumbnail for my youtube video" -> no tool
+- [music] "make me a song about my cat" -> no tool
+- [music] "write a jingle for my shop" -> no tool
+- [files] "clean up my downloads" -> list_folder
+- [files] "put all the pdfs in one folder" -> run_command
+- [files] "rename these photos by date" -> list_folder
+- [files] "zip up my project" -> list_folder
+- [files] "unpack that archive" -> no tool
+- [files] "move my screenshots to pictures" -> list_folder,list_folder
+- [files] "undo that" -> no tool
+- [files] "my desktop is a mess, sort it out" -> list_folder
+- [run] "run the tests" -> list_folder
+- [run] "install the dependencies" -> no tool
+- [run] "build my project" -> no tool
+- [run] "start the server" -> no tool
+- [run] "fire up the dev server" -> list_folder
+- [schedules] "do this every friday" -> no tool
+- [schedules] "each night back up my notes" -> notice_board
+- [schedules] "can you do that automatically at 9am on weekdays" -> no tool
+- [apps] "take over my mouse and do it" -> no tool
+- [office] "turn this into a pdf" -> no tool
+- [office] "convert my essay to word" -> no tool
+- [office] "make me some slides for my pitch" -> no tool
+- [office] "change cell B2 to 40" -> no tool
+- [office] "convert this mp4 to mp3" -> show_made
+- [office] "shrink this video so I can email it" -> show_made
+- [security] "is this email a scam?" -> no tool
+- [security] "is this link safe to click" -> no tool
+- [documents] "write that to a file" -> notice_board
+- [documents] "save this as notes.txt" -> no tool
+- [documents] "jot this down in a text file" -> no tool
+- [documents] "make a spreadsheet of my monthly bills" -> notice_board
+- [howtos] "remember how you did that" -> no tool
+- [howtos] "do it the same way as last time" -> no tool
+- [diagram] "can bob make flowcharts?" -> no tool
+- [diagram] "draw a diagram of my game loop" -> ask_specialist
+- [diagram] "map out how the login works" -> no tool
+- [diagram] "org chart for my small team" -> no tool
+- [diagram] "show me the steps visually" -> no tool
+- [diagram] "pie chart of where my money goes" -> no tool
+- [diagram] "a decision tree for whether I should buy a new GPU" -> no tool
+- [save-as] "save it as a jpg" -> show_made
+- [picture] "sketch out a character for my game" -> offer_setup
+- [picture] "I want a picture of my dog as a knight" -> no tool
+- [picture] "mock up a cover for my book" -> no tool
+- [files] "find my biggest files and clear space" -> security_check
+- [run] "compile the game" -> list_folder
+- [office] "export this as a word doc" -> no tool
+- [security] "did someone hack my account" -> no tool
+- [documents] "write a letter to my landlord and save it" -> office_make
+
+### 4 per word
+- [picture] "can you make me a wallpaper of snowy mountains" -> no tool
+- [picture] "make a logo for my website" -> offer_setup
+- [picture] "doodle a little robot" -> no tool
+- [picture] "I need a thumbnail for my youtube video" -> no tool
+- [picture] "can I get a banner for my twitch" -> no tool
+- [music] "make me a song about my cat" -> no tool
+- [music] "write a jingle for my shop" -> no tool
+- [files] "clean up my downloads" -> list_folder
+- [files] "put all the pdfs in one folder" -> run_command
+- [files] "rename these photos by date" -> no tool
+- [files] "zip up my project" -> notice_board
+- [files] "my desktop is a mess, sort it out" -> list_folder
+- [run] "run the tests" -> list_folder
+- [run] "install the dependencies" -> no tool
+- [run] "build my project" -> list_folder
+- [run] "start the server" -> no tool
+- [run] "git pull the latest" -> ask_specialist
+- [run] "fire up the dev server" -> list_folder
+- [schedules] "each night back up my notes" -> notice_board
+- [apps] "click the save button" -> no tool
+- [apps] "take over my mouse and do it" -> offer_setup
+- [office] "turn this into a pdf" -> no tool
+- [office] "convert my essay to word" -> no tool
+- [office] "read this excel file and tell me the total" -> no tool
+- [office] "change cell B2 to 40" -> list_folder
+- [office] "shrink this video so I can email it" -> no tool
+- [security] "is this email a scam?" -> no tool
+- [security] "is this link safe to click" -> no tool
+- [security] "has my email been in a breach" -> no tool
+- [documents] "write that to a file" -> notice_board
+- [documents] "jot this down in a text file" -> no tool
+- [documents] "make a spreadsheet of my monthly bills" -> office_make
+- [memory] "forget what I told you about my ex" -> notice_board
+- [howtos] "remember how you did that" -> notice_board
+- [howtos] "do it the same way as last time" -> no tool
+- [diagram] "can bob make flowcharts?" -> no tool
+- [diagram] "make me a flowchart of how a pull request gets merged" -> no tool
+- [diagram] "draw a diagram of my game loop" -> search_files
+- [diagram] "map out how the login works" -> no tool
+- [diagram] "org chart for my small team" -> notice_board
+- [diagram] "show me the steps visually" -> no tool
+- [diagram] "pie chart of where my money goes" -> no tool
+- [diagram] "boxes and arrows showing how Bob talks to the phone" -> no tool
+- [save-as] "save it as a jpg" -> no tool
+- [save-as] "can you save this as webm" -> no tool
+- [picture] "sketch out a character for my game" -> no tool
+- [picture] "I want a picture of my dog as a knight" -> offer_setup
+- [files] "find my biggest files and clear space" -> list_folder
+- [run] "compile the game" -> list_folder
+- [office] "export this as a word doc" -> no tool
+- [security] "did someone hack my account" -> no tool
+- [schedules] "remind my pc to clean downloads weekly" -> reminders
+- [documents] "write a letter to my landlord and save it" -> no tool
+
+### 3 per word
+- [picture] "draw me a cat in a wizard hat" -> no tool
+- [picture] "can you make me a wallpaper of snowy mountains" -> no tool
+- [picture] "make a logo for my website" -> no tool
+- [picture] "visualise a dragon sleeping on gold" -> no tool
+- [picture] "I need a thumbnail for my youtube video" -> no tool
+- [picture] "give me a new pfp, a pixel art mouse" -> no tool
+- [picture] "generate some concept art for a desert level" -> no tool
+- [video] "make a short clip of waves crashing" -> no tool
+- [video] "a little movie of a rocket taking off" -> no tool
+- [music] "make me a song about my cat" -> no tool
+- [music] "compose a tune for a boss fight" -> no tool
+- [music] "I need some background music for my game" -> no tool
+- [music] "write a jingle for my shop" -> no tool
+- [sfx] "make a creaky door sound" -> no tool
+- [sfx] "make an explosion sfx" -> no tool
+- [files] "clean up my downloads" -> no tool
+- [files] "put all the pdfs in one folder" -> ask_together
+- [files] "rename these photos by date" -> no tool
+- [files] "unpack that archive" -> notice_board
+- [files] "undo that" -> no tool
+- [files] "my desktop is a mess, sort it out" -> list_folder
+- [run] "run the tests" -> no tool
+- [run] "install the dependencies" -> list_folder
+- [run] "start the server" -> no tool
+- [run] "git pull the latest" -> no tool
+- [run] "fire up the dev server" -> no tool
+- [schedules] "do this every friday" -> no tool
+- [schedules] "each night back up my notes" -> no tool
+- [schedules] "can you do that automatically at 9am on weekdays" -> no tool
+- [apps] "open notepad" -> no tool
+- [apps] "take over my mouse and do it" -> make_image
+- [office] "turn this into a pdf" -> no tool
+- [office] "convert my essay to word" -> no tool
+- [office] "make a powerpoint about volcanoes" -> no tool
+- [office] "read this excel file and tell me the total" -> no tool
+- [office] "change cell B2 to 40" -> no tool
+- [office] "convert this mp4 to mp3" -> list_folder
+- [office] "shrink this video so I can email it" -> make_sound
+- [security] "is this email a scam?" -> no tool
+- [security] "is this link safe to click" -> no tool
+- [security] "has my email been in a breach" -> no tool
+- [security] "something feels off with my computer, is it infected?" -> no tool
+- [documents] "save this as notes.txt" -> no tool
+- [documents] "jot this down in a text file" -> notice_board
+- [documents] "make a spreadsheet of my monthly bills" -> save_as
+- [documents] "where did I mention the dragon boss in my files?" -> no tool
+- [memory] "forget what I told you about my ex" -> no tool
+- [howtos] "remember how you did that" -> no tool
+- [howtos] "do it the same way as last time" -> no tool
+- [diagram] "can bob make flowcharts?" -> no tool
+- [diagram] "draw a diagram of my game loop" -> no tool
+- [diagram] "map out how the login works" -> no tool
+- [diagram] "can you do a mind map of ideas for my birthday party" -> no tool
+- [diagram] "show me the steps visually" -> no tool
+- [diagram] "make a gantt chart for the next 6 weeks" -> no tool
+- [diagram] "pie chart of where my money goes" -> no tool
+- [diagram] "a decision tree for whether I should buy a new GPU" -> no tool
+- [diagram] "boxes and arrows showing how Bob talks to the phone" -> no tool
+- [save-as] "save that song as an mp3" -> no tool
+- [save-as] "save it as a jpg" -> ask_together
+- [save-as] "can you save this as webm" -> no tool
+- [picture] "sketch out a character for my game" -> no tool
+- [picture] "I want a picture of my dog as a knight" -> no tool
+- [picture] "mock up a cover for my book" -> notice_board
+- [picture] "make a beat" -> no tool
+- [files] "find my biggest files and clear space" -> make_tool
+- [run] "compile the game" -> no tool
+- [office] "export this as a word doc" -> no tool
+- [security] "did someone hack my account" -> no tool
+- [schedules] "remind my pc to clean downloads weekly" -> reminders
+- [documents] "write a letter to my landlord and save it" -> ask_specialist
+- fact "What is 17 times 23? Just the number." -> 393
+- code uniqueSorted failed
+- code countVowels failed
+
+### 2 per word
+- [picture] "draw me a cat in a wizard hat" -> no tool
+- [picture] "can you make me a wallpaper of snowy mountains" -> no tool
+- [picture] "I'd love a pic of a fox reading a book" -> no tool
+- [picture] "paint a sunset over the lake" -> no tool
+- [picture] "make a logo for my website" -> no tool
+- [picture] "show me what a cyberpunk city might look like" -> no tool
+- [picture] "visualise a dragon sleeping on gold" -> no tool
+- [picture] "doodle a little robot" -> no tool
+- [picture] "design a poster for my band" -> no tool
+- [picture] "I need a thumbnail for my youtube video" -> no tool
+- [picture] "make an album cover, dark and moody" -> no tool
+- [picture] "give me a new pfp, a pixel art mouse" -> no tool
+- [picture] "generate some concept art for a desert level" -> no tool
+- [picture] "can I get a banner for my twitch" -> no tool
+- [video] "make a short clip of waves crashing" -> no tool
+- [video] "make a gif of a spinning coin" -> no tool
+- [music] "make me a song about my cat" -> no tool
+- [music] "compose a tune for a boss fight" -> no tool
+- [music] "I need some background music for my game" -> no tool
+- [music] "write a jingle for my shop" -> no tool
+- [music] "make a chill lofi track" -> no tool
+- [music] "give me a theme for the main menu, something epic" -> no tool
+- [sfx] "make a creaky door sound" -> no tool
+- [sfx] "I need a laser sound effect" -> no tool
+- [sfx] "footsteps on gravel noise please" -> no tool
+- [sfx] "make an explosion sfx" -> no tool
+- [files] "clean up my downloads" -> no tool
+- [files] "put all the pdfs in one folder" -> no tool
+- [files] "rename these photos by date" -> no tool
+- [files] "zip up my project" -> app_look
+- [files] "unpack that archive" -> no tool
+- [files] "move my screenshots to pictures" -> no tool
+- [files] "undo that" -> no tool
+- [files] "my desktop is a mess, sort it out" -> no tool
+- [run] "run the tests" -> no tool
+- [run] "install the dependencies" -> no tool
+- [run] "build my project" -> no tool
+- [run] "start the server" -> no tool
+- [run] "git pull the latest" -> no tool
+- [run] "fire up the dev server" -> no tool
+- [schedules] "every morning tidy my downloads" -> no tool
+- [schedules] "do this every friday" -> no tool
+- [schedules] "each night back up my notes" -> no tool
+- [schedules] "can you do that automatically at 9am on weekdays" -> no tool
+- [apps] "open notepad" -> no tool
+- [apps] "launch blender" -> no tool
+- [apps] "click the save button" -> no tool
+- [apps] "take over my mouse and do it" -> no tool
+- [office] "turn this into a pdf" -> no tool
+- [office] "convert my essay to word" -> no tool
+- [office] "make a powerpoint about volcanoes" -> no tool
+- [office] "make me some slides for my pitch" -> no tool
+- [office] "read this excel file and tell me the total" -> no tool
+- [office] "change cell B2 to 40" -> no tool
+- [office] "convert this mp4 to mp3" -> no tool
+- [office] "shrink this video so I can email it" -> no tool
+- [security] "is this email a scam?" -> no tool
+- [security] "scan my pc for viruses" -> no tool
+- [security] "is this link safe to click" -> no tool
+- [security] "has my email been in a breach" -> no tool
+- [security] "something feels off with my computer, is it infected?" -> no tool
+- [documents] "write that to a file" -> no tool
+- [documents] "save this as notes.txt" -> no tool
+- [documents] "jot this down in a text file" -> no tool
+- [documents] "make a spreadsheet of my monthly bills" -> no tool
+- [documents] "where did I mention the dragon boss in my files?" -> no tool
+- [memory] "forget what I told you about my ex" -> no tool
+- [howtos] "remember how you did that" -> no tool
+- [howtos] "do it the same way as last time" -> no tool
+- [maker] "make yourself a tool that counts words" -> no tool
+- [diagram] "can bob make flowcharts?" -> no tool
+- [diagram] "make me a flowchart of how a pull request gets merged" -> no tool
+- [diagram] "draw a diagram of my game loop" -> no tool
+- [diagram] "map out how the login works" -> no tool
+- [diagram] "can you do a mind map of ideas for my birthday party" -> no tool
+- [diagram] "a timeline of the Roman empire please" -> no tool
+- [diagram] "org chart for my small team" -> no tool
+- [diagram] "show me the steps visually" -> no tool
+- [diagram] "make a gantt chart for the next 6 weeks" -> no tool
+- [diagram] "pie chart of where my money goes" -> no tool
+- [diagram] "a decision tree for whether I should buy a new GPU" -> no tool
+- [diagram] "boxes and arrows showing how Bob talks to the phone" -> no tool
+- [save-as] "save that song as an mp3" -> no tool
+- [save-as] "save it as a jpg" -> no tool
+- [save-as] "can you save this as webm" -> no tool
+- [picture] "sketch out a character for my game" -> no tool
+- [picture] "I want a picture of my dog as a knight" -> no tool
+- [picture] "mock up a cover for my book" -> no tool
+- [picture] "make a beat" -> no tool
+- [picture] "I need a whoosh sound" -> no tool
+- [files] "find my biggest files and clear space" -> no tool
+- [run] "compile the game" -> no tool
+- [office] "export this as a word doc" -> no tool
+- [security] "did someone hack my account" -> no tool
+- [schedules] "remind my pc to clean downloads weekly" -> no tool
+- [documents] "write a letter to my landlord and save it" -> no tool
+- fact "How many minutes are in 3.5 hours? Just the number." -> 2
+
+
+- fact "What is 17 times 23? Just the number." -> 
+- fact "How many sides does a hexagon have? Just the number." -> 
+- fact "Convert 100 degrees Celsius to Fahrenheit. Just the number." -> 100
+- fact "What is the square root of 144? Just the number." -> The user is asking for the square root of 144. I will start 
+- fact "If a train leaves at 14:40 and the trip takes 95 minutes, when does it arrive? HH:MM only." -> To find the arrival time, we need to add the duration of the
+- fact "How many bytes are in a kilobyte in the binary sense (KiB)? Just the number." -> 1022
+- fact "What is the freezing point of water in Kelvin? Just the number, two decimals." -> <think>
+
+- fact "A shirt costs $40 and is 25% off. What is the new price? Just the number." -> 10.03
+- code isPalindrome failed
+- code fizz failed
+- code sumDigits failed
+- code uniqueSorted failed
+- code camel failed
+- code countVowels failed

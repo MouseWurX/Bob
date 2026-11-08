@@ -1,0 +1,30 @@
+# Puts a lesson-set zip on a GitHub release as a DRAFT, so it can be looked at before it goes public.
+# Runs when a lessons-asset* branch is pushed. The zip, release.txt (tag, then title) and notes.md are read from that branch's release-assets/, never from main:
+# release assets are the way to publish a big file without every clone downloading it. The release's tag points at
+# main, so the branch that carried the zip can be deleted afterwards and nothing keeps the zip in the repository.
+name: Lessons release
+on:
+  push:
+    branches: ['lessons-asset*'] # a carrier branch: pushing it makes the draft release (a workflow only on a branch can't be started by hand)
+  workflow_dispatch:
+permissions:
+  contents: write # creates the draft release and uploads its files
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Check the zip against its checksum
+        run: cd release-assets && sha256sum -c *.sha256
+      - name: Make the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          tag=$(sed -n 1p release-assets/release.txt); title=$(sed -n 2p release-assets/release.txt)
+          if gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo "$tag already exists; refreshing its files and notes"; gh release upload "$tag" release-assets/*.zip release-assets/*.sha256 --clobber -R "$GITHUB_REPOSITORY"; gh release edit "$tag" --title "$title" --notes-file release-assets/notes.md -R "$GITHUB_REPOSITORY"; exit 0; fi
+          main=$(git rev-parse origin/main)
+          gh release create "$tag" release-assets/*.zip release-assets/*.sha256 --draft --target "$main" --title "$title" --notes-file release-assets/notes.md -R "$GITHUB_REPOSITORY"
+          echo "draft release $tag made; publish it from the Releases page when it looks right"

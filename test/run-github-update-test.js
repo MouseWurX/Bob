@@ -179,7 +179,7 @@ const readStatus = () => JSON.parse(fs.readFileSync(gh.statusFile(cfg), 'utf8'))
 // ---- Help, settings text and the privacy policy say the same ----
 {
   const read = (f) => fs.readFileSync(fileURLToPath(new URL('../' + f, import.meta.url)), 'utf8');
-  const help = read('public/help-content.js'), cellar = read('public/cellar.js'), privacy = read('PRIVACY.md');
+  const help = read('public/help-content.js'), cellar = read('public/cellar.js'), privacy = read('docs/legal/PRIVACY.md');
   check('the start-up check is still a switch that starts off', /sswitch\('autoCheck', settings\.updates\?\.autoCheck, 'Check for updates when Bob starts'/.test(cellar) && /set\('Check for updates when Bob starts', 'Off'/.test(help));
   check('Help no longer says the update check never goes online', !/Check for updates \(it only looks at the folder/.test(help) && !/Update checks\*\* never go online/.test(privacy));
   check('Help has an FAQ and glossary words for GitHub updates', /id: 'faq-updates'/.test(help) && /<dt>GitHub release<\/dt>/.test(help) && /<dt>Checksum \(\.sha256, SHA-256\)<\/dt>/.test(help));

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LlamaCpp, besideThreads } from '../src/llamacpp.js';
-import { Brain, talkerModel, sidePick, isTalker, TALKER_LINE, besideBigOk, mootBesideOk, besideLater, bigJob, loadLine, loadMode, BIG_AFTER_MS, SIDE_LANE } from '../src/brain.js';
+import { Brain, talkerModel, sidePick, isTalker, TALKER_LINE, TALKER_CTX, talkerCtx, besideBigOk, mootBesideOk, besideLater, bigJob, loadLine, loadMode, BIG_AFTER_MS, SIDE_LANE } from '../src/brain.js';
 import { Gate } from '../src/handoff.js';
 import { mergeSettings } from '../src/config.js';
 
@@ -175,6 +175,23 @@ try {
   cfg.session = 'light';
   check('Gaming: never on the card', (await eng.besidePlace('small:4b')) === 'none');
   cfg.session = 'normal';
+  // 1.5.133 (last night's crash): a 256K talker on an empty card looked like it fitted (chat memory capped at 128K in
+  // the sum), then the job's brain loaded on top of it and llama-server fell over.
+  const placeLog = []; eng.log = (k, t) => placeLog.push(t);
+  check('a 256K chat memory is counted in full: 12 GB free is not enough', (await eng.besidePlace('small:4b', 262144)) === 'none');
+  check('room kept for the main brain counts: 10 GB kept, 12 GB free: the processor', (await eng.besidePlace('small:4b', 32768, { reserveMB: 10240 })) === 'none');
+  check('without the main brain coming: the card', (await eng.besidePlace('small:4b', 32768)) === 'whole');
+  check('each pick is logged in one line: where, the chat memory, and the sums', placeLog.some((t) => /^second brain small:4b: on the processor, chat memory 262144 \(card free 12000 MB, needs \d+ MB\)/.test(t)) && placeLog.some((t) => /on the graphics card, chat memory 32768/.test(t)) && placeLog.some((t) => /incl\. 10240 MB kept for the main brain/.test(t)), placeLog.join(' | '));
+  eng.beside.placed = { model: 'small:4b', place: 'whole', at: Date.now(), reserveMB: 0 };
+  check('a recent pick made without room kept does not count for a load that asks to keep some', /reserveMB \|\| 0\) >= \(reserveMB \|\| 0\)/.test(fs.readFileSync(new URL('../src/llamacpp.js', import.meta.url), 'utf8')));
+  eng.beside.placed = null;
+  cfg.session = 'normal';
+  // 1.5.133: place 'none' (the talker beside a job) means the processor even with a free card.
+  await eng.preload('small:4b', undefined, { beside: true, place: 'none', ctx: 32768 });
+  const envPl = await (await fetch(`http://127.0.0.1:${eng.beside.port}/test-env`)).json();
+  const argsPl = fs.readFileSync(path.join(tmp, 'llama-server-beside-args.txt'), 'utf8');
+  check('a talker kept beside a job stays on the processor, card free or not (no -ngl 999, card hidden)', / -ngl 0 /.test(argsPl) && !/ -ngl 999 /.test(argsPl) && envPl.cuda === '-1' && / -c 32768 /.test(argsPl), argsPl);
+  await eng.dropBeside();
   const cp = await eng.loadPlan('small:4b', { beside: true });
   check('room on the card: the plan says so', cp.onCard === true && loadMode(cp) === 'add');
   await eng.preload('small:4b', undefined, { beside: true });
@@ -193,6 +210,26 @@ try {
 } finally {
   await eng.unloadAll().catch(() => {});
   clearInterval(eng.idleTimer); if (eng.beside) clearInterval(eng.beside.idleTimer);
+}
+
+// ---------- 1.5.133: a load that falls over keeps llama-server's whole output in a file ----------
+{
+  const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'bob loadfail-'));
+  const crash = path.join(tmp2, 'crash-server.js');
+  fs.writeFileSync(crash, "console.error('ggml_cuda_init: found 1 device'); console.error('x'.repeat(6000)); console.error('CUDA error: out of memory'); process.exit(3);\n");
+  const cfg2 = { ...cfg, dataDir: tmp2, llamacpp: { ...cfg.llamacpp, port: 18295, preArgs: [crash] } };
+  const e2 = new LlamaCpp(cfg2);
+  e2.cardReaders = NO_CARD;
+  const logs2 = []; e2.log = (k, t) => logs2.push(t);
+  let err = null;
+  try { await e2.preload('big:26b', undefined, {}); } catch (e) { err = e; }
+  const file = path.join(tmp2, 'llama-server-load-failed.txt');
+  const saved = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+  check('the load fails with the short message as before', err && /stopped while loading big:26b \(code 3\)/.test(err.message), err?.message);
+  check('the whole output is saved, start to end (more than the 4,000 characters the message keeps)', saved.includes('ggml_cuda_init: found 1 device') && saved.includes('CUDA error: out of memory') && saved.length > 6000, String(saved.length));
+  check('and the log says where it went', logs2.some((t) => /big:26b: stopped while loading \(code 3\); full llama-server output saved to llama-server-load-failed\.txt/.test(t)), logs2.join(' | '));
+  clearInterval(e2.idleTimer);
+  fs.rmSync(tmp2, { recursive: true, force: true });
 }
 
 // ---------- 1.5.53: Instruct talks on the processor, E4B only on the card; a talker starts before a big brain ----------
@@ -220,6 +257,12 @@ try {
   const b = mk(); b.cfg = { ...b.cfg };
   const did = await Brain.prototype.keepTalker.call(b, 'big:26b', {}, (e) => emitted.push(e), { freeMem: 16 * GB });
   check('a big brain about to load: the talker starts first, beside, on the processor', did === true && mk.loads.length === 1 && mk.loads[0][0] === 'qwen3-4b' && mk.loads[0][1].beside === true && mk.loads[0][1].cpu === true, JSON.stringify(mk.loads));
+  check('1.5.133: the talker always goes on the processor (place none), with at most 32K of chat memory', mk.loads[0][1].place === 'none' && mk.loads[0][1].ctx === TALKER_CTX, JSON.stringify(mk.loads[0][1]));
+  { mk.loads = []; const big = mk(); big.cfg = { ...big.cfg, ctx: { normal: 262144 }, chatCtx: 262144, sessionCtx: { normal: 262144 } };
+    const want = talkerCtx(big.cfg);
+    await Brain.prototype.keepTalker.call(big, 'big:26b', {}, () => {}, { freeMem: 16 * GB });
+    check('...even when the chat brain is set to 256K (the crash had the talker at 262144)', want <= TALKER_CTX && (!mk.loads.length || mk.loads[0][1].ctx <= TALKER_CTX), `${want} ${JSON.stringify(mk.loads)}`); }
+  mk.loads = [];
   check('and the chat says so', emitted[0]?.text === TALKER_LINE('Qwen3 4B Instruct') && /^Keeping a small brain \(Qwen3 4B Instruct 2507\) on the processor, so we can keep talking/.test(emitted[0].text), emitted[0]?.text);
   mk.loads = [];
   const no = async (o, name, args = ['big:26b', {}]) => check(name, (await Brain.prototype.keepTalker.call(o, ...args, () => {}, { freeMem: 16 * GB })) === false && mk.loads.length === 0);

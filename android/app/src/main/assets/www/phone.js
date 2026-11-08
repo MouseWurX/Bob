@@ -175,15 +175,24 @@
   function diagramNode(x) {
     const fig = el('div', { class: 'diagram' }, x.title ? el('strong', { text: x.title }) : null, el('div', { class: 'small dim', text: 'Drawing the diagram…' }));
     const box = el('div', {}, fig);
+    // 1.5.133 lost-flowchart fix: say which Bob has it, and never lose it. A chart the phone can't draw shows its text
+    // (with Save to this phone), and one that can't be fetched names the Bob that keeps it.
+    const who = bobName(x.base);
+    let text = null;
     phone('net.media', { address: x.base.replace('http://', ''), path: x.url }).then(async (data) => {
       if (!data) throw new Error('none');
       const bytes = atob(String(data).split(',')[1] || '');
-      const text = decodeURIComponent(escape(bytes));
+      text = decodeURIComponent(escape(bytes));
       const svg = await BobDiagram.draw('vendor/', text);
       fig.lastChild.replaceWith(el('div', { class: 'diagram-art', html: svg }));
       const row = saveRow(x, fig);
       if (row) box.append(row);
-    }).catch(() => { fig.lastChild.textContent = "Couldn't draw this one here. It's on your other replicant matrix."; });
+    }).catch(() => {
+      if (text == null) { fig.lastChild.textContent = `Couldn't get this diagram from ${who}. It's kept there, in Made by Bob.`; return; }
+      fig.lastChild.replaceWith(el('p', { class: 'small dim', text: `Couldn't draw this one on the phone: the diagram has a mistake in it. Here is what ${who} wrote, so nothing is lost. Ask him to fix it and draw it again.` }), el('pre', { class: 'diagram-text', text }));
+      const row = saveRow(x);
+      if (row) box.append(row);
+    });
     return box;
   }
 

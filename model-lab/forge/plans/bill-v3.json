@@ -1,0 +1,152 @@
+{
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H200"
+ ],
+ "max_len": 16384,
+ "top": 32,
+ "quants": "Q4_K_M,Q3_K_M",
+ "disk_gb": 350,
+ "general_tokens": 10000000,
+ "volume": {
+  "gb": 100,
+  "name": "bob-forge"
+ },
+ "keep_healed": true,
+ "skills": {
+  "chat": [
+   "chat",
+   "advice"
+  ],
+  "tools": [
+   "reminders",
+   "memory",
+   "web",
+   "files",
+   "office",
+   "run",
+   "schedules",
+   "security",
+   "apps"
+  ],
+  "coding": [
+   "coding"
+  ],
+  "knowledge": [
+   "knowledge"
+  ],
+  "maths": [
+   "maths"
+  ],
+  "plans": [
+   "plans",
+   "schedules"
+  ],
+  "writing": [
+   "writing"
+  ],
+  "formats": [
+   "formats"
+  ],
+  "thinking": "thinking",
+  "general": "general",
+  "gamemaster": [
+   "gamemaster"
+  ],
+  "help": [
+   "help"
+  ],
+  "refusals": [
+   "refusals"
+  ],
+  "pictures": [
+   "pictures"
+  ],
+  "languages": [
+   "languages"
+  ],
+  "recover": [
+   "recover"
+  ],
+  "clarify": [
+   "clarify"
+  ],
+  "notes": [
+   "notes"
+  ],
+  "newtool": [
+   "newtool"
+  ],
+  "selfcheck": [
+   "selfcheck"
+  ],
+  "codefix": [
+   "codefix"
+  ],
+  "selfhelp": [
+   "selfhelp"
+  ],
+  "research": [
+   "research",
+   "web"
+  ],
+  "understand": [
+   "understand"
+  ]
+ },
+ "skill_pieces": 300,
+ "cover": 0.95,
+ "strong": [
+  "tools",
+  "coding",
+  "formats"
+ ],
+ "strong_cover": 0.99,
+ "note": "Bill v3 on his own (rental 3): rental 2 made Riker v3 with a full heal, then Bill's step failed on a run.sh bug (the plan helper could not see 'p' inside rung expressions, so keep.py got an empty --cover) and the card was deleted with the healed Riker on it (no drive). Bill (20Bob, 144 experts) is therefore cut straight from the teacher with the keep list built on the PC from rental 1's counts (keep.py --keep 144, 99% for tools/coding/formats), then healed with the same lesson set as Riker, a full pass. coverage.md and the adapter come back to the PC. Build 15: the teacher's scores (teacher.pt + lessons-tok.pt) are saved on the network volume and downloaded to the PC (out/teacher/<key>/) as soon as the pass ends, so a later run with the same lessons skips the pass; the fast kernels are built before the pass and the heal; a card is only taken in a data centre with a network volume (a new volume is made where the card is if ours are out), and the B200 is the step-up if no H200 is free after volume_wait_minutes.",
+ "extra_lessons": [
+  "out/lessons-coding-2",
+  "out/lessons-codefix",
+  "out/lessons-recover",
+  "out/lessons-clarify",
+  "out/lessons-notes",
+  "out/lessons-newtool",
+  "out/lessons-selfhelp",
+  "out/lessons-selfcheck",
+  "out/lessons-research",
+  "out/lessons-understand",
+  "out/lessons-formats",
+  "out/lessons-gamemaster",
+  "out/lessons-refusals",
+  "out/lessons-languages",
+  "out/lessons-reasoning"
+ ],
+ "heal": {
+  "experts": "lora",
+  "epochs": 1,
+  "hours": 10.0
+ },
+ "rungs": [
+  {
+   "name": "20Bob",
+   "keep": 144,
+   "from": "teacher",
+   "nickname": "Bill",
+   "keep_file": "out/counts/counts-v3/keep-24Bob-144.json",
+   "hours": 10.0
+  }
+ ],
+ "hours_max": 14,
+ "dollars_max": 80,
+ "teacher_hours": 4.5,
+ "run": "lineB-v3-bill",
+ "rent_minutes": 180,
+ "volume_wait_minutes": 25,
+ "step_up": [
+  "NVIDIA B200"
+ ],
+ "step_up_note": "about $8/h against $5.30 for the H200 at the 5 Nov prices; check the live price before typing yes",
+ "volume_fallback": false,
+ "teacher_upload_minutes": 150
+}

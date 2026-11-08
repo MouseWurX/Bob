@@ -4,6 +4,69 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.133
+
+A Community side in the Brain catalogue, a red devil of Bob's own, AMD graphics seen properly, fixes for shared-memory machines and brains that wouldn't load, and no more jobs lost between your Bobs.
+
+**Thank you** to **CitizenFog**, who spotted that Bob wasn't detecting their AMD graphics and wrote the fix together with Bob, and to **Rook**, who sent the gaming-card fix for built-in graphics with six checks of their own.
+
+### New
+- **🤝 Community.** The catalogue's toggle has three sides now: Well behaved, Community and the Naughty list. Community shows builds other people made from stock brains that still behave (fine-tunes, distillations, repacks); they're in the Well behaved list too, with a **Community** tag, and one can be ★ Recommended like any other brain once it has been tried on a replicant matrix. Two to start: **Qwen3.6 35B-A3B Opus Reasoning Distilled** (a popular Qwen3.6 fine-tune on Hugging Face) and **Qwen3.6 35B-A3B Distilled from Qwen 3.8 27B**. Both pinned to exact files and marked New until tried.
+- **Tell them apart at a glance.** Community rows have a solid stripe down their left edge and a light green tint; naughty-list rows have a dashed stripe and a light red tint. The stripes differ in shape as well as colour, so they still read right if colours are hard to tell apart.
+- **Bob's own red devil.** The naughty list is marked with a small red devil with orange horns that Bob draws himself, so it looks the same on every computer (phone emoji devils come out purple on some screens).
+- **The quiet pick.** Bob never puts a ★ on an uncensored brain. On the naughty side only, a red devil on its own where the star would be is his quiet pick: the one that does that job well on your replicant matrix. Nothing is quietly picked until a brain has been tried.
+- **Credit on the tag.** Community and naughty-list tags carry the maker's name ("Community · hesamation"); for a team, the team's name, with the members shown when you hover, tap or tab to the tag.
+- **AMD and Intel graphics are seen** (by CitizenFog and Bob, issue #25). Check this replicant matrix now reads the list of graphics Windows itself keeps, says "AMD graphics found" or "Intel graphics found", and only asks NVIDIA's tool, and only shows the NVIDIA driver and Sysmem Fallback tips, when there really is an NVIDIA card. A laptop with AMD graphics and an NVIDIA card gets both: the AMD line and the NVIDIA tips.
+
+### Fixed
+- **Built-in graphics with memory set aside (a Legion Go on 8 GB, for example).** Bob counted only the RAM Windows could see, so with 8 GB set aside for graphics he refused every brain. The set-aside counts as room now, and a brain that fits in it loads even when Windows itself has little RAM free. On Auto, Bob stays careful as before.
+- **Borrow when my own brain won't fit.** With "Borrow brains from my other Bobs" on, a brain that's too big for this replicant matrix's shared memory goes to a paired Bob first; Bob only says no when none of them is free.
+- **Gaming on built-in graphics** (by Rook). With no graphics card reading, the Gaming brain stays on the processor instead of trying to borrow a card that isn't there.
+- **Brains that fell over on the second and third load.** The small chat brain that keeps you company during a long job could sit on the graphics card with a very long chat memory, then the job's brain loaded on top of it and the engine crashed. Bob now keeps room on the card for the job's brain, counts the chat memory in full, and lets the small brain off the card before trying a load again.
+- **When a load still fails,** the engine's whole output is saved to `llama-server-load-failed.txt` in Bob's data folder (and goes into a help bundle), and Bob's log says where each second brain went (card or processor) and when an idle brain was let go.
+- **Nothing goes missing between your Bobs.** A song asked for on one Bob and made on another could vanish without a word. Now:
+  - A Bob only says he can make songs when his music models are really downloaded, so a song job isn't sent to a Bob who can't make it.
+  - A song job from another Bob isn't held for a plan card any more. On the Bob doing the work, that made the brain talk about the song and never make it.
+  - If he can't (his Download card can't be pressed from the other Bob), the chat says so in plain words: "Desk can't make this one yet: he needs the music models (about N GB) set up first."
+  - A picture, clip, song or sound job that ends with no file is marked failed with Try again, not done, whatever his words say.
+  - Bringing the file back is tried three times, and the other Bob keeps it ready for 6 hours (was 15 minutes). If it still doesn't come across, the chat says where it is.
+  - The phone's Chest also lists things a Bob made after his save folder was moved.
+- **"Show the naughty list" switched off** still said "Naughty list: on" on the How Bob works summary until a reload. Every switch there updates its summary at once now.
+- **"(downloaded by Bob)" on a file you placed yourself.** A model you pointed Bob at by hand, or one he found in another app's folder, now says **(your own file)**. Only files in Bob's own models folder say "downloaded by Bob".
+
+### Also
+- Help: the catalogue page, an FAQ "What's a community build?", the stripes, the quiet pick in the naughty-list FAQ and glossary, "your own file", which graphics Check this replicant matrix found, and an FAQ "Where is the song (or picture) my other Bob made?".
+- New checks in `test/run-catalogue-test.js`, `run-integrated-gpu-test.js`, `run-beside-test.js`, `run-handoff-test.js`, `run-idle-unload-test.js`, `run-tuning-test.js`, `run-own-brain-test.js`, `run-share-jobs-test.js` (9), `run-plan-test.js` and `run-gaming-card-test.js` (Rook's six).
+- Phone (Bob for Android): a diagram the phone can't fetch says which Bob has it (no more "your other replicant matrix"), and one it can't draw shows the diagram's text, with Save to this phone.
+
+## 1.5.132
+
+The naughty list: uncensored community remixes in the Brain catalogue, behind a switch that is off.
+
+- **😈 The naughty list.** The Brain catalogue has a toggle at the top, **😇 Well behaved / 😈 Naughty list**. Turn on **Show the naughty list** (there, or in Settings, How Bob works, Brains) and the 😈 side lists six remixes other people made from Qwen and Gemma brains with the refusals cut out ("heretic" or "abliterated" builds): Qwen3.6 35B-A3B Heretic, Qwen3.6 27B Heretic, Qwen 3.8 27B Heretic, Gemma 4 26B Heretic, Gemma 4 31B Heretic and Qwen3.5 9B Heretic. Each one's **i** says who remixed it and from what, every file is pinned to an exact Hugging Face commit, and they all see pictures. They are not Alibaba's or Google's releases, they answer without refusing, and they can be a little rougher than the originals, so Bob never recommends one. With the switch off (the default) they are listed nowhere.
+- **Community marker.** Catalogue entries can now say who made a build and from what, as an explicit marker rather than a guess from the name; a well-behaved community build gets a plain **Community** tag.
+- Help: the catalogue page, the Settings row, an FAQ "What's the naughty list?" and glossary lines for Naughty list, Abliterated (heretic) and Community build. 23 new checks in `test/run-catalogue-test.js`.
+- Phone (Bob for Android): nothing changes; the phone uses whatever brain the PC's Bob has equipped.
+
+## 1.5.131
+
+One wording fix in Equip Bob and the brain menus, so Bob stops looking like he claims other people's models.
+
+- **"(downloaded by Bob)" instead of "(Bob's own engine)".** A model Bob fetched himself from the Brain catalogue (a file in his models folder, run on his built-in engine) used to show "(Bob's own engine)" after its name in Equip Bob and Settings, Brains. On a list of stock Qwens and Gemmas that read as "Bob's own brain". The bracket now says where the file came from, which is all it ever meant. Models that come through Ollama still show their Ollama name, like "(qwen3:4b)".
+- **"Bob's own brain" is reserved.** The words only appear on a catalogue entry marked `madeByBob: true`, which no shipped model has. There is no name match: a model called anything like Bob is still a stock model until the catalogue says otherwise.
+- **Now running** says "(Bob's downloaded copy)" rather than "(Bob's own copy)" when a brain picked by its Ollama name runs from Bob's own download instead of Ollama's file, and the engine log says the same.
+- **Help, FAQ:** "What does 'downloaded by Bob' mean next to a model?"
+- New `test/run-own-brain-test.js` (20 checks): the label words, the explicit marker, no catalogue model marked or Bob-named, the Help entry.
+
+## 1.5.130
+
+Two Adventure fixes from the community. Thank you to miargue and bfs2021.
+
+- **End game and Pause** now put Bob back to idle, the same state a finished chat message reaches, so the window title goes back to "Bob" straight away and a reload shows it too. Before, the game master's brain left Bob "thinking" until the next chat message. (miargue, #13, fixes #7.)
+- Bob is only put back to idle when nothing else is running: no chat reply, no brain loading, no job waiting in line. The rule from 1.5.120 still holds: ending a game doesn't wake the quick chat brain.
+- **The Met tab keeps the scene.** A character named in the opening reply, or in the reply that starts a new scene, used to land on the Met tab with no scene or the old scene's title. Met entries are now written after the scene is on the books. (bfs2021, #11.)
+- New checks in `test/run-adventure-test.js`: End and Pause go back to idle, End does not reset while a reply, a wake or a waiting job is still going, and Met entries carry their scene.
+
 ## 1.5.129
 
 A test fix only, so the 1.5.128 release could be built (its Windows build failed on one check).

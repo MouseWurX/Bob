@@ -1,5 +1,7 @@
 # Bob's own models
 
+*The day-by-day record, every run's numbers and the routes not taken yet are in [the Forge journal](FORGE-JOURNAL.md); the raw run files are in [forge-runs/](forge-runs/).*
+
 *Tested, not yet released. This page is the plan, the method and the results so far, including the mistakes. It is updated as each model lands. No downloads yet: the whole family goes up together when it is complete.*
 
 > **6 November 2026: the first four Bobs will be re-cut and re-healed.** Two findings: the coding lesson set mostly taught the model to hand code off rather than write it (the main cause of the v2 coding gap), and the cut rule protected no skill in particular, which turned out to matter less than feared but is fixed anyway, with a measured table below of what every size keeps. What happened, why, and the corrected rule are in [What went wrong with the first cut](#what-went-wrong-with-the-first-cut). The costs page carries the price of doing it again.
@@ -180,6 +182,17 @@ Bill, Homer and the rest are cut from the re-cut Bob above them, and each Bob's 
 - The small rungs (5Bob and below) will not match the teacher. The target is "a better 4B than the stock 4B at being Bob": right tool, right format, Bob's voice, on a phone.
 - Healing above about 5Bob is not practical on home hardware, so the family depends on short rentals, and every step is scored before the next one is made.
 - Numbers on this page are from the project's own benchmarks on one test machine (a 16 GB NVIDIA card). They are for comparing Bobs with each other and with the models they replace, not for comparing with published leaderboards.
+
+## Lesson sets by others we find interesting
+
+Bob's published lesson sets hold only the lessons this project wrote and paid for. Other people have published answer sets from much bigger teachers. We find them interesting and will consider their use. They are not part of Bob's lesson release, so please get them from their makers and check each one's licence yourself:
+
+- [lambda/hermes-agent-reasoning-traces](https://huggingface.co/datasets/lambda/hermes-agent-reasoning-traces): tool-using conversations from Kimi K2.5 and GLM-5.1 (Apache 2.0).
+- [TeichAI/DeepSeek-v4-Pro-Agent](https://huggingface.co/datasets/TeichAI/DeepSeek-v4-Pro-Agent): agent work from DeepSeek V4 Pro.
+- [TeichAI/DeepSeek-v4-Flash-Chat](https://huggingface.co/datasets/TeichAI/DeepSeek-v4-Flash-Chat): chat answers from DeepSeek V4 Flash.
+- [TeichAI/glm-4.7-2000x](https://huggingface.co/datasets/TeichAI/glm-4.7-2000x) and [TeichAI/glm-4.7-350x](https://huggingface.co/datasets/TeichAI/glm-4.7-350x): answers from GLM-4.7.
+
+Thank you to their makers for sharing them.
 
 ## Credits
 

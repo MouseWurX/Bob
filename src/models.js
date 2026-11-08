@@ -166,6 +166,19 @@ export function configuredGguf(cfg, entry) {
   return null;
 }
 
+// 1.5.131: the bracket after a model Bob downloaded himself (a file in his models folder, run on his own engine), as
+// Equip Bob and the Settings menus show it. Until 1.5.130 it said "(Bob's own engine)", which read as "Bob's own brain"
+// on every stock Qwen and Gemma. Only a catalogue entry marked madeByBob: true (a brain made for Bob, none shipped yet)
+// gets "Bob's own brain"; a fuzzy name match never does. Ollama's models get their Ollama name instead (roles()).
+export const MADE_BY_BOB = "Bob's own brain";
+export const DOWNLOADED_BY_BOB = 'downloaded by Bob';
+export const isMadeByBob = (m) => m?.madeByBob === true;
+// 1.5.133: a file you put somewhere yourself (set by hand in config.json, or found in another app's folder) isn't
+// "downloaded by Bob": only a file in Bob's own models folder is. gguf = the file found for it, when known.
+export const YOUR_OWN_FILE = 'your own file';
+const inBobsFolder = (m, p) => { const s = String(p).toLowerCase().replace(/\\/g, '/'); return s.includes('/models/bob/') || (Boolean(m?.id) && s.includes(`/models/${String(m.id).toLowerCase()}/`)); };
+export const fileLabel = (m, gguf = null) => `${m.name} (${isMadeByBob(m) ? MADE_BY_BOB : gguf && !inBobsFolder(m, gguf) ? YOUR_OWN_FILE : DOWNLOADED_BY_BOB})`;
+
 export class ModelShop {
   constructor(cfg, emit, engine) {
     this.cfg = cfg;
@@ -725,8 +738,8 @@ export class ModelShop {
     for (const m of this.catalog.models) {
       const st = await this.statusOf(m, ollama);
       if (st.state !== 'installed') continue;
-      if (m.category === 'embed') { if (st.located.gguf) ownEmbed.push({ value: m.id, label: `${m.name} (Bob's own engine)` }); continue; }
-      if (st.located.gguf && !llms.some((l) => l.value === m.id)) llms.push({ value: m.id, label: `${m.name} (Bob's own engine)` });
+      if (m.category === 'embed') { if (st.located.gguf) ownEmbed.push({ value: m.id, label: fileLabel(m, st.located.gguf) }); continue; }
+      if (st.located.gguf && !llms.some((l) => l.value === m.id)) llms.push({ value: m.id, label: fileLabel(m, st.located.gguf) });
       if (m.use?.painter?.sdcpp?.edit) opts.edit.push({ value: m.id, label: m.name });
       else if (opts[m.category]) opts[m.category].push({ value: m.id, label: m.name });
     }

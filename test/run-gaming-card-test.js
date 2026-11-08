@@ -28,6 +28,13 @@ check('Automatic, processor at full load and room on the card: the whole small b
 check('Automatic, processor at full load but not enough card memory for the whole brain: borrow a little', cardPlan('auto', { card: { util: 10, freeMB: 3000 }, cpuPct: 95, brainMB: 2500 }) === 'borrow');
 check('Automatic, processor full and card busy: still processor only (never fight the game for the card)', cardPlan('auto', { card: busyCard, cpuPct: 100, brainMB: 2500 }) === 'none');
 check('Automatic, no NVIDIA card or no reading: as before (borrow)', cardPlan('auto', { card: null, cpuPct: 100 }) === 'borrow');
+// 1.5.133, from Rook: built-in graphics with no reading stay on the processor.
+check('Automatic, built-in graphics (Legion Go) and no reading: processor only, not a fake borrow', cardPlan('auto', { card: null, cpuPct: 100, sharedGraphics: true }) === 'none');
+check('Automatic, built-in graphics with a full processor and no reading: still processor only (can\'t "whole" with no card reading)', cardPlan('auto', { card: null, cpuPct: 100, brainMB: 2500, sharedGraphics: true }) === 'none');
+check('Automatic, built-in graphics reading is live: the normal busy/room rules still apply', cardPlan('auto', { card: busyCard, cpuPct: 30, sharedGraphics: true }) === 'none' && cardPlan('auto', { card: free, cpuPct: 30, sharedGraphics: true }) === 'borrow');
+check('Never and Always ignore the shared-graphics hint (the user\'s choice wins)', cardPlan('never', { card: null, sharedGraphics: true }) === 'none' && cardPlan('always', { card: null, sharedGraphics: true }) === 'borrow');
+check('decideCard: built-in graphics with no reading -> processor only', await (async () => { const read = { card: async () => null, cpu: async () => 10 }; return await decideCard({ gamingCard: 'auto', sharedGraphics: true }, { read }); })() === 'none');
+check('decideCard: unknown hardware with no reading -> as before (borrow)', await (async () => { const read = { card: async () => null, cpu: async () => 10 }; return await decideCard({ gamingCard: 'auto' }, { read }); })() === 'borrow');
 check('decideCard only reads the card on Automatic', await (async () => { let reads = 0; const read = { card: async () => { reads++; return busyCard; }, cpu: async () => { reads++; return 0; } };
   const n = await decideCard({ gamingCard: 'never' }, { read }), a = await decideCard({ gamingCard: 'always' }, { read }), u = await decideCard({}, { read });
   return n === 'none' && a === 'borrow' && u === 'none' && reads === 2; })());

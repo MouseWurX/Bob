@@ -1,0 +1,413 @@
+# Tool score, 2026-11-05T11-30-51
+
+196 held-out Bob conversations (never trained on), replayed turn by turn with full history. Right tool = same tool names as the full Qwen3.6 chose; right arguments = same values too; no tool = the turn was a plain reply and the model also made no call. Thinking off.
+
+| Model | Right tool | Right arguments | Correctly no tool | Overall | Speed | Load |
+|---|---|---|---|---|---|---|
+| full | 72/123 (59%) | 44/123 (36%) | 167/191 (87%) | 211/314 (67%) | 84.7 tok/s | 17 s |
+| riker | 58/123 (47%) | 39/123 (32%) | 167/191 (87%) | 206/314 (66%) | 149.9 tok/s | 11 s |
+| coder30b | 58/123 (47%) | 26/123 (21%) | 105/191 (55%) | 131/314 (42%) | 82.8 tok/s | 17 s |
+
+## Misses
+### full
+- i3623/0: wanted security_tips, got no tool
+- i3704/0: expected no tool, got mcp_tools,list_folder
+- i2077/0: expected no tool, got notice_board
+- i2402/0: forget_topic right, arguments differ: wanted [{"topic":"my job","mode":"all"}] got [{"topic":"your job","mode":"all"}]
+- i2264/1: wanted list_folder, got no tool
+- i2264/2: expected no tool, got list_folder
+- i2908/2: wanted make_music, got use_tools
+- i1334/0: ask_specialist right, arguments differ: wanted [{"hat":"tinker","task":"Implement a simple authentication system using JWT in a Node.js backend. Provide code for generating and verifying tokens, including:\n got [{"hat":"tinker","task":"Provide code for a simple JWT authentication system in Node.js, including token generation and verification."}]
+- i2600/0: expected no tool, got web_search
+- i3724/0: app_look right, arguments differ: wanted [{"window":"Unreal Engine","picture":true}] got [{"window":"Unreal Engine","picture":false}]
+- i3411/0: wanted notice_board, got no tool
+- i3411/1: expected no tool, got reminders
+- i1571/0: expected no tool, got bob_help
+- i3525/0: wanted pick_session, got no tool
+- i3512/0: wanted notice_board, got use_tools
+- i3681/0: wanted open_app, got app_look
+- i3681/2: wanted app_act, got no tool
+- i3451/0: reminders right, arguments differ: wanted [{"action":"add","text":"everyday 7am reminder","time":"2026-11-05T07:00"}] got [{"action":"add","text":"Everyday at 7am","time":"2026-11-05T07:00"}]
+- i2900/0: make_music right, arguments differ: wanted [{"prompt":"upbeat modern pop-rock, driving beat, energetic, catchy commercial jingle","lyrics":"[verse]\nEngine humming, wheels in motion\nFeeling the wind, fe got [{"prompt":"upbeat pop-rock, energetic, driving beat, bright electric guitar, punchy drums, confident, 120 bpm","lyrics":"[verse]\nKey in the ignition\nWorld fa
+- i2662/0: web_search right, arguments differ: wanted [{"query":"S&P 500 performance today November 4 2026","when":"day"},{"query":"S&P 500 last week performance October 28 2026","when":"week"}] got [{"query":"S&P 500 performance today November 4 2026","when":"day"},{"query":"S&P 500 last week October 28 2026","when":"week"}]
+- i2662/1: web_search right, arguments differ: wanted [{"query":"S&P 500 October 2026 weekly performance"}] got [{"query":"S&P 500 weekly performance October 2026"}]
+- i2662/2: web_search right, arguments differ: wanted [{"query":"S&P 500 today market performance","when":"day"}] got [{"query":"S&P 500 index performance week of November 2025","when":"month"}]
+- i2662/3: web_search right, arguments differ: wanted [{"query":"S&P 500 last week October 2025","when":"week"}] got [{"query":"S&P 500 weekly performance past week","when":"week"}]
+- i2662/4: web_search right, arguments differ: wanted [{"query":"S&P 500 performance this week November 2025","when":"week"}] got [{"query":"S&P 500 weekly performance last week","when":"week"}]
+- i3727/2: expected no tool, got app_act
+- i2742/0: make_music right, arguments differ: wanted [{"prompt":"ambient chill, smooth looping, soft pads, subtle rhythmic pulse, 90 bpm, atmospheric, seamless loop","seconds":30,"title":"Loop Segment"}] got [{"prompt":"lo-fi chill beats, relaxed 80 bpm, warm vinyl texture, soft piano loops, gentle drum groove, ambient pads","seconds":30,"title":"Loop Segment"}]
+- i515/0: web_search right, arguments differ: wanted [{"query":"best budget solo travel cities 2026","when":"year"}] got [{"query":"best budget-friendly cities for solo travel 2025 2026","when":"year"}]
+- i515/1: wanted pick_session, got no tool
+- i3687/0: wanted open_app, got app_look
+- i3687/2: expected no tool, got app_act
+- i3589/0: wanted security_check,security_tips, got no tool
+- i2025/0: wanted ask_specialist,pick_session, got ask_specialist
+- i1461/0: expected no tool, got bob_help
+- i1295/0: expected no tool, got write_file
+- i1500/0: wanted list_folder, got no tool
+- i1733/0: wanted notice_board, got no tool
+- i2479/0: wanted use_tools, got no tool
+- i1604/0: ask_specialist right, arguments differ: wanted [{"hat":"tinker","task":"A C program is crashing with a segmentation fault. Please analyze the code to find the cause. Common causes include:\n- Dereferencing a got [{"hat":"tinker","task":"Fix a C segmentation fault. The user hasn't provided the code yet, so I need to ask them for it first."}]
+- i304/0: wanted web_search, got ask_specialist
+- i304/1: web_search right, arguments differ: wanted [{"query":"best movies late 2025 2026 released","when":"month"}] got [{"query":"best movies of 2025 so far reviews","when":"month"}]
+- i304/2: web_search right, arguments differ: wanted [{"query":"best movies available to watch November 2026","when":"month"}] got [{"query":"highest rated movies 2025 so far","when":"month"}]
+- i304/3: wanted web_search, got no tool
+- i304/4: wanted web_search, got no tool
+- i2641/0: web_search right, arguments differ: wanted [{"query":"AA123 flight price"}] got [{"query":"American Airlines AA123 flight price ticket"}]
+- i2641/1: wanted web_search, got no tool
+- i2641/2: wanted web_search, got no tool
+- i3546/0: wanted use_tools, got no tool
+- i3546/1: expected no tool, got use_tools
+- i3606/0: expected no tool, got security_tips
+- i3364/0: expected no tool, got run_recipe
+- i976/0: wanted bob_help, got no tool
+- i2720/0: make_image right, arguments differ: wanted [{"prompt":"Vibrant abstract expressionist painting, bold splashes of teal, magenta, and gold, dynamic brushstrokes, textured canvas style, high contrast","widt got [{"prompt":"Abstract expressionist painting with bold swirling colors, deep blues and vibrant oranges blending together, dynamic brushstrokes, textured layers, 
+- i3177/0: office_make right, arguments differ: wanted [{"kind":"writer","name":"New Document","text":""}] got [{"kind":"writer","name":"Untitled Document"}]
+- i3175/0: wanted notice_board, got no tool
+- i1547/0: wanted ask_specialist, got no tool
+- i66/0: wanted office_make, got save_spreadsheet
+- i2932/1: wanted list_folder, got read_file
+- i2932/2: expected no tool, got list_folder
+- i1556/0: wanted use_tools, got no tool
+- i1556/1: wanted make_diagram, got use_tools
+- i55/0: wanted notice_board, got no tool
+- i55/1: expected no tool, got list_folder
+- i557/0: expected no tool, got use_tools
+- i3132/0: office_make right, arguments differ: wanted [{"kind":"writer","name":"Professional_Letterhead","text":"# [YOUR COMPANY NAME]\n\n[Street Address] | [City, State ZIP]\n[Phone] | [Email] | [Website]\n\n---\n got [{"kind":"writer","name":"professional-letterhead","text":"# [COMPANY NAME]\n\n[Address Line 1] | [Address Line 2] | [City, State ZIP]\nPhone: (XXX) XXX-XXXX | 
+- i1581/0: ask_specialist right, arguments differ: wanted [{"hat":"scout","task":"Find the most practical, actionable advice for debugging and fixing segmentation faults in C when working with pointers. Focus on common got [{"hat":"tinker","task":"Explain how to fix segfaults in C when using pointers. Cover the most common causes: null pointer dereference, uninitialized pointers, 
+- i434/0: wanted ask_specialist, got web_search
+- i82/0: make_diagram right, arguments differ: wanted [{"title":"GPU Upgrade Decision","mermaid":"flowchart TD\n    A[Current GPU] --> B{Is it broken or\\nmissing drivers?}\n    B -->|Yes| C[Buy New GPU]\n    B --> got [{"mermaid":"flowchart TD\\n    Start{🖥️ Should You Buy\\n    a New GPU?} --> Q1{Is your current GPU\\n    actually the bottleneck?}\n\n    Q1 -->|No, it's fin
+- i1209/0: wanted make_image, got no tool
+- i2620/0: web_search right, arguments differ: wanted [{"query":"Tesla TSLA stock price","when":"day"}] got [{"query":"Tesla stock price TSLA","when":"day"}]
+- i2510/1: wanted web_search, got no tool
+- i2194/0: wanted ask_specialist,pick_session, got web_search
+- i83/0: wanted make_diagram, got no tool
+- i49/0: wanted notice_board, got no tool
+- i49/1: expected no tool, got notice_board
+- i3123/1: wanted list_folder, got no tool
+- i3123/2: wanted list_folder, got no tool
+- i3123/3: wanted list_folder,read_file, got office_read
+- i3123/4: wanted read_file, got no tool
+- i2832/0: make_image right, arguments differ: wanted [{"prompt":"A winding mountain road snaking through the Swiss Alps, dramatic snow-capped peaks in the background, clear blue sky, high-resolution landscape phot got [{"prompt":"A winding road through the Swiss Alps with snow-capped peaks in the background and a clear blue sky. High resolution, photorealistic, dramatic lands
+- i1495/0: write_file right, arguments differ: wanted [{"path":"C:\\Users\\you\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn\\rename_files.py","content":"#!/usr/bin/env python3\n\"\"\"\nrename_files.py — batc got [{"input":"{\"content\":\"#!/usr/bin/env python3\\n\\\"\\\"\\\"\\nrename_files.py - Rename files in a folder using various strategies.\\n\\nUsage:\\n    python 
+- i2749/0: wanted pick_session, got make_image
+- i2749/1: expected no tool, got make_image
+- i1634/0: expected no tool, got ask_specialist
+- i1071/0: wanted ask_specialist, got no tool
+- i1715/0: expected no tool, got ask_specialist
+- i2527/0: web_search right, arguments differ: wanted [{"query":"new iPhone release date 2026"}] got [{"query":"new iPhone release date 2025","when":"month"}]
+- i3083/0: wanted file_hands, got list_folder
+- i3052/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\you\\Videos"},{"path":"C:\\"}] got [{"path":"C:\\Users\\you\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn"},{"path":"E:"}]
+- i3052/1: expected no tool, got list_folder
+- i2217/3: list_folder right, arguments differ: wanted [{"path":"Documents\\Work"}] got [{"path":"Documents/Work"}]
+- i2217/4: read_file right, arguments differ: wanted [{"path":"notices.txt"}] got [{"path":"Documents\\Work\\Budget_Forecast_2024.xlsx"}]
+- i2331/1: expected no tool, got notice_board
+- i2804/0: wanted make_video, got ask_specialist
+- i751/0: wanted web_search, got no tool
+- i3043/0: wanted notice_board, got no tool
+- i3043/1: expected no tool, got notice_board
+- i2715/0: wanted make_image, got mcp_tools
+- i3596/1: wanted inspect_file, got use_tools
+- i3596/2: wanted defender_scan, got no tool
+- i1701/0: expected no tool, got mcp_tools
+- i3099/0: wanted list_folder, got file_hands
+- i3077/0: wanted list_folder, got list_folder,notice_board
+- i595/0: wanted ask_specialist, got no tool
+
+
+### riker
+- i3623/0: wanted security_tips, got no tool
+- i3704/0: expected no tool, got list_folder
+- i2402/0: wanted forget_topic, got notice_board
+- i2264/1: wanted list_folder, got no tool
+- i2264/2: expected no tool, got list_folder
+- i2908/0: wanted offer_setup, got use_tools
+- i2908/1: wanted use_tools, got no tool
+- i2908/2: wanted make_music, got use_tools
+- i3724/0: app_look right, arguments differ: wanted [{"window":"Unreal Engine","picture":true}] got [{"window":"Unreal Engine","picture":false}]
+- i2845/0: make_image right, arguments differ: wanted [{"prompt":"A serene sunset landscape with warm orange, pink, and purple gradients in the sky, soft scattered clouds, and a calm horizon reflecting the light"}] got [{"prompt":"A beautiful scenic sunset over a calm landscape, warm orange and pink clouds, golden light, peaceful atmosphere","width":1024,"height":1024}]
+- i2108/0: expected no tool, got ask_specialist
+- i3411/0: wanted notice_board, got no tool
+- i1571/0: expected no tool, got ask_specialist
+- i3525/0: wanted pick_session, got no tool
+- i3512/0: wanted notice_board, got no tool
+- i3512/1: expected no tool, got reminders
+- i3681/0: wanted open_app, got app_look
+- i2900/0: make_music right, arguments differ: wanted [{"prompt":"upbeat modern pop-rock, driving beat, energetic, catchy commercial jingle","lyrics":"[verse]\nEngine humming, wheels in motion\nFeeling the wind, fe got [{"prompt":"upbeat pop-rock, confident, driving rhythm, bright guitars, energetic","lyrics":"[verse]\nKeys in the ignition, world in the rear\nGot the open road
+- i2662/1: web_search right, arguments differ: wanted [{"query":"S&P 500 October 2026 weekly performance"}] got [{"query":"S&P 500 weekly performance October 2026","when":"month"}]
+- i2662/2: wanted web_search, got no tool
+- i2662/3: wanted web_search, got no tool
+- i2662/4: web_search right, arguments differ: wanted [{"query":"S&P 500 performance this week November 2025","when":"week"}] got [{"query":"S&P 500 weekly performance October 2025"}]
+- i3727/1: app_look right, arguments differ: wanted [{"window":""}] got [{"window":"Unreal","picture":true}]
+- i3727/2: expected no tool, got app_act
+- i2742/0: make_music right, arguments differ: wanted [{"prompt":"ambient chill, smooth looping, soft pads, subtle rhythmic pulse, 90 bpm, atmospheric, seamless loop","seconds":30,"title":"Loop Segment"}] got [{"prompt":"ambient electronic, chill, lo-fi beats, 80 bpm, soft synth pads, gentle percussion","seconds":30,"title":"Seamless Loop"}]
+- i204/0: expected no tool, got pick_session
+- i515/0: web_search right, arguments differ: wanted [{"query":"best budget solo travel cities 2026","when":"year"}] got [{"query":"best budget-friendly cities for solo travel 2024 2025","when":"year"}]
+- i515/1: wanted pick_session, got no tool
+- i3687/0: wanted open_app, got app_look
+- i3687/2: expected no tool, got app_act
+- i3589/0: wanted security_check,security_tips, got security_check
+- i2025/0: wanted ask_specialist,pick_session, got web_search
+- i1733/0: wanted notice_board, got no tool
+- i2479/0: wanted use_tools, got no tool
+- i2479/1: wanted reminders, got notice_board
+- i2479/2: expected no tool, got notice_board
+- i1604/0: wanted ask_specialist, got list_folder
+- i2822/0: make_music right, arguments differ: wanted [{"prompt":"ambient space, soft synth pads, slow evolving textures, distant ethereal chimes, weightless, meditative, 60 bpm","lyrics":"","seconds":180,"title":" got [{"prompt":"ambient space, soft synth pads, distant ethereal chimes, slow tempo, dreamy, meditative","seconds":180,"title":"Space Floating"}]
+- i304/0: wanted web_search, got no tool
+- i304/1: wanted web_search, got no tool
+- i304/2: wanted web_search, got no tool
+- i304/3: wanted web_search, got no tool
+- i304/4: wanted web_search, got no tool
+- i2641/0: wanted web_search, got no tool
+- i2641/1: wanted web_search, got no tool
+- i2641/2: wanted web_search, got no tool
+- i3767/0: wanted bob_help, got no tool
+- i3546/0: wanted use_tools, got no tool
+- i3546/1: expected no tool, got use_tools
+- i976/0: wanted bob_help, got no tool
+- i2720/0: make_image right, arguments differ: wanted [{"prompt":"Vibrant abstract expressionist painting, bold splashes of teal, magenta, and gold, dynamic brushstrokes, textured canvas style, high contrast","widt got [{"prompt":"Abstract expressionist painting with bold, dynamic brushstrokes, vibrant colors blending and contrasting, energetic composition, reminiscent of Poll
+- i3177/0: office_make right, arguments differ: wanted [{"kind":"writer","name":"New Document","text":""}] got [{"kind":"writer","name":"Untitled"}]
+- i3342/0: expected no tool, got use_tools
+- i1424/0: wanted ask_specialist, got no tool
+- i3175/0: wanted notice_board, got no tool
+- i3175/1: expected no tool, got notice_board
+- i53/0: office_make right, arguments differ: wanted [{"kind":"impress","name":"Pitch Deck","slides":[{"bullets":["Your Company Name","Tagline or one-line description","Presenter Name","Date"],"title":"Title Slide got [{"kind":"impress","name":"pitch_deck","slides":[{"bullets":["Your Name","Your Title","Company Name","Date"],"notes":"Welcome the audience and introduce yoursel
+- i1547/0: wanted ask_specialist, got no tool
+- i66/0: wanted office_make, got save_spreadsheet
+- i2932/0: wanted list_folder, got read_file
+- i2932/2: expected no tool, got list_folder
+- i1556/1: wanted make_diagram, got use_tools
+- i1556/2: expected no tool, got use_tools
+- i55/0: wanted notice_board, got no tool
+- i557/0: expected no tool, got run_recipe
+- i3132/0: office_make right, arguments differ: wanted [{"kind":"writer","name":"Professional_Letterhead","text":"# [YOUR COMPANY NAME]\n\n[Street Address] | [City, State ZIP]\n[Phone] | [Email] | [Website]\n\n---\n got [{"kind":"writer","name":"professional-letterhead","text":"# [Your Company Name]\n\n[Street Address]  \n[City, State ZIP]  \n[Phone] | [Email] | [Website]\n\n--
+- i3132/1: expected no tool, got office_make
+- i1581/0: wanted ask_specialist, got no tool
+- i434/0: wanted ask_specialist, got no tool
+- i82/0: make_diagram right, arguments differ: wanted [{"title":"GPU Upgrade Decision","mermaid":"flowchart TD\n    A[Current GPU] --> B{Is it broken or\\nmissing drivers?}\n    B -->|Yes| C[Buy New GPU]\n    B --> got [{"mermaid":"flowchart TD\n    A[Need New GPU?] --> B{Current PC working?}\n    B -->|Yes, no issues| C[Don't buy yet]\n    B -->|No, problems exist| D{What's t
+- i1209/0: wanted make_image, got no tool
+- i2620/0: web_search right, arguments differ: wanted [{"query":"Tesla TSLA stock price","when":"day"}] got [{"query":"Tesla stock price TSLA","when":"day"}]
+- i2510/0: wanted ask_specialist, got web_search
+- i2510/1: wanted web_search, got no tool
+- i2510/2: expected no tool, got web_search
+- i2194/0: wanted ask_specialist,pick_session, got web_search
+- i83/0: wanted make_diagram, got no tool
+- i49/0: wanted notice_board, got no tool
+- i49/1: expected no tool, got notice_board
+- i2519/0: wanted ask_specialist, got web_search
+- i3123/0: wanted read_file, got office_read
+- i3123/1: wanted list_folder, got office_read
+- i3123/2: wanted list_folder, got no tool
+- i3123/3: wanted list_folder,read_file, got list_folder,office_read
+- i2832/0: make_image right, arguments differ: wanted [{"prompt":"A winding mountain road snaking through the Swiss Alps, dramatic snow-capped peaks in the background, clear blue sky, high-resolution landscape phot got [{"prompt":"A winding mountain road snaking through the Swiss Alps, with dramatic snow-capped peaks in the background, clear bright blue sky, high resolution, p
+- i2236/1: expected no tool, got notice_board
+- i2749/0: wanted pick_session, got no tool
+- i1071/0: wanted ask_specialist, got no tool
+- i1715/0: expected no tool, got ask_specialist
+- i2527/0: wanted web_search, got no tool
+- i3052/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\you\\Videos"},{"path":"C:\\"}] got [{"path":"C:\\Users\\you\\Videos"},{"path":"E:\\"}]
+- i3052/1: expected no tool, got list_folder,list_folder,list_folder
+- i2217/1: wanted list_folder, got no tool
+- i2217/3: list_folder right, arguments differ: wanted [{"path":"Documents\\Work"}] got [{"path":"Documents/Work"}]
+- i2217/4: wanted read_file, got list_folder
+- i2331/0: wanted notice_board, got notice_board,reminders
+- i2804/0: make_video right, arguments differ: wanted [{"prompt":"A colorful 3D ball bouncing on a flat surface with realistic physics. The ball should squash and stretch as it bounces, showing energy loss with eac got [{"prompt":"A bright red ball bouncing on a smooth surface with realistic physics: squash and stretch deformation, proper bounce height decreasing with each bou
+- i751/0: wanted web_search, got no tool
+- i3043/0: wanted notice_board, got no tool
+- i3043/1: expected no tool, got notice_board
+- i2715/0: wanted make_image, got no tool
+- i3596/1: wanted inspect_file, got use_tools
+- i3596/2: wanted defender_scan, got no tool
+- i1701/0: expected no tool, got mcp_tools
+- i3099/0: wanted list_folder, got file_hands
+- i3099/1: expected no tool, got list_folder
+- i2045/0: wanted ask_specialist, got no tool
+- i595/0: wanted ask_specialist, got no tool
+
+
+### coder30b
+- i3623/0: wanted security_tips, got no tool
+- i3623/1: wanted web_search, got no tool
+- i3623/2: wanted web_search, got remember
+- i3623/3: expected no tool, got show_made
+- i2093/0: expected no tool, got notice_board
+- i2077/0: expected no tool, got notice_board
+- i2402/0: wanted forget_topic, got no tool
+- i2264/1: wanted list_folder, got notice_board
+- i2264/2: expected no tool, got notice_board
+- i2908/2: wanted make_music, got show_made
+- i2543/0: web_search right, arguments differ: wanted [{"query":"bitcoin price USD","when":"day"}] got [{"query":"current Bitcoin price"}]
+- i1334/0: ask_specialist right, arguments differ: wanted [{"hat":"tinker","task":"Implement a simple authentication system using JWT in a Node.js backend. Provide code for generating and verifying tokens, including:\n got [{"hat":"tinker","task":"Implement a simple authentication system using JWT in a Node.js backend. Provide code for generating and verifying tokens."}]
+- i1334/1: expected no tool, got ask_specialist
+- i2600/0: expected no tool, got web_search
+- i3724/0: wanted app_look, got mcp_tools
+- i3724/1: wanted app_act, got app_look
+- i3526/0: wanted security_tips, got security_tips,web_search
+- i3526/1: expected no tool, got web_search
+- i306/0: expected no tool, got notice_board
+- i3411/0: wanted notice_board, got use_tools
+- i3411/1: expected no tool, got notice_board
+- i1571/0: expected no tool, got ask_specialist
+- i3525/0: wanted pick_session, got no tool
+- i2534/0: expected no tool, got web_search
+- i3512/1: expected no tool, got reminders
+- i3681/2: app_act right, arguments differ: wanted [{"window":"Blender","action":"click","name":"Outliner"}] got [{"window":"Blender","action":"click","type":"ListItem","name":"Scene Collection"}]
+- i3451/0: reminders right, arguments differ: wanted [{"action":"add","text":"everyday 7am reminder","time":"2026-11-05T07:00"}] got [{"action":"add","time":"2026-11-04T07:00","text":"Daily reminder"}]
+- i2900/0: make_music right, arguments differ: wanted [{"prompt":"upbeat modern pop-rock, driving beat, energetic, catchy commercial jingle","lyrics":"[verse]\nEngine humming, wheels in motion\nFeeling the wind, fe got [{"prompt":"upbeat, catchy, commercial jingle, 120 bpm, synth, drums, 30 seconds","lyrics":"[verse]\nZoom, zoom, zoom, we're on the road\nSpeed and style, we're
+- i2662/0: web_search right, arguments differ: wanted [{"query":"S&P 500 performance today November 4 2026","when":"day"},{"query":"S&P 500 last week performance October 28 2026","when":"week"}] got [{"query":"S&P 500 today vs last week performance"}]
+- i2662/1: wanted web_search, got no tool
+- i2662/2: web_search right, arguments differ: wanted [{"query":"S&P 500 today market performance","when":"day"}] got [{"query":"S&P 500 performance last week October 27 to October 31 2026"}]
+- i2662/3: web_search right, arguments differ: wanted [{"query":"S&P 500 last week October 2025","when":"week"}] got [{"query":"S&P 500 last week performance October 27 2026","when":"week"}]
+- i2662/4: web_search right, arguments differ: wanted [{"query":"S&P 500 performance this week November 2025","when":"week"}] got [{"query":"S&P 500 performance October 2023","when":"week"}]
+- i3727/0: wanted use_tools, got app_look
+- i3727/1: app_look right, arguments differ: wanted [{"window":""}] got [{}]
+- i3727/2: expected no tool, got app_look
+- i2742/0: make_music right, arguments differ: wanted [{"prompt":"ambient chill, smooth looping, soft pads, subtle rhythmic pulse, 90 bpm, atmospheric, seamless loop","seconds":30,"title":"Loop Segment"}] got [{"prompt":"ambient, slightly upbeat, 120 bpm, soft synthesizers","seconds":30,"title":"Ambient Loop"}]
+- i515/0: web_search right, arguments differ: wanted [{"query":"best budget solo travel cities 2026","when":"year"}] got [{"query":"budget-friendly cities for solo travel"}]
+- i515/1: wanted pick_session, got no tool
+- i515/2: expected no tool, got notice_board
+- i3687/1: app_look right, arguments differ: wanted [{"window":"Blender","picture":true}] got [{"window":"Blender"}]
+- i3687/2: expected no tool, got app_look
+- i3589/0: wanted security_check,security_tips, got no tool
+- i1283/0: expected no tool, got bob_help
+- i2025/0: wanted ask_specialist,pick_session, got notice_board
+- i2025/1: expected no tool, got ask_specialist
+- i1461/0: expected no tool, got ask_specialist
+- i1295/0: expected no tool, got notice_board
+- i354/0: expected no tool, got ask_specialist
+- i475/0: expected no tool, got web_search
+- i1500/0: wanted list_folder, got ask_specialist
+- i1544/0: expected no tool, got ask_specialist
+- i1733/0: wanted notice_board, got no tool
+- i1733/1: wanted notice_board, got no tool
+- i529/0: expected no tool, got web_search
+- i2479/0: wanted use_tools, got no tool
+- i2479/1: wanted reminders, got no tool
+- i1604/0: wanted ask_specialist, got no tool
+- i1604/1: expected no tool, got ask_specialist
+- i2822/0: make_music right, arguments differ: wanted [{"prompt":"ambient space, soft synth pads, slow evolving textures, distant ethereal chimes, weightless, meditative, 60 bpm","lyrics":"","seconds":180,"title":" got [{"prompt":"ambient, space, synth pads, ethereal chimes, calming, slow, atmospheric, 120 bpm","seconds":180,"title":"Space Meditation"}]
+- i304/0: web_search right, arguments differ: wanted [{"query":"best movies released 2025 2026 highly rated","when":"year"}] got [{"query":"new movies 2026"}]
+- i304/1: wanted web_search, got no tool
+- i304/2: wanted web_search, got notice_board
+- i304/3: wanted web_search, got no tool
+- i304/4: wanted web_search, got notice_board
+- i2783/0: expected no tool, got web_search
+- i1962/0: expected no tool, got ask_specialist
+- i1882/0: expected no tool, got notice_board
+- i2641/0: web_search right, arguments differ: wanted [{"query":"AA123 flight price"}] got [{"query":"price flight AA123"}]
+- i2641/1: wanted web_search, got no tool
+- i2641/2: wanted web_search, got no tool
+- i3767/0: bob_help right, arguments differ: wanted [{"topic":"Bob-Net learning feature"}] got [{"topic":"Bob-Net"}]
+- i3767/1: expected no tool, got bob_help
+- i3240/0: expected no tool, got web_search
+- i1004/0: expected no tool, got ask_specialist
+- i1811/0: expected no tool, got ask_specialist
+- i1673/0: expected no tool, got ask_specialist
+- i479/0: expected no tool, got ask_specialist
+- i2012/0: expected no tool, got notice_board
+- i3546/0: wanted use_tools, got no tool
+- i3546/1: expected no tool, got remember
+- i3606/0: expected no tool, got osint_lookup
+- i976/0: wanted bob_help, got ask_specialist
+- i976/1: expected no tool, got web_search
+- i2013/0: expected no tool, got ask_specialist
+- i790/0: expected no tool, got ask_specialist
+- i2720/0: make_image right, arguments differ: wanted [{"prompt":"Vibrant abstract expressionist painting, bold splashes of teal, magenta, and gold, dynamic brushstrokes, textured canvas style, high contrast","widt got [{"prompt":"An abstract painting with swirling colors and dynamic brushstrokes"}]
+- i3177/0: office_make right, arguments differ: wanted [{"kind":"writer","name":"New Document","text":""}] got [{"kind":"writer"}]
+- i2622/0: expected no tool, got web_search
+- i3342/0: expected no tool, got use_tools,use_tools
+- i1424/0: ask_specialist right, arguments differ: wanted [{"hat":"tinker","task":"Explain why Blender's Python API (bpy) returns None or fails when trying to access mesh vertices while in Object Mode, and how to fix i got [{"hat":"tinker","task":"Why does the Blender Python API return None when trying to access a mesh's vertices in object mode?"}]
+- i3175/0: wanted notice_board, got no tool
+- i3175/1: expected no tool, got use_tools,use_tools
+- i1946/0: expected no tool, got ask_specialist
+- i53/0: wanted office_make, got notice_board
+- i1547/0: wanted ask_specialist, got no tool
+- i800/0: expected no tool, got web_search
+- i66/0: office_make right, arguments differ: wanted [{"kind":"calc","name":"monthly-bills","sheets":[{"name":"Monthly Bills","rows":[["Category","Expected Amount","Actual Amount","Due Date","Status","Notes"],["Re got [{"kind":"calc","name":"monthly-bills"}]
+- i66/1: expected no tool, got save_spreadsheet
+- i799/0: expected no tool, got notice_board
+- i849/0: expected no tool, got notice_board
+- i2932/1: wanted list_folder, got web_search
+- i2932/2: expected no tool, got web_search
+- i1556/0: wanted use_tools, got no tool
+- i1556/1: wanted make_diagram, got ask_specialist
+- i1556/2: expected no tool, got use_tools
+- i55/0: wanted notice_board, got no tool
+- i55/1: expected no tool, got ask_specialist
+- i557/0: expected no tool, got run_recipe
+- i883/0: expected no tool, got ask_specialist
+- i3511/0: expected no tool, got reminders
+- i3132/0: office_make right, arguments differ: wanted [{"kind":"writer","name":"Professional_Letterhead","text":"# [YOUR COMPANY NAME]\n\n[Street Address] | [City, State ZIP]\n[Phone] | [Email] | [Website]\n\n---\n got [{"kind":"writer","name":"Professional Letter"}]
+- i3132/1: expected no tool, got office_make
+- i1581/0: wanted ask_specialist, got no tool
+- i434/0: wanted ask_specialist, got web_search
+- i162/0: expected no tool, got notice_board
+- i2902/1: expected no tool, got make_image
+- i82/0: make_diagram right, arguments differ: wanted [{"title":"GPU Upgrade Decision","mermaid":"flowchart TD\n    A[Current GPU] --> B{Is it broken or\\nmissing drivers?}\n    B -->|Yes| C[Buy New GPU]\n    B --> got [{"mermaid":"flowchart TD\n    A[Do you need a new GPU?] -->|No| B[Do nothing]\n    A -->|Yes| C[Do you have a current GPU?]\n    C -->|No| D[Can you afford a n
+- i1621/0: expected no tool, got ask_specialist
+- i1209/0: wanted make_image, got offer_setup,use_tools
+- i2620/0: web_search right, arguments differ: wanted [{"query":"Tesla TSLA stock price","when":"day"}] got [{"query":"Tesla stock price"}]
+- i3570/0: expected no tool, got inspect_file
+- i2510/0: wanted ask_specialist, got web_search
+- i2510/1: wanted web_search, got no tool
+- i2510/2: expected no tool, got notice_board
+- i1451/0: expected no tool, got ask_specialist
+- i1699/0: expected no tool, got notice_board
+- i2194/0: wanted ask_specialist,pick_session, got web_search
+- i2194/1: expected no tool, got notice_board
+- i83/0: make_diagram right, arguments differ: wanted [{"title":"Bob–Phone Communication","mermaid":"flowchart TD\n    A[Bob\\n(Your PC)] -->|Local network / USB| B[Handshake / Bridge]\n    B --> C[Phone App / Comp got [{"mermaid":"flowchart TD\n    A[User] --> B[Bob (Replicant Matrix)]\n    B --> C[Phone App]\n    C --> D[Phone Service]\n    D --> E[Carrier Network]\n    E --
+- i190/0: expected no tool, got notice_board
+- i1161/0: expected no tool, got notice_board
+- i2519/0: wanted ask_specialist, got web_search
+- i3123/0: wanted read_file, got use_tools
+- i3123/2: wanted list_folder, got no tool
+- i3123/3: wanted list_folder,read_file, got list_folder
+- i3123/4: wanted read_file, got no tool
+- i2832/1: expected no tool, got make_image
+- i1643/0: expected no tool, got ask_specialist
+- i2236/0: notice_board right, arguments differ: wanted [{"action":"read"}] got [{"action":"write","content":"# Notice board, 2026-11-04\nXP today: 0\n\n## Main quest\n- [ ] Finish the quarterly report (estimated: 3 hours, 25 XP)\n\n## Side
+- i2236/1: expected no tool, got notice_board
+- i507/0: expected no tool, got notice_board
+- i1495/0: wanted write_file, got notice_board
+- i2749/0: wanted pick_session, got show_made
+- i3452/0: expected no tool, got reminders
+- i1002/0: expected no tool, got ask_specialist
+- i1634/0: expected no tool, got notice_board
+- i2580/0: expected no tool, got web_search
+- i3863/0: expected no tool, got use_tools
+- i926/0: expected no tool, got ask_specialist
+- i1071/0: wanted ask_specialist, got no tool
+- i1715/0: expected no tool, got notice_board
+- i2582/0: expected no tool, got web_search
+- i2376/0: wanted remember, got no tool
+- i2376/1: expected no tool, got notice_board
+- i2527/0: web_search right, arguments differ: wanted [{"query":"new iPhone release date 2026"}] got [{"query":"new iPhone release date"}]
+- i3052/0: wanted list_folder, got no tool
+- i3052/1: expected no tool, got list_folder,list_folder
+- i2217/1: wanted list_folder, got no tool
+- i2217/4: wanted read_file, got list_folder
+- i2331/1: expected no tool, got notice_board
+- i2804/0: make_video right, arguments differ: wanted [{"prompt":"A colorful 3D ball bouncing on a flat surface with realistic physics. The ball should squash and stretch as it bounces, showing energy loss with eac got [{"prompt":"A ball bouncing with realistic physics, showing gravity, elasticity, and friction","seconds":5,"width":832,"height":480}]
+- i3566/0: expected no tool, got use_tools
+- i751/0: web_search right, arguments differ: wanted [{"query":"penicillin timeline discovery to drug Fleming Florey Chain"}] got [{"query":"history of penicillin discovery timeline"}]
+- i751/1: expected no tool, got fetch_page
+- i2333/0: notice_board right, arguments differ: wanted [{"action":"read"}] got [{"action":"write","content":"# Notice board, 2026-11-04\nXP today: 0\n\n## Main quest\n\n## Side quests\n\n## Daily chores\n\n## Later\n\n## Done"}]
+- i2333/1: wanted notice_board, got no tool
+- i3043/0: wanted notice_board, got list_folder
+- i3043/1: expected no tool, got list_folder
+- i2715/0: wanted make_image, got offer_setup
+- i3596/1: wanted inspect_file, got ask_together
+- i3596/2: wanted defender_scan, got use_tools
+- i1701/0: expected no tool, got ask_specialist
+- i243/0: expected no tool, got notice_board
+- i2045/0: wanted ask_specialist, got notice_board
+- i2045/1: expected no tool, got notice_board
+- i784/0: expected no tool, got ask_specialist
+- i3077/0: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\you\\Documents"}] got [{"path":"C:\\Users\\you\\AppData\\Local\\Temp\\bob-lab-NNz3FF\\Agent\\inn\\documents"}]
+- i3077/1: list_folder right, arguments differ: wanted [{"path":"C:\\Users\\you\\Documents\\Work"},{"path":"C:\\Users\\you\\Documents\\Personal"},{"path":"C:\\Users\\you\\Documents\\Archives"},{"path":"C:\\Use got [{"path":"C:\\Users\\you\\Documents\\Work"}]
+- i3077/2: wanted list_folder, got read_file
+- i3077/3: wanted list_folder, got read_file
+- i3077/4: wanted list_folder, got file_hands
+- i595/0: wanted ask_specialist, got no tool
+

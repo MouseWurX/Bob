@@ -304,7 +304,7 @@ function Add-StartMenu {
 }
 
 # Bob's own files, the same list the PC tested. Never config.json (that's in Bob's home, not here).
-$AppFiles = @('electron', 'src', 'public', 'audio', 'installer', 'catalog.json', 'config.example.json', 'package.json', 'LICENSE', 'LICENSE-ART', 'ASSETS-LICENSE.md', 'TRADEMARKS.md', 'THIRD-PARTY.md', 'README.md')
+$AppFiles = @('electron', 'src', 'public', 'audio', 'installer', 'catalog.json', 'config.example.json', 'package.json', 'LICENSE', 'docs/legal', 'README.md')
 
 # Copies Bob's files into resources\app.new (made fresh each time).
 function Stage-App {
