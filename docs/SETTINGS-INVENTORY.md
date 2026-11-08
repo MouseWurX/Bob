@@ -10,7 +10,7 @@ Update this file in the same handover as any change to settings.
 | Bob's voice | (row shows current voice, Play, Change → Voice & conversation) | Windows voice until Kokoro is set up | ok |
 | Bob's look | (current look, Change → Style) | Sysop | ok |
 | Use Bob's look as his icon | On unless you turn it off. His icon on the taskbar (Dock on a Mac), in the tray and in the corner of his window shows the look you picked, and changes the moment you save a new one (a shortcut pinned to the taskbar may keep the usual icon: Windows draws those from the shortcut). Off: the usual Bob icon. (Disabled in a browser.) | On (was Off before 1.5.134; the owner asked) | 1.5.134 |
-| Theme | (current theme, Change → Style) | Bob's Inn | ok (1.5.2: row renamed "Theme") |
+| Theme | (current theme, Change → Style) | Moondust (1.5.136; was Bob's Inn) | ok (approved with edits, 1.5.136) |
 | Animations | On / Follow Windows (other systems: Follow the system) / Off | On | ok (1.5.98) |
 | Bob's cat | (text box) | Patches | ok (1.5.2) |
 | One brain (snappier) | Every copy of Bob uses the main brain, so there's no brain swap. | off | ok (1.5.2) |
@@ -62,7 +62,7 @@ Update this file in the same handover as any change to settings.
 |---|---|---|---|
 | Downloads | At once: 1 / 2 downloads | 1 | ok |
 | Downloads | Carry on unfinished downloads when Bob starts | off | ok (1.5.2) |
-| Style | Theme groups, your own theme (name, colours, font, corners, blueprint, outlined), avatars (133), Layout | Bob's Inn | ok (1.5.2) |
+| Style | Theme groups (Bob, Worlds and places, High contrast, From the MouseWurX website), your own theme (name, colours, font, corners, blueprint, outlined), avatars (133), Layout | Moondust (1.5.136; was Bob's Inn; Match system removed, old saved names migrate) | ok (1.5.2); 1.5.136 awaiting review |
 | Personality | What should Bob call you?; personality preset; sliders (humour, puns, side trips, mood, nerd references, talkative, manner…) | Factory Bob | ok, labels are plain |
 | First-time setup | What should I call you?; Setup pack; model ticks | suggested pack | ok |
 | First-time setup, Step 1 (1.5.75) | Get Bob ready (about X GB): core engines (llama.cpp, stable-diffusion.cpp, whisper.cpp) + one starter brain (E4B, or E2B on small cards / 8 GB Macs); size and free disk shown first; Pause, Stop, Try again; won't start with less than size + 2 GB free; each engine test-started (✓ works or the reason) | one click, never automatic (not an opt-in exception) | approved with edits (1.5.75) |
