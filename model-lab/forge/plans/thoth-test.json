@@ -1,0 +1,39 @@
+{
+ "run": "thoth-test-1",
+ "lessons_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "teacher_gguf": {
+  "repo": "DavidAU/Qwen3.6-40B-Grand-Intelligence-Fable-Fusion-Uncensored-Heretic-NM-DAU-NEO-MAX-MTP-GGUF",
+  "file": "Qwen3.6-40B-GrIntell-F-Fusion-Uncen-Htic-NEO-MAX-MTP-Q8_0.gguf",
+  "slots": 6,
+  "ctx": 32768,
+  "extra": ""
+ },
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H100 80GB HBM3",
+  "NVIDIA H100 PCIe"
+ ],
+ "step_up": [],
+ "disk_gb": 120,
+ "general_tokens": 0,
+ "rungs": [],
+ "write_lessons": [
+  {
+   "jobs": "refusals:3,coding:1,chat:1,advice:1,knowledge:1",
+   "think": "half",
+   "dir": "lessons-thoth-test",
+   "persona": "forge/plans/thoth-persona.txt",
+   "count": 400,
+   "parallel": 6,
+   "hours": 3.8,
+   "min": 10
+  }
+ ],
+ "lessons_min": 10,
+ "hours_max": 4.6,
+ "dollars_max": 20,
+ "rent_minutes": 180,
+ "note": "8 Nov 2026, the $20 Thoth test (build 19): a second card next to Bobert's run, its own pod record, no network drive. A 40B GGUF teacher (DavidAU's Fable-Fusion, Q8_0, 43 GB) is served by the pod's CUDA llama-server on port 8001; this PC's lesson writer talks to it with the Thoth persona appended to Bob's system prompt, half thinking. The first 15 minutes are the speed probe (the writer prints its rate). The run ends when the writer is done or at $20 / 4.6 h, whichever is first; the lessons are on this PC in out/lessons-thoth-test and are filtered afterwards with the five kept refusals (filter-refusals.mjs). Nothing is scored, cut, healed or uploaded."
+}

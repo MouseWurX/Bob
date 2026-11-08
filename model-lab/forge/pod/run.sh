@@ -141,8 +141,9 @@ kernels() {
   python3 -c "import fla; print('fla', fla.__version__)" 2>&1 | tail -1
   echo "kernels done $rc"
 }
-[ -z "${FORGE_SETUP_ONLY:-}" ] && ! grep -q "kernels done 0" $OUT/kernels.log 2>/dev/null && ( kernels > $OUT/kernels.log 2>&1 ) &
-KERN=$!
+LESSONS_ONLY=$(plan ".get('lessons_only','')")
+TG=$(plan ".get('teacher_gguf','')")
+if [ -z "${FORGE_SETUP_ONLY:-}" ] && [ -z "$LESSONS_ONLY" ] && ! grep -q "kernels done 0" $OUT/kernels.log 2>/dev/null; then ( kernels > $OUT/kernels.log 2>&1 ) & KERN=$!; else echo "kernels done 0 (not needed)" >> $OUT/kernels.log; KERN=""; fi
 # wait for the kernels (up to 30 min); a failed build is reported and the run goes on without them (slower, not wrong)
 kernels_ready() {
   if [ -n "${KERN:-}" ] && kill -0 $KERN 2>/dev/null; then status setup "waiting for the fast kernels to finish building"; for i in $(seq 1 180); do kill -0 $KERN 2>/dev/null || break; sleep 10; done; fi
@@ -154,18 +155,30 @@ if [ -f $S/llama-ready ]; then echo "llama tools already built"; else
   rm -f $S/llama-failed; ( bash $POD/llama-tools.sh $S $(plan ".get('llama_tag','b11669')") > $OUT/llama-setup.log 2>&1 ) &
 fi
 # build 18: a CUDA llama-server for the benchmark phase, built in the background while the run trains (kept on the volume)
-if [ -n "$(plan ".get('benchmark')")" ]; then
+if [ -n "$(plan ".get('benchmark')")" ] || [ -n "$TG" ]; then
   if [ -f $S/llama-server-ready ] && [ -x $S/llama.cpp/build-cuda/bin/llama-server ]; then echo "CUDA llama-server already built"; else rm -f $S/llama-server-failed; ( bash $POD/llama-server-build.sh $S $(plan ".get('llama_tag','b11669')") > $OUT/llama-server-build.log 2>&1 ) & fi
 fi
 [ -n "${FORGE_SETUP_ONLY:-}" ] && { kill $WD 2>/dev/null; wait; cat $OUT/llama-setup.log; status done "setup only"; exit 0; }
 TEACHER=$(plan "['teacher']")
-status download "teacher weights ($TEACHER)"
 dl() { hf download "$@" >/dev/null 2>$OUT/hf-dl.log || { echo "download retry (plain)"; HF_HUB_ENABLE_HF_TRANSFER=0 hf download "$@" >/dev/null 2>>$OUT/hf-dl.log; }; }
+TGF=""
+if [ -n "$TG" ]; then
+  # build 19: a GGUF teacher (any llama.cpp model on Hugging Face) that only writes lessons through llama-server; no scores, no heal
+  TGR=$(plan "['teacher_gguf']['repo']"); TGP=$(plan "['teacher_gguf']['file']")
+  status download "teacher GGUF ($TGR, $TGP)"
+  dl "$TGR" --include "$TGP" --local-dir $S/teacher-gguf || die "teacher GGUF download (see out/hf-dl.log)"
+  TGF=$(find $S/teacher-gguf -name "$TGP" -name '*.gguf' | sort | head -1)   # the first part of a split file loads the rest
+  [ -f "$TGF" ] || die "no GGUF in $TGR matched $TGP"
+  du -sh $S/teacher-gguf; echo "teacher GGUF: $(basename "$TGF")"
+  GENERAL_TOKENS=0
+else
+status download "teacher weights ($TEACHER)"
 dl "$TEACHER" --local-dir $S/teacher || die "teacher download (see out/hf-dl.log)"
 [ -f $S/teacher/config.json ] && ls $S/teacher/*.safetensors >/dev/null 2>&1 || die "teacher download incomplete"
 du -sh $S/teacher
 [ "$S" != "$W" ] && echo "volume: $(df -h $S | awk 'NR==2{print $4" free of "$2}') (a trained teacher needs about 70 GB more; the odds about 20 GB)"
 GENERAL_TOKENS=$(plan ".get('general_tokens',30000000)")
+fi
 if [ "$GENERAL_TOKENS" -gt 0 ] && [ ! -d $S/general ]; then
   status download "general text (FineWeb-Edu sample + Tulu 3 chats)"
   dl HuggingFaceFW/fineweb-edu --repo-type dataset --include "sample/10BT/000_00000.parquet" --local-dir $S/general/fineweb-edu || echo "FineWeb-Edu download failed (going on without it)"
@@ -179,7 +192,24 @@ WL=$(plan ".get('write_lessons')")
 wl() { python3 -c "import json; w=json.load(open('$IN/plan.json'))['write_lessons']; w=w if isinstance(w,list) else [w]; print($1)"; }   # one set or a list of sets
 if [ -z "$WL" ] && ls $IN/lessons-extra-*.jsonl >/dev/null 2>&1; then touch $IN/lessons-ready; fi   # only PC-side extra sets: nothing to write, just merge
 if { [ -n "$WL" ] || [ -f $IN/lessons-ready ]; } && [ ! -f $IN/lessons-merged ]; then
-  if [ ! -f $IN/lessons-ready ]; then
+  if [ ! -f $IN/lessons-ready ] && [ -n "$TGF" ]; then
+    # build 19: wait for the CUDA llama-server (built in the background since setup), then serve the GGUF teacher on port 8001
+    status lessons "waiting for the CUDA llama-server build (teacher GGUF $(basename "$TGF"))"
+    for i in $(seq 1 240); do [ -f $S/llama-server-ready ] || [ -f $S/llama-server-failed ] && break; sleep 10; done
+    LS=$S/llama.cpp/build-cuda/bin/llama-server; [ -x $LS ] || die "no CUDA llama-server for the GGUF teacher (see out/llama-server-build.log)"
+    TSLOTS=$(plan "['teacher_gguf'].get('slots',6)"); TCTX=$(plan "['teacher_gguf'].get('ctx',32768)")
+    status lessons "loading the teacher GGUF on the card ($TSLOTS slots, $TCTX each)"
+    ( $LS -m "$TGF" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" --alias teacher -c $((TCTX * TSLOTS)) --jinja -fa on -ctk q8_0 -ctv q8_0 -np $TSLOTS -ngl 999 \
+        $(plan "['teacher_gguf'].get('extra','')") > $OUT/teacher-server.log 2>&1 ) &
+    VL=$!
+    for i in $(seq 1 120); do curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/health 2>/dev/null | grep -q 200 && break; kill -0 $VL 2>/dev/null || die "llama-server died (see out/teacher-server.log)"; sleep 10; done
+    curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/health | grep -q 200 || die "llama-server never came up (see out/teacher-server.log)"
+    status lessons "ready: the PC writes the lessons now (port 8001, GGUF teacher)"
+    LW_MAX=$(python3 -c "print(int(($(wl "sum(x.get('hours',1.5) for x in w)")+0.5)*120))")
+    for i in $(seq 1 $LW_MAX); do [ -f $IN/lessons-ready ] && break; kill -0 $VL 2>/dev/null || { status lessons "llama-server died while writing; waiting for the PC to finish or retry"; }; sleep 30; done
+    [ -f $IN/lessons-ready ] || die "the PC never sent the extra lessons"
+    kill $VL 2>/dev/null; sleep 3; pkill -9 -f "llama-server" 2>/dev/null; sleep 2
+  elif [ ! -f $IN/lessons-ready ]; then
     status lessons "starting the full Qwen server for the lesson writer"
     ( vllm serve $S/teacher --served-model-name teacher --port 8001 --api-key "$FORGE_TOKEN" --max-model-len $(wl "max(x.get('ctx',32768) for x in w)") \
         --gpu-memory-utilization 0.90 --max-num-seqs $(wl "max(x.get('seqs',32) for x in w)") --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 \
@@ -193,6 +223,13 @@ if { [ -n "$WL" ] || [ -f $IN/lessons-ready ]; } && [ ! -f $IN/lessons-merged ];
     [ -f $IN/lessons-ready ] || die "the PC never sent the extra lessons"
     pkill -f "vllm serve" 2>/dev/null; sleep 5; pkill -9 -f "vllm" 2>/dev/null
     for i in $(seq 1 60); do U=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1); [ "${U:-0}" -lt 4000 ] && break; sleep 5; done
+  fi
+  if [ -n "$LESSONS_ONLY" ]; then
+    N=$(cat $IN/lessons-ready 2>/dev/null || echo 0)
+    if [ "$S" != "$W" ]; then LD=$S/lessons/$(plan ".get('run','run')"); mkdir -p $LD; cp $IN/lessons-extra-*.jsonl $IN/toolsets-extra-*.json $LD/ 2>/dev/null; cp $OUT/*.log $LD/ 2>/dev/null; echo "lessons kept on the volume at $LD"; fi
+    rm -f $IN/hf-token
+    status done "lessons only: $N lessons written; they are on the PC"
+    exit 0
   fi
   status lessons "merging the extra lessons"
   python3 - $IN <<'PY' || die "lesson merge"

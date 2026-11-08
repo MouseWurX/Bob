@@ -17,6 +17,8 @@ const L = locate(o);
 if (!L.model) { console.error('Qwen3.6 GGUF not found. Pass --model.'); process.exit(1); }
 // --url <server>: use a rented teacher (vLLM) instead of starting llama-server here. Set LAB_API_KEY and LAB_MODEL_NAME.
 const remoteUrl = o.url ? String(o.url).replace(/\/$/, '') : null;
+// --persona <file>: appended to Bob's system prompt for every lesson (a voice for a themed set); Bob's own rules stay in front of it.
+const persona = o.persona ? fs.readFileSync(path.resolve(String(o.persona)), 'utf8').trim() : '';
 if (remoteUrl) process.env.LAB_REMOTE = '1'; else checkFree(o);
 const parallel = Math.max(1, Number(o.parallel) || 1);
 const kit = await loadBob(L.bob);
@@ -151,7 +153,7 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
   for (let step = 0; step < 6; step++) {
     const t0 = toolsFor(loaded); const t = dropTools.size ? { ...t0, tools: (t0.tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)), system: String(t0.system || '').split('\n').filter((ln) => ![...dropTools].some((d) => ln.includes(d))).join('\n') } : t0; // dropped tools leave the offer AND the prompt text
     const set = setKey(t.system, t.tools);
-    const { msg, finish } = await chat(srv.url, { messages: [{ role: 'system', content: t.system }, ...live], tools: t.tools, think, max: (think ? 6000 : 2000) * room });
+    const { msg, finish } = await chat(srv.url, { messages: [{ role: 'system', content: persona ? `${t.system}\n\n${persona}` : t.system }, ...live], tools: t.tools, think, max: (think ? 6000 : 2000) * room });
     if (finish === 'length') throw new Error('ran out of room');
     const a = { role: 'assistant', content: msg.content || '', ...(msg.reasoning_content ? { reasoning: msg.reasoning_content } : {}), ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}), set };
     saved.push(a); live.push({ role: 'assistant', content: a.content, ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) });
