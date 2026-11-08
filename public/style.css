@@ -1430,6 +1430,18 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .learn-try { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; }
 .learn-try p { margin: 4px 0 0; white-space: pre-wrap; }
 @media (prefers-reduced-motion: reduce) { .learn-caret { animation: none; } .learn-odd i { transition: none; } }
+/* 1.5.157 Lab Playground: the ladder's bars (the numbers are in the table above them) */
+.play-bars { display: grid; gap: 4px; max-width: 560px; margin: 8px 0; }
+.play-bar { display: grid; grid-template-columns: 3em 1fr 1fr; gap: 8px; align-items: center; }
+.play-track { display: block; height: 12px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.play-track > span { display: block; height: 100%; }
+.play-size { background: var(--accent); opacity: .55; }
+.play-surprise { background: repeating-linear-gradient(45deg, var(--text) 0 3px, transparent 3px 6px); opacity: .55; }
+.play-surprise.v-noticeably-worse, .play-surprise.v-falls-apart { opacity: .9; }
+.play-key { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; }
+.play-key .swatch { display: inline-block; width: 14px; height: 10px; vertical-align: middle; border: 1px solid var(--line); }
+.play-answers li { white-space: pre-wrap; }
+#play-q { width: 100%; box-sizing: border-box; }
 .lab-compare .lab-report td, .lab-compare .lab-report th { padding: 0.2rem 0.6rem; text-align: left; }
 .lab-compare .lab-report { overflow-x: auto; display: block; max-width: 100%; }
 

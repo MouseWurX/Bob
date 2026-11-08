@@ -8,9 +8,10 @@ import { TEMPLATES, templateById, templateWhyNot, applyTemplate } from './lab-te
 import { createLearn } from './lab-learn.js';
 import { saveHtml, saveResult } from './lab-save.js'; // 1.5.153 Save
 import { createRecipes } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
+import { createPlayground } from './lab-playground.js'; // 1.5.157 Playground: the quantization ladder
 
 const $ = (id) => document.getElementById(id);
-const TABS = [['make', 'Make a brain'], ['learn', 'Learn'], ['challenges', 'Challenges']];
+const TABS = [['make', 'Make a brain'], ['learn', 'Learn'], ['challenges', 'Challenges'], ['playground', 'Playground']];
 const STEPS = [['brain', '1 Pick a brain'], ['lessons', '2 Lessons'], ['smaller', '3 Make it smaller'], ['where', '4 Where it runs'], ['test', '5 Test and use']];
 const TYPE_NOTE = { Q4_K_M: 'Q4 (recommended)', Q5_K_M: 'Q5', Q6_K: 'Q6', Q8_0: 'Q8', Q3_K_M: 'Q3 (only for brains meant for 8 GB or less)' };
 const PARTS = { general: 'General knowledge', tools: 'Picking the right tool', coding: 'Coding', following: 'Following instructions' };
@@ -31,6 +32,7 @@ export function createLab({ api, note }) {
   const bld = { name: '', teacher: '', items: [], kinds: ['material'], count: 300, think: 'half', resay: true, feedback: { dropFiles: [], notKinds: {}, badIdeas: [] } };
   let bplan = null, building = false, bsurvey = null, surveying = false, openPassage = new Set(), notLike = '', viewer = null, vq = { q: '', skill: '', file: '', kind: '' }, exportInfo = null, typedPath = '';
   const r = { template: '', name: '', from: '', lessons: { kind: 'none', file: '', chunks: 200 }, smaller: { sight: false, hearing: false, cut: null, files: [], measure: false }, test: { compare: true } };
+  const pg = createPlayground({ api, view: () => view, saveState });
   const rc = createRecipes({ api, recipe: r, view: () => view, replan: () => replan(), draw: () => draw() });
   const brain = () => view?.brains.find((b) => b.id === r.from);
   const running = () => view?.runs.find((x) => x.state === 'running');
@@ -280,7 +282,7 @@ export function createLab({ api, note }) {
 
   function runsHtml() {
     if (!view.runs.length) return '';
-    return `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.kind === 'write' ? `lessons, taught by ${esc(x.from)}` : x.kind === 'challenge' ? 'challenges' : x.kind === 'build' || x.kind === 'sample' ? `${x.kind === 'sample' ? 'sample lessons' : 'lessons'} from your files, taught by ${esc(x.from)}` : `from ${esc(x.from)}`} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
+    return `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.kind === 'write' ? `lessons, taught by ${esc(x.from)}` : x.kind === 'challenge' ? 'challenges' : x.kind === 'ladder' ? 'quantization ladder' : x.kind === 'ladder-ask' ? 'same question, every size' : x.kind === 'build' || x.kind === 'sample' ? `${x.kind === 'sample' ? 'sample lessons' : 'lessons'} from your files, taught by ${esc(x.from)}` : `from ${esc(x.from)}`} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
       ${x.state === 'running' ? ' <button type="button" class="link" data-stop>Stop</button>' : ''}
       ${x.state === 'failed' || x.state === 'stopped' ? `<br><span class="muted">${esc(x.error || '')}</span>` : ''}
       ${(x.notes || []).map((n) => `<br><span class="muted">${esc(n)}</span>`).join('')}
@@ -326,9 +328,10 @@ export function createLab({ api, note }) {
   function draw() {
     if (!view) { body.innerHTML = `<p class="muted">${esc(msg || 'Loading...')}</p>`; return; }
     if (!view.on) { body.innerHTML = '<p>The Lab is off. Turn on <strong>Show the Computer Science Lab</strong> in Settings, How Bob works, Brains.</p>'; return; }
-    const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}<span class="lab-tab dim" aria-disabled="true">Playground <span class="lab-later">Later (Lab 3)</span></span></div>`;
+    const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}</div>`;
     if (tab === 'learn') { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-learn" role="tabpanel" aria-labelledby="lab-tab-learn"></div></div>`; learn.mount($('lab-page-learn')); return; }
     if (tab === 'challenges') { body.innerHTML = `<div class="lab">${tabs}${challengesHtml()}</div>`; return; }
+    if (tab === 'playground') { body.innerHTML = `<div class="lab">${tabs}${pg.html(runsHtml())}</div>`; return; }
     const i = STEPS.findIndex(([id]) => id === step);
     const html = { brain: brainStep, lessons: lessonsStep, smaller: smallerStep, where: whereStep, test: testStep }[step]();
     const busy = running();
@@ -359,6 +362,7 @@ export function createLab({ api, note }) {
   body.addEventListener('change', async (e) => {
     const el = e.target; msg = '';
     if (tab === 'learn') return; // the Learn tab listens for itself
+    if (await pg.change(el)) return draw();
     if (el.name === 'chfrom') { ch.from = el.value; return draw(); }
     if (el.dataset.pack) { const k = el.dataset.pack; ch.packs = el.checked ? [...new Set([...ch.packs, k])] : ch.packs.filter((x) => x !== k); return draw(); }
     if (el.dataset.savefmt) { saveState(el.dataset.savefmt).format = el.value; return draw(); }
@@ -416,6 +420,7 @@ export function createLab({ api, note }) {
     e.preventDefault(); draw(); $(`lab-tab-${tab}`)?.focus();
   });
   body.addEventListener('input', (e) => { // the slider and its number box move together
+    if (pg.input(e.target)) return;
     if (e.target.id === 'lab-chunks') { const n = $('lab-chunks-n'); if (n) n.value = e.target.value; }
     if (e.target.id === 'lab-chunks-n') { const s = $('lab-chunks'); if (s) s.value = e.target.value; }
     if (e.target.id === 'lab-w-count') { const n = $('lab-w-count-n'); if (n) n.value = e.target.value; }
@@ -433,7 +438,7 @@ export function createLab({ api, note }) {
     if (b.dataset.saveclose) { saveState(b.dataset.saveclose).open = false; return draw(); }
     if (b.dataset.savego) {
       const k = b.dataset.savego, st = saveState(k);
-      const table = k === 'board' ? boardTable() : runTable(k);
+      const table = k === 'board' ? boardTable() : pg.saveTable(k) || runTable(k);
       try { st.saved = await saveResult(api, table, { format: st.format, hardware: st.hardware, version: view.version, hw: view.hardware }); st.error = ''; } catch (err) { st.error = err.message; st.saved = ''; }
       return draw();
     }
@@ -445,6 +450,7 @@ export function createLab({ api, note }) {
       } catch (err) { msg = err.message; }
       return load();
     }
+    { const p = await pg.click(b, load); if (p === 'draw') return draw(); if (p) return; }
     if (await rc.click(b)) return;
     if (b.dataset.step) { step = b.dataset.step; return draw(); }
     if ('next' in b.dataset) { step = STEPS[Math.min(STEPS.length - 1, STEPS.findIndex(([id]) => id === step) + 1)][0]; return draw(); }
@@ -504,6 +510,6 @@ export function createLab({ api, note }) {
   return {
     async open() { dlg.showModal(); draw(); await load(); },
     // Progress from the Lab job (the server's 'lab' events).
-    update(run) { if (!view) return; rc.runUpdate(run); const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if (run.kind === 'challenge' && run.state === 'done') { load(); return; } if (tab === 'learn') return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
+    update(run) { if (!view) return; rc.runUpdate(run); const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if ((run.kind === 'challenge' || run.kind?.startsWith('ladder')) && run.state !== 'running') { load(); return; } if (tab === 'learn') return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
   };
 }
