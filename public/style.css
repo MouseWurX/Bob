@@ -1079,6 +1079,10 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .devil-wrap { display: inline-block; line-height: 0; }
 .tag.devil-rec { padding: 1px 6px; }
 .maker-tag { cursor: help; }
+/* 1.5.135: ➕ Your own brains */
+.own-form { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; margin: 8px 0; display: grid; gap: 8px; }
+.own-form label { display: grid; gap: 4px; max-width: 32em; }
+.own-path { font-size: 12px; overflow-wrap: anywhere; }
 .maker-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .tag.devil-rec .devil { width: 1.1em; height: 1.1em; }
 .cat-nav { display: flex; flex-wrap: wrap; gap: 6px; }

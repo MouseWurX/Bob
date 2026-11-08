@@ -1,5 +1,6 @@
 // Bob's brain: runs a conversation turn, picks the right model, announces swaps,
 // calls tools, asks the user for approval when needed, and keeps a logbook.
+import { ownModels } from './own-models.js';
 import fs from 'node:fs';
 import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
@@ -780,6 +781,7 @@ export class Brain {
     if (!this.catalogNames) {
       this.catalogNames = [];
       try { this.catalogNames = JSON.parse(fs.readFileSync(this.cfg.catalogFile || new URL('../catalog.json', import.meta.url), 'utf8')).models.filter((x) => x.ollama && x.name).map((x) => [x.ollama, x.name]); } catch {}
+      for (const o of ownModels(this.cfg)) this.catalogNames.push([o.id, o.name]); // 1.5.135 brains of your own, by their given name
     }
     const nice = this.catalogNames.find(([id]) => sameModel(id, model))?.[1] || String(model || '').replace(/:latest$/, '');
     return `${phrase} (${nice})`;

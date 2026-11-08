@@ -61,6 +61,14 @@ export function createCellar() {
   // 1.5.133: three sides, Well behaved / Community / Naughty list (catView), remembered in this browser.
   let catView = (() => { try { const v = localStorage.getItem('bob-cat-view'); return VIEWS.includes(v) ? v : 'well'; } catch { return 'well'; } })();
   const setCatView = (v) => { catView = VIEWS.includes(v) ? v : 'well'; try { localStorage.setItem('bob-cat-view', catView); } catch {} };
+  // 1.5.135: ➕ Your own brains: the Add form in progress (a picked .gguf, its name, an optional picture reader).
+  let ownForm = null;
+  async function ownPick(kind) {
+    const r = await api('/api/own-models/pick', { kind }).catch((e) => ({ error: e.message }));
+    if (r.error) { ownForm = { ...(ownForm || { file: '', name: '' }), error: r.error }; draw(); if (!ownForm.file) dlg.querySelector('[data-ownpath]')?.focus(); return null; }
+    return r;
+  }
+  async function ownRefresh() { [data, roles, settings] = await Promise.all([api('/api/models'), api('/api/roles'), api('/api/settings')]); draw(); }
   const setShowUnsuited = (on) => { showUnsuited = on; try { localStorage.setItem('bob-show-unsuited', on ? '1' : '0'); } catch {} };
 
   // Jobs Bob can already do another way: the model is an optional upgrade, not something missing.
@@ -217,7 +225,7 @@ export function createCellar() {
     if (tab === 'settings') body = settingsHtml();
     else if (tab === 'style') body = stylePage.html(settings);
     else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="doll">Back to Equip Bob</button></p>${rolesHtml()}` : (roles ? equipHtml(eqCtx()) : '<p class="muted">Loading...</p>');
-    else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], naughtyOn: naughtyOn(), catView, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
+    else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], naughtyOn: naughtyOn(), catView, ownForm, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
     else if (tab === 'found') body = `<p class="muted">Scanned ${data.scannedAt ? new Date(data.scannedAt).toLocaleString() : 'never'}. <button data-scan>Look again</button></p>${extrasHtml() || '<p>Nothing extra found.</p>'}`;
     else if (GROUPS.some((g) => g.id === tab)) body = groupHtml(GROUPS.find((g) => g.id === tab));
     else {
@@ -1010,6 +1018,21 @@ export function createCellar() {
       if ('unsuited' in b.dataset) { setShowUnsuited(!showUnsuited); draw(); return; }
       // 1.5.132: the catalogue's Well behaved / Naughty list toggle, and "Show the naughty list" (the same setting as in Settings).
       if (b.dataset.catview) { if (b.dataset.catview === 'naughty' && !naughtyOn()) return; setCatView(b.dataset.catview); draw(); return; }
+      // 1.5.135: ➕ Your own brains. Pick the file (a window on this replicant matrix), name it, add it; or take one off the list.
+      if ('ownadd' in b.dataset) { b.disabled = true; const r = await ownPick('gguf'); if (!r) return; if (!r.file) { b.disabled = false; return; } ownForm = r.error ? { file: r.file, name: '', error: r.error } : { file: r.file, name: r.name, params: r.params, sizeGB: r.sizeGB, mmproj: '' }; draw(); dlg.querySelector('[data-ownname]')?.focus(); return; }
+      if (b.dataset.ownmm) { if (!ownForm) return; ownForm.name = dlg.querySelector('[data-ownname]')?.value || ownForm.name; if (b.dataset.ownmm === 'clear') { ownForm.mmproj = ''; draw(); return; } const r = await ownPick('mmproj'); if (r && r.file) { ownForm.mmproj = r.file; ownForm.error = ''; draw(); } return; }
+      if ('owncancel' in b.dataset) { ownForm = null; draw(); return; }
+      if ('ownpathopen' in b.dataset) { ownForm = { file: '', name: '' }; draw(); dlg.querySelector('[data-ownpath]')?.focus(); return; }
+      if ('owndo' in b.dataset) { return; } // the form's submit handler does it
+      if (b.dataset.ownremove) {
+        const li = b.closest('li'); const box = li?.querySelector('.confirm');
+        if (!box) return;
+        if (!box.hidden) { box.hidden = true; box.innerHTML = ''; return; }
+        box.hidden = false; box.innerHTML = `<p>Take <strong>${esc(li.querySelector('.kit-name')?.textContent || 'it')}</strong> off Bob's list? The file stays where it is; only Bob forgets it. Any slot wearing it is emptied.</p><div class="row"><button type="button" class="get" data-ownremove2="${esc(b.dataset.ownremove)}">Remove from Bob's list</button><button type="button" data-ownkeep>Keep it</button></div>`;
+        return;
+      }
+      if ('ownkeep' in b.dataset) { const box = b.closest('.confirm'); box.hidden = true; box.innerHTML = ''; return; }
+      if (b.dataset.ownremove2) { b.disabled = true; const r = await api('/api/own-models/remove', { id: b.dataset.ownremove2 }).catch((e) => ({ error: e.message })); if (r.error) { b.closest('.confirm').innerHTML = `<p class="error">${esc(r.error)}</p>`; return; } await ownRefresh(); return; }
       if ('naughtyon' in b.dataset) { const r = await api('/api/settings', { naughtyList: true }); settings.naughtyList = r.naughtyList === true; if (settings.naughtyList) setCatView('naughty'); draw(); return; }
       if (b.dataset.help && b.closest('summary')) e.preventDefault(); // a "?" in a panel heading opens Help, not the panel
       if (b.dataset.panels) { for (const d of dlg.querySelectorAll('.adv-sec')) { d.open = b.dataset.panels === 'open'; if (d.open) openPanels.add(d.dataset.panel); else openPanels.delete(d.dataset.panel); } saveOpen(); return; }
@@ -1294,6 +1317,28 @@ export function createCellar() {
   dlg.addEventListener('input', (e) => { if (e.target.id === 'proj-path') projAddState(); if (e.target.id === 'save-path') saveDirState(); });
   dlg.addEventListener('input', (e) => { if (tab === 'style') stylePage.onInput(e.target); if (e.target.dataset?.ssearch !== undefined) { settingsQuery = e.target.value; filterSettings(); } if (e.target.dataset?.dial) showDials(dialValues()); });
 
+  // 1.5.135: ➕ Your own brains, the Add form.
+  dlg.addEventListener('submit', async (e) => {
+    const form = e.target.closest?.('[data-ownform]');
+    if (!form || !ownForm) return;
+    e.preventDefault();
+    // 1.5.135 (review): the typed path is read like a picked file, then the usual form follows.
+    if ('ownpathform' in form.dataset) {
+      const typed = form.querySelector('[data-ownpath]')?.value.trim() || '';
+      ownForm = { file: '', name: '', typed, busy: true }; draw();
+      const r = await api('/api/own-models/inspect', { file: typed }).catch((err) => ({ error: err.message }));
+      ownForm = r.error ? { file: '', name: '', typed, error: r.error } : { file: r.file, name: r.name, params: r.params, sizeGB: r.sizeGB, mmproj: '' };
+      draw(); dlg.querySelector(r.error ? '[data-ownpath]' : '[data-ownname]')?.focus(); return;
+    }
+    ownForm.name = form.querySelector('[data-ownname]')?.value.trim() || ownForm.name;
+    ownForm.busy = true; ownForm.error = ''; draw();
+    const r = await api('/api/own-models', { name: ownForm.name, gguf: ownForm.file, mmproj: ownForm.mmproj || '' }).catch((err) => ({ error: err.message }));
+    if (r.error) { ownForm.busy = false; ownForm.error = r.error; draw(); return; }
+    ownForm = null;
+    await ownRefresh();
+    const row = dlg.querySelector('#own-' + CSS.escape(r.added?.id || ''));
+    if (row) { row.scrollIntoView({ block: 'center' }); flash(row, `Added. ${esc(r.added.name)} is on your list now: switch it Active and equip it like any other brain.`); }
+  });
   const onChange = async (e) => {
     const el = e.target;
     try {

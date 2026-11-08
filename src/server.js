@@ -8,6 +8,7 @@ import { lookText, LOOK_ID_RE } from './look.js';
 import { cleanPersonality } from '../public/personality.js';
 import { cleanHouseStyle } from '../public/house-style.js';
 import { pickFolder } from './pick-folder.js';
+import { pickFile, inspectOwn, ownModels, ownId, cleanOwnModels } from './own-models.js'; // 1.5.135 brains of your own
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -442,6 +443,44 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/pick-folder') { // 1.5.34 Settings > Projects: "Browse..."
       if (!isLocal) return send(res, 403, { error: 'Folders can only be picked on this replicant matrix itself.' });
       try { const b = await body(req).catch(() => ({})); return send(res, 200, { folder: await pickFolder({ purpose: ['save', 'home'].includes(b?.purpose) ? b.purpose : 'project' }) }); } catch (e) { return send(res, 200, { error: e.message }); }
+    }
+    // 1.5.135: brains of your own. Pick a .gguf on this replicant matrix (local window only), add it to Bob's list, or take it off.
+    if (req.method === 'POST' && p === '/api/own-models/pick') {
+      if (!isLocal) return send(res, 403, { error: 'A file can only be picked on this replicant matrix itself.' });
+      try { const b = await body(req).catch(() => ({})); const file = await pickFile({ kind: b?.kind === 'mmproj' ? 'mmproj' : 'gguf' }); return send(res, 200, file ? { file, ...(b?.kind === 'mmproj' ? {} : inspectOwn(file)) } : { file: '' }); } catch (e) { return send(res, 200, { error: e.message }); }
+    }
+    if (req.method === 'POST' && p === '/api/own-models/inspect') {
+      if (!isLocal) return send(res, 403, { error: `Brains of your own can only be added or removed on ${myName() || "the Bob's own replicant matrix"} itself, not from the phone.` });
+      const b = await body(req).catch(() => ({})); return send(res, 200, inspectOwn(b?.file));
+    }
+    if (req.method === 'POST' && p === '/api/own-models') {
+      if (!isLocal) return send(res, 403, { error: `Brains of your own can only be added or removed on ${myName() || "the Bob's own replicant matrix"} itself, not from the phone.` });
+      const b = await body(req).catch(() => ({}));
+      const seen = inspectOwn(b?.gguf);
+      if (seen.error) return send(res, 400, { error: seen.error });
+      if (b?.mmproj) { const mm = inspectOwn(b.mmproj); if (mm.error) return send(res, 400, { error: `The picture reader: ${mm.error}` }); }
+      const list = ownModels(cfg);
+      if (list.some((o) => o.gguf.toLowerCase() === seen.file.toLowerCase())) return send(res, 400, { error: 'That file is already on Bob\'s list.' });
+      const name = String(b?.name || '').trim() || seen.name;
+      const next = cleanOwnModels([...list, { id: ownId(name, list), name, gguf: seen.file, mmproj: b?.mmproj || '' }]);
+      if (next.length === list.length) return send(res, 400, { error: 'Bob couldn\'t add that one (the list is full, or the name is empty).' });
+      saveSettings(cfg, { ownModels: next });
+      brain.catalogNames = null;
+      return send(res, 200, { ownModels: next, added: next[next.length - 1] });
+    }
+    if (req.method === 'POST' && p === '/api/own-models/remove') {
+      if (!isLocal) return send(res, 403, { error: `Brains of your own can only be added or removed on ${myName() || "the Bob's own replicant matrix"} itself, not from the phone.` });
+      const b = await body(req).catch(() => ({}));
+      const list = ownModels(cfg);
+      const gone = list.find((o) => o.id === b?.id);
+      if (!gone) return send(res, 404, { error: 'That brain isn\'t on Bob\'s list.' });
+      // Only the list entry goes; the file stays where it is. Any slot wearing it is emptied (the Brain falls back to the main pick).
+      const models = Object.fromEntries(Object.entries(cfg.models || {}).filter(([, v]) => v === gone.id).map(([k]) => [k, '']));
+      const patch = { ownModels: list.filter((o) => o.id !== gone.id) };
+      if (Object.keys(models).length) patch.models = models;
+      saveSettings(cfg, patch);
+      brain.catalogNames = null;
+      return send(res, 200, { ownModels: patch.ownModels, cleared: Object.keys(models) });
     }
     if (req.method === 'POST' && p.startsWith('/api/models/') || req.method === 'POST' && p === '/api/settings') {
       if (!isLocal) return send(res, 403, { error: 'Downloads and settings can only be changed on this replicant matrix itself.' });

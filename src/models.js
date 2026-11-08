@@ -1,6 +1,7 @@
 // Bob's model shop: what models exist, which are already on this PC (Ollama, ComfyUI, Maestro...),
 // downloading new ones one at a time with progress and a checksum, and switching Bob over to them.
 // Every download starts from a click in Bob's window. Bob never downloads a model on his own.
+import { ownEntries, ownModels, ownResolve } from './own-models.js';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -295,6 +296,7 @@ export class ModelShop {
     const ollama = await this.ollamaNames();
     const models = [];
     for (const m of this.catalog.models) models.push({ ...m, files: (m.files || []).map((f) => ({ name: saveNameOf(f), role: f.role })), status: await this.statusOf(m, ollama) });
+    for (const e of ownEntries(this.cfg)) models.push(e); // 1.5.135: brains of your own, from files on this replicant matrix
     const known = new Set(models.flatMap((m) => Object.values(m.status.located).map((p) => p.toLowerCase())));
     const extras = this.found.files.filter((f) => !known.has(f.path.toLowerCase()) && f.owner !== 'Ollama');
     return {
@@ -743,6 +745,8 @@ export class ModelShop {
       if (m.use?.painter?.sdcpp?.edit) opts.edit.push({ value: m.id, label: m.name });
       else if (opts[m.category]) opts[m.category].push({ value: m.id, label: m.name });
     }
+    // 1.5.135: brains of your own (files on this replicant matrix), by their id; the engine gets the file when equipped.
+    for (const e of ownEntries(this.cfg)) if (e.status.state === 'installed' && !llms.some((l) => l.value === e.id)) llms.push({ value: e.id, label: `${e.name} (your own file)`, caps: ['completion', 'tools', ...(e.ownMmproj ? ['vision'] : [])] });
     if (this.cfg.comfy?.workflowFile && fs.existsSync(this.cfg.comfy.workflowFile)) opts.images.push({ value: 'comfy', label: 'ComfyUI (my own workflow)' });
     let maestro = [];
     // Maestro is opt-in (maestro.enabled): Bob paints and films himself by default.
@@ -785,6 +789,8 @@ export class ModelShop {
       // it once flipped a PC to llama.cpp). If the model needs the other engine, the app asks.
       const inOllama = new Set([...((await this.ollamaNames()) || []), ...this.ollamaManifests()]).has(value);
       let needsEngine = null;
+      const own = ownModels(this.cfg).find((o) => o.id === value); // 1.5.135: a brain of your own runs from its own file
+      if (own) { patch.llamacpp = { models: { [value]: ownResolve(own) } }; if (this.cfg.engine !== 'llamacpp') needsEngine = 'llamacpp'; }
       if (entry) { const loc = this.locate(entry); if (loc.gguf) { patch.llamacpp = { models: { [value]: loc.mmproj ? { gguf: loc.gguf, mmproj: loc.mmproj } : loc.gguf } }; /* 1.5.74: keep its picture reader */ if (this.cfg.engine !== 'llamacpp' && !inOllama) needsEngine = 'llamacpp'; } }
       saveSettings(this.cfg, patch);
       return needsEngine ? { ...patch, needsEngine } : patch;

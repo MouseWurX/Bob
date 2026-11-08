@@ -4,6 +4,16 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.135
+
+Brains of your own: add a brain file you already have, and Bob runs it like any other.
+
+- **➕ Your own brains** (at the end of the Well behaved list in the Brain catalogue): add a brain file (.gguf) already on your replicant matrix that Bob's list doesn't have. Press **Add a brain from a file**, pick the file, name it, add its picture reader if it has one, and it joins the Brain catalogue, Equip Bob and the brain menus like any other brain, shown as **(your own file)**. No file window on your desktop (some Linux desktops have none)? Press **or type its path** and paste the file's full path. Adding and removing only work on that replicant matrix itself, not from the phone.
+- Bob runs it on his built-in engine from where it is. He never moves, copies or deletes it, and never recommends it over the brains he knows.
+- **Remove from Bob's list** only makes him forget it: the file stays where it is, and any slot wearing it is emptied. If the file goes missing, its row says **File not found**.
+- Help: the catalogue page, an FAQ and a glossary entry "Your own brain". New `test/run-own-models-test.js`.
+- Phone (Bob for Android): nothing changes.
+
 ## 1.5.134
 
 Bob's icon follows his look, and he lives in the tray, without a trip to Settings first.

@@ -12,6 +12,8 @@ import { esc, gb } from './util.js';
 // `community` on an entry says who remixed it and from what; it's an explicit marker, never a guess from the name.
 export const isNaughty = (m) => m?.naughty === true;
 export const isCommunity = (m) => Boolean(m?.community && typeof m.community === 'object');
+// 1.5.135: a brain of your own (a GGUF file on this replicant matrix added under ➕ Your own brains); explicit marker.
+export const isOwn = (m) => m?.own === true;
 // The models the rest of the window may see: the naughty ones only while the switch is on.
 export const visibleModels = (models, naughtyOn) => (naughtyOn ? models : (models || []).filter((m) => !isNaughty(m)));
 // One line of credit for a community build, for the "i" tip: who made it, from whose model, who packed the files.
@@ -81,7 +83,7 @@ function rowHtml(m, job, ctx) {
   // 1.5.101: no line twice ("Runs on the processor" when the description already says so); the source is on the ↗ only.
   const where = m.vramGB ? `Wants ${gb(m.vramGB)} of graphics memory` : /runs on the processor/i.test(m.what || '') ? '' : 'Runs on the processor';
   const tip = [m.what, communityLine(m), where, m.trial ? `New: not tried on a PC yet. ${m.trialNote || ''}`.trim() : '', s.why, fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`].filter(Boolean).join('\n');
-  const tags = `${recTag}${makerTag(m)}${m.trial ? '<span class="tag">New</span>' : ''}${!rec && s.level !== 'ok' ? LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
+  const tags = `${recTag}${makerTag(m)}${isOwn(m) ? '<span class="tag" data-tip="A brain you added from a file on this replicant matrix. Bob runs it from where it is and never recommends it over the ones he knows.">Your own file</span>' : ''}${m.trial ? '<span class="tag">New</span>' : ''}${!rec && s.level !== 'ok' ? LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
   const on = isActive({ entry: m, value: m.id, installed: here }, ctx.active);
   const sw = job.id === 'phone' ? '<span class="muted">In the phone app</span>'
     : `<button type="button" class="mini-switch" role="switch" aria-checked="${on}" data-active="${esc(m.id)}" aria-label="Active: ${esc(m.name)}">Active <span class="st">${on ? 'On' : 'Off'}</span></button>`;
@@ -90,7 +92,7 @@ function rowHtml(m, job, ctx) {
   const worn = value && equipped(slot, ctx) === value;
   const act = job.id === 'phone' ? '' : worn ? '<span class="tag good">equipped</span>'
     : value ? `<button type="button" data-catequip="${esc(job.id)}" data-catvalue="${esc(value)}">Equip</button>`
-    : here ? '' : (ctx.action ? ctx.action(m) : `<button class="get" data-get="${esc(m.id)}">Get</button>`);
+    : here ? '' : isOwn(m) ? '<span class="tag warn" data-tip="Bob can\'t find the file where it was. Put it back, or remove the brain from his list under ➕ Your own brains.">File not found</span>' : (ctx.action ? ctx.action(m) : `<button class="get" data-get="${esc(m.id)}">Get</button>`);
   // 1.5.133: community and naughty rows look different by more than colour: a solid stripe (community) or a dashed
   // one (naughty list) down the left, a light tint, and their tags in words.
   const kind = isNaughty(m) ? ' naughty' : isCommunity(m) ? ' community' : '';
@@ -115,6 +117,7 @@ export const FAMILIES = {
   Piper: 'Voices from the Piper project. Small, quick and run on the processor.',
   Kokoro: 'A pack of natural English voices.',
   Nomic: 'Made by Nomic. Helps Bob find things in his memory.',
+  'Your own': 'Brains you added from files on this replicant matrix (➕ Your own brains, at the end of the Well behaved list). Bob only knows what each file says about itself.',
   'ACE-Step': 'Made by ACE Studio and StepFun. Makes songs.',
 };
 export const familyOf = (m) => m.family || String(m.name || m.id || '').split(/[\s-]/)[0] || 'Other';
@@ -148,6 +151,29 @@ function jobHtml(job, ctx) {
   const rule = job.id === 'gaming' ? '<p class="muted">Only brains timed answering quickly on a busy processor are listed here. Gemma 4 E4B isn\'t: it takes about half a minute there.</p>' : '';
   return `<section class="cat-job" id="catjob-${esc(job.id)}"><h3>${job.icon} ${esc(SLOT_NAMES[job.id] || job.name)} ${tipHtml(job.does, `About ${job.name}`)}</h3>${rule}
     ${famOrder.map(([f, ms]) => familyHtml(job, f, ms, ctx)).join('') || '<ul class="kit-list cat-list"><li class="muted">Nothing in Bob\'s list for this job yet.</li></ul>'}${note}</section>`;
+}
+
+// 1.5.135: ➕ Your own brains: GGUF files on this replicant matrix that you put on Bob's list yourself. The rows
+// themselves sit in the jobs above (family "Your own"); this section is where you add one or take one off the list.
+// ctx.ownForm = the Add form in progress ({ file, name, params, sizeGB, mmproj, error, busy }) or null.
+export function ownHtml(ctx) {
+  const own = (ctx.models || []).filter(isOwn);
+  const f = ctx.ownForm;
+  // 1.5.135 (review): no file picker (some Linux desktops) or one that won't open: type the file's path instead.
+  const pathStep = f && !f.file ? `<form class="own-form" data-ownform data-ownpathform>
+      <label>The brain file's full path (.gguf) <input type="text" data-ownpath spellcheck="false" autocomplete="off" value="${esc(f.typed || '')}" required></label>
+      ${f.error ? `<p class="error">${esc(f.error)}</p>` : ''}
+      <div class="row"><button type="submit" class="get" ${f.busy ? 'disabled' : ''}>Use this file</button><button type="button" data-owncancel>Cancel</button></div></form>` : '';
+  const form = !f ? '' : pathStep || `<form class="own-form" data-ownform>
+      <p><strong>${esc(f.name || 'Your brain')}</strong> <span class="muted">${f.sizeGB ? gb(f.sizeGB) : ''}${f.params ? ` · about ${f.params}B` : ''}</span><br><span class="muted own-path">${esc(f.file)}</span></p>
+      <label>What Bob should call it <input type="text" data-ownname maxlength="60" value="${esc(f.name || '')}" required></label>
+      <p class="muted">Picture reader: ${f.mmproj ? `<span class="own-path">${esc(f.mmproj)}</span> <button type="button" class="mini" data-ownmm="clear">None</button>` : `none <button type="button" class="mini" data-ownmm="pick">Pick its picture reader (optional)</button>`} ${tipHtml('If the brain can see pictures, its maker also gives a small "mmproj" file. Add it and the brain goes under Seeing pictures too. Without it the brain still works, just without sight.', 'About picture readers')}</p>
+      ${f.error ? `<p class="error">${esc(f.error)}</p>` : ''}
+      <div class="row"><button type="submit" class="get" data-owndo ${f.busy ? 'disabled' : ''}>Add to Bob's list</button><button type="button" data-owncancel>Cancel</button></div></form>`;
+  return `<section class="cat-job own-brains" id="catjob-own"><h3>➕ Your own brains ${tipHtml('A brain file (.gguf) already on this replicant matrix: something you downloaded yourself, made yourself, or a model Bob\'s list doesn\'t have. It joins his list with an Active switch and shows up in Equip Bob and the brain menus like any other, running on Bob\'s built-in engine from where the file is. Bob never moves, copies or deletes the file, and never recommends it over the brains he knows. Remove only takes it off his list.', 'About your own brains')}</h3>
+    <p class="muted">Got a brain file Bob's list doesn't have? Add it here and it's yours to equip. <button type="button" class="mini help-link" data-help="faq-own-brain" aria-label="Help: your own brains">? Help</button></p>
+    ${own.length ? `<ul class="kit-list cat-list">${own.map((m) => `<li class="cat-row model" id="own-${esc(m.id)}"><span class="kit-name">${esc(m.name)}</span><span class="muted">${m.sizeGB ? gb(m.sizeGB) : ''}</span>${m.status?.state === 'installed' ? '' : '<span class="tag warn">File not found</span>'}<span class="muted own-path">${esc(m.ownFile || '')}</span><span class="cat-act"><button type="button" class="mini" data-ownremove="${esc(m.id)}">Remove from Bob's list</button></span><div class="confirm" hidden></div></li>`).join('')}</ul>` : ''}
+    ${form || '<p><button type="button" class="get" data-ownadd>➕ Add a brain from a file</button> <button type="button" class="link" data-ownpathopen>or type its path</button></p>'}</section>`;
 }
 
 // Brains on this PC that aren't in Bob's list (pulled in Ollama by hand, say): they can be made active or not too.
@@ -194,5 +220,5 @@ export function catalogueHtml(ctx0) {
   }
   return `<div class="cat-top">${toggle}<p class="muted">Every model Bob knows, by the job it does, then by family. Press a family's name to open its list. Turn <strong>Active</strong> on for the ones you want to see in Equip Bob and the brain menus. ${tipHtml(`Picked for this replicant matrix: ${card}. ★ Recommended is Bob's pick for that job here. New ones are listed but not recommended until they've been tried on real hardware. Turning Active off only hides a model; it stays on this replicant matrix (your computer). Turning it on for a model you don't have yet shows it in Equip Bob with a Get button.`, 'How the catalogue works')} ${keep('Downloads always ask first, with the size.')} ${famBtns} <button type="button" class="mini help-link" data-help="catalogue" aria-label="Help: the Brain catalogue">? Help</button></p>
     ${nav}</div>
-    ${jobs.map((j) => jobHtml(j, ctx)).join('')}${othersHtml(ctx)}`;
+    ${jobs.map((j) => jobHtml(j, ctx)).join('')}${ownHtml(ctx)}${othersHtml(ctx)}`;
 }
