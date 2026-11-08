@@ -156,6 +156,7 @@
   "note": "The owner, 8 Nov: lessons and odds may go to Hugging Face right away as private repos; NO untested Bob. odds go up as a private dataset; Bobert's Q4 file comes to the PC for testing, his Q3 stays on the drive; no Bob is uploaded until tested and listed in publish.models. Token = forge/hf-token.txt on the PC (gitignored), never in a plan."
  },
  "download_quants": [
-  "Q4_K_M"
+  "Q4_K_M",
+  "Q3_K_M"
  ]
 }
