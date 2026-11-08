@@ -207,7 +207,7 @@ export async function startUsage(lab, req = {}, { unload = false, isLocal = true
   const tools = lab.tools();
   if (!tools.imatrix.found && !lab.stepFns.usageCount) throw new Error(`${path.basename(tools.imatrix.path)} isn't in the built-in engine's folder. Get models, Engines: the built-in engine has it; download the engine again if it's missing.`);
   const tryWithout = req.tryWithout === true;
-  if (tryWithout && !tools.brainEngine.found && !lab.stepFns.try) throw new Error('Trying without the cold and faint experts needs Brain Engine, the Lab\'s engine. It isn\'t ready yet. Untick it for now.');
+  if (tryWithout && !tools.brainEngine.found && !lab.stepFns.try) throw new Error('Trying without the cold and faint experts needs Brain Engine, Bob\'s Lab engine. Get it in Get models > Engines: Brain Engine (test build).');
   const things = thingTexts(cfg, ids, { file: req.file });
   if (lab.brain?.engine?.loaded) {
     const loaded = (await lab.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
