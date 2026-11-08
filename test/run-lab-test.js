@@ -59,7 +59,10 @@ check('uneven layers are refused', /layer 1/.test(checkKeep(g, [[1, 3, 5, 7], [0
 
 const cutFile = path.join(tmp, 'moe-4x.gguf');
 let ticks = 0;
-writeGguf(brainFile, cutFile, { keep, onProgress: () => ticks++ });
+let beats = 0; const beat = setInterval(() => beats++, 0);
+const cutting = writeGguf(brainFile, cutFile, { keep, onProgress: () => ticks++ });
+await cutting; clearInterval(beat);
+check('Bob keeps answering while a cut copies (the copy does not block)', beats > 0);
 const c = readGguf(cutFile);
 const cf = brainFacts(c);
 check('the cut brain says 4 experts', cf.experts === 4 && cf.used === 2 && c.meta['general.name'] === 'Test MoE' && c.tensors.length === g.tensors.length);
@@ -73,7 +76,7 @@ check('tensors without experts are copied unchanged', floats(c, cutFile, 'blk.1.
 check('the expert tensor dims say 4', c.tensors.find((t) => t.name === 'blk.0.ffn_down_exps.weight').dims.join() === `${FF},${EMB},4`);
 check('the cut file is smaller', fs.statSync(cutFile).size < fs.statSync(brainFile).size);
 check('no half-written .part file is left', !fs.existsSync(cutFile + '.part'));
-check('a stopped cut leaves nothing behind', (() => { const ac = new AbortController(); ac.abort(); try { writeGguf(brainFile, path.join(tmp, 'stop.gguf'), { keep, signal: ac.signal }); return false; } catch { return !fs.existsSync(path.join(tmp, 'stop.gguf')) && !fs.existsSync(path.join(tmp, 'stop.gguf.part')); } })());
+check('a stopped cut leaves nothing behind', await (async () => { const ac = new AbortController(); ac.abort(); try { await writeGguf(brainFile, path.join(tmp, 'stop.gguf'), { keep, signal: ac.signal }); return false; } catch { return !fs.existsSync(path.join(tmp, 'stop.gguf')) && !fs.existsSync(path.join(tmp, 'stop.gguf.part')); } })());
 check('busiest picks the most-used experts per layer', JSON.stringify(busiest([[5, 1, 9, 0, 7, 2, 3, 8], [0, 0, 0, 1, 1, 1, 1, 0]], 4)) === JSON.stringify([[0, 2, 4, 7], [3, 4, 5, 6]]));
 
 // A reader file holding sight and hearing: hearing taken out.
@@ -82,7 +85,7 @@ makeGguf(readerFile, [['general.architecture', 8, 'clip'], ['clip.has_vision_enc
   { name: 'v.patch_embd.weight', dims: [4, 4], fill: (i) => i }, { name: 'mm.0.weight', dims: [4, 4], fill: (i) => i }, { name: 'a.conv1d.0.weight', dims: [4, 4], fill: (i) => i }, { name: 'mm.a.mlp.1.weight', dims: [4, 4], fill: (i) => i }]);
 check('reads which senses a reader file holds', JSON.stringify((({ sight, hearing }) => ({ sight, hearing }))(readerFacts(readGguf(readerFile)))) === '{"sight":true,"hearing":true}');
 const deaf = path.join(tmp, 'mmproj-sight.gguf');
-writeGguf(readerFile, deaf, { drop: (t) => isHearingTensor(t.name), set: { 'clip.has_audio_encoder': false } });
+await writeGguf(readerFile, deaf, { drop: (t) => isHearingTensor(t.name), set: { 'clip.has_audio_encoder': false } });
 const dg = readGguf(deaf);
 check('taking out hearing leaves sight', dg.tensors.map((t) => t.name).join() === 'v.patch_embd.weight,mm.0.weight' && readerFacts(dg).sight && !readerFacts(dg).hearing && dg.meta['clip.has_audio_encoder'] === false);
 

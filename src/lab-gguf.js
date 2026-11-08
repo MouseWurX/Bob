@@ -163,7 +163,8 @@ export function checkKeep(g, keep) {
 
 // Write dst from src: keep({name}) false leaves a tensor out; keep[layer] = expert numbers cuts the expert tensors;
 // set = { key: value } changes scalar settings (same type as before). onProgress(fraction) as the data is copied.
-export function writeGguf(src, dst, { keep = null, drop = () => false, set = {}, onProgress = () => {}, signal } = {}) {
+// The data is copied with async reads and writes, so Bob keeps answering (and Stop works) during a 20 GB cut.
+export async function writeGguf(src, dst, { keep = null, drop = () => false, set = {}, onProgress = () => {}, signal } = {}) {
   const g = readGguf(src);
   const f = brainFacts(g);
   if (keep) { const why = checkKeep(g, keep); if (why) throw new Error(why); }
@@ -171,7 +172,8 @@ export function writeGguf(src, dst, { keep = null, drop = () => false, set = {},
   if (keep) set = { ...set, [`${f.arch}.expert_count`]: n };
   const sfd = fs.openSync(src, 'r');
   const part = dst + '.part';
-  const dfd = fs.openSync(part, 'w');
+  let dfd = fs.openSync(part, 'w');
+  let src2 = null, dst2 = null;
   try {
     const tensors = g.tensors.filter((t) => !drop(t)).map((t) => {
       const li = Number(t.name.split('.')[1]);
@@ -206,37 +208,41 @@ export function writeGguf(src, dst, { keep = null, drop = () => false, set = {},
     let header = Buffer.concat(parts);
     header = Buffer.concat([header, Buffer.alloc(align(header.length) - header.length)]);
     fs.writeSync(dfd, header);
+    fs.closeSync(dfd); dfd = null;
+    src2 = await fs.promises.open(src, 'r');
+    dst2 = await fs.promises.open(part, 'r+');
     const dataStart = header.length;
     const total = tensors.reduce((a, t) => a + t.outBytes, 0) || 1;
     let done = 0, lastTick = 0;
     const CHUNK = 64 << 20, buf = Buffer.alloc(CHUNK);
-    const copy = (from, to, len) => {
+    const copy = async (from, to, len) => {
       for (let p = 0; p < len; p += CHUNK) {
         if (signal?.aborted) throw new Error('Stopped.');
         const k = Math.min(CHUNK, len - p);
-        const got = fs.readSync(sfd, buf, 0, k, from + p);
-        if (got !== k) throw new Error('The brain file ended early while copying.');
-        fs.writeSync(dfd, buf, 0, k, to + p);
+        const { bytesRead } = await src2.read(buf, 0, k, from + p);
+        if (bytesRead !== k) throw new Error('The brain file ended early while copying.');
+        await dst2.write(buf, 0, k, to + p);
         done += k;
         if (done - lastTick > 256 << 20) { lastTick = done; onProgress(done / total); }
       }
     };
     for (const t of tensors) {
       const from = g.dataStart + t.offset, to = dataStart + t.outOffset;
-      if (!t.cut) copy(from, to, t.bytes);
-      else t.rows.forEach((e, i) => copy(from + e * t.slab, to + i * t.slab, t.slab));
+      if (!t.cut) await copy(from, to, t.bytes);
+      else for (let i = 0; i < t.rows.length; i++) await copy(from + t.rows[i] * t.slab, to + i * t.slab, t.slab);
       const pad = align(t.outOffset + t.outBytes) - (t.outOffset + t.outBytes);
-      if (pad && t !== tensors[tensors.length - 1]) fs.writeSync(dfd, Buffer.alloc(pad), 0, pad, to + t.outBytes);
+      if (pad && t !== tensors[tensors.length - 1]) await dst2.write(Buffer.alloc(pad), 0, pad, to + t.outBytes);
     }
-    fs.closeSync(dfd);
+    await dst2.close(); dst2 = null;
     fs.renameSync(part, dst);
     onProgress(1);
     return { tensors: tensors.length, experts: n || f.experts, bytes: fs.statSync(dst).size };
   } catch (e) {
-    try { fs.closeSync(dfd); } catch {}
+    if (dfd !== null) try { fs.closeSync(dfd); } catch {}
+    if (dst2) try { await dst2.close(); } catch {}
     try { fs.unlinkSync(part); } catch {}
     throw e;
-  } finally { fs.closeSync(sfd); }
+  } finally { fs.closeSync(sfd); if (src2) try { await src2.close(); } catch {} }
 }
 
 // The per-expert counts llama-imatrix writes (blk.N.ffn_gate_exps.weight.counts, F32), as counts[layer] = [..].
