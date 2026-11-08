@@ -2,7 +2,7 @@
 
 *A lab journal for Bob's own models, kept as the work happens. Newest entry at the bottom. Every number here comes from a file the Forge wrote; the files themselves, with pod ids, addresses and the owner's paths taken out, are in [forge-runs/](forge-runs/). Money is on [What Bob costs to make](COSTS.md), method and results on [Bob's own models](BOBS-OWN-MODELS.md). Rented hardware is named by the card, never by the company it is rented from.*
 
-*Status at the last entry (7 November 2026): 28Bob Riker v3 is home and not yet benchmarked; 20Bob Bill v3 is not made; the Forge is at build 15, untested on a card since build 14j. Nothing is released.*
+*Status at the last entry (8 November 2026): 28Bob Riker v3 is home and not yet benchmarked; 20Bob Bill v3 is not made; the Forge is at build 16, untested on a card since build 14j; the lesson set is 18,118 (half Bob's own, half from other teachers' published sets) and the next rental writes more lessons and scores them all. Nothing is released.*
 
 ## 1. The question
 
@@ -141,6 +141,22 @@ Fixes from the v3 log, all untested on a card:
 
 **Next**: benchmark Riker v3 at home (tool score, experts test, coding race, long-document and 128K needle), then Bill v3 alone from the teacher with the PC-built keep list, when the owner gives the word. Then Homer.
 
+### 8 November: lessons from other teachers, a quality pass, the even rule, and build 16
+
+No card. Work on the lesson set and the Forge, all on paper and on the PC.
+
+- **Other teachers' lessons.** Five published answer sets from much bigger models were converted into Bob's lesson format (see [the list on the models page](BOBS-OWN-MODELS.md#lesson-sets-by-others-we-find-interesting)): Kimi K2.5 and GLM-5.1 agent traces (Apache 2.0), and DeepSeek V4 Pro agent, DeepSeek V4 Flash chat and GLM-4.7 answers (no licence stated, so they are used here for training only and are never redistributed). They were first capped so that their answer tokens matched Bob's own; the owner then asked for the two halves to be even **by count**, so the outside sets together now hold 9,059 lessons, the same as Bob's own 9,059, and the set is 18,118.
+- **Quality pass, with findings.** Every outside set was checked before it stayed in: does each trace end with a real answer, does it loop on one tool call, does it carry anything that looks like injected instructions, piped installers, secrets or destructive commands.
+  - GLM-5.1 agent (758 traces): **dropped**. Only 108 end with an answer; the rest stop mid tool-call, and the tool outputs often do not match the task (a TypeScript repository listing inside a TensorFlow job). Broken, not malicious.
+  - Kimi K2.5 agent: 1,171 of 1,207 kept; 36 dropped for never answering or looping on the same command.
+  - DeepSeek V4 Pro agent (2,553) and GLM-4.7 (864): kept whole. Every trace ends with an answer, no loops, tidy tool use; the agent traces include noticing and fixing their own bugs.
+  - DeepSeek V4 Flash chat: 4,471 of 6,290, a seeded sample, to make the total even.
+  - The scan for injected instructions found nothing beyond ordinary Dockerfile lines (`rm -rf /var/lib/apt/lists/*`) and package sites. That proves the absence of planted instructions, not the correctness of the content; the hold-out scores and benchmarks before and after a heal remain the real check, and every heal is an adapter that can be thrown away.
+- **Odds for the outside lessons.** In the Forge, every lesson is scored by the one teacher, Qwen3.6-35B, including lessons another model wrote. So a Bob learns Kimi's or DeepSeek's words but copies Qwen's judgement about which words were likely. Three ways to do better were costed and set aside for now: (a) run each author model and record its own odds: each needs an 8-card machine (about $35 to $45 an hour), roughly $60 to $120 per model, and the odds are over a different token alphabet, so they must be translated piece by piece, lossy and not built; (b) ask the hosted versions to re-answer the prompts with their odds switched on (a few dollars per million words, so $20 to $40 for all of them), fill the unseen tail of each distribution with a falling curve, then the same translation problem; (c) the free version: weight the words-as-written more heavily than Qwen's odds for the outside sets (50/50 instead of 70/30), a one-line change to the heal. Order chosen: (c) first, measured on Bill; (b) only if the outside sets prove their worth. Also noted: there is no measured number here for odds versus words-only healing on Bob's own set; published work puts the gap at three to five times the lessons for the same recovery, and a $10 two-way heal of one small Bob would settle it for this set.
+- **The nine thin sets.** The "grow on his own" skills (run-and-fix, recover, clarify, new tool, self-check, research, understand), formats and reasoning each have 180 to 280 lessons. The owner asked for about 1,000 each. The writer continues a set in place (it skips ideas already done and drops duplicate prompts), so these grow in the next rental, about 7,000 new lessons in roughly 3 hours of card time.
+- **Forge build 16** ([README](../model-lab/forge/README.md)): the merge of extra sets on the pod now tags each set by a hash of its content and merges in tag order, so the merged file, the teacher-score key and the piece ids are identical whether a set was written on the card or uploaded from the PC (without this, lessons written on the card and uploaded later would have missed the score cache). A plan with no rungs is a scores-only run. Everything a run uses or makes is kept on the network drive as well as the PC: lesson set, scores, logs, reports, kernel wheels.
+- **Plan for the next two rentals** (the owner's choice, after a costed set of routes): first a lessons-and-odds run (grow the nine sets, then one teacher pass over the whole set, about 9 hours on one H200, no cut, no heal), then Bill v3 healed from those scores with no pass. The same total as one combined run, split so the odds exist first. The network drive for it is 200 GB rather than 100, because it must hold the teacher model, the scores and a healed Bill at once.
+
 ## 5. Running tallies
 
 | | Count |
@@ -148,5 +164,6 @@ Fixes from the v3 log, all untested on a card:
 | Bobs made and home | 5 files sets: Riker v1, Bill v1, Riker v2, Bill v2, Riker v3 |
 | Bobs that are the current plan | Riker v3 (28Bob); Bill v3 pending |
 | Failed paid attempts | 4 (three on 4 to 5 Nov, one on 6 Nov) plus the half-run of 6 to 7 Nov |
-| Lessons written | about 9,500 across 17 sets |
+| Outside lesson sets dropped for quality | 1 of 5 (GLM-5.1 agent traces, 8 Nov) |
+| Lessons written | about 9,500 across 17 sets (Bob's own); plus 9,059 taken from other teachers' published sets after a quality pass |
 | Card time | on the costs page |

@@ -106,16 +106,20 @@ if { [ -n "$WL" ] || [ -f $IN/lessons-ready ]; } && [ ! -f $IN/lessons-merged ];
   status lessons "merging the extra lessons"
   python3 - $IN <<'PY' || die "lesson merge"
 import json,sys,os,glob; d=sys.argv[1]
+import hashlib
 sets=json.load(open(f"{d}/toolsets.json")); n=0
+# the tag is a hash of the set's CONTENT, not its upload slot, and the sets are merged in tag order: the same sets give the
+# same merged file whether they came from the PC or were written on the card, so the teacher-score cache key and the piece ids match
+extras=sorted((hashlib.sha256(open(lf,"rb").read()).hexdigest()[:8], lf) for lf in glob.glob(f"{d}/lessons-extra-*.jsonl"))
 with open(f"{d}/lessons.jsonl","a") as f:
-    for lf in sorted(glob.glob(f"{d}/lessons-extra-*.jsonl")):
-        tag=os.path.basename(lf)[len("lessons-extra-"):-len(".jsonl")]
-        tf=f"{d}/toolsets-extra-{tag}.json"
+    for tag, lf in extras:
+        slot=os.path.basename(lf)[len("lessons-extra-"):-len(".jsonl")]
+        tf=f"{d}/toolsets-extra-{slot}.json"
         if os.path.exists(tf): sets.update(json.load(open(tf)))
         for line in open(lf):
             if not line.strip(): continue
             l=json.loads(line); l["idea"]=f"x{tag}-{l['idea']}"; f.write(json.dumps(l)+"\n"); n+=1   # ids prefixed so they never collide
-json.dump(sets,open(f"{d}/toolsets.json","w"))
+json.dump(sets,open(f"{d}/toolsets.json","w"),sort_keys=True)
 open(f"{d}/lessons-merged","w").write(str(n))
 print(f"merged {n} extra lessons from {len(glob.glob(f'{d}/lessons-extra-*.jsonl'))} sets; toolsets {len(sets)}")
 PY
@@ -159,6 +163,11 @@ PY
 )
 TDIR=$OUT/teacher; mkdir -p $TDIR; TPT=$TDIR/teacher.pt; CACHE=$TDIR/lessons-tok.pt; TC=$S/teacher-cache/$KEY
 echo "$KEY" > $TDIR/teacher-key.txt
+# keep the whole lesson set on the network volume beside its scores (the owner wants every input and output kept)
+if [ "$S" != "$W" ] && [ ! -f $S/lessons/$KEY/lessons.jsonl ]; then
+  mkdir -p $S/lessons/$KEY && cp $IN/lessons.jsonl $IN/toolsets.json $IN/plan.json $S/lessons/$KEY/ && cp $IN/lessons-extra-*.jsonl $IN/toolsets-extra-*.json $S/lessons/$KEY/ 2>/dev/null
+  echo "lesson set $KEY kept on the volume ($(du -sh $S/lessons/$KEY | cut -f1))"
+fi
 # the PC watcher answers teacher-key.txt with in/teacher-answer ("have" + an upload, or "none")
 if [ -f $TC/teacher.pt ] && [ -f $TC/lessons-tok.pt ]; then
   status teacher "the teacher's scores for this lesson set are on the volume ($KEY): no teacher pass"
@@ -278,4 +287,6 @@ PY
   # free disk: keep only the newest healed Bob (the next rung is cut from it)
   [ "$FROM" != "teacher" ] && [[ "$FROM" != */* ]] && [ -z "$(plan ".get('keep_healed','')")" ] && rm -rf $W/healed-$FROM   # keep_healed: every healed Bob stays (on a network volume, for the next session)
 done
+# every log and report of this run stays on the volume too
+if [ "$S" != "$W" ]; then RT=$S/runs/$(plan ".get('run','run')")-$(date -u +%Y%m%dT%H%M); mkdir -p $RT; cp $OUT/*.log $OUT/*.json $OUT/*.txt $RT/ 2>/dev/null; for d in $OUT/*/; do [ -d "$d" ] && { mkdir -p $RT/$(basename $d); cp $d/*.json $d/*.md $d/*.txt $RT/$(basename $d)/ 2>/dev/null; }; done; echo "run files kept on the volume at $RT"; fi
 status done "all rungs finished"

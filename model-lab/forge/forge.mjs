@@ -272,7 +272,10 @@ if (args.restart) {
   await upload('counts.json', countsFile);
   for (const r of plan.rungs) if (r.keep_file) await upload(path.basename(r.keep_file), path.resolve(here, '..', r.keep_file)); // cut exactly like an earlier Bob
   // lesson sets already on the PC (e.g. out/lessons-coding) go up as extra sets too; the pod merges them with the rest
-  for (const [i, d] of (plan.extra_lessons || []).entries()) { const dd = path.resolve(here, '..', d); await upload(`lessons-extra-pc${i}.jsonl`, path.join(dd, 'lessons.jsonl')); await upload(`toolsets-extra-pc${i}.json`, path.join(dd, 'toolsets.json')); }
+  for (const [i, d] of (plan.extra_lessons || []).entries()) { // a folder (its lessons.jsonl) or a .jsonl file (with the toolsets.json beside it)
+    const dd = path.resolve(here, '..', d); const lf = d.endsWith('.jsonl') ? dd : path.join(dd, 'lessons.jsonl'); const tf = path.join(path.dirname(lf), 'toolsets.json');
+    await upload(`lessons-extra-pc${i}.jsonl`, lf); await upload(`toolsets-extra-pc${i}.json`, tf);
+  }
   const podPlan = { ...plan, counts: 'counts.json', rungs: plan.rungs.map((r) => r.keep_file ? { ...r, keep_file: path.basename(r.keep_file) } : r) }; delete podPlan.counts_file; delete podPlan.lessons;
   fs.writeFileSync(path.join(outDir, 'forge', 'plan-sent.json'), JSON.stringify(podPlan, null, 1));
   await upload('plan.json', path.join(outDir, 'forge', 'plan-sent.json'));
@@ -352,7 +355,9 @@ while (true) {
       } catch (e) { log(`${name}: ${e.message.slice(0, 160)}`); }
     }
     if (st.status?.phase === 'lessons' && /^ready/.test(st.status?.detail || '') && !lessonsSent) { lessonsSent = true; await writeLessonsOnPod(); }
-    if (st.status?.phase === 'done' && [...done].filter((n) => n !== 'teacher').length >= Math.max(1, plan.rungs.length)) { await kill(plan.rungs.length ? 'all Bobs downloaded' : 'counts downloaded'); break; }
+    const scoresOnly = !plan.rungs.length && !plan.skills; // no rungs, no counts: the run only writes lessons and makes the teacher scores
+    const finished = scoresOnly ? done.has('teacher') : [...done].filter((n) => n !== 'teacher').length >= Math.max(1, plan.rungs.length);
+    if (st.status?.phase === 'done' && finished) { await kill(plan.rungs.length ? 'all Bobs downloaded' : scoresOnly ? 'teacher scores downloaded' : 'counts downloaded'); break; }
     if (st.status?.phase === 'failed' || (st.exit !== null && st.exit !== undefined && !st.running)) {
       log(`the pod run stopped (${st.status?.detail || 'exit ' + st.exit}). Last log lines:\n${st.log}`);
       if (!args['keep-on-fail']) { await kill('run failed'); } else log('pod kept for a look (--keep-on-fail)');
