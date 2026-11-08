@@ -951,7 +951,7 @@
     if (!box) return;
     const b = liveBobs()[0];
     box.textContent = '';
-    if (!b) { box.append(el('p', { class: 'dim', text: 'No Bob on your network is reachable right now. His tools and how-tos show here when one is.' })); return; }
+    if (!b) { box.append(el('p', { class: 'dim', text: 'No Bob on your Bob-Net is reachable right now. His tools and how-tos show here when one is.' })); return; }
     let k;
     try { const r = await phone('net.get', { address: b.address, path: '/api/own-kit' }); if (r.status !== 200) throw new Error(`${b.name} answered ${r.status}`); k = JSON.parse(r.body); }
     catch (e) { box.append(el('p', { class: 'dim', text: `Couldn't get the list from ${b.name} (${e.message}).` })); return; }
