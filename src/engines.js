@@ -384,6 +384,7 @@ export function seedBundledEngine(cfg, from = BUNDLE_DIR) {
 export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, newest = false } = {}) {
   const e0 = engineFor(ENGINES.find((x) => x.id === id));
   if (!e0) throw new Error('No such engine.');
+  if (e0.labOnly && cfg.computerLab !== true) throw new Error(`${e0.name} is for the Computer Science Lab. Turn the Lab on first.`);
   // 1.5.83: the tested release unless a tag is given or the user asked for the newest build.
   const pick = tag || (!newest && e0.tested) || '';
   const e = pick ? { ...e0, tag: pick } : e0;
@@ -431,7 +432,6 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
 // this engine's own release download into a side folder, the own files go on top, and the side folder takes the
 // engine's place in one step. Both files are checked against GitHub's sha256 like every other engine.
 async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
-  if (cfg.computerLab !== true && e.labOnly) throw new Error(`${e.name} is for the Computer Science Lab. Turn the Lab on first.`);
   if (!e.tag) throw new Error(`${e.name} isn't pinned to a release in this build of Bob, so I won't download it.`);
   const b0 = engineFor(ENGINES.find((x) => x.id === e.base));
   const b = { ...b0, tag: b0.tested || b0.tag };
