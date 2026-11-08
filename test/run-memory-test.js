@@ -35,7 +35,7 @@ const r = ramNow(32 * GB, 20 * GB);
 check('system RAM in use: total minus available', r.usedGB === 12 && r.totalGB === 32);
 const server = read('src/server.js'), layout = read('public/layout.js'), html = read('public/index.html');
 check('/api/gpu adds RAM; brains get friendly names on /api/brain', /ram: ramNow\(\), cpu: cpuNow\(\)/.test(server) && /m\.label = friendlyName\(m\.name\)/.test(server) && /entry\?\.name \|\| id/.test(server));
-check('Now running: a Memory section with Graphics card and RAM meters', /<div class="now-sec">Memory<\/div>/.test(html) && /row\(\(ram\.usedGB \/ ram\.totalGB\) \* 100, 'split-ram'\)/.test(layout) && /`RAM · \$\{ram\.usedGB\}/.test(layout));
+check('Now running: a Memory section with Graphics card and RAM meters', /<div class="now-sec">(?:<span class="sec-order">[\s\S]*?<\/span><\/span>)?Memory<\/div>/.test(html) /* 1.5.138: the heading starts with its grip */ && /row\(\(ram\.usedGB \/ ram\.totalGB\) \* 100, 'split-ram'\)/.test(layout) && /`RAM · \$\{ram\.usedGB\}/.test(layout));
 check('no NVIDIA card says "Graphics card: not detected", not the old wording', /'Graphics card · not detected'/.test(layout) && !/No NVIDIA card info/.test(layout));
 check('model ids stay out of Now running (friendly name only)', /m\.label \|\| m\.name/.test(layout) && !/· \$\{model\}/.test(layout));
 

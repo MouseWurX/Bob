@@ -4,6 +4,17 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.138
+
+Bob's thinking can live in Now running instead of a second window, and the sections of Now running go in any order.
+
+- **💭 Bob's thinking, docked.** Now running (on the right, Ctrl+J) has a new **Bob's thinking** section, folded to one line. Turn on **Show here** and Bob's thinking, moots and every step show there, live, the same as the pop-out window, with **Follow along** and **Clear** underneath and **Pop out** for the small window on top as well. Drag the bottom edge of the box to make it taller. Off unless you turn it on, and remembered in that window of Bob. With it on, the **💭 Bob's thinking** button at the top of the chat says *In Now running* and takes you to the section instead of opening a window.
+- **It still costs nothing when you're not looking.** Bob passes his thinking along only while Show here is on, Now running is open and his window is in view. Hide the panel and it stops, the same as closing the window.
+- **Put the sections in any order.** Every section in Now running (Tasks, Bob-Net, Downloads, Memory, Bob's thinking) has a ⋮⋮ grip at the left of its heading. Drag it up or down, or click it for **Move up** and **Move down** buttons; with the grip focused, the arrow keys move it too, and a screen reader hears where it landed. Bob remembers the order in that window.
+- Works the same in Bob's own window and in a browser, on Windows, Mac and Linux. On a narrow screen or a phone's browser, Now running slides over the chat and the section works there too. High Contrast themes get system colours for the grip, the drop mark and the thinking box; the little flash that points at the section is off with Animations off.
+- Help: the "Bob's thinking" page grew two parts, *Keep it in Now running instead* and *Put the sections in any order*. `test/run-mind-test.js` has 15 new checks; the drawing moved to `public/mind-view.js`, shared by the window and the panel, and the order helpers live in `public/now-sections.js`.
+- Phone (Bob for Android): nothing changes; the phone app has no Now running panel.
+
 ## 1.5.137
 
 **The whole brain list.** The Brain catalogue now offers every brain worth having, sorted by job and family as before, with 18 new ones: NVIDIA's Nemotron 3.5 Bolt and Lightning, IBM's Granite 4.1, Mistral's Ministral 3 and Devstral Small 2, Google's Gemma 4 12B and 31B, Z.ai's GLM-4.7-Flash, Poolside's Laguna XS 2.1, Qwen3.5 0.8B, Xiaomi's MiMo 9B, and three more on the naughty list. New ones aren't recommended until they've been tried on real hardware.

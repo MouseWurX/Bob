@@ -428,10 +428,18 @@ function drawDownloadsBadge(items) { countBadge($('dlBtn'), items.filter((d) => 
 
 // 1.5.53: "Bob's thinking" (public/mind.html): a small window on top. Bob.exe opens it as its own window; in a
 // browser it opens as a pop-up. Pressing the button again brings the open one to the front.
+// 1.5.138: with "Show here" on in Now running, the button goes to the docked thinking instead (Pop out is there).
 $('mindBtn')?.addEventListener('click', () => {
+  if (layout.mindDocked()) return layout.showMind();
   const w = window.open('/mind.html', 'bob-mind', 'popup,width=380,height=480');
   try { w?.focus(); } catch {}
 });
+const mindTitle = (docked) => {
+  const b = $('mindBtn'); if (!b) return;
+  b.dataset.tip = docked ? 'Bob\'s thinking is in Now running (Show here is on). Click to go to it; Pop out there opens the small window too.' : 'Opens a small always-on-top window showing Bob\'s thinking, which brain is working, moots and every step. Nothing runs for it while it\'s closed. To keep it in Now running instead, turn on Show here in its section there.';
+};
+mindTitle(layout.mindDocked());
+window.addEventListener('bob-mind-dock', (e) => mindTitle(e.detail.docked));
 
 // ---------- Events from the brain ----------
 let brainSoon = null;

@@ -9,6 +9,7 @@ import { LlamaCpp } from '../src/llamacpp.js';
 import { Brain, thinkStream } from '../src/brain.js';
 import { brainsLine, toolLine, esc, thinkLabel } from '../public/mind-lines.js';
 import { HELP } from '../public/help-content.js';
+import { DEFAULT_ORDER, applyOrder, moveId, dropBefore } from '../public/now-sections.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -109,12 +110,32 @@ const realFetch = globalThis.fetch;
   check('other tools read as steps', toolLine({ name: 'read_file', summary: 'read_file: a.txt' })[0] === '🔧 read_file: a.txt');
   check('hat tool lines are left to the hat line', toolLine({ name: 'x', summary: 'hat: tinker' }) === null);
   check('text is escaped', esc('<b>&"') === '&lt;b&gt;&amp;&quot;');
-  const html = read('public/mind.html'), js = read('public/mind.js');
+  const html = read('public/mind.html'), js = read('public/mind.js'), view = read('public/mind-view.js'); // 1.5.138: the drawing lives in mind-view.js, shared with Now running
   check('window page has its parts', ['mindNow', 'mindBrains', 'mindLog', 'mindFollow', 'mindClear', '/mind.js', '/mind.css'].every((x) => html.includes(x)));
-  check('window listens with ?mind=1', js.includes("new EventSource('/api/events?mind=1')"));
-  check('window shows moots plainly', js.includes('🛰 Moot: Bob calls in'));
-  check('window keeps itself small (line and text caps)', /MAX_LINES = \d+/.test(js) && /MAX_THINK = \d+/.test(js));
-  check('thinking is shown as text, never as HTML', /t\.textContent = s/.test(js) && !/t\.innerHTML/.test(js));
+  check('window listens with ?mind=1', view.includes("new EventSource('/api/events?mind=1')") && js.includes('view.connect()'));
+  check('window shows moots plainly', view.includes('🛰 Moot: Bob calls in'));
+  check('window keeps itself small (line and text caps)', /MAX_LINES = \d+/.test(view) && /MAX_THINK = \d+/.test(view));
+  check('thinking is shown as text, never as HTML', /t\.textContent = s/.test(view) && !/t\.innerHTML/.test(view));
+}
+
+// ---- 1.5.138: docked in Now running (Show here), and the sections in any order ----
+{
+  const idx = read('public/index.html'), lay = read('public/layout.js'), app = read('public/app.js'), css = read('public/style.css'), view = read('public/mind-view.js'), js = read('public/mind.js');
+  check('Now running has a Bob\'s thinking section with a Show here switch, off to start with', /<section id="nowMind" data-sec="mind"/.test(idx) && /id="mindDock" type="button" class="brain-switch" role="switch" aria-checked="false"/.test(idx) && /<span class="lbl">Show here<\/span><span class="st">Off<\/span>/.test(idx));
+  check('the section has the same parts as the window: a status line, the log, Follow along, Clear, plus Pop out', ['mindDockNow', 'mindDockLog', 'mindDockFollow', 'mindDockClear', 'mindDockPop'].every((x) => idx.includes(`id="${x}"`)) && idx.includes('<link rel="stylesheet" href="/mind.css">'));
+  check('the dock and the window draw with one shared view', /createMindView\(\{ log: \$\('mindDockLog'\)/.test(lay) && /createMindView\(\{ log: \$\('mindLog'\)/.test(js) && /export function createMindView/.test(view));
+  check('Bob listens only while Show here is on, the panel is in view and the window is visible (costs nothing otherwise)', /const on = docked && !body\.classList\.contains\('right-hidden'\) && !document\.hidden;\s*if \(on\) mindView\.connect\(\); else mindView\.disconnect\(\);/.test(lay) && /function disconnect\(\) \{ if \(es\) \{ es\.close\(\); es = null; \} \}/.test(view) && /document\.addEventListener\('visibilitychange', mindListen\)/.test(lay));
+  check('the choice is remembered in this window (bob-mind-dock), not in settings.json', /store\.get\('bob-mind-dock', '0'\) === '1'/.test(lay) && /store\.set\('bob-mind-dock'/.test(lay) && !/mindDock|mind-dock/.test(read('src/server.js')) && !/mindDock/.test(read('src/config.js')));
+  check('with Show here on, the chat-bar button goes to the section (and says In Now running); off, it opens the window', /if \(layout\.mindDocked\(\)\) return layout\.showMind\(\);/.test(app) && app.includes("window.open('/mind.html', 'bob-mind'") && /id="mindBtnSt" hidden>In Now running</.test(idx) && /st\.hidden = !docked/.test(lay));
+  check('Pop out still opens the window from the section', /\$\('mindDockPop'\)\.onclick = \(\) => \{ const w = window\.open\('\/mind\.html', 'bob-mind'/.test(lay));
+  check('the log is a focusable, labelled, resizable box', /id="mindDockLog" class="mind-log" aria-live="off" tabindex="0" aria-label="Bob's thinking, newest at the bottom"/.test(idx) && /#mindDockLog \{ height: \d+px; min-height: \d+px; max-height: 70vh; resize: vertical; overflow: auto;/.test(css));
+  check('every section has a grip with Move up / Move down, 32 px targets, and arrow keys', ['tasks', 'net', 'downloads', 'memory', 'mind'].every((id) => idx.includes(`data-grip="${id}"`) && idx.includes(`data-move="-1" data-sec-id="${id}"`) && idx.includes(`data-move="1" data-sec-id="${id}"`)) && /\.sec-grip \{ min-width: 32px; min-height: 32px;/.test(css) && /moveSection\(g\.dataset\.grip, e\.key === 'ArrowUp' \? -1 : 1\)/.test(lay));
+  check('a move is said out loud for screen readers and remembered (bob-now-order)', /id="nowOrderSay" class="sr-only" aria-live="polite"/.test(idx) && /say\.textContent = announce/.test(lay) && /store\.set\('bob-now-order', order\.join\(','\)\)/.test(lay));
+  check('dragging a section never steals the drag of a task or download row', /const sec = g\.closest\('\[data-sec\]'\); sec\.draggable = true;/.test(lay) && /if \(!sec \|\| e\.target\.closest\('\.titem'\)\) return;/.test(lay));
+  check('order helpers: unknown ids dropped, missing ones added, moves stop at the ends', applyOrder('memory,tasks,bogus').join() === 'memory,tasks,net,downloads,mind' && applyOrder('').join() === DEFAULT_ORDER.join() && moveId(DEFAULT_ORDER, 'tasks', -1).join() === DEFAULT_ORDER.join() && moveId(DEFAULT_ORDER, 'mind', -1).join() === 'tasks,net,downloads,mind,memory' && dropBefore(DEFAULT_ORDER, 'mind', 'tasks').join() === 'mind,tasks,net,downloads,memory' && dropBefore(DEFAULT_ORDER, 'tasks', null).join() === 'net,downloads,memory,mind,tasks');
+  check('High Contrast: the grip, the drop mark and the thinking box use system colours', /@media \(forced-colors: active\) \{\s*\.sec-grip:hover[^}]*border-color: CanvasText;[\s\S]*?\.mind-think \{ border-left-color: Highlight; \}/.test(css));
+  check('the flash that points at the section is off with Animations off', /@media \(prefers-reduced-motion: reduce\) \{ \.now-sections > section\.flash \{ animation: none; \} \}/.test(css));
+  check('Help explains Show here, Pop out and the section order, in Bob\'s voice', (() => { const e = HELP.find((h) => h.id === 'mind'); return e && /Keep it in Now running instead/.test(e.html) && /set\('Show here', 'Off'/.test(read('public/help-content.js')) && /Pop out/.test(e.html) && /Put the sections in any order/.test(e.html) && /Move up/.test(e.html) && /I remember the order in this window of Bob/.test(e.html); })());
 }
 
 // ---- Bob.exe opens it as its own small window on top; the chat has the button ----

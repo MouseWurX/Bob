@@ -7,6 +7,8 @@ import { currentStyle } from './themes.js';
 import { catMoment } from './patches.js';
 import { createBrainBay } from './brain-swap.js';
 import { esc } from './util.js';
+import { createMindView } from './mind-view.js'; // 1.5.138: Bob's thinking, docked
+import { DEFAULT_ORDER, SECTION_NAME, applyOrder, dropBefore } from './now-sections.js';
 
 
 const $ = (id) => document.getElementById(id);
@@ -30,6 +32,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   const hist = []; // the last 5 minutes of samples, for the graph (kept in this window only)
   try { showGraph = localStorage.getItem('bob-now-graph') === '1'; } catch {}
   let gpuAt = 0, brainSt = null; // 1.5.26: up here, because pollGpu() can run before the graphics-card section below
+  let docked = false, mindView = null; // 1.5.138: up here too, because setRight() runs before the docked-thinking section below
 
   // ---- folding ----
   const leftFolded = () => body.classList.contains('left-folded');
@@ -44,6 +47,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
     $('foldRight').setAttribute('aria-expanded', String(!hidden));
     if (remember && !narrow()) store.set('bob-right', hidden ? 'hidden' : 'open');
     if (!hidden) { draw(); pollGpu(); pollNet(); }
+    mindListen();
   }
   setLeft(store.get('bob-left', window.innerWidth < 700 ? 'folded' : 'open') === 'folded', false);
   // A narrow window starts with the panel tucked away, whatever was remembered, so it never covers the chat by surprise.
@@ -85,6 +89,96 @@ export function createLayout({ post, openTasks, openDownloads }) {
     body.style.setProperty('--now-w', `${width}px`);
     store.set('bob-now-w', String(width));
   });
+
+  // ---- 1.5.138: the order of the sections (drag the grip, or its Move up / Move down; arrow keys on the grip) ----
+  const secBox = $('nowSections'), say = $('nowOrderSay');
+  let order = applyOrder(store.get('bob-now-order', DEFAULT_ORDER.join(',')));
+  // Only the sections on show count (Bob-Net hides until it's in use), so a move always does something you can see.
+  const shown = () => order.filter((id) => { const sec = secBox.querySelector(`[data-sec="${id}"]`); return sec && !sec.hidden; });
+  function placeSections(announce = '') {
+    for (const id of order) { const sec = secBox.querySelector(`[data-sec="${id}"]`); if (sec) secBox.append(sec); }
+    const vis = shown();
+    for (const sec of secBox.querySelectorAll('[data-sec]')) {
+      const i = vis.indexOf(sec.dataset.sec);
+      sec.querySelector('[data-move="-1"]')?.toggleAttribute('disabled', i <= 0);
+      sec.querySelector('[data-move="1"]')?.toggleAttribute('disabled', i >= vis.length - 1);
+    }
+    store.set('bob-now-order', order.join(','));
+    if (announce && say) say.textContent = announce;
+  }
+  function moveSection(id, dir) {
+    const vis = shown(), i = vis.indexOf(id), j = i + dir;
+    if (i < 0 || j < 0 || j >= vis.length) return;
+    // In front of the neighbour (up), or in front of the one after the neighbour (down; null = the end).
+    order = dropBefore(order, id, dir < 0 ? vis[j] : vis[j + 1] ?? null);
+    const now = shown();
+    placeSections(`${SECTION_NAME[id]} moved ${dir < 0 ? 'up' : 'down'}, now ${now.indexOf(id) + 1} of ${now.length}.`);
+    secBox.querySelector(`[data-grip="${id}"]`)?.focus();
+  }
+  secBox.addEventListener('click', (e) => {
+    const mv = e.target.closest('[data-move]');
+    if (mv) { moveSection(mv.dataset.secId, Number(mv.dataset.move)); return; }
+    const g = e.target.closest('[data-grip]');
+    if (g) { const open = g.getAttribute('aria-expanded') !== 'true'; g.setAttribute('aria-expanded', String(open)); g.nextElementSibling.hidden = !open; }
+  });
+  secBox.addEventListener('keydown', (e) => {
+    const g = e.target.closest('[data-grip]');
+    if (!g || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault();
+    moveSection(g.dataset.grip, e.key === 'ArrowUp' ? -1 : 1);
+  });
+  // Dragging: the section is draggable only while its grip is held, so the lists inside keep their own drag-to-reorder.
+  let dragSec = null;
+  secBox.addEventListener('pointerdown', (e) => { const g = e.target.closest('[data-grip]'); if (g) { const sec = g.closest('[data-sec]'); sec.draggable = true; } });
+  secBox.addEventListener('pointerup', () => { for (const sec of secBox.querySelectorAll('[data-sec][draggable]')) sec.draggable = false; });
+  secBox.addEventListener('dragstart', (e) => {
+    const sec = e.target.closest?.('[data-sec][draggable="true"]');
+    if (!sec || e.target.closest('.titem')) return;
+    dragSec = sec.dataset.sec; sec.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', dragSec); } catch {}
+  });
+  secBox.addEventListener('dragend', () => { dragSec = null; for (const el of secBox.querySelectorAll('[data-sec].dragging, [data-sec].drop-before, [data-sec][draggable]')) { el.classList.remove('dragging', 'drop-before'); el.draggable = false; } });
+  const secTarget = (e) => [...secBox.querySelectorAll('[data-sec]:not([hidden])')].filter((x) => x.dataset.sec !== dragSec).find((x) => { const b = x.getBoundingClientRect(); return e.clientY < b.top + b.height / 2; }) || null;
+  secBox.addEventListener('dragover', (e) => {
+    if (!dragSec) return;
+    e.preventDefault();
+    for (const x of secBox.querySelectorAll('[data-sec].drop-before')) x.classList.remove('drop-before');
+    secTarget(e)?.classList.add('drop-before');
+  });
+  secBox.addEventListener('drop', (e) => {
+    if (!dragSec) return;
+    e.preventDefault();
+    const before = secTarget(e), id = dragSec; dragSec = null;
+    order = dropBefore(order, id, before ? before.dataset.sec : null);
+    placeSections(`${SECTION_NAME[id]} moved, now ${order.indexOf(id) + 1} of ${order.length}.`);
+  });
+  placeSections();
+
+  // ---- 1.5.138: Bob's thinking, docked (the same view as the pop-out window, public/mind-view.js) ----
+  // Off unless turned on (Show here). Bob passes his thinking along only while this is on AND the panel is in view,
+  // so with Now running hidden it costs nothing, just like a closed window.
+  mindView = createMindView({ log: $('mindDockLog'), now: $('mindDockNow'), follow: $('mindDockFollow'), clear: $('mindDockClear') });
+  const dockBtn = $('mindDock');
+  docked = store.get('bob-mind-dock', '0') === '1';
+  function mindListen() {
+    if (!mindView) return;
+    const on = docked && !body.classList.contains('right-hidden') && !document.hidden;
+    if (on) mindView.connect(); else mindView.disconnect();
+  }
+  function drawDock() {
+    dockBtn.setAttribute('aria-checked', String(docked));
+    dockBtn.querySelector('.st').textContent = docked ? 'On' : 'Off';
+    $('mindDockBody').hidden = !docked;
+    $('nowMind').classList.toggle('on', docked);
+    const st = $('mindBtnSt'); if (st) st.hidden = !docked; // the chat-bar button says where the thinking is
+    mindListen();
+    window.dispatchEvent(new CustomEvent('bob-mind-dock', { detail: { docked } }));
+  }
+  dockBtn.onclick = () => { docked = !docked; store.set('bob-mind-dock', docked ? '1' : '0'); drawDock(); if (docked) $('mindDockLog').focus({ preventScroll: true }); };
+  $('mindDockPop').onclick = () => { const w = window.open('/mind.html', 'bob-mind', 'popup,width=380,height=480'); try { w?.focus(); } catch {} };
+  document.addEventListener('visibilitychange', mindListen);
+  drawDock();
 
   // ---- the panel's lists ----
   function draw() {
@@ -298,7 +392,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   function drawNet(v) {
     const sec = $('nowNet');
     if (!sec) return;
-    sec.hidden = !v?.on;
+    if (sec.hidden !== !v?.on) { sec.hidden = !v?.on; placeSections(); }
     if (!v?.on) return;
     const h = v.here, doing = [];
     if (h.lending) doing.push(`thinking a reply for ${h.lending.for}`);
@@ -334,6 +428,9 @@ export function createLayout({ post, openTasks, openDownloads }) {
     // "Open Now running when a task needs me" (Style page): off by default.
     needsYou() { if (currentStyle()?.openNowOnNeed === true && body.classList.contains('right-hidden')) setRight(false, false); },
     showRight() { setRight(false); },
+    // 1.5.138: the chat-bar 💭 button: with Show here on, it brings Now running and the thinking section into view.
+    mindDocked() { return docked; },
+    showMind() { setRight(false); const sec = $('nowMind'); sec.scrollIntoView({ block: 'nearest' }); $('mindDockLog').focus({ preventScroll: true }); sec.classList.remove('flash'); void sec.offsetWidth; sec.classList.add('flash'); },
     // 1.5.123: something on Bob-Net changed (a lend, a borrow, a job sent away, a pairing): a fresh look, soon.
     net() { clearTimeout(netSoon); netSoon = setTimeout(pollNet, 800); }
   };
