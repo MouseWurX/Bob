@@ -6,11 +6,11 @@
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.132-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.132-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.132-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.132-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.132-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.132-linux-x86_64.AppImage) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.132-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.132-linux-arm64.AppImage) |
-| **Android phone** | [`Bob-1.5.132-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.132-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.134-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.134-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.134-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.134-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.134-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.134-linux-x86_64.AppImage) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.134-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.134-linux-arm64.AppImage) |
+| **Android phone** | [`Bob-1.5.134-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.134-android.apk) |
 
 All builds on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest), each with a `.sha256` checksum. Windows builds are **not code-signed yet** (see [Code signing policy](#code-signing-policy)): click **More info**, then **Run anyway** the first time. Install steps for each platform are under [Getting Bob](#getting-bob).
 
@@ -26,6 +26,7 @@ All builds on the [Releases page](https://github.com/MouseWurX/Bob/releases/late
 - **Plays games with you.** A tabletop adventure with a game master, a party of your own characters, a bestiary and pictures of everyone you meet, plus word games (hangman, twenty questions, word ladder, story dice and more).
 - **Bob-Net.** Your Bobs find each other over your own Tailscale network: the phone app talks to the Bob on your PC, a handheld can borrow a bigger brain, and Bobs can pass jobs along.
 - **Soon: Bob's own brains.** A family of models cut from a large open model and retrained to run Bob on small cards and handhelds. Tested, not yet released. [Read how they're made](docs/BOBS-OWN-MODELS.md).
+  The first one is **Riker (28Bob)**: Qwen3.6-35B-A3B with 208 of its 256 experts kept in every layer (about 28 billion parameters, 3 billion active per word), then healed in one full pass against the full model's next-word odds on about 9,000 lessons Bob wrote for himself. At home on a 16 GB card he scores 9 of 13 on the coding race with thinking on (the full model: 12), 6 of 6 on quick code tasks, 18 of 20 on facts, 65% on tool calls (full model: 67%), 24 of 25 on routing, 12 of 12 on the long-document needle test, at 111 words a second against the full model's 83. Files: 17.5 GB at Q4, 13.9 GB at Q3, Apache 2.0. His cut and heal cost $51.79 of rented card time, about $74 counting the rentals that wrote his lessons ([every dollar](docs/COSTS.md)). Download links follow when the brains are published.
 
 | | |
 |---|---|

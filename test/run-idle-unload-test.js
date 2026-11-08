@@ -47,7 +47,9 @@ eng.active = 0;
 eng.lastUse = t;
 t += 10 * 60_000 + 1000;
 const pid = eng.child.pid;
+const idleSaid = []; eng.log = (k, t) => idleSaid.push(`${k}: ${t}`);
 check('over 10 minutes idle: unloaded, the graphics card is free', await eng.idleTick() && !alive() && eng.current === null && (await eng.loaded()).length === 0);
+check('1.5.133: the unload is logged, with how long it sat unused', idleSaid.some((l) => /^engine: .+: let go after \d+ min unused$/.test(l)), idleSaid.join(' | '));
 await new Promise((r) => setTimeout(r, 300));
 let gone = false; try { process.kill(pid, 0); } catch { gone = true; }
 check('the llama-server process is really gone', gone);
