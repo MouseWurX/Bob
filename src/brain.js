@@ -942,11 +942,18 @@ export class Brain {
     if (!model) return want || null;
     const max = await this.engine.maxCtx?.(model)?.catch?.(() => null) ?? null;
     // 1.5.87: a size picked for this brain (Settings > Brains, switch on) wins, for every copy on it: one load.
-    const pick = pickedCtx(this.cfg, model, max);
+    // Long memory (YaRN, model-ctx.js): with the switch on, a stretched size picked for a brain that can take it.
+    const stretch = await Promise.resolve(this.engine.stretchMax?.(model)).catch(() => null) ?? null;
+    let pick = pickedCtx(this.cfg, model, max, { stretch });
+    // A stretched size that won't fit this machine (card plus RAM) isn't tried: the brain loads at what it was made for.
+    if (pick && max && pick > max) {
+      const r = await Promise.resolve(this.engine.roomFor?.(model, pick)).catch(() => null);
+      if (r && r.fits === false) { this.log('model', `long memory: ${model} at ${pick} needs ~${r.needGB} GB, room ~${r.roomGB} GB, so it loads at ${max}`); pick = max; }
+    }
     // Settings review: in Gaming the brain is on the processor beside the game, so a pick never makes it bigger there.
     want = pick && gaming(this.cfg) ? Math.min(pick, want || GAMING_CTX) : pick || want;
     if (!want) return null;
-    const fit = max ? Math.min(max, want) : want;
+    const fit = max ? Math.min(pick && pick > max ? pick : max, want) : want;
     // 1.5.126: on built-in graphics, shorter still when the RAM says so (apuRoom above).
     const room = await apuRoom(this, model, fit);
     if (room.shortened) this.log('model', `shortened ${model}'s chat memory to ${room.ctx} to leave Windows about ${APU_HEADROOM_GB} GB (needs ~${room.needGB} GB, room ~${room.roomGB} GB)`);
