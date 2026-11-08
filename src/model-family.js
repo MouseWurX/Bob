@@ -52,25 +52,72 @@ const SAMPLING = {
   qwen3: { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0 },
   'qwen3-thinking': { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0 },
   'qwen3-coder': { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0, repeat_penalty: 1.05 },
-  // 1.5.63: Qwen3.5/3.6 cards: no-think 0.7/0.8/20 with presence_penalty 1.5; thinking 0.6/0.95/20.
-  'qwen3.5': { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0, presence_penalty: 1.5 },
-  // 1.5.68: thinking also gets presence_penalty 1.5 (Qwen's guidance; without it Qwen3.6 can think in circles).
-  'qwen3.5-thinking': { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0, presence_penalty: 1.5 },
+  // 1.5.148: Qwen3.6's Best Practices, by mode. No-think (instruct): 0.7/0.8/20, presence 1.5. Thinking, general:
+  // 1.0/0.95/20. Thinking, precise coding: 0.6/0.95/20. Qwen lists presence 0 for both thinking sets and says it can
+  // be raised to 2 against endless repeats; Bob keeps 1.5 there (1.5.68: without it Qwen3.6 thought in circles for
+  // 10 minutes on a coding job). repetition_penalty 1.0 is llama-server's repeat_penalty, sent so nothing else changes it.
+  'qwen3.5': { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0, presence_penalty: 1.5, repeat_penalty: 1.0 },
+  'qwen3.5-thinking': { temperature: 1.0, top_p: 0.95, top_k: 20, min_p: 0, presence_penalty: 1.5, repeat_penalty: 1.0 },
+  'qwen3.5-thinking-coding': { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0, presence_penalty: 1.5, repeat_penalty: 1.0 },
   'qwen2.5': { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0, repeat_penalty: 1.05 }
 };
 export const TOOL_TEMP = 0.6;
 
+// The three Qwen3.6 presets by name (Settings shows them, and "Choose my own" starts from them).
+export const QWEN_PRESETS = {
+  thinking: { label: 'Thinking it through', key: 'qwen3.5-thinking' },
+  coding: { label: 'Thinking through code', key: 'qwen3.5-thinking-coding' },
+  quick: { label: 'Quick replies (no thinking)', key: 'qwen3.5' }
+};
+export const PRESET_FIELDS = { temperature: [0, 2], top_p: [0, 1], top_k: [0, 200], min_p: [0, 1], presence_penalty: [0, 2], repeat_penalty: [1, 2] };
+export const qwenPreset = (id) => ({ ...SAMPLING[QWEN_PRESETS[id]?.key] });
+
+// Only numbers in range, for the presets someone picked by hand ({} when nothing usable is left).
+export function cleanPresets(v) {
+  const out = { on: v?.on === true };
+  for (const id of Object.keys(QWEN_PRESETS)) {
+    const row = v?.[id];
+    if (!row || typeof row !== 'object') continue;
+    const r = {};
+    for (const [k, [lo, hi]] of Object.entries(PRESET_FIELDS)) {
+      const n = Number(row[k]);
+      if (row[k] !== '' && row[k] != null && Number.isFinite(n)) r[k] = Math.min(hi, Math.max(lo, k === 'top_k' ? Math.round(n) : n));
+    }
+    if (Object.keys(r).length) out[id] = r;
+  }
+  return out;
+}
+
+// Which Qwen3.6 preset a request uses: no-think = quick, thinking on a coding job = coding, other thinking = thinking.
+export function presetFor(think, task) {
+  if (think === false) return 'quick';
+  return task === 'coding' ? 'coding' : 'thinking';
+}
+
 // Sampling fields for one request (OpenAI-style body for llama-server). Empty object = llama-server's defaults.
 // lc.sampling: false turns this off; lc.sampling[model] or lc.sampling[family] replaces the family's values.
-export function samplingFor(lc, model, gguf, { tools = false, think } = {}) {
+// own (1.5.148, Settings, opt-in): { on, thinking, coding, quick } picked by hand for Qwen3.6 brains.
+// task: 'coding' for coding jobs (the Tinker and Reviewer copies).
+export function samplingFor(lc, model, gguf, { tools = false, think, task, own } = {}) {
   if (lc?.sampling === false) return {};
   const info = gguf ? ggufInfo(gguf) : null;
   const fam = familyOf(model, info);
   // Qwen3 hybrid brains think unless told not to; their thinking mode has its own settings. Instruct 2507 never thinks.
   const key = fam === 'qwen3' && think !== false && !/instruct/i.test(`${model} ${info?.name || ''}`) ? 'qwen3-thinking' : fam;
-  const key2 = fam === 'qwen3.5' && think !== false ? 'qwen3.5-thinking' : key;
-  const base = { ...(SAMPLING[key2] || {}), ...(lc?.sampling?.[fam] || {}), ...(lc?.sampling?.[model] || {}) };
+  const preset = fam === 'qwen3.5' ? presetFor(think, task) : null;
+  const key2 = preset ? QWEN_PRESETS[preset].key : key;
+  const mine = preset && own?.on === true ? cleanPresets(own)[preset] || {} : {};
+  const base = { ...(SAMPLING[key2] || {}), ...mine, ...(lc?.sampling?.[fam] || {}), ...(lc?.sampling?.[model] || {}) };
   if (!Object.keys(base).length) return {};
-  if (tools && typeof base.temperature === 'number') base.temperature = Math.min(base.temperature, lc?.toolTemp ?? TOOL_TEMP);
+  // A temperature picked by hand is left alone; the brain's own one is cooled when tools are offered.
+  if (tools && typeof base.temperature === 'number' && mine.temperature == null) base.temperature = Math.min(base.temperature, lc?.toolTemp ?? TOOL_TEMP);
   return base;
+}
+
+// 1.5.148: how long one reply may get. Qwen recommends 32,768 tokens; a brain loaded with a small context gets half of
+// it for the reply (never under 2,048), so a reply on a small device can't fill the whole memory and stall there.
+export function replyTokens(ctx, max = 32768) {
+  const n = Number(ctx);
+  if (!Number.isFinite(n) || n <= 0) return max;
+  return Math.max(2048, Math.min(max, Math.floor(n / 2)));
 }

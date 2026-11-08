@@ -313,6 +313,8 @@ export function editPrompt(prompt) {
 }
 
 const PLAIN_HATS = { tinker: 'Coding', ledger: 'Spreadsheets', scout: 'Research', painter: 'Images & video', reviewer: 'Review' };
+// 1.5.148: copies whose work is code get Qwen's "thinking through code" preset (model-family.js).
+const CODING_HATS = new Set(['tinker']);
 const BRAIN_NAMES = { bob: 'main', tinker: 'workbench', ledger: 'ledger', scout: 'scouting', painter: "painter's", reviewer: 'second-look', eyes: 'eyes' };
 
 // 1.5.49: how a brain load changes what Bob holds. swap = it replaces one, add = it joins one, load = nothing was loaded.
@@ -2418,6 +2420,7 @@ export class Brain {
     for (let step = 0; step < maxSteps; step++) {
       const reply = await this.chatSafe({
         model, messages, tools: this.toolSchemas(hatTools), signal: ctx.signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
+        ...(CODING_HATS.has(hat) ? { task: 'coding' } : {}), // 1.5.148: Qwen's coding preset for code work
         onToken: (t) => ctx.emit({ type: 'token', text: t })
       }, { emit: ctx.emit, who: hat });
       messages.push(reply);

@@ -635,7 +635,42 @@ export function createCellar() {
       <div><strong>Engine downloads</strong> ${tip('The programs that run the models, from their official GitHub pages, matched to your graphics card.', 'Engine downloads')}
         ${(data.engines || []).map((e) => `<article class="model" id="m-engine:${esc(e.id)}"><header><strong>${esc(e.name)}</strong></header><p>${esc(e.what)}</p>
           <div class="act">${live.has('engine:' + e.id) ? progress(live.get('engine:' + e.id)) : e.installed ? `<div class="have">✓ ${e.found ? esc(e.found[0].toUpperCase() + e.found.slice(1)) : `Installed${e.version ? ` (${esc(e.version)})` : ''}`}</div>${e.pinned || e.available === false ? '' : `<button data-checkengine="${esc(e.id)}">Check for a newer build</button>`}${e.tested && e.version && e.version !== e.tested && !e.found ? `<button data-engine="${esc(e.id)}">Go back to the tested build (${esc(e.tested)})</button>` : ''}` : e.available === false ? `<div class="muted">${esc(e.note || 'Not for this replicant matrix yet.')}</div>` : `<button class="get" data-engine="${esc(e.id)}">Get ${esc(e.name)}</button>`}</div><div class="confirm" hidden></div></article>`).join('')}</div>
+      ${qwenHtml()}
       <details class="more"><summary>More</summary>${speedHtml()}</details>`;
+  }
+
+  // 1.5.148: how Qwen3.6 brains (and Bob's own brains made from them) pick their words. Qwen's settings by default,
+  // one set per mode; the person can switch on their own numbers. Every field has a visible label for screen readers.
+  const QWEN_FIELDS = [['temperature', 'Temperature', 0, 2, 0.05], ['top_p', 'Top P', 0, 1, 0.05], ['top_k', 'Top K', 0, 200, 1], ['min_p', 'Min P', 0, 1, 0.01], ['presence_penalty', 'Presence penalty', 0, 2, 0.1], ['repeat_penalty', 'Repetition penalty', 1, 2, 0.05]];
+  function qwenHtml() {
+    const own = settings.qwenPresets || {};
+    const qd = settings.qwenDefaults || {};
+    const on = own.on === true;
+    const rows = Object.entries(qd).map(([id, d]) => {
+      const mine = { ...d, ...(own[id] || {}) };
+      return `<fieldset class="qwen-preset" data-qpreset="${esc(id)}"><legend><strong>${esc(d.label)}</strong></legend>
+        <div class="row">${QWEN_FIELDS.map(([k, label, lo, hi, step]) => `<label class="pick"><span>${label}</span><input type="number" inputmode="decimal" data-qfield="${k}" min="${lo}" max="${hi}" step="${step}" value="${esc(String(mine[k] ?? ''))}" aria-label="${esc(d.label)}: ${label}" ${on ? '' : 'disabled'}></label>`).join('')}</div>
+        <button type="button" data-qreset="${esc(id)}" ${on ? '' : 'disabled'}>Back to Qwen's</button></fieldset>`;
+    }).join('');
+    return `<div class="qwen-presets" data-qbox><strong>How Qwen brains pick their words</strong> <span class="tag">Qwen's settings unless you change them</span>
+        ${tip('On Bob\'s own engine, Qwen3.6 brains, and the Bob brains made from them (Riker, Bill, Bobert and the rest), use the settings Qwen recommends: one set when they think it through, a cooler set when they think through code, and one for quick replies. Bob keeps a little presence penalty on the thinking sets so a brain doesn\'t go round in circles. Switch this on only if you want to try your own numbers.', 'How Qwen brains pick their words')}
+        ${sswitch('qwenPresetsOn', on, 'Choose my own word settings', 'Off: Bob uses Qwen\'s. On: the numbers below are used instead, from the next reply.')}
+        ${rows}</div>`;
+  }
+  async function saveQwen(el, msg) {
+    const box = dlg.querySelector('[data-qbox]');
+    const next = { on: box.querySelector('[data-set="qwenPresetsOn"]').checked };
+    for (const fs of box.querySelectorAll('[data-qpreset]')) {
+      const row = {};
+      for (const f of fs.querySelectorAll('[data-qfield]')) if (f.value !== '') row[f.dataset.qfield] = Number(f.value);
+      next[fs.dataset.qpreset] = row;
+    }
+    const r = await api('/api/settings', { qwenPresets: next });
+    settings.qwenPresets = r.qwenPresets;
+    box.outerHTML = qwenHtml();
+    const again = dlg.querySelector('[data-qbox]');
+    flash(again, msg || (settings.qwenPresets.on ? 'Saved. Used from the next reply.' : 'Off. Bob uses Qwen\'s settings again.'));
+    again.querySelector(el.dataset.qfield ? `[data-qpreset="${el.closest('[data-qpreset]')?.dataset.qpreset}"] [data-qfield="${el.dataset.qfield}"]` : el.dataset.qreset ? `[data-qreset="${el.dataset.qreset}"]` : '[data-set="qwenPresetsOn"]')?.focus();
   }
 
   // 1.5.79: the memory banks, shown under "Remember only what fits" while it's on.
@@ -1048,6 +1083,11 @@ export function createCellar() {
     try {
       if ((tab === 'style' || (tab === 'settings' && (b.dataset.motion || b.dataset.nowneed))) && mode === 'shop' && await stylePage.onClick(b, settings)) return;
       if (b.dataset.sampleEngine) { sampler.play(b); return; }
+      if (b.dataset.qreset) { // 1.5.148: one preset back to Qwen's numbers
+        const fs = b.closest('[data-qpreset]'); const d = settings.qwenDefaults?.[b.dataset.qreset] || {};
+        for (const f of fs.querySelectorAll('[data-qfield]')) f.value = d[f.dataset.qfield] ?? '';
+        await saveQwen(b, `${d.label || 'That set'} is back to Qwen's settings.`); return;
+      }
       if (b.dataset.gomodel) { setTab(b.dataset.gocat); jumpTo = ''; draw(); dlg.querySelector('#m-' + CSS.escape(b.dataset.gomodel))?.scrollIntoView({ block: 'center' }); return; }
       if ('unsuitedsw' in b.dataset) { setShowUnsuited(!showUnsuited); draw(); return; }
       if ('lookcomments' in b.dataset) { const on = b.getAttribute('aria-checked') !== 'true'; const r = await api('/api/settings', { lookComments: on }); settings.lookComments = r.lookComments; b.setAttribute('aria-checked', String(r.lookComments)); b.querySelector('.st').textContent = r.lookComments ? 'On' : 'Off'; return; }
@@ -1427,6 +1467,7 @@ export function createCellar() {
         if (args && kept.length !== args.length) alertIn(el, 'Some of that was left out: only flags and plain values are allowed, no file paths.');
         el.value = kept.join(' '); flash(el, 'Saved.'); return;
       }
+      if (el.dataset.set === 'qwenPresetsOn' || el.dataset.qfield) { await saveQwen(el); return; } // 1.5.148
       if (el.dataset.set === 'brainCtxOn') { const r = await api('/api/settings', { brainCtxOn: el.checked }); settings.brainCtxOn = r.brainCtxOn; bctx = await api('/api/brain-ctx').catch(() => ({ ...bctx, on: r.brainCtxOn })); const box = el.closest('[data-bctxbox]'); if (box) box.innerHTML = brainCtxHtml(); flash(box || el, r.brainCtxOn ? 'On. Applies when each brain next loads.' : 'Off. Bob picks again.'); return; }
       if (el.dataset.bctx) { const v = el.value ? Number(el.value) : null; const r = await api('/api/settings', { brainCtx: { [el.dataset.bctx]: v } }); settings.brainCtx = r.brainCtx; const b = (bctx.brains || []).find((x) => x.model === el.dataset.bctx); if (b) b.picked = v; flash(el, 'Saved. Applies when the brain next loads.'); return; }
       if (el.dataset.sctx) { const v = el.value ? Number(el.value) : null; const r = await api('/api/settings', { sessionCtx: { [el.dataset.sctx]: v } }); settings.sessionCtx = r.sessionCtx; flash(el, 'Saved. Applies when the brain next loads.'); return; }

@@ -9,7 +9,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn, execFile, spawnSync } from 'node:child_process';
 import { tidySchema } from './toolbox.js';
-import { templateFor, samplingFor } from './model-family.js';
+import { templateFor, samplingFor, replyTokens } from './model-family.js';
 import { gaming, LONG_CODER } from './sessions.js';
 import { gamingCard, decideCard, readCard, CARD_BUSY_PCT, CARD_MIN_FREE_MB } from './gaming-card.js';
 import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts } from './tuning.js';
@@ -420,10 +420,12 @@ export class LlamaCpp {
   }
 
   // 1.5.32: the family's recommended sampling for this request ({} = llama-server's own defaults).
-  sampling(model, { tools, think } = {}) {
+  // 1.5.148: Qwen3.6 brains get Qwen's preset for the mode (thinking, thinking through code, quick), or the
+  // person's own from Settings when they switched that on (cfg.qwenPresets).
+  sampling(model, { tools, think, task } = {}) {
     let gguf = null;
     try { gguf = this.resolve(model).gguf; } catch {} // no file found: the family comes from the name alone
-    try { return samplingFor(this.lc, model, gguf, { tools, think }); } catch { return {}; }
+    try { return samplingFor(this.lc, model, gguf, { tools, think, task, own: this.cfg?.qwenPresets }); } catch { return {}; }
   }
 
   // ---------- Get Bob ready while you type (1.5.24) ----------
@@ -666,7 +668,7 @@ export class LlamaCpp {
     } finally { opts.signal?.removeEventListener?.('abort', onAbort); }
   }
 
-  async chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver }) {
+  async chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver, task }) {
     // 1.5.52: a brain whose template refused a mid-chat system note gets them folded in from then on (foldSystem).
     this.noMidSystem ||= new Set();
     // 1.5.60: ask the loaded brain's chat template up front, so a template that refuses mid-chat system notes is
@@ -683,7 +685,7 @@ export class LlamaCpp {
       } catch {}
     }
     if (this.noMidSystem.has(model)) messages = foldSystem(messages);
-    const res = await this.post(model, messages, tools, signal, think);
+    const res = await this.post(model, messages, tools, signal, think, task);
     if (!res.ok) {
       // 1.5.60: the template's refusal sits deep in a long error (after the template source), so look at all of it.
       const full = await res.text();
@@ -691,7 +693,7 @@ export class LlamaCpp {
       if (!this.noMidSystem.has(model) && MID_SYSTEM_REFUSED.test(full)) {
         this.noMidSystem.add(model);
         this.log?.('engine', `${model}: its chat template only takes a system message first, so Bob's notes go in as user notes from now on`);
-        return this.chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver });
+        return this.chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver, task });
       }
       if (MID_SYSTEM_REFUSED.test(full)) this.log?.('engine', `${model}: refused a system message even after folding (roles ${(messages || []).map((m) => (m.role || '?')[0]).join('')}, ${full.length} chars of error)`);
       throw new Error(`llama-server returned ${res.status}: ${text}`);
@@ -699,12 +701,12 @@ export class LlamaCpp {
     return this.readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver });
   }
 
-  post(model, messages, tools, signal, think) {
+  post(model, messages, tools, signal, think, task) {
     return fetch(this.url + '/v1/chat/completions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, max_tokens: MAX_REPLY_TOKENS, // 1.5.26: no empty enums (llama.cpp rejects them)
-        ...this.sampling(model, { tools: !!tools?.length, think }),
+      body: JSON.stringify({ model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, max_tokens: replyTokens(this.current === model ? this.currentCtx : null, MAX_REPLY_TOKENS), // 1.5.148: less on a small context. 1.5.26: no empty enums (llama.cpp rejects them)
+        ...this.sampling(model, { tools: !!tools?.length, think, task }),
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
         ...(think === false ? { chat_template_kwargs: { enable_thinking: false } } : {}) }),
       signal
