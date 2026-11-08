@@ -4,30 +4,31 @@
 
 *Tested, not yet released. This page is the plan, the method and the results so far, including the mistakes. It is updated as each model lands. No downloads yet: the whole family goes up together when it is complete.*
 
+> **8 November 2026: the re-cut Riker (28Bob) is made, benchmarked and kept.** He codes better than any Bob before him (9 of 13 on the coding race, 6 of 6 on the quick code test, against the full model's 12 and 6), keeps tool calls level, and finds a fact in a 128K-token document every time; see [28Bob Riker](#28bob-riker-the-one-that-stays). The first four Bobs are retired and deleted. Next is one run that makes Bobert (35Bob, the full model trained on every lesson) and Bill (20Bob, cut from Bobert); the first release will be those three.
+
 > **6 November 2026: the first four Bobs will be re-cut and re-healed.** Two findings: the coding lesson set mostly taught the model to hand code off rather than write it (the main cause of the v2 coding gap), and the cut rule protected no skill in particular, which turned out to matter less than feared but is fixed anyway, with a measured table below of what every size keeps. What happened, why, and the corrected rule are in [What went wrong with the first cut](#what-went-wrong-with-the-first-cut). The costs page carries the price of doing it again.
 
-Bob borrows his brains from other people's models. The best of them for a 16 GB graphics card, Qwen3.6-35B-A3B, is also too big for most of the devices Bob runs on: a gaming handheld with 8 GB to spare, a laptop with a 6 GB card, a phone, a Raspberry Pi. So we are making Bob a family of his own: **the same big model with its least-used parts cut away, then retrained with the big model as its teacher**, at nine sizes from 24 billion parameters down to 2. Every size keeps Bob's tool calls, his thinking on/off switch and his eyes (vision), and every size is called a Bob.
+Bob borrows his brains from other people's models. The best of them for a 16 GB graphics card, Qwen3.6-35B-A3B, is also too big for most of the devices Bob runs on: a gaming handheld with 8 GB to spare, a laptop with a 6 GB card, a phone, a Raspberry Pi. So we are making Bob a family of his own: **the same big model with its least-used parts cut away, then retrained with the big model as its teacher**, at sizes from 35 billion parameters down to 2. Every size keeps Bob's tool calls, his thinking on/off switch and his eyes (vision), and every size is called a Bob.
 
-The models are made from [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) by Alibaba's Qwen team, released under the Apache 2.0 licence, and each one will ship with that licence and a note saying it was modified. The Qwen name is not used as a brand: the models are called 24Bob, 18Bob and so on, "made from Qwen3.6-35B-A3B".
+The models are made from [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) by Alibaba's Qwen team, released under the Apache 2.0 licence, and each one will ship with that licence and a note saying it was modified. The Qwen name is not used as a brand: the models are called 35Bob, 28Bob and so on, "made from Qwen3.6-35B-A3B".
 
 The family's names come from a reading habit. Bob is inspired by the wonderful books of Dennis E. Taylor. Not affiliated with or endorsed by the author.
 
 ## The family
 
-Qwen3.6-35B-A3B is a mixture-of-experts model: each of its 40 layers holds 256 small networks ("experts"), and for every word it writes a router picks 8 of them. That is why it has 35 billion parameters but only about 3 billion working at once, and why it is fast. Many experts are rarely picked for the work Bob does. Keep only the busiest, and the model shrinks a lot while the parts that matter stay. The about-2-billion non-expert parts (word list, attention, router) stay in every Bob, and each expert kept per layer adds about 0.12 billion. That sets the ladder:
+Qwen3.6-35B-A3B is a mixture-of-experts model: each of its 40 layers holds 256 small networks ("experts"), and for every word it writes a router picks 8 of them. That is why it has 35 billion parameters but only about 3 billion working at once, and why it is fast. Many experts are rarely picked for the work Bob does. Keep only the busiest, and the model shrinks a lot while the parts that matter stay. The about-2-billion non-expert parts (word list, attention, router) stay in every Bob, and each expert kept per layer adds about 0.12 billion. That sets the ladder. This is the current plan: the first ladder had nine rungs from 24Bob down, was redrawn on 6 November after the coverage table below, and gained Bobert on top on 8 November.
 
 | Model | Nickname | Experts kept per layer (of 256) | File at Q4 | Meant for |
 |---|---|---|---|---|
 | Qwen3.6-35B-A3B (the teacher) | | 256 | 22.4 GB | a 16 GB card with experts spilling into RAM |
-| **24Bob** | Riker | 176 | 15 GB | a 16 GB card, most of it on the card: the everyday brain |
-| **18Bob** | Bill | 128 | 11.4 GB | a 16 GB card entirely, with room for long chats |
-| **12Bob** | Homer | 80 | ~7.5 GB | 8 GB cards and gaming handhelds |
-| **10Bob** | Milo | 64 | ~6.3 GB | 8 GB cards with room to spare |
-| **8Bob** | Mario | 48 | ~5 GB | handhelds, laptops, the PC's Gaming slot (on the processor) |
-| **6Bob** | Luke | 32 | ~4 GB | laptops and phones |
-| **5Bob** | Calvin | 24 | ~3.2 GB | phones and the quick brain |
-| **4Bob** | Goku | 16 | ~2.5 GB | phones and a Raspberry Pi |
-| **2Bob** | Bender | 8, then also cut in depth and width | ~1.3 GB | anything, including the Pi (the hardest cut, made last) |
+| **35Bob** | Bobert | 256, no cut: the teacher trained on every lesson | ~21 GB (Q3 ~17 GB) | 24 GB cards, or a 16 GB card with experts in RAM; the teacher of every Bob below him |
+| **28Bob** | Riker | 208 | 17.5 GB (Q3 13.9 GB) | a 16 GB card with some experts in RAM, or the Q3 file: the everyday brain. Made and kept. |
+| **20Bob** | Bill | 144 | ~12.7 GB | a 16 GB card entirely, with room for long chats |
+| **14Bob** | Homer | 96 | ~9 GB | 8 GB cards and gaming handhelds |
+| **10Bob** | Milo | 64 | ~6.6 GB | small cards and big phones |
+| **7Bob** | Luke | 40 | ~4.6 GB | phones |
+| **5Bob** | Calvin | 24 | ~3.3 GB | phones and the quick brain, kept only if it beats a stock 4B model |
+| **2Bob** | Bender | 8, then also cut in depth and width | ~1.3 GB | anything, including a Raspberry Pi (a stretch goal, made last) |
 
 Sizes for the models not yet made are estimates. Each Bob also comes at Q3 (a smaller compression of the same model, for cards of 8 GB and under) and shares the teacher's 0.9 GB vision file, downloaded once.
 
@@ -48,7 +49,7 @@ The Forge is the project's cut-and-heal program. One command rents a data-centre
 ### Each session, on the rented card
 
 1. **Teacher pass** (once per session). The full model, in full precision, reads every lesson and records its top 32 candidate words and their probabilities at every answer position. This is what the cut model is trained to match. About a third of the training mix is general text (public web text and public chat data), so the Bobs keep general knowledge and not only Bob's work; it is scored separately.
-2. **Cut.** Keep N experts in every layer, by slicing the weight files; the router shrinks to match. Minutes. The first four Bobs kept the N busiest overall, which protected no skill in particular (see [What went wrong with the first cut](#what-went-wrong-with-the-first-cut)); from Homer on, and for the re-cut Riker and Bill, the keep list is built per job (the "coverage cut").
+2. **Cut.** Keep N experts in every layer, by slicing the weight files; the router shrinks to match. Minutes. The first four Bobs kept the N busiest overall, which protected no skill in particular (see [What went wrong with the first cut](#what-went-wrong-with-the-first-cut)); the current Riker, and every Bob after him, uses a keep list built per job (the "coverage cut").
 3. **Heal.** Train the cut model to give the same next-word odds as the teacher on the lessons: low-rank adapters (LoRA) on every linear layer and on the experts, plus the router, with a loss that combines distance from the teacher's top-32 distribution and the real next word, answer tokens only, thinking on and off, tool calls included. Then fold the adapters back into the weights. One full pass over the lessons per rung.
 4. **Score.** Held-out lessons are scored before and after healing, against the teacher's own score (the floor). Two numbers matter: how surprised the model is by the teacher's words (lower is better; this is a loss, not an error rate) and the distance from the teacher.
 5. **Count again.** Which experts does the healed Bob use? The next rung is cut from *that* count, so each Bob is cut from the healed Bob above it ("step-down ladder"). Small steps lose less than one big cut, and every rung is a usable model on its own.
@@ -62,7 +63,34 @@ It is not a new architecture and not training from scratch. Published work prune
 
 ## Results so far
 
-### 24Bob Riker, line A (v1): tested, not released, to be re-cut
+### 28Bob Riker: the one that stays
+
+Re-cut from the teacher on 6 November with the coverage keep list at 208 of 256 experts per layer, healed for a full pass on a rented H200 (929 of 929 steps, 5.9 hours) on the clean lesson set: 8,635 lessons plus 424 held out, and 10 million tokens of general text. Benchmarked on the owner's PC on 8 November and kept. From here he is just Riker; the first Riker and Bill (v1 and v2, below) are retired and their files deleted.
+
+- Held-out loss 0.401 before healing, 0.362 after (the teacher: 0.324); distance from the teacher 0.087 to 0.067. General text 2.154 to 2.158, so outside knowledge held level.
+- Files: Q4 17.49 GB, Q3 13.87 GB, adapter 1.74 GB. At Q4 he needs some experts in RAM on a 16 GB card; the Q3 file fits more of him on the card.
+- **An honest note on the cut.** The rule says 99% coverage for tools, coding and exact formats and 95% for everything else. By mistake, the keep list Riker was cut with used 95% for every skill. The ladder table below is still the real measurement of what 208 experts keep (97 to 98% on average for a typical skill, 92 to 93% in the worst layer). The bug is fixed in the Forge, and Bill's keep list will use the full rule.
+
+All on the same PC, at Q4, 8 experts per word, the same settings for every model:
+
+| Test | Riker | Riker v2 | Riker v1 | Full Qwen3.6 35B |
+|---|---|---|---|---|
+| Coding race, 13 tasks, thinking on | 9 | 6 | 8 | 12 |
+| Coding race, thinking off | 7 | 6 | 6 | 11 |
+| Quick code test | 6 of 6 | 3 of 6 | 4 of 6 | 6 of 6 |
+| Short facts | 18 of 20 | 20 of 20 | 20 of 20 | 20 of 20 |
+| Tool-calling score (held-out conversations) | 65% | 66% | 66% | 67% |
+| Tool phrasing test | 47% | 49% | 55% | 46% |
+| Routing race (new 25-job set) | 24 of 25 | | | |
+| Speed on the test card | 111 tokens a second | 144 | 145 | 83 |
+
+The older Bobs ran an earlier, smaller routing race, so that row has no comparison.
+
+**Long documents.** One fact hidden at a quarter, half and three quarters of the way into windows of 8K, 32K, 64K and 128K tokens (prompts of about 7,100, 27,900, 55,900 and 111,600 tokens): Riker at Q3 found it 12 times out of 12, the same as the full Qwen at Q4. A 128K window fits a 16 GB card with part of the model in RAM.
+
+Verdict: the coding lesson fix worked. Riker is the best of the Bobs at code so far, matches the full model on the quick test, and is still below it on the longer race. Tool calls are level with the first two Rikers and the full model. He lost two short-fact answers, which is worth watching on Bill. Long context is unharmed. He is slower than v2 because his bigger file spills further off the card.
+
+### 24Bob Riker, line A (v1): retired and deleted 8 November
 
 Cut straight from the teacher, 176 of 256 experts per layer, healed on a rented H100. The session's clock cap stopped his healing at about 175 of 456 steps (1.75 hours), so v1 is a part-healed Bob.
 
@@ -76,7 +104,7 @@ Cut straight from the teacher, 176 of 256 experts per layer, healed on a rented 
 
 Verdict: the best fit for a 16 GB card for everyday work and routing; coding goes to a bigger brain or to the specialists later.
 
-### 18Bob Bill, line A (v1): tested, not released, to be re-cut
+### 18Bob Bill, line A (v1): retired and deleted 8 November
 
 Cut from the healed Riker, 128 experts per layer. The session's clock cap stopped his healing at step 155 of 456, so he is under-healed.
 
@@ -86,7 +114,7 @@ Cut from the healed Riker, 128 experts per layer. The session's clock cap stoppe
 
 Verdict: tools and routing survive a 50% cut almost untouched even half-healed; facts and coding do not. Bill is being remade with a full pass (below).
 
-### 24Bob Riker, line B (v2): tested, not released, to be re-cut
+### 24Bob Riker, line B (v2): retired and deleted 8 November
 
 Same cut as v1 (his exact keep list), healed for a complete pass of Bob's lessons plus the 717 coding and software-engineering lessons on a rented H200, 524 of 524 steps in 4.8 hours: the first full pass. So v1 against v2 is "part-healed on Bob lessons" against "fully healed on Bob plus coding lessons".
 
@@ -100,7 +128,7 @@ Same cut as v1 (his exact keep list), healed for a complete pass of Bob's lesson
 
 Verdict: v2 matches v1 on Bob's own work, with slightly better training scores, but the 717 coding lessons did not improve the coding race (6 of 13 against 8 of 13 is within one-try noise, but there is no gain). The likely limit is the expert cut itself, not the lessons: the experts coding needs were partly cut away, and lessons can't teach what isn't there. Next step before Homer is a coding-aware expert count, so the cut keeps what coding uses.
 
-### 18Bob Bill, line B (v2): tested, not released, to be re-cut
+### 18Bob Bill, line B (v2): retired and deleted 8 November
 
 Cut from the healed Riker v2 with his v1 keep list, healed for a complete pass on the same H200.
 
@@ -120,10 +148,13 @@ The full itemized list, including every rung still to come, is on [What Bob cost
 | Lessons | H100, 1 hour | 3,753 lessons | US $3.98 |
 | Line A | H100 | Riker v1, Bill v1 (capped) | US $30.35 |
 | Line B | H200 SXM + 100 GB drive | 717 coding lessons, Riker v2, Bill v2 | US $72.67 |
+| Lessons and counts, failed first try | H200 SXM + drive | 2,329 coding lessons kept | US $9.27 |
+| Lessons and counts | H200 SXM + drive | 2,898 lessons, 24 skill counts | US $8.88 |
+| 28Bob Riker | H200 SXM, no drive | Riker (the Bill step stopped on a Forge bug) | US $51.79 |
 
 ## What went wrong with the first cut
 
-The four Bobs above are good at Bob's own work and fast, and they are still being re-cut. Here is why, in plain words, because the mistakes cost real money and the plan below depends on not repeating them.
+The four first Bobs above were good at Bob's own work and fast, and they were still replaced. Here is why, in plain words, because the mistakes cost real money and the plan below depends on not repeating them.
 
 **What the first cut did.** Riker's keep list was the 176 most-used experts in every layer, counted over all of Bob's lessons at once: chat, tool calls, facts, planning and a little coding, all in one pile. Bill was cut from Riker the same way. That rule is simple and it is what most published expert-pruning does.
 
@@ -143,10 +174,10 @@ The four Bobs above are good at Bob's own work and fast, and they are still bein
 | 224 | 18.6 GB | 99 / 96 | 98 / 95 | 99 / 95 | 95 / 91 |
 | 208 | 17.5 GB | 98 / 93 | 97 / 92 | 98 / 92 | 90 / 84 |
 | 192 | 16.3 GB | 96 / 89 | 95 / 88 | 96 / 89 | 84 / 78 |
-| 176 (Riker today) | 15.1 GB | 94 / 85 | 93 / 84 | 94 / 84 | 78 / 68 |
+| 176 (the first Riker) | 15.1 GB | 94 / 85 | 93 / 84 | 94 / 84 | 78 / 68 |
 | 160 | 13.9 GB | 92 / 81 | 91 / 79 | 92 / 80 | 72 / 63 |
 | 144 | 12.7 GB | 89 / 77 | 88 / 75 | 89 / 75 | 66 / 56 |
-| 128 (Bill today) | 11.4 GB | 85 / 72 | 84 / 70 | 85 / 70 | 60 / 51 |
+| 128 (the first Bill) | 11.4 GB | 85 / 72 | 84 / 70 | 85 / 70 | 60 / 51 |
 | 112 | 10.2 GB | 81 / 66 | 79 / 64 | 81 / 65 | 54 / 43 |
 | 96 | 9.0 GB | 76 / 60 | 74 / 58 | 76 / 59 | 48 / 38 |
 | 80 | 7.8 GB | 70 / 54 | 68 / 51 | 69 / 52 | 42 / 32 |
@@ -160,25 +191,25 @@ Q3 files are about 80% of the Q4 size. What the table says:
 1. **Twenty-three of the twenty-four skills move together**, within two points of each other at every size. The experts are shared, not owned by one skill, so the cut rule is now right (nothing is starved), but no clever keep list can make a small Bob good at one thing and bad at another: the size itself decides.
 2. **General knowledge breaks first.** This column means knowledge outside Bob's own jobs (web articles and open chats on random topics, pieces capped near 1,500 words), not reading long documents or context length. At 208 experts it already sits where the others sit at 176; at 128 it keeps 60%. A small Bob stays good at being Bob and gets vaguer about the wide world, which is what the specialists and the stock brains are for.
 3. **The worst layer is layer 2 for every skill**, an early layer with very spread-out routing, so a bigger keep list pays off there most.
-4. **The recommendation to the owner** (the size is the owner's call): Riker v3 at 208 experts (every skill but general knowledge above 92% in its worst layer; needs experts in RAM on a 16 GB card at Q4, or the Q3 file) and Bill v3 at 144 instead of 128 (four points everywhere and six on general knowledge for 1.3 GB, still fits a 16 GB card whole). The smaller rungs will lose half their routing or more in the worst layers whatever the rule; they are still worth making because healing recovers a lot (Bill v2 recovered most of the way from a 128 cut), but they are judged by the benchmarks after healing and nobody should expect them to know the wide world the way the full model does. Merging two similar experts within a layer is the next lever for the small rungs, worth a test after Homer.
+4. **The recommendation to the owner**, who chose it: Riker at 208 experts (every skill but general knowledge above 92% in its worst layer; needs experts in RAM on a 16 GB card at Q4, or the Q3 file) and Bill at 144 instead of 128 (four points everywhere and six on general knowledge for 1.3 GB, still fits a 16 GB card whole). The smaller rungs will lose half their routing or more in the worst layers whatever the rule; they are still worth making because healing recovers a lot (Bill v2 recovered most of the way from a 128 cut), but they are judged by the benchmarks after healing and nobody should expect them to know the wide world the way the full model does. Merging two similar experts within a layer is the next lever for the small rungs, worth a test after Homer.
 
-Bill, Homer and the rest are cut from the re-cut Bob above them, and each Bob's own coverage numbers are published with it.
+Bill is cut from Bobert and healed against Bobert's odds; Homer and the rest are cut from the healed Bob above them. Each Bob's own coverage numbers are published with it.
 
-**What it costs.** Riker and Bill have to be cut and healed again on line B before Homer can be made from them. About US $70 to $75 on an H200, the same shape as the line B session. The new lessons and the per-skill counts are already done ($18.15 across two short rentals, one of them a failed first try). The costs page lists the wasted run as a lesson learned, the re-run as a new line, and the projected total raised to match.
+**What it costs.** The new lessons and the per-skill counts cost $18.15 across two short rentals, one of them a failed first try. Riker's re-cut cost $51.79 on an H200. Bobert and Bill come next in one combined run, estimated at about $135. The costs page lists the wasted run as a lesson learned, each new run as its own line, and the projected total raised to match.
 
 ## What comes next
 
-1. **Benchmarks of Riker v2 and Bill v2**: done (above). Line B is the line that continues.
-2. **The coverage cut, measured at home first.** Per-job expert counts on the owner's PC, free, before anything is rented again. The sizes and the per-rung costs go on this page and on the costs page when they are in.
-3. **Riker and Bill, re-cut and healed again** on line B with the coverage cut, then **12Bob Homer** cut from the new Bill. Each rung is about 5 hours on an H200. Then decide whether line A is worth continuing at all.
-4. **Down the ladder**: Milo, Mario, Luke, Calvin, Goku, each cut from the healed Bob above, then the four specialists, and 2Bob Bender last.
+1. **The coverage cut and Riker**: done (above). Riker is kept; the first four Bobs are deleted.
+2. **One combined run, when the owner gives the word**: about 9,000 more lessons written on the card, one teacher pass, then **35Bob Bobert**, the full model trained on every lesson in a full pass (about 16 hours), and **20Bob Bill** at 144 experts, cut from Bobert with the full 99% rule for tools, coding and formats and healed against Bobert's odds. About 24 to 26 hours on an H200. Bobert and Bill are each tested at home before anything else is built on them.
+3. **Then Homer**, cut from the healed Bill. Then decide whether line A is worth continuing at all.
+4. **Down the ladder**: Milo, Luke and Calvin, each cut from the healed Bob above, then the specialists, and 2Bob Bender last.
 5. **In the app.** Bob's own models become the default brains: when Bob suggests a starter set, a Bob is picked before a stock model of the same size. The Forge and the model lab are in this repository under [`model-lab/`](../model-lab/) (GPL, like the rest of Bob); the lessons, counts and finished Bobs they make stay on the machine that made them. The engine will turn on expert-in-RAM offloading by itself when a Bob is bigger than the card. Every Bob gets the "experts per word" dial (4 to 8).
-6. **Release.** All at once on Hugging Face, with model cards that say exactly what each Bob is cut from, how it was healed and how it scored, and pinned download links in Bob's catalogue. Until then: tested, not yet released.
+6. **Release.** The first release is three models, Bobert, Riker and Bill, on Hugging Face with model cards that say exactly what each Bob is cut from, how it was healed and how it scored, and pinned download links in Bob's catalogue. Until then: tested, not yet released.
 
 ## Expectations, honestly
 
-- The top rungs (Riker, Bill) should be nearly as good as the teacher at Bob's own work and noticeably faster on a 16 GB card. Riker already is.
-- Coding is the first thing to go when experts are cut, and the first cut proved that lessons cannot bring back an expert that was removed. The coverage cut is the fix at every size; the Cypher specialists are the second bet at small sizes. If neither works, Bob keeps a stock coding brain in that slot.
+- The top rungs (Riker, Bill) should be nearly as good as the teacher at Bob's own work and noticeably faster on a 16 GB card. Riker is: level on tool calls, 6 of 6 on the quick code test, and 111 tokens a second against the full model's 83.
+- Coding is the first thing to go when experts are cut, and the first cut proved that lessons cannot bring back an expert that was removed, and that weak lessons teach nothing. Clean coding lessons lifted the new Riker from 6 to 9 of 13 on the coding race. The coverage cut is the fix at every size; the Cypher specialists are the second bet at small sizes. If neither works, Bob keeps a stock coding brain in that slot.
 - The small rungs (5Bob and below) will not match the teacher. The target is "a better 4B than the stock 4B at being Bob": right tool, right format, Bob's voice, on a phone.
 - Healing above about 5Bob is not practical on home hardware, so the family depends on short rentals, and every step is scored before the next one is made.
 - Numbers on this page are from the project's own benchmarks on one test machine (a 16 GB NVIDIA card). They are for comparing Bobs with each other and with the models they replace, not for comparing with published leaderboards.

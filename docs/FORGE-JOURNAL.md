@@ -2,7 +2,7 @@
 
 *A lab journal for Bob's own models, kept as the work happens. Newest entry at the bottom. Every number here comes from a file the Forge wrote; the files themselves, with pod ids, addresses and the owner's paths taken out, are in [forge-runs/](forge-runs/). Money is on [What Bob costs to make](COSTS.md), method and results on [Bob's own models](BOBS-OWN-MODELS.md). Rented hardware is named by the card, never by the company it is rented from.*
 
-*Status at the last entry (7 November 2026): 28Bob Riker v3 is home and not yet benchmarked; 20Bob Bill v3 is not made; the Forge is at build 15, untested on a card since build 14j. Nothing is released.*
+*Status at the last entry (8 November 2026): 28Bob Riker is home, benchmarked and kept; the first Riker and Bill (v1 and v2) are retired and deleted; 20Bob Bill is not made; the Forge is at build 15, untested on a card since build 14j. Nothing is released.*
 
 ## 1. The question
 
@@ -18,8 +18,8 @@ The first ladder (4 November) had nine rungs named by billions of parameters: 24
 
 | Rung | Nickname | Experts kept per layer (of 256) | File at Q4, about | Meant for | State |
 |---|---|---|---|---|---|
-| 28Bob | Riker | 208 | 17.5 GB | a 16 GB card with experts spilling into RAM, or the Q3 file | v3 made 6 Nov, not benchmarked |
-| 20Bob | Bill | 144 | 12.7 GB | a 16 GB card entirely | v3 not made yet (v1 and v2 exist at 128) |
+| 28Bob | Riker | 208 | 17.5 GB | a 16 GB card with experts spilling into RAM, or the Q3 file | made 6 Nov, benchmarked and kept 8 Nov |
+| 20Bob | Bill | 144 | 12.7 GB | a 16 GB card entirely | not made yet (the 128-expert v1 and v2 were deleted 8 Nov) |
 | 14Bob | Homer | 96 | 9 GB | 8 GB cards and gaming handhelds | planned |
 | 10Bob | Milo | 64 | 6.6 GB | small cards, big phones | planned |
 | 7Bob | Luke | 40 | 4.6 GB | phones | planned |
@@ -127,8 +127,8 @@ Each one a few minutes of card time and one lesson ([logs](forge-runs/2026-11-05
 - Teacher pass: 125 min, 26,628 pieces, 64.0M tokens, 73 GB peak, nothing skipped. The log shows `causal_conv1d_fn` falling back to the slow reference path at every model load (see 7 November).
 - 28Bob Riker v3 (208 experts, cut in 5 min): full pass, 929 of 929 steps, 5.9 h, 63.4M tokens, 2,975 tok/s at the end, 105 GB in use. Lessons ce 0.401 to 0.362, kd 0.087 to 0.067 (teacher 0.324); general ce 2.154 to 2.158 (up a hair), kd 0.178 to 0.132. Count 3 min, export to Q4 (17.5 GB) and Q3 (13.9 GB) 24 min, adapter 1.7 GB. All home.
 - Then Bill: the skill counts on the healed Riker took 21 min, and the keep-list step died on a shell bug (the plan reader could not see the whole plan inside a rung expression, so the coverage tool got an empty argument). The pod deleted itself as designed. With no drive, the full-precision healed Riker and the teacher's scores (2.5 h of card time) went with it.
-- **State**: Riker v3 home, not benchmarked. Bill v3 not made. The healed Riker can be rebuilt from the adapter and keep list when the rebuild script exists.
-- **Open question**: the general-text ce rose slightly while kd fell; the heal matched the teacher's distribution better and the raw next word slightly worse on outside text. Watch it on Bill v3; if it repeats, lower the teacher weight for general text.
+- **State**: Riker home, not benchmarked. Bill not made. The healed Riker can be rebuilt from the adapter and keep list when the rebuild script exists.
+- **Open question**: the general-text ce rose slightly while kd fell; the heal matched the teacher's distribution better and the raw next word slightly worse on outside text. Watch it on Bill; if it repeats, lower the teacher weight for general text.
 
 ### 7 November: Forge build 15, written on paper only (no card until the owner says so)
 
@@ -139,14 +139,38 @@ Fixes from the v3 log, all untested on a card:
 3. **Renting rules.** A card is only ever taken in a data centre that has one of our network drives; if ours are out of cards, a drive is made where a card is, rather than running without one. After a wait, the next card up (B200 for the H200) is tried too, under the same rules. The old "any data centre, no drive" fallback is off unless the plan turns it on.
 4. The plan-reader bug that ended the v3 run (build 14j, same day) and a silently empty "strong skills" list in the counts-only ladder, which had used 95% for every skill.
 
-**Next**: benchmark Riker v3 at home (tool score, experts test, coding race, long-document and 128K needle), then Bill v3 alone from the teacher with the PC-built keep list, when the owner gives the word. Then Homer.
+**Next**: benchmark Riker at home (tool score, experts test, coding race, long-document and 128K needle), then Bill alone from the teacher with the PC-built keep list, when the owner gives the word. Then Homer.
+
+### 8 November: Riker benchmarked at home, kept; v1 and v2 deleted
+
+From this entry on he is just **Riker** (28Bob Riker); "v3" was the name of the run.
+
+- **The bill.** The 6 to 7 November rental came to $51.79 on the statement (the Forge's own tally was $51.26): 9.7 h on an H200, no drive. Nothing was lost beyond Riker's own run and the teacher's scores; the Bill step stopped before it started healing.
+- **An honest correction.** The rule says 99% coverage for tools, coding and formats. Riker's keep list was built from the counts-only ladder, whose "strong skills" list was silently empty, so every skill got 95% (the fourth fix in build 15). The ladder table is still the real measurement of what 208 experts keep. Bill's list will use the full rule.
+- **Benchmarks** (the owner's PC, Q4, 8 experts per word, the same settings for every model):
+
+| Test | Riker | Riker v2 | Riker v1 | Full Qwen3.6 35B |
+|---|---|---|---|---|
+| Coding race, 13 tasks, thinking on | 9 | 6 | 8 | 12 |
+| Coding race, thinking off | 7 | 6 | 6 | 11 |
+| Quick code test | 6/6 | 3/6 | 4/6 | 6/6 |
+| Facts | 18/20 | 20/20 | 20/20 | 20/20 |
+| Tool score, held-out conversations | 65% | 66% | 66% | 67% |
+| Tool phrasing test | 47% | 49% | 55% | 46% |
+| Routing race, new 25-job set | 24/25 | older set | older set | |
+| Speed | 111 tok/s | 144 | 145 | 83 |
+
+- **Long-document needle test**: one fact at 25, 50 and 75% depth in 8K, 32K, 64K and 128K windows (prompts of about 7.1K, 27.9K, 55.9K and 111.6K tokens). Riker at Q3: 12/12. Full Qwen at Q4: 12/12. A 128K window fits a 16 GB card with partial offload.
+- **Reading**: the clean coding lessons worked (best Bob at code so far, level with the full model on the quick test, still below it on the long race). Tools level with v1 and v2. Two short-fact answers lost, to watch on Bill. Long context unharmed, as expected: it lives in the attention layers, which the cut does not touch. Slower than v2 because the bigger file spills further off the card.
+- **Speed note for the next run**: the pod lacked working `causal-conv1d` and `flash-linear-attention` kernels, so Qwen3.6's linear-attention layers ran the slow path for the whole teacher pass and heal (build 15, item 2).
+- **Decision**: keep Riker. Riker v1, Bill v1, Riker v2 and Bill v2 are retired and their files deleted. Next: one combined run (lessons, 35Bob Bobert, then 20Bob Bill cut from Bobert with the full rule), when the owner gives the word; see the build 17 entry.
 
 ## 5. Running tallies
 
 | | Count |
 |---|---|
-| Bobs made and home | 5 files sets: Riker v1, Bill v1, Riker v2, Bill v2, Riker v3 |
-| Bobs that are the current plan | Riker v3 (28Bob); Bill v3 pending |
-| Failed paid attempts | 4 (three on 4 to 5 Nov, one on 6 Nov) plus the half-run of 6 to 7 Nov |
+| Bobs made | 5: Riker v1, Bill v1, Riker v2, Bill v2 (all four retired and deleted 8 Nov), and Riker (28Bob) |
+| Bobs that are the current plan | Riker (28Bob), kept; Bobert (35Bob) and Bill (20Bob) next |
+| Failed paid attempts | 4 (three on 4 to 5 Nov, one on 6 Nov) plus the stopped Bill step of 6 to 7 Nov |
 | Lessons written | about 9,500 across 17 sets |
 | Card time | on the costs page |
