@@ -2,6 +2,7 @@
 // checkboxes and radio buttons instead of command-line flags. Show the recipe shows the exact commands. Rented cards
 // and writing new lesson sets come in Lab 2 and are shown as "later", never offered.
 import { esc } from './rich.js';
+import { TEMPLATES, templateById, templateWhyNot, applyTemplate } from './lab-templates.js';
 
 const $ = (id) => document.getElementById(id);
 const STEPS = [['brain', '1 Pick a brain'], ['lessons', '2 Lessons'], ['smaller', '3 Make it smaller'], ['where', '4 Where it runs'], ['test', '5 Test and use']];
@@ -12,12 +13,14 @@ export function createLab({ api, note }) {
   const dlg = $('lab'), body = $('lab-body');
   $('lab-close').onclick = () => dlg.close();
   let view = null, step = 'brain', plan = null, showRecipe = false, msg = '', askUnload = null;
-  const r = { name: '', from: '', lessons: { kind: 'none', file: '', chunks: 200 }, smaller: { sight: false, hearing: false, cut: null, files: [] }, test: { compare: true } };
+  let measures = [], picked = [], table = null, saved = '';
+  const r = { template: '', name: '', from: '', lessons: { kind: 'none', file: '', chunks: 200 }, smaller: { sight: false, hearing: false, cut: null, files: [], measure: false }, test: { compare: true } };
   const brain = () => view?.brains.find((b) => b.id === r.from);
   const running = () => view?.runs.find((x) => x.state === 'running');
 
   async function load() {
     try { view = await api('/api/lab'); } catch (e) { msg = e.message; }
+    try { measures = (await api('/api/lab/measures')).measures || []; picked = picked.filter((id) => measures.some((m) => m.id === id)); } catch { measures = []; }
     await replan();
   }
   async function replan() {
@@ -28,6 +31,26 @@ export function createLab({ api, note }) {
   const radio = (name, value, on, label, hint = '', dis = '') => `<label class="lab-opt${dis ? ' dim' : ''}"><input type="radio" name="${name}" value="${esc(value)}" ${on ? 'checked' : ''} ${dis ? 'disabled' : ''}> <span><strong>${esc(label)}</strong>${hint ? `<br><span class="muted">${esc(hint)}</span>` : ''}${dis ? `<br><span class="muted">${esc(dis)}</span>` : ''}</span></label>`;
   const box = (key, on, label, hint = '', dis = '', more = '') => `<label class="lab-opt${dis ? ' dim' : ''}"><input type="checkbox" data-k="${key}" ${on ? 'checked' : ''} ${dis ? 'disabled' : ''}> <span><strong>${esc(label)}</strong>${more}${hint ? `<br><span class="muted">${esc(hint)}</span>` : ''}${dis ? `<br><span class="muted">${esc(dis)}</span>` : ''}</span></label>`;
   const later = (label, hint) => `<div class="lab-opt dim" aria-disabled="true"><span><strong>${esc(label)}</strong> <span class="lab-later">Later (Lab 2)</span><br><span class="muted">${esc(hint)}</span></span></div>`;
+
+  function templateHtml() {
+    const b = brain(), f = b?.facts || {}, t = templateById(r.template);
+    const opts = TEMPLATES.map((x) => { const why = templateWhyNot(x, f, b?.name); return `<option value="${esc(x.template)}" ${r.template === x.template ? 'selected' : ''} ${why ? 'disabled' : ''}>${esc(x.title)}${why ? (x.later ? ' (not built yet)' : x.where === 'rented' ? ' (rented card, Lab 2)' : ' (not for this brain)') : ''}</option>`; }).join('');
+    const why = t ? templateWhyNot(t, f, b?.name) : '';
+    return `<div class="lab-template"><p><label for="lab-template">Start from a template</label> <select id="lab-template" aria-describedby="lab-template-help" ${r.from ? '' : 'disabled'}><option value="">(none: tick it all yourself)</option>${opts}</select></p>
+      <p id="lab-template-help" class="muted">${!r.from ? 'Pick a brain first, then a template fills steps 2 to 5 for it.' : t ? `${esc(t.help)}${why ? ` ${esc(why)}` : ' You can still change every box.'}` : 'A template is a recipe I\'ve used before, with the choices already ticked. Greyed ones need a rented card or aren\'t built yet.'}</p></div>`;
+  }
+
+  function compareHtml() {
+    if (measures.length < 2) return '';
+    const head = table ? `<tr><th scope="col">What</th>${table.names.map((n) => `<th scope="col">${esc(n)}</th>`).join('')}${table.names.length === 2 ? '<th scope="col">Difference</th>' : ''}</tr>` : '';
+    const rows = table ? table.rows.map((x) => `<tr><th scope="row">${esc(x.label)}</th>${x.values.map((v) => `<td>${v === null ? '-' : esc(String(v))}</td>`).join('')}${table.names.length === 2 ? `<td>${esc(x.diffText || '')}</td>` : ''}</tr>`).join('') : '';
+    return `<section class="lab-compare"><h3>Compare</h3>
+      <p class="muted">Pick two or more tested brains to put side by side. The difference column says plus or minus: the second one minus the first.</p>
+      <fieldset><legend>Brains to compare</legend>${measures.map((m) => `<label class="lab-opt"><input type="checkbox" data-measure="${esc(m.id)}" ${picked.includes(m.id) ? 'checked' : ''}> <span><strong>${esc(m.name)}</strong> <span class="muted">${esc([m.parentOf ? 'the brain a Lab job started from' : 'made in the Lab', m.where === 'home' ? 'tested here' : m.where, m.when].filter(Boolean).join(' · '))}</span></span></label>`).join('')}</fieldset>
+      ${table ? `<table class="lab-report"><caption class="muted">Lab test and measurements</caption>${head}${rows}</table>
+        <div class="row"><button type="button" class="link" data-csv>Save as CSV</button><button type="button" class="link" data-json>Save as JSON</button></div>${saved ? `<p class="muted" role="status">Saved ${esc(saved)} in the Lab's compare folder.</p>` : ''}` : ''}
+    </section>`;
+  }
 
   function brainStep() {
     if (!view.brains.length) return '<p>There are no brains on this replicant matrix the Lab can work with yet. Get one in Get models first (any brain that runs on Bob\'s own engine).</p>';
@@ -77,6 +100,7 @@ export function createLab({ api, note }) {
       <fieldset><legend>Make the running files</legend>
         ${f.fullSize ? '' : `<p class="muted">${esc(b?.name || 'This brain')} is already a running file (${esc(f.fileType || '?')}), so it stays as it is. Making running files needs the full-size copy (F16 or BF16).</p>`}
         ${view.types.filter((t) => t !== 'Q3_K_M' || (f.sizeGB || 99) <= 16).map((t) => box(`file:${t}`, s.files.includes(t), TYPE_NOTE[t], f.sizeGB ? `About ${Math.round(f.sizeGB * ({ Q4_K_M: 0.3, Q5_K_M: 0.36, Q6_K: 0.41, Q8_0: 0.53, Q3_K_M: 0.25 }[t] || 0.3) * 10) / 10} GB from this brain${cut ? ' before the cut' : ''}.` : '', f.fullSize ? '' : 'Needs the full-size copy.')).join('')}
+        ${s.files.length ? box('measure', s.measure, 'Measure before making the running files (recommended)', 'Before the running files, Bob measures which weights matter most on your lessons, on the cut brain itself. The running files lose less that way, most of all at Q4 and Q3. Adds a few minutes on the card.', r.lessons.kind === 'none' ? 'Needs lessons to measure on: pick a lesson set in step 2.' : '') : ''}
       </fieldset>
     </fieldset>`;
   }
@@ -114,6 +138,7 @@ export function createLab({ api, note }) {
       <p class="muted">Make your own brain from one on this replicant matrix. Each step says what it does and whether this replicant matrix can do it. Show the recipe shows the exact commands, if you want to learn them.</p>
       ${view.recipes.length ? `<p><label>Start from a saved recipe <select id="lab-recipe"><option value="">(none)</option>${view.recipes.map((x, n) => `<option value="${n}">${esc(x.name)}</option>`).join('')}</select></label></p>` : ''}
       ${runsHtml()}
+      ${templateHtml()}
       <nav class="lab-steps" aria-label="Lab steps"><ol>${STEPS.map(([id, label], n) => `<li><button type="button" class="lab-step${id === step ? ' on' : ''}" data-step="${id}" ${id === step ? 'aria-current="step"' : ''} ${n > 0 && !r.from ? 'disabled' : ''}>${esc(label)}</button></li>`).join('')}</ol></nav>
       <div class="lab-panel" id="lab-panel">${html}</div>
       ${plan ? `<div class="lab-check" role="status">${plan.problems.length ? `<p><strong>Before it can start:</strong></p><ul>${plan.problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : `<p><strong>Ready.</strong> ${plan.steps.length} steps: ${plan.steps.map((s) => esc(s.label)).join(', ')}.</p>`}${plan.notes.map((n) => `<p class="muted">${esc(n)}</p>`).join('')}</div>` : ''}
@@ -126,12 +151,19 @@ export function createLab({ api, note }) {
       </div>
       ${showRecipe ? `<div class="lab-recipe"><pre tabindex="0">${esc(plan?.text || 'Pick a brain first.')}</pre><button type="button" class="link" data-copy>Copy</button></div>` : ''}
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
+      ${compareHtml()}
     </div>`;
   }
 
   body.addEventListener('change', async (e) => {
     const el = e.target; msg = '';
-    if (el.name === 'from') { r.from = el.value; const b = brain(); if (!r.name && b) r.name = `${b.name} Lab`; r.smaller = { sight: false, hearing: false, cut: null, files: [] }; }
+    if (el.name === 'from') { r.from = el.value; const b = brain(); if (!r.name && b) r.name = `${b.name} Lab`; r.smaller = { sight: false, hearing: false, cut: null, files: [], measure: false }; r.template = ''; }
+    else if (el.id === 'lab-template') {
+      const t = templateById(el.value), b = brain();
+      if (!t) r.template = '';
+      else if (!templateWhyNot(t, b?.facts || {}, b?.name)) Object.assign(r, applyTemplate(r, t, { keepDefault: b?.cuts?.[1]?.keep || b?.cuts?.[0]?.keep || 8, fullSize: Boolean(b?.facts?.fullSize), brainName: b?.name || '' }));
+    }
+    else if (el.dataset.measure) { picked = el.checked ? [...new Set([...picked, el.dataset.measure])] : picked.filter((x) => x !== el.dataset.measure); saved = ''; try { table = picked.length >= 2 ? (await api('/api/lab/compare', { ids: picked })).table : null; } catch (err) { msg = err.message; table = null; } return draw(); }
     else if (el.name === 'lessons') r.lessons.kind = el.value;
     else if (el.name === 'cuthow') r.smaller.cut.how = el.value;
     else if (el.name === 'keep') { if (el.value !== 'custom') r.smaller.cut.keep = Number(el.value); }
@@ -146,7 +178,8 @@ export function createLab({ api, note }) {
       if (k === 'sight' || k === 'hearing') r.smaller[k] = el.checked;
       else if (k === 'cut') r.smaller.cut = el.checked ? { how: 'busiest', keep: brain()?.cuts?.[1]?.keep || brain()?.cuts?.[0]?.keep || 8, file: '' } : null;
       else if (k === 'compare') r.test.compare = el.checked;
-      else if (k.startsWith('file:')) { const t = k.slice(5); r.smaller.files = el.checked ? [...new Set([...r.smaller.files, t])] : r.smaller.files.filter((x) => x !== t); }
+      else if (k === 'measure') r.smaller.measure = el.checked;
+      else if (k.startsWith('file:')) { const t = k.slice(5); const first = !r.smaller.files.length; r.smaller.files = el.checked ? [...new Set([...r.smaller.files, t])] : r.smaller.files.filter((x) => x !== t); if (first && el.checked && r.lessons.kind !== 'none') r.smaller.measure = true; if (!r.smaller.files.length) r.smaller.measure = false; }
     }
     await replan();
   });
@@ -163,6 +196,7 @@ export function createLab({ api, note }) {
     if ('recipe' in b.dataset) { showRecipe = !showRecipe; return draw(); }
     if ('copy' in b.dataset) { try { await navigator.clipboard.writeText(plan?.text || ''); b.textContent = 'Copied'; } catch { b.textContent = 'Couldn\'t copy'; } return; }
     if ('nounload' in b.dataset) { askUnload = null; return draw(); }
+    if ('csv' in b.dataset || 'json' in b.dataset) { try { saved = (await api('/api/lab/compare', { ids: picked, save: 'csv' in b.dataset ? 'csv' : 'json' })).file; } catch (err) { msg = err.message; } return draw(); }
     try {
       if ('start' in b.dataset || 'unload' in b.dataset) {
         const res = await api('/api/lab/start', { recipe: r, unload: 'unload' in b.dataset });

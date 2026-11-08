@@ -91,13 +91,13 @@ async function ask(url, messages, tools, signal) {
   if (!r.ok) throw new Error(`llama-server answered ${r.status}`);
   const j = await r.json();
   const m = j.choices?.[0]?.message || {};
-  return { text: stripThink(m.content), calls: (m.tool_calls || []).map((c) => c.function?.name), tps: Number(j.timings?.predicted_per_second) || 0 };
+  return { text: stripThink(m.content), calls: (m.tool_calls || []).map((c) => c.function?.name), tps: Number(j.timings?.predicted_per_second) || 0, prefillTps: Number(j.timings?.prompt_per_second) || 0 };
 }
 
 // The quiz on a running server. onStep(done, total) as it goes. Returns { parts: { id: { right, of, score } }, score, tps }.
 export async function runQuiz(url, { signal, onStep = () => {}, quiz = QUIZ } = {}) {
   const total = Object.values(quiz).reduce((a, l) => a + l.length, 0);
-  let done = 0; const speeds = []; const parts = {}; const misses = [];
+  let done = 0; const speeds = [], reads = []; const parts = {}; const misses = [];
   for (const [part, list] of Object.entries(quiz)) {
     let right = 0;
     for (const [q, want] of list) {
@@ -106,6 +106,7 @@ export async function runQuiz(url, { signal, onStep = () => {}, quiz = QUIZ } = 
       try {
         const a = await ask(url, [{ role: 'user', content: q }], part === 'tools' ? TOOLS : null, signal);
         if (a.tps) speeds.push(a.tps);
+        if (a.prefillTps) reads.push(a.prefillTps);
         ok = part === 'tools' ? a.calls[0] === want : typeof want === 'function' ? want(a.text) : want.test(a.text);
       } catch (e) { if (signal?.aborted) throw e; }
       if (ok) right++; else misses.push({ part, q });
@@ -115,5 +116,6 @@ export async function runQuiz(url, { signal, onStep = () => {}, quiz = QUIZ } = 
   }
   const score = Math.round(Object.values(parts).reduce((a, p) => a + p.score, 0) / Object.keys(parts).length);
   const tps = speeds.length ? Math.round((10 * speeds.reduce((a, b) => a + b, 0)) / speeds.length) / 10 : 0;
-  return { parts, score, tps, misses };
+  const prefillTps = reads.length ? Math.round(reads.reduce((a, b) => a + b, 0) / reads.length) : 0;
+  return { parts, score, tps, prefillTps, misses };
 }

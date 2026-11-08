@@ -10,6 +10,8 @@ import { readGguf, brainFacts, readerFacts, writeGguf, readCounts, busiest, chec
 import { startServer, runQuiz, PARTS } from './lab-test.js';
 import { saveSettings } from './config.js';
 import { gaming } from './sessions.js';
+import { TEMPLATE_IDS, templateById } from '../public/lab-templates.js';
+import crypto from 'node:crypto';
 
 export const labOn = (cfg) => cfg?.computerLab === true;
 export const MIN_RAM_GB = 12;
@@ -96,12 +98,80 @@ export function cleanRecipe(r = {}) {
   const cut = s.cut && typeof s.cut === 'object' ? { how: s.cut.how === 'file' ? 'file' : 'busiest', keep: Math.max(1, Math.min(1024, Number(s.cut.keep) || 0)), file: typeof s.cut.file === 'string' ? s.cut.file : '' } : null;
   const l = r.lessons || {};
   return {
+    template: TEMPLATE_IDS.includes(r.template) ? r.template : '',
     name: String(r.name || '').replace(/[\r\n]/g, ' ').trim().slice(0, 60),
     from: String(r.from || '').slice(0, 120),
     lessons: { kind: ['file', 'chats', 'none'].includes(l.kind) ? l.kind : 'none', file: typeof l.file === 'string' ? l.file : '', chunks: Math.max(20, Math.min(2000, Number(l.chunks) || 200)) },
-    smaller: { sight: s.sight === true, hearing: s.hearing === true, cut, files: [...new Set([].concat(s.files || []).filter((t) => RUNNING_TYPES.includes(t)))] },
+    smaller: { sight: s.sight === true, hearing: s.hearing === true, cut, files: [...new Set([].concat(s.files || []).filter((t) => RUNNING_TYPES.includes(t)))], measure: s.measure === true },
     test: { compare: r.test?.compare !== false }
   };
+}
+
+// 1.5.142 One measurement record per tested brain (measure.json, bob-design/cut-and-train-templates.md section 3),
+// the same shape the Forge and the PC benchmarks write, so Compare can put any of them side by side. Missing parts are
+// left out, never zeroed. No paths, host names or people.
+export function measureRecord({ name, sha256, facts = {}, sizeGB, template, parent, test, engine, cfg = {}, when }) {
+  const rec = { brain: { name } };
+  if (sha256) rec.brain.sha256 = sha256;
+  if (facts.fileType) rec.brain.quant = facts.fileType;
+  if (facts.experts) rec.brain.expertsKept = facts.experts;
+  if (sizeGB) rec.brain.sizeGB = sizeGB;
+  if (template) rec.brain.template = template;
+  if (parent) rec.brain.parent = parent;
+  rec.where = { place: 'home' };
+  if (test?.where === 'card' && Number(cfg.gpuVramGB)) rec.where.card = `${Number(cfg.gpuVramGB)} GB card`;
+  else if (test?.where === 'processor') rec.where.card = 'processor only';
+  if (engine || test?.engine) rec.where.engine = test?.engine || engine;
+  rec.where.settings = '-c 8192 --jinja --fit on, thinking off, temperature 0';
+  rec.when = new Date(when || Date.now()).toISOString().slice(0, 10);
+  if (test?.parts) {
+    rec.scores = {};
+    for (const [k, v] of Object.entries(test.parts)) rec.scores[PARTS[k] || k] = v.score;
+    rec.scores['Lab test (all)'] = test.score;
+  }
+  if (test?.tps || test?.prefillTps) rec.speed = { ...(test.tps ? { tps: test.tps } : {}), ...(test.prefillTps ? { prefillTps: test.prefillTps } : {}) };
+  return rec;
+}
+
+// sha256 of a brain file, read in pieces so a 20 GB file never sits in memory and Bob keeps answering.
+export function sha256File(file, signal) {
+  return new Promise((resolve, reject) => {
+    const h = crypto.createHash('sha256');
+    const st = fs.createReadStream(file, { highWaterMark: 16 << 20 });
+    const stop = () => { st.destroy(); reject(new Error('Stopped.')); };
+    signal?.addEventListener?.('abort', stop, { once: true });
+    st.on('data', (d) => h.update(d));
+    st.on('error', reject);
+    st.on('end', () => { signal?.removeEventListener?.('abort', stop); resolve(h.digest('hex')); });
+  });
+}
+
+// Compare: rows of fields, one column per record, and a difference column (second minus first) when there are two.
+const FIELD_LABELS = { 'brain.sizeGB': 'Size (GB)', 'brain.expertsKept': 'Experts per layer', 'brain.quant': 'File type', 'brain.template': 'Template', 'brain.parent': 'Made from', 'where.place': 'Where', 'where.card': 'Card', 'where.engine': 'Engine', 'when': 'Tested on', 'speed.tps': 'Words a second', 'speed.prefillTps': 'Reading speed (words a second)' };
+const flat = (o, pre = '', out = {}) => { for (const [k, v] of Object.entries(o || {})) { const key = pre ? `${pre}.${k}` : k; if (v && typeof v === 'object' && !Array.isArray(v)) flat(v, key, out); else out[key] = v; } return out; };
+export function compareTable(records) {
+  const flats = records.map((r) => flat(r));
+  const keys = [];
+  for (const f of flats) for (const k of Object.keys(f)) if (!keys.includes(k) && k !== 'brain.name' && k !== 'brain.sha256' && k !== 'where.settings') keys.push(k);
+  const order = (k) => (k.startsWith('scores.') ? 0 : k.startsWith('speed.') ? 1 : k.startsWith('memory.') ? 2 : k.startsWith('brain.') ? 3 : 4);
+  keys.sort((a, b) => order(a) - order(b));
+  const rows = keys.map((k) => {
+    const values = flats.map((f) => (k in f ? (k === 'brain.template' ? templateById(f[k])?.title || f[k] : f[k]) : null));
+    const row = { field: k, label: FIELD_LABELS[k] || (k.startsWith('scores.') ? `${k.slice(7)} (out of 100)` : k), values };
+    if (values.length === 2 && typeof values[0] === 'number' && typeof values[1] === 'number') {
+      const d = Math.round((values[1] - values[0]) * 10) / 10;
+      row.diff = d; row.diffText = `${d > 0 ? '+' : ''}${d}${values[0] ? ` (${d > 0 ? '+' : ''}${Math.round((100 * d) / values[0])}%)` : ''}`;
+    }
+    return row;
+  });
+  return { names: records.map((r) => r.brain?.name || '?'), rows };
+}
+export function compareCsv(table) {
+  const cell = (v) => (v === null || v === undefined ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+  const two = table.names.length === 2;
+  const lines = [['Field', ...table.names, ...(two ? ['Difference'] : [])].map(cell).join(',')];
+  for (const r of table.rows) lines.push([r.label, ...r.values, ...(two ? [r.diffText || ''] : [])].map(cell).join(','));
+  return lines.join('\r\n') + '\r\n';
 }
 
 // The steps a recipe makes, and what's wrong with it (problems stop it; notes don't). Every step has the command it
@@ -154,10 +224,23 @@ export function planRecipe(recipe, { brain, facts, tools, outDir }) {
     steps.push({ id: 'reader', label: 'Copy the picture and sound reader', cmd: `# copy ${q(brain.mmproj)} to ${q(out)}`, src: brain.mmproj, out, drop: 'none' });
     reader = out;
   }
+  // Measure before making the running files: an importance matrix from the CUT file (expert counts change in a cut,
+  // so one made on the source brain doesn't line up), passed to llama-quantize so the running files lose less.
+  let imatrix = null;
+  if (s.measure && s.files.length) {
+    if (r.lessons.kind === 'none') problems.push('Measuring before making the running files needs lessons to measure on. Pick a lesson set in step 2, or untick Measure.');
+    else {
+      const corpus = path.join(dir, 'lessons.txt');
+      if (!steps.some((x) => x.id === 'lessons')) steps.unshift({ id: 'lessons', label: r.lessons.kind === 'chats' ? 'Gather your chats with Bob as lessons' : 'Read the lesson set', cmd: `# Bob writes the lessons as one text file: ${q(corpus)}`, corpus });
+      imatrix = path.join(dir, 'imatrix.gguf');
+      steps.push({ id: 'imatrix', label: 'Measure which weights matter most', cmd: `${q(tools.imatrix.path)} -m ${q(file)} -f ${q(corpus)} -o ${q(imatrix)} -c 4096 --chunks ${r.lessons.chunks} --fit on`, src: file, corpus, out: imatrix, card: true });
+      if (!tools.imatrix?.found && !problems.some((x) => x.includes(path.basename(tools.imatrix.path)))) problems.push(`${path.basename(tools.imatrix.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it; download the engine again if it's missing.`);
+    }
+  }
   const finals = [];
   for (const t of s.files) {
     const out = path.join(dir, `${slug}-${t}.gguf`);
-    steps.push({ id: 'quantize', label: `Make the ${t} running file`, cmd: `${q(tools.quantize.path)} ${q(file)} ${q(out)} ${t}`, src: file, out, type: t });
+    steps.push({ id: 'quantize', label: `Make the ${t} running file`, cmd: `${q(tools.quantize.path)} ${imatrix ? `--imatrix ${q(imatrix)} ` : ''}${q(file)} ${q(out)} ${t}`, src: file, out, type: t, imatrix });
     finals.push(out);
   }
   if (!finals.length) finals.push(file);
@@ -226,6 +309,33 @@ export class Lab {
 
   brains() { return labBrains(this.shop); }
 
+  engineName() { return 'llama.cpp'; }
+
+  // Every measurement record in the Lab folder: <brain folder>/measure.json and measure-parent.json.
+  measures() {
+    const root = labModelsDir(this.cfg), out = [];
+    let dirs = []; try { dirs = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch {}
+    for (const d of dirs) for (const f of ['measure.json', 'measure-parent.json']) {
+      const rec = readJson(path.join(root, d, f), null);
+      if (rec?.brain?.name) out.push({ id: `${d}/${f}`, name: rec.brain.name, when: rec.when || '', where: rec.where?.place || '', parentOf: f === 'measure-parent.json' ? d : '', rec });
+    }
+    return out;
+  }
+
+  compare(ids, save) {
+    const all = this.measures();
+    const picked = [].concat(ids || []).map((id) => all.find((m) => m.id === id)).filter(Boolean);
+    if (picked.length < 2) throw new Error('Pick at least two brains to compare.');
+    const table = compareTable(picked.map((m) => m.rec));
+    if (!save) return { table };
+    const dir = path.join(labModelsDir(this.cfg), 'compare');
+    fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date(this.now()).toISOString().replace(/[:T]/g, '-').slice(0, 19);
+    const file = path.join(dir, `compare-${stamp}.${save === 'csv' ? 'csv' : 'json'}`);
+    fs.writeFileSync(file, save === 'csv' ? compareCsv(table) : JSON.stringify({ records: picked.map((m) => m.rec), table }, null, 1));
+    return { table, file };
+  }
+
   view() {
     const room = this.room();
     const cardGB = Number(this.cfg.gpuVramGB) || 0;
@@ -243,6 +353,8 @@ export class Lab {
     const p = planRecipe(r, { brain, facts: facts || {}, tools: this.tools(), outDir: labModelsDir(this.cfg) });
     if (p.slug && madeBrains(this.cfg).some((m) => m.id === `lab-${p.slug}`)) p.problems.push(`You already have a Lab brain called ${r.name}. Pick another name.`);
     p.text = p.steps.map((s, i) => `# ${i + 1}. ${s.label}\n${s.cmd}`).join('\n\n');
+    const t = templateById(r.template);
+    if (t) p.text = `# Template: ${t.title}${t.forge ? `\n# The same method as a Forge plan (fill in the <...> parts):\n${JSON.stringify({ template: t.template, ...t.forge }, null, 1).split('\n').map((x) => `#   ${x}`).join('\n')}` : ''}\n\n${p.text}`;
     return p;
   }
 
@@ -313,6 +425,8 @@ export class Lab {
         } else if (s.id === 'reader') {
           if (s.drop === 'none') fs.copyFileSync(s.src, s.out);
           else if (s.drop !== 'all') await fx.reader(s, { signal });
+        } else if (s.id === 'imatrix') {
+          await fx.imatrix(s, { recipe: p.recipe, signal });
         } else if (s.id === 'quantize') {
           await fx.quantize(s, { signal });
         } else if (s.id === 'test' || s.id === 'compare') {
@@ -325,6 +439,12 @@ export class Lab {
       r.sizeGB = round1(size(p.finals[0]) / GB);
       r.report = { made: tests.test, from: tests.compare || null, sizeGB: r.sizeGB, fromGB: round1(size(brain.gguf) / GB), at: this.now() };
       writeJson(path.join(p.dir, 'lab-report.json'), { name: r.name, from: brain.name, recipe: p.recipe, ...r.report });
+      r.stepLabel = 'Write the measurement record'; this.tell(r);
+      const facts = (() => { try { return brainFacts(readGguf(p.finals[0])); } catch { return {}; } })();
+      const parentFacts = (() => { try { return brainFacts(readGguf(brain.gguf)); } catch { return {}; } })();
+      const made = measureRecord({ name: r.name, sha256: await sha256File(p.finals[0], signal), facts, sizeGB: r.sizeGB, template: p.recipe.template, parent: brain.name, test: tests.test, engine: this.engineName(), cfg: this.cfg, when: this.now() });
+      writeJson(path.join(p.dir, 'measure.json'), made);
+      if (tests.compare) writeJson(path.join(p.dir, 'measure-parent.json'), measureRecord({ name: brain.name, sha256: await sha256File(brain.gguf, signal), facts: parentFacts, sizeGB: r.report.fromGB, test: tests.compare, engine: this.engineName(), cfg: this.cfg, when: this.now() }));
       r.state = 'done'; r.step = ''; r.stepLabel = '';
       this.tell(r);
       this.broadcast({ type: 'lab-done', name: r.name, ok: true, score: tests.test?.score });
@@ -343,10 +463,16 @@ export class Lab {
         .catch((e) => { if (signal.aborted) throw e; return run(tools.imatrix.path, ['-m', brain.gguf, '-f', s.corpus, '-o', s.counts, '-c', '4096', '--chunks', String(recipe.lessons.chunks), '-ngl', '0'], { signal, log }); }),
       cut: async (s, { keep, onProgress, signal }) => writeGguf(s.src, s.out, { keep, onProgress, signal }),
       reader: async (s, { signal }) => writeGguf(s.src, s.out, { drop: (t) => (s.drop === 'sight' ? isSightTensor(t.name) : isHearingTensor(t.name)), set: s.drop === 'sight' ? { 'clip.has_vision_encoder': false } : { 'clip.has_audio_encoder': false }, signal }),
-      quantize: (s, { signal }) => run(tools.quantize.path, [s.src, s.out, s.type], { signal, log }),
+      imatrix: (s, { recipe, signal }) => run(tools.imatrix.path, ['-m', s.src, '-f', s.corpus, '-o', s.out, '-c', '4096', '--chunks', String(recipe.lessons.chunks), '--fit', 'on'], { signal, log })
+        .catch((e) => { if (signal.aborted) throw e; return run(tools.imatrix.path, ['-m', s.src, '-f', s.corpus, '-o', s.out, '-c', '4096', '--chunks', String(recipe.lessons.chunks), '-ngl', '0'], { signal, log }); }),
+      quantize: (s, { signal }) => run(tools.quantize.path, [...(s.imatrix ? ['--imatrix', s.imatrix] : []), s.src, s.out, s.type], { signal, log }),
       test: async (s, { signal, onProgress }) => {
         const srv = await startServer({ exe: tools.server.path, gguf: s.gguf, mmproj: s.mmproj, signal, log });
-        try { return { ...(await runQuiz(srv.url, { signal, onStep: (d, t) => onProgress(d / t) })), where: srv.where }; } finally { srv.stop(); }
+        try {
+          let engine = 'llama.cpp';
+          try { if ((await fetch(srv.url + '/expert-mask', { signal: AbortSignal.timeout(3000) })).ok) engine = 'Brain Engine'; } catch {}
+          return { ...(await runQuiz(srv.url, { signal, onStep: (d, t) => onProgress(d / t) })), where: srv.where, engine };
+        } finally { srv.stop(); }
       }
     };
   }
@@ -376,13 +502,16 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
   if (!p.startsWith('/api/lab')) return false;
   try {
     if (req.method === 'GET' && p === '/api/lab') { send(res, 200, lab.view()); return true; }
+    if (req.method === 'GET' && p === '/api/lab/measures') { send(res, 200, { measures: lab.measures().map(({ rec, ...m }) => m) }); return true; }
     if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }
     const b = await body(req);
+    if (p === '/api/lab/compare' && !b.save) { send(res, 200, lab.compare(b.ids)); return true; }
     if (!isLocal && !['/api/lab/plan'].includes(p)) { send(res, 403, { error: 'Lab jobs can only be started on this replicant matrix itself for now.' }); return true; }
     if (p === '/api/lab/plan') { const pl = lab.plan(b.recipe); send(res, 200, { problems: pl.problems, notes: pl.notes, steps: pl.steps.map((s) => ({ id: s.id, label: s.label })), text: isLocal ? pl.text : '' }); return true; }
     if (p === '/api/lab/start') { send(res, 200, await lab.start(b.recipe, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/stop') { send(res, 200, lab.stop()); return true; }
     if (p === '/api/lab/use') { send(res, 200, lab.use(String(b.run || ''))); return true; }
+    if (p === '/api/lab/compare') { const c = lab.compare(b.ids, b.save === 'csv' ? 'csv' : 'json'); send(res, 200, { table: c.table, file: path.basename(c.file) }); return true; }
     if (p === '/api/lab/recipe') { send(res, 200, { recipes: lab.saveRecipe(b.recipe) }); return true; }
     send(res, 404, { error: 'no' }); return true;
   } catch (e) { send(res, 400, { error: e.message }); return true; }

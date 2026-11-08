@@ -1336,3 +1336,9 @@ details.fold > summary .muted { font-weight: 400; font-size: 13px; }
 .lab-report th, .lab-report td { border: 1px solid var(--line); padding: 2px 8px; text-align: left; }
 #lab-chunks-n, #lab-keep-n { width: 6em; }
 #lab-name, #lab-lessons-file, #lab-keep-file { width: min(420px, 100%); }
+
+/* 1.5.142 Lab 1b: the template picker and Compare */
+.lab-template select { max-width: 100%; }
+.lab-compare { margin: 0.75rem 0; }
+.lab-compare .lab-report td, .lab-compare .lab-report th { padding: 0.2rem 0.6rem; text-align: left; }
+.lab-compare .lab-report { overflow-x: auto; display: block; max-width: 100%; }
