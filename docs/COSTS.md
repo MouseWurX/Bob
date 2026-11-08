@@ -24,7 +24,7 @@ Every rental, including the ones that made nothing. Times are the owner's local 
 | 6 Nov 2026, morning to evening | 1x H200 141 GB SXM, no drive (none free in the drive's data centre) | 9.7 h | $5.29/h | **28Bob Riker.** Teacher pass (125 min, 26,628 pieces); 28Bob Riker (208 experts) cut and healed in a full pass (929 of 929 steps, 5.9 h); Q4, Q3 and adapter home. Benchmarked on 8 Nov and kept (see [Bob's own models](BOBS-OWN-MODELS.md#28bob-riker-the-one-that-stays)). Then a shell bug in the plan reader stopped 20Bob Bill v3 at its keep list and the machine deleted itself as designed, taking the full-precision Riker and the teacher's scores with it, because there was no drive. Both fixed in Forge build 15; the drive rule is now hard. Card time plus the working disk, from the rental service's statement. | $51.79 |
 | | | **37.1 h of card time** | | **Four failed attempts: $15.81, plus the stopped Bill step above. Five Bobs made; Riker (28Bob) is kept, the first Riker and Bill (v1 and v2) are retired and deleted, and Bill is next.** | **$183.90** |
 
-The total is taken from the rental service's statement; the lines above are rounded to the cent. A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists.
+The total is taken from the rental service's statement; the lines above are rounded to the cent. A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists; the combined Bobert and Bill run needs it at 300 GB, about $21 a month.
 
 ### Tools and subscriptions
 
@@ -84,7 +84,7 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 
 | What | Projected |
 |---|---|
-| Rented network drive, about 2 more months | about $14 |
+| Rented network drive, about 2 more months (100 GB at about $7 a month, or 300 GB at about $21 for the combined run) | $14 to $42 |
 | Benchmarks, exports and the Hugging Face upload | $0 (done on the owner's PC) |
 | Re-runs: one per rung if a heal scores badly | up to $20 each |
 | Code signing, when the project is visible enough | $0 (reapply to the SignPath Foundation, a free signing service for open-source projects), or about $10 a month for a cloud code-signing service, or $100 to $400 a year for a code-signing certificate |
@@ -110,9 +110,9 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 | Line B remaining rungs (Homer to Bender) | $119 | $129 |
 | New lessons, 35Bob Bobert and 20Bob Bill (one combined run) | $135 | $135 |
 | Specialists (four, with their lessons) | $100 | $100 |
-| Rented network drive, about 2 more months | $14 | $14 |
+| Rented network drive, about 2 more months (100 to 300 GB) | $14 | $42 |
 | Re-runs allowed (one per rung if a heal scores badly) | $0 | $60 |
 | Claude subscription while the family is finished, about 1 more month | $200 | $200 |
-| **Projected total, line B complete** | **about $1,302** | **about $1,372** |
+| **Projected total, line B complete** | **about $1,302** | **about $1,400** |
 | Line A as well, if the comparison after Homer earns it | +$179 | +$189 |
-| **Projected total, both lines** | **about $1,481** | **about $1,561** |
+| **Projected total, both lines** | **about $1,481** | **about $1,589** |
