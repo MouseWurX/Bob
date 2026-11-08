@@ -9,13 +9,13 @@ Update this file in the same handover as any change to settings.
 |---|---|---|---|
 | Bob's voice | (row shows current voice, Play, Change → Voice & conversation) | Windows voice until Kokoro is set up | ok |
 | Bob's look | (current look, Change → Style) | Sysop | ok |
-| Use Bob's look as his icon | Off unless you turn it on. His icon on the taskbar (Dock on a Mac), in the tray and in the corner of his window shows the look you picked, and changes when you change it. (Disabled in a browser.) | Off | 1.5.94, awaiting review |
+| Use Bob's look as his icon | On unless you turn it off. His icon on the taskbar (Dock on a Mac), in the tray and in the corner of his window shows the look you picked, and changes the moment you save a new one (a shortcut pinned to the taskbar may keep the usual icon: Windows draws those from the shortcut). Off: the usual Bob icon. (Disabled in a browser.) | On (was Off before 1.5.134; the owner asked) | 1.5.134 |
 | Theme | (current theme, Change → Style) | Bob's Inn | ok (1.5.2: row renamed "Theme") |
 | Animations | On / Follow Windows (other systems: Follow the system) / Off | On | ok (1.5.98) |
 | Bob's cat | (text box) | Patches | ok (1.5.2) |
 | One brain (snappier) | Every copy of Bob uses the main brain, so there's no brain swap. | off | ok (1.5.2) |
 | Launch Bob on start-up | Off unless you turn it on. | off | ok |
-| Keep Bob in the tray | Off unless you turn it on. Closing or minimising Bob's window tucks him into the tray by the clock (Mac: the menu bar; Linux: your desktop's tray) instead of closing him, so he keeps running. Click his icon to open him again. To close him fully, right-click (Mac: click) his icon and pick **Quit Bob**. (Disabled in a browser.) | Off | 1.5.94, awaiting review |
+| Keep Bob in the tray | On unless you turn it off. Closing or minimising Bob's window tucks him into the tray by the clock (Mac: the menu bar; Linux: your desktop's tray) instead of closing him, so he keeps running. Click his icon to open him again. To close him fully, right-click (Mac: click) his icon and pick **Quit Bob**. (Disabled in a browser.) | On (was Off before 1.5.134; the owner asked) | 1.5.134 |
 | Check for updates when Bob starts (1.5.98: in This replicant matrix and updates, next to Check for updates) | Off unless you turn it on. Bob only tells you; updating always takes your click. | off | ok |
 | (footer) Version, graphics card, free disk; Check for updates; Run first-time setup | | | ok |
 | Show advanced settings | Brains, voice details, speed and memory, engines, Bob-Net, online services, other apps, Hands, housekeeping, check-ins. | off (remembered per PC) | ok |

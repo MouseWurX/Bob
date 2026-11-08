@@ -180,8 +180,8 @@ function clean(patch) {
   if ('webSearch' in out) out.webSearch = out.webSearch === true;
   if ('naughtyList' in out) out.naughtyList = out.naughtyList === true; // 1.5.132 "Show the naughty list", off unless switched on
   if ('howtos' in out) out.howtos = out.howtos === true; // 1.5.79 "Let Bob learn how-tos", off by default
-  if ('tray' in out) out.tray = out.tray === true; // 1.5.94 "Keep Bob in the tray", off by default
-  if ('lookIcon' in out) out.lookIcon = out.lookIcon === true; // 1.5.94 "Use Bob's look as his icon", off by default
+  if ('tray' in out) out.tray = out.tray !== false; // 1.5.94 "Keep Bob in the tray"; on unless switched off since 1.5.134 (the owner asked for it)
+  if ('lookIcon' in out) out.lookIcon = out.lookIcon !== false; // 1.5.94 "Use Bob's look as his icon"; on unless switched off since 1.5.134 (the owner asked for it)
   if ('houseStyle' in out) out.houseStyle = cleanHouseStyle(out.houseStyle); // 1.5.34 House style (public/house-style.js)
   if ('projectList' in out) out.projectList = cleanProjects(out.projectList); // 1.5.34 Projects in Settings
   if ('saveDir' in out) out.saveDir = cleanDir(out.saveDir); // 1.5.41 Where Bob saves things ('' = Bob's own folder)
