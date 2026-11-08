@@ -196,10 +196,12 @@ if { [ -n "$WL" ] || [ -f $IN/lessons-ready ]; } && [ ! -f $IN/lessons-merged ];
     # build 19: wait for the CUDA llama-server (built in the background since setup), then serve the GGUF teacher on port 8001
     status lessons "waiting for the CUDA llama-server build (teacher GGUF $(basename "$TGF"))"
     for i in $(seq 1 240); do [ -f $S/llama-server-ready ] || [ -f $S/llama-server-failed ] && break; sleep 10; done
-    LS=$S/llama.cpp/build-cuda/bin/llama-server; [ -x $LS ] || die "no CUDA llama-server for the GGUF teacher (see out/llama-server-build.log)"
+    LS=$S/llama.cpp/build-cuda/bin/llama-server; export LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}"
+    [ -f $S/llama-server-cmake.log ] && cp -f $S/llama-server-cmake.log $OUT/ 2>/dev/null || true   # keep the build log where salvage can find it
+    [ -x $LS ] || die "no CUDA llama-server for the GGUF teacher (see out/llama-server-build.log and out/llama-server-cmake.log)"
     TSLOTS=$(plan "['teacher_gguf'].get('slots',6)"); TCTX=$(plan "['teacher_gguf'].get('ctx',32768)")
     status lessons "loading the teacher GGUF on the card ($TSLOTS slots, $TCTX each)"
-    ( $LS -m "$TGF" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" --alias teacher -c $((TCTX * TSLOTS)) --jinja -fa on -ctk q8_0 -ctv q8_0 -np $TSLOTS -ngl 999 \
+    ( LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" $LS -m "$TGF" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" --alias teacher -c $((TCTX * TSLOTS)) --jinja -fa on -ctk q8_0 -ctv q8_0 -np $TSLOTS -ngl 999 \
         $(plan "['teacher_gguf'].get('extra','')") > $OUT/teacher-server.log 2>&1 ) &
     VL=$!
     for i in $(seq 1 120); do curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/health 2>/dev/null | grep -q 200 && break; kill -0 $VL 2>/dev/null || die "llama-server died (see out/teacher-server.log)"; sleep 10; done
@@ -494,7 +496,8 @@ resolve_in() {   # resolve_in <spec> <dir> -> path: "hf:<repo>:<path>" is downlo
   case "$1" in hf:*) local R P; R=$(echo "$1" | cut -d: -f2); P=$(echo "$1" | cut -d: -f3); hf_get "$R" "$P" "$2" && echo "$2/$P" ;; "") echo "" ;; *) echo "$IN/$1" ;; esac; }
 if [ -n "$(plan ".get('benchmark')")" ]; then
   for i in $(seq 1 120); do [ -f $S/llama-server-ready ] || [ -f $S/llama-server-failed ] && break; sleep 20; done
-  LS=$S/llama.cpp/build-cuda/bin/llama-server
+  LS=$S/llama.cpp/build-cuda/bin/llama-server; export LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}"
+  [ -f $S/llama-server-cmake.log ] && cp -f $S/llama-server-cmake.log $OUT/ 2>/dev/null || true
   if [ -f $S/llama-server-ready ] && [ -x $LS ]; then
     NB=$(plan "['benchmark']['models']" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"); mkdir -p $W/bench $OUT/bench
     for b in $(seq 0 $((NB-1))); do
@@ -542,7 +545,7 @@ PY
       [ -f "$BFILE" ] || { echo "bench $BN: $BFILE is missing; skipped"; continue; }
       SLOTS=$(plan "['benchmark']['models'][$b].get('slots',1)"); CTX=$(plan "['benchmark']['models'][$b].get('ctx',32768)")
       status bench "$BN: loading on the card ($(basename $BFILE))"
-      $LS -m "$BFILE" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" -c $CTX --jinja -fa on -ctk q8_0 -ctv q8_0 -np $SLOTS -ngl 999 $(plan "['benchmark']['models'][$b].get('extra','')") > $OUT/bench/$BN-server.log 2>&1 &
+      LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" $LS -m "$BFILE" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" -c $CTX --jinja -fa on -ctk q8_0 -ctv q8_0 -np $SLOTS -ngl 999 $(plan "['benchmark']['models'][$b].get('extra','')") > $OUT/bench/$BN-server.log 2>&1 &
       BS=$!
       for i in $(seq 1 90); do curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/health 2>/dev/null | grep -q 200 && break; kill -0 $BS 2>/dev/null || break; sleep 10; done
       kill -0 $BS 2>/dev/null || { echo "bench $BN: llama-server died (see out/bench/$BN-server.log)"; tail -3 $OUT/bench/$BN-server.log; continue; }
