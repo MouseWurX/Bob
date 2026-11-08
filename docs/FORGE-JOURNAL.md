@@ -18,8 +18,8 @@ The first ladder (4 November) had nine rungs named by billions of parameters: 24
 
 | Rung | Nickname | Experts kept per layer (of 256) | File at Q4, about | Meant for | State |
 |---|---|---|---|---|---|
-| 28Bob | Riker | 208 | 17.5 GB | a 16 GB card with experts spilling into RAM, or the Q3 file | v3 made 6 Nov, not benchmarked |
-| 20Bob | Bill | 144 | 12.7 GB | a 16 GB card entirely | v3 not made yet (v1 and v2 exist at 128) |
+| 28Bob | Riker | 208 | 17.5 GB | a 16 GB card with experts spilling into RAM, or the Q3 file | v3 made 6 Nov, benchmarked 8 Nov |
+| 20Bob | Bill | 144 | 12.7 GB | a 16 GB card entirely | v3 not made yet (v1 and v2 exist at 128); v3 will be cut straight from the teacher, not from Riker, so Riker's heal can be judged first |
 | 14Bob | Homer | 96 | 9 GB | 8 GB cards and gaming handhelds | planned |
 | 10Bob | Milo | 64 | 6.6 GB | small cards, big phones | planned |
 | 7Bob | Luke | 40 | 4.6 GB | phones | planned |
