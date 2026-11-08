@@ -19,6 +19,61 @@ json.dump(st,open(p,"w"))
 PY
 echo "== $(date -u +%H:%M:%S) $*"; }
 die() { status failed "$*"; echo "FAILED: $*"; exit 1; }
+# publish <out dir> <bob name> <nickname> (build 17): the GGUF files, their brain cards and a model card go to Hugging Face straight from
+# the card (plan.publish = {"user": "<account>", "private": true}); the PC then downloads only the small files. Needs in/hf-token from the PC.
+# Rule: never say the owner's name, host, budget or paths in the model card; the brain card already keeps to that.
+publish() {
+  local PUB; PUB=$(plan ".get('publish')"); [ -z "$PUB" ] && return 0
+  [ -s $IN/hf-token ] || { echo "publish: no Hugging Face token came from the PC; $2's files stay for download"; return 0; }
+  local REPO="$(plan "['publish']['user']")/$2${3:+-$3}"; local PRIV=""; [ "$(plan "['publish'].get('private',True)")" = "True" ] && PRIV="--private"
+  python3 - $OUT/$1 "$2" "$3" "$REPO" "$(plan "['teacher']")" <<'PY'
+import json,sys,glob,os; d,name,nick,repo,teacher=sys.argv[1:6]
+cards=[json.load(open(f)) for f in sorted(glob.glob(f"{d}/*.bob.json"))]
+c=cards[0] if cards else {}
+rows="\n".join(f"| `{x['file']}` | {x['bytes']/1e9:.1f} GB | about {x.get('vramGB','?')} GB of card memory |" for x in cards)
+md=f"""---
+license: apache-2.0
+base_model: {teacher}
+tags: [bob, gguf, mixture-of-experts, tool-use]
+---
+
+# {name}{' ' + nick if nick else ''}
+
+{c.get('what','A brain for the desktop assistant Bob.')}
+
+Made by [Bob's Forge](https://github.com/MouseWurX/Bob/blob/main/docs/FORGE-JOURNAL.md) from [{teacher}](https://huggingface.co/{teacher})
+({c.get('expertsKept','all')} experts kept per layer, about {c.get('params','?')} B parameters, {c.get('activeParams','?')} B active per word).
+Method, numbers and logs are in the Forge journal; the home benchmarks are added to the `.bob.json` card beside each file when they are run.
+
+## Files
+
+| File | Size | Needs |
+|---|---|---|
+{rows}
+
+Each GGUF has a `.bob.json` card beside it that Bob's catalogue reads when you add the file as your own brain.
+
+## Licence and credit
+
+Apache 2.0, as the base model (Alibaba's Qwen team). The lessons it learned are Bob's own lesson sets (CC BY-SA 4.0) plus
+openly licensed traces from other models, credited in the Forge journal. The Bob names are a tribute to Dennis E. Taylor's novels;
+the project is not affiliated with the author.
+"""
+open(f"{d}/README.md","w").write(md)
+PY
+  status publish "$2: uploading the GGUF files to Hugging Face ($REPO)"
+  if HF_TOKEN=$(cat $IN/hf-token) hf upload "$REPO" $OUT/$1 . --repo-type model $PRIV --include "*.gguf" --include "*.bob.json" --include "README.md" --commit-message "$2 from Bob's Forge" > $OUT/$1/publish.log 2>&1; then
+    python3 - $OUT/$1/$2-files.json.pending "$REPO" <<'PY'
+import json,sys; p=sys.argv[1]; j=json.load(open(p))
+for f in j["files"]:
+    if f["file"].endswith(".gguf"): f["published"]=f"https://huggingface.co/{sys.argv[2]}/blob/main/{f['file']}"
+j["repo"]=sys.argv[2]; json.dump(j,open(p,"w"),indent=1)
+PY
+    echo "$2 published at https://huggingface.co/$REPO (the PC skips those downloads)"
+  else echo "$2: upload failed (see $1/publish.log); the files stay for download"; tail -3 $OUT/$1/publish.log; fi
+}
+# export.py writes <name>-files.json.pending; the PC only starts downloading once it is renamed, after any publishing
+release_files() { [ -f $OUT/$1/$2-files.json.pending ] && mv $OUT/$1/$2-files.json.pending $OUT/$1/$2-files.json; return 0; }
 plan() { python3 -c "import json,sys; p=json.load(open('$IN/plan.json')); v=p$1; print(json.dumps(v) if isinstance(v,(dict,list)) else ('' if v is None else v))" || echo "plan lookup failed: $1" >&2; }
 plist() { plan "$1" | python3 -c "import json,sys; d=sys.stdin.read().strip(); print(','.join(json.loads(d)) if d else '')"; }   # a list field as a,b,c
 HOURS_MAX=$(plan ".get('hours_max',9)")
@@ -130,6 +185,45 @@ pip install -q "transformers==5.22.1" 2>&1 | tail -1
 python3 -c "import transformers, torch; from transformers import Qwen3_5MoeForConditionalGeneration; print('transformers', transformers.__version__, 'torch', torch.__version__, 'grouped_mm', hasattr(torch, '_grouped_mm'))" || die "transformers 5.22.1 install failed"
 cat $OUT/kernels.log 2>/dev/null | tail -2
 
+# --- which model is the teacher (build 17) ---
+# plan.teacher_model: a trained teacher saved on the volume by an earlier run (e.g. bobs/35Bob/model). plan.train_teacher: make one now.
+# The teacher's identity goes into the lesson-set key, so scores from the stock Qwen and from a trained one never mix.
+TEACHER_DIR=$S/teacher; TEACHER_ID=$TEACHER
+TM=$(plan ".get('teacher_model','')")
+if [ -n "$TM" ]; then
+  [ -f $S/$TM/config.json ] || die "teacher_model $TM is not on the volume"
+  TEACHER_DIR=$S/$TM; TEACHER_ID="$TEACHER+$(sha256sum $S/$TM/../adapter.pt | cut -c1-16)"; echo "teacher: $TM (trained)"
+fi
+# --- train the teacher (plan.train_teacher): the full Qwen learns every lesson by plain next-word training (no odds to copy, it IS the
+# teacher), is kept as a Bob of its own (35Bob "Bobert": no cut, all experts) and becomes the teacher for the odds and the cuts below ---
+TT=$(plan ".get('train_teacher')")
+if [ -n "$TT" ]; then
+  TNAME=$(plan "['train_teacher'].get('name','35Bob')"); TNICK=$(plan "['train_teacher'].get('nickname','Bobert')"); THOURS=$(plan "['train_teacher'].get('hours',8)")
+  mkdir -p $OUT/$TNAME $S/bobs/$TNAME
+  if [ -f $S/bobs/$TNAME/model/config.json ] && [ -f $S/bobs/$TNAME/adapter.pt ] && [ -z "$(plan "['train_teacher'].get('redo','')")" ]; then
+    status train "$TNAME is already on the volume: no training (train_teacher.redo to redo it)"
+  else
+    kernels_ready
+    status train "$TNAME: teaching the full Qwen every lesson ($THOURS h at most, plain next-word training)"
+    python3 heal.py --model $S/teacher --lessons $IN --save $W/healed-$TNAME --experts $(plan "['train_teacher'].get('experts','lora')") --alpha 0 \
+      --epochs $(plan "['train_teacher'].get('epochs',1)") --hours $THOURS --max-len $(plan ".get('max_len',8192)") --cache $W/lessons-tok-train.pt \
+      --report $OUT/$TNAME/train-report.json $GEN || die "$TNAME training"
+    cp $W/healed-$TNAME/adapter.pt $OUT/$TNAME/$TNAME-adapter.pt; cp $W/healed-$TNAME/adapter.pt $S/bobs/$TNAME/adapter.pt
+    rm -rf $S/bobs/$TNAME/model; mv $W/healed-$TNAME $S/bobs/$TNAME/model || die "keeping $TNAME on the volume"
+    echo "$TNAME kept on the volume ($(du -sh $S/bobs/$TNAME | cut -f1)); the next run can name it as teacher_model: bobs/$TNAME/model"
+  fi
+  TEACHER_DIR=$S/bobs/$TNAME/model; TEACHER_ID="$TEACHER+$(sha256sum $S/bobs/$TNAME/adapter.pt | cut -c1-16)"
+  status export "$TNAME: making the GGUF files"
+  for i in $(seq 1 90); do [ -f $S/llama-ready ] || [ -f $S/llama-failed ] && break; sleep 20; done
+  if [ -f $S/llama-ready ]; then
+    python3 export.py --model $TEACHER_DIR --out $OUT/$TNAME --name "$TNAME" --nickname "$TNICK" --teacher "$TEACHER" --pending \
+      --what "The full Qwen taught every one of Bob's lessons, no cut: the biggest Bob and the teacher of every smaller one." --llama $S/llama.cpp --quants $(plan ".get('quants','Q4_K_M')") || die "$TNAME export"
+    publish $TNAME $TNAME "$TNICK"
+  else echo "llama tools unavailable: $TNAME stays as safetensors on the volume (no GGUF this run)"; fi
+  release_files $TNAME $TNAME
+  status ready "$TNAME ready"
+fi
+
 # --- counts only (no rungs): count every skill on the full Qwen, build the ladder table, send the count files back ---
 if [ "$(plan "['rungs'].__len__()")" = "0" ] && [ -n "$(plan ".get('skills')")" ]; then
   mkdir -p $OUT/counts
@@ -154,7 +248,7 @@ fi
 # data centre skips the pass), and on the PC (out/teacher/<key>/, downloaded as soon as they exist; a later pod with a fresh
 # volume gets them uploaded back instead of redoing the pass). The key names the lesson set exactly: the merged lessons +
 # toolsets, the teacher, top, max_len and the general-text budget. Rental 2 lost 2.5 h of this when the card deleted itself.
-KEY=$(python3 - $IN $TEACHER "$(plan ".get('top',32)")" "$(plan ".get('max_len',8192)")" "$GENERAL_TOKENS" <<'PY'
+KEY=$(python3 - $IN "$TEACHER_ID" "$(plan ".get('top',32)")" "$(plan ".get('max_len',8192)")" "$GENERAL_TOKENS" <<'PY'
 import hashlib,sys; h=hashlib.sha256()
 for f in ("lessons.jsonl","toolsets.json"):
     h.update(open(f"{sys.argv[1]}/{f}","rb").read())
@@ -184,13 +278,13 @@ else
   if [ ! -f $TPT ]; then
     kernels_ready
     status teacher "scoring every lesson with the full Qwen3.6"
-    python3 teacher.py --model $S/teacher --lessons $IN --out $TPT --top $(plan ".get('top',32)") \
+    python3 teacher.py --model $TEACHER_DIR --lessons $IN --out $TPT --top $(plan ".get('top',32)") \
       --max-len $(plan ".get('max_len',8192)") --cache $CACHE --hours $(plan ".get('teacher_hours',2.0)") $GEN || die "teacher pass"
   fi
 fi
 [ -f $TPT ] && [ -f $CACHE ] || die "no teacher.pt after the teacher pass"
 # keep them: volume first (the next pod here skips the pass), then the file list that makes the PC download them (out/teacher/<key>/)
-if [ "$S" != "$W" ] && [ ! -f $TC/teacher.pt ]; then status teacher "saving the teacher's scores on the volume"; mkdir -p $TC && cp $TPT $TC/teacher.pt.part && mv $TC/teacher.pt.part $TC/teacher.pt && cp $CACHE $TC/lessons-tok.pt && echo "$(date -u +%FT%TZ) $TEACHER" > $TC/made.txt || echo "could not save the teacher cache on the volume (no room?)"; fi
+if [ "$S" != "$W" ] && [ ! -f $TC/teacher.pt ]; then status teacher "saving the teacher's scores on the volume"; mkdir -p $TC && cp $TPT $TC/teacher.pt.part && mv $TC/teacher.pt.part $TC/teacher.pt && cp $CACHE $TC/lessons-tok.pt && echo "$(date -u +%FT%TZ) $TEACHER_ID" > $TC/made.txt || echo "could not save the teacher cache on the volume (no room?)"; fi
 python3 - $TDIR $KEY <<'PY'
 import json,os,sys,hashlib; d=sys.argv[1]; files=[]
 for f in ("teacher.pt","lessons-tok.pt","teacher-key.txt"):
@@ -222,7 +316,7 @@ PY
     echo "$NAME already done"; continue
   fi
   rm -rf $OUT/$NAME $W/healed-$NAME  # a restart redoes this rung from the cut (a raw export or a half heal is not kept)
-  if [ "$FROM" = "teacher" ]; then SRC=$S/teacher; elif [[ "$FROM" == */* ]]; then SRC=$S/$FROM; [ -f $SRC/../counts-$(basename $FROM | sed s/healed-//).json ] && COUNTS=$SRC/../counts-$(basename $FROM | sed s/healed-//).json; else SRC=$W/healed-$FROM; [ -f $W/counts-$FROM.json ] && COUNTS=$W/counts-$FROM.json; fi
+  if [ "$FROM" = "teacher" ]; then SRC=$TEACHER_DIR; elif [[ "$FROM" == */* ]]; then SRC=$S/$FROM; [ -f $SRC/../counts-$(basename $FROM | sed s/healed-//).json ] && COUNTS=$SRC/../counts-$(basename $FROM | sed s/healed-//).json; else SRC=$W/healed-$FROM; [ -f $W/counts-$FROM.json ] && COUNTS=$W/counts-$FROM.json; fi
   [ -d "$SRC" ] || die "$NAME: source $FROM is missing"
   status cut "$NAME: keeping $KEEP of the experts in $FROM"   # "cover" = the coverage rule decides the number
   # a complete cut from an earlier run of this session is reused (a restart should not redo 14 minutes of cutting)
@@ -278,15 +372,18 @@ PY
   status export "$NAME: making the GGUF files"
   for i in $(seq 1 90); do [ -f $S/llama-ready ] || [ -f $S/llama-failed ] && break; sleep 20; done
   if [ -f $S/llama-ready ]; then
-    python3 export.py --model $W/healed-$NAME --out $OUT/$NAME --name "$NAME_OUT" --nickname "$NICK" --teacher "$(plan "['teacher']")" --jobs "$(plan ".get('jobs','bob,deep,tinker,reviewer,office,ledger,scout')")" --llama $S/llama.cpp --quants $QUANTS || die "$NAME export"
+    python3 export.py --model $W/healed-$NAME --out $OUT/$NAME --name "$NAME_OUT" --nickname "$NICK" --teacher "$(plan "['teacher']")" --jobs "$(plan ".get('jobs','bob,deep,tinker,reviewer,office,ledger,scout')")" --llama $S/llama.cpp --quants $QUANTS --pending || die "$NAME export"
+    publish $NAME "$NAME_OUT" "$NICK"
   else
     echo "llama-quantize unavailable: exporting BF16 GGUF only (bigger download; quantize on the PC with llama-quantize)"
     python3 export.py --model $W/healed-$NAME --out $OUT/$NAME --name "$NAME_OUT" --nickname "$NICK" --teacher "$(plan "['teacher']")" --llama $S/llama.cpp --quants none --keep-bf16 || die "$NAME export"
   fi
+  release_files $NAME "$NAME_OUT"
   status ready "$NAME_OUT ready to download"; unset RAW
   # free disk: keep only the newest healed Bob (the next rung is cut from it)
   [ "$FROM" != "teacher" ] && [[ "$FROM" != */* ]] && [ -z "$(plan ".get('keep_healed','')")" ] && rm -rf $W/healed-$FROM   # keep_healed: every healed Bob stays (on a network volume, for the next session)
 done
 # every log and report of this run stays on the volume too
 if [ "$S" != "$W" ]; then RT=$S/runs/$(plan ".get('run','run')")-$(date -u +%Y%m%dT%H%M); mkdir -p $RT; cp $OUT/*.log $OUT/*.json $OUT/*.txt $RT/ 2>/dev/null; for d in $OUT/*/; do [ -d "$d" ] && { mkdir -p $RT/$(basename $d); cp $d/*.json $d/*.md $d/*.txt $RT/$(basename $d)/ 2>/dev/null; }; done; echo "run files kept on the volume at $RT"; fi
+rm -f $IN/hf-token
 status done "all rungs finished"

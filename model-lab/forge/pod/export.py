@@ -21,6 +21,7 @@ def main():
     ap.add_argument("--teacher", default="", help="the model it was cut from, as a Hugging Face id (for the brain card)")
     ap.add_argument("--jobs", default="bob,deep,tinker,reviewer,office,ledger,scout", help="catalogue job slots for the brain card")
     ap.add_argument("--what", default="", help="one plain sentence for the brain card")
+    ap.add_argument("--pending", action="store_true", help="write <name>-files.json.pending; run.sh renames it once any publishing is done, so the PC does not download files that are going to Hugging Face")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     bf16 = os.path.join(a.out, f"{a.name}-BF16.gguf")
@@ -38,8 +39,8 @@ def main():
     quant = os.path.join(a.llama, "build", "bin", "llama-quantize")
     env = {**os.environ, "LD_LIBRARY_PATH": os.path.dirname(quant) + ":" + os.environ.get("LD_LIBRARY_PATH", "")}
     files = []
-    fj = os.path.join(a.out, f"{a.name}-files.json")
-    if a.merge and os.path.exists(fj): files = json.load(open(fj)).get("files", [])
+    done_fj = os.path.join(a.out, f"{a.name}-files.json"); fj = done_fj + (".pending" if a.pending else "")
+    if a.merge and os.path.exists(done_fj): files = json.load(open(done_fj)).get("files", [])
     have = {f["file"] for f in files}
     for q in [q for q in a.quants.split(",") if q and q.lower() != "none"]:
         out = os.path.join(a.out, f"{a.name}-{q}.gguf")
@@ -63,43 +64,14 @@ def write_card(a, f):
     try: cfg = json.load(open(os.path.join(a.model, "config.json")))
     except Exception: pass
     bob = cfg.get("bob", {})
-    kept, total = bob.get("experts_kept"), cfg.get("num_experts") or bob.get("experts_total")
+    total = cfg.get("num_experts") or bob.get("experts_total")
+    kept = bob.get("experts_kept") or total   # no "bob" block in the config: nothing was cut (a trained full model)
     # size rule from the ladder (docs/FORGE-JOURNAL.md): about 2 B of shared parts plus about 0.13 B per expert kept in every layer
     params = round(2 + 0.13 * kept) if kept else None
-    quant = os.path.join(a.llama, "build", "bin", "llama-quantize")
-    env = {**os.environ, "LD_LIBRARY_PATH": os.path.dirname(quant) + ":" + os.environ.get("LD_LIBRARY_PATH", "")}
-    files = []
-    fj = os.path.join(a.out, f"{a.name}-files.json")
-    if a.merge and os.path.exists(fj): files = json.load(open(fj)).get("files", [])
-    have = {f["file"] for f in files}
-    for q in [q for q in a.quants.split(",") if q and q.lower() != "none"]:
-        out = os.path.join(a.out, f"{a.name}-{q}.gguf")
-        if os.path.basename(out) in have: print(f"{out}: already made"); continue
-        subprocess.run([quant, bf16, out, q], check=True, env=env)
-        files.append({"file": os.path.basename(out), "bytes": os.path.getsize(out), "sha256": sha(out)})
-        print(f"{out}: {os.path.getsize(out) / 1e9:.2f} GB", flush=True)
-    if a.keep_bf16: files.append({"file": os.path.basename(bf16), "bytes": os.path.getsize(bf16), "sha256": sha(bf16)})
-    else: os.remove(bf16)
-    keep = os.path.join(a.model, "bob-keep.json")
-    if os.path.exists(keep):
-        import shutil; shutil.copy(keep, os.path.join(a.out, f"{a.name}-keep.json"))
-    json.dump({"name": a.name, "nickname": a.nickname, "files": files}, open(fj, "w"), indent=1)
-    for f in files:
-        if f["file"].endswith(".gguf"): write_card(a, f)
-
-def write_card(a, f):
-    """The brain card beside a GGUF. Only facts the pod knows; no paths, hosts or people."""
-    import datetime
-    cfg = {}
-    try: cfg = json.load(open(os.path.join(a.model, "config.json")))
-    except Exception: pass
-    bob = cfg.get("bob", {})
-    kept, total = bob.get("experts_kept"), cfg.get("num_experts") or bob.get("experts_total")
-    hidden = cfg.get("hidden_size", 0); layers = cfg.get("num_hidden_layers", 0); inter = cfg.get("moe_intermediate_size", 0)
-    # size rule from the ladder: shared parts plus what each kept expert weighs in every layer
-    params = round((2.0 + (kept or 0) * layers * 3 * hidden * inter / 1e9) if kept and layers and hidden and inter else 0) or None
     quant = f["file"].rsplit("-", 1)[-1].replace(".gguf", "")
     by = {"Qwen": "Alibaba"}.get(a.teacher.split("/")[0], a.teacher.split("/")[0]) if a.teacher else ""
+    short = a.teacher.split("/")[-1] if a.teacher else ""
+    what = a.what or (f"A Bob cut from {short} for Bob's own jobs: tools, coding, exact formats and everyday chat." if a.teacher else None)
     card = {
         "card": 1, "file": f["file"], "bytes": f["bytes"], "sha256": f["sha256"],
         "name": f"{a.name} {a.nickname}".strip() + (f" ({quant})" if quant and quant != a.name else ""),
@@ -107,10 +79,10 @@ def write_card(a, f):
         "jobs": [j for j in a.jobs.split(",") if j],
         "params": params, "activeParams": 3 if kept else None,
         "vramGB": round(f["bytes"] / 1e9 + 1.5), "ctx": cfg.get("max_position_embeddings"),
-        "cutFrom": {"name": a.teacher.split("/")[-1].replace("-", " "), "by": by, "hf": a.teacher} if a.teacher else None,
+        "cutFrom": {"name": short.replace("-", " "), "by": by, "hf": a.teacher} if a.teacher else None,
         "expertsKept": f"{kept} of {total}" if kept and total else None,
         "published": datetime.date.today().isoformat(), "license": "Apache 2.0",
-        "what": a.what or f"A Bob cut from {a.teacher.split('/')[-1]} for Bob's own jobs: tools, coding, exact formats and everyday chat." if a.teacher else a.what or None,
+        "what": what,
     }
     card = {k: v for k, v in card.items() if v is not None}
     cf = os.path.join(a.out, f["file"][:-len(".gguf")] + ".bob.json")

@@ -18,6 +18,7 @@ The first ladder (4 November) had nine rungs named by billions of parameters: 24
 
 | Rung | Nickname | Experts kept per layer (of 256) | File at Q4, about | Meant for | State |
 |---|---|---|---|---|---|
+| 35Bob | Bobert | 256 (no cut; trained on every lesson) | 21 GB | 24 GB cards, or 16 GB with experts in RAM; the teacher of every Bob below | planned (build 17) |
 | 28Bob | Riker | 208 | 17.5 GB | a 16 GB card with experts spilling into RAM, or the Q3 file | v3 made 6 Nov, benchmarked 8 Nov |
 | 20Bob | Bill | 144 | 12.7 GB | a 16 GB card entirely | v3 not made yet (v1 and v2 exist at 128); v3 will be cut straight from the teacher, not from Riker, so Riker's heal can be judged first |
 | 14Bob | Homer | 96 | 9 GB | 8 GB cards and gaming handhelds | planned |
@@ -167,3 +168,10 @@ No card. Work on the lesson set and the Forge, all on paper and on the PC.
 | Outside lesson sets dropped for quality | 1 of 5 (GLM-5.1 agent traces, 8 Nov) |
 | Lessons written | about 9,500 across 17 sets (Bob's own); plus 9,059 taken from other teachers' published sets after a quality pass |
 | Card time | on the costs page |
+
+### 8 November, later: Bobert, and publishing from the card (build 17)
+
+- **Decision (the owner):** before Bill is cut, the full teacher is trained on every lesson and kept as a Bob of its own, **35Bob "Bobert"** (no cut, all 256 experts, about 35 B parameters, 3 B active). The order becomes: write lessons, train the teacher, score the odds *with Bobert*, cut Bill from Bobert, heal Bill against Bobert's odds. The odds must come from the trained teacher, or Bill would be healed toward a brain that no longer exists, so the lesson-set key now names the teacher by its adapter.
+- **Why:** Bob's habits go into the big brain once and every cut below inherits them; Bobert is also a brain for 24 GB cards. The risk is that a trained teacher's odds lean toward the lessons; the heal's general text is there to soften that.
+- **Build 17:** `train_teacher` (plain next-word training, no odds; heal.py with alpha 0), `teacher_model` for later runs, and `publish`: the pod uploads each Bob's GGUF files, brain cards and a model card to Hugging Face itself, private first, so big Bobs never have to come down to the owner's PC. Costs for the combined run (lessons, Bobert at 8 hours, export, odds) are estimated at 16 to 17 hours; the caps are 22 hours; the drive grows to 300 GB.
+- **Bobert's ladder row:** 35Bob, 256 experts, about 21 GB at Q4 and 17 GB at Q3; meant for 24 GB cards, or a 16 GB card with experts in RAM. Benchmarked at home before he is the teacher of anything, like every Bob.

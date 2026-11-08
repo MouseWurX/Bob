@@ -11,7 +11,7 @@
  "disk_gb": 350,
  "general_tokens": 10000000,
  "volume": {
-  "gb": 200,
+  "gb": 300,
   "name": "bob-forge"
  },
  "keep_healed": true,
@@ -23,7 +23,7 @@
   "formats"
  ],
  "strong_cover": 0.99,
- "note": "Rental 3a, lessons and odds: the full Qwen first grows nine skill sets (codefix, recover, clarify, newtool, selfcheck, research, understand, formats, reasoning) to about 1,000 lessons each, saved on the PC in out/lessons-<skill>; then one teacher pass scores the whole set (own sets, the grown sets, the outside sets, general text). The scores go to the network volume and to the PC (out/teacher/<key>/). No cut, no heal: Bill's run (bill-v3.json) finds the scores and skips the pass.",
+ "note": "Rental 3a, lessons and odds: the full Qwen first grows nine skill sets (codefix, recover, clarify, newtool, selfcheck, research, understand, formats, reasoning) to about 1,000 lessons each, saved on the PC in out/lessons-<skill>; then one teacher pass scores the whole set (own sets, the grown sets, the outside sets, general text). The scores go to the network volume and to the PC (out/teacher/<key>/). No cut, no heal: Bill's run (bill-v3.json) finds the scores and skips the pass. | 8 Nov, build 17: the full Qwen is first trained on every lesson (train_teacher, 8 h) and kept as 35Bob Bobert; the odds then come from Bobert, so the lesson-set key names him. About 16-17 h in all (lessons 1 h, training 8 h, GGUF export 1.5 h, odds 6 h), caps 22 h / $120; 300 GB volume (stock teacher 70 GB + Bobert 70 GB + scores + lessons, with room for Bill).",
  "extra_lessons": [
   "out/lessons-coding-2",
   "out/lessons-notes",
@@ -43,10 +43,10 @@
   "hours": 12.0
  },
  "rungs": [],
- "hours_max": 12,
- "dollars_max": 65,
+ "hours_max": 22,
+ "dollars_max": 120,
  "teacher_hours": 6.0,
- "run": "lineB-v3-lessons-and-odds",
+ "run": "lineB-v3-lessons-bobert-odds",
  "rent_minutes": 180,
  "volume_wait_minutes": 25,
  "step_up": [
@@ -139,5 +139,18 @@
    "hours": 0.8,
    "min": 100
   }
- ]
+ ],
+ "train_teacher": {
+  "name": "35Bob",
+  "nickname": "Bobert",
+  "hours": 8,
+  "experts": "lora",
+  "epochs": 1,
+  "note": "8 Nov, the owner: train the teacher before cutting Bill and keep him as Bobert. Plain next-word training of the full Qwen on every lesson (no odds to copy); 8 h sees about half of the ~27,000 lessons once. He is kept on the volume (bobs/35Bob/model) as the teacher for the odds and for Bill, and his GGUF files go to Hugging Face, not to the PC."
+ },
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "note": "GGUF files are uploaded from the card to Hugging Face as private repos (<user>/<name>-<nickname>); the owner makes them public after a look. The token is forge/hf-token.txt on the PC, never in a plan or the repo."
+ }
 }

@@ -110,7 +110,7 @@ if (podId) { const t = JSON.parse(fs.readFileSync(tokenFile, 'utf8')); hdr['X-Fo
 
 async function rent() {
   const boot = zlib.gzipSync(fs.readFileSync(path.join(here, 'pod', 'bootstrap.py'))).toString('base64');
-  const rungs = plan.rungs.length ? plan.rungs.map((r) => r.name).join(', ') : 'expert counts per skill only (no Bob is cut; the counts come back for the differential table)';
+  const rungs = (plan.train_teacher ? `${plan.train_teacher.name || '35Bob'} (the full Qwen trained on every lesson, no cut)${plan.rungs.length ? ', then ' : ''}` : '') + (plan.rungs.length ? plan.rungs.map((r) => r.name).join(', ') : plan.train_teacher ? '' : plan.skills ? 'expert counts per skill only (no Bob is cut; the counts come back for the differential table)' : 'lessons and the teacher scores only (no Bob is cut)') + (plan.publish ? ` -- GGUF files go to Hugging Face (${plan.publish.user}, ${plan.publish.private === false ? 'public' : 'private'}), not to this PC` : '');
   console.log(`\nAbout to rent ONE GPU on RunPod to make: ${rungs}`);
   console.log(`Caps: ${hoursMax} hours or $${dollarsMax}, whichever comes first; the pod is deleted when the Bobs are downloaded, or at the cap.`);
   if (plan.volume) { const kv = knownVolumes(); console.log(`Network volume: ${plan.volume.gb || 100} GB kept between sessions (about $${((plan.volume.gb || 100) * 0.07).toFixed(2)} a month each, a standing charge until deleted). Have: ${kv.length ? kv.map((v) => `${v.id} in ${v.name || v.dataCenterId}`).join(', ') : 'none'}. A card is only taken in a data centre with a volume; a new volume is made where the card is if ours are out.`); }
@@ -270,6 +270,11 @@ if (args.restart) {
   await upload('lessons.jsonl', path.join(lessonsDir, 'lessons.jsonl'));
   await upload('toolsets.json', path.join(lessonsDir, 'toolsets.json'));
   await upload('counts.json', countsFile);
+  if (plan.publish) { // build 17: the pod uploads the GGUF files to Hugging Face itself; the token lives in forge/hf-token.txt (never in the plan or the repo)
+    const tf = path.join(here, 'hf-token.txt'); const tok = (process.env.HF_TOKEN || (fs.existsSync(tf) ? fs.readFileSync(tf, 'utf8') : '')).trim();
+    if (!tok) log('plan.publish is set but there is no Hugging Face token (forge/hf-token.txt, one line, or HF_TOKEN): the pod will keep the files for download instead');
+    else { const tmp = path.join(outDir, 'forge', 'hf-token'); fs.writeFileSync(tmp, tok); await upload('hf-token', tmp); fs.unlinkSync(tmp); log(`Hugging Face token sent to the pod (uploads go to ${plan.publish.user}/...)`); }
+  }
   for (const r of plan.rungs) if (r.keep_file) await upload(path.basename(r.keep_file), path.resolve(here, '..', r.keep_file)); // cut exactly like an earlier Bob
   // lesson sets already on the PC (e.g. out/lessons-coding) go up as extra sets too; the pod merges them with the rest
   for (const [i, d] of (plan.extra_lessons || []).entries()) { // a folder (its lessons.jsonl) or a .jsonl file (with the toolsets.json beside it)
@@ -344,9 +349,13 @@ while (true) {
         const r = await get(`/out/${f.path}`); const list = await r.json();
         const dest = name === 'counts' ? path.join(outDir, 'counts', plan.run || 'run') : name === 'teacher' ? path.join(outDir, 'teacher', list.key || 'unknown') : path.join(outDir, 'bobs', name);
         const had = got.get(name)?.files || new Set();
-        for (const x of list.files) { if (had.has(x.file)) continue; await download(`${name}/${x.file}`, path.join(dest, x.file), x.bytes, x.sha256); had.add(x.file); }
+        for (const x of list.files) {
+          if (had.has(x.file)) continue;
+          if (x.published && !plan.download_published) { log(`${x.file} is on Hugging Face (${x.published}); not downloaded (plan.download_published: true to download anyway)`); had.add(x.file); continue; }
+          await download(`${name}/${x.file}`, path.join(dest, x.file), x.bytes, x.sha256); had.add(x.file);
+        }
         got.set(name, { files: had, bytes: f.bytes });
-        for (const extra of ['heal-report.json', `counts-${name}.json`, `${name}-keep.json`, `${name}-adapter.pt`, 'coverage.md']) { // the adapter + keep list can rebuild the full-size healed Bob from the teacher
+        for (const extra of ['heal-report.json', 'train-report.json', `counts-${name}.json`, `${name}-keep.json`, `${name}-adapter.pt`, 'coverage.md', 'README.md', 'publish.log', ...list.files.map((x) => x.file.replace(/\.gguf$/, '.bob.json'))]) { // the adapter + keep list can rebuild the full-size healed Bob from the teacher
           const e = (st.files || []).find((y) => y.path === `${name}/${extra}`);
           if (e) await download(`${name}/${extra}`, path.join(dest, extra), e.bytes, null);
         }
@@ -356,7 +365,9 @@ while (true) {
     }
     if (st.status?.phase === 'lessons' && /^ready/.test(st.status?.detail || '') && !lessonsSent) { lessonsSent = true; await writeLessonsOnPod(); }
     const scoresOnly = !plan.rungs.length && !plan.skills; // no rungs, no counts: the run only writes lessons and makes the teacher scores
-    const finished = scoresOnly ? done.has('teacher') : [...done].filter((n) => n !== 'teacher').length >= Math.max(1, plan.rungs.length);
+    const trained = plan.train_teacher ? (plan.train_teacher.name || '35Bob') : null; // build 17: the trained teacher comes back (or is published) like a Bob
+    const gotTrained = !trained || done.has(trained);
+    const finished = gotTrained && (scoresOnly ? done.has('teacher') : [...done].filter((n) => n !== 'teacher' && n !== trained).length >= Math.max(1, plan.rungs.length));
     if (st.status?.phase === 'done' && finished) { await kill(plan.rungs.length ? 'all Bobs downloaded' : scoresOnly ? 'teacher scores downloaded' : 'counts downloaded'); break; }
     if (st.status?.phase === 'failed' || (st.exit !== null && st.exit !== undefined && !st.running)) {
       log(`the pod run stopped (${st.status?.detail || 'exit ' + st.exit}). Last log lines:\n${st.log}`);
