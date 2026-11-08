@@ -9,6 +9,11 @@ on:
     branches: [main, 'claude/**']
     paths: ['engine/**', '.github/workflows/brain-engine.yml']
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Also put the two files on a test pre-release (brain-engine-<tag>), for Get models, Engines'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -16,6 +21,8 @@ permissions:
 jobs:
   windows:
     runs-on: windows-2025-vs2026
+    permissions:
+      contents: write # only used by the publish step, which runs only when asked for by hand
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Fetch llama.cpp at the tested tag and apply the patches
@@ -50,9 +57,17 @@ jobs:
         with:
           name: brain-engine-win-x64
           path: brain-engine-*-win-x64.zip
+      - name: Publish to the test pre-release (by hand only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash engine/publish.sh "$TAG" brain-engine-*-win-x64.zip
 
   linux:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # only used by the publish step, which runs only when asked for by hand
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Fetch llama.cpp at the tested tag and apply the patches
@@ -78,3 +93,8 @@ jobs:
         with:
           name: brain-engine-linux-x64
           path: brain-engine-*-linux-x64.tar.gz
+      - name: Publish to the test pre-release (by hand only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash engine/publish.sh "$TAG" brain-engine-*-linux-x64.tar.gz
