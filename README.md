@@ -152,11 +152,11 @@ Bob is inspired by the wonderful books of Dennis E. Taylor. Bob is an independen
 ## Licence
 
 - Code: GNU GPL, version 3 or later ([LICENSE](LICENSE)).
-- Art and writing (avatars, icons, themes, Bob's character and texts, the voice clips that ship with him): CC BY-SA 4.0 ([LICENSE-ART](LICENSE-ART), details in [ASSETS-LICENSE.md](ASSETS-LICENSE.md)).
-- The MouseWurX name and logo and the name "Bob of The Idle Process" aren't licensed: see [TRADEMARKS.md](TRADEMARKS.md).
-- Third-party parts and the models Bob can download keep their own licences: see [THIRD-PARTY.md](THIRD-PARTY.md).
+- Art and writing (avatars, icons, themes, Bob's character and texts, the voice clips that ship with him): CC BY-SA 4.0 ([LICENSE-ART](docs/legal/LICENSE-ART), details in [ASSETS-LICENSE.md](docs/legal/ASSETS-LICENSE.md)).
+- The MouseWurX name and logo and the name "Bob of The Idle Process" aren't licensed: see [TRADEMARKS.md](docs/legal/TRADEMARKS.md).
+- Third-party parts and the models Bob can download keep their own licences: see [THIRD-PARTY.md](docs/legal/THIRD-PARTY.md).
 
-Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). Security problems: [SECURITY.md](SECURITY.md).
+Contributions are welcome: see [CONTRIBUTING.md](.github/CONTRIBUTING.md). Security problems: [SECURITY.md](.github/SECURITY.md).
 
 ## Code signing policy
 
@@ -168,7 +168,7 @@ How signing will work once it is set up:
 - Committers and reviewers: the members of this repository with write access.
 - Approvers: the project owner. Every signing request for a release will be approved by hand.
 
-**Privacy policy** ([PRIVACY.md](PRIVACY.md)): This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. In particular, Bob reaches the internet for: model and engine downloads (from the address shown before you confirm), voice samples from a voice's publisher, web searches, only if you turn on "Let Bob search the web" (off to start with; then Bob may search DuckDuckGo and read pages when a question needs it, and only the search words and page address go to that site), and cloud AI helpers you switch on with your own API key (each use asks first). Phone access over Tailscale is off unless you turn it on. Talk to Bob on Telegram is off unless you turn it on; then your messages to your own bot and Bob's replies pass through Telegram. Bob sends no telemetry.
+**Privacy policy** ([PRIVACY.md](docs/legal/PRIVACY.md)): This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. In particular, Bob reaches the internet for: model and engine downloads (from the address shown before you confirm), voice samples from a voice's publisher, web searches, only if you turn on "Let Bob search the web" (off to start with; then Bob may search DuckDuckGo and read pages when a question needs it, and only the search words and page address go to that site), and cloud AI helpers you switch on with your own API key (each use asks first). Phone access over Tailscale is off unless you turn it on. Talk to Bob on Telegram is off unless you turn it on; then your messages to your own bot and Bob's replies pass through Telegram. Bob sends no telemetry.
 
 ### Versions
 

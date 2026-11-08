@@ -25,7 +25,7 @@ BUILD="$(node -p "require('$SOURCE/package.json').bob.build")"
 ELECTRON="$(node -p "require('$SOURCE/package.json').devDependencies.electron.replace(/^[\^~=v]+/, '')")"
 
 # Bob's own files: the same list as installer/make-release.ps1 (test/run-mac-test.js keeps the two equal).
-APP_FILES=(electron src public audio installer catalog.json config.example.json package.json LICENSE LICENSE-ART ASSETS-LICENSE.md TRADEMARKS.md THIRD-PARTY.md README.md)
+APP_FILES=(electron src public audio installer catalog.json config.example.json package.json LICENSE docs/legal README.md)
 
 ZIPNAME="electron-v${ELECTRON}-darwin-${ARCH}.zip"
 BASE="https://github.com/electron/electron/releases/download/v${ELECTRON}"

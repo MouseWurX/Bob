@@ -1,7 +1,7 @@
 # Art and text licence
 
 Bob's **code** is licensed under the GNU General Public License, version 3 or (at your option) any later
-version: see [LICENSE](LICENSE).
+version: see [LICENSE](../../LICENSE).
 
 Bob's **art and writing** are licensed under the Creative Commons Attribution-ShareAlike 4.0
 International licence (CC BY-SA 4.0): see [LICENSE-ART](LICENSE-ART). This covers:

@@ -18,7 +18,7 @@ $electron = "$($pk.devDependencies.electron)" -replace '^[\^~=v]+', ''
 $sha = "$($pk.bob.electronSha256)"
 
 # Bob's own files: the same list the install window copies (a test keeps the two lists equal).
-$AppFiles = @('electron', 'src', 'public', 'audio', 'installer', 'catalog.json', 'config.example.json', 'package.json', 'LICENSE', 'LICENSE-ART', 'ASSETS-LICENSE.md', 'TRADEMARKS.md', 'THIRD-PARTY.md', 'README.md')
+$AppFiles = @('electron', 'src', 'public', 'audio', 'installer', 'catalog.json', 'config.example.json', 'package.json', 'LICENSE', 'docs/legal', 'README.md')
 
 $stage = Join-Path $Out 'Bob'
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }

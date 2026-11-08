@@ -65,7 +65,7 @@ const missing = (labels) => [...new Set(labels)].filter((l) => !helpText.include
   check('the switch is on the everyday Settings page, off unless turned on', /sswitch\('webSearch', settings\.webSearch === true, 'Let Bob search the web', keep\('Off unless you turn it on/.test(cellar));
   const server = read('src/server.js');
   check('the server saves and shows it', /typeof b\.webSearch === 'boolean'/.test(server) && /webSearch: cfg\.webSearch === true/.test(server));
-  const privacy = read('PRIVACY.md');
+  const privacy = read('docs/legal/PRIVACY.md');
   check('the privacy policy says web search is off unless turned on', /Let Bob search the web/.test(privacy) && /off unless you turn it on/i.test(privacy));
 }
 

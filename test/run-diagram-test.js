@@ -134,7 +134,7 @@ check('"draw me a fox" still asks for a picture', expectFrom('draw me a fox')?.k
 // ---------- The window side: files shipped and the PDF maker ----------
 const mm = fs.readFileSync(path.join(root, 'public/vendor/mermaid.min.js'));
 check('Mermaid is bundled, pinned by checksum (11.17.2)', crypto.createHash('sha256').update(mm).digest('hex') === '581ed7d74bd9048d0e3a91363927d72ef22942d7722546b27f7cc29e35390eb8');
-check('its licence ships with it, and THIRD-PARTY.md names it', /MIT/.test(fs.readFileSync(path.join(root, 'public/vendor/mermaid-LICENSE.txt'), 'utf8')) && /Mermaid 11\.17\.2/.test(fs.readFileSync(path.join(root, 'THIRD-PARTY.md'), 'utf8')));
+check('its licence ships with it, and THIRD-PARTY.md names it', /MIT/.test(fs.readFileSync(path.join(root, 'public/vendor/mermaid-LICENSE.txt'), 'utf8')) && /Mermaid 11\.17\.2/.test(fs.readFileSync(path.join(root, 'docs/legal/THIRD-PARTY.md'), 'utf8')));
 const core = fs.readFileSync(path.join(root, 'public/diagram-core.js'), 'utf8');
 check('Mermaid draws in strict mode (no scripts or clicks in a diagram)', /securityLevel: 'strict'/.test(core));
 const phoneCore = path.join(root, 'android/app/src/main/assets/www/diagram-core.js');
