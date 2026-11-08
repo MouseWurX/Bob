@@ -34,7 +34,7 @@ export function cleanLearn(b = {}) {
 // Which brain the cards can use right now, or why not. `brain` is Bob's brain (src/brain.js); only its engine is read.
 export function learnBrain(brain) {
   const engine = brain?.engine;
-  if (brain?.cfg?.engine !== 'llamacpp' || !engine?.url) return { ready: false, why: 'These experiments need my own engine (llama.cpp). Switch to it in Get models, Engines, and I can show you.' };
+  if (brain?.cfg?.engine !== 'llamacpp' || !engine?.url) return { ready: false, why: 'These experiments need my built-in engine (llama.cpp). Switch to it in Get models, Engines, and I can show you.' };
   const loaded = engine.current && engine.child && engine.child.exitCode === null;
   if (!loaded) return { ready: false, why: 'No brain is loaded right now. Say anything to me in the chat, and come back.', wake: true };
   let busy = false;

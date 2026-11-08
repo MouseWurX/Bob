@@ -455,7 +455,7 @@ check('the quiz tools are made up, not Bob\'s real ones', TOOLS.every((t) => !/h
   // which brain the cards may use
   const engine = { url: 'http://fake', current: 'qwen', child: { exitCode: null }, currentCtx: 8192, active: 0, now: () => 5, isBusy: () => false };
   const brainFor = (cfg, eng = engine) => ({ cfg, engine: eng, brainLabel: (m) => `Friendly ${m}` });
-  check('Learn needs Bob\'s own engine', !learnBrain(brainFor({ engine: 'ollama' })).ready && /own engine/.test(learnBrain(brainFor({ engine: 'ollama' })).why));
+  check('Learn needs Bob\'s own engine', !learnBrain(brainFor({ engine: 'ollama' })).ready && /built-in engine \(llama\.cpp\)/.test(learnBrain(brainFor({ engine: 'ollama' })).why));
   check('Learn with no brain loaded says to say something in the chat', (() => { const b = learnBrain(brainFor({ engine: 'llamacpp' }, { ...engine, current: '' })); return !b.ready && b.wake && /Say anything to me in the chat/.test(b.why); })());
   check('Learn waits while Bob is answering in the chat', (() => { const b = learnBrain(brainFor({ engine: 'llamacpp' }, { ...engine, isBusy: () => true })); return !b.ready && b.busy; })());
   check('Learn finds the loaded brain, its address and its window', JSON.stringify(learnBrain(brainFor({ engine: 'llamacpp' }))) === JSON.stringify({ ready: true, url: 'http://fake', model: 'qwen', ctx: 8192 }));

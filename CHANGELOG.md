@@ -26,7 +26,7 @@ The Computer Science Lab, part 3 begins: a **Learn** tab, where you can see how 
 - **How do I pick the next word?** **Show my odds** lists my ten likeliest next tokens for the start of a sentence, as percentages and bars. Click one to make me say it, or **Let me choose** to watch me roll, for twelve words.
 - **What does temperature do?** A slider from 0 to 2 (with a number box), and **Write it three times** writes the same start three times at that setting, with my odds for the first word underneath so you can watch them flatten. **More knobs** adds **Cut the long tail** (min_p) and **Only the likeliest** (top_p).
 - Each card ends with **What you just saw**, a line from me that changes with what happened. Results are read out by screen readers when they land.
-- Needs my own engine (llama.cpp); with Ollama the tab says so. The Lab switch in Settings still turns it all on or off. While a card runs it counts as using my brain, so Free memory when Bob is idle leaves it loaded. A card's run takes my brain's place in its prompt memory, so the next chat message re-reads the conversation once.
+- Needs my built-in engine (llama.cpp); with Ollama the tab says so. The Lab switch in Settings still turns it all on or off. While a card runs it counts as using my brain, so Free memory when Bob is idle leaves it loaded. A card's run pushes our chat out of my short-term memory, so my next chat reply starts a little slower while I read the conversation again.
 - Help: a new page, The Lab's Learn tab. `test/run-lab-test.js`: 151 checks.
 - Phone (Bob for Android): nothing changes yet. Learn comes to the phone in a later update.
 

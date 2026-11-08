@@ -35,7 +35,7 @@ export function createLearn({ api, info = () => null, saves = () => ({}) }) {
     const more = o ? saveBox('learn-tokens') : '';
     return card('tokens', 'What is a token?', 'I don\'t read letters or words. I read pieces called tokens, and this is how I\'d split what you type. Try a long word, a number, an emoji, or a sentence in another language.',
       `<p><label for="learn-tok-text">Something to split</label></p><textarea id="learn-tok-text" rows="2" maxlength="2000" spellcheck="false">${esc(tok.text)}</textarea>
-      <div class="row"><button type="button" class="get" data-tokens ${tok.busy ? 'disabled' : ''}>${tok.busy ? 'Splitting...' : 'Split it'}</button><span class="muted">Try this: antidisestablishmentarianism · 1234567 · 🐭🧀 · Je ne parle pas français</span></div>`, result, more);
+      <div class="row"><button type="button" class="get" data-tokens ${tok.busy ? 'disabled' : ''}>${tok.busy ? 'Splitting…' : 'Split it'}</button><span class="muted">Try this: antidisestablishmentarianism · 1234567 · 🐭🧀 · Je ne parle pas français</span></div>`, result, more);
   }
 
   function nextCard() {
@@ -44,7 +44,7 @@ export function createLearn({ api, info = () => null, saves = () => ({}) }) {
     const more = nx.top ? saveBox('learn-next') : '';
     return card('next', 'How do I pick the next word?', 'Every token I write comes from a list of odds over everything I could say next. Here are my top ten for the sentence below. Click one to make me say it, or let me choose the way I usually would.',
       `<p><label for="learn-nx-start">Start of a sentence</label> <input id="learn-nx-start" type="text" maxlength="300" value="${esc(nx.start)}" ${nx.top ? 'disabled' : ''}></p>
-      ${nx.top ? '' : `<div class="row"><button type="button" class="get" data-next ${nx.busy ? 'disabled' : ''}>${nx.busy ? 'Looking...' : 'Show my odds'}</button></div>`}`, result, more);
+      ${nx.top ? '' : `<div class="row"><button type="button" class="get" data-next ${nx.busy ? 'disabled' : ''}>${nx.busy ? 'Looking…' : 'Show my odds'}</button></div>`}`, result, more);
   }
 
   function temperatureCard() {
@@ -59,7 +59,7 @@ export function createLearn({ api, info = () => null, saves = () => ({}) }) {
         <p><label for="learn-topp">Only the likeliest (top_p)</label> <input id="learn-topp" type="range" min="0.5" max="1" step="0.05" value="${tp.topP}"> <input id="learn-topp-n" type="number" min="0.5" max="1" step="0.05" value="${tp.topP}" aria-label="top_p"> <span class="muted">Keeps only the likeliest words that add up to this much of the odds. 1 keeps them all.</span></p>
       </details>
       <p><label for="learn-tp-start">Start of a sentence</label> <input id="learn-tp-start" type="text" maxlength="300" value="${esc(tp.start)}"></p>
-      <div class="row"><button type="button" class="get" data-try ${tp.busy ? 'disabled' : ''}>${tp.busy ? 'Writing...' : 'Write it three times'}</button></div>`, result, more);
+      <div class="row"><button type="button" class="get" data-try ${tp.busy ? 'disabled' : ''}>${tp.busy ? 'Writing…' : 'Write it three times'}</button></div>`, result, more);
   }
 
   // Each card's result as a table for Save.
