@@ -2,7 +2,7 @@
 // Equip Bob), with its size, how it suits this PC and smaller machines, and where it comes from (an exact Hugging Face
 // commit, or Ollama). Each model has an Active switch: active models show in the slots and menus, the rest stay here,
 // so the pickers stay short. Pure HTML builders; cellar.js handles the clicks.
-import { canDo, suit, pickFor, deviceFit, sourceOf, SLOT_NAMES } from './fit.js';
+import { canDo, suit, pickFor, deviceFit, sourceOf, SLOT_NAMES, roomOn, tooBigEverywhere } from './fit.js';
 import { allSlots, isActive, tipHtml, slotValue, equipped } from './equip.js';
 import { keep } from './tips.js';
 import { esc, gb } from './util.js';
@@ -82,8 +82,12 @@ function rowHtml(m, job, ctx) {
   const fits = fitLines(deviceFit(m));
   // 1.5.101: no line twice ("Runs on the processor" when the description already says so); the source is on the ↗ only.
   const where = m.vramGB ? `Wants ${gb(m.vramGB)} of graphics memory` : /runs on the processor/i.test(m.what || '') ? '' : 'Runs on the processor';
-  const tip = [m.what, communityLine(m), where, m.trial ? `New: not tried on a PC yet. ${m.trialNote || ''}`.trim() : '', s.why, fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`].filter(Boolean).join('\n');
-  const tags = `${recTag}${makerTag(m)}${isOwn(m) ? '<span class="tag" data-tip="A brain you added from a file on this replicant matrix. Bob runs it from where it is and never recommends it over the ones he knows.">Your own file</span>' : ''}${m.trial ? '<span class="tag">New</span>' : ''}${!rec && s.level !== 'ok' ? LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
+  const out = m.published ? `Released ${dayWords(m.published)}` : '';
+  const isNew = ctx.newIds?.has(m.id) === true;
+  const dated = datedLine(m, ctx.allModels || ctx.models);
+  const roomy = !here && s.level !== 'ok' ? roomOn(m, ctx.bobNet) : '';
+  const tip = [m.what, communityLine(m), where, out, isNew ? 'New: one of the five newest releases in its family.' : '', dated, m.trial ? `${TRIAL_LINE} ${m.trialNote || ''}`.trim() : '', s.why, roomy ? `Fits ${roomy} on your Bob-Net.` : '', fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`].filter(Boolean).join('\n');
+  const tags = `${recTag}${makerTag(m)}${isOwn(m) ? '<span class="tag" data-tip="A brain you added from a file on this replicant matrix. Bob runs it from where it is and never recommends it over the ones he knows.">Your own file</span>' : ''}${isNew ? `<span class="tag new-tag" tabindex="0" data-tip="${esc(`New: one of the five newest releases in the ${familyOf(m)} family.${out ? ` ${out}.` : ''}`)}">New</span>` : ''}${dated ? `<span class="tag dated-tag" tabindex="0" data-tip="${esc(dated)}">Dated</span>` : ''}${!rec && s.level !== 'ok' ? LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
   const on = isActive({ entry: m, value: m.id, installed: here }, ctx.active);
   const sw = job.id === 'phone' ? '<span class="muted">In the phone app</span>'
     : `<button type="button" class="mini-switch" role="switch" aria-checked="${on}" data-active="${esc(m.id)}" aria-label="Active: ${esc(m.name)}">Active <span class="st">${on ? 'On' : 'Off'}</span></button>`;
@@ -107,7 +111,12 @@ function rowHtml(m, job, ctx) {
 // Which families are open is remembered in this browser (ctx.famOpen, keyed job:family).
 export const FAMILIES = {
   Qwen: 'Made by the Qwen team at Alibaba. The biggest family here: quick little brains, big coders and thinkers, a picture reader and a picture editor.',
-  Gemma: 'Made by Google. Brains that see pictures, from the phone-sized E2B to the 26B.',
+  Gemma: 'Made by Google. Brains that see pictures, from the phone-sized E2B to the 31B.',
+  Granite: 'Made by IBM. Plain, steady brains for everyday work and office jobs, from a small 3B to a 30B.',
+  Mistral: 'Made by Mistral AI in France. Ministral brains that see pictures, and Devstral for coding.',
+  Nemotron: 'Made by NVIDIA. Quick brains built for tools and long jobs; some see pictures.',
+  GLM: 'Made by Z.ai. A coding and tools brain that thinks before it answers.',
+  Laguna: 'Made by Poolside. A coder that is small for what it does.',
   'GPT-OSS': 'Made by OpenAI, open to download. A careful thinker and reviewer.',
   Whisper: 'Made by OpenAI. Turns your voice into words.',
   'Z-Image': 'Made by Alibaba\'s Tongyi lab. Quick picture making, in sizes for big and small cards.',
@@ -123,6 +132,30 @@ export const FAMILIES = {
 export const familyOf = (m) => m.family || String(m.name || m.id || '').split(/[\s-]/)[0] || 'Other';
 export const famKey = (job, fam) => `${job}:${fam}`;
 
+// 1.5.137: "New" means released lately, not "not tried yet" (the owner: "new if they are perhaps the 5 most recent
+// releases in a model family"). Every brain carries a `published` date (YYYY-MM-DD, when its maker put it out); a brain
+// is New when that date is one of the five newest release dates in its family among the brains shown, and no more than
+// a year old (so a small family's old brains don't stay New for ever). Brains with no date are never New.
+export const NEW_PER_FAMILY = 5, NEW_FOR_DAYS = 365;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+export function newIds(models, { now = Date.now() } = {}) {
+  const dated = (models || []).filter((m) => m.jobs && DATE_RE.test(m.published || '') && now - Date.parse(m.published) <= NEW_FOR_DAYS * 864e5);
+  const top = new Map();
+  for (const m of dated) { const f = familyOf(m); if (!top.has(f)) top.set(f, new Set()); top.get(f).add(m.published); }
+  for (const [f, s] of top) top.set(f, new Set([...s].sort().reverse().slice(0, NEW_PER_FAMILY)));
+  return new Set(dated.filter((m) => top.get(familyOf(m)).has(m.published)).map((m) => m.id));
+}
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+export const dayWords = (d) => (DATE_RE.test(d || '') ? `${MONTHS[Number(d.slice(5, 7)) - 1]} ${Number(d.slice(8, 10))}, ${d.slice(0, 4)}` : '');
+// 1.5.137: "Dated": a brain newer ones do better. It stays on the list (nothing is taken away); the tag and its tip say
+// which newer brains to look at. Explicit marker in catalog.json: dated: { newer: [ids], why }.
+export function datedLine(m, all = []) {
+  if (!m?.dated) return '';
+  const names = [].concat(m.dated.newer || []).map((id) => all.find((x) => x.id === id)?.name).filter(Boolean);
+  return `Dated: ${m.dated.why || 'newer brains do this job better'}.${names.length ? ` Newer ones to try: ${names.join(', ')}.` : ''} It stays on the list; nothing is taken away.`;
+}
+export const TRIAL_LINE = 'Not tried on a real replicant matrix yet, so I don\'t recommend it yet.';
+
 function familyHtml(job, fam, list, ctx) {
   const pick = job.id !== 'phone' && list.some((m) => pickFor(job.id, ctx.models, ctx)?.id === m.id);
   const hereN = list.filter((m) => m.status?.state === 'installed').length;
@@ -137,7 +170,11 @@ function familyHtml(job, fam, list, ctx) {
 }
 
 function jobHtml(job, ctx) {
-  const list = modelsFor(job, ctx.models);
+  // 1.5.137: a brain too big for this replicant matrix and for every Bob on your Bob-Net isn't listed here at all; it's
+  // under Rented brains (and the Lab), where a rented card can run it. Installed ones always stay.
+  const all = modelsFor(job, ctx.models);
+  const list = all.filter((m) => !tooBigEverywhere(m, ctx, ctx.bobNet, ctx.platform));
+  const away = all.length - list.length;
   // Bob's pick first, then what's here, then what fits, then the rest.
   const rank = (m) => (pickFor(job.id, ctx.models, ctx)?.id === m.id ? 0 : m.status?.state === 'installed' ? 1 : suit(m, ctx, ctx.platform).level === 'ok' ? 2 : 3);
   const sorted = [...list].sort((a, b) => rank(a) - rank(b));
@@ -148,9 +185,10 @@ function jobHtml(job, ctx) {
   for (const m of shown) { const f = familyOf(m); if (!fams.has(f)) fams.set(f, []); fams.get(f).push(m); }
   const famOrder = [...fams.entries()].sort((a, b) => Math.min(...a[1].map(rank)) - Math.min(...b[1].map(rank)) || a[0].localeCompare(b[0]));
   const note = hide.length ? `<p class="muted unsuited-note">${ctx.showUnsuited ? '' : `${hide.length} more ${hide.length === 1 ? 'doesn\'t' : 'don\'t'} suit this replicant matrix. `}<button type="button" class="link" data-unsuited>${ctx.showUnsuited ? 'Hide the ones that don\'t suit' : 'Show them'}</button></p>` : '';
+  const rentNote = away ? `<p class="muted too-big-note">${away} more ${away === 1 ? 'is' : 'are'} too big for this replicant matrix${ctx.bobNet?.length ? ' and every Bob on your Bob-Net' : ''}. ${away === 1 ? 'It\'s' : 'They\'re'} listed under <button type="button" class="link" data-rentsettings>Rented brains</button>, where a rented graphics card can run ${away === 1 ? 'it' : 'them'}.</p>` : '';
   const rule = job.id === 'gaming' ? '<p class="muted">Only brains timed answering quickly on a busy processor are listed here. Gemma 4 E4B isn\'t: it takes about half a minute there.</p>' : '';
   return `<section class="cat-job" id="catjob-${esc(job.id)}"><h3>${job.icon} ${esc(SLOT_NAMES[job.id] || job.name)} ${tipHtml(job.does, `About ${job.name}`)}</h3>${rule}
-    ${famOrder.map(([f, ms]) => familyHtml(job, f, ms, ctx)).join('') || '<ul class="kit-list cat-list"><li class="muted">Nothing in Bob\'s list for this job yet.</li></ul>'}${note}</section>`;
+    ${famOrder.map(([f, ms]) => familyHtml(job, f, ms, ctx)).join('') || '<ul class="kit-list cat-list"><li class="muted">Nothing in Bob\'s list for this job yet.</li></ul>'}${note}${rentNote}</section>`;
 }
 
 // 1.5.135: ➕ Your own brains: GGUF files on this replicant matrix that you put on Bob's list yourself. The rows
@@ -201,7 +239,8 @@ export function modelsForView(models, view, naughtyOn) {
 export function catalogueHtml(ctx0) {
   // 1.5.132: the Well behaved / Naughty list toggle; 1.5.133 adds Community in the middle and a red devil for the list.
   const view = ctx0.naughtyOn === true && (ctx0.naughtyView === true || ctx0.catView === 'naughty') ? 'naughty' : ctx0.catView === 'community' ? 'community' : 'well';
-  const ctx = { ...ctx0, models: modelsForView(ctx0.models, view, ctx0.naughtyOn), naughtyPick: view === 'naughty' };
+  const shownModels = modelsForView(ctx0.models, view, ctx0.naughtyOn);
+  const ctx = { ...ctx0, models: shownModels, allModels: ctx0.models || [], naughtyPick: view === 'naughty', newIds: newIds(shownModels.filter((m) => !tooBigEverywhere(m, ctx0, ctx0.bobNet, ctx0.platform)), { now: ctx0.now || Date.now() }) };
   const jobs = catJobs();
   const card = ctx.vramGB ? `${ctx.vramGB} GB graphics card${ctx.ramGB ? `, ${ctx.ramGB} GB RAM` : ''}` : 'no graphics card found';
   const nNaughty = (ctx0.models || []).filter(isNaughty).length, nComm = modelsForView(ctx0.models, 'community').length;
@@ -211,14 +250,29 @@ export function catalogueHtml(ctx0) {
   const famBtns = '<button type="button" class="mini" data-famall="open">Open all families</button> <button type="button" class="mini" data-famall="close">Close all</button>';
   if (view === 'naughty') {
     return `<div class="cat-top">${toggle}<p class="warn-text naughty-note">${devil('Naughty list')} ${esc(NAUGHTY_WARNING)} <button type="button" class="mini help-link" data-help="faq-naughty" aria-label="Help: the naughty list">? Help</button></p>
-    <p class="muted">By the job each one does. Turn <strong>Active</strong> on for the ones you want to see in Equip Bob and the brain menus. ${tipHtml(`A red devil on its own, where ★ Recommended would be, is my quiet pick for that job among the naughty list: it does the job well on this replicant matrix (${card}). New ones aren't picked until they've been tried on real hardware.`, 'About the quiet pick')} ${keep('Downloads always ask first, with the size.')} ${famBtns}</p>${nav}</div>
+    <p class="muted">By the job each one does. Turn <strong>Active</strong> on for the ones you want to see in Equip Bob and the brain menus. ${tipHtml(`A red devil on its own, where ★ Recommended would be, is my quiet pick for that job among the naughty list: it does the job well on this replicant matrix (${card}). Brains not tried on a real replicant matrix yet aren't picked.`, 'About the quiet pick')} ${keep('Downloads always ask first, with the size.')} ${famBtns}</p>${nav}</div>
     ${jobs.filter((j) => modelsFor(j, ctx.models).length).map((j) => jobHtml(j, ctx)).join('') || '<p class="muted">Nothing on the naughty list yet.</p>'}`;
   }
   if (view === 'community') {
-    return `<div class="cat-top">${toggle}<p class="muted">Builds other people made from stock brains that still behave: a fine-tune, a distillation or a repack. Not the makers' own releases; each row's <strong>i</strong> says who made it and from what. They're in the Well behaved list too. ${tipHtml(`A community build can be ★ Recommended like any other, once it has been tried on a real replicant matrix and does its job well there. New ones are listed but not picked until then. Picked for this replicant matrix: ${card}.`, 'How community builds are picked')} ${keep('Downloads always ask first, with the size.')} <button type="button" class="mini help-link" data-help="faq-community" aria-label="Help: community builds">? Help</button> ${famBtns}</p>${nav}</div>
+    return `<div class="cat-top">${toggle}<p class="muted">Builds other people made from stock brains that still behave: a fine-tune, a distillation or a repack. Not the makers' own releases; each row's <strong>i</strong> says who made it and from what. They're in the Well behaved list too. ${tipHtml(`A community build can be ★ Recommended like any other, once it has been tried on a real replicant matrix and does its job well there. Ones not tried yet are listed but not picked until then. Picked for this replicant matrix: ${card}.`, 'How community builds are picked')} ${keep('Downloads always ask first, with the size.')} <button type="button" class="mini help-link" data-help="faq-community" aria-label="Help: community builds">? Help</button> ${famBtns}</p>${nav}</div>
     ${jobs.filter((j) => modelsFor(j, ctx.models).length).map((j) => jobHtml(j, ctx)).join('') || '<p class="muted">No community builds in Bob\'s list yet.</p>'}`;
   }
-  return `<div class="cat-top">${toggle}<p class="muted">Every model Bob knows, by the job it does, then by family. Press a family's name to open its list. Turn <strong>Active</strong> on for the ones you want to see in Equip Bob and the brain menus. ${tipHtml(`Picked for this replicant matrix: ${card}. ★ Recommended is Bob's pick for that job here. New ones are listed but not recommended until they've been tried on real hardware. Turning Active off only hides a model; it stays on this replicant matrix (your computer). Turning it on for a model you don't have yet shows it in Equip Bob with a Get button.`, 'How the catalogue works')} ${keep('Downloads always ask first, with the size.')} ${famBtns} <button type="button" class="mini help-link" data-help="catalogue" aria-label="Help: the Brain catalogue">? Help</button></p>
+  return `<div class="cat-top">${toggle}<p class="muted">Every model Bob knows, by the job it does, then by family. Press a family's name to open its list. Turn <strong>Active</strong> on for the ones you want to see in Equip Bob and the brain menus. ${tipHtml(`Picked for this replicant matrix: ${card}. ★ Recommended is Bob's pick for that job here. Brains not tried on a real replicant matrix yet are listed but not recommended. New means one of the five newest releases in its family; Dated means newer brains do its job better (it stays on the list). Turning Active off only hides a model; it stays on this replicant matrix (your computer). Turning it on for a model you don't have yet shows it in Equip Bob with a Get button.`, 'How the catalogue works')} ${keep('Downloads always ask first, with the size.')} ${famBtns} <button type="button" class="mini help-link" data-help="catalogue" aria-label="Help: the Brain catalogue">? Help</button></p>
     ${nav}</div>
     ${jobs.map((j) => jobHtml(j, ctx)).join('')}${ownHtml(ctx)}${othersHtml(ctx)}`;
+}
+
+// 1.5.137: the brains Rented brains offers to fill in Add a rental: the really big ones (catalog.json bigBrains, too big
+// for any home computer) and the catalogue brains too big for this replicant matrix and every Bob on the Bob-Net.
+// card = the card size to suggest; cards = how many it needs on one machine (Settings never picks more than 1 by itself:
+// the many-cards warning comes when you change it). answerOnly = too big to rent as one machine: pay per answer only.
+const CARD_SIZES = [24, 48, 80, 141];
+export function rentPicks(models = [], bigBrains = [], hw = {}, rooms = [], platform = '') {
+  // A squeezed (Q3) file is for small cards only, so a rented card gets the full one.
+  const cat = (models || []).filter((m) => m.rentAs && !isOwn(m) && !m.maxCardGB && tooBigEverywhere(m, hw, rooms, platform)).map((m) => {
+    const card = CARD_SIZES.find((c) => c >= (m.vramGB || 0) + 4) || 141;
+    return { key: `cat:${m.id}`, name: m.name, group: 'too-big', model: m.rentAs, hf: m.rentAs.split('/').slice(0, 2).join('/'), card: String(card), cards: 1, naughty: isNaughty(m), published: m.published || '' };
+  });
+  const big = (bigBrains || []).map((b) => ({ key: `big:${b.id}`, name: b.name, group: 'big', model: b.rent?.answerOnly ? '' : b.hf, hf: b.hf, card: String(b.rent?.card || 141), cards: Number(b.rent?.cards) || 1, answerOnly: b.rent?.answerOnly === true, what: b.what || '', published: b.published || '', by: b.by || '' }));
+  return [...big, ...cat];
 }

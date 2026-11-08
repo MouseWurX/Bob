@@ -172,13 +172,22 @@ export function configuredGguf(cfg, entry) {
 // on every stock Qwen and Gemma. Only a catalogue entry marked madeByBob: true (a brain made for Bob, none shipped yet)
 // gets "Bob's own brain"; a fuzzy name match never does. Ollama's models get their Ollama name instead (roles()).
 export const MADE_BY_BOB = "Bob's own brain";
-export const DOWNLOADED_BY_BOB = 'downloaded by Bob';
 export const isMadeByBob = (m) => m?.madeByBob === true;
-// 1.5.133: a file you put somewhere yourself (set by hand in config.json, or found in another app's folder) isn't
-// "downloaded by Bob": only a file in Bob's own models folder is. gguf = the file found for it, when known.
+// 1.5.133: a file you put somewhere yourself (set by hand in config.json, or found in another app's folder) says "(your own file)".
+// 1.5.137: a file Bob downloaded himself gets no bracket at all (the owner: "models don't need to say downloaded by
+// Bob"); that's the usual case, so only the unusual ones are marked. gguf = the file found for it, when known.
 export const YOUR_OWN_FILE = 'your own file';
 const inBobsFolder = (m, p) => { const s = String(p).toLowerCase().replace(/\\/g, '/'); return s.includes('/models/bob/') || (Boolean(m?.id) && s.includes(`/models/${String(m.id).toLowerCase()}/`)); };
-export const fileLabel = (m, gguf = null) => `${m.name} (${isMadeByBob(m) ? MADE_BY_BOB : gguf && !inBobsFolder(m, gguf) ? YOUR_OWN_FILE : DOWNLOADED_BY_BOB})`;
+export const fileTag = (m, gguf = null) => (isMadeByBob(m) ? MADE_BY_BOB : gguf && !inBobsFolder(m, gguf) ? YOUR_OWN_FILE : '');
+export const fileLabel = (m, gguf = null) => { const t = fileTag(m, gguf); return t ? `${m.name} (${t})` : m.name; };
+
+// 1.5.137: how a rented machine fetches a brain from Bob's list: its brain file as Owner/Repo/file.gguf (the form Add a
+// rental takes, src/rental.js modelSpec). '' for a brain without one.
+export function rentAsOf(m) {
+  const f = (m.files || []).find((x) => x.role === 'gguf');
+  const hit = String(f?.url || '').match(/^https:\/\/huggingface\.co\/([\w.-]+\/[\w.-]+)\/resolve\/[0-9a-f]{40}\/([^?#]+\.gguf)$/i);
+  return hit ? `${hit[1]}/${hit[2]}` : '';
+}
 
 export class ModelShop {
   constructor(cfg, emit, engine) {
@@ -187,7 +196,8 @@ export class ModelShop {
     this.engine = engine;
     this.dir = cfg.bobModelsDir;
     this.scanFile = path.join(cfg.dataDir, 'model-scan.json');
-    this.catalog = JSON.parse(fs.readFileSync(cfg.catalogFile || path.join(appDir, 'catalog.json'), 'utf8'));
+    this.shipped = JSON.parse(fs.readFileSync(cfg.catalogFile || path.join(appDir, 'catalog.json'), 'utf8'));
+    this.catalog = this.shipped; // 1.5.137: or the newest list from GitHub laid over it (src/catalog-update.js)
     try { this.found = JSON.parse(fs.readFileSync(this.scanFile, 'utf8')); } catch { this.found = { at: null, files: [] }; }
     this.active = new Map(); // downloads running now: id -> { ac, pub, kind }
     this.dl = this.loadDownloads();
@@ -295,12 +305,13 @@ export class ModelShop {
   async list() {
     const ollama = await this.ollamaNames();
     const models = [];
-    for (const m of this.catalog.models) models.push({ ...m, files: (m.files || []).map((f) => ({ name: saveNameOf(f), role: f.role })), status: await this.statusOf(m, ollama) });
+    for (const m of this.catalog.models) models.push({ ...m, files: (m.files || []).map((f) => ({ name: saveNameOf(f), role: f.role })), rentAs: rentAsOf(m), status: await this.statusOf(m, ollama) });
     for (const e of ownEntries(this.cfg)) models.push(e); // 1.5.135: brains of your own, from files on this replicant matrix
     const known = new Set(models.flatMap((m) => Object.values(m.status.located).map((p) => p.toLowerCase())));
     const extras = this.found.files.filter((f) => !known.has(f.path.toLowerCase()) && f.owner !== 'Ollama');
     return {
       categories: this.catalog.categories, packs: this.catalog.packs, models, extras, engines: engineStatus(this.cfg),
+      bigBrains: this.catalog.bigBrains || [], updated: this.catalog.updated || '', // 1.5.137: the really big brains (Rented brains) and the list's date
       scannedAt: this.found.at, ollamaRunning: Boolean(ollama), job: this.job, downloads: this.downloadsView(),
       active: { engine: this.cfg.engine, models: this.cfg.models, painter: this.cfg.painter?.engine, stt: this.cfg.stt?.provider }
     };

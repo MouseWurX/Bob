@@ -351,20 +351,30 @@ export function cleanAbilities(j) {
   out.jobsBusy = typeof j?.jobsBusy === 'string' ? j.jobsBusy.slice(0, 40) : '';
   out.queue = n(j?.queue, 999);
   out.passAlong = j?.passAlong === true; // 1.5.123: he introduces his Bobs to each other
+  // 1.5.137: his room (graphics card and memory, in GB), so the Brain catalogue knows which brains a Bob on the
+  // Bob-Net could run. Numbers only; a Bob that doesn't say (the phone, an older Bob) simply has no room listed.
+  const r = j?.room && typeof j.room === 'object' ? { vramGB: n(j.room.vramGB, 4096), ramGB: n(j.room.ramGB, 16384) } : null;
+  if (r && (r.vramGB || r.ramGB)) out.room = r;
   if (typeof j?.name === 'string' && j.name.trim()) out.hisName = j.name.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 40);
   return out;
 }
 
+// 1.5.137: the rooms of the Bobs on your Bob-Net, from their last hellos (cached, no network): [{ name, vramGB, ramGB }].
+// Phones are left out: the catalogue's brains are for computers.
+export const bobNetRooms = (L) => (L?.bobs?.() || []).map((b) => ({ b, s: L.state?.get(b.address) || {} }))
+  .filter(({ s }) => s.room && s.device !== 'phone').map(({ b, s }) => ({ name: b.name, vramGB: s.room.vramGB || 0, ramGB: s.room.ramGB || 0 }));
+
 // The hello a desktop lender gives: quick replies (lend) and, with "Take jobs from my other Bobs" on, the whole jobs he
 // can really do on this computer right now. Never a job he'd have to fake: no picture model, no pictures.
-export function helloFor(brain, { why, quick, can, version, label, webOn, bigBrain, name = '' }) {
+export function helloFor(brain, { why, quick, can, version, label, webOn, bigBrain, name = '', room = null }) {
   const takesJobs = brain.cfg.share?.takeJobs === true && doorOpen(brain.cfg);
   const jobs = takesJobs ? [can.pictures && 'pictures', can.video && 'video', can.music && 'music', can.sfx && 'sfx', webOn && bigBrain && 'web', bigBrain && 'think'].filter(Boolean) : [];
   return {
     protocol: PROTOCOL, lend: why !== 'off', busy: why === 'off' ? undefined : why || undefined,
     brain: quick ? label(quick.model) : '', ctx: quick?.ctx || 0, speed: brain.engine?.lastStats?.tokPerSec || 0,
     device: 'computer', version, takesJobs, jobs, jobsBusy: takesJobs ? guestRefusal(brain) : '', queue: brain.queue?.filter?.((j) => j.state === 'waiting' || j.state === 'working').length || 0,
-    name, passAlong: brain.cfg.share?.passAlong === true // 1.5.123: for the party in Now running
+    name, passAlong: brain.cfg.share?.passAlong === true, // 1.5.123: for the party in Now running
+    ...(room ? { room } : {}) // 1.5.137: graphics card and memory in GB, for the other Bob's Brain catalogue
   };
 }
 

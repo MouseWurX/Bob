@@ -4,6 +4,19 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.137
+
+**The whole brain list.** The Brain catalogue now offers every brain worth having, sorted by job and family as before, with 18 new ones: NVIDIA's Nemotron 3.5 Bolt and Lightning, IBM's Granite 4.1, Mistral's Ministral 3 and Devstral Small 2, Google's Gemma 4 12B and 31B, Z.ai's GLM-4.7-Flash, Poolside's Laguna XS 2.1, Qwen3.5 0.8B, Xiaomi's MiMo 9B, and three more on the naughty list. New ones aren't recommended until they've been tried on real hardware.
+
+- **New** now means released lately: one of the five newest releases in its family (under a year old). Every brain's **i** says the day it came out.
+- **Dated** marks a brain newer ones do better. Nothing is taken off the list.
+- A brain too big for your replicant matrix and for every Bob on your Bob-Net moves to **Rented brains**, with a line saying where it went. If another of your Bobs can run it, it stays and says which one.
+- **Rented brains** can now pick from Bob's list, including the really big brains (DeepSeek, GLM-5, Kimi, Mistral Large and more). Bob fills in the model and card size, or finds the brain on a pay-per-answer service's own list. He never picks more than one card by himself.
+- **Let Bob fetch his newest brain list** (Settings, Going online; off unless you turn it on): once a day Bob reads his list from GitHub, so brains that come out between versions show up. Only fully pinned lists are used, nothing is removed, and nothing about you is sent (GitHub sees the request, like any web page).
+- Models Bob downloaded himself no longer say "(downloaded by Bob)".
+- Help: new FAQs on New and Dated, big brains in Rented brains, and the newest brain list.
+- Phone (Bob for Android): nothing changes.
+
 ## 1.5.136
 
 Themes named after worlds, Moondust as the starting theme, and no more Match system.

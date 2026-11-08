@@ -5,7 +5,7 @@ import { createStylePage } from './style-page.js';
 import { createSampler, sampleButton, sampleHint } from './voice-samples.js';
 import { equipHtml, allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml, readyList, readyDefaults, readyToggle, readyOrder, CHEST_SHOW } from './equip.js';
 import { suit as fitSuit, picksOf, unsuited, jobNames, SLOT_NAMES, canDo, packsFor } from './fit.js';
-import { catalogueHtml, familyOf, visibleModels, isNaughty, VIEWS } from './catalogue.js';
+import { catalogueHtml, familyOf, visibleModels, isNaughty, VIEWS, dayWords, rentPicks } from './catalogue.js';
 import { drawBob } from './bob-sprite.js';
 import { handsSettingsHtml, mountHandsSettings } from './hands.js';
 import { quarantineSettingsHtml, mountQuarantineSettings } from './quarantine.js';
@@ -34,6 +34,31 @@ export function createCellar() {
   let speedModel = '';
   let speedRuns = [];
   let rent = { services: [], rentals: [], caps: {}, running: [], leftover: [], recent: [] }; // 1.5.127 rented brains
+  let rentPickOpen = false; // 1.5.137: Add a rental opens by itself when you come from the catalogue's "Rented brains" link
+  // 1.5.137: fills Add a rental from the brain picked in "Pick a brain from Bob's list", for the service picked.
+  // Never more than 1 card by itself: a brain that needs several says so, and the many-cards warning comes when you change it.
+  function fillRentPick(box) {
+    const key = box.querySelector('[data-rentadd="pick"]')?.value || '';
+    const p = rentPicks(visibleModels(data?.models || [], naughtyOn()), data?.bigBrains || [], eqCtx(), data?.bobNet || [], settings.platform).find((x) => x.key === key);
+    const s = (rent.services || []).find((x) => x.id === box.querySelector('[data-rentadd="service"]')?.value);
+    const model = box.querySelector('[data-rentadd="model"]'), name = box.querySelector('[data-rentadd="name"]');
+    const find = box.querySelector('[data-rentfind]'), note = box.querySelector('.rent-pick-note');
+    const say = (t) => { if (note) { note.textContent = t; note.classList.remove('error'); note.classList.add('muted'); } };
+    if (find) find.hidden = !(p && s?.kind === 'answer');
+    if (!p) { if (model.dataset.auto) { model.value = ''; delete model.dataset.auto; } if (name.dataset.auto) { name.value = ''; delete name.dataset.auto; } say(''); return; }
+    if (!name.value || name.dataset.auto) { name.value = `${p.name}${s ? ` on ${s.name.replace(/ \(.*\)$/, '')}` : ''}`; name.dataset.auto = '1'; }
+    if (!s || s.kind === 'answer') {
+      if (model.dataset.auto) { model.value = ''; delete model.dataset.auto; }
+      say(s ? `Press Find it on this service and Bob looks for ${p.name} on ${s.name}'s own list.` : 'Pick a service.');
+      return;
+    }
+    if (p.answerOnly) { if (model.dataset.auto) { model.value = ''; delete model.dataset.auto; } say(`${p.name} is too big to rent as one machine. Pick a pay-per-answer service and press Find it.`); return; }
+    model.value = p.model; model.dataset.auto = '1';
+    const card = box.querySelector('[data-rentadd="card"]');
+    if (card && [...card.options].some((o) => o.value === p.card)) card.value = p.card;
+    const cardName = (rent.cards || []).find((c) => c.id === p.card)?.name || `${p.card} GB card`;
+    say(p.cards > 1 ? (s.kind === 'machine' ? `${p.name} needs ${p.cards} × ${cardName} on one machine. Set Cards on the machine to ${p.cards}: Bob shows what that costs first.` : `${p.name} needs ${p.cards} cards on one machine, so it wants a machine-by-the-minute service, not serverless.`) : `Card size set to ${cardName}.`);
+  }
   let data = null, hw = null, settings = null, roles = null, cloud = [], caps = {}, bctx = { on: false, brains: [] }, tab = 'roles', job = null, mode = 'shop', voices = [];
   const sampler = createSampler();
   const live = new Map(); // downloads running now (one or two), by id
@@ -225,7 +250,7 @@ export function createCellar() {
     if (tab === 'settings') body = settingsHtml();
     else if (tab === 'style') body = stylePage.html(settings);
     else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="doll">Back to Equip Bob</button></p>${rolesHtml()}` : (roles ? equipHtml(eqCtx()) : '<p class="muted">Loading...</p>');
-    else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], naughtyOn: naughtyOn(), catView, ownForm, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
+    else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], bobNet: data?.bobNet || [], naughtyOn: naughtyOn(), catView, ownForm, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
     else if (tab === 'found') body = `<p class="muted">Scanned ${data.scannedAt ? new Date(data.scannedAt).toLocaleString() : 'never'}. <button data-scan>Look again</button></p>${extrasHtml() || '<p>Nothing extra found.</p>'}`;
     else if (GROUPS.some((g) => g.id === tab)) body = groupHtml(GROUPS.find((g) => g.id === tab));
     else {
@@ -552,6 +577,8 @@ export function createCellar() {
       ${sswitch('tray', settings.tray !== false, 'Keep Bob in the tray', `On unless you turn it off. Closing or minimising Bob's window tucks him into ${settings.platform === 'darwin' ? 'the menu bar at the top of the screen' : settings.platform === 'win32' ? 'the tray by the clock' : 'your desktop\'s tray'} instead of closing him, so he keeps running. Click his icon to open him again. To close him fully, ${settings.platform === 'darwin' ? 'click' : 'right-click'} his icon and pick <strong>Quit Bob</strong>.${settings.trayHere ? '' : ' Only in Bob\'s own window, not in a browser.'}`, settings.trayHere ? '' : 'disabled')}
       <h4 class="ssub">Going online</h4>
       ${sswitch('webSearch', settings.webSearch === true, 'Let Bob search the web', keep('Off unless you turn it on. Bob looks things up on DuckDuckGo and reads pages when a question needs it. Only the search words and page addresses leave your replicant matrix (your computer).'))}
+      ${sswitch('catalogUpdates', settings.catalogUpdates === true, 'Let Bob fetch his newest brain list', keep('Off unless you turn it on. Once a day Bob reads his brain list from his own page on GitHub, so brains that came out since this version show up in the Brain catalogue. He only uses a list where every file is pinned to an exact copy with its size and fingerprint, he never takes a brain away, and nothing about you is sent (GitHub sees the request, like any web page). Downloads still ask first, with the size.'))}
+      <p class="muted list-date">${data?.updated ? `Bob's brain list is from ${esc(dayWords(data.updated))}.` : ''} ${settings.catalogUpdates === true ? '<button type="button" class="mini" data-listcheck>Check now</button>' : ''}</p>
       <h4 class="ssub">Brains</h4>
       ${sswitch('naughtyList', settings.naughtyList === true, 'Show the naughty list', keep('Off unless you turn it on. The naughty list is other people\'s remixes of Qwen and Gemma brains with the refusals cut out ("heretic" or "abliterated"), not Alibaba\'s or Google\'s releases. On: they appear behind the Naughty list side of the Brain catalogue\'s toggle (the red devil), and the ones you make Active show in Equip Bob and the brain menus. A brain from there answers without refusing, so what it says is on you, and it can be a little rougher than the original. Bob never recommends one. Off: they are listed nowhere; one already equipped stays until you change it.'))}
 `)}${EVERY_EXTRA.map(([id, label, note, body]) => panel(id, label, typeof note === 'function' ? note() : note, body())).join('')}
@@ -671,6 +698,12 @@ export function createCellar() {
     const running = (r.running || []).map((m) => `<li>${esc((r.rentals || []).find((x) => x.id === m.rental)?.name || m.rental)}: ${m.starting ? 'starting' : `${m.minutes} min, about ${esc(m.usd)}`}</li>`).join('');
     const leftover = (r.leftover || []).map((m) => `<li>${esc(m.serviceName)} ${esc(m.id)}${m.perHour ? ` (about $${(+m.perHour).toFixed(2)} an hour)` : ''}, started before Bob did <button type="button" class="mini danger" data-rentstopone="${esc(m.id)}">Stop it</button></li>`).join('');
     const cardOpts = (r.cards || []).map((c) => `<option value="${esc(c.id)}" ${c.id === '48' ? 'selected' : ''}>${esc(c.name)} (about $${c.perHour.toFixed(2)} an hour): ${esc(c.say)}</option>`).join('');
+    // 1.5.137: Bob's list, so you needn't know what a service calls a brain: the really big ones, and the catalogue
+    // brains too big for this replicant matrix and every Bob on your Bob-Net (those are only listed here and in the Lab).
+    const picks = rentPicks(visibleModels(data?.models || [], naughtyOn()), data?.bigBrains || [], eqCtx(), data?.bobNet || [], settings.platform);
+    const pickOpt = (p) => `<option value="${esc(p.key)}">${esc(p.name)}${p.by ? ` (${esc(p.by)})` : ''}${p.answerOnly ? ': pay per answer only' : p.cards > 1 ? `: needs ${p.cards} cards` : ''}</option>`;
+    const bigs = picks.filter((p) => p.group === 'big'), tooBig = picks.filter((p) => p.group === 'too-big');
+    const pickSel = picks.length ? `<label class="pick"><strong>Pick a brain from Bob's list</strong><select data-rentadd="pick" aria-label="Pick a brain from Bob's list"><option value="">None: I'll type the model's name</option>${bigs.length ? `<optgroup label="Really big brains">${bigs.map(pickOpt).join('')}</optgroup>` : ''}${tooBig.length ? `<optgroup label="Too big for your Bobs">${tooBig.map(pickOpt).join('')}</optgroup>` : ''}</select></label>` : '';
     const svcOpts = (r.services || []).map((s) => `<option value="${esc(s.id)}" ${s.enabled ? '' : 'disabled'}>${esc(s.name)}${s.enabled ? '' : ' (switch it on first)'}</option>`).join('');
     return `<div class="rent-block"><strong>Rented brains</strong> <span class="tag">off unless you turn one on</span>
       ${more('Hire a big brain for a big job, from any service you have an account with. A rental is a service plus a model (for example Qwen 3.6 35B on OpenRouter, or a full-size 24Bob on a RunPod card). Put one in the Rented brain slot on Equip Bob, then use it from the 🏗 Rented brain switch under the chat, or when Bob offers it for a job too big for this replicant matrix. You press a card before anything is spent, and it says the cost and exactly what leaves this replicant matrix: the chat of that job, the files you attach to it, Bob\'s instructions and what he remembers about you. Keys are environment variables Bob only reads (on Mac and Linux they can also go in ~/.config/bob/env); he never stores or shows one. Bob\'s figures are estimates from the service\'s price list; the service\'s own billing page is the real bill.')}
@@ -683,9 +716,11 @@ export function createCellar() {
       ${(r.services || []).map(svc).join('')}
       <h4 class="ssub">Rentals</h4>
       ${(r.rentals || []).length ? `<ul class="rent-list">${r.rentals.map(rentalRow).join('')}</ul>` : '<p class="muted">None yet.</p>'}
-      <details class="more rent-add"><summary>Add a rental</summary>
+      <details class="more rent-add"${rentPickOpen ? ' open' : ''}><summary>Add a rental</summary>
+        ${pickSel}
         <label class="pick"><strong>Service</strong><select data-rentadd="service" aria-label="Service">${svcOpts}</select></label>
-        <label class="pick"><strong>Model</strong><input data-rentadd="model" placeholder="as the service lists it, e.g. qwen/qwen3.6-35b-a3b, or Owner/Repo/file.gguf" aria-label="Model name" style="width:24em"></label>
+        <label class="pick"><strong>Model</strong><input data-rentadd="model" placeholder="as the service lists it, e.g. qwen/qwen3.6-35b-a3b, or Owner/Repo/file.gguf" aria-label="Model name" style="width:24em"> <button type="button" class="mini" data-rentfind hidden>Find it on this service</button></label>
+        <p class="muted rent-pick-note" aria-live="polite"></p>
         <label class="pick rent-card-pick"><strong>Card size</strong><select data-rentadd="card" aria-label="Card size">${cardOpts}</select></label>
         <label class="pick rent-cards-pick"><strong>Cards on the machine</strong><select data-rentadd="cards" aria-label="How many cards on the machine">${(r.cardCounts || [1]).map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n === 1 ? '1 card (the usual)' : `${n} cards at once: ${n} times the hourly price`}</option>`).join('')}</select> <span class="muted">Only for a model too big for one card. The price and the limits apply to the whole machine.</span></label>
         <div class="confirm rent-multi-warn" hidden></div>
@@ -1135,7 +1170,7 @@ export function createCellar() {
       if ('chestall' in b.dataset) { $('madeBtn')?.click(); return; }
       // 1.5.127 rented brains
       if ('rentuse' in b.dataset) { rent = await api('/api/rent/settings', { current: b.dataset.rentuse }); window.dispatchEvent(new CustomEvent('bob-rent-slot', { detail: { rental: (rent.rentals || []).find((x) => x.id === rent.current)?.name || '' } })); draw(); return; }
-      if ('rentsettings' in b.dataset) { sampler.stop(); setTab('settings'); advanced = true; try { localStorage.setItem('bob-settings-advanced', '1'); } catch {} jumpTo = 'adv-online'; draw(); return; }
+      if ('rentsettings' in b.dataset) { rentPickOpen = Boolean(b.closest('.too-big-note')); sampler.stop(); setTab('settings'); advanced = true; try { localStorage.setItem('bob-settings-advanced', '1'); } catch {} jumpTo = 'adv-online'; draw(); return; }
       if (b.dataset.rentwarnok) { rent = await api('/api/rent/settings', { enabled: { [b.dataset.rentwarnok]: true }, warned: { [b.dataset.rentwarnok]: true } }); draw(); return; }
       if (b.dataset.rentwarnno) { const box = b.closest('.rent-warn'); if (box) box.hidden = true; return; }
       // Several cards at once: the warning card's answer. Yes keeps the count; no puts it back to 1 card.
@@ -1146,6 +1181,19 @@ export function createCellar() {
       if ('rentstop' in b.dataset) { b.disabled = true; b.textContent = 'Stopping…'; rent = await api('/api/rent/stop', {}); draw(); return; }
       if (b.dataset.rentstopone) { b.disabled = true; try { rent = await api('/api/rent/stop-leftover', { id: b.dataset.rentstopone }); } catch (e) { alertIn(b, e.message); } draw(); return; }
       if ('rentcheck' in b.dataset) { b.disabled = true; rent = await api('/api/rent/check', {}); draw(); return; }
+      if ('rentfind' in b.dataset) { // 1.5.137: look the picked brain up on the pay-per-answer service's own list
+        const box = b.closest('.rent-add'); const val = (k) => box.querySelector(`[data-rentadd="${k}"]`)?.value?.trim() || '';
+        const p = rentPicks(visibleModels(data?.models || [], naughtyOn()), data?.bigBrains || [], eqCtx(), data?.bobNet || [], settings.platform).find((x) => x.key === val('pick'));
+        const note = box.querySelector('.rent-pick-note'); if (!p) return;
+        b.disabled = true;
+        try {
+          const r = await api('/api/rent/find', { service: val('service'), hf: p.hf, name: p.name, address: val('address'), keyEnv: val('keyEnv') });
+          const model = box.querySelector('[data-rentadd="model"]');
+          if (r.model) { model.value = r.model; model.dataset.auto = '1'; note.textContent = `Found it: ${r.model}.`; } else note.textContent = r.why || 'Not on that service\'s list.';
+        } catch (e) { note.textContent = e.message; note.classList.add('error'); } finally { b.disabled = false; }
+        return;
+      }
+      if ('listcheck' in b.dataset) { b.disabled = true; try { const r = await api('/api/catalog/latest', {}); flash(b, r.result?.why || 'Checked.'); await load().catch(() => {}); } catch (e) { alertIn(b, e.message); } finally { b.disabled = false; } return; } // 1.5.137
       if ('rentaddgo' in b.dataset) {
         const box = b.closest('.rent-add');
         const val = (k) => box.querySelector(`[data-rentadd="${k}"]`)?.value?.trim() || '';
@@ -1315,6 +1363,7 @@ export function createCellar() {
   // 1.5.34 Projects: "Add project" stays greyed out until a folder is filled in.
   const projAddState = () => { const b = dlg.querySelector('[data-projadd]'); if (b) b.disabled = !dlg.querySelector('#proj-path')?.value.trim(); };
   dlg.addEventListener('input', (e) => { if (e.target.id === 'proj-path') projAddState(); if (e.target.id === 'save-path') saveDirState(); });
+  dlg.addEventListener('input', (e) => { const k = e.target.dataset?.rentadd; if (k === 'model' || k === 'name') delete e.target.dataset.auto; }); // 1.5.137: what you type yourself stays
   dlg.addEventListener('input', (e) => { if (tab === 'style') stylePage.onInput(e.target); if (e.target.dataset?.ssearch !== undefined) { settingsQuery = e.target.value; filterSettings(); } if (e.target.dataset?.dial) showDials(dialValues()); });
 
   // 1.5.135: ➕ Your own brains, the Add form.
@@ -1387,6 +1436,7 @@ export function createCellar() {
       if (el.dataset.set === 'tray' || el.dataset.set === 'lookIcon') { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k]; return; }
       if (el.dataset.set === 'howtos') { const r = await api('/api/settings', { howtos: el.checked }); settings.howtos = r.howtos; el.checked = r.howtos; flash(el, r.howtos ? 'On. After a job with a few steps goes well, Bob offers to keep them as a how-to.' : 'Off. Bob won\'t offer or use how-tos. Saved ones stay in 📒 How-tos.'); return; }
       if (el.dataset.set === 'naughtyList') { const r = await api('/api/settings', { naughtyList: el.checked }); settings.naughtyList = r.naughtyList === true; el.checked = settings.naughtyList; if (!settings.naughtyList && catView === 'naughty') setCatView('well'); flash(el, settings.naughtyList ? 'On. The Naughty list side (the red devil) is at the top of the Brain catalogue.' : 'Off. The naughty list is out of every list again.'); return; }
+      if (el.dataset.set === 'catalogUpdates') { const r = await api('/api/settings', { catalogUpdates: el.checked }); settings.catalogUpdates = r.catalogUpdates === true; el.checked = settings.catalogUpdates; flash(el, settings.catalogUpdates ? (r.listCheck?.why ? `On. ${r.listCheck.why}` : 'On. Bob looks for a newer brain list once a day.') : 'Off. Bob uses the brain list that came with this version.'); await load().catch(() => {}); return; } // 1.5.137
       if (el.dataset.set === 'webSearch') { const r = await api('/api/settings', { webSearch: el.checked }); settings.webSearch = r.webSearch; el.checked = r.webSearch; window.dispatchEvent(new CustomEvent('bob-web', { detail: { webSearch: r.webSearch } })); flash(el, r.webSearch ? 'On. Bob can search the web when a question needs it.' : 'Off. Bob won\'t go online to look things up.'); return; }
       if (el.dataset.gcard) {
         const r = await api('/api/settings', { gamingCard: el.dataset.gcard }); settings.gamingCard = r.gamingCard; settings.gamingCardNow = r.gamingCardNow;
@@ -1422,7 +1472,8 @@ export function createCellar() {
         rent = await api('/api/rent/settings', { enabled: { [id]: el.checked } }); flash(el.closest('.cloud'), el.checked ? 'On. Bob still asks before every hire.' : 'Off.'); draw(); return;
       }
       else if (el.dataset.rentcap) { const v = Number(String(el.value).replace(/[^0-9.]/g, '')) || 0; rent = await api('/api/rent/settings', { caps: { [el.dataset.rentcap]: v } }); el.value = String(rent.caps[el.dataset.rentcap]); flash(el, v ? 'Saved.' : 'Saved: 0 means nothing can be hired.'); return; }
-      else if (el.dataset.rentadd === 'service') { const s = (rent.services || []).find((x) => x.id === el.value); const box = el.closest('.rent-add'); box.querySelector('.rent-card-pick').hidden = !s || s.kind === 'answer'; box.querySelector('.rent-cards-pick').hidden = !s || s.kind !== 'machine'; box.querySelector('.rent-multi-warn').hidden = true; const sel = box.querySelector('[data-rentadd="cards"]'); sel.value = '1'; delete sel.dataset.ok; for (const o of box.querySelectorAll('.rent-other')) o.hidden = el.value !== 'other'; return; }
+      else if (el.dataset.rentadd === 'pick') { fillRentPick(el.closest('.rent-add')); return; } // 1.5.137
+      else if (el.dataset.rentadd === 'service') { const s = (rent.services || []).find((x) => x.id === el.value); const box = el.closest('.rent-add'); fillRentPick(box); box.querySelector('.rent-card-pick').hidden = !s || s.kind === 'answer'; box.querySelector('.rent-cards-pick').hidden = !s || s.kind !== 'machine'; box.querySelector('.rent-multi-warn').hidden = true; const sel = box.querySelector('[data-rentadd="cards"]'); sel.value = '1'; delete sel.dataset.ok; for (const o of box.querySelectorAll('.rent-other')) o.hidden = el.value !== 'other'; return; }
       // 1.5.127: more than one card on a hired machine: a big warning first (the owner's rule). It snaps back to 1 until "I understand" is pressed.
       else if (el.dataset.rentadd === 'cards') {
         const n = Number(el.value) || 1; const box = el.closest('.rent-add'); const warn = box.querySelector('.rent-multi-warn');

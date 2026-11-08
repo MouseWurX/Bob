@@ -80,6 +80,22 @@ export function suit(m, hw = {}, platform = '') {
   return { level: 'no', why: `Wants ${m.vramGB} GB of graphics memory; your card has ${v} GB. It probably won't run well.` };
 }
 
+// 1.5.137: the rooms of your other Bobs: each one's graphics card and memory, as he said in his Bob-Net hello
+// ([{ name, vramGB, ramGB }]). roomOn = the first of them a brain runs well on, or ''.
+export function roomOn(m, rooms = []) {
+  return (rooms || []).find((r) => suit(m, r).level === 'ok')?.name || '';
+}
+// A brain too big for this replicant matrix and for every Bob on the Bob-Net: the catalogue leaves it out of the job
+// lists and Rented brains lists it instead (the owner: "if there isn't a pc big enough to handle it in the bob-net it
+// should only be listed in the brain rentals section"). Only "won't run well" counts (not slow, not a squeezed file
+// meant for smaller cards), and never for a brain already here, half downloaded, or one of your own.
+export function tooBigEverywhere(m, hw = {}, rooms = [], platform = '') {
+  if (!m?.jobs || !m.vramGB || m.own || m.status?.state === 'installed' || m.status?.state === 'partial') return false;
+  const here = suit(m, { vramGB: hw.vramGB, ramGB: hw.ramGB, arm: hw.arm }, platform);
+  if (here.level !== 'no' || here.squeezed) return false;
+  return !(rooms || []).some((r) => { const s = suit(m, r); return s.level !== 'no' || s.squeezed; });
+}
+
 // ---- Bob's pick for each job on this PC ----
 // Brain jobs are scored: a model scores higher the more jobs it covers, because one model doing
 // several jobs means Bob stops to swap brains less; and higher the less it takes from the PC (graphics memory,

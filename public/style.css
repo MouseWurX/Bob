@@ -138,6 +138,9 @@ body.still .mic.on { animation: none; }
 .tag { font-size: 12px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
 .tag.good { color: var(--good); border-color: var(--good); }
 .tag.warn { color: var(--accent); border-color: var(--accent); }
+.tag.new-tag { font-weight: 600; } /* 1.5.137: one of the five newest releases in its family */
+.tag.dated-tag { border-style: dashed; opacity: .85; } /* 1.5.137: newer brains do its job better; it stays on the list */
+.too-big-note { margin-top: .4em; } /* 1.5.137 */
 .tag.bad { color: var(--bad); border-color: var(--bad); }
 .act { margin-top: 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .have { color: var(--good); }

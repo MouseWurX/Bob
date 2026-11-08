@@ -2,7 +2,7 @@
 // page's 🏗 switch and the Hire it card. Settings change only from this replicant matrix; the card can be answered
 // from the phone too (like the Set it up card). Nothing here ever returns a key.
 import { saveSettings } from './config.js';
-import { rentalsOf, cleanRental, cleanCaps, serviceOf, readPrice, keyEnvFor, money } from './rental.js';
+import { rentalsOf, cleanRental, cleanCaps, serviceOf, readPrice, findModel, keyEnvFor, money } from './rental.js';
 
 export async function rentRoute({ req, res, p, isLocal, brain, cfg, body, send }) {
   const rentals = brain.rentals;
@@ -50,6 +50,18 @@ export async function rentRoute({ req, res, p, isLocal, brain, cfg, body, send }
     if (slotted) brain.broadcast?.({ type: 'rent', action: 'slot', rental: r.name }); // 1.5.128: the chat page's 🏗 switch appears without a reload
     brain.log('settings', `rented brain added: ${r.name} (${s.name})`);
     return send(res, 200, { ...rentals.view(), added: r.id, priceNote }), true;
+  }
+  // 1.5.137: "Find it": look up a brain from Bob's list on a pay-per-answer service's model list (Add a rental).
+  if (p === '/api/rent/find') {
+    const s = serviceOf(String(b.service || ''));
+    if (!s || s.kind !== 'answer') return send(res, 400, { error: 'Only a pay-per-answer service has a model list to look in.' }), true;
+    if (st.enabled[s.id] !== true) return send(res, 400, { error: `Switch on Let Bob hire from ${s.name} first.` }), true;
+    const key = rentals.env()[s.id === 'other' ? String(b.keyEnv || '') : s.keyEnv] || '';
+    if (s.id !== 'other' && !key) return send(res, 400, { error: `No key for ${s.name} yet.` }), true;
+    try {
+      const model = await findModel(s.id, { hf: String(b.hf || '').slice(0, 200), name: String(b.name || '').slice(0, 100), address: s.id === 'other' ? String(b.address || '') : '' }, key, rentals.fetch);
+      return send(res, 200, model ? { model } : { model: '', why: `${s.name} doesn't list it. Its model list is at ${s.modelsPage || 'its website'}.` }), true;
+    } catch (e) { return send(res, 400, { error: e.message }), true; }
   }
   if (p === '/api/rent/price') {
     const r = st.list.find((x) => x.id === b.id);
