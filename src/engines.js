@@ -43,6 +43,18 @@ export const ENGINES = [
     linuxArm64: { other: [/bin-ubuntu-arm64\.(?:zip|tar\.gz)$/] }
   },
   {
+    // 1.5.152 Brain Engine: Bob's Lab engine, a fork of llama.cpp (engine/README.md) with the expert switch, for the
+    // Computer Science Lab's Try it first. Its test pre-release on Bob's own GitHub holds only the llama and server
+    // files, so it goes on top of the official llama.cpp build of the same tag (base), in its own folder: Bob's
+    // everyday engine is never touched. Shown only while the Lab is on.
+    id: 'brainengine', name: 'Brain Engine (test build)', what: 'My Lab engine: llama.cpp with a switch to turn experts off without reloading, for the Lab\'s Try it first. A fork of llama.cpp, not an official build. Its own folder; my everyday engine stays as it is. Only shown while the Lab is on.',
+    repo: 'MouseWurX/Bob', tag: TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : '', base: 'llamacpp', labOnly: true, dir: 'brain-engine', exe: 'llama-server.exe',
+    nvidia: [], other: [/^brain-engine-.*-win-x64\.zip$/], runtime: () => null,
+    mac: { unavailable: 'Brain Engine has no Mac build yet.' },
+    linux: { tag: TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : '', other: [/^brain-engine-.*-linux-x64\.tar\.gz$/] },
+    linuxArm64: { unavailable: 'Brain Engine has no ARM Linux build yet.' }
+  },
+  {
     id: 'sdcpp', name: 'stable-diffusion.cpp', what: 'Painter: makes pictures and clips without ComfyUI.', repo: 'leejet/stable-diffusion.cpp', dir: 'sd.cpp', exe: 'sd-cli.exe', aka: ['sd.exe'],
     nvidia: [/bin-win-cuda-?(\d+)[^-]*-x64\.zip$/], other: [/bin-win-vulkan-x64\.zip$/, /bin-win-avx2-x64\.zip$/],
     runtime: () => /^cudart-.*-x64\.zip$/,
@@ -190,9 +202,9 @@ export function installedVersion(cfg, e) {
 
 // 1.5.72: rough download sizes (GB), so the one-click Welcome total counts the programs too. llama.cpp's is the
 // NVIDIA build with its CUDA runtime (other builds are smaller); the rest follow each engine's own "About" text.
-export const ENGINE_GB = { llamacpp: 0.6, sdcpp: 0.5, whispercpp: 0.1, piper: 0.1, audio: 12, kokoro: 0.1, chatterbox: 4, ffmpeg: 0.1, libreoffice: 0.35 };
+export const ENGINE_GB = { llamacpp: 0.6, brainengine: 0.7, sdcpp: 0.5, whispercpp: 0.1, piper: 0.1, audio: 12, kokoro: 0.1, chatterbox: 4, ffmpeg: 0.1, libreoffice: 0.35 };
 export function engineStatus(cfg) {
-  return ENGINES.map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.tag || e.pinned), tested: e.tested || null, found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir) }));
+  return ENGINES.filter((e0) => !e0.labOnly || cfg.computerLab === true).map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.tag || e.pinned), tested: e.tested || null, found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir) }));
 }
 
 // The newest release with a Windows build, for "Get newer build". Same rules as installing.
@@ -382,6 +394,7 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
   if (e.unavailable) throw new Error(e.unavailable);
   if (e.install && e.os !== 'win') throw new Error(`${e.name} can't be fetched on this replicant matrix. Install it yourself and Bob finds it.`);
   if (e.install) return e.install(cfg, { pub, signal, tick });
+  if (e.base) return installOverlay(cfg, e, { nvidia, pub, signal, tick });
   // Office helpers: only the exact pinned release with its checksum, never "the newest".
   if (e.needsPin && !(e.tag && /^[0-9a-f]{64}$/.test(e.sha256 || ''))) throw new Error(`${e.name} isn't pinned to a checked version in this build of Bob yet, so I won't download it. If it's already on your replicant matrix, I use that one.`);
   const { rel, asset } = await findRelease(e, nvidia, signal);
@@ -412,6 +425,44 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
   if (e.id === 'sdcpp' && !fs.existsSync(sdCli) && fs.existsSync(sdOld)) fs.copyFileSync(sdOld, sdCli);
   try { fs.writeFileSync(path.join(folder, `bob-${e.id}.json`), JSON.stringify({ version: rel.tag_name, asset: asset.name, at: new Date().toISOString() }, null, 2)); } catch {}
   return { version: rel.tag_name, asset: asset.name };
+}
+
+// An engine that is a few files on top of another (Brain Engine on llama.cpp): the base engine's tested release and
+// this engine's own release download into a side folder, the own files go on top, and the side folder takes the
+// engine's place in one step. Both files are checked against GitHub's sha256 like every other engine.
+async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
+  if (cfg.computerLab !== true && e.labOnly) throw new Error(`${e.name} is for the Computer Science Lab. Turn the Lab on first.`);
+  if (!e.tag) throw new Error(`${e.name} isn't pinned to a release in this build of Bob, so I won't download it.`);
+  const b0 = engineFor(ENGINES.find((x) => x.id === e.base));
+  const b = { ...b0, tag: b0.tested || b0.tag };
+  if (!b.tag) throw new Error(`${e.name} needs ${b.name}'s tested build, and this Bob doesn't name one.`);
+  const base = await findRelease(b, nvidia, signal);
+  const own = await findRelease(e, nvidia, signal);
+  if (!own.rel.prerelease && !own.rel.tag_name.startsWith('brain-engine-')) throw new Error(`${e.name}'s release isn't the one I expect. Stopped.`);
+  const rtRe = nvidia && b.runtime(base.asset.name);
+  const rt = rtRe ? (base.rel.assets || []).find((a) => rtRe.test(a.name)) : null;
+  pub.total = base.asset.size + (rt?.size || 0) + own.asset.size; pub.done = 0;
+  const folder = path.join(cfg.agentDir, e.dir), stage = folder + '.new';
+  fs.rmSync(stage, { recursive: true, force: true });
+  fs.mkdirSync(stage, { recursive: true });
+  try {
+    await grab(base.asset, stage, pub, signal, tick);
+    if (rt) await grab(rt, stage, pub, signal, tick);
+    flatten(stage, [b.exe]);
+    if (e.os === 'linux' && rt) liftLibraries(stage);
+    const over = stage + '.own';
+    fs.rmSync(over, { recursive: true, force: true }); fs.mkdirSync(over, { recursive: true });
+    await grab(own.asset, over, pub, signal, tick);
+    flatten(over, [e.exe]);
+    fs.cpSync(over, stage, { recursive: true, force: true });
+    fs.rmSync(over, { recursive: true, force: true });
+    if (e.os !== 'win') makeRunnable(stage);
+    if (!fs.existsSync(path.join(stage, e.exe))) throw new Error(`${e.name} unpacked, but ${e.exe} isn't in it. The release layout may have changed.`);
+    fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify({ version: own.rel.tag_name, base: base.rel.tag_name, asset: own.asset.name, at: new Date().toISOString() }, null, 2));
+  } catch (err) { fs.rmSync(stage, { recursive: true, force: true }); fs.rmSync(stage + '.own', { recursive: true, force: true }); throw err; }
+  try { fs.rmSync(folder, { recursive: true, force: true }); fs.renameSync(stage, folder); }
+  catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Wait for the Lab job to finish, then Try again.`); }
+  return { version: own.rel.tag_name, asset: own.asset.name };
 }
 
 // LibreOffice: the official installer (pinned version and sha256) from TDF's archive, unpacked into Bob's folder
