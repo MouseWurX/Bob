@@ -26,13 +26,13 @@ export const TEMPLATES = [
     template: 'train-teacher', title: 'Train the teacher', where: 'rented', needs: [],
     help: 'No cut. The full brain learns every lesson by plain next-word training, and stays on the drive as the teacher for every cut after it. Bobert is made this way.',
     lab: null,
-    forge: { train_teacher: { name: '<name>', nickname: '<nickname>', hours: 8, experts: 'all', epochs: 1 } }
+    forge: { train_teacher: { name: '<name>', nickname: '<nickname>', hours: 8, experts: 'lora', epochs: 1 } }
   },
   {
     template: 'outside-traces', title: 'Learn from outside traces', where: 'rented', needs: [],
     help: 'Lessons written by other, bigger teachers (published trace sets), checked and matched to our own count, then taught by their words only, since there are no odds from those teachers.',
     lab: null,
-    forge: { extra_lessons: ['<lessons-ext-*.jsonl>'], heal: { alpha: 0 } }
+    forge: { extra_lessons: [{ file: '<lessons-ext-*.jsonl>', odds: false }] }
   },
   {
     template: 'merge-experts', title: 'Merge experts', where: 'rented', needs: ['experts'], later: true,
