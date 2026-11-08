@@ -51,6 +51,10 @@ const form = catalogueHtml({ roles: { current: {}, options: { llm: [] } }, model
 check('the Add form says a brain card was found and what it files under', /Brain card found: it files under Brain, Deep thinking, Coding, Seeing pictures, in the Bob family, with its benchmark\./.test(form));
 const faq = HELP.find((x) => x.id === 'faq-own-brain');
 check('Help explains brain cards and that a stale card is ignored', /my built-in engine/.test(faq.html) && !/my own engine/.test(faq.html) && /brain card/.test(faq.html) && /\.bob\.json/.test(faq.html) && /exact size/.test(faq.html));
+// 1.5.145: "or type its path" fills the form the same way as the file picker (card and picture reader included).
+const cellarSrc = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const formLines = cellarSrc.split('\n').filter((l) => /ownForm = r\.error \?/.test(l));
+check('a typed path brings its brain card and picture reader into the Add form, like the picker', formLines.length === 2 && formLines.every((l) => /mmproj: r\.mmproj \|\| ''/.test(l) && /card: r\.card \|\| null/.test(l)));
 fs.rmSync(dir, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

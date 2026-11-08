@@ -4,6 +4,14 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.145
+
+A small fix for brains of your own.
+
+- **Typing a brain's path now reads its brain card too.** Adding a brain with **or type its path** now fills the form the same way as picking the file: it says "Brain card found" and brings the card's picture reader along. Before, only the file picker did that (Bob still filed the brain correctly either way).
+- `test/run-brain-card-test.js`: 20 checks.
+- Phone (Bob for Android): nothing changes.
+
 ## 1.5.144
 
 See the tools and how-tos Bob made for himself, and delete the ones you don't want him to have.

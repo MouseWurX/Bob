@@ -1427,7 +1427,7 @@ export function createCellar() {
       const typed = form.querySelector('[data-ownpath]')?.value.trim() || '';
       ownForm = { file: '', name: '', typed, busy: true }; draw();
       const r = await api('/api/own-models/inspect', { file: typed }).catch((err) => ({ error: err.message }));
-      ownForm = r.error ? { file: '', name: '', typed, error: r.error } : { file: r.file, name: r.name, params: r.params, sizeGB: r.sizeGB, mmproj: '' };
+      ownForm = r.error ? { file: '', name: '', typed, error: r.error } : { file: r.file, name: r.name, params: r.params, sizeGB: r.sizeGB, mmproj: r.mmproj || '', card: r.card || null }; // 1.5.145: a typed path brings its brain card too
       draw(); dlg.querySelector(r.error ? '[data-ownpath]' : '[data-ownname]')?.focus(); return;
     }
     ownForm.name = form.querySelector('[data-ownname]')?.value.trim() || ownForm.name;
