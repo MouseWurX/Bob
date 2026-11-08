@@ -6,6 +6,7 @@
 //   node filter-refusals.mjs --in out/lessons-thoth-test/lessons.jsonl --config kept-refusals.json
 //     [--out <path>]      default: <in>.filtered.jsonl
 //     [--flagged <path>]  default: <in>.flagged.jsonl   (the originals that were swapped, for review)
+//     [--review <path>]   default: <in>.review.jsonl    (lessons a 'review' category matched: kept as they are, copied here for a hand check)
 //
 // Broad on purpose: a false positive just turns a harmless lesson into an in-voice "no", which is safe.
 import fs from 'node:fs';
@@ -15,6 +16,7 @@ const inPath = arg('in'); if (!inPath) { console.error('need --in <lessons.jsonl
 const cfgPath = arg('config', new URL('./kept-refusals.json', import.meta.url).pathname);
 const outPath = arg('out', inPath.replace(/\.jsonl$/, '') + '.filtered.jsonl');
 const flagPath = arg('flagged', inPath.replace(/\.jsonl$/, '') + '.flagged.jsonl');
+const reviewPath = arg('review', inPath.replace(/\.jsonl$/, '') + '.review.jsonl');
 
 const cats = JSON.parse(fs.readFileSync(cfgPath, 'utf8')).categories
   .sort((a, b) => a.priority - b.priority)
@@ -25,7 +27,7 @@ const textOf = (m) => Array.isArray(m?.content)
   : String(m?.content || '');
 
 const lines = fs.readFileSync(inPath, 'utf8').split('\n').filter((l) => l.trim());
-const out = [], flagged = [], counts = {};
+const out = [], flagged = [], review = [], counts = {};
 for (const line of lines) {
   const l = JSON.parse(line);
   const user = textOf(l.messages.find((m) => m.role === 'user'));
@@ -34,6 +36,7 @@ for (const line of lines) {
   const hit = cats.find((c) => c.re.some((r) => r.test(hay)));
   if (!hit) { out.push(line); continue; }
   counts[hit.name] = (counts[hit.name] || 0) + 1;
+  if (hit.action === 'review') { out.push(line); review.push(JSON.stringify({ idea: l.idea, job: l.job, category: hit.name, user, original: l.messages })); continue; } // kept, but a copy goes to the review file
   flagged.push(JSON.stringify({ idea: l.idea, job: l.job, category: hit.name, user, original: l.messages }));
   const userMsg = l.messages.find((m) => m.role === 'user');
   out.push(JSON.stringify({ idea: l.idea, job: l.job, think: false, thoth_refusal: hit.name,
@@ -41,7 +44,9 @@ for (const line of lines) {
 }
 fs.writeFileSync(outPath, out.join('\n') + '\n');
 fs.writeFileSync(flagPath, flagged.join('\n') + (flagged.length ? '\n' : ''));
+fs.writeFileSync(reviewPath, review.join('\n') + (review.length ? '\n' : ''));
 console.log(`in ${lines.length} lessons -> ${outPath}`);
 console.log(`swapped ${flagged.length} into in-voice refusals (originals in ${flagPath}):`);
-for (const c of cats) if (counts[c.name]) console.log(`  ${c.name}: ${counts[c.name]}`);
+for (const c of cats) if (counts[c.name]) console.log(`  ${c.name}: ${counts[c.name]}${c.action === 'review' ? ' (kept; in the review file)' : ''}`);
+console.log(`${review.length} kept for a hand check in ${reviewPath}`);
 console.log('Review the flagged file by eye: anything swapped that should have been answered, loosen that category; anything answered that should have been refused, tighten it.');
