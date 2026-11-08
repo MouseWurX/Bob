@@ -1451,3 +1451,12 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .lab-passage { border-left: 3px solid var(--line); margin: 6px 0; padding: 4px 10px; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; font-size: 13px; }
 .lab-viewer .row label { display: inline-flex; gap: 4px; align-items: center; }
 .lab-sets { margin: 8px 0; }
+/* 1.5.154 Cut recipes, the estimate table and the usage map */
+.lab-recipes, .lab-estimate, .lab-usage { margin: 0.75rem 0; }
+.lab-recipe-list { list-style: none; padding: 0; margin: 0.4rem 0; display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.lab-recipe-card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.lab-recipe-card.dim { opacity: 0.65; }
+.lab-recipe-card button { min-height: 32px; }
+#lab-device { max-width: 100%; }
+.lab-estimate .lab-report, .lab-usage .lab-report { overflow-x: auto; display: block; max-width: 100%; }
+.lab-usage:focus { outline: 2px solid var(--line); outline-offset: 2px; }
