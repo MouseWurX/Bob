@@ -1,4 +1,4 @@
-// 1.5.148 🧪 Computer Science Lab, the Learn tab: guided experiments on the brain Bob has loaded right now. Each card
+// 1.5.151 🧪 Computer Science Lab, the Learn tab: guided experiments on the brain Bob has loaded right now. Each card
 // is one question, one control, one result, and a line from Bob about what you just saw. Nothing is saved.
 import { esc } from './rich.js';
 
