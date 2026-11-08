@@ -222,9 +222,10 @@ check('the lesson writer finds itself from a folder with a space in it (fileURLT
 check('writing lessons needs a name, a teacher and a skill', pw.problems.length === 3);
 check('the page gets the skills and the lesson sets', lab.view().lessonSkills.length === LESSON_SKILLS.length && Array.isArray(lab.view().lessonSets));
 let teacherCalls = 0;
+const teacherBodies = [];
 const teacher = http.createServer((req, res) => {
   let b = ''; req.on('data', (d) => (b += d)); req.on('end', () => {
-    teacherCalls++;
+    teacherCalls++; teacherBodies.push(b);
     const j = JSON.parse(b), last = j.messages.at(-1);
     let msg;
     if (/Write 25 different messages/.test(last.content || '')) msg = { content: JSON.stringify(Array.from({ length: 25 }, (_, i) => `please set reminder number ${i} for ${teacherCalls}`)) };
@@ -249,7 +250,23 @@ check('the lesson set is listed for step 2, with its skills', (() => { const set
 check('a coverage cut can count each written skill', (() => { const p = wLab.plan({ name: 'From Written', from: 'test-moe', lessons: { kind: 'file', file: lessonsOut }, smaller: { cut: { how: 'cover' } } }); return p.skills.sort().join() === 'chat,tools'; })());
 const again = wLab.planWrite({ name: 'Reminder Lessons', teacher: 'test-moe', skills: ['tools'] });
 check('the same name and teacher carries on instead of starting over', !again.problems.length && again.notes.some((n) => /carries on/.test(n)));
+check('the teacher never sees the throwaway Bob\'s real folder or the home folder', teacherBodies.length > 0 && teacherBodies.every((b) => !b.includes('bob-lab-write-') && (os.homedir().length < 4 || !b.includes(JSON.stringify(os.homedir()).slice(1, -1)))));
+check('the lesson file has no real folder in it either', !fs.readFileSync(lessonsOut, 'utf8').includes('bob-lab-write-'));
 teacher.close();
+{
+  const { standIns, writeLessons, PLACEHOLDER } = await import('../src/lab-write.js');
+  const home = ['C:', 'Users', 'Robin'].join('\\'), scrub = standIns({ home, user: 'Robin', env: {}, tmp: home + '\\AppData\\Local\\Temp\\bob-lab-write-q1\\Agent' });
+  const said = scrub(`open ${home}\\AppData\\Local\\Temp\\bob-lab-write-q1\\Agent\\inn, ${home}\\Desktop\\a.txt, ${home.split('\\').join('/')}/Music, ${JSON.stringify(home + '\\x')}, thanks robin`);
+  check('the real home folder and user name become stand-ins', !/robin/i.test(said) && said.includes('C:\\Users\\you\\Bob\\inn') && said.includes('C:\\Users\\you\\Desktop') && said.includes('C:/Users/you/Music') && said.includes('thanks you'), said);
+  check('ideas that are only a placeholder are dropped', PLACEHOLDER.test('fix this: [code snippet]') && PLACEHOLDER.test('why does [paste error here] happen') && !PLACEHOLDER.test('sort [3,1,2] in python') && !PLACEHOLDER.test('x = arr[i]'));
+  const leakOut = path.join(tmp, 'leak', 'lessons.jsonl'), leakBodies = [];
+  const kit = { scrub, turn: () => ({ system: scrub(`Your folders: ${home}\\Documents`), tools: [] }), guessGroups: () => [], useTools: async () => 'ok' };
+  const fakeChat = async (u, { messages }) => { leakBodies.push(JSON.stringify(messages)); return /Write 25/.test(messages.at(-1).content) ? { content: JSON.stringify(['a [code snippet] please', 'tidy my desktop', 'find my notes']) } : { content: `Saved it in ${home}\\Documents\\notes.txt.` }; };
+  await writeLessons({ url: 'x', out: leakOut, skills: ['chat'], count: 2, kit, chatFn: fakeChat });
+  const leakText = fs.readFileSync(leakOut, 'utf8');
+  check('a teacher that writes the real home folder anyway is scrubbed in the saved lesson', !/robin/i.test(leakText) && /Users\\\\you\\\\Documents/.test(leakText) && leakBodies.every((b) => !/robin/i.test(b)), leakText);
+  check('the placeholder idea never became a lesson', !/code snippet/.test(leakText) && !/code snippet/.test(fs.readFileSync(path.join(tmp, 'leak', 'ideas.jsonl'), 'utf8')));
+}
 // ---- Lab 2a: Try it first on Brain Engine (fake engine steps) ----
 check('Brain Engine\'s mask has one entry per layer, null where a layer has no experts', JSON.stringify(maskFor([undefined, [1, 2]], { layers: 3 })) === '[null,[1,2],null]');
 const tryRecipe = (name, extra = {}) => ({ name, from: 'test-moe', lessons: { kind: 'chats' }, smaller: { cut: { how: 'busiest', keep: 4 }, try: true, ...extra }, test: { compare: true } });

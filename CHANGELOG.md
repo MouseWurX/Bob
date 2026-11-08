@@ -4,6 +4,15 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.155
+
+A privacy fix for the Computer Science Lab's lesson writer.
+
+- **Your folder and name stay out of written lessons.** When Bob writes a lesson set in the Lab, the stand-in Bob he teaches with used to show the teacher brain real paths on this replicant matrix, so a few lessons could carry your user folder and user name. Now the home folder, the stand-in's own folder and the user name are swapped for stand-ins (like C:\Users\you) before the teacher sees anything, every saved lesson is checked the same way, and ideas that are only placeholders (like "[code snippet]") are dropped.
+- If you wrote a lesson set in the Lab before this version, check it before you share it, or write it again.
+- `test/run-lab-test.js`: new checks that the teacher and the lesson file never see the real folders.
+- Phone (Bob for Android): nothing changes.
+
 ## 1.5.154
 
 The Computer Science Lab: goals, a time-and-cost table before anything runs, and the usage map that shows which experts a brain uses for what. All free, on this replicant matrix; nothing is rented.
