@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { LESSON_SKILLS } from './lab-skills.js';
 
 const STYLES = ['short and casual', 'polite and detailed', 'with small typos', 'very brief, a few words', 'a bit frustrated', 'curious, asking why', 'in a hurry', 'chatty, with some context first', 'from a beginner', 'from an expert'];
@@ -134,7 +135,7 @@ async function oneLesson({ url, idea, skill, think, kit, chatFn }) {
 }
 
 // As its own process (src/lab.js starts it this way).
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'))) {
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   const job = JSON.parse(process.argv[2] || '{}');
   let stop = false;
   process.on('SIGTERM', () => { stop = true; });
