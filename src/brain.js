@@ -2200,8 +2200,13 @@ export class Brain {
           // The same action twice in a row (small brains do this): don't do it again.
           res = { text: `(Not done again: that exact call just ran. Its result: ${String(ctx.lastDoing.text).slice(0, 300)}) Report that result; don't repeat the call.` };
           this.log('tool', `skipped a repeat of ${name}`);
+        } else if (name === 'fetch_page' && ctx.pagesRead?.has(key)) {
+          // #48: the same page and part again in one turn gives the same text. Point him at the next part instead.
+          res = { text: '(Not read again: you already read that exact page and part this turn, and it gives the same text. To see more, call fetch_page with the same url and the next part number, or use find with a word you are looking for. If you have enough, answer now.)' };
+          this.log('tool', 'skipped a repeat page read');
         } else {
           res = await this.runTool(name, call.function?.arguments, ctx);
+          if (name === 'fetch_page') (ctx.pagesRead ||= new Set()).add(key);
           if (doing) {
             const failed = /^Error:/.test(String(res.text));
             const who = this.cfg.userName || 'the user';
