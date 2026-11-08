@@ -4,6 +4,14 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.146
+
+A brain Get models found on this replicant matrix now loads in chat without an Equip first.
+
+- **Found brains load straight away.** When **Look for brains on this replicant matrix** finds a brain from my catalogue somewhere else on the drive, Get models already said you have it, but chatting with it by name said "I can't find the model files" until you Equipped it. Now my engine looks in that same list last, after my own models folder, so the two agree. A picture reader only counts when it's in the same folder as its brain, a file still being copied is skipped, and my own copy still comes first.
+- `test/run-own-copy-test.js`: 13 checks.
+- Phone (Bob for Android): nothing changes.
+
 ## 1.5.145
 
 A small fix for brains of your own.

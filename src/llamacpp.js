@@ -106,11 +106,22 @@ export function catalogFileFor(cfg, id) {
     try { dirs = [e.category, ...fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name)]; } catch {}
     // Its own folder first; an older Bob may have filed it under another one (for example chat instead of coding).
     const find = (x) => { const name = saveNameOf(x); return dirs.map((dir) => path.join(root, dir, name)).find((p) => fs.existsSync(p) && !fs.existsSync(p + '.part')) || idFolderFile(cfg, e, x); };
-    const file = find(f);
+    // 1.5.146: last, the disk scan (Get models' "Look for brains on this replicant matrix"), the same way Get models
+    // says "have it", so a brain found there loads in chat without an Equip first. Its picture reader only counts when
+    // it sits in the same folder, so a reader with a common name from another brain is never picked up.
+    const scanned = (x, near) => {
+      if (!cfg.dataDir) return null;
+      let found; try { found = JSON.parse(fs.readFileSync(path.join(cfg.dataDir, 'model-scan.json'), 'utf8')); } catch { return null; }
+      const alt = [saveNameOf(x), ...(x.aka || [])].map((n) => String(n).toLowerCase());
+      const hit = (found.files || []).find((y) => y?.path && alt.includes(String(y.name || path.basename(y.path)).toLowerCase()) && (!near || samePath(path.dirname(y.path), path.dirname(near))) && fs.existsSync(y.path) && !fs.existsSync(y.path + '.part'));
+      return hit ? hit.path : null;
+    };
+    let file = find(f), fromScan = false;
+    if (!file) { file = scanned(f); fromScan = Boolean(file); }
     if (!file) return null;
     // 1.5.56: a brain that sees pictures has a second file, its picture reader (mmproj), saved under its own name.
     const pj = e.files.find((x) => x.role === 'mmproj');
-    const mmproj = pj ? find(pj) : null;
+    const mmproj = pj ? (fromScan ? scanned(pj, file) : find(pj) || scanned(pj, file)) : null;
     return mmproj ? { gguf: file, mmproj } : { gguf: file };
   } catch { return null; }
 }
