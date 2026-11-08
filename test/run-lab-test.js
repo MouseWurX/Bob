@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readGguf, brainFacts, readerFacts, writeGguf, checkKeep, busiest, isHearingTensor, readCounts } from '../src/lab-gguf.js';
+import { readGguf, brainFacts, readerFacts, writeGguf, checkKeep, busiest, isHearingTensor, readCounts, coverageKeep } from '../src/lab-gguf.js';
 import { Lab, cleanRecipe, planRecipe, labRoom, labOn, cutSizes, fitWords, mergeMadeBrains, labRoute, RUNNING_TYPES , measureRecord, sha256File, compareTable, compareCsv } from '../src/lab.js';
 import { TEMPLATES, TEMPLATE_IDS, templateById, templateWhyNot, applyTemplate } from '../public/lab-templates.js';
 import crypto from 'node:crypto';
@@ -132,6 +132,20 @@ check('Measure without lessons is refused, in words', plan({ name: 'x', smaller:
 check('Measure with an expert list still gathers the lessons first', plan({ name: 'x', lessons: { kind: 'chats' }, smaller: { files: ['Q4_K_M'], measure: true } }).steps[0].id === 'lessons');
 check('Measure is off unless ticked', cleanRecipe({ smaller: { files: ['Q4_K_M'] } }).smaller.measure === false);
 
+// ---- Lab 2a: keep every skill covered ----
+const cov = coverageKeep([{ name: 'a', counts: [[10, 0, 0, 0, 1, 1], [0, 0, 5, 5, 0, 0]] }, { name: 'b', counts: [[0, 10, 0, 0, 0, 0], [0, 0, 0, 0, 9, 1]] }], { cover: 0.9 });
+check('the coverage cut keeps what every skill needs, one size for all layers (the Forge\'s keep.py rule)', JSON.stringify(cov.keep) === '[[0,1,4],[2,3,4]]' && cov.K === 3 && cov.shares.every((x) => x.worst >= 0.9));
+check('a protected skill keeps more', coverageKeep([{ name: 'a', counts: [[10, 0, 0, 0, 1, 1]] }, { name: 'b', counts: [[0, 10, 0, 0, 0, 0]] }], { cover: 0.9, strong: ['a'], strongCover: 0.99 }).keep[0].length === 4);
+check('the coverage size can be set, and never drops under the picks', coverageKeep([{ name: 'a', counts: [[10, 9, 8, 7, 6, 5]] }], { cover: 0.5, keep: 5 }).keep[0].length === 5 && coverageKeep([{ name: 'a', counts: [[10, 0, 0, 0, 0, 0]] }], { cover: 0.5, min: 2 }).K === 2);
+const skillFile = path.join(tmp, 'skills-lessons.jsonl');
+fs.writeFileSync(skillFile, ['coding', 'chat', 'tools'].flatMap((job) => Array.from({ length: 40 }, (_, i) => JSON.stringify({ job, messages: [{ role: 'user', content: `${job} question ${i} `.repeat(20) }, { role: 'assistant', content: `${job} answer ${i} `.repeat(20) }] }))).join('\n'));
+const covPlan = plan({ name: 'Covered', lessons: { kind: 'file', file: skillFile }, smaller: { cut: { how: 'cover', cover: 0.95, strong: ['coding'] } } });
+check('a coverage recipe counts each skill on its own', covPlan.problems.length === 0 && covPlan.steps.filter((x) => x.id === 'count').map((x) => x.skill).join() === 'coding,chat,tools' && covPlan.steps[0].corpora.length === 3, covPlan.problems.join(' | '));
+check('the coverage size can be left to the skills', cleanRecipe({ smaller: { cut: { how: 'cover' } } }).smaller.cut.keep === 0 && /every skill needs/.test(covPlan.steps.find((x) => x.id === 'cut').label));
+check('protecting a skill the lessons don\'t have is refused', plan({ name: 'x', lessons: { kind: 'file', file: skillFile }, smaller: { cut: { how: 'cover', strong: ['juggling'] } } }).problems.some((x) => /no skill called juggling/.test(x)));
+check('chats are one skill, and the plan says so', plan({ name: 'x', lessons: { kind: 'chats' }, smaller: { cut: { how: 'cover' } } }).notes.some((x) => /one skill/.test(x)));
+check('a coverage cut needs lessons', plan({ name: 'x', smaller: { cut: { how: 'cover' } } }).problems.some((x) => /count each skill/.test(x)));
+
 // ---- Lab 1b: the measurement record and Compare ----
 const rec = measureRecord({ name: 'A', sha256: 'ab', facts: { fileType: 'Q4_K_M', experts: 192 }, sizeGB: 16.2, template: 'plain-cut', parent: 'Big', test: { parts: { general: { score: 100 }, tools: { score: 50 } }, score: 75, tps: 77.4, prefillTps: 900, where: 'card', engine: 'Brain Engine' }, cfg: { gpuVramGB: 16 }, when: Date.UTC(2026, 10, 8) });
 check('the record has the design\'s shape', rec.brain.sha256 === 'ab' && rec.brain.quant === 'Q4_K_M' && rec.brain.expertsKept === 192 && rec.brain.parent === 'Big' && rec.where.place === 'home' && rec.where.card === '16 GB card' && rec.where.engine === 'Brain Engine' && rec.when === '2026-11-08' && rec.scores['General knowledge'] === 100 && rec.scores['Lab test (all)'] === 75 && rec.speed.tps === 77.4 && rec.speed.prefillTps === 900);
@@ -181,6 +195,12 @@ check('Compare finds both records', ms.length === 2 && ms.some((m) => m.parentOf
 const cmp = lab.compare(ms.map((m) => m.id), 'csv');
 check('Save as CSV writes a file in the Lab\'s compare folder', fs.existsSync(cmp.file) && path.basename(path.dirname(cmp.file)) === 'compare' && /Lab test \(all\)/.test(fs.readFileSync(cmp.file, 'utf8')));
 check('Compare needs two brains', (() => { try { lab.compare([ms[0].id]); return false; } catch (e) { return /at least two/.test(e.message); } })());
+const covLab = new Lab(cfg, { shop, room: big, steps: { count: async (s) => { fs.copyFileSync(countsFile, s.counts); }, test: async () => fakeQuiz(60) } });
+await covLab.start({ name: 'Cover Test', from: 'test-moe', lessons: { kind: 'file', file: skillFile }, smaller: { cut: { how: 'cover', cover: 0.9 } }, test: { compare: false } });
+while (covLab.job) await new Promise((r) => setTimeout(r, 20));
+const cd = covLab.runs.at(-1);
+check('a coverage job cuts to what the skills need and reports each skill', cd.state === 'done' && cd.report.coverage?.skills.length === 3 && brainFacts(readGguf(cd.files.gguf)).experts === cd.report.coverage.experts && cd.report.coverage.experts < 8, cd.error || JSON.stringify(cd.report?.coverage));
+check('the coverage keep list names its rule and skills', (() => { const k = JSON.parse(fs.readFileSync(path.join(path.dirname(cd.files.gguf), 'cover-test-keep.json'), 'utf8')); return k.cover === 0.9 && k.skills.join() === 'coding,chat,tools' && k.layers.length === 2; })());
 check('the page heard each step', events.filter((e) => e.type === 'lab').length >= 7 && events.some((e) => e.type === 'lab-done' && e.ok));
 const used = lab.use(done.id);
 check('Use in Bob gives it an id Bob\'s engine runs', used.id === 'lab-little-test' && cfg.llamacpp.models['lab-little-test'].gguf === done.files.gguf);
@@ -212,7 +232,7 @@ check('saving a comparison only from this replicant matrix', sent[2][0] === 403)
 await labRoute({ req: fakeReq('POST'), res: {}, p: '/api/lab/compare', isLocal: false, lab, body: async () => ({ ids: ms.map((m) => m.id) }), send: (res, code, j) => sent.push([code, j]) });
 check('looking at a comparison works from another device', sent[3][0] === 200 && sent[3][1].table.rows.length > 0);
 await labRoute({ req: fakeReq('GET'), res: {}, p: '/api/lab/measures', isLocal: true, lab, body: async () => ({}), send: (res, code, j) => sent.push([code, j]) });
-check('the measures list has no file contents or paths', sent[4][0] === 200 && sent[4][1].measures.length === 3 && !JSON.stringify(sent[4][1]).includes(tmp) && !('rec' in sent[4][1].measures[0]));
+check('the measures list has no file contents or paths', sent[4][0] === 200 && sent[4][1].measures.length === lab.measures().length && !JSON.stringify(sent[4][1]).includes(tmp) && !('rec' in sent[4][1].measures[0]));
 
 // The quiz, against a fake server.
 const fakeFetch = globalThis.fetch;

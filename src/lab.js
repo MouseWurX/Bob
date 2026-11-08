@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { readGguf, brainFacts, readerFacts, writeGguf, readCounts, busiest, checkKeep, isHearingTensor, isSightTensor } from './lab-gguf.js';
+import { readGguf, brainFacts, readerFacts, writeGguf, readCounts, busiest, coverageKeep, checkKeep, isHearingTensor, isSightTensor } from './lab-gguf.js';
 import { startServer, runQuiz, PARTS } from './lab-test.js';
 import { saveSettings } from './config.js';
 import { gaming } from './sessions.js';
@@ -95,7 +95,11 @@ export function fitWords(gb, cardGB = 0) {
 // A recipe as the page sends it, cleaned. No paths from the page except a lesson or keep-list file the owner picked.
 export function cleanRecipe(r = {}) {
   const s = r.smaller || {};
-  const cut = s.cut && typeof s.cut === 'object' ? { how: s.cut.how === 'file' ? 'file' : 'busiest', keep: Math.max(1, Math.min(1024, Number(s.cut.keep) || 0)), file: typeof s.cut.file === 'string' ? s.cut.file : '' } : null;
+  const how = ['file', 'cover'].includes(s.cut?.how) ? s.cut.how : 'busiest';
+  const cut = s.cut && typeof s.cut === 'object' ? {
+    how, keep: how === 'cover' && !Number(s.cut.keep) ? 0 : Math.max(1, Math.min(1024, Number(s.cut.keep) || 0)), file: typeof s.cut.file === 'string' ? s.cut.file : '',
+    ...(how === 'cover' ? { cover: [0.9, 0.95, 0.99].includes(Number(s.cut.cover)) ? Number(s.cut.cover) : 0.95, strong: [...new Set([].concat(s.cut.strong || []).map((x) => String(x).slice(0, 40)))].slice(0, 30) } : {})
+  } : null;
   const l = r.lessons || {};
   return {
     template: TEMPLATE_IDS.includes(r.template) ? r.template : '',
@@ -176,7 +180,7 @@ export function compareCsv(table) {
 
 // The steps a recipe makes, and what's wrong with it (problems stop it; notes don't). Every step has the command it
 // runs (for Show the recipe) and, for the cutter, a plain line saying it's Bob's own.
-export function planRecipe(recipe, { brain, facts, tools, outDir }) {
+export function planRecipe(recipe, { brain, facts, tools, outDir, skillNamesFor = () => [] }) {
   const r = cleanRecipe(recipe);
   const problems = [], notes = [], steps = [];
   if (!brain) return { recipe: r, problems: ['Pick a brain to start from.'], notes, steps };
@@ -190,10 +194,14 @@ export function planRecipe(recipe, { brain, facts, tools, outDir }) {
   if (s.hearing && !facts.hearing) problems.push(`${brain.name} can't hear sound, so there's no hearing to take out.`);
   if (s.cut && !facts.experts) problems.push(`${brain.name} isn't a mixture-of-experts brain, so it has no experts to cut.`);
   if (s.cut && facts.groups > 1) problems.push(`${brain.name} groups its experts, and the Lab can't cut those yet.`);
-  if (s.cut && facts.experts && (s.cut.keep < facts.used || s.cut.keep >= facts.experts)) problems.push(`Keep between ${facts.used} and ${facts.experts - 1} experts per layer (this brain picks ${facts.used} for every word).`);
+  if (s.cut && facts.experts && !(s.cut.how === 'cover' && !s.cut.keep) && (s.cut.keep < facts.used || s.cut.keep >= facts.experts)) problems.push(`Keep between ${facts.used} and ${facts.experts - 1} experts per layer (this brain picks ${facts.used} for every word).`);
   if (s.files.length && !facts.fullSize) problems.push(`${brain.name}'s file is already a running file (${facts.fileType}). Making running files needs the full-size copy (F16 or BF16). Untick Make the running files, or start from a full-size copy.`);
   if (s.files.includes('Q3_K_M')) notes.push('Q3 is only worth it for brains meant for 8 GB or less.');
   if (s.cut?.how === 'busiest' && r.lessons.kind === 'none') problems.push('Keeping the busiest experts needs lessons to count them on. Pick a lesson set in step 2, or use an expert list you have.');
+  if (s.cut?.how === 'cover' && r.lessons.kind === 'none') problems.push('Keeping every skill covered needs lessons to count each skill on. Pick a lesson set in step 2.');
+  const skills = s.cut?.how === 'cover' && r.lessons.kind !== 'none' ? lessonSkillNames(r.lessons, skillNamesFor) : [];
+  if (s.cut?.how === 'cover' && r.lessons.kind !== 'none' && skills.length === 1) notes.push(`These lessons have one skill (${skills[0]}), so the coverage cut keeps what that one needs. A lesson set with several skills (a "job" or "skill" on each lesson) protects each of them.`);
+  if (s.cut?.how === 'cover') for (const x of s.cut.strong) if (!skills.includes(x)) problems.push(`There's no skill called ${x} in these lessons.`);
   if (s.cut?.how === 'file' && !s.cut.file) problems.push('Pick the expert list file.');
   if (r.lessons.kind === 'file' && !r.lessons.file) problems.push('Pick the lesson file.');
   for (const [k, p] of Object.entries(tools)) if (!p.found && ((k === 'imatrix' && s.cut?.how === 'busiest') || (k === 'quantize' && s.files.length) || k === 'server')) problems.push(`${path.basename(p.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it; download the engine again if it's missing.`);
@@ -203,10 +211,20 @@ export function planRecipe(recipe, { brain, facts, tools, outDir }) {
     const corpus = path.join(dir, 'lessons.txt'), counts = path.join(dir, 'counts.gguf');
     steps.push({ id: 'lessons', label: r.lessons.kind === 'chats' ? 'Gather your chats with Bob as lessons' : 'Read the lesson set', cmd: `# Bob writes the lessons as one text file: ${q(corpus)}`, corpus });
     steps.push({ id: 'count', label: 'Count which experts the lessons use', cmd: `${q(tools.imatrix.path)} -m ${q(brain.gguf)} -f ${q(corpus)} -o ${q(counts)} -c 4096 --chunks ${r.lessons.chunks} --fit on`, corpus, counts, card: true });
+  } else if (s.cut?.how === 'cover' && skills.length) {
+    // The coverage cut: one lesson file and one count per skill, then a keep list that holds every skill's share.
+    const corpus = path.join(dir, 'lessons.txt');
+    const corpora = skills.map((sk) => ({ skill: sk, file: path.join(dir, `lessons-${slugOf(sk)}.txt`) }));
+    steps.push({ id: 'lessons', label: 'Sort the lessons by skill', cmd: `# Bob writes one text file per skill (${skills.join(', ')}) and one with them all: ${q(corpus)}`, corpus, corpora });
+    for (const c of corpora) {
+      const counts = path.join(dir, `counts-${slugOf(c.skill)}.gguf`);
+      steps.push({ id: 'count', label: `Count which experts ${c.skill} uses`, cmd: `${q(tools.imatrix.path)} -m ${q(brain.gguf)} -f ${q(c.file)} -o ${q(counts)} -c 4096 --chunks ${r.lessons.chunks} --fit on`, corpus: c.file, counts, skill: c.skill, card: true });
+    }
   }
   if (s.cut) {
-    const out = path.join(dir, `${slug}-${s.cut.keep}x.gguf`);
-    steps.push({ id: 'cut', label: `Cut to ${s.cut.keep} experts per layer`, cmd: `# Bob's own cutter (no command-line tool does this yet): keep ${s.cut.keep} of ${facts.experts} experts per layer\n#   from ${q(brain.gguf)}\n#   to   ${q(out)}${s.cut.how === 'file' ? `\n#   with the expert list ${q(s.cut.file)}` : ''}`, src: file, out });
+    const out = path.join(dir, `${slug}-${s.cut.keep || 'cover'}x.gguf`);
+    const n = s.cut.keep || 'the coverage number of';
+    steps.push({ id: 'cut', label: s.cut.keep ? `Cut to ${s.cut.keep} experts per layer` : 'Cut to the experts every skill needs', cmd: `# Bob's own cutter (no command-line tool does this yet): keep ${n} of ${facts.experts} experts per layer\n#   from ${q(brain.gguf)}\n#   to   ${q(out)}${s.cut.how === 'file' ? `\n#   with the expert list ${q(s.cut.file)}` : ''}${s.cut.how === 'cover' ? `\n#   coverage rule: every skill keeps ${Math.round(s.cut.cover * 100)}% of its routing in every layer${s.cut.strong.length ? ` (99% for ${s.cut.strong.join(', ')})` : ''}, the Forge's keep.py rule` : ''}`, src: file, out });
     file = out;
   }
   let reader = brain.mmproj;
@@ -251,10 +269,17 @@ export function planRecipe(recipe, { brain, facts, tools, outDir }) {
 }
 
 // One lesson text from a lesson file (lessons.jsonl from the model lab, or plain text) or from the owner's chats.
-export function lessonText(cfg, lessons) {
-  const parts = [];
+export function lessonText(cfg, lessons) { return [...lessonSkills(cfg, lessons).values()].flat().join('\n'); }
+
+// The lessons by skill: a lessons.jsonl line's "skill" or "job" names its skill; chats and plain text are one skill.
+const CHATS_SKILL = 'your chats';
+export function lessonSkills(cfg, lessons) {
+  const by = new Map();
+  let parts = [];
   const add = (role, text) => { if (text && typeof text === 'string') parts.push(`<|im_start|>${role}\n${text}<|im_end|>`); };
+  const into = (skill) => { if (!by.has(skill)) by.set(skill, []); parts = by.get(skill); };
   if (lessons.kind === 'chats') {
+    into(CHATS_SKILL);
     const dir = path.join(cfg.dataDir, 'sessions');
     let files = []; try { files = fs.readdirSync(dir).filter((f) => /\.json$/.test(f) && !/\.summary\.json$/.test(f)); } catch {}
     for (const f of files) {
@@ -267,11 +292,34 @@ export function lessonText(cfg, lessons) {
       for (const line of raw.split(/\r?\n/)) {
         if (!line.trim()) continue;
         let l; try { l = JSON.parse(line); } catch { continue; }
+        into(skillOf(l));
         for (const m of l.messages || []) add(m.role === 'tool' ? 'user' : m.role, m.content || (m.tool_calls || []).map((c) => `<tool_call>${c.function?.name}</tool_call>`).join(''));
       }
-    } else parts.push(raw);
+    } else { into('lessons'); parts.push(raw); }
   }
-  return parts.join('\n');
+  for (const [k, v] of by) if (!v.length) by.delete(k);
+  return by;
+}
+const skillOf = (l) => String(l.skill || l.job || 'lessons').slice(0, 40);
+
+// Skill names for planning, without reading the whole file again on every click (cached by file and its date).
+const skillCache = new Map();
+export function lessonSkillNames(lessons, fromFile = () => []) {
+  if (lessons.kind === 'chats') return [CHATS_SKILL];
+  if (lessons.kind !== 'file' || !lessons.file) return [];
+  let st; try { st = fs.statSync(lessons.file); } catch { return []; }
+  const key = `${lessons.file}|${st.mtimeMs}|${st.size}`;
+  if (!skillCache.has(key)) {
+    let names = fromFile(lessons.file);
+    if (!names?.length) {
+      const set = new Set();
+      if (/\.jsonl$/i.test(lessons.file)) { for (const line of fs.readFileSync(lessons.file, 'utf8').split(/\r?\n/)) { if (!line.trim()) continue; try { set.add(skillOf(JSON.parse(line))); } catch {} } }
+      else set.add('lessons');
+      names = [...set];
+    }
+    skillCache.set(key, names);
+  }
+  return skillCache.get(key);
 }
 
 function run(exe, args, { signal, log }) {
@@ -343,7 +391,7 @@ export class Lab {
     return { on: labOn(this.cfg), room, cardGB, brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES };
   }
 
-  runView(r) { return { id: r.id, name: r.name, from: r.fromName, state: r.state, step: r.step, stepLabel: r.stepLabel, progress: r.progress, steps: r.steps?.map((s) => ({ id: s.id, label: s.label, state: s.state })), error: r.error, report: r.report, at: r.at, used: Boolean(r.used), sizeGB: r.sizeGB }; }
+  runView(r) { return { id: r.id, name: r.name, from: r.fromName, state: r.state, step: r.step, stepLabel: r.stepLabel, progress: r.progress, steps: r.steps?.map((s) => ({ id: s.id, label: s.label, state: s.state })), error: r.error, notes: r.notes || [], report: r.report, at: r.at, used: Boolean(r.used), sizeGB: r.sizeGB }; }
 
   plan(recipe) {
     const r = cleanRecipe(recipe);
@@ -351,6 +399,7 @@ export class Lab {
     let facts = null;
     if (brain) { try { facts = inspect(brain); } catch (e) { return { recipe: r, problems: [`Couldn't read ${brain.name}'s file: ${e.message}`], notes: [], steps: [] }; } }
     const p = planRecipe(r, { brain, facts: facts || {}, tools: this.tools(), outDir: labModelsDir(this.cfg) });
+    p.skills = r.lessons.kind === 'none' ? [] : lessonSkillNames(r.lessons);
     if (p.slug && madeBrains(this.cfg).some((m) => m.id === `lab-${p.slug}`)) p.problems.push(`You already have a Lab brain called ${r.name}. Pick another name.`);
     p.text = p.steps.map((s, i) => `# ${i + 1}. ${s.label}\n${s.cmd}`).join('\n\n');
     const t = templateById(r.template);
@@ -400,7 +449,7 @@ export class Lab {
     const log = (t) => { try { fs.mkdirSync(p.dir, { recursive: true }); fs.appendFileSync(path.join(p.dir, 'lab.log'), `${new Date().toISOString()} ${t}\n`); } catch {} };
     const tools = this.tools();
     const fx = { ...this.defaultSteps(tools, log), ...this.stepFns };
-    let keep = null; const tests = {};
+    let keep = null, coverage = null; const tests = {}; const skillCounts = [];
     try {
       fs.mkdirSync(p.dir, { recursive: true });
       for (let i = 0; i < p.steps.length; i++) {
@@ -408,17 +457,38 @@ export class Lab {
         r.step = s.id; r.stepLabel = s.label; r.steps[i].state = 'running'; r.progress = 0; this.tell(r);
         const onProgress = (x) => { r.progress = Math.round(100 * x); this.broadcast({ type: 'lab', run: this.runView(r) }); };
         if (s.id === 'lessons') {
-          const text = lessonText(this.cfg, p.recipe.lessons);
+          const by = lessonSkills(this.cfg, p.recipe.lessons);
+          const text = [...by.values()].flat().join('\n');
           if (text.length < 20000) throw new Error('There isn\'t enough lesson text to count the experts on (it needs at least a few pages). Pick a bigger lesson set.');
           fs.writeFileSync(s.corpus, text);
+          for (const c of s.corpora || []) {
+            const t = (by.get(c.skill) || []).join('\n');
+            if (t.length < 4000) { log(`skill ${c.skill}: only ${t.length} characters, counted with the rest`); c.small = true; fs.writeFileSync(c.file, text); }
+            else fs.writeFileSync(c.file, t);
+          }
+          const small = (s.corpora || []).filter((c) => c.small).map((c) => c.skill);
+          if (small.length) r.notes = [...(r.notes || []), `Too few lessons for ${small.join(', ')} to count on their own, so they were counted with the rest.`];
         } else if (s.id === 'count') {
           await fx.count(s, { brain, recipe: p.recipe, signal });
           const counts = readCounts(s.counts);
           if (!counts.filter(Boolean).length) throw new Error('llama-imatrix gave no per-expert counts. Bob\'s engine may be too old for that; update it in Get models, Engines.');
-          keep = busiest(counts, p.recipe.smaller.cut.keep);
-          writeJson(path.join(p.dir, `${p.slug}-keep.json`), { name: p.recipe.name, experts: p.recipe.smaller.cut.keep, layers: keep });
+          if (s.skill) skillCounts.push({ name: s.skill, counts });
+          else {
+            keep = busiest(counts, p.recipe.smaller.cut.keep);
+            writeJson(path.join(p.dir, `${p.slug}-keep.json`), { name: p.recipe.name, experts: p.recipe.smaller.cut.keep, layers: keep });
+          }
         } else if (s.id === 'cut') {
           if (p.recipe.smaller.cut.how === 'file') keep = readJson(p.recipe.smaller.cut.file, {}).layers;
+          if (p.recipe.smaller.cut.how === 'cover') {
+            const c = p.recipe.smaller.cut, f = brainFacts(readGguf(s.src));
+            const cov = coverageKeep(skillCounts, { cover: c.cover, strong: c.strong, strongCover: 0.99, keep: c.keep, min: f.used });
+            if (cov.K >= f.experts) throw new Error(`Covering every skill at ${Math.round(c.cover * 100)}% needs all ${f.experts} experts in some layer, so there's nothing to cut. Pick 90%, or set how many experts to keep.`);
+            keep = cov.keep;
+            coverage = { experts: cov.K, of: f.experts, sizes: cov.sizes, skills: cov.shares.map((x) => ({ name: x.name, average: Math.round(1000 * x.average) / 10, worst: Math.round(1000 * x.worst) / 10, worstLayer: x.worstLayer })) };
+            writeJson(path.join(p.dir, `${p.slug}-keep.json`), { name: p.recipe.name, experts: cov.K, cover: c.cover, strong: c.strong, strong_cover: 0.99, skills: skillCounts.map((x) => x.name), layers: keep });
+            writeJson(path.join(p.dir, 'coverage.json'), coverage);
+            log(`coverage cut: keeping ${cov.K} of ${f.experts}; ${coverage.skills.map((x) => `${x.name} ${x.average}% (worst ${x.worst}%)`).join(', ')}`);
+          }
           const why = checkKeep(readGguf(s.src), keep);
           if (why) throw new Error(why);
           await fx.cut(s, { keep, onProgress, signal });
@@ -437,7 +507,7 @@ export class Lab {
       const size = (f) => { try { return fs.statSync(f).size; } catch { return 0; } };
       r.files = { gguf: p.finals[0], mmproj: p.reader || null };
       r.sizeGB = round1(size(p.finals[0]) / GB);
-      r.report = { made: tests.test, from: tests.compare || null, sizeGB: r.sizeGB, fromGB: round1(size(brain.gguf) / GB), at: this.now() };
+      r.report = { made: tests.test, from: tests.compare || null, sizeGB: r.sizeGB, fromGB: round1(size(brain.gguf) / GB), at: this.now(), ...(coverage ? { coverage } : {}) };
       writeJson(path.join(p.dir, 'lab-report.json'), { name: r.name, from: brain.name, recipe: p.recipe, ...r.report });
       r.stepLabel = 'Write the measurement record'; this.tell(r);
       const facts = (() => { try { return brainFacts(readGguf(p.finals[0])); } catch { return {}; } })();
@@ -507,7 +577,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     const b = await body(req);
     if (p === '/api/lab/compare' && !b.save) { send(res, 200, lab.compare(b.ids)); return true; }
     if (!isLocal && !['/api/lab/plan'].includes(p)) { send(res, 403, { error: 'Lab jobs can only be started on this replicant matrix itself for now.' }); return true; }
-    if (p === '/api/lab/plan') { const pl = lab.plan(b.recipe); send(res, 200, { problems: pl.problems, notes: pl.notes, steps: pl.steps.map((s) => ({ id: s.id, label: s.label })), text: isLocal ? pl.text : '' }); return true; }
+    if (p === '/api/lab/plan') { const pl = lab.plan(b.recipe); send(res, 200, { problems: pl.problems, notes: pl.notes, skills: pl.skills || [], steps: pl.steps.map((s) => ({ id: s.id, label: s.label })), text: isLocal ? pl.text : '' }); return true; }
     if (p === '/api/lab/start') { send(res, 200, await lab.start(b.recipe, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/stop') { send(res, 200, lab.stop()); return true; }
     if (p === '/api/lab/use') { send(res, 200, lab.use(String(b.run || ''))); return true; }

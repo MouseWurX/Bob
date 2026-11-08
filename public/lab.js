@@ -86,12 +86,16 @@ export function createLab({ api, note }) {
       ${box('hearing', s.hearing, 'Take out hearing', f.hearing ? 'The sound reader is left behind. The brain can\'t hear sound any more; everything else is the same.' : '', f.hearing ? '' : 'This brain can\'t hear sound.')}
       ${box('cut', Boolean(cut), 'Cut experts', 'Keeps the experts your work uses and drops the rest. Without Teach it back (Lab 2) it loses some general knowledge first, so test it.', f.experts ? '' : 'This brain isn\'t a mixture-of-experts brain.')}
       ${cut ? `<div class="lab-sub">
-        ${radio('cuthow', 'busiest', cut.how === 'busiest', 'Keep the busiest experts', 'Counted on the lessons from step 2.')}
+        ${radio('cuthow', 'cover', cut.how === 'cover', 'Keep every skill covered (recommended)', 'Counts each skill in your lessons on its own and keeps the experts every skill needs, not only the busiest overall. It\'s how my own brains are cut.')}
+        ${cut.how === 'cover' ? `<div class="lab-sub"><fieldset><legend>How much of each skill to keep</legend>
+          ${[[0.95, '95% (recommended)', 'Each skill keeps the experts that do 95% of its work, in every layer.'], [0.9, '90%', 'Smaller, but every skill loses a little more.'], [0.99, '99%', 'Bigger. Almost nothing is lost.']].map(([v, l, h]) => radio('cover', String(v), cut.cover === v, l, h)).join('')}
+        </fieldset>
+        ${plan?.skills?.length > 1 ? `<fieldset><legend>Protect these skills more (99%)</legend>${plan.skills.map((k) => `<label class="lab-opt"><input type="checkbox" data-strong="${esc(k)}" ${cut.strong?.includes(k) ? 'checked' : ''}> <span>${esc(k)}</span></label>`).join('')}</fieldset>` : ''}</div>` : ''}
+        ${radio('cuthow', 'busiest', cut.how === 'busiest', 'Keep the busiest experts', 'Counted on all the lessons from step 2 together.')}
         ${radio('cuthow', 'file', cut.how === 'file', 'Use an expert list I have', 'A keep list from an earlier cut (for example a *-keep.json).')}
-        ${later('Keep every skill covered (recommended)', 'Counts each skill on its own and keeps the experts every skill needs.')}
         ${cut.how === 'file' ? `<p><label>Expert list file <input id="lab-keep-file" type="text" value="${esc(cut.file)}"></label></p>` : ''}
-        <fieldset><legend>How many experts to keep per layer</legend>${cutSizes.map((c) => radio('keep', String(c.keep), cut.keep === c.keep, `${c.keep} experts · about ${c.gb} GB`, c.fit)).join('')}
-        <label class="lab-opt"><input type="radio" name="keep" value="custom" ${cutSizes.some((c) => c.keep === cut.keep) ? '' : 'checked'}> <span><strong>Custom</strong> <input id="lab-keep-n" type="number" min="${f.used || 1}" max="${(f.experts || 2) - 1}" value="${cut.keep}" aria-label="Experts to keep per layer"></span></label></fieldset>
+        <fieldset><legend>How many experts to keep per layer</legend>${cut.how === 'cover' ? radio('keep', 'auto', !cut.keep, 'As many as the skills need (recommended)', 'Bob works it out after counting. The report says how many, and how much of each skill stayed.') : ''}${cutSizes.map((c) => radio('keep', String(c.keep), cut.keep === c.keep, `${c.keep} experts · about ${c.gb} GB`, c.fit)).join('')}
+        <label class="lab-opt"><input type="radio" name="keep" value="custom" ${!cut.keep || cutSizes.some((c) => c.keep === cut.keep) ? '' : 'checked'}> <span><strong>Custom</strong> <input id="lab-keep-n" type="number" min="${f.used || 1}" max="${(f.experts || 2) - 1}" value="${cut.keep || ''}" aria-label="Experts to keep per layer"></span></label></fieldset>
       </div>` : ''}
       ${later('Layer cut (Experimental)', 'Fewer layers: the least-used ones, measured on your lessons.')}
       ${later('Width cut (Experimental)', 'A narrower brain. This one hurts most and needs the longest teach-back.')}
@@ -124,6 +128,8 @@ export function createLab({ api, note }) {
     return `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">from ${esc(x.from)} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
       ${x.state === 'running' ? ' <button type="button" class="link" data-stop>Stop</button>' : ''}
       ${x.state === 'failed' || x.state === 'stopped' ? `<br><span class="muted">${esc(x.error || '')}</span>` : ''}
+      ${(x.notes || []).map((n) => `<br><span class="muted">${esc(n)}</span>`).join('')}
+      ${x.report?.coverage ? `<table class="lab-report"><caption class="muted">Coverage cut: kept ${x.report.coverage.experts} of ${x.report.coverage.of} experts per layer</caption><tr><th scope="col">Skill</th><th scope="col">Kept, on average</th><th scope="col">Worst layer</th></tr>${x.report.coverage.skills.map((k) => `<tr><th scope="row">${esc(k.name)}</th><td>${k.average}%</td><td>${k.worst}% (layer ${k.worstLayer})</td></tr>`).join('')}</table>` : ''}
       ${x.report?.made ? `<table class="lab-report"><caption class="muted">Lab test (out of 100)</caption><tr><th scope="col"></th><th scope="col">${esc(x.name)}</th>${x.report.from ? `<th scope="col">${esc(x.from)}</th>` : ''}</tr>${Object.keys(PARTS).map((k) => `<tr><th scope="row">${esc(PARTS[k])}</th><td>${x.report.made.parts[k]?.score ?? '-'}</td>${x.report.from ? `<td>${x.report.from.parts[k]?.score ?? '-'}</td>` : ''}</tr>`).join('')}<tr><th scope="row">All</th><td>${x.report.made.score}</td>${x.report.from ? `<td>${x.report.from.score}</td>` : ''}</tr><tr><th scope="row">Size</th><td>${x.report.sizeGB} GB</td>${x.report.from ? `<td>${x.report.fromGB} GB</td>` : ''}</tr><tr><th scope="row">Words a second</th><td>${x.report.made.tps || '-'}</td>${x.report.from ? `<td>${x.report.from.tps || '-'}</td>` : ''}</tr></table>
         ${x.used ? '<span class="muted">In Bob, under Get models.</span>' : `<button type="button" class="get" data-use="${esc(x.id)}">Use in Bob</button>`}` : ''}</li>`).join('')}</ul></section>`;
   }
@@ -165,8 +171,10 @@ export function createLab({ api, note }) {
     }
     else if (el.dataset.measure) { picked = el.checked ? [...new Set([...picked, el.dataset.measure])] : picked.filter((x) => x !== el.dataset.measure); saved = ''; try { table = picked.length >= 2 ? (await api('/api/lab/compare', { ids: picked })).table : null; } catch (err) { msg = err.message; table = null; } return draw(); }
     else if (el.name === 'lessons') r.lessons.kind = el.value;
-    else if (el.name === 'cuthow') r.smaller.cut.how = el.value;
-    else if (el.name === 'keep') { if (el.value !== 'custom') r.smaller.cut.keep = Number(el.value); }
+    else if (el.name === 'cuthow') { r.smaller.cut.how = el.value; if (el.value === 'cover') { r.smaller.cut.cover = r.smaller.cut.cover || 0.95; r.smaller.cut.strong = r.smaller.cut.strong || []; r.smaller.cut.keep = 0; } else if (!r.smaller.cut.keep) r.smaller.cut.keep = brain()?.cuts?.[1]?.keep || brain()?.cuts?.[0]?.keep || 8; }
+    else if (el.name === 'cover') r.smaller.cut.cover = Number(el.value);
+    else if (el.dataset.strong) { const k = el.dataset.strong; r.smaller.cut.strong = el.checked ? [...new Set([...(r.smaller.cut.strong || []), k])] : (r.smaller.cut.strong || []).filter((x) => x !== k); }
+    else if (el.name === 'keep') { if (el.value === 'auto') r.smaller.cut.keep = 0; else if (el.value !== 'custom') r.smaller.cut.keep = Number(el.value); }
     else if (el.id === 'lab-keep-n') r.smaller.cut.keep = Number(el.value);
     else if (el.id === 'lab-chunks' || el.id === 'lab-chunks-n') r.lessons.chunks = Number(el.value);
     else if (el.id === 'lab-name') r.name = el.value;
@@ -176,7 +184,7 @@ export function createLab({ api, note }) {
     else if (el.dataset.k) {
       const k = el.dataset.k;
       if (k === 'sight' || k === 'hearing') r.smaller[k] = el.checked;
-      else if (k === 'cut') r.smaller.cut = el.checked ? { how: 'busiest', keep: brain()?.cuts?.[1]?.keep || brain()?.cuts?.[0]?.keep || 8, file: '' } : null;
+      else if (k === 'cut') r.smaller.cut = el.checked ? { how: 'cover', keep: 0, cover: 0.95, strong: [], file: '' } : null;
       else if (k === 'compare') r.test.compare = el.checked;
       else if (k === 'measure') r.smaller.measure = el.checked;
       else if (k.startsWith('file:')) { const t = k.slice(5); const first = !r.smaller.files.length; r.smaller.files = el.checked ? [...new Set([...r.smaller.files, t])] : r.smaller.files.filter((x) => x !== t); if (first && el.checked && r.lessons.kind !== 'none') r.smaller.measure = true; if (!r.smaller.files.length) r.smaller.measure = false; }
