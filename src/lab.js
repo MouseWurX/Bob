@@ -270,7 +270,7 @@ export function planRecipe(recipe, { brain, facts, tools, outDir, skillNamesFor 
   if (s.try) {
     // Try it first: Brain Engine runs the whole brain with only the kept experts switched on, so the Lab test shows
     // what the cut will do before any file is written. The same run, with every expert on, is the "before" score.
-    if (!tools.brainEngine?.found) problems.push('Try it first needs Brain Engine, Bob\'s Lab engine, on this replicant matrix, and it isn\'t ready to download yet. Untick Try it first for now.');
+    if (!tools.brainEngine?.found) problems.push('Try it first needs Brain Engine, Bob\'s Lab engine, on this replicant matrix. Get it in Get models > Engines: Brain Engine (test build), or untick Try it first.');
     steps.push({ id: 'try', label: 'Try it first: test with only the kept experts switched on', cmd: `${q(tools.brainEngine?.path || 'brain-engine/llama-server')} -m ${q(brain.gguf)} -c 8192 --jinja --fit on\n# the Lab test with every expert on, then POST /expert-mask {"keep": <the keep list>} and the Lab test again${s.tryStop ? '\n# stop here if it scores more than 10 points lower on the Lab test' : ''}`, gguf: brain.gguf, card: true });
   }
   if (s.cut) {
