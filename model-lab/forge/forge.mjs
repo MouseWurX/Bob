@@ -2,6 +2,7 @@
 // node forge.mjs --plan plans\24-18.json        rent + run + download + delete (asks you to type yes first)
 // node forge.mjs --resume <podId> --plan ...    carry on watching a pod that is already running
 // node forge.mjs --send-plan <podId> --plan ...  send an edited plan to a running pod (quants etc. for the rungs not started yet)
+// node forge.mjs --send-token <podId> --plan ...  hand forge/hf-token.txt to a running pod (build 17)
 // node forge.mjs --restart <podId> --plan ...   stop the run on a pod, upload the current code + plan, start it again (finished steps are kept)
 // node forge.mjs --status | --kill               list pods / delete every forge pod
 // node forge.mjs --places [cards]               where the wanted cards are in stock with storage (read-only), and your network volumes
@@ -112,7 +113,7 @@ if (!fs.existsSync(countsFile)) { console.error(`missing counts file ${countsFil
 const hoursMax = plan.hours_max || 9, dollarsMax = plan.dollars_max || 40;
 const token = crypto.randomBytes(16).toString('hex');
 
-let podId = args.resume || args.restart || args['send-plan'], price = 0, base = args.local || '';
+let podId = args.resume || args.restart || args['send-plan'] || args['send-token'], price = 0, base = args.local || '';
 const hdr = { 'X-Forge-Token': token };
 const tokenFile = path.join(outDir, 'forge', 'pod-token.json');
 if (podId) { const t = JSON.parse(fs.readFileSync(tokenFile, 'utf8')); hdr['X-Forge-Token'] = t.token; }
@@ -251,6 +252,14 @@ log(`waiting for the pod door at ${base}`);
 let up = false;
 for (let i = 0; i < 90 && !up; i++) { try { const r = await get('/status'); up = r.ok; } catch {} if (!up) await sleep(10000); }
 if (!up) { await kill('the pod never answered (15 min)'); process.exit(1); }
+if (args['send-token']) {
+  // build 17: hand the Hugging Face token to a running pod after the fact (node forge.mjs --send-token <podId> --plan <plan>); the pod reads
+  // in/hf-token only at upload time, so this works any time before the odds or a listed Bob go up
+  const tf = path.join(here, 'hf-token.txt'); const tok = (process.env.HF_TOKEN || (fs.existsSync(tf) ? fs.readFileSync(tf, 'utf8') : '')).trim();
+  if (!tok) { log('no Hugging Face token: put it in forge/hf-token.txt (one line) or HF_TOKEN'); process.exit(1); }
+  const tmp = path.join(outDir, 'forge', 'hf-token'); fs.writeFileSync(tmp, tok); await upload('hf-token', tmp); fs.unlinkSync(tmp);
+  log('Hugging Face token is on the pod; uploads the plan allows will use it'); process.exit(0);
+}
 if (args['send-plan']) {
   // update plan.json on a running pod without touching the run (run.sh reads the plan again at the start of each rung)
   // same shape as the start path: keep files live on the pod by their bare names (build 14i)
