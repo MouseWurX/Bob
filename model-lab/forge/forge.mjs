@@ -256,8 +256,12 @@ const t0 = JSON.parse(fs.readFileSync(tokenFile, 'utf8')).started || started;
 const cost = () => price * (Date.now() - t0) / 3.6e6;
 log(`waiting for the pod door at ${base}`);
 let up = false;
-for (let i = 0; i < 90 && !up; i++) { try { const r = await get('/status'); up = r.ok; } catch {} if (!up) await sleep(10000); }
-if (!up) { await kill('the pod never answered (15 min)'); process.exit(1); }
+// the pod has to pull its container image before bootstrap.py can answer; a cold pod with no volume in a slow region can take
+// well over 15 min, so the door wait is configurable (plan.door_minutes, default 15) and longer for no-volume runs
+const doorMin = plan.door_minutes || (plan.volume ? 15 : 25);
+const doorTries = Math.max(1, Math.round(doorMin * 6));
+for (let i = 0; i < doorTries && !up; i++) { try { const r = await get('/status'); up = r.ok; } catch {} if (!up) { if (i && i % 30 === 0) log(`still waiting for the pod door (${i / 6 | 0} min of ${doorMin})`); await sleep(10000); } }
+if (!up) { await kill(`the pod never answered (${doorMin} min)`); process.exit(1); }
 if (args['send-token']) {
   // build 17: hand the Hugging Face token to a running pod after the fact (node forge.mjs --send-token <podId> --plan <plan>); the pod reads
   // in/hf-token only at upload time, so this works any time before the odds or a listed Bob go up
