@@ -64,7 +64,13 @@ jobs:
       - name: Bundle the basic llama.cpp (x86_64 Vulkan, ARM processor build; the tested release, checked against GitHub's sha256)
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node installer/bundle-engine.mjs .
+        # Up to 3 tries, a minute apart: the llama.cpp download can hit a GitHub 503 or a timeout.
+        run: |
+          for i in 1 2 3; do
+            node installer/bundle-engine.mjs . && exit 0
+            [ "$i" -lt 3 ] && echo "Try $i failed (often a download hiccup); trying again in 60 seconds." && sleep 60
+          done
+          exit 1
       - name: Check the bundled llama.cpp is for this kind of computer
         # An x86_64 llama-server won't start on a Raspberry Pi, and the other way round.
         run: |

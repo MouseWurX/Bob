@@ -48,7 +48,12 @@ jobs:
         working-directory: android
         run: |
           export JAVA_HOME="$JAVA_HOME_17_X64"
-          ./gradlew --no-daemon --stacktrace assembleDebug
+          # Up to 3 tries, a minute apart: the Gradle and library downloads can time out.
+          for i in 1 2 3; do
+            ./gradlew --no-daemon --stacktrace assembleDebug && exit 0
+            [ "$i" -lt 3 ] && echo "Try $i failed (often a download hiccup); trying again in 60 seconds." && sleep 60
+          done
+          exit 1
       - name: Name it and checksum
         run: |
           v=$(node -p "require('./package.json').version")
