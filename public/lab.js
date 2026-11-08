@@ -103,6 +103,7 @@ export function createLab({ api, note }) {
       ${later('A big rented brain as the teacher', 'A rented card runs a brain too big for this replicant matrix.')}
       ${wplan ? `<div class="lab-check" role="status">${wplan.problems.length ? `<p><strong>Before it can start:</strong></p><ul>${wplan.problems.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p><strong>Ready to write.</strong></p>'}${wplan.notes.map((x) => `<p class="muted">${esc(x)}</p>`).join('')}</div>` : ''}
       <div class="row"><button type="button" class="get" data-write ${wplan && !wplan.problems.length && !running() ? '' : 'disabled'}>${running() ? 'The Lab is busy' : 'Write the lessons'}</button><button type="button" class="link" data-writeclose>Close</button></div>
+      <p class="muted">A stand-in Bob does the writing, with none of your chats, notes or names, and nothing is really run.</p>
     </fieldset>`;
   }
 
@@ -115,7 +116,7 @@ export function createLab({ api, note }) {
       ${box('hearing', s.hearing, 'Take out hearing', f.hearing ? 'The sound reader is left behind. The brain can\'t hear sound any more; everything else is the same.' : '', f.hearing ? '' : 'This brain can\'t hear sound.')}
       ${box('cut', Boolean(cut), 'Cut experts', 'Keeps the experts your work uses and drops the rest. Without Teach it back (Lab 2) it loses some general knowledge first, so test it.', f.experts ? '' : 'This brain isn\'t a mixture-of-experts brain.')}
       ${cut ? `<div class="lab-sub">
-        ${radio('cuthow', 'cover', cut.how === 'cover', 'Keep every skill covered (recommended)', 'Counts each skill in your lessons on its own and keeps the experts every skill needs, not only the busiest overall. It\'s how my own brains are cut.')}
+        ${radio('cuthow', 'cover', cut.how === 'cover', 'Keep every skill covered (recommended)', 'Counts each skill in your lessons on its own and keeps the experts every skill needs, not only the busiest overall. It\'s how Bob\'s own brains are cut.')}
         ${cut.how === 'cover' ? `<div class="lab-sub"><fieldset><legend>How much of each skill to keep</legend>
           ${[[0.95, '95% (recommended)', 'Each skill keeps the experts that do 95% of its work, in every layer.'], [0.9, '90%', 'Smaller, but every skill loses a little more.'], [0.99, '99%', 'Bigger. Almost nothing is lost.']].map(([v, l, h]) => radio('cover', String(v), cut.cover === v, l, h)).join('')}
         </fieldset>
@@ -125,8 +126,8 @@ export function createLab({ api, note }) {
         ${cut.how === 'file' ? `<p><label>Expert list file <input id="lab-keep-file" type="text" value="${esc(cut.file)}"></label></p>` : ''}
         <fieldset><legend>How many experts to keep per layer</legend>${cut.how === 'cover' ? radio('keep', 'auto', !cut.keep, 'As many as the skills need (recommended)', 'Bob works it out after counting. The report says how many, and how much of each skill stayed.') : ''}${cutSizes.map((c) => radio('keep', String(c.keep), cut.keep === c.keep, `${c.keep} experts · about ${c.gb} GB`, c.fit)).join('')}
         <label class="lab-opt"><input type="radio" name="keep" value="custom" ${!cut.keep || cutSizes.some((c) => c.keep === cut.keep) ? '' : 'checked'}> <span><strong>Custom</strong> <input id="lab-keep-n" type="number" min="${f.used || 1}" max="${(f.experts || 2) - 1}" value="${cut.keep || ''}" aria-label="Experts to keep per layer"></span></label></fieldset>
-        ${box('try', s.try, 'Try it first, before cutting', `Brain Engine runs ${b?.name || 'the brain'} with only the kept experts switched on and gives it the Lab test, so you see the score before any file is written. It counts as the test of ${b?.name || 'the brain'} too.`, view.brainEngine ? '' : 'Needs Brain Engine, my own engine. Get it in Get models, Engines.')}
-        ${s.try ? `<div class="lab-sub">${box('tryStop', s.tryStop, 'Stop if it does more than 10 points worse', 'Then nothing is cut, and you can keep more experts or protect more skills.')}</div>` : ''}
+        ${box('try', s.try, 'Try it first, before cutting', `Brain Engine runs ${b?.name || 'the brain'} with only the kept experts switched on and gives it the Lab test, so you see the score before any file is written. It counts as the test of ${b?.name || 'the brain'} too.`, view.brainEngine ? '' : 'Needs Brain Engine, Bob\'s Lab engine. Get it in Get models, Engines.')}
+        ${s.try ? `<div class="lab-sub">${box('tryStop', s.tryStop, 'Stop if it scores more than 10 points lower on the Lab test', 'Then nothing is cut, and you can keep more experts or protect more skills.')}</div>` : ''}
       </div>` : ''}
       ${later('Layer cut (Experimental)', 'Fewer layers: the least-used ones, measured on your lessons.')}
       ${later('Width cut (Experimental)', 'A narrower brain. This one hurts most and needs the longest teach-back.')}
