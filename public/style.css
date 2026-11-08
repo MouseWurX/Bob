@@ -1074,12 +1074,23 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .cat-which { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 8px; }
 .cat-which .ttabs button[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
 .naughty-note { border: 1px solid var(--accent); border-radius: var(--r); padding: 8px 12px; }
+/* 1.5.133: Bob's own red devil (not an emoji, so it's red everywhere); on its own in a ★ spot it's his quiet pick */
+.devil { width: 1em; height: 1em; vertical-align: -0.15em; }
+.devil-wrap { display: inline-block; line-height: 0; }
+.tag.devil-rec { padding: 1px 6px; }
+.maker-tag { cursor: help; }
+.maker-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tag.devil-rec .devil { width: 1.1em; height: 1.1em; }
 .cat-nav { display: flex; flex-wrap: wrap; gap: 6px; }
 .cat-nav button[aria-current="true"] { border-color: var(--accent); }
 .cat-job { margin: 14px 0; scroll-margin-top: calc(var(--cellar-head-h, 56px) + var(--cellar-tabs-h, 0px) + 8px); }
 .cat-job h3 { display: flex; align-items: center; gap: 6px; }
 .cat-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
 .cat-row.dim { opacity: 0.75; }
+/* 1.5.133: community builds: a solid stripe; the naughty list: a dashed one, so they differ without colour too */
+.cat-row.community { border-left: 5px solid var(--good); padding-left: 8px; background: var(--card); background: color-mix(in srgb, var(--good) 10%, var(--card)); }
+.cat-row.naughty { border-left: 5px dashed var(--bad); padding-left: 8px; background: var(--card); background: color-mix(in srgb, var(--bad) 13%, var(--card)); }
+@media (forced-colors: active) { .cat-row.community, .cat-row.naughty { border-left-color: CanvasText; } }
 .cat-row .confirm { flex-basis: 100%; }
 /* 1.5.101: one header per model family inside each catalogue job; press it to open or close the list. */
 .cat-fam { border: 1px solid var(--line); border-radius: var(--r); margin: 0 0 8px; background: var(--card); scroll-margin-top: calc(var(--cellar-head-h, 56px) + var(--cellar-tabs-h, 0px) + 8px); }

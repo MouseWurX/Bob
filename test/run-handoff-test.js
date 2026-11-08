@@ -96,6 +96,29 @@ function fakeBrain(engine, extra = {}) {
   check('the main brain failing is a real error (after its retries)', err && /stopped while loading main/.test(err.message) && eng.loads.length === 3);
 }
 
+// 1.5.133: a second brain on the card is let go before the job's brain is tried again (last night's crash loop)
+{
+  const eng = fakeEngine({ broken: ['big'] });
+  const dropped = [];
+  eng.beside = { currentCard: 'whole', current: 'qwen3-4b' };
+  eng.besideLoaded = () => Boolean(eng.beside.current);
+  eng.dropBeside = async () => { dropped.push(eng.beside.current); eng.beside.current = null; return dropped; };
+  const br = fakeBrain(eng);
+  const gate = new Gate(br, { delays: [1, 1] });
+  const sig = new AbortController().signal;
+  await gate.need({ id: 'brain', model: 'big', opts: {} }, { signal: sig, who: 'tinker' });
+  check('1.5.133: the second brain on the card goes before the retry, once, and it is logged', dropped.join() === 'qwen3-4b' && br.logs.some((l) => /letting the second brain \(qwen3-4b\) off the card before trying big again/.test(l)), br.logs.join(' | '));
+  gate.done(sig);
+  const eng2 = fakeEngine({ broken: ['big'] });
+  let drops = 0;
+  eng2.beside = { currentCard: 'none', current: 'qwen3-4b' }; eng2.besideLoaded = () => true; eng2.dropBeside = async () => { drops++; return []; };
+  const g2 = new Gate(fakeBrain(eng2), { delays: [1, 1] });
+  const s2 = new AbortController().signal;
+  await g2.need({ id: 'brain', model: 'big', opts: {} }, { signal: s2 });
+  check('...but a second brain on the processor stays (it takes nothing from the card)', drops === 0);
+  g2.done(s2);
+}
+
 // ---------- Gate: painter and two jobs at once ----------
 {
   const eng = fakeEngine();

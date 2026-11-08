@@ -120,7 +120,9 @@ export function pickFor(slotId, models, ctx = {}) {
   // On an ARM board the picks are the board's starter set (Qwen3.5 2B or Gemma 4 E2B), not the scored brains.
   if (BRAIN_SLOTS.includes(slotId) && !ctx.arm) {
     // 1.5.56: new brains (trial: true) are listed but not recommended until they've been tried on a real PC.
-    const able = models.filter((m) => canDo(slotId, { entry: m }) && !m.gated && !m.trial && !fullRunsHere(m, models, hw, ctx.platform));
+    // 1.5.133: a naughty (uncensored) brain is never the pick among the well-behaved ones; on the naughty list's own side
+    // (ctx.naughtyPick) the pick is made among naughty brains only, and shown as Bob's quiet pick (a red devil).
+    const able = models.filter((m) => canDo(slotId, { entry: m }) && !m.gated && !m.trial && (m.naughty === true) === (ctx.naughtyPick === true) && !fullRunsHere(m, models, hw, ctx.platform));
     const pool = able.filter((m) => suit(m, hw, ctx.platform).level === 'ok');
     if (!pool.length) return null;
     const best = pool.map((m) => ({ m, s: scoreFor(m, slotId, hw) })).sort((a, b) => b.s - a.s)[0].m;

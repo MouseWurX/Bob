@@ -96,7 +96,8 @@ const laptop = {
     return { jobId: id };
   }
 };
-laptop.guests = new GuestJobs(laptop, { canNow: () => ['pictures'] });
+let laptopCan = { pictures: true };
+laptop.guests = new GuestJobs(laptop, { canNow: () => Object.keys(laptopCan).filter((k) => laptopCan[k]) });
 const COOKIE = 'bob_auth=feedbeef';
 const send = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
 const readBody = async (req) => { let s = ''; for await (const c of req) s += c; return s ? JSON.parse(s) : {}; };
@@ -104,7 +105,7 @@ const srv = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x'), p = url.pathname;
   if (req.method === 'POST' && p === '/login') { const s = new URLSearchParams(await new Promise((r) => { let d = ''; req.on('data', (c) => (d += c)); req.on('end', () => r(d)); })); if (s.get('code') === 'laptop-123') { res.writeHead(303, { 'set-cookie': `${COOKIE}; HttpOnly` }); return res.end(); } res.writeHead(401); return res.end(); }
   if (req.headers.cookie !== COOKIE) { res.writeHead(401); return res.end(); }
-  if (p === '/api/lend/hello') return send(res, 200, helloFor(laptop, { why: 'off', quick: null, can: { pictures: true }, version: 'x', label: (m) => m, webOn: false, bigBrain: false }));
+  if (p === '/api/lend/hello') return send(res, 200, helloFor(laptop, { why: 'off', quick: null, can: laptopCan, version: 'x', label: (m) => m, webOn: false, bigBrain: false }));
   if (req.method === 'POST' && req.headers['x-bob'] !== '1') { res.writeHead(403); return res.end(); }
   const r = await guestRoute({ req, res, p, url, brain: laptop, body: readBody, send, cfg: { painterDir: lenderDir }, findOutput: (c, n) => path.join(lenderDir, path.basename(n)), serveFile: (rs, dir, name) => { rs.writeHead(200); rs.end(fs.readFileSync(path.join(dir, name))); } });
   if (r === false) { res.writeHead(404); res.end(); }
@@ -169,6 +170,54 @@ await p4;
 await wait(50);
 check('and it ends as stopped', job4.state === 'cancelled' && laptop.queue.find((j) => j.id.endsWith('aa')).state === 'cancelled');
 laptop.enqueue = slowLaptop;
+
+// ---------- 1.5.133 lost-song fixes ----------
+// A song asked for on the handheld, made on the PC: three ways it went missing, and what the owner sees now.
+laptopCan = { pictures: true, music: true };
+const songRun = (script) => function (sid, text, a, e, extra) {
+  const id = `00000000-0000-4000-8000-0000000000${String(this.queue.length).padStart(2, '0')}`;
+  const q = { id, sessionId: sid, text, state: 'working', ...extra };
+  this.queue.push(q);
+  const b = (ev) => this.guests.watch({ ...ev, turnId: id, sessionId: sid });
+  setTimeout(async () => { b({ type: 'start', text }); for (const ev of script) { await wait(5); if (ev.type === 'done') q.state = 'done'; b(ev); } }, 20);
+  return { jobId: id };
+};
+const sendSong = async (script, id, extra = {}) => {
+  pc.lenders.state.clear(); pc.lenders.inUse.clear(); events.length = 0;
+  laptop.enqueue = songRun(script);
+  const j = { id, sessionId: 'main', text: 'make a song about rain on the porch', kind: 'music', state: 'waiting' };
+  const went = await sendAway(pc, j, { need: 'music', why: 'cant' }, { timers: { notStarted: 5000, quiet: 5000, fileTries: 3, ...extra } });
+  return { went, j };
+};
+// 1. His music models weren't downloaded: the Download card can't be pressed from here.
+const s1 = await sendSong([{ type: 'offer-download', why: 'music', name: 'ACE-Step', sizeGB: 7.5 }, { type: 'token', text: 'Here is your song!' }, { type: 'done' }], 'song-1');
+const err1 = events.filter((e) => e.type === 'error').map((e) => e.text).join(' | ');
+check('his missing music models are said here in plain words', /Laptop can't make this one yet: he needs the music models \(about 7\.5 GB\) set up first/.test(err1), err1);
+check('and the job is failed, not done', s1.went === true && s1.j.state === 'failed' && /set up first/.test(s1.j.error || ''), `${s1.j.state} ${s1.j.error}`);
+check('no Download button is passed along', !events.some((e) => e.type === 'offer-download'));
+// 2. He said it was made, but no song came back.
+const s2 = await sendSong([{ type: 'token', text: 'Your song is ready!' }, { type: 'done' }], 'song-2');
+check('a song job with no song is failed, whatever he says', s2.j.state === 'failed' && events.some((e) => e.type === 'error' && /no song came back, so it wasn't made/.test(e.text)), `${s2.j.state}`);
+// 3. The copy back hiccups twice, then works: the song still arrives.
+fs.writeFileSync(path.join(lenderDir, 'rain.wav'), 'WAVDATA');
+let fileAsks = 0;
+const realCall = pc.lenders.call.bind(pc.lenders);
+pc.lenders.call = async (b, u, o) => { if (/\/file\?/.test(u) && ++fileAsks <= 2) throw new Error('connection reset'); return realCall(b, u, o); };
+const s3 = await sendSong([{ type: 'audio', url: '/images/rain.wav', file: path.join(lenderDir, 'rain.wav'), song: { title: 'Rain on the porch' } }, { type: 'done' }], 'song-3');
+check('a file that hiccups is tried again and arrives', s3.j.state === 'done' && fileAsks === 3 && events.some((e) => e.type === 'audio') && fs.readdirSync(pcDir).some((f) => f.startsWith('rain')), `${s3.j.state} ${fileAsks}`);
+// 4. It never comes across: the owner is told where it is, and the job isn't called done.
+fileAsks = -100;
+const s4 = await sendSong([{ type: 'audio', url: '/images/rain.wav', file: path.join(lenderDir, 'rain.wav'), song: { title: 'Rain on the porch' } }, { type: 'done' }], 'song-4');
+check('a song that never comes across says where it is', s4.j.state === 'failed' && events.some((e) => e.type === 'error' && /made it \(Rain on the porch\), but the file didn't come across.*in Made by Bob there/.test(e.text)) && pc.logs.some((l) => /didn't come across/.test(l)), `${s4.j.state}`);
+pc.lenders.call = realCall;
+laptop.enqueue = slowLaptop;
+laptopCan = { pictures: true };
+// Wiring: the hello and the job pick only promise music when the music models are really there; the phone names the Bob
+// that has a chart it couldn't get, and shows the chart's text when it can't draw it; the Chest follows a moved folder.
+const src = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
+check('hello and the pick say music only with the models there', /jobCan\(\)\s*\{[^\n]*aceMissingFiles/.test(src('src/brain.js')) && /can: this\.jobCan\(\)/.test(src('src/brain.js')) && /can: brain\.jobCan\(\)/.test(src('src/server.js')));
+check('the phone never says "your other replicant matrix" about a lost chart', !/It's on your other replicant matrix/.test(src('android/app/src/main/assets/www/phone.js')) && /Couldn't get this diagram from \$\{who\}/.test(src('android/app/src/main/assets/www/phone.js')) && /class: 'diagram-text', text/.test(src('android/app/src/main/assets/www/phone.js')));
+check("the Chest lists what the door hands out, even in a moved folder", /x\.path\.startsWith\(inn\) \|\| servable\(x\)/.test(src('src/server.js')));
 
 // A phone finds out a chat is too long only after it said 200: an SSE error with busy 'too long' counts like the 409.
 const phone = http.createServer((req, res) => {

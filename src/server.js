@@ -109,7 +109,7 @@ brain.mindWatchers = () => mindClients.size;
 // 1.5.38: when Downloads change, a job waiting for one (a song waiting for the music models) may be able to go.
 const shop = new ModelShop(cfg, (ev) => { broadcast(ev); if (ev?.type === 'downloads') brain.downloadsChanged(); }, brain.engine);
 // 1.5.24: the card's size, for picture settings matched to it (only used when that switch is on).
-if (!cfg.gpuVramGB) shop.hardware().then((h) => { if (h?.gpu?.vramGB && !h.gpu.integrated) cfg.cardGB = h.gpu.vramGB; /* 1.5.71: built-in graphics aren't a card for pictures */ if (h?.gpu?.integrated) cfg.sharedGraphics = true; /* 1.5.79: but they get their own picture settings */ }).catch(() => {});
+if (!cfg.gpuVramGB) shop.hardware().then((h) => { if (h?.gpu?.vramGB && !h.gpu.integrated) cfg.cardGB = h.gpu.vramGB; /* 1.5.71: built-in graphics aren't a card for pictures */ if (h?.gpu?.integrated) { cfg.sharedGraphics = true; cfg.reservedGraphicsGB = Number(h.gpu.reservedGraphicsGB) || 0; /* 1.5.133: the set-aside counts as room (apuRoom) */ } /* 1.5.79: but they get their own picture settings */ }).catch(() => {});
 brain.shop = shop; // so Bob can tell when a model is on this replicant matrix but not assigned to a job
 // 1.5.91: Bob fills a slot himself once its download is in (Get Bob ready, the chat's Set it up card): the same saves
 // the window's Equip makes.
@@ -429,7 +429,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/lend/hello') {
       const why = lendRefusal(brain, brain.lendDeps);
       const q = why ? null : brain.lendDeps.quickBrain(brain);
-      return send(res, 200, helloFor(brain, { why, quick: q, can: capabilities(cfg), version: VERSION, label: (m) => brain.brainLabel(m), webOn: cfg.webSearch === true, bigBrain: brain.guestBigBrain(), name: myName() }));
+      return send(res, 200, helloFor(brain, { why, quick: q, can: brain.jobCan(), version: VERSION, label: (m) => brain.brainLabel(m), webOn: cfg.webSearch === true, bigBrain: brain.guestBigBrain(), name: myName() }));
     }
     // 1.5.72 Share jobs: whole jobs from your other Bobs (src/share-jobs.js). start() checks "Take jobs from my other Bobs".
     if (p.startsWith('/api/guest/jobs') && await guestRoute({ req, res, p, url, brain, body, send, serveFile, findOutput, cfg }) !== false) return;
@@ -881,7 +881,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/made') {
       const list = brain.made.list({ kind: url.searchParams.get('kind') || '', q: url.searchParams.get('q') || '', limit: Math.min(200, Number(url.searchParams.get('limit')) || 60) });
       const inn = path.resolve(cfg.innDir) + path.sep;
-      return send(res, 200, isLocal ? list : list.filter((x) => x.path.startsWith(inn)).map((x) => ({ ...x, path: undefined })));
+      // 1.5.133: over the door, the same rule as /images/ below: anything Bob made that the door would hand out (his own
+      // inn\ folder, or a Made by Bob file in any save folder), so a Bob whose save folder was moved no longer shows the
+      // phone an empty Chest. Paths never leave this Bob.
+      const servable = (x) => { try { return path.resolve(findOutput(cfg, path.basename(x.path))) === path.resolve(x.path); } catch { return false; } };
+      return send(res, 200, isLocal ? list : list.filter((x) => x.path && (x.path.startsWith(inn) || servable(x))).map((x) => ({ ...x, path: undefined })));
     }
     if (req.method === 'POST' && (p === '/api/open' || p === '/api/clipboard')) {
       if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });

@@ -4,6 +4,41 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.133
+
+A Community side in the Brain catalogue, a red devil of Bob's own, AMD graphics seen properly, fixes for shared-memory machines and brains that wouldn't load, and no more jobs lost between your Bobs.
+
+**Thank you** to **CitizenFog**, who spotted that Bob wasn't detecting their AMD graphics and wrote the fix together with Bob, and to **Rook**, who sent the gaming-card fix for built-in graphics with six checks of their own.
+
+### New
+- **🤝 Community.** The catalogue's toggle has three sides now: Well behaved, Community and the Naughty list. Community shows builds other people made from stock brains that still behave (fine-tunes, distillations, repacks); they're in the Well behaved list too, with a **Community** tag, and one can be ★ Recommended like any other brain once it has been tried on a replicant matrix. Two to start: **Qwen3.6 35B-A3B Opus Reasoning Distilled** (a popular Qwen3.6 fine-tune on Hugging Face) and **Qwen3.6 35B-A3B Distilled from Qwen 3.8 27B**. Both pinned to exact files and marked New until tried.
+- **Tell them apart at a glance.** Community rows have a solid stripe down their left edge and a light green tint; naughty-list rows have a dashed stripe and a light red tint. The stripes differ in shape as well as colour, so they still read right if colours are hard to tell apart.
+- **Bob's own red devil.** The naughty list is marked with a small red devil with orange horns that Bob draws himself, so it looks the same on every computer (phone emoji devils come out purple on some screens).
+- **The quiet pick.** Bob never puts a ★ on an uncensored brain. On the naughty side only, a red devil on its own where the star would be is his quiet pick: the one that does that job well on your replicant matrix. Nothing is quietly picked until a brain has been tried.
+- **Credit on the tag.** Community and naughty-list tags carry the maker's name ("Community · hesamation"); for a team, the team's name, with the members shown when you hover, tap or tab to the tag.
+- **AMD and Intel graphics are seen** (by CitizenFog and Bob, issue #25). Check this replicant matrix now reads the list of graphics Windows itself keeps, says "AMD graphics found" or "Intel graphics found", and only asks NVIDIA's tool, and only shows the NVIDIA driver and Sysmem Fallback tips, when there really is an NVIDIA card. A laptop with AMD graphics and an NVIDIA card gets both: the AMD line and the NVIDIA tips.
+
+### Fixed
+- **Built-in graphics with memory set aside (a Legion Go on 8 GB, for example).** Bob counted only the RAM Windows could see, so with 8 GB set aside for graphics he refused every brain. The set-aside counts as room now, and a brain that fits in it loads even when Windows itself has little RAM free. On Auto, Bob stays careful as before.
+- **Borrow when my own brain won't fit.** With "Borrow brains from my other Bobs" on, a brain that's too big for this replicant matrix's shared memory goes to a paired Bob first; Bob only says no when none of them is free.
+- **Gaming on built-in graphics** (by Rook). With no graphics card reading, the Gaming brain stays on the processor instead of trying to borrow a card that isn't there.
+- **Brains that fell over on the second and third load.** The small chat brain that keeps you company during a long job could sit on the graphics card with a very long chat memory, then the job's brain loaded on top of it and the engine crashed. Bob now keeps room on the card for the job's brain, counts the chat memory in full, and lets the small brain off the card before trying a load again.
+- **When a load still fails,** the engine's whole output is saved to `llama-server-load-failed.txt` in Bob's data folder (and goes into a help bundle), and Bob's log says where each second brain went (card or processor) and when an idle brain was let go.
+- **Nothing goes missing between your Bobs.** A song asked for on one Bob and made on another could vanish without a word. Now:
+  - A Bob only says he can make songs when his music models are really downloaded, so a song job isn't sent to a Bob who can't make it.
+  - A song job from another Bob isn't held for a plan card any more. On the Bob doing the work, that made the brain talk about the song and never make it.
+  - If he can't (his Download card can't be pressed from the other Bob), the chat says so in plain words: "Desk can't make this one yet: he needs the music models (about N GB) set up first."
+  - A picture, clip, song or sound job that ends with no file is marked failed with Try again, not done, whatever his words say.
+  - Bringing the file back is tried three times, and the other Bob keeps it ready for 6 hours (was 15 minutes). If it still doesn't come across, the chat says where it is.
+  - The phone's Chest also lists things a Bob made after his save folder was moved.
+- **"Show the naughty list" switched off** still said "Naughty list: on" on the How Bob works summary until a reload. Every switch there updates its summary at once now.
+- **"(downloaded by Bob)" on a file you placed yourself.** A model you pointed Bob at by hand, or one he found in another app's folder, now says **(your own file)**. Only files in Bob's own models folder say "downloaded by Bob".
+
+### Also
+- Help: the catalogue page, an FAQ "What's a community build?", the stripes, the quiet pick in the naughty-list FAQ and glossary, "your own file", which graphics Check this replicant matrix found, and an FAQ "Where is the song (or picture) my other Bob made?".
+- New checks in `test/run-catalogue-test.js`, `run-integrated-gpu-test.js`, `run-beside-test.js`, `run-handoff-test.js`, `run-idle-unload-test.js`, `run-tuning-test.js`, `run-own-brain-test.js`, `run-share-jobs-test.js` (9), `run-plan-test.js` and `run-gaming-card-test.js` (Rook's six).
+- Phone (Bob for Android): a diagram the phone can't fetch says which Bob has it (no more "your other replicant matrix"), and one it can't draw shows the diagram's text, with Save to this phone.
+
 ## 1.5.132
 
 The naughty list: uncensored community remixes in the Brain catalogue, behind a switch that is off.
