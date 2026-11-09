@@ -10,7 +10,8 @@ const cat = JSON.parse(fs.readFileSync(new URL('../catalog.json', import.meta.ur
 const q = cat.models.find((m) => m.id === 'qwen3.6-35b-a3b');
 check('Qwen3.6 35B-A3B has passed its PC test (no New tag)', q && !q.trial);
 const big = cat.packs.find((p) => p.id === 'big');
-check('the 16 GB starter set equips it for Brain and Coding, Gemma 4 26B for Office and Deep thinking', ['bob', 'tinker'].every((x) => big.slots['qwen3.6-35b-a3b']?.includes(x)) && ['deep', 'office'].every((x) => big.slots['gemma4-26b']?.includes(x)) && !big.slots['gemma4-26b'].includes('bob') && !big.models.includes('qwen3-coder-30b'));
+// 1.5.169: Bob's own 28Bob Riker takes the Brain slot; Qwen3.6 keeps Coding until Bobert ships.
+check('the 16 GB starter set equips it for Coding (Riker is the Brain), Gemma 4 26B for Office and Deep thinking', big.slots['qwen3.6-35b-a3b']?.includes('tinker') && big.slots['riker-28b']?.join() === 'bob' && ['deep', 'office'].every((x) => big.slots['gemma4-26b']?.includes(x)) && !big.slots['gemma4-26b'].includes('bob') && !big.models.includes('qwen3-coder-30b'));
 check('Qwen3 Coder 30B is still in the catalogue to pick', cat.models.some((m) => m.id === 'qwen3-coder-30b' && m.jobs.includes('tinker')));
 
 const id = 'qwen3.6-35b-a3b';

@@ -2608,6 +2608,85 @@
           "small": "$model"
         }
       }
+    },
+    {
+      "id": "riker-28b",
+      "family": "Bob",
+      "category": "chat",
+      "jobs": ["bob", "deep", "tinker", "reviewer", "office", "ledger", "scout"],
+      "name": "28Bob Riker",
+      "nickname": "Riker",
+      "published": "2026-11-08",
+      "what": "Bob's own brain, cut down from Qwen3.6 35B-A3B in his workshop: it keeps the full brain's tool habits, coding and exact formats and runs about 30% faster, a little vaguer on trivia.",
+      "sizeGB": 17.5,
+      "vramGB": 16,
+      "params": 28,
+      "activeParams": 3,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "best",
+      "bobPick": ["bob"],
+      "madeByBob": true,
+      "bench": "Benchmarked 2026-11-08: ARC-Challenge 93.9% (thinking on), ARC-Easy 98.3%; Bob's own test: tools 65, routing 96, needle 100 (the full Qwen: tools 67).",
+      "cutFrom": {
+        "name": "Qwen3.6 35B-A3B",
+        "by": "Alibaba",
+        "hf": "Qwen/Qwen3.6-35B-A3B"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/MouseWurX/28Bob-Riker/resolve/5a46bf8d91c56ff1e1541f87934c3624c7e4120a/28Bob-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 17494120544,
+          "sha256": "c96ae59c62b6e1802788d07e2d3e2edb540b3a765dd71689d92a1b546e4439e7"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
+        }
+      }
+    },
+    {
+      "id": "riker-28b-q3",
+      "family": "Bob",
+      "category": "chat",
+      "jobs": ["bob", "deep", "tinker", "reviewer", "office", "ledger", "scout"],
+      "name": "28Bob Riker (8 GB card version)",
+      "nickname": "Riker",
+      "published": "2026-11-08",
+      "what": "Riker squeezed into a smaller file for cards of 8 GB or less. A little less sharp than the full one, and most of it sits in your RAM, so replies come slower. On a bigger card I use the full version instead.",
+      "sizeGB": 13.9,
+      "vramGB": 12,
+      "params": 28,
+      "activeParams": 3,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "small",
+      "bobPick": ["deep"],
+      "madeByBob": true,
+      "squeezedOf": "riker-28b",
+      "maxCardGB": 8,
+      "cutFrom": {
+        "name": "Qwen3.6 35B-A3B",
+        "by": "Alibaba",
+        "hf": "Qwen/Qwen3.6-35B-A3B"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/MouseWurX/28Bob-Riker/resolve/5a46bf8d91c56ff1e1541f87934c3624c7e4120a/28Bob-Q3_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 13873840224,
+          "sha256": "d3b65bbc3ae8529f721675350b2f2a6e12e3205269345eaf6066d3e535684267"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
+        }
+      }
     }
   ],
   "packs": [
@@ -2616,6 +2695,7 @@
       "label": "16 GB card or more",
       "minVramGB": 12,
       "models": [
+        "riker-28b",
         "gemma4-26b",
         "qwen3.6-35b-a3b",
         "z-image-turbo",
@@ -2631,7 +2711,6 @@
           "office"
         ],
         "qwen3.6-35b-a3b": [
-          "bob",
           "tinker"
         ],
         "z-image-turbo": [
@@ -2653,12 +2732,16 @@
         ],
         "nomic-embed-text": [
           "embed"
+        ],
+        "riker-28b": [
+          "bob"
         ]
       },
       "notes": {
         "gemma4-e4b": "the quick brain, and it sees pictures and hears you",
         "qwen3.6-35b-a3b": "everyday chat and coding in one load: a big context (256K, how much it keeps in mind). It answers Low-effort chat straight off and always thinks coding jobs through",
-        "gemma4-26b": "Office and Deep thinking"
+        "gemma4-26b": "Office and Deep thinking",
+        "riker-28b": "Bob's own everyday brain: about 30% faster than the full Qwen, with a big context (256K, how much it keeps in mind)"
       },
       "times": "Pictures take about 10 seconds each, clips a few minutes.",
       "cardGB": 16
@@ -2668,6 +2751,7 @@
       "label": "8 GB card",
       "minVramGB": 7,
       "models": [
+        "riker-28b-q3",
         "gemma4-e4b",
         "kokoro-v1",
         "nomic-embed-text",
@@ -2700,6 +2784,9 @@
         ],
         "wan2.2-ti2v-5b-q4": [
           "video"
+        ],
+        "riker-28b-q3": [
+          "deep"
         ]
       },
       "tick": [
@@ -2710,7 +2797,8 @@
         "qwen3-coder-30b": "the best coder; most of it sits in your RAM, so replies are slower (roughly 15 to 25 words a second)",
         "z-image-turbo-q5": "a version of the painter made to fit your card",
         "flux2-klein-4b": "a small, quick editor: change a picture with words or keep a look from references",
-        "wan2.2-ti2v-5b-q4": "slow on this card: keep clips to a few seconds"
+        "wan2.2-ti2v-5b-q4": "slow on this card: keep clips to a few seconds",
+        "riker-28b-q3": "Bob's own deep thinker, squeezed for your card; slow here, so it starts unticked"
       },
       "times": "Rough guesses, not yet measured on an 8 GB card: about 30 seconds to a minute a picture, a minute or two an edit, 10 minutes or more a short clip. Bob puts his brain away while he paints, so chat waits until the picture is done.",
       "cardGB": 8
@@ -2773,19 +2861,67 @@
       "label": "Built-in graphics (handhelds and thin laptops)",
       "integrated": true,
       "minVramGB": 999,
-      "models": ["qwen3-4b", "gemma4-e4b", "kokoro-v1", "nomic-embed-text", "qwen2.5-coder-7b", "z-image-turbo-q4", "flux2-klein-4b-q4", "wan2.2-ti2v-5b-q4"],
+      "models": [
+        "qwen3-4b",
+        "gemma4-e4b",
+        "kokoro-v1",
+        "nomic-embed-text",
+        "qwen2.5-coder-7b",
+        "z-image-turbo-q4",
+        "flux2-klein-4b-q4",
+        "wan2.2-ti2v-5b-q4"
+      ],
       "slots": {
-        "qwen3-4b": ["bob", "small"],
-        "gemma4-e4b": ["eyes", "voice"],
-        "kokoro-v1": ["speech"],
-        "nomic-embed-text": ["embed"],
-        "qwen2.5-coder-7b": ["tinker"],
-        "z-image-turbo-q4": ["image"],
-        "flux2-klein-4b-q4": ["edit"],
-        "wan2.2-ti2v-5b-q4": ["video"]
+        "qwen3-4b": [
+          "bob",
+          "small"
+        ],
+        "gemma4-e4b": [
+          "eyes",
+          "voice"
+        ],
+        "kokoro-v1": [
+          "speech"
+        ],
+        "nomic-embed-text": [
+          "embed"
+        ],
+        "qwen2.5-coder-7b": [
+          "tinker"
+        ],
+        "z-image-turbo-q4": [
+          "image"
+        ],
+        "flux2-klein-4b-q4": [
+          "edit"
+        ],
+        "wan2.2-ti2v-5b-q4": [
+          "video"
+        ]
       },
-      "bigRam": { "minRamGB": 32, "models": ["gemma4-26b", "qwen3.8-27b"], "slots": { "gemma4-26b": ["deep", "office"], "qwen3.8-27b": ["deep"] }, "notes": { "gemma4-26b": "for Office and Deep thinking: fits in 32 GB of RAM, slower than the everyday brain, so it is left unticked", "qwen3.8-27b": "for Deep thinking: fits in 32 GB of RAM but reads all of itself for every word, so it is slow on built-in graphics (a few words a second). Left unticked" } },
-      "untick": ["wan2.2-ti2v-5b-q4"],
+      "bigRam": {
+        "minRamGB": 32,
+        "models": [
+          "gemma4-26b",
+          "qwen3.8-27b"
+        ],
+        "slots": {
+          "gemma4-26b": [
+            "deep",
+            "office"
+          ],
+          "qwen3.8-27b": [
+            "deep"
+          ]
+        },
+        "notes": {
+          "gemma4-26b": "for Office and Deep thinking: fits in 32 GB of RAM, slower than the everyday brain, so it is left unticked",
+          "qwen3.8-27b": "for Deep thinking: fits in 32 GB of RAM but reads all of itself for every word, so it is slow on built-in graphics (a few words a second). Left unticked"
+        }
+      },
+      "untick": [
+        "wan2.2-ti2v-5b-q4"
+      ],
       "notes": {
         "qwen3-4b": "the everyday brain: small and quick on built-in graphics",
         "gemma4-e4b": "sees pictures and hears you; it loads only for those jobs",
@@ -2832,11 +2968,23 @@
       "arm": true,
       "minRamGB": 6,
       "minVramGB": 999,
-      "models": ["gemma4-e2b", "whisper-base-en", "nomic-embed-text"],
+      "models": [
+        "gemma4-e2b",
+        "whisper-base-en",
+        "nomic-embed-text"
+      ],
       "slots": {
-        "gemma4-e2b": ["bob", "small", "eyes"],
-        "whisper-base-en": ["voice"],
-        "nomic-embed-text": ["embed"]
+        "gemma4-e2b": [
+          "bob",
+          "small",
+          "eyes"
+        ],
+        "whisper-base-en": [
+          "voice"
+        ],
+        "nomic-embed-text": [
+          "embed"
+        ]
       },
       "notes": {
         "gemma4-e2b": "chats, plans and sees pictures, all on the processor; keep the jobs small",
@@ -2852,10 +3000,19 @@
       "arm": true,
       "minRamGB": 0,
       "minVramGB": 999,
-      "models": ["qwen3.5-2b", "nomic-embed-text"],
+      "models": [
+        "qwen3.5-2b",
+        "nomic-embed-text"
+      ],
       "slots": {
-        "qwen3.5-2b": ["bob", "small", "eyes"],
-        "nomic-embed-text": ["embed"]
+        "qwen3.5-2b": [
+          "bob",
+          "small",
+          "eyes"
+        ],
+        "nomic-embed-text": [
+          "embed"
+        ]
       },
       "notes": {
         "qwen3.5-2b": "the lightest brain: chats and sees pictures on the processor; keep the questions simple"
@@ -2865,7 +3022,7 @@
       "cardGB": 0
     }
   ],
-  "updated": "2026-11-08",
+  "updated": "2026-11-09",
   "bigBrains": [
     {
       "id": "mistral-large-4",

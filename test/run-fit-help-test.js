@@ -41,7 +41,10 @@ const slot = (id) => allSlots().find((s) => s.id === id);
 // ---- Bob's pick for each job: covers more jobs and lighter scores higher ----
 {
   const big = pc(16, 32);
-  check('16 GB card: Gemma 4 26B is the Brain (covers the most jobs, fits the card)', pickFor('bob', models, big)?.id === 'gemma4-26b');
+  // 1.5.169: Bob's own brains (bobPick) win their jobs first; the scoring below them is checked on the stock brains.
+  const stock = models.filter((m) => !m.madeByBob);
+  check('1.5.169: 16 GB card: 28Bob Riker is the Brain, as Bob\'s own default', pickFor('bob', models, big)?.id === 'riker-28b' && /Bob's own brain/.test(pickFor('bob', models, big).why));
+  check('16 GB card, stock brains: Gemma 4 26B is the Brain (covers the most jobs, fits the card)', pickFor('bob', stock, big)?.id === 'gemma4-26b');
   check('16 GB card: the Quick brain is the light Gemma 4 E4B', pickFor('small', models, big)?.id === 'gemma4-e4b');
   check('16 GB card: Coding is Qwen3.6 35B-A3B (it won the race, 1.5.63)', pickFor('tinker', models, big)?.id === 'qwen3.6-35b-a3b', pickFor('tinker', models, big)?.id);
   check('8 GB card: nothing too big is picked', ['bob', 'small', 'tinker', 'eyes'].every((s) => { const p = pickFor(s, models, pc(8, 32)); return !p || byId(p.id).vramGB <= 8; }));
@@ -50,12 +53,12 @@ const slot = (id) => allSlots().find((s) => s.id === id);
   check('...and says it was picked for being light', /Light, so it leaves room on your card for longer chats · 4\.0 GB/.test(pickFor('bob', models, pc(6, 32)).why));
   check('...while Gemma 4 E4B sees pictures and hears you', pickFor('eyes', models, pc(6, 32))?.id === 'gemma4-e4b' && pickFor('voice', models, pc(6, 32))?.id === 'gemma4-e4b');
   check('the 6 GB starter set agrees', (() => { const p = catalog.packs.find((x) => x.id === 'small'); return p.slots['qwen3-4b'].join() === 'bob,small' && p.slots['gemma4-e4b'].join() === 'eyes,voice'; })());
-  check('8 GB and up keep Gemma 4 E4B / 26B as the Brain', pickFor('bob', models, pc(8, 32))?.id === 'gemma4-e4b' && pickFor('bob', models, pc(16, 32))?.id === 'gemma4-26b');
+  check('8 GB and up keep Gemma 4 E4B / 26B as the Brain', pickFor('bob', models, pc(8, 32))?.id === 'gemma4-e4b' && pickFor('bob', stock, pc(16, 32))?.id === 'gemma4-26b');
   check('a spill into RAM costs more than being heavy', scoreFor(byId('qwen3-coder-30b'), 'tinker', pc(8, 32)) < scoreFor(byId('qwen2.5-coder-7b'), 'tinker', pc(8, 32)));
   check('lighter wins when the rest is equal', scoreFor({ ...byId('gemma4-e4b'), vramGB: 4 }, 'bob', big) > scoreFor(byId('gemma4-e4b'), 'bob', big));
-  check('the pick says why', /Covers \d+ jobs, so fewer brain swaps · 16 GB/.test(pickFor('bob', models, big).why));
+  check('the pick says why', /Covers \d+ jobs, so fewer brain swaps · 16 GB/.test(pickFor('bob', stock, big).why));
   check('pictures, video and voices come from the starter set for the card', pickFor('image', models, big)?.id === 'z-image-turbo' && pickFor('image', models, pc(8, 32))?.id === 'z-image-turbo-q5' && pickFor('speech', models, big)?.id === 'kokoro-v1');
-  check('a model lists every job it is the pick for', picksOf(byId('gemma4-26b'), models, big).includes('bob') && picksOf(byId('gemma4-e4b'), models, big).includes('small'));
+  check('a model lists every job it is the pick for', picksOf(byId('gemma4-26b'), stock, big).includes('bob') && picksOf(byId('gemma4-e4b'), models, big).includes('small') && picksOf(byId('riker-28b'), models, big).includes('bob'));
   check('only models that don\'t suit, aren\'t picks and aren\'t here are hidden', unsuited(byId('ltx-2.3-22b'), [], suit(byId('ltx-2.3-22b'), pc(8, 32))) && !unsuited({ ...byId('ltx-2.3-22b'), status: { state: 'installed' } }, [], suit(byId('ltx-2.3-22b'), pc(8, 32))));
   check('the starter set is still chosen by the card', packFor(catalog.packs, 16).id === 'big' && packFor(catalog.packs, 6).id === 'small');
 }
@@ -67,7 +70,7 @@ const slot = (id) => allSlots().find((s) => s.id === id);
   const eyes = kitFor(slot('eyes'), ctx).map((k) => k.value);
   check('Eyes lists models that see, and not the text-only coder', eyes.includes('gemma4:26b') && eyes.includes('llava:13b') && !eyes.includes('qwen3-coder:30b') && !eyes.includes('qwen3-4b'));
   check('Quick brain doesn\'t list the 26B', !kitFor(slot('small'), ctx).some((k) => k.value === 'gemma4:26b' || k.value === 'gemma4-26b'));
-  check('the slot\'s pick carries "★ Recommended", with why in its tip', kitFit({ entry: byId('gemma4-26b') }, slot('bob'), ctx).rec && /★ Recommended/.test(equipHtml({ ...ctx, selected: 'bob' })) && /Covers \d+ jobs/.test(equipHtml({ ...ctx, selected: 'bob' })));
+  check('the slot\'s pick carries "★ Recommended", with why in its tip', kitFit({ entry: byId('riker-28b') }, slot('bob'), ctx).rec && /Bob's own brain/.test(kitFit({ entry: byId('riker-28b') }, slot('bob'), ctx).recWhy) && /★ Recommended/.test(equipHtml({ ...ctx, models: ctx.models.filter((m) => !m.madeByBob), selected: 'bob' })) && /Covers \d+ jobs/.test(equipHtml({ ...ctx, models: ctx.models.filter((m) => !m.madeByBob), selected: 'bob' })));
   check('each kit row is one line; its size and licence sit in an "i" tip', /class="tip-i"[^>]*><span class="tip-src" hidden>[^<]*licence Apache 2\.0/.test(equipHtml({ ...ctx, selected: 'tinker' })));
   check('a model not in Bob\'s list says Bob can\'t judge it', /can&#39;t say how well it runs/.test(equipHtml(ctx)));
   const small = { ...ctx, ...pc(8, 16), selected: 'bob', active: { 'gpt-oss-20b': true } };

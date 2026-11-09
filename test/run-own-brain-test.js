@@ -1,6 +1,6 @@
 // 1.5.131: the bracket after a model Bob downloaded himself never says "Bob's own engine" (which read as "Bob's own
 // brain" on every stock Qwen and Gemma). 1.5.137: and no longer "downloaded by Bob" either: no bracket at all. "Bob's own brain" is kept for catalogue entries marked
-// madeByBob: true, and none is shipped yet, so nothing installed today may carry it.
+// madeByBob: true; 1.5.169 ships the first ones (28Bob Riker).
 import fs from 'node:fs';
 import { fileLabel, isMadeByBob, MADE_BY_BOB, YOUR_OWN_FILE } from '../src/models.js';
 import { HELP } from '../public/help-content.js';
@@ -18,7 +18,9 @@ check('1.5.133: a file you placed yourself (set by hand, or another app\'s folde
 check('Help explains "your own file"', /<strong>\(your own file\)<\/strong>/.test(fs.readFileSync(new URL('../public/help-content.js', import.meta.url), 'utf8')));
 check('only the explicit madeByBob: true marker gives "Bob\'s own brain"', fileLabel({ name: '28Bob Riker', madeByBob: true }) === `28Bob Riker (${MADE_BY_BOB})`);
 check('a truthy-but-not-true marker does not count', !isMadeByBob({ name: 'x', madeByBob: 'yes' }) && !isMadeByBob({ name: 'x', madeByBob: 1 }));
-check('no model in the catalogue is marked as made by Bob (none shipped yet)', catalog.models.every((m) => !isMadeByBob(m)), catalog.models.filter(isMadeByBob).map((m) => m.id).join(','));
+// 1.5.169: Bob's own brains ship (28Bob Riker first). Only those, from Bob's own public Hugging Face pages, carry the marker.
+check('only Bob\'s own brains (Bob family, from MouseWurX on Hugging Face) are marked as made by Bob', catalog.models.filter(isMadeByBob).every((m) => m.family === 'Bob' && m.files.every((f) => /^https:\/\/huggingface\.co\/MouseWurX\/\d+Bob-\w+\/resolve\/[0-9a-f]{40}\//.test(f.url))), catalog.models.filter(isMadeByBob).map((m) => m.id).join(','));
+check('...and every Bob-family brain carries it', catalog.models.filter((m) => m.family === 'Bob').every(isMadeByBob));
 check('no catalogue model carries a Bob name', catalog.models.every((m) => !/\bbob\b/i.test(m.name)), catalog.models.filter((m) => /\bbob\b/i.test(m.name)).map((m) => m.id).join(','));
 
 const models = read('src/models.js');
