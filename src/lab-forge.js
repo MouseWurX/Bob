@@ -157,7 +157,7 @@ export function makeForgePlan(form = {}, { base = {}, keepFiles = [], lessonSets
       }
     } else if (src.kind === 'local') {
       const p = cleanPath(src.value);
-      if (!p) problems.push('The brain\'s path has to be a full path on this replicant matrix, like C:\\brains\\my-brain.');
+      if (!p) problems.push('The brain\'s path has to be a full path on this replicant matrix, like C:\\brains\\my-brain on Windows or /home/you/brains/my-brain on Mac and Linux.');
       else if (/\.gguf$/i.test(p)) problems.push('That is a running file (GGUF). The Forge needs the full-size weights (a folder of safetensors) to teach or cut a brain.');
       else { plan.teacher_local = p; delete plan.teacher_model; delete plan.train_teacher; delete plan.publish; if (rungs.some((x) => x.keep !== 'cover')) problems.push('A brain from this replicant matrix hasn\'t been counted yet. For each brain, pick "Keep every skill covered".'); notes.push('A brain from this replicant matrix is uploaded to the rented card before the run. The Forge can\'t take one yet, so this plan can be saved but not started until the Forge update.'); }
     } else if (src.kind === 'link') {
@@ -172,7 +172,7 @@ export function makeForgePlan(form = {}, { base = {}, keepFiles = [], lessonSets
   if (extra.length) plan.extra_lessons = [...new Set(extra)]; else delete plan.extra_lessons;
   const imports = [];
   for (const x of (Array.isArray(form.lessons) ? form.lessons : []).slice(0, 8)) {
-    if (imports.length >= 4) { problems.push('Four lesson sets from elsewhere at most in one run.'); break; }
+    if (imports.length >= 4) { problems.push('One run can add at most four lesson sets from elsewhere.'); break; }
     if (!x) continue;
     if (x.kind === 'hf') {
       if (x.unchecked) { problems.push('Press Look it up on each lesson set from Hugging Face first.'); continue; }
