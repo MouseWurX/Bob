@@ -334,7 +334,8 @@ body.still *, body.still *::before, body.still *::after { animation: none !impor
 .side-top { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 2px 2px 8px; }
 .side-top #bob { width: 44px; height: 44px; }
 .side .who { min-width: 0; }
-.side .status { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 12px; }
+/* One line, always: longer words go in Bob's word bubble (say-bubbles.js), so the menu below never moves. */
+.side .status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 1.35; height: 1.35em; }
 .fold { width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; align-self: start; }
 .fold .ico, .nav-item .ico, .nav-new .ico, .session-wrap .ico { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .nav-item, .nav-new { position: relative; display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 8px; border: 1px solid transparent; background: none; text-align: left; font-size: 13.5px; color: var(--text); }
@@ -775,7 +776,6 @@ details.more > summary:hover { color: var(--accent); }
 /* 1.5.7 the cat by Bob's picture: small antics while he's idle (no brain). Still for people who prefer less motion. */
 .bob-wrap { position: relative; flex: none; }
 .cat { position: absolute; right: -6px; bottom: -6px; font-size: 15px; line-height: 1; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); white-space: nowrap; }
-.cat-line { font-size: 11px; color: var(--muted); line-height: 1.3; margin-top: 2px; }
 .cat.antic-nap { animation: cat-nap 2.4s ease-in-out infinite; }
 .cat.antic-swat { animation: cat-swat .6s ease-in-out 6; }
 .cat.antic-pounce { animation: cat-pounce 1s ease-out 4; }
@@ -835,7 +835,22 @@ details.more > summary:hover { color: var(--accent); }
 @keyframes prop-pop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: none; } }
 body.left-folded .bob-prop { top: -6px; right: -6px; font-size: 11px; }
 @media (prefers-reduced-motion: reduce) { .cat[class*="antic-"], .cat::before, .cat::after, .bob-prop { animation: none; } }
-body.left-folded .cat-line { display: none; }
+/* Word bubbles for Bob and the cat: a fixed layer beside Bob's picture, over the chat, so a long line never takes room
+   in the menu. A few lines at most (then …), clicks pass through, and they fade out on their own. */
+.bubbles { position: fixed; z-index: 9000; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; }
+.say-bubble { position: relative; max-width: 100%; padding: 7px 11px; border-radius: var(--r, 8px); border: 1px solid var(--accent); background: var(--panel); color: var(--text); font-size: 12.5px; line-height: 1.4; box-shadow: 0 6px 20px rgba(0,0,0,.4); overflow-wrap: anywhere; opacity: 0; transform: translateX(-4px); transition: opacity .2s ease, transform .2s ease; }
+.say-bubble > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; overflow: hidden; max-height: 7em; }
+.say-bubble.on { opacity: 1; transform: none; }
+.say-bubble[hidden] { display: none; }
+.say-bubble.cat-say { border-style: dashed; }
+/* the little tail points back at Bob's picture */
+.say-bubble::before { content: ""; position: absolute; left: -6px; top: 12px; width: 10px; height: 10px; background: var(--panel); border-left: 1px solid var(--accent); border-bottom: 1px solid var(--accent); transform: rotate(45deg); }
+.say-bubble.cat-say::before { border-style: dashed; }
+.bubbles.below .say-bubble::before { left: 18px; top: -6px; border-bottom: 0; border-top: 1px solid var(--accent); }
+.bubbles .say-bubble + .say-bubble::before { display: none; }
+@media (prefers-reduced-motion: reduce) { .say-bubble { transition: none; transform: none; } }
+@media (forced-colors: active) { .say-bubble, .say-bubble::before { border-color: CanvasText; } }
+@media print { .bubbles { display: none; } }
 
 /* ---------- Side panel: things Bob made open here, beside the chat ---------- */
 .viewer { width: var(--viewer-w, 480px); flex: none; display: flex; flex-direction: column; min-width: 0; background: var(--panel); border-left: 1px solid var(--line); }

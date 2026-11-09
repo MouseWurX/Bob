@@ -27,6 +27,7 @@ import { createGameLock } from './game-lock.js';
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
 import { createEffort } from './effort.js';
 import { createCatAntics } from './cat-antics.js';
+import { createBubbles } from './say-bubbles.js';
 import { createBobLife } from './bob-life.js';
 import { createViewer, outCard, fillPeeks } from './viewer.js';
 import { songListHtml, wireSongs } from './song-player.js';
@@ -54,7 +55,8 @@ const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button
 const qBanner = createQuarantineBanner({ note: (t, k) => note(t, k) });
 const effort = createEffort();
-const catAntics = createCatAntics({ onAntic: () => life.react('cat'), sleepy: () => life.dozing });
+const bubbles = createBubbles();
+const catAntics = createCatAntics({ onAntic: () => life.react('cat'), sleepy: () => life.dozing, bubbles });
 const viewer = createViewer({ post: (u, d) => post(u, d), note: (t, k) => note(t, k) });
 // 1.5.95: diagrams get drawn and the Save as rows work, anywhere in the chat (save-as.js).
 setupSaveAs({ offer: (ev) => onEvent(ev), note: (t, k) => note(t, k), made: (items) => viewer.made(items) });
@@ -223,7 +225,11 @@ sessionSel.onchange = () => switchSession(sessionSel.value);
 function setStatus(s) {
   if (s.session && sessionSel.value !== s.session.id) drawSessions(null, s.session);
   statusEl.className = `status ${s.state}`;
-  statusEl.textContent = s.detail || STATUS_TEXT[s.state] || s.state;
+  const said = s.detail || STATUS_TEXT[s.state] || s.state;
+  const changed = said.replace(/\d+/g, '#') !== statusEl.textContent.replace(/\d+/g, '#'); // a counter ticking (Painting 3/30) isn't new words
+  statusEl.textContent = said;
+  statusEl.title = said;
+  if (changed && s.detail) bobSaysIfCut();
   catAntics.idle(s.state === 'idle');
   life.state(s.state);
   document.title = s.state === 'idle' ? 'Bob' : `Bob · ${STATUS_TEXT[s.state] || s.state}`;
@@ -232,6 +238,16 @@ function setStatus(s) {
   if (s.model) lastModel = s.model;
   layout.status(s);
 }
+// Bob's status line is one line in the menu. When his words don't fit there, they pop out in his word bubble for a
+// few seconds instead of making the menu taller. Pointing at the line, or a tap on it, shows the bubble again.
+function statusCut() {
+  if (document.body.classList.contains('left-folded')) return false; // folded: the line isn't shown, so no bubble either
+  return statusEl.scrollWidth > statusEl.clientWidth + 1;
+}
+function bobSaysIfCut() { if (statusCut()) bubbles.say('bob', statusEl.textContent, 6000); }
+const bobSaysNow = () => { if (statusEl.textContent && statusCut()) bubbles.say('bob', statusEl.textContent, 6000); };
+statusEl.addEventListener('mouseenter', bobSaysNow);
+statusEl.addEventListener('click', bobSaysNow);
 function badge(on) {
   try { if (on) navigator.setAppBadge && navigator.setAppBadge(); else navigator.clearAppBadge && navigator.clearAppBadge(); } catch {}
 }
