@@ -379,6 +379,7 @@ async function benchOnPod(name) {
   const mk = path.join(outDir, 'forge', `bench-done-${name}`); fs.writeFileSync(mk, new Date().toISOString()); await upload(`bench-done-${name}`, mk);
   benchDone.add(name); log(`benchmark: ${name} done; reports in ${dir}`);
 }
+let driveBytes = -1; // 9 Nov: out/drive.json from the pod = the Forge-made brains really usable on the drive; kept at out/forge/drive.json for the Lab
 while (true) {
   await sleep(args.local ? 3000 : 60000);
   let st = null;
@@ -391,6 +392,8 @@ while (true) {
     // build 15: the pod names the lesson set (out/teacher/teacher-key.txt); if this PC already has that set's teacher scores
     // (out/teacher/<key>/teacher.pt, from an earlier run), they go up instead of a 2-3 h teacher pass; otherwise the pod is told "none"
     if (!teacherAnswered && (st.files || []).find((f) => f.path === 'teacher/teacher-key.txt')) { teacherAnswered = true; await answerTeacherKey(); }
+    const dj = (st.files || []).find((f) => f.path === 'drive.json');
+    if (dj && dj.bytes !== driveBytes) { try { const r = await get('/out/drive.json'); if (r.ok) { fs.writeFileSync(path.join(outDir, 'forge', 'drive.json'), JSON.stringify(await r.json(), null, 1)); driveBytes = dj.bytes; log('drive list saved (out/forge/drive.json)'); } } catch (e) { log(`drive list: ${e.message.slice(0, 80)}`); } }
     for (const f of st.files || []) {
       const m = f.path.match(/^([^/]+)\/([^/]+)-files\.json$/);
       if (!m) continue;

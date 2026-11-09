@@ -19,6 +19,17 @@ json.dump(st,open(p,"w"))
 PY
 echo "== $(date -u +%H:%M:%S) $*"; }
 die() { status failed "$*"; echo "FAILED: $*"; exit 1; }
+# drive_list: which Forge-made brains are REALLY usable as teacher_model on the volume (bobs/<name>/model/config.json present AND
+# bobs/<name>/adapter.pt beside it; a dangling link to a dead pod disk does not count). Written to out/drive.json at setup and on
+# every exit, so the PC's Lab only offers brains that exist (9 Nov: Bobert's full model never fit the 100 GB drive, only his adapter).
+drive_list() { python3 - "$S" "$W" "$OUT/drive.json" <<'PY2' 2>/dev/null || true
+import glob,json,os,sys,time; S,W,out=sys.argv[1:4]; models=[]
+if S!=W:
+    for d in sorted(glob.glob(os.path.join(S,"bobs","*"))):
+        if os.path.isfile(os.path.join(d,"model","config.json")) and os.path.isfile(os.path.join(d,"adapter.pt")): models.append(f"bobs/{os.path.basename(d)}/model")
+json.dump({"models":models,"volume":S!=W,"at":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())},open(out,"w"))
+PY2
+}
 # --- Hugging Face from the card (build 17). The owner's rules: every output is kept on the volume; the odds may go up as a PRIVATE
 # dataset; NO Bob goes up until he has been tested at home and the owner lists him in plan.publish.models. Then the next run uploads
 # him from the volume. The token comes from the PC as in/hf-token and is never written anywhere else. No owner name, host or path in a card.
@@ -125,12 +136,13 @@ HOURS_MAX=$(plan ".get('hours_max',9)")
 ELAPSED=$(python3 -c "import os; up=float(open('/proc/uptime').read().split()[0]); st=int(open('/proc/1/stat').read().rsplit(')',1)[1].split()[19])/os.sysconf('SC_CLK_TCK'); print(int(up-st))" 2>/dev/null || echo 0)
 ( sleep $(python3 -c "print(max(300, int(($HOURS_MAX*60-8)*60) - $ELAPSED))"); status failed "time cap reached, pod deleting itself"; \
   python3 -c "import os,urllib.request; r=urllib.request.Request('https://rest.runpod.io/v1/pods/'+os.environ['RUNPOD_POD_ID'], method='DELETE', headers={'Authorization':'Bearer '+os.environ.get('FORGE_RUNPOD_KEY', os.environ.get('RUNPOD_API_KEY',''))}); print(urllib.request.urlopen(r).read()[:200])" >> $OUT/watchdog.log 2>&1 ) &
-WD=$!; trap 'kill $WD 2>/dev/null' EXIT 
+WD=$!; trap 'drive_list; kill $WD 2>/dev/null' EXIT 
 
 status setup "installing tools"
 pip install -q aiohttp gguf sentencepiece huggingface_hub pyarrow accelerate 2>&1 | tail -1
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || echo "no nvidia-smi"
 df -h $W | tail -1; [ "$S" != "$W" ] && { echo "shared volume: $S"; ls $S; }
+drive_list   # the PC learns right away which Forge-made brains the drive really holds
 # fast kernels for the linear-attention layers (flash-linear-attention + causal-conv1d). Built in the background while the teacher
 # downloads; the teacher pass and every heal WAIT for them (build 15: before this they ran without the kernels if the compile was late).
 # causal-conv1d compiles for ~10 min, so the finished wheel is kept on the volume per card type and reused next time (seconds).
