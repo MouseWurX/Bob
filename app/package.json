@@ -1,6 +1,6 @@
 {
   "name": "bob",
-  "version": "1.5.182",
+  "version": "1.5.183",
   "description": "Bob, a local AI who lives on your PC: chat, pictures, video, voice and more, all on your own hardware.",
   "type": "module",
   "private": true,
@@ -21,9 +21,9 @@
   },
   "bob": {
     "release": "1.5",
-    "patch": 182,
+    "patch": 183,
     "branch": "",
-    "build": 233,
+    "build": 234,
     "bundledLlamaTag": "b12032",
     "electronSha256": "88e08039d0ef359bab9f674e8051fa103bd8628ea7c5a5e1daaa610a8a0c6931",
     "layout": "From 0.9.32 Bob app\\Bob.exe is Electron's official electron.exe (devDependencies.electron), only renamed, and Bob's files sit in Bob app\\resources\\app. Updates never build an exe. electronSha256 (optional) pins the official zip's checksum; otherwise it is checked against Electron's SHASUMS256.txt. electron-builder (dist scripts) is only for making a portable exe by hand.",

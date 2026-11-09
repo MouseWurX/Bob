@@ -4,6 +4,12 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.183
+
+A small Lab fix.
+
+- **Fixed:** With a job picked in Make a brain, the "Tick one brain above" hint now counts that job's own steps ("Steps 2 to 3" for Make it smaller, "Step 2" for Just test a brain), instead of always saying "Steps 2 to 5". Test in `test/run-lab-test.js`.
+
 ## 1.5.182
 
 The Lab's Make a brain does one thing at a time.

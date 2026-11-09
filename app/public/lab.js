@@ -124,7 +124,7 @@ export function createLab({ api, note }) {
       const can = [f.experts ? `cut experts (${f.experts} per layer, ${f.used} picked per word)` : 'everything except an expert cut (it isn\'t a mixture-of-experts brain)', f.sight && 'take out sight', f.hearing && 'take out hearing', f.fullSize ? 'make running files' : `it's already a running file (${f.fileType})`].filter(Boolean).join(', ');
       return radio('from', b.id, r.from === b.id, `${b.name}${b.madeInLab ? ' (made in the Lab)' : ''}${b.community ? ' · community' : ''}`, `${f.sizeGB} GB. ${b.fit} In the Lab: ${can}.${b.license ? ` Licence: ${b.license}.` : ''}`);
     }).join('')}</fieldset>
-    ${r.from ? '' : '<p role="status"><strong>Tick one brain above to go on.</strong> Steps 2 to 5 and Next open up as soon as a brain is picked.</p>'}
+    ${r.from ? '' : `<p role="status"><strong>Tick one brain above to go on.</strong> ${steps().length > 2 ? `Steps 2 to ${steps().length}` : 'Step 2'} and Next open up as soon as a brain is picked.</p>`}
     <p><label>Name for the new brain <input id="lab-name" type="text" maxlength="60" value="${esc(r.name)}" autocomplete="off"></label></p>`;
   }
 
