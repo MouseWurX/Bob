@@ -20,7 +20,7 @@ export const PEEK_THING = 'Peek inside';
 export const IDLE_MS = 3 * 60e3; // how long Brain Engine stays loaded after a question
 export const MAX_WORDS = 240;
 export const NO_TRACE = 'This Brain Engine build doesn\'t report which experts it picked yet. The map still shows what the usage map counted; the live view comes with the next Brain Engine build.';
-export const NO_ENGINE = 'The live view needs Brain Engine, the Lab\'s engine. Get it in Get models, Engines (Brain Engine, test build).';
+export const NO_ENGINE = 'The live view needs Brain Engine, the Lab\'s engine. Get it in Get models, Engines: Brain Engine.';
 
 // One brain's map data for the page: the things counted so far, the totals, per-layer lines, and whether live is possible.
 export function peekView(cfg, brain, facts, { engineFound = false, traceOk = null } = {}) {

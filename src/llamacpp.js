@@ -349,6 +349,8 @@ export class LlamaCpp {
   buildNo() {
     for (const dir of [path.dirname(this.exePath()), path.join(this.cfg.agentDir, 'llama.cpp')]) {
       try { const n = Number(String(JSON.parse(fs.readFileSync(path.join(dir, 'bob-llamacpp.json'), 'utf8')).version).replace(/^b/, '')); if (n) return n; } catch {}
+      // 1.5.169: Brain Engine's marker names the llama.cpp build it sits on (base).
+      try { const n = Number(String(JSON.parse(fs.readFileSync(path.join(dir, 'bob-brainengine.json'), 'utf8')).base).replace(/^b/, '')); if (n) return n; } catch {}
     }
     return 0;
   }

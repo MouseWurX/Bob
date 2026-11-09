@@ -239,7 +239,12 @@ export function enginesFor(list, engines) {
   for (const m of list) {
     if (!m) continue;
     add(m.needs && engines.find((e) => e.name === m.needs));
-    if ((m.files || []).some((f) => f.role === 'gguf')) add(engines.find((e) => e.id === 'llamacpp'));
+    // 1.5.169: Brain Engine is the default engine for brains, so it's offered even beside a llama.cpp that's already
+    // here (the bundled one). Where it has no build (a Mac, an ARM board), llama.cpp as before.
+    if ((m.files || []).some((f) => f.role === 'gguf')) {
+      const be = engines.find((e) => e.id === 'brainengine'), lc = engines.find((e) => e.id === 'llamacpp');
+      if (!be?.installed && !(lc?.installed && !(be && be.available !== false))) add(be && be.available !== false ? be : lc);
+    }
   }
   return out;
 }

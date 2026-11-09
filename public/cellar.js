@@ -683,11 +683,22 @@ export function createCellar() {
     return `<label class="pick"><strong>Bob's engine</strong>
         <select data-set="engine"><option value="ollama" ${settings.engine === 'ollama' ? 'selected' : ''}>Ollama (if you already have it)</option><option value="llamacpp" ${settings.engine === 'llamacpp' ? 'selected' : ''}>Bob's own (llama.cpp, nothing else needed)</option></select>
         <span class="muted">Takes effect next time Bob starts.</span></label>
+      ${brainEngineSwitch()}
       <div><strong>Engine downloads</strong> ${tip('The programs that run the models, from their official GitHub pages, matched to your graphics card.', 'Engine downloads')}
         ${(data.engines || []).map((e) => `<article class="model" id="m-engine:${esc(e.id)}"><header><strong>${esc(e.name)}</strong></header><p>${esc(e.what)}</p>
           <div class="act">${live.has('engine:' + e.id) ? progress(live.get('engine:' + e.id)) : e.installed ? `<div class="have">✓ ${e.found ? esc(e.found[0].toUpperCase() + e.found.slice(1)) : `Installed${e.version ? ` (${esc(e.version)})` : ''}`}</div>${e.pinned || e.available === false ? '' : `<button data-checkengine="${esc(e.id)}">Check for a newer build</button>`}${e.tested && e.version && e.version !== e.tested && !e.found ? `<button data-engine="${esc(e.id)}">Go back to the tested build (${esc(e.tested)})</button>` : ''}` : e.available === false ? `<div class="muted">${esc(e.note || 'Not for this replicant matrix yet.')}</div>` : `<button class="get" data-engine="${esc(e.id)}">Get ${esc(e.name)}</button>`}</div><div class="confirm" hidden></div></article>`).join('')}</div>
       ${qwenHtml()}
       <details class="more"><summary>More</summary>${speedHtml()}</details>`;
+  }
+
+  // 1.5.169: Brain Engine is the default engine for brains. One switch to go back to plain llama.cpp; it only shows
+  // where Brain Engine has a build for this replicant matrix.
+  function brainEngineSwitch() {
+    const be = (data.engines || []).find((e) => e.id === 'brainengine');
+    if (!be || be.available === false) return '';
+    const sp = settings.speed || {};
+    const now = sp.onBrainEngine ? 'Bob\'s brains run on Brain Engine right now.' : be.installed ? 'Bob\'s brains run on plain llama.cpp right now.' : 'Brain Engine isn\'t here yet: Get it below.';
+    return `<label class="switch"><input type="checkbox" data-brainengine ${sp.brainEngine !== false ? 'checked' : ''}><span><strong>Run brains on Brain Engine</strong> <span class="tag good">default</span> ${tip('Brain Engine is Bob\'s own fork of llama.cpp, made to give him more room to work with brains. It runs every brain llama.cpp runs. Switch this off to run them on plain llama.cpp instead. Takes effect next time Bob starts.', 'Run brains on Brain Engine')}<br><span class="muted">${esc(now)}${settings.engine === 'llamacpp' ? '' : ' Only used with Bob\'s own engine.'}</span></span></label>`;
   }
 
   // 1.5.148: how Qwen3.6 brains (and Bob's own brains made from them) pick their words. Qwen's settings by default,
@@ -1527,6 +1538,7 @@ export function createCellar() {
       if ('winvoice' in el.dataset) { const r = await api('/api/settings', { tts: { windowsVoice: el.value } }); settings.tts = { ...settings.tts, ...r.tts }; const sb = el.closest('.voice-nest')?.querySelector('[data-sample-engine="windows"]'); if (sb) sb.dataset.sampleVoice = el.value || 'default'; window.dispatchEvent(new CustomEvent('bob-voice', { detail: settings.tts })); flash(el, 'Saved.'); return; }
       if (el.dataset.tts) { const v = el.dataset.tts === 'speed' ? Number(el.value) : el.value; const r = await api('/api/settings', { tts: { [el.dataset.tts]: v } }); settings.tts = { ...settings.tts, ...r.tts }; if (el.dataset.tts === 'voice') { for (const sb of dlg.querySelectorAll('[data-sample-engine="kokoro"]:not(.voice-grid *)')) sb.dataset.sampleVoice = el.value; for (const s of dlg.querySelectorAll('select[data-tts="voice"]')) s.value = el.value; } flash(el, 'Saved. Press ▶ Play sample to hear it.'); return; }
       if (el.dataset.speed) { const v = el.value.trim() === '' ? null : Number(el.value); const r = await api('/api/settings', { speed: { [el.dataset.speed]: v } }); settings.speed = r.speed; el.value = r.speed[el.dataset.speed] ?? ''; flash(el, 'Saved.'); return; }
+      if ('brainengine' in el.dataset) { const r = await api('/api/settings', { speed: { brainEngine: el.checked } }); settings.speed = r.speed; flash(el, 'Saved. Takes effect next time Bob starts.'); return; }
       if ('fit' in el.dataset) { const r = await api('/api/settings', { speed: { fit: el.checked } }); settings.speed = r.speed; flash(el, 'Saved.'); return; }
       if (el.dataset.turbo) { // 1.5.16x Turbo per brain
         const id = el.dataset.turbo, t = { ...(settings.speed?.turbo?.[id] || {}) };

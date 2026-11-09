@@ -43,12 +43,13 @@ export const ENGINES = [
     linuxArm64: { other: [/bin-ubuntu-arm64\.(?:zip|tar\.gz)$/] }
   },
   {
-    // 1.5.157 Brain Engine: Bob's Lab engine, a fork of llama.cpp (engine/README.md) with the expert switch, for the
-    // Computer Science Lab's Try it first. Its test pre-release on Bob's own GitHub holds only the llama and server
-    // files, so it goes on top of the official llama.cpp build of the same tag (base), in its own folder: Bob's
-    // built-in engine is never touched. Shown only while the Lab is on.
-    id: 'brainengine', name: 'Brain Engine (test build)', what: 'Bob\'s Lab engine: llama.cpp with a switch that turns experts off without reloading, for the Lab\'s Try it first. Based on llama.cpp, not an official build. It has its own folder, so the built-in engine stays as it is. Only shown while the Lab is on.',
-    repo: 'MouseWurX/Bob', tag: TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : '', base: 'llamacpp', labOnly: true, dir: 'brain-engine', exe: 'llama-server.exe',
+    // 1.5.157 Brain Engine: Bob's own fork of llama.cpp (engine/README.md) with the expert switch. Its pre-release on
+    // Bob's own GitHub holds only the llama and server files, so it goes on top of the official llama.cpp build of the
+    // same tag (base), in its own folder: Bob's built-in llama.cpp is never touched. 1.5.169: the default engine for
+    // brains, listed for everyone (not only while the Lab is on). When it's here Bob runs his brains on it
+    // (config.js pickLlamaExe); Settings, Engines can switch back to plain llama.cpp.
+    id: 'brainengine', name: 'Brain Engine', what: 'Bob\'s default engine for brains: his own fork of llama.cpp, made to give him more room to work with brains (it can switch experts off without reloading, for the Lab). Based on llama.cpp, not an official build. When it\'s here, Bob runs his brains on it. It has its own folder, so the built-in llama.cpp stays as it is.',
+    repo: 'MouseWurX/Bob', tag: TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : '', base: 'llamacpp', dir: 'brain-engine', exe: 'llama-server.exe',
     nvidia: [], other: [/^brain-engine-.*-win-x64\.zip$/], runtime: () => null,
     mac: { unavailable: 'Brain Engine has no Mac build yet.' },
     linux: { tag: TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : '', other: [/^brain-engine-.*-linux-x64\.tar\.gz$/] },

@@ -59,7 +59,7 @@ export function loadConfig() {
   // Engine programs: zips differ (some put them in bin\ or Release\), so look in each likely place.
   cfg.painter.sdcpp.exe = findExe(cfg.painter.sdcpp.exe, path.join(cfg.agentDir, 'sd.cpp'), [exeName('sd-cli'), exeName('sd')]);
   cfg.llamacpp = cfg.llamacpp || {};
-  cfg.llamacpp.exe = findExe(cfg.llamacpp.exe, path.join(cfg.agentDir, 'llama.cpp'), [exeName('llama-server')]);
+  cfg.llamacpp.exe = pickLlamaExe(cfg.llamacpp.exe, cfg.agentDir, { brainEngine: cfg.llamacpp.brainEngine });
   if (cfg.stt?.provider === 'whispercpp') cfg.stt.exe = findExe(cfg.stt.exe, path.join(cfg.agentDir, 'whisper.cpp'), [exeName('whisper-cli')]);
   cfg.tts = cfg.tts || {};
   cfg.tts.exe = findExe(cfg.tts.exe, path.join(cfg.agentDir, 'piper'), [exeName('piper')]);
@@ -118,6 +118,24 @@ export function loadConfig() {
 }
 
 // The configured program if it exists; otherwise the first match in the engine folder, its bin\ or Release\ subfolder.
+// 1.5.169: Brain Engine (Bob's fork of llama.cpp, Get models > Engines) is the default engine for brains. When its
+// folder holds llama-server, Bob runs his brains on it, unless Settings, Engines says plain llama.cpp
+// (llamacpp.brainEngine false). A llama-server set by hand somewhere else always wins; one set to Bob's own llama.cpp
+// folder counts as the default. No Brain Engine (a Mac, an ARM board, not downloaded): llama.cpp as before.
+export function pickLlamaExe(configured, agentDir, { brainEngine, platform = process.platform, exists = fs.existsSync } = {}) {
+  const everyday = path.join(agentDir, 'llama.cpp'), be = path.join(agentDir, 'brain-engine');
+  const within = (dir, p) => { const r = path.relative(dir, p); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };
+  if (configured && exists(configured) && !within(everyday, configured) && !within(be, configured)) return configured;
+  const name = platform === 'win32' ? 'llama-server.exe' : 'llama-server';
+  const look = (dir, subs) => { for (const sub of subs) { const p = path.join(dir, sub, name); if (exists(p)) return p; } return null; };
+  if (brainEngine !== false) { const p = look(be, ['', 'bin']); if (p) return p; }
+  if (configured && exists(configured) && within(everyday, configured)) return configured;
+  const p = look(everyday, ['', 'bin', 'Release', path.join('build', 'bin')]);
+  if (p) return p;
+  if (platform === 'linux') { const q = onPath(name); if (q) return q; }
+  return configured && !within(be, configured) ? configured : path.join(everyday, name);
+}
+
 export function findExe(configured, dir, names, platform = process.platform) {
   if (configured && fs.existsSync(configured)) return configured;
   // Linux and Mac programs have no .exe; on Linux one the distro installed (on the PATH) counts too.
@@ -275,6 +293,7 @@ function cleanLlamacpp(lc) {
   for (const k of ['threads', 'batch', 'ubatch', 'ctx']) if (k in out) out[k] = Number.isInteger(out[k]) && out[k] > 0 && out[k] <= 1048576 ? out[k] : null;
   if ('fit' in out) out.fit = typeof out.fit === 'boolean' ? out.fit : null;
   if ('noEyes' in out) out.noEyes = Array.isArray(out.noEyes) ? [...new Set(out.noEyes.filter((x) => typeof x === 'string' && /^[\w.:/-]{1,100}$/.test(x)))].slice(0, 200) : []; // Lab: brains loaded without their reader
+  if ('brainEngine' in out) out.brainEngine = out.brainEngine !== false; // 1.5.169: run brains on Brain Engine when it's here
   if ('loadMode' in out) out.loadMode = out.loadMode === 'mmap' ? 'mmap' : 'auto'; // 1.5.90
   if ('draft' in out) {
     const d = out.draft || {};
