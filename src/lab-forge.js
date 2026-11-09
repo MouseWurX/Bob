@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { rentedEstimate } from './lab-estimate.js';
+import { pathByName, PERSONALITY, TEACH, clashes } from '../public/lab-thinking-paths.js';
 
 // Every way to make a brain. `where`: here (free, this replicant matrix), rented (the Forge), or both.
 // `ready`: what works today. `tab`/`step` say where Use this way leads.
@@ -100,6 +101,8 @@ const num = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) ? Ma
 // The form's answers as a plan in the shape forge.mjs and pod/run.sh read (rules from the blend thread, 9 Nov):
 // strong and strong_cover sit at the top, never in a rung; keep_file is an absolute path; heal hours are set above the
 // estimate so a full pass is never cut short; caps start at 0 and a plan with 0 caps is never handed to forge.mjs.
+// What to teach -> the lesson writer's jobs (model-lab/write-lessons.mjs JOBS), split evenly inside each.
+export const TEACH_JOBS = { answers: ['chat', 'advice', 'knowledge', 'maths', 'science'], tools: ['reminders', 'memory', 'web', 'pictures', 'files', 'office', 'run', 'schedules', 'apps'], coding: ['coding'], writing: ['writing'] };
 export function makeForgePlan(form = {}, { base = {}, keepFiles = [] } = {}) {
   const problems = [], notes = [];
   const plan = { ...base };
@@ -129,6 +132,38 @@ export function makeForgePlan(form = {}, { base = {}, keepFiles = [] } = {}) {
   const est = rungs.map((r) => rentedEstimate({ experts: typeof r.keep === 'number' ? r.keep : r.keep_n || 208, files: plan.quants.split(','), benchmark: false, scoresCached: true }));
   rungs.forEach((r, i) => { const teach = est[i].parts.find((p) => /^Teach it back/.test(p.what))?.hours || 2.5; r.hours = Math.max(num(form.heal?.hours, 0.5, 48) || 0, Math.ceil(teach * epochs * 1.33 * 2) / 2); });
   plan.heal = { experts, epochs };
+  // 1.5.160 What to teach, and the way of thinking (design sections 11 and 12; heal keys locked with the forge thread).
+  const shares = (obj, ids) => Object.fromEntries(ids.map((id) => [id, Math.round(num(obj?.[id], 0, 100) || 0)]).filter(([, v]) => v > 0));
+  // Locked with the forge thread: plan.teach holds only thinking (how often it thinks first, 0-100) and voice
+  // (persona strength, 0-100). Answers, tools, coding and writing are weights on the lesson writer's jobs.
+  // Shares in a group (the jobs, the paths, each personality row) are normalised to sum to 100; an all-0 group is left out.
+  const norm = (o) => { const t = Object.values(o).reduce((a, x) => a + x, 0); if (!t) return {}; const out = Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Math.round((v * 100) / t)])); return Object.fromEntries(Object.entries(out).filter(([, v]) => v > 0)); };
+  const asked = shares(form.teach, TEACH.map(([id]) => id));
+  const teach = Object.fromEntries(['thinking', 'voice'].filter((k) => asked[k]).map((k) => [k, asked[k]]));
+  if (Object.keys(teach).length) plan.teach = teach; else delete plan.teach;
+  const jobs = {};
+  for (const [k, list] of Object.entries(TEACH_JOBS)) if (asked[k]) for (const j of list) jobs[j] = (jobs[j] || 0) + asked[k] / list.length;
+  const jw = norm(jobs);
+  if (Object.keys(jw).length) plan.jobs = jw; else delete plan.jobs;
+  const th = form.thinking || {};
+  const paths = (Array.isArray(th.paths) ? th.paths : []).slice(0, 12).map((x) => ({ p: pathByName(String(x.name || '')), share: Math.round(num(x.share, 0, 100) || 0) })).filter((x) => x.p && x.share > 0).map((x) => ({ name: x.p.name, style: x.p.style, share: x.share }));
+  const own = String(th.own || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
+  const ownShare = Math.round(num(th.ownShare, 0, 100) || 0);
+  if (own && ownShare) paths.push({ name: 'Your own path', style: own, share: ownShare });
+  { const n = norm(Object.fromEntries(paths.map((x, i) => [i, x.share]))); paths.forEach((x, i) => { x.share = n[i] || 0; }); }
+  for (let i = paths.length - 1; i >= 0; i--) if (!paths[i].share) paths.splice(i, 1);
+  const pers = {};
+  for (const row of ['alignment', 'rules', 'mood']) { const v = shares(th.personality?.[row], PERSONALITY[row].map(([id]) => id)); const nv = norm(v); if (Object.keys(nv).length) pers[row] = nv; }
+  if (teach.thinking && !paths.length && !Object.keys(pers).length) problems.push('Thinking is ticked under What to teach: pick at least one thought path or personality.');
+  if (paths.length || Object.keys(pers).length) {
+    const mode = ['blend', 'switch', 'both'].includes(th.mode) ? th.mode : 'blend';
+    plan.thinking = { mode, paths, ...(Object.keys(pers).length ? { personality: pers } : {}) };
+    if (mode !== 'switch') for (const [a, b] of clashes(Object.fromEntries(paths.map((x) => [x.name, x.share])))) notes.push(`${a} and ${b} pull against each other when both are above 30% in a blend. Lower one, or teach them as a switch.`);
+    if (mode !== 'switch' && pers.mood && Object.keys(pers.mood).length > 1) notes.push('Moods mixed in a blend just sound confused. Teach them as a switch.');
+  } else delete plan.thinking;
+  const learn = ['answer', 'thinking', 'both'].includes(form.heal?.learn) ? form.heal.learn : 'answer';
+  if (learn !== 'answer') { plan.heal.learn = learn; plan.heal.thinking_weight = num(form.heal?.thinking_weight, 0.05, 2) || 0.5; }
+  if (form.heal?.odds_cover === 'both') { plan.heal.odds_cover = 'both'; notes.push('The teacher scores the thinking too: that pass takes much longer, fewer lessons fit in its time box, and saved teacher scores from earlier runs can\'t be reused, so it starts over.'); }
   const hours = Math.round(rungs.reduce((a, r) => a + r.hours, 0) + 1.5);
   plan.hours_max = num(form.hours_max, 0, 72) || 0;
   plan.dollars_max = num(form.dollars_max, 0, 500) || 0;
@@ -142,3 +177,43 @@ export function makeForgePlan(form = {}, { base = {}, keepFiles = [] } = {}) {
 export const rungFieldsOk = (plan) => (plan.rungs || []).every((r) => Object.keys(r).every((k) => RUNG_KEYS.includes(k)));
 
 export const forgePlansDir = (labDirPath) => path.join(labDirPath, 'forge-plans');
+
+// ---- Slice C: start a Forge run from the Lab ----
+// The owner presses the purchase card; only then does the Lab start forge.mjs and answer its own "Type yes to rent
+// now" with yes. The caps on the card must match the plan's, so the press is for exactly what was shown. The run is
+// its own process, detached, so it keeps going (and its card keeps its self-destruct timer) if Bob closes.
+export const FORGE_KEY = 'RUNPOD_API_KEY';
+export function forgeStartProblems({ plan, allowed, hasKey, shown = {}, running = false, found = true }) {
+  const p = [];
+  if (!found) p.push('The Forge isn\'t next to this copy of Bob.');
+  if (!allowed) p.push('Starting Forge runs from the Lab is off. Turn on "Let the Lab start Forge runs" first.');
+  if (!hasKey) p.push(`There's no ${FORGE_KEY} for the rental service. Settings > Rented brains says how to add it; it stays in your environment, never in Bob's files.`);
+  if (running) p.push('A Forge run is already going. One at a time.');
+  if (!plan) { p.push('That plan isn\'t saved.'); return p; }
+  if (!(Number(plan.hours_max) > 0) || !(Number(plan.dollars_max) > 0)) p.push('This plan\'s caps are 0. Type the hours and dollars you\'ll allow and save it again.');
+  else if (Number(shown.hours) !== Number(plan.hours_max) || Number(shown.dollars) !== Number(plan.dollars_max)) p.push('The caps changed since the card was shown. Look at the card again.');
+  if (!Array.isArray(plan.rungs) || !plan.rungs.every((r) => r.hours > 0)) p.push('Every brain in the plan needs a time limit; save the plan again from the form.');
+  return p;
+}
+
+export function launchForge({ dir, planFile, env = {}, node = process.execPath, nodeEnv = {}, spawnFn, logTo }) {
+  const fd = fs.openSync(logTo, 'a');
+  const c = spawnFn(node, [path.join(dir, 'forge', 'forge.mjs'), '--plan', planFile], { cwd: path.join(dir, 'forge'), stdio: ['pipe', fd, fd], detached: true, windowsHide: true, env: { ...process.env, ...nodeEnv, ...env } });
+  c.stdin.write('yes\n'); // the owner's press on the purchase card is the yes; the pipe stays open until it's read
+  const t = setTimeout(() => { try { c.stdin.end(); } catch {} }, 10 * 60 * 1000); t.unref?.();
+  c.unref?.();
+  fs.closeSync(fd);
+  return c.pid;
+}
+
+export const alive = (pid) => { if (!pid) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+
+// The pod this run started, from the Forge's own per-run record (the token itself is never read out). Stop always
+// names this id: a bare --kill would delete every Forge card.
+export function runPodId(dir, run = '') {
+  const per = run ? `pod-token-${String(run).replace(/[^\w.-]/g, '_')}.json` : '';
+  for (const f of [per, 'pod-token.json'].filter(Boolean)) { // per-run record first, plain one is the old fallback
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(dir, 'out', 'forge', f), 'utf8')); if (/^[a-z0-9]{6,32}$/i.test(j.pod || '')) return j.pod; } catch {} }
+  return '';
+}

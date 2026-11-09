@@ -24,7 +24,8 @@ import { findOffice } from './office.js';
 import { writeZip } from './zip.js';
 import { PACKS, PACK_IDS, runPack, mergeScores, readScores, scoreboard, scoreFile, codeTool } from './lab-challenges.js'; // 1.5.153 Challenges
 import { runSandboxed, sandboxHolds } from './selftools.js';
-import { METHODS, LEFT_OUT, forgeDir, forgeRuns, forgeBrains, forgePlans, makeForgePlan, forgePlansDir } from './lab-forge.js'; // 1.5.159 the Forge tab
+import { METHODS, LEFT_OUT, forgeDir, forgeRuns, forgeBrains, forgePlans, makeForgePlan, forgePlansDir, FORGE_KEY, forgeStartProblems, launchForge, alive, runPodId, scrub as scrubForge } from './lab-forge.js';
+import { rentKeyEnv } from './rental.js'; // 1.5.159 the Forge tab
 import { LADDER, PLAY_MAX_GB, ladderTexts, ladderDiskGB, readPerplexity, ladderTable, ladderSaw, playDir, readLadders } from './lab-playground.js'; // 1.5.156 Playground
 import { recipesRoute } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
 
@@ -1033,7 +1034,8 @@ export class Lab {
   forgeView() {
     const dir = forgeDir(this.cfg);
     let saved = []; try { saved = fs.readdirSync(forgePlansDir(labDir(this.cfg))).filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, '')); } catch {}
-    return { methods: METHODS, leftOut: LEFT_OUT, found: Boolean(dir), runs: forgeRuns(dir), brains: forgeBrains(dir), plans: forgePlans(dir), saved, keepFiles: this.keepFiles().map(({ path: _p, ...k }) => k), skills: (() => { const b = forgePlans(dir)[0]; return b ? Object.keys(readJson(path.join(dir, 'forge', 'plans', `${b.id}.json`), {}).skills || {}) : []; })() };
+    const live = this.forgeLive();
+    return { live, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), methods: METHODS, leftOut: LEFT_OUT, found: Boolean(dir), runs: forgeRuns(dir), brains: forgeBrains(dir), plans: forgePlans(dir), saved, keepFiles: this.keepFiles().map(({ path: _p, ...k }) => k), skills: (() => { const b = forgePlans(dir)[0]; return b ? Object.keys(readJson(path.join(dir, 'forge', 'plans', `${b.id}.json`), {}).skills || {}) : []; })() };
   }
 
   forgePlan(form = {}) {
@@ -1052,6 +1054,51 @@ export class Lab {
     const file = path.join(dir, `${slugOf(r.plan.run)}.json`);
     writeJson(file, r.plan);
     return { file: path.basename(file) };
+  }
+
+  // ---- 1.5.160+ slice C: a Forge run started from the Lab ----
+  forgeKeys() { const e = this.rentEnv ? this.rentEnv() : rentKeyEnv(); return e?.[FORGE_KEY] ? { [FORGE_KEY]: e[FORGE_KEY] } : {}; }
+  forgeLiveFile() { return path.join(labDir(this.cfg), 'forge-live.json'); }
+  forgeLive() {
+    const rec = readJson(this.forgeLiveFile(), null);
+    if (!rec) return null;
+    const running = (this.forgeAlive || alive)(rec.pid);
+    let tail = []; try { tail = fs.readFileSync(rec.log, 'utf8').split(/\r?\n/).filter(Boolean).slice(-12).map(scrubForge); } catch {}
+    return { plan: rec.plan, at: rec.at, running, hours: rec.hours, dollars: rec.dollars, tail };
+  }
+  allowForge(on) { saveSettings(this.cfg, { labForgeStart: on === true }); this.cfg.labForgeStart = on === true; return { allowed: this.cfg.labForgeStart }; }
+  forgeCard(id) { // what the purchase card shows: read from the saved plan, nothing else
+    const plan = readJson(path.join(forgePlansDir(labDir(this.cfg)), `${slugOf(id)}.json`), null);
+    if (!plan) throw new Error('That plan isn\'t saved.');
+    const dir = forgeDir(this.cfg);
+    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), shown: { hours: plan.hours_max, dollars: plan.dollars_max }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir) });
+    return { id: slugOf(id), brains: (plan.rungs || []).map((r) => ({ name: r.name, nickname: r.nickname || '', keep: r.keep, hours: r.hours })), quants: plan.quants || '', cards: plan.gpus || [], hours: plan.hours_max, dollars: plan.dollars_max, volume: plan.volume ? plan.volume.gb || 100 : 0, problems };
+  }
+  forgeStart({ id, hours, dollars } = {}) {
+    const dir = forgeDir(this.cfg);
+    const file = path.join(forgePlansDir(labDir(this.cfg)), `${slugOf(id)}.json`);
+    const plan = readJson(file, null);
+    const keys = this.forgeKeys();
+    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(keys[FORGE_KEY]), shown: { hours, dollars }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir) });
+    if (problems.length) throw new Error(problems[0]);
+    const log = path.join(labDir(this.cfg), 'forge-runs', `${slugOf(id)}-${new Date(this.now()).toISOString().replace(/[:.]/g, '-').slice(0, 19)}.log`);
+    fs.mkdirSync(path.dirname(log), { recursive: true });
+    const { file: node, env: nodeEnv } = nodeCmd();
+    const pid = launchForge({ dir, planFile: file, env: keys, node, nodeEnv, spawnFn: this.forgeSpawn || spawn, logTo: log });
+    writeJson(this.forgeLiveFile(), { plan: slugOf(id), pid, log, at: this.now(), hours: plan.hours_max, dollars: plan.dollars_max });
+    return { started: true };
+  }
+  // Stop: end the Forge on this replicant matrix, then delete only this run's card (never every Forge card).
+  async forgeStop() {
+    const rec = readJson(this.forgeLiveFile(), null);
+    if (!rec) throw new Error('No Forge run was started from the Lab.');
+    try { process.kill(rec.pid); } catch {}
+    const dir = forgeDir(this.cfg), plan = readJson(path.join(forgePlansDir(labDir(this.cfg)), `${rec.plan}.json`), {}), pod = dir ? runPodId(dir, plan.run || rec.plan) : '';
+    if (pod) {
+      const { file: node, env: nodeEnv } = nodeCmd();
+      await new Promise((resolve) => { const c = (this.forgeSpawn || spawn)(node, [path.join(dir, 'forge', 'forge.mjs'), '--kill', pod], { cwd: path.join(dir, 'forge'), stdio: 'ignore', windowsHide: true, env: { ...process.env, ...nodeEnv, ...this.forgeKeys() } }); c.on?.('exit', resolve); c.on?.('error', resolve); if (!c.on) resolve(); });
+    }
+    return { stopped: true, pod: Boolean(pod) };
   }
 
   // Save a result the page sends (a table, or a picture of one) in the Lab's results folder. Returns the file name.
@@ -1306,6 +1353,10 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/ladder/ask') { send(res, 200, await lab.startLadderAsk({ id: b.id, question: b.question }, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/ladder/delete') { send(res, 200, lab.deleteLadder(String(b.id || ''))); return true; }
     if (p === '/api/lab/forge/plan') { const r = lab.forgePlan(b.form); send(res, 200, { problems: r.problems, notes: r.notes, hours: r.hours, text: JSON.stringify(r.plan, null, 1) }); return true; } // 1.5.159
+    if (p === '/api/lab/forge/allow') { send(res, 200, lab.allowForge(b.on === true)); return true; }
+    if (p === '/api/lab/forge/card') { send(res, 200, lab.forgeCard(String(b.id || ''))); return true; }
+    if (p === '/api/lab/forge/start') { send(res, 200, lab.forgeStart({ id: String(b.id || ''), hours: b.hours, dollars: b.dollars })); return true; }
+    if (p === '/api/lab/forge/stop') { send(res, 200, await lab.forgeStop()); return true; }
     if (p === '/api/lab/forge/save') { send(res, 200, lab.saveForgePlan(b.form)); return true; }
     if (p === '/api/lab/save') { const out = lab.saveResult(b, { version: lab.version || '' }); send(res, 200, { file: out.file }); return true; }
     if (p === '/api/lab/recipe') { send(res, 200, { recipes: lab.saveRecipe(b.recipe) }); return true; }
