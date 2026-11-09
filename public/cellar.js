@@ -708,7 +708,7 @@ export function createCellar() {
     const lab = data.engineChoices?.lab || '';
     return `<label class="pick"><strong>Engine for the Lab</strong>
         <select data-labengine aria-label="Engine for the Lab">${[['', 'Same as Bob\'s brains'], ['brainengine', 'Brain Engine'], ['llamacpp', 'llama.cpp']].map(([v, l]) => `<option value="${v}" ${v === lab ? 'selected' : ''}>${l}</option>`).join('')}</select>
-        <span class="muted">Which engine the Computer Science Lab makes, tests and runs brains with, from its next job. A tool that only one engine's download has is still found in the other. The Lab page shows the same choice at the top.</span></label>`;
+        <span class="muted">Which engine the Computer Science Lab makes, tests and runs brains with, from its next job. If a tool is only in one engine's download (the direction finder, say), the Lab still finds it there. The Lab page shows the same choice at the top.</span></label>`;
   }
   function engineCard(e) {
     const ch = data.engineChoices || {};
@@ -1482,13 +1482,13 @@ export function createCellar() {
       else if ('opendl' in b.dataset) { window.dispatchEvent(new Event('bob-downloads')); }
       else if (b.dataset.use) { const r = await api('/api/models/use', { id: b.dataset.use }); const at = b.parentElement; b.outerHTML = `<span class="have">Saved.</span>`; if (r.needsEngine) askEngine(at); }
       else if (b.dataset.checkengine) {
-        b.textContent = 'Checking...';
+        b.textContent = 'Checking…';
         const r = await api(`/api/engines/latest?id=${encodeURIComponent(b.dataset.checkengine)}`);
         // 1.5.17x: a rebuilt release keeps its name (Brain Engine), so it's fetched as the same release, not "the newest".
         b.outerHTML = r.newer ? (r.rebuilt ? `<button class="get" data-engine="${esc(r.id)}">Update: a rebuilt ${esc(r.latest)}</button>` : `<button class="get" data-engine="${esc(r.id)}"${r.tested ? ' data-newest="1"' : ''}>Update to ${esc(r.latest)}${r.installed ? ` (you have ${esc(r.installed)}${r.tested && r.installed === r.tested ? ', the tested one' : ''})` : ''}</button>${r.tested ? `<span class="muted">Newer builds haven't been through Bob's speed tests yet. If one gives trouble, <strong>Go back</strong> puts the one you have now back.</span>` : ''}`) : `<span class="muted">Up to date (${esc(r.latest)}).</span>`;
       }
       else if ('checkall' in b.dataset) { // 1.5.17x Check all for updates: one engine after another, so GitHub isn't asked all at once
-        b.disabled = true; b.textContent = 'Checking...';
+        b.disabled = true; b.textContent = 'Checking…';
         for (const g of dlg.querySelectorAll('.engine-group')) { g.open = true; openGroups.add(g.dataset.egroup); }
         for (const c of [...dlg.querySelectorAll('[data-checkengine]')]) { try { c.click(); await new Promise((ok) => { const t = setInterval(() => { if (!c.isConnected) { clearInterval(t); ok(); } }, 150); setTimeout(() => { clearInterval(t); ok(); }, 20000); }); } catch {} }
         b.textContent = 'Checked'; }
@@ -1499,7 +1499,7 @@ export function createCellar() {
       else if (b.dataset.engineremove) {
         const box = b.closest('.model').querySelector('.confirm'), eng = engineById(b.dataset.engineremove);
         box.hidden = false;
-        box.innerHTML = `<p>Remove Bob's copy of ${esc(eng?.name || b.dataset.engineremove)} (and the build kept for Go back)? Whatever needs it stops working until you Get it again.${b.dataset.engineremove === (data.engineChoices?.brainsNow) ? ' Bob\'s brains run on it right now, so he lets go of the loaded brain first and uses the other engine from his next start.' : ''}</p><div class="row"><button class="get" data-engineremoveyes="${esc(b.dataset.engineremove)}">Yes, remove</button><button data-no>Cancel</button></div>`; }
+        box.innerHTML = `<p>Remove Bob's copy of ${esc(eng?.name || b.dataset.engineremove)} (and the build kept for Go back)? Whatever needs it stops working until you Get it again.${b.dataset.engineremove === (data.engineChoices?.brainsNow) ? ' Bob\'s brains run on it right now, so he lets go of the loaded brain first and uses the other engine from his next start.' : ''}</p><div class="row"><button class="get" data-engineremoveyes="${esc(b.dataset.engineremove)}">Remove it</button><button data-no>Keep it</button></div>`; }
       else if (b.dataset.engineremoveyes) {
         b.disabled = true;
         try { await api('/api/engines/remove', { id: b.dataset.engineremoveyes }); await load(); }
