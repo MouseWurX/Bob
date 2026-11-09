@@ -39,9 +39,16 @@ publish_dir() {   # <local dir> <repo> <what> <model|dataset> <path in repo> [in
   # PUB_PRIVATE (True/False) overrides publish.private for one upload (a rebuild run sets it per Bob: a tested Bob public, an untested one private)
   local P="${PUB_PRIVATE:-$(plan "['publish'].get('private',True)")}"; local PRIV="" VIS=public; case "$P" in True|true|1) PRIV="--private"; VIS=private;; esac
   status publish "$WHAT: uploading to Hugging Face ($REPO, $VIS)"
-  if HF_TOKEN=$(cat $IN/hf-token) hf upload "$REPO" "$D" "$SUB" --repo-type $TYPE $PRIV "${INC[@]}" --commit-message "$WHAT from Bob's Forge" > $D/publish.log 2>&1; then
-    echo "$WHAT is on Hugging Face ($VIS): https://huggingface.co/$( [ $TYPE = dataset ] && echo datasets/ )$REPO"; return 0
-  else echo "$WHAT: upload failed (see publish.log)"; tail -3 $D/publish.log; return 1; fi
+  # the log goes to out/publish/ (9 Nov: a weights upload failed and its log, written beside the weights, was deleted with them; the
+  # next upload's log overwrote the other copy). A failed upload is tried once more after a pause: big uploads fail on passing errors.
+  mkdir -p $OUT/publish; local LOG=$OUT/publish/$(echo "$REPO-$SUB-$WHAT" | tr -c 'A-Za-z0-9\n' '-' | tr -s '-').log
+  local try; for try in 1 2; do
+    if HF_TOKEN=$(cat $IN/hf-token) hf upload "$REPO" "$D" "$SUB" --repo-type $TYPE $PRIV "${INC[@]}" --commit-message "$WHAT from Bob's Forge" > $LOG 2>&1; then
+      echo "$WHAT is on Hugging Face ($VIS): https://huggingface.co/$( [ $TYPE = dataset ] && echo datasets/ )$REPO"; return 0
+    fi
+    echo "$WHAT: upload failed (try $try; see out/publish/$(basename $LOG))"; tail -3 $LOG; [ $try = 1 ] && { cp $LOG $LOG.try1; sleep 30; }
+  done
+  return 1
 }
 # set_visibility <repo> <model|dataset> <True|False = private>: "hf upload --private" only counts when a repo is CREATED, so a repo that
 # already exists (Riker's, with his recipe) is flipped here. Best effort: a failure is said, not fatal.
@@ -371,12 +378,27 @@ if [ -n "$(plan ".get('rebuild')")" ]; then
   for b in $(seq 0 $((NR-1))); do   # every volume: input must be on this drive before anything else is waited for
     for K in adapter keep_file; do V=$(plan "['rebuild']['models'][$b].get('$K','')"); case "$V" in volume:*) [ -f "$S/${V#volume:}" ] || die "rebuild: $V is not on this drive (the pod must run in the data centre that holds it)";; esac; done
   done
-  status rebuild "waiting for the llama.cpp tools (the GGUF files need them)"
-  for i in $(seq 1 90); do [ -f $S/llama-ready ] || [ -f $S/llama-failed ] && break; sleep 20; done
-  [ -f $S/llama-ready ] || die "rebuild: llama tools unavailable (see out/llama-setup.log)"
-  RB_OK=0
+  # weights_only (9 Nov): {"name","nickname","source":"volume:bobs/35Bob/model","weights_only":true,"private":true} uploads the full-size
+  # weights of a Bob that is already on the drive, nothing else (no rebuild, no GGUF files, no llama tools): the repair for a failed weights upload.
+  NEED_LLAMA=0; for b in $(seq 0 $((NR-1))); do [ "$(plan "['rebuild']['models'][$b].get('weights_only',False)")" = "True" ] || NEED_LLAMA=1; done
+  if [ $NEED_LLAMA = 1 ]; then
+    status rebuild "waiting for the llama.cpp tools (the GGUF files need them)"
+    for i in $(seq 1 90); do [ -f $S/llama-ready ] || [ -f $S/llama-failed ] && break; sleep 20; done
+    [ -f $S/llama-ready ] || die "rebuild: llama tools unavailable (see out/llama-setup.log)"
+  fi
+  RB_OK=0; RB_WFAIL=""
   for b in $(seq 0 $((NR-1))); do
     BN=$(plan "['rebuild']['models'][$b]['name']"); BNICK=$(plan "['rebuild']['models'][$b].get('nickname','')"); MP=$(plan "['rebuild']['models'][$b].get('private','')")
+    if [ "$(plan "['rebuild']['models'][$b].get('weights_only',False)")" = "True" ]; then
+      SRC=$(plan "['rebuild']['models'][$b].get('source','volume:bobs/$BN/model')"); case "$SRC" in volume:*) SRCD=$S/${SRC#volume:} ;; *) SRCD=$W/$SRC ;; esac
+      [ -f "$SRCD/config.json" ] || die "rebuild $BN: no model at $SRC (config.json missing)"
+      [ -f "$SRCD/adapter.pt" ] || { [ -f "$S/bobs/$BN/adapter.pt" ] && cp "$S/bobs/$BN/adapter.pt" "$SRCD/adapter.pt" 2>/dev/null || true; }
+      REPO="$(plan "['publish']['user']")/$BN${BNICK:+-$BNICK}"
+      if [ -n "$MP" ]; then export PUB_PRIVATE="$MP"; else unset PUB_PRIVATE; fi
+      if publish_dir "$SRCD" "$REPO" "$BN full-size weights" model . "*.safetensors" "*.json" "*.jinja" "*.txt" "*.model" "adapter.pt"; then RB_OK=$((RB_OK+1)); else RB_WFAIL="$RB_WFAIL $BN"; fi
+      [ -n "$MP" ] && set_visibility "$REPO" model "$MP"
+      unset PUB_PRIVATE; echo "$BN${BNICK:+ $BNICK}: https://huggingface.co/$REPO"; continue
+    fi
     KFS=$(plan "['rebuild']['models'][$b].get('keep_file','')"); ADS=$(plan "['rebuild']['models'][$b].get('adapter','')"); RIN=$W/rebuild/in-$BN; mkdir -p $RIN
     case "$ADS" in volume:*) ADP=$S/${ADS#volume:} ;; "") ADP=$S/bobs/$BN/adapter.pt ;; *) ADP=$(resolve_in "$ADS" $RIN) ;; esac
     case "$KFS" in volume:*) KFP=$S/${KFS#volume:} ;; "") KFP="" ;; *) KFP=$(resolve_in "$KFS" $RIN) ;; esac
@@ -408,7 +430,7 @@ PY
     if [ -n "$MP" ]; then export PUB_PRIVATE="$MP"; else unset PUB_PRIVATE; fi
     write_model_card $OUT/$BN "$BN" "$BNICK"
     publish_dir $OUT/$BN "$REPO" "$BN GGUF files, cards, keep list and adapter" model . "*.gguf" "*.bob.json" "README.md" "$BN-keep.json" "$BN-adapter.pt" || echo "publish $BN (GGUF files) failed"
-    publish_dir $W/rebuild/$BN "$REPO" "$BN full-size weights" model . "*.safetensors" "*.json" "*.jinja" "*.txt" "*.model" "adapter.pt" || echo "publish $BN (weights) failed"
+    publish_dir $W/rebuild/$BN "$REPO" "$BN full-size weights" model . "*.safetensors" "*.json" "*.jinja" "*.txt" "*.model" "adapter.pt" || { echo "publish $BN (weights) failed"; RB_WFAIL="$RB_WFAIL $BN"; }
     [ -n "$MP" ] && set_visibility "$REPO" model "$MP"
     unset PUB_PRIVATE
     # every GGUF is on Hugging Face: the PC downloads nothing (the file list says where each one is), then the list is released
@@ -425,7 +447,16 @@ PY
   done
   rm -f $IN/hf-token
   [ "$RB_OK" -gt 0 ] || die "rebuild: no Bob was rebuilt"
-  status done "rebuild finished: $RB_OK of $NR Bobs on Hugging Face"; exit 0
+  [ -z "$RB_WFAIL" ] || echo "FULL-SIZE WEIGHTS MISSING on Hugging Face for:$RB_WFAIL (see out/publish/*.log); a weights_only plan uploads them from the drive"
+  # plan.drive_delete ["bobs/35Bob/gguf", ...]: drive folders the owner wants gone once Hugging Face hosts them. Only when every upload in
+  # this run succeeded, only under bobs/ or runs/ (never the teacher, the odds, an adapter or a keep list), and what was removed is listed.
+  if [ -z "$RB_WFAIL" ] && [ "$RB_OK" = "$NR" ] && [ "$S" != "$W" ]; then
+    for DD in $(plan ".get('drive_delete',[])" | python3 -c "import json,sys; print(' '.join(json.load(sys.stdin)))"); do
+      case "$DD" in bobs/*/gguf|bobs/*/gguf/*|runs/*) [ -e "$S/$DD" ] && { du -sh "$S/$DD" | sed 's/^/drive_delete: removing /'; rm -rf "${S:?}/$DD"; } || echo "drive_delete: $DD was not on the drive";; *) echo "drive_delete: $DD refused (only bobs/<name>/gguf and runs/ may be removed)";; esac
+    done
+    drive_list
+  fi
+  status done "rebuild finished: $RB_OK of $NR Bobs on Hugging Face${RB_WFAIL:+; full-size weights FAILED for$RB_WFAIL}"; exit 0
 fi
 
 # --- teach-it (9 Nov): plan.odds false with no rungs = an adapter-only fine-tune of the full teacher (train_teacher above) and nothing
