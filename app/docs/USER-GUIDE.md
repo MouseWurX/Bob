@@ -425,7 +425,7 @@ Under the tabs, **Keep it simple** or **Professional** is one switch for the who
 
 The Lab has five tabs:
 
-- **Make a brain** walks you through five steps with tick boxes instead of command-line flags:
+- **Make a brain** starts by asking what you want to do (Make it smaller, Cut experts, Take out sight or hearing, Just test a brain, or Everything), then walks you through only the steps that job needs, with tick boxes instead of command-line flags. Everything is all five:
   1. **Pick a brain** you already have.
   2. **Lessons**: your chats with Bob, a lesson set you have, or a new one Bob writes with a teacher brain, or builds from your own files.
   3. **Make it smaller**: cut experts while keeping every skill covered, take out sight or hearing, then make the running files (Q4 and others).
