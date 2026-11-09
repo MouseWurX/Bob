@@ -59,7 +59,29 @@ const hit = async (x, b, isLocal = true) => {
   check('both buttons sit next to ✋ Hands on the chat page', /id="handsBtn"[\s\S]{0,400}id="freeBtn"[\s\S]{0,400}id="screenBtn"/.test(ix) && /🔓 Autonomy/.test(ix) && /🖥 Screen use/.test(ix));
   check('turning Autonomy on asks first, in the page', /id="freeAsk"[^>]*role="alertdialog"/.test(ix) && /ask\.hidden = false/.test(qs));
   check('the buttons follow changes from elsewhere', /quickSwitches\.update\(ev\.settings\)/.test(app));
+  const hs = read('public/hands-switch.js'), hands = read('public/hands.js');
+  check('the working-without-asking banner has a Hide button', /id="freeBanner"[\s\S]{0,400}id="freeBannerHide"/.test(ix) && /banner\.hidden = !free \|\|/.test(hs));
+  check('Settings, Hands brings it back', /data-hbannerback/.test(hands) && /setBannerHidden\(null\)/.test(hands));
+  check('✋ Hands says just On (Autonomy shows the not-asking part)', !/not asking/.test(hs));
   check('Help explains both', /🔓 Autonomy/.test(read('public/help-content.js')) && /🖥 Screen use/.test(read('public/help-content.js')));
+}
+
+// The banner grows with every check Bob is let past, and comes back after Hide when something new is let past.
+{
+  const { bannerLines } = await import('../public/hands-switch.js');
+  const view = { hands: [{ id: 'apps' }, { id: 'browser' }, { id: 'files' }], browser: { eyes: 'qwen-vl' }, limits: [{ id: 'sendOut', label: "Don't send anything out" }] };
+  const base = cleanHands({ enabled: true, free: true });
+  check('just working without asking: no extra lines', bannerLines(base, view).length === 0);
+  const apps = cleanHands({ enabled: true, free: true, apps: { on: true } });
+  check('using apps adds a line about clicking, typing and switching windows', /switch between windows/.test(bannerLines(apps, view).map((l) => l.text).join(' ')));
+  const all = cleanHands({ enabled: true, free: true, apps: { on: true }, browser: { on: true }, limits: { sendOut: false } });
+  const keys = bannerLines(all, view).map((l) => l.key);
+  check('apps, browser, eyes and a hard limit off each add a line', ['apps', 'browser', 'eyes', 'limit:sendOut'].every((k) => keys.includes(k)));
+  check('a hard limit that is off is named', bannerLines(all, view).some((l) => /Hard limit OFF: Don't send anything out/.test(l.text)));
+  check('no eyes brain: no "can see the screen" line', !bannerLines(all, { ...view, browser: {} }).some((l) => l.key === 'eyes'));
+  const hs = read('public/hands-switch.js'), css = read('public/style.css');
+  check('the banner gets bigger the more it lists', /data-level="3"\][^}]*font-size/.test(css) && /banner\.dataset\.level = String\(Math\.min\(3, lines\.length\)\)/.test(hs));
+  check('Hide remembers what it hid; anything new brings it back', /keys\.every\(\(k\) => hid\.includes\(k\)\)/.test(hs));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

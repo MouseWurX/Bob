@@ -531,7 +531,13 @@ button.danger { background: #a8432f; color: #fff; border-color: #a8432f; }
 /* "Let Bob work without asking" is on: a banner above the chat for as long as it is. */
 .free-banner { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin: 6px 12px 0; padding: 8px 12px; border: 2px solid var(--warn); border-radius: calc(var(--r) * 1.25); color: var(--warn); font-weight: 600; }
 .free-banner[hidden] { display: none; }
-.hands-btn[data-free="true"] { outline: 2px solid var(--warn); }
+.free-banner > span { flex: 1 1 auto; }
+.free-banner .free-banner-text ul { margin: 4px 0; padding-left: 20px; font-weight: 500; }
+.free-banner .free-banner-tail { font-weight: 500; }
+/* Bigger the more checks Bob is let past (hands-switch.js bannerLines) */
+.free-banner[data-level="1"] { padding: 10px 14px; }
+.free-banner[data-level="2"] { padding: 12px 16px; border-width: 3px; font-size: 1.05em; }
+.free-banner[data-level="3"] { padding: 14px 18px; border-width: 3px; font-size: 1.12em; background: color-mix(in srgb, var(--warn) 10%, transparent); }
 .free-confirm { margin: 8px 0 4px; padding: 10px 12px; border: 2px solid var(--warn); border-radius: calc(var(--r) * 1.25); }
 .free-confirm .row { display: flex; gap: 10px; flex-wrap: wrap; }
 .free-confirm .warn { background: var(--warn); color: var(--on-accent); }
@@ -708,7 +714,6 @@ details.more > summary:hover { color: var(--accent); }
 .brain-switch.hands-btn[data-on="true"] .st { background: var(--good); color: #10200f; }
 .brain-switch.hands-btn[data-state="stopped"] .st { background: var(--bad); color: var(--on-accent); }
 .brain-switch.hands-btn[data-state="settings-off"] { opacity: .75; }
-.brain-switch.hands-btn[data-free="true"] .st { background: var(--warn); color: var(--on-accent); }
 /* Autonomy and Screen use (quick-switches.js) */
 .brain-switch.free-btn[data-free="true"] { color: var(--text); outline: 2px solid var(--warn); }
 .brain-switch.free-btn[data-free="true"] .st { background: var(--warn); color: var(--on-accent); }

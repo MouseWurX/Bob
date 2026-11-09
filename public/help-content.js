@@ -180,7 +180,7 @@ ${set('Pop out', 'Button', 'Opens the small window on top as well, for a second 
 <p>It's me asking "anything else while the paint's still wet?"</p>` },
 
   { id: 'banners', group: 'The chat page', title: 'Banners above the chat', words: 'banner working without asking stop hands quarantine release orange red bob is driving',
-    html: `<ul><li><strong>⚠ Bob is working without asking.</strong> Shows the whole time "Let Bob work without asking" is on. <strong>✋ Stop Hands</strong> on it stops me at once.</li>
+    html: `<ul><li><strong>⚠ Bob is working without asking.</strong> Shows the whole time "Let Bob work without asking" is on. <strong>✋ Stop Hands</strong> on it stops me at once. It lists what else I'm let do (your apps, my browser, seeing the screen, any hard limit you switched off) and gets bigger with each. <strong>Hide</strong> puts it away (🔓 Autonomy stays orange so you can still tell, and it comes back if I'm let past anything new); bring it back sooner with <em>Show the banner again</em> in Settings, Hands.</li>
 <li><strong>🔒 … is in quarantine.</strong> Shows while I or one of my copies am in quarantine, with what happened and a <strong>Release</strong> button. See ${go('quarantine', 'Quarantine')}.</li>
 <li><strong>Bob is driving</strong> (a red bar on the screen) shows while the Apps Hand clicks or types in another program. Move the mouse or press Esc to stop me.</li></ul>
 <p>I'd rather you always know when I'm acting on my own. No surprises.</p>` },
