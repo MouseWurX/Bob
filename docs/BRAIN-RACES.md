@@ -216,7 +216,7 @@ Qwen 3.8 at 128K: a 114K-token prompt read in 196 s, writing at 5 tok/s, and it 
 
 What it showed: the same tool reliability, with Gemma about 6 times faster; the score gap was the thinking cap, not skill. Qwen 3.8 suits Deep thinking, for jobs where waiting is fine: it solved two planning tasks Gemma ran out of room on, and it handles 128K.
 
-## 3. Qwen3.6 35B-A3B at 256K vs 128K context (2026-11-03)
+## 5. Qwen3.6 35B-A3B at 256K vs 128K context (2026-11-03)
 
 Same file (UD-Q4_K_XL), llama.cpp b12032, RTX 5070 Ti 16 GB, 32 GB RAM, q8_0 KV cache, flash attention on, `--fit` placing the experts. The rig used no `-b/-ub 2048` and no `-t 8`, so absolute speeds are lower than Bob's own launch; 128K and 256K ran on the same rig, so they compare fairly. One run each.
 

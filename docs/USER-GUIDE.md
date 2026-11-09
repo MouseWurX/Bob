@@ -24,12 +24,10 @@ You can close Bob while things download. Unfinished downloads wait, paused, and 
 
 ### What do I need?
 
-- Windows 10 or 11 (64-bit).
+- Windows 10 or 11 (64-bit). Bob also runs on a Mac with Apple Silicon (below), on 64-bit Linux and a Raspberry Pi, and as a phone app on Android: the [README](../README.md#getting-bob) has the steps for each.
 - **32 GB of memory (RAM)** is what the starter sets are planned around. Less can work for chat, but pictures and video need the room.
 - Space on your drive: it depends on your graphics card. Get me ready shows the total before anything downloads; on a 16 GB card the full set is about 105 GB, mostly pictures and clips, and smaller cards get smaller sets.
 - A graphics card is **optional**. Bob can chat, plan, research, read pictures and talk with no graphics card at all. An NVIDIA card makes him much faster and lets him paint and film.
-
----
 
 ### Bob on a Mac
 
@@ -39,7 +37,7 @@ Bob runs on Macs with Apple Silicon (M1 and newer), using the Mac's graphics (Me
 2. The first time, macOS says it can't check Bob (official Mac builds are ad-hoc signed: sealed so macOS can tell if a file was changed, but not with a paid Apple developer account, and that won't change). Open **System Settings > Privacy & Security**, scroll down and click **Open Anyway** next to Bob. Once only.
 3. Bob keeps his things in `~/Library/Application Support/Bob/home`.
 
-On a Mac, llama.cpp and stable-diffusion.cpp download as usual. whisper.cpp and Piper have no Mac builds Bob can use (hear through Ollama or a cloud helper; speak with Kokoro voices). Install FFmpeg (Homebrew) and LibreOffice yourself and Bob finds them. The Apps Hand, Defender scans, the Gaming card switch, Windows Task Scheduler, Check this replicant matrix is hidden (Update Bob works: it fetches the newest Mac zip from GitHub, checks it, and swaps it in on restart); the Security Hand checks the firewall, FileVault, Gatekeeper, System Integrity Protection, login items and listening programs instead. To update, use Settings, Update Bob, or replace Bob in Applications with the newest zip; to remove him, drag him to the Bin (and the folder above, if you want everything gone).
+On a Mac, llama.cpp and stable-diffusion.cpp download as usual. whisper.cpp and Piper have no Mac builds Bob can use (hear through Ollama or a cloud helper; speak with Kokoro voices). Install FFmpeg (Homebrew) and LibreOffice yourself and Bob finds them. The Apps Hand, Defender scans, the Gaming card switch, Windows Task Scheduler and Check this replicant matrix are hidden; the Security Hand checks the firewall, FileVault, Gatekeeper, System Integrity Protection, login items and listening programs instead. **Update Bob** works as on Windows: it fetches the newest Mac zip from GitHub, checks it, and swaps it in on restart. To remove him, drag him to the Bin (and the folder above, if you want everything gone).
 
 ## 2. Finding your way around
 
@@ -71,7 +69,6 @@ These open as a page in the middle of the window, in place of the chat. **← Ba
 
 ### Making Bob faster on your PC
 
-- **Save a help bundle** (Settings, This replicant matrix and updates) saves one zip for whoever is helping you get Bob working: a HANDOFF.md written for an AI agent (it links this repository and the exact version and says what to check in which order), every error and the last 3,000 lines of Bob's logbook, his settings without their secrets, this machine's facts, whether each engine starts, and the last three chats as a readout. If Bob's chat brain is loaded and idle it adds its own note about what it thinks is wrong; if not, the bundle is put together without any brain, so the button works on a broken Bob. The owner's name and user name, the home folder, the machine name, passcodes, API keys, bot tokens and Tailscale addresses are taken out first. You pick the folder; nothing is sent anywhere. Take the zip to your agent or attach it to an issue.
 - **Check this replicant matrix** (Settings, bottom of the Everyday page) looks for things that slow Bob down and shows how to fix each one: memory below its rated speed (turn on EXPO or XMP in the BIOS), an old NVIDIA driver, a laptop on battery, models on a slow drive, other apps holding graphics memory. Bob only looks; he never changes Windows or driver settings.
 - **Test Bob's speed** (Advanced, Speed & memory) times the first word and the full answer, and keeps your last results so you can compare before and after a change.
 - Three switches, off until you turn them on: **Get Bob ready while you type**, **Let games go first** and **Match picture settings to my graphics card**.
@@ -389,7 +386,7 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 - **Show Bob's plan before big jobs**: before a job with several steps, or any step that changes files or runs programs (also a video clip, a song or a cloud helper), Bob shows every step on one card and waits. Steps that need an OK have their own tick box on that card. Press **Go ahead**, **Change something** (type what you want different, and he makes a new plan) or **Not now (Bob drops this job)**. Each step is still checked when he gets to it, and anything not on the plan asks on its own card. Off unless you turn it on.
 - **Let Bob search the web**: Bob looks things up on DuckDuckGo and reads pages when a question needs it. Only the search words and page address leave your PC. Off: he tells you when a question needs the internet and where this switch is. The same setting is the **🌐 Web search** switch next to Effort on the chat page; flip either and both change.
 - **Let Bob fetch his newest brain list** (Going online): once a day Bob reads his brain list from his own GitHub page, so brains that came out after your version show up in the Brain catalogue. **Check now** does it at once. Only a list where every file is pinned with its size and sha256 is used; it adds and updates brains, never removes one. Nothing about you is sent (GitHub sees the request, like any web page).
-- **Show the naughty list**: lists other people's uncensored remixes of Qwen and Gemma brains (heretic / abliterated) behind the Naughty list side of the Brain catalogue toggle (the red devil), and lets the ones you make Active into Equip Bob and the brain menus. Not the makers' releases; they answer without refusing and can be rougher. Off: hidden everywhere.
+- **Show the naughty list**: other people's uncensored remixes of Qwen and Gemma brains, on the Naughty list side of the Brain catalogue (see [The Brain catalogue](#the-brain-catalogue)). Off: hidden everywhere.
 - **Let Bob learn how-tos**: after a job with a few steps goes well, Bob offers one card to keep the steps as a how-to, and follows them next time you ask for something like it. Nothing is kept until you press **Save how-to**. Edit or delete them in Settings, **📒 How-tos**. A how-to is plain text: Hands still ask for your OK as usual. They stay on your PC.
 - **Launch on start-up**: Bob opens when Windows starts.
 - **Cloud helpers**: hand a very big job to a paid online AI, using your own key. Bob asks you each time, because it costs money and sends that job off your PC.
@@ -407,23 +404,38 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 
 ---
 
-## 11. The Computer Science Lab (off unless you turn it on)
+## 11. The Computer Science Lab
 
-Bob is an assistant you use every day and a workbench for the brains he runs on, in one window. Turn on **Show the Computer Science Lab** (Settings, How Bob works, Brains) and **🧪 Lab** appears in the menu. It walks you through five steps with checkboxes instead of command-line flags:
+Bob is an assistant you use every day and a workbench for the brains he runs on, in one window. **🧪 Lab** in the left menu opens the **Computer Science Lab**. It runs on your own computer and costs nothing; Bob keeps answering while a Lab job runs, one job at a time, and the Lab waits while Gaming is on.
 
-1. **Pick a brain** you already have.
-2. **Lessons**: use a lesson set you have, or write a new one with a teacher brain on this replicant matrix.
-3. **Make it smaller**: keep every skill covered while cutting experts, take out sight or hearing, measure, then make the running files (Q4 and others).
-4. **Where it runs**: this replicant matrix today. Rented cards come later.
-5. **Test and use**: the Lab test runs on the new brain and the one it came from, and **Use in Bob** only appears after it. **Compare** puts tested brains side by side and saves the table as CSV or JSON.
+![The Computer Science Lab on Make a brain](screens/lab.png)
 
-Bob keeps answering while a Lab job runs, one job at a time, and waits while Gaming is on. **Show the recipe** shows the exact commands, so you can learn them or run them yourself. Coming later: teaching a cut brain back (healing) on a rented card, and **Brain Engine**, which switches experts on and off without reloading the brain. More in Help, The Computer Science Lab.
+Under the tabs, **Keep it simple** or **Professional** is one switch for the whole Lab: simple shows the usual choices with Bob's defaults filled in, Professional shows every control a tab has. The same switch is in Settings, How Bob works, Brains, as **Lab: Professional mode**.
+
+The Lab has five tabs:
+
+- **Make a brain** walks you through five steps with tick boxes instead of command-line flags:
+  1. **Pick a brain** you already have.
+  2. **Lessons**: your chats with Bob, a lesson set you have, or a new one Bob writes with a teacher brain, or builds from your own files.
+  3. **Make it smaller**: cut experts while keeping every skill covered, take out sight or hearing, then make the running files (Q4 and others).
+  4. **Where it runs**: this replicant matrix, for free.
+  5. **Test and use**: the Lab test runs on the new brain and the one it came from, and **Use in Bob** only appears after it. **Compare** puts tested brains side by side and saves the table as CSV or JSON.
+
+  Or start from a goal (Everything smaller, Coding helper, Everyday chat and more) and Bob fills in the steps. **Show the recipe** shows the exact commands, so you can learn them or run them yourself.
+- **Forge**: every way of making a new brain, side by side, each with where it runs and what works best. Making a brain smaller, cutting experts, mixing two brains and stacking layers run here for free. Teaching a cut brain back needs a rented graphics card: the Forge writes the plan, and you start each run yourself.
+- **Learn**: short cards about how a brain works (what a token is, how the next word is picked, what temperature does), run on the brain Bob has loaded right now. If none is loaded, say anything to Bob in the chat first. Nothing here changes how he answers, and nothing is saved.
+- **Challenges**: short tests out of 100 for any brain you have, and a scoreboard that ranks brains against others of their own size.
+- **Playground**: **Smaller** makes one brain in six sizes and shows where it starts to slip; **Peek inside** shows which experts your work uses; **Longer**, **Faster** and **Teach it** try longer chats, faster settings and a short round of teaching.
+
+| | | |
+|---|---|---|
+| ![The Forge tab](screens/lab-forge.png) | ![The Challenges tab](screens/lab-challenges.png) | ![The Playground tab](screens/lab-playground.png) |
+
+The Lab needs a replicant matrix with at least 12 GB of memory; the phone app has no Lab. Every tab has its own page in Help, The Computer Science Lab.
 
 ## 12. Updating and removing Bob
 
-**Updating, if you downloaded the zip:** download the new zip from the Releases page and unzip it over your Bob folder. Your chats, models and settings are kept, because they live in `%LOCALAPPDATA%\Bob`.
-
-**Updating, if you built Bob from source:** Settings → **Check for updates**. If there is one, click **Update Bob** and watch the steps. If Bob is busy, he asks whether to restart now, wait until he's finished, or leave it for later.
+**Updating:** Settings → **Check for updates**. If there is one, click **Update Bob** and watch the steps. Bob downloads the new release, checks it against its checksum and swaps it in on restart; if he's busy, he asks whether to restart now, wait until he's finished, or leave it for later. Your chats, models and settings are kept, because they live in Bob's home folder, apart from the program.
 
 **Removing:** Settings → Show advanced settings → Remove Bob → **Remove Bob…**. Bob's program, his shortcut, "Launch on start-up" and the "Bob schedules" task are removed. Two boxes, unticked unless you tick them, also remove his chats and settings and the models he downloaded. Those go to the Recycle Bin.
 
@@ -441,6 +453,8 @@ Bob keeps answering while a Lab job runs, one job at a time, and waits while Gam
 | Bob can't hear you | Fill the 👂 Hearing you slot (Gemma 4 E4B does it). |
 | Bob can't paint or edit | Fill the 🎨 Painter or ✂ Picture editor slot, and get the painter engine when Bob offers it. |
 | Windows blocks Bob | Bob.exe is the official Electron program renamed, which Windows usually trusts. If it's blocked anyway, see the Releases page notes. |
+
+**Still stuck? Save a help bundle** (Settings, This replicant matrix and updates). It saves one zip for whoever is helping you get Bob working: a HANDOFF.md written for an AI agent (it links this repository and the exact version and says what to check in which order), every error and the last 3,000 lines of Bob's logbook, his settings without their secrets, this machine's facts, whether each engine starts, and the last three chats as a readout. If Bob's chat brain is loaded and idle it adds its own note about what it thinks is wrong; if not, the bundle is put together without any brain, so the button works on a broken Bob. The owner's name and user name, the home folder, the machine name, passcodes, API keys, bot tokens and Tailscale addresses are taken out first. You pick the folder; nothing is sent anywhere. Take the zip to your agent or attach it to an issue.
 
 ---
 
@@ -462,6 +476,7 @@ The full glossary and an FAQ are in Help inside Bob (left menu, or F1).
 - **Community build:** a model made by someone other than its maker (a remix, fine-tune or repack); the catalogue says who and from what.
 - **Brain catalogue:** Bob's full list of models, sorted by job. **Active** models show in the slots and menus; the rest wait there.
 - **Engine:** the program that runs a kind of model, for example the painter engine for pictures. Bob offers it when a model needs it.
+- **Computer Science Lab:** the 🧪 Lab page, where you make your own brain from one you have and test it before it goes into Bob.
 - **Commercial use:** using what you make for money. All starter set models allow it. A few optional extras don't, and Bob marks those.
 
 ## Licences of the starter set models
