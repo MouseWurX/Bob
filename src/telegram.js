@@ -19,7 +19,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { keyEnv } from './cloud.js';
+import { rentKeyEnv } from './rental.js'; // process env, Windows user variables, or ~/.config/bob/env on Mac and Linux
 
 export const TOKEN_ENV = 'BOB_TELEGRAM_TOKEN';
 export const TELEGRAM_SESSION = 'telegram';
@@ -86,7 +86,7 @@ export function codeIn(text) {
 }
 
 export class TelegramBridge {
-  constructor(brain, { fetchImpl = globalThis.fetch, env = keyEnv(), now = Date.now, wait = (ms) => new Promise((r) => setTimeout(r, ms)), pollSeconds = 50 } = {}) {
+  constructor(brain, { fetchImpl = globalThis.fetch, env = rentKeyEnv(), now = Date.now, wait = (ms) => new Promise((r) => setTimeout(r, ms)), pollSeconds = 50 } = {}) {
     this.brain = brain;
     this.cfg = brain.cfg;
     this.fetch = fetchImpl;
@@ -190,7 +190,7 @@ export class TelegramBridge {
       if (!this.pair || this.pair.until < this.now() || !text) return;
       if (!code || !crypto.timingSafeEqual(Buffer.from(code), Buffer.from(this.pair.code))) {
         // Guessing: after 5 wrong tries the code is thrown away until you click New code on the PC.
-        if (++this.misses >= MAX_MISSES) { this.pair = null; this.pairLocked = true; this.log('pairing code thrown away after 5 wrong tries; click New code to pair'); }
+        if (++this.misses >= MAX_MISSES) { this.pair = null; this.pairLocked = true; this.log('pairing code thrown away after 5 wrong tries; press New code to pair'); }
         return;
       }
       const name = [m.from.first_name, m.from.last_name].filter(Boolean).join(' ') || m.from.username || 'you';
