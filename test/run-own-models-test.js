@@ -134,6 +134,26 @@ fs.writeFileSync(junk, 'not a brain');
   check('the user guide and settings inventory keep in step', /Your own brains/.test(read('docs/USER-GUIDE.md')) && /ownModels/.test(read('docs/SETTINGS-INVENTORY.md')));
 }
 
+// ---- 1.5.16x: the pickers open on top of Bob's window ----
+{
+  const { pickFolder } = await import('../src/pick-folder.js');
+  let asked = null;
+  const pick = async (o) => { asked = o; return 'C:\\brains\\riker.gguf'; };
+  const got = await pickFile({ kind: 'gguf', pick, run: () => { throw new Error('the PowerShell helper must not run in Bob\'s window'); } });
+  check('1.5.16x: in Bob\'s window the brain picker is Electron\'s own (bobPick), with the .gguf filter', got === 'C:\\brains\\riker.gguf' && asked.filters[0].extensions[0] === 'gguf' && !asked.folder);
+  check('1.5.16x: cancelling Electron\'s picker gives no file', (await pickFile({ kind: 'gguf', pick: async () => '' })) === '');
+  const docs = await pickFile({ kind: 'docs', pick: async (o) => { asked = o; return 'x'; } });
+  check('1.5.16x: the lesson builder\'s picker shows documents and all files', docs === 'x' && asked.filters.some((f) => f.extensions.includes('*')));
+  const fold = await pickFolder({ purpose: 'save', pick: async (o) => { asked = o; return 'D:\\Bob saves'; }, run: () => { throw new Error('no helper'); } });
+  check('1.5.16x: the folder picker uses Electron\'s too, and lets you make a folder where it should', fold === 'D:\\Bob saves' && asked.folder === true && asked.newFolder === true);
+  await pickFolder({ purpose: 'project', pick: async (o) => { asked = o; return ''; } });
+  check('1.5.16x: a project folder can\'t be made from the picker (as before)', asked.newFolder === false);
+  const ps = pickFileArgs('gguf', 'win32')[1].join(' ');
+  check('1.5.16x: without Bob\'s window, the Windows helper shows its owner and brings it to the front first, so the picker is on top', /\$owner\.Show\(\); \$owner\.Activate\(\);.*ShowDialog\(\$owner\)/.test(ps));
+  const main = read('electron/main.cjs').replace(/\r\n/g, '\n');
+  check('1.5.16x: Bob.exe lends Electron\'s picker, parented to Bob\'s window', /globalThis\.bobPick = async/.test(main) && /dialog\.showOpenDialog\(owner/.test(main));
+}
+
 fs.rmSync(dir, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
