@@ -4,7 +4,7 @@
 //     carries, drawn from the usage map's peek-counts.json (the things already counted with llama-imatrix).
 //   Level 2, the live view: type a question, Brain Engine answers it with "expert_trace": true on /completion and
 //     reports, for every word it wrote, which experts each layer picked. The map lights up; a scrubber steps word by
-//     word; two questions can be compared, with the overlap in words. Turn these off applies the lit-up set as the
+//     word; two questions can be compared, with the overlap in words. Keep only these applies the lit-up set as the
 //     expert mask and asks again. Until Brain Engine reports the trace, the live card is greyed with the reason.
 //   The tally: Keep count adds every traced word to peek-counts.json as the thing "Peek inside" (source "peek"), and
 //     rewrites the Lab's keep file, so Cut these out and Send to the Forge use the same file the usage map writes.
@@ -81,7 +81,7 @@ export function addToTally(cfg, brain, { sha256, facts, counts, tokens, engine =
   return { tokens: thing.tokens, things: peek.things.length, keepFile: keepFileOf(cfg, brain) };
 }
 
-// The keep file from a lit-up set alone ("Turn these off"): one list per layer, padded to one size with the busiest
+// The keep file from a lit-up set alone ("Keep only these"): one list per layer, padded to one size with the busiest
 // of the rest, as the Lab's cutter needs. counts from tallyTrace.
 export function keepFromLit(counts, facts) {
   const rows = counts.map((r) => (r ? r.map((v, e) => [v, e]) : null));
