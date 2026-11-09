@@ -257,7 +257,7 @@ export const forgePlansDir = (labDirPath) => path.join(labDirPath, 'forge-plans'
 // now" with yes. The caps on the card must match the plan's, so the press is for exactly what was shown. The run is
 // its own process, detached, so it keeps going (and its card keeps its self-destruct timer) if Bob closes.
 export const FORGE_KEY = 'RUNPOD_API_KEY';
-export function forgeStartProblems({ plan, allowed, hasKey, shown = {}, running = false, found = true, importer = false }) {
+export function forgeStartProblems({ plan, allowed, hasKey, shown = {}, running = false, found = true, importer = false, senses = false }) {
   const p = [];
   if (!found) p.push('The Forge isn\'t next to this copy of Bob.');
   if (!allowed) p.push('Starting Forge runs from the Lab is off. Turn on "Let the Lab start Forge runs" first.');
@@ -271,6 +271,9 @@ export function forgeStartProblems({ plan, allowed, hasKey, shown = {}, running 
   // lesson importer is here, a plan that names them never starts (so they're never silently left out).
   if (plan.teacher_local || plan.teacher_url) p.push('This plan starts from a brain on this replicant matrix or at a link, and the Forge can\'t take one of those yet. Pick a brain the Forge made or one on Hugging Face, or wait for the Forge update.');
   if (Array.isArray(plan.hf_lessons) && plan.hf_lessons.length && !importer) p.push('This plan has lessons from Hugging Face, and the Forge\'s lesson importer isn\'t on this replicant matrix yet. Remove them, or wait for the Forge update.');
+  // Give it eyes / Give it ears: a Sharpen plan (plan.senses) never starts until the Forge says it can teach a brain to
+  // see or hear (model-lab/forge/senses.mjs is there). Until then it can be saved, never run.
+  if (plan.senses && !senses) p.push('This is a Sharpen plan (eyes or ears), and the Forge can\'t teach a brain to see or hear yet. It stays saved until the Forge update.');
   return p;
 }
 
