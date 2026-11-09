@@ -17,7 +17,7 @@ const houseGroupOfTool = (n) => ({ make_music: 'music', make_image: 'pictures', 
 import { personalityPrompt, cleanPersonality } from '../public/personality.js';
 import { catPrompt, catMoment, catTurn } from '../public/patches.js';
 import { sleepyAfterReply, sleepySwitch, SLEEPY_SESSION } from '../public/sleepy.js';
-import { cleanEffort, careful, bigThinker, draftBrain, hatBrain, effortPrompt, mootOpening, runMoot, phasedWork } from './moot.js';
+import { cleanEffort, careful, bigThinker, draftBrain, hatBrain, effortPrompt, mootOpening, runMoot, phasedWork, reviewBrain } from './moot.js';
 import { saveSettings, outputDirs, findOutput } from './config.js';
 import { paint, paintingAvailable, stepsFor } from './painter.js';
 import { PainterServer } from './painter-server.js';
@@ -133,6 +133,13 @@ export const sideBrain = (cfg, job) => ({ model: sessionBrains(cfg).small, cpu: 
 // talker for quick replies beside a job. On the processor it's Qwen3 4B Instruct 2507 (the Gaming slot, no thinking,
 // 2 to 7 s to the first word on an idle processor) when it's downloaded; E4B only when it goes on the graphics card.
 const runnable = (brain, m) => { try { return Boolean(m && brain.engine?.resolve?.(m)?.gguf); } catch { return false; } };
+// #30: this Bob's Review brain as he'd lend it to another Bob (Bob's own engine only), with its file size in GB.
+const ggufGB = (brain, m) => { try { const f = brain.engine?.resolve?.(m)?.gguf; return f ? Math.round(fs.statSync(f).size / 1e8) / 10 : 0; } catch { return 0; } };
+export function reviewBrainOf(brain) {
+  const m = brain.cfg.models?.reviewer;
+  if (!m || brain.cfg.engine !== 'llamacpp' || !runnable(brain, m)) return null;
+  return { model: m, cpu: false, ctx: Math.min(brainDefaults(m, 'reviewer').ctx || 32768, 32768), gb: ggufGB(brain, m) };
+}
 // Not on the PC: null, and quick replies beside a job wait (E4B never runs on the processor; settings sign-off 1.5.54).
 export function talkerModel(brain) {
   const sb = sessionBrains(brain.cfg || {});
@@ -383,7 +390,7 @@ export class Brain {
     this.guests = new GuestJobs(this, { canNow: () => this.guestCanNow() });
     const raw = this.broadcast;
     this.broadcast = (ev) => { raw(ev); try { this.guests.watch(ev); } catch {} };
-    this.lendDeps = { currentSession, quickBrain: (b) => { const sb = sessionBrains(b.cfg); const m = sb.small && runnable(b, sb.small) ? sb.small : (b.cfg.engine === 'llamacpp' ? null : sb.small); return m ? { model: m, cpu: false, ctx: Math.min(chatBrain(b.cfg).ctx || 32768, 32768) } : null; } };
+    this.lendDeps = { currentSession, quickBrain: (b) => { const sb = sessionBrains(b.cfg); const m = sb.small && runnable(b, sb.small) ? sb.small : (b.cfg.engine === 'llamacpp' ? null : sb.small); return m ? { model: m, cpu: false, ctx: Math.min(chatBrain(b.cfg).ctx || 32768, 32768) } : null; }, reviewBrain: (b) => reviewBrainOf(b) };
     this.tools = buildTools(cfg);
     this.refs = new RefShelf(cfg);
     this.sessions = new Map();
@@ -1848,6 +1855,8 @@ export class Brain {
       if (careful(job)) emit({ type: 'announce', text: mootOpening(this.cfg, job.effort, base) });
       await this.runOn(msgs, text, keep, signal, pics, job, sessionId, out);
       if (careful(job) && out.ctx && !signal?.aborted) await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx });
+      // #30: Low and Medium, opt-in: a quick second look from a paired Bob when one is free. None free: no check, no swap.
+      else if (out.ctx && !signal?.aborted && this.cfg.netReview === true) await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx, quick: () => this.quickReviewer(job, pics) });
       if (out.ctx && !signal?.aborted && !rough) this.howtoAfter(sessionId, text, out.ctx, keep, job);
     }
     finally {
@@ -2381,18 +2390,23 @@ export class Brain {
     { const d = brainDefaults(model, hat, cleanEffort(ctx.job?.effort)); if (d.ctx && (wantCtx == null || (currentSession(this.cfg).id === 'normal' && !CTX_CHOICES.includes(this.cfg.sessionCtx?.normal)))) wantCtx = d.ctx; if (think === undefined && 'think' in d) think = d.think; }
     const brainCtx = await this.fitCtx(model, wantCtx);
     // 1.5.51 (opt-in): the reviewer sits beside the main brain on the processor instead of swapping it out.
-    if (hat === 'reviewer' && force && !ctx.job?.side && mootBesideOk(this, model, brainCtx)) { beside = true; cpu = true; }
+    // #30: a quick second look at Low or Medium effort comes with its Bob already picked (runMoot), and never runs here.
+    const quick = hat === 'reviewer' ? ctx.reviewLender || null : null;
+    if (!quick && hat === 'reviewer' && force && !ctx.job?.side && mootBesideOk(this, model, brainCtx)) { beside = true; cpu = true; }
+    // #30: no room beside it here, so a paired Bob with a good enough Review brain checks the work over Bob-Net. Failing that,
+    // the reviewer swaps in as before, and the chat says why.
+    const lender = quick || (hat === 'reviewer' && force && !beside ? await this.reviewAway(model, ctx) : null);
     const copy = copyName(this.cfg, hat, HATS[hat].label);
     // Settings sign-off (1.5.49): one moot line per review. If the review brain still has to load, the load line
     // ("🛰 Moot: ... checks the answer ...") says it all, so the chat skips the reviewer's own line.
-    const loadsFirst = hat === 'reviewer' && !(await Promise.resolve(this.engine.isLoaded?.(model, { cpu, ctx: brainCtx, beside }) ?? true).catch(() => true));
+    const loadsFirst = hat === 'reviewer' && !lender && !(await Promise.resolve(this.engine.isLoaded?.(model, { cpu, ctx: brainCtx, beside }) ?? true).catch(() => true));
     ctx.emit({ type: 'hat', hat, label: PLAIN_HATS[hat] || HATS[hat].label, copy, ...(loadsFirst ? { quiet: true } : {}) });
     // The Tasks panel: this job is now delegated to a copy (in progress) until the copy hands back.
     const step = { hat, label: PLAIN_HATS[hat] || HATS[hat].label, copy, task: String(task).slice(0, 140), state: 'in progress', at: Date.now() };
     if (ctx.job) { (ctx.job.steps ||= []).push(step); this.saveQueue(); }
     const wasHat = ctx.hatNow;
     ctx.hatNow = hat; // so quarantine knows which copy did what
-    try { return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside }); }
+    try { return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, lender, noLocal: Boolean(quick) }); }
     catch (e) { step.state = ctx.signal?.aborted ? 'cancelled' : 'failed'; throw e; }
     finally {
       ctx.hatNow = wasHat;
@@ -2402,8 +2416,39 @@ export class Brain {
     }
   }
 
-  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside }) {
-    model = (await this.ensureModel(model, ctx.emit, ctx.signal, hat, { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}) })) || model;
+  // #30: with "Let the reviewer sit beside Bob's main brain" and "Borrow brains from my other Bobs" both on, and no room beside
+  // here, the review goes to a paired Bob whose Review brain is at least three quarters the size of this one's. null: swap here.
+  // #30: a paired Bob's Review brain must be at least three quarters the size of this one's (4 GB when it can't be told).
+  reviewFloor(model) { const own = ggufGB(this, model); return own ? Math.round(own * 7.5) / 10 : 4; }
+
+  // #30, Low and Medium effort with "Ask my other Bobs for a quick second look" on: the Bob that gives it, or null (no check,
+  // and no brain swap here for it).
+  async quickReviewer(job, pics) {
+    const b = this.cfg.share?.borrow;
+    if (this.cfg.netReview !== true || b?.on !== true || !(b.bobs || []).length || job?.side || job?.guest || pics?.length) return null;
+    const m = reviewBrain(this.cfg)?.model || this.cfg.models?.reviewer;
+    return this.lenders.pickForReview({ minGB: this.reviewFloor(m) }).catch(() => null);
+  }
+
+  async reviewAway(model, ctx) {
+    const b = this.cfg.share?.borrow;
+    if (this.cfg.mootBeside !== true || b?.on !== true || !(b.bobs || []).length || ctx.job?.side || ctx.job?.guest || ctx.pics?.length) return null;
+    const main = this.engine?.current;
+    if (!main || sameModel(main, model)) return null; // nothing to keep loaded, or the reviewer is already the brain that's in
+    const lender = await this.lenders.pickForReview({ minGB: this.reviewFloor(model) }).catch(() => null);
+    if (lender) {
+      this.log('moot', `no room beside the main brain; ${lender.name} checks the work on ${lender.brain} over Bob-Net`);
+      ctx.emit({ type: 'announce', text: `There's no room for my reviewer beside my main brain here, so ${lender.name} checks this over Bob-Net (${lender.brain}). My main brain stays loaded.` });
+    } else {
+      this.log('moot', 'no room beside the main brain and no Bob on the Bob-Net with a good enough Review brain free; swapping');
+      if (!(Date.now() - (this.reviewAwaySaid || 0) < 10 * 60000)) { this.reviewAwaySaid = Date.now(); ctx.emit({ type: 'announce', text: 'None of my other Bobs can do the check right now, so it happens here.' }); }
+    }
+    return lender;
+  }
+
+  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, lender, noLocal = false }) {
+    const loadHere = async () => (await this.ensureModel(model, ctx.emit, ctx.signal, hat, { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}) })) || model;
+    if (!lender) model = await loadHere();
     this.setState('busy', `${copy} is on it (${PLAIN_HATS[hat] || HATS[hat].label})`, model);
     const hatTools = {
       ledger: ['save_spreadsheet', 'read_file', 'list_folder'],
@@ -2425,7 +2470,21 @@ export class Brain {
     let final = '';
     const did = []; // what this copy did, handed back to the main conversation afterwards
     for (let step = 0; step < maxSteps; step++) {
-      const reply = await this.chatSafe({
+      let reply = null;
+      if (lender) {
+        // Tools still run here (and ask here); only the thinking happens on the other Bob.
+        try { reply = await this.lenders.chat(lender, { messages, tools: this.toolSchemas(hatTools), signal: ctx.signal, from: this.cfg.windowsName || 'Bob', want: 'review', onToken: (t) => ctx.emit({ type: 'token', text: t }) }); }
+        catch (e) {
+          if (ctx.signal?.aborted) throw e;
+          this.lenders.noteReview(lender);
+          if (noLocal) { this.log('moot', `${lender.name} couldn't finish the quick second look (${e.message})`); return `(${lender.name} couldn't finish the second look, so this reply wasn't checked.)`; }
+          this.log('moot', `${lender.name} couldn't finish the check (${e.message}); swapping the reviewer in here`);
+          ctx.emit({ type: 'announce', text: `${lender.name} couldn't finish the check, so it carries on here.` });
+          lender = null;
+          model = await loadHere();
+        }
+      }
+      reply ||= await this.chatSafe({
         model, messages, tools: this.toolSchemas(hatTools), signal: ctx.signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
         ...(CODING_HATS.has(hat) ? { task: 'coding' } : {}), // 1.5.148: Qwen's coding preset for code work
         onToken: (t) => ctx.emit({ type: 'token', text: t })

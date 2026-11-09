@@ -68,6 +68,7 @@ export function settingsNow(cfg) {
     `Keep the graphics card free for quick answers: ${onOff(cfg.quickOnCpu === true)}`,
     `Keep chatting while Bob is busy: ${onOff(cfg.chatWhileBusy !== false)}`,
     `Let the reviewer sit beside Bob's main brain: ${onOff(cfg.mootBeside === true)}`,
+    `Ask my other Bobs for a quick second look: ${onOff(cfg.netReview === true)}`,
     `Gaming session: graphics card: ${{ auto: 'Automatic', never: 'Never use the card', always: 'Always borrow a little' }[gamingCard(cfg)]}`,
     `House style (Equip Bob): ${houseStylePrompt(cfg.houseStyle).replace(/^\s+/, '').replace(/^.*?: /, '') || 'none set (Bob picks)'}`,
     `Projects (Settings): ${Object.keys(cfg.projects || {}).join(', ') || 'none'}${cfg.defaultProject ? `; main project ${cfg.defaultProject}` : ''}`,

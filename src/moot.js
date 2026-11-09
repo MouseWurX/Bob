@@ -120,7 +120,7 @@ export function mootMinutes(rounds, rev) {
 }
 
 // After the draft (runOn) at High or Extreme: the reviewer checks, code gets a fix round, Extreme checks again.
-export async function runMoot(brain, { msgs, base, emit, signal, job, ctx }) {
+export async function runMoot(brain, { msgs, base, emit, signal, job, ctx, quick = null }) {
   const effort = cleanEffort(job?.effort);
   const added = msgs.slice(base);
   const draft = [...added].reverse().find((m) => m.role === 'assistant' && !m.tool_calls && m.content);
@@ -128,11 +128,19 @@ export async function runMoot(brain, { msgs, base, emit, signal, job, ctx }) {
   const toolText = added.filter((m) => m.role === 'tool').map((m) => String(m.content)).join('\n');
   if (!draft || ['picture', 'video'].includes(job?.kind) || used.some((n) => /^(make_image|make_video|make_music|make_sound|workshop_run)$/.test(n))) return null;
   if (String(draft.content).length < 200 && !used.length) {
+    if (quick) return null; // #30: a quick look skips short chit-chat without a word
     emit({ type: 'announce', text: 'Short reply, so the moot skipped the second look.' });
     return null;
   }
   const rev = copyName(brain.cfg, 'reviewer', 'second look');
   const force = reviewBrain(brain.cfg);
+  // #30: Low and Medium effort: one quick check by a paired Bob over Bob-Net, only when one is free. No fix rounds.
+  let lender = null;
+  if (quick) {
+    lender = await quick();
+    if (!lender) return null;
+    emit({ type: 'announce', text: `🛰 ${lender.name} gives this a quick second look over Bob-Net (${lender.brain}).` });
+  }
   // Code was changed this turn: a workbench note "edit_file <path>: <result>" that isn't an error, or Bob's own edit.
   const changedCode = /\b(?:edit_file|write_file)\b[^|\]]*?:\s*(?!Error|.*said no)/.test(toolText)
     || added.some((m, i) => m.role === 'tool' && ['edit_file', 'write_file'].includes(m.tool_name) && !/^Error|said no/i.test(String(m.content)) && i >= 0);
@@ -142,7 +150,10 @@ export async function runMoot(brain, { msgs, base, emit, signal, job, ctx }) {
   const check = async (n) => {
     say(`\n\n---\n**${rev}, second look${n > 1 ? ' (again)' : ''}:**\n\n`);
     // Quarantine on (opt-in): the reviewer may also say Bob went off track. Off: the check is exactly as before.
-    const text = await brain.runHat('reviewer', quarantineOn(brain.cfg) ? `${CHECK_TASK}\n${QUARANTINE_LINE}` : CHECK_TASK, ctx, force);
+    ctx.reviewLender = lender;
+    let text;
+    try { text = await brain.runHat('reviewer', quarantineOn(brain.cfg) ? `${CHECK_TASK}\n${QUARANTINE_LINE}` : CHECK_TASK, ctx, force); }
+    finally { ctx.reviewLender = null; }
     msgs.push({ role: 'assistant', content: `${rev}, second look: ${text}`, moot: 'check' });
     if (quarantineOn(brain.cfg) && flagFromReviewer(brain, ctx, text, 'bob')) held = (await maybeAsk(brain, ctx)) === 'quarantined';
     const v = verdict(text);
@@ -150,7 +161,7 @@ export async function runMoot(brain, { msgs, base, emit, signal, job, ctx }) {
     return { text, v };
   };
   let res = await check(1);
-  const maxFix = effort === 'extreme' ? 2 : 1;
+  const maxFix = lender && quick ? 0 : effort === 'extreme' ? 2 : 1;
   for (let i = 0; i < maxFix && res.v !== 'ok' && changedCode && !held && !signal?.aborted; i++) {
     const copy = copyName(brain.cfg, 'tinker', 'workbench');
     say(`\n\n---\n**${copy}, fixing:**\n\n`);
@@ -163,7 +174,7 @@ export async function runMoot(brain, { msgs, base, emit, signal, job, ctx }) {
   }
   const minutes = mootMinutes(rounds, rev);
   if (minutes) { say(`\n\n${minutes}`); msgs.push({ role: 'assistant', content: minutes, moot: 'minutes' }); }
-  brain.log('moot', `${effort}: ${rounds.map((r) => r.kind + (r.verdict ? `:${r.verdict}` : '')).join(', ')}`);
+  brain.log('moot', `${effort}${quick ? ' (quick look over Bob-Net)' : ''}: ${rounds.map((r) => r.kind + (r.verdict ? `:${r.verdict}` : '')).join(', ')}`);
   return { rounds, minutes };
 }
 
