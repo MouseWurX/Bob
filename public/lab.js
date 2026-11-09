@@ -12,6 +12,8 @@ import { createForge } from './lab-forge.js'; // 1.5.159 the Forge tab
 import { createGuard, packGroups, guardPartsLine } from './lab-guard.js'; // 1.5.164 Guard rails sandbox and grouped packs
 import { createSenses } from './lab-senses.js'; // Give it eyes / Give it ears, a card in the Forge tab
 import { createPlayground } from './lab-playground.js'; // 1.5.156 Playground: the quantization ladder
+import { createPeek } from './lab-peek.js'; // 1.5.164 Playground: Peek inside
+import { homeReportHtml } from './lab-home-ways.js'; // 1.5.164 the Forge's home ways' lines in the runs list
 
 const $ = (id) => document.getElementById(id);
 const TABS = [['make', 'Make a brain'], ['forge', 'Forge'], ['learn', 'Learn'], ['challenges', 'Challenges'], ['playground', 'Playground']];
@@ -35,11 +37,13 @@ export function createLab({ api, note }) {
   const bld = { name: '', teacher: '', items: [], kinds: ['material'], count: 300, think: 'half', resay: true, feedback: { dropFiles: [], notKinds: {}, badIdeas: [] } };
   let bplan = null, building = false, bsurvey = null, surveying = false, openPassage = new Set(), notLike = '', viewer = null, vq = { q: '', skill: '', file: '', kind: '' }, exportInfo = null, typedPath = '';
   const r = { template: '', name: '', from: '', lessons: { kind: 'none', file: '', chunks: 200 }, smaller: { sight: false, hearing: false, cut: null, files: [], measure: false }, test: { compare: true } };
-  const fg = createForge({ api, goMake: () => { tab = 'make'; draw(); $('lab-tab-make')?.focus(); } });
+  const fg = createForge({ api, view: () => view, runs: () => runsHtml(), goMake: () => { tab = 'make'; draw(); $('lab-tab-make')?.focus(); } });
   document.addEventListener('lab-forge-ready', () => { if (tab === 'forge' && dlg.open) draw(); });
   const gd = createGuard({ api }); // 1.5.164
   const sn = createSenses({ api, draw: () => { if (tab === 'forge') draw(); } });
-  const pg = createPlayground({ api, view: () => view, saveState });
+  // 1.5.164 Peek inside: Cut these out opens Make a brain, step 3, with the keep file; Send to the Forge opens the Forge tab (the file is in its keep-file list).
+  const pk = createPeek({ api, view: () => view, cutWith: async ({ brain: id, file, experts }) => { r.from = id; const b = brain(); if (!r.name && b) r.name = `${b.name} Lab`; r.template = ''; r.smaller = { sight: false, hearing: false, cut: { how: 'file', file, keep: experts, cover: 0.95, strong: [] }, files: [], measure: false, try: false, tryStop: true }; tab = 'make'; step = 'smaller'; await replan(); $('lab-tab-make')?.focus(); }, toForge: () => { tab = 'forge'; fg.reload().then(() => draw()); draw(); $('lab-tab-forge')?.focus(); } });
+  const pg = createPlayground({ api, view: () => view, saveState, sections: [pk] });
   const rc = createRecipes({ api, recipe: r, view: () => view, replan: () => replan(), draw: () => draw() });
   const brain = () => view?.brains.find((b) => b.id === r.from);
   const running = () => view?.runs.find((x) => x.state === 'running');
@@ -289,7 +293,7 @@ export function createLab({ api, note }) {
 
   function runsHtml() {
     if (!view.runs.length) return '';
-    return `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.kind === 'write' ? `lessons, taught by ${esc(x.from)}` : x.kind === 'challenge' ? 'challenges' : x.kind === 'ladder' ? 'quantization ladder' : x.kind === 'ladder-ask' ? 'same question, every size' : x.kind === 'build' || x.kind === 'sample' ? `${x.kind === 'sample' ? 'sample lessons' : 'lessons'} from your files, taught by ${esc(x.from)}` : `from ${esc(x.from)}`} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
+    return `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.kind === 'write' ? `lessons, taught by ${esc(x.from)}` : x.kind === 'challenge' ? 'challenges' : x.kind === 'ladder' ? 'quantization ladder' : x.kind === 'ladder-ask' ? 'same question, every size' : x.kind === 'mix' ? `a mix of ${esc(x.from)}` : x.kind === 'stack' ? `stacked layers of ${esc(x.from)}` : x.kind === 'refusals' ? `${esc(x.from)} with the refusal habit taken out` : x.kind === 'refusals-try' ? 'try it first, nothing written' : x.kind === 'build' || x.kind === 'sample' ? `${x.kind === 'sample' ? 'sample lessons' : 'lessons'} from your files, taught by ${esc(x.from)}` : `from ${esc(x.from)}`} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
       ${x.state === 'running' ? ' <button type="button" class="link" data-stop>Stop</button>' : ''}
       ${x.state === 'failed' || x.state === 'stopped' ? `<br><span class="muted">${esc(x.error || '')}</span>` : ''}
       ${(x.notes || []).map((n) => `<br><span class="muted">${esc(n)}</span>`).join('')}
@@ -298,7 +302,8 @@ export function createLab({ api, note }) {
       ${x.kind === 'sample' && x.report ? `<br><span class="muted">${x.report.lessons} sample lessons in ${x.report.minutes} minutes${x.report.held ? `, ${x.report.held} passages held back` : ''}. They're under Build a new set from my files, in step 2.</span>` : ''}
       ${x.kind === 'challenge' && x.report ? `<table class="lab-report"><caption class="muted">Challenges (out of 100)</caption><tr><th scope="col">Challenge</th><th scope="col">Score</th><th scope="col">Right</th></tr>${x.report.challenges.map((c) => `<tr><th scope="row">${esc(c.title)}</th><td>${c.score ?? '-'}</td><td>${c.skipped ? esc(c.skipped) : `${c.right} of ${c.of}`}${c.parts ? `<br><span class="muted">${esc(guardPartsLine(c.parts))}</span>` : ''}${c.note ? `<br><span class="muted">${esc(c.note)}</span>` : ''}</td></tr>`).join('')}</table>${saveHtml(x.id, saveState(x.id), view.hardware)}` : ''}
       ${x.report?.coverage ? `<table class="lab-report"><caption class="muted">Coverage cut: kept ${x.report.coverage.experts} of ${x.report.coverage.of} experts per layer</caption><tr><th scope="col">Skill</th><th scope="col">Kept, on average</th><th scope="col">Worst layer</th></tr>${x.report.coverage.skills.map((k) => `<tr><th scope="row">${esc(k.name)}</th><td>${k.average}%</td><td>${k.worst}% (layer ${k.worstLayer})</td></tr>`).join('')}</table>` : ''}
-      ${x.report?.tried ? `<br><span class="muted">Tried first on Brain Engine: ${x.report.tried.masked} with only the kept experts, ${x.report.tried.full} with all of them.</span>` : ''}
+      ${homeReportHtml(x)}
+      ${x.report?.tried && x.kind !== 'refusals-try' ? `<br><span class="muted">Tried first on Brain Engine: ${x.report.tried.masked} with only the kept experts, ${x.report.tried.full} with all of them.</span>` : ''}
       ${x.report?.made ? `<table class="lab-report"><caption class="muted">Lab test (out of 100)</caption><tr><th scope="col"></th><th scope="col">${esc(x.name)}</th>${x.report.from ? `<th scope="col">${esc(x.from)}</th>` : ''}</tr>${Object.keys(PARTS).map((k) => `<tr><th scope="row">${esc(PARTS[k])}</th><td>${x.report.made.parts[k]?.score ?? '-'}</td>${x.report.from ? `<td>${x.report.from.parts[k]?.score ?? '-'}</td>` : ''}</tr>`).join('')}<tr><th scope="row">All</th><td>${x.report.made.score}</td>${x.report.from ? `<td>${x.report.from.score}</td>` : ''}</tr><tr><th scope="row">Size</th><td>${x.report.sizeGB} GB</td>${x.report.from ? `<td>${x.report.fromGB} GB</td>` : ''}</tr><tr><th scope="row">Words a second</th><td>${x.report.made.tps || '-'}</td>${x.report.from ? `<td>${x.report.from.tps || '-'}</td>` : ''}</tr></table>
         ${x.used ? '<span class="muted">In Bob, under Get models.</span>' : `<button type="button" class="get" data-use="${esc(x.id)}">Use in Bob</button>`}` : ''}</li>`).join('')}</ul></section>`;
   }
@@ -376,7 +381,7 @@ export function createLab({ api, note }) {
     if (tab === 'learn') { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-learn" role="tabpanel" aria-labelledby="lab-tab-learn"></div></div>`; learn.mount($('lab-page-learn')); return; }
     if (tab === 'challenges') { body.innerHTML = `<div class="lab">${tabs}${challengesHtml()}</div>`; return; }
     if (tab === 'forge') { body.innerHTML = `<div class="lab">${tabs}${fg.html(sn.html())}</div>`; return; }
-    if (tab === 'playground') { body.innerHTML = `<div class="lab">${tabs}${pg.html(runsHtml())}</div>`; return; }
+    if (tab === 'playground') { body.innerHTML = `<div class="lab">${tabs}${pg.html(runsHtml())}</div>`; pg.mounted(); return; }
     const i = STEPS.findIndex(([id]) => id === step);
     const html = { brain: brainStep, lessons: lessonsStep, smaller: smallerStep, where: whereStep, test: testStep }[step]();
     const busy = running();
@@ -470,6 +475,7 @@ export function createLab({ api, note }) {
   body.addEventListener('input', (e) => { // the slider and its number box move together
     if (pg.input(e.target)) return;
     if (gd.input(e.target)) return; // 1.5.164
+    if (fg.input(e.target, () => draw())) return; // 1.5.164
     if (e.target.id === 'lab-chunks') { const n = $('lab-chunks-n'); if (n) n.value = e.target.value; }
     if (e.target.id === 'lab-chunks-n') { const s = $('lab-chunks'); if (s) s.value = e.target.value; }
     if (e.target.id === 'lab-w-count') { const n = $('lab-w-count-n'); if (n) n.value = e.target.value; }
@@ -567,6 +573,6 @@ export function createLab({ api, note }) {
   return {
     async open() { dlg.showModal(); draw(); await load(); },
     // Progress from the Lab job (the server's 'lab' events).
-    update(run) { if (!view) return; rc.runUpdate(run); const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if ((run.kind === 'challenge' || run.kind?.startsWith('ladder')) && run.state !== 'running') { load(); return; } if (tab === 'learn') return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
+    update(run) { if (!view) return; rc.runUpdate(run); const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if ((run.kind === 'challenge' || run.kind?.startsWith('ladder') || ['mix', 'stack', 'refusals', 'refusals-try'].includes(run.kind)) && run.state !== 'running') { load(); return; } if (tab === 'learn') return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
   };
 }

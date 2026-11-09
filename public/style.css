@@ -1510,3 +1510,18 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .lab-guard-chat li { padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
 .lab-guard-chat li:last-child { border-bottom: 0; }
 .lab-guard-chat .lab-guard-assistant strong { color: var(--accent); }
+
+/* 1.5.164 the Forge's home ways and Peek inside */
+.forge-home { margin: 10px 0; }
+.forge-home .forge-num select { max-width: 100%; }
+.home-range { align-items: center; }
+.home-range input[type=number] { width: 5em; }
+.home-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; }
+.peek-map { display: block; max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; margin: 8px 0; image-rendering: pixelated; }
+.peek-layers { columns: 2; column-gap: 16px; font-size: 13px; }
+.peek-answer { white-space: pre-wrap; border-left: 3px solid var(--accent); padding: 2px 10px; }
+.peek-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.peek-compare canvas { width: 100%; height: auto; border: 1px solid var(--line); image-rendering: pixelated; }
+.peek-compare > p { grid-column: 1 / -1; }
+@media (max-width: 600px) { .peek-layers { columns: 1; } }
+@media (prefers-reduced-motion: reduce) { .peek-map { transition: none; } }

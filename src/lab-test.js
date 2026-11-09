@@ -59,12 +59,12 @@ export async function freePort() {
 }
 
 // Start a llama-server for one brain. Tries the card first (--fit on), then the processor.
-export async function startServer({ exe, gguf, mmproj, ctx = 8192, signal, log = () => {}, spawnFn = spawn, timeoutMs = 10 * 60e3 }) {
+export async function startServer({ exe, gguf, mmproj, ctx = 8192, signal, log = () => {}, spawnFn = spawn, timeoutMs = 10 * 60e3, extra: more = [] }) { // 1.5.164 `extra`: more llama-server flags (a control vector, say)
   const tries = [['--fit', 'on'], ['-ngl', '0']];
   let last = '';
   for (const extra of tries) {
     const port = await freePort();
-    const args = ['-m', gguf, ...(mmproj ? ['--mmproj', mmproj] : []), '--host', '127.0.0.1', '--port', String(port), '-c', String(ctx), '--jinja', ...extra];
+    const args = ['-m', gguf, ...(mmproj ? ['--mmproj', mmproj] : []), '--host', '127.0.0.1', '--port', String(port), '-c', String(ctx), '--jinja', ...more, ...extra];
     log(`llama-server ${args.join(' ')}`);
     const child = spawnFn(exe, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
     let err = '';

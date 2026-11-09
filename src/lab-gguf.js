@@ -2,6 +2,7 @@
 // tensors left out (a picture or sound reader taken out of a combined reader file) or a few settings changed.
 // Reads and writes in pieces, so a 20 GB brain never has to fit in memory.
 import fs from 'node:fs';
+import path from 'node:path';
 
 const T = { U8: 0, I8: 1, U16: 2, I16: 3, U32: 4, I32: 5, F32: 6, BOOL: 7, STRING: 8, ARRAY: 9, U64: 10, I64: 11, F64: 12 };
 const FIXED = { 0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 1, 10: 8, 11: 8, 12: 8 };
@@ -319,4 +320,114 @@ export function coverageKeep(skills, { cover = 0.95, strong = [], strongCover = 
     return { name: s.name, average: per.reduce((a, b) => a + b, 0) / per.length, worst: per[worst], worstLayer: expertLayers[worst] };
   });
   return { keep: out, K, sizes: { min: Math.min(...sizes), max: Math.max(...sizes), average: sizes.reduce((a, b) => a + b, 0) / sizes.length }, shares };
+}
+
+// ---- 1.5.164 reading and writing weights as numbers (Mix two brains, Stack layers, Take out the refusal habit) ----
+// Only the full-size kinds: F32 (0), F16 (1) and BF16 (30). Anything else is copied byte for byte, never changed.
+export const FLOAT_TYPES = new Set([0, 1, 30]);
+const f16buf = new DataView(new ArrayBuffer(4));
+export function f16ToF32(h) {
+  const s = (h & 0x8000) ? -1 : 1, e = (h >> 10) & 0x1f, m = h & 0x3ff;
+  if (e === 0) return s * m * 2 ** -24;
+  if (e === 31) return m ? NaN : s * Infinity;
+  return s * (1 + m / 1024) * 2 ** (e - 15);
+}
+export function f32ToF16(v) {
+  f16buf.setFloat32(0, v);
+  const x = f16buf.getUint32(0);
+  const sign = (x >>> 16) & 0x8000; let e = ((x >>> 23) & 0xff) - 127 + 15; const m = x & 0x7fffff;
+  if (Number.isNaN(v)) return sign | 0x7e00;
+  if (e >= 31) return sign | 0x7c00; // too big: infinity
+  if (e <= 0) { if (e < -10) return sign; const mm = (m | 0x800000) >> (1 - e); return sign | ((mm + 0x1000) >> 13); }
+  return sign | (e << 10) | ((m + 0x1000) >> 13); // round to nearest
+}
+// A tensor's numbers as Float32Array, from its bytes.
+export function decodeFloats(buf, type) {
+  if (type === 0) return new Float32Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length));
+  const n = buf.length / 2, out = new Float32Array(n);
+  if (type === 1) for (let i = 0; i < n; i++) out[i] = f16ToF32(buf.readUInt16LE(i * 2));
+  else if (type === 30) { for (let i = 0; i < n; i++) { f16buf.setUint32(0, buf.readUInt16LE(i * 2) << 16); out[i] = f16buf.getFloat32(0); } }
+  else throw new Error(`Type ${type} isn't a full-size number type.`);
+  return out;
+}
+// Float32Array back to bytes of the given type.
+export function encodeFloats(arr, type) {
+  if (type === 0) return Buffer.from(arr.buffer, arr.byteOffset, arr.length * 4);
+  const out = Buffer.alloc(arr.length * 2);
+  if (type === 1) for (let i = 0; i < arr.length; i++) out.writeUInt16LE(f32ToF16(arr[i]), i * 2);
+  else if (type === 30) { for (let i = 0; i < arr.length; i++) { f16buf.setFloat32(0, arr[i]); const x = f16buf.getUint32(0); out.writeUInt16LE(((x + 0x7fff + ((x >>> 16) & 1)) >>> 16) & 0xffff, i * 2); } }
+  else throw new Error(`Type ${type} isn't a full-size number type.`);
+  return out;
+}
+// One tensor's bytes from an open file (sync; the callers work one tensor at a time, at most a few hundred MB).
+export function readTensorBytes(fd, g, t) {
+  const b = Buffer.alloc(t.bytes);
+  const got = fs.readSync(fd, b, 0, b.length, g.dataStart + t.offset);
+  if (got !== b.length) throw new Error(`${t.name} ends early in the file.`);
+  return b;
+}
+export const readTensorFloats = (fd, g, t) => decodeFloats(readTensorBytes(fd, g, t), t.type);
+
+// Write a whole new GGUF from a description: the settings (raw bytes copied from a source file, or key/type/value),
+// and the tensors, each with its bytes given by a function (so a 9 GB brain is never held in memory at once).
+//   spec = { version, alignment, kvs: [{ raw: Buffer } | { key, type, value }], tensors: [{ name, dims, type, bytes, data: async () => Buffer }] }
+export async function writeGgufFrom(dst, spec, { onProgress = () => {}, signal } = {}) {
+  const alignment = spec.alignment || 32;
+  const align = (x) => Math.ceil(x / alignment) * alignment;
+  const part = dst + '.part';
+  fs.mkdirSync(path.dirname(dst), { recursive: true });
+  let out = null;
+  try {
+    const parts = [];
+    const head = Buffer.alloc(24); head.write('GGUF', 0, 'latin1'); head.writeUInt32LE(spec.version || 3, 4); head.writeBigUInt64LE(BigInt(spec.tensors.length), 8); head.writeBigUInt64LE(BigInt(spec.kvs.length), 16);
+    parts.push(head);
+    for (const kv of spec.kvs) parts.push(kv.raw ? kv.raw : encodeKv(kv.key, kv.type, kv.value));
+    let off = 0;
+    for (const t of spec.tensors) {
+      const name = Buffer.from(t.name, 'utf8');
+      const b = Buffer.alloc(8 + name.length + 4 + 8 * t.dims.length + 4 + 8);
+      let o = 0; b.writeBigUInt64LE(BigInt(name.length), o); o += 8; name.copy(b, o); o += name.length;
+      b.writeUInt32LE(t.dims.length, o); o += 4; for (const d of t.dims) { b.writeBigUInt64LE(BigInt(d), o); o += 8; }
+      b.writeUInt32LE(t.type, o); o += 4; b.writeBigUInt64LE(BigInt(off), o);
+      t.outOffset = off; off = align(off + t.bytes);
+      parts.push(b);
+    }
+    let header = Buffer.concat(parts);
+    header = Buffer.concat([header, Buffer.alloc(align(header.length) - header.length)]);
+    out = await fs.promises.open(part, 'w');
+    await out.write(header, 0, header.length, 0);
+    const total = spec.tensors.reduce((a, t) => a + t.bytes, 0) || 1;
+    let done = 0;
+    for (const t of spec.tensors) {
+      if (signal?.aborted) throw new Error('Stopped.');
+      const data = await t.data();
+      if (data.length !== t.bytes) throw new Error(`${t.name}: expected ${t.bytes} bytes, got ${data.length}.`);
+      await out.write(data, 0, data.length, header.length + t.outOffset);
+      done += t.bytes; onProgress(done / total);
+    }
+    const end = header.length + (spec.tensors.length ? align(spec.tensors.at(-1).outOffset + spec.tensors.at(-1).bytes) : 0);
+    await out.truncate(end);
+    await out.close(); out = null;
+    fs.renameSync(part, dst);
+    onProgress(1);
+    return { tensors: spec.tensors.length, bytes: fs.statSync(dst).size };
+  } catch (e) {
+    if (out) try { await out.close(); } catch {}
+    try { fs.unlinkSync(part); } catch {}
+    throw e;
+  }
+}
+// The settings of a file as raw byte slices (for writeGgufFrom), with a few replaced or added.
+export function kvsFrom(src, g, { set = {}, add = {} } = {}) {
+  const fd = fs.openSync(src, 'r');
+  try {
+    const out = [], seen = new Set();
+    for (const kv of g.kvs) {
+      if (kv.key in set) { if (kv.type === T.ARRAY) throw new Error(`Can't change ${kv.key}.`); out.push({ key: kv.key, type: kv.type, value: set[kv.key] }); seen.add(kv.key); continue; }
+      const b = Buffer.alloc(kv.end - kv.start); fs.readSync(fd, b, 0, b.length, kv.start); out.push({ raw: b });
+    }
+    for (const k of Object.keys(set)) if (!seen.has(k)) throw new Error(`This file has no setting called ${k}.`);
+    for (const [k, [type, value]] of Object.entries(add)) if (!g.meta[k]) out.push({ key: k, type, value });
+    return out;
+  } finally { fs.closeSync(fd); }
 }
