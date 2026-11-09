@@ -160,20 +160,21 @@ if [ -n "$(plan ".get('benchmark')")" ] || [ -n "$TG" ]; then
 fi
 [ -n "${FORGE_SETUP_ONLY:-}" ] && { kill $WD 2>/dev/null; wait; cat $OUT/llama-setup.log; status done "setup only"; exit 0; }
 TEACHER=$(plan "['teacher']")
+TREV=$(plan ".get('teacher_revision','')"); REV=(); [ -n "$TREV" ] && REV=(--revision "$TREV")   # pin the teacher to one HF revision (the Lab sets it when the owner gives one)
 dl() { hf download "$@" >/dev/null 2>$OUT/hf-dl.log || { echo "download retry (plain)"; HF_HUB_ENABLE_HF_TRANSFER=0 hf download "$@" >/dev/null 2>>$OUT/hf-dl.log; }; }
 TGF=""
 if [ -n "$TG" ]; then
   # build 19: a GGUF teacher (any llama.cpp model on Hugging Face) that only writes lessons through llama-server; no scores, no heal
   TGR=$(plan "['teacher_gguf']['repo']"); TGP=$(plan "['teacher_gguf']['file']")
-  status download "teacher GGUF ($TGR, $TGP)"
-  dl "$TGR" --include "$TGP" --local-dir $S/teacher-gguf || die "teacher GGUF download (see out/hf-dl.log)"
+  status download "teacher GGUF ($TGR, $TGP${TREV:+ @ $TREV})"
+  dl "$TGR" --include "$TGP" --local-dir $S/teacher-gguf "${REV[@]}" || die "teacher GGUF download (see out/hf-dl.log)"
   TGF=$(find $S/teacher-gguf -name "$TGP" -name '*.gguf' | sort | head -1)   # the first part of a split file loads the rest
   [ -f "$TGF" ] || die "no GGUF in $TGR matched $TGP"
   du -sh $S/teacher-gguf; echo "teacher GGUF: $(basename "$TGF")"
   GENERAL_TOKENS=0
 else
-status download "teacher weights ($TEACHER)"
-dl "$TEACHER" --local-dir $S/teacher || die "teacher download (see out/hf-dl.log)"
+status download "teacher weights ($TEACHER${TREV:+ @ $TREV})"
+dl "$TEACHER" --local-dir $S/teacher "${REV[@]}" || die "teacher download (see out/hf-dl.log)"
 [ -f $S/teacher/config.json ] && ls $S/teacher/*.safetensors >/dev/null 2>&1 || die "teacher download incomplete"
 du -sh $S/teacher
 [ "$S" != "$W" ] && echo "volume: $(df -h $S | awk 'NR==2{print $4" free of "$2}') (a trained teacher needs about 70 GB more; the odds about 20 GB)"
