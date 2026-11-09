@@ -18,7 +18,7 @@ import { Brain } from './brain.js';
 import { transcribe } from './stt.js';
 import { ModelShop } from './models.js';
 import { CatalogUpdates } from './catalog-update.js';
-import { checkEngine, seedBundledEngine } from './engines.js';
+import { checkEngine, seedBundledEngine, goBackEngine, removeEngine, brainsEngineSettings, engineChoices } from './engines.js';
 import { autostartOn, setAutostart } from './autostart.js';
 import { applyWindowState } from './app-icon.js';
 import { capabilities } from './capabilities.js';
@@ -76,7 +76,7 @@ const publicDir = path.join(appDir, 'public');
 // llama.cpp speed settings, as the app shows them.
 function speedView() {
   const lc = cfg.llamacpp || {};
-  return { fit: typeof lc.fit === 'boolean' ? lc.fit : null, threads: lc.threads || null, batch: lc.batch || null, ubatch: lc.ubatch || null, ctx: lc.ctx || null, draft: lc.draft || { enabled: false, model: '', max: 16, min: 1, ngld: 99 }, modelArgs: lc.modelArgs || {}, args: lc.args || null, turbo: lc.turbo || {}, trainer: trainerState(cfg).ok }; // 1.5.16x Turbo per brain, the Lab's Trainer pack
+  return { fit: typeof lc.fit === 'boolean' ? lc.fit : null, threads: lc.threads || null, batch: lc.batch || null, ubatch: lc.ubatch || null, ctx: lc.ctx || null, draft: lc.draft || { enabled: false, model: '', max: 16, min: 1, ngld: 99 }, modelArgs: lc.modelArgs || {}, args: lc.args || null, turbo: lc.turbo || {}, trainer: trainerState(cfg).ok, brainEngine: lc.brainEngine !== false, onBrainEngine: /[\\/]brain-engine[\\/]/.test(lc.exe || '') }; // 1.5.16x Turbo per brain, the Lab's Trainer pack
 }
 // 1.5.41 Where Bob saves things, as Settings shows it: the folder now, Bob's own, and whether a picked one has gone.
 // 1.5.79: the memory banks for Settings (general + one per project), and what the last message recalled.
@@ -374,6 +374,18 @@ const server = http.createServer(async (req, res) => {
       try { return send(res, 200, await shop.engineLatest(String(url.searchParams.get('id') || ''))); }
       catch (e) { return send(res, 502, { error: e.message }); }
     }
+    // 1.5.17x Engines rework: Go back (the build kept from before the last update) and Remove (Bob's own copy only).
+    // Both let go of the running brain first when it's one of the brain engines. This replicant matrix only.
+    if (req.method === 'POST' && (p === '/api/engines/back' || p === '/api/engines/remove')) {
+      if (!isLocal) return send(res, 403, { error: 'Engines can only be changed on this replicant matrix itself.' });
+      const b = await body(req).catch(() => ({}));
+      const id = String(b.id || '');
+      try {
+        if (['llamacpp', 'brainengine'].includes(id) && brain.engine?.stopServer) await brain.engine.stopServer();
+        const out = p.endsWith('/back') ? goBackEngine(cfg, id) : removeEngine(cfg, id);
+        return send(res, 200, { ...out, restart: ['llamacpp', 'brainengine'].includes(id) });
+      } catch (e) { return send(res, 409, { error: e.message }); }
+    }
     if (req.method === 'GET' && p === '/api/capabilities') return send(res, 200, capabilities(cfg));
     if (req.method === 'GET' && p === '/api/roles') return send(res, 200, await shop.roles());
     // 1.5.87: each equipped brain, the most it was made for, Bob's pick and the size picked by hand (Settings > Brains).
@@ -609,7 +621,7 @@ const server = http.createServer(async (req, res) => {
           if (b.sessionBrains && typeof b.sessionBrains === 'object') { saveSettings(cfg, { sessionBrains: b.sessionBrains }); out.sessionBrains = sessionBrains(cfg); }
           if (b.activeModels && typeof b.activeModels === 'object') { saveSettings(cfg, { activeModels: b.activeModels }); out.activeModels = cfg.activeModels || {}; } // 1.5.56 Brain catalogue
           if (b.tts && typeof b.tts === 'object') { saveSettings(cfg, { tts: { ...(typeof b.tts.voice === 'string' ? { voice: b.tts.voice } : {}), ...(typeof b.tts.speed === 'number' ? { speed: b.tts.speed } : {}), ...(typeof b.tts.windowsVoice === 'string' ? { windowsVoice: b.tts.windowsVoice } : {}) } }); out.tts = { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice, speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '' }; }
-          if (b.speed && typeof b.speed === 'object') { const sp = Object.fromEntries(Object.entries(b.speed).filter(([k]) => ['threads', 'batch', 'ubatch', 'ctx', 'draft', 'modelArgs', 'args', 'fit', 'turbo'].includes(k))); saveSettings(cfg, { llamacpp: sp }); out.speed = speedView(); }
+          if (b.speed && typeof b.speed === 'object') { const sp = Object.fromEntries(Object.entries(b.speed).filter(([k]) => ['threads', 'batch', 'ubatch', 'ctx', 'draft', 'modelArgs', 'args', 'fit', 'turbo', 'brainEngine'].includes(k))); saveSettings(cfg, { llamacpp: sp }); out.speed = speedView(); if ('brainEngine' in sp) out.restart = true; }
           if (b.sessionCtx && typeof b.sessionCtx === 'object') { saveSettings(cfg, { sessionCtx: b.sessionCtx }); out.sessionCtx = cfg.sessionCtx; }
           // 1.5.87: how much each brain keeps in mind, picked per brain (switch off unless turned on).
           if (typeof b.brainCtxOn === 'boolean') { saveSettings(cfg, { brainCtxOn: b.brainCtxOn }); out.brainCtxOn = cfg.brainCtxOn === true; }
@@ -668,6 +680,10 @@ const server = http.createServer(async (req, res) => {
           if (typeof b.catName === 'string') { saveSettings(cfg, { catName: b.catName }); out.catName = cfg.catName || 'Patches'; }
           if (b.workshop && typeof b.workshop === 'object') { saveSettings(cfg, { workshop: b.workshop }); if (cfg.workshop?.enabled) ensureWorkshop(cfg); out.workshop = workshopView(); }
           if (b.engine === 'ollama' || b.engine === 'llamacpp') { saveSettings(cfg, { engine: b.engine }); out.restart = true; }
+          // 1.5.17x Settings > Engines' ⚙ picker: Brain Engine, llama.cpp or Ollama for Bob's brains (next time he starts).
+          if (typeof b.brainsEngine === 'string' && brainsEngineSettings(b.brainsEngine)) { saveSettings(cfg, brainsEngineSettings(b.brainsEngine)); out.restart = true; out.engineChoices = engineChoices(cfg); }
+          // The Lab's engine: '' (same as Bob's brains), Brain Engine or llama.cpp. Used from the Lab's next job.
+          if (typeof b.labEngine === 'string') { saveSettings(cfg, { labEngine: b.labEngine }); out.engineChoices = engineChoices(cfg); }
           return send(res, 200, out);
         }
       } catch (e) { return send(res, 409, { error: e.message }); }

@@ -27,10 +27,11 @@ export function badModel(m, shipped = null) {
   if (typeof m.name !== 'string' || !m.name.trim() || m.name.length > 80) return 'no name';
   if (typeof m.family !== 'string' || !m.family.trim()) return 'no family';
   if (!m.category || typeof m.category !== 'string') return 'no category';
-  if (m.own === true || m.madeByBob === true) return 'claims to be yours or Bob\'s own';
   // An entry exactly as it ships (same files, same folder) is fine as it is: the shipped list has its own checks, and a
   // few voices are pinned by size only there.
   const same = shipped && JSON.stringify(shipped.files || []) === JSON.stringify(m.files || []) && (shipped.into || '') === (m.into || '');
+  // 1.5.169: Bob's own brains ship in the list now; a fetched list may only carry one exactly as it shipped.
+  if (m.own === true || (m.madeByBob === true && !(same && shipped.madeByBob === true))) return 'claims to be yours or Bob\'s own';
   if (m.into && !same) return 'wants its own folder';
   if (m.published != null && !DATE.test(m.published)) return 'bad release date';
   const files = same ? [] : m.files || [];

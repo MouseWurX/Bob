@@ -349,6 +349,8 @@ export class LlamaCpp {
   buildNo() {
     for (const dir of [path.dirname(this.exePath()), path.join(this.cfg.agentDir, 'llama.cpp')]) {
       try { const n = Number(String(JSON.parse(fs.readFileSync(path.join(dir, 'bob-llamacpp.json'), 'utf8')).version).replace(/^b/, '')); if (n) return n; } catch {}
+      // 1.5.169: Brain Engine's marker names the llama.cpp build it sits on (base).
+      try { const n = Number(String(JSON.parse(fs.readFileSync(path.join(dir, 'bob-brainengine.json'), 'utf8')).base).replace(/^b/, '')); if (n) return n; } catch {}
     }
     return 0;
   }
@@ -429,6 +431,10 @@ export class LlamaCpp {
     // Without fit, every layer goes on the card as before.
     if (this.fitsItself(args, cpu)) args.push('--fit', 'on');
     else if (!args.includes('-ngl')) args.push('-ngl', '999');
+    // 1.5.177: llama-server's own chat page is switched off. Bob is the only chat page; the engine answers only Bob.
+    // (Its plain page looked like a different app when someone opened the engine's address.) --no-webui came in
+    // around llama.cpp b4100; an older or unknown build is left as it was, so it still starts.
+    if (this.buildNo() >= 4100 && !args.includes('--no-webui') && !args.includes('--webui')) args.push('--no-webui');
     // When part of the brain stays in RAM (fit, or experts kept on the processor), read it all in at load instead of
     // letting Windows page it in during the first request. PC test 2026-11-04 (Qwen3.6, --fit, 128K): first reply
     // 27 s -> 1.4 s and RAM 21 -> 12 GB, for about 10 s more load. llamacpp.loadMode "mmap" keeps the old way.

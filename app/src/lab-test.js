@@ -66,7 +66,7 @@ export async function startServer({ exe, gguf, mmproj, ctx = 8192, args = [], cp
   let last = '';
   for (const extra of tries) {
     const port = await freePort();
-    const args = ['-m', gguf, ...(mmproj ? ['--mmproj', mmproj] : []), '--host', '127.0.0.1', '--port', String(port), '-c', String(ctx), '--jinja', ...more, ...extra];
+    const args = ['-m', gguf, ...(mmproj ? ['--mmproj', mmproj] : []), '--host', '127.0.0.1', '--port', String(port), '-c', String(ctx), '--jinja', '--no-webui', ...more, ...extra]; // 1.5.177: no engine chat page (these always use a --fit build)
     log(`llama-server ${args.join(' ')}`);
     const child = spawnFn(exe, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
     let err = '';

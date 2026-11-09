@@ -126,7 +126,7 @@ export const FAMILIES = {
   Piper: 'Voices from the Piper project. Small, quick and run on the processor.',
   Kokoro: 'A pack of natural English voices.',
   Nomic: 'Made by Nomic. Helps Bob find things in his memory.',
-  Bob: 'Brains made for Bob in his own workshop: cut down from bigger open brains so they fit smaller cards, and benchmarked before they reach you. Added from a file with its brain card, under ➕ Your own brains.',
+  Bob: 'Brains made for Bob in his own workshop from open Qwen brains, and benchmarked before they reach you. 28Bob Riker and 35Bob Bobert are in the list and are my picks for their jobs where they run well; others can be added from a file with its brain card, under ➕ Your own brains.',
   'Your own': 'Brains you added from files on this replicant matrix (➕ Your own brains, at the end of the Well behaved list). Bob only knows what each file says about itself.',
   'ACE-Step': 'Made by ACE Studio and StepFun. Makes songs.',
 };

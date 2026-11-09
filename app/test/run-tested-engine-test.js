@@ -41,7 +41,7 @@ const cellar = fs.readFileSync(path.join(here, '..', 'public', 'cellar.js'), 'ut
 check(cellar.includes('data-newest="1"') && cellar.includes("b.dataset.newest ? '@newest' : ''"), 'the "Get newer build" button queues engine:<id>@newest');
 check(cellar.includes('Go back to the tested build ('), 'a newer build can be swapped back for the tested one');
 const help = fs.readFileSync(path.join(here, '..', 'public', 'help-content.js'), 'utf8');
-check(help.includes('<strong>Go back to the tested build</strong>') && help.includes('<strong>Get newer build</strong>'), 'Help names both buttons word for word');
+check(help.includes('<strong>Go back to the tested build</strong>') && help.includes('<strong>Update</strong>'), 'Help names both buttons word for word');
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(failures ? `\n${failures} failed` : '\nAll passed');

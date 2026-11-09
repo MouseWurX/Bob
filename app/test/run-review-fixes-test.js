@@ -78,7 +78,7 @@ check('the folder itself is inside', isInside(work, work));
 // ---------- Engines ----------
 check('a stale pid file is checked against the process name before anything is stopped', /commandLineOf\(old\)/.test(read('src/llamacpp.js')) && /llama-server/.test(read('src/llamacpp.js').match(/const old = Number[\s\S]{0,400}/)[0]));
 check('commandLineOf answers "" for a pid that is gone', await commandLineOf(2 ** 22 - 7) === '' || typeof await commandLineOf(2 ** 22 - 7) === 'string');
-check('the engine swap downloads first, removes the bundled build after', (() => { const s = read('src/engines.js'); return s.indexOf('await grab(asset, stage') < s.indexOf('fs.renameSync(stage, folder)'); })());
+check('the engine swap downloads first, removes the bundled build after', (() => { const s = read('src/engines.js'); return s.indexOf('await grab(asset, stage') < s.indexOf('try { swapIn(folder, stage); }'); })());
 check('music setup unpacks with Bob\'s own unzip, not tar', /unzip\(zip, tmp\)/.test(read('src/audio.js')) && !/run\('tar', \['-xf', zip/.test(read('src/audio.js')));
 check('a timed-out OK card leaves the list', /setTimeout\(\(\) => done\(false\), APPROVAL_TIMEOUT_MS\)/.test(read('src/brain.js')));
 check('the door at start-up never binds every address', !/'0\.0\.0\.0'/.test(read('src/server.js')));

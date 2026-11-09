@@ -679,13 +679,71 @@ export function createCellar() {
   }
 
   // 1.5.98: Engines (the rest of Engines & speed). The fine-tuning sits under More.
+  // 1.5.17x Engines rework: the engine for Bob's brains sits behind a ⚙ (Brain Engine, llama.cpp or Ollama), the Lab
+  // has its own pick, and the engines are grouped and folded. Each engine shows one status with one main button:
+  // Get, Update (swapped in place, the old build kept), Go back, Remove. Updates are told apart by the download's
+  // checksum, so a rebuilt Brain Engine shows as an update even though its name stays the same.
+  const openGroups = new Set(['thinking']); // which engine groups are unfolded, kept across redraws
+  const ENGINE_NAMES = { brainengine: 'Brain Engine', llamacpp: 'llama.cpp', ollama: 'Ollama' };
+  const ENGINE_GROUPS = [['thinking', 'Thinking', 'The engines that run Bob\'s brains.'], ['senses', 'Pictures, sound and hearing', 'Painting, music and sound effects, and turning your voice into text.'], ['voices', 'Voices', 'How Bob reads replies aloud.'], ['helpers', 'Helpers', 'Programs the Hands use for documents, converting and connected apps.']];
+  function engineGearHtml() {
+    const ch = data.engineChoices || {};
+    const be = engineById('brainengine');
+    const beOff = !be || be.available === false;
+    const pick = ch.brainsPick || (settings.engine === 'ollama' ? 'ollama' : 'brainengine');
+    const now = ch.brainsNow || pick;
+    const opts = [
+      ['brainengine', 'Brain Engine', 'Bob\'s own build of llama.cpp. The default. It can also switch a brain\'s experts off without reloading, for the Lab.', beOff ? (be?.note || 'There\'s no Brain Engine build for this replicant matrix yet.') : ''],
+      ['llamacpp', 'llama.cpp', 'The official build, as it comes from the llama.cpp project.', ''],
+      ['ollama', 'Ollama', 'Only if you already have Ollama and want Bob to use it. Ollama has to be running.', '']
+    ];
+    const line = now === pick ? `Bob's brains run on ${ENGINE_NAMES[now]} right now.` : `Bob's brains run on ${ENGINE_NAMES[now]} right now, and on ${ENGINE_NAMES[pick]} from the next time he starts.`;
+    const waiting = pick === 'brainengine' && !beOff && !be.installed ? ' Brain Engine isn\'t here yet: Get it under Thinking, below. Until then Bob uses llama.cpp.' : '';
+    return `<details class="engine-gear"><summary><strong>Engine for brains:</strong> ${esc(ENGINE_NAMES[pick])} <span class="gear-btn" aria-hidden="true">⚙</span><span class="sr-only">, change</span></summary>
+        <fieldset class="engine-pick"><legend>Engine for Bob's brains</legend>${opts.map(([v, label, hint, off]) => `<label class="lab-opt${off ? ' dim' : ''}"><input type="radio" name="brainsEngine" value="${v}" data-brainsengine ${v === pick ? 'checked' : ''} ${off ? 'disabled' : ''}> <span><strong>${esc(label)}</strong>${v === 'brainengine' ? ' <span class="tag good">default</span>' : ''}<br><span class="muted">${esc(off || hint)}</span></span></label>`).join('')}</fieldset>
+        <span class="muted">Takes effect next time Bob starts.</span></details>
+      <p class="muted" data-engine-now>${esc(line + waiting)}</p>`;
+  }
+  function labEngineHtml() {
+    const lab = data.engineChoices?.lab || '';
+    return `<label class="pick"><strong>Engine for the Lab</strong>
+        <select data-labengine aria-label="Engine for the Lab">${[['', 'Same as Bob\'s brains'], ['brainengine', 'Brain Engine'], ['llamacpp', 'llama.cpp']].map(([v, l]) => `<option value="${v}" ${v === lab ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <span class="muted">Which engine the Computer Science Lab makes, tests and runs brains with, from its next job. If a tool is only in one engine's download (the direction finder, say), the Lab still finds it there. The Lab page shows the same choice at the top.</span></label>`;
+  }
+  function engineCard(e) {
+    const ch = data.engineChoices || {};
+    const inUse = [ch.brainsNow === e.id ? 'runs the brains' : '', e.id !== 'llamacpp' && e.id !== 'brainengine' ? '' : (ch.lab === e.id || (!ch.lab && ch.brainsNow === e.id)) ? 'the Lab uses it' : ''].filter(Boolean);
+    const tags = inUse.length ? ` <span class="tag good">${esc(inUse.join(', '))}</span>` : '';
+    let act;
+    if (live.has('engine:' + e.id)) act = progress(live.get('engine:' + e.id));
+    else if (e.installed) {
+      const ver = e.found ? esc(e.found[0].toUpperCase() + e.found.slice(1)) : `Here${e.version ? `: ${esc(e.version)}` : ''}${e.tested && e.version === e.tested ? ', the tested build' : ''}`;
+      act = `<div class="have">✓ ${ver}</div>`
+        + (e.pinned || e.available === false || e.found ? '' : `<button data-checkengine="${esc(e.id)}">Check for updates</button>`)
+        + (e.previous && e.canSwap ? `<button data-engineback="${esc(e.id)}">Go back to ${esc(e.previous)}</button>` : '')
+        + (e.tested && e.version && e.version !== e.tested && !e.found && !e.previous ? `<button data-engine="${esc(e.id)}">Go back to the tested build (${esc(e.tested)})</button>` : '')
+        + (e.own && e.canSwap ? `<button class="link" data-engineremove="${esc(e.id)}">Remove</button>` : '');
+    } else if (e.available === false) act = `<div class="muted">${esc(e.note || 'Not for this replicant matrix yet.')}</div>`;
+    else act = `<button class="get" data-engine="${esc(e.id)}">Get ${esc(e.name)}</button>`;
+    return `<article class="model" id="m-engine:${esc(e.id)}"><header><strong>${esc(e.name)}</strong>${tags}</header><p>${esc(e.what)}</p><div class="act">${act}</div><div class="confirm" hidden></div></article>`;
+  }
+  function ollamaCard() {
+    const on = (data.engineChoices?.brainsNow || settings.engine) === 'ollama';
+    return `<article class="model" id="m-engine:ollama"><header><strong>Ollama</strong>${on ? ' <span class="tag good">runs the brains</span>' : ''}</header><p>A separate program some people already have. Bob doesn't download or update it: get it from ollama.com, and pick it with the ⚙ above if you want Bob to use it.</p></article>`;
+  }
   function enginesHtml() {
-    return `<label class="pick"><strong>Bob's engine</strong>
-        <select data-set="engine"><option value="ollama" ${settings.engine === 'ollama' ? 'selected' : ''}>Ollama (if you already have it)</option><option value="llamacpp" ${settings.engine === 'llamacpp' ? 'selected' : ''}>Bob's own (llama.cpp, nothing else needed)</option></select>
-        <span class="muted">Takes effect next time Bob starts.</span></label>
-      <div><strong>Engine downloads</strong> ${tip('The programs that run the models, from their official GitHub pages, matched to your graphics card.', 'Engine downloads')}
-        ${(data.engines || []).map((e) => `<article class="model" id="m-engine:${esc(e.id)}"><header><strong>${esc(e.name)}</strong></header><p>${esc(e.what)}</p>
-          <div class="act">${live.has('engine:' + e.id) ? progress(live.get('engine:' + e.id)) : e.installed ? `<div class="have">✓ ${e.found ? esc(e.found[0].toUpperCase() + e.found.slice(1)) : `Installed${e.version ? ` (${esc(e.version)})` : ''}`}</div>${e.pinned || e.available === false ? '' : `<button data-checkengine="${esc(e.id)}">Check for a newer build</button>`}${e.tested && e.version && e.version !== e.tested && !e.found ? `<button data-engine="${esc(e.id)}">Go back to the tested build (${esc(e.tested)})</button>` : ''}` : e.available === false ? `<div class="muted">${esc(e.note || 'Not for this replicant matrix yet.')}</div>` : `<button class="get" data-engine="${esc(e.id)}">Get ${esc(e.name)}</button>`}</div><div class="confirm" hidden></div></article>`).join('')}</div>
+    const all = data.engines || [];
+    const groups = ENGINE_GROUPS.map(([id, label, hint]) => {
+      const list = all.filter((e) => (e.group || 'helpers') === id).sort((a, b) => (a.id === 'brainengine' ? -1 : b.id === 'brainengine' ? 1 : 0));
+      const here = list.filter((e) => e.installed).length;
+      const cards = list.map(engineCard).join('') + (id === 'thinking' ? ollamaCard() : '');
+      return `<details class="engine-group" data-egroup="${id}" ${openGroups.has(id) ? 'open' : ''}><summary><strong>${esc(label)}</strong> <span class="muted">${here} of ${list.length} here</span></summary><p class="muted">${esc(hint)}</p>${cards}</details>`;
+    }).join('');
+    return `${engineGearHtml()}
+      ${labEngineHtml()}
+      <div><strong>Engine downloads</strong> ${tip('The programs that run the models, from their official GitHub pages (Brain Engine from Bob\'s own), matched to your graphics card. Update swaps a new build in and keeps the one before, so Go back puts it straight back without downloading. Bob checks a download\'s checksum, so a rebuilt engine with the same name still shows as an update.', 'Engine downloads')}
+        <div class="row"><button type="button" data-checkall>Check all for updates</button></div>
+        ${groups}</div>
       ${qwenHtml()}
       <details class="more"><summary>More</summary>${speedHtml()}</details>`;
   }
@@ -865,7 +923,7 @@ export function createCellar() {
     ['voice', '🔊 Voice details', 'kokoro chatterbox speed hey bob read aloud listen', () => voiceDetailsHtml()],
     ['look', '🌓 Look & feel', 'theme editor now running layout', () => lookExtrasHtml()],
     ['speed', '⚡ Speed & memory', 'speed memory free memory quiet keep alive unload idle graphics card quick answers processor pictures without waiting ready while you type games go first picture settings gaming graphics card borrow automatic never always remember only what fits memory banks recall speed test', () => speedMemoryHtml()],
-    ['engines', '⚙ Engines', 'engine ollama llama.cpp downloads newer build tested build fit to free graphics memory speculative decoding draft flags threads batch', () => enginesHtml()],
+    ['engines', '⚙ Engines', 'engine engines brain engine lab engine gear update updates go back remove check all ollama llama.cpp downloads newer build tested build fit to free graphics memory speculative decoding draft flags threads batch', () => enginesHtml()],
     ['bobnet', '🌐 Bob-Net', 'bob-net bobnet phone android tailscale address passcode firewall let my phone in let my other replicant matrices in other bobs share brains lend borrow take jobs send jobs', () => bobNetHtml()],
     ['online', '☁ Online services', 'online internet cloud helpers api key anthropic openai gemini openrouter telegram bot token pairing rented brains rent hire runpod vast lambda together spending cap limit machine', () => onlineHtml()],
     ['apps', '🔌 Other apps', 'other apps comfyui workflows port unreal blender mcp', () => otherAppsHtml()],
@@ -1361,7 +1419,10 @@ export function createCellar() {
           ? `<p>Download LibreOffice ${esc(eng?.pin || '')} (about 350 MB) from The Document Foundation, checked against its pinned checksum, and unpack it into Bob's own folder (about 1 GB). Nothing is installed in Windows and no admin rights are needed. You can also install LibreOffice yourself from <a href="https://www.libreoffice.org/download/" target="_blank" rel="noopener">libreoffice.org</a>, or use OpenOffice: Bob finds either by himself.</p>`
           : b.dataset.engine === 'ffmpeg'
           ? `<p>Download FFmpeg ${esc(eng?.pin || '')} (Gyan's essentials build, about 100 MB) from GitHub, checked against its pinned checksum, into Bob's own folder. It runs only while it converts.</p>`
+          : b.dataset.engine === 'brainengine'
+          ? `<p>Download Brain Engine from Bob's own GitHub, on top of the tested llama.cpp build (about 700 MB in all with NVIDIA runtime files), checked against GitHub's checksums. It has its own folder, so llama.cpp stays as it is.</p>`
           : `<p>Download ${esc(({ llamacpp: 'llama.cpp', sdcpp: 'stable-diffusion.cpp', whispercpp: 'whisper.cpp', piper: 'Piper' })[b.dataset.engine] || b.dataset.engine)} from GitHub (usually 20 to 600 MB, more with NVIDIA runtime files).</p>`;
+        if (eng?.installed && eng.canSwap) box.innerHTML += `<p class="muted">The new build goes in beside the one you have and takes its place when it's ready. The one you have now is kept, so Go back puts it straight back.${['llamacpp', 'brainengine'].includes(b.dataset.engine) ? ' A brain that is loaded is let go first.' : ''}</p>`;
         box.innerHTML += `<div class="row"><button class="get" data-yes="engine:${esc(b.dataset.engine)}${b.dataset.newest ? '@newest' : ''}">Yes, download</button><button data-no>Cancel</button></div>`;
       }
       else if ('no' in b.dataset) b.closest('.confirm').hidden = true;
@@ -1421,10 +1482,28 @@ export function createCellar() {
       else if ('opendl' in b.dataset) { window.dispatchEvent(new Event('bob-downloads')); }
       else if (b.dataset.use) { const r = await api('/api/models/use', { id: b.dataset.use }); const at = b.parentElement; b.outerHTML = `<span class="have">Saved.</span>`; if (r.needsEngine) askEngine(at); }
       else if (b.dataset.checkengine) {
-        b.textContent = 'Checking...';
+        b.textContent = 'Checking…';
         const r = await api(`/api/engines/latest?id=${encodeURIComponent(b.dataset.checkengine)}`);
-        b.outerHTML = r.newer ? `<button class="get" data-engine="${esc(r.id)}" data-newest="1">Get newer build: ${esc(r.latest)}${r.installed ? ` (you have ${esc(r.installed)}${r.tested && r.installed === r.tested ? ', the tested one' : ''})` : ''}</button>${r.tested ? `<span class="muted">Newer builds haven't been through Bob's speed tests yet. If one gives trouble, <strong>Go back to the tested build</strong> puts ${esc(r.tested)} back.</span>` : ''}` : `<span class="muted">Up to date (${esc(r.latest)}).</span>`;
+        // 1.5.17x: a rebuilt release keeps its name (Brain Engine), so it's fetched as the same release, not "the newest".
+        b.outerHTML = r.newer ? (r.rebuilt ? `<button class="get" data-engine="${esc(r.id)}">Update: a rebuilt ${esc(r.latest)}</button>` : `<button class="get" data-engine="${esc(r.id)}"${r.tested ? ' data-newest="1"' : ''}>Update to ${esc(r.latest)}${r.installed ? ` (you have ${esc(r.installed)}${r.tested && r.installed === r.tested ? ', the tested one' : ''})` : ''}</button>${r.tested ? `<span class="muted">Newer builds haven't been through Bob's speed tests yet. If one gives trouble, <strong>Go back</strong> puts the one you have now back.</span>` : ''}`) : `<span class="muted">Up to date (${esc(r.latest)}).</span>`;
       }
+      else if ('checkall' in b.dataset) { // 1.5.17x Check all for updates: one engine after another, so GitHub isn't asked all at once
+        b.disabled = true; b.textContent = 'Checking…';
+        for (const g of dlg.querySelectorAll('.engine-group')) { g.open = true; openGroups.add(g.dataset.egroup); }
+        for (const c of [...dlg.querySelectorAll('[data-checkengine]')]) { try { c.click(); await new Promise((ok) => { const t = setInterval(() => { if (!c.isConnected) { clearInterval(t); ok(); } }, 150); setTimeout(() => { clearInterval(t); ok(); }, 20000); }); } catch {} }
+        b.textContent = 'Checked'; }
+      else if (b.dataset.engineback) {
+        b.disabled = true;
+        try { const r = await api('/api/engines/back', { id: b.dataset.engineback }); await load(); flashNote(r.restart ? `Back to ${r.version || 'the build before'}. Bob uses it the next time a brain loads.` : `Back to ${r.version || 'the build before'}.`); }
+        catch (err) { b.disabled = false; b.insertAdjacentHTML('afterend', `<span class="error">${esc(err.message)}</span>`); } }
+      else if (b.dataset.engineremove) {
+        const box = b.closest('.model').querySelector('.confirm'), eng = engineById(b.dataset.engineremove);
+        box.hidden = false;
+        box.innerHTML = `<p>Remove Bob's copy of ${esc(eng?.name || b.dataset.engineremove)} (and the build kept for Go back)? Whatever needs it stops working until you Get it again.${b.dataset.engineremove === (data.engineChoices?.brainsNow) ? ' Bob\'s brains run on it right now, so he lets go of the loaded brain first and uses the other engine from his next start.' : ''}</p><div class="row"><button class="get" data-engineremoveyes="${esc(b.dataset.engineremove)}">Remove it</button><button data-no>Keep it</button></div>`; }
+      else if (b.dataset.engineremoveyes) {
+        b.disabled = true;
+        try { await api('/api/engines/remove', { id: b.dataset.engineremoveyes }); await load(); }
+        catch (err) { b.disabled = false; b.insertAdjacentHTML('afterend', `<span class="error">${esc(err.message)}</span>`); } }
       else if (b.dataset.switchengine) { await api('/api/settings', { engine: b.dataset.switchengine }); settings.engine = b.dataset.switchengine; b.closest('.confirm').outerHTML = '<span class="have">Switched. Restart Bob to use his own engine.</span>'; }
       else if ('scan' in b.dataset) { b.textContent = 'Looking...'; await api('/api/models/scan', {}); await load(); }
       else if ('welcome' in b.dataset) { mode = 'welcome'; draw(); }
@@ -1614,6 +1693,8 @@ export function createCellar() {
       else if (el.dataset.cloud) { const r = await api('/api/settings', { cloudHelpers: { [el.dataset.cloud]: { enabled: el.checked } } }); cloud = r.cloud || cloud; flash(el.closest('.cloud'), el.checked ? 'On. Bob still asks every time.' : 'Off.'); }
       else if (el.dataset.cloudmodel) { const r = await api('/api/settings', { cloudHelpers: { [el.dataset.cloudmodel]: { model: el.value.trim() } } }); cloud = r.cloud || cloud; flash(el, 'Saved.'); }
       else if (el.dataset.set === 'engine') { await api('/api/settings', { engine: el.value }); settings.engine = el.value; }
+      else if ('brainsengine' in el.dataset) { const r = await api('/api/settings', { brainsEngine: el.value }); data.engineChoices = r.engineChoices || data.engineChoices; settings.engine = el.value === 'ollama' ? 'ollama' : 'llamacpp'; draw(); flashNote('Saved. Takes effect next time Bob starts.'); }
+      else if ('labengine' in el.dataset) { const r = await api('/api/settings', { labEngine: el.value }); data.engineChoices = r.engineChoices || data.engineChoices; draw(); flashNote('Saved. The Lab uses it from its next job.'); }
       else if ('pack' in el.dataset) { hw.suggestedPack = el.value; wPicks = null; draw(); }
       else if ('wpick' in el.dataset) { const { rows } = welcomeRows(); wPicks = readyToggle(rows, wPicks, el.dataset.wpick, el.checked); draw(); }
       else if (el.dataset.role && el.value) {
@@ -1627,6 +1708,7 @@ export function createCellar() {
     } catch (err) { alertIn(el, err.message); if (el.type === 'checkbox') el.checked = !el.checked; }
   };
   dlg.addEventListener('change', async (e) => { try { await onChange(e); } finally { refreshHowSum(); } });
+  dlg.addEventListener('toggle', (e) => { const g = e.target; if (g?.classList?.contains('engine-group')) { if (g.open) openGroups.add(g.dataset.egroup); else openGroups.delete(g.dataset.egroup); } }, true);
 
   // The update's steps, read from the same status file the update window writes.
   // 1.5.117: a downloaded, checked update shows on the closed updates panel's line, with Restart Bob now.
@@ -1660,6 +1742,7 @@ export function createCellar() {
     where.appendChild(box);
   }
 
+  const flashNote = (msg) => { const at = dlg.querySelector('[data-engine-now]'); if (at) flash(at, msg); };
   function flash(el, msg) {
     const s = document.createElement('span');
     s.className = 'have saved'; s.textContent = ' ' + msg;

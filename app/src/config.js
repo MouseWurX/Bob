@@ -68,7 +68,7 @@ export function loadConfig() {
   // Engine programs: zips differ (some put them in bin\ or Release\), so look in each likely place.
   cfg.painter.sdcpp.exe = findExe(cfg.painter.sdcpp.exe, path.join(cfg.agentDir, 'sd.cpp'), [exeName('sd-cli'), exeName('sd')]);
   cfg.llamacpp = cfg.llamacpp || {};
-  cfg.llamacpp.exe = findExe(cfg.llamacpp.exe, path.join(cfg.agentDir, 'llama.cpp'), [exeName('llama-server')]);
+  cfg.llamacpp.exe = pickLlamaExe(cfg.llamacpp.exe, cfg.agentDir, { brainEngine: cfg.llamacpp.brainEngine });
   if (cfg.stt?.provider === 'whispercpp') cfg.stt.exe = findExe(cfg.stt.exe, path.join(cfg.agentDir, 'whisper.cpp'), [exeName('whisper-cli')]);
   cfg.tts = cfg.tts || {};
   cfg.tts.exe = findExe(cfg.tts.exe, path.join(cfg.agentDir, 'piper'), [exeName('piper')]);
@@ -127,6 +127,24 @@ export function loadConfig() {
 }
 
 // The configured program if it exists; otherwise the first match in the engine folder, its bin\ or Release\ subfolder.
+// 1.5.169: Brain Engine (Bob's fork of llama.cpp, Get models > Engines) is the default engine for brains. When its
+// folder holds llama-server, Bob runs his brains on it, unless Settings, Engines says plain llama.cpp
+// (llamacpp.brainEngine false). A llama-server set by hand somewhere else always wins; one set to Bob's own llama.cpp
+// folder counts as the default. No Brain Engine (a Mac, an ARM board, not downloaded): llama.cpp as before.
+export function pickLlamaExe(configured, agentDir, { brainEngine, platform = process.platform, exists = fs.existsSync } = {}) {
+  const everyday = path.join(agentDir, 'llama.cpp'), be = path.join(agentDir, 'brain-engine');
+  const within = (dir, p) => { const r = path.relative(dir, p); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };
+  if (configured && exists(configured) && !within(everyday, configured) && !within(be, configured)) return configured;
+  const name = platform === 'win32' ? 'llama-server.exe' : 'llama-server';
+  const look = (dir, subs) => { for (const sub of subs) { const p = path.join(dir, sub, name); if (exists(p)) return p; } return null; };
+  if (brainEngine !== false) { const p = look(be, ['', 'bin']); if (p) return p; }
+  if (configured && exists(configured) && within(everyday, configured)) return configured;
+  const p = look(everyday, ['', 'bin', 'Release', path.join('build', 'bin')]);
+  if (p) return p;
+  if (platform === 'linux') { const q = onPath(name); if (q) return q; }
+  return configured && !within(be, configured) ? configured : path.join(everyday, name);
+}
+
 export function findExe(configured, dir, names, platform = process.platform) {
   if (configured && fs.existsSync(configured)) return configured;
   // Linux and Mac programs have no .exe; on Linux one the distro installed (on the PATH) counts too.
@@ -155,7 +173,7 @@ export const VERSION = (() => {
   } catch { return { release: '0.9', branch: '', build: 0, label: '0.9.0' }; }
 })();
 
-export const SETTING_KEYS = ['planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro'];
+export const SETTING_KEYS = ['planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -195,6 +213,7 @@ function clean(patch) {
   if ('ownModels' in out) out.ownModels = cleanOwnModels(out.ownModels); // 1.5.135 brains of your own (GGUF files on this replicant matrix)
   if ('computerLab' in out) out.computerLab = out.computerLab !== false; // 1.5.172 "Show the Computer Science Lab", on unless switched off (was off until 1.5.171)
   if ('labForgeStart' in out) out.labForgeStart = out.labForgeStart === true; // 1.5.160 "Let the Lab start Forge runs", off unless switched on
+  if ('labEngine' in out) out.labEngine = ['brainengine', 'llamacpp'].includes(out.labEngine) ? out.labEngine : ''; // 1.5.17x the Lab's engine: '' = the same as Bob's brains
   if ('labPro' in out) out.labPro = out.labPro === true; // 1.5.168 the Lab's Professional mode: more controls on every tab; off = Keep it simple
   if ('qwenPresets' in out) out.qwenPresets = cleanPresets(out.qwenPresets); // 1.5.148 "Choose my own word settings", off unless switched on
   if ('howtos' in out) out.howtos = out.howtos === true; // 1.5.79 "Let Bob learn how-tos", off by default
@@ -284,6 +303,7 @@ function cleanLlamacpp(lc) {
   for (const k of ['threads', 'batch', 'ubatch', 'ctx']) if (k in out) out[k] = Number.isInteger(out[k]) && out[k] > 0 && out[k] <= 1048576 ? out[k] : null;
   if ('fit' in out) out.fit = typeof out.fit === 'boolean' ? out.fit : null;
   if ('noEyes' in out) out.noEyes = Array.isArray(out.noEyes) ? [...new Set(out.noEyes.filter((x) => typeof x === 'string' && /^[\w.:/-]{1,100}$/.test(x)))].slice(0, 200) : []; // Lab: brains loaded without their reader
+  if ('brainEngine' in out) out.brainEngine = out.brainEngine !== false; // 1.5.169: run brains on Brain Engine when it's here
   if ('loadMode' in out) out.loadMode = out.loadMode === 'mmap' ? 'mmap' : 'auto'; // 1.5.90
   if ('draft' in out) {
     const d = out.draft || {};

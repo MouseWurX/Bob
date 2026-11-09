@@ -260,7 +260,7 @@ export function createLab({ api, note }) {
         ${cut.how === 'file' ? `<p><label>Expert list file <input id="lab-keep-file" type="text" value="${esc(cut.file)}"></label></p>` : ''}
         <fieldset><legend>How many experts to keep per layer</legend>${cut.how === 'cover' ? radio('keep', 'auto', !cut.keep, 'As many as the skills need (recommended)', 'Bob works it out after counting. The report says how many, and how much of each skill stayed.') : ''}${cutSizes.map((c) => radio('keep', String(c.keep), cut.keep === c.keep, `${c.keep} experts · about ${c.gb} GB`, c.fit)).join('')}
         <label class="lab-opt"><input type="radio" name="keep" value="custom" ${!cut.keep || cutSizes.some((c) => c.keep === cut.keep) ? '' : 'checked'}> <span><strong>Custom</strong> <input id="lab-keep-n" type="number" min="${f.used || 1}" max="${(f.experts || 2) - 1}" value="${cut.keep || ''}" aria-label="Experts to keep per layer"></span></label></fieldset>
-        ${box('try', s.try, 'Try it first, before cutting', `Brain Engine runs ${b?.name || 'the brain'} with only the kept experts switched on and gives it the Lab test, so you see the score before any file is written. It counts as the test of ${b?.name || 'the brain'} too.`, view.brainEngine ? '' : 'Needs Brain Engine, Bob\'s Lab engine (a version of llama.cpp that can switch experts off). Get it in Get models > Engines: Brain Engine (test build).')}
+        ${box('try', s.try, 'Try it first, before cutting', `Brain Engine runs ${b?.name || 'the brain'} with only the kept experts switched on and gives it the Lab test, so you see the score before any file is written. It counts as the test of ${b?.name || 'the brain'} too.`, view.brainEngine ? '' : 'Needs Brain Engine, Bob\'s Lab engine (a version of llama.cpp that can switch experts off). Get it in Get models > Engines: Brain Engine.')}
         ${s.try ? `<div class="lab-sub">${box('tryStop', s.tryStop, 'Stop if it scores more than 10 points lower on the Lab test', 'Then nothing is cut, and you can keep more experts or protect more skills.')}</div>` : ''}
       </div>` : ''}
       ${later('Layer cut (Experimental)', 'Fewer layers: the least-used ones, measured on your lessons.')}
@@ -386,7 +386,10 @@ export function createLab({ api, note }) {
     // shows every control a tab has. Saved in settings, so it's the same next time and on every tab.
     const pro = view.mode === 'pro';
     const modeRow = `<div class="lab-mode" role="radiogroup" aria-label="How much to show"><button type="button" class="lab-chip${pro ? '' : ' on'}" role="radio" aria-checked="${!pro}" data-labmode="simple">Keep it simple</button><button type="button" class="lab-chip${pro ? ' on' : ''}" role="radio" aria-checked="${pro}" data-labmode="pro">Professional</button><span class="muted">${pro ? 'Every control, on every tab. The simple way still works.' : 'The usual choices. Professional shows every control a tab has.'}</span></div>`;
-    const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}</div>${modeRow}`;
+    // 1.5.17x The Lab's engine, on every tab: which one it makes, tests and runs brains with (also in Settings > Engines).
+    const en = view.engine || {};
+    const engineRow = `<div class="lab-engine row"><label class="pick-inline"><span>Lab engine</span><select data-labengine aria-label="Lab engine">${[['', 'Same as Bob\'s brains'], ['brainengine', 'Brain Engine'], ['llamacpp', 'llama.cpp']].map(([v, l]) => `<option value="${v}" ${v === (en.pick || '') ? 'selected' : ''} ${v === 'brainengine' && !en.brainEngineHere ? 'disabled' : ''}>${l}${v === 'brainengine' && !en.brainEngineHere ? ' (not here yet)' : ''}</option>`).join('')}</select></label><span class="muted">${en.found ? `Working with ${esc(en.name || 'llama.cpp')}${en.version ? ` (${esc(en.version)})` : ''}.` : 'No engine found yet: get one in Get models, Engines.'}</span></div>`;
+    const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}</div>${modeRow}${engineRow}`;
     if (tab === 'learn') { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-learn" role="tabpanel" aria-labelledby="lab-tab-learn"></div></div>`; learn.mount($('lab-page-learn')); return; }
     if (tab === 'challenges') { body.innerHTML = `<div class="lab">${tabs}${challengesHtml()}</div>`; return; }
     if (tab === 'forge') { body.innerHTML = `<div class="lab">${tabs}${fg.html(sn.html())}</div>`; return; }
@@ -420,6 +423,7 @@ export function createLab({ api, note }) {
 
   body.addEventListener('change', async (e) => {
     const el = e.target; msg = '';
+    if ('labengine' in el.dataset) { try { view.engine = await api('/api/lab/engine', { engine: el.value }); } catch (err) { msg = err.message; } await replan(); $('lab-body')?.querySelector('[data-labengine]')?.focus(); return; } // 1.5.17x
     if (tab === 'learn') return; // the Learn tab listens for itself
     { const f = await sn.change(el); if (f) { if (f === 'draw') { draw(); $(el.id)?.focus(); } return; } }
     { const f = await fg.change(el); if (f) { draw(); $(el.id)?.focus(); return; } }

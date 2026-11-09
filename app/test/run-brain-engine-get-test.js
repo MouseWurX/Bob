@@ -1,4 +1,4 @@
-// 1.5.157 Get Brain Engine (Get models, Engines): only while the Lab is on; the official llama.cpp build of the tested
+// 1.5.157 Get Brain Engine (Get models, Engines). 1.5.169: listed for everyone and the default engine for brains. The official llama.cpp build of the tested
 // tag goes in its own brain-engine folder with Brain Engine's own files on top, both checked against GitHub's sha256;
 // Bob's everyday llama.cpp folder is never touched. Fake GitHub, real archives.
 // Run: node test/run-brain-engine-get-test.js
@@ -9,6 +9,8 @@ import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { installEngine, engineStatus, TESTED_LLAMA, ENGINES, engineFor } from '../src/engines.js';
 import { OS } from '../src/platform.js';
+import { pickLlamaExe } from '../src/config.js';
+import { enginesFor } from '../public/equip.js';
 
 let failures = 0;
 const check = (ok, name) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`); if (!ok) failures++; };
@@ -16,11 +18,30 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-be-'));
 const cfg = { agentDir: path.join(tmp, 'Agent'), computerLab: true };
 fs.mkdirSync(cfg.agentDir, { recursive: true });
 
-check(!engineStatus({ agentDir: cfg.agentDir, computerLab: false }).some((e) => e.id === 'brainengine'), 'Brain Engine isn\'t listed while the Lab is switched off (1.5.172: the Lab is on unless switched off)');
-const st = engineStatus(cfg).find((e) => e.id === 'brainengine');
-check(st && /test build/.test(st.name) && /Based on llama\.cpp, not an official build/.test(st.what) && st.pinned, 'with the Lab on it is listed, named a test build, not official llama.cpp, and pinned');
+const st = engineStatus({ agentDir: cfg.agentDir }).find((e) => e.id === 'brainengine');
+check(st && st.name === 'Brain Engine' && /default engine/.test(st.what) && /Based on llama\.cpp, not an official build/.test(st.what) && !st.pinned, 'it is listed with the Lab off too, as the default engine, not official llama.cpp, with a Check for updates (rebuilds keep the name)');
 check(ENGINES.find((e) => e.id === 'brainengine').tag === `brain-engine-${TESTED_LLAMA}`, 'it is pinned to the pre-release for the tested llama.cpp tag');
-check(await installEngine({ ...cfg, computerLab: false }, 'brainengine', { pub: {}, tick: () => {} }).then(() => false, (e) => /Lab on first/.test(e.message)), 'Get is refused while the Lab is off');
+
+// 1.5.169: which llama-server Bob runs brains on (fake folders, no real computer).
+{
+  const A = path.join('X', 'Agent'), win = (p) => p;
+  const here = (...files) => (p) => files.includes(p);
+  const be = path.join(A, 'brain-engine', 'llama-server.exe'), lc = path.join(A, 'llama.cpp', 'llama-server.exe'), mine = path.join('D', 'tools', 'llama-server.exe');
+  check(pickLlamaExe(lc, A, { platform: 'win32', exists: here(be, lc) }) === be, 'Brain Engine here: brains run on it, even when config names Bob\'s own llama.cpp folder');
+  check(pickLlamaExe(undefined, A, { platform: 'win32', exists: here(be, lc) }) === be, 'nothing set by hand: Brain Engine');
+  check(pickLlamaExe(lc, A, { brainEngine: false, platform: 'win32', exists: here(be, lc) }) === lc, 'switched off in Settings: plain llama.cpp');
+  check(pickLlamaExe(be, A, { brainEngine: false, platform: 'win32', exists: here(be, lc) }) === lc, 'switched off while config still names Brain Engine: plain llama.cpp');
+  check(pickLlamaExe(mine, A, { platform: 'win32', exists: here(be, lc, mine) }) === mine, 'a llama-server set by hand somewhere else always wins');
+  check(pickLlamaExe(undefined, A, { platform: 'win32', exists: here(lc) }) === lc, 'no Brain Engine (a Mac, an ARM board, not downloaded): llama.cpp as before');
+  check(win(pickLlamaExe(undefined, A, { platform: 'linux', exists: here(path.join(A, 'brain-engine', 'llama-server')) })) === path.join(A, 'brain-engine', 'llama-server'), 'Linux: the program has no .exe');
+  const gguf = { files: [{ role: 'gguf' }] };
+  const beE = { id: 'brainengine', available: true, installed: false }, lcE = { id: 'llamacpp', available: true, installed: false };
+  check(enginesFor([gguf], [lcE, beE]).join() === 'engine:brainengine', 'Get Bob ready gets Brain Engine for brains');
+  check(enginesFor([gguf], [{ ...lcE, installed: true }, beE]).join() === 'engine:brainengine', '...even beside the llama.cpp that came with Bob');
+  check(enginesFor([gguf], [lcE, { ...beE, installed: true }]).length === 0, 'Brain Engine here: nothing more to get');
+  check(enginesFor([gguf], [lcE, { ...beE, available: false }]).join() === 'engine:llamacpp', 'no Brain Engine build for this computer: llama.cpp');
+  check(enginesFor([gguf], [lcE]).join() === 'engine:llamacpp', 'an engine list without Brain Engine: llama.cpp');
+}
 
 const e = engineFor(ENGINES.find((x) => x.id === 'brainengine'));
 if (e.unavailable) {

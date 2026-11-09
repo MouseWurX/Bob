@@ -4,6 +4,29 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.177
+
+Brain Engine and Riker become the defaults, and the Engines list gets a rework.
+
+- **Brain Engine is the default engine for brains.** It's listed with or without the Lab, says plainly it's based on llama.cpp and not an official build, and has a real **Check for updates**.
+- **Riker is the default Brain** in the catalog (Q4, or Q3 on an 8 GB card), from its public Hugging Face page.
+- **⚙ engine picker** (Settings, Engines): choose which engine runs the brains next time, and which one the Lab uses. Updates check the download's checksum and keep the one before, so **Go back** works; **Remove it** / **Keep it** asks before anything goes. Engines are grouped so the list is easier to read.
+- The Lab finds its tools (the direction finder, the adapter folder) in either download.
+- A Brain Engine copied into its folder by hand (with no note of which build it is) is no longer offered the very same build by **Check for updates**; only a newer upload shows. Thanks to the owner's test round for catching it.
+- **Pick a file and Pick a folder open on top of Bob's window.** In Bob's own window they're now the system's own picker, in front of him (before, Add a brain from a file could open behind him, or not at all). Windows, Mac and Linux; the phone has no picker, so adding brains stays on the replicant matrix.
+- **The engine's own chat page is off.** llama.cpp and Brain Engine come with a plain chat page that looks like another app; Bob switches it off when he starts a brain, so the only page you chat on is his. Help: a new FAQ, "I loaded a brain and the page looked like a different app".
+
+### Also in this update (1.5.170 to 1.5.176)
+
+These came out together with 1.5.177, so here they are in one place. Each has its own section in the changelog.
+
+- **Your files moved into one folder (1.5.174).** Bob's files now live in `app`, so his GitHub page only shows the README, the changelog and the licence. If you run Bob from a copy of the source, the first update after this needs **Update Bob from GitHub** once (or one run of `app\Install Bob.cmd`); after that Bob finds his new folder by himself.
+- **The main screen always fits the window (1.5.176).** No more scrolling into empty space below the three panels; only the chat, Bob's thinking, the task queue, Now running, the menu and open pages scroll.
+- **Word bubbles (1.5.170).** Bob's and Patches' lines pop out in little bubbles beside Bob's picture, close by themselves after 15 seconds (not while you point at one), or with ✕ or Esc. Fixes #36; thanks to mohdmunis161 for the first go at it in #62.
+- **The Lab is in the left pane from the start (1.5.172).** The switch in Settings stays, and anyone who turned it off stays off.
+- **Challenge times for your own card (1.5.171).** The Lab's Challenges tab scales its estimate to this replicant matrix's card, or its shared memory on a Mac. The Lab's goals point to Get models > Engines for Brain Engine, and a goal's printed Forge plan now matches what the Forge reads.
+- **Bring in a full-size brain (1.5.173).** In the Lab's Forge tab: paste a Hugging Face name, a .gguf link or a file path, **Look**, then **Get it**. Your own brains show in the Lab's lists too, and the Lab finds the direction finder and adapter tool in Brain Engine's folder.
+
 ## 1.5.176
 
 - **Bob's main screen always fits the window.** The page itself no longer scrolls down into empty space below the three panels, at any window size or screen scale. Only the parts that should scroll still do: the chat, Bob's thinking, the task queue, Now running, the menu and any page you open. Thanks to the owner for spotting it.

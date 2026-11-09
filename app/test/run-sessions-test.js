@@ -112,10 +112,12 @@ check('session context: only the offered sizes', m.sessionCtx.deep === 131072 &&
 check('session context reaches the brain', modelFor({ ...cfg({ session: 'coding' }), sessionCtx: { coding: 131072 } }, 'bob').ctx === 131072 && modelFor(cfg({ session: 'coding' }), 'bob').ctx === null);
 check('Normal chat defaults to 32K; coding copies keep the long default', modelFor(cfg(), 'bob').ctx === 32768 && modelFor(cfg(), 'tinker').ctx === null);
 check('--fit is off on an old llama.cpp (no version file)', !lc.buildArgs('small').includes('--fit'));
+check('1.5.177: an unknown llama.cpp keeps its own page flags untouched (no --no-webui), so it still starts', !lc.buildArgs('small').includes('--no-webui'));
 fs.mkdirSync(path.join(tmp, 'llama.cpp'), { recursive: true });
 fs.writeFileSync(path.join(tmp, 'llama.cpp', 'bob-llamacpp.json'), JSON.stringify({ version: 'b12032' }));
 check('--fit on with b12032 when nothing is pinned', (() => { const x = lc.buildArgs('small'); return x[x.indexOf('--fit') + 1] === 'on'; })());
 check('--fit stays off when a brain has a pinned split', !lc.buildArgs('big').includes('--fit'));
+check('1.5.177: the engine\'s own chat page is switched off (--no-webui), so only Bob\'s page chats', lc.buildArgs('small').includes('--no-webui') && lc.buildArgs('big').includes('--no-webui'));
 lcfg.llamacpp.fit = false;
 check('--fit can be switched off', !lc.buildArgs('small').includes('--fit'));
 fs.rmSync(tmp, { recursive: true, force: true });

@@ -257,6 +257,17 @@ globalThis.bobImage = {
   }
 };
 
+// 1.5.177: the "pick a file" and "pick a folder" windows. Bob's brain runs in this program, so Electron's own picker
+// opens on top of Bob's window. The old PowerShell helper could open behind Bob, or not show at all. Returns the
+// path, or '' when cancelled. filters: [{ name, extensions }]; folder: true picks a folder (newFolder lets you make one).
+globalThis.bobPick = async ({ title = '', filters, folder = false, newFolder = false } = {}) => {
+  const owner = win && !win.isDestroyed() ? win : undefined;
+  if (owner) { if (owner.isMinimized()) owner.restore(); if (!owner.isVisible()) owner.show(); owner.focus(); }
+  const props = folder ? ['openDirectory', ...(newFolder ? ['createDirectory'] : [])] : ['openFile'];
+  const r = await dialog.showOpenDialog(owner, { title, properties: props, ...(filters && !folder ? { filters } : {}) });
+  return r.canceled || !r.filePaths?.length ? '' : r.filePaths[0];
+};
+
 // Right-click: the usual Cut, Copy, Paste and Select all, plus links and pictures.
 function contextMenu(win, base) {
   win.webContents.on('context-menu', (e, p) => {

@@ -2,13 +2,14 @@
 // Windows: PowerShell's FolderBrowserDialog on top of Bob's window. Mac: AppleScript's choose folder. Linux: zenity or kdialog.
 // Returns the folder, or '' if cancelled.
 import { execFile } from 'node:child_process';
+import { PS_OWNER } from './own-models.js';
 
 // 1.5.41: also for Settings > Where Bob saves things ('save'), where making a new folder is allowed.
 // 1.5.125: and for Bob's home folder ('home'): his models, programs, notes and settings.
 const script = (purpose) => [
   '[Console]::OutputEncoding = [Text.Encoding]::UTF8',
   'Add-Type -AssemblyName System.Windows.Forms',
-  '$owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true; ShowInTaskbar = $false }',
+  ...PS_OWNER, // 1.5.177: shown and brought to the front first, so the picker opens on top
   '$d = New-Object System.Windows.Forms.FolderBrowserDialog',
   purpose === 'bundle' ? "$d.Description = 'Pick where Bob saves the help bundle'" : purpose === 'save' ? "$d.Description = 'Pick the folder Bob saves pictures, clips, songs and sounds in'" : purpose === 'home' ? "$d.Description = 'Pick the folder Bob keeps his things in (models, programs, notes, settings). An empty folder, or a new one.'" : "$d.Description = 'Pick a project folder for Bob'",
   ['save', 'bundle', 'home'].includes(purpose) ? '$d.ShowNewFolderButton = $true' : '$d.ShowNewFolderButton = $false',
@@ -19,7 +20,11 @@ const script = (purpose) => [
 // Mac: AppleScript's "choose folder" (part of macOS). The prompt is fixed text, never anything typed by someone.
 const macScript = (purpose) => `POSIX path of (choose folder with prompt "${purpose === 'bundle' ? 'Pick where Bob saves the help bundle' : purpose === 'save' ? 'Pick the folder Bob saves pictures, clips, songs and sounds in' : purpose === 'home' ? 'Pick the folder Bob keeps his things in (an empty or new folder)' : 'Pick a project folder for Bob'}")`;
 
-export function pickFolder({ run = execFile, platform = process.platform, purpose = 'project' } = {}) {
+const TITLES = { bundle: 'Pick where Bob saves the help bundle', save: 'Pick the folder Bob saves pictures, clips, songs and sounds in', home: 'Pick the folder Bob keeps his things in (an empty or new folder)', project: 'Pick a project folder for Bob' };
+
+export function pickFolder({ run = execFile, platform = process.platform, purpose = 'project', pick = globalThis.bobPick } = {}) {
+  // 1.5.177: in Bob's own window, Electron's picker on top of it (globalThis.bobPick, lent by electron/main.cjs).
+  if (typeof pick === 'function') return Promise.resolve(pick({ title: TITLES[purpose] || TITLES.project, folder: true, newFolder: ['save', 'bundle', 'home'].includes(purpose) })).then((f) => String(f || ''));
   if (platform === 'darwin') {
     return new Promise((resolve, reject) => {
       run('/usr/bin/osascript', ['-e', macScript(purpose)], { timeout: 10 * 60e3 }, (err, out, stderr) => {
