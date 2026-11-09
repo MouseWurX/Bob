@@ -16,16 +16,7 @@ The teacher is [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (A
 
 The first ladder (4 November) had nine rungs named by billions of parameters: 24, 18, 12, 10, 8, 6, 5, 4 and 2. After the coverage table was measured (6 November, entry 11 below), the top rungs moved up and the ladder was redrawn. A Bob's name is its size; the nickname is a label and follows the rung, so "Riker" is now the 28-billion Bob.
 
-| Rung | Nickname | Experts kept per layer (of 256) | File at Q4, about | Meant for | State |
-|---|---|---|---|---|---|
-| 35Bob | Bobert | 256 (no cut; trained on every lesson) | 21 GB | 24 GB cards, or 16 GB with experts in RAM; the teacher of every Bob below | in the making (run started 8 Nov) |
-| 28Bob | Riker | 208 | 17.5 GB | a 16 GB card with experts spilling into RAM, or the Q3 file | made 6 Nov, benchmarked and kept 8 Nov |
-| 20Bob | Bill | 144 | 12.7 GB | a 16 GB card entirely | not made yet (the 128-expert v1 and v2 were deleted 8 Nov); cut from Bobert, not from Riker |
-| 14Bob | Homer | 96 | 9 GB | 8 GB cards and gaming handhelds | planned |
-| 10Bob | Milo | 64 | 6.6 GB | small cards, big phones | planned |
-| 7Bob | Luke | 40 | 4.6 GB | phones | planned |
-| 5Bob | Calvin | 24 | 3.3 GB | phones, the quick brain | planned, kept only if it beats a stock 4B model |
-| 2Bob | Bender | 8, then cut in depth and width too | ~1.3 GB | anything, including a Raspberry Pi | stretch goal, last |
+The rungs, from 35Bob Bobert at the top down to 2Bob Bender, with experts kept, file sizes, what each is for and where each stands, are in the ladder table of [the proposal](PROPOSAL.md#31-the-ladder); [Bob's own models](BOBS-OWN-MODELS.md#the-family) has the same ladder with the reasons behind it.
 
 Each rung below Riker is cut from the healed Bob above it (step-down ladder), with the keep list built per skill so that every skill keeps about 95% of its routing in every layer (99% for tools, coding and formats). Every Bob ships at Q4 and Q3 and shares the teacher's vision file.
 

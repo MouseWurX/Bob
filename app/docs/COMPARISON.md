@@ -8,12 +8,13 @@ This list isn't complete and isn't a ranking. The order means nothing.
 
 ## What Bob is
 
-Bob is a free, open-source AI helper for Windows 10 and 11 that runs on your own PC. In one desktop window he offers:
+Bob is a free, open-source AI helper that runs on your own computer: Windows 10 and 11, a Mac with Apple Silicon, Linux and a Raspberry Pi, with a phone app for Android. In one desktop window he offers:
 
 - chat, plans, reminders, research and coding help, using AI models that run on your PC
 - pictures, short video, music, sound effects and a speaking voice, from models he downloads only when you confirm
 - "Hands" (each one off until you switch it on): file jobs, running programs you approve, schedules, and clicking and typing in other apps, working inside apps such as Unreal Engine and Blender through their MCP add-ons, office documents, and a security and privacy sidekick (Defender checks, suspicious files and emails, hidden photo details, website checks), with an approval card for each action unless you choose otherwise
 - sessions (Normal, Art, Coding, Office, Gaming) that decide how Bob shares your PC, including a Gaming session that keeps the graphics card for your games
+- the Computer Science Lab: make your own brain from one you have (cut experts, take out sight or hearing, mix two brains), test it on short challenges and see inside it, with every command shown
 - a character: a dry-humoured digital engineer with his own looks, voices and personality settings
 
 Bob's code is GPL-3.0-or-later and his art and writing are CC BY-SA 4.0. He has no accounts and sends no telemetry, and anything that reaches the internet (web search, cloud helpers, phone access) is off until you switch it on. Downloads wait for you to confirm them. See the [README](../../README.md), the [user guide](USER-GUIDE.md) and the [privacy policy](legal/PRIVACY.md).
