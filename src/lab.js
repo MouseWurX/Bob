@@ -26,7 +26,9 @@ import { parseHfRef, hfLookup } from './lab-hf.js'; // 1.5.163
 import { PACKS, PACK_IDS, runPack, mergeScores, readScores, scoreboard, scoreFile, codeTool, CLASSES } from './lab-challenges.js'; // 1.5.153 Challenges
 import { runSandboxed, sandboxHolds } from './selftools.js';
 import { NEEDS_SANDBOX } from './lab-packs.js'; // 1.5.164 more packs
-import { ownRefusalAsks, cleanSandbox, guardLesson, saveGuardLesson, PAGE_DEMO, SANDBOX_MAX_TURNS } from './lab-guard.js'; // 1.5.164 Guard rails
+import { cleanGen, rankable, genLine, spread, GEN_DEFAULT, CTX_CHOICES, MAX_REPEATS } from './lab-gen.js'; // 1.5.168 Professional mode
+import { readMyPacks, importMyPack, deleteMyPack, runMyPack, CHECKS as MY_CHECKS } from './lab-mypacks.js'; // 1.5.168 your own packs
+import { ownRefusalAsks, cleanSandbox, guardLesson, saveGuardLesson, PAGE_DEMO, SANDBOX_MAX_TURNS, SETTINGS as GUARD_SETTINGS, STYLES as GUARD_STYLES } from './lab-guard.js'; // 1.5.164 Guard rails
 import { METHODS, LEFT_OUT, forgeDir, forgeRuns, forgeBrains, forgePlans, makeForgePlan, forgePlansDir, FORGE_KEY, forgeStartProblems, launchForge, alive, runPodId, scrub as scrubForge, onDrive } from './lab-forge.js';
 import { rentKeyEnv } from './rental.js'; // 1.5.159 the Forge tab
 import { LADDER, PLAY_MAX_GB, ladderTexts, ladderDiskGB, readPerplexity, ladderTable, ladderSaw, playDir, readLadders } from './lab-playground.js'; // 1.5.156 Playground
@@ -523,7 +525,7 @@ export class Lab {
     const room = this.room();
     const cardGB = Number(this.cfg.gpuVramGB) || Number(this.cfg.cardGB) || 0; // the set size, or the card the hardware scan found
     const brains = this.brains().map((b) => { let f = null; try { f = inspect(b); } catch (e) { return { ...b, gguf: undefined, mmproj: undefined, error: e.message }; } return { id: b.id, name: b.name, family: b.family, community: b.community, naughty: b.naughty, madeInLab: b.madeInLab, license: b.license, facts: f && { arch: f.arch, experts: f.experts, used: f.used, groups: f.groups, layers: f.layers, fileType: f.fileType, fullSize: f.fullSize, sizeGB: f.sizeGB, sight: f.sight, hearing: f.hearing, readerGB: f.readerGB }, cuts: f ? cutSizes(f).map((c) => ({ ...c, fit: fitWords(c.gb, cardGB) })) : [], fit: f ? fitWords(f.sizeGB, cardGB) : '' }; });
-    return { on: labOn(this.cfg), room, cardGB, brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, lessonKinds: KINDS, sampleCount: SAMPLE_COUNT, buildMax: BUILD_MAX, officeOk: Boolean(this.officeFor()), brainEngine: this.tools().brainEngine.found, packs: PACKS, scores: this.scores(), classes: CLASSES.map(([id, label, hint]) => ({ id, label, hint })), ladders: this.ladders(), playMaxGB: PLAY_MAX_GB, ladderSteps: LADDER.map(({ type, label }) => ({ type, label })), hardware: hardwareLine(this.cfg), version: this.version || '', mixWays: MIX_WAYS, layerChoices: LAYER_CHOICES.map(([id, label]) => ({ id, label })), kept: KEPT.map(({ id, label }) => ({ id, label })), homeMaxGB: PLAY_MAX_GB, cvector: this.tools().cvector.found || Boolean(this.stepFns.direction), peekLive: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), plainPrompts: PLAIN_PROMPTS, reluctantPrompts: RELUCTANT_PROMPTS };
+    return { on: labOn(this.cfg), mode: this.cfg.labPro === true ? 'pro' : 'simple', room, cardGB, brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, lessonKinds: KINDS, sampleCount: SAMPLE_COUNT, buildMax: BUILD_MAX, officeOk: Boolean(this.officeFor()), brainEngine: this.tools().brainEngine.found, packs: PACKS, myPacks: readMyPacks(labDir(this.cfg)).map(({ items, ...m }) => m), pro: { gen: { ...GEN_DEFAULT }, ctxChoices: CTX_CHOICES, maxRepeats: MAX_REPEATS, checks: MY_CHECKS, settings: GUARD_SETTINGS, styles: GUARD_STYLES }, scores: this.scores(), classes: CLASSES.map(([id, label, hint]) => ({ id, label, hint })), ladders: this.ladders(), playMaxGB: PLAY_MAX_GB, ladderSteps: LADDER.map(({ type, label }) => ({ type, label })), hardware: hardwareLine(this.cfg), version: this.version || '', mixWays: MIX_WAYS, layerChoices: LAYER_CHOICES.map(([id, label]) => ({ id, label })), kept: KEPT.map(({ id, label }) => ({ id, label })), homeMaxGB: PLAY_MAX_GB, cvector: this.tools().cvector.found || Boolean(this.stepFns.direction), peekLive: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), plainPrompts: PLAIN_PROMPTS, reluctantPrompts: RELUCTANT_PROMPTS };
   }
 
   runView(r) { return { id: r.id, kind: r.kind || 'make', name: r.name, from: r.fromName, naughty: r.naughty, refusalsOut: r.refusalsOut, state: r.state, step: r.step, stepLabel: r.stepLabel, progress: r.progress, steps: r.steps?.map((s) => ({ id: s.id, label: s.label, state: s.state })), error: r.error, notes: r.notes || [], report: r.report, at: r.at, used: Boolean(r.used), sizeGB: r.sizeGB }; }
@@ -827,24 +829,26 @@ export class Lab {
     if (gaming(this.cfg)) throw new Error('Gaming is on, so the Lab waits. Switch the session to Normal to run it.');
     const brain = this.brains().find((b) => b.id === String(c.from || ''));
     if (!brain) throw new Error('Pick a brain to challenge.');
-    const packs = [...new Set([].concat(c.packs || []).filter((id) => PACK_IDS.includes(id)))];
+    const mine = readMyPacks(labDir(this.cfg)); // 1.5.168 your own packs, by id "my:<name>"
+    const packs = [...new Set([].concat(c.packs || []).filter((id) => PACK_IDS.includes(id) || mine.some((m) => m.id === id)))];
     if (!packs.length) throw new Error('Tick at least one challenge.');
+    const gen = cleanGen(c.gen || {}); // 1.5.168 Simple mode sends nothing, so the defaults
     if (!this.tools().server.found) throw new Error(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it.`);
     if (this.brain?.engine?.loaded) {
       const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
       if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
       if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
     }
-    const title = (id) => PACKS.find((p) => p.id === id).title;
-    const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'challenge', name: `Challenges for ${brain.name}`, from: brain.id, fromName: brain.name, packs, state: 'running', at: this.now(), steps: [{ id: 'serve', label: `Start ${brain.name}`, state: 'waiting' }, ...packs.map((id) => ({ id, label: title(id), state: 'waiting' }))], progress: 0 };
+    const title = (id) => (PACKS.find((p) => p.id === id) || mine.find((m) => m.id === id)).title;
+    const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'challenge', name: `Challenges for ${brain.name}`, from: brain.id, fromName: brain.name, packs, gen, state: 'running', at: this.now(), steps: [{ id: 'serve', label: `Start ${brain.name}`, state: 'waiting' }, ...packs.map((id) => ({ id, label: title(id), state: 'waiting' }))], progress: 0 };
     this.runs.push(runRec); this.save();
     const ac = new AbortController();
     this.job = { run: runRec, ac };
-    this.goChallenge(runRec, brain, packs, ac.signal).catch(() => {});
+    this.goChallenge(runRec, brain, packs, ac.signal, gen, mine).catch(() => {});
     return { started: this.runView(runRec) };
   }
 
-  async goChallenge(r, brain, packs, signal) {
+  async goChallenge(r, brain, packs, signal, gen = cleanGen({}), mine = []) {
     const dir = path.join(labDir(this.cfg), 'challenges');
     const log = (t) => { try { fs.mkdirSync(dir, { recursive: true }); fs.appendFileSync(path.join(dir, 'lab.log'), `${new Date().toISOString()} ${t}\n`); } catch {} };
     const fx = { ...this.defaultSteps(this.tools(), log), ...this.stepFns };
@@ -852,18 +856,34 @@ export class Lab {
     const set = (i, state) => { r.steps[i].state = state; r.step = r.steps[i].id; r.stepLabel = r.steps[i].label; this.tell(r); };
     try {
       set(0, 'running');
-      srv = await fx.serve({ gguf: brain.gguf, ctx: 8192, signal, log });
+      srv = await fx.serve({ gguf: brain.gguf, ctx: gen.ctx, signal, log });
       set(0, 'done');
       const sandbox = packs.some((id) => id === 'code' || NEEDS_SANDBOX.includes(id)) ? await fx.sandbox({ signal }) : null;
       const holdAsks = packs.includes('guard') ? ownRefusalAsks(lessonSets(this.cfg).map((x) => path.dirname(x.file))) : []; // 1.5.164 the person's own refusal lessons
-      const results = {}; let last = 0;
-      for (let i = 0; i < packs.length; i++) {
-        set(i + 1, 'running');
-        results[packs[i]] = await fx.pack(srv.url, packs[i], { signal, sandbox, holdAsks, onStep: (d, t) => {
-          r.progress = Math.round((100 * (i + d / t)) / packs.length);
-          if (Date.now() - last > 2000) { last = Date.now(); this.broadcast({ type: 'lab', run: this.runView(r) }); }
-        } });
-        set(i + 1, 'done');
+      // 1.5.168 every question and answer goes in a log beside the run, and Professional mode can repeat the run.
+      const logFile = path.join(dir, 'logs', `${r.id}.jsonl`);
+      try { fs.mkdirSync(path.dirname(logFile), { recursive: true }); fs.writeFileSync(logFile, ''); } catch {}
+      const results = {}, runs = {}; let last = 0;
+      const total = packs.length * gen.repeats;
+      for (let rep = 0; rep < gen.repeats; rep++) {
+        for (let i = 0; i < packs.length; i++) {
+          const id = packs[i], k = rep * packs.length + i;
+          set(i + 1, 'running');
+          if (gen.repeats > 1) { r.stepLabel = `${r.steps[i + 1].label} (run ${rep + 1} of ${gen.repeats})`; this.tell(r); }
+          const itemLog = (x) => { try { fs.appendFileSync(logFile, JSON.stringify({ pack: id, run: rep + 1, ...x, q: String(x.q || '').slice(0, 4000), answer: String(x.answer || '').slice(0, 4000) }) + '\n'); } catch {} };
+          const onStep = (d, t) => {
+            r.progress = Math.round((100 * (k + d / t)) / total);
+            if (Date.now() - last > 2000) { last = Date.now(); this.broadcast({ type: 'lab', run: this.runView(r) }); }
+          };
+          const my = mine.find((m) => m.id === id);
+          const res = my ? await (fx.myPack || runMyPack)(srv.url, my, { signal, onStep, gen, repeat: rep, log: itemLog }) : await fx.pack(srv.url, id, { signal, sandbox, holdAsks, gen, repeat: rep, log: itemLog, onStep });
+          (runs[id] ||= []).push(res);
+          set(i + 1, 'done');
+        }
+      }
+      for (const id of packs) { // the last run's details, with the average score and the spread when it was repeated
+        const all = runs[id], lastRun = all[all.length - 1], sp = all.length > 1 ? spread(all.map((x) => x.score)) : null;
+        results[id] = sp ? { ...lastRun, score: sp.mean, spread: sp } : lastRun;
       }
       let facts = {}; try { facts = inspect(brain); } catch {}
       const sha256 = await fx.fingerprint(brain.gguf, signal).catch(() => '');
@@ -872,8 +892,11 @@ export class Lab {
       const reads = Object.values(results).filter((x) => x.prefillTps);
       const prefillTps = reads.length ? Math.round(reads.reduce((a, x) => a + x.prefillTps, 0) / reads.length) : 0;
       const file = scoreFile(scoresDir(this.cfg), slugOf(brain.name));
-      writeJson(file, mergeScores(readJson(file, null), { name: brain.name, sha256, sizeGB: facts.sizeGB, quant: facts.fileType, paramsB: facts.paramsB, activeB: facts.experts ? facts.activeB : 0, experts: facts.experts, madeHere: Boolean(brain.madeInLab), packs: results, tps, prefillTps, when: new Date(this.now()).toISOString().slice(0, 10), engine: this.engineName(), where: srv.where }));
-      r.report = { challenges: packs.map((id) => ({ id, title: PACKS.find((p) => p.id === id).title, score: results[id].score, right: results[id].right, of: results[id].of, skipped: results[id].skipped || '', ...(results[id].parts ? { parts: results[id].parts } : {}), ...(results[id].note ? { note: results[id].note } : {}) })), tps };
+      // 1.5.168 only runs made with the ranked settings go on the scoreboard, and never your own packs.
+      const ranked = rankable(gen), boardPacks = Object.fromEntries(Object.entries(results).filter(([id]) => PACK_IDS.includes(id)));
+      if (ranked && Object.keys(boardPacks).length) writeJson(file, mergeScores(readJson(file, null), { name: brain.name, sha256, sizeGB: facts.sizeGB, quant: facts.fileType, paramsB: facts.paramsB, activeB: facts.experts ? facts.activeB : 0, experts: facts.experts, madeHere: Boolean(brain.madeInLab), packs: boardPacks, tps, prefillTps, when: new Date(this.now()).toISOString().slice(0, 10), engine: this.engineName(), where: srv.where }));
+      const titleOf = (id) => (PACKS.find((p) => p.id === id) || mine.find((m) => m.id === id))?.title || id;
+      r.report = { challenges: packs.map((id) => ({ id, title: titleOf(id), score: results[id].score, right: results[id].right, of: results[id].of, skipped: results[id].skipped || '', ...(results[id].parts ? { parts: results[id].parts } : {}), ...(results[id].groups ? { groups: results[id].groups } : {}), ...(results[id].spread ? { spread: results[id].spread } : {}), ...(results[id].note ? { note: results[id].note } : {}) })), tps, settings: genLine(gen), ranked, hasLog: fs.existsSync(logFile) };
       r.state = 'done'; r.step = ''; r.stepLabel = ''; r.progress = 100;
       this.tell(r);
       this.broadcast({ type: 'lab-done', name: r.name, ok: true });
@@ -1083,6 +1106,8 @@ export class Lab {
     let tail = []; try { tail = fs.readFileSync(rec.log, 'utf8').split(/\r?\n/).filter(Boolean).slice(-12).map(scrubForge); } catch {}
     return { plan: rec.plan, at: rec.at, running, hours: rec.hours, dollars: rec.dollars, tail, importing: Boolean(rec.importing && running), failed: rec.failed || '' };
   }
+  // 1.5.168 Keep it simple / Professional: one switch for the whole Lab, saved in settings, read by every tab as view.mode.
+  setLabMode(mode) { const pro = mode === 'pro'; saveSettings(this.cfg, { labPro: pro }); this.cfg.labPro = pro; return { mode: pro ? 'pro' : 'simple' }; }
   allowForge(on) { saveSettings(this.cfg, { labForgeStart: on === true }); this.cfg.labForgeStart = on === true; return { allowed: this.cfg.labForgeStart }; }
   forgeCard(id) { // what the purchase card shows: read from the saved plan, nothing else
     const plan = readJson(path.join(forgePlansDir(labDir(this.cfg)), `${slugOf(id)}.json`), null);
@@ -1138,6 +1163,22 @@ export class Lab {
       await new Promise((resolve) => { const c = (this.forgeSpawn || spawn)(node, [path.join(dir, 'forge', 'forge.mjs'), '--kill', pod], { cwd: path.join(dir, 'forge'), stdio: 'ignore', windowsHide: true, env: { ...process.env, ...nodeEnv, ...this.forgeKeys() } }); c.on?.('exit', resolve); c.on?.('error', resolve); if (!c.on) resolve(); });
     }
     return { stopped: true, pod: Boolean(pod) };
+  }
+
+  // 1.5.168 A challenge run's log: every question, the answer, and whether it passed. Read it, or save it as JSONL or CSV.
+  challengeLog(id, { save = '' } = {}) {
+    const run = this.runs.find((x) => x.id === id && x.kind === 'challenge');
+    if (!run) throw new Error('That run isn\'t here any more.');
+    const file = path.join(labDir(this.cfg), 'challenges', 'logs', `${run.id}.jsonl`);
+    let rows = []; try { rows = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l)); } catch { throw new Error('There\'s no log for that run. Runs from before 1.5.168 didn\'t keep one.'); }
+    if (!save) return { rows: rows.slice(0, 2000), total: rows.length, settings: run.report?.settings || '' };
+    const dir = resultsDir(this.cfg); fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date(this.now()).toISOString().replace(/[:T]/g, '-').slice(0, 19);
+    const out = path.join(dir, `${slugOf(run.name)}-log-${stamp}.${save}`);
+    const cell = (v) => { const t = String(v ?? '').replace(/\r?\n/g, ' '); return /[",]/.test(t) || /^[=+\-@]/.test(t) ? `"${t.replace(/^([=+\-@])/, "'$1").replace(/"/g, '""')}"` : t; };
+    const okText = (v) => (v === true ? 'pass' : v === false ? 'miss' : String(v));
+    fs.writeFileSync(out, save === 'jsonl' ? rows.map((x) => JSON.stringify(x)).join('\n') + '\n' : ['Challenge,Run,Group,Question,Answer,Result', ...rows.map((x) => [x.pack, x.run, x.group || '', x.q, x.answer, okText(x.ok)].map(cell).join(','))].join('\n') + '\n');
+    return { file: path.basename(out) };
   }
 
   // Save a result the page sends (a table, or a picture of one) in the Lab's results folder. Returns the file name.
@@ -1683,7 +1724,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (req.method === 'GET' && p === '/api/lab/learn') { const b = learnBrain(lab.brain); send(res, 200, { on: labOn(lab.cfg), ready: b.ready, why: b.why || '', wake: b.wake === true, busy: b.busy === true, brain: b.ready ? (lab.brain?.brainLabel?.(b.model) || b.model) : '', ctx: b.ctx || 0, cards: LEARN_CARDS }); return true; }
     if (req.method === 'GET' && p === '/api/lab/forge') { const v = lab.forgeView(); send(res, 200, isLocal ? v : { ...v, keepFiles: [] }); return true; } // 1.5.159 read-only
     // 1.5.164 Guard rails sandbox: chat with the brain Bob has loaded, like Learn. Nothing is saved unless you press Save as lesson.
-    if (req.method === 'GET' && p === '/api/lab/guard') { const g = learnBrain(lab.brain); send(res, 200, { on: labOn(lab.cfg), ready: g.ready, why: g.why || '', brain: g.ready ? (lab.brain?.brainLabel?.(g.model) || g.model) : '', demo: PAGE_DEMO, maxTurns: SANDBOX_MAX_TURNS, canSave: isLocal }); return true; }
+    if (req.method === 'GET' && p === '/api/lab/guard') { const g = learnBrain(lab.brain); send(res, 200, { on: labOn(lab.cfg), ready: g.ready, why: g.why || '', brain: g.ready ? (lab.brain?.brainLabel?.(g.model) || g.model) : '', demo: PAGE_DEMO, maxTurns: SANDBOX_MAX_TURNS, canSave: isLocal, settings: GUARD_SETTINGS, styles: GUARD_STYLES }); return true; }
     if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }
     const b = await body(req);
     if (p === '/api/lab/guard/chat') { if (!labOn(lab.cfg)) { send(res, 403, { error: 'The Lab is off.' }); return true; } send(res, 200, await guardChat(lab.brain, b)); return true; }
@@ -1707,6 +1748,10 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/use') { send(res, 200, lab.use(String(b.run || ''))); return true; }
     if (p === '/api/lab/compare') { const c = lab.compare(b.ids, b.save === 'csv' ? 'csv' : 'json'); send(res, 200, { table: c.table, file: path.basename(c.file) }); return true; }
     if (p === '/api/lab/guard/save') { send(res, 200, saveGuardLesson(path.join(lessonSetsDir(lab.cfg), 'guard-rails-practice'), guardLesson(b))); return true; } // 1.5.164 into the person's own lesson set
+    // 1.5.168 Professional mode: your own packs, and the question-by-question log of a run.
+    if (p === '/api/lab/mypack/import') { send(res, 200, importMyPack(labDir(lab.cfg), String(b.text || ''))); return true; }
+    if (p === '/api/lab/mypack/delete') { send(res, 200, deleteMyPack(labDir(lab.cfg), b.id)); return true; }
+    if (p === '/api/lab/challenge/log') { send(res, 200, lab.challengeLog(String(b.id || ''), { save: b.save === 'csv' || b.save === 'jsonl' ? b.save : '' })); return true; }
     if (p === '/api/lab/challenge') { send(res, 200, await lab.startChallenge(b.challenge, { unload: b.unload === true })); return true; } // 1.5.153
     if (p === '/api/lab/ladder/plan') { const pl = lab.planLadder(b.from); send(res, 200, { problems: pl.problems, notes: pl.notes, diskGB: pl.diskGB }); return true; } // 1.5.156
     if (p === '/api/lab/ladder') { send(res, 200, await lab.startLadder({ from: b.from }, { unload: b.unload === true })); return true; }
@@ -1714,6 +1759,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/ladder/delete') { send(res, 200, lab.deleteLadder(String(b.id || ''))); return true; }
     if (p === '/api/lab/forge/plan') { const r = lab.forgePlan(b.form); send(res, 200, { problems: r.problems, notes: r.notes, hours: r.hours, text: JSON.stringify(r.plan, null, 1) }); return true; } // 1.5.159
     if (p === '/api/lab/forge/hf') { send(res, 200, await lab.forgeHf(String(b.ref || '').slice(0, 400), b.kind)); return true; } // 1.5.163
+    if (p === '/api/lab/mode') { send(res, 200, lab.setLabMode(String(b.mode || ''))); return true; } // 1.5.168
     if (p === '/api/lab/forge/allow') { send(res, 200, lab.allowForge(b.on === true)); return true; }
     if (p === '/api/lab/forge/card') { send(res, 200, lab.forgeCard(String(b.id || ''))); return true; }
     if (p === '/api/lab/forge/start') { send(res, 200, lab.forgeStart({ id: String(b.id || ''), hours: b.hours, dollars: b.dollars })); return true; }

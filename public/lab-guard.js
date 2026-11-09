@@ -17,8 +17,8 @@ export function guardPartsLine(parts) {
   return Object.entries(PART_NAMES).map(([k, n]) => `${n}: ${parts[k]?.score == null ? 'not run' : `${parts[k].score}`}`).join(' · ');
 }
 
-export function createGuard({ api }) {
-  const g = { info: null, open: false, system: 'You are a helpful assistant.', messages: [], draft: '', want: '', job: 'refusals', msg: '', busy: false };
+export function createGuard({ api, isPro = () => false }) {
+  const g = { info: null, open: false, system: 'You are a helpful assistant.', messages: [], draft: '', want: '', job: 'refusals', setting: '', style: '', msg: '', busy: false };
   async function load() { try { g.info = await api('/api/lab/guard'); } catch (e) { g.msg = e.message; } }
   const turns = () => g.messages.filter((m) => m.role === 'user').length;
 
@@ -42,6 +42,9 @@ export function createGuard({ api }) {
         <p><label for="lab-guard-want">The answer you wanted, instead of its last reply</label><br><textarea id="lab-guard-want" rows="3" data-guardf="want">${esc(g.want)}</textarea></p>
         <label class="lab-opt"><input type="radio" name="lab-guard-job" value="refusals" data-guardjob ${g.job === 'refusals' ? 'checked' : ''}> <span>It should have said no (a refusals lesson)</span></label>
         <label class="lab-opt"><input type="radio" name="lab-guard-job" value="recover" data-guardjob ${g.job === 'recover' ? 'checked' : ''}> <span>It should have done the task and ignored the planted order (a recover lesson)</span></label>
+        ${isPro() ? `<p class="row"><label for="lab-guard-setting">Setting</label> <select id="lab-guard-setting" data-guardf="setting"><option value="">Not tagged</option>${Object.entries(i.settings || {}).map(([k, l]) => `<option value="${esc(k)}" ${g.setting === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
+          <label for="lab-guard-style">How its reply sounded</label> <select id="lab-guard-style" data-guardf="style"><option value="">Not tagged</option><option value="plain" ${g.style === 'plain' ? 'selected' : ''}>Plain</option>${Object.entries(i.styles || {}).map(([k, l]) => `<option value="${esc(k)}" ${g.style === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></p>
+          <p class="muted">Tags help you find lessons later, and a refusals lesson tagged with a setting is counted under it when Guard rails checks "Held the line".</p>` : ''}
         <div class="row"><button type="button" class="get" data-guard="save">Save as lesson</button></div>
         <p class="muted">It goes into your lesson set "Guard rails practice". Your refusal lessons are also what the Guard rails challenge checks under "Held the line".</p></fieldset>` : ''}
       ${g.msg ? `<p role="status">${esc(g.msg)}</p>` : ''}
@@ -65,7 +68,7 @@ export function createGuard({ api }) {
       g.busy = false; return 'draw';
     }
     if (k === 'save') {
-      try { const r = await api('/api/lab/guard/save', { system: g.system, messages: g.messages, want: g.want, job: g.job }); g.msg = `Saved. "Guard rails practice" has ${r.count} lesson${r.count === 1 ? '' : 's'} now.`; g.want = ''; } catch (e) { g.msg = e.message; }
+      try { const r = await api('/api/lab/guard/save', { system: g.system, messages: g.messages, want: g.want, job: g.job, ...(isPro() ? { setting: g.setting, style: g.style } : {}) }); g.msg = `Saved. "Guard rails practice" has ${r.count} lesson${r.count === 1 ? '' : 's'} now.`; g.want = ''; } catch (e) { g.msg = e.message; }
       return 'draw';
     }
     return false;

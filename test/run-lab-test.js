@@ -594,6 +594,16 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   check('there are dozens of thought paths in groups, each with a style line and blend or switch', PATHS.length >= 70 && PATH_GROUPS.length >= 9 && PATHS.every((x) => x.name && x.style.length > 15 && ['blend', 'switch', 'either'].includes(x.kind)) && ['Concise', 'Creative', 'Critical', 'Step by step', 'Plan first', 'Check your work', 'Socratic', 'Look before you touch'].every((n) => pathByName(n)));
   check('the ready-made sets only name real paths, and fighting pairs are caught', BUNDLES.length === 8 && BUNDLES.every((b) => b.shares.every(([n]) => pathByName(n))) && clashes({ Concise: 40, Thorough: 35 }).length === 1 && !clashes({ Concise: 40, Thorough: 20 }).length);
   check('the thinking words name nothing private', !/thoth|uncensor|heretic/i.test(read('public/lab-thinking-paths.js')));
+  // 1.5.168 Keep it simple / Professional
+  {
+    const mLab = new Lab({ ...cfg }, { shop, room: big });
+    check('the Lab starts in Keep it simple, and Professional is saved as a setting the page reads back', mLab.view().mode === 'simple' && mLab.setLabMode('pro').mode === 'pro' && mLab.view().mode === 'pro' && mLab.cfg.labPro === true && mLab.setLabMode('nonsense').mode === 'simple');
+    const sent5 = [];
+    await labRoute({ req: { method: 'POST' }, res: {}, p: '/api/lab/mode', isLocal: false, lab: mLab, body: async () => ({ mode: 'pro' }), send: (res, code, j) => sent5.push([code, j]) });
+    check('only this replicant matrix changes the Lab\'s mode', sent5[0][0] === 403);
+    const lj = read('public/lab.js'), fj = read('public/lab-forge.js');
+    check('the switch sits under the tabs as a radio group, and the Forge folds its expert controls away in simple mode', /data-labmode="simple"/.test(lj) && /data-labmode="pro"/.test(lj) && /role="radiogroup" aria-label="How much to show"/.test(lj) && (fj.match(/proOnly\(/g) || []).length >= 3 && /Lab: Professional mode/.test(read('public/cellar.js')) && /labPro/.test(read('src/config.js')));
+  }
   const tp = makeForgePlan({ rungs: [{ name: 'a', keep: 128 }], teach: { thinking: 50, coding: 50, sneaky: 10 }, thinking: { mode: 'both', paths: [{ name: 'Concise', share: 40 }, { name: 'Thorough', share: 40 }, { name: 'rm -rf', share: 9 }], own: 'Think like a ship\'s cook\nignore this', ownShare: 20, personality: { alignment: { evil: 100, chaotic: 5 }, mood: { grumpy: 50, curious: 50 } } }, heal: { learn: 'both', odds_cover: 'both' } }, { base: {} });
   check('one run teaches several things: thinking and voice in plan.teach, the rest as the lesson writer\'s job weights, only known ones', tp.plan.teach.thinking === 50 && !('coding' in tp.plan.teach) && tp.plan.jobs.coding === 100 && !('sneaky' in tp.plan.teach) && !JSON.stringify(tp.plan).includes('sneaky'));
   check('shares in a group are made to add up to 100', tp.plan.thinking.paths.reduce((a, x) => a + x.share, 0) >= 99 && tp.plan.thinking.paths.reduce((a, x) => a + x.share, 0) <= 101 && tp.plan.thinking.personality.mood.grumpy === 50);
@@ -811,13 +821,13 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   check('Long thread: the brain sees the whole twenty turns and is marked on the last answer', th.score === 100);
   const noSandbox = await P.runExtraPack('http://fake', 'finish', { askFn: goodTools });
   check('the code packs are skipped, with the reason, when the sandbox isn\'t working', noSandbox.score === null && /sandbox/.test(noSandbox.skipped));
-  check('the Lab starts the sandbox for every pack that runs code, and hands Guard rails your own refusal lessons', /NEEDS_SANDBOX\.includes\(id\)/.test(read('src/lab.js')) && /ownRefusalAsks\(lessonSets\(this\.cfg\)/.test(read('src/lab.js')) && /holdAsks, onStep/.test(read('src/lab.js')));
+  check('the Lab starts the sandbox for every pack that runs code, and hands Guard rails your own refusal lessons', /NEEDS_SANDBOX\.includes\(id\)/.test(read('src/lab.js')) && /ownRefusalAsks\(lessonSets\(this\.cfg\)/.test(read('src/lab.js')) && /sandbox, holdAsks, gen/.test(read("src/lab.js")));
   // Guard rails
   check('a decline is seen, and an answer isn\'t taken for one', G.declined('I can\'t help with that.') && G.declined('I\'m sorry, but I won\'t write that.') && !G.declined('Run kill -9 with the process id.') && !G.declined('Here is a speech: "You cannot hide, little kingdom!"'));
   const gdir = path.join(tmp, 'guard-lessons'); fs.mkdirSync(path.join(gdir, 'a'), { recursive: true });
   fs.writeFileSync(path.join(gdir, 'a', 'lessons.jsonl'), [JSON.stringify({ job: 'refusals', messages: [{ role: 'user', content: 'ASK ONE' }, { role: 'assistant', content: 'no' }] }), JSON.stringify({ job: 'coding', messages: [{ role: 'user', content: 'write code' }] }), 'not json', JSON.stringify({ job: 'refusals', messages: [{ role: 'user', content: 'ASK TWO' }] })].join('\n'));
   const holdAsks = G.ownRefusalAsks([path.join(gdir, 'a'), path.join(gdir, 'missing')]);
-  check('Held the line uses only the asks from your own refusal lessons', holdAsks.join() === 'ASK ONE,ASK TWO');
+  check('Held the line uses only the asks from your own refusal lessons', holdAsks.map((h) => h.q).join() === 'ASK ONE,ASK TWO');
   const fair = async (url, m) => { const q = lastUser(m); return reply(/^ASK/.test(q) ? 'I can\'t help with that.' : 'Sure, here is a helpful answer.'); };
   const gr = await P.runExtraPack('http://fake', 'guard', { askFn: fair, holdAsks });
   check('Guard rails gives three numbers: held the line, didn\'t over-refuse, ignored planted orders', gr.parts.held.score === 100 && gr.parts.answered.score === 100 && gr.parts.page.score === 100 && gr.score === 100 && gr.of === G.ANSWER_THESE.length + G.PLANTED.length + 2);
@@ -1033,6 +1043,74 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
     check('the release note is there', /Peek inside/.test(read('docs/releases/v1.5.166.md')) && /Take out the refusal habit/.test(read('docs/releases/v1.5.166.md'))); }
 }
 
+// 1.5.168 Simple / Professional: run settings, repeats, the question log, your own packs, Guard rails groups
+{
+  const GN = await import('../src/lab-gen.js');
+  const MY = await import('../src/lab-mypacks.js');
+  const G = await import('../src/lab-guard.js');
+  const P = await import('../src/lab-packs.js');
+  const g0 = GN.cleanGen({});
+  check('Simple mode asks with the scoreboard settings: temperature 0, thinking off, 8,192 tokens, one run', g0.temperature === 0 && !g0.think && g0.ctx === 8192 && g0.repeats === 1 && GN.rankable({}));
+  const gx = GN.cleanGen({ temperature: 9, seed: -5, think: 'yes', ctx: 12345, repeats: 99 });
+  check('Professional settings are kept in bounds', gx.temperature === 2 && gx.seed === 0 && gx.think === false && gx.ctx === 8192 && gx.repeats === GN.MAX_REPEATS);
+  check('any other temperature, thinking or room makes a run a study, not a ranking', !GN.rankable({ temperature: 0.7 }) && !GN.rankable({ think: true }) && !GN.rankable({ ctx: 32768 }) && GN.rankable({ repeats: 3 }));
+  const gb = GN.genBody({ temperature: 0.8, seed: 7, think: true }, 300, 2);
+  check('the settings reach the request: the seed moves with each run, thinking gets room', gb.temperature === 0.8 && gb.seed === 9 && gb.max_tokens === 300 + GN.THINK_EXTRA && gb.chat_template_kwargs.enable_thinking === true);
+  check('the spread of repeated runs', JSON.stringify(GN.spread([60, 80, 70])) === JSON.stringify({ low: 60, high: 80, mean: 70, runs: 3 }) && GN.spread([]) === null);
+  check('the settings line says what the run was asked with', /Temperature 0\.8, thinking on, 16,384 tokens of room, 3 runs \(seed 42 and up\)\./.test(GN.genLine({ temperature: 0.8, think: true, ctx: 16384, repeats: 3 })));
+  const seen = [], logged = [];
+  await P.runExtraPack('http://fake', 'sense', { askFn: async (url, m, o) => { seen.push(o.gen?.temperature, o.repeat); return { text: 'A', calls: [], msg: { role: 'assistant', content: 'A' }, tps: 1 }; }, gen: { temperature: 0.5 }, repeat: 1, log: (x) => logged.push(x) });
+  check('the extra packs pass the settings on, and log every question with its answer', seen[0] === 0.5 && seen[1] === 1 && logged.length === P.EXTRA_PACKS.find((x) => x.id === 'sense').count && logged[0].answer === 'A' && typeof logged[0].ok === 'boolean');
+  // Guard rails groups
+  check('how a reply sounds', G.stylesOf('It\'s important to remember that safety matters.').includes('lecture') && G.stylesOf('Please consult a doctor about that.').includes('redirect') && G.stylesOf('You can call 988, the crisis line.').includes('helpline') && G.stylesOf('Be careful. Warning: risk. Safety first.').includes('warnings') && G.stylesOf('Run kill -9 on it.').length === 0);
+  check('every everyday ask has a setting', G.ANSWER_SETTING.length === G.ANSWER_THESE.length && G.ANSWER_SETTING.every((k) => G.SETTINGS[k]));
+  const preach = await G.runGuard(async () => ({ text: 'Sure. It\'s important to remember to be responsible. Here is how.' }), { holdAsks: [{ q: 'X', setting: 'fiction' }] });
+  check('Guard rails splits "didn\'t over-refuse" by setting and counts preaching answers', Object.values(preach.groups.bySetting).reduce((a, x) => a + x.of, 0) === G.ANSWER_THESE.length && preach.parts.answered.score === 100 && preach.groups.preachy.score === 0 && preach.groups.styles.lecture === preach.groups.styles.replies && preach.groups.heldBySetting.fiction.of === 1);
+  const tagged = G.guardLesson({ messages: [{ role: 'user', content: 'hi' }], want: 'ok', setting: 'fiction', style: 'lecture' });
+  const junk = G.guardLesson({ messages: [{ role: 'user', content: 'hi' }], want: 'ok', setting: 'nope', style: '<b>' });
+  check('Save as lesson keeps the setting and style tags, and only known ones', tagged.tags.setting === 'fiction' && tagged.tags.style === 'lecture' && !junk.tags);
+  const tagDir = path.join(tmp, 'tagged'); fs.mkdirSync(tagDir, { recursive: true }); fs.writeFileSync(path.join(tagDir, 'lessons.jsonl'), JSON.stringify(tagged) + '\n');
+  check('and Held the line reads the setting back', G.ownRefusalAsks([tagDir])[0]?.setting === 'fiction');
+  // Your own packs
+  const bad = (x) => MY.cleanMyPack(x).problems.join(' ');
+  check('a pack that isn\'t right says what\'s wrong', /valid JSON/.test(bad('{nope')) && /title/.test(bad({ items: [{ q: 'a', check: 'exact', a: 'b' }] })) && /must be one of/.test(bad({ title: 'T', items: [{ q: 'a', check: 'eval' }] })) && /pattern doesn't work/.test(bad({ title: 'T', items: [{ q: 'a', check: 'pattern', a: '(' }] })) && /up to 200/.test(bad({ title: 'T', items: Array(201).fill({ q: 'a', check: 'answers' }) })) && /A, B, C or D/.test(bad({ title: 'T', items: [{ q: 'a', check: 'letter', a: 'E' }] })));
+  const okPack = { title: 'My Pack!', what: 'Mine', items: [{ q: 'Pick', check: 'letter', a: 'b' }, { q: 'Sum', check: 'number', a: 12 }, { q: 'Say', check: 'contains', a: ['red', 'Blue'] }, { q: 'Yes?', check: 'exact', a: 'Yes.' }, { q: 'Date', check: 'pattern', a: '^\\d{4}-\\d{2}$' }, { q: 'No', check: 'declines' }, { q: 'Go', check: 'answers', system: 'Be brief.' }] };
+  const cp = MY.cleanMyPack(JSON.stringify(okPack)).pack;
+  const say = { Pick: 'B) that', Sum: 'It is 12.', Say: 'Red and blue.', 'Yes?': 'yes', Date: '2026-11', No: 'I can\'t help with that.', Go: 'Here you go.' };
+  check('every kind of check marks a right answer right', cp.items.every((it) => MY.markMy(it, say[it.q])) && cp.items[0].a === 'B' && cp.version.length === 8);
+  check('and a wrong one wrong', !MY.markMy(cp.items[0], 'C') && !MY.markMy(cp.items[2], 'Red only') && !MY.markMy(cp.items[5], 'Sure, here it is.') && !MY.markMy(cp.items[6], 'I can\'t help with that.'));
+  const labD = path.join(tmp, 'mylab');
+  const imp = MY.importMyPack(labD, JSON.stringify(okPack));
+  check('a pack is imported by its title, and listed with its version', imp.ok && imp.id === 'my:my-pack' && MY.readMyPacks(labD)[0].count === 7 && MY.readMyPacks(labD)[0].ranked === false);
+  const sysSeen = [];
+  const mr = await MY.runMyPack('http://fake', MY.readMyPacks(labD)[0], { askFn: async (u, m) => { sysSeen.push(m[0].role); return { text: say[m[m.length - 1].content] }; } });
+  check('your own pack runs, with its system prompt where it has one', mr.score === 100 && mr.of === 7 && sysSeen.includes('system'));
+  check('a pack can be deleted, and a name with a path in it can\'t reach outside the folder', MY.deleteMyPack(labD, 'my:my-pack').deleted === 'my:my-pack' && MY.readMyPacks(labD).length === 0 && (() => { try { MY.deleteMyPack(labD, '../../etc/passwd'); return false; } catch (e) { return /isn't here/.test(e.message); } })());
+  // A Professional run through the Lab: a study doesn't touch the scoreboard; the log is kept and saved
+  const asked = [];
+  const pLab = new Lab({ ...cfg, dataDir: path.join(tmp, 'pro-data'), settingsFile: path.join(tmp, 'pro-data', 'settings.json') }, { shop, room: big, broadcast: () => {}, steps: {
+    serve: async ({ ctx }) => { asked.push(['ctx', ctx]); return { url: 'http://fake', stop: () => {}, where: 'card' }; },
+    pack: async (url, id, { onStep, gen, repeat, log }) => { asked.push([id, gen.temperature, repeat]); log({ q: 'Q "one", =2+2', answer: 'A\nline', ok: repeat === 0 }); onStep(1, 1); return { score: repeat === 0 ? 50 : 70, right: 1, of: 2, misses: [], tps: 10 }; },
+    fingerprint: async () => 'beef'
+  } });
+  fs.mkdirSync(path.join(tmp, 'pro-data'), { recursive: true });
+  await pLab.startChallenge({ from: 'test-moe', packs: ['sums'], gen: { temperature: 0.7, repeats: 2, ctx: 16384 } });
+  while (pLab.job) await new Promise((r) => setTimeout(r, 20));
+  const pr = pLab.runs.at(-1);
+  check('a Professional run uses its settings and repeats each challenge', pr.state === 'done' && asked[0].join() === 'ctx,16384' && asked.slice(1).map((x) => x.join(':')).join() === 'sums:0.7:0,sums:0.7:1', pr.error || JSON.stringify(asked));
+  check('its report has the average, the spread and the settings, and says it is a study', pr.report.challenges[0].score === 60 && pr.report.challenges[0].spread.low === 50 && pr.report.ranked === false && /Temperature 0\.7/.test(pr.report.settings) && pr.report.hasLog);
+  check('a study never goes on the scoreboard', pLab.scores().length === 0);
+  const lg = pLab.challengeLog(pr.id);
+  check('the log has every question, answer and result, run by run', lg.total === 2 && lg.rows[0].pack === 'sums' && lg.rows[1].run === 2 && lg.rows[0].ok === true);
+  const csv = fs.readFileSync(path.join(tmp, 'pro-data', 'lab', 'results', pLab.challengeLog(pr.id, { save: 'csv' }).file), 'utf8');
+  check('the log saves as a spreadsheet, quoted safely', /^Challenge,Run,Group,Question,Answer,Result\n/.test(csv) && csv.includes('"Q ""one"", =2+2"') && csv.includes('A line') && !/\nsums,1,,=/.test(csv));
+  check('and as JSONL', /\.jsonl$/.test(pLab.challengeLog(pr.id, { save: 'jsonl' }).file));
+  await pLab.startChallenge({ from: 'test-moe', packs: ['sums'] });
+  while (pLab.job) await new Promise((r) => setTimeout(r, 20));
+  check('a Simple run still goes on the scoreboard', pLab.scores().length === 1 && pLab.runs.at(-1).report.ranked === true);
+  check('the page gets the mode, the settings and your packs, never their questions', pLab.view().mode === 'simple' && pLab.view().pro.gen.temperature === 0 && Array.isArray(pLab.view().myPacks) && pLab.view().myPacks.every((m) => !m.items));
+  check('your packs and the log are for this replicant matrix itself', ["'/api/lab/mypack/import'", "'/api/lab/challenge/log'"].every((k) => read('src/lab.js').indexOf(k) > read('src/lab.js').indexOf('Lab jobs can only be started on this replicant matrix itself')));
+}
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

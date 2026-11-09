@@ -105,6 +105,9 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
       <p class="muted">Sets from Hugging Face or a link are downloaded here and put into the Lab's lesson format before the run. Formats read: chat messages, instruction and output, prompt and response, question and answer; files .jsonl, .json, .csv and .parquet.</p>
     </fieldset>`;
   }
+  // 1.5.168 Keep it simple hides the controls most runs never touch; their defaults still go in the plan. Professional shows them all.
+  const pro = () => view?.()?.mode === 'pro';
+  const proOnly = (html) => (pro() ? html : '');
   function formHtml() {
     if (!fv.found) return '';
     return `<section class="lab-compare" id="forge-form" aria-labelledby="forge-form-h"><h3 id="forge-form-h">New Forge run</h3>
@@ -113,14 +116,14 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
       <label>Run name <input id="forge-run" value="${esc(form.run)}" maxlength="40" placeholder="my-first-run"></label>
       ${form.rungs.map(rungHtml).join('')}
       ${form.rungs.length < 4 ? '<button type="button" class="link" data-forgeaddrung>Add a brain made from the last one</button>' : ''}
-      ${fv.skills.length ? `<fieldset><legend>Protect these skills most (whole run)</legend>${fv.skills.map((k) => `<label class="lab-opt"><input type="checkbox" data-forgestrong="${esc(k)}" ${form.strong.includes(k) ? 'checked' : ''}> <span>${esc(k)}</span></label>`).join('')}</fieldset>` : ''}
-      <fieldset><legend>Running files</legend>${[['Q4_K_M', 'Q4 (recommended)'], ['Q3_K_M', 'Q3 (for 8 GB or less)'], ['Q5_K_M', 'Q5'], ['Q6_K', 'Q6']].map(([v, l]) => `<label class="lab-opt"><input type="checkbox" data-forgequant="${v}" ${form.quants.includes(v) ? 'checked' : ''}> <span>${esc(l)}</span></label>`).join('')}</fieldset>
+      ${proOnly(`${fv.skills.length ? `<fieldset><legend>Protect these skills most (whole run)</legend>${fv.skills.map((k) => `<label class="lab-opt"><input type="checkbox" data-forgestrong="${esc(k)}" ${form.strong.includes(k) ? 'checked' : ''}> <span>${esc(k)}</span></label>`).join('')}</fieldset>` : ''}`)}
+      ${proOnly(`<fieldset><legend>Running files</legend>${[['Q4_K_M', 'Q4 (recommended)'], ['Q3_K_M', 'Q3 (for 8 GB or less)'], ['Q5_K_M', 'Q5'], ['Q6_K', 'Q6']].map(([v, l]) => `<label class="lab-opt"><input type="checkbox" data-forgequant="${v}" ${form.quants.includes(v) ? 'checked' : ''}> <span>${esc(l)}</span></label>`).join('')}</fieldset>`)}
       ${lessonsHtml()}
       ${thinkingHtml()}
-      <fieldset><legend>Teaching back</legend>
+      ${proOnly(`<fieldset><legend>Teaching back</legend>
         ${[['lora', 'Light (recommended)', 'Teaches small add-ons to every layer and the experts.'], ['full', 'Full', 'Teaches every weight. Small brains only.'], ['frozen', 'Experts left alone', 'Only the rest of the brain is taught.']].map(([v, l, h]) => `<label class="lab-opt"><input type="radio" name="forge-experts" value="${v}" ${form.heal.experts === v ? 'checked' : ''}> <span><strong>${esc(l)}</strong><br><span class="muted">${esc(h)}</span></span></label>`).join('')}
         ${num('forge-epochs', 'Passes over the lessons', form.heal.epochs, 0.25, 3, 0.25, 'One full pass is the rule. Bob sets each brain\'s time limit a third above the estimate, so a pass is never cut short.')}
-      </fieldset>
+      </fieldset>`)}
       <fieldset><legend>Caps</legend>
         ${num('forge-hours', 'Hours, at most', form.hours_max, 0, 72, 0.5)} ${num('forge-dollars', 'Dollars, at most', form.dollars_max, 0, 500, 1)}
         <p class="muted">They start at 0, and Bob never suggests a number. A plan with a 0 cap can be saved and read, but never started.</p>
