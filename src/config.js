@@ -285,6 +285,21 @@ function cleanLlamacpp(lc) {
       ngld: Number.isInteger(d.ngld) && d.ngld >= 0 && d.ngld <= 999 ? d.ngld : 99
     };
   }
+  // 1.5.16x Turbo, per brain (from the Lab's Turbo page or Settings): on/off, the draft brain by its model name (never
+  // a path), or the brain's own built-in guesser, and how many words it guesses ahead. null removes a brain's row.
+  if ('turbo' in out) {
+    const t = {};
+    for (const [k, v] of Object.entries(out.turbo && typeof out.turbo === 'object' ? out.turbo : {}).slice(0, 64)) {
+      if (!/^[\w.:/-]{1,100}$/.test(k)) continue;
+      if (v === null) { t[k] = null; continue; }
+      if (!v || typeof v !== 'object') continue;
+      const draft = typeof v.draft === 'string' && /^[\w.:/-]{1,100}$/.test(v.draft) && v.draft !== k ? v.draft : '';
+      const mtp = v.mtp === true;
+      if (!draft && !mtp) continue;
+      t[k] = { on: v.on === true, draft: mtp ? '' : draft, mtp, max: Number.isInteger(v.max) && v.max >= 1 && v.max <= 32 ? v.max : 8 };
+    }
+    out.turbo = t;
+  }
   return out;
 }
 

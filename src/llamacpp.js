@@ -437,6 +437,14 @@ export class LlamaCpp {
     if (!args.some((a) => ['-np', '--parallel'].includes(a))) args.push('-np', '1');
     args.push(...this.templateArgs(model, gguf, args));
     // Speculative decoding: a small "draft" model guesses ahead and the big one checks, often 1.5-2x faster.
+    // 1.5.16x Turbo per brain (the Lab's Turbo page, Settings): wins over the one draft for every brain. The brain's own
+    // built-in guesser (a multi-token head) needs no second brain; a draft brain is named, never a path.
+    const tb = lc.turbo?.[model];
+    if (tb?.on && !cpu && (tb.mtp || (tb.draft && tb.draft !== model))) {
+      if (tb.mtp) args.push('--spec-type', 'draft-mtp', '--draft-max', String(tb.max || 8));
+      else { let dg = null; try { dg = this.resolve(tb.draft).gguf; } catch {} if (dg) args.push('-md', dg, '--draft-max', String(tb.max || 8), '--draft-min', '0', '-ngld', '99'); }
+      return args;
+    }
     const d = lc.draft;
     if (d?.model && d.model !== model && d.enabled !== false && !cpu) {
       // A file path (a .gguf, or a draft blob inside Ollama's models folder) or an Ollama model name.

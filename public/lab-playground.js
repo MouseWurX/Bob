@@ -4,10 +4,30 @@
 // only places it and hands over its events, like the cut recipes.
 import { esc } from './rich.js';
 import { saveHtml } from './lab-save.js';
+import { createContextPage } from './lab-context.js'; // 1.5.16x Longer: how much can it hold (thinking-paths sec 15.2)
+import { createTurboPage } from './lab-turbo.js'; // 1.5.16x Faster: Turbo (sec 15.1)
+import { createTeachPage } from './lab-teach.js'; // 1.5.16x Teach it: here, or as a Forge plan (sec 15.3)
 
-// `sections` (1.5.164): more Playground pieces, each { html(), change(el), input(el), click(b, load), mounted() }, placed
-// under the ladder in order; events go to them first. Peek inside is one.
+// 1.5.16x The Playground has four pages now: the quantization ladder and the three from thinking-paths sec 15.
+export const PLAY_PAGES = [['smaller', 'Smaller'], ['longer', 'Longer'], ['faster', 'Faster'], ['teach', 'Teach it'], ['peek', 'Peek inside']];
+
+// `sections` (1.5.166): more pieces, each { html(), change(el), input(el), click(b, load), mounted() }; they make up the
+// Peek inside page. Events reach them only while that page shows.
 export function createPlayground({ api, view, saveState, sections = [] }) {
+  let page = 'smaller';
+  const peek = { kind: 'peek', html: () => sections.map((s) => s.html()).join(''), load: async () => {}, change: async (el) => { for (const s of sections) if (await s.change?.(el)) return true; return false; }, input: (el) => sections.some((s) => s.input?.(el)), click: async () => false };
+  const pages = { longer: createContextPage({ api }), faster: createTurboPage({ api }), teach: createTeachPage({ api }), peek };
+  const loaded = new Set(), seen = new Map();
+  const cur = () => pages[page];
+  const refocus = (id) => { if (id) setTimeout(() => document.getElementById(id)?.focus(), 0); };
+  // When one of these pages' jobs finishes, its page reads its results again and asks the Lab to draw.
+  function watchRuns() {
+    for (const r of v().runs || []) {
+      const was = seen.get(r.id); seen.set(r.id, r.state);
+      if (was === 'running' && r.state !== 'running') { const pg = Object.values(pages).find((x) => x.kind === r.kind || (x.kind === 'teach' && r.kind === 'trainer')); if (pg) pg.load().then(() => document.dispatchEvent(new Event('lab-page-ready'))); }
+    }
+  }
+  const navHtml = () => `<div class="lab-tabs lab-subtabs" role="tablist" aria-label="Playground pages">${PLAY_PAGES.map(([id, label]) => `<button type="button" role="tab" id="play-page-${id}" class="lab-tab${page === id ? ' on' : ''}" aria-selected="${page === id}" tabindex="${page === id ? 0 : -1}" data-playpage="${id}">${esc(label)}</button>`).join('')}</div>`;
   let confirmDel = '', from = '', plan = null, askUnload = null, pmsg = '', question = 'Explain what a black hole is to a ten-year-old, in three sentences.', open = '';
   const v = () => view() || {};
   const busy = () => v().runs?.some((x) => x.state === 'running');
@@ -27,7 +47,7 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
       note: 'Surprise is perplexity on a page of Bob\'s Help the brain never tuned on: lower is better. Lab score is out of 100, temperature 0.'
     };
   }
-  const saveTable = (k) => { const l = ladders().find((x) => `ladder-${x.id}` === k); return l ? table(l) : null; };
+  const saveTable = (k) => { const l = ladders().find((x) => `ladder-${x.id}` === k); return l ? table(l) : Object.values(pages).map((x) => x.saveTable(k)).find(Boolean) || null; };
 
   // Two bars per size: how big it is, and how surprised it is, each next to Q8. The numbers are in the table too.
   function bars(l) {
@@ -62,9 +82,14 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
   const unloadHtml = () => `<div class="setup-offer" role="alert"><strong>Bob's brain is on the graphics card</strong><span>${esc(askUnload.names.join(', '))} is loaded. The ladder needs the graphics card, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-playunload>Unload it and start</button><button type="button" class="link" data-playnounload>Not now</button></div></div>`;
 
   function html(runsHtml) {
+    watchRuns();
+    if (page !== 'smaller') return `<div id="lab-page-playground" role="tabpanel" aria-labelledby="lab-tab-playground">${navHtml()}${runsHtml}${cur().html()}</div>`;
+    return ladderPage(runsHtml);
+  }
+  function ladderPage(runsHtml) {
     const list = starts();
     const steps = (v().ladderSteps || []).map((s) => s.label).join(', ');
-    return `<div id="lab-page-playground" role="tabpanel" aria-labelledby="lab-tab-playground">
+    return `<div id="lab-page-playground" role="tabpanel" aria-labelledby="lab-tab-playground">${navHtml()}
       <h3>How small can a brain get?</h3>
       <p class="muted">Bob takes one small brain and makes it ${steps ? `in six sizes (${esc(steps)})` : 'in six sizes'}, then measures each the same way: how big it is, how fast it writes, its Lab score, and how surprised it is by a page of Bob's Help it never tuned on. Smaller files lose detail, and this shows you where that starts to matter. It runs here, for free. It takes disk, and Bob shows how much before it starts.</p>
       ${runsHtml}
@@ -75,20 +100,31 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
       <div class="row"><button type="button" class="get" data-playgo ${from && plan && !plan.problems.length && !busy() ? '' : 'disabled'}>${busy() ? 'The Lab is busy' : 'Make the ladder'}</button></div>
       ${pmsg ? `<p class="error" role="alert">${esc(pmsg)}</p>` : ''}
       ${ladders().map(ladderHtml).join('')}
-      ${sections.map((s) => s.html()).join('')}
     </div>`;
   }
 
   // The page hands over its events; true means it was ours.
   async function change(el) {
-    for (const s of sections) if (await s.change?.(el)) return true;
+    if (page !== 'smaller') { const r = await cur().change(el) || (el.type === 'range' && cur().input(el)); if (r) refocus(el.id); return Boolean(r); }
     if (el.name === 'playfrom') { from = el.value; pmsg = ''; await replan(); return true; }
     return false;
   }
-  function input(el) { for (const s of sections) if (s.input?.(el)) return true; if (el.id === 'play-q') { question = el.value; return true; } return false; }
+  function input(el) { if (page === 'peek') return Boolean(cur().input(el)); if (page !== 'smaller') return el.type === 'range' ? true : Boolean(cur().input(el)); if (el.id === 'play-q') { question = el.value; return true; } return false; }
   async function click(b, load) {
     for (const s of sections) { const r = await s.click?.(b, load); if (r) return r; }
     const d = b.dataset;
+    if (d.playpage) {
+      page = d.playpage; refocus(`play-page-${page}`);
+      if (page !== 'smaller' && !loaded.has(page)) { loaded.add(page); await cur().load(); }
+      return 'draw';
+    }
+    if (page === 'peek') { for (const s of sections) { const r = await s.click?.(b, load); if (r) return r; } return false; }
+    if (page !== 'smaller') {
+      const r = await cur().click(b);
+      if (r === 'load') { await cur().load(); await load(); return true; }
+      if (r) refocus(b.id);
+      return r;
+    }
     if (!('playgo' in d || 'playunload' in d || 'playnounload' in d || d.playask || d.playaskgo || d.playdel || d.playdelgo || 'playdelno' in d)) return false;
     pmsg = '';
     if ('playnounload' in d) { askUnload = null; return 'draw'; }
@@ -113,5 +149,5 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
     return true;
   }
 
-  return { html, change, input, click, saveTable, mounted: () => { for (const s of sections) s.mounted?.(); } };
+  return { html, change, input, click, saveTable, mounted: () => { if (page === 'peek') for (const s of sections) s.mounted?.(); } };
 }

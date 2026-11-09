@@ -43,6 +43,7 @@ export function createLab({ api, note }) {
   const sn = createSenses({ api, draw: () => { if (tab === 'forge') draw(); } });
   // 1.5.164 Peek inside: Cut these out opens Make a brain, step 3, with the keep file; Send to the Forge opens the Forge tab (the file is in its keep-file list).
   const pk = createPeek({ api, view: () => view, cutWith: async ({ brain: id, file, experts }) => { r.from = id; const b = brain(); if (!r.name && b) r.name = `${b.name} Lab`; r.template = ''; r.smaller = { sight: false, hearing: false, cut: { how: 'file', file, keep: experts, cover: 0.95, strong: [] }, files: [], measure: false, try: false, tryStop: true }; tab = 'make'; step = 'smaller'; await replan(); $('lab-tab-make')?.focus(); }, toForge: () => { tab = 'forge'; fg.reload().then(() => draw()); draw(); $('lab-tab-forge')?.focus(); } });
+  document.addEventListener('lab-page-ready', () => { if (tab === 'playground' && dlg.open) draw(); }); // 1.5.167 Longer, Faster, Teach it
   const pg = createPlayground({ api, view: () => view, saveState, sections: [pk] });
   const rc = createRecipes({ api, recipe: r, view: () => view, replan: () => replan(), draw: () => draw() });
   const brain = () => view?.brains.find((b) => b.id === r.from);

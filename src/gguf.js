@@ -7,10 +7,10 @@ import fs from 'node:fs';
 const T = { U8: 0, I8: 1, U16: 2, I16: 3, U32: 4, I32: 5, F32: 6, BOOL: 7, STRING: 8, ARRAY: 9, U64: 10, I64: 11, F64: 12 };
 const FIXED = { [T.U8]: 1, [T.I8]: 1, [T.U16]: 2, [T.I16]: 2, [T.U32]: 4, [T.I32]: 4, [T.F32]: 4, [T.BOOL]: 1, [T.U64]: 8, [T.I64]: 8, [T.F64]: 8 };
 // Only these keys are kept; everything else (token lists and so on) is skipped over.
-const WANT = new Set(['general.architecture', 'general.name', 'general.basename', 'general.size_label', 'tokenizer.chat_template', 'tokenizer.chat_template.tool_use']);
+const WANT = new Set(['general.architecture', 'general.name', 'general.basename', 'general.size_label', 'tokenizer.chat_template', 'tokenizer.chat_template.tool_use', 'general.base_model.0.repo_url', 'general.source.url', 'general.source.huggingface.repository']);
 // The shape keys, read per architecture (<arch>.block_count and so on): the context limit, and what the chat memory
 // (the KV cache) costs per token, so Bob can say whether a long context fits before loading it.
-const SHAPE = ['.context_length', '.block_count', '.attention.head_count_kv', '.attention.key_length', '.attention.value_length', '.full_attention_interval', '.rope.scaling.type'];
+const SHAPE = ['.context_length', '.block_count', '.attention.head_count_kv', '.attention.key_length', '.attention.value_length', '.full_attention_interval', '.rope.scaling.type', '.nextn_predict_layers'];
 const MAX_HEADER = 256 * 1024 * 1024; // a sane header is far smaller; past this the file isn't a GGUF we understand
 
 class Reader {
@@ -90,7 +90,11 @@ export function ggufInfo(file) {
       ctxTrain: Number(kv[`${kv['general.architecture']}.context_length`]) || null,
       // The chat memory's shape: layers, which of them keep a memory (hybrid brains like Qwen3.6 only keep one in
       // every few), and how big each token's memory is. Any of these may be missing (null).
-      shape: shapeOf(kv, kv['general.architecture'])
+      shape: shapeOf(kv, kv['general.architecture']),
+      // 1.5.16x Turbo: brains that carry their own guesser (a multi-token head, "nextn" in the file) need no draft brain.
+      // 1.5.16x Teach it: where the brain's full weights live, when the file says (its Hugging Face original).
+      origin: kv['general.source.huggingface.repository'] || kv['general.base_model.0.repo_url'] || kv['general.source.url'] || '',
+      mtp: Number(kv[`${kv['general.architecture']}.nextn_predict_layers`]) || 0
     };
   } catch { out = null; } finally { if (fd !== undefined) try { fs.closeSync(fd); } catch {} }
   cache.set(key, out);
