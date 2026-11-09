@@ -27,7 +27,7 @@ export function ladderTexts(help = HELP) {
 }
 
 // How much disk the ladder takes for a full-size brain of `gb`: every rung plus the importance file.
-export const ladderDiskGB = (gb) => Math.round((LADDER.reduce((a, x) => a + gb * x.share, 0) + 0.1) * 10) / 10;
+export const ladderDiskGB = (gb, steps = LADDER) => Math.round((steps.reduce((a, x) => a + gb * x.share, 0) + 0.1) * 10) / 10;
 
 // The final perplexity llama-perplexity prints: "Final estimate: PPL = 8.1234 +/- 0.05". null if it isn't there.
 export function readPerplexity(text) {

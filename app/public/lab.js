@@ -19,6 +19,14 @@ import { homeReportHtml } from './lab-home-ways.js'; // 1.5.164 the Forge's home
 const $ = (id) => document.getElementById(id);
 const TABS = [['make', 'Make a brain'], ['forge', 'Forge'], ['learn', 'Learn'], ['challenges', 'Challenges'], ['playground', 'Playground']];
 const STEPS = [['brain', '1 Pick a brain'], ['lessons', '2 Lessons'], ['smaller', '3 Make it smaller'], ['where', '4 Where it runs'], ['test', '5 Test and use']];
+// What the switch changes on each tab, said right beside it, so Professional never looks like a button that does nothing.
+const MODE_NOTES = {
+  make: { simple: 'This tab is the same in both modes; Show the recipe has the exact commands.', pro: 'This tab is the same in both modes; Show the recipe has the exact commands.' },
+  forge: { simple: 'The New Forge run form keeps to the usual choices. Professional adds which skills to protect, the running files to make and how the brain is taught back.', pro: 'The New Forge run form shows every control: skills to protect, running files, teaching back.' },
+  learn: { simple: 'This tab is the same in both modes.', pro: 'This tab is the same in both modes.' },
+  challenges: { simple: 'Tick, run, read the score. Professional adds run settings, the question log, your own challenge packs, Guard rails in detail and every challenge as a column.', pro: 'Run settings, the question log, your own challenge packs and Guard rails in detail are below; the scoreboard can show every challenge as a column.' },
+  playground: { simple: 'The ladder makes all six sizes. Professional lets you pick which sizes.', pro: 'On Smaller, pick which sizes the ladder makes.' },
+};
 const TYPE_NOTE = { Q4_K_M: 'Q4 (recommended)', Q5_K_M: 'Q5', Q6_K: 'Q6', Q8_0: 'Q8', Q3_K_M: 'Q3 (only for brains meant for 8 GB or less)' };
 const PARTS = { general: 'General knowledge', tools: 'Picking the right tool', coding: 'Coding', following: 'Following instructions' };
 
@@ -96,6 +104,7 @@ export function createLab({ api, note }) {
       const can = [f.experts ? `cut experts (${f.experts} per layer, ${f.used} picked per word)` : 'everything except an expert cut (it isn\'t a mixture-of-experts brain)', f.sight && 'take out sight', f.hearing && 'take out hearing', f.fullSize ? 'make running files' : `it's already a running file (${f.fileType})`].filter(Boolean).join(', ');
       return radio('from', b.id, r.from === b.id, `${b.name}${b.madeInLab ? ' (made in the Lab)' : ''}${b.community ? ' · community' : ''}`, `${f.sizeGB} GB. ${b.fit} In the Lab: ${can}.${b.license ? ` Licence: ${b.license}.` : ''}`);
     }).join('')}</fieldset>
+    ${r.from ? '' : '<p role="status"><strong>Tick one brain above to go on.</strong> Steps 2 to 5 and Next open up as soon as a brain is picked.</p>'}
     <p><label>Name for the new brain <input id="lab-name" type="text" maxlength="60" value="${esc(r.name)}" autocomplete="off"></label></p>`;
   }
 
@@ -386,7 +395,7 @@ export function createLab({ api, note }) {
     // 1.5.168 Keep it simple / Professional: one switch for the whole Lab. Simple shows what most people need; Professional
     // shows every control a tab has. Saved in settings, so it's the same next time and on every tab.
     const pro = view.mode === 'pro';
-    const modeRow = `<div class="lab-mode" role="radiogroup" aria-label="How much to show"><button type="button" class="lab-chip${pro ? '' : ' on'}" role="radio" aria-checked="${!pro}" data-labmode="simple">Keep it simple</button><button type="button" class="lab-chip${pro ? ' on' : ''}" role="radio" aria-checked="${pro}" data-labmode="pro">Professional</button><span class="muted">${pro ? 'Every control, on every tab. The simple way still works.' : 'The usual choices. Professional shows every control a tab has.'}</span></div>`;
+    const modeRow = `<div class="lab-mode" role="radiogroup" aria-label="How much to show"><button type="button" class="lab-chip${pro ? '' : ' on'}" role="radio" aria-checked="${!pro}" data-labmode="simple">Keep it simple</button><button type="button" class="lab-chip${pro ? ' on' : ''}" role="radio" aria-checked="${pro}" data-labmode="pro">Professional</button><span class="muted">${MODE_NOTES[tab]?.[pro ? 'pro' : 'simple'] || ''}</span></div>`;
     // 1.5.17x The Lab's engine, on every tab: which one it makes, tests and runs brains with (also in Settings > Engines).
     const en = view.engine || {};
     const engineRow = `<div class="lab-engine row"><label class="pick-inline"><span>Lab engine</span><select data-labengine aria-label="Lab engine">${[['', 'Same as Bob\'s brains'], ['brainengine', 'Brain Engine'], ['llamacpp', 'llama.cpp']].map(([v, l]) => `<option value="${v}" ${v === (en.pick || '') ? 'selected' : ''} ${v === 'brainengine' && !en.brainEngineHere ? 'disabled' : ''}>${l}${v === 'brainengine' && !en.brainEngineHere ? ' (not here yet)' : ''}</option>`).join('')}</select></label><span class="muted">${en.found ? `Working with ${esc(en.name || 'llama.cpp')}${en.version ? ` (${esc(en.version)})` : ''}.` : 'No engine found yet: get one in Get models, Engines.'}</span></div>`;

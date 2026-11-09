@@ -4,6 +4,7 @@
 // only places it and hands over its events, like the cut recipes.
 import { esc } from './rich.js';
 import { saveHtml } from './lab-save.js';
+import { createFullSize, fullSizeWhyNot } from './lab-fullsize.js'; // Bring in a full-size brain, right where the list is empty
 import { createContextPage } from './lab-context.js'; // 1.5.16x Longer: how much can it hold (thinking-paths sec 15.2)
 import { createTurboPage } from './lab-turbo.js'; // 1.5.16x Faster: Turbo (sec 15.1)
 import { createTeachPage } from './lab-teach.js'; // 1.5.16x Teach it: here, or as a Forge plan (sec 15.3)
@@ -29,14 +30,17 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
     }
   }
   const navHtml = () => `<div class="lab-tabs lab-subtabs" role="tablist" aria-label="Playground pages">${PLAY_PAGES.map(([id, label]) => `<button type="button" role="tab" id="play-page-${id}" class="lab-tab${page === id ? ' on' : ''}" aria-selected="${page === id}" tabindex="${page === id ? 0 : -1}" data-playpage="${id}">${esc(label)}</button>`).join('')}</div>`;
-  let confirmDel = '', from = '', plan = null, askUnload = null, pmsg = '', question = 'Explain what a black hole is to a ten-year-old, in three sentences.', open = '';
+  let confirmDel = '', from = '', plan = null, askUnload = null, pmsg = '', types = [], // Professional: which sizes to make (empty = all six)
+    question = 'Explain what a black hole is to a ten-year-old, in three sentences.', open = '';
   const v = () => view() || {};
+  const full = createFullSize({ api, view }); // the shared Bring in a full-size brain box
+  const pro = () => v().mode === 'pro';
   const busy = () => v().runs?.some((x) => x.state === 'running');
   // Brains the ladder can start from: full size (F16 or BF16) and small enough for an evening.
   const starts = () => (v().brains || []).filter((b) => b.facts?.fullSize && b.facts.sizeGB <= (v().playMaxGB || 9));
   const ladders = () => v().ladders || [];
 
-  async function replan() { plan = null; if (!from) return; try { plan = await api('/api/lab/ladder/plan', { from }); } catch (e) { pmsg = e.message; } }
+  async function replan() { plan = null; if (!from) return; try { plan = await api('/api/lab/ladder/plan', { from, types }); } catch (e) { pmsg = e.message; } }
 
   // One ladder as a table, for the page and for Save.
   const cell = (n, unit = '') => (n === null || n === undefined ? '-' : `${n}${unit}`);
@@ -89,13 +93,17 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
   }
   function ladderPage(runsHtml) {
     const list = starts();
+    const others = (v().brains || []).filter((b) => !list.includes(b));
     const steps = (v().ladderSteps || []).map((s) => s.label).join(', ');
     return `<div id="lab-page-playground" role="tabpanel" aria-labelledby="lab-tab-playground">${navHtml()}
       <h3>How small can a brain get?</h3>
       <p class="muted">Bob takes one small brain and makes it ${steps ? `in six sizes (${esc(steps)})` : 'in six sizes'}, then measures each the same way: how big it is, how fast it writes, its Lab score, and how surprised it is by a page of Bob's Help it never tuned on. Smaller files lose detail, and this shows you where that starts to matter. It runs here, for free. It takes disk, and Bob shows how much before it starts.</p>
       ${runsHtml}
       <fieldset><legend>Which brain?</legend>${list.length ? list.map((b) => `<label class="lab-opt"><input type="radio" name="playfrom" value="${esc(b.id)}" ${from === b.id ? 'checked' : ''}> <span><strong>${esc(b.name)}</strong><br><span class="muted">${b.facts.sizeGB} GB full size.</span></span></label>`).join('')
-        : `<p>There's no brain here the ladder can start from. It needs a small brain's full-size file (F16 or BF16, up to ${v().playMaxGB || 9} GB), like a 1B to 4B brain from Get models, or one you made in the Lab without step 3.</p>`}</fieldset>
+        : `<p><strong>There's no brain here the ladder can start from yet.</strong> It needs a small brain's full-size file (F16 or BF16, up to ${v().playMaxGB || 9} GB), like a 1B to 4B brain. Bob's downloads are running files, so use <strong>Bring in a full-size brain</strong> just below: a Hugging Face name, a link, or <strong>Pick a file here</strong>.</p>`}
+        ${others.length ? `<details class="play-others"><summary class="muted">${others.length} other brain${others.length === 1 ? '' : 's'} here can't start the ladder</summary><ul class="home-lists">${others.map((b) => `<li><strong>${esc(b.name)}</strong>: ${esc(fullSizeWhyNot(b, v().playMaxGB || 9))}.</li>`).join('')}</ul></details>` : ''}</fieldset>
+      ${full.html({ id: 'play-full', open: !list.length })}
+      ${pro() ? `<fieldset class="lab-pro"><legend>Which sizes to make (Professional)</legend><p class="muted">All six by default. Untick the ones you don't need and the ladder is shorter and quicker.</p>${(v().ladderSteps || []).map((st) => `<label class="lab-opt"><input type="checkbox" data-playtype="${esc(st.type)}" ${!types.length || types.includes(st.type) ? 'checked' : ''}> <span>${esc(st.label)}</span></label>`).join('')}</fieldset>` : ''}
       ${plan ? `<div class="lab-check" role="status">${plan.problems.length ? `<p><strong>Before it can start:</strong></p><ul>${plan.problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : `<p><strong>Ready.</strong> The six sizes take about ${plan.diskGB} GB of disk. Delete all gives it back, and the results stay.</p>`}${plan.notes.map((n) => `<p class="muted">${esc(n)}</p>`).join('')}</div>` : ''}
       ${askUnload?.ladder ? unloadHtml() : ''}
       <div class="row"><button type="button" class="get" data-playgo ${from && plan && !plan.problems.length && !busy() ? '' : 'disabled'}>${busy() ? 'The Lab is busy' : 'Make the ladder'}</button></div>
@@ -107,6 +115,8 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
   // The page hands over its events; true means it was ours.
   async function change(el) {
     if (page !== 'smaller') { const r = await cur().change(el) || (el.type === 'range' && cur().input(el)); if (r) refocus(el.id); return Boolean(r); }
+    if (full.change(el)) return false;
+    if (el.dataset.playtype) { const all = (v().ladderSteps || []).map((st) => st.type); const cur = types.length ? types : all; types = el.checked ? all.filter((t) => cur.includes(t) || t === el.dataset.playtype) : cur.filter((t) => t !== el.dataset.playtype); if (types.length === all.length) types = []; pmsg = ''; await replan(); return true; }
     if (el.name === 'playfrom') { from = el.value; pmsg = ''; await replan(); return true; }
     return false;
   }
@@ -126,6 +136,7 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
       if (r) refocus(b.id);
       return r;
     }
+    if (await full.click(b, load)) return true;
     if (!('playgo' in d || 'playunload' in d || 'playnounload' in d || d.playask || d.playaskgo || d.playdel || d.playdelgo || 'playdelno' in d)) return false;
     pmsg = '';
     if ('playnounload' in d) { askUnload = null; return 'draw'; }
@@ -134,7 +145,7 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
     if ('playdelno' in d) { confirmDel = ''; return 'draw'; }
     try {
       if ('playgo' in d || (askUnload?.ladder && 'playunload' in d)) {
-        const res = await api('/api/lab/ladder', { from, unload: 'playunload' in d });
+        const res = await api('/api/lab/ladder', { from, types, unload: 'playunload' in d });
         askUnload = res.needUnload ? { ladder: true, names: res.names } : null;
         if (!res.needUnload) { from = ''; plan = null; }
       } else if (d.playaskgo || (askUnload?.ask && 'playunload' in d)) {

@@ -488,6 +488,11 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   const pl = plLab.planLadder('test-moe');
   check('the ladder plan says the disk it needs and that the surprise tool is missing here', !pl.problems.length && pl.diskGB > 0 && pl.notes.some((n) => /skips the surprise score/.test(n)), pl.problems.join());
   check('a brain that isn\'t here can\'t start a ladder', plLab.planLadder('nope').problems.length === 1);
+  check('Professional picks the sizes: three types make a three-rung plan with less disk; none picked means all six; unknown types are refused', plLab.planLadder('test-moe', ['Q8_0', 'Q4_K_M', 'Q2_K']).steps.length === 3 && ladderDiskGB(8, LADDER.filter((x) => ['Q8_0', 'Q4_K_M', 'Q2_K'].includes(x.type))) < ladderDiskGB(8) && plLab.planLadder('test-moe', []).steps.length === LADDER.length && plLab.planLadder('test-moe', ['Q9']).problems.some((x) => /Pick from Q8 down to Q2/.test(x)));
+  check('the Playground sends the picked sizes and shows the picker only in Professional', /api\('\/api\/lab\/ladder', \{ from, types, unload/.test(read('public/lab-playground.js')) && /pro\(\) \? `<fieldset class="lab-pro"><legend>Which sizes to make \(Professional\)/.test(read('public/lab-playground.js')));
+  { const lj = read('public/lab.js'); check('the mode switch says what it changes on each tab', ['make', 'forge', 'learn', 'challenges', 'playground'].every((t) => new RegExp(`\\n  ${t}: \\{ simple: '`).test(lj)) && /MODE_NOTES\[tab\]\?\.\[pro \? 'pro' : 'simple'\]/.test(lj) && /same in both modes/.test(lj)); }
+  check('Make a brain says what opens up once a brain is ticked', /Tick one brain above to go on\./.test(read('public/lab.js')));
+  check('the Diffusion page and the Settings summary follow the Lab\'s on-unless-off rule, never computerLab === true', /!labOn\(lab\.cfg\)/.test(read('src/lab-diffusion.js')) && !/computerLab !== true/.test(read('src/lab-diffusion.js')) && /Lab: \$\{onoff\(settings\.computerLab !== false\)\}/.test(read('public/cellar.js')));
   check('the page gets the ladder limit and steps, no paths', plLab.view().playMaxGB === PLAY_MAX_GB && plLab.view().ladderSteps.length === 6 && !JSON.stringify(plLab.view().ladders).includes(tmp));
   const be2 = { engine: { loaded: async () => [{ name: 'qwen', vram: 9e9 }], unloadAll: async () => {} } };
   check('with Bob\'s brain on the card, the ladder asks first', (await new Lab(cfg, { shop, room: big, brain: be2 }).startLadder({ from: 'test-moe' })).needUnload === true);
@@ -647,7 +652,7 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
     check('Stop while importing cancels it: no Forge, no card to delete', st.stopped && !st.pod && sp2.length === 5 && !sp2.slice(4).some((x) => x.args.includes('--kill')));
     fs.unlinkSync(path.join(ml, 'import-lessons.mjs')); try { fs.unlinkSync(hLab.forgeLiveFile()); } catch {}
   }
-  for (const f of ['public/lab-forge.js', 'public/lab.js', 'public/lab-thinking-paths.js', 'public/lab-playground.js', 'public/lab-home-ways.js', 'public/lab-peek.js']) check(`${f} parses`, spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../${f}`, import.meta.url))]).status === 0);
+  for (const f of ['public/lab-forge.js', 'public/lab.js', 'public/lab-thinking-paths.js', 'public/lab-playground.js', 'public/lab-home-ways.js', 'public/lab-peek.js', 'public/lab-fullsize.js']) check(`${f} parses`, spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../${f}`, import.meta.url))]).status === 0);
   check('the Forge tab uses real labels, radio groups and table headers', /role="radiogroup"/.test(pf) && /<th scope="col">/.test(pf) && /<label/.test(pf) && /\['forge', 'Forge'\]/.test(read('public/lab.js')));
   check('Help has a Forge page and a best-practice page in Bob\'s voice', /id: 'lab-forge'/.test(read('public/help-content.js')) && /id: 'lab-best-practice'/.test(read('public/help-content.js')) && /half a pass teaches half a habit/.test(read('public/help-content.js')));
 }
@@ -1213,9 +1218,11 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   check('the direction finder and the adapter folder are found in Brain Engine\'s folder', blab.tools().cvector.found === true && /brain-engine/.test(blab.tools().cvector.path) && fs.existsSync(exportLoraPath(blab)) && /brain-engine/.test(exportLoraPath(blab)));
   check('the missing-tool words point at Brain Engine, not the engine\'s own download', /comes with Brain Engine/.test(read('src/lab-refusals.js')) && /comes with Brain Engine/.test(read('src/lab-teach.js')) && !/engine's full download/.test(read('src/lab-refusals.js')) && !/Download the built-in engine again/.test(read('src/lab-teach.js')));
   // the page and Help
-  const hw = read('public/lab-home-ways.js');
-  check('the Forge tab has the Bring in box with Look, Get it, Stop and Pick a file here', /Bring in a full-size brain/.test(hw) && /data-fulllook/.test(hw) && /data-fullget/.test(hw) && /data-fullstop/.test(hw) && /data-fullpick/.test(hw) && /Nothing is uploaded/.test(hw));
-  check('the no-brains line points at it', /use <strong>Bring in a full-size brain<\/strong>/.test(hw));
+  const hw = read('public/lab-home-ways.js'), fz = read('public/lab-fullsize.js'), pgj = read('public/lab-playground.js');
+  check('the Bring in box is one shared module with Look, Get it, Stop and Pick a file here', /Bring in a full-size brain/.test(fz) && /data-fulllook/.test(fz) && /data-fullget/.test(fz) && /data-fullstop/.test(fz) && /data-fullpick/.test(fz) && /Nothing is uploaded/.test(fz));
+  check('the Forge tab and the Playground both show it', /createFullSize\(/.test(hw) && /full\.html\(\{ id: 'forge-full' \}\)/.test(hw) && /createFullSize\(/.test(pgj) && /full\.html\(\{ id: 'play-full', open: !list\.length \}\)/.test(pgj));
+  check('the no-brains lines point at it', /use <strong>Bring in a full-size brain<\/strong>/.test(hw) && /use <strong>Bring in a full-size brain<\/strong> just below/.test(pgj));
+  check('the Playground names the brains that can\'t start the ladder and why', /fullSizeWhyNot\(b, v\(\)\.playMaxGB/.test(pgj) && (await import('../public/lab-fullsize.js')).fullSizeWhyNot({ facts: { fullSize: false, fileType: 'Q4_K_M', sizeGB: 4 } }) === 'a running file already (Q4_K_M), not the full-size copy' && (await import('../public/lab-fullsize.js')).fullSizeWhyNot({ facts: { fullSize: true, sizeGB: 30 } }, 9) === '30 GB full size, and the ladder takes brains up to 9 GB' && (await import('../public/lab-fullsize.js')).fullSizeWhyNot({ facts: { fullSize: true, sizeGB: 3 } }, 9) === '');
   check('progress reaches the page', /case 'lab-full'/.test(read('public/app.js')) && /fullUpdate\(full\)/.test(read('public/lab.js')));
   const { HELP } = await import('../public/help-content.js');
   const fh = HELP.find((h) => h.id === 'lab-forge');
