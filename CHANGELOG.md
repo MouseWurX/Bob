@@ -4,6 +4,15 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.168
+
+One switch for the whole Computer Science Lab: **Keep it simple** or **Professional**.
+
+- Under the Lab's tabs: **Keep it simple** shows the choices most people need on each tab, with Bob's usual defaults filled in. **Professional** shows every control a tab has. It's saved, so it's the same next time and on every tab, and the same switch is in Settings, How Bob works, Brains, as **Lab: Professional mode** (off unless you turn it on).
+- In the Forge tab, Professional shows which skills to protect, the running files to make and how a brain is taught back; Keep it simple uses Q4 and a light teaching back. On the scoreboard, Professional adds **Every challenge as a column**. The Challenges tab's own Professional controls (per-question logs, repeat runs, your own packs) come from the challenges work.
+- Help: The Computer Science Lab updated. Tests in `test/run-lab-test.js`.
+- Phone (Bob for Android): the switch shows on the phone's Lab page too, and sets the same thing.
+
 ## 1.5.167
 
 The Lab's Playground gets three more pages next to the quantization ladder (now called **Smaller**): **Longer**, **Faster** and **Teach it**.

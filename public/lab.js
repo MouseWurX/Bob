@@ -355,7 +355,7 @@ export function createLab({ api, note }) {
     const t = boardTable();
     const chip = (attr, on, label) => `<button type="button" class="lab-chip${on ? ' on' : ''}" aria-pressed="${on}" ${attr}>${esc(label)}</button>`;
     const pick = `<div class="row lab-chips" role="group" aria-label="Scoreboard view">${chip('data-boardby="class"', ch.by === 'class', 'By class of model')}${chip('data-boardby="all"', ch.by === 'all', 'Every brain in one table')}</div>
-      ${ch.by === 'class' ? `<div class="row lab-chips" role="group" aria-label="Show">${chip('data-boardkind="all"', ch.kind === 'all', 'All')}${chip('data-boardkind="moe"', ch.kind === 'moe', 'Mixture of experts')}${chip('data-boardkind="dense"', ch.kind === 'dense', 'Dense')}${chip('data-boardhere', ch.here, 'Made here')}${view.cardGB ? chip('data-boardfits', ch.fits, `Fits my ${view.cardGB} GB graphics card`) : ''}${MORE().length ? chip('data-boardwide', ch.wide, 'Every challenge as a column') : ''}</div>
+      ${ch.by === 'class' ? `<div class="row lab-chips" role="group" aria-label="Show">${chip('data-boardkind="all"', ch.kind === 'all', 'All')}${chip('data-boardkind="moe"', ch.kind === 'moe', 'Mixture of experts')}${chip('data-boardkind="dense"', ch.kind === 'dense', 'Dense')}${chip('data-boardhere', ch.here, 'Made here')}${view.cardGB ? chip('data-boardfits', ch.fits, `Fits my ${view.cardGB} GB graphics card`) : ''}${MORE().length && view.mode === 'pro' ? chip('data-boardwide', ch.wide, 'Every challenge as a column') : ''}</div>
       <p class="muted">Each class is by how many weights a brain has in all. A mixture of experts sits with its total, and shows how many are at work on each word. Quantizing never moves a brain to another class; the Quant column says how it was squeezed. Overall is the average of every challenge, run with today's version of each test. A brain that hasn't run them all shows how many it ran and sits below the ones that have, so it can't win by skipping the hard one. A crossed-out score came from an older version of that test.</p>
       ${classTables()}${saveHtml('board', saveState('board'), view.hardware)}` : ''}`;
     const board = !view.scores?.length ? '<p class="muted">No scores yet. Pick a brain and run some challenges, and they show here.</p>' : ch.by === 'class' ? pick : `${pick}<table class="lab-report lab-board"><caption class="muted">Scores out of 100. Press a column's name to sort by it.</caption>
@@ -378,7 +378,11 @@ export function createLab({ api, note }) {
   function draw() {
     if (!view) { body.innerHTML = `<p class="muted">${esc(msg || 'Loading...')}</p>`; return; }
     if (!view.on) { body.innerHTML = '<p>The Lab is off. Turn on <strong>Show the Computer Science Lab</strong> in Settings, How Bob works, Brains.</p>'; return; }
-    const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}</div>`;
+    // 1.5.168 Keep it simple / Professional: one switch for the whole Lab. Simple shows what most people need; Professional
+    // shows every control a tab has. Saved in settings, so it's the same next time and on every tab.
+    const pro = view.mode === 'pro';
+    const modeRow = `<div class="lab-mode" role="radiogroup" aria-label="How much to show"><button type="button" class="lab-chip${pro ? '' : ' on'}" role="radio" aria-checked="${!pro}" data-labmode="simple">Keep it simple</button><button type="button" class="lab-chip${pro ? ' on' : ''}" role="radio" aria-checked="${pro}" data-labmode="pro">Professional</button><span class="muted">${pro ? 'Every control, on every tab. The simple way still works.' : 'The usual choices. Professional shows every control a tab has.'}</span></div>`;
+    const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}</div>${modeRow}`;
     if (tab === 'learn') { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-learn" role="tabpanel" aria-labelledby="lab-tab-learn"></div></div>`; learn.mount($('lab-page-learn')); return; }
     if (tab === 'challenges') { body.innerHTML = `<div class="lab">${tabs}${challengesHtml()}</div>`; return; }
     if (tab === 'forge') { body.innerHTML = `<div class="lab">${tabs}${fg.html(sn.html())}</div>`; return; }
@@ -493,6 +497,7 @@ export function createLab({ api, note }) {
     if (b.dataset.boardkind) { ch.kind = b.dataset.boardkind; draw(); body.querySelector(`[data-boardkind="${ch.kind}"]`)?.focus(); return; }
     if ('boardhere' in b.dataset) { ch.here = !ch.here; draw(); body.querySelector('[data-boardhere]')?.focus(); return; }
     if ('boardfits' in b.dataset) { ch.fits = !ch.fits; draw(); body.querySelector('[data-boardfits]')?.focus(); return; }
+    if (b.dataset.labmode) { try { view.mode = (await api('/api/lab/mode', { mode: b.dataset.labmode })).mode; } catch (e) { msg = e.message; } draw(); body.querySelector(`[data-labmode="${view.mode}"]`)?.focus(); return; }
     if ('boardwide' in b.dataset) { ch.wide = !ch.wide; draw(); body.querySelector('[data-boardwide]')?.focus(); return; }
     if (b.dataset.sort) { ch.down = ch.sort === b.dataset.sort ? !ch.down : b.dataset.sort !== 'name'; ch.sort = b.dataset.sort; draw(); body.querySelector(`[data-sort="${ch.sort}"]`)?.focus(); return; }
     if (b.dataset.saveopen) { Object.assign(saveState(b.dataset.saveopen), { open: true, saved: '', error: '' }); return draw(); }

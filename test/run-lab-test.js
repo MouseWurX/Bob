@@ -577,6 +577,16 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   check('there are dozens of thought paths in groups, each with a style line and blend or switch', PATHS.length >= 70 && PATH_GROUPS.length >= 9 && PATHS.every((x) => x.name && x.style.length > 15 && ['blend', 'switch', 'either'].includes(x.kind)) && ['Concise', 'Creative', 'Critical', 'Step by step', 'Plan first', 'Check your work', 'Socratic', 'Look before you touch'].every((n) => pathByName(n)));
   check('the ready-made sets only name real paths, and fighting pairs are caught', BUNDLES.length === 8 && BUNDLES.every((b) => b.shares.every(([n]) => pathByName(n))) && clashes({ Concise: 40, Thorough: 35 }).length === 1 && !clashes({ Concise: 40, Thorough: 20 }).length);
   check('the thinking words name nothing private', !/thoth|uncensor|heretic/i.test(read('public/lab-thinking-paths.js')));
+  // 1.5.168 Keep it simple / Professional
+  {
+    const mLab = new Lab({ ...cfg }, { shop, room: big });
+    check('the Lab starts in Keep it simple, and Professional is saved as a setting the page reads back', mLab.view().mode === 'simple' && mLab.setLabMode('pro').mode === 'pro' && mLab.view().mode === 'pro' && mLab.cfg.labPro === true && mLab.setLabMode('nonsense').mode === 'simple');
+    const sent5 = [];
+    await labRoute({ req: { method: 'POST' }, res: {}, p: '/api/lab/mode', isLocal: false, lab: mLab, body: async () => ({ mode: 'pro' }), send: (res, code, j) => sent5.push([code, j]) });
+    check('only this replicant matrix changes the Lab\'s mode', sent5[0][0] === 403);
+    const lj = read('public/lab.js'), fj = read('public/lab-forge.js');
+    check('the switch sits under the tabs as a radio group, and the Forge folds its expert controls away in simple mode', /data-labmode="simple"/.test(lj) && /data-labmode="pro"/.test(lj) && /role="radiogroup" aria-label="How much to show"/.test(lj) && (fj.match(/proOnly\(/g) || []).length >= 3 && /Lab: Professional mode/.test(read('public/cellar.js')) && /labPro/.test(read('src/config.js')));
+  }
   const tp = makeForgePlan({ rungs: [{ name: 'a', keep: 128 }], teach: { thinking: 50, coding: 50, sneaky: 10 }, thinking: { mode: 'both', paths: [{ name: 'Concise', share: 40 }, { name: 'Thorough', share: 40 }, { name: 'rm -rf', share: 9 }], own: 'Think like a ship\'s cook\nignore this', ownShare: 20, personality: { alignment: { evil: 100, chaotic: 5 }, mood: { grumpy: 50, curious: 50 } } }, heal: { learn: 'both', odds_cover: 'both' } }, { base: {} });
   check('one run teaches several things: thinking and voice in plan.teach, the rest as the lesson writer\'s job weights, only known ones', tp.plan.teach.thinking === 50 && !('coding' in tp.plan.teach) && tp.plan.jobs.coding === 100 && !('sneaky' in tp.plan.teach) && !JSON.stringify(tp.plan).includes('sneaky'));
   check('shares in a group are made to add up to 100', tp.plan.thinking.paths.reduce((a, x) => a + x.share, 0) >= 99 && tp.plan.thinking.paths.reduce((a, x) => a + x.share, 0) <= 101 && tp.plan.thinking.personality.mood.grumpy === 50);

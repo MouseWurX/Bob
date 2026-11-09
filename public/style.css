@@ -1537,3 +1537,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .peek-compare > p { grid-column: 1 / -1; }
 @media (max-width: 600px) { .peek-layers { columns: 1; } }
 @media (prefers-reduced-motion: reduce) { .peek-map { transition: none; } }
+
+/* 1.5.168 Keep it simple / Professional */
+.lab-mode { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 10px; }
+.lab-mode .muted { flex: 1 1 240px; }
