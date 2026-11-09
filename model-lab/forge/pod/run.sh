@@ -25,11 +25,23 @@ die() { status failed "$*"; echo "FAILED: $*"; exit 1; }
 hf_ok() { [ -n "$(plan ".get('publish')")" ] && [ -s $IN/hf-token ]; }
 publish_dir() {   # <local dir> <repo> <what> <model|dataset> <path in repo> [include globs...]
   local D=$1 REPO=$2 WHAT=$3 TYPE=$4 SUB=$5; shift 5; local INC=(); for g in "$@"; do INC+=(--include "$g"); done
-  local PRIV=""; [ "$(plan "['publish'].get('private',True)")" = "True" ] && PRIV="--private"
-  status publish "$WHAT: uploading to Hugging Face ($REPO, private)"
+  # PUB_PRIVATE (True/False) overrides publish.private for one upload (a rebuild run sets it per Bob: a tested Bob public, an untested one private)
+  local P="${PUB_PRIVATE:-$(plan "['publish'].get('private',True)")}"; local PRIV="" VIS=public; case "$P" in True|true|1) PRIV="--private"; VIS=private;; esac
+  status publish "$WHAT: uploading to Hugging Face ($REPO, $VIS)"
   if HF_TOKEN=$(cat $IN/hf-token) hf upload "$REPO" "$D" "$SUB" --repo-type $TYPE $PRIV "${INC[@]}" --commit-message "$WHAT from Bob's Forge" > $D/publish.log 2>&1; then
-    echo "$WHAT is on Hugging Face (private): https://huggingface.co/$( [ $TYPE = dataset ] && echo datasets/ )$REPO"; return 0
+    echo "$WHAT is on Hugging Face ($VIS): https://huggingface.co/$( [ $TYPE = dataset ] && echo datasets/ )$REPO"; return 0
   else echo "$WHAT: upload failed (see publish.log)"; tail -3 $D/publish.log; return 1; fi
+}
+# set_visibility <repo> <model|dataset> <True|False = private>: "hf upload --private" only counts when a repo is CREATED, so a repo that
+# already exists (Riker's, with his recipe) is flipped here. Best effort: a failure is said, not fatal.
+set_visibility() {
+  HF_TOKEN=$(cat $IN/hf-token) python3 - "$1" "$2" "$3" <<'PY' || echo "could not set the visibility of $1 (set it by hand on Hugging Face)"
+import os,sys; from huggingface_hub import HfApi
+repo,typ,priv=sys.argv[1:4]; api=HfApi(token=os.environ["HF_TOKEN"]); want=priv in ("True","true","1")
+try: api.update_repo_settings(repo_id=repo, repo_type=typ, private=want)
+except AttributeError: api.update_repo_visibility(repo_id=repo, repo_type=typ, private=want)
+print(f"{repo} is now {'private' if want else 'PUBLIC'}")
+PY
 }
 write_model_card() {   # <dir with .bob.json cards> <name> <nickname>
   python3 - "$1" "$2" "$3" "$(plan "['teacher']")" <<'PY'
@@ -326,6 +338,74 @@ json.dump({"name":"counts","files":files},open(f"{d}/counts-files.json","w"))
 PY
   [ "$S" != "$W" ] && mkdir -p $S/counts && cp $OUT/counts/*.json $OUT/counts/ladder.md $S/counts/ 2>/dev/null
   status done "counts finished"; exit 0
+fi
+
+# --- rebuild and publish (9 Nov): bring finished Bobs back from the stock teacher + keep list + adapter, make their GGUF files, and put
+# EVERYTHING on Hugging Face: the full-size weights, the adapter, the keep list, the GGUFs and their cards. No training and no teacher
+# pass (no lessons are needed), and NOTHING is copied to the volume: the owner wants the GGUFs off the drive now that Hugging Face hosts them.
+# plan.rebuild: {"models":[{"name":"28Bob","nickname":"Riker","keep_file":"hf:MouseWurX/28Bob-Riker:28Bob-keep.json","adapter":"hf:MouseWurX/28Bob-Riker:28Bob-adapter.pt",
+#   "cards":"hf:MouseWurX/28Bob-Riker","private":false}, {"name":"35Bob","nickname":"Bobert","adapter":"volume:bobs/35Bob/adapter.pt","private":true,"what":"..."}]}
+# No keep_file = no cut (the adapter goes straight onto the stock teacher). keep_file/adapter: hf:<repo>:<path>, volume:<path on the drive>,
+# or a file the PC sent to in/; the drive's bobs/<name>/ is the fallback. private is per Bob (a tested Bob public, an untested one private);
+# publish.private is the fallback. The run ends here: a rebuild plan does nothing else.
+if [ -n "$(plan ".get('rebuild')")" ]; then
+  hf_ok || die "rebuild: plan.publish and the Hugging Face token are needed (everything goes up, nothing comes down)"
+  NR=$(plan "['rebuild']['models']" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"); mkdir -p $W/rebuild $OUT/rebuild
+  status rebuild "waiting for the llama.cpp tools (the GGUF files need them)"
+  for i in $(seq 1 90); do [ -f $S/llama-ready ] || [ -f $S/llama-failed ] && break; sleep 20; done
+  [ -f $S/llama-ready ] || die "rebuild: llama tools unavailable (see out/llama-setup.log)"
+  RB_OK=0
+  for b in $(seq 0 $((NR-1))); do
+    BN=$(plan "['rebuild']['models'][$b]['name']"); BNICK=$(plan "['rebuild']['models'][$b].get('nickname','')"); MP=$(plan "['rebuild']['models'][$b].get('private','')")
+    KFS=$(plan "['rebuild']['models'][$b].get('keep_file','')"); ADS=$(plan "['rebuild']['models'][$b].get('adapter','')"); RIN=$W/rebuild/in-$BN; mkdir -p $RIN
+    case "$ADS" in volume:*) ADP=$S/${ADS#volume:} ;; "") ADP=$S/bobs/$BN/adapter.pt ;; *) ADP=$(resolve_in "$ADS" $RIN) ;; esac
+    case "$KFS" in volume:*) KFP=$S/${KFS#volume:} ;; "") KFP="" ;; *) KFP=$(resolve_in "$KFS" $RIN) ;; esac
+    [ -f "$ADP" ] || { [ -f $S/bobs/$BN/adapter.pt ] && ADP=$S/bobs/$BN/adapter.pt; }
+    [ -n "$KFS" ] && [ ! -f "$KFP" ] && [ -f $S/bobs/$BN/bob-keep.json ] && KFP=$S/bobs/$BN/bob-keep.json
+    [ -f "$ADP" ] || { echo "rebuild $BN: adapter missing ($ADS); skipped"; status rebuild "$BN: adapter missing, skipped"; continue; }
+    if [ -n "$KFS" ] && [ ! -f "$KFP" ]; then echo "rebuild $BN: keep list missing ($KFS); skipped"; status rebuild "$BN: keep list missing, skipped"; continue; fi
+    KFARG=(); [ -n "$KFS" ] && KFARG=(--keep-file "$KFP")
+    status rebuild "$BN: rebuilding from the stock teacher${KFS:+, his keep list} and his adapter"
+    rm -rf $W/rebuild/$BN $W/rebuild/$BN-cut
+    python3 rebuild.py --teacher $S/teacher "${KFARG[@]}" --adapter "$ADP" --dst $W/rebuild/$BN --name $BN > $OUT/rebuild/$BN-rebuild.log 2>&1 || { echo "rebuild $BN failed (see out/rebuild/$BN-rebuild.log)"; tail -3 $OUT/rebuild/$BN-rebuild.log; status rebuild "$BN: rebuild FAILED"; continue; }
+    status export "$BN: making the GGUF files"
+    WHAT=$(plan "['rebuild']['models'][$b].get('what','')"); WARG=(); [ -n "$WHAT" ] && WARG=(--what "$WHAT")
+    rm -rf "${OUT:?}"/"${BN:?}"; python3 export.py --model $W/rebuild/$BN --out $OUT/$BN --name "$BN" --nickname "$BNICK" --teacher "$TEACHER" --jobs "$(plan ".get('jobs','bob,deep,tinker,reviewer,office,ledger,scout')")" --llama $S/llama.cpp --quants $(plan ".get('quants','Q4_K_M')") --pending "${WARG[@]}" > $OUT/rebuild/$BN-export.log 2>&1 || { echo "export $BN failed (see out/rebuild/$BN-export.log)"; tail -3 $OUT/rebuild/$BN-export.log; status export "$BN: export FAILED"; continue; }
+    # the home benchmark block from the scored cards (plan cards: hf:<repo>, or cards the PC sent to in/) goes onto the fresh cards
+    CSRC=$(plan "['rebuild']['models'][$b].get('cards','')"); mkdir -p $W/rebuild/cards-$BN
+    case "$CSRC" in hf:*) for f in $OUT/$BN/*.bob.json; do hf_get "${CSRC#hf:}" "$(basename $f)" $W/rebuild/cards-$BN || true; done ;; *) cp $IN/$BN-*.bob.json $W/rebuild/cards-$BN/ 2>/dev/null ;; esac
+    python3 - $OUT/$BN $W/rebuild/cards-$BN <<'PY'
+import json,glob,os,sys; d,c=sys.argv[1:3]
+for f in glob.glob(f"{d}/*.bob.json"):
+    o=os.path.join(c,os.path.basename(f))
+    if os.path.exists(o):
+        new=json.load(open(f)); old=json.load(open(o))
+        if old.get("benchmark"): new["benchmark"]=old["benchmark"]; json.dump(new,open(f,"w"),indent=1); print("benchmark block kept for",os.path.basename(f))
+PY
+    # the small files sit in the repo root with everything else
+    [ -n "$KFS" ] && cp "$KFP" $OUT/$BN/$BN-keep.json; cp "$ADP" $OUT/$BN/$BN-adapter.pt
+    REPO="$(plan "['publish']['user']")/$BN${BNICK:+-$BNICK}"
+    if [ -n "$MP" ]; then export PUB_PRIVATE="$MP"; else unset PUB_PRIVATE; fi
+    write_model_card $OUT/$BN "$BN" "$BNICK"
+    publish_dir $OUT/$BN "$REPO" "$BN GGUF files, cards, keep list and adapter" model . "*.gguf" "*.bob.json" "README.md" "$BN-keep.json" "$BN-adapter.pt" || echo "publish $BN (GGUF files) failed"
+    publish_dir $W/rebuild/$BN "$REPO" "$BN full-size weights" model . "*.safetensors" "*.json" "*.jinja" "*.txt" "*.model" "adapter.pt" || echo "publish $BN (weights) failed"
+    [ -n "$MP" ] && set_visibility "$REPO" model "$MP"
+    unset PUB_PRIVATE
+    # every GGUF is on Hugging Face: the PC downloads nothing (the file list says where each one is), then the list is released
+    [ -f $OUT/$BN/$BN-files.json.pending ] && python3 - $OUT/$BN/$BN-files.json.pending "$REPO" <<'PY'
+import json,sys; p=sys.argv[1]; j=json.load(open(p))
+for f in j["files"]:
+    if f["file"].endswith(".gguf"): f["published"]=f"https://huggingface.co/{sys.argv[2]}/blob/main/{f['file']}"
+j["repo"]=sys.argv[2]; json.dump(j,open(p,"w"),indent=1)
+PY
+    release_files $BN "$BN"
+    echo "$BN${BNICK:+ $BNICK}: https://huggingface.co/$REPO"
+    rm -rf $W/rebuild/$BN $W/rebuild/$BN-cut $W/rebuild/cards-$BN; RB_OK=$((RB_OK+1))   # free the pod disk for the next Bob
+    status ready "$BN is on Hugging Face"
+  done
+  rm -f $IN/hf-token
+  [ "$RB_OK" -gt 0 ] || die "rebuild: no Bob was rebuilt"
+  status done "rebuild finished: $RB_OK of $NR Bobs on Hugging Face"; exit 0
 fi
 
 # --- teacher pass (once per lesson set, build 15): what the full Qwen thinks at every answer word (loaded in this process, no server) ---

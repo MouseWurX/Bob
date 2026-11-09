@@ -1,0 +1,54 @@
+{
+ "run": "rebuild-publish-riker-bobert",
+ "note": "9 Nov: rebuild Riker (28Bob) and Bobert (35Bob) on the card from the stock teacher + keep list + adapter, make their Q4 and Q3 GGUF files, and put EVERYTHING on Hugging Face: the full-size weights, the adapter, the keep list, the GGUFs and their cards. No training and no teacher pass; nothing is copied to the drive (the GGUFs come off the drive now that Hugging Face hosts them). Riker is tested, so he goes public; Bobert stays private until his home test. Quoted to the owner at about $18-25, cap $30.",
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H200"
+ ],
+ "step_up": [
+  "NVIDIA B200"
+ ],
+ "step_up_note": "no training here: the card only needs room to hold the full 35B in BF16 while the adapter is merged (about 70 GB), so the H200 is plenty and the B200 only if no H200 is free",
+ "volume": {
+  "gb": 100,
+  "name": "bob-forge"
+ },
+ "volume_wait_minutes": 25,
+ "volume_fallback": false,
+ "disk_gb": 350,
+ "quants": "Q4_K_M,Q3_K_M",
+ "general_tokens": 0,
+ "rungs": [],
+ "hours_max": 5,
+ "dollars_max": 30,
+ "rent_minutes": 180,
+ "download_quants": [],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "The rebuild section below does the uploading, one Bob at a time, with its own public/private per Bob. publish.models stays empty so publish_tested has nothing extra to do. Token = forge/hf-token.txt on the PC (gitignored), never in a plan."
+ },
+ "rebuild": {
+  "models": [
+   {
+    "name": "28Bob",
+    "nickname": "Riker",
+    "keep_file": "hf:MouseWurX/28Bob-Riker:28Bob-keep.json",
+    "adapter": "hf:MouseWurX/28Bob-Riker:28Bob-adapter.pt",
+    "cards": "hf:MouseWurX/28Bob-Riker",
+    "private": false
+   },
+   {
+    "name": "35Bob",
+    "nickname": "Bobert",
+    "adapter": "volume:bobs/35Bob/adapter.pt",
+    "private": true,
+    "what": "The full Qwen taught every one of Bob's lessons, no cut: the biggest Bob and the teacher of every smaller one."
+   }
+  ]
+ }
+}
