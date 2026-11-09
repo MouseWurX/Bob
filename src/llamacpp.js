@@ -383,7 +383,7 @@ export class LlamaCpp {
 
   // A model can see pictures when it has a vision projector (mmproj) and vision isn't switched off.
   async hasVision(model) {
-    try { return Boolean(this.resolve(model).mmproj) && this.lc.vision !== false; } catch { return false; }
+    try { return Boolean(this.resolve(model).mmproj) && this.lc.vision !== false && !(this.lc.noEyes || []).includes(model); } catch { return false; }
   }
 
   // Whether llama.cpp's --fit places the layers: on the card, unless a placement is pinned by hand or fit is off.
@@ -413,7 +413,7 @@ export class LlamaCpp {
       '-c', String(ctx || lc.ctx || DEFAULT_CTX), ...this.layerArgs(cpu, card), '--jinja',
       // Long memory: past what the brain was made for, its positions are stretched (YaRN) to the size picked.
       ...this.stretchArgs(gguf, ctx || lc.ctx || DEFAULT_CTX),
-      ...(mmproj && lc.vision !== false ? ['--mmproj', mmproj] : []),
+      ...(mmproj && lc.vision !== false && !(lc.noEyes || []).includes(model) ? ['--mmproj', mmproj] : []), // Lab: "Load without eyes and ears" for one brain
       ...(lc.args || ['-fa', 'on', '-ctk', 'q8_0', '-ctv', 'q8_0']),
       ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : num(lc.threads, '-t')),
       ...num(lc.batch, '-b'), ...num(lc.ubatch, '-ub'),

@@ -31,6 +31,8 @@ import { METHODS, LEFT_OUT, forgeDir, forgeRuns, forgeBrains, forgePlans, makeFo
 import { rentKeyEnv } from './rental.js'; // 1.5.159 the Forge tab
 import { LADDER, PLAY_MAX_GB, ladderTexts, ladderDiskGB, readPerplexity, ladderTable, ladderSaw, playDir, readLadders } from './lab-playground.js'; // 1.5.156 Playground
 import { recipesRoute } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
+import { sensesRoute } from './lab-senses-route.js'; // Give it eyes / Give it ears
+import { forgeDoesSenses } from './lab-senses.js';
 
 export const labOn = (cfg) => cfg?.computerLab === true;
 export const MIN_RAM_GB = 12;
@@ -1077,7 +1079,7 @@ export class Lab {
     const plan = readJson(path.join(forgePlansDir(labDir(this.cfg)), `${slugOf(id)}.json`), null);
     if (!plan) throw new Error('That plan isn\'t saved.');
     const dir = forgeDir(this.cfg);
-    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), shown: { hours: plan.hours_max, dollars: plan.dollars_max }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir), importer: Boolean(dir) && fs.existsSync(path.join(dir, 'import-lessons.mjs')), drive: dir ? onDrive(dir) : [] });
+    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), shown: { hours: plan.hours_max, dollars: plan.dollars_max }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir), importer: Boolean(dir) && fs.existsSync(path.join(dir, 'import-lessons.mjs')), drive: dir ? onDrive(dir) : [], senses: forgeDoesSenses(dir) });
     return { id: slugOf(id), brains: (plan.rungs || []).map((r) => ({ name: r.name, nickname: r.nickname || '', keep: r.keep, hours: r.hours })), quants: plan.quants || '', cards: plan.gpus || [], hours: plan.hours_max, dollars: plan.dollars_max, volume: plan.volume ? plan.volume.gb || 100 : 0, problems };
   }
   forgeStart({ id, hours, dollars } = {}) {
@@ -1085,7 +1087,7 @@ export class Lab {
     const file = path.join(forgePlansDir(labDir(this.cfg)), `${slugOf(id)}.json`);
     const plan = readJson(file, null);
     const keys = this.forgeKeys();
-    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(keys[FORGE_KEY]), shown: { hours, dollars }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir), importer: Boolean(dir) && fs.existsSync(path.join(dir, 'import-lessons.mjs')), drive: dir ? onDrive(dir) : [] });
+    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(keys[FORGE_KEY]), shown: { hours, dollars }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir), importer: Boolean(dir) && fs.existsSync(path.join(dir, 'import-lessons.mjs')), drive: dir ? onDrive(dir) : [], senses: forgeDoesSenses(dir) });
     if (problems.length) throw new Error(problems[0]);
     const log = path.join(labDir(this.cfg), 'forge-runs', `${slugOf(id)}-${new Date(this.now()).toISOString().replace(/[:.]/g, '-').slice(0, 19)}.log`);
     fs.mkdirSync(path.dirname(log), { recursive: true });
@@ -1364,6 +1366,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
   if (!p.startsWith('/api/lab')) return false;
   try {
     if (await recipesRoute({ req, res, p, isLocal, lab, body, send })) return true; // 1.5.154
+    if (await sensesRoute({ req, res, p, isLocal, lab, body, send })) return true; // Give it eyes / Give it ears
     if (req.method === 'GET' && p === '/api/lab') { send(res, 200, lab.view()); return true; }
     if (req.method === 'GET' && p === '/api/lab/measures') { send(res, 200, { measures: lab.measures().map(({ rec, ...m }) => m) }); return true; }
     // 1.5.151 Learn: experiments on the brain Bob has loaded. Read-only, nothing is written, so any device Bob lets in may use them.

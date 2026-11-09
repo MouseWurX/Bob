@@ -10,6 +10,7 @@ import { saveHtml, saveResult } from './lab-save.js'; // 1.5.153 Save
 import { createRecipes } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
 import { createForge } from './lab-forge.js'; // 1.5.159 the Forge tab
 import { createGuard, packGroups, guardPartsLine } from './lab-guard.js'; // 1.5.164 Guard rails sandbox and grouped packs
+import { createSenses } from './lab-senses.js'; // Give it eyes / Give it ears, a card in the Forge tab
 import { createPlayground } from './lab-playground.js'; // 1.5.156 Playground: the quantization ladder
 
 const $ = (id) => document.getElementById(id);
@@ -37,6 +38,7 @@ export function createLab({ api, note }) {
   const fg = createForge({ api, goMake: () => { tab = 'make'; draw(); $('lab-tab-make')?.focus(); } });
   document.addEventListener('lab-forge-ready', () => { if (tab === 'forge' && dlg.open) draw(); });
   const gd = createGuard({ api }); // 1.5.164
+  const sn = createSenses({ api, draw: () => { if (tab === 'forge') draw(); } });
   const pg = createPlayground({ api, view: () => view, saveState });
   const rc = createRecipes({ api, recipe: r, view: () => view, replan: () => replan(), draw: () => draw() });
   const brain = () => view?.brains.find((b) => b.id === r.from);
@@ -373,7 +375,7 @@ export function createLab({ api, note }) {
     const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}</div>`;
     if (tab === 'learn') { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-learn" role="tabpanel" aria-labelledby="lab-tab-learn"></div></div>`; learn.mount($('lab-page-learn')); return; }
     if (tab === 'challenges') { body.innerHTML = `<div class="lab">${tabs}${challengesHtml()}</div>`; return; }
-    if (tab === 'forge') { body.innerHTML = `<div class="lab">${tabs}${fg.html()}</div>`; return; }
+    if (tab === 'forge') { body.innerHTML = `<div class="lab">${tabs}${fg.html(sn.html())}</div>`; return; }
     if (tab === 'playground') { body.innerHTML = `<div class="lab">${tabs}${pg.html(runsHtml())}</div>`; return; }
     const i = STEPS.findIndex(([id]) => id === step);
     const html = { brain: brainStep, lessons: lessonsStep, smaller: smallerStep, where: whereStep, test: testStep }[step]();
@@ -405,6 +407,7 @@ export function createLab({ api, note }) {
   body.addEventListener('change', async (e) => {
     const el = e.target; msg = '';
     if (tab === 'learn') return; // the Learn tab listens for itself
+    { const f = await sn.change(el); if (f) { if (f === 'draw') { draw(); $(el.id)?.focus(); } return; } }
     { const f = await fg.change(el); if (f) { draw(); $(el.id)?.focus(); return; } }
     if (await pg.change(el)) return draw();
     if (tab === 'challenges' && gd.change(el)) return; // 1.5.164 the Guard rails sandbox keeps its own words
@@ -501,6 +504,7 @@ export function createLab({ api, note }) {
       } catch (err) { msg = err.message; }
       return load();
     }
+    { const f = await sn.click(b); if (f === 'draw') return draw(); if (f) return; }
     { const f = await fg.click(b); if (f === 'draw') return draw(); if (f) return; }
     { const p = await pg.click(b, load); if (p === 'draw') return draw(); if (p) return; }
     { const g = await gd.click(b); if (g === 'draw') { const f = b.dataset.guard; draw(); $(f === 'send' ? 'lab-guard-say' : f === 'open' ? 'lab-guard-system' : f === 'save' ? 'lab-guard-want' : 'lab-guard-h')?.focus(); return; } if (g) return; }

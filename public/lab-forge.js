@@ -148,12 +148,13 @@ export function createForge({ api, goMake }) {
     return `<section aria-labelledby="forge-start-h2"><h3 id="forge-start-h2">Start a run</h3>${sw}${fv.hasKey ? '' : '<p class="muted">The rental service\'s key isn\'t set. Settings > Rented brains says how to add it; it stays in your environment, never in Bob\'s files.</p>'}${runs}${card}${liveHtml}</section>`;
   }
 
-  function html() {
+  function html(extra = '') { // extra: the Give it eyes / Give it ears card (public/lab-senses.js), placed after the ways
     if (!fv) { if (!loading) load().then(() => document.dispatchEvent(new CustomEvent('lab-forge-ready'))); return `<div id="lab-page-forge" role="tabpanel" aria-labelledby="lab-tab-forge"><p class="muted">${esc(fmsg || 'Loading…')}</p></div>`; }
     return `<div id="lab-page-forge" role="tabpanel" aria-labelledby="lab-tab-forge">
       <p class="muted">The Forge makes brains on a rented graphics card, from a plan. Here are all the ways to make a new brain, here or on a rented card, each with what works best. Then your Forge runs so far, and a form that writes a plan for the next one.</p>
       <section aria-labelledby="forge-ways-h"><h3 id="forge-ways-h">Ways to make a brain</h3><ul class="forge-cards">${fv.methods.map(card).join('')}</ul>
         <details><summary>Ideas left out, and why</summary><dl class="forge-left">${fv.leftOut.map(([t, w]) => `<dt>${esc(t)}</dt><dd>${esc(w)}</dd>`).join('')}</dl></details></section>
+      ${extra}
       <section class="lab-compare" aria-labelledby="forge-runs-h"><h3 id="forge-runs-h">Forge runs</h3>${runsHtml()}</section>
       ${formHtml()}
       ${fmsg ? `<p class="error" role="alert">${esc(fmsg)}</p>` : ''}
