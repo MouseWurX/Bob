@@ -347,12 +347,12 @@ const topicsPage = createTopics({ api, openChat: (id, msgId) => openChat(id, msg
 const tidyPage = createTidy({ api, onCount: (n) => countBadge($('tidyBtn'), n) });
 $('topicsBtn').onclick = () => topicsPage.open();
 $('tidyBtn').onclick = () => tidyPage.open();
-// 1.5.141: 🧪 Lab in the left pane, only while Show the Computer Science Lab is on.
+// 1.5.141: 🧪 Lab in the left pane while Show the Computer Science Lab is on (1.5.172: on unless switched off).
 const labPage = createLab({ api, note: (t) => note(t) });
 $('labBtn').onclick = () => labPage.open();
 const showLab = (on) => { $('labBtn').hidden = !on; };
 window.addEventListener('bob-lab-switch', (e) => showLab(e.detail?.on === true));
-fetch('/api/settings').then((r) => r.json()).then((st) => showLab(st.computerLab === true)).catch(() => {});
+fetch('/api/settings').then((r) => r.json()).then((st) => showLab(st.computerLab !== false)).catch(() => {});
 const adventurePage = createAdventure({ api }); // 1.5.117 🎲 Adventure
 $('adventureBtn').onclick = () => adventurePage.open();
 const gamesPage = createGames({ api }); // 1.5.121 🧩 Games

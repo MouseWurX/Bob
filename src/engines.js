@@ -204,7 +204,7 @@ export function installedVersion(cfg, e) {
 // NVIDIA build with its CUDA runtime (other builds are smaller); the rest follow each engine's own "About" text.
 export const ENGINE_GB = { llamacpp: 0.6, brainengine: 0.7, sdcpp: 0.5, whispercpp: 0.1, piper: 0.1, audio: 12, kokoro: 0.1, chatterbox: 4, ffmpeg: 0.1, libreoffice: 0.35 };
 export function engineStatus(cfg) {
-  return ENGINES.filter((e0) => !e0.labOnly || cfg.computerLab === true).map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.tag || e.pinned), tested: e.tested || null, found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir) }));
+  return ENGINES.filter((e0) => !e0.labOnly || cfg.computerLab !== false).map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.tag || e.pinned), tested: e.tested || null, found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir) }));
 }
 
 // The newest release with a Windows build, for "Get newer build". Same rules as installing.
@@ -384,7 +384,7 @@ export function seedBundledEngine(cfg, from = BUNDLE_DIR) {
 export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, newest = false } = {}) {
   const e0 = engineFor(ENGINES.find((x) => x.id === id));
   if (!e0) throw new Error('No such engine.');
-  if (e0.labOnly && cfg.computerLab !== true) throw new Error(`${e0.name} is for the Computer Science Lab. Turn the Lab on first.`);
+  if (e0.labOnly && cfg.computerLab === false) throw new Error(`${e0.name} is for the Computer Science Lab. Turn the Lab on first.`);
   // 1.5.83: the tested release unless a tag is given or the user asked for the newest build.
   const pick = tag || (!newest && e0.tested) || '';
   const e = pick ? { ...e0, tag: pick } : e0;

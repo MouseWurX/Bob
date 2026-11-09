@@ -13,6 +13,7 @@ import crypto from 'node:crypto';
 import http from 'node:http';
 import { LESSON_SKILLS } from '../src/lab-skills.js';
 import { QUIZ, TOOLS, runQuiz } from '../src/lab-test.js';
+import { mergeSettings } from '../src/config.js';
 import { PACKS, PACK_IDS, REASONING, SUMS, RULES, PICK_TOOL, CODE, letterOf, numberOf, codeOf, codeTool, runPack, mergeScores, scoreboard, classOf, classBoard, CLASSES, PACK_VERSION } from '../src/lab-challenges.js';
 import { runSandboxed } from '../src/selftools.js';
 import { METHODS, LEFT_OUT, scrub, makeForgePlan, rungFieldsOk } from '../src/lab-forge.js';
@@ -169,7 +170,7 @@ check('the CSV has a header row and the difference', /^Field,A,B,Difference\r\n/
 check('the file hash is read in pieces and matches', await sha256File(brainFile) === crypto.createHash('sha256').update(fs.readFileSync(brainFile)).digest('hex'));
 
 // ---- the switch ----
-check('the Lab is off unless turned on', !labOn({}) && !labOn({ computerLab: 'yes' }) && labOn({ computerLab: true }));
+check('the Lab is on unless turned off (1.5.172)', labOn({}) && labOn({ computerLab: 'yes' }) && labOn({ computerLab: true }) && !labOn({ computerLab: false }));
 check('a small replicant matrix gets a reason, not the Lab', !labRoom(8 * 1024 ** 3).ok && /Bob-Net/.test(labRoom(8 * 1024 ** 3).why) && labRoom(32 * 1024 ** 3).ok);
 
 // ---- the whole job, fake steps ----
@@ -749,7 +750,8 @@ check('the quiz tools are made up, not Bob\'s real ones', TOOLS.every((t) => !/h
 // ---- words and wiring ----
 const html = read('public/index.html'), app = read('public/app.js'), cellar = read('public/cellar.js'), page = read('public/lab.js'), help = read('public/help-content.js'), inv = read('docs/SETTINGS-INVENTORY.md');
 check('the Lab button is in the left pane, hidden until the switch is on', /id="labBtn"[^>]*hidden/.test(html) && /labBtn/.test(app));
-check('the switch is under How Bob works, Brains, off unless turned on', /sswitch\('computerLab', settings\.computerLab === true, 'Show the Computer Science Lab'/.test(cellar) && /Off unless you turn it on/.test(cellar.split("sswitch('computerLab'")[1].slice(0, 600)));
+check('the switch is under How Bob works, Brains, on unless turned off', /sswitch\('computerLab', settings\.computerLab !== false, 'Show the Computer Science Lab'/.test(cellar) && /On unless you turn it off/.test(cellar.split("sswitch('computerLab'")[1].slice(0, 600)));
+check('a saved setting is cleaned so only false turns the Lab off', (() => { const a = {}, b = {}, c = {}; mergeSettings(a, { computerLab: false }); mergeSettings(b, { computerLab: 'yes' }); mergeSettings(c, { computerLab: true }); return a.computerLab === false && b.computerLab === true && c.computerLab === true; })());
 check('a small replicant matrix sees the switch greyed out with the reason', /computerLabRoom/.test(cellar));
 check('the page uses real radio buttons and checkboxes with labels', /type="radio"/.test(page) && /type="checkbox"/.test(page) && /<label/.test(page));
 check('the page has the template picker, Measure and Compare with real header cells', /Start from a template/.test(page) && /Measure before making the running files/.test(page) && /Save as CSV/.test(page) && /Save as JSON/.test(page) && /<th scope="col">Difference<\/th>/.test(page));

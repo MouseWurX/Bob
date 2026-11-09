@@ -16,7 +16,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-be-'));
 const cfg = { agentDir: path.join(tmp, 'Agent'), computerLab: true };
 fs.mkdirSync(cfg.agentDir, { recursive: true });
 
-check(!engineStatus({ agentDir: cfg.agentDir }).some((e) => e.id === 'brainengine'), 'Brain Engine isn\'t listed while the Lab is off');
+check(!engineStatus({ agentDir: cfg.agentDir, computerLab: false }).some((e) => e.id === 'brainengine'), 'Brain Engine isn\'t listed while the Lab is switched off (1.5.172: the Lab is on unless switched off)');
 const st = engineStatus(cfg).find((e) => e.id === 'brainengine');
 check(st && /test build/.test(st.name) && /Based on llama\.cpp, not an official build/.test(st.what) && st.pinned, 'with the Lab on it is listed, named a test build, not official llama.cpp, and pinned');
 check(ENGINES.find((e) => e.id === 'brainengine').tag === `brain-engine-${TESTED_LLAMA}`, 'it is pinned to the pre-release for the tested llama.cpp tag');
