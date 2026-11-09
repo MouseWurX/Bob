@@ -5,7 +5,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { QUIZ, TOOLS, runQuiz } from './lab-test.js';
-import { EXTRA_PACKS, EXTRA_IDS, runExtraPack } from './lab-packs.js'; // 1.5.164 more packs and Guard rails
+import { EXTRA_PACKS, EXTRA_IDS, runExtraPack } from './lab-packs.js';
+import { genBody } from './lab-gen.js'; // 1.5.167 Professional mode settings // 1.5.164 more packs and Guard rails
 
 const stripThink = (t) => String(t || '').replace(/<think>[\s\S]*?<\/think>/g, '').replace(/^[\s\S]*<\/think>/, '').trim();
 // The first letter answer in a reply: "B", "(B)", "B)", "The answer is B." Returns '' if there's none.
@@ -117,8 +118,8 @@ export const PACK_VERSION = Object.fromEntries(PACKS.map((p) => [p.id, p.version
 export const CLASSES = [['tiny', 'Tiny', 'under 2 billion weights', 0, 2], ['small', 'Small', '2 to 5 billion', 2, 5], ['medium', 'Medium', '5 to 10 billion', 5, 10], ['large', 'Large', '10 to 20 billion', 10, 20], ['huge', 'Huge', '20 to 40 billion', 20, 40], ['giant', 'Giant', 'over 40 billion', 40, Infinity]];
 export const classOf = (b) => { const n = Number(b); if (!(n > 0)) return ''; return CLASSES.find(([, , , lo, hi]) => n >= lo && n < hi)?.[0] || ''; };
 
-async function ask(url, content, { tools, signal, max = 400 } = {}) {
-  const body = { messages: [{ role: 'user', content }], temperature: 0, max_tokens: max, chat_template_kwargs: { enable_thinking: false }, ...(tools ? { tools, tool_choice: 'auto' } : {}) };
+async function ask(url, content, { tools, signal, max = 400, gen = null, repeat = 0 } = {}) {
+  const body = { messages: [{ role: 'user', content }], temperature: 0, max_tokens: max, chat_template_kwargs: { enable_thinking: false }, ...(gen ? genBody(gen, max, repeat) : {}), ...(tools ? { tools, tool_choice: 'auto' } : {}) };
   const r = await fetch(url + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(180e3)]) : AbortSignal.timeout(180e3) });
   if (!r.ok) throw new Error(`llama-server answered ${r.status}`);
   const j = await r.json();
@@ -147,9 +148,9 @@ const same = (a, b) => (typeof a === 'number' && typeof b === 'number' ? Math.ab
 
 // Run one pack against a llama-server. `sandbox` = { run(code, fn, cases) -> results | null } (null: the sandbox is
 // unavailable on this machine, so the pack is skipped and says why). Returns { right, of, score, misses, tps, prefillTps }.
-export async function runPack(url, id, { signal, onStep = () => {}, sandbox = null, holdAsks = [] } = {}) {
-  if (EXTRA_IDS.includes(id)) return runExtraPack(url, id, { signal, onStep, sandbox, holdAsks });
-  if (id === 'quiz') { const q = await runQuiz(url, { signal, onStep }); return { right: Object.values(q.parts).reduce((a, p) => a + p.right, 0), of: Object.values(q.parts).reduce((a, p) => a + p.of, 0), score: q.score, misses: q.misses.map((m) => m.q), tps: q.tps, prefillTps: q.prefillTps }; }
+export async function runPack(url, id, { signal, onStep = () => {}, sandbox = null, holdAsks = [], gen = null, repeat = 0, log = null } = {}) {
+  if (EXTRA_IDS.includes(id)) return runExtraPack(url, id, { signal, onStep, sandbox, holdAsks, gen, repeat, log });
+  if (id === 'quiz') { const q = await runQuiz(url, { signal, onStep, gen, repeat, log }); return { right: Object.values(q.parts).reduce((a, p) => a + p.right, 0), of: Object.values(q.parts).reduce((a, p) => a + p.of, 0), score: q.score, misses: q.misses.map((m) => m.q), tps: q.tps, prefillTps: q.prefillTps }; }
   const list = { reasoning: REASONING, sums: SUMS, rules: RULES, tools: PICK_TOOL, code: CODE }[id];
   if (!list) throw new Error(`There's no challenge called ${id}.`);
   if (id === 'code' && !sandbox) return { right: 0, of: list.length, score: null, skipped: 'My sandbox isn\'t working on this replicant matrix, so I won\'t run code a brain wrote. Self-made tools say why.', misses: [], tps: 0, prefillTps: 0 };
@@ -157,9 +158,10 @@ export async function runPack(url, id, { signal, onStep = () => {}, sandbox = nu
   for (const item of list) {
     if (signal?.aborted) throw new Error('Stopped.');
     const q = id === 'code' ? `${item.q} Reply with only the code.` : item[0];
-    let ok = false;
+    let ok = false, ans = '';
     try {
-      const a = await ask(url, q, { tools: id === 'tools' ? TOOLS : null, signal, max: id === 'code' ? 600 : 300 });
+      const a = await ask(url, q, { tools: id === 'tools' ? TOOLS : null, signal, max: id === 'code' ? 600 : 300, gen, repeat });
+      ans = a.calls?.length ? `(called ${a.calls.join(', ')}) ${a.text}` : a.text;
       if (a.tps) speeds.push(a.tps); if (a.prefillTps) reads.push(a.prefillTps);
       if (id === 'reasoning') ok = letterOf(a.text) === item[1];
       else if (id === 'sums') ok = numberOf(a.text) === item[1];
@@ -167,6 +169,7 @@ export async function runPack(url, id, { signal, onStep = () => {}, sandbox = nu
       else if (id === 'tools') ok = a.calls[0] === item[1];
       else if (id === 'code') { const res = await sandbox.run(codeOf(a.text), item.fn, item.cases.map((c) => c[0])); ok = Array.isArray(res) && res.length === item.cases.length && res.every((r, i) => r.ok && same(r.v, item.cases[i][1])); }
     } catch (e) { if (signal?.aborted) throw e; }
+    log?.({ q, answer: ans, ok });
     if (ok) right++; else misses.push(id === 'code' ? item.q : item[0].split('\n')[0]);
     onStep(++done, list.length);
   }

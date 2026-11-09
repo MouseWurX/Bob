@@ -3,6 +3,7 @@
 // writes only runs in Bob's sandbox. Every pack starts at version 1; bump `version` whenever its questions change.
 import * as D from './lab-packs-data.js';
 import { runGuard } from './lab-guard.js';
+import { genBody } from './lab-gen.js'; // 1.5.167 Professional mode settings
 
 const strip = (t) => String(t || '').replace(/<think>[\s\S]*?<\/think>/g, '').replace(/^[\s\S]*<\/think>/, '').trim();
 export function letter(t) {
@@ -21,8 +22,8 @@ const same = (a, b) => (typeof a === 'number' && typeof b === 'number' ? Math.ab
 
 // One call to the llama-server the challenge job started. Returns the words, the tool calls (with parsed input),
 // and the raw message (so a tool result can follow it).
-export async function chat(url, messages, { tools, max = 400, signal } = {}) {
-  const body = { messages, temperature: 0, max_tokens: max, chat_template_kwargs: { enable_thinking: false }, ...(tools ? { tools, tool_choice: 'auto' } : {}) };
+export async function chat(url, messages, { tools, max = 400, signal, gen = null, repeat = 0 } = {}) {
+  const body = { messages, temperature: 0, max_tokens: max, chat_template_kwargs: { enable_thinking: false }, ...(gen ? genBody(gen, max, repeat) : {}), ...(tools ? { tools, tool_choice: 'auto' } : {}) };
   const r = await fetch(url + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(180e3)]) : AbortSignal.timeout(180e3) });
   if (!r.ok) throw new Error(`llama-server answered ${r.status}`);
   const j = await r.json();
@@ -109,15 +110,15 @@ export const EXTRA_IDS = EXTRA_PACKS.map((p) => p.id);
 export const NEEDS_SANDBOX = EXTRA_PACKS.filter((p) => p.sandbox).map((p) => p.id);
 
 // Run one extra pack. `holdAsks` = the person's own refusal asks (Guard rails only). Same result shape as runPack.
-export async function runExtraPack(url, id, { signal, onStep = () => {}, sandbox = null, holdAsks = [], askFn = chat } = {}) {
+export async function runExtraPack(url, id, { signal, onStep = () => {}, sandbox = null, holdAsks = [], askFn = chat, gen = null, repeat = 0, log = null } = {}) {
   const p = EXTRA_PACKS.find((x) => x.id === id);
   if (!p) throw new Error(`There's no challenge called ${id}.`);
-  const speeds = [], reads = [];
-  const ask = async (messages, opts = {}) => { if (signal?.aborted) throw new Error('Stopped.'); const a = await askFn(url, messages, { ...opts, signal }); if (a.tps) speeds.push(a.tps); if (a.prefillTps) reads.push(a.prefillTps); return a; };
+  const speeds = [], reads = []; let last = '';
+  const ask = async (messages, opts = {}) => { if (signal?.aborted) throw new Error('Stopped.'); const a = await askFn(url, messages, { ...opts, signal, gen, repeat }); last = a.calls?.length ? `(called ${a.calls.map((c) => c.name).join(', ')}) ${a.text}` : a.text; if (a.tps) speeds.push(a.tps); if (a.prefillTps) reads.push(a.prefillTps); return a; };
   const avg = (l) => (l.length ? l.reduce((a, b) => a + b, 0) / l.length : 0);
   const speed = () => ({ tps: Math.round(avg(speeds) * 10) / 10, prefillTps: Math.round(avg(reads)) });
   if (p.guard) {
-    const g = await runGuard((m) => ask(m, { max: 300 }), { holdAsks, signal, onStep });
+    const g = await runGuard((m) => ask(m, { max: 300 }), { holdAsks, signal, onStep, log: log ? (x) => log({ ...x }) : null });
     return { ...g, ...speed(), ...(holdAsks.length ? {} : { note: 'Held the line wasn\'t run: there are no refusal lessons on this replicant matrix yet. Save some from the sandbox below, or write a lesson set with the refusals skill.' }) };
   }
   if (p.sandbox && !sandbox) return { right: 0, of: p.count, score: null, skipped: 'My sandbox isn\'t working on this replicant matrix, so I won\'t run code a brain wrote. Self-made tools say why.', misses: [], tps: 0, prefillTps: 0 };
@@ -128,6 +129,7 @@ export async function runExtraPack(url, id, { signal, onStep = () => {}, sandbox
     if (signal?.aborted) throw new Error('Stopped.');
     let r = false;
     try { r = await p.mark(ctx, it); } catch (e) { if (signal?.aborted) throw e; r = false; }
+    log?.({ q: String(it.system || it.q || ''), answer: last, ok: typeof r === 'object' && r ? `${r.right} of ${r.of}` : Boolean(r) });
     if (typeof r === 'object' && r) { right += r.right; of += r.of; if (r.right < r.of) misses.push(String(it.system || it.q).split('\n')[0].slice(0, 120)); }
     else { of++; if (r) right++; else misses.push(String(it.q).split('\n')[0].slice(0, 120)); onStep(Math.min(++done, total), total); }
   }
