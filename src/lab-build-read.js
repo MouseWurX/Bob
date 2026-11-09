@@ -74,7 +74,19 @@ export function stripHtml(html) {
 // Markdown that's only noise to a lesson: badges, link targets, HTML comments. The words stay.
 export const stripMarkdown = (md) => String(md || '').replace(/<!--[\s\S]*?-->/g, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/^#{1,6}\s+/gm, '').replace(/[*_`]{1,3}/g, '').trim();
 
+// Prose, as opposed to a log, a table or a dump of numbers: at least six of every ten tokens are plain words. The first PC
+// run made "writing in my voice" lessons from a quantize log, so a passage that isn't prose only serves "working with my
+// material" (Bob reading it), never as something the owner wrote.
+const WORD_RE = /^[\p{L}'\u2019-]+[.,;:!?)"\u201d]*$|^[("\u201c]?[\p{L}'\u2019-]+$/u;
+export function isProse(text) {
+  const toks = String(text || '').trim().split(/\s+/).filter(Boolean);
+  if (toks.length < 8) return false;
+  const wordy = toks.filter((t) => WORD_RE.test(t)).length;
+  return wordy / toks.length >= 0.6;
+}
+
 // Passages of WORDS_MIN to WORDS_MAX words, cut at paragraph breaks (then at sentences when one paragraph is too long).
+// Each passage carries `prose` (see isProse).
 export function chunk(text, { min = WORDS_MIN, max = WORDS_MAX, least = WORDS_LEAST } = {}) {
   const paras = String(text || '').replace(/\r\n/g, '\n').split(/\n\s*\n/).map((p) => p.replace(/\s+/g, ' ').trim()).filter(Boolean);
   const out = [];
@@ -95,6 +107,7 @@ export function chunk(text, { min = WORDS_MIN, max = WORDS_MAX, least = WORDS_LE
     if (n >= min && n + w > max) flush();
   }
   if (n) { if (n >= least) flush(); else if (out.length) { const last = out[out.length - 1]; last.text += '\n\n' + cur.join('\n\n'); last.words += n; } else if (n >= 15) out.push({ text: cur.join('\n\n'), at: startAt, words: n }); }
+  for (const o of out) o.prose = isProse(o.text);
   return out;
 }
 
