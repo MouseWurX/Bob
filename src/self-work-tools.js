@@ -1,4 +1,4 @@
-// "Let Bob work on his own app": the two programs that job needs, Git and Node.js. The owner (2026-11-09): "he should
+// "Let Bob work on repositories": the two programs that job needs, Git and Node.js. The owner (2026-11-09): "he should
 // download git and Node.js 20 if he needs them and doesn't have them". So with the switch on, when one is missing
 // Bob gets his own copy, kept in his folder only (like his own Python): nothing is installed for the rest of the
 // computer and no admin is needed. Turning the switch on is the opt-in; Settings says these downloads may happen.

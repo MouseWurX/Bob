@@ -457,7 +457,7 @@ export class LlamaCpp {
 
   // Long memory (YaRN): only with the switch on, a brain the guide covers, and a size past what it was made for.
   // Settings set by hand (llamacpp.args with --rope-scaling) win.
-  // "Let Bob work on his own app" (self-work.js) uses Long memory for its own job even with the switch off: a size past
+  // "Let Bob work on repositories" (self-work.js) uses Long memory for its own job even with the switch off: a size past
   // what the brain was made for only reaches here through that job (brain.fitCtx with stretch) or a pick with it on.
   stretchArgs(gguf, ctx) {
     if (!(stretchOn(this.cfg) || selfWorkOn(this.cfg)) || (this.lc.args || []).includes('--rope-scaling')) return [];

@@ -18,7 +18,7 @@ import { HANDS, LIMITS, handOn, handOffWhy, handsSettings, cleanHands, readOnlyR
 import { planFiles, planCard, applyFiles, undoJob, loadJournal, handsRoots } from './hands-files.js';
 import { checkCommand, runCommand, safeEnv } from './hands-run.js';
 import { codeCopyRoot } from './self-work.js';
-import { toolPath } from './self-work-tools.js'; // "Let Bob work on his own app": his own Git and Node first in the code copy
+import { toolPath } from './self-work-tools.js'; // "Let Bob work on repositories": his own Git and Node first in the code copy
 import { appsTools } from './hands-apps.js';
 import { officeView } from './office.js';
 import { makerPrompt, selfToolsView } from './selftools.js';

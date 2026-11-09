@@ -9,6 +9,7 @@
 import { HANDS, handOn, handOffWhy } from './hands-settings.js';
 import { makerWords, makerWhat } from './selftools.js';
 import { mcpWords, mcpWhat } from './mcp.js';
+import { selfWorkWords } from './self-work.js';
 
 export const CORE = ['notice_board', 'remember', 'reminders', 'list_folder', 'read_file', 'web_search', 'fetch_page', 'bob_help', 'ask_specialist', 'show_made', 'pick_session', 'offer_setup', 'use_tools'];
 
@@ -39,10 +40,10 @@ const WORK_GROUPS = {
     tools: ['save_howto', 'my_howtos'],
     words: /\b(how-tos?|remember how (?:to|you|we)|(?:same|like) (?:way |as )?(?:as )?(?:last time|before)|keep (?:those|these|the) steps|save (?:those|these|the) steps)\b/i
   },
-  selfwork: { // "Let Bob work on his own app" (self-work.js): only while it's on and the code copy is made
-    what: 'change your own app (Bob\'s code) on its code copy',
-    tools: ['work_on_myself'],
-    words: /\b(your (?:own )?(?:app|code|source|program)|bob'?s (?:own )?(?:app|code|source)|(?:work on|improve|upgrade|fix|change|update|patch) (?:your ?self|you)|(?:add|give) (?:yourself|you) (?:a |an )?(?:feature|switch|button|setting|option)|(?:feature|switch|button|setting|option|page|tab) (?:to|for|in|on) your ?self|code copy)\b/i
+  selfwork: { // "Let Bob work on repositories" (self-work.js): only while it's on and a code copy is made
+    what: 'change your own app (Bob\'s code) or one of the user\'s repositories, on its code copy',
+    tools: ['work_on_repo'],
+    words: /\b(your (?:own )?(?:app|code|source|program)|bob'?s (?:own )?(?:app|code|source)|(?:work on|improve|upgrade|fix|change|update|patch) (?:your ?self|you)|(?:add|give) (?:yourself|you) (?:a |an )?(?:feature|switch|button|setting|option)|(?:feature|switch|button|setting|option|page|tab) (?:to|for|in|on) your ?self|code copy|(?:in|on|to) (?:the |my |our )?(?:\w+ )?(?:repo|repository)|(?:repo|repository) (?:called|named))\b/i
   },
   cloud: {
     what: 'hand a job to a paid cloud helper, or hire a rented brain',
@@ -75,6 +76,8 @@ const PICTURE_WHAT = { make_image: 'make pictures', make_video: 'make video clip
 export function groupsFor(brain) {
   const g = {};
   for (const [id, x] of Object.entries(WORK_GROUPS)) g[id] = { ...x };
+  // The user's repositories by name, so "fix the login bug in WeatherApp" finds the tool (self-work.js).
+  g.selfwork.words = selfWorkWords(brain.cfg, g.selfwork.words);
   for (const [id, hand] of Object.entries(HANDS)) {
     g[id] = { what: HAND_WHAT[id] || `Hands, ${hand.label.toLowerCase()}`, tools: hand.tools, words: HAND_WORDS[id] || /$^/, hand: id };
     // 1.5.48: the tools Bob made himself are named in the group, so "run my csv tool" finds them.
@@ -108,7 +111,7 @@ export function guessGroups(brain, text) {
 }
 
 // The chat chip when a group is added (clarity reviewer's words; Hands match their names in Settings).
-const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', documents: 'Using his document tools', files: 'Using his file tools', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', selfwork: 'Working on his own app', cloud: 'Using a cloud helper' };
+const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', documents: 'Using his document tools', files: 'Using his file tools', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', selfwork: 'Working on a repository', cloud: 'Using a cloud helper' };
 
 export const allToolsOn = (cfg) => cfg.allTools === true;
 
