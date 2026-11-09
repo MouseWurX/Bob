@@ -6,6 +6,7 @@ import { cleanBrainCtx } from './model-ctx.js';
 import { cleanCheckins } from './checkin-settings.js';
 import { cleanHands } from './hands-settings.js';
 import { cleanPresets } from './model-family.js';
+import { cleanSelfWork, applyCodeCopy } from './self-work.js';
 import fs from 'node:fs';
 import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
@@ -146,7 +147,7 @@ export const VERSION = (() => {
   } catch { return { release: '0.9', branch: '', build: 0, label: '0.9.0' }; }
 })();
 
-export const SETTING_KEYS = ['planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro'];
+export const SETTING_KEYS = ['planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'selfWork'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -188,6 +189,7 @@ function clean(patch) {
   if ('labForgeStart' in out) out.labForgeStart = out.labForgeStart === true; // 1.5.160 "Let the Lab start Forge runs", off unless switched on
   if ('labPro' in out) out.labPro = out.labPro === true; // 1.5.168 the Lab's Professional mode: more controls on every tab; off = Keep it simple
   if ('qwenPresets' in out) out.qwenPresets = cleanPresets(out.qwenPresets); // 1.5.148 "Choose my own word settings", off unless switched on
+  if ('selfWork' in out) out.selfWork = cleanSelfWork(out.selfWork); // "Let Bob work on his own app" (self-work.js), off by default
   if ('howtos' in out) out.howtos = out.howtos === true; // 1.5.79 "Let Bob learn how-tos", off by default
   if ('tray' in out) out.tray = out.tray !== false; // 1.5.94 "Keep Bob in the tray"; on unless switched off since 1.5.134 (the owner asked for it)
   if ('lookIcon' in out) out.lookIcon = out.lookIcon !== false; // 1.5.94 "Use Bob's look as his icon"; on unless switched off since 1.5.134 (the owner asked for it)
@@ -402,7 +404,7 @@ export function saveDirProblem(cfg, dir) {
 function applyProjects(cfg) {
   if (Array.isArray(cfg.projectList)) cfg.projects = Object.fromEntries(cfg.projectList.map((p) => [p.name, p.path]));
   if (cfg.defaultProject && !(cfg.projects || {})[cfg.defaultProject]) cfg.defaultProject = '';
-  return cfg;
+  return applyCodeCopy(cfg); // "Let Bob work on his own app": his workbench copy is a project while the switch is on
 }
 
 // Settings saved whole (not merged key by key), so an emptied box or a removed project really goes away.

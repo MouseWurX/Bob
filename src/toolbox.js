@@ -39,6 +39,11 @@ const WORK_GROUPS = {
     tools: ['save_howto', 'my_howtos'],
     words: /\b(how-tos?|remember how (?:to|you|we)|(?:same|like) (?:way |as )?(?:as )?(?:last time|before)|keep (?:those|these|the) steps|save (?:those|these|the) steps)\b/i
   },
+  selfwork: { // "Let Bob work on his own app" (self-work.js): only while it's on and the code copy is made
+    what: 'change your own app (Bob\'s code) on its code copy',
+    tools: ['work_on_myself'],
+    words: /\b(your (?:own )?(?:app|code|source|program)|bob'?s (?:own )?(?:app|code|source)|(?:work on|improve|upgrade|fix|change|update|patch) (?:your ?self|you)|(?:add|give) (?:yourself|you) (?:a |an )?(?:feature|switch|button|setting|option)|(?:feature|switch|button|setting|option|page|tab) (?:to|for|in|on) your ?self|code copy)\b/i
+  },
   cloud: {
     what: 'hand a job to a paid cloud helper, or hire a rented brain',
     tools: ['ask_cloud', 'hire_brain'],
@@ -103,7 +108,7 @@ export function guessGroups(brain, text) {
 }
 
 // The chat chip when a group is added (clarity reviewer's words; Hands match their names in Settings).
-const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', documents: 'Using his document tools', files: 'Using his file tools', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', cloud: 'Using a cloud helper' };
+const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', documents: 'Using his document tools', files: 'Using his file tools', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', selfwork: 'Working on his own app', cloud: 'Using a cloud helper' };
 
 export const allToolsOn = (cfg) => cfg.allTools === true;
 

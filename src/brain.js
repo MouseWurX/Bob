@@ -58,6 +58,7 @@ import { GuestJobs, awayPlan, sendAway, stopAway, guestTools, guestNote, GUEST_T
 import { askTogether, takeEarlier, askTogetherTool } from './together.js';
 import { showPlanTool, planGate, planOn, planPrompt } from './plan.js';
 import { freeMemNow, APU_HEADROOM_GB } from './platform.js';
+import { selfWorkOn, hasCodeCopy } from './self-work.js';
 import { HowTos, howtoTools, howtosOn, trailStep, worthOffering, howtoPrompt, usingLine } from './howtos.js';
 import { NEEDS, planFor, SetupOffers, switchFor, applySwitch, SWITCH_KEYS } from './setup-offer.js';
 
@@ -940,13 +941,15 @@ export class Brain {
   }
 
   // A session's context size, but never more than the model was made for.
-  async fitCtx(model, want) {
+  // longRun ("Let Bob work on his own app", self-work.js): want is a stretched size and is used as it is (up to the
+  // most the brain stretches to), even with the Long memory switch off; it still has to fit this machine.
+  async fitCtx(model, want, { longRun = false } = {}) {
     if (!model) return want || null;
     const max = await this.engine.maxCtx?.(model)?.catch?.(() => null) ?? null;
     // 1.5.87: a size picked for this brain (Settings > Brains, switch on) wins, for every copy on it: one load.
     // Long memory (YaRN, model-ctx.js): with the switch on, a stretched size picked for a brain that can take it.
-    const stretch = await Promise.resolve(this.engine.stretchMax?.(model)).catch(() => null) ?? null;
-    let pick = pickedCtx(this.cfg, model, max, { stretch });
+    const stretch = await Promise.resolve(this.engine.stretchMax?.(model, longRun ? { evenOff: true } : undefined)).catch(() => null) ?? null;
+    let pick = longRun && max && stretch && want > max ? Math.min(want, stretch) : pickedCtx(this.cfg, model, max, { stretch });
     // A stretched size that won't fit this machine (card plus RAM) isn't tried: the brain loads at what it was made for.
     if (pick && max && pick > max) {
       const r = await Promise.resolve(this.engine.roomFor?.(model, pick)).catch(() => null);
@@ -1321,7 +1324,7 @@ export class Brain {
     let can = {};
     try { can = capabilities(this.cfg); } catch {}
     // 1.5.91: make_image, make_video, make_music and make_sound stay listed when they aren't set up: calling one shows the Set it up card.
-    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), ...toolsOff(this.cfg)].filter(Boolean));
+    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), !(selfWorkOn(this.cfg) && hasCodeCopy(this.cfg)) && 'work_on_myself', ...toolsOff(this.cfg)].filter(Boolean));
   }
   usable(name, off = this.offTools()) { return Boolean(this.tools[name]) && !off.has(name); }
   // 1.5.41: whether OKs are asked on cards right now (so a job's OKs can go on one card). Not with "work without asking".
@@ -2378,8 +2381,8 @@ export class Brain {
     // Normal session: the hat's own brain (or the main one with "One brain"). Other sessions: the session's brain.
     // A moot (High/Extreme effort) passes force: the reviewer always runs on the Review slot brain.
     let { model, cpu, think, ctx: wantCtx, beside } = ctx.job?.side ? (ctx.job.sidePick || await sidePick(this, ctx.job)) : force || (bigThinker(ctx.job) && hat !== 'reviewer' && hatBrain(this.cfg, hat, ctx.job.effort)) || modelFor(this.cfg, hat);
-    { const d = brainDefaults(model, hat, cleanEffort(ctx.job?.effort)); if (d.ctx && (wantCtx == null || (currentSession(this.cfg).id === 'normal' && !CTX_CHOICES.includes(this.cfg.sessionCtx?.normal)))) wantCtx = d.ctx; if (think === undefined && 'think' in d) think = d.think; }
-    const brainCtx = await this.fitCtx(model, wantCtx);
+    { const d = brainDefaults(model, hat, cleanEffort(ctx.job?.effort)); if (!force?.longRun && d.ctx && (wantCtx == null || (currentSession(this.cfg).id === 'normal' && !CTX_CHOICES.includes(this.cfg.sessionCtx?.normal)))) wantCtx = d.ctx; if (think === undefined && 'think' in d) think = d.think; }
+    const brainCtx = await this.fitCtx(model, wantCtx, { longRun: force?.longRun === true });
     // 1.5.51 (opt-in): the reviewer sits beside the main brain on the processor instead of swapping it out.
     if (hat === 'reviewer' && force && !ctx.job?.side && mootBesideOk(this, model, brainCtx)) { beside = true; cpu = true; }
     const copy = copyName(this.cfg, hat, HATS[hat].label);
@@ -2392,7 +2395,7 @@ export class Brain {
     if (ctx.job) { (ctx.job.steps ||= []).push(step); this.saveQueue(); }
     const wasHat = ctx.hatNow;
     ctx.hatNow = hat; // so quarantine knows which copy did what
-    try { return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside }); }
+    try { return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, maxSteps: force?.maxSteps }); }
     catch (e) { step.state = ctx.signal?.aborted ? 'cancelled' : 'failed'; throw e; }
     finally {
       ctx.hatNow = wasHat;
@@ -2402,7 +2405,7 @@ export class Brain {
     }
   }
 
-  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside }) {
+  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, maxSteps: steps }) {
     model = (await this.ensureModel(model, ctx.emit, ctx.signal, hat, { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}) })) || model;
     this.setState('busy', `${copy} is on it (${PLAIN_HATS[hat] || HATS[hat].label})`, model);
     const hatTools = {
@@ -2413,7 +2416,7 @@ export class Brain {
       tinker: ['list_folder', 'read_file', 'search_files', 'edit_file', 'write_file', 'web_search', 'fetch_page', 'run_command', 'run_recipe'],
       reviewer: ['list_folder', 'read_file', 'search_files']
     }[hat] || [];
-    const maxSteps = hat === 'tinker' ? 30 : hat === 'reviewer' ? 15 : MAX_STEPS;
+    const maxSteps = Number(steps) > 0 ? Math.min(Number(steps), 100) : hat === 'tinker' ? 30 : hat === 'reviewer' ? 15 : MAX_STEPS;
     const packet = this.handoff(ctx, brainCtx);
     const userMsg = { role: 'user', content: `${packet}## The job\n${task}${ctx.picNote ? `\n\n${ctx.picNote}` : ''}` };
     // Raw pictures only go to a brain that can see; any brain still gets the Eyes descriptions above.

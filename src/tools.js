@@ -6,13 +6,17 @@ import { isInside, insideAny, appDir, findOutput } from './config.js';
 import { HATS } from './persona.js';
 import { cloudHelpers, askCloud } from './cloud.js';
 import { copyName } from './clan.js';
-import { limitOn, readOnlyRoots } from './hands-settings.js';
+import { limitOn, readOnlyRoots, handOn } from './hands-settings.js';
 import { listWorkflows, workshopDir } from './workshop.js';
 import { bobHelp } from './self-help.js';
 import { recallOn, tagLine } from './recall.js';
 import { diagramTool } from './diagram.js';
 import { saveAsTool } from './save-as.js';
 import { isPrivateHost } from './security-web.js';
+import { selfWorkOn, hasCodeCopy, codeCopyRoot, codeCopyDir, gatherBrains, pickBigBrain, selfCtx, selfWorkTask, SELF_STEPS } from './self-work.js';
+import { ownEntries } from './own-models.js';
+import { catalogFileFor } from './llamacpp.js';
+import { ctxLabel } from './model-ctx.js';
 
 const MAX_READ = 20000;
 // Runnable file types Bob won't write outside a project, on every platform (Windows, Mac and Linux kinds together).
@@ -260,7 +264,8 @@ export function buildTools(cfg) {
       if (insideAny(readOnlyRoots(cfg), file)) throw new Error(`${file} is in a read-only project.`);
       if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to write in that folder. Allowed: ${cfg.readRoots.join('; ')}`);
       const exists = fs.existsSync(file);
-      if (isInside(cfg.innDir, file) && !exists) return false;
+      // New files in the inn need no OK, except in the code copy of Bob's own code (self-work.js): every change there shows its card.
+      if (isInside(cfg.innDir, file) && !exists && !isInside(codeCopyRoot(cfg), file)) return false;
       return `${exists ? 'Overwrite' : 'Create'} ${file} (${Buffer.byteLength(content || '')} bytes)`;
     },
     approvalGroup: 'edit',
@@ -443,6 +448,34 @@ export function buildTools(cfg) {
     }),
     async run({ hat, task }, ctx) { return ctx.brain.runHat(hat, task, ctx); },
     summary: ({ hat }) => `hat: ${hat}`,
+    endsTurn: true
+  };
+
+  // "Let Bob work on his own app" (self-work.js, off by default): the coding hat on the code copy (a separate copy of Bob's code),
+  // only on the biggest brain (Bobert, else stock Qwen3.6 35B) with Long memory stretched past 256K. Every edit and
+  // command still asks; the running Bob (his program folder and settings) stays locked.
+  t.work_on_myself = {
+    schema: fn('work_on_myself', "Change your own app (Bob's code: a feature, a fix, Help text) when {{USER}} asks you to work on yourself. The job runs at your workbench on a separate copy of your code, never the Bob that's running, and comes back as a git branch and a patch for {{USER}} to look over. {{USER}} approves every change.", {
+      job: str('What {{USER}} wants changed in Bob, in their words, with any details from the chat.')
+    }),
+    async run({ job }, ctx) {
+      if (!selfWorkOn(cfg)) throw new Error('Working on my own app is off. It\'s in Settings, How Bob works, "Let Bob work on his own app".');
+      if (!hasCodeCopy(cfg)) throw new Error('There\'s no copy of my code to work on yet. Press "Make the code copy" under "Let Bob work on his own app" in Settings, How Bob works.');
+      if (!String(job || '').trim()) throw new Error('Say what to change.');
+      const brains = gatherBrains(cfg, { own: ownEntries(cfg), catalogFile: (id) => catalogFileFor(cfg, id) });
+      const pick = pickBigBrain(cfg, brains);
+      if (!pick) throw new Error('This job only runs on my biggest brain, Bobert or Qwen3.6 35B, and neither is on this replicant matrix. Get Qwen3.6 35B-A3B in Get models, or add your Bobert file under Brains of your own.');
+      const want = selfCtx(cfg);
+      const got = await Promise.resolve(ctx.brain.fitCtx?.(pick.id, want, { longRun: true })).catch(() => null) || want;
+      ctx.emit?.({ type: 'announce', text: `🔧 Off to the workbench: my own code, in the copy at ${codeCopyDir(cfg)}, on ${pick.name} with ${ctxLabel(got)} of memory${got < want ? ` (${ctxLabel(want)} won't fit this replicant matrix's card and RAM)` : ' (Long memory)'}. Every change shows its card.` });
+      const task = selfWorkTask(cfg, job, { runOn: handOn(cfg, 'run') });
+      // phased: Extreme effort's research-plan-do steps would start fresh hats on other brains; this job keeps its one brain.
+      const was = ctx.phased;
+      ctx.phased = true;
+      try { return await ctx.brain.runHat('tinker', task, ctx, { model: pick.id, cpu: false, think: true, ctx: want, longRun: true, maxSteps: SELF_STEPS }); }
+      finally { ctx.phased = was; }
+    },
+    summary: () => 'work on my own app',
     endsTurn: true
   };
 

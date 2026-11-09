@@ -16,6 +16,7 @@ import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } 
 import { exeName } from './platform.js';
 import { Embedder } from './embedder.js';
 import { ggufInfo } from './gguf.js';
+import { selfWorkOn } from './self-work.js';
 import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes } from './model-ctx.js';
 
 // 1.5.19: the context a brain gets when nothing else picks one. 32K fits a 26B brain on a 16 GB card.
@@ -456,8 +457,10 @@ export class LlamaCpp {
 
   // Long memory (YaRN): only with the switch on, a brain the guide covers, and a size past what it was made for.
   // Settings set by hand (llamacpp.args with --rope-scaling) win.
+  // "Let Bob work on his own app" (self-work.js) uses Long memory for its own job even with the switch off: a size past
+  // what the brain was made for only reaches here through that job (brain.fitCtx with stretch) or a pick with it on.
   stretchArgs(gguf, ctx) {
-    if (!stretchOn(this.cfg) || (this.lc.args || []).includes('--rope-scaling')) return [];
+    if (!(stretchOn(this.cfg) || selfWorkOn(this.cfg)) || (this.lc.args || []).includes('--rope-scaling')) return [];
     let info = null;
     try { info = ggufInfo(gguf); } catch {}
     const plan = stretchPlan(info);
