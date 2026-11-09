@@ -22,6 +22,7 @@ import { survey, wouldLearn, scrub, userName } from './lab-build-scan.js';
 import { KINDS, KIND_IDS, SAMPLE_COUNT } from './lab-build-kinds.js';
 import { findOffice } from './office.js';
 import { writeZip } from './zip.js';
+import { parseHfRef, hfLookup } from './lab-hf.js'; // 1.5.163
 import { PACKS, PACK_IDS, runPack, mergeScores, readScores, scoreboard, scoreFile, codeTool, CLASSES } from './lab-challenges.js'; // 1.5.153 Challenges
 import { runSandboxed, sandboxHolds } from './selftools.js';
 import { METHODS, LEFT_OUT, forgeDir, forgeRuns, forgeBrains, forgePlans, makeForgePlan, forgePlansDir, FORGE_KEY, forgeStartProblems, launchForge, alive, runPodId, scrub as scrubForge } from './lab-forge.js';
@@ -1057,21 +1058,23 @@ export class Lab {
   }
 
   // ---- 1.5.160+ slice C: a Forge run started from the Lab ----
+  // 1.5.163 a brain or lesson set on Hugging Face: read its card (licence, size, files) before it goes in a plan
+  async forgeHf(ref, kind) { const r = parseHfRef(ref, kind === 'dataset' ? 'dataset' : 'model'); return hfLookup(r || String(ref || ''), { fetchFn: this.hfFetch || fetch }); }
   forgeKeys() { const e = this.rentEnv ? this.rentEnv() : rentKeyEnv(); return e?.[FORGE_KEY] ? { [FORGE_KEY]: e[FORGE_KEY] } : {}; }
   forgeLiveFile() { return path.join(labDir(this.cfg), 'forge-live.json'); }
   forgeLive() {
     const rec = readJson(this.forgeLiveFile(), null);
     if (!rec) return null;
-    const running = (this.forgeAlive || alive)(rec.pid);
+    const running = rec.pid > 0 && (this.forgeAlive || alive)(rec.pid);
     let tail = []; try { tail = fs.readFileSync(rec.log, 'utf8').split(/\r?\n/).filter(Boolean).slice(-12).map(scrubForge); } catch {}
-    return { plan: rec.plan, at: rec.at, running, hours: rec.hours, dollars: rec.dollars, tail };
+    return { plan: rec.plan, at: rec.at, running, hours: rec.hours, dollars: rec.dollars, tail, importing: Boolean(rec.importing && running), failed: rec.failed || '' };
   }
   allowForge(on) { saveSettings(this.cfg, { labForgeStart: on === true }); this.cfg.labForgeStart = on === true; return { allowed: this.cfg.labForgeStart }; }
   forgeCard(id) { // what the purchase card shows: read from the saved plan, nothing else
     const plan = readJson(path.join(forgePlansDir(labDir(this.cfg)), `${slugOf(id)}.json`), null);
     if (!plan) throw new Error('That plan isn\'t saved.');
     const dir = forgeDir(this.cfg);
-    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), shown: { hours: plan.hours_max, dollars: plan.dollars_max }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir) });
+    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), shown: { hours: plan.hours_max, dollars: plan.dollars_max }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir), importer: Boolean(dir) && fs.existsSync(path.join(dir, 'import-lessons.mjs')) });
     return { id: slugOf(id), brains: (plan.rungs || []).map((r) => ({ name: r.name, nickname: r.nickname || '', keep: r.keep, hours: r.hours })), quants: plan.quants || '', cards: plan.gpus || [], hours: plan.hours_max, dollars: plan.dollars_max, volume: plan.volume ? plan.volume.gb || 100 : 0, problems };
   }
   forgeStart({ id, hours, dollars } = {}) {
@@ -1079,20 +1082,42 @@ export class Lab {
     const file = path.join(forgePlansDir(labDir(this.cfg)), `${slugOf(id)}.json`);
     const plan = readJson(file, null);
     const keys = this.forgeKeys();
-    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(keys[FORGE_KEY]), shown: { hours, dollars }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir) });
+    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(keys[FORGE_KEY]), shown: { hours, dollars }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir), importer: Boolean(dir) && fs.existsSync(path.join(dir, 'import-lessons.mjs')) });
     if (problems.length) throw new Error(problems[0]);
     const log = path.join(labDir(this.cfg), 'forge-runs', `${slugOf(id)}-${new Date(this.now()).toISOString().replace(/[:.]/g, '-').slice(0, 19)}.log`);
     fs.mkdirSync(path.dirname(log), { recursive: true });
     const { file: node, env: nodeEnv } = nodeCmd();
-    const pid = launchForge({ dir, planFile: file, env: keys, node, nodeEnv, spawnFn: this.forgeSpawn || spawn, logTo: log });
-    writeJson(this.forgeLiveFile(), { plan: slugOf(id), pid, log, at: this.now(), hours: plan.hours_max, dollars: plan.dollars_max });
-    return { started: true };
+    const live = { plan: slugOf(id), log, at: this.now(), hours: plan.hours_max, dollars: plan.dollars_max };
+    const spawnFn = this.forgeSpawn || spawn;
+    if (!(Array.isArray(plan.hf_lessons) && plan.hf_lessons.length)) {
+      writeJson(this.forgeLiveFile(), { ...live, pid: launchForge({ dir, planFile: file, env: keys, node, nodeEnv, spawnFn, logTo: log }) });
+      return { started: true };
+    }
+    // 1.5.163 Lessons from Hugging Face: the Forge's importer downloads and converts them here first, on a copy of the
+    // plan (the saved plan keeps its Hugging Face names). It moves them into extra_lessons and drops hf_lessons; if it
+    // fails, or hf_lessons is still there afterwards, the run never starts, so nothing is silently left out.
+    const runPlan = log.replace(/\.log$/, '.plan.json');
+    fs.copyFileSync(file, runPlan);
+    const fd = fs.openSync(log, 'a');
+    const imp = spawnFn(node, [path.join(dir, 'import-lessons.mjs'), '--plan', runPlan], { cwd: dir, stdio: ['ignore', fd, fd], windowsHide: true, env: { ...process.env, ...nodeEnv } });
+    fs.closeSync(fd);
+    writeJson(this.forgeLiveFile(), { ...live, pid: imp.pid, importing: true });
+    const done = (code) => {
+      if (readJson(this.forgeLiveFile(), {})?.stopped) return; // Stop was pressed while importing: never start
+      const after = readJson(runPlan, null);
+      const ok = code === 0 && after && !(Array.isArray(after.hf_lessons) && after.hf_lessons.length);
+      if (!ok) { try { fs.appendFileSync(log, `\nThe lessons from Hugging Face couldn't all be brought in (importer exit ${code}), so the run didn't start and nothing was rented.\n`); } catch {} writeJson(this.forgeLiveFile(), { ...live, pid: 0, importing: false, failed: 'The lessons from Hugging Face couldn\'t all be brought in, so the run didn\'t start and nothing was rented. The log says which one.' }); return; }
+      writeJson(this.forgeLiveFile(), { ...live, pid: launchForge({ dir, planFile: runPlan, env: keys, node, nodeEnv, spawnFn, logTo: log }) });
+    };
+    if (imp.on) { imp.on('exit', (c) => done(c)); imp.on('error', () => done(-1)); } else done(-1);
+    return { started: true, importing: true };
   }
   // Stop: end the Forge on this replicant matrix, then delete only this run's card (never every Forge card).
   async forgeStop() {
     const rec = readJson(this.forgeLiveFile(), null);
     if (!rec) throw new Error('No Forge run was started from the Lab.');
-    try { process.kill(rec.pid); } catch {}
+    if (rec.pid > 0) { try { process.kill(rec.pid); } catch {} } // never 0: that would mean every process in the group
+    if (rec.importing) { writeJson(this.forgeLiveFile(), { ...rec, importing: false, stopped: true, pid: 0 }); return { stopped: true, pod: false }; } // nothing rented yet
     const dir = forgeDir(this.cfg), plan = readJson(path.join(forgePlansDir(labDir(this.cfg)), `${rec.plan}.json`), {}), pod = dir ? runPodId(dir, plan.run || rec.plan) : '';
     if (pod) {
       const { file: node, env: nodeEnv } = nodeCmd();
@@ -1353,6 +1378,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/ladder/ask') { send(res, 200, await lab.startLadderAsk({ id: b.id, question: b.question }, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/ladder/delete') { send(res, 200, lab.deleteLadder(String(b.id || ''))); return true; }
     if (p === '/api/lab/forge/plan') { const r = lab.forgePlan(b.form); send(res, 200, { problems: r.problems, notes: r.notes, hours: r.hours, text: JSON.stringify(r.plan, null, 1) }); return true; } // 1.5.158
+    if (p === '/api/lab/forge/hf') { send(res, 200, await lab.forgeHf(String(b.ref || '').slice(0, 400), b.kind)); return true; } // 1.5.163
     if (p === '/api/lab/forge/allow') { send(res, 200, lab.allowForge(b.on === true)); return true; }
     if (p === '/api/lab/forge/card') { send(res, 200, lab.forgeCard(String(b.id || ''))); return true; }
     if (p === '/api/lab/forge/start') { send(res, 200, lab.forgeStart({ id: String(b.id || ''), hours: b.hours, dollars: b.dollars })); return true; }

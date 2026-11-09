@@ -48,7 +48,9 @@ check('the Style page shows the four groups with plain headings', /\['Worlds', '
 check('no page falls back to the inn by name any more', !/'inn'/.test(page) && !/\|\| 'inn'/.test(read('public/cellar.js')));
 check('every theme has a short blurb', PRESETS.every((t) => t.what && t.what.length <= 110));
 const pub = `${read('public/themes.js')} ${read('public/help-content.js')} ${read('README.md')}`;
-check('public text never names the books or their worlds', !/bobiverse|quinlan|heaven's river|jabberwock|bellerophon|vulcan|romulus|poseidon/i.test(pub));
+// 1.5.163 the owner picked "Vulcan" as the GPT-like thought path's name (9 Nov); only that exact path name is let through.
+const pubNoPath = pub.replace(/<strong>Vulcan<\/strong> \(GPT-like\)/g, '').replace(/Sherlock, Watson and Vulcan/g, '');
+check('public text never names the books or their worlds', !/bobiverse|quinlan|heaven's river|jabberwock|bellerophon|vulcan|romulus|poseidon/i.test(pubNoPath));
 check('Help names the new groups and the default', /Moondust/.test(HELP.find((h) => h.id === 'style')?.html || '') && /Worlds and places/.test(HELP.find((h) => h.id === 'style')?.html || ''));
 
 // review: the Animations middle button says Follow Windows on Windows and Follow the system elsewhere, on both pages
