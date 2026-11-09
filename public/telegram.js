@@ -24,11 +24,15 @@ export async function mountTelegram(box) {
       ${v.enabled ? `<p class="muted" role="status">${esc(STATUS[v.status] || v.status)}${v.botName ? ` Your bot: <strong>${esc(v.botName)}</strong>` : ''}</p>` : ''}
       <div class="row"><strong>Bot token</strong> <span class="muted">${v.tokenFound ? `Found (${esc(v.tokenEnv)}).` : `Not found yet. Add a Windows user variable named <code>${esc(v.tokenEnv)}</code> with your bot's token, then open this page again.`}</span></div>
       ${v.enabled ? `<div class="row"><strong>Your Telegram account</strong> <span class="muted">${v.paired ? `Paired with <strong>${esc(v.ownerName || 'your account')}</strong>.` : v.pairCode ? `Send <code>${esc(v.pairCode)}</code> to your bot in Telegram within 15 minutes.` : v.pairLocked ? 'Someone sent your bot 5 wrong codes, so that code was thrown away. Click New code.' : 'Not paired yet.'}</span>
-        ${v.paired ? '<button type="button" data-tg-forget>Forget my Telegram account</button>' : '<button type="button" data-tg-code>New code</button>'}</div>` : ''}
+        ${v.paired ? '<button type="button" data-tg-forget>Forget my Telegram account</button>' : '<button type="button" data-tg-code>New code</button>'}</div>
+      ${v.paired ? '' : `<div class="row"><label for="tg-owner"><strong>Or type your Telegram account</strong></label>
+        <input id="tg-owner" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Your user ID or @username" value="${esc(v.ownerUser ? '@' + v.ownerUser : '')}" data-tg-owner-in>
+        <button type="button" data-tg-owner>Save account</button>
+        <span class="muted">${v.ownerUser ? `Waiting for a message from <strong>@${esc(v.ownerUser)}</strong>: send your bot /start.` : 'Your user ID is digits (Telegram\'s @userinfobot tells you yours). With a @username, send your bot /start once to finish.'}</span></div>`}` : ''}
       ${sw('pictures', 'Send pictures Bob makes', 'Pictures Bob makes for the Telegram chat go there as photos. Off: he says where to find them.', v.pictures, !v.enabled)}
       ${sw('approve', 'Answer Bob\'s OK cards on Telegram', 'OK cards get Allow and Deny buttons in Telegram. Off: Bob says a card is waiting on this replicant matrix. Hard limits still hold either way.', v.approve, !v.enabled)}
       ${msg ? `<p class="muted" role="status">${esc(msg)}</p>` : ''}
-      <details class="more"><summary>More</summary><p class="muted">1. In Telegram, open <strong>@BotFather</strong>, send /newbot and follow the steps. It gives you a token.<br>2. In Windows: Settings, System, About, Advanced system settings, Environment Variables. Under "User variables" click New, name it <code>${esc(v.tokenEnv)}</code> and paste the token.<br>3. Turn on <strong>Talk to Bob on Telegram</strong> and send the code shown here to your bot.<br>Bob never stores or shows the token. He asks Telegram for new messages himself, so no door opens on this replicant matrix. Anyone else who writes to your bot gets no answer. /stop in Telegram stops what Bob is doing for that chat.</p></details>`;
+      <details class="more"><summary>More</summary><p class="muted">1. In Telegram, open <strong>@BotFather</strong>, send /newbot and follow the steps. It gives you a token.<br>2. In Windows: Settings, System, About, Advanced system settings, Environment Variables. Under "User variables" click New, name it <code>${esc(v.tokenEnv)}</code> and paste the token.<br>3. Turn on <strong>Talk to Bob on Telegram</strong>, then either send the code shown here to your bot, or type your own Telegram user ID or @username under <strong>Or type your Telegram account</strong>.<br>Bob never stores or shows the token. He asks Telegram for new messages himself, so no door opens on this replicant matrix. Anyone else who writes to your bot gets no answer. /stop in Telegram stops what Bob is doing for that chat.</p></details>`;
   };
   const load = async () => { v = await api('/api/telegram'); draw(); };
   const change = async (patch) => {
@@ -39,6 +43,7 @@ export async function mountTelegram(box) {
   box.addEventListener('click', (e) => {
     if (e.target.closest('[data-tg-forget]')) change({ forget: true });
     if (e.target.closest('[data-tg-code]')) change({ newCode: true });
+    if (e.target.closest('[data-tg-owner]')) { const owner = box.querySelector('[data-tg-owner-in]')?.value.trim(); if (owner) change({ owner }); }
   });
   try { await load(); } catch (e) { box.innerHTML = `<strong>Talk to Bob on Telegram</strong><p class="muted">${esc(e.message)}</p>`; }
 }

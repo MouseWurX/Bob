@@ -4,7 +4,8 @@
 // variable named BOB_TELEGRAM_TOKEN. Bob never stores or shows the token, the same as the cloud helpers' keys.
 // Bob asks Telegram for new messages himself (one long-poll request at a time), so no port is opened on this PC.
 //
-// Only one Telegram account can talk to Bob: yours. While the bot isn't paired, Settings shows a pairing code for
+// Only one Telegram account can talk to Bob: whoever sets it up. No account is assumed: in Settings you either type your
+// own Telegram user ID or @username, or send the pairing code. While the bot isn't paired, Settings shows a pairing code for
 // 15 minutes; the first account that sends that code to the bot becomes the owner. Five wrong codes throw it away. Everything from anyone else is
 // ignored without an answer. "Forget my Telegram account" un-pairs it.
 //
@@ -31,7 +32,7 @@ const TOKEN_RX = /^\d{5,15}:[A-Za-z0-9_-]{30,60}$/;
 
 export function telegramSettings(cfg) {
   const t = cfg.telegram || {};
-  return { enabled: t.enabled === true, ownerId: Number.isSafeInteger(t.ownerId) ? t.ownerId : null, ownerName: String(t.ownerName || '').slice(0, 80), approve: t.approve === true, pictures: t.pictures === true };
+  return { enabled: t.enabled === true, ownerId: Number.isSafeInteger(t.ownerId) ? t.ownerId : null, ownerName: String(t.ownerName || '').slice(0, 80), ownerUser: cleanUsername(t.ownerUser), approve: t.approve === true, pictures: t.pictures === true };
 }
 
 // Lives in config.json only, never in settings.json, like phone access: nothing that can write Bob's settings file
@@ -43,6 +44,17 @@ export function saveTelegram(cfg, patch) {
   for (const k of Object.keys(raw.telegram)) if (raw.telegram[k] === undefined) delete raw.telegram[k];
   fs.writeFileSync(cfg.configFile, JSON.stringify(raw, null, 2));
   cfg.telegram = raw.telegram;
+}
+
+// "Your Telegram account" typed in Settings, instead of sending the code: a user ID (digits) or a @username.
+// Telegram can't look a username up for a bot, so a username pairs the first message from that username, then the ID is kept.
+export function cleanUsername(v) { const m = /^@?([A-Za-z][A-Za-z0-9_]{4,31})$/.exec(String(v || '').trim()); return m ? m[1].toLowerCase() : ''; }
+export function ownerPatch(v) {
+  const t = String(v ?? '').trim();
+  if (/^\d{5,15}$/.test(t) && Number.isSafeInteger(Number(t))) return { ownerId: Number(t), chatId: Number(t), ownerName: `user ${t}`, ownerUser: undefined };
+  const u = cleanUsername(t);
+  if (u) return { ownerId: undefined, chatId: undefined, ownerName: undefined, ownerUser: u };
+  return null;
 }
 
 // Only these keys, only these types.
@@ -164,6 +176,15 @@ export class TelegramBridge {
     const m = u.message;
     if (!m || m.chat?.type !== 'private' || !m.from || m.from.is_bot) return;
     const text = String(m.text || m.caption || '').trim();
+    if (!s.ownerId && s.ownerUser && String(m.from.username || '').toLowerCase() === s.ownerUser) {
+      // The username typed in Settings: this account is the owner from now on (by its ID, which never changes).
+      const name = [m.from.first_name, m.from.last_name].filter(Boolean).join(' ') || `@${m.from.username}`;
+      saveTelegram(this.cfg, { ownerId: m.from.id, ownerName: name, chatId: m.chat.id });
+      this.pair = null;
+      this.log(`paired with Telegram account ${name} (the username set in Settings)`);
+      this.brain.broadcast?.({ type: 'telegram', paired: true, name });
+      return this.say('Paired. This Bob now answers you here, and only you. Send me anything you would type in my window. /stop stops what I\'m doing for this chat.');
+    }
     if (!s.ownerId) {
       const code = codeIn(text);
       if (!this.pair || this.pair.until < this.now() || !text) return;
@@ -262,7 +283,7 @@ export class TelegramBridge {
 export function telegramView(bridge) {
   const s = bridge.settings();
   const pair = s.enabled && !s.ownerId && bridge.pair && bridge.pair.until > bridge.now() ? bridge.pair : null;
-  return { enabled: s.enabled, paired: Boolean(s.ownerId), pairLocked: bridge.pairLocked, ownerName: s.ownerName, approve: s.approve, pictures: s.pictures, tokenEnv: TOKEN_ENV, tokenFound: Boolean(bridge.token()), status: bridge.status, botName: bridge.botName, pairCode: pair?.code || '', pairUntil: pair ? new Date(pair.until).toISOString() : '' };
+  return { enabled: s.enabled, paired: Boolean(s.ownerId), pairLocked: bridge.pairLocked, ownerName: s.ownerName, ownerUser: s.ownerUser, approve: s.approve, pictures: s.pictures, tokenEnv: TOKEN_ENV, tokenFound: Boolean(bridge.token()), status: bridge.status, botName: bridge.botName, pairCode: pair?.code || '', pairUntil: pair ? new Date(pair.until).toISOString() : '' };
 }
 
 export function startTelegram(brain, opts) {
@@ -280,7 +301,14 @@ export async function telegramRoute({ req, res, p, isLocal, brain, body, send })
   if (!isLocal) { send(res, 403, { error: 'Telegram can only be set up on this replicant matrix itself.' }); return true; }
   if (req.method === 'GET') { bridge.sync(); send(res, 200, telegramView(bridge)); return true; }
   const b = await body(req);
-  if (b.forget) { saveTelegram(brain.cfg, { ownerId: undefined, ownerName: undefined, chatId: undefined }); bridge.pair = null; brain.log('settings', 'Telegram account forgotten (your click)'); }
+  if (b.forget) { saveTelegram(brain.cfg, { ownerId: undefined, ownerName: undefined, chatId: undefined, ownerUser: undefined }); bridge.pair = null; brain.log('settings', 'Telegram account forgotten (your click)'); }
+  if ('owner' in b) {
+    const o = ownerPatch(b.owner);
+    if (!o) { send(res, 400, { error: 'Type your Telegram user ID (only digits) or your @username.' }); return true; }
+    saveTelegram(brain.cfg, o);
+    bridge.pair = null;
+    brain.log('settings', `Telegram account set by hand (${o.ownerUser ? 'username' : 'user ID'}, your click)`);
+  }
   if (b.newCode) bridge.newPairCode();
   const patch = cleanTelegramPatch(b);
   if (Object.keys(patch).length) { saveTelegram(brain.cfg, patch); brain.log('settings', `Telegram: ${Object.entries(patch).map(([k, v]) => `${k} ${v ? 'on' : 'off'}`).join(', ')} (your click)`); }

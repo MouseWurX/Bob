@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { TelegramBridge, telegramView, cleanTelegramPatch, chunks, codeIn, saveTelegram, TELEGRAM_SESSION, TOKEN_ENV } from '../src/telegram.js';
+import { TelegramBridge, telegramView, cleanTelegramPatch, chunks, codeIn, saveTelegram, ownerPatch, telegramRoute, TELEGRAM_SESSION, TOKEN_ENV } from '../src/telegram.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -124,6 +124,24 @@ check('after 5 wrong codes the code is thrown away, even the right one fails, un
 g.newPairCode();
 await g.handle(msg(42, g.pair.code));
 check('New code works again', telegramView(g).paired);
+
+// Typing your own account in Settings, instead of the code. Nothing is assumed.
+check('a typed user ID or @username is understood; anything else is refused', ownerPatch('123456789').ownerId === 123456789 && ownerPatch('@Pat_Smith').ownerUser === 'pat_smith' && ownerPatch('pat') === null && ownerPatch('12ab') === null);
+saveTelegram(brain.cfg, { ownerId: undefined, ownerName: undefined, chatId: undefined });
+const route = async (b2) => { let out; await telegramRoute({ req: { method: 'POST' }, res: {}, p: '/api/telegram', isLocal: true, brain: { ...brain, telegram: h }, body: async () => b2, send: (r, code, j) => { out = { code, j }; } }); return out; };
+const h = new TelegramBridge(brain, { fetchImpl, env: { [TOKEN_ENV]: TOKEN } });
+h.running = true; h.sync();
+let r = await route({ owner: '987654321' });
+check('a typed user ID pairs that account at once', r.code === 200 && r.j.paired && JSON.parse(fs.readFileSync(configFile, 'utf8')).telegram.ownerId === 987654321);
+await route({ forget: true });
+r = await route({ owner: 'nope' });
+check('a typed account that is neither an ID nor a username is refused', r.code === 400 && !telegramView(h).paired);
+r = await route({ owner: '@Robin_Bob' });
+check('a typed @username waits for that account\'s first message', r.code === 200 && !r.j.paired && r.j.ownerUser === 'robin_bob');
+await h.handle({ update_id: 9, message: { chat: { id: 55, type: 'private' }, from: { id: 55, username: 'someone_else', is_bot: false }, text: 'hi' } });
+check('someone else with another username gets nothing', !telegramView(h).paired);
+await h.handle({ update_id: 10, message: { chat: { id: 66, type: 'private' }, from: { id: 66, username: 'Robin_Bob', first_name: 'Robin', is_bot: false }, text: '/start' } });
+check('the typed username\'s first message pairs it, kept by its ID', telegramView(h).paired && JSON.parse(fs.readFileSync(configFile, 'utf8')).telegram.ownerId === 66);
 
 // Forgetting un-pairs; turning off stops.
 saveTelegram(brain.cfg, { ownerId: undefined, ownerName: undefined, chatId: undefined, enabled: false });
