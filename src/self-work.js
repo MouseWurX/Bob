@@ -96,7 +96,7 @@ export function selfWorkTask(cfg, job, { today = new Date().toISOString().slice(
       : '2. The Run programs Hand is off, so you can\'t make a branch or run the tests. Edit the files, and say so in your report: switching on Run programs (Settings, Hands) lets you do both next time.',
     '3. Plan in a few numbered lines (what, where, why, how you\'ll check it), then make small, focused edits with edit_file and write_file. House rules: anything new is off by default; it works on Windows, Mac, Linux and Android or says plainly where it doesn\'t; it gets Help in your own voice, a glossary entry and an FAQ in public/help-content.js, using the names on screen; tests never read the real computer (pass fakes in).',
     ...(runOn ? [
-      `4. Check. run_command npm test (cwd ${dir}) and read the output. Fix what fails and run it again. Never skip, delete or weaken a test to get it green. If npm isn't found, say Node.js 20 or newer is needed (nodejs.org) and stop there.`,
+      `4. Check. run_command node --run test (cwd ${dir}): that's npm test, run by Node itself. Read the output, fix what fails and run it again. Never skip, delete or weaken a test to get it green.`,
       `5. Keep it. When the tests pass: git add -A, then git commit -m "<one line on what changed>", then git format-patch main -o ${patchDir(cfg)}. Never push: {{USER}} looks it over and sends it.`
     ] : []),
     `${runOn ? 6 : 4}. Report honestly: ${runOn ? `the branch (${branch}), ` : ''}the files changed and why, what you ran and the real result (passed, failed or not run)${runOn ? ', and the patch file' : ''}. Anything failing or unfinished goes first.`
@@ -133,16 +133,19 @@ export function runGit(cmd, args, { cwd, timeoutMs = 10 * 60_000 } = {}) {
 }
 
 // Clones Bob's code from GitHub into the code copy folder. Never touches an existing copy (it may hold work).
-export async function makeCodeCopy(cfg, { run = runGit, exists = fs.existsSync, mkdir = (d) => fs.mkdirSync(d, { recursive: true }), platform = process.platform } = {}) {
+// git: the Git program to use (self-work-tools.js ensureTool finds or fetches it first).
+export async function makeCodeCopy(cfg, { git = 'git', run = runGit, exists = fs.existsSync, mkdir = (d) => fs.mkdirSync(d, { recursive: true }), platform = process.platform } = {}) {
   const dir = codeCopyDir(cfg);
   if (hasCodeCopy(cfg, { exists })) return { ok: true, already: true, dir };
   if (exists(dir)) return { ok: false, dir, why: `There's already a folder at ${dir} that isn't a code copy. Move it or delete it, then press Make the code copy again.` };
   mkdir(codeCopyRoot(cfg));
   mkdir(patchDir(cfg));
   let r;
-  try { r = await run('git', ['clone', '--quiet', SELF_REPO, dir], { cwd: codeCopyRoot(cfg) }); }
+  try { r = await run(git, ['clone', '--quiet', SELF_REPO, dir], { cwd: codeCopyRoot(cfg) }); }
   catch (e) { return { ok: false, dir, why: e?.code === 'ENOENT' ? gitHelp(platform) : `Git couldn't start: ${e.message}` }; }
   if (r.code !== 0) return { ok: false, dir, why: `Git couldn't copy Bob's code from GitHub (is the internet on?). It said: ${String(r.out || '').trim().slice(-300) || `exit code ${r.code}`}` };
+  // Commits need a name; this copy's own, so the computer's Git settings are never changed.
+  for (const [k, v] of [['user.name', 'Bob'], ['user.email', 'bob@code-copy.invalid']]) { try { await run(git, ['-C', dir, 'config', k, v], { cwd: dir }); } catch {} }
   return { ok: true, dir };
 }
 

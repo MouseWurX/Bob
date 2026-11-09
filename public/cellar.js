@@ -575,7 +575,7 @@ export function createCellar() {
   const selfWorkHtml = () => {
     const w = settings.selfWork || {};
     const sizeName = (v) => (v >= 1048576 ? `${v / 1048576}M` : `${Math.round(v / 1024)}K`);
-    const head = sswitch('selfWork', w.enabled === true, 'Let Bob work on his own app', keep('Off unless you turn it on. On: when you ask Bob to change himself (a new switch, a fix, Help text), he works on a separate copy of his own code, never the Bob that\'s running, using only his biggest brain (Bobert, else Qwen3.6 35B) with Long memory. Every edit and command shows its card, and what comes out is a git branch and a patch for you to look over. He never sends it anywhere.'));
+    const head = sswitch('selfWork', w.enabled === true, 'Let Bob work on his own app', keep('Off unless you turn it on. On: when you ask Bob to change himself (a new switch, a fix, Help text), he works on a separate copy of his own code, never the Bob that\'s running, using only his biggest brain (Bobert, else Qwen3.6 35B) with Long memory. Every edit and command shows its card, and what comes out is a git branch and a patch for you to look over. He never sends it anywhere. If Git or Node.js 20 or newer isn\'t on this replicant matrix when he needs it, he downloads his own copy into his folder (about 35 to 55 MB each, nothing installed for the rest of the computer).'));
     if (w.enabled !== true) return head;
     const brain = w.brains?.length
       ? `<select data-selfwork="model" aria-label="Brain for working on his own app">${w.brains.map((b) => `<option value="${esc(b.id)}" ${b.id === w.model ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select>`
@@ -583,7 +583,7 @@ export function createCellar() {
     const mem = `<select data-selfwork="ctx" aria-label="Long memory for working on his own app">${(w.ctxChoices || [524288, 1048576]).map((v) => `<option value="${v}" ${v === w.ctx ? 'selected' : ''}>${sizeName(v)}</option>`).join('')}</select> ${tip('How much of his code Bob keeps in mind at once on this job. Both are past the 256K the brain was made for, so it\'s stretched (Long memory). If the size won\'t fit your graphics card and RAM, he uses 256K and says so in the chat.', 'Long memory for this job')}`;
     const copy = w.ready
       ? `<span class="muted">${esc(w.dir)}</span>`
-      : `<button type="button" class="mini" data-selfcopy>Make the code copy</button> ${tip('Downloads Bob\'s code from his GitHub page into ' + (w.dir || 'his inn folder') + ' with Git (about 15 MB). It needs Git on this replicant matrix. Nothing about you is sent.', 'Make the code copy')}`;
+      : `<button type="button" class="mini" data-selfcopy>Make the code copy</button> ${tip('Downloads Bob\'s code from his GitHub page into ' + (w.dir || 'his inn folder') + ' with Git (about 15 MB). No Git here? On Windows he gets his own first; a Mac shows Apple\'s installer; on Linux he says how to install it. Nothing about you is sent.', 'Make the code copy')}`;
     return `${head}<div class="self-work-rows">${srow('Brain for this job', brain)}${srow('Long memory', mem)}${srow('His code copy', copy)}<p class="muted self-copy-out" aria-live="polite"></p></div>`;
   };
 

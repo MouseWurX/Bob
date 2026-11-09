@@ -10,7 +10,8 @@ import { cleanHouseStyle } from '../public/house-style.js';
 import { pickFolder } from './pick-folder.js';
 import { pickFile, inspectOwn, ownModels, ownId, cleanOwnModels, ownEntries } from './own-models.js';
 import { selfWorkView, gatherBrains, makeCodeCopy, applyCodeCopy, cleanSelfWork, CODE_COPY_PROJECT } from './self-work.js'; // "Let Bob work on his own app"
-import { catalogFileFor } from './llamacpp.js'; // 1.5.135 brains of your own
+import { catalogFileFor } from './llamacpp.js';
+import { ensureTool } from './self-work-tools.js'; // 1.5.135 brains of your own
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -685,7 +686,10 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/self-work/copy') {
       if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
       if (cfg.selfWork?.enabled !== true) return send(res, 409, { error: 'Turn on "Let Bob work on his own app" first.' });
-      const r = await makeCodeCopy(cfg);
+      // Git first: Bob's own copy when the computer has none (self-work-tools.js; the owner asked for that).
+      let git;
+      try { git = await ensureTool(cfg, 'git', {}); } catch (e) { return send(res, 200, { ok: false, why: e.message, selfWork: selfWorkNow() }); }
+      const r = { ...(await makeCodeCopy(cfg, { git: git.file })), gotGit: git.fetched };
       applyCodeCopy(cfg);
       brain.log('settings', r.ok ? `own app: code copy ${r.already ? 'already there' : 'made'} at ${r.dir}` : `own app: code copy not made: ${r.why}`);
       return send(res, 200, { ...r, selfWork: selfWorkNow() });

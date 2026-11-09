@@ -228,7 +228,7 @@ export function pickAsset(assets, e, nvidia) {
   return null;
 }
 
-async function grab(asset, folder, pub, signal, tick, { allowed = hostAllowed, unpack = true } = {}) {
+export async function grab(asset, folder, pub, signal, tick, { allowed = hostAllowed, unpack = true } = {}) {
   if (!allowed(asset.browser_download_url)) throw new Error('That download isn\'t from where it should be. Stopped.');
   const zip = path.join(folder, asset.name + '.part');
   const res = await fetch(asset.browser_download_url, { redirect: 'follow', signal, headers: { 'user-agent': 'Bob' } });

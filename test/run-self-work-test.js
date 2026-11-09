@@ -15,6 +15,7 @@ import { LlamaCpp } from '../src/llamacpp.js';
 import { guessGroups } from '../src/toolbox.js';
 import { settingsNow } from '../src/self-help.js';
 import { HELP } from '../public/help-content.js';
+import { OWN_NODE, nodeFile, nodeUrl, nodeAllowed, nodeMajor, findNode, findGit, getOwnNode, getOwnGit, ensureTool, toolPath, ownNodeBin, ownGitBin, GIT_MAC, GIT_LINUX, MINGIT } from '../src/self-work-tools.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -80,19 +81,20 @@ check('remixes and smaller brains don\'t', !['qwen3.6-35b-a3b-heretic', 'qwen3.6
   check('the job says where to work, and that the running Bob is a different, locked folder', t.includes(codeCopyDir(c)) && /stays locked/.test(t));
   check('...reads the house rules first (CLAUDE.md, CONTRIBUTING)', t.includes('CLAUDE.md') && t.includes('CONTRIBUTING.md'));
   check('...starts a new branch named for the job', t.includes('git switch -c bob/add-a-switch-to-hide-the-cat-2026-11-09'));
-  check('...runs the tests and never weakens one', t.includes('npm test') && /Never skip, delete or weaken a test/.test(t));
+  check('...runs the tests with Node itself (npm.cmd can\'t run without a shell on Windows) and never weakens one', t.includes('node --run test') && /Never skip, delete or weaken a test/.test(t));
   check('...keeps a patch and never pushes', t.includes(`git format-patch main -o ${patchDir(c)}`) && /Never push/.test(t));
   check('...knows the house rules (off by default, every platform, Help in his voice)', /off by default/.test(t) && /Windows, Mac, Linux and Android/.test(t) && /Help in your own voice/.test(t));
   const off = selfWorkTask(c, 'fix a typo', { runOn: false });
-  check('with Run programs off: edits only, and says how to get branches and tests', !off.includes('npm test') && !off.includes('git switch') && /switching on Run programs/.test(off));
+  check('with Run programs off: edits only, and says how to get branches and tests', !off.includes('node --run test') && !off.includes('git switch') && /switching on Run programs/.test(off));
 }
 
 // ---------- Making the copy ----------
 {
   const c = { ...cfg, innDir: path.join(tmp, 'inn2'), selfWork: { enabled: true } };
   const calls = [];
-  const ok = await makeCodeCopy(c, { run: async (cmd, args) => { calls.push([cmd, ...args].join(' ')); fs.mkdirSync(path.join(args[3], '.git'), { recursive: true }); fs.writeFileSync(path.join(args[3], 'package.json'), '{}'); return { code: 0, out: '' }; } });
-  check('Make the code copy clones Bob\'s code into the inn', ok.ok && calls[0] === `git clone --quiet ${SELF_REPO} ${codeCopyDir(c)}` && hasCodeCopy(c), JSON.stringify(calls));
+  const ok = await makeCodeCopy(c, { git: '/own/git', run: async (cmd, args) => { calls.push([cmd, ...args].join(' ')); if (args[0] === 'clone') { fs.mkdirSync(path.join(args[3], '.git'), { recursive: true }); fs.writeFileSync(path.join(args[3], 'package.json'), '{}'); } return { code: 0, out: '' }; } });
+  check('Make the code copy clones Bob\'s code into the inn, with the Git it was given', ok.ok && calls[0] === `/own/git clone --quiet ${SELF_REPO} ${codeCopyDir(c)}` && hasCodeCopy(c), JSON.stringify(calls));
+  check('...and gives that copy its own commit name (the computer\'s Git settings are left alone)', calls.includes(`/own/git -C ${codeCopyDir(c)} config user.name Bob`) && calls.some((x) => x.includes('config user.email')) && !calls.some((x) => x.includes('--global')));
   let ran = false;
   const again = await makeCodeCopy(c, { run: async () => { ran = true; return { code: 0 }; } });
   check('...and never clones over a copy that is there (it may hold work)', again.ok && again.already && !ran);
@@ -106,6 +108,35 @@ check('remixes and smaller brains don\'t', !['qwen3.6-35b-a3b-heretic', 'qwen3.6
   check('...on Linux: the software manager', /software manager/.test((await noGit('linux')).why));
   const offline = await makeCodeCopy({ ...cfg, innDir: path.join(tmp, 'inn4') }, { run: async () => ({ code: 128, out: 'fatal: unable to access' }) });
   check('a failed clone says what Git said', !offline.ok && /unable to access/.test(offline.why));
+}
+
+// ---------- Git and Node.js: his own copies when they're missing (the owner's ask) ----------
+{
+  const c = { agentDir: path.join(tmp, 'tools-agent') };
+  check('Node.js is pinned for every computer Bob runs on, with nodejs.org\'s sha256', ['win-x64', 'darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64'].every((k) => /^[0-9a-f]{64}$/.test(OWN_NODE.files[k]?.sha256 || '') && OWN_NODE.files[k].name.includes(OWN_NODE.version)) && nodeMajor(OWN_NODE.version) >= 20);
+  check('...picked by the computer it\'s on', nodeFile('win', 'x64').name.endsWith('win-x64.zip') && nodeFile('mac', 'arm64').name.endsWith('darwin-arm64.tar.gz') && nodeFile('linux', 'arm64').name.endsWith('linux-arm64.tar.gz'));
+  check('...only from nodejs.org over https', nodeAllowed(nodeUrl(nodeFile('win', 'x64'))) && !nodeAllowed('http://nodejs.org/x') && !nodeAllowed('https://nodejs.org.evil.example/x'));
+  check('a Node 20 or newer already here is used; an older one isn\'t', (await findNode(c, { run: async () => 'v20.11.0', exists: () => false }))?.file === 'node' && (await findNode(c, { run: async () => 'v18.19.0', exists: () => false })) === null && (await findNode(c, { run: async () => null, exists: () => false })) === null);
+  check('his own copy wins once he has one', (await findNode(c, { os_: 'win', arch: 'x64', exists: (p) => p.endsWith('node.exe'), run: async () => 'v18.0.0' }))?.own === true);
+  const grabs = [];
+  const fakeGrab = async (asset, dir) => { grabs.push(asset); const b = ownNodeBin(c, 'win', 'x64'); fs.mkdirSync(b, { recursive: true }); fs.writeFileSync(path.join(b, 'node.exe'), ''); };
+  const got = await getOwnNode(c, { os_: 'win', arch: 'x64', grabImpl: fakeGrab });
+  check('getting Node: the pinned file and checksum, into his own folder', got.own && grabs[0].pinnedSha256 === OWN_NODE.files['win-x64'].sha256 && grabs[0].browser_download_url === nodeUrl(OWN_NODE.files['win-x64']) && isInside(c.agentDir, got.file));
+  check('git that\'s here is used', (await findGit(c, { os_: 'linux', run: async () => 'git version 2.43.0' }))?.file === 'git' && (await findGit(c, { os_: 'linux', run: async () => null })) === null);
+  const gitGrabs = [];
+  const gg = await getOwnGit(c, { os_: 'win', findImpl: async (e) => { check('Windows Git comes from Git for Windows\' own releases (MinGit)', e === MINGIT && MINGIT.repo === 'git-for-windows/git' && MINGIT.other[0].test('MinGit-2.51.0-64-bit.zip') && !MINGIT.other[0].test('MinGit-2.51.0-busybox-64-bit.zip')); return { rel: { tag_name: 'v2.51.0.windows.1' }, asset: { name: 'MinGit-2.51.0-64-bit.zip', size: 40, digest: 'sha256:' + 'a'.repeat(64) } }; }, grabImpl: async (asset) => { gitGrabs.push(asset); fs.mkdirSync(ownGitBin(c), { recursive: true }); fs.writeFileSync(path.join(ownGitBin(c), 'git.exe'), ''); } });
+  check('...checked against GitHub\'s own sha256 and kept in his folder', gitGrabs[0].digest && gg.own && isInside(c.agentDir, gg.file));
+  let opened = '';
+  const mac = await getOwnGit(c, { os_: 'mac', runImpl: async (f, a) => { opened = [f, ...a].join(' '); return ''; } }).catch((e) => e.message);
+  check('a Mac: Apple\'s installer opens, and Bob says to press Install', opened === 'xcode-select --install' && mac === GIT_MAC);
+  check('Linux: says how, since it needs a password', (await getOwnGit(c, { os_: 'linux' }).catch((e) => e.message)) === GIT_LINUX && /sudo apt install git/.test(GIT_LINUX));
+  const e1 = await ensureTool(c, 'node', { os_: 'win', arch: 'x64', run: async () => 'v22.1.0' });
+  check('ensureTool: nothing fetched when it\'s here', e1.fetched === false);
+  const env = toolPath(c, { Path: 'C:\\Windows' }, { os_: 'win' });
+  check('commands in the code copy find his own Node and Git first (Windows keeps its Path key)', env.Path.split(';')[0] === ownNodeBin(c, 'win') && env.Path.split(';')[1] === ownGitBin(c) && env.Path.endsWith('C:\\Windows'));
+  check('...and the PATH is left alone when he has none of his own', toolPath({ agentDir: path.join(tmp, 'none') }, { PATH: '/usr/bin' }, { os_: 'linux' }).PATH === '/usr/bin');
+  check('only commands run inside the code copy get them', /isInside\(codeCopyRoot\(cfg\), cwd\) \? \{ env: toolPath\(cfg, safeEnv\(\)\) \}/.test(read('src/hands.js')));
+  check('the job fetches what\'s missing only with Run programs on, and says so in the chat', /if \(runOn\) \{\n\s+for \(const \[which, label\] of \[\['git', 'Git'\], \['node', 'Node\.js'\]\]\)/.test(read('src/tools.js')) && /📦/.test(read('src/tools.js')));
 }
 
 // ---------- Long memory for this job ----------
@@ -148,7 +179,7 @@ check('remixes and smaller brains don\'t', !['qwen3.6-35b-a3b-heretic', 'qwen3.6
   check('Help, an FAQ and the settings list explain it', ids.has('self-work') && ids.has('faq-self-work') && HELP.some((h) => h.html.includes("set('Let Bob work on his own app'") || h.html.includes('Let Bob work on his own app')));
   check('...and the glossary has Code copy', HELP.find((h) => h.id === 'glossary')?.html.includes('<dt>Code copy</dt>'));
   const help = HELP.find((h) => h.id === 'self-work').html;
-  check('Help says the running Bob stays locked, the brains, Long memory, Git, Node and the phone', /stay locked/.test(help) && /Bobert/.test(help) && /Qwen3\.6 35B/.test(help) && /512K/.test(help) && /git-scm\.com/.test(help) && /Node\.js 20/.test(help) && /Android/.test(help));
+  check('Help says the running Bob stays locked, the brains, Long memory, getting Git and Node, and the phone', /stay locked/.test(help) && /Bobert/.test(help) && /Qwen3\.6 35B/.test(help) && /512K/.test(help) && /Node\.js 20/.test(help) && /own-tools/.test(help) && /nodejs\.org/.test(help) && /MinGit/.test(help) && /Android/.test(help));
   const ui = read('public/cellar.js');
   check('Settings has the switch, the brain, the size and Make the code copy', ui.includes("sswitch('selfWork'") && ui.includes('data-selfwork="model"') && ui.includes('data-selfwork="ctx"') && ui.includes('data-selfcopy'));
   check('Make the code copy works only on this replicant matrix, with the switch on', /\/api\/self-work\/copy'\) \{\n\s+if \(!isLocal\)/.test(read('src/server.js')) && /selfWork\?\.enabled !== true\) return send\(res, 409/.test(read('src/server.js')));

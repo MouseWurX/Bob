@@ -15,6 +15,7 @@ import { saveAsTool } from './save-as.js';
 import { isPrivateHost } from './security-web.js';
 import { selfWorkOn, hasCodeCopy, codeCopyRoot, codeCopyDir, gatherBrains, pickBigBrain, selfCtx, selfWorkTask, SELF_STEPS } from './self-work.js';
 import { ownEntries } from './own-models.js';
+import { ensureTool } from './self-work-tools.js';
 import { catalogFileFor } from './llamacpp.js';
 import { ctxLabel } from './model-ctx.js';
 
@@ -468,7 +469,17 @@ export function buildTools(cfg) {
       const want = selfCtx(cfg);
       const got = await Promise.resolve(ctx.brain.fitCtx?.(pick.id, want, { longRun: true })).catch(() => null) || want;
       ctx.emit?.({ type: 'announce', text: `🔧 Off to the workbench: my own code, in the copy at ${codeCopyDir(cfg)}, on ${pick.name} with ${ctxLabel(got)} of memory${got < want ? ` (${ctxLabel(want)} won't fit this replicant matrix's card and RAM)` : ' (Long memory)'}. Every change shows its card.` });
-      const task = selfWorkTask(cfg, job, { runOn: handOn(cfg, 'run') });
+      // The owner's ask: Git and Node.js 20+ fetched when they're missing (his own copies, in his folder only).
+      const runOn = handOn(cfg, 'run');
+      if (runOn) {
+        for (const [which, label] of [['git', 'Git'], ['node', 'Node.js']]) {
+          try {
+            const t = await ensureTool(cfg, which, { signal: ctx.signal, tick: () => {} });
+            if (t.fetched) ctx.emit?.({ type: 'announce', text: `📦 ${label} wasn't on this replicant matrix, so I got my own copy (in my folder only, nothing installed for the rest of the computer).` });
+          } catch (e) { throw new Error(`I need ${label} for this job and couldn't get it: ${e.message}`); }
+        }
+      }
+      const task = selfWorkTask(cfg, job, { runOn });
       // phased: Extreme effort's research-plan-do steps would start fresh hats on other brains; this job keeps its one brain.
       const was = ctx.phased;
       ctx.phased = true;

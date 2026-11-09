@@ -13,10 +13,12 @@ import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import os from 'node:os';
-import { insideAny, appDir } from './config.js';
+import { insideAny, isInside, appDir } from './config.js';
 import { HANDS, LIMITS, handOn, handOffWhy, handsSettings, cleanHands, readOnlyRoots, freeOn, limitOn, handsHere, handsOs, computerWord, handHere } from './hands-settings.js';
 import { planFiles, planCard, applyFiles, undoJob, loadJournal, handsRoots } from './hands-files.js';
-import { checkCommand, runCommand } from './hands-run.js';
+import { checkCommand, runCommand, safeEnv } from './hands-run.js';
+import { codeCopyRoot } from './self-work.js';
+import { toolPath } from './self-work-tools.js'; // "Let Bob work on his own app": his own Git and Node first in the code copy
 import { appsTools } from './hands-apps.js';
 import { officeView } from './office.js';
 import { makerPrompt, selfToolsView } from './selftools.js';
@@ -110,7 +112,7 @@ export async function runApproved(cfg, { cmd, args = [], cwd }, { emit = () => {
   const timeoutMs = handsSettings(cfg).timeoutMin * 60_000;
   let res;
   try {
-    res = await runCommand({ cmd, args, cwd, timeoutMs, signal: controller.signal, onOutput: (text) => emit({ type: 'run-output', runId: id, text }) });
+    res = await runCommand({ cmd, args, cwd, timeoutMs, signal: controller.signal, ...(isInside(codeCopyRoot(cfg), cwd) ? { env: toolPath(cfg, safeEnv()) } : {}), onOutput: (text) => emit({ type: 'run-output', runId: id, text }) });
   } finally {
     running.delete(id);
     signal?.removeEventListener?.('abort', onAbort);
