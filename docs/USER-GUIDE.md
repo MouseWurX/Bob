@@ -333,7 +333,7 @@ Ask things like "open the Blender release notes and tell me what's new", "on tha
 - Bob reads a page as text plus a numbered list of its links, buttons and fields, then does one thing at a time: click a number, type into a field, press Enter, Tab, Esc or an arrow, scroll, go back, or pick an option. Each action is a card ("Click link 'Downloads' on blender.org", **Do it** / **Allow the rest of this job** / **Deny**) unless "Let Bob work without asking" is on.
 - While **Don't send anything out** is on he only types into search boxes and never presses Send, Post, Submit, Buy, Pay or Upload, never fills other fields and never picks files. Switch the limit off to let him, still one card each. Password fields stay off-limits while that limit is on. His own pages, downloads, pop-ups and anything that isn't http(s) are always refused.
 - **Eyes checks:** with a vision brain in Equip Bob's "Seeing pictures" slot, Bob takes a picture of the page (or the app window, for the Apps Hand) after a step that says what should happen and asks his eyes whether it did. The result says yes, no or unsure; a no makes him read the page again instead of pressing on. **Bob checks his work with his eyes** (Settings, Hands) switches this off.
-- **Forget what Bob's browser knows** (Settings, Hands) clears the window's cookies, sign-ins and cache. Works on Windows, Mac and Linux; Bob for Android shows the cards while the window is on your computer.
+- **Forget what Bob's browser knows** (Settings, Hands) clears the window's cookies, sign-ins and cache. Works on Windows, Mac and Linux; Bob for Android shows the cards while the window is on your replicant matrix.
 
 ### Connected apps (MCP)
 

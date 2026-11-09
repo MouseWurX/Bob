@@ -59,7 +59,7 @@ function browserHtml(bw, s, on) {
   if (!bw) return '';
   const eyes = bw.eyes ? `✓ Eyes brain: ${esc(bw.eyes)}` : '✗ No eyes brain in its slot: Equip Bob, "Seeing pictures", any vision brain. Until then Bob can\'t check his work by looking.';
   return `<div class="hands-browser muted${on ? '' : ' dim'}"><strong>Bob's browser and eyes</strong><br>
-    ${bw.available ? '✓ Bob\'s own browser window is here (a window titled "Bob is browsing"; separate from your browser and its sign-ins).' : '✗ Bob\'s browser window only exists inside Bob\'s app, not when his brain runs on its own.'}
+    ${bw.available ? '✓ Bob\'s own browser window is here (a window titled "Bob is browsing"; separate from your browser and its sign-ins).' : '✗ Bob\'s browser window only exists in Bob\'s app window, so it\'s not here when Bob runs in a browser tab or as a background service.'}
     <button type="button" data-hbrowserforget ${bw.available ? '' : 'disabled'}>Forget what Bob's browser knows</button><br>
     <label class="switch small"><input type="checkbox" data-heyes ${s.eyesCheck !== false ? 'checked' : ''}><span><strong>Bob checks his work with his eyes</strong><br><span class="muted">After a step in an app or his browser that says what should happen, Bob takes a picture of the window and asks his eyes brain whether it did. About a second a step. ${eyes}</span></span></label></div>`;
 }
@@ -434,7 +434,15 @@ export async function mountHandsSettings(box) {
       if (b.dataset.hmytoolcode) { const pre = b.closest('li').querySelector('.mytool-code'); if (!pre.hidden) { pre.hidden = true; b.textContent = 'Show code'; return; } const r = await post('/api/hands/mytools', { name: b.dataset.hmytoolcode, code: true }); pre.textContent = r.code; pre.hidden = false; b.textContent = 'Hide code'; return; }
       if (b.dataset.hmytooldel) { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to remove'; return; } v = await post('/api/hands/mytools', { name: b.dataset.hmytooldel, remove: true }); draw(); return say(`Removed. It waits 30 days under Recently deleted in 🧰 Tools and how-tos Bob made, where you can put it back; then its folder goes to ${sched?.platform === 'darwin' ? 'the Trash' : sched?.platform === 'linux' ? 'the trash' : 'the Recycle Bin'}.`); }
       if ('hsandbox' in b.dataset) { b.disabled = true; say('Checking the sandbox (a few seconds)…'); v = await post('/api/hands/sandbox'); draw(); return say(v.sandbox?.ok ? 'The sandbox holds.' : `The sandbox didn't hold: ${v.sandbox?.why || 'unknown'}.`); }
-      if ('hbrowserforget' in b.dataset) { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to forget'; return; } const r = await post('/api/hands/browser', { forget: true }); v = r; draw(); return say(r.note); }
+      if ('hbrowserforget' in b.dataset) {
+        // Asks first, in the page (no browser dialog), like "work without asking".
+        const row = b.closest('.hands-browser'); if (!row || row.querySelector('.free-confirm')) return;
+        const c = document.createElement('div'); c.className = 'free-confirm'; c.setAttribute('role', 'alertdialog'); c.setAttribute('aria-label', "Forget everything Bob's browser knows?");
+        c.innerHTML = `<p><strong>Forget everything Bob's browser knows?</strong> Its cookies, sign-ins and cache go, and sites will ask him to sign in again.</p><div class="row"><button type="button" class="big warn" data-hbrowserforgetyes>Forget it</button><button type="button" class="big" data-hbrowserforgetno>Keep it</button></div>`;
+        row.appendChild(c); c.querySelector('[data-hbrowserforgetno]').focus(); return;
+      }
+      if ('hbrowserforgetyes' in b.dataset) { const r = await post('/api/hands/browser', { forget: true }); v = r; draw(); return say(r.note); }
+      if ('hbrowserforgetno' in b.dataset) { b.closest('.free-confirm')?.remove(); return say('Kept.'); }
       if (b.dataset.hmcpcheck) { b.disabled = true; say('Checking (the first time can take a minute while it gets ready)…'); const r = await post('/api/hands/mcp', { id: b.dataset.hmcpcheck, check: true }); v = r; draw(); return say(r.note); }
       if (b.dataset.hmcptools) { const ul = b.closest('li').querySelector('.mcp-tools'); ul.hidden = !ul.hidden; b.textContent = ul.hidden ? 'Show tools' : 'Hide tools'; return; }
       if (b.dataset.hmcpdel) { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to remove'; return; } const r = await post('/api/hands/mcp', { id: b.dataset.hmcpdel, remove: true }); v = r; draw(); return say(r.note); }

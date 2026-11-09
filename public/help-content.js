@@ -519,7 +519,7 @@ ${set('Alerts', 'Off', 'Pops up a notification when I need you, for example when
 <li>While <strong>Don't send anything out</strong> is on, I only type into search boxes (what a web search already does) and never press Send, Post, Submit, Buy, Pay or Upload, never fill forms and never pick files. Switch that limit off and I can, still one card each.</li>
 <li>Never password fields (while that limit is on), never my own pages, never downloads, pop-ups or new windows, and only http and https pages.</li>
 <li>With a vision brain in my "Seeing pictures" slot, I check each step by looking at a picture of the page (see ${go('hands-apps', 'The Apps Hand')}) and can answer questions about how a page looks.</li>
-<li><strong>Forget what Bob's browser knows</strong> (Settings, Hands) clears my window's cookies, sign-ins and cache. Works on Windows, Mac and Linux; the phone shows the cards while the window is on your computer.</li></ul>` },
+<li><strong>Forget what Bob's browser knows</strong> (Settings, Hands) clears my window's cookies, sign-ins and cache. Works on Windows, Mac and Linux; the phone shows the cards while the window is on your replicant matrix.</li></ul>` },
 
   { id: 'hands-office', group: 'Hands and safety', title: 'The Office documents and converting Hand', words: 'office libreoffice openoffice word excel powerpoint docx xlsx pptx odt ods odp pdf convert export save as turn into spreadsheet slides presentation template fill cells read document ffmpeg mp3 mp4 wav webm gif webp png jpg picture sound video audio',
     html: `<p>With <strong>Office documents and converting</strong> on, I can turn one kind of file into another, and read, make and change office files. I do the paperwork; you keep the glory. Some things to ask:</p>
