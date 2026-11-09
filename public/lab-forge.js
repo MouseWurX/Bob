@@ -3,11 +3,13 @@
 // places it and hands over its events. Nothing here starts a rental.
 import { esc } from './rich.js';
 import { PATH_GROUPS, BUNDLES, PERSONALITY, TEACH } from './lab-thinking-paths.js'; // 1.5.161
+import { createHomeWays } from './lab-home-ways.js'; // 1.5.164 Mix two brains, Stack layers, Take out the refusal habit: here, free
 import { newSource, sourceRowHtml, sourceOut, sourceEvent } from './lab-source.js'; // 1.5.163 one chooser for where things come from
 
 const WHERE = { here: 'Here, free', rented: 'Rented card', both: 'Here, or a rented card' };
 
-export function createForge({ api, goMake }) {
+export function createForge({ api, goMake, view = () => null, runs = () => '' }) {
+  const hw = createHomeWays({ api, view }); // 1.5.164
   let fv = null, loading = false, fmsg = '', check = null, showPlan = false, saved = '', buy = null, stopAsk = false;
   const form = { base: '', run: '', rungs: [{ name: '', nickname: '', how: 'number', keep: 128, keepFile: '' }], strong: [], quants: ['Q4_K_M'], heal: { experts: 'lora', epochs: 1, learn: 'answer', thinking_weight: 0.5, odds_cover: 'answer' }, teach: {}, thinking: { mode: 'blend', shares: {}, own: '', ownShare: 0, personality: { alignment: {}, rules: {}, mood: {} } }, hours_max: 0, dollars_max: 0, note: '', brain: { pick: '', source: newSource('hf') }, lessonSets: [], lessons: [] }; // 1.5.163 the brain to start from, and lessons from anywhere
 
@@ -23,6 +25,7 @@ export function createForge({ api, goMake }) {
     <p>${esc(m.what)}</p>
     <p class="forge-tips-h"><strong>Best practice</strong></p><ul class="forge-tips">${m.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
     ${m.ready && m.use === 'make' ? `<button type="button" class="link" data-forgeuse="make" aria-describedby="forge-m-${m.id}">Use this way</button>`
+      : m.ready && m.use === 'home' ? `<button type="button" class="link" data-forgeuse="home" data-method="${m.id}" aria-describedby="forge-m-${m.id}" aria-expanded="${hw.isOpen() === m.id}">${hw.isOpen() === m.id ? 'Close it' : 'Use this way'}</button>`
       : m.use === 'forge' ? `<button type="button" class="link" data-forgeuse="form" aria-describedby="forge-m-${m.id}">Write a plan for it</button><p class="muted">${esc(m.why || '')}</p>`
       : `<p class="muted">${esc(m.why || '')}</p>`}</li>`;
 
@@ -153,6 +156,7 @@ export function createForge({ api, goMake }) {
     return `<div id="lab-page-forge" role="tabpanel" aria-labelledby="lab-tab-forge">
       <p class="muted">The Forge makes brains on a rented graphics card, from a plan. Here are all the ways to make a new brain, here or on a rented card, each with what works best. Then your Forge runs so far, and a form that writes a plan for the next one.</p>
       <section aria-labelledby="forge-ways-h"><h3 id="forge-ways-h">Ways to make a brain</h3><ul class="forge-cards">${fv.methods.map(card).join('')}</ul>
+        ${hw.isOpen() || (view()?.runs || []).some((x) => ['mix', 'stack', 'refusals', 'refusals-try'].includes(x.kind)) ? runs() : ''}${hw.html()}
         <details><summary>Ideas left out, and why</summary><dl class="forge-left">${fv.leftOut.map(([t, w]) => `<dt>${esc(t)}</dt><dd>${esc(w)}</dd>`).join('')}</dl></details></section>
       ${extra}
       <section class="lab-compare" aria-labelledby="forge-runs-h"><h3 id="forge-runs-h">Forge runs</h3>${runsHtml()}</section>
@@ -165,6 +169,7 @@ export function createForge({ api, goMake }) {
   async function change(el) {
     if (!el.closest?.('#lab-page-forge')) return false;
     fmsg = '';
+    if (await hw.change(el)) return 'draw'; // 1.5.164
     if (el.id === 'forge-allow') { try { fv.allowed = (await api('/api/lab/forge/allow', { on: el.checked })).allowed; } catch (e) { fmsg = e.message; } return 'draw'; }
     if (el.id === 'forge-base') form.base = el.value;
     else if (el.id === 'forge-run') form.run = el.value;
@@ -196,6 +201,8 @@ export function createForge({ api, goMake }) {
   async function click(b) {
     const d = b.dataset;
     if (d.forgeuse === 'make') { goMake(); return true; }
+    if (d.forgeuse === 'home') { await hw.open(hw.isOpen() === d.method ? '' : d.method); return 'draw'; } // 1.5.164
+    { const h = await hw.click(b, load); if (h) return h === 'draw' ? 'draw' : (await load(), 'draw'); }
     if (d.forgeuse === 'form') { document.getElementById('forge-form')?.scrollIntoView({ block: 'start' }); document.getElementById('forge-brain')?.focus(); return true; }
     if ('forgeaddrung' in d) { const last = form.rungs.at(-1); form.rungs.push({ name: '', nickname: '', how: 'cover', keep: Math.max(8, Math.round((last.keep || 128) * 0.7)), keepFile: '' }); await recheck(); return 'draw'; }
     if (d.forgermrung) { form.rungs.splice(Number(d.forgermrung), 1); await recheck(); return 'draw'; }
@@ -212,5 +219,5 @@ export function createForge({ api, goMake }) {
     if ('forgestopgo' in d) { stopAsk = false; try { await api('/api/lab/forge/stop', {}); } catch (e) { fmsg = e.message; } await load(); return 'draw'; }
     return false;
   }
-  return { html, change, click, reload: async () => { await load(); } };
+  return { html, change, click, input: (el, draw) => hw.input(el, draw), openHome: hw.open, reload: async () => { await load(); } };
 }

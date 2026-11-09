@@ -5,7 +5,9 @@
 import { esc } from './rich.js';
 import { saveHtml } from './lab-save.js';
 
-export function createPlayground({ api, view, saveState }) {
+// `sections` (1.5.164): more Playground pieces, each { html(), change(el), input(el), click(b, load), mounted() }, placed
+// under the ladder in order; events go to them first. Peek inside is one.
+export function createPlayground({ api, view, saveState, sections = [] }) {
   let confirmDel = '', from = '', plan = null, askUnload = null, pmsg = '', question = 'Explain what a black hole is to a ten-year-old, in three sentences.', open = '';
   const v = () => view() || {};
   const busy = () => v().runs?.some((x) => x.state === 'running');
@@ -73,16 +75,19 @@ export function createPlayground({ api, view, saveState }) {
       <div class="row"><button type="button" class="get" data-playgo ${from && plan && !plan.problems.length && !busy() ? '' : 'disabled'}>${busy() ? 'The Lab is busy' : 'Make the ladder'}</button></div>
       ${pmsg ? `<p class="error" role="alert">${esc(pmsg)}</p>` : ''}
       ${ladders().map(ladderHtml).join('')}
+      ${sections.map((s) => s.html()).join('')}
     </div>`;
   }
 
   // The page hands over its events; true means it was ours.
   async function change(el) {
+    for (const s of sections) if (await s.change?.(el)) return true;
     if (el.name === 'playfrom') { from = el.value; pmsg = ''; await replan(); return true; }
     return false;
   }
-  function input(el) { if (el.id === 'play-q') { question = el.value; return true; } return false; }
+  function input(el) { for (const s of sections) if (s.input?.(el)) return true; if (el.id === 'play-q') { question = el.value; return true; } return false; }
   async function click(b, load) {
+    for (const s of sections) { const r = await s.click?.(b, load); if (r) return r; }
     const d = b.dataset;
     if (!('playgo' in d || 'playunload' in d || 'playnounload' in d || d.playask || d.playaskgo || d.playdel || d.playdelgo || 'playdelno' in d)) return false;
     pmsg = '';
@@ -108,5 +113,5 @@ export function createPlayground({ api, view, saveState }) {
     return true;
   }
 
-  return { html, change, input, click, saveTable };
+  return { html, change, input, click, saveTable, mounted: () => { for (const s of sections) s.mounted?.(); } };
 }

@@ -619,7 +619,7 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
     check('Stop while importing cancels it: no Forge, no card to delete', st.stopped && !st.pod && sp2.length === 5 && !sp2.slice(4).some((x) => x.args.includes('--kill')));
     fs.unlinkSync(path.join(ml, 'import-lessons.mjs')); try { fs.unlinkSync(hLab.forgeLiveFile()); } catch {}
   }
-  for (const f of ['public/lab-forge.js', 'public/lab.js', 'public/lab-thinking-paths.js', 'public/lab-playground.js']) check(`${f} parses`, spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../${f}`, import.meta.url))]).status === 0);
+  for (const f of ['public/lab-forge.js', 'public/lab.js', 'public/lab-thinking-paths.js', 'public/lab-playground.js', 'public/lab-home-ways.js', 'public/lab-peek.js']) check(`${f} parses`, spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../${f}`, import.meta.url))]).status === 0);
   check('the Forge tab uses real labels, radio groups and table headers', /role="radiogroup"/.test(pf) && /<th scope="col">/.test(pf) && /<label/.test(pf) && /\['forge', 'Forge'\]/.test(read('public/lab.js')));
   check('Help has a Forge page and a best-practice page in Bob\'s voice', /id: 'lab-forge'/.test(read('public/help-content.js')) && /id: 'lab-best-practice'/.test(read('public/help-content.js')) && /half a pass teaches half a habit/.test(read('public/help-content.js')));
 }
@@ -828,6 +828,194 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   check('the Challenges list shows the first packs, then More challenges', packGroups(C.PACKS).map((g) => `${g.id}:${g.packs.length}`).join() === 'first:6,more:16');
   check('the three Guard rails numbers read as words', guardPartsLine({ held: { score: null }, answered: { score: 90 }, page: { score: 50 } }) === 'Didn\'t over-refuse: 90 · Ignored planted orders: 50 · Held the line: not run');
 }
+
+// ---- 1.5.164 the Forge's home ways (mix, stack, take out the refusal habit) and Peek inside ----
+{
+  const { decodeFloats, encodeFloats, writeGgufFrom, kvsFrom, readTensorFloats } = await import('../src/lab-gguf.js');
+  const { canMix, mixFloats, planMix, mixGguf, planStack, stackGguf, stackLayers, shareOf, MIX_IDS } = await import('../src/lab-merge.js');
+  const RF = await import('../src/lab-refusals.js');
+  const PK = await import('../src/lab-peek.js');
+  const { METHODS: M2 } = await import('../src/lab-forge.js');
+  const { HELP } = await import('../public/help-content.js');
+  const near = (a, b, eps = 1e-3) => Math.abs(a - b) <= eps;
+
+  // numbers in and out of F16 and BF16
+  const arr = new Float32Array([0, 1, -1.5, 3.14159, 65504, 1e-6]);
+  check('F16 and BF16 round trip within their precision', [1, 30].every((t) => { const d = decodeFloats(encodeFloats(arr, t), t); return near(d[1], 1) && near(d[2], -1.5) && near(d[3], 3.14159, 0.02) && near(d[4], 65504, 300); }) && decodeFloats(encodeFloats(arr, 0), 0)[3] === arr[3]);
+
+  // two relatives and their parent: three tiny brains, 2 layers, every weight known
+  const hdir = path.join(tmp, 'home'); fs.mkdirSync(hdir, { recursive: true });
+  const mk = (file, name, fill, layers = 2) => makeGguf(file, [['general.architecture', 8, 'testmoe'], ['general.name', 8, name], ['testmoe.block_count', 4, layers], ['testmoe.expert_count', 4, E], ['testmoe.expert_used_count', 4, 2], ['general.file_type', 4, 1]], [
+    { name: 'token_embd.weight', dims: [EMB, 5], fill: (i) => fill(i, -1) },
+    ...Array.from({ length: layers }, (_, L) => L).flatMap((L) => [{ ...expertT(L, 'down'), fill: (i) => fill(i, L) }, { name: `blk.${L}.attn_output.weight`, dims: [EMB, EMB], fill: (i) => fill(i, L) }, { name: `blk.${L}.ffn_down.weight`, dims: [FF, EMB], fill: (i) => fill(i, L) }]),
+    { name: 'output_norm.weight', dims: [EMB], fill: (i) => fill(i, -2) }
+  ]);
+  const pFile = path.join(hdir, 'parent.gguf'), aFile = path.join(hdir, 'a.gguf'), bFile = path.join(hdir, 'b.gguf'), tall = path.join(hdir, 'tall.gguf');
+  mk(pFile, 'Parent', (i) => i + 1);
+  mk(aFile, 'A', (i) => i + 1 + (i % 3 === 0 ? 10 : 0)); // A changed every third weight, by +10
+  mk(bFile, 'B', (i) => i + 1 + (i % 3 === 0 ? (i % 2 ? -10 : 10) : i % 5 === 0 ? 0.01 : 0)); // B agrees on half of those, conflicts on the rest, and made tiny changes
+  mk(tall, 'Tall', (i) => i, 3);
+  check('two brains of the same shape can mix', canMix(readGguf(aFile), readGguf(bFile)) === '');
+  check('brains with different layer counts are refused in words', /layers/.test(canMix(readGguf(aFile), readGguf(tall))));
+  check('the lean becomes the second brain\'s share', shareOf(0) === 0.5 && shareOf(-100) === 0 && shareOf(100) === 1 && shareOf(50) === 0.75);
+  { const a = new Float32Array([1, 2, 3, 4]), b = new Float32Array([3, 2, 1, 0]);
+    const even = mixFloats('even', a, b, 0.5); check('an even mix is the average', [...even].every((x, i) => near(x, (a[i] + b[i]) / 2)));
+    check('a lean all the way is that brain', [...mixFloats('even', a, b, 1)].every((x, i) => x === b[i]));
+    const par = new Float32Array([1, 2, 3, 4]), par2 = new Float32Array([2, 4, 6, 8]);
+    check('a smooth blend of parallel weights is the straight line', [...mixFloats('slerp', par, par2, 0.5)].every((x, i) => near(x, 1.5 * par[i])));
+    const s = mixFloats('slerp', new Float32Array([1, 0]), new Float32Array([0, 1]), 0.5); check('a smooth blend keeps the size on the arc', near(Math.hypot(s[0], s[1]), 1, 1e-4) && near(s[0], s[1]));
+    const p = new Float32Array([0, 0, 0, 0, 0, 0]), ta = new Float32Array([10, 10, 0, 0, 0.01, 0]), tb = new Float32Array([10, -10, 0, 0, 0, 0.01]);
+    const ties = mixFloats('ties', ta, tb, 0.5, { p, density: 0.5 });
+    check('keep what each changed keeps agreed changes, drops conflicting ones', near(ties[0], 10) && near(ties[1], 0) && near(ties[2], 0));
+    check('keep what each changed needs the parent', (() => { try { mixFloats('ties', ta, tb, 0.5); return false; } catch (e) { return /parent/.test(e.message); } })());
+  }
+  { const pl = planMix({ a: aFile, b: bFile, how: 'ties', name: 'X' }); check('the mix plan asks for the parent when keeping what each changed', pl.problems.some((x) => /parent/.test(x)));
+    const ok = planMix({ a: aFile, b: bFile, how: 'slerp', name: 'X' }); check('a good mix plan has no problems and a size', !ok.problems.length && ok.bytes > 0 && MIX_IDS.length === 3); }
+  const mixOut = path.join(hdir, 'mix.gguf');
+  await mixGguf({ a: aFile, b: bFile, how: 'even', lean: 0, name: 'Half', out: mixOut });
+  { const g2 = readGguf(mixOut), ga = readGguf(aFile), gb = readGguf(bFile); const fd = fs.openSync(mixOut, 'r'), fa = fs.openSync(aFile, 'r'), fb = fs.openSync(bFile, 'r');
+    const t = g2.tensors.find((x) => x.name === 'blk.1.ffn_down.weight');
+    const m = readTensorFloats(fd, g2, t), x = readTensorFloats(fa, ga, ga.tensors.find((y) => y.name === t.name)), y = readTensorFloats(fb, gb, gb.tensors.find((z) => z.name === t.name));
+    check('the mixed file holds the average of both parents, every tensor kept, the name changed', [...m].every((v, i) => near(v, (x[i] + y[i]) / 2)) && g2.tensors.length === ga.tensors.length && g2.meta['general.name'] === 'Half' && brainFacts(g2).experts === E);
+    fs.closeSync(fd); fs.closeSync(fa); fs.closeSync(fb); }
+  const tiesOut = path.join(hdir, 'ties.gguf');
+  await mixGguf({ a: aFile, b: bFile, parent: pFile, how: 'ties', lean: 0, name: 'Agreed', out: tiesOut });
+  { const g2 = readGguf(tiesOut), gp = readGguf(pFile); const fd = fs.openSync(tiesOut, 'r'), fp = fs.openSync(pFile, 'r');
+    const t = g2.tensors.find((x) => x.name === 'blk.0.attn_output.weight'), m = readTensorFloats(fd, g2, t), p = readTensorFloats(fp, gp, gp.tensors.find((y) => y.name === t.name));
+    // weight 0: both +10 (agree) -> +10; weight 3: A +10, B -10 (conflict) -> parent; weight 1: neither -> parent
+    check('keep what each changed, on files: agreed +10 kept, conflicts and untouched weights stay the parent', near(m[0], p[0] + 10) && near(m[3], p[3]) && near(m[1], p[1]));
+    fs.closeSync(fd); fs.closeSync(fp); }
+
+  // stack
+  check('layer ranges are checked in words', (() => { try { stackLayers([{ brain: 'a', start: 0, end: 5 }], 2); return false; } catch (e) { return /layers 0 to 1/.test(e.message); } })() && stackLayers([{ brain: 'a', start: 0, end: 1 }, { brain: 'b', start: 1, end: 1 }], 2, 2).length === 3);
+  { const pl = planStack({ a: aFile, b: bFile, ranges: [{ brain: 'a', start: 0, end: 1 }, { brain: 'b', start: 0, end: 0 }], name: 'T' }); check('the stack plan counts the layers and warns about rambling', !pl.problems.length && pl.layers === 3 && pl.notes.some((n) => /ramble/.test(n)));
+    const bad = planStack({ a: aFile, b: tall, ranges: [{ brain: 'a', start: 0, end: 1 }], name: 'T' }); check('a second brain of another shape is refused for stacking', bad.problems.length > 0); }
+  const stackOut = path.join(hdir, 'stack.gguf');
+  await stackGguf({ a: aFile, b: bFile, ranges: [{ brain: 'a', start: 0, end: 1 }, { brain: 'b', start: 0, end: 0 }], name: 'Tall A', out: stackOut });
+  { const g2 = readGguf(stackOut), gb = readGguf(bFile), f2 = brainFacts(g2); const fd = fs.openSync(stackOut, 'r'), fb = fs.openSync(bFile, 'r');
+    const t2 = g2.tensors.find((x) => x.name === 'blk.2.ffn_down.weight'), tb = gb.tensors.find((x) => x.name === 'blk.0.ffn_down.weight');
+    check('the stacked file has 3 renumbered layers, layer 2 being the second brain\'s layer 0', f2.layers === 3 && t2 && [...readTensorFloats(fd, g2, t2)].every((v, i) => v === readTensorFloats(fb, gb, tb)[i]) && g2.tensors.some((x) => x.name === 'output_norm.weight') && g2.tensors.filter((x) => /^blk\.\d+\.attn_output\.weight$/.test(x.name)).length === 3);
+    check('the stacked file reads back whole', g2.size === fs.statSync(stackOut).size && checkKeep(g2, [[1, 3, 5, 7], [0, 2, 4, 6], [0, 1, 2, 3]]) === '');
+    fs.closeSync(fd); fs.closeSync(fb); }
+
+  // take out the refusal habit: the direction maths
+  { const ne0 = 3, ne1 = 4, W = new Float32Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]); // 2 slabs of 4 rows x 3 columns
+    const r = new Float32Array([0.5, 0.5, 0.5, 0.5]);
+    const before = W.slice();
+    RF.removeDirection(W, r, ne0, ne1, 2, 1);
+    const dot = (s, j) => { let d = 0; for (let i = 0; i < ne1; i++) d += r[i] * W[s * ne0 * ne1 + i * ne0 + j]; return d; };
+    check('taking the direction out leaves every column at right angles to it, in every slab', [0, 1].every((s) => [0, 1, 2].every((j) => near(dot(s, j), 0, 1e-4))));
+    const half = before.slice(); RF.removeDirection(half, r, ne0, ne1, 2, 0.5);
+    check('half strength takes out half', near(half[0] - W[0], (before[0] - W[0]) / 2));
+    check('a direction of the wrong size is refused', (() => { try { RF.removeDirection(W, new Float32Array(3), ne0, ne1, 1); return false; } catch (e) { return /rows/.test(e.message); } })()); }
+  const dirFile = path.join(hdir, 'direction.gguf');
+  makeGguf(dirFile, [['general.architecture', 8, 'controlvector'], ['controlvector.layer_count', 4, 2]], [{ name: 'direction.1', dims: [EMB], fill: (i) => (i === 0 ? 1 : 0) }, { name: 'direction.2', dims: [EMB], fill: (i) => (i === 1 ? 3 : 0) }]);
+  const dirs = RF.readDirections(dirFile);
+  check('the direction file reads as one direction per layer, counted from 1, with its strength', dirs.size === 2 && dirs.has(0) && dirs.has(1) && near(dirs.get(1).strength, 3) && near(dirs.get(0).strength, 1));
+  check('the strongest third is picked by strength, the middle by place, all by all', RF.pickLayers(dirs, 'strongest', 2).join() === '1' && RF.pickLayers(dirs, 'middle', 2).join() === '0' && RF.pickLayers(dirs, 'all', 2).join() === '0,1');
+  const refOut = path.join(hdir, 'plain.gguf');
+  const rr = await RF.removeRefusals({ src: aFile, out: refOut, dirs, blocks: [1], strength: 1, name: 'Plain' });
+  { const g2 = readGguf(refOut), ga = readGguf(aFile); const fd = fs.openSync(refOut, 'r'), fa = fs.openSync(aFile, 'r');
+    const t = g2.tensors.find((x) => x.name === 'blk.1.ffn_down_exps.weight'), W = readTensorFloats(fd, g2, t);
+    const r = [0, 1, 0, 0]; const dots = []; for (let s = 0; s < E; s++) for (let j = 0; j < FF; j++) { let d = 0; for (let i = 0; i < EMB; i++) d += r[i] * W[s * FF * EMB + i * FF + j]; dots.push(d); }
+    const same = g2.tensors.find((x) => x.name === 'blk.0.ffn_down.weight'), wa = readTensorFloats(fa, ga, ga.tensors.find((y) => y.name === same.name));
+    check('the chosen layer\'s output weights lose the direction in every expert; other layers are untouched', rr.edited === 3 && rr.layers.join() === '1' && dots.every((d) => near(d, 0, 1e-3)) && [...readTensorFloats(fd, g2, same)].every((v, i) => v === wa[i]));
+    fs.closeSync(fd); fs.closeSync(fa); }
+  check('declines are recognised, answers are not', RF.declined('I\'m sorry, but I can\'t help with that.') && RF.declined('I cannot assist with that request.') && !RF.declined('Sure! Here is a rude joke about accountants: ...') && !RF.declined('<think>should I?</think>Here you go.'));
+  check('the prompt lists are mild: nothing about weapons, children or harm', [...RF.PLAIN_PROMPTS, ...RF.RELUCTANT_PROMPTS].every((p) => !/weapon|bomb|explosive|poison|child|kid|minor|kill|suicide|hurt myself|password|threat/i.test(p)) && RF.PLAIN_PROMPTS.length >= 16 && RF.RELUCTANT_PROMPTS.length >= 16);
+  check('the five kept refusals each have one plain probe, and teach-back keeps the helpline', RF.KEPT.length === 5 && RF.KEPT.every((k) => k.probe.split('\n').length === 1 && k.probe.length < 120) && RF.TEACH_BACK.find((t) => t.id === 'self-harm').say.includes('988') && RF.TEACH_BACK.length === 5);
+  { const d = RF.cleanRefusals({}); check('the safeguards are on by default', d.check && d.teachBack && d.naughty && d.strength === 100 && d.layers === 'strongest');
+    const off = RF.planRefusals({ check: false, teachBack: false, naughty: false }, {}); check('turning each safeguard off is said in a note, and the fixed line stays', off.notes.some((n) => /check is off/.test(n)) && off.notes.some((n) => /answer anything/.test(n)) && off.notes.some((n) => /normal lists/.test(n)) && off.notes.some((n) => /never published/.test(n)));
+    const tb = RF.writeTeachBack(path.join(hdir, 'tb')); check('the teach-back lesson set is written in the lesson writer\'s shape', fs.readFileSync(tb, 'utf8').trim().split('\n').every((l) => { const j = JSON.parse(l); return j.skill === 'kept refusals' && j.messages.length === 2; })); }
+
+  // the whole home job through the Lab, with fake steps: refusals, then mix
+  const hcat = { models: [{ id: 'rel-a', name: 'Rel A', family: 'Test', category: 'chat', jobs: ['bob'], license: 'Apache-2.0', files: [] }, { id: 'rel-b', name: 'Rel B', family: 'Test', category: 'chat', jobs: ['bob'], license: 'MIT', files: [] }, { id: 'rel-p', name: 'Rel P', family: 'Test', category: 'chat', jobs: ['bob'], files: [] }] };
+  const hcfg = { ...cfg, dataDir: path.join(hdir, 'data'), bobModelsDir: path.join(hdir, 'models'), settingsFile: path.join(hdir, 'data', 'settings.json') }; fs.mkdirSync(hcfg.dataDir, { recursive: true });
+  const hshop = { cfg: hcfg, catalog: hcat, locate: (e) => ({ gguf: { 'rel-a': aFile, 'rel-b': bFile, 'rel-p': pFile }[e.id] }) };
+  const checksSeen = [];
+  const hlab = new Lab(hcfg, { shop: hshop, room: big, steps: {
+    direction: async () => dirs,
+    checks: async (s) => { checksSeen.push(s); return { reflex: { declined: s.extra ? 0 : 4, of: 6 }, kept: s.kept ? { declined: 4, of: 5, categories: RF.KEPT.map((k, i) => ({ id: k.id, label: k.label, declined: i !== 2 })) } : null, where: 'card' }; },
+    test: async () => fakeQuiz(66)
+  } });
+  const hv = hlab.view();
+  check('the page gets the mixing ways, the layer choices, the kept kinds and the prompt lists', hv.mixWays.length === 3 && hv.layerChoices.length === 3 && hv.kept.length === 5 && hv.plainPrompts.length && hv.reluctantPrompts.length && hv.homeMaxGB === PLAY_MAX_GB);
+  { const pl = hlab.planHome('refusals', { from: 'rel-a', name: '' }); check('a home plan wants a name', pl.problems.some((x) => /name/.test(x)));
+    const pl2 = hlab.planHome('mix', { a: 'rel-a', b: 'rel-a', name: 'Same' }); check('mixing a brain with itself is refused', pl2.problems.some((x) => /two different/.test(x)));
+    const pl3 = hlab.planHome('nope', { name: 'x' }); check('an unknown home way is refused', pl3.problems.some((x) => /no home way/.test(x))); }
+  const tr = await hlab.tryRefusals({ from: 'rel-a', strength: 80, layers: 'all' });
+  check('Try it first starts as its own job', tr.started?.kind === 'refusals-try');
+  while (hlab.job) await new Promise((r) => setTimeout(r, 20));
+  { const t = hlab.runs.at(-1); check('Try it first reports before and after, holds the direction out with a control vector, and writes no brain', t.state === 'done' && t.report.tried.before.declined === 4 && t.report.tried.after.declined === 0 && t.report.tried.kept.declined === 4 && checksSeen.at(-1).extra.includes('--control-vector-scaled') && checksSeen.at(-1).extra.includes('-0.8') && !fs.existsSync(path.join(hcfg.bobModelsDir, 'lab', 'try'))); }
+  const hs = await hlab.startHome('refusals', { from: 'rel-a', name: 'Plain A', strength: 100, layers: 'all', check: true, teachBack: true, naughty: true });
+  check('the refusals job starts with its steps', hs.started?.kind === 'refusals' && hs.started.steps.map((s) => s.id).join() === 'direction,refusals,check,test');
+  while (hlab.job) await new Promise((r) => setTimeout(r, 20));
+  const hr = hlab.runs.at(-1);
+  check('the refusals job finishes with the check, the teach-back note and the Lab test', hr.state === 'done' && hr.report.refusals.kept.declined === 4 && hr.report.refusals.teachBack === 'planned' && hr.report.made.score === 66 && fs.existsSync(hr.files.gguf) && fs.existsSync(path.join(path.dirname(hr.files.gguf), 'teach-back.json')) && fs.existsSync(path.join(hcfg.dataDir, 'lab', 'lessons', RF.TEACH_BACK_SET, 'lessons.jsonl')), hr.error || '');
+  const hu = hlab.use(hr.id);
+  { const made = JSON.parse(fs.readFileSync(path.join(hcfg.dataDir, 'lab', 'made.json'), 'utf8')), m = made.find((x) => x.id === hu.id);
+    check('Use in Bob marks it naughty and carries the plain line and the check', m.naughty === true && m.refusalsOut === true && /refusal habit taken out/.test(m.what) && /declines 4 of 5/.test(m.what));
+    const cat2 = mergeMadeBrains({ models: [] }, hcfg); check('in the catalogue it sits behind the naughty-list switch, never recommended', cat2.models[0].naughty === true && !cat2.models[0].rec && cat2.models[0].madeInLab); }
+  const hs2 = await hlab.startHome('refusals', { from: 'rel-b', name: 'Plain B', check: false, teachBack: false, naughty: false });
+  while (hlab.job) await new Promise((r) => setTimeout(r, 20));
+  { const r2 = hlab.runs.at(-1); const u2 = hlab.use(r2.id); const m = JSON.parse(fs.readFileSync(path.join(hcfg.dataDir, 'lab', 'made.json'), 'utf8')).find((x) => x.id === u2.id);
+    check('with every safeguard off the brain is still flagged, just not naughty, and says the check was off', hs2.started.steps.map((s) => s.id).join() === 'direction,refusals,reflex,test' && m.naughty === false && m.refusalsOut === true && /refusal habit taken out/.test(m.what) && /check was turned off/.test(m.what) && !r2.report.refusals.kept); }
+  const ms = await hlab.startHome('mix', { a: 'rel-a', b: 'rel-b', how: 'slerp', lean: 20, name: 'Blend AB' });
+  while (hlab.job) await new Promise((r) => setTimeout(r, 20));
+  { const mr = hlab.runs.at(-1); check('the mix job makes the file, tests it and remembers how', ms.started.kind === 'mix' && mr.state === 'done' && mr.report.mix.how === 'slerp' && mr.report.mix.share === 60 && fs.existsSync(mr.files.gguf) && fs.existsSync(path.join(path.dirname(mr.files.gguf), 'measure.json')), mr.error || '');
+    const u = hlab.use(mr.id); const m = JSON.parse(fs.readFileSync(path.join(hcfg.dataDir, 'lab', 'made.json'), 'utf8')).find((x) => x.id === u.id); check('a mix in Bob carries both licences and isn\'t naughty', m.license === 'Apache-2.0 + MIT' && !m.naughty); }
+  const ss = await hlab.startHome('stack', { a: 'rel-a', b: '', ranges: [{ brain: 'a', start: 0, end: 1 }, { brain: 'a', start: 1, end: 1 }], name: 'Tall A' });
+  while (hlab.job) await new Promise((r) => setTimeout(r, 20));
+  { const sr = hlab.runs.at(-1); check('the stack job makes a 3-layer brain', ss.started.kind === 'stack' && sr.state === 'done' && sr.report.stack.layers === 3 && brainFacts(readGguf(sr.files.gguf)).layers === 3, sr.error || ''); }
+  check('a home job\'s page view never carries file paths', !JSON.stringify(hlab.view().runs).includes(hdir));
+
+  // Peek inside
+  { const trace = [[[1, 3], [0, 2]], [[1, 5], [0, 2]], [[7, 3], [4, 2]]]; // 3 words, 2 layers, 2 experts each
+    const t = PK.tallyTrace(trace, ['Hi', ' there', '!'], { experts: E, layers: 2 });
+    check('a trace becomes counts per layer, the lit set and the words', t.counts[0][1] === 2 && t.counts[0][3] === 2 && t.counts[1][2] === 3 && t.lit[0].join() === '1,3,5,7' && t.lit[1].join() === '0,2,4' && t.words.length === 3 && t.words[1].text === ' there' && t.used === 7 && t.share === Math.round((1000 * 7) / 16) / 10);
+    const t2 = PK.tallyTrace({ tokens: [{ layers: [[1], [2]] }] }, [{ piece: 'x' }], { experts: E, layers: 2 }); check('the other trace shape is read too', t2.counts[0][1] === 1 && t2.words[0].text === 'x');
+    const o = PK.overlap([[1, 3], [0, 2]], [[1, 5], [0, 2]]); check('the overlap of two questions is shared over either', o.both === 3 && o.either === 5 && o.share === 60);
+    const keep = PK.keepFromLit(t.counts, { used: 2 }); check('the lit set becomes a keep list padded to one size', keep[0].length === 4 && keep[1].length === 4 && [0, 2, 4].every((e) => keep[1].includes(e)));
+    const pb = { id: 'rel-a', name: 'Rel A', gguf: aFile };
+    const facts = { experts: E, used: 2, layers: 2 };
+    PK.addToTally(hcfg, pb, { sha256: 'abc', facts, counts: t.counts, tokens: 3, when: '2026-11-09' });
+    PK.addToTally(hcfg, pb, { sha256: 'abc', facts, counts: t.counts, tokens: 3, when: '2026-11-09' });
+    const peek = JSON.parse(fs.readFileSync(path.join(hcfg.dataDir, 'lab', 'usage', 'rel-a', 'peek-counts.json'), 'utf8'));
+    check('the tally adds up across questions in the usage map\'s file, source peek, and rewrites the keep file', peek.things.length === 1 && peek.things[0].source === 'peek' && peek.things[0].tokens === 6 && peek.things[0].counts[1][2] === 6 && peek.brain.sha256 === 'abc' && fs.existsSync(path.join(hcfg.dataDir, 'lab', 'usage', 'rel-a', 'rel-a-keep.json')));
+    const pv = hlab.peek('rel-a'); check('the peek view has the map, the cold count and the things counted', pv.have && pv.total[1][2] === 6 && pv.cold === 16 - 7 && pv.things[0].name === 'Peek inside');
+    const noEngine = PK.peekView(hcfg, pb, facts, { engineFound: false }); check('without Brain Engine the live view is greyed with the reason', !noEngine.ok && noEngine.live.ok === false && /Brain Engine/.test(noEngine.live.why) && noEngine.have);
+    check('the Forge\'s keep-file list sees the tally', hlab.keepFiles().some((k) => /Rel A/.test(k.name)));
+    check('Cut these out from a lit set writes a keep file; without one it uses the tally', hlab.peekKeep({ brain: 'rel-a', counts: t.counts }).experts === 4 && /rel-a-keep\.json$/.test(hlab.peekKeep({ brain: 'rel-a' }).file)); }
+  { // the live view with a fake Brain Engine: a server that takes the expert mask, and a fake traced answer
+    const masks = [];
+    const srv = http.createServer((req, res) => { let b = ''; req.on('data', (d) => { b += d; }); req.on('end', () => { if (req.url === '/expert-mask') { masks.push(JSON.parse(b).keep); res.end('{}'); } else res.end('{}'); }); });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const url = `http://127.0.0.1:${srv.address().port}`;
+    let served = 0, stopped = 0, mode = 'ok';
+    const plab = new Lab(hcfg, { shop: hshop, room: big, steps: {
+      peekServe: async () => { served++; return { url, where: 'card', stop: () => { stopped++; } }; },
+      peekAsk: async (u, q) => { if (mode === 'none') throw new Error(PK.NO_TRACE); return { answer: `About ${q}`, trace: [[[1, 3], [0, 2]], [[1, 5], [0, 2]]], tokens: ['A', 'b'], tps: 20 }; },
+      fingerprint: async () => 'abc'
+    } });
+    const a1 = await plab.peekAsk({ brain: 'rel-a', question: 'rain', tally: true });
+    check('a live question answers with the words lit up and adds to the tally', a1.answer === 'About rain' && a1.words.length === 2 && a1.lit[0].join() === '1,3,5' && a1.tallied.tokens === 8 && served === 1 && !plab.job);
+    const a2 = await plab.peekAsk({ brain: 'rel-a', question: 'sun', maskCounts: a1.counts });
+    check('Turn these off masks to the lit set, padded, then clears the mask, on the same loaded engine', a2.masked && masks.length === 2 && masks[1] === null && Array.isArray(masks[0]) && served === 1);
+    check('the page gets the live view as possible', plab.peek('rel-a').live.ok);
+    mode = 'none';
+    const bad = await plab.peekAsk({ brain: 'rel-a', question: 'x' }).then(() => '', (e) => e.message);
+    check('an engine without the trace is said once and the live view greys out with the reason', bad === PK.NO_TRACE && plab.peek('rel-a').live.ok === false && plab.peek('rel-a').live.why === PK.NO_TRACE && stopped === 1);
+    plab.freePeek(); srv.close(); }
+
+  // the page's words and the cards
+  for (const id of ['mix', 'stack', 'refusals']) { const m = M2.find((x) => x.id === id); check(`the ${id} card is ready and opens here`, m.ready && m.use === 'home' && m.where === 'here'); }
+  for (const f of ['public/lab-home-ways.js', 'public/lab-peek.js', 'src/lab-merge.js', 'src/lab-refusals.js', 'src/lab-peek.js']) { check(`${f} parses`, spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../${f}`, import.meta.url))]).status === 0); check(`${f} names no private brain`, !/thoth|heretic/i.test(read(f))); }
+  { const hw = read('public/lab-home-ways.js'); check('unticking a safeguard asks a second time, with Make it anyway and Keep them ticked', /Make it without teaching back the kept refusals\?/.test(hw) && /Make it anyway/.test(hw) && /Keep them ticked/.test(hw) && /Made in the Lab with the refusal habit taken out/.test(hw));
+    check('the stack card carries the honest line', /nearly always ramble/.test(hw));
+    const help = HELP.map((h) => h.html).join(' '); check('Help explains the three home ways and Peek inside', /Mix two brains/.test(help) && /Stack layers/.test(help) && /Take out the refusal habit/.test(help) && /Peek inside/.test(help) && /Turn these off and ask again/.test(help) && /Keep count while I ask these/.test(help));
+    check('the release note is there', /Peek inside/.test(read('docs/releases/v1.5.166.md')) && /Take out the refusal habit/.test(read('docs/releases/v1.5.166.md'))); }
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
