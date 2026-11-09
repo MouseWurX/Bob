@@ -105,6 +105,12 @@ export const PACKS = [
   { id: 'code', title: 'Code it', what: 'Tiny JavaScript functions, run in my sandbox on fixed inputs.', count: CODE.length, minutes: 2 }
 ];
 export const PACK_IDS = PACKS.map((p) => p.id);
+// 1.5.161 Every pack has a version; a score remembers the version that made it, so the board never mixes two tests.
+export const PACK_VERSION = Object.fromEntries(PACKS.map((p) => [p.id, p.version || 1]));
+// The local leaderboard ranks brains within classes of models by their total weights (not by graphics card).
+// A mixture of experts sits in the class of its total, with the active weights shown. Quantizing never changes a class.
+export const CLASSES = [['tiny', 'Tiny', 'under 2 billion weights', 0, 2], ['small', 'Small', '2 to 5 billion', 2, 5], ['medium', 'Medium', '5 to 10 billion', 5, 10], ['large', 'Large', '10 to 20 billion', 10, 20], ['huge', 'Huge', '20 to 40 billion', 20, 40], ['giant', 'Giant', 'over 40 billion', 40, Infinity]];
+export const classOf = (b) => { const n = Number(b); if (!(n > 0)) return ''; return CLASSES.find(([, , , lo, hi]) => n >= lo && n < hi)?.[0] || ''; };
 
 async function ask(url, content, { tools, signal, max = 400 } = {}) {
   const body = { messages: [{ role: 'user', content }], temperature: 0, max_tokens: max, chat_template_kwargs: { enable_thinking: false }, ...(tools ? { tools, tool_choice: 'auto' } : {}) };
@@ -164,9 +170,9 @@ export async function runPack(url, id, { signal, onStep = () => {}, sandbox = nu
 
 // The scoreboard file for one brain: <lab>/scores/<slug>.json. One row per brain, newest result per pack kept.
 export function scoreFile(dir, slug) { return path.join(dir, `${slug}.json`); }
-export function mergeScores(old, { name, sha256, sizeGB, quant, packs, tps, prefillTps, when, engine, where }) {
-  const out = { brain: { ...(old?.brain || {}), name, ...(sha256 ? { sha256 } : {}), ...(sizeGB ? { sizeGB } : {}), ...(quant ? { quant } : {}) }, packs: { ...(old?.packs || {}) }, when, ...(engine ? { engine } : {}), ...(where ? { where } : {}) };
-  for (const [id, p] of Object.entries(packs)) out.packs[id] = { score: p.score, right: p.right, of: p.of, ...(p.skipped ? { skipped: p.skipped } : {}), when };
+export function mergeScores(old, { name, sha256, sizeGB, quant, paramsB, activeB, experts, madeHere, packs, tps, prefillTps, when, engine, where }) {
+  const out = { brain: { ...(old?.brain || {}), name, ...(sha256 ? { sha256 } : {}), ...(sizeGB ? { sizeGB } : {}), ...(quant ? { quant } : {}), ...(paramsB ? { paramsB } : {}), ...(activeB ? { activeB } : {}), ...(experts ? { experts } : {}), ...(madeHere ? { madeHere: true } : {}) }, packs: { ...(old?.packs || {}) }, when, ...(engine ? { engine } : {}), ...(where ? { where } : {}) };
+  for (const [id, p] of Object.entries(packs)) out.packs[id] = { score: p.score, right: p.right, of: p.of, v: PACK_VERSION[id] || 1, ...(p.skipped ? { skipped: p.skipped } : {}), when };
   const speed = { ...(old?.speed || {}) };
   if (tps) speed.tps = tps; if (prefillTps) speed.prefillTps = prefillTps;
   if (Object.keys(speed).length) out.speed = speed;
@@ -178,6 +184,20 @@ export function readScores(dir) {
 }
 // The scoreboard as rows for the page and for Save: one per brain, a cell per pack (null when not run).
 export function scoreboard(list) {
-  return list.map((s) => ({ id: s.id, name: s.brain.name, sizeGB: s.brain.sizeGB ?? null, quant: s.brain.quant || '', tps: s.speed?.tps ?? null, when: s.when || '', scores: Object.fromEntries(PACK_IDS.map((id) => [id, s.packs?.[id]?.score ?? null])) }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  return list.map((s) => {
+    const cur = (id) => { const p = s.packs?.[id]; return p && (p.v || 1) === PACK_VERSION[id] ? p : null; }; // an old version's score shows, greyed, but doesn't count
+    const scores = Object.fromEntries(PACK_IDS.map((id) => [id, s.packs?.[id]?.score ?? null]));
+    const old = PACK_IDS.filter((id) => s.packs?.[id] && !cur(id));
+    const counted = PACK_IDS.map((id) => cur(id)?.score).filter((x) => typeof x === 'number');
+    // The overall mark counts packs not run as missing, never as skipped: a brain can't win by leaving out the hard one.
+    const overall = counted.length ? Math.round(counted.reduce((a, x) => a + x, 0) / counted.length) : null;
+    const b = s.brain;
+    return { id: s.id, name: b.name, sizeGB: b.sizeGB ?? null, quant: b.quant || '', paramsB: b.paramsB ?? null, activeB: b.activeB ?? null, moe: Boolean(b.experts), madeHere: Boolean(b.madeHere), cls: classOf(b.paramsB), tps: s.speed?.tps ?? null, when: s.when || '', scores, old, overall, ran: counted.length, all: counted.length === PACK_IDS.length };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+}
+// One class's board: brains that ran every current challenge first (so skipping the hard one never wins),
+// then best overall, ties broken by speed, then by the smaller file.
+export const boardOrder = (a, b) => Number(Boolean(b.all)) - Number(Boolean(a.all)) || (b.overall ?? -1) - (a.overall ?? -1) || (b.tps ?? 0) - (a.tps ?? 0) || (a.sizeGB ?? 0) - (b.sizeGB ?? 0);
+export function classBoard(rows, cls) {
+  return rows.filter((r) => r.cls === cls).sort(boardOrder);
 }

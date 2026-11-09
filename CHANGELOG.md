@@ -4,6 +4,18 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.161
+
+The Lab's scoreboard is now a local leaderboard by class of model.
+
+- **By class of model**: brains are ranked against others of their own size class, by how many weights they have in all: Tiny (under 2 billion), Small (2 to 5), Medium (5 to 10), Large (10 to 20), Huge (20 to 40) and Giant (over 40). Classes are by the model, not by graphics card.
+- A mixture of experts sits with its total and shows how many weights are at work on each word. Quantizing never moves a brain to another class; a **Quant** column says how it was squeezed.
+- **Overall** is the average of every challenge, run with today's version of each test. A brain that hasn't run them all shows how many it ran and sits below the ones that have, so it can't win by skipping the hard one. Every score now remembers its test's version, and a score from an older version shows crossed out and doesn't count.
+- The top brain in each class gets **Best in class**, and only a brain that has run every challenge can get it. Buttons narrow the board: Mixture of experts or Dense, Made here, and Fits my graphics card.
+- Brains scored before this sit under **Not placed yet** until a challenge is run on them again. **Every brain in one table** keeps the old sortable view. **Save** from the class view keeps the class in its own column.
+- Help: The Lab's Challenges tab updated. Tests in `test/run-lab-test.js`.
+- Phone (Bob for Android): the board and its buttons work the same on the phone's Lab page.
+
 ## 1.5.160
 
 The Lab's Forge tab can now start a Forge run, and a Forge plan can teach several things at once, including a way of thinking.
