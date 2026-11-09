@@ -25,7 +25,7 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
     <p class="muted"><span class="forge-where">${esc(WHERE[m.where] || m.where)}</span></p>
     <p>${esc(m.what)}</p>
     <p class="forge-tips-h"><strong>Best practice</strong></p><ul class="forge-tips">${m.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
-    ${m.ready && m.use === 'make' ? `<button type="button" class="link" data-forgeuse="make" aria-describedby="forge-m-${m.id}">Use this way</button>`
+    ${m.ready && m.use === 'make' ? `<button type="button" class="link" data-forgeuse="make" data-method="${m.id}" aria-describedby="forge-m-${m.id}">Use this way</button>`
       : m.ready && m.use === 'home' ? `<button type="button" class="link" data-forgeuse="home" data-method="${m.id}" aria-describedby="forge-m-${m.id}" aria-expanded="${hw.isOpen() === m.id}">${hw.isOpen() === m.id ? 'Close it' : 'Use this way'}</button>`
       : m.use === 'forge' ? `<button type="button" class="link" data-forgeuse="form" aria-describedby="forge-m-${m.id}">Write a plan for it</button><p class="muted">${esc(m.why || '')}</p>`
       : `<p class="muted">${esc(m.why || '')}</p>`}</li>`;
@@ -235,7 +235,7 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
   }
   async function click(b) {
     const d = b.dataset;
-    if (d.forgeuse === 'make') { goMake(); return true; }
+    if (d.forgeuse === 'make') { goMake(d.method); return true; }
     if (d.forgeuse === 'home') { await hw.open(hw.isOpen() === d.method ? '' : d.method); return 'draw'; } // 1.5.164
     { const h = await hw.click(b, load); if (h) return h === 'draw' ? 'draw' : (await load(), 'draw'); }
     if (d.forgeuse === 'form') { document.getElementById('forge-form')?.scrollIntoView({ block: 'start' }); document.getElementById('forge-brain')?.focus(); return true; }

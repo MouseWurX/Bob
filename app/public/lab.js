@@ -19,6 +19,15 @@ import { homeReportHtml } from './lab-home-ways.js'; // 1.5.164 the Forge's home
 const $ = (id) => document.getElementById(id);
 const TABS = [['make', 'Make a brain'], ['forge', 'Forge'], ['learn', 'Learn'], ['challenges', 'Challenges'], ['playground', 'Playground']];
 const STEPS = [['brain', '1 Pick a brain'], ['lessons', '2 Lessons'], ['smaller', '3 Make it smaller'], ['where', '4 Where it runs'], ['test', '5 Test and use']];
+// One job at a time (the owner asked that every module can be done on its own). Each job shows only the steps and the
+// parts of step 3 it needs; Everything is the five steps as they were. The recipe is the same shape either way.
+const JOBS = [
+  { id: 'smaller', title: 'Make it smaller', what: 'Running files (Q8 down to Q3) from a full-size brain, then the Lab test.', steps: ['brain', 'smaller', 'test'], parts: ['files'] },
+  { id: 'cut', title: 'Cut experts', what: 'Keep the experts your work uses and drop the rest. A set of lessons shows which ones, then the Lab test.', steps: ['brain', 'lessons', 'smaller', 'where', 'test'], parts: ['cut'] },
+  { id: 'senses', title: 'Take out sight or hearing', what: 'Leave the picture or sound reader behind; everything else stays. Then the Lab test.', steps: ['brain', 'smaller', 'test'], parts: ['senses'] },
+  { id: 'test', title: 'Just test a brain', what: 'The Lab test on a brain as it is, with a second brain to compare if you like.', steps: ['brain', 'test'], parts: [] },
+  { id: 'full', title: 'Everything, step by step', what: 'All five steps: lessons, every way to make it smaller, where it runs, the test.', steps: ['brain', 'lessons', 'smaller', 'where', 'test'], parts: ['senses', 'cut', 'files', 'later'] },
+];
 // What the switch changes on each tab, said right beside it, so Professional never looks like a button that does nothing.
 const MODE_NOTES = {
   make: { simple: 'This tab is the same in both modes; Show the recipe has the exact commands.', pro: 'This tab is the same in both modes; Show the recipe has the exact commands.' },
@@ -33,7 +42,18 @@ const PARTS = { general: 'General knowledge', tools: 'Picking the right tool', c
 export function createLab({ api, note }) {
   const dlg = $('lab'), body = $('lab-body');
   $('lab-close').onclick = () => dlg.close();
-  let view = null, step = 'brain', plan = null, showRecipe = false, msg = '', askUnload = null, tab = 'make';
+  let view = null, step = 'brain', plan = null, showRecipe = false, msg = '', askUnload = null, tab = 'make', job = '';
+  const jobOf = () => JOBS.find((j) => j.id === job) || null;
+  const steps = () => (jobOf() ? STEPS.filter(([id]) => jobOf().steps.includes(id)) : STEPS);
+  const hasPart = (k) => !jobOf() || jobOf().parts.includes(k);
+  // Picking a job clears the parts of the recipe it doesn't use, so a "Make it smaller" never cuts experts by accident.
+  function setJob(id) {
+    job = JOBS.some((j) => j.id === id) ? id : ''; step = 'brain'; plan = null; msg = '';
+    if (!hasPart('senses')) { r.smaller.sight = false; r.smaller.hearing = false; }
+    if (!hasPart('cut')) { r.smaller.cut = null; r.smaller.try = false; r.template = ''; }
+    if (!hasPart('files')) { r.smaller.files = []; r.smaller.measure = false; }
+  }
+  const jobsHtml = () => `<fieldset class="lab-jobs"><legend>What do you want to do?</legend><p class="muted">One thing at a time. Each job shows only the steps it needs.</p><div class="lab-cards">${JOBS.map((j) => `<button type="button" class="lab-card${job === j.id ? ' on' : ''}" data-job="${j.id}" aria-pressed="${job === j.id}"><strong>${esc(j.title)}</strong><span class="muted">${esc(j.what)}</span></button>`).join('')}</div></fieldset>`;
   const learn = createLearn({ api, info: () => view, saves: () => saves });
   // 1.5.153 Challenges: which brain, which packs, the scoreboard's sort, and the Save panels (one per result).
   const ch = { from: '', packs: ['quiz', 'reasoning', 'sums', 'rules', 'tools', 'code'], bench: false, sort: 'name', down: false, by: 'class', kind: 'all', here: false, fits: false, wide: false }; // 1.5.162 the board by class of model
@@ -46,7 +66,7 @@ export function createLab({ api, note }) {
   const bld = { name: '', teacher: '', items: [], kinds: ['material'], count: 300, think: 'half', resay: true, feedback: { dropFiles: [], notKinds: {}, badIdeas: [] } };
   let bplan = null, building = false, bsurvey = null, surveying = false, openPassage = new Set(), notLike = '', viewer = null, vq = { q: '', skill: '', file: '', kind: '' }, exportInfo = null, typedPath = '';
   const r = { template: '', name: '', from: '', lessons: { kind: 'none', file: '', chunks: 200 }, smaller: { sight: false, hearing: false, cut: null, files: [], measure: false }, test: { compare: true } };
-  const fg = createForge({ api, view: () => view, runs: () => runsHtml(), goMake: () => { tab = 'make'; draw(); $('lab-tab-make')?.focus(); } });
+  const fg = createForge({ api, view: () => view, runs: () => runsHtml(), goMake: (which) => { tab = 'make'; setJob(which === 'cut' ? 'cut' : which === 'smaller' ? 'smaller' : job || ''); draw(); $('lab-tab-make')?.focus(); } });
   document.addEventListener('lab-forge-ready', () => { if (tab === 'forge' && dlg.open) draw(); });
   const gd = createGuard({ api, isPro: () => view?.mode === 'pro' }); // 1.5.164
   const px = createPro({ api, view: () => view }); // 1.5.168
@@ -254,11 +274,11 @@ export function createLab({ api, note }) {
     const b = brain(), f = b?.facts || {}, s = r.smaller;
     const cut = s.cut;
     const cutSizes = b?.cuts || [];
-    return `<fieldset><legend>Make it smaller (these run in this order)</legend>
-      ${box('sight', s.sight, 'Take out sight', f.sight ? `The picture reader is left behind. Saves about ${f.readerGB || 1} GB on disk and on the card. The brain can't read pictures any more; everything else is the same.` : '', f.sight ? '' : 'This brain can\'t see pictures.')}
-      ${box('hearing', s.hearing, 'Take out hearing', f.hearing ? 'The sound reader is left behind. The brain can\'t hear sound any more; everything else is the same.' : '', f.hearing ? '' : 'This brain can\'t hear sound.')}
-      ${box('cut', Boolean(cut), 'Cut experts', 'Keeps the experts your work uses and drops the rest. Without Teach it back (Lab 2) it loses some general knowledge first, so test it.', f.experts ? '' : 'This brain isn\'t a mixture-of-experts brain.')}
-      ${cut ? `<div class="lab-sub">
+    return `<fieldset><legend>${jobOf() && job !== 'full' ? esc(jobOf().title) : 'Make it smaller (these run in this order)'}</legend>
+      ${!hasPart('senses') ? '' : box('sight', s.sight, 'Take out sight', f.sight ? `The picture reader is left behind. Saves about ${f.readerGB || 1} GB on disk and on the card. The brain can't read pictures any more; everything else is the same.` : '', f.sight ? '' : 'This brain can\'t see pictures.')}
+      ${!hasPart('senses') ? '' : box('hearing', s.hearing, 'Take out hearing', f.hearing ? 'The sound reader is left behind. The brain can\'t hear sound any more; everything else is the same.' : '', f.hearing ? '' : 'This brain can\'t hear sound.')}
+      ${!hasPart('cut') ? '' : box('cut', Boolean(cut), 'Cut experts', 'Keeps the experts your work uses and drops the rest. Without Teach it back (Lab 2) it loses some general knowledge first, so test it.', f.experts ? '' : 'This brain isn\'t a mixture-of-experts brain.')}
+      ${cut && hasPart('cut') ? `<div class="lab-sub">
         ${radio('cuthow', 'cover', cut.how === 'cover', 'Keep every skill covered (recommended)', 'Counts each skill in your lessons on its own and keeps the experts every skill needs, not only the busiest overall. It\'s how Bob\'s own brains are cut.')}
         ${cut.how === 'cover' ? `<div class="lab-sub"><fieldset><legend>How much of each skill to keep</legend>
           ${[[0.95, '95% (recommended)', 'Each skill keeps the experts that do 95% of its work, in every layer.'], [0.9, '90%', 'Smaller, but every skill loses a little more.'], [0.99, '99%', 'Bigger. Almost nothing is lost.']].map(([v, l, h]) => radio('cover', String(v), cut.cover === v, l, h)).join('')}
@@ -272,15 +292,15 @@ export function createLab({ api, note }) {
         ${box('try', s.try, 'Try it first, before cutting', `Brain Engine runs ${b?.name || 'the brain'} with only the kept experts switched on and gives it the Lab test, so you see the score before any file is written. It counts as the test of ${b?.name || 'the brain'} too.`, view.brainEngine ? '' : 'Needs Brain Engine, Bob\'s Lab engine (a version of llama.cpp that can switch experts off). Get it in Get models > Engines: Brain Engine.')}
         ${s.try ? `<div class="lab-sub">${box('tryStop', s.tryStop, 'Stop if it scores more than 10 points lower on the Lab test', 'Then nothing is cut, and you can keep more experts or protect more skills.')}</div>` : ''}
       </div>` : ''}
-      ${later('Layer cut (Experimental)', 'Fewer layers: the least-used ones, measured on your lessons.')}
-      ${later('Width cut (Experimental)', 'A narrower brain. This one hurts most and needs the longest teach-back.')}
-      ${later('Teach it back', 'Teaches the cut brain back against the original with the lessons and odds ("heal" in the forge). Light (quick; recommended) or Full.')}
-      ${later('Make it one file', 'Folds the taught-back part into the brain so it\'s one file ("fold" in the forge).')}
-      <fieldset><legend>Make the running files</legend>
+      ${!hasPart('later') ? '' : later('Layer cut (Experimental)', 'Fewer layers: the least-used ones, measured on your lessons.')}
+      ${!hasPart('later') ? '' : later('Width cut (Experimental)', 'A narrower brain. This one hurts most and needs the longest teach-back.')}
+      ${!hasPart('later') ? '' : later('Teach it back', 'Teaches the cut brain back against the original with the lessons and odds ("heal" in the forge). Light (quick; recommended) or Full.')}
+      ${!hasPart('later') ? '' : later('Make it one file', 'Folds the taught-back part into the brain so it\'s one file ("fold" in the forge).')}
+      ${!hasPart('files') ? '' : `<fieldset><legend>Make the running files</legend>
         ${f.fullSize ? '' : `<p class="muted">${esc(b?.name || 'This brain')} is already a running file (${esc(f.fileType || '?')}), so it stays as it is. Making running files needs the full-size copy (F16 or BF16).</p>`}
         ${view.types.filter((t) => t !== 'Q3_K_M' || (f.sizeGB || 99) <= 16).map((t) => box(`file:${t}`, s.files.includes(t), TYPE_NOTE[t], f.sizeGB ? `About ${Math.round(f.sizeGB * ({ Q4_K_M: 0.3, Q5_K_M: 0.36, Q6_K: 0.41, Q8_0: 0.53, Q3_K_M: 0.25 }[t] || 0.3) * 10) / 10} GB from this brain${cut ? ' before the cut' : ''}.` : '', f.fullSize ? '' : 'Needs the full-size copy.')).join('')}
         ${s.files.length ? box('measure', s.measure, 'Measure before making the running files (recommended)', 'Before the running files, Bob measures which weights matter most on your lessons, on the cut brain itself. The running files lose less that way, most of all at Q4 and Q3. Adds a few minutes on the graphics card.', r.lessons.kind === 'none' ? 'Needs lessons to measure on: pick a lesson set in step 2.' : '') : ''}
-      </fieldset>
+      </fieldset>`}
     </fieldset>`;
   }
 
@@ -404,7 +424,7 @@ export function createLab({ api, note }) {
     if (tab === 'challenges') { body.innerHTML = `<div class="lab">${tabs}${challengesHtml()}</div>`; return; }
     if (tab === 'forge') { body.innerHTML = `<div class="lab">${tabs}${fg.html(sn.html())}</div>`; return; }
     if (tab === 'playground') { body.innerHTML = `<div class="lab">${tabs}${pg.html(runsHtml())}</div>`; pg.mounted(); return; }
-    const i = STEPS.findIndex(([id]) => id === step);
+    const i = steps().findIndex(([id]) => id === step);
     const html = { brain: brainStep, lessons: lessonsStep, smaller: smallerStep, where: whereStep, test: testStep }[step]();
     const busy = running();
     body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-make" role="tabpanel" aria-labelledby="lab-tab-make">
@@ -412,20 +432,21 @@ export function createLab({ api, note }) {
       ${view.recipes.length ? `<p><label>Start from a saved recipe <select id="lab-recipe"><option value="">(none)</option>${view.recipes.map((x, n) => `<option value="${n}">${esc(x.name)}</option>`).join('')}</select></label></p>` : ''}
       ${runsHtml()}
       ${rc.galleryHtml()}
-      ${templateHtml()}
-      <nav class="lab-steps" aria-label="Lab steps"><ol>${STEPS.map(([id, label], n) => `<li><button type="button" class="lab-step${id === step ? ' on' : ''}" data-step="${id}" ${id === step ? 'aria-current="step"' : ''} ${n > 0 && !r.from ? 'disabled' : ''}>${esc(label)}</button></li>`).join('')}</ol></nav>
+      ${jobsHtml()}
+      ${!job ? '' : `${hasPart('cut') ? templateHtml() : ''}
+      <nav class="lab-steps" aria-label="Lab steps"><ol>${steps().map(([id, label], n) => `<li><button type="button" class="lab-step${id === step ? ' on' : ''}" id="lab-step-${id}" data-step="${id}" ${id === step ? 'aria-current="step"' : ''} ${n > 0 && !r.from ? 'disabled' : ''}>${n + 1} ${esc(label.replace(/^\d+ /, ''))}</button></li>`).join('')}</ol></nav>
       <div class="lab-panel" id="lab-panel">${html}</div>
       ${plan ? `<div class="lab-check" role="status">${plan.problems.length ? `<p><strong>Before it can start:</strong></p><ul>${plan.problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : `<p><strong>Ready.</strong> ${plan.steps.length} steps: ${plan.steps.map((s) => esc(s.label)).join(', ')}.</p>`}${plan.notes.map((n) => `<p class="muted">${esc(n)}</p>`).join('')}</div>` : ''}
       ${rc.estimateHtml()}
       ${askUnload ? `<div class="setup-offer" role="alert"><strong>Bob's brain is on the card</strong><span>${esc(askUnload.join(', '))} is loaded. The Lab needs the card, so Bob unloads it first; it loads again the next time you chat (which slows the Lab down while it runs).</span><div class="row"><button type="button" class="get" data-unload>Unload it and start</button><button type="button" class="link" data-nounload>Not now</button></div></div>` : ''}
       <div class="row lab-actions">
         ${i > 0 ? '<button type="button" class="link" data-back>Back</button>' : ''}
-        ${i < STEPS.length - 1 ? `<button type="button" class="get" data-next ${r.from ? '' : 'disabled'}>Next</button>` : `<button type="button" class="get" data-start ${plan && !plan.problems.length && !busy ? '' : 'disabled'}>${busy ? 'The Lab is busy' : 'Start'}</button>`}
+        ${i < steps().length - 1 ? `<button type="button" class="get" data-next ${r.from ? '' : 'disabled'}>Next</button>` : `<button type="button" class="get" data-start ${plan && !plan.problems.length && !busy ? '' : 'disabled'}>${busy ? 'The Lab is busy' : 'Start'}</button>`}
         <button type="button" class="link" data-recipe aria-expanded="${showRecipe}">Show the recipe</button>
         <button type="button" class="link" data-save ${r.name ? '' : 'disabled'}>Save as recipe</button>
       </div>
       ${showRecipe ? `<div class="lab-recipe"><pre tabindex="0">${esc(plan?.text || 'Pick a brain first.')}</pre><button type="button" class="link" data-copy>Copy</button></div>` : ''}
-      ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
+      ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}`}
       ${compareHtml()}
       ${rc.usageHtml()}
     </div></div>`;
@@ -544,8 +565,9 @@ export function createLab({ api, note }) {
     { const g = await gd.click(b); if (g === 'draw') { const f = b.dataset.guard; draw(); $(f === 'send' ? 'lab-guard-say' : f === 'open' ? 'lab-guard-system' : f === 'save' ? 'lab-guard-want' : 'lab-guard-h')?.focus(); return; } if (g) return; }
     if (await rc.click(b)) return;
     if (b.dataset.step) { step = b.dataset.step; return draw(); }
-    if ('next' in b.dataset) { step = STEPS[Math.min(STEPS.length - 1, STEPS.findIndex(([id]) => id === step) + 1)][0]; return draw(); }
-    if ('back' in b.dataset) { step = STEPS[Math.max(0, STEPS.findIndex(([id]) => id === step) - 1)][0]; return draw(); }
+    if (b.dataset.job) { setJob(b.dataset.job); draw(); $('lab-step-brain')?.focus(); return; }
+    if ('next' in b.dataset) { const st = steps(); step = st[Math.min(st.length - 1, st.findIndex(([id]) => id === step) + 1)][0]; return draw(); }
+    if ('back' in b.dataset) { const st = steps(); step = st[Math.max(0, st.findIndex(([id]) => id === step) - 1)][0]; return draw(); }
     if ('recipe' in b.dataset) { showRecipe = !showRecipe; return draw(); }
     if ('copy' in b.dataset) { try { await navigator.clipboard.writeText(plan?.text || ''); b.textContent = 'Copied'; } catch { b.textContent = 'Couldn\'t copy'; } return; }
     if ('nounload' in b.dataset) { askUnload = null; return draw(); }

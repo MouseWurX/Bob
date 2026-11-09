@@ -4,6 +4,13 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.182
+
+The Lab's Make a brain does one thing at a time.
+
+- **What do you want to do?** Make a brain now opens with a choice of five jobs: Make it smaller, Cut experts, Take out sight or hearing, Just test a brain, or Everything, step by step. Each job shows only the steps it needs, numbered from 1, and the parts it doesn't use are cleared so nothing happens by accident. Everything is the five steps as before. The Forge's **Use this way** buttons open the matching job.
+- Help: The Computer Science Lab and the user guide updated. Tests in `test/run-lab-test.js`.
+
 ## 1.5.181
 
 The Lab's Professional switch says what it changes, and the Playground takes any brain you point it at.

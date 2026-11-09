@@ -1577,6 +1577,10 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 @media (prefers-reduced-motion: reduce) { .peek-map { transition: none; } }
 
 /* 1.5.168 Keep it simple / Professional */
+.lab-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.lab-card { display: flex; flex-direction: column; gap: 4px; text-align: left; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: none; color: inherit; min-height: 44px; }
+.lab-card.on { border-width: 2px; border-color: var(--accent); }
+.lab-card .muted { font-weight: 400; }
 .lab-mode { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 10px; }
 .lab-mode .muted { flex: 1 1 240px; }
 /* 1.5.17x Engines rework: the Lab's engine row, the ⚙ engine-for-brains picker, and folded engine groups */
