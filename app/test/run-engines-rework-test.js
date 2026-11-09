@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assetPrint, isNewer, swapIn, goBackEngine, removeEngine, engineStatus, latestEngine, brainsEngineNow, brainsEnginePick, brainsEngineSettings, labEngineDirs, engineNameOf, engineChoices, ENGINES, TESTED_LLAMA } from '../src/engines.js';
+import { assetPrint, isNewer, swapIn, goBackEngine, removeEngine, engineStatus, latestEngine, brainsEngineNow, brainsEnginePick, brainsEngineSettings, labEngineDirs, engineNameOf, engineChoices, engineFor, ENGINES, TESTED_LLAMA } from '../src/engines.js';
 import { Lab } from '../src/lab.js';
 
 let failures = 0, passed = 0;
@@ -61,7 +61,8 @@ const put = (dir, files, mark) => { fs.mkdirSync(dir, { recursive: true }); for 
   const asset = { id: 7, name, size: 5, updated_at: '2026-11-09T00:00:00Z', digest: 'sha256:new' };
   put(be, [exe('llama-server')], { id: 'brainengine', version: tag, print: 'sha256:old', at: '2026-11-01T00:00:00Z' });
   const fakeFetch = async (u) => ({ ok: true, json: async () => (u.includes(`/tags/${tag}`) ? { tag_name: tag, prerelease: true, assets: [asset] } : []) });
-  if (process.platform === 'win32' || process.platform === 'linux') {
+  // 1.5.179: only where Brain Engine has a build (Windows and x86_64 Linux); ARM Linux has none, so the Check isn't offered there.
+  if ((process.platform === 'win32' || process.platform === 'linux') && !engineFor(ENGINES.find((x) => x.id === 'brainengine')).unavailable) {
     const r = await latestEngine({ agentDir: A }, 'brainengine', false, fakeFetch);
     check(r.newer && r.rebuilt && r.latest === tag, 'a rebuilt Brain Engine shows as an update, marked rebuilt');
     fs.writeFileSync(path.join(be, 'bob-brainengine.json'), JSON.stringify({ version: tag, print: 'sha256:new' }));

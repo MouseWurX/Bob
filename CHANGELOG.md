@@ -4,6 +4,13 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.179
+
+A build fix: the Mac download and the Raspberry Pi and ARM download are back.
+
+- 1.5.178's Mac build and its ARM Linux build (the AppImage for a Raspberry Pi 5 and other 64-bit ARM boards) stopped at their test step, so 1.5.178 came out without them. Two of the new checks assumed the test machine is an x86 PC and that every Linux has Brain Engine; on the Apple Silicon and ARM build machines neither is true. Both checks now say which computer they mean, and the whole test run was tried as if on an ARM machine before this release.
+- In Bob himself, one small thing: when Bob has his own Node.js for a code copy, the folder he puts first on the command path now follows the same computer type as the download.
+
 ## 1.5.178
 
 A big one: Bob's own browser and eyes, quick Autonomy and Screen use buttons, Bob on Discord, Bob working on repositories, and more of Brain Engine's tools.
