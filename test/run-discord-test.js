@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DiscordBridge, discordView, cleanDiscordPatch, matchWake, jobTypeOf, toolsFor, cleaner, saveDiscord, storeToken, discordSettings, INTENTS, TOKEN_ENV } from '../src/discord.js';
+import { DiscordBridge, discordView, discordRoute, DM_SESSION, cleanDiscordPatch, matchWake, jobTypeOf, toolsFor, cleaner, saveDiscord, storeToken, discordSettings, INTENTS, TOKEN_ENV } from '../src/discord.js';
 import { guestTools, guestNote } from '../src/share-jobs.js';
 
 let pass = 0, fail = 0;
@@ -174,8 +174,58 @@ let bad = '';
 try { await b.saveToken('not a token'); } catch (e) { bad = e.message; }
 check('something that isn\'t a bot token is refused', /doesn't look like/.test(bad));
 
+// ---------- Your private Bob in Discord DMs ----------
+saveDiscord(brain.cfg, { enabled: false, dmEnabled: true });
+const d = new DiscordBridge(brain, { fetchImpl, WebSocketImpl: FakeWS, env: { [TOKEN_ENV]: TOKEN }, wait: async () => {} });
+brain.cancelJob = (id) => { const j = queue.find((x) => x.id === id); if (!j) return false; j.state = 'cancelled'; return true; };
+d.sync(); d.running = true;
+const dmCode = discordView(d).pairCode;
+check('DMs on: a 6-digit pairing code is shown, no account assumed', /^\d{6}$/.test(dmCode) && !discordView(d).paired && discordView(d).ownerId === null);
+const dmMsg = (text, author = PAT) => ({ id: '1', channel_id: '777777777777777777', content: text, author: { id: author, username: 'pat' } });
+const q0 = queue.length;
+await d.handle(dmMsg('hello'));
+check('before pairing, a DM that isn\'t the code is ignored', queue.length === q0 && !discordView(d).paired);
+await d.handle(dmMsg(dmCode));
+check('the right code in a DM pairs that account', discordView(d).paired && discordView(d).ownerId === PAT && !fs.readFileSync(configFile, 'utf8').includes(TOKEN));
+await d.handle(dmMsg('what is on my desktop?', SAM));
+check('someone else\'s DM gets silence and no job', queue.length === q0);
+await d.handle(dmMsg('what is on my desktop?'));
+const dj = queue.at(-1);
+check('your DM becomes a normal private job (full Bob, not a guest)', dj.sessionId === DM_SESSION && !dj.guest && dj.text === 'what is on my desktop?');
+await d.handle(dmMsg('hey bob draw a cat', SAM));
+check('channels are still off: nothing from them', queue.length === q0 + 1);
+const before = posts().length;
+d.watch({ type: 'token', sessionId: DM_SESSION, turnId: 'd1', text: 'Your desktop has 3 files.' });
+d.watch({ type: 'done', sessionId: DM_SESSION, turnId: 'd1' });
+await tick();
+check('the reply goes to your DM channel', posts().length === before + 1 && posts().at(-1).url.endsWith('/channels/777777777777777777/messages') && /3 files/.test(posts().at(-1).body.content));
+d.watch({ type: 'approval', sessionId: DM_SESSION, turnId: 'd2', id: '11111111-2222-3333-4444-555555555555', text: 'Move 3 files' });
+await tick();
+check('OK switch off: the card waits on the PC, no buttons', /on this replicant matrix/.test(posts().at(-1).body.content) && !posts().at(-1).body.components);
+saveDiscord(brain.cfg, { dmApprove: true });
+d.watch({ type: 'approval', sessionId: DM_SESSION, turnId: 'd2', id: '11111111-2222-3333-4444-555555555555', text: 'Move 3 files' });
+await tick();
+check('OK switch on: Allow and Deny buttons', posts().at(-1).body.components?.[0]?.components?.length === 2);
+const a0 = answered.length;
+await d.button({ id: 'i1', token: 't', user: { id: SAM }, data: { custom_id: 'ok:11111111-2222-3333-4444-555555555555:1' } });
+check('someone else pressing the button does nothing', answered.length === a0);
+await d.button({ id: 'i2', token: 't', user: { id: PAT }, data: { custom_id: 'ok:11111111-2222-3333-4444-555555555555:0' }, message: { content: 'I need your OK: Move 3 files' } });
+check('your Deny answers the card No', answered.length === a0 + 1 && answered.at(-1)[1] === false);
+await d.handle(dmMsg('/stop'));
+check('/stop cancels your DM jobs', dj.state === 'cancelled');
+// Typing your user ID instead of the code.
+const dmRoute = async (b2) => { let out; await discordRoute({ req: { method: 'POST' }, res: {}, p: '/api/discord', isLocal: true, brain: { ...brain, discord: d }, body: async () => b2, send: (r, code, j) => { out = { code, j }; } }); return out; };
+await dmRoute({ forget: true });
+check('Forget my Discord account un-pairs', !discordView(d).paired);
+let rr = await dmRoute({ owner: 'not an id' });
+check('a typed account that isn\'t a user ID is refused', rr.code === 400 && !discordView(d).paired);
+rr = await dmRoute({ owner: SAM });
+check('a typed user ID pairs that account', rr.code === 200 && rr.j.paired && rr.j.ownerId === SAM);
+rr = await dmRoute({ ownerId: PAT, enabled: true });
+check('the account can\'t be changed through the switches', discordView(d).ownerId === SAM);
+
 // Turning it off stops Bob listening.
-saveDiscord(brain.cfg, { enabled: false });
+saveDiscord(brain.cfg, { enabled: false, dmEnabled: false });
 const c = new DiscordBridge(brain, { fetchImpl, WebSocketImpl: FakeWS, env: { [TOKEN_ENV]: TOKEN } });
 c.running = true; c.sync();
 check('turning it off stops Bob listening', !c.running && c.status === 'off');

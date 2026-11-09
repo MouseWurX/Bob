@@ -20,16 +20,25 @@
 //     default). Never anything older, never anything made for you.
 //   - OK cards are never shown there and never land on your PC from Discord: a Discord job that would need one is told No.
 // Nothing from Discord is kept as a chat here. Tasks shows the jobs as "From Discord".
+//
+// Your private Bob in Discord DMs (a second switch, also off): pair your own Discord account with the 6-digit code shown
+// in Settings, or type your user ID there. Then your DMs to the bot get the full Bob, like his window (a "Discord" chat
+// here, kept like any other), with two more switches, both off: send what he makes to your DMs, and answer OK cards
+// there with Allow and Deny buttons. Anyone else who DMs the bot gets silence. No account is ever assumed.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
+import crypto from 'node:crypto';
 import { rentKeyEnv } from './rental.js';
 import { scrubber } from './help-bundle.js';
 import { outputDirs } from './config.js';
 
 export const TOKEN_ENV = 'BOB_DISCORD_TOKEN';
 export const DISCORD_SESSION = 'discord'; // session ids are discord-<channel id>
+export const DM_SESSION = 'discord-dm'; // your private DMs with the bot: a chat like any other, kept here
+export const PAIR_MINUTES = 15;
+const MAX_MISSES = 5;
 const API = 'https://discord.com/api/v10'; // fixed here, so a settings file can't send anything anywhere else
 const GATEWAY = 'wss://gateway.discord.gg/?v=10&encoding=json';
 const MAX_TEXT = 1900; // Discord's limit is 2000 characters a message
@@ -39,7 +48,7 @@ const MAX_WAITING = 3; // Discord jobs waiting or working at once
 const COOLDOWN_MS = 15000; // per person, between jobs
 const HISTORY = 12; // lines of a channel's talk Bob keeps in mind, in memory only
 // GUILDS | GUILD_MESSAGES | MESSAGE_CONTENT. Message Content is a "privileged" intent: switch it on in the portal.
-export const INTENTS = 1 | (1 << 9) | (1 << 15);
+export const INTENTS = 1 | (1 << 9) | (1 << 12) | (1 << 15); // + DIRECT_MESSAGES for your private DMs
 const TOKEN_RX = /^[A-Za-z0-9_-]{20,40}\.[A-Za-z0-9_-]{4,10}\.[A-Za-z0-9_-]{20,60}$/;
 const ID_RX = /^\d{15,22}$/;
 export const DEFAULT_WAKE = 'hey bob*';
@@ -68,7 +77,13 @@ export function discordSettings(cfg) {
     channels: ids(d.channels),
     people: ids(d.people),
     jobs,
-    share: d.share === true
+    share: d.share === true,
+    // Your private Bob in Discord DMs (off): only the one account you pair, with the full Bob, like his window.
+    dmEnabled: d.dmEnabled === true,
+    ownerId: ID_RX.test(String(d.ownerId || '')) ? String(d.ownerId) : null,
+    ownerName: String(d.ownerName || '').slice(0, 80),
+    dmApprove: d.dmApprove === true,
+    dmPictures: d.dmPictures === true
   };
 }
 
@@ -92,7 +107,7 @@ export function saveDiscord(cfg, patch) {
 // Only these keys, only these types.
 export function cleanDiscordPatch(b = {}, current = {}) {
   const out = {};
-  for (const k of ['enabled', 'caseSensitive', 'share']) if (k in b) out[k] = b[k] === true;
+  for (const k of ['enabled', 'caseSensitive', 'share', 'dmEnabled', 'dmApprove', 'dmPictures']) if (k in b) out[k] = b[k] === true;
   if ('wake' in b) { const w = cleanWake(b.wake); if (w) out.wake = w; }
   const list = (v) => [...new Set(String(Array.isArray(v) ? v.join(' ') : v || '').split(/[\s,;]+/).filter((x) => ID_RX.test(x)))].slice(0, 50);
   if ('channels' in b) out.channels = list(b.channels);
@@ -204,6 +219,10 @@ export class DiscordBridge {
     this.status = 'off';
     this.jobs = new Map(); // job id -> { channelId, messageId, text, startedAt, files, said }
     this.lastAsk = new Map(); // person id -> time of their last job
+    this.turns = new Map(); // your DM chat: turn id -> reply so far
+    this.pair = null; // { code, until } while your account isn't paired
+    this.pairLocked = false;
+    this.misses = 0;
   }
 
   token() { const t = String(this.pasted || this.env[TOKEN_ENV] || '').trim(); return TOKEN_RX.test(t) ? t : ''; }
@@ -212,8 +231,10 @@ export class DiscordBridge {
 
   sync() {
     const s = this.settings();
-    if (s.enabled && this.token()) { if (!this.running) this.start(); }
-    else this.stop(s.enabled ? 'no token' : 'off');
+    if ((s.enabled || s.dmEnabled) && this.token()) { if (!this.running) this.start(); }
+    else this.stop(s.enabled || s.dmEnabled ? 'no token' : 'off');
+    if (s.dmEnabled && !s.ownerId && !this.pairLocked && (!this.pair || this.pair.until < this.now())) this.newPairCode();
+    if (!s.dmEnabled || s.ownerId) this.pair = null;
   }
 
   stop(why = 'off') {
@@ -277,6 +298,7 @@ export class DiscordBridge {
       this.log(`connected to Discord as ${this.botName || 'the bot'}`);
     } else if (p.t === 'RESUMED') { this.status = 'on'; this.backoff = 5000; }
     else if (p.t === 'MESSAGE_CREATE') this.handle(p.d).catch((e) => this.log(`message not handled: ${e.message}`));
+    else if (p.t === 'INTERACTION_CREATE') this.button(p.d).catch((e) => this.log(`button not handled: ${e.message}`));
   }
 
   onClose(code) {
@@ -321,7 +343,9 @@ export class DiscordBridge {
   // One message from Discord. Only listed channels, only people on the list (if there is one), never bots.
   async handle(m) {
     const s = this.settings();
-    if (!s.enabled || !m || m.author?.bot || m.webhook_id || !m.guild_id) return;
+    if (!m || m.author?.bot || m.webhook_id) return;
+    if (!m.guild_id) return this.direct(m, s); // a DM: only your paired account, private
+    if (!s.enabled) return;
     const channelId = String(m.channel_id || '');
     if (!s.channels.includes(channelId)) return;
     const who = String(m.author?.id || '');
@@ -380,8 +404,129 @@ export class DiscordBridge {
     await this.rest('POST', `/channels/${channelId}/messages`, null, { form }).catch((e) => this.log(`couldn't send the file to Discord: ${e.message}`));
   }
 
+  newPairCode() {
+    this.pairLocked = false;
+    this.misses = 0;
+    this.pair = { code: String(crypto.randomInt(0, 1e6)).padStart(6, '0'), until: this.now() + PAIR_MINUTES * 60000 };
+    return this.pair;
+  }
+
+  // ---------- Your private Bob in Discord DMs ----------
+  // A DM to the bot. Before pairing: only the code from Settings counts (5 wrong tries throw it away). After: only your
+  // account; everyone else gets silence. Your messages go into a "Discord" chat here, like typing in Bob's window.
+  async direct(m, s) {
+    if (!s.dmEnabled) return;
+    const who = String(m.author?.id || '');
+    const text = String(m.content || '').trim();
+    if (!s.ownerId) {
+      if (!this.pair || this.pair.until < this.now() || !text) return;
+      const code = (/^\s*(?:pair\s+)?(\d{6})\s*$/i.exec(text) || [])[1];
+      if (!code || !crypto.timingSafeEqual(Buffer.from(code), Buffer.from(this.pair.code))) {
+        if (++this.misses >= MAX_MISSES) { this.pair = null; this.pairLocked = true; this.log('pairing code thrown away after 5 wrong tries; press New code to pair'); }
+        return;
+      }
+      const name = String(m.author?.global_name || m.author?.username || 'you').slice(0, 80);
+      saveDiscord(this.cfg, { ownerId: who, ownerName: name, dmChannel: String(m.channel_id) });
+      this.pair = null;
+      this.log(`paired with Discord account ${name}`);
+      this.brain.broadcast?.({ type: 'discord', paired: true, name });
+      return this.dm('Paired. This Bob now answers you here, and only you. Send me anything you would type in my window. /stop stops what I\'m doing for this chat.');
+    }
+    if (who !== s.ownerId) return;
+    if (String(this.cfg.discord?.dmChannel || '') !== String(m.channel_id)) saveDiscord(this.cfg, { dmChannel: String(m.channel_id) });
+    if (!text) return this.dm('I can only read text here for now.');
+    if (/^\/stop\b/i.test(text)) {
+      let n = 0;
+      for (const j of this.brain.queue || []) if (j.sessionId === DM_SESSION && ['waiting', 'working'].includes(j.state) && this.brain.cancelJob?.(j.id)) n++;
+      return this.dm(n ? `Stopped ${n === 1 ? 'that job' : `${n} jobs`}.` : 'Nothing of yours is running.');
+    }
+    const r = this.brain.enqueue(DM_SESSION, text.slice(0, 8000));
+    this.log(`message from your Discord DMs (${r.jobId.slice(0, 8)})`);
+    this.rest('POST', `/channels/${m.channel_id}/typing`).catch(() => {});
+    if (r.ahead > 0) await this.dm(`Got it. ${r.ahead === 1 ? 'One job is' : `${r.ahead} jobs are`} ahead of yours.`);
+  }
+
+  // Your DM channel: the one you last wrote from, or opened for a user ID typed in Settings.
+  async dmChannel() {
+    const s = this.settings();
+    if (!s.ownerId) return null;
+    const known = String(this.cfg.discord?.dmChannel || '');
+    if (ID_RX.test(known)) return known;
+    try { const c = await this.rest('POST', '/users/@me/channels', { recipient_id: s.ownerId }); if (c?.id) { saveDiscord(this.cfg, { dmChannel: String(c.id) }); return String(c.id); } } catch (e) { this.log(`couldn't open your DMs: ${e.message}`); }
+    return null;
+  }
+
+  async dm(text, extra = {}) {
+    if (!this.running) return;
+    const ch = await this.dmChannel();
+    if (!ch) return;
+    const pieces = chunks(text);
+    for (let i = 0; i < pieces.length; i++) {
+      await this.rest('POST', `/channels/${ch}/messages`, { content: pieces[i], allowed_mentions: { parse: [] }, ...(i === pieces.length - 1 ? extra : {}) }).catch((e) => this.log(`couldn't send to your DMs: ${e.message}`));
+    }
+  }
+
+  // Allow / Deny on an OK card in your DMs. Only your account, only with the switch on.
+  async button(it) {
+    const s = this.settings();
+    const who = String(it?.user?.id || it?.member?.user?.id || '');
+    const m = /^ok:([0-9a-f-]{36}):([01])$/.exec(String(it?.data?.custom_id || ''));
+    const reply = (type, data) => this.rest('POST', `/interactions/${it.id}/${it.token}/callback`, { type, data }).catch(() => {});
+    if (!m || !s.ownerId || who !== s.ownerId) return reply(4, { content: 'Not yours to answer.', flags: 64 });
+    if (!s.dmApprove) return reply(4, { content: 'Answering OK cards in Discord is off. Use this replicant matrix.', flags: 64 });
+    const allow = m[2] === '1';
+    const done = this.brain.answerApproval(m[1], allow);
+    this.log(`OK card ${allow ? 'allowed' : 'denied'} in Discord DMs${done ? '' : ' (already answered)'}`);
+    const was = String(it?.message?.content || '').slice(0, 1800);
+    return reply(7, { content: `${was}\n\n${done ? (allow ? 'Allowed.' : 'Denied.') : 'Already answered.'}`, components: [] });
+  }
+
+  async dmPhoto(file) {
+    const ch = await this.dmChannel();
+    if (!ch || !this.running) return;
+    try {
+      const st = fs.statSync(file);
+      if (!st.isFile() || st.size > MAX_FILE) return this.dm(`I made ${path.basename(file)}. It's in Made by Bob.`);
+      await this.upload(ch, null, file);
+    } catch (e) { this.log(`couldn't send the file: ${e.message}`); }
+  }
+
+  // Your DM chat's events, like Telegram's: the reply when it's done, files and OK cards per your switches.
+  watchDm(ev) {
+    if (!this.running) return;
+    const s = this.settings();
+    if (!s.dmEnabled || !s.ownerId) return;
+    const id = ev.turnId || '-';
+    switch (ev.type) {
+      case 'token': this.turns.set(id, (this.turns.get(id) || '') + String(ev.text || '')); break;
+      case 'busy-note': case 'announce': this.dm(String(ev.text || '')); break;
+      case 'waiting-line': if (!(this.waitSaid ||= new Set()).has(ev.id)) { this.waitSaid.add(ev.id); this.dm(String(ev.text || '')); } break;
+      case 'error': this.dm(`That didn't work: ${String(ev.text || ev.error || 'something went wrong').slice(0, 500)}`); break;
+      case 'image': case 'video': case 'audio':
+        if (s.dmPictures && ev.file) this.dmPhoto(ev.file);
+        else this.turns.set(id, `${this.turns.get(id) || ''}\n(I made it. It's in Made by Bob${s.dmPictures ? '' : '. Turn on "Send what Bob makes to my DMs" to get it here'}.)`);
+        break;
+      case 'approval': {
+        const text = String(ev.text || 'I need your OK.').slice(0, 1500);
+        if (!s.dmApprove) { this.dm(`I need your OK for this, on this replicant matrix: ${text}`); break; }
+        const extra = ev.command ? `\n\nCommand: ${String(ev.command).slice(0, 500)}` : '';
+        const many = Boolean(ev.together || ev.planCard || ev.plan);
+        this.dm(`I need your OK: ${text}${extra}${many ? '\n\nTo pick single steps, use this replicant matrix.' : ''}`, { components: [{ type: 1, components: [{ type: 2, style: 3, label: many ? 'Allow the rest of this job' : 'Allow', custom_id: `ok:${ev.id}:1` }, { type: 2, style: 4, label: 'Deny', custom_id: `ok:${ev.id}:0` }] }] });
+        break;
+      }
+      case 'done': {
+        const text = (this.turns.get(id) || '').trim();
+        this.turns.delete(id);
+        if (text) this.dm(text);
+        break;
+      }
+      default: break;
+    }
+  }
+
   // Every event Bob's window gets passes through here. Only Discord jobs' own events are used.
   watch(ev) {
+    if (ev?.sessionId === DM_SESSION) return this.watchDm(ev);
     const job = ev?.turnId && this.jobs.get(ev.turnId);
     if (!job || !String(ev.sessionId || '').startsWith(`${DISCORD_SESSION}-`)) return;
     const s = this.settings();
@@ -425,7 +570,8 @@ export class DiscordBridge {
 
 export function discordView(bridge) {
   const s = bridge.settings();
-  return { ...s, tokenEnv: TOKEN_ENV, tokenFound: Boolean(bridge.token()), status: bridge.status, botName: bridge.botName, jobTypes: JOB_TYPES.map(({ id, label }) => ({ id, label })) };
+  const pair = s.dmEnabled && !s.ownerId && bridge.pair && bridge.pair.until > bridge.now() ? bridge.pair : null;
+  return { ...s, paired: Boolean(s.ownerId), pairLocked: bridge.pairLocked, pairCode: pair?.code || '', tokenEnv: TOKEN_ENV, tokenFound: Boolean(bridge.token()), status: bridge.status, botName: bridge.botName, jobTypes: JOB_TYPES.map(({ id, label }) => ({ id, label })) };
 }
 
 export function startDiscord(brain, opts) {
@@ -443,6 +589,15 @@ export async function discordRoute({ req, res, p, isLocal, brain, body, send }) 
   if (!isLocal) { send(res, 403, { error: 'Discord can only be set up on this replicant matrix itself.' }); return true; }
   if (req.method === 'GET') { bridge.sync(); send(res, 200, discordView(bridge)); return true; }
   const b = await body(req);
+  if (b.forget) { saveDiscord(brain.cfg, { ownerId: undefined, ownerName: undefined, dmChannel: undefined }); bridge.pair = null; brain.log('settings', 'Discord account forgotten (your click)'); }
+  if (b.newCode) bridge.newPairCode();
+  if ('owner' in b) {
+    const id = String(b.owner ?? '').trim();
+    if (!ID_RX.test(id)) { send(res, 400, { error: 'Type your Discord user ID: only digits. In Discord, turn on Developer Mode, then right-click your name and Copy User ID.' }); return true; }
+    saveDiscord(brain.cfg, { ownerId: id, ownerName: `user ${id}`, dmChannel: undefined });
+    bridge.pair = null;
+    brain.log('settings', 'Discord account set by hand (user ID, your click)');
+  }
   if (typeof b.token === 'string' && b.token) {
     try { await bridge.saveToken(b.token); brain.log('settings', 'Discord bot token saved (your click)'); } catch (e) { send(res, 400, { error: e.message }); return true; }
   }
