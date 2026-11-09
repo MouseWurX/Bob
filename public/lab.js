@@ -9,7 +9,8 @@ import { createLearn } from './lab-learn.js';
 import { saveHtml, saveResult } from './lab-save.js'; // 1.5.153 Save
 import { createRecipes } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
 import { createForge } from './lab-forge.js'; // 1.5.158 the Forge tab
-import { createGuard, packGroups, guardPartsLine } from './lab-guard.js'; // 1.5.164 Guard rails sandbox and grouped packs
+import { createGuard, packGroups, guardPartsLine } from './lab-guard.js';
+import { createPro, modeSwitchHtml } from './lab-pro.js'; // 1.5.167 Simple / Professional // 1.5.164 Guard rails sandbox and grouped packs
 import { createSenses } from './lab-senses.js'; // Give it eyes / Give it ears, a card in the Forge tab
 import { createPlayground } from './lab-playground.js'; // 1.5.157 Playground: the quantization ladder
 import { createPeek } from './lab-peek.js'; // 1.5.164 Playground: Peek inside
@@ -39,7 +40,8 @@ export function createLab({ api, note }) {
   const r = { template: '', name: '', from: '', lessons: { kind: 'none', file: '', chunks: 200 }, smaller: { sight: false, hearing: false, cut: null, files: [], measure: false }, test: { compare: true } };
   const fg = createForge({ api, view: () => view, runs: () => runsHtml(), goMake: () => { tab = 'make'; draw(); $('lab-tab-make')?.focus(); } });
   document.addEventListener('lab-forge-ready', () => { if (tab === 'forge' && dlg.open) draw(); });
-  const gd = createGuard({ api }); // 1.5.164
+  const gd = createGuard({ api, isPro: () => view?.labMode === 'pro' }); // 1.5.164
+  const px = createPro({ api, view: () => view }); // 1.5.167
   const sn = createSenses({ api, draw: () => { if (tab === 'forge') draw(); } });
   // 1.5.164 Peek inside: Cut these out opens Make a brain, step 3, with the keep file; Send to the Forge opens the Forge tab (the file is in its keep-file list).
   const pk = createPeek({ api, view: () => view, cutWith: async ({ brain: id, file, experts }) => { r.from = id; const b = brain(); if (!r.name && b) r.name = `${b.name} Lab`; r.template = ''; r.smaller = { sight: false, hearing: false, cut: { how: 'file', file, keep: experts, cover: 0.95, strong: [] }, files: [], measure: false, try: false, tryStop: true }; tab = 'make'; step = 'smaller'; await replan(); $('lab-tab-make')?.focus(); }, toForge: () => { tab = 'forge'; fg.reload().then(() => draw()); draw(); $('lab-tab-forge')?.focus(); } });
@@ -301,7 +303,7 @@ export function createLab({ api, note }) {
       ${x.kind === 'write' && x.report ? `<br><span class="muted">${x.report.lessons} lessons written in ${x.report.minutes} minutes. Pick it in step 2, under A lesson set I wrote or built here.</span>` : ''}
       ${x.kind === 'build' && x.report ? `<br><span class="muted">${x.report.lessons} lessons built in ${x.report.minutes} minutes${x.report.held ? `, ${x.report.held} passages held back` : ''}. Pick it in step 2, under A lesson set I wrote or built here, or open it under Sets built from your files.</span>` : ''}
       ${x.kind === 'sample' && x.report ? `<br><span class="muted">${x.report.lessons} sample lessons in ${x.report.minutes} minutes${x.report.held ? `, ${x.report.held} passages held back` : ''}. They're under Build a new set from my files, in step 2.</span>` : ''}
-      ${x.kind === 'challenge' && x.report ? `<table class="lab-report"><caption class="muted">Challenges (out of 100)</caption><tr><th scope="col">Challenge</th><th scope="col">Score</th><th scope="col">Right</th></tr>${x.report.challenges.map((c) => `<tr><th scope="row">${esc(c.title)}</th><td>${c.score ?? '-'}</td><td>${c.skipped ? esc(c.skipped) : `${c.right} of ${c.of}`}${c.parts ? `<br><span class="muted">${esc(guardPartsLine(c.parts))}</span>` : ''}${c.note ? `<br><span class="muted">${esc(c.note)}</span>` : ''}</td></tr>`).join('')}</table>${saveHtml(x.id, saveState(x.id), view.hardware)}` : ''}
+      ${x.kind === 'challenge' && x.report ? `<table class="lab-report"><caption class="muted">Challenges (out of 100)</caption><tr><th scope="col">Challenge</th><th scope="col">Score</th><th scope="col">Right</th></tr>${x.report.challenges.map((c) => `<tr><th scope="row">${esc(c.title)}</th><td>${c.score ?? '-'}</td><td>${c.skipped ? esc(c.skipped) : `${c.right} of ${c.of}`}${c.parts ? `<br><span class="muted">${esc(guardPartsLine(c.parts))}</span>` : ''}${c.note ? `<br><span class="muted">${esc(c.note)}</span>` : ''}</td></tr>`).join('')}</table>${view.labMode === 'pro' ? px.reportExtraHtml(x) : ''}${saveHtml(x.id, saveState(x.id), view.hardware)}` : ''}
       ${x.report?.coverage ? `<table class="lab-report"><caption class="muted">Coverage cut: kept ${x.report.coverage.experts} of ${x.report.coverage.of} experts per layer</caption><tr><th scope="col">Skill</th><th scope="col">Kept, on average</th><th scope="col">Worst layer</th></tr>${x.report.coverage.skills.map((k) => `<tr><th scope="row">${esc(k.name)}</th><td>${k.average}%</td><td>${k.worst}% (layer ${k.worstLayer})</td></tr>`).join('')}</table>` : ''}
       ${homeReportHtml(x)}
       ${x.report?.tried && x.kind !== 'refusals-try' ? `<br><span class="muted">Tried first on Brain Engine: ${x.report.tried.masked} with only the kept experts, ${x.report.tried.full} with all of them.</span>` : ''}
@@ -363,11 +365,13 @@ export function createLab({ api, note }) {
       ${t.rows.map((r) => `<tr><th scope="row">${esc(r[0])}</th>${r.slice(1).map((c) => `<td>${esc(String(c))}</td>`).join('')}</tr>`).join('')}</table>
       ${saveHtml('board', saveState('board'), view.hardware)}`;
     return `<div id="lab-page-challenges" role="tabpanel" aria-labelledby="lab-tab-challenges">
+      ${modeSwitchHtml(view.labMode)}
       <p class="muted">Short tests, out of 100, for any brain on this replicant matrix. I ask every question at temperature 0 with thinking off, so the same brain gets the same score twice. The scores only mean something next to each other, here: they aren't the numbers you see in papers.</p>
       ${runsHtml()}
       <fieldset><legend>Which brain?</legend>${brains.length ? brains.map((b) => radio('chfrom', b.id, ch.from === b.id, `${b.name}${b.madeInLab ? ' (made in the Lab)' : ''}`, `${b.facts.sizeGB} GB. ${b.fit}`)).join('') : '<p>There are no brains here the Lab can run yet. Get one in Get models first.</p>'}</fieldset>
       ${packGroups(view.packs).map((grp) => `<fieldset><legend>${esc(grp.label)}</legend>${grp.packs.map((p) => `<label class="lab-opt"><input type="checkbox" data-pack="${esc(p.id)}" ${ch.packs.includes(p.id) ? 'checked' : ''}> <span><strong>${esc(p.title)}</strong> <span class="muted">· ${p.count} questions · about ${p.minutes} min on a 16 GB card</span><br><span class="muted">${esc(p.what)}</span></span></label>`).join('')}</fieldset>`).join('')}
       ${askUnload?.challenge ? `<div class="setup-offer" role="alert"><strong>Bob's brain is on the graphics card</strong><span>${esc(askUnload.join(', '))} is loaded. The challenges need the card, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-unload>Unload it and start</button><button type="button" class="link" data-nounload>Not now</button></div></div>` : ''}
+      ${view.labMode === 'pro' ? px.myPacksHtml(ch.packs) + px.settingsHtml() : ''}
       <div class="row"><button type="button" class="get" data-chgo ${ch.from && ch.packs.length && !busy ? '' : 'disabled'}>${busy ? 'The Lab is busy' : 'Run the challenges'}</button></div>
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
       <section class="lab-compare"><h3>Scoreboard</h3>${board}</section>
@@ -416,6 +420,7 @@ export function createLab({ api, note }) {
     { const f = await sn.change(el); if (f) { if (f === 'draw') { draw(); $(el.id)?.focus(); } return; } }
     { const f = await fg.change(el); if (f) { draw(); $(el.id)?.focus(); return; } }
     if (await pg.change(el)) return draw();
+    if (tab === 'challenges') { const r = await px.change(el); if (r === 'draw') { draw(); $(el.id)?.focus(); return; } if (r) return; } // 1.5.167
     if (tab === 'challenges' && gd.change(el)) return; // 1.5.164 the Guard rails sandbox keeps its own words
     if (el.name === 'chfrom') { ch.from = el.value; return draw(); }
     if (el.dataset.pack) { const k = el.dataset.pack; ch.packs = el.checked ? [...new Set([...ch.packs, k])] : ch.packs.filter((x) => x !== k); return draw(); }
@@ -476,6 +481,7 @@ export function createLab({ api, note }) {
   body.addEventListener('input', (e) => { // the slider and its number box move together
     if (pg.input(e.target)) return;
     if (gd.input(e.target)) return; // 1.5.164
+    if (px.input(e.target)) return; // 1.5.167
     if (fg.input(e.target, () => draw())) return; // 1.5.164
     if (e.target.id === 'lab-chunks') { const n = $('lab-chunks-n'); if (n) n.value = e.target.value; }
     if (e.target.id === 'lab-chunks-n') { const s = $('lab-chunks'); if (s) s.value = e.target.value; }
@@ -505,7 +511,7 @@ export function createLab({ api, note }) {
     }
     if ('chgo' in b.dataset || (askUnload?.challenge && 'unload' in b.dataset)) {
       try {
-        const res = await api('/api/lab/challenge', { challenge: { from: ch.from, packs: ch.packs }, unload: 'unload' in b.dataset });
+        const res = await api('/api/lab/challenge', { challenge: { from: ch.from, packs: ch.packs, ...(view.labMode === 'pro' ? { gen: px.gen() } : {}) }, unload: 'unload' in b.dataset });
         if (res.needUnload) { askUnload = Object.assign(res.names, { challenge: true }); return draw(); }
         askUnload = null;
       } catch (err) { msg = err.message; }
@@ -514,6 +520,8 @@ export function createLab({ api, note }) {
     { const f = await sn.click(b); if (f === 'draw') return draw(); if (f) return; }
     { const f = await fg.click(b); if (f === 'draw') return draw(); if (f) return; }
     { const p = await pg.click(b, load); if (p === 'draw') return draw(); if (p) return; }
+    if (b.dataset.labmode) { try { await api('/api/lab/mode', { mode: b.dataset.labmode }); } catch (err) { msg = err.message; } const m = b.dataset.labmode; await load(); draw(); body.querySelector(`[data-labmode="${m}"]`)?.focus(); return; } // 1.5.167 Simple / Professional
+    { const r = await px.click(b, load); if (r === 'draw') { const keep = b.id || ''; draw(); if (keep) $(keep)?.focus(); return; } if (r) return; }
     { const g = await gd.click(b); if (g === 'draw') { const f = b.dataset.guard; draw(); $(f === 'send' ? 'lab-guard-say' : f === 'open' ? 'lab-guard-system' : f === 'save' ? 'lab-guard-want' : 'lab-guard-h')?.focus(); return; } if (g) return; }
     if (await rc.click(b)) return;
     if (b.dataset.step) { step = b.dataset.step; return draw(); }
