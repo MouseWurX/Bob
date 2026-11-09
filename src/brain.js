@@ -1122,6 +1122,12 @@ export class Brain {
     if (!tool) return { text: `Error: there is no tool called ${name}.` };
     // 1.5.72: a job from another of your Bobs only thinks, searches and makes pictures, clips, music and sounds here.
     if (ctx?.job?.guest && !GUEST_TOOLS.has(name)) return { text: `Not for this job: it came from ${ctx.job.guest.from}, another Bob, so here I can only think, search the web and make pictures, clips, music and sounds. Say what's left for ${ctx.job.guest.from} to do himself.` };
+    // Bob on Discord (src/discord.js): only the job types the owner ticked, and never a reference picture (nothing the
+    // owner made can be edited, copied or described there).
+    if (ctx?.job?.guest?.public) {
+      if (!GUEST_TOOLS.has(name) || (ctx.job.guest.tools && !ctx.job.guest.tools.includes(name))) return { text: `Not for this job: that's switched off for ${ctx.job.guest.from}. Say so in one line.` };
+      if (args && typeof args === 'object') { args = { ...args }; delete args.reference; if (args.mode && args.mode !== 'new') delete args.mode; }
+    }
     if (!this.usable(name)) {
       if (WEB_TOOLS.includes(name) && !webOn(this.cfg)) return { text: ctx?.emit ? await this.offerSetup('web', ctx) : WEB_OFF }; // 1.5.91: the card, not a dead end
       const hand = Object.entries(HANDS).find(([, h]) => h.tools.includes(name))?.[0];
@@ -1552,6 +1558,7 @@ export class Brain {
     const who = this.cfg.userName || 'the user';
     const jobId = ctx?.job?.id || null;
     // A job from another of your Bobs: the card would land on the wrong replicant matrix, so just say it can't here.
+    if (ctx?.job?.guest?.public) return quiet ? '' : `Not here: this replicant matrix can't ${NEEDS[what]?.say || 'do that'} yet. Say so in one line.`;
     if (ctx?.job?.guest) return quiet ? '' : `Not here: this replicant matrix can't ${NEEDS[what]?.say || 'do that'} yet. Say so; ${ctx.job.guest.from} can do it or set it up there.`;
     // 1.5.104: one request, one card. A second offer for the same thing in the same turn (the tool, then Bob's own
     // offer_setup) shows nothing new.
@@ -2007,7 +2014,7 @@ export class Brain {
     }
     if (!model) throw new Error('I don\'t have a brain yet. Open Get models (in the menu on the left) and pick one; the first-time setup suggests the right one for this replicant matrix.');
     this.setState('thinking', '', this.state.model);
-    let earlier = await this.recall(sessionId, text);
+    let earlier = job?.guest?.public ? '' : await this.recall(sessionId, text); // Bob on Discord: nothing of the owner's
     // 1.5.79 How-tos (off by default): the one saved how-to that fits this request goes in for this turn, and the chat says so.
     if (howtosOn(this.cfg) && !again && !job?.guest) {
       let howto = null;
@@ -2083,14 +2090,15 @@ export class Brain {
         this.log('chat', 'one more go, with thinking on');
       }
       ctx.retrying = false;
-      const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: this.now(), memory: this.memory(), user: this.cfg.userName, backstory: this.backstory(), about: this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
+      const pub = Boolean(job?.guest?.public); // Bob on Discord: no memory, about-me or backstory of the owner's
+      const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: this.now(), memory: pub ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: pub ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
       let reply = null;
       // A lender keeps the start of the chat it read last time (its prompt cache), so what changes every turn (the time,
       // the Right now line, recalled bits) goes in a short note just before the latest message, not in the instructions.
       let lentMsgs = null, lentSize = 0;
       if (borrowing) {
         const who = this.cfg.userName || 'the user';
-        const lentSys = { role: 'system', content: this.withLimits(systemPrompt({ now: 'given in the note just before the latest message', memory: this.memory(), user: this.cfg.userName, backstory: this.backstory(), about: this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, who) }), ctx.loaded) };
+        const lentSys = { role: 'system', content: this.withLimits(systemPrompt({ now: 'given in the note just before the latest message', memory: pub ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: pub ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, who) }), ctx.loaded) };
         const hist = staleHandErrors(msgs, turnStart);
         const at = hist.findLastIndex((m) => m.role === 'user');
         const note = { role: 'system', content: `Current date and time for ${who}: ${this.now()}.${extras}${earlier ? `\n\n${earlier}` : ''}` };

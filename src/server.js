@@ -52,6 +52,7 @@ import { checkinsRoute, startCheckins } from './checkins.js';
 import { adventureRoute } from './adventure.js';
 import { gamesRoute } from './games.js';
 import { telegramRoute, startTelegram } from './telegram.js';
+import { discordRoute, startDiscord } from './discord.js';
 import { handsSettings } from './hands-settings.js';
 import { tuning, TUNING_KEYS, pictureFitReset } from './tuning.js';
 import { gatherFacts, tipsFrom } from './pc-check.js';
@@ -95,11 +96,13 @@ const clients = new Set();
 const mindClients = new Set();
 
 let telegram = null; // Talk to Bob on Telegram (src/telegram.js), set once Bob's brain is ready
+let discord = null; // Bob on Discord (src/discord.js), set once Bob's brain is ready
 function broadcast(ev) {
   if (ev?.type === 'think-start' && ev.model) ev = { ...ev, label: friendlyName(ev.model) }; // "Qwen 3.8 27B", not the raw tag
   const data = `data: ${JSON.stringify(ev)}\n\n`;
   for (const res of ev?.type === 'think' || ev?.type === 'think-start' ? mindClients : clients) res.write(data);
   try { telegram?.watch(ev); } catch {} // Talk to Bob on Telegram: only the Telegram chat's events, and only while it's on
+  try { discord?.watch(ev); } catch {} // Bob on Discord: only Discord jobs' own events
   if (ev?.type === 'pair-done') try { introductions.soon(); } catch {} // 1.5.123: a new Bob on the list meets the others
 }
 
@@ -142,6 +145,7 @@ shop.applyEquip().catch(() => {}); // anything finished while Bob was closed
 startSchedules(brain); // ticks once a minute; nothing is ever due while the Schedules hand is off
 startCheckins(brain); // 1.5.78: ticks once a minute; does nothing while Check-ins are off
 telegram = startTelegram(brain); // does nothing (no request at all) unless Talk to Bob on Telegram is on and a bot token is set
+discord = startDiscord(brain); // does nothing (no connection at all) unless Bob on Discord is on and a bot token is set
 if (!shop.found.at) shop.scan().catch(() => {});
 
 function workshopView() {
@@ -733,6 +737,7 @@ const server = http.createServer(async (req, res) => {
     if (p.startsWith('/api/adventure') && await adventureRoute({ req, res, p, isLocal, brain, body, send })) return; // 1.5.117 🎲 Adventure
     if (p.startsWith('/api/games') && await gamesRoute({ req, res, p, isLocal, brain, body, send })) return; // 1.5.121 🧩 Games
     if (p === '/api/telegram' && await telegramRoute({ req, res, p, isLocal, brain, body, send })) return;
+    if (p === '/api/discord' && await discordRoute({ req, res, p, isLocal, brain, body, send })) return;
     if (p.startsWith('/api/lab') && await labRoute({ req, res, p, isLocal, lab, body, send })) return; // 1.5.141 Computer Science Lab
     if (p.startsWith('/api/rent') && await rentRoute({ req, res, p, isLocal, brain, cfg, body, send })) return; // 1.5.127 rented brains
     if (p === '/api/hands/schedules' && await schedulesRoute({ req, res, p, isLocal, brain, body, send })) return;

@@ -35,6 +35,7 @@ const SECRET_KEY = /pass(code|word)?|token|secret|api[-_]?key|\bkey$|credential|
 // Values that look like a key or token, wherever they appear in text.
 const SECRET_VALUE = [
   /\b\d{8,10}:[A-Za-z0-9_-]{30,}\b/g, // Telegram bot token
+  /\b[A-Za-z0-9_-]{24,28}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,40}\b/g, // Discord bot token
   /\bsk-[A-Za-z0-9_-]{16,}\b/g, // OpenAI / Anthropic style keys
   /\bhf_[A-Za-z0-9]{16,}\b/g, // Hugging Face
   /\bAIza[0-9A-Za-z_-]{30,}\b/g, // Google
@@ -50,7 +51,7 @@ const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export function scrubber(cfg = {}, { env = process.env, home = os.homedir(), host = os.hostname(), user = (() => { try { return os.userInfo().username; } catch { return ''; } })() } = {}) {
   const names = [...new Set([cfg.callMe, cfg.userName, cfg.windowsName, user].map((x) => String(x || '').trim()).filter((x) => x.length >= 2))];
   const secrets = [cfg.remote?.passcode, ...(cfg.share?.borrow?.bobs || []).map((b) => b?.passcode), ...(cfg.telegram?.token ? [cfg.telegram.token] : [])]
-    .concat(['BOB_TELEGRAM_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'HF_TOKEN'].map((k) => env[k]))
+    .concat(['BOB_TELEGRAM_TOKEN', 'BOB_DISCORD_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'HF_TOKEN'].map((k) => env[k]))
     .map((x) => String(x || '').trim()).filter((x) => x.length >= 4);
   const homes = [home, home.split(path.sep).join('/'), home.split('/').join('\\')].filter((h) => h && h.length > 3);
   return (text) => {

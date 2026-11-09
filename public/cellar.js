@@ -11,6 +11,7 @@ import { handsSettingsHtml, mountHandsSettings } from './hands.js';
 import { quarantineSettingsHtml, mountQuarantineSettings } from './quarantine.js';
 import { phoneAccessHtml, mountPhoneAccess } from './phone-access.js';
 import { telegramHtml, mountTelegram } from './telegram.js';
+import { discordHtml, mountDiscord } from './discord.js';
 import { checkinsHtml, mountCheckins } from './checkins.js';
 import { adventureSettingsHtml, mountAdventureSettings } from './adventure.js';
 import { gamesSettingsHtml, mountGamesSettings } from './games.js';
@@ -815,7 +816,8 @@ export function createCellar() {
           <label class="switch"><input type="checkbox" data-cloud="${esc(c.id)}" ${c.enabled ? 'checked' : ''} ${c.keyFound ? '' : 'disabled'}><span><strong>${esc(c.name)}</strong><br><span class="muted">${c.keyFound ? `Key found (${esc(c.apiKeyEnv)})` : `No key yet. Add a user variable named ${esc(c.apiKeyEnv)}.`}</span></span></label>
           ${c.models.length ? `<select data-cloudmodel="${esc(c.id)}" aria-label="${esc(c.name)} model" ${c.keyFound ? '' : 'disabled'}>${c.models.map((m) => `<option ${m === c.model ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>` : `<input data-cloudmodel="${esc(c.id)}" aria-label="${esc(c.name)} model" placeholder="model name" value="${esc(c.model)}" ${c.keyFound ? '' : 'disabled'}>`}
         </div>`).join('')}</div>
-      ${telegramHtml()}`;
+      ${telegramHtml()}
+      ${discordHtml()}`;
   }
   function bobNetHtml() {
     return `<h4 class="ssub">This Bob</h4>
@@ -852,7 +854,7 @@ export function createCellar() {
     ['speed', '⚡ Speed & memory', 'speed memory free memory quiet keep alive unload idle graphics card quick answers processor pictures without waiting ready while you type games go first picture settings gaming graphics card borrow automatic never always remember only what fits memory banks recall speed test', () => speedMemoryHtml()],
     ['engines', '⚙ Engines', 'engine ollama llama.cpp downloads newer build tested build fit to free graphics memory speculative decoding draft flags threads batch', () => enginesHtml()],
     ['bobnet', '🌐 Bob-Net', 'bob-net bobnet phone android tailscale address passcode firewall let my phone in let my other replicant matrices in other bobs share brains lend borrow take jobs send jobs', () => bobNetHtml()],
-    ['online', '☁ Online services', 'online internet cloud helpers api key anthropic openai gemini openrouter telegram bot token pairing rented brains rent hire runpod vast lambda together spending cap limit machine', () => onlineHtml()],
+    ['online', '☁ Online services', 'online internet cloud helpers api key anthropic openai gemini openrouter telegram discord bot token pairing wake phrase rented brains rent hire runpod vast lambda together spending cap limit machine', () => onlineHtml()],
     ['apps', '🔌 Other apps', 'other apps comfyui workflows port unreal blender mcp', () => otherAppsHtml()],
     ['hands', '✋ Hands', 'files run commands schedules apps permission quarantine reviewer', () => handsSettingsHtml() + quarantineSettingsHtml()],
     ['housekeeping', '🧹 Housekeeping', 'tidy old chats pictures logs', () => housekeepingHtml()],
@@ -963,6 +965,7 @@ export function createCellar() {
     mountQuarantineSettings(dlg.querySelector('.q-box'));
     mountPhoneAccess(dlg.querySelector('.phone-box')); // Bob-Net, This Bob: Let my other replicant matrices in
     mountTelegram(dlg.querySelector('.telegram-box')); // Online services: Talk to Bob on Telegram
+    mountDiscord(dlg.querySelector('.discord-box')); // Online services: Bob on Discord
     mountCheckins(dlg.querySelector('.checkins-box')); // 1.5.78 Check-ins
     mountAdventureSettings(dlg.querySelector('.adventure-box'), { api, settings }); // 1.5.117 🎲 Adventure
     mountGamesSettings(dlg.querySelector('.games-box'), { api, settings }); // 1.5.121 🧩 Games
