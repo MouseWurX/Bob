@@ -9,6 +9,7 @@
 #     checksum to it. Nothing here touches the Windows build.
 #
 # Every action is pinned to a full commit SHA (the tag is in the comment). `npm run check:release` fails if one isn't.
+# Bob's files are in app/, so every step runs there (defaults below) and the AppImages are in app/dist.
 name: Linux
 
 on:
@@ -44,6 +45,9 @@ jobs:
             runner: ubuntu-24.04-arm
     name: AppImage (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: app
     permissions:
       contents: write # only used by "Add to the GitHub release", on main and version tags
     steps:
@@ -118,8 +122,8 @@ jobs:
         with:
           name: Bob-${{ github.ref_name == 'main' && 'main' || github.sha }}-linux-${{ matrix.name }}
           path: |
-            dist/Bob-*-linux-*.AppImage
-            dist/Bob-*-linux-*.AppImage.sha256
+            app/dist/Bob-*-linux-*.AppImage
+            app/dist/Bob-*-linux-*.AppImage.sha256
           if-no-files-found: error
       - name: Add to the GitHub release
         # The Windows job (build.yml) makes release vX.Y.Z; this waits for it (up to 30 minutes) and adds the AppImage.
