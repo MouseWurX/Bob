@@ -4,6 +4,10 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.176
+
+- **Bob's main screen always fits the window.** The page itself no longer scrolls down into empty space below the three panels, at any window size or screen scale. Only the parts that should scroll still do: the chat, Bob's thinking, the task queue, Now running, the menu and any page you open. Thanks to the owner for spotting it.
+
 ## 1.5.174
 
 Behind the scenes: Bob's GitHub page is tidier.
