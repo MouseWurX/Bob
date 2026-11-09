@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { classify, listFiles, chunk, stripHtml, parseChatGpt, parseClaude, parseTranscript, parseBob, parseChat, readFile, words } from '../src/lab-build-read.js';
+import { classify, listFiles, chunk, stripHtml, parseChatGpt, parseClaude, parseTranscript, parseBob, parseChat, readFile, words, isProse } from '../src/lab-build-read.js';
 import { heldBack, scrub, survey, wouldLearn, fingerprint } from '../src/lab-build-scan.js';
 import { KINDS, KIND_IDS, SAMPLE_COUNT, gatherIdeas, pickSample, makeLessons, build } from '../src/lab-build.js';
 import { Lab, cleanBuild, skillFromPath, lessonSets, lessonSkillNames, lessonCard, labRoute, BUILD_DEFAULT } from '../src/lab.js';
@@ -67,8 +67,15 @@ const sc = scrub(`Mail ${MAIL}, the box at ${LAN} and ${HOME}, key ${KEY}`, { us
 check('the scrub swaps every hit for a stand-in and says what it changed', sc.text === `Mail ${['you', 'example.com'].join('@')}, the box at ${[192, 168, 0, 10].join('.')} and /home/you/Notes, key [key removed]` && sc.changes.length === 4, sc.text);
 check('fingerprints ignore case and spacing', fingerprint('Hello  World') === fingerprint('hello world'));
 
+// A quantize log, like the one the first PC run turned into "voice" lessons: read, never the owner's voice.
+const logLine = (i) => `[ ${i}/ 733] blk.${i}.ffn_gate_inp.weight - [ 2048, 512, 208, 1], type = bf16, converting to q3_K .. size = 416.00 MiB -> 89.38 MiB`;
+const logFile = W('Logs/pod-log.txt', Array.from({ length: 60 }, (_, i) => logLine(i)).join('\n'));
+const rlog = await readFile(logFile);
+check('a log is not prose: its passages are marked, a note is', rlog.passages.length >= 1 && rlog.passages.every((p) => p.prose === false) && rtxt.passages.every((p) => p.prose === true) && !isProse('1 2 3 4 5 6 7 8 9 10') && isProse('The bench is oak, four feet long, and it took me a weekend to glue up the top before the legs went on.'));
+
 // ---- the survey ----
 const items = [
+  { path: logFile, skill: 'Logs', read: rlog },
   { path: path.join(notes, 'oak-bench.md'), skill: 'Woodworking', read: rtxt },
   { path: path.join(notes, 'oak-bench.md'), skill: 'Woodworking', read: { ...rtxt, name: 'copy.md' } },
   { path: path.join(notes, 'short.txt'), skill: 'Woodworking', read: await readFile(path.join(notes, 'short.txt')) },
@@ -76,8 +83,8 @@ const items = [
   { path: chatFile, skill: 'Chats', read: rf }
 ];
 const sv = survey(items, { user: 'sam' });
-check('the survey counts files, passages, exchanges, skips, repeats and held-back passages per skill', sv.files === 5 && sv.skipped.length === 1 && sv.dupes === rtxt.passages.length && sv.held.length === 1 && sv.held[0].why.includes('password') && sv.perSkill.Letters.held === 1 && sv.exchanges === 2 && sv.otherPeople, JSON.stringify({ d: sv.dupes, h: sv.held, s: sv.skipped }));
-check('the supply says how many lessons each kind can give', sv.supply.material === sv.passages * 2 && sv.supply.voice === sv.passages && sv.supply.chats === 2);
+check('the survey counts files, passages, exchanges, skips, repeats and held-back passages per skill', sv.files === 6 && sv.skipped.length === 1 && sv.dupes === rtxt.passages.length && sv.held.length === 1 && sv.held[0].why.includes('password') && sv.perSkill.Letters.held === 1 && sv.exchanges === 2 && sv.otherPeople, JSON.stringify({ d: sv.dupes, h: sv.held, s: sv.skipped }));
+check('the supply says how many lessons each kind can give; a log counts for reading, not for voice', sv.notProse === rlog.passages.length && sv.supply.material === sv.passages * 2 && sv.supply.voice === sv.passages - rlog.passages.length && sv.supply.chats === 2, JSON.stringify(sv.supply));
 const wl = wouldLearn(sv, ['material', 'chats'], 300, ['Woodworking', 'Chats']);
 check('what the brain would learn is built from the counts and ends with the honest line', /working with your material/.test(wl) && /past conversations/.test(wl) && !/writing in your voice/.test(wl) && /not learn the facts/.test(wl), wl);
 
@@ -107,10 +114,10 @@ check('my past conversations: re-said in Bob\'s voice, or kept word for word whe
 check('the re-say prompt carries the other answer and Bob\'s own instructions', calls.some((c) => c.last.content === 'How do I sand oak?' ));
 
 // ---- ideas, the sample and the whole build ----
-const job = { url: 'x', dir: path.join(tmp, 'set'), items: [{ path: path.join(notes, 'oak-bench.md'), skill: 'Woodworking' }, { path: path.join(tmp, 'Letters', 'secret.txt'), skill: 'Letters' }, { path: chatFile, skill: 'Chats' }], kinds: ['material', 'voice', 'chats'], count: 300, think: 'half', resay: true, user: 'sam', office: null, feedback: {} };
+const job = { url: 'x', dir: path.join(tmp, 'set'), items: [{ path: path.join(notes, 'oak-bench.md'), skill: 'Woodworking' }, { path: path.join(tmp, 'Letters', 'secret.txt'), skill: 'Letters' }, { path: chatFile, skill: 'Chats' }, { path: logFile, skill: 'Logs' }], kinds: ['material', 'voice', 'chats'], count: 300, think: 'half', resay: true, user: 'sam', office: null, feedback: {} };
 const gi = await gatherIdeas(job);
-check('ideas come from every passage and exchange, held-back ones left out and counted', gi.ideas.filter((i) => i.kind === 'material').length === rtxt.passages.length && gi.ideas.filter((i) => i.kind === 'voice').length === rtxt.passages.length && gi.ideas.filter((i) => i.kind === 'chats').length === 2 && gi.held === 1 && gi.files.length === 3);
-check('feedback leaves a file out, or one kind for one file, before the teacher sees it', (await gatherIdeas({ ...job, feedback: { dropFiles: ['oak-bench.md'] } })).ideas.every((i) => i.kind === 'chats') && (await gatherIdeas({ ...job, feedback: { notKinds: { 'oak-bench.md': ['voice'] } } })).ideas.every((i) => i.kind !== 'voice'));
+check('ideas come from every passage and exchange, held-back ones left out and counted; a log gives no voice ideas', gi.ideas.filter((i) => i.kind === 'material').length === rtxt.passages.length + rlog.passages.length && gi.ideas.filter((i) => i.kind === 'voice').length === rtxt.passages.length && gi.ideas.filter((i) => i.kind === 'chats').length === 2 && gi.held === 1 && gi.files.length === 4);
+check('feedback leaves a file out, or one kind for one file, before the teacher sees it', (await gatherIdeas({ ...job, feedback: { dropFiles: ['oak-bench.md', 'pod-log.txt'] } })).ideas.every((i) => i.kind === 'chats') && (await gatherIdeas({ ...job, feedback: { notKinds: { 'oak-bench.md': ['voice'] } } })).ideas.every((i) => i.kind !== 'voice'));
 const sm = pickSample(gi.ideas, 4);
 check('the sample is spread over the kinds', sm.length === 4 && new Set(sm.map((i) => i.kind)).size === 3);
 const sres = await build({ ...job, sample: true }, { kit, chatFn: fakeChat });

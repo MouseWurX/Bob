@@ -27,6 +27,7 @@ import { createGameLock } from './game-lock.js';
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
 import { createEffort } from './effort.js';
 import { createCatAntics } from './cat-antics.js';
+import { createBubbles } from './say-bubbles.js';
 import { createBobLife } from './bob-life.js';
 import { createViewer, outCard, fillPeeks } from './viewer.js';
 import { songListHtml, wireSongs } from './song-player.js';
@@ -54,7 +55,8 @@ const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button
 const qBanner = createQuarantineBanner({ note: (t, k) => note(t, k) });
 const effort = createEffort();
-const catAntics = createCatAntics({ onAntic: () => life.react('cat'), sleepy: () => life.dozing });
+const bubbles = createBubbles();
+const catAntics = createCatAntics({ onAntic: () => life.react('cat'), sleepy: () => life.dozing, bubbles });
 const viewer = createViewer({ post: (u, d) => post(u, d), note: (t, k) => note(t, k) });
 // 1.5.95: diagrams get drawn and the Save as rows work, anywhere in the chat (save-as.js).
 setupSaveAs({ offer: (ev) => onEvent(ev), note: (t, k) => note(t, k), made: (items) => viewer.made(items) });
@@ -223,7 +225,12 @@ sessionSel.onchange = () => switchSession(sessionSel.value);
 function setStatus(s) {
   if (s.session && sessionSel.value !== s.session.id) drawSessions(null, s.session);
   statusEl.className = `status ${s.state}`;
-  statusEl.textContent = s.detail || STATUS_TEXT[s.state] || s.state;
+  // The line under his name is the short state word; the work details (Painting with Maestro: loading...) go in
+  // Bob's thinking (mind-view.js logs each new one), and the full line is on the tooltip. Word bubbles are only for
+  // personality lines (the cat's antics), never for status, so nothing shows twice.
+  const said = STATUS_TEXT[s.state] || s.detail || s.state;
+  statusEl.textContent = said;
+  statusEl.title = s.detail ? `${said} ${s.detail}` : said;
   catAntics.idle(s.state === 'idle');
   life.state(s.state);
   document.title = s.state === 'idle' ? 'Bob' : `Bob · ${STATUS_TEXT[s.state] || s.state}`;
@@ -347,12 +354,12 @@ const topicsPage = createTopics({ api, openChat: (id, msgId) => openChat(id, msg
 const tidyPage = createTidy({ api, onCount: (n) => countBadge($('tidyBtn'), n) });
 $('topicsBtn').onclick = () => topicsPage.open();
 $('tidyBtn').onclick = () => tidyPage.open();
-// 1.5.141: 🧪 Lab in the left pane, only while Show the Computer Science Lab is on.
+// 1.5.141: 🧪 Lab in the left pane while Show the Computer Science Lab is on (1.5.172: on unless switched off).
 const labPage = createLab({ api, note: (t) => note(t) });
 $('labBtn').onclick = () => labPage.open();
 const showLab = (on) => { $('labBtn').hidden = !on; };
 window.addEventListener('bob-lab-switch', (e) => showLab(e.detail?.on === true));
-fetch('/api/settings').then((r) => r.json()).then((st) => showLab(st.computerLab === true)).catch(() => {});
+fetch('/api/settings').then((r) => r.json()).then((st) => showLab(st.computerLab !== false)).catch(() => {});
 const adventurePage = createAdventure({ api }); // 1.5.117 🎲 Adventure
 $('adventureBtn').onclick = () => adventurePage.open();
 const gamesPage = createGames({ api }); // 1.5.121 🧩 Games
@@ -690,6 +697,7 @@ function onEvent(ev) {
       break;
     }
     case 'lab': labPage.update(ev.run); break; // 1.5.141
+    case 'lab-full': labPage.fullUpdate(ev.full); break; // Bring in a full-size brain
     case 'lab-done': note(ev.ok ? `🧪 The Lab finished ${ev.name}${ev.score != null ? `: ${ev.score} out of 100 on the Lab test` : ''}. Open the Lab to see the report.` : `🧪 The Lab stopped on ${ev.name}: ${ev.error}`); break;
     case 'tidy-done':
       topicsPage.refresh();

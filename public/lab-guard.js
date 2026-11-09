@@ -6,6 +6,17 @@
 import { esc } from './rich.js';
 
 // The packs in two groups for the Challenges list: the first eight, then the rest.
+// 1.5.171 "about 2 min on a 16 GB card" was the same line for everyone. The packs' minutes are a rough guess on a 16 GB
+// card; when the Lab knows this replicant matrix's card, the line names it and scales the guess (a smaller card spills
+// onto the processor and slows down; a bigger one is only a little quicker). No card known: the plain 16 GB line.
+// On a Mac the memory is shared with the rest of the machine, so it isn't "your card": the line says so, like Teach it.
+export function packMinutesLine(minutes, cardGB = 0, shared = false) {
+  const m = Math.max(1, Number(minutes) || 1), gb = Number(cardGB) || 0;
+  if (!gb) return `about ${m} min on a 16 GB card`;
+  const scale = Math.min(3, Math.max(0.75, 16 / gb)), n = Math.max(1, Math.ceil(m * scale));
+  return shared ? `about ${n} min with your ${gb} GB of shared memory` : `about ${n} min on your ${gb} GB card`;
+}
+
 export function packGroups(packs = []) {
   const first = packs.filter((p) => p.group !== 'more'), more = packs.filter((p) => p.group === 'more');
   return [{ id: 'first', label: 'The first challenges', packs: first }, ...(more.length ? [{ id: 'more', label: 'More challenges', packs: more }] : [])];

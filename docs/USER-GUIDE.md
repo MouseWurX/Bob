@@ -409,7 +409,7 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 
 ## 11. The Computer Science Lab (off unless you turn it on)
 
-Bob is an assistant you use every day and a workbench for the brains he runs on, in one window. Turn on **Show the Computer Science Lab** (Settings, How Bob works, Brains) and **🧪 Lab** appears in the menu. It walks you through five steps with checkboxes instead of command-line flags:
+Bob is an assistant you use every day and a workbench for the brains he runs on, in one window. **🧪 Lab** is in the menu from the start (turn off **Show the Computer Science Lab** in Settings, How Bob works, Brains, if you'd rather not see it). It walks you through five steps with checkboxes instead of command-line flags:
 
 1. **Pick a brain** you already have.
 2. **Lessons**: use a lesson set you have, or write a new one with a teacher brain on this replicant matrix.

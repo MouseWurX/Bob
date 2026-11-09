@@ -11,11 +11,12 @@
   <link rel="stylesheet" href="/mind.css">
 </head>
 <body>
+  <div id="bubbles" class="bubbles" aria-hidden="true"><div id="bobBubble" class="say-bubble bob-say" hidden><span class="bubble-text"></span><button type="button" class="bubble-x" tabindex="-1" title="Close (Esc)">✕</button></div><div id="catBubble" class="say-bubble cat-say" hidden><span class="bubble-text"></span><button type="button" class="bubble-x" tabindex="-1" title="Close (Esc)">✕</button></div></div>
   <div class="app">
   <nav id="side" class="side" aria-label="Bob's menu">
     <div class="side-top">
       <div class="bob-wrap"><canvas id="bob" width="56" height="56" aria-label="Bob"></canvas><span id="cat" class="cat" aria-hidden="true">🐈</span><span id="bobProp" class="bob-prop" aria-hidden="true" hidden></span></div>
-      <div class="who"><div class="name">Bob</div><div id="status" class="status" role="status">Getting the fire going...</div><div id="catLine" class="cat-line" aria-hidden="true" hidden></div></div>
+      <div class="who"><div class="name">Bob</div><div id="status" class="status" role="status">Getting the fire going...</div></div>
       <button id="foldLeft" type="button" class="fold" title="Fold the menu (Ctrl+B)" aria-label="Fold the menu" aria-expanded="true"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 6l-6 6 6 6"/></svg></button>
     </div>
     <button id="newchat" type="button" class="nav-new" title="Start a new conversation" aria-label="New chat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg><span class="lbl">New chat</span><span class="short" aria-hidden="true">New</span></button>

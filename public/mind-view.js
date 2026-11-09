@@ -70,7 +70,14 @@ export function createMindView(els) {
 
   function onEvent(ev) {
     switch (ev.type) {
-      case 'status': status = ev; drawHead(); refreshBrains(); return;
+      case 'status': {
+        // Each new work detail (Loading a brain, Painting with Maestro: warming the card...) gets a line here; this is
+        // where those words live now, not under Bob's name or in a word bubble. A counter ticking (Painting 3/30) isn't new.
+        const was = String(status?.detail || '').replace(/\d+/g, '#'), now = String(ev.detail || '');
+        status = ev; drawHead(); refreshBrains();
+        if (now && now.replace(/\d+/g, '#') !== was) line(`⚙ ${esc(now)}`, 'mind-step');
+        return;
+      }
       case 'brain': refreshBrains(); return;
       case 'start': who = 'bob'; line('New message', 'mind-turn'); return;
       case 'think-start': thinkBlock(ev); return;

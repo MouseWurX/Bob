@@ -13,6 +13,7 @@ import crypto from 'node:crypto';
 import http from 'node:http';
 import { LESSON_SKILLS } from '../src/lab-skills.js';
 import { QUIZ, TOOLS, runQuiz } from '../src/lab-test.js';
+import { mergeSettings } from '../src/config.js';
 import { PACKS, PACK_IDS, REASONING, SUMS, RULES, PICK_TOOL, CODE, letterOf, numberOf, codeOf, codeTool, runPack, mergeScores, scoreboard, classOf, classBoard, CLASSES, PACK_VERSION } from '../src/lab-challenges.js';
 import { runSandboxed } from '../src/selftools.js';
 import { METHODS, LEFT_OUT, scrub, makeForgePlan, rungFieldsOk } from '../src/lab-forge.js';
@@ -169,7 +170,7 @@ check('the CSV has a header row and the difference', /^Field,A,B,Difference\r\n/
 check('the file hash is read in pieces and matches', await sha256File(brainFile) === crypto.createHash('sha256').update(fs.readFileSync(brainFile)).digest('hex'));
 
 // ---- the switch ----
-check('the Lab is off unless turned on', !labOn({}) && !labOn({ computerLab: 'yes' }) && labOn({ computerLab: true }));
+check('the Lab is on unless turned off (1.5.172)', labOn({}) && labOn({ computerLab: 'yes' }) && labOn({ computerLab: true }) && !labOn({ computerLab: false }));
 check('a small replicant matrix gets a reason, not the Lab', !labRoom(8 * 1024 ** 3).ok && /Bob-Net/.test(labRoom(8 * 1024 ** 3).why) && labRoom(32 * 1024 ** 3).ok);
 
 // ---- the whole job, fake steps ----
@@ -749,7 +750,8 @@ check('the quiz tools are made up, not Bob\'s real ones', TOOLS.every((t) => !/h
 // ---- words and wiring ----
 const html = read('public/index.html'), app = read('public/app.js'), cellar = read('public/cellar.js'), page = read('public/lab.js'), help = read('public/help-content.js'), inv = read('docs/SETTINGS-INVENTORY.md');
 check('the Lab button is in the left pane, hidden until the switch is on', /id="labBtn"[^>]*hidden/.test(html) && /labBtn/.test(app));
-check('the switch is under How Bob works, Brains, off unless turned on', /sswitch\('computerLab', settings\.computerLab === true, 'Show the Computer Science Lab'/.test(cellar) && /Off unless you turn it on/.test(cellar.split("sswitch('computerLab'")[1].slice(0, 600)));
+check('the switch is under How Bob works, Brains, on unless turned off', /sswitch\('computerLab', settings\.computerLab !== false, 'Show the Computer Science Lab'/.test(cellar) && /On unless you turn it off/.test(cellar.split("sswitch('computerLab'")[1].slice(0, 600)));
+check('a saved setting is cleaned so only false turns the Lab off', (() => { const a = {}, b = {}, c = {}; mergeSettings(a, { computerLab: false }); mergeSettings(b, { computerLab: 'yes' }); mergeSettings(c, { computerLab: true }); return a.computerLab === false && b.computerLab === true && c.computerLab === true; })());
 check('a small replicant matrix sees the switch greyed out with the reason', /computerLabRoom/.test(cellar));
 check('the page uses real radio buttons and checkboxes with labels', /type="radio"/.test(page) && /type="checkbox"/.test(page) && /<label/.test(page));
 check('the page has the template picker, Measure and Compare with real header cells', /Start from a template/.test(page) && /Measure before making the running files/.test(page) && /Save as CSV/.test(page) && /Save as JSON/.test(page) && /<th scope="col">Difference<\/th>/.test(page));
@@ -1110,6 +1112,116 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   check('a Simple run still goes on the scoreboard', pLab.scores().length === 1 && pLab.runs.at(-1).report.ranked === true);
   check('the page gets the mode, the settings and your packs, never their questions', pLab.view().mode === 'simple' && pLab.view().pro.gen.temperature === 0 && Array.isArray(pLab.view().myPacks) && pLab.view().myPacks.every((m) => !m.items));
   check('your packs and the log are for this replicant matrix itself', ["'/api/lab/mypack/import'", "'/api/lab/challenge/log'"].every((k) => read('src/lab.js').indexOf(k) > read('src/lab.js').indexOf('Lab jobs can only be started on this replicant matrix itself')));
+}
+// 1.5.171 the challenge line names the viewer's own card
+{
+  const { packMinutesLine } = await import('../public/lab-guard.js');
+  check('no card known: the plain 16 GB line', packMinutesLine(2, 0) === 'about 2 min on a 16 GB card');
+  check('a 16 GB card is named, same minutes', packMinutesLine(2, 16) === 'about 2 min on your 16 GB card');
+  check('a small card gets a longer guess, a big card a little shorter, never under a minute', packMinutesLine(2, 6) === 'about 6 min on your 6 GB card' && packMinutesLine(2, 24) === 'about 2 min on your 24 GB card' && packMinutesLine(1, 48) === 'about 1 min on your 48 GB card');
+  check('a Mac says shared memory, not "your card"', packMinutesLine(2, 32, true) === 'about 2 min with your 32 GB of shared memory');
+  check('the Lab says whether its memory is shared, from the test machine, never the tester\'s', (() => { const l = new Lab({ ...cfg }, { shop, room: big }); l.platform = () => ({ os: 'mac', arch: 'arm64' }); const m = l.view().sharedMemory; l.platform = () => ({ os: 'win', arch: 'x64' }); return m === true && l.view().sharedMemory === false; })());
+  check('the Challenges tab uses it with the view\'s card', /packMinutesLine\(p\.minutes, view\.cardGB, view\.sharedMemory\)/.test(read('public/lab.js')) && !/min on a 16 GB card<\/span>/.test(read('public/lab.js')));
+}
+
+// ---- Bring in a full-size brain (own brains in the Lab, the look-up, the download into the Lab's folder, the words)
+{
+  const FS = await import('../src/lab-fullsize.js');
+  const { exportLoraPath } = await import('../src/lab-teach.js');
+  const fdir = path.join(tmp, 'full'); fs.mkdirSync(path.join(fdir, 'data'), { recursive: true });
+  const fcfg = { ...cfg, dataDir: path.join(fdir, 'data'), bobModelsDir: path.join(fdir, 'models'), settingsFile: path.join(fdir, 'data', 'settings.json'), ownModels: [] };
+  const aFile = path.join(fdir, 'own-brain-F16.gguf');
+  fs.copyFileSync(path.join(tmp, 'home', 'a.gguf'), aFile);
+  const fshop = { cfg: fcfg, catalog: { models: [] }, locate: () => ({}) };
+  const events = [];
+  const flab = new Lab(fcfg, { shop: fshop, room: big, broadcast: (e) => events.push(e) });
+  check('with no own brains the Lab list is empty', flab.brains().length === 0);
+  const added = FS.fullSize(flab).add(aFile, 'My own F16');
+  check('a file on this replicant matrix joins Bob\'s list under Your own brains, and the Lab sees it', !added.already && fcfg.ownModels.length === 1 && fcfg.ownModels[0].gguf === aFile && flab.brains().some((b) => b.id === added.added.id && b.own && b.family === 'Your own' && b.gguf === aFile));
+  check('the Lab\'s view shows it full size, so the home ways can start from it', flab.view().brains.find((b) => b.id === added.added.id)?.facts?.fullSize === true);
+  check('adding it twice says so instead of doubling', FS.fullSize(flab).add(aFile, 'Again').already === true && fcfg.ownModels.length === 1);
+  check('a note beside the file says where it came from', fs.existsSync(aFile.replace(/\.gguf$/, '.from.json')));
+  // the look-up, with a fake Hugging Face
+  const hfJson = { cardData: { license: 'apache-2.0' }, siblings: [{ rfilename: 'Qwen3-1.7B-BF16.gguf', size: 3.4e9 }, { rfilename: 'Qwen3-1.7B-Q4_K_M.gguf', size: 1.1e9 }, { rfilename: 'mmproj-F16.gguf', size: 8e8 }, { rfilename: 'big/Big-F16-00001-of-00002.gguf', size: 9e9 }, { rfilename: 'big/Big-F16-00002-of-00002.gguf', size: 9e9 }, { rfilename: 'README.md', size: 10 }] };
+  const fakeFetch = async (url) => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => (/\?blobs=true$/.test(url) ? hfJson : {}) });
+  const lk = await FS.lookFullSize('unsloth/Qwen3-1.7B-GGUF', { fetchFn: fakeFetch, token: '' });
+  check('a Hugging Face repo lists only its full-size files, with sizes, the picture reader left out', lk.ok && lk.license === 'apache-2.0' && lk.files.length === 2 && lk.files[0].file === 'Qwen3-1.7B-BF16.gguf' && lk.files[0].gb === 3.4 && /Fits/.test(lk.files[0].fits) && lk.running === 1, JSON.stringify(lk.files));
+  check('a split file is one line with the whole size and its parts', lk.files[1].parts === 2 && lk.files[1].gb === 18 && /Too big for the Lab/.test(lk.files[1].fits));
+  const lk2 = await FS.lookFullSize('https://huggingface.co/someone/OnlyQ4-GGUF', { fetchFn: async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ siblings: [{ rfilename: 'x-Q4_K_M.gguf', size: 1 }] }) }), token: '' });
+  check('a repo with only running files says so in words', lk2.ok && lk2.files.length === 0 && /only running files/.test(lk2.warn) && /No licence/.test(lk2.note));
+  const lk3 = await FS.lookFullSize('nonsense here', {}); check('nonsense is refused in words', !lk3.ok && /Hugging Face name/.test(lk3.error));
+  const lk4 = await FS.lookFullSize(aFile, {}); check('a file here is looked at without a download', lk4.ok && lk4.kind === 'file' && lk4.files[0].full === true && lk4.path === aFile);
+  check('a running file here gets a warning, not a refusal', (await FS.lookFullSize(path.join(fdir, 'nope-Q4_K_M.gguf'), {})).ok === false && FS.FULL_FILE.test('a-BF16.gguf') && !FS.FULL_FILE.test('a-Q4_K_M.gguf') && FS.FULL_FILE.test('Qwen3-4B-F16-00001-of-00002.gguf'));
+  // the download, from a fake file store that honours Range
+  const bytes = fs.readFileSync(aFile);
+  let starts = 0;
+  const srv = http.createServer((req, res) => {
+    starts++;
+    const m = /^bytes=(\d+)-$/.exec(req.headers.range || '');
+    if (m) { const from = Number(m[1]); res.writeHead(206, { 'content-range': `bytes ${from}-${bytes.length - 1}/${bytes.length}`, 'content-length': bytes.length - from }); res.end(bytes.subarray(from)); }
+    else { res.writeHead(200, { 'content-length': bytes.length }); res.end(bytes); }
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const port = srv.address().port;
+  const repoFetch = async (url, opts = {}) => {
+    if (/\?blobs=true$/.test(url)) return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ cardData: { license: 'mit' }, siblings: [{ rfilename: 'Tiny-F16.gguf', size: bytes.length }] }) };
+    if (/huggingface\.co\/.*\/resolve\//.test(url)) return { status: 302, ok: false, headers: { get: (k) => (k === 'location' ? `https://127.0.0.1:${port}/Tiny-F16.gguf` : null) } };
+    // the file store: plain http in the test, so swap the scheme back
+    return fetch(url.replace('https://', 'http://'), opts);
+  };
+  const fl2 = fullSizeLab();
+  function fullSizeLab() { const c = { ...fcfg, ownModels: [], settingsFile: path.join(fdir, 'data', 'settings2.json'), bobModelsDir: path.join(fdir, 'models2') }; const l = new Lab(c, { shop: { cfg: c, catalog: { models: [] }, locate: () => ({}) }, room: big, broadcast: (e) => events.push(e) }); l.fullDeps = { fetchFn: repoFetch, token: '' }; return l; }
+  const started = await FS.fullSize(fl2).start({ input: 'maker/Tiny-GGUF', file: 'Tiny-F16.gguf' }, fl2.fullDeps);
+  check('the download starts right away and says what is coming', started.state === 'downloading' && started.name === 'Tiny-GGUF' && started.file === 'Tiny-F16.gguf');
+  while (FS.fullSize(fl2).cur) await new Promise((r) => setTimeout(r, 20));
+  const fin = FS.fullSize(fl2).view();
+  const dest = path.join(FS.fullSizeDir(fl2.cfg), 'Tiny-F16.gguf');
+  check('it lands in the Lab\'s full-size folder, whole, and joins Bob\'s list', fin.state === 'done' && fs.existsSync(dest) && fs.readFileSync(dest).equals(bytes) && fl2.cfg.ownModels.length === 1 && fl2.cfg.ownModels[0].gguf === dest && fin.added?.name === 'Tiny-GGUF', JSON.stringify(fin));
+  check('the Lab lists it and the page was told', fl2.brains().some((b) => b.gguf === dest) && events.some((e) => e.type === 'lab-full' && e.full.state === 'done') && fl2.view().full.state === 'done');
+  check('the same file isn\'t fetched twice', await FS.fullSize(fl2).start({ input: 'maker/Tiny-GGUF', file: 'Tiny-F16.gguf' }, fl2.fullDeps).then(() => false, (e) => /already in the Lab's full-size folder/.test(e.message)));
+  // a part left behind is picked up with a Range request
+  const fl3 = fullSizeLab(); fl3.cfg.bobModelsDir = path.join(fdir, 'models3'); fl3.cfg.settingsFile = path.join(fdir, 'data', 'settings3.json');
+  const dest3 = path.join(FS.fullSizeDir(fl3.cfg), 'Tiny-F16.gguf'); fs.mkdirSync(path.dirname(dest3), { recursive: true }); fs.writeFileSync(dest3 + '.part', bytes.subarray(0, 100));
+  starts = 0;
+  await FS.fullSize(fl3).start({ input: 'maker/Tiny-GGUF', file: 'Tiny-F16.gguf' }, fl3.fullDeps);
+  while (FS.fullSize(fl3).cur) await new Promise((r) => setTimeout(r, 20));
+  check('a download picks up where it stopped', FS.fullSize(fl3).view().state === 'done' && starts === 1 && fs.readFileSync(dest3).equals(bytes));
+  // stop throws the part away
+  const slow = http.createServer((req, res) => { res.writeHead(200, { 'content-length': 1e7 }); res.write(Buffer.alloc(1000)); });
+  await new Promise((r) => slow.listen(0, '127.0.0.1', r));
+  const fl4 = fullSizeLab(); fl4.cfg.bobModelsDir = path.join(fdir, 'models4'); fl4.cfg.settingsFile = path.join(fdir, 'data', 'settings4.json');
+  fl4.fullDeps = { fetchFn: async (url, opts) => (/\?blobs=true$/.test(url) ? { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ siblings: [{ rfilename: 'Slow-F16.gguf', size: 1e7 }] }) } : /resolve/.test(url) ? { status: 302, ok: false, headers: { get: (k) => (k === 'location' ? `https://127.0.0.1:${slow.address().port}/Slow-F16.gguf` : null) } } : fetch(url.replace('https://', 'http://'), opts)), token: '' };
+  await FS.fullSize(fl4).start({ input: 'maker/Slow-GGUF', file: 'Slow-F16.gguf' }, fl4.fullDeps);
+  await new Promise((r) => setTimeout(r, 150));
+  check('stopping is possible while it comes down', FS.fullSize(fl4).stop() === true);
+  while (FS.fullSize(fl4).cur) await new Promise((r) => setTimeout(r, 20));
+  const dest4 = path.join(FS.fullSizeDir(fl4.cfg), 'Slow-F16.gguf');
+  check('stop throws the part away and says so', FS.fullSize(fl4).view().state === 'stopped' && !fs.existsSync(dest4) && !fs.existsSync(dest4 + '.part') && fl4.cfg.ownModels.length === 0);
+  srv.close(); slow.closeAllConnections?.(); slow.close();
+  // the routes: look from anywhere, the rest only here, and nothing while the Lab is off
+  const hit = async (p, b, isLocal, lab = fl2) => { let out; await labRoute({ req: { method: 'POST' }, res: {}, p, isLocal, lab, body: async () => b, send: (res, code, v) => { out = { code, v }; } }); return out; };
+  check('look works from the phone, without the file path', (await hit('/api/lab/full/look', { input: aFile }, false)).v.path === undefined && (await hit('/api/lab/full/look', { input: aFile }, true)).v.path === aFile);
+  check('get, stop and add are for this replicant matrix itself', (await hit('/api/lab/full/add', { file: aFile }, false)).code === 403 && (await hit('/api/lab/full/stop', {}, false)).code === 403);
+  check('nothing happens while the Lab is off', (await hit('/api/lab/full/look', { input: aFile }, true, new Lab({ ...fcfg, computerLab: false }, { shop: fshop, room: big }))).code === 403);
+  check('a bad path is refused in words', (await hit('/api/lab/full/add', { file: path.join(fdir, 'missing.gguf') }, true)).code === 400);
+  // the engine tools: found in Brain Engine's folder too, and the words say where they come from
+  const bcfg = { ...fcfg, agentDir: path.join(fdir, 'agent'), llamacpp: { exe: path.join(fdir, 'agent', 'llama.cpp', 'llama-server') } };
+  fs.mkdirSync(path.join(bcfg.agentDir, 'brain-engine'), { recursive: true }); fs.mkdirSync(path.join(bcfg.agentDir, 'llama.cpp'), { recursive: true });
+  const blab = new Lab(bcfg, { shop: fshop, room: big });
+  check('without the tools the Lab says so', blab.tools().cvector.found === false && !fs.existsSync(exportLoraPath(blab)));
+  for (const n of ['llama-cvector-generator', 'llama-export-lora']) fs.writeFileSync(path.join(bcfg.agentDir, 'brain-engine', n + (process.platform === 'win32' ? '.exe' : '')), '');
+  check('the direction finder and the adapter folder are found in Brain Engine\'s folder', blab.tools().cvector.found === true && /brain-engine/.test(blab.tools().cvector.path) && fs.existsSync(exportLoraPath(blab)) && /brain-engine/.test(exportLoraPath(blab)));
+  check('the missing-tool words point at Brain Engine, not the engine\'s own download', /comes with Brain Engine/.test(read('src/lab-refusals.js')) && /comes with Brain Engine/.test(read('src/lab-teach.js')) && !/engine's full download/.test(read('src/lab-refusals.js')) && !/Download the built-in engine again/.test(read('src/lab-teach.js')));
+  // the page and Help
+  const hw = read('public/lab-home-ways.js');
+  check('the Forge tab has the Bring in box with Look, Get it, Stop and Pick a file here', /Bring in a full-size brain/.test(hw) && /data-fulllook/.test(hw) && /data-fullget/.test(hw) && /data-fullstop/.test(hw) && /data-fullpick/.test(hw) && /Nothing is uploaded/.test(hw));
+  check('the no-brains line points at it', /use <strong>Bring in a full-size brain<\/strong>/.test(hw));
+  check('progress reaches the page', /case 'lab-full'/.test(read('public/app.js')) && /fullUpdate\(full\)/.test(read('public/lab.js')));
+  const { HELP } = await import('../public/help-content.js');
+  const fh = HELP.find((h) => h.id === 'lab-forge');
+  check('Help explains Bring in a full-size brain and where the engine tools come from', /Bring in a full-size brain/.test(fh.html) && /Your own brains/.test(fh.html) && /Brain Engine/.test(fh.html) && /full-size/.test(fh.words));
+  check('the release note is there', /Bring in a full-size brain/.test(read('docs/releases/v1.5.173.md')) && /Your own brains/.test(read('docs/releases/v1.5.173.md')));
+  check('nothing new names a private brain', !/thoth|heretic/i.test(read('src/lab-fullsize.js') + hw));
 }
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

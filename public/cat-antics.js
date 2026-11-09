@@ -1,6 +1,7 @@
 // 1.5.7: the cat does cat things by Bob's picture while he's idle. Scripted, no brain, no setting: it costs nothing.
 // Every 1 to 2½ minutes of idle, the cat does one short antic for about 8 seconds and a one-line moment that matches
-// it shows under Bob's status. Stops as soon as Bob is busy. Kept out of screen readers (aria-hidden).
+// it shows in a word bubble beside Bob's picture for 15 seconds (say-bubbles.js; it used to sit under his status and push the menu
+// down). Stops as soon as Bob is busy. Kept out of screen readers (aria-hidden).
 // 1.5.53: 17 antics instead of 5 (each with its own lines), no repeats until most have played, Bob looks over when
 // the cat starts one, and if Bob has dozed off the cat naps too. Animations off keeps the cat still (body.still).
 import { ANTIC_IDS, anticLine } from './patches.js';
@@ -14,12 +15,13 @@ export function pickAntic(recent, rnd = Math.random) {
   return pool[Math.floor(rnd() * pool.length) % pool.length];
 }
 
-export function createCatAntics({ onAntic = () => {}, sleepy = () => false } = {}) {
-  const cat = document.getElementById('cat'), line = document.getElementById('catLine');
-  if (!cat || !line) return { idle() {}, play() {} };
+export function createCatAntics({ onAntic = () => {}, sleepy = () => false, bubbles = null } = {}) {
+  const cat = document.getElementById('cat');
+  if (!cat) return { idle() {}, play() {} };
+  const say = (text) => { if (bubbles) bubbles.say('cat', text); }; // the bubble keeps its own time (15 s, longer while pointed at)
   let name = 'Patches', idle = false, timer = null, hide = null, n = Math.floor(Math.random() * 100), recent = [];
   fetch('/api/settings').then((r) => r.json()).then((s) => { if (s.catName) name = s.catName; }).catch(() => {});
-  const rest = () => { cat.className = 'cat'; cat.textContent = '🐈'; line.hidden = true; };
+  const rest = () => { cat.className = 'cat'; cat.textContent = '🐈'; };
   const stop = () => { clearTimeout(timer); clearTimeout(hide); rest(); };
   function plan() {
     clearTimeout(timer);
@@ -33,8 +35,7 @@ export function createCatAntics({ onAntic = () => {}, sleepy = () => false } = {
     clearTimeout(hide);
     cat.className = `cat antic-${a}`;
     cat.textContent = ICON[a] || '🐈';
-    line.textContent = `${anticLine(a, name, n++)}.`;
-    line.hidden = false;
+    say(`${anticLine(a, name, n++)}.`);
     if (a !== 'nap') onAntic(a);
     hide = setTimeout(() => { rest(); plan(); }, 8000);
   }

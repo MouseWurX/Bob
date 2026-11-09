@@ -172,6 +172,7 @@ check('folding is refused until it is built', /isn't built yet/.test(later));
 const est = estimateFor(lab, fromLessons.recipe, { recipeId: 'everything' });
 check('the estimate has both columns for a cut, and the words', est.here && est.rented && est.words.length >= 3 && /Forge plan/.test(est.words.join(' ')) && /starts at \$0/.test(est.words.join(' ')));
 check('the printed Forge plan has its caps at 0', fromLessons.forge.hours_max === 0 && fromLessons.forge.dollars_max === 0);
+check('the Forge plan is in the shape run.sh reads: strong plan-wide, a heal time above the estimate', Array.isArray(fromLessons.forge.strong) && fromLessons.forge.strong_cover === 0.99 && !('strong' in fromLessons.forge.rungs[0]) && fromLessons.forge.heal.hours >= 6, JSON.stringify(fromLessons.forge));
 check('no estimate for the rented part when nothing is cut', !estimateFor(lab, { ...base, smaller: { ...base.smaller, files: ['Q4_K_M'] } }).rented);
 
 // ---- the routes ----

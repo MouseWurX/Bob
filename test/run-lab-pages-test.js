@@ -258,8 +258,12 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
 }
 
 // ---- the trainer script and the pages ----
-const py = spawnSync(process.platform === 'win32' ? 'python' : 'python3', ['-c', 'import ast,sys; ast.parse(sys.stdin.read())'], { input: TEACH_PY + '\n' + FETCH_PY });
-if (py.error) console.log('SKIP the trainer script parses (no Python here)'); else check('the trainer script parses as Python', py.status === 0, String(py.stderr || ''));
+// 1.5.169: a real Python only. On most Windows PCs "python" is the Microsoft Store stub, which starts fine and exits
+// with "Python was not found", so probe with an empty program first (and try the py launcher), and skip if none runs.
+const pyCmd = (process.platform === 'win32' ? [['py', '-3'], ['python'], ['python3']] : [['python3'], ['python']])
+  .find(([c, ...a]) => { const r = spawnSync(c, [...a, '-c', ''], { timeout: 20000 }); return !r.error && r.status === 0; });
+if (!pyCmd) console.log('SKIP the trainer script parses (no Python here)');
+else { const [c, ...a] = pyCmd; const py = spawnSync(c, [...a, '-c', 'import ast,sys; ast.parse(sys.stdin.read())'], { input: TEACH_PY + '\n' + FETCH_PY }); check('the trainer script parses as Python', py.status === 0, String(py.stderr || '')); }
 check('the trainer only learns the answers, and says how far it is', /\[-100\] \* len\(p_ids\)/.test(TEACH_PY) && /print\('progress %d %d'/.test(TEACH_PY) && /load_in_4bit=True/.test(TEACH_PY));
 check('the trainer\'s token comes from the environment, never Bob\'s files', !/HF_TOKEN/.test(FETCH_PY) && !/token/.test(read('src/lab-teach.js').replace(/HF_TOKEN|Bearer|token\./g, '').match(/fetch\.py[^\n]*/)?.[0] || ''));
 for (const f of ['public/lab-context-math.js', 'public/lab-context.js', 'public/lab-turbo.js', 'public/lab-teach.js', 'public/lab-playground.js']) check(`${f} parses`, spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../${f}`, import.meta.url))]).status === 0);

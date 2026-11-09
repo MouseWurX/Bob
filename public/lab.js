@@ -9,7 +9,7 @@ import { createLearn } from './lab-learn.js';
 import { saveHtml, saveResult } from './lab-save.js'; // 1.5.153 Save
 import { createRecipes } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
 import { createForge } from './lab-forge.js'; // 1.5.159 the Forge tab
-import { createGuard, packGroups, guardPartsLine } from './lab-guard.js';
+import { createGuard, packGroups, guardPartsLine, packMinutesLine } from './lab-guard.js';
 import { createPro } from './lab-pro.js'; // 1.5.168 Simple / Professional // 1.5.164 Guard rails sandbox and grouped packs
 import { createSenses } from './lab-senses.js'; // Give it eyes / Give it ears, a card in the Forge tab
 import { createPlayground } from './lab-playground.js'; // 1.5.156 Playground: the quantization ladder
@@ -164,6 +164,7 @@ export function createLab({ api, note }) {
       <p>${sv.files} file${sv.files === 1 ? '' : 's'}${kinds ? ` (${esc(kinds)})` : ''}${sv.over ? `, stopped at ${sv.maxFiles}` : ''}. About ${Number(sv.words).toLocaleString()} words of usable text in ${sv.passages} passage${sv.passages === 1 ? '' : 's'}${sv.exchanges ? ` and ${sv.exchanges} exchange${sv.exchanges === 1 ? '' : 's'} from chat logs` : ''}${sv.estimated ? ` (${sv.estimated} documents counted by size, read properly during the build)` : ''}.</p>
       ${sv.skipped.length ? `<details><summary>${sv.skipped.length} file${sv.skipped.length === 1 ? '' : 's'} skipped</summary><ul>${sv.skipped.slice(0, 200).map((x) => `<li>${esc(x.name)}: ${esc(x.why)}</li>`).join('')}</ul></details>` : ''}
       ${sv.dupes ? `<p class="muted">${sv.dupes} repeated passage${sv.dupes === 1 ? '' : 's'} left out.</p>` : ''}
+      ${sv.notProse ? `<p class="muted">${sv.notProse} passage${sv.notProse === 1 ? ' is' : 's are'} mostly numbers or a table (a log, say). Bob can read ${sv.notProse === 1 ? 'it' : 'them'} for "working with my material", but ${sv.notProse === 1 ? 'it isn\'t' : 'they aren\'t'} used for "writing in my voice".</p>` : ''}
       ${sv.held.length ? `<details><summary><strong>Held back: ${sv.held.length}</strong> passage${sv.held.length === 1 ? '' : 's'} that look like a password, key, card number, address or e-mail. They never reach the teacher.</summary><ul>${sv.held.slice(0, 200).map((x) => `<li>${esc(x.name)}${x.at ? `, passage ${x.at}` : ''}: ${esc(x.why)}. <span class="muted">${esc(x.peek)}...</span></li>`).join('')}</ul></details>` : '<p class="muted">Nothing looked like a password, key, address or e-mail. (A net, not a guarantee.)</p>'}
       ${sv.otherPeople ? '<p class="muted">These include other people\'s words. Lessons stay on this replicant matrix; if you share the set later, that\'s your call to make for them too.</p>' : ''}
       <p><strong>Lessons your files can supply:</strong> ${Object.entries(sv.supply).filter(([k]) => bld.kinds.includes(k)).map(([k, n]) => `${esc(kindLabel(k))} ${n}`).join(', ') || 'tick a kind of lesson above'}${Object.keys(sv.perSkill).length > 1 ? `; by skill: ${Object.entries(sv.perSkill).map(([k, v]) => `${esc(k)} ${v.passages + v.exchanges}`).join(', ')}` : ''}.</p>
@@ -368,7 +369,7 @@ export function createLab({ api, note }) {
       <p class="muted">Short tests, out of 100, for any brain on this replicant matrix. I ask every question at temperature 0 with thinking off, so the same brain gets the same score twice. The scores only mean something next to each other, here: they aren't the numbers you see in papers.</p>
       ${runsHtml()}
       <fieldset><legend>Which brain?</legend>${brains.length ? brains.map((b) => radio('chfrom', b.id, ch.from === b.id, `${b.name}${b.madeInLab ? ' (made in the Lab)' : ''}`, `${b.facts.sizeGB} GB. ${b.fit}`)).join('') : '<p>There are no brains here the Lab can run yet. Get one in Get models first.</p>'}</fieldset>
-      ${packGroups(view.packs).map((grp) => `<fieldset><legend>${esc(grp.label)}</legend>${grp.packs.map((p) => `<label class="lab-opt"><input type="checkbox" data-pack="${esc(p.id)}" ${ch.packs.includes(p.id) ? 'checked' : ''}> <span><strong>${esc(p.title)}</strong> <span class="muted">· ${p.count} questions · about ${p.minutes} min on a 16 GB card</span><br><span class="muted">${esc(p.what)}</span></span></label>`).join('')}</fieldset>`).join('')}
+      ${packGroups(view.packs).map((grp) => `<fieldset><legend>${esc(grp.label)}</legend>${grp.packs.map((p) => `<label class="lab-opt"><input type="checkbox" data-pack="${esc(p.id)}" ${ch.packs.includes(p.id) ? 'checked' : ''}> <span><strong>${esc(p.title)}</strong> <span class="muted">· ${p.count} questions · ${esc(packMinutesLine(p.minutes, view.cardGB, view.sharedMemory))}</span><br><span class="muted">${esc(p.what)}</span></span></label>`).join('')}</fieldset>`).join('')}
       ${askUnload?.challenge ? `<div class="setup-offer" role="alert"><strong>Bob's brain is on the graphics card</strong><span>${esc(askUnload.join(', '))} is loaded. The challenges need the card, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-unload>Unload it and start</button><button type="button" class="link" data-nounload>Not now</button></div></div>` : ''}
       ${view.mode === 'pro' ? px.myPacksHtml(ch.packs) + px.settingsHtml() : ''}
       <div class="row"><button type="button" class="get" data-chgo ${ch.from && ch.packs.length && !busy ? '' : 'disabled'}>${busy ? 'The Lab is busy' : 'Run the challenges'}</button></div>
@@ -585,6 +586,7 @@ export function createLab({ api, note }) {
   return {
     async open() { dlg.showModal(); draw(); await load(); },
     // Progress from the Lab job (the server's 'lab' events).
+    fullUpdate(full) { if (!view) return; view.full = full; if (dlg.open) draw(); if (full?.state === 'done' || full?.state === 'failed') load(); }, // Bring in a full-size brain: progress, then the lists again
     update(run) { if (!view) return; rc.runUpdate(run); const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if ((run.kind === 'challenge' || run.kind?.startsWith('ladder') || ['mix', 'stack', 'refusals', 'refusals-try'].includes(run.kind)) && run.state !== 'running') { load(); return; } if (tab === 'learn') return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
   };
 }
