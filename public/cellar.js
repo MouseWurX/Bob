@@ -311,14 +311,17 @@ export function createCellar() {
   // the sizes that brain was made for (read from the model itself), with Bob's guideline under it.
   function brainCtxHtml() {
     const on = bctx?.on === true;
-    const k = (v) => `${Math.round(v / 1024)}K`;
+    const k = (v) => (v >= 1048576 && v % 1048576 === 0 ? `${v / 1048576}M` : `${Math.round(v / 1024)}K`);
     const rows = (bctx?.brains || []).map((b) => {
-      const top = b.choices.at(-1);
-      const opts = b.choices.map((v) => `<option value="${v}" ${b.picked === v ? 'selected' : ''}>${k(v)}${v === top && b.max ? ' (the most it was made for)' : ''}${v === 32768 ? ' (enough for most chats)' : ''}</option>`).join('');
+      const top = b.max || b.choices.at(-1);
+      // Long memory: sizes past what the brain was made for are stretched; one that won't fit here is greyed out.
+      const longNote = (v) => { const r = b.room?.[v]; return r?.fits === false ? ` (stretched, won't fit here: needs about ${r.needGB} GB)` : ` (stretched${r?.needGB ? `, about ${r.needGB} GB` : ''})`; };
+      const opts = b.choices.map((v) => `<option value="${v}" ${b.picked === v ? 'selected' : ''} ${b.max && v > b.max && b.room?.[v]?.fits === false && b.picked !== v ? 'disabled' : ''}>${k(v)}${b.max && v > b.max ? longNote(v) : ''}${v === top && b.max ? ' (the most it was made for)' : ''}${v === 32768 ? ' (enough for most chats)' : ''}</option>`).join('');
       return `<tr><th scope="row">${esc(b.name)} ${tipHtml(b.guide, `About ${b.name}`)}<div class="muted">${esc(b.jobs.join(', '))}</div></th><td><select data-bctx="${esc(b.model)}" aria-label="${esc(b.name)}: how much it keeps in mind"><option value="">Bob's pick (${k(b.bobPick)})</option>${opts}</select></td></tr>`;
     }).join('');
     return fold('How much each brain keeps in mind', on ? 'you pick, per brain' : 'Bob picks', `
       <label class="switch srow-switch"><input type="checkbox" data-set="brainCtxOn" ${on ? 'checked' : ''}><span><strong>Pick how much each brain keeps in mind</strong>${noteOrTip('Off to start with: Bob picks for each brain. On: pick a size for each brain you use. Each menu only lists sizes that brain was made for. A size you pick here is used for that brain everywhere, instead of the session sizes above.', 'Pick how much each brain keeps in mind')}</span></label>
+      ${on && bctx?.canStretch ? `<label class="switch srow-switch"><input type="checkbox" data-set="brainCtxStretch" ${bctx.stretch ? 'checked' : ''}><span><strong>Long memory: let Qwen brains stretch past what they were made for</strong>${noteOrTip('Off to start with. On: Qwen3.5 and 3.6 brains (and Bob\'s own brains made from them) and Qwen3 Coder also offer 512K and 1M in their menu, and Qwen3 brains made for 32K also offer 64K and 128K. The stretch only switches on while you pick a size past what the brain was made for, because it makes short chats a little worse. It costs more memory: on the 35B brains, about 2.7 GB more at 512K and about 8 GB more at 1M; other brains need more, and each menu line says about how much. Reading a very long text takes a long time: a full 1M can take half an hour or more. A size that won\'t fit on this replicant matrix is greyed out. Only on Bob\'s built-in engine.', 'Long memory')}</span></label>` : ''}
       ${on ? (rows ? `<table class="roles">${rows}</table>` : '<p class="muted">No brains equipped yet.</p>') : ''}`, on);
   }
 
@@ -394,9 +397,23 @@ export function createCellar() {
       <div class="row"><label class="pick"><span>Draft brain</span><select data-draft="model"><option value="">Pick one</option>${llms.map((o) => `<option value="${esc(o.value)}" ${o.value === d.model ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}${d.model && !llms.some((o) => o.value === d.model) ? `<option selected value="${esc(d.model)}">${esc(d.model)}</option>` : ''}</select></label>
         <label class="pick"><span>Guess up to (words ahead)</span><input type="text" inputmode="numeric" data-draft="max" value="${esc(d.max ?? 16)}" style="width:5em" aria-label="Guess up to this many words ahead"></label>
         <label class="pick"><span>At least (words ahead)</span><input type="text" inputmode="numeric" data-draft="min" value="${esc(d.min ?? 1)}" style="width:5em" aria-label="Guess at least this many words ahead"></label></div>
+      ${turboRowsHtml(sp, llms)}
+      ${sp.trainer ? `<p class="muted">The Lab's Trainer pack is here (for Teach it). <button type="button" class="link" data-trainerremove aria-expanded="false">Remove the Trainer pack</button></p>` : ''}
       <div class="row"><label class="pick"><span>Extra settings for one brain</span><select data-margsmodel>${models.map((m) => `<option ${m === speedModel ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>
         <label class="pick" style="flex:1"><span>llama.cpp flags (for example <code>--n-cpu-moe 8</code>)</span><input type="text" data-margs value="${esc((sp.modelArgs?.[speedModel || models[0]] || []).join(' '))}" placeholder="none"></label></div>
     </div>`;
+  }
+
+  // 1.5.16x Turbo per brain: rows the Lab's Turbo page wrote with "Use this in Bob". Each wins over the one draft above
+  // for its brain. Switch, guess length, Remove; the guesser itself is picked (and measured) in the Lab.
+  function turboRowsHtml(sp, llms) {
+    const rows = Object.entries(sp.turbo || {}).filter(([, t]) => t);
+    if (!rows.length) return '';
+    const nameOf = (id) => llms.find((o) => o.value === id)?.label || id;
+    return `<div><strong>Turbo, per brain</strong> ${tip('Set from the Lab, Playground, Faster: "Use this in Bob". For these brains this wins over the draft brain above. Its own guesser means the brain carries a multi-token head, so nothing else loads.', 'Turbo, per brain')}
+      ${rows.map(([id, t]) => `<div class="row"><label class="switch"><input type="checkbox" data-turbo="${esc(id)}" data-turbok="on" ${t.on ? 'checked' : ''}><span><strong>${esc(nameOf(id))}</strong> <span class="muted">${t.mtp ? 'its own guesser' : `${esc(nameOf(t.draft))} guessing`}</span></span></label>
+        <label class="pick"><span>Guess ahead</span><input type="text" inputmode="numeric" data-turbo="${esc(id)}" data-turbok="max" value="${esc(t.max ?? 8)}" style="width:4em" aria-label="Guess this many words ahead for ${esc(nameOf(id))}"></label>
+        <button type="button" class="link" data-turboremove="${esc(id)}">Remove</button></div>`).join('')}</div>`;
   }
 
   // Housekeeping: off unless turned on. Each kind has its own age limit and "ask me" (default) or "tidy automatically".
@@ -614,6 +631,7 @@ export function createCellar() {
       <p class="muted list-date">${data?.updated ? `Bob's brain list is from ${esc(dayWords(data.updated))}.` : ''} ${settings.catalogUpdates === true ? '<button type="button" class="mini" data-listcheck>Check now</button>' : ''}</p>
       <h4 class="ssub">Brains</h4>
       ${sswitch('computerLab', settings.computerLab === true, 'Show the Computer Science Lab', keep('Off unless you turn it on. On: 🧪 Lab appears in the left pane, where you can make your own brain from one on this replicant matrix: take out sight or hearing, cut experts, make the running files, and test it before it goes into Bob. It runs here and costs nothing. Off: the Lab button is hidden; brains you made stay in Bob.' + (settings.computerLabRoom?.ok === false ? ' ' + settings.computerLabRoom.why : '')), settings.computerLabRoom?.ok === false && settings.computerLab !== true ? 'disabled' : '')}
+      ${settings.computerLab === true ? sswitch('labPro', settings.labPro === true, 'Lab: Professional mode', keep('Off is Keep it simple: each Lab tab shows the usual choices. On: every control a tab has, like which skills to protect, the running files to make, how a brain is taught back, every challenge as its own column, and the test logs. The same switch sits at the top of the Lab.')) : ''}
       ${sswitch('naughtyList', settings.naughtyList === true, 'Show the naughty list', keep('Off unless you turn it on. The naughty list is other people\'s remixes of Qwen and Gemma brains with the refusals cut out ("heretic" or "abliterated"), not Alibaba\'s or Google\'s releases. On: they appear behind the Naughty list side of the Brain catalogue\'s toggle (the red devil), and the ones you make Active show in Equip Bob and the brain menus. A brain from there answers without refusing, so what it says is on you, and it can be a little rougher than the original. Bob never recommends one. Off: they are listed nowhere; one already equipped stays until you change it.'))}
 `)}${EVERY_EXTRA.map(([id, label, note, body]) => panel(id, label, typeof note === 'function' ? note() : note, body())).join('')}
     </div>`;
@@ -668,7 +686,42 @@ export function createCellar() {
       <div><strong>Engine downloads</strong> ${tip('The programs that run the models, from their official GitHub pages, matched to your graphics card.', 'Engine downloads')}
         ${(data.engines || []).map((e) => `<article class="model" id="m-engine:${esc(e.id)}"><header><strong>${esc(e.name)}</strong></header><p>${esc(e.what)}</p>
           <div class="act">${live.has('engine:' + e.id) ? progress(live.get('engine:' + e.id)) : e.installed ? `<div class="have">✓ ${e.found ? esc(e.found[0].toUpperCase() + e.found.slice(1)) : `Installed${e.version ? ` (${esc(e.version)})` : ''}`}</div>${e.pinned || e.available === false ? '' : `<button data-checkengine="${esc(e.id)}">Check for a newer build</button>`}${e.tested && e.version && e.version !== e.tested && !e.found ? `<button data-engine="${esc(e.id)}">Go back to the tested build (${esc(e.tested)})</button>` : ''}` : e.available === false ? `<div class="muted">${esc(e.note || 'Not for this replicant matrix yet.')}</div>` : `<button class="get" data-engine="${esc(e.id)}">Get ${esc(e.name)}</button>`}</div><div class="confirm" hidden></div></article>`).join('')}</div>
+      ${qwenHtml()}
       <details class="more"><summary>More</summary>${speedHtml()}</details>`;
+  }
+
+  // 1.5.148: how Qwen3.6 brains (and Bob's own brains made from them) pick their words. Qwen's settings by default,
+  // one set per mode; the person can switch on their own numbers. Every field has a visible label for screen readers.
+  const QWEN_FIELDS = [['temperature', 'Temperature', 0, 2, 0.05], ['top_p', 'Top P', 0, 1, 0.05], ['top_k', 'Top K', 0, 200, 1], ['min_p', 'Min P', 0, 1, 0.01], ['presence_penalty', 'Presence penalty', 0, 2, 0.1], ['repeat_penalty', 'Repetition penalty', 1, 2, 0.05]];
+  function qwenHtml() {
+    const own = settings.qwenPresets || {};
+    const qd = settings.qwenDefaults || {};
+    const on = own.on === true;
+    const rows = Object.entries(qd).map(([id, d]) => {
+      const mine = { ...d, ...(own[id] || {}) };
+      return `<fieldset class="qwen-preset" data-qpreset="${esc(id)}"><legend><strong>${esc(d.label)}</strong></legend>
+        <div class="row">${QWEN_FIELDS.map(([k, label, lo, hi, step]) => `<label class="pick"><span>${label}</span><input type="number" inputmode="decimal" data-qfield="${k}" min="${lo}" max="${hi}" step="${step}" value="${esc(String(mine[k] ?? ''))}" aria-label="${esc(d.label)}: ${label}" ${on ? '' : 'disabled'}></label>`).join('')}</div>
+        <button type="button" data-qreset="${esc(id)}" ${on ? '' : 'disabled'}>Back to Qwen's</button></fieldset>`;
+    }).join('');
+    return `<div class="qwen-presets" data-qbox><strong>How Qwen brains pick their words</strong> <span class="tag">Qwen's settings unless you change them</span>
+        ${tip('On the built-in engine, Qwen3.6 brains, and Bob\'s own brains made from them, use the settings Qwen recommends: one set when they think it through, a cooler set when they think through code, and one for quick replies. Switch this on only if you want to try your own numbers.', 'How Qwen brains pick their words')}
+        ${sswitch('qwenPresetsOn', on, 'Choose my own word settings', 'Off: Bob uses Qwen\'s. On: the numbers below are used instead, from the next reply.')}
+        ${rows}</div>`;
+  }
+  async function saveQwen(el, msg) {
+    const box = dlg.querySelector('[data-qbox]');
+    const next = { on: box.querySelector('[data-set="qwenPresetsOn"]').checked };
+    for (const fs of box.querySelectorAll('[data-qpreset]')) {
+      const row = {};
+      for (const f of fs.querySelectorAll('[data-qfield]')) if (f.value !== '') row[f.dataset.qfield] = Number(f.value);
+      next[fs.dataset.qpreset] = row;
+    }
+    const r = await api('/api/settings', { qwenPresets: next });
+    settings.qwenPresets = r.qwenPresets;
+    box.outerHTML = qwenHtml();
+    const again = dlg.querySelector('[data-qbox]');
+    flash(again, msg || (settings.qwenPresets.on ? 'Saved. Used from the next reply.' : 'Off. Bob uses Qwen\'s settings again.'));
+    again.querySelector(el.dataset.qfield ? `[data-qpreset="${el.closest('[data-qpreset]')?.dataset.qpreset}"] [data-qfield="${el.dataset.qfield}"]` : el.dataset.qreset ? `[data-qreset="${el.dataset.qreset}"]` : '[data-set="qwenPresetsOn"]')?.focus();
   }
 
   // 1.5.79: the memory banks, shown under "Remember only what fits" while it's on.
@@ -1081,6 +1134,20 @@ export function createCellar() {
     try {
       if ((tab === 'style' || (tab === 'settings' && (b.dataset.motion || b.dataset.nowneed))) && mode === 'shop' && await stylePage.onClick(b, settings)) return;
       if (b.dataset.sampleEngine) { sampler.play(b); return; }
+      if (b.dataset.turboremove) { const r = await api('/api/settings', { speed: { turbo: { [b.dataset.turboremove]: null } } }); settings.speed = r.speed; const box = b.closest('div')?.parentElement; flash(box || b, 'Turbo removed for that brain.'); b.closest('.row')?.remove(); return; } // 1.5.16x
+      if ('trainerremove' in b.dataset) { // 1.5.167: in-page confirm, same words as the Lab's Teach it page
+        const p = b.parentElement; if (p.querySelector('[data-trainerremovego]')) return;
+        b.setAttribute('aria-expanded', 'true');
+        p.insertAdjacentHTML('beforeend', '<div class="setup-offer" role="alert"><strong>Remove the Trainer pack?</strong><span>Brains you taught stay. Get it again any time.</span><div class="row"><button type="button" class="get" data-trainerremovego>Remove it</button><button type="button" class="link" data-trainerremoveno>Keep it</button></div></div>');
+        p.querySelector('[data-trainerremovego]').focus(); return;
+      }
+      if ('trainerremoveno' in b.dataset) { const p = b.closest('.setup-offer').parentElement; b.closest('.setup-offer').remove(); const r = p.querySelector('[data-trainerremove]'); if (r) { r.setAttribute('aria-expanded', 'false'); r.focus(); } return; }
+      if ('trainerremovego' in b.dataset) { const p = b.closest('.setup-offer').parentElement; await api('/api/lab/teach/trainer/remove', {}); settings.speed = { ...settings.speed, trainer: false }; b.closest('.setup-offer').remove(); const r = p.querySelector('[data-trainerremove]'); if (r) r.remove(); flash(p, 'The Trainer pack is removed. Brains you taught stay.'); return; }
+      if (b.dataset.qreset) { // 1.5.148: one preset back to Qwen's numbers
+        const fs = b.closest('[data-qpreset]'); const d = settings.qwenDefaults?.[b.dataset.qreset] || {};
+        for (const f of fs.querySelectorAll('[data-qfield]')) f.value = d[f.dataset.qfield] ?? '';
+        await saveQwen(b, `${d.label || 'That set'} is back to Qwen's settings.`); return;
+      }
       if (b.dataset.gomodel) { setTab(b.dataset.gocat); jumpTo = ''; draw(); dlg.querySelector('#m-' + CSS.escape(b.dataset.gomodel))?.scrollIntoView({ block: 'center' }); return; }
       if ('unsuitedsw' in b.dataset) { setShowUnsuited(!showUnsuited); draw(); return; }
       if ('lookcomments' in b.dataset) { const on = b.getAttribute('aria-checked') !== 'true'; const r = await api('/api/settings', { lookComments: on }); settings.lookComments = r.lookComments; b.setAttribute('aria-checked', String(r.lookComments)); b.querySelector('.st').textContent = r.lookComments ? 'On' : 'Off'; return; }
@@ -1461,6 +1528,11 @@ export function createCellar() {
       if (el.dataset.tts) { const v = el.dataset.tts === 'speed' ? Number(el.value) : el.value; const r = await api('/api/settings', { tts: { [el.dataset.tts]: v } }); settings.tts = { ...settings.tts, ...r.tts }; if (el.dataset.tts === 'voice') { for (const sb of dlg.querySelectorAll('[data-sample-engine="kokoro"]:not(.voice-grid *)')) sb.dataset.sampleVoice = el.value; for (const s of dlg.querySelectorAll('select[data-tts="voice"]')) s.value = el.value; } flash(el, 'Saved. Press ▶ Play sample to hear it.'); return; }
       if (el.dataset.speed) { const v = el.value.trim() === '' ? null : Number(el.value); const r = await api('/api/settings', { speed: { [el.dataset.speed]: v } }); settings.speed = r.speed; el.value = r.speed[el.dataset.speed] ?? ''; flash(el, 'Saved.'); return; }
       if ('fit' in el.dataset) { const r = await api('/api/settings', { speed: { fit: el.checked } }); settings.speed = r.speed; flash(el, 'Saved.'); return; }
+      if (el.dataset.turbo) { // 1.5.16x Turbo per brain
+        const id = el.dataset.turbo, t = { ...(settings.speed?.turbo?.[id] || {}) };
+        if (el.dataset.turbok === 'on') t.on = el.checked; else { const n = Math.round(Number(el.value)); if (!(n >= 1 && n <= 32)) { alertIn(el, 'Pick 1 to 32 words ahead.'); return; } t.max = n; }
+        const r = await api('/api/settings', { speed: { turbo: { [id]: t } } }); settings.speed = r.speed; flash(el, 'Saved. Applies the next time this brain loads.'); return;
+      }
       if (el.dataset.draft) {
         const d = { ...(settings.speed?.draft || {}) };
         d[el.dataset.draft] = el.type === 'checkbox' ? el.checked : el.dataset.draft === 'model' ? el.value : Number(el.value);
@@ -1477,7 +1549,9 @@ export function createCellar() {
         if (args && kept.length !== args.length) alertIn(el, 'Some of that was left out: only flags and plain values are allowed, no file paths.');
         el.value = kept.join(' '); flash(el, 'Saved.'); return;
       }
+      if (el.dataset.set === 'qwenPresetsOn' || el.dataset.qfield) { await saveQwen(el); return; } // 1.5.148
       if (el.dataset.set === 'brainCtxOn') { const r = await api('/api/settings', { brainCtxOn: el.checked }); settings.brainCtxOn = r.brainCtxOn; bctx = await api('/api/brain-ctx').catch(() => ({ ...bctx, on: r.brainCtxOn })); const box = el.closest('[data-bctxbox]'); if (box) box.innerHTML = brainCtxHtml(); flash(box || el, r.brainCtxOn ? 'On. Applies when each brain next loads.' : 'Off. Bob picks again.'); return; }
+      if (el.dataset.set === 'brainCtxStretch') { const r = await api('/api/settings', { brainCtxStretch: el.checked }); settings.brainCtxStretch = r.brainCtxStretch; bctx = await api('/api/brain-ctx').catch(() => ({ ...bctx, stretch: r.brainCtxStretch })); const box = el.closest('[data-bctxbox]'); if (box) box.innerHTML = brainCtxHtml(); flash(box || el, r.brainCtxStretch ? 'On. The stretched sizes are in the Qwen menus now.' : 'Off. A stretched pick goes back to Bob\'s pick.'); return; }
       if (el.dataset.bctx) { const v = el.value ? Number(el.value) : null; const r = await api('/api/settings', { brainCtx: { [el.dataset.bctx]: v } }); settings.brainCtx = r.brainCtx; const b = (bctx.brains || []).find((x) => x.model === el.dataset.bctx); if (b) b.picked = v; flash(el, 'Saved. Applies when the brain next loads.'); return; }
       if (el.dataset.sctx) { const v = el.value ? Number(el.value) : null; const r = await api('/api/settings', { sessionCtx: { [el.dataset.sctx]: v } }); settings.sessionCtx = r.sessionCtx; flash(el, 'Saved. Applies when the brain next loads.'); return; }
       if (el.dataset.sbrain) { const r = await api('/api/settings', { sessionBrains: { [el.dataset.sbrain]: el.value } }); settings.sessionBrains = r.sessionBrains; flash(el, 'Saved.'); return; }

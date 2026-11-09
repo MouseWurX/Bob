@@ -8,6 +8,12 @@ Thanks for helping. A few house rules:
   replies, not in the menus.
 - **Tests.** Run `npm test` before you open a pull request. It needs Node.js 20 or newer and nothing else.
   New behaviour gets a test.
+- **Before every push.** Run `node installer/make-changelog.js` and commit `CHANGELOG.md` with your change,
+  then `npm test` and `npm run check:release`. Keep work in progress as a **draft** pull request: drafts run no
+  GitHub builds, so they never send failed-build e-mails. Mark it ready for review only when both pass.
+- **Tests never read the real computer.** A test that depends on the tester's graphics card, operating
+  system, folders or environment keys passes on one PC and fails on another (and in GitHub's builds). Pass the
+  hardware or the setting in as a fake instead.
 - **No personal data.** Never commit `config.json`, anything from an `inn` folder, real paths from your
   PC, e-mail addresses or keys. `npm test` checks for these (`test/run-public-test.js`).
 - **Licences.** Code you contribute is GPL-3.0-or-later; art and writing are CC BY-SA 4.0 (see

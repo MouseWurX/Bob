@@ -10,6 +10,7 @@ import { Brain, thinkStream } from '../src/brain.js';
 import { brainsLine, toolLine, esc, thinkLabel } from '../public/mind-lines.js';
 import { HELP } from '../public/help-content.js';
 import { DEFAULT_ORDER, applyOrder, moveId, dropBefore } from '../public/now-sections.js';
+import { ORDERS, cleanOrder } from '../public/mind-view.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -135,6 +136,12 @@ const realFetch = globalThis.fetch;
   check('order helpers: unknown ids dropped, missing ones added, moves stop at the ends', applyOrder('memory,tasks,bogus').join() === 'memory,tasks,net,downloads,mind' && applyOrder('').join() === DEFAULT_ORDER.join() && moveId(DEFAULT_ORDER, 'tasks', -1).join() === DEFAULT_ORDER.join() && moveId(DEFAULT_ORDER, 'mind', -1).join() === 'tasks,net,downloads,mind,memory' && dropBefore(DEFAULT_ORDER, 'mind', 'tasks').join() === 'mind,tasks,net,downloads,memory' && dropBefore(DEFAULT_ORDER, 'tasks', null).join() === 'net,downloads,memory,mind,tasks');
   check('High Contrast: the grip, the drop mark and the thinking box use system colours', /@media \(forced-colors: active\) \{\s*\.sec-grip:hover[^}]*border-color: CanvasText;[\s\S]*?\.mind-think \{ border-left-color: Highlight; \}/.test(css));
   check('the flash that points at the section is off with Animations off', /@media \(prefers-reduced-motion: reduce\) \{ \.now-sections > section\.flash \{ animation: none; \} \}/.test(css));
+  // Order of the lines (the owner asked to sort them, and chose both the sections and the lines)
+  check('an Order choice in the window and the section: newest at the bottom (default), newest at the top, Bob then his copies', ['mindOrder', 'mindDockOrder'].every((id, i) => new RegExp(`<select id="${id}" aria-label="Order of the lines"[^>]*><option value="time">Newest at the bottom</option><option value="newest">Newest at the top</option><option value="who">Bob, then his copies</option></select>`).test([read('public/mind.html'), idx][i])) && /order: \$\('mindOrder'\)/.test(js) && /order: \$\('mindDockOrder'\)/.test(lay));
+  check('order helpers: only the three orders, time by default', cleanOrder('newest') === 'newest' && cleanOrder('who') === 'who' && cleanOrder('bogus') === 'time' && cleanOrder(null) === 'time' && ORDERS.join() === 'time,newest,who');
+  check('newest at the top puts new lines first in the page (never column-reverse), and Follow along looks at the top', /const put = \(el\) => \(order === 'newest' \? log\.prepend\(el\) : log\.append\(el\)\);/.test(view) && !/column-reverse/.test(read('public/mind.css')) && /log\.scrollTop = order === 'newest' \? 0 : log\.scrollHeight/.test(view) && /order === 'newest' \? log\.scrollTop < 24 :/.test(view));
+  check('by brain groups each line under who was thinking (Bob first, then his copies), kept with the line', /el\.dataset\.who = who; el\.style\.order = order === 'who'/.test(view) && /WHO_RANK = \{ bob: 0, reviewer: 1/.test(view) && /who = ev\.who \|\| 'bob'; place\(thinkEl\);/.test(view));
+  check('the order is remembered per window and the log says its order to a screen reader', /localStorage\.setItem\('bob-mind-order', order\)/.test(view) && /log\.setAttribute\('aria-label', order === 'newest' \? 'Bob\\'s thinking, newest at the top'/.test(view));
   check('Help explains Show here, Pop out and the section order, in Bob\'s voice', (() => { const e = HELP.find((h) => h.id === 'mind'); return e && /Keep it in Now running instead/.test(e.html) && /set\('Show here', 'Off'/.test(read('public/help-content.js')) && /Pop out/.test(e.html) && /Put the sections in any order/.test(e.html) && /Move up/.test(e.html) && /I remember the order in this window of Bob/.test(e.html); })());
 }
 

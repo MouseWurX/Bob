@@ -1,7 +1,7 @@
 // 1.5.151 Computer Science Lab, part 3: the Learn tab. Guided experiments on the brain Bob has loaded right now, so
 // there is nothing to download and no Lab job: what is a token, how Bob picks the next word, what temperature does.
 // Each one is a short call to Bob's own llama-server (/tokenize, /completion with n_probs). Nothing is saved.
-// Needs Bob's own engine (llama.cpp): Ollama has no tokenizer or odds endpoints, so the cards say so and stop there.
+// Needs Bob's built-in engine (llama.cpp): Ollama has no tokenizer or odds endpoints, so the cards say so and stop there.
 
 export const TOKEN_START = 'Bob\'s favourite cheese is Wensleydale, obviously.';
 export const WORD_START = 'The best thing about living by the sea is';

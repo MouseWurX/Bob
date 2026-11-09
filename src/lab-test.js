@@ -3,6 +3,7 @@
 // Lab starts itself, at temperature 0 so two runs of the same brain give the same marks. Scores are out of 100.
 import { spawn } from 'node:child_process';
 import net from 'node:net';
+import { genBody } from './lab-gen.js'; // 1.5.168 Professional mode settings
 
 export const QUIZ = {
   general: [
@@ -59,12 +60,13 @@ export async function freePort() {
 }
 
 // Start a llama-server for one brain. Tries the card first (--fit on), then the processor.
-export async function startServer({ exe, gguf, mmproj, ctx = 8192, signal, log = () => {}, spawnFn = spawn, timeoutMs = 10 * 60e3 }) {
-  const tries = [['--fit', 'on'], ['-ngl', '0']];
+export async function startServer({ exe, gguf, mmproj, ctx = 8192, args = [], cpuOk = true, signal, log = () => {}, spawnFn = spawn, timeoutMs = 10 * 60e3, extra = [] }) { // 1.5.164 `extra` and 1.5.167 `args`: more llama-server flags; cpuOk=false skips the processor-only try
+  const more = [...args, ...extra];
+  const tries = cpuOk ? [['--fit', 'on'], ['-ngl', '0']] : [['--fit', 'on']];
   let last = '';
   for (const extra of tries) {
     const port = await freePort();
-    const args = ['-m', gguf, ...(mmproj ? ['--mmproj', mmproj] : []), '--host', '127.0.0.1', '--port', String(port), '-c', String(ctx), '--jinja', ...extra];
+    const args = ['-m', gguf, ...(mmproj ? ['--mmproj', mmproj] : []), '--host', '127.0.0.1', '--port', String(port), '-c', String(ctx), '--jinja', ...more, ...extra];
     log(`llama-server ${args.join(' ')}`);
     const child = spawnFn(exe, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
     let err = '';
@@ -85,8 +87,8 @@ export async function startServer({ exe, gguf, mmproj, ctx = 8192, signal, log =
   throw new Error(`The brain didn't start in the Lab test. ${last ? `llama-server said: ${last}` : ''}`.trim());
 }
 
-async function ask(url, messages, tools, signal) {
-  const body = { messages, temperature: 0, max_tokens: 400, chat_template_kwargs: { enable_thinking: false }, ...(tools ? { tools, tool_choice: 'auto' } : {}) };
+async function ask(url, messages, tools, signal, gen = null, repeat = 0) {
+  const body = { messages, temperature: 0, max_tokens: 400, chat_template_kwargs: { enable_thinking: false }, ...(gen ? genBody(gen, 400, repeat) : {}), ...(tools ? { tools, tool_choice: 'auto' } : {}) };
   const r = await fetch(url + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(180e3)]) : AbortSignal.timeout(180e3) });
   if (!r.ok) throw new Error(`llama-server answered ${r.status}`);
   const j = await r.json();
@@ -95,20 +97,22 @@ async function ask(url, messages, tools, signal) {
 }
 
 // The quiz on a running server. onStep(done, total) as it goes. Returns { parts: { id: { right, of, score } }, score, tps }.
-export async function runQuiz(url, { signal, onStep = () => {}, quiz = QUIZ } = {}) {
+export async function runQuiz(url, { signal, onStep = () => {}, quiz = QUIZ, gen = null, repeat = 0, log = null } = {}) {
   const total = Object.values(quiz).reduce((a, l) => a + l.length, 0);
   let done = 0; const speeds = [], reads = []; const parts = {}; const misses = [];
   for (const [part, list] of Object.entries(quiz)) {
     let right = 0;
     for (const [q, want] of list) {
       if (signal?.aborted) throw new Error('Stopped.');
-      let ok = false;
+      let ok = false, ans = '';
       try {
-        const a = await ask(url, [{ role: 'user', content: q }], part === 'tools' ? TOOLS : null, signal);
+        const a = await ask(url, [{ role: 'user', content: q }], part === 'tools' ? TOOLS : null, signal, gen, repeat);
+        ans = a.calls?.length ? `(called ${a.calls.join(', ')}) ${a.text}` : a.text;
         if (a.tps) speeds.push(a.tps);
         if (a.prefillTps) reads.push(a.prefillTps);
         ok = part === 'tools' ? a.calls[0] === want : typeof want === 'function' ? want(a.text) : want.test(a.text);
       } catch (e) { if (signal?.aborted) throw e; }
+      log?.({ q, answer: ans, ok });
       if (ok) right++; else misses.push({ part, q });
       onStep(++done, total);
     }

@@ -1,4 +1,4 @@
-// 1.5.152 🧪 Computer Science Lab: Save. Any result table can be kept as a picture, as text to paste, or as data for a
+// 1.5.153 🧪 Computer Science Lab: Save. Any result table can be kept as a picture, as text to paste, or as data for a
 // spreadsheet, in the Lab's results folder. The page sends only the title, column names and cells: never file paths,
 // chats or names. The graphics card and memory go on only if the box is ticked. Pictures are drawn here, offline.
 import { esc } from './rich.js';

@@ -2,13 +2,22 @@
 // checkboxes and radio buttons instead of command-line flags. Show the recipe shows the exact commands. 1.5.143 (Lab 2a):
 // keep every skill covered, and write a new lesson set with a teacher here. Rented cards are shown as "later", never offered.
 // 1.5.151 (Lab 3): the page has tabs. Make a brain is the five steps; Learn is guided experiments (public/lab-learn.js).
+// 1.5.152 (Lab 2c): build a lesson set from your own files, with a survey and sample lessons before anything big runs.
 import { esc } from './rich.js';
 import { TEMPLATES, templateById, templateWhyNot, applyTemplate } from './lab-templates.js';
 import { createLearn } from './lab-learn.js';
-import { saveHtml, saveResult } from './lab-save.js'; // 1.5.152 Save
+import { saveHtml, saveResult } from './lab-save.js'; // 1.5.153 Save
+import { createRecipes } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
+import { createForge } from './lab-forge.js'; // 1.5.159 the Forge tab
+import { createGuard, packGroups, guardPartsLine } from './lab-guard.js';
+import { createPro } from './lab-pro.js'; // 1.5.168 Simple / Professional // 1.5.164 Guard rails sandbox and grouped packs
+import { createSenses } from './lab-senses.js'; // Give it eyes / Give it ears, a card in the Forge tab
+import { createPlayground } from './lab-playground.js'; // 1.5.156 Playground: the quantization ladder
+import { createPeek } from './lab-peek.js'; // 1.5.164 Playground: Peek inside
+import { homeReportHtml } from './lab-home-ways.js'; // 1.5.164 the Forge's home ways' lines in the runs list
 
 const $ = (id) => document.getElementById(id);
-const TABS = [['make', 'Make a brain'], ['learn', 'Learn'], ['challenges', 'Challenges']];
+const TABS = [['make', 'Make a brain'], ['forge', 'Forge'], ['learn', 'Learn'], ['challenges', 'Challenges'], ['playground', 'Playground']];
 const STEPS = [['brain', '1 Pick a brain'], ['lessons', '2 Lessons'], ['smaller', '3 Make it smaller'], ['where', '4 Where it runs'], ['test', '5 Test and use']];
 const TYPE_NOTE = { Q4_K_M: 'Q4 (recommended)', Q5_K_M: 'Q5', Q6_K: 'Q6', Q8_0: 'Q8', Q3_K_M: 'Q3 (only for brains meant for 8 GB or less)' };
 const PARTS = { general: 'General knowledge', tools: 'Picking the right tool', coding: 'Coding', following: 'Following instructions' };
@@ -18,14 +27,27 @@ export function createLab({ api, note }) {
   $('lab-close').onclick = () => dlg.close();
   let view = null, step = 'brain', plan = null, showRecipe = false, msg = '', askUnload = null, tab = 'make';
   const learn = createLearn({ api, info: () => view, saves: () => saves });
-  // 1.5.152 Challenges: which brain, which packs, the scoreboard's sort, and the Save panels (one per result).
-  const ch = { from: '', packs: ['quiz', 'reasoning', 'sums', 'rules', 'tools', 'code'], sort: 'name', down: false };
+  // 1.5.153 Challenges: which brain, which packs, the scoreboard's sort, and the Save panels (one per result).
+  const ch = { from: '', packs: ['quiz', 'reasoning', 'sums', 'rules', 'tools', 'code'], sort: 'name', down: false, by: 'class', kind: 'all', here: false, fits: false, wide: false }; // 1.5.162 the board by class of model
   const saves = {};
   const saveState = (k) => (saves[k] ||= { open: false, format: 'png', hardware: false, saved: '', error: '' });
   let measures = [], picked = [], table = null, saved = '';
   const w = { name: '', teacher: '', skills: ['tools', 'coding', 'chat'], count: 500, think: 'half' };
   let wplan = null, writing = false;
+  // Lab 2c: the lesson builder. bld is the plan the page sends; bsurvey is stage A of the preview; sample cards come from the plan.
+  const bld = { name: '', teacher: '', items: [], kinds: ['material'], count: 300, think: 'half', resay: true, feedback: { dropFiles: [], notKinds: {}, badIdeas: [] } };
+  let bplan = null, building = false, bsurvey = null, surveying = false, openPassage = new Set(), notLike = '', viewer = null, vq = { q: '', skill: '', file: '', kind: '' }, exportInfo = null, typedPath = '';
   const r = { template: '', name: '', from: '', lessons: { kind: 'none', file: '', chunks: 200 }, smaller: { sight: false, hearing: false, cut: null, files: [], measure: false }, test: { compare: true } };
+  const fg = createForge({ api, view: () => view, runs: () => runsHtml(), goMake: () => { tab = 'make'; draw(); $('lab-tab-make')?.focus(); } });
+  document.addEventListener('lab-forge-ready', () => { if (tab === 'forge' && dlg.open) draw(); });
+  const gd = createGuard({ api, isPro: () => view?.mode === 'pro' }); // 1.5.164
+  const px = createPro({ api, view: () => view }); // 1.5.168
+  const sn = createSenses({ api, draw: () => { if (tab === 'forge') draw(); } });
+  // 1.5.164 Peek inside: Cut these out opens Make a brain, step 3, with the keep file; Send to the Forge opens the Forge tab (the file is in its keep-file list).
+  const pk = createPeek({ api, view: () => view, cutWith: async ({ brain: id, file, experts }) => { r.from = id; const b = brain(); if (!r.name && b) r.name = `${b.name} Lab`; r.template = ''; r.smaller = { sight: false, hearing: false, cut: { how: 'file', file, keep: experts, cover: 0.95, strong: [] }, files: [], measure: false, try: false, tryStop: true }; tab = 'make'; step = 'smaller'; await replan(); $('lab-tab-make')?.focus(); }, toForge: () => { tab = 'forge'; fg.reload().then(() => draw()); draw(); $('lab-tab-forge')?.focus(); } });
+  document.addEventListener('lab-page-ready', () => { if (tab === 'playground' && dlg.open) draw(); }); // 1.5.167 Longer, Faster, Teach it
+  const pg = createPlayground({ api, view: () => view, saveState, sections: [pk] });
+  const rc = createRecipes({ api, recipe: r, view: () => view, replan: () => replan(), draw: () => draw() });
   const brain = () => view?.brains.find((b) => b.id === r.from);
   const running = () => view?.runs.find((x) => x.state === 'running');
 
@@ -37,6 +59,8 @@ export function createLab({ api, note }) {
   async function replan() {
     try { plan = r.from ? await api('/api/lab/plan', { recipe: r }) : null; } catch (e) { plan = { problems: [e.message], notes: [], steps: [] }; }
     if (writing) { try { wplan = await api('/api/lab/write/plan', { write: w }); } catch (e) { wplan = { problems: [e.message], notes: [] }; } }
+    if (building) { try { bplan = await api('/api/lab/build/plan', { build: bld }); } catch (e) { bplan = { problems: [e.message], notes: [], sample: [] }; } }
+    await rc.afterPlan();
     draw();
   }
 
@@ -81,12 +105,14 @@ export function createLab({ api, note }) {
       <p class="muted">Lessons are what the new brain should be good at. Here they're used to count which experts your kind of work uses, so an expert cut keeps those.</p>
       ${radio('lessons', 'none', l.kind === 'none', 'No lessons', 'For steps that don\'t need them: take out sight or hearing, make the running files, or cut with an expert list you have.')}
       ${radio('lessons', 'chats', l.kind === 'chats', 'My chats with Bob', 'Your past chats, as they are. They stay on this replicant matrix.')}
-      ${view.lessonSets.length ? radio('lessons', 'set', l.kind === 'set', 'A lesson set I wrote here', 'One Bob wrote in the Lab with a teacher brain.') : ''}
-      ${l.kind === 'set' ? `<p><label>Lesson set <select id="lab-lessons-set"><option value="">(pick one)</option>${view.lessonSets.map((x) => `<option value="${esc(x.id)}" ${l.set === x.id ? 'selected' : ''}>${esc(x.name)}: ${x.count} lessons${x.skills.length ? ` (${esc(x.skills.map(skillLabel).join(', '))})` : ''}${x.done ? '' : ', not finished'}</option>`).join('')}</select></label></p>` : ''}
+      ${view.lessonSets.length ? radio('lessons', 'set', l.kind === 'set', 'A lesson set I wrote or built here', 'One Bob wrote in the Lab with a teacher brain, or one built from your own files.') : ''}
+      ${l.kind === 'set' ? `<p><label>Lesson set <select id="lab-lessons-set"><option value="">(pick one)</option>${view.lessonSets.map((x) => `<option value="${esc(x.id)}" ${l.set === x.id ? 'selected' : ''}>${esc(x.name)}: ${x.count} lessons${x.skills.length ? ` (${esc(x.skills.map(skillLabel).join(', '))})` : ''}${x.built ? ', built from your files' : ''}${x.done ? '' : ', not finished'}</option>`).join('')}</select></label></p>` : ''}
       ${radio('lessons', 'file', l.kind === 'file', 'A lesson set I have', 'A lessons.jsonl from the model lab, or any text file.')}
       ${l.kind === 'file' ? `<p><label>Lesson file <input id="lab-lessons-file" type="text" value="${esc(l.file)}" placeholder="C:\\...\\lessons.jsonl"></label></p>` : ''}
       ${l.kind !== 'none' ? `<p><label for="lab-chunks">How much of it to count on</label> <input id="lab-chunks" type="range" min="20" max="2000" step="20" value="${l.chunks}" aria-describedby="lab-chunks-note"> <input id="lab-chunks-n" type="number" min="20" max="2000" step="20" value="${l.chunks}" aria-label="Pieces to count on"> pieces <span id="lab-chunks-note" class="muted">(about ${Math.max(1, Math.round(l.chunks / 20))} minutes on a 16 GB card)</span></p>` : ''}
       ${writeHtml()}
+      ${buildHtml()}
+      ${setsHtml()}
       ${later('Record the teacher\'s odds', 'Bob saves the teacher\'s top 32 guesses for every word, not only its answer. A brain learns much more from the odds than from the words alone.')}
     </fieldset>`;
   }
@@ -116,6 +142,104 @@ export function createLab({ api, note }) {
     </fieldset>`;
   }
 
+  // Lab 2c: build a new lesson set from your own files. Stage A (survey) and stage B (sample lessons) before the build.
+  const kindLabel = (id) => view?.lessonKinds.find((k) => k.id === id)?.label || id;
+  function cardHtml(c, { where = 'sample', set = '' } = {}) {
+    const open = openPassage.has(c.key);
+    return `<li class="lab-card" data-card="${esc(c.key)}"><div class="lab-card-head"><strong>${esc(c.skill || 'my files')}</strong> <span class="muted">· ${esc(kindLabel(c.kind))}${c.think ? ' · thinking on' : ''}${c.source?.name ? ` · from ${esc(c.source.name)}${c.source.at ? `, passage ${c.source.at}` : ''}` : ''}</span></div>
+      <p><span class="muted">Message:</span> ${esc(c.user)}</p>
+      ${c.read ? `<p><span class="muted">Bob reads:</span> ${esc(c.source?.name || 'the passage')} <button type="button" class="link" data-passage="${esc(c.key)}" aria-expanded="${open}">${open ? 'Hide the passage' : 'Open the passage'}</button></p>${open ? `<blockquote class="lab-passage">${esc(c.read)}</blockquote>` : ''}` : ''}
+      ${c.thinking ? `<p class="muted"><span class="muted">Thinking (start):</span> ${esc(c.thinking)}</p>` : ''}
+      <p><span class="muted">Bob says:</span> ${esc(c.answer)}</p>
+      ${where === 'sample' ? `<div class="row">${bld.feedback.badIdeas.includes(c.key) || bld.feedback.dropFiles.includes(c.source?.name) ? '<span class="muted">Noted: the full build does this one differently.</span>' : `<button type="button" class="link" data-keep="${esc(c.key)}">Keep</button><button type="button" class="link" data-notlike="${esc(c.key)}" aria-expanded="${notLike === c.key}">Not like this</button>`}</div>
+        ${notLike === c.key ? `<div class="lab-check" role="group" aria-label="What was wrong"><button type="button" class="link" data-fb="file" data-key="${esc(c.key)}" data-file="${esc(c.source?.name || '')}">Leave this file out</button> <button type="button" class="link" data-fb="kind" data-key="${esc(c.key)}" data-file="${esc(c.source?.name || '')}" data-kind="${esc(c.kind)}">Not this kind of lesson for this file</button> <button type="button" class="link" data-fb="idea" data-key="${esc(c.key)}">The message is wrong for this passage</button></div>` : ''}` : `<div class="row"><button type="button" class="link" data-rmlesson="${esc(c.key)}">Remove this lesson</button>${c.source?.name ? `<button type="button" class="link" data-rmfile="${esc(c.source.name)}">Remove everything from ${esc(c.source.name)}</button>` : ''}</div>`}
+    </li>`;
+  }
+  function surveyHtml() {
+    const sv = bsurvey;
+    if (surveying) return '<p class="muted" role="status">Reading your files...</p>';
+    if (!sv) return '';
+    const kinds = Object.entries(sv.byKind || {}).map(([k, n]) => `${n} ${k}${n === 1 ? '' : 's'}`).join(', ');
+    return `<div class="lab-survey" role="status" aria-live="polite"><h4>What Bob found</h4>
+      <p>${sv.files} file${sv.files === 1 ? '' : 's'}${kinds ? ` (${esc(kinds)})` : ''}${sv.over ? `, stopped at ${sv.maxFiles}` : ''}. About ${Number(sv.words).toLocaleString()} words of usable text in ${sv.passages} passage${sv.passages === 1 ? '' : 's'}${sv.exchanges ? ` and ${sv.exchanges} exchange${sv.exchanges === 1 ? '' : 's'} from chat logs` : ''}${sv.estimated ? ` (${sv.estimated} documents counted by size, read properly during the build)` : ''}.</p>
+      ${sv.skipped.length ? `<details><summary>${sv.skipped.length} file${sv.skipped.length === 1 ? '' : 's'} skipped</summary><ul>${sv.skipped.slice(0, 200).map((x) => `<li>${esc(x.name)}: ${esc(x.why)}</li>`).join('')}</ul></details>` : ''}
+      ${sv.dupes ? `<p class="muted">${sv.dupes} repeated passage${sv.dupes === 1 ? '' : 's'} left out.</p>` : ''}
+      ${sv.held.length ? `<details><summary><strong>Held back: ${sv.held.length}</strong> passage${sv.held.length === 1 ? '' : 's'} that look like a password, key, card number, address or e-mail. They never reach the teacher.</summary><ul>${sv.held.slice(0, 200).map((x) => `<li>${esc(x.name)}${x.at ? `, passage ${x.at}` : ''}: ${esc(x.why)}. <span class="muted">${esc(x.peek)}...</span></li>`).join('')}</ul></details>` : '<p class="muted">Nothing looked like a password, key, address or e-mail. (A net, not a guarantee.)</p>'}
+      ${sv.otherPeople ? '<p class="muted">These include other people\'s words. Lessons stay on this replicant matrix; if you share the set later, that\'s your call to make for them too.</p>' : ''}
+      <p><strong>Lessons your files can supply:</strong> ${Object.entries(sv.supply).filter(([k]) => bld.kinds.includes(k)).map(([k, n]) => `${esc(kindLabel(k))} ${n}`).join(', ') || 'tick a kind of lesson above'}${Object.keys(sv.perSkill).length > 1 ? `; by skill: ${Object.entries(sv.perSkill).map(([k, v]) => `${esc(k)} ${v.passages + v.exchanges}`).join(', ')}` : ''}.</p>
+      ${sv.samples.length ? `<details><summary>Ten passages Bob would use</summary><ul>${sv.samples.map((x) => `<li><strong>${esc(x.name)}</strong>${x.at ? `, passage ${x.at}` : ''}: <span class="muted">${esc(x.text)}${x.text.length >= 400 ? '...' : ''}</span></li>`).join('')}</ul></details>` : ''}
+      <div class="lab-learn"><strong>What the brain would learn.</strong> ${esc(sv.wouldLearn)}</div>
+    </div>`;
+  }
+  function buildHtml() {
+    if (!building) return `<div class="lab-opt"><span><strong>Build a new set from my files</strong><br><span class="muted">Your own documents, notes and chat logs become lessons, here, with a teacher brain you have. Bob shows a survey and 12 sample lessons before anything big runs. Your files never leave this replicant matrix.</span><br><button type="button" class="link" data-buildopen aria-expanded="false">Build a new set from my files</button></span></div>`;
+    const teachers = view.brains.filter((b) => b.facts);
+    const supply = bsurvey ? bsurvey.supplyTotal : 0;
+    const max = Math.max(20, Math.min(view.buildMax || 5000, supply || view.buildMax || 5000));
+    const hours = Math.max(1, Math.round((Math.min(bld.count, max) * (view.secondsPerLesson || 25)) / 3600));
+    const sample = bplan?.sample || [];
+    const ready = bplan && !bplan.problems.length && !running();
+    return `<fieldset class="lab-build"><legend>Build a new set from my files</legend>
+      <p class="muted">Add files or folders, tick what I should learn from them, and pick a teacher brain you have. First the survey, then ${view.sampleCount || 12} sample lessons, then the build. Files are read in place and never copied; only the passages that become lessons are kept, in the Lab folder.</p>
+      <p><label>Name for the lesson set <input id="lab-b-name" type="text" maxlength="60" value="${esc(bld.name)}" autocomplete="off"></label></p>
+      <fieldset><legend>What to learn from</legend>
+        ${bld.items.length ? `<ul class="lab-items">${bld.items.map((it, n) => `<li><span class="lab-item-path">${esc(it.path)}</span> <label>skill <input type="text" class="lab-item-skill" data-bskill="${n}" value="${esc(it.skill)}" maxlength="40" aria-label="Skill name for ${esc(it.path)}"></label> <button type="button" class="link" data-bremove="${n}">Remove</button></li>`).join('')}</ul>` : '<p class="muted">Nothing added yet.</p>'}
+        <div class="row"><button type="button" class="link" data-baddfolder>Add a folder</button><button type="button" class="link" data-baddfile>Add a file</button> <label>or type a path <input id="lab-b-path" type="text" value="${esc(typedPath)}" placeholder="${/win/i.test(navigator.userAgentData?.platform || navigator.platform || '') ? 'C:\\Notes' : '~/Notes'}" aria-label="A file or folder path"></label><button type="button" class="link" data-baddpath>Add</button></div>
+        <p class="muted">Bob reads: plain text, Markdown, web pages, Word, OpenDocument, RTF, e-books and PDFs${view.officeOk ? '' : ' (Word, PDF and the others need LibreOffice, Settings, Engines)'}; chat logs: my own sessions, a ChatGPT or Claude export (conversations.json), or a transcript with "Name: line" lines. Spreadsheets, code, pictures and sound come later.</p>
+      </fieldset>
+      <fieldset><legend>What the brain should learn</legend>${view.lessonKinds.map((k) => `<label class="lab-opt"><input type="checkbox" data-bkind="${esc(k.id)}" ${bld.kinds.includes(k.id) ? 'checked' : ''}> <span><strong>${esc(k.label)}</strong><br><span class="muted">${esc(k.hint)}</span></span></label>`).join('')}
+        ${bld.kinds.includes('chats') ? `<label class="lab-opt lab-sub"><input type="checkbox" data-bresay ${bld.resay ? 'checked' : ''}> <span><strong>Re-say other assistants' answers in Bob's voice</strong><br><span class="muted">Untick to keep their answers word for word.</span></span></label>` : ''}
+        ${later('My code', 'Explain this function, fix this from the error, from a repo of yours.')}
+      </fieldset>
+      <p><label for="lab-b-teacher">Teacher</label> <select id="lab-b-teacher"><option value="">(pick one)</option>${teachers.map((b) => `<option value="${esc(b.id)}" ${bld.teacher === b.id ? 'selected' : ''}>${esc(b.name)} (${b.facts.sizeGB} GB${b.license ? `, ${esc(b.license)}` : ''})</option>`).join('')}</select></p>
+      <p><label for="lab-b-count">How many lessons</label> <input id="lab-b-count" type="range" min="20" max="${max}" step="10" value="${Math.min(bld.count, max)}" aria-describedby="lab-b-time"> <input id="lab-b-count-n" type="number" min="20" max="${max}" step="10" value="${Math.min(bld.count, max)}" aria-label="Lessons to build"> <span id="lab-b-time" class="muted">(roughly ${hours} hour${hours === 1 ? '' : 's'}${supply ? `; your files can supply about ${supply}` : '; the survey says how many your files can supply'})</span></p>
+      <fieldset><legend>Thinking</legend>
+        ${radio('bthink', 'half', bld.think === 'half', 'Half with thinking, half without (recommended)', 'Writing-in-my-voice lessons never think: the answer is yours as written.')}
+        ${radio('bthink', 'on', bld.think === 'on', 'All with thinking', 'Slower, and the brain learns to think first every time.')}
+        ${radio('bthink', 'off', bld.think === 'off', 'None with thinking', 'Quickest.')}
+      </fieldset>
+      ${later('A big rented brain as the teacher', 'A rented card runs a brain too big for this replicant matrix. Your passages would leave this replicant matrix. It will say so in red and start switched off.')}
+      <div class="row"><button type="button" class="link" data-bsurvey ${bld.items.length && !surveying ? '' : 'disabled'}>${bsurvey ? 'Survey my files again' : 'Survey my files'}</button></div>
+      ${surveyHtml()}
+      ${bplan ? `<div class="lab-check" role="status">${bplan.problems.length ? `<p><strong>Before it can start:</strong></p><ul>${bplan.problems.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p><strong>Ready.</strong></p>'}${bplan.notes.map((x) => `<p class="muted">${esc(x)}</p>`).join('')}</div>` : ''}
+      <div class="row"><button type="button" class="get" data-bsample ${ready && bsurvey ? '' : 'disabled'}>${running() ? 'The Lab is busy' : `Show me ${view.sampleCount || 12} sample lessons`}</button>${!bsurvey ? '<span class="muted">Survey first, so you see what goes in.</span>' : ''}</div>
+      ${sample.length ? `<h4>Sample lessons</h4><p class="muted">${sample.length} lessons made from your files. Keep the ones that look right; Not like this changes the plan, nothing is trained from the clicks.</p><ul class="lab-cards">${sample.map((c) => cardHtml(c)).join('')}</ul>` : ''}
+      <div class="row"><button type="button" class="get" data-bbuild ${ready && sample.length ? '' : 'disabled'}>${running() ? 'The Lab is busy' : 'Build the set'}</button><button type="button" class="link" data-buildclose>Close</button>${!sample.length ? '<span class="muted">The sample comes first, so you see what a lesson from your files looks like.</span>' : ''}</div>
+      <p class="muted">No upload anywhere: not to Bob-Net, not to a rented card, not to Bob's own lesson sets. The only way a set leaves the Lab is Export as a file, below, which you press.</p>
+    </fieldset>`;
+  }
+  // The sets built from your files: open one (the viewer), export it as a file.
+  function setsHtml() {
+    const built = (view.lessonSets || []).filter((x) => x.built);
+    if (!built.length) return '';
+    return `<div class="lab-sets"><h4>Sets built from your files</h4><ul class="tlist">${built.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.count} lessons${x.skills.length ? `, ${esc(x.skills.join(', '))}` : ''}${x.teacher ? `, taught by ${esc(x.teacher)}` : ''}${x.done ? '' : ', not finished'}</span> <button type="button" class="link" data-openset="${esc(x.id)}" aria-expanded="${viewer?.id === x.id}">${viewer?.id === x.id ? 'Close the set' : 'Open the set'}</button> <button type="button" class="link" data-export="${esc(x.id)}">Export as a file</button></li>`).join('')}</ul>
+      ${exportInfo ? `<div class="lab-check" role="status">${exportInfo.file ? `<p><strong>Saved ${esc(exportInfo.file)}</strong> (${exportInfo.lessons} lessons).</p>` : `<p><strong>Before the zip is written</strong>, Bob replaces names and addresses: ${exportInfo.changes.length ? exportInfo.changes.map((c) => `${esc(c.what)} (${c.n})`).join(', ') : 'nothing to change in this set'}. The source files themselves are never in the zip.</p><div class="row"><button type="button" class="get" data-exportgo="${esc(exportInfo.id)}">Pick a folder and save the zip</button><button type="button" class="link" data-exportclose>Not now</button></div>`}${exportInfo.changes?.length && exportInfo.file ? `<p class="muted">Changed: ${exportInfo.changes.map((c) => `${esc(c.what)} (${c.n})`).join(', ')}.</p>` : ''}</div>` : ''}
+      ${viewer ? viewerHtml() : ''}</div>`;
+  }
+  function viewerHtml() {
+    const v = viewer;
+    return `<section class="lab-viewer" aria-label="Lessons in ${esc(v.name)}"><h4>${esc(v.name)}: ${v.found === v.total ? `${v.total} lessons` : `${v.found} of ${v.total} lessons`}</h4>
+      <div class="row"><label>Search <input id="lab-v-q" type="search" value="${esc(vq.q)}"></label>
+        ${v.skills.length > 1 ? `<label>Skill <select id="lab-v-skill"><option value="">all</option>${v.skills.map((k) => `<option value="${esc(k)}" ${vq.skill === k ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></label>` : ''}
+        ${v.kinds.length > 1 ? `<label>Kind <select id="lab-v-kind"><option value="">all</option>${v.kinds.map((k) => `<option value="${esc(k)}" ${vq.kind === k ? 'selected' : ''}>${esc(kindLabel(k))}</option>`).join('')}</select></label>` : ''}
+        ${v.files.length > 1 ? `<label>File <select id="lab-v-file"><option value="">all</option>${v.files.map((k) => `<option value="${esc(k)}" ${vq.file === k ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></label>` : ''}</div>
+      ${v.sources?.held ? `<p class="muted">${v.sources.held} passage${v.sources.held === 1 ? '' : 's'} held back during the build, ${v.sources.dupes || 0} repeated.</p>` : ''}
+      <ul class="lab-cards">${v.cards.map((c) => cardHtml(c, { where: 'set', set: v.id })).join('')}</ul>
+      ${v.found > v.from + v.cards.length ? `<button type="button" class="link" data-vmore>Show more</button>` : ''}
+    </section>`;
+  }
+  async function loadViewer(id, more = false) {
+    try { const from = more && viewer ? viewer.from + viewer.cards.length : 0; const v = await api('/api/lab/set', { id, ...vq, from }); viewer = more && viewer ? { ...v, from: viewer.from, cards: [...viewer.cards, ...v.cards] } : v; } catch (e) { msg = e.message; viewer = null; }
+  }
+  async function pickPath(kind) {
+    try {
+      const res = kind === 'folder' ? await api('/api/pick-folder', { purpose: 'project' }) : await api('/api/own-models/pick', { kind: 'docs' });
+      if (res.error) { msg = res.error; return ''; }
+      return res.folder || res.file || '';
+    } catch (e) { msg = e.message; return ''; }
+  }
+  const addItem = (p) => { if (!p || bld.items.some((i) => i.path === p)) return; const base = p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'My files'; const skill = base.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim(); bld.items.push({ path: p, skill: skill ? skill[0].toUpperCase() + skill.slice(1) : 'My files' }); if (!bld.name) bld.name = `Lessons from ${skill || 'my files'}`.slice(0, 60); bsurvey = null; };
+
   function smallerStep() {
     const b = brain(), f = b?.facts || {}, s = r.smaller;
     const cut = s.cut;
@@ -135,7 +259,7 @@ export function createLab({ api, note }) {
         ${cut.how === 'file' ? `<p><label>Expert list file <input id="lab-keep-file" type="text" value="${esc(cut.file)}"></label></p>` : ''}
         <fieldset><legend>How many experts to keep per layer</legend>${cut.how === 'cover' ? radio('keep', 'auto', !cut.keep, 'As many as the skills need (recommended)', 'Bob works it out after counting. The report says how many, and how much of each skill stayed.') : ''}${cutSizes.map((c) => radio('keep', String(c.keep), cut.keep === c.keep, `${c.keep} experts · about ${c.gb} GB`, c.fit)).join('')}
         <label class="lab-opt"><input type="radio" name="keep" value="custom" ${!cut.keep || cutSizes.some((c) => c.keep === cut.keep) ? '' : 'checked'}> <span><strong>Custom</strong> <input id="lab-keep-n" type="number" min="${f.used || 1}" max="${(f.experts || 2) - 1}" value="${cut.keep || ''}" aria-label="Experts to keep per layer"></span></label></fieldset>
-        ${box('try', s.try, 'Try it first, before cutting', `Brain Engine runs ${b?.name || 'the brain'} with only the kept experts switched on and gives it the Lab test, so you see the score before any file is written. It counts as the test of ${b?.name || 'the brain'} too.`, view.brainEngine ? '' : 'Needs Brain Engine, Bob\'s Lab engine (a version of llama.cpp that can switch experts off). It isn\'t ready to download yet; it comes in a later update.')}
+        ${box('try', s.try, 'Try it first, before cutting', `Brain Engine runs ${b?.name || 'the brain'} with only the kept experts switched on and gives it the Lab test, so you see the score before any file is written. It counts as the test of ${b?.name || 'the brain'} too.`, view.brainEngine ? '' : 'Needs Brain Engine, Bob\'s Lab engine (a version of llama.cpp that can switch experts off). Get it in Get models > Engines: Brain Engine (test build).')}
         ${s.try ? `<div class="lab-sub">${box('tryStop', s.tryStop, 'Stop if it scores more than 10 points lower on the Lab test', 'Then nothing is cut, and you can keep more experts or protect more skills.')}</div>` : ''}
       </div>` : ''}
       ${later('Layer cut (Experimental)', 'Fewer layers: the least-used ones, measured on your lessons.')}
@@ -172,53 +296,100 @@ export function createLab({ api, note }) {
 
   function runsHtml() {
     if (!view.runs.length) return '';
-    return `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.kind === 'write' ? `lessons, taught by ${esc(x.from)}` : x.kind === 'challenge' ? 'challenges' : `from ${esc(x.from)}`} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
+    return `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.kind === 'write' ? `lessons, taught by ${esc(x.from)}` : x.kind === 'challenge' ? 'challenges' : x.kind === 'ladder' ? 'quantization ladder' : x.kind === 'ladder-ask' ? 'same question, every size' : x.kind === 'mix' ? `a mix of ${esc(x.from)}` : x.kind === 'stack' ? `stacked layers of ${esc(x.from)}` : x.kind === 'refusals' ? `${esc(x.from)} with the refusal habit taken out` : x.kind === 'refusals-try' ? 'try it first, nothing written' : x.kind === 'build' || x.kind === 'sample' ? `${x.kind === 'sample' ? 'sample lessons' : 'lessons'} from your files, taught by ${esc(x.from)}` : `from ${esc(x.from)}`} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
       ${x.state === 'running' ? ' <button type="button" class="link" data-stop>Stop</button>' : ''}
       ${x.state === 'failed' || x.state === 'stopped' ? `<br><span class="muted">${esc(x.error || '')}</span>` : ''}
       ${(x.notes || []).map((n) => `<br><span class="muted">${esc(n)}</span>`).join('')}
-      ${x.kind === 'challenge' && x.report ? `<table class="lab-report"><caption class="muted">Challenges (out of 100)</caption><tr><th scope="col">Challenge</th><th scope="col">Score</th><th scope="col">Right</th></tr>${x.report.challenges.map((c) => `<tr><th scope="row">${esc(c.title)}</th><td>${c.score ?? '-'}</td><td>${c.skipped ? esc(c.skipped) : `${c.right} of ${c.of}`}</td></tr>`).join('')}</table>${saveHtml(x.id, saveState(x.id), view.hardware)}` : ''}
-      ${x.kind === 'write' && x.report ? `<br><span class="muted">${x.report.lessons} lessons written in ${x.report.minutes} minutes. Pick it in step 2, under A lesson set I wrote here.</span>` : ''}
+      ${x.kind === 'write' && x.report ? `<br><span class="muted">${x.report.lessons} lessons written in ${x.report.minutes} minutes. Pick it in step 2, under A lesson set I wrote or built here.</span>` : ''}
+      ${x.kind === 'build' && x.report ? `<br><span class="muted">${x.report.lessons} lessons built in ${x.report.minutes} minutes${x.report.held ? `, ${x.report.held} passages held back` : ''}. Pick it in step 2, under A lesson set I wrote or built here, or open it under Sets built from your files.</span>` : ''}
+      ${x.kind === 'sample' && x.report ? `<br><span class="muted">${x.report.lessons} sample lessons in ${x.report.minutes} minutes${x.report.held ? `, ${x.report.held} passages held back` : ''}. They're under Build a new set from my files, in step 2.</span>` : ''}
+      ${x.kind === 'challenge' && x.report ? `<table class="lab-report"><caption class="muted">Challenges (out of 100)</caption><tr><th scope="col">Challenge</th><th scope="col">Score</th><th scope="col">Right</th></tr>${x.report.challenges.map((c) => `<tr><th scope="row">${esc(c.title)}</th><td>${c.score ?? '-'}</td><td>${c.skipped ? esc(c.skipped) : `${c.right} of ${c.of}`}${c.parts ? `<br><span class="muted">${esc(guardPartsLine(c.parts))}</span>` : ''}${c.note ? `<br><span class="muted">${esc(c.note)}</span>` : ''}</td></tr>`).join('')}</table>${view.mode === 'pro' ? px.reportExtraHtml(x) : ''}${saveHtml(x.id, saveState(x.id), view.hardware)}` : ''}
       ${x.report?.coverage ? `<table class="lab-report"><caption class="muted">Coverage cut: kept ${x.report.coverage.experts} of ${x.report.coverage.of} experts per layer</caption><tr><th scope="col">Skill</th><th scope="col">Kept, on average</th><th scope="col">Worst layer</th></tr>${x.report.coverage.skills.map((k) => `<tr><th scope="row">${esc(k.name)}</th><td>${k.average}%</td><td>${k.worst}% (layer ${k.worstLayer})</td></tr>`).join('')}</table>` : ''}
-      ${x.report?.tried ? `<br><span class="muted">Tried first on Brain Engine: ${x.report.tried.masked} with only the kept experts, ${x.report.tried.full} with all of them.</span>` : ''}
+      ${homeReportHtml(x)}
+      ${x.report?.tried && x.kind !== 'refusals-try' ? `<br><span class="muted">Tried first on Brain Engine: ${x.report.tried.masked} with only the kept experts, ${x.report.tried.full} with all of them.</span>` : ''}
       ${x.report?.made ? `<table class="lab-report"><caption class="muted">Lab test (out of 100)</caption><tr><th scope="col"></th><th scope="col">${esc(x.name)}</th>${x.report.from ? `<th scope="col">${esc(x.from)}</th>` : ''}</tr>${Object.keys(PARTS).map((k) => `<tr><th scope="row">${esc(PARTS[k])}</th><td>${x.report.made.parts[k]?.score ?? '-'}</td>${x.report.from ? `<td>${x.report.from.parts[k]?.score ?? '-'}</td>` : ''}</tr>`).join('')}<tr><th scope="row">All</th><td>${x.report.made.score}</td>${x.report.from ? `<td>${x.report.from.score}</td>` : ''}</tr><tr><th scope="row">Size</th><td>${x.report.sizeGB} GB</td>${x.report.from ? `<td>${x.report.fromGB} GB</td>` : ''}</tr><tr><th scope="row">Words a second</th><td>${x.report.made.tps || '-'}</td>${x.report.from ? `<td>${x.report.from.tps || '-'}</td>` : ''}</tr></table>
         ${x.used ? '<span class="muted">In Bob, under Get models.</span>' : `<button type="button" class="get" data-use="${esc(x.id)}">Use in Bob</button>`}` : ''}</li>`).join('')}</ul></section>`;
   }
 
   const PACK_COLS = () => (view?.packs || []).map((p) => [p.id, p.title]);
-  function boardTable() {
+  // 1.5.164 With sixteen more challenges, the board folds "More challenges" into one column (the average of those run,
+  // with how many) and shows Guard rails on its own, since it never counts. "Every challenge as a column" unfolds them.
+  const RANKED = () => (view?.packs || []).filter((p) => p.ranked !== false);
+  const FIRST = () => (view?.packs || []).filter((p) => p.group !== 'more');
+  const MORE = () => (view?.packs || []).filter((p) => p.group === 'more' && p.ranked !== false);
+  const UNRANKED = () => (view?.packs || []).filter((p) => p.ranked === false);
+  const moreOf = (r) => { const got = MORE().map((p) => [p.id, r.scores[p.id]]).filter(([id, v]) => typeof v === 'number' && !r.old.includes(id)); return got.length ? { mean: Math.round(got.reduce((a, [, v]) => a + v, 0) / got.length), n: got.length, of: MORE().length } : null; };
+  const showCols = () => (ch.wide ? PACK_COLS() : [...FIRST().map((p) => [p.id, p.title]), ...(MORE().length ? [['__more', `More challenges (${MORE().length})`]] : []), ...UNRANKED().map((p) => [p.id, `${p.title} (not counted)`])]);
+  const colCell = (r, id, cell) => { if (id !== '__more') return cell(r, id); const m = moreOf(r); return m ? `<td>${m.mean}<br><span class="muted">${m.n} of ${m.of} run</span></td>` : '<td>-</td>'; };
+  function boardTable(forSave = false) {
     const rows = [...(view.scores || [])];
-    const key = ch.sort, val = (r) => (key === 'name' ? r.name.toLowerCase() : key === 'size' ? r.sizeGB ?? -1 : key === 'speed' ? r.tps ?? -1 : r.scores[key] ?? -1);
+    const cols = forSave ? PACK_COLS() : showCols();
+    const key = ch.sort, val = (r) => (key === 'name' ? r.name.toLowerCase() : key === 'size' ? r.sizeGB ?? -1 : key === 'speed' ? r.tps ?? -1 : key === '__more' ? moreOf(r)?.mean ?? -1 : r.scores[key] ?? -1);
     rows.sort((a, b) => { const x = val(a), y = val(b); const c = x < y ? -1 : x > y ? 1 : 0; return ch.down ? -c : c; });
-    const head = ['Brain', ...PACK_COLS().map(([, t]) => t), 'Size', 'Words a second'];
-    return { title: 'Lab scoreboard', head, rows: rows.map((r) => [r.name, ...PACK_COLS().map(([id]) => (r.scores[id] ?? '-')), r.sizeGB ? `${r.sizeGB} GB` : '-', r.tps ?? '-']), note: 'Scores out of 100, temperature 0, thinking off. Only comparable with other scores from the same replicant matrix.' };
+    const head = ['Brain', ...cols.map(([, t]) => t), 'Size', 'Words a second'];
+    return { title: 'Lab scoreboard', head, rows: rows.map((r) => [r.name, ...cols.map(([id]) => (id === '__more' ? (moreOf(r) ? `${moreOf(r).mean} (${moreOf(r).n} of ${moreOf(r).of})` : '-') : r.scores[id] ?? '-')), r.sizeGB ? `${r.sizeGB} GB` : '-', r.tps ?? '-']), note: 'Scores out of 100, temperature 0, thinking off. Only comparable with other scores from the same replicant matrix.' };
+  }
+  // 1.5.161 The local leaderboard: brains ranked inside classes of models by their total weights, not by graphics card.
+  const wts = (r) => (r.paramsB ? `${r.paramsB}B${r.moe && r.activeB ? `, ${r.activeB}B at work` : ''}` : '-');
+  const boardRows = () => (view.scores || []).filter((r) => (ch.kind === 'all' || (ch.kind === 'moe') === r.moe) && (!ch.here || r.madeHere) && (!ch.fits || !view.cardGB || (r.sizeGB && r.sizeGB <= view.cardGB)));
+  function classTable() { // the same boards, for Save: one table with the class in its own column
+    const name = Object.fromEntries((view.classes || []).map((c) => [c.id, c.label]));
+    const rows = boardRows().sort((a, b) => (view.classes || []).findIndex((c) => c.id === a.cls) - (view.classes || []).findIndex((c) => c.id === b.cls) || order(a, b));
+    return { title: 'Lab leaderboard by class', head: ['Class', 'Brain', 'Overall', 'Weights', 'Quant', 'Size', 'Words a second', ...PACK_COLS().map(([, t]) => t)], rows: rows.map((r) => [name[r.cls] || 'Not placed yet', r.name, r.overall ?? '-', wts(r), r.quant || '-', r.sizeGB ? `${r.sizeGB} GB` : '-', r.tps ?? '-', ...PACK_COLS().map(([id]) => (r.scores[id] == null ? '-' : r.old.includes(id) ? `${r.scores[id]} (older test)` : r.scores[id]))]), note: 'Classes by total weights. Overall = average of every challenge, run with the current version of each test; brains that haven\'t run them all sit below the ones that have. Scores out of 100, temperature 0, thinking off. Only comparable with other scores from the same replicant matrix.' };
+  }
+  const order = (a, b) => Number(Boolean(b.all)) - Number(Boolean(a.all)) || (b.overall ?? -1) - (a.overall ?? -1) || (b.tps ?? 0) - (a.tps ?? 0) || (a.sizeGB ?? 0) - (b.sizeGB ?? 0);
+  function classTables() {
+    const rows = boardRows(), classes = [...(view.classes || []), { id: '', label: 'Not placed yet', hint: 'Scored before classes. Run any challenge on it again to place it.' }];
+    const cell = (r, id) => { const v = r.scores[id]; if (v == null) return '<td>-</td>'; return r.old.includes(id) ? `<td class="muted"><s>${v}</s><span class="sr-only"> (older test, not counted)</span></td>` : `<td>${v}</td>`; };
+    const out = classes.map((c) => {
+      const list = rows.filter((r) => r.cls === c.id).sort(order); // ran them all first, then overall, speed, smaller file
+      if (!list.length) return '';
+      return `<table class="lab-report lab-board lab-class"><caption><strong>${esc(c.label)}</strong> <span class="muted">· ${esc(c.hint)}</span></caption>
+        <tr><th scope="col">Place</th><th scope="col">Brain</th><th scope="col">Overall</th><th scope="col">Weights</th><th scope="col">Quant</th><th scope="col">Size</th><th scope="col">Words a second</th>${showCols().map(([, t]) => `<th scope="col">${esc(t)}</th>`).join('')}</tr>
+        ${list.map((r, i) => `<tr${i === 0 && r.all && c.id ? ' class="lab-best"' : ''}><td>${c.id ? i + 1 : '-'}${i === 0 && r.all && c.id ? ' <span class="lab-ribbon">Best in class</span>' : ''}</td><th scope="row">${esc(r.name)}${r.madeHere ? ' <span class="muted">(made here)</span>' : ''}</th><td>${r.overall ?? '-'}${r.ran && r.ran < RANKED().length ? `<br><span class="muted">${r.ran} of ${RANKED().length} run</span>` : ''}</td><td>${esc(wts(r))}</td><td>${esc(r.quant || '-')}</td><td>${r.sizeGB ? `${r.sizeGB} GB` : '-'}</td><td>${r.tps ?? '-'}</td>${showCols().map(([id]) => colCell(r, id, cell)).join('')}</tr>`).join('')}</table>`;
+    }).join('');
+    return out || '<p class="muted">No brains match those choices.</p>';
   }
   function challengesHtml() {
     const busy = running();
     const brains = view.brains.filter((b) => b.facts);
     const sortBtn = (key, label) => `<th scope="col" aria-sort="${ch.sort === key ? (ch.down ? 'descending' : 'ascending') : 'none'}"><button type="button" class="link lab-sort" data-sort="${key}">${esc(label)}${ch.sort === key ? (ch.down ? ' ↓' : ' ↑') : ''}</button></th>`;
     const t = boardTable();
-    const board = view.scores?.length ? `<table class="lab-report lab-board"><caption class="muted">Scores out of 100. Press a column's name to sort by it.</caption>
-      <tr>${sortBtn('name', 'Brain')}${PACK_COLS().map(([id, title]) => sortBtn(id, title)).join('')}${sortBtn('size', 'Size')}${sortBtn('speed', 'Words a second')}</tr>
+    const chip = (attr, on, label) => `<button type="button" class="lab-chip${on ? ' on' : ''}" aria-pressed="${on}" ${attr}>${esc(label)}</button>`;
+    const pick = `<div class="row lab-chips" role="group" aria-label="Scoreboard view">${chip('data-boardby="class"', ch.by === 'class', 'By class of model')}${chip('data-boardby="all"', ch.by === 'all', 'Every brain in one table')}</div>
+      ${ch.by === 'class' ? `<div class="row lab-chips" role="group" aria-label="Show">${chip('data-boardkind="all"', ch.kind === 'all', 'All')}${chip('data-boardkind="moe"', ch.kind === 'moe', 'Mixture of experts')}${chip('data-boardkind="dense"', ch.kind === 'dense', 'Dense')}${chip('data-boardhere', ch.here, 'Made here')}${view.cardGB ? chip('data-boardfits', ch.fits, `Fits my ${view.cardGB} GB graphics card`) : ''}${MORE().length && view.mode === 'pro' ? chip('data-boardwide', ch.wide, 'Every challenge as a column') : ''}</div>
+      <p class="muted">Each class is by how many weights a brain has in all. A mixture of experts sits with its total, and shows how many are at work on each word. Quantizing never moves a brain to another class; the Quant column says how it was squeezed. Overall is the average of every challenge, run with today's version of each test. A brain that hasn't run them all shows how many it ran and sits below the ones that have, so it can't win by skipping the hard one. A crossed-out score came from an older version of that test.</p>
+      ${classTables()}${saveHtml('board', saveState('board'), view.hardware)}` : ''}`;
+    const board = !view.scores?.length ? '<p class="muted">No scores yet. Pick a brain and run some challenges, and they show here.</p>' : ch.by === 'class' ? pick : `${pick}<table class="lab-report lab-board"><caption class="muted">Scores out of 100. Press a column's name to sort by it.</caption>
+      <tr>${sortBtn('name', 'Brain')}${showCols().map(([id, title]) => sortBtn(id, title)).join('')}${sortBtn('size', 'Size')}${sortBtn('speed', 'Words a second')}</tr>
       ${t.rows.map((r) => `<tr><th scope="row">${esc(r[0])}</th>${r.slice(1).map((c) => `<td>${esc(String(c))}</td>`).join('')}</tr>`).join('')}</table>
-      ${saveHtml('board', saveState('board'), view.hardware)}` : '<p class="muted">No scores yet. Pick a brain and run some challenges, and they show here.</p>';
+      ${saveHtml('board', saveState('board'), view.hardware)}`;
     return `<div id="lab-page-challenges" role="tabpanel" aria-labelledby="lab-tab-challenges">
       <p class="muted">Short tests, out of 100, for any brain on this replicant matrix. I ask every question at temperature 0 with thinking off, so the same brain gets the same score twice. The scores only mean something next to each other, here: they aren't the numbers you see in papers.</p>
       ${runsHtml()}
       <fieldset><legend>Which brain?</legend>${brains.length ? brains.map((b) => radio('chfrom', b.id, ch.from === b.id, `${b.name}${b.madeInLab ? ' (made in the Lab)' : ''}`, `${b.facts.sizeGB} GB. ${b.fit}`)).join('') : '<p>There are no brains here the Lab can run yet. Get one in Get models first.</p>'}</fieldset>
-      <fieldset><legend>Challenges</legend>${(view.packs || []).map((p) => `<label class="lab-opt"><input type="checkbox" data-pack="${esc(p.id)}" ${ch.packs.includes(p.id) ? 'checked' : ''}> <span><strong>${esc(p.title)}</strong> <span class="muted">· ${p.count} questions · about ${p.minutes} min on a 16 GB card</span><br><span class="muted">${esc(p.what)}</span></span></label>`).join('')}</fieldset>
+      ${packGroups(view.packs).map((grp) => `<fieldset><legend>${esc(grp.label)}</legend>${grp.packs.map((p) => `<label class="lab-opt"><input type="checkbox" data-pack="${esc(p.id)}" ${ch.packs.includes(p.id) ? 'checked' : ''}> <span><strong>${esc(p.title)}</strong> <span class="muted">· ${p.count} questions · about ${p.minutes} min on a 16 GB card</span><br><span class="muted">${esc(p.what)}</span></span></label>`).join('')}</fieldset>`).join('')}
       ${askUnload?.challenge ? `<div class="setup-offer" role="alert"><strong>Bob's brain is on the graphics card</strong><span>${esc(askUnload.join(', '))} is loaded. The challenges need the card, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-unload>Unload it and start</button><button type="button" class="link" data-nounload>Not now</button></div></div>` : ''}
+      ${view.mode === 'pro' ? px.myPacksHtml(ch.packs) + px.settingsHtml() : ''}
       <div class="row"><button type="button" class="get" data-chgo ${ch.from && ch.packs.length && !busy ? '' : 'disabled'}>${busy ? 'The Lab is busy' : 'Run the challenges'}</button></div>
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
       <section class="lab-compare"><h3>Scoreboard</h3>${board}</section>
+      ${gd.html()}
     </div>`;
   }
 
   function draw() {
     if (!view) { body.innerHTML = `<p class="muted">${esc(msg || 'Loading...')}</p>`; return; }
     if (!view.on) { body.innerHTML = '<p>The Lab is off. Turn on <strong>Show the Computer Science Lab</strong> in Settings, How Bob works, Brains.</p>'; return; }
-    const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}<span class="lab-tab dim" aria-disabled="true">Playground <span class="lab-later">Later (Lab 3)</span></span></div>`;
+    // 1.5.168 Keep it simple / Professional: one switch for the whole Lab. Simple shows what most people need; Professional
+    // shows every control a tab has. Saved in settings, so it's the same next time and on every tab.
+    const pro = view.mode === 'pro';
+    const modeRow = `<div class="lab-mode" role="radiogroup" aria-label="How much to show"><button type="button" class="lab-chip${pro ? '' : ' on'}" role="radio" aria-checked="${!pro}" data-labmode="simple">Keep it simple</button><button type="button" class="lab-chip${pro ? ' on' : ''}" role="radio" aria-checked="${pro}" data-labmode="pro">Professional</button><span class="muted">${pro ? 'Every control, on every tab. The simple way still works.' : 'The usual choices. Professional shows every control a tab has.'}</span></div>`;
+    const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}</div>${modeRow}`;
     if (tab === 'learn') { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-learn" role="tabpanel" aria-labelledby="lab-tab-learn"></div></div>`; learn.mount($('lab-page-learn')); return; }
     if (tab === 'challenges') { body.innerHTML = `<div class="lab">${tabs}${challengesHtml()}</div>`; return; }
+    if (tab === 'forge') { body.innerHTML = `<div class="lab">${tabs}${fg.html(sn.html())}</div>`; return; }
+    if (tab === 'playground') { body.innerHTML = `<div class="lab">${tabs}${pg.html(runsHtml())}</div>`; pg.mounted(); return; }
     const i = STEPS.findIndex(([id]) => id === step);
     const html = { brain: brainStep, lessons: lessonsStep, smaller: smallerStep, where: whereStep, test: testStep }[step]();
     const busy = running();
@@ -226,10 +397,12 @@ export function createLab({ api, note }) {
       <p class="muted">Make your own brain from one on this replicant matrix. Each step says what it does and whether this replicant matrix can do it. Show the recipe shows the exact commands, if you want to learn them.</p>
       ${view.recipes.length ? `<p><label>Start from a saved recipe <select id="lab-recipe"><option value="">(none)</option>${view.recipes.map((x, n) => `<option value="${n}">${esc(x.name)}</option>`).join('')}</select></label></p>` : ''}
       ${runsHtml()}
+      ${rc.galleryHtml()}
       ${templateHtml()}
       <nav class="lab-steps" aria-label="Lab steps"><ol>${STEPS.map(([id, label], n) => `<li><button type="button" class="lab-step${id === step ? ' on' : ''}" data-step="${id}" ${id === step ? 'aria-current="step"' : ''} ${n > 0 && !r.from ? 'disabled' : ''}>${esc(label)}</button></li>`).join('')}</ol></nav>
       <div class="lab-panel" id="lab-panel">${html}</div>
       ${plan ? `<div class="lab-check" role="status">${plan.problems.length ? `<p><strong>Before it can start:</strong></p><ul>${plan.problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : `<p><strong>Ready.</strong> ${plan.steps.length} steps: ${plan.steps.map((s) => esc(s.label)).join(', ')}.</p>`}${plan.notes.map((n) => `<p class="muted">${esc(n)}</p>`).join('')}</div>` : ''}
+      ${rc.estimateHtml()}
       ${askUnload ? `<div class="setup-offer" role="alert"><strong>Bob's brain is on the card</strong><span>${esc(askUnload.join(', '))} is loaded. The Lab needs the card, so Bob unloads it first; it loads again the next time you chat (which slows the Lab down while it runs).</span><div class="row"><button type="button" class="get" data-unload>Unload it and start</button><button type="button" class="link" data-nounload>Not now</button></div></div>` : ''}
       <div class="row lab-actions">
         ${i > 0 ? '<button type="button" class="link" data-back>Back</button>' : ''}
@@ -240,16 +413,23 @@ export function createLab({ api, note }) {
       ${showRecipe ? `<div class="lab-recipe"><pre tabindex="0">${esc(plan?.text || 'Pick a brain first.')}</pre><button type="button" class="link" data-copy>Copy</button></div>` : ''}
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
       ${compareHtml()}
+      ${rc.usageHtml()}
     </div></div>`;
   }
 
   body.addEventListener('change', async (e) => {
     const el = e.target; msg = '';
     if (tab === 'learn') return; // the Learn tab listens for itself
+    { const f = await sn.change(el); if (f) { if (f === 'draw') { draw(); $(el.id)?.focus(); } return; } }
+    { const f = await fg.change(el); if (f) { draw(); $(el.id)?.focus(); return; } }
+    if (await pg.change(el)) return draw();
+    if (tab === 'challenges') { const r = await px.change(el); if (r === 'draw') { draw(); $(el.id)?.focus(); return; } if (r) return; } // 1.5.168
+    if (tab === 'challenges' && gd.change(el)) return; // 1.5.164 the Guard rails sandbox keeps its own words
     if (el.name === 'chfrom') { ch.from = el.value; return draw(); }
     if (el.dataset.pack) { const k = el.dataset.pack; ch.packs = el.checked ? [...new Set([...ch.packs, k])] : ch.packs.filter((x) => x !== k); return draw(); }
     if (el.dataset.savefmt) { saveState(el.dataset.savefmt).format = el.value; return draw(); }
     if (el.dataset.savehw) { saveState(el.dataset.savehw).hardware = el.checked; return draw(); }
+    if (await rc.change(el)) return;
     if (el.name === 'from') { r.from = el.value; const b = brain(); if (!r.name && b) r.name = `${b.name} Lab`; r.smaller = { sight: false, hearing: false, cut: null, files: [], measure: false, try: false, tryStop: true }; r.template = ''; }
     else if (el.id === 'lab-template') {
       const t = templateById(el.value), b = brain();
@@ -264,6 +444,15 @@ export function createLab({ api, note }) {
     else if (el.dataset.wskill) { const k = el.dataset.wskill; w.skills = el.checked ? [...new Set([...w.skills, k])] : w.skills.filter((x) => x !== k); }
     else if (el.id === 'lab-w-count' || el.id === 'lab-w-count-n') w.count = Number(el.value);
     else if (el.name === 'wthink') w.think = el.value;
+    else if (el.id === 'lab-b-name') bld.name = el.value;
+    else if (el.id === 'lab-b-path') { typedPath = el.value; return; }
+    else if (el.id === 'lab-b-teacher') bld.teacher = el.value;
+    else if (el.dataset.bskill) { const it = bld.items[Number(el.dataset.bskill)]; if (it) it.skill = el.value; bsurvey = null; }
+    else if (el.dataset.bkind) { const k = el.dataset.bkind; bld.kinds = el.checked ? [...new Set([...bld.kinds, k])] : bld.kinds.filter((x) => x !== k); if (bsurvey) bsurvey = null; }
+    else if ('bresay' in el.dataset) bld.resay = el.checked;
+    else if (el.id === 'lab-b-count' || el.id === 'lab-b-count-n') bld.count = Number(el.value);
+    else if (el.name === 'bthink') bld.think = el.value;
+    else if (el.id === 'lab-v-q' || el.id === 'lab-v-skill' || el.id === 'lab-v-kind' || el.id === 'lab-v-file') { vq[{ 'lab-v-q': 'q', 'lab-v-skill': 'skill', 'lab-v-kind': 'kind', 'lab-v-file': 'file' }[el.id]] = el.value; if (viewer) await loadViewer(viewer.id); return draw(); }
     else if (el.name === 'cuthow') { r.smaller.cut.how = el.value; if (el.value === 'cover') { r.smaller.cut.cover = r.smaller.cut.cover || 0.95; r.smaller.cut.strong = r.smaller.cut.strong || []; r.smaller.cut.keep = 0; } else if (!r.smaller.cut.keep) r.smaller.cut.keep = brain()?.cuts?.[1]?.keep || brain()?.cuts?.[0]?.keep || 8; }
     else if (el.name === 'cover') r.smaller.cut.cover = Number(el.value);
     else if (el.dataset.strong) { const k = el.dataset.strong; r.smaller.cut.strong = el.checked ? [...new Set([...(r.smaller.cut.strong || []), k])] : (r.smaller.cut.strong || []).filter((x) => x !== k); }
@@ -293,33 +482,51 @@ export function createLab({ api, note }) {
     e.preventDefault(); draw(); $(`lab-tab-${tab}`)?.focus();
   });
   body.addEventListener('input', (e) => { // the slider and its number box move together
+    if (pg.input(e.target)) return;
+    if (gd.input(e.target)) return; // 1.5.164
+    if (px.input(e.target)) return; // 1.5.168
+    if (fg.input(e.target, () => draw())) return; // 1.5.164
     if (e.target.id === 'lab-chunks') { const n = $('lab-chunks-n'); if (n) n.value = e.target.value; }
     if (e.target.id === 'lab-chunks-n') { const s = $('lab-chunks'); if (s) s.value = e.target.value; }
     if (e.target.id === 'lab-w-count') { const n = $('lab-w-count-n'); if (n) n.value = e.target.value; }
     if (e.target.id === 'lab-w-count-n') { const s = $('lab-w-count'); if (s) s.value = e.target.value; }
+    if (e.target.id === 'lab-b-count') { const n = $('lab-b-count-n'); if (n) n.value = e.target.value; }
+    if (e.target.id === 'lab-b-count-n') { const s = $('lab-b-count'); if (s) s.value = e.target.value; }
   });
   body.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return;
     msg = '';
     if (b.dataset.tab) { tab = b.dataset.tab; draw(); $(`lab-tab-${tab}`)?.focus(); return; }
     if (tab === 'learn' && !b.dataset.tab) return;
+    if (b.dataset.boardby) { ch.by = b.dataset.boardby; draw(); body.querySelector(`[data-boardby="${ch.by}"]`)?.focus(); return; }
+    if (b.dataset.boardkind) { ch.kind = b.dataset.boardkind; draw(); body.querySelector(`[data-boardkind="${ch.kind}"]`)?.focus(); return; }
+    if ('boardhere' in b.dataset) { ch.here = !ch.here; draw(); body.querySelector('[data-boardhere]')?.focus(); return; }
+    if ('boardfits' in b.dataset) { ch.fits = !ch.fits; draw(); body.querySelector('[data-boardfits]')?.focus(); return; }
+    if (b.dataset.labmode) { try { view.mode = (await api('/api/lab/mode', { mode: b.dataset.labmode })).mode; } catch (e) { msg = e.message; } draw(); body.querySelector(`[data-labmode="${view.mode}"]`)?.focus(); return; }
+    if ('boardwide' in b.dataset) { ch.wide = !ch.wide; draw(); body.querySelector('[data-boardwide]')?.focus(); return; }
     if (b.dataset.sort) { ch.down = ch.sort === b.dataset.sort ? !ch.down : b.dataset.sort !== 'name'; ch.sort = b.dataset.sort; draw(); body.querySelector(`[data-sort="${ch.sort}"]`)?.focus(); return; }
     if (b.dataset.saveopen) { Object.assign(saveState(b.dataset.saveopen), { open: true, saved: '', error: '' }); return draw(); }
     if (b.dataset.saveclose) { saveState(b.dataset.saveclose).open = false; return draw(); }
     if (b.dataset.savego) {
       const k = b.dataset.savego, st = saveState(k);
-      const table = k === 'board' ? boardTable() : runTable(k);
+      const table = k === 'board' ? (ch.by === 'class' ? classTable() : boardTable(true)) : pg.saveTable(k) || runTable(k);
       try { st.saved = await saveResult(api, table, { format: st.format, hardware: st.hardware, version: view.version, hw: view.hardware }); st.error = ''; } catch (err) { st.error = err.message; st.saved = ''; }
       return draw();
     }
     if ('chgo' in b.dataset || (askUnload?.challenge && 'unload' in b.dataset)) {
       try {
-        const res = await api('/api/lab/challenge', { challenge: { from: ch.from, packs: ch.packs }, unload: 'unload' in b.dataset });
+        const res = await api('/api/lab/challenge', { challenge: { from: ch.from, packs: ch.packs, ...(view.mode === 'pro' ? { gen: px.gen() } : {}) }, unload: 'unload' in b.dataset });
         if (res.needUnload) { askUnload = Object.assign(res.names, { challenge: true }); return draw(); }
         askUnload = null;
       } catch (err) { msg = err.message; }
       return load();
     }
+    { const f = await sn.click(b); if (f === 'draw') return draw(); if (f) return; }
+    { const f = await fg.click(b); if (f === 'draw') return draw(); if (f) return; }
+    { const p = await pg.click(b, load); if (p === 'draw') return draw(); if (p) return; }
+    { const r = await px.click(b, load); if (r === 'draw') { const keep = b.id || ''; draw(); if (keep) $(keep)?.focus(); return; } if (r) return; }
+    { const g = await gd.click(b); if (g === 'draw') { const f = b.dataset.guard; draw(); $(f === 'send' ? 'lab-guard-say' : f === 'open' ? 'lab-guard-system' : f === 'save' ? 'lab-guard-want' : 'lab-guard-h')?.focus(); return; } if (g) return; }
+    if (await rc.click(b)) return;
     if (b.dataset.step) { step = b.dataset.step; return draw(); }
     if ('next' in b.dataset) { step = STEPS[Math.min(STEPS.length - 1, STEPS.findIndex(([id]) => id === step) + 1)][0]; return draw(); }
     if ('back' in b.dataset) { step = STEPS[Math.max(0, STEPS.findIndex(([id]) => id === step) - 1)][0]; return draw(); }
@@ -328,12 +535,41 @@ export function createLab({ api, note }) {
     if ('nounload' in b.dataset) { askUnload = null; return draw(); }
     if ('writeopen' in b.dataset) { writing = true; await replan(); $('lab-w-name')?.focus(); return; }
     if ('writeclose' in b.dataset) { writing = false; wplan = null; return draw(); }
+    // Lab 2c: the lesson builder
+    if ('buildopen' in b.dataset) { building = true; await replan(); $('lab-b-name')?.focus(); return; }
+    if ('buildclose' in b.dataset) { building = false; bplan = null; return draw(); }
+    if ('baddfolder' in b.dataset || 'baddfile' in b.dataset) { const p = await pickPath('baddfolder' in b.dataset ? 'folder' : 'file'); if (p) addItem(p); return replan(); }
+    if ('baddpath' in b.dataset) { addItem(typedPath.trim().replace(/^"|"$/g, '')); typedPath = ''; return replan(); }
+    if (b.dataset.bremove) { bld.items.splice(Number(b.dataset.bremove), 1); bsurvey = null; return replan(); }
+    if ('bsurvey' in b.dataset) { surveying = true; draw(); try { bsurvey = await api('/api/lab/build/survey', { build: bld }); } catch (err) { msg = err.message; bsurvey = null; } surveying = false; return replan(); }
+    if (b.dataset.passage) { const k = b.dataset.passage; openPassage.has(k) ? openPassage.delete(k) : openPassage.add(k); return draw(); }
+    if (b.dataset.keep) { notLike = ''; b.textContent = 'Kept'; b.disabled = true; return; }
+    if (b.dataset.notlike) { notLike = notLike === b.dataset.notlike ? '' : b.dataset.notlike; return draw(); }
+    if (b.dataset.fb) {
+      const f = bld.feedback;
+      if (b.dataset.fb === 'file' && b.dataset.file) f.dropFiles = [...new Set([...f.dropFiles, b.dataset.file])];
+      else if (b.dataset.fb === 'kind' && b.dataset.file) f.notKinds[b.dataset.file] = [...new Set([...(f.notKinds[b.dataset.file] || []), b.dataset.kind])];
+      else if (b.dataset.fb === 'idea') f.badIdeas = [...new Set([...f.badIdeas, b.dataset.key])];
+      notLike = ''; bsurvey = null; return replan();
+    }
+    if (b.dataset.openset) { if (viewer?.id === b.dataset.openset) viewer = null; else { vq = { q: '', skill: '', file: '', kind: '' }; await loadViewer(b.dataset.openset); } return draw(); }
+    if ('vmore' in b.dataset && viewer) { await loadViewer(viewer.id, true); return draw(); }
+    if (b.dataset.rmlesson && viewer) { try { await api('/api/lab/set/remove', { id: viewer.id, keys: [b.dataset.rmlesson] }); } catch (err) { msg = err.message; } await loadViewer(viewer.id); await load(); return; }
+    if (b.dataset.rmfile && viewer) { try { await api('/api/lab/set/remove', { id: viewer.id, file: b.dataset.rmfile }); } catch (err) { msg = err.message; } await loadViewer(viewer.id); await load(); return; }
+    if (b.dataset.export) { try { exportInfo = { id: b.dataset.export, ...(await api('/api/lab/set/export', { id: b.dataset.export, check: true })) }; } catch (err) { msg = err.message; exportInfo = null; } return draw(); }
+    if ('exportclose' in b.dataset) { exportInfo = null; return draw(); }
+    if (b.dataset.exportgo) { const folder = await pickPath('folder'); if (!folder) return draw(); try { exportInfo = { id: b.dataset.exportgo, ...(await api('/api/lab/set/export', { id: b.dataset.exportgo, folder })) }; } catch (err) { msg = err.message; } return draw(); }
     if ('csv' in b.dataset || 'json' in b.dataset) { try { saved = (await api('/api/lab/compare', { ids: picked, save: 'csv' in b.dataset ? 'csv' : 'json' })).file; } catch (err) { msg = err.message; } return draw(); }
     try {
       if ('write' in b.dataset || (askUnload?.write && 'unload' in b.dataset)) {
         const res = await api('/api/lab/write', { write: w, unload: 'unload' in b.dataset });
         if (res.needUnload) { askUnload = Object.assign(res.names, { write: true }); return draw(); }
         askUnload = null; writing = false; wplan = null;
+      } else if ('bsample' in b.dataset || 'bbuild' in b.dataset || (askUnload?.build && 'unload' in b.dataset)) {
+        const sample = 'bsample' in b.dataset || askUnload?.build === 'sample';
+        const res = await api(sample ? '/api/lab/build/sample' : '/api/lab/build', { build: bld, unload: 'unload' in b.dataset });
+        if (res.needUnload) { askUnload = Object.assign(res.names, { build: sample ? 'sample' : 'build' }); return draw(); }
+        askUnload = null; if (!sample) { building = false; bplan = null; }
       } else if ('start' in b.dataset || 'unload' in b.dataset) {
         const res = await api('/api/lab/start', { recipe: r, unload: 'unload' in b.dataset });
         if (res.needUnload) { askUnload = res.names; return draw(); }
@@ -349,6 +585,6 @@ export function createLab({ api, note }) {
   return {
     async open() { dlg.showModal(); draw(); await load(); },
     // Progress from the Lab job (the server's 'lab' events).
-    update(run) { if (!view) return; const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if (run.kind === 'challenge' && run.state === 'done') { load(); return; } if (tab === 'learn') return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
+    update(run) { if (!view) return; rc.runUpdate(run); const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if ((run.kind === 'challenge' || run.kind?.startsWith('ladder') || ['mix', 'stack', 'refusals', 'refusals-try'].includes(run.kind)) && run.state !== 'running') { load(); return; } if (tab === 'learn') return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
   };
 }
