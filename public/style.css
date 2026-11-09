@@ -1504,3 +1504,9 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 /* 1.5.163 the source chooser (where a brain or lesson set comes from) */
 .lab-source .row { flex-wrap: wrap; gap: 6px; align-items: center; }
 .lab-source input[data-srcact="value"] { flex: 1 1 240px; min-width: 0; }
+/* 1.5.164 Guard rails sandbox under the Challenges scoreboard */
+.lab-guard textarea { width: 100%; box-sizing: border-box; font: inherit; }
+.lab-guard-chat { list-style: none; padding: 0; margin: 8px 0; max-height: 360px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+.lab-guard-chat li { padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
+.lab-guard-chat li:last-child { border-bottom: 0; }
+.lab-guard-chat .lab-guard-assistant strong { color: var(--accent); }

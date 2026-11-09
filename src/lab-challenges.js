@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { QUIZ, TOOLS, runQuiz } from './lab-test.js';
+import { EXTRA_PACKS, EXTRA_IDS, runExtraPack } from './lab-packs.js'; // 1.5.164 more packs and Guard rails
 
 const stripThink = (t) => String(t || '').replace(/<think>[\s\S]*?<\/think>/g, '').replace(/^[\s\S]*<\/think>/, '').trim();
 // The first letter answer in a reply: "B", "(B)", "B)", "The answer is B." Returns '' if there's none.
@@ -102,9 +103,13 @@ export const PACKS = [
   { id: 'sums', title: 'Sums', what: 'Word problems with a whole-number answer.', count: SUMS.length, minutes: 2 },
   { id: 'rules', title: 'Follow the rules', what: '"Answer only with..." tasks: format, length, case.', count: RULES.length, minutes: 1 },
   { id: 'tools', title: 'Pick the tool', what: 'Requests that should call one of four pretend tools. Nothing is really run.', count: PICK_TOOL.length, minutes: 1 },
-  { id: 'code', title: 'Code it', what: 'Tiny JavaScript functions, run in my sandbox on fixed inputs.', count: CODE.length, minutes: 2 }
+  { id: 'code', title: 'Code it', what: 'Tiny JavaScript functions, run in my sandbox on fixed inputs.', count: CODE.length, minutes: 2 },
+  // 1.5.164 the extra packs (questions in src/lab-packs-data.js). Only the plain facts go to the page.
+  ...EXTRA_PACKS.map(({ id, title, what, count, minutes, version, ranked }) => ({ id, title, what, count, minutes, version, ...(ranked === false ? { ranked: false } : {}), group: 'more' }))
 ];
 export const PACK_IDS = PACKS.map((p) => p.id);
+// 1.5.164 the packs Overall averages and "ran them all" counts. Guard rails is shown but never ranked.
+export const RANKED_IDS = PACKS.filter((p) => p.ranked !== false).map((p) => p.id);
 // 1.5.162 Every pack has a version; a score remembers the version that made it, so the board never mixes two tests.
 export const PACK_VERSION = Object.fromEntries(PACKS.map((p) => [p.id, p.version || 1]));
 // The local leaderboard ranks brains within classes of models by their total weights (not by graphics card).
@@ -142,7 +147,8 @@ const same = (a, b) => (typeof a === 'number' && typeof b === 'number' ? Math.ab
 
 // Run one pack against a llama-server. `sandbox` = { run(code, fn, cases) -> results | null } (null: the sandbox is
 // unavailable on this machine, so the pack is skipped and says why). Returns { right, of, score, misses, tps, prefillTps }.
-export async function runPack(url, id, { signal, onStep = () => {}, sandbox = null } = {}) {
+export async function runPack(url, id, { signal, onStep = () => {}, sandbox = null, holdAsks = [] } = {}) {
+  if (EXTRA_IDS.includes(id)) return runExtraPack(url, id, { signal, onStep, sandbox, holdAsks });
   if (id === 'quiz') { const q = await runQuiz(url, { signal, onStep }); return { right: Object.values(q.parts).reduce((a, p) => a + p.right, 0), of: Object.values(q.parts).reduce((a, p) => a + p.of, 0), score: q.score, misses: q.misses.map((m) => m.q), tps: q.tps, prefillTps: q.prefillTps }; }
   const list = { reasoning: REASONING, sums: SUMS, rules: RULES, tools: PICK_TOOL, code: CODE }[id];
   if (!list) throw new Error(`There's no challenge called ${id}.`);
@@ -172,7 +178,7 @@ export async function runPack(url, id, { signal, onStep = () => {}, sandbox = nu
 export function scoreFile(dir, slug) { return path.join(dir, `${slug}.json`); }
 export function mergeScores(old, { name, sha256, sizeGB, quant, paramsB, activeB, experts, madeHere, packs, tps, prefillTps, when, engine, where }) {
   const out = { brain: { ...(old?.brain || {}), name, ...(sha256 ? { sha256 } : {}), ...(sizeGB ? { sizeGB } : {}), ...(quant ? { quant } : {}), ...(paramsB ? { paramsB } : {}), ...(activeB ? { activeB } : {}), ...(experts ? { experts } : {}), ...(madeHere ? { madeHere: true } : {}) }, packs: { ...(old?.packs || {}) }, when, ...(engine ? { engine } : {}), ...(where ? { where } : {}) };
-  for (const [id, p] of Object.entries(packs)) out.packs[id] = { score: p.score, right: p.right, of: p.of, v: PACK_VERSION[id] || 1, ...(p.skipped ? { skipped: p.skipped } : {}), when };
+  for (const [id, p] of Object.entries(packs)) out.packs[id] = { score: p.score, right: p.right, of: p.of, v: PACK_VERSION[id] || 1, ...(p.skipped ? { skipped: p.skipped } : {}), ...(p.parts ? { parts: Object.fromEntries(Object.entries(p.parts).map(([k, x]) => [k, { score: x.score, right: x.right, of: x.of }])) } : {}), when };
   const speed = { ...(old?.speed || {}) };
   if (tps) speed.tps = tps; if (prefillTps) speed.prefillTps = prefillTps;
   if (Object.keys(speed).length) out.speed = speed;
@@ -188,11 +194,11 @@ export function scoreboard(list) {
     const cur = (id) => { const p = s.packs?.[id]; return p && (p.v || 1) === PACK_VERSION[id] ? p : null; }; // an old version's score shows, greyed, but doesn't count
     const scores = Object.fromEntries(PACK_IDS.map((id) => [id, s.packs?.[id]?.score ?? null]));
     const old = PACK_IDS.filter((id) => s.packs?.[id] && !cur(id));
-    const counted = PACK_IDS.map((id) => cur(id)?.score).filter((x) => typeof x === 'number');
+    const counted = RANKED_IDS.map((id) => cur(id)?.score).filter((x) => typeof x === 'number');
     // The overall mark counts packs not run as missing, never as skipped: a brain can't win by leaving out the hard one.
     const overall = counted.length ? Math.round(counted.reduce((a, x) => a + x, 0) / counted.length) : null;
     const b = s.brain;
-    return { id: s.id, name: b.name, sizeGB: b.sizeGB ?? null, quant: b.quant || '', paramsB: b.paramsB ?? null, activeB: b.activeB ?? null, moe: Boolean(b.experts), madeHere: Boolean(b.madeHere), cls: classOf(b.paramsB), tps: s.speed?.tps ?? null, when: s.when || '', scores, old, overall, ran: counted.length, all: counted.length === PACK_IDS.length };
+    return { id: s.id, name: b.name, sizeGB: b.sizeGB ?? null, quant: b.quant || '', paramsB: b.paramsB ?? null, activeB: b.activeB ?? null, moe: Boolean(b.experts), madeHere: Boolean(b.madeHere), cls: classOf(b.paramsB), tps: s.speed?.tps ?? null, when: s.when || '', scores, old, overall, ran: counted.length, all: counted.length === RANKED_IDS.length, ...(s.packs?.guard?.parts && cur('guard') ? { guard: s.packs.guard.parts } : {}) };
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
 // One class's board: brains that ran every current challenge first (so skipping the hard one never wins),
