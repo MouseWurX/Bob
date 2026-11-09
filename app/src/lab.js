@@ -958,9 +958,12 @@ export class Lab {
     return readLadders(playDir(labDir(this.cfg))).map((l) => ({ id: l.id, brain: l.brain, when: l.when, state: l.state, deleted: Boolean(l.deleted), diskGB: l.diskGB, rows: ladderTable(l.rungs || []), saw: ladderSaw(ladderTable(l.rungs || [])), asked: l.asked || null, notes: l.notes || [] }));
   }
 
-  planLadder(from) {
+  planLadder(from, types) {
     const brain = this.brains().find((b) => b.id === String(from || ''));
     const problems = [], notes = [];
+    // Professional mode picks which sizes to make; anything not on the ladder is ignored, none picked means all six.
+    const steps = Array.isArray(types) && types.length ? LADDER.filter((x) => types.includes(x.type)) : LADDER;
+    if (Array.isArray(types) && types.length && !steps.length) problems.push('None of those sizes is on the ladder. Pick from Q8 down to Q2.');
     if (!brain) return { problems: ['Pick a brain for the ladder.'], notes };
     let f = null; try { f = inspect(brain); } catch (e) { problems.push(e.message); }
     if (f && !f.fullSize) problems.push(`${brain.name} is already a running file (${f.fileType}). The ladder starts from the full-size copy (F16 or BF16).`);
@@ -968,12 +971,12 @@ export class Lab {
     const t = this.tools();
     for (const k of ['quantize', 'imatrix', 'server']) if (!t[k].found) problems.push(`${path.basename(t[k].path)} isn't in the built-in engine's folder. Get models > Engines: the built-in engine has it; download the engine again if it's missing.`);
     if (!t.perplexity.found) notes.push(`${path.basename(t.perplexity.path)} isn't in the built-in engine's folder, so the ladder skips the surprise score and uses the Lab test alone.`);
-    const diskGB = f ? ladderDiskGB(f.sizeGB) : 0;
+    const diskGB = f ? ladderDiskGB(f.sizeGB, steps) : 0;
     const out = path.join(labModelsDir(this.cfg), 'playground', slugOf(brain.name));
     let freeGB = null;
     try { fs.mkdirSync(path.dirname(out), { recursive: true }); const st = fs.statfsSync(path.dirname(out)); freeGB = Math.round((st.bavail * st.bsize) / 1e9); } catch {}
     if (freeGB !== null && freeGB < diskGB + 5) problems.push(`The ladder needs about ${diskGB} GB of disk and there's ${freeGB} GB free. Free some space first.`);
-    return { brain, facts: f, problems, notes, diskGB, out, slug: slugOf(brain.name) };
+    return { brain, facts: f, problems, notes, diskGB, out, slug: slugOf(brain.name), steps };
   }
 
   async startLadder(c = {}, { unload = false } = {}) {
@@ -982,7 +985,7 @@ export class Lab {
     if (!room.ok) throw new Error(room.why);
     if (this.job) throw new Error('The Lab is already busy with a job. Wait for it, or stop it.');
     if (gaming(this.cfg)) throw new Error('Gaming is on, so the Lab waits. Switch the session to Normal to run it.');
-    const p = this.planLadder(c.from);
+    const p = this.planLadder(c.from, c.types);
     if (p.problems.length) throw new Error(p.problems[0]);
     this.freePeek(); // 1.5.164 Peek inside's engine goes first
     if (this.brain?.engine?.loaded) {
@@ -990,7 +993,7 @@ export class Lab {
       if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
       if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
     }
-    const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'ladder', name: `Ladder for ${p.brain.name}`, slug: p.slug, from: p.brain.id, fromName: p.brain.name, state: 'running', at: this.now(), steps: [{ id: 'measure', label: 'Measure which weights matter most', state: 'waiting' }, ...LADDER.map((x) => ({ id: x.type, label: `Make and test ${x.label}`, state: 'waiting' }))], progress: 0 };
+    const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'ladder', name: `Ladder for ${p.brain.name}`, slug: p.slug, from: p.brain.id, fromName: p.brain.name, state: 'running', at: this.now(), steps: [{ id: 'measure', label: 'Measure which weights matter most', state: 'waiting' }, ...p.steps.map((x) => ({ id: x.type, label: `Make and test ${x.label}`, state: 'waiting' }))], progress: 0 };
     this.runs.push(runRec); this.save();
     const ac = new AbortController();
     this.job = { run: runRec, ac };
@@ -1015,14 +1018,15 @@ export class Lab {
       const imatrix = path.join(p.out, 'imatrix.gguf');
       await fx.imatrix({ src: p.brain.gguf, corpus: tune, out: imatrix }, { recipe: { lessons: { chunks: 20 } }, signal });
       set(0, 'done');
-      for (let i = 0; i < LADDER.length; i++) {
-        const x = LADDER[i];
+      const ladder = p.steps || LADDER;
+      for (let i = 0; i < ladder.length; i++) {
+        const x = ladder[i];
         set(i + 1, 'running');
         const out = path.join(p.out, `${p.slug}-${x.type}.gguf`);
         await fx.quantize({ src: p.brain.gguf, out, type: x.type, imatrix }, { signal });
         let ppl = null;
         if (this.tools().perplexity.found || this.stepFns.perplexity) ppl = await fx.perplexity({ gguf: out, text: score }, { signal }).catch((e) => { if (signal.aborted) throw e; log(`perplexity: ${e.message}`); return null; });
-        const t = await fx.test({ gguf: out }, { signal, onProgress: (d) => { r.progress = Math.round((100 * (i + 1 + d)) / (LADDER.length + 1)); } });
+        const t = await fx.test({ gguf: out }, { signal, onProgress: (d) => { r.progress = Math.round((100 * (i + 1 + d)) / (ladder.length + 1)); } });
         let size = 0; try { size = Math.round((fs.statSync(out).size / 1e9) * 10) / 10; } catch {}
         record.rungs.push({ type: x.type, sizeGB: size, score: t.score, tps: t.tps || null, ppl });
         record.files[x.type] = out;
@@ -1799,8 +1803,8 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/mypack/delete') { send(res, 200, deleteMyPack(labDir(lab.cfg), b.id)); return true; }
     if (p === '/api/lab/challenge/log') { send(res, 200, lab.challengeLog(String(b.id || ''), { save: b.save === 'csv' || b.save === 'jsonl' ? b.save : '' })); return true; }
     if (p === '/api/lab/challenge') { send(res, 200, await lab.startChallenge(b.challenge, { unload: b.unload === true })); return true; } // 1.5.153
-    if (p === '/api/lab/ladder/plan') { const pl = lab.planLadder(b.from); send(res, 200, { problems: pl.problems, notes: pl.notes, diskGB: pl.diskGB }); return true; } // 1.5.156
-    if (p === '/api/lab/ladder') { send(res, 200, await lab.startLadder({ from: b.from }, { unload: b.unload === true })); return true; }
+    if (p === '/api/lab/ladder/plan') { const pl = lab.planLadder(b.from, b.types); send(res, 200, { problems: pl.problems, notes: pl.notes, diskGB: pl.diskGB, steps: pl.steps.map((x) => x.label) }); return true; } // 1.5.156
+    if (p === '/api/lab/ladder') { send(res, 200, await lab.startLadder({ from: b.from, types: b.types }, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/ladder/ask') { send(res, 200, await lab.startLadderAsk({ id: b.id, question: b.question }, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/ladder/delete') { send(res, 200, lab.deleteLadder(String(b.id || ''))); return true; }
     if (p === '/api/lab/forge/plan') { const r = lab.forgePlan(b.form); send(res, 200, { problems: r.problems, notes: r.notes, hours: r.hours, text: JSON.stringify(r.plan, null, 1) }); return true; } // 1.5.159

@@ -4,6 +4,7 @@
 // here: pick one, ask, and watch the block fill in. Only Brain Engine carries the runner (the official llama.cpp
 // downloads leave it out). One at a time, never while Gaming or a Lab job runs, and Bob's own brain leaves the card
 // first (asked, like the Challenges).
+import { labOn } from './lab.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ggufInfo } from './gguf.js';
@@ -98,7 +99,7 @@ export function diffusion(lab) { if (!lab.diffusion) lab.diffusion = new Diffusi
 // Routes. Looking is fine from the phone; starting and stopping only on this replicant matrix (it takes the card).
 export async function diffusionRoute({ req, res, p, isLocal, lab, body, send }) {
   if (!ROUTES.includes(p)) return false;
-  if (!lab.cfg || lab.cfg.computerLab !== true) { send(res, 403, { error: 'The Computer Science Lab is off.' }); return true; }
+  if (!lab.cfg || !labOn(lab.cfg)) { send(res, 403, { error: 'The Computer Science Lab is off.' }); return true; } // 1.5.182 the Lab is on unless switched off, so Diffusion follows labOn like every other page
   const d = diffusion(lab);
   if (req.method === 'GET' && p === '/api/lab/diffusion') { send(res, 200, d.view()); return true; }
   if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }
