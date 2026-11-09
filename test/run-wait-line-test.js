@@ -37,5 +37,6 @@ const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'
 check('chat shows it as a muted note updated in place, never a card', /case 'waiting-line':/.test(app) && /note\(ev\.text, 'wait'\)/.test(app) && !/waiting-line[^\n]*button/.test(app));
 check('no old "Waiting for ... to finish with the graphics card" line is left', !/to finish with the graphics card/.test(fs.readFileSync(new URL('../src/handoff.js', import.meta.url), 'utf8')));
 check('glossary explains the ⏳ line', /<dt>⏳ line<\/dt><dd>Bob is waiting on something, not on you\. Cards are the only things that need your answer\.<\/dd>/.test(HELP.find((h) => h.id === 'glossary').html));
+check('"about 1 second", never "about 1 seconds" (1.5.144)', !/\$\{secs\} seconds/.test(brainSrc) && /\$\{secs === 1 \? 'second' : 'seconds'\}/.test(brainSrc));
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

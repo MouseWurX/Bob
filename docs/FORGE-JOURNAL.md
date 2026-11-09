@@ -8,7 +8,7 @@
 
 Can one person, with a gaming PC and a few rented card-hours, cut a 35-billion-parameter mixture-of-experts model down to sizes that fit a handheld, a laptop and a phone, and have the small ones still do Bob's job (tool calls, chat, coding, thinking on and off, pictures)? And at what cost, in hours and dollars, honestly counted?
 
-The teacher is [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (Apache 2.0, Alibaba's Qwen team). The method is expert pruning plus distillation: keep the experts a job actually uses, then retrain the cut model to give the same next-word odds as the full one. The program that does it is the Forge, in [model-lab/forge](../model-lab/forge/).
+The teacher is [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (Apache 2.0, Alibaba's Qwen team). The method is expert pruning plus distillation: keep the experts a job actually uses, then retrain the cut model to give the same next-word odds as the full one. The program that does it is the Forge, in [model-lab/forge](../model-lab/forge/). The plan written as a proposal, with milestones and assets in hand, is [PROPOSAL.md](PROPOSAL.md).
 
 ## 2. The plan, and the routes it may take
 
@@ -40,7 +40,6 @@ None of these is scheduled or paid for. They are written down so the choice is v
 
 - **Bridget** (working name; "Garfield" was the other candidate): a second family taught by the newer, dense Qwen3.8-27B instead of the mixture-of-experts 3.6. A dense model has no experts to cut, so its Bobs would be made by depth-and-width pruning (the 2Bob method) and would be slower per token on handhelds. Worth it only if 3.8 is clearly the better teacher for Bob's work.
 - **Howard** (working name): a Bob healed against a teacher from a different model family, to learn whether a Bob can take another teacher's knowledge without losing Bob's tool habits. A base that was itself distilled from a closed model was advised against.
-- **Thoth** (working name): a cut of one of the community "uncensored" remixes. If it is ever made it lives only behind the opt-in naughty-list switch, never as a default brain, and carries no Bob nickname in the catalogue.
 - **Trimmed other models** (for example a mixture-of-experts Gemma trimmed by a quarter): possible with the same tools, but those are not Bobs and would be named plainly, "X trimmed to Y".
 - **Expert merging**: the small rungs lose about half of their routing in the worst layer no matter which experts are kept (see the ladder table). Merging rarely-used experts into kept ones, instead of dropping them, is the next lever to try there.
 

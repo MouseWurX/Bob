@@ -142,7 +142,7 @@ function kitHtml(slot, ctx) {
   const items = kit.map(({ k, f }) => {
     const e = k.entry;
     // 1.5.56: one short line per model; the size, licence and Bob's reasons sit behind ⓘ (and in the hover tip).
-    const tip = [stats(e, k.installed ? 'On this replicant matrix' : ''), f.rec ? f.recWhy : '', f.why, f.level === 'unknown' ? 'Not in Bob\'s list, so he can\'t say how well it runs here' : '', e?.trial ? 'New: not tried on a PC yet' : ''].filter(Boolean).join(' · ');
+    const tip = [stats(e, k.installed ? 'On this replicant matrix' : ''), f.rec ? f.recWhy : '', f.why, f.level === 'unknown' ? 'Not in Bob\'s list, so he can\'t say how well it runs here' : '', e?.trial ? 'Not tried on a real replicant matrix yet' : ''].filter(Boolean).join(' · ');
     const tag = f.rec ? '<span class="tag rec">★ Recommended</span>' : f.level === 'unknown' ? '' : f.level !== 'ok' ? `<span class="tag warn">${f.level === 'blocked' ? 'Can\'t install here' : 'Doesn\'t suit this replicant matrix'}</span>` : '';
     const weight = e?.vramGB ? `<span class="weight muted">${gb(e.vramGB)}</span>` : '';
     if (!k.installed) {

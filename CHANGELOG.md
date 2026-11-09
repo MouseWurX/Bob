@@ -4,6 +4,221 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.154
+
+The Computer Science Lab: goals, a time-and-cost table before anything runs, and the usage map that shows which experts a brain uses for what. All free, on this replicant matrix; nothing is rented.
+
+- **Start from a goal** (above the template picker). Pick where the new brain will run (this replicant matrix, a 24, 16, 12, 8 or 6 GB graphics card, a 16 GB handheld, or a phone with 12 or 8 GB) and a goal: **Everything, smaller**, **Coding helper**, **Everyday chat**, **Game master** or **Tiny and fast**. Bob fills in steps 2 to 5: the number of experts that fits the device, the skills to protect at 99%, a Q4 running file (Q3 for devices with 8 GB or less), measuring before the running file, Try it first when Brain Engine is here, and the comparison test. Nothing starts until you press Start. **Fold instead of drop** is listed and greyed until it's built; **Just measure** opens the usage map.
+- **What it takes.** A table before every Lab job: how long it takes here, from the brain's size the first time and from your own past Lab jobs after that, and the space it needs. For a cut, a second column shows what teaching it back would take on a rented card (hours and dollars), from the measured rentals: about 0.6 hours per 1,000 lessons for a cut with 208 experts per layer, 2.5 hours for the teacher's scores, at about $5 an hour for a 141 GB card. Bob never suggests a cap: the Forge plan under the table carries a cap of $0, and nothing rents until you set one. Every number is a rough guess. Every Lab step now records how long it took.
+- **The usage map** (under Compare). Count which experts a brain uses for each thing you test it on: the four parts of the Lab test, your chats with Bob, a lesson set (one count for each skill), or a file or folder of your own text and code. It lists the cold experts (never used for anything tested), the faint ones (the last 5% of the work), the ones only one thing uses, a per-layer table, and how much of each thing a cut keeps at a few sizes. With Brain Engine, it can switch the cold and faint ones off and give the Lab test again. The counts are saved as `peek-counts.json` and a keep list, in the format the Lab's Peek inside will share; the goals build their cut from them when they're there.
+- Help: a new page, Goals, the estimate and the usage map. `test/run-lab-recipes-test.js`: new checks.
+- Phone (Bob for Android): nothing changes; there's no Lab on the phone.
+
+## 1.5.153
+
+The Computer Science Lab, part 3 continues: **Challenges**, a scoreboard for the brains on this replicant matrix, and **Save** for any Lab result. Free, here; nothing is rented.
+
+- **Challenges** is a real tab now. Pick a brain, tick challenges and press **Run the challenges**. It's a Lab job like the others: I ask before I unload my own brain, the Lab waits while Gaming is on, and you can stop it.
+- Six challenges, every question asked at temperature 0 with thinking off, so the same brain gets the same score twice: **Quick quiz** (the Lab test), **Riddles and reasoning**, **Sums**, **Follow the rules**, **Pick the tool** (four pretend tools, nothing really run) and **Code it** (tiny JavaScript functions). The questions are written for Bob, not copied from a published benchmark, and they ship with him so anyone can read them.
+- **Code it** runs a brain's code in the same sandbox as my self-made tools: no files, no programs, no internet, ten seconds at most. If the sandbox doesn't hold on this replicant matrix, the challenge is skipped and says why.
+- **Scoreboard**: every brain you've tested, its newest score for each challenge, its size and its words a second. Press a column's name to sort by it. Scores sit in the Lab's scores folder, one small file per brain, with a fingerprint of the brain file so other Lab tools can match them.
+- **Save…** under the scoreboard, a finished challenge, and every Learn card: a **Picture** (drawn here, offline), **Text** (a Markdown table), a **Spreadsheet** (CSV) or **Data** (JSON), in the Lab's results folder. It carries the title, the table, my version and the date. Never file paths, chats or names. **Include my graphics card and memory** is off unless you tick it.
+- The Help page says plainly that these scores only mean something next to each other, on the same replicant matrix, and aren't the numbers you see in papers.
+- Help: a new page, The Lab's Challenges tab. `test/run-lab-test.js`: 193 checks, including a brain's code really run in the sandbox (right code passes, a file outside is refused, an endless loop is stopped).
+- Phone (Bob for Android): nothing changes.
+
+## 1.5.152
+
+The Computer Science Lab, part 2c: build a lesson set from your own files, with a survey and sample lessons before anything big runs. All free, on this replicant matrix; nothing is rented and nothing is uploaded.
+
+- **Build a new set from my files** (step 2). Add files or folders (plain text, Markdown, web pages, Word, OpenDocument, RTF, e-books and PDFs; chat logs from my own sessions, a ChatGPT or Claude export, or a "Name: line" transcript), name a skill for each, tick what I should learn from them, and pick a teacher brain you have. Three kinds of lesson: **Working with my material** (real questions about a passage, answered with the passage in front of me), **Writing in my voice** (your passage is the answer) and **My past conversations** (each exchange becomes a lesson, re-said in my voice unless you say otherwise). Each kind is its own skill, so the coverage cut protects it.
+- **Survey my files** first: what I found, what I'll skip and why, how many lessons your files can supply, repeated passages left out, and anything that looks like a password, key, card number, address or e-mail, **held back** before the teacher ever sees it. A plain box says what the brain would learn, from the counts.
+- **Show me 12 sample lessons**, each a card: the message, what I read, what I said, with **Keep** and **Not like this** (leave this file out, not this kind of lesson for this file, or the message is wrong for this passage). The clicks change the plan; nothing is trained from them. Then **Build the set**, a Lab job you can stop and carry on.
+- **Sets built from your files**: **Open the set** (every lesson, a search box, filters by skill, kind and file, Remove this lesson, Remove everything from a file) and **Export as a file**, the only way a set leaves the Lab: I replace your user folder, home-network and Tailscale addresses, e-mails and keys first, show you what changed, then write a zip where you choose. Files are read in place and never copied; no upload anywhere.
+- Help: the Lab page covers it, in my voice, with the honest line (a few hundred lessons teach habits and voice, not facts by heart; my notes and Recall do facts). FAQ: can I share a set I built from my files. `test/run-lab-build-test.js`.
+- Phone (Bob for Android): nothing changes; there's no Lab on the phone.
+
+## 1.5.151
+
+The Computer Science Lab, part 3 begins: a **Learn** tab, where you can see how I work with your own hands on the knobs. Free, on the brain I have loaded right now; nothing is downloaded, rented or saved.
+
+- **Tabs in the Lab.** **Make a brain** is the Lab as it was (the five steps, templates, Compare). **Learn** is new. **Playground** and **Challenges** are shown greyed out, as they're on the way. Left and right arrows move between the tabs.
+- **What is a token?** Type anything and press **Split it**: I show the pieces I actually read, one chip each with its number, and how many characters and tokens that was. Chips take turns solid and dashed so you can tell them apart without colour; a dotted chip is only part of a character.
+- **How do I pick the next word?** **Show my odds** lists my ten likeliest next tokens for the start of a sentence, as percentages and bars. Click one to make me say it, or **Let me choose** to watch me roll, for twelve words.
+- **What does temperature do?** A slider from 0 to 2 (with a number box), and **Write it three times** writes the same start three times at that setting, with my odds for the first word underneath so you can watch them flatten. **More knobs** adds **Cut the long tail** (min_p) and **Only the likeliest** (top_p).
+- Each card ends with **What you just saw**, a line from me that changes with what happened. Results are read out by screen readers when they land.
+- Needs my built-in engine (llama.cpp); with Ollama the tab says so. The Lab switch in Settings still turns it all on or off. While a card runs it counts as using my brain, so Free memory when Bob is idle leaves it loaded. A card's run pushes our chat out of my short-term memory, so my next chat reply starts a little slower while I read the conversation again.
+- Help: a new page, The Lab's Learn tab. `test/run-lab-test.js`: 151 checks.
+- Phone (Bob for Android): nothing changes yet. Learn comes to the phone in a later update.
+
+## 1.5.150
+
+Qwen3.5 and 3.6 brains can keep more than 256K in mind, if you switch it on.
+
+**New, and not tried on real hardware yet.** Long memory is off unless you switch it on, and we haven't run it on a real replicant matrix before this release. If you have a Qwen3.5 or 3.6 brain and the memory to spare, please try 512K or 1M and tell us how it went: whether it loaded and chatted, and how much graphics memory and RAM it used. Open an issue at github.com/MouseWurX/Bob/issues.
+
+- **Long memory** (Settings, Brains, under **Pick how much each brain keeps in mind**; off): on Bob's built-in engine, Qwen3.5 and 3.6 brains, and Bob's own brains made from them, can also offer 512K and 1M. Bob stretches how the brain counts positions (YaRN) only while a size past 256K is picked, because the stretch makes short chats a little worse.
+- **It says what it costs.** Each stretched size shows about how much memory it needs (on the 35B brains, about 3 GB more than 256K for 512K and about 8 GB more for 1M; the dense 27B needs about three times as much), and a size that won't fit on this replicant matrix is greyed out with the reason. If it doesn't fit when the brain loads, Bob loads it at 256K and says why. Reading a very long text takes a long time: a full 1M can take well over half an hour.
+- Not offered on a phone or a replicant matrix with 8 GB or less.
+- Help, an FAQ (*Can Bob keep more than 256K in mind?*), glossary entries for Context and YaRN, and the settings list explain it.
+- Phone (Bob for Android): nothing changes.
+
+## 1.5.149
+
+Bob's thinking can show its lines in the order you like.
+
+- **Order the lines.** The 💭 Bob's thinking window and the Bob's thinking section in Now running both have an **Order** menu: **Newest at the bottom** (as they happen, the way it was), **Newest at the top**, or **Bob, then his copies**, which groups everything Bob thought first and then each copy's lines (his reviewer, his coding copy...), each group in the order it happened. Follow along follows whichever end is newest, and a screen reader hears which order the log is in. Remembered in that window of Bob.
+- Works the same in Bob's own window and in a browser, on Windows, Mac and Linux, and on a narrow screen.
+- Help: the "Bob's thinking" page explains Order. `test/run-mind-test.js` has 5 new checks.
+- Phone (Bob for Android): nothing changes.
+
+## 1.5.148
+
+Qwen brains pick their words the way Qwen recommends, for each kind of reply.
+
+- **Word settings by mode:** on the built-in engine, Qwen3.6 brains, and Bob's own brains made from them, get Qwen's recommended settings: one set when they think it through (temperature 1.0, top P 0.95, top K 20; cooled to 0.6 when Bob is about to use a tool), a cooler set when they think through code (0.6, 0.95, 20), and one for quick replies (0.7, 0.8, 20, presence penalty 1.5).
+- **Reply length:** a reply can be up to 32,768 tokens. On a small replicant matrix, a brain with a small memory gets half of it for the reply, so a long answer can't fill it up and stall.
+- **Choose my own word settings** (Settings, Show advanced settings, Engines; off): type your own numbers for any of the three sets. **Back to Qwen's** puts one set back.
+- Other brain families (Gemma, gpt-oss, older Qwen) and the Ollama engine keep their own settings.
+- Help, the user guide and the settings list explain it.
+- Phone (Bob for Android): nothing changes.
+
+## 1.5.147
+
+The README and the user guide explain the Computer Science Lab and Brain Engine.
+
+- **Docs:** the README and the user guide now say what the Lab is for: you can use a brain and change it in the same app, while Bob keeps working. The README also introduces Brain Engine, Bob's own engine based on llama.cpp (still in testing, not on Releases yet).
+- The README starts with what Bob is for: a one-line Download link, then Why Bob, with the download table under its own Download heading.
+- Phone (Bob for Android): nothing changes.
+
+## 1.5.146
+
+A brain Get models found on this replicant matrix now loads in chat without an Equip first.
+
+- **Found brains load straight away.** When **Look for brains on this replicant matrix** finds a brain from my catalogue somewhere else on the drive, Get models already said you have it, but chatting with it by name said "I can't find the model files" until you Equipped it. Now my engine looks in that same list last, after my own models folder, so the two agree. A picture reader only counts when it's in the same folder as its brain, a file still being copied is skipped, and my own copy still comes first.
+- `test/run-own-copy-test.js`: 13 checks.
+- Phone (Bob for Android): nothing changes.
+
+## 1.5.145
+
+A small fix for brains of your own.
+
+- **Typing a brain's path now reads its brain card too.** Adding a brain with **or type its path** now fills the form the same way as picking the file: it says "Brain card found" and brings the card's picture reader along. Before, only the file picker did that (Bob still filed the brain correctly either way).
+- `test/run-brain-card-test.js`: 20 checks.
+- Phone (Bob for Android): nothing changes.
+
+## 1.5.144
+
+See the tools and how-tos Bob made for himself, and delete the ones you don't want him to have.
+
+- **🧰 Tools and how-tos Bob made** (Settings, everyday; it replaces the 📒 How-tos panel). One place for everything Bob made for himself: **🔧 Tools he wrote** (what each does, what it can change, whether it goes online, when he made it, and its code) and **📒 How-tos he kept**.
+- **Delete asks on the row**, no pop-ups, and leaves an **Undo** right there. Anything deleted waits 30 days under **🗑 Recently deleted**, where **Put back** brings it back as it was (a tool keeps your OK). **Delete for good** sends a tool's folder to the Recycle Bin (the Trash on a Mac, the trash on Linux); a how-to deleted for good is gone.
+- Bob knows too: if he reaches for a tool you deleted, he says so and where to put it back, and he won't make a new one with the same name over it. Removing a tool under Hands now goes to Recently deleted as well.
+- Help: a new Settings topic, an FAQ ("Can I see and delete the tools and how-tos Bob made for himself?") and a glossary line for Recently deleted. New `test/run-own-kit-test.js` (51 checks).
+- Bob says "about 1 second", not "about 1 seconds", when a brain loads fast.
+- Phone (Bob for Android): Settings has the same list from a Bob on your Bob-Net, with Delete, Undo and Put back. Delete for good only works on that replicant matrix itself.
+
+## 1.5.143
+
+The Computer Science Lab, part 2a: keep every skill covered, write a new lesson set with a teacher here, and try a cut on Brain Engine before cutting. All free, on this replicant matrix; nothing is rented.
+
+- **Keep every skill covered** (the new recommended way to cut experts). I count each skill in the lessons on its own (a lesson's "job" or "skill") and keep, in every layer, the experts that do 95% of each skill's work (90% or 99% if you like), padded to one size for every layer. **Protect these skills more** keeps 99% for the ones you tick. **As many as the skills need** works out the number. The report shows, per skill, how much stayed on average and in its worst layer, and the keep list and `coverage.json` are saved beside the brain. It's the Forge's keep.py rule, in Bob.
+- **Write a new lesson set** (step 2). Pick a teacher brain you have, tick skills (using Bob's tools, coding, fixing code from an error, thinking it through, asking when it's unclear, remembering notes, running a game, saying no politely, other languages, general chat), how many lessons (100 to 20,000) and thinking (half, all or none). The writer runs as its own process with a throwaway Bob: his real instructions and tools, none of your chats, notes or names. Tool results are played by the teacher; nothing is really run. Lessons land in the Lab's lessons folder, with a skill on each, and show in step 2 under **A lesson set I wrote here**. Stopping keeps what's written; the same name carries on. A teacher whose licence forbids training is refused, and an unknown licence gets a note. Pay-per-answer and rented teachers are shown as later.
+- **Try it first, before cutting** (under Cut experts; greyed out until Brain Engine is ready to download, in a later update). With Brain Engine on this replicant matrix, the Lab test runs on the whole brain with every expert on, then with only the kept experts switched on, before any file is written. If it scores more than 10 points lower on the Lab test, it stops there (you can untick that). The every-expert score is the one the new brain is compared with, so the separate compare test isn't run again.
+- Help: the Lab page covers all three. `test/run-lab-test.js`: 125 checks.
+- Phone (Bob for Android): nothing changes; there's no Lab on the phone.
+
+## 1.5.142
+
+The Computer Science Lab, part 1b: start from a template, measure before making the running files, and compare brains side by side, with the numbers saved as data.
+
+- **Start from a template.** A new first line on the Lab page fills steps 2 to 5 from a recipe I've used before: **Lab local cut** and **Plain cut** run here. **Coverage cut and heal**, **Train the teacher** and **Learn from outside traces** need a rented card, so they're greyed out with the reason (renting is Lab 2), and **Show the recipe** prints them as a Forge plan. **Merge experts** and **Layer or width cut** are listed as not built yet. Every box can still be changed. The templates ship with Bob (`public/lab-templates.js`), so they work offline.
+- **Measure before making the running files** (recommended, under Make the running files): llama-imatrix measures the cut brain itself on your lessons, and llama-quantize uses that measurement, so Q4 and Q3 files lose less. It's measured on the cut file, not the brain it came from, because the expert counts change in a cut.
+- **A measurement record for every Lab test.** `measure.json` beside the new brain, and `measure-parent.json` for the brain it came from: the file's sha256, file type, experts per layer, size, template, what it was made from, the four test scores, words a second and reading speed, and the engine (it says Brain Engine, Bob's Lab engine: a version of llama.cpp that can switch experts off, when the test server is that engine). Missing parts are left out, never zeroed. No file paths, host names or people.
+- **Compare**, under Lab jobs: tick two or more tested brains to see one table with real header cells, and a **Difference** column (the second minus the first, signed, with a percent) when there are two. **Save as CSV** and **Save as JSON** write to the Lab's compare folder. Saving only works on this replicant matrix; on another replicant matrix you can look but not save.
+- Help: the Lab page covers templates, Measure and Compare. `test/run-lab-test.js`: 95 checks.
+- Phone (Bob for Android): nothing changes; there's no Lab on the phone.
+
+## 1.5.141
+
+The Computer Science Lab, part 1: make your own brain from one on this replicant matrix, for free, behind a switch that is off. And the Bob-Net heading opens Bob-Net settings.
+
+- **🧪 Computer Science Lab.** Turn on **Show the Computer Science Lab** (Settings, How Bob works, Brains) and **🧪 Lab** appears in the left pane. It walks you through five steps with checkboxes and radio buttons instead of command-line flags: **Pick a brain** (any brain you have on Bob's own engine; each says what the Lab can do to it), **Lessons** (your chats with Bob, which stay here, or a lesson set you have), **Make it smaller** (**Take out sight**, **Take out hearing**, **Cut experts** on mixture-of-experts brains, keeping the busiest ones or an expert list you have, and **Make the running files**: Q4, Q5, Q6 or Q8 from a full-size copy), **Where it runs** (this replicant matrix) and **Test and use**.
+- **Every Lab brain is tested before it goes into Bob.** The Lab test asks general knowledge, picking the right tool, coding and following instructions, at temperature 0, side by side with the brain it came from if you tick that. **Use in Bob** only appears after a test, and puts the new brain in Get models next to its family, marked *made in the Lab*. Bob never makes it his main brain by himself.
+- **Show the recipe** shows the exact commands the Lab is about to run (llama-imatrix, llama-quantize, llama-server, and Bob's own expert cutter, since no command-line tool does that yet), with a Copy button. **Save as recipe** keeps your choices, never file paths.
+- **Bob's own cutter** cuts experts and takes a sense out of a combined picture-and-sound reader by copying the GGUF file piece by piece, so a 20 GB brain never has to fit in memory, and Bob keeps answering (and Stop works) while it copies. A stopped cut leaves nothing half-written behind.
+- The Lab asks before it unloads Bob's brain to make room on the card, waits while Gaming is on, and runs one job at a time. On a replicant matrix with less than 12 GB of memory the switch is greyed out, with the reason.
+- Shown greyed out as coming later (Lab 2): writing new lesson sets, recording a teacher's odds, the coverage cut, **Teach it back**, **Make it one file**, layer and width cuts, and rented cards.
+- **Bob-Net heading.** In Now running, the word **Bob-Net** is now a button that opens Settings at Bob-Net (advanced shown, the section open), instead of scrolling for it.
+- Help: a page "The Computer Science Lab", the Settings row, glossary lines for Computer Science Lab and Running file. New `test/run-lab-test.js` (70 checks: the cutter byte for byte on made-up brain files, the recipe checks, a whole Lab job with fake steps, Use in Bob, the switch and the words).
+- Phone (Bob for Android): nothing changes; there's no Lab on the phone yet.
+
+## 1.5.140
+
+Brains of your own can bring a brain card that tells Bob what they're for.
+
+- **Brain cards.** A brain you add from a file can bring a small card beside it (same name, ending .bob.json) that says what it's for. Bob then files it under the right jobs and family, uses its name, picture reader and size, and shows its benchmark in the i. Brains made in Bob's own workshop come with one and say "Bob's own brain". A card only counts if it names the file and its exact size. You still pick these yourself; Bob doesn't recommend them.
+- No card: nothing changes, the brain is added the same way as before.
+- Help: the "Your own brains" FAQ explains brain cards, and the brackets FAQ says when "(Bob's own brain)" appears. New `test/run-brain-card-test.js` (19 checks).
+- Phone (Bob for Android): nothing changes; brains of your own are a replicant matrix feature.
+
+## 1.5.139
+
+Bob can now read long pages and files in parts, and code from GitHub keeps its < and > signs.
+
+- **Long pages and files in parts** (issue #48). A web page or file that's too long to read at once now comes in parts. Bob is told how big it is, which part he has, and how to ask for the next one, or he can look for a word in it. Before, he only ever saw the top of a long page and kept reading it again.
+- **Code stays whole.** Code, plain text, data and raw files from GitHub are no longer run through the web-page cleaner, which used to eat everything between a < and a >.
+- If Bob asks for the same page twice in one turn, he isn't sent it again; he's pointed at the next part instead.
+- New `test/run-page-parts-test.js` (18 checks).
+- Phone (Bob for Android): nothing changes on the phone; when the phone talks to a Bob on a replicant matrix, that Bob reads long pages this way too.
+
+## 1.5.138
+
+Bob's thinking can live in Now running instead of a second window, and the sections of Now running go in any order.
+
+- **💭 Bob's thinking, docked.** Now running (on the right, Ctrl+J) has a new **Bob's thinking** section, folded to one line. Turn on **Show here** and Bob's thinking, moots and every step show there, live, the same as the pop-out window, with **Follow along** and **Clear** underneath and **Pop out** for the small window on top as well. Drag the bottom edge of the box to make it taller. Off unless you turn it on, and remembered in that window of Bob. With it on, the **💭 Bob's thinking** button at the top of the chat says *In Now running* and takes you to the section instead of opening a window.
+- **It still costs nothing when you're not looking.** Bob passes his thinking along only while Show here is on, Now running is open and his window is in view. Hide the panel and it stops, the same as closing the window.
+- **Put the sections in any order.** Every section in Now running (Tasks, Bob-Net, Downloads, Memory, Bob's thinking) has a ⋮⋮ grip at the left of its heading. Drag it up or down, or click it for **Move up** and **Move down** buttons; with the grip focused, the arrow keys move it too, and a screen reader hears where it landed. Bob remembers the order in that window.
+- Works the same in Bob's own window and in a browser, on Windows, Mac and Linux. On a narrow screen or a phone's browser, Now running slides over the chat and the section works there too. High Contrast themes get system colours for the grip, the drop mark and the thinking box; the little flash that points at the section is off with Animations off.
+- Help: the "Bob's thinking" page grew two parts, *Keep it in Now running instead* and *Put the sections in any order*. `test/run-mind-test.js` has 15 new checks; the drawing moved to `public/mind-view.js`, shared by the window and the panel, and the order helpers live in `public/now-sections.js`.
+- Phone (Bob for Android): nothing changes; the phone app has no Now running panel.
+
+## 1.5.137
+
+**The whole brain list.** The Brain catalogue now offers every brain worth having, sorted by job and family as before, with 18 new ones: NVIDIA's Nemotron 3.5 Bolt and Lightning, IBM's Granite 4.1, Mistral's Ministral 3 and Devstral Small 2, Google's Gemma 4 12B and 31B, Z.ai's GLM-4.7-Flash, Poolside's Laguna XS 2.1, Qwen3.5 0.8B, Xiaomi's MiMo 9B, and three more on the naughty list. New ones aren't recommended until they've been tried on real hardware.
+
+- **New** now means released lately: one of the five newest releases in its family (under a year old). Every brain's **i** says the day it came out.
+- **Dated** marks a brain newer ones do better. Nothing is taken off the list.
+- A brain too big for your replicant matrix and for every Bob on your Bob-Net moves to **Rented brains**, with a line saying where it went. If another of your Bobs can run it, it stays and says which one.
+- **Rented brains** can now pick from Bob's list, including the really big brains (DeepSeek, GLM-5, Kimi, Mistral Large and more). Bob fills in the model and card size, or finds the brain on a pay-per-answer service's own list. He never picks more than one card by himself.
+- **Let Bob fetch his newest brain list** (Settings, Going online; off unless you turn it on): once a day Bob reads his list from GitHub, so brains that come out between versions show up. Only fully pinned lists are used, nothing is removed, and nothing about you is sent (GitHub sees the request, like any web page).
+- Models Bob downloaded himself no longer say "(downloaded by Bob)".
+- Help: new FAQs on New and Dated, big brains in Rented brains, and the newest brain list.
+- Phone (Bob for Android): nothing changes.
+
+## 1.5.136
+
+Themes named after worlds, Moondust as the starting theme, and no more Match system.
+
+- **Moondust is the default.** A fresh Bob starts in quiet grey with no colour cast (the theme that was called Slate). Bob's Inn is still there under **Bob** for anyone who likes the tavern.
+- **Match system is gone.** It only ever showed the green theme and followed the wrong setting on some systems. If you were on it you land on Moondust; pick anything else on the Style page.
+- **Worlds and places.** The themes from the MouseHole app are renamed, same colours: Mousehole is **Otterbend**, Mousehole Light is **Homestead**, Midnight is **Nightside**, Slate is **Moondust** and Paper is **Sandbar**. The two website blueprints are **Drydock** and **Drydock Night**. Your saved theme keeps working under its new name, on the PC and on the phone's view of it.
+- **Four new themes:** **Rivercoil** (steel blue-green with a river-blue accent), **Emberfall** (charcoal and ember orange), **Hullplate** (gunmetal, tan panels and amber lights) and **Longthaw** (a pale frost-blue light theme). All four read at WCAG AA or better on every surface.
+- **High Contrast** and **High Contrast Light** are exactly as they were, now under their own **High contrast** heading.
+- Help: the Style page entry lists the groups. New `test/run-themes-test.js` (41 checks): the names, the default, the old-name migration on the page and in saved settings, and a contrast check for every theme.
+- Phone (Bob for Android): the phone keeps its own three looks (Bob's Inn, Light, Follow the phone); nothing changes there.
+- **Less cat talk** (issue #33). Bob mentions Patches less, weaves him in instead of signing off with him, and no longer ends replies with a cat face. Bob worked this one out himself.
+
+## 1.5.135
+
+Brains of your own: add a brain file you already have, and Bob runs it like any other.
+
+- **➕ Your own brains** (at the end of the Well behaved list in the Brain catalogue): add a brain file (.gguf) already on your replicant matrix that Bob's list doesn't have. Press **Add a brain from a file**, pick the file, name it, add its picture reader if it has one, and it joins the Brain catalogue, Equip Bob and the brain menus like any other brain, shown as **(your own file)**. No file window on your desktop (some Linux desktops have none)? Press **or type its path** and paste the file's full path. Adding and removing only work on that replicant matrix itself, not from the phone.
+- Bob runs it on his built-in engine from where it is. He never moves, copies or deletes it, and never recommends it over the brains he knows.
+- **Remove from Bob's list** only makes him forget it: the file stays where it is, and any slot wearing it is emptied. If the file goes missing, its row says **File not found**.
+- Help: the catalogue page, an FAQ and a glossary entry "Your own brain". New `test/run-own-models-test.js`.
+- Phone (Bob for Android): nothing changes.
+
 ## 1.5.134
 
 Bob's icon follows his look, and he lives in the tray, without a trip to Settings first.

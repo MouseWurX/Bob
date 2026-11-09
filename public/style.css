@@ -138,6 +138,9 @@ body.still .mic.on { animation: none; }
 .tag { font-size: 12px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
 .tag.good { color: var(--good); border-color: var(--good); }
 .tag.warn { color: var(--accent); border-color: var(--accent); }
+.tag.new-tag { font-weight: 600; } /* 1.5.137: one of the five newest releases in its family */
+.tag.dated-tag { border-style: dashed; opacity: .85; } /* 1.5.137: newer brains do its job better; it stays on the list */
+.too-big-note { margin-top: .4em; } /* 1.5.137 */
 .tag.bad { color: var(--bad); border-color: var(--bad); }
 .act { margin-top: 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .have { color: var(--good); }
@@ -379,6 +382,8 @@ body:not(.right-hidden) .now-toggle .badge { display: none; }
 .now-head { display: flex; align-items: center; gap: 8px; }
 .now-sec { display: flex; align-items: baseline; gap: 6px; margin-top: 8px; font-weight: 700; font-size: 13px; }
 .now-sec .muted { font-weight: 400; font-size: 11px; }
+.now-sec .now-head { font: inherit; font-weight: 700; padding: 0; min-height: 24px; color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; } /* 1.5.141: opens Bob-Net settings */
+.now-sec .now-head:hover, .now-sec .now-head:focus-visible { text-decoration-style: solid; }
 .now .tlist { margin: 4px 0; }
 .now .titem { grid-template-columns: auto 1fr auto; padding: 6px 8px; gap: 2px 6px; font-size: 12.5px; }
 .now .titem > span[aria-hidden="true"]:not(.grip) { display: none; }
@@ -589,6 +594,20 @@ button.big { padding: 9px 18px; font-size: 15px; min-height: 40px; }
 .hands-mytools ul { list-style: none; padding: 0; margin: 6px 0; }
 .hands-mytools li.mytool { border-bottom: 1px solid var(--line); padding: 6px 0; }
 .hands-mytools.dim { opacity: 0.7; }
+/* 1.5.144 🧰 Tools and how-tos Bob made */
+.ownkit-list { list-style: none; padding: 0; margin: 6px 0; }
+.ownkit-list { display: flex; flex-direction: column; gap: 8px; }
+.ownkit-list li.ownkit-row { border: 1px solid var(--line, #444); border-radius: 6px; padding: 8px 10px; }
+.ownkit-list li.ownkit-row > .row { align-items: baseline; flex-wrap: wrap; gap: 6px 10px; }
+.ownkit-list li.ownkit-row .row button { min-height: 32px; }
+.ownkit-list .howto-steps { margin: 4px 0 4px 20px; }
+.ownkit-list pre.ownkit-code { max-height: 320px; overflow: auto; white-space: pre; }
+.ownkit-note { margin: 6px 0; padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--card); }
+.ownkit-note .mini { margin-left: 6px; }
+.ownkit-ask { font-weight: 600; }
+.ownkit-shelf { margin: 10px 0 4px; }
+.ownkit-shelf > summary { cursor: pointer; font-size: 15px; padding: 6px 0; }
+.ownkit-shelf > summary .muted { font-weight: 400; font-size: 13px; }
 .hands-mcp { margin-top: 10px; }
 .hands-mcp > ul { list-style: none; padding: 0; margin: 6px 0; }
 .hands-mcp li.mcp-app { border-bottom: 1px solid var(--line); padding: 6px 0; }
@@ -1079,6 +1098,10 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .devil-wrap { display: inline-block; line-height: 0; }
 .tag.devil-rec { padding: 1px 6px; }
 .maker-tag { cursor: help; }
+/* 1.5.135: ➕ Your own brains */
+.own-form { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; margin: 8px 0; display: grid; gap: 8px; }
+.own-form label { display: grid; gap: 4px; max-width: 32em; }
+.own-path { font-size: 12px; overflow-wrap: anywhere; }
 .maker-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .tag.devil-rec .devil { width: 1.1em; height: 1.1em; }
 .cat-nav { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1324,3 +1347,116 @@ details.fold > summary .muted { font-weight: 400; font-size: 13px; }
 .rent-multi-warn { border: 3px solid #c33; background: var(--danger-bg); padding: 14px 16px; margin-top: 10px; }
 .rent-multi-warn p.big { font-size: 1.35em; margin-bottom: 8px; }
 .rent-multi-warn .row button { min-height: 44px; font-size: 1.05em; }
+
+/* 1.5.138: Now running sections can be put in any order (the grip), and Bob's thinking can sit in the panel (Show here). */
+.now-sections { display: flex; flex-direction: column; gap: 6px; }
+.now-sections > section { position: relative; }
+.sec-order { display: inline-flex; align-items: center; gap: 4px; margin-right: 2px; }
+.sec-grip { min-width: 32px; min-height: 32px; margin: -6px 0; padding: 0 6px; border: 1px solid transparent; border-radius: var(--r); background: none; color: var(--muted); font: inherit; font-size: 14px; letter-spacing: -3px; cursor: grab; }
+.sec-grip:hover, .sec-grip:focus-visible, .sec-grip[aria-expanded="true"] { color: var(--text); border-color: var(--line); background: var(--card); }
+.sec-grip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sec-move { display: inline-flex; gap: 4px; }
+.sec-move .mini { min-height: 32px; white-space: nowrap; }
+.sec-move .mini[disabled] { opacity: .5; cursor: default; }
+.now-sections > section.dragging { opacity: .5; }
+.now-sections > section.drop-before { box-shadow: 0 -3px 0 0 var(--accent); }
+.now-sections > section.flash { animation: sec-flash 1.2s ease-out; }
+@keyframes sec-flash { from { box-shadow: inset 0 0 0 2px var(--accent); } to { box-shadow: inset 0 0 0 2px transparent; } }
+@media (prefers-reduced-motion: reduce) { .now-sections > section.flash { animation: none; } }
+.now-mind .brain-switch { min-height: 28px; padding: 2px 8px; }
+.now-mind > .now-sec { flex-wrap: wrap; row-gap: 4px; }
+.now-mind .mind-now { font-weight: 600; font-size: 12.5px; margin: 4px 0 2px; }
+#mindDockLog { height: 260px; min-height: 120px; max-height: 70vh; resize: vertical; overflow: auto; padding: 6px 4px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg, transparent); }
+#mindDockLog:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.now-mind .mind-empty { font-size: 12px; margin: 4px 0; padding: 0 4px; }
+.now-mind .mind-foot { flex-wrap: wrap; padding: 6px 0 0; border: 0; background: none; }
+.now-mind .mind-dock-foot .link { min-height: 32px; margin-left: auto; }
+@media (forced-colors: active) {
+  .sec-grip:hover, .sec-grip:focus-visible, .sec-grip[aria-expanded="true"] { border-color: CanvasText; }
+  .now-sections > section.drop-before { box-shadow: 0 -3px 0 0 Highlight; }
+  .mind-think { border-left-color: Highlight; }
+}
+/* 1.5.141 🧪 Computer Science Lab */
+.lab-dlg { width: min(860px, 96vw); }
+#lab-body { padding: 12px 16px 16px; }
+.lab fieldset { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; margin: 8px 0; }
+.lab legend { font-weight: 700; padding: 0 4px; }
+.lab-opt { display: flex; gap: 8px; align-items: flex-start; padding: 6px 2px; min-height: 32px; }
+.lab-opt input[type=radio], .lab-opt input[type=checkbox] { margin-top: 3px; min-width: 18px; min-height: 18px; }
+.lab-opt.dim { opacity: .65; }
+.lab-later { font-size: 11px; font-weight: 600; border: 1px dashed var(--line); border-radius: 999px; padding: 0 6px; margin-left: 4px; }
+.lab-sub { margin-left: 26px; }
+.lab-steps ol { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 10px 0; }
+.lab-step { border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; min-height: 32px; background: none; color: inherit; }
+.lab-step.on { font-weight: 700; border-width: 2px; text-decoration: underline; text-underline-offset: 3px; }
+.lab-check { border-left: 3px solid var(--line); padding: 2px 10px; margin: 8px 0; }
+.lab-actions { gap: 10px; flex-wrap: wrap; }
+.lab-recipe pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r); padding: 8px; }
+.lab-report { border-collapse: collapse; margin: 6px 0; font-size: 13px; }
+.lab-report th, .lab-report td { border: 1px solid var(--line); padding: 2px 8px; text-align: left; }
+#lab-chunks-n, #lab-keep-n { width: 6em; }
+#lab-name, #lab-lessons-file, #lab-keep-file { width: min(420px, 100%); }
+
+/* 1.5.142 Lab 1b: the template picker and Compare */
+.lab-template select { max-width: 100%; }
+.lab-compare { margin: 0.75rem 0; }
+.lab-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.lab-tab { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; min-height: 32px; background: none; color: inherit; font: inherit; }
+.lab-tab.on { font-weight: 700; border-width: 2px; text-decoration: underline; text-underline-offset: 3px; }
+.lab-tab.dim { opacity: .65; }
+.learn-card { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; margin: 10px 0; }
+.learn-card h3 { margin: 4px 0 6px; }
+.learn-card textarea { width: 100%; box-sizing: border-box; font: inherit; }
+.learn-card input[type=text] { width: min(100%, 420px); font: inherit; }
+.learn-result { margin-top: 8px; }
+.learn-why { border-left: 3px solid var(--line); padding: 2px 10px; }
+.learn-saw { border-left: 3px solid var(--accent); padding: 4px 10px; margin: 8px 0 2px; }
+.learn-tokens { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; padding: 0; margin: 6px 0; }
+.learn-tok { display: inline-flex; flex-direction: column; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; min-width: 18px; }
+.learn-tok.a { background: var(--bg); border-style: solid; }
+.learn-tok.b { background: transparent; border-style: dashed; }
+.learn-tok.part { border-color: var(--accent); border-style: dotted; }
+.learn-tok-text { font-family: ui-monospace, Consolas, monospace; white-space: pre; }
+.learn-tok-id { font-size: 10px; opacity: .7; }
+.learn-odds { list-style: none; padding: 0; margin: 6px 0; display: grid; gap: 3px; max-width: 520px; }
+.learn-odd { position: relative; display: block; width: 100%; text-align: left; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; min-height: 32px; background: none; color: inherit; font: inherit; overflow: hidden; }
+.learn-odd i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); opacity: .25; transition: width 0.3s; }
+.learn-odd-text { position: relative; }
+button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--accent); }
+.learn-sofar code { font-size: 15px; white-space: pre-wrap; }
+.learn-caret { opacity: .6; animation: learn-blink 1s steps(2) infinite; }
+@keyframes learn-blink { to { opacity: 0; } }
+.learn-tries { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin: 6px 0; }
+.learn-try { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; }
+.learn-try p { margin: 4px 0 0; white-space: pre-wrap; }
+@media (prefers-reduced-motion: reduce) { .learn-caret { animation: none; } .learn-odd i { transition: none; } }
+.lab-compare .lab-report td, .lab-compare .lab-report th { padding: 0.2rem 0.6rem; text-align: left; }
+.lab-compare .lab-report { overflow-x: auto; display: block; max-width: 100%; }
+
+/* 1.5.152 Lab 2c: the lesson builder (survey, sample cards, the set viewer) */
+.lab-items { list-style: none; padding: 0; margin: 6px 0; }
+.lab-items li { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.lab-item-path { word-break: break-all; flex: 1 1 240px; }
+.lab-item-skill { width: 10em; }
+#lab-b-name, #lab-b-path, #lab-v-q { width: min(420px, 100%); }
+#lab-b-count-n { width: 6em; }
+.lab-survey, .lab-learn { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; margin: 8px 0; }
+.lab-learn { border-left-width: 3px; }
+.lab-survey details { margin: 4px 0; }
+.lab-survey summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
+.lab-cards { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 10px; }
+.lab-card { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; }
+.lab-card p { margin: 4px 0; white-space: pre-wrap; word-break: break-word; }
+.lab-card-head { margin-bottom: 4px; }
+.lab-passage { border-left: 3px solid var(--line); margin: 6px 0; padding: 4px 10px; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; font-size: 13px; }
+.lab-viewer .row label { display: inline-flex; gap: 4px; align-items: center; }
+.lab-sets { margin: 8px 0; }
+/* 1.5.154 Cut recipes, the estimate table and the usage map */
+.lab-recipes, .lab-estimate, .lab-usage { margin: 0.75rem 0; }
+.lab-recipe-list { list-style: none; padding: 0; margin: 0.4rem 0; display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.lab-recipe-card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.lab-recipe-card.dim { opacity: 0.65; }
+.lab-recipe-card button { min-height: 32px; }
+#lab-device { max-width: 100%; }
+.lab-estimate .lab-report, .lab-usage .lab-report { overflow-x: auto; display: block; max-width: 100%; }
+.lab-usage:focus { outline: 2px solid var(--line); outline-offset: 2px; }

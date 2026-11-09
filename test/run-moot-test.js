@@ -138,9 +138,10 @@ check('drives live in the Ambition dial (middle = Bob as he was), as things he s
 check('the persona no longer names Bub', !/Bub\b/.test(CORE));
 // The cat
 check('cat moments use the cat\'s name and are original lines', MOMENTS.length >= 12 && catMoment('Miso', 3).startsWith('Miso') && !catMoment('Miso', 3).includes('{{'));
-const turns = Array.from({ length: 10 }, (_, i) => catPrompt({ cat: 'Patches', turn: i }));
-check('the cat turns up in about one turn in five, a short line', turns.filter(Boolean).length === 2 && turns.filter(Boolean).every((t) => t.length < 300));
-check('no cat lines when the dials ask for plain or terse replies', !catPrompt({ cat: 'P', turn: 2, dials: { length: 0 } }) && !catPrompt({ cat: 'P', turn: 2, dials: { wit: 0 } }));
+const turns = Array.from({ length: 40 }, (_, i) => catPrompt({ cat: 'Patches', turn: i }));
+check('the cat turns up in about one turn in twenty, a short line (#33)', turns.filter(Boolean).length === 2 && turns.filter(Boolean).every((t) => t.length < 300));
+check('the cat line is not a sign-off and names no emoji (#33)', turns.filter(Boolean).every((t) => !/at the end of your reply/.test(t) && /not as a sign-off/.test(t) && !/\p{Extended_Pictographic}/u.test(t)));
+check('no cat lines when the dials ask for plain or terse replies', !catPrompt({ cat: 'P', turn: 7, dials: { length: 0 } }) && !catPrompt({ cat: 'P', turn: 7, dials: { wit: 0 } }));
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
