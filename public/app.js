@@ -225,11 +225,12 @@ sessionSel.onchange = () => switchSession(sessionSel.value);
 function setStatus(s) {
   if (s.session && sessionSel.value !== s.session.id) drawSessions(null, s.session);
   statusEl.className = `status ${s.state}`;
-  const said = s.detail || STATUS_TEXT[s.state] || s.state;
-  const changed = said.replace(/\d+/g, '#') !== statusEl.textContent.replace(/\d+/g, '#'); // a counter ticking (Painting 3/30) isn't new words
+  // The line under his name is the short state word; the work details (Painting with Maestro: loading...) go in
+  // Bob's thinking (mind-view.js logs each new one), and the full line is on the tooltip. Word bubbles are only for
+  // personality lines (the cat's antics), never for status, so nothing shows twice.
+  const said = STATUS_TEXT[s.state] || s.detail || s.state;
   statusEl.textContent = said;
-  statusEl.title = said;
-  if (changed && s.detail) bobSaysIfCut();
+  statusEl.title = s.detail ? `${said} ${s.detail}` : said;
   catAntics.idle(s.state === 'idle');
   life.state(s.state);
   document.title = s.state === 'idle' ? 'Bob' : `Bob · ${STATUS_TEXT[s.state] || s.state}`;
@@ -238,16 +239,6 @@ function setStatus(s) {
   if (s.model) lastModel = s.model;
   layout.status(s);
 }
-// Bob's status line is one line in the menu. When his words don't fit there, they pop out in his word bubble for a
-// few seconds instead of making the menu taller. Pointing at the line, or a tap on it, shows the bubble again.
-function statusCut() {
-  if (document.body.classList.contains('left-folded')) return false; // folded: the line isn't shown, so no bubble either
-  return statusEl.scrollWidth > statusEl.clientWidth + 1;
-}
-function bobSaysIfCut() { if (statusCut()) bubbles.say('bob', statusEl.textContent, 6000); }
-const bobSaysNow = () => { if (statusEl.textContent && statusCut()) bubbles.say('bob', statusEl.textContent, 6000); };
-statusEl.addEventListener('mouseenter', bobSaysNow);
-statusEl.addEventListener('click', bobSaysNow);
 function badge(on) {
   try { if (on) navigator.setAppBadge && navigator.setAppBadge(); else navigator.clearAppBadge && navigator.clearAppBadge(); } catch {}
 }

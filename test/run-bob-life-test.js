@@ -125,11 +125,12 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
 {
   const rd = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   const html = rd('public/index.html'), css = rd('public/style.css'), antics = rd('public/cat-antics.js'), bub = rd('public/say-bubbles.js'), app = rd('public/app.js');
-  check('bubbles: a fixed layer outside the menu, out of screen readers', /<div id="bubbles" class="bubbles" aria-hidden="true">/.test(html) && html.indexOf('id="bubbles"') < html.indexOf('id="side"') && /\.bubbles \{ position: fixed;[^}]*pointer-events: none;/.test(css));
+  check('bubbles: a fixed layer outside the menu, out of screen readers', /<div id="bubbles" class="bubbles" aria-hidden="true">/.test(html) && html.indexOf('id="bubbles"') < html.indexOf('id="side"') && /\.bubbles \{ position: fixed;[^}]*pointer-events: none;/.test(css) && /class="bubble-x"/.test(html));
   check('bubbles: no cat line left inside the menu', !html.includes('catLine') && !antics.includes('catLine') && !css.includes('.cat-line'));
   check('bubbles: a long line is clamped, not grown', /\.say-bubble > span \{[^}]*-webkit-line-clamp: 5;[^}]*max-height: 7em;/.test(css));
-  check('bubbles: Bob\'s status is one line of fixed height in the menu', /\.side \.status \{ white-space: nowrap; overflow: hidden; text-overflow: ellipsis;[^}]*height: 1\.35em;/.test(css));
-  check('bubbles: the cat speaks through the bubble, Bob when his line is cut', /bubbles\.say\('cat'/.test(antics) && /bubbles\.say\('bob'/.test(app) && /export function createBubbles/.test(bub));
+  check('bubbles: 15 s, held while pointed at, Esc closes', /BUBBLE_MS = 15000/.test(bub) && /mouseenter[\s\S]*clearTimeout/.test(bub) && /'Escape'/.test(bub));
+  check('bubbles: Bob\'s status is a fixed two-line height in the menu', /\.side \.status \{[^}]*-webkit-line-clamp: 2;[^}]*height: 2\.7em;/.test(css));
+  check('bubbles: the cat speaks through the bubble; status words never go in a bubble, they go in Bob\'s thinking', /bubbles\.say\('cat'/.test(antics) && !/bubbles\.say\('bob'/.test(app) && /line\(`⚙ \$\{esc\(now\)\}`/.test(rd('public/mind-view.js')));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
