@@ -1117,7 +1117,9 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   check('no card known: the plain 16 GB line', packMinutesLine(2, 0) === 'about 2 min on a 16 GB card');
   check('a 16 GB card is named, same minutes', packMinutesLine(2, 16) === 'about 2 min on your 16 GB card');
   check('a small card gets a longer guess, a big card a little shorter, never under a minute', packMinutesLine(2, 6) === 'about 6 min on your 6 GB card' && packMinutesLine(2, 24) === 'about 2 min on your 24 GB card' && packMinutesLine(1, 48) === 'about 1 min on your 48 GB card');
-  check('the Challenges tab uses it with the view\'s card', /packMinutesLine\(p\.minutes, view\.cardGB\)/.test(read('public/lab.js')) && !/min on a 16 GB card<\/span>/.test(read('public/lab.js')));
+  check('a Mac says shared memory, not "your card"', packMinutesLine(2, 32, true) === 'about 2 min with your 32 GB of shared memory');
+  check('the Lab says whether its memory is shared, from the test machine, never the tester\'s', (() => { const l = new Lab({ ...cfg }, { shop, room: big }); l.platform = () => ({ os: 'mac', arch: 'arm64' }); const m = l.view().sharedMemory; l.platform = () => ({ os: 'win', arch: 'x64' }); return m === true && l.view().sharedMemory === false; })());
+  check('the Challenges tab uses it with the view\'s card', /packMinutesLine\(p\.minutes, view\.cardGB, view\.sharedMemory\)/.test(read('public/lab.js')) && !/min on a 16 GB card<\/span>/.test(read('public/lab.js')));
 }
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
