@@ -2,7 +2,7 @@
 
 What changed in each version of Bob, newest first. Each version also has its own page, with the download, under [Releases](https://github.com/MouseWurX/Bob/releases).
 
-This file is made from docs/releases by `node installer/make-changelog.js`.
+This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
 ## 1.5.168
 
@@ -967,7 +967,7 @@ Nothing is renamed or switched on or off, only moved, so every setting keeps its
 ## 1.5.70
 
 ### Docs
-- New page: [Brain races](docs/BRAIN-RACES.md), with the full results behind the 16 GB starter set: the coding race (Qwen3.6 35B-A3B vs Qwen3 Coder 30B), the everyday chat and Office race (Qwen3.6 vs Gemma 4 26B), the live checks of Qwen3.6 at 128K, and the Deep thinking race (Qwen 3.8 27B vs Gemma 4 26B). It also lists what hasn't been measured yet, like the smaller Q3 file for 8 GB cards.
+- New page: [Brain races](app/docs/BRAIN-RACES.md), with the full results behind the 16 GB starter set: the coding race (Qwen3.6 35B-A3B vs Qwen3 Coder 30B), the everyday chat and Office race (Qwen3.6 vs Gemma 4 26B), the live checks of Qwen3.6 at 128K, and the Deep thinking race (Qwen 3.8 27B vs Gemma 4 26B). It also lists what hasn't been measured yet, like the smaller Q3 file for 8 GB cards.
 - Mac: the README, User guide and Help explain how official Mac builds are signed, and CONTRIBUTING has a section for people who build their own copy.
 
 ## 1.5.69
@@ -1217,7 +1217,7 @@ Nothing is renamed or switched on or off, only moved, so every setting keeps its
 - Turning PDFs into Word or Excel files isn't supported, because LibreOffice does it badly. Bob can read the words in a PDF instead.
 
 ### Docs
-- New page: [Bob and similar projects](https://github.com/MouseWurX/Bob/blob/main/docs/COMPARISON.md). It's a fact-based look at how Bob differs from other local AI apps. It isn't a ranking, and it says where another tool may suit you better. The README links to it.
+- New page: [Bob and similar projects](https://github.com/MouseWurX/Bob/blob/main/app/docs/COMPARISON.md). It's a fact-based look at how Bob differs from other local AI apps. It isn't a ranking, and it says where another tool may suit you better. The README links to it.
 - The README and user guide now explain that Bob picks his own session (new in 1.5.43).
 - New: [CHANGELOG.md](https://github.com/MouseWurX/Bob/blob/main/CHANGELOG.md) lists what changed in every version, newest first. The README links to it at the top.
 
@@ -1315,7 +1315,7 @@ Nothing is renamed or switched on or off, only moved, so every setting keeps its
 - **House style:** in Equip Bob, set your usual music genre, mood, length and vocals, picture style and shape, clip style and length, sound-effect length, and what "morning" or "evening" means to you. Every box starts empty (Bob picks and says what he picked). When Bob uses one, the chat says "Used your house style: … · Change".
 - **Projects in Settings:** add your project folders (with **Browse…**), and pick a main one. "My project" means that one, and searching starts there.
 - **gpt-oss 20B on Bob's own engine** now runs from Bob's own official copy when it's downloaded, instead of Ollama's copy (which has no chat template): 25 of 25 tool jobs right instead of 2. The same goes for any brain whose official file is in Bob's models folder. Now running says "(Bob's own copy)" when this happens, and the logbook notes it.
-- The [performance page](https://github.com/MouseWurX/Bob/blob/main/docs/PERFORMANCE.md) has the final tool-job scores.
+- The [performance page](https://github.com/MouseWurX/Bob/blob/main/app/docs/PERFORMANCE.md) has the final tool-job scores.
 - Releases publish again: one test tripped over Windows line endings on GitHub's build machine, so 1.5.31 to 1.5.34 built but weren't published. This release includes all of them.
 
 **Full Changelog**: https://github.com/MouseWurX/Bob/compare/v1.5.28...v1.5.35
@@ -1330,7 +1330,7 @@ Nothing is renamed or switched on or off, only moved, so every setting keeps its
 
 - **Pick Bob's voice in one place:** wherever you choose his voice (the everyday Settings page, Voice & conversation, and Brains), you pick the engine and then, right next to it, the voice inside it, with **Play sample**. Kokoro shows all 22 voices; Windows shows the English voices your Windows has (or Automatic). Each Piper voice is its own download, so Piper voices are listed with the engines.
 - **Download links can't go stale any more:** every model link now points at an exact, frozen version on Hugging Face instead of "the latest", so an upstream update or a renamed folder can't break a download or change a file under Bob. Five renamed folders now use their new names. A check stops any unpinned link from shipping.
-- **Tool jobs work more often:** Bob's brains now use their makers' recommended settings (and a proper chat template when the file has none), and he does a job in the same reply instead of only saying he will. When web search is off, he says where the switch is. The [performance page](https://github.com/MouseWurX/Bob/blob/main/docs/PERFORMANCE.md) has a new "What testing taught us" section.
+- **Tool jobs work more often:** Bob's brains now use their makers' recommended settings (and a proper chat template when the file has none), and he does a job in the same reply instead of only saying he will. When web search is off, he says where the switch is. The [performance page](https://github.com/MouseWurX/Bob/blob/main/app/docs/PERFORMANCE.md) has a new "What testing taught us" section.
 
 **Full Changelog**: https://github.com/MouseWurX/Bob/compare/v1.5.32...v1.5.33
 
@@ -1350,7 +1350,7 @@ Nothing is renamed or switched on or off, only moved, so every setting keeps its
 
 - More readings in Now running: how fast Bob's last reply was, and what Bob himself costs your PC.
 - Bob's window pauses its live readings while it's hidden or while a full-screen game is in front, so it takes nothing from your game.
-- The [performance page](https://github.com/MouseWurX/Bob/blob/main/docs/PERFORMANCE.md) now has the final tool-use scores for each brain.
+- The [performance page](https://github.com/MouseWurX/Bob/blob/main/app/docs/PERFORMANCE.md) now has the final tool-use scores for each brain.
 
 **Full Changelog**: https://github.com/MouseWurX/Bob/compare/v1.5.30...v1.5.31
 
@@ -1377,7 +1377,7 @@ Nothing is renamed or switched on or off, only moved, so every setting keeps its
 
 - **Web search is now a switch, off by default** (Settings, Everyday, "Let Bob search the web"). Turn it on if you want Bob to look things up on DuckDuckGo; only the search words and page addresses leave your PC.
 - **A much bigger Help, in Bob's own voice:** every feature and setting, a glossary and an FAQ. Bob can also read his own Help, so he can walk you through setting him up.
-- **New [performance page](https://github.com/MouseWurX/Bob/blob/main/docs/PERFORMANCE.md):** what makes Bob fast and light, with measured numbers.
+- **New [performance page](https://github.com/MouseWurX/Bob/blob/main/app/docs/PERFORMANCE.md):** what makes Bob fast and light, with measured numbers.
 - "Get Bob ready while you type" keeps its saved starts for your two most recent brains only, so they don't fill the disk.
 
 **Full Changelog**: https://github.com/MouseWurX/Bob/compare/v1.5.26...v1.5.27

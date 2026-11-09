@@ -4,7 +4,7 @@
 
 **[Download Bob](#download)** for Windows, Mac, Linux, Raspberry Pi and Android. Free, open source, and nothing goes online unless you turn it on.
 
-![Bob's window: the menu on the left, a chat in the middle where Bob plans a Saturday, and Now running on the right](docs/screenshot.png)
+![Bob's window: the menu on the left, a chat in the middle where Bob plans a Saturday, and Now running on the right](app/docs/screenshot.png)
 
 ## Why Bob
 
@@ -12,13 +12,13 @@
 - **Ready in a few clicks.** Unzip, start, and Bob reads your graphics card and RAM and offers a starter set that fits. One button, **Get Bob ready**, fetches the engines he runs on (llama.cpp, stable-diffusion.cpp, whisper.cpp, Kokoro) and a brain, and he puts each model in its slot himself. No Python, no terminal, no Ollama needed (though he'll use yours if it's there).
 - **A character, not a chat box.** Bob has a look you can change (133 avatars, or build your own), a cat, a notice board, eleven personality dials and opinions about your code. Everything optional is off until you switch it on.
 - **Does real jobs.** Plans and reminders, documents and spreadsheets, web research with sources, code written and fixed, pictures painted and edited, clips, songs and sound effects, and opt-in **Hands** that can tidy files, run scripts you approve and click around other apps, every action shown on a card first.
-- **Light on your machine.** The brain unloads when idle, big models load only for a job, and a **Gaming** session keeps the graphics card for your game while Bob chats on the processor. [How Bob stays fast and light](docs/PERFORMANCE.md).
+- **Light on your machine.** The brain unloads when idle, big models load only for a job, and a **Gaming** session keeps the graphics card for your game while Bob chats on the processor. [How Bob stays fast and light](app/docs/PERFORMANCE.md).
 - **Plays games with you.** A tabletop adventure with a game master, a party of your own characters, a bestiary and pictures of everyone you meet, plus word games (hangman, twenty questions, word ladder, story dice and more).
 - **Bob-Net.** Your Bobs find each other over your own Tailscale network: the phone app talks to the Bob on your PC, a handheld can borrow a bigger brain, and Bobs can pass jobs along.
 - **Use a brain and change it, in the same app.** Most AI apps are for one of two things: talking to a model, or building one. Bob does both. Turn on the **Computer Science Lab** (off until you switch it on) and, without a command line, you can write lessons with a brain you already have, cut a mixture-of-experts brain down to the experts your work uses, take out sight or hearing you don't need, make the running files, and test the result side by side with the brain it came from before it goes into Bob. Bob keeps chatting while the Lab works. **Show the recipe** prints every command it runs, so the Lab teaches the command line instead of hiding it. We haven't seen another app that lets you do this much to a model while you're using it; if you know one, tell us in the issues.
 - **Brain Engine, Bob's own engine based on llama.cpp.** The project keeps its own version of llama.cpp, the engine Bob runs his brains on, made to give more freedom in how a brain is run. Its first feature switches a mixture-of-experts brain's experts on and off while it's loaded, with no reload, so the Lab can try a cut before writing a single file. It's still being tested on the project's own machines and isn't on the Releases page yet. Brain Engine is built on llama.cpp by the ggml authors (MIT licence) and stays under the same licence.
-- **Soon: Bob's own brains.** A family of models cut from a large open model and retrained to run Bob on small cards and handhelds. Tested, not yet released. [Read how they're made](docs/BOBS-OWN-MODELS.md). The same tools that make them are in the Lab, so you can make your own.
-  The first one is **Riker (28Bob)**: Qwen3.6-35B-A3B with 208 of its 256 experts kept in every layer (about 28 billion parameters, 3 billion active per word), then healed in one full pass against the full model's next-word odds on about 9,000 lessons Bob wrote for himself. At home on a 16 GB card he scores 9 of 13 on the coding race with thinking on (the full model: 12), 6 of 6 on quick code tasks, 18 of 20 on facts, 65% on tool calls (full model: 67%), 24 of 25 on routing, 12 of 12 on the long-document needle test, at 111 words a second against the full model's 83. On the full ARC science-question tests (no worked examples given), he gets 92.9% on ARC-Challenge (1,089 of 1,172) and 97.6% on ARC-Easy (2,319 of 2,376) with thinking off, and 93.9% (1,101) and 98.3% (2,335) with thinking on; the full model gets 95.8% and 98.9% with thinking off. Thinking was capped at 1,536 tokens per question, far below the 32,000 Qwen allows for its own published scores, so his thinking-on numbers are on the cautious side. Riker is the first of Bob's own brains to work this well, and we're proud of him. Files: 17.5 GB at Q4, 13.9 GB at Q3, Apache 2.0. His cut and heal cost $51.79 of rented card time, about $74 counting the rentals that wrote his lessons ([every dollar](docs/COSTS.md)). Riker has his own page on Hugging Face: [MouseWurX/28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker). The ready-to-run files are added there soon.
+- **Soon: Bob's own brains.** A family of models cut from a large open model and retrained to run Bob on small cards and handhelds. Tested, not yet released. [Read how they're made](app/docs/BOBS-OWN-MODELS.md). The same tools that make them are in the Lab, so you can make your own.
+  The first one is **Riker (28Bob)**: Qwen3.6-35B-A3B with 208 of its 256 experts kept in every layer (about 28 billion parameters, 3 billion active per word), then healed in one full pass against the full model's next-word odds on about 9,000 lessons Bob wrote for himself. At home on a 16 GB card he scores 9 of 13 on the coding race with thinking on (the full model: 12), 6 of 6 on quick code tasks, 18 of 20 on facts, 65% on tool calls (full model: 67%), 24 of 25 on routing, 12 of 12 on the long-document needle test, at 111 words a second against the full model's 83. On the full ARC science-question tests (no worked examples given), he gets 92.9% on ARC-Challenge (1,089 of 1,172) and 97.6% on ARC-Easy (2,319 of 2,376) with thinking off, and 93.9% (1,101) and 98.3% (2,335) with thinking on; the full model gets 95.8% and 98.9% with thinking off. Thinking was capped at 1,536 tokens per question, far below the 32,000 Qwen allows for its own published scores, so his thinking-on numbers are on the cautious side. Riker is the first of Bob's own brains to work this well, and we're proud of him. Files: 17.5 GB at Q4, 13.9 GB at Q3, Apache 2.0. His cut and heal cost $51.79 of rented card time, about $74 counting the rentals that wrote his lessons ([every dollar](app/docs/COSTS.md)). Riker has his own page on Hugging Face: [MouseWurX/28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker). The ready-to-run files are added there soon.
 
 ## Download
 
@@ -36,16 +36,16 @@ All builds on the [Releases page](https://github.com/MouseWurX/Bob/releases/late
 
 | | |
 |---|---|
-| ![The adventure table: three characters, the game master's narration, and cards for the player's turn](docs/screens/adventure.png) | ![The bestiary: goblins, skeletons, wolves and friends with hearts and a line from Bob](docs/screens/bestiary.png) |
+| ![The adventure table: three characters, the game master's narration, and cards for the player's turn](app/docs/screens/adventure.png) | ![The bestiary: goblins, skeletons, wolves and friends with hearts and a line from Bob](app/docs/screens/bestiary.png) |
 | *Adventure: Bob is the game master; the app rolls the dice.* | *The bestiary, part of the Characters page.* |
-| ![Get Bob ready: the first-run page lists the engines and models Bob suggests for this computer](docs/screens/get-bob-ready.png) | ![Equip Bob: pick a slot, then a model for it; a starter set for your graphics card is one button](docs/screens/equip-bob.png) |
+| ![Get Bob ready: the first-run page lists the engines and models Bob suggests for this computer](app/docs/screens/get-bob-ready.png) | ![Equip Bob: pick a slot, then a model for it; a starter set for your graphics card is one button](app/docs/screens/equip-bob.png) |
 | *First start: one list, one button.* | *Equip Bob: a slot for every job.* |
 
-<p align="center"><img src="docs/screens/phone.png" width="300" alt="Bob for Android: the phone asks the PC's Bob for a wireframe fox and gets it back"><br><em>Bob for Android talks to the Bob on your PC.</em></p>
+<p align="center"><img src="app/docs/screens/phone.png" width="300" alt="Bob for Android: the phone asks the PC's Bob for a wireframe fox and gets it back"><br><em>Bob for Android talks to the Bob on your PC.</em></p>
 
 **What runs where.** Windows 10 or 11 (64-bit) is the main platform. An NVIDIA graphics card helps a lot but isn't required: with no card, Bob chats, plans, researches, reads pictures and talks on the processor. Mac (Apple Silicon), Linux (x86_64 and ARM, including a Raspberry Pi 4 or 5) and Android are built and tested on GitHub's machines by every release; the Mac and Pi builds haven't been tried on real hardware by the project yet, so [tell us how they go](https://github.com/MouseWurX/Bob/issues).
 
-**Documentation:** the **[user guide](docs/USER-GUIDE.md)** (plain English, for everyone) · [Bob and similar projects](docs/COMPARISON.md) · [How Bob stays fast and light](docs/PERFORMANCE.md) · [Brain races](docs/BRAIN-RACES.md) · [Bob's own models](docs/BOBS-OWN-MODELS.md) · [What Bob costs to make](docs/COSTS.md) · [Changelog](CHANGELOG.md). Inside the app, **Help** (menu, or F1) is written by Bob himself, with a section for every setting, a glossary and an FAQ.
+**Documentation:** the **[user guide](app/docs/USER-GUIDE.md)** (plain English, for everyone) · [Bob and similar projects](app/docs/COMPARISON.md) · [How Bob stays fast and light](app/docs/PERFORMANCE.md) · [Brain races](app/docs/BRAIN-RACES.md) · [Bob's own models](app/docs/BOBS-OWN-MODELS.md) · [What Bob costs to make](app/docs/COSTS.md) · [Changelog](CHANGELOG.md). Inside the app, **Help** (menu, or F1) is written by Bob himself, with a section for every setting, a glossary and an FAQ.
 
 ## Getting Bob
 
@@ -61,7 +61,7 @@ To update later: Settings, This replicant matrix and updates, **Check for update
 
 How Bob runs: `Bob app\Bob.exe` is Electron's official `electron.exe`, unchanged and only renamed, and Bob's own files sit next to it in `Bob app\resources\app`. Windows Smart App Control already knows Electron's program, so it doesn't block Bob, which can happen to a freshly built exe. Updates only change Bob's files, never the exe.
 
-**From source:** on Windows, double-click **Install Bob.cmd** in Bob's folder. Bob opens in his own window and gets a Start menu entry. There is no browser step and no "install as an app".
+**From source:** on Windows, double-click **Install Bob.cmd** in the `app` folder of Bob's source. Bob opens in his own window and gets a Start menu entry. There is no browser step and no "install as an app".
 
 ### Mac (Apple Silicon, M1 or newer)
 
@@ -92,7 +92,7 @@ Bob's program and his things live apart, so updating Bob never touches your mode
 
 ## Using Bob
 
-The **[user guide](docs/USER-GUIDE.md)** walks through everything in plain English: starter sets for your graphics card, Equip Bob, his personality dials, Topics and housekeeping, and the opt-in Hands. Curious how Bob stays fast and light (the Gaming brain pick, memory freeing, engine tuning, with measured numbers)? See **[How Bob stays fast and light](docs/PERFORMANCE.md)**. How each brain in the starter set was picked: **[Brain races](docs/BRAIN-RACES.md)**.
+The **[user guide](app/docs/USER-GUIDE.md)** walks through everything in plain English: starter sets for your graphics card, Equip Bob, his personality dials, Topics and housekeeping, and the opt-in Hands. Curious how Bob stays fast and light (the Gaming brain pick, memory freeing, engine tuning, with measured numbers)? See **[How Bob stays fast and light](app/docs/PERFORMANCE.md)**. How each brain in the starter set was picked: **[Brain races](app/docs/BRAIN-RACES.md)**.
 
 The menu is on the left (fold it to icons with ‹ or Ctrl+B), the chat is in the middle, and **Now running** is on the right: tasks, downloads and graphics card memory (hide it with Ctrl+J, drag its edge to resize). Bob remembers how you leave them.
 
@@ -118,9 +118,10 @@ Optional, all off until you switch them on: web search, launch on start-up, clou
 
 ## Building Bob
 
-Bob is a small Node server (`src/`) with a web page for his window (`public/`), wrapped in Electron (`electron/main.cjs`).
+Everything of Bob's is in the [`app`](app) folder: a small Node server (`app/src/`) with a web page for his window (`app/public/`), wrapped in Electron (`app/electron/main.cjs`), plus his installer, tests, docs and the Android app. Run these in the `app` folder:
 
 ```
+cd app
 npm install
 npm start            # run Bob from source
 npm test             # every test suite
@@ -128,7 +129,7 @@ npm run voice-samples   # make the 22 Kokoro clips that ship in public/voice-sam
 npm run dist:portable   # optional, by hand only: a single portable Bob-<version>.exe (may be blocked by Smart App Control)
 ```
 
-On Windows, double-click **Install Bob.cmd**. It first asks where Bob should keep his things (a `Bob` folder in your user folder is suggested; any drive works; AppData and other temporary places are refused). Then a window shows each step with a tick, a progress bar, the live log line, the time taken and what the step is for: checking Node.js, getting Electron (its official Windows zip, about 110 MB, checked against Electron's SHASUMS256.txt or the pin in `package.json` `bob.electronSha256`, kept in `inn\bob\electron` so it's only downloaded when the Electron version changes), testing, then putting Bob in `<home>\Bob app` (home being the folder you picked) with a Start menu shortcut that carries Bob's icon and app id (`ca.mousewurx.bob`, so the taskbar shows Bob). If a step fails, nothing outside the source folder changes and "Show the full log" says why. (**Double-click to build Bob.cmd** does the same.) To check the shortcut writer on Windows: `installer\bob-shortcut.ps1 -SelfTest`. To try the installer without touching a real install, run `installer\bob-build-window.ps1 -Mode install -AppDir <test folder> -NoShortcut`.
+On Windows, double-click **Install Bob.cmd** in the `app` folder. It first asks where Bob should keep his things (a `Bob` folder in your user folder is suggested; any drive works; AppData and other temporary places are refused). Then a window shows each step with a tick, a progress bar, the live log line, the time taken and what the step is for: checking Node.js, getting Electron (its official Windows zip, about 110 MB, checked against Electron's SHASUMS256.txt or the pin in `package.json` `bob.electronSha256`, kept in `inn\bob\electron` so it's only downloaded when the Electron version changes), testing, then putting Bob in `<home>\Bob app` (home being the folder you picked) with a Start menu shortcut that carries Bob's icon and app id (`ca.mousewurx.bob`, so the taskbar shows Bob). If a step fails, nothing outside the source folder changes and "Show the full log" says why. (**Double-click to build Bob.cmd** does the same.) To check the shortcut writer on Windows: `installer\bob-shortcut.ps1 -SelfTest`. To try the installer without touching a real install, run `installer\bob-build-window.ps1 -Mode install -AppDir <test folder> -NoShortcut`.
 
 **Updating:** Settings, "Check for updates". Bob asks GitHub for the Latest release of MouseWurX/Bob and looks at the source folder he was built from; the newer one wins (a tie goes to the source folder). A GitHub release is downloaded, checked against its `.sha256` (and GitHub's own checksum when it gives one), unpacked, and handed to the update window with `-Prebuilt`, which skips Node.js and the tests (GitHub ran them before publishing). On a Mac, Bob checks Bob.app with `codesign --verify` and swaps the bundle on restart; on Linux, the new AppImage takes the running one's place on restart (the old one stays as `.previous`). When the source folder has the newer build, "Update Bob" opens the same window and shows the same steps in Bob's own window. When it's built, the window pops up and Bob asks in the chat too. "Restart Bob now" closes him straight away, swaps in the new files (the old ones stay as `resources\app-previous`; if Electron itself changed, the old exe stays as `Bob-previous.exe`) and opens him again. If he's in the middle of a task or a download you choose: restart anyway (he picks up where he left off), wait until he's done, or not now. "Later" leaves the new Bob waiting; it takes over the next time Bob starts. Checking when Bob starts is off unless you turn it on, and updating always takes your click.
 
@@ -159,9 +160,9 @@ Bob is inspired by the wonderful books of Dennis E. Taylor. Bob is an independen
 ## Licence
 
 - Code: GNU GPL, version 3 or later ([LICENSE](LICENSE)).
-- Art and writing (avatars, icons, themes, Bob's character and texts, the voice clips that ship with him): CC BY-SA 4.0 ([LICENSE-ART](docs/legal/LICENSE-ART), details in [ASSETS-LICENSE.md](docs/legal/ASSETS-LICENSE.md)).
-- The MouseWurX name and logo and the name "Bob of The Idle Process" aren't licensed: see [TRADEMARKS.md](docs/legal/TRADEMARKS.md).
-- Third-party parts and the models Bob can download keep their own licences: see [THIRD-PARTY.md](docs/legal/THIRD-PARTY.md).
+- Art and writing (avatars, icons, themes, Bob's character and texts, the voice clips that ship with him): CC BY-SA 4.0 ([LICENSE-ART](app/docs/legal/LICENSE-ART), details in [ASSETS-LICENSE.md](app/docs/legal/ASSETS-LICENSE.md)).
+- The MouseWurX name and logo and the name "Bob of The Idle Process" aren't licensed: see [TRADEMARKS.md](app/docs/legal/TRADEMARKS.md).
+- Third-party parts and the models Bob can download keep their own licences: see [THIRD-PARTY.md](app/docs/legal/THIRD-PARTY.md).
 
 Contributions are welcome: see [CONTRIBUTING.md](.github/CONTRIBUTING.md). Security problems: [SECURITY.md](.github/SECURITY.md).
 
@@ -175,7 +176,7 @@ How signing will work once it is set up:
 - Committers and reviewers: the members of this repository with write access.
 - Approvers: the project owner. Every signing request for a release will be approved by hand.
 
-**Privacy policy** ([PRIVACY.md](docs/legal/PRIVACY.md)): This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. In particular, Bob reaches the internet for: model and engine downloads (from the address shown before you confirm), voice samples from a voice's publisher, web searches, only if you turn on "Let Bob search the web" (off to start with; then Bob may search DuckDuckGo and read pages when a question needs it, and only the search words and page address go to that site), and cloud AI helpers you switch on with your own API key (each use asks first). Phone access over Tailscale is off unless you turn it on. Talk to Bob on Telegram is off unless you turn it on; then your messages to your own bot and Bob's replies pass through Telegram. Bob sends no telemetry.
+**Privacy policy** ([PRIVACY.md](app/docs/legal/PRIVACY.md)): This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. In particular, Bob reaches the internet for: model and engine downloads (from the address shown before you confirm), voice samples from a voice's publisher, web searches, only if you turn on "Let Bob search the web" (off to start with; then Bob may search DuckDuckGo and read pages when a question needs it, and only the search words and page address go to that site), and cloud AI helpers you switch on with your own API key (each use asks first). Phone access over Tailscale is off unless you turn it on. Talk to Bob on Telegram is off unless you turn it on; then your messages to your own bot and Bob's replies pass through Telegram. Bob sends no telemetry.
 
 ### Versions
 
