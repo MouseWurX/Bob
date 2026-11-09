@@ -4,6 +4,60 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.178
+
+A big one: Bob's own browser and eyes, quick Autonomy and Screen use buttons, Bob on Discord, Bob working on repositories, and more of Brain Engine's tools.
+
+**New, and not tried on real hardware yet.** Everything here is off until you switch it on, and every step Bob takes still shows a card unless you let him work without asking. These were built and tested here but nobody has clicked through them on a real replicant matrix yet. If you try them, tell us what happened at github.com/MouseWurX/Bob/issues.
+
+### Use a browser (a new Hand)
+- Settings, Show advanced settings, Hands: **Use a browser**. Bob gets his own browser window, titled **Bob is browsing**. It is part of Bob, with its own cookies and sign-ins; your own browser is never touched or read.
+- Ask "open the Blender release notes and tell me what's new" or "type fox in the search box and press Enter". Bob reads a page as text plus a numbered list of its links, buttons and fields, then does one thing at a time: click a number, type into a field, press Enter, Tab, Esc or an arrow, scroll, go back, pick an option. Each action is a card first (unless "Let Bob work without asking" is on).
+- While **Don't send anything out** is on he only types into search boxes and never presses Send, Post, Submit, Buy, Pay or Upload, never fills other fields and never picks files. Switch the limit off to let him, still one card each. Password fields stay off-limits while that limit is on. His own pages, downloads, pop-ups and anything that isn't http(s) are always refused.
+- **Forget what Bob's browser knows** (Settings, Hands) clears the window's cookies, sign-ins and cache.
+- Works on Windows, Mac and Linux inside Bob's app. Bob for Android shows the cards; the window is on your replicant matrix.
+
+### Eyes checks (the Apps Hand and the browser)
+- With a vision brain in Equip Bob's **Seeing pictures** slot, Bob takes a picture of the window after a step that says what should happen and asks his eyes whether it did. The result says yes, no or unsure, with one line of what he saw; a no makes him look again instead of pressing on. No new download: any vision brain in that slot does.
+- He can also answer a question about how a window or page looks ("is there a red error banner?"), for canvases, games, 3D viewports and apps that don't name their buttons.
+- **Click by place:** in an app with no named controls, Bob can click at a spot in the picture he took. The card says the exact spot, the red "Bob is driving" bar shows, and Esc or the mouse still stops him. Never in browsers, email or chat apps while "Don't send anything out" is on.
+- **Bob checks his work with his eyes** (Settings, Hands, under Bob's browser and eyes; on) switches the check off if you'd rather save the second it takes.
+
+### Two quick buttons at the top of the chat
+- **🔓 Autonomy** is the same switch as "Let Bob work without asking" in Settings, Hands. Turning it on asks you first, right there; turning it off never asks and works from your phone too. It needs Hands on.
+- **🖥 Screen use** turns on the Apps Hand (Windows) and Bob's own browser in one click, with eyes checks. It also turns the Hands master switch on, and says so if other Hands you'd ticked start working again. Every step still shows a card unless Autonomy is on. Press again to turn just those two Hands off (works from the phone too).
+- ✋ Hands now just says **On** while Bob works without asking; the orange **On** on Autonomy (and the banner) shows that instead of saying it twice.
+- The orange "Bob is working without asking" banner now lists what else he's let do, and gets bigger with each: using your apps (clicking, typing, switching windows), his browser, seeing the screen, and every hard limit you've switched off.
+- It has a **Hide** button. It comes back by itself if Bob is let past anything new, and Settings, Hands has **Show the banner again**.
+- Neither button lifts a hard limit: "Don't send anything out", "Never type into password fields" and the rest stay as you set them, and ✋ Hands still stops everything at once.
+
+### Elsewhere
+- Help: "The Browser Hand", the eyes checks under "The Apps Hand", the Settings: Hands list, and the FAQ "Can Bob use a browser or my screen like the big agents?". The user guide has a Use a browser section.
+
+### Bob on Discord (Settings, Online services, off)
+- **Bob on Discord:** Bob joins a server as a bot you make (never a user account) and answers in the channels you list when a message matches the wake phrase (`hey bob*` by default; the `*` is the job and can sit anywhere; a switch makes it case-sensitive). Discord jobs are guest jobs: only the job types you tick (chat and code help on; web, pictures, clips, music and sounds off), no files, Hands, memory or anything about you, and replies never ping anyone. Files go out only with **Share what Bob makes for Discord** on, and only ones made for that request.
+- **Private mode:** your own Bob in Discord DMs, paired to your own account by a code or your user ID.
+- The bot token is saved as the user variable `BOB_DISCORD_TOKEN` (or `~/.config/bob/env` on Mac and Linux), never in Bob's settings files.
+- Telegram: you type your own account (user ID or @username) in Settings; no account is assumed. The token can also live in `~/.config/bob/env` on Mac and Linux.
+
+### Bob works on repositories (Settings, How Bob works, off)
+- **Let Bob work on repositories:** a list of repositories (Bob's own first; https links or local folders). Each gets its own code copy, branch and patches; your originals are never changed and nothing is ever pushed.
+- Jobs are planned into research, edit and check tasks, each started fresh with the job's notes; the notes are compressed as they grow, so Long memory never overflows.
+- **Let my other Bobs help** (off): research tasks can go to your other Bobs on Bob-Net; they only read.
+- When Git or Node.js is missing, Bob can get his own copies (pinned and checked), kept in his own tools folder.
+
+### Brain Engine's extra tools, and brains over several cards
+- **Brain Engine gets four more of llama.cpp's tools**, built from the same tag: the standard speed test (`llama-bench`), the split-and-join tool (`llama-gguf-split`), the card-sharing server (`ggml-rpc-server`) and the diffusion brain runner (`llama-diffusion-cli`, which the official llama.cpp downloads leave out). Bob finds each one in the built-in engine's folder or in Brain Engine's.
+- **Lend my graphics card** and **Spread big brains over my other Bobs' cards** (Settings, Bob-Net, both off): one brain too big for one replicant matrix can run over several of your Bobs' cards, say the PC and the handheld together. The lending Bob opens his card only when a paired Bob asks through the passcode door, only on his own Tailscale address (never the home network or the internet), and only while it's used: it closes when the other Bob lets go, after 3 minutes with no word, or the moment he starts Gaming. Nothing but parts of the brain and its working numbers travels. If nobody lends, the brain loads at home like always. Not tried on two real machines yet.
+- **Brains in parts** (Lab, Forge, Bring in a full-size brain): a brain that comes as `name-00001-of-0000N.gguf` files is joined into one file after the download, so the Lab's ways can work on it; a part picked from your own folders is joined into the Lab's folder and your parts are left alone. The Forge splits a GGUF over Hugging Face's 50 GB limit into 45 GB parts before an upload.
+- **Add the standard speed test** (Lab, Challenges, off unless ticked): llama-bench's read and write speeds (pp512 / tg128) go on the scoreboard beside the Challenges' own speed, so your numbers can be compared with what other people post.
+- **Diffusion brains** (Lab, Playground, a sixth page): try a Dream, LLaDA or RND1 brain, which fills in a whole block of blanks over a number of steps instead of writing one word after another, and watch the answer form. Needs Brain Engine (Windows and Linux). Bob's chat can't run these, so your own diffusion brain gets no chat jobs.
+- The Brain Engine build also carries the direction finder (`llama-cvector-generator`) and the adapter tool (`llama-export-lora`). These tools arrive with the next Brain Engine download; until then Bob says which ones are missing.
+
+### Smaller fixes
+- **Settings, Brains:** the folds no longer squeeze into a thin 26-pixel strip.
+- Behind the scenes: a release check now fails if a test file isn't in the test list (two suites had been left out of it in 1.5.177).
+
 ## 1.5.177
 
 Brain Engine and Riker become the defaults, and the Engines list gets a rework.

@@ -157,7 +157,7 @@ const put = (rel, body = 'x', root = work) => { const f = path.join(root, rel); 
   check('the confirm mentions schedules, limits and ✋ Hands', /Scheduled jobs will also run by themselves\. Hard limits still apply, and ✋ Hands stops him at any time\./.test(ui));
   check('Settings has no separate Stop everything button (✋ Hands is the one kill switch)', !/data-hstopall>/.test(ui));
   check('the banner button says ✋ Stop Hands', /id="freeBannerStop"[^>]*>✋ Stop Hands</.test(html));
-  check('"On, not asking" is orange, after the green On rule', css.indexOf('[data-free="true"] .st') > css.indexOf('hands-btn[data-on="true"] .st'));
+  check('working without asking shows orange on 🔓 Autonomy, not twice on ✋ Hands', /free-btn\[data-free="true"\] \.st \{ background: var\(--warn\)/.test(css) && !/hands-btn\[data-free/.test(css) && !/not asking/.test(fs.readFileSync(new URL('../public/hands-switch.js', import.meta.url), 'utf8')));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

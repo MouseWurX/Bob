@@ -6,13 +6,19 @@ import { isInside, insideAny, appDir, findOutput } from './config.js';
 import { HATS } from './persona.js';
 import { cloudHelpers, askCloud } from './cloud.js';
 import { copyName } from './clan.js';
-import { limitOn, readOnlyRoots } from './hands-settings.js';
+import { limitOn, readOnlyRoots, handOn } from './hands-settings.js';
 import { listWorkflows, workshopDir } from './workshop.js';
 import { bobHelp } from './self-help.js';
 import { recallOn, tagLine } from './recall.js';
 import { diagramTool } from './diagram.js';
 import { saveAsTool } from './save-as.js';
 import { isPrivateHost } from './security-web.js';
+import { selfWorkOn, hasCodeCopy, codeCopyRoot, codeCopyDir, gatherBrains, pickBigBrain, selfCtx, selfWorkParts, SELF_STEPS, repoNamed, reposOf, baseOf } from './self-work.js';
+import { runManaged } from './self-work-plan.js';
+import { ownEntries } from './own-models.js';
+import { ensureTool } from './self-work-tools.js';
+import { catalogFileFor } from './llamacpp.js';
+import { ctxLabel } from './model-ctx.js';
 
 const MAX_READ = 20000;
 // Runnable file types Bob won't write outside a project, on every platform (Windows, Mac and Linux kinds together).
@@ -260,7 +266,8 @@ export function buildTools(cfg) {
       if (insideAny(readOnlyRoots(cfg), file)) throw new Error(`${file} is in a read-only project.`);
       if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to write in that folder. Allowed: ${cfg.readRoots.join('; ')}`);
       const exists = fs.existsSync(file);
-      if (isInside(cfg.innDir, file) && !exists) return false;
+      // New files in the inn need no OK, except in the code copy of Bob's own code (self-work.js): every change there shows its card.
+      if (isInside(cfg.innDir, file) && !exists && !isInside(codeCopyRoot(cfg), file)) return false;
       return `${exists ? 'Overwrite' : 'Create'} ${file} (${Buffer.byteLength(content || '')} bytes)`;
     },
     approvalGroup: 'edit',
@@ -443,6 +450,52 @@ export function buildTools(cfg) {
     }),
     async run({ hat, task }, ctx) { return ctx.brain.runHat(hat, task, ctx); },
     summary: ({ hat }) => `hat: ${hat}`,
+    endsTurn: true
+  };
+
+  // "Let Bob work on his own app" (self-work.js, off by default): the coding hat on the code copy (a separate copy of Bob's code),
+  // only on the biggest brain (Bobert, else stock Qwen3.6 35B) with Long memory stretched past 256K. Every edit and
+  // command still asks; the running Bob (his program folder and settings) stays locked.
+  t.work_on_repo = {
+    schema: fn('work_on_repo', "Change code in one of the repositories {{USER}} listed for you (Settings, \"Let Bob work on repositories\"), or in your own app (Bob's code: the repository \"Bob\") when {{USER}} asks you to work on yourself. The job runs at your workbench on that repository's code copy, never the original or the Bob that's running, and comes back as a git branch and a patch for {{USER}} to look over. {{USER}} approves every change.", {
+      repo: str('Which repository, by its name in the list ("Bob" for your own app).'),
+      job: str('What {{USER}} wants changed, in their words, with any details from the chat.')
+    }, ['job']),
+    async run({ repo: which, job }, ctx) {
+      const where = 'Settings, How Bob works, "Let Bob work on repositories"';
+      if (!selfWorkOn(cfg)) throw new Error(`Working on repositories is off. It's in ${where}.`);
+      const repo = repoNamed(cfg, which);
+      if (!repo) throw new Error(`I don't have a repository called "${which}". The list: ${reposOf(cfg).map((r) => r.name).join(', ')}. Add one in ${where}.`);
+      if (!hasCodeCopy(cfg, repo)) throw new Error(`There's no code copy of ${repo.name} to work on yet. Press "Make the code copy" next to it in ${where}.`);
+      if (!String(job || '').trim()) throw new Error('Say what to change.');
+      const brains = gatherBrains(cfg, { own: ownEntries(cfg), catalogFile: (id) => catalogFileFor(cfg, id) });
+      const pick = pickBigBrain(cfg, brains);
+      if (!pick) throw new Error('This job only runs on my biggest brain, Bobert or Qwen3.6 35B, and neither is on this replicant matrix. Get Qwen3.6 35B-A3B in Get models, or add your Bobert file under Brains of your own.');
+      const want = selfCtx(cfg);
+      const got = await Promise.resolve(ctx.brain.fitCtx?.(pick.id, want, { longRun: true })).catch(() => null) || want;
+      ctx.emit?.({ type: 'announce', text: `🔧 Off to the workbench: ${repo.own ? 'my own code' : repo.name}, in the copy at ${codeCopyDir(cfg, repo)}, on ${pick.name} with ${ctxLabel(got)} of memory${got < want ? ` (${ctxLabel(want)} won't fit this replicant matrix's card and RAM)` : ' (Long memory)'}. Every change shows its card.` });
+      // The owner's ask: Git and Node.js 20+ fetched when they're missing (his own copies, in his folder only).
+      // Node only for Bob himself and repositories with a package.json.
+      const runOn = handOn(cfg, 'run');
+      if (runOn) {
+        const need = [['git', 'Git'], ...(repo.own || fs.existsSync(path.join(codeCopyDir(cfg, repo), 'package.json')) ? [['node', 'Node.js']] : [])];
+        for (const [tool, label] of need) {
+          try {
+            const t = await ensureTool(cfg, tool, { signal: ctx.signal, tick: () => {} });
+            if (t.fetched) ctx.emit?.({ type: 'announce', text: `📦 ${label} wasn't on this replicant matrix, so I got my own copy (in my folder only, nothing installed for the rest of the computer).` });
+          } catch (e) { throw new Error(`I need ${label} for this job and couldn't get it: ${e.message}`); }
+        }
+      }
+      // The owner's ask: plan, then one task at a time with notes that get compressed, research shared with other Bobs
+      // (opt-in), then the wrap-up (self-work-plan.js).
+      const parts = selfWorkParts(cfg, job, { repo, base: baseOf(cfg, repo), runOn });
+      // phased: Extreme effort's research-plan-do steps would start fresh hats on other brains; this job keeps its one brain.
+      const was = ctx.phased;
+      ctx.phased = true;
+      try { return await runManaged(ctx.brain, ctx, { cfg, repo, job, ...parts, runOn, force: { model: pick.id, cpu: false, think: true, ctx: want, longRun: true, maxSteps: SELF_STEPS } }); }
+      finally { ctx.phased = was; }
+    },
+    summary: ({ repo }) => `work on ${repo || 'Bob'}`,
     endsTurn: true
   };
 

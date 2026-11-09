@@ -16,6 +16,7 @@ import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } 
 import { exeName } from './platform.js';
 import { Embedder } from './embedder.js';
 import { ggufInfo } from './gguf.js';
+import { selfWorkOn } from './self-work.js';
 import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes } from './model-ctx.js';
 
 // 1.5.19: the context a brain gets when nothing else picks one. 32K fits a 26B brain on a 16 GB card.
@@ -462,8 +463,10 @@ export class LlamaCpp {
 
   // Long memory (YaRN): only with the switch on, a brain the guide covers, and a size past what it was made for.
   // Settings set by hand (llamacpp.args with --rope-scaling) win.
+  // "Let Bob work on repositories" (self-work.js) uses Long memory for its own job even with the switch off: a size past
+  // what the brain was made for only reaches here through that job (brain.fitCtx with stretch) or a pick with it on.
   stretchArgs(gguf, ctx) {
-    if (!stretchOn(this.cfg) || (this.lc.args || []).includes('--rope-scaling')) return [];
+    if (!(stretchOn(this.cfg) || selfWorkOn(this.cfg)) || (this.lc.args || []).includes('--rope-scaling')) return [];
     let info = null;
     try { info = ggufInfo(gguf); } catch {}
     const plan = stretchPlan(info);
@@ -579,6 +582,7 @@ export class LlamaCpp {
   }
 
   async stopServer() {
+    if (this.role !== BESIDE) this.spread?.close(); // lent cards go back with the brain
     const c = this.child;
     if (this.role === BESIDE && this.current) this.changed?.({ action: 'leave', model: this.current });
     this.child = null;
@@ -606,6 +610,14 @@ export class LlamaCpp {
     this.placed = null;
     const args = this.buildArgs(model, { ctx, cpu, card });
     await this.stopServer();
+    // Bob-Net: a brain too big for this replicant matrix can go over your other Bobs' lent cards (src/share-card.js).
+    // Off unless "Spread big brains over my other Bobs' cards" is on; none answering means it loads here like always.
+    let helpers = [];
+    if (this.spread && this.role !== BESIDE && !cpu && card !== 'none') {
+      let sizeGB = 0; try { sizeGB = fs.statSync(this.resolve(model).gguf).size / 1e9; } catch {}
+      helpers = await this.spread.open({ sizeGB }).catch(() => []);
+      if (helpers.length) { args.push('--rpc', helpers.join(',')); try { this.log?.('engine', `${model}: spread over ${helpers.length} other Bob${helpers.length > 1 ? 's' : ''}' card${helpers.length > 1 ? 's' : ''} (${helpers.join(', ')})`); } catch {} }
+    }
     // A llama-server left over from a crash would hold the port: stop it first.
     const pidFile = path.join(this.cfg.dataDir, `llama-server${this.tag}.pid`);
     try {
@@ -628,6 +640,7 @@ export class LlamaCpp {
     child.stderr.on('data', keep);
     const failFile = path.join(this.cfg.dataDir, `llama-server${this.tag}-load-failed.txt`);
     const saveFail = (why) => {
+      if (helpers.length) this.spread?.failed(); // a lent card that failed isn't asked again for a while
       try { fs.writeFileSync(failFile, `${new Date().toISOString()} ${model}: ${why}\n${[exe, ...args].join(' ')}\n\n${full}`); } catch {}
       try { this.log?.('engine', `${model}: ${why}; full llama-server output saved to ${path.basename(failFile)}`); } catch {}
     };

@@ -52,6 +52,8 @@ export function shareView(cfg) {
     lend: s.lend === true,
     takeJobs: s.takeJobs === true,
     passAlong: s.passAlong === true, // 1.5.123 Pass my Bob-Net along (src/bob-net-party.js)
+    lendCard: s.lendCard === true, // Lend my graphics card (src/share-card.js), off unless switched on
+    spread: ['toobig', 'big'].includes(s.spread) ? s.spread : 'off', // Spread big brains over my other Bobs' cards
     doorOpen: doorOpen(cfg),
     borrow: { on: b.on === true, jobs: b.jobs === true, when: WHEN.includes(b.when) ? b.when : 'gaming', bobs: (b.bobs || []).map((x) => ({ name: x.name, address: x.address, passcodeSet: String(x.passcode || '').length >= 6 })) }
   };
@@ -63,10 +65,12 @@ export const doorOpen = (cfg) => Boolean(cfg.remote?.enabled && String(cfg.remot
 export function cleanSharePatch(cfg, b) {
   const cur = cfg.share || {};
   const cb = cur.borrow || {};
-  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, borrow: { on: cb.on === true, jobs: cb.jobs === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
+  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
   if ('lend' in b) next.lend = b.lend === true;
   if ('takeJobs' in b) next.takeJobs = b.takeJobs === true; // 1.5.72, off unless switched on
   if ('passAlong' in b) next.passAlong = b.passAlong === true; // 1.5.123, off unless switched on
+  if ('lendCard' in b) next.lendCard = b.lendCard === true; // off unless switched on
+  if ('spread' in b) { if (!['off', 'toobig', 'big'].includes(b.spread)) return { error: 'Pick when to spread a brain.' }; next.spread = b.spread; }
   if ('sendJobs' in b) next.borrow.jobs = b.sendJobs === true; // 1.5.72, off unless switched on
   if ('when' in b) { if (!WHEN.includes(b.when)) return { error: 'Pick when to borrow.' }; next.borrow.when = b.when; }
   if (b.addBob) {
@@ -83,7 +87,7 @@ export function cleanSharePatch(cfg, b) {
   if (b.removeBob) next.borrow.bobs = next.borrow.bobs.filter((x) => x.address !== cleanAddress(b.removeBob));
   if (Array.isArray(b.order)) { const at = (a) => { const i = b.order.map((x) => cleanAddress(x)).indexOf(a); return i < 0 ? 99 : i; }; next.borrow.bobs.sort((x, y) => at(x.address) - at(y.address)); }
   if ('borrow' in b) next.borrow.on = b.borrow === true;
-  if ((next.borrow.on || next.borrow.jobs) && !next.borrow.bobs.length) return { error: 'Add one of your other Bobs first.' };
+  if ((next.borrow.on || next.borrow.jobs || ('spread' in b && next.spread !== 'off')) && !next.borrow.bobs.length) return { error: 'Add one of your other Bobs first.' };
   return { share: next };
 }
 
@@ -374,6 +378,7 @@ export function helloFor(brain, { why, quick, can, version, label, webOn, bigBra
     brain: quick ? label(quick.model) : '', ctx: quick?.ctx || 0, speed: brain.engine?.lastStats?.tokPerSec || 0,
     device: 'computer', version, takesJobs, jobs, jobsBusy: takesJobs ? guestRefusal(brain) : '', queue: brain.queue?.filter?.((j) => j.state === 'waiting' || j.state === 'working').length || 0,
     name, passAlong: brain.cfg.share?.passAlong === true, // 1.5.123: for the party in Now running
+    lendCard: brain.cfg.share?.lendCard === true && doorOpen(brain.cfg), // Lend my graphics card (src/share-card.js)
     ...(room ? { room } : {}) // 1.5.137: graphics card and memory in GB, for the other Bob's Brain catalogue
   };
 }

@@ -17,6 +17,7 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { appDir } from './config.js';
 import { handOn, handOffWhy, HANDS, limitOn } from './hands-settings.js';
+import { eyesCheck, eyesOn, eyesWhy } from './eyes.js';
 
 const fn = (name, description, properties, required = Object.keys(properties)) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
@@ -49,6 +50,7 @@ export function sendOutBlock(cfg, w, action, target = {}) {
   if (!SEND_PROCESSES.test(proc)) return '';
   const what = `${w.process} can send things off your replicant matrix (your computer), and "Don't send anything out" is on (Settings, Hands)`;
   if (action === 'type' || action === 'keys') return `${what}, so Bob doesn't type or press keys there.`;
+  if (action === 'click_at') return `${what}, so Bob doesn't click by place there (he can't tell what is under the pointer); click by name instead.`;
   if (action === 'click' && SEND_BUTTON.test(`${target.name || ''} ${target.id || ''}`)) return `${what}, so Bob doesn't click that.`;
   return '';
 }
@@ -262,6 +264,22 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
   // For the card: no "[id 15]" bits, and a field by its name alone ('Document "Text editor"' -> 'Text editor').
   const plain = (l) => String(l || '').replace(/\s*\[id [^\]]*\]/g, '').trim();
   const field = (l) => { const m = plain(l).match(/"([^"]+)"/); return m ? m[1] : plain(l); };
+  // A picture of the window: into the chat when ctx is given, and for the eyes brain (src/eyes.js).
+  async function picture(w, ctx) {
+    const name = `window-${Date.now()}.png`;
+    const file = path.join(cfg.painterDir || cfg.dataDir, name);
+    await drv.request('picture', { hwnd: w.hwnd, file });
+    if (ctx && (fs.existsSync(file) || driver)) ctx.emit?.({ type: 'image', url: `/images/${encodeURIComponent(name)}`, file });
+    return file;
+  }
+  // After an action: did it work? Only with expect given and an eyes brain in its slot.
+  async function eyesAfter(w, expect, ctx) {
+    if (!expect) return '';
+    if (!eyesOn(cfg)) return `\n(Not checked by eye: ${eyesWhy(cfg)}.)`;
+    const file = await picture(w, null).catch(() => '');
+    const e = await eyesCheck(brain, { file, expect: String(expect) }, { emit: ctx?.emit, signal: ctx?.signal });
+    return `\n${e.line}`;
+  }
 
   const t = {};
 
@@ -309,7 +327,8 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
   t.app_look = {
     schema: fn('app_look', 'See which windows are open (leave window empty), or read one window: the names of its buttons, fields, menus and text, so you can say what to click. Password fields are never read. {{USER}} approves each look.', {
       window: str('Part of the window title, or the program name (like "notepad"). Leave empty to list open windows.'),
-      picture: { type: 'boolean', description: 'Also take a picture of that window and show it in the chat.' }
+      picture: { type: 'boolean', description: 'Also take a picture of that window and show it in the chat.' },
+      ask: str('A question about how the window looks, answered by Bob\'s eyes brain from a picture (for canvases, games, viewports and apps whose buttons have no names). The picture\'s pixels are the x, y for app_act click_at.')
     }, []),
     approvalGroup: (a) => `apps-look:${String(a.window || '*').toLowerCase()}`,
     async check(args, ctx) {
@@ -317,7 +336,7 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
       if (!args.window) return { text: 'See which windows are open (just their titles).', command: 'List open windows', cwd: 'your desktop', button: 'Allow' };
       const w = await findWindow(args.window);
       if (ctx) ctx.appsWindow = w;
-      return { text: `Look at ${label(w)}: read the names of its buttons, fields and menus${args.picture ? ', and take a picture of it' : ''}. Password fields are never read.`, command: `Look at ${w.title}`, cwd: w.process, button: 'Allow' };
+      return { text: `Look at ${label(w)}: read the names of its buttons, fields and menus${args.picture || args.ask ? ', and take a picture of it' : ''}${args.ask ? ` so Bob's eyes brain can answer: "${String(args.ask).slice(0, 120)}"` : ''}. Password fields are never read.`, command: `Look at ${w.title}`, cwd: w.process, button: 'Allow' };
     },
     async run(args, ctx) {
       off(); notStopped(ctx);
@@ -335,12 +354,12 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
       const typeHere = items.filter((x) => x.typable && !x.password);
       log('hands', `apps: looked at ${label(w)} (${items.length} things)`);
       let pic = '';
-      if (args.picture) {
-        const name = `window-${Date.now()}.png`;
-        const file = path.join(cfg.painterDir || cfg.dataDir, name);
-        await drv.request('picture', { hwnd: w.hwnd, file });
-        if (fs.existsSync(file) || driver) { ctx?.emit?.({ type: 'image', url: `/images/${encodeURIComponent(name)}`, file }); pic = '\nA picture of the window is in the chat.'; }
+      if (args.picture || args.ask) {
+        const file = await picture(w, args.picture ? ctx : null);
+        if (args.picture) pic = '\nA picture of the window is in the chat.';
+        if (args.ask) { const e = await eyesCheck(brain, { file, ask: String(args.ask) }, { emit: ctx?.emit, signal: ctx?.signal }); pic += `\n${e.line}`; }
       }
+      if (!items.length && !args.ask) pic += `\nNothing readable here: this app doesn't name its buttons for UI Automation. To work in it, call app_look again with ask (a question about what the window shows; your eyes brain answers from a picture), then app_act with action click_at and x, y in that picture's pixels.`;
       const lines = items.slice(0, 150).map((x) => `- ${x.type}${x.name ? ` "${String(x.name).slice(0, 80)}"` : ''}${x.id ? ` [id ${String(x.id).slice(0, 40)}]` : ''}${x.password ? ' (password field: never typed in)' : x.typable ? ' (you can type here)' : ''}${x.enabled === false ? ' (greyed out)' : ''}${x.value ? ` = "${String(x.value).slice(0, 60)}"` : ''}`);
       const head = typeHere.length ? `You can type in: ${typeHere.slice(0, 5).map((x) => `${x.type} "${String(x.name || x.id).slice(0, 60)}"`).join('; ')}. Anything else is for clicking or reading.\n` : 'Nothing in this window takes typing.\n';
       return `Window: ${label(w)}\n${head}${lines.join('\n') || '(nothing readable; this app may not support UI Automation)'}${pic}\nTo use one, call app_act with its type and name (and id if names repeat). To type, pick one marked "you can type here".`;
@@ -349,15 +368,18 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
   };
 
   t.app_act = {
-    schema: fn('app_act', 'Do one thing in an open window: click a button, menu item, tab, checkbox or list item; type text into a field; or press a key (like "Enter" or "Ctrl+S"). Find names with app_look first. {{USER}} approves each action, and can stop you by moving the mouse or pressing Esc. Never in password fields.', {
+    schema: fn('app_act', 'Do one thing in an open window: click a button, menu item, tab, checkbox or list item; type text into a field; press a key (like "Enter" or "Ctrl+S"); or click_at a place (x, y in the pixels of the picture app_look took) when the window has no named controls. Find names with app_look first. {{USER}} approves each action, and can stop you by moving the mouse or pressing Esc. Never in password fields. Give expect so Bob\'s eyes check the result.', {
       window: str('Part of the window title, or the program name.'),
-      action: str('What to do', { enum: ['click', 'type', 'keys', 'focus'] }),
+      action: str('What to do', { enum: ['click', 'type', 'keys', 'focus', 'click_at'] }),
       type: str('The kind of thing, as app_look listed it (Button, Edit, MenuItem, TabItem, CheckBox, ListItem...).'),
       name: str('Its name, as app_look listed it.'),
       id: str('Its id, if app_look showed one (use it when names repeat).'),
       nth: { type: 'integer', description: 'If several match, which one (1 = first).' },
       text: str('type: the text. A one-line field gets it in place of what is there; a document (like Notepad\'s page) gets it added at the end. For a document you can give the window and leave type and name empty.'),
-      keys: str('keys: the key or combination, like "Enter", "Tab", "Ctrl+S".')
+      keys: str('keys: the key or combination, like "Enter", "Tab", "Ctrl+S".'),
+      x: { type: 'integer', description: 'click_at: how many pixels from the left edge of the window picture.' },
+      y: { type: 'integer', description: 'click_at: how many pixels from the top edge of the window picture.' },
+      expect: str('What should be true of the window afterwards, in one plain sentence (like "the document shows the word hello"). Bob checks it with his eyes brain and tells you yes or no.')
     }, ['window', 'action']),
     approvalGroup: (a) => `apps-act:${String(a.window || '').toLowerCase()}`,
     async check(args, ctx) {
@@ -366,8 +388,15 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
       const target = { type: args.type ? String(args.type).replace(/[^A-Za-z]/g, '') : '', name: args.name ? String(args.name).slice(0, 200) : '', id: args.id ? String(args.id).slice(0, 200) : '', nth: Math.max(1, Math.min(50, Number(args.nth) || 1)) };
       // Ask the helper what this would really land on, so the card shows that (not just what Bob named).
       let real = '', note = '';
+      if (args.action === 'click_at') {
+        const x = Number(args.x), y = Number(args.y);
+        if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x > 20000 || y > 20000) throw new Error('click_at needs x and y: whole numbers of pixels from the top-left of the window picture (take one with app_look, picture or ask).');
+        const sentAt = sendOutBlock(cfg, w, 'click_at'); if (sentAt) throw new Error(sentAt);
+        if (ctx) { ctx.appsWindow = w; ctx.appsAt = { x, y }; }
+        return { text: `Click at ${x}, ${y} (pixels from the top-left of the window picture) in ${label(w)}. A red bar shows while Bob drives; move the mouse or press Esc to stop him.`, command: `Click at ${x}, ${y}`, cwd: label(w), button: 'Do it' };
+      }
       if (['type', 'focus'].includes(args.action) || target.name || target.id) {
-        if (!['click', 'type', 'keys', 'focus'].includes(args.action)) throw new Error('The action should be click, type, keys or focus.');
+        if (!['click', 'type', 'keys', 'focus'].includes(args.action)) throw new Error('The action should be click, type, keys, focus or click_at.');
         const r = await drv.request('resolve', { hwnd: w.hwnd, action: args.action, target });
         if (r.password && limitOn(cfg, 'passwords')) throw new Error('Bob never types into password fields ("Never type into password fields" is on in Settings, Hands).');
         if (r.enabled === false) throw new Error(`${r.label} is greyed out.`);
@@ -392,7 +421,7 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
         what = /^Edit\b/.test(real) ? `Replace what's in "${field(real || targetText(target))}" with: "${said}"` : `Add to the end of "${field(real || targetText(target))}"${note}: "${said}"`;
       } else if (args.action === 'keys') { const k = keysFor(args.keys); if (ctx) ctx.appsKeys = k; what = `Press ${String(args.keys)}${target.name || target.id ? ` in ${tt()}` : ''}${/%\{F4\}$/.test(k) ? ' (this closes the window)' : ''}`; }
       else if (args.action === 'focus') what = `Put the cursor in ${tt()}${note}`;
-      else throw new Error('The action should be click, type, keys or focus.');
+      else throw new Error('The action should be click, type, keys, focus or click_at.');
       if (ctx) { ctx.appsWindow = w; ctx.appsTarget = target; ctx.appsExpect = real; }
       return { text: `${what} in ${label(w)}. A red bar shows while Bob drives; move the mouse or press Esc to stop him.`, command: what, cwd: label(w), button: 'Do it' };
     },
@@ -404,8 +433,10 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
       // What the card showed: if the window now resolves to something else, the helper does nothing.
       const expect = ctx?.appsExpect || '';
       const typed = ctx?.appsText ?? String(args.text ?? '');
+      const at = args.action === 'click_at' ? (ctx?.appsAt || { x: Number(args.x), y: Number(args.y) }) : null;
       if (['click', 'type', 'focus'].includes(args.action) && !expect) throw new Error('Bob had no approved target for that action, so he did nothing. Ask again.');
-      if (ctx) { ctx.appsWindow = null; ctx.appsTarget = null; ctx.appsKeys = null; ctx.appsExpect = null; ctx.appsText = null; state.lastCtx = ctx; }
+      if (at && !(Number.isInteger(at.x) && Number.isInteger(at.y))) throw new Error('Bob had no approved place to click, so he did nothing. Ask again.');
+      if (ctx) { ctx.appsWindow = null; ctx.appsTarget = null; ctx.appsKeys = null; ctx.appsExpect = null; ctx.appsText = null; ctx.appsAt = null; state.lastCtx = ctx; }
       // Check the window again right before acting: it may have changed title (a password prompt) or closed.
       const now = (await windows()).find((x) => String(x.hwnd) === String(w.hwnd));
       const b = blockedWindow(now, { ownPids }); if (b) throw new Error(b);
@@ -417,7 +448,8 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
       try {
         const sent = sendOutBlock(cfg, now, args.action, { name: `${target.name} ${expect}`, id: target.id });
         if (sent) throw new Error(sent);
-        r = await drv.request('act', { hwnd: w.hwnd, action: args.action, target, text: args.action === 'type' ? typed : '', keys, expect, allowPassword: !limitOn(cfg, 'passwords') });
+        r = at ? await drv.request('clickat', { hwnd: w.hwnd, x: at.x, y: at.y })
+          : await drv.request('act', { hwnd: w.hwnd, action: args.action, target, text: args.action === 'type' ? typed : '', keys, expect, allowPassword: !limitOn(cfg, 'passwords') });
       } catch (e) {
         // Windows' own reason, word for word, so Bob passes it on instead of inventing one.
         log('hands', `apps: ${args.action} in ${label(w)} failed: ${e.message}`);
@@ -432,11 +464,12 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
           state.offTimer.unref?.();
         }
       }
-      log('hands', `apps: ${args.action} ${targetText(target)} in ${label(w)}: ${r.did || 'done'}`);
-      if (/wasn't there/.test(r.did || '')) return `Not sure it worked: ${r.did}. Have a look at the window to check. (Bob: say so plainly and use app_look before trying again.)`;
-      return `Done: ${r.did || args.action}. Use app_look to check the result if it matters.`;
+      log('hands', `apps: ${args.action} ${at ? `at ${at.x}, ${at.y}` : targetText(target)} in ${label(w)}: ${r.did || 'done'}`);
+      const eyes = await eyesAfter(w, args.expect, ctx);
+      if (/wasn't there/.test(r.did || '')) return `Not sure it worked: ${r.did}. Have a look at the window to check. (Bob: say so plainly and use app_look before trying again.)${eyes}`;
+      return `Done: ${r.did || args.action}. Use app_look to check the result if it matters.${eyes}`;
     },
-    summary: ({ action, window, name }) => `apps: ${action}${name ? ` "${name}"` : ''} in ${window}`
+    summary: ({ action, window, name, x, y }) => `apps: ${action}${name ? ` "${name}"` : ''}${action === 'click_at' ? ` ${x}, ${y}` : ''} in ${window}`
   };
 
   return t;

@@ -26,8 +26,21 @@ hf_ok() { [ -n "$(plan ".get('publish')")" ] && [ -s $IN/hf-token ]; }
 publish_dir() {   # <local dir> <repo> <what> <model|dataset> <path in repo> [include globs...]
   local D=$1 REPO=$2 WHAT=$3 TYPE=$4 SUB=$5; shift 5; local INC=(); for g in "$@"; do INC+=(--include "$g"); done
   local PRIV=""; [ "$(plan "['publish'].get('private',True)")" = "True" ] && PRIV="--private"
+  # Hugging Face takes files up to 50 GB. A bigger GGUF goes up in parts (llama-gguf-split, 45 GB each, name-00001-of-0000N.gguf,
+  # which llama.cpp and Bob's Lab read as one brain); the whole file stays on the volume and the parts are deleted after the upload.
+  local EXC=() SPLITS=() SPLIT=$S/llama.cpp/build/bin/llama-gguf-split f
+  for f in "$D"/*.gguf; do
+    [ -f "$f" ] || continue; [[ "$(basename "$f")" =~ -[0-9]{5}-of-[0-9]{5}\.gguf$ ]] && continue
+    [ "$(stat -c %s "$f")" -gt 49000000000 ] || continue
+    if [ -x "$SPLIT" ] && ( cd "$(dirname "$SPLIT")" && LD_LIBRARY_PATH="$(dirname "$SPLIT"):${LD_LIBRARY_PATH:-}" "$SPLIT" --split --split-max-size 45G "$f" "${f%.gguf}" ) >> $D/publish.log 2>&1; then
+      EXC+=(--exclude "$(basename "$f")"); SPLITS+=("${f%.gguf}"); echo "$(basename "$f") is over 50 GB: going up in parts"
+    else echo "$(basename "$f") is over 50 GB and couldn't be split (no llama-gguf-split): left out of the upload"; EXC+=(--exclude "$(basename "$f")"); fi
+  done
   status publish "$WHAT: uploading to Hugging Face ($REPO, private)"
-  if HF_TOKEN=$(cat $IN/hf-token) hf upload "$REPO" "$D" "$SUB" --repo-type $TYPE $PRIV "${INC[@]}" --commit-message "$WHAT from Bob's Forge" > $D/publish.log 2>&1; then
+  local OK=1
+  if HF_TOKEN=$(cat $IN/hf-token) hf upload "$REPO" "$D" "$SUB" --repo-type $TYPE $PRIV "${INC[@]}" "${EXC[@]}" --commit-message "$WHAT from Bob's Forge" >> $D/publish.log 2>&1; then OK=0; fi
+  for f in "${SPLITS[@]}"; do rm -f "$f"-[0-9][0-9][0-9][0-9][0-9]-of-[0-9][0-9][0-9][0-9][0-9].gguf; done
+  if [ $OK = 0 ]; then
     echo "$WHAT is on Hugging Face (private): https://huggingface.co/$( [ $TYPE = dataset ] && echo datasets/ )$REPO"; return 0
   else echo "$WHAT: upload failed (see publish.log)"; tail -3 $D/publish.log; return 1; fi
 }

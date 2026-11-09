@@ -53,11 +53,14 @@ import { WEB_TOOLS, WEB_OFF, webOn, webPrompt, linkPrompt, findLinks, refersToLi
 import { autoSessionOn, pickSessionTool, autoSessionPrompt, switchLine, switchedNote, idleSession, cardBusy, IDLE_CHECK_MS } from './auto-session.js';
 import { readCard } from './gaming-card.js';
 import { Lenders, wantsBorrow, roughTokens } from './share-brains.js';
+import { CardLender, CardBorrower } from './share-card.js'; // Bob-Net: lend my graphics card / spread big brains
 import { Rentals, currentRental, saveEndpoint, estimateText } from './rental.js'; // 1.5.127 rented brains
 import { GuestJobs, awayPlan, sendAway, stopAway, guestTools, guestNote, GUEST_TOOLS, canHere, NEEDS_LIST, awayWaitLine } from './share-jobs.js';
 import { askTogether, takeEarlier, askTogetherTool } from './together.js';
 import { showPlanTool, planGate, planOn, planPrompt } from './plan.js';
 import { freeMemNow, APU_HEADROOM_GB } from './platform.js';
+import { selfWorkOn, readyRepos } from './self-work.js';
+import { compactMessages, charsFor } from './self-work-plan.js';
 import { HowTos, howtoTools, howtosOn, trailStep, worthOffering, howtoPrompt, usingLine } from './howtos.js';
 import { NEEDS, planFor, SetupOffers, switchFor, applySwitch, SWITCH_KEYS } from './setup-offer.js';
 
@@ -373,6 +376,9 @@ export class Brain {
     // Share brains (1.5.55, src/share-brains.js): another Bob of yours may think quick replies for this one, and this one
     // may lend. A lender only ever uses his quick brain (never a big one), on the card, and says no while gaming or busy.
     this.lenders = new Lenders(cfg);
+    // Bob-Net: one brain over several of your Bobs' cards (llama.cpp's RPC server). Both off unless switched on.
+    this.cardLender = new CardLender(cfg, { gaming: () => currentSession(this.cfg).id === 'light', log: (k, t) => this.log(k, t) });
+    if (this.engine instanceof LlamaCpp) this.engine.spread = new CardBorrower(cfg, this.lenders, { log: (k, t) => this.log(k, t) });
     // 1.5.127 Rented brains: a big brain hired from an online service for one job, only after a card the owner pressed.
     this.rentals = new Rentals(cfg, { log: (k, t) => this.log(k, t), broadcast: (ev) => this.broadcast(ev) });
     this.rentals.rememberEndpoint = (id, endpointId) => { try { if (saveEndpoint(cfg, id, endpointId)) saveSettings(cfg, { rentals: cfg.rentals }); } catch {} };
@@ -413,7 +419,7 @@ export class Brain {
     this.tools.pick_session = pickSessionTool(this); // 1.5.43: Bob changes session himself (auto-session.js)
     // 1.5.91: the Set it up card for something missing or switched off. Listed only while something is (offTools).
     this.tools.offer_setup = {
-      schema: { type: 'function', function: { name: 'offer_setup', description: 'Something {{USER}} asked for needs a part that isn\'t set up or a setting that is off: show a card with one button that sets it up or switches it on, then the job carries on by itself. For pictures, video, music and sound effects, just call make_image, make_video, make_music or make_sound instead: they show the card themselves.', parameters: { type: 'object', properties: { what: { type: 'string', enum: [...Object.keys(NEEDS), ...SWITCH_KEYS], description: 'pictures, edits, video, music, sfx, voice (read replies aloud), hearing (hear {{USER}} talk), web (Web search), workshop (ComfyUI workflows), or hand:<id> for a Hand that is off (hand:files, hand:run, hand:schedules, hand:apps, hand:office, hand:security, hand:maker, hand:mcp)' } }, required: ['what'] } } },
+      schema: { type: 'function', function: { name: 'offer_setup', description: 'Something {{USER}} asked for needs a part that isn\'t set up or a setting that is off: show a card with one button that sets it up or switches it on, then the job carries on by itself. For pictures, video, music and sound effects, just call make_image, make_video, make_music or make_sound instead: they show the card themselves.', parameters: { type: 'object', properties: { what: { type: 'string', enum: [...Object.keys(NEEDS), ...SWITCH_KEYS], description: 'pictures, edits, video, music, sfx, voice (read replies aloud), hearing (hear {{USER}} talk), web (Web search), workshop (ComfyUI workflows), or hand:<id> for a Hand that is off (hand:files, hand:run, hand:schedules, hand:apps, hand:browser, hand:office, hand:security, hand:maker, hand:mcp)' } }, required: ['what'] } } },
       run: ({ what }, ctx) => this.offerSetup(String(what || ''), ctx),
       summary: ({ what }) => `offer to set up: ${what}`
     };
@@ -940,13 +946,15 @@ export class Brain {
   }
 
   // A session's context size, but never more than the model was made for.
-  async fitCtx(model, want) {
+  // longRun ("Let Bob work on repositories", self-work.js): want is a stretched size and is used as it is (up to the
+  // most the brain stretches to), even with the Long memory switch off; it still has to fit this machine.
+  async fitCtx(model, want, { longRun = false } = {}) {
     if (!model) return want || null;
     const max = await this.engine.maxCtx?.(model)?.catch?.(() => null) ?? null;
     // 1.5.87: a size picked for this brain (Settings > Brains, switch on) wins, for every copy on it: one load.
     // Long memory (YaRN, model-ctx.js): with the switch on, a stretched size picked for a brain that can take it.
-    const stretch = await Promise.resolve(this.engine.stretchMax?.(model)).catch(() => null) ?? null;
-    let pick = pickedCtx(this.cfg, model, max, { stretch });
+    const stretch = await Promise.resolve(this.engine.stretchMax?.(model, longRun ? { evenOff: true } : undefined)).catch(() => null) ?? null;
+    let pick = longRun && max && stretch && want > max ? Math.min(want, stretch) : pickedCtx(this.cfg, model, max, { stretch });
     // A stretched size that won't fit this machine (card plus RAM) isn't tried: the brain loads at what it was made for.
     if (pick && max && pick > max) {
       const r = await Promise.resolve(this.engine.roomFor?.(model, pick)).catch(() => null);
@@ -1122,6 +1130,12 @@ export class Brain {
     if (!tool) return { text: `Error: there is no tool called ${name}.` };
     // 1.5.72: a job from another of your Bobs only thinks, searches and makes pictures, clips, music and sounds here.
     if (ctx?.job?.guest && !GUEST_TOOLS.has(name)) return { text: `Not for this job: it came from ${ctx.job.guest.from}, another Bob, so here I can only think, search the web and make pictures, clips, music and sounds. Say what's left for ${ctx.job.guest.from} to do himself.` };
+    // Bob on Discord (src/discord.js): only the job types the owner ticked, and never a reference picture (nothing the
+    // owner made can be edited, copied or described there).
+    if (ctx?.job?.guest?.public) {
+      if (!GUEST_TOOLS.has(name) || (ctx.job.guest.tools && !ctx.job.guest.tools.includes(name))) return { text: `Not for this job: that's switched off for ${ctx.job.guest.from}. Say so in one line.` };
+      if (args && typeof args === 'object') { args = { ...args }; delete args.reference; if (args.mode && args.mode !== 'new') delete args.mode; }
+    }
     if (!this.usable(name)) {
       if (WEB_TOOLS.includes(name) && !webOn(this.cfg)) return { text: ctx?.emit ? await this.offerSetup('web', ctx) : WEB_OFF }; // 1.5.91: the card, not a dead end
       const hand = Object.entries(HANDS).find(([, h]) => h.tools.includes(name))?.[0];
@@ -1321,7 +1335,7 @@ export class Brain {
     let can = {};
     try { can = capabilities(this.cfg); } catch {}
     // 1.5.91: make_image, make_video, make_music and make_sound stay listed when they aren't set up: calling one shows the Set it up card.
-    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), ...toolsOff(this.cfg)].filter(Boolean));
+    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), !(selfWorkOn(this.cfg) && readyRepos(this.cfg).length) && 'work_on_repo', ...toolsOff(this.cfg)].filter(Boolean));
   }
   usable(name, off = this.offTools()) { return Boolean(this.tools[name]) && !off.has(name); }
   // 1.5.41: whether OKs are asked on cards right now (so a job's OKs can go on one card). Not with "work without asking".
@@ -1552,6 +1566,7 @@ export class Brain {
     const who = this.cfg.userName || 'the user';
     const jobId = ctx?.job?.id || null;
     // A job from another of your Bobs: the card would land on the wrong replicant matrix, so just say it can't here.
+    if (ctx?.job?.guest?.public) return quiet ? '' : `Not here: this replicant matrix can't ${NEEDS[what]?.say || 'do that'} yet. Say so in one line.`;
     if (ctx?.job?.guest) return quiet ? '' : `Not here: this replicant matrix can't ${NEEDS[what]?.say || 'do that'} yet. Say so; ${ctx.job.guest.from} can do it or set it up there.`;
     // 1.5.104: one request, one card. A second offer for the same thing in the same turn (the tool, then Bob's own
     // offer_setup) shows nothing new.
@@ -2007,7 +2022,7 @@ export class Brain {
     }
     if (!model) throw new Error('I don\'t have a brain yet. Open Get models (in the menu on the left) and pick one; the first-time setup suggests the right one for this replicant matrix.');
     this.setState('thinking', '', this.state.model);
-    let earlier = await this.recall(sessionId, text);
+    let earlier = job?.guest?.public ? '' : await this.recall(sessionId, text); // Bob on Discord: nothing of the owner's
     // 1.5.79 How-tos (off by default): the one saved how-to that fits this request goes in for this turn, and the chat says so.
     if (howtosOn(this.cfg) && !again && !job?.guest) {
       let howto = null;
@@ -2083,14 +2098,15 @@ export class Brain {
         this.log('chat', 'one more go, with thinking on');
       }
       ctx.retrying = false;
-      const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: this.now(), memory: this.memory(), user: this.cfg.userName, backstory: this.backstory(), about: this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
+      const pub = Boolean(job?.guest?.public); // Bob on Discord: no memory, about-me or backstory of the owner's
+      const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: this.now(), memory: pub ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: pub ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
       let reply = null;
       // A lender keeps the start of the chat it read last time (its prompt cache), so what changes every turn (the time,
       // the Right now line, recalled bits) goes in a short note just before the latest message, not in the instructions.
       let lentMsgs = null, lentSize = 0;
       if (borrowing) {
         const who = this.cfg.userName || 'the user';
-        const lentSys = { role: 'system', content: this.withLimits(systemPrompt({ now: 'given in the note just before the latest message', memory: this.memory(), user: this.cfg.userName, backstory: this.backstory(), about: this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, who) }), ctx.loaded) };
+        const lentSys = { role: 'system', content: this.withLimits(systemPrompt({ now: 'given in the note just before the latest message', memory: pub ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: pub ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, who) }), ctx.loaded) };
         const hist = staleHandErrors(msgs, turnStart);
         const at = hist.findLastIndex((m) => m.role === 'user');
         const note = { role: 'system', content: `Current date and time for ${who}: ${this.now()}.${extras}${earlier ? `\n\n${earlier}` : ''}` };
@@ -2378,8 +2394,8 @@ export class Brain {
     // Normal session: the hat's own brain (or the main one with "One brain"). Other sessions: the session's brain.
     // A moot (High/Extreme effort) passes force: the reviewer always runs on the Review slot brain.
     let { model, cpu, think, ctx: wantCtx, beside } = ctx.job?.side ? (ctx.job.sidePick || await sidePick(this, ctx.job)) : force || (bigThinker(ctx.job) && hat !== 'reviewer' && hatBrain(this.cfg, hat, ctx.job.effort)) || modelFor(this.cfg, hat);
-    { const d = brainDefaults(model, hat, cleanEffort(ctx.job?.effort)); if (d.ctx && (wantCtx == null || (currentSession(this.cfg).id === 'normal' && !CTX_CHOICES.includes(this.cfg.sessionCtx?.normal)))) wantCtx = d.ctx; if (think === undefined && 'think' in d) think = d.think; }
-    const brainCtx = await this.fitCtx(model, wantCtx);
+    { const d = brainDefaults(model, hat, cleanEffort(ctx.job?.effort)); if (!force?.longRun && d.ctx && (wantCtx == null || (currentSession(this.cfg).id === 'normal' && !CTX_CHOICES.includes(this.cfg.sessionCtx?.normal)))) wantCtx = d.ctx; if (think === undefined && 'think' in d) think = d.think; }
+    const brainCtx = await this.fitCtx(model, wantCtx, { longRun: force?.longRun === true });
     // 1.5.51 (opt-in): the reviewer sits beside the main brain on the processor instead of swapping it out.
     if (hat === 'reviewer' && force && !ctx.job?.side && mootBesideOk(this, model, brainCtx)) { beside = true; cpu = true; }
     const copy = copyName(this.cfg, hat, HATS[hat].label);
@@ -2392,7 +2408,7 @@ export class Brain {
     if (ctx.job) { (ctx.job.steps ||= []).push(step); this.saveQueue(); }
     const wasHat = ctx.hatNow;
     ctx.hatNow = hat; // so quarantine knows which copy did what
-    try { return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside }); }
+    try { return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, maxSteps: force?.maxSteps, compact: force?.longRun === true }); }
     catch (e) { step.state = ctx.signal?.aborted ? 'cancelled' : 'failed'; throw e; }
     finally {
       ctx.hatNow = wasHat;
@@ -2402,7 +2418,7 @@ export class Brain {
     }
   }
 
-  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside }) {
+  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, maxSteps: steps, compact = false }) {
     model = (await this.ensureModel(model, ctx.emit, ctx.signal, hat, { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}) })) || model;
     this.setState('busy', `${copy} is on it (${PLAIN_HATS[hat] || HATS[hat].label})`, model);
     const hatTools = {
@@ -2413,7 +2429,7 @@ export class Brain {
       tinker: ['list_folder', 'read_file', 'search_files', 'edit_file', 'write_file', 'web_search', 'fetch_page', 'run_command', 'run_recipe'],
       reviewer: ['list_folder', 'read_file', 'search_files']
     }[hat] || [];
-    const maxSteps = hat === 'tinker' ? 30 : hat === 'reviewer' ? 15 : MAX_STEPS;
+    const maxSteps = Number(steps) > 0 ? Math.min(Number(steps), 100) : hat === 'tinker' ? 30 : hat === 'reviewer' ? 15 : MAX_STEPS;
     const packet = this.handoff(ctx, brainCtx);
     const userMsg = { role: 'user', content: `${packet}## The job\n${task}${ctx.picNote ? `\n\n${ctx.picNote}` : ''}` };
     // Raw pictures only go to a brain that can see; any brain still gets the Eyes descriptions above.
@@ -2442,6 +2458,8 @@ export class Brain {
         did.push(`${call.function?.name}${where ? ` ${String(where).slice(0, 160)}` : ''}: ${String(res.text).replace(/\s+/g, ' ').slice(0, 240)}`);
       }
 
+      // A repository job (self-work.js) on a long memory: older tool results are cut down before it overflows.
+      if (compact) compactMessages(messages, charsFor(brainCtx));
       ctx.emit({ type: 'token', text: '\n\n' });
     }
     // The return trip: the main conversation learns what the helper did, so the next turn (and the next

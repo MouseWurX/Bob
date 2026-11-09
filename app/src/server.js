@@ -8,12 +8,15 @@ import { lookText, LOOK_ID_RE } from './look.js';
 import { cleanPersonality } from '../public/personality.js';
 import { cleanHouseStyle } from '../public/house-style.js';
 import { pickFolder } from './pick-folder.js';
-import { pickFile, inspectOwn, ownModels, ownId, cleanOwnModels } from './own-models.js'; // 1.5.135 brains of your own
+import { pickFile, inspectOwn, ownModels, ownId, cleanOwnModels, ownEntries } from './own-models.js';
+import { selfWorkView, gatherBrains, makeCodeCopy, applyCodeCopy, cleanSelfWork, repoNamed, codeCopyRoot } from './self-work.js'; // "Let Bob work on repositories"
+import { catalogFileFor } from './llamacpp.js';
+import { ensureTool } from './self-work-tools.js'; // 1.5.135 brains of your own
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { cleanPresets, qwenPreset, QWEN_PRESETS } from './model-family.js';
-import { loadConfig, appDir, saveSettings, saveRemote, replaceSettings, cleanProjects, VERSION, findOutput, saveDirProblem, applySaveDir } from './config.js';
+import { loadConfig, appDir, saveSettings, saveRemote, replaceSettings, cleanProjects, VERSION, findOutput, saveDirProblem, applySaveDir, isInside } from './config.js';
 import { Brain } from './brain.js';
 import { transcribe } from './stt.js';
 import { ModelShop } from './models.js';
@@ -52,6 +55,7 @@ import { checkinsRoute, startCheckins } from './checkins.js';
 import { adventureRoute } from './adventure.js';
 import { gamesRoute } from './games.js';
 import { telegramRoute, startTelegram } from './telegram.js';
+import { discordRoute, startDiscord } from './discord.js';
 import { handsSettings } from './hands-settings.js';
 import { tuning, TUNING_KEYS, pictureFitReset } from './tuning.js';
 import { gatherFacts, tipsFrom } from './pc-check.js';
@@ -60,6 +64,7 @@ import { trainerState } from './lab-teach.js'; // 1.5.16x the Lab's Trainer pack
 import { phoneView, cleanPhonePatch, findAddresses, newPasscode, isTailscaleIp } from './phone-access.js';
 import { firewallState, changeRule } from './firewall.js';
 import { shareView, cleanSharePatch, saveShare, lendChat, lendRefusal, helloFor, bobNetRooms } from './share-brains.js';
+import { lendCardRoute } from './share-card.js'; // Bob-Net: Lend my graphics card
 import { guestRoute, answerAway } from './share-jobs.js';
 import { Pairing, myName } from './bob-net-pair.js';
 import { partyView, Introductions } from './bob-net-party.js';
@@ -96,11 +101,13 @@ const clients = new Set();
 const mindClients = new Set();
 
 let telegram = null; // Talk to Bob on Telegram (src/telegram.js), set once Bob's brain is ready
+let discord = null; // Bob on Discord (src/discord.js), set once Bob's brain is ready
 function broadcast(ev) {
   if (ev?.type === 'think-start' && ev.model) ev = { ...ev, label: friendlyName(ev.model) }; // "Qwen 3.8 27B", not the raw tag
   const data = `data: ${JSON.stringify(ev)}\n\n`;
   for (const res of ev?.type === 'think' || ev?.type === 'think-start' ? mindClients : clients) res.write(data);
   try { telegram?.watch(ev); } catch {} // Talk to Bob on Telegram: only the Telegram chat's events, and only while it's on
+  try { discord?.watch(ev); } catch {} // Bob on Discord: only Discord jobs' own events
   if (ev?.type === 'pair-done') try { introductions.soon(); } catch {} // 1.5.123: a new Bob on the list meets the others
 }
 
@@ -143,6 +150,7 @@ shop.applyEquip().catch(() => {}); // anything finished while Bob was closed
 startSchedules(brain); // ticks once a minute; nothing is ever due while the Schedules hand is off
 startCheckins(brain); // 1.5.78: ticks once a minute; does nothing while Check-ins are off
 telegram = startTelegram(brain); // does nothing (no request at all) unless Talk to Bob on Telegram is on and a bot token is set
+discord = startDiscord(brain); // does nothing (no connection at all) unless Bob on Discord is on and a bot token is set
 if (!shop.found.at) shop.scan().catch(() => {});
 
 function workshopView() {
@@ -412,7 +420,7 @@ const server = http.createServer(async (req, res) => {
     // 1.5.74: whether the core engines start (first-run step 1, and Settings, Engines).
     if (req.method === 'GET' && p === '/api/engines/check') return send(res, 200, { checks: await Promise.all(['llamacpp', 'sdcpp', 'whispercpp'].map((id) => checkEngine(cfg, id))) });
     if (req.method === 'GET' && p === '/api/settings') {
-      return send(res, 200, { autostart: autostartOn(), tray: cfg.tray !== false, lookIcon: cfg.lookIcon !== false, catalogUpdates: cfg.catalogUpdates === true, computerLab: labOn(cfg), computerLabRoom: labRoom(), qwenPresets: cleanPresets(cfg.qwenPresets), qwenDefaults: Object.fromEntries(Object.entries(QWEN_PRESETS).map(([id, p]) => [id, { label: p.label, ...qwenPreset(id) }])), trayHere: Boolean(globalThis.bobWindow), setupDone: Boolean(cfg.setupDone), look: cfg.look || null, lookText: lookText(cfg.look), personality: cleanPersonality(cfg.personality), lookComments: cfg.lookComments === true, userName: cfg.userName || '', callMe: cfg.callMe || '', windowsName: cfg.windowsName || '', engine: cfg.engine, workshop: workshopView(), catName: cfg.catName || 'Patches', version: VERSION, oneBrain: cfg.oneBrain === true, allTools: cfg.allTools === true, memoryRecall: cfg.memoryRecall === true, memoryBanks: memoryBanksView(), resumeJobs: cfg.resumeJobs === true, planFirst: cfg.planFirst === true, autoSession: autoSessionOn(cfg), gamingLock: cfg.gamingLock === true, sessionBy: cfg.sessionBy === 'bob' ? 'bob' : 'you', quickOnCpu: cfg.quickOnCpu === true, chatWhileBusy: cfg.chatWhileBusy !== false, mootBeside: cfg.mootBeside === true, webSearch: cfg.webSearch === true, naughtyList: cfg.naughtyList === true, howtos: cfg.howtos === true, howtoCount: brain.howtos?.load().length || 0, ownKit: ownKitCounts(cfg, brain), gamingCard: gamingCard(cfg), gamingCardNow: brain.engine?.currentCard || null, pictureNoWait: cfg.pictureNoWait !== false, ...tuning(cfg), downloads: { concurrent: cfg.downloads?.concurrent === 2 ? 2 : 1, resumeOnStart: cfg.downloads?.resumeOnStart === true }, updates: { autoCheck: cfg.updates?.autoCheck === true }, ollamaKeepAlive: keepTime(cfg), brainMode: brainMode(cfg), tts: { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice || 'am_michael', speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '', voicesFolder: path.join(cfg.innDir, 'voices') }, kokoroVoices: KOKORO_VOICES, session: currentSession(cfg), sessions: Object.entries(SESSIONS).map(([id, x]) => ({ id, ...x, ...(OS === 'mac' && x.whatMac ? { what: x.whatMac } : {}) })), sessionBrains: sessionBrains(cfg), activeModels: cfg.activeModels || {}, sessionCtx: cfg.sessionCtx || {}, brainCtxOn: cfg.brainCtxOn === true, brainCtxStretch: cfg.brainCtxStretch === true, brainCtx: cfg.brainCtx || {}, speed: speedView(), style: cfg.style || {}, painter: cfg.painter?.engine || 'comfy', platform: process.platform, os: OS, features: features(), home: cfg.agentDir, housekeeping: hkSettings(cfg), hands: handsSettings(cfg), houseStyle: cleanHouseStyle(cfg.houseStyle), projectList: Object.entries(cfg.projects || {}).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) })), defaultProject: cfg.defaultProject || '', saveDir: saveDirView() });
+      return send(res, 200, { autostart: autostartOn(), tray: cfg.tray !== false, lookIcon: cfg.lookIcon !== false, catalogUpdates: cfg.catalogUpdates === true, computerLab: labOn(cfg), computerLabRoom: labRoom(), qwenPresets: cleanPresets(cfg.qwenPresets), qwenDefaults: Object.fromEntries(Object.entries(QWEN_PRESETS).map(([id, p]) => [id, { label: p.label, ...qwenPreset(id) }])), trayHere: Boolean(globalThis.bobWindow), setupDone: Boolean(cfg.setupDone), look: cfg.look || null, lookText: lookText(cfg.look), personality: cleanPersonality(cfg.personality), lookComments: cfg.lookComments === true, userName: cfg.userName || '', callMe: cfg.callMe || '', windowsName: cfg.windowsName || '', engine: cfg.engine, workshop: workshopView(), catName: cfg.catName || 'Patches', version: VERSION, oneBrain: cfg.oneBrain === true, allTools: cfg.allTools === true, memoryRecall: cfg.memoryRecall === true, memoryBanks: memoryBanksView(), resumeJobs: cfg.resumeJobs === true, planFirst: cfg.planFirst === true, autoSession: autoSessionOn(cfg), gamingLock: cfg.gamingLock === true, sessionBy: cfg.sessionBy === 'bob' ? 'bob' : 'you', quickOnCpu: cfg.quickOnCpu === true, chatWhileBusy: cfg.chatWhileBusy !== false, mootBeside: cfg.mootBeside === true, webSearch: cfg.webSearch === true, naughtyList: cfg.naughtyList === true, howtos: cfg.howtos === true, howtoCount: brain.howtos?.load().length || 0, ownKit: ownKitCounts(cfg, brain), gamingCard: gamingCard(cfg), gamingCardNow: brain.engine?.currentCard || null, pictureNoWait: cfg.pictureNoWait !== false, ...tuning(cfg), downloads: { concurrent: cfg.downloads?.concurrent === 2 ? 2 : 1, resumeOnStart: cfg.downloads?.resumeOnStart === true }, updates: { autoCheck: cfg.updates?.autoCheck === true }, ollamaKeepAlive: keepTime(cfg), brainMode: brainMode(cfg), tts: { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice || 'am_michael', speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '', voicesFolder: path.join(cfg.innDir, 'voices') }, kokoroVoices: KOKORO_VOICES, session: currentSession(cfg), sessions: Object.entries(SESSIONS).map(([id, x]) => ({ id, ...x, ...(OS === 'mac' && x.whatMac ? { what: x.whatMac } : {}) })), sessionBrains: sessionBrains(cfg), activeModels: cfg.activeModels || {}, sessionCtx: cfg.sessionCtx || {}, brainCtxOn: cfg.brainCtxOn === true, brainCtxStretch: cfg.brainCtxStretch === true, brainCtx: cfg.brainCtx || {}, speed: speedView(), style: cfg.style || {}, painter: cfg.painter?.engine || 'comfy', platform: process.platform, os: OS, features: features(), home: cfg.agentDir, housekeeping: hkSettings(cfg), hands: handsSettings(cfg), houseStyle: cleanHouseStyle(cfg.houseStyle), projectList: Object.entries(cfg.projects || {}).filter(([, p]) => !isInside(codeCopyRoot(cfg), p)).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) })), selfWork: selfWorkNow(), defaultProject: cfg.defaultProject || '', saveDir: saveDirView() });
     }
     // Let my phone in (Settings, Bob-Net). Only from this PC; takes effect when Bob restarts.
     if (p === '/api/phone-access' && (req.method === 'GET' || req.method === 'POST')) {
@@ -447,7 +455,8 @@ const server = http.createServer(async (req, res) => {
       if (out.error) return send(res, 400, { error: out.error });
       saveShare(cfg, out.share);
       brain.lenders.state.clear();
-      brain.log('settings', `share brains: lend ${out.share.lend ? 'on' : 'off'}, borrow ${out.share.borrow.on ? out.share.borrow.when : 'off'}, pass along ${out.share.passAlong ? 'on' : 'off'}, ${out.share.borrow.bobs.length} Bob(s)`);
+      if (!out.share.lendCard) brain.cardLender.close(); // switched off: a lent card closes now
+      brain.log('settings', `share brains: lend card ${out.share.lendCard ? 'on' : 'off'}, spread ${out.share.spread}, lend ${out.share.lend ? 'on' : 'off'}, borrow ${out.share.borrow.on ? out.share.borrow.when : 'off'}, pass along ${out.share.passAlong ? 'on' : 'off'}, ${out.share.borrow.bobs.length} Bob(s)`);
       if (b.check) await Promise.all(brain.lenders.bobs().map((x) => brain.lenders.hello(x, { force: true })));
       if (out.share.passAlong) introductions.soon(500); // a new switch or a new Bob: introductions right away
       return send(res, 200, { ...shareView(cfg), lenders: brain.lenderStatus(), introductions: introductions.view() });
@@ -489,6 +498,12 @@ const server = http.createServer(async (req, res) => {
     }
     // 1.5.72 Share jobs: whole jobs from your other Bobs (src/share-jobs.js). start() checks "Take jobs from my other Bobs".
     if (p.startsWith('/api/guest/jobs') && await guestRoute({ req, res, p, url, brain, body, send, serveFile, findOutput, cfg }) !== false) return;
+    // Lend my graphics card (src/share-card.js): another of your Bobs asks for a share of this card, through the door only.
+    if (req.method === 'POST' && p === '/api/lend/card') {
+      if (!isRemote && !isLocal) return send(res, 403, { error: 'no' });
+      const r = await lendCardRoute(brain.cardLender, req, await body(req).catch(() => ({})));
+      return send(res, r.status, r.body);
+    }
     if (req.method === 'POST' && p === '/api/lend/chat') {
       if (!isRemote && !isLocal) return send(res, 403, { error: 'no' });
       return lendChat(brain, req, res, await body(req).catch(() => ({})), brain.lendDeps);
@@ -657,6 +672,8 @@ const server = http.createServer(async (req, res) => {
           if (typeof b.catalogUpdates === 'boolean') { saveSettings(cfg, { catalogUpdates: b.catalogUpdates }); out.catalogUpdates = cfg.catalogUpdates === true; shop.catalog = listUpdates.merge(shop.shipped); if (out.catalogUpdates) out.listCheck = await checkList(); } // 1.5.137
           if (typeof b.computerLab === 'boolean') { if (b.computerLab && !labRoom().ok) out.computerLabWhy = labRoom().why; else saveSettings(cfg, { computerLab: b.computerLab }); out.computerLab = labOn(cfg); } // 1.5.141
           if (typeof b.howtos === 'boolean') { saveSettings(cfg, { howtos: b.howtos }); out.howtos = cfg.howtos === true; }
+          // "Let Bob work on repositories" (self-work.js): the switch, the Long memory size, the brain and the list.
+          if (b.selfWork && typeof b.selfWork === 'object') { saveSettings(cfg, { selfWork: cleanSelfWork({ ...(cfg.selfWork || {}), ...b.selfWork }) }); applyCodeCopy(cfg); out.selfWork = selfWorkNow(); }
           // 1.5.94 tray and icon: saved, then handed straight to the window program, so they work without a restart.
           if (typeof b.tray === 'boolean') { saveSettings(cfg, { tray: b.tray }); out.tray = cfg.tray !== false; }
           if (typeof b.lookIcon === 'boolean') { saveSettings(cfg, { lookIcon: b.lookIcon }); out.lookIcon = cfg.lookIcon !== false; }
@@ -692,6 +709,22 @@ const server = http.createServer(async (req, res) => {
     // 1.5.118 Save a help bundle (Settings, This replicant matrix and updates): one zip an agent or a person can read to
     // work out what's wrong with this Bob (help-bundle.js). POST on this replicant matrix: picks a folder, writes the
     // zip there and shows it. GET from a paired phone: the same zip as a download, which the phone saves itself.
+    // "Let Bob work on repositories": Make the code copy of one repository (git clone into inn/own-code/<name>).
+    // Only on this replicant matrix, only with the switch on, and never over a copy that's already there.
+    if (req.method === 'POST' && p === '/api/self-work/copy') {
+      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
+      if (cfg.selfWork?.enabled !== true) return send(res, 409, { error: 'Turn on "Let Bob work on repositories" first.' });
+      const b = await body(req).catch(() => ({}));
+      const repo = repoNamed(cfg, String(b.repo || 'bob'));
+      if (!repo) return send(res, 404, { error: 'That repository isn\'t in the list.' });
+      // Git first: Bob's own copy when the computer has none (self-work-tools.js; the owner asked for that).
+      let git;
+      try { git = await ensureTool(cfg, 'git', {}); } catch (e) { return send(res, 200, { ok: false, why: e.message, selfWork: selfWorkNow() }); }
+      const r = { ...(await makeCodeCopy(cfg, repo, { git: git.file })), gotGit: git.fetched };
+      applyCodeCopy(cfg);
+      brain.log('settings', r.ok ? `repositories: code copy of ${repo.name} ${r.already ? 'already there' : 'made'} at ${r.dir}` : `repositories: code copy of ${repo.name} not made: ${r.why}`);
+      return send(res, 200, { ...r, selfWork: selfWorkNow() });
+    }
     if (p === '/api/help-bundle') {
       const deps = { brain, shop, checkEngine, speedHistory, capabilities };
       if (req.method === 'GET') {
@@ -750,6 +783,7 @@ const server = http.createServer(async (req, res) => {
     if (p.startsWith('/api/adventure') && await adventureRoute({ req, res, p, isLocal, brain, body, send })) return; // 1.5.117 🎲 Adventure
     if (p.startsWith('/api/games') && await gamesRoute({ req, res, p, isLocal, brain, body, send })) return; // 1.5.121 🧩 Games
     if (p === '/api/telegram' && await telegramRoute({ req, res, p, isLocal, brain, body, send })) return;
+    if (p === '/api/discord' && await discordRoute({ req, res, p, isLocal, brain, body, send })) return;
     if (p.startsWith('/api/lab') && await labRoute({ req, res, p, isLocal, lab, body, send })) return; // 1.5.141 Computer Science Lab
     if (p.startsWith('/api/rent') && await rentRoute({ req, res, p, isLocal, brain, cfg, body, send })) return; // 1.5.127 rented brains
     if (p === '/api/hands/schedules' && await schedulesRoute({ req, res, p, isLocal, brain, body, send })) return;
@@ -1067,6 +1101,12 @@ process.on('uncaughtException', (e) => { console.error('Uncaught:', e); try { br
 
 
 // 1.5.87: the equipped brains for "How much each brain keeps in mind": one row per model file, with the jobs it does.
+function selfWorkNow() {
+  let brains = [];
+  try { brains = gatherBrains(cfg, { own: ownEntries(cfg), catalogFile: (id) => catalogFileFor(cfg, id) }); } catch {}
+  return { ...selfWorkView(cfg, brains), bobNet: brain.lenders?.bobs?.().length || 0 };
+}
+
 async function brainCtxView() {
   const jobs = new Map();
   const add = (model, label) => { if (!model || typeof model !== 'string') return; if (!jobs.has(model)) jobs.set(model, []); if (!jobs.get(model).includes(label)) jobs.get(model).push(label); };

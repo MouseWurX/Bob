@@ -50,6 +50,9 @@
         <div id="brainPop" class="brain-pop" hidden></div>
         <button id="brainFree" type="button" class="brain-switch" role="switch" aria-checked="true"><span class="lbl">Free memory when Bob is idle</span><span class="st" id="brainFreeSt">On</span></button>
         <button id="handsBtn" type="button" class="brain-switch hands-btn" data-on="false" data-state="settings-off" aria-pressed="false"><span class="lbl">✋ Hands</span><span class="st" id="handsBtnSt">Off in Settings</span></button>
+        <button id="freeBtn" type="button" class="brain-switch free-btn" role="switch" aria-checked="false"><span class="lbl">🔓 Autonomy</span><span class="st" id="freeBtnSt">Off</span></button>
+        <button id="screenBtn" type="button" class="brain-switch screen-btn" role="switch" aria-checked="false"><span class="lbl">🖥 Screen use</span><span class="st" id="screenBtnSt">Off</span></button>
+        <div id="freeAsk" class="free-confirm quick-ask" role="alertdialog" aria-label="Turn on Autonomy?" hidden><p><strong>Let Bob work without asking?</strong> He'll move files, run commands and use apps without showing you a card first. Scheduled jobs will also run by themselves. Hard limits still apply, and ✋ Hands stops him at any time.</p><div class="row"><button type="button" class="big warn" data-freeyes>Turn it on</button><button type="button" class="big" data-freeno>Keep asking</button></div></div>
         <button id="mindBtn" type="button" class="brain-switch mind-btn" title="Opens a small always-on-top window showing Bob's thinking, which brain is working, moots and every step. Nothing runs for it while it's closed. To keep it in Now running instead, turn on Show here in its section there."><span class="lbl">💭 Bob's thinking</span><span class="st" id="mindBtnSt" hidden>In Now running</span></button>
       </div>
       <button id="dlbar" class="dlbar" type="button" hidden title="Open Downloads"><span class="meter moving"><i></i></span><span class="dlbar-text"></span></button>
@@ -60,7 +63,7 @@
       <div class="cellar-head"><h2 id="cellar-title">Settings</h2><button id="cellar-close" type="button" class="back" title="Back to the chat (Esc)" aria-label="Back to the chat">← Back to chat</button></div>
       <div id="cellar-body"></div>
     </dialog>
-  <div id="freeBanner" class="free-banner" role="status" hidden><span>⚠ Bob is working without asking. Hard limits still apply.</span><button type="button" id="freeBannerStop" class="big">✋ Stop Hands</button></div>
+  <div id="freeBanner" class="free-banner" role="status" data-level="0" hidden><span class="free-banner-text"><strong>⚠ Bob is working without asking.</strong> <span class="free-banner-tail">Hard limits still apply.</span></span><button type="button" id="freeBannerStop" class="big">✋ Stop Hands</button><button type="button" id="freeBannerHide" class="big" title="Hide this banner. 🔓 Autonomy keeps saying On while Bob works without asking, and the banner comes back if he's let past anything more. Bring it back sooner in Settings, Hands.">Hide</button></div>
   <main id="log" class="log" aria-live="polite"></main>
 
   <div id="chips" class="chips">

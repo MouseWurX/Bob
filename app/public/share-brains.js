@@ -14,6 +14,12 @@ const WHEN = [
   ['busy', 'While I\'m gaming or busy', 'Also while Bob is working on a big job here, so quick chats don\'t wait for it.'],
   ['always', 'Always, for quick replies', 'Good on a small laptop or handheld: your bigger Bob thinks every quick reply.']
 ];
+// Spread big brains over my other Bobs' cards (src/share-card.js).
+const SPREAD = [
+  ['off', 'Never', 'Every brain loads on this replicant matrix only, like always.'],
+  ['toobig', 'Only brains too big for this replicant matrix', 'A brain bigger than this card and memory can hold together goes over the cards your other Bobs lend.'],
+  ['big', 'Any brain bigger than my card', 'Also brains that would otherwise spill from the card into memory. Only faster on a quick network (a cable, or fast Wi-Fi close to the router).']
+];
 const CAN = { pictures: 'pictures', video: 'clips', music: 'music', sfx: 'sounds', web: 'web research', think: 'Medium-effort thinking' };
 // 1.5.123 Pass my Bob-Net along: what came of each introduction this Bob made.
 const INTRO = { introduced: (d) => `${esc(d.a)} and ${esc(d.b)}: introduced, so they pair by themselves.`, already: (d) => `${esc(d.a)} and ${esc(d.b)}: already on each other's list.`, off: (d) => `${esc(d.who)} has Pass my Bob-Net along off, so no introduction.`, old: (d) => `${esc(d.who)} can't be introduced yet: Bob there needs an update (the phone app doesn't know this yet).`, quiet: (d) => `${esc(d.who)} wasn't reachable. Bob tries again in an hour.`, no: (d) => `${esc(d.who)} said no. Bob tries again in an hour.` };
@@ -99,6 +105,9 @@ export async function mountShareBrains(box) {
       <div class="row"><strong>Borrow when:</strong> <select data-share-when>${WHEN.map(([id, label]) => `<option value="${id}" ${v.borrow.when === id ? 'selected' : ''}>${label}</option>`).join('')}</select>
         <span class="muted">${esc(WHEN.find((w) => w[0] === v.borrow.when)?.[2] || '')}</span></div>
       <label class="switch"><input type="checkbox" data-share-send ${v.borrow.jobs ? 'checked' : ''}><span><strong>Send jobs to my other Bobs</strong> ${tip('A job Bob can\'t do here, or one that would wait, goes to whichever of your other Bobs is free (least busy first). Jobs that need this replicant matrix always stay here. The job and the last few lines of the chat go to that Bob; the reply, OK cards and files come back.', 'Send jobs to my other Bobs')}</span></label>
+      <label class="switch"><input type="checkbox" data-share-card ${v.lendCard ? 'checked' : ''}><span><strong>Lend my graphics card</strong> ${tip('Your other Bobs can ask for room on this replicant matrix\'s graphics card when they load a brain too big for their own. Only while they use it, only on this replicant matrix\'s Tailscale address, and never while Bob is gaming: Gaming takes the card back.', 'Lend my graphics card')}<br><span class="muted keep">Sends and receives parts of the brain and the numbers it works on, with your own Bobs over Tailscale. No chats and no files. Your own brain here gets less room while the card is lent.</span></span></label>
+      <div class="row"><strong>Spread big brains over my other Bobs' cards:</strong> <select data-share-spread>${SPREAD.map(([id, label]) => `<option value="${id}" ${(v.spread || 'off') === id ? 'selected' : ''}>${label}</option>`).join('')}</select>
+        <span class="muted">${esc(SPREAD.find((w) => w[0] === (v.spread || 'off'))?.[2] || '')} Your other Bobs need <strong>Lend my graphics card</strong> on. If none says yes, the brain loads here.</span></div>
       <label class="switch"><input type="checkbox" data-share-pass ${v.passAlong ? 'checked' : ''}><span><strong>Pass my Bob-Net along</strong> ${tip('Your Bobs with this on introduce each other. When this Bob is paired with two Bobs that both have it on, they pair with each other too, with no card to press.', 'Pass my Bob-Net along')}<br><span class="muted keep">Sends your other Bobs each other's name and Tailscale address, nothing else; passcodes still pass only between the two being paired.</span></span></label>
       ${v.passAlong && v.introductions?.length ? `<ul class="share-list intro-list">${v.introductions.map((d) => `<li class="muted">${INTRO[d.state]?.(d) || esc(d.state)} <span class="muted">(${sinceShort(Date.now() - d.at)})</span></li>`).join('')}</ul>` : v.passAlong && v.lenders.length < 2 ? '<p class="muted">With two or more Bobs on the list, they get introduced to each other.</p>' : ''}
       ${msg ? `<p class="muted" role="status">${esc(msg)}</p>` : ''}
@@ -118,6 +127,8 @@ export async function mountShareBrains(box) {
     if (e.target.matches('[data-share-lend]')) change({ lend: e.target.checked });
     if (e.target.matches('[data-share-take]')) change({ takeJobs: e.target.checked });
     if (e.target.matches('[data-share-pass]')) change({ passAlong: e.target.checked });
+    if (e.target.matches('[data-share-card]')) change({ lendCard: e.target.checked });
+    if (e.target.matches('[data-share-spread]')) change({ spread: e.target.value, check: e.target.value !== 'off' });
     if (e.target.matches('[data-share-send]')) change({ sendJobs: e.target.checked, check: e.target.checked });
     if (e.target.matches('[data-share-borrow]')) change({ borrow: e.target.checked, check: e.target.checked });
     if (e.target.matches('[data-share-when]')) change({ when: e.target.value });

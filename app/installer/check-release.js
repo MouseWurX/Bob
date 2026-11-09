@@ -28,6 +28,11 @@ for (const f of ['build.yml', 'linux.yml', 'android.yml']) {
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 if (pkg.license !== 'GPL-3.0-or-later') problems.push('package.json license should be GPL-3.0-or-later');
 if (!/^\d+\.\d+\.\d+$/.test(pkg.devDependencies?.electron || '')) problems.push('devDependencies.electron must be an exact version');
+// 1.5.178: every test file runs in npm test. Two suites shipped in 1.5.177 without being in the list (they passed on
+// their own, but npm test never ran them), so a test file that isn't listed fails the check.
+for (const t of fs.readdirSync(path.join(root, 'test')).filter((n) => /^run-.*\.js$/.test(n))) {
+  if (!(pkg.scripts?.test || '').includes(`test/${t}`)) problems.push(`test/${t} isn't in package.json's test script, so npm test never runs it`);
+}
 if (!/## Code signing policy/.test(fs.readFileSync(path.join(repo, 'README.md'), 'utf8'))) problems.push('README is missing "## Code signing policy"');
 // CHANGELOG.md is made from docs/releases (node installer/make-changelog.js) and must be current.
 {

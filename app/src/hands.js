@@ -13,14 +13,17 @@ import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import os from 'node:os';
-import { insideAny, appDir } from './config.js';
+import { insideAny, isInside, appDir } from './config.js';
 import { HANDS, LIMITS, handOn, handOffWhy, handsSettings, cleanHands, readOnlyRoots, freeOn, limitOn, handsHere, handsOs, computerWord, handHere } from './hands-settings.js';
 import { planFiles, planCard, applyFiles, undoJob, loadJournal, handsRoots } from './hands-files.js';
-import { checkCommand, runCommand } from './hands-run.js';
+import { checkCommand, runCommand, safeEnv } from './hands-run.js';
+import { codeCopyRoot } from './self-work.js';
+import { toolPath } from './self-work-tools.js'; // "Let Bob work on repositories": his own Git and Node first in the code copy
 import { appsTools } from './hands-apps.js';
 import { officeView } from './office.js';
 import { makerPrompt, selfToolsView } from './selftools.js';
 import { mcpTools, mcpPrompt, mcpView, stopAllServers } from './mcp.js';
+import { browserTools, browserPrompt, browserView } from './hands-browser.js';
 
 const fn = (name, description, properties, required = Object.keys(properties)) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
@@ -110,7 +113,7 @@ export async function runApproved(cfg, { cmd, args = [], cwd }, { emit = () => {
   const timeoutMs = handsSettings(cfg).timeoutMin * 60_000;
   let res;
   try {
-    res = await runCommand({ cmd, args, cwd, timeoutMs, signal: controller.signal, onOutput: (text) => emit({ type: 'run-output', runId: id, text }) });
+    res = await runCommand({ cmd, args, cwd, timeoutMs, signal: controller.signal, ...(isInside(codeCopyRoot(cfg), cwd) ? { env: toolPath(cfg, safeEnv()) } : {}), onOutput: (text) => emit({ type: 'run-output', runId: id, text }) });
   } finally {
     running.delete(id);
     signal?.removeEventListener?.('abort', onAbort);
@@ -235,7 +238,7 @@ export function handsTools(brain, opts = {}) {
     summary: ({ action, name }) => `recipe: ${action}${name ? ' ' + name : ''}`
   };
 
-  Object.assign(t, appsTools(brain, { track, ...(opts.apps || {}) }), mcpTools(brain, { track }));
+  Object.assign(t, appsTools(brain, { track, ...(opts.apps || {}) }), mcpTools(brain, { track }), browserTools(brain, { track, ...(opts.browser || {}) }));
   return t;
 }
 
@@ -265,7 +268,7 @@ export function handsPrompt(cfg, { hat = null } = {}) {
     : ` Every action shows a card and waits for a click, so describe the plan briefly and call the tool; don't ask in words first.${hat ? '' : ` When a job needs two or more of these OKs, call ask_together first with every one of those steps (the exact tool and arguments), so ${who} sees the whole job on one card, then do the steps with the same arguments.`} If ${who} says no, don't try another way round.`;
   if (hat) return `\n\nHands ${who} switched on: ${on.map(([, h]) => h.label).join('; ')}.${askLine}${realLine}`;
   const secWhere = handsOs() === 'win' ? 'in Windows Security' : 'in the system\'s own security settings';
-  return `\n\nHands ${who} switched on: ${on.map(([, h]) => h.label).join('; ')}.${handOn(cfg, 'files') ? ` Files: only in ${roots.join('; ') || '(no folders ticked yet)'}. To undo a file job, call undo_files; it keeps the record, so don't answer from memory.` : ''}${handOn(cfg, 'office') ? ` Office: convert_file converts (documents with LibreOffice, sound and video with FFmpeg); read Word, Excel, PowerPoint or PDF with office_read, not read_file; office_make makes new ones; office_edit changes them (read first). It saves in ${[...roots, path.join(cfg.innDir || '', 'documents')].join('; ')}.` : ''}${handOn(cfg, 'security') ? ` Security: you are a defensive sidekick. security_check reads the PC's protection (changes nothing); inspect_file checks a file or pasted email/command without opening it; strip_metadata makes clean copies; osint_lookup checks sites, links, senders and IPs from public records; read security_tips before giving safety advice. Never switch protection off, allow or restore threats, or research private people; say how the user does those first ones ${secWhere}.` : ''}${handOn(cfg, 'apps') ? ' Apps: open with open_app, read the window with app_look, then do one step at a time with app_act using the names app_look gave you.' : ''}${mcpPrompt(cfg)}${makerPrompt(cfg)}${askLine}${realLine}${offLine}`;
+  return `\n\nHands ${who} switched on: ${on.map(([, h]) => h.label).join('; ')}.${handOn(cfg, 'files') ? ` Files: only in ${roots.join('; ') || '(no folders ticked yet)'}. To undo a file job, call undo_files; it keeps the record, so don't answer from memory.` : ''}${handOn(cfg, 'office') ? ` Office: convert_file converts (documents with LibreOffice, sound and video with FFmpeg); read Word, Excel, PowerPoint or PDF with office_read, not read_file; office_make makes new ones; office_edit changes them (read first). It saves in ${[...roots, path.join(cfg.innDir || '', 'documents')].join('; ')}.` : ''}${handOn(cfg, 'security') ? ` Security: you are a defensive sidekick. security_check reads the PC's protection (changes nothing); inspect_file checks a file or pasted email/command without opening it; strip_metadata makes clean copies; osint_lookup checks sites, links, senders and IPs from public records; read security_tips before giving safety advice. Never switch protection off, allow or restore threats, or research private people; say how the user does those first ones ${secWhere}.` : ''}${handOn(cfg, 'apps') ? ' Apps: open with open_app, read the window with app_look, then do one step at a time with app_act using the names app_look gave you. Pass expect on a step that should change the window so your eyes check it; when app_look finds nothing readable, ask it a question with ask (a picture goes to your eyes brain) and click by place with click_at.' : ''}${browserPrompt(cfg)}${mcpPrompt(cfg)}${makerPrompt(cfg)}${askLine}${realLine}${offLine}`;
 }
 
 // Hard limits the user switched off, so Bob knows what he may now do (and that nothing else changed).
@@ -284,5 +287,5 @@ export function folderCandidates(cfg) {
 }
 
 export function handsView(cfg) {
-  return { candidates: folderCandidates(cfg), settings: handsSettings(cfg), hands: handsHere(), limits: Object.entries(LIMITS).map(([id, l]) => ({ id, ...l })), readOnly: (cfg.readOnlyRoots || []).filter((f) => !(cfg.ownReadOnlyRoots || []).includes(f)), roots: handsRoots(cfg), recipes: loadRecipes(cfg), journal: loadJournal(cfg).slice(-15).reverse().map((j) => ({ id: j.id, at: j.at, label: j.label, steps: j.steps.length, undone: Boolean(j.undone) })), runs: loadRuns(cfg).slice(-15).reverse(), running: runningNow(), office: officeView(cfg), selfTools: selfToolsView(cfg), mcp: mcpView(cfg) };
+  return { candidates: folderCandidates(cfg), settings: handsSettings(cfg), hands: handsHere(), limits: Object.entries(LIMITS).map(([id, l]) => ({ id, ...l })), readOnly: (cfg.readOnlyRoots || []).filter((f) => !(cfg.ownReadOnlyRoots || []).includes(f)), roots: handsRoots(cfg), recipes: loadRecipes(cfg), journal: loadJournal(cfg).slice(-15).reverse().map((j) => ({ id: j.id, at: j.at, label: j.label, steps: j.steps.length, undone: Boolean(j.undone) })), runs: loadRuns(cfg).slice(-15).reverse(), running: runningNow(), office: officeView(cfg), selfTools: selfToolsView(cfg), mcp: mcpView(cfg), browser: browserView(cfg) };
 }

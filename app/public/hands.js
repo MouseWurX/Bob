@@ -2,6 +2,7 @@
 // and the Hands section in Settings. Big buttons on purpose (remote desktop).
 import { esc } from './rich.js';
 import { tip } from './tips.js';
+import { bannerHidden, setBannerHidden } from './hands-switch.js'; // the banner's Hide, undone here
 
 const OPS = { move: 'Move', copy: 'Copy', zip: 'Zip', unzip: 'Unzip', recycle: 'Recycle Bin', delete: 'Delete for good', convert: 'Convert', create: 'Make', edit: 'Change', clean: 'Make a clean copy' };
 const when = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -51,6 +52,17 @@ function officeLine(o, on) {
   const doc = o.office ? `✓ ${esc(o.office.name)}${o.office.version ? ` ${esc(o.office.version)}` : ''} ${o.office.where === 'own' ? '(Bob\'s own copy)' : '(found on this replicant matrix)'}` : '✗ No LibreOffice or OpenOffice found: documents, spreadsheets and slides need one. <button type="button" data-hgetengine="libreoffice">Get LibreOffice (about 350 MB)</button>';
   const media = o.ffmpeg ? `✓ FFmpeg ${o.ffmpeg.where === 'own' ? '(Bob\'s own copy)' : '(found on this replicant matrix)'}` : '✗ No FFmpeg: sound, video and WebP pictures need it. <button type="button" data-hgetengine="ffmpeg">Get FFmpeg (about 100 MB)</button>';
   return `<div class="hands-office muted${on ? '' : ' dim'}"><strong>Office helpers</strong><br>${doc}<br>${media}<br>${o.pictures === 'built in' ? `✓ Pictures (PNG, JPG, BMP, GIF, TIFF): built into ${/Mac/.test(navigator.userAgent) ? 'macOS' : 'Windows'}` : ''}</div>`;
+}
+
+// Settings, Hands: under the Browser hand (src/hands-browser.js) and the Apps hand: the eyes check, and forgetting
+// what Bob's own browser window knows.
+function browserHtml(bw, s, on) {
+  if (!bw) return '';
+  const eyes = bw.eyes ? `✓ Eyes brain: ${esc(bw.eyes)}` : '✗ No eyes brain in its slot: Equip Bob, "Seeing pictures", any vision brain. Until then Bob can\'t check his work by looking.';
+  return `<div class="hands-browser muted${on ? '' : ' dim'}"><strong>Bob's browser and eyes</strong><br>
+    ${bw.available ? '✓ Bob\'s own browser window is here (a window titled "Bob is browsing"; separate from your browser and its sign-ins).' : '✗ Bob\'s browser window only exists in Bob\'s app window, so it\'s not here when Bob runs in a browser tab or as a background service.'}
+    <button type="button" data-hbrowserforget ${bw.available ? '' : 'disabled'}>Forget what Bob's browser knows</button><br>
+    <label class="switch small"><input type="checkbox" data-heyes ${s.eyesCheck !== false ? 'checked' : ''}><span><strong>Bob checks his work with his eyes</strong><br><span class="muted">After a step in an app or his browser that says what should happen, Bob takes a picture of the window and asks his eyes brain whether it did. About a second a step. ${eyes}</span></span></label></div>`;
 }
 
 // ---- Approval cards (from the brain's 'approval' event when it has a plan or a command) ----
@@ -317,10 +329,11 @@ export async function mountHandsSettings(box) {
     box.innerHTML = `<span class="tag">off unless you turn them on</span>
       <p class="muted">Hands let Bob do things on this replicant matrix, not just talk about them. Each one is off until you switch it on. Even then he shows you exactly what he'll do (every file, or the exact command) and waits for your click every time, unless you turn on "Let Bob work without asking" below. "Allow the rest of this job" only covers the same kind of thing until that job ends. The hard limits below are all on to start with. He never changes his own code or settings. Everything goes in the logbook.</p>
       <label class="switch"><input type="checkbox" data-hmaster ${s.enabled ? 'checked' : ''}><span><strong>Let Bob use Hands</strong> ${tip('The master switch. Off turns every Hand below off.', 'Let Bob use Hands')}${s.enabled && s.held ? '<br><span class="warn-text">Stopped right now with the Hands switch on the chat page. Click it there to carry on.</span>' : ''}</span></label>
-      <div class="hands-free${s.free ? ' on' : ''}"><label class="switch${s.enabled ? '' : ' dim'}"><input type="checkbox" data-hfree ${s.free ? 'checked' : ''} ${s.enabled ? '' : 'disabled'}><span><strong>Let Bob work without asking</strong> <span class="tag">off unless you turn it on</span><br><span class="muted">No approval cards: he just does the job and tells you what he did. The hard limits below still apply, every action is still in the chat and the logbook, and the ✋ Hands button on the chat page stops him at once. Cloud helpers still ask, because they cost money. Scheduled jobs also run by themselves.</span>${s.free && s.enabled ? '<br><span class="warn-text">On: Bob is working without asking.</span>' : ''}</span></label></div>
+      <div class="hands-free${s.free ? ' on' : ''}"><label class="switch${s.enabled ? '' : ' dim'}"><input type="checkbox" data-hfree ${s.free ? 'checked' : ''} ${s.enabled ? '' : 'disabled'}><span><strong>Let Bob work without asking</strong> <span class="tag">off unless you turn it on</span><br><span class="muted">No approval cards: he just does the job and tells you what he did. The hard limits below still apply, every action is still in the chat and the logbook, and the ✋ Hands button on the chat page stops him at once. Cloud helpers still ask, because they cost money. Scheduled jobs also run by themselves.</span>${s.free && s.enabled ? '<br><span class="warn-text">On: Bob is working without asking.</span>' : ''}</span></label>${bannerHidden() ? '<button type="button" class="link" data-hbannerback>Show the banner again</button>' : ''}</div>
       ${v.hands.map((h) => `<label class="switch${s.enabled ? '' : ' dim'}"><input type="checkbox" data-hand="${esc(h.id)}" ${s[h.id]?.on ? 'checked' : ''} ${s.enabled ? '' : 'disabled'}><span><strong>${esc(h.label)}</strong> ${tip(esc(h.what || ''), h.label)}</span></label>`).join('')}
       ${officeLine(v.office, s.enabled && s.office?.on)}
       ${securityLine(s.enabled && s.security?.on)}
+      ${browserHtml(v.browser, s, s.enabled && s.browser?.on)}
       ${selfToolsHtml(v.selfTools, s.enabled && s.maker?.on)}
       ${mcpHtml(v.mcp, s.enabled && s.mcp?.on)}
       <div class="hands-limits"><h4 class="ssub">Limits that always apply <span class="tag">all on to start with</span></h4>
@@ -382,6 +395,7 @@ export async function mountHandsSettings(box) {
       if ('hfree' in el.dataset) return await set({ free: el.checked }, el.checked ? 'On. Bob works without asking now. The hard limits still apply, and ✋ Hands on the chat page stops him.' : 'Off. Bob asks before every action again.');
       if (el.dataset.hlimit) { const l = (v.limits || []).find((x) => x.id === el.dataset.hlimit); return await set({ limits: { [el.dataset.hlimit]: el.checked } }, el.checked ? `"${l?.label}" is back on.` : `"${l?.label}" is off. ${l?.off || ''}`); }
       if (el.dataset.hand) return await set({ [el.dataset.hand]: { on: el.checked } }, el.checked ? 'On. Bob still asks before every action.' : 'Off.');
+      if ('heyes' in el.dataset) { const r = await post('/api/hands/browser', { eyesCheck: el.checked }); v = r; draw(); return say(r.note); }
       if (el.dataset.hfolder) { const f = el.dataset.hfolder; return await set({ folders: el.checked ? [...v.settings.folders, f] : v.settings.folders.filter((x) => x !== f) }); }
       if ('htimeout' in el.dataset) return await set({ timeoutMin: Number(el.value) });
       if (el.dataset.hmytool) { v = await post('/api/hands/mytools', { name: el.dataset.hmytool, on: el.checked }); draw(); return say(el.checked ? 'Tool on.' : 'Tool off. Bob won\'t use it until you turn it back on.'); }
@@ -395,6 +409,7 @@ export async function mountHandsSettings(box) {
     if (!b) return;
     e.stopPropagation();
     try {
+      if ('hbannerback' in b.dataset) { setBannerHidden(null); draw(); return say('The "Bob is working without asking" banner will show again while it\'s on.'); }
       if ('hfreeyes' in b.dataset) return await set({ free: true }, 'On. Bob works without asking now. The hard limits still apply, and ✋ Hands on the chat page stops him.');
       if ('hfreeno' in b.dataset) { b.closest('.free-confirm')?.remove(); return say('Left off. Bob still asks before every action.'); }
       if ('hstopall' in b.dataset) { const r = await post('/api/hands/stop-all'); v = r; draw(); say(`Stopped ${r.stopped} thing${r.stopped === 1 ? '' : 's'}. All Hands are off.`); showStopAll(false); return; }
@@ -421,6 +436,15 @@ export async function mountHandsSettings(box) {
       if (b.dataset.hmytoolcode) { const pre = b.closest('li').querySelector('.mytool-code'); if (!pre.hidden) { pre.hidden = true; b.textContent = 'Show code'; return; } const r = await post('/api/hands/mytools', { name: b.dataset.hmytoolcode, code: true }); pre.textContent = r.code; pre.hidden = false; b.textContent = 'Hide code'; return; }
       if (b.dataset.hmytooldel) { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to remove'; return; } v = await post('/api/hands/mytools', { name: b.dataset.hmytooldel, remove: true }); draw(); return say(`Removed. It waits 30 days under Recently deleted in 🧰 Tools and how-tos Bob made, where you can put it back; then its folder goes to ${sched?.platform === 'darwin' ? 'the Trash' : sched?.platform === 'linux' ? 'the trash' : 'the Recycle Bin'}.`); }
       if ('hsandbox' in b.dataset) { b.disabled = true; say('Checking the sandbox (a few seconds)…'); v = await post('/api/hands/sandbox'); draw(); return say(v.sandbox?.ok ? 'The sandbox holds.' : `The sandbox didn't hold: ${v.sandbox?.why || 'unknown'}.`); }
+      if ('hbrowserforget' in b.dataset) {
+        // Asks first, in the page (no browser dialog), like "work without asking".
+        const row = b.closest('.hands-browser'); if (!row || row.querySelector('.free-confirm')) return;
+        const c = document.createElement('div'); c.className = 'free-confirm'; c.setAttribute('role', 'alertdialog'); c.setAttribute('aria-label', "Forget everything Bob's browser knows?");
+        c.innerHTML = `<p><strong>Forget everything Bob's browser knows?</strong> Its cookies, sign-ins and cache go, and sites will ask him to sign in again.</p><div class="row"><button type="button" class="big warn" data-hbrowserforgetyes>Forget it</button><button type="button" class="big" data-hbrowserforgetno>Keep it</button></div>`;
+        row.appendChild(c); c.querySelector('[data-hbrowserforgetno]').focus(); return;
+      }
+      if ('hbrowserforgetyes' in b.dataset) { const r = await post('/api/hands/browser', { forget: true }); v = r; draw(); return say(r.note); }
+      if ('hbrowserforgetno' in b.dataset) { b.closest('.free-confirm')?.remove(); return say('Kept.'); }
       if (b.dataset.hmcpcheck) { b.disabled = true; say('Checking (the first time can take a minute while it gets ready)…'); const r = await post('/api/hands/mcp', { id: b.dataset.hmcpcheck, check: true }); v = r; draw(); return say(r.note); }
       if (b.dataset.hmcptools) { const ul = b.closest('li').querySelector('.mcp-tools'); ul.hidden = !ul.hidden; b.textContent = ul.hidden ? 'Show tools' : 'Hide tools'; return; }
       if (b.dataset.hmcpdel) { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to remove'; return; } const r = await post('/api/hands/mcp', { id: b.dataset.hmcpdel, remove: true }); v = r; draw(); return say(r.note); }

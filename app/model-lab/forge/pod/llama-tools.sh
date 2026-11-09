@@ -20,6 +20,8 @@ if ! works $B/llama-quantize; then
     mkdir -p $W/llbin && tar xzf $W/llbin.tgz -C $W/llbin --no-same-owner
     Q=$(find $W/llbin -name llama-quantize -type f | head -1)
     if [ -n "$Q" ]; then cp "$Q" $B/; find $W/llbin -name '*.so*' -exec cp {} $B/ \; ; chmod +x $B/llama-quantize; fi
+    # llama-gguf-split too: an upload over Hugging Face's 50 GB limit goes up in parts (run.sh publish_dir)
+    G=$(find $W/llbin -name llama-gguf-split -type f | head -1); [ -n "$G" ] && cp "$G" $B/ && chmod +x $B/llama-gguf-split
   fi
   works $B/llama-quantize && echo "prebuilt llama-quantize works" || echo "prebuilt llama-quantize missing or not runnable, building"
 fi
@@ -27,7 +29,16 @@ if ! works $B/llama-quantize; then
   # 2) build it (the image has a compiler; cmake may need installing)
   command -v cmake >/dev/null || pip install -q cmake 2>&1 | tail -1
   rm -f $B/llama-quantize $B/*.so*
-  ( cd $L && cmake -B build -DGGML_CUDA=OFF -DLLAMA_CURL=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=OFF > $W/llama-cmake.log 2>&1 && cmake --build build --target llama-quantize -j >> $W/llama-cmake.log 2>&1 ) || echo "build failed (see llama-cmake.log)"
+  ( cd $L && cmake -B build -DGGML_CUDA=OFF -DLLAMA_CURL=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=OFF > $W/llama-cmake.log 2>&1 && cmake --build build --target llama-quantize llama-gguf-split -j >> $W/llama-cmake.log 2>&1 ) || echo "build failed (see llama-cmake.log)"
   Q=$(find $L/build -name llama-quantize -type f | head -1); [ -n "$Q" ] && [ "$Q" != "$B/llama-quantize" ] && cp "$Q" $B/
+  G=$(find $L/build -name llama-gguf-split -type f | head -1); [ -n "$G" ] && [ "$G" != "$B/llama-gguf-split" ] && cp "$G" $B/
 fi
+# a work dir from an older run has llama-quantize but not llama-gguf-split: get it from the prebuilt download (never fatal)
+if [ ! -x $B/llama-gguf-split ]; then
+  [ -f $W/llbin.tgz ] || fetch "https://github.com/ggml-org/llama.cpp/releases/download/$TAG/llama-$TAG-bin-ubuntu-x64.tar.gz" $W/llbin.tgz
+  mkdir -p $W/llbin && tar xzf $W/llbin.tgz -C $W/llbin --no-same-owner 2>/dev/null
+  G=$(find $W/llbin -name llama-gguf-split -type f | head -1); [ -n "$G" ] && cp "$G" $B/ && chmod +x $B/llama-gguf-split
+  for so in $(find $W/llbin -name '*.so*'); do [ -e $B/$(basename $so) ] || cp $so $B/; done
+fi
+[ -x $B/llama-gguf-split ] && echo "llama-gguf-split ready" || echo "llama-gguf-split not available: a GGUF over 50 GB can't be uploaded"
 if works $B/llama-quantize; then echo "llama-quantize ready"; touch $W/llama-ready; else echo "llama-quantize NOT available: export will keep BF16 only"; touch $W/llama-failed; fi

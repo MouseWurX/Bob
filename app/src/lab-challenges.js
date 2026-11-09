@@ -179,11 +179,12 @@ export async function runPack(url, id, { signal, onStep = () => {}, sandbox = nu
 
 // The scoreboard file for one brain: <lab>/scores/<slug>.json. One row per brain, newest result per pack kept.
 export function scoreFile(dir, slug) { return path.join(dir, `${slug}.json`); }
-export function mergeScores(old, { name, sha256, sizeGB, quant, paramsB, activeB, experts, madeHere, packs, tps, prefillTps, when, engine, where }) {
+export function mergeScores(old, { name, sha256, sizeGB, quant, paramsB, activeB, experts, madeHere, packs, tps, prefillTps, when, engine, where, bench }) {
   const out = { brain: { ...(old?.brain || {}), name, ...(sha256 ? { sha256 } : {}), ...(sizeGB ? { sizeGB } : {}), ...(quant ? { quant } : {}), ...(paramsB ? { paramsB } : {}), ...(activeB ? { activeB } : {}), ...(experts ? { experts } : {}), ...(madeHere ? { madeHere: true } : {}) }, packs: { ...(old?.packs || {}) }, when, ...(engine ? { engine } : {}), ...(where ? { where } : {}) };
   for (const [id, p] of Object.entries(packs)) out.packs[id] = { score: p.score, right: p.right, of: p.of, v: PACK_VERSION[id] || 1, ...(p.skipped ? { skipped: p.skipped } : {}), ...(p.parts ? { parts: Object.fromEntries(Object.entries(p.parts).map(([k, x]) => [k, { score: x.score, right: x.right, of: x.of }])) } : {}), when };
   const speed = { ...(old?.speed || {}) };
   if (tps) speed.tps = tps; if (prefillTps) speed.prefillTps = prefillTps;
+  if (bench && (bench.read != null || bench.write != null)) speed.bench = { read: bench.read, write: bench.write, prompt: bench.prompt, gen: bench.gen, ...(bench.build ? { build: bench.build } : {}), when }; // the standard speed test (llama-bench)
   if (Object.keys(speed).length) out.speed = speed;
   return out;
 }
@@ -201,7 +202,7 @@ export function scoreboard(list) {
     // The overall mark counts packs not run as missing, never as skipped: a brain can't win by leaving out the hard one.
     const overall = counted.length ? Math.round(counted.reduce((a, x) => a + x, 0) / counted.length) : null;
     const b = s.brain;
-    return { id: s.id, name: b.name, sizeGB: b.sizeGB ?? null, quant: b.quant || '', paramsB: b.paramsB ?? null, activeB: b.activeB ?? null, moe: Boolean(b.experts), madeHere: Boolean(b.madeHere), cls: classOf(b.paramsB), tps: s.speed?.tps ?? null, when: s.when || '', scores, old, overall, ran: counted.length, all: counted.length === RANKED_IDS.length, ...(s.packs?.guard?.parts && cur('guard') ? { guard: s.packs.guard.parts } : {}) };
+    return { id: s.id, name: b.name, sizeGB: b.sizeGB ?? null, quant: b.quant || '', paramsB: b.paramsB ?? null, activeB: b.activeB ?? null, moe: Boolean(b.experts), madeHere: Boolean(b.madeHere), cls: classOf(b.paramsB), tps: s.speed?.tps ?? null, bench: s.speed?.bench || null, when: s.when || '', scores, old, overall, ran: counted.length, all: counted.length === RANKED_IDS.length, ...(s.packs?.guard?.parts && cur('guard') ? { guard: s.packs.guard.parts } : {}) };
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
 // One class's board: brains that ran every current challenge first (so skipping the hard one never wins),

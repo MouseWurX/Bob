@@ -316,10 +316,21 @@ Hands are Bob's way of doing things for you on your PC rather than just talking 
 - **Files:** zip and unzip, move, copy, rename, and tidy folders like Downloads.
 - **Run:** run a program, command or script you've approved.
 - **Schedules:** do a job at a set time.
-- **Apps:** click and type in another program for you.
+- **Apps:** click and type in another program for you, and, with a vision brain in his "Seeing pictures" slot, check each step by looking at a picture of the window (and click by place in apps that don't name their buttons).
+- **Use a browser:** Bob's own browser window ("Bob is browsing", separate from yours): open a page, read it, click, type, scroll, go back, one approved step at a time, with the same eyes check.
 - **Office documents and converting:** convert files (Word, Excel, PowerPoint and OpenDocument to and from each other or to PDF; pictures; sound; video), read office files, make new documents, spreadsheets and slides, and change them (fill cells, add rows and slides, replace text, fill a template).
 - **Security and privacy:** check the PC's protection, explain Defender alerts and start scans, look at suspicious downloads, scripts and emails without opening them, find and remove hidden details (like GPS in photos) before sharing, and check whether a website, link or sender is genuine from public records.
 - **Connected apps (MCP):** work inside Unreal Engine, Blender and other apps that offer their tools through an MCP add-on.
+
+### Use a browser
+
+Ask things like "open the Blender release notes and tell me what's new", "on that site, find the cheapest 2 TB drive", or "type fox in the search box and press Enter".
+
+- Settings → Show advanced settings → Hands: switch on **Use a browser**. A window titled **Bob is browsing** opens when he first opens a page. It is part of Bob, with its own cookies and sign-ins; your own browser is never touched or read.
+- Bob reads a page as text plus a numbered list of its links, buttons and fields, then does one thing at a time: click a number, type into a field, press Enter, Tab, Esc or an arrow, scroll, go back, or pick an option. Each action is a card ("Click link 'Downloads' on blender.org", **Do it** / **Allow the rest of this job** / **Deny**) unless "Let Bob work without asking" is on.
+- While **Don't send anything out** is on he only types into search boxes and never presses Send, Post, Submit, Buy, Pay or Upload, never fills other fields and never picks files. Switch the limit off to let him, still one card each. Password fields stay off-limits while that limit is on. His own pages, downloads, pop-ups and anything that isn't http(s) are always refused.
+- **Eyes checks:** with a vision brain in Equip Bob's "Seeing pictures" slot, Bob takes a picture of the page (or the app window, for the Apps Hand) after a step that says what should happen and asks his eyes whether it did. The result says yes, no or unsure; a no makes him read the page again instead of pressing on. **Bob checks his work with his eyes** (Settings, Hands) switches this off.
+- **Forget what Bob's browser knows** (Settings, Hands) clears the window's cookies, sign-ins and cache. Works on Windows, Mac and Linux; Bob for Android shows the cards while the window is on your replicant matrix.
 
 ### Connected apps (MCP)
 
