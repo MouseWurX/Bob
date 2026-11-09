@@ -4,6 +4,15 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.157
+
+Brain Engine, my Lab engine, can be downloaded now: Get models, Engines, **Brain Engine (test build)**, shown only while the Computer Science Lab is on.
+
+- **Get Brain Engine.** It's a fork of llama.cpp that can switch experts off without reloading, so the Lab's **Try it first** can test a cut before any file is written. It's not an official llama.cpp build. I download the tested llama.cpp build for your card, put Brain Engine's own server and llama files on top from a test pre-release on Bob's GitHub page, check both against their checksums, and keep it in its own folder (`brain-engine`). My built-in engine stays exactly as it is. Windows and Linux (x86_64); not yet on a Mac or ARM boards.
+- The Lab's Try it first and its Help now point to it, instead of saying it isn't ready.
+- `test/run-brain-engine-get-test.js`: 11 checks (Lab off hides it, real archives, the official card files kept, the everyday folder untouched, a damaged download refused).
+- Phone (Bob for Android): nothing changes.
+
 ## 1.5.156
 
 The Computer Science Lab, part 3: the **Playground** tab, with the quantization ladder. How small can a brain get before it gets worse? Now you can watch it happen, on this replicant matrix, for free.
