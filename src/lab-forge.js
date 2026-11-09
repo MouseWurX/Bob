@@ -257,7 +257,11 @@ export const forgePlansDir = (labDirPath) => path.join(labDirPath, 'forge-plans'
 // now" with yes. The caps on the card must match the plan's, so the press is for exactly what was shown. The run is
 // its own process, detached, so it keeps going (and its card keeps its self-destruct timer) if Bob closes.
 export const FORGE_KEY = 'RUNPOD_API_KEY';
-export function forgeStartProblems({ plan, allowed, hasKey, shown = {}, running = false, found = true, importer = false }) {
+// What the Forge says is on its drive: out/forge/drive.json { models: ["bobs/28Bob/model", ...] } (the forge thread writes
+// it when a run ends). A brain the Forge made can only start a run if its full weights are really there, or the card
+// would be rented and then stop at once.
+export function onDrive(dir) { try { const j = JSON.parse(fs.readFileSync(path.join(dir, 'out', 'forge', 'drive.json'), 'utf8')); return Array.isArray(j.models) ? j.models.map(String) : []; } catch { return []; } }
+export function forgeStartProblems({ plan, allowed, hasKey, shown = {}, running = false, found = true, importer = false, drive = [] }) {
   const p = [];
   if (!found) p.push('The Forge isn\'t next to this copy of Bob.');
   if (!allowed) p.push('Starting Forge runs from the Lab is off. Turn on "Let the Lab start Forge runs" first.');
@@ -269,6 +273,7 @@ export function forgeStartProblems({ plan, allowed, hasKey, shown = {}, running 
   if (!Array.isArray(plan.rungs) || !plan.rungs.every((r) => r.hours > 0)) p.push('Every brain in the plan needs a time limit; save the plan again from the form.');
   // 1.5.163 lessons from Hugging Face are downloaded and converted on this side before the run; until the Forge's
   // lesson importer is here, a plan that names them never starts (so they're never silently left out).
+  if (plan.teacher_model && !drive.includes(String(plan.teacher_model))) p.push(`The Forge's record of its drive doesn't show the full weights of ${String(plan.teacher_model).split('/')[1] || 'that brain'} there, and a run that starts without them would rent a card and stop at once. Pick another brain, or wait for the Forge to rebuild them.`);
   if (plan.teacher_local || plan.teacher_url) p.push('This plan starts from a brain on this replicant matrix or at a link, and the Forge can\'t take one of those yet. Pick a brain the Forge made or one on Hugging Face, or wait for the Forge update.');
   if (Array.isArray(plan.hf_lessons) && plan.hf_lessons.length && !importer) p.push('This plan has lessons from Hugging Face, and the Forge\'s lesson importer isn\'t on this replicant matrix yet. Remove them, or wait for the Forge update.');
   return p;

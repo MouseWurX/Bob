@@ -24,7 +24,7 @@ export function createLab({ api, note }) {
   let view = null, step = 'brain', plan = null, showRecipe = false, msg = '', askUnload = null, tab = 'make';
   const learn = createLearn({ api, info: () => view, saves: () => saves });
   // 1.5.153 Challenges: which brain, which packs, the scoreboard's sort, and the Save panels (one per result).
-  const ch = { from: '', packs: ['quiz', 'reasoning', 'sums', 'rules', 'tools', 'code'], sort: 'name', down: false, by: 'class', kind: 'all', here: false, fits: false }; // 1.5.162 the board by class of model
+  const ch = { from: '', packs: ['quiz', 'reasoning', 'sums', 'rules', 'tools', 'code'], sort: 'name', down: false, by: 'class', kind: 'all', here: false, fits: false, wide: false }; // 1.5.162 the board by class of model
   const saves = {};
   const saveState = (k) => (saves[k] ||= { open: false, format: 'png', hardware: false, saved: '', error: '' });
   let measures = [], picked = [], table = null, saved = '';
@@ -302,12 +302,22 @@ export function createLab({ api, note }) {
   }
 
   const PACK_COLS = () => (view?.packs || []).map((p) => [p.id, p.title]);
-  function boardTable() {
+  // 1.5.164 With sixteen more challenges, the board folds "More challenges" into one column (the average of those run,
+  // with how many) and shows Guard rails on its own, since it never counts. "Every challenge as a column" unfolds them.
+  const RANKED = () => (view?.packs || []).filter((p) => p.ranked !== false);
+  const FIRST = () => (view?.packs || []).filter((p) => p.group !== 'more');
+  const MORE = () => (view?.packs || []).filter((p) => p.group === 'more' && p.ranked !== false);
+  const UNRANKED = () => (view?.packs || []).filter((p) => p.ranked === false);
+  const moreOf = (r) => { const got = MORE().map((p) => [p.id, r.scores[p.id]]).filter(([id, v]) => typeof v === 'number' && !r.old.includes(id)); return got.length ? { mean: Math.round(got.reduce((a, [, v]) => a + v, 0) / got.length), n: got.length, of: MORE().length } : null; };
+  const showCols = () => (ch.wide ? PACK_COLS() : [...FIRST().map((p) => [p.id, p.title]), ...(MORE().length ? [['__more', `More challenges (${MORE().length})`]] : []), ...UNRANKED().map((p) => [p.id, `${p.title} (not counted)`])]);
+  const colCell = (r, id, cell) => { if (id !== '__more') return cell(r, id); const m = moreOf(r); return m ? `<td>${m.mean}<br><span class="muted">${m.n} of ${m.of} run</span></td>` : '<td>-</td>'; };
+  function boardTable(forSave = false) {
     const rows = [...(view.scores || [])];
-    const key = ch.sort, val = (r) => (key === 'name' ? r.name.toLowerCase() : key === 'size' ? r.sizeGB ?? -1 : key === 'speed' ? r.tps ?? -1 : r.scores[key] ?? -1);
+    const cols = forSave ? PACK_COLS() : showCols();
+    const key = ch.sort, val = (r) => (key === 'name' ? r.name.toLowerCase() : key === 'size' ? r.sizeGB ?? -1 : key === 'speed' ? r.tps ?? -1 : key === '__more' ? moreOf(r)?.mean ?? -1 : r.scores[key] ?? -1);
     rows.sort((a, b) => { const x = val(a), y = val(b); const c = x < y ? -1 : x > y ? 1 : 0; return ch.down ? -c : c; });
-    const head = ['Brain', ...PACK_COLS().map(([, t]) => t), 'Size', 'Words a second'];
-    return { title: 'Lab scoreboard', head, rows: rows.map((r) => [r.name, ...PACK_COLS().map(([id]) => (r.scores[id] ?? '-')), r.sizeGB ? `${r.sizeGB} GB` : '-', r.tps ?? '-']), note: 'Scores out of 100, temperature 0, thinking off. Only comparable with other scores from the same replicant matrix.' };
+    const head = ['Brain', ...cols.map(([, t]) => t), 'Size', 'Words a second'];
+    return { title: 'Lab scoreboard', head, rows: rows.map((r) => [r.name, ...cols.map(([id]) => (id === '__more' ? (moreOf(r) ? `${moreOf(r).mean} (${moreOf(r).n} of ${moreOf(r).of})` : '-') : r.scores[id] ?? '-')), r.sizeGB ? `${r.sizeGB} GB` : '-', r.tps ?? '-']), note: 'Scores out of 100, temperature 0, thinking off. Only comparable with other scores from the same replicant matrix.' };
   }
   // 1.5.162 The local leaderboard: brains ranked inside classes of models by their total weights, not by graphics card.
   const wts = (r) => (r.paramsB ? `${r.paramsB}B${r.moe && r.activeB ? `, ${r.activeB}B at work` : ''}` : '-');
@@ -325,8 +335,8 @@ export function createLab({ api, note }) {
       const list = rows.filter((r) => r.cls === c.id).sort(order); // ran them all first, then overall, speed, smaller file
       if (!list.length) return '';
       return `<table class="lab-report lab-board lab-class"><caption><strong>${esc(c.label)}</strong> <span class="muted">· ${esc(c.hint)}</span></caption>
-        <tr><th scope="col">Place</th><th scope="col">Brain</th><th scope="col">Overall</th><th scope="col">Weights</th><th scope="col">Quant</th><th scope="col">Size</th><th scope="col">Words a second</th>${PACK_COLS().map(([, t]) => `<th scope="col">${esc(t)}</th>`).join('')}</tr>
-        ${list.map((r, i) => `<tr${i === 0 && r.all && c.id ? ' class="lab-best"' : ''}><td>${c.id ? i + 1 : '-'}${i === 0 && r.all && c.id ? ' <span class="lab-ribbon">Best in class</span>' : ''}</td><th scope="row">${esc(r.name)}${r.madeHere ? ' <span class="muted">(made here)</span>' : ''}</th><td>${r.overall ?? '-'}${r.ran && r.ran < PACK_COLS().length ? `<br><span class="muted">${r.ran} of ${PACK_COLS().length} run</span>` : ''}</td><td>${esc(wts(r))}</td><td>${esc(r.quant || '-')}</td><td>${r.sizeGB ? `${r.sizeGB} GB` : '-'}</td><td>${r.tps ?? '-'}</td>${PACK_COLS().map(([id]) => cell(r, id)).join('')}</tr>`).join('')}</table>`;
+        <tr><th scope="col">Place</th><th scope="col">Brain</th><th scope="col">Overall</th><th scope="col">Weights</th><th scope="col">Quant</th><th scope="col">Size</th><th scope="col">Words a second</th>${showCols().map(([, t]) => `<th scope="col">${esc(t)}</th>`).join('')}</tr>
+        ${list.map((r, i) => `<tr${i === 0 && r.all && c.id ? ' class="lab-best"' : ''}><td>${c.id ? i + 1 : '-'}${i === 0 && r.all && c.id ? ' <span class="lab-ribbon">Best in class</span>' : ''}</td><th scope="row">${esc(r.name)}${r.madeHere ? ' <span class="muted">(made here)</span>' : ''}</th><td>${r.overall ?? '-'}${r.ran && r.ran < RANKED().length ? `<br><span class="muted">${r.ran} of ${RANKED().length} run</span>` : ''}</td><td>${esc(wts(r))}</td><td>${esc(r.quant || '-')}</td><td>${r.sizeGB ? `${r.sizeGB} GB` : '-'}</td><td>${r.tps ?? '-'}</td>${showCols().map(([id]) => colCell(r, id, cell)).join('')}</tr>`).join('')}</table>`;
     }).join('');
     return out || '<p class="muted">No brains match those choices.</p>';
   }
@@ -337,11 +347,11 @@ export function createLab({ api, note }) {
     const t = boardTable();
     const chip = (attr, on, label) => `<button type="button" class="lab-chip${on ? ' on' : ''}" aria-pressed="${on}" ${attr}>${esc(label)}</button>`;
     const pick = `<div class="row lab-chips" role="group" aria-label="Scoreboard view">${chip('data-boardby="class"', ch.by === 'class', 'By class of model')}${chip('data-boardby="all"', ch.by === 'all', 'Every brain in one table')}</div>
-      ${ch.by === 'class' ? `<div class="row lab-chips" role="group" aria-label="Show">${chip('data-boardkind="all"', ch.kind === 'all', 'All')}${chip('data-boardkind="moe"', ch.kind === 'moe', 'Mixture of experts')}${chip('data-boardkind="dense"', ch.kind === 'dense', 'Dense')}${chip('data-boardhere', ch.here, 'Made here')}${view.cardGB ? chip('data-boardfits', ch.fits, `Fits my ${view.cardGB} GB graphics card`) : ''}</div>
+      ${ch.by === 'class' ? `<div class="row lab-chips" role="group" aria-label="Show">${chip('data-boardkind="all"', ch.kind === 'all', 'All')}${chip('data-boardkind="moe"', ch.kind === 'moe', 'Mixture of experts')}${chip('data-boardkind="dense"', ch.kind === 'dense', 'Dense')}${chip('data-boardhere', ch.here, 'Made here')}${view.cardGB ? chip('data-boardfits', ch.fits, `Fits my ${view.cardGB} GB graphics card`) : ''}${MORE().length ? chip('data-boardwide', ch.wide, 'Every challenge as a column') : ''}</div>
       <p class="muted">Each class is by how many weights a brain has in all. A mixture of experts sits with its total, and shows how many are at work on each word. Quantizing never moves a brain to another class; the Quant column says how it was squeezed. Overall is the average of every challenge, run with today's version of each test. A brain that hasn't run them all shows how many it ran and sits below the ones that have, so it can't win by skipping the hard one. A crossed-out score came from an older version of that test.</p>
       ${classTables()}${saveHtml('board', saveState('board'), view.hardware)}` : ''}`;
     const board = !view.scores?.length ? '<p class="muted">No scores yet. Pick a brain and run some challenges, and they show here.</p>' : ch.by === 'class' ? pick : `${pick}<table class="lab-report lab-board"><caption class="muted">Scores out of 100. Press a column's name to sort by it.</caption>
-      <tr>${sortBtn('name', 'Brain')}${PACK_COLS().map(([id, title]) => sortBtn(id, title)).join('')}${sortBtn('size', 'Size')}${sortBtn('speed', 'Words a second')}</tr>
+      <tr>${sortBtn('name', 'Brain')}${showCols().map(([id, title]) => sortBtn(id, title)).join('')}${sortBtn('size', 'Size')}${sortBtn('speed', 'Words a second')}</tr>
       ${t.rows.map((r) => `<tr><th scope="row">${esc(r[0])}</th>${r.slice(1).map((c) => `<td>${esc(String(c))}</td>`).join('')}</tr>`).join('')}</table>
       ${saveHtml('board', saveState('board'), view.hardware)}`;
     return `<div id="lab-page-challenges" role="tabpanel" aria-labelledby="lab-tab-challenges">
@@ -473,12 +483,13 @@ export function createLab({ api, note }) {
     if (b.dataset.boardkind) { ch.kind = b.dataset.boardkind; draw(); body.querySelector(`[data-boardkind="${ch.kind}"]`)?.focus(); return; }
     if ('boardhere' in b.dataset) { ch.here = !ch.here; draw(); body.querySelector('[data-boardhere]')?.focus(); return; }
     if ('boardfits' in b.dataset) { ch.fits = !ch.fits; draw(); body.querySelector('[data-boardfits]')?.focus(); return; }
+    if ('boardwide' in b.dataset) { ch.wide = !ch.wide; draw(); body.querySelector('[data-boardwide]')?.focus(); return; }
     if (b.dataset.sort) { ch.down = ch.sort === b.dataset.sort ? !ch.down : b.dataset.sort !== 'name'; ch.sort = b.dataset.sort; draw(); body.querySelector(`[data-sort="${ch.sort}"]`)?.focus(); return; }
     if (b.dataset.saveopen) { Object.assign(saveState(b.dataset.saveopen), { open: true, saved: '', error: '' }); return draw(); }
     if (b.dataset.saveclose) { saveState(b.dataset.saveclose).open = false; return draw(); }
     if (b.dataset.savego) {
       const k = b.dataset.savego, st = saveState(k);
-      const table = k === 'board' ? (ch.by === 'class' ? classTable() : boardTable()) : pg.saveTable(k) || runTable(k);
+      const table = k === 'board' ? (ch.by === 'class' ? classTable() : boardTable(true)) : pg.saveTable(k) || runTable(k);
       try { st.saved = await saveResult(api, table, { format: st.format, hardware: st.hardware, version: view.version, hw: view.hardware }); st.error = ''; } catch (err) { st.error = err.message; st.saved = ''; }
       return draw();
     }

@@ -27,7 +27,7 @@ import { PACKS, PACK_IDS, runPack, mergeScores, readScores, scoreboard, scoreFil
 import { runSandboxed, sandboxHolds } from './selftools.js';
 import { NEEDS_SANDBOX } from './lab-packs.js'; // 1.5.164 more packs
 import { ownRefusalAsks, cleanSandbox, guardLesson, saveGuardLesson, PAGE_DEMO, SANDBOX_MAX_TURNS } from './lab-guard.js'; // 1.5.164 Guard rails
-import { METHODS, LEFT_OUT, forgeDir, forgeRuns, forgeBrains, forgePlans, makeForgePlan, forgePlansDir, FORGE_KEY, forgeStartProblems, launchForge, alive, runPodId, scrub as scrubForge } from './lab-forge.js';
+import { METHODS, LEFT_OUT, forgeDir, forgeRuns, forgeBrains, forgePlans, makeForgePlan, forgePlansDir, FORGE_KEY, forgeStartProblems, launchForge, alive, runPodId, scrub as scrubForge, onDrive } from './lab-forge.js';
 import { rentKeyEnv } from './rental.js'; // 1.5.158 the Forge tab
 import { LADDER, PLAY_MAX_GB, ladderTexts, ladderDiskGB, readPerplexity, ladderTable, ladderSaw, playDir, readLadders } from './lab-playground.js'; // 1.5.157 Playground
 import { recipesRoute } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
@@ -1077,7 +1077,7 @@ export class Lab {
     const plan = readJson(path.join(forgePlansDir(labDir(this.cfg)), `${slugOf(id)}.json`), null);
     if (!plan) throw new Error('That plan isn\'t saved.');
     const dir = forgeDir(this.cfg);
-    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), shown: { hours: plan.hours_max, dollars: plan.dollars_max }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir), importer: Boolean(dir) && fs.existsSync(path.join(dir, 'import-lessons.mjs')) });
+    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), shown: { hours: plan.hours_max, dollars: plan.dollars_max }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir), importer: Boolean(dir) && fs.existsSync(path.join(dir, 'import-lessons.mjs')), drive: dir ? onDrive(dir) : [] });
     return { id: slugOf(id), brains: (plan.rungs || []).map((r) => ({ name: r.name, nickname: r.nickname || '', keep: r.keep, hours: r.hours })), quants: plan.quants || '', cards: plan.gpus || [], hours: plan.hours_max, dollars: plan.dollars_max, volume: plan.volume ? plan.volume.gb || 100 : 0, problems };
   }
   forgeStart({ id, hours, dollars } = {}) {
@@ -1085,7 +1085,7 @@ export class Lab {
     const file = path.join(forgePlansDir(labDir(this.cfg)), `${slugOf(id)}.json`);
     const plan = readJson(file, null);
     const keys = this.forgeKeys();
-    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(keys[FORGE_KEY]), shown: { hours, dollars }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir), importer: Boolean(dir) && fs.existsSync(path.join(dir, 'import-lessons.mjs')) });
+    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(keys[FORGE_KEY]), shown: { hours, dollars }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir), importer: Boolean(dir) && fs.existsSync(path.join(dir, 'import-lessons.mjs')), drive: dir ? onDrive(dir) : [] });
     if (problems.length) throw new Error(problems[0]);
     const log = path.join(labDir(this.cfg), 'forge-runs', `${slugOf(id)}-${new Date(this.now()).toISOString().replace(/[:.]/g, '-').slice(0, 19)}.log`);
     fs.mkdirSync(path.dirname(log), { recursive: true });
