@@ -1,0 +1,492 @@
+// Loads config.json and works out the folders Bob uses.
+import { cleanOwnModels } from './own-models.js';
+import { cleanHouseStyle } from '../public/house-style.js';
+import { cleanHousekeeping } from './hk-settings.js';
+import { cleanBrainCtx } from './model-ctx.js';
+import { cleanCheckins } from './checkin-settings.js';
+import { cleanHands } from './hands-settings.js';
+import { cleanPresets } from './model-family.js';
+import { cleanSelfWork, applyCodeCopy } from './self-work.js';
+import fs from 'node:fs';
+import { writeJsonAtomic } from './util.js';
+import path from 'node:path';
+import os from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { exeName, onPath } from './platform.js';
+import { cleanRentals } from './rental.js'; // 1.5.127 rented brains
+
+// Where Ollama keeps its models on this PC: OLLAMA_MODELS if it's set, else Bob's own models folder if Ollama's files
+// are there (how the installer sets Ollama up), else Ollama's usual folder in the user's home (~/.ollama/models).
+export function ollamaModelsDir({ agentDir, env = process.env, home = os.homedir(), exists = fs.existsSync } = {}) {
+  if (env.OLLAMA_MODELS) return env.OLLAMA_MODELS;
+  const own = agentDir && path.join(agentDir, 'models');
+  if (own && exists(path.join(own, 'manifests'))) return own;
+  const usual = path.join(home, '.ollama', 'models');
+  return exists(usual) || !own ? usual : own;
+}
+// Pinokio's usual homes (it asks where on first run): the root of any drive, or the user's home.
+export function pinokioRoots({ home = os.homedir(), exists = fs.existsSync, platform = process.platform } = {}) {
+  const homes = platform === 'win32' ? [...'CDEFG'].map((d) => `${d}:\\pinokio`) : [];
+  homes.push(path.join(home, 'pinokio'));
+  return homes.filter((h) => exists(h)).flatMap((h) => [path.join(h, 'api'), path.join(h, 'drive')]);
+}
+
+export const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// In a copy of Bob's source, his files are in the repository's app folder, with README, CHANGELOG and .github
+// one level up. The repository folder then plays the part the source folder played before (config.json, the folder
+// above it as Bob's home). '' when Bob isn't running from such a copy (Bob.exe, Bob.app, an AppImage, an old layout).
+export function repoDir(dir = appDir, exists = fs.existsSync) {
+  const up = path.dirname(dir);
+  return path.basename(dir) === 'app' && exists(path.join(up, 'CHANGELOG.md')) && exists(path.join(up, '.github')) ? up : '';
+}
+// The folder a copy of the source is known by: the repository when there is one, else Bob's own folder.
+export const sourceRoot = (dir = appDir, exists = fs.existsSync) => repoDir(dir, exists) || dir;
+// Files other programs run (Python scripts) can't be read from inside Bob.exe's app.asar, so the build
+// keeps them unpacked next to it.
+export const unpackedDir = appDir.replace(/app\.asar(?=$|[\\/])/, 'app.asar.unpacked');
+
+// 1.5.32: config.json's llamacpp.ctx above this is from before 1.5.19 and is set aside (see loadConfig).
+export const LEGACY_CTX_CAP = 32768;
+
+export function loadConfig() {
+  const file = process.env.BOB_CONFIG || path.join(sourceRoot(), 'config.json');
+  // A fresh copy of the source has no config.json (it's never published): start from the example.
+  if (!process.env.BOB_CONFIG && !fs.existsSync(file)) fs.copyFileSync(path.join(appDir, 'config.example.json'), file);
+  const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+  cfg.configFile = file;
+  if (process.env.BOB_AGENT_DIR) cfg.agentDir = process.env.BOB_AGENT_DIR;
+  if (process.env.BOB_OLLAMA_URL) cfg.ollamaUrl = process.env.BOB_OLLAMA_URL;
+  if (process.env.BOB_PORT) cfg.port = Number(process.env.BOB_PORT);
+  // Fresh installs: Bob's home is the folder above his code (for example Bob home; %LOCALAPPDATA%\Bob otherwise).
+  cfg.agentDir = cfg.agentDir || path.dirname(sourceRoot());
+  if (!cfg.readRoots || !cfg.readRoots.length) {
+    const home = os.homedir();
+    cfg.readRoots = ['Documents', 'Desktop', 'Downloads'].map((d) => path.join(home, d)).filter((d) => fs.existsSync(d));
+  }
+  cfg.models = cfg.models || {};
+  cfg.painter = cfg.painter || { engine: 'comfy' };
+  cfg.painter.sdcpp = cfg.painter.sdcpp || {};
+  // Engine programs: zips differ (some put them in bin\ or Release\), so look in each likely place.
+  cfg.painter.sdcpp.exe = findExe(cfg.painter.sdcpp.exe, path.join(cfg.agentDir, 'sd.cpp'), [exeName('sd-cli'), exeName('sd')]);
+  cfg.llamacpp = cfg.llamacpp || {};
+  cfg.llamacpp.exe = pickLlamaExe(cfg.llamacpp.exe, cfg.agentDir, { brainEngine: cfg.llamacpp.brainEngine });
+  if (cfg.stt?.provider === 'whispercpp') cfg.stt.exe = findExe(cfg.stt.exe, path.join(cfg.agentDir, 'whisper.cpp'), [exeName('whisper-cli')]);
+  cfg.tts = cfg.tts || {};
+  cfg.tts.exe = findExe(cfg.tts.exe, path.join(cfg.agentDir, 'piper'), [exeName('piper')]);
+
+  cfg.innDir = cfg.innDir || path.join(cfg.agentDir, 'inn');
+  cfg.dataDir = path.join(cfg.innDir, 'bob');
+  cfg.ledgerDir = path.join(cfg.innDir, 'ledger');
+  cfg.painterDir = path.join(cfg.innDir, 'painter');
+  cfg.defaultPainterDir = cfg.painterDir; // 1.5.41: Bob's own folder for what he makes; "Where Bob saves things" can pick another
+  cfg.archiveDir = path.join(cfg.innDir, 'archive');
+  cfg.noticeBoard = path.join(cfg.innDir, 'notice-board.md');
+  cfg.logbook = path.join(cfg.innDir, 'logbook.md');
+  cfg.memoryFile = path.join(cfg.innDir, 'bob-memory.md');
+  cfg.readRoots = [...new Set([cfg.innDir, ...(cfg.readRoots || [])])];
+  // Bob's own code, the backups, and his settings/data folder (inn\bob: settings.json, reminders, file backups)
+  // are never writable through his file tools, so he can't flip settings such as autostart himself.
+  // ownReadOnlyRoots stay read-only always; the user's own read-only projects can be opened up with the
+  // "Read-only projects stay read-only" hard limit in Settings, Hands (hands-settings.js readOnlyRoots).
+  cfg.ownReadOnlyRoots = [appDir, path.join(cfg.agentDir, 'backup'), cfg.dataDir];
+  cfg.readOnlyRoots = [...new Set([...(cfg.readOnlyRoots || []), ...cfg.ownReadOnlyRoots])];
+  // The name Bob falls back to: the one in config.json, else the Windows user name.
+  cfg.windowsName = cfg.userName || (os.userInfo().username || 'friend').replace(/^./, (c) => c.toUpperCase());
+  cfg.userName = cfg.windowsName;
+  cfg.timeZone = cfg.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  cfg.comfy = cfg.comfy || {};
+  if (cfg.comfy.workflowFile && !path.isAbsolute(cfg.comfy.workflowFile)) {
+    cfg.comfy.workflowFile = path.join(appDir, cfg.comfy.workflowFile);
+  }
+  cfg.bobModelsDir = cfg.bobModelsDir || path.join(cfg.agentDir, 'models', 'bob');
+  // 1.5.56: no assumption that this PC is laid out like the one Bob was made on. Ollama's models are wherever
+  // Ollama keeps them (OLLAMA_MODELS, else its own folder in the user's home), and the other-apps scan looks for
+  // Pinokio wherever it's commonly installed. config.json can still name either by hand.
+  cfg.llamacpp.ollamaModelsDir = cfg.llamacpp.ollamaModelsDir || ollamaModelsDir({ agentDir: cfg.agentDir });
+  cfg.modelSearchRoots = cfg.modelSearchRoots || [path.join(cfg.agentDir, 'models'), cfg.llamacpp.ollamaModelsDir, ...pinokioRoots()];
+  for (const d of [cfg.innDir, cfg.dataDir, cfg.ledgerDir, cfg.painterDir, cfg.archiveDir]) {
+    fs.mkdirSync(d, { recursive: true });
+  }
+  // Choices made in Bob's window (models, painter, voice, autostart) live in inn\bob\settings.json,
+  // so config.json stays as installed. Only these keys can be changed from the window.
+  // 1.5.32: an older config.json can carry llamacpp.ctx 131072 from before 1.5.19. Staging never touches config.json, so
+  // that old number made every brain start with a 131K context (slow, and a 26B brain spills off a 16 GB card). Anything
+  // above the 32K default in config.json is set aside (kept as legacyCtx, and logged). A context picked in Bob's window
+  // (Settings, Speed & memory, saved in settings.json) still wins, because it is applied just below.
+  if (Number(cfg.llamacpp?.ctx) > LEGACY_CTX_CAP) {
+    cfg.llamacpp.legacyCtx = cfg.llamacpp.ctx;
+    delete cfg.llamacpp.ctx;
+    console.error(`config.json asks for a ${cfg.llamacpp.legacyCtx}-token context for every brain; using each session's own size instead (pick one in Settings, Show advanced settings, Brains to override).`);
+  }
+  cfg.settingsFile = path.join(cfg.dataDir, 'settings.json');
+  try { mergeSettings(cfg, JSON.parse(fs.readFileSync(cfg.settingsFile, 'utf8'))); } catch {}
+  // "What should Bob call you?" (Attributes, first-run). Kept in inn\bob\settings.json, never in config.json.
+  if (cfg.callMe) cfg.userName = cfg.callMe;
+  cfg.autostart = cfg.autostart === true; // opt-in: off unless the user turned it on
+  applySaveDir(cfg);
+  return cfg;
+}
+
+// The configured program if it exists; otherwise the first match in the engine folder, its bin\ or Release\ subfolder.
+// 1.5.169: Brain Engine (Bob's fork of llama.cpp, Get models > Engines) is the default engine for brains. When its
+// folder holds llama-server, Bob runs his brains on it, unless Settings, Engines says plain llama.cpp
+// (llamacpp.brainEngine false). A llama-server set by hand somewhere else always wins; one set to Bob's own llama.cpp
+// folder counts as the default. No Brain Engine (a Mac, an ARM board, not downloaded): llama.cpp as before.
+export function pickLlamaExe(configured, agentDir, { brainEngine, platform = process.platform, exists = fs.existsSync } = {}) {
+  const everyday = path.join(agentDir, 'llama.cpp'), be = path.join(agentDir, 'brain-engine');
+  const within = (dir, p) => { const r = path.relative(dir, p); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };
+  if (configured && exists(configured) && !within(everyday, configured) && !within(be, configured)) return configured;
+  const name = platform === 'win32' ? 'llama-server.exe' : 'llama-server';
+  const look = (dir, subs) => { for (const sub of subs) { const p = path.join(dir, sub, name); if (exists(p)) return p; } return null; };
+  if (brainEngine !== false) { const p = look(be, ['', 'bin']); if (p) return p; }
+  if (configured && exists(configured) && within(everyday, configured)) return configured;
+  const p = look(everyday, ['', 'bin', 'Release', path.join('build', 'bin')]);
+  if (p) return p;
+  if (platform === 'linux') { const q = onPath(name); if (q) return q; }
+  return configured && !within(be, configured) ? configured : path.join(everyday, name);
+}
+
+export function findExe(configured, dir, names, platform = process.platform) {
+  if (configured && fs.existsSync(configured)) return configured;
+  // Linux and Mac programs have no .exe; on Linux one the distro installed (on the PATH) counts too.
+  if (platform !== 'win32') names = [...new Set(names.map((n) => n.replace(/\.exe$/i, '')))];
+  for (const sub of ['', 'bin', 'Release', path.join('build', 'bin')]) {
+    for (const n of names) { const p = path.join(dir, sub, n); if (fs.existsSync(p)) return p; }
+  }
+  if (platform === 'linux') for (const n of names) { const p = onPath(n); if (p) return p; }
+  return configured || path.join(dir, names[0]);
+}
+
+// Bob's version. Before 1.0: 0.9.<build> (0.9.28, branch work 0.9.28a). From 1.0.0 (the first public
+// release): <release>.<patch>, so 1.0.0, 1.0.1 for fixes, 1.1.0 for new features (release "1.1", patch 0).
+// The build number goes up with every drop and never resets; it's what the update check compares, so
+// 1.0.0 (build 37) is newer than 0.9.36 (build 36). A letter marks unmerged branch work (1.0.1a).
+// This is the ONE place the label is made; package.json "version" must match it (a test checks).
+export function formatVersion({ release = '0.9', branch = '', build = 0, patch } = {}) {
+  const last = patch !== undefined && patch !== null && patch !== '' ? Number(patch) || 0 : Number(build) || 0;
+  return `${release}.${last}${/^[a-z]$/.test(branch || '') ? branch : ''}`;
+}
+export const VERSION = (() => {
+  try {
+    const b = JSON.parse(fs.readFileSync(path.join(appDir, 'package.json'), 'utf8')).bob || {};
+    const v = { release: String(b.release || '0.9'), branch: /^[a-z]$/.test(b.branch || '') ? b.branch : '', build: Number(b.build) || 0, ...(b.patch !== undefined ? { patch: Number(b.patch) || 0 } : {}) };
+    return { ...v, label: formatVersion(v) };
+  } catch { return { release: '0.9', branch: '', build: 0, label: '0.9.0' }; }
+})();
+
+export const SETTING_KEYS = ['planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork'];
+const LOCKED_LLAMACPP = ['exe', 'preArgs'];
+
+function deepMerge(into, from) {
+  for (const [k, v] of Object.entries(from)) {
+    if (v && typeof v === 'object' && !Array.isArray(v) && into[k] && typeof into[k] === 'object' && !Array.isArray(into[k])) deepMerge(into[k], v);
+    else into[k] = v;
+  }
+  return into;
+}
+
+function clean(patch) {
+  const out = {};
+  for (const k of SETTING_KEYS) if (k in (patch || {})) out[k] = patch[k];
+  if (out.llamacpp) { out.llamacpp = cleanLlamacpp(out.llamacpp); for (const k of LOCKED_LLAMACPP) delete out.llamacpp[k]; }
+  if ('sessionCtx' in out) {
+    const sc = out.sessionCtx || {};
+    out.sessionCtx = {};
+    for (const k of ['normal', 'art', 'coding', 'office', 'deep', 'light']) if (k in sc) out.sessionCtx[k] = [8192, 16384, 32768, 65536, 131072, 262144].includes(sc[k]) ? sc[k] : null;
+  }
+  if (out.painter?.sdcpp) { out.painter = { ...out.painter, sdcpp: { ...out.painter.sdcpp } }; delete out.painter.sdcpp.exe; delete out.painter.sdcpp.preArgs; }
+  if ('brainMode' in out) out.brainMode = out.brainMode === 'always' ? 'always' : 'wake';
+  if ('ollamaKeepAlive' in out) out.ollamaKeepAlive = /^\d+[smh]$|^-1$/.test(String(out.ollamaKeepAlive)) ? String(out.ollamaKeepAlive) : undefined;
+  if ('oneBrain' in out) out.oneBrain = out.oneBrain === true;
+  if ('allTools' in out) out.allTools = out.allTools === true;
+  if ('memoryRecall' in out) out.memoryRecall = out.memoryRecall === true; // 1.5.79, off unless switched on
+  if ('resumeJobs' in out) out.resumeJobs = out.resumeJobs === true; // 1.5.16, off unless switched on
+  if ('planFirst' in out) out.planFirst = out.planFirst === true; // 1.5.78 plan card, off unless switched on
+  if ('quickOnCpu' in out) out.quickOnCpu = out.quickOnCpu === true;
+  if ('brainCtxOn' in out) out.brainCtxOn = out.brainCtxOn === true; // 1.5.87, off unless switched on
+  if ('brainCtxStretch' in out) out.brainCtxStretch = out.brainCtxStretch === true; // Long memory (YaRN), off unless switched on
+  if ('brainCtx' in out) out.brainCtx = cleanBrainCtx(out.brainCtx);
+  if ('chatWhileBusy' in out) out.chatWhileBusy = out.chatWhileBusy !== false;
+  if ('mootBeside' in out) out.mootBeside = out.mootBeside === true; // 1.5.51, off unless switched on
+  if ('webSearch' in out) out.webSearch = out.webSearch === true;
+  if ('naughtyList' in out) out.naughtyList = out.naughtyList === true; // 1.5.132 "Show the naughty list", off unless switched on
+  if ('catalogUpdates' in out) out.catalogUpdates = out.catalogUpdates === true; // 1.5.137 "Let Bob fetch his newest brain list", off unless switched on
+  if ('ownModels' in out) out.ownModels = cleanOwnModels(out.ownModels); // 1.5.135 brains of your own (GGUF files on this replicant matrix)
+  if ('computerLab' in out) out.computerLab = out.computerLab !== false; // 1.5.172 "Show the Computer Science Lab", on unless switched off (was off until 1.5.171)
+  if ('labForgeStart' in out) out.labForgeStart = out.labForgeStart === true; // 1.5.160 "Let the Lab start Forge runs", off unless switched on
+  if ('labEngine' in out) out.labEngine = ['brainengine', 'llamacpp'].includes(out.labEngine) ? out.labEngine : ''; // 1.5.17x the Lab's engine: '' = the same as Bob's brains
+  if ('labPro' in out) out.labPro = out.labPro === true; // 1.5.168 the Lab's Professional mode: more controls on every tab; off = Keep it simple
+  if ('qwenPresets' in out) out.qwenPresets = cleanPresets(out.qwenPresets); // 1.5.148 "Choose my own word settings", off unless switched on
+  if ('selfWork' in out) out.selfWork = cleanSelfWork(out.selfWork); // "Let Bob work on repositories" (self-work.js), off by default
+  if ('howtos' in out) out.howtos = out.howtos === true; // 1.5.79 "Let Bob learn how-tos", off by default
+  if ('tray' in out) out.tray = out.tray !== false; // 1.5.94 "Keep Bob in the tray"; on unless switched off since 1.5.134 (the owner asked for it)
+  if ('lookIcon' in out) out.lookIcon = out.lookIcon !== false; // 1.5.94 "Use Bob's look as his icon"; on unless switched off since 1.5.134 (the owner asked for it)
+  if ('houseStyle' in out) out.houseStyle = cleanHouseStyle(out.houseStyle); // 1.5.34 House style (public/house-style.js)
+  if ('projectList' in out) out.projectList = cleanProjects(out.projectList); // 1.5.34 Projects in Settings
+  if ('saveDir' in out) out.saveDir = cleanDir(out.saveDir); // 1.5.41 Where Bob saves things ('' = Bob's own folder)
+  if ('saveDirsUsed' in out) out.saveDirsUsed = [].concat(out.saveDirsUsed || []).map(cleanDir).filter(Boolean).slice(0, 10);
+  if ('defaultProject' in out) out.defaultProject = typeof out.defaultProject === 'string' ? out.defaultProject.slice(0, 60) : '';
+  if ('gamingCard' in out) out.gamingCard = ['auto', 'never', 'always'].includes(out.gamingCard) ? out.gamingCard : 'auto'; // 1.5.32
+  for (const k of ['readyWhileTyping', 'gamesFirst', 'pictureFit']) if (k in out) out[k] = out[k] === true; // 1.5.24, off unless switched on
+  if ('sessionBy' in out) out.sessionBy = out.sessionBy === 'bob' ? 'bob' : 'you'; // 1.5.41: who picked the session now
+  if ('gamingLock' in out) out.gamingLock = out.gamingLock === true; // 1.5.41 the 🎮 button, off until pressed
+  if ('autoSession' in out) out.autoSession = out.autoSession !== false; // 1.5.41, on unless switched off (the owner's call)
+  if ('pictureNoWait' in out) out.pictureNoWait = out.pictureNoWait !== false; // 1.5.20, on unless switched off
+  if ('updates' in out) out.updates = { autoCheck: out.updates?.autoCheck === true };
+  if ('housekeeping' in out) out.housekeeping = cleanHousekeeping(out.housekeeping || {});
+  if ('checkins' in out) out.checkins = cleanCheckins(out.checkins || {}); // 1.5.78 Check-ins, off unless switched on
+  if ('games' in out) { const g = out.games || {}; out.games = { brain: g.brain === 'main' ? 'main' : 'quick', talk: ['every', 'some', 'end'].includes(g.talk) ? g.talk : 'every' }; } // 1.5.121 🧩 Games (defaults, nothing on)
+  if ('adventure' in out) { const a = out.adventure || {}; out.adventure = { gm: a.gm === 'main' ? 'main' : 'biggest', players: a.players === 'gm' ? 'gm' : 'own' }; } // 1.5.117 🎲 Adventure (defaults, nothing on)
+  if ('hands' in out) out.hands = cleanHands(out.hands || {});
+  if ('quarantine' in out) out.quarantine = { on: out.quarantine?.on === true };
+  if ('downloads' in out) { const d = out.downloads || {}; out.downloads = { concurrent: Number(d.concurrent) === 2 ? 2 : 1, resumeOnStart: d.resumeOnStart === true }; }
+  if ('session' in out) out.session = ['normal', 'art', 'coding', 'office', 'light'].includes(out.session) ? out.session : 'normal'; // 1.5.23: a saved 'deep' becomes Normal
+  if ('sessionBrains' in out) {
+    const sb = out.sessionBrains || {};
+    out.sessionBrains = {};
+    for (const k of ['small', 'gaming', 'coding', 'office', 'deep']) if (typeof sb[k] === 'string' && /^[\w.:/-]{1,100}$/.test(sb[k])) out.sessionBrains[k] = sb[k];
+    // 1.5.56: the owner's rule, kept here too: Gemma 4 E4B is never the Gaming brain, whatever asks for it.
+    if (/e4b/i.test(out.sessionBrains.gaming || '')) delete out.sessionBrains.gaming;
+  }
+  // 1.5.56: Active models (the Brain catalogue's switches): { "<catalog id or engine name>": true | false }.
+  if ('activeModels' in out) {
+    const a = out.activeModels && typeof out.activeModels === 'object' ? out.activeModels : {};
+    out.activeModels = Object.fromEntries(Object.entries(a).filter(([k, v]) => /^[\w.:/-]{1,100}$/.test(k) && typeof v === 'boolean').slice(0, 300));
+  }
+  if ('style' in out) out.style = cleanStyle(out.style);
+  if ('catName' in out) out.catName = typeof out.catName === 'string' && /^[\p{L}\p{N}' .-]{1,24}$/u.test(out.catName.trim()) ? out.catName.trim() : undefined;
+  if (out.workshop) {
+    // The advanced workshop: on/off and the ComfyUI port only. The address is always this PC.
+    const w = out.workshop || {};
+    out.workshop = {};
+    if (typeof w.enabled === 'boolean') out.workshop.enabled = w.enabled;
+    if (Number.isInteger(w.port) && w.port >= 1024 && w.port <= 65535) out.workshop.port = w.port;
+  }
+  if (out.tts) {
+    // Voice: which provider and voice files, and how fast. The program path can't be changed from here.
+    const t = out.tts || {};
+    out.tts = {};
+    if (['piper', 'kokoro', 'chatterbox', ''].includes(t.provider)) out.tts.provider = t.provider;
+    for (const k of ['model', 'config', 'voices', 'ref']) if (typeof t[k] === 'string') out.tts[k] = t[k];
+    if (typeof t.voice === 'string' && /^[a-z]{2}_[a-z]{2,20}$/.test(t.voice)) out.tts.voice = t.voice;
+    if (typeof t.speed === 'number') out.tts.speed = Math.min(2, Math.max(0.5, t.speed));
+    // 1.5.33: the Windows voice picked by name ('' = Automatic). Only a plain name, nothing that could be a path.
+    if (typeof t.windowsVoice === 'string') out.tts.windowsVoice = /^[\w .,()'-]{0,100}$/.test(t.windowsVoice) ? t.windowsVoice : '';
+  }
+  if (out.cloudHelpers) {
+    // Only on/off and a model name per known provider. Addresses and keys can't be set from here.
+    const ch = {};
+    for (const [id, v] of Object.entries(out.cloudHelpers || {})) {
+      if (!/^[a-z]{2,20}$/.test(id) || !v || typeof v !== 'object') continue;
+      ch[id] = {};
+      if (typeof v.enabled === 'boolean') ch[id].enabled = v.enabled;
+      if (typeof v.model === 'string' && /^[\w.:/-]{1,100}$/.test(v.model)) ch[id].model = v.model;
+    }
+    out.cloudHelpers = ch;
+  }
+  if (out.rentals) out.rentals = cleanRentals(out.rentals); // 1.5.127 rented brains: switches, limits, the list; never a key
+  if (out.maestro) { out.maestro = { ...out.maestro }; delete out.maestro.url; delete out.maestro.outputsDir; }
+  if (out.stt) { out.stt = { ...out.stt }; delete out.stt.url; delete out.stt.apiKey; delete out.stt.apiKeyEnv; }
+  return out;
+}
+
+// llama.cpp speed settings from the app. Extra arguments may only be flags and plain values (no paths),
+// so nothing typed in the app can point llama-server at a file.
+const ARG = /^(-{1,2}[a-z][a-z0-9-]*|[A-Za-z0-9_.:,+-]{1,40})$/;
+const cleanArgs = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === 'string' && ARG.test(x)).slice(0, 40) : undefined);
+function cleanLlamacpp(lc) {
+  const out = { ...lc };
+  if ('args' in out) out.args = cleanArgs(out.args);
+  if (out.modelArgs && typeof out.modelArgs === 'object') {
+    const m = {};
+    for (const [k, v] of Object.entries(out.modelArgs)) if (/^[\w.:/-]{1,100}$/.test(k)) m[k] = v === null ? null : cleanArgs(v);
+    out.modelArgs = m;
+  }
+  for (const k of ['threads', 'batch', 'ubatch', 'ctx']) if (k in out) out[k] = Number.isInteger(out[k]) && out[k] > 0 && out[k] <= 1048576 ? out[k] : null;
+  if ('fit' in out) out.fit = typeof out.fit === 'boolean' ? out.fit : null;
+  if ('noEyes' in out) out.noEyes = Array.isArray(out.noEyes) ? [...new Set(out.noEyes.filter((x) => typeof x === 'string' && /^[\w.:/-]{1,100}$/.test(x)))].slice(0, 200) : []; // Lab: brains loaded without their reader
+  if ('brainEngine' in out) out.brainEngine = out.brainEngine !== false; // 1.5.169: run brains on Brain Engine when it's here
+  if ('loadMode' in out) out.loadMode = out.loadMode === 'mmap' ? 'mmap' : 'auto'; // 1.5.90
+  if ('draft' in out) {
+    const d = out.draft || {};
+    out.draft = {
+      enabled: d.enabled !== false,
+      model: typeof d.model === 'string' && /^[\w.:/\\ -]{1,260}$/.test(d.model) ? d.model : '',
+      max: Number.isInteger(d.max) && d.max > 0 && d.max <= 64 ? d.max : 16,
+      min: Number.isInteger(d.min) && d.min >= 0 && d.min <= 16 ? d.min : 1,
+      ngld: Number.isInteger(d.ngld) && d.ngld >= 0 && d.ngld <= 999 ? d.ngld : 99
+    };
+  }
+  // 1.5.16x Turbo, per brain (from the Lab's Turbo page or Settings): on/off, the draft brain by its model name (never
+  // a path), or the brain's own built-in guesser, and how many words it guesses ahead. null removes a brain's row.
+  if ('turbo' in out) {
+    const t = {};
+    for (const [k, v] of Object.entries(out.turbo && typeof out.turbo === 'object' ? out.turbo : {}).slice(0, 64)) {
+      if (!/^[\w.:/-]{1,100}$/.test(k)) continue;
+      if (v === null) { t[k] = null; continue; }
+      if (!v || typeof v !== 'object') continue;
+      const draft = typeof v.draft === 'string' && /^[\w.:/-]{1,100}$/.test(v.draft) && v.draft !== k ? v.draft : '';
+      const mtp = v.mtp === true;
+      if (!draft && !mtp) continue;
+      t[k] = { on: v.on === true, draft: mtp ? '' : draft, mtp, max: Number.isInteger(v.max) && v.max >= 1 && v.max <= 32 ? v.max : 8 };
+    }
+    out.turbo = t;
+  }
+  return out;
+}
+
+// The Style page: which theme, and up to 24 home-made themes. Only colours, a font from a fixed list
+// and corner roundness can be saved, so nothing here can inject code into the page.
+const HEX = /^#[0-9a-f]{6}$/i;
+const THEME_ID = /^[a-z0-9-]{2,40}$/;
+const COLOR_KEYS = ['bg', 'panel', 'card', 'you', 'line', 'text', 'muted', 'accent', 'onAccent', 'good', 'warn', 'bad', 'spriteBg'];
+const FONT_IDS = ['system', 'plex', 'mono', 'serif', 'rounded'];
+const OLD_THEME_IDS = { system: 'moondust', slate: 'moondust', midnight: 'nightside', 'mousehole-dark': 'otterbend', 'mousehole-light': 'homestead', paper: 'sandbar', 'mousewurx-light': 'drydock', 'mousewurx-dark': 'drydock-night' }; // mirrors public/themes.js OLD_IDS
+export function cleanStyle(st) {
+  const out = {};
+  if (!st || typeof st !== 'object') return out;
+  // 1.5.136: themes were renamed after worlds; old saved names (and the dropped Match system) land on the new ones.
+  if (typeof st.theme === 'string' && THEME_ID.test(st.theme)) out.theme = OLD_THEME_IDS[st.theme] || st.theme;
+  if (['on', 'system', 'off'].includes(st.motion)) out.motion = st.motion;
+  if (typeof st.openNowOnNeed === 'boolean') out.openNowOnNeed = st.openNowOnNeed;
+  if (Array.isArray(st.custom)) {
+    out.custom = st.custom.slice(0, 24).filter((t) => t && typeof t === 'object' && THEME_ID.test(String(t.id)) && String(t.id).startsWith('my-')).map((t) => {
+      const colors = {};
+      for (const k of COLOR_KEYS) if (HEX.test(String(t.colors?.[k] || ''))) colors[k] = String(t.colors[k]).toLowerCase();
+      const name = typeof t.name === 'string' && /^[\p{L}\p{N}' .&()!-]{1,30}$/u.test(t.name.trim()) ? t.name.trim() : 'My theme';
+      const theme = { id: String(t.id), name, group: 'Yours', colors };
+      if (FONT_IDS.includes(t.font)) theme.font = t.font;
+      if (Number.isFinite(t.radius)) theme.radius = Math.max(0, Math.min(20, Math.round(t.radius)));
+      for (const f of ['blueprint', 'outlined', 'flat']) if (t[f] === true) theme[f] = true;
+      return theme;
+    });
+  }
+  return out;
+}
+
+export function mergeSettings(cfg, patch) {
+  return applyProjects(deepMerge(cfg, clean(patch)));
+}
+
+// 1.5.34: projects picked in Settings (projectList) replace the hand-written "projects" in config.json once saved.
+// An empty saved list means "no projects" (removed in Settings); no saved list keeps config.json's.
+export function cleanProjects(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const p of list.slice(0, 50)) {
+    const name = String(p?.name || '').replace(/[\u0000-\u001f<>{}"`\\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    const dir = String(p?.path || '').replace(/[\u0000-\u001f]/g, '').trim();
+    if (!name || !dir || !path.isAbsolute(dir) || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    out.push({ name, path: dir });
+  }
+  return out;
+}
+// ---------- 1.5.41: Where Bob saves things ----------
+// Pictures, clips, songs and sounds go to cfg.painterDir. That is Bob's own folder (inn\painter, shown as
+// "Made by Bob") unless the user picked another in Settings (saveDir). Folders used before stay readable
+// (saveDirsUsed), so pictures and songs in older chats still show after a change.
+// A picked folder that has gone (an unplugged drive) means saving in Bob's own folder until it's back.
+function cleanDir(d) {
+  const s = typeof d === 'string' ? d.replace(/[\u0000-\u001f]/g, '').trim() : '';
+  return s && path.isAbsolute(s) && s.length < 260 ? path.resolve(s) : '';
+}
+export function applySaveDir(cfg) {
+  const own = cfg.defaultPainterDir || cfg.painterDir;
+  cfg.defaultPainterDir = own;
+  const want = cleanDir(cfg.saveDir);
+  let ok = false;
+  try { ok = Boolean(want) && fs.statSync(want).isDirectory(); } catch {}
+  cfg.painterDir = ok ? want : own;
+  cfg.saveDirMissing = Boolean(want) && !ok;
+  return cfg;
+}
+// Every folder Bob's pictures and songs may be in: where he saves now first, then his own, then older picks.
+export function outputDirs(cfg) {
+  const all = [cfg.painterDir, cfg.defaultPainterDir, cfg.saveDir, ...(cfg.saveDirsUsed || [])].map(cleanDir).filter(Boolean);
+  const seen = new Set();
+  return all.filter((d) => { const k = norm(d); if (seen.has(k)) return false; seen.add(k); return true; });
+}
+// The file a /images/<name> link or a bare file name Bob made points at: the first folder that has it
+// (or where he saves now, when none has it yet).
+export function findOutput(cfg, name) {
+  const base = path.basename(String(name || ''));
+  for (const d of outputDirs(cfg)) { const f = path.join(d, base); if (fs.existsSync(f)) return f; }
+  return path.join(cfg.painterDir, base);
+}
+// Why a folder can't hold what Bob makes, or '' if it can. Bob's own code, settings and backups stay off-limits.
+export function saveDirProblem(cfg, dir) {
+  const d = cleanDir(dir);
+  if (!d) return 'Type the whole folder path, like D:\\Bob pictures, or use Browse… to pick it.';
+  let st = null;
+  try { st = fs.statSync(d); } catch {}
+  if (!st) return "Bob can't find that folder. Check the spelling, or use Browse… to pick it.";
+  if (!st.isDirectory()) return 'That\'s a file, not a folder. Pick the folder it\'s in, or use Browse….';
+  if (/^[a-z]:\\?$/i.test(d) || d === path.parse(d).root) return 'Pick a folder, not a whole drive.';
+  if ((cfg.ownReadOnlyRoots || []).some((r) => isInside(r, d))) return 'That\'s Bob\'s own program or settings folder. Pick another one.';
+  const probe = path.join(d, `.bob-write-test-${process.pid}`);
+  try { fs.writeFileSync(probe, ''); fs.rmSync(probe, { force: true }); } catch { return `Bob isn't allowed to save in ${d}. Pick a folder you can save files in.`; }
+  return '';
+}
+
+function applyProjects(cfg) {
+  if (Array.isArray(cfg.projectList)) cfg.projects = Object.fromEntries(cfg.projectList.map((p) => [p.name, p.path]));
+  if (cfg.defaultProject && !(cfg.projects || {})[cfg.defaultProject]) cfg.defaultProject = '';
+  return applyCodeCopy(cfg); // "Let Bob work on repositories": the code copies are projects while the switch is on
+}
+
+// Settings saved whole (not merged key by key), so an emptied box or a removed project really goes away.
+export function replaceSettings(cfg, patch) {
+  const safe = clean(patch);
+  let saved = {};
+  try { saved = JSON.parse(fs.readFileSync(cfg.settingsFile, 'utf8')); } catch {}
+  for (const [k, v] of Object.entries(safe)) { saved[k] = v; cfg[k] = v; }
+  writeJsonAtomic(cfg.settingsFile, saved, 2);
+  applyProjects(cfg);
+  return saved;
+}
+
+// Apply a change now and remember it.
+// Let my phone in (src/phone-access.js): phone access lives in config.json only, never in settings.json, so nothing that
+// can write Bob's settings file can open the door. Only the Settings page on this PC calls this (server.js, local only).
+export function saveRemote(cfg, remote) {
+  const raw = JSON.parse(fs.readFileSync(cfg.configFile, 'utf8'));
+  raw.remote = { ...(raw.remote || {}), ...remote };
+  writeJsonAtomic(cfg.configFile, raw, 2);
+  cfg.remote = raw.remote;
+}
+
+export function saveSettings(cfg, patch) {
+  const safe = clean(patch);
+  let saved = {};
+  try { saved = JSON.parse(fs.readFileSync(cfg.settingsFile, 'utf8')); } catch {}
+  deepMerge(saved, safe);
+  writeJsonAtomic(cfg.settingsFile, saved, 2);
+  deepMerge(cfg, safe);
+  return saved;
+}
+
+// Windows paths are case-insensitive; compare normalised forms.
+// A symlink or junction inside an allowed folder may point outside it, so both sides use the real path when
+// it exists (a file that is not there yet keeps its parent's real path).
+const real = (p) => {
+  try { return fs.realpathSync.native(p); } catch {}
+  const parent = path.dirname(p);
+  if (parent === p) return p;
+  return path.join(real(parent), path.basename(p));
+};
+const norm = (p) => {
+  const r = real(path.resolve(p));
+  return process.platform === 'win32' ? r.toLowerCase() : r;
+};
+
+export function isInside(root, target) {
+  const r = norm(root), t = norm(target);
+  if (t === r) return true;
+  return t.startsWith(r.endsWith(path.sep) ? r : r + path.sep);
+}
+
+export function insideAny(roots, target) {
+  return roots.some((r) => isInside(r, target));
+}

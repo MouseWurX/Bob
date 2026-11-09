@@ -2,7 +2,101 @@
 
 What changed in each version of Bob, newest first. Each version also has its own page, with the download, under [Releases](https://github.com/MouseWurX/Bob/releases).
 
-This file is made from docs/releases by `node installer/make-changelog.js`.
+This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
+
+## 1.5.178
+
+A big one: Bob's own browser and eyes, quick Autonomy and Screen use buttons, Bob on Discord, Bob working on repositories, and more of Brain Engine's tools.
+
+**New, and not tried on real hardware yet.** Everything here is off until you switch it on, and every step Bob takes still shows a card unless you let him work without asking. These were built and tested here but nobody has clicked through them on a real replicant matrix yet. If you try them, tell us what happened at github.com/MouseWurX/Bob/issues.
+
+### Use a browser (a new Hand)
+- Settings, Show advanced settings, Hands: **Use a browser**. Bob gets his own browser window, titled **Bob is browsing**. It is part of Bob, with its own cookies and sign-ins; your own browser is never touched or read.
+- Ask "open the Blender release notes and tell me what's new" or "type fox in the search box and press Enter". Bob reads a page as text plus a numbered list of its links, buttons and fields, then does one thing at a time: click a number, type into a field, press Enter, Tab, Esc or an arrow, scroll, go back, pick an option. Each action is a card first (unless "Let Bob work without asking" is on).
+- While **Don't send anything out** is on he only types into search boxes and never presses Send, Post, Submit, Buy, Pay or Upload, never fills other fields and never picks files. Switch the limit off to let him, still one card each. Password fields stay off-limits while that limit is on. His own pages, downloads, pop-ups and anything that isn't http(s) are always refused.
+- **Forget what Bob's browser knows** (Settings, Hands) clears the window's cookies, sign-ins and cache.
+- Works on Windows, Mac and Linux inside Bob's app. Bob for Android shows the cards; the window is on your replicant matrix.
+
+### Eyes checks (the Apps Hand and the browser)
+- With a vision brain in Equip Bob's **Seeing pictures** slot, Bob takes a picture of the window after a step that says what should happen and asks his eyes whether it did. The result says yes, no or unsure, with one line of what he saw; a no makes him look again instead of pressing on. No new download: any vision brain in that slot does.
+- He can also answer a question about how a window or page looks ("is there a red error banner?"), for canvases, games, 3D viewports and apps that don't name their buttons.
+- **Click by place:** in an app with no named controls, Bob can click at a spot in the picture he took. The card says the exact spot, the red "Bob is driving" bar shows, and Esc or the mouse still stops him. Never in browsers, email or chat apps while "Don't send anything out" is on.
+- **Bob checks his work with his eyes** (Settings, Hands, under Bob's browser and eyes; on) switches the check off if you'd rather save the second it takes.
+
+### Two quick buttons at the top of the chat
+- **🔓 Autonomy** is the same switch as "Let Bob work without asking" in Settings, Hands. Turning it on asks you first, right there; turning it off never asks and works from your phone too. It needs Hands on.
+- **🖥 Screen use** turns on the Apps Hand (Windows) and Bob's own browser in one click, with eyes checks. It also turns the Hands master switch on, and says so if other Hands you'd ticked start working again. Every step still shows a card unless Autonomy is on. Press again to turn just those two Hands off (works from the phone too).
+- ✋ Hands now just says **On** while Bob works without asking; the orange **On** on Autonomy (and the banner) shows that instead of saying it twice.
+- The orange "Bob is working without asking" banner now lists what else he's let do, and gets bigger with each: using your apps (clicking, typing, switching windows), his browser, seeing the screen, and every hard limit you've switched off.
+- It has a **Hide** button. It comes back by itself if Bob is let past anything new, and Settings, Hands has **Show the banner again**.
+- Neither button lifts a hard limit: "Don't send anything out", "Never type into password fields" and the rest stay as you set them, and ✋ Hands still stops everything at once.
+
+### Elsewhere
+- Help: "The Browser Hand", the eyes checks under "The Apps Hand", the Settings: Hands list, and the FAQ "Can Bob use a browser or my screen like the big agents?". The user guide has a Use a browser section.
+
+### Bob on Discord (Settings, Online services, off)
+- **Bob on Discord:** Bob joins a server as a bot you make (never a user account) and answers in the channels you list when a message matches the wake phrase (`hey bob*` by default; the `*` is the job and can sit anywhere; a switch makes it case-sensitive). Discord jobs are guest jobs: only the job types you tick (chat and code help on; web, pictures, clips, music and sounds off), no files, Hands, memory or anything about you, and replies never ping anyone. Files go out only with **Share what Bob makes for Discord** on, and only ones made for that request.
+- **Private mode:** your own Bob in Discord DMs, paired to your own account by a code or your user ID.
+- The bot token is saved as the user variable `BOB_DISCORD_TOKEN` (or `~/.config/bob/env` on Mac and Linux), never in Bob's settings files.
+- Telegram: you type your own account (user ID or @username) in Settings; no account is assumed. The token can also live in `~/.config/bob/env` on Mac and Linux.
+
+### Bob works on repositories (Settings, How Bob works, off)
+- **Let Bob work on repositories:** a list of repositories (Bob's own first; https links or local folders). Each gets its own code copy, branch and patches; your originals are never changed and nothing is ever pushed.
+- Jobs are planned into research, edit and check tasks, each started fresh with the job's notes; the notes are compressed as they grow, so Long memory never overflows.
+- **Let my other Bobs help** (off): research tasks can go to your other Bobs on Bob-Net; they only read.
+- When Git or Node.js is missing, Bob can get his own copies (pinned and checked), kept in his own tools folder.
+
+### Brain Engine's extra tools, and brains over several cards
+- **Brain Engine gets four more of llama.cpp's tools**, built from the same tag: the standard speed test (`llama-bench`), the split-and-join tool (`llama-gguf-split`), the card-sharing server (`ggml-rpc-server`) and the diffusion brain runner (`llama-diffusion-cli`, which the official llama.cpp downloads leave out). Bob finds each one in the built-in engine's folder or in Brain Engine's.
+- **Lend my graphics card** and **Spread big brains over my other Bobs' cards** (Settings, Bob-Net, both off): one brain too big for one replicant matrix can run over several of your Bobs' cards, say the PC and the handheld together. The lending Bob opens his card only when a paired Bob asks through the passcode door, only on his own Tailscale address (never the home network or the internet), and only while it's used: it closes when the other Bob lets go, after 3 minutes with no word, or the moment he starts Gaming. Nothing but parts of the brain and its working numbers travels. If nobody lends, the brain loads at home like always. Not tried on two real machines yet.
+- **Brains in parts** (Lab, Forge, Bring in a full-size brain): a brain that comes as `name-00001-of-0000N.gguf` files is joined into one file after the download, so the Lab's ways can work on it; a part picked from your own folders is joined into the Lab's folder and your parts are left alone. The Forge splits a GGUF over Hugging Face's 50 GB limit into 45 GB parts before an upload.
+- **Add the standard speed test** (Lab, Challenges, off unless ticked): llama-bench's read and write speeds (pp512 / tg128) go on the scoreboard beside the Challenges' own speed, so your numbers can be compared with what other people post.
+- **Diffusion brains** (Lab, Playground, a sixth page): try a Dream, LLaDA or RND1 brain, which fills in a whole block of blanks over a number of steps instead of writing one word after another, and watch the answer form. Needs Brain Engine (Windows and Linux). Bob's chat can't run these, so your own diffusion brain gets no chat jobs.
+- The Brain Engine build also carries the direction finder (`llama-cvector-generator`) and the adapter tool (`llama-export-lora`). These tools arrive with the next Brain Engine download; until then Bob says which ones are missing.
+
+### Smaller fixes
+- **Settings, Brains:** the folds no longer squeeze into a thin 26-pixel strip.
+- Behind the scenes: a release check now fails if a test file isn't in the test list (two suites had been left out of it in 1.5.177).
+
+## 1.5.177
+
+Brain Engine and Riker become the defaults, and the Engines list gets a rework.
+
+- **Brain Engine is the default engine for brains.** It's listed with or without the Lab, says plainly it's based on llama.cpp and not an official build, and has a real **Check for updates**.
+- **Riker is the default Brain** in the catalog (Q4, or Q3 on an 8 GB card), from its public Hugging Face page.
+- **⚙ engine picker** (Settings, Engines): choose which engine runs the brains next time, and which one the Lab uses. Updates check the download's checksum and keep the one before, so **Go back** works; **Remove it** / **Keep it** asks before anything goes. Engines are grouped so the list is easier to read.
+- The Lab finds its tools (the direction finder, the adapter folder) in either download.
+- A Brain Engine copied into its folder by hand (with no note of which build it is) is no longer offered the very same build by **Check for updates**; only a newer upload shows. Thanks to the owner's test round for catching it.
+- **Pick a file and Pick a folder open on top of Bob's window.** In Bob's own window they're now the system's own picker, in front of him (before, Add a brain from a file could open behind him, or not at all). Windows, Mac and Linux; the phone has no picker, so adding brains stays on the replicant matrix.
+- **The engine's own chat page is off.** llama.cpp and Brain Engine come with a plain chat page that looks like another app; Bob switches it off when he starts a brain, so the only page you chat on is his. Help: a new FAQ, "I loaded a brain and the page looked like a different app".
+
+### Also in this update (1.5.170 to 1.5.176)
+
+These came out together with 1.5.177, so here they are in one place. Each has its own section in the changelog.
+
+- **Your files moved into one folder (1.5.174).** Bob's files now live in `app`, so his GitHub page only shows the README, the changelog and the licence. If you run Bob from a copy of the source, the first update after this needs **Update Bob from GitHub** once (or one run of `app\Install Bob.cmd`); after that Bob finds his new folder by himself.
+- **The main screen always fits the window (1.5.176).** No more scrolling into empty space below the three panels; only the chat, Bob's thinking, the task queue, Now running, the menu and open pages scroll.
+- **Word bubbles (1.5.170).** Bob's and Patches' lines pop out in little bubbles beside Bob's picture, close by themselves after 15 seconds (not while you point at one), or with ✕ or Esc. Fixes #36; thanks to mohdmunis161 for the first go at it in #62.
+- **The Lab is in the left pane from the start (1.5.172).** The switch in Settings stays, and anyone who turned it off stays off.
+- **Challenge times for your own card (1.5.171).** The Lab's Challenges tab scales its estimate to this replicant matrix's card, or its shared memory on a Mac. The Lab's goals point to Get models > Engines for Brain Engine, and a goal's printed Forge plan now matches what the Forge reads.
+- **Bring in a full-size brain (1.5.173).** In the Lab's Forge tab: paste a Hugging Face name, a .gguf link or a file path, **Look**, then **Get it**. Your own brains show in the Lab's lists too, and the Lab finds the direction finder and adapter tool in Brain Engine's folder.
+
+## 1.5.176
+
+- **Bob's main screen always fits the window.** The page itself no longer scrolls down into empty space below the three panels, at any window size or screen scale. Only the parts that should scroll still do: the chat, Bob's thinking, the task queue, Now running, the menu and any page you open. Thanks to the owner for spotting it.
+
+## 1.5.174
+
+Behind the scenes: Bob's GitHub page is tidier.
+
+- His files now live in one folder, `app`, so the front page only shows the README, the changelog and the licence. Nothing changes inside Bob.
+- If you run Bob from a copy of the source: the first update after this one needs **Update Bob from GitHub** once (or one run of `app\Install Bob.cmd`). After that, Bob finds his new folder by himself.
+
+## 1.5.173
+
+- **Bring in a full-size brain** (Lab, Forge tab, under the cards): Bob's downloads are running files (Q4 and friends), and the Lab's ways here (Make a brain's running files, the ladder, Mix two brains, Stack layers, Take out the refusal habit) start from the full-size copy (F16 or BF16). Paste a Hugging Face name like `unsloth/Qwen3-1.7B-GGUF`, a link to a .gguf file, or the path of a file on this replicant matrix; **Look** lists the full-size files with sizes and licence, **Get it** brings one into the Lab's full-size folder (`models/bob/lab/full-size`), and it joins Bob's list under **Your own brains**, so every list in the Lab and Equip Bob sees it. Split files come down in all their parts; a download picks up where it stopped; Stop throws the part away. Nothing is uploaded.
+- **Your own brains** (Get models, Add your own brain) now show in the Lab's brain lists too.
+- The Lab looks for the direction finder (`llama-cvector-generator`) and the adapter folder (`llama-export-lora`) in Brain Engine's folder as well as the engine's own, and says plainly that they come with Brain Engine, not with the engine's own download (which never had them). Thanks to the owner for catching that on the replicant matrix.
 
 ## 1.5.172
 
@@ -14,13 +108,44 @@ The **Computer Science Lab** is in the left pane from the start.
 - Help: Settings (the switch's line) and The Computer Science Lab updated; the User guide too.
 - Phone (Bob for Android): the phone's menu shows the Lab the same way, following the replicant matrix running Bob.
 
-## 1.5.169
+## 1.5.171
 
 The Lab's Challenges tab tells you how long each challenge takes on **your** card.
 
 - Every challenge used to say "about 2 min on a 16 GB card" to everyone. Now, when Bob knows this replicant matrix's graphics card, the line names it and scales the guess: a 6 GB card sees a longer estimate, a 24 GB card a slightly shorter one. On a Mac, where the memory is shared, the line says "with your 32 GB of shared memory" instead of "your card". With no card to read, the plain 16 GB line stays.
 - Help: The Lab's Challenges tab updated. Tests in `test/run-lab-test.js`.
 - Phone (Bob for Android): the phone's Lab page shows the card of the replicant matrix running the Lab, the same as the desktop.
+- The Lab's goals: the usage map's Brain Engine hint and error now point to Get models > Engines: Brain Engine (test build), and a goal's printed Forge plan now has the shape the Forge reads (strong and strong_cover for the whole plan, a usage-map cut as the rung's keep file, and heal hours set above the estimate). Tests in `test/run-lab-recipes-test.js`.
+
+## 1.5.170
+
+Bob's and Patches' lines now pop out in word bubbles.
+
+- Bob's and Patches' lines now pop out in little word bubbles beside Bob's picture, over the chat, so a long line no longer pushes the menu down. Fixes #36. Thanks to mohdmunis161 for the first go at this in #62.
+- A bubble closes by itself after 15 seconds (not while you're pointing at it), or with a tap on its ✕ or Esc. The details of what Bob is working on go in his thinking, not in a bubble.
+- Help: the paragraph about Patches says where the bubbles appear and how to close one. Tests in `test/run-bob-life-test.js`.
+
+## 1.5.169
+
+**Catching up: what 1.5.159 to 1.5.168 brought** (they went out together this morning):
+
+- **The Lab's Forge tab**: every way to make a brain, with tips; plans for the Forge, which can start a rented run from a purchase card (off unless you switch it on); plans can teach several things at once, including a way of thinking.
+- **A local leaderboard** by class of model, **sixteen more challenges**, and **Guard rails**: test your own brain.
+- **Hugging Face**: Forge plans can start from a brain there and learn from its datasets.
+- **Give it eyes, give it ears**: add a picture reader or hearing to a brain that has none.
+- **Peek inside** (which experts a brain used), and **Mix, Stack and Take out the refusal habit** at home, free.
+- **The Playground** gets Longer, Faster (Turbo) and Teach it.
+- **One switch for the whole Lab**: Keep it simple or Professional.
+- **Fewer failed-build e-mails** for anyone working on Bob.
+
+**New in 1.5.169:**
+
+The Lab's lesson builder no longer makes "writing in my voice" lessons out of logs and tables.
+
+- In the first real run of the lesson builder, three of five "writing in my voice" lessons came from a log file full of numbers. Now each passage is checked for whether it reads as prose. A passage that is mostly numbers or a table can still teach "working with my material", but never "writing in my voice".
+- The survey box says how many passages were left out of the voice lessons for that reason.
+- Tests: `test/run-lab-build-test.js`.
+- **Bob's own update check works on ordinary Windows PCs again.** Two of Bob's tests read the tester's computer: one took Windows' Microsoft Store "python" placeholder for a real Python, and one read a tester's switch from the environment. On most Windows PCs that made the test run stop, so an Update could report a failed check (since 1.5.167). Both now give the same result on every PC.
 
 ## 1.5.168
 
@@ -985,7 +1110,7 @@ Nothing is renamed or switched on or off, only moved, so every setting keeps its
 ## 1.5.70
 
 ### Docs
-- New page: [Brain races](docs/BRAIN-RACES.md), with the full results behind the 16 GB starter set: the coding race (Qwen3.6 35B-A3B vs Qwen3 Coder 30B), the everyday chat and Office race (Qwen3.6 vs Gemma 4 26B), the live checks of Qwen3.6 at 128K, and the Deep thinking race (Qwen 3.8 27B vs Gemma 4 26B). It also lists what hasn't been measured yet, like the smaller Q3 file for 8 GB cards.
+- New page: [Brain races](app/docs/BRAIN-RACES.md), with the full results behind the 16 GB starter set: the coding race (Qwen3.6 35B-A3B vs Qwen3 Coder 30B), the everyday chat and Office race (Qwen3.6 vs Gemma 4 26B), the live checks of Qwen3.6 at 128K, and the Deep thinking race (Qwen 3.8 27B vs Gemma 4 26B). It also lists what hasn't been measured yet, like the smaller Q3 file for 8 GB cards.
 - Mac: the README, User guide and Help explain how official Mac builds are signed, and CONTRIBUTING has a section for people who build their own copy.
 
 ## 1.5.69
@@ -1235,7 +1360,7 @@ Nothing is renamed or switched on or off, only moved, so every setting keeps its
 - Turning PDFs into Word or Excel files isn't supported, because LibreOffice does it badly. Bob can read the words in a PDF instead.
 
 ### Docs
-- New page: [Bob and similar projects](https://github.com/MouseWurX/Bob/blob/main/docs/COMPARISON.md). It's a fact-based look at how Bob differs from other local AI apps. It isn't a ranking, and it says where another tool may suit you better. The README links to it.
+- New page: [Bob and similar projects](https://github.com/MouseWurX/Bob/blob/main/app/docs/COMPARISON.md). It's a fact-based look at how Bob differs from other local AI apps. It isn't a ranking, and it says where another tool may suit you better. The README links to it.
 - The README and user guide now explain that Bob picks his own session (new in 1.5.43).
 - New: [CHANGELOG.md](https://github.com/MouseWurX/Bob/blob/main/CHANGELOG.md) lists what changed in every version, newest first. The README links to it at the top.
 
@@ -1333,7 +1458,7 @@ Nothing is renamed or switched on or off, only moved, so every setting keeps its
 - **House style:** in Equip Bob, set your usual music genre, mood, length and vocals, picture style and shape, clip style and length, sound-effect length, and what "morning" or "evening" means to you. Every box starts empty (Bob picks and says what he picked). When Bob uses one, the chat says "Used your house style: … · Change".
 - **Projects in Settings:** add your project folders (with **Browse…**), and pick a main one. "My project" means that one, and searching starts there.
 - **gpt-oss 20B on Bob's own engine** now runs from Bob's own official copy when it's downloaded, instead of Ollama's copy (which has no chat template): 25 of 25 tool jobs right instead of 2. The same goes for any brain whose official file is in Bob's models folder. Now running says "(Bob's own copy)" when this happens, and the logbook notes it.
-- The [performance page](https://github.com/MouseWurX/Bob/blob/main/docs/PERFORMANCE.md) has the final tool-job scores.
+- The [performance page](https://github.com/MouseWurX/Bob/blob/main/app/docs/PERFORMANCE.md) has the final tool-job scores.
 - Releases publish again: one test tripped over Windows line endings on GitHub's build machine, so 1.5.31 to 1.5.34 built but weren't published. This release includes all of them.
 
 **Full Changelog**: https://github.com/MouseWurX/Bob/compare/v1.5.28...v1.5.35
@@ -1348,7 +1473,7 @@ Nothing is renamed or switched on or off, only moved, so every setting keeps its
 
 - **Pick Bob's voice in one place:** wherever you choose his voice (the everyday Settings page, Voice & conversation, and Brains), you pick the engine and then, right next to it, the voice inside it, with **Play sample**. Kokoro shows all 22 voices; Windows shows the English voices your Windows has (or Automatic). Each Piper voice is its own download, so Piper voices are listed with the engines.
 - **Download links can't go stale any more:** every model link now points at an exact, frozen version on Hugging Face instead of "the latest", so an upstream update or a renamed folder can't break a download or change a file under Bob. Five renamed folders now use their new names. A check stops any unpinned link from shipping.
-- **Tool jobs work more often:** Bob's brains now use their makers' recommended settings (and a proper chat template when the file has none), and he does a job in the same reply instead of only saying he will. When web search is off, he says where the switch is. The [performance page](https://github.com/MouseWurX/Bob/blob/main/docs/PERFORMANCE.md) has a new "What testing taught us" section.
+- **Tool jobs work more often:** Bob's brains now use their makers' recommended settings (and a proper chat template when the file has none), and he does a job in the same reply instead of only saying he will. When web search is off, he says where the switch is. The [performance page](https://github.com/MouseWurX/Bob/blob/main/app/docs/PERFORMANCE.md) has a new "What testing taught us" section.
 
 **Full Changelog**: https://github.com/MouseWurX/Bob/compare/v1.5.32...v1.5.33
 
@@ -1368,7 +1493,7 @@ Nothing is renamed or switched on or off, only moved, so every setting keeps its
 
 - More readings in Now running: how fast Bob's last reply was, and what Bob himself costs your PC.
 - Bob's window pauses its live readings while it's hidden or while a full-screen game is in front, so it takes nothing from your game.
-- The [performance page](https://github.com/MouseWurX/Bob/blob/main/docs/PERFORMANCE.md) now has the final tool-use scores for each brain.
+- The [performance page](https://github.com/MouseWurX/Bob/blob/main/app/docs/PERFORMANCE.md) now has the final tool-use scores for each brain.
 
 **Full Changelog**: https://github.com/MouseWurX/Bob/compare/v1.5.30...v1.5.31
 
@@ -1395,7 +1520,7 @@ Nothing is renamed or switched on or off, only moved, so every setting keeps its
 
 - **Web search is now a switch, off by default** (Settings, Everyday, "Let Bob search the web"). Turn it on if you want Bob to look things up on DuckDuckGo; only the search words and page addresses leave your PC.
 - **A much bigger Help, in Bob's own voice:** every feature and setting, a glossary and an FAQ. Bob can also read his own Help, so he can walk you through setting him up.
-- **New [performance page](https://github.com/MouseWurX/Bob/blob/main/docs/PERFORMANCE.md):** what makes Bob fast and light, with measured numbers.
+- **New [performance page](https://github.com/MouseWurX/Bob/blob/main/app/docs/PERFORMANCE.md):** what makes Bob fast and light, with measured numbers.
 - "Get Bob ready while you type" keeps its saved starts for your two most recent brains only, so they don't fill the disk.
 
 **Full Changelog**: https://github.com/MouseWurX/Bob/compare/v1.5.26...v1.5.27

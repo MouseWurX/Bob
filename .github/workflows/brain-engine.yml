@@ -1,5 +1,5 @@
-# Builds Brain Engine (engine/README.md): llama.cpp at bundledLlamaTag with engine/patches/ applied.
-# Runs when engine/ or this file changes, and by hand. Windows x64: the llama.dll / llama-server.exe set, to put over a COPY of the official
+# Builds Brain Engine (app/engine/README.md): llama.cpp at bundledLlamaTag with app/engine/patches/ applied.
+# Runs when app/engine/ or this file changes, and by hand. Windows x64: the llama.dll / llama-server.exe set, to put over a COPY of the official
 # CUDA or Vulkan zip for the same tag (the card backends are separate DLLs and are not changed).
 # Linux x64: the same set for checking. Every action is pinned to a full commit SHA, like build.yml.
 name: Brain Engine
@@ -7,7 +7,7 @@ name: Brain Engine
 on:
   push:
     branches: [main, 'claude/**']
-    paths: ['engine/**', '.github/workflows/brain-engine.yml']
+    paths: ['app/engine/**', '.github/workflows/brain-engine.yml']
   workflow_dispatch:
     inputs:
       publish:
@@ -28,10 +28,10 @@ jobs:
       - name: Fetch llama.cpp at the tested tag and apply the patches
         shell: bash
         run: |
-          tag=$(node -p "require('./package.json').bob.bundledLlamaTag")
+          tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
           echo "TAG=$tag" >> "$GITHUB_ENV"
           git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
-          for p in engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
+          for p in app/engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
       - name: Install Ninja
         run: choco install ninja
       - name: Build (the official windows-cpu settings)
@@ -39,8 +39,15 @@ jobs:
         working-directory: llama.cpp
         run: |
           call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          cmake -S . -B build -G "Ninja Multi-Config" -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake -DLLAMA_BUILD_BORINGSSL=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_OPENMP=ON -DGGML_OPENMP_FETCH=ON
-          cmake --build build --config Release --target llama-server
+          cmake -S . -B build -G "Ninja Multi-Config" -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake -DLLAMA_BUILD_BORINGSSL=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_OPENMP=ON -DGGML_OPENMP_FETCH=ON -DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON
+          cmake --build build --config Release --target llama-server llama-bench llama-gguf-split ggml-rpc-server llama-diffusion-cli
+      - name: Build llama-cvector-generator and llama-export-lora on their own (CPU, static; upstream skips it when the backends load at run time)
+        shell: cmd
+        working-directory: llama.cpp
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          cmake -S . -B build-cv -G Ninja -D CMAKE_BUILD_TYPE=Release -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
+          cmake --build build-cv --target llama-cvector-generator llama-export-lora
       - name: Pack (llama and server files only, never ggml)
         shell: bash
         run: |
@@ -48,9 +55,13 @@ jobs:
           mkdir "$out"
           cd llama.cpp/build/bin/Release
           cp llama-server.exe $(ls *.dll | grep -v '^ggml') "../../../../$out/"
+          # the four tools Bob uses beside the server: speed test, split/join, brain sharing over Tailscale, diffusion brains.
+          # ggml-rpc-server is copied by name (the ggml filter above is for the card backends, which stay the official ones).
+          cp llama-bench.exe llama-gguf-split.exe ggml-rpc-server.exe llama-diffusion-cli.exe "../../../../$out/"
           cd ../../../..
+          cp llama.cpp/build-cv/bin/llama-cvector-generator.exe llama.cpp/build-cv/bin/llama-export-lora.exe "$out/"
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
-          cp engine/README.md "$out/README-Brain-Engine.md"
+          cp app/engine/README.md "$out/README-Brain-Engine.md"
           ls -la "$out"
           7z a "$out.zip" "./$out/*"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -62,7 +73,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash engine/publish.sh "$TAG" brain-engine-*-win-x64.zip
+        run: bash app/engine/publish.sh "$TAG" brain-engine-*-win-x64.zip
 
   linux:
     runs-on: ubuntu-latest
@@ -72,22 +83,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Fetch llama.cpp at the tested tag and apply the patches
         run: |
-          tag=$(node -p "require('./package.json').bob.bundledLlamaTag")
+          tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
           echo "TAG=$tag" >> "$GITHUB_ENV"
           git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
-          for p in engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
+          for p in app/engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
       - name: Build
         working-directory: llama.cpp
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON
-          cmake --build build -j4 --target llama-server
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON
+          cmake --build build -j4 --target llama-server llama-bench llama-gguf-split ggml-rpc-server llama-diffusion-cli
+          # upstream skips cvector-generator and export-lora when the backends load at run time, so it gets its own CPU-only, static build
+          cmake -B build-cv -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
+          cmake --build build-cv -j4 --target llama-cvector-generator llama-export-lora
       - name: Pack
         run: |
           out=brain-engine-$TAG-linux-x64
           mkdir "$out"
-          cp llama.cpp/build/bin/llama-server $(ls llama.cpp/build/bin/*.so* | grep -v '/libggml') "$out/"
+          cp llama.cpp/build/bin/llama-server llama.cpp/build/bin/llama-bench llama.cpp/build/bin/llama-gguf-split llama.cpp/build/bin/ggml-rpc-server llama.cpp/build/bin/llama-diffusion-cli llama.cpp/build-cv/bin/llama-cvector-generator llama.cpp/build-cv/bin/llama-export-lora $(ls llama.cpp/build/bin/*.so* | grep -v '/libggml') "$out/"
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
-          cp engine/README.md "$out/README-Brain-Engine.md"
+          cp app/engine/README.md "$out/README-Brain-Engine.md"
           tar czf "$out.tar.gz" "$out"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -97,4 +111,4 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash engine/publish.sh "$TAG" brain-engine-*-linux-x64.tar.gz
+        run: bash app/engine/publish.sh "$TAG" brain-engine-*-linux-x64.tar.gz
