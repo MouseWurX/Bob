@@ -11,7 +11,7 @@ import crypto from 'node:crypto';
 import http from 'node:http';
 import { LESSON_SKILLS } from '../src/lab-skills.js';
 import { QUIZ, TOOLS, runQuiz } from '../src/lab-test.js';
-import { PACKS, PACK_IDS, REASONING, SUMS, RULES, PICK_TOOL, CODE, letterOf, numberOf, codeOf, codeTool, runPack, mergeScores, scoreboard } from '../src/lab-challenges.js';
+import { PACKS, PACK_IDS, REASONING, SUMS, RULES, PICK_TOOL, CODE, letterOf, numberOf, codeOf, codeTool, runPack, mergeScores, scoreboard, classOf, classBoard, CLASSES, PACK_VERSION } from '../src/lab-challenges.js';
 import { runSandboxed } from '../src/selftools.js';
 import { METHODS, LEFT_OUT, scrub, makeForgePlan, rungFieldsOk } from '../src/lab-forge.js';
 import { PATHS, PATH_GROUPS, BUNDLES, clashes, pathByName } from '../public/lab-thinking-paths.js';
@@ -61,6 +61,7 @@ makeGguf(brainFile, [['general.architecture', 8, 'testmoe'], ['general.name', 8,
 const g = readGguf(brainFile);
 const f = brainFacts(g);
 check('reads a made-up mixture-of-experts brain', f.arch === 'testmoe' && f.experts === 8 && f.used === 2 && f.layers === 2 && f.fullSize && f.expertLayers.join() === '0,1', JSON.stringify(f));
+{ const all = g.tensors.reduce((a, t) => a + t.dims.reduce((x, d) => x * Number(d), 1), 0); check('it counts every weight in the file, for the leaderboard classes', f.params === all && all > 0 && typeof f.paramsB === 'number' && typeof f.activeB === 'number'); }
 const keep = [[1, 3, 5, 7], [0, 2, 4, 6]];
 check('a good keep list passes', checkKeep(g, keep) === '');
 check('a keep list smaller than the picks per word is refused', /at least 2/.test(checkKeep(g, [[1], [2]])));
@@ -340,6 +341,26 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   const board = scoreboard([{ id: 'riker', ...b }, { id: 'bill', brain: { name: 'Bill' }, packs: { sums: { score: 70 } } }]);
   check('the scoreboard has one row per brain, a cell per pack, empty where not run', board.length === 2 && board[0].name === 'Bill' && board[0].scores.sums === 70 && board[0].scores.reasoning === null && board[1].scores.reasoning === 90 && board[1].sizeGB === 17.5);
 }
+// 1.5.162 the leaderboard by class of model
+{
+  check('classes go by total weights, from Tiny to Giant, and a brain with no count has none', CLASSES.length === 6 && classOf(1.5) === 'tiny' && classOf(2) === 'small' && classOf(7.6) === 'medium' && classOf(14) === 'large' && classOf(30.5) === 'huge' && classOf(235) === 'giant' && classOf(0) === '' && classOf(undefined) === '');
+  const m = mergeScores(null, { name: 'Bill', paramsB: 21.1, activeB: 3.6, experts: 64, madeHere: true, packs: { sums: { score: 80, right: 8, of: 10 }, quiz: { score: 60, right: 6, of: 10 } }, tps: 50 });
+  check('a score remembers its test\'s version and the brain\'s weights', m.packs.sums.v === PACK_VERSION.sums && m.brain.paramsB === 21.1 && m.brain.activeB === 3.6 && m.brain.madeHere === true);
+  m.packs.quiz.v = (PACK_VERSION.quiz || 1) + 99; // pretend the quiz changed since
+  const rows = scoreboard([{ id: 'bill', ...m }, { id: 'riker', brain: { name: 'Riker', paramsB: 30.5, activeB: 3.3, experts: 128 }, packs: { sums: { score: 90, v: PACK_VERSION.sums } }, speed: { tps: 40 } }, { id: 'old', brain: { name: 'Old one' }, packs: { sums: { score: 50 } } }, { id: 'fast', brain: { name: 'Fast', paramsB: 25 }, packs: { sums: { score: 80, v: PACK_VERSION.sums } }, speed: { tps: 90 } }]);
+  const bill = rows.find((r) => r.id === 'bill');
+  check('a mixture of experts sits in the class of its total, with the active weights shown', bill.cls === 'huge' && bill.moe && bill.activeB === 3.6 && bill.madeHere);
+  check('an older test\'s score shows but doesn\'t count towards overall', bill.old.join() === 'quiz' && bill.scores.quiz === 60 && bill.overall === 80 && bill.ran === 1);
+  check('a brain scored before classes has no class yet', rows.find((r) => r.id === 'old').cls === '');
+  const huge = classBoard(rows, 'huge');
+  check('a class board puts the best overall first, then the faster on a tie', huge.map((r) => r.name).join() === 'Riker,Fast,Bill');
+  const full = Object.fromEntries(PACK_IDS.map((id) => [id, { score: 80, v: PACK_VERSION[id] }]));
+  const two = scoreboard([{ id: 'one', brain: { name: 'One trick', paramsB: 25 }, packs: { sums: { score: 95, v: PACK_VERSION.sums } }, speed: { tps: 200 } }, { id: 'full', brain: { name: 'All six', paramsB: 25 }, packs: full, speed: { tps: 10 } }]);
+  check('a brain that ran one challenge at 95 sits below one that ran them all at 80', classBoard(two, 'huge').map((r) => r.name).join() === 'All six,One trick' && two.find((r) => r.id === 'full').all && !two.find((r) => r.id === 'one').all);
+  const ui = read('public/lab.js'), css = read('public/style.css');
+  check('the Challenges tab shows the board by class with filter chips and a best-in-class ribbon', ['By class of model', 'Every brain in one table', 'Mixture of experts', 'Dense', 'Made here', 'Best in class', 'Not placed yet', 'at work', 'GB graphics card', 'so it can\'t win by skipping the hard one'].every((w) => ui.includes(w)) && /i === 0 && r\.all && c\.id/.test(ui) && /aria-pressed/.test(ui) && /\.lab-chip/.test(css) && /\.lab-ribbon/.test(css));
+  check('Save from the class board keeps the class in a column', /title: 'Lab leaderboard by class', head: \['Class'/.test(ui));
+}
 // a challenge job, fake steps
 {
   const packsRun = [];
@@ -357,6 +378,7 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   check('it runs each pack, with the sandbox only for code-it', cr.state === 'done' && packsRun.map((x) => x.join(':')).join() === 'sums:true,code:true' && cr.report.challenges.map((c) => c.score).join() === '60,90', cr.error || '');
   const board = chLab.scores();
   check('the scoreboard has the brain, its fingerprint file, size and speed, and no paths', board.length === 1 && board[0].name === 'Test MoE' && board[0].scores.sums === 60 && board[0].scores.code === 90 && board[0].tps === 20 && !JSON.stringify(board).includes(tmp) && JSON.parse(fs.readFileSync(path.join(dataDir, 'lab', 'scores', 'test-moe.json'), 'utf8')).brain.sha256 === 'cafe');
+  check('the scoreboard row knows it\'s a mixture of experts from its file, and the page gets the classes', board[0].moe === true && board[0].cls === '' && chLab.view().classes.length === 6 && chLab.view().classes[0].label === 'Tiny');
   check('the page gets the packs, the scoreboard and the hardware line', chLab.view().packs.length === 6 && chLab.view().scores.length === 1 && /GB RAM/.test(chLab.view().hardware));
   check('Gaming on: challenges wait too', await new Lab({ ...cfg, session: 'light' }, { shop, room: big }).startChallenge({ from: 'test-moe', packs: ['sums'] }).then(() => false, (e) => /Gaming is on/.test(e.message)));
   const be = { engine: { loaded: async () => [{ name: 'qwen', vram: 9e9 }], unloadAll: async () => {} } };

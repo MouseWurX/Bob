@@ -1129,7 +1129,7 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .mini-switch { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 2px 8px; font: inherit; font-size: 12px; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
 .mini-switch .st { font-weight: 700; text-transform: uppercase; font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--line); }
 .mini-switch[aria-checked="true"] { color: var(--text); border-color: var(--good); }
-.mini-switch[aria-checked="true"] .st { background: var(--good); color: var(--on-accent, #fff); }
+.mini-switch[aria-checked="true"] .st { background: var(--good); color: var(--on-accent); }
 .get-more { margin: 8px 0 0; }
 .get-more-btn { white-space: nowrap; }
 .kit:not(.shop) { display: flex; align-items: center; padding-right: 8px; }
@@ -1490,3 +1490,12 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .forge-share input[type=number] { width: 4.5em; flex: none; }
 .forge-thinking details { margin: 4px 0; }
 .forge-own input { width: min(100%, 28em); }
+/* 1.5.162 the leaderboard by class */
+.lab-chips { flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.lab-chip { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; background: none; color: inherit; font: inherit; min-height: 32px; cursor: pointer; }
+.lab-chip.on { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+.lab-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lab-class { margin-top: 12px; }
+.lab-class caption { text-align: left; padding: 4px 0; }
+.lab-best th, .lab-best td { font-weight: 600; }
+.lab-ribbon { display: inline-block; font-size: 0.8em; padding: 1px 6px; border-radius: 4px; background: var(--accent); color: var(--on-accent); white-space: nowrap; }
