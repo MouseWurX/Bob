@@ -398,7 +398,7 @@ export function createCellar() {
         <label class="pick"><span>Guess up to (words ahead)</span><input type="text" inputmode="numeric" data-draft="max" value="${esc(d.max ?? 16)}" style="width:5em" aria-label="Guess up to this many words ahead"></label>
         <label class="pick"><span>At least (words ahead)</span><input type="text" inputmode="numeric" data-draft="min" value="${esc(d.min ?? 1)}" style="width:5em" aria-label="Guess at least this many words ahead"></label></div>
       ${turboRowsHtml(sp, llms)}
-      ${sp.trainer ? `<p class="muted">The Lab's Trainer pack is here (for Teach it). <button type="button" class="link" data-trainerremove>Remove the Trainer pack</button></p>` : ''}
+      ${sp.trainer ? `<p class="muted">The Lab's Trainer pack is here (for Teach it). <button type="button" class="link" data-trainerremove aria-expanded="false">Remove the Trainer pack</button></p>` : ''}
       <div class="row"><label class="pick"><span>Extra settings for one brain</span><select data-margsmodel>${models.map((m) => `<option ${m === speedModel ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>
         <label class="pick" style="flex:1"><span>llama.cpp flags (for example <code>--n-cpu-moe 8</code>)</span><input type="text" data-margs value="${esc((sp.modelArgs?.[speedModel || models[0]] || []).join(' '))}" placeholder="none"></label></div>
     </div>`;
@@ -1135,7 +1135,14 @@ export function createCellar() {
       if ((tab === 'style' || (tab === 'settings' && (b.dataset.motion || b.dataset.nowneed))) && mode === 'shop' && await stylePage.onClick(b, settings)) return;
       if (b.dataset.sampleEngine) { sampler.play(b); return; }
       if (b.dataset.turboremove) { const r = await api('/api/settings', { speed: { turbo: { [b.dataset.turboremove]: null } } }); settings.speed = r.speed; const box = b.closest('div')?.parentElement; flash(box || b, 'Turbo removed for that brain.'); b.closest('.row')?.remove(); return; } // 1.5.16x
-      if ('trainerremove' in b.dataset) { await api('/api/lab/teach/trainer/remove', {}); settings.speed = { ...settings.speed, trainer: false }; flash(b.parentElement, 'The Trainer pack is removed. Brains you taught stay.'); b.remove(); return; } // 1.5.16x
+      if ('trainerremove' in b.dataset) { // 1.5.167: in-page confirm, same words as the Lab's Teach it page
+        const p = b.parentElement; if (p.querySelector('[data-trainerremovego]')) return;
+        b.setAttribute('aria-expanded', 'true');
+        p.insertAdjacentHTML('beforeend', '<div class="setup-offer" role="alert"><strong>Remove the Trainer pack?</strong><span>Brains you taught stay. Get it again any time.</span><div class="row"><button type="button" class="get" data-trainerremovego>Remove it</button><button type="button" class="link" data-trainerremoveno>Keep it</button></div></div>');
+        p.querySelector('[data-trainerremovego]').focus(); return;
+      }
+      if ('trainerremoveno' in b.dataset) { const p = b.closest('.setup-offer').parentElement; b.closest('.setup-offer').remove(); const r = p.querySelector('[data-trainerremove]'); if (r) { r.setAttribute('aria-expanded', 'false'); r.focus(); } return; }
+      if ('trainerremovego' in b.dataset) { const p = b.closest('.setup-offer').parentElement; await api('/api/lab/teach/trainer/remove', {}); settings.speed = { ...settings.speed, trainer: false }; b.closest('.setup-offer').remove(); const r = p.querySelector('[data-trainerremove]'); if (r) r.remove(); flash(p, 'The Trainer pack is removed. Brains you taught stay.'); return; }
       if (b.dataset.qreset) { // 1.5.148: one preset back to Qwen's numbers
         const fs = b.closest('[data-qpreset]'); const d = settings.qwenDefaults?.[b.dataset.qreset] || {};
         for (const f of fs.querySelectorAll('[data-qfield]')) f.value = d[f.dataset.qfield] ?? '';
