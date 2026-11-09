@@ -48,6 +48,11 @@ export const HANDS = {
     what: 'When none of his tools fits a job, Bob can write a small new one, tested in a sandbox and read by his reviewer, and you see one card before it\'s added. A tool he made can only use its own folder and the folders listed on its card, can\'t start other programs, and only uses the internet if the card says so. Any downloads are pinned to one exact file. Tools he made are listed under Tools Bob made, where you can turn one off, see its code or remove it.',
     tools: ['make_tool', 'use_my_tool', 'my_tools']
   },
+  browser: {
+    label: 'Use a browser',
+    what: 'Bob gets his own browser window (part of Bob, separate from your browser and its sign-ins): he opens a page, reads its links, buttons and fields, and clicks, types, scrolls or presses keys there, one approved action at a time, and can check the result with his eyes brain. While "Don\'t send anything out" is on he may only type into search boxes and never presses Send, Post, Submit, Buy or Upload. Never password fields, never his own pages, never downloads. The window is on this replicant matrix; the phone shows the cards.',
+    tools: ['browser_open', 'browser_read', 'browser_act']
+  },
   mcp: {
     label: 'Connected apps (MCP)',
     what: 'Works inside apps that offer Bob their tools through MCP, such as Unreal Engine or Blender with their MCP add-on: placing things in a level, changing a scene, reading what is there. You add each app below and switch it on; Bob starts or reaches it only when a job needs it and lets it go after 5 minutes unused. Every step shows a card with the app, the tool and its exact inputs. Only apps on this replicant matrix while "Don\'t send anything out" is on.',
@@ -90,6 +95,7 @@ export function cleanHands(v = {}) {
   out.limits = {};
   for (const k of Object.keys(LIMITS)) out.limits[k] = v.limits?.[k] !== false;
   out.timeoutMin = [1, 5, 15, 30, 60, 120].includes(Number(v.timeoutMin)) ? Number(v.timeoutMin) : 15;
+  out.eyesCheck = v.eyesCheck !== false; // "Bob checks his work with his eyes" (src/eyes.js): on, used only when an eyes brain is equipped
   return out;
 }
 export const handsSettings = (cfg) => cleanHands(cfg.hands || {});

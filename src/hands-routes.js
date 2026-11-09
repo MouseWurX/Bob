@@ -18,6 +18,8 @@
 //   POST /api/hands/sandbox    check again that the sandbox for Bob's own tools holds on this PC
 //   POST /api/hands/mcp        connected apps (src/mcp.js): { add: { name, cmd, args, cwd } | { name, url } } | { paste: text }
 //                              | { id, on } | { id, remove: true } | { id, check: true }  (new apps come in switched off)
+//   POST /api/hands/browser    { forget: true } clears what Bob's own browser window knows (its cookies, sign-ins, cache)
+//                              | { eyesCheck: bool } "Bob checks his work with his eyes" (src/eyes.js)
 import { handsView, stopRun, stopEverything, holdHands, saveRecipe, removeRecipe, loadRecipes, runApproved } from './hands.js';
 import { handsSettings, cleanHands, HANDS, LIMITS, handOn } from './hands-settings.js';
 import fs from 'node:fs';
@@ -57,6 +59,7 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
       if (Array.isArray(b.folders)) next.folders = b.folders.filter((f) => typeof f === 'string' && isDir(f)); // only folders that exist
       if (Array.isArray(b.readOnlyFolders)) next.readOnlyFolders = b.readOnlyFolders.filter((f) => typeof f === 'string' && isDir(f)); // 1.5.117
       if ('timeoutMin' in b) next.timeoutMin = b.timeoutMin;
+      if ('eyesCheck' in b) next.eyesCheck = b.eyesCheck !== false;
       const clean = cleanHands(next);
       brain.saveHands(clean);
       const changed = Object.keys(b).filter((k) => k !== 'limits').map((k) => (typeof b[k] === 'object' && !Array.isArray(b[k]) ? `${k} ${b[k].on ? 'on' : 'off'}` : k === 'enabled' ? `Hands ${b.enabled ? 'on' : 'off'}` : k === 'free' ? `work without asking ${b.free ? 'ON (no approval cards)' : 'off (asks again)'}` : k));
@@ -94,6 +97,20 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
         const r = await checkServer(cfg, String(b.id), { log: (k, t) => brain.log(k, t), track, version: VERSION.label });
         brain.log('hands', `connected app ${b.id} checked: ${r.ok ? `${r.tools} tools` : r.why}`);
         note = r.ok ? `Reached it: ${r.tools} tool${r.tools === 1 ? '' : 's'}.` : `Couldn't reach it: ${r.why}`;
+      }
+      send(res, 200, { note, ...handsView(cfg) });
+      return true;
+    }
+    if (p === '/api/hands/browser') {
+      let note = '';
+      if (b.forget) {
+        const d = globalThis.bobBrowser;
+        if (!d) note = "Bob's browser is only there inside Bob's app, so there is nothing to forget here.";
+        else { await d.forget(); brain.log('hands', "browser: forgot what Bob's browser knew (your click)"); note = "Forgotten: Bob's browser window starts fresh, with no sign-ins or cookies."; }
+      } else if ('eyesCheck' in b) {
+        brain.saveHands(cleanHands({ ...handsSettings(cfg), eyesCheck: b.eyesCheck !== false }));
+        brain.log('hands', `settings: eyes checks ${b.eyesCheck !== false ? 'on' : 'off'}`);
+        note = b.eyesCheck !== false ? 'On: after each step in an app or his browser, Bob looks at a picture of it with his eyes brain when a step says what should happen.' : 'Off: Bob trusts what the app tells him and does not look.';
       }
       send(res, 200, { note, ...handsView(cfg) });
       return true;

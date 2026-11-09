@@ -4,6 +4,7 @@
 # It talks JSON lines: Bob writes {"id":..,"op":..} on stdin, it answers {"id":..,"ok":true,...} on stdout.
 #   hello                      -> version
 #   windows                    -> open top-level windows: hwnd, title, process, pid
+#   clickat hwnd x y           -> a real click at that place in the window (picture pixels), only while driving
 #   apps                       -> Start menu apps: name, appId (Get-StartApps)
 #   open    appId              -> opens it through the shell (as you, never "run as administrator")
 #   look    hwnd, max          -> the window's controls through UI Automation: type, name, id, enabled, value
@@ -459,6 +460,26 @@ namespace BobApps {
       }
     }
 
+    // A real click at a place in the window (x, y = pixels from the window's top-left, the same pixels as Picture),
+    // for apps whose controls have no names. Same rules as Act: only while driving, and the pointer goes back after.
+    public static string ClickAtPoint(long hwnd, int x, int y) {
+      if (stopped) throw new Exception("Stopped: you took back control.");
+      if (!driving) throw new Exception("Bob isn't driving right now.");
+      IntPtr h = Window(hwnd);
+      RECT r; GetWindowRect(h, out r);
+      int w = r.Right - r.Left, ht = r.Bottom - r.Top;
+      if (x < 0 || y < 0 || x >= w || y >= ht) throw new Exception("That place (" + x + ", " + y + ") is outside the window, which is " + w + " by " + ht + " pixels. Take a new picture with app_look.");
+      Quiet(400);
+      Front(h);
+      POINT old; lock (PosLock) { old = baseline; }
+      if (!driving) throw new Exception("Stopped: you took back control.");
+      MoveTo(r.Left + x, r.Top + y);
+      mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero); mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
+      Thread.Sleep(60);
+      MoveTo(old.X, old.Y);
+      return "clicked at (" + x + ", " + y + ") in " + WinTitle(h);
+    }
+
     // expect: the label the user approved on the card. If the window now resolves to something else, nothing is done.
     // allowPassword: only when the user switched off "Never type into password fields" in Settings, Hands.
     public static string Act(long hwnd, string action, string type, string name, string id, int nth, string text, string keys, string expect, bool allowPassword) {
@@ -559,6 +580,7 @@ while (-not $quit) {
         $x = [BobApps.Driver]::Resolve([long]$m.hwnd, [string]$m.action, [string]$t.type, [string]$t.name, [string]$t.id, [int]$t.nth)
         $r.label = $x['label']; $r.swapped = $x['swapped']; $r.enabled = $x['enabled']; $r.password = $x['password']
       }
+      'clickat' { $r.did = [BobApps.Driver]::ClickAtPoint([long]$m.hwnd, [int]$m.x, [int]$m.y) }
       'act' {
         $t = $m.target
         $r.did = [BobApps.Driver]::Act([long]$m.hwnd, [string]$m.action, [string]$t.type, [string]$t.name, [string]$t.id, [int]$t.nth, [string]$m.text, [string]$m.keys, [string]$m.expect, [bool]$m.allowPassword)

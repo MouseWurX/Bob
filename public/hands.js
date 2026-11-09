@@ -53,6 +53,17 @@ function officeLine(o, on) {
   return `<div class="hands-office muted${on ? '' : ' dim'}"><strong>Office helpers</strong><br>${doc}<br>${media}<br>${o.pictures === 'built in' ? `✓ Pictures (PNG, JPG, BMP, GIF, TIFF): built into ${/Mac/.test(navigator.userAgent) ? 'macOS' : 'Windows'}` : ''}</div>`;
 }
 
+// Settings, Hands: under the Browser hand (src/hands-browser.js) and the Apps hand: the eyes check, and forgetting
+// what Bob's own browser window knows.
+function browserHtml(bw, s, on) {
+  if (!bw) return '';
+  const eyes = bw.eyes ? `✓ Eyes brain: ${esc(bw.eyes)}` : '✗ No eyes brain in its slot: Equip Bob, "Seeing pictures", any vision brain. Until then Bob can\'t check his work by looking.';
+  return `<div class="hands-browser muted${on ? '' : ' dim'}"><strong>Bob's browser and eyes</strong><br>
+    ${bw.available ? '✓ Bob\'s own browser window is here (a window titled "Bob is browsing"; separate from your browser and its sign-ins).' : '✗ Bob\'s browser window only exists inside Bob\'s app, not when his brain runs on its own.'}
+    <button type="button" data-hbrowserforget ${bw.available ? '' : 'disabled'}>Forget what Bob's browser knows</button><br>
+    <label class="switch small"><input type="checkbox" data-heyes ${s.eyesCheck !== false ? 'checked' : ''}><span><strong>Bob checks his work with his eyes</strong><br><span class="muted">After a step in an app or his browser that says what should happen, Bob takes a picture of the window and asks his eyes brain whether it did. About a second a step. ${eyes}</span></span></label></div>`;
+}
+
 // ---- Approval cards (from the brain's 'approval' event when it has a plan or a command) ----
 // Returns the card, or null if this isn't a Hands card (then the ordinary card is used).
 export function handsApproval(ev, { add, answer }) {
@@ -321,6 +332,7 @@ export async function mountHandsSettings(box) {
       ${v.hands.map((h) => `<label class="switch${s.enabled ? '' : ' dim'}"><input type="checkbox" data-hand="${esc(h.id)}" ${s[h.id]?.on ? 'checked' : ''} ${s.enabled ? '' : 'disabled'}><span><strong>${esc(h.label)}</strong> ${tip(esc(h.what || ''), h.label)}</span></label>`).join('')}
       ${officeLine(v.office, s.enabled && s.office?.on)}
       ${securityLine(s.enabled && s.security?.on)}
+      ${browserHtml(v.browser, s, s.enabled && s.browser?.on)}
       ${selfToolsHtml(v.selfTools, s.enabled && s.maker?.on)}
       ${mcpHtml(v.mcp, s.enabled && s.mcp?.on)}
       <div class="hands-limits"><h4 class="ssub">Limits that always apply <span class="tag">all on to start with</span></h4>
@@ -382,6 +394,7 @@ export async function mountHandsSettings(box) {
       if ('hfree' in el.dataset) return await set({ free: el.checked }, el.checked ? 'On. Bob works without asking now. The hard limits still apply, and ✋ Hands on the chat page stops him.' : 'Off. Bob asks before every action again.');
       if (el.dataset.hlimit) { const l = (v.limits || []).find((x) => x.id === el.dataset.hlimit); return await set({ limits: { [el.dataset.hlimit]: el.checked } }, el.checked ? `"${l?.label}" is back on.` : `"${l?.label}" is off. ${l?.off || ''}`); }
       if (el.dataset.hand) return await set({ [el.dataset.hand]: { on: el.checked } }, el.checked ? 'On. Bob still asks before every action.' : 'Off.');
+      if ('heyes' in el.dataset) { const r = await post('/api/hands/browser', { eyesCheck: el.checked }); v = r; draw(); return say(r.note); }
       if (el.dataset.hfolder) { const f = el.dataset.hfolder; return await set({ folders: el.checked ? [...v.settings.folders, f] : v.settings.folders.filter((x) => x !== f) }); }
       if ('htimeout' in el.dataset) return await set({ timeoutMin: Number(el.value) });
       if (el.dataset.hmytool) { v = await post('/api/hands/mytools', { name: el.dataset.hmytool, on: el.checked }); draw(); return say(el.checked ? 'Tool on.' : 'Tool off. Bob won\'t use it until you turn it back on.'); }
@@ -421,6 +434,7 @@ export async function mountHandsSettings(box) {
       if (b.dataset.hmytoolcode) { const pre = b.closest('li').querySelector('.mytool-code'); if (!pre.hidden) { pre.hidden = true; b.textContent = 'Show code'; return; } const r = await post('/api/hands/mytools', { name: b.dataset.hmytoolcode, code: true }); pre.textContent = r.code; pre.hidden = false; b.textContent = 'Hide code'; return; }
       if (b.dataset.hmytooldel) { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to remove'; return; } v = await post('/api/hands/mytools', { name: b.dataset.hmytooldel, remove: true }); draw(); return say(`Removed. It waits 30 days under Recently deleted in 🧰 Tools and how-tos Bob made, where you can put it back; then its folder goes to ${sched?.platform === 'darwin' ? 'the Trash' : sched?.platform === 'linux' ? 'the trash' : 'the Recycle Bin'}.`); }
       if ('hsandbox' in b.dataset) { b.disabled = true; say('Checking the sandbox (a few seconds)…'); v = await post('/api/hands/sandbox'); draw(); return say(v.sandbox?.ok ? 'The sandbox holds.' : `The sandbox didn't hold: ${v.sandbox?.why || 'unknown'}.`); }
+      if ('hbrowserforget' in b.dataset) { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to forget'; return; } const r = await post('/api/hands/browser', { forget: true }); v = r; draw(); return say(r.note); }
       if (b.dataset.hmcpcheck) { b.disabled = true; say('Checking (the first time can take a minute while it gets ready)…'); const r = await post('/api/hands/mcp', { id: b.dataset.hmcpcheck, check: true }); v = r; draw(); return say(r.note); }
       if (b.dataset.hmcptools) { const ul = b.closest('li').querySelector('.mcp-tools'); ul.hidden = !ul.hidden; b.textContent = ul.hidden ? 'Show tools' : 'Hide tools'; return; }
       if (b.dataset.hmcpdel) { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to remove'; return; } const r = await post('/api/hands/mcp', { id: b.dataset.hmcpdel, remove: true }); v = r; draw(); return say(r.note); }

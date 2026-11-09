@@ -412,6 +412,8 @@ async function start() {
   try { home = await setUpHome(); } catch (e) { dialog.showErrorBox('Bob', `Bob couldn't set up his folder: ${e.message}`); app.quit(); return; }
   // An older Bob (from before Bob.exe) may already be running on the port: use it rather than fight it.
   if (!(await up(home.port))) {
+    // Bob's own browser window for the Browser hand (src/hands-browser.js reads globalThis.bobBrowser).
+    try { globalThis.bobBrowser = require('./browser-window.cjs').makeBobBrowser({ base: `http://127.0.0.1:${home.port}`, icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png') }); } catch (e) { console.error(`Bob's browser window isn't available: ${e.message}`); }
     try { await import(pathToFileURL(path.join(root, 'src', 'server.js')).href); }
     catch (e) { dialog.showErrorBox('Bob', `Bob's brain wouldn't start: ${e.message}`); app.quit(); return; }
     for (let i = 0; i < 80 && !(await up(home.port)); i++) await new Promise((r) => setTimeout(r, 250));
