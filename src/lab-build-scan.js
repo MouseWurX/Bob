@@ -56,11 +56,11 @@ export const fingerprint = (text) => crypto.createHash('sha1').update(String(tex
 // The survey over read files: counts by kind, what's skipped, duplicates, held-back passages, and how many lessons the
 // files can supply per lesson kind. `items` = [{ path, skill, read: <readFile result> }].
 // Lessons a passage can supply: about one per 300 words for "working with my material" (2 to 3 questions a passage),
-// one per passage for "writing in my voice", one per exchange for "my past conversations".
+// one per prose passage for "writing in my voice" (logs and tables don't count), one per exchange for "my past conversations".
 export const PER_PASSAGE = { material: 2, voice: 1 };
 export function survey(items, { user = userName() } = {}) {
   const byKind = {}, skipped = [], held = [], perSkill = {}, seen = new Map();
-  let files = 0, wordsTotal = 0, passages = 0, exchanges = 0, dupes = 0, otherPeople = false;
+  let files = 0, wordsTotal = 0, passages = 0, exchanges = 0, dupes = 0, notProse = 0, otherPeople = false;
   const supply = { material: 0, voice: 0, chats: 0 };
   const samples = [];
   for (const it of items) {
@@ -78,7 +78,8 @@ export function survey(items, { user = userName() } = {}) {
       const why = heldBack(p.text, { user });
       if (why) { p.held = why; held.push({ name: r.name, at: p.at, why, peek: p.text.slice(0, 80) }); perSkill[sk].held++; continue; }
       passages++; wordsTotal += p.words || words(p.text); perSkill[sk].passages++; perSkill[sk].words += p.words || words(p.text);
-      supply.material += PER_PASSAGE.material; supply.voice += PER_PASSAGE.voice;
+      supply.material += PER_PASSAGE.material;
+      if (p.prose === false) notProse++; else supply.voice += PER_PASSAGE.voice; // a log or a table is read, never written in the owner's voice
       if (samples.length < 10 && (passages % 7 === 1)) samples.push({ name: r.name, at: p.at, text: p.text.slice(0, 400) });
     }
     for (const e of r.exchanges) {
@@ -92,7 +93,7 @@ export function survey(items, { user = userName() } = {}) {
       supply.chats++;
     }
   }
-  return { files, byKind, skipped, words: wordsTotal, passages, exchanges, dupes, held, perSkill, supply, otherPeople, samples };
+  return { files, byKind, skipped, words: wordsTotal, passages, exchanges, dupes, notProse, held, perSkill, supply, otherPeople, samples };
 }
 
 // The plain-words box: what the brain would learn, built from the counts, never from the teacher's opinion.

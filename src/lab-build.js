@@ -50,7 +50,7 @@ export async function gatherIdeas(job, { read = readFile } = {}) {
     };
     for (const p of r.passages) use(p.text, (fp) => {
       rec.passages++;
-      for (const k of ['material', 'voice']) if (kinds.includes(k) && !notKinds.has(k)) ideas.push({ key: `${k}:${fp}`, kind: k, skill, name: r.name, at: p.at, text: p.text, words: p.words || words(p.text) });
+      for (const k of ['material', 'voice']) if (kinds.includes(k) && !notKinds.has(k) && (k !== 'voice' || p.prose !== false)) ideas.push({ key: `${k}:${fp}`, kind: k, skill, name: r.name, at: p.at, text: p.text, words: p.words || words(p.text) });
     });
     for (const e of r.exchanges) use(e.user + '\n' + e.assistant, (fp) => {
       rec.exchanges++;

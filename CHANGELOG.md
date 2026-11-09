@@ -4,6 +4,28 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.169
+
+**Catching up: what 1.5.159 to 1.5.168 brought** (they went out together this morning):
+
+- **The Lab's Forge tab**: every way to make a brain, with tips; plans for the Forge, which can start a rented run from a purchase card (off unless you switch it on); plans can teach several things at once, including a way of thinking.
+- **A local leaderboard** by class of model, **sixteen more challenges**, and **Guard rails**: test your own brain.
+- **Hugging Face**: Forge plans can start from a brain there and learn from its datasets.
+- **Give it eyes, give it ears**: add a picture reader or hearing to a brain that has none.
+- **Peek inside** (which experts a brain used), and **Mix, Stack and Take out the refusal habit** at home, free.
+- **The Playground** gets Longer, Faster (Turbo) and Teach it.
+- **One switch for the whole Lab**: Keep it simple or Professional.
+- **Fewer failed-build e-mails** for anyone working on Bob.
+
+**New in 1.5.169:**
+
+The Lab's lesson builder no longer makes "writing in my voice" lessons out of logs and tables.
+
+- In the first real run of the lesson builder, three of five "writing in my voice" lessons came from a log file full of numbers. Now each passage is checked for whether it reads as prose. A passage that is mostly numbers or a table can still teach "working with my material", but never "writing in my voice".
+- The survey box says how many passages were left out of the voice lessons for that reason.
+- Tests: `test/run-lab-build-test.js`.
+- **Bob's own update check works on ordinary Windows PCs again.** Two of Bob's tests read the tester's computer: one took Windows' Microsoft Store "python" placeholder for a real Python, and one read a tester's switch from the environment. On most Windows PCs that made the test run stop, so an Update could report a failed check (since 1.5.167). Both now give the same result on every PC.
+
 ## 1.5.168
 
 One switch for the whole Computer Science Lab: **Keep it simple** or **Professional**.

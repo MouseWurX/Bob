@@ -41,7 +41,10 @@ const KEY = 'rpa_TESTKEY0123456789abcdefghijklmnop';
   const vars = envFileVars({ home, platform: 'linux', now: 1 });
   check('~/.config/bob/env gives NAME=value lines (quotes and export stripped)', vars.RUNPOD_API_KEY === 'abc' && vars.VAST_API_KEY === 'def' && Object.keys(vars).length === 2);
   check('the env file is not read on Windows', Object.keys(envFileVars({ home, platform: 'win32', now: 2 })).length === 0);
+  // 1.5.169: BOB_RENT_KEYS (a tester's switch, src/rental.js) is set aside so the check reads the same on every PC.
+  const keysMode = process.env.BOB_RENT_KEYS; delete process.env.BOB_RENT_KEYS;
   const env = rentKeyEnv({ TOGETHER_API_KEY: 'zzz' }, vars);
+  if (keysMode !== undefined) process.env.BOB_RENT_KEYS = keysMode;
   check('the environment wins, the file fills in', env.TOGETHER_API_KEY === 'zzz' && env.VAST_API_KEY === 'def' && env.NOPE === undefined);
   check('a key is scrubbed out of error text', !scrubKey(`401 from server, Bearer ${KEY} rejected`, [KEY]).includes(KEY) && scrubKey('Authorization: Bearer sk-' + 'abcdefghijklmnopqrstuvwxyz').includes('[key]'));
 }
