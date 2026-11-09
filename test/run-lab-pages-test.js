@@ -63,7 +63,7 @@ const catalog = { models: [
 const shop = { cfg, catalog, locate: (e) => (files[e.id] ? { gguf: files[e.id] } : {}) };
 const events = [];
 const big = () => ({ ok: true, why: '' });
-const mk = (steps = {}) => new Lab(cfg, { shop, room: big, broadcast: (e) => events.push(e), steps });
+const mk = (steps = {}) => { const l = new Lab(cfg, { shop, room: big, broadcast: (e) => events.push(e), steps }); l.platform = () => ({ os: 'win', arch: 'x64' }); return l; }; // a pinned machine: tests never read the tester's own chip
 
 // ---- the long-context lab: the sums ----
 const per = 4 * 8 * 256; // 4 layers x 8 heads x (128 + 128)
@@ -156,11 +156,11 @@ check('Bob reads whether a brain carries its own guesser, and where its full wei
 
 // ---- Teach it: the fit rule ----
 check('the fit table matches the design (6, 8, 12, 16, 24 GB)', FIT_ROWS.map((r) => r.join('/')).join(' ') === '6/2/3 8/3/5 12/7/11 16/9/15 24/14/23');
-check('16 GB teaches a 9B dense brain or a 15B mixture of experts here, and says why', teachFit({ cardGB: 16, paramsB: 8.2 }).here && !teachFit({ cardGB: 16, paramsB: 14 }).here && teachFit({ cardGB: 16, paramsB: 14, moe: true }).here && /up to about 9 billion/.test(teachFit({ cardGB: 16, paramsB: 8 }).why));
-check('a 6 GB laptop teaches up to about 2B; bigger goes rented', teachFit({ cardGB: 6, paramsB: 1.7 }).here && !teachFit({ cardGB: 6, paramsB: 4 }).here);
+check('16 GB teaches a 9B dense brain or a 15B mixture of experts here, and says why', teachFit({ os_: 'win', arch: 'x64', cardGB: 16, paramsB: 8.2 }).here && !teachFit({ os_: 'win', arch: 'x64', cardGB: 16, paramsB: 14 }).here && teachFit({ os_: 'win', arch: 'x64', cardGB: 16, paramsB: 14, moe: true }).here && /up to about 9 billion/.test(teachFit({ os_: 'win', arch: 'x64', cardGB: 16, paramsB: 8 }).why));
+check('a 6 GB laptop teaches up to about 2B; bigger goes rented', teachFit({ os_: 'win', arch: 'x64', cardGB: 6, paramsB: 1.7 }).here && !teachFit({ os_: 'win', arch: 'x64', cardGB: 6, paramsB: 4 }).here);
 check('phones and the Pi always go rented, with a reason', /Phones and the Raspberry Pi/.test(teachFit({ cardGB: 8, paramsB: 1, os_: 'android' }).why) && !teachFit({ cardGB: 8, paramsB: 1, os_: 'linux', arch: 'arm64' }).here);
-check('no NVIDIA card goes rented; a Mac teaches in 16-bit, so about half', !teachFit({ cardGB: 16, paramsB: 2, nvidia: false }).here && teachFit({ cardGB: 16, paramsB: 3, unified: true, nvidia: false }).here && !teachFit({ cardGB: 16, paramsB: 5, unified: true, nvidia: false }).here);
-check('an unknown size asks to look it up first', /look it up first/.test(teachFit({ cardGB: 16, paramsB: 0 }).why));
+check('no NVIDIA card goes rented; a Mac teaches in 16-bit, so about half', !teachFit({ os_: 'win', arch: 'x64', cardGB: 16, paramsB: 2, nvidia: false }).here && teachFit({ os_: 'win', arch: 'x64', cardGB: 16, paramsB: 3, unified: true, nvidia: false }).here && !teachFit({ os_: 'win', arch: 'x64', cardGB: 16, paramsB: 5, unified: true, nvidia: false }).here);
+check('an unknown size asks to look it up first', /look it up first/.test(teachFit({ os_: 'win', arch: 'x64', cardGB: 16, paramsB: 0 }).why));
 check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bigger', lessonsPerHour(4) === 2000 && lessonsPerHour(8) === 1000 && teachDiskGB(4).work > teachDiskGB(4, { download: false }).work);
 
 // ---- Teach it: where brains and lessons come from ----
@@ -187,6 +187,7 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
 
   // the plan
   lab.gpuInfo = async () => ({ name: 'NVIDIA GeForce RTX 5070 Ti', vramGB: 16 });
+  lab.platform = () => ({ os: 'win', arch: 'x64' }); // never the tester's own machine: CI has no NVIDIA card and may run on arm64
   const p = await planTeach(lab, { name: 'Taught', brain: { kind: 'hf', repo: 'Qwen/Qwen3-4B' }, lessons: { kind: 'set', id: 'my-set' } });
   check('a 4B brain on a 16 GB NVIDIA card is taught here, and needs the Trainer pack first', p.where === 'here' && p.fit.here && p.problems.some((x) => /Trainer pack/.test(x)) && p.hours > 0 && p.disk.work > p.disk.keep);
   const pr = await planTeach(lab, { name: 'Taught', where: 'rented', brain: { kind: 'local', value: folder }, lessons: { kind: 'set', id: 'my-set' } });
@@ -220,6 +221,7 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
   });
   lab.hfFetch = async () => ({ ok: true, status: 200, json: async () => ({ cardData: { license: 'apache-2.0' }, safetensors: { total: 4.0e9 }, siblings: [{ rfilename: 'model.safetensors' }] }) });
   lab.gpuInfo = async () => ({ name: 'NVIDIA GeForce RTX 5070 Ti', vramGB: 16 });
+  lab.platform = () => ({ os: 'win', arch: 'x64' }); // never the tester's own machine: CI has no NVIDIA card and may run on arm64
   lab.freeGB = () => 1000;
   check('the Trainer pack isn\'t here until it\'s fetched', !trainerState(cfg).ok && trainerState(cfg).dir === tr && uvUrl('win', 'x64').endsWith(`/${TRAINER.uv}/uv-x86_64-pc-windows-msvc.zip`));
   await startTrainerInstall(lab); await wait(lab);

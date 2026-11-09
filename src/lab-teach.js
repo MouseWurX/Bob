@@ -60,12 +60,14 @@ const uvAsset = (os_ = OS, arch = process.arch) => {
 };
 export const uvUrl = (os_ = OS, arch = process.arch) => `https://github.com/astral-sh/uv/releases/download/${TRAINER.uv}/${uvAsset(os_, arch)}`;
 export const llamaSrcUrl = () => `https://github.com/ggml-org/llama.cpp/archive/refs/tags/${TRAINER.llamacpp}.tar.gz`;
-export function trainerState(cfg) {
+// `hw` = { os, arch }: the machine, injectable so tests never read the tester's own chip (the builder's rule).
+export const hwOf = (lab) => (lab?.platform ? lab.platform() : { os: OS, arch: process.arch });
+export function trainerState(cfg, hw = { os: OS, arch: process.arch }) {
   const dir = trainerDir(cfg);
   const rec = readJson(path.join(dir, 'trainer.json'), null);
   const py = venvPython(path.join(dir, 'venv'));
   const ok = Boolean(rec?.ok) && fs.existsSync(py) && fs.existsSync(path.join(dir, 'llama.cpp', 'convert_hf_to_gguf.py'));
-  return { ok, dir, python: py, version: rec?.version || '', at: rec?.at || 0, sizeGB: OS === 'mac' ? TRAINER.sizeGB.mac : TRAINER.sizeGB.cuda, licences: TRAINER.licences, supported: OS !== 'android' && !(OS === 'linux' && process.arch === 'arm64') };
+  return { ok, dir, python: py, version: rec?.version || '', at: rec?.at || 0, sizeGB: hw.os === 'mac' ? TRAINER.sizeGB.mac : TRAINER.sizeGB.cuda, licences: TRAINER.licences, supported: hw.os !== 'android' && !(hw.os === 'linux' && hw.arch === 'arm64') };
 }
 
 async function download(url, out, { signal, onProgress = () => {}, headers = {}, maxBytes = 200e9 } = {}) {
@@ -91,7 +93,7 @@ const tarExe = () => (OS === 'win' ? path.join(process.env.SystemRoot || 'C:\\Wi
 
 export async function startTrainerInstall(lab) {
   canStart(lab, { room: false });
-  const st = trainerState(lab.cfg);
+  const st = trainerState(lab.cfg, hwOf(lab));
   if (!st.supported) throw new Error('The Trainer pack doesn\'t run on this replicant matrix. Teach it rented instead.');
   const dir = st.dir, log = pageLog(lab.cfg, 'teach');
   const fx = { download, tool: runTool, ...lab.stepFns };
@@ -122,7 +124,7 @@ export async function startTrainerInstall(lab) {
     for (const f of [arch, src]) fs.rmSync(f, { force: true });
     writeJson(path.join(dir, 'trainer.json'), { ok: true, version: `uv ${TRAINER.uv}, Python ${TRAINER.python}, llama.cpp ${TRAINER.llamacpp}`, packages: [...TRAINER.packages, ...(cuda ? TRAINER.cudaOnly : [])], at: lab.now() });
     set('conv', 'done');
-    return { trainer: trainerState(lab.cfg) };
+    return { trainer: trainerState(lab.cfg, hwOf(lab)) };
   });
 }
 function findFile(dir, name, depth = 3) {
@@ -233,12 +235,13 @@ export async function planTeach(lab, c = {}) {
   const lessons = readLessonSource(lab, c.lessons || {});
   const g = await Promise.resolve((lab.gpuInfo || gpuInfo)()).catch(() => null);
   const cardGB = Number(lab.cfg.gpuVramGB) || Number(lab.cfg.cardGB) || g?.vramGB || 0;
-  const fit = teachFit({ cardGB, paramsB: brain.paramsB, moe: brain.moe, nvidia: /nvidia|geforce|rtx|quadro|tesla/i.test(g?.name || ''), unified: Boolean(g?.unified) });
+  const hw = hwOf(lab);
+  const fit = teachFit({ cardGB, paramsB: brain.paramsB, moe: brain.moe, os_: hw.os, arch: hw.arch, nvidia: /nvidia|geforce|rtx|quadro|tesla/i.test(g?.name || ''), unified: Boolean(g?.unified) });
   const where = c.where === 'rented' || !fit.here ? 'rented' : 'here';
   const epochs = [1, 2, 3].includes(Number(c.epochs)) ? Number(c.epochs) : 1;
   problems.push(...brain.problems, ...lessons.problems); notes.push(...brain.notes, ...lessons.notes);
   if (brain.license && !/apache|mit|bsd|cc-by|llama|qwen|gemma|openrail/i.test(brain.license)) notes.push(`${brain.name}'s licence is "${brain.license}". Read it before you share what you make.`);
-  const tr = trainerState(lab.cfg);
+  const tr = trainerState(lab.cfg, hw);
   let hours = null, disk = null;
   if (where === 'here') {
     if (!tr.ok) problems.push(`Teaching here needs the Trainer pack (about ${tr.sizeGB} GB). Get it first; Settings can remove it any time.`);
@@ -267,7 +270,7 @@ export async function startTeach(lab, c = {}, { unload = false } = {}) {
   if (p.where !== 'here') throw new Error('This one goes rented. Use "Save as a Forge plan".');
   if (p.problems.length) throw new Error(p.problems[0]);
   const ask = await makeRoom(lab, unload); if (ask) return ask;
-  const tr = trainerState(lab.cfg), log = pageLog(lab.cfg, 'teach'), tools = lab.tools();
+  const tr = trainerState(lab.cfg, hwOf(lab)), log = pageLog(lab.cfg, 'teach'), tools = lab.tools();
   const work = path.join(labModelsDir(lab.cfg), 'teach', p.slug);
   const fx = { tool: runTool, download, quiz: quizFile, ...lab.stepFns };
   const env = { ...process.env, PYTHONIOENCODING: 'utf-8', HF_HUB_DISABLE_TELEMETRY: '1' };
@@ -358,7 +361,7 @@ export async function saveTeachPlan(lab, c = {}) {
 }
 
 export function teachView(lab) {
-  const tr = trainerState(lab.cfg);
+  const tr = trainerState(lab.cfg, hwOf(lab));
   return { trainer: { ok: tr.ok, sizeGB: tr.sizeGB, version: tr.version, licences: tr.licences, supported: tr.supported, uv: TRAINER.uv, python: TRAINER.python, llamacpp: TRAINER.llamacpp }, fit: FIT_ROWS.map(([gb, dense, moe]) => ({ gb, dense, moe })), brains: lab.brains().map((b) => ({ id: b.id, name: b.name })), sets: lessonSets(lab.cfg).map(({ id, name, count }) => ({ id, name, count })), runs: lab.runs.filter((r) => r.kind === 'teach').slice(-5).reverse().map((r) => lab.runView(r)), os: OS, ram: Math.round(os.totalmem() / 1024 ** 3) };
 }
 
