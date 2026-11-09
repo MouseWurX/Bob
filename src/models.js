@@ -9,7 +9,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { appDir, saveSettings } from './config.js';
-import { ENGINES, engineStatus, installEngine, latestEngine } from './engines.js';
+import { ENGINES, engineStatus, engineChoices, installEngine, latestEngine } from './engines.js';
 import { audioReady, voicesReady, aceModelsDir, aceFileOk, tidyAceCache } from './audio.js';
 import { maestroModels } from './maestro.js';
 import { gpuInfo, cpuName, specLine, shownRamGB, OS } from './platform.js';
@@ -312,7 +312,7 @@ export class ModelShop {
     const known = new Set(models.flatMap((m) => Object.values(m.status.located).map((p) => p.toLowerCase())));
     const extras = this.found.files.filter((f) => !known.has(f.path.toLowerCase()) && f.owner !== 'Ollama');
     return {
-      categories: this.catalog.categories, packs: this.catalog.packs, models, extras, engines: engineStatus(this.cfg),
+      categories: this.catalog.categories, packs: this.catalog.packs, models, extras, engines: engineStatus(this.cfg), engineChoices: engineChoices(this.cfg),
       bigBrains: this.catalog.bigBrains || [], updated: this.catalog.updated || '', // 1.5.137: the really big brains (Rented brains) and the list's date
       scannedAt: this.found.at, ollamaRunning: Boolean(ollama), job: this.job, downloads: this.downloadsView(),
       active: { engine: this.cfg.engine, models: this.cfg.models, painter: this.cfg.painter?.engine, stt: this.cfg.stt?.provider }
@@ -521,7 +521,7 @@ export class ModelShop {
     const eid = eid0.replace(/@newest$/, '');
     const hw = await this.hardware();
     // A newer llama.cpp can't overwrite files the running llama-server holds open: let go of it first.
-    if (eid === 'llamacpp' && this.engine?.stopServer) await this.engine.stopServer();
+    if (['llamacpp', 'brainengine'].includes(eid) && this.engine?.stopServer) await this.engine.stopServer(); // 1.5.17x: Brain Engine too, now it runs the brains
     const r = await installEngine(this.cfg, eid, { nvidia: /nvidia|geforce|rtx/i.test(hw.gpu?.name || ''), pub, signal, tick, newest });
     pub.note = `${r.asset} (${r.version})`;
   }

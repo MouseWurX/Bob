@@ -19,7 +19,7 @@ const cfg = { agentDir: path.join(tmp, 'Agent'), computerLab: true };
 fs.mkdirSync(cfg.agentDir, { recursive: true });
 
 const st = engineStatus({ agentDir: cfg.agentDir }).find((e) => e.id === 'brainengine');
-check(st && st.name === 'Brain Engine' && /default engine/.test(st.what) && /Based on llama\.cpp, not an official build/.test(st.what) && st.pinned, 'it is listed with the Lab off too, as the default engine, not official llama.cpp, and pinned');
+check(st && st.name === 'Brain Engine' && /default engine/.test(st.what) && /Based on llama\.cpp, not an official build/.test(st.what) && !st.pinned, 'it is listed with the Lab off too, as the default engine, not official llama.cpp, with a Check for updates (rebuilds keep the name)');
 check(ENGINES.find((e) => e.id === 'brainengine').tag === `brain-engine-${TESTED_LLAMA}`, 'it is pinned to the pre-release for the tested llama.cpp tag');
 
 // 1.5.169: which llama-server Bob runs brains on (fake folders, no real computer).

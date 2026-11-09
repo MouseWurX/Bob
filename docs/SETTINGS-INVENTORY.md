@@ -26,8 +26,9 @@ Update this file in the same handover as any change to settings.
 | Brains | Equip Bob slots (thinking and making jobs), session brains, context per session | | starter set | ok (1.5.2) |
 | Voice details | Voice engine (Kokoro / Chatterbox / Windows), voice, speed 0.6–1.6×, Hey Bob, read replies aloud | Chatterbox: own-voice recording rules | Windows voice, 1.0×, Hey Bob off | ok |
 | Look & feel | Open Now running when a task needs me; your own theme (link) | | off | ok (1.5.2) |
-| Engines | Bob's engine: Ollama (if you already have it) / Bob's own (llama.cpp, nothing else needed) | Takes effect next time Bob starts. | llama.cpp | ok |
-| Engines | Engine downloads (Get / Check for a newer build) | More: from official GitHub pages | none | ok |
+| Engines | Engine for brains (behind a ⚙): Brain Engine / llama.cpp / Ollama | Takes effect next time Bob starts. Greyed with the reason where there's no build. | Brain Engine (llama.cpp until it's here) | ok |
+| Engines | Engine for the Lab: Same as Bob's brains / Brain Engine / llama.cpp (also at the top of the Lab) | Used from the Lab's next job. | Same as Bob's brains | ok |
+| Engines | Engine downloads, in folded groups (Thinking, Pictures sound and hearing, Voices, Helpers): Get / Check for updates / Check all for updates / Update / Go back / Remove (asks first) | From official GitHub pages (Brain Engine from Bob's own); updates compared by checksum | none | ok |
 | Engines (under More) | Fit to free graphics memory | recommended; one line + More | on | ok (1.5.2) |
 | Engines | How Qwen brains pick their words: Choose my own word settings + 3 sets (Temperature, Top P, Top K, Min P, Presence penalty, Repetition penalty), Back to Qwen's | Qwen3.6 Best Practices by mode | off (Qwen's) | ok (approved with edits, 1.5.148) |
 | Engines (under More) | Speculative decoding + Draft brain, Guess up to, At least | experimental; long hint | off | ok (1.5.2) |

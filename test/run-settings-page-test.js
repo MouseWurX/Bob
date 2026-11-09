@@ -31,7 +31,7 @@ check('Advanced has (1.5.98 order) Brains, House style, Voice details, Look & fe
 check('old panel ids still work: Connections lands on Bob-Net, in jumps, remembered panels and Help', /ADV_MOVED = \{ 'adv-connections': 'adv-bobnet' \}/.test(ui) && /id === 'adv-connections' \? 'adv-bobnet'/.test(ui) && /'settings-connections': 'settings-bobnet'/.test(read('public/help.js')));
 check('Advanced has a search box that filters sections', /data-ssearch/.test(ui) && /function filterSettings/.test(ui) && /settingsQuery = e\.target\.value; filterSettings\(\)/.test(ui));
 check('Voice details has Hey Bob and Read aloud, working the same switches as the left menu', /prox\('ear'/.test(ui) && /prox\('speak'/.test(ui) && /el\.dataset\.proxy/.test(ui));
-check('engine choice, engine downloads, fit to memory, speculative decoding and flags are in Engines', /function enginesHtml[\s\S]*data-set="engine"[\s\S]*Engine downloads[\s\S]*speedHtml\(\)/.test(ui) && /data-fit/.test(ui) && /Speculative decoding/.test(ui) && /llama\.cpp flags/.test(ui));
+check('engine choice, engine downloads, fit to memory, speculative decoding and flags are in Engines', /function enginesHtml[\s\S]*engineGearHtml\(\)[\s\S]*labEngineHtml\(\)[\s\S]*Engine downloads[\s\S]*speedHtml\(\)/.test(ui) && /data-brainsengine/.test(ui) && /data-fit/.test(ui) && /Speculative decoding/.test(ui) && /llama\.cpp flags/.test(ui));
 check('long help folds behind More', /const more = \(text\) => `<details class="more"><summary>More<\/summary>/.test(ui) && (ui.match(/\$\{more\(/g) || []).length >= 2);
 check('animations and Now running buttons work on the Settings page too', /tab === 'settings' && \(b\.dataset\.motion \|\| b\.dataset\.nowneed\)/.test(ui));
 

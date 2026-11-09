@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 import { readGguf, brainFacts, readerFacts, writeGguf, readCounts, busiest, coverageKeep, checkKeep, isHearingTensor, isSightTensor } from './lab-gguf.js';
 import { startServer, runQuiz, PARTS } from './lab-test.js';
 import { saveSettings } from './config.js';
+import { labEngineDirs, engineNameOf, LAB_ENGINES } from './engines.js';
 import { gaming } from './sessions.js';
 import { TEMPLATE_IDS, templateById } from '../public/lab-templates.js';
 import crypto from 'node:crypto';
@@ -485,16 +486,28 @@ export class Lab {
     this.stepFns = steps; // tests swap in fakes
   }
 
+  // 1.5.17x The Lab's engine (Settings > Engines, or the Lab's own picker): its folder is looked in first, then the
+  // others, so a tool only one download carries (the direction finder, the adapter folder) is still found.
   tools() {
-    const server = this.cfg.llamacpp?.exe || path.join(this.cfg.agentDir, 'llama.cpp', exeName('llama-server'));
-    const dir = path.dirname(server);
-    const t = { server, imatrix: path.join(dir, exeName('llama-imatrix')), quantize: path.join(dir, exeName('llama-quantize')), perplexity: path.join(dir, exeName('llama-perplexity')), cvector: path.join(dir, exeName('llama-cvector-generator')), brainEngine: path.join(this.cfg.agentDir, 'brain-engine', exeName('llama-server')) };
+    const dirs = labEngineDirs(this.cfg);
+    const find = (name) => { const n = exeName(name); for (const d of dirs) { const p = path.join(d, n); if (fs.existsSync(p)) return p; } return path.join(dirs[0], n); };
+    const t = { server: find('llama-server'), imatrix: find('llama-imatrix'), quantize: find('llama-quantize'), perplexity: find('llama-perplexity'), cvector: find('llama-cvector-generator'), brainEngine: path.join(this.cfg.agentDir, 'brain-engine', exeName('llama-server')) };
     return Object.fromEntries(Object.entries(t).map(([k, p]) => [k, { path: p, found: fs.existsSync(p) }]));
   }
 
+  // The Lab's engine as the Lab page shows it: the pick, and the engine and build the Lab's own server will run.
+  engineView() {
+    const server = this.tools().server;
+    const dir = path.dirname(server.path);
+    let version = '';
+    for (const f of ['bob-brainengine.json', 'bob-llamacpp.json']) { try { version = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')).version || ''; if (version) break; } catch {} }
+    return { pick: LAB_ENGINES.includes(this.cfg.labEngine) ? this.cfg.labEngine : '', name: engineNameOf(this.cfg, dir), version, found: server.found, brainEngineHere: this.tools().brainEngine.found };
+  }
+  setLabEngine(pick) { const v = LAB_ENGINES.includes(pick) ? pick : ''; saveSettings(this.cfg, { labEngine: v }); this.cfg.labEngine = v; return this.engineView(); }
+
   brains() { return labBrains(this.shop); }
 
-  engineName() { return 'llama.cpp'; }
+  engineName() { return engineNameOf(this.cfg, path.dirname(this.tools().server.path)); }
 
   // Every measurement record in the Lab folder: <brain folder>/measure.json and measure-parent.json.
   measures() {
@@ -525,7 +538,7 @@ export class Lab {
     const room = this.room();
     const cardGB = Number(this.cfg.gpuVramGB) || Number(this.cfg.cardGB) || 0; // the set size, or the card the hardware scan found
     const brains = this.brains().map((b) => { let f = null; try { f = inspect(b); } catch (e) { return { ...b, gguf: undefined, mmproj: undefined, error: e.message }; } return { id: b.id, name: b.name, family: b.family, community: b.community, naughty: b.naughty, madeInLab: b.madeInLab, license: b.license, facts: f && { arch: f.arch, experts: f.experts, used: f.used, groups: f.groups, layers: f.layers, fileType: f.fileType, fullSize: f.fullSize, sizeGB: f.sizeGB, sight: f.sight, hearing: f.hearing, readerGB: f.readerGB }, cuts: f ? cutSizes(f).map((c) => ({ ...c, fit: fitWords(c.gb, cardGB) })) : [], fit: f ? fitWords(f.sizeGB, cardGB) : '' }; });
-    return { on: labOn(this.cfg), mode: this.cfg.labPro === true ? 'pro' : 'simple', room, cardGB, brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, lessonKinds: KINDS, sampleCount: SAMPLE_COUNT, buildMax: BUILD_MAX, officeOk: Boolean(this.officeFor()), brainEngine: this.tools().brainEngine.found, packs: PACKS, myPacks: readMyPacks(labDir(this.cfg)).map(({ items, ...m }) => m), pro: { gen: { ...GEN_DEFAULT }, ctxChoices: CTX_CHOICES, maxRepeats: MAX_REPEATS, checks: MY_CHECKS, settings: GUARD_SETTINGS, styles: GUARD_STYLES }, scores: this.scores(), classes: CLASSES.map(([id, label, hint]) => ({ id, label, hint })), ladders: this.ladders(), playMaxGB: PLAY_MAX_GB, ladderSteps: LADDER.map(({ type, label }) => ({ type, label })), hardware: hardwareLine(this.cfg), version: this.version || '', mixWays: MIX_WAYS, layerChoices: LAYER_CHOICES.map(([id, label]) => ({ id, label })), kept: KEPT.map(({ id, label }) => ({ id, label })), homeMaxGB: PLAY_MAX_GB, cvector: this.tools().cvector.found || Boolean(this.stepFns.direction), peekLive: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), plainPrompts: PLAIN_PROMPTS, reluctantPrompts: RELUCTANT_PROMPTS };
+    return { on: labOn(this.cfg), mode: this.cfg.labPro === true ? 'pro' : 'simple', engine: this.engineView(), room, cardGB, brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, lessonKinds: KINDS, sampleCount: SAMPLE_COUNT, buildMax: BUILD_MAX, officeOk: Boolean(this.officeFor()), brainEngine: this.tools().brainEngine.found, packs: PACKS, myPacks: readMyPacks(labDir(this.cfg)).map(({ items, ...m }) => m), pro: { gen: { ...GEN_DEFAULT }, ctxChoices: CTX_CHOICES, maxRepeats: MAX_REPEATS, checks: MY_CHECKS, settings: GUARD_SETTINGS, styles: GUARD_STYLES }, scores: this.scores(), classes: CLASSES.map(([id, label, hint]) => ({ id, label, hint })), ladders: this.ladders(), playMaxGB: PLAY_MAX_GB, ladderSteps: LADDER.map(({ type, label }) => ({ type, label })), hardware: hardwareLine(this.cfg), version: this.version || '', mixWays: MIX_WAYS, layerChoices: LAYER_CHOICES.map(([id, label]) => ({ id, label })), kept: KEPT.map(({ id, label }) => ({ id, label })), homeMaxGB: PLAY_MAX_GB, cvector: this.tools().cvector.found || Boolean(this.stepFns.direction), peekLive: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), plainPrompts: PLAIN_PROMPTS, reluctantPrompts: RELUCTANT_PROMPTS };
   }
 
   runView(r) { return { id: r.id, kind: r.kind || 'make', name: r.name, from: r.fromName, naughty: r.naughty, refusalsOut: r.refusalsOut, state: r.state, step: r.step, stepLabel: r.stepLabel, progress: r.progress, steps: r.steps?.map((s) => ({ id: s.id, label: s.label, state: s.state })), error: r.error, notes: r.notes || [], report: r.report, at: r.at, used: Boolean(r.used), sizeGB: r.sizeGB }; }
@@ -1732,6 +1745,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p.startsWith('/api/lab/learn/')) { if (!labOn(lab.cfg)) { send(res, 403, { error: 'The Lab is off.' }); return true; } send(res, 200, await runLearn(lab.brain, p.slice('/api/lab/learn/'.length), b)); return true; }
     if (p === '/api/lab/peek') { const v = lab.peek(b.brain); send(res, 200, isLocal ? v : { ...v, keepFile: '' }); return true; } // 1.5.164 read-only
     if (!isLocal && !['/api/lab/plan', '/api/lab/write/plan', '/api/lab/home/plan'].includes(p)) { send(res, 403, { error: 'Lab jobs can only be started on this replicant matrix itself for now.' }); return true; }
+    if (p === '/api/lab/engine') { send(res, 200, lab.setLabEngine(String(b.engine ?? ''))); return true; } // 1.5.17x the Lab's engine, from its next job
     if (p === '/api/lab/plan') { const pl = lab.plan(b.recipe); send(res, 200, { problems: pl.problems, notes: pl.notes, skills: pl.skills || [], steps: pl.steps.map((s) => ({ id: s.id, label: s.label })), text: isLocal ? pl.text : '' }); return true; }
     if (p === '/api/lab/write/plan') { const pl = lab.planWrite(b.write); send(res, 200, { problems: pl.problems, notes: pl.notes, hours: pl.hours, file: isLocal ? pl.out : '' }); return true; }
     if (p === '/api/lab/write') { send(res, 200, await lab.startWrite(b.write, { unload: b.unload === true })); return true; }

@@ -970,7 +970,7 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .seg3 { border: 0; padding: 9px 10px; margin: 0; border-radius: var(--r); background: var(--card); display: grid; gap: 6px; }
 .seg3 legend { padding: 0; float: left; width: 100%; }
 .seg3-row { display: flex; flex-wrap: wrap; gap: 6px; }
-.seg3-btn { flex: 1 1 9em; display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 12px; border: 2px solid var(--line, #8884); border-radius: var(--r); cursor: pointer; text-align: center; }
+.seg3-btn { flex: 1 1 9em; display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 12px; border: 2px solid var(--line); border-radius: var(--r); cursor: pointer; text-align: center; }
 .seg3-btn input { position: absolute; opacity: 0; pointer-events: none; }
 .seg3-btn.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); font-weight: 600; }
 .seg3-btn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -1541,6 +1541,19 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 /* 1.5.168 Keep it simple / Professional */
 .lab-mode { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 10px; }
 .lab-mode .muted { flex: 1 1 240px; }
+/* 1.5.17x Engines rework: the Lab's engine row, the ⚙ engine-for-brains picker, and folded engine groups */
+.lab-engine { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 0 0 10px; }
+.lab-engine .muted { flex: 1 1 200px; }
+.engine-gear { margin: 4px 0; }
+.engine-gear > summary { cursor: pointer; display: inline-flex; gap: 6px; align-items: center; min-height: 32px; list-style: none; }
+.engine-gear > summary::-webkit-details-marker { display: none; }
+.engine-gear .gear-btn { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); font-size: 1.1em; }
+.engine-gear[open] .gear-btn { background: var(--card); }
+.engine-pick { border: 0; padding: 0; margin: 6px 0; display: grid; gap: 6px; }
+.engine-group { margin: 8px 0; border-top: 1px solid var(--line); padding-top: 6px; }
+.engine-group > summary { cursor: pointer; min-height: 32px; display: flex; gap: 8px; align-items: center; }
+.engine-group > summary::before { content: '▸'; color: var(--muted); }
+.engine-group[open] > summary::before { content: '▾'; }
 /* 1.5.168 Professional mode: run settings and the question log */
 .lab-pro input[type="number"] { width: 6em; }
 .lab-pro .row { flex-wrap: wrap; gap: 8px; align-items: center; }

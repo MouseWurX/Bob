@@ -201,11 +201,50 @@ export function installedVersion(cfg, e) {
   try { return JSON.parse(fs.readFileSync(path.join(cfg.agentDir, e.dir, `bob-${e.id}.json`), 'utf8')).version || null; } catch { return null; }
 }
 
+// The whole install marker (bob-<id>.json): version, asset, print, and when it was installed.
+export function installedMarker(cfg, e, folder = path.join(cfg.agentDir, e.dir)) {
+  try { return JSON.parse(fs.readFileSync(path.join(folder, `bob-${e.id}.json`), 'utf8')) || null; } catch { return null; }
+}
+// 1.5.17x Engines rework: a download's fingerprint. GitHub's sha256 when it gives one, else the file's id, size and
+// upload time. A rebuilt Brain Engine keeps its release name, so the name alone can't tell an update apart.
+export const assetPrint = (a) => (a?.digest ? String(a.digest) : `${a?.id ?? ''}:${a?.size ?? ''}:${a?.updated_at ?? ''}`);
+// Is the release on GitHub newer than the marker? A different release name, or the same name with a different file
+// (Brain Engine is rebuilt under the same name). Markers from before 1.5.17x have no print: then a file uploaded after
+// the install counts as newer.
+export function isNewer(mark, rel, asset) {
+  if (!mark?.version) return true;
+  if (mark.version !== rel.tag_name) return true;
+  if (mark.print) return mark.print !== assetPrint(asset);
+  const up = Date.parse(asset?.updated_at || ''), at = Date.parse(mark.at || '');
+  return Number.isFinite(up) && Number.isFinite(at) && up > at;
+}
+// Engines that share a folder with another (the uv-based ones) can't be swapped, gone back or removed on their own.
+export const sharedDir = (e) => ENGINES.filter((x) => x.dir === e.dir).length > 1;
+// The build kept from before the last update, for Go back.
+export const previousDir = (cfg, e) => path.join(cfg.agentDir, e.dir + '.previous');
+// Where each engine sits on the Engines page.
+export const ENGINE_GROUP = { brainengine: 'thinking', llamacpp: 'thinking', sdcpp: 'senses', whispercpp: 'senses', audio: 'senses', piper: 'voices', kokoro: 'voices', chatterbox: 'voices', uv: 'helpers', ffmpeg: 'helpers', libreoffice: 'helpers' };
+// Put a freshly unpacked build (stage) in the engine's place in one step. The build that was there moves to
+// <folder>.previous (one older build is kept, for Go back), unless keep is false.
+export function swapIn(folder, stage, { keep = true } = {}) {
+  const prev = folder + '.previous';
+  if (fs.existsSync(folder)) {
+    if (keep) { fs.rmSync(prev, { recursive: true, force: true }); fs.renameSync(folder, prev); }
+    else fs.rmSync(folder, { recursive: true, force: true });
+  }
+  try { fs.renameSync(stage, folder); }
+  catch (err) { if (keep && fs.existsSync(prev) && !fs.existsSync(folder)) { try { fs.renameSync(prev, folder); } catch {} } throw err; }
+}
+
 // 1.5.72: rough download sizes (GB), so the one-click Welcome total counts the programs too. llama.cpp's is the
 // NVIDIA build with its CUDA runtime (other builds are smaller); the rest follow each engine's own "About" text.
 export const ENGINE_GB = { llamacpp: 0.6, brainengine: 0.7, sdcpp: 0.5, whispercpp: 0.1, piper: 0.1, audio: 12, kokoro: 0.1, chatterbox: 4, ffmpeg: 0.1, libreoffice: 0.35 };
 export function engineStatus(cfg) {
-  return ENGINES.filter((e0) => !e0.labOnly || cfg.computerLab === true).map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.tag || e.pinned), tested: e.tested || null, found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir) }));
+  return ENGINES.filter((e0) => !e0.labOnly || cfg.computerLab === true).map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.pinned || e.sha256 || (e.tag && !e.base)), tested: e.tested || null, group: ENGINE_GROUP[e.id] || 'helpers', canSwap: !sharedDir(e) && !e.install && !e.after, previous: !sharedDir(e) ? (installedMarker(cfg, e, previousDir(cfg, e))?.version || (fs.existsSync(previousDir(cfg, e)) ? 'the one before' : null)) : null, own: !sharedDir(e) && !e.install && fs.existsSync(path.join(cfg.agentDir, e.dir)) && !e.found?.(cfg), found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir) }));
+}
+// 1.5.17x Engines rework: which engine runs the brains now, which one is picked for next time, and the Lab's.
+export function engineChoices(cfg) {
+  return { brainsNow: brainsEngineNow(cfg), brainsPick: brainsEnginePick(cfg), lab: LAB_ENGINES.includes(cfg.labEngine) ? cfg.labEngine : '' };
 }
 
 // The newest release with a Windows build, for "Get newer build". Same rules as installing.
@@ -214,7 +253,10 @@ export async function latestEngine(cfg, id, nvidia, fetchImpl = fetch) {
   if (!e) throw new Error('No such engine.');
   if (e.unavailable) throw new Error(e.unavailable);
   const { rel, asset } = await findRelease(e, nvidia, undefined, fetchImpl);
-  return { id, installed: installedVersion(cfg, e), tested: e.tested || null, latest: rel.tag_name, asset: asset.name, newer: installedVersion(cfg, e) !== rel.tag_name };
+  const mark = installedMarker(cfg, e);
+  // A rebuilt release (same name, new file) says so, so the button can say "rebuilt" rather than repeat the name.
+  const rebuilt = Boolean(mark?.version && mark.version === rel.tag_name && isNewer(mark, rel, asset));
+  return { id, installed: mark?.version || null, tested: e.tested || null, latest: rel.tag_name, asset: asset.name, newer: isNewer(mark, rel, asset), rebuilt };
 }
 
 // Pick the right zip from a release's asset list for this graphics card. Highest CUDA version wins.
@@ -392,7 +434,8 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
   // Replacing the bundled build: the new one downloads into a side folder first, then takes the bundled one's
   // place in one step, so a failed download never leaves Bob with no engine and two builds' graphics libraries
   // never sit side by side.
-  const replacing = id === 'llamacpp' && Boolean(bundledEngine(cfg));
+  // 1.5.17x: any engine with its own folder (not the shared uv one) updates the same way, keeping the old build for Go back.
+  const replacing = (id === 'llamacpp' && Boolean(bundledEngine(cfg))) || (!sharedDir(e0) && !e0.after && Boolean(engineExe(cfg, e0)) && fs.existsSync(path.join(cfg.agentDir, e0.dir)));
   if (e.unavailable) throw new Error(e.unavailable);
   if (e.install && e.os !== 'win') throw new Error(`${e.name} can't be fetched on this replicant matrix. Install it yourself and Bob finds it.`);
   if (e.install) return e.install(cfg, { pub, signal, tick });
@@ -417,15 +460,16 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
     if (e.os !== 'win') makeRunnable(stage);
   } catch (err) { if (replacing) fs.rmSync(stage, { recursive: true, force: true }); throw err; }
   if (replacing) {
-    try { fs.rmSync(folder, { recursive: true, force: true }); fs.renameSync(stage, folder); }
-    catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`llama.cpp is in use right now (${err.code || err.message}). Press Unload everything (or wait for the brain to go idle), then Try again.`); }
+    try { fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify({ version: rel.tag_name, asset: asset.name, print: assetPrint(asset), at: new Date().toISOString() }, null, 2)); } catch {}
+    try { swapIn(folder, stage); }
+    catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Press Unload everything (or wait for the brain to go idle), then Try again.`); }
   }
   if (!engineExe(cfg, e)) throw new Error(`${e.name} unpacked, but ${e.exe} isn't in it. The release layout may have changed.`);
   if (e.after) await e.after(cfg, { pub, tick, signal });
   // Older stable-diffusion.cpp builds call the program sd.exe.
   const sdCli = path.join(folder, exeName('sd-cli', e.os)), sdOld = path.join(folder, exeName('sd', e.os));
   if (e.id === 'sdcpp' && !fs.existsSync(sdCli) && fs.existsSync(sdOld)) fs.copyFileSync(sdOld, sdCli);
-  try { fs.writeFileSync(path.join(folder, `bob-${e.id}.json`), JSON.stringify({ version: rel.tag_name, asset: asset.name, at: new Date().toISOString() }, null, 2)); } catch {}
+  try { fs.writeFileSync(path.join(folder, `bob-${e.id}.json`), JSON.stringify({ version: rel.tag_name, asset: asset.name, print: assetPrint(asset), at: new Date().toISOString() }, null, 2)); } catch {}
   return { version: rel.tag_name, asset: asset.name };
 }
 
@@ -459,10 +503,10 @@ async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
     fs.rmSync(over, { recursive: true, force: true });
     if (e.os !== 'win') makeRunnable(stage);
     if (!fs.existsSync(path.join(stage, e.exe))) throw new Error(`${e.name} unpacked, but ${e.exe} isn't in it. The release layout may have changed.`);
-    fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify({ version: own.rel.tag_name, base: base.rel.tag_name, asset: own.asset.name, at: new Date().toISOString() }, null, 2));
+    fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify({ version: own.rel.tag_name, base: base.rel.tag_name, asset: own.asset.name, print: assetPrint(own.asset), at: new Date().toISOString() }, null, 2));
   } catch (err) { fs.rmSync(stage, { recursive: true, force: true }); fs.rmSync(stage + '.own', { recursive: true, force: true }); throw err; }
-  try { fs.rmSync(folder, { recursive: true, force: true }); fs.renameSync(stage, folder); }
-  catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Wait for the Lab job to finish, then try again.`); }
+  try { swapIn(folder, stage); }
+  catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Wait for the Lab job to finish (or press Unload everything), then try again.`); }
   return { version: own.rel.tag_name, asset: own.asset.name };
 }
 
@@ -486,4 +530,80 @@ async function installLibreOffice(cfg, { pub, signal, tick }) {
   if (!o || o.where !== 'own') throw new Error('LibreOffice unpacked, but soffice.exe isn\'t where I expected. You can install it from libreoffice.org instead: I find it by myself.');
   try { fs.writeFileSync(path.join(folder, 'bob-libreoffice.json'), JSON.stringify({ version: pin.version, asset: path.basename(pin.url), at: new Date().toISOString() }, null, 2)); } catch {}
   return { version: pin.version, asset: path.basename(pin.url) };
+}
+
+// 1.5.17x Go back: the build kept from before the last update and the one in use change places, so pressing it again
+// undoes it. Nothing is downloaded.
+export function goBackEngine(cfg, id) {
+  const e = engineFor(ENGINES.find((x) => x.id === id));
+  if (!e) throw new Error('No such engine.');
+  if (sharedDir(e)) throw new Error(`${e.name} shares its folder with other engines, so it has no build to go back to.`);
+  const folder = path.join(cfg.agentDir, e.dir), prev = previousDir(cfg, e), tmp = folder + '.swap';
+  if (!fs.existsSync(prev)) throw new Error(`There's no earlier ${e.name} build kept on this replicant matrix.`);
+  fs.rmSync(tmp, { recursive: true, force: true });
+  try {
+    if (fs.existsSync(folder)) fs.renameSync(folder, tmp);
+    fs.renameSync(prev, folder);
+    if (fs.existsSync(tmp)) fs.renameSync(tmp, prev);
+  } catch (err) {
+    if (!fs.existsSync(folder) && fs.existsSync(tmp)) { try { fs.renameSync(tmp, folder); } catch {} }
+    throw new Error(`${e.name} is in use right now (${err.code || err.message}). Press Unload everything, then try again.`);
+  }
+  return { version: installedMarker(cfg, e)?.version || null, previous: installedMarker(cfg, e, prev)?.version || null };
+}
+
+// 1.5.17x Remove: deletes Bob's own copy of an engine (and the earlier build kept for Go back). A copy found
+// elsewhere on the replicant matrix, or one that shares a folder, is never touched.
+export function removeEngine(cfg, id) {
+  const e = engineFor(ENGINES.find((x) => x.id === id));
+  if (!e) throw new Error('No such engine.');
+  if (sharedDir(e) || e.install) throw new Error(`${e.name} shares its folder with other parts of Bob, so it can't be removed on its own here.`);
+  if (e.found?.(cfg)) throw new Error(`The ${e.name} Bob uses isn't his own copy, so he leaves it alone.`);
+  const folder = path.join(cfg.agentDir, e.dir);
+  if (!fs.existsSync(folder) && !fs.existsSync(previousDir(cfg, e))) throw new Error(`${e.name} isn't here.`);
+  try { fs.rmSync(folder, { recursive: true, force: true }); }
+  catch (err) { throw new Error(`${e.name} is in use right now (${err.code || err.message}). Press Unload everything, then try again.`); }
+  fs.rmSync(previousDir(cfg, e), { recursive: true, force: true });
+  return { removed: id };
+}
+
+// 1.5.17x Which engine runs Bob's brains right now: 'ollama', 'brainengine' (the llama-server in brain-engine) or
+// 'llamacpp' (any other llama-server: the built-in one, or one set by hand in config.json).
+export function brainsEngineNow(cfg) {
+  if (cfg.engine === 'ollama') return 'ollama';
+  const exe = cfg.llamacpp?.exe || '';
+  const be = path.join(cfg.agentDir || '', 'brain-engine');
+  const r = exe ? path.relative(be, exe) : '..';
+  return r && !r.startsWith('..') && !path.isAbsolute(r) ? 'brainengine' : 'llamacpp';
+}
+// What Settings > Engines' ⚙ picker shows as picked: what Bob was told to use (it takes effect when he next starts).
+export function brainsEnginePick(cfg) {
+  if (cfg.engine === 'ollama') return 'ollama';
+  return cfg.llamacpp?.brainEngine === false ? 'llamacpp' : 'brainengine';
+}
+// The settings one picker choice stands for.
+export function brainsEngineSettings(pick) {
+  if (pick === 'ollama') return { engine: 'ollama' };
+  if (pick === 'llamacpp') return { engine: 'llamacpp', llamacpp: { brainEngine: false } };
+  if (pick === 'brainengine') return { engine: 'llamacpp', llamacpp: { brainEngine: true } };
+  return null;
+}
+
+// 1.5.17x The Lab's engine: labEngine '' (same as Bob's brains), 'brainengine' or 'llamacpp'. The folders the Lab
+// looks in for its tools, the picked one first; a tool missing there is looked for in the others (the direction
+// finder and the adapter folder come only in Brain Engine's download).
+export const LAB_ENGINES = ['', 'brainengine', 'llamacpp'];
+export function labEngineDirs(cfg) {
+  const be = path.join(cfg.agentDir, 'brain-engine'), plain = path.join(cfg.agentDir, 'llama.cpp');
+  const brains = cfg.llamacpp?.exe ? path.dirname(cfg.llamacpp.exe) : plain;
+  const pick = LAB_ENGINES.includes(cfg.labEngine) ? cfg.labEngine : '';
+  const inBe = (d) => { const r = path.relative(be, d); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };
+  const first = pick === 'brainengine' ? be : pick === 'llamacpp' ? (inBe(brains) ? plain : brains) : brains;
+  return [...new Set([first, brains, be, plain])];
+}
+// Which engine a folder is, by name, for the Lab's line and its result cards.
+export function engineNameOf(cfg, dir) {
+  const be = path.join(cfg.agentDir, 'brain-engine');
+  const r = path.relative(be, dir);
+  return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)) ? 'Brain Engine' : 'llama.cpp';
 }

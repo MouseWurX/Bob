@@ -72,7 +72,8 @@ const done2 = models.map((m) => (m.id === 'gemma4-e4b' ? { ...m, status: { state
 check(readyPlan({ vramGB: 16, nvidia: true }, done2, bEng).ids.join() === 'engine:llamacpp', 'NVIDIA card: Get Bob ready swaps in the faster CUDA build');
 check(readyPlan({ vramGB: 16, ramGB: 32, integrated: true }, done2, bEng).ids.length === 0, 'built-in graphics or no NVIDIA card: the bundled build is the right one');
 const engSrc = fs.readFileSync(path.join(here, '..', 'src', 'engines.js'), 'utf8');
-check(/const replacing = id === 'llamacpp' && Boolean\(bundledEngine\(cfg\)\)/.test(engSrc) && /fs\.rmSync\(folder, \{ recursive: true, force: true \}\); fs\.renameSync\(stage, folder\)/.test(engSrc), 'replacing the bundled build: the new one downloads to a side folder, then takes its place in one step (1.5.116; no two builds side by side, and never no engine)');
+check(/const replacing = \(id === 'llamacpp' && Boolean\(bundledEngine\(cfg\)\)\)/.test(engSrc) && /try \{ swapIn\(folder, stage\); \}/.test(engSrc) && /fs\.renameSync\(stage, folder\)/.test(engSrc), // 1.5.17x: swapIn keeps the old build for Go back
+   'replacing the bundled build: the new one downloads to a side folder, then takes its place in one step (1.5.116; no two builds side by side, and never no engine)');
 const mk = fs.readFileSync(path.join(here, '..', 'installer', 'make-release.ps1'), 'utf8');
 const mac = fs.readFileSync(path.join(here, '..', 'installer', 'make-release-mac.sh'), 'utf8');
 const lin = fs.readFileSync(path.join(here, '..', '.github', 'workflows', 'linux.yml'), 'utf8');
