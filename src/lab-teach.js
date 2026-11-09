@@ -233,7 +233,8 @@ export async function planTeach(lab, c = {}) {
   const lessons = readLessonSource(lab, c.lessons || {});
   const g = await Promise.resolve((lab.gpuInfo || gpuInfo)()).catch(() => null);
   const cardGB = Number(lab.cfg.gpuVramGB) || Number(lab.cfg.cardGB) || g?.vramGB || 0;
-  const fit = teachFit({ cardGB, paramsB: brain.paramsB, moe: brain.moe, nvidia: /nvidia|geforce|rtx|quadro|tesla/i.test(g?.name || ''), unified: Boolean(g?.unified) });
+  const fit = teachFit({ arch: lab.arch, // lab.arch: tests pin the host
+    cardGB, paramsB: brain.paramsB, moe: brain.moe, nvidia: /nvidia|geforce|rtx|quadro|tesla/i.test(g?.name || ''), unified: Boolean(g?.unified) });
   const where = c.where === 'rented' || !fit.here ? 'rented' : 'here';
   const epochs = [1, 2, 3].includes(Number(c.epochs)) ? Number(c.epochs) : 1;
   problems.push(...brain.problems, ...lessons.problems); notes.push(...brain.notes, ...lessons.notes);

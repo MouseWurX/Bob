@@ -156,11 +156,11 @@ check('Bob reads whether a brain carries its own guesser, and where its full wei
 
 // ---- Teach it: the fit rule ----
 check('the fit table matches the design (6, 8, 12, 16, 24 GB)', FIT_ROWS.map((r) => r.join('/')).join(' ') === '6/2/3 8/3/5 12/7/11 16/9/15 24/14/23');
-check('16 GB teaches a 9B dense brain or a 15B mixture of experts here, and says why', teachFit({ cardGB: 16, paramsB: 8.2 }).here && !teachFit({ cardGB: 16, paramsB: 14 }).here && teachFit({ cardGB: 16, paramsB: 14, moe: true }).here && /up to about 9 billion/.test(teachFit({ cardGB: 16, paramsB: 8 }).why));
-check('a 6 GB laptop teaches up to about 2B; bigger goes rented', teachFit({ cardGB: 6, paramsB: 1.7 }).here && !teachFit({ cardGB: 6, paramsB: 4 }).here);
+check('16 GB teaches a 9B dense brain or a 15B mixture of experts here, and says why', teachFit({ arch: 'x64', cardGB: 16, paramsB: 8.2 }).here && !teachFit({ arch: 'x64', cardGB: 16, paramsB: 14 }).here && teachFit({ arch: 'x64', cardGB: 16, paramsB: 14, moe: true }).here && /up to about 9 billion/.test(teachFit({ arch: 'x64', cardGB: 16, paramsB: 8 }).why));
+check('a 6 GB laptop teaches up to about 2B; bigger goes rented', teachFit({ arch: 'x64', cardGB: 6, paramsB: 1.7 }).here && !teachFit({ arch: 'x64', cardGB: 6, paramsB: 4 }).here);
 check('phones and the Pi always go rented, with a reason', /Phones and the Raspberry Pi/.test(teachFit({ cardGB: 8, paramsB: 1, os_: 'android' }).why) && !teachFit({ cardGB: 8, paramsB: 1, os_: 'linux', arch: 'arm64' }).here);
-check('no NVIDIA card goes rented; a Mac teaches in 16-bit, so about half', !teachFit({ cardGB: 16, paramsB: 2, nvidia: false }).here && teachFit({ cardGB: 16, paramsB: 3, unified: true, nvidia: false }).here && !teachFit({ cardGB: 16, paramsB: 5, unified: true, nvidia: false }).here);
-check('an unknown size asks to look it up first', /look it up first/.test(teachFit({ cardGB: 16, paramsB: 0 }).why));
+check('no NVIDIA card goes rented; a Mac teaches in 16-bit, so about half', !teachFit({ arch: 'x64', cardGB: 16, paramsB: 2, nvidia: false }).here && teachFit({ arch: 'x64', cardGB: 16, paramsB: 3, unified: true, nvidia: false }).here && !teachFit({ arch: 'x64', cardGB: 16, paramsB: 5, unified: true, nvidia: false }).here);
+check('an unknown size asks to look it up first', /look it up first/.test(teachFit({ arch: 'x64', cardGB: 16, paramsB: 0 }).why));
 check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bigger', lessonsPerHour(4) === 2000 && lessonsPerHour(8) === 1000 && teachDiskGB(4).work > teachDiskGB(4, { download: false }).work);
 
 // ---- Teach it: where brains and lessons come from ----
@@ -186,7 +186,7 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
   check('a dataset with no licence says to keep it private; a non-jsonl is refused', /private/.test(readLessonSource(lab, { kind: 'hf', repo: 'o/n', file: 'train.jsonl' }).notes.join(' ')) && /\.jsonl/.test(readLessonSource(lab, { kind: 'hf', repo: 'o/n', file: 'a.parquet' }).problems[0]) && /\.jsonl/.test(readLessonSource(lab, { kind: 'link', value: 'https://x.example/a.txt' }).problems[0]));
 
   // the plan
-  lab.gpuInfo = async () => ({ name: 'NVIDIA GeForce RTX 5070 Ti', vramGB: 16 });
+  lab.gpuInfo = async () => ({ name: 'NVIDIA GeForce RTX 5070 Ti', vramGB: 16 }); lab.arch = 'x64'; // the fit checks below are for a PC; Linux ARM has its own check
   const p = await planTeach(lab, { name: 'Taught', brain: { kind: 'hf', repo: 'Qwen/Qwen3-4B' }, lessons: { kind: 'set', id: 'my-set' } });
   check('a 4B brain on a 16 GB NVIDIA card is taught here, and needs the Trainer pack first', p.where === 'here' && p.fit.here && p.problems.some((x) => /Trainer pack/.test(x)) && p.hours > 0 && p.disk.work > p.disk.keep);
   const pr = await planTeach(lab, { name: 'Taught', where: 'rented', brain: { kind: 'local', value: folder }, lessons: { kind: 'set', id: 'my-set' } });
@@ -219,26 +219,31 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
     quiz: async (l, gguf) => ({ score: /before/.test(gguf) || gguf === bigFile ? 50 : 62, tps: 30 })
   });
   lab.hfFetch = async () => ({ ok: true, status: 200, json: async () => ({ cardData: { license: 'apache-2.0' }, safetensors: { total: 4.0e9 }, siblings: [{ rfilename: 'model.safetensors' }] }) });
-  lab.gpuInfo = async () => ({ name: 'NVIDIA GeForce RTX 5070 Ti', vramGB: 16 });
+  lab.gpuInfo = async () => ({ name: 'NVIDIA GeForce RTX 5070 Ti', vramGB: 16 }); lab.arch = 'x64';
   lab.freeGB = () => 1000;
   check('the Trainer pack isn\'t here until it\'s fetched', !trainerState(cfg).ok && trainerState(cfg).dir === tr && uvUrl('win', 'x64').endsWith(`/${TRAINER.uv}/uv-x86_64-pc-windows-msvc.zip`));
-  await startTrainerInstall(lab); await wait(lab);
-  const irun = lab.runs[lab.runs.length - 1];
-  check('getting the Trainer pack is its own Lab job: uv, Python, the libraries (pinned), the converters', irun.state === 'done' && trainerState(cfg).ok && calls.some(([, a]) => a[0] === 'pip' && a.includes('torch==2.14.1')) && calls.some(([, a]) => a[0] === 'venv' && a.includes(TRAINER.python)), irun.error || '');
-  calls.length = 0;
-  const res = await startTeach(lab, { name: 'Taught Big', brain: { kind: 'lab', id: 'big' }, lessons: { kind: 'set', id: 'my-set' } });
-  await wait(lab);
-  const run = lab.runs[lab.runs.length - 1];
-  check('teaching here runs as a Lab job: weights, lessons, adapter, fold in, quiz', res.started && run.state === 'done' && run.steps.length === 5 && run.steps.every((s) => s.state === 'done'), run.error || '');
-  check('it downloads the original named in the file, teaches with teach.py, folds in with llama-export-lora', calls.some(([, a]) => a.includes('Qwen/Qwen3-8B')) && calls.some(([, a]) => String(a[0]).endsWith('teach.py')) && calls.some(([e]) => e.startsWith('llama-export-lora')) && fs.existsSync(path.join(tr, 'teach.py')));
-  check('the before score is the brain file that was already here, the after score the new one', run.report.from.score === 50 && run.report.made.score === 62 && run.report.madeHere && run.report.learned === 38 && run.report.skipped === 2 && run.report.loss === 1.2345);
-  check('the downloaded weights and the big in-between files are cleaned up', !fs.existsSync(path.join(cfg.bobModelsDir, 'lab', 'teach', 'taught-big', 'base')) && !fs.existsSync(path.join(cfg.bobModelsDir, 'lab', 'teach', 'taught-big', 'taught-f16.gguf')) && fs.existsSync(run.files.gguf));
-  useTaught(lab, run.id);
-  const made = JSON.parse(fs.readFileSync(path.join(dataDir, 'lab', 'made.json'), 'utf8')).find((m) => m.id === 'lab-teach-taught-big');
-  check('Use in Bob marks it made here, lists its lessons, and doesn\'t make it the default', made?.madeHere === true && made.lessons.join() === 'My set' && /Taught here from Big/.test(made.what) && !cfg.models);
-  check('a run that doesn\'t fit here won\'t start here', await startTeach(lab, { name: 'Huge', brain: { kind: 'hf', repo: 'Qwen/Qwen3-4B' }, lessons: { kind: 'set', id: 'my-set' }, where: 'rented' }).then(() => false, (e) => /goes rented/.test(e.message)));
-  removeTrainer(lab);
-  check('the Trainer pack can be removed, and only from its own folder', !fs.existsSync(tr) && !trainerState(cfg).ok);
+  // Linux on ARM (the Pi, the arm64 AppImage build) can't teach here, so the Trainer pack refuses to install there.
+  if (process.platform === 'linux' && process.arch === 'arm64') {
+    check('on Linux ARM the Trainer pack won\'t install, and says to teach it rented', !trainerState(cfg).supported && await startTrainerInstall(lab).then(() => false, (e) => /rented/.test(e.message)));
+  } else {
+    await startTrainerInstall(lab); await wait(lab);
+    const irun = lab.runs[lab.runs.length - 1];
+    check('getting the Trainer pack is its own Lab job: uv, Python, the libraries (pinned), the converters', irun.state === 'done' && trainerState(cfg).ok && calls.some(([, a]) => a[0] === 'pip' && a.includes('torch==2.14.1')) && calls.some(([, a]) => a[0] === 'venv' && a.includes(TRAINER.python)), irun.error || '');
+    calls.length = 0;
+    const res = await startTeach(lab, { name: 'Taught Big', brain: { kind: 'lab', id: 'big' }, lessons: { kind: 'set', id: 'my-set' } });
+    await wait(lab);
+    const run = lab.runs[lab.runs.length - 1];
+    check('teaching here runs as a Lab job: weights, lessons, adapter, fold in, quiz', res.started && run.state === 'done' && run.steps.length === 5 && run.steps.every((s) => s.state === 'done'), run.error || '');
+    check('it downloads the original named in the file, teaches with teach.py, folds in with llama-export-lora', calls.some(([, a]) => a.includes('Qwen/Qwen3-8B')) && calls.some(([, a]) => String(a[0]).endsWith('teach.py')) && calls.some(([e]) => e.startsWith('llama-export-lora')) && fs.existsSync(path.join(tr, 'teach.py')));
+    check('the before score is the brain file that was already here, the after score the new one', run.report.from.score === 50 && run.report.made.score === 62 && run.report.madeHere && run.report.learned === 38 && run.report.skipped === 2 && run.report.loss === 1.2345);
+    check('the downloaded weights and the big in-between files are cleaned up', !fs.existsSync(path.join(cfg.bobModelsDir, 'lab', 'teach', 'taught-big', 'base')) && !fs.existsSync(path.join(cfg.bobModelsDir, 'lab', 'teach', 'taught-big', 'taught-f16.gguf')) && fs.existsSync(run.files.gguf));
+    useTaught(lab, run.id);
+    const made = JSON.parse(fs.readFileSync(path.join(dataDir, 'lab', 'made.json'), 'utf8')).find((m) => m.id === 'lab-teach-taught-big');
+    check('Use in Bob marks it made here, lists its lessons, and doesn\'t make it the default', made?.madeHere === true && made.lessons.join() === 'My set' && /Taught here from Big/.test(made.what) && !cfg.models);
+    check('a run that doesn\'t fit here won\'t start here', await startTeach(lab, { name: 'Huge', brain: { kind: 'hf', repo: 'Qwen/Qwen3-4B' }, lessons: { kind: 'set', id: 'my-set' }, where: 'rented' }).then(() => false, (e) => /goes rented/.test(e.message)));
+    removeTrainer(lab);
+    check('the Trainer pack can be removed, and only from its own folder', !fs.existsSync(tr) && !trainerState(cfg).ok);
+  }
 }
 
 // ---- the route ----
