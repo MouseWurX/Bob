@@ -23,7 +23,7 @@ const STEPS = [['brain', '1 Pick a brain'], ['lessons', '2 Lessons'], ['smaller'
 // parts of step 3 it needs; Everything is the five steps as they were. The recipe is the same shape either way.
 const JOBS = [
   { id: 'smaller', title: 'Make it smaller', what: 'Running files (Q8 down to Q3) from a full-size brain, then the Lab test.', steps: ['brain', 'smaller', 'test'], parts: ['files'] },
-  { id: 'cut', title: 'Cut experts', what: 'Keep the experts your work uses and drop the rest. Lessons say which, then the Lab test.', steps: ['brain', 'lessons', 'smaller', 'where', 'test'], parts: ['cut'] },
+  { id: 'cut', title: 'Cut experts', what: 'Keep the experts your work uses and drop the rest. A set of lessons shows which ones, then the Lab test.', steps: ['brain', 'lessons', 'smaller', 'where', 'test'], parts: ['cut'] },
   { id: 'senses', title: 'Take out sight or hearing', what: 'Leave the picture or sound reader behind; everything else stays. Then the Lab test.', steps: ['brain', 'smaller', 'test'], parts: ['senses'] },
   { id: 'test', title: 'Just test a brain', what: 'The Lab test on a brain as it is, with a second brain to compare if you like.', steps: ['brain', 'test'], parts: [] },
   { id: 'full', title: 'Everything, step by step', what: 'All five steps: lessons, every way to make it smaller, where it runs, the test.', steps: ['brain', 'lessons', 'smaller', 'where', 'test'], parts: ['senses', 'cut', 'files', 'later'] },
