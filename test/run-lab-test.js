@@ -13,6 +13,7 @@ import { LESSON_SKILLS } from '../src/lab-skills.js';
 import { QUIZ, TOOLS, runQuiz } from '../src/lab-test.js';
 import { PACKS, PACK_IDS, REASONING, SUMS, RULES, PICK_TOOL, CODE, letterOf, numberOf, codeOf, codeTool, runPack, mergeScores, scoreboard } from '../src/lab-challenges.js';
 import { runSandboxed } from '../src/selftools.js';
+import { METHODS, LEFT_OUT, scrub, makeForgePlan, rungFieldsOk } from '../src/lab-forge.js';
 import { LADDER, PLAY_MAX_GB, ladderTexts, ladderDiskGB, readPerplexity, ladderTable, ladderSaw } from '../src/lab-playground.js';
 import { cleanResult, resultText, hardwareLine } from '../src/lab.js';
 import { cleanLearn, learnBrain, tokenize, nextWords, tryTemperature, runLearn, sawTokens, sawNext, sawTemperature, LEARN_CARDS, MAX_TEXT } from '../src/lab-learn.js';
@@ -444,6 +445,54 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   check('the Playground tab uses the reviewed words, a table as well as bars, and Save', ['How small can a brain get?', 'Make the ladder', 'Same question, every size', 'Ask every size', 'Delete all', 'What you just saw', 'Compared with Q8', 'Delete the six sizes for good? The table stays.', 'Delete them', 'Keep them', 'Bob takes one small brain', 'needs the graphics card'].every((w) => pg.includes(w)) && !/I take one|I show how much|ordinary writing/.test(pg) && /<th scope="col">/.test(pg) && /aria-hidden="true"/.test(pg) && /saveHtml\(/.test(pg));
   check('Help has a Playground page in Bob\'s voice', /id: 'lab-playground'/.test(read('public/help-content.js')) && /how small can a brain get before it gets worse/.test(read('public/help-content.js')));
   check('the Playground never sends anything to a rental', !/runpod|\brent/i.test(pg) && !/runpod|\brent/i.test(read('src/lab-playground.js')));
+}
+
+// ---- 1.5.158 the Forge tab ----
+{
+  check('every way to make a brain has a card with what it does, where it runs and best practice', METHODS.length >= 11 && METHODS.every((m) => m.title && m.what && ['here', 'rented', 'both'].includes(m.where) && m.tips.length && (m.ready || m.why)) && ['mix', 'stack', 'refusals', 'stitch', 'fewer', 'thinking', 'blend', 'fold'].every((id) => METHODS.some((m) => m.id === id)));
+  check('round robin and the other non-ideas are left out with a reason', LEFT_OUT.some(([t]) => /Round robin/.test(t)) && LEFT_OUT.some(([t]) => /offloading/i.test(t)) && LEFT_OUT.every(([, w]) => w.length > 20));
+  check('nothing in the Forge tab names a private brain or a date gate', !/thoth|uncensor|heretic|15th of November/i.test(read('src/lab-forge.js') + read('public/lab-forge.js')));
+  check('keys and tokens are hidden from log lines', scrub('key rpa_ABCDEFGH12345678 and hf_abcdefghijkl and "token": "0123456789abcdef0123"') === 'key [hidden] and [hidden] and [hidden]' && scrub('step 12 loss 0.41') === 'step 12 loss 0.41');
+  const base = { teacher: 'Qwen/x', skills: { chat: ['chat'], coding: ['coding'] }, hours_max: 28, dollars_max: 150, benchmark: { commands: ['rm -rf /'] }, rungs: [{ name: 'old' }] };
+  const kf = [{ id: 'k1', name: 'Little', experts: 96, layers: 40, path: '/x/little-keep.json' }];
+  const fp = makeForgePlan({ run: 'My run!', rungs: [{ name: '20Bob', nickname: 'Bill', how: 'file', keepFile: 'k1' }, { name: '12Bob', how: 'cover', keep: 80, strong: ['coding'] }], strong: ['coding', 'nope'], quants: ['Q4_K_M', 'exe'], heal: { experts: 'lora', epochs: 1 } }, { base, keepFiles: kf });
+  check('a Forge plan keeps the base teacher and skills, never its caps or benchmark commands', fp.plan.teacher === 'Qwen/x' && fp.plan.skills.chat && fp.plan.hours_max === 0 && fp.plan.dollars_max === 0 && !('benchmark' in fp.plan));
+  check('protected skills sit at the top of the plan, never in a rung', fp.plan.strong.join() === 'coding' && fp.plan.strong_cover === 0.99 && rungFieldsOk(fp.plan) && !fp.plan.rungs.some((r) => 'strong' in r));
+  check('a keep file goes in as an absolute path with its expert count; the first brain is cut from the teacher', path.isAbsolute(fp.plan.rungs[0].keep_file) && fp.plan.rungs[0].keep === 96 && fp.plan.rungs[0].from === 'teacher' && fp.plan.rungs[1].keep === 'cover' && fp.plan.rungs[1].keep_n === 80);
+  check('each brain\'s teaching-back limit is set above the estimate for a full pass', fp.plan.rungs.every((r) => r.hours >= 2.5) && fp.hours > 0 && fp.plan.heal.experts === 'lora' && !('alpha' in fp.plan.heal));
+  check('a plan with caps of 0 can be saved but says it can never start', fp.notes.some((n) => /never started/.test(n)) && !fp.problems.length, fp.problems.join());
+  check('a time cap below the estimate is a problem, in words', makeForgePlan({ rungs: [{ name: 'a', keep: 128 }], hours_max: 1, dollars_max: 10 }, { base }).problems.some((x) => /Raise the cap/.test(x)));
+  check('only known running files go in the plan', fp.plan.quants === 'Q4_K_M');
+  // the Lab's view of a Forge next to Bob
+  const ml = path.join(tmp, 'model-lab');
+  fs.mkdirSync(path.join(ml, 'forge', 'plans'), { recursive: true }); fs.writeFileSync(path.join(ml, 'forge', 'forge.mjs'), '');
+  fs.writeFileSync(path.join(ml, 'forge', 'plans', 'bill-v3.json'), JSON.stringify(base));
+  fs.mkdirSync(path.join(ml, 'out', 'forge'), { recursive: true });
+  fs.writeFileSync(path.join(ml, 'out', 'forge', 'forge-2026-11-05T10-00-00.log'), '10:00:00 renting\n10:01:00 pod token rpa_SECRETSECRET1234\n12:00:00 downloaded 20Bob-Q4_K_M.gguf\n12:01:00 deleting the pod (all Bobs downloaded), $41.20 spent\n');
+  fs.mkdirSync(path.join(ml, 'out', 'bobs', '20Bob'), { recursive: true });
+  fs.writeFileSync(path.join(ml, 'out', 'bobs', '20Bob', 'heal-report.json'), JSON.stringify({ experts: 'lora', before: { lessons: { ce: 0.4011, teacher_ce: 0.3243 } }, after: { lessons: { ce: 0.3512 } }, steps: 929, planned_steps: 929 }));
+  fs.writeFileSync(path.join(ml, 'out', 'bobs', '20Bob', '20Bob-Q4_K_M.gguf'), '');
+  fs.mkdirSync(path.join(dataDir, 'lab', 'usage', 'test-moe'), { recursive: true });
+  fs.writeFileSync(path.join(dataDir, 'lab', 'usage', 'test-moe', 'test-moe-keep.json'), JSON.stringify({ name: 'Test MoE', experts: 2, layers: [[0, 1], [2, 3]] }));
+  const fLab = new Lab(cfg, { shop, room: big });
+  const fv = fLab.forgeView();
+  check('the Forge tab finds the Forge, its runs and its plans', fv.found && fv.runs.length === 1 && fv.runs[0].state === 'done' && fv.runs[0].made.join() === '20Bob-Q4_K_M.gguf' && fv.plans[0].id === 'bill-v3' && fv.skills.join() === 'chat,coding');
+  check('the Forge\'s log lines on screen never carry a key', !JSON.stringify(fv.runs).includes('SECRET') && JSON.stringify(fv.runs).includes('[hidden]'));
+  check('the brains it brought home show before, after and the floor, and a full pass', fv.brains[0].name === '20Bob' && fv.brains[0].before === 0.401 && fv.brains[0].after === 0.351 && fv.brains[0].floor === 0.324 && fv.brains[0].steps === 929);
+  check('the Lab\'s keep files are offered by name, without their paths', fv.keepFiles.some((k) => k.name === 'Test MoE' && k.experts === 2) && !JSON.stringify(fv.keepFiles).includes(tmp));
+  const kid = fv.keepFiles.find((k) => k.name === 'Test MoE').id;
+  const sv2 = fLab.saveForgePlan({ base: 'bill-v3', run: 'first', rungs: [{ name: '6Bob', how: 'file', keepFile: kid }] });
+  const sp = JSON.parse(fs.readFileSync(path.join(dataDir, 'lab', 'forge-plans', sv2.file), 'utf8'));
+  check('Save the plan writes it in the Lab\'s forge-plans folder, ready for the Forge', sv2.file === 'first.json' && sp.rungs[0].keep_file.endsWith('test-moe-keep.json') && sp.hours_max === 0);
+  check('a plan from a Forge plan that isn\'t there is refused', (() => { try { fLab.forgePlan({ base: '../../etc/passwd' }); return false; } catch (e) { return /isn't there/.test(e.message); } })());
+  const sent4 = [];
+  for (const p of ['/api/lab/forge/plan', '/api/lab/forge/save']) await labRoute({ req: { method: 'POST' }, res: {}, p, isLocal: false, lab: fLab, body: async () => ({ form: {} }), send: (res, code, j) => sent4.push([code, j]) });
+  await labRoute({ req: { method: 'GET' }, res: {}, p: '/api/lab/forge', isLocal: false, lab: fLab, body: async () => ({}), send: (res, code, j) => sent4.push([code, j]) });
+  check('plans are written only on this replicant matrix; other devices see the runs, without keep files', sent4[0][0] === 403 && sent4[1][0] === 403 && sent4[2][0] === 200 && sent4[2][1].runs.length === 1 && sent4[2][1].keepFiles.length === 0);
+  const pf = read('public/lab-forge.js');
+  check('the Forge tab never starts a rental: its Start button is off and says only your press will', /<button type="button" class="get" disabled aria-describedby="forge-start-h">Start on a rented card<\/button>/.test(pf) && /Bob never starts a rental by himself/.test(pf) && !/\/api\/rent/.test(pf));
+  check('the Forge tab uses real labels, radio groups and table headers', /role="radiogroup"/.test(pf) && /<th scope="col">/.test(pf) && /<label/.test(pf) && /\['forge', 'Forge'\]/.test(read('public/lab.js')));
+  check('Help has a Forge page and a best-practice page in Bob\'s voice', /id: 'lab-forge'/.test(read('public/help-content.js')) && /id: 'lab-best-practice'/.test(read('public/help-content.js')) && /half a pass teaches half a habit/.test(read('public/help-content.js')));
 }
 
 // The route: only this replicant matrix starts jobs.

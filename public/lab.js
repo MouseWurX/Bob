@@ -8,10 +8,11 @@ import { TEMPLATES, templateById, templateWhyNot, applyTemplate } from './lab-te
 import { createLearn } from './lab-learn.js';
 import { saveHtml, saveResult } from './lab-save.js'; // 1.5.153 Save
 import { createRecipes } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
+import { createForge } from './lab-forge.js'; // 1.5.158 the Forge tab
 import { createPlayground } from './lab-playground.js'; // 1.5.157 Playground: the quantization ladder
 
 const $ = (id) => document.getElementById(id);
-const TABS = [['make', 'Make a brain'], ['learn', 'Learn'], ['challenges', 'Challenges'], ['playground', 'Playground']];
+const TABS = [['make', 'Make a brain'], ['forge', 'Forge'], ['learn', 'Learn'], ['challenges', 'Challenges'], ['playground', 'Playground']];
 const STEPS = [['brain', '1 Pick a brain'], ['lessons', '2 Lessons'], ['smaller', '3 Make it smaller'], ['where', '4 Where it runs'], ['test', '5 Test and use']];
 const TYPE_NOTE = { Q4_K_M: 'Q4 (recommended)', Q5_K_M: 'Q5', Q6_K: 'Q6', Q8_0: 'Q8', Q3_K_M: 'Q3 (only for brains meant for 8 GB or less)' };
 const PARTS = { general: 'General knowledge', tools: 'Picking the right tool', coding: 'Coding', following: 'Following instructions' };
@@ -32,6 +33,8 @@ export function createLab({ api, note }) {
   const bld = { name: '', teacher: '', items: [], kinds: ['material'], count: 300, think: 'half', resay: true, feedback: { dropFiles: [], notKinds: {}, badIdeas: [] } };
   let bplan = null, building = false, bsurvey = null, surveying = false, openPassage = new Set(), notLike = '', viewer = null, vq = { q: '', skill: '', file: '', kind: '' }, exportInfo = null, typedPath = '';
   const r = { template: '', name: '', from: '', lessons: { kind: 'none', file: '', chunks: 200 }, smaller: { sight: false, hearing: false, cut: null, files: [], measure: false }, test: { compare: true } };
+  const fg = createForge({ api, goMake: () => { tab = 'make'; draw(); $('lab-tab-make')?.focus(); } });
+  document.addEventListener('lab-forge-ready', () => { if (tab === 'forge' && dlg.open) draw(); });
   const pg = createPlayground({ api, view: () => view, saveState });
   const rc = createRecipes({ api, recipe: r, view: () => view, replan: () => replan(), draw: () => draw() });
   const brain = () => view?.brains.find((b) => b.id === r.from);
@@ -331,6 +334,7 @@ export function createLab({ api, note }) {
     const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}</div>`;
     if (tab === 'learn') { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-learn" role="tabpanel" aria-labelledby="lab-tab-learn"></div></div>`; learn.mount($('lab-page-learn')); return; }
     if (tab === 'challenges') { body.innerHTML = `<div class="lab">${tabs}${challengesHtml()}</div>`; return; }
+    if (tab === 'forge') { body.innerHTML = `<div class="lab">${tabs}${fg.html()}</div>`; return; }
     if (tab === 'playground') { body.innerHTML = `<div class="lab">${tabs}${pg.html(runsHtml())}</div>`; return; }
     const i = STEPS.findIndex(([id]) => id === step);
     const html = { brain: brainStep, lessons: lessonsStep, smaller: smallerStep, where: whereStep, test: testStep }[step]();
@@ -362,6 +366,7 @@ export function createLab({ api, note }) {
   body.addEventListener('change', async (e) => {
     const el = e.target; msg = '';
     if (tab === 'learn') return; // the Learn tab listens for itself
+    { const f = await fg.change(el); if (f) { draw(); $(el.id)?.focus(); return; } }
     if (await pg.change(el)) return draw();
     if (el.name === 'chfrom') { ch.from = el.value; return draw(); }
     if (el.dataset.pack) { const k = el.dataset.pack; ch.packs = el.checked ? [...new Set([...ch.packs, k])] : ch.packs.filter((x) => x !== k); return draw(); }
@@ -450,6 +455,7 @@ export function createLab({ api, note }) {
       } catch (err) { msg = err.message; }
       return load();
     }
+    { const f = await fg.click(b); if (f === 'draw') return draw(); if (f) return; }
     { const p = await pg.click(b, load); if (p === 'draw') return draw(); if (p) return; }
     if (await rc.click(b)) return;
     if (b.dataset.step) { step = b.dataset.step; return draw(); }

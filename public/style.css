@@ -1430,6 +1430,19 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .learn-try { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; }
 .learn-try p { margin: 4px 0 0; white-space: pre-wrap; }
 @media (prefers-reduced-motion: reduce) { .learn-caret { animation: none; } .learn-odd i { transition: none; } }
+/* 1.5.158 Lab Forge tab: the ways to make a brain, as cards */
+.forge-cards { list-style: none; padding: 0; margin: 8px 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.forge-card { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; }
+.forge-card h4 { margin: 2px 0; }
+.forge-card p { margin: 4px 0; }
+.forge-card.dim { border-style: dashed; }
+.forge-where { font-weight: 600; }
+.forge-tips { margin: 2px 0 6px; padding-left: 18px; }
+.forge-left dt { font-weight: 600; margin-top: 6px; }
+.forge-left dd { margin: 0 0 0 12px; }
+.forge-rung { margin: 8px 0; }
+.forge-rung label, .forge-num { display: inline-block; margin: 4px 10px 4px 0; }
+.forge-num input { width: 6em; }
 /* 1.5.157 Lab Playground: the ladder's bars (the numbers are in the table above them) */
 .play-bars { display: grid; gap: 4px; max-width: 560px; margin: 8px 0; }
 .play-bar { display: grid; grid-template-columns: 3em 1fr 1fr; gap: 8px; align-items: center; }

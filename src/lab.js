@@ -24,6 +24,7 @@ import { findOffice } from './office.js';
 import { writeZip } from './zip.js';
 import { PACKS, PACK_IDS, runPack, mergeScores, readScores, scoreboard, scoreFile, codeTool } from './lab-challenges.js'; // 1.5.153 Challenges
 import { runSandboxed, sandboxHolds } from './selftools.js';
+import { METHODS, LEFT_OUT, forgeDir, forgeRuns, forgeBrains, forgePlans, makeForgePlan, forgePlansDir } from './lab-forge.js'; // 1.5.158 the Forge tab
 import { LADDER, PLAY_MAX_GB, ladderTexts, ladderDiskGB, readPerplexity, ladderTable, ladderSaw, playDir, readLadders } from './lab-playground.js'; // 1.5.157 Playground
 import { recipesRoute } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
 
@@ -1021,6 +1022,38 @@ export class Lab {
     return { freedGB: Math.round((freed / 1e9) * 10) / 10 };
   }
 
+  // 1.5.158 The Forge tab. Keep files the Lab made (cuts, usage map, recipes), named for the page, paths kept here.
+  keepFiles() {
+    const out = [];
+    const walk = (dir, depth) => { let ents = []; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; } for (const e of ents) { const f = path.join(dir, e.name); if (e.isDirectory() && depth > 0) walk(f, depth - 1); else if (e.isFile() && e.name.endsWith('-keep.json')) { const j = readJson(f, null); if (Array.isArray(j?.layers) && j.layers.length) out.push({ id: crypto.createHash('sha1').update(f).digest('hex').slice(0, 12), name: j.name || e.name.replace(/-keep\.json$/, ''), experts: Number(j.experts) || j.layers[0].length, layers: j.layers.length, path: f }); } } };
+    walk(labModelsDir(this.cfg), 2); walk(path.join(labDir(this.cfg), 'usage'), 2);
+    return out;
+  }
+
+  forgeView() {
+    const dir = forgeDir(this.cfg);
+    let saved = []; try { saved = fs.readdirSync(forgePlansDir(labDir(this.cfg))).filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, '')); } catch {}
+    return { methods: METHODS, leftOut: LEFT_OUT, found: Boolean(dir), runs: forgeRuns(dir), brains: forgeBrains(dir), plans: forgePlans(dir), saved, keepFiles: this.keepFiles().map(({ path: _p, ...k }) => k), skills: (() => { const b = forgePlans(dir)[0]; return b ? Object.keys(readJson(path.join(dir, 'forge', 'plans', `${b.id}.json`), {}).skills || {}) : []; })() };
+  }
+
+  forgePlan(form = {}) {
+    const dir = forgeDir(this.cfg);
+    if (!dir) throw new Error('The Forge isn\'t next to this copy of Bob. It lives in the model-lab folder of Bob\'s source.');
+    const id = String(form.base || '').replace(/[^\w.-]/g, '');
+    const base = id ? readJson(path.join(dir, 'forge', 'plans', `${id}.json`), null) : null;
+    if (id && !base) throw new Error('That Forge plan isn\'t there any more.');
+    return makeForgePlan(form, { base: base || {}, keepFiles: this.keepFiles() });
+  }
+
+  saveForgePlan(form = {}) {
+    const r = this.forgePlan(form);
+    if (r.problems.length) throw new Error(r.problems[0]);
+    const dir = forgePlansDir(labDir(this.cfg)); fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${slugOf(r.plan.run)}.json`);
+    writeJson(file, r.plan);
+    return { file: path.basename(file) };
+  }
+
   // Save a result the page sends (a table, or a picture of one) in the Lab's results folder. Returns the file name.
   saveResult(body, { version = '' } = {}) {
     const r = cleanResult(body);
@@ -1246,6 +1279,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (req.method === 'GET' && p === '/api/lab/measures') { send(res, 200, { measures: lab.measures().map(({ rec, ...m }) => m) }); return true; }
     // 1.5.151 Learn: experiments on the brain Bob has loaded. Read-only, nothing is written, so any device Bob lets in may use them.
     if (req.method === 'GET' && p === '/api/lab/learn') { const b = learnBrain(lab.brain); send(res, 200, { on: labOn(lab.cfg), ready: b.ready, why: b.why || '', wake: b.wake === true, busy: b.busy === true, brain: b.ready ? (lab.brain?.brainLabel?.(b.model) || b.model) : '', ctx: b.ctx || 0, cards: LEARN_CARDS }); return true; }
+    if (req.method === 'GET' && p === '/api/lab/forge') { const v = lab.forgeView(); send(res, 200, isLocal ? v : { ...v, keepFiles: [] }); return true; } // 1.5.158 read-only
     if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }
     const b = await body(req);
     if (p === '/api/lab/compare' && !b.save) { send(res, 200, lab.compare(b.ids)); return true; }
@@ -1271,6 +1305,8 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/ladder') { send(res, 200, await lab.startLadder({ from: b.from }, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/ladder/ask') { send(res, 200, await lab.startLadderAsk({ id: b.id, question: b.question }, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/ladder/delete') { send(res, 200, lab.deleteLadder(String(b.id || ''))); return true; }
+    if (p === '/api/lab/forge/plan') { const r = lab.forgePlan(b.form); send(res, 200, { problems: r.problems, notes: r.notes, hours: r.hours, text: JSON.stringify(r.plan, null, 1) }); return true; } // 1.5.158
+    if (p === '/api/lab/forge/save') { send(res, 200, lab.saveForgePlan(b.form)); return true; }
     if (p === '/api/lab/save') { const out = lab.saveResult(b, { version: lab.version || '' }); send(res, 200, { file: out.file }); return true; }
     if (p === '/api/lab/recipe') { send(res, 200, { recipes: lab.saveRecipe(b.recipe) }); return true; }
     send(res, 404, { error: 'no' }); return true;
