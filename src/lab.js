@@ -44,6 +44,9 @@ import { peekView, tallyTrace, addToTally, keepFromLit, askTraced, IDLE_MS, NO_T
 import { usageFolder, keepFileOf } from './lab-usage.js';
 import { ownModels, OWN_FAMILY } from './own-models.js'; // Your own brains join the Lab's lists
 import { fullSizeRoute } from './lab-fullsize.js'; // Bring in a full-size brain
+import { benchBrain, benchLine } from './lab-bench.js'; // the standard speed test (llama-bench)
+import { findTool } from './llama-tools.js';
+import { diffusionRoute } from './lab-diffusion.js'; // Playground: Diffusion brains
 
 // 1.5.172 the Lab shows unless it is switched off (it was off until switched on before). Anything but false is on.
 export const labOn = (cfg) => cfg?.computerLab !== false;
@@ -539,7 +542,7 @@ export class Lab {
     const room = this.room();
     const cardGB = Number(this.cfg.gpuVramGB) || Number(this.cfg.cardGB) || 0; // the set size, or the card the hardware scan found
     const brains = this.brains().map((b) => { let f = null; try { f = inspect(b); } catch (e) { return { ...b, gguf: undefined, mmproj: undefined, error: e.message }; } return { id: b.id, name: b.name, family: b.family, community: b.community, naughty: b.naughty, madeInLab: b.madeInLab, license: b.license, facts: f && { arch: f.arch, experts: f.experts, used: f.used, groups: f.groups, layers: f.layers, fileType: f.fileType, fullSize: f.fullSize, sizeGB: f.sizeGB, sight: f.sight, hearing: f.hearing, readerGB: f.readerGB }, cuts: f ? cutSizes(f).map((c) => ({ ...c, fit: fitWords(c.gb, cardGB) })) : [], fit: f ? fitWords(f.sizeGB, cardGB) : '' }; });
-    return { on: labOn(this.cfg), mode: this.cfg.labPro === true ? 'pro' : 'simple', room, cardGB, sharedMemory: (this.platform?.() || { os: OS }).os === 'mac', brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, lessonKinds: KINDS, sampleCount: SAMPLE_COUNT, buildMax: BUILD_MAX, officeOk: Boolean(this.officeFor()), brainEngine: this.tools().brainEngine.found, packs: PACKS, myPacks: readMyPacks(labDir(this.cfg)).map(({ items, ...m }) => m), pro: { gen: { ...GEN_DEFAULT }, ctxChoices: CTX_CHOICES, maxRepeats: MAX_REPEATS, checks: MY_CHECKS, settings: GUARD_SETTINGS, styles: GUARD_STYLES }, scores: this.scores(), classes: CLASSES.map(([id, label, hint]) => ({ id, label, hint })), ladders: this.ladders(), playMaxGB: PLAY_MAX_GB, ladderSteps: LADDER.map(({ type, label }) => ({ type, label })), hardware: hardwareLine(this.cfg), version: this.version || '', mixWays: MIX_WAYS, layerChoices: LAYER_CHOICES.map(([id, label]) => ({ id, label })), kept: KEPT.map(({ id, label }) => ({ id, label })), homeMaxGB: PLAY_MAX_GB, cvector: this.tools().cvector.found || Boolean(this.stepFns.direction), full: this.fullSize ? this.fullSize.view() : null, fullDir: fullSizeDirOf(this.cfg), peekLive: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), plainPrompts: PLAIN_PROMPTS, reluctantPrompts: RELUCTANT_PROMPTS };
+    return { on: labOn(this.cfg), mode: this.cfg.labPro === true ? 'pro' : 'simple', room, cardGB, sharedMemory: (this.platform?.() || { os: OS }).os === 'mac', brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, lessonKinds: KINDS, sampleCount: SAMPLE_COUNT, buildMax: BUILD_MAX, officeOk: Boolean(this.officeFor()), brainEngine: this.tools().brainEngine.found, packs: PACKS, myPacks: readMyPacks(labDir(this.cfg)).map(({ items, ...m }) => m), pro: { gen: { ...GEN_DEFAULT }, ctxChoices: CTX_CHOICES, maxRepeats: MAX_REPEATS, checks: MY_CHECKS, settings: GUARD_SETTINGS, styles: GUARD_STYLES }, scores: this.scores(), classes: CLASSES.map(([id, label, hint]) => ({ id, label, hint })), ladders: this.ladders(), playMaxGB: PLAY_MAX_GB, ladderSteps: LADDER.map(({ type, label }) => ({ type, label })), hardware: hardwareLine(this.cfg), version: this.version || '', mixWays: MIX_WAYS, layerChoices: LAYER_CHOICES.map(([id, label]) => ({ id, label })), kept: KEPT.map(({ id, label }) => ({ id, label })), homeMaxGB: PLAY_MAX_GB, cvector: this.tools().cvector.found || Boolean(this.stepFns.direction), benchHere: this.benchTool().found || Boolean(this.stepFns.bench), full: this.fullSize ? this.fullSize.view() : null, fullDir: fullSizeDirOf(this.cfg), peekLive: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), plainPrompts: PLAIN_PROMPTS, reluctantPrompts: RELUCTANT_PROMPTS };
   }
 
   runView(r) { return { id: r.id, kind: r.kind || 'make', name: r.name, from: r.fromName, naughty: r.naughty, refusalsOut: r.refusalsOut, state: r.state, step: r.step, stepLabel: r.stepLabel, progress: r.progress, steps: r.steps?.map((s) => ({ id: s.id, label: s.label, state: s.state })), error: r.error, notes: r.notes || [], report: r.report, at: r.at, used: Boolean(r.used), sizeGB: r.sizeGB }; }
@@ -832,6 +835,8 @@ export class Lab {
     return { file: zip, lessons: all.length, changes: what };
   }
 
+  benchTool() { return findTool(this.cfg, 'bench'); }
+
   // 1.5.153 Challenges: run packs against one brain as a Lab job; the scoreboard keeps the newest score per pack.
   scores() { return scoreboard(readScores(scoresDir(this.cfg))); }
 
@@ -854,7 +859,10 @@ export class Lab {
       if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
     }
     const title = (id) => (PACKS.find((p) => p.id === id) || mine.find((m) => m.id === id)).title;
-    const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'challenge', name: `Challenges for ${brain.name}`, from: brain.id, fromName: brain.name, packs, gen, state: 'running', at: this.now(), steps: [{ id: 'serve', label: `Start ${brain.name}`, state: 'waiting' }, ...packs.map((id) => ({ id, label: title(id), state: 'waiting' }))], progress: 0 };
+    // The standard speed test after the challenges, when ticked (off unless ticked) and the tool is here.
+    const bench = c.bench === true;
+    if (bench && !this.benchTool().found && !this.stepFns.bench) throw new Error('The standard speed test (llama-bench) isn\'t here. It comes with the built-in engine and with Brain Engine (Get models > Engines). Untick it, or get one of them again.');
+    const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'challenge', name: `Challenges for ${brain.name}`, from: brain.id, fromName: brain.name, packs, gen, bench, state: 'running', at: this.now(), steps: [{ id: 'serve', label: `Start ${brain.name}`, state: 'waiting' }, ...packs.map((id) => ({ id, label: title(id), state: 'waiting' })), ...(bench ? [{ id: 'bench', label: 'The standard speed test (llama-bench)', state: 'waiting' }] : [])], progress: 0 };
     this.runs.push(runRec); this.save();
     const ac = new AbortController();
     this.job = { run: runRec, ac };
@@ -895,6 +903,17 @@ export class Lab {
           set(i + 1, 'done');
         }
       }
+      // The standard speed test loads the brain on its own, so the challenge server goes first.
+      let bench = null;
+      if (r.bench) {
+        srv?.stop(); srv = { ...srv, stop() {} };
+        const bi = r.steps.findIndex((x) => x.id === 'bench');
+        set(bi, 'running');
+        bench = await (fx.bench || ((g, o) => benchBrain(this.cfg, g, { ...o, tool: this.benchTool() })))(brain.gguf, { signal, onLine: (l) => { if (/benchmark \d+\/\d+/.test(l)) log(`bench: ${l.trim().slice(0, 200)}`); } });
+        if (signal.aborted) throw new Error('Stopped.');
+        set(bi, bench.ok ? 'done' : 'failed');
+        if (!bench.ok) log(`bench: ${bench.error}`);
+      }
       for (const id of packs) { // the last run's details, with the average score and the spread when it was repeated
         const all = runs[id], lastRun = all[all.length - 1], sp = all.length > 1 ? spread(all.map((x) => x.score)) : null;
         results[id] = sp ? { ...lastRun, score: sp.mean, spread: sp } : lastRun;
@@ -908,9 +927,9 @@ export class Lab {
       const file = scoreFile(scoresDir(this.cfg), slugOf(brain.name));
       // 1.5.168 only runs made with the ranked settings go on the scoreboard, and never your own packs.
       const ranked = rankable(gen), boardPacks = Object.fromEntries(Object.entries(results).filter(([id]) => PACK_IDS.includes(id)));
-      if (ranked && Object.keys(boardPacks).length) writeJson(file, mergeScores(readJson(file, null), { name: brain.name, sha256, sizeGB: facts.sizeGB, quant: facts.fileType, paramsB: facts.paramsB, activeB: facts.experts ? facts.activeB : 0, experts: facts.experts, madeHere: Boolean(brain.madeInLab), packs: boardPacks, tps, prefillTps, when: new Date(this.now()).toISOString().slice(0, 10), engine: this.engineName(), where: srv.where }));
+      if (ranked && Object.keys(boardPacks).length) writeJson(file, mergeScores(readJson(file, null), { name: brain.name, sha256, sizeGB: facts.sizeGB, quant: facts.fileType, paramsB: facts.paramsB, activeB: facts.experts ? facts.activeB : 0, experts: facts.experts, madeHere: Boolean(brain.madeInLab), packs: boardPacks, tps, prefillTps, when: new Date(this.now()).toISOString().slice(0, 10), engine: this.engineName(), where: srv.where, bench: bench?.ok ? bench : null }));
       const titleOf = (id) => (PACKS.find((p) => p.id === id) || mine.find((m) => m.id === id))?.title || id;
-      r.report = { challenges: packs.map((id) => ({ id, title: titleOf(id), score: results[id].score, right: results[id].right, of: results[id].of, skipped: results[id].skipped || '', ...(results[id].parts ? { parts: results[id].parts } : {}), ...(results[id].groups ? { groups: results[id].groups } : {}), ...(results[id].spread ? { spread: results[id].spread } : {}), ...(results[id].note ? { note: results[id].note } : {}) })), tps, settings: genLine(gen), ranked, hasLog: fs.existsSync(logFile) };
+      r.report = { challenges: packs.map((id) => ({ id, title: titleOf(id), score: results[id].score, right: results[id].right, of: results[id].of, skipped: results[id].skipped || '', ...(results[id].parts ? { parts: results[id].parts } : {}), ...(results[id].groups ? { groups: results[id].groups } : {}), ...(results[id].spread ? { spread: results[id].spread } : {}), ...(results[id].note ? { note: results[id].note } : {}) })), tps, settings: genLine(gen), ranked, hasLog: fs.existsSync(logFile), ...(bench ? { bench: bench.ok ? { read: bench.read, write: bench.write, prompt: bench.prompt, gen: bench.gen, line: benchLine(bench) } : { error: bench.error } } : {}) };
       r.state = 'done'; r.step = ''; r.stepLabel = ''; r.progress = 100;
       this.tell(r);
       this.broadcast({ type: 'lab-done', name: r.name, ok: true });
@@ -1732,7 +1751,8 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (await recipesRoute({ req, res, p, isLocal, lab, body, send })) return true; // 1.5.154
     if (await sensesRoute({ req, res, p, isLocal, lab, body, send })) return true; // Give it eyes / Give it ears
     if (await pagesRoute({ req, res, p, isLocal, lab, body, send })) return true;
-    if (await fullSizeRoute({ req, res, p, isLocal, lab, body, send })) return true; // Bring in a full-size brain // 1.5.16x Playground: Longer, Faster, Teach it
+    if (await fullSizeRoute({ req, res, p, isLocal, lab, body, send })) return true;
+    if (await diffusionRoute({ req, res, p, isLocal, lab, body, send })) return true; // Playground: Diffusion brains // Bring in a full-size brain // 1.5.16x Playground: Longer, Faster, Teach it
     if (req.method === 'GET' && p === '/api/lab') { send(res, 200, lab.view()); return true; }
     if (req.method === 'GET' && p === '/api/lab/measures') { send(res, 200, { measures: lab.measures().map(({ rec, ...m }) => m) }); return true; }
     // 1.5.151 Learn: experiments on the brain Bob has loaded. Read-only, nothing is written, so any device Bob lets in may use them.

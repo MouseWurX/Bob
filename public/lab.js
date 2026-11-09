@@ -28,7 +28,7 @@ export function createLab({ api, note }) {
   let view = null, step = 'brain', plan = null, showRecipe = false, msg = '', askUnload = null, tab = 'make';
   const learn = createLearn({ api, info: () => view, saves: () => saves });
   // 1.5.153 Challenges: which brain, which packs, the scoreboard's sort, and the Save panels (one per result).
-  const ch = { from: '', packs: ['quiz', 'reasoning', 'sums', 'rules', 'tools', 'code'], sort: 'name', down: false, by: 'class', kind: 'all', here: false, fits: false, wide: false }; // 1.5.162 the board by class of model
+  const ch = { from: '', packs: ['quiz', 'reasoning', 'sums', 'rules', 'tools', 'code'], bench: false, sort: 'name', down: false, by: 'class', kind: 'all', here: false, fits: false, wide: false }; // 1.5.162 the board by class of model
   const saves = {};
   const saveState = (k) => (saves[k] ||= { open: false, format: 'png', hardware: false, saved: '', error: '' });
   let measures = [], picked = [], table = null, saved = '';
@@ -292,7 +292,7 @@ export function createLab({ api, note }) {
   function runTable(id) { // a finished challenge run as a table for Save
     const x = view.runs.find((r) => r.id === id);
     if (!x?.report?.challenges) return { title: 'Lab result', head: [], rows: [] };
-    return { title: `Challenges for ${x.from}`, head: ['Challenge', 'Score (out of 100)', 'Right'], rows: x.report.challenges.map((c) => [c.title, c.score ?? '-', c.skipped ? 'skipped' : `${c.right} of ${c.of}`]), note: x.report.tps ? `${x.report.tps} words a second. Temperature 0, thinking off.` : 'Temperature 0, thinking off.' };
+    return { title: `Challenges for ${x.from}`, head: ['Challenge', 'Score (out of 100)', 'Right'], rows: x.report.challenges.map((c) => [c.title, c.score ?? '-', c.skipped ? 'skipped' : `${c.right} of ${c.of}`]), note: `${x.report.tps ? `${x.report.tps} words a second. ` : ''}Temperature 0, thinking off.${x.report.bench?.line ? ` ${x.report.bench.line}.` : ''}` };
   }
 
   function runsHtml() {
@@ -304,7 +304,7 @@ export function createLab({ api, note }) {
       ${x.kind === 'write' && x.report ? `<br><span class="muted">${x.report.lessons} lessons written in ${x.report.minutes} minutes. Pick it in step 2, under A lesson set I wrote or built here.</span>` : ''}
       ${x.kind === 'build' && x.report ? `<br><span class="muted">${x.report.lessons} lessons built in ${x.report.minutes} minutes${x.report.held ? `, ${x.report.held} passages held back` : ''}. Pick it in step 2, under A lesson set I wrote or built here, or open it under Sets built from your files.</span>` : ''}
       ${x.kind === 'sample' && x.report ? `<br><span class="muted">${x.report.lessons} sample lessons in ${x.report.minutes} minutes${x.report.held ? `, ${x.report.held} passages held back` : ''}. They're under Build a new set from my files, in step 2.</span>` : ''}
-      ${x.kind === 'challenge' && x.report ? `<table class="lab-report"><caption class="muted">Challenges (out of 100)</caption><tr><th scope="col">Challenge</th><th scope="col">Score</th><th scope="col">Right</th></tr>${x.report.challenges.map((c) => `<tr><th scope="row">${esc(c.title)}</th><td>${c.score ?? '-'}</td><td>${c.skipped ? esc(c.skipped) : `${c.right} of ${c.of}`}${c.parts ? `<br><span class="muted">${esc(guardPartsLine(c.parts))}</span>` : ''}${c.note ? `<br><span class="muted">${esc(c.note)}</span>` : ''}</td></tr>`).join('')}</table>${view.mode === 'pro' ? px.reportExtraHtml(x) : ''}${saveHtml(x.id, saveState(x.id), view.hardware)}` : ''}
+      ${x.kind === 'challenge' && x.report ? `<table class="lab-report"><caption class="muted">Challenges (out of 100)</caption><tr><th scope="col">Challenge</th><th scope="col">Score</th><th scope="col">Right</th></tr>${x.report.challenges.map((c) => `<tr><th scope="row">${esc(c.title)}</th><td>${c.score ?? '-'}</td><td>${c.skipped ? esc(c.skipped) : `${c.right} of ${c.of}`}${c.parts ? `<br><span class="muted">${esc(guardPartsLine(c.parts))}</span>` : ''}${c.note ? `<br><span class="muted">${esc(c.note)}</span>` : ''}</td></tr>`).join('')}</table>${x.report.bench ? `<p class="muted">${esc(x.report.bench.line || `The standard speed test didn't finish: ${x.report.bench.error || ''}`)}</p>` : ''}${view.mode === 'pro' ? px.reportExtraHtml(x) : ''}${saveHtml(x.id, saveState(x.id), view.hardware)}` : ''}
       ${x.report?.coverage ? `<table class="lab-report"><caption class="muted">Coverage cut: kept ${x.report.coverage.experts} of ${x.report.coverage.of} experts per layer</caption><tr><th scope="col">Skill</th><th scope="col">Kept, on average</th><th scope="col">Worst layer</th></tr>${x.report.coverage.skills.map((k) => `<tr><th scope="row">${esc(k.name)}</th><td>${k.average}%</td><td>${k.worst}% (layer ${k.worstLayer})</td></tr>`).join('')}</table>` : ''}
       ${homeReportHtml(x)}
       ${x.report?.tried && x.kind !== 'refusals-try' ? `<br><span class="muted">Tried first on Brain Engine: ${x.report.tried.masked} with only the kept experts, ${x.report.tried.full} with all of them.</span>` : ''}
@@ -336,7 +336,7 @@ export function createLab({ api, note }) {
   function classTable() { // the same boards, for Save: one table with the class in its own column
     const name = Object.fromEntries((view.classes || []).map((c) => [c.id, c.label]));
     const rows = boardRows().sort((a, b) => (view.classes || []).findIndex((c) => c.id === a.cls) - (view.classes || []).findIndex((c) => c.id === b.cls) || order(a, b));
-    return { title: 'Lab leaderboard by class', head: ['Class', 'Brain', 'Overall', 'Weights', 'Quant', 'Size', 'Words a second', ...PACK_COLS().map(([, t]) => t)], rows: rows.map((r) => [name[r.cls] || 'Not placed yet', r.name, r.overall ?? '-', wts(r), r.quant || '-', r.sizeGB ? `${r.sizeGB} GB` : '-', r.tps ?? '-', ...PACK_COLS().map(([id]) => (r.scores[id] == null ? '-' : r.old.includes(id) ? `${r.scores[id]} (older test)` : r.scores[id]))]), note: 'Classes by total weights. Overall = average of every challenge, run with the current version of each test; brains that haven\'t run them all sit below the ones that have. Scores out of 100, temperature 0, thinking off. Only comparable with other scores from the same replicant matrix.' };
+    return { title: 'Lab leaderboard by class', head: ['Class', 'Brain', 'Overall', 'Weights', 'Quant', 'Size', 'Words a second', ...PACK_COLS().map(([, t]) => t)], rows: rows.map((r) => [name[r.cls] || 'Not placed yet', r.name, r.overall ?? '-', wts(r), r.quant || '-', r.sizeGB ? `${r.sizeGB} GB` : '-', r.bench ? `${r.tps ?? '-'} (standard: reads ${r.bench.read ?? '-'}, writes ${r.bench.write ?? '-'})` : r.tps ?? '-', ...PACK_COLS().map(([id]) => (r.scores[id] == null ? '-' : r.old.includes(id) ? `${r.scores[id]} (older test)` : r.scores[id]))]), note: 'Classes by total weights. Overall = average of every challenge, run with the current version of each test; brains that haven\'t run them all sit below the ones that have. Scores out of 100, temperature 0, thinking off. Only comparable with other scores from the same replicant matrix.' };
   }
   const order = (a, b) => Number(Boolean(b.all)) - Number(Boolean(a.all)) || (b.overall ?? -1) - (a.overall ?? -1) || (b.tps ?? 0) - (a.tps ?? 0) || (a.sizeGB ?? 0) - (b.sizeGB ?? 0);
   function classTables() {
@@ -347,7 +347,7 @@ export function createLab({ api, note }) {
       if (!list.length) return '';
       return `<table class="lab-report lab-board lab-class"><caption><strong>${esc(c.label)}</strong> <span class="muted">· ${esc(c.hint)}</span></caption>
         <tr><th scope="col">Place</th><th scope="col">Brain</th><th scope="col">Overall</th><th scope="col">Weights</th><th scope="col">Quant</th><th scope="col">Size</th><th scope="col">Words a second</th>${showCols().map(([, t]) => `<th scope="col">${esc(t)}</th>`).join('')}</tr>
-        ${list.map((r, i) => `<tr${i === 0 && r.all && c.id ? ' class="lab-best"' : ''}><td>${c.id ? i + 1 : '-'}${i === 0 && r.all && c.id ? ' <span class="lab-ribbon">Best in class</span>' : ''}</td><th scope="row">${esc(r.name)}${r.madeHere ? ' <span class="muted">(made here)</span>' : ''}</th><td>${r.overall ?? '-'}${r.ran && r.ran < RANKED().length ? `<br><span class="muted">${r.ran} of ${RANKED().length} run</span>` : ''}</td><td>${esc(wts(r))}</td><td>${esc(r.quant || '-')}</td><td>${r.sizeGB ? `${r.sizeGB} GB` : '-'}</td><td>${r.tps ?? '-'}</td>${showCols().map(([id]) => colCell(r, id, cell)).join('')}</tr>`).join('')}</table>`;
+        ${list.map((r, i) => `<tr${i === 0 && r.all && c.id ? ' class="lab-best"' : ''}><td>${c.id ? i + 1 : '-'}${i === 0 && r.all && c.id ? ' <span class="lab-ribbon">Best in class</span>' : ''}</td><th scope="row">${esc(r.name)}${r.madeHere ? ' <span class="muted">(made here)</span>' : ''}</th><td>${r.overall ?? '-'}${r.ran && r.ran < RANKED().length ? `<br><span class="muted">${r.ran} of ${RANKED().length} run</span>` : ''}</td><td>${esc(wts(r))}</td><td>${esc(r.quant || '-')}</td><td>${r.sizeGB ? `${r.sizeGB} GB` : '-'}</td><td>${r.tps ?? '-'}${r.bench ? `<br><span class="muted" title="The standard speed test (llama-bench): reads pp${r.bench.prompt || 512} / writes tg${r.bench.gen || 128}, words a second">standard ${r.bench.read ?? '-'} / ${r.bench.write ?? '-'}</span>` : ''}</td>${showCols().map(([id]) => colCell(r, id, cell)).join('')}</tr>`).join('')}</table>`;
     }).join('');
     return out || '<p class="muted">No brains match those choices.</p>';
   }
@@ -372,6 +372,7 @@ export function createLab({ api, note }) {
       ${packGroups(view.packs).map((grp) => `<fieldset><legend>${esc(grp.label)}</legend>${grp.packs.map((p) => `<label class="lab-opt"><input type="checkbox" data-pack="${esc(p.id)}" ${ch.packs.includes(p.id) ? 'checked' : ''}> <span><strong>${esc(p.title)}</strong> <span class="muted">· ${p.count} questions · ${esc(packMinutesLine(p.minutes, view.cardGB, view.sharedMemory))}</span><br><span class="muted">${esc(p.what)}</span></span></label>`).join('')}</fieldset>`).join('')}
       ${askUnload?.challenge ? `<div class="setup-offer" role="alert"><strong>Bob's brain is on the graphics card</strong><span>${esc(askUnload.join(', '))} is loaded. The challenges need the card, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-unload>Unload it and start</button><button type="button" class="link" data-nounload>Not now</button></div></div>` : ''}
       ${view.mode === 'pro' ? px.myPacksHtml(ch.packs) + px.settingsHtml() : ''}
+      <label class="lab-opt"><input type="checkbox" data-chbench ${ch.bench ? 'checked' : ''} ${view.benchHere ? '' : 'disabled'}> <span><strong>Add the standard speed test</strong> <span class="muted">· about 1 to 3 minutes · off unless ticked</span><br><span class="muted">${view.benchHere ? 'llama-bench, the speed test other people post: how fast the brain reads 512 words and writes 128. Your numbers can be compared with theirs for the same card.' : 'llama-bench isn\'t here. It comes with the built-in engine and with Brain Engine (Get models > Engines).'}</span></span></label>
       <div class="row"><button type="button" class="get" data-chgo ${ch.from && ch.packs.length && !busy ? '' : 'disabled'}>${busy ? 'The Lab is busy' : 'Run the challenges'}</button></div>
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
       <section class="lab-compare"><h3>Scoreboard</h3>${board}</section>
@@ -427,6 +428,7 @@ export function createLab({ api, note }) {
     if (tab === 'challenges') { const r = await px.change(el); if (r === 'draw') { draw(); $(el.id)?.focus(); return; } if (r) return; } // 1.5.168
     if (tab === 'challenges' && gd.change(el)) return; // 1.5.164 the Guard rails sandbox keeps its own words
     if (el.name === 'chfrom') { ch.from = el.value; return draw(); }
+    if ('chbench' in el.dataset) { ch.bench = el.checked; return draw(); }
     if (el.dataset.pack) { const k = el.dataset.pack; ch.packs = el.checked ? [...new Set([...ch.packs, k])] : ch.packs.filter((x) => x !== k); return draw(); }
     if (el.dataset.savefmt) { saveState(el.dataset.savefmt).format = el.value; return draw(); }
     if (el.dataset.savehw) { saveState(el.dataset.savehw).hardware = el.checked; return draw(); }
@@ -516,7 +518,7 @@ export function createLab({ api, note }) {
     }
     if ('chgo' in b.dataset || (askUnload?.challenge && 'unload' in b.dataset)) {
       try {
-        const res = await api('/api/lab/challenge', { challenge: { from: ch.from, packs: ch.packs, ...(view.mode === 'pro' ? { gen: px.gen() } : {}) }, unload: 'unload' in b.dataset });
+        const res = await api('/api/lab/challenge', { challenge: { from: ch.from, packs: ch.packs, ...(ch.bench && view.benchHere ? { bench: true } : {}), ...(view.mode === 'pro' ? { gen: px.gen() } : {}) }, unload: 'unload' in b.dataset });
         if (res.needUnload) { askUnload = Object.assign(res.names, { challenge: true }); return draw(); }
         askUnload = null;
       } catch (err) { msg = err.message; }

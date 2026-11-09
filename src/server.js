@@ -60,6 +60,7 @@ import { trainerState } from './lab-teach.js'; // 1.5.16x the Lab's Trainer pack
 import { phoneView, cleanPhonePatch, findAddresses, newPasscode, isTailscaleIp } from './phone-access.js';
 import { firewallState, changeRule } from './firewall.js';
 import { shareView, cleanSharePatch, saveShare, lendChat, lendRefusal, helloFor, bobNetRooms } from './share-brains.js';
+import { lendCardRoute } from './share-card.js'; // Bob-Net: Lend my graphics card
 import { guestRoute, answerAway } from './share-jobs.js';
 import { Pairing, myName } from './bob-net-pair.js';
 import { partyView, Introductions } from './bob-net-party.js';
@@ -435,7 +436,8 @@ const server = http.createServer(async (req, res) => {
       if (out.error) return send(res, 400, { error: out.error });
       saveShare(cfg, out.share);
       brain.lenders.state.clear();
-      brain.log('settings', `share brains: lend ${out.share.lend ? 'on' : 'off'}, borrow ${out.share.borrow.on ? out.share.borrow.when : 'off'}, pass along ${out.share.passAlong ? 'on' : 'off'}, ${out.share.borrow.bobs.length} Bob(s)`);
+      if (!out.share.lendCard) brain.cardLender.close(); // switched off: a lent card closes now
+      brain.log('settings', `share brains: lend card ${out.share.lendCard ? 'on' : 'off'}, spread ${out.share.spread}, lend ${out.share.lend ? 'on' : 'off'}, borrow ${out.share.borrow.on ? out.share.borrow.when : 'off'}, pass along ${out.share.passAlong ? 'on' : 'off'}, ${out.share.borrow.bobs.length} Bob(s)`);
       if (b.check) await Promise.all(brain.lenders.bobs().map((x) => brain.lenders.hello(x, { force: true })));
       if (out.share.passAlong) introductions.soon(500); // a new switch or a new Bob: introductions right away
       return send(res, 200, { ...shareView(cfg), lenders: brain.lenderStatus(), introductions: introductions.view() });
@@ -477,6 +479,12 @@ const server = http.createServer(async (req, res) => {
     }
     // 1.5.72 Share jobs: whole jobs from your other Bobs (src/share-jobs.js). start() checks "Take jobs from my other Bobs".
     if (p.startsWith('/api/guest/jobs') && await guestRoute({ req, res, p, url, brain, body, send, serveFile, findOutput, cfg }) !== false) return;
+    // Lend my graphics card (src/share-card.js): another of your Bobs asks for a share of this card, through the door only.
+    if (req.method === 'POST' && p === '/api/lend/card') {
+      if (!isRemote && !isLocal) return send(res, 403, { error: 'no' });
+      const r = await lendCardRoute(brain.cardLender, req, await body(req).catch(() => ({})));
+      return send(res, r.status, r.body);
+    }
     if (req.method === 'POST' && p === '/api/lend/chat') {
       if (!isRemote && !isLocal) return send(res, 403, { error: 'no' });
       return lendChat(brain, req, res, await body(req).catch(() => ({})), brain.lendDeps);

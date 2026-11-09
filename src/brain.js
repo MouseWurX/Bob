@@ -53,6 +53,7 @@ import { WEB_TOOLS, WEB_OFF, webOn, webPrompt, linkPrompt, findLinks, refersToLi
 import { autoSessionOn, pickSessionTool, autoSessionPrompt, switchLine, switchedNote, idleSession, cardBusy, IDLE_CHECK_MS } from './auto-session.js';
 import { readCard } from './gaming-card.js';
 import { Lenders, wantsBorrow, roughTokens } from './share-brains.js';
+import { CardLender, CardBorrower } from './share-card.js'; // Bob-Net: lend my graphics card / spread big brains
 import { Rentals, currentRental, saveEndpoint, estimateText } from './rental.js'; // 1.5.127 rented brains
 import { GuestJobs, awayPlan, sendAway, stopAway, guestTools, guestNote, GUEST_TOOLS, canHere, NEEDS_LIST, awayWaitLine } from './share-jobs.js';
 import { askTogether, takeEarlier, askTogetherTool } from './together.js';
@@ -373,6 +374,9 @@ export class Brain {
     // Share brains (1.5.55, src/share-brains.js): another Bob of yours may think quick replies for this one, and this one
     // may lend. A lender only ever uses his quick brain (never a big one), on the card, and says no while gaming or busy.
     this.lenders = new Lenders(cfg);
+    // Bob-Net: one brain over several of your Bobs' cards (llama.cpp's RPC server). Both off unless switched on.
+    this.cardLender = new CardLender(cfg, { gaming: () => currentSession(this.cfg).id === 'light', log: (k, t) => this.log(k, t) });
+    if (this.engine instanceof LlamaCpp) this.engine.spread = new CardBorrower(cfg, this.lenders, { log: (k, t) => this.log(k, t) });
     // 1.5.127 Rented brains: a big brain hired from an online service for one job, only after a card the owner pressed.
     this.rentals = new Rentals(cfg, { log: (k, t) => this.log(k, t), broadcast: (ev) => this.broadcast(ev) });
     this.rentals.rememberEndpoint = (id, endpointId) => { try { if (saveEndpoint(cfg, id, endpointId)) saveSettings(cfg, { rentals: cfg.rentals }); } catch {} };

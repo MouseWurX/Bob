@@ -1420,6 +1420,7 @@ details.fold > summary .muted { font-weight: 400; font-size: 13px; }
 /* 1.5.142 Lab 1b: the template picker and Compare */
 .lab-template select { max-width: 100%; }
 .lab-compare { margin: 0.75rem 0; }
+.lab-diffusion-text { white-space: pre-wrap; word-break: break-word; max-height: 24rem; overflow: auto; padding: 0.5rem; border: 1px solid var(--line, #8884); border-radius: 6px; }
 .lab-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
 .lab-tab { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; min-height: 32px; background: none; color: inherit; font: inherit; }
 .lab-tab.on { font-weight: 700; border-width: 2px; text-decoration: underline; text-underline-offset: 3px; }
