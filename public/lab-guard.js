@@ -24,7 +24,7 @@ export function createGuard({ api }) {
 
   function html() {
     if (!g.open) return `<section class="lab-guard" aria-labelledby="lab-guard-h"><h3 id="lab-guard-h" tabindex="-1">Guard rails: test your own brain</h3>
-      <p class="muted">Try your own words on the brain I have loaded and see whether it keeps to its rules. You can change its system prompt. If it does something you didn't want, write the answer you wanted and save it as a lesson, so you can teach it later. It's your brain, on this replicant matrix; nothing is shared.</p>
+      <p class="muted">Try your own words on the brain Bob has loaded and see whether it keeps to its rules. You can change its system prompt. If it does something you didn't want, write the answer you wanted and save it as a lesson, so you can teach it later. It's your brain, on this replicant matrix; nothing is shared.</p>
       <div class="row"><button type="button" class="link" data-guard="open">Open the sandbox</button></div></section>`;
     const i = g.info || {};
     const chatRows = g.messages.map((m) => `<li class="lab-guard-${m.role}"><strong>${m.role === 'user' ? 'You' : 'Brain'}</strong> <span>${esc(m.content)}</span></li>`).join('');
@@ -61,7 +61,7 @@ export function createGuard({ api }) {
     if (k === 'send') {
       const say = g.draft.trim(); if (!say) { g.msg = 'Type a message first.'; return 'draw'; }
       g.messages.push({ role: 'user', content: say }); g.draft = ''; g.busy = true;
-      try { const r = await api('/api/lab/guard/chat', { system: g.system, messages: g.messages }); if (r.ok) g.messages.push({ role: 'assistant', content: r.text || '(no words)' }); else { g.msg = r.why || 'The brain didn\'t answer.'; g.messages.pop(); g.draft = say; } } catch (e) { g.msg = e.message; g.messages.pop(); g.draft = say; }
+      try { const r = await api('/api/lab/guard/chat', { system: g.system, messages: g.messages }); if (r.ok) g.messages.push({ role: 'assistant', content: r.text || '(no answer)' }); else { g.msg = r.why || 'The brain didn\'t answer.'; g.messages.pop(); g.draft = say; } } catch (e) { g.msg = e.message; g.messages.pop(); g.draft = say; }
       g.busy = false; return 'draw';
     }
     if (k === 'save') {
