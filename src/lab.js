@@ -30,6 +30,7 @@ import { ownRefusalAsks, cleanSandbox, guardLesson, saveGuardLesson, PAGE_DEMO, 
 import { METHODS, LEFT_OUT, forgeDir, forgeRuns, forgeBrains, forgePlans, makeForgePlan, forgePlansDir, FORGE_KEY, forgeStartProblems, launchForge, alive, runPodId, scrub as scrubForge, onDrive } from './lab-forge.js';
 import { rentKeyEnv } from './rental.js'; // 1.5.158 the Forge tab
 import { LADDER, PLAY_MAX_GB, ladderTexts, ladderDiskGB, readPerplexity, ladderTable, ladderSaw, playDir, readLadders } from './lab-playground.js'; // 1.5.157 Playground
+import { pagesRoute } from './lab-pages.js'; // 1.5.16x Playground: Longer, Faster, Teach it (thinking-paths sec 15)
 import { recipesRoute } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
 import { sensesRoute } from './lab-senses-route.js'; // Give it eyes / Give it ears
 import { forgeDoesSenses } from './lab-senses.js';
@@ -1675,6 +1676,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
   try {
     if (await recipesRoute({ req, res, p, isLocal, lab, body, send })) return true; // 1.5.154
     if (await sensesRoute({ req, res, p, isLocal, lab, body, send })) return true; // Give it eyes / Give it ears
+    if (await pagesRoute({ req, res, p, isLocal, lab, body, send })) return true; // 1.5.16x Playground: Longer, Faster, Teach it
     if (req.method === 'GET' && p === '/api/lab') { send(res, 200, lab.view()); return true; }
     if (req.method === 'GET' && p === '/api/lab/measures') { send(res, 200, { measures: lab.measures().map(({ rec, ...m }) => m) }); return true; }
     // 1.5.151 Learn: experiments on the brain Bob has loaded. Read-only, nothing is written, so any device Bob lets in may use them.
