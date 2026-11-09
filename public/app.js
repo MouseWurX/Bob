@@ -697,6 +697,7 @@ function onEvent(ev) {
       break;
     }
     case 'lab': labPage.update(ev.run); break; // 1.5.141
+    case 'lab-full': labPage.fullUpdate(ev.full); break; // Bring in a full-size brain
     case 'lab-done': note(ev.ok ? `🧪 The Lab finished ${ev.name}${ev.score != null ? `: ${ev.score} out of 100 on the Lab test` : ''}. Open the Lab to see the report.` : `🧪 The Lab stopped on ${ev.name}: ${ev.error}`); break;
     case 'tidy-done':
       topicsPage.refresh();
