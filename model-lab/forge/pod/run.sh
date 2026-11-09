@@ -129,6 +129,11 @@ publish_tested() {
 # export.py writes <name>-files.json.pending; the PC only starts downloading once it is renamed, after keep_bob has marked the files
 release_files() { [ -f $OUT/$1/$2-files.json.pending ] && mv $OUT/$1/$2-files.json.pending $OUT/$1/$2-files.json; return 0; }
 plan() { python3 -c "import json,sys; p=json.load(open('$IN/plan.json')); v=p$1; print(json.dumps(v) if isinstance(v,(dict,list)) else ('' if v is None else v))" || echo "plan lookup failed: $1" >&2; }
+# hf_get/resolve_in are used by the rebuild AND benchmark sections, so they live here (9 Nov: a run died with "resolve_in: command not found" when they sat below the rebuild block)
+hf_get() {   # hf_get <repo> <path> <dir>: one file from Hugging Face with the pod's token (private repos too)
+  HF_TOKEN=$(cat $IN/hf-token 2>/dev/null) hf download "$1" "$2" --local-dir "$3" > /dev/null 2>&1 && [ -f "$3/$2" ]; }
+resolve_in() {   # resolve_in <spec> <dir> -> path: "hf:<repo>:<path>" is downloaded, anything else is a file in in/
+  case "$1" in hf:*) local R P; R=$(echo "$1" | cut -d: -f2); P=$(echo "$1" | cut -d: -f3); hf_get "$R" "$P" "$2" && echo "$2/$P" ;; "") echo "" ;; *) echo "$IN/$1" ;; esac; }
 plist() { plan "$1" | python3 -c "import json,sys; d=sys.stdin.read().strip(); print(','.join(json.loads(d)) if d else '')"; }   # a list field as a,b,c
 HOURS_MAX=$(plan ".get('hours_max',9)")
 # Self-destruct a little before the time cap, whatever happens (the PC-side watchdog is the main one).
@@ -363,6 +368,9 @@ fi
 if [ -n "$(plan ".get('rebuild')")" ]; then
   hf_ok || die "rebuild: plan.publish and the Hugging Face token are needed (everything goes up, nothing comes down)"
   NR=$(plan "['rebuild']['models']" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"); mkdir -p $W/rebuild $OUT/rebuild
+  for b in $(seq 0 $((NR-1))); do   # every volume: input must be on this drive before anything else is waited for
+    for K in adapter keep_file; do V=$(plan "['rebuild']['models'][$b].get('$K','')"); case "$V" in volume:*) [ -f "$S/${V#volume:}" ] || die "rebuild: $V is not on this drive (the pod must run in the data centre that holds it)";; esac; done
+  done
   status rebuild "waiting for the llama.cpp tools (the GGUF files need them)"
   for i in $(seq 1 90); do [ -f $S/llama-ready ] || [ -f $S/llama-failed ] && break; sleep 20; done
   [ -f $S/llama-ready ] || die "rebuild: llama tools unavailable (see out/llama-setup.log)"
@@ -374,8 +382,8 @@ if [ -n "$(plan ".get('rebuild')")" ]; then
     case "$KFS" in volume:*) KFP=$S/${KFS#volume:} ;; "") KFP="" ;; *) KFP=$(resolve_in "$KFS" $RIN) ;; esac
     [ -f "$ADP" ] || { [ -f $S/bobs/$BN/adapter.pt ] && ADP=$S/bobs/$BN/adapter.pt; }
     [ -n "$KFS" ] && [ ! -f "$KFP" ] && [ -f $S/bobs/$BN/bob-keep.json ] && KFP=$S/bobs/$BN/bob-keep.json
-    [ -f "$ADP" ] || { echo "rebuild $BN: adapter missing ($ADS); skipped"; status rebuild "$BN: adapter missing, skipped"; continue; }
-    if [ -n "$KFS" ] && [ ! -f "$KFP" ]; then echo "rebuild $BN: keep list missing ($KFS); skipped"; status rebuild "$BN: keep list missing, skipped"; continue; fi
+    [ -f "$ADP" ] || die "rebuild $BN: adapter missing ($ADS) -- a volume: path needs the pod in the data centre that holds that drive"
+    if [ -n "$KFS" ] && [ ! -f "$KFP" ]; then die "rebuild $BN: keep list missing ($KFS)"; fi
     KFARG=(); [ -n "$KFS" ] && KFARG=(--keep-file "$KFP")
     status rebuild "$BN: rebuilding from the stock teacher${KFS:+, his keep list} and his adapter"
     rm -rf $W/rebuild/$BN $W/rebuild/$BN-cut
@@ -594,10 +602,6 @@ done
 #   "adapter":"hf:MouseWurX/28Bob-Riker:28Bob-adapter.pt","cards":"hf:MouseWurX/28Bob-Riker","quant":"Q4_K_M","slots":1,"ctx":32768,"extra":""},
 #   {"name":"35Bob","file":"volume:bobs/35Bob/gguf/35Bob-Q4_K_M.gguf"}, {"name":"20Bob","file":"out:20Bob/20Bob-Q4_K_M.gguf"}], "hours_each":2}
 # file: rebuild | hf:<repo>:<path> | volume:<path on the drive> | out:<path in this run's out>. keep_file/adapter: hf:<repo>:<path> or a file the PC sent to in/.
-hf_get() {   # hf_get <repo> <path> <dir>: one file from Hugging Face with the pod's token (private repos too)
-  HF_TOKEN=$(cat $IN/hf-token 2>/dev/null) hf download "$1" "$2" --local-dir "$3" > /dev/null 2>&1 && [ -f "$3/$2" ]; }
-resolve_in() {   # resolve_in <spec> <dir> -> path: "hf:<repo>:<path>" is downloaded, anything else is a file in in/
-  case "$1" in hf:*) local R P; R=$(echo "$1" | cut -d: -f2); P=$(echo "$1" | cut -d: -f3); hf_get "$R" "$P" "$2" && echo "$2/$P" ;; "") echo "" ;; *) echo "$IN/$1" ;; esac; }
 if [ -n "$(plan ".get('benchmark')")" ]; then
   for i in $(seq 1 120); do [ -f $S/llama-server-ready ] || [ -f $S/llama-server-failed ] && break; sleep 20; done
   LS=$S/llama.cpp/build-cuda/bin/llama-server; export LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}"

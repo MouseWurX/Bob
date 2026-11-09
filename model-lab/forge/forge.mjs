@@ -95,6 +95,11 @@ if (args.places) { // where are the cards + storage right now (read-only)
   try { const d = await gql('{ myself { networkVolumes { id name size dataCenterId } } }'); console.log('network volumes:', JSON.stringify(d.myself?.networkVolumes || [])); } catch (e) { console.log(`volumes: ${e.message}`); }
   process.exit(0);
 }
+if (args['drop-volume']) { // 9 Nov: two empty volumes were made by the rent loop in data centres that only had the card for a minute; this deletes one by id and forgets it
+  const id = String(args['drop-volume']); const known = knownVolumes();
+  if (!known.find((v) => v.id === id)) { log(`${id} is not in ${volFile()}; nothing deleted (only volumes Forge made are dropped here)`); process.exit(1); }
+  await rp('DELETE', `/networkvolumes/${id}`); saveVolumes(known.filter((v) => v.id !== id)); log(`deleted the network volume ${id} and forgot it`); process.exit(0);
+}
 if (args.status || args.kill) {
   const pods = (await rp('GET', '/pods')) || [];
   for (const p of pods) log(`${p.id} ${p.name} ${p.desiredStatus} ${p.machine?.gpuTypeId || ''} $${p.costPerHr}/h`);
@@ -126,10 +131,10 @@ if (podId) { const t = JSON.parse(fs.readFileSync(tokenFile, 'utf8')); hdr['X-Fo
 
 async function rent() {
   const boot = zlib.gzipSync(fs.readFileSync(path.join(here, 'pod', 'bootstrap.py'))).toString('base64');
-  const rungs = plan.lessons_only ? `lessons only: ${plan.teacher_gguf ? `the GGUF teacher ${plan.teacher_gguf.repo} (${plan.teacher_gguf.file})` : 'the full Qwen'} writes them, nothing is scored, cut or healed` : (plan.train_teacher ? `${plan.train_teacher.name || '35Bob'} (the full Qwen trained on every lesson, no cut)${plan.rungs.length ? ', then ' : ''}` : '') + (plan.rungs.length ? plan.rungs.map((r) => r.name).join(', ') : plan.train_teacher ? '' : plan.skills ? 'expert counts per skill only (no Bob is cut; the counts come back for the differential table)' : 'lessons and the teacher scores only (no Bob is cut)') + (plan.publish ? ` -- Hugging Face (${plan.publish.user}, private): ${[plan.publish.odds ? 'the teacher odds' : '', ...(plan.publish.models || []).map((m) => `${m} (tested, from the drive)`)].filter(Boolean).join(', ') || 'nothing this run'}; no untested Bob is uploaded` : '') + (plan.download_quants ? `; only ${plan.download_quants.join(', ')} GGUF files come down to this PC, the rest stay on the drive` : '');
+  const rungs = plan.rebuild ? `rebuild ${(plan.rebuild.models || []).map((m) => `${m.name}${m.nickname ? ` (${m.nickname}, ${m.private === false ? 'PUBLIC' : 'private'})` : ''}`).join(' and ')} from the stock teacher + adapter and put GGUFs, full weights, adapters and cards on Hugging Face (${plan.publish?.user}); nothing is trained, nothing comes down to this PC` : plan.lessons_only ? `lessons only: ${plan.teacher_gguf ? `the GGUF teacher ${plan.teacher_gguf.repo} (${plan.teacher_gguf.file})` : 'the full Qwen'} writes them, nothing is scored, cut or healed` : (plan.train_teacher ? `${plan.train_teacher.name || '35Bob'} (the full Qwen trained on every lesson, no cut)${plan.rungs.length ? ', then ' : ''}` : '') + (plan.rungs.length ? plan.rungs.map((r) => r.name).join(', ') : plan.train_teacher ? '' : plan.skills ? 'expert counts per skill only (no Bob is cut; the counts come back for the differential table)' : 'lessons and the teacher scores only (no Bob is cut)') + (plan.publish ? ` -- Hugging Face (${plan.publish.user}, private): ${[plan.publish.odds ? 'the teacher odds' : '', ...(plan.publish.models || []).map((m) => `${m} (tested, from the drive)`)].filter(Boolean).join(', ') || 'nothing this run'}; no untested Bob is uploaded` : '') + (plan.download_quants ? `; only ${plan.download_quants.join(', ')} GGUF files come down to this PC, the rest stay on the drive` : '');
   console.log(`\nAbout to rent ONE GPU on RunPod to make: ${rungs}`);
   console.log(`Caps: ${hoursMax} hours or $${dollarsMax}, whichever comes first; the pod is deleted when the Bobs are downloaded, or at the cap.`);
-  if (plan.volume) { const kv = knownVolumes(); console.log(`Network volume: ${plan.volume.gb || 100} GB kept between sessions (about $${((plan.volume.gb || 100) * 0.07).toFixed(2)} a month each, a standing charge until deleted). Have: ${kv.length ? kv.map((v) => `${v.id} in ${v.name || v.dataCenterId}`).join(', ') : 'none'}. A card is only taken in a data centre with a volume; a new volume is made where the card is if ours are out.`); }
+  if (plan.volume) { const kv = knownVolumes(); console.log(`Network volume: ${plan.volume.gb || 100} GB kept between sessions (about $${((plan.volume.gb || 100) * 0.07).toFixed(2)} a month each, a standing charge until deleted). Have: ${kv.length ? kv.map((v) => `${v.id} in ${v.name || v.dataCenterId}`).join(', ') : 'none'}. ${plan.data_centers ? `Only in: ${plan.data_centers.join(', ')} (plan.data_centers).` : 'A card is only taken in a data centre with a volume'}${plan.volume_new === false || plan.rebuild ? '; NO new volume is made this run' : '; a new volume is made where the card is if ours are out'}.`); }
   const stepUpShown = stepUpFor(plan.gpus || GPUS);
   console.log(`Cards, in order of preference: ${(plan.gpus || GPUS).join(', ')}`);
   if (stepUpShown.length) console.log(`Step-up card(s) if none is free after ${plan.volume_wait_minutes || 20} minutes: ${stepUpShown.join(', ')}${plan.step_up_note ? ` (${plan.step_up_note})` : ''}\n`); else console.log('');
@@ -166,6 +171,10 @@ async function rent() {
       for (const p of places) if (!targets.find((t) => t.dc === p.id)) targets.push({ dc: p.id, name: p.name, vol: null, gpu: p.gpu, available: p.available });
       if (plan.volume_fallback === true && stepped && Date.now() - t0 > 2 * volWait * 60000 && !bare) { bare = true; log('volume_fallback is on: trying any data centre WITHOUT a volume as well (the teacher downloads again; nothing is kept)'); }
       if (bare) targets.push({ dc: null, name: 'anywhere', vol: null });
+      // 9 Nov: a rebuild run (or volume_new: false) reads files off a specific drive, so no new volume is ever made; plan.data_centers pins the places
+      if (plan.volume_new === false || plan.rebuild) targets = targets.filter((t) => t.vol);
+      if (Array.isArray(plan.data_centers)) targets = targets.filter((t) => t.dc && plan.data_centers.includes(t.dc));
+      if (!targets.length && attempt % 5 === 0) log(`no data centre to ask in this minute (our volumes: ${knownVolumes().map((v) => v.dataCenterId).join(', ') || 'none'}${plan.data_centers ? `; allowed: ${plan.data_centers.join(', ')}` : ''})`);
     } else targets = [{ dc: null, name: 'anywhere', vol: null }];
     for (const t of targets) {
       // a new volume only where the card is listed as in stock (RunPod's flag is strict, so this holds back only the "no" cases) and only once per run

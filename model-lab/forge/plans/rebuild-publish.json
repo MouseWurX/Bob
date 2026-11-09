@@ -17,6 +17,8 @@
  },
  "volume_wait_minutes": 25,
  "volume_fallback": false,
+  "volume_new": false,
+  "data_centers": ["AP-JP-1"],
  "disk_gb": 350,
  "quants": "Q4_K_M,Q3_K_M",
  "general_tokens": 0,
