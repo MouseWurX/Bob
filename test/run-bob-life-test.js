@@ -121,7 +121,7 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   check('Help explains the habits, with a glossary entry and FAQ', help.includes("id: 'habits'") && help.includes('<dt>Little habits</dt>') && help.includes("id: 'faq-asleep'") && help.includes("id: 'faq-stop-moving'"));
 }
 
-// Word bubbles (issue #36, Squeak Nov 9): Bob's and the cat's lines float beside his picture and never push the menu down.
+// Word bubbles (issue #36): Bob's and the cat's lines float beside his picture and never push the menu down.
 {
   const rd = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   const html = rd('public/index.html'), css = rd('public/style.css'), antics = rd('public/cat-antics.js'), bub = rd('public/say-bubbles.js'), app = rd('public/app.js');
