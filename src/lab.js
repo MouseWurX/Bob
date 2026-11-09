@@ -1572,7 +1572,7 @@ export class Lab {
     if (!brain) throw new Error('Pick a brain to peek inside.');
     const facts = inspect(brain);
     if (!facts?.experts) throw new Error(`${brain.name} isn't a mixture-of-experts brain, so there's nothing to peek at.`);
-    if (Array.isArray(maskCounts) && maskCounts.length) mask = keepFromLit(maskCounts, facts); // Turn these off: the lit-up set, padded to one size
+    if (Array.isArray(maskCounts) && maskCounts.length) mask = keepFromLit(maskCounts, facts); // Keep only these: the lit-up set, padded to one size
     const tools = this.tools();
     if (!tools.brainEngine.found && !this.stepFns.peekServe) throw new Error(NO_ENGINE);
     if (this.peekTraceOk === false) throw new Error(NO_TRACE);

@@ -1010,7 +1010,7 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
     const a1 = await plab.peekAsk({ brain: 'rel-a', question: 'rain', tally: true });
     check('a live question answers with the words lit up and adds to the tally', a1.answer === 'About rain' && a1.words.length === 2 && a1.lit[0].join() === '1,3,5' && a1.tallied.tokens === 8 && served === 1 && !plab.job);
     const a2 = await plab.peekAsk({ brain: 'rel-a', question: 'sun', maskCounts: a1.counts });
-    check('Turn these off masks to the lit set, padded, then clears the mask, on the same loaded engine', a2.masked && masks.length === 2 && masks[1] === null && Array.isArray(masks[0]) && served === 1);
+    check('Keep only these masks to the lit set, padded, then clears the mask, on the same loaded engine', a2.masked && masks.length === 2 && masks[1] === null && Array.isArray(masks[0]) && served === 1);
     check('the page gets the live view as possible', plab.peek('rel-a').live.ok);
     mode = 'none';
     const bad = await plab.peekAsk({ brain: 'rel-a', question: 'x' }).then(() => '', (e) => e.message);
@@ -1022,7 +1022,7 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   for (const f of ['public/lab-home-ways.js', 'public/lab-peek.js', 'src/lab-merge.js', 'src/lab-refusals.js', 'src/lab-peek.js']) { check(`${f} parses`, spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../${f}`, import.meta.url))]).status === 0); check(`${f} names no private brain`, !/thoth|heretic/i.test(read(f))); }
   { const hw = read('public/lab-home-ways.js'); check('unticking a safeguard asks a second time, with Make it anyway and Keep them ticked', /Make it without teaching back the kept refusals\?/.test(hw) && /Make it anyway/.test(hw) && /Keep them ticked/.test(hw) && /Made in the Lab with the refusal habit taken out/.test(hw));
     check('the stack card carries the honest line', /nearly always ramble/.test(hw));
-    const help = HELP.map((h) => h.html).join(' '); check('Help explains the three home ways and Peek inside', /Mix two brains/.test(help) && /Stack layers/.test(help) && /Take out the refusal habit/.test(help) && /Peek inside/.test(help) && /Turn these off and ask again/.test(help) && /Keep count while I ask these/.test(help));
+    const help = HELP.map((h) => h.html).join(' '); check('Help explains the three home ways and Peek inside', /Mix two brains/.test(help) && /Stack layers/.test(help) && /Take out the refusal habit/.test(help) && /Peek inside/.test(help) && /Keep only these and ask again/.test(help) && /Keep count while I ask these/.test(help));
     check('the release note is there', /Peek inside/.test(read('docs/releases/v1.5.166.md')) && /Take out the refusal habit/.test(read('docs/releases/v1.5.166.md'))); }
 }
 
