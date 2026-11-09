@@ -6,25 +6,88 @@
 import { CTX_CHOICES, brainDefaults, DEFAULT_CTX } from './sessions.js';
 
 export const ctxOn = (cfg) => cfg?.brainCtxOn === true;
+
+// Long memory (YaRN), asked for with Qwen3.6's own guide: a brain made for 256K can be stretched to read more, by
+// telling Bob's engine to spread its positions out (--rope-scaling yarn). Off to start with, and only for the
+// brains the guide is for (Qwen3.5/3.6, made for 256K). The stretch is fixed for the whole load, and the guide says
+// it makes short chats a little worse, so it's only used while a stretched size is picked for that brain: at 256K
+// and below nothing changes. The stretch is the size picked over what the brain was made for (512K is 2x, 1M is 4x).
+export const stretchOn = (cfg) => cfg?.brainCtxStretch === true;
+export const STRETCH_CHOICES = [524288, 1048576];
+export const ALL_CTX = [...CTX_CHOICES, ...STRETCH_CHOICES];
+export const STRETCH_MOST = 4; // the guide's own example goes to 4x (about 1M); never further
+// Which brains can stretch, and from what, from Qwen's own model cards (the owner's ask, 2026-11-09: Qwen3 and
+// Qwen3 Coder too). { native, most } or null:
+// - Qwen3.5/3.6 (qwen35, qwen35moe), made for 256K: the guide above, to 1M. Bob's ladder (Riker, Bill, Bobert and
+//   the smaller ones) are cut from Qwen3.6 35B-A3B, so they count.
+// - Qwen3 Coder (qwen3moe/qwen3 named Coder), made for 256K: its card says up to 1M with YaRN.
+// - Qwen3 (qwen3, qwen3moe), made for 32K (the file says 40,960: 32K plus room for the reply): its card says YaRN
+//   factor 4, from 32,768 to 131,072. The 2507 updates made for 256K reach 1M another way (not YaRN), so they don't.
+export function stretchPlan(info) {
+  if (!info) return null;
+  const arch = String(info.arch || '').toLowerCase();
+  if (/^qwen35/.test(arch)) return info.ctxTrain === 262144 ? { native: 262144, most: 1048576 } : null;
+  if (arch === 'qwen3' || arch === 'qwen3moe') {
+    if (info.ctxTrain === 262144 && /coder/i.test(String(info.name || ''))) return { native: 262144, most: 1048576 };
+    if (info.ctxTrain === 32768 || info.ctxTrain === 40960) return { native: 32768, most: 131072 };
+  }
+  return null;
+}
+export const canStretch = (info) => Boolean(stretchPlan(info));
+// The most a brain can be stretched to (null: it can't).
+export const stretchMax = (info) => stretchPlan(info)?.most || null;
+// What Bob's engine is started with for a stretched size, or nothing when the size is within what it was made for.
+export function yarnArgs(ctx, native) {
+  if (!(native > 0) || !(ctx > native)) return [];
+  const factor = Math.min(STRETCH_MOST, ctx / native);
+  return ['--rope-scaling', 'yarn', '--rope-scale', String(Math.round(factor * 100) / 100), '--yarn-orig-ctx', String(native)];
+}
+
+// What the chat memory (KV cache) costs for a context, in bytes, from the brain's shape (gguf.js) and the memory's
+// number format (-ctk/-ctv; Bob uses q8_0). null when the shape isn't known.
+const KV_BYTES = { f32: 4, f16: 2, bf16: 2, q8_0: 34 / 32, q5_1: 24 / 32, q5_0: 22 / 32, q4_1: 20 / 32, q4_0: 18 / 32, iq4_nl: 18 / 32 };
+export function kvBytes(shape, ctx, args = []) {
+  if (!shape?.perToken || !(ctx > 0)) return null;
+  const type = (flags) => { const i = args.findIndex((a) => flags.includes(a)); return KV_BYTES[String(args[i + 1] || '').toLowerCase()] || 2; };
+  const kv = args.length ? (type(['-ctk', '--cache-type-k']) + type(['-ctv', '--cache-type-v'])) / 2 : KV_BYTES.q8_0;
+  return Math.round(shape.perToken * ctx * kv);
+}
+// What a brain needs for a context, all told: the file, the chat memory, and about 1.5 GB of working room.
+export const WORK_BYTES = 1.5 * 1024 ** 3;
+export function needBytes(fileBytes, shape, ctx, args) {
+  const kv = kvBytes(shape, ctx, args);
+  return fileBytes > 0 && kv !== null ? fileBytes + kv + WORK_BYTES : null;
+}
+// Room for a brain: the graphics card plus the RAM, less what the system keeps for itself (6 GB; 3 GB on a machine
+// with 16 GB or less, where the system runs leaner). Bob's engine spreads a brain over both (--fit).
+export function roomBytes(ramBytes, cardBytes = 0) {
+  const keep = (ramBytes <= 16 * 1024 ** 3 ? 3 : 6) * 1024 ** 3;
+  return Math.max(0, ramBytes - keep) + Math.max(0, cardBytes);
+}
 // When a brain's own limit can't be read, only sizes every brain handles are offered.
 export const SAFE_CTX = 32768;
-export const ctxLabel = (v) => `${Math.round(v / 1024)}K`;
+export const ctxLabel = (v) => (v >= 1048576 && v % 1048576 === 0 ? `${v / 1048576}M` : `${Math.round(v / 1024)}K`);
 // Settings review (1.5.87): in a Gaming session the brain runs on the processor, so a hand pick never grows it past
 // the Gaming session's own size while a game may be running.
 export const GAMING_CTX = DEFAULT_CTX.light;
 
 // The sizes to offer for a brain made for up to `max` tokens (null: limit unknown).
-export function choicesFor(max) {
+// stretch: the most it can be stretched to (Long memory on), which adds the stretched sizes.
+export function choicesFor(max, { stretch = null } = {}) {
   const top = Number(max) > 0 ? Number(max) : SAFE_CTX;
-  return CTX_CHOICES.filter((v) => v <= top);
+  const long = Number(stretch) > top ? ALL_CTX.filter((v) => v > top && v <= stretch) : [];
+  return [...CTX_CHOICES.filter((v) => v <= top), ...long];
 }
 
 // The size picked by hand for this brain, if the switch is on and it's a size the brain was made for.
-export function pickedCtx(cfg, model, max = null) {
+// A stretched size only counts with Long memory on and a brain that can be stretched that far (stretch: its most).
+export function pickedCtx(cfg, model, max = null, { stretch = null } = {}) {
   if (!ctxOn(cfg) || !model) return null;
   const v = cfg.brainCtx?.[model];
-  if (!CTX_CHOICES.includes(v)) return null;
-  return max && v > max ? null : v;
+  if (!ALL_CTX.includes(v)) return null;
+  // Past what the brain was made for: only stretched, with Long memory on and a brain that goes that far.
+  if (max ? v > max : STRETCH_CHOICES.includes(v)) return stretchOn(cfg) && max && Number(stretch) >= v ? v : null;
+  return v;
 }
 
 // What Bob uses for a brain when nothing is picked by hand (for the menu's first line).
@@ -33,7 +96,7 @@ export function bobsPick(model, hat = 'bob') {
 }
 
 // A short guideline for a brain, from its limit and Bob's pick (settings text, so Bob in the third person).
-export function ctxGuide(max, pick, { gaming = false } = {}) {
+export function ctxGuide(max, pick, { gaming = false, stretch = null } = {}) {
   const parts = [];
   if (!max) parts.push(`Bob couldn't read how much this brain was made for, so the menu only goes up to ${ctxLabel(SAFE_CTX)}, which every brain handles.`);
   else {
@@ -41,6 +104,7 @@ export function ctxGuide(max, pick, { gaming = false } = {}) {
     if (pick) parts.push(`Bob uses ${ctxLabel(Math.min(pick, max))} unless you pick.`);
     parts.push('Bigger reads longer files and chats, but uses more memory and takes longer to read when it\'s full.');
   }
+  if (stretch && max) parts.push(`With Long memory on it can be stretched to ${ctxLabel(stretch)}. A stretched size makes short chats a little worse while it's picked, and a full one takes a long time to read.`);
   if (gaming) parts.push(`In a Gaming session this brain runs on the processor, so Bob keeps it at ${ctxLabel(GAMING_CTX)} while you play and doesn't take RAM from your game.`);
   return parts.join(' ');
 }
@@ -52,7 +116,7 @@ export function cleanBrainCtx(v) {
   for (const [k, n] of Object.entries(v).slice(0, 64)) {
     if (typeof k !== 'string' || !k || k.length > 200 || /[\u0000-\u001f]/.test(k)) continue;
     if (n === null) { out[k] = null; continue; }
-    if (CTX_CHOICES.includes(n)) out[k] = n;
+    if (ALL_CTX.includes(n)) out[k] = n;
   }
   return out;
 }

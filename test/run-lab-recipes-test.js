@@ -1,4 +1,4 @@
-// 1.5.153 Cut recipes, the estimate table and the usage map (bob-design/blend-and-cut-recipes.md): sizes from the
+// 1.5.154 Cut recipes, the estimate table and the usage map (bob-design/blend-and-cut-recipes.md): sizes from the
 // device, the estimate's numbers against the measured rentals, the cold / faint / only-for lists, the files in the
 // format shared with Peek inside, a whole usage job with fake steps, a recipe built from the usage map and from the
 // lessons, the routes (nothing starts from another device) and the page's and Help's words.
@@ -199,7 +199,7 @@ check('every number is a rough guess', /Every number here is a rough guess/.test
 const help = HELP.find((h) => h.id === 'lab-recipes');
 check('Help has a page for goals, the estimate and the usage map', help && /usage map/i.test(help.html) && /Start from a goal/.test(help.html) && /starts at \$0/.test(help.html) && !/garfield|riker/i.test(help.html + help.words));
 check('Help says a goal-shaped brain is not much smaller', /won't be much smaller/.test(help.html));
-check('the release note exists, with no ladder names', fs.existsSync(new URL('../docs/releases/v1.5.153.md', import.meta.url)) && !/garfield|riker/i.test(read('docs/releases/v1.5.153.md')));
+check('the release note exists, with no ladder names', fs.existsSync(new URL('../docs/releases/v1.5.154.md', import.meta.url)) && !/garfield|riker/i.test(read('docs/releases/v1.5.154.md')));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 fs.rmSync(tmp, { recursive: true, force: true });

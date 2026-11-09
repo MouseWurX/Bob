@@ -1,4 +1,4 @@
-// 1.5.153 The estimate table (bob-design/blend-and-cut-recipes.md section 4): how long a Lab job takes here, and what
+// 1.5.154 The estimate table (bob-design/blend-and-cut-recipes.md section 4): how long a Lab job takes here, and what
 // the rented part of a recipe (teaching it back, on a hired card) would take and cost, before anything runs. Hours on
 // a card come from measured runs (docs/FORGE-JOURNAL.md); local minutes from this replicant matrix's own past Lab jobs
 // when there are any, else from the brain's size. Every number is a range and says "about"; the service's bill is the

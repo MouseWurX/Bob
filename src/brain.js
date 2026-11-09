@@ -313,6 +313,8 @@ export function editPrompt(prompt) {
 }
 
 const PLAIN_HATS = { tinker: 'Coding', ledger: 'Spreadsheets', scout: 'Research', painter: 'Images & video', reviewer: 'Review' };
+// 1.5.148: copies whose work is code get Qwen's "thinking through code" preset (model-family.js).
+const CODING_HATS = new Set(['tinker']);
 const BRAIN_NAMES = { bob: 'main', tinker: 'workbench', ledger: 'ledger', scout: 'scouting', painter: "painter's", reviewer: 'second-look', eyes: 'eyes' };
 
 // 1.5.49: how a brain load changes what Bob holds. swap = it replaces one, add = it joins one, load = nothing was loaded.
@@ -328,19 +330,19 @@ export function loadLine({ mode, who, model, from, copy, secs, label, single = f
   const mine = (t) => lc(t).replace(/^brain \(/, 'main brain ('); // Bob's main slot reads "my main brain (...)"
   const now = lc(label(model, who)), old = from ? mine(label(from)) : '';
   if (who === 'reviewer') {
-    if (mode === 'add' && beside && !onCard) return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, on the processor, about ${secs} seconds. Reviews there are slower than on the graphics card.`;
-    if (mode === 'add') return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, about ${secs} seconds.`;
+    if (mode === 'add' && beside && !onCard) return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, on the processor, about ${secs} ${secs === 1 ? 'second' : 'seconds'}. Reviews there are slower than on the graphics card.`;
+    if (mode === 'add') return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, about ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
     // Settings sign-off (1.5.49): the real reason. Bob's own engine runs one brain whatever its size; Ollama is about memory.
     // Settings sign-off (1.5.51): switch off = a plain swap line; the tip about the switch shows once only (tip).
-    if (mode === 'swap' && old && single && !besideOn) return `🛰 Moot: ${copy} checks ${what}. My ${old} steps out and the ${now} comes in, about ${secs} seconds.${tip ? ' (To keep both loaded, turn on "Let the reviewer sit beside Bob\'s main brain" in Settings, Show advanced settings, Brains.)' : ''}`;
-    if (mode === 'swap' && old) return `🛰 Moot: ${copy} checks ${what}. ${single ? 'There isn\'t room for both right now' : 'Only one big brain fits right now'}, so my ${old} steps out and the ${now} comes in, about ${secs} seconds.`;
-    return `🛰 Moot: ${copy} checks ${what}, on the ${now}. Loading it, about ${secs} seconds.`;
+    if (mode === 'swap' && old && single && !besideOn) return `🛰 Moot: ${copy} checks ${what}. My ${old} steps out and the ${now} comes in, about ${secs} ${secs === 1 ? 'second' : 'seconds'}.${tip ? ' (To keep both loaded, turn on "Let the reviewer sit beside Bob\'s main brain" in Settings, Show advanced settings, Brains.)' : ''}`;
+    if (mode === 'swap' && old) return `🛰 Moot: ${copy} checks ${what}. ${single ? 'There isn\'t room for both right now' : 'Only one big brain fits right now'}, so my ${old} steps out and the ${now} comes in, about ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
+    return `🛰 Moot: ${copy} checks ${what}, on the ${now}. Loading it, about ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
   }
-  if (mode === 'add' && old && beside && onCard) return `Adding the ${now} beside my ${old} on the graphics card, which has room for both. About ${secs} seconds.`;
-  if (mode === 'add' && old && beside) return `Adding the ${now} on the processor, so my ${old} keeps working on the graphics card. About ${secs} seconds, and this reply starts slower than usual.`;
-  if (mode === 'add' && old) return `Adding the ${now} beside my ${old}, which stays loaded. About ${secs} seconds.`;
-  if (mode === 'load' || !old) return `Loading the ${now}. Back in about ${secs} seconds.`;
-  return `Swapping brains: my ${old} goes out and the ${now} comes in. Back in about ${secs} seconds.`;
+  if (mode === 'add' && old && beside && onCard) return `Adding the ${now} beside my ${old} on the graphics card, which has room for both. About ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
+  if (mode === 'add' && old && beside) return `Adding the ${now} on the processor, so my ${old} keeps working on the graphics card. About ${secs} ${secs === 1 ? 'second' : 'seconds'}, and this reply starts slower than usual.`;
+  if (mode === 'add' && old) return `Adding the ${now} beside my ${old}, which stays loaded. About ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
+  if (mode === 'load' || !old) return `Loading the ${now}. Back in about ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
+  return `Swapping brains: my ${old} goes out and the ${now} comes in. Back in about ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
 }
 
 // 1.5.53: thinking goes to the "Bob's thinking" window in small batches (about 8 a second), not token by token.
@@ -721,7 +723,7 @@ export class Brain {
         // 1.5.49: say whether this brain replaces one (swap), joins one (add), or fills an empty head (load).
         const plan = await this.engine.loadPlan?.(m, opts).catch(() => null) || null;
         const mode = loadMode(plan);
-        const text = attempt ? `That didn't load right. Trying the ${this.brainLabel(m, who)} again, about ${secs} seconds.` : loadLine({ mode, who, model: m, from: plan?.drop?.[0] || plan?.keep?.[0] || '', copy: who === 'reviewer' ? copyName(this.cfg, 'reviewer', 'second look') : '', secs, label: (x, w) => this.brainLabel(x, w), single: Boolean(plan?.single), beside: Boolean(plan?.beside), onCard: Boolean(plan?.onCard), besideOn: this.cfg.mootBeside === true, tip: who === 'reviewer' && mode === 'swap' && Boolean(plan?.single) && this.cfg.mootBeside !== true && this.besideTipOnce(), ...(opts?.what ? { what: opts.what } : {}) });
+        const text = attempt ? `That didn't load right. Trying the ${this.brainLabel(m, who)} again, about ${secs} ${secs === 1 ? 'second' : 'seconds'}.` : loadLine({ mode, who, model: m, from: plan?.drop?.[0] || plan?.keep?.[0] || '', copy: who === 'reviewer' ? copyName(this.cfg, 'reviewer', 'second look') : '', secs, label: (x, w) => this.brainLabel(x, w), single: Boolean(plan?.single), beside: Boolean(plan?.beside), onCard: Boolean(plan?.onCard), besideOn: this.cfg.mootBeside === true, tip: who === 'reviewer' && mode === 'swap' && Boolean(plan?.single) && this.cfg.mootBeside !== true && this.besideTipOnce(), ...(opts?.what ? { what: opts.what } : {}) });
         emit({ type: 'announce', text, seconds: secs });
         this.setState('loading', text, m, { mode: attempt ? 'swap' : mode, from: plan?.drop?.[0] || plan?.keep?.[0] || '', ...(plan?.beside ? { beside: true } : {}) });
       }
@@ -942,11 +944,18 @@ export class Brain {
     if (!model) return want || null;
     const max = await this.engine.maxCtx?.(model)?.catch?.(() => null) ?? null;
     // 1.5.87: a size picked for this brain (Settings > Brains, switch on) wins, for every copy on it: one load.
-    const pick = pickedCtx(this.cfg, model, max);
+    // Long memory (YaRN, model-ctx.js): with the switch on, a stretched size picked for a brain that can take it.
+    const stretch = await Promise.resolve(this.engine.stretchMax?.(model)).catch(() => null) ?? null;
+    let pick = pickedCtx(this.cfg, model, max, { stretch });
+    // A stretched size that won't fit this machine (card plus RAM) isn't tried: the brain loads at what it was made for.
+    if (pick && max && pick > max) {
+      const r = await Promise.resolve(this.engine.roomFor?.(model, pick)).catch(() => null);
+      if (r && r.fits === false) { this.log('model', `long memory: ${model} at ${pick} needs ~${r.needGB} GB, room ~${r.roomGB} GB, so it loads at ${max}`); pick = max; }
+    }
     // Settings review: in Gaming the brain is on the processor beside the game, so a pick never makes it bigger there.
     want = pick && gaming(this.cfg) ? Math.min(pick, want || GAMING_CTX) : pick || want;
     if (!want) return null;
-    const fit = max ? Math.min(max, want) : want;
+    const fit = max ? Math.min(pick && pick > max ? pick : max, want) : want;
     // 1.5.126: on built-in graphics, shorter still when the RAM says so (apuRoom above).
     const room = await apuRoom(this, model, fit);
     if (room.shortened) this.log('model', `shortened ${model}'s chat memory to ${room.ctx} to leave Windows about ${APU_HEADROOM_GB} GB (needs ~${room.needGB} GB, room ~${room.roomGB} GB)`);
@@ -2418,6 +2427,7 @@ export class Brain {
     for (let step = 0; step < maxSteps; step++) {
       const reply = await this.chatSafe({
         model, messages, tools: this.toolSchemas(hatTools), signal: ctx.signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
+        ...(CODING_HATS.has(hat) ? { task: 'coding' } : {}), // 1.5.148: Qwen's coding preset for code work
         onToken: (t) => ctx.emit({ type: 'token', text: t })
       }, { emit: ctx.emit, who: hat });
       messages.push(reply);

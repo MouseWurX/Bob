@@ -1,4 +1,4 @@
-// 1.5.153 Cut recipes and the estimate table on the server (bob-design/blend-and-cut-recipes.md sections 3 and 4).
+// 1.5.154 Cut recipes and the estimate table on the server (bob-design/blend-and-cut-recipes.md sections 3 and 4).
 // applyRecipe fills the Lab's five steps for a goal and a device: the size comes from the device, the skills to
 // protect from the goal, and the counts from (1) the usage map of this brain if there is one, else (2) the lesson set
 // in step 2, counted skill by skill. The teaching back (the heal) can't run here, so the recipe also says what it

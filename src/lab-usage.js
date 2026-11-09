@@ -1,4 +1,4 @@
-// 1.5.153 The usage map (bob-design/blend-and-cut-recipes.md section 1, the owner's ask of 8 Nov: "determine experts
+// 1.5.154 The usage map (bob-design/blend-and-cut-recipes.md section 1, the owner's ask of 8 Nov: "determine experts
 // that are used and not used for things tested for"). Pick a brain and what to test it on: the Lab quiz part by part,
 // your chats with Bob, a lesson set (one count per skill), or a file or folder of your own text. Bob reads each one
 // through llama-imatrix, which counts how many words every expert in every layer handled, and writes the result in

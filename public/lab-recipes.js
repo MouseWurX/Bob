@@ -1,4 +1,4 @@
-// 1.5.153 The Lab page's cut recipes, estimate table and usage map (bob-design/blend-and-cut-recipes.md). Its own
+// 1.5.154 The Lab page's cut recipes, estimate table and usage map (bob-design/blend-and-cut-recipes.md). Its own
 // module so the Lab page (public/lab.js) only places three blocks and hands over its events. The recipes fill the
 // five steps; the estimate shows what a job takes here and what the rented part would cost, before anything runs;
 // the usage map counts which experts a brain uses for the things you test it on, and which it never touches.

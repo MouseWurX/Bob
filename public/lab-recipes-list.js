@@ -1,4 +1,4 @@
-// 1.5.153 Cut recipes (bob-design/blend-and-cut-recipes.md section 3): pick a goal and the device it's for, and the
+// 1.5.154 Cut recipes (bob-design/blend-and-cut-recipes.md section 3): pick a goal and the device it's for, and the
 // Lab's five steps are filled in for you: how small, which skills to protect most, which running file, and what the
 // rented part (teaching it back) would cost. One list for the Lab page and the server (src/lab-recipes.js), so it
 // works offline. A recipe never runs on its own: it fills the steps, and the owner presses Start.
