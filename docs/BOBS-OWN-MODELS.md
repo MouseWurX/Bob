@@ -2,7 +2,7 @@
 
 *The day-by-day record, every run's numbers and the routes not taken yet are in [the Forge journal](FORGE-JOURNAL.md); the raw run files are in [forge-runs/](forge-runs/).*
 
-*Tested, not yet released. This page is the plan, the method and the results so far, including the mistakes. It is updated as each model lands. No downloads yet: the whole family goes up together when it is complete.*
+*This page is the plan, the method and the results so far, including the mistakes. It is updated as each model lands. The first one, Riker, is out on Hugging Face (links in his section below); the rest go up as each one passes its tests.*
 
 > **8 November 2026: the re-cut Riker (28Bob) is made, benchmarked and kept.** He codes better than any Bob before him (9 of 13 on the coding race, 6 of 6 on the quick code test, against the full model's 12 and 6), keeps tool calls level, and finds a fact in a 128K-token document every time; see [28Bob Riker](#28bob-riker-the-one-that-stays). The first four Bobs are retired and deleted. Next is one run that makes Bobert (35Bob, the full model trained on every lesson) and Bill (20Bob, cut from Bobert); the first release will be those three.
 
@@ -71,6 +71,7 @@ Re-cut from the teacher on 6 November with the coverage keep list at 208 of 256 
 
 - Held-out loss 0.401 before healing, 0.362 after (the teacher: 0.324); distance from the teacher 0.087 to 0.067. General text 2.154 to 2.158, so outside knowledge held level.
 - Files: Q4 17.49 GB, Q3 13.87 GB, adapter 1.74 GB. At Q4 he needs some experts in RAM on a 16 GB card; the Q3 file fits more of him on the card.
+- **Download (9 November):** [MouseWurX/28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) on Hugging Face, Apache 2.0. [28Bob-Q4_K_M.gguf](https://huggingface.co/MouseWurX/28Bob-Riker/resolve/main/28Bob-Q4_K_M.gguf) for 16 GB cards, [28Bob-Q3_K_M.gguf](https://huggingface.co/MouseWurX/28Bob-Riker/resolve/main/28Bob-Q3_K_M.gguf) for 8 GB and under. The same page carries the full-precision weights (safetensors, 17 shards), the adapter and keep list that rebuild him from the teacher, the heal report and his benchmark cards. The lesson set is [MouseWurX/bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) (CC BY-SA 4.0).
 - **An honest note on the cut.** The rule says 99% coverage for tools, coding and exact formats and 95% for everything else. By mistake, the keep list Riker was cut with used 95% for every skill. The ladder table below is still the real measurement of what 208 experts keep (97 to 98% on average for a typical skill, 92 to 93% in the worst layer). The bug is fixed in the Forge, and Bill's keep list will use the full rule.
 
 All on the same PC, at Q4, 8 experts per word, the same settings for every model:
