@@ -4,6 +4,14 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.169
+
+The Lab's Challenges tab tells you how long each challenge takes on **your** card.
+
+- Every challenge used to say "about 2 min on a 16 GB card" to everyone. Now, when Bob knows this replicant matrix's graphics card, the line names it and scales the guess: a 6 GB card sees a longer estimate, a 24 GB card a slightly shorter one. With no card to read, the plain 16 GB line stays.
+- Help: The Lab's Challenges tab updated. Tests in `test/run-lab-test.js`.
+- Phone (Bob for Android): the phone's Lab page shows the card of the replicant matrix running the Lab, the same as the desktop.
+
 ## 1.5.168
 
 One switch for the whole Computer Science Lab: **Keep it simple** or **Professional**.
