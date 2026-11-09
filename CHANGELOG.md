@@ -4,6 +4,15 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.171
+
+The Lab's Challenges tab tells you how long each challenge takes on **your** card.
+
+- Every challenge used to say "about 2 min on a 16 GB card" to everyone. Now, when Bob knows this replicant matrix's graphics card, the line names it and scales the guess: a 6 GB card sees a longer estimate, a 24 GB card a slightly shorter one. On a Mac, where the memory is shared, the line says "with your 32 GB of shared memory" instead of "your card". With no card to read, the plain 16 GB line stays.
+- Help: The Lab's Challenges tab updated. Tests in `test/run-lab-test.js`.
+- Phone (Bob for Android): the phone's Lab page shows the card of the replicant matrix running the Lab, the same as the desktop.
+- The Lab's goals: the usage map's Brain Engine hint and error now point to Get models > Engines: Brain Engine (test build), and a goal's printed Forge plan now has the shape the Forge reads (strong and strong_cover for the whole plan, a usage-map cut as the rung's keep file, and heal hours set above the estimate). Tests in `test/run-lab-recipes-test.js`.
+
 ## 1.5.170
 
 Bob's and Patches' lines now pop out in word bubbles.

@@ -9,7 +9,7 @@ import { createLearn } from './lab-learn.js';
 import { saveHtml, saveResult } from './lab-save.js'; // 1.5.153 Save
 import { createRecipes } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
 import { createForge } from './lab-forge.js'; // 1.5.159 the Forge tab
-import { createGuard, packGroups, guardPartsLine } from './lab-guard.js';
+import { createGuard, packGroups, guardPartsLine, packMinutesLine } from './lab-guard.js';
 import { createPro } from './lab-pro.js'; // 1.5.168 Simple / Professional // 1.5.164 Guard rails sandbox and grouped packs
 import { createSenses } from './lab-senses.js'; // Give it eyes / Give it ears, a card in the Forge tab
 import { createPlayground } from './lab-playground.js'; // 1.5.156 Playground: the quantization ladder
@@ -369,7 +369,7 @@ export function createLab({ api, note }) {
       <p class="muted">Short tests, out of 100, for any brain on this replicant matrix. I ask every question at temperature 0 with thinking off, so the same brain gets the same score twice. The scores only mean something next to each other, here: they aren't the numbers you see in papers.</p>
       ${runsHtml()}
       <fieldset><legend>Which brain?</legend>${brains.length ? brains.map((b) => radio('chfrom', b.id, ch.from === b.id, `${b.name}${b.madeInLab ? ' (made in the Lab)' : ''}`, `${b.facts.sizeGB} GB. ${b.fit}`)).join('') : '<p>There are no brains here the Lab can run yet. Get one in Get models first.</p>'}</fieldset>
-      ${packGroups(view.packs).map((grp) => `<fieldset><legend>${esc(grp.label)}</legend>${grp.packs.map((p) => `<label class="lab-opt"><input type="checkbox" data-pack="${esc(p.id)}" ${ch.packs.includes(p.id) ? 'checked' : ''}> <span><strong>${esc(p.title)}</strong> <span class="muted">· ${p.count} questions · about ${p.minutes} min on a 16 GB card</span><br><span class="muted">${esc(p.what)}</span></span></label>`).join('')}</fieldset>`).join('')}
+      ${packGroups(view.packs).map((grp) => `<fieldset><legend>${esc(grp.label)}</legend>${grp.packs.map((p) => `<label class="lab-opt"><input type="checkbox" data-pack="${esc(p.id)}" ${ch.packs.includes(p.id) ? 'checked' : ''}> <span><strong>${esc(p.title)}</strong> <span class="muted">· ${p.count} questions · ${esc(packMinutesLine(p.minutes, view.cardGB, view.sharedMemory))}</span><br><span class="muted">${esc(p.what)}</span></span></label>`).join('')}</fieldset>`).join('')}
       ${askUnload?.challenge ? `<div class="setup-offer" role="alert"><strong>Bob's brain is on the graphics card</strong><span>${esc(askUnload.join(', '))} is loaded. The challenges need the card, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-unload>Unload it and start</button><button type="button" class="link" data-nounload>Not now</button></div></div>` : ''}
       ${view.mode === 'pro' ? px.myPacksHtml(ch.packs) + px.settingsHtml() : ''}
       <div class="row"><button type="button" class="get" data-chgo ${ch.from && ch.packs.length && !busy ? '' : 'disabled'}>${busy ? 'The Lab is busy' : 'Run the challenges'}</button></div>

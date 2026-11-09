@@ -1111,6 +1111,16 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   check('the page gets the mode, the settings and your packs, never their questions', pLab.view().mode === 'simple' && pLab.view().pro.gen.temperature === 0 && Array.isArray(pLab.view().myPacks) && pLab.view().myPacks.every((m) => !m.items));
   check('your packs and the log are for this replicant matrix itself', ["'/api/lab/mypack/import'", "'/api/lab/challenge/log'"].every((k) => read('src/lab.js').indexOf(k) > read('src/lab.js').indexOf('Lab jobs can only be started on this replicant matrix itself')));
 }
+// 1.5.171 the challenge line names the viewer's own card
+{
+  const { packMinutesLine } = await import('../public/lab-guard.js');
+  check('no card known: the plain 16 GB line', packMinutesLine(2, 0) === 'about 2 min on a 16 GB card');
+  check('a 16 GB card is named, same minutes', packMinutesLine(2, 16) === 'about 2 min on your 16 GB card');
+  check('a small card gets a longer guess, a big card a little shorter, never under a minute', packMinutesLine(2, 6) === 'about 6 min on your 6 GB card' && packMinutesLine(2, 24) === 'about 2 min on your 24 GB card' && packMinutesLine(1, 48) === 'about 1 min on your 48 GB card');
+  check('a Mac says shared memory, not "your card"', packMinutesLine(2, 32, true) === 'about 2 min with your 32 GB of shared memory');
+  check('the Lab says whether its memory is shared, from the test machine, never the tester\'s', (() => { const l = new Lab({ ...cfg }, { shop, room: big }); l.platform = () => ({ os: 'mac', arch: 'arm64' }); const m = l.view().sharedMemory; l.platform = () => ({ os: 'win', arch: 'x64' }); return m === true && l.view().sharedMemory === false; })());
+  check('the Challenges tab uses it with the view\'s card', /packMinutesLine\(p\.minutes, view\.cardGB, view\.sharedMemory\)/.test(read('public/lab.js')) && !/min on a 16 GB card<\/span>/.test(read('public/lab.js')));
+}
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
