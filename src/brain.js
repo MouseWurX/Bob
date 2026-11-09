@@ -1,5 +1,6 @@
 // Bob's brain: runs a conversation turn, picks the right model, announces swaps,
 // calls tools, asks the user for approval when needed, and keeps a logbook.
+import { ownModels } from './own-models.js';
 import fs from 'node:fs';
 import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
@@ -14,7 +15,7 @@ import { lookPrompt } from './look.js';
 import { applyHouseStyle, usedLine, houseStylePrompt } from '../public/house-style.js';
 const houseGroupOfTool = (n) => ({ make_music: 'music', make_image: 'pictures', make_video: 'video', make_sound: 'sfx' }[n] || null);
 import { personalityPrompt, cleanPersonality } from '../public/personality.js';
-import { catPrompt, catMoment } from '../public/patches.js';
+import { catPrompt, catMoment, catTurn } from '../public/patches.js';
 import { sleepyAfterReply, sleepySwitch, SLEEPY_SESSION } from '../public/sleepy.js';
 import { cleanEffort, careful, bigThinker, draftBrain, hatBrain, effortPrompt, mootOpening, runMoot, phasedWork } from './moot.js';
 import { saveSettings, outputDirs, findOutput } from './config.js';
@@ -95,6 +96,7 @@ function sideBrainBytes(brain) {
 // plainly instead of risking an out-of-memory crash. Only with built-in graphics (cfg.sharedGraphics); unknown
 // sizes (no file to measure) go the old way. Settings review: approved 2026-11-06.
 export const APU_MIN_CTX = 8192;
+export const APU_CARVE_MARGIN_GB = 0.5; // 1.5.133: kept free inside the set-aside for the picture reader and the driver
 export const APU_NO_ROOM = (needGB, freeGB) => `That brain needs about ${needGB} GB and only about ${freeGB} GB is free once Windows keeps its share, so I haven't loaded it. Close something or pick a smaller brain in Equip Bob.`;
 export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loaded = null } = {}) {
   if (!brain?.cfg?.sharedGraphics || !model) return { ok: true, ctx };
@@ -107,12 +109,19 @@ export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loade
     if (l.some((m) => !m.beside && sameModel(m.name, model))) return { ok: true, ctx }; // already in: nothing new to find room for
     dropping = l.filter((m) => !m.beside).reduce((a, m) => a + (m.size || 0), 0);
   } catch {}
-  const room = freeMem + dropping - APU_HEADROOM_GB * GB;
+  // 1.5.133 (Legion Go, UMA 8 GB: every brain was refused): the memory set aside for graphics is where the brain goes
+  // first, and Windows never counts it as free. So a brain up to the set-aside (less a small margin) needs no system RAM,
+  // and only what spills past it is checked against free RAM less Windows's 4 GB. On Auto the set-aside is tiny and the
+  // sum is the same as before. The brain being dropped frees its set-aside part and gives back only what it spilled.
+  const carve = Math.max(0, (Number(brain.cfg.reservedGraphicsGB) || 0) * GB - APU_CARVE_MARGIN_GB * GB);
+  const ram = freeMem + Math.max(0, dropping - carve) - APU_HEADROOM_GB * GB;
+  const room = carve + Math.max(0, ram);
+  const fits = (n) => Math.max(0, n - carve) <= Math.max(0, ram); // RAM short of Windows's share still leaves the set-aside
   const start = ctx || 32768;
   let c = start;
-  while (need > room && c > APU_MIN_CTX) { c = Math.max(APU_MIN_CTX, Math.floor(c / 2)); need = bytes(c); }
+  while (!fits(need) && c > APU_MIN_CTX) { c = Math.max(APU_MIN_CTX, Math.floor(c / 2)); need = bytes(c); }
   const gb = (b) => Math.round((Math.max(0, b) / GB) * 10) / 10;
-  if (need <= room) return { ok: true, ctx: c === start ? ctx : c, shortened: c !== start, needGB: gb(need), roomGB: gb(room) };
+  if (fits(need)) return { ok: true, ctx: c === start ? ctx : c, shortened: c !== start, needGB: gb(need), roomGB: gb(room) };
   return { ok: false, ctx, needGB: gb(need), roomGB: gb(room), line: APU_NO_ROOM(gb(need), gb(room)) };
 }
 
@@ -142,6 +151,10 @@ export async function sidePick(brain, job) {
   return { model: talkerModel(brain) || sb.small, ...base }; // sideOk / besideBigOk only start a side reply when a talker exists
 }
 const fullName = (name) => (/^Qwen3 4B Instruct$/.test(name) ? `${name} 2507` : name); // the name Get models and Equip use
+// 1.5.133: the talker kept beside a job always runs on the processor, with at most 32K of chat memory. Tried on the
+// owner's PC: any talker on the card (even 32K, 5.5 GB) made the 35B with its picture reader run out of card memory.
+export const TALKER_CTX = 32768;
+export const talkerCtx = (cfg) => Math.min(Number(chatBrain(cfg).ctx) || TALKER_CTX, TALKER_CTX);
 export const TALKER_LINE = (name) => `Keeping a small brain (${fullName(name)}) on the processor, so we can keep talking while the big one works.`;
 
 // 1.5.51 "Keep chatting while Bob is busy", part 2: beside a big text job (Medium effort and up, the Coding session, or
@@ -182,7 +195,7 @@ export function besideBigOk(brain, job, { freeMem = freeMemNow(), now = Date.now
   if (held && !isTalker(brain, held)) return false;
   if (held && brain.engine.besideLoaded?.()) return true; // 1.5.53: a talker is already waiting beside the job
   if (!bigJob(brain, now)) return false;
-  return freeMem >= besideBytes(brain, talker, chatBrain(cfg).ctx) + 2 * GB;
+  return freeMem >= besideBytes(brain, talker, talkerCtx(cfg)) + 2 * GB;
 }
 
 // 1.5.51 opt-in "Let the reviewer sit beside the main brain" (mootBeside): at High and Extreme effort the reviewer
@@ -236,9 +249,10 @@ export function claimsObservation(text) {
 export const OBSERVE_CORRECTION = 'Nothing was actually checked in that reply. Bob said he checked, but no check ran.';
 const OBSERVE_NUDGE = 'You described noticing, watching or checking something on the PC, but no tool ran this turn, so it was invented. Answer again in a line or two, using only the "Right now" line, the chat, or what {{USER}} said. No made-up system details, and no question unless you need the answer.';
 // The only things he knows about the PC without a tool, so small talk has something true to stand on.
-export function realState({ model, session, waiting = 0, cat, turn = 0, mem = { free: freeMemNow(), total: os.totalmem() } }) {
+// #33: the cat is only in it when withCat (the cat turns), so Patches isn't in front of the brain every turn.
+export function realState({ model, session, waiting = 0, cat, turn = 0, withCat = true, mem = { free: freeMemNow(), total: os.totalmem() } }) {
   const gb = (b) => (b / 1e9).toFixed(1);
-  return `Right now (real, from the app): you're thinking on ${model || 'no brain'}${session ? ` in the ${session} session` : ''}; ${waiting ? `${waiting} more message${waiting === 1 ? '' : 's'} waiting` : 'nothing else waiting'}; the PC's RAM is ${gb(mem.total - mem.free)} of ${gb(mem.total)} GB in use; ${catMoment(cat, turn)}.`;
+  return `Right now (real, from the app): you're thinking on ${model || 'no brain'}${session ? ` in the ${session} session` : ''}; ${waiting ? `${waiting} more message${waiting === 1 ? '' : 's'} waiting` : 'nothing else waiting'}; the PC's RAM is ${gb(mem.total - mem.free)} of ${gb(mem.total)} GB in use${withCat ? `; ${catMoment(cat, turn)}` : ''}.`;
 }
 export const CLAIM_CORRECTION = 'Nothing was actually done on this replicant matrix in that reply. Bob said he did, but no action ran.';
 const CLAIM_NUDGE = 'You just said you did something on the PC, but no tool did it in this turn. Never claim that. If it should be done, call the right tool now; if you cannot, say plainly that you have not done it and why (the tool\'s own words if it gave an error).';
@@ -299,6 +313,8 @@ export function editPrompt(prompt) {
 }
 
 const PLAIN_HATS = { tinker: 'Coding', ledger: 'Spreadsheets', scout: 'Research', painter: 'Images & video', reviewer: 'Review' };
+// 1.5.148: copies whose work is code get Qwen's "thinking through code" preset (model-family.js).
+const CODING_HATS = new Set(['tinker']);
 const BRAIN_NAMES = { bob: 'main', tinker: 'workbench', ledger: 'ledger', scout: 'scouting', painter: "painter's", reviewer: 'second-look', eyes: 'eyes' };
 
 // 1.5.49: how a brain load changes what Bob holds. swap = it replaces one, add = it joins one, load = nothing was loaded.
@@ -314,19 +330,19 @@ export function loadLine({ mode, who, model, from, copy, secs, label, single = f
   const mine = (t) => lc(t).replace(/^brain \(/, 'main brain ('); // Bob's main slot reads "my main brain (...)"
   const now = lc(label(model, who)), old = from ? mine(label(from)) : '';
   if (who === 'reviewer') {
-    if (mode === 'add' && beside && !onCard) return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, on the processor, about ${secs} seconds. Reviews there are slower than on the graphics card.`;
-    if (mode === 'add') return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, about ${secs} seconds.`;
+    if (mode === 'add' && beside && !onCard) return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, on the processor, about ${secs} ${secs === 1 ? 'second' : 'seconds'}. Reviews there are slower than on the graphics card.`;
+    if (mode === 'add') return `🛰 Moot: ${copy} joins me to check ${what}, on the ${now}. It loads beside mine, about ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
     // Settings sign-off (1.5.49): the real reason. Bob's own engine runs one brain whatever its size; Ollama is about memory.
     // Settings sign-off (1.5.51): switch off = a plain swap line; the tip about the switch shows once only (tip).
-    if (mode === 'swap' && old && single && !besideOn) return `🛰 Moot: ${copy} checks ${what}. My ${old} steps out and the ${now} comes in, about ${secs} seconds.${tip ? ' (To keep both loaded, turn on "Let the reviewer sit beside Bob\'s main brain" in Settings, Show advanced settings, Brains.)' : ''}`;
-    if (mode === 'swap' && old) return `🛰 Moot: ${copy} checks ${what}. ${single ? 'There isn\'t room for both right now' : 'Only one big brain fits right now'}, so my ${old} steps out and the ${now} comes in, about ${secs} seconds.`;
-    return `🛰 Moot: ${copy} checks ${what}, on the ${now}. Loading it, about ${secs} seconds.`;
+    if (mode === 'swap' && old && single && !besideOn) return `🛰 Moot: ${copy} checks ${what}. My ${old} steps out and the ${now} comes in, about ${secs} ${secs === 1 ? 'second' : 'seconds'}.${tip ? ' (To keep both loaded, turn on "Let the reviewer sit beside Bob\'s main brain" in Settings, Show advanced settings, Brains.)' : ''}`;
+    if (mode === 'swap' && old) return `🛰 Moot: ${copy} checks ${what}. ${single ? 'There isn\'t room for both right now' : 'Only one big brain fits right now'}, so my ${old} steps out and the ${now} comes in, about ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
+    return `🛰 Moot: ${copy} checks ${what}, on the ${now}. Loading it, about ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
   }
-  if (mode === 'add' && old && beside && onCard) return `Adding the ${now} beside my ${old} on the graphics card, which has room for both. About ${secs} seconds.`;
-  if (mode === 'add' && old && beside) return `Adding the ${now} on the processor, so my ${old} keeps working on the graphics card. About ${secs} seconds, and this reply starts slower than usual.`;
-  if (mode === 'add' && old) return `Adding the ${now} beside my ${old}, which stays loaded. About ${secs} seconds.`;
-  if (mode === 'load' || !old) return `Loading the ${now}. Back in about ${secs} seconds.`;
-  return `Swapping brains: my ${old} goes out and the ${now} comes in. Back in about ${secs} seconds.`;
+  if (mode === 'add' && old && beside && onCard) return `Adding the ${now} beside my ${old} on the graphics card, which has room for both. About ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
+  if (mode === 'add' && old && beside) return `Adding the ${now} on the processor, so my ${old} keeps working on the graphics card. About ${secs} ${secs === 1 ? 'second' : 'seconds'}, and this reply starts slower than usual.`;
+  if (mode === 'add' && old) return `Adding the ${now} beside my ${old}, which stays loaded. About ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
+  if (mode === 'load' || !old) return `Loading the ${now}. Back in about ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
+  return `Swapping brains: my ${old} goes out and the ${now} comes in. Back in about ${secs} ${secs === 1 ? 'second' : 'seconds'}.`;
 }
 
 // 1.5.53: thinking goes to the "Bob's thinking" window in small batches (about 8 a second), not token by token.
@@ -415,7 +431,11 @@ export class Brain {
   // ---------- Share jobs (1.5.72) ----------
   // A big brain for Medium-and-up work that's really here (the file is on disk), not just picked in Equip Bob.
   guestBigBrain() { const d = draftBrain(this.cfg, 'medium'); if (!d?.model) return false; return this.cfg.engine === 'llamacpp' ? runnable(this, d.model) : true; }
-  guestCanNow() { const can = capabilities(this.cfg); return NEEDS_LIST.filter((n) => canHere(this, n, { can, webOn: webOn(this.cfg) })); }
+  guestCanNow() { const can = this.jobCan(); return NEEDS_LIST.filter((n) => canHere(this, n, { can, webOn: webOn(this.cfg) })); }
+  // 1.5.133 lost-song fix: what this Bob can really make right now. capabilities() says music once the audio workshop is
+  // set up, but a song also needs the music models (several GB, downloaded the first time). A Bob without them must not
+  // tell his other Bobs he takes music, and a Bob asking for a song sends it to one that has them.
+  jobCan() { const can = { ...capabilities(this.cfg) }; if (can.music && !this.cfg.audio?.aceUrl) { try { if (aceMissingFiles(this.cfg).length) can.music = false; } catch {} } return can; }
 
   // ---------- Share brains (1.5.55) ----------
   borrowCase(job, pics) { return { session: currentSession(this.cfg).id, busy: this.turns.size > 1 || this.queue.some((j) => j.state === 'working' && j !== job), job, pics }; }
@@ -523,7 +543,7 @@ export class Brain {
       const split = m.split !== false && m.size > 0;
       const ramGB = split ? gb(Math.max(0, m.size - (m.vram || 0))) : null;
       // estimate: llama.cpp without a per-process figure from nvidia-smi (common on Windows) only knows the file size.
-      return { name: m.name, ...(m.beside ? { label: `${m.name} (beside, ${m.onCard ? 'on the graphics card' : 'on the processor'})`, beside: true } : m.own ? { label: `${m.name} (Bob's downloaded copy)` } : {}), gb: split ? gb(m.vram || 0) : gb(m.vram || m.size), ramGB, estimate: !split && !m.vram, ctx: m.ctx || null, onCard: m.beside ? Boolean(m.onCard) : (m.vram > 0 || (!m.vram && !chat.cpu && !split)), chat: !m.beside && sameModel(m.name, chat.model) };
+      return { name: m.name, ...(m.beside ? { label: `${m.name} (beside, ${m.onCard ? 'on the graphics card' : 'on the processor'})`, beside: true } : {}), gb: split ? gb(m.vram || 0) : gb(m.vram || m.size), ramGB, estimate: !split && !m.vram, ctx: m.ctx || null, onCard: m.beside ? Boolean(m.onCard) : (m.vram > 0 || (!m.vram && !chat.cpu && !split)), chat: !m.beside && sameModel(m.name, chat.model) };
     });
     const ramKnown = models.some((m) => m.ramGB != null);
     const state = this.waking ? 'waking' : this.turns.size ? 'working' : models.length ? 'awake' : 'asleep';
@@ -703,7 +723,7 @@ export class Brain {
         // 1.5.49: say whether this brain replaces one (swap), joins one (add), or fills an empty head (load).
         const plan = await this.engine.loadPlan?.(m, opts).catch(() => null) || null;
         const mode = loadMode(plan);
-        const text = attempt ? `That didn't load right. Trying the ${this.brainLabel(m, who)} again, about ${secs} seconds.` : loadLine({ mode, who, model: m, from: plan?.drop?.[0] || plan?.keep?.[0] || '', copy: who === 'reviewer' ? copyName(this.cfg, 'reviewer', 'second look') : '', secs, label: (x, w) => this.brainLabel(x, w), single: Boolean(plan?.single), beside: Boolean(plan?.beside), onCard: Boolean(plan?.onCard), besideOn: this.cfg.mootBeside === true, tip: who === 'reviewer' && mode === 'swap' && Boolean(plan?.single) && this.cfg.mootBeside !== true && this.besideTipOnce(), ...(opts?.what ? { what: opts.what } : {}) });
+        const text = attempt ? `That didn't load right. Trying the ${this.brainLabel(m, who)} again, about ${secs} ${secs === 1 ? 'second' : 'seconds'}.` : loadLine({ mode, who, model: m, from: plan?.drop?.[0] || plan?.keep?.[0] || '', copy: who === 'reviewer' ? copyName(this.cfg, 'reviewer', 'second look') : '', secs, label: (x, w) => this.brainLabel(x, w), single: Boolean(plan?.single), beside: Boolean(plan?.beside), onCard: Boolean(plan?.onCard), besideOn: this.cfg.mootBeside === true, tip: who === 'reviewer' && mode === 'swap' && Boolean(plan?.single) && this.cfg.mootBeside !== true && this.besideTipOnce(), ...(opts?.what ? { what: opts.what } : {}) });
         emit({ type: 'announce', text, seconds: secs });
         this.setState('loading', text, m, { mode: attempt ? 'swap' : mode, from: plan?.drop?.[0] || plan?.keep?.[0] || '', ...(plan?.beside ? { beside: true } : {}) });
       }
@@ -739,14 +759,15 @@ export class Brain {
     let main = [];
     try { main = (await this.engine.loaded()).filter((m) => !m.beside).map((m) => m.name); } catch {}
     if (main.some((n) => sameModel(n, model))) return false; // already loaded: nothing gets pushed out
-    const ctx = chatBrain(cfg).ctx;
+    const ctx = talkerCtx(cfg);
     if (freeMem < besideBytes(this, talker, ctx) + 2 * GB) return false;
     this.talking = true;
     try {
-      await this.engine.preload(talker, undefined, { beside: true, cpu: true, ctx });
+      // 1.5.133: never on the card: the job's brain isn't loaded yet, so the card only looks empty.
+      await this.engine.preload(talker, undefined, { beside: true, cpu: true, ctx, place: 'none' });
       if (!signal || this.talkerSaid !== signal) emit({ type: 'announce', text: TALKER_LINE(this.brainLabel(talker).replace(/^.*?\((.*)\)$/, '$1')) }); // once per job
       this.talkerSaid = signal;
-      this.log('model', `kept ${talker} on the processor beside the job, for chat`);
+      this.log('model', `kept ${talker} on the processor beside the job, for chat (chat memory ${ctx})`);
       return true;
     } catch (e) { this.log('model', `couldn't keep a talker beside the job: ${e.message}`); return false; }
     finally { this.talking = false; }
@@ -763,6 +784,7 @@ export class Brain {
     if (!this.catalogNames) {
       this.catalogNames = [];
       try { this.catalogNames = JSON.parse(fs.readFileSync(this.cfg.catalogFile || new URL('../catalog.json', import.meta.url), 'utf8')).models.filter((x) => x.ollama && x.name).map((x) => [x.ollama, x.name]); } catch {}
+      for (const o of ownModels(this.cfg)) this.catalogNames.push([o.id, o.name]); // 1.5.135 brains of your own, by their given name
     }
     const nice = this.catalogNames.find(([id]) => sameModel(id, model))?.[1] || String(model || '').replace(/:latest$/, '');
     return `${phrase} (${nice})`;
@@ -922,11 +944,18 @@ export class Brain {
     if (!model) return want || null;
     const max = await this.engine.maxCtx?.(model)?.catch?.(() => null) ?? null;
     // 1.5.87: a size picked for this brain (Settings > Brains, switch on) wins, for every copy on it: one load.
-    const pick = pickedCtx(this.cfg, model, max);
+    // Long memory (YaRN, model-ctx.js): with the switch on, a stretched size picked for a brain that can take it.
+    const stretch = await Promise.resolve(this.engine.stretchMax?.(model)).catch(() => null) ?? null;
+    let pick = pickedCtx(this.cfg, model, max, { stretch });
+    // A stretched size that won't fit this machine (card plus RAM) isn't tried: the brain loads at what it was made for.
+    if (pick && max && pick > max) {
+      const r = await Promise.resolve(this.engine.roomFor?.(model, pick)).catch(() => null);
+      if (r && r.fits === false) { this.log('model', `long memory: ${model} at ${pick} needs ~${r.needGB} GB, room ~${r.roomGB} GB, so it loads at ${max}`); pick = max; }
+    }
     // Settings review: in Gaming the brain is on the processor beside the game, so a pick never makes it bigger there.
     want = pick && gaming(this.cfg) ? Math.min(pick, want || GAMING_CTX) : pick || want;
     if (!want) return null;
-    const fit = max ? Math.min(max, want) : want;
+    const fit = max ? Math.min(pick && pick > max ? pick : max, want) : want;
     // 1.5.126: on built-in graphics, shorter still when the RAM says so (apuRoom above).
     const room = await apuRoom(this, model, fit);
     if (room.shortened) this.log('model', `shortened ${model}'s chat memory to ${room.ctx} to leave Windows about ${APU_HEADROOM_GB} GB (needs ~${room.needGB} GB, room ~${room.roomGB} GB)`);
@@ -1670,7 +1699,7 @@ export class Brain {
       // 1.5.72 Share jobs: a job this Bob can't do, or that would wait, goes to one of your Bobs who says he can do it.
       if (job.awayHold && job.awayHold > Date.now()) continue; // waiting for one of your Bobs who can do it
       if (!job.away && this.cfg.share?.borrow?.jobs === true) {
-        const plan = awayPlan(this, job, { can: capabilities(this.cfg), webOn: webOn(this.cfg), waitsForGaming: waitsForGaming(this.cfg, job), laneBusy: this.turns.has(laneOf(this.cfg, job)) });
+        const plan = awayPlan(this, job, { can: this.jobCan(), webOn: webOn(this.cfg), waitsForGaming: waitsForGaming(this.cfg, job), laneBusy: this.turns.has(laneOf(this.cfg, job)) });
         if (plan) {
           job.away = { pending: true }; // held while we ask around, so the next pump doesn't start it here too
           const nobody = () => {
@@ -1965,7 +1994,7 @@ export class Brain {
     }
     // Small extras, only on some turns: the effort note (High/Extreme) and now and then a moment with the cat.
     const turnNo = msgs.filter((m) => m.role === 'user').length;
-    const state = realState({ model, session: currentSession(this.cfg).label, waiting: this.queue.filter((j) => j.state === 'waiting').length, cat: this.cfg.catName, turn: turnNo });
+    const state = realState({ model, session: currentSession(this.cfg).label, waiting: this.queue.filter((j) => j.state === 'waiting').length, cat: this.cfg.catName, turn: turnNo, withCat: catTurn(turnNo) });
     const extras = [state, guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
     const brainCtx = await this.fitCtx(model, wantCtx);
     // 1.5.127: a chat that no longer fits the biggest brain here, with a rented brain in its slot: offer it (the job carries on here meanwhile).
@@ -2011,6 +2040,14 @@ export class Brain {
         this.log('rent', 'waiting for the Hire it card');
         return;
       } else { rented = rental; borrowing = false; }
+    }
+    // 1.5.133 (Legion Go): when this Bob's own brain can't load here (the memory guard on built-in graphics says no),
+    // the job goes to a paired Bob, whatever "when" borrowing is set to, as long as borrowing is switched on at all.
+    // Nobody free: the plain "needs about N GB" line, as before. Never for a side lane, a guest, or a rented job.
+    let ownRefused = null;
+    if (!borrowing && !rented && !job?.side && !job?.guest && this.cfg.share?.borrow?.on === true && (this.cfg.share.borrow.bobs || []).length && !pics.length) {
+      const room = await apuRoom(this, model, brainCtx).catch(() => ({ ok: true }));
+      if (!room.ok) { ownRefused = room; borrowing = true; this.log('borrow', `my own brain won't fit here (needs ~${room.needGB} GB, room ~${room.roomGB} GB); asking another Bob`); }
     }
 
     // 1.5.60: a link in the message, with web search on: open it first, so even a small brain that would say
@@ -2064,6 +2101,7 @@ export class Brain {
           if (lender) { tried.push(lender.address); emit({ type: 'borrow', action: 'start', name: lender.name, brain: lender.brain, device: lender.device }); }
           else {
             borrowing = false; // nobody free with room: this Bob thinks it, quietly (nothing went wrong)
+            if (ownRefused) { this.log('borrow', 'no other Bob is free, and my own brain does not fit'); throw new Error(ownRefused.line); }
             const small = this.lenders.tooBigFor(lentSize);
             this.log('borrow', small.length ? `this chat is too long for ${small.join(', ')} (about ${lentSize} tokens); thinking it myself` : 'none of my other Bobs is free; thinking it myself');
           }
@@ -2200,8 +2238,13 @@ export class Brain {
           // The same action twice in a row (small brains do this): don't do it again.
           res = { text: `(Not done again: that exact call just ran. Its result: ${String(ctx.lastDoing.text).slice(0, 300)}) Report that result; don't repeat the call.` };
           this.log('tool', `skipped a repeat of ${name}`);
+        } else if (name === 'fetch_page' && ctx.pagesRead?.has(key)) {
+          // #48: the same page and part again in one turn gives the same text. Point him at the next part instead.
+          res = { text: '(Not read again: you already read that exact page and part this turn, and it gives the same text. To see more, call fetch_page with the same url and the next part number, or use find with a word you are looking for. If you have enough, answer now.)' };
+          this.log('tool', 'skipped a repeat page read');
         } else {
           res = await this.runTool(name, call.function?.arguments, ctx);
+          if (name === 'fetch_page') (ctx.pagesRead ||= new Set()).add(key);
           if (doing) {
             const failed = /^Error:/.test(String(res.text));
             const who = this.cfg.userName || 'the user';
@@ -2384,6 +2427,7 @@ export class Brain {
     for (let step = 0; step < maxSteps; step++) {
       const reply = await this.chatSafe({
         model, messages, tools: this.toolSchemas(hatTools), signal: ctx.signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
+        ...(CODING_HATS.has(hat) ? { task: 'coding' } : {}), // 1.5.148: Qwen's coding preset for code work
         onToken: (t) => ctx.emit({ type: 'token', text: t })
       }, { emit: ctx.emit, who: hat });
       messages.push(reply);

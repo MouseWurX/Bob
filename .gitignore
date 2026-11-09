@@ -13,3 +13,4 @@ node_modules/
 engines/
 # Bob's model lab: lessons, counts, downloaded Bobs and Forge logs stay on the machine that made them
 model-lab/out/
+model-lab/forge/hf-token.txt

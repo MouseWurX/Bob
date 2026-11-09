@@ -6,37 +6,37 @@
 export const TEMPLATES = [
   {
     template: 'lab-local-cut', title: 'Lab local cut', where: 'here', needs: ['experts'],
-    help: 'Everything the Lab can do here, for free: cut the experts your chats use, take out sight or hearing if you like, make the running files, and test it next to the brain it came from.',
+    help: 'Everything the Lab can do here, for free: cut down to the experts your chats use, take out sight or hearing if you like, make the running files, and test it next to the brain it came from.',
     lab: { lessons: { kind: 'chats' }, smaller: { cut: { how: 'busiest' }, files: ['Q4_K_M'], measure: true }, test: { compare: true } },
     forge: null
   },
   {
     template: 'plain-cut', title: 'Plain cut', where: 'either', needs: ['experts'],
-    help: 'Keep the busiest experts in every layer, counted on one lesson set, and nothing else: no teaching back. It\'s how the first Rikers and Bills were made, before the coverage cut.',
+    help: 'Keep the busiest experts in every layer, counted on one lesson set, and nothing else: no teaching back. The quickest way to a smaller brain.',
     lab: { lessons: { kind: 'chats' }, smaller: { cut: { how: 'busiest' }, files: [] }, test: { compare: true } },
     forge: { rung: { keep: 'N', from: '<teacher>', counts: '<counts file>' } }
   },
   {
     template: 'coverage-cut-heal', title: 'Coverage cut and heal', where: 'rented', needs: ['experts'],
-    help: 'Keeps the experts every skill needs (95% of its routing, 99% for tools, coding and formats), cuts, then teaches it back against the teacher\'s odds: 70% odds, 30% words, one full pass. Riker was made this way.',
+    help: 'Keeps the experts every skill needs (95% of its routing, 99% for tools, coding and formats), cuts, then teaches it back against the teacher\'s odds: 70% odds, 30% words, one full pass.',
     lab: null,
     forge: { rung: { keep: 'cover', cover: 0.95, strong: ['tools', 'coding', 'formats'], strong_cover: 0.99 }, heal: { experts: 'lora', epochs: 1, alpha: 0.7 } }
   },
   {
     template: 'train-teacher', title: 'Train the teacher', where: 'rented', needs: [],
-    help: 'No cut. The full brain learns every lesson by plain next-word training, and stays on the drive as the teacher for every cut after it. Bobert is made this way.',
+    help: 'No cut. The full brain learns every lesson by plain next-word training, and stays on your storage drive at the service as the teacher for every cut after it.',
     lab: null,
     forge: { train_teacher: { name: '<name>', nickname: '<nickname>', hours: 8, experts: 'lora', epochs: 1 } }
   },
   {
     template: 'outside-traces', title: 'Learn from outside traces', where: 'rented', needs: [],
-    help: 'Lessons written by other, bigger teachers (published trace sets), checked and matched to our own count, then taught by their words only, since there are no odds from those teachers.',
+    help: 'Lessons written by other, bigger teachers (published trace sets), checked and matched to the number of lessons you picked, then taught by their words only, since there are no odds from those teachers.',
     lab: null,
     forge: { extra_lessons: [{ file: '<lessons-ext-*.jsonl>', odds: false }] }
   },
   {
     template: 'merge-experts', title: 'Merge experts', where: 'rented', needs: ['experts'], later: true,
-    help: 'Folds rarely used experts into the ones kept instead of dropping them (Garfield\'s method).',
+    help: 'Folds rarely used experts into the ones kept instead of dropping them.',
     lab: null, forge: null
   },
   {

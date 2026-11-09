@@ -16,7 +16,7 @@ Bob is a free, open-source AI helper for Windows 10 and 11 that runs on your own
 - sessions (Normal, Art, Coding, Office, Gaming) that decide how Bob shares your PC, including a Gaming session that keeps the graphics card for your games
 - a character: a dry-humoured digital engineer with his own looks, voices and personality settings
 
-Bob's code is GPL-3.0-or-later and his art and writing are CC BY-SA 4.0. He has no accounts and sends no telemetry, and anything that reaches the internet (web search, cloud helpers, phone access) is off until you switch it on. Downloads wait for you to confirm them. See the [README](../README.md), the [user guide](USER-GUIDE.md) and the [privacy policy](../PRIVACY.md).
+Bob's code is GPL-3.0-or-later and his art and writing are CC BY-SA 4.0. He has no accounts and sends no telemetry, and anything that reaches the internet (web search, cloud helpers, phone access) is off until you switch it on. Downloads wait for you to confirm them. See the [README](../README.md), the [user guide](USER-GUIDE.md) and the [privacy policy](legal/PRIVACY.md).
 
 ## Chat apps for local models
 
@@ -66,7 +66,7 @@ These projects focus on agents that carry out tasks: coding, running commands, r
 
 ## Using them together
 
-Bob doesn't have to replace anything. He can use Ollama models you already have, run ComfyUI workflows, and sit next to any of the apps above. Bob downloads and runs some open-source engines himself (such as llama.cpp and stable-diffusion.cpp); those keep their own licences, listed in [THIRD-PARTY.md](../THIRD-PARTY.md).
+Bob doesn't have to replace anything. He can use Ollama models you already have, run ComfyUI workflows, and sit next to any of the apps above. Bob downloads and runs some open-source engines himself (such as llama.cpp and stable-diffusion.cpp); those keep their own licences, listed in [THIRD-PARTY.md](legal/THIRD-PARTY.md).
 
 ## Names and trademarks
 

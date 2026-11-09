@@ -283,6 +283,11 @@ export class Gate {
           const st = ledger?.step('retry', { what: m, attempt: attempt + 1 });
           this.brain.log?.('handoff', `loading ${m} again (try ${attempt + 1}): ${last?.message || 'not ready after loading'}`);
           await this.engine.unload?.(m, o).catch?.(() => {});
+          // 1.5.133: a second brain sitting on the card may be what pushed this one out: let it go before trying again.
+          if (!o.beside && this.engine.beside?.currentCard === 'whole' && this.engine.besideLoaded?.()) {
+            this.brain.log?.('handoff', `letting the second brain (${this.engine.beside.current}) off the card before trying ${m} again`);
+            await this.engine.dropBeside?.().catch?.(() => {});
+          }
           await sleep(this.delays[attempt - 1], signal);
           st?.done();
         }

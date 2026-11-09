@@ -1,0 +1,61 @@
+{
+ "model": "/workspace/cut-28Bob",
+ "experts": "lora",
+ "args": {
+  "model": "/workspace/cut-28Bob",
+  "lessons": "/workspace/in",
+  "teacher": "/workspace/out/teacher.pt",
+  "save": "/workspace/healed-28Bob",
+  "experts": "lora",
+  "r": 32,
+  "r_experts": 8,
+  "lr": 0.0001,
+  "router_lr": 2e-05,
+  "epochs": 1.0,
+  "tokens_per_step": 65536,
+  "max_len": 16384,
+  "hours": 12.0,
+  "alpha": 0.7,
+  "eval_only": false,
+  "eval_lessons": 150,
+  "cache": "/workspace/lessons-tok.pt",
+  "general": "/workspace/general",
+  "general_tokens": 10000000,
+  "report": "/workspace/out/28Bob/heal-report.json",
+  "seed": 1,
+  "device": "cuda"
+ },
+ "before": {
+  "lessons": {
+   "ce": 0.401142994777002,
+   "kd": 0.08671062707827536,
+   "answer_tokens": 88841,
+   "teacher_ce": 0.3243631330976863
+  },
+  "general": {
+   "ce": 2.1542877679902293,
+   "kd": 0.17783851908504802,
+   "answer_tokens": 120946,
+   "teacher_ce": 2.1005316518845043
+  }
+ },
+ "steps": 929,
+ "planned_steps": 929,
+ "tokens_seen": 63424273,
+ "minutes": 355.3013482848803,
+ "oom_skipped": 0,
+ "after": {
+  "lessons": {
+   "ce": 0.3621718654675802,
+   "kd": 0.06656334416616065,
+   "answer_tokens": 88841,
+   "teacher_ce": 0.3243631330976863
+  },
+  "general": {
+   "ce": 2.158413396332603,
+   "kd": 0.13152648603890985,
+   "answer_tokens": 120946,
+   "teacher_ce": 2.1005316518845043
+  }
+ }
+}

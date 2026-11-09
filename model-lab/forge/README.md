@@ -5,6 +5,10 @@ results so far are on [Bob's own models](../../docs/BOBS-OWN-MODELS.md). The For
 `model-lab/out` (lessons and expert counts) and an API key for the by-the-hour GPU rental service the Forge talks to, in the environment variable `RUNPOD_API_KEY`.
 No key is stored in this repository or in any file the Forge writes; it is read from the environment at start.
 
+## The lessons
+
+The lesson sets the Forge sends to the card are not in this repository (112 MB that every clone would download). They are a release asset: [lessons-v3](https://github.com/MouseWurX/Bob/releases/tag/lessons-v3), a zip with 16 folders of `lessons.jsonl` + `toolsets.json` and a checksum. Unzip it into `model-lab/out/` and the plan files' `lessons` and `extra_lessons` paths line up.
+
 ## One session
 
     node forge.mjs --plan plans\24-18.json
@@ -43,11 +47,11 @@ See plans\24-18.json. `rungs[].from` is `teacher` or an earlier rung's name; `ke
 `heal.experts`: `lora` (default), `full` (small Bobs only; 8-bit AdamW) or `frozen`.
 Specialists: point `counts` at the coding or thinking counts file and name the rung e.g. `8Bob Cypher`.
 
-## Tested
+## Untested until the first pod
 
-prune.py and the runner were first tested against a fake model and a fake pod. heal.py, lora.py, teacher.py, count.py and
-export.py were proven on real rentals (see the results on the models page). If a run fails, forge.mjs prints the last log lines,
-deletes the pod, and the loss is the time spent.
+prune.py and the runner were tested here (fake model, fake pod). heal.py, lora.py, teacher.py, count.py and
+export.py need a real GPU: the first session is also their test. If it fails, forge.mjs prints the last log lines,
+deletes the pod, and the loss is the time spent (a few dollars).
 
 ## Build 12: lessons written on the card, cut like an earlier Bob
 - `write_lessons` in the plan: the pod serves the full Qwen with vLLM (port 8001) before the teacher pass; the PC's `write-lessons.mjs` writes the lessons through it (`--url`, `--parallel`), uploads them as lessons-extra, and the pod merges them (ids prefixed "x") and carries on. `min` lessons or the run stops.
@@ -56,7 +60,48 @@ deletes the pod, and the loss is the time spent.
 - Plan `plans/riker-v2.json`: Riker v2 + Bill v2 on the H200 NVL, nothing trimmed (max_len 16384).
 
 ## Build 13: network volume, adapters
-- `volume` in the plan `{gb, name}`: one network volume at the rental service, made once (`out/forge/volume.json` remembers it) in a data centre that has the wanted card in stock (`node forge.mjs --places` shows them). It mounts at /workspace and keeps the teacher weights, general text, llama tools and every Bob's adapter (`/workspace/bobs/<name>/`). This run's big working files live on the pod's own disk (/forge) and go with the pod.
+- `volume` in the plan `{gb, name}`: one network volume, made once (`out/forge/volume.json` remembers it) in a data centre that has the wanted card in stock (`node forge.mjs --places` shows them). It mounts at /workspace and keeps the teacher weights, general text, llama tools and every Bob's adapter (`/workspace/bobs/<name>/`). This run's big working files live on the pod's own disk (/forge) and go with the pod.
 - Every healed Bob also writes `<name>-adapter.pt` (LoRA + router, small) next to its GGUFs; it is downloaded to the PC. Adapter + keep list = the healed full-size Bob, rebuilt from the teacher in minutes (rebuild script: to do).
 - `keep_healed`: healed Bobs are not deleted at the end of a rung.
 - `run`: a name for this session's files.
+
+## Build 14 (the coverage cut)
+
+- `pod/keep.py`: builds a keep list that protects every skill. Per layer and per skill it keeps the experts covering `cover` (95%) of that skill's routing, 99% for the skills in `strong`; union over skills; every layer padded to one size with the most-used experts overall. Writes `coverage.md` (kept share per skill, worst layer) next to the Bob's files; `--check` reports an old keep list the same way.
+- Rung `"keep": "cover"`: the pod counts every skill in `plan.skills` on the rung's source model (`count.py --jobs ...`, `"general"` = general text, `"thinking"` = lessons written with thinking on; `skill_pieces` per skill), runs keep.py, then cuts with the result. `max` caps the size, `keep_n` forces one.
+- `plan.write_lessons` may be a list of sets, each with its own jobs/think/count/dir; `drop_tools` removes tools from the lessons (e.g. `ask_specialist,pick_session`, so coding lessons answer with code instead of handing off). `plan.extra_lessons` uploads lesson folders already on the PC. All extra sets are merged on the pod with idea ids prefixed `x<set>-`.
+- `write-lessons.mjs`: new jobs `formats`, `gamemaster`, `refusals`, `languages` (weight 0, run only when named), `--drop-tools`, coding ideas now ask for 2 to 4 sentence requests with the language named.
+- `count.py`: `--general-only`, `--think`.
+- `plans/riker-v3.json`: line B v3 (Riker + Bill with the coverage cut, one rental).
+- Counts-only run (`plans/counts-v3.json`, `rungs: []` + `skills`): the pod writes the lesson sets, counts every skill on the full Qwen, builds `ladder.md` (kept share per skill at every size in `ladder`) and sends the count files back to `out/counts/<run>/`. No teacher pass, no cut. Build the keep list on the PC with `python pod/keep.py --counts skill=file,... --keep N --out out/counts/<run>/keep-24Bob.json --report ...` and point the rung's `keep_file` at it. Lesson jobs `codefix` and `recover` get a failing first tool result so the student learns to read errors; `clarify`, `notes`, `newtool` teach asking, remembering and discovering tools.
+- `pod/countskills.py`: counts every skill with one model load (run.sh uses it for the counts-only run and for `"keep": "cover"` rungs); `count.py` stays for the per-rung count after the heal.
+- Build 14f (after the 06 Nov counts-v3 failure): a job named with no `:weight` now gets a share of 1 (the weight-0 jobs produced no ideas, so the set was empty); a lesson set that comes back too small is skipped and the run carries on, and only a too-small total ends the run. The 2,632 coding lessons from that attempt are reused through `extra_lessons`.
+- Build 14h: `rent()` keeps asking for a card once a minute for `rent_minutes` (default 90); with a network volume, after `volume_wait_minutes` (default 20) of "no instances" it takes a card in any data centre without the volume unless `volume_fallback` is false (the teacher then downloads again).
+
+## Build 14i (2026-11-06)
+- `--send-plan` now sends the plan in the same shape as a fresh start: each rung's `keep_file` is reduced to its bare file name, which is how the keep list lives on the pod. Before this, a plan sent mid-run would have pointed the next cut at a PC path and failed.
+
+## Build 14j (2026-11-07)
+- run.sh: the `plan` helper now exposes the whole plan as `p`, so rung expressions such as `['rungs'][i].get('cover', p.get('cover', 0.95))` work. Before this, the coverage cut of a later rung called keep.py with an empty `--cover` and the run died (this ended rental 2 after Riker v3; Bill v3 was not made). New `plist` helper turns a list field into `a,b,c`; the `--strong` list was silently empty before, so the counts-only ladder and any on-pod coverage cut used 95% for every skill. Keep lists built on the PC with an explicit `--strong` are unaffected.
+- plans/bill-v3.json: Bill v3 alone, cut from the teacher with a PC-built keep list (144 experts), full heal, caps in the plan.
+
+## Build 15 (2026-11-07): keep the teacher's scores, kernels first, volume rules, step-up card
+- The teacher pass (2.5 h on rental 2, lost with the card) is now kept twice. run.sh names the lesson set with a key (sha256 of the merged lessons.jsonl + toolsets.json + teacher + top + max_len + general_tokens, 16 hex chars) and writes `out/teacher/teacher-key.txt`, `teacher.pt`, `lessons-tok.pt` and `teacher-files.json`. (1) On the network volume under `teacher-cache/<key>/`: a later pod in that data centre finds it and skips the pass. (2) On the PC under `out/teacher/<key>/`: the watcher downloads the two files as soon as `teacher-files.json` appears (about 10-15 GB, while the first rung heals). On a later run the pod writes the key first and waits up to 10 min for `in/teacher-answer`; the PC answers `have` and uploads the two files (then `in/teacher-ready`, waited for up to `teacher_upload_minutes`, default 150) or `none`, and only then does the pod score the lessons itself. Any change to the lessons changes the key, so an old score file is never used for a new set.
+- The fast kernels (flash-linear-attention + causal-conv1d) still build in the background during the teacher download, but the teacher pass and every heal now call `kernels_ready` and wait for them (up to 30 min), then print whether they are loaded. The built causal-conv1d wheel is kept on the volume under `wheels/<card name>/` and reused in seconds next time on the same card type. A failed build is reported and the run goes on without them (slower, not wrong). Whether they make the heal faster, and by how much, is unknown until a run has them: the log line "fast kernels ready" + the heal's tok/s will tell.
+- Renting (the owner's rules): a card is only ever taken in a data centre that has one of our network volumes. `out/forge/volume.json` now holds a list (`volumes`, one per data centre; the old single-volume file still reads). Order each minute: our volumes' data centres first, then any other data centre with network storage where a wanted card is listed in stock, where a new volume is made (about $7 a month each) before the pod is asked for. After `volume_wait_minutes` with no card, the step-up card(s) (`plan.step_up`, default from the table in forge.mjs: H200 -> B200) are asked for too, same rules. The old "any data centre, no volume" fallback only happens with `"volume_fallback": true` in the plan, and then only after twice the wait. The yes prompt lists the volumes we have, the cards and the step-up card with `step_up_note`; the rented line says which card, which data centre, which volume and whether it was the step-up.
+- plans/bill-v3.json: step_up B200, volume_fallback false, teacher_upload_minutes 150; caps unchanged (the step-up card costs more an hour and should finish sooner; the costs page carries the real number afterwards).
+- Untested on a real pod (no rental until the owner says "run Bill"): the whole build. bash -n and node --check pass (the small Python pieces were run on their own).
+
+## Build 16 (2026-11-08): one lesson file whichever way a set arrives, scores-only runs, everything kept on the drive
+- The merge of extra lesson sets on the pod now tags each set with a hash of its content (not its upload slot) and merges the sets in tag order, and toolsets.json is written with sorted keys. The merged lessons.jsonl is therefore byte-identical whether a set was written on the card or came up from the PC, so the teacher-score key and the piece ids match across runs. Before this, the same lessons written on the card and later uploaded from the PC would have missed the cache.
+- A plan with no rungs and no skills is a scores-only run: write the extra lessons, one teacher pass, done. forge.mjs ends such a run when the scores are on the PC. plans/lessons-and-odds.json is one; plans/bill-v3.json then heals Bill from those scores without a pass.
+- Kept on the network volume as well as the PC: the whole merged lesson set and its parts (`lessons/<key>/`), every log and report of the run (`runs/<run>-<time>/`), beside the teacher scores (`teacher-cache/<key>/`) and the saved kernel wheels. The owner's rule: every input and output of a run is kept.
+- `extra_lessons` entries may name a `.jsonl` file instead of a folder (the toolsets.json beside it is used), for sets whose chosen file is not `lessons.jsonl`.
+- Untested on a pod, like build 15. bash -n and node --check pass; the merge was run on two folders with the same sets under different file names and gave the same bytes.
+
+- **Brain cards.** `export.py` writes a `<file>.bob.json` beside every GGUF (what the brain is, where it was cut from, experts kept, jobs, size), with no paths or names in it. `bob-card.mjs` adds the home benchmark block afterwards. Bob's catalogue reads the card when the GGUF is added as an own brain and files it under its jobs.
+
+## Build 17 (8 November 2026, untested on a card)
+
+- **Train the teacher.** `plan.train_teacher` ({name, nickname, hours, experts, epochs}) trains the full teacher on every lesson by plain next-word training (heal.py with alpha 0 and no odds file) before anything else, keeps the result on the volume as `bobs/<name>/model` plus its adapter, exports its GGUF files and brain cards, and makes it the teacher for the odds and the cuts. The lesson-set key includes the trained teacher's adapter hash, so stock-teacher scores and trained-teacher scores never mix. A later plan names him with `teacher_model: "bobs/35Bob/model"`.
+- **Hugging Face from the card, by the owner's rules.** `plan.publish` ({user, private, odds, models}). Every GGUF and card is kept on the volume (`bobs/<name>/gguf/`); `download_quants` names which quant files come down to the PC (the rest stay on the drive and the watcher skips them). `odds: true` uploads the teacher scores as a private dataset (`<user>/bob-odds/<key>/`). A Bob is uploaded only when the owner has tested him at home and listed his name in `models` (then the next run uploads him from the volume with a generated model card, private). The token is read from `forge/hf-token.txt` (one line, gitignored) or `HF_TOKEN` on the PC and sent to the pod as `in/hf-token`; it is never in a plan, a log or the repo. `export.py --pending` holds the file list back until the files are marked.

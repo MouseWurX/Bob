@@ -12,7 +12,7 @@ import { createLayout } from './layout.js';
 import { esc, render, renderRich } from './rich.js';
 import { createTopics } from './topics.js';
 import { createTidy } from './tidy.js';
-import { createLab } from './lab.js'; // 1.5.135 Computer Science Lab
+import { createLab } from './lab.js'; // 1.5.141 Computer Science Lab
 import { createAdventure } from './adventure.js';
 import { createGames } from './games.js';
 import { createHelp } from './help.js';
@@ -335,7 +335,7 @@ syncNotify();
 
 $('cellarBtn').onclick = () => cellar.open('shop', 'roles');
 $('settingsBtn').onclick = () => cellar.open('settings');
-// 1.5.135: the Bob-Net heading in Now running opens Settings at Bob-Net (advanced shown, the section open).
+// 1.5.141: the Bob-Net heading in Now running opens Settings at Bob-Net (advanced shown, the section open).
 $('nowNetHead')?.addEventListener('click', () => cellar.open('settings', null, { jump: 'adv-bobnet' }));
 // Settings, Get models and Style are pages in the main area: Chat or New chat goes back to the chat.
 for (const id of ['chatBtn', 'newchat']) $(id).addEventListener('click', () => { if ($('cellar').open) $('cellar').close(); });
@@ -347,7 +347,7 @@ const topicsPage = createTopics({ api, openChat: (id, msgId) => openChat(id, msg
 const tidyPage = createTidy({ api, onCount: (n) => countBadge($('tidyBtn'), n) });
 $('topicsBtn').onclick = () => topicsPage.open();
 $('tidyBtn').onclick = () => tidyPage.open();
-// 1.5.135: 🧪 Lab in the left pane, only while Show the Computer Science Lab is on.
+// 1.5.141: 🧪 Lab in the left pane, only while Show the Computer Science Lab is on.
 const labPage = createLab({ api, note: (t) => note(t) });
 $('labBtn').onclick = () => labPage.open();
 const showLab = (on) => { $('labBtn').hidden = !on; };
@@ -437,10 +437,18 @@ function drawDownloadsBadge(items) { countBadge($('dlBtn'), items.filter((d) => 
 
 // 1.5.53: "Bob's thinking" (public/mind.html): a small window on top. Bob.exe opens it as its own window; in a
 // browser it opens as a pop-up. Pressing the button again brings the open one to the front.
+// 1.5.138: with "Show here" on in Now running, the button goes to the docked thinking instead (Pop out is there).
 $('mindBtn')?.addEventListener('click', () => {
+  if (layout.mindDocked()) return layout.showMind();
   const w = window.open('/mind.html', 'bob-mind', 'popup,width=380,height=480');
   try { w?.focus(); } catch {}
 });
+const mindTitle = (docked) => {
+  const b = $('mindBtn'); if (!b) return;
+  b.dataset.tip = docked ? 'Bob\'s thinking is in Now running (Show here is on). Click to go to it; Pop out there opens the small window too.' : 'Opens a small always-on-top window showing Bob\'s thinking, which brain is working, moots and every step. Nothing runs for it while it\'s closed. To keep it in Now running instead, turn on Show here in its section there.';
+};
+mindTitle(layout.mindDocked());
+window.addEventListener('bob-mind-dock', (e) => mindTitle(e.detail.docked));
 
 // ---------- Events from the brain ----------
 let brainSoon = null;
@@ -484,7 +492,7 @@ function onEvent(ev) {
           const r = await api('/api/howtos/answer', { id: ev.id, save, name: el.querySelector('input')?.value || '' });
           el.remove();
           if (!r.ok) note(r.why || 'That card is too old now.', 'error');
-          else if (save && r.saved) { window.dispatchEvent(new CustomEvent('bob-howto-saved')); } if (r.ok && save && r.saved) note(`Saved the how-to "${r.saved.name}". You can change or delete it in Settings, 📒 How-tos.`);
+          else if (save && r.saved) { window.dispatchEvent(new CustomEvent('bob-howto-saved')); } if (r.ok && save && r.saved) note(`Saved the how-to "${r.saved.name}". You can change or delete it in Settings, 🧰 Tools and how-tos Bob made.`);
         } catch (e) { yes.disabled = no.disabled = false; note(e.message, 'error'); }
       };
       yes.onclick = () => answer(true);
@@ -681,7 +689,7 @@ function onEvent(ev) {
       for (const b of el.querySelectorAll('button')) b.onclick = () => { el.remove(); if (b.dataset.t === 'look') tidyPage.open(); };
       break;
     }
-    case 'lab': labPage.update(ev.run); break; // 1.5.135
+    case 'lab': labPage.update(ev.run); break; // 1.5.141
     case 'lab-done': note(ev.ok ? `🧪 The Lab finished ${ev.name}${ev.score != null ? `: ${ev.score} out of 100 on the Lab test` : ''}. Open the Lab to see the report.` : `🧪 The Lab stopped on ${ev.name}: ${ev.error}`); break;
     case 'tidy-done':
       topicsPage.refresh();

@@ -1,9 +1,11 @@
 // Loads config.json and works out the folders Bob uses.
+import { cleanOwnModels } from './own-models.js';
 import { cleanHouseStyle } from '../public/house-style.js';
 import { cleanHousekeeping } from './hk-settings.js';
 import { cleanBrainCtx } from './model-ctx.js';
 import { cleanCheckins } from './checkin-settings.js';
 import { cleanHands } from './hands-settings.js';
+import { cleanPresets } from './model-family.js';
 import fs from 'node:fs';
 import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
@@ -144,7 +146,7 @@ export const VERSION = (() => {
   } catch { return { release: '0.9', branch: '', build: 0, label: '0.9.0' }; }
 })();
 
-export const SETTING_KEYS = ['planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'computerLab'];
+export const SETTING_KEYS = ['planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -174,15 +176,21 @@ function clean(patch) {
   if ('planFirst' in out) out.planFirst = out.planFirst === true; // 1.5.78 plan card, off unless switched on
   if ('quickOnCpu' in out) out.quickOnCpu = out.quickOnCpu === true;
   if ('brainCtxOn' in out) out.brainCtxOn = out.brainCtxOn === true; // 1.5.87, off unless switched on
+  if ('brainCtxStretch' in out) out.brainCtxStretch = out.brainCtxStretch === true; // Long memory (YaRN), off unless switched on
   if ('brainCtx' in out) out.brainCtx = cleanBrainCtx(out.brainCtx);
   if ('chatWhileBusy' in out) out.chatWhileBusy = out.chatWhileBusy !== false;
   if ('mootBeside' in out) out.mootBeside = out.mootBeside === true; // 1.5.51, off unless switched on
   if ('webSearch' in out) out.webSearch = out.webSearch === true;
   if ('naughtyList' in out) out.naughtyList = out.naughtyList === true; // 1.5.132 "Show the naughty list", off unless switched on
-  if ('computerLab' in out) out.computerLab = out.computerLab === true; // 1.5.135 "Show the Computer Science Lab", off unless switched on
+  if ('catalogUpdates' in out) out.catalogUpdates = out.catalogUpdates === true; // 1.5.137 "Let Bob fetch his newest brain list", off unless switched on
+  if ('ownModels' in out) out.ownModels = cleanOwnModels(out.ownModels); // 1.5.135 brains of your own (GGUF files on this replicant matrix)
+  if ('computerLab' in out) out.computerLab = out.computerLab === true; // 1.5.141 "Show the Computer Science Lab", off unless switched on
+  if ('labForgeStart' in out) out.labForgeStart = out.labForgeStart === true; // 1.5.160 "Let the Lab start Forge runs", off unless switched on
+  if ('labPro' in out) out.labPro = out.labPro === true; // 1.5.168 the Lab's Professional mode: more controls on every tab; off = Keep it simple
+  if ('qwenPresets' in out) out.qwenPresets = cleanPresets(out.qwenPresets); // 1.5.148 "Choose my own word settings", off unless switched on
   if ('howtos' in out) out.howtos = out.howtos === true; // 1.5.79 "Let Bob learn how-tos", off by default
-  if ('tray' in out) out.tray = out.tray === true; // 1.5.94 "Keep Bob in the tray", off by default
-  if ('lookIcon' in out) out.lookIcon = out.lookIcon === true; // 1.5.94 "Use Bob's look as his icon", off by default
+  if ('tray' in out) out.tray = out.tray !== false; // 1.5.94 "Keep Bob in the tray"; on unless switched off since 1.5.134 (the owner asked for it)
+  if ('lookIcon' in out) out.lookIcon = out.lookIcon !== false; // 1.5.94 "Use Bob's look as his icon"; on unless switched off since 1.5.134 (the owner asked for it)
   if ('houseStyle' in out) out.houseStyle = cleanHouseStyle(out.houseStyle); // 1.5.34 House style (public/house-style.js)
   if ('projectList' in out) out.projectList = cleanProjects(out.projectList); // 1.5.34 Projects in Settings
   if ('saveDir' in out) out.saveDir = cleanDir(out.saveDir); // 1.5.41 Where Bob saves things ('' = Bob's own folder)
@@ -266,6 +274,7 @@ function cleanLlamacpp(lc) {
   }
   for (const k of ['threads', 'batch', 'ubatch', 'ctx']) if (k in out) out[k] = Number.isInteger(out[k]) && out[k] > 0 && out[k] <= 1048576 ? out[k] : null;
   if ('fit' in out) out.fit = typeof out.fit === 'boolean' ? out.fit : null;
+  if ('noEyes' in out) out.noEyes = Array.isArray(out.noEyes) ? [...new Set(out.noEyes.filter((x) => typeof x === 'string' && /^[\w.:/-]{1,100}$/.test(x)))].slice(0, 200) : []; // Lab: brains loaded without their reader
   if ('loadMode' in out) out.loadMode = out.loadMode === 'mmap' ? 'mmap' : 'auto'; // 1.5.90
   if ('draft' in out) {
     const d = out.draft || {};
@@ -277,6 +286,21 @@ function cleanLlamacpp(lc) {
       ngld: Number.isInteger(d.ngld) && d.ngld >= 0 && d.ngld <= 999 ? d.ngld : 99
     };
   }
+  // 1.5.16x Turbo, per brain (from the Lab's Turbo page or Settings): on/off, the draft brain by its model name (never
+  // a path), or the brain's own built-in guesser, and how many words it guesses ahead. null removes a brain's row.
+  if ('turbo' in out) {
+    const t = {};
+    for (const [k, v] of Object.entries(out.turbo && typeof out.turbo === 'object' ? out.turbo : {}).slice(0, 64)) {
+      if (!/^[\w.:/-]{1,100}$/.test(k)) continue;
+      if (v === null) { t[k] = null; continue; }
+      if (!v || typeof v !== 'object') continue;
+      const draft = typeof v.draft === 'string' && /^[\w.:/-]{1,100}$/.test(v.draft) && v.draft !== k ? v.draft : '';
+      const mtp = v.mtp === true;
+      if (!draft && !mtp) continue;
+      t[k] = { on: v.on === true, draft: mtp ? '' : draft, mtp, max: Number.isInteger(v.max) && v.max >= 1 && v.max <= 32 ? v.max : 8 };
+    }
+    out.turbo = t;
+  }
   return out;
 }
 
@@ -286,10 +310,12 @@ const HEX = /^#[0-9a-f]{6}$/i;
 const THEME_ID = /^[a-z0-9-]{2,40}$/;
 const COLOR_KEYS = ['bg', 'panel', 'card', 'you', 'line', 'text', 'muted', 'accent', 'onAccent', 'good', 'warn', 'bad', 'spriteBg'];
 const FONT_IDS = ['system', 'plex', 'mono', 'serif', 'rounded'];
+const OLD_THEME_IDS = { system: 'moondust', slate: 'moondust', midnight: 'nightside', 'mousehole-dark': 'otterbend', 'mousehole-light': 'homestead', paper: 'sandbar', 'mousewurx-light': 'drydock', 'mousewurx-dark': 'drydock-night' }; // mirrors public/themes.js OLD_IDS
 export function cleanStyle(st) {
   const out = {};
   if (!st || typeof st !== 'object') return out;
-  if (typeof st.theme === 'string' && THEME_ID.test(st.theme)) out.theme = st.theme;
+  // 1.5.136: themes were renamed after worlds; old saved names (and the dropped Match system) land on the new ones.
+  if (typeof st.theme === 'string' && THEME_ID.test(st.theme)) out.theme = OLD_THEME_IDS[st.theme] || st.theme;
   if (['on', 'system', 'off'].includes(st.motion)) out.motion = st.motion;
   if (typeof st.openNowOnNeed === 'boolean') out.openNowOnNeed = st.openNowOnNeed;
   if (Array.isArray(st.custom)) {

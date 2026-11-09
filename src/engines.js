@@ -43,7 +43,7 @@ export const ENGINES = [
     linuxArm64: { other: [/bin-ubuntu-arm64\.(?:zip|tar\.gz)$/] }
   },
   {
-    // 1.5.152 Brain Engine: Bob's Lab engine, a fork of llama.cpp (engine/README.md) with the expert switch, for the
+    // 1.5.157 Brain Engine: Bob's Lab engine, a fork of llama.cpp (engine/README.md) with the expert switch, for the
     // Computer Science Lab's Try it first. Its test pre-release on Bob's own GitHub holds only the llama and server
     // files, so it goes on top of the official llama.cpp build of the same tag (base), in its own folder: Bob's
     // built-in engine is never touched. Shown only while the Lab is on.

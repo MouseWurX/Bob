@@ -1,4 +1,5 @@
-# Builds Bob for Android (the android/ folder) into an APK: on every push that changes it, and on demand.
+# Builds Bob for Android (the android/ folder) into an APK: on every new version on main, on a pull request that changes
+# it once it is ready for review, and on demand.
 #  1. Runs the phone page's own tests (node test/run-android-test.js).
 #  2. Fetches llama.cpp at the exact commit in android/llama.cpp.pin (the phone brain's engine).
 #  3. Builds the APK with Gradle and keeps it as a download on the run's page.
@@ -10,7 +11,11 @@ name: Android
 on:
   push:
     tags: ['v*']
-    branches: [main, 'claude/**']
+    branches: [main]
+  # A pull request that changes the phone app builds it once it is ready for review (a draft runs nothing).
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths: ['android/**', '.github/workflows/android.yml']
   workflow_dispatch:
     inputs:
       ref:
@@ -23,13 +28,15 @@ permissions:
 
 jobs:
   apk:
+    # Draft pull requests run nothing: the thread tests its own work, and a draft never emails a failed build.
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # only used by "Add to the GitHub release", on main, version tags and by hand
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ inputs.ref || github.sha }} # this run's own commit, not the moving branch tip (a later push must not change its version)
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -43,12 +50,22 @@ jobs:
           CMAKE=$(sed -n 's/.*version = "\(3[0-9.]*\)".*/\1/p' android/app/build.gradle.kts | head -1)
           echo "NDK $NDK, CMake $CMAKE"
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK" "cmake;$CMAKE" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+          # GitHub's download of these sometimes breaks halfway ("unknown archive"), so try three times before failing.
+          for try in 1 2 3; do
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK" "cmake;$CMAKE" "platforms;android-36" "build-tools;36.0.0" > /dev/null && break
+            [ "$try" = 3 ] && exit 1
+            echo "Download failed, trying again in $((try * 20)) seconds"; sleep $((try * 20))
+          done
       - name: Build the APK
         working-directory: android
         run: |
           export JAVA_HOME="$JAVA_HOME_17_X64"
-          ./gradlew --no-daemon --stacktrace assembleDebug
+          # Up to 3 tries, a minute apart: the Gradle and library downloads can time out.
+          for i in 1 2 3; do
+            ./gradlew --no-daemon --stacktrace assembleDebug && exit 0
+            [ "$i" -lt 3 ] && echo "Try $i failed (often a download hiccup); trying again in 60 seconds." && sleep 60
+          done
+          exit 1
       - name: Name it and checksum
         run: |
           v=$(node -p "require('./package.json').version")

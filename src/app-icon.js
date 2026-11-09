@@ -55,10 +55,10 @@ export function lookPng(id, size = 32) {
 // What Bob's window program (electron/main.cjs) needs to know: the two switches and, when his look is his icon,
 // the pictures at the sizes Windows, macOS and Linux ask for (16/24/32 for the tray, 256 for the taskbar and Dock).
 export function windowState(cfg = {}) {
-  const lookIcon = cfg.lookIcon === true;
+  const lookIcon = cfg.lookIcon !== false; // on unless switched off (1.5.134)
   const id = getLook(cfg.look) ? cfg.look : DEFAULT_LOOK;
   return {
-    tray: cfg.tray === true,
+    tray: cfg.tray !== false, // on unless switched off (1.5.134)
     lookIcon,
     lookName: (getLook(id) || LOOKS[DEFAULT_LOOK]).name,
     icons: lookIcon ? { 16: lookPng(id, 16), 24: lookPng(id, 24), 32: lookPng(id, 32), 48: lookPng(id, 48), 256: lookPng(id, 256) } : null

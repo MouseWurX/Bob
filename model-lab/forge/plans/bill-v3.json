@@ -1,0 +1,169 @@
+{
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H200"
+ ],
+ "max_len": 16384,
+ "top": 32,
+ "quants": "Q4_K_M,Q3_K_M",
+ "disk_gb": 350,
+ "general_tokens": 10000000,
+ "volume": {
+  "gb": 300,
+  "name": "bob-forge"
+ },
+ "keep_healed": true,
+ "skills": {
+  "chat": [
+   "chat",
+   "advice"
+  ],
+  "tools": [
+   "reminders",
+   "memory",
+   "web",
+   "files",
+   "office",
+   "run",
+   "schedules",
+   "security",
+   "apps"
+  ],
+  "coding": [
+   "coding"
+  ],
+  "knowledge": [
+   "knowledge"
+  ],
+  "maths": [
+   "maths"
+  ],
+  "plans": [
+   "plans",
+   "schedules"
+  ],
+  "writing": [
+   "writing"
+  ],
+  "formats": [
+   "formats"
+  ],
+  "thinking": "thinking",
+  "general": "general",
+  "gamemaster": [
+   "gamemaster"
+  ],
+  "help": [
+   "help"
+  ],
+  "refusals": [
+   "refusals"
+  ],
+  "pictures": [
+   "pictures"
+  ],
+  "languages": [
+   "languages"
+  ],
+  "recover": [
+   "recover"
+  ],
+  "clarify": [
+   "clarify"
+  ],
+  "notes": [
+   "notes"
+  ],
+  "newtool": [
+   "newtool"
+  ],
+  "selfcheck": [
+   "selfcheck"
+  ],
+  "codefix": [
+   "codefix"
+  ],
+  "selfhelp": [
+   "selfhelp"
+  ],
+  "research": [
+   "research",
+   "web"
+  ],
+  "understand": [
+   "understand"
+  ]
+ },
+ "skill_pieces": 300,
+ "cover": 0.95,
+ "strong": [
+  "tools",
+  "coding",
+  "formats"
+ ],
+ "strong_cover": 0.99,
+ "note": "Bill v3 on his own (rental 3): rental 2 made Riker v3 with a full heal, then Bill's step failed on a run.sh bug (the plan helper could not see 'p' inside rung expressions, so keep.py got an empty --cover) and the card was deleted with the healed Riker on it (no drive). Bill (20Bob, 144 experts) is therefore cut straight from the teacher with the keep list built on the PC from rental 1's counts (keep.py --keep 144, 99% for tools/coding/formats), then healed with the same lesson set as Riker, a full pass. coverage.md and the adapter come back to the PC. Build 15: the teacher's scores (teacher.pt + lessons-tok.pt) are saved on the network volume and downloaded to the PC (out/teacher/<key>/) as soon as the pass ends, so a later run with the same lessons skips the pass; the fast kernels are built before the pass and the heal; a card is only taken in a data centre with a network volume (a new volume is made where the card is if ours are out), and the B200 is the step-up if no H200 is free after volume_wait_minutes. | 8 Nov: the nine grown skill sets and the outside sets go up from the PC with the others (about 20,000 lessons). The teacher scores come from the lessons-and-odds run (volume or PC copy), so this run should skip the pass; teacher_hours 6 is only the fallback if the key does not match. Heal 12 h, caps 16 h / $90. | 8 Nov, build 17: the teacher is Bobert (teacher_model bobs/35Bob/model on the volume, made by the lessons-bobert-odds run); Bill is cut from him and healed against his odds, which the key finds on the volume. His GGUF files go to Hugging Face (publish), not to the PC. | 8 Nov, later: heal cap raised to 18 h (one full pass over ~27,000 lessons is about 16 h at Riker's token rate; the owner's rule is a full pass or nothing); caps 24 h / $130.",
+ "extra_lessons": [
+  "out/lessons-coding-2",
+  "out/lessons-codefix",
+  "out/lessons-recover",
+  "out/lessons-clarify",
+  "out/lessons-newtool",
+  "out/lessons-selfcheck",
+  "out/lessons-research",
+  "out/lessons-understand",
+  "out/lessons-formats",
+  "out/lessons-reasoning",
+  "out/lessons-notes",
+  "out/lessons-selfhelp",
+  "out/lessons-gamemaster",
+  "out/lessons-refusals",
+  "out/lessons-languages",
+  "out/lessons-ext-kimi-agent/lessons-part1.jsonl",
+  "out/lessons-ext-kimi-agent/lessons-part2.jsonl",
+  "out/lessons-ext-deepseek-agent/lessons-full.jsonl",
+  "out/lessons-ext-deepseek-chat",
+  "out/lessons-ext-glm47"
+ ],
+ "heal": {
+  "experts": "lora",
+  "epochs": 1,
+  "hours": 18.0
+ },
+ "rungs": [
+  {
+   "name": "20Bob",
+   "keep": 144,
+   "from": "teacher",
+   "nickname": "Bill",
+   "keep_file": "out/counts/counts-v3/keep-24Bob-144.json",
+   "hours": 18.0
+  }
+ ],
+ "hours_max": 24,
+ "dollars_max": 130,
+ "teacher_hours": 6.0,
+ "run": "lineB-v3-bill",
+ "rent_minutes": 180,
+ "volume_wait_minutes": 25,
+ "step_up": [
+  "NVIDIA B200"
+ ],
+ "step_up_note": "about $8/h against $5.30 for the H200 at the 5 Nov prices; check the live price before typing yes",
+ "volume_fallback": false,
+ "teacher_upload_minutes": 150,
+ "extra_lessons_note": "8 Nov: the five lessons-ext-* sets are published big-teacher traces from Hugging Face (Kimi-K2.5, GLM-5.1, DeepSeek-v4-Pro, DeepSeek-v4-Flash, GLM-4.7), converted by import-external.mjs. Each lessons.jsonl is a seed-1 sample sized so the ext sets together are about the same answer-token count as Bob's own lessons (~9.6M); the full conversions are in lessons-full.jsonl beside them. Adding them changes the teacher key, so the next run scores the lessons afresh. 8 Nov: outside sets resampled to 9,059 lessons in all (the same as Bob's own by count) after a quality pass: GLM-5.1 agent set dropped (86% of traces never reach an answer), Kimi filtered to 1171 (two part files), DeepSeek agent 2,553 and GLM-4.7 864 whole, DeepSeek chat 4471 of 6,290. Checked for injected instructions, piped installers and secrets: nothing found beyond ordinary Dockerfile lines.",
+ "teacher_model": "bobs/35Bob/model",
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "The owner, 8 Nov: lessons and odds may go to Hugging Face right away as private repos; NO untested Bob. list a tested Bob here (e.g. \"35Bob\") and this run uploads him from the drive as a private repo; Bill himself comes to the PC for testing first. Token = forge/hf-token.txt on the PC (gitignored), never in a plan."
+ },
+ "download_quants": [
+  "Q4_K_M"
+ ]
+}

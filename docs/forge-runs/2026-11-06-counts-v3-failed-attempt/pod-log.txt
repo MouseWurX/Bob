@@ -1,0 +1,20 @@
+== 08:21:43 setup installing tools
+[notice] To update, run: python3.12 -m pip install --upgrade pip
+NVIDIA H200, 143771 MiB
+overlay         350G  706M  350G   1% /
+shared volume: /workspace
+bobs
+bootstrap.py
+general
+hf
+llama-ready
+llama.cpp
+llbin
+llbin.tgz
+llsrc.tgz
+teacher
+llama tools already built
+== 08:21:50 download teacher weights (Qwen/Qwen3.6-35B-A3B)
+67G	/workspace/teacher
+== 08:21:53 lessons starting the full Qwen server for the lesson writer
+== 08:28:14 lessons ready: the PC writes the lessons now (port 8001)

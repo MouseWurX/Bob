@@ -1,4 +1,4 @@
-# Bob for Linux: builds the AppImages on every new version on main (and on version tags, branch work and by hand).
+# Bob for Linux: builds the AppImages on every new version on main (and on version tags, pull requests that are ready for review, and by hand).
 # Two of them, each built and started on its own kind of computer:
 #   x86_64  Bob-<version>-linux-x86_64.AppImage, for ordinary Linux PCs (GitHub's Ubuntu runner)
 #   arm64   Bob-<version>-linux-arm64.AppImage, for a Raspberry Pi 5 and other 64-bit ARM boards (GitHub's ARM runner)
@@ -14,7 +14,10 @@ name: Linux
 on:
   push:
     tags: ['v*']
-    branches: [main, 'claude/**']
+    branches: [main]
+  # Branch work is checked through its pull request, once it is ready for review (a draft runs nothing).
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       ref:
@@ -27,6 +30,8 @@ permissions:
 
 jobs:
   appimage:
+    # Draft pull requests run nothing: the thread tests its own work, and a draft never emails a failed build.
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     strategy:
       fail-fast: false
       matrix:
@@ -44,7 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ inputs.ref || github.sha }} # this run's own commit, not the moving branch tip (a later push must not change its version)
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -52,6 +57,9 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Tests
         run: npm test
+      - name: Bring CHANGELOG.md up to date (branch and pull request work only; main and version tags must already be)
+        if: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v') }}
+        run: node installer/make-changelog.js
       - name: Release check (licences, pinned actions)
         run: npm run check:release
       - name: Linux engine files upstream (what Bob would download, x86_64 and ARM)
@@ -64,7 +72,13 @@ jobs:
       - name: Bundle the basic llama.cpp (x86_64 Vulkan, ARM processor build; the tested release, checked against GitHub's sha256)
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node installer/bundle-engine.mjs .
+        # Up to 3 tries, a minute apart: the llama.cpp download can hit a GitHub 503 or a timeout.
+        run: |
+          for i in 1 2 3; do
+            node installer/bundle-engine.mjs . && exit 0
+            [ "$i" -lt 3 ] && echo "Try $i failed (often a download hiccup); trying again in 60 seconds." && sleep 60
+          done
+          exit 1
       - name: Check the bundled llama.cpp is for this kind of computer
         # An x86_64 llama-server won't start on a Raspberry Pi, and the other way round.
         run: |

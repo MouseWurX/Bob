@@ -21,8 +21,10 @@ on:
     # A new version on main publishes its own release (the "Publish the release" step below).
     branches: [main]
     paths: ['package.json']
-  # A pull request runs every check (Windows and Mac) but never publishes or changes a release.
+  # A pull request runs every check (Windows and Mac) but never publishes or changes a release. A draft runs
+  # nothing until it is marked ready for review.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       ref:
@@ -36,6 +38,8 @@ permissions:
 
 jobs:
   build:
+    # Draft pull requests run nothing: the thread tests its own work, and a draft never emails a failed build.
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: windows-latest
     permissions:
       contents: write # only used by "Attach to the GitHub release", which runs on version tags
@@ -43,19 +47,28 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ inputs.ref || github.sha }} # this run's own commit, not the moving branch tip (a later push must not change its version)
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - name: Tests
         run: npm test
+      - name: Bring CHANGELOG.md up to date (branch and pull request work only; main and version tags must already be)
+        if: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v') }}
+        run: node installer/make-changelog.js
       - name: Release check (licences, pinned actions)
         run: npm run check:release
       - name: Release zip (official Electron + Bob's files + the basic llama.cpp)
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: ./installer/make-release.ps1 -Out dist
+        # Downloads (Electron, llama.cpp) can hit a GitHub 503 or a timeout: up to 3 tries, a minute apart, then fail.
+        run: |
+          for ($i = 1; $i -le 3; $i++) {
+            try { ./installer/make-release.ps1 -Out dist; exit 0 } catch { Write-Host $_ }
+            if ($i -lt 3) { Write-Host "Try $i failed (often a download hiccup); trying again in 60 seconds."; Start-Sleep -Seconds 60 }
+          }
+          exit 1
       - name: Upload release zip
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -100,7 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ inputs.ref || github.sha }} # this run's own commit, not the moving branch tip (a later push must not change its version)
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -109,7 +122,13 @@ jobs:
       - name: Make Bob.app
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: bash installer/make-release-mac.sh dist arm64
+        # Up to 3 tries, a minute apart: the Electron and llama.cpp downloads can hit a GitHub 503 or a timeout.
+        run: |
+          for i in 1 2 3; do
+            bash installer/make-release-mac.sh dist arm64 && exit 0
+            [ "$i" -lt 3 ] && echo "Try $i failed (often a download hiccup); trying again in 60 seconds." && sleep 60
+          done
+          exit 1
       - name: Bob's engines for Mac download and start
         env:
           GH_TOKEN: ${{ github.token }}
@@ -147,7 +166,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="$GITHUB_REF_NAME"; else v="v$(node -p "require('./package.json').version")"; fi
-          if ! gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then echo "No release $v yet, so the Mac zip is only an artifact of this run."; exit 0; fi
+          # The Windows job makes the release; wait for it (up to 30 minutes), like the Linux and Android jobs.
+          for i in $(seq 1 60); do gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 && break; sleep 30; done
+          if ! gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then echo "Release $v didn't appear, so the Mac zip is only an artifact of this run."; exit 0; fi
           gh release upload "$v" dist/Bob-*-mac-arm64.zip dist/Bob-*-mac-arm64.zip.sha256 --clobber -R "$GITHUB_REPOSITORY"
 
   signed-build:

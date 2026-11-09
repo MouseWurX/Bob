@@ -161,8 +161,8 @@ const codeFor = (x, who) => (x.cfg.share.borrow?.bobs || []).find((b) => b.addre
 
 // ---------- the page, Help and the server wiring ----------
 {
-  const html = read('public/index.html'), layout = read('public/layout.js'), app = read('public/app.js'), share = read('public/share-brains.js'), help = read('public/help-content.js'), server = read('src/server.js'), css = read('public/style.css'), privacy = read('PRIVACY.md');
-  check('Now running has a Bob-Net section, hidden to start with', /<section id="nowNet" hidden>/.test(html) && /<ul id="nowNetList" class="tlist net-list"><\/ul>/.test(html));
+  const html = read('public/index.html'), layout = read('public/layout.js'), app = read('public/app.js'), share = read('public/share-brains.js'), help = read('public/help-content.js'), server = read('src/server.js'), css = read('public/style.css'), privacy = read('docs/legal/PRIVACY.md');
+  check('Now running has a Bob-Net section, hidden to start with', /<section id="nowNet" data-sec="net" hidden>/.test(html) && /<ul id="nowNetList" class="tlist net-list"><\/ul>/.test(html));
   check('the pane polls the party while open, and hides the section when Bob-Net isn\'t in use', /fetch\('\/api\/bob-net\/party'\)/.test(layout) && /sec\.hidden = !v\?\.on;/.test(layout) && /brainSt\?\.session === 'Gaming' \? 30000 : 15000/.test(layout));
   check('a lend, borrow, sent job or pairing refreshes it early', /\['lending', 'borrow', 'away', 'pair-done', 'queue'\]\.includes\(ev\.type\)\) layout\.net\(\);/.test(app) && /net\(\) \{ clearTimeout\(netSoon\); netSoon = setTimeout\(pollNet, 800\); \}/.test(layout));
   check('the dot never stands alone: words for every state', /thinking a reply for me/.test(layout) && /gaming, so not lending/.test(layout) && /aria-hidden="true"/.test(layout.slice(layout.indexOf('const netRow'))) && /\.net-dot\.ok \{ background: var\(--good\); \}/.test(css));
