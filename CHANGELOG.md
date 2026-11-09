@@ -4,6 +4,16 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.172
+
+The **Computer Science Lab** is in the left pane from the start.
+
+- Until now the Lab was hidden until you found **Show the Computer Science Lab** in Settings. Now **🧪 Lab** is there on a fresh Bob, and on an updated one that never touched the switch. The switch stays, under How Bob works, Brains: turn it off and the Lab button goes; brains you made stay in Bob. Anyone who turned it off before stays off.
+- The Lab's Brain Engine in Get models follows the same switch.
+- A replicant matrix with less than 12 GB of memory still sees the Lab, and the Lab says it needs 12 GB to run jobs here; start them from another Bob on your Bob-Net.
+- Help: Settings (the switch's line) and The Computer Science Lab updated; the User guide too.
+- Phone (Bob for Android): the phone's menu shows the Lab the same way, following the replicant matrix running Bob.
+
 ## 1.5.171
 
 The Lab's Challenges tab tells you how long each challenge takes on **your** card.

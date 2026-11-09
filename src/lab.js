@@ -43,9 +43,10 @@ import { planRefusals, readDirections, pickLayers, removeRefusals, keptCheck, re
 import { peekView, tallyTrace, addToTally, keepFromLit, askTraced, IDLE_MS, NO_TRACE, NO_ENGINE } from './lab-peek.js';
 import { usageFolder, keepFileOf } from './lab-usage.js';
 
-export const labOn = (cfg) => cfg?.computerLab === true;
+// 1.5.172 the Lab shows unless it is switched off (it was off until switched on before). Anything but false is on.
+export const labOn = (cfg) => cfg?.computerLab !== false;
 export const MIN_RAM_GB = 12;
-// Too small to run the Lab (a Raspberry Pi, an 8 GB laptop): the switch is greyed out with this reason.
+// Too small to run the Lab (a Raspberry Pi, an 8 GB laptop): the Lab says so, and the switch carries the reason.
 export function labRoom(totalBytes = os.totalmem()) {
   const gb = totalBytes / 1024 ** 3;
   return gb < MIN_RAM_GB ? { ok: false, why: `This replicant matrix has ${Math.round(gb)} GB of memory, and the Lab needs at least ${MIN_RAM_GB} GB. Start Lab jobs from another Bob on your Bob-Net instead.` } : { ok: true, why: '' };
