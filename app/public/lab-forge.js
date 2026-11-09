@@ -116,7 +116,7 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
   function libraryHtml() {
     return `<details ${lib.msg || lib.from ? 'open' : ''}><summary>Add a lesson set to the Lab</summary>
       <p class="muted">A file on this replicant matrix (.jsonl or .json), or one file of a Hugging Face set, like owner/name:data/train.jsonl. Bob converts it to the Lab's lessons and breaks it into parts by what it teaches, where it came from, and whether it shows its thinking. Nothing is uploaded.</p>
-      <label>Where it is <input id="forge-lib-from" value="${esc(lib.from)}" maxlength="400" placeholder="C:\\lessons\\set.jsonl or owner/name:file.jsonl"></label>
+      <label>Where it is <input id="forge-lib-from" value="${esc(lib.from)}" maxlength="400" placeholder="${/win/i.test(navigator.userAgentData?.platform || navigator.platform || '') ? 'C:\\lessons\\set.jsonl' : '~/lessons/set.jsonl'} or owner/name:file.jsonl"></label>
       <label>Name <input id="forge-lib-name" value="${esc(lib.name)}" maxlength="60" placeholder="(from the file)"></label>
       <div class="row"><button type="button" class="get" data-forgelibadd ${lib.busy ? 'disabled' : ''}>${lib.busy ? 'Adding…' : 'Add it'}</button></div>
       ${lib.msg ? `<p role="status">${esc(lib.msg)}</p>` : ''}

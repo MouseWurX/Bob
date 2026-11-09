@@ -1154,7 +1154,8 @@ export class Lab {
   // broken into parts. The Hugging Face card's licence is kept with it; a set with none is for private use only.
   async addLibrarySet({ from = '', name = '' } = {}) {
     const root = lessonSetsDir(this.cfg); fs.mkdirSync(root, { recursive: true });
-    const ref = String(from || '').trim().replace(/^"|"$/g, '').slice(0, 400);
+    let ref = String(from || '').trim().replace(/^"|"$/g, '').slice(0, 400);
+    if (/^~[\\/]/.test(ref)) ref = path.join(os.homedir(), ref.slice(2)); // ~/lessons/set.jsonl on Mac and Linux
     if (!ref) throw new Error('Say where the lessons are: a full path to a .jsonl or .json file, or a Hugging Face set and file.');
     if (path.isAbsolute(ref) || /^[A-Za-z]:[\\/]/.test(ref)) {
       const r = addLessonSet({ root, from: ref, name, source: path.basename(ref).replace(/\.[^.]+$/, ''), now: this.now() });
