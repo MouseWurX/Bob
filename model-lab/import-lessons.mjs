@@ -1,7 +1,9 @@
 // Resolve plan.hf_lessons (Hugging Face datasets) into local lesson folders that forge.mjs already knows how
 // to send to the pod. Run on the PC BEFORE forge.mjs:
 //     node import-lessons.mjs --plan <plan.json>
-// For each { repo, file?, revision?, license?, max? } in plan.hf_lessons it downloads the dataset with the
+// Each plan.hf_lessons entry is { repo, file?, revision?, license?, max? } (a Hugging Face dataset), { path, license?, private_only? }
+// (a file or folder already on this PC, converted in place) or { url, license?, private_only? } (a direct https link to one data
+// file). For a Hugging Face entry it downloads the dataset with the
 // `hf` CLI, converts the common shapes (OpenAI messages, ShareGPT conversations, Alpaca instruction/output,
 // prompt/response, question/answer) into Bob's lesson format, writes a folder with lessons.jsonl +
 // toolsets.json, and appends that folder's ABSOLUTE path to plan.extra_lessons (forge.mjs uploads those as
@@ -132,17 +134,29 @@ async function main() {
   plan.extra_lessons = Array.isArray(plan.extra_lessons) ? plan.extra_lessons : plan.extra_lessons ? [plan.extra_lessons] : [];
   let added = 0;
   for (const ent of list) {
-    const repo = ent.repo || ent.name; if (!repo) { console.error('hf_lessons entry has no repo; skipped'); process.exitCode = 1; continue; }
+    const srcPath = clean(ent.path), srcUrl = clean(ent.url), repo = clean(ent.repo || ent.name);
+    if (!repo && !srcPath && !srcUrl) { console.error('hf_lessons entry has no repo, path or url; skipped'); process.exitCode = 1; continue; }
     const rev = clean(ent.revision || ent.rev);
-    const file = clean(ent.file || ent.path);
+    const file = clean(ent.file || ent.path_in_repo);
     const license = clean(ent.license || ent.licence);
-    const priv = !license || /^(unknown|none|other|private|nolicense|no-license)$/i.test(license);
-    const slug = sani(`${repo}${rev ? '@' + rev : ''}${file ? '/' + file : ''}`);
+    const priv = ent.private_only === true || !license || /^(unknown|none|other|private|nolicense|no-license)$/i.test(license);
+    const label = repo || srcPath || srcUrl;
+    const slug = sani(repo ? `${repo}${rev ? '@' + rev : ''}${file ? '/' + file : ''}` : srcPath ? `local-${path.basename(srcPath)}` : `url-${path.basename(new URL(srcUrl).pathname) || 'download'}`);
     const folder = path.join(base, slug); const dl = path.join(folder, 'download');
-    console.log(`\n== ${repo}${rev ? ' @ ' + rev : ''}${file ? ' (' + file + ')' : ''}  licence: ${license || 'unknown -> private-training-only'}`);
+    console.log(`\n== ${label}${rev ? ' @ ' + rev : ''}${file ? ' (' + file + ')' : ''}  licence: ${license || 'unknown -> private-training-only'}${priv && license ? ' (private-training-only)' : ''}`);
     fs.rmSync(folder, { recursive: true, force: true }); fs.mkdirSync(dl, { recursive: true });
-    try { hfDownload(repo, file, rev, dl); } catch (e) { console.error(`  ${e.message}`); fs.rmSync(folder, { recursive: true, force: true }); process.exitCode = 1; continue; }
-    const files = dataFiles(dl, file);
+    let files;
+    try {
+      if (srcPath) { // a file or folder already on this PC: nothing to download, converted in place (the source is never touched)
+        if (!fs.existsSync(srcPath)) throw new Error(`${srcPath} does not exist`);
+        files = fs.statSync(srcPath).isDirectory() ? dataFiles(srcPath) : [srcPath];
+      } else if (srcUrl) { // a direct https link to one data file
+        if (!/^https:\/\//i.test(srcUrl)) throw new Error('url must be https');
+        const fn = path.basename(new URL(srcUrl).pathname) || 'download.jsonl'; const dest = path.join(dl, fn);
+        const r = await fetch(srcUrl, { redirect: 'follow' }); if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${srcUrl}`);
+        fs.writeFileSync(dest, Buffer.from(await r.arrayBuffer())); files = [dest];
+      } else { hfDownload(repo, file, rev, dl); files = dataFiles(dl, file); }
+    } catch (e) { console.error(`  ${e.message}`); fs.rmSync(folder, { recursive: true, force: true }); process.exitCode = 1; continue; }
     if (!files.length) { console.error('  no data files (jsonl/json/csv/parquet) found; skipped'); fs.rmSync(folder, { recursive: true, force: true }); process.exitCode = 1; continue; }
     const sets = {}; const rows = []; const max = Number(ent.max) || 0; let seen = 0, bad = 0;
     for (const f of files) {
@@ -151,7 +165,7 @@ async function main() {
           seen++;
           const row = toLesson(rec, `ext-${slug}-${rows.length}`, sets);
           if (!row) { bad++; continue; }
-          row.ext = true; row.source = repo; row.license = license || 'unknown'; if (priv) row.private_training_only = true;
+          row.ext = true; row.source = label; row.license = license || 'unknown'; if (priv) row.private_training_only = true;
           rows.push(row);
           if (max && rows.length >= max) break;
         }
@@ -161,7 +175,7 @@ async function main() {
     if (!rows.length) { console.error(`  no usable lessons (saw ${seen} records, ${bad} unconvertible); skipped`); fs.rmSync(folder, { recursive: true, force: true }); process.exitCode = 1; continue; }
     fs.writeFileSync(path.join(folder, 'lessons.jsonl'), rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
     fs.writeFileSync(path.join(folder, 'toolsets.json'), JSON.stringify(sets));
-    fs.writeFileSync(path.join(folder, 'SOURCE.json'), JSON.stringify({ repo, file: file || null, revision: rev || null, license: license || 'unknown', private_training_only: priv, lessons: rows.length, records_seen: seen, unconvertible: bad, at: new Date().toISOString() }, null, 1));
+    fs.writeFileSync(path.join(folder, 'SOURCE.json'), JSON.stringify({ source: label, kind: repo ? 'hf' : srcPath ? 'path' : 'url', repo: repo || null, path: srcPath || null, url: srcUrl || null, file: file || null, revision: rev || null, license: license || 'unknown', private_training_only: priv, lessons: rows.length, records_seen: seen, unconvertible: bad, at: new Date().toISOString() }, null, 1));
     fs.rmSync(dl, { recursive: true, force: true }); // keep the converted lessons, drop the raw download
     if (!plan.extra_lessons.includes(folder)) plan.extra_lessons.push(folder);
     added++;
