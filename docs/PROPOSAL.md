@@ -48,11 +48,7 @@ Bill is cut from Bobert, and each rung below is cut from the healed Bob above it
 
 Every rung is made on **line B**: Bob's lessons plus coding and software-engineering lessons. **Line A** (Bob's lessons only) is kept as a comparison and continues only if the comparison after Homer says it is worth it. Specialists at the small sizes (Cypher for coding, Ponder for deep thinking, Audit for reviewing, Relay for routing) are the same cut with a different heal mix, made only after the general rung at that size has proven itself.
 
-### 3.3 Thoth: the uncensored line, on paper
-
-The community publishes "uncensored" remixes of the same Qwen models, with the refusals cut out. Bob lists them behind an opt-in switch, the naughty list, never as a default and never recommended. **Thoth** is the plan for a Bob cut from one of those remixes, with the same method, under stricter rules: healed against the uncensored remix itself (a stock teacher would quietly put the refusals back), on a lesson set with every refusal removed, named by the cut (18Thoth, 12Thoth), listed only behind the naughty-list switch, never starred, with its remixer credited on the tag and the licence of the remix it came from. For the small sizes, teaching a small uncensored student is likely better than cutting the big one far down. Thoth is a named route, not a scheduled one; it waits behind the ladder.
-
-### 3.4 In the app
+### 3.3 In the app
 
 When the family is complete, Bob's own models become his default brains: when Bob suggests a starter set, a Bob is picked before a stock model of the same size. The Forge and the model lab are already in this repository under `model-lab/` (GPL-3.0-or-later, like the rest of Bob). Nothing turns on by itself; the catalogue stays opt-in and every download asks first with the size.
 
@@ -80,7 +76,6 @@ The full method, with the numbers behind every claim, is on [Bob's own models](B
 | 8 Nov | Riker benchmarked at home and kept; v1 and v2 retired and deleted | Clean coding lessons lifted the coding race from 6 to 9 of 13 and the quick code test to 6 of 6; tools level; two short facts lost; long documents unharmed |
 | 8 Nov | Five outside answer sets converted to Bob's lesson format and checked; one dropped as broken; the set is 18,118, half Bob's own | Outside traces that never end in an answer are worthless; a scan for planted instructions found none |
 | 8 Nov | Bobert decided (the full model trained on every lesson, the teacher of every cut); Forge build 17 publishes odds and files from the card; the combined run started | |
-| 8 Nov | Thoth named; this proposal | |
 
 The honest reading: the method is proven at the top rung, where Riker holds Bob's own work and most of the coding against the full model; the middle rungs are a reasonable bet because the heal recovered most of a 128-expert cut; and the small rungs are an experiment that will be judged by the benchmarks and dropped if a stock small model beats them.
 
@@ -96,7 +91,7 @@ The honest reading: the method is proven at the top rung, where Riker holds Bob'
 | 6. Specialists and line A | only if 3 and 5 earn them | about 4 h each | each specialist beats the general rung at its own job |
 | 7. Big-card numbers | one short rental | a few hours | the same benchmarks run on the big card, so every brain has a home number and a commercial-card number side by side |
 | 8. Release | the PC and Hugging Face | 0 | Bobert, Riker and Bill first, then every Bob as it passes, each on Hugging Face with a model card, pinned in Bob's catalogue; Bob's starter sets prefer them |
-| Later | Bender (2Bob) another way; Thoth; expert merging for the small rungs | | each gets its own entry here first |
+| Later | Bender (2Bob) another way; expert merging for the small rungs | | each gets its own entry here first |
 
 No dates are promised. Rentals happen when the owner says so, one at a time, each with a plan file that names its caps in hours and dollars.
 
@@ -160,7 +155,6 @@ What is **being made now**: the combined run that started on 8 November writes t
 | A trained teacher's odds lean toward the lessons | possible | every cut inherits a narrower view of the world | general text is part of every heal; Bobert is benchmarked at home before he teaches anything, and dropped as teacher if he loses general knowledge |
 | General knowledge fades | certain under a deep cut | a small Bob is vaguer about the wide world | general text is a third of the heal mix and scored separately; the models page says so plainly |
 | Licence or credit problems | very low | cannot share | Apache 2.0 allows it; every Bob ships with the licence, a "modified" note and "made from Qwen3.6-35B-A3B"; the Qwen name is never used as a brand |
-| The uncensored line misused | only if Thoth is made | a model that does not refuse | opt-in switch, never a default, never recommended, remixer credited, documented here before anything is cut |
 | Privacy | very low | personal data in a model | lessons use neutral names written by the model; the public lesson set has the owner's machine details replaced; nobody's chats are used |
 
 ## 10. How others could take part, later

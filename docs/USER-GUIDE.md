@@ -400,13 +400,26 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 - **Advanced workshop**: if you use ComfyUI, Bob can run its workflows for you.
 - **Let my other replicant matrices in** (Settings, Show advanced settings, Bob-Net; off): Bob for Android, or your phone's browser, talks to Bob over Tailscale with a passcode. Turn it on (the first time, it makes a passcode and shows it once), then add the address it shows to the phone. It works straight away, no restart (Bob listens on this replicant matrix's Tailscale addresses only, and picks Tailscale up within a minute if it connects later). On Windows, press **Let Tailscale through the firewall**: one Windows prompt adds the rule "Bob (Tailscale only)" for Bob's port, from Tailscale addresses (100.64.0.0/10) only; It also switches off any rule that blocks Bob's own program (Windows makes one if Cancel was clicked on its earlier question). **Remove the firewall rule** takes the rule away and switches those back on. On Linux with ufw or firewalld, Bob shows the one line to run. Only Tailscale addresses get in.
 - **Check for updates when Bob starts.** Updating always waits for your click.
+- **Choose my own word settings** (Settings, Show advanced settings, Engines, How Qwen brains pick their words; off): Qwen3.6 brains, and Bob's own brains made from them, use Qwen's recommended settings for each mode: thinking it through (temperature 1.0, top P 0.95, top K 20), thinking through code (0.6, 0.95, 20) and quick replies (0.7, 0.8, 20, presence penalty 1.5). Switch this on to type your own numbers; **Back to Qwen's** resets one set. A reply can be up to 32,768 tokens, or half the brain's memory on a small replicant matrix.
 - **🧍 Make your own look** (Style, under Bob's look, and **Change his look** under the doll on Equip Bob): a character screen that builds Bob's avatar from parts (body: Man, Robot or Alien; build; hair style and colour; skin; beard; glasses; outfit and colour; armour; weapon; shield) with a live preview. **Wear this** makes it his look; it blinks and talks like every other look and shows under **Your own design**.
 - **🎲 Adventure** (menu page): a tabletop role-playing game with Bob as game master and a party of you plus your other Bobs. Nothing runs until you press **Start a new game**; the game master brain (Deep thinking, or the main Brain) loads for the game and is let go on Pause or End. One start card: setting, your character (with a look of its own from the character screen, any body, and **Save this character** for next time; Bob's avatar is never changed by the game), who plays (a Bob on your Bob-Net plays himself over there; a copy of Bob is played by the game master brain), how long, and **📖 Characters** (the bestiary: You = saved heroes, Party, Met = everyone the game master names, drawn as they appear, Enemies = the usual dozen with their hearts; the character screen also has monster bodies), and plot armour per character (None, Some, Lots, Legendary). Everyone has a turn in order. On your turn you get action cards (only the ones that fit), some with a second card (attacks your kit allows, your spells, your items, who's here, the ways out) and a Back button, then an optional line of flair. The app rolls d20 + a stat for every action: 15+ hits, 10-14 hits at a cost, under 10 misses. Loose rules: four stats, hearts not hit points, no inventory weight, no spell slots, no initiative; travel is one montage line. Campaigns are saved in their own files and continue from the start card. Not in the Gaming session.
 - **🧩 Games** (menu page): five small games Bob plays with you. The app runs the game and Bob only talks, so they play well on his quick brain, in the Gaming session (on the Gaming brain, on the processor) and on the phone. **Twenty questions** (either way round: the app picks the secret when it's Bob's, and checks your guess), **Hangman** (a word from a shelf you pick, seven lives, a Hint costs a life), **Word ladder** (four-letter words, one letter a step, every rung a real word; Hint, Back a rung, or climb together turn about), **Five letters** (a five-letter word in six tries, letters coloured green, yellow, grey; a Hint costs a try) and **Story dice** (six picture dice, a line each until every die is in; Wrap it up ends it, Bob writes the last line and a title). Nothing runs until you press **▶ Start**; the brain is let go when a game ends. A scoreboard counts wins per game. Settings (Show advanced settings, 🧩 Games): Which brain plays games (Quick brain) and How often Bob chips in (After every move).
 
 ---
 
-## 11. Updating and removing Bob
+## 11. The Computer Science Lab (off unless you turn it on)
+
+Bob is an assistant you use every day and a workbench for the brains he runs on, in one window. Turn on **Show the Computer Science Lab** (Settings, How Bob works, Brains) and **🧪 Lab** appears in the menu. It walks you through five steps with checkboxes instead of command-line flags:
+
+1. **Pick a brain** you already have.
+2. **Lessons**: use a lesson set you have, or write a new one with a teacher brain on this replicant matrix.
+3. **Make it smaller**: keep every skill covered while cutting experts, take out sight or hearing, measure, then make the running files (Q4 and others).
+4. **Where it runs**: this replicant matrix today. Rented cards come later.
+5. **Test and use**: the Lab test runs on the new brain and the one it came from, and **Use in Bob** only appears after it. **Compare** puts tested brains side by side and saves the table as CSV or JSON.
+
+Bob keeps answering while a Lab job runs, one job at a time, and waits while Gaming is on. **Show the recipe** shows the exact commands, so you can learn them or run them yourself. Coming later: teaching a cut brain back (healing) on a rented card, and **Brain Engine**, which switches experts on and off without reloading the brain. More in Help, The Computer Science Lab.
+
+## 12. Updating and removing Bob
 
 **Updating, if you downloaded the zip:** download the new zip from the Releases page and unzip it over your Bob folder. Your chats, models and settings are kept, because they live in `%LOCALAPPDATA%\Bob`.
 
@@ -416,7 +429,7 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 
 ---
 
-## 12. When something goes wrong
+## 13. When something goes wrong
 
 | What you see | What to try |
 |---|---|

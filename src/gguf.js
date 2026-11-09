@@ -7,7 +7,10 @@ import fs from 'node:fs';
 const T = { U8: 0, I8: 1, U16: 2, I16: 3, U32: 4, I32: 5, F32: 6, BOOL: 7, STRING: 8, ARRAY: 9, U64: 10, I64: 11, F64: 12 };
 const FIXED = { [T.U8]: 1, [T.I8]: 1, [T.U16]: 2, [T.I16]: 2, [T.U32]: 4, [T.I32]: 4, [T.F32]: 4, [T.BOOL]: 1, [T.U64]: 8, [T.I64]: 8, [T.F64]: 8 };
 // Only these keys are kept; everything else (token lists and so on) is skipped over.
-const WANT = new Set(['general.architecture', 'general.name', 'general.basename', 'general.size_label', 'tokenizer.chat_template', 'tokenizer.chat_template.tool_use']);
+const WANT = new Set(['general.architecture', 'general.name', 'general.basename', 'general.size_label', 'tokenizer.chat_template', 'tokenizer.chat_template.tool_use', 'general.base_model.0.repo_url', 'general.source.url', 'general.source.huggingface.repository']);
+// The shape keys, read per architecture (<arch>.block_count and so on): the context limit, and what the chat memory
+// (the KV cache) costs per token, so Bob can say whether a long context fits before loading it.
+const SHAPE = ['.context_length', '.block_count', '.attention.head_count_kv', '.attention.key_length', '.attention.value_length', '.full_attention_interval', '.rope.scaling.type', '.nextn_predict_layers'];
 const MAX_HEADER = 256 * 1024 * 1024; // a sane header is far smaller; past this the file isn't a GGUF we understand
 
 class Reader {
@@ -32,6 +35,8 @@ class Reader {
     if (type === T.ARRAY) {
       const it = this.u32();
       const count = this.u64();
+      // 1.5.x long memory: a short list of numbers is kept when asked for (some brains give the attention heads per layer).
+      if (FIXED[it] && keep && count <= 4096 && it !== T.BOOL) { const out = []; for (let i = 0; i < count; i++) out.push(this.value(it, true)); return out; }
       if (FIXED[it]) { this.pos += FIXED[it] * count; return undefined; }
       for (let i = 0; i < count; i++) this.value(it, false);
       return undefined;
@@ -73,7 +78,7 @@ export function ggufInfo(file) {
     for (let i = 0; i < kvs; i++) {
       const k = r.str();
       const type = r.u32();
-      const v = r.value(type, WANT.has(k) || k.endsWith('.context_length'));
+      const v = r.value(type, WANT.has(k) || SHAPE.some((x) => k.endsWith(x)));
       if (v !== undefined) kv[k] = v;
     }
     out = {
@@ -82,9 +87,38 @@ export function ggufInfo(file) {
       template: kv['tokenizer.chat_template'] || '',
       toolTemplate: kv['tokenizer.chat_template.tool_use'] || '',
       // 1.5.87: the longest context the model was made for (<arch>.context_length), or null.
-      ctxTrain: Number(kv[`${kv['general.architecture']}.context_length`]) || null
+      ctxTrain: Number(kv[`${kv['general.architecture']}.context_length`]) || null,
+      // The chat memory's shape: layers, which of them keep a memory (hybrid brains like Qwen3.6 only keep one in
+      // every few), and how big each token's memory is. Any of these may be missing (null).
+      shape: shapeOf(kv, kv['general.architecture']),
+      // 1.5.16x Turbo: brains that carry their own guesser (a multi-token head, "nextn" in the file) need no draft brain.
+      // 1.5.16x Teach it: where the brain's full weights live, when the file says (its Hugging Face original).
+      origin: kv['general.source.huggingface.repository'] || kv['general.base_model.0.repo_url'] || kv['general.source.url'] || '',
+      mtp: Number(kv[`${kv['general.architecture']}.nextn_predict_layers`]) || 0
     };
   } catch { out = null; } finally { if (fd !== undefined) try { fs.closeSync(fd); } catch {} }
   cache.set(key, out);
   return out;
+}
+
+// The layers that keep a chat memory and how many numbers each keeps per token, or null when the header doesn't say.
+function shapeOf(kv, arch) {
+  if (!arch) return null;
+  const g = (k) => kv[`${arch}.${k}`];
+  const layers = Number(g('block_count')) || 0;
+  const kLen = Number(g('attention.key_length')) || 0;
+  const vLen = Number(g('attention.value_length')) || kLen;
+  const heads = g('attention.head_count_kv');
+  if (!layers || !kLen || heads === undefined) return null;
+  let perLayer;
+  if (Array.isArray(heads)) perLayer = heads.slice(0, layers).map(Number);
+  else {
+    // Hybrid brains (Qwen3.5/3.6): only every Nth layer is full attention and keeps a memory; the rest keep a small
+    // fixed state that doesn't grow with the context.
+    const every = Number(g('full_attention_interval')) || 1;
+    perLayer = Array.from({ length: layers }, (_, i) => ((i + 1) % every === 0 ? Number(heads) : 0));
+  }
+  const memLayers = perLayer.filter((h) => h > 0).length;
+  const perToken = perLayer.reduce((a, h) => a + h * (kLen + vLen), 0);
+  return perToken > 0 ? { layers, memLayers, perToken } : null;
 }

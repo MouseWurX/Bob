@@ -9,13 +9,14 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn, execFile, spawnSync } from 'node:child_process';
 import { tidySchema } from './toolbox.js';
-import { templateFor, samplingFor } from './model-family.js';
+import { templateFor, samplingFor, replyTokens } from './model-family.js';
 import { gaming, LONG_CODER } from './sessions.js';
 import { gamingCard, decideCard, readCard, CARD_BUSY_PCT, CARD_MIN_FREE_MB } from './gaming-card.js';
-import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts } from './tuning.js';
+import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } from './tuning.js';
 import { exeName } from './platform.js';
 import { Embedder } from './embedder.js';
 import { ggufInfo } from './gguf.js';
+import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes } from './model-ctx.js';
 
 // 1.5.19: the context a brain gets when nothing else picks one. 32K fits a 26B brain on a 16 GB card.
 
@@ -106,11 +107,22 @@ export function catalogFileFor(cfg, id) {
     try { dirs = [e.category, ...fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name)]; } catch {}
     // Its own folder first; an older Bob may have filed it under another one (for example chat instead of coding).
     const find = (x) => { const name = saveNameOf(x); return dirs.map((dir) => path.join(root, dir, name)).find((p) => fs.existsSync(p) && !fs.existsSync(p + '.part')) || idFolderFile(cfg, e, x); };
-    const file = find(f);
+    // 1.5.146: last, the disk scan (Get models' "Look for brains on this replicant matrix"), the same way Get models
+    // says "have it", so a brain found there loads in chat without an Equip first. Its picture reader only counts when
+    // it sits in the same folder, so a reader with a common name from another brain is never picked up.
+    const scanned = (x, near) => {
+      if (!cfg.dataDir) return null;
+      let found; try { found = JSON.parse(fs.readFileSync(path.join(cfg.dataDir, 'model-scan.json'), 'utf8')); } catch { return null; }
+      const alt = [saveNameOf(x), ...(x.aka || [])].map((n) => String(n).toLowerCase());
+      const hit = (found.files || []).find((y) => y?.path && alt.includes(String(y.name || path.basename(y.path)).toLowerCase()) && (!near || samePath(path.dirname(y.path), path.dirname(near))) && fs.existsSync(y.path) && !fs.existsSync(y.path + '.part'));
+      return hit ? hit.path : null;
+    };
+    let file = find(f), fromScan = false;
+    if (!file) { file = scanned(f); fromScan = Boolean(file); }
     if (!file) return null;
     // 1.5.56: a brain that sees pictures has a second file, its picture reader (mmproj), saved under its own name.
     const pj = e.files.find((x) => x.role === 'mmproj');
-    const mmproj = pj ? find(pj) : null;
+    const mmproj = pj ? (fromScan ? scanned(pj, file) : find(pj) || scanned(pj, file)) : null;
     return mmproj ? { gguf: file, mmproj } : { gguf: file };
   } catch { return null; }
 }
@@ -196,6 +208,26 @@ export class LlamaCpp {
   // 1.5.87: the longest context a model was made for, from its GGUF header, so nothing asks for more (null: unknown).
   async maxCtx(model) {
     try { return ggufInfo(this.resolve(model).gguf)?.ctxTrain || null; } catch { return null; }
+  }
+
+  // Long memory (model-ctx.js): the most this brain can be stretched to with the switch on, or null.
+  // evenOff: whether it could be, with the switch off (Settings only shows the switch when a brain can).
+  async stretchMax(model, { evenOff = false } = {}) {
+    if (!stretchOn(this.cfg) && !evenOff) return null;
+    try { return stretchMost(ggufInfo(this.resolve(model).gguf)); } catch { return null; }
+  }
+
+  // Whether a context fits this machine (graphics card plus RAM, less the system's share), before loading it.
+  // { fits, needGB, roomGB }, or fits: null when Bob can't tell (no file, or a brain whose shape he can't read).
+  async roomFor(model, ctx, { ramBytes = os.totalmem(), cardBytes = cardGB(this.cfg) * 1024 ** 3 } = {}) {
+    const gb = (b) => Math.round((b / 1024 ** 3) * 10) / 10;
+    try {
+      const f = this.resolve(model).gguf;
+      const need = needBytes(fs.statSync(f).size, ggufInfo(f)?.shape, ctx, this.lc.args || ['-ctk', 'q8_0', '-ctv', 'q8_0']);
+      if (!need) return { fits: null };
+      const room = roomBytes(ramBytes, cardBytes);
+      return { fits: need <= room, needGB: gb(need), roomGB: gb(room) };
+    } catch { return { fits: null }; }
   }
 
   // Ollama name -> GGUF file (+ vision projector), by reading Ollama's manifest.
@@ -351,7 +383,7 @@ export class LlamaCpp {
 
   // A model can see pictures when it has a vision projector (mmproj) and vision isn't switched off.
   async hasVision(model) {
-    try { return Boolean(this.resolve(model).mmproj) && this.lc.vision !== false; } catch { return false; }
+    try { return Boolean(this.resolve(model).mmproj) && this.lc.vision !== false && !(this.lc.noEyes || []).includes(model); } catch { return false; }
   }
 
   // Whether llama.cpp's --fit places the layers: on the card, unless a placement is pinned by hand or fit is off.
@@ -379,7 +411,9 @@ export class LlamaCpp {
       '-m', gguf, '--host', '127.0.0.1', '--port', String(this.port),
       // 1.5.19: 32K by default (131072 spilled a 26B brain past a 16 GB card into system RAM and crawled at 5 tok/s).
       '-c', String(ctx || lc.ctx || DEFAULT_CTX), ...this.layerArgs(cpu, card), '--jinja',
-      ...(mmproj && lc.vision !== false ? ['--mmproj', mmproj] : []),
+      // Long memory: past what the brain was made for, its positions are stretched (YaRN) to the size picked.
+      ...this.stretchArgs(gguf, ctx || lc.ctx || DEFAULT_CTX),
+      ...(mmproj && lc.vision !== false && !(lc.noEyes || []).includes(model) ? ['--mmproj', mmproj] : []), // Lab: "Load without eyes and ears" for one brain
       ...(lc.args || ['-fa', 'on', '-ctk', 'q8_0', '-ctv', 'q8_0']),
       ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : num(lc.threads, '-t')),
       ...num(lc.batch, '-b'), ...num(lc.ubatch, '-ub'),
@@ -403,6 +437,14 @@ export class LlamaCpp {
     if (!args.some((a) => ['-np', '--parallel'].includes(a))) args.push('-np', '1');
     args.push(...this.templateArgs(model, gguf, args));
     // Speculative decoding: a small "draft" model guesses ahead and the big one checks, often 1.5-2x faster.
+    // 1.5.16x Turbo per brain (the Lab's Turbo page, Settings): wins over the one draft for every brain. The brain's own
+    // built-in guesser (a multi-token head) needs no second brain; a draft brain is named, never a path.
+    const tb = lc.turbo?.[model];
+    if (tb?.on && !cpu && (tb.mtp || (tb.draft && tb.draft !== model))) {
+      if (tb.mtp) args.push('--spec-type', 'draft-mtp', '--draft-max', String(tb.max || 8));
+      else { let dg = null; try { dg = this.resolve(tb.draft).gguf; } catch {} if (dg) args.push('-md', dg, '--draft-max', String(tb.max || 8), '--draft-min', '0', '-ngld', '99'); }
+      return args;
+    }
     const d = lc.draft;
     if (d?.model && d.model !== model && d.enabled !== false && !cpu) {
       // A file path (a .gguf, or a draft blob inside Ollama's models folder) or an Ollama model name.
@@ -410,6 +452,17 @@ export class LlamaCpp {
       args.push('-md', draft, ...num(d.max ?? 16, '--draft-max'), ...num(d.min ?? 1, '--draft-min'), '-ngld', String(d.ngld ?? 99));
     }
     return args;
+  }
+
+  // Long memory (YaRN): only with the switch on, a brain the guide covers, and a size past what it was made for.
+  // Settings set by hand (llamacpp.args with --rope-scaling) win.
+  stretchArgs(gguf, ctx) {
+    if (!stretchOn(this.cfg) || (this.lc.args || []).includes('--rope-scaling')) return [];
+    let info = null;
+    try { info = ggufInfo(gguf); } catch {}
+    const plan = stretchPlan(info);
+    // Only past what the file says it was made for (a Qwen3 at 32K stays as it is), stretched from Qwen's own base.
+    return plan && ctx > info.ctxTrain && ctx <= plan.most ? yarnArgs(ctx, plan.native) : [];
   }
 
   // 1.5.32: a brain file with no chat template of its own gets its family's (model-family.js), so tool calls keep
@@ -420,10 +473,12 @@ export class LlamaCpp {
   }
 
   // 1.5.32: the family's recommended sampling for this request ({} = llama-server's own defaults).
-  sampling(model, { tools, think } = {}) {
+  // 1.5.148: Qwen3.6 brains get Qwen's preset for the mode (thinking, thinking through code, quick), or the
+  // person's own from Settings when they switched that on (cfg.qwenPresets).
+  sampling(model, { tools, think, task } = {}) {
     let gguf = null;
     try { gguf = this.resolve(model).gguf; } catch {} // no file found: the family comes from the name alone
-    try { return samplingFor(this.lc, model, gguf, { tools, think }); } catch { return {}; }
+    try { return samplingFor(this.lc, model, gguf, { tools, think, task, own: this.cfg?.qwenPresets }); } catch { return {}; }
   }
 
   // ---------- Get Bob ready while you type (1.5.24) ----------
@@ -666,7 +721,7 @@ export class LlamaCpp {
     } finally { opts.signal?.removeEventListener?.('abort', onAbort); }
   }
 
-  async chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver }) {
+  async chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver, task }) {
     // 1.5.52: a brain whose template refused a mid-chat system note gets them folded in from then on (foldSystem).
     this.noMidSystem ||= new Set();
     // 1.5.60: ask the loaded brain's chat template up front, so a template that refuses mid-chat system notes is
@@ -683,7 +738,7 @@ export class LlamaCpp {
       } catch {}
     }
     if (this.noMidSystem.has(model)) messages = foldSystem(messages);
-    const res = await this.post(model, messages, tools, signal, think);
+    const res = await this.post(model, messages, tools, signal, think, task);
     if (!res.ok) {
       // 1.5.60: the template's refusal sits deep in a long error (after the template source), so look at all of it.
       const full = await res.text();
@@ -691,7 +746,7 @@ export class LlamaCpp {
       if (!this.noMidSystem.has(model) && MID_SYSTEM_REFUSED.test(full)) {
         this.noMidSystem.add(model);
         this.log?.('engine', `${model}: its chat template only takes a system message first, so Bob's notes go in as user notes from now on`);
-        return this.chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver });
+        return this.chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver, task });
       }
       if (MID_SYSTEM_REFUSED.test(full)) this.log?.('engine', `${model}: refused a system message even after folding (roles ${(messages || []).map((m) => (m.role || '?')[0]).join('')}, ${full.length} chars of error)`);
       throw new Error(`llama-server returned ${res.status}: ${text}`);
@@ -699,12 +754,12 @@ export class LlamaCpp {
     return this.readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver });
   }
 
-  post(model, messages, tools, signal, think) {
+  post(model, messages, tools, signal, think, task) {
     return fetch(this.url + '/v1/chat/completions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, max_tokens: MAX_REPLY_TOKENS, // 1.5.26: no empty enums (llama.cpp rejects them)
-        ...this.sampling(model, { tools: !!tools?.length, think }),
+      body: JSON.stringify({ model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, max_tokens: replyTokens(this.current === model ? this.currentCtx : null, MAX_REPLY_TOKENS), // 1.5.148: less on a small context. 1.5.26: no empty enums (llama.cpp rejects them)
+        ...this.sampling(model, { tools: !!tools?.length, think, task }),
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
         ...(think === false ? { chat_template_kwargs: { enable_thinking: false } } : {}) }),
       signal

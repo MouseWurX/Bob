@@ -156,7 +156,7 @@ export const ownResolve = (o) => (o.mmproj ? { gguf: o.gguf, mmproj: o.mmproj } 
 // "Pick a file" window for a .gguf (the brain) or its picture reader. Windows: PowerShell's OpenFileDialog on top of
 // Bob's window. Mac: AppleScript's choose file. Linux: zenity, else kdialog. Returns the path, or '' if cancelled.
 const TITLE = { gguf: 'Pick the brain file (.gguf)', mmproj: 'Pick its picture reader (mmproj .gguf), or Cancel for none', docs: 'Pick a document or chat log for the lesson builder' };
-// 1.5.148: kind 'docs' (the Lab's lesson builder) shows every file, not only brains.
+// 1.5.152: kind 'docs' (the Lab's lesson builder) shows every file, not only brains.
 export function pickFileArgs(kind, platform) {
   const title = TITLE[kind] || TITLE.gguf;
   const any = kind === 'docs';

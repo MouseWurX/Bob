@@ -594,6 +594,20 @@ button.big { padding: 9px 18px; font-size: 15px; min-height: 40px; }
 .hands-mytools ul { list-style: none; padding: 0; margin: 6px 0; }
 .hands-mytools li.mytool { border-bottom: 1px solid var(--line); padding: 6px 0; }
 .hands-mytools.dim { opacity: 0.7; }
+/* 1.5.144 🧰 Tools and how-tos Bob made */
+.ownkit-list { list-style: none; padding: 0; margin: 6px 0; }
+.ownkit-list { display: flex; flex-direction: column; gap: 8px; }
+.ownkit-list li.ownkit-row { border: 1px solid var(--line, #444); border-radius: 6px; padding: 8px 10px; }
+.ownkit-list li.ownkit-row > .row { align-items: baseline; flex-wrap: wrap; gap: 6px 10px; }
+.ownkit-list li.ownkit-row .row button { min-height: 32px; }
+.ownkit-list .howto-steps { margin: 4px 0 4px 20px; }
+.ownkit-list pre.ownkit-code { max-height: 320px; overflow: auto; white-space: pre; }
+.ownkit-note { margin: 6px 0; padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--card); }
+.ownkit-note .mini { margin-left: 6px; }
+.ownkit-ask { font-weight: 600; }
+.ownkit-shelf { margin: 10px 0 4px; }
+.ownkit-shelf > summary { cursor: pointer; font-size: 15px; padding: 6px 0; }
+.ownkit-shelf > summary .muted { font-weight: 400; font-size: 13px; }
 .hands-mcp { margin-top: 10px; }
 .hands-mcp > ul { list-style: none; padding: 0; margin: 6px 0; }
 .hands-mcp li.mcp-app { border-bottom: 1px solid var(--line); padding: 6px 0; }
@@ -1115,7 +1129,7 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .mini-switch { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 2px 8px; font: inherit; font-size: 12px; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
 .mini-switch .st { font-weight: 700; text-transform: uppercase; font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--line); }
 .mini-switch[aria-checked="true"] { color: var(--text); border-color: var(--good); }
-.mini-switch[aria-checked="true"] .st { background: var(--good); color: var(--on-accent, #fff); }
+.mini-switch[aria-checked="true"] .st { background: var(--good); color: var(--on-accent); }
 .get-more { margin: 8px 0 0; }
 .get-more-btn { white-space: nowrap; }
 .kit:not(.shop) { display: flex; align-items: center; padding-right: 8px; }
@@ -1386,10 +1400,77 @@ details.fold > summary .muted { font-weight: 400; font-size: 13px; }
 /* 1.5.142 Lab 1b: the template picker and Compare */
 .lab-template select { max-width: 100%; }
 .lab-compare { margin: 0.75rem 0; }
+.lab-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.lab-tab { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; min-height: 32px; background: none; color: inherit; font: inherit; }
+.lab-tab.on { font-weight: 700; border-width: 2px; text-decoration: underline; text-underline-offset: 3px; }
+.lab-tab.dim { opacity: .65; }
+.learn-card { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; margin: 10px 0; }
+.learn-card h3 { margin: 4px 0 6px; }
+.learn-card textarea { width: 100%; box-sizing: border-box; font: inherit; }
+.learn-card input[type=text] { width: min(100%, 420px); font: inherit; }
+.learn-result { margin-top: 8px; }
+.learn-why { border-left: 3px solid var(--line); padding: 2px 10px; }
+.learn-saw { border-left: 3px solid var(--accent); padding: 4px 10px; margin: 8px 0 2px; }
+.learn-tokens { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; padding: 0; margin: 6px 0; }
+.learn-tok { display: inline-flex; flex-direction: column; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; min-width: 18px; }
+.learn-tok.a { background: var(--bg); border-style: solid; }
+.learn-tok.b { background: transparent; border-style: dashed; }
+.learn-tok.part { border-color: var(--accent); border-style: dotted; }
+.learn-tok-text { font-family: ui-monospace, Consolas, monospace; white-space: pre; }
+.learn-tok-id { font-size: 10px; opacity: .7; }
+.learn-odds { list-style: none; padding: 0; margin: 6px 0; display: grid; gap: 3px; max-width: 520px; }
+.learn-odd { position: relative; display: block; width: 100%; text-align: left; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; min-height: 32px; background: none; color: inherit; font: inherit; overflow: hidden; }
+.learn-odd i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); opacity: .25; transition: width 0.3s; }
+.learn-odd-text { position: relative; }
+button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--accent); }
+.learn-sofar code { font-size: 15px; white-space: pre-wrap; }
+.learn-caret { opacity: .6; animation: learn-blink 1s steps(2) infinite; }
+@keyframes learn-blink { to { opacity: 0; } }
+.learn-tries { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin: 6px 0; }
+.learn-try { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; }
+.learn-try p { margin: 4px 0 0; white-space: pre-wrap; }
+@media (prefers-reduced-motion: reduce) { .learn-caret { animation: none; } .learn-odd i { transition: none; } }
+/* 1.5.159 Lab Forge tab: the ways to make a brain, as cards */
+.forge-cards { list-style: none; padding: 0; margin: 8px 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.forge-card { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; }
+.forge-card h4 { margin: 2px 0; }
+.forge-card p { margin: 4px 0; }
+.forge-card.dim { border-style: dashed; }
+.forge-where { font-weight: 600; }
+.forge-tips { margin: 2px 0 6px; padding-left: 18px; }
+.forge-left dt { font-weight: 600; margin-top: 6px; }
+.forge-left dd { margin: 0 0 0 12px; }
+.forge-rung { margin: 8px 0; }
+.forge-rung label, .forge-num { display: inline-block; margin: 4px 10px 4px 0; }
+.forge-num input { width: 6em; }
+/* 1.5.156 Lab Playground: the ladder's bars (the numbers are in the table above them) */
+.play-bars { display: grid; gap: 4px; max-width: 560px; margin: 8px 0; }
+.play-bar { display: grid; grid-template-columns: 3em 1fr 1fr; gap: 8px; align-items: center; }
+.play-track { display: block; height: 12px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.play-track > span { display: block; height: 100%; }
+.play-size { background: var(--accent); opacity: .55; }
+.play-surprise { background: repeating-linear-gradient(45deg, var(--text) 0 3px, transparent 3px 6px); opacity: .55; }
+.play-surprise.v-noticeably-worse, .play-surprise.v-falls-apart { opacity: .9; }
+.play-key { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; }
+.play-key .swatch { display: inline-block; width: 14px; height: 10px; vertical-align: middle; border: 1px solid var(--line); }
+.play-answers li { white-space: pre-wrap; }
+/* 1.5.16x Playground pages: Longer (the memory meter), Faster (Turbo), Teach it */
+.lab-subtabs { border-bottom: 0; margin-top: 0; }
+.lab-subtabs .lab-tab { font-size: 13px; }
+.ctx-meter { position: relative; display: flex; height: 22px; max-width: 560px; border: 1px solid var(--line); border-radius: 4px; margin: 8px 0 4px; overflow: visible; }
+.ctx-meter > span { display: block; height: 100%; }
+.ctx-brain { background: var(--accent); opacity: .7; }
+.ctx-kv { background: var(--good); opacity: .7; }
+.ctx-work { background: repeating-linear-gradient(45deg, var(--muted) 0 3px, transparent 3px 6px); opacity: .7; }
+.ctx-meter .ctx-line { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 3px solid var(--bad); }
+.play-key .swatch.ctx-line { border: 0; border-left: 3px solid var(--bad); width: 6px; }
+.play-bar:has(> :nth-child(2):last-child) { grid-template-columns: 5.5em 1fr; }
+.play-bar:has(> :nth-child(3):last-child:not(.play-track)) { grid-template-columns: 5.5em 1fr 1.5em; }
+#play-q { width: 100%; box-sizing: border-box; }
 .lab-compare .lab-report td, .lab-compare .lab-report th { padding: 0.2rem 0.6rem; text-align: left; }
 .lab-compare .lab-report { overflow-x: auto; display: block; max-width: 100%; }
 
-/* 1.5.148 Lab 2c: the lesson builder (survey, sample cards, the set viewer) */
+/* 1.5.152 Lab 2c: the lesson builder (survey, sample cards, the set viewer) */
 .lab-items { list-style: none; padding: 0; margin: 6px 0; }
 .lab-items li { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
 .lab-item-path { word-break: break-all; flex: 1 1 240px; }
@@ -1407,3 +1488,61 @@ details.fold > summary .muted { font-weight: 400; font-size: 13px; }
 .lab-passage { border-left: 3px solid var(--line); margin: 6px 0; padding: 4px 10px; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; font-size: 13px; }
 .lab-viewer .row label { display: inline-flex; gap: 4px; align-items: center; }
 .lab-sets { margin: 8px 0; }
+/* 1.5.154 Cut recipes, the estimate table and the usage map */
+.lab-recipes, .lab-estimate, .lab-usage { margin: 0.75rem 0; }
+.lab-recipe-list { list-style: none; padding: 0; margin: 0.4rem 0; display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.lab-recipe-card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.lab-recipe-card.dim { opacity: 0.65; }
+.lab-recipe-card button { min-height: 32px; }
+#lab-device { max-width: 100%; }
+.lab-estimate .lab-report, .lab-usage .lab-report { overflow-x: auto; display: block; max-width: 100%; }
+.lab-usage:focus { outline: 2px solid var(--line); outline-offset: 2px; }
+/* 1.5.160 Forge form: shares for what to teach and the thought paths */
+.forge-share { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0; }
+.forge-share input[type=number] { width: 4.5em; flex: none; }
+.forge-thinking details { margin: 4px 0; }
+.forge-own input { width: min(100%, 28em); }
+/* 1.5.161 the leaderboard by class */
+.lab-chips { flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.lab-chip { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; background: none; color: inherit; font: inherit; min-height: 32px; cursor: pointer; }
+.lab-chip.on { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+.lab-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lab-class { margin-top: 12px; }
+.lab-class caption { text-align: left; padding: 4px 0; }
+.lab-best th, .lab-best td { font-weight: 600; }
+.lab-ribbon { display: inline-block; font-size: 0.8em; padding: 1px 6px; border-radius: 4px; background: var(--accent); color: var(--on-accent); white-space: nowrap; }
+/* 1.5.163 links to Hugging Face pages in the Forge form */
+#lab-page-forge a[href^="https://huggingface.co/"] { color: var(--accent); }
+/* 1.5.163 the source chooser (where a brain or lesson set comes from) */
+.lab-source .row { flex-wrap: wrap; gap: 6px; align-items: center; }
+.lab-source input[data-srcact="value"] { flex: 1 1 240px; min-width: 0; }
+/* 1.5.164 Guard rails sandbox under the Challenges scoreboard */
+.lab-guard textarea { width: 100%; box-sizing: border-box; font: inherit; }
+.lab-guard-chat { list-style: none; padding: 0; margin: 8px 0; max-height: 360px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+.lab-guard-chat li { padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
+.lab-guard-chat li:last-child { border-bottom: 0; }
+.lab-guard-chat .lab-guard-assistant strong { color: var(--accent); }
+
+/* 1.5.164 the Forge's home ways and Peek inside */
+.forge-home { margin: 10px 0; }
+.forge-home .forge-num select { max-width: 100%; }
+.home-range { align-items: center; }
+.home-range input[type=number] { width: 5em; }
+.home-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; }
+.peek-map { display: block; max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; margin: 8px 0; image-rendering: pixelated; }
+.peek-layers { columns: 2; column-gap: 16px; font-size: 13px; }
+.peek-answer { white-space: pre-wrap; border-left: 3px solid var(--accent); padding: 2px 10px; }
+.peek-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.peek-compare canvas { width: 100%; height: auto; border: 1px solid var(--line); image-rendering: pixelated; }
+.peek-compare > p { grid-column: 1 / -1; }
+@media (max-width: 600px) { .peek-layers { columns: 1; } }
+@media (prefers-reduced-motion: reduce) { .peek-map { transition: none; } }
+
+/* 1.5.168 Keep it simple / Professional */
+.lab-mode { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 10px; }
+.lab-mode .muted { flex: 1 1 240px; }
+/* 1.5.168 Professional mode: run settings and the question log */
+.lab-pro input[type="number"] { width: 6em; }
+.lab-pro .row { flex-wrap: wrap; gap: 8px; align-items: center; }
+.lab-log { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.lab-log td { vertical-align: top; overflow-wrap: anywhere; white-space: pre-wrap; }

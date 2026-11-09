@@ -6,23 +6,35 @@
 import { esc, brainsLine, toolLine, thinkLabel } from './mind-lines.js';
 
 export const MAX_LINES = 400, MAX_THINK = 20000;
+// 1.5.149 Order: 'time' (newest at the bottom, the default), 'newest' (newest at the top), 'who' (grouped by who was
+// thinking: Bob first, then his copies, each group in time order). Remembered per window of Bob (bob-mind-order).
+export const ORDERS = ['time', 'newest', 'who'];
+export const cleanOrder = (v) => (ORDERS.includes(v) ? v : 'time');
 const STATE = { idle: 'Quiet', thinking: 'Thinking', waking: 'Waking up', loading: 'Loading a brain', waiting: 'Waiting for your OK', painting: 'Making a picture or sound', working: 'Working' };
 
-// els: { log, now, brains, follow, clear }. `now` and `brains` may be missing (the dock shows one short line instead).
+// els: { log, now, brains, follow, clear, order }. `now`, `brains` and `order` (a <select>) may be missing.
 export function createMindView(els) {
-  const { log, now: nowEl, brains: brainsEl, follow: followBtn, clear: clearBtn } = els;
+  const { log, now: nowEl, brains: brainsEl, follow: followBtn, clear: clearBtn, order: orderEl } = els;
   const copies = {}; // the copy names from the hat lines (Bobcat, Robert...), so a 💭 box names them the same way
   let follow = true, thinkEl = null, answering = new Set(), status = null, brains = null, es = null;
+  let order = 'time', who = 'bob'; // who: whose turn the next plain line belongs to (the last think-start), for the "Bob, then his copies" order
+  try { order = cleanOrder(localStorage.getItem('bob-mind-order')); } catch {}
+  const WHO_RANK = { bob: 0, reviewer: 1, tinker: 2, ledger: 3, scout: 4, painter: 5, eyes: 6 };
+  const place = (el) => { el.dataset.who = who; el.style.order = order === 'who' ? String(WHO_RANK[who] ?? 9) : ''; };
 
   const time = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  function keepDown() { if (follow) log.scrollTop = log.scrollHeight; }
-  function trim() { while (log.childElementCount > MAX_LINES) log.firstElementChild.remove(); }
+  function keepDown() { if (follow) log.scrollTop = order === 'newest' ? 0 : log.scrollHeight; } // the newest line is at the top in that order
+  // Newest at the top puts new lines first in the page (no column-reverse: its scrolling starts at the wrong end).
+  const put = (el) => (order === 'newest' ? log.prepend(el) : log.append(el));
+  const oldest = () => (order === 'newest' ? log.lastElementChild : log.firstElementChild);
+  function trim() { while (log.childElementCount > MAX_LINES) oldest().remove(); }
   function line(html, cls = '') {
     thinkEl = null; // the next thinking starts a new block under this line
     const el = document.createElement('div');
     el.className = `mind-line ${cls}`;
     el.innerHTML = `<span class="t">${time()}</span>${html}`;
-    log.append(el); trim(); keepDown();
+    place(el);
+    put(el); trim(); keepDown();
     return el;
   }
 
@@ -31,7 +43,8 @@ export function createMindView(els) {
     thinkEl = document.createElement('div');
     thinkEl.className = 'mind-think';
     thinkEl.innerHTML = `<div class="who">${esc(thinkLabel(ev, copies))}</div><div class="text"></div>`;
-    log.append(thinkEl); trim(); keepDown();
+    who = ev.who || 'bob'; place(thinkEl);
+    put(thinkEl); trim(); keepDown();
     return thinkEl;
   }
   function think(ev) {
@@ -59,7 +72,7 @@ export function createMindView(els) {
     switch (ev.type) {
       case 'status': status = ev; drawHead(); refreshBrains(); return;
       case 'brain': refreshBrains(); return;
-      case 'start': line('New message', 'mind-turn'); return;
+      case 'start': who = 'bob'; line('New message', 'mind-turn'); return;
       case 'think-start': thinkBlock(ev); return;
       case 'think': think(ev); return;
       case 'token':
@@ -96,11 +109,26 @@ export function createMindView(els) {
   followBtn?.addEventListener('click', () => setFollow(!follow));
   // Scrolling up to read stops following; scrolling back to the bottom starts it again.
   log.addEventListener('scroll', () => {
-    const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 24;
+    const atEnd = order === 'newest' ? log.scrollTop < 24 : log.scrollHeight - log.scrollTop - log.clientHeight < 24;
     if (atEnd !== follow) setFollow(atEnd);
   });
+  // Order: the lines stay in the page in the order they came; CSS turns the column round (newest) or groups it (who).
+  function setOrder(v) {
+    const next = cleanOrder(v);
+    if ((next === 'newest') !== (order === 'newest')) log.append(...[...log.children].reverse()); // turn the page order round
+    order = next;
+    try { localStorage.setItem('bob-mind-order', order); } catch {}
+    log.classList.toggle('newest-first', order === 'newest');
+    log.classList.toggle('by-who', order === 'who');
+    for (const el of log.children) el.style.order = order === 'who' ? String(WHO_RANK[el.dataset.who] ?? 9) : '';
+    log.setAttribute('aria-label', order === 'newest' ? 'Bob\'s thinking, newest at the top' : order === 'who' ? 'Bob\'s thinking, grouped by who was thinking' : 'Bob\'s thinking, newest at the bottom');
+    if (orderEl) orderEl.value = order;
+    keepDown();
+  }
+  orderEl?.addEventListener('change', () => setOrder(orderEl.value));
+  { const o = order; order = 'time'; setOrder(o); } // apply the remembered order to the empty log and the <select>
   const clear = () => { log.replaceChildren(); thinkEl = null; };
   clearBtn?.addEventListener('click', clear);
 
-  return { onEvent, refreshBrains, connect, disconnect, clear, setFollow, listening: () => Boolean(es) };
+  return { onEvent, refreshBrains, connect, disconnect, clear, setFollow, setOrder, order: () => order, listening: () => Boolean(es) };
 }

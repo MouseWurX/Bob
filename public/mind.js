@@ -9,5 +9,5 @@ import { createMindView } from './mind-view.js';
 applySavedStyle();
 
 const $ = (id) => document.getElementById(id);
-const view = createMindView({ log: $('mindLog'), now: $('mindNow'), brains: $('mindBrains'), follow: $('mindFollow'), clear: $('mindClear') });
+const view = createMindView({ log: $('mindLog'), now: $('mindNow'), brains: $('mindBrains'), follow: $('mindFollow'), clear: $('mindClear'), order: $('mindOrder') });
 view.connect(); // new EventSource('/api/events?mind=1') in mind-view.js: only windows that ask get the thinking

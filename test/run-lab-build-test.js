@@ -1,4 +1,4 @@
-// 1.5.148 Lab 2c, the lesson builder: files into passages (text, Markdown, web pages, transcripts, ChatGPT and Claude
+// 1.5.152 Lab 2c, the lesson builder: files into passages (text, Markdown, web pages, transcripts, ChatGPT and Claude
 // exports, Bob sessions), the held-back net, the survey, the three lesson kinds against a fake teacher, the sample,
 // the whole job through the Lab with fake steps, the viewer, removing lessons, the scrubbed export, and the page's words.
 import fs from 'node:fs';
@@ -61,7 +61,7 @@ check('readFile says why a file is skipped', (await readFile(path.join(notes, 's
 
 // ---- the held-back net and the scrub ----
 const KEY = ['sk', 'live', 'abcdefghijklmnopqrstuvwxyz1234'].join('_'), LAN = [192, 168, 1, 20].join('.'), MAIL = ['sam', 'example.test'].join('@'), HOME = ['', 'home', 'sam', 'Notes'].join('/'); // built from pieces: the public-words check must not read them as real
-check('keys, passwords, card numbers, home-network and Tailscale addresses, e-mails and the user folder are held back', heldBack(`my key is ${KEY}`) && heldBack('password: hunter22') && heldBack('card 4111 1111 1111 1111') && heldBack(`ssh ${LAN} now`) && heldBack('the pi at 100.101.5.9') && heldBack(`mail ${MAIL}`) && heldBack(`${HOME}/x`, { user: 'sam' }));
+check('keys, passwords, card numbers, LAN and tailnet addresses, e-mails and the user folder are held back', heldBack(`my key is ${KEY}`) && heldBack('password: hunter22') && heldBack('card 4111 1111 1111 1111') && heldBack(`ssh ${LAN} now`) && heldBack('the pi at 100.101.5.9') && heldBack(`mail ${MAIL}`) && heldBack(`${HOME}/x`, { user: 'sam' }));
 check('ordinary text, a long serial and a phone number pass', !heldBack('The bench took 12 hours and 1234567890123 is the order number, call 555-0100.') && !heldBack('Users of the bench liked it', { user: 'sam' }));
 const sc = scrub(`Mail ${MAIL}, the box at ${LAN} and ${HOME}, key ${KEY}`, { user: 'sam' });
 check('the scrub swaps every hit for a stand-in and says what it changed', sc.text === `Mail ${['you', 'example.com'].join('@')}, the box at ${[192, 168, 0, 10].join('.')} and /home/you/Notes, key [key removed]` && sc.changes.length === 4, sc.text);
@@ -203,10 +203,10 @@ check('the page has the builder: files and folders, the three kinds, the survey,
 check('the page offers no upload anywhere and says so', /No upload anywhere/.test(page) && !/upload/i.test(page.replace(/No upload anywhere[^<]*/, '')));
 check('the rented teacher is "later", never offered', /later\('A big rented brain as the teacher'/.test(page));
 check('Help explains the builder in Bob\'s voice: the three kinds, held back, the sample, export and the honest line', ['Build a new set from my files', 'Working with my material', 'Writing in my voice', 'My past conversations', 'hold back', 'Show me 12 sample lessons', 'Not like this', 'Export as a file', 'not the facts in your files by heart', 'Open the set'].every((w) => help.html.includes(w)) && faq && /only lessons made for the Bob project itself/.test(faq.html));
-check('the builder\'s styles are there and use theme variables only', /\.lab-card \{/.test(css) && /\.lab-survey/.test(css) && !/#[0-9a-f]{3,6}\b/i.test(css.slice(css.indexOf('1.5.148 Lab 2c'))));
+check('the builder\'s styles are there and use theme variables only', /\.lab-card \{/.test(css) && /\.lab-survey/.test(css) && !/#[0-9a-f]{3,6}\b/i.test(css.slice(css.indexOf('1.5.152 Lab 2c'))));
 check('the pick-file door takes the documents kind', /\['mmproj', 'docs'\]/.test(server));
 check('the builder runs as its own process and finds itself with fileURLToPath', /fileURLToPath\(import\.meta\.url\)/.test(read('src/lab-build.js')) && /BUILDER/.test(read('src/lab.js')));
-check('the release note exists and names the builder', fs.existsSync(new URL('../docs/releases/v1.5.148.md', import.meta.url)) && /Build a new set from my files/.test(read('docs/releases/v1.5.148.md')));
+check('the release note exists and names the builder', fs.existsSync(new URL('../docs/releases/v1.5.152.md', import.meta.url)) && /Build a new set from my files/.test(read('docs/releases/v1.5.152.md')));
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

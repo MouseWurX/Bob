@@ -158,7 +158,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   // ---- 1.5.138: Bob's thinking, docked (the same view as the pop-out window, public/mind-view.js) ----
   // Off unless turned on (Show here). Bob passes his thinking along only while this is on AND the panel is in view,
   // so with Now running hidden it costs nothing, just like a closed window.
-  mindView = createMindView({ log: $('mindDockLog'), now: $('mindDockNow'), follow: $('mindDockFollow'), clear: $('mindDockClear') });
+  mindView = createMindView({ log: $('mindDockLog'), now: $('mindDockNow'), follow: $('mindDockFollow'), clear: $('mindDockClear'), order: $('mindDockOrder') });
   const dockBtn = $('mindDock');
   docked = store.get('bob-mind-dock', '0') === '1';
   function mindListen() {

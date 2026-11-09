@@ -17,6 +17,7 @@ export const MAX_STEPS = 12;
 export const MIN_STEPS = 3; // fewer steps than this isn't worth a how-to
 const MAX_NAME = 60, MAX_WHEN = 200, MAX_STEP = 160;
 export const OFFER_MS = 10 * 60_000; // an unanswered card stops working after 10 minutes
+export const KEEP_DELETED_MS = 30 * 24 * 60 * 60_000; // 1.5.144: a deleted how-to waits 30 days on the shelf before it's gone for good
 const WORD_MATCH = 0.6, MEANING_MATCH = 0.78;
 
 // Tools that aren't steps of the job itself (bookkeeping, help, the toolbox).
@@ -56,28 +57,40 @@ export class HowTos {
   constructor(cfg) { this.cfg = cfg; this.offers = new Map(); }
   get file() { return path.join(this.cfg.dataDir, 'howtos.json'); }
 
-  load() {
-    try { const d = JSON.parse(fs.readFileSync(this.file, 'utf8')); return Array.isArray(d.howtos) ? d.howtos : []; } catch { return []; }
+  // Everything on file, the deleted ones too (they carry `deleted`, the time of the click). Deleted how-tos that
+  // have waited their 30 days are dropped here, so nothing else has to think about them.
+  loadAll() {
+    let list = [];
+    try { const d = JSON.parse(fs.readFileSync(this.file, 'utf8')); list = Array.isArray(d.howtos) ? d.howtos : []; } catch { return []; }
+    const now = Date.now();
+    const keep = list.filter((r) => !(r.deleted && now - r.deleted > KEEP_DELETED_MS));
+    if (keep.length !== list.length) { try { this.save(keep); } catch {} }
+    return keep;
   }
+  // The live how-tos: what Bob matches against and what the list shows.
+  load() { return this.loadAll().filter((r) => !r.deleted); }
 
   save(list) {
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    fs.writeFileSync(this.file + '.part', JSON.stringify({ howtos: list.slice(0, MAX_HOWTOS) }, null, 1));
+    const live = list.filter((r) => !r.deleted).slice(0, MAX_HOWTOS), gone = list.filter((r) => r.deleted);
+    fs.writeFileSync(this.file + '.part', JSON.stringify({ howtos: [...live, ...gone] }, null, 1));
     fs.renameSync(this.file + '.part', this.file);
   }
 
   // What Settings and my_howtos show (no meaning vectors).
   list() { return this.load().map(({ vec, ...r }) => r).sort((a, b) => (b.lastUsed || b.made || 0) - (a.lastUsed || a.made || 0)); }
+  // The shelf: deleted how-tos still waiting (newest delete first), with the day they go for good.
+  deletedList() { return this.loadAll().filter((r) => r.deleted).map(({ vec, ...r }) => ({ ...r, goneAt: r.deleted + KEEP_DELETED_MS })).sort((a, b) => b.deleted - a.deleted); }
   find(nameOrId) {
     const all = this.load(), q = clip(nameOrId, 80).toLowerCase();
     return all.find((r) => r.id === nameOrId) || all.find((r) => r.name.toLowerCase() === q) || all.find((r) => q && r.name.toLowerCase().includes(q)) || null;
   }
 
   add({ name, when, steps }, vec = null) {
-    const list = this.load();
+    const list = this.loadAll();
     const s = cleanSteps(steps);
     if (!s.length) throw new Error('A how-to needs at least one step.');
-    if (list.length >= MAX_HOWTOS) throw new Error(`I can keep ${MAX_HOWTOS} how-tos. Delete one in Settings first.`);
+    if (list.filter((r) => !r.deleted).length >= MAX_HOWTOS) throw new Error(`I can keep ${MAX_HOWTOS} how-tos. Delete one in Settings first.`);
     const r = { id: crypto.randomUUID(), name: clip(name, MAX_NAME) || nameFrom(when), when: clip(when, MAX_WHEN), steps: s, made: Date.now(), used: 0, ...(vec ? { vec } : {}) };
     list.unshift(r);
     this.save(list);
@@ -87,8 +100,8 @@ export class HowTos {
 
   // The person's own edit in Settings. The meaning vector is dropped; it's made again next time.
   edit(id, { name, when, steps } = {}) {
-    const list = this.load();
-    const r = list.find((x) => x.id === id);
+    const list = this.loadAll();
+    const r = list.find((x) => x.id === id && !x.deleted);
     if (!r) throw new Error('No such how-to.');
     if (name != null && clip(name, MAX_NAME)) r.name = clip(name, MAX_NAME);
     if (when != null) r.when = clip(when, MAX_WHEN);
@@ -99,15 +112,35 @@ export class HowTos {
     return out;
   }
 
+  // 1.5.144: Delete puts a how-to on the shelf (Settings, Recently deleted) for 30 days. Bob stops using it at once.
+  // Put back brings it back as it was; Delete for good drops it now.
   remove(id) {
-    const list = this.load();
+    const list = this.loadAll();
+    const r = list.find((x) => x.id === id && !x.deleted);
+    if (!r) return false;
+    r.deleted = Date.now();
+    this.save(list);
+    return true;
+  }
+  restore(id) {
+    const list = this.loadAll();
+    const r = list.find((x) => x.id === id && x.deleted);
+    if (!r) return null;
+    if (list.filter((x) => !x.deleted).length >= MAX_HOWTOS) throw new Error(`I already keep ${MAX_HOWTOS} how-tos, the most I can. Delete one first, then put this one back.`);
+    delete r.deleted;
+    this.save(list);
+    const { vec, ...out } = r;
+    return out;
+  }
+  purge(id) {
+    const list = this.loadAll();
     const r = list.find((x) => x.id === id);
     if (!r) return false;
     this.save(list.filter((x) => x !== r));
     return true;
   }
 
-  setVec(id, vec) { const list = this.load(); const r = list.find((x) => x.id === id); if (r && vec?.length) { r.vec = vec; this.save(list); } }
+  setVec(id, vec) { const list = this.loadAll(); const r = list.find((x) => x.id === id && !x.deleted); if (r && vec?.length) { r.vec = vec; this.save(list); } }
 
   // The one how-to that fits this request best, or null. Words always; meaning too when a vector is at hand.
   match(text, vec = null) {
@@ -125,7 +158,7 @@ export class HowTos {
     return out;
   }
 
-  used(id) { const list = this.load(); const r = list.find((x) => x.id === id); if (r) { r.used = (r.used || 0) + 1; r.lastUsed = Date.now(); this.save(list); } }
+  used(id) { const list = this.loadAll(); const r = list.find((x) => x.id === id && !x.deleted); if (r) { r.used = (r.used || 0) + 1; r.lastUsed = Date.now(); this.save(list); } }
 
   // Whether a saved how-to already covers this request (no second card for the same job).
   covered(text) { return this.load().some((r) => overlap(text, `${r.name} ${r.when}`) >= 0.8); }
@@ -178,7 +211,7 @@ export function howtoTools(brain) {
       async run() {
         const list = brain.howtos.list();
         if (!list.length) return 'No how-tos saved yet. After a job with a few steps goes well, I offer a card to save it.';
-        return `${list.length} how-to${list.length === 1 ? '' : 's'} (edit or delete them in Settings, 📒 How-tos):\n${list.map((r) => `- ${r.name}: ${r.steps.length} steps${r.used ? `, used ${r.used} time${r.used === 1 ? '' : 's'}` : ''}`).join('\n')}`;
+        return `${list.length} how-to${list.length === 1 ? '' : 's'} (edit or delete them in Settings, 🧰 Tools and how-tos Bob made):\n${list.map((r) => `- ${r.name}: ${r.steps.length} steps${r.used ? `, used ${r.used} time${r.used === 1 ? '' : 's'}` : ''}`).join('\n')}`;
       },
       summary: () => 'Looking at his how-tos'
     }

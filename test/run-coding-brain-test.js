@@ -20,8 +20,10 @@ check('every other copy on it gets 256K too, so a hand-off never reloads it', br
 check('other brains are untouched', JSON.stringify(brainDefaults('qwen3-coder:30b', 'tinker', 'low')) === '{}' && JSON.stringify(brainDefaults('gemma4:26b', 'bob', 'low')) === '{}');
 
 check('family is the Qwen3.5/3.6 one', familyOf(id, null) === 'qwen3.5');
-const think = samplingFor({}, id, null, { think: undefined });
-check('thinking: temp 0.6, top_p 0.95, top_k 20, min_p 0, presence_penalty 1.5', think.temperature === 0.6 && think.top_p === 0.95 && think.top_k === 20 && think.min_p === 0 && think.presence_penalty === 1.5, JSON.stringify(think));
+const think = samplingFor({}, id, null, { think: undefined, task: 'coding' });
+check('thinking through code: temp 0.6, top_p 0.95, top_k 20, min_p 0, presence_penalty 0 (Qwen3.6 Best Practices)', think.temperature === 0.6 && think.top_p === 0.95 && think.top_k === 20 && think.min_p === 0 && think.presence_penalty === 0, JSON.stringify(think));
+const thinkAny = samplingFor({}, id, null, { think: undefined });
+check('1.5.148 thinking, general: temp 1.0 (Qwen3.6 Best Practices)', thinkAny.temperature === 1.0 && thinkAny.top_p === 0.95, JSON.stringify(thinkAny));
 const plain = samplingFor({}, id, null, { think: false });
 check('no thinking: temp 0.7, top_p 0.8, top_k 20, presence_penalty 1.5', plain.temperature === 0.7 && plain.top_p === 0.8 && plain.top_k === 20 && plain.presence_penalty === 1.5, JSON.stringify(plain));
 check('with tools the temperature keeps Bob\'s 0.6 cap', samplingFor({}, id, null, { think: false, tools: true }).temperature === 0.6);
@@ -111,7 +113,7 @@ check('the glossary says coding always thinks and chat doesn\'t', /Thinking firs
     bodies.length = 0;
     const r = await lc.chatOnce({ model: id, messages: [{ role: 'user', content: 'tidy this Unreal helper' }], think });
     check(`${label} Coding on Qwen3.6: endless thinking is stopped at the budget, then it answers`, r.content === 'answer' && bodies.length === 2 && /Thinking time is up/.test(JSON.stringify(bodies[1].messages)), JSON.stringify({ r, n: bodies.length }));
-    check(`${label} Coding on Qwen3.6 sends presence_penalty 1.5 and a reply ceiling`, bodies[0].presence_penalty === 1.5 && bodies[0].max_tokens === MAX_REPLY_TOKENS && bodies[1].max_tokens === MAX_REPLY_TOKENS);
+    check(`${label} Coding on Qwen3.6 sends presence_penalty 0 while thinking (Qwen3.6 Best Practices) and a reply ceiling`, bodies[0].presence_penalty === 0 && bodies[0].max_tokens === MAX_REPLY_TOKENS && bodies[1].max_tokens === MAX_REPLY_TOKENS);
   }
   bodies.length = 0;
   globalThis.fetch = async (url, init) => { if (!init?.body) throw new Error('no props'); bodies.push(JSON.parse(init.body)); return new Response('data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n'); };

@@ -1,6 +1,6 @@
 // Lab 2c, the lesson builder: the survey and the held-back scan. Pure functions: counts, duplicates, and the net that
 // catches passages that look like secrets or the owner's own details before the teacher ever sees them (keys, tokens,
-// passwords, card numbers, home-network and Tailscale addresses, e-mail addresses, the user folder). The same word list the
+// passwords, card numbers, LAN and tailnet addresses, e-mail addresses, the user folder). The same word list the
 // public lesson release was scrubbed with, so an exported set gets the same treatment. A net, not a guarantee.
 import os from 'node:os';
 import path from 'node:path';

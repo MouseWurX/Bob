@@ -492,7 +492,7 @@ function onEvent(ev) {
           const r = await api('/api/howtos/answer', { id: ev.id, save, name: el.querySelector('input')?.value || '' });
           el.remove();
           if (!r.ok) note(r.why || 'That card is too old now.', 'error');
-          else if (save && r.saved) { window.dispatchEvent(new CustomEvent('bob-howto-saved')); } if (r.ok && save && r.saved) note(`Saved the how-to "${r.saved.name}". You can change or delete it in Settings, 📒 How-tos.`);
+          else if (save && r.saved) { window.dispatchEvent(new CustomEvent('bob-howto-saved')); } if (r.ok && save && r.saved) note(`Saved the how-to "${r.saved.name}". You can change or delete it in Settings, 🧰 Tools and how-tos Bob made.`);
         } catch (e) { yes.disabled = no.disabled = false; note(e.message, 'error'); }
       };
       yes.onclick = () => answer(true);

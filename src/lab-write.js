@@ -12,6 +12,29 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { LESSON_SKILLS } from './lab-skills.js';
 
+// The owner's home folder and user name never reach the teacher or the lesson file. On Windows the throwaway Bob's own
+// folder sits in the temp folder under the home folder, so its paths would carry the real user name otherwise.
+export const STAND_IN_HOME = 'C:\\Users\\you';
+const escRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export function standIns({ home = os.homedir(), user = (() => { try { return os.userInfo().username; } catch { return ''; } })(), env = process.env, tmp = '' } = {}) {
+  const forms = (p) => (p && p.length > 3 ? [p, p.split('\\').join('/'), p.split('/').join('\\'), p.split('\\').join('\\\\')] : []);
+  const pairs = [];
+  for (const f of forms(tmp)) pairs.push([f, f.includes('/') && !f.includes('\\') ? 'C:/Users/you/Bob' : f.includes('\\\\') ? 'C:\\\\Users\\\\you\\\\Bob' : 'C:\\Users\\you\\Bob']);
+  for (const hm of [home, env.USERPROFILE, env.HOME].filter(Boolean)) for (const f of forms(hm)) pairs.push([f, f.includes('/') && !f.includes('\\') ? 'C:/Users/you' : f.includes('\\\\') ? 'C:\\\\Users\\\\you' : STAND_IN_HOME]);
+  pairs.sort((a, b) => b[0].length - a[0].length);
+  const names = [...new Set([user, env.USERNAME, env.USER].map((x) => String(x || '').trim()).filter((x) => x.length >= 3 && !/^(you|user|root|admin)$/i.test(x)))];
+  return (text) => {
+    let t = String(text ?? '');
+    for (const [from, to] of pairs) t = t.split(from).join(to);
+    for (const n of names) t = t.replace(new RegExp(`(?<![\\w])${escRe(n)}(?![\\w])`, 'gi'), 'you');
+    return t;
+  };
+}
+const scrubDeep = (v, scrub) => (typeof v === 'string' ? scrub(v) : Array.isArray(v) ? v.map((x) => scrubDeep(x, scrub)) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, scrubDeep(x, scrub)])) : v);
+
+// Ideas that stand in for the real thing ("[code snippet]", "[paste error here]") make empty lessons.
+export const PLACEHOLDER = /\[(?:[^\]]{0,20}\b(?:code|snippet|paste|insert|error|file|name|link|text|here)\b[^\]]{0,20})\]|<(?:code|snippet|paste|insert)[^>]{0,20}>/i;
+
 const STYLES = ['short and casual', 'polite and detailed', 'with small typos', 'very brief, a few words', 'a bit frustrated', 'curious, asking why', 'in a hurry', 'chatty, with some context first', 'from a beginner', 'from an expert'];
 
 export async function chat(url, { messages, tools, think = false, max = 1500, temperature = 0.7, fetchImpl = fetch }) {
@@ -23,13 +46,14 @@ export async function chat(url, { messages, tools, think = false, max = 1500, te
 }
 
 // A throwaway Bob, as the model lab's bob-kit.mjs makes it: every maker "set up" with stand-in files.
-export async function throwawayBob() {
+export async function throwawayBob({ scrubWith } = {}) {
   const { Brain } = await import('./brain.js');
   const { systemPrompt } = await import('./persona.js');
   const tb = await import('./toolbox.js');
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-lab-write-'));
   const agentDir = path.join(tmp, 'Agent'), innDir = path.join(agentDir, 'inn'), dataDir = path.join(innDir, 'bob'), painterDir = path.join(innDir, 'painter');
   for (const d of [dataDir, painterDir]) fs.mkdirSync(d, { recursive: true });
+  const scrub = scrubWith || standIns({ tmp: agentDir });
   const f = (n) => { const p = path.join(tmp, n); fs.writeFileSync(p, 'x'); return p; };
   const sdcpp = { exe: f('sd.exe'), image: { diffusionModel: f('z.gguf') }, edit: { diffusionModel: f('qie.gguf'), vae: f('vae.st'), llm: f('vl.gguf') } };
   const hands = Object.fromEntries(['files', 'run', 'schedules', 'apps', 'office', 'security', 'maker', 'mcp'].map((h) => [h, { on: true }]));
@@ -44,10 +68,11 @@ export async function throwawayBob() {
   return {
     turn(loaded = new Set()) {
       const sys = brain.withLimits(systemPrompt({ now: brain.now(), memory: '', user: 'the user', backstory: brain.backstory(), about: '', cat: 'Patches' }), loaded);
-      return { system: sys, tools: brain.frontDeskTools(loaded) };
+      return { system: scrub(sys), tools: scrubDeep(brain.frontDeskTools(loaded), scrub) };
     },
+    scrub,
     guessGroups: (text) => tb.guessGroups(brain, text),
-    useTools: (args, loaded) => brain.tools.use_tools.run(args, { loaded }),
+    useTools: async (args, loaded) => scrubDeep(await brain.tools.use_tools.run(args, { loaded }), scrub),
     done: () => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} }
   };
 }
@@ -63,7 +88,7 @@ export async function writeLessons({ url, out, skills, count, think = 'half', ki
   const ideasFile = path.join(path.dirname(out), 'ideas.jsonl');
   const ideas = readJsonl(ideasFile);
   const seen = new Set(ideas.map((i) => i.text.toLowerCase()));
-  const add = (skill, text) => { const t = String(text || '').trim(); if (t.length < 2 || t.length > 800 || seen.has(t.toLowerCase())) return; seen.add(t.toLowerCase()); const i = { id: `i${ideas.length}`, skill, text: t }; ideas.push(i); fs.appendFileSync(ideasFile, JSON.stringify(i) + '\n'); };
+  const add = (skill, text) => { const t = String(text || '').trim(); if (PLACEHOLDER.test(t) || t.length < 2 || t.length > 800 || seen.has(t.toLowerCase())) return; seen.add(t.toLowerCase()); const i = { id: `i${ideas.length}`, skill, text: t }; ideas.push(i); fs.appendFileSync(ideasFile, JSON.stringify(i) + '\n'); };
   // Stage 1: what people say, in batches of 25 per skill, until each skill has its share.
   for (const s of picked) {
     const want = Math.ceil(count / picked.length);
@@ -72,7 +97,7 @@ export async function writeLessons({ url, out, skills, count, think = 'half', ki
       if (shouldStop()) throw new Error('Stopped.');
       const style = STYLES[tries % STYLES.length];
       try {
-        const msg = await chatFn(url, { messages: [{ role: 'user', content: `Write 25 different messages a person might type to their desktop AI assistant about: ${s.what} Make them ${style}. Each one different in topic and wording. Use neutral or no names. Reply with only a JSON array of strings.` }], max: 2500, temperature: 1.0 });
+        const msg = await chatFn(url, { messages: [{ role: 'user', content: `Write 25 different messages a person might type to their desktop AI assistant about: ${s.what} Make them ${style}. Each one different in topic and wording. Use neutral or no names. When a message shares code, an error or a file, write it out in full, never a placeholder like [code snippet]. Reply with only a JSON array of strings.` }], max: 2500, temperature: 1.0 });
         const arr = JSON.parse((msg.content || '').match(/\[[\s\S]*\]/)?.[0] || '[]');
         for (const t of arr) add(s.id, t);
       } catch {}
@@ -92,7 +117,7 @@ export async function writeLessons({ url, out, skills, count, think = 'half', ki
     try {
       const lesson = await oneLesson({ url, idea, skill, think: thinkOn, kit, chatFn });
       if (!lesson) continue;
-      fs.appendFileSync(out, JSON.stringify(lesson) + '\n');
+      fs.appendFileSync(out, JSON.stringify(kit.scrub ? scrubDeep(lesson, kit.scrub) : lesson) + '\n');
       n++; onProgress(n, count);
     } catch {}
   }
