@@ -3,17 +3,19 @@
 // places it and hands over its events. Nothing here starts a rental.
 import { esc } from './rich.js';
 import { PATH_GROUPS, BUNDLES, PERSONALITY, TEACH } from './lab-thinking-paths.js'; // 1.5.161
+import { newSource, sourceRowHtml, sourceOut, sourceEvent } from './lab-source.js'; // 1.5.163 one chooser for where things come from
 
 const WHERE = { here: 'Here, free', rented: 'Rented card', both: 'Here, or a rented card' };
 
 export function createForge({ api, goMake }) {
   let fv = null, loading = false, fmsg = '', check = null, showPlan = false, saved = '', buy = null, stopAsk = false;
-  const form = { base: '', run: '', rungs: [{ name: '', nickname: '', how: 'number', keep: 128, keepFile: '' }], strong: [], quants: ['Q4_K_M'], heal: { experts: 'lora', epochs: 1, learn: 'answer', thinking_weight: 0.5, odds_cover: 'answer' }, teach: {}, thinking: { mode: 'blend', shares: {}, own: '', ownShare: 0, personality: { alignment: {}, rules: {}, mood: {} } }, hours_max: 0, dollars_max: 0, note: '', from: 'plan', hf: { ref: '', info: null, busy: false }, hfLessons: [] }; // 1.5.163 Hugging Face brains and lesson sets
+  const form = { base: '', run: '', rungs: [{ name: '', nickname: '', how: 'number', keep: 128, keepFile: '' }], strong: [], quants: ['Q4_K_M'], heal: { experts: 'lora', epochs: 1, learn: 'answer', thinking_weight: 0.5, odds_cover: 'answer' }, teach: {}, thinking: { mode: 'blend', shares: {}, own: '', ownShare: 0, personality: { alignment: {}, rules: {}, mood: {} } }, hours_max: 0, dollars_max: 0, note: '', brain: { pick: '', source: newSource('hf') }, lessonSets: [], lessons: [] }; // 1.5.163 the brain to start from, and lessons from anywhere
 
-  async function load() { loading = true; try { fv = await api('/api/lab/forge'); } catch (e) { fmsg = e.message; } loading = false; }
+  async function load() { loading = true; try { fv = await api('/api/lab/forge'); if (!form.base && fv?.plans?.[0]) form.base = fv.plans[0].id; } catch (e) { fmsg = e.message; } loading = false; }
   // The form's thinking state as the server reads it (paths with a share above 0 only).
-  const hfOut = (x) => (x?.info?.ok ? { repo: x.info.repo, revision: x.info.revision || '', file: x.info.file || '', license: x.info.license || '', ...(x.info.kind === 'model' ? { moe: x.info.moe } : {}) } : null);
-  const sendForm = () => ({ ...form, hf: form.from === 'hf' ? hfOut(form.hf) : null, hfLessons: form.hfLessons.map(hfOut).filter(Boolean), thinking: { mode: form.thinking.mode, paths: Object.entries(form.thinking.shares).filter(([, v]) => v > 0).map(([name, share]) => ({ name, share })), own: form.thinking.own, ownShare: form.thinking.ownShare, personality: form.thinking.personality } });
+  const srcOf = (id) => (id === 'forge-brainsrc' ? form.brain.source : form.lessons[Number(id.split('-').pop())] || null);
+  const look = (x) => api('/api/lab/forge/hf', { ref: x.value, kind: x === form.brain.source ? 'model' : 'dataset' });
+  const sendForm = () => ({ ...form, brain: { pick: form.brain.pick, source: form.brain.pick === 'source' ? sourceOut(form.brain.source) : null }, lessons: form.lessons.map(sourceOut).filter(Boolean), thinking: { mode: form.thinking.mode, paths: Object.entries(form.thinking.shares).filter(([, v]) => v > 0).map(([name, share]) => ({ name, share })), own: form.thinking.own, ownShare: form.thinking.ownShare, personality: form.thinking.personality } });
   async function recheck() { check = null; saved = ''; if (!fv?.found) return; try { check = await api('/api/lab/forge/plan', { form: sendForm() }); } catch (e) { fmsg = e.message; } }
 
   const card = (m) => `<li class="forge-card${m.ready ? '' : ' dim'}"><h4 id="forge-m-${m.id}">${esc(m.title)}</h4>
@@ -74,41 +76,43 @@ export function createForge({ api, goMake }) {
     </section>${learn}`;
   }
 
-  // 1.5.163 What the Lab read from a Hugging Face card, in plain words.
-  function hfInfoHtml(x, kind) {
-    if (x.busy) return '<p class="muted" role="status">Looking it up on Hugging Face…</p>';
-    const i = x.info; if (!i) return '';
-    if (!i.ok) return `<p class="error" role="alert">${esc(i.error)}</p>`;
-    const cls = { tiny: 'Tiny', small: 'Small', medium: 'Medium', large: 'Large', huge: 'Huge', giant: 'Giant' }[i.cls] || '';
-    const bits = [i.license ? `Licence: ${i.license}` : 'No licence on its card', i.gated ? 'gated (your token is used)' : '', i.private ? 'private (your token is used)' : '',
-      kind === 'model' && i.paramsB ? `${i.paramsB} billion weights${cls ? ` (${cls})` : ''}${i.moe ? ', a mixture of experts' : ''}` : '', kind === 'dataset' ? `${i.files.length} file${i.files.length === 1 ? '' : 's'} the Forge can read${i.file ? `, using ${i.file}` : ''}` : ''].filter(Boolean);
-    return `<p role="status"><a href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">${esc(i.repo)}${i.revision ? ` @ ${esc(i.revision)}` : ''}</a> · ${esc(bits.join(' · '))}</p>${i.warn ? `<p class="error">${esc(i.warn)}</p>` : ''}${i.note ? `<p class="muted">${esc(i.note)}</p>` : ''}${i.license && !i.licenseOpen ? '<p class="muted">Read its licence on its page before you use what you make from it.</p>' : ''}`;
+  // 1.5.163 The brain to start from: one list. The brains the Forge made and brought home come first, then any brain
+  // from this replicant matrix, Hugging Face or another link. The Forge plan it copies its settings from sits under it.
+  function brainHtml() {
+    const made = fv.brains || [];
+    const opts = [`<option value="" ${form.brain.pick ? '' : 'selected'}>(choose a brain)</option>`,
+      made.length ? `<optgroup label="Brains the Forge made">${made.map((b) => `<option value="forge:${esc(b.name)}" ${form.brain.pick === `forge:${b.name}` ? 'selected' : ''}>${esc(b.name)}${b.files?.length ? ` · ${esc(b.files.join(', '))}` : ''}</option>`).join('')}</optgroup>` : '',
+      `<option value="source" ${form.brain.pick === 'source' ? 'selected' : ''}>Another brain: on this replicant matrix, on Hugging Face, or at a link…</option>`].join('');
+    return `<fieldset><legend>The brain to start from</legend>
+      <label>Brain <select id="forge-brain">${opts}</select></label>
+      ${form.brain.pick === 'source' ? sourceRowHtml('forge-brainsrc', 'Where it is', form.brain.source, 'model') : ''}
+      <p class="muted">A brain from Hugging Face or a link is downloaded on the rented card, never here. One from this replicant matrix is uploaded to the card first, so a small one is quicker.</p>
+      <label>Forge settings to copy <select id="forge-base">${fv.plans.map((p) => `<option value="${esc(p.id)}" ${form.base === p.id ? 'selected' : ''}>${esc(p.id)} · ${esc(p.rungs.join(', '))}</option>`).join('')}</select></label>
+      <p class="muted">The skills list, the lesson mix and the card settings come from this Forge plan. Everything on this page is yours.</p>
+    </fieldset>`;
   }
-  function hfHtml() {
-    const brain = `<fieldset><legend>The brain to start from</legend>
-      <label class="lab-opt"><input type="radio" name="forge-from" value="plan" ${form.from === 'plan' ? 'checked' : ''}> <span><strong>The plan's own brain</strong><br><span class="muted">The teacher in the plan you start from.</span></span></label>
-      <label class="lab-opt"><input type="radio" name="forge-from" value="hf" ${form.from === 'hf' ? 'checked' : ''}> <span><strong>A brain on Hugging Face</strong><br><span class="muted">Its name (owner/name) or its link. It's downloaded on the rented card, not here.</span></span></label>
-      ${form.from === 'hf' ? `<div class="row"><label for="forge-hf">Hugging Face brain</label> <input id="forge-hf" maxlength="400" value="${esc(form.hf.ref)}" placeholder="Qwen/Qwen3.6-35B-A3B"> <button type="button" class="get" data-forgehf>Look it up</button></div>${hfInfoHtml(form.hf, 'model')}` : ''}
+  // Lessons to teach: the Lab's own sets by tick, then any set from this replicant matrix, Hugging Face or a link.
+  function lessonsHtml() {
+    const sets = fv.lessonSets || [];
+    return `<fieldset><legend>Lessons to teach</legend>
+      <p class="muted">The plan's own lessons are always taught. Add more here.</p>
+      ${sets.length ? sets.map((x) => `<label class="lab-opt"><input type="checkbox" data-forgeset="${esc(x.id)}" ${form.lessonSets.includes(x.id) ? 'checked' : ''}> <span><strong>${esc(x.name)}</strong> <span class="muted">· ${x.count} lessons, written or built in the Lab</span></span></label>`).join('') : '<p class="muted">No lesson sets written or built in the Lab yet. The Make a brain tab writes them.</p>'}
+      ${form.lessons.map((x, i) => sourceRowHtml(`forge-lesson-${i}`, `Lesson set ${i + 1}`, x, 'dataset', { removable: true })).join('')}
+      ${form.lessons.length < 4 ? '<button type="button" class="link" data-forgelessonadd>Add a lesson set from somewhere else</button>' : ''}
+      <p class="muted">Sets from Hugging Face or a link are downloaded here and put into the Lab's lesson format before the run. Formats read: chat messages, instruction and output, prompt and response, question and answer; files .jsonl, .json, .csv and .parquet.</p>
     </fieldset>`;
-    const lessons = `<fieldset><legend>Lessons from Hugging Face (optional)</legend>
-      <p class="muted">Add up to four datasets by name (owner/name) or link, with a file if you only want one. They're downloaded and put into the Lab's lesson format on this replicant matrix before the run, then taught alongside the plan's own lessons.</p>
-      ${form.hfLessons.map((x, i) => `<div class="row"><label for="forge-hfl-${i}">Dataset ${i + 1}</label> <input id="forge-hfl-${i}" maxlength="400" value="${esc(x.ref)}" placeholder="owner/name or a huggingface.co/datasets link"> <button type="button" class="get" data-forgehfl="${i}">Look it up</button> <button type="button" class="link" data-forgehflrm="${i}">Remove</button></div>${hfInfoHtml(x, 'dataset')}`).join('')}
-      ${form.hfLessons.length < 4 ? '<button type="button" class="link" data-forgehfladd>Add a dataset</button>' : ''}
-    </fieldset>`;
-    return brain + lessons;
   }
   function formHtml() {
     if (!fv.found) return '';
     return `<section class="lab-compare" id="forge-form" aria-labelledby="forge-form-h"><h3 id="forge-form-h">New Forge run</h3>
       <p class="muted">Fill this in and Bob writes the plan the Forge reads. Saving a plan costs nothing and rents nothing.</p>
-      <label>Start from <select id="forge-base"><option value="">(choose a Forge plan)</option>${fv.plans.map((p) => `<option value="${esc(p.id)}" ${form.base === p.id ? 'selected' : ''}>${esc(p.id)} · ${esc(p.rungs.join(', '))}</option>`).join('')}</select></label>
-      <p class="muted">The teacher, lessons and skills come from the plan you start from, unless you pick a brain or lessons from Hugging Face below. The brains, files, caps and teaching back are yours.</p>
-      ${hfHtml()}
+      ${brainHtml()}
       <label>Run name <input id="forge-run" value="${esc(form.run)}" maxlength="40" placeholder="my-first-run"></label>
       ${form.rungs.map(rungHtml).join('')}
       ${form.rungs.length < 4 ? '<button type="button" class="link" data-forgeaddrung>Add a brain made from the last one</button>' : ''}
       ${fv.skills.length ? `<fieldset><legend>Protect these skills most (whole run)</legend>${fv.skills.map((k) => `<label class="lab-opt"><input type="checkbox" data-forgestrong="${esc(k)}" ${form.strong.includes(k) ? 'checked' : ''}> <span>${esc(k)}</span></label>`).join('')}</fieldset>` : ''}
       <fieldset><legend>Running files</legend>${[['Q4_K_M', 'Q4 (recommended)'], ['Q3_K_M', 'Q3 (for 8 GB or less)'], ['Q5_K_M', 'Q5'], ['Q6_K', 'Q6']].map(([v, l]) => `<label class="lab-opt"><input type="checkbox" data-forgequant="${v}" ${form.quants.includes(v) ? 'checked' : ''}> <span>${esc(l)}</span></label>`).join('')}</fieldset>
+      ${lessonsHtml()}
       ${thinkingHtml()}
       <fieldset><legend>Teaching back</legend>
         ${[['lora', 'Light (recommended)', 'Teaches small add-ons to every layer and the experts.'], ['full', 'Full', 'Teaches every weight. Small brains only.'], ['frozen', 'Experts left alone', 'Only the rest of the brain is taught.']].map(([v, l, h]) => `<label class="lab-opt"><input type="radio" name="forge-experts" value="${v}" ${form.heal.experts === v ? 'checked' : ''}> <span><strong>${esc(l)}</strong><br><span class="muted">${esc(h)}</span></span></label>`).join('')}
@@ -163,9 +167,9 @@ export function createForge({ api, goMake }) {
     if (el.id === 'forge-allow') { try { fv.allowed = (await api('/api/lab/forge/allow', { on: el.checked })).allowed; } catch (e) { fmsg = e.message; } return 'draw'; }
     if (el.id === 'forge-base') form.base = el.value;
     else if (el.id === 'forge-run') form.run = el.value;
-    else if (el.name === 'forge-from') { form.from = el.value; }
-    else if (el.id === 'forge-hf') { form.hf.ref = el.value; form.hf.info = null; }
-    else if (el.id?.startsWith('forge-hfl-')) { const x = form.hfLessons[Number(el.id.slice(10))]; if (x) { x.ref = el.value; x.info = null; } }
+    else if (el.id === 'forge-brain') { form.brain.pick = el.value; }
+    else if (el.dataset?.src) { const x = srcOf(el.dataset.src); if (!x) return false; await sourceEvent(el, x, look); }
+    else if (el.dataset?.forgeset) { const id = el.dataset.forgeset; form.lessonSets = el.checked ? [...new Set([...form.lessonSets, id])] : form.lessonSets.filter((v) => v !== id); }
     else if (el.dataset.rung !== undefined) { const r = form.rungs[Number(el.dataset.rung)]; if (r) r[el.dataset.f] = el.value; }
     else if (el.id?.startsWith('forge-keep-')) { const r = form.rungs[Number(el.id.slice(11))]; if (r) r.keep = Number(el.value); }
     else if (el.dataset.forgestrong) { const k = el.dataset.forgestrong; form.strong = el.checked ? [...new Set([...form.strong, k])] : form.strong.filter((x) => x !== k); }
@@ -191,19 +195,11 @@ export function createForge({ api, goMake }) {
   async function click(b) {
     const d = b.dataset;
     if (d.forgeuse === 'make') { goMake(); return true; }
-    if (d.forgeuse === 'form') { document.getElementById('forge-form')?.scrollIntoView({ block: 'start' }); document.getElementById('forge-base')?.focus(); return true; }
+    if (d.forgeuse === 'form') { document.getElementById('forge-form')?.scrollIntoView({ block: 'start' }); document.getElementById('forge-brain')?.focus(); return true; }
     if ('forgeaddrung' in d) { const last = form.rungs.at(-1); form.rungs.push({ name: '', nickname: '', how: 'cover', keep: Math.max(8, Math.round((last.keep || 128) * 0.7)), keepFile: '' }); await recheck(); return 'draw'; }
     if (d.forgermrung) { form.rungs.splice(Number(d.forgermrung), 1); await recheck(); return 'draw'; }
-    if ('forgehf' in d || d.forgehfl) {
-      const x = 'forgehf' in d ? form.hf : form.hfLessons[Number(d.forgehfl)];
-      if (!x) return true;
-      const inp = document.getElementById('forgehf' in d ? 'forge-hf' : `forge-hfl-${d.forgehfl}`); if (inp) x.ref = inp.value;
-      x.busy = true;
-      try { x.info = await api('/api/lab/forge/hf', { ref: x.ref, kind: 'forgehf' in d ? 'model' : 'dataset' }); } catch (e) { x.info = { ok: false, error: e.message }; }
-      x.busy = false; await recheck(); return 'draw';
-    }
-    if ('forgehfladd' in d) { if (form.hfLessons.length < 4) form.hfLessons.push({ ref: '', info: null, busy: false }); return 'draw'; }
-    if (d.forgehflrm) { form.hfLessons.splice(Number(d.forgehflrm), 1); await recheck(); return 'draw'; }
+    if (d.src) { const x = srcOf(d.src); if (!x) return true; if (d.srcact === 'remove') { form.lessons.splice(Number(d.src.split('-').pop()), 1); } else await sourceEvent(b, x, look); await recheck(); return 'draw'; }
+    if ('forgelessonadd' in d) { if (form.lessons.length < 4) form.lessons.push(newSource('hf')); return 'draw'; }
     if ('forgeshow' in d) { showPlan = !showPlan; if (showPlan && !check) await recheck(); return 'draw'; }
     if ('forgesave' in d) { try { saved = (await api('/api/lab/forge/save', { form: sendForm() })).file; fmsg = ''; await load(); } catch (e) { fmsg = e.message; } return 'draw'; }
     if (d.forgebuy) { try { buy = await api('/api/lab/forge/card', { id: d.forgebuy }); } catch (e) { fmsg = e.message; buy = null; } return 'draw'; }
