@@ -4,6 +4,28 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.164
+
+Two new ways for Bob to work like the big agents: his own browser, and eyes on the screen. Both are off until you switch them on, and every step still shows a card.
+
+**New, and not tried on real hardware yet.** The window and the helper were built against the Electron and Windows pieces Bob already ships, but nobody has clicked through them on a real replicant matrix. If you try them, tell us what happened at github.com/MouseWurX/Bob/issues.
+
+### Use a browser (a new Hand)
+- Settings, Show advanced settings, Hands: **Use a browser**. Bob gets his own browser window, titled **Bob is browsing**. It is part of Bob, with its own cookies and sign-ins; your own browser is never touched or read.
+- Ask "open the Blender release notes and tell me what's new" or "type fox in the search box and press Enter". Bob reads a page as text plus a numbered list of its links, buttons and fields, then does one thing at a time: click a number, type into a field, press Enter, Tab, Esc or an arrow, scroll, go back, pick an option. Each action is a card first (unless "Let Bob work without asking" is on).
+- While **Don't send anything out** is on he only types into search boxes and never presses Send, Post, Submit, Buy, Pay or Upload, never fills other fields and never picks files. Switch the limit off to let him, still one card each. Password fields stay off-limits while that limit is on. His own pages, downloads, pop-ups and anything that isn't http(s) are always refused.
+- **Forget what Bob's browser knows** (Settings, Hands) clears the window's cookies, sign-ins and cache.
+- Works on Windows, Mac and Linux inside Bob's app. Bob for Android shows the cards; the window is on your replicant matrix.
+
+### Eyes checks (the Apps Hand and the browser)
+- With a vision brain in Equip Bob's **Seeing pictures** slot, Bob takes a picture of the window after a step that says what should happen and asks his eyes whether it did. The result says yes, no or unsure, with one line of what he saw; a no makes him look again instead of pressing on. No new download: any vision brain in that slot does.
+- He can also answer a question about how a window or page looks ("is there a red error banner?"), for canvases, games, 3D viewports and apps that don't name their buttons.
+- **Click by place:** in an app with no named controls, Bob can click at a spot in the picture he took. The card says the exact spot, the red "Bob is driving" bar shows, and Esc or the mouse still stops him. Never in browsers, email or chat apps while "Don't send anything out" is on.
+- **Bob checks his work with his eyes** (Settings, Hands, under Bob's browser and eyes; on) switches the check off if you'd rather save the second it takes.
+
+### Elsewhere
+- Help: "The Browser Hand", the eyes checks under "The Apps Hand", the Settings: Hands list, and the FAQ "Can Bob use a browser or my screen like the big agents?". The user guide has a Use a browser section.
+
 ## 1.5.158
 
 Long memory now works with Qwen3 and Qwen3 Coder brains too, if you switch it on.
