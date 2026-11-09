@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { choicesFor, pickedCtx, cleanBrainCtx, ctxGuide, bobsPick, ctxOn, SAFE_CTX, stretchOn, canStretch, stretchMax, yarnArgs, kvBytes, needBytes, roomBytes, ctxLabel } from '../src/model-ctx.js';
+import { choicesFor, pickedCtx, cleanBrainCtx, ctxGuide, bobsPick, ctxOn, SAFE_CTX, stretchOn, canStretch, stretchMax, stretchPlan, yarnArgs, kvBytes, needBytes, roomBytes, ctxLabel } from '../src/model-ctx.js';
 import { LlamaCpp } from '../src/llamacpp.js';
 import { ggufInfo } from '../src/gguf.js';
 import { Brain } from '../src/brain.js';
@@ -96,15 +96,36 @@ check('a stretched pick that fits is used', (await sfit({ ...scfg }, true)('q', 
 check('...one that won\'t fit loads at 256K', (await sfit({ ...scfg }, false)('q', 32768)) === 262144);
 check('...and a session size never stretches by itself', (await sfit({ brainCtxStretch: true }, true)('q', 1048576)) === 262144);
 
+// Qwen3 and Qwen3 Coder (the owner's ask, 2026-11-09), from Qwen's own model cards.
+const qwen3 = { arch: 'qwen3moe', ctxTrain: 40960, name: 'Qwen3 30B A3B' };
+const coder = { arch: 'qwen3moe', ctxTrain: 262144, name: 'Qwen3 Coder 30B A3B Instruct' };
+const q2507 = { arch: 'qwen3moe', ctxTrain: 262144, name: 'Qwen3 30B A3B Instruct 2507' };
+check('Qwen3 (made for 32K, the file says 40,960) stretches from 32,768 to 128K', JSON.stringify(stretchPlan(qwen3)) === JSON.stringify({ native: 32768, most: 131072 }) && stretchPlan({ arch: 'qwen3', ctxTrain: 32768 })?.most === 131072);
+check('Qwen3 Coder (256K) stretches to 1M', JSON.stringify(stretchPlan(coder)) === JSON.stringify({ native: 262144, most: 1048576 }));
+check('...but the 256K Qwen3 2507 updates don\'t (they reach 1M another way), nor Qwen2.5 or Gemma', stretchPlan(q2507) === null && stretchPlan({ arch: 'qwen2', ctxTrain: 32768 }) === null && stretchPlan({ arch: 'gemma3', ctxTrain: 131072 }) === null);
+check('a Qwen3 menu gets 64K and 128K, stretched', JSON.stringify(choicesFor(40960, { stretch: 131072 })) === JSON.stringify([8192, 16384, 32768, 65536, 131072]) && choicesFor(40960).at(-1) === 32768);
+check('a stretched 64K pick counts for Qwen3 with long memory on, never with it off', pickedCtx({ brainCtxOn: true, brainCtxStretch: true, brainCtx: { q3: 65536 } }, 'q3', 40960, { stretch: 131072 }) === 65536 && pickedCtx({ brainCtxOn: true, brainCtx: { q3: 65536 } }, 'q3', 40960, { stretch: 131072 }) === null);
+{
+  const d3 = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-ctx-'));
+  const f3 = path.join(d3, 'q3.gguf');
+  const kvs = [[ 'general.architecture', 8, str('qwen3moe') ], [ 'general.name', 8, str('Qwen3 30B A3B') ], [ 'qwen3moe.context_length', 4, u32(40960) ], [ 'qwen3moe.block_count', 4, u32(48) ], [ 'qwen3moe.attention.head_count_kv', 4, u32(4) ], [ 'qwen3moe.attention.key_length', 4, u32(128) ]];
+  fs.writeFileSync(f3, Buffer.concat([Buffer.from('GGUF'), u32(3), u64(0), u64(kvs.length), ...kvs.flatMap(([k, t, v]) => [str(k), u32(t), v])]));
+  const e = Object.create(LlamaCpp.prototype); e.cfg = { llamacpp: {}, brainCtxStretch: true };
+  check('the engine stretches Qwen3 from 32,768 (not 40,960): 64K is 2x, 128K is 4x', e.stretchArgs(f3, 65536).join(' ') === '--rope-scaling yarn --rope-scale 2 --yarn-orig-ctx 32768' && e.stretchArgs(f3, 131072)[3] === '4');
+  check('...and leaves Qwen3 alone at 32K', e.stretchArgs(f3, 32768).length === 0);
+  check('every layer of a plain brain keeps a memory (no hybrid interval in the file)', ggufInfo(f3)?.shape?.memLayers === 48);
+  fs.rmSync(d3, { recursive: true, force: true });
+}
+
 const ids = HELP.map((h) => h.id);
 const brains = HELP.find((h) => h.id === 'settings-brains');
 check('Help names the switch word for word', /Pick how much each brain keeps in mind/.test(brains.html));
 check('the FAQ explains it in Bob\'s voice', ids.includes('faq-brain-ctx') && /\bI\b/.test(HELP.find((h) => h.id === 'faq-brain-ctx').html));
 check('the glossary says Bob never goes past a brain\'s limit', /never ask a brain for more/.test(HELP.find((h) => h.id === 'glossary').html));
 check('Help explains long memory in Bob\'s voice, with the catch', ids.includes('faq-long-memory') && /short chats get a little worse/i.test(HELP.find((h) => h.id === 'faq-long-memory').html) && /\bI\b/.test(HELP.find((h) => h.id === 'faq-long-memory').html));
-check('Help names the long memory switch word for word', /Long memory: let Qwen3.5 and 3.6 brains stretch past 256K/.test(brains.html));
+check('Help names the long memory switch word for word', /Long memory: let Qwen brains stretch past what they were made for/.test(brains.html));
 const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
 check('the switch in Settings uses the same words', cellar.includes('<strong>Pick how much each brain keeps in mind</strong>'));
-check('the long memory switch in Settings uses the same words', cellar.includes('<strong>Long memory: let Qwen3.5 and 3.6 brains stretch past 256K</strong>'));
+check('the long memory switch in Settings uses the same words', cellar.includes('<strong>Long memory: let Qwen brains stretch past what they were made for</strong>'));
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

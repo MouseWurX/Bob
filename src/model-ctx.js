@@ -16,13 +16,26 @@ export const stretchOn = (cfg) => cfg?.brainCtxStretch === true;
 export const STRETCH_CHOICES = [524288, 1048576];
 export const ALL_CTX = [...CTX_CHOICES, ...STRETCH_CHOICES];
 export const STRETCH_MOST = 4; // the guide's own example goes to 4x (about 1M); never further
-// Brains the guide covers: Qwen3.5/3.6 (qwen35, qwen35moe in the file), made for 256K. Bob's ladder (Riker, Bill,
-// Bobert and the smaller ones) are all cut from Qwen3.6 35B-A3B, so they count.
-export function canStretch(info) {
-  return Boolean(info && /^qwen35/i.test(String(info.arch || '')) && info.ctxTrain === 262144);
+// Which brains can stretch, and from what, from Qwen's own model cards (the owner's ask, 2026-11-09: Qwen3 and
+// Qwen3 Coder too). { native, most } or null:
+// - Qwen3.5/3.6 (qwen35, qwen35moe), made for 256K: the guide above, to 1M. Bob's ladder (Riker, Bill, Bobert and
+//   the smaller ones) are cut from Qwen3.6 35B-A3B, so they count.
+// - Qwen3 Coder (qwen3moe/qwen3 named Coder), made for 256K: its card says up to 1M with YaRN.
+// - Qwen3 (qwen3, qwen3moe), made for 32K (the file says 40,960: 32K plus room for the reply): its card says YaRN
+//   factor 4, from 32,768 to 131,072. The 2507 updates made for 256K reach 1M another way (not YaRN), so they don't.
+export function stretchPlan(info) {
+  if (!info) return null;
+  const arch = String(info.arch || '').toLowerCase();
+  if (/^qwen35/.test(arch)) return info.ctxTrain === 262144 ? { native: 262144, most: 1048576 } : null;
+  if (arch === 'qwen3' || arch === 'qwen3moe') {
+    if (info.ctxTrain === 262144 && /coder/i.test(String(info.name || ''))) return { native: 262144, most: 1048576 };
+    if (info.ctxTrain === 32768 || info.ctxTrain === 40960) return { native: 32768, most: 131072 };
+  }
+  return null;
 }
+export const canStretch = (info) => Boolean(stretchPlan(info));
 // The most a brain can be stretched to (null: it can't).
-export const stretchMax = (info) => (canStretch(info) ? info.ctxTrain * STRETCH_MOST : null);
+export const stretchMax = (info) => stretchPlan(info)?.most || null;
 // What Bob's engine is started with for a stretched size, or nothing when the size is within what it was made for.
 export function yarnArgs(ctx, native) {
   if (!(native > 0) || !(ctx > native)) return [];
@@ -62,7 +75,7 @@ export const GAMING_CTX = DEFAULT_CTX.light;
 // stretch: the most it can be stretched to (Long memory on), which adds the stretched sizes.
 export function choicesFor(max, { stretch = null } = {}) {
   const top = Number(max) > 0 ? Number(max) : SAFE_CTX;
-  const long = Number(stretch) > top ? STRETCH_CHOICES.filter((v) => v > top && v <= stretch) : [];
+  const long = Number(stretch) > top ? ALL_CTX.filter((v) => v > top && v <= stretch) : [];
   return [...CTX_CHOICES.filter((v) => v <= top), ...long];
 }
 
@@ -72,8 +85,9 @@ export function pickedCtx(cfg, model, max = null, { stretch = null } = {}) {
   if (!ctxOn(cfg) || !model) return null;
   const v = cfg.brainCtx?.[model];
   if (!ALL_CTX.includes(v)) return null;
-  if (STRETCH_CHOICES.includes(v)) return stretchOn(cfg) && Number(stretch) >= v && (!max || v > max) ? v : null;
-  return max && v > max ? null : v;
+  // Past what the brain was made for: only stretched, with Long memory on and a brain that goes that far.
+  if (max ? v > max : STRETCH_CHOICES.includes(v)) return stretchOn(cfg) && max && Number(stretch) >= v ? v : null;
+  return v;
 }
 
 // What Bob uses for a brain when nothing is picked by hand (for the menu's first line).

@@ -16,7 +16,7 @@ import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } 
 import { exeName } from './platform.js';
 import { Embedder } from './embedder.js';
 import { ggufInfo } from './gguf.js';
-import { stretchOn, stretchMax as stretchMost, yarnArgs, needBytes, roomBytes } from './model-ctx.js';
+import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes } from './model-ctx.js';
 
 // 1.5.19: the context a brain gets when nothing else picks one. 32K fits a 26B brain on a 16 GB card.
 
@@ -452,7 +452,9 @@ export class LlamaCpp {
     if (!stretchOn(this.cfg) || (this.lc.args || []).includes('--rope-scaling')) return [];
     let info = null;
     try { info = ggufInfo(gguf); } catch {}
-    return stretchMost(info) && ctx <= stretchMost(info) ? yarnArgs(ctx, info.ctxTrain) : [];
+    const plan = stretchPlan(info);
+    // Only past what the file says it was made for (a Qwen3 at 32K stays as it is), stretched from Qwen's own base.
+    return plan && ctx > info.ctxTrain && ctx <= plan.most ? yarnArgs(ctx, plan.native) : [];
   }
 
   // 1.5.32: a brain file with no chat template of its own gets its family's (model-family.js), so tool calls keep
