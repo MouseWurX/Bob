@@ -2,15 +2,18 @@
 // Forge's past runs, and a form that writes a Forge plan. Its own module, like the Playground: the Lab page only
 // places it and hands over its events. Nothing here starts a rental.
 import { esc } from './rich.js';
+import { PATH_GROUPS, BUNDLES, PERSONALITY, TEACH } from './lab-thinking-paths.js'; // 1.5.161
 
 const WHERE = { here: 'Here, free', rented: 'Rented card', both: 'Here, or a rented card' };
 
 export function createForge({ api, goMake }) {
-  let fv = null, loading = false, fmsg = '', check = null, showPlan = false, saved = '';
-  const form = { base: '', run: '', rungs: [{ name: '', nickname: '', how: 'number', keep: 128, keepFile: '' }], strong: [], quants: ['Q4_K_M'], heal: { experts: 'lora', epochs: 1 }, hours_max: 0, dollars_max: 0, note: '' };
+  let fv = null, loading = false, fmsg = '', check = null, showPlan = false, saved = '', buy = null, stopAsk = false;
+  const form = { base: '', run: '', rungs: [{ name: '', nickname: '', how: 'number', keep: 128, keepFile: '' }], strong: [], quants: ['Q4_K_M'], heal: { experts: 'lora', epochs: 1, learn: 'answer', thinking_weight: 0.5, odds_cover: 'answer' }, teach: {}, thinking: { mode: 'blend', shares: {}, own: '', ownShare: 0, personality: { alignment: {}, rules: {}, mood: {} } }, hours_max: 0, dollars_max: 0, note: '' };
 
   async function load() { loading = true; try { fv = await api('/api/lab/forge'); } catch (e) { fmsg = e.message; } loading = false; }
-  async function recheck() { check = null; saved = ''; if (!fv?.found) return; try { check = await api('/api/lab/forge/plan', { form }); } catch (e) { fmsg = e.message; } }
+  // The form's thinking state as the server reads it (paths with a share above 0 only).
+  const sendForm = () => ({ ...form, thinking: { mode: form.thinking.mode, paths: Object.entries(form.thinking.shares).filter(([, v]) => v > 0).map(([name, share]) => ({ name, share })), own: form.thinking.own, ownShare: form.thinking.ownShare, personality: form.thinking.personality } });
+  async function recheck() { check = null; saved = ''; if (!fv?.found) return; try { check = await api('/api/lab/forge/plan', { form: sendForm() }); } catch (e) { fmsg = e.message; } }
 
   const card = (m) => `<li class="forge-card${m.ready ? '' : ' dim'}"><h4 id="forge-m-${m.id}">${esc(m.title)}</h4>
     <p class="muted"><span class="forge-where">${esc(WHERE[m.where] || m.where)}</span></p>
@@ -46,6 +49,30 @@ export function createForge({ api, goMake }) {
     </fieldset>`;
   }
 
+  // 1.5.161 What to teach, and the way of thinking. Every share is a number box (0 means off), so it works the same
+  // with a keyboard, a screen reader and a phone.
+  const share = (id, label, v, hint = '') => `<label class="forge-share"><input type="number" min="0" max="100" step="5" id="${id}" value="${v || 0}"> <span>${esc(label)}${hint ? `<br><span class="muted">${esc(hint)}</span>` : ''}</span></label>`;
+  function thinkingHtml() {
+    const t = form.thinking, picked = Object.values(t.shares).filter((v) => v > 0).length;
+    const teach = `<fieldset><legend>What to teach (shares of the lessons)</legend>${TEACH.map(([id, l, h]) => share(`forge-teach-${id}`, l, form.teach[id], h)).join('')}
+      <p class="muted">Thinking and Voice are each out of 100. Answers, tools, coding and writing share the lessons between them. 0 leaves it out.</p></fieldset>`;
+    const learn = `<fieldset><legend>Learn from</legend>${[['answer', 'The answers', 'How it has always worked.'], ['thinking', 'The thinking', 'The steps before the answer.'], ['both', 'Both', 'The thinking counts half as much by default, so the answers aren\'t drowned out.']].map(([v, l, h]) => `<label class="lab-opt"><input type="radio" name="forge-learn" value="${v}" ${form.heal.learn === v ? 'checked' : ''}> <span><strong>${esc(l)}</strong><br><span class="muted">${esc(h)}</span></span></label>`).join('')}
+      ${form.heal.learn !== 'answer' ? `<label class="forge-num" for="forge-tw">How much the thinking counts <input id="forge-tw" type="number" min="0.05" max="2" step="0.05" value="${form.heal.thinking_weight}"></label>` : ''}
+      <label class="lab-opt"><input type="checkbox" id="forge-oddsboth" ${form.heal.odds_cover === 'both' ? 'checked' : ''}> <span><strong>Learn how sure the teacher was during the thinking too</strong><br><span class="muted">Teaches far more, but the teacher's scoring takes much longer and starts over.</span></span></label></fieldset>`;
+    if (!(form.teach.thinking > 0)) return teach + learn;
+    const groups = PATH_GROUPS.map((g, gi) => { const n = g.paths.filter((p) => t.shares[p.name] > 0).length; return `<details ${n ? 'open' : ''}><summary>${esc(g.title)}${n ? ` (${n} picked)` : ''}</summary>${g.paths.map((p, i) => share(`forge-path-${gi}-${i}`, `${p.name}${p.kind === 'switch' ? ' (best as a switch)' : ''}`, t.shares[p.name], p.style)).join('')}</details>`; }).join('');
+    const row = (key, legend) => `<fieldset><legend>${esc(legend)}</legend>${PERSONALITY[key].map(([id, l, h]) => share(`forge-pers-${key}-${id}`, l, t.personality[key][id], h)).join('')}</fieldset>`;
+    return `${teach}<section class="forge-thinking" aria-labelledby="forge-think-h"><h4 id="forge-think-h">The way of thinking</h4>
+      <label>Start from a set <select id="forge-bundle"><option value="">(none)</option>${BUNDLES.map((b, i) => `<option value="${i}">${esc(b.name)}${b.switch ? ' (as a switch)' : ''}</option>`).join('')}</select></label>
+      <div role="radiogroup" aria-label="Blend or switch">${[['blend', 'Blend', 'One mixed habit, always on.'], ['switch', 'Switch', 'Each path taught on its own, picked at chat time ("Think: critical").'], ['both', 'Both', 'A blended habit, and each path on call.']].map(([v, l, h]) => `<label class="lab-opt"><input type="radio" name="forge-mode" value="${v}" ${t.mode === v ? 'checked' : ''}> <span><strong>${esc(l)}</strong><br><span class="muted">${esc(h)}</span></span></label>`).join('')}</div>
+      <p class="muted">${picked} thought path${picked === 1 ? '' : 's'} picked. Give each a share; 0 leaves it out.</p>
+      ${groups}
+      <label class="forge-own">Your own path <input id="forge-own" maxlength="200" value="${esc(t.own)}" placeholder="One line: how should it think?"></label> ${share('forge-ownshare', 'Share', t.ownShare)}
+      <h4>Personality</h4><p class="muted">Tone and character, crossed with the paths above.</p>
+      ${row('alignment', 'Alignment')}${row('rules', 'Rules')}${row('mood', 'Mood (best as a switch)')}
+    </section>${learn}`;
+  }
+
   function formHtml() {
     if (!fv.found) return '';
     return `<section class="lab-compare" id="forge-form" aria-labelledby="forge-form-h"><h3 id="forge-form-h">New Forge run</h3>
@@ -57,6 +84,7 @@ export function createForge({ api, goMake }) {
       ${form.rungs.length < 4 ? '<button type="button" class="link" data-forgeaddrung>Add a brain made from the last one</button>' : ''}
       ${fv.skills.length ? `<fieldset><legend>Protect these skills most (whole run)</legend>${fv.skills.map((k) => `<label class="lab-opt"><input type="checkbox" data-forgestrong="${esc(k)}" ${form.strong.includes(k) ? 'checked' : ''}> <span>${esc(k)}</span></label>`).join('')}</fieldset>` : ''}
       <fieldset><legend>Running files</legend>${[['Q4_K_M', 'Q4 (recommended)'], ['Q3_K_M', 'Q3 (for 8 GB or less)'], ['Q5_K_M', 'Q5'], ['Q6_K', 'Q6']].map(([v, l]) => `<label class="lab-opt"><input type="checkbox" data-forgequant="${v}" ${form.quants.includes(v) ? 'checked' : ''}> <span>${esc(l)}</span></label>`).join('')}</fieldset>
+      ${thinkingHtml()}
       <fieldset><legend>Teaching back</legend>
         ${[['lora', 'Light (recommended)', 'Teaches small add-ons to every layer and the experts.'], ['full', 'Full', 'Teaches every weight. Small brains only.'], ['frozen', 'Experts left alone', 'Only the rest of the brain is taught.']].map(([v, l, h]) => `<label class="lab-opt"><input type="radio" name="forge-experts" value="${v}" ${form.heal.experts === v ? 'checked' : ''}> <span><strong>${esc(l)}</strong><br><span class="muted">${esc(h)}</span></span></label>`).join('')}
         ${num('forge-epochs', 'Passes over the lessons', form.heal.epochs, 0.25, 3, 0.25, 'One full pass is the rule. Bob sets each brain\'s time limit a third above the estimate, so a pass is never cut short.')}
@@ -69,9 +97,26 @@ export function createForge({ api, goMake }) {
       <div class="row"><button type="button" class="get" data-forgesave ${check && !check.problems.length ? '' : 'disabled'}>Save the plan</button><button type="button" class="link" data-forgeshow aria-expanded="${showPlan}">Show the plan</button></div>
       ${saved ? `<p class="muted" role="status">Saved as ${esc(saved)} in the Lab's forge-plans folder.</p>` : ''}
       ${showPlan ? `<div class="lab-recipe"><pre tabindex="0">${esc(check?.text || 'Choose a Forge plan to start from first.')}</pre></div>` : ''}
-      <div class="row"><button type="button" class="get" disabled aria-describedby="forge-start-h">Start on a rented card</button></div>
-      <p class="muted" id="forge-start-h">Coming in the next drop: the cost and the cap on a card you press, and the run's progress here. Bob never starts a rental by himself.</p>
+      ${startHtml()}
     </section>`;
+  }
+
+  // Slice C: start a saved plan on a rented card. The switch is off until the owner turns it on; every run needs a
+  // press on the purchase card, which shows the plan's own caps and brains, read back from the saved file.
+  function startHtml() {
+    const live = fv.live;
+    const sw = `<label class="lab-opt"><input type="checkbox" id="forge-allow" ${fv.allowed ? 'checked' : ''}> <span><strong>Let the Lab start Forge runs</strong><br><span class="muted">Off unless you turn it on. Each run still needs your press on its purchase card, and costs money by the hour on the rental service.</span></span></label>`;
+    const runs = fv.saved?.length ? `<fieldset><legend>Your saved plans</legend>${fv.saved.map((id) => `<div class="row"><span>${esc(id)}</span> <button type="button" class="link" data-forgebuy="${esc(id)}" ${fv.allowed && !live?.running ? '' : 'disabled'}>Start on a rented card…</button></div>`).join('')}</fieldset>` : '<p class="muted">Save a plan above, and it shows here to start.</p>';
+    const card = buy ? `<div class="setup-offer forge-buy" role="alertdialog" aria-labelledby="forge-buy-h"><strong id="forge-buy-h">Rent a graphics card for ${esc(buy.id)}?</strong>
+      <ul>${buy.brains.map((b) => `<li>${esc(b.name)}${b.nickname ? ` (${esc(b.nickname)})` : ''}: ${esc(String(b.keep))} experts per layer, up to ${b.hours} hours of teaching back</li>`).join('')}</ul>
+      <p>Running files: ${esc(String(buy.quants).split(",").map((q) => q.slice(0, 2)).join(", "))}. Cards it asks for: ${esc(buy.cards.join(', ') || 'the Forge\'s usual list')}.${buy.volume ? ` It keeps a ${buy.volume} GB drive on the service between runs, a small monthly charge until it's deleted.` : ''}</p>
+      <p><strong>Caps: ${buy.hours} hours or $${buy.dollars}, whichever comes first.</strong> The card shuts itself down at the cap even if this replicant matrix is switched off. The service's bill is the real number.</p>
+      ${buy.problems.length ? `<ul class="error">${buy.problems.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+      <div class="row"><button type="button" class="get" data-forgego ${buy.problems.length ? 'disabled' : ''}>Rent it and start (up to $${buy.dollars})</button><button type="button" class="link" data-forgenobuy>Not now</button></div></div>` : '';
+    const liveHtml = live ? `<div class="lab-check" role="status"><p><strong>${live.running ? 'Running' : 'Finished or stopped'}: ${esc(live.plan)}</strong> <span class="muted">· caps ${live.hours} hours, $${live.dollars}</span></p><pre tabindex="0">${esc(live.tail.join('\n'))}</pre>
+      <div class="row"><button type="button" class="link" data-forgerefresh>Refresh</button>${live.running ? '<button type="button" class="link" data-forgestop>Stop the run</button>' : ''}</div>
+      ${stopAsk ? '<div class="setup-offer" role="alert"><strong>Stop the run and delete its rented card for good?</strong><span>Whatever has already come home stays. Anything still on the card is lost.</span><div class="row"><button type="button" class="get" data-forgestopgo>Stop and delete it</button><button type="button" class="link" data-forgestopno>Keep it running</button></div></div>' : ''}</div>` : '';
+    return `<section aria-labelledby="forge-start-h2"><h3 id="forge-start-h2">Start a run</h3>${sw}${fv.hasKey ? '' : '<p class="muted">The rental service\'s key isn\'t set. Settings > Rented brains says how to add it; it stays in your environment, never in Bob\'s files.</p>'}${runs}${card}${liveHtml}</section>`;
   }
 
   function html() {
@@ -90,12 +135,23 @@ export function createForge({ api, goMake }) {
   async function change(el) {
     if (!el.closest?.('#lab-page-forge')) return false;
     fmsg = '';
+    if (el.id === 'forge-allow') { try { fv.allowed = (await api('/api/lab/forge/allow', { on: el.checked })).allowed; } catch (e) { fmsg = e.message; } return 'draw'; }
     if (el.id === 'forge-base') form.base = el.value;
     else if (el.id === 'forge-run') form.run = el.value;
     else if (el.dataset.rung !== undefined) { const r = form.rungs[Number(el.dataset.rung)]; if (r) r[el.dataset.f] = el.value; }
     else if (el.id?.startsWith('forge-keep-')) { const r = form.rungs[Number(el.id.slice(11))]; if (r) r.keep = Number(el.value); }
     else if (el.dataset.forgestrong) { const k = el.dataset.forgestrong; form.strong = el.checked ? [...new Set([...form.strong, k])] : form.strong.filter((x) => x !== k); }
     else if (el.dataset.forgequant) { const k = el.dataset.forgequant; form.quants = el.checked ? [...new Set([...form.quants, k])] : form.quants.filter((x) => x !== k); }
+    else if (el.id?.startsWith('forge-teach-')) form.teach[el.id.slice(12)] = Number(el.value) || 0;
+    else if (el.id?.startsWith('forge-path-')) { const [gi, i] = el.id.slice(11).split('-').map(Number); const pth = PATH_GROUPS[gi]?.paths[i]; if (pth) form.thinking.shares[pth.name] = Number(el.value) || 0; }
+    else if (el.id?.startsWith('forge-pers-')) { const [, , key, id] = el.id.split('-'); if (form.thinking.personality[key]) form.thinking.personality[key][id] = Number(el.value) || 0; }
+    else if (el.id === 'forge-own') form.thinking.own = el.value;
+    else if (el.id === 'forge-ownshare') form.thinking.ownShare = Number(el.value) || 0;
+    else if (el.name === 'forge-mode') form.thinking.mode = el.value;
+    else if (el.id === 'forge-bundle') { const b = BUNDLES[Number(el.value)]; if (b) { form.thinking.shares = Object.fromEntries(b.shares); if (b.switch) form.thinking.mode = 'switch'; if (b.mood) form.thinking.personality.mood = { [b.mood.toLowerCase()]: 100 }; if (!(form.teach.thinking > 0)) form.teach.thinking = 50; } }
+    else if (el.name === 'forge-learn') form.heal.learn = el.value;
+    else if (el.id === 'forge-tw') form.heal.thinking_weight = Number(el.value);
+    else if (el.id === 'forge-oddsboth') form.heal.odds_cover = el.checked ? 'both' : 'answer';
     else if (el.name === 'forge-experts') form.heal.experts = el.value;
     else if (el.id === 'forge-epochs') form.heal.epochs = Number(el.value);
     else if (el.id === 'forge-hours') form.hours_max = Number(el.value);
@@ -111,7 +167,14 @@ export function createForge({ api, goMake }) {
     if ('forgeaddrung' in d) { const last = form.rungs.at(-1); form.rungs.push({ name: '', nickname: '', how: 'cover', keep: Math.max(8, Math.round((last.keep || 128) * 0.7)), keepFile: '' }); await recheck(); return 'draw'; }
     if (d.forgermrung) { form.rungs.splice(Number(d.forgermrung), 1); await recheck(); return 'draw'; }
     if ('forgeshow' in d) { showPlan = !showPlan; if (showPlan && !check) await recheck(); return 'draw'; }
-    if ('forgesave' in d) { try { saved = (await api('/api/lab/forge/save', { form })).file; fmsg = ''; } catch (e) { fmsg = e.message; } return 'draw'; }
+    if ('forgesave' in d) { try { saved = (await api('/api/lab/forge/save', { form: sendForm() })).file; fmsg = ''; await load(); } catch (e) { fmsg = e.message; } return 'draw'; }
+    if (d.forgebuy) { try { buy = await api('/api/lab/forge/card', { id: d.forgebuy }); } catch (e) { fmsg = e.message; buy = null; } return 'draw'; }
+    if ('forgenobuy' in d) { buy = null; return 'draw'; }
+    if ('forgego' in d && buy) { try { await api('/api/lab/forge/start', { id: buy.id, hours: buy.hours, dollars: buy.dollars }); buy = null; } catch (e) { fmsg = e.message; } await load(); return 'draw'; }
+    if ('forgerefresh' in d) { await load(); return 'draw'; }
+    if ('forgestop' in d) { stopAsk = true; return 'draw'; }
+    if ('forgestopno' in d) { stopAsk = false; return 'draw'; }
+    if ('forgestopgo' in d) { stopAsk = false; try { await api('/api/lab/forge/stop', {}); } catch (e) { fmsg = e.message; } await load(); return 'draw'; }
     return false;
   }
   return { html, change, click, reload: async () => { await load(); } };

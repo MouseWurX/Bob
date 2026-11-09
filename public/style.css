@@ -1485,3 +1485,8 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 #lab-device { max-width: 100%; }
 .lab-estimate .lab-report, .lab-usage .lab-report { overflow-x: auto; display: block; max-width: 100%; }
 .lab-usage:focus { outline: 2px solid var(--line); outline-offset: 2px; }
+/* 1.5.161 Forge form: shares for what to teach and the thought paths */
+.forge-share { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0; }
+.forge-share input[type=number] { width: 4.5em; flex: none; }
+.forge-thinking details { margin: 4px 0; }
+.forge-own input { width: min(100%, 28em); }
