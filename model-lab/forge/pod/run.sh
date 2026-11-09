@@ -420,6 +420,17 @@ PY
   status done "rebuild finished: $RB_OK of $NR Bobs on Hugging Face"; exit 0
 fi
 
+# --- teach-it (9 Nov): plan.odds false with no rungs = an adapter-only fine-tune of the full teacher (train_teacher above) and nothing
+# else. Without this, "no rungs" is the lessons-and-odds run type and the fresh brain would spend hours scoring every lesson for odds
+# nobody asked for. The taught Bob (his GGUF files + adapter) is the whole result; he has come back or gone up in keep_bob already.
+if [ "$(plan ".get('odds','')")" = "False" ] && [ "$(plan "['rungs'].__len__()")" = "0" ]; then
+  echo "odds: false and no rungs: no teacher pass (a teach-it run; the taught Bob is the result)"
+  publish_tested
+  if [ "$S" != "$W" ]; then RT=$S/runs/$(plan ".get('run','run')")-$(date -u +%Y%m%dT%H%M); mkdir -p $RT; cp $OUT/*.log $OUT/*.json $OUT/*.txt $RT/ 2>/dev/null; for d in $OUT/*/; do [ -d "$d" ] && { mkdir -p $RT/$(basename $d); cp $d/*.json $d/*.md $d/*.txt $RT/$(basename $d)/ 2>/dev/null; }; done; echo "run files kept on the volume at $RT"; fi
+  rm -f $IN/hf-token
+  status done "teach-it finished: ${TNAME:-the taught Bob} is ready"; exit 0
+fi
+
 # --- teacher pass (once per lesson set, build 15): what the full Qwen thinks at every answer word (loaded in this process, no server) ---
 # The pass takes hours, so its two files are kept: on the network volume under teacher-cache/<key>/ (any later pod in this
 # data centre skips the pass), and on the PC (out/teacher/<key>/, downloaded as soon as they exist; a later pod with a fresh
