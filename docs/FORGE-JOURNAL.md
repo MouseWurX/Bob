@@ -192,7 +192,7 @@ The owner named the uncensored route **Thoth** and set how it would be made, if 
 |---|---|
 | Bobs made | 5: Riker v1, Bill v1, Riker v2, Bill v2 (all four retired and deleted 8 Nov), and Riker (28Bob) |
 | Bobs that are the current plan | Riker (28Bob), kept; Bobert (35Bob) and Bill (20Bob) next |
-| Failed paid attempts | 4 (three on 4 to 5 Nov, one on 6 Nov) plus the stopped Bill step of 6 to 7 Nov |
+| Failed paid attempts | 5 (three on 4 to 5 Nov, one on 6 Nov, one on 9 Nov) plus the stopped Bill step of 6 to 7 Nov |
 | Outside lesson sets dropped for quality | 1 of 5 (GLM-5.1 agent traces, 8 Nov) |
 | Lessons written | about 9,500 across 17 sets (Bob's own); plus 9,059 taken from other teachers' published sets after a quality pass |
 | Card time | on the costs page |
@@ -221,3 +221,9 @@ The owner named the uncensored route **Thoth** and set how it would be made, if 
 - **The odds, time-boxed.** The teacher pass — the full model scoring the lessons so the smaller Bobs can learn from Bobert's judgments — is held to a six-hour budget. It began slowly and then sped up severalfold as it warmed; in its window it scored 22,000 of the 41,727 pieces (about 53 percent, none skipped, no errors) and saved cleanly. That is the pass doing what it is told, not being cut short. The scores went up to a private dataset, [MouseWurX/bob-odds](https://huggingface.co/datasets/MouseWurX/bob-odds). The trained Bobert and the scores are also kept on the rented network drive for the next run.
 - **What it cost.** The whole run — the lessons, the 10.3-hour training, the exports and the six-hour odds — came to $108.75 of card time, under its cap. The card deleted itself at the end; nothing was left running.
 - **Still to come:** Bobert tested at home, then 20Bob Bill cut from Bobert and healed in his own run, then the two with Riker benchmarked side by side on one card.
+
+### 9 November, later: Riker and Bobert on Hugging Face
+
+- **Published from a card, not trained.** A new Forge run type puts a finished Bob back together from the stock model, his keep list and his adapter (a merge of about fifteen minutes on an H200, no training), exports Q4 and Q3, and uploads everything to Hugging Face: the GGUF files, the brain cards, the adapter, the keep list, a README, and the full-size weights. Riker (28Bob), tested at home and kept, is public: [MouseWurX/28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker). Bobert (35Bob) went up private and stays so until he passes his home test; his full-size weights did not upload with the rest, which is being looked at. The run came to $5.44 and the card deleted itself.
+- **A false start, and two rules made hard.** The first try could not get a card in the data centre that holds the drive. The renter then did what it was built to do for a training run, which was wrong for this one: it made empty drives in two other data centres and took a card in one of them, where Bobert's adapter is not, and a shell ordering mistake (a helper used before it was defined) stopped it in its first minute. $0.40 lost; the two empty drives were deleted the same hour. Now a rebuild run never makes a drive, a plan can pin the data centres it may rent in, a missing input stops the run before anything else is waited for, and a drive made by mistake can be deleted from the Forge command line.
+- **Still to come:** Bobert's full-size weights, his home test, then Bill.
