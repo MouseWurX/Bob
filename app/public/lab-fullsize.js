@@ -49,6 +49,6 @@ export function fullSizeWhyNot(b, maxGB = 9) {
   const f = b?.facts;
   if (!f) return b?.error || 'Bob couldn\'t read its file.';
   if (!f.fullSize) return `a running file already (${f.fileType || 'quantized'}), not the full-size copy`;
-  if (f.sizeGB > maxGB) return `${f.sizeGB} GB full size, and this way takes up to ${maxGB} GB`;
+  if (f.sizeGB > maxGB) return `${f.sizeGB} GB full size, and the ladder takes brains up to ${maxGB} GB`;
   return '';
 }
