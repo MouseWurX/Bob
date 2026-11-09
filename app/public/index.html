@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bob</title>
+  <meta name="theme-color" content="#2b1d14">
+  <link rel="icon" href="/icons/bob-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/icons/bob-192.png">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/mind.css">
+</head>
+<body>
+  <div id="bubbles" class="bubbles" aria-hidden="true"><div id="bobBubble" class="say-bubble bob-say" hidden><span class="bubble-text"></span><button type="button" class="bubble-x" tabindex="-1" title="Close (Esc)">✕</button></div><div id="catBubble" class="say-bubble cat-say" hidden><span class="bubble-text"></span><button type="button" class="bubble-x" tabindex="-1" title="Close (Esc)">✕</button></div></div>
+  <div class="app">
+  <nav id="side" class="side" aria-label="Bob's menu">
+    <div class="side-top">
+      <div class="bob-wrap"><canvas id="bob" width="56" height="56" aria-label="Bob"></canvas><span id="cat" class="cat" aria-hidden="true">🐈</span><span id="bobProp" class="bob-prop" aria-hidden="true" hidden></span></div>
+      <div class="who"><div class="name">Bob</div><div id="status" class="status" role="status">Getting the fire going...</div></div>
+      <button id="foldLeft" type="button" class="fold" title="Fold the menu (Ctrl+B)" aria-label="Fold the menu" aria-expanded="true"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 6l-6 6 6 6"/></svg></button>
+    </div>
+    <button id="newchat" type="button" class="nav-new" title="Start a new conversation" aria-label="New chat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg><span class="lbl">New chat</span><span class="short" aria-hidden="true">New</span></button>
+    <button id="chatBtn" type="button" class="nav-item on" title="Back to the chat" aria-label="Chat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 5h16v11H9l-5 4z"/></svg><span class="lbl">Chat</span><span class="short" aria-hidden="true">Chat</span></button>
+    <button id="tasksBtn" type="button" class="nav-item" title="Tasks: what Bob is doing, what is waiting, what is done" aria-label="Tasks"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5 2.5-2.5"/><circle cx="5" cy="18" r="1.3"/></svg><span class="lbl">Tasks</span><span class="short" aria-hidden="true">Tasks</span><span class="badge" hidden></span></button>
+    <button id="dlBtn" type="button" class="nav-item" title="Downloads: pause, resume, reorder" aria-label="Downloads"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/></svg><span class="lbl">Downloads</span><span class="short" aria-hidden="true">Downloads</span><span class="badge" hidden></span></button>
+    <button id="shelfBtn" type="button" class="nav-item" title="References: characters, scenes, styles" aria-label="References"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg><span class="lbl">References</span><span class="short" aria-hidden="true">Refs</span></button>
+    <button id="madeBtn" type="button" class="nav-item" title="Made by Bob: pictures, clips, sounds and files he made, in a panel beside the chat" aria-label="Made by Bob" aria-expanded="false" aria-controls="viewer"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/><path d="M6 9h5M6 13h5"/></svg><span class="lbl">Made by Bob</span><span class="short" aria-hidden="true">Made</span></button>
+    <button id="topicsBtn" type="button" class="nav-item" title="Topics: what you've talked about, by project, with past chats and search" aria-label="Topics"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h10l6 6v10H4z"/><path d="M8 10h6M8 14h8M8 18h5"/></svg><span class="lbl">Topics</span><span class="short" aria-hidden="true">Topics</span></button>
+    <button id="tidyBtn" type="button" class="nav-item" title="Tidy up: old chats, pictures and logs Bob can clear away (asks first)" aria-label="Tidy up"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3l-2 8"/><path d="M6 13h12l-1 8H7z"/><path d="M9 17v2M12 17v2M15 17v2"/></svg><span class="lbl">Tidy up</span><span class="short" aria-hidden="true">Tidy</span><span class="badge" hidden></span></button>
+    <button id="adventureBtn" type="button" class="nav-item" title="Adventure: Bob runs a tabletop game for you and your other Bobs" aria-label="Adventure"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/><circle cx="8" cy="10" r=".8"/><circle cx="16" cy="10" r=".8"/><circle cx="12" cy="16" r=".8"/></svg><span class="lbl">Adventure</span><span class="short" aria-hidden="true">Adventure</span></button>
+    <button id="gamesBtn" type="button" class="nav-item" title="Games: small games Bob plays with you (word games, twenty questions, story dice)" aria-label="Games"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="7" width="18" height="11" rx="3"/><path d="M8 10v5M5.5 12.5h5"/><circle cx="16" cy="11" r=".9"/><circle cx="18.5" cy="13.5" r=".9"/></svg><span class="lbl">Games</span><span class="short" aria-hidden="true">Games</span></button>
+    <button id="labBtn" type="button" class="nav-item" title="Computer Science Lab: make your own brain from one in the catalogue" aria-label="Lab" hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/></svg><span class="lbl">Lab</span><span class="short" aria-hidden="true">Lab</span></button>
+    <div class="nav-head">Setup</div>
+    <button id="cellarBtn" type="button" class="nav-item" title="Get models: Equip Bob, the model shops and what's on this replicant matrix" aria-label="Get models"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7l8-4 8 4v10l-8 4-8-4z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg><span class="lbl">Get models</span><span class="short" aria-hidden="true">Models</span></button>
+    <button id="settingsBtn" type="button" class="nav-item" title="Settings: everyday, plus advanced if you want it" aria-label="Settings"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span class="lbl">Settings</span><span class="short" aria-hidden="true">Settings</span></button>
+    <button id="styleBtn" type="button" class="nav-item" title="Themes, avatars, animations, layout" aria-label="Style"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4-4-7.4-9-7.4z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10.5" cy="7" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/></svg><span class="lbl">Style</span><span class="short" aria-hidden="true">Style</span></button>
+    <button id="helpBtn" type="button" class="nav-item" title="Help: how everything works, with search (F1)" aria-label="Help"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14"/><circle cx="12" cy="17.2" r=".6"/></svg><span class="lbl">Help</span><span class="short" aria-hidden="true">Help</span></button>
+    <button id="ear" type="button" class="nav-item" title="Listen for &quot;Hey Bob&quot; while this window is open" aria-label="Listen" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span class="lbl">Listen</span><span class="short" aria-hidden="true">Listen</span><span class="st">Off</span></button>
+    <button id="speak" type="button" class="nav-item" title="Bob reads his replies aloud" aria-label="Read aloud" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg><span class="lbl">Read aloud</span><span class="short" aria-hidden="true">Read</span><span class="st">Off</span></button>
+    <button id="notify" type="button" class="nav-item" title="Pop up a notification when Bob needs you" aria-label="Alerts" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4l2-2z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><span class="lbl">Alerts</span><span class="short" aria-hidden="true">Alerts</span><span class="st">Off</span></button>
+    <div class="side-fill"></div>
+    <label class="session-wrap" title="Which brains Bob keeps loaded"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="6" width="12" height="12" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg><span class="lbl">Session:</span> <select id="sessionSel" class="session" aria-label="Session"></select></label>
+  </nav>
+
+  <div class="mid">
+    <div class="ctx">
+      <strong class="ctx-title">Chat</strong>
+      <div id="brainBar" class="brainbar">
+        <button id="brainPill" type="button" class="brain-pill asleep" aria-expanded="false" aria-controls="brainPop"><span id="brainPillText" role="status" aria-live="polite">Checking...</span></button>
+        <div id="brainPop" class="brain-pop" hidden></div>
+        <button id="brainFree" type="button" class="brain-switch" role="switch" aria-checked="true"><span class="lbl">Free memory when Bob is idle</span><span class="st" id="brainFreeSt">On</span></button>
+        <button id="handsBtn" type="button" class="brain-switch hands-btn" data-on="false" data-state="settings-off" aria-pressed="false"><span class="lbl">✋ Hands</span><span class="st" id="handsBtnSt">Off in Settings</span></button>
+        <button id="mindBtn" type="button" class="brain-switch mind-btn" title="Opens a small always-on-top window showing Bob's thinking, which brain is working, moots and every step. Nothing runs for it while it's closed. To keep it in Now running instead, turn on Show here in its section there."><span class="lbl">💭 Bob's thinking</span><span class="st" id="mindBtnSt" hidden>In Now running</span></button>
+      </div>
+      <button id="dlbar" class="dlbar" type="button" hidden title="Open Downloads"><span class="meter moving"><i></i></span><span class="dlbar-text"></span></button>
+      <span class="ctx-fill"></span>
+      <button id="foldRight" type="button" class="nav-item now-toggle" title="Show or hide Now running (Ctrl+J)" aria-label="Now running" aria-expanded="true" aria-controls="now"><span class="lbl">Now running</span><span class="badge" hidden></span><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 6l6 6-6 6"/></svg></button>
+    </div>
+    <dialog id="cellar" class="cellar page" aria-labelledby="cellar-title">
+      <div class="cellar-head"><h2 id="cellar-title">Settings</h2><button id="cellar-close" type="button" class="back" title="Back to the chat (Esc)" aria-label="Back to the chat">← Back to chat</button></div>
+      <div id="cellar-body"></div>
+    </dialog>
+  <div id="freeBanner" class="free-banner" role="status" hidden><span>⚠ Bob is working without asking. Hard limits still apply.</span><button type="button" id="freeBannerStop" class="big">✋ Stop Hands</button></div>
+  <main id="log" class="log" aria-live="polite"></main>
+
+  <div id="chips" class="chips">
+    <button type="button" data-say="Help me plan my day. Ask me what's going on today, then build my to-do list.">Plan my day</button>
+    <button type="button" data-say="What's on my to-do list?">To-do list</button>
+    <button type="button" data-fill="Remind me at ">Remind me...</button>
+    <button type="button" data-fill="Make a spreadsheet of ">Spreadsheet...</button>
+    <button type="button" data-fill="Look up ">Look up...</button>
+  </div>
+
+  <div id="queue" class="queue" hidden aria-live="polite"></div>
+  <div id="tray" class="tray" hidden></div>
+  <div id="effort" class="effort" data-level="low">
+    <span class="effort-pick"><button id="effortBtn" type="button" class="effort-btn" aria-expanded="false" aria-controls="effortChoices"><span class="effort-lbl">Effort</span> <b id="effortNow">Low</b> <span id="effortArrow" aria-hidden="true">▾</span></button>
+    <span id="effortChoices" class="effort-choices" role="radiogroup" aria-label="Effort" hidden>
+    <button type="button" role="radio" aria-checked="true" data-effort="low"><b>Low</b><small>Quick</small></button>
+    <button type="button" role="radio" aria-checked="false" data-effort="medium" tabindex="-1"><b>Medium</b><small>Deeper</small></button>
+    <button type="button" role="radio" aria-checked="false" data-effort="high" tabindex="-1"><b>High</b><small>Checked</small></button>
+    <button type="button" role="radio" aria-checked="false" data-effort="extreme" tabindex="-1"><b>Extreme</b><small>Slowest</small></button>
+    </span></span>
+    <button id="gameBtn" type="button" class="brain-switch game-btn" role="switch" aria-checked="false"><span class="lbl">🎮 Gaming</span><span class="st" id="gameBtnSt">Off</span></button>
+    <button id="webBtn" type="button" class="brain-switch web-btn" role="switch" aria-checked="false"><span class="lbl">🌐 Web search</span><span class="st" id="webBtnSt">Off</span></button>
+    <button id="rentBtn" type="button" class="brain-switch rent-btn" role="switch" aria-checked="false" hidden><span class="lbl">🏗 Rented brain</span><span class="st" id="rentBtnSt">Off</span></button>
+    <span id="effortHint" class="muted effort-hint" aria-live="polite"></span>
+  </div>
+  <form id="composer" class="composer">
+    <button id="mic" type="button" class="mic" title="Talk to Bob: click, speak, then pause">🎙</button>
+    <button id="attach" type="button" class="mic" title="Attach a picture (or paste or drop one)">📎</button>
+    <input id="attachFile" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+    <textarea id="input" rows="2" placeholder="Tell Bob what you need..." autocomplete="off"></textarea>
+    <div class="buttons">
+      <button id="stop" type="button" class="stop" hidden>Stop</button>
+      <button id="send" type="submit" class="send">Send</button>
+    </div>
+  </form>
+  </div>
+
+  <div id="vgrab" class="grab vgrab" role="separator" aria-orientation="vertical" aria-label="Drag to resize the side panel" tabindex="0" hidden></div>
+  <aside id="viewer" class="viewer" aria-label="Side panel: things Bob made" tabindex="-1" hidden>
+    <div class="vhead"><div id="vtabs" class="vtabs" role="tablist" aria-label="Open in the side panel"></div><button id="vclose" type="button" class="link" title="Close the side panel (Esc)">Close ✕</button></div>
+    <div id="vbody" class="vbody"></div>
+  </aside>
+  <div id="grab" class="grab" role="separator" aria-orientation="vertical" aria-label="Drag to resize Now running" tabindex="0"></div>
+  <aside id="now" class="now" aria-label="Now running">
+    <div class="now-head"><strong>Now running</strong><span class="ctx-fill"></span><button id="hideRight" type="button" class="link" title="Hide (Ctrl+J)">Hide »</button></div>
+    <div id="nowSections" class="now-sections">
+    <section data-sec="tasks"><div class="now-sec"><span class="sec-order"><button type="button" class="sec-grip" data-grip="tasks" aria-label="Move Tasks" aria-expanded="false" title="Drag this section up or down, or click for Move up and Move down. Arrow keys work too.">⋮⋮</button><span class="sec-move" hidden><button type="button" class="mini" data-move="-1" data-sec-id="tasks" aria-label="Move Tasks up">▲ Move up</button><button type="button" class="mini" data-move="1" data-sec-id="tasks" aria-label="Move Tasks down">▼ Move down</button></span></span>Tasks <button type="button" class="tip-i" aria-label="About Tasks" aria-expanded="false"><span class="tip-src" hidden>What Bob is doing and what waits its turn. Drag one to change the order.</span></button><span class="ctx-fill"></span><button type="button" class="link" data-alltasks>See all</button></div><ol id="nowTasks" class="tlist"></ol></section>
+    <section id="nowNet" data-sec="net" hidden><div class="now-sec"><span class="sec-order"><button type="button" class="sec-grip" data-grip="net" aria-label="Move Bob-Net" aria-expanded="false" title="Drag this section up or down, or click for Move up and Move down. Arrow keys work too.">⋮⋮</button><span class="sec-move" hidden><button type="button" class="mini" data-move="-1" data-sec-id="net" aria-label="Move Bob-Net up">▲ Move up</button><button type="button" class="mini" data-move="1" data-sec-id="net" aria-label="Move Bob-Net down">▼ Move down</button></span></span><button type="button" id="nowNetHead" class="link now-head" title="Bob-Net settings" aria-label="Open Bob-Net settings">Bob-Net</button> <button type="button" class="tip-i" aria-label="About Bob-Net" aria-expanded="false"><span class="tip-src" hidden>Your other Bobs, and what each is doing for the others right now: thinking a reply, making a picture, ready, gaming, not reachable. The top line is this Bob. Press Bob-Net to set it up.</span></button></div><ul id="nowNetList" class="tlist net-list"></ul></section>
+    <section data-sec="downloads"><div class="now-sec"><span class="sec-order"><button type="button" class="sec-grip" data-grip="downloads" aria-label="Move Downloads" aria-expanded="false" title="Drag this section up or down, or click for Move up and Move down. Arrow keys work too.">⋮⋮</button><span class="sec-move" hidden><button type="button" class="mini" data-move="-1" data-sec-id="downloads" aria-label="Move Downloads up">▲ Move up</button><button type="button" class="mini" data-move="1" data-sec-id="downloads" aria-label="Move Downloads down">▼ Move down</button></span></span>Downloads<span class="ctx-fill"></span><button type="button" class="link" data-alldl>Manage</button></div><ol id="nowDl" class="tlist"></ol></section>
+    <section data-sec="memory"><div class="now-sec"><span class="sec-order"><button type="button" class="sec-grip" data-grip="memory" aria-label="Move Memory" aria-expanded="false" title="Drag this section up or down, or click for Move up and Move down. Arrow keys work too.">⋮⋮</button><span class="sec-move" hidden><button type="button" class="mini" data-move="-1" data-sec-id="memory" aria-label="Move Memory up">▲ Move up</button><button type="button" class="mini" data-move="1" data-sec-id="memory" aria-label="Move Memory down">▼ Move down</button></span></span>Memory</div><div id="brainBay" class="brain-bay" hidden></div><div id="nowGpu" class="muted now-gpu">Checking...</div></section>
+    <section id="nowMind" data-sec="mind" class="now-mind"><div class="now-sec"><span class="sec-order"><button type="button" class="sec-grip" data-grip="mind" aria-label="Move Bob's thinking" aria-expanded="false" title="Drag this section up or down, or click for Move up and Move down. Arrow keys work too.">⋮⋮</button><span class="sec-move" hidden><button type="button" class="mini" data-move="-1" data-sec-id="mind" aria-label="Move Bob's thinking up">▲ Move up</button><button type="button" class="mini" data-move="1" data-sec-id="mind" aria-label="Move Bob's thinking down">▼ Move down</button></span></span>Bob's thinking <button type="button" class="tip-i" aria-label="About Bob's thinking" aria-expanded="false"><span class="tip-src" hidden>Bob's thinking as it happens, here instead of the pop-out window: which brain is working, moots and every step. Off unless you turn it on; nothing runs for it while it's off.</span></button><span class="ctx-fill"></span><button id="mindDock" type="button" class="brain-switch" role="switch" aria-checked="false" aria-controls="mindDockBody"><span class="lbl">Show here</span><span class="st">Off</span></button></div>
+      <div id="mindDockBody" hidden>
+        <div id="mindDockNow" class="mind-now" role="status" aria-live="polite">Listening to Bob's brain...</div>
+        <div id="mindDockLog" class="mind-log" aria-live="off" tabindex="0" aria-label="Bob's thinking, newest at the bottom"></div>
+        <p id="mindDockEmpty" class="mind-empty muted">Bob is quiet right now. Send him something in the chat and his thinking shows up here as it happens. Quick (Low effort) replies skip the thinking, so for those you'll mostly see his steps.</p>
+        <div class="mind-foot mind-dock-foot"><button id="mindDockFollow" type="button" class="brain-switch" role="switch" aria-checked="true" title="On: keeps up with the newest lines. Off: stays where you scrolled to."><span class="lbl">Follow along</span><span class="st">On</span></button><button id="mindDockClear" type="button" class="brain-switch" title="Empty this section. Nothing else changes.">Clear</button><label class="mind-order">Order <select id="mindDockOrder" aria-label="Order of the lines" title="Newest at the bottom (as they happen), newest at the top, or grouped by who was thinking: Bob first, then his copies."><option value="time">Newest at the bottom</option><option value="newest">Newest at the top</option><option value="who">Bob, then his copies</option></select></label><button id="mindDockPop" type="button" class="link" title="Open Bob's thinking as a small window on top as well">Pop out</button></div>
+      </div></section>
+    </div>
+    <p id="nowOrderSay" class="sr-only" aria-live="polite"></p>
+  </aside>
+  </div>
+
+  <dialog id="shelf" class="cellar" aria-labelledby="shelf-title">
+    <div class="cellar-head"><h2 id="shelf-title">References</h2><button id="shelf-close" class="icon" title="Close">✕</button></div>
+    <div id="shelf-body"></div>
+  </dialog>
+
+  <dialog id="tasks" class="cellar" aria-labelledby="tasks-title">
+    <div class="cellar-head"><h2 id="tasks-title">Tasks</h2><button id="tasks-close" class="icon" title="Close" aria-label="Close">✕</button></div>
+    <div id="tasks-body"></div>
+  </dialog>
+
+  <dialog id="downloads" class="cellar" aria-labelledby="downloads-title">
+    <div class="cellar-head"><h2 id="downloads-title">Downloads</h2><button id="downloads-close" class="icon" title="Close" aria-label="Close">✕</button></div>
+    <div id="downloads-body"></div>
+  </dialog>
+
+  <dialog id="topics" class="cellar" aria-labelledby="topics-title">
+    <div class="cellar-head"><h2 id="topics-title">Topics</h2><button id="topics-close" class="icon" title="Close" aria-label="Close">✕</button></div>
+    <div id="topics-body"></div>
+  </dialog>
+
+  <dialog id="adventure" class="cellar adventure" aria-labelledby="adventure-title">
+    <div class="cellar-head"><h2 id="adventure-title">🎲 Adventure</h2><button id="adventure-close" class="icon" title="Close (the game carries on; Pause lets the brain go)" aria-label="Close">✕</button></div>
+    <div id="adventure-body"></div>
+  </dialog>
+  <dialog id="games" class="cellar games" aria-labelledby="games-title">
+    <div class="cellar-head"><h2 id="games-title">🧩 Games</h2><button id="games-close" class="icon" title="Close (a game in play waits here; Stop ends it)" aria-label="Close">✕</button></div>
+    <div id="games-body"></div>
+  </dialog>
+
+  <dialog id="lab" class="cellar lab-dlg" aria-labelledby="lab-title">
+    <div class="cellar-head"><h2 id="lab-title">🧪 Computer Science Lab</h2><button id="lab-close" class="icon" title="Close" aria-label="Close">✕</button></div>
+    <div id="lab-body"></div>
+  </dialog>
+  <dialog id="tidy" class="cellar" aria-labelledby="tidy-title">
+    <div class="cellar-head"><h2 id="tidy-title">Tidy up</h2><button id="tidy-close" class="icon" title="Close" aria-label="Close">✕</button></div>
+    <div id="tidy-body"></div>
+  </dialog>
+
+  <dialog id="help" class="cellar" aria-labelledby="help-title">
+    <div class="cellar-head"><h2 id="help-title">Help</h2><button id="help-close" class="icon" title="Close (Esc)" aria-label="Close">✕</button></div>
+    <div id="help-body"></div>
+  </dialog>
+
+  <footer id="ver" class="ver" aria-label="Bob's version"></footer>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
