@@ -25,7 +25,9 @@ import { writeZip } from './zip.js';
 import { parseHfRef, hfLookup } from './lab-hf.js'; // 1.5.163
 import { PACKS, PACK_IDS, runPack, mergeScores, readScores, scoreboard, scoreFile, codeTool, CLASSES } from './lab-challenges.js'; // 1.5.153 Challenges
 import { runSandboxed, sandboxHolds } from './selftools.js';
-import { METHODS, LEFT_OUT, forgeDir, forgeRuns, forgeBrains, forgePlans, makeForgePlan, forgePlansDir, FORGE_KEY, forgeStartProblems, launchForge, alive, runPodId, scrub as scrubForge } from './lab-forge.js';
+import { NEEDS_SANDBOX } from './lab-packs.js'; // 1.5.164 more packs
+import { ownRefusalAsks, cleanSandbox, guardLesson, saveGuardLesson, PAGE_DEMO, SANDBOX_MAX_TURNS } from './lab-guard.js'; // 1.5.164 Guard rails
+import { METHODS, LEFT_OUT, forgeDir, forgeRuns, forgeBrains, forgePlans, makeForgePlan, forgePlansDir, FORGE_KEY, forgeStartProblems, launchForge, alive, runPodId, scrub as scrubForge, onDrive } from './lab-forge.js';
 import { rentKeyEnv } from './rental.js'; // 1.5.159 the Forge tab
 import { LADDER, PLAY_MAX_GB, ladderTexts, ladderDiskGB, readPerplexity, ladderTable, ladderSaw, playDir, readLadders } from './lab-playground.js'; // 1.5.156 Playground
 import { recipesRoute } from './lab-recipes.js'; // 1.5.154 cut recipes, the estimate table and the usage map
@@ -843,11 +845,12 @@ export class Lab {
       set(0, 'running');
       srv = await fx.serve({ gguf: brain.gguf, ctx: 8192, signal, log });
       set(0, 'done');
-      const sandbox = packs.includes('code') ? await fx.sandbox({ signal }) : null;
+      const sandbox = packs.some((id) => id === 'code' || NEEDS_SANDBOX.includes(id)) ? await fx.sandbox({ signal }) : null;
+      const holdAsks = packs.includes('guard') ? ownRefusalAsks(lessonSets(this.cfg).map((x) => path.dirname(x.file))) : []; // 1.5.164 the person's own refusal lessons
       const results = {}; let last = 0;
       for (let i = 0; i < packs.length; i++) {
         set(i + 1, 'running');
-        results[packs[i]] = await fx.pack(srv.url, packs[i], { signal, sandbox, onStep: (d, t) => {
+        results[packs[i]] = await fx.pack(srv.url, packs[i], { signal, sandbox, holdAsks, onStep: (d, t) => {
           r.progress = Math.round((100 * (i + d / t)) / packs.length);
           if (Date.now() - last > 2000) { last = Date.now(); this.broadcast({ type: 'lab', run: this.runView(r) }); }
         } });
@@ -861,7 +864,7 @@ export class Lab {
       const prefillTps = reads.length ? Math.round(reads.reduce((a, x) => a + x.prefillTps, 0) / reads.length) : 0;
       const file = scoreFile(scoresDir(this.cfg), slugOf(brain.name));
       writeJson(file, mergeScores(readJson(file, null), { name: brain.name, sha256, sizeGB: facts.sizeGB, quant: facts.fileType, paramsB: facts.paramsB, activeB: facts.experts ? facts.activeB : 0, experts: facts.experts, madeHere: Boolean(brain.madeInLab), packs: results, tps, prefillTps, when: new Date(this.now()).toISOString().slice(0, 10), engine: this.engineName(), where: srv.where }));
-      r.report = { challenges: packs.map((id) => ({ id, title: PACKS.find((p) => p.id === id).title, score: results[id].score, right: results[id].right, of: results[id].of, skipped: results[id].skipped || '' })), tps };
+      r.report = { challenges: packs.map((id) => ({ id, title: PACKS.find((p) => p.id === id).title, score: results[id].score, right: results[id].right, of: results[id].of, skipped: results[id].skipped || '', ...(results[id].parts ? { parts: results[id].parts } : {}), ...(results[id].note ? { note: results[id].note } : {}) })), tps };
       r.state = 'done'; r.step = ''; r.stepLabel = ''; r.progress = 100;
       this.tell(r);
       this.broadcast({ type: 'lab-done', name: r.name, ok: true });
@@ -1074,7 +1077,7 @@ export class Lab {
     const plan = readJson(path.join(forgePlansDir(labDir(this.cfg)), `${slugOf(id)}.json`), null);
     if (!plan) throw new Error('That plan isn\'t saved.');
     const dir = forgeDir(this.cfg);
-    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), shown: { hours: plan.hours_max, dollars: plan.dollars_max }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir), importer: Boolean(dir) && fs.existsSync(path.join(dir, 'import-lessons.mjs')) });
+    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), shown: { hours: plan.hours_max, dollars: plan.dollars_max }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir), importer: Boolean(dir) && fs.existsSync(path.join(dir, 'import-lessons.mjs')), drive: dir ? onDrive(dir) : [] });
     return { id: slugOf(id), brains: (plan.rungs || []).map((r) => ({ name: r.name, nickname: r.nickname || '', keep: r.keep, hours: r.hours })), quants: plan.quants || '', cards: plan.gpus || [], hours: plan.hours_max, dollars: plan.dollars_max, volume: plan.volume ? plan.volume.gb || 100 : 0, problems };
   }
   forgeStart({ id, hours, dollars } = {}) {
@@ -1082,7 +1085,7 @@ export class Lab {
     const file = path.join(forgePlansDir(labDir(this.cfg)), `${slugOf(id)}.json`);
     const plan = readJson(file, null);
     const keys = this.forgeKeys();
-    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(keys[FORGE_KEY]), shown: { hours, dollars }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir), importer: Boolean(dir) && fs.existsSync(path.join(dir, 'import-lessons.mjs')) });
+    const problems = forgeStartProblems({ plan, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(keys[FORGE_KEY]), shown: { hours, dollars }, running: Boolean(this.forgeLive()?.running), found: Boolean(dir), importer: Boolean(dir) && fs.existsSync(path.join(dir, 'import-lessons.mjs')), drive: dir ? onDrive(dir) : [] });
     if (problems.length) throw new Error(problems[0]);
     const log = path.join(labDir(this.cfg), 'forge-runs', `${slugOf(id)}-${new Date(this.now()).toISOString().replace(/[:.]/g, '-').slice(0, 19)}.log`);
     fs.mkdirSync(path.dirname(log), { recursive: true });
@@ -1341,6 +1344,20 @@ export class Lab {
   }
 }
 
+// 1.5.164 One sandbox turn on Bob's loaded brain, with the person's own system prompt. Ordinary settings, not temperature 0:
+// the point is to see what the brain does in use.
+export async function guardChat(brain, b = {}, { fetch: f = globalThis.fetch } = {}) {
+  const g = learnBrain(brain);
+  if (!g.ready) return { ok: false, why: g.why || 'No brain is ready.' };
+  const x = cleanSandbox(b);
+  if (!x.messages.length || x.messages[x.messages.length - 1].role !== 'user') return { ok: false, why: 'Type something to the brain first.' };
+  const r = await f(g.url + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: [...(x.system ? [{ role: 'system', content: x.system }] : []), ...x.messages], max_tokens: 600, chat_template_kwargs: { enable_thinking: false } }), signal: AbortSignal.timeout(180e3) });
+  if (!r.ok) return { ok: false, why: `My engine said ${r.status}.` };
+  const j = await r.json();
+  const text = String(j.choices?.[0]?.message?.content || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  return { ok: true, text, turns: x.messages.filter((m) => m.role === 'user').length };
+}
+
 // /api/lab: the page's calls. Starting, stopping and Use in Bob only from this replicant matrix itself (403 from the
 // door); another device, the phone included, only sees the plan, without the commands or any file paths.
 export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
@@ -1352,8 +1369,11 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     // 1.5.151 Learn: experiments on the brain Bob has loaded. Read-only, nothing is written, so any device Bob lets in may use them.
     if (req.method === 'GET' && p === '/api/lab/learn') { const b = learnBrain(lab.brain); send(res, 200, { on: labOn(lab.cfg), ready: b.ready, why: b.why || '', wake: b.wake === true, busy: b.busy === true, brain: b.ready ? (lab.brain?.brainLabel?.(b.model) || b.model) : '', ctx: b.ctx || 0, cards: LEARN_CARDS }); return true; }
     if (req.method === 'GET' && p === '/api/lab/forge') { const v = lab.forgeView(); send(res, 200, isLocal ? v : { ...v, keepFiles: [] }); return true; } // 1.5.159 read-only
+    // 1.5.164 Guard rails sandbox: chat with the brain Bob has loaded, like Learn. Nothing is saved unless you press Save as lesson.
+    if (req.method === 'GET' && p === '/api/lab/guard') { const g = learnBrain(lab.brain); send(res, 200, { on: labOn(lab.cfg), ready: g.ready, why: g.why || '', brain: g.ready ? (lab.brain?.brainLabel?.(g.model) || g.model) : '', demo: PAGE_DEMO, maxTurns: SANDBOX_MAX_TURNS, canSave: isLocal }); return true; }
     if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }
     const b = await body(req);
+    if (p === '/api/lab/guard/chat') { if (!labOn(lab.cfg)) { send(res, 403, { error: 'The Lab is off.' }); return true; } send(res, 200, await guardChat(lab.brain, b)); return true; }
     if (p === '/api/lab/compare' && !b.save) { send(res, 200, lab.compare(b.ids)); return true; }
     if (p.startsWith('/api/lab/learn/')) { if (!labOn(lab.cfg)) { send(res, 403, { error: 'The Lab is off.' }); return true; } send(res, 200, await runLearn(lab.brain, p.slice('/api/lab/learn/'.length), b)); return true; }
     if (!isLocal && !['/api/lab/plan', '/api/lab/write/plan'].includes(p)) { send(res, 403, { error: 'Lab jobs can only be started on this replicant matrix itself for now.' }); return true; }
@@ -1372,6 +1392,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/stop') { send(res, 200, lab.stop()); return true; }
     if (p === '/api/lab/use') { send(res, 200, lab.use(String(b.run || ''))); return true; }
     if (p === '/api/lab/compare') { const c = lab.compare(b.ids, b.save === 'csv' ? 'csv' : 'json'); send(res, 200, { table: c.table, file: path.basename(c.file) }); return true; }
+    if (p === '/api/lab/guard/save') { send(res, 200, saveGuardLesson(path.join(lessonSetsDir(lab.cfg), 'guard-rails-practice'), guardLesson(b))); return true; } // 1.5.164 into the person's own lesson set
     if (p === '/api/lab/challenge') { send(res, 200, await lab.startChallenge(b.challenge, { unload: b.unload === true })); return true; } // 1.5.153
     if (p === '/api/lab/ladder/plan') { const pl = lab.planLadder(b.from); send(res, 200, { problems: pl.problems, notes: pl.notes, diskGB: pl.diskGB }); return true; } // 1.5.156
     if (p === '/api/lab/ladder') { send(res, 200, await lab.startLadder({ from: b.from }, { unload: b.unload === true })); return true; }

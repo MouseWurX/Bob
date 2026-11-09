@@ -86,7 +86,7 @@ export function createForge({ api, goMake }) {
     return `<fieldset><legend>The brain to start from</legend>
       <label>Brain <select id="forge-brain">${opts}</select></label>
       ${form.brain.pick === 'source' ? sourceRowHtml('forge-brainsrc', 'Where it is', form.brain.source, 'model') : ''}
-      <p class="muted">A brain from Hugging Face or a link is downloaded on the rented card, never here. One from this replicant matrix is uploaded to the card first, so a small one is quicker.</p>
+      <p class="muted">A brain from Hugging Face or a link is downloaded on the rented card, never here. One from this replicant matrix is uploaded to the card first, so a small one is quicker. A brain the Forge made can only start a run when its full weights are on the Forge's drive; Start says if they aren't.</p>
       <label>Forge settings to copy <select id="forge-base">${fv.plans.map((p) => `<option value="${esc(p.id)}" ${form.base === p.id ? 'selected' : ''}>${esc(p.id)} · ${esc(p.rungs.join(', '))}</option>`).join('')}</select></label>
       <p class="muted">The skills list, the lesson mix and the card settings come from this Forge plan. Everything on this page is yours.</p>
     </fieldset>`;
