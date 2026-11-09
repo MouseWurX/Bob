@@ -40,14 +40,14 @@ jobs:
         run: |
           call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
           cmake -S . -B build -G "Ninja Multi-Config" -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake -DLLAMA_BUILD_BORINGSSL=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_OPENMP=ON -DGGML_OPENMP_FETCH=ON
-          cmake --build build --config Release --target llama-server
+          cmake --build build --config Release --target llama-server llama-cvector-generator
       - name: Pack (llama and server files only, never ggml)
         shell: bash
         run: |
           out=brain-engine-$TAG-win-x64
           mkdir "$out"
           cd llama.cpp/build/bin/Release
-          cp llama-server.exe $(ls *.dll | grep -v '^ggml') "../../../../$out/"
+          cp llama-server.exe llama-cvector-generator.exe $(ls *.dll | grep -v '^ggml') "../../../../$out/"
           cd ../../../..
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
           cp engine/README.md "$out/README-Brain-Engine.md"
@@ -80,12 +80,12 @@ jobs:
         working-directory: llama.cpp
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON
-          cmake --build build -j4 --target llama-server
+          cmake --build build -j4 --target llama-server llama-cvector-generator
       - name: Pack
         run: |
           out=brain-engine-$TAG-linux-x64
           mkdir "$out"
-          cp llama.cpp/build/bin/llama-server $(ls llama.cpp/build/bin/*.so* | grep -v '/libggml') "$out/"
+          cp llama.cpp/build/bin/llama-server llama.cpp/build/bin/llama-cvector-generator $(ls llama.cpp/build/bin/*.so* | grep -v '/libggml') "$out/"
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
           cp engine/README.md "$out/README-Brain-Engine.md"
           tar czf "$out.tar.gz" "$out"
