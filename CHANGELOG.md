@@ -4,6 +4,21 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.163
+
+A Forge plan in the Lab can start from a brain on Hugging Face and learn from datasets on Hugging Face.
+
+- **The brain to start from** is one list: the brains the Forge has made, then **Another brain** from this replicant matrix (a folder of full-size weights), from Hugging Face (name or link) or from another link. **Look it up** reads a Hugging Face card: licence, weights and class, mixture of experts or not. A brain from Hugging Face or a link is downloaded on the rented card, never here. **Forge settings to copy** names the Forge plan whose skills list, lesson mix and card settings the run uses.
+- **Lessons to teach**: tick the lesson sets written or built in the Lab, and add up to four more from this replicant matrix (.jsonl, .json, .csv or .parquet, or a folder), from Hugging Face or from a link. Added sets are downloaded and put into Bob's lesson format here before the run, and the run won't start if any can't be brought in. New lessons make the teacher's scoring pass start over.
+- A plan can name a brain on this replicant matrix or at a link now, but it can't start until a Forge update adds them; until then, Start says why.
+- Private or gated repos use the owner's own HF_TOKEN from their environment. It is sent only to Hugging Face, never shown, logged or written into a plan.
+- No licence on the card means there's no clear right to share what you make from it: keep it private. Such a set is never uploaded anywhere.
+- To cut a brain from Hugging Face, each brain made uses **Keep every skill covered**: the Forge counts its experts on the rented card first, then cuts. A brain that isn't a mixture of experts can't be cut by experts, and the plan says so.
+- A plan with lessons from Hugging Face can be saved now and starts once the Forge's lesson importer arrives; until then Start explains why it won't.
+- Three new thought paths under **Famous styles** in Teach it a way of thinking, our own take on how some well-known AI models think: **Sherlock** (Fable-like: deliberate and thorough, checks its own work), **Watson** (Opus-like: direct and brisk) and **Vulcan** (GPT-like: pure logic, by the book). They're trained towards that kind of thinking with lessons from Bob's own teacher brain, never from those models' answers or thoughts. Claude, Fable and Opus belong to Anthropic and GPT to OpenAI; neither company is involved with or endorses Bob.
+- Help: The Lab's Forge tab updated. Tests in `test/run-lab-test.js`.
+- Phone (Bob for Android): plans are written on the replicant matrix running the Lab; the phone can read them.
+
 ## 1.5.162
 
 Fewer failed-build e-mails. Nothing in Bob itself changes.

@@ -4,6 +4,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { readGguf, brainFacts, readerFacts, writeGguf, checkKeep, busiest, isHearingTensor, readCounts, coverageKeep } from '../src/lab-gguf.js';
 import { Lab, maskFor, cleanWrite, teacherLicence, lessonSets, cleanRecipe, planRecipe, labRoom, labOn, cutSizes, fitWords, mergeMadeBrains, labRoute, RUNNING_TYPES , measureRecord, sha256File, compareTable, compareCsv } from '../src/lab.js';
 import { TEMPLATES, TEMPLATE_IDS, templateById, templateWhyNot, applyTemplate } from '../public/lab-templates.js';
@@ -358,6 +360,39 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   const board = scoreboard([{ id: 'riker', ...b }, { id: 'bill', brain: { name: 'Bill' }, packs: { sums: { score: 70 } } }]);
   check('the scoreboard has one row per brain, a cell per pack, empty where not run', board.length === 2 && board[0].name === 'Bill' && board[0].scores.sums === 70 && board[0].scores.reasoning === null && board[1].scores.reasoning === 90 && board[1].sizeGB === 17.5);
 }
+// 1.5.163 brains and lesson sets on Hugging Face, for Forge plans
+{
+  const { parseHfRef, hfLookup } = await import('../src/lab-hf.js');
+  const { makeForgePlan, forgeStartProblems } = await import('../src/lab-forge.js');
+  check('a Hugging Face name or link is read, and anything else is refused', parseHfRef('Qwen/Qwen3.6-35B-A3B')?.repo === 'Qwen/Qwen3.6-35B-A3B' && parseHfRef('https://huggingface.co/Qwen/Qwen3-8B/tree/abc123')?.revision === 'abc123' && parseHfRef('https://huggingface.co/datasets/o/n/blob/main/data/train.jsonl')?.file === 'data/train.jsonl' && parseHfRef('hf:datasets/o/n:a.jsonl@v2').kind === 'dataset' && !parseHfRef('https://evil.example/o/n') && !parseHfRef('../../etc') && !parseHfRef('o/n; rm -rf /') && !parseHfRef('hf:datasets/o/n:../x.jsonl') && !parseHfRef('o/n:file.jsonl'));
+  const seen = [];
+  const fake = async (url, o) => { seen.push([url, o?.headers?.Authorization || '']); if (/nope/.test(url)) return { ok: false, status: 404 }; if (/locked/.test(url)) return { ok: false, status: 401 }; return { ok: true, status: 200, json: async () => (/datasets/.test(url) ? { cardData: {}, siblings: [{ rfilename: 'train.jsonl' }, { rfilename: 'README.md' }] } : { cardData: { license: 'apache-2.0' }, safetensors: { total: 30.5e9 }, config: { architectures: ['Qwen3MoeForCausalLM'] }, siblings: [{ rfilename: 'model-00001.safetensors' }] }) }; };
+  const m = await hfLookup('Qwen/Qwen3.6-35B-A3B', { fetchFn: fake, token: 'hf_secret_123' });
+  check('looking up a brain shows its licence, size class and mixture of experts', m.ok && m.license === 'apache-2.0' && m.paramsB === 30.5 && m.cls === 'huge' && m.moe && m.weights);
+  check('the token goes only to huggingface.co, in the header, and never into what comes back', seen.every(([u, h]) => u.startsWith('https://huggingface.co/api/') && h === 'Bearer hf_secret_123') && !JSON.stringify(m).includes('hf_secret'));
+  const d = await hfLookup(parseHfRef('hf:datasets/o/n:train.jsonl'), { fetchFn: fake, token: '' });
+  check('a dataset with no licence says to keep what you make private', d.ok && d.files.join() === 'train.jsonl' && !d.licenseKnown && /keep it private/.test(d.note));
+  check('a missing or private repo is said in plain words', /no model called/.test((await hfLookup('o/nope', { fetchFn: fake })).error) && /HF_TOKEN/.test((await hfLookup('o/locked', { fetchFn: fake, token: '' })).error));
+  const hp = makeForgePlan({ rungs: [{ name: 'a', keep: 64 }], brain: { pick: 'source', source: { kind: 'hf', repo: 'Qwen/Qwen3-30B-A3B', revision: 'abc', license: 'apache-2.0' } }, lessons: [{ kind: 'hf', repo: 'o/n', file: 'train.jsonl', license: '' }, { kind: 'hf', repo: '../bad' }, { kind: 'local', value: 'C:\\lessons\\mine.jsonl' }, { kind: 'local', value: 'relative.jsonl' }, { kind: 'link', value: 'https://example.org/set.jsonl' }, { kind: 'link', value: 'http://plain' }] }, { base: { teacher: 'Qwen/Qwen3.6-35B-A3B', teacher_model: 'bobs/35Bob/model', counts: 'x.json', skills: { chat: 1 } } });
+  check('a Hugging Face brain becomes the teacher, and the old trained teacher on the drive is never used', hp.plan.teacher === 'Qwen/Qwen3-30B-A3B' && hp.plan.teacher_revision === 'abc' && !hp.plan.teacher_model && !hp.plan.train_teacher && !hp.plan.publish && hp.plan.teacher_license === 'apache-2.0');
+  check('a cut of a brain not counted yet is refused in words', hp.problems.some((x) => /haven't been counted yet/.test(x)));
+  check('lesson sets from Hugging Face, a file here or a link go to the importer by name, path or link; bad ones are refused in words', hp.plan.hf_lessons.length === 3 && hp.plan.hf_lessons[0].file === 'train.jsonl' && hp.plan.hf_lessons[0].private_only === true && hp.plan.hf_lessons[1].path === 'C:\\lessons\\mine.jsonl' && hp.plan.hf_lessons[2].url === 'https://example.org/set.jsonl' && hp.problems.filter((x) => /lesson/.test(x)).length === 3 && hp.notes.some((n) => /starts over/.test(n)));
+  const hc = makeForgePlan({ rungs: [{ name: 'a', how: 'cover', keep: 64 }], brain: { pick: 'source', source: { kind: 'hf', repo: 'Qwen/Qwen3-30B-A3B', license: 'apache-2.0', moe: true } }, lessonSets: ['mine', 'nope'] }, { base: { teacher: 'x/y', counts: 'x.json', skills: { chat: 1 } }, lessonSets: [{ id: 'mine', dir: '/lab/sets/mine' }] });
+  check('a lesson set from the Lab goes up as a folder the Forge already knows how to upload', hc.plan.extra_lessons.length === 1 && path.isAbsolute(hc.plan.extra_lessons[0]) && hc.notes.some((n) => /from the Lab go/.test(n)));
+  const hb = makeForgePlan({ rungs: [{ name: 'a', how: 'cover', keep: 64 }], brain: { pick: 'forge:28Bob' } }, { base: { teacher: 'x/y', skills: { chat: 1 } } });
+  check('a brain the Forge made is the trained teacher on its drive', hb.plan.teacher_model === 'bobs/28Bob/model' && hb.plan.teacher === 'x/y' && !hb.problems.length, hb.problems.join());
+  const hl = makeForgePlan({ rungs: [{ name: 'a', how: 'cover', keep: 64 }], brain: { pick: 'source', source: { kind: 'local', value: 'C:\\brains\\mine' } } }, { base: { skills: { chat: 1 } } });
+  check('a brain from this replicant matrix saves with its path but says the Forge can\'t take it yet; a GGUF and a choice not made are refused', hl.plan.teacher_local === 'C:\\brains\\mine' && hl.notes.some((n) => /can't take one yet/.test(n)) && forgeStartProblems({ plan: { ...hl.plan, hours_max: 1, dollars_max: 1, rungs: [{ hours: 1 }] }, allowed: true, hasKey: true, shown: { hours: 1, dollars: 1 } }).some((x) => /can't take one of those yet/.test(x)) && makeForgePlan({ rungs: [{ name: 'a', keep: 8 }], brain: { pick: 'source', source: { kind: 'local', value: 'C:\\b\\x.gguf' } } }, { base: {} }).problems.some((x) => /running file/.test(x)) && makeForgePlan({ rungs: [{ name: 'a', keep: 8 }], brain: { pick: '' } }, { base: {} }).problems.some((x) => /Choose the brain/.test(x)));
+  check('keeping every skill covered counts the new brain on the card, so it isn\'t refused', !hc.problems.some((x) => /counted/.test(x)) && hc.plan.rungs[0].keep === 'cover' && !('teacher_revision' in hc.plan));
+  check('a brain that isn\'t a mixture of experts can\'t be cut by experts', makeForgePlan({ rungs: [{ name: 'a', how: 'cover' }], brain: { pick: 'source', source: { kind: 'hf', repo: 'o/dense', moe: false } } }, { base: { skills: { chat: 1 } } }).problems.some((x) => /isn't a mixture of experts/.test(x)));
+  const okPlan = { hours_max: 2, dollars_max: 5, rungs: [{ hours: 1 }], hf_lessons: [{ repo: 'o/n' }] };
+  check('a plan with Hugging Face lessons never starts until the Forge\'s importer is here', forgeStartProblems({ plan: okPlan, allowed: true, hasKey: true, shown: { hours: 2, dollars: 5 } }).some((x) => /importer/.test(x)) && !forgeStartProblems({ plan: okPlan, allowed: true, hasKey: true, shown: { hours: 2, dollars: 5 }, importer: true }).length);
+  const { pathByName: pbn } = await import('../public/lab-thinking-paths.js');
+  check('the famous styles are there, tagged Fable-like, Opus-like and GPT-like, with a no-affiliation line; the lesson writer\'s style lines never name a model', [['Sherlock', 'Fable-like'], ['Watson', 'Opus-like'], ['Vulcan', 'GPT-like']].every(([n, l]) => pbn(n)?.style.length > 30 && pbn(n).like === l && !/fable|opus|gpt|claude|anthropic|openai/i.test(pbn(n).style)) && /never from those models/.test(read('public/lab-thinking-paths.js')) && /endorses/.test(read('public/lab-thinking-paths.js')) && !/spock|star trek/i.test(read('public/lab-thinking-paths.js')));
+  const fui = read('public/lab-forge.js');
+  const srcui = read('public/lab-source.js');
+  check('the form has one brain list (the Forge\'s brains, then another brain from here, Hugging Face or a link) and a lessons list with the Lab\'s sets, and no "plan\'s own brain"', ['The brain to start from', 'Brains the Forge made', 'Another brain: on this replicant matrix, on Hugging Face, or at a link', 'Forge settings to copy', 'Lessons to teach', 'Add a lesson set from somewhere else'].every((w) => fui.includes(w)) && !/plan's own brain/.test(fui) && ['On this replicant matrix', 'On Hugging Face', 'At another link', 'Look it up'].every((w) => srcui.includes(w)) && /rel="noopener noreferrer"/.test(srcui));
+}
 // 1.5.161 the leaderboard by class of model
 {
   check('classes go by total weights, from Tiny to Giant, and a brain with no count has none', CLASSES.length === 6 && classOf(1.5) === 'tiny' && classOf(2) === 'small' && classOf(7.6) === 'medium' && classOf(14) === 'large' && classOf(30.5) === 'huge' && classOf(235) === 'giant' && classOf(0) === '' && classOf(undefined) === '');
@@ -566,6 +601,40 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   check('ticking thinking with no path or personality is a problem in words', makeForgePlan({ rungs: [{ name: 'a', keep: 128 }], teach: { thinking: 100 } }, { base: {} }).problems.some((x) => /pick at least one thought path/.test(x)));
   check('the form has what to teach, blend or switch, your own path, personality and learn from', ['What to teach', 'Learn from', 'Start from a set', 'Your own path', 'Alignment', 'Mood (best as a switch)', 'Blend', 'Switch'].every((w) => pf.includes(w)) && /type="number" min="0" max="100"/.test(pf));
   check('Stop deletes only this run\'s card, by its id, never every Forge card', stopRes.pod && spawned.at(-1).args.slice(-2).join(' ') === '--kill abc123xyz' && !JSON.stringify(cLab.forgeView()).includes('never-shown'));
+  // 1.5.163 lessons from Hugging Face: the Forge's importer runs first, on a copy of the plan
+  {
+    const sp2 = [];
+    let impCode = 0, impKeeps = false;
+    const fs2 = (exe, args, opts) => { const rec = { args, opts, stdin: '' }; sp2.push(rec); const isImp = args.some((a) => /import-lessons\.mjs$/.test(a)); return { pid: isImp ? 5151 : 4242, stdin: { write: (t) => { rec.stdin += t; }, end: () => {} }, unref: () => {}, on: (ev, f) => { if (ev === 'exit' && isImp) setTimeout(() => { const pl = JSON.parse(fs.readFileSync(args.at(-1), 'utf8')); if (!impKeeps) { delete pl.hf_lessons; pl.extra_lessons = ['/abs/lessons-hf-1']; } fs.writeFileSync(args.at(-1), JSON.stringify(pl)); f(impCode); }, 5); } }; };
+    const hLab = new Lab({ ...cfg, labForgeStart: true }, { shop, room: big });
+    hLab.forgeSpawn = fs2; hLab.forgeAlive = (pid) => pid === 5151 || pid === 4242; hLab.rentEnv = () => ({ RUNPOD_API_KEY: 'rpa_TESTKEY0000000000' });
+    try { fs.unlinkSync(hLab.forgeLiveFile()); } catch {}
+    const hfFile = path.join(dataDir, 'lab', 'forge-plans', 'hfp.json');
+    fs.writeFileSync(hfFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(spFile, 'utf8')), run: 'hfp', hf_lessons: [{ repo: 'o/n', license: 'mit' }] }));
+    try { fs.unlinkSync(path.join(ml, 'import-lessons.mjs')); } catch {}
+    check('without the Forge\'s importer a plan with Hugging Face lessons won\'t start', (() => { try { hLab.forgeStart({ id: 'hfp', hours: 20, dollars: 60 }); return false; } catch (e) { return /importer/.test(e.message); } })() && !sp2.length);
+    fs.writeFileSync(path.join(ml, 'import-lessons.mjs'), '// fake');
+    const hs = hLab.forgeStart({ id: 'hfp', hours: 20, dollars: 60 });
+    check('with it, the importer runs first on a copy of the plan, with no rental key, and the Forge waits', hs.importing && sp2.length === 1 && /import-lessons\.mjs$/.test(sp2[0].args[0]) && /\.plan\.json$/.test(sp2[0].args.at(-1)) && !sp2[0].opts.env.RUNPOD_API_KEY?.startsWith('rpa_TEST') && hLab.forgeView().live.importing);
+    await new Promise((r) => setTimeout(r, 40));
+    const runCopy = sp2[0].args.at(-1);
+    check('then the Forge starts on the imported copy, and the saved plan keeps its Hugging Face names', sp2.length === 2 && sp2[1].args.at(-1) === runCopy && sp2[1].stdin === 'yes\n' && JSON.parse(fs.readFileSync(hfFile, 'utf8')).hf_lessons.length === 1 && !JSON.parse(fs.readFileSync(runCopy, 'utf8')).hf_lessons);
+    try { fs.unlinkSync(hLab.forgeLiveFile()); } catch {}
+    impCode = 1; hLab.forgeAlive = (pid) => pid === 5151;
+    hLab.forgeStart({ id: 'hfp', hours: 20, dollars: 60 }); await new Promise((r) => setTimeout(r, 40));
+    check('if the import fails, the Forge never starts and the tab says nothing was rented', sp2.length === 3 && /nothing was rented/.test(hLab.forgeView().live.failed));
+    try { fs.unlinkSync(hLab.forgeLiveFile()); } catch {}
+    impCode = 0; impKeeps = true;
+    hLab.forgeStart({ id: 'hfp', hours: 20, dollars: 60 }); await new Promise((r) => setTimeout(r, 40));
+    check('if the importer leaves any Hugging Face lessons behind, the Forge never starts', sp2.length === 4 && /nothing was rented/.test(hLab.forgeView().live.failed));
+    try { fs.unlinkSync(hLab.forgeLiveFile()); } catch {}
+    impKeeps = false; hLab.forgeAlive = (pid) => pid === 5151;
+    hLab.forgeStart({ id: 'hfp', hours: 20, dollars: 60 });
+    const st = await hLab.forgeStop(); await new Promise((r) => setTimeout(r, 40));
+    check('Stop while importing cancels it: no Forge, no card to delete', st.stopped && !st.pod && sp2.length === 5 && !sp2.slice(4).some((x) => x.args.includes('--kill')));
+    fs.unlinkSync(path.join(ml, 'import-lessons.mjs')); try { fs.unlinkSync(hLab.forgeLiveFile()); } catch {}
+  }
+  for (const f of ['public/lab-forge.js', 'public/lab.js', 'public/lab-thinking-paths.js', 'public/lab-playground.js']) check(`${f} parses`, spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../${f}`, import.meta.url))]).status === 0);
   check('the Forge tab uses real labels, radio groups and table headers', /role="radiogroup"/.test(pf) && /<th scope="col">/.test(pf) && /<label/.test(pf) && /\['forge', 'Forge'\]/.test(read('public/lab.js')));
   check('Help has a Forge page and a best-practice page in Bob\'s voice', /id: 'lab-forge'/.test(read('public/help-content.js')) && /id: 'lab-best-practice'/.test(read('public/help-content.js')) && /half a pass teaches half a habit/.test(read('public/help-content.js')));
 }

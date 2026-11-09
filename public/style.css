@@ -1499,3 +1499,8 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .lab-class caption { text-align: left; padding: 4px 0; }
 .lab-best th, .lab-best td { font-weight: 600; }
 .lab-ribbon { display: inline-block; font-size: 0.8em; padding: 1px 6px; border-radius: 4px; background: var(--accent); color: var(--on-accent); white-space: nowrap; }
+/* 1.5.163 links to Hugging Face pages in the Forge form */
+#lab-page-forge a[href^="https://huggingface.co/"] { color: var(--accent); }
+/* 1.5.163 the source chooser (where a brain or lesson set comes from) */
+.lab-source .row { flex-wrap: wrap; gap: 6px; align-items: center; }
+.lab-source input[data-srcact="value"] { flex: 1 1 240px; min-width: 0; }

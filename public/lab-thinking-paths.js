@@ -457,6 +457,30 @@ export const PATH_GROUPS = [
 "kind": "blend"
 }
 ]
+},
+{
+"title": "Famous styles",
+"note": "Our own take on how some well-known AI models think. They're trained towards that kind of thinking with lessons written by Bob's own teacher brain, never from those models' answers or thoughts. Claude, Fable and Opus belong to Anthropic and GPT to OpenAI; neither company is involved with or endorses Bob.",
+"paths": [
+{
+"name": "Sherlock",
+"like": "Fable-like",
+"style": "Deliberate and thorough: plan first, weigh the options, check your own work, and push back when the plan has a hole.",
+"kind": "either"
+},
+{
+"name": "Watson",
+"like": "Opus-like",
+"style": "Direct and brisk: plain-spoken, ask the direct question, follow the brief, and keep things moving.",
+"kind": "either"
+},
+{
+"name": "Vulcan",
+"like": "GPT-like",
+"style": "By the book: pure logic, state the rule, neat numbered steps, and a tidy summary at the end.",
+"kind": "either"
+}
+]
 }
 ];
 export const PATHS = PATH_GROUPS.flatMap((g) => g.paths);

@@ -5,6 +5,7 @@
 // a purchase card does (slice C).
 // Never shown or logged: the pod's control token, the rental key, the Forge token, the Hugging Face token.
 import fs from 'node:fs';
+import { parseHfRef } from './lab-hf.js'; // 1.5.163
 import path from 'node:path';
 import { rentedEstimate } from './lab-estimate.js';
 import { pathByName, PERSONALITY, TEACH, clashes } from '../public/lab-thinking-paths.js';
@@ -103,7 +104,7 @@ const num = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) ? Ma
 // estimate so a full pass is never cut short; caps start at 0 and a plan with 0 caps is never handed to forge.mjs.
 // What to teach -> the lesson writer's jobs (model-lab/write-lessons.mjs JOBS), split evenly inside each.
 export const TEACH_JOBS = { answers: ['chat', 'advice', 'knowledge', 'maths', 'science'], tools: ['reminders', 'memory', 'web', 'pictures', 'files', 'office', 'run', 'schedules', 'apps'], coding: ['coding'], writing: ['writing'] };
-export function makeForgePlan(form = {}, { base = {}, keepFiles = [] } = {}) {
+export function makeForgePlan(form = {}, { base = {}, keepFiles = [], lessonSets = [] } = {}) {
   const problems = [], notes = [];
   const plan = { ...base };
   delete plan.hours_max; delete plan.dollars_max; delete plan.benchmark; // never carried over: caps are typed, commands are fixed templates
@@ -121,6 +122,79 @@ export function makeForgePlan(form = {}, { base = {}, keepFiles = [] } = {}) {
     return out;
   });
   if (!rungs.length) problems.push('Add at least one brain to make.');
+  // 1.5.163 The brain to start from, and lessons from anywhere. Only names, paths and the licence word go in the plan.
+  // Keys locked with the forge thread (9 Nov): teacher = Hugging Face repo (downloaded on the card), teacher_revision,
+  // teacher_model = a brain the Forge made, already on its drive; teacher_local = a folder here, uploaded first (new key,
+  // not read by the Forge yet, so such a plan saves but can't start). hf_lessons = sets the Forge's importer brings in
+  // before the run (repo or path); extra_lessons = folders here the Forge uploads as they are.
+  const lic = (x) => String(x || '').replace(/[^\w.+-]/g, '').slice(0, 60);
+  const brain = form.brain || {}, src = brain.source || null;
+  const cleanPath = (p) => { const v = String(p || '').replace(/[\r\n\0]/g, '').trim().slice(0, 400); return v && (path.isAbsolute(v) || /^[A-Za-z]:[\\/]/.test(v)) ? v : ''; }; // full paths only, Windows or not
+  const okLink = (u) => /^https:\/\/[\w.-]+(\/[^\s"'<>]*)?$/.test(String(u || '')) && String(u).length <= 400;
+  delete plan.teacher_local;
+  if (form.brain === undefined) { /* no chooser sent (another Lab page handing over a plan): the Forge plan's own teacher stays */ }
+  else if (!brain.pick) problems.push('Choose the brain to start from.');
+  else if (/^forge:/.test(brain.pick)) {
+    const name = word(brain.pick.slice(6), 40);
+    if (!name) problems.push('Choose the brain to start from.');
+    else { plan.teacher_model = `bobs/${name}/model`; delete plan.train_teacher; delete plan.publish; notes.push(`${name} was made by the Forge, so its full-size weights are already on the Forge's drive.`); }
+  } else if (brain.pick === 'source') {
+    if (!src) problems.push('Say where the brain is: paste its name, path or link.');
+    else if (src.kind === 'hf') {
+      if (src.unchecked) problems.push('Press Look it up on the Hugging Face brain first, so the Lab can read its card.');
+      const r = src.unchecked ? null : parseHfRef(src.revision ? `hf:${src.repo}@${src.revision}` : src.repo, 'model');
+      if (!src.unchecked && (!r || r.kind !== 'model')) problems.push('The Hugging Face brain isn\'t a name the Lab can read. Look it up again.');
+      if (r) {
+        plan.teacher = r.repo; if (r.revision) plan.teacher_revision = r.revision; else delete plan.teacher_revision;
+        // teacher_model is a trained teacher already on the Forge's drive: never for a fresh brain (the forge thread, 9 Nov).
+        delete plan.teacher_model; delete plan.teacher_gguf; delete plan.train_teacher; delete plan.publish;
+        plan.teacher_license = lic(src.license) || 'none';
+        // The base plan's counts file stays only because forge.mjs uploads one; it belongs to another brain, so every cut
+        // must be "keep every skill covered", which counts this brain's experts on the card first, then cuts.
+        if (src.moe === false) problems.push(`${r.repo} isn't a mixture of experts, so it can't be cut by experts.`);
+        if (rungs.some((x) => x.keep !== 'cover')) problems.push(`${r.repo}'s experts haven't been counted yet. For each brain, pick "Keep every skill covered": the Forge counts its experts on the rented card first, then cuts.`);
+        if (plan.teacher_license === 'none') notes.push(`${r.repo} has no licence on its card, so there\'s no clear right to share what you make from it: keep it private.`);
+      }
+    } else if (src.kind === 'local') {
+      const p = cleanPath(src.value);
+      if (!p) problems.push('The brain\'s path has to be a full path on this replicant matrix, like C:\\brains\\my-brain on Windows or /home/you/brains/my-brain on Mac and Linux.');
+      else if (/\.gguf$/i.test(p)) problems.push('That is a running file (GGUF). The Forge needs the full-size weights (a folder of safetensors) to teach or cut a brain.');
+      else { plan.teacher_local = p; delete plan.teacher_model; delete plan.train_teacher; delete plan.publish; if (rungs.some((x) => x.keep !== 'cover')) problems.push('A brain from this replicant matrix hasn\'t been counted yet. For each brain, pick "Keep every skill covered".'); notes.push('A brain from this replicant matrix is uploaded to the rented card before the run. The Forge can\'t take one yet, so this plan can be saved but not started until the Forge update.'); }
+    } else if (src.kind === 'link') {
+      if (!okLink(src.value)) problems.push('A brain at a link needs a full https link.');
+      else { plan.teacher_url = String(src.value); delete plan.teacher_model; delete plan.train_teacher; delete plan.publish; notes.push('The Forge can\'t fetch a brain from a plain link yet, so this plan can be saved but not started until the Forge update.'); if (rungs.some((x) => x.keep !== 'cover')) problems.push('A brain from a link hasn\'t been counted yet. For each brain, pick "Keep every skill covered".'); }
+    } else problems.push('Say where the brain is.');
+  } else problems.push('Choose the brain to start from.');
+  if (brain.pick !== 'source' || src?.kind !== 'link') delete plan.teacher_url;
+  // Lessons: the Lab's own sets go as folders the Forge uploads; sets from elsewhere go to the importer first.
+  const ownSets = (Array.isArray(form.lessonSets) ? form.lessonSets : []).map((id) => lessonSets.find((x) => x.id === id)).filter(Boolean);
+  const extra = [...(Array.isArray(base.extra_lessons) ? base.extra_lessons : []), ...ownSets.map((x) => path.resolve(x.dir))];
+  if (extra.length) plan.extra_lessons = [...new Set(extra)]; else delete plan.extra_lessons;
+  const imports = [];
+  for (const x of (Array.isArray(form.lessons) ? form.lessons : []).slice(0, 8)) {
+    if (imports.length >= 4) { problems.push('One run can add at most four lesson sets from elsewhere.'); break; }
+    if (!x) continue;
+    if (x.kind === 'hf') {
+      if (x.unchecked) { problems.push('Press Look it up on each lesson set from Hugging Face first.'); continue; }
+      const r = parseHfRef(`hf:datasets/${x.repo || ''}${x.file ? `:${x.file}` : ''}${x.revision ? `@${x.revision}` : ''}`);
+      if (!r || r.kind !== 'dataset') { problems.push('One lesson set from Hugging Face isn\'t a name the Lab can read.'); continue; }
+      imports.push({ repo: r.repo, ...(r.file ? { file: r.file } : {}), ...(r.revision ? { revision: r.revision } : {}), license: lic(x.license) || 'none', ...(lic(x.license) ? {} : { private_only: true }) });
+    } else if (x.kind === 'local') {
+      const p = cleanPath(x.value);
+      if (!p) { problems.push('A lesson file here needs its full path, like C:\\lessons\\mine.jsonl.'); continue; }
+      if (!/\.(jsonl|json|csv|parquet)$/i.test(p) && path.extname(p)) { problems.push(`${path.basename(p)}: the Forge reads .jsonl, .json, .csv and .parquet lesson files, or a folder of them.`); continue; }
+      imports.push({ path: p, license: 'none', private_only: true });
+    } else if (x.kind === 'link') {
+      if (!okLink(x.value)) { problems.push('A lesson set at a link needs a full https link to the file.'); continue; }
+      imports.push({ url: String(x.value), license: 'none', private_only: true });
+    }
+  }
+  if (imports.length) {
+    plan.hf_lessons = imports;
+    notes.push('New lessons change what the teacher scores, so its scoring pass starts over and takes longer.');
+    if (imports.some((l) => l.private_only)) notes.push('A lesson set with no licence on its card gives no clear right to share what you make from it: keep it private. The set itself is never uploaded anywhere.');
+  } else delete plan.hf_lessons;
+  if (ownSets.length) notes.push(`${ownSets.length} lesson set${ownSets.length === 1 ? '' : 's'} from the Lab go${ownSets.length === 1 ? 'es' : ''} up to the card with the plan's own lessons.`);
   plan.rungs = rungs;
   const strong = (Array.isArray(form.strong) ? form.strong : []).map((s) => word(s, 20)).filter((s) => plan.skills && s in plan.skills);
   if (strong.length) { plan.strong = strong; plan.strong_cover = 0.99; } else { delete plan.strong; delete plan.strong_cover; }
@@ -183,7 +257,7 @@ export const forgePlansDir = (labDirPath) => path.join(labDirPath, 'forge-plans'
 // now" with yes. The caps on the card must match the plan's, so the press is for exactly what was shown. The run is
 // its own process, detached, so it keeps going (and its card keeps its self-destruct timer) if Bob closes.
 export const FORGE_KEY = 'RUNPOD_API_KEY';
-export function forgeStartProblems({ plan, allowed, hasKey, shown = {}, running = false, found = true }) {
+export function forgeStartProblems({ plan, allowed, hasKey, shown = {}, running = false, found = true, importer = false }) {
   const p = [];
   if (!found) p.push('The Forge isn\'t next to this copy of Bob.');
   if (!allowed) p.push('Starting Forge runs from the Lab is off. Turn on "Let the Lab start Forge runs" first.');
@@ -193,6 +267,10 @@ export function forgeStartProblems({ plan, allowed, hasKey, shown = {}, running 
   if (!(Number(plan.hours_max) > 0) || !(Number(plan.dollars_max) > 0)) p.push('This plan\'s caps are 0. Type the hours and dollars you\'ll allow and save it again.');
   else if (Number(shown.hours) !== Number(plan.hours_max) || Number(shown.dollars) !== Number(plan.dollars_max)) p.push('The caps changed since the card was shown. Look at the card again.');
   if (!Array.isArray(plan.rungs) || !plan.rungs.every((r) => r.hours > 0)) p.push('Every brain in the plan needs a time limit; save the plan again from the form.');
+  // 1.5.163 lessons from Hugging Face are downloaded and converted on this side before the run; until the Forge's
+  // lesson importer is here, a plan that names them never starts (so they're never silently left out).
+  if (plan.teacher_local || plan.teacher_url) p.push('This plan starts from a brain on this replicant matrix or at a link, and the Forge can\'t take one of those yet. Pick a brain the Forge made or one on Hugging Face, or wait for the Forge update.');
+  if (Array.isArray(plan.hf_lessons) && plan.hf_lessons.length && !importer) p.push('This plan has lessons from Hugging Face, and the Forge\'s lesson importer isn\'t on this replicant matrix yet. Remove them, or wait for the Forge update.');
   return p;
 }
 
