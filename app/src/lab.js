@@ -48,6 +48,7 @@ import { fullSizeRoute } from './lab-fullsize.js'; // Bring in a full-size brain
 import { benchBrain, benchLine } from './lab-bench.js'; // the standard speed test (llama-bench)
 import { findTool } from './llama-tools.js';
 import { diffusionRoute } from './lab-diffusion.js'; // Playground: Diffusion brains
+import { partsOf, pickLessons, addLessonSet, downloadHfLessons, ADDED_FILE } from './lab-library.js'; // the lesson library: sets broken into parts
 
 // 1.5.172 the Lab shows unless it is switched off (it was off until switched on before). Anything but false is on.
 export const labOn = (cfg) => cfg?.computerLab !== false;
@@ -457,11 +458,21 @@ export function lessonSets(cfg) {
     const file = path.join(root, d, 'lessons.jsonl');
     if (!fs.existsSync(file)) continue;
     const built = readJson(path.join(root, d, 'build.json'), null); // a set built from the owner's files (Lab 2c)
-    const meta = built || readJson(path.join(root, d, 'write.json'), {});
+    const added = built ? null : readJson(path.join(root, d, ADDED_FILE), null); // a set added from elsewhere (the lesson library)
+    const meta = built || added || readJson(path.join(root, d, 'write.json'), {});
     let count = 0; try { count = fs.readFileSync(file, 'utf8').split('\n').filter((x) => x.trim()).length; } catch {}
-    out.push({ id: d, name: meta.name || d, file, count, want: meta.count || 0, skills: built ? [...new Set((built.items || []).map((i) => i.skill).filter(Boolean))] : meta.skills || [], teacher: meta.teacherName || '', done: meta.done === true, built: Boolean(built), kinds: built?.kinds || [] });
+    out.push({ id: d, name: meta.name || d, file, count, want: meta.count || 0, skills: built ? [...new Set((built.items || []).map((i) => i.skill).filter(Boolean))] : meta.skills || [], teacher: meta.teacherName || '', done: meta.done === true || Boolean(added), built: Boolean(built), kinds: built?.kinds || [], ...(added ? { added: true, source: added.source || '', license: added.license || '', link: added.link || '' } : {}) });
   }
   return out;
+}
+
+// A set's parts for the page: each category, source and way of thinking with its count, plus the counts of every
+// combination so the page can show how many lessons are left as boxes are ticked off.
+export function partsView(dir) {
+  const p = partsOf(dir);
+  if (!p) return null;
+  const list = (o) => Object.entries(o || {}).map(([id, v]) => ({ id, label: v.label, count: v.count })).sort((a, b) => b.count - a.count);
+  return { total: p.total, categories: list(p.categories), sources: list(p.sources), thinking: list(p.thinking), cells: p.cells };
 }
 
 // ---- Lab 2c: a lesson set built from the owner's own files ----
@@ -1116,7 +1127,7 @@ export class Lab {
     const dir = forgeDir(this.cfg);
     let saved = []; try { saved = fs.readdirSync(forgePlansDir(labDir(this.cfg))).filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, '')); } catch {}
     const live = this.forgeLive();
-    return { live, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), methods: METHODS, leftOut: LEFT_OUT, found: Boolean(dir), runs: forgeRuns(dir), brains: forgeBrains(dir), plans: forgePlans(dir), saved, keepFiles: this.keepFiles().map(({ path: _p, ...k }) => k), lessonSets: lessonSets(this.cfg).map((x) => ({ id: x.id, name: x.name, count: x.count })), skills: (() => { const b = forgePlans(dir)[0]; return b ? Object.keys(readJson(path.join(dir, 'forge', 'plans', `${b.id}.json`), {}).skills || {}) : []; })() };
+    return { live, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), methods: METHODS, leftOut: LEFT_OUT, found: Boolean(dir), runs: forgeRuns(dir), brains: forgeBrains(dir), plans: forgePlans(dir), saved, keepFiles: this.keepFiles().map(({ path: _p, ...k }) => k), lessonSets: lessonSets(this.cfg).map((x) => ({ id: x.id, name: x.name, count: x.count, added: x.added === true, license: x.license || '', source: x.source || '', parts: partsView(path.dirname(x.file)) })), skills: (() => { const b = forgePlans(dir)[0]; return b ? Object.keys(readJson(path.join(dir, 'forge', 'plans', `${b.id}.json`), {}).skills || {}) : []; })() };
   }
 
   forgePlan(form = {}) {
@@ -1125,7 +1136,42 @@ export class Lab {
     const id = String(form.base || '').replace(/[^\w.-]/g, '');
     const base = id ? readJson(path.join(dir, 'forge', 'plans', `${id}.json`), null) : null;
     if (id && !base) throw new Error('That Forge plan isn\'t there any more.');
-    return makeForgePlan(form, { base: base || {}, keepFiles: this.keepFiles(), lessonSets: lessonSets(this.cfg).map((x) => ({ id: x.id, dir: path.dirname(x.file) })) });
+    // The lesson library: a set with parts ticked off, or taught as its own thinking path, goes as a picked copy.
+    const picks = form.lessonParts && typeof form.lessonParts === 'object' ? form.lessonParts : {};
+    const ticked = new Set(Array.isArray(form.lessonSets) ? form.lessonSets : []);
+    const sets = lessonSets(this.cfg).map((x) => {
+      const dir = path.dirname(x.file), pick = picks[x.id];
+      const one = { id: x.id, name: x.name, dir, total: x.count, picked: x.count, privateOnly: x.added === true && !x.license };
+      if (!ticked.has(x.id) || !pick || typeof pick !== 'object') return one;
+      const arr = (v) => (Array.isArray(v) ? v.map(String).slice(0, 200) : []);
+      const r = pickLessons(dir, { offCategories: arr(pick.offCategories), offSources: arr(pick.offSources), offThinking: arr(pick.offThinking), pathName: String(pick.pathName || '') });
+      return { ...one, dir: r.dir || dir, picked: r.count, pathName: r.dir ? String(pick.pathName || '').trim() : '' };
+    });
+    return makeForgePlan(form, { base: base || {}, keepFiles: this.keepFiles(), lessonSets: sets });
+  }
+
+  // Add a lesson set from a file here or a .jsonl/.json file on Hugging Face: converted into the Lab's shape, then
+  // broken into parts. The Hugging Face card's licence is kept with it; a set with none is for private use only.
+  async addLibrarySet({ from = '', name = '' } = {}) {
+    const root = lessonSetsDir(this.cfg); fs.mkdirSync(root, { recursive: true });
+    let ref = String(from || '').trim().replace(/^"|"$/g, '').slice(0, 400);
+    if (/^~[\\/]/.test(ref)) ref = path.join(os.homedir(), ref.slice(2)); // ~/lessons/set.jsonl on Mac and Linux
+    if (!ref) throw new Error('Say where the lessons are: a full path to a .jsonl or .json file, or a Hugging Face set and file.');
+    if (path.isAbsolute(ref) || /^[A-Za-z]:[\\/]/.test(ref)) {
+      const r = addLessonSet({ root, from: ref, name, source: path.basename(ref).replace(/\.[^.]+$/, ''), now: this.now() });
+      return { id: r.id, name: r.name, count: r.count, skipped: r.skipped, license: '' };
+    }
+    const hf = parseHfRef(/^hf:/i.test(ref) || /^https?:/i.test(ref) || /^datasets\//i.test(ref) ? ref : `hf:datasets/${ref}`, 'dataset');
+    if (!hf || hf.kind !== 'dataset') throw new Error('That isn\'t a full path or a Hugging Face set. A set looks like owner/name:file.jsonl, or a huggingface.co link to the file.');
+    const card = await hfLookup(hf, { fetchFn: this.hfFetch || fetch });
+    if (card && card.ok === false) throw new Error(card.error || 'Hugging Face couldn\'t find that set.');
+    const tmp = path.join(labDir(this.cfg), 'downloads', `lessons-${Date.now()}${path.extname(hf.file || '.jsonl')}`);
+    try {
+      await downloadHfLessons({ repo: hf.repo, file: hf.file, revision: hf.revision, to: tmp, fetchFn: this.hfFetch || fetch });
+      const lic = String(card?.license || '').replace(/[^\w.+-]/g, '').slice(0, 60);
+      const r = addLessonSet({ root, from: tmp, name: name || hf.repo.split('/')[1], source: hf.repo, license: lic, link: `https://huggingface.co/datasets/${hf.repo}`, now: this.now() });
+      return { id: r.id, name: r.name, count: r.count, skipped: r.skipped, license: lic };
+    } finally { try { fs.rmSync(tmp, { force: true }); } catch {} }
   }
 
   saveForgePlan(form = {}) {
@@ -1811,6 +1857,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/forge/start') { send(res, 200, lab.forgeStart({ id: String(b.id || ''), hours: b.hours, dollars: b.dollars })); return true; }
     if (p === '/api/lab/forge/stop') { send(res, 200, await lab.forgeStop()); return true; }
     if (p === '/api/lab/forge/save') { send(res, 200, lab.saveForgePlan(b.form)); return true; }
+    if (p === '/api/lab/library/add') { send(res, 200, await lab.addLibrarySet({ from: String(b.from || ''), name: String(b.name || '').slice(0, 60) })); return true; } // the lesson library
     if (p === '/api/lab/home/plan') { const pl = lab.planHome(String(b.kind || ''), b.form); send(res, 200, { problems: pl.problems, notes: pl.notes, diskGB: pl.diskGB, layers: pl.stack?.layers || 0 }); return true; } // 1.5.164
     if (p === '/api/lab/home/start') { send(res, 200, await lab.startHome(String(b.kind || ''), b.form, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/refusals/try') { send(res, 200, await lab.tryRefusals(b.form, { unload: b.unload === true })); return true; }
