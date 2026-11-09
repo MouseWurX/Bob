@@ -22,6 +22,7 @@ import { createBrainBar } from './brain-bar.js';
 import { createHandsSwitch } from './hands-switch.js';
 import { installTips } from './tips.js';
 import { createWebSwitch } from './web-switch.js';
+import { createQuickSwitches } from './quick-switches.js'; // Autonomy and Screen use buttons
 import { createRentSwitch } from './rent-switch.js'; // 1.5.127 rented brains
 import { createGameLock } from './game-lock.js';
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
@@ -49,6 +50,7 @@ const $ = (id) => document.getElementById(id);
 const log = $('log'), input = $('input'), sendBtn = $('send'), stopBtn = $('stop'), statusEl = $('status');
 const brainBar = createBrainBar({ post: (u, d) => post(u, d), note: (t, k) => note(t, k) });
 const handsSwitch = createHandsSwitch({ note: (t, k) => note(t, k) });
+const quickSwitches = createQuickSwitches({ note: (t, k) => note(t, k) });
 const webSwitch = createWebSwitch({ note: (t, k) => note(t, k) });
 const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button
@@ -459,6 +461,7 @@ function onEvent(ev) {
   if (ev.sessionId && ev.sessionId !== sessionId && ev.type !== 'reminder') return;
   if (ev.type === 'more-pictures' || ev.type === 'more-pictures-done') return more.handle(ev);
   if (ev.type === 'hands') handsSwitch.update(ev.settings);
+  if (ev.type === 'hands') quickSwitches.update(ev.settings); // Autonomy and Screen use
   if (ev.type === 'quarantine') return qBanner.update(ev.active);
   if (['lending', 'borrow', 'away', 'pair-done', 'queue'].includes(ev.type)) layout.net(); // 1.5.123: the Bob-Net party in Now running
   if (quarantineResult(ev)) return;

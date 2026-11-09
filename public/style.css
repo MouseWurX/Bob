@@ -709,6 +709,11 @@ details.more > summary:hover { color: var(--accent); }
 .brain-switch.hands-btn[data-state="stopped"] .st { background: var(--bad); color: var(--on-accent); }
 .brain-switch.hands-btn[data-state="settings-off"] { opacity: .75; }
 .brain-switch.hands-btn[data-free="true"] .st { background: var(--warn); color: var(--on-accent); }
+/* Autonomy and Screen use (quick-switches.js) */
+.brain-switch.free-btn[data-free="true"] { color: var(--text); outline: 2px solid var(--warn); }
+.brain-switch.free-btn[data-free="true"] .st { background: var(--warn); color: var(--on-accent); }
+.quick-ask { position: absolute; top: calc(100% + 4px); left: 0; z-index: 21; max-width: 380px; background: var(--card); font-size: 13px; white-space: normal; }
+.quick-ask[hidden] { display: none; }
 
 /* Recommended models and Help (1.5.4) */
 .tag.rec { background: var(--good-bg); color: var(--text); border: 1px solid var(--good); font-weight: 700; }
