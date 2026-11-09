@@ -15,6 +15,14 @@ for (const f of fs.existsSync(wfDir) ? fs.readdirSync(wfDir) : []) {
     if (m && !/^[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/.test(m[1])) problems.push(`${f}:${i + 1} ${m[1]} is not pinned to a full commit SHA`);
   });
 }
+// 1.5.162: fewer failed-build e-mails. Branch work is built through its pull request, and a draft pull request runs nothing.
+for (const f of ['build.yml', 'linux.yml', 'android.yml']) {
+  const p = path.join(wfDir, f);
+  if (!fs.existsSync(p)) continue;
+  const y = fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
+  if (/branches:\s*\[[^\]]*claude/.test(y)) problems.push(`${f} builds every push to work branches: build them through their pull request instead`);
+  if (/^\s*pull_request:/m.test(y) && !/github\.event\.pull_request\.draft/.test(y)) problems.push(`${f} runs on draft pull requests: skip them (if: github.event_name != 'pull_request' || !github.event.pull_request.draft)`);
+}
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 if (pkg.license !== 'GPL-3.0-or-later') problems.push('package.json license should be GPL-3.0-or-later');
 if (!/^\d+\.\d+\.\d+$/.test(pkg.devDependencies?.electron || '')) problems.push('devDependencies.electron must be an exact version');
