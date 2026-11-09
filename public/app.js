@@ -27,6 +27,7 @@ import { createGameLock } from './game-lock.js';
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
 import { createEffort } from './effort.js';
 import { createCatAntics } from './cat-antics.js';
+import { createBubbles } from './say-bubbles.js';
 import { createBobLife } from './bob-life.js';
 import { createViewer, outCard, fillPeeks } from './viewer.js';
 import { songListHtml, wireSongs } from './song-player.js';
@@ -54,7 +55,8 @@ const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button
 const qBanner = createQuarantineBanner({ note: (t, k) => note(t, k) });
 const effort = createEffort();
-const catAntics = createCatAntics({ onAntic: () => life.react('cat'), sleepy: () => life.dozing });
+const bubbles = createBubbles();
+const catAntics = createCatAntics({ onAntic: () => life.react('cat'), sleepy: () => life.dozing, bubbles });
 const viewer = createViewer({ post: (u, d) => post(u, d), note: (t, k) => note(t, k) });
 // 1.5.95: diagrams get drawn and the Save as rows work, anywhere in the chat (save-as.js).
 setupSaveAs({ offer: (ev) => onEvent(ev), note: (t, k) => note(t, k), made: (items) => viewer.made(items) });
@@ -223,7 +225,12 @@ sessionSel.onchange = () => switchSession(sessionSel.value);
 function setStatus(s) {
   if (s.session && sessionSel.value !== s.session.id) drawSessions(null, s.session);
   statusEl.className = `status ${s.state}`;
-  statusEl.textContent = s.detail || STATUS_TEXT[s.state] || s.state;
+  // The line under his name is the short state word; the work details (Painting with Maestro: loading...) go in
+  // Bob's thinking (mind-view.js logs each new one), and the full line is on the tooltip. Word bubbles are only for
+  // personality lines (the cat's antics), never for status, so nothing shows twice.
+  const said = STATUS_TEXT[s.state] || s.detail || s.state;
+  statusEl.textContent = said;
+  statusEl.title = s.detail ? `${said} ${s.detail}` : said;
   catAntics.idle(s.state === 'idle');
   life.state(s.state);
   document.title = s.state === 'idle' ? 'Bob' : `Bob · ${STATUS_TEXT[s.state] || s.state}`;

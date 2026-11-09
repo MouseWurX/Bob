@@ -4,6 +4,14 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from docs/releases by `node installer/make-changelog.js`.
 
+## 1.5.170
+
+Bob's and Patches' lines now pop out in word bubbles.
+
+- Bob's and Patches' lines now pop out in little word bubbles beside Bob's picture, over the chat, so a long line no longer pushes the menu down. Fixes #36. Thanks to mohdmunis161 for the first go at this in #62.
+- A bubble closes by itself after 15 seconds (not while you're pointing at it), or with a tap on its ✕ or Esc. The details of what Bob is working on go in his thinking, not in a bubble.
+- Help: the paragraph about Patches says where the bubbles appear and how to close one. Tests in `test/run-bob-life-test.js`.
+
 ## 1.5.169
 
 **Catching up: what 1.5.159 to 1.5.168 brought** (they went out together this morning):
