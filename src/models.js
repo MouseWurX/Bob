@@ -1,6 +1,7 @@
 // Bob's model shop: what models exist, which are already on this PC (Ollama, ComfyUI, Maestro...),
 // downloading new ones one at a time with progress and a checksum, and switching Bob over to them.
 // Every download starts from a click in Bob's window. Bob never downloads a model on his own.
+import { ownEntries, ownModels, ownResolve } from './own-models.js';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -14,6 +15,7 @@ import { maestroModels } from './maestro.js';
 import { gpuInfo, cpuName, specLine, shownRamGB, OS } from './platform.js';
 import { packFor } from '../public/fit.js';
 import { allSlots, slotValue } from '../public/equip.js';
+import { mergeMadeBrains } from './lab.js'; // 1.5.141
 
 const MODEL_EXT = new Set(['.gguf', '.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.sft']);
 const SKIP = new Set(['node_modules', '.git', '__pycache__', 'site-packages', 'venv', '.venv', 'env', 'cache', '.cache', 'Lib', 'include', 'temp', 'tmp', 'logs', 'blobs']);
@@ -171,9 +173,22 @@ export function configuredGguf(cfg, entry) {
 // on every stock Qwen and Gemma. Only a catalogue entry marked madeByBob: true (a brain made for Bob, none shipped yet)
 // gets "Bob's own brain"; a fuzzy name match never does. Ollama's models get their Ollama name instead (roles()).
 export const MADE_BY_BOB = "Bob's own brain";
-export const DOWNLOADED_BY_BOB = 'downloaded by Bob';
 export const isMadeByBob = (m) => m?.madeByBob === true;
-export const fileLabel = (m) => `${m.name} (${isMadeByBob(m) ? MADE_BY_BOB : DOWNLOADED_BY_BOB})`;
+// 1.5.133: a file you put somewhere yourself (set by hand in config.json, or found in another app's folder) says "(your own file)".
+// 1.5.137: a file Bob downloaded himself gets no bracket at all (the owner: "models don't need to say downloaded by
+// Bob"); that's the usual case, so only the unusual ones are marked. gguf = the file found for it, when known.
+export const YOUR_OWN_FILE = 'your own file';
+const inBobsFolder = (m, p) => { const s = String(p).toLowerCase().replace(/\\/g, '/'); return s.includes('/models/bob/') || (Boolean(m?.id) && s.includes(`/models/${String(m.id).toLowerCase()}/`)); };
+export const fileTag = (m, gguf = null) => (isMadeByBob(m) ? MADE_BY_BOB : gguf && !inBobsFolder(m, gguf) ? YOUR_OWN_FILE : '');
+export const fileLabel = (m, gguf = null) => { const t = fileTag(m, gguf); return t ? `${m.name} (${t})` : m.name; };
+
+// 1.5.137: how a rented machine fetches a brain from Bob's list: its brain file as Owner/Repo/file.gguf (the form Add a
+// rental takes, src/rental.js modelSpec). '' for a brain without one.
+export function rentAsOf(m) {
+  const f = (m.files || []).find((x) => x.role === 'gguf');
+  const hit = String(f?.url || '').match(/^https:\/\/huggingface\.co\/([\w.-]+\/[\w.-]+)\/resolve\/[0-9a-f]{40}\/([^?#]+\.gguf)$/i);
+  return hit ? `${hit[1]}/${hit[2]}` : '';
+}
 
 export class ModelShop {
   constructor(cfg, emit, engine) {
@@ -182,7 +197,9 @@ export class ModelShop {
     this.engine = engine;
     this.dir = cfg.bobModelsDir;
     this.scanFile = path.join(cfg.dataDir, 'model-scan.json');
-    this.catalog = JSON.parse(fs.readFileSync(cfg.catalogFile || path.join(appDir, 'catalog.json'), 'utf8'));
+    this.shipped = JSON.parse(fs.readFileSync(cfg.catalogFile || path.join(appDir, 'catalog.json'), 'utf8'));
+    mergeMadeBrains(this.shipped, cfg); // 1.5.141: brains made in the Lab and put into Bob (kept under any newer list)
+    this.catalog = this.shipped; // 1.5.137: or the newest list from GitHub laid over it (src/catalog-update.js)
     try { this.found = JSON.parse(fs.readFileSync(this.scanFile, 'utf8')); } catch { this.found = { at: null, files: [] }; }
     this.active = new Map(); // downloads running now: id -> { ac, pub, kind }
     this.dl = this.loadDownloads();
@@ -290,11 +307,13 @@ export class ModelShop {
   async list() {
     const ollama = await this.ollamaNames();
     const models = [];
-    for (const m of this.catalog.models) models.push({ ...m, files: (m.files || []).map((f) => ({ name: saveNameOf(f), role: f.role })), status: await this.statusOf(m, ollama) });
+    for (const m of this.catalog.models) models.push({ ...m, files: (m.files || []).map((f) => ({ name: saveNameOf(f), role: f.role })), rentAs: rentAsOf(m), status: await this.statusOf(m, ollama) });
+    for (const e of ownEntries(this.cfg)) models.push(e); // 1.5.135: brains of your own, from files on this replicant matrix
     const known = new Set(models.flatMap((m) => Object.values(m.status.located).map((p) => p.toLowerCase())));
     const extras = this.found.files.filter((f) => !known.has(f.path.toLowerCase()) && f.owner !== 'Ollama');
     return {
       categories: this.catalog.categories, packs: this.catalog.packs, models, extras, engines: engineStatus(this.cfg),
+      bigBrains: this.catalog.bigBrains || [], updated: this.catalog.updated || '', // 1.5.137: the really big brains (Rented brains) and the list's date
       scannedAt: this.found.at, ollamaRunning: Boolean(ollama), job: this.job, downloads: this.downloadsView(),
       active: { engine: this.cfg.engine, models: this.cfg.models, painter: this.cfg.painter?.engine, stt: this.cfg.stt?.provider }
     };
@@ -734,11 +753,13 @@ export class ModelShop {
     for (const m of this.catalog.models) {
       const st = await this.statusOf(m, ollama);
       if (st.state !== 'installed') continue;
-      if (m.category === 'embed') { if (st.located.gguf) ownEmbed.push({ value: m.id, label: fileLabel(m) }); continue; }
-      if (st.located.gguf && !llms.some((l) => l.value === m.id)) llms.push({ value: m.id, label: fileLabel(m) });
+      if (m.category === 'embed') { if (st.located.gguf) ownEmbed.push({ value: m.id, label: fileLabel(m, st.located.gguf) }); continue; }
+      if (st.located.gguf && !llms.some((l) => l.value === m.id)) llms.push({ value: m.id, label: fileLabel(m, st.located.gguf) });
       if (m.use?.painter?.sdcpp?.edit) opts.edit.push({ value: m.id, label: m.name });
       else if (opts[m.category]) opts[m.category].push({ value: m.id, label: m.name });
     }
+    // 1.5.135: brains of your own (files on this replicant matrix), by their id; the engine gets the file when equipped.
+    for (const e of ownEntries(this.cfg)) if (e.status.state === 'installed' && !llms.some((l) => l.value === e.id)) llms.push({ value: e.id, label: `${e.name} (${e.madeByBob ? MADE_BY_BOB : YOUR_OWN_FILE})`, caps: ['completion', 'tools', ...(e.ownMmproj ? ['vision'] : [])] });
     if (this.cfg.comfy?.workflowFile && fs.existsSync(this.cfg.comfy.workflowFile)) opts.images.push({ value: 'comfy', label: 'ComfyUI (my own workflow)' });
     let maestro = [];
     // Maestro is opt-in (maestro.enabled): Bob paints and films himself by default.
@@ -781,6 +802,8 @@ export class ModelShop {
       // it once flipped a PC to llama.cpp). If the model needs the other engine, the app asks.
       const inOllama = new Set([...((await this.ollamaNames()) || []), ...this.ollamaManifests()]).has(value);
       let needsEngine = null;
+      const own = ownModels(this.cfg).find((o) => o.id === value); // 1.5.135: a brain of your own runs from its own file
+      if (own) { patch.llamacpp = { models: { [value]: ownResolve(own) } }; if (this.cfg.engine !== 'llamacpp') needsEngine = 'llamacpp'; }
       if (entry) { const loc = this.locate(entry); if (loc.gguf) { patch.llamacpp = { models: { [value]: loc.mmproj ? { gguf: loc.gguf, mmproj: loc.mmproj } : loc.gguf } }; /* 1.5.74: keep its picture reader */ if (this.cfg.engine !== 'llamacpp' && !inOllama) needsEngine = 'llamacpp'; } }
       saveSettings(this.cfg, patch);
       return needsEngine ? { ...patch, needsEngine } : patch;

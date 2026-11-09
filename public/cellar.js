@@ -5,7 +5,7 @@ import { createStylePage } from './style-page.js';
 import { createSampler, sampleButton, sampleHint } from './voice-samples.js';
 import { equipHtml, allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml, readyList, readyDefaults, readyToggle, readyOrder, CHEST_SHOW } from './equip.js';
 import { suit as fitSuit, picksOf, unsuited, jobNames, SLOT_NAMES, canDo, packsFor } from './fit.js';
-import { catalogueHtml, familyOf, visibleModels, isNaughty } from './catalogue.js';
+import { catalogueHtml, familyOf, visibleModels, isNaughty, VIEWS, dayWords, rentPicks } from './catalogue.js';
 import { drawBob } from './bob-sprite.js';
 import { handsSettingsHtml, mountHandsSettings } from './hands.js';
 import { quarantineSettingsHtml, mountQuarantineSettings } from './quarantine.js';
@@ -15,7 +15,7 @@ import { checkinsHtml, mountCheckins } from './checkins.js';
 import { adventureSettingsHtml, mountAdventureSettings } from './adventure.js';
 import { gamesSettingsHtml, mountGamesSettings } from './games.js';
 import { shareBrainsHtml, mountShareBrains } from './share-brains.js';
-import { findTheme } from './themes.js';
+import { findTheme, DEFAULT_THEME } from './themes.js';
 import { tip, noteOrTip, stripTags, keep } from './tips.js';
 import { attributesHtml, cleanPersonality, greeting, PRESETS, DEFAULTS, isDefault } from './personality.js';
 import { esc, gb } from './util.js';
@@ -34,6 +34,31 @@ export function createCellar() {
   let speedModel = '';
   let speedRuns = [];
   let rent = { services: [], rentals: [], caps: {}, running: [], leftover: [], recent: [] }; // 1.5.127 rented brains
+  let rentPickOpen = false; // 1.5.137: Add a rental opens by itself when you come from the catalogue's "Rented brains" link
+  // 1.5.137: fills Add a rental from the brain picked in "Pick a brain from Bob's list", for the service picked.
+  // Never more than 1 card by itself: a brain that needs several says so, and the many-cards warning comes when you change it.
+  function fillRentPick(box) {
+    const key = box.querySelector('[data-rentadd="pick"]')?.value || '';
+    const p = rentPicks(visibleModels(data?.models || [], naughtyOn()), data?.bigBrains || [], eqCtx(), data?.bobNet || [], settings.platform).find((x) => x.key === key);
+    const s = (rent.services || []).find((x) => x.id === box.querySelector('[data-rentadd="service"]')?.value);
+    const model = box.querySelector('[data-rentadd="model"]'), name = box.querySelector('[data-rentadd="name"]');
+    const find = box.querySelector('[data-rentfind]'), note = box.querySelector('.rent-pick-note');
+    const say = (t) => { if (note) { note.textContent = t; note.classList.remove('error'); note.classList.add('muted'); } };
+    if (find) find.hidden = !(p && s?.kind === 'answer');
+    if (!p) { if (model.dataset.auto) { model.value = ''; delete model.dataset.auto; } if (name.dataset.auto) { name.value = ''; delete name.dataset.auto; } say(''); return; }
+    if (!name.value || name.dataset.auto) { name.value = `${p.name}${s ? ` on ${s.name.replace(/ \(.*\)$/, '')}` : ''}`; name.dataset.auto = '1'; }
+    if (!s || s.kind === 'answer') {
+      if (model.dataset.auto) { model.value = ''; delete model.dataset.auto; }
+      say(s ? `Press Find it on this service and Bob looks for ${p.name} on ${s.name}'s own list.` : 'Pick a service.');
+      return;
+    }
+    if (p.answerOnly) { if (model.dataset.auto) { model.value = ''; delete model.dataset.auto; } say(`${p.name} is too big to rent as one machine. Pick a pay-per-answer service and press Find it.`); return; }
+    model.value = p.model; model.dataset.auto = '1';
+    const card = box.querySelector('[data-rentadd="card"]');
+    if (card && [...card.options].some((o) => o.value === p.card)) card.value = p.card;
+    const cardName = (rent.cards || []).find((c) => c.id === p.card)?.name || `${p.card} GB card`;
+    say(p.cards > 1 ? (s.kind === 'machine' ? `${p.name} needs ${p.cards} × ${cardName} on one machine. Set Cards on the machine to ${p.cards}: Bob shows what that costs first.` : `${p.name} needs ${p.cards} cards on one machine, so it wants a machine-by-the-minute service, not serverless.`) : `Card size set to ${cardName}.`);
+  }
   let data = null, hw = null, settings = null, roles = null, cloud = [], caps = {}, bctx = { on: false, brains: [] }, tab = 'roles', job = null, mode = 'shop', voices = [];
   const sampler = createSampler();
   const live = new Map(); // downloads running now (one or two), by id
@@ -53,9 +78,22 @@ export function createCellar() {
   // 1.5.132: the naughty list (uncensored community builds) is in no list until its switch is on (setting naughtyList,
   // off unless you turn it on). naughtyView is which side of the catalogue's Well behaved / Naughty list toggle shows.
   const naughtyOn = () => settings?.naughtyList === true;
+  // 1.5.133: the How Bob works summary line, as a function, so a switch changed inside the open panel updates it at once
+  // (it used to keep saying "Naughty list: on" until the next reload).
+  const howSumNow = () => { const onoff = (v) => (v ? 'on' : 'off'); return `Bob picks the session: ${onoff(settings.autoSession !== false)} · One brain: ${onoff(settings.oneBrain)} · Starts with Windows: ${onoff(settings.autostart)} · Keeps to the tray: ${onoff(settings.tray !== false)} · Web search: ${onoff(settings.webSearch === true)} · Naughty list: ${onoff(settings.naughtyList === true)} · Lab: ${onoff(settings.computerLab === true)} · Plans before big jobs: ${onoff(settings.planFirst === true)} · How-tos: ${onoff(settings.howtos === true)} · Update checks: ${onoff(settings.updates?.autoCheck)}`; };
+  const refreshHowSum = () => { const n = dlg?.querySelector?.('#sub-ev-how > summary .spanel-note'); if (n && settings) n.textContent = howSumNow(); };
   const shownModels = () => visibleModels(data?.models || [], naughtyOn());
-  let naughtyView = (() => { try { return localStorage.getItem('bob-cat-naughty') === '1'; } catch { return false; } })();
-  const setNaughtyView = (on) => { naughtyView = on; try { localStorage.setItem('bob-cat-naughty', on ? '1' : '0'); } catch {} };
+  // 1.5.133: three sides, Well behaved / Community / Naughty list (catView), remembered in this browser.
+  let catView = (() => { try { const v = localStorage.getItem('bob-cat-view'); return VIEWS.includes(v) ? v : 'well'; } catch { return 'well'; } })();
+  const setCatView = (v) => { catView = VIEWS.includes(v) ? v : 'well'; try { localStorage.setItem('bob-cat-view', catView); } catch {} };
+  // 1.5.135: ➕ Your own brains: the Add form in progress (a picked .gguf, its name, an optional picture reader).
+  let ownForm = null;
+  async function ownPick(kind) {
+    const r = await api('/api/own-models/pick', { kind }).catch((e) => ({ error: e.message }));
+    if (r.error) { ownForm = { ...(ownForm || { file: '', name: '' }), error: r.error }; draw(); if (!ownForm.file) dlg.querySelector('[data-ownpath]')?.focus(); return null; }
+    return r;
+  }
+  async function ownRefresh() { [data, roles, settings] = await Promise.all([api('/api/models'), api('/api/roles'), api('/api/settings')]); draw(); }
   const setShowUnsuited = (on) => { showUnsuited = on; try { localStorage.setItem('bob-show-unsuited', on ? '1' : '0'); } catch {} };
 
   // Jobs Bob can already do another way: the model is an optional upgrade, not something missing.
@@ -212,7 +250,7 @@ export function createCellar() {
     if (tab === 'settings') body = settingsHtml();
     else if (tab === 'style') body = stylePage.html(settings);
     else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="doll">Back to Equip Bob</button></p>${rolesHtml()}` : (roles ? equipHtml(eqCtx()) : '<p class="muted">Loading...</p>');
-    else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], naughtyOn: naughtyOn(), naughtyView, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
+    else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], bobNet: data?.bobNet || [], naughtyOn: naughtyOn(), catView, ownForm, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
     else if (tab === 'found') body = `<p class="muted">Scanned ${data.scannedAt ? new Date(data.scannedAt).toLocaleString() : 'never'}. <button data-scan>Look again</button></p>${extrasHtml() || '<p>Nothing extra found.</p>'}`;
     else if (GROUPS.some((g) => g.id === tab)) body = groupHtml(GROUPS.find((g) => g.id === tab));
     else {
@@ -273,14 +311,17 @@ export function createCellar() {
   // the sizes that brain was made for (read from the model itself), with Bob's guideline under it.
   function brainCtxHtml() {
     const on = bctx?.on === true;
-    const k = (v) => `${Math.round(v / 1024)}K`;
+    const k = (v) => (v >= 1048576 && v % 1048576 === 0 ? `${v / 1048576}M` : `${Math.round(v / 1024)}K`);
     const rows = (bctx?.brains || []).map((b) => {
-      const top = b.choices.at(-1);
-      const opts = b.choices.map((v) => `<option value="${v}" ${b.picked === v ? 'selected' : ''}>${k(v)}${v === top && b.max ? ' (the most it was made for)' : ''}${v === 32768 ? ' (enough for most chats)' : ''}</option>`).join('');
+      const top = b.max || b.choices.at(-1);
+      // Long memory: sizes past what the brain was made for are stretched; one that won't fit here is greyed out.
+      const longNote = (v) => { const r = b.room?.[v]; return r?.fits === false ? ` (stretched, won't fit here: needs about ${r.needGB} GB)` : ` (stretched${r?.needGB ? `, about ${r.needGB} GB` : ''})`; };
+      const opts = b.choices.map((v) => `<option value="${v}" ${b.picked === v ? 'selected' : ''} ${b.max && v > b.max && b.room?.[v]?.fits === false && b.picked !== v ? 'disabled' : ''}>${k(v)}${b.max && v > b.max ? longNote(v) : ''}${v === top && b.max ? ' (the most it was made for)' : ''}${v === 32768 ? ' (enough for most chats)' : ''}</option>`).join('');
       return `<tr><th scope="row">${esc(b.name)} ${tipHtml(b.guide, `About ${b.name}`)}<div class="muted">${esc(b.jobs.join(', '))}</div></th><td><select data-bctx="${esc(b.model)}" aria-label="${esc(b.name)}: how much it keeps in mind"><option value="">Bob's pick (${k(b.bobPick)})</option>${opts}</select></td></tr>`;
     }).join('');
     return fold('How much each brain keeps in mind', on ? 'you pick, per brain' : 'Bob picks', `
       <label class="switch srow-switch"><input type="checkbox" data-set="brainCtxOn" ${on ? 'checked' : ''}><span><strong>Pick how much each brain keeps in mind</strong>${noteOrTip('Off to start with: Bob picks for each brain. On: pick a size for each brain you use. Each menu only lists sizes that brain was made for. A size you pick here is used for that brain everywhere, instead of the session sizes above.', 'Pick how much each brain keeps in mind')}</span></label>
+      ${on && bctx?.canStretch ? `<label class="switch srow-switch"><input type="checkbox" data-set="brainCtxStretch" ${bctx.stretch ? 'checked' : ''}><span><strong>Long memory: let Qwen3.5 and 3.6 brains stretch past 256K</strong>${noteOrTip('Off to start with. On: Qwen3.5 and 3.6 brains, and Bob\'s own brains made from them, also offer 512K and 1M in their menu. The stretch only switches on while you pick a size past 256K, because it makes short chats a little worse. It costs more memory: about 2.7 GB more at 512K and about 8 GB more at 1M on the 35B brains (more on the dense 27B). Reading a very long text takes a long time: a full 1M can take half an hour or more. A size that won\'t fit on this replicant matrix is greyed out. Only on Bob\'s built-in engine.', 'Long memory')}</span></label>` : ''}
       ${on ? (rows ? `<table class="roles">${rows}</table>` : '<p class="muted">No brains equipped yet.</p>') : ''}`, on);
   }
 
@@ -377,24 +418,56 @@ export function createCellar() {
         <label for="proj-path">Folder</label><input id="proj-path" type="text" placeholder="C:\\Projects\\MyGame"> <button type="button" class="mini" data-projbrowse>Browse…</button>
         <button type="button" data-projadd disabled>Add project</button><p class="error proj-error" hidden></p></div>`;
   }
-  // 1.5.79 How-tos: the steps Bob kept from jobs that worked. Loaded when the panel is drawn; edit and delete on the PC.
-  let howtosList = null, howtosLoading = false, howtoEditing = null, howtoDeleting = null;
-  window.addEventListener('bob-howto-saved', () => { howtosList = null; });
-  const loadHowtos = () => { if (howtosLoading) return; howtosLoading = true; api('/api/howtos').then((r) => { howtosList = r.howtos || []; }).catch(() => { howtosList = []; }).finally(() => { howtosLoading = false; draw(); }); };
-  function howtosHtml() {
-    const on = settings?.howtos === true;
-    if (howtosList === null) { loadHowtos(); return '<p class="muted">Loading…</p>'; }
-    const intro = `<p class="muted">${on ? 'After a job with a few steps goes well, Bob offers a card to keep the steps. When you ask for something like it again, he follows them.' : 'Off. Turn on "Let Bob learn how-tos" in How Bob works to have Bob offer them. How-tos you already saved stay here, and he doesn\'t use them while it\'s off.'} ${tip('A how-to is plain text: a name, what it\'s for, and the steps. It can\'t run anything by itself, and tools that ask for your OK still ask. How-tos stay on this replicant matrix (your computer).', 'How-tos')}</p>`;
-    const rows = howtosList.map((r) => howtoEditing === r.id
-      ? `<div class="howto-row" data-howto="${esc(r.id)}"><label>Name <input data-rname maxlength="60" value="${esc(r.name)}"></label>
+  // 1.5.79 How-tos: the steps Bob kept from jobs that worked. 1.5.144: one panel, 🧰 Tools and how-tos Bob made, for
+  // them and for the tools he wrote (src/own-kit.js). Loaded when the panel is drawn. Delete asks first, then the
+  // thing goes on the Recently deleted shelf for 30 days (Undo right away, or Put back from the shelf). Edit and
+  // Delete for good work on this PC only.
+  let ownKit = null, ownLoading = false, howtoEditing = null, ownAsk = null, ownPurgeAsk = null, ownLast = null, ownError = '';
+  const ownSame = (a, b) => a && b && a.kind === b.kind && a.id === b.id;
+  window.addEventListener('bob-howto-saved', () => { ownKit = null; });
+  const loadOwnKit = () => { if (ownLoading) return; ownLoading = true; api('/api/own-kit').then((r) => { ownKit = r; }).catch(() => { ownKit = { tools: [], howtos: [], deleted: [], maxTools: 30, maxHowtos: 100 }; }).finally(() => { ownLoading = false; draw(); }); };
+  const ownWhen = (t) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  const when = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const KIND_WORD = { tool: 'tool', howto: 'how-to' };
+  const binWord = () => (settings?.os === 'mac' ? 'the Trash' : settings?.os === 'linux' ? 'the trash' : 'the Recycle Bin'); // where thrown-away files go, by platform
+  const TOOL_STATE = { on: '', off: 'turned off', changed: 'off: its files changed since you OK\'d it', missing: 'its folder is gone' };
+  // Delete asks on the row itself: Delete, then "Delete / Keep it". No pop-up.
+  const ownDelBtns = (kind, id, name) => ownSame(ownAsk, { kind, id })
+    ? `<span class="ownkit-ask">Delete "${esc(name)}"? <span class="muted">It waits 30 days under Recently deleted.</span></span> <button type="button" class="mini danger" data-owndel="${esc(kind)}:${esc(id)}" aria-label="Yes, delete the ${KIND_WORD[kind]} ${esc(name)}">Delete</button><button type="button" class="link" data-owncancel>Keep it</button>`
+    : `<button type="button" class="mini" data-ownask="${esc(kind)}:${esc(id)}" aria-label="Delete the ${KIND_WORD[kind]} ${esc(name)}">Delete</button>`;
+  function ownKitHtml() {
+    if (ownKit === null) { loadOwnKit(); return '<p class="muted">Loading…</p>'; }
+    const k = ownKit;
+    const intro = `<p class="muted">Everything Bob made for himself to work with: the tools he wrote and the how-tos he kept. Look them over and delete what you don't want him to have. Anything deleted waits 30 days under Recently deleted, where you can put it back. ${tip('Delete here stops Bob using the thing at once. A tool\'s files stay in his folder on the shelf, then go to ' + binWord() + ' after 30 days (or when you press Delete for good). A how-to is plain text, so it\'s simply forgotten. Nothing here leaves this replicant matrix (your computer).', 'Tools and how-tos Bob made')}</p>`;
+    const note = ownError ? `<p class="error ownkit-note" role="alert">${esc(ownError)}</p>`
+      : ownLast ? `<p class="ownkit-note" role="status">${ownLast.put ? `Put the ${KIND_WORD[ownLast.kind]} "${esc(ownLast.name)}" back.` : `Deleted the ${KIND_WORD[ownLast.kind]} "${esc(ownLast.name)}". <button type="button" class="mini" data-ownundo="${esc(ownLast.kind)}:${esc(ownLast.id)}">Undo</button>`}</p>` : '<p class="ownkit-note" role="status" hidden></p>';
+    const tools = k.tools.map((t) => `<li class="ownkit-row"><div class="row"><strong>${esc(t.name)}</strong>${TOOL_STATE[t.state] ? ` <span class="warn-text">${esc(TOOL_STATE[t.state])}</span>` : ''}<span class="muted">${t.lastUsed ? `used ${esc(when(t.lastUsed))}` : 'not used yet'}</span></div>
+        <div class="muted">${esc(t.what)}</div>
+        <div class="muted">Can change: ${esc(t.writes.join('; ') || 'nothing outside its folder')}. Internet: ${t.internet ? 'yes' : 'no'}. Made ${esc(when(t.at))}.</div>
+        <div class="row"><button type="button" class="mini" data-owncode="${esc(t.name)}" aria-label="Show the code of ${esc(t.name)}">Show code</button>${ownDelBtns('tool', t.name, t.name)}</div><pre class="cmd ownkit-code" hidden></pre></li>`).join('');
+    const howtos = k.howtos.map((r) => howtoEditing === r.id
+      ? `<li class="ownkit-row howto-row" data-howto="${esc(r.id)}"><label>Name <input data-rname maxlength="60" value="${esc(r.name)}"></label>
           <label>What it's for <input data-rwhen maxlength="200" value="${esc(r.when || '')}"></label>
           <label>Steps (one per line) <textarea data-rsteps rows="${Math.min(12, r.steps.length + 1)}">${esc(r.steps.map((x) => x.did).join('\n'))}</textarea></label>
-          <div class="row"><button type="button" data-howtosave="${esc(r.id)}">Save changes</button><button type="button" class="link" data-howtocancel>Cancel</button></div><p class="error howto-error" hidden></p></div>`
-      : `<div class="howto-row"><div class="row"><strong>${esc(r.name)}</strong><span class="muted">${r.steps.length} steps${r.used ? ` · used ${r.used} time${r.used === 1 ? '' : 's'}` : ' · not used yet'}</span></div>
+          <div class="row"><button type="button" data-howtosave="${esc(r.id)}">Save changes</button><button type="button" class="link" data-howtocancel>Cancel</button></div><p class="error howto-error" hidden></p></li>`
+      : `<li class="ownkit-row howto-row"><div class="row"><strong>${esc(r.name)}</strong><span class="muted">${r.steps.length} steps${r.used ? ` · used ${r.used} time${r.used === 1 ? '' : 's'}` : ' · not used yet'}</span></div>
           ${r.when && r.when !== r.name ? `<div class="muted">For: ${esc(r.when)}</div>` : ''}
           <ol class="howto-steps">${r.steps.map((x) => `<li>${esc(x.did)}</li>`).join('')}</ol>
-          <div class="row"><button type="button" class="mini" data-howtoedit="${esc(r.id)}">Edit</button>${howtoDeleting === r.id ? `<button type="button" class="mini danger" data-howtodel="${esc(r.id)}">Delete for good</button><button type="button" class="link" data-howtocancel>Keep it</button>` : `<button type="button" class="mini" data-howtoask="${esc(r.id)}">Delete</button>`}</div></div>`).join('');
-    return `${intro}<div class="howtos-list">${rows || '<p class="muted">No how-tos yet.</p>'}</div>`;
+          <div class="row"><button type="button" class="mini" data-howtoedit="${esc(r.id)}" aria-label="Edit the how-to ${esc(r.name)}">Edit</button>${ownDelBtns('howto', r.id, r.name)}</div></li>`).join('');
+    const shelf = k.deleted.map((d) => `<li class="ownkit-row"><div class="row"><strong>${esc(d.name)}</strong><span class="muted">${KIND_WORD[d.kind]}${d.kind === 'howto' ? ` · ${d.steps} steps` : ''} · gone for good ${esc(ownWhen(d.goneAt))}</span></div>
+        ${d.what ? `<div class="muted">${esc(d.what)}</div>` : ''}
+        <div class="row"><button type="button" class="mini" data-ownput="${esc(d.kind)}:${esc(d.id)}" aria-label="Put the ${KIND_WORD[d.kind]} ${esc(d.name)} back">Put back</button>${ownSame(ownPurgeAsk, d)
+          ? `<span class="ownkit-ask">Delete "${esc(d.name)}" for good? <span class="muted">${d.kind === 'tool' ? `Its folder goes to ${binWord()}.` : 'There\'s no getting it back.'}</span></span> <button type="button" class="mini danger" data-ownpurge="${esc(d.kind)}:${esc(d.id)}" aria-label="Yes, delete the ${KIND_WORD[d.kind]} ${esc(d.name)} for good">Delete for good</button><button type="button" class="link" data-owncancel>Keep it</button>`
+          : `<button type="button" class="mini" data-ownpurgeask="${esc(d.kind)}:${esc(d.id)}" aria-label="Delete the ${KIND_WORD[d.kind]} ${esc(d.name)} for good">Delete for good</button>`}</div></li>`).join('');
+    return `${intro}${note}
+      <h4 class="ssub">🔧 Tools he wrote <span class="muted">${k.tools.length} of ${k.maxTools}</span></h4>
+      <p class="muted">${k.makerOn ? 'With "Make his own tools" on, Bob writes one when none of his tools fits a job, and shows you a card before it\'s added. Turn one off or on under Settings, Show advanced settings, Hands.' : 'Making new ones is off ("Make his own tools" under Settings, Show advanced settings, Hands). The ones he already made stay here.'}</p>
+      <ul class="ownkit-list">${tools || '<li class="muted">No tools yet.</li>'}</ul>
+      <h4 class="ssub">📒 How-tos he kept <span class="muted">${k.howtos.length} of ${k.maxHowtos}</span></h4>
+      <p class="muted">${k.howtosOn ? 'After a job with a few steps goes well, Bob offers a card to keep the steps. When you ask for something like it again, he follows them.' : 'Learning new ones is off ("Let Bob learn how-tos" in How Bob works). The ones you already saved stay here, and he doesn\'t use them while it\'s off.'}</p>
+      <ul class="ownkit-list">${howtos || '<li class="muted">No how-tos yet.</li>'}</ul>
+      <details class="ownkit-shelf" ${k.deleted.length && (ownPurgeAsk || ownLast) ? 'open' : ''}><summary><strong>🗑 Recently deleted</strong> <span class="muted">· ${k.deleted.length ? `${k.deleted.length} waiting · each kept 30 days` : 'nothing waiting'}</span></summary>
+        <ul class="ownkit-list">${shelf || '<li class="muted">Nothing here. Delete a tool or how-to above and it waits here for 30 days.</li>'}</ul></details>`;
   }
   // 1.5.125 Bob's home folder (models, programs, notes, settings), with Move. Settings text is third person; the first-run copy is Bob's own voice.
   function homeError(text) { for (const box of dlg.querySelectorAll('.home-error')) { box.textContent = text; box.hidden = false; } }
@@ -500,20 +573,21 @@ export function createCellar() {
     // 1.5.125 Bob's home folder (closed, it shows the home folder; red when it's somewhere temporary).
     ['ev-home', '📦 Bob\'s home folder', () => { const h = homeInfo || {}; return h.tempLike ? `${settings?.home || ''} · in ${h.tempLike}: move it` : h.synced ? `${h.folder || settings?.home || ''} · a ${h.synced} folder, synced to the cloud: not recommended` : `${h.folder || settings?.home || ''}${h.modelsText ? ` · models ${h.modelsText}` : ''}`; }, () => homeHtml()],
     ['ev-save', '💾 Where Bob saves things', () => { const sd = settings?.saveDir || {}; return sd.missing ? 'Picked folder not found · saving in Bob\'s own folder' : sd.custom ? sd.folder : 'Bob\'s own folder (Made by Bob)'; }, () => saveDirHtml()],
-    ['ev-howtos', '📒 How-tos', () => { const n = howtosList ? howtosList.length : (settings?.howtoCount || 0); return `${n ? `${n} how-to${n === 1 ? '' : 's'}` : 'No how-tos yet'} · Learning: ${settings?.howtos === true ? 'on' : 'off'}`; }, () => howtosHtml()]];
+    // 1.5.144 🧰 Tools and how-tos Bob made (closed, it shows how many of each and how many wait on the shelf).
+    ['ev-howtos', '🧰 Tools and how-tos Bob made', () => { const c = ownKit ? { tools: ownKit.tools.length, howtos: ownKit.howtos.length, deleted: ownKit.deleted.length } : (settings?.ownKit || { tools: 0, howtos: settings?.howtoCount || 0, deleted: 0 }); const bit = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`; return c.tools || c.howtos ? `${bit(c.tools, 'tool')} · ${bit(c.howtos, 'how-to')}${c.deleted ? ` · ${c.deleted} recently deleted` : ''}` : 'Nothing made yet'; }, () => ownKitHtml()]];
 
   function everydayHtml() {
     const st = settings.style || {};
     const lookName = (settings.lookText || '').split(/[:.,(]/)[0].replace(/["“”]/g, '').trim() || 'Sysop';
-    const theme = findTheme(st.theme || 'inn', st.custom || []);
+    const theme = findTheme(st.theme || DEFAULT_THEME, st.custom || []);
     const motion = st.motion || 'on';
     const mopt = (val, label) => `<button type="button" role="radio" aria-checked="${motion === val}" data-motion="${val}">${label}</button>`;
     // Closed panels show what's set now, not just what's inside.
     const onoff = (v) => (v ? 'on' : 'off');
     const t = settings.tts || {};
     const voiceSum = t.provider === 'kokoro' ? `Kokoro, ${((settings.kokoroVoices || []).find(([id]) => id === (t.voice || 'am_michael'))?.[1] || t.voice).replace(/ \(.*$/, '')}` : t.provider === 'piper' ? 'Piper' : t.provider === 'chatterbox' ? 'Chatterbox' : 'Windows';
-    const bobSum = `Voice: ${voiceSum} · Look: ${lookName} · Theme: ${theme?.name || 'Bob\'s Inn'}`;
-    const howSum = `Bob picks the session: ${onoff(settings.autoSession !== false)} · One brain: ${onoff(settings.oneBrain)} · Starts with Windows: ${onoff(settings.autostart)} · Keeps to the tray: ${onoff(settings.tray === true)} · Web search: ${onoff(settings.webSearch === true)} · Naughty list: ${onoff(settings.naughtyList === true)} · Plans before big jobs: ${onoff(settings.planFirst === true)} · How-tos: ${onoff(settings.howtos === true)} · Update checks: ${onoff(settings.updates?.autoCheck)}`;
+    const bobSum = `Voice: ${voiceSum} · Look: ${lookName} · Theme: ${theme?.name || 'Moondust'}`;
+    const howSum = howSumNow();
     // 1.5.117: the version and Check for updates sit on the closed panel's line, so no scrolling to check.
     const pcSum = `<span class="pc-ver">Bob ${esc(settings.version?.label || '')}</span> <button type="button" class="mini" data-checkupdate>Check for updates</button> <span class="update-out"></span><span class="pc-spec">· ${esc(hw?.spec || 'specs not read yet')} · graphics card: ${hw?.gpu ? `${esc(hw.gpu.name)}, ${hw.gpu.vramGB} GB` : 'not detected'} · ${hw?.freeGB ?? '?'} GB free</span>`;
     return `<div class="everyday">${panel('ev-pc', '💻 This replicant matrix and updates', pcSum, `
@@ -523,7 +597,7 @@ export function createCellar() {
         <div class="help-bundle muted" aria-live="polite"></div><div class="update-steps"></div><div class="pc-check" aria-live="polite"></div></div>`, '', true)}${panel('ev-bob', '🙂 Bob himself', bobSum, `
       ${srow('Bob\'s voice', voicePickHtml(), '<button type="button" class="mini" data-tab="speech">More voice settings</button>')}
       ${srow('Bob\'s look', esc(lookName), '<button type="button" class="mini" data-tab="style">Change</button>')}
-      ${sswitch('lookIcon', settings.lookIcon === true, 'Use Bob\'s look as his icon', `Off unless you turn it on. His icon on the ${settings.platform === 'darwin' ? 'Dock' : 'taskbar'}, in the tray and in the corner of his window shows the look you picked, and changes when you change it.${settings.trayHere ? '' : ' Only in Bob\'s own window, not in a browser.'}`, settings.trayHere ? '' : 'disabled')}
+      ${sswitch('lookIcon', settings.lookIcon !== false, 'Use Bob\'s look as his icon', `On unless you turn it off. His icon on the ${settings.platform === 'darwin' ? 'Dock' : 'taskbar'}, in the tray and in the corner of his window shows the look you picked, and changes the moment you save a new one (a shortcut pinned to the taskbar may keep the usual icon: Windows draws those from the shortcut). Off: the usual Bob icon.${settings.trayHere ? '' : ' Only in Bob\'s own window, not in a browser.'}`, settings.trayHere ? '' : 'disabled')}
       ${srow('Theme', esc(theme?.name || 'Bob\'s Inn'), '<button type="button" class="mini" data-tab="style">Change</button>')}
       ${srow('Animations', `<span class="ttabs" role="radiogroup" aria-label="Animations">${mopt('on', 'On')}${mopt('system', settings.platform === 'win32' ? 'Follow Windows' : 'Follow the system')}${mopt('off', 'Off')}</span>`)}
       ${srow('Bob\'s cat', `<input data-set="catName" maxlength="24" value="${esc(settings.catName || 'Patches')}" aria-label="Cat's name" style="width:12em"> ${tip('The cat in Bob\'s stories.', 'Bob\'s cat')}`)}
@@ -532,15 +606,18 @@ export function createCellar() {
       ${sswitch('autoSession', settings.autoSession !== false, 'Let Bob pick the session', 'Bob moves into the session that suits the job (Art, Coding, Office or Gaming) and goes back to Normal, the lightest, once he has been quiet for 2 minutes. While something else is using the graphics card, like a game, he stays in Gaming. You can still pick a session yourself from the menu: Bob keeps it while you work, then goes back to Normal once he has been quiet for 2 minutes. To keep him in Gaming, press 🎮 Gaming next to Effort.')}
       ${sswitch('oneBrain', settings.oneBrain, 'One brain (snappier)', 'Every copy of Bob uses the main brain, so he never stops to swap brains (about 20 seconds).')}
       ${sswitch('planFirst', settings.planFirst === true, 'Show Bob\'s plan before big jobs', keep('Off unless you turn it on. Before a job with several steps, or any step that changes files or runs programs, Bob shows every step on one card and waits for you. Any OKs the job needs are ticked on the same card.'))}
-      ${sswitch('howtos', settings.howtos === true, 'Let Bob learn how-tos', 'Off unless you turn it on. After a job with a few steps goes well, Bob offers to keep the steps as a how-to, and follows them next time you ask for something like it. Nothing is kept without your click. Your how-tos are in 📒 How-tos below.')}
+      ${sswitch('howtos', settings.howtos === true, 'Let Bob learn how-tos', 'Off unless you turn it on. After a job with a few steps goes well, Bob offers to keep the steps as a how-to, and follows them next time you ask for something like it. Nothing is kept without your click. Your how-tos are in 🧰 Tools and how-tos Bob made below.')}
       ${sswitch('resumeJobs', settings.resumeJobs, 'Pick up where Bob left off after a restart', 'If Bob closes in the middle of a job (an update, a restart or a crash), he carries on when he opens again. Steps that finished aren\'t done again, and the step that got cut off is done again from the start. Unfinished downloads carry on too. If the cut-off step was typing into an app, moving or deleting files, editing a file or running a command, the job waits in Tasks so you can check first.')}
       <h4 class="ssub">Starting and closing</h4>
       ${sswitch('autostart', settings.autostart, 'Launch Bob on start-up', 'Off unless you turn it on.', settings.platform === 'win32' || settings.platform === 'darwin' || settings.loginItems ? '' : 'disabled')}
-      ${sswitch('tray', settings.tray === true, 'Keep Bob in the tray', `Off unless you turn it on. Closing or minimising Bob's window tucks him into ${settings.platform === 'darwin' ? 'the menu bar at the top of the screen' : settings.platform === 'win32' ? 'the tray by the clock' : 'your desktop\'s tray'} instead of closing him, so he keeps running. Click his icon to open him again. To close him fully, ${settings.platform === 'darwin' ? 'click' : 'right-click'} his icon and pick <strong>Quit Bob</strong>.${settings.trayHere ? '' : ' Only in Bob\'s own window, not in a browser.'}`, settings.trayHere ? '' : 'disabled')}
+      ${sswitch('tray', settings.tray !== false, 'Keep Bob in the tray', `On unless you turn it off. Closing or minimising Bob's window tucks him into ${settings.platform === 'darwin' ? 'the menu bar at the top of the screen' : settings.platform === 'win32' ? 'the tray by the clock' : 'your desktop\'s tray'} instead of closing him, so he keeps running. Click his icon to open him again. To close him fully, ${settings.platform === 'darwin' ? 'click' : 'right-click'} his icon and pick <strong>Quit Bob</strong>.${settings.trayHere ? '' : ' Only in Bob\'s own window, not in a browser.'}`, settings.trayHere ? '' : 'disabled')}
       <h4 class="ssub">Going online</h4>
       ${sswitch('webSearch', settings.webSearch === true, 'Let Bob search the web', keep('Off unless you turn it on. Bob looks things up on DuckDuckGo and reads pages when a question needs it. Only the search words and page addresses leave your replicant matrix (your computer).'))}
+      ${sswitch('catalogUpdates', settings.catalogUpdates === true, 'Let Bob fetch his newest brain list', keep('Off unless you turn it on. Once a day Bob reads his brain list from his own page on GitHub, so brains that came out since this version show up in the Brain catalogue. He only uses a list where every file is pinned to an exact copy with its size and fingerprint, he never takes a brain away, and nothing about you is sent (GitHub sees the request, like any web page). Downloads still ask first, with the size.'))}
+      <p class="muted list-date">${data?.updated ? `Bob's brain list is from ${esc(dayWords(data.updated))}.` : ''} ${settings.catalogUpdates === true ? '<button type="button" class="mini" data-listcheck>Check now</button>' : ''}</p>
       <h4 class="ssub">Brains</h4>
-      ${sswitch('naughtyList', settings.naughtyList === true, 'Show the naughty list', keep('Off unless you turn it on. The naughty list is other people\'s remixes of Qwen and Gemma brains with the refusals cut out ("heretic" or "abliterated"), not Alibaba\'s or Google\'s releases. On: they appear behind the 😈 Naughty list toggle in the Brain catalogue, and the ones you make Active show in Equip Bob and the brain menus. A brain from there answers without refusing, so what it says is on you, and it can be a little rougher than the original. Bob never recommends one. Off: they are listed nowhere; one already equipped stays until you change it.'))}
+      ${sswitch('computerLab', settings.computerLab === true, 'Show the Computer Science Lab', keep('Off unless you turn it on. On: 🧪 Lab appears in the left pane, where you can make your own brain from one on this replicant matrix: take out sight or hearing, cut experts, make the running files, and test it before it goes into Bob. It runs here and costs nothing. Off: the Lab button is hidden; brains you made stay in Bob.' + (settings.computerLabRoom?.ok === false ? ' ' + settings.computerLabRoom.why : '')), settings.computerLabRoom?.ok === false && settings.computerLab !== true ? 'disabled' : '')}
+      ${sswitch('naughtyList', settings.naughtyList === true, 'Show the naughty list', keep('Off unless you turn it on. The naughty list is other people\'s remixes of Qwen and Gemma brains with the refusals cut out ("heretic" or "abliterated"), not Alibaba\'s or Google\'s releases. On: they appear behind the Naughty list side of the Brain catalogue\'s toggle (the red devil), and the ones you make Active show in Equip Bob and the brain menus. A brain from there answers without refusing, so what it says is on you, and it can be a little rougher than the original. Bob never recommends one. Off: they are listed nowhere; one already equipped stays until you change it.'))}
 `)}${EVERY_EXTRA.map(([id, label, note, body]) => panel(id, label, typeof note === 'function' ? note() : note, body())).join('')}
     </div>`;
   }
@@ -594,7 +671,42 @@ export function createCellar() {
       <div><strong>Engine downloads</strong> ${tip('The programs that run the models, from their official GitHub pages, matched to your graphics card.', 'Engine downloads')}
         ${(data.engines || []).map((e) => `<article class="model" id="m-engine:${esc(e.id)}"><header><strong>${esc(e.name)}</strong></header><p>${esc(e.what)}</p>
           <div class="act">${live.has('engine:' + e.id) ? progress(live.get('engine:' + e.id)) : e.installed ? `<div class="have">✓ ${e.found ? esc(e.found[0].toUpperCase() + e.found.slice(1)) : `Installed${e.version ? ` (${esc(e.version)})` : ''}`}</div>${e.pinned || e.available === false ? '' : `<button data-checkengine="${esc(e.id)}">Check for a newer build</button>`}${e.tested && e.version && e.version !== e.tested && !e.found ? `<button data-engine="${esc(e.id)}">Go back to the tested build (${esc(e.tested)})</button>` : ''}` : e.available === false ? `<div class="muted">${esc(e.note || 'Not for this replicant matrix yet.')}</div>` : `<button class="get" data-engine="${esc(e.id)}">Get ${esc(e.name)}</button>`}</div><div class="confirm" hidden></div></article>`).join('')}</div>
+      ${qwenHtml()}
       <details class="more"><summary>More</summary>${speedHtml()}</details>`;
+  }
+
+  // 1.5.148: how Qwen3.6 brains (and Bob's own brains made from them) pick their words. Qwen's settings by default,
+  // one set per mode; the person can switch on their own numbers. Every field has a visible label for screen readers.
+  const QWEN_FIELDS = [['temperature', 'Temperature', 0, 2, 0.05], ['top_p', 'Top P', 0, 1, 0.05], ['top_k', 'Top K', 0, 200, 1], ['min_p', 'Min P', 0, 1, 0.01], ['presence_penalty', 'Presence penalty', 0, 2, 0.1], ['repeat_penalty', 'Repetition penalty', 1, 2, 0.05]];
+  function qwenHtml() {
+    const own = settings.qwenPresets || {};
+    const qd = settings.qwenDefaults || {};
+    const on = own.on === true;
+    const rows = Object.entries(qd).map(([id, d]) => {
+      const mine = { ...d, ...(own[id] || {}) };
+      return `<fieldset class="qwen-preset" data-qpreset="${esc(id)}"><legend><strong>${esc(d.label)}</strong></legend>
+        <div class="row">${QWEN_FIELDS.map(([k, label, lo, hi, step]) => `<label class="pick"><span>${label}</span><input type="number" inputmode="decimal" data-qfield="${k}" min="${lo}" max="${hi}" step="${step}" value="${esc(String(mine[k] ?? ''))}" aria-label="${esc(d.label)}: ${label}" ${on ? '' : 'disabled'}></label>`).join('')}</div>
+        <button type="button" data-qreset="${esc(id)}" ${on ? '' : 'disabled'}>Back to Qwen's</button></fieldset>`;
+    }).join('');
+    return `<div class="qwen-presets" data-qbox><strong>How Qwen brains pick their words</strong> <span class="tag">Qwen's settings unless you change them</span>
+        ${tip('On the built-in engine, Qwen3.6 brains, and Bob\'s own brains made from them, use the settings Qwen recommends: one set when they think it through, a cooler set when they think through code, and one for quick replies. Switch this on only if you want to try your own numbers.', 'How Qwen brains pick their words')}
+        ${sswitch('qwenPresetsOn', on, 'Choose my own word settings', 'Off: Bob uses Qwen\'s. On: the numbers below are used instead, from the next reply.')}
+        ${rows}</div>`;
+  }
+  async function saveQwen(el, msg) {
+    const box = dlg.querySelector('[data-qbox]');
+    const next = { on: box.querySelector('[data-set="qwenPresetsOn"]').checked };
+    for (const fs of box.querySelectorAll('[data-qpreset]')) {
+      const row = {};
+      for (const f of fs.querySelectorAll('[data-qfield]')) if (f.value !== '') row[f.dataset.qfield] = Number(f.value);
+      next[fs.dataset.qpreset] = row;
+    }
+    const r = await api('/api/settings', { qwenPresets: next });
+    settings.qwenPresets = r.qwenPresets;
+    box.outerHTML = qwenHtml();
+    const again = dlg.querySelector('[data-qbox]');
+    flash(again, msg || (settings.qwenPresets.on ? 'Saved. Used from the next reply.' : 'Off. Bob uses Qwen\'s settings again.'));
+    again.querySelector(el.dataset.qfield ? `[data-qpreset="${el.closest('[data-qpreset]')?.dataset.qpreset}"] [data-qfield="${el.dataset.qfield}"]` : el.dataset.qreset ? `[data-qreset="${el.dataset.qreset}"]` : '[data-set="qwenPresetsOn"]')?.focus();
   }
 
   // 1.5.79: the memory banks, shown under "Remember only what fits" while it's on.
@@ -658,6 +770,12 @@ export function createCellar() {
     const running = (r.running || []).map((m) => `<li>${esc((r.rentals || []).find((x) => x.id === m.rental)?.name || m.rental)}: ${m.starting ? 'starting' : `${m.minutes} min, about ${esc(m.usd)}`}</li>`).join('');
     const leftover = (r.leftover || []).map((m) => `<li>${esc(m.serviceName)} ${esc(m.id)}${m.perHour ? ` (about $${(+m.perHour).toFixed(2)} an hour)` : ''}, started before Bob did <button type="button" class="mini danger" data-rentstopone="${esc(m.id)}">Stop it</button></li>`).join('');
     const cardOpts = (r.cards || []).map((c) => `<option value="${esc(c.id)}" ${c.id === '48' ? 'selected' : ''}>${esc(c.name)} (about $${c.perHour.toFixed(2)} an hour): ${esc(c.say)}</option>`).join('');
+    // 1.5.137: Bob's list, so you needn't know what a service calls a brain: the really big ones, and the catalogue
+    // brains too big for this replicant matrix and every Bob on your Bob-Net (those are only listed here and in the Lab).
+    const picks = rentPicks(visibleModels(data?.models || [], naughtyOn()), data?.bigBrains || [], eqCtx(), data?.bobNet || [], settings.platform);
+    const pickOpt = (p) => `<option value="${esc(p.key)}">${esc(p.name)}${p.by ? ` (${esc(p.by)})` : ''}${p.answerOnly ? ': pay per answer only' : p.cards > 1 ? `: needs ${p.cards} cards` : ''}</option>`;
+    const bigs = picks.filter((p) => p.group === 'big'), tooBig = picks.filter((p) => p.group === 'too-big');
+    const pickSel = picks.length ? `<label class="pick"><strong>Pick a brain from Bob's list</strong><select data-rentadd="pick" aria-label="Pick a brain from Bob's list"><option value="">None: I'll type the model's name</option>${bigs.length ? `<optgroup label="Really big brains">${bigs.map(pickOpt).join('')}</optgroup>` : ''}${tooBig.length ? `<optgroup label="Too big for your Bobs">${tooBig.map(pickOpt).join('')}</optgroup>` : ''}</select></label>` : '';
     const svcOpts = (r.services || []).map((s) => `<option value="${esc(s.id)}" ${s.enabled ? '' : 'disabled'}>${esc(s.name)}${s.enabled ? '' : ' (switch it on first)'}</option>`).join('');
     return `<div class="rent-block"><strong>Rented brains</strong> <span class="tag">off unless you turn one on</span>
       ${more('Hire a big brain for a big job, from any service you have an account with. A rental is a service plus a model (for example Qwen 3.6 35B on OpenRouter, or a full-size 24Bob on a RunPod card). Put one in the Rented brain slot on Equip Bob, then use it from the 🏗 Rented brain switch under the chat, or when Bob offers it for a job too big for this replicant matrix. You press a card before anything is spent, and it says the cost and exactly what leaves this replicant matrix: the chat of that job, the files you attach to it, Bob\'s instructions and what he remembers about you. Keys are environment variables Bob only reads (on Mac and Linux they can also go in ~/.config/bob/env); he never stores or shows one. Bob\'s figures are estimates from the service\'s price list; the service\'s own billing page is the real bill.')}
@@ -670,9 +788,11 @@ export function createCellar() {
       ${(r.services || []).map(svc).join('')}
       <h4 class="ssub">Rentals</h4>
       ${(r.rentals || []).length ? `<ul class="rent-list">${r.rentals.map(rentalRow).join('')}</ul>` : '<p class="muted">None yet.</p>'}
-      <details class="more rent-add"><summary>Add a rental</summary>
+      <details class="more rent-add"${rentPickOpen ? ' open' : ''}><summary>Add a rental</summary>
+        ${pickSel}
         <label class="pick"><strong>Service</strong><select data-rentadd="service" aria-label="Service">${svcOpts}</select></label>
-        <label class="pick"><strong>Model</strong><input data-rentadd="model" placeholder="as the service lists it, e.g. qwen/qwen3.6-35b-a3b, or Owner/Repo/file.gguf" aria-label="Model name" style="width:24em"></label>
+        <label class="pick"><strong>Model</strong><input data-rentadd="model" placeholder="as the service lists it, e.g. qwen/qwen3.6-35b-a3b, or Owner/Repo/file.gguf" aria-label="Model name" style="width:24em"> <button type="button" class="mini" data-rentfind hidden>Find it on this service</button></label>
+        <p class="muted rent-pick-note" aria-live="polite"></p>
         <label class="pick rent-card-pick"><strong>Card size</strong><select data-rentadd="card" aria-label="Card size">${cardOpts}</select></label>
         <label class="pick rent-cards-pick"><strong>Cards on the machine</strong><select data-rentadd="cards" aria-label="How many cards on the machine">${(r.cardCounts || [1]).map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n === 1 ? '1 card (the usual)' : `${n} cards at once: ${n} times the hourly price`}</option>`).join('')}</select> <span class="muted">Only for a model too big for one card. The price and the limits apply to the whole machine.</span></label>
         <div class="confirm rent-multi-warn" hidden></div>
@@ -999,13 +1119,33 @@ export function createCellar() {
     try {
       if ((tab === 'style' || (tab === 'settings' && (b.dataset.motion || b.dataset.nowneed))) && mode === 'shop' && await stylePage.onClick(b, settings)) return;
       if (b.dataset.sampleEngine) { sampler.play(b); return; }
+      if (b.dataset.qreset) { // 1.5.148: one preset back to Qwen's numbers
+        const fs = b.closest('[data-qpreset]'); const d = settings.qwenDefaults?.[b.dataset.qreset] || {};
+        for (const f of fs.querySelectorAll('[data-qfield]')) f.value = d[f.dataset.qfield] ?? '';
+        await saveQwen(b, `${d.label || 'That set'} is back to Qwen's settings.`); return;
+      }
       if (b.dataset.gomodel) { setTab(b.dataset.gocat); jumpTo = ''; draw(); dlg.querySelector('#m-' + CSS.escape(b.dataset.gomodel))?.scrollIntoView({ block: 'center' }); return; }
       if ('unsuitedsw' in b.dataset) { setShowUnsuited(!showUnsuited); draw(); return; }
       if ('lookcomments' in b.dataset) { const on = b.getAttribute('aria-checked') !== 'true'; const r = await api('/api/settings', { lookComments: on }); settings.lookComments = r.lookComments; b.setAttribute('aria-checked', String(r.lookComments)); b.querySelector('.st').textContent = r.lookComments ? 'On' : 'Off'; return; }
       if ('unsuited' in b.dataset) { setShowUnsuited(!showUnsuited); draw(); return; }
       // 1.5.132: the catalogue's Well behaved / Naughty list toggle, and "Show the naughty list" (the same setting as in Settings).
-      if (b.dataset.naughtyview) { if (b.dataset.naughtyview === 'on' && !naughtyOn()) return; setNaughtyView(b.dataset.naughtyview === 'on'); draw(); return; }
-      if ('naughtyon' in b.dataset) { const r = await api('/api/settings', { naughtyList: true }); settings.naughtyList = r.naughtyList === true; if (settings.naughtyList) setNaughtyView(true); draw(); return; }
+      if (b.dataset.catview) { if (b.dataset.catview === 'naughty' && !naughtyOn()) return; setCatView(b.dataset.catview); draw(); return; }
+      // 1.5.135: ➕ Your own brains. Pick the file (a window on this replicant matrix), name it, add it; or take one off the list.
+      if ('ownadd' in b.dataset) { b.disabled = true; const r = await ownPick('gguf'); if (!r) return; if (!r.file) { b.disabled = false; return; } ownForm = r.error ? { file: r.file, name: '', error: r.error } : { file: r.file, name: r.name, params: r.params, sizeGB: r.sizeGB, mmproj: r.mmproj || '', card: r.card || null }; draw(); dlg.querySelector('[data-ownname]')?.focus(); return; }
+      if (b.dataset.ownmm) { if (!ownForm) return; ownForm.name = dlg.querySelector('[data-ownname]')?.value || ownForm.name; if (b.dataset.ownmm === 'clear') { ownForm.mmproj = ''; draw(); return; } const r = await ownPick('mmproj'); if (r && r.file) { ownForm.mmproj = r.file; ownForm.error = ''; draw(); } return; }
+      if ('owncancel' in b.dataset) { ownForm = null; draw(); return; }
+      if ('ownpathopen' in b.dataset) { ownForm = { file: '', name: '' }; draw(); dlg.querySelector('[data-ownpath]')?.focus(); return; }
+      if ('owndo' in b.dataset) { return; } // the form's submit handler does it
+      if (b.dataset.ownremove) {
+        const li = b.closest('li'); const box = li?.querySelector('.confirm');
+        if (!box) return;
+        if (!box.hidden) { box.hidden = true; box.innerHTML = ''; return; }
+        box.hidden = false; box.innerHTML = `<p>Take <strong>${esc(li.querySelector('.kit-name')?.textContent || 'it')}</strong> off Bob's list? The file stays where it is; only Bob forgets it. Any slot wearing it is emptied.</p><div class="row"><button type="button" class="get" data-ownremove2="${esc(b.dataset.ownremove)}">Remove from Bob's list</button><button type="button" data-ownkeep>Keep it</button></div>`;
+        return;
+      }
+      if ('ownkeep' in b.dataset) { const box = b.closest('.confirm'); box.hidden = true; box.innerHTML = ''; return; }
+      if (b.dataset.ownremove2) { b.disabled = true; const r = await api('/api/own-models/remove', { id: b.dataset.ownremove2 }).catch((e) => ({ error: e.message })); if (r.error) { b.closest('.confirm').innerHTML = `<p class="error">${esc(r.error)}</p>`; return; } await ownRefresh(); return; }
+      if ('naughtyon' in b.dataset) { const r = await api('/api/settings', { naughtyList: true }); settings.naughtyList = r.naughtyList === true; if (settings.naughtyList) setCatView('naughty'); draw(); return; }
       if (b.dataset.help && b.closest('summary')) e.preventDefault(); // a "?" in a panel heading opens Help, not the panel
       if (b.dataset.panels) { for (const d of dlg.querySelectorAll('.adv-sec')) { d.open = b.dataset.panels === 'open'; if (d.open) openPanels.add(d.dataset.panel); else openPanels.delete(d.dataset.panel); } saveOpen(); return; }
       if (b.dataset.help) { window.dispatchEvent(new CustomEvent('bob-help', { detail: b.dataset.help })); return; }
@@ -1031,16 +1171,33 @@ export function createCellar() {
         await saveProjects(list, settings.defaultProject || (list.length === 1 ? name : undefined));
         return;
       }
-      // 1.5.79 How-tos: edit, delete (two clicks, no pop-up), cancel.
-      if (b.dataset.howtoedit) { howtoEditing = b.dataset.howtoedit; howtoDeleting = null; draw(); return; }
-      if (b.dataset.howtoask) { howtoDeleting = b.dataset.howtoask; howtoEditing = null; draw(); return; }
-      if ('howtocancel' in b.dataset) { howtoEditing = howtoDeleting = null; draw(); return; }
-      if (b.dataset.howtodel) { await api('/api/howtos/delete', { id: b.dataset.howtodel }); howtoDeleting = null; howtosList = null; settings.howtoCount = Math.max(0, (settings.howtoCount || 1) - 1); draw(); return; }
+      // 1.5.79 How-tos: edit, cancel. 1.5.144 🧰 Tools and how-tos Bob made: Show code, Delete (asks on the row), Undo,
+      // Put back, Delete for good (asks on the row). Each answer redraws from what the PC sent back.
+      if (b.dataset.howtoedit) { howtoEditing = b.dataset.howtoedit; ownAsk = ownPurgeAsk = null; draw(); return; }
+      if ('howtocancel' in b.dataset) { howtoEditing = null; draw(); return; }
+      if ('owncancel' in b.dataset) { ownAsk = ownPurgeAsk = null; draw(); return; }
+      const ownPick = (v) => { const i = v.indexOf(':'); return { kind: v.slice(0, i), id: v.slice(i + 1) }; };
+      if (b.dataset.ownask) { ownAsk = ownPick(b.dataset.ownask); ownPurgeAsk = null; howtoEditing = null; ownLast = null; ownError = ''; draw(); dlg.querySelector('[data-owndel]')?.focus(); return; }
+      if (b.dataset.ownpurgeask) { ownPurgeAsk = ownPick(b.dataset.ownpurgeask); ownAsk = null; ownLast = null; ownError = ''; draw(); dlg.querySelector('[data-ownpurge]')?.focus(); return; }
+      if (b.dataset.owndel || b.dataset.ownundo || b.dataset.ownput || b.dataset.ownpurge) {
+        const act = b.dataset.owndel ? 'delete' : b.dataset.ownpurge ? 'purge' : 'restore';
+        const pick = ownPick(b.dataset.owndel || b.dataset.ownundo || b.dataset.ownput || b.dataset.ownpurge);
+        ownAsk = ownPurgeAsk = null; ownError = '';
+        try {
+          const r = await api(`/api/own-kit/${act}`, pick);
+          ownKit = r.view; ownLast = act === 'delete' ? { kind: r.kind, id: r.id, name: r.name } : act === 'restore' ? { kind: r.kind, id: r.id, name: r.name, put: true } : null;
+          if (settings) settings.ownKit = { tools: r.view.tools.length, howtos: r.view.howtos.length, deleted: r.view.deleted.length };
+        } catch (err) { ownError = err.message; ownKit = null; }
+        draw();
+        if (act === 'delete') dlg.querySelector('[data-ownundo]')?.focus(); else dlg.querySelector('#sub-ev-howtos .ownkit-note')?.focus?.();
+        return;
+      }
+      if (b.dataset.owncode) { const pre = b.closest('li').querySelector('.ownkit-code'); if (!pre.hidden) { pre.hidden = true; b.textContent = 'Show code'; return; } try { const r = await api('/api/hands/mytools', { name: b.dataset.owncode, code: true }); pre.textContent = r.code; pre.hidden = false; b.textContent = 'Hide code'; } catch (err) { pre.textContent = err.message; pre.hidden = false; } return; }
       if (b.dataset.howtosave) {
         const row = b.closest('.howto-row');
         try {
           await api('/api/howtos/edit', { id: b.dataset.howtosave, name: row.querySelector('[data-rname]').value, when: row.querySelector('[data-rwhen]').value, steps: row.querySelector('[data-rsteps]').value.split('\n') });
-          howtoEditing = null; howtosList = null; draw();
+          howtoEditing = null; ownKit = null; draw();
         } catch (err) { const eb = row.querySelector('.howto-error'); if (eb) { eb.textContent = err.message; eb.hidden = false; } }
         return;
       }
@@ -1107,7 +1264,7 @@ export function createCellar() {
       if ('chestall' in b.dataset) { $('madeBtn')?.click(); return; }
       // 1.5.127 rented brains
       if ('rentuse' in b.dataset) { rent = await api('/api/rent/settings', { current: b.dataset.rentuse }); window.dispatchEvent(new CustomEvent('bob-rent-slot', { detail: { rental: (rent.rentals || []).find((x) => x.id === rent.current)?.name || '' } })); draw(); return; }
-      if ('rentsettings' in b.dataset) { sampler.stop(); setTab('settings'); advanced = true; try { localStorage.setItem('bob-settings-advanced', '1'); } catch {} jumpTo = 'adv-online'; draw(); return; }
+      if ('rentsettings' in b.dataset) { rentPickOpen = Boolean(b.closest('.too-big-note')); sampler.stop(); setTab('settings'); advanced = true; try { localStorage.setItem('bob-settings-advanced', '1'); } catch {} jumpTo = 'adv-online'; draw(); return; }
       if (b.dataset.rentwarnok) { rent = await api('/api/rent/settings', { enabled: { [b.dataset.rentwarnok]: true }, warned: { [b.dataset.rentwarnok]: true } }); draw(); return; }
       if (b.dataset.rentwarnno) { const box = b.closest('.rent-warn'); if (box) box.hidden = true; return; }
       // Several cards at once: the warning card's answer. Yes keeps the count; no puts it back to 1 card.
@@ -1118,6 +1275,19 @@ export function createCellar() {
       if ('rentstop' in b.dataset) { b.disabled = true; b.textContent = 'Stopping…'; rent = await api('/api/rent/stop', {}); draw(); return; }
       if (b.dataset.rentstopone) { b.disabled = true; try { rent = await api('/api/rent/stop-leftover', { id: b.dataset.rentstopone }); } catch (e) { alertIn(b, e.message); } draw(); return; }
       if ('rentcheck' in b.dataset) { b.disabled = true; rent = await api('/api/rent/check', {}); draw(); return; }
+      if ('rentfind' in b.dataset) { // 1.5.137: look the picked brain up on the pay-per-answer service's own list
+        const box = b.closest('.rent-add'); const val = (k) => box.querySelector(`[data-rentadd="${k}"]`)?.value?.trim() || '';
+        const p = rentPicks(visibleModels(data?.models || [], naughtyOn()), data?.bigBrains || [], eqCtx(), data?.bobNet || [], settings.platform).find((x) => x.key === val('pick'));
+        const note = box.querySelector('.rent-pick-note'); if (!p) return;
+        b.disabled = true;
+        try {
+          const r = await api('/api/rent/find', { service: val('service'), hf: p.hf, name: p.name, address: val('address'), keyEnv: val('keyEnv') });
+          const model = box.querySelector('[data-rentadd="model"]');
+          if (r.model) { model.value = r.model; model.dataset.auto = '1'; note.textContent = `Found it: ${r.model}.`; } else note.textContent = r.why || 'Not on that service\'s list.';
+        } catch (e) { note.textContent = e.message; note.classList.add('error'); } finally { b.disabled = false; }
+        return;
+      }
+      if ('listcheck' in b.dataset) { b.disabled = true; try { const r = await api('/api/catalog/latest', {}); flash(b, r.result?.why || 'Checked.'); await load().catch(() => {}); } catch (e) { alertIn(b, e.message); } finally { b.disabled = false; } return; } // 1.5.137
       if ('rentaddgo' in b.dataset) {
         const box = b.closest('.rent-add');
         const val = (k) => box.querySelector(`[data-rentadd="${k}"]`)?.value?.trim() || '';
@@ -1287,9 +1457,32 @@ export function createCellar() {
   // 1.5.34 Projects: "Add project" stays greyed out until a folder is filled in.
   const projAddState = () => { const b = dlg.querySelector('[data-projadd]'); if (b) b.disabled = !dlg.querySelector('#proj-path')?.value.trim(); };
   dlg.addEventListener('input', (e) => { if (e.target.id === 'proj-path') projAddState(); if (e.target.id === 'save-path') saveDirState(); });
+  dlg.addEventListener('input', (e) => { const k = e.target.dataset?.rentadd; if (k === 'model' || k === 'name') delete e.target.dataset.auto; }); // 1.5.137: what you type yourself stays
   dlg.addEventListener('input', (e) => { if (tab === 'style') stylePage.onInput(e.target); if (e.target.dataset?.ssearch !== undefined) { settingsQuery = e.target.value; filterSettings(); } if (e.target.dataset?.dial) showDials(dialValues()); });
 
-  dlg.addEventListener('change', async (e) => {
+  // 1.5.135: ➕ Your own brains, the Add form.
+  dlg.addEventListener('submit', async (e) => {
+    const form = e.target.closest?.('[data-ownform]');
+    if (!form || !ownForm) return;
+    e.preventDefault();
+    // 1.5.135 (review): the typed path is read like a picked file, then the usual form follows.
+    if ('ownpathform' in form.dataset) {
+      const typed = form.querySelector('[data-ownpath]')?.value.trim() || '';
+      ownForm = { file: '', name: '', typed, busy: true }; draw();
+      const r = await api('/api/own-models/inspect', { file: typed }).catch((err) => ({ error: err.message }));
+      ownForm = r.error ? { file: '', name: '', typed, error: r.error } : { file: r.file, name: r.name, params: r.params, sizeGB: r.sizeGB, mmproj: r.mmproj || '', card: r.card || null }; // 1.5.145: a typed path brings its brain card too
+      draw(); dlg.querySelector(r.error ? '[data-ownpath]' : '[data-ownname]')?.focus(); return;
+    }
+    ownForm.name = form.querySelector('[data-ownname]')?.value.trim() || ownForm.name;
+    ownForm.busy = true; ownForm.error = ''; draw();
+    const r = await api('/api/own-models', { name: ownForm.name, gguf: ownForm.file, mmproj: ownForm.mmproj || '' }).catch((err) => ({ error: err.message }));
+    if (r.error) { ownForm.busy = false; ownForm.error = r.error; draw(); return; }
+    ownForm = null;
+    await ownRefresh();
+    const row = dlg.querySelector('#own-' + CSS.escape(r.added?.id || ''));
+    if (row) { row.scrollIntoView({ block: 'center' }); flash(row, `Added. ${esc(r.added.name)} is on your list now: switch it Active and equip it like any other brain.`); }
+  });
+  const onChange = async (e) => {
     const el = e.target;
     try {
       if ('advanced' in el.dataset) { advanced = el.checked; try { localStorage.setItem('bob-settings-advanced', advanced ? '1' : '0'); } catch {} draw(); return; }
@@ -1327,7 +1520,9 @@ export function createCellar() {
         if (args && kept.length !== args.length) alertIn(el, 'Some of that was left out: only flags and plain values are allowed, no file paths.');
         el.value = kept.join(' '); flash(el, 'Saved.'); return;
       }
+      if (el.dataset.set === 'qwenPresetsOn' || el.dataset.qfield) { await saveQwen(el); return; } // 1.5.148
       if (el.dataset.set === 'brainCtxOn') { const r = await api('/api/settings', { brainCtxOn: el.checked }); settings.brainCtxOn = r.brainCtxOn; bctx = await api('/api/brain-ctx').catch(() => ({ ...bctx, on: r.brainCtxOn })); const box = el.closest('[data-bctxbox]'); if (box) box.innerHTML = brainCtxHtml(); flash(box || el, r.brainCtxOn ? 'On. Applies when each brain next loads.' : 'Off. Bob picks again.'); return; }
+      if (el.dataset.set === 'brainCtxStretch') { const r = await api('/api/settings', { brainCtxStretch: el.checked }); settings.brainCtxStretch = r.brainCtxStretch; bctx = await api('/api/brain-ctx').catch(() => ({ ...bctx, stretch: r.brainCtxStretch })); const box = el.closest('[data-bctxbox]'); if (box) box.innerHTML = brainCtxHtml(); flash(box || el, r.brainCtxStretch ? 'On. 512K and 1M are in the Qwen3.5 and 3.6 menus now.' : 'Off. A stretched pick goes back to Bob\'s pick.'); return; }
       if (el.dataset.bctx) { const v = el.value ? Number(el.value) : null; const r = await api('/api/settings', { brainCtx: { [el.dataset.bctx]: v } }); settings.brainCtx = r.brainCtx; const b = (bctx.brains || []).find((x) => x.model === el.dataset.bctx); if (b) b.picked = v; flash(el, 'Saved. Applies when the brain next loads.'); return; }
       if (el.dataset.sctx) { const v = el.value ? Number(el.value) : null; const r = await api('/api/settings', { sessionCtx: { [el.dataset.sctx]: v } }); settings.sessionCtx = r.sessionCtx; flash(el, 'Saved. Applies when the brain next loads.'); return; }
       if (el.dataset.sbrain) { const r = await api('/api/settings', { sessionBrains: { [el.dataset.sbrain]: el.value } }); settings.sessionBrains = r.sessionBrains; flash(el, 'Saved.'); return; }
@@ -1335,8 +1530,10 @@ export function createCellar() {
       if (['readyWhileTyping', 'gamesFirst', 'pictureFit'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k]; flash(el, 'Saved. Applies when the brain or picture model next loads.'); return; }
       if (el.dataset.set === 'autoSession') { const r = await api('/api/settings', { autoSession: el.checked }); settings.autoSession = r.autoSession; el.checked = r.autoSession; window.dispatchEvent(new CustomEvent('bob-auto-session', { detail: { autoSession: r.autoSession } })); flash(el, r.autoSession ? 'On. Bob picks the session himself.' : 'Off. The session only changes when you pick one.'); return; }
       if (el.dataset.set === 'tray' || el.dataset.set === 'lookIcon') { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k]; return; }
-      if (el.dataset.set === 'howtos') { const r = await api('/api/settings', { howtos: el.checked }); settings.howtos = r.howtos; el.checked = r.howtos; flash(el, r.howtos ? 'On. After a job with a few steps goes well, Bob offers to keep them as a how-to.' : 'Off. Bob won\'t offer or use how-tos. Saved ones stay in 📒 How-tos.'); return; }
-      if (el.dataset.set === 'naughtyList') { const r = await api('/api/settings', { naughtyList: el.checked }); settings.naughtyList = r.naughtyList === true; el.checked = settings.naughtyList; if (!settings.naughtyList) setNaughtyView(false); flash(el, settings.naughtyList ? 'On. The 😈 Naughty list toggle is at the top of the Brain catalogue.' : 'Off. The naughty list is out of every list again.'); return; }
+      if (el.dataset.set === 'howtos') { const r = await api('/api/settings', { howtos: el.checked }); settings.howtos = r.howtos; el.checked = r.howtos; flash(el, r.howtos ? 'On. After a job with a few steps goes well, Bob offers to keep them as a how-to.' : 'Off. Bob won\'t offer or use how-tos. Saved ones stay in 🧰 Tools and how-tos Bob made.'); return; }
+      if (el.dataset.set === 'computerLab') { const r = await api('/api/settings', { computerLab: el.checked }); settings.computerLab = r.computerLab === true; el.checked = settings.computerLab; window.dispatchEvent(new CustomEvent('bob-lab-switch', { detail: { on: settings.computerLab } })); flash(el, r.computerLabWhy || (settings.computerLab ? 'On. 🧪 Lab is in the left pane.' : 'Off. The Lab button is hidden; brains you made stay in Bob.')); return; } // 1.5.141
+      if (el.dataset.set === 'naughtyList') { const r = await api('/api/settings', { naughtyList: el.checked }); settings.naughtyList = r.naughtyList === true; el.checked = settings.naughtyList; if (!settings.naughtyList && catView === 'naughty') setCatView('well'); flash(el, settings.naughtyList ? 'On. The Naughty list side (the red devil) is at the top of the Brain catalogue.' : 'Off. The naughty list is out of every list again.'); return; }
+      if (el.dataset.set === 'catalogUpdates') { const r = await api('/api/settings', { catalogUpdates: el.checked }); settings.catalogUpdates = r.catalogUpdates === true; el.checked = settings.catalogUpdates; flash(el, settings.catalogUpdates ? (r.listCheck?.why ? `On. ${r.listCheck.why}` : 'On. Bob looks for a newer brain list once a day.') : 'Off. Bob uses the brain list that came with this version.'); await load().catch(() => {}); return; } // 1.5.137
       if (el.dataset.set === 'webSearch') { const r = await api('/api/settings', { webSearch: el.checked }); settings.webSearch = r.webSearch; el.checked = r.webSearch; window.dispatchEvent(new CustomEvent('bob-web', { detail: { webSearch: r.webSearch } })); flash(el, r.webSearch ? 'On. Bob can search the web when a question needs it.' : 'Off. Bob won\'t go online to look things up.'); return; }
       if (el.dataset.gcard) {
         const r = await api('/api/settings', { gamingCard: el.dataset.gcard }); settings.gamingCard = r.gamingCard; settings.gamingCardNow = r.gamingCardNow;
@@ -1372,7 +1569,8 @@ export function createCellar() {
         rent = await api('/api/rent/settings', { enabled: { [id]: el.checked } }); flash(el.closest('.cloud'), el.checked ? 'On. Bob still asks before every hire.' : 'Off.'); draw(); return;
       }
       else if (el.dataset.rentcap) { const v = Number(String(el.value).replace(/[^0-9.]/g, '')) || 0; rent = await api('/api/rent/settings', { caps: { [el.dataset.rentcap]: v } }); el.value = String(rent.caps[el.dataset.rentcap]); flash(el, v ? 'Saved.' : 'Saved: 0 means nothing can be hired.'); return; }
-      else if (el.dataset.rentadd === 'service') { const s = (rent.services || []).find((x) => x.id === el.value); const box = el.closest('.rent-add'); box.querySelector('.rent-card-pick').hidden = !s || s.kind === 'answer'; box.querySelector('.rent-cards-pick').hidden = !s || s.kind !== 'machine'; box.querySelector('.rent-multi-warn').hidden = true; const sel = box.querySelector('[data-rentadd="cards"]'); sel.value = '1'; delete sel.dataset.ok; for (const o of box.querySelectorAll('.rent-other')) o.hidden = el.value !== 'other'; return; }
+      else if (el.dataset.rentadd === 'pick') { fillRentPick(el.closest('.rent-add')); return; } // 1.5.137
+      else if (el.dataset.rentadd === 'service') { const s = (rent.services || []).find((x) => x.id === el.value); const box = el.closest('.rent-add'); fillRentPick(box); box.querySelector('.rent-card-pick').hidden = !s || s.kind === 'answer'; box.querySelector('.rent-cards-pick').hidden = !s || s.kind !== 'machine'; box.querySelector('.rent-multi-warn').hidden = true; const sel = box.querySelector('[data-rentadd="cards"]'); sel.value = '1'; delete sel.dataset.ok; for (const o of box.querySelectorAll('.rent-other')) o.hidden = el.value !== 'other'; return; }
       // 1.5.127: more than one card on a hired machine: a big warning first (the owner's rule). It snaps back to 1 until "I understand" is pressed.
       else if (el.dataset.rentadd === 'cards') {
         const n = Number(el.value) || 1; const box = el.closest('.rent-add'); const warn = box.querySelector('.rent-multi-warn');
@@ -1398,7 +1596,8 @@ export function createCellar() {
         if (r.needsEngine) askEngine(el.closest('td') || el.parentElement);
       }
     } catch (err) { alertIn(el, err.message); if (el.type === 'checkbox') el.checked = !el.checked; }
-  });
+  };
+  dlg.addEventListener('change', async (e) => { try { await onChange(e); } finally { refreshHowSum(); } });
 
   // The update's steps, read from the same status file the update window writes.
   // 1.5.117: a downloaded, checked update shows on the closed updates panel's line, with Restart Bob now.
@@ -1454,7 +1653,7 @@ export function createCellar() {
   dlg.addEventListener('close', () => { mid?.classList.remove('paged'); for (const id of ['cellarBtn', 'settingsBtn', 'styleBtn']) $(id)?.classList.remove('on'); $('chatBtn')?.classList.add('on'); sampler.stop(); stylePage.closing(settings); window.dispatchEvent(new Event('bob-caps')); });
 
   return {
-    async open(which = 'shop', pickTab, opts = {}) { mode = which; if (opts.house) { const slot = { music: 'music', pictures: 'image', video: 'video', sfx: 'sfx' }[opts.house]; if (slot) eqSelected = slot; eqView = 'doll'; houseFocus = opts.house; } if (pickTab) setTab(pickTab); else if (which === 'settings') { mode = 'shop'; setTab('settings'); } if (!dlg.open) { mid?.classList.add('paged'); mid ? dlg.show() : dlg.showModal(); } dlg.scrollTop = 0; draw(); await load().catch((e) => { $('cellar-body').innerHTML = `<p class="error">${esc(e.message)}</p>`; }); },
+    async open(which = 'shop', pickTab, opts = {}) { mode = which; if (opts.house) { const slot = { music: 'music', pictures: 'image', video: 'video', sfx: 'sfx' }[opts.house]; if (slot) eqSelected = slot; eqView = 'doll'; houseFocus = opts.house; } if (pickTab) setTab(pickTab); else if (which === 'settings') { mode = 'shop'; setTab('settings'); } if (opts.jump && /^adv-[\w-]+$/.test(opts.jump)) { mode = 'shop'; setTab('settings'); advanced = true; try { localStorage.setItem('bob-settings-advanced', '1'); } catch {} jumpTo = opts.jump; } /* 1.5.141: open Settings at one advanced section (the Bob-Net heading in Now running) */ if (!dlg.open) { mid?.classList.add('paged'); mid ? dlg.show() : dlg.showModal(); } dlg.scrollTop = 0; draw(); await load().catch((e) => { $('cellar-body').innerHTML = `<p class="error">${esc(e.message)}</p>`; }); },
     async firstRun() {
       try { const s = await api('/api/settings'); if (!s.setupDone) this.open('welcome'); } catch {}
     },

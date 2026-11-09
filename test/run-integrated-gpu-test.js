@@ -63,7 +63,7 @@ const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 
 check('Get models says "Fits your replicant matrix" and names the built-in graphics', /'Fits your replicant matrix'/.test(cellar) && /Built-in graphics: /.test(cellar));
 const server = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
 check('built-in graphics are not treated as a card for pictures', /!h\.gpu\.integrated\) cfg\.cardGB/.test(server));
-check('built-in graphics are remembered for picture settings', /h\?\.gpu\?\.integrated\) cfg\.sharedGraphics = true/.test(server));
+check('built-in graphics are remembered for picture settings, with the set-aside size (1.5.133)', /h\?\.gpu\?\.integrated\) \{ cfg\.sharedGraphics = true; cfg\.reservedGraphicsGB = Number\(h\.gpu\.reservedGraphicsGB\) \|\| 0;/.test(server));
 
 
 // ---- 1.5.126: the memory really shared on a handheld (a Legion Go showed RAM only and no graphics memory) ----
@@ -124,6 +124,21 @@ r = await apuRoom({ ...fakeBrain(), gate: { brainBytes: () => undefined } }, 'qw
 check('a brain whose size is unknown goes the old way', r.ok && !r.shortened);
 const brainSrc = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8');
 check('the guard sits in fitCtx (shorten), ensureModel (refuse, in chat) and wake (stay quiet)', /const room = await apuRoom\(this, model, fit\);/.test(brainSrc) && /throw new Error\(room\.line\)/.test(brainSrc) && /not waking \$\{model\}: too little RAM/.test(brainSrc));
+
+// ---- 1.5.133: the set-aside counts (Legion Go: every brain was refused with 8 GB set aside) ----
+const goBrain = (reserved, size) => ({ cfg: { sharedGraphics: true, reservedGraphicsGB: reserved }, gate: { brainBytes: (m, { ctx }) => size * GB + Math.min(ctx || 32768, 131072) * 60 * 1024 }, engine: { loaded: async () => [] } });
+// Qwen3 4B ~3 GB all told (2 GB file + 32K chat memory ~1.9 GB, but at 8K ~0.5 GB): 8 GB set aside, 1.1 GB free
+r = await apuRoom(goBrain(8, 1.1), 'qwen3-4b', 32768, { freeMem: 1.1 * GB });
+check('8 GB set aside, 1.1 GB free: a ~3 GB brain loads (the set-aside is the room)', r.ok && r.ctx === 32768, JSON.stringify(r));
+r = await apuRoom(goBrain(8, 3.6), 'coder-7b', 32768, { freeMem: 1.1 * GB });
+check('8 GB set aside, 1.1 GB free: a ~5.5 GB brain loads too', r.ok, JSON.stringify(r));
+r = await apuRoom(goBrain(0.5, 1.1), 'qwen3-4b', 32768, { freeMem: 1.1 * GB });
+check('Auto (0.5 GB set aside), 1.1 GB free: still refused (Windows would run short)', !r.ok && typeof r.line === 'string', JSON.stringify(r));
+r = await apuRoom(goBrain(8, 8), 'big', 32768, { freeMem: 1.1 * GB });
+check('a 10 GB brain on an 8 GB set-aside with little RAM free: shortened or refused, never a crash', (!r.ok && r.line) || (r.ok && r.shortened), JSON.stringify(r));
+r = await apuRoom(goBrain(8, 8), 'big', 32768, { freeMem: 12 * GB });
+check('the same brain with RAM free beyond the set-aside: loads', r.ok && !r.shortened, JSON.stringify(r));
+check('borrow on refusal: my own brain not fitting asks a paired Bob first, and only refuses when none is free', /if \(!room\.ok\) \{ ownRefused = room; borrowing = true;/.test(brainSrc) && /if \(ownRefused\) \{[^}]*throw new Error\(ownRefused\.line\)/.test(brainSrc));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

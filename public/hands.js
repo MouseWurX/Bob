@@ -123,12 +123,13 @@ function newToolCard(ev, { add, answer }) {
   return card;
 }
 
-// Settings, Hands: the tools Bob made. Each can be turned off, its code shown, or removed (to the Recycle Bin).
+// Settings, Hands: the tools Bob made. Each can be turned off, its code shown, or removed. 1.5.144: Remove puts it on
+// the Recently deleted shelf (Settings, 🧰 Tools and how-tos Bob made) for 30 days, same as Delete there.
 const TOOL_STATE = { on: '', off: 'turned off', changed: 'off: its files changed since you OK\'d it', missing: 'its folder is gone' };
 function selfToolsHtml(st, on) {
   if (!st) return '';
   const rows = st.tools.map((t) => `<li class="mytool"><label class="switch small"><input type="checkbox" data-hmytool="${esc(t.name)}" ${t.state === 'on' ? 'checked' : ''} ${t.state === 'changed' || t.state === 'missing' ? 'disabled' : ''}><span><strong>${esc(t.name)}</strong> ${TOOL_STATE[t.state] ? `<span class="warn-text">${esc(TOOL_STATE[t.state])}</span>` : ''}<br><span class="muted">${esc(t.what)}</span><br><span class="muted">Can change: ${esc(t.writes.join('; ') || 'nothing outside its folder')}. Internet: ${t.internet ? 'yes' : 'no'}. Made ${esc(when(t.at))}${t.lastUsed ? `, last used ${esc(when(t.lastUsed))}` : ', not used yet'}.</span></span></label>
-      <div class="row"><button type="button" data-hmytoolcode="${esc(t.name)}">Show code</button><button type="button" data-hmytooldel="${esc(t.name)}">Remove</button></div><pre class="cmd mytool-code" hidden></pre></li>`).join('');
+      <div class="row"><button type="button" data-hmytoolcode="${esc(t.name)}">Show code</button><button type="button" data-hmytooldel="${esc(t.name)}" aria-label="Remove ${esc(t.name)}">Remove</button></div><pre class="cmd mytool-code" hidden></pre></li>`).join('');
   return `<div class="hands-mytools${on ? '' : ' dim'}"><strong>Tools Bob made</strong> <span class="muted">${st.tools.length} of ${st.max}</span>
     ${st.tools.length ? `<ul>${rows}</ul>` : '<p class="muted">None yet. With "Make his own tools" on, Bob makes one when none of his tools fits a job, and shows you a card first.</p>'}
     <p class="muted">${st.netGuard ? 'Tools without internet on their card are cut off from it.' : 'This replicant matrix can\'t cut one program off the internet without administrator rights, so the code is checked for it instead. That check isn\'t airtight.'}</p>
@@ -418,7 +419,7 @@ export async function mountHandsSettings(box) {
       if ('hpwcheck' in b.dataset) return await checkPassword(box);
       if (b.dataset.hgetengine) { b.disabled = true; try { await post('/api/models/download', { id: 'engine:' + b.dataset.hgetengine }); say('Downloading. It shows in Downloads; this line turns to ✓ when it\'s ready.'); } catch (e) { b.disabled = false; say(e.message); } return; }
       if (b.dataset.hmytoolcode) { const pre = b.closest('li').querySelector('.mytool-code'); if (!pre.hidden) { pre.hidden = true; b.textContent = 'Show code'; return; } const r = await post('/api/hands/mytools', { name: b.dataset.hmytoolcode, code: true }); pre.textContent = r.code; pre.hidden = false; b.textContent = 'Hide code'; return; }
-      if (b.dataset.hmytooldel) { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to remove'; return; } v = await post('/api/hands/mytools', { name: b.dataset.hmytooldel, remove: true }); draw(); return say('Removed. Its folder is in the Recycle Bin.'); }
+      if (b.dataset.hmytooldel) { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to remove'; return; } v = await post('/api/hands/mytools', { name: b.dataset.hmytooldel, remove: true }); draw(); return say(`Removed. It waits 30 days under Recently deleted in 🧰 Tools and how-tos Bob made, where you can put it back; then its folder goes to ${sched?.platform === 'darwin' ? 'the Trash' : sched?.platform === 'linux' ? 'the trash' : 'the Recycle Bin'}.`); }
       if ('hsandbox' in b.dataset) { b.disabled = true; say('Checking the sandbox (a few seconds)…'); v = await post('/api/hands/sandbox'); draw(); return say(v.sandbox?.ok ? 'The sandbox holds.' : `The sandbox didn't hold: ${v.sandbox?.why || 'unknown'}.`); }
       if (b.dataset.hmcpcheck) { b.disabled = true; say('Checking (the first time can take a minute while it gets ready)…'); const r = await post('/api/hands/mcp', { id: b.dataset.hmcpcheck, check: true }); v = r; draw(); return say(r.note); }
       if (b.dataset.hmcptools) { const ul = b.closest('li').querySelector('.mcp-tools'); ul.hidden = !ul.hidden; b.textContent = ul.hidden ? 'Show tools' : 'Hide tools'; return; }

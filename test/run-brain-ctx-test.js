@@ -3,7 +3,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { choicesFor, pickedCtx, cleanBrainCtx, ctxGuide, bobsPick, ctxOn, SAFE_CTX } from '../src/model-ctx.js';
+import { choicesFor, pickedCtx, cleanBrainCtx, ctxGuide, bobsPick, ctxOn, SAFE_CTX, stretchOn, canStretch, stretchMax, yarnArgs, kvBytes, needBytes, roomBytes, ctxLabel } from '../src/model-ctx.js';
+import { LlamaCpp } from '../src/llamacpp.js';
 import { ggufInfo } from '../src/gguf.js';
 import { Brain } from '../src/brain.js';
 import { HELP } from '../public/help-content.js';
@@ -47,12 +48,63 @@ check('a pick past the limit falls back to the usual size', (await fit({ brainCt
 check('Gaming: a big pick never grows the brain past the session size', (await fit({ session: 'light', brainCtxOn: true, brainCtx: { m: 262144 } }, 262144)('m', 32768)) === 32768 && (await fit({ session: 'light', brainCtxOn: true, brainCtx: { m: 16384 } }, 262144)('m', 32768)) === 16384);
 check('switch off: picks are left alone', (await fit({ brainCtxOn: false, brainCtx: { m: 65536 } }, 262144)('m', 32768)) === 32768);
 
+// Long memory (YaRN): Qwen3.6's guide, off to start with, only for 256K Qwen3.5/3.6 brains, only past 256K.
+const q36 = { arch: 'qwen35moe', ctxTrain: 262144 };
+check('long memory is off to start with', !stretchOn({}) && !stretchOn({ brainCtxStretch: 'yes' }) && stretchOn({ brainCtxStretch: true }));
+check('only Qwen3.5/3.6 brains made for 256K can stretch', canStretch(q36) && canStretch({ arch: 'qwen35', ctxTrain: 262144 }) && !canStretch({ arch: 'gemma4', ctxTrain: 262144 }) && !canStretch({ arch: 'qwen35moe', ctxTrain: 131072 }) && !canStretch(null));
+check('...to 4x at most (about 1M)', stretchMax(q36) === 1048576 && stretchMax({ arch: 'llama', ctxTrain: 8192 }) === null);
+check('the stretch is the size over what it was made for (512K: 2, 1M: 4)', JSON.stringify(yarnArgs(524288, 262144)) === JSON.stringify(['--rope-scaling', 'yarn', '--rope-scale', '2', '--yarn-orig-ctx', '262144']) && yarnArgs(1048576, 262144)[3] === '4');
+check('no stretch at or below what it was made for', yarnArgs(262144, 262144).length === 0 && yarnArgs(32768, 262144).length === 0 && yarnArgs(524288, null).length === 0);
+check('the menu adds 512K and 1M only with a stretch', JSON.stringify(choicesFor(262144, { stretch: 1048576 }).slice(-3)) === JSON.stringify([262144, 524288, 1048576]) && !choicesFor(262144).includes(524288));
+check('1M reads as 1M', ctxLabel(1048576) === '1M' && ctxLabel(524288) === '512K');
+const scfg = { brainCtxOn: true, brainCtxStretch: true, brainCtx: { q: 524288, g: 1048576 } };
+check('a stretched pick counts with long memory on and a brain that can take it', pickedCtx(scfg, 'q', 262144, { stretch: 1048576 }) === 524288);
+check('...not with long memory off', pickedCtx({ ...scfg, brainCtxStretch: false }, 'q', 262144, { stretch: 1048576 }) === null);
+check('...not on a brain that can\'t stretch', pickedCtx(scfg, 'g', 262144, { stretch: null }) === null);
+check('settings keep the stretched sizes', JSON.stringify(cleanBrainCtx({ a: 524288, b: 1048576, c: 2097152 })) === JSON.stringify({ a: 524288, b: 1048576 }));
+
+// The chat memory's cost, from the brain's shape. Qwen3.6 35B-A3B: 40 layers, every 4th keeps a memory, 2 heads of 256.
+const shape = { layers: 40, memLayers: 10, perToken: 10 * 2 * (256 + 256) };
+const gib = (b) => b / 1024 ** 3;
+check('q8_0 chat memory: about 2.7 GiB per 256K on a Qwen3.6 brain', Math.abs(gib(kvBytes(shape, 262144, ['-ctk', 'q8_0', '-ctv', 'q8_0'])) - 2.656) < 0.01);
+check('...and 4x that at 1M', Math.abs(kvBytes(shape, 1048576, ['-ctk', 'q8_0', '-ctv', 'q8_0']) / kvBytes(shape, 262144, ['-ctk', 'q8_0', '-ctv', 'q8_0']) - 4) < 1e-9);
+check('f16 memory costs about twice q8_0', kvBytes(shape, 262144, ['-fa', 'on']) > 1.8 * kvBytes(shape, 262144, ['-ctk', 'q8_0', '-ctv', 'q8_0']));
+check('an unknown shape gives no guess', kvBytes(null, 262144) === null && needBytes(1e9, null, 262144) === null);
+const GB = 1024 ** 3;
+const pc = roomBytes(32 * GB, 16 * GB);
+check('the owner\'s PC (16 GB card, 32 GB RAM): a 21.7 GB brain fits at 1M, an 8 GB phone has no room for 512K', needBytes(21.7 * GB, shape, 1048576, ['-ctk', 'q8_0', '-ctv', 'q8_0']) <= pc && needBytes(3.3 * GB, shape, 524288, ['-ctk', 'q8_0', '-ctv', 'q8_0']) > roomBytes(8 * GB, 0));
+
+// The header: the shape is read from the file, hybrid layers included.
+{
+  const d2 = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-ctx-'));
+  const f2 = path.join(d2, 'shape.gguf');
+  const kvs = [[ 'general.architecture', 8, str('qwen35moe') ], [ 'qwen35moe.context_length', 4, u32(262144) ], [ 'qwen35moe.block_count', 4, u32(40) ], [ 'qwen35moe.attention.head_count_kv', 4, u32(2) ], [ 'qwen35moe.attention.key_length', 4, u32(256) ], [ 'qwen35moe.attention.value_length', 4, u32(256) ], [ 'qwen35moe.full_attention_interval', 4, u32(4) ]];
+  fs.writeFileSync(f2, Buffer.concat([Buffer.from('GGUF'), u32(3), u64(0), u64(kvs.length), ...kvs.flatMap(([k, t, v]) => [str(k), u32(t), v])]));
+  const info = ggufInfo(f2);
+  check('reads the chat memory\'s shape from the file (10 of 40 layers keep one)', info?.shape?.memLayers === 10 && info.shape.perToken === shape.perToken, JSON.stringify(info?.shape));
+  // Bob's engine: the stretch goes on the command line only with the switch on and a size past 256K.
+  const eng = (c, ctx) => { const e = Object.create(LlamaCpp.prototype); e.cfg = { llamacpp: {}, ...c }; return e.stretchArgs(f2, ctx); };
+  check('the engine stretches a Qwen3.6 brain to 512K with long memory on', eng({ brainCtxStretch: true }, 524288).join(' ') === '--rope-scaling yarn --rope-scale 2 --yarn-orig-ctx 262144');
+  check('...never with it off, at 256K, or past 1M', eng({}, 524288).length === 0 && eng({ brainCtxStretch: true }, 262144).length === 0 && eng({ brainCtxStretch: true }, 2097152).length === 0);
+  check('...and a stretch set by hand wins', eng({ brainCtxStretch: true, llamacpp: { args: ['--rope-scaling', 'linear'] } }, 524288).length === 0);
+  fs.rmSync(d2, { recursive: true, force: true });
+}
+
+// The load: a stretched pick that won't fit loads at 256K instead.
+const sfit = (c, fits) => Brain.prototype.fitCtx.bind({ cfg: c, log: () => {}, engine: { maxCtx: async () => 262144, stretchMax: async () => (c.brainCtxStretch ? 1048576 : null), roomFor: async () => ({ fits, needGB: 40, roomGB: 30 }) } });
+check('a stretched pick that fits is used', (await sfit({ ...scfg }, true)('q', 32768)) === 524288);
+check('...one that won\'t fit loads at 256K', (await sfit({ ...scfg }, false)('q', 32768)) === 262144);
+check('...and a session size never stretches by itself', (await sfit({ brainCtxStretch: true }, true)('q', 1048576)) === 262144);
+
 const ids = HELP.map((h) => h.id);
 const brains = HELP.find((h) => h.id === 'settings-brains');
 check('Help names the switch word for word', /Pick how much each brain keeps in mind/.test(brains.html));
 check('the FAQ explains it in Bob\'s voice', ids.includes('faq-brain-ctx') && /\bI\b/.test(HELP.find((h) => h.id === 'faq-brain-ctx').html));
 check('the glossary says Bob never goes past a brain\'s limit', /never ask a brain for more/.test(HELP.find((h) => h.id === 'glossary').html));
+check('Help explains long memory in Bob\'s voice, with the catch', ids.includes('faq-long-memory') && /short chats get a little worse/i.test(HELP.find((h) => h.id === 'faq-long-memory').html) && /\bI\b/.test(HELP.find((h) => h.id === 'faq-long-memory').html));
+check('Help names the long memory switch word for word', /Long memory: let Qwen3.5 and 3.6 brains stretch past 256K/.test(brains.html));
 const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
 check('the switch in Settings uses the same words', cellar.includes('<strong>Pick how much each brain keeps in mind</strong>'));
+check('the long memory switch in Settings uses the same words', cellar.includes('<strong>Long memory: let Qwen3.5 and 3.6 brains stretch past 256K</strong>'));
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

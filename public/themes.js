@@ -1,7 +1,8 @@
 // Bob's themes. Each theme is a handful of colours (plus a font and corner roundness); everything on
 // screen reads them as CSS variables, so a theme switch is instant and needs no reload.
-// The MouseHole themes are copied from the MouseHole app by MouseWurX (ui/theme/Theme.kt); MouseWurX is the
-// website's blueprint look (assets/css/site.css), with IBM Plex Mono bundled in public/fonts (OFL).
+// Moondust, Nightside, Otterbend, Homestead, Sandbar and the high-contrast pair use the colours of the MouseHole app
+// by MouseWurX (ui/theme/Theme.kt); Drydock is the website's blueprint look (assets/css/site.css), with IBM Plex
+// Mono bundled in public/fonts (OFL).
 
 // ---------- colour helpers ----------
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -56,33 +57,47 @@ function wurx(c, dark) {
   };
 }
 
+// 1.5.136: the themes are named after worlds and places. Bob's Inn is Bob's own place; the high-contrast pair
+// keeps its plain names. Colours of the renamed themes are unchanged; four are new.
+const EMBER = { bg: '#141011', panel: '#1e1819', card: '#2a2022', you: '#4a2e26', line: '#4a3a38', text: '#f1e6e0', muted: '#c2ada6', accent: '#ff7a3d', onAccent: '#1a0e08', good: '#8fcf7a', warn: '#f2b84b', bad: '#ff6b5e', spriteBg: '#3a2522', dangerBg: '#3d1a18', goodBg: '#1b2e1a', warnBg: '#3a2c12' };
+const COIL = { bg: '#0d1517', panel: '#142024', card: '#1c2c31', you: '#1f4650', line: '#2e454c', text: '#dfeaec', muted: '#9ab5ba', accent: '#5fc9e8', onAccent: '#07171c', good: '#6ccf9a', warn: '#e8c35a', bad: '#ef7b6d', spriteBg: '#233a40' };
+const THAW = { bg: '#eef3f8', panel: '#ffffff', card: '#dfe8f1', you: '#cfe0ee', line: '#b9c8d6', text: '#142230', muted: '#4d6274', accent: '#1f6fa8', onAccent: '#ffffff', good: '#2e7d4f', warn: '#8a5a00', bad: '#b3261e', spriteBg: '#d3e0ea' };
+const HULL = { bg: '#1b1f22', panel: '#252a2e', card: '#31373c', you: '#4a4238', line: '#4b5258', text: '#e8e4dc', muted: '#c4bdb0', accent: '#f0a830', onAccent: '#1b1500', good: '#8ec07c', warn: '#f0a830', bad: '#e8725f', spriteBg: '#3a3f44' };
+
 export const PRESETS = [
   { id: 'inn', name: 'Bob\'s Inn', group: 'Bob', what: 'Warm tavern browns. Bob\'s original.', colors: { bg: '#1d1510', panel: '#2b1d14', card: '#3a281b', you: '#34465a', line: '#5a4030', text: '#f3e7d3', muted: '#c7b296', accent: '#e7a64a', onAccent: '#2b1d14', good: '#7fbf7a', warn: '#e7a64a', bad: '#e07a6a', spriteBg: '#4a3220' } },
-  { id: 'system', name: 'Match system', group: 'MouseHole', what: 'Mousehole dark or light, following Windows.', follows: ['mousehole-dark', 'mousehole-light'] },
-  { id: 'mousehole-dark', name: 'Mousehole', group: 'MouseHole', what: 'Dark forest green. The original.', colors: mh(MH.dark, { warnBg: '#3A2E12', dangerBg: '#3A1A1A', goodBg: '#123022' }) },
-  { id: 'mousehole-light', name: 'Mousehole Light', group: 'MouseHole', what: 'Same green, for daylight.', colors: mh(MH.light) },
-  { id: 'midnight', name: 'Midnight', group: 'MouseHole', what: 'Near-black and blue. Easiest on the eyes at night.', colors: mh(MIDNIGHT) },
-  { id: 'slate', name: 'Slate', group: 'MouseHole', what: 'Neutral grey, no colour cast.', colors: mh(SLATE) },
-  { id: 'paper', name: 'Paper', group: 'MouseHole', what: 'Warm and high contrast, for bright light.', colors: mh(PAPER) },
-  { id: 'hc-dark', name: 'High Contrast', group: 'MouseHole', what: 'Full-white text, everything outlined, colour-blind safe.', colors: mh(HC.dark), outlined: true },
-  { id: 'hc-light', name: 'High Contrast Light', group: 'MouseHole', what: 'Black on white, everything outlined.', colors: mh(HC.light), outlined: true },
-  { id: 'mousewurx-light', name: 'MouseWurX', group: 'MouseWurX', what: 'The website: blueprint paper, plates, IBM Plex Mono.', ...wurx(WURX.light, false) },
-  { id: 'mousewurx-dark', name: 'MouseWurX Dark', group: 'MouseWurX', what: 'The website at night.', ...wurx(WURX.dark, true) }
+  { id: 'moondust', name: 'Moondust', group: 'Worlds', what: 'Quiet grey, no colour cast. The one Bob starts with.', colors: mh(SLATE) },
+  { id: 'nightside', name: 'Nightside', group: 'Worlds', what: 'The dark side of a world from orbit: near-black with city-glow blue. Easiest on the eyes at night.', colors: mh(MIDNIGHT) },
+  { id: 'otterbend', name: 'Otterbend', group: 'Worlds', what: 'Deep forest green, like a riverbank under the trees.', colors: mh(MH.dark, { warnBg: '#3A2E12', dangerBg: '#3A1A1A', goodBg: '#123022' }) },
+  { id: 'rivercoil', name: 'Rivercoil', group: 'Worlds', what: 'Steel blue-green with a river-blue accent: a river that winds round a whole world.', colors: COIL },
+  { id: 'emberfall', name: 'Emberfall', group: 'Worlds', what: 'Charcoal and ember orange, from a world where dragons fly.', colors: EMBER },
+  { id: 'hullplate', name: 'Hullplate', group: 'Worlds', what: 'Gunmetal grey, tan panels and amber running lights. A very big ship.', colors: HULL },
+  { id: 'homestead', name: 'Homestead', group: 'Worlds', what: 'Fresh green by daylight. A colony world\'s first fields.', colors: mh(MH.light) },
+  { id: 'sandbar', name: 'Sandbar', group: 'Worlds', what: 'Warm sand and teal shallows, for bright light. An ocean world.', colors: mh(PAPER) },
+  { id: 'longthaw', name: 'Longthaw', group: 'Worlds', what: 'Pale frost blue with a touch of green. A long winter lifting.', colors: THAW },
+  { id: 'hc-dark', name: 'High Contrast', group: 'Access', what: 'Full-white text, everything outlined, colour-blind safe.', colors: mh(HC.dark), outlined: true },
+  { id: 'hc-light', name: 'High Contrast Light', group: 'Access', what: 'Black on white, everything outlined.', colors: mh(HC.light), outlined: true },
+  { id: 'drydock', name: 'Drydock', group: 'MouseWurX', what: 'Blueprint paper, plates and IBM Plex Mono, from the MouseWurX website.', ...wurx(WURX.light, false) },
+  { id: 'drydock-night', name: 'Drydock Night', group: 'MouseWurX', what: 'The same blueprints at night.', ...wurx(WURX.dark, true) }
 ];
-export const DEFAULT_THEME = 'inn';
+export const DEFAULT_THEME = 'moondust';
+
+// Names from before 1.5.136, so a saved theme keeps working. "Match system" is gone (it only ever showed the
+// green theme, and followed the wrong setting on some systems); anyone on it gets Moondust.
+export const OLD_IDS = {
+  system: 'moondust', slate: 'moondust', midnight: 'nightside', 'mousehole-dark': 'otterbend', 'mousehole-light': 'homestead',
+  paper: 'sandbar', 'mousewurx-light': 'drydock', 'mousewurx-dark': 'drydock-night'
+};
+export function themeId(id) { return OLD_IDS[id] || id; }
 
 export function findTheme(id, custom = []) {
+  id = themeId(id);
   return PRESETS.find((t) => t.id === id) || custom.find((t) => t.id === id) || null;
 }
 
-// Turn the saved style into the theme to show right now (Match system picks dark or light).
+// Turn the saved style into the theme to show right now.
 export function resolve(style = {}) {
-  let t = findTheme(style.theme, style.custom) || findTheme(DEFAULT_THEME);
-  if (t.follows) {
-    const dark = !globalThis.matchMedia || globalThis.matchMedia('(prefers-color-scheme: dark)').matches;
-    t = findTheme(t.follows[dark ? 0 : 1]);
-  }
-  return t;
+  return findTheme(style.theme, style.custom) || findTheme(DEFAULT_THEME);
 }
 
 // Every colour a theme leaves out is worked out from the ones it has, so a custom theme can be tiny.
@@ -132,17 +147,12 @@ export function applyStyle(style = {}) {
   try { localStorage.setItem('bob-style', JSON.stringify(current)); } catch {} // so the next start shows the right colours at once
   if (!watching && globalThis.matchMedia) {
     watching = true;
-    globalThis.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyTheme(resolve(current)));
     globalThis.matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', () => document.body?.classList.toggle('still', motionOff(current)));
   }
 }
 export function currentStyle() { return current; }
 
 export function swatch(t) {
-  if (t.follows) {
-    const [d, l] = t.follows.map((id) => fullColors(findTheme(id)));
-    return [d.bg, d.accent, l.bg, l.accent];
-  }
   const c = fullColors(t);
   return [c.bg, c.panel, c.card, c.accent, c.text];
 }

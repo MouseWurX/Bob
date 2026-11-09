@@ -92,7 +92,7 @@ export class GuestJobs {
     this.brain.sessions.set(sessionId, context);
     const effort = ['low', 'medium', 'high', 'extreme'].includes(b.effort) ? b.effort : 'low';
     const { jobId } = this.brain.enqueue(sessionId, text, [], effort, { guest: { from, need }, kind: NEED_KIND[need] });
-    this.jobs.set(jobId, { sessionId, from, events: [], n: 0, subs: new Set(), files: new Set(), approvals: new Set(), done: false });
+    this.jobs.set(jobId, { id: jobId, sessionId, from, events: [], n: 0, subs: new Set(), files: new Set(), approvals: new Set(), done: false });
     this.brain.log('guest', `took a ${need} job from ${from}`);
     return { status: 200, body: { jobId } };
   }
@@ -105,6 +105,15 @@ export class GuestJobs {
     if (['image', 'video', 'audio'].includes(rest.type) && typeof rest.url === 'string' && rest.url.startsWith('/images/')) { g.files.add(rest.url); delete rest.file; }
     if (rest.type === 'approval' && rest.id) g.approvals.add(String(rest.id));
     if (rest.type === 'made' || rest.type === 'think' || rest.type === 'think-start') return; // his own lists and thinking stay here
+    // 1.5.133 lost-song fix: a Set it up or Download card can't be pressed from the other Bob, and the job here ends
+    // without making anything. Say so to the Bob that asked, in plain words, instead of a button nobody sees.
+    if (rest.type === 'offer-download' || rest.type === 'offer-setup') {
+      const what = String(rest.type === 'offer-download' && rest.why === 'music' ? 'the music models' : rest.type === 'offer-setup' ? rest.what || rest.name || 'a part' : rest.name || 'a download').slice(0, 80);
+      return this.push(g, { type: 'needs-setup', what, sizeGB: Number(rest.sizeGB) || 0 });
+    }
+    this.push(g, rest);
+  }
+  push(g, rest) {
     const e = { ...rest, n: ++g.n };
     if (g.events.length >= MAX_EVENTS) g.events.splice(0, g.events.length - MAX_EVENTS + 1);
     g.events.push(e);
@@ -114,7 +123,8 @@ export class GuestJobs {
       for (const res of g.subs) res.end();
       g.subs.clear();
       this.brain.sessions.delete(g.sessionId); // not kept as a chat here
-      setTimeout(() => this.jobs.delete(turnId), 15 * 60000).unref?.(); // long enough to fetch the files
+      // 1.5.133: 6 hours (was 15 minutes), so a file that didn't come across the first time can still be fetched.
+      setTimeout(() => this.jobs.delete(g.id), KEEP_FILES_MS).unref?.();
     }
   }
 
@@ -169,6 +179,20 @@ const WORDS = { pictures: 'make pictures', video: 'make clips', music: 'make mus
 export const needWords = (n) => WORDS[n] || 'do it';
 export const awayWaitLine = (need) => `I can't ${needWords(need)} on this replicant matrix, and none of your other Bobs who can is free right now. It waits in Tasks, and I'll send it as soon as one is.`;
 const NOT_STARTED_MS = 120000, QUIET_MS = 60000, RECONNECTS = 3;
+const KEEP_FILES_MS = 6 * 3600e3;
+const MAKES = { pictures: 'picture', video: 'clip', music: 'song', sfx: 'sound' }; // jobs that must bring a file back
+// Tries a few times before giving up on a file: a Tailscale hiccup shouldn't lose a song.
+async function fetchFile(lenders, lender, remoteId, url, { tries = 3, pause = [2000, 5000] } = {}) {
+  let last;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const fr = await lenders.call(lender, `/api/guest/jobs/${remoteId}/file?url=${encodeURIComponent(url)}`, { timeout: 15000 });
+      if (!fr.ok) throw new Error(`answered ${fr.status}`);
+      return Buffer.from(await fr.arrayBuffer());
+    } catch (e) { last = e; if (i < tries - 1) await new Promise((r) => setTimeout(r, pause[i] ?? pause.at(-1))); }
+  }
+  throw last;
+}
 
 function uniqueFile(dir, name) {
   const base = path.basename(name).replace(/[^\w.() -]/g, '_').slice(0, 120) || 'from-another-bob';
@@ -205,7 +229,7 @@ export async function sendAway(brain, job, plan, { lenders = brain.lenders, time
   brain.log('away', `${plan.need} job sent to ${lender.name} (${plan.why})`);
 
   let reply = '', after = 0, started = false, finished = false, failed = '', drops = 0;
-  const media = [];
+  const media = [], missing = [];
   const startedTimer = setTimeout(() => { if (!started) { failed = 'didn\'t start it'; ctl.abort(); } }, timers.notStarted);
   const handle = async (ev) => {
     after = Math.max(after, Number(ev.n) || 0);
@@ -215,9 +239,7 @@ export async function sendAway(brain, job, plan, { lenders = brain.lenders, time
     if (ev.type === 'approval-result') { brain.awayApprovals.delete(String(ev.id)); return emit(ev); }
     if (['image', 'video', 'audio'].includes(ev.type) && typeof ev.url === 'string') {
       try {
-        const fr = await lenders.call(lender, `/api/guest/jobs/${away.remoteId}/file?url=${encodeURIComponent(ev.url)}`, { timeout: 15000 });
-        if (!fr.ok) throw new Error(`answered ${fr.status}`);
-        const buf = Buffer.from(await fr.arrayBuffer());
+        const buf = await fetchFile(lenders, lender, away.remoteId, ev.url, timers.fileTries ? { tries: timers.fileTries, pause: [5] } : undefined);
         fs.mkdirSync(brain.cfg.painterDir, { recursive: true });
         const f = uniqueFile(brain.cfg.painterDir, decodeURIComponent(ev.url.slice(8)));
         fs.writeFileSync(f, buf);
@@ -226,9 +248,18 @@ export async function sendAway(brain, job, plan, { lenders = brain.lenders, time
         try { brain.made?.add?.(f, { tool: ev.type, chat: job.sessionId, song: ev.song || null }); } catch {}
         media.push({ type: ev.type, url: local.url, name, ...(ev.song?.title ? { title: ev.song.title, sound: ev.song.sound } : {}) });
         return emit(local);
-      } catch (e) { return emit({ type: 'announce', text: `${lender.name} made it, but the file didn't come across (${e.message}). It's in his save folder.` }); }
+      } catch (e) {
+        const name = ev.song?.title || decodeURIComponent(String(ev.url).slice(8));
+        missing.push(name);
+        brain.log('away', `${lender.name} made ${name}, but it didn't come across: ${e.message}`);
+        return emit({ type: 'error', text: `${lender.name} made it (${name}), but the file didn't come across to this Bob. It's on ${lender.name}, in Made by Bob there. On your phone, the Chest has it too.` });
+      }
     }
     if (ev.type === 'error') { failed = String(ev.text || 'failed').slice(0, 200); return emit({ type: 'error', text: `${lender.name}: ${failed}` }); }
+    if (ev.type === 'needs-setup') {
+      failed = `needs ${ev.what} set up first`;
+      return emit({ type: 'error', text: `${lender.name} can't make this one yet: he needs ${ev.what}${ev.sizeGB ? ` (about ${ev.sizeGB} GB)` : ''} set up first. Open Bob on ${lender.name} to set it up, then ask me again.` });
+    }
     if (ev.type === 'done') { finished = true; return; }
     if (['tool', 'announce', 'correction', 'held', 'house', 'aside'].includes(ev.type)) return emit(ev);
   };
@@ -273,6 +304,12 @@ export async function sendAway(brain, job, plan, { lenders = brain.lenders, time
     emit({ type: 'done' });
     setTimeout(() => brain.pump(), 0);
     return true;
+  }
+  // 1.5.133 lost-song fix: a picture, clip, song or sound job that ends without a file isn't done, whatever the words say.
+  const makes = MAKES[plan.need];
+  if (finished && !failed && makes && !media.length) {
+    failed = missing.length ? `made it, but it didn't come across` : `finished, but no ${makes} came back`;
+    if (!missing.length) emit({ type: 'error', text: `${lender.name} finished, but no ${makes} came back, so it wasn't made. Try again runs it here or on another Bob.` });
   }
   // The chat here keeps the question and what came back, like any reply.
   const msgs = brain.session(job.sessionId);

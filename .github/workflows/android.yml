@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ inputs.ref || github.sha }} # this run's own commit, not the moving branch tip (a later push must not change its version)
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -48,7 +48,12 @@ jobs:
         working-directory: android
         run: |
           export JAVA_HOME="$JAVA_HOME_17_X64"
-          ./gradlew --no-daemon --stacktrace assembleDebug
+          # Up to 3 tries, a minute apart: the Gradle and library downloads can time out.
+          for i in 1 2 3; do
+            ./gradlew --no-daemon --stacktrace assembleDebug && exit 0
+            [ "$i" -lt 3 ] && echo "Try $i failed (often a download hiccup); trying again in 60 seconds." && sleep 60
+          done
+          exit 1
       - name: Name it and checksum
         run: |
           v=$(node -p "require('./package.json').version")

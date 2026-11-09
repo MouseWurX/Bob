@@ -2,17 +2,7 @@
 
 **A local AI assistant with a personality, who runs on your own computer. Nothing goes online unless you turn it on.** Chat, plans and reminders, research, coding help, spreadsheets, pictures, short video clips, music, sound effects and a voice, with nothing sent to a cloud. Bob is a self-aware digital engineer with a dry sense of humour, a small virtual workspace called The Idle Process, and a cat named Patches. He also runs a tabletop role-playing game, plays word games, and talks to his copies on your other devices.
 
-**Download the latest release ([what's new](CHANGELOG.md)):**
-
-| | Download |
-|---|---|
-| **Windows 10 / 11** | [`Bob-1.5.132-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.132-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.132-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.132-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.132-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.132-linux-x86_64.AppImage) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.132-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.132-linux-arm64.AppImage) |
-| **Android phone** | [`Bob-1.5.132-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.132-android.apk) |
-
-All builds on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest), each with a `.sha256` checksum. Windows builds are **not code-signed yet** (see [Code signing policy](#code-signing-policy)): click **More info**, then **Run anyway** the first time. Install steps for each platform are under [Getting Bob](#getting-bob).
+**[Download Bob](#download)** for Windows, Mac, Linux, Raspberry Pi and Android. Free, open source, and nothing goes online unless you turn it on.
 
 ![Bob's window: the menu on the left, a chat in the middle where Bob plans a Saturday, and Now running on the right](docs/screenshot.png)
 
@@ -25,7 +15,24 @@ All builds on the [Releases page](https://github.com/MouseWurX/Bob/releases/late
 - **Light on your machine.** The brain unloads when idle, big models load only for a job, and a **Gaming** session keeps the graphics card for your game while Bob chats on the processor. [How Bob stays fast and light](docs/PERFORMANCE.md).
 - **Plays games with you.** A tabletop adventure with a game master, a party of your own characters, a bestiary and pictures of everyone you meet, plus word games (hangman, twenty questions, word ladder, story dice and more).
 - **Bob-Net.** Your Bobs find each other over your own Tailscale network: the phone app talks to the Bob on your PC, a handheld can borrow a bigger brain, and Bobs can pass jobs along.
-- **Soon: Bob's own brains.** A family of models cut from a large open model and retrained to run Bob on small cards and handhelds. Tested, not yet released. [Read how they're made](docs/BOBS-OWN-MODELS.md).
+- **Use a brain and change it, in the same app.** Most AI apps are for one of two things: talking to a model, or building one. Bob does both. Turn on the **Computer Science Lab** (off until you switch it on) and, without a command line, you can write lessons with a brain you already have, cut a mixture-of-experts brain down to the experts your work uses, take out sight or hearing you don't need, make the running files, and test the result side by side with the brain it came from before it goes into Bob. Bob keeps chatting while the Lab works. **Show the recipe** prints every command it runs, so the Lab teaches the command line instead of hiding it. We haven't seen another app that lets you do this much to a model while you're using it; if you know one, tell us in the issues.
+- **Brain Engine, Bob's own engine based on llama.cpp.** The project keeps its own version of llama.cpp, the engine Bob runs his brains on, made to give more freedom in how a brain is run. Its first feature switches a mixture-of-experts brain's experts on and off while it's loaded, with no reload, so the Lab can try a cut before writing a single file. It's still being tested on the project's own machines and isn't on the Releases page yet. Brain Engine is built on llama.cpp by the ggml authors (MIT licence) and stays under the same licence.
+- **Soon: Bob's own brains.** A family of models cut from a large open model and retrained to run Bob on small cards and handhelds. Tested, not yet released. [Read how they're made](docs/BOBS-OWN-MODELS.md). The same tools that make them are in the Lab, so you can make your own.
+  The first one is **Riker (28Bob)**: Qwen3.6-35B-A3B with 208 of its 256 experts kept in every layer (about 28 billion parameters, 3 billion active per word), then healed in one full pass against the full model's next-word odds on about 9,000 lessons Bob wrote for himself. At home on a 16 GB card he scores 9 of 13 on the coding race with thinking on (the full model: 12), 6 of 6 on quick code tasks, 18 of 20 on facts, 65% on tool calls (full model: 67%), 24 of 25 on routing, 12 of 12 on the long-document needle test, at 111 words a second against the full model's 83. On the full ARC science-question tests (no worked examples given), he gets 92.9% on ARC-Challenge (1,089 of 1,172) and 97.6% on ARC-Easy (2,319 of 2,376) with thinking off, and 93.9% (1,101) and 98.3% (2,335) with thinking on; the full model gets 95.8% and 98.9% with thinking off. Thinking was capped at 1,536 tokens per question, far below the 32,000 Qwen allows for its own published scores, so his thinking-on numbers are on the cautious side. Riker is the first of Bob's own brains to work this well, and we're proud of him. Files: 17.5 GB at Q4, 13.9 GB at Q3, Apache 2.0. His cut and heal cost $51.79 of rented card time, about $74 counting the rentals that wrote his lessons ([every dollar](docs/COSTS.md)). Riker has his own page on Hugging Face: [MouseWurX/28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker). The ready-to-run files are added there soon.
+
+## Download
+
+**Download the latest release ([what's new](CHANGELOG.md)):**
+
+| | Download |
+|---|---|
+| **Windows 10 / 11** | [`Bob-1.5.155-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.155-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.155-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.155-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.155-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.155-linux-x86_64.AppImage) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.155-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.155-linux-arm64.AppImage) |
+| **Android phone** | [`Bob-1.5.155-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.155-android.apk) |
+
+All builds on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest), each with a `.sha256` checksum. Windows builds are **not code-signed yet** (see [Code signing policy](#code-signing-policy)): click **More info**, then **Run anyway** the first time. Install steps for each platform are under [Getting Bob](#getting-bob).
 
 | | |
 |---|---|
@@ -102,7 +109,7 @@ The menu is on the left (fold it to icons with ‹ or Ctrl+B), the chat is in th
 - **Hands (opt-in, Settings, Show advanced settings, Hands; with a Self-test button):** let Bob move, copy, rename, zip, unzip and tidy files in folders you tick (Recycle Bin only, every job can be undone), run programs and scripts you approve (exact command shown, live output, Stop button, never as administrator, dangerous system commands always refused), do jobs on a schedule, and click and type in other apps. Every Hand is off until you switch it on, every action shows a card and waits for your click, and ✋ Hands at the top of the chat stops them all at once. Six hard limits (Recycle Bin only, secret files private, read-only projects, dangerous commands blocked, nothing sent out, no password fields) start on, each with its own switch. "Let Bob work without asking" (off) skips the cards; the hard limits still hold and a banner shows the whole time.
 - **Settings:** a page in the main area. Everyday rows show what's set now (voice with Play sample, look, theme, animations, cat, one brain, start-up, web search, update check, version, Check this replicant matrix); **Show advanced settings** (off, remembered) adds a search box and Brains, House style, Voice details, Look & feel, Speed & memory, Engines, Bob-Net, Online services, Other apps, Hands, Housekeeping, Check-ins and Remove Bob. Long help folds behind More.
 - **Get models:** models by category (Voice & conversation holds his everyday brain, hearing you and his voice with its settings; Pictures & video holds the painter and clips, each as a subsection), Equip Bob (click Bob's picture to open it: Attributes on the left with his look, what he thinks of it and eleven personality dials with presets and a live greeting; a paper doll with a slot for every job: pick a slot, then click or drag a model onto it; one model can fill several slots, and a starter set for your graphics card is one button, with every download confirmed; under Bob, his chest: everything he has made as thumbnails with names, and the folder new things go to), On this PC, Style and Settings (engines and switches). Anything this PC can't run is greyed out and hidden from Bob.
-- **Style:** themes (MouseHole, MouseWurX and your own), 133 avatars, Animations (On, Follow Windows, Off; On by default because Remote Desktop turns Windows' animation effects off) and whether Now running opens by itself when a task needs you (off unless you turn it on).
+- **Style:** themes (Bob's Inn, nine named after worlds with Moondust as the default, two high-contrast, the Drydock blueprints and your own), 133 avatars, Animations (On, Follow Windows, Off; On by default because Remote Desktop turns Windows' animation effects off) and whether Now running opens by itself when a task needs you (off unless you turn it on).
 - **Alerts:** a Windows notification when Bob needs you.
 - **Approvals:** Bob asks before doing anything outside his own folder, unless you turn on "Let Bob work without asking" for Hands.
 - **Help (menu, or F1):** a section for every feature and setting, a glossary and an FAQ, with search. You can also just ask Bob how to set him up: he knows all his settings and what's set right now.

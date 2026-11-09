@@ -80,6 +80,22 @@ export function suit(m, hw = {}, platform = '') {
   return { level: 'no', why: `Wants ${m.vramGB} GB of graphics memory; your card has ${v} GB. It probably won't run well.` };
 }
 
+// 1.5.137: the rooms of your other Bobs: each one's graphics card and memory, as he said in his Bob-Net hello
+// ([{ name, vramGB, ramGB }]). roomOn = the first of them a brain runs well on, or ''.
+export function roomOn(m, rooms = []) {
+  return (rooms || []).find((r) => suit(m, r).level === 'ok')?.name || '';
+}
+// A brain too big for this replicant matrix and for every Bob on the Bob-Net: the catalogue leaves it out of the job
+// lists and Rented brains lists it instead (the owner: "if there isn't a pc big enough to handle it in the bob-net it
+// should only be listed in the brain rentals section"). Only "won't run well" counts (not slow, not a squeezed file
+// meant for smaller cards), and never for a brain already here, half downloaded, or one of your own.
+export function tooBigEverywhere(m, hw = {}, rooms = [], platform = '') {
+  if (!m?.jobs || !m.vramGB || m.own || m.status?.state === 'installed' || m.status?.state === 'partial') return false;
+  const here = suit(m, { vramGB: hw.vramGB, ramGB: hw.ramGB, arm: hw.arm }, platform);
+  if (here.level !== 'no' || here.squeezed) return false;
+  return !(rooms || []).some((r) => { const s = suit(m, r); return s.level !== 'no' || s.squeezed; });
+}
+
 // ---- Bob's pick for each job on this PC ----
 // Brain jobs are scored: a model scores higher the more jobs it covers, because one model doing
 // several jobs means Bob stops to swap brains less; and higher the less it takes from the PC (graphics memory,
@@ -120,7 +136,9 @@ export function pickFor(slotId, models, ctx = {}) {
   // On an ARM board the picks are the board's starter set (Qwen3.5 2B or Gemma 4 E2B), not the scored brains.
   if (BRAIN_SLOTS.includes(slotId) && !ctx.arm) {
     // 1.5.56: new brains (trial: true) are listed but not recommended until they've been tried on a real PC.
-    const able = models.filter((m) => canDo(slotId, { entry: m }) && !m.gated && !m.trial && !fullRunsHere(m, models, hw, ctx.platform));
+    // 1.5.133: a naughty (uncensored) brain is never the pick among the well-behaved ones; on the naughty list's own side
+    // (ctx.naughtyPick) the pick is made among naughty brains only, and shown as Bob's quiet pick (a red devil).
+    const able = models.filter((m) => canDo(slotId, { entry: m }) && !m.gated && !m.trial && (m.naughty === true) === (ctx.naughtyPick === true) && !fullRunsHere(m, models, hw, ctx.platform));
     const pool = able.filter((m) => suit(m, hw, ctx.platform).level === 'ok');
     if (!pool.length) return null;
     const best = pool.map((m) => ({ m, s: scoreFor(m, slotId, hw) })).sort((a, b) => b.s - a.s)[0].m;

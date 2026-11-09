@@ -36,7 +36,7 @@ export function catPrompt({ cat, turn, dials = {}, user = 'the user' }) {
   if (!catTurn(turn)) return '';
   // 1.5.102: the Right now line already says what the cat is up to (realState, the same moment), so it isn't repeated here.
   // #33: no "at the end of your reply", which made it a sign-off; and no emoji named, so small brains don't copy one.
-  return `If it fits naturally, mention what ${cat || 'the cat'} is up to (in the Right now line) in a few words, woven in, not as a sign-off; skip it if ${user} is busy, stressed or the topic is serious. Don't end the reply with an emoji.`;
+  return `Now and then, not in most replies: if it fits naturally, mention what ${cat || 'the cat'} is up to (in the Right now line) in a few words, woven in, not as a sign-off; skip it if ${user} is busy, stressed or the topic is serious. Don't end the reply with an emoji.`;
 }
 
 // 1.5.53: a line for each of the cat's antics by Bob's picture, so the words match what the cat is doing.
