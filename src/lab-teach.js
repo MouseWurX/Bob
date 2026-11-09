@@ -250,7 +250,7 @@ export async function planTeach(lab, c = {}) {
     let freeGB = null; try { const d = labModelsDir(lab.cfg); fs.mkdirSync(d, { recursive: true }); if (lab.freeGB) freeGB = lab.freeGB(d); else { const st = fs.statfsSync(d); freeGB = Math.round((st.bavail * st.bsize) / 1e9); } } catch {}
     if (freeGB !== null && brain.paramsB && freeGB < disk.work + 5) problems.push(`It needs about ${disk.work} GB of disk while it works and there's ${freeGB} GB free.`);
     for (const t of ['quantize', 'server']) if (!lab.tools()[t].found) problems.push(`${path.basename(lab.tools()[t].path)} isn't in Bob's engine folder. Get models > Engines: the built-in engine has it.`);
-    if (!fs.existsSync(exportLoraPath(lab))) problems.push(`${exeName('llama-export-lora')} isn't here; it folds the adapter into the new brain. It isn't in the engine's own download; it comes with Brain Engine, the Lab's engine (Get models, Engines, Brain Engine test build), from the build after this one.`);
+    if (!fs.existsSync(exportLoraPath(lab))) problems.push(`${exeName('llama-export-lora')} isn't here; it folds the adapter into the new brain. It isn't in the built-in engine's download; it comes with Brain Engine, the Lab's engine (Get models > Engines: Brain Engine (test build)), from the build after this one.`);
     notes.push('What it can\'t do here: learn from a teacher\'s odds (that\'s the rented heal, which needs the teacher loaded too), heal a cut big brain, or teach anything over the fit line. Those go rented, with the same lessons.');
   } else {
     if (!brain.repo) problems.push('Teaching rented downloads the brain on the rented card, so it has to be on Hugging Face. Pick it by its Hugging Face name.');
