@@ -1,5 +1,5 @@
-# Builds Brain Engine (engine/README.md): llama.cpp at bundledLlamaTag with engine/patches/ applied.
-# Runs when engine/ or this file changes, and by hand. Windows x64: the llama.dll / llama-server.exe set, to put over a COPY of the official
+# Builds Brain Engine (app/engine/README.md): llama.cpp at bundledLlamaTag with app/engine/patches/ applied.
+# Runs when app/engine/ or this file changes, and by hand. Windows x64: the llama.dll / llama-server.exe set, to put over a COPY of the official
 # CUDA or Vulkan zip for the same tag (the card backends are separate DLLs and are not changed).
 # Linux x64: the same set for checking. Every action is pinned to a full commit SHA, like build.yml.
 name: Brain Engine
@@ -7,7 +7,7 @@ name: Brain Engine
 on:
   push:
     branches: [main, 'claude/**']
-    paths: ['engine/**', '.github/workflows/brain-engine.yml']
+    paths: ['app/engine/**', '.github/workflows/brain-engine.yml']
   workflow_dispatch:
     inputs:
       publish:
@@ -28,10 +28,10 @@ jobs:
       - name: Fetch llama.cpp at the tested tag and apply the patches
         shell: bash
         run: |
-          tag=$(node -p "require('./package.json').bob.bundledLlamaTag")
+          tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
           echo "TAG=$tag" >> "$GITHUB_ENV"
           git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
-          for p in engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
+          for p in app/engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
       - name: Install Ninja
         run: choco install ninja
       - name: Build (the official windows-cpu settings)
@@ -50,7 +50,7 @@ jobs:
           cp llama-server.exe $(ls *.dll | grep -v '^ggml') "../../../../$out/"
           cd ../../../..
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
-          cp engine/README.md "$out/README-Brain-Engine.md"
+          cp app/engine/README.md "$out/README-Brain-Engine.md"
           ls -la "$out"
           7z a "$out.zip" "./$out/*"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -62,7 +62,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash engine/publish.sh "$TAG" brain-engine-*-win-x64.zip
+        run: bash app/engine/publish.sh "$TAG" brain-engine-*-win-x64.zip
 
   linux:
     runs-on: ubuntu-latest
@@ -72,10 +72,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Fetch llama.cpp at the tested tag and apply the patches
         run: |
-          tag=$(node -p "require('./package.json').bob.bundledLlamaTag")
+          tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
           echo "TAG=$tag" >> "$GITHUB_ENV"
           git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
-          for p in engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
+          for p in app/engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
       - name: Build
         working-directory: llama.cpp
         run: |
@@ -87,7 +87,7 @@ jobs:
           mkdir "$out"
           cp llama.cpp/build/bin/llama-server $(ls llama.cpp/build/bin/*.so* | grep -v '/libggml') "$out/"
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
-          cp engine/README.md "$out/README-Brain-Engine.md"
+          cp app/engine/README.md "$out/README-Brain-Engine.md"
           tar czf "$out.tar.gz" "$out"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -97,4 +97,4 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash engine/publish.sh "$TAG" brain-engine-*-linux-x64.tar.gz
+        run: bash app/engine/publish.sh "$TAG" brain-engine-*-linux-x64.tar.gz

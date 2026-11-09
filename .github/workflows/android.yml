@@ -6,6 +6,7 @@
 #  4. On a new version on main (or by hand): waits for the Windows job to publish release vX.Y.Z, then adds
 #     Bob-<version>-android.apk and its checksum to it, like the Linux job does with the AppImage.
 # Every action is pinned to a full commit SHA (the tag is in the comment), like build.yml.
+# Bob's files are in app/, so every step runs there (defaults below) and the APK is kept in app/dist.
 name: Android
 
 on:
@@ -15,7 +16,7 @@ on:
   # A pull request that changes the phone app builds it once it is ready for review (a draft runs nothing).
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths: ['android/**', '.github/workflows/android.yml']
+    paths: ['app/android/**', '.github/workflows/android.yml']
   workflow_dispatch:
     inputs:
       ref:
@@ -31,6 +32,9 @@ jobs:
     # Draft pull requests run nothing: the thread tests its own work, and a draft never emails a failed build.
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
     permissions:
       contents: write # only used by "Add to the GitHub release", on main, version tags and by hand
     steps:
@@ -57,7 +61,7 @@ jobs:
             echo "Download failed, trying again in $((try * 20)) seconds"; sleep $((try * 20))
           done
       - name: Build the APK
-        working-directory: android
+        working-directory: app/android
         run: |
           export JAVA_HOME="$JAVA_HOME_17_X64"
           # Up to 3 tries, a minute apart: the Gradle and library downloads can time out.
@@ -77,8 +81,8 @@ jobs:
         with:
           name: Bob-android-${{ github.sha }}
           path: |
-            dist/Bob-*-android.apk
-            dist/Bob-*-android.apk.sha256
+            app/dist/Bob-*-android.apk
+            app/dist/Bob-*-android.apk.sha256
           if-no-files-found: error
       - name: Add to the GitHub release
         # The Windows job (build.yml) makes release vX.Y.Z; this waits for it (up to 30 minutes) and adds the APK.
