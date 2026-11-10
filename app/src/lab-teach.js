@@ -271,24 +271,17 @@ export async function startTeach(lab, c = {}, { unload = false } = {}) {
   if (p.where !== 'here') throw new Error('This one goes rented. Use "Save as a Forge plan".');
   if (p.problems.length) throw new Error(p.problems[0]);
   const ask = await makeRoom(lab, unload); if (ask) return ask;
-  const tr = trainerState(lab.cfg, hwOf(lab)), log = pageLog(lab.cfg, 'teach'), tools = lab.tools();
+  const tr = trainerState(lab.cfg, hwOf(lab)), log = pageLog(lab.cfg, 'teach');
   const work = path.join(labModelsDir(lab.cfg), 'teach', p.slug);
   const fx = { tool: runTool, download, quiz: quizFile, ...lab.stepFns };
   const env = { ...process.env, PYTHONIOENCODING: 'utf-8', HF_HUB_DISABLE_TELEMETRY: '1' };
-  const conv = path.join(tr.dir, 'llama.cpp');
   const steps = [['brain', `Get ${p.brain.name}'s full weights`], ['lessons', `Get the lessons (${p.lessons.name})`], ['teach', `Teach the adapter${p.hours ? ` (about ${p.hours} h)` : ''}`], ['fold', 'Fold it into a new brain file'], ['quiz', 'Quick quiz, before and after']];
   return runJob(lab, { kind: 'teach', name: p.name, from: p.brain.labId || '', fromName: p.brain.name, steps, stopped: 'You stopped it. Nothing was put into Bob; the work folder is kept until you delete it.' }, async (r, { set, signal, progress }) => {
     r.slug = `teach-${p.slug}`;
     fs.mkdirSync(work, { recursive: true });
     fs.writeFileSync(path.join(tr.dir, 'teach.py'), TEACH_PY); fs.writeFileSync(path.join(tr.dir, 'fetch.py'), FETCH_PY);
     set('brain', 'running');
-    let base = p.brain.folder;
-    if (!base && p.brain.repo) { base = path.join(work, 'base'); await fx.tool(tr.python, [path.join(tr.dir, 'fetch.py'), p.brain.repo, p.brain.revision || '', base], { signal, log, env }); }
-    if (!base && p.brain.url) {
-      const a = path.join(work, 'brain-archive'); await fx.download(p.brain.url, a, { signal, onProgress: (gt, t) => t && progress((10 * gt) / t) });
-      base = path.join(work, 'base'); fs.mkdirSync(base, { recursive: true }); await fx.tool(tarExe(), ['-xf', a, '-C', base], { signal, log }); fs.rmSync(a, { force: true });
-      const cfgAt = findFile(base, 'config.json'); if (!cfgAt) throw new Error('The archive has no config.json, so it isn\'t a brain\'s folder.'); base = path.dirname(cfgAt);
-    }
+    const base = await fetchBase(lab, p, work, { fx, signal, log, env, tr, progress });
     set('brain', 'done'); set('lessons', 'running');
     let lessonsFile = p.lessons.file;
     const hfHead = process.env.HF_TOKEN ? { Authorization: `Bearer ${process.env.HF_TOKEN}` } : {};
@@ -305,16 +298,7 @@ export async function startTeach(lab, c = {}, { unload = false } = {}) {
       else if ((m = l.match(/^done (\d+)/))) learned = Number(m[1]);
     } });
     set('teach', 'done'); set('fold', 'running');
-    const f16 = path.join(work, 'base-f16.gguf'), lora = path.join(work, 'adapter.gguf'), merged = path.join(work, 'taught-f16.gguf');
-    const before = path.join(work, `${p.slug}-before-Q4_K_M.gguf`), after = path.join(work, `${p.slug}-Q4_K_M.gguf`);
-    await fx.tool(tr.python, [path.join(conv, 'convert_hf_to_gguf.py'), base, '--outfile', f16, '--outtype', 'f16'], { signal, log, env });
-    await fx.tool(tr.python, [path.join(conv, 'convert_lora_to_gguf.py'), adapter, '--base', base, '--outfile', lora, '--outtype', 'f16'], { signal, log, env });
-    await fx.tool(exportLoraPath(lab), ['-m', f16, '--lora', lora, '-o', merged], { signal, log });
-    progress(85);
-    if (!p.brain.gguf) await fx.tool(tools.quantize.path, [f16, before, 'Q4_K_M'], { signal, log });
-    await fx.tool(tools.quantize.path, [merged, after, 'Q4_K_M'], { signal, log });
-    for (const f of [f16, merged]) fs.rmSync(f, { force: true });
-    if (p.brain.repo && base.startsWith(work)) fs.rmSync(path.join(work, 'base'), { recursive: true, force: true }); // weights Bob downloaded; Hugging Face keeps them
+    const { before, after } = await foldAdapter(lab, p, work, base, adapter, { fx, signal, log, env, tr, progress });
     set('fold', 'done'); set('quiz', 'running');
     const was = await fx.quiz(lab, p.brain.gguf || before, signal).catch((e) => { if (signal.aborted) throw e; log(`before quiz: ${e.message}`); return null; });
     const now = await fx.quiz(lab, after, signal);
@@ -325,7 +309,35 @@ export async function startTeach(lab, c = {}, { unload = false } = {}) {
     return { made: { score: now.score, tps: now.tps }, from: was ? { score: was.score } : null, sizeGB, madeHere: true, lessons: [p.lessons.name], learned, skipped, loss: lastLoss };
   });
 }
-async function quizFile(lab, gguf, signal) {
+// The full weights to teach, for Teach it and the Best answers page: a folder here, or fetched from Hugging Face or
+// a link into the work folder. Returns the folder that holds config.json.
+export async function fetchBase(lab, p, work, { fx, signal, log, env, tr, progress = () => {} }) {
+  let base = p.brain.folder;
+  if (!base && p.brain.repo) { base = path.join(work, 'base'); await fx.tool(tr.python, [path.join(tr.dir, 'fetch.py'), p.brain.repo, p.brain.revision || '', base], { signal, log, env }); }
+  if (!base && p.brain.url) {
+    const a = path.join(work, 'brain-archive'); await fx.download(p.brain.url, a, { signal, onProgress: (gt, t) => t && progress((10 * gt) / t) });
+    base = path.join(work, 'base'); fs.mkdirSync(base, { recursive: true }); await fx.tool(tarExe(), ['-xf', a, '-C', base], { signal, log }); fs.rmSync(a, { force: true });
+    const cfgAt = findFile(base, 'config.json'); if (!cfgAt) throw new Error('The archive has no config.json, so it isn\'t a brain\'s folder.'); base = path.dirname(cfgAt);
+  }
+  return base;
+}
+// Fold a taught adapter into a new brain file (Q4_K_M) with the engine's tools; also makes a before file when the
+// brain had no running file here. The big in-between files and downloaded weights are removed.
+export async function foldAdapter(lab, p, work, base, adapter, { fx, signal, log, env, tr, progress = () => {} }) {
+  const tools = lab.tools(), conv = path.join(tr.dir, 'llama.cpp');
+  const f16 = path.join(work, 'base-f16.gguf'), lora = path.join(work, 'adapter.gguf'), merged = path.join(work, 'taught-f16.gguf');
+  const before = path.join(work, `${p.slug}-before-Q4_K_M.gguf`), after = path.join(work, `${p.slug}-Q4_K_M.gguf`);
+  await fx.tool(tr.python, [path.join(conv, 'convert_hf_to_gguf.py'), base, '--outfile', f16, '--outtype', 'f16'], { signal, log, env });
+  await fx.tool(tr.python, [path.join(conv, 'convert_lora_to_gguf.py'), adapter, '--base', base, '--outfile', lora, '--outtype', 'f16'], { signal, log, env });
+  await fx.tool(exportLoraPath(lab), ['-m', f16, '--lora', lora, '-o', merged], { signal, log });
+  progress(85);
+  if (!p.brain.gguf) await fx.tool(tools.quantize.path, [f16, before, 'Q4_K_M'], { signal, log });
+  await fx.tool(tools.quantize.path, [merged, after, 'Q4_K_M'], { signal, log });
+  for (const f of [f16, merged]) fs.rmSync(f, { force: true });
+  if (p.brain.repo && base.startsWith(work)) fs.rmSync(path.join(work, 'base'), { recursive: true, force: true }); // weights Bob downloaded; Hugging Face keeps them
+  return { before, after };
+}
+export async function quizFile(lab, gguf, signal) {
   const srv = await startServer({ exe: lab.tools().server.path, gguf, signal, log: pageLog(lab.cfg, 'teach') });
   try { return await runQuiz(srv.url, { signal }); } finally { srv.stop(); }
 }
