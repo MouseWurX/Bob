@@ -268,7 +268,9 @@ export async function latestEngine(cfg, id, nvidia, fetchImpl = fetch) {
 // Pick the right zip from a release's asset list for this graphics card. Highest CUDA version wins.
 export function pickAsset(assets, e, nvidia) {
   for (const re of [...(nvidia ? e.nvidia : []), ...e.other]) {
-    const hits = assets.filter((a) => re.test(a.name));
+    // never the graphics runtime (cudart-llama-bin-win-cuda-12.4-x64.zip): its name ends like the engine's own file, and
+    // picking it leaves an engine with no engine in it
+    const hits = assets.filter((a) => re.test(a.name) && !/^cudart-/i.test(a.name));
     if (!hits.length) continue;
     const ver = (n) => { const m = n.match(re) || []; return Number(m[1] ?? m[2] ?? 0); };
     hits.sort((a, b) => ver(b.name) - ver(a.name));
@@ -500,6 +502,8 @@ async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
     await grab(base.asset, stage, pub, signal, tick);
     if (rt) await grab(rt, stage, pub, signal, tick);
     flatten(stage, [b.exe]);
+    // the base has to be a whole engine before anything goes on top: never swap in a folder without it
+    if (!fs.existsSync(path.join(stage, b.exe))) throw new Error(`${b.name}'s download (${base.asset.name}) has no ${b.exe} in it, so I kept the ${e.name} you have.`);
     if (e.os === 'linux' && rt) liftLibraries(stage);
     const over = stage + '.own';
     fs.rmSync(over, { recursive: true, force: true }); fs.mkdirSync(over, { recursive: true });

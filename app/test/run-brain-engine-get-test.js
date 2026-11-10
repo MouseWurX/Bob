@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { installEngine, engineStatus, TESTED_LLAMA, ENGINES, engineFor } from '../src/engines.js';
+import { installEngine, engineStatus, TESTED_LLAMA, ENGINES, engineFor, pickAsset } from '../src/engines.js';
 import { OS } from '../src/platform.js';
 import { pickLlamaExe } from '../src/config.js';
 import { enginesFor } from '../public/equip.js';
@@ -89,5 +89,17 @@ if (e.unavailable) {
   globalThis.fetch = realFetch;
 }
 fs.rmSync(tmp, { recursive: true, force: true });
+// 1.5.185: the graphics runtime file is never taken for the engine itself, whichever comes first in GitHub's list
+{
+  const W = engineFor(ENGINES.find((x) => x.id === 'llamacpp'), 'win', 'x64');
+  const names = ['cudart-llama-bin-win-cuda-12.4-x64.zip', 'llama-b12032-bin-win-cuda-12.4-x64.zip', 'llama-b12032-bin-win-vulkan-x64.zip', 'llama-b12032-bin-win-cpu-x64.zip'];
+  const list = names.map((name) => ({ name }));
+  check(pickAsset(list, W, true)?.name === 'llama-b12032-bin-win-cuda-12.4-x64.zip' && pickAsset([...list].reverse(), W, true)?.name === 'llama-b12032-bin-win-cuda-12.4-x64.zip', 'on an NVIDIA card the engine file is picked, never the cudart runtime, in either order');
+  check(W.runtime('llama-b12032-bin-win-cuda-12.4-x64.zip').test('cudart-llama-bin-win-cuda-12.4-x64.zip'), 'the runtime is still found beside it');
+  check(pickAsset([{ name: 'cudart-llama-bin-win-cuda-12.4-x64.zip' }], W, true) === null, 'a release with only the runtime gives no engine at all');
+  const src = fs.readFileSync(new URL('../src/engines.js', import.meta.url), 'utf8');
+  check(/if \(!fs\.existsSync\(path\.join\(stage, b\.exe\)\)\) throw new Error/.test(src) && src.indexOf('if (!fs.existsSync(path.join(stage, b.exe))) throw') < src.indexOf('try { swapIn(folder, stage); }\n  catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Wait for the Lab job'), 'Brain Engine is never swapped in unless the llama.cpp under it is whole');
+}
+
 console.log(failures ? `\n${failures} failed` : '\nAll passed');
 process.exit(failures ? 1 : 0);
