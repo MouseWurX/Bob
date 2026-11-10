@@ -55,6 +55,7 @@ export function settingsNow(cfg) {
     `Launch Bob on start-up: ${onOff(cfg.autostart === true)}`,
     `Keep Bob in the tray: ${onOff(cfg.tray !== false)}; Use Bob's look as his icon: ${onOff(cfg.lookIcon !== false)}`,
     `Check for updates when Bob starts: ${onOff(cfg.updates?.autoCheck === true)}`,
+    `Keep engines up to date: ${onOff(cfg.engineUpdates?.auto !== false)}`,
     `Show Bob's plan before big jobs: ${onOff(cfg.planFirst === true)}`,
     `Pick up where Bob left off after a restart: ${onOff(cfg.resumeJobs === true)}; Carry on unfinished downloads when Bob starts: ${onOff(cfg.downloads?.resumeOnStart === true || cfg.resumeJobs === true)}`,
     `Bob's engine: ${cfg.engine === 'ollama' ? 'Ollama' : "Bob's own (llama.cpp)"}`,

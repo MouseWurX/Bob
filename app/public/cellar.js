@@ -81,7 +81,7 @@ export function createCellar() {
   const naughtyOn = () => settings?.naughtyList === true;
   // 1.5.133: the How Bob works summary line, as a function, so a switch changed inside the open panel updates it at once
   // (it used to keep saying "Naughty list: on" until the next reload).
-  const howSumNow = () => { const onoff = (v) => (v ? 'on' : 'off'); return `Bob picks the session: ${onoff(settings.autoSession !== false)} · One brain: ${onoff(settings.oneBrain)} · Starts with Windows: ${onoff(settings.autostart)} · Keeps to the tray: ${onoff(settings.tray !== false)} · Web search: ${onoff(settings.webSearch === true)} · Naughty list: ${onoff(settings.naughtyList === true)} · Lab: ${onoff(settings.computerLab !== false)} · Plans before big jobs: ${onoff(settings.planFirst === true)} · How-tos: ${onoff(settings.howtos === true)} · Works on repositories: ${onoff(settings.selfWork?.enabled === true)} · Update checks: ${onoff(settings.updates?.autoCheck)}`; };
+  const howSumNow = () => { const onoff = (v) => (v ? 'on' : 'off'); return `Bob picks the session: ${onoff(settings.autoSession !== false)} · One brain: ${onoff(settings.oneBrain)} · Starts with Windows: ${onoff(settings.autostart)} · Keeps to the tray: ${onoff(settings.tray !== false)} · Web search: ${onoff(settings.webSearch === true)} · Naughty list: ${onoff(settings.naughtyList === true)} · Lab: ${onoff(settings.computerLab !== false)} · Plans before big jobs: ${onoff(settings.planFirst === true)} · How-tos: ${onoff(settings.howtos === true)} · Works on repositories: ${onoff(settings.selfWork?.enabled === true)} · Update checks: ${onoff(settings.updates?.autoCheck)} · Engines kept up to date: ${onoff(settings.engineUpdates?.auto !== false)}`; };
   const refreshHowSum = () => { const n = dlg?.querySelector?.('#sub-ev-how > summary .spanel-note'); if (n && settings) n.textContent = howSumNow(); };
   const shownModels = () => visibleModels(data?.models || [], naughtyOn());
   // 1.5.133: three sides, Well behaved / Community / Naughty list (catView), remembered in this browser.
@@ -765,6 +765,7 @@ export function createCellar() {
       ${labEngineHtml()}
       <div><strong>Engine downloads</strong> ${tip('The programs that run the models, from their official GitHub pages (Brain Engine from Bob\'s own), matched to your graphics card. Update swaps a new build in and keeps the one before, so Go back puts it straight back without downloading. Bob checks a download\'s checksum, so a rebuilt engine with the same name still shows as an update.', 'Engine downloads')}
         <div class="row"><button type="button" data-checkall>Check all for updates</button></div>
+        ${sswitch('engineAuto', settings.engineUpdates?.auto !== false, 'Keep engines up to date', 'On unless you turn it off. When I start and about once a day, I check Brain Engine and my llama.cpp, and update them by myself, only while no brain is loaded on them. Go back puts the old build back. The other engines wait for your click.')}
         ${groups}</div>
       ${qwenHtml()}
       <details class="more"><summary>More</summary>${speedHtml()}</details>`;
@@ -1699,6 +1700,7 @@ export function createCellar() {
       if (el.dataset.set === 'workshopPort') { const r = await api('/api/settings', { workshop: { port: Number(el.value) } }); settings.workshop = r.workshop; return; }
       if (el.dataset.hk) { const r = await api('/api/settings', { housekeeping: { [el.dataset.hk]: el.checked } }); settings.housekeeping = r.housekeeping; draw(); return; }
       if (el.dataset.hkkind) { const v = el.dataset.hkfield === 'n' ? Number(el.value) : el.value; const r = await api('/api/settings', { housekeeping: { [el.dataset.hkkind]: { [el.dataset.hkfield]: v } } }); settings.housekeeping = r.housekeeping; if (el.dataset.hkfield === 'n') el.value = r.housekeeping[el.dataset.hkkind].n; flash(el, el.dataset.hkfield === 'mode' && v === 'auto' ? 'Saved. Bob tidies these without asking (to the Recycle Bin).' : 'Saved.'); return; }
+      if (el.dataset.set === 'engineAuto') { const r = await api('/api/settings', { engineUpdates: { auto: el.checked } }); settings.engineUpdates = r.engineUpdates; el.checked = r.engineUpdates.auto !== false; return; }
       if (el.dataset.set === 'autoCheck') { const r = await api('/api/settings', { updates: { autoCheck: el.checked } }); settings.updates = r.updates; el.checked = r.updates.autoCheck; return; }
       if (el.dataset.set === 'autostart') { const r = await api('/api/settings', { autostart: el.checked }); settings.autostart = r.autostart; el.checked = r.autostart; }
       else if (el.dataset.rentenable) { // 1.5.127: the first time a service goes on, a warning card says what leaves this replicant matrix

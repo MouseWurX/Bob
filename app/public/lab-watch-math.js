@@ -164,7 +164,9 @@ export function say(rec, s) {
     const B = '(?<![-\\w=.#])', A = '(?![-\\w=])';
     const r = (from, to) => { s = s.replace(new RegExp(B + from + A, 'g'), to); };
     s = String(s);
-    r('Not experts', 'Other parts'); r('not experts', 'not attention'); r('Not an expert', 'Not an attention head'); r('the router that picks experts', 'the router');
+    // in a heads scan attention is what lights, so the grey is the feed-forward layers, the tuning rows and the word tables
+    r('Attention, the router, the tuning rows', 'The feed-forward layers, the tuning rows'); r('attention, the router and the tuning rows', 'the feed-forward layers and the tuning rows');
+    r('Not experts', 'Other parts'); r('not experts', 'not attention heads'); r('Not an expert', 'Not an attention head'); r('the router that picks experts', 'the router');
     r('an expert', 'an attention head'); r('An expert', 'An attention head');
     r('Experts', 'Attention heads'); r('experts', 'attention heads'); r('Expert', 'Attention head'); r('expert', 'attention head');
     return s;

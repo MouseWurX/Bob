@@ -174,7 +174,7 @@ export const VERSION = (() => {
   } catch { return { release: '0.9', branch: '', build: 0, label: '0.9.0' }; }
 })();
 
-export const SETTING_KEYS = ['planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork'];
+export const SETTING_KEYS = ['planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -233,6 +233,7 @@ function clean(patch) {
   if ('autoSession' in out) out.autoSession = out.autoSession !== false; // 1.5.41, on unless switched off (the owner's call)
   if ('pictureNoWait' in out) out.pictureNoWait = out.pictureNoWait !== false; // 1.5.20, on unless switched off
   if ('updates' in out) out.updates = { autoCheck: out.updates?.autoCheck === true };
+  if ('engineUpdates' in out) out.engineUpdates = { auto: out.engineUpdates?.auto !== false }; // 1.5.184 Keep engines up to date, on unless switched off
   if ('housekeeping' in out) out.housekeeping = cleanHousekeeping(out.housekeeping || {});
   if ('checkins' in out) out.checkins = cleanCheckins(out.checkins || {}); // 1.5.78 Check-ins, off unless switched on
   if ('games' in out) { const g = out.games || {}; out.games = { brain: g.brain === 'main' ? 'main' : 'quick', talk: ['every', 'some', 'end'].includes(g.talk) ? g.talk : 'every' }; } // 1.5.121 🧩 Games (defaults, nothing on)

@@ -80,7 +80,8 @@ function wordsHtml() {
   if (parts) {
     const k = parts.kinds || {}, all = (parts.outside || 0) + parts.layers.reduce((a, p) => a + p.experts + p.other, 0) || 1;
     const pc = (n) => `${Math.max(0.1, Math.round((1000 * (n || 0)) / all) / 10)}%`;
-    lines.push(`Not experts, the grey parts, by share of the weights: attention ${pc(k.attention)}${k.router ? `, the router that picks experts ${pc(k.router)}` : ''}, tuning rows ${pc(k.norms)}, the word tables ${pc(k.tables)}${k.rest ? `, the rest ${pc(k.rest)}` : ''}. Every word passes through all of them, so none can be cut out.`);
+    const hd = rec.brain.kind === 'heads'; // in a heads scan attention is what lights, so it is not in the grey list
+    lines.push(`Not experts, the grey parts, by share of the weights: ${hd ? `the feed-forward layers ${pc(k.rest)}` : `attention ${pc(k.attention)}`}${k.router ? `, the router that picks experts ${pc(k.router)}` : ''}, tuning rows ${pc(k.norms)}, the word tables ${pc(k.tables)}${k.rest && !hd ? `, the rest ${pc(k.rest)}` : ''}. Every word passes through all of them, so none can be cut out.`);
     if (view.layout().baseCapped) lines.push('The word tables are bigger than the base shows: it is capped at two floors so the block stays readable.');
   } else lines.push('This recording doesn\'t say how big the parts that are not experts are, so the grey core isn\'t drawn.');
   lines.push('A few questions for each skill show the pattern; they don\'t measure the brain. A new scan with more questions gives a steadier picture.');

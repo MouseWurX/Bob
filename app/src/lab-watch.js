@@ -341,7 +341,7 @@ export function deleteRecording(lab, { brain: brainId, id } = {}) {
 }
 
 // One traced answer as a clip of the recording: every word read, the question first, then the answer read back.
-export const NO_HEADS = 'This Brain Engine build can\'t report attention heads yet. Update it in Get models, Engines, then scan again.';
+export const NO_HEADS = 'This Brain Engine build can\'t report attention heads yet. Update it in Get models &gt; Engines: Brain Engine (test build), then scan again.';
 
 export function clipOf(skill, question, got, { experts, layers }) {
   const read = got.read;
