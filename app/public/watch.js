@@ -5,7 +5,7 @@
 // Its own window, so it can sit beside the Lab or a chat. The Lab opens it with ?brain=<id>&rec=<id>; it can also
 // open a recording file by itself (one made on another Bob, or on a rented card), with the Lab off.
 import { applySavedStyle } from './themes.js';
-import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind, cutOf, cutEffect, keepList } from './lab-watch-math.js';
+import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind, cutOf, cutEffect, keepList, setColour, resetColours } from './lab-watch-math.js';
 import { createView, GREY } from './watch-view.js';
 applySavedStyle();
 
@@ -46,7 +46,7 @@ function load(j) {
 function skillsHtml() {
   const never = sp.total - sp.used;
   const row = (key, sw, label, n, title) => `<label class="watch-skill" title="${esc(w(title))}"><input type="checkbox" data-show="${esc(String(key))}" ${hidden.has(key) ? '' : 'checked'}> ${sw} <span>${esc(w(label))}</span><span class="n">${n}</span></label>${key === 'never' ? '' : `<input type="range" class="watch-solid" data-solid="${esc(String(key))}" min="0.1" max="1" step="0.05" value="${solid.get(key) ?? 1}" aria-label="${esc(w(`How solid: ${label}`))}" title="${esc(w(`How solid: ${label}`))}">`}`;
-  $('watchSkills').innerHTML = `<legend>Show these</legend>${rec.skills.map((s, i) => row(i, `<span class="sw" style="background:${lookOf(i)[0]}">${lookOf(i)[1]}</span>`, s.label, sp.top.reduce((a, l) => a + l.filter((x) => x === i).length, 0).toLocaleString(), `Experts picked most often for ${s.label}. ${sp.per[i].leans.toLocaleString()} of them lean to it clearly.`)).join('')}
+  $('watchSkills').innerHTML = `<legend>Show these</legend>${rec.skills.map((s, i) => row(i, `<span class="sw" style="background:${lookOf(i)[0]}">${lookOf(i)[1]}</span><input type="color" class="watch-colour" data-colour="${i}" value="${lookOf(i)[0].toLowerCase()}" aria-label="${esc(`Colour for ${s.label}`)}" title="${esc(`Colour for ${s.label}`)}">`, s.label, sp.top.reduce((a, l) => a + l.filter((x) => x === i).length, 0).toLocaleString(), `Experts picked most often for ${s.label}. ${sp.per[i].leans.toLocaleString()} of them lean to it clearly.`)).join('')}
     ${row('grey', `<span class="sw" style="background:${GREY}"></span>`, 'Not experts', '', 'Attention, the router, the tuning rows and the word tables: every word passes through these.')}
     ${row('never', '<span class="sw never"></span>', 'Never picked', never.toLocaleString(), 'Experts none of these questions woke. A wider set of questions would wake more of them.')}`;
 }
@@ -234,6 +234,11 @@ $('watchExpert').onchange = (ev) => { const was = expert; expert = Math.max(0, M
 $('watchFloorView').addEventListener('click', (ev) => { const b = ev.target.closest('[data-cell]'); if (!b) return; expert = Number(b.dataset.cell); $('watchExpert').value = expert; setMode('expert'); $('watchExpertView').focus?.(); });
 $('watchGap').oninput = (ev) => { view.set({ gap: Number(ev.target.value) }); need = true; };
 $('watchCube').onclick = cube;
+$('watchMark').onchange = (ev) => { view.set({ mark: ev.target.value }); need = true; };
+function recolour() { view.set({ hidden }); skillsHtml(); wordsHtml(); if (mode === 'floor') floorHtml(); if (mode === 'expert') expertHtml(); lastIdx = -1; need = true; }
+$('watchSkills').addEventListener('change', (ev) => { const i = ev.target.dataset.colour; if (i === undefined) return; setColour(Number(i), ev.target.value); recolour(); });
+$('watchColours').onclick = () => { resetColours(); recolour(); };
+$('watchGlow').oninput = (ev) => { view.set({ glow: Number(ev.target.value) }); need = true; };
 $('watchGlass').oninput = (ev) => { view.set({ glass: Number(ev.target.value) }); need = true; };
 const turn = (dy, dt_) => { const g = view.get(); view.set({ yaw: g.yaw + dy, tilt: g.tilt + dt_ }); need = true; };
 $('watchLeft').onclick = () => turn(-0.2, 0); $('watchRight').onclick = () => turn(0.2, 0); $('watchUp').onclick = () => turn(0, 0.1); $('watchDown').onclick = () => turn(0, -0.1);

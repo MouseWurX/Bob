@@ -21,7 +21,7 @@
       </section>
       <section id="watchControls" hidden>
         <fieldset id="watchSkills"><legend>Show these</legend></fieldset>
-        <div class="row"><button type="button" id="watchAll" class="link">Show all</button><button type="button" id="watchNone" class="link">Hide all skills</button></div>
+        <div class="row"><button type="button" id="watchAll" class="link">Show all</button><button type="button" id="watchNone" class="link">Hide all skills</button><button type="button" id="watchColours" class="link">Usual colours</button></div>
         <fieldset id="watchCutBox"><legend>Try a cut</legend>
           <button id="watchCut" type="button" class="brain-switch" role="switch" aria-checked="false"><span class="lbl">Turn off what's unticked</span><span class="st">Off</span></button>
           <label>Keep only the busiest <input type="number" id="watchKeep" min="0" value="0" inputmode="numeric" aria-describedby="watchKeepHint"> on each floor</label>
@@ -40,6 +40,11 @@
         <button type="button" id="watchCube" class="link">Back to a cube</button>
         <label for="watchGlass">How see-through (coloured glass)</label>
         <input type="range" id="watchGlass" min="0" max="0.85" step="0.05" value="0.25">
+        <label for="watchMark">Show the ones in use with</label>
+        <select id="watchMark"><option value="glow">A glow</option><option value="outline">An outline (no light)</option><option value="both">Both</option></select>
+        <label for="watchGlow">Glow</label>
+        <input type="range" id="watchGlow" min="0" max="1.5" step="0.05" value="0.5" aria-describedby="watchGlowHint">
+        <span id="watchGlowHint" class="muted">Starts gentle. Turn it down if the flicker bothers you.</span>
         <div class="row watch-turn" role="group" aria-label="Turn and zoom the block">
           <button type="button" class="icon" id="watchLeft" title="Turn left" aria-label="Turn left">◀</button>
           <button type="button" class="icon" id="watchRight" title="Turn right" aria-label="Turn right">▶</button>

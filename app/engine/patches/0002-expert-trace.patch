@@ -399,7 +399,7 @@ index 0a14a96..25e16f1 100644
          ->set_desc("Include prompt processing progress events in stream mode"));
  
 diff --git a/tools/server/server-task.cpp b/tools/server/server-task.cpp
-index 1a0d434..81ce42a 100644
+index 1a0d434..a4111d4 100644
 --- a/tools/server/server-task.cpp
 +++ b/tools/server/server-task.cpp
 @@ -351,6 +351,9 @@ json server_task_result_cmpl_final::to_json_non_oaicompat() {
@@ -412,6 +412,26 @@ index 1a0d434..81ce42a 100644
      return response_fields.empty() ? res : json_get_nested_values(response_fields, res);
  }
  
+@@ -444,6 +447,9 @@ json server_task_result_cmpl_final::to_json_oaicompat_chat() {
+     if (verbose) {
+         res["__verbose"] = to_json_non_oaicompat();
+     }
++    if (!expert_trace.is_null()) {
++        res["expert_trace"] = expert_trace; // Brain Engine: the chat endpoint carries the trace too
++    }
+     if (stats.is_set()) {
+         res["timings"] = stats.to_json();
+     }
+@@ -505,6 +511,9 @@ json server_task_result_cmpl_final::to_json_oaicompat_chat_stream() {
+         });
+     }
+ 
++    if (!expert_trace.is_null() && !deltas.empty()) {
++        deltas.back()["expert_trace"] = expert_trace; // with the last piece of a streamed chat reply
++    }
+     if (stats.is_set()) {
+         deltas.back()["timings"] = stats.to_json();
+     }
 diff --git a/tools/server/server-task.h b/tools/server/server-task.h
 index 51d7673..b0a748c 100644
 --- a/tools/server/server-task.h

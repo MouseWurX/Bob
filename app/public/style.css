@@ -1601,3 +1601,9 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .lab-pro .row { flex-wrap: wrap; gap: 8px; align-items: center; }
 .lab-log { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
 .lab-log td { vertical-align: top; overflow-wrap: anywhere; white-space: pre-wrap; }
+
+/* aiFEUI's small cube in Bob's thinking (Now running) */
+.mind-cube { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+.mind-cube canvas { width: 100%; height: 220px; display: block; border: 1px solid var(--line); border-radius: var(--r); }
+.mind-cube p { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.mind-cube .link { background: none; border: none; padding: 4px 0; min-height: 32px; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; }

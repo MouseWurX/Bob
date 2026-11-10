@@ -12,15 +12,21 @@
 export const NAME = 'aiFEUI', LONG_NAME = 'aiFunctional Expert Utilization Imager';
 export const FORMAT = 'bob-expert-recording';
 export const VERSION = 1;
-export const MAX_CLIPS = 200, MAX_WORDS = 400, MAX_LAYERS = 400, MAX_EXPERTS = 4096, MAX_SKILLS = 12;
+export const MAX_CLIPS = 200, MAX_WORDS = 400, MAX_LAYERS = 400, MAX_EXPERTS = 4096, MAX_SKILLS = 16;
 
 // One colour and one letter for each skill, so nobody needs the colours alone. The colours hold up on dark and light
-// and for the common kinds of colour blindness (Okabe and Ito's set, plus four more that stay apart from them).
+// and for the common kinds of colour blindness (Okabe and Ito's set, plus more that stay apart from them, and every skill has its own letter).
 export const SKILL_LOOKS = [
   ['#E69F00', 'A'], ['#56B4E9', 'B'], ['#009E73', 'C'], ['#F0E442', 'D'], ['#CC79A7', 'E'], ['#D55E00', 'F'],
-  ['#0072B2', 'G'], ['#9B8CFF', 'H'], ['#7BD88F', 'I'], ['#FF8A80', 'J'], ['#B0BEC5', 'K'], ['#A1887F', 'L']
+  ['#0072B2', 'G'], ['#9B8CFF', 'H'], ['#7BD88F', 'I'], ['#FF8A80', 'J'], ['#B0BEC5', 'K'], ['#A1887F', 'L'],
+  ['#00C2C7', 'M'], ['#C5E063', 'N'], ['#E06FE0', 'O'], ['#FFC9A8', 'P']
 ];
-export const lookOf = (i) => SKILL_LOOKS[i % SKILL_LOOKS.length];
+// A viewer can give a skill its own colour (the letter stays). Kept for this window only; '' or a bad value puts
+// the usual colour back.
+const ownColours = new Map();
+export const lookOf = (i) => { const [c, l] = SKILL_LOOKS[i % SKILL_LOOKS.length]; return [ownColours.get(i) || c, l]; };
+export function setColour(i, hex) { if (/^#[0-9a-f]{6}$/i.test(String(hex || ''))) ownColours.set(i, String(hex).toLowerCase()); else ownColours.delete(i); }
+export function resetColours() { ownColours.clear(); }
 
 const int = (n, max) => Number.isInteger(n) && n >= 0 && n < max;
 const text = (s, n) => String(s ?? '').slice(0, n);
@@ -185,3 +191,24 @@ export function cutEffect(rec, off) {
 }
 // The cut as the engine takes it: the experts kept on each floor.
 export const keepList = (rec, off) => off.map((s) => { const k = []; for (let e = 0; e < rec.brain.experts; e++) if (!s.has(e)) k.push(e); return k; });
+
+// The small cube in Bob's thinking. liveTrace: one reply's trace from Brain Engine, cut down to what the cube plays
+// (the end of what Bob read, then everything he wrote), so a long chat doesn't send megabytes to the page.
+export const LIVE_PROMPT = 32, LIVE_WORDS = 400, LIVE_CLIPS = 6;
+export function liveTrace(raw, { keepPrompt = LIVE_PROMPT, max = LIVE_WORDS } = {}) {
+  if (!raw || !Array.isArray(raw.rows) || !raw.rows.length) return null;
+  const P = Math.max(0, Math.min(raw.rows.length, Number(raw.n_prompt) || 0));
+  const from = Math.max(0, P - keepPrompt);
+  const rows = raw.rows.slice(from, from + max);
+  return { kind: raw.kind === 'neurons' ? 'neurons' : 'experts', experts: Number(raw.n_expert) || 0, layers: Number(raw.n_layer) || 0, used: Number(raw.n_expert_used) || 0, neurons: Number(raw.n_ff) || 0,
+    prompt: Math.min(rows.length, P - from), words: rows.map((r) => String(r?.t ?? '').slice(0, 80)), e: rows.map((r) => (Array.isArray(r?.e) ? r.e : [])), last: String(raw.last ?? '').slice(0, 80) };
+}
+// The cube's recording: Bob's last few replies as clips of one "skill". null when there is nothing to show.
+export function liveRecording(traces, name = 'Bob') {
+  const last = traces[traces.length - 1]; if (!last || !last.experts || !last.layers) return null;
+  const same = traces.filter((t) => t.experts === last.experts && t.layers === last.layers && t.kind === last.kind).slice(-LIVE_CLIPS);
+  try {
+    return cleanRecording({ format: FORMAT, version: VERSION, id: 'live', name, brain: { name, experts: last.experts, layers: last.layers, used: last.used, kind: last.kind, neurons: last.neurons },
+      skills: [{ id: 'reply', label: 'Bob\'s replies' }], clips: same.map((t) => ({ skill: 'reply', question: 'What Bob just read and wrote', answer: '', prompt: t.prompt, words: t.words, e: t.e, last: t.last })) });
+  } catch { return null; }
+}

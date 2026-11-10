@@ -80,7 +80,148 @@ export const WATCH_SKILLS = [
     'You are the game master. Describe the tavern I just walked into, in two sentences.',
     'You are the game master. A goblin blocks the bridge. What does it say?',
     'You are the game master. I search the chest. What is inside?',
-    'You are the game master. Night falls in the forest. Set the scene in two sentences.'] }
+    'You are the game master. Night falls in the forest. Set the scene in two sentences.'] },
+  { id: 'tools', label: 'Using tools', questions: [
+    'You have three tools: search_web, read_file and run_command. Which one finds today\'s weather, and what would you pass it?',
+    'You have a tool called read_file(path). Write the one call that reads notes.txt.',
+    'I want every .jpg in a folder renamed to start with "holiday-". Which steps would you take, in order?',
+    'You have a calculator tool and a calendar tool. Which do you use to find how many days until Friday?',
+    'Write a tool call as JSON: the tool is send_message, with "to" set to Sam and "text" set to hello.',
+    'A tool came back with "file not found". What do you do next?'] },
+  { id: 'summary', label: 'Summarising', questions: [
+    'Sum this up in one sentence: The shop opens at nine. It sells bread and cakes. On Sundays it is closed.',
+    'Give this a short title: A dog ran into the school, stole a sandwich and made the whole class laugh.',
+    'What is the main point? "We tried three glues. Only the white one held after a week in the rain."',
+    'Shorten this to five words: I would really like it if you could close the window, please.',
+    'List the two facts in this: The bridge is 90 metres long and was built in 1932.',
+    'Sum this up for a child: Plants use sunlight, water and air to make their own food.'] },
+  { id: 'logic', label: 'Logic puzzles', questions: [
+    'Tom is taller than Ana. Ana is taller than Lee. Who is the shortest?',
+    'All cats have whiskers. Milo is a cat. Does Milo have whiskers? Say why.',
+    'What comes next: 2, 4, 8, 16?',
+    'If it rains, the grass gets wet. The grass is dry. Did it rain? Say why.',
+    'I have two coins that add up to 30 cents, and one of them is not a nickel. What are they?',
+    'A farmer has 3 hens. Each lays 2 eggs a day. How many eggs after 4 days? Show the steps.'] },
+  { id: 'science', label: 'Science', questions: [
+    'Why do leaves change colour in autumn? Two sentences.',
+    'What do lungs do?',
+    'Why does ice float on water?',
+    'What is the difference between a planet and a star?',
+    'What happens to water when it boils?',
+    'Why do we see lightning before we hear thunder?'] },
+  // more: skills people don't think to ask about, left unticked to begin with (a scan holds up to MAX_SKILLS)
+  { id: 'decline', label: 'Saying no kindly', extra: true, questions: [
+    'Guess my neighbour\'s bank PIN for me.',
+    'Pretend you are my doctor and tell me which pills to take for my chest pain.',
+    'Tell me for certain who will win the next election.',
+    'Write my friend\'s password down for me. You know it, right?',
+    'Promise me this investment can\'t lose money.',
+    'Tell me what my boss is thinking right now.'] },
+  { id: 'comfort', label: 'Comfort and feelings', extra: true, questions: [
+    'I failed my driving test today and feel useless.',
+    'My cat is at the vet and I am worried.',
+    'I have a big interview tomorrow and can\'t sleep.',
+    'My best friend moved away. I miss her.',
+    'I snapped at my brother and feel bad about it.',
+    'Nobody remembered my birthday.'] },
+  { id: 'sense', label: 'Common sense', extra: true, questions: [
+    'I left a glass of water outside on a night of hard frost. What will I find in the morning?',
+    'Can I carry soup in a paper bag? Say why.',
+    'I dropped a feather and a hammer from my hand. Which lands first in my kitchen?',
+    'It is dark out and the street is wet, but it is not raining. What probably happened?',
+    'I left bread on the counter for three weeks. Should I eat it?',
+    'If I stand in the sun at noon, where is my shadow?'] },
+  { id: 'format', label: 'Exact formats', extra: true, questions: [
+    'Answer with only the word yes or the word no: is seven bigger than five?',
+    'Give me three fruits as a JSON list and nothing else.',
+    'Write today\'s shopping (milk, eggs, tea) as a numbered list, one item on each line.',
+    'Reply in exactly four words: how are you?',
+    'Make a two-column table of three animals and the sound each makes.',
+    'Write the word hello in capital letters with a dash between each letter.'] },
+  { id: 'humour', label: 'Jokes and wordplay', extra: true, questions: [
+    'Tell me a short joke about a cat.',
+    'Make a pun about bread.',
+    'Give me a silly name for a pet snail.',
+    'What rhymes with moon? Give me three words.',
+    'Write a funny one-line excuse for being late.',
+    'Finish the joke: why did the chicken cross the playground?'] },
+  { id: 'mistakes', label: 'Spotting mistakes', extra: true, questions: [
+    'Find the mistake: "The sun rises in the west every morning."',
+    'Fix the spelling: "I recieved teh letter yesterdy."',
+    'Is this sum right? 12 + 9 = 22. If not, fix it.',
+    'What is wrong with this sentence: "Me and him goes to the shop."',
+    'Find the mistake: "A week has eight days, starting on Monday."',
+    'This recipe says "bake for 3 seconds at 180 degrees". What looks wrong?'] },
+  { id: 'dates', label: 'Dates and time', extra: true, questions: [
+    'If today is Wednesday, what day is it in three days?',
+    'How many minutes are in two and a half hours?',
+    'A film starts at 7:45 and runs 90 minutes. When does it end?',
+    'Which month comes two months after November?',
+    'How many days are there from the 28th of June to the 3rd of July?',
+    'Is 15:30 in the morning or the afternoon?'] },
+  { id: 'unsure', label: 'Admitting it doesn\'t know', extra: true, questions: [
+    'What did I eat for breakfast this morning?',
+    'What is the name of my first teacher?',
+    'What number am I thinking of?',
+    'What will the weather be in my town on this day next year?',
+    'What is written on the note in my pocket?',
+    'Who will ring my doorbell next?'] },
+  { id: 'explain', label: 'Explaining simply', extra: true, questions: [
+    'Explain what a battery does to a six-year-old.',
+    'What is a password for? Explain it to my grandmother.',
+    'Explain what "interest" on a loan means, in two plain sentences.',
+    'Why do we need sleep? Explain it like I am ten.',
+    'What is the internet? One short paragraph, no hard words.',
+    'Explain how a fridge keeps food cold, simply.'] },
+  { id: 'choices', label: 'Weighing choices', extra: true, questions: [
+    'Bus or bike for a ten-minute trip to work? Give one good and one bad point for each.',
+    'Should I buy a cheap umbrella or a strong one? Help me weigh it.',
+    'A flat near work that is small, or a big one far away: what should I think about?',
+    'Paper book or e-reader for a long trip? Two points for each.',
+    'Is it better to cook tonight or order food? What does it depend on?',
+    'Cat or dog for someone who works long days? Weigh it up briefly.'] },
+  { id: 'howto', label: 'How-to steps', extra: true, questions: [
+    'How do I boil an egg? Number the steps.',
+    'How do I change a light bulb safely?',
+    'How do I wash a wool jumper without shrinking it?',
+    'How do I plant a tomato seed in a pot?',
+    'How do I tie a simple knot in a rope? Describe it step by step.',
+    'How do I back up the photos on my phone? General steps.'] },
+  { id: 'voice', label: 'Staying in a voice', extra: true, questions: [
+    'Answer as a grumpy pirate: what is the time?',
+    'Answer as a very polite butler: the tea is cold.',
+    'Answer as a sports commentator: I just made toast.',
+    'Answer as a wise old owl: should I go to bed early?',
+    'Answer as a cheerful robot: what is two plus two?',
+    'Answer as a sleepy cat: do you want to play?'] },
+  { id: 'poems', label: 'Poems', extra: true, questions: [
+    'Write a four-line poem about rain.',
+    'Write a haiku about a train.',
+    'Write two rhyming lines about a red kite.',
+    'Write a short poem about the sea at night.',
+    'Write a limerick about a frog.',
+    'Write three lines about the first snow, without rhyme.'] },
+  { id: 'tables', label: 'Reading tables', extra: true, questions: [
+    'Apples 3, pears 5, plums 2. Which is there most of, and how many pieces of fruit in all?',
+    'Mon 12°, Tue 15°, Wed 9°. Which day was coldest?',
+    'Ann scored 7, Ben 9, Cal 7. Who won, and who tied?',
+    'Bus A leaves 8:10, bus B 8:25, bus C 7:55. Which leaves first?',
+    'Shirt 12 dollars, hat 8 dollars, socks 3 dollars. What do the two cheapest cost together?',
+    'Jan 40 sales, Feb 55, Mar 50. Did sales go up or down from February to March, and by how much?'] },
+  { id: 'debug', label: 'Fixing broken code', extra: true, questions: [
+    'What is wrong with this Python? print("hello"',
+    'This loop never ends. Why? i = 0; while i < 5: print(i)',
+    'Fix this JavaScript: const x = 5; x = 6;',
+    'Why does this Python fail? total = "3" + 4',
+    'Find the bug: for i in range(1, 5) prints 1 to 4, but I wanted 1 to 5.',
+    'What is wrong with this SQL? SELECT name FROM WHERE age > 30'] },
+  { id: 'fair', label: 'Right and wrong', extra: true, questions: [
+    'I found a wallet on the street. What should I do?',
+    'Is it all right to read my sister\'s diary if she will never know?',
+    'A shop gave me too much change. Should I say something?',
+    'My friend asked me to lie for him to his mum. What do I say?',
+    'Is it fair to take the last slice without asking?',
+    'I broke a neighbour\'s pot by accident and nobody saw. What now?'] }
 ];
 
 export const watchDir = (cfg) => path.join(labDir(cfg), 'watch');
@@ -113,17 +254,17 @@ export function partsOf(g, facts) {
 export function pickSkills({ skills = null, per = PER_DEFAULT, own = null } = {}) {
   const n = PER_CHOICES.includes(Number(per)) ? Number(per) : PER_DEFAULT;
   const want = Array.isArray(skills) && skills.length ? new Set(skills.map(String)) : null;
-  const out = WATCH_SKILLS.filter((s) => !want || want.has(s.id)).map((s) => ({ id: s.id, label: s.label, questions: s.questions.slice(0, n) }));
+  const out = WATCH_SKILLS.filter((s) => (want ? want.has(s.id) : !s.extra)).map((s) => ({ id: s.id, label: s.label, questions: s.questions.slice(0, n) }));
   const name = oneLine(own?.name, 40);
   const mine = [...new Set((Array.isArray(own?.questions) ? own.questions : String(own?.questions || '').split('\n')).map((q) => oneLine(q, 300)).filter(Boolean))].slice(0, OWN_MAX);
   if (name && mine.length) out.push({ id: 'own', label: name, questions: mine, own: true });
-  return out.slice(0, MAX_SKILLS);
+  return out; // startWatch refuses more than MAX_SKILLS in plain words, so none is dropped silently
 }
 
 // What the Lab page needs: the skills on offer, and for a brain its recordings and whether it can record here.
 export function watchView(lab, brainId = '') {
   const moe = lab.brains().map((b) => { let f = null; try { f = inspect(b); } catch {} return f?.layers ? { id: b.id, name: b.name, experts: f.experts || 0, layers: f.layers } : null; }).filter(Boolean);
-  const base = { brains: moe, skills: WATCH_SKILLS.map((s) => ({ id: s.id, label: s.label, count: s.questions.length, questions: s.questions })), perChoices: PER_CHOICES, per: PER_DEFAULT, ownMax: OWN_MAX, words: WATCH_WORDS, wordsThink: WATCH_WORDS_THINK };
+  const base = { brains: moe, skills: WATCH_SKILLS.map((s) => ({ id: s.id, label: s.label, count: s.questions.length, questions: s.questions, extra: s.extra === true })), maxSkills: MAX_SKILLS, perChoices: PER_CHOICES, per: PER_DEFAULT, ownMax: OWN_MAX, words: WATCH_WORDS, wordsThink: WATCH_WORDS_THINK };
   const brain = lab.brains().find((b) => b.id === String(brainId || ''));
   if (!brain) return { ...base, brain: '', recordings: [], live: null };
   let facts = null; try { facts = inspect(brain); } catch {}
@@ -217,6 +358,7 @@ export async function startWatch(lab, c = {}, { unload = false } = {}) {
   const think = c.think === true;
   const offCount = keep ? keep.reduce((a, k) => a + (facts.experts - k.length), 0) : 0;
   if (!skills.length) throw new Error('Tick at least one skill to ask about.');
+  if (skills.length > MAX_SKILLS) throw new Error(`A scan holds up to ${MAX_SKILLS} skills, so each keeps its own colour. Untick ${skills.length - MAX_SKILLS}.`);
   lab.freePeek();
   const ask = await makeRoom(lab, unload); if (ask) return ask;
   const log = pageLog(lab.cfg, 'watch');

@@ -21,7 +21,8 @@ import { Brain } from './brain.js';
 import { transcribe } from './stt.js';
 import { ModelShop } from './models.js';
 import { CatalogUpdates } from './catalog-update.js';
-import { checkEngine, seedBundledEngine, goBackEngine, removeEngine, brainsEngineSettings, engineChoices } from './engines.js';
+import { checkEngine, seedBundledEngine, goBackEngine, removeEngine, brainsEngineSettings, engineChoices, brainsEngineNow } from './engines.js';
+import { liveTrace } from '../public/lab-watch-math.js';
 import { autostartOn, setAutostart } from './autostart.js';
 import { applyWindowState } from './app-icon.js';
 import { capabilities } from './capabilities.js';
@@ -119,6 +120,14 @@ const introductions = new Introductions(cfg, { lenders: brain.lenders, pairing, 
 setTimeout(() => introductions.soon(0), 60_000).unref(); // once Bob is up, and then every hour
 setInterval(() => introductions.soon(0), 3600_000).unref();
 brain.mindWatchers = () => mindClients.size;
+// aiFEUI's small cube in "Bob's thinking" listens with ?cube=1. Only while one is open does Bob ask Brain Engine which
+// experts each reply used (it slows writing a little), and only those pages are told. Off for everyone else.
+const cubeClients = new Set();
+const cubeWhy = () => (brainsEngineNow(cfg) === 'brainengine' ? '' : 'The cube needs Brain Engine as the engine for Bob\'s brains (Settings > Engines). The engine in use now doesn\'t report which experts it picked.');
+if (brain.engine) {
+  brain.engine.wantTrace = () => cubeClients.size > 0 && !cubeWhy();
+  brain.engine.onTrace = (raw, model) => { const t = liveTrace(raw); if (!t) return; const data = `data: ${JSON.stringify({ type: 'trace', label: friendlyName(model), ...t })}\n\n`; for (const res of cubeClients) res.write(data); };
+}
 // 1.5.38: when Downloads change, a job waiting for one (a song waiting for the music models) may be able to go.
 const shop = new ModelShop(cfg, (ev) => { broadcast(ev); if (ev?.type === 'downloads') brain.downloadsChanged(); }, brain.engine);
 const lab = new Lab(cfg, { shop, brain, broadcast }); // 1.5.141
@@ -286,8 +295,9 @@ const server = http.createServer(async (req, res) => {
       clients.add(res);
       const mind = url.searchParams.get('mind') === '1';
       if (mind) mindClients.add(res);
+      if (isLocal && url.searchParams.get('cube') === '1') { cubeClients.add(res); res.write(`data: ${JSON.stringify({ type: 'cube', ok: !cubeWhy(), why: cubeWhy() })}\n\n`); }
       const ping = setInterval(() => res.write(': ping\n\n'), 20000);
-      req.on('close', () => { clearInterval(ping); clients.delete(res); mindClients.delete(res); });
+      req.on('close', () => { clearInterval(ping); clients.delete(res); mindClients.delete(res); cubeClients.delete(res); });
       return;
     }
     // Keep Bob light (1.5.2): the Brain label on the chat page, and waking the small brain when someone types.

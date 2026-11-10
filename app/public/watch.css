@@ -52,3 +52,4 @@ body.watch-page { display: flex; flex-direction: column; height: 100vh; margin: 
   #watchCanvas { flex: none; height: 56vh; }
 }
 .watch-solid { width: 100%; margin: -2px 0 4px; height: 14px; }
+.watch-colour { width: 26px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 3px; background: none; flex: none; cursor: pointer; }

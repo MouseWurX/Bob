@@ -7,6 +7,7 @@ import { currentStyle } from './themes.js';
 import { catMoment } from './patches.js';
 import { createBrainBay } from './brain-swap.js';
 import { esc } from './util.js';
+import { createMindCube } from './mind-cube.js';
 import { createMindView } from './mind-view.js'; // 1.5.138: Bob's thinking, docked
 import { DEFAULT_ORDER, SECTION_NAME, applyOrder, dropBefore } from './now-sections.js';
 
@@ -178,6 +179,21 @@ export function createLayout({ post, openTasks, openDownloads }) {
   dockBtn.onclick = () => { docked = !docked; store.set('bob-mind-dock', docked ? '1' : '0'); drawDock(); if (docked) $('mindDockLog').focus({ preventScroll: true }); };
   $('mindDockPop').onclick = () => { const w = window.open('/mind.html', 'bob-mind', 'popup,width=380,height=480'); try { w?.focus(); } catch {} };
   document.addEventListener('visibilitychange', mindListen);
+  // aiFEUI's small cube: off until its switch is on, and it only listens while the section is showing
+  const cubeBtn = $('mindDockCube');
+  let cubeOn = store.get('bob-mind-cube', '0') === '1', cube = null;
+  function cubeListen() {
+    cubeBtn.setAttribute('aria-checked', String(cubeOn)); cubeBtn.querySelector('.st').textContent = cubeOn ? 'On' : 'Off';
+    const on = cubeOn && docked && !body.classList.contains('right-hidden') && !document.hidden;
+    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), again: $('mindCubeAgain'), open: $('mindCubeOpen') }, { still: () => body.classList.contains('still') || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches });
+    if (!cube) return;
+    if (on) cube.connect(); else cube.disconnect();
+    if (!cubeOn) cube.hide();
+  }
+  cubeBtn.onclick = () => { cubeOn = !cubeOn; store.set('bob-mind-cube', cubeOn ? '1' : '0'); cubeListen(); };
+  document.addEventListener('visibilitychange', cubeListen);
+  window.addEventListener('bob-mind-dock', cubeListen);
+  cubeListen();
   drawDock();
 
   // ---- the panel's lists ----

@@ -53,12 +53,12 @@ export function createView(canvas, { still = false } = {}) {
   let yaw = -0.62, tilt = 0.5, gap = 0.9, zoom = 1, fast = false;
   let hidden = new Set(); // skill indexes, plus 'never' and 'grey'
   let staticCanvas = null, dirty = true, geom = null;
-  let caption = null, paths = true, picked = null, glass = 0.25, off = null, solid = new Map(); // off: [Set of experts turned off, per floor] while a cut is being tried // glass: how see-through the voxels are, 0 (solid) to 0.85
+  let caption = null, paths = true, picked = null, glass = 0.25, off = null, solid = new Map(), glow = 0.5, mark = 'glow'; // mark: how the experts in use show: 'glow', 'outline' (a bright edge, no light) or 'both'; glow: how bright the experts in use shine, 0 to 1.5; gentle to begin with, so nothing flashes hard // off: [Set of experts turned off, per floor] while a cut is being tried // glass: how see-through the voxels are, 0 (solid) to 0.85
   const css = () => { const s = getComputedStyle(document.body); const g = (n, d) => s.getPropertyValue(n).trim() || d; return { bg: g('--bg', '#1d1510'), text: g('--text', '#f3e7d3'), muted: g('--muted', '#c7b296'), line: g('--line', '#5a4030'), panel: g('--panel', '#2b1d14') }; };
 
   function setData(r, s, parts) { rec = r; sp = s; lay = layoutOf(r, parts); dirty = true; picked = null; }
-  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
-  const get = () => ({ yaw, tilt, gap, zoom, glass });
+  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
+  const get = () => ({ yaw, tilt, gap, zoom, glass, glow });
   // the gap between floors that makes the whole block as tall as it is wide: a cube
   const cubeGap = () => (lay ? Math.max(0.2, Math.min(5, Math.max(lay.W, lay.D) / Math.max(1, lay.L + lay.baseFloors))) : 0.9);
 
@@ -162,7 +162,7 @@ export function createView(canvas, { still = false } = {}) {
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     ctx.drawImage(staticCanvas, 0, 0);
     ctx.globalCompositeOperation = 'lighter';
-    const missed = [];
+    const missed = [], outlined = [];
     const pop = g.s * 0.5 * Math.cos(tilt);
     lit.slice(-TRAIL).forEach((f) => {
       const a = Math.max(0, 1 - f.age);
@@ -180,19 +180,24 @@ export function createView(canvas, { still = false } = {}) {
           const y = y0 - (now ? pop : pop * a * 0.6);
           const color = top >= 0 ? lookOf(top)[0] : '#ffffff';
           ctx.fillStyle = color;
-          if (now) { ctx.globalAlpha = 0.22; ctx.beginPath(); ctx.arc(x, y, Math.max(2, g.s * 0.8), 0, 6.283); ctx.fill(); }
-          ctx.globalAlpha = now ? 1 : 0.3 * a; face(ctx, g, x, y); ctx.fill();
-          if (now) { ctx.globalAlpha = 0.3; ctx.fillStyle = '#ffffff'; face(ctx, g, x, y); ctx.fill(); }
+          // the halo and the white core scale with Glow; the lit face itself stays visible even with Glow at 0
+          if (mark !== 'glow') { if (now) outlined.push([x, y0, color]); if (mark === 'outline') { pts.push([x, y0]); continue; } }
+          if (now && glow > 0) { ctx.globalAlpha = Math.min(0.4, 0.22 * glow); ctx.beginPath(); ctx.arc(x, y, Math.max(2, g.s * 0.8), 0, 6.283); ctx.fill(); }
+          ctx.globalAlpha = now ? Math.min(1, 0.45 + 0.55 * glow) : Math.min(0.5, 0.3 * a * glow); face(ctx, g, x, y); ctx.fill();
+          if (now && glow > 0.6) { ctx.globalAlpha = Math.min(0.45, 0.3 * (glow - 0.6) / 0.4); ctx.fillStyle = '#ffffff'; face(ctx, g, x, y); ctx.fill(); }
           pts.push([x, y]);
         }
         if (now && paths && prev && pts.length && prev.length) {
-          ctx.globalAlpha = 0.045; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, g.s * 0.06);
+          ctx.globalAlpha = Math.min(0.08, 0.045 * Math.max(0.4, glow)); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, g.s * 0.06);
           ctx.beginPath(); for (const p of prev) for (const q of pts) { ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); } ctx.stroke();
         }
         if (pts.length) prev = pts;
       }
     });
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+    if (outlined.length) { // Outline: the voxel's own edge drawn bright in its colour, with a thin light rim so it reads on any colour
+      for (const [x, y, color] of outlined) { ctx.lineWidth = Math.max(2, g.s * 0.16); ctx.strokeStyle = color; face(ctx, g, x, y); ctx.stroke(); ctx.lineWidth = Math.max(1, g.s * 0.05); ctx.strokeStyle = k.text; ctx.stroke(); }
+    }
     if (missed.length) { // a red ring with a stroke through it where a turned-off expert was wanted
       const r = Math.max(3, g.s * 0.42); ctx.strokeStyle = '#ff5a4f'; ctx.lineWidth = Math.max(1.5, g.s * 0.1);
       for (const [x, y] of missed) { ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.moveTo(x - r * 0.7, y + r * 0.7); ctx.lineTo(x + r * 0.7, y - r * 0.7); ctx.stroke(); }
