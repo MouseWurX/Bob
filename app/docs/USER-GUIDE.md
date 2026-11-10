@@ -425,7 +425,7 @@ Under the tabs, **Keep it simple** or **Professional** is one switch for the who
 
 The Lab has five tabs:
 
-- **Make a brain** starts by asking what you want to do (Make it smaller, Cut experts, Take out sight or hearing, Just test a brain, or Everything), then walks you through only the steps that job needs, with tick boxes instead of command-line flags. Everything is all five:
+- **Make a brain** starts by asking what you want to do (Make it smaller, Cut experts, Take out sight or hearing, Just test a brain, Everything, or Take out the refusal habit, which opens the Forge tab), then walks you through only the steps that job needs, with tick boxes instead of command-line flags. Everything is all five:
   1. **Pick a brain** you already have.
   2. **Lessons**: your chats with Bob, a lesson set you have, or a new one Bob writes with a teacher brain, or builds from your own files.
   3. **Make it smaller**: cut experts while keeping every skill covered, take out sight or hearing, then make the running files (Q4 and others).
@@ -436,7 +436,7 @@ The Lab has five tabs:
 - **Forge**: every way of making a new brain, side by side, each with where it runs and what works best. Making a brain smaller, cutting experts, mixing two brains and stacking layers run here for free. Teaching a cut brain back needs a rented graphics card: the Forge writes the plan, and you start each run yourself. Under **Lessons to teach**, every lesson set is broken into parts by what it teaches, where it came from and whether it shows its thinking: **Pick its parts** leaves parts out, and a set's thinking can be taught as its own thinking path ("Think: name"). **Add a lesson set to the Lab** brings in a .jsonl or .json set from your replicant matrix or Hugging Face and breaks it up the same way.
 - **Learn**: short cards about how a brain works (what a token is, how the next word is picked, what temperature does), run on the brain Bob has loaded right now. If none is loaded, say anything to Bob in the chat first. Nothing here changes how he answers, and nothing is saved.
 - **Challenges**: short tests out of 100 for any brain you have, and a scoreboard that ranks brains against others of their own size.
-- **Playground**: **Smaller** makes one brain in six sizes and shows where it starts to slip; **Peek inside** shows which experts your work uses; **Longer**, **Faster** and **Teach it** try longer chats, faster settings and a short round of teaching.
+- **Playground**: **Smaller** makes one brain in six sizes and shows where it starts to slip; **Peek inside** shows which experts your work uses; **FNRI** scans a brain while it answers a few questions for each skill and plays it back in its own window as a 3D block of voxels, a floor for each layer, coloured by skill and glowing as the experts are used (tick boxes hide skills, three zoom levels, Save as a video); **Longer**, **Faster** and **Teach it** try longer chats, faster settings and a short round of teaching.
 
 | | | |
 |---|---|---|

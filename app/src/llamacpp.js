@@ -780,7 +780,9 @@ export class LlamaCpp {
       body: JSON.stringify({ model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, max_tokens: replyTokens(this.current === model ? this.currentCtx : null, MAX_REPLY_TOKENS), // 1.5.148: less on a small context. 1.5.26: no empty enums (llama.cpp rejects them)
         ...this.sampling(model, { tools: !!tools?.length, think, task }),
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
-        ...(think === false ? { chat_template_kwargs: { enable_thinking: false } } : {}) }),
+        ...(think === false ? { chat_template_kwargs: { enable_thinking: false } } : {}),
+        // FNRI's small cube in Bob's thinking: only while someone has it open, and only Brain Engine answers it
+        ...(this.wantTrace?.() ? { expert_trace: true } : {}) }),
       signal
     });
   }
@@ -805,6 +807,7 @@ export class LlamaCpp {
         if (!ev) continue; // a cut or odd line from the server: skip it rather than lose the whole reply
         if (ev.error) throw new Error('llama-server: ' + (ev.error.message || JSON.stringify(ev.error)));
         // 1.5.30: llama-server puts the reply's timings on its last chunk; kept for Now running.
+        if (ev.expert_trace && this.onTrace) { try { this.onTrace(ev.expert_trace, model); } catch {} }
         if (ev.timings) this.lastStats = replyStats({ model: this.current || model, messages, promptTokens: (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0), outTokens: ev.timings.predicted_n, tokPerSec: ev.timings.predicted_per_second, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX }) || this.lastStats;
         const d = ev.choices?.[0]?.delta || {};
         if (budget && d.reasoning_content && ++thought > budget && !content) onOver(); // stop.over marks it, so real errors aren't retried

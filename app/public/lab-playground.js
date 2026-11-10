@@ -9,16 +9,17 @@ import { createContextPage } from './lab-context.js'; // 1.5.16x Longer: how muc
 import { createTurboPage } from './lab-turbo.js'; // 1.5.16x Faster: Turbo (sec 15.1)
 import { createTeachPage } from './lab-teach.js'; // 1.5.16x Teach it: here, or as a Forge plan (sec 15.3)
 import { createDiffusionPage } from './lab-diffusion.js'; // Diffusion brains (llama-diffusion-cli)
+import { createWatchPage } from './lab-watch.js'; // FNRI: a scan of the experts lighting up, in its own window
 
 // 1.5.16x The Playground has four pages now: the quantization ladder and the three from thinking-paths sec 15.
-export const PLAY_PAGES = [['smaller', 'Smaller'], ['longer', 'Longer'], ['faster', 'Faster'], ['teach', 'Teach it'], ['peek', 'Peek inside'], ['diffusion', 'Diffusion brains']];
+export const PLAY_PAGES = [['smaller', 'Smaller'], ['longer', 'Longer'], ['faster', 'Faster'], ['teach', 'Teach it'], ['peek', 'Peek inside'], ['watch', 'FNRI'], ['diffusion', 'Diffusion brains']];
 
 // `sections` (1.5.166): more pieces, each { html(), change(el), input(el), click(b, load), mounted() }; they make up the
 // Peek inside page. Events reach them only while that page shows.
 export function createPlayground({ api, view, saveState, sections = [] }) {
   let page = 'smaller';
   const peek = { kind: 'peek', html: () => sections.map((s) => s.html()).join(''), load: async () => {}, change: async (el) => { for (const s of sections) if (await s.change?.(el)) return true; return false; }, input: (el) => sections.some((s) => s.input?.(el)), click: async () => false };
-  const pages = { longer: createContextPage({ api }), faster: createTurboPage({ api }), teach: createTeachPage({ api }), peek, diffusion: createDiffusionPage({ api }) };
+  const pages = { longer: createContextPage({ api }), faster: createTurboPage({ api }), teach: createTeachPage({ api }), peek, watch: createWatchPage({ api }), diffusion: createDiffusionPage({ api }) };
   const loaded = new Set(), seen = new Map();
   const cur = () => pages[page];
   const refocus = (id) => { if (id) setTimeout(() => document.getElementById(id)?.focus(), 0); };

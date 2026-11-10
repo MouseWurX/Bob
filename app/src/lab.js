@@ -41,7 +41,7 @@ import { forgeDoesSenses } from './lab-senses.js';
 // 1.5.164 the Forge's home ways (mix, stack, take out the refusal habit) and Peek inside
 import { MIX_WAYS, MIX_IDS, planMix, mixGguf, planStack, stackGguf, shareOf } from './lab-merge.js';
 import { planRefusals, readDirections, pickLayers, removeRefusals, keptCheck, reflexCheck, PLAIN_PROMPTS, RELUCTANT_PROMPTS, writeTeachBack, TEACH_BACK_SET, LAYER_CHOICES, KEPT } from './lab-refusals.js';
-import { peekView, tallyTrace, addToTally, keepFromLit, askTraced, IDLE_MS, NO_TRACE, NO_ENGINE } from './lab-peek.js';
+import { peekView, tallyTrace, addToTally, keepFromLit, askTraced, IDLE_MS, NO_TRACE, NO_ENGINE, traceBuilt } from './lab-peek.js';
 import { usageFolder, keepFileOf } from './lab-usage.js';
 import { ownModels, OWN_FAMILY } from './own-models.js'; // Your own brains join the Lab's lists
 import { fullSizeRoute } from './lab-fullsize.js'; // Bring in a full-size brain
@@ -1691,8 +1691,11 @@ export class Lab {
     const brain = this.brains().find((b) => b.id === String(brainId || ''));
     if (!brain) throw new Error('Pick a brain to peek inside.');
     let facts = null; try { facts = inspect(brain); } catch {}
-    return peekView(this.cfg, brain, facts, { engineFound: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), traceOk: this.peekTraceOk ?? null });
+    return peekView(this.cfg, brain, facts, { engineFound: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), traceOk: this.peekTraceOk ?? this.traceProbe()?.experts ?? null });
   }
+
+  // Whether the Brain Engine here was built with the trace, read from the program file (null: can't tell, or a test's fake).
+  traceProbe() { if (this.stepFns.peekServe) return null; const be = this.tools().brainEngine; return be.found ? traceBuilt(be.path) : null; }
 
   // Brain Engine stays loaded between questions; any other job, or a while idle, unloads it.
   freePeek() { if (this.peekSrv) { try { this.peekSrv.srv.stop(); } catch {} clearTimeout(this.peekSrv.timer); this.peekSrv = null; } return { stopped: true }; }

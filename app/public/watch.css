@@ -1,0 +1,56 @@
+/* 🧪 FNRI: the viewer window (public/watch.html). Uses the theme's colours. */
+body.watch-page { display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; font-size: 14px; }
+.watch-head { padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.watch-head h1 { font-size: 16px; margin: 0; }
+.watch-head h1 .muted { font-size: 12px; font-weight: 400; margin-left: 6px; }
+.watch-head p { margin: 2px 0 0; font-size: 12px; }
+.watch-main { flex: 1; min-height: 0; display: flex; }
+.watch-side { width: 270px; flex: none; overflow-y: auto; padding: 10px 12px; border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; gap: 10px; }
+.watch-side section { display: flex; flex-direction: column; gap: 8px; }
+.watch-side fieldset { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 8px; margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.watch-side select, .watch-side input[type="number"] { font: inherit; min-height: 32px; padding: 2px 6px; border-radius: var(--r); border: 1px solid var(--line); background: var(--card); color: var(--text); }
+.watch-side input[type="number"] { width: 70px; }
+.watch-side input[type="range"] { width: 100%; }
+.watch-side button.link, .watch-player button.link, .watch-open { background: none; border: none; padding: 6px 0; min-height: 32px; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; display: inline-flex; align-items: center; }
+.watch-side button.link:hover, .watch-open:hover, .watch-player button.link:hover { color: var(--accent); }
+.watch-open:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.watch-skill { display: flex; align-items: center; gap: 8px; min-height: 32px; cursor: pointer; }
+.watch-skill .sw { width: 16px; height: 16px; border-radius: 3px; flex: none; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #000; }
+.watch-skill .sw.never { border: 1px solid var(--muted); background: none; }
+.watch-skill .sw.even { border: 1.5px dashed var(--text); background: color-mix(in srgb, var(--muted) 30%, transparent); opacity: 0.8; }
+.watch-skill .n { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.watch-turn button.icon { width: 36px; height: 36px; }
+.watch-stage { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#watchCanvas { flex: 1; min-height: 0; width: 100%; display: block; touch-action: none; cursor: grab; }
+#watchCanvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.watch-player { padding: 8px 12px; border-top: 1px solid var(--line); background: var(--panel); }
+.watch-player input[type="range"] { width: 100%; }
+.watch-player select { font: inherit; min-height: 32px; border-radius: var(--r); border: 1px solid var(--line); background: var(--card); color: var(--text); }
+.watch-player button { min-height: 36px; min-width: 36px; padding: 4px 10px; }
+.watch-player button.get { background: var(--accent); color: var(--on-accent, #000); border-color: var(--accent); font-weight: 700; min-width: 72px; }
+.watch-caption { margin: 4px 0 0; min-height: 2.8em; max-height: 5.6em; overflow-y: auto; overflow-wrap: anywhere; }
+.watch-caption .q { color: var(--muted); }
+.watch-caption .wnow { background: var(--accent); color: var(--on-accent, #000); border-radius: 3px; padding: 0 2px; }
+.watch-floor { flex: 1; min-height: 0; overflow: auto; padding: 10px 12px; }
+.watch-floor h2, .watch-expert h2 { font-size: 15px; margin: 0 0 6px; }
+.watch-grid { display: grid; gap: 3px; max-width: min(900px, max(320px, calc(100vh - 300px))); }
+.watch-cell { aspect-ratio: 1; min-width: 0; padding: 0; font-size: 10px; line-height: 1.1; border: 1px solid var(--line); border-radius: 3px; background: none; color: var(--text); position: relative; overflow: hidden; }
+.watch-cell .bg { position: absolute; inset: 0; }
+.watch-cell .tx { position: relative; text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg); }
+.watch-cell.core { background: #8a8f98; border-color: #8a8f98; }
+.watch-cell.lit { outline: 3px solid var(--text); outline-offset: -1px; z-index: 1; }
+.watch-cell.sel { border: 2px solid var(--accent); }
+.watch-cell.off { opacity: 0.15; }
+.watch-expert { padding: 10px 12px; border-top: 1px solid var(--line); max-height: 40%; overflow-y: auto; }
+.watch-bar { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.watch-bar .track { flex: 1; height: 10px; background: var(--card); border-radius: 5px; overflow: hidden; }
+.watch-bar .fill { display: block; height: 100%; }
+.watch-bar .pc { width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) {
+  body.watch-page { height: auto; min-height: 100vh; overflow: auto; }
+  .watch-main { flex-direction: column-reverse; }
+  .watch-side { width: auto; border-right: none; border-top: 1px solid var(--line); overflow: visible; }
+  #watchCanvas { flex: none; height: 56vh; }
+}
+.watch-solid { width: 100%; margin: -2px 0 4px; height: 14px; }
+.watch-colour { width: 26px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 3px; background: none; flex: none; cursor: pointer; }
