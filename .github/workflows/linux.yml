@@ -1,4 +1,4 @@
-# Bob for Linux: builds the AppImages on every new version on main (and on version tags, branch work and by hand).
+# Bob for Linux: builds the AppImages on every new version on main (and on version tags, pull requests that are ready for review, and by hand).
 # Two of them, each built and started on its own kind of computer:
 #   x86_64  Bob-<version>-linux-x86_64.AppImage, for ordinary Linux PCs (GitHub's Ubuntu runner)
 #   arm64   Bob-<version>-linux-arm64.AppImage, for a Raspberry Pi 5 and other 64-bit ARM boards (GitHub's ARM runner)
@@ -9,12 +9,16 @@
 #     checksum to it. Nothing here touches the Windows build.
 #
 # Every action is pinned to a full commit SHA (the tag is in the comment). `npm run check:release` fails if one isn't.
+# Bob's files are in app/, so every step runs there (defaults below) and the AppImages are in app/dist.
 name: Linux
 
 on:
   push:
     tags: ['v*']
-    branches: [main, 'claude/**']
+    branches: [main]
+  # Branch work is checked through its pull request, once it is ready for review (a draft runs nothing).
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       ref:
@@ -27,6 +31,8 @@ permissions:
 
 jobs:
   appimage:
+    # Draft pull requests run nothing: the thread tests its own work, and a draft never emails a failed build.
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     strategy:
       fail-fast: false
       matrix:
@@ -39,6 +45,9 @@ jobs:
             runner: ubuntu-24.04-arm
     name: AppImage (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: app
     permissions:
       contents: write # only used by "Add to the GitHub release", on main and version tags
     steps:
@@ -52,6 +61,9 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Tests
         run: npm test
+      - name: Bring CHANGELOG.md up to date (branch and pull request work only; main and version tags must already be)
+        if: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v') }}
+        run: node installer/make-changelog.js
       - name: Release check (licences, pinned actions)
         run: npm run check:release
       - name: Linux engine files upstream (what Bob would download, x86_64 and ARM)
@@ -110,8 +122,8 @@ jobs:
         with:
           name: Bob-${{ github.ref_name == 'main' && 'main' || github.sha }}-linux-${{ matrix.name }}
           path: |
-            dist/Bob-*-linux-*.AppImage
-            dist/Bob-*-linux-*.AppImage.sha256
+            app/dist/Bob-*-linux-*.AppImage
+            app/dist/Bob-*-linux-*.AppImage.sha256
           if-no-files-found: error
       - name: Add to the GitHub release
         # The Windows job (build.yml) makes release vX.Y.Z; this waits for it (up to 30 minutes) and adds the AppImage.

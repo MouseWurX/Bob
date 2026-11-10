@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2b1d14">
+<title>Bob's thinking</title>
+<link rel="icon" href="/icons/bob-32.png">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/mind.css">
+</head>
+<body class="mind-page">
+  <header class="mind-head">
+    <div id="mindNow" class="mind-now" role="status" aria-live="polite">Listening to Bob's brain...</div>
+    <div id="mindBrains" class="mind-brains"></div>
+  </header>
+  <main id="mindLog" class="mind-log" aria-live="off"></main>
+  <p id="mindEmpty" class="mind-empty">I'm quiet right now. Send me something in the chat and you'll see my thinking here as it happens, plus which brain is working, moots and every step I take. Quick (Low effort) replies skip the thinking, so for those you'll mostly see my steps.</p>
+  <footer class="mind-foot">
+    <span class="mind-note">Shown while this window is open. Nothing here is saved.</span>
+    <button id="mindFollow" type="button" class="brain-switch" role="switch" aria-checked="true" title="On: the window keeps up with the newest lines. Off: it stays where you scrolled to."><span class="lbl">Follow along</span><span class="st">On</span></button>
+    <label class="mind-order">Order <select id="mindOrder" aria-label="Order of the lines" title="Newest at the bottom (as they happen), newest at the top, or grouped by who was thinking: Bob first, then his copies."><option value="time">Newest at the bottom</option><option value="newest">Newest at the top</option><option value="who">Bob, then his copies</option></select></label>
+    <button id="mindClear" type="button" class="brain-switch" title="Empty this window. Nothing else changes.">Clear</button>
+  </footer>
+  <script type="module" src="/mind.js"></script>
+</body>
+</html>

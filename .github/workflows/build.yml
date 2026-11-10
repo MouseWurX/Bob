@@ -12,7 +12,8 @@
 #     SIGNPATH_ENABLED is "true" and the secrets/variables below exist.
 #
 # Every action is pinned to a full commit SHA (the tag is in the comment). `npm run check:release` fails
-# if one isn't.
+# if one isn't. Bob's files are in app/, so every step runs there (defaults below) and the files it
+# uploads are under app/dist.
 name: Build
 
 on:
@@ -20,9 +21,11 @@ on:
     tags: ['v*']
     # A new version on main publishes its own release (the "Publish the release" step below).
     branches: [main]
-    paths: ['package.json']
-  # A pull request runs every check (Windows and Mac) but never publishes or changes a release.
+    paths: ['app/package.json']
+  # A pull request runs every check (Windows and Mac) but never publishes or changes a release. A draft runs
+  # nothing until it is marked ready for review.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       ref:
@@ -36,7 +39,12 @@ permissions:
 
 jobs:
   build:
+    # Draft pull requests run nothing: the thread tests its own work, and a draft never emails a failed build.
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
     permissions:
       contents: write # only used by "Attach to the GitHub release", which runs on version tags
       actions: read
@@ -49,6 +57,9 @@ jobs:
           node-version: 22
       - name: Tests
         run: npm test
+      - name: Bring CHANGELOG.md up to date (branch and pull request work only; main and version tags must already be)
+        if: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v') }}
+        run: node installer/make-changelog.js
       - name: Release check (licences, pinned actions)
         run: npm run check:release
       - name: Release zip (official Electron + Bob's files + the basic llama.cpp)
@@ -67,8 +78,8 @@ jobs:
         with:
           name: Bob-${{ github.event_name == 'pull_request' && format('pr{0}', github.event.number) || github.ref_name }}-win-x64
           path: |
-            dist/Bob-*-win-x64.zip
-            dist/Bob-*-win-x64.zip.sha256
+            app/dist/Bob-*-win-x64.zip
+            app/dist/Bob-*-win-x64.zip.sha256
           if-no-files-found: error
       - name: Attach to the GitHub release
         # When the owner publishes a release on GitHub (tag v1.0.0 and so on), its zip and checksum are added to it.
@@ -79,7 +90,7 @@ jobs:
         run: gh release upload "${{ github.ref_name }}" (Get-ChildItem dist/Bob-*-win-x64.zip*).FullName --clobber -R "${{ github.repository }}"
       - name: Publish the release
         # A new version on main, or a run started by hand: release vX.Y.Z (from package.json) with the zip and
-        # checksum, marked Latest. Notes come from docs/releases/vX.Y.Z.md when there is one, else GitHub writes them.
+        # checksum, marked Latest. Notes come from app/docs/releases/vX.Y.Z.md when there is one, else GitHub writes them.
         # Nothing happens when that release already exists.
         if: ${{ github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/v') }}
         shell: pwsh
@@ -100,6 +111,9 @@ jobs:
     # Bob for Mac (Apple Silicon). Runs after the Windows job, so the release it adds to already exists.
     needs: build
     runs-on: macos-15
+    defaults:
+      run:
+        working-directory: app
     permissions:
       contents: write # only used to add the Mac zip to the release
       actions: read
@@ -148,8 +162,8 @@ jobs:
         with:
           name: Bob-${{ github.event_name == 'pull_request' && format('pr{0}', github.event.number) || github.ref_name }}-mac-arm64
           path: |
-            dist/Bob-*-mac-arm64.zip
-            dist/Bob-*-mac-arm64.zip.sha256
+            app/dist/Bob-*-mac-arm64.zip
+            app/dist/Bob-*-mac-arm64.zip.sha256
           if-no-files-found: error
       - name: Add to the GitHub release
         # The release the Windows job made (or the one the owner published for a tag). Nothing happens without one,
@@ -172,6 +186,9 @@ jobs:
     if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
     needs: build
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -187,7 +204,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Bob-signed-build-unsigned
-          path: dist/win-unpacked
+          path: app/dist/win-unpacked
           if-no-files-found: error
       - name: Sign with SignPath
         uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
@@ -199,10 +216,10 @@ jobs:
           artifact-configuration-slug: bob-exe
           github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
           wait-for-completion: true
-          output-artifact-directory: dist/signed
+          output-artifact-directory: app/dist/signed
       - name: Upload signed build
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Bob-${{ github.event_name == 'pull_request' && format('pr{0}', github.event.number) || github.ref_name }}-win-x64-signed
-          path: dist/signed
+          path: app/dist/signed
           if-no-files-found: error

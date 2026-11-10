@@ -1,16 +1,22 @@
-# Builds Bob for Android (the android/ folder) into an APK: on every push that changes it, and on demand.
+# Builds Bob for Android (the android/ folder) into an APK: on every new version on main, on a pull request that changes
+# it once it is ready for review, and on demand.
 #  1. Runs the phone page's own tests (node test/run-android-test.js).
 #  2. Fetches llama.cpp at the exact commit in android/llama.cpp.pin (the phone brain's engine).
 #  3. Builds the APK with Gradle and keeps it as a download on the run's page.
 #  4. On a new version on main (or by hand): waits for the Windows job to publish release vX.Y.Z, then adds
 #     Bob-<version>-android.apk and its checksum to it, like the Linux job does with the AppImage.
 # Every action is pinned to a full commit SHA (the tag is in the comment), like build.yml.
+# Bob's files are in app/, so every step runs there (defaults below) and the APK is kept in app/dist.
 name: Android
 
 on:
   push:
     tags: ['v*']
-    branches: [main, 'claude/**']
+    branches: [main]
+  # A pull request that changes the phone app builds it once it is ready for review (a draft runs nothing).
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths: ['app/android/**', '.github/workflows/android.yml']
   workflow_dispatch:
     inputs:
       ref:
@@ -23,7 +29,12 @@ permissions:
 
 jobs:
   apk:
+    # Draft pull requests run nothing: the thread tests its own work, and a draft never emails a failed build.
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
     permissions:
       contents: write # only used by "Add to the GitHub release", on main, version tags and by hand
     steps:
@@ -43,9 +54,14 @@ jobs:
           CMAKE=$(sed -n 's/.*version = "\(3[0-9.]*\)".*/\1/p' android/app/build.gradle.kts | head -1)
           echo "NDK $NDK, CMake $CMAKE"
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK" "cmake;$CMAKE" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+          # GitHub's download of these sometimes breaks halfway ("unknown archive"), so try three times before failing.
+          for try in 1 2 3; do
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK" "cmake;$CMAKE" "platforms;android-36" "build-tools;36.0.0" > /dev/null && break
+            [ "$try" = 3 ] && exit 1
+            echo "Download failed, trying again in $((try * 20)) seconds"; sleep $((try * 20))
+          done
       - name: Build the APK
-        working-directory: android
+        working-directory: app/android
         run: |
           export JAVA_HOME="$JAVA_HOME_17_X64"
           # Up to 3 tries, a minute apart: the Gradle and library downloads can time out.
@@ -65,8 +81,8 @@ jobs:
         with:
           name: Bob-android-${{ github.sha }}
           path: |
-            dist/Bob-*-android.apk
-            dist/Bob-*-android.apk.sha256
+            app/dist/Bob-*-android.apk
+            app/dist/Bob-*-android.apk.sha256
           if-no-files-found: error
       - name: Add to the GitHub release
         # The Windows job (build.yml) makes release vX.Y.Z; this waits for it (up to 30 minutes) and adds the APK.

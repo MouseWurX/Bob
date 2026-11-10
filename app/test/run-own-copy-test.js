@@ -1,0 +1,53 @@
+// 1.5.35: a brain picked by its Ollama name (like "gpt-oss:20b") runs from Bob's own pinned copy when that copy is
+// downloaded, instead of Ollama's (Ollama's gpt-oss has no chat template: 2 of 25 tool jobs right, the official 25 of 25).
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { LlamaCpp } from '../src/llamacpp.js';
+
+let pass = 0, fail = 0;
+const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-own-'));
+const own = path.join(tmp, 'models', 'bob');
+const ollama = path.join(tmp, 'models');
+const man = path.join(ollama, 'manifests', 'registry.ollama.ai', 'library', 'gpt-oss');
+fs.mkdirSync(man, { recursive: true }); fs.mkdirSync(path.join(ollama, 'blobs'), { recursive: true });
+fs.writeFileSync(path.join(ollama, 'blobs', 'sha256-ccc'), 'GGUF');
+fs.writeFileSync(path.join(man, '20b'), JSON.stringify({ layers: [{ mediaType: 'application/vnd.ollama.image.model', digest: 'sha256:ccc' }] }));
+const eng = new LlamaCpp({ agentDir: tmp, dataDir: tmp, bobModelsDir: own, llamacpp: { ollamaModelsDir: ollama } });
+clearInterval(eng.idleTimer);
+check('without Bob\'s own copy: Ollama\'s file, as before', eng.resolve('gpt-oss:20b').gguf.endsWith('sha256-ccc'));
+fs.mkdirSync(path.join(own, 'coding'), { recursive: true });
+fs.writeFileSync(path.join(own, 'coding', 'gpt-oss-20b-MXFP4.gguf'), 'GGUF');
+check('with the official copy downloaded: that file, by Ollama name', eng.resolve('gpt-oss:20b').gguf === path.join(own, 'coding', 'gpt-oss-20b-MXFP4.gguf'));
+check('and by its catalog id', eng.resolve('gpt-oss-20b').gguf === path.join(own, 'coding', 'gpt-oss-20b-MXFP4.gguf'));
+fs.rmSync(path.join(own, 'coding'), { recursive: true });
+fs.mkdirSync(path.join(own, 'chat'), { recursive: true });
+fs.writeFileSync(path.join(own, 'chat', 'gpt-oss-20b-MXFP4.gguf'), 'GGUF');
+check('found in another of Bob\'s model folders too (an older Bob filed it under chat)', eng.resolve('gpt-oss:20b').gguf === path.join(own, 'chat', 'gpt-oss-20b-MXFP4.gguf'));
+fs.writeFileSync(path.join(own, 'chat', 'gpt-oss-20b-MXFP4.gguf.part'), 'half');
+check('a download still in progress is not used', eng.resolve('gpt-oss:20b').gguf.endsWith('sha256-ccc'));
+check('a path set by hand still wins', new LlamaCpp({ agentDir: tmp, dataDir: tmp, bobModelsDir: own, llamacpp: { ollamaModelsDir: ollama, models: { 'gpt-oss:20b': 'X:\\\\mine.gguf' } } }).resolve('gpt-oss:20b').gguf === 'X:\\\\mine.gguf');
+check('nothing odd in a name reaches the file system', eng.catalogFile('..\\\\x') === null && eng.catalogFile('a b') === null);
+// 1.5.146: a brain Get models found by its disk scan (and says you "have") loads in chat without an Equip first.
+const scanDir = path.join(tmp, 'elsewhere', 'brains');
+fs.mkdirSync(scanDir, { recursive: true });
+const q4 = path.join(scanDir, 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf');
+fs.writeFileSync(q4, 'GGUF');
+const g = path.join(scanDir, 'gemma-4-26B-A4B-it-Q4_0.gguf'), gm = path.join(scanDir, 'mmproj-gemma-4-26B-A4B-it-Q8_0.gguf');
+fs.writeFileSync(g, 'GGUF'); fs.writeFileSync(gm, 'GGUF');
+const otherDir = path.join(tmp, 'elsewhere', 'other'); fs.mkdirSync(otherDir, { recursive: true });
+const strayReader = path.join(otherDir, 'mmproj-gemma-4-26B-A4B-it-Q8_0.gguf'); fs.writeFileSync(strayReader, 'GGUF');
+check('before the scan: not found', eng.catalogFile('qwen3-4b') === null);
+fs.writeFileSync(path.join(tmp, 'model-scan.json'), JSON.stringify({ at: 'x', files: [{ path: strayReader, name: path.basename(strayReader), owner: 'Other' }, { path: q4, name: path.basename(q4), owner: 'Other' }, { path: g, name: path.basename(g), owner: 'Other' }, { path: gm, name: path.basename(gm), owner: 'Other' }] }));
+check('a brain found only by the scan loads in chat without an Equip', eng.resolve('qwen3-4b').gguf === q4);
+check('its picture reader comes from the same folder, not a stray one with the same name', eng.resolve('gemma4-26b').gguf === g && eng.resolve('gemma4-26b').mmproj === gm);
+fs.writeFileSync(q4 + '.part', 'half');
+check('a scanned file still being copied is not used', eng.catalogFile('qwen3-4b') === null);
+fs.rmSync(q4 + '.part'); fs.rmSync(q4);
+check('a scanned file that has gone is not used', eng.catalogFile('qwen3-4b') === null);
+fs.mkdirSync(path.join(own, 'small'), { recursive: true }); fs.writeFileSync(path.join(own, 'small', 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf'), 'GGUF'); fs.writeFileSync(q4, 'GGUF');
+check('Bob\'s own copy still comes before the scan', eng.resolve('qwen3-4b').gguf === path.join(own, 'small', 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf'));
+fs.rmSync(tmp, { recursive: true, force: true });
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);
