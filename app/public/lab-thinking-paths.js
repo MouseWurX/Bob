@@ -481,9 +481,9 @@ export const PATH_GROUPS = [
 "kind": "either"
 },
 {
-"name": "Columbo",
+"name": "Raider",
 "like": "DeepSeek-like",
-"style": "Think out loud and at length: try an approach, stop and say wait when something looks off, go back and check it another way, circle the small detail that doesn't fit, and only then give a short, clean answer.",
+"style": "Dig in and think out loud at length: try a path, stop and say wait when something looks off, go back and try another way, circle the small detail that doesn't fit, and only then bring back a short, clean answer.",
 "kind": "either"
 }
 ]
