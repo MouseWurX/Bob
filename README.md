@@ -128,10 +128,12 @@ Optional, all off until you switch them on: web search, launch on start-up, clou
 - **Challenges:** short tests out of 100 for any brain you have (quiz, reasoning, sums, following rules, picking the tool, code in a sandbox, and more), with a scoreboard that ranks brains by size class.
 - **Playground:** how small a brain can get before it gets worse (Smaller), what is inside it (Peek inside), a scan of its experts lighting up as it works (FNRI), and how it does with longer chats, faster settings and a short round of teaching.
 
-| | | |
-|---|---|---|
-| ![The Forge tab: Ways to make a brain, each card with where it runs and best practice](app/docs/screens/lab-forge.png) | ![The Challenges tab: short tests with how many questions and about how long each takes](app/docs/screens/lab-challenges.png) | ![The Playground tab: Smaller, Longer, Faster, Teach it and Peek inside, on How small can a brain get?](app/docs/screens/lab-playground.png) |
-| *Forge: every way to make a brain.* | *Challenges: tests and a scoreboard.* | *Playground: how small before it slips.* |
+| | |
+|---|---|
+| ![The Forge tab: Ways to make a brain, each card with where it runs and best practice](app/docs/screens/lab-forge.png) | ![The Learn tab: What is a token? splits a sentence into its tokens with their numbers, on the brain Bob has loaded](app/docs/screens/lab-learn.png) |
+| *Forge: every way to make a brain.* | *Learn: how a brain splits your words into tokens.* |
+| ![The Challenges tab: short tests with how many questions and about how long each takes](app/docs/screens/lab-challenges.png) | ![The Playground tab: Smaller, Longer, Faster, Teach it and Peek inside, on How small can a brain get?](app/docs/screens/lab-playground.png) |
+| *Challenges: tests and a scoreboard.* | *Playground: how small before it slips.* |
 
 More in the [user guide](app/docs/USER-GUIDE.md#11-the-computer-science-lab) and in Help inside Bob. Lab jobs need a computer with at least 12 GB of memory (a smaller one can start them on a bigger Bob on your Bob-Net), and the phone app has no Lab.
 
