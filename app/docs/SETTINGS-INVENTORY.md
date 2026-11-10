@@ -27,6 +27,7 @@ Update this file in the same handover as any change to settings.
 | Voice details | Voice engine (Kokoro / Chatterbox / Windows), voice, speed 0.6–1.6×, Hey Bob, read replies aloud | Chatterbox: own-voice recording rules | Windows voice, 1.0×, Hey Bob off | ok |
 | Look & feel | Open Now running when a task needs me; your own theme (link) | | off | ok (1.5.2) |
 | Engines | Engine for brains (behind a ⚙): Brain Engine / llama.cpp / Ollama | Takes effect next time Bob starts. Greyed with the reason where there's no build. | Brain Engine (llama.cpp until it's here) | ok |
+| Keep engines up to date (1.5.184, Settings > Engines, under Check all for updates) | At start and about daily, Bob updates Brain Engine (new or rebuilt build, by checksum) and his own llama.cpp (only up to the tested build) by himself, only while no brain is loaded on them and nothing is busy; old build kept for Go back; says so in chat. Other engines wait for a click. | on | ok |
 | Engines | Engine for the Lab: Same as Bob's brains / Brain Engine / llama.cpp (also at the top of the Lab) | Used from the Lab's next job. | Same as Bob's brains | ok |
 | Engines | Engine downloads, in folded groups (Thinking, Pictures sound and hearing, Voices, Helpers): Get / Check for updates / Check all for updates / Update / Go back / Remove (asks first) | From official GitHub pages (Brain Engine from Bob's own); updates compared by checksum | none | ok |
 | Engines (under More) | Fit to free graphics memory | recommended; one line + More | on | ok (1.5.2) |
