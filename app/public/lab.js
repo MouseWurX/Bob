@@ -28,7 +28,7 @@ const JOBS = [
   { id: 'test', title: 'Just test a brain', what: 'The Lab test on a brain as it is, with a second brain to compare if you like.', steps: ['brain', 'test'], parts: [] },
   { id: 'full', title: 'Everything, step by step', what: 'All five steps: lessons, every way to make it smaller, where it runs, the test.', steps: ['brain', 'lessons', 'smaller', 'where', 'test'], parts: ['senses', 'cut', 'files', 'later'] },
   // The sixth card is a Forge way, not a Make a brain job: it opens the Forge tab with that way unfolded, same as pressing Use this way there.
-  { id: 'refusals', title: 'Take out the refusal habit', what: 'Find the direction a brain says no by reflex and take it out of the weights. The kept refusals are checked and taught back. Runs free on this replicant matrix, on the Forge tab.', steps: [], parts: [], forge: 'refusals' },
+  { id: 'refusals', title: 'Take out the refusal habit', what: 'Find the direction a brain says no by reflex and take it out of the weights. The kept refusals are checked and taught back by default. Runs free on this replicant matrix, on the Forge tab.', steps: [], parts: [], forge: 'refusals' },
 ];
 // What the switch changes on each tab, said right beside it, so Professional never looks like a button that does nothing.
 const MODE_NOTES = {
