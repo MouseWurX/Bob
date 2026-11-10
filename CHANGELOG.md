@@ -4,7 +4,7 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
-## 1.5.185
+## 1.5.186
 
 ### FNRI: dials, and before and after
 
