@@ -1,6 +1,6 @@
 {
   "run": "publish-bobert-weights",
-  "note": "9 Nov: rebuild Riker (28Bob) and Bobert (35Bob) on the card from the stock teacher + keep list + adapter, make their Q4 and Q3 GGUF files, and put EVERYTHING on Hugging Face: the full-size weights, the adapter, the keep list, the GGUFs and their cards. No training and no teacher pass; nothing is copied to the drive (the GGUFs come off the drive now that Hugging Face hosts them). Riker is tested, so he goes public; Bobert stays private until his home test. Quoted to the owner at about $18-25, cap $30.",
+  "note": "9 Nov: rebuild Riker (28Bob) and Bobert (35Bob) on the card from the stock teacher + keep list + adapter, make their Q4 and Q3 GGUF files, and put EVERYTHING on Hugging Face: the full-size weights, the adapter, the keep list, the GGUFs and their cards. No training and no teacher pass; nothing is copied to the drive (the GGUFs come off the drive now that Hugging Face hosts them). Riker is tested, so he goes public; Bobert stays private until his home test. Quoted to the owner at about $18-25, cap $30. | 10 Nov: the owner made Bobert's page public (private storage was full), so his weights go up public; this plan now only uploads them from the drive.",
   "teacher": "Qwen/Qwen3.6-35B-A3B",
   "counts": "expert-counts-2026-11-04T23-23-19.json",
   "lessons": "out/lessons",
@@ -34,7 +34,7 @@
   "download_quants": [],
   "publish": {
     "user": "MouseWurX",
-    "private": true,
+    "private": false,
     "odds": false,
     "models": [],
     "note": "The rebuild section below does the uploading, one Bob at a time, with its own public/private per Bob. publish.models stays empty so publish_tested has nothing extra to do. Token = forge/hf-token.txt on the PC (gitignored), never in a plan."
@@ -46,7 +46,7 @@
         "nickname": "Bobert",
         "source": "volume:bobs/35Bob/model",
         "weights_only": true,
-        "private": true
+        "private": false
       }
     ]
   },
