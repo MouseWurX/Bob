@@ -192,8 +192,10 @@ export class CardBorrower {
     return this.using.map((x) => x.at);
   }
 
-  // The load failed with helpers. Over the home network: next time over Tailscale. Over Tailscale: not again for a while.
-  failed() { for (const u of this.using) (u.via === 'home' ? this.homeDown : this.down).set(u.bob.address, this.now() + DOWN_MS); this.close(); }
+  // The load failed with helpers. route: it couldn't reach the card, so over the home network the next try goes over
+  // Tailscale. Anything else (no room on his card, or too slow): not asked again for a while either way, so a failed
+  // spread doesn't wake his card again over the other route right away (1.5.189).
+  failed({ route = false } = {}) { for (const u of this.using) (route && u.via === 'home' ? this.homeDown : this.down).set(u.bob.address, this.now() + DOWN_MS); this.close(); }
 
   view() { return this.using.map((u) => u.bob.name); }
 

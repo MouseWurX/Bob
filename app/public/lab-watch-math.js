@@ -486,3 +486,22 @@ export function compareWords(cmp) {
   const most = [...cmp.per].sort((a, b) => b.moved - a.moved)[0], least = [...cmp.per].sort((a, b) => a.moved - b.moved)[0];
   return `${cmp.changed} of ${cmp.clips.length} answers changed. Reading the same questions, ${pct(cmp.moved)} of the picks moved to other blocks.${cmp.per.length > 1 ? ` ${most.label} moved most (${pct(most.moved)}), ${least.label} least (${pct(least.moved)}).` : ''}`;
 }
+
+// ---- Use these for training ----
+// The blocks a training run may change, everything else stays frozen (the Lab's judge training reads them). The
+// same shape as a dial without its scale. `moved`: the experts whose share of the picks changed most between two
+// scans of the same brain (before and after), over the words of the questions, which are the same in both.
+export function movedBlocks(before, after, { n = 64 } = {}) {
+  const key = (c) => `${c.skill}\n${c.question}`, old = new Map(before.clips.map((c) => [key(c), c]));
+  const diff = new Map();
+  const add = (l, x, v) => { const k = `${l}:${x}`; diff.set(k, (diff.get(k) || 0) + v); };
+  for (const c of after.clips) {
+    const b = old.get(key(c)); if (!b) continue;
+    const words = Math.min(c.prompt, b.prompt, c.e.length, b.e.length);
+    for (let w = 0; w < words; w++) for (let l = 0; l < c.e[w].length; l++) { for (const x of c.e[w][l]) add(l, x, 1); for (const x of b.e[w]?.[l] || []) add(l, x, -1); }
+  }
+  return [...diff.entries()].filter(([, v]) => v !== 0).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]) || (a[0] < b[0] ? -1 : 1)).slice(0, Math.max(1, n))
+    .map(([k]) => { const [layer, index] = k.split(':').map(Number); return { kind: 'expert', layer, index }; });
+}
+export const targetsOf = (list) => list.map((d) => ({ kind: d.kind, layer: d.layer, index: d.kind === 'expert' || d.kind === 'head' ? d.index : 0 }));
+export const TARGET_FORMAT = 'bob-fnri-targets';

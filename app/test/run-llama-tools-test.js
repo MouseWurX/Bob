@@ -130,7 +130,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   {
     const withBob = { ...cfg, share: { borrow: { bobs: [{ name: 'Go', address: 'go.example.ts.net:7777', passcode: 'secret-2' }] } } };
     const big = cleanSharePatch(withBob, { mode: 'bigger' }).share;
-    ok(big.lendCard === true && big.spread === 'big' && shareView({ ...withBob, share: big }).mode === 'bigger', 'mode: Bigger Bobs lends the card and spreads brains bigger than it');
+    ok(big.lendCard === true && big.spread === 'toobig' && shareView({ ...withBob, share: big }).mode === 'bigger', 'mode: Bigger Bobs lends the card, and spreads only brains that don\'t fit this card and memory (loading here was 6 times quicker)');
     ok(cleanSharePatch({ ...withBob, share: { ...big, spread: 'toobig' } }, { mode: 'bigger' }).share.spread === 'toobig', 'mode: Bigger Bobs keeps a spread choice already made');
     const more = cleanSharePatch({ ...withBob, share: big }, { mode: 'more' }).share;
     ok(more.lendCard === false && more.spread === 'off' && more.borrow.bobs.length === 1, 'mode: More Bobs turns both off and keeps the list');
@@ -224,10 +224,14 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     const hb = new CardBorrower(bcfg, homeBob, { home: () => myHome });
     let at2 = await hb.open({ sizeGB: 200 });
     ok(sent[0].home.join() === H(192, 168, 4, 185) && at2[0] === `${H(192, 168, 4, 189)}:${RPC_PORT}`, 'spread: on the same home network, the card is reached over it');
-    hb.failed(); sent.length = 0;
+    hb.failed({ route: true }); sent.length = 0;
     at2 = await hb.open({ sizeGB: 200 });
-    ok(!sent.find((b) => b.action === 'open').home.length && at2[0] === `100.102.0.7:${RPC_PORT}`, 'spread: the home network failed a load, so the next one goes over Tailscale');
+    ok(!sent.find((b) => b.action === 'open').home.length && at2[0] === `100.102.0.7:${RPC_PORT}`, 'spread: the home network could not reach the card, so the next load goes over Tailscale');
     hb.close();
+    const hb2 = new CardBorrower(bcfg, homeBob, { home: () => myHome });
+    await hb2.open({ sizeGB: 200 }); hb2.failed(); sent.length = 0;
+    ok(!(await hb2.open({ sizeGB: 200 })).length && !sent.some((b) => b.action === 'open'), 'spread: a load that ran out of room on his card isn\'t tried again over Tailscale right away');
+    hb2.close();
     const far = { bobs: () => [bobs[0]], call: async () => ({ ok: true, json: async () => ({ ok: true, host: H(10, 9, 9, 9), port: RPC_PORT, via: 'home' }) }) };
     ok(!(await new CardBorrower(bcfg, far, { home: () => myHome }).open({ sizeGB: 200 })).length, 'spread: a "home network" address that isn\'t ours is never used');
     const off2 = new CardBorrower({ ...bcfg, share: { ...bcfg.share, homeNet: false } }, homeBob, { home: () => myHome }); sent.length = 0;
@@ -235,7 +239,19 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     ok(!sent[0].home.length, 'spread: Use the home network first off, no home address is offered'); off2.close();
   }
   const llamacpp = read(path.join(here, '..', 'src', 'llamacpp.js'));
-  ok(/args\.push\('--rpc', helpers\.join\(','\)\)/.test(llamacpp) && /this\.spread\?\.close\(\)/.test(llamacpp), 'spread: the engine adds --rpc and hands the cards back when the brain goes');
+  ok(/args\.push\('--rpc', helpers\.join\(','\)/.test(llamacpp) && /this\.spread\?\.close\(\)/.test(llamacpp), 'spread: the engine adds --rpc and hands the cards back when the brain goes');
+
+  {
+    const { spreadArgs, spreadLoadSeconds, SPREAD_FIT_TARGET_MIB, SPREAD_UBATCH } = await import('../src/llamacpp.js');
+    const add = spreadArgs(['-m', 'x.gguf', '--fit', 'on']);
+    ok(add.join(' ') === `--fit-target ${SPREAD_FIT_TARGET_MIB} -ub ${SPREAD_UBATCH}`, 'spread: more room is kept free on every card and the steps are smaller (the lent card ran out of room at -ub 2048)', add.join(' '));
+    ok(!spreadArgs(['--fit', 'on', '--fit-target', '512', '-ub', '1024']).length && spreadArgs(['-ngl', '999']).join(' ') === `-ub ${SPREAD_UBATCH}`, 'spread: settings made by hand stay, and without --fit only the step size is set');
+    const riker = spreadLoadSeconds(17.5);
+    ok(riker > 413 + 2.63e3 / 6.6 && riker >= 60 * 60 && riker <= 7200, 'spread: the wait grows with the brain (Riker over Wi-Fi gets over an hour, not 5 minutes)', riker);
+    ok(spreadLoadSeconds(0) === 300 && spreadLoadSeconds(0, 900) === 900 && spreadLoadSeconds(1e4) === 7200, 'spread: never less than the usual wait, never more than two hours');
+    ok(/return this\.preload\(model, signal, \{[^}]*noSpread: true \}\)/.test(llamacpp) && /!noSpread/.test(llamacpp), 'spread: a spread that failed loads here like always instead');
+    ok(/still loading over Bob-Net/.test(llamacpp) && /network cable is much faster/.test(llamacpp), 'spread: a long first load says how it is going, and that a cable is faster');
+  }
 }
 
 // ---- Also over the home network (the door) ----

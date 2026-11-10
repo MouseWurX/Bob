@@ -81,11 +81,13 @@ export function cleanSharePatch(cfg, b) {
   if ('passAlong' in b) next.passAlong = b.passAlong === true; // 1.5.123, off unless switched on
   if ('lendChecks' in b) next.lendChecks = b.lendChecks === true; // 1.5.185, off unless switched on
   if ('askChecks' in b) next.borrow.checks = b.askChecks === true; // 1.5.185, off unless switched on
-  // Bob-Net mode: Bigger Bobs lends this card and spreads brains bigger than it; More Bobs turns both off.
+  // Bob-Net mode: Bigger Bobs lends this card and spreads brains too big for this replicant matrix; More Bobs turns both off.
+  // 1.5.189: 'toobig', not 'big', by default. PC test Nov 10: Riker on the 16 GB card plus memory ran at 105.6 tok/s,
+  // and spread over a handheld on Wi-Fi at 17.9, so a brain that fits here (card and memory) stays here unless you pick 'big'.
   if ('mode' in b) {
     if (!['more', 'bigger'].includes(b.mode)) return { error: 'Pick More Bobs or Bigger Bobs.' };
     if (b.mode === 'more') Object.assign(next, { lendCard: false, spread: 'off' });
-    else { next.lendCard = true; if (next.spread === 'off') next.spread = 'big'; if (!next.borrow.bobs.length) return { error: 'Bigger Bobs needs another Bob to pool with. Add one of your other Bobs first.' }; }
+    else { next.lendCard = true; if (next.spread === 'off') next.spread = 'toobig'; if (!next.borrow.bobs.length) return { error: 'Bigger Bobs needs another Bob to pool with. Add one of your other Bobs first.' }; }
   }
   if ('lendCard' in b) next.lendCard = b.lendCard === true; // off unless switched on
   if ('homeNet' in b) next.homeNet = b.homeNet !== false;

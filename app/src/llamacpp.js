@@ -85,6 +85,21 @@ export function keepAliveMs(cfg) {
 // sees the card (CUDA_VISIBLE_DEVICES=-1). Never in Gaming. Below normal priority, half the cores, and let go as soon as
 // nothing needs it. A call goes to it when its options carry beside: true.
 export const BESIDE = 'beside';
+// 1.5.189 Spreading a brain over another Bob's lent card (src/share-card.js). PC test Nov 10: Riker Q4 npc -> a
+// handheld over Wi-Fi moved 2.63 GB at about 6.6 MB/s, then failed at 413 s because --fit filled the lent card and left
+// no room for its working memory (a 387 MiB compute buffer at -ub 2048). So a spread load keeps more room free on
+// every card (--fit-target, MiB), works in smaller steps (-ub), and waits by the brain's size, not a fixed 5 minutes.
+export const SPREAD_FIT_TARGET_MIB = 2048;
+export const SPREAD_UBATCH = 512;
+export const SPREAD_MBPS = 4; // a slow Wi-Fi's MB per second, so the wait is long enough the first time
+export const spreadLoadSeconds = (sizeGB, base = 300) => Math.min(7200, Math.max(base, base + Math.ceil((Number(sizeGB) || 0) * 1000 / SPREAD_MBPS)));
+// The flags a spread load adds (unless set by hand): room kept free on each card, and smaller steps.
+export function spreadArgs(args) {
+  const add = [];
+  if (args.includes('--fit') && !args.some((a) => ['--fit-target', '-fitt'].includes(a))) add.push('--fit-target', String(SPREAD_FIT_TARGET_MIB));
+  if (!args.some((a) => ['-ub', '--ubatch-size'].includes(a))) add.push('-ub', String(SPREAD_UBATCH));
+  return add;
+}
 export function besideThreads(cpus = os.cpus()) {
   const logical = cpus.length || 2;
   const pairs = /AMD|Intel/i.test(String(cpus[0]?.model || '')) && logical % 2 === 0 && logical >= 4;
@@ -594,7 +609,7 @@ export class LlamaCpp {
     await new Promise((r) => { c.once('exit', r); c.kill(); setTimeout(r, 5000); });
   }
 
-  async preload(model, signal, { ctx, cpu = false, beside = false, reserveMB = 0, place = null } = {}) {
+  async preload(model, signal, { ctx, cpu = false, beside = false, reserveMB = 0, place = null, noSpread = false } = {}) {
     const b = this.route({ beside });
     if (b) return b.preload(model, signal, { ctx, cpu: true, reserveMB, place });
     if (this.role === BESIDE) cpu = true;
@@ -613,10 +628,15 @@ export class LlamaCpp {
     // Bob-Net: a brain too big for this replicant matrix can go over your other Bobs' lent cards (src/share-card.js).
     // Off unless "Spread big brains over my other Bobs' cards" is on; none answering means it loads here like always.
     let helpers = [];
-    if (this.spread && this.role !== BESIDE && !cpu && card !== 'none') {
-      let sizeGB = 0; try { sizeGB = fs.statSync(this.resolve(model).gguf).size / 1e9; } catch {}
+    let sizeGB = 0;
+    if (this.spread && !noSpread && this.role !== BESIDE && !cpu && card !== 'none') {
+      try { sizeGB = fs.statSync(this.resolve(model).gguf).size / 1e9; } catch {}
       helpers = await this.spread.open({ sizeGB }).catch(() => []);
-      if (helpers.length) { args.push('--rpc', helpers.join(',')); try { this.log?.('engine', `${model}: spread over ${helpers.length} other Bob${helpers.length > 1 ? 's' : ''}' card${helpers.length > 1 ? 's' : ''} (${helpers.join(', ')})`); } catch {} }
+      if (helpers.length) {
+        args.push('--rpc', helpers.join(','), ...spreadArgs(args));
+        const mins = Math.ceil(spreadLoadSeconds(sizeGB, this.lc.loadTimeoutSeconds || 300) / 60);
+        try { this.log?.('engine', `${model}: spread over ${helpers.length} other Bob${helpers.length > 1 ? 's' : ''}' card${helpers.length > 1 ? 's' : ''} (${helpers.join(', ')}). The first time, part of the brain is sent over the network: over Wi-Fi that can take a while (I'll wait up to ${mins} min), and a network cable is much faster. Later loads only send what's missing.`); } catch {}
+      }
     }
     // A llama-server left over from a crash would hold the port: stop it first.
     const pidFile = path.join(this.cfg.dataDir, `llama-server${this.tag}.pid`);
@@ -640,7 +660,9 @@ export class LlamaCpp {
     child.stderr.on('data', keep);
     const failFile = path.join(this.cfg.dataDir, `llama-server${this.tag}-load-failed.txt`);
     const saveFail = (why) => {
-      if (helpers.length) this.spread?.failed(); // a lent card that failed isn't asked again for a while
+      // A lent card that failed isn't asked again for a while. Only a failure to reach it tries the other way (home
+      // network, then Tailscale) next time; one that ran out of room or time won't do better over the other way.
+      if (helpers.length) this.spread?.failed({ route: /connect|unreachable|refused|timed out connecting|no route/i.test(full) && !/alloc|out of memory|took too long/i.test(full + why) });
       try { fs.writeFileSync(failFile, `${new Date().toISOString()} ${model}: ${why}\n${[exe, ...args].join(' ')}\n\n${full}`); } catch {}
       try { this.log?.('engine', `${model}: ${why}; full llama-server output saved to ${path.basename(failFile)}`); } catch {}
     };
@@ -658,11 +680,13 @@ export class LlamaCpp {
     this.currentOwn = model.includes(':') && !this.lc.models?.[model] && Boolean(this.catalogFile(model));
     if (this.currentOwn && !(this.ownLogged ||= new Set()).has(model)) { this.ownLogged.add(model); try { this.log?.('engine', `${model}: running from Bob's downloaded copy (${path.basename(this.catalogFile(model).gguf)}) instead of Ollama's`); } catch {} }
     try { fs.writeFileSync(pidFile, String(child.pid)); } catch {}
-    const deadline = Date.now() + (this.lc.loadTimeoutSeconds || 300) * 1000;
+    const deadline = Date.now() + (helpers.length ? spreadLoadSeconds(sizeGB, this.lc.loadTimeoutSeconds || 300) : this.lc.loadTimeoutSeconds || 300) * 1000;
+    let said = Date.now(); // a spread load says how it's going once a minute, so a long first load isn't silent
     const ready = (async () => {
       while (Date.now() < deadline) {
         if (signal?.aborted) throw new Error('Stopped.');
         if (await this.health()) return;
+        if (helpers.length && Date.now() - said >= 60000) { said = Date.now(); try { this.log?.('engine', `${model}: still loading over Bob-Net, ${Math.round((Date.now() - t0) / 60000)} min so far`); } catch {} }
         await new Promise((r) => setTimeout(r, 500));
       }
       saveFail('took too long to load');
@@ -672,6 +696,11 @@ export class LlamaCpp {
       await Promise.race([ready, started]);
     } catch (e) {
       await this.stopServer();
+      // 1.5.189: a spread that failed loads here like always, instead of leaving no brain.
+      if (helpers.length && !signal?.aborted) {
+        try { this.log?.('engine', `${model}: spreading over Bob-Net didn't work, so I'm loading it here instead`); } catch {}
+        return this.preload(model, signal, { ctx, cpu, beside, reserveMB, place, noSpread: true });
+      }
       throw e;
     }
     started.catch(() => {}); // later exits are handled by isLoaded()

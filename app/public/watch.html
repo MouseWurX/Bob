@@ -44,6 +44,13 @@
           <p id="watchDialSays" class="muted" role="status"></p>
           <button type="button" id="watchDialScan" class="get" hidden>Scan again with these dials</button>
         </fieldset>
+        <fieldset id="watchTrainBox" hidden><legend>Use these for training</legend>
+          <span id="watchTrainHint" class="muted">Saves a list of blocks for the Lab's judge training, which then changes only those weights and leaves the rest of the brain as it is. Nothing is trained here.</span>
+          <label>Which blocks <select id="watchTrainFrom"></select></label>
+          <label>Name <input type="text" id="watchTrainName" maxlength="120"></label>
+          <button type="button" id="watchTrainSave" class="get">Save for training</button>
+          <p id="watchTrainSays" class="muted" role="status"></p>
+        </fieldset>
         <fieldset id="watchCmpBox" hidden><legend>Before and after</legend>
           <label>Compare with <select id="watchCmpWith" aria-describedby="watchCmpHint"></select></label>
           <span id="watchCmpHint" class="muted">Another scan of this brain with the same questions. The two blocks play side by side, word for word.</span>

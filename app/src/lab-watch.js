@@ -14,7 +14,7 @@ import { startServer } from './lab-test.js';
 import { readGguf, isExpertTensor } from './lab-gguf.js';
 import { askTraced, NO_TRACE, NO_ENGINE } from './lab-peek.js';
 import { readJson, writeJson, canStart, makeRoom, runJob, pageLog } from './lab-jobs.js';
-import { NAME, FORMAT, VERSION, cleanRecording, specialise, inWords, MAX_SKILLS, skillMap, cleanDials } from '../public/lab-watch-math.js';
+import { NAME, FORMAT, VERSION, cleanRecording, specialise, inWords, MAX_SKILLS, skillMap, cleanDials, targetsOf, TARGET_FORMAT } from '../public/lab-watch-math.js';
 
 export const WATCH_WORDS = 48;   // words of answer kept for each question
 export const WATCH_WORDS_THINK = 160; // and when the brain may think first: its thoughts need the room
@@ -277,7 +277,7 @@ export function watchView(lab, brainId = '') {
 }
 
 export function listRecordings(cfg, brain) {
-  let names = []; try { names = fs.readdirSync(brainDir(cfg, brain)).filter((f) => f.endsWith('.json')); } catch {}
+  let names = []; try { names = fs.readdirSync(brainDir(cfg, brain)).filter((f) => f.endsWith('.json') && !f.startsWith('targets-')); } catch {}
   return names.map((f) => {
     const j = readJson(path.join(brainDir(cfg, brain), f), null);
     if (j?.format !== FORMAT) return null;
@@ -341,6 +341,37 @@ async function setDials(url, dials) {
   const res = await fetch(url + '/dials', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dials }), signal: AbortSignal.timeout(30000) });
   if (res.status === 404) throw new Error(NO_DIALS);
   if (!res.ok) { let why = ''; try { why = (await res.json())?.error?.message || ''; } catch {} throw new Error(`Brain Engine wouldn't set the dials${why ? `: ${String(why).slice(0, 200)}` : '.'}`); }
+}
+
+// Use these for training: a list of the blocks a training run may change (everything else stays frozen), saved beside
+// the brain's recordings as targets-<id>.json. The Lab's judge training reads them with listTargets / readTargets.
+// { format: 'bob-fnri-targets', version: 1, brain: { name, experts, layers, kind }, from: <recording id>,
+//   why: 'skill' | 'dials' | 'moved', skill?, label, at, targets: [{ kind: 'expert'|'head'|'attn'|'ffn', layer, index }] }
+const TARGET_ID = /^targets-[a-z0-9-]+$/;
+export function saveTargets(lab, { brain: brainId, from, why, skill, label, kind, targets } = {}) {
+  const brain = lab.brains().find((b) => b.id === String(brainId || ''));
+  if (!brain) throw new Error('Pick a brain first.');
+  const facts = inspect(brain);
+  if (!facts?.layers) throw new Error(`Bob can't read how ${brain.name} is built.`);
+  if (!['skill', 'dials', 'moved'].includes(why)) throw new Error('Say where the blocks came from: a skill, the dials, or what moved.');
+  const list = targetsOf(cleanDials((Array.isArray(targets) ? targets : []).map((t) => ({ ...t, scale: 0 })), { experts: facts.experts || 0, layers: facts.layers }));
+  if (!list.length) throw new Error('There are no blocks in that list.');
+  const at = lab.now(), id = `targets-${at.toString(36)}`, name = String(label || '').replace(/\s+/g, ' ').trim().slice(0, 120) || `${list.length} blocks`;
+  writeJson(path.join(brainDir(lab.cfg, brain), `${id}.json`), { format: TARGET_FORMAT, version: 1, brain: { name: brain.name, experts: facts.experts || 0, layers: facts.layers, kind: ['experts', 'heads', 'neurons'].includes(kind) ? kind : facts.experts ? 'experts' : 'neurons' }, from: slugOf(from || '').slice(0, 80), why, ...(skill ? { skill: String(skill).slice(0, 40) } : {}), label: name, at, targets: list });
+  return { id, count: list.length, label: name };
+}
+export function listTargets(cfg, brain) {
+  let names = []; try { names = fs.readdirSync(brainDir(cfg, brain)).filter((f) => f.startsWith('targets-') && f.endsWith('.json')); } catch {}
+  return names.map((f) => { const j = readJson(path.join(brainDir(cfg, brain), f), null); return j?.format === TARGET_FORMAT ? { id: f.replace(/\.json$/, ''), label: String(j.label || ''), why: j.why, from: j.from || '', at: Number(j.at) || 0, count: Array.isArray(j.targets) ? j.targets.length : 0 } : null; }).filter(Boolean).sort((a, b) => b.at - a.at);
+}
+export function readTargets(lab, { brain: brainId, id } = {}) {
+  const brain = lab.brains().find((b) => b.id === String(brainId || ''));
+  if (!brain) throw new Error('Pick a brain first.');
+  if (!TARGET_ID.test(String(id || ''))) throw new Error('That isn\'t a list of blocks.');
+  const j = readJson(path.join(brainDir(lab.cfg, brain), `${id}.json`), null);
+  if (j?.format !== TARGET_FORMAT || Number(j.version) !== 1) throw new Error('That list of blocks isn\'t here any more.');
+  const layers = Number(j.brain?.layers) || 0, experts = Number(j.brain?.experts) || 0;
+  return { ...j, id, targets: targetsOf(cleanDials((j.targets || []).map((t) => ({ ...t, scale: 0 })), { experts, layers })) };
 }
 
 export function deleteRecording(lab, { brain: brainId, id } = {}) {
@@ -458,6 +489,7 @@ export async function watchRoute({ req, p, isLocal, lab, b, send, res }) {
   if (p === '/api/lab/watch/read') { send(res, 200, readRecording(lab, b)); return true; }
   if (!isLocal) { send(res, 403, { error: 'Lab jobs can only be started on this replicant matrix itself for now.' }); return true; }
   if (p === '/api/lab/watch/start') { send(res, 200, await startWatch(lab, b, { unload: b.unload === true })); return true; }
+  if (p === '/api/lab/watch/targets') { send(res, 200, saveTargets(lab, b)); return true; }
   if (p === '/api/lab/watch/delete') { send(res, 200, deleteRecording(lab, b)); return true; }
   return false;
 }
