@@ -7,6 +7,8 @@ import { specialise, liveRecording, partOf, PART_LABEL, say, NAME, mapLook, litS
 
 const SPECIAL = /<\|[^|>]*\|>|<\/?think>/gi;
 export const CUBE_SPEED = 14; // words a second
+export const SIGNS = ['VACANCY', 'Nobody\'s home', 'Out to lunch', 'Gone thinkin\'', 'Brain not found'];
+export const pickSign = (rnd = Math.random) => SIGNS[Math.floor(rnd() * SIGNS.length) % SIGNS.length];
 export const CUBE_IN_MS = 1600, CUBE_OUT_MS = 1100; // the block building itself when a brain's first reply arrives, and coming apart when the brain is let go
 
 // The colours: when this brain has an FNRI scan, Bob sends that scan's map along and every expert gets its skill's
@@ -15,6 +17,14 @@ export const CUBE_IN_MS = 1600, CUBE_OUT_MS = 1100; // the block building itself
 export function createMindCube({ box, canvas, says, open, key = null, mono = null, colour = null, colourBox = null, details = null, load = null, loadBox = null }, { still = () => false, onWhy = null, EventSourceImpl = globalThis.EventSource } = {}) {
   const view = createView(canvas);
   let es = null, traces = [], rec = null, sp = null, clip = -1, t = 0, raf = 0, last = 0, why = '', look = null;
+  // Before the first reply (and on an engine that can't report experts) the cube is the brain's empty shape in one
+  // colour, built block by block as the brain loads, then still until Bob thinks. shell = { label, experts, layers, kind }.
+  let shell = null, loadingNow = '', known = false;
+  // No brain loaded: a blinking neon sign over the empty canvas, a different one each time (the owner's five).
+  const sign = document.createElement('p'); sign.className = 'mind-cube-sign'; sign.setAttribute('aria-hidden', 'true'); sign.hidden = true;
+  canvas.insertAdjacentElement('afterend', sign);
+  let signNow = '';
+  const showSign = (on) => { if (on && !signNow) signNow = pickSign(); if (!on) signNow = ''; sign.textContent = signNow; sign.hidden = !on; };
   view.set({ glow: 0.4, glass: 0.3 });
   // One colour: a quick switch, remembered. Every expert the same colour, so only what lights up stands out.
   // Load in: how the block builds itself (and comes apart), the person's pick, shared with the big viewer
@@ -36,8 +46,10 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   if (mono) mono.onclick = () => { one = !one; try { localStorage.setItem('bob-cube-mono', one ? '1' : '0'); } catch {} showOne(); if (rec) view.draw(lit()); };
 
   function words() {
-    if (why) { says.textContent = why; return; }
-    if (!rec) { open.hidden = true; if (key) key.hidden = true; says.textContent = 'Waiting for Bob\'s next reply. The cube lights up when he finishes it. Replies come a little slower while this is on.'; return; }
+    const shape = shell ? ` ${shell.label}: ${shell.layers} floors of ${shell.experts} ${shell.kind === 'neurons' ? 'neuron groups' : 'experts'}.` : '';
+    if (why) { says.textContent = why + shape; return; }
+    showSign(!rec && !shell && known);
+    if (!rec) { open.hidden = true; if (key) key.hidden = true; says.textContent = !shell && known ? `No brain is loaded right now. The sign says: ${signNow}. The cube builds itself when Bob loads one.` : shell ? (loadingNow === shell.label ? `Loading${shape} The cube lights up when he thinks.` : `Ready.${shape} The cube lights up when he thinks.`) : 'Waiting for Bob\'s next reply. The cube lights up when he finishes it. Replies come a little slower while this is on.'; return; }
     const c = rec.clips[clip], w = Math.min(c.e.length - 1, Math.floor(t));
     const pt = partOf(c, w), text = c.words.slice(pt.from, w + 1).join('').replace(SPECIAL, '').replace(/\s+/g, ' ').trim();
     const picks = c.e[w].reduce((a, l) => a + l.length, 0);
@@ -52,7 +64,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   }
   function frame(now) {
     raf = 0; if (!rec) return;
-    const c = rec.clips[clip], dt = Math.min(0.1, (now - last) / 1000 || 0); last = now;
+    const c = rec.clips[clip], dt = Math.max(0, Math.min(0.1, (now - last) / 1000 || 0)); last = now; // a frame can be stamped a little before play() began
     const was = Math.floor(t);
     t = Math.min(c.e.length - 1, t + dt * CUBE_SPEED);
     view.draw(lit()); if (Math.floor(t) !== was) words();
@@ -69,7 +81,8 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     const map = tr.map || null; if (map) { tr = { ...tr }; delete tr.map; }
     traces.push(tr); traces = traces.slice(-6);
     const r = liveRecording(traces, tr.label || 'Bob'); if (!r) return;
-    const fresh = !rec || whose !== (tr.label || 'Bob'); whose = tr.label || 'Bob'; gen++;
+    const built = !rec && shell && shell.label === (tr.label || 'Bob') && shell.experts === tr.experts && shell.layers === tr.layers; // the empty shape is already up
+    const fresh = !built && (!rec || whose !== (tr.label || 'Bob')); whose = tr.label || 'Bob'; gen++; shell = null;
     rec = r; clip = rec.clips.length - 1;
     look = mapLook(map, { experts: rec.brain.experts, layers: rec.brain.layers, kind: rec.brain.kind });
     sp = look ? look.sp : specialise(rec);
@@ -88,15 +101,41 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     play();
   }
   // The brain was let go: the block comes apart block by block until nothing is left, then waits for the next reply.
-  function gone(labels) {
-    if (!rec || (Array.isArray(labels) && labels.includes(whose))) return;
+  // The brain's empty shape, in one colour: built block by block when a brain starts loading (or is found loaded), then
+  // still. A reply's trace takes over from it without building again.
+  function ready(shapes, loading = '') {
+    if (rec || !Array.isArray(shapes) || !shapes.length) return false;
+    const s = shapes.find((x) => x.label === loading) || shapes[shapes.length - 1];
+    if (!s || !(s.experts > 0) || !(s.layers > 0)) return false;
+    loadingNow = String(loading || '');
+    if (shell && shell.label === s.label && shell.experts === s.experts && shell.layers === s.layers) { words(); return true; }
+    shell = { label: String(s.label || 'Bob'), experts: Math.min(4096, Math.floor(s.experts)), layers: Math.min(512, Math.floor(s.layers)), kind: s.kind === 'neurons' ? 'neurons' : 'experts' };
+    const empty = { name: shell.label, brain: { name: shell.label, experts: shell.experts, layers: shell.layers, used: 0, kind: shell.kind, neurons: 0 }, skills: [{ id: 'bob', label: 'Bob' }], clips: [] };
+    let esp = null; try { esp = specialise(empty); } catch { esp = null; }
+    if (!esp) { shell = null; return false; }
+    gen++; look = null; view.setData(empty, esp, null); view.set({ gap: view.cubeGap(), key: false, mono: true });
+    if (key) key.hidden = true; open.hidden = true; showOne();
+    const draw = () => view.draw([]);
+    if (still()) { view.set({ reveal: 1 }); draw(); } else { readLoad(); view.set({ reveal: 0 }); view.sweep(1, CUBE_IN_MS).then(draw); }
+    words(); return true;
+  }
+  function gone(labels, shapes = null, loading = '') {
+    if (!rec && shell) { // only the empty shape is up: it goes when its brain does, or becomes the new one
+      const keep = (Array.isArray(labels) && labels.includes(shell.label)) || loading === shell.label;
+      if (keep) { loadingNow = String(loading || ''); words(); return; }
+      const g = ++gen; const next = shapes;
+      view.sweep(0, CUBE_OUT_MS, still()).then(() => { if (g !== gen) return; shell = null; const c = canvas.getContext('2d'); c.clearRect(0, 0, canvas.width, canvas.height); if (!ready(next, loading)) words(); });
+      return;
+    }
+    if (!rec) { ready(shapes, loading); return; }
+    if (Array.isArray(labels) && labels.includes(whose)) return;
     const g = ++gen; cancelAnimationFrame(raf); raf = 0;
-    const clear = () => { if (g !== gen) return; rec = null; sp = null; look = null; traces = []; whose = ''; view.set({ reveal: 1 }); const c = canvas.getContext('2d'); c.clearRect(0, 0, canvas.width, canvas.height); words(); showOne(); };
+    const clear = () => { if (g !== gen) return; rec = null; sp = null; look = null; traces = []; whose = ''; view.set({ reveal: 1 }); const c = canvas.getContext('2d'); c.clearRect(0, 0, canvas.width, canvas.height); words(); showOne(); ready(shapes, loading); };
     view.sweep(0, CUBE_OUT_MS, still()).then(clear);
   }
   function on(ev) {
     let j = null; try { j = JSON.parse(ev.data); } catch { return; }
-    if (j?.type === 'cube-brains') { gone(j.labels); return; }
+    if (j?.type === 'cube-brains') { known = true; gone(j.labels, j.shapes, j.loading); words(); return; }
     if (j?.type === 'cube') { why = j.ok ? '' : String(j.why || ''); words(); try { onWhy?.(why); } catch {} } else if (j?.type === 'trace') { why = ''; add(j); }
   }
   open.onclick = () => {

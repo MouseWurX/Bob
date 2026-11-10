@@ -23,7 +23,7 @@ import { ModelShop } from './models.js';
 import { CatalogUpdates } from './catalog-update.js';
 import { checkEngine, seedBundledEngine, goBackEngine, removeEngine, brainsEngineSettings, engineChoices, brainsEngineNow } from './engines.js';
 import { liveTrace } from '../public/lab-watch-math.js';
-import { cubeMap, cubeBrains } from './lab-watch.js';
+import { cubeMap, cubeBrains, cubeShapes } from './lab-watch.js';
 import { EngineKeeper, keeperOn } from './engine-keeper.js';
 import { autostartOn, setAutostart } from './autostart.js';
 import { applyWindowState } from './app-icon.js';
@@ -107,10 +107,12 @@ const cubeClients = new Set(); // FNRI's small cube pages (see below)
 
 let telegram = null; // Talk to Bob on Telegram (src/telegram.js), set once Bob's brain is ready
 let discord = null; // Bob on Discord (src/discord.js), set once Bob's brain is ready
+let cubeLoading = ''; // the brain FNRI's small cube last saw starting to load
 function broadcast(ev) {
   if (ev?.type === 'think-start' && ev.model) ev = { ...ev, label: friendlyName(ev.model) }; // "Qwen 3.8 27B", not the raw tag
   const data = `data: ${JSON.stringify(ev)}\n\n`;
   for (const res of ev?.type === 'think' || ev?.type === 'think-start' ? mindClients : clients) res.write(data);
+  if (ev?.type === 'status') { const l = ['waking', 'loading'].includes(ev.state) ? String(ev.model || '') : ''; if (l !== cubeLoading) { cubeLoading = l; if (l && cubeClients.size) cubeBrainsNow(); } } // once as a brain starts loading, not every progress line
   if (ev?.type === 'brain' && cubeClients.size) cubeBrainsNow(); // FNRI's small cube takes itself apart when its brain is let go
   try { telegram?.watch(ev); } catch {} // Talk to Bob on Telegram: only the Telegram chat's events, and only while it's on
   try { discord?.watch(ev); } catch {} // Bob on Discord: only Discord jobs' own events
@@ -118,6 +120,7 @@ function broadcast(ev) {
 }
 
 const brain = new Brain(cfg, broadcast);
+if (cfg.engineMoved?.length) brain.log('settings', `brains now run on ${cfg.llamacpp.brainEngine !== false && brainsEngineNow(cfg) === 'brainengine' ? 'Brain Engine' : 'my own llama.cpp'} (was set to ${cfg.engineMoved.join(' and ')}; Brain Engine is the only engine for my brains now)`); // 1.5.196
 // 1.5.97 Pair with my other Bobs (src/bob-net-pair.js): find them on Tailscale, a Yes card there, passcodes swapped.
 const pairing = new Pairing(cfg, { broadcast, log: (k, t) => brain.log(k, t), version: VERSION, ownAddresses: () => tailscaleIps().map((ip) => `${ip}:${cfg.port}`), vouched: (a, t) => introductions.vouched(a, t) });
 // 1.5.123 Pass my Bob-Net along (src/bob-net-party.js): your Bobs introduce each other; also the party in Now running.
@@ -127,10 +130,18 @@ setInterval(() => introductions.soon(0), 3600_000).unref();
 brain.mindWatchers = () => mindClients.size;
 // FNRI's small cube in "Bob's thinking" listens with ?cube=1. Only while one is open does Bob ask Brain Engine which
 // experts each reply used (it slows writing a little), and only those pages are told. Off for everyone else.
-const cubeWhy = () => (brainsEngineNow(cfg) === 'brainengine' ? '' : 'The cube needs Brain Engine as the engine for Bob\'s brains (Settings > Engines). The engine in use now doesn\'t report which experts it picked.');
+// An older Brain Engine build can't report them either: then the cube says so instead of staying dark (before Update under Engines).
+const cubeWhy = () => (brainsEngineNow(cfg) !== 'brainengine' ? 'The cube needs Brain Engine as the engine for Bob\'s brains (Settings > Engines). The engine in use now doesn\'t report which experts it picked.'
+  : lab.traceProbe?.()?.experts === false ? 'This Brain Engine build is too old to report which experts it picked. Press Update on Brain Engine in Settings > Engines, and the cube lights up with the next reply.' : '');
 // Which brains are loaded right now, by the names the cube knows them by. Told to the cube pages only.
 async function cubeBrainsNow() {
-  try { const labels = cubeBrains(await brain.engine.loaded(), friendlyName); const data = `data: ${JSON.stringify({ type: 'cube-brains', labels })}\n\n`; for (const res of cubeClients) res.write(data); } catch {}
+  try {
+    const now = await brain.engine.loaded(), labels = cubeBrains(now, friendlyName);
+    // the shapes too, so the cube builds itself in one colour as a brain loads and waits there for the first reply
+    const st = brain.state || {}, loading = ['waking', 'loading'].includes(st.state) && st.model ? String(st.model) : '';
+    let shapes = []; try { shapes = cubeShapes(lab, [...now.map((m) => m?.name), loading], friendlyName); } catch {}
+    const data = `data: ${JSON.stringify({ type: 'cube-brains', labels, shapes, loading: loading ? friendlyName(loading) : '' })}\n\n`; for (const res of cubeClients) res.write(data);
+  } catch {}
 }
 if (brain.engine) {
   brain.engine.wantTrace = () => cubeClients.size > 0 && !cubeWhy();
@@ -320,7 +331,7 @@ const server = http.createServer(async (req, res) => {
       clients.add(res);
       const mind = url.searchParams.get('mind') === '1';
       if (mind) mindClients.add(res);
-      if (isLocal && url.searchParams.get('cube') === '1') { cubeClients.add(res); res.write(`data: ${JSON.stringify({ type: 'cube', ok: !cubeWhy(), why: cubeWhy() })}\n\n`); }
+      if (isLocal && url.searchParams.get('cube') === '1') { cubeClients.add(res); res.write(`data: ${JSON.stringify({ type: 'cube', ok: !cubeWhy(), why: cubeWhy() })}\n\n`); cubeBrainsNow(); }
       const ping = setInterval(() => res.write(': ping\n\n'), 20000);
       req.on('close', () => { clearInterval(ping); clients.delete(res); mindClients.delete(res); cubeClients.delete(res); });
       return;
@@ -488,7 +499,10 @@ const server = http.createServer(async (req, res) => {
       const b = await body(req);
       const out = cleanSharePatch(cfg, b);
       if (out.error) return send(res, 400, { error: out.error });
+      const wasBorrowing = cfg.share?.borrow?.on === true;
       saveShare(cfg, out.share);
+      // 1.5.196 (Tailscale test: Borrow a brain was found off on the Go): a flip of that switch says what flipped it.
+      if (wasBorrowing !== out.share.borrow.on) brain.log('borrow', `Borrow a brain switched ${out.share.borrow.on ? 'on' : 'off'} (Settings, ${Object.keys(b).filter((k) => k !== 'check').join(', ') || 'no change asked'})`);
       brain.lenders.state.clear();
       if (!out.share.lendCard) brain.cardLender.close(); // switched off: a lent card closes now
       brain.log('settings', `share brains: lend card ${out.share.lendCard ? 'on' : 'off'}, spread ${out.share.spread}, lend ${out.share.lend ? 'on' : 'off'}, borrow ${out.share.borrow.on ? out.share.borrow.when : 'off'}, pass along ${out.share.passAlong ? 'on' : 'off'}, ${out.share.borrow.bobs.length} Bob(s)`);
@@ -735,8 +749,9 @@ const server = http.createServer(async (req, res) => {
           if (b.downloads && typeof b.downloads === 'object') { saveSettings(cfg, { downloads: { ...(cfg.downloads || {}), ...b.downloads } }); out.downloads = cfg.downloads; shop.pumpDownloads(); }
           if (typeof b.catName === 'string') { saveSettings(cfg, { catName: b.catName }); out.catName = cfg.catName || 'Patches'; }
           if (b.workshop && typeof b.workshop === 'object') { saveSettings(cfg, { workshop: b.workshop }); if (cfg.workshop?.enabled) ensureWorkshop(cfg); out.workshop = workshopView(); }
-          if (b.engine === 'ollama' || b.engine === 'llamacpp') { saveSettings(cfg, { engine: b.engine }); out.restart = true; }
-          // 1.5.17x Settings > Engines' ⚙ picker: Brain Engine, llama.cpp or Ollama for Bob's brains (next time he starts).
+          if (b.engine === 'llamacpp') { // 1.5.196: never Ollama now (Brain Engine is the only engine for brains)
+            saveSettings(cfg, { engine: b.engine }); out.restart = true; }
+          // 1.5.17x Settings > Engines' engine for brains. 1.5.196: only the one engine Bob may use here (brainsEngineSettings refuses the rest).
           if (typeof b.brainsEngine === 'string' && brainsEngineSettings(b.brainsEngine)) { saveSettings(cfg, brainsEngineSettings(b.brainsEngine)); out.restart = true; out.engineChoices = engineChoices(cfg); }
           // The Lab's engine: '' (same as Bob's brains), Brain Engine or llama.cpp. Used from the Lab's next job.
           if (typeof b.labEngine === 'string') { saveSettings(cfg, { labEngine: b.labEngine }); out.engineChoices = engineChoices(cfg); }

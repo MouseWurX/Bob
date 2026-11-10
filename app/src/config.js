@@ -119,7 +119,12 @@ export function loadConfig() {
     console.error(`config.json asks for a ${cfg.llamacpp.legacyCtx}-token context for every brain; using each session's own size instead (pick one in Settings, Show advanced settings, Brains to override).`);
   }
   cfg.settingsFile = path.join(cfg.dataDir, 'settings.json');
+  const hand = { engine: cfg.engine, brainEngine: cfg.llamacpp?.brainEngine }; // what config.json itself says
   try { mergeSettings(cfg, JSON.parse(fs.readFileSync(cfg.settingsFile, 'utf8'))); } catch {}
+  // 1.5.196: Brain Engine is the only engine for Bob's brains (onlyBrainEngine, below). An older pick of plain llama.cpp
+  // or Ollama in Settings is set aside here, after settings.json, and the program is picked again with that.
+  cfg.engineMoved = onlyBrainEngine(cfg, { hand });
+  if (cfg.engineMoved.length) cfg.llamacpp.exe = pickLlamaExe(cfg.llamacpp.exe, cfg.agentDir, { brainEngine: cfg.llamacpp.brainEngine });
   // "What should Bob call you?" (Attributes, first-run). Kept in inn\bob\settings.json, never in config.json.
   if (cfg.callMe) cfg.userName = cfg.callMe;
   cfg.autostart = cfg.autostart === true; // opt-in: off unless the user turned it on
@@ -144,6 +149,21 @@ export function pickLlamaExe(configured, agentDir, { brainEngine, platform = pro
   if (p) return p;
   if (platform === 'linux') { const q = onPath(name); if (q) return q; }
   return configured && !within(be, configured) ? configured : path.join(everyday, name);
+}
+
+// 1.5.196 (the owner, Nov 10: "Bob's Brain Engine should be the only engine", the others don't fit him any more).
+// Where Brain Engine has a build (Windows, x64 Linux), it is the only engine for Bob's brains: an old pick of plain llama.cpp
+// or Ollama moves to it. Where it has none yet (a Mac, an ARM board), Bob's own llama.cpp runs them until it does.
+// Ollama is never the brains' engine now. Until Brain Engine is downloaded, the llama.cpp already here stands in.
+// Returns the engines moved away from, for the logbook.
+export const brainEngineBuilt = (platform = process.platform, arch = process.arch) => platform === 'win32' || (platform === 'linux' && arch === 'x64');
+// As with a llama-server set by hand, an engine written by hand into config.json itself still wins (hand).
+export function onlyBrainEngine(cfg, { platform, arch, hand = {} } = {}) {
+  const moved = [];
+  if (cfg.engine === 'ollama' && hand.engine !== 'ollama') { cfg.engine = 'llamacpp'; moved.push('Ollama'); }
+  cfg.llamacpp = cfg.llamacpp || {};
+  if (brainEngineBuilt(platform, arch) && cfg.llamacpp.brainEngine === false && hand.brainEngine !== false) { cfg.llamacpp.brainEngine = true; moved.push('llama.cpp'); }
+  return moved;
 }
 
 export function findExe(configured, dir, names, platform = process.platform) {

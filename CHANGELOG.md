@@ -4,6 +4,31 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.196
+
+Brain Engine is now the only engine for Bob's brains. The FNRI cube is there before the first reply. Plus four Bob-Net fixes from the Tailscale test between two of your Bobs.
+
+### Brain Engine is the only engine for brains
+
+- **One engine for Bob's brains: Brain Engine.** The other engines don't fit him any more, so Settings > Engines no longer offers llama.cpp or Ollama for brains. It just says what runs them. If you'd picked llama.cpp or Ollama before, Bob moves over by himself the next time he starts and notes it in the logbook. Until Brain Engine is downloaded, the llama.cpp already here stands in. Help: Engine for brains. Tests in `test/run-engines-rework-test.js`.
+- **Not yet on a Mac or an ARM board (Raspberry Pi).** Brain Engine has no build there yet, so Bob runs his brains on his own llama.cpp until it does. Ollama is no longer used for brains anywhere.
+- **Brain Engine updates with Bob, not on its own.** Each Bob now names the Brain Engine build that goes with him. Right after he starts, he compares it with the one here, using the engine's own record of its build and checksum, not Bob's version. If they differ, the matching build comes along by itself, even with Keep engines up to date off. That's the gap that left a PC on a new Bob with an old engine today. Keep engines up to date is now for llama.cpp. Help: Keep engines up to date. Tests in `test/run-engine-keeper-test.js`.
+- An engine written by hand into config.json itself still wins, as before.
+
+### FNRI's small cube says when Brain Engine needs updating
+
+- **The cube in Bob's thinking no longer stays dark on an older Brain Engine.** Bob runs on an older Brain Engine build until you press Update under Engines, and that build can't report which experts it used. The cube used to stay blank with no reason. Now it says to press Update on Brain Engine in Settings > Engines, and lights up with the next reply once you have.
+- **The cube is there before the first reply.** As soon as a brain starts loading, the cube builds itself block by block in one colour, in that brain's own shape (floors and experts, or neuron groups for a brain without experts). Then it sits still until Bob thinks. That works on an older Brain Engine too.
+- **No brain loaded: a neon sign.** One of five, picked at random each time, flickering now and then (still when animations are off).
+- Where it works: Windows and Linux on a PC, wherever Brain Engine runs. Tests in `test/run-lab-watch-test.js`.
+
+### Bob-Net
+
+- **A job sent to another of your Bobs still says so when it's done.** Tasks showed "Sent to …" while it ran, then forgot once it finished. Now a finished job reads "Completed … by Go" (or whichever Bob ran it). Try again clears it. Tests in `test/run-queue-test.js`.
+- **A borrowed reply leaves a line in the logbook.** When Borrow a brain worked, the logbook said nothing, so it looked like nothing happened. Now there's one line per reply, like "📡 Go thought this reply (1.0 s to first word)". It never has the words. Tests in `test/run-queue-test.js`.
+- **No more long reload after a short lend.** After thinking one quick reply for another Bob, a lender went straight back to loading its own quick brain, which took 78 s on the test machine. Now it lets go of what the lend loaded and waits until you type. "Always on" still keeps the brain loaded, as before. Help: Lend my brain. Tests in `test/run-share-brains-test.js`.
+- **Borrow a brain: who switched it off.** On one test Bob the switch was found off. Every other Bob-Net change (mode, Lend my card, Spread, adding or removing a Bob, and the rest) is now tested to leave it on. A flip of the switch now writes what changed it in the logbook, so if it happens again we'll see why. Tests in `test/run-share-brains-test.js`.
+
 ## 1.5.195
 
 A fourth famous style in the Lab: Raider. A handheld no longer spreads a small brain over Bob-Net.

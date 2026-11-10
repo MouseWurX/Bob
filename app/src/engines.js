@@ -9,6 +9,7 @@ import { setupWorkshop, setupVoice, audioReady, voicesReady } from './audio.js';
 import { findOffice, findFfmpeg } from './office.js';
 import { OS, exeName, onPath } from './platform.js';
 import { unzip } from './zip.js';
+import { brainEngineBuilt } from './config.js';
 import { fileURLToPath } from 'node:url';
 
 // The opt-in office helpers are pinned to exact versions and checksums (src/office-pins.json, installer/pin-office.js).
@@ -211,6 +212,16 @@ export const assetPrint = (a) => (a?.digest ? String(a.digest) : `${a?.id ?? ''}
 // Is the release on GitHub newer than the marker? A different release name, or the same name with a different file
 // (Brain Engine is rebuilt under the same name). Markers from before 1.5.17x have no print: then a file uploaded after
 // the install counts as newer.
+// 1.5.196 (the owner: "it should update with Bob himself, not standalone"): each Bob names the Brain Engine build that
+// goes with him (package.json bob.brainEngine: the release and each file's checksum). null where it has no build.
+export const BRAIN_ENGINE_PIN = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.brainEngine || null; } catch { return null; } })();
+export function brainEnginePin(pins = BRAIN_ENGINE_PIN, platform = process.platform, arch = process.arch) {
+  const key = platform === 'win32' ? 'win-x64' : platform === 'linux' && arch === 'x64' ? 'linux-x64' : '';
+  return pins?.tag && key && pins[key] ? { tag: pins.tag, print: pins[key] } : null;
+}
+// Is Brain Engine here a different build from the one that goes with this Bob? Read from the engine's own marker
+// (bob-brainengine.json), never from Bob's version, so a stale engine is caught even when Bob himself is up to date.
+export const brainEngineStale = (mark, pin) => Boolean(pin && mark?.version && (mark.version !== pin.tag || mark.print !== pin.print));
 export function isNewer(mark, rel, asset) {
   if (!mark?.version) return true;
   if (mark.version !== rel.tag_name) return true;
@@ -262,7 +273,7 @@ export function engineStatus(cfg) {
 }
 // 1.5.17x Engines rework: which engine runs the brains now, which one is picked for next time, and the Lab's.
 export function engineChoices(cfg) {
-  return { brainsNow: brainsEngineNow(cfg), brainsPick: brainsEnginePick(cfg), lab: LAB_ENGINES.includes(cfg.labEngine) ? cfg.labEngine : '' };
+  return { brainsNow: brainsEngineNow(cfg), brainsPick: brainsEnginePick(cfg), only: brainsEngineOnly(), lab: LAB_ENGINES.includes(cfg.labEngine) ? cfg.labEngine : '' };
 }
 
 // The newest release with a Windows build, for "Get newer build". Same rules as installing.
@@ -280,7 +291,7 @@ export async function latestEngine(cfg, id, nvidia, fetchImpl = fetch) {
   }
   // A rebuilt release (same name, new file) says so, so the button can say "rebuilt" rather than repeat the name.
   const rebuilt = Boolean(!unmarked && mark?.version && mark.version === rel.tag_name && isNewer(mark, rel, asset));
-  return { id, installed: unmarked ? null : (mark?.version || null), tested: e.tested || null, latest: rel.tag_name, asset: asset.name, newer: isNewer(mark, rel, asset), rebuilt };
+  return { id, installed: unmarked ? null : (mark?.version || null), tested: e.tested || null, latest: rel.tag_name, asset: asset.name, print: assetPrint(asset), newer: isNewer(mark, rel, asset), rebuilt };
 }
 
 // Pick the right zip from a release's asset list for this graphics card. Highest CUDA version wins.
@@ -697,16 +708,16 @@ export function brainsEngineNow(cfg) {
   return r && !r.startsWith('..') && !path.isAbsolute(r) ? 'brainengine' : 'llamacpp';
 }
 // What Settings > Engines' ⚙ picker shows as picked: what Bob was told to use (it takes effect when he next starts).
-export function brainsEnginePick(cfg) {
-  if (cfg.engine === 'ollama') return 'ollama';
-  return cfg.llamacpp?.brainEngine === false ? 'llamacpp' : 'brainengine';
+// 1.5.196: the only engine Bob's brains may use here: Brain Engine where it has a build, else Bob's own llama.cpp.
+export const brainsEngineOnly = (built = brainEngineBuilt()) => built ? 'brainengine' : 'llamacpp';
+export function brainsEnginePick(cfg, built = brainEngineBuilt()) {
+  return brainsEngineOnly(built);
 }
-// The settings one picker choice stands for.
-export function brainsEngineSettings(pick) {
-  if (pick === 'ollama') return { engine: 'ollama' };
-  if (pick === 'llamacpp') return { engine: 'llamacpp', llamacpp: { brainEngine: false } };
-  if (pick === 'brainengine') return { engine: 'llamacpp', llamacpp: { brainEngine: true } };
-  return null;
+// The settings one picker choice stands for. 1.5.196: only the one engine Bob may use here; anything else is refused.
+export function brainsEngineSettings(pick, built = brainEngineBuilt()) {
+  if (pick !== brainsEngineOnly(built)) return null;
+  if (pick === 'llamacpp') return { engine: 'llamacpp' };
+  return { engine: 'llamacpp', llamacpp: { brainEngine: true } };
 }
 
 // 1.5.17x The Lab's engine: labEngine '' (same as Bob's brains), 'brainengine' or 'llamacpp'. The folders the Lab

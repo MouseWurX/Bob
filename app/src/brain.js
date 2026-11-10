@@ -70,6 +70,8 @@ const MAX_STEPS = 8;
 // #57 stopgap (two-Bob trial, Test B); Bob's own #57 fix replaces these.
 export const MAX_CALLS_PER_REPLY = 6;
 export const REPEATS_THEN_ANSWER = 3;
+// 1.5.196: the logbook line for a reply another of your Bobs thought. Who, and how long the first word took; no words.
+export const borrowedLine = (name, ms) => `📡 ${name} thought this reply (${(Math.max(0, Number(ms) || 0) / 1000).toFixed(1)} s to first word)`;
 export const ANSWER_NOW_NUDGE = 'You have called the same tools with the same input several times; the results will not change. Answer now from the results above, with no more tool calls. Say plainly what you found and what you could not find.';
 
 // Honesty about Hands (1.5.4). A small brain saw an old Hands error in the chat and, instead of trying again,
@@ -1495,13 +1497,14 @@ export class Brain {
   }
 
   queueView() {
-    return this.queue.map(({ id, sessionId, text, state, at, error, refs, kind, startedAt, doneAt, steps, effort, after, pickUp, away, guest, rent, rentOk }) => {
+    return this.queue.map(({ id, sessionId, text, state, at, error, refs, kind, startedAt, doneAt, steps, effort, after, pickUp, away, guest, rent, rentOk, sentTo }) => {
       const out = (steps || []).find((x) => x.state === 'in progress');
       // Plain status for the Tasks panel: Queued, In progress, Delegated (to which copy), Completed...
       const awayNow = state === 'working' && away?.name; // 1.5.72: with another of your Bobs
+      // 1.5.196 sentTo: a finished job sent whole to another Bob keeps who ran it (Tailscale test: delegatedTo was null).
       const status = state === 'waiting' ? 'queued' : state === 'working' ? (out || awayNow ? 'delegated' : rent && rentOk ? 'rented' : 'in progress') : state === 'done' ? 'completed' : state; // 1.5.127 rented
       return { id, sessionId, kind, text: (guest ? `From ${guest.from}: ` : '') + text.slice(0, 140), state, status, at, startedAt, doneAt, error, pics: (refs || []).length,
-        delegatedTo: awayNow ? { hat: 'away', label: 'another of your Bobs', copy: away.name, sent: true } : out ? { hat: out.hat, label: out.label, copy: out.copy } : null, gaming: state === 'waiting' && !away && waitsForGaming(this.cfg, { kind, effort }) ? { tag: GAMING_TAG, hint: GAMING_HINT } : undefined, steps: (steps || []).slice(-8), effort: effort || 'low',
+        delegatedTo: awayNow ? { hat: 'away', label: 'another of your Bobs', copy: away.name, sent: true } : out ? { hat: out.hat, label: out.label, copy: out.copy } : sentTo && state !== 'waiting' && state !== 'working' ? { hat: 'away', label: 'another of your Bobs', copy: sentTo, sent: true } : null, gaming: state === 'waiting' && !away && waitsForGaming(this.cfg, { kind, effort }) ? { tag: GAMING_TAG, hint: GAMING_HINT } : undefined, steps: (steps || []).slice(-8), effort: effort || 'low',
         waitsFor: state === 'waiting' && after ? after.name : undefined, pickUp: state === 'waiting' && pickUp ? true : undefined };
     });
   }
@@ -1733,7 +1736,7 @@ export class Brain {
     if (j.state === 'working') { j.again = note; return true; } // the end of this reply puts it back in line
     j.carryOn = note; j.before = []; j.cutStep = null; j.pickUp = false;
     {
-      Object.assign(j, { state: 'waiting', error: undefined, doneAt: undefined, steps: [], at: Date.now() });
+      Object.assign(j, { state: 'waiting', error: undefined, doneAt: undefined, sentTo: undefined, steps: [], at: Date.now() });
       this.queue = [...this.queue.filter((x) => x !== j), j];
     }
     this.saveQueue();
@@ -1752,7 +1755,7 @@ export class Brain {
     j.carryOn = `[Bob note, not from the user: the ${name} the user downloaded for this are on the PC now. Do what they asked.]`;
     j.before = []; j.cutStep = null; j.pickUp = false;
     if (j.state !== 'working') { // still running: the end of the turn puts it back in line
-      Object.assign(j, { state: 'waiting', error: undefined, doneAt: undefined, steps: [], at: Date.now() });
+      Object.assign(j, { state: 'waiting', error: undefined, doneAt: undefined, sentTo: undefined, steps: [], at: Date.now() });
       this.queue = [...this.queue.filter((x) => x !== j), j];
     }
     this.log('queue', `waits for the ${name} download: ${j.text.slice(0, 60)}`);
@@ -2218,10 +2221,15 @@ export class Brain {
       if (lender) {
         this.setState('thinking', `${lender.name} is thinking`, this.state.model);
         let said = false;
+        const askedAt = Date.now(); let firstAt = 0;
         try {
-          reply = await this.lenders.chat(lender, { messages: lentMsgs, tools, signal, from: this.cfg.windowsName || 'Bob', onToken: (t) => { said = true; emit({ type: 'token', text: t }); } });
+          reply = await this.lenders.chat(lender, { messages: lentMsgs, tools, signal, from: this.cfg.windowsName || 'Bob', onToken: (t) => { if (!said) firstAt = Date.now(); said = true; emit({ type: 'token', text: t }); } });
           // 1.5.181 (two-Bob trial: the reply came back empty and nothing ran here): an empty answer counts as a "couldn't".
           if (!String(reply?.content || '').trim() && !(reply?.tool_calls || []).length) { reply = null; throw Object.assign(new Error('it came back empty'), { busy: !said }); }
+          // 1.5.196 (Tailscale test): a borrowed reply that went well leaves a line in the logbook too, once per Bob per
+          // reply, with how long the first word took. Never the words themselves.
+          ctx.borrowLogged = ctx.borrowLogged || new Set();
+          if (!ctx.borrowLogged.has(lender.address)) { ctx.borrowLogged.add(lender.address); this.log('borrow', borrowedLine(lender.name, (firstAt || Date.now()) - askedAt)); }
         } catch (e) {
           if (signal?.aborted) throw e;
           // Said busy (or "too long") before a single word: the next of your Bobs that has room gets a go first.

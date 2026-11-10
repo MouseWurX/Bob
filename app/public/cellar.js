@@ -711,23 +711,17 @@ export function createCellar() {
   const openGroups = new Set(['thinking']); // which engine groups are unfolded, kept across redraws
   const ENGINE_NAMES = { brainengine: 'Brain Engine', llamacpp: 'llama.cpp', ollama: 'Ollama' };
   const ENGINE_GROUPS = [['thinking', 'Thinking', 'The engines that run Bob\'s brains.'], ['senses', 'Pictures, sound and hearing', 'Painting, music and sound effects, and turning your voice into text.'], ['voices', 'Voices', 'How Bob reads replies aloud.'], ['helpers', 'Helpers', 'Programs the Hands use for documents, converting and connected apps.']];
+  // 1.5.196: Brain Engine is the only engine for Bob's brains wherever it has a build (Windows, x64 Linux). Where it has
+  // none yet (a Mac, an ARM board), Bob's own llama.cpp runs them. No picker: there's nothing to pick.
   function engineGearHtml() {
     const ch = data.engineChoices || {};
     const be = engineById('brainengine');
-    const beOff = !be || be.available === false;
-    const pick = ch.brainsPick || (settings.engine === 'ollama' ? 'ollama' : 'brainengine');
-    const now = ch.brainsNow || pick;
-    const opts = [
-      ['brainengine', 'Brain Engine', 'Bob\'s own build of llama.cpp. The default. It can also switch a brain\'s experts off without reloading, for the Lab.', beOff ? (be?.note || 'There\'s no Brain Engine build for this replicant matrix yet.') : ''],
-      ['llamacpp', 'llama.cpp', 'The official build, as it comes from the llama.cpp project.', ''],
-      ['ollama', 'Ollama', 'Only if you already have Ollama and want Bob to use it. Ollama has to be running.', '']
-    ];
-    const line = now === pick ? `Bob's brains run on ${ENGINE_NAMES[now]} right now.` : `Bob's brains run on ${ENGINE_NAMES[now]} right now, and on ${ENGINE_NAMES[pick]} from the next time he starts.`;
-    const waiting = pick === 'brainengine' && !beOff && !be.installed ? ' Brain Engine isn\'t here yet: Get it under Thinking, below. Until then Bob uses llama.cpp.' : '';
-    return `<details class="engine-gear"><summary><strong>Engine for brains:</strong> ${esc(ENGINE_NAMES[pick])} <span class="gear-btn" aria-hidden="true">⚙</span><span class="sr-only">, change</span></summary>
-        <fieldset class="engine-pick"><legend>Engine for Bob's brains</legend>${opts.map(([v, label, hint, off]) => `<label class="lab-opt${off ? ' dim' : ''}"><input type="radio" name="brainsEngine" value="${v}" data-brainsengine ${v === pick ? 'checked' : ''} ${off ? 'disabled' : ''}> <span><strong>${esc(label)}</strong>${v === 'brainengine' ? ' <span class="tag good">default</span>' : ''}<br><span class="muted">${esc(off || hint)}</span></span></label>`).join('')}</fieldset>
-        <span class="muted">Takes effect next time Bob starts.</span></details>
-      <p class="muted" data-engine-now>${esc(line + waiting)}</p>`;
+    const only = ch.only || (be && be.available !== false ? 'brainengine' : 'llamacpp');
+    const now = ch.brainsNow || only;
+    const line = only === 'brainengine'
+      ? (now === 'brainengine' ? 'Bob\'s brains run on Brain Engine, the only engine that fits him now.' : 'Brain Engine is the only engine that fits Bob\'s brains now. It isn\'t here yet: Get it under Thinking, below. Until then the llama.cpp already here stands in.')
+      : `Bob's brains run on his own llama.cpp here. ${be?.note || 'There\'s no Brain Engine build for this replicant matrix yet.'} He moves to Brain Engine when there is one.`;
+    return `<p data-engine-now><strong>Engine for brains:</strong> ${esc(ENGINE_NAMES[only])} <span class="muted">${esc(line)}</span></p>`;
   }
   function labEngineHtml() {
     const lab = data.engineChoices?.lab || '';
@@ -755,23 +749,20 @@ export function createCellar() {
     else act = `<button class="get" data-engine="${esc(e.id)}">Get ${esc(e.name)}</button>`;
     return `<article class="model" id="m-engine:${esc(e.id)}"><header><strong>${esc(e.name)}</strong>${tags}</header><p>${esc(e.what)}</p>${held}<div class="act">${act}</div><div class="confirm" hidden></div></article>`;
   }
-  function ollamaCard() {
-    const on = (data.engineChoices?.brainsNow || settings.engine) === 'ollama';
-    return `<article class="model" id="m-engine:ollama"><header><strong>Ollama</strong>${on ? ' <span class="tag good">runs the brains</span>' : ''}</header><p>A separate program some people already have. Bob doesn't download or update it: get it from ollama.com, and pick it with the ⚙ above if you want Bob to use it.</p></article>`;
-  }
   function enginesHtml() {
     const all = data.engines || [];
     const groups = ENGINE_GROUPS.map(([id, label, hint]) => {
-      const list = all.filter((e) => (e.group || 'helpers') === id).sort((a, b) => (a.id === 'brainengine' ? -1 : b.id === 'brainengine' ? 1 : 0));
+      const only = data.engineChoices?.only || 'brainengine';
+      const list = all.filter((e) => (e.group || 'helpers') === id && !(id === 'thinking' && e.id !== only)).sort((a, b) => (a.id === 'brainengine' ? -1 : b.id === 'brainengine' ? 1 : 0));
       const here = list.filter((e) => e.installed).length;
-      const cards = list.map(engineCard).join('') + (id === 'thinking' ? ollamaCard() : '');
+      const cards = list.map(engineCard).join(''); // 1.5.196: no Ollama card, no llama.cpp card where Brain Engine has a build
       return `<details class="engine-group" data-egroup="${id}" ${openGroups.has(id) ? 'open' : ''}><summary><strong>${esc(label)}</strong> <span class="muted">${here} of ${list.length} here</span></summary><p class="muted">${esc(hint)}</p>${cards}</details>`;
     }).join('');
     return `${engineGearHtml()}
       ${labEngineHtml()}
       <div><strong>Engine downloads</strong> ${tip('The programs that run the models, from their official GitHub pages (Brain Engine from Bob\'s own), matched to your graphics card. Update swaps a new build in and keeps the one before, so Go back puts it straight back without downloading. Bob checks a download\'s checksum, so a rebuilt engine with the same name still shows as an update.', 'Engine downloads')}
         <div class="row"><button type="button" data-checkall>Check all for updates</button></div>
-        ${sswitch('engineAuto', settings.engineUpdates?.auto !== false, 'Keep engines up to date', 'On unless you turn it off. When Bob starts and about once a day, he checks Brain Engine and his llama.cpp and updates them by himself, only while no brain is loaded on them. Go back puts the old build back. The other engines wait until you press Check for updates.')}
+        ${sswitch('engineAuto', settings.engineUpdates?.auto !== false, 'Keep engines up to date', 'On unless you turn it off. When Bob starts and about once a day, he checks his llama.cpp and updates it by himself, only while no brain is loaded on it. Brain Engine updates with Bob himself, whatever this says. Go back puts the old build back. The other engines wait until you press Check for updates.')}
         ${groups}</div>
       ${qwenHtml()}
       <details class="more"><summary>More</summary>${speedHtml()}</details>`;

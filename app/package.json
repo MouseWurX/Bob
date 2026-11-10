@@ -1,6 +1,6 @@
 {
   "name": "bob",
-  "version": "1.5.195",
+  "version": "1.5.196",
   "description": "Bob, a local AI who lives on your PC: chat, pictures, video, voice and more, all on your own hardware.",
   "type": "module",
   "private": true,
@@ -21,10 +21,15 @@
   },
   "bob": {
     "release": "1.5",
-    "patch": 195,
+    "patch": 196,
     "branch": "",
-    "build": 246,
+    "build": 247,
     "bundledLlamaTag": "b12032",
+    "brainEngine": {
+      "tag": "brain-engine-b12032",
+      "win-x64": "sha256:bc724d746912b70397b0b57da9ed8e8d583265750d6055750f23a5b332364237",
+      "linux-x64": "sha256:fd8914c5e150fdbae4aca4d8241a25fc2a9b5738d919757c35ef13e554a472e2"
+    },
     "electronSha256": "88e08039d0ef359bab9f674e8051fa103bd8628ea7c5a5e1daaa610a8a0c6931",
     "layout": "From 0.9.32 Bob app\\Bob.exe is Electron's official electron.exe (devDependencies.electron), only renamed, and Bob's files sit in Bob app\\resources\\app. Updates never build an exe. electronSha256 (optional) pins the official zip's checksum; otherwise it is checked against Electron's SHASUMS256.txt. electron-builder (dist scripts) is only for making a portable exe by hand.",
     "note": "Version = <release>.<patch> from 1.0.0 (formatVersion in src/config.js): 1.0.1 for fixes, 1.1.0 (release 1.1, patch 0) for new features, a letter for unmerged branch work (1.0.1a). Before 1.0 it was 0.9.<build>. build goes up by one with every drop and never resets; the update check compares it. Git tags are v<version>."
