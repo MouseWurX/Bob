@@ -375,10 +375,22 @@ export class LlamaCpp {
   }
 
   // 1.5.90: no memory-mapping when some of the brain is placed in RAM on the card route (see buildArgs).
-  readsWhole(args, cpu) {
+  // 1.5.19x: not when the brain is bigger than the card and RAM can hold together (gpt-oss 120B, about 63 GB, on a
+  // 16 GB card with 32 GB of RAM). Read in whole, it ran out of memory and never loaded; memory-mapped, the card takes
+  // its share, Windows keeps the busiest parts in RAM and the rest is read from the drive as words need it. Slow, but
+  // it runs. A few GB of RAM are left for the system and the chat's memory.
+  readsWhole(args, cpu, gguf) {
     if (cpu || this.lc.loadMode === 'mmap') return false;
     if (args.some((a) => ['--mmap', '--no-mmap', '--load-mode', '-lm'].includes(a))) return false; // set by hand
-    return args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a));
+    if (!args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a))) return false;
+    return !this.biggerThanMemory(gguf);
+  }
+  // The brain file is bigger than the card's share plus the RAM it may use. totalRam is swapped in by the tests.
+  biggerThanMemory(gguf) {
+    let size = 0;
+    try { size = fs.statSync(gguf).size; } catch { return false; }
+    const ram = (this.totalRam ? this.totalRam() : os.totalmem()) - 6e9, card = cardGB(this.cfg) * 1e9 * 0.8;
+    return ram > 0 && size > ram + card;
   }
   // --load-mode is in the builds Bob ships (b12032, the one tested); older builds only know --no-mmap.
   // 1.5.91: when the build can't be told, no flag at all (b12032 refuses --no-mmap, so a guess can stop the engine).
@@ -439,7 +451,7 @@ export class LlamaCpp {
     // When part of the brain stays in RAM (fit, or experts kept on the processor), read it all in at load instead of
     // letting Windows page it in during the first request. PC test 2026-11-04 (Qwen3.6, --fit, 128K): first reply
     // 27 s -> 1.4 s and RAM 21 -> 12 GB, for about 10 s more load. llamacpp.loadMode "mmap" keeps the old way.
-    if (this.readsWhole(args, cpu)) args.push(...this.noMmapArgs());
+    if (this.readsWhole(args, cpu, gguf)) args.push(...this.noMmapArgs());
     // 1.5.19: one conversation at a time, so it gets the whole context (more slots split it into small pieces).
     if (!args.some((a) => ['-np', '--parallel'].includes(a))) args.push('-np', '1');
     args.push(...this.templateArgs(model, gguf, args));
