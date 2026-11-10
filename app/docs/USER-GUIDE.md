@@ -439,9 +439,10 @@ The Lab has five tabs:
 - **Challenges**: short tests out of 100 for any brain you have, and a scoreboard that ranks brains against others of their own size.
 - **Playground**: **Smaller** makes one brain in six sizes and shows where it starts to slip; **Peek inside** shows which experts your work uses; **FNRI** scans a brain while it answers a few questions for each skill and plays it back in its own window as a 3D block of voxels, a floor for each layer, coloured by skill and glowing as the experts are used (tick boxes hide skills, three zoom levels, Save as a video); **Longer**, **Faster** and **Teach it** try longer chats, faster settings and a short round of teaching.
 
-| | | |
-|---|---|---|
-| ![The Forge tab](screens/lab-forge.png) | ![The Challenges tab](screens/lab-challenges.png) | ![The Playground tab](screens/lab-playground.png) |
+| | |
+|---|---|
+| ![The Forge tab](screens/lab-forge.png) | ![The Learn tab](screens/lab-learn.png) |
+| ![The Challenges tab](screens/lab-challenges.png) | ![The Playground tab](screens/lab-playground.png) |
 
 Lab jobs need a replicant matrix with at least 12 GB of memory; a smaller one still shows the Lab and can start jobs on a bigger Bob on your Bob-Net. The phone app has no Lab. Every tab has its own page in Help, The Computer Science Lab.
 
