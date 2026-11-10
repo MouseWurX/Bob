@@ -99,7 +99,8 @@ export function readTrace(raw, pieces = []) {
     const P = Math.max(0, Math.min(rows.length, Number(raw.n_prompt) || 0));
     const last = String(raw.last ?? '');
     const from = Math.max(P - 1, 0);
-    return { trace: rows.slice(from).map((r) => r.e), tokens: [...rows.slice(from + 1).map((r) => r.t), last], read: { words: rows.map((r) => r.t), e: rows.map((r) => r.e), prompt: P, last } };
+    return { trace: rows.slice(from).map((r) => r.e), tokens: [...rows.slice(from + 1).map((r) => r.t), last], read: { words: rows.map((r) => r.t), e: rows.map((r) => r.e), prompt: P, last },
+      shape: { kind: raw.kind === 'neurons' ? 'neurons' : 'experts', experts: Number(raw.n_expert) || 0, used: Number(raw.n_expert_used) || 0, layers: Number(raw.n_layer) || 0, neurons: Number(raw.n_ff) || 0 } };
   }
   return { trace: raw, tokens: pieces, read: null };
 }

@@ -48,7 +48,7 @@ export function cleanRecording(j) {
     clips.push({ skill: c.skill, question: text(c.question, 500), answer: text(c.answer, 4000), prompt: Math.max(0, Math.min(n, Number(c.prompt) || 0)), words: c.words.slice(0, n).map((w) => text(w, 80)), e, last: text(c.last, 80) });
   }
   if (!clips.length) throw new Error('That recording has no questions in it.');
-  return { format: FORMAT, version: VERSION, id: text(j.id, 80), name: text(j.name, 120), when: text(j.when, 20), engine: text(j.engine, 60), brain: { name: text(j.brain?.name, 120), experts, layers, used: Math.max(0, Math.min(64, Number(j.brain?.used) || 0)) }, skills, clips };
+  return { format: FORMAT, version: VERSION, id: text(j.id, 80), name: text(j.name, 120), when: text(j.when, 20), engine: text(j.engine, 60), brain: { name: text(j.brain?.name, 120), experts, layers, used: Math.max(0, Math.min(64, Number(j.brain?.used) || 0)), kind: j.brain?.kind === 'neurons' ? 'neurons' : 'experts', neurons: Math.max(0, Math.min(1e7, Math.floor(Number(j.brain?.neurons) || 0))) }, skills, clips };
 }
 
 // Which skill each expert leans to. For every skill, how often each expert was picked per word of that skill (so a
@@ -109,7 +109,8 @@ export function inWords(rec, sp) {
       : `The skills use fairly different experts here (${sp.blend}% alike).`);
   rec.skills.forEach((s, i) => { lines.push(`${lookOf(i)[1]}, ${s.label}: ${sp.per[i].leans.toLocaleString()} experts lean to it, ${sp.per[i].mostly.toLocaleString()} of them strongly. ${sp.words[i].toLocaleString()} words read.`); });
   if (S < 2) lines.push('With one skill there is nothing to compare, so every expert it used gets its colour.');
-  return lines;
+  if (!isNeurons(rec)) return lines;
+  return [`This brain isn't a mixture-of-experts one, so the scan lights groups of neurons: every layer's ${rec.brain.neurons ? rec.brain.neurons.toLocaleString() + ' ' : ''}hidden neurons are cut into ${rec.brain.experts} equal groups of neighbours, and the ${rec.brain.used} busiest light up for each word. The groups are a way of slicing, not parts the brain itself knows about.`, ...lines.map((l) => say(rec, l))];
 }
 
 // One expert up close: how its picks split between the skills, and the words it was picked for most.
@@ -138,3 +139,18 @@ export function partOf(clip, w) {
   return { part, from: Math.min(from, w) };
 }
 export const PART_LABEL = { question: 'Question', thinking: 'Thinking', answer: 'Answer' };
+
+// A brain without experts is scanned by groups of neighbouring neurons instead (brain.kind 'neurons'): each layer's
+// hidden neurons cut into equal runs, the busiest few lit for every word. The viewer is the same; only the words
+// change. say(rec, text) turns a sentence written about experts into one about neuron groups.
+export const isNeurons = (rec) => rec?.brain?.kind === 'neurons';
+export function say(rec, s) {
+  if (!isNeurons(rec)) return s;
+  const B = '(?<![-\\w=.#])', A = '(?![-\\w=])'; // never inside a class, an id or an attribute
+  const r = (from, to) => { s = s.replace(new RegExp(B + from + A, 'g'), to); };
+  s = String(s);
+  r('Not experts', 'Other parts'); r('not experts', 'not these neurons'); r('Not an expert', 'Not a neuron group'); r('the router that picks experts', 'the router');
+  r('an expert', 'a neuron group'); r('An expert', 'A neuron group');
+  r('Experts', 'Neuron groups'); r('experts', 'neuron groups'); r('Expert', 'Neuron group'); r('expert', 'neuron group');
+  return s;
+}

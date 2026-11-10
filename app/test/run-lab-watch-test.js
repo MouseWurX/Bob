@@ -13,7 +13,7 @@ import { readGguf } from '../src/lab-gguf.js';
 import { readTrace, askTraced, tallyTrace, NO_TRACE } from '../src/lab-peek.js';
 import { WATCH_SKILLS, PER_CHOICES, pickSkills, partsOf, clipOf, watchView, startWatch, readRecording, deleteRecording, listRecordings, watchRoute, WATCH_WORDS, WATCH_WORDS_THINK } from '../src/lab-watch.js';
 import { pagesRoute } from '../src/lab-pages.js';
-import { NAME, LONG_NAME, FORMAT, VERSION, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, SKILL_LOOKS, sideOf, LEANS, partOf, PART_LABEL } from '../public/lab-watch-math.js';
+import { NAME, LONG_NAME, FORMAT, VERSION, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, SKILL_LOOKS, sideOf, LEANS, partOf, PART_LABEL, say } from '../public/lab-watch-math.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -48,7 +48,7 @@ makeGguf(moeFile, [['general.architecture', 8, 'testmoe'], ['general.name', 8, '
   { name: 'token_embd.weight', dims: [EMB, 6] },
   ...[0, 1].flatMap((l) => [{ name: `blk.${l}.ffn_gate_exps.weight`, dims: [EMB, FF, E] }, { name: `blk.${l}.ffn_up_exps.weight`, dims: [EMB, FF, E] }, { name: `blk.${l}.ffn_down_exps.weight`, dims: [FF, EMB, E] }, { name: `blk.${l}.ffn_gate_inp.weight`, dims: [EMB, E] }, { name: `blk.${l}.attn_q.weight`, dims: [EMB, EMB] }, { name: `blk.${l}.attn_norm.weight`, dims: [EMB] }])
 ]);
-makeGguf(plainFile, [['general.architecture', 8, 'llama'], ['llama.block_count', 4, 2], ['general.file_type', 4, 15]], [{ name: 'token_embd.weight', dims: [4, 4] }]);
+makeGguf(plainFile, [['general.architecture', 8, 'llama'], ['llama.block_count', 4, 2], ['general.file_type', 4, 15]], [{ name: 'token_embd.weight', dims: [4, 4] }, ...[0, 1].flatMap((l) => [{ name: `blk.${l}.ffn_up.weight`, dims: [4, 6] }, { name: `blk.${l}.ffn_down.weight`, dims: [6, 4] }, { name: `blk.${l}.attn_q.weight`, dims: [4, 4] }])]);
 
 // ---- the sums ----
 const skills2 = [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }];
@@ -121,7 +121,7 @@ check('a skill of your own with no name or no questions is left out', pickSkills
 
 // ---- how much of the brain is experts ----
 {
-  const g = readGguf(moeFile); const p = partsOf(g, { layers: L });
+  const g = readGguf(moeFile); const p = partsOf(g, { layers: L, experts: E });
   check('the parts, by number of weights: experts and the rest for each layer, and what sits outside the layers', p.layers.length === 2 && p.layers[0].experts === 3 * EMB * FF * E && p.layers[0].other === EMB * E + EMB * EMB + EMB && p.outside === EMB * 6 && p.kinds.router === 2 * EMB * E && p.kinds.attention === 2 * EMB * EMB && p.kinds.norms === 2 * EMB && p.kinds.tables === EMB * 6, JSON.stringify(p));
 }
 
@@ -141,15 +141,15 @@ const mk = () => { const l = new Lab(cfg, { shop, room: big, broadcast: () => {}
 const lab = mk();
 {
   const v = watchView(lab);
-  check('the page gets the mixture-of-experts brains only, the skills with their questions, and the choices', v.brains.length === 1 && v.brains[0].id === 'moe' && v.brains[0].experts === E && v.skills.length === 8 && v.skills[0].questions.length === 6 && v.per === 4 && v.words === WATCH_WORDS);
+  check('the page gets every brain it can read (with experts or without), the skills with their questions, and the choices', v.brains.length === 2 && v.brains[0].id === 'moe' && v.brains[0].experts === E && v.brains[1].experts === 0 && v.skills.length === 8 && v.skills[0].questions.length === 6 && v.per === 4 && v.words === WATCH_WORDS);
   const bv = watchView(lab, 'moe');
   check('a brain with experts and Brain Engine can be scanned; it has no scans yet', bv.live.ok && bv.recordings.length === 0 && bv.layers === L);
-  check('a brain without experts says why not', /isn't a mixture-of-experts brain/.test(watchView(lab, 'plain').live.why));
+  check('a brain without experts can be scanned too', watchView(lab, 'plain').live.ok === true);
   const noEngine = new Lab(cfg, { shop, room: big, broadcast: () => {}, steps: {} }); noEngine.platform = () => ({ os: 'win', arch: 'x64' });
   check('without Brain Engine the scan is greyed with where to get it', watchView(noEngine, 'moe').live.ok === false && /Brain Engine/.test(watchView(noEngine, 'moe').live.why));
   check('and it won\'t start', await startWatch(noEngine, { brain: 'moe' }).then(() => false, (e) => /Brain Engine/.test(e.message)));
 }
-check('a scan needs a brain, one with experts, and at least one skill', await startWatch(lab, {}).then(() => false, (e) => /Pick a brain/.test(e.message)) && await startWatch(lab, { brain: 'plain' }).then(() => false, (e) => /isn't a mixture-of-experts/.test(e.message)) && await startWatch(lab, { brain: 'moe', skills: ['nope'] }).then(() => false, (e) => /at least one skill/.test(e.message)));
+check('a scan needs a brain and at least one skill', await startWatch(lab, {}).then(() => false, (e) => /Pick a brain/.test(e.message)) && await startWatch(lab, { brain: 'moe', skills: ['nope'] }).then(() => false, (e) => /at least one skill/.test(e.message)));
 {
   lab.brain = { engine: { loaded: async () => [{ name: 'Main', vram: 5 }], unloadAll: async () => { lab.unloaded = true; } } };
   const ask = await startWatch(lab, { brain: 'moe', skills: ['coding', 'chat'], per: 2 });
@@ -214,7 +214,7 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
 }
 {
   const patch = read('engine/patches/0002-expert-trace.patch'), readme = read('engine/README.md');
-  check('Brain Engine has the expert trace patch, and its README says what it does', /"expert_trace"/.test(patch) && /llama_set_eval_callback/.test(patch) && /ffn_moe_topk-/.test(patch) && /0002-expert-trace\.patch/.test(readme) && /expert_trace/.test(readme));
+  check('Brain Engine has the expert trace patch, and its README says what it does', /"expert_trace"/.test(patch) && /llama_set_eval_callback/.test(patch) && /"neurons"/.test(patch) && /ffn_moe_topk-/.test(patch) && /0002-expert-trace\.patch/.test(readme) && /expert_trace/.test(readme));
   check('the patch leaves no debugging lines behind', !/DBG|fprintf\(stderr/.test(patch));
 }
 
@@ -237,6 +237,28 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('the viewer has a turn-speed slider, sides to look from, and a switch for the lines', /id="watchSpinSpeed"/.test(html) && /id="watchFace"/.test(html) && /id="watchPaths"/.test(html) && /spinSpeed/.test(js) && /FACES/.test(js));
   check('the viewer steps one word at a time, both ways', /id="watchStepBack"/.test(html) && /id="watchStep"/.test(html) && /step\(-1\)/.test(js));
   check('the scan page offers Let it think first, off to begin with', /id="watch-think"/.test(page) && /think = false/.test(page));
+}
+
+// ---- a brain without experts: the same scan over groups of neurons ----
+{
+  const raw = (kind) => ({ kind, n_layer: L, n_expert: 256, n_expert_used: 8, n_ff: 600, n_prompt: 2, last: '.', rows: Array.from({ length: 6 }, (_, i) => ({ t: i < 2 ? 'q' : ' w', e: Array.from({ length: L }, () => [200, 3, 9, 17, 40, 41, 42, 255]) })) });
+  const sh = readTrace(raw('neurons')).shape;
+  check('the engine says what it traced: neuron groups, how many, and how many neurons they slice', sh.kind === 'neurons' && sh.experts === 256 && sh.used === 8 && sh.neurons === 600 && readTrace(raw(undefined)).shape.kind === 'experts');
+  const l5 = mk(); l5.stepFns.peekAsk = async () => ({ answer: 'ok', ...readTrace(raw('neurons')) });
+  await startWatch(l5, { brain: 'plain', skills: ['chat'], per: 2 }); await wait(l5);
+  const id = listRecordings(cfg, { id: 'plain', name: 'Plain' })[0]?.id;
+  const rec5 = id ? readRecording(l5, { brain: 'plain', id }) : null;
+  check('a plain brain\'s scan is saved as neuron groups', rec5 && rec5.brain.kind === 'neurons' && rec5.brain.experts === 256 && rec5.brain.used === 8 && rec5.brain.neurons === 600 && rec5.clips.length === 2 && rec5.clips[0].e[0][0].includes(255));
+  check('its feed-forward neurons take the experts\' place in the block, the rest is the grey core', rec5 && rec5.parts.layers[0].experts > 0 && rec5.parts.layers[0].other > 0);
+  const l6 = mk(); l6.stepFns.peekAsk = async () => ({ answer: 'ok', ...readTrace(raw('experts')) });
+  await startWatch(l6, { brain: 'plain', skills: ['chat'], per: 2 }); await wait(l6);
+  check('an engine build that can\'t trace a plain brain fails with the reason', l6.runs[l6.runs.length - 1].state === 'failed' && l6.runs[l6.runs.length - 1].error === NO_TRACE);
+  const c5 = cleanRecording(JSON.parse(JSON.stringify(rec5)));
+  const lines = inWords(c5, specialise(c5));
+  check('the words say neuron groups, never experts, and that the groups are a way of slicing', /mixture-of-experts/.test(lines[0]) && /way of slicing/.test(lines[0]) && lines.slice(1).every((x) => !/expert/i.test(x)) && /neuron groups/.test(lines[1]) && say(c5, lines[0]) === lines[0]);
+  check('an expert scan\'s words are left as they were', say({ brain: { kind: 'experts' } }, 'Not experts') === 'Not experts' && say(c5, 'Not experts') === 'Other parts' && say(c5, '<div class="watch-expert">One expert</div>') === '<div class="watch-expert">One neuron group</div>');
+  const html = read('public/watch.html'), view = read('public/watch-view.js'), js = read('public/watch.js');
+  check('the viewer starts as a cube of coloured glass, with a slider for how see-through', /id="watchGlass"/.test(html) && /id="watchCube"/.test(html) && /cubeGap/.test(view) && /glass/.test(view) && /cube\(\);/.test(js));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

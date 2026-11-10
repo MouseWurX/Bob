@@ -5,7 +5,7 @@
 // Its own window, so it can sit beside the Lab or a chat. The Lab opens it with ?brain=<id>&rec=<id>; it can also
 // open a recording file by itself (one made on another Bob, or on a rented card), with the Lab off.
 import { applySavedStyle } from './themes.js';
-import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL } from './lab-watch-math.js';
+import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind } from './lab-watch-math.js';
 import { createView, GREY } from './watch-view.js';
 applySavedStyle();
 
@@ -17,6 +17,8 @@ const SPECIAL = /<\|[^|>]*\|>|<\/?think>/gi; // the chat layout's own markers, l
 
 let rec = null, sp = null, parts = null, frames = [], t = 0, playing = false, speed = 8, only = '', hidden = new Set(), mode = 'brain', floor = 0, expert = 0, spin = false, spinSpeed = 0.25, aim = null, need = true, lastIdx = -1, lastLit = [], recorder = null;
 
+const w = (s) => inKind(rec, s); // the same sentence for a brain scanned by neuron groups
+function cube() { const g = view.cubeGap(); view.set({ gap: g }); $('watchGap').value = String(g); need = true; } // floors stacked as tall as they are wide
 function say(msg) { const m = $('watchMsg'); m.textContent = msg || ''; m.hidden = !msg; }
 
 function load(j) {
@@ -28,16 +30,18 @@ function load(j) {
   document.title = `${NAME}: ${rec.brain.name}`;
   $('watchTitle').textContent = rec.name || rec.brain.name;
   const lay = view.layout();
-  $('watchSub').textContent = `${rec.brain.name}${rec.when ? `, recorded ${rec.when}` : ''}. ${rec.brain.layers} floors (layers) of ${rec.brain.experts} experts${rec.brain.used ? `, ${rec.brain.used} picked for each word` : ''}.${lay.expertShare ? ` Experts are ${Math.round(lay.expertShare * 100)}% of the brain's weights; the grey core and base are the rest.` : ''}`;
+  $('watchSub').textContent = w(`${rec.brain.name}${rec.when ? `, recorded ${rec.when}` : ''}. ${rec.brain.layers} floors (layers) of ${rec.brain.experts} experts${rec.brain.used ? `, ${rec.brain.used} picked for each word` : ''}.${lay.expertShare ? ` Experts are ${Math.round(lay.expertShare * 100)}% of the brain's weights; the grey core and base are the rest.` : ''}`);
   $('watchEmpty').hidden = true; $('watchControls').hidden = false; $('watchPlayer').hidden = false; $('watchSave').hidden = false;
   $('watchFloor').max = rec.brain.layers; $('watchExpert').max = rec.brain.experts - 1;
   $('watchOnly').innerHTML = `<option value="">every skill</option>${rec.skills.map((s) => `<option value="${esc(s.id)}">${esc(s.label)}</option>`).join('')}`;
+  $('watchZoomOne').textContent = w('One expert'); $('watchExpertWord').textContent = w('Expert');
+  cube();
   skillsHtml(); wordsHtml(); setMode('brain'); seek(0); say('');
 }
 
 function skillsHtml() {
   const never = sp.total - sp.used;
-  const row = (key, sw, label, n, title) => `<label class="watch-skill" title="${esc(title)}"><input type="checkbox" data-show="${esc(String(key))}" ${hidden.has(key) ? '' : 'checked'}> ${sw} <span>${esc(label)}</span><span class="n">${n}</span></label>`;
+  const row = (key, sw, label, n, title) => `<label class="watch-skill" title="${esc(w(title))}"><input type="checkbox" data-show="${esc(String(key))}" ${hidden.has(key) ? '' : 'checked'}> ${sw} <span>${esc(w(label))}</span><span class="n">${n}</span></label>`;
   $('watchSkills').innerHTML = `<legend>Show these</legend>${rec.skills.map((s, i) => row(i, `<span class="sw" style="background:${lookOf(i)[0]}">${lookOf(i)[1]}</span>`, s.label, sp.top.reduce((a, l) => a + l.filter((x) => x === i).length, 0).toLocaleString(), `Experts picked most often for ${s.label}. ${sp.per[i].leans.toLocaleString()} of them lean to it clearly.`)).join('')}
     ${row('grey', `<span class="sw" style="background:${GREY}"></span>`, 'Not experts', '', 'Attention, the router, the tuning rows and the word tables: every word passes through these.')}
     ${row('never', '<span class="sw never"></span>', 'Never picked', never.toLocaleString(), 'Experts none of these questions woke. A wider set of questions would wake more of them.')}`;
@@ -49,11 +53,11 @@ function wordsHtml() {
   if (parts) {
     const k = parts.kinds || {}, all = (parts.outside || 0) + parts.layers.reduce((a, p) => a + p.experts + p.other, 0) || 1;
     const pc = (n) => `${Math.max(0.1, Math.round((1000 * (n || 0)) / all) / 10)}%`;
-    lines.push(`Not experts, the grey parts, by share of the weights: attention ${pc(k.attention)}, the router that picks experts ${pc(k.router)}, tuning rows ${pc(k.norms)}, the word tables ${pc(k.tables)}${k.rest ? `, the rest ${pc(k.rest)}` : ''}. Every word passes through all of them, so none can be cut out.`);
+    lines.push(`Not experts, the grey parts, by share of the weights: attention ${pc(k.attention)}${k.router ? `, the router that picks experts ${pc(k.router)}` : ''}, tuning rows ${pc(k.norms)}, the word tables ${pc(k.tables)}${k.rest ? `, the rest ${pc(k.rest)}` : ''}. Every word passes through all of them, so none can be cut out.`);
     if (view.layout().baseCapped) lines.push('The word tables are bigger than the base shows: it is capped at two floors so the block stays readable.');
   } else lines.push('This recording doesn\'t say how big the parts that are not experts are, so the grey core isn\'t drawn.');
-  lines.push('A few questions for each skill show the pattern; they don\'t measure the brain. Record more questions for a steadier picture.');
-  $('watchWords').innerHTML = lines.map((l) => `<li>${esc(l)}</li>`).join('');
+  lines.push('A few questions for each skill show the pattern; they don\'t measure the brain. A new scan with more questions gives a steadier picture.');
+  $('watchWords').innerHTML = lines.map((l) => `<li>${esc(w(l))}</li>`).join('');
 }
 
 // ---- time ----
@@ -85,7 +89,7 @@ function caption(i) {
   view.setCaption({ title: `${letter} ${rec.skills[si].label}: ${c.question}`, color, text: `${label}: ${(before + now + end).replace(/\s+/g, ' ').trim()}` });
   $('watchCaption').innerHTML = `<span class="q"><strong>${esc(letter)} ${esc(rec.skills[si].label)}:</strong> ${esc(c.question)}</span><br><em>${esc(label)}:</em> ${esc(before)}<span class="wnow">${esc(now) || '·'}</span>${esc(end)}`;
   const picks = c.e[f.word].reduce((a, l) => a + l.length, 0);
-  $('watchStatus').textContent = `Word ${i + 1} of ${frames.length}. Question ${f.clip + 1} of ${rec.clips.length}. ${picks} experts picked for this word.`;
+  $('watchStatus').textContent = w(`Word ${i + 1} of ${frames.length}. Question ${f.clip + 1} of ${rec.clips.length}. ${picks} experts picked for this word.`);
   const sc = $('watchScrub'); sc.value = String(i); sc.setAttribute('aria-valuetext', `Word ${i + 1} of ${frames.length}: ${now.trim() || 'a marker'}, in a question about ${rec.skills[si].label}`);
 }
 
@@ -123,6 +127,7 @@ function floorHtml() {
   $('watchFloorView').innerHTML = `<h2>Floor ${l + 1} of ${rec.brain.layers} <span class="muted">(layer ${l})</span></h2>
     <p class="muted">Every square is one expert, with its number and its skill's letter; the grey squares in the middle are not experts. A white outline means it's picked for the word being read. Press a square to look at that expert.</p>
     <div class="watch-grid" style="grid-template-columns:repeat(${lay.W},minmax(0,1fr))">${cells.join('')}</div>`;
+  $('watchFloorView').innerHTML = w($('watchFloorView').innerHTML);
   lastLit = [];
 }
 
@@ -133,6 +138,7 @@ function expertHtml() {
     ${d.picks ? `<p>Picked ${d.picks.toLocaleString()} times in this recording. ${top ? (d.strength >= LEANS ? `It leans to <strong>${esc(top.label)}</strong> (${Math.round(d.strength * 100)} out of 100, where 100 means only that skill ever used it).` : `The skills share it about evenly; <strong>${esc(top.label)}</strong> used it a little more.`) : ''}</p>
     ${d.shares.map((s) => `<div class="watch-bar"><span>${esc(lookOf(s.skill)[1])} ${esc(rec.skills[s.skill].label)}</span><span class="track"><span class="fill" style="width:${s.pct}%;background:${lookOf(s.skill)[0]}"></span></span><span class="pc">${s.pct}%</span></div>`).join('')}
     <p><strong>Words it was picked for most:</strong> ${d.words.map((w) => `<code>${esc(w.text.replace(SPECIAL, '(marker)')) || '(space)'}</code> ${w.n}`).join(', ') || 'none'}.</p>` : '<p>None of these questions picked this expert. A wider set of questions might.</p>'}`;
+  $('watchExpertView').innerHTML = w($('watchExpertView').innerHTML);
 }
 
 function markFloor(i) {
@@ -168,7 +174,7 @@ function tick(now) {
 function startVideo() {
   const canvas = $('watchCanvas');
   const type = ['video/webm;codecs=vp9', 'video/webm', 'video/mp4'].find((m) => window.MediaRecorder?.isTypeSupported?.(m));
-  if (!canvas.captureStream || !type) { say('This browser can\'t save a video of the picture. On a computer, Bob\'s own window and the usual browsers can.'); return; }
+  if (!canvas.captureStream || !type) { say('This browser can\'t save a video of the picture. Bob\'s window and most desktop browsers can.'); return; }
   const chunks = [];
   recorder = new MediaRecorder(canvas.captureStream(30), { mimeType: type, videoBitsPerSecond: 6e6 });
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
@@ -198,11 +204,13 @@ $('watchFloor').onchange = (ev) => { const was = floor; floor = Math.max(0, Math
 $('watchExpert').onchange = (ev) => { const was = expert; expert = Math.max(0, Math.min(rec.brain.experts - 1, Number(ev.target.value) || 0)); ev.target.value = expert; if (expert !== was) setMode(mode); };
 $('watchFloorView').addEventListener('click', (ev) => { const b = ev.target.closest('[data-cell]'); if (!b) return; expert = Number(b.dataset.cell); $('watchExpert').value = expert; setMode('expert'); $('watchExpertView').focus?.(); });
 $('watchGap').oninput = (ev) => { view.set({ gap: Number(ev.target.value) }); need = true; };
+$('watchCube').onclick = cube;
+$('watchGlass').oninput = (ev) => { view.set({ glass: Number(ev.target.value) }); need = true; };
 const turn = (dy, dt_) => { const g = view.get(); view.set({ yaw: g.yaw + dy, tilt: g.tilt + dt_ }); need = true; };
 $('watchLeft').onclick = () => turn(-0.2, 0); $('watchRight').onclick = () => turn(0.2, 0); $('watchUp').onclick = () => turn(0, 0.1); $('watchDown').onclick = () => turn(0, -0.1);
 $('watchIn').onclick = () => { view.set({ zoom: view.get().zoom * 1.25 }); need = true; }; $('watchOut').onclick = () => { view.set({ zoom: view.get().zoom / 1.25 }); need = true; };
 const flip = (b, on) => { b.setAttribute('aria-checked', String(on)); b.querySelector('.st').textContent = on ? 'On' : 'Off'; };
-$('watchSpin').onclick = (ev) => { if (still()) { say('Animations are off (Style, or this device\'s reduce-motion setting), so the block stays still. The turn buttons still work.'); return; } spin = !spin; flip(ev.currentTarget, spin); };
+$('watchSpin').onclick = (ev) => { if (still()) { say('Animations are off (Style, or this replicant matrix\'s reduce-motion setting), so the block stays still. The turn buttons still work.'); return; } spin = !spin; flip(ev.currentTarget, spin); };
 $('watchSpinSpeed').oninput = (ev) => { spinSpeed = Number(ev.target.value) || 0.25; };
 const FACES = { corner: [-0.62, 0.5], front: [0, 0.12], side: [Math.PI / 2, 0.12], back: [Math.PI, 0.12], top: [-0.62, 1.15] };
 $('watchFace').onchange = (ev) => { const v = FACES[ev.target.value]; if (!v) return; if (spin) { spin = false; flip($('watchSpin'), false); } if (still()) { view.set({ yaw: v[0], tilt: v[1] }); } else { const g = view.get(); const turns = Math.round((g.yaw - v[0]) / (2 * Math.PI)); aim = { yaw: v[0] + turns * 2 * Math.PI, tilt: v[1] }; } need = true; ev.target.value = ''; };
@@ -250,7 +258,7 @@ document.querySelector('.watch-open').tabIndex = 0;
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
       load(j);
-    } catch (e) { say(`I couldn't open that recording: ${e.message}`); }
+    } catch (e) { say(`Bob couldn't open that recording: ${e.message}`); }
   }
   requestAnimationFrame(tick);
 })();

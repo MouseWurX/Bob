@@ -100,7 +100,8 @@ export function partsOf(g, facts) {
     const m = /^blk\.(\d+)\.(.+)$/.exec(t.name);
     if (m && Number(m[1]) < L) {
       const router = /ffn_gate_inp/.test(m[2]); // the router's rows go with the experts in a cut, but it isn't one
-      if (!router && isExpertTensor(t.name)) { layers[Number(m[1])].experts += n; continue; }
+      // a brain without experts: its feed-forward neurons are what the scan lights, so they take the experts' place
+      if (!router && (facts.experts ? isExpertTensor(t.name) : /^ffn_(up|gate|down)\.weight$/.test(m[2]))) { layers[Number(m[1])].experts += n; continue; }
       layers[Number(m[1])].other += n;
       if (router) kinds.router += n; else if (/norm/.test(m[2])) kinds.norms += n; else if (/attn|ssm|conv/.test(m[2])) kinds.attention += n; else kinds.rest += n;
     } else { outside += n; if (/token_embd|^output\.weight$/.test(t.name)) kinds.tables += n; else kinds.rest += n; }
@@ -121,13 +122,13 @@ export function pickSkills({ skills = null, per = PER_DEFAULT, own = null } = {}
 
 // What the Lab page needs: the skills on offer, and for a brain its recordings and whether it can record here.
 export function watchView(lab, brainId = '') {
-  const moe = lab.brains().map((b) => { let f = null; try { f = inspect(b); } catch {} return f?.experts ? { id: b.id, name: b.name, experts: f.experts, layers: f.layers } : null; }).filter(Boolean);
+  const moe = lab.brains().map((b) => { let f = null; try { f = inspect(b); } catch {} return f?.layers ? { id: b.id, name: b.name, experts: f.experts || 0, layers: f.layers } : null; }).filter(Boolean);
   const base = { brains: moe, skills: WATCH_SKILLS.map((s) => ({ id: s.id, label: s.label, count: s.questions.length, questions: s.questions })), perChoices: PER_CHOICES, per: PER_DEFAULT, ownMax: OWN_MAX, words: WATCH_WORDS, wordsThink: WATCH_WORDS_THINK };
   const brain = lab.brains().find((b) => b.id === String(brainId || ''));
   if (!brain) return { ...base, brain: '', recordings: [], live: null };
   let facts = null; try { facts = inspect(brain); } catch {}
   const engineFound = lab.tools().brainEngine.found || Boolean(lab.stepFns.peekServe);
-  const live = !facts?.experts ? { ok: false, why: `${brain.name} isn't a mixture-of-experts brain, so there are no experts to watch.` }
+  const live = !facts?.layers ? { ok: false, why: `Bob can't read how ${brain.name} is built, so there's nothing to scan.` }
     : !engineFound ? { ok: false, why: NO_ENGINE } : lab.peekTraceOk === false ? { ok: false, why: NO_TRACE } : { ok: true, why: '' };
   return { ...base, brain: brain.id, experts: facts?.experts || 0, layers: facts?.layers || 0, live, recordings: listRecordings(lab.cfg, brain) };
 }
@@ -178,7 +179,9 @@ export async function startWatch(lab, c = {}, { unload = false } = {}) {
   const brain = lab.brains().find((b) => b.id === String(c.brain || ''));
   if (!brain) throw new Error('Pick a brain to record.');
   const facts = inspect(brain);
-  if (!facts?.experts) throw new Error(`${brain.name} isn't a mixture-of-experts brain, so there are no experts to watch.`);
+  if (!facts?.layers) throw new Error(`Bob can't read how ${brain.name} is built, so there's nothing to scan.`);
+  const plain = !facts.experts; // no experts: the scan lights groups of neurons instead
+  let shape = plain ? null : { kind: 'experts', experts: facts.experts, layers: facts.layers, used: facts.used };
   const tools = lab.tools();
   if (!tools.brainEngine.found && !lab.stepFns.peekServe) throw new Error(NO_ENGINE);
   if (lab.peekTraceOk === false) throw new Error(NO_TRACE);
@@ -206,7 +209,11 @@ export async function startWatch(lab, c = {}, { unload = false } = {}) {
           try { got = await asker(srv.url, q, { signal, maxWords: think ? WATCH_WORDS_THINK : WATCH_WORDS, think }); }
           catch (e) { if (e.message === NO_TRACE) lab.peekTraceOk = false; throw e; }
           lab.peekTraceOk = true;
-          clips.push(clipOf(s.id, q, got, facts));
+          if (plain && !shape) {
+            if (got.shape?.kind !== 'neurons' || !got.shape.experts) throw new Error(NO_TRACE);
+            shape = { kind: 'neurons', experts: got.shape.experts, layers: facts.layers, used: got.shape.used, neurons: got.shape.neurons };
+          }
+          clips.push(clipOf(s.id, q, got, shape));
           progress((100 * ++done) / (total + 1), `${s.label}: question ${done} of ${total}`);
         }
         set(`s-${s.id}`, 'done');
@@ -216,7 +223,7 @@ export async function startWatch(lab, c = {}, { unload = false } = {}) {
     const at = lab.now(), when = new Date(at).toISOString().slice(0, 10);
     const id = `rec-${at.toString(36)}`;
     let parts = null; try { parts = partsOf(readGguf(brain.gguf), facts); } catch {}
-    const rec = cleanRecording({ format: FORMAT, version: VERSION, id, name: `${brain.name}, ${skills.length} skill${skills.length === 1 ? '' : 's'}`, when, engine: 'Brain Engine', brain: { name: brain.name, experts: facts.experts, layers: facts.layers, used: facts.used }, skills: skills.map(({ id: sid, label }) => ({ id: sid, label })), clips });
+    const rec = cleanRecording({ format: FORMAT, version: VERSION, id, name: `${brain.name}, ${skills.length} skill${skills.length === 1 ? '' : 's'}`, when, engine: 'Brain Engine', brain: { name: brain.name, experts: shape.experts, layers: shape.layers, used: shape.used, kind: shape.kind, neurons: shape.neurons || 0 }, skills: skills.map(({ id: sid, label }) => ({ id: sid, label })), clips });
     const saw = inWords(rec, specialise(rec)).slice(0, 2).join(' ');
     writeJson(recFile(lab.cfg, brain, id), { ...rec, at, parts, saw });
     for (const old of listRecordings(lab.cfg, brain).slice(KEEP_RECORDINGS)) { try { fs.rmSync(recFile(lab.cfg, brain, old.id), { force: true }); } catch {} }

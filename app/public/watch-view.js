@@ -4,7 +4,7 @@
 // not experts are grey voxels in their true share of the weights. As a recording plays, the experts picked for the
 // word being read glow and lift, with a short trail, and thin lines join them floor to floor.
 // The page (public/watch.js) owns the controls and the words; this file only lays out and draws.
-import { lookOf, sideOf } from './lab-watch-math.js';
+import { lookOf, sideOf, say } from './lab-watch-math.js';
 
 export const GREY = '#8a8f98';
 const TRAIL = 6;
@@ -53,12 +53,14 @@ export function createView(canvas, { still = false } = {}) {
   let yaw = -0.62, tilt = 0.5, gap = 0.9, zoom = 1, fast = false;
   let hidden = new Set(); // skill indexes, plus 'never' and 'grey'
   let staticCanvas = null, dirty = true, geom = null;
-  let caption = null, paths = true, picked = null;
+  let caption = null, paths = true, picked = null, glass = 0.5; // glass: how see-through the voxels are, 0 (solid) to 0.85
   const css = () => { const s = getComputedStyle(document.body); const g = (n, d) => s.getPropertyValue(n).trim() || d; return { bg: g('--bg', '#1d1510'), text: g('--text', '#f3e7d3'), muted: g('--muted', '#c7b296'), line: g('--line', '#5a4030'), panel: g('--panel', '#2b1d14') }; };
 
   function setData(r, s, parts) { rec = r; sp = s; lay = layoutOf(r, parts); dirty = true; picked = null; }
-  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'picked') picked = v; } dirty = true; };
-  const get = () => ({ yaw, tilt, gap, zoom });
+  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'picked') picked = v; else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
+  const get = () => ({ yaw, tilt, gap, zoom, glass });
+  // the gap between floors that makes the whole block as tall as it is wide: a cube
+  const cubeGap = () => (lay ? Math.max(0.2, Math.min(5, Math.max(lay.W, lay.D) / Math.max(1, lay.L + lay.baseFloors))) : 0.9);
 
   function resize() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -120,8 +122,11 @@ export function createView(canvas, { still = false } = {}) {
     const full = !fast && g.s > 3;
     const voxel = (x, y, color, alpha, outline) => {
       if (outline) { c.globalAlpha = 0.5; c.strokeStyle = k.line; c.lineWidth = 1; face(c, g, x, y); c.stroke(); c.globalAlpha = 1; return; }
-      if (full) { c.globalAlpha = alpha; c.fillStyle = '#000'; sides(c, g, x, y); c.fill(); c.globalAlpha = alpha * 0.55; c.fillStyle = color; c.fill(); }
-      c.globalAlpha = alpha; c.fillStyle = color; face(c, g, x, y); c.fill();
+      // coloured glass: every voxel lets the ones behind it show through, with darker sides and a bright rim
+      const a = alpha * (1 - glass);
+      if (full) { c.globalAlpha = a * (glass ? 0.5 : 1); c.fillStyle = '#000'; sides(c, g, x, y); c.fill(); c.globalAlpha = a * 0.55; c.fillStyle = color; c.fill(); }
+      c.globalAlpha = a; c.fillStyle = color; face(c, g, x, y); c.fill();
+      if (glass && full && g.s > 7) { c.globalAlpha = Math.min(1, alpha * 0.5); c.strokeStyle = color; c.lineWidth = 1; c.stroke(); }
     };
     // the plinth: what sits outside the layers
     if (!hidden.has('grey')) for (let f = 0; f < baseFloors; f++) {
@@ -208,7 +213,7 @@ export function createView(canvas, { still = false } = {}) {
       ctx.globalAlpha = 1; x += w;
     };
     rec.skills.forEach((s, i) => item(lookOf(i)[0], `${lookOf(i)[1]} ${s.label}`, hidden.has(i)));
-    item(GREY, 'Not experts', hidden.has('grey'));
+    item(GREY, say(rec, 'Not experts'), hidden.has('grey'));
     item(null, 'Never picked', hidden.has('never'));
     if (!caption) return;
     const lines = [caption.title, caption.text].filter(Boolean);
@@ -240,5 +245,5 @@ export function createView(canvas, { still = false } = {}) {
     return null;
   }
 
-  return { setData, set, get, draw, pick, setCaption, resize, layout: () => lay, still: () => still };
+  return { setData, set, get, cubeGap, draw, pick, setCaption, resize, layout: () => lay, still: () => still };
 }
