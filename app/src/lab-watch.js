@@ -356,7 +356,7 @@ async function maskExperts(url, keep) {
 
 // Dials (public/lab-watch-math.js): set in Brain Engine for the length of one scan. An older Brain Engine has no
 // dials and says 404.
-export const NO_DIALS = 'This Brain Engine can\'t turn parts up or down yet. Update it under Get models, Engines (Brain Engine), then try again.';
+export const NO_DIALS = 'This Brain Engine can\'t turn parts up or down yet. Update it under Settings, Engines (Brain Engine), then try again.';
 async function setDials(url, dials) {
   const res = await fetch(url + '/dials', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dials }), signal: AbortSignal.timeout(30000) });
   if (res.status === 404) throw new Error(NO_DIALS);
@@ -404,7 +404,7 @@ export function deleteRecording(lab, { brain: brainId, id } = {}) {
 }
 
 // One traced answer as a clip of the recording: every word read, the question first, then the answer read back.
-export const NO_HEADS = 'This Brain Engine build can\'t report attention heads yet. Update it in Get models &gt; Engines: Brain Engine (test build), then scan again.';
+export const NO_HEADS = 'This Brain Engine build can\'t report attention heads yet. Update it in Settings &gt; Engines: Brain Engine (test build), then scan again.';
 
 export function clipOf(skill, question, got, { experts, layers }) {
   const read = got.read;

@@ -66,7 +66,7 @@ export function planTurbo(lab, c = {}) {
   if (!guess.length) problems.push('Pick at least one guess length.');
   const prompt = TURBO_PROMPTS[c.prompt] ? c.prompt : 'code';
   const tools = lab.tools();
-  if (!tools.server.found) problems.push(`${path.basename(tools.server.path)} isn't in Bob's engine folder. Get models > Engines: the built-in engine has it.`);
+  if (!tools.server.found) problems.push(`${path.basename(tools.server.path)} isn't in Bob's engine folder. Settings > Engines: the built-in engine has it.`);
   if (useMtp) notes.push(`${main.name} guesses with its own multi-token head, so nothing else loads.`);
   notes.push('Turbo helps most on code and plain writing, least on creative writing at a high temperature, and not at all if the draft doesn\'t fit next to the main brain.');
   return { main, draft, useMtp, guess, prompt, problems, notes };

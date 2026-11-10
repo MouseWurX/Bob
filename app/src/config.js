@@ -133,7 +133,7 @@ export function loadConfig() {
 }
 
 // The configured program if it exists; otherwise the first match in the engine folder, its bin\ or Release\ subfolder.
-// 1.5.169: Brain Engine (Bob's fork of llama.cpp, Get models > Engines) is the default engine for brains. When its
+// 1.5.169: Brain Engine (Bob's fork of llama.cpp, Settings > Engines) is the default engine for brains. When its
 // folder holds llama-server, Bob runs his brains on it, unless Settings, Engines says plain llama.cpp
 // (llamacpp.brainEngine false). A llama-server set by hand somewhere else always wins; one set to Bob's own llama.cpp
 // folder counts as the default. No Brain Engine (a Mac, an ARM board, not downloaded): llama.cpp as before.

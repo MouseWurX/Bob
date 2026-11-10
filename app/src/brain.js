@@ -72,6 +72,16 @@ export const MAX_CALLS_PER_REPLY = 6;
 export const REPEATS_THEN_ANSWER = 3;
 // 1.5.196: the logbook line for a reply another of your Bobs thought. Who, and how long the first word took; no words.
 export const borrowedLine = (name, ms) => `📡 ${name} thought this reply (${(Math.max(0, Number(ms) || 0) / 1000).toFixed(1)} s to first word)`;
+// #57 (Bob's plan, second try): every tool is guarded against an exact repeat in one turn; the third identical call stops the turn.
+export const REPEAT_STOP_LINE = "(I asked for the same thing three times, so I've stopped. Could you point me at what I'm missing?)";
+export const repeatNote = (text) => `(Not done again: that exact call already ran this turn. Its result: ${String(text ?? '').slice(0, 300)}) Use it, or try something different.`;
+// seen: Map of call key -> { count, text }, kept on the turn's ctx. 'new' the first time, 'repeat' the second, 'stop' from the third.
+export function repeatCheck(seen, key) {
+  const e = seen.get(key);
+  if (!e) { seen.set(key, { count: 1, text: '' }); return 'new'; }
+  e.count++;
+  return e.count >= 3 ? 'stop' : 'repeat';
+}
 export const ANSWER_NOW_NUDGE = 'You have called the same tools with the same input several times; the results will not change. Answer now from the results above, with no more tool calls. Say plainly what you found and what you could not find.';
 
 // Honesty about Hands (1.5.4). A small brain saw an old Hands error in the chat and, instead of trying again,
@@ -2337,13 +2347,21 @@ export class Brain {
         const name = call.function?.name;
         // 1.5.41: once Bob has picked a new session, the rest of this round waits for it (the job runs again there).
         if (ctx.switchTo) { msgs.push({ role: 'tool', tool_name: name, content: '(Not done yet: you are switching session first.)' }); continue; }
+        if (ctx.repeatStop) { msgs.push({ role: 'tool', tool_name: name, content: '(Not run: the turn stopped after the same call came three times.)' }); continue; }
         // A tool from a group that isn't added yet: small brains sometimes call it straight away. Add its group and run it.
         const g = name === 'use_tools' ? null : groupOf(this, name);
         if (g) { ctx.loaded.add(g); used.add(g); }
         const key = callKey(name, call.function?.arguments);
         const doing = (HAND_TOOLS.has(name) || DOING_TOOLS.has(name)) && !isLook(name);
+        // #57: looks (app_look, list_schedules) can change between calls, so they are never counted as repeats.
+        const seen = (ctx.callsSeen ||= new Map());
+        const again = isLook(name) ? 'new' : repeatCheck(seen, key);
         let res;
-        if (doing && ctx.lastDoing?.key === key) {
+        if (again === 'stop') {
+          ctx.repeatStop = true;
+          res = { text: '(Not run: this exact call came three times this turn, so the turn has stopped.)' };
+          this.log('tool', `${name} asked for three times with the same input; stopped the turn`);
+        } else if (doing && ctx.lastDoing?.key === key) {
           // The same action twice in a row (small brains do this): don't do it again.
           res = { text: `(Not done again: that exact call just ran. Its result: ${String(ctx.lastDoing.text).slice(0, 300)}) Report that result; don't repeat the call.` };
           this.log('tool', `skipped a repeat of ${name}`);
@@ -2353,9 +2371,17 @@ export class Brain {
           res = { text: '(Not read again: you already read that exact page and part this turn, and it gives the same text. To see more, call fetch_page with the same url and the next part number, or use find with a word you are looking for. If you have enough, answer now.)' };
           this.log('tool', 'skipped a repeat page read');
           ctx.repeatSkips = (ctx.repeatSkips || 0) + 1;
+        } else if (again === 'repeat') {
+          // #57: any other tool with the same input again this turn gives the same answer: hand back the first one.
+          res = { text: repeatNote(seen.get(key)?.text) };
+          this.log('tool', `skipped a repeat of ${name}`);
+          ctx.repeatSkips = (ctx.repeatSkips || 0) + 1;
         } else {
           res = await this.runTool(name, call.function?.arguments, ctx);
           if (name === 'fetch_page') (ctx.pagesRead ||= new Set()).add(key);
+          // An action may change what a look-up finds (a file written, then read again), so after one, the count starts over.
+          if (doing || HAND_TOOLS.has(name)) seen.clear();
+          if (!isLook(name)) seen.set(key, { count: 1, text: res.text });
           if (doing) {
             const failed = /^Error:/.test(String(res.text));
             const who = this.cfg.userName || 'the user';
@@ -2383,6 +2409,13 @@ export class Brain {
         if (HAND_TOOLS.has(name) && !/^Error:|said no/.test(String(res.text))) ctx.handsDid = true;
         if (res.endsTurn) ended = true;
         if (ctx.switchTo && !ended) { ended = true; emit({ type: 'announce', text: switchLine(ctx.switchTo.id, ctx.switchTo.why) }); } // 1.5.41: the job runs again in the new session
+      }
+      if (ctx.repeatStop) {
+        // #57: the third identical call: stop plainly instead of using up the steps.
+        emit({ type: 'token', text: `\n\n${REPEAT_STOP_LINE}` });
+        msgs.push({ role: 'assistant', content: REPEAT_STOP_LINE });
+        this.keepGroups(sessionId, used);
+        return;
       }
       if ((ctx.repeatSkips || 0) >= REPEATS_THEN_ANSWER && !ctx.noTools) {
         ctx.noTools = true;

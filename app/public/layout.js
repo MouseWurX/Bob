@@ -179,7 +179,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   // so with Now running hidden it costs nothing, just like a closed window.
   mindView = createMindView({ log: $('mindDockLog'), now: $('mindDockNow'), follow: $('mindDockFollow'), clear: $('mindDockClear'), order: $('mindDockOrder') });
   const dockBtn = $('mindDock');
-  docked = store.get('bob-mind-dock', '0') === '1';
+  docked = store.get('bob-mind-dock', '1') === '1'; // open to begin with, so the cube is there (1.5.196)
   function mindListen() {
     if (!mindView) return;
     const on = docked && !body.classList.contains('right-hidden') && !document.hidden;

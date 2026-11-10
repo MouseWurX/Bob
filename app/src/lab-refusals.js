@@ -121,7 +121,7 @@ export function planRefusals(x, { facts = null, tools = {} } = {}) {
   const r = cleanRefusals(x), problems = [], notes = [];
   if (facts && !facts.fullSize) problems.push(`This brain is a running file (${facts.fileType}). Taking out the habit starts from the full-size copy (F16 or BF16).`);
   if (facts && facts.sizeGB > 9) problems.push(`This brain is ${facts.sizeGB} GB full size. Here it's for brains up to 9 GB; bigger ones go the same way on a rented card.`);
-  if (tools.cvector && !tools.cvector.found) problems.push(`${path.basename(tools.cvector.path)} isn't here. It isn't in the built-in engine's download; it comes with Brain Engine, the Lab's engine (Get models > Engines: Brain Engine (test build)), from the build after this one. Until then the Lab can't find the direction.`);
+  if (tools.cvector && !tools.cvector.found) problems.push(`${path.basename(tools.cvector.path)} isn't here. It isn't in the built-in engine's download; it comes with Brain Engine, the Lab's engine (Settings > Engines: Brain Engine (test build)), from the build after this one. Until then the Lab can't find the direction.`);
   if (tools.server && !tools.server.found) problems.push('The built-in engine (llama-server) isn\'t here, so the result can\'t be tried or tested.');
   if (!r.check) notes.push('The kept-refusals check is off: the card won\'t say which of the five the brain still declines.');
   if (!r.teachBack) notes.push('Teaching back the kept refusals is off. This brain may answer anything, including the kinds Bob always declines. Keep it to private use on this replicant matrix.');

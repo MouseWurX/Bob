@@ -4,6 +4,24 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.197
+
+Bob stops asking for the same thing over and over.
+
+### Fixed
+
+- **No more asking the same thing again and again in one reply.** Before, if Bob called a tool with exactly the same request twice in one reply, only some tools caught it, and a stuck brain could use up all eight steps repeating itself. Now every tool is covered. A repeat gets back the first answer instead of running again. On the third identical call, Bob stops and says: "(I asked for the same thing three times, so I've stopped. Could you point me at what I'm missing?)" Looking at an app and listing schedules are never counted. After Bob does something (a doing tool or a Hand), the count starts over, so read, write, read again still reads fresh. The cap of six calls per reply and the round with no tools stay as they were. Tests in `test/run-repeat-guard-test.js`.
+
+Co-authored-by: Bob. He planned this one himself on his second try at issue #57, and Claude finished it.
+
+### FNRI cube
+
+- **A brain answering on Bob's second server** (beside the main one) now lights the cube too. A reply that comes back without the experts it used leaves a line in the logbook saying so.
+- **Where Brain Engine lives:** messages in the Lab that said to get or update Brain Engine under "Get models, Engines" now say Settings, Engines, where it really is. Tests in `test/run-lab-watch-test.js`.
+- **Bob's thinking is the top section of Now running, and it starts open**, so the cube is the first thing there. If you already moved or folded it, your own order stays. Tests in `test/run-mind-test.js`.
+- **A trace piece that can't be read now leaves a line in the logbook**, to help find why the cube stays dark on some machines.
+- **Coming with the next Brain Engine build: the cube for brains without experts (like Qwen3 4B).** Brain Engine dropped the whole trace for those brains once a prompt was longer than one step of reading (512 words' worth by default), which every real chat is. The fix is in Brain Engine's patch 0002. It reaches you when the next Brain Engine build comes out with a Bob release. Mixture-of-experts brains were never affected.
+
 ## 1.5.196
 
 Brain Engine is now the only engine for Bob's brains. The FNRI cube is there before the first reply. Plus four Bob-Net fixes from the Tailscale test between two of your Bobs.

@@ -47,8 +47,8 @@ export const allTools = (cfg, o) => Object.fromEntries(Object.keys(TOOLS).map((i
 export function missingWords(id) {
   const t = TOOLS[id];
   return t.brainEngineOnly
-    ? `${t.what} isn't here. It comes with Brain Engine (Get models > Engines), from its next build. The official llama.cpp download doesn't have it.`
-    : `${t.what} isn't here. It comes with the built-in engine and with Brain Engine (Get models > Engines). Get either one again to have it.`;
+    ? `${t.what} isn't here. It comes with Brain Engine (Settings > Engines), from its next build. The official llama.cpp download doesn't have it.`
+    : `${t.what} isn't here. It comes with the built-in engine and with Brain Engine (Settings > Engines). Get either one again to have it.`;
 }
 
 // Runs a tool to the end. Gives { code, out, err }. Lines go to onLine as they come (stdout and stderr both: llama.cpp
