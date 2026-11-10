@@ -154,8 +154,7 @@ if (beOk) {
   check(engineWhole(cpu, be, oldDir) === '', 'a whole build without the graphics-card library (a CPU build) still goes in');
   check(engineWhole(path.join(tmp, 'nothing'), be, oldDir) === "llama-server.exe isn't in it", 'no program, no swap');
   check(engineWhole(src, { id: 'sdcpp', exe: 'sd-cli.exe', os: 'win' }, oldDir) === '', 'other engines are not judged by llama.cpp\'s libraries');
-  const eng = fs.readFileSync(new URL('../src/engines.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
-  check(/const why = engineWhole\(stage, e, folder\); if \(why\) \{ fs\.rmSync\(stage, \{ recursive: true, force: true \}\); throw new Error\(NOT_WHOLE\(e\.name, why\)\); \} \}\n    try \{ fs\.writeFileSync/.test(eng) && /const why = engineWhole\(stage, e, fs\.existsSync\(folder\) \? folder : null\); if \(why\) throw new Error\(NOT_WHOLE\(e\.name, why\)\);/.test(eng), 'both update paths check before swapIn, and the old engine stays');
+  // 1.5.186: the update paths now hold an incomplete build aside with missingParts (test/run-engine-libs-test.js).
 }
 
 // ---- 1.5.185: the CUDA runtime zip is never picked as the engine (both orders of a real release's asset list) ----

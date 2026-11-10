@@ -60,7 +60,7 @@ if (e.unavailable) {
   };
   const baseName = OS === 'win' ? `llama-${TESTED_LLAMA}-bin-win-cpu-x64.zip` : `llama-${TESTED_LLAMA}-bin-ubuntu-x64.tar.gz`;
   const ownName = OS === 'win' ? `brain-engine-${TESTED_LLAMA}-win-x64.zip` : `brain-engine-${TESTED_LLAMA}-linux-x64.tar.gz`;
-  const base = mk(baseName, { [exe]: 'official server', [lib]: 'official llama', [OS === 'win' ? 'ggml-cuda.dll' : 'libggml-cuda.so']: 'card backend' });
+  const base = mk(baseName, { [exe]: 'official server', [lib]: 'official llama', [OS === 'win' ? 'ggml-cuda.dll' : 'libggml-cuda.so']: 'card backend', [OS === 'win' ? 'ggml-base.dll' : 'libggml-base.so']: 'ggml', [OS === 'win' ? 'cudart64_12.dll' : 'libcudart.so.12']: 'cuda runtime' }); // 1.5.185: a whole build (its ggml files and, with a card backend, the CUDA runtime)
   const own = mk(ownName, { [exe]: 'brain engine server', [lib]: 'brain engine llama', 'LICENSE-llama.cpp': 'MIT' });
   let corrupt = false;
   const realFetch = globalThis.fetch;
