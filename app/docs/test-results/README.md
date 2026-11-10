@@ -14,6 +14,7 @@ Your numbers will differ on other hardware. Small samples are noted in each file
 
 | Date | Result |
 |---|---|
+| 2026-11-10 | [Bob-Net retest: both directions](2026-11-10-bob-net-retest.md) |
 | 2026-11-04 | [Bob-Net: first live run between two replicant matrices](2026-11-04-bob-net-first-live-run.md) |
 | 2026-11-04 | [Engine check: every engine and brain](2026-11-04-engine-check.md) |
 | 2026-11-04 | [Why the first reply after a load is slow](2026-11-04-first-reply-warm-up.md) |
