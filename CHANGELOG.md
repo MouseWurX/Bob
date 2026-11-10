@@ -4,6 +4,13 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.184
+
+Make a brain's chooser has a sixth card.
+
+- **Take out the refusal habit** is now on **What do you want to do?** too, beside Make it smaller, Cut experts, Take out sight or hearing, Just test a brain and Everything, step by step. Pressing it opens the Forge tab with that way unfolded, the same as pressing Use this way there, since it runs as a Forge way (free, on this replicant matrix) rather than through the five steps. Its safeguards are unchanged: the kept refusals are checked and taught back by default.
+- Help: The Computer Science Lab, and the user guide's Make a brain line.
+
 ## 1.5.182
 
 The Lab does one thing at a time, its Professional switch says what it changes, and the Playground takes any brain you point it at.

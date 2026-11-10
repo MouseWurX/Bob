@@ -27,6 +27,8 @@ const JOBS = [
   { id: 'senses', title: 'Take out sight or hearing', what: 'Leave the picture or sound reader behind; everything else stays. Then the Lab test.', steps: ['brain', 'smaller', 'test'], parts: ['senses'] },
   { id: 'test', title: 'Just test a brain', what: 'The Lab test on a brain as it is, with a second brain to compare if you like.', steps: ['brain', 'test'], parts: [] },
   { id: 'full', title: 'Everything, step by step', what: 'All five steps: lessons, every way to make it smaller, where it runs, the test.', steps: ['brain', 'lessons', 'smaller', 'where', 'test'], parts: ['senses', 'cut', 'files', 'later'] },
+  // The sixth card is a Forge way, not a Make a brain job: it opens the Forge tab with that way unfolded, same as pressing Use this way there.
+  { id: 'refusals', title: 'Take out the refusal habit', what: 'Find the direction a brain says no by reflex and take it out of the weights. The kept refusals are checked and taught back. Runs free on this replicant matrix, on the Forge tab.', steps: [], parts: [], forge: 'refusals' },
 ];
 // What the switch changes on each tab, said right beside it, so Professional never looks like a button that does nothing.
 const MODE_NOTES = {
@@ -565,7 +567,11 @@ export function createLab({ api, note }) {
     { const g = await gd.click(b); if (g === 'draw') { const f = b.dataset.guard; draw(); $(f === 'send' ? 'lab-guard-say' : f === 'open' ? 'lab-guard-system' : f === 'save' ? 'lab-guard-want' : 'lab-guard-h')?.focus(); return; } if (g) return; }
     if (await rc.click(b)) return;
     if (b.dataset.step) { step = b.dataset.step; return draw(); }
-    if (b.dataset.job) { setJob(b.dataset.job); draw(); $('lab-step-brain')?.focus(); return; }
+    if (b.dataset.job) {
+      const j = JOBS.find((x) => x.id === b.dataset.job);
+      if (j?.forge) { tab = 'forge'; await fg.openHome(j.forge); draw(); $('home-refusals-h')?.scrollIntoView?.({ block: 'start' }); $('lab-tab-forge')?.focus(); return; }
+      setJob(b.dataset.job); draw(); $('lab-step-brain')?.focus(); return;
+    }
     if ('next' in b.dataset) { const st = steps(); step = st[Math.min(st.length - 1, st.findIndex(([id]) => id === step) + 1)][0]; return draw(); }
     if ('back' in b.dataset) { const st = steps(); step = st[Math.max(0, st.findIndex(([id]) => id === step) - 1)][0]; return draw(); }
     if ('recipe' in b.dataset) { showRecipe = !showRecipe; return draw(); }
