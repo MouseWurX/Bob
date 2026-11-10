@@ -398,6 +398,8 @@ async function loadHistory(n = 20) {
       if (m.role !== 'user' && !String(m.content || '').trim() && !m.media?.length) { if (m.correction) note(m.correction, 'error'); continue; }
       const el = decorate(add(m.role === 'user' ? 'msg you' : 'msg bob', m.role === 'user' ? esc(m.content) + picsHtml(m.pics) : render(m.content) + mediaHtml(m.media)), m.content, m.media);
       if (m.id) el.dataset.mid = m.id;
+      if (m.role !== 'user') bubbleMedia.set(el, m.media || []);
+      if (m.edited) markEdited(el, m.was);
       if (m.correction) note(m.correction, 'error');
     }
   } catch {}
@@ -655,7 +657,7 @@ function onEvent(ev) {
       else add('note borrow', `📡 ${esc(ev.name)} ${esc(ev.why || 'couldn\'t take it')}, so I'll do this one here.`);
       break;
     case 'tool':
-      if (!/^hat:/.test(ev.summary)) note(`· ${ev.summary}`);
+      if (!/^hat:/.test(ev.summary) && ev.name !== 'edit_my_message') note(`· ${ev.summary}`); // an edit shows as "edited" on the message itself
       endReply(ev);
       break;
     case 'house': { // 1.5.34: "Used your house style: 30 seconds · Change" (House style on Equip Bob)
@@ -728,6 +730,12 @@ function onEvent(ev) {
       life.react('oops');
       note(ev.text, 'error');
       break;
+    case 'said': { // Let Bob fix his own messages: the id of what he just said, so the bubble can be found if he changes it
+      const r = replies.get(ev.turnId || '-');
+      if (r && ev.id) { r.el.dataset.mid = `${r.el.dataset.mid ? `${r.el.dataset.mid} ` : ''}${ev.id}`; liveWords.set(r.el, r.text); bubbleMedia.set(r.el, r.media); }
+      return;
+    }
+    case 'edited': editedMsg(ev); return;
     case 'correction':
       // The app's own check, under Bob's reply: he said he did something on the PC and no action ran.
       endReply(ev);
@@ -899,6 +907,37 @@ function mediaHtml(media) {
 }
 // ---------- Copy buttons and file cards (right-click and Ctrl+C often don't get through remote desktop) ----------
 const rawText = new WeakMap();
+// Let Bob fix his own messages (Settings, How Bob works; src/edit-own.js): the words and things made of each bubble,
+// so a message he changes later is drawn again in place, with "edited" under it.
+const liveWords = new WeakMap(), bubbleMedia = new WeakMap();
+function markEdited(el, was) {
+  el.querySelector(':scope > .edited-note')?.remove();
+  const box = document.createElement('div');
+  box.className = 'edited-note';
+  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="Bob changed this message. Press to see what it said first.">edited</button><div class="edited-was muted" hidden><strong>First said:</strong> ${esc(was || '')}</div>`;
+  const b = box.querySelector('button'), w = box.querySelector('.edited-was');
+  b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
+  el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
+}
+function editedMsg(ev) {
+  const el = ev.id && log.querySelector(`[data-mid~="${CSS.escape(ev.id)}"]`);
+  if (!el) return; // in the older part of the chat, or another chat: the saved chat has the new words
+  const live = [...replies.values()].find((r) => r.el === el);
+  const old = live ? live.text : rawText.get(el) ?? liveWords.get(el) ?? '';
+  const one = !/\s/.test(el.dataset.mid.trim());
+  const text = ev.before && old.includes(ev.before) ? old.replace(ev.before, ev.text) : one ? ev.text : null;
+  if (text == null) return; // two of his messages share this bubble and the old words weren't found: a reload shows it right
+  const media = live ? live.media : bubbleMedia.get(el) || [];
+  if (live) { live.text = text; live.mediaKey = null; drawReply(live); }
+  else {
+    el.innerHTML = render(text) + (media.length ? `<div class="reply-media">${mediaHtml(media)}</div>` : '');
+    if (media.length) fillPeeks(el);
+    rawText.delete(el); liveWords.set(el, text);
+    decorate(el, text, media);
+  }
+  markEdited(el, ev.was);
+  el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2500);
+}
 function decorate(el, text, media = []) {
   if (!el || el.querySelector(':scope > .msg-tools')) return el;
   rawText.set(el, text || '');

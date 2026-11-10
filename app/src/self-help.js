@@ -48,6 +48,7 @@ export function settingsNow(cfg) {
   return [
     `Let Bob search the web: ${onOff(webOn(cfg))}`,
     `Let Bob learn how-tos: ${onOff(cfg.howtos === true)}`,
+    `Let Bob fix his own messages: ${onOff(cfg.editOwn === true)}`,
     `Let Bob work on repositories: ${onOff(cfg.selfWork?.enabled === true)} (his own app first, then ${(cfg.selfWork?.repos || []).length} of yours); Let my other Bobs help: ${onOff(cfg.selfWork?.helpers === true)}`,
     `Session: ${currentSession(cfg).label}; Let Bob pick the session: ${onOff(cfg.autoSession !== false)}; 🎮 Gaming button (chat page): ${onOff(cfg.gamingLock === true)}`,
     `Free memory when Bob is idle: ${onOff(brainMode(cfg) !== 'always')}`,
