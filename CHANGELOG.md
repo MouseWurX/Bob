@@ -4,6 +4,12 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.185
+
+Bob-Net gets a simple choice: more Bobs, or bigger Bobs.
+
+- **New:** Settings > Bob-Net > What they share starts with **What my Bobs do together**. **More Bobs** (the usual, and the default) keeps each Bob on his own brain and card. **Bigger Bobs** pools your Bobs' graphics cards over Tailscale, so one Bob can run a brain too big for his own card: it turns on **Lend my graphics card** and sets **Spread big brains over my other Bobs' cards** to **Any brain bigger than my card**, and those two show under it to fine-tune. More Bobs turns both off again. Pick Bigger Bobs on every Bob that should take part. Help row, FAQ "Can my Bobs run one big brain together?" and a glossary entry. Tests in `test/run-llama-tools-test.js`.
+
 ## 1.5.183
 
 A small Lab fix.

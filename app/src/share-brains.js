@@ -54,6 +54,8 @@ export function shareView(cfg) {
     passAlong: s.passAlong === true, // 1.5.123 Pass my Bob-Net along (src/bob-net-party.js)
     lendCard: s.lendCard === true, // Lend my graphics card (src/share-card.js), off unless switched on
     spread: ['toobig', 'big'].includes(s.spread) ? s.spread : 'off', // Spread big brains over my other Bobs' cards
+    // Bob-Net mode: More Bobs (the default: each Bob runs his own brain) or Bigger Bobs (they pool their cards).
+    mode: s.lendCard === true || ['toobig', 'big'].includes(s.spread) ? 'bigger' : 'more',
     doorOpen: doorOpen(cfg),
     borrow: { on: b.on === true, jobs: b.jobs === true, when: WHEN.includes(b.when) ? b.when : 'gaming', bobs: (b.bobs || []).map((x) => ({ name: x.name, address: x.address, passcodeSet: String(x.passcode || '').length >= 6 })) }
   };
@@ -69,6 +71,12 @@ export function cleanSharePatch(cfg, b) {
   if ('lend' in b) next.lend = b.lend === true;
   if ('takeJobs' in b) next.takeJobs = b.takeJobs === true; // 1.5.72, off unless switched on
   if ('passAlong' in b) next.passAlong = b.passAlong === true; // 1.5.123, off unless switched on
+  // Bob-Net mode: Bigger Bobs lends this card and spreads brains bigger than it; More Bobs turns both off.
+  if ('mode' in b) {
+    if (!['more', 'bigger'].includes(b.mode)) return { error: 'Pick More Bobs or Bigger Bobs.' };
+    if (b.mode === 'more') Object.assign(next, { lendCard: false, spread: 'off' });
+    else { next.lendCard = true; if (next.spread === 'off') next.spread = 'big'; if (!next.borrow.bobs.length) return { error: 'Add one of your other Bobs first.' }; }
+  }
   if ('lendCard' in b) next.lendCard = b.lendCard === true; // off unless switched on
   if ('spread' in b) { if (!['off', 'toobig', 'big'].includes(b.spread)) return { error: 'Pick when to spread a brain.' }; next.spread = b.spread; }
   if ('sendJobs' in b) next.borrow.jobs = b.sendJobs === true; // 1.5.72, off unless switched on

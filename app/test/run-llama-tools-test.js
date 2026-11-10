@@ -123,6 +123,17 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(p.share.lendCard === true, 'card: Lend my graphics card switches on');
   ok(cleanSharePatch(cfg, { spread: 'sideways' }).error, 'card: an unknown spread choice is refused');
   ok(/Add one of your other Bobs/.test(cleanSharePatch(cfg, { spread: 'big' }).error || ''), 'card: spreading needs a Bob on the list');
+  ok(shareView(cfg).mode === 'more', 'mode: More Bobs to start with');
+  ok(cleanSharePatch(cfg, { mode: 'huge' }).error, 'mode: an unknown mode is refused');
+  ok(/Add one of your other Bobs/.test(cleanSharePatch(cfg, { mode: 'bigger' }).error || ''), 'mode: Bigger Bobs needs a Bob on the list');
+  {
+    const withBob = { ...cfg, share: { borrow: { bobs: [{ name: 'Go', address: 'go.example.ts.net:7777', passcode: 'secret-2' }] } } };
+    const big = cleanSharePatch(withBob, { mode: 'bigger' }).share;
+    ok(big.lendCard === true && big.spread === 'big' && shareView({ ...withBob, share: big }).mode === 'bigger', 'mode: Bigger Bobs lends the card and spreads brains bigger than it');
+    ok(cleanSharePatch({ ...withBob, share: { ...big, spread: 'toobig' } }, { mode: 'bigger' }).share.spread === 'toobig', 'mode: Bigger Bobs keeps a spread choice already made');
+    const more = cleanSharePatch({ ...withBob, share: big }, { mode: 'more' }).share;
+    ok(more.lendCard === false && more.spread === 'off' && more.borrow.bobs.length === 1, 'mode: More Bobs turns both off and keeps the list');
+  }
   cfg.share = p.share;
   ok(lendCardOn(cfg), 'card: on with the door open');
   ok(!lendCardOn({ ...cfg, remote: { enabled: false } }), 'card: never with the door shut');
