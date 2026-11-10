@@ -121,7 +121,7 @@ A teacher that only writes lessons can be any GGUF model on Hugging Face (`plan.
 
 The Lab's FNRI scan (Playground) can also be made on a rented card, for a brain too big for the home card. Nothing in the app rents a card for this yet; these are the pieces.
 
-- `node model-lab/forge/aifeui-bundle.mjs --brain hf:<repo>:<file.gguf> --out <folder>` packs one folder: the questions (`aifeui-plan.json`), the card scripts (`pod/`), Bob's engine as patches (`engine-patches/`) and Bob's viewer (`viewer/`). It rents and uploads nothing.
+- `node model-lab/forge/aifeui-bundle.mjs --brain hf:<repo>:<file.gguf> --out <folder>` packs one folder: the questions (`aifeui-plan.json`), the card scripts (`pod/`), Brain Engine as patches (`engine-patches/`) and Bob's viewer (`viewer/`). It rents and uploads nothing.
 - On the card, with that folder as `/workspace/in`: `bash /workspace/in/pod/aifeui.sh`.
   1. **Checks first.** The tools, the card, the disk, the plan, both engine patches, every viewer file, and that the brain and the engine source can be reached. One failed check stops the run before anything is downloaded or built (`out/aifeui/preflight.json`).
   2. Builds Brain Engine: llama.cpp at the pinned tag with the patches applied. A patch that doesn't apply stops the run.

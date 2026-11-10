@@ -139,11 +139,14 @@ export function createView(canvas, { still = false } = {}) {
       c.globalAlpha = a; c.fillStyle = color; face(c, g, x, y); c.fill();
       if (glass && full && g.s > 7) { c.globalAlpha = Math.min(1, alpha * 0.5); c.strokeStyle = color; c.lineWidth = 1; c.stroke(); }
     };
-    // an all-rounder: its edges drawn as a soft white line drawing, so it isn't taken for a rarely used expert
+    // an all-rounder: its edges drawn as a dashed white line drawing, so it isn't taken for a rarely used expert,
+    // nor for the solid outline of an expert in use (dashes, not only brightness, tell them apart)
     const wire = (x, y) => {
       c.globalAlpha = WIRE_ALPHA; c.strokeStyle = wireColour(k.bg); c.lineWidth = Math.max(1, g.s * 0.045);
+      const dash = Math.max(2, g.s * 0.18); c.setLineDash([dash, dash * 0.8]);
       face(c, g, x, y); c.stroke();
       if (full && g.s > 5) { sides(c, g, x, y); c.stroke(); const b = g.corners[g.m]; c.beginPath(); c.moveTo(x + b[0], y + b[1]); c.lineTo(x + b[0], y + b[1] + g.down); c.stroke(); }
+      c.setLineDash([]);
     };
     // the plinth: what sits outside the layers
     if (!hidden.has('grey')) for (let f = 0; f < baseFloors; f++) {
@@ -250,7 +253,7 @@ export function createView(canvas, { still = false } = {}) {
       if (x + w > cw - pad) { x = pad; y += fs * 1.6; }
       ctx.globalAlpha = off ? 0.35 : 1;
       if (color) { ctx.fillStyle = color; ctx.fillRect(x, y - fs * 0.4, fs * 0.8, fs * 0.8); } else { ctx.strokeStyle = k.muted; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y - fs * 0.4 + 0.5, fs * 0.8, fs * 0.8); }
-      if (wired) { ctx.globalAlpha = off ? 0.35 : 0.9; ctx.strokeStyle = wireColour(k.bg); ctx.lineWidth = Math.max(1, dpr); ctx.strokeRect(x + 0.5, y - fs * 0.4 + 0.5, fs * 0.8, fs * 0.8); ctx.globalAlpha = off ? 0.35 : 1; }
+      if (wired) { ctx.globalAlpha = off ? 0.35 : 0.9; ctx.strokeStyle = wireColour(k.bg); ctx.lineWidth = Math.max(1, dpr); ctx.setLineDash([Math.max(2, fs * 0.16), Math.max(2, fs * 0.12)]); ctx.strokeRect(x + 0.5, y - fs * 0.4 + 0.5, fs * 0.8, fs * 0.8); ctx.setLineDash([]); ctx.globalAlpha = off ? 0.35 : 1; }
       ctx.fillStyle = k.text; ctx.fillText(label, x + fs * 1.1, y);
       ctx.globalAlpha = 1; x += w;
     };

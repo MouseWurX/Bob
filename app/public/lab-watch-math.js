@@ -116,11 +116,11 @@ export function timeline(rec, { skills = null } = {}) {
 export function inWords(rec, sp) {
   const S = rec.skills.length;
   const lines = [`${sp.used.toLocaleString()} of ${sp.total.toLocaleString()} experts were picked at least once; ${(sp.total - sp.used).toLocaleString()} never were for these questions.`];
-  lines.push(sp.blend >= 80 ? `The skills share most of their experts (${sp.blend}% alike). That's normal: experts split work by word pattern more than by topic, so the colours are faint.`
+  lines.push(sp.blend >= 80 ? (isNeurons(rec) ? `The skills share most of their experts (${sp.blend}% alike), so the colours are faint.` : `The skills share most of their experts (${sp.blend}% alike). That's normal: experts split work by word pattern more than by topic, so the colours are faint.`)
     : sp.blend >= 50 ? `The skills share a lot of their experts (${sp.blend}% alike), with some that lean to one skill.`
       : `The skills use fairly different experts here (${sp.blend}% alike).`);
   rec.skills.forEach((s, i) => { lines.push(`${lookOf(i)[1]}, ${s.label}: ${sp.per[i].leans.toLocaleString()} experts lean to it, ${sp.per[i].mostly.toLocaleString()} of them strongly. ${sp.words[i].toLocaleString()} words read.`); });
-  if (sp.evens) lines.push(`${sp.evens.toLocaleString()} experts are all-rounders: every skill used them about alike, and often. They have a soft white outline. A faint expert with no outline was only picked a few times.`);
+  if (sp.evens) lines.push(`${sp.evens.toLocaleString()} experts are all-rounders: every skill used them about alike, and often. They have a dashed white outline. A faint expert with no outline was only picked a few times.`);
   if (S < 2) lines.push('With one skill there is nothing to compare, so every expert it used gets its colour.');
   if (isHeads(rec)) return [`This scan lights attention heads: the parts of each layer that decide which earlier words to look at. Every layer has ${rec.brain.experts} of them, and the ${rec.brain.used} busiest light up for each word. They are real parts of the brain, so a colour here means that head works hardest for that skill.`, ...lines.map((l) => say(rec, l))];
   if (!isNeurons(rec)) return lines;
@@ -173,7 +173,8 @@ export function say(rec, s) {
   const B = '(?<![-\\w=.#])', A = '(?![-\\w=])'; // never inside a class, an id or an attribute
   const r = (from, to) => { s = s.replace(new RegExp(B + from + A, 'g'), to); };
   s = String(s);
-  r('Not experts', 'Other parts'); r('not experts', 'not these neurons'); r('Not an expert', 'Not a neuron group'); r('the router that picks experts', 'the router');
+  r('Attention, the router, the tuning rows', 'Attention, the tuning rows'); r('attention, the router and the tuning rows', 'attention and the tuning rows');
+  r('Not experts', 'Other parts'); r('not experts', 'not in the neuron groups'); r('Not an expert', 'Not a neuron group'); r('the router that picks experts', 'the router');
   r('an expert', 'a neuron group'); r('An expert', 'A neuron group');
   r('Experts', 'Neuron groups'); r('experts', 'neuron groups'); r('Expert', 'Neuron group'); r('expert', 'neuron group');
   return s;

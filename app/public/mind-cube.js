@@ -9,7 +9,7 @@ const SPECIAL = /<\|[^|>]*\|>|<\/?think>/gi;
 export const CUBE_SPEED = 14; // words a second
 
 // The colours: when this brain has an FNRI scan, Bob sends that scan's map along and every expert gets its skill's
-// colour (all-rounders a soft white outline); with no scan the cube is one colour and says how to get the rest.
+// colour (all-rounders a dashed white outline); with no scan the cube is one colour and says how to get the rest.
 // els: { box, canvas, says, open, key, mono, colour, colourBox, details }. still() = animations are off (the last word is shown, nothing moves).
 export function createMindCube({ box, canvas, says, open, key = null, mono = null, colour = null, colourBox = null, details = null }, { still = () => false, onWhy = null, EventSourceImpl = globalThis.EventSource } = {}) {
   const view = createView(canvas);
@@ -18,13 +18,13 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   // One colour: a quick switch, remembered. Every expert the same colour, so only what lights up stands out.
   let showDetails = false; try { showDetails = localStorage.getItem('bob-cube-details') === '1'; } catch {} // to begin with: just the cube, Open in the big viewer and Show details
   let one = false; try { one = localStorage.getItem('bob-cube-mono') === '1'; } catch {}
-  const showOne = () => { view.set({ mono: one || !look }); if (mono) { mono.setAttribute('aria-pressed', String(one)); mono.textContent = one ? 'Skill colours' : 'One colour'; mono.hidden = !look || !showDetails; } if (colourBox) colourBox.hidden = !(one || !look) || !rec || !showDetails; if (key && look) key.classList.toggle('off', one); };
+  const showOne = () => { view.set({ mono: one || !look }); if (mono) { mono.textContent = one ? 'Skill colours' : 'One colour'; mono.hidden = !look || !showDetails; } if (colourBox) colourBox.hidden = !(one || !look) || !rec || !showDetails; if (key && look) key.classList.toggle('off', one); };
   // the one colour is the person's to pick (it is also the colour of a brain with no scan yet), and it is remembered
   const keepC = (c) => { if (/^#[0-9a-f]{6}$/i.test(c || '')) { view.set({ monoColour: c }); if (colour) colour.value = c; return true; } return false; };
   try { keepC(localStorage.getItem('bob-cube-colour')); } catch {}
   if (colour) colour.oninput = () => { if (keepC(colour.value)) { try { localStorage.setItem('bob-cube-colour', colour.value); } catch {} if (rec) view.draw(lit()); } };
   // Hide details: only the picture stays (the colour choices go with the details). The words are still there for a screen reader.
-  const showD = () => { says.classList.toggle('sr-only', !showDetails); if (key) key.classList.toggle('sr-only', !showDetails); if (details) { details.setAttribute('aria-pressed', String(showDetails)); details.textContent = showDetails ? 'Hide details' : 'Show details'; } showOne(); };
+  const showD = () => { says.classList.toggle('sr-only', !showDetails); if (key) key.classList.toggle('sr-only', !showDetails); if (details) { details.textContent = showDetails ? 'Hide details' : 'Show details'; } showOne(); };
   if (details) details.onclick = () => { showDetails = !showDetails; try { localStorage.setItem('bob-cube-details', showDetails ? '1' : '0'); } catch {} showD(); };
   showD();
   if (mono) mono.onclick = () => { one = !one; try { localStorage.setItem('bob-cube-mono', one ? '1' : '0'); } catch {} showOne(); if (rec) view.draw(lit()); };
@@ -85,7 +85,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   open.onclick = () => {
     if (!rec) return;
     const w = window.open('/watch.html', 'bob-watch', 'popup,width=1180,height=820');
-    if (!w) { says.textContent = 'The viewer couldn\'t open: this browser blocked the pop-up.'; return; }
+    if (!w) { says.textContent = 'The viewer window was blocked. Allow pop-ups for Bob\'s page, then press it again.'; return; }
     const give = () => { try { w.bobWatch?.load(JSON.parse(JSON.stringify(rec))); } catch {} };
     w.addEventListener('load', () => setTimeout(give, 300)); setTimeout(give, 1500);
   };

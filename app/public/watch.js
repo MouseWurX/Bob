@@ -29,7 +29,7 @@ function relook() {
   rec = patternsOn ? findPatterns(base, { k: patternK }) : base;
   sp = specialise(rec); view.setData(rec, sp, parts);
   solid = new Map(); hidden = new Set(); only = ''; view.set({ solid, hidden, off: null });
-  cutOn = false; keepN = 0; off = null; flipSw($('watchCut'), false); $('watchKeep').value = '0'; cutHowHtml();
+  cutOn = false; keepN = 0; off = null; setAsk(false); flipSw($('watchCut'), false); $('watchKeep').value = '0'; cutHowHtml();
   frames = timeline(rec);
   $('watchOnly').innerHTML = `<option value="">every skill</option>${base.skills.map((s) => `<option value="${esc(s.id)}">${esc(s.label)}</option>`).join('')}`;
   $('watchOnly').disabled = patternsOn; // the questions are still sorted by the skills you asked about
@@ -49,7 +49,7 @@ function load(j) {
   view.setData(rec, sp, parts);
   solid = new Map(); view.set({ solid });
   cutHowHtml();
-  cutOn = false; keepN = 0; off = null; askedUnload = false; view.set({ off: null }); flipSw($('watchCut'), false); $('watchKeep').value = '0'; $('watchKeep').max = rec.brain.experts;
+  cutOn = false; keepN = 0; off = null; setAsk(false); view.set({ off: null }); flipSw($('watchCut'), false); $('watchKeep').value = '0'; $('watchKeep').max = rec.brain.experts;
   if (j.cut?.off) rec.cutOff = Number(j.cut.off) || 0;
   hidden = new Set(); only = ''; t = 0; playing = false; mode = 'brain'; floor = 0; expert = 0; lastIdx = -1;
   frames = timeline(rec);
@@ -69,7 +69,7 @@ function skillsHtml() {
   const never = sp.total - sp.used;
   const row = (key, sw, label, n, title) => `<label class="watch-skill" title="${esc(w(title))}"><input type="checkbox" data-show="${esc(String(key))}" ${hidden.has(key) ? '' : 'checked'}> ${sw} <span>${esc(w(label))}</span><span class="n">${n}</span></label>${key === 'never' || key === 'even' ? '' : `<input type="range" class="watch-solid" data-solid="${esc(String(key))}" min="0.1" max="1" step="0.05" value="${solid.get(key) ?? 1}" aria-label="${esc(w(`How solid: ${label}`))}" title="${esc(w(`How solid: ${label}`))}">`}`;
   $('watchSkills').innerHTML = `<legend>Show these</legend>${rec.skills.map((s, i) => row(i, `<span class="sw" style="background:${lookOf(i)[0]}">${lookOf(i)[1]}</span><input type="color" class="watch-colour" data-colour="${i}" value="${lookOf(i)[0].toLowerCase()}" aria-label="${esc(`Colour for ${s.label}`)}" title="${esc(`Colour for ${s.label}`)}">`, s.label, sp.top.reduce((a, l) => a + l.filter((x) => x === i).length, 0).toLocaleString(), `Experts picked most often for ${s.label}. ${sp.per[i].leans.toLocaleString()} of them lean to it clearly.`)).join('')}
-    ${sp.evens ? row('even', '<span class="sw even"></span>', 'All-rounders', sp.evens.toLocaleString(), 'Experts every skill used about alike, and often. They keep their faint colour and get a soft white outline, so they aren\'t taken for experts that were only picked a few times. Untick to hide them.') : ''}
+    ${sp.evens ? row('even', '<span class="sw even"></span>', 'All-rounders', sp.evens.toLocaleString(), 'Experts every skill used about alike, and often. They keep their faint colour and get a dashed white outline, so they aren\'t taken for experts that were only picked a few times. Untick to hide them.') : ''}
     ${row('grey', `<span class="sw" style="background:${GREY}"></span>`, 'Not experts', '', 'Attention, the router, the tuning rows and the word tables: every word passes through these.')}
     ${row('never', '<span class="sw never"></span>', 'Never picked', never.toLocaleString(), 'Experts none of these questions woke. A wider set of questions would wake more of them.')}`;
 }
@@ -117,7 +117,7 @@ function caption(i) {
   view.setCaption({ title: `${letter} ${rec.skills[si].label}: ${c.question}`, color, text: `${label}: ${(before + now + end).replace(/\s+/g, ' ').trim()}` });
   $('watchCaption').innerHTML = `<span class="q"><strong>${esc(letter)} ${esc(rec.skills[si].label)}:</strong> ${esc(c.question)}</span><br><em>${esc(label)}:</em> ${esc(before)}<span class="wnow">${esc(now) || '·'}</span>${esc(end)}`;
   const picks = c.e[f.word].reduce((a, l) => a + l.length, 0);
-  $('watchStatus').textContent = w(`Word ${i + 1} of ${frames.length}. Question ${f.clip + 1} of ${rec.clips.length}. ${picks} experts picked for this word.${floorsOn && fscale ? ` Busiest floors: ${busiestFloors(f)}.` : ''}${off ? ` ${c.e[f.word].reduce((a, l, li) => a + l.filter((x) => off[li].has(x)).length, 0)} of them are turned off (the red rings).` : ''}`);
+  $('watchStatus').textContent = w(`Word ${i + 1} of ${frames.length}. Question ${f.clip + 1} of ${rec.clips.length}. ${picks} experts picked for this word.${floorsOn && fscale ? ` Busiest floors: ${busiestFloors(f)}.` : ''}${off ? ` ${c.e[f.word].reduce((a, l, li) => a + l.filter((x) => off[li].has(x)).length, 0)} of them are turned off (the crossed-out rings).` : ''}`);
   const sc = $('watchScrub'); sc.value = String(i); sc.setAttribute('aria-valuetext', `Word ${i + 1} of ${frames.length}: ${now.trim() || 'a marker'}, in a question about ${rec.skills[si].label}`);
 }
 
@@ -228,19 +228,21 @@ $('watchSkills').addEventListener('change', (ev) => {
 });
 $('watchSkills').addEventListener('input', (ev) => { const k = ev.target.dataset.solid; if (k === undefined) return; solid.set(k === 'grey' ? k : Number(k), Number(ev.target.value)); view.set({ solid }); need = true; });
 // ---- try a cut: what is unticked (and all but the busiest few on each floor) is turned off, not only hidden ----
+// The rescan button names what it will do: after Bob's brain was found on the card, it unloads it first.
+function setAsk(v) { askedUnload = v; const b = $('watchRescan'); if (b) b.textContent = v ? 'Unload Bob\'s brain and scan again' : 'Scan again with these turned off'; }
 function cutHtml() {
   if (!rec) return;
   off = cutOn ? cutOf(rec, sp, { skills: new Set([...hidden].filter((k) => typeof k === 'number')), never: hidden.has('never'), keepN, cover: cutCover }) : null;
   const covK = cutOn && cutCover ? rec.brain.experts - off[0].size : 0;
   view.set({ off }); window.__cutOff = off; lastIdx = -1; need = true;
   const says = $('watchCutSays'), again = $('watchRescan');
-  if (!off) { says.textContent = w(rec.cutOff ? `This scan was made with ${rec.cutOff.toLocaleString()} experts turned off.` : 'Untick skills or Never picked above, then switch this on: those experts go dark, and a red ring shows each time the brain wanted one.'); again.hidden = true; return; }
+  if (!off) { says.textContent = w(rec.cutOff ? `This scan was made with ${rec.cutOff.toLocaleString()} experts turned off.` : 'Untick skills or Never picked above, then switch this on: those experts go dark, and a crossed-out red ring shows each time the brain wanted one.'); again.hidden = true; return; }
   const fx = cutEffect(rec, off);
   const worst = fx.per.map((p, i) => [p.pct, rec.skills[i].label]).sort((a, b) => b[0] - a[0])[0];
-  says.textContent = w(fx.off ? `${covK ? `The Lab's cut that keeps what every skill needs (${Math.round(cutCover * 100)}% of each skill's picks) keeps ${covK} of ${rec.brain.experts} experts on each floor. ` : ''}${fx.off.toLocaleString()} of ${fx.total.toLocaleString()} experts turned off. ${fx.pct}% of the picks in this scan went to them${fx.lost && worst ? `; ${worst[1]} leaned on them most (${worst[0]}%)` : ''}. A real brain would pick its next best experts instead, so this shows how much it leaned on them, not how much worse it would get.` : 'Nothing is turned off yet. Untick something above, or set how many to keep on each floor.');
+  says.textContent = w(fx.off ? `${covK ? `The Lab's cut that keeps what every skill needs (${Math.round(cutCover * 100)}% of each skill's picks) keeps ${covK} of ${rec.brain.experts} experts on each floor. ` : ''}${fx.off.toLocaleString()} of ${fx.total.toLocaleString()} experts turned off. ${fx.pct}% of the picks in this scan went to them${fx.lost && worst ? `; ${worst[1]} leaned on them most (${worst[0]}%)` : ''}. A real brain would pick its next best experts instead, so this shows how much it leaned on them, not how much worse it would get.` : 'Nothing is turned off yet. Untick something above, or set how many to keep on each floor.') + (rec.brain.kind === 'neurons' ? ' Neuron groups can\'t be switched off in Brain Engine, so this is a picture only.' : '');
   again.hidden = !(fx.off && src && rec.brain.kind === 'experts' && !patternsOn);
 }
-$('watchCut').onclick = (ev) => { cutOn = !cutOn; flipSw(ev.currentTarget, cutOn); askedUnload = false; cutHtml(); if (mode === 'floor') floorHtml(); };
+$('watchCut').onclick = (ev) => { cutOn = !cutOn; flipSw(ev.currentTarget, cutOn); setAsk(false); cutHtml(); if (mode === 'floor') floorHtml(); };
 // the Lab's own cuts: its plain sizes (the busiest N on each floor) and "what every skill needs"
 function cutHowHtml() {
   const box = $('watchCutHowBox'), sel = $('watchCutHow'), plain = rec.brain.kind !== 'experts' || rec.skills.length < 2;
@@ -251,7 +253,7 @@ $('watchCutHow').onchange = (ev) => {
   const v = ev.target.value;
   cutCover = v[0] === 'c' ? Number(v.slice(1)) : 0; keepN = v[0] === 'k' ? Number(v.slice(1)) : 0; $('watchKeep').value = keepN;
   if (v && !cutOn) { cutOn = true; flipSw($('watchCut'), true); }
-  askedUnload = false; cutHtml(); if (mode === 'floor') floorHtml();
+  setAsk(false); cutHtml(); if (mode === 'floor') floorHtml();
 };
 $('watchKeep').onchange = (ev) => { cutCover = 0; $('watchCutHow').value = ''; keepN = Math.max(0, Math.min(rec.brain.experts, Math.floor(Number(ev.target.value) || 0))); ev.target.value = keepN; if (keepN && !cutOn) { cutOn = true; flipSw($('watchCut'), true); } cutHtml(); if (mode === 'floor') floorHtml(); };
 $('watchRescan').onclick = async () => {
@@ -260,8 +262,8 @@ $('watchRescan').onclick = async () => {
     const r = await fetch('/api/lab/watch/start', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ brain: src.brain, again: src.id, keep: keepList(rec, off), unload: askedUnload }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
-    if (j.needUnload) { askedUnload = true; say(`${(j.names || []).join(', ') || 'Bob\'s brain'} is on the graphics card, and the scan needs it. Press the button again to unload it and start.`); return; }
-    askedUnload = false; say('The new scan has started. It asks the same questions with those experts switched off, and shows up on the Lab\'s FNRI page when it\'s done.');
+    if (j.needUnload) { setAsk(true); say(`${(j.names || []).join(', ') || 'Bob\'s brain'} is on the graphics card, and the scan needs it. Press Unload Bob's brain and scan again to start. It loads again the next time you chat.`); return; }
+    setAsk(false); say('The new scan has started. It asks the same questions with those experts switched off, and shows up on the Lab\'s FNRI page when it\'s done.');
   } catch (e) { say(`Bob couldn't start that scan: ${e.message}`); }
 };
 $('watchAll').onclick = () => { hidden = new Set(); view.set({ hidden }); skillsHtml(); cutHtml(); if (mode === 'floor') floorHtml(); need = true; };
