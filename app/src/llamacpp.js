@@ -867,7 +867,7 @@ export class LlamaCpp {
         const data = line.slice(5).trim();
         if (data === '[DONE]') continue;
         const ev = parseJson(data);
-        if (!ev) continue; // a cut or odd line from the server: skip it rather than lose the whole reply
+        if (!ev) { if (asked && data.includes('"expert_trace"')) this.log?.('engine', `FNRI cube: ${model}'s trace came back unreadable (${data.length.toLocaleString()} characters)`); continue; } // a cut or odd line from the server: skip it rather than lose the whole reply
         if (ev.error) throw new Error('llama-server: ' + (ev.error.message || JSON.stringify(ev.error)));
         // 1.5.30: llama-server puts the reply's timings on its last chunk; kept for Now running.
         if (ev.expert_trace && this.onTrace) { traced = true; try { this.onTrace(ev.expert_trace, model); } catch (e) { this.log?.('engine', `FNRI cube: couldn't read ${model}'s trace: ${e.message}`); } }

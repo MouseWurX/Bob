@@ -13,6 +13,7 @@ This file is made from app/docs/releases by `node installer/make-changelog.js` (
 - **No brain loaded: a neon sign.** One of five, picked at random each time, flickering now and then (still when animations are off).
 - **A brain answering on Bob's second server** (beside the main one) now lights the cube too, and a reply that comes back without the experts it used leaves a line in the logbook saying so.
 - **Where Brain Engine lives:** messages in the Lab that said to get or update Brain Engine under "Get models, Engines" now say Settings, Engines, where it really is.
+- **Bob's thinking is the top section of Now running, open, to begin with**, so the cube is the first thing there. Anyone who already moved or folded it keeps their own order.
 
 Where it works: Windows, Linux and Mac, wherever Brain Engine runs.
 
