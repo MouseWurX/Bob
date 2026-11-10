@@ -9,6 +9,8 @@ This file is made from app/docs/releases by `node installer/make-changelog.js` (
 Bob-Net gets a simple choice: more Bobs, or bigger Bobs.
 
 - **New:** Settings > Bob-Net > What they share starts with **What my Bobs do together**. **More Bobs** (the usual, and the default) keeps each Bob on his own brain and card. **Bigger Bobs** pools your Bobs' graphics cards over Tailscale, so one Bob can run a brain too big for his own card: it turns on **Lend my graphics card** and sets **Spread big brains over my other Bobs' cards** to **Any brain bigger than my card**, and those two show under it to fine-tune. More Bobs turns both off again. Pick Bigger Bobs on every Bob that should take part. Help row, FAQ "Can my Bobs run one big brain together?" and a glossary entry. Tests in `test/run-llama-tools-test.js`.
+- **New:** Under Bigger Bobs, **Use the home network first** (on): when two Bobs are on the same home network, a lent card is reached straight over it, which is quicker; otherwise, or after a load that failed that way, over Tailscale. The asking still goes through the Tailscale door with the passcode.
+- **Safer:** A lent card's server now listens on this machine only, behind a gate that lets in the asking Bob's address and nothing else, on the home network or on Tailscale. Tests in `test/run-llama-tools-test.js`.
 
 ## 1.5.183
 

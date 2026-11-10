@@ -15,7 +15,7 @@ And four tools Bob runs beside the server, built from the same tag in the main b
 
 - `llama-bench`: the standard speed test (the Lab's Challenges, "Add the standard speed test").
 - `llama-gguf-split`: joins a brain that comes in parts into one file (the Lab's "Bring in a full-size brain"), and splits one for an upload over Hugging Face's 50 GB limit.
-- `ggml-rpc-server`: Bob-Net's "Lend my graphics card", so one brain can spread over several of your Bobs' cards. Bob starts it only when a paired Bob asks through the passcode door, binds it to this machine's own Tailscale address only (never 0.0.0.0), and stops it when that Bob lets go, after 3 minutes with no word, or when Gaming starts. The RPC server has no passcode of its own, which is why it is never left open.
+- `ggml-rpc-server`: Bob-Net's "Lend my graphics card", so one brain can spread over several of your Bobs' cards. Bob starts it only when a paired Bob asks through the passcode door, binds it to 127.0.0.1 behind a gate that lets in only the asking Bob's address (on the home network when both are on it, else on this machine's Tailscale address; never 0.0.0.0), and stops it when that Bob lets go, after 3 minutes with no word, or when Gaming starts. The RPC server has no passcode of its own, which is why it is never left open.
 - `llama-diffusion-cli`: runs diffusion brains (Dream, LLaDA, RND1) in the Lab's Playground. The official llama.cpp downloads don't have it (their builds leave the examples out), so it needs `-DLLAMA_BUILD_EXAMPLES=ON`.
 
 The build turns on `-DGGML_RPC=ON` so the card server exists; its `ggml-rpc` backend file is the official one (ggml files are never swapped).
