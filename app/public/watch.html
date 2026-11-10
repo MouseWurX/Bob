@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2b1d14">
+<title>aiFEUI</title>
+<link rel="icon" href="/icons/bob-32.png">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/watch.css">
+</head>
+<body class="watch-page">
+  <header class="watch-head">
+    <h1 id="watchTitle">aiFEUI <span class="muted">AI Functional Expert Use Imaging</span></h1>
+    <p id="watchSub" class="muted">A scan of a brain's experts lighting up as it works: one floor of voxels for each layer, coloured by skill.</p>
+  </header>
+  <div class="watch-main">
+    <aside class="watch-side" aria-label="Controls">
+      <section id="watchEmpty">
+        <p>Nothing is loaded yet. Make a scan in the Lab (Playground, aiFEUI), or open a recording file here.</p>
+      </section>
+      <section id="watchControls" hidden>
+        <fieldset id="watchSkills"><legend>Show these</legend></fieldset>
+        <div class="row"><button type="button" id="watchAll" class="link">Show all</button><button type="button" id="watchNone" class="link">Hide all skills</button></div>
+        <label for="watchZoom">How close</label>
+        <select id="watchZoom"><option value="brain">The whole brain</option><option value="floor">One floor</option><option value="expert">One expert</option></select>
+        <div id="watchPick" class="row" hidden>
+          <label>Floor <input type="number" id="watchFloor" min="1" value="1" inputmode="numeric"></label>
+          <label id="watchExpertLbl">Expert <input type="number" id="watchExpert" min="0" value="0" inputmode="numeric"></label>
+        </div>
+        <label for="watchGap">Pull the floors apart</label>
+        <input type="range" id="watchGap" min="0.5" max="5" step="0.1" value="0.9">
+        <div class="row watch-turn" role="group" aria-label="Turn and zoom the block">
+          <button type="button" class="icon" id="watchLeft" title="Turn left" aria-label="Turn left">◀</button>
+          <button type="button" class="icon" id="watchRight" title="Turn right" aria-label="Turn right">▶</button>
+          <button type="button" class="icon" id="watchUp" title="Look from higher" aria-label="Look from higher">▲</button>
+          <button type="button" class="icon" id="watchDown" title="Look from lower" aria-label="Look from lower">▼</button>
+          <button type="button" class="icon" id="watchIn" title="Closer" aria-label="Closer">+</button>
+          <button type="button" class="icon" id="watchOut" title="Further" aria-label="Further">−</button>
+        </div>
+        <button id="watchSpin" type="button" class="brain-switch" role="switch" aria-checked="false"><span class="lbl">Turn slowly</span><span class="st">Off</span></button>
+        <label for="watchSpinSpeed">How fast it turns</label>
+        <input type="range" id="watchSpinSpeed" min="0.05" max="1.5" step="0.05" value="0.25">
+        <label for="watchFace">Look from</label>
+        <select id="watchFace"><option value="">(pick a side)</option><option value="corner">A corner</option><option value="front">The front</option><option value="side">The side</option><option value="back">The back</option><option value="top">Above</option></select>
+        <button id="watchPaths" type="button" class="brain-switch" role="switch" aria-checked="true"><span class="lbl">Lines between the experts in use</span><span class="st">On</span></button>
+        <details id="watchWordsBox"><summary>What this shows, in words</summary><ul id="watchWords" class="tlist"></ul></details>
+      </section>
+      <section class="watch-files">
+        <div class="row">
+          <label class="link watch-open">Open a recording file<input type="file" id="watchFile" accept=".json,application/json" hidden></label>
+          <button type="button" class="link" id="watchSave" hidden>Save this recording as a file</button>
+        </div>
+        <p id="watchMsg" class="error" role="alert" hidden></p>
+      </section>
+    </aside>
+    <main class="watch-stage">
+      <canvas id="watchCanvas" tabindex="0" role="img" aria-label="The brain as a block of voxels. The words under it and the list on the left say the same thing."></canvas>
+      <div id="watchFloorView" class="watch-floor" hidden></div>
+      <section id="watchExpertView" class="watch-expert" hidden aria-live="polite"></section>
+      <div id="watchPlayer" class="watch-player" hidden>
+        <div class="row">
+          <button type="button" id="watchPrev" title="The question before" aria-label="The question before">⏮</button>
+          <button type="button" id="watchPlay" class="get">Play</button>
+          <button type="button" id="watchStepBack" title="Back one word" aria-label="Back one word">◂</button>
+          <button type="button" id="watchStep" title="Forward one word" aria-label="Forward one word">▸</button>
+          <button type="button" id="watchNext" title="The next question" aria-label="The next question">⏭</button>
+          <label>Speed <select id="watchSpeed"><option value="3">Slow</option><option value="8" selected>Normal</option><option value="20">Fast</option><option value="50">Very fast</option></select></label>
+          <label>Questions about <select id="watchOnly"><option value="">every skill</option></select></label>
+          <button type="button" id="watchVideo" class="link">Save as a video</button>
+        </div>
+        <label for="watchScrub" class="sr-only">Where in the recording</label>
+        <input type="range" id="watchScrub" min="0" max="0" value="0" step="1">
+        <p id="watchCaption" class="watch-caption"></p>
+        <p id="watchStatus" class="muted" role="status"></p>
+      </div>
+    </main>
+  </div>
+  <script type="module" src="/watch.js"></script>
+</body>
+</html>

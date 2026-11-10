@@ -4,6 +4,23 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.184
+
+A new Lab page: **aiFEUI**, a scan of a brain's experts lighting up as it works.
+
+- **New: aiFEUI (AI Functional Expert Use Imaging), in the Lab's Playground.** For a mixture-of-experts brain. Tick the skills to ask about (coding, maths, writing, knowledge, other languages, planning, everyday chat, running a game, or one of your own), and Bob asks the brain a few simple questions for each on Brain Engine, recording which experts every layer picked for every word. It's a Lab job: free, on this replicant matrix, it asks before unloading Bob's brain, waits while Gaming is on, and can be stopped.
+- **The viewer opens in its own window**, so it can sit beside the Lab or a chat. The brain is one 3D block of voxels: every layer is a floor, so the number of layers is the height; every expert is one voxel in the colour (and letter) of the skill that used it most, stronger the more it is that skill's own; the parts that aren't experts are a grey core up the middle and a grey base, at their true share of the weights. Press Play and the experts glow as the brain reads the question and writes the answer, with the words underneath.
+- **Turn it your way:** drag it, use the arrow buttons or keys, let it spin at a speed you set with a slider, or jump to a corner, the front, the side, the back or above. The lines between the experts in use can be switched off.
+- **Step by step:** Back one word and Forward one word beside Play, and a bar to drag; the picture and the words always show the same moment.
+- **Subtitles:** Question, Thinking and Answer, under the picture and in the saved video. Tick **Let it think first** before a scan to record the brain's thoughts as their own part (off to begin with).
+- **Show these:** tick boxes show or hide each skill's experts, the parts that aren't experts, and the experts never picked.
+- **How close:** the whole brain, one floor (every expert a square with its number), or one expert (how its work splits between the skills, and the words it was picked for most).
+- **Save as a video**, save the scan as a file, and open a scan file from another Bob.
+- It says the same thing in words (how many experts were used, how alike the skills are, a line for each skill), works with the keyboard, and never turns by itself when animations are off.
+- **Brain Engine** gets the expert trace (`engine/patches/0002-expert-trace.patch`): `"expert_trace": true` on `/completion` reports the experts every layer picked for every token. Peek inside's live view uses the same trace, so it wakes up with the same build. Making a scan needs that build (Windows and Linux); until it's installed, Start the scan is greyed with the reason.
+- An honest note: in the brains measured so far, experts split work by word pattern more than by topic, so the skill colours come out blended, and the viewer says how blended. A few questions per skill show a pattern; they don't measure the brain.
+- Help: **The Playground's aiFEUI page**, an FAQ (**Can I see what's happening inside a brain?**) and two glossary entries. Tests in `test/run-lab-watch-test.js`.
+
 ## 1.5.183
 
 A small Lab fix.
