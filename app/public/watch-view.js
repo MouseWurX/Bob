@@ -53,11 +53,11 @@ export function createView(canvas, { still = false } = {}) {
   let yaw = -0.62, tilt = 0.5, gap = 0.9, zoom = 1, fast = false;
   let hidden = new Set(); // skill indexes, plus 'never' and 'grey'
   let staticCanvas = null, dirty = true, geom = null;
-  let caption = null, paths = true, picked = null, glass = 0.5; // glass: how see-through the voxels are, 0 (solid) to 0.85
+  let caption = null, paths = true, picked = null, glass = 0.5, off = null; // off: [Set of experts turned off, per floor] while a cut is being tried // glass: how see-through the voxels are, 0 (solid) to 0.85
   const css = () => { const s = getComputedStyle(document.body); const g = (n, d) => s.getPropertyValue(n).trim() || d; return { bg: g('--bg', '#1d1510'), text: g('--text', '#f3e7d3'), muted: g('--muted', '#c7b296'), line: g('--line', '#5a4030'), panel: g('--panel', '#2b1d14') }; };
 
   function setData(r, s, parts) { rec = r; sp = s; lay = layoutOf(r, parts); dirty = true; picked = null; }
-  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'picked') picked = v; else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
+  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
   const get = () => ({ yaw, tilt, gap, zoom, glass });
   // the gap between floors that makes the whole block as tall as it is wide: a cube
   const cubeGap = () => (lay ? Math.max(0.2, Math.min(5, Math.max(lay.W, lay.D) / Math.max(1, lay.L + lay.baseFloors))) : 0.9);
@@ -107,6 +107,7 @@ export function createView(canvas, { still = false } = {}) {
   // What one expert voxel looks like: its skill's colour, more solid the more it is that skill's own.
   function lookAt(l, e) {
     const top = sp.top[l][e];
+    if (off && off[l]?.has(e)) return null;
     if (top < 0) return hidden.has('never') ? null : { color: null, alpha: 1 };
     if (hidden.has(top)) return null;
     return { color: lookOf(top)[0], alpha: 0.28 + 0.72 * Math.min(1, sp.strength[l][e] * 1.6) };
@@ -161,6 +162,7 @@ export function createView(canvas, { still = false } = {}) {
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     ctx.drawImage(staticCanvas, 0, 0);
     ctx.globalCompositeOperation = 'lighter';
+    const missed = [];
     const pop = g.s * 0.5 * Math.cos(tilt);
     lit.slice(-TRAIL).forEach((f) => {
       const a = Math.max(0, 1 - f.age);
@@ -172,8 +174,9 @@ export function createView(canvas, { still = false } = {}) {
         const pts = [];
         for (const e of ids) {
           const top = sp.top[l][e];
-          if (top >= 0 && hidden.has(top)) continue;
           const [cx, cz] = expertXY(e); const [x, y0] = g.P(cx, floorY(l), cz);
+          if (off && off[l]?.has(e)) { if (now) missed.push([x, y0]); continue; } // it was picked, and it's turned off
+          if (top >= 0 && hidden.has(top)) continue;
           const y = y0 - (now ? pop : pop * a * 0.6);
           const color = top >= 0 ? lookOf(top)[0] : '#ffffff';
           ctx.fillStyle = color;
@@ -190,6 +193,10 @@ export function createView(canvas, { still = false } = {}) {
       }
     });
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+    if (missed.length) { // a red ring with a stroke through it where a turned-off expert was wanted
+      const r = Math.max(3, g.s * 0.42); ctx.strokeStyle = '#ff5a4f'; ctx.lineWidth = Math.max(1.5, g.s * 0.1);
+      for (const [x, y] of missed) { ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.moveTo(x - r * 0.7, y + r * 0.7); ctx.lineTo(x + r * 0.7, y - r * 0.7); ctx.stroke(); }
+    }
     if (picked) {
       const [cx, cz] = expertXY(picked.expert); const [x, y] = g.P(cx, floorY(picked.layer), cz);
       ctx.strokeStyle = k.text; ctx.lineWidth = Math.max(2, g.s * 0.12); face(ctx, g, x, y); ctx.stroke();

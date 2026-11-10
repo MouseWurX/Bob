@@ -147,7 +147,26 @@ export function readRecording(lab, { brain: brainId, id } = {}) {
   if (!brain) throw new Error('Pick a brain first.');
   const j = readJson(recFile(lab.cfg, brain, id), null);
   if (!j) throw new Error('That recording isn\'t here any more.');
-  return { ...cleanRecording(j), parts: j.parts || null, saw: j.saw || '' };
+  return { ...cleanRecording(j), parts: j.parts || null, saw: j.saw || '', ...(j.cut?.off ? { cut: { off: Number(j.cut.off) || 0 } } : {}) };
+}
+
+// The experts to leave on, a list for each layer, checked: whole numbers in range, no repeats, and never fewer on a
+// layer than the brain picks for a word. null when nothing would be switched off.
+export function cleanKeep(keep, { experts, layers, used }) {
+  if (!Array.isArray(keep) || keep.length !== layers) throw new Error('That cut doesn\'t match this brain\'s layers.');
+  let off = 0;
+  const out = keep.map((k) => {
+    if (!Array.isArray(k)) throw new Error('That cut doesn\'t match this brain\'s layers.');
+    const ids = [...new Set(k.filter((x) => Number.isInteger(x) && x >= 0 && x < experts))].sort((a, b) => a - b);
+    if (ids.length < Math.max(1, used || 1)) throw new Error(`Every layer has to keep at least ${Math.max(1, used || 1)} experts on, as many as the brain picks for a word.`);
+    off += experts - ids.length;
+    return ids;
+  });
+  return off ? out : null;
+}
+async function maskExperts(url, keep) {
+  const res = await fetch(url + '/expert-mask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ keep }), signal: AbortSignal.timeout(30000) });
+  if (!res.ok) throw new Error(`Brain Engine wouldn't switch the experts: ${(await res.text()).slice(0, 200)}`);
 }
 
 export function deleteRecording(lab, { brain: brainId, id } = {}) {
@@ -185,8 +204,18 @@ export async function startWatch(lab, c = {}, { unload = false } = {}) {
   const tools = lab.tools();
   if (!tools.brainEngine.found && !lab.stepFns.peekServe) throw new Error(NO_ENGINE);
   if (lab.peekTraceOk === false) throw new Error(NO_TRACE);
-  const skills = pickSkills(c);
+  // "again": the same questions as an earlier scan, with some experts switched off (keep = the experts left on, a
+  // list for each layer). The brain isn't cut: Brain Engine just stops picking the others for this scan.
+  let again = null, keep = null;
+  if (c.again) {
+    if (plain) throw new Error('Only a mixture-of-experts brain has experts to switch off.');
+    again = readRecording(lab, { brain: brain.id, id: c.again });
+    keep = cleanKeep(c.keep, facts);
+    if (!keep) throw new Error('Nothing is turned off, so the scan would be the same.');
+  }
+  const skills = again ? again.skills.map((s) => ({ id: s.id, label: s.label, questions: again.clips.filter((x) => x.skill === s.id).map((x) => x.question) })).filter((s) => s.questions.length) : pickSkills(c);
   const think = c.think === true;
+  const offCount = keep ? keep.reduce((a, k) => a + (facts.experts - k.length), 0) : 0;
   if (!skills.length) throw new Error('Tick at least one skill to ask about.');
   lab.freePeek();
   const ask = await makeRoom(lab, unload); if (ask) return ask;
@@ -200,6 +229,7 @@ export async function startWatch(lab, c = {}, { unload = false } = {}) {
     const srv = await serve({ gguf: brain.gguf, signal });
     const clips = [];
     try {
+      if (keep) await (lab.stepFns.peekMask || maskExperts)(srv.url, keep);
       set('load', 'done');
       let done = 0;
       for (const s of skills) {
@@ -223,9 +253,9 @@ export async function startWatch(lab, c = {}, { unload = false } = {}) {
     const at = lab.now(), when = new Date(at).toISOString().slice(0, 10);
     const id = `rec-${at.toString(36)}`;
     let parts = null; try { parts = partsOf(readGguf(brain.gguf), facts); } catch {}
-    const rec = cleanRecording({ format: FORMAT, version: VERSION, id, name: `${brain.name}, ${skills.length} skill${skills.length === 1 ? '' : 's'}`, when, engine: 'Brain Engine', brain: { name: brain.name, experts: shape.experts, layers: shape.layers, used: shape.used, kind: shape.kind, neurons: shape.neurons || 0 }, skills: skills.map(({ id: sid, label }) => ({ id: sid, label })), clips });
+    const rec = cleanRecording({ format: FORMAT, version: VERSION, id, name: `${brain.name}, ${skills.length} skill${skills.length === 1 ? '' : 's'}${offCount ? `, ${offCount.toLocaleString()} experts off` : ''}`, when, engine: 'Brain Engine', brain: { name: brain.name, experts: shape.experts, layers: shape.layers, used: shape.used, kind: shape.kind, neurons: shape.neurons || 0 }, skills: skills.map(({ id: sid, label }) => ({ id: sid, label })), clips });
     const saw = inWords(rec, specialise(rec)).slice(0, 2).join(' ');
-    writeJson(recFile(lab.cfg, brain, id), { ...rec, at, parts, saw });
+    writeJson(recFile(lab.cfg, brain, id), { ...rec, at, parts, saw, ...(offCount ? { cut: { off: offCount, from: String(c.again).slice(0, 80) } } : {}) });
     for (const old of listRecordings(lab.cfg, brain).slice(KEEP_RECORDINGS)) { try { fs.rmSync(recFile(lab.cfg, brain, old.id), { force: true }); } catch {} }
     set('save', 'done');
     return { watch: { brain: brain.id, id, clips: rec.clips.length }, saw };

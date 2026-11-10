@@ -154,3 +154,34 @@ export function say(rec, s) {
   r('Experts', 'Neuron groups'); r('experts', 'neuron groups'); r('Expert', 'Neuron group'); r('expert', 'neuron group');
   return s;
 }
+
+// Trying a cut. off[l] = the set of experts turned off on floor l: the ones whose skill is unticked (skills = a set
+// of skill indexes), the never-picked ones (never = true), and all but the busiest keepN on each floor (keepN > 0).
+// A floor always keeps at least as many experts as the brain picks for a word (the busiest), as the engine does.
+export function cutOf(rec, sp, { skills = new Set(), never = false, keepN = 0 } = {}) {
+  const E = rec.brain.experts, min = Math.max(1, rec.brain.used || 1);
+  return sp.picks.map((pl, l) => {
+    const byUse = pl.map((n, e) => [n, e]).sort((a, b) => b[0] - a[0] || a[1] - b[1]).map(([, e]) => e);
+    const off = new Set();
+    for (let e = 0; e < E; e++) { const top = sp.top[l][e]; if (top < 0 ? never : skills.has(top)) off.add(e); }
+    if (keepN > 0) byUse.slice(Math.max(min, keepN)).forEach((e) => off.add(e));
+    for (const e of byUse) { if (E - off.size >= min) break; off.delete(e); }
+    return off;
+  });
+}
+// What that cut would take away, counted on this recording: every pick that went to an expert now turned off.
+// { off, total, picks, lost, pct, per: [{ picks, lost, pct } per skill] }. A real brain would pick its next best
+// experts instead, so this says how much it leaned on them, not how much worse it would get.
+export function cutEffect(rec, off) {
+  const idx = new Map(rec.skills.map((s, i) => [s.id, i]));
+  const per = rec.skills.map(() => ({ picks: 0, lost: 0, pct: 0 }));
+  let picks = 0, lost = 0;
+  for (const c of rec.clips) {
+    const p = per[idx.get(c.skill)]; if (!p) continue;
+    for (const row of c.e) for (let l = 0; l < row.length; l++) for (const x of row[l]) { p.picks++; picks++; if (off[l]?.has(x)) { p.lost++; lost++; } }
+  }
+  per.forEach((p) => { p.pct = p.picks ? Math.round((100 * p.lost) / p.picks) : 0; });
+  return { off: off.reduce((a, s) => a + s.size, 0), total: rec.brain.layers * rec.brain.experts, picks, lost, pct: picks ? Math.round((100 * lost) / picks) : 0, per };
+}
+// The cut as the engine takes it: the experts kept on each floor.
+export const keepList = (rec, off) => off.map((s) => { const k = []; for (let e = 0; e < rec.brain.experts; e++) if (!s.has(e)) k.push(e); return k; });

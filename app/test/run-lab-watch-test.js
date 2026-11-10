@@ -11,9 +11,9 @@ import { fileURLToPath } from 'node:url';
 import { Lab } from '../src/lab.js';
 import { readGguf } from '../src/lab-gguf.js';
 import { readTrace, askTraced, tallyTrace, NO_TRACE } from '../src/lab-peek.js';
-import { WATCH_SKILLS, PER_CHOICES, pickSkills, partsOf, clipOf, watchView, startWatch, readRecording, deleteRecording, listRecordings, watchRoute, WATCH_WORDS, WATCH_WORDS_THINK } from '../src/lab-watch.js';
+import { WATCH_SKILLS, PER_CHOICES, pickSkills, partsOf, clipOf, watchView, startWatch, readRecording, deleteRecording, listRecordings, watchRoute, WATCH_WORDS, WATCH_WORDS_THINK, cleanKeep } from '../src/lab-watch.js';
 import { pagesRoute } from '../src/lab-pages.js';
-import { NAME, LONG_NAME, FORMAT, VERSION, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, SKILL_LOOKS, sideOf, LEANS, partOf, PART_LABEL, say } from '../public/lab-watch-math.js';
+import { NAME, LONG_NAME, FORMAT, VERSION, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, SKILL_LOOKS, sideOf, LEANS, partOf, PART_LABEL, say, cutOf, cutEffect, keepList } from '../public/lab-watch-math.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -203,7 +203,7 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('the viewer has no outside scripts or styles', !/https?:\/\//.test(html) && !/https?:\/\/(?!x)/.test(js.replace(/\/\/.*$/gm, '')) && /<script type="module" src="\/watch\.js">/.test(html));
   check('tick boxes show or hide each skill, the parts that are not experts, and the never picked', /data-show=/.test(js) && js.includes("row('grey'") && js.includes("row('never'") && /Not experts/.test(js) && /Never picked/.test(js));
   check('three zoom levels: the whole brain, one floor, one expert', ['The whole brain', 'One floor', 'One expert'].every((t) => html.includes(t)) && /function floorHtml/.test(js) && /function expertHtml/.test(js));
-  check('the picture is never the only way: a label on the canvas, the same in words, letters as well as colours, every control with a name', /role="img" aria-label=/.test(html) && /What this shows, in words/.test(html) && /aria-valuetext/.test(js) && /aria-label="\$\{esc\(label\)\}"/.test(js) && ['watchLeft', 'watchRight', 'watchUp', 'watchDown', 'watchIn', 'watchOut', 'watchPrev', 'watchNext'].every((id) => new RegExp(`id="${id}"[^>]*aria-label=`).test(html)));
+  check('the picture is never the only way: a label on the canvas, the same in words, letters as well as colours, every control with a name', /role="img" aria-label=/.test(html) && /What this shows, in words/.test(html) && /aria-valuetext/.test(js) && /aria-label="\$\{esc\(label/.test(js) && ['watchLeft', 'watchRight', 'watchUp', 'watchDown', 'watchIn', 'watchOut', 'watchPrev', 'watchNext'].every((id) => new RegExp(`id="${id}"[^>]*aria-label=`).test(html)));
   check('it turns with the keyboard as well as a drag, and plays with the space bar', /ArrowLeft/.test(js) && /ev\.key === ' '/.test(js) && /tabindex="0"/.test(html));
   check('with animations off it never turns by itself', /if \(spin && !still\(\)/.test(js) && /prefers-reduced-motion/.test(js));
   check('Save as a video records the picture itself, and says so where a browser can\'t', /captureStream/.test(js) && /MediaRecorder/.test(js) && /save a video of the picture/.test(js));
@@ -259,6 +259,43 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('an expert scan\'s words are left as they were', say({ brain: { kind: 'experts' } }, 'Not experts') === 'Not experts' && say(c5, 'Not experts') === 'Other parts' && say(c5, '<div class="watch-expert">One expert</div>') === '<div class="watch-expert">One neuron group</div>');
   const html = read('public/watch.html'), view = read('public/watch-view.js'), js = read('public/watch.js');
   check('the viewer starts as a cube of coloured glass, with a slider for how see-through', /id="watchGlass"/.test(html) && /id="watchCube"/.test(html) && /cubeGap/.test(view) && /glass/.test(view) && /cube\(\);/.test(js));
+}
+
+// ---- trying a cut ----
+{
+  const recC = cleanRecording({ format: FORMAT, version: VERSION, brain: { name: 'b', experts: 6, layers: 2, used: 2 }, skills: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], clips: [
+    { skill: 'a', question: 'q', prompt: 1, words: ['x', 'y', 'z', 'w'], e: [[[0, 1], [0, 1]], [[0, 1], [0, 1]], [[0, 1], [0, 2]], [[0, 1], [0, 2]]] },
+    { skill: 'b', question: 'q', prompt: 1, words: ['x', 'y', 'z', 'w'], e: [[[2, 3], [3, 4]], [[2, 3], [3, 4]], [[2, 3], [3, 4]], [[2, 1], [3, 4]]] }] });
+  const spC = specialise(recC);
+  const none = cutOf(recC, spC, {});
+  check('with nothing unticked, nothing is turned off', none.every((s) => s.size === 0) && cutEffect(recC, none).lost === 0);
+  const offB = cutOf(recC, spC, { skills: new Set([1]) });
+  const fx = cutEffect(recC, offB);
+  check('unticking a skill turns off its experts, and the picks that went to them are counted', offB[0].has(2) && offB[0].has(3) && !offB[0].has(0) && fx.per[1].lost > 0 && fx.per[0].lost === 0 && fx.per[1].pct > 80 && fx.off === offB[0].size + offB[1].size && fx.total === 12);
+  const offNever = cutOf(recC, spC, { never: true });
+  check('unticking Never picked turns off only those', offNever[0].has(4) && offNever[0].has(5) && !offNever[0].has(0) && cutEffect(recC, offNever).lost === 0);
+  const busiest = cutOf(recC, spC, { keepN: 2 });
+  check('keeping the busiest few on each floor turns off the rest', busiest[0].size === 4 && !busiest[0].has(0) && !busiest[0].has(1) && busiest[1].size === 4 && !busiest[1].has(0));
+  const all = cutOf(recC, spC, { skills: new Set([0, 1]), never: true });
+  check('a floor always keeps as many experts as the brain picks for a word', all.every((s) => 6 - s.size === 2) && !all[0].has(0));
+  const kl = keepList(recC, offB);
+  check('the cut as the engine takes it: the experts left on, for each layer', kl.length === 2 && kl[0].includes(0) && !kl[0].includes(2) && kl[0].length === 6 - offB[0].size);
+  check('a cut is checked before it reaches the engine', cleanKeep([[0, 1, 1, 99], [2, 3]], { experts: 6, layers: 2, used: 2 })[0].join() === '0,1' && cleanKeep([[0, 1, 2, 3, 4, 5], [0, 1, 2, 3, 4, 5]], { experts: 6, layers: 2, used: 2 }) === null
+    && (() => { try { cleanKeep([[0]], { experts: 6, layers: 2, used: 2 }); return false; } catch { return true; } })() && (() => { try { cleanKeep([[0], [1, 2]], { experts: 6, layers: 2, used: 2 }); return false; } catch (e) { return /at least 2/.test(e.message); } })());
+  // the real thing: the same questions again with experts switched off
+  mode = 'ok'; const l7 = mk(); let masked = null; l7.stepFns.peekMask = async (u, keep) => { masked = keep; };
+  await startWatch(l7, { brain: 'moe', skills: ['chat'], per: 2 }); await wait(l7);
+  const first = listRecordings(cfg, { id: 'moe', name: 'Test MoE' })[0];
+  asked = [];
+  const keep = Array.from({ length: L }, () => [0, 1, 2, 3]);
+  check('scanning again with nothing off is refused', await startWatch(l7, { brain: 'moe', again: first.id, keep: Array.from({ length: L }, () => [...Array(E).keys()]) }).then(() => false, (e) => /Nothing is turned off/.test(e.message)));
+  await startWatch(l7, { brain: 'moe', again: first.id, keep }); await wait(l7);
+  const second = listRecordings(cfg, { id: 'moe', name: 'Test MoE' })[0];
+  const rec7 = readRecording(l7, { brain: 'moe', id: second.id });
+  check('scan again asks the same questions with the experts switched off in the engine, and says so', masked && masked.length === L && masked[0].join() === '0,1,2,3' && rec7.clips.length === 2 && rec7.clips.map((x) => x.question).join() === readRecording(l7, { brain: 'moe', id: first.id }).clips.map((x) => x.question).join() && second.id !== first.id && rec7.cut.off === L * (E - 4) && /experts off/.test(rec7.name));
+  check('a plain brain has no experts to switch off', await startWatch(l7, { brain: 'plain', again: 'x', keep }).then(() => false, (e) => /mixture-of-experts/.test(e.message)));
+  const html = read('public/watch.html'), view = read('public/watch-view.js'), js = read('public/watch.js');
+  check('the viewer has Try a cut: a switch, how many to keep, what it would cost, and Scan again', /id="watchCut"/.test(html) && /id="watchKeep"/.test(html) && /id="watchCutSays"/.test(html) && /id="watchRescan"/.test(html) && /cutEffect/.test(js) && /missed/.test(view) && /next best experts/.test(js));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

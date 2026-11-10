@@ -22,6 +22,13 @@
       <section id="watchControls" hidden>
         <fieldset id="watchSkills"><legend>Show these</legend></fieldset>
         <div class="row"><button type="button" id="watchAll" class="link">Show all</button><button type="button" id="watchNone" class="link">Hide all skills</button></div>
+        <fieldset id="watchCutBox"><legend>Try a cut</legend>
+          <button id="watchCut" type="button" class="brain-switch" role="switch" aria-checked="false"><span class="lbl">Turn off what's unticked</span><span class="st">Off</span></button>
+          <label>Keep only the busiest <input type="number" id="watchKeep" min="0" value="0" inputmode="numeric" aria-describedby="watchKeepHint"> on each floor</label>
+          <span id="watchKeepHint" class="muted">0 keeps them all.</span>
+          <p id="watchCutSays" class="muted" role="status"></p>
+          <button type="button" id="watchRescan" class="get" hidden>Scan again with these turned off</button>
+        </fieldset>
         <label for="watchZoom">How close</label>
         <select id="watchZoom"><option value="brain">The whole brain</option><option value="floor">One floor</option><option value="expert" id="watchZoomOne">One expert</option></select>
         <div id="watchPick" class="row" hidden>

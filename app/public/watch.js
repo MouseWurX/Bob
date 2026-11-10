@@ -5,7 +5,7 @@
 // Its own window, so it can sit beside the Lab or a chat. The Lab opens it with ?brain=<id>&rec=<id>; it can also
 // open a recording file by itself (one made on another Bob, or on a rented card), with the Lab off.
 import { applySavedStyle } from './themes.js';
-import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind } from './lab-watch-math.js';
+import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind, cutOf, cutEffect, keepList } from './lab-watch-math.js';
 import { createView, GREY } from './watch-view.js';
 applySavedStyle();
 
@@ -15,16 +15,19 @@ const still = () => document.body.classList.contains('still') || window.matchMed
 const view = createView($('watchCanvas'));
 const SPECIAL = /<\|[^|>]*\|>|<\/?think>/gi; // the chat layout's own markers, left out of the caption
 
-let rec = null, sp = null, parts = null, frames = [], t = 0, playing = false, speed = 8, only = '', hidden = new Set(), mode = 'brain', floor = 0, expert = 0, spin = false, spinSpeed = 0.25, aim = null, need = true, lastIdx = -1, lastLit = [], recorder = null;
+let rec = null, sp = null, parts = null, frames = [], t = 0, playing = false, speed = 8, only = '', hidden = new Set(), mode = 'brain', floor = 0, expert = 0, spin = false, spinSpeed = 0.25, aim = null, need = true, lastIdx = -1, lastLit = [], recorder = null, cutOn = false, keepN = 0, off = null, src = null, askedUnload = false;
 
 const w = (s) => inKind(rec, s); // the same sentence for a brain scanned by neuron groups
 function cube() { const g = view.cubeGap(); view.set({ gap: g }); $('watchGap').value = String(g); need = true; } // floors stacked as tall as they are wide
+function flipSw(b, on) { b.setAttribute('aria-checked', String(on)); b.querySelector('.st').textContent = on ? 'On' : 'Off'; }
 function say(msg) { const m = $('watchMsg'); m.textContent = msg || ''; m.hidden = !msg; }
 
 function load(j) {
   rec = cleanRecording(j); parts = j.parts && Array.isArray(j.parts.layers) ? j.parts : null;
   sp = specialise(rec);
   view.setData(rec, sp, parts);
+  cutOn = false; keepN = 0; off = null; askedUnload = false; view.set({ off: null }); flipSw($('watchCut'), false); $('watchKeep').value = '0'; $('watchKeep').max = rec.brain.experts;
+  if (j.cut?.off) rec.cutOff = Number(j.cut.off) || 0;
   hidden = new Set(); only = ''; t = 0; playing = false; mode = 'brain'; floor = 0; expert = 0; lastIdx = -1;
   frames = timeline(rec);
   document.title = `${NAME}: ${rec.brain.name}`;
@@ -36,7 +39,7 @@ function load(j) {
   $('watchOnly').innerHTML = `<option value="">every skill</option>${rec.skills.map((s) => `<option value="${esc(s.id)}">${esc(s.label)}</option>`).join('')}`;
   $('watchZoomOne').textContent = w('One expert'); $('watchExpertWord').textContent = w('Expert');
   cube();
-  skillsHtml(); wordsHtml(); setMode('brain'); seek(0); say('');
+  skillsHtml(); wordsHtml(); setMode('brain'); seek(0); say(''); cutHtml();
 }
 
 function skillsHtml() {
@@ -89,7 +92,7 @@ function caption(i) {
   view.setCaption({ title: `${letter} ${rec.skills[si].label}: ${c.question}`, color, text: `${label}: ${(before + now + end).replace(/\s+/g, ' ').trim()}` });
   $('watchCaption').innerHTML = `<span class="q"><strong>${esc(letter)} ${esc(rec.skills[si].label)}:</strong> ${esc(c.question)}</span><br><em>${esc(label)}:</em> ${esc(before)}<span class="wnow">${esc(now) || '·'}</span>${esc(end)}`;
   const picks = c.e[f.word].reduce((a, l) => a + l.length, 0);
-  $('watchStatus').textContent = w(`Word ${i + 1} of ${frames.length}. Question ${f.clip + 1} of ${rec.clips.length}. ${picks} experts picked for this word.`);
+  $('watchStatus').textContent = w(`Word ${i + 1} of ${frames.length}. Question ${f.clip + 1} of ${rec.clips.length}. ${picks} experts picked for this word.${off ? ` ${c.e[f.word].reduce((a, l, li) => a + l.filter((x) => off[li].has(x)).length, 0)} of them are turned off (the red rings).` : ''}`);
   const sc = $('watchScrub'); sc.value = String(i); sc.setAttribute('aria-valuetext', `Word ${i + 1} of ${frames.length}: ${now.trim() || 'a marker'}, in a question about ${rec.skills[si].label}`);
 }
 
@@ -117,10 +120,10 @@ function floorHtml() {
   for (let i = 0; i < lay.W * lay.D; i++) {
     const e = lay.cellExpert[i];
     if (e >= 0) {
-      const top = sp.top[l][e], off = top >= 0 ? hidden.has(top) : hidden.has('never');
+      const top = sp.top[l][e], cut = Boolean(off && off[l].has(e)), dim = cut || (top >= 0 ? hidden.has(top) : hidden.has('never'));
       const st = Math.round(100 * (sp.strength[l][e] || 0));
       const label = top < 0 ? `Expert ${e}: never picked` : `Expert ${e}: ${rec.skills[top].label}, ${st >= LEANS * 100 ? `leans to it (${st} out of 100)` : 'shared with the other skills'}, picked ${sp.picks[l][e]} times`;
-      cells.push(`<button type="button" class="watch-cell${off ? ' off' : ''}" data-cell="${e}" aria-label="${esc(label)}" title="${esc(label)}">${top >= 0 ? `<span class="bg" style="background:${lookOf(top)[0]};opacity:${(0.2 + 0.8 * Math.min(1, sp.strength[l][e] * 1.6)).toFixed(2)}"></span>` : ''}<span class="tx">${e}${top >= 0 ? `<br>${lookOf(top)[1]}` : ''}</span></button>`);
+      cells.push(`<button type="button" class="watch-cell${dim ? ' off' : ''}" data-cell="${e}" aria-label="${esc(label + (cut ? ', turned off' : ''))}" title="${esc(label + (cut ? ', turned off' : ''))}">${top >= 0 ? `<span class="bg" style="background:${lookOf(top)[0]};opacity:${(0.2 + 0.8 * Math.min(1, sp.strength[l][e] * 1.6)).toFixed(2)}"></span>` : ''}<span class="tx">${e}${top >= 0 ? `<br>${lookOf(top)[1]}` : ''}</span></button>`);
     } else if (lay.coreRank[i] >= 0 && lay.grey[l] > 0) cells.push(`<div class="watch-cell core${hidden.has('grey') ? ' off' : ''}" title="Not an expert: attention, the router and the tuning rows"></div>`);
     else cells.push('<div></div>');
   }
@@ -195,10 +198,34 @@ $('watchSkills').addEventListener('change', (ev) => {
   const k = ev.target.dataset.show; if (k === undefined) return;
   const key = k === 'grey' || k === 'never' ? k : Number(k);
   if (ev.target.checked) hidden.delete(key); else hidden.add(key);
-  view.set({ hidden }); if (mode === 'floor') floorHtml(); lastIdx = -1; need = true;
+  view.set({ hidden }); cutHtml(); if (mode === 'floor') floorHtml(); lastIdx = -1; need = true;
 });
-$('watchAll').onclick = () => { hidden = new Set(); view.set({ hidden }); skillsHtml(); if (mode === 'floor') floorHtml(); need = true; };
-$('watchNone').onclick = () => { hidden = new Set([...rec.skills.keys(), ...['grey', 'never'].filter((k) => hidden.has(k))]); view.set({ hidden }); skillsHtml(); if (mode === 'floor') floorHtml(); need = true; };
+// ---- try a cut: what is unticked (and all but the busiest few on each floor) is turned off, not only hidden ----
+function cutHtml() {
+  if (!rec) return;
+  off = cutOn ? cutOf(rec, sp, { skills: new Set([...hidden].filter((k) => typeof k === 'number')), never: hidden.has('never'), keepN }) : null;
+  view.set({ off }); window.__cutOff = off; lastIdx = -1; need = true;
+  const says = $('watchCutSays'), again = $('watchRescan');
+  if (!off) { says.textContent = w(rec.cutOff ? `This scan was made with ${rec.cutOff.toLocaleString()} experts turned off.` : 'Untick skills or Never picked above, then switch this on: those experts go dark, and a red ring shows each time the brain wanted one.'); again.hidden = true; return; }
+  const fx = cutEffect(rec, off);
+  const worst = fx.per.map((p, i) => [p.pct, rec.skills[i].label]).sort((a, b) => b[0] - a[0])[0];
+  says.textContent = w(fx.off ? `${fx.off.toLocaleString()} of ${fx.total.toLocaleString()} experts turned off. ${fx.pct}% of the picks in this scan went to them${fx.lost && worst ? `; ${worst[1]} leaned on them most (${worst[0]}%)` : ''}. A real brain would pick its next best experts instead, so this shows how much it leaned on them, not how much worse it would get.` : 'Nothing is turned off yet. Untick something above, or set how many to keep on each floor.');
+  again.hidden = !(fx.off && src && rec.brain.kind !== 'neurons');
+}
+$('watchCut').onclick = (ev) => { cutOn = !cutOn; flipSw(ev.currentTarget, cutOn); askedUnload = false; cutHtml(); if (mode === 'floor') floorHtml(); };
+$('watchKeep').onchange = (ev) => { keepN = Math.max(0, Math.min(rec.brain.experts, Math.floor(Number(ev.target.value) || 0))); ev.target.value = keepN; if (keepN && !cutOn) { cutOn = true; flipSw($('watchCut'), true); } cutHtml(); if (mode === 'floor') floorHtml(); };
+$('watchRescan').onclick = async () => {
+  if (!off || !src) return;
+  try {
+    const r = await fetch('/api/lab/watch/start', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ brain: src.brain, again: src.id, keep: keepList(rec, off), unload: askedUnload }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
+    if (j.needUnload) { askedUnload = true; say(`${(j.names || []).join(', ') || 'Bob\'s brain'} is on the graphics card, and the scan needs it. Press the button again to unload it and start.`); return; }
+    askedUnload = false; say('The new scan has started. It asks the same questions with those experts switched off, and shows up on the Lab\'s aiFEUI page when it\'s done.');
+  } catch (e) { say(`Bob couldn't start that scan: ${e.message}`); }
+};
+$('watchAll').onclick = () => { hidden = new Set(); view.set({ hidden }); skillsHtml(); cutHtml(); if (mode === 'floor') floorHtml(); need = true; };
+$('watchNone').onclick = () => { hidden = new Set([...rec.skills.keys(), ...['grey', 'never'].filter((k) => hidden.has(k))]); view.set({ hidden }); skillsHtml(); cutHtml(); if (mode === 'floor') floorHtml(); need = true; };
 $('watchZoom').onchange = (ev) => setMode(ev.target.value);
 $('watchFloor').onchange = (ev) => { const was = floor; floor = Math.max(0, Math.min(rec.brain.layers - 1, (Number(ev.target.value) || 1) - 1)); ev.target.value = floor + 1; if (floor !== was) setMode(mode); };
 $('watchExpert').onchange = (ev) => { const was = expert; expert = Math.max(0, Math.min(rec.brain.experts - 1, Number(ev.target.value) || 0)); ev.target.value = expert; if (expert !== was) setMode(mode); };
@@ -232,7 +259,7 @@ $('watchSave').onclick = () => {
 $('watchFile').onchange = async (ev) => {
   const f = ev.target.files?.[0]; ev.target.value = ''; if (!f) return;
   if (f.size > 64e6) { say('That file is too big to be an expert recording.'); return; }
-  try { load(JSON.parse(await f.text())); } catch (e) { say(e instanceof SyntaxError ? 'That file isn\'t an expert recording from Bob\'s Lab.' : e.message); }
+  try { src = null; load(JSON.parse(await f.text())); } catch (e) { say(e instanceof SyntaxError ? 'That file isn\'t an expert recording from Bob\'s Lab.' : e.message); }
 };
 document.querySelector('.watch-open').addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); $('watchFile').click(); } });
 document.querySelector('.watch-open').tabIndex = 0;
@@ -257,7 +284,7 @@ document.querySelector('.watch-open').tabIndex = 0;
       const r = await fetch('/api/lab/watch/read', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ brain, id }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
-      load(j);
+      src = { brain, id }; load(j); src = { brain, id }; cutHtml();
     } catch (e) { say(`Bob couldn't open that recording: ${e.message}`); }
   }
   requestAnimationFrame(tick);
