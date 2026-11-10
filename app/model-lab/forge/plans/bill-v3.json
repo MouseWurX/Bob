@@ -158,10 +158,12 @@
  "teacher_model": "bobs/35Bob/model",
  "publish": {
   "user": "MouseWurX",
-  "private": true,
+  "private": false,
   "odds": false,
-  "models": [],
-  "note": "The owner, 8 Nov: lessons and odds may go to Hugging Face right away as private repos; NO untested Bob. list a tested Bob here (e.g. \"35Bob\") and this run uploads him from the drive as a private repo; Bill himself comes to the PC for testing first. Token = forge/hf-token.txt on the PC (gitignored), never in a plan. | 8 Nov later: 28Bob Riker is tested and approved by the owner; he is rebuilt on the card for the benchmark and uploaded from the drive. | 10 Nov: Riker is already on Hugging Face (public, full) from the 9 Nov publish run, so nothing is uploaded here; Bill comes to the PC for his test; any upload later is the owner's call."
+  "models": [
+   "20Bob"
+  ],
+  "note": "The owner, 8 Nov: lessons and odds may go to Hugging Face right away as private repos; NO untested Bob. list a tested Bob here (e.g. \"35Bob\") and this run uploads him from the drive as a private repo; Bill himself comes to the PC for testing first. Token = forge/hf-token.txt on the PC (gitignored), never in a plan. | 8 Nov later: 28Bob Riker is tested and approved by the owner; he is rebuilt on the card for the benchmark and uploaded from the drive. | 10 Nov: Riker is already on Hugging Face (public, full) from the 9 Nov publish run, so nothing is uploaded here; Bill comes to the PC for his test; any upload later is the owner's call. | 10 Nov, later: the owner said everything goes public so it all uploads, Bill included: his GGUF files, cards and model card go up PUBLIC at export (sent to the running pod with --send-plan); his full-size weights and adapter follow from the drive with plans/publish-bill.json."
  },
  "download_quants": [
   "Q4_K_M"

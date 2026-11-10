@@ -1,0 +1,55 @@
+{
+  "run": "publish-bill",
+  "note": "10 Nov: after Bill's run, rebuild 20Bob on the card from the stock teacher, his keep list and his adapter (both kept on the drive by his run), make his Q4 and Q3 files again, and put EVERYTHING on his public page: full-size weights, adapter, keep list, GGUF files and cards. The owner's rule from 10 Nov: everything public so it all uploads. No training, no teacher pass, nothing copied to the drive. About $5-7 on an H200, cap $30 / 3 h. Needs the drive (AP-JP-1), so it runs after Bill's run has ended.",
+  "teacher": "Qwen/Qwen3.6-35B-A3B",
+  "counts": "expert-counts-2026-11-04T23-23-19.json",
+  "lessons": "out/lessons",
+  "gpus": [
+    "NVIDIA H200",
+    "NVIDIA H100 80GB HBM3",
+    "NVIDIA A100 80GB PCIe",
+    "NVIDIA A100-SXM4-80GB"
+  ],
+  "step_up": [
+    "NVIDIA B200"
+  ],
+  "step_up_note": "a rebuild only: any 80 GB card with room will do",
+  "volume": {
+    "gb": 500,
+    "name": "bob-forge"
+  },
+  "volume_wait_minutes": 25,
+  "volume_fallback": false,
+  "volume_new": false,
+  "data_centers": [
+    "AP-JP-1"
+  ],
+  "disk_gb": 350,
+  "quants": "Q4_K_M,Q3_K_M",
+  "general_tokens": 0,
+  "rungs": [],
+  "hours_max": 3,
+  "dollars_max": 30,
+  "rent_minutes": 180,
+  "download_quants": [],
+  "publish": {
+    "user": "MouseWurX",
+    "private": false,
+    "odds": false,
+    "models": [],
+    "note": "The rebuild section does the uploading. Token = forge/hf-token.txt on the PC (gitignored), never in a plan."
+  },
+  "rebuild": {
+    "models": [
+      {
+        "name": "20Bob",
+        "nickname": "Bill",
+        "keep_file": "volume:bobs/20Bob/bob-keep.json",
+        "adapter": "volume:bobs/20Bob/adapter.pt",
+        "cards": "",
+        "private": false,
+        "what": "Bill (20Bob): the 144-expert cut of Bobert, healed against his odds on every lesson set"
+      }
+    ]
+  }
+}
