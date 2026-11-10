@@ -95,12 +95,13 @@ export function keepFromLit(counts, facts) {
 // so the answer's rows start at the last word of the question. Older shapes (rows only) pass through as they were.
 export function readTrace(raw, pieces = []) {
   if (raw && Array.isArray(raw.rows)) {
-    const rows = raw.rows.map((r) => ({ t: String(r?.t ?? ''), e: Array.isArray(r?.e) ? r.e : [] }));
+    const rows = raw.rows.map((r) => ({ t: String(r?.t ?? ''), e: Array.isArray(r?.e) ? r.e : [], a: Array.isArray(r?.a) ? r.a : null }));
+    const acts = rows.every((r) => r.a); // how hard each layer worked for each word (neuron groups and attention heads only)
     const P = Math.max(0, Math.min(rows.length, Number(raw.n_prompt) || 0));
     const last = String(raw.last ?? '');
     const from = Math.max(P - 1, 0);
-    return { trace: rows.slice(from).map((r) => r.e), tokens: [...rows.slice(from + 1).map((r) => r.t), last], read: { words: rows.map((r) => r.t), e: rows.map((r) => r.e), prompt: P, last },
-      shape: { kind: raw.kind === 'neurons' ? 'neurons' : 'experts', experts: Number(raw.n_expert) || 0, used: Number(raw.n_expert_used) || 0, layers: Number(raw.n_layer) || 0, neurons: Number(raw.n_ff) || 0 } };
+    return { trace: rows.slice(from).map((r) => r.e), tokens: [...rows.slice(from + 1).map((r) => r.t), last], read: { words: rows.map((r) => r.t), e: rows.map((r) => r.e), prompt: P, last, ...(acts ? { a: rows.map((r) => r.a) } : {}) },
+      shape: { kind: raw.kind === 'neurons' ? 'neurons' : raw.kind === 'heads' ? 'heads' : 'experts', experts: Number(raw.n_expert) || 0, used: Number(raw.n_expert_used) || 0, layers: Number(raw.n_layer) || 0, neurons: Number(raw.n_ff) || 0 } };
   }
   return { trace: raw, tokens: pieces, read: null };
 }
@@ -108,10 +109,10 @@ export function readTrace(raw, pieces = []) {
 // Ask Brain Engine one question with the trace on. ask = the server's url; returns { answer, trace, tokens, read }
 // or throws NO_TRACE when the build has no trace. One question at a time: the engine only gives the trace to a
 // request that had the brain to itself.
-export async function askTraced(url, question, { signal, fetchImpl = fetch, maxWords = MAX_WORDS, think = false } = {}) {
+export async function askTraced(url, question, { signal, fetchImpl = fetch, maxWords = MAX_WORDS, think = false, heads = false } = {}) {
   const t = await fetchImpl(url + '/apply-template', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', content: question }], chat_template_kwargs: { enable_thinking: think === true } }), signal: AbortSignal.timeout(30e3) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   const prompt = t?.prompt || `<|im_start|>user\n${question}<|im_end|>\n<|im_start|>assistant\n`;
-  const res = await fetchImpl(url + '/completion', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt, n_predict: maxWords, temperature: 0, expert_trace: true, return_tokens: true, cache_prompt: false }), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(300e3)]) : AbortSignal.timeout(300e3) });
+  const res = await fetchImpl(url + '/completion', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt, n_predict: maxWords, temperature: 0, expert_trace: true, ...(heads ? { expert_trace_heads: true } : {}), return_tokens: true, cache_prompt: false }), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(300e3)]) : AbortSignal.timeout(300e3) });
   if (!res.ok) throw new Error(`Brain Engine answered ${res.status}.`);
   const j = await res.json();
   const raw = j.expert_trace ?? j.experts_trace ?? j.experts ?? null;

@@ -58,7 +58,7 @@ index 61e50ad..3521601 100644
      void set_embeddings (bool value);
      void set_embeddings_nextn(bool value, bool masked);
 diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
-index ead0a3f..5c90e0c 100644
+index ead0a3f..9487f53 100644
 --- a/tools/server/server-context.cpp
 +++ b/tools/server/server-context.cpp
 @@ -25,6 +25,7 @@
@@ -69,7 +69,7 @@ index ead0a3f..5c90e0c 100644
  #include <cinttypes>
  #include <deque>
  #include <exception>
-@@ -148,6 +149,148 @@ enum slot_state {
+@@ -148,6 +149,166 @@ enum slot_state {
  
  struct server_slot; // forward declaration
  
@@ -92,6 +92,12 @@ index ead0a3f..5c90e0c 100644
 +    static constexpr int32_t N_NEURON_GROUP = 256;
 +    static constexpr int32_t N_NEURON_USED  = 8;
 +    bool neurons = false;
++    // any brain: the same trace over attention heads. The attention output of a layer ("kqv_out-<layer>",
++    // [n_head*head_dim, n_tokens], one run per head) is cut into its heads and the busiest are reported.
++    bool heads = false;
++    int32_t n_head = 0;
++    // with neurons or heads: how hard each layer worked for each token (the mean square of the whole node)
++    std::vector<std::vector<float>> acts;
 +    int32_t n_group = 0;
 +    int32_t n_ff    = 0;
 +    std::vector<size_t> at_tags; // per layer, tags.size() when it was last filled (a later node of the same pass replaces)
@@ -104,6 +110,7 @@ index ead0a3f..5c90e0c 100644
 +        n_group = 0;
 +        n_ff = 0;
 +        cols.assign(n_layer, {});
++        acts.assign(n_layer, {});
 +        n_cols.assign(n_layer, 0);
 +        at_tags.assign(n_layer, (size_t) -1);
 +        tags.clear();
@@ -126,14 +133,19 @@ index ead0a3f..5c90e0c 100644
 +
 +    bool eval_neurons(struct ggml_tensor * t, int il) {
 +        const int64_t n = t->ne[0], n_tok = t->ne[1];
-+        if (il >= (int) cols.size() || t->type != GGML_TYPE_F32 || t->view_src != nullptr || n < N_NEURON_USED || n_tok <= 0 ||
++        if (il >= (int) cols.size() || t->type != GGML_TYPE_F32 || (t->view_src != nullptr && !(heads && t->view_offs == 0)) || // the heads' node may be a plain reshape
++                n < (heads ? 1 : N_NEURON_USED) || n_tok <= 0 ||
 +                t->ne[2] != 1 || t->ne[3] != 1 || (n_ff != 0 && n_ff != n)) {
 +            bad = true;
 +            return true;
 +        }
++        if (heads && (n_head <= 0 || n % n_head != 0)) {
++            bad = true;
++            return true;
++        }
 +        n_ff    = (int32_t) n;
-+        n_group = (int32_t) std::min<int64_t>(N_NEURON_GROUP, n);
-+        n_used  = N_NEURON_USED;
++        n_group = heads ? n_head : (int32_t) std::min<int64_t>(N_NEURON_GROUP, n);
++        n_used  = heads ? std::max(1, std::min(N_NEURON_USED, n_head/4)) : N_NEURON_USED;
 +        auto & out = cols[il];
 +        if (at_tags[il] == tags.size()) {
 +            // a later node of the same layer in the same pass is nearer the block's real hidden state: it replaces
@@ -142,6 +154,7 @@ index ead0a3f..5c90e0c 100644
 +                return true;
 +            }
 +            out.resize(out.size() - n_tok*n_used);
++            acts[il].resize(acts[il].size() - n_tok);
 +            n_cols[il] -= (int32_t) n_tok;
 +        }
 +        at_tags[il] = tags.size();
@@ -150,14 +163,17 @@ index ead0a3f..5c90e0c 100644
 +        rank.resize(n_group);
 +        for (int64_t i = 0; i < n_tok; i++) {
 +            const float * v = fbuf.data() + i*n;
++            double all = 0.0;
 +            for (int32_t g = 0; g < n_group; g++) {
 +                const int64_t b = g*n/n_group, e = (g + 1)*n/n_group;
 +                double sum = 0.0;
 +                for (int64_t j = b; j < e; j++) {
 +                    sum += (double) v[j]*v[j];
 +                }
++                all += sum;
 +                rank[g] = { (float) (sum/(double) (e - b)), g };
 +            }
++            acts[il].push_back((float) (all/(double) n));
 +            std::partial_sort(rank.begin(), rank.begin() + n_used, rank.end(), [](const auto & a, const auto & b) {
 +                return a.first > b.first || (a.first == b.first && a.second < b.second);
 +            });
@@ -171,8 +187,10 @@ index ead0a3f..5c90e0c 100644
 +
 +    static bool cb_eval(struct ggml_tensor * t, bool ask, void * user_data) {
 +        auto * tr = (server_expert_trace *) user_data;
-+        if (tr->neurons) {
-+            const int il = neuron_layer(t->name);
++        if (tr->neurons || tr->heads) {
++            static const char kqv[] = "kqv_out-";
++            const int il = tr->heads ? (strncmp(t->name, kqv, sizeof(kqv) - 1) == 0 && t->name[sizeof(kqv) - 1] >= '0' && t->name[sizeof(kqv) - 1] <= '9' ? atoi(t->name + sizeof(kqv) - 1) : -1)
++                                     : neuron_layer(t->name);
 +            if (il < 0) {
 +                return ask ? false : true;
 +            }
@@ -218,7 +236,7 @@ index ead0a3f..5c90e0c 100644
  struct server_batch {
      common_batch view; // the rendered sub-batch [off, off + n_tokens), see render()
  
-@@ -1112,6 +1255,7 @@ private:
+@@ -1112,6 +1273,7 @@ private:
      std::unique_ptr<server_prompt_cache> prompt_cache;
  
      std::vector<uint8_t> expert_keep; // empty = all experts on
@@ -226,7 +244,7 @@ index ead0a3f..5c90e0c 100644
  
      server_metrics metrics;
  
-@@ -2099,6 +2243,8 @@ private:
+@@ -2099,6 +2261,8 @@ private:
  
          slot.task = std::make_unique<const server_task>(std::move(task));
  
@@ -235,7 +253,7 @@ index ead0a3f..5c90e0c 100644
          if (slot.task->type == SERVER_TASK_TYPE_TTS) {
              slot.state = SLOT_STATE_PROCESSING_PROMPT;
          } else {
-@@ -2426,6 +2572,7 @@ private:
+@@ -2426,6 +2590,7 @@ private:
          res->stats           = slot.stats;
          res->prompt          = slot.task->tokens.detokenize(ctx_tgt, true);
          res->response_fields = std::move(slot.task->params.response_fields);
@@ -243,7 +261,7 @@ index ead0a3f..5c90e0c 100644
  
          res->truncated             = slot.truncated;
          res->n_decoded             = slot.stats.n_gen;
-@@ -4760,6 +4907,117 @@ private:
+@@ -4760,6 +4925,131 @@ private:
          return true;
      }
  
@@ -269,7 +287,9 @@ index ead0a3f..5c90e0c 100644
 +        {
 +            std::lock_guard<std::mutex> lock(etrace.mutex);
 +            etrace.on = want;
-+            etrace.neurons = llama_model_n_expert(model_tgt) <= 0;
++            etrace.heads   = want && slot.task->params.expert_trace_heads;
++            etrace.n_head  = llama_model_n_head(model_tgt);
++            etrace.neurons = !etrace.heads && llama_model_n_expert(model_tgt) <= 0;
 +            etrace.clear(want ? llama_model_n_layer(model_tgt) : 0);
 +        }
 +        if (want) {
@@ -322,25 +342,37 @@ index ead0a3f..5c90e0c 100644
 +                    }
 +                    n_prompt += etrace.tags[i].is_prompt ? 1 : 0;
 +                    json e = json::array();
++                    json a = json::array(); // how hard each layer worked for this token (neurons and heads only)
++                    const bool with_acts = etrace.neurons || etrace.heads;
 +                    for (size_t il = 0; il < etrace.cols.size(); il++) {
 +                        if (etrace.n_cols[il] == 0 || (outputs_only[il] && !etrace.tags[i].output)) {
 +                            e.push_back(json::array());
++                            if (with_acts) {
++                                a.push_back(0.0f);
++                            }
 +                            continue;
 +                        }
-+                        const auto b = etrace.cols[il].begin() + (outputs_only[il] ? i_out : i)*k;
++                        const size_t at = outputs_only[il] ? i_out : i;
++                        const auto b = etrace.cols[il].begin() + at*k;
 +                        e.push_back(std::vector<int32_t>(b, b + k));
++                        if (with_acts) {
++                            a.push_back(at < etrace.acts[il].size() ? etrace.acts[il][at] : 0.0f);
++                        }
 +                    }
 +                    const llama_token tok = etrace.tags[i].token;
 +                    rows.push_back(json {
 +                        {"t", tok == LLAMA_TOKEN_NULL ? std::string() : common_token_to_piece(ctx_tgt, tok, true)},
 +                        {"e", std::move(e)},
 +                    });
++                    if (with_acts) {
++                        rows.back()["a"] = std::move(a);
++                    }
 +                }
 +                const int32_t n_gen = slot.stats.n_gen;
 +                out = json {
 +                    {"n_layer",       (int32_t) etrace.cols.size()},
-+                    {"kind",          etrace.neurons ? "neurons" : "experts"},
-+                    {"n_expert",      etrace.neurons ? etrace.n_group : llama_model_n_expert(model_tgt)},
++                    {"kind",          etrace.heads ? "heads" : etrace.neurons ? "neurons" : "experts"},
++                    {"n_expert",      etrace.neurons || etrace.heads ? etrace.n_group : llama_model_n_expert(model_tgt)},
 +                    {"n_ff",          etrace.n_ff},
 +                    {"n_expert_used", k},
 +                    {"n_prompt",      n_prompt},
@@ -361,7 +393,7 @@ index ead0a3f..5c90e0c 100644
      // returns true = success ; false = retry with smaller batch size
      // throw std::runtime_error on fatal error
      bool decode(int32_t & n_batch, int32_t off) {
-@@ -4803,6 +5061,22 @@ private:
+@@ -4803,6 +5093,22 @@ private:
              }
          });
  
@@ -385,15 +417,18 @@ index ead0a3f..5c90e0c 100644
              {
                  std::string err;
 diff --git a/tools/server/server-schema.cpp b/tools/server/server-schema.cpp
-index 0a14a96..25e16f1 100644
+index 0a14a96..e9b492a 100644
 --- a/tools/server/server-schema.cpp
 +++ b/tools/server/server-schema.cpp
-@@ -36,6 +36,9 @@ std::vector<std::unique_ptr<field>> make_llama_cmpl_schema(const common_params &
+@@ -36,6 +36,12 @@ std::vector<std::unique_ptr<field>> make_llama_cmpl_schema(const common_params &
      add((new field_bool("return_tokens", params.return_tokens))
          ->set_desc("Return the raw generated token ids in the `tokens` field"));
  
 +    add((new field_bool("expert_trace", params.expert_trace))
 +        ->set_desc("Brain Engine: for a mixture-of-experts model, return which experts every layer picked for every token read, in the `expert_trace` field of the final result. Only given to a request that ran alone"));
++
++    add((new field_bool("expert_trace_heads", params.expert_trace_heads))
++        ->set_desc("Brain Engine: with `expert_trace`, report the busiest attention heads of every layer (kind `heads`) instead of experts or neuron groups. Works for any model"));
 +
      add((new field_bool("return_progress", params.return_progress))
          ->set_desc("Include prompt processing progress events in stream mode"));
@@ -433,18 +468,19 @@ index 1a0d434..a4111d4 100644
          deltas.back()["timings"] = stats.to_json();
      }
 diff --git a/tools/server/server-task.h b/tools/server/server-task.h
-index 51d7673..b0a748c 100644
+index 51d7673..3c4f0f4 100644
 --- a/tools/server/server-task.h
 +++ b/tools/server/server-task.h
-@@ -78,6 +78,7 @@ struct task_params {
+@@ -78,6 +78,8 @@ struct task_params {
      bool include_usage   = false;
      bool cache_prompt    = true; // remember the prompt to avoid reprocessing all prompt
      bool return_tokens   = false;
 +    bool expert_trace    = false; // Brain Engine: report which experts every layer picked for every token
++    bool expert_trace_heads = false; // Brain Engine: with expert_trace, report the busiest attention heads instead
      bool return_progress = false;
  
      int32_t sse_ping_interval = 30; // seconds between SSE comment pings while the stream stays silent, -1 disables
-@@ -429,6 +430,8 @@ struct server_task_result_cmpl_final : server_task_result {
+@@ -429,6 +431,8 @@ struct server_task_result_cmpl_final : server_task_result {
      std::vector<completion_token_output> probs_output;
      std::vector<std::string>  response_fields;
  

@@ -51,10 +51,12 @@ export function cleanRecording(j) {
       e.push(Array.from({ length: layers }, (_, l) => (Array.isArray(row[l]) ? row[l].filter((x) => int(x, experts)).slice(0, 64) : [])));
     }
     if (!n) continue;
-    clips.push({ skill: c.skill, question: text(c.question, 500), answer: text(c.answer, 4000), prompt: Math.max(0, Math.min(n, Number(c.prompt) || 0)), words: c.words.slice(0, n).map((w) => text(w, 80)), e, last: text(c.last, 80) });
+    // a (optional): how hard each layer worked for each word, for Floors only
+    const a = Array.isArray(c.a) && c.a.length >= n ? c.a.slice(0, n).map((row) => Array.from({ length: layers }, (_, l) => { const v = Number(Array.isArray(row) ? row[l] : 0); return Number.isFinite(v) && v > 0 ? v : 0; })) : null;
+    clips.push({ skill: c.skill, question: text(c.question, 500), answer: text(c.answer, 4000), prompt: Math.max(0, Math.min(n, Number(c.prompt) || 0)), words: c.words.slice(0, n).map((w) => text(w, 80)), e, last: text(c.last, 80), ...(a ? { a } : {}) });
   }
   if (!clips.length) throw new Error('That recording has no questions in it.');
-  return { format: FORMAT, version: VERSION, id: text(j.id, 80), name: text(j.name, 120), when: text(j.when, 20), engine: text(j.engine, 60), brain: { name: text(j.brain?.name, 120), experts, layers, used: Math.max(0, Math.min(64, Number(j.brain?.used) || 0)), kind: j.brain?.kind === 'neurons' ? 'neurons' : 'experts', neurons: Math.max(0, Math.min(1e7, Math.floor(Number(j.brain?.neurons) || 0))) }, skills, clips };
+  return { format: FORMAT, version: VERSION, id: text(j.id, 80), name: text(j.name, 120), when: text(j.when, 20), engine: text(j.engine, 60), brain: { name: text(j.brain?.name, 120), experts, layers, used: Math.max(0, Math.min(64, Number(j.brain?.used) || 0)), kind: ['neurons', 'heads'].includes(j.brain?.kind) ? j.brain.kind : 'experts', neurons: Math.max(0, Math.min(1e7, Math.floor(Number(j.brain?.neurons) || 0))) }, skills, clips };
 }
 
 // Which skill each expert leans to. For every skill, how often each expert was picked per word of that skill (so a
@@ -72,9 +74,9 @@ export function specialise(rec) {
   const count = Array.from({ length: L }, () => Array.from({ length: E }, () => new Array(S).fill(0)));
   const words = new Array(S).fill(0);
   for (const c of rec.clips) {
-    const s = idx.get(c.skill); if (s === undefined) continue;
-    words[s] += c.e.length;
-    for (const row of c.e) for (let l = 0; l < L; l++) for (const x of row[l] || []) count[l][x][s]++;
+    const s0 = idx.get(c.skill); if (s0 === undefined) continue;
+    // c.by (optional): a skill for every word instead of one for the clip; the patterns Bob finds use it
+    c.e.forEach((row, w) => { const s = c.by ? c.by[w] : s0; words[s]++; for (let l = 0; l < L; l++) for (const x of row[l] || []) count[l][x][s]++; });
   }
   const top = [], strength = [], share = [], picks = [], even = [];
   const per = rec.skills.map(() => ({ leans: 0, mostly: 0 }));
@@ -120,6 +122,7 @@ export function inWords(rec, sp) {
   rec.skills.forEach((s, i) => { lines.push(`${lookOf(i)[1]}, ${s.label}: ${sp.per[i].leans.toLocaleString()} experts lean to it, ${sp.per[i].mostly.toLocaleString()} of them strongly. ${sp.words[i].toLocaleString()} words read.`); });
   if (sp.evens) lines.push(`${sp.evens.toLocaleString()} experts are all-rounders: every skill used them about alike, and often. They have a soft white outline. A faint expert with no outline was only picked a few times.`);
   if (S < 2) lines.push('With one skill there is nothing to compare, so every expert it used gets its colour.');
+  if (isHeads(rec)) return [`This scan lights attention heads: the parts of each layer that decide which earlier words to look at. Every layer has ${rec.brain.experts} of them, and the ${rec.brain.used} busiest light up for each word. They are real parts of the brain, so a colour here means that head works hardest for that skill.`, ...lines.map((l) => say(rec, l))];
   if (!isNeurons(rec)) return lines;
   return [`This brain isn't a mixture-of-experts one, so the scan lights groups of neurons: every layer's ${rec.brain.neurons ? rec.brain.neurons.toLocaleString() + ' ' : ''}hidden neurons are cut into ${rec.brain.experts} equal groups of neighbours, and the ${rec.brain.used} busiest light up for each word. The groups are a way of slicing, not parts the brain itself knows about.`, ...lines.map((l) => say(rec, l))];
 }
@@ -155,7 +158,17 @@ export const PART_LABEL = { question: 'Question', thinking: 'Thinking', answer: 
 // hidden neurons cut into equal runs, the busiest few lit for every word. The viewer is the same; only the words
 // change. say(rec, text) turns a sentence written about experts into one about neuron groups.
 export const isNeurons = (rec) => rec?.brain?.kind === 'neurons';
+export const isHeads = (rec) => rec?.brain?.kind === 'heads'; // any brain, scanned by its attention heads
 export function say(rec, s) {
+  if (isHeads(rec)) {
+    const B = '(?<![-\\w=.#])', A = '(?![-\\w=])';
+    const r = (from, to) => { s = s.replace(new RegExp(B + from + A, 'g'), to); };
+    s = String(s);
+    r('Not experts', 'Other parts'); r('not experts', 'not attention'); r('Not an expert', 'Not an attention head'); r('the router that picks experts', 'the router');
+    r('an expert', 'an attention head'); r('An expert', 'An attention head');
+    r('Experts', 'Attention heads'); r('experts', 'attention heads'); r('Expert', 'Attention head'); r('expert', 'attention head');
+    return s;
+  }
   if (!isNeurons(rec)) return s;
   const B = '(?<![-\\w=.#])', A = '(?![-\\w=])'; // never inside a class, an id or an attribute
   const r = (from, to) => { s = s.replace(new RegExp(B + from + A, 'g'), to); };
@@ -222,8 +235,8 @@ export function cutEffect(rec, off) {
   const per = rec.skills.map(() => ({ picks: 0, lost: 0, pct: 0 }));
   let picks = 0, lost = 0;
   for (const c of rec.clips) {
-    const p = per[idx.get(c.skill)]; if (!p) continue;
-    for (const row of c.e) for (let l = 0; l < row.length; l++) for (const x of row[l]) { p.picks++; picks++; if (off[l]?.has(x)) { p.lost++; lost++; } }
+    const p0 = per[idx.get(c.skill)]; if (!p0) continue;
+    c.e.forEach((row, w) => { const p = c.by ? per[c.by[w]] : p0; for (let l = 0; l < row.length; l++) for (const x of row[l]) { p.picks++; picks++; if (off[l]?.has(x)) { p.lost++; lost++; } } });
   }
   per.forEach((p) => { p.pct = p.picks ? Math.round((100 * p.lost) / p.picks) : 0; });
   return { off: off.reduce((a, s) => a + s.size, 0), total: rec.brain.layers * rec.brain.experts, picks, lost, pct: picks ? Math.round((100 * lost) / picks) : 0, per };
@@ -256,7 +269,7 @@ export function liveRecording(traces, name = 'Bob') {
 // (0-100) and which are all-rounders. skillMap makes it from a recording; mapLook turns it back into what the
 // drawing reads. null when the map is not for a brain of this shape.
 export function skillMap(rec, sp = specialise(rec)) {
-  return { experts: rec.brain.experts, layers: rec.brain.layers, kind: isNeurons(rec) ? 'neurons' : 'experts', name: rec.name || '', skills: rec.skills.map((s) => ({ id: s.id, label: s.label })),
+  return { experts: rec.brain.experts, layers: rec.brain.layers, kind: rec.brain.kind || 'experts', name: rec.name || '', skills: rec.skills.map((s) => ({ id: s.id, label: s.label })),
     top: sp.top, strength: sp.strength.map((r) => r.map((v) => Math.round(v * 100))), even: sp.even.map((r) => r.map((v) => (v ? 1 : 0))) };
 }
 export function mapLook(map, { experts, layers, kind = 'experts' }) {
@@ -272,4 +285,79 @@ export function litSkills(look, row) {
   const n = new Array(look.skills.length).fill(0); let evens = 0, never = 0;
   row.forEach((ids, l) => { for (const e of ids || []) { const t = look.sp.top[l]?.[e] ?? -1; if (t < 0) never++; else if (look.sp.even[l][e]) evens++; else n[t]++; } });
   return { skills: n.map((c, i) => ({ label: look.skills[i].label, n: c })).filter((x) => x.n).sort((a, b) => b.n - a.n), evens, never };
+}
+
+// ---- two more ways to look, both worked out here from the scan itself (no helper to train, nothing to rent) ----
+
+// Floors only: how hard each floor worked for each word, 0 to 1, each floor against its own usual range (so a floor
+// that is always loud doesn't drown the rest). null when the scan has no such numbers (an experts scan).
+// floorScale(rec) -> { lo[l], hi[l] }; floorsAt(rec, scale, clip, word) -> [0..1 per floor].
+export const hasFloors = (rec) => Boolean(rec?.clips?.length) && rec.clips.every((c) => Array.isArray(c.a));
+export function floorScale(rec) {
+  if (!hasFloors(rec)) return null;
+  const L = rec.brain.layers, lo = [], hi = [];
+  for (let l = 0; l < L; l++) {
+    const v = []; for (const c of rec.clips) for (const row of c.a) if (row[l] > 0) v.push(row[l]);
+    v.sort((a, b) => a - b);
+    lo.push(v.length ? v[Math.floor(v.length * 0.05)] : 0); hi.push(v.length ? v[Math.min(v.length - 1, Math.floor(v.length * 0.95))] : 0);
+  }
+  return { lo, hi };
+}
+export function floorsAt(rec, scale, clip, word) {
+  const row = rec.clips[clip]?.a?.[word]; if (!row || !scale) return null;
+  return row.map((v, l) => (scale.hi[l] > scale.lo[l] ? Math.max(0, Math.min(1, (v - scale.lo[l]) / (scale.hi[l] - scale.lo[l]))) : v > 0 ? 0.5 : 0));
+}
+
+// Patterns Bob found: words that light the same blocks are put together, with nobody telling Bob what the groups
+// should be. Every word is the set of blocks it lit; the words are sorted into k groups (k-means on those sets,
+// rarer blocks counting for more), and each group is named by the words most its own. The answer is a copy of the
+// recording whose "skills" are the patterns, with a pattern for every word (clip.by), so the rest of the viewer
+// (colours, all-rounders, cuts) works on it unchanged. Always the same answer for the same recording.
+export const PATTERN_CHOICES = [6, 8, 12, 16], PATTERN_DEFAULT = 8, PATTERN_SAMPLE = 6000, PATTERN_ROUNDS = 10;
+export function findPatterns(rec, { k = PATTERN_DEFAULT } = {}) {
+  const L = rec.brain.layers, E = rec.brain.experts, U = L * E;
+  const all = []; // [clip, word]
+  rec.clips.forEach((c, ci) => { for (let w = 0; w < c.e.length; w++) all.push([ci, w]); });
+  const N = all.length; k = Math.max(2, Math.min(MAX_SKILLS, k, N));
+  const units = (ci, w) => { const out = []; const row = rec.clips[ci].e[w]; for (let l = 0; l < L; l++) for (const x of row[l]) out.push(l * E + x); return out; };
+  // rarer blocks say more about a word than the ones every word lights
+  const df = new Float32Array(U); for (const [ci, w] of all) for (const u of units(ci, w)) df[u]++;
+  const idf = new Float32Array(U); for (let u = 0; u < U; u++) idf[u] = df[u] ? Math.log(1 + N / df[u]) : 0;
+  const step = Math.max(1, Math.ceil(N / PATTERN_SAMPLE));
+  const sample = []; for (let i = 0; i < N; i += step) sample.push(all[i]);
+  const su = sample.map(([ci, w]) => units(ci, w));
+  const norm = su.map((us) => Math.sqrt(us.reduce((a, u) => a + idf[u] * idf[u], 0)) || 1);
+  const cents = [];
+  const sim = (c, us, n) => { let s = 0; for (const u of us) s += c[u] * idf[u]; return s / n; };
+  const centOf = (members) => { const c = new Float32Array(U); for (const i of members) for (const u of su[i]) c[u] += idf[u] / norm[i]; let n = 0; for (let u = 0; u < U; u++) n += c[u] * c[u]; n = Math.sqrt(n) || 1; for (let u = 0; u < U; u++) c[u] /= n; return c; };
+  // start: the first word, then each time the word least like every centre so far
+  cents.push(centOf([0]));
+  const best = new Float32Array(sample.length).fill(-1);
+  while (cents.length < k) {
+    const c = cents[cents.length - 1]; let far = 0;
+    for (let i = 0; i < sample.length; i++) { best[i] = Math.max(best[i], sim(c, su[i], norm[i])); if (best[i] < best[far]) far = i; }
+    cents.push(centOf([far]));
+  }
+  const assign = new Int32Array(sample.length);
+  for (let round = 0; round < PATTERN_ROUNDS; round++) {
+    let moved = 0; const groups = Array.from({ length: k }, () => []);
+    for (let i = 0; i < sample.length; i++) { let b = 0, bs = -1; for (let j = 0; j < k; j++) { const s = sim(cents[j], su[i], norm[i]); if (s > bs) { bs = s; b = j; } } if (assign[i] !== b) moved++; assign[i] = b; groups[b].push(i); }
+    for (let j = 0; j < k; j++) if (groups[j].length) cents[j] = centOf(groups[j]);
+    if (!moved && round) break;
+  }
+  // every word gets its pattern; biggest pattern first
+  const by = rec.clips.map((c) => new Array(c.e.length).fill(0)), size = new Array(k).fill(0);
+  for (const [ci, w] of all) { const us = units(ci, w); const n = Math.sqrt(us.reduce((a, u) => a + idf[u] * idf[u], 0)) || 1; let b = 0, bs = -1; for (let j = 0; j < k; j++) { const s = sim(cents[j], us, n); if (s > bs) { bs = s; b = j; } } by[ci][w] = b; size[b]++; }
+  const order = size.map((n, j) => [n, j]).filter(([n]) => n).sort((a, b) => b[0] - a[0] || a[1] - b[1]).map(([, j]) => j);
+  const rank = new Map(order.map((j, i) => [j, i]));
+  // a name from the words most its own: often in this pattern, seldom in the others
+  const tidy = (t) => String(t).replace(/\s+/g, ' ').trim().slice(0, 16);
+  const total = new Map(), per = order.map(() => new Map());
+  for (const [ci, w] of all) { const t = tidy(rec.clips[ci].words[w]); if (!t) continue; total.set(t, (total.get(t) || 0) + 1); const m = per[rank.get(by[ci][w])]; m.set(t, (m.get(t) || 0) + 1); }
+  const skills = order.map((j, i) => {
+    const top = [...per[i].entries()].map(([t, n]) => [n * (n / total.get(t)), t, n]).sort((a, b) => b[0] - a[0] || (a[1] < b[1] ? -1 : 1)).slice(0, 3).map(([, t]) => t);
+    return { id: `p${i}`, label: `Pattern ${i + 1}${top.length ? `: ${top.join(' · ')}` : ''}`.slice(0, 60), words: size[j] };
+  });
+  const clips = rec.clips.map((c, ci) => { const b = by[ci].map((j) => rank.get(j)); const n = new Array(skills.length).fill(0); for (const x of b) n[x]++; let m = 0; for (let i = 1; i < n.length; i++) if (n[i] > n[m]) m = i; return { ...c, skill: skills[m].id, by: b }; });
+  return { ...rec, skills: skills.map(({ id, label }) => ({ id, label })), clips, patterns: skills };
 }

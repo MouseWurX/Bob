@@ -5,7 +5,7 @@
 // Its own window, so it can sit beside the Lab or a chat. The Lab opens it with ?brain=<id>&rec=<id>; it can also
 // open a recording file by itself (one made on another Bob, or on a rented card), with the Lab off.
 import { applySavedStyle } from './themes.js';
-import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind, cutOf, cutEffect, keepList, setColour, resetColours, COVERS, cutSteps } from './lab-watch-math.js';
+import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind, cutOf, cutEffect, keepList, setColour, resetColours, COVERS, cutSteps, findPatterns, PATTERN_CHOICES, PATTERN_DEFAULT, hasFloors, floorScale, floorsAt } from './lab-watch-math.js';
 import { createView, GREY } from './watch-view.js';
 applySavedStyle();
 
@@ -15,6 +15,7 @@ const still = () => document.body.classList.contains('still') || window.matchMed
 const view = createView($('watchCanvas'));
 const SPECIAL = /<\|[^|>]*\|>|<\/?think>/gi; // the chat layout's own markers, left out of the caption
 
+let base = null, patternsOn = false, patternK = PATTERN_DEFAULT, floorsOn = false, fscale = null; // base: the recording as scanned; rec is base, or base sorted into the patterns Bob found
 let cutCover = 0; // the Lab's "what every skill needs" cut being tried (0.9, 0.95, 0.99), or 0
 let rec = null, sp = null, parts = null, frames = [], t = 0, playing = false, speed = 8, only = '', hidden = new Set(), mode = 'brain', floor = 0, expert = 0, spin = false, spinSpeed = 0.25, aim = null, need = true, lastIdx = -1, lastLit = [], recorder = null, cutOn = false, keepN = 0, off = null, solid = new Map(), src = null, askedUnload = false;
 
@@ -23,8 +24,27 @@ function cube() { const g = view.cubeGap(); view.set({ gap: g }); $('watchGap').
 function flipSw(b, on) { b.setAttribute('aria-checked', String(on)); b.querySelector('.st').textContent = on ? 'On' : 'Off'; }
 function say(msg) { const m = $('watchMsg'); m.textContent = msg || ''; m.hidden = !msg; }
 
+// Colour by skills (as scanned) or by the patterns found in the scan itself. Everything that reads rec follows.
+function relook() {
+  rec = patternsOn ? findPatterns(base, { k: patternK }) : base;
+  sp = specialise(rec); view.setData(rec, sp, parts);
+  solid = new Map(); hidden = new Set(); only = ''; view.set({ solid, hidden, off: null });
+  cutOn = false; keepN = 0; off = null; flipSw($('watchCut'), false); $('watchKeep').value = '0'; cutHowHtml();
+  frames = timeline(rec);
+  $('watchOnly').innerHTML = `<option value="">every skill</option>${base.skills.map((s) => `<option value="${esc(s.id)}">${esc(s.label)}</option>`).join('')}`;
+  $('watchOnly').disabled = patternsOn; // the questions are still sorted by the skills you asked about
+  skillsHtml(); wordsHtml(); cutHtml(); if (mode === 'floor') floorHtml(); if (mode === 'expert') expertHtml(); seek(Math.min(t, frames.length - 1));
+}
+function byHtml() {
+  $('watchBy').innerHTML = `<option value="">The skills you asked about</option>${PATTERN_CHOICES.map((k) => `<option value="${k}">Patterns Bob found (${k} of them)</option>`).join('')}`;
+  const f = hasFloors(base); fscale = f ? floorScale(base) : null; floorsOn = false; view.setFloors(null);
+  $('watchFloors').hidden = !f; flipSw($('watchFloors'), false);
+}
+$('watchBy').onchange = (ev) => { const k = Number(ev.target.value) || 0; patternsOn = k > 0; if (k) patternK = k; say(patternsOn ? 'Sorting the words into patterns…' : ''); setTimeout(() => { relook(); say(''); }, 20); };
+$('watchFloors').onclick = (ev) => { floorsOn = !floorsOn; flipSw(ev.currentTarget, floorsOn); if (!floorsOn) view.setFloors(null); lastIdx = -1; need = true; };
+
 function load(j) {
-  rec = cleanRecording(j); parts = j.parts && Array.isArray(j.parts.layers) ? j.parts : null;
+  base = rec = cleanRecording(j); patternsOn = false; parts = j.parts && Array.isArray(j.parts.layers) ? j.parts : null;
   sp = specialise(rec);
   view.setData(rec, sp, parts);
   solid = new Map(); view.set({ solid });
@@ -41,7 +61,7 @@ function load(j) {
   $('watchFloor').max = rec.brain.layers; $('watchExpert').max = rec.brain.experts - 1;
   $('watchOnly').innerHTML = `<option value="">every skill</option>${rec.skills.map((s) => `<option value="${esc(s.id)}">${esc(s.label)}</option>`).join('')}`;
   $('watchZoomOne').textContent = w('One expert'); $('watchExpertWord').textContent = w('Expert');
-  cube();
+  cube(); byHtml(); $('watchOnly').disabled = false;
   skillsHtml(); wordsHtml(); setMode('brain'); seek(0); say(''); cutHtml();
 }
 
@@ -81,10 +101,11 @@ function jumpClip(dir) {
 
 function frameBits(i) {
   const f = frames[i]; if (!f) return null;
-  const c = rec.clips[f.clip], si = rec.skills.findIndex((s) => s.id === c.skill);
+  const c = rec.clips[f.clip], si = c.by ? c.by[f.word] : rec.skills.findIndex((s) => s.id === c.skill); // a pattern for every word, or the clip's skill
   return { f, c, si };
 }
 
+function busiestFloors(f) { const a = floorsAt(base, fscale, f.clip, f.word) || []; return a.map((v, l) => [v, l]).sort((x, y) => y[0] - x[0]).slice(0, 3).map(([, l]) => l + 1).join(', '); }
 function caption(i) {
   const b = frameBits(i); if (!b) return;
   const { f, c, si } = b, [color, letter] = lookOf(si);
@@ -96,7 +117,7 @@ function caption(i) {
   view.setCaption({ title: `${letter} ${rec.skills[si].label}: ${c.question}`, color, text: `${label}: ${(before + now + end).replace(/\s+/g, ' ').trim()}` });
   $('watchCaption').innerHTML = `<span class="q"><strong>${esc(letter)} ${esc(rec.skills[si].label)}:</strong> ${esc(c.question)}</span><br><em>${esc(label)}:</em> ${esc(before)}<span class="wnow">${esc(now) || '·'}</span>${esc(end)}`;
   const picks = c.e[f.word].reduce((a, l) => a + l.length, 0);
-  $('watchStatus').textContent = w(`Word ${i + 1} of ${frames.length}. Question ${f.clip + 1} of ${rec.clips.length}. ${picks} experts picked for this word.${off ? ` ${c.e[f.word].reduce((a, l, li) => a + l.filter((x) => off[li].has(x)).length, 0)} of them are turned off (the red rings).` : ''}`);
+  $('watchStatus').textContent = w(`Word ${i + 1} of ${frames.length}. Question ${f.clip + 1} of ${rec.clips.length}. ${picks} experts picked for this word.${floorsOn && fscale ? ` Busiest floors: ${busiestFloors(f)}.` : ''}${off ? ` ${c.e[f.word].reduce((a, l, li) => a + l.filter((x) => off[li].has(x)).length, 0)} of them are turned off (the red rings).` : ''}`);
   const sc = $('watchScrub'); sc.value = String(i); sc.setAttribute('aria-valuetext', `Word ${i + 1} of ${frames.length}: ${now.trim() || 'a marker'}, in a question about ${rec.skills[si].label}`);
 }
 
@@ -172,6 +193,7 @@ function tick(now) {
     need = false;
     const i = Math.floor(t), frac = playing ? t - i : 0;
     if (i !== lastIdx) { lastIdx = i; caption(i); if (mode === 'floor') markFloor(i); }
+    if (floorsOn && fscale) { const fb = frames[i]; view.setFloors(fb ? floorsAt(base, fscale, fb.clip, fb.word) : null); }
     if (mode !== 'floor') view.draw(litFor(i, frac));
   }
   requestAnimationFrame(tick);
@@ -216,12 +238,12 @@ function cutHtml() {
   const fx = cutEffect(rec, off);
   const worst = fx.per.map((p, i) => [p.pct, rec.skills[i].label]).sort((a, b) => b[0] - a[0])[0];
   says.textContent = w(fx.off ? `${covK ? `The Lab's cut that keeps what every skill needs (${Math.round(cutCover * 100)}% of each skill's picks) keeps ${covK} of ${rec.brain.experts} experts on each floor. ` : ''}${fx.off.toLocaleString()} of ${fx.total.toLocaleString()} experts turned off. ${fx.pct}% of the picks in this scan went to them${fx.lost && worst ? `; ${worst[1]} leaned on them most (${worst[0]}%)` : ''}. A real brain would pick its next best experts instead, so this shows how much it leaned on them, not how much worse it would get.` : 'Nothing is turned off yet. Untick something above, or set how many to keep on each floor.');
-  again.hidden = !(fx.off && src && rec.brain.kind !== 'neurons');
+  again.hidden = !(fx.off && src && rec.brain.kind === 'experts' && !patternsOn);
 }
 $('watchCut').onclick = (ev) => { cutOn = !cutOn; flipSw(ev.currentTarget, cutOn); askedUnload = false; cutHtml(); if (mode === 'floor') floorHtml(); };
 // the Lab's own cuts: its plain sizes (the busiest N on each floor) and "what every skill needs"
 function cutHowHtml() {
-  const box = $('watchCutHowBox'), sel = $('watchCutHow'), plain = rec.brain.kind === 'neurons' || rec.skills.length < 2;
+  const box = $('watchCutHowBox'), sel = $('watchCutHow'), plain = rec.brain.kind !== 'experts' || rec.skills.length < 2;
   box.hidden = plain; $('watchCutHowHint').hidden = plain; cutCover = 0;
   sel.innerHTML = `<option value="">By hand (what's unticked, or the busiest few)</option>${COVERS.map((c) => `<option value="c${c}">Keep what every skill needs (${Math.round(c * 100)}% of its picks)</option>`).join('')}${cutSteps(rec.brain.experts, rec.brain.used).map((n) => `<option value="k${n}">Keep the busiest ${n} of ${rec.brain.experts} on each floor</option>`).join('')}`;
 }
@@ -278,7 +300,7 @@ $('watchScrub').oninput = (ev) => { setPlaying(false); seek(Number(ev.target.val
 $('watchVideo').onclick = () => (recorder ? stopVideo() : startVideo());
 $('watchSave').onclick = () => {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify({ ...rec, parts })], { type: 'application/json' }));
+  a.href = URL.createObjectURL(new Blob([JSON.stringify({ ...base, parts })], { type: 'application/json' }));
   a.download = `${(rec.brain.name || 'brain').replace(/[^\w.-]+/g, '-')}-expert-recording.json`;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60e3);
 };

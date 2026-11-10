@@ -11,9 +11,9 @@ import { fileURLToPath } from 'node:url';
 import { Lab } from '../src/lab.js';
 import { readGguf } from '../src/lab-gguf.js';
 import { readTrace, askTraced, tallyTrace, NO_TRACE } from '../src/lab-peek.js';
-import { WATCH_SKILLS, PER_CHOICES, pickSkills, partsOf, clipOf, watchView, startWatch, readRecording, deleteRecording, listRecordings, watchRoute, cubeMap, WATCH_WORDS, WATCH_WORDS_THINK, cleanKeep } from '../src/lab-watch.js';
+import { WATCH_SKILLS, PER_CHOICES, pickSkills, partsOf, clipOf, watchView, startWatch, readRecording, deleteRecording, listRecordings, watchRoute, cubeMap, NO_HEADS, WATCH_WORDS, WATCH_WORDS_THINK, cleanKeep } from '../src/lab-watch.js';
 import { pagesRoute } from '../src/lab-pages.js';
-import { NAME, LONG_NAME, FORMAT, VERSION, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, SKILL_LOOKS, sideOf, LEANS, partOf, PART_LABEL, say, cutOf, cutEffect, keepList, setColour, resetColours, liveTrace, liveRecording, skillMap, mapLook, litSkills, coverKeep, cutSteps, EVEN_PICKS } from '../public/lab-watch-math.js';
+import { NAME, LONG_NAME, FORMAT, VERSION, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, SKILL_LOOKS, sideOf, LEANS, partOf, PART_LABEL, say, cutOf, cutEffect, keepList, setColour, resetColours, liveTrace, liveRecording, skillMap, mapLook, litSkills, coverKeep, cutSteps, EVEN_PICKS, findPatterns, PATTERN_CHOICES, hasFloors, floorScale, floorsAt, isHeads } from '../public/lab-watch-math.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -336,7 +336,7 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('a reply from a different brain starts the cube afresh', liveRecording([tr, { ...tr, experts: 16 }]).clips.length === 1);
   const cubeJs = read('public/mind-cube.js'), index = read('public/index.html'), layout = read('public/layout.js'), server = read('src/server.js'), llama = read('src/llamacpp.js');
   check('a scan holds up to sixteen skills, and says so', await startWatch(mk(), { brain: 'moe', skills: WATCH_SKILLS.map((x) => x.id) }).then(() => false, (e) => /up to 16 skills/.test(e.message)) && /watch-over/.test(read('public/lab-watch.js')));
-  check('the small cube sits in Bob\'s thinking behind a switch that starts Off', /id="mindDockCube"[^>]*aria-checked="false"/.test(index) && /id="mindCubeBox" class="mind-cube" hidden/.test(index) && /store\.get\('bob-mind-cube', '0'\) === '1'/.test(layout) && /createMindCube/.test(layout));
+  check('the small cube is how Bob\'s thinking shows to begin with, with the written thinking one switch away and whenever the cube can\'t work', /id="mindDockCube"[^>]*aria-checked="true"/.test(index) && /id="mindCubeBox" class="mind-cube" hidden/.test(index) && /store\.get\('bob-mind-cube', '1'\) === '1'/.test(layout) && /createMindCube/.test(layout) && /classList\.toggle\('cube-view', cubeOn && cubeOk\)/.test(layout) && /\.cube-view \.mind-log, \.cube-view \.mind-empty \{ display: none; \}/.test(read('public/style.css')));
   check('Bob asks the engine for the trace only while a cube is open, and only on Brain Engine', /cubeClients\.size > 0 && !cubeWhy\(\)/.test(server) && /this\.wantTrace\?\.\(\) \? \{ expert_trace: true \}/.test(llama) && /brainsEngineNow\(cfg\) === 'brainengine'/.test(server));
   check('only this replicant matrix\'s own pages can turn the cube on, and it says why when the engine can\'t do it', /isLocal && url\.searchParams\.get\('cube'\) === '1'/.test(server) && /type: 'cube', ok: !cubeWhy\(\), why: cubeWhy\(\)/.test(server) && /cubeClients\.delete\(res\)/.test(server));
   check('the cube says in words what it shows, stays still when animations are off, and can open the big viewer', /says\.textContent/.test(cubeJs) && /if \(still\(\)\)/.test(cubeJs) && /bobWatch\?\.load/.test(cubeJs) && /role="img" aria-label=/.test(index));
@@ -370,6 +370,45 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('the one colour is yours to pick in both viewers, and the cube\'s details can be hidden (the words stay for a screen reader)', /id="watchMonoColour"/.test(html) && /monoColour = \/\^#\[0-9a-f\]\{6\}\$\/i\.test/.test(view) && /id="mindCubeColour"/.test(index) && /bob-cube-colour/.test(cubeJs) && /id="mindCubeDetails"[^>]*aria-pressed="false">Show details/.test(index) && /let showDetails = false/.test(cubeJs) && /classList\.toggle\('sr-only', !showDetails\)/.test(cubeJs));
   check('Try a cut offers the Lab\'s own cuts', /id="watchCutHow"/.test(html) && /COVERS\.map/.test(js) && /cover: cutCover/.test(js));
   check('the small cube borrows the colours of the brain\'s newest scan and names them under the picture', /cubeMap\(lab, \{ model/.test(server) && /mapLook\(map,/.test(cubeJs) && /id="mindCubeKey"/.test(index) && /has no \$\{NAME\} scan yet/.test(cubeJs));
+}
+
+// ---- three more ways to see a brain, all worked out on this replicant matrix: attention heads, floors only, patterns ----
+{
+  const rawH = (kind) => ({ kind, n_layer: L, n_expert: 8, n_expert_used: 2, n_ff: 64, n_prompt: 2, last: '.', rows: Array.from({ length: 6 }, (_, i) => ({ t: i < 2 ? 'q' : ' w', e: Array.from({ length: L }, () => [i % 8, 7]), a: Array.from({ length: L }, (_, l) => (i + 1) * (l + 1) * 0.123456) })) });
+  const rt = readTrace(rawH('heads'));
+  check('the engine can report attention heads, and how hard each layer worked for each word', rt.shape.kind === 'heads' && rt.shape.experts === 8 && rt.read.a.length === 6 && rt.read.a[0].length === L && readTrace({ ...rawH('experts'), rows: rawH('experts').rows.map(({ a, ...r }) => r) }).read.a === undefined);
+  let askedHeads = null;
+  const lh = mk(); lh.stepFns.peekAsk = async (u, q, o) => { askedHeads = o.heads; return { answer: 'ok', ...readTrace(rawH('heads')) }; };
+  await startWatch(lh, { brain: 'moe', skills: ['chat', 'coding'], per: 2, what: 'heads' }); await wait(lh);
+  const hid = listRecordings(cfg, { id: 'moe', name: 'Test MoE' })[0]?.id;
+  const recH = hid ? readRecording(lh, { brain: 'moe', id: hid }) : null;
+  check('any brain, one with experts too, can be scanned by its attention heads', askedHeads === true && recH && recH.brain.kind === 'heads' && recH.brain.experts === 8 && recH.brain.used === 2 && /attention heads/.test(recH.name) && isHeads(recH), lh.runs[lh.runs.length - 1].error || '');
+  check('the scan keeps how hard each floor worked, to three figures', recH && hasFloors(recH) && recH.clips[0].a.length === recH.clips[0].e.length && recH.clips[0].a[0][0] === 0.123 && recH.clips[0].a[1][1] === 0.494);
+  check('in a heads scan the attention weights are the coloured blocks and the rest is grey', recH && recH.parts.layers[0].experts > 0 && recH.parts.layers[0].other > 0);
+  const lh2 = mk(); lh2.stepFns.peekAsk = async () => ({ answer: 'ok', ...readTrace(rawH('experts')) });
+  await startWatch(lh2, { brain: 'plain', skills: ['chat'], per: 2, what: 'heads' }); await wait(lh2);
+  check('an engine build that can\'t report heads fails with the reason', lh2.runs[lh2.runs.length - 1].state === 'failed' && lh2.runs[lh2.runs.length - 1].error === NO_HEADS && /Update it/.test(NO_HEADS));
+  check('experts can\'t be switched off in a heads scan', await startWatch(mk(), { brain: 'moe', what: 'heads', again: 'x', keep: [] }).then(() => false, (e) => /mixture-of-experts/.test(e.message)));
+  check('the words speak of attention heads', say(recH, 'Expert 3: 5 experts, an expert. Not experts') === 'Attention head 3: 5 attention heads, an attention head. Other parts' && /attention heads: the parts of each layer that decide which earlier words to look at/.test(inWords(recH, specialise(recH))[0]));
+  const sc = floorScale(recH), fa = floorsAt(recH, sc, 0, 5), f0 = floorsAt(recH, sc, 0, 0);
+  check('Floors only measures each floor against its own usual range, 0 to 1', sc && fa.length === L && fa.every((v) => v >= 0 && v <= 1) && fa[0] > f0[0] && f0[0] === 0 && fa[0] === 1 && floorScale(rec) === null && !hasFloors(rec) && floorsAt(rec, null, 0, 0) === null);
+  check('a recording file with nonsense in its floor numbers is cleaned', (() => { const j = JSON.parse(JSON.stringify(recH)); j.clips[0].a[0] = ['x', -4, Infinity]; const c = cleanRecording(j); return c.clips[0].a[0].every((v) => v === 0); })());
+  // patterns: two kinds of words light two different sets of blocks, and nobody says which is which
+  const mkw = (ids) => Array.from({ length: 2 }, () => ids);
+  const pr = cleanRecording({ format: FORMAT, version: VERSION, id: 'p', name: 'p', brain: { name: 'b', experts: 8, layers: 2, used: 2 }, skills: [{ id: 'x', label: 'Mixed' }],
+    clips: [{ skill: 'x', question: 'q', answer: 'a', prompt: 0, last: '', words: Array.from({ length: 40 }, (_, i) => (i % 2 ? ' cat' : ' 12')), e: Array.from({ length: 40 }, (_, i) => mkw(i % 2 ? [0, 1] : [6, 7])) }] });
+  const pt = findPatterns(pr, { k: 2 });
+  const byWord = pt.clips[0].by;
+  check('Bob finds the patterns in a scan by himself: words that light the same blocks go together', pt.skills.length === 2 && byWord.every((b, i) => b === byWord[i % 2]) && byWord[0] !== byWord[1] && pt.patterns.every((p) => p.words === 20));
+  check('each pattern is named by the words most its own', pt.skills.some((s) => /cat/.test(s.label) && !/12/.test(s.label)) && pt.skills.some((s) => /12/.test(s.label) && !/cat/.test(s.label)) && pt.skills.every((s) => /^Pattern \d: /.test(s.label)));
+  const ps = specialise(pt);
+  check('the colours then follow the patterns, word by word', ps.top[0][0] === byWord[1] && ps.top[0][6] === byWord[0] && ps.strength[0][0] > LEANS && ps.words.join() === '20,20' && cutEffect(pt, cutOf(pt, ps, { skills: new Set([byWord[1]]) })).per[byWord[1]].pct === 100);
+  check('the same scan always gives the same patterns, and the scan itself is left as it was', JSON.stringify(findPatterns(pr, { k: 2 }).skills) === JSON.stringify(pt.skills) && pr.skills.length === 1 && pr.clips[0].by === undefined && findPatterns(pr, { k: 99 }).skills.length <= 16 && PATTERN_CHOICES.every((k) => k <= 16));
+  const html = read('public/watch.html'), view = read('public/watch-view.js'), js = read('public/watch.js'), page = read('public/lab-watch.js'), patch = read('engine/patches/0002-expert-trace.patch'), peek = read('src/lab-peek.js');
+  check('the viewer offers Colour by (skills or patterns) and Floors only, which shows only when the scan has the numbers', /id="watchBy"/.test(html) && /findPatterns\(base, \{ k: patternK \}\)/.test(js) && /id="watchFloors"[^>]*aria-checked="false" hidden/.test(html) && /\$\('watchFloors'\)\.hidden = !f/.test(js) && /setFloors/.test(view) && /Busiest floors/.test(js));
+  check('the saved file is always the scan as made, never the patterns', /JSON\.stringify\(\{ \.\.\.base, parts \}\)/.test(js));
+  check('the scan page offers attention heads, and says it all runs here', /id="watch-what"/.test(page) && /value="heads"/.test(page) && /runs here, on this replicant matrix/.test(page) && /what, own:/.test(page));
+  check('Brain Engine\'s patch reports heads and floor activity, and Bob asks for heads only when chosen', /expert_trace_heads/.test(patch) && /kqv_out-/.test(patch) && /"heads"/.test(patch) && /heads \? \{ expert_trace_heads: true \} : \{\}/.test(peek));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -231,7 +231,7 @@ const oneLine = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n
 
 // How much of the brain is experts and how much is everything else, by number of weights: for each layer, and for
 // what sits outside the layers (the word tables). The viewer sizes the grey "not experts" blocks from this.
-export function partsOf(g, facts) {
+export function partsOf(g, facts, { heads = false } = {}) {
   const L = facts.layers;
   const layers = Array.from({ length: L }, () => ({ experts: 0, other: 0 }));
   const kinds = { attention: 0, router: 0, norms: 0, tables: 0, rest: 0 };
@@ -242,7 +242,8 @@ export function partsOf(g, facts) {
     if (m && Number(m[1]) < L) {
       const router = /ffn_gate_inp/.test(m[2]); // the router's rows go with the experts in a cut, but it isn't one
       // a brain without experts: its feed-forward neurons are what the scan lights, so they take the experts' place
-      if (!router && (facts.experts ? isExpertTensor(t.name) : /^ffn_(up|gate|down)\.weight$/.test(m[2]))) { layers[Number(m[1])].experts += n; continue; }
+      // a scan of attention heads: the attention weights are what lights, and everything else is the grey
+      if (heads ? /^attn_(q|k|v|output|qkv)\.(weight|bias)$/.test(m[2]) : !router && (facts.experts ? isExpertTensor(t.name) : /^ffn_(up|gate|down)\.weight$/.test(m[2]))) { layers[Number(m[1])].experts += n; continue; }
       layers[Number(m[1])].other += n;
       if (router) kinds.router += n; else if (/norm/.test(m[2])) kinds.norms += n; else if (/attn|ssm|conv/.test(m[2])) kinds.attention += n; else kinds.rest += n;
     } else { outside += n; if (/token_embd|^output\.weight$/.test(t.name)) kinds.tables += n; else kinds.rest += n; }
@@ -340,10 +341,12 @@ export function deleteRecording(lab, { brain: brainId, id } = {}) {
 }
 
 // One traced answer as a clip of the recording: every word read, the question first, then the answer read back.
+export const NO_HEADS = 'This Brain Engine build can\'t report attention heads yet. Update it in Get models, Engines, then scan again.';
+
 export function clipOf(skill, question, got, { experts, layers }) {
   const read = got.read;
-  let words, e, prompt, last;
-  if (read) ({ words, e, prompt, last } = read);
+  let words, e, prompt, last, a = null;
+  if (read) ({ words, e, prompt, last, a = null } = read);
   else { // an engine (or a test) that only gives the answer's rows
     const rows = Array.isArray(got.trace) ? got.trace : [];
     e = rows.map((r) => (Array.isArray(r) ? r : r?.layers || r?.experts || []));
@@ -351,7 +354,9 @@ export function clipOf(skill, question, got, { experts, layers }) {
     prompt = 0; last = '';
   }
   const clean = e.map((row) => Array.from({ length: layers }, (_, l) => (Array.isArray(row?.[l]) ? row[l].map(Number).filter((x) => Number.isInteger(x) && x >= 0 && x < experts) : [])));
-  return { skill, question, answer: String(got.answer || '').slice(0, 4000), prompt: Math.max(0, Math.min(clean.length, Number(prompt) || 0)), words: words.slice(0, clean.length).map((w) => String(w ?? '').slice(0, 80)), e: clean, last: String(last || '').slice(0, 80) };
+  // how hard each layer worked for each word, kept to three figures (the viewer's Floors only reads it)
+  const acts = Array.isArray(a) && a.length === clean.length ? a.map((row) => Array.from({ length: layers }, (_, l) => { const v = Number(row?.[l]); return Number.isFinite(v) && v > 0 ? Number(v.toPrecision(3)) : 0; })) : null;
+  return { skill, question, answer: String(got.answer || '').slice(0, 4000), prompt: Math.max(0, Math.min(clean.length, Number(prompt) || 0)), words: words.slice(0, clean.length).map((w) => String(w ?? '').slice(0, 80)), e: clean, last: String(last || '').slice(0, 80), ...(acts ? { a: acts } : {}) };
 }
 
 export async function startWatch(lab, c = {}, { unload = false } = {}) {
@@ -360,8 +365,9 @@ export async function startWatch(lab, c = {}, { unload = false } = {}) {
   if (!brain) throw new Error('Pick a brain to record.');
   const facts = inspect(brain);
   if (!facts?.layers) throw new Error(`Bob can't read how ${brain.name} is built, so there's nothing to scan.`);
+  const heads = c.what === 'heads'; // light the attention heads instead: works on any brain
   const plain = !facts.experts; // no experts: the scan lights groups of neurons instead
-  let shape = plain ? null : { kind: 'experts', experts: facts.experts, layers: facts.layers, used: facts.used };
+  let shape = plain || heads ? null : { kind: 'experts', experts: facts.experts, layers: facts.layers, used: facts.used };
   const tools = lab.tools();
   if (!tools.brainEngine.found && !lab.stepFns.peekServe) throw new Error(NO_ENGINE);
   if (lab.peekTraceOk === false) throw new Error(NO_TRACE);
@@ -369,7 +375,7 @@ export async function startWatch(lab, c = {}, { unload = false } = {}) {
   // list for each layer). The brain isn't cut: Brain Engine just stops picking the others for this scan.
   let again = null, keep = null;
   if (c.again) {
-    if (plain) throw new Error('Only a mixture-of-experts brain has experts to switch off.');
+    if (plain || heads) throw new Error('Only a mixture-of-experts brain has experts to switch off.');
     again = readRecording(lab, { brain: brain.id, id: c.again });
     keep = cleanKeep(c.keep, facts);
     if (!keep) throw new Error('Nothing is turned off, so the scan would be the same.');
@@ -398,12 +404,13 @@ export async function startWatch(lab, c = {}, { unload = false } = {}) {
         set(`s-${s.id}`, 'running');
         for (const q of s.questions) {
           let got;
-          try { got = await asker(srv.url, q, { signal, maxWords: think ? WATCH_WORDS_THINK : WATCH_WORDS, think }); }
+          try { got = await asker(srv.url, q, { signal, maxWords: think ? WATCH_WORDS_THINK : WATCH_WORDS, think, heads }); }
           catch (e) { if (e.message === NO_TRACE) lab.peekTraceOk = false; throw e; }
           lab.peekTraceOk = true;
-          if (plain && !shape) {
-            if (got.shape?.kind !== 'neurons' || !got.shape.experts) throw new Error(NO_TRACE);
-            shape = { kind: 'neurons', experts: got.shape.experts, layers: facts.layers, used: got.shape.used, neurons: got.shape.neurons };
+          if (!shape) {
+            const want = heads ? 'heads' : 'neurons';
+            if (got.shape?.kind !== want || !got.shape.experts) throw new Error(heads ? NO_HEADS : NO_TRACE);
+            shape = { kind: want, experts: got.shape.experts, layers: facts.layers, used: got.shape.used, neurons: got.shape.neurons };
           }
           clips.push(clipOf(s.id, q, got, shape));
           progress((100 * ++done) / (total + 1), `${s.label}: question ${done} of ${total}`);
@@ -414,8 +421,8 @@ export async function startWatch(lab, c = {}, { unload = false } = {}) {
     set('save', 'running');
     const at = lab.now(), when = new Date(at).toISOString().slice(0, 10);
     const id = `rec-${at.toString(36)}`;
-    let parts = null; try { parts = partsOf(readGguf(brain.gguf), facts); } catch {}
-    const rec = cleanRecording({ format: FORMAT, version: VERSION, id, name: `${brain.name}, ${skills.length} skill${skills.length === 1 ? '' : 's'}${offCount ? `, ${offCount.toLocaleString()} experts off` : ''}`, when, engine: 'Brain Engine', brain: { name: brain.name, experts: shape.experts, layers: shape.layers, used: shape.used, kind: shape.kind, neurons: shape.neurons || 0 }, skills: skills.map(({ id: sid, label }) => ({ id: sid, label })), clips });
+    let parts = null; try { parts = partsOf(readGguf(brain.gguf), facts, { heads }); } catch {}
+    const rec = cleanRecording({ format: FORMAT, version: VERSION, id, name: `${brain.name}, ${heads ? 'attention heads, ' : ''}${skills.length} skill${skills.length === 1 ? '' : 's'}${offCount ? `, ${offCount.toLocaleString()} experts off` : ''}`, when, engine: 'Brain Engine', brain: { name: brain.name, experts: shape.experts, layers: shape.layers, used: shape.used, kind: shape.kind, neurons: shape.neurons || 0 }, skills: skills.map(({ id: sid, label }) => ({ id: sid, label })), clips });
     const saw = inWords(rec, specialise(rec)).slice(0, 2).join(' ');
     writeJson(recFile(lab.cfg, brain, id), { ...rec, at, parts, saw, ...(offCount ? { cut: { off: offCount, from: String(c.again).slice(0, 80) } } : {}) });
     for (const old of listRecordings(lab.cfg, brain).slice(KEEP_RECORDINGS)) { try { fs.rmSync(recFile(lab.cfg, brain, old.id), { force: true }); } catch {} }

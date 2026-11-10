@@ -15,7 +15,7 @@ export function openViewer(brain = '', rec = '') {
 }
 
 export function createWatchPage({ api }) {
-  let v = null, bv = null, brain = '', picked = null, per = 0, ownName = '', ownQs = '', msg = '', askUnload = null, confirmDel = '', showQs = false, loading = false, think = false;
+  let v = null, bv = null, brain = '', picked = null, per = 0, ownName = '', ownQs = '', msg = '', askUnload = null, confirmDel = '', showQs = false, loading = false, think = false, what = '';
   async function loadBrain() { bv = null; if (!brain) return; try { bv = await api('/api/lab/watch/view', { brain }); } catch (e) { msg = e.message; } }
   async function load() {
     loading = true;
@@ -36,6 +36,7 @@ export function createWatchPage({ api }) {
         <button type="button" class="link" data-watchqs aria-expanded="${showQs}">Show every question</button>
         ${showQs ? `<div class="lab-check">${v.skills.map((s) => `<p><strong>${esc(s.label)}</strong></p><ol>${s.questions.map((q) => `<li>${esc(q)}</li>`).join('')}</ol>`).join('')}</div>` : ''}</fieldset>
       <label for="watch-per">Questions for each skill</label> <select id="watch-per">${v.perChoices.map((c) => `<option value="${c}" ${per === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
+      <label class="lab-opt"><span><strong>What to light up</strong><br><select id="watch-what"><option value="" ${what ? '' : 'selected'}>The brain's own parts: its experts, or groups of neurons if it has none</option><option value="heads" ${what === 'heads' ? 'selected' : ''}>Attention heads (works on any brain)</option></select><br><span class="muted">Attention heads are the parts of each layer that decide which earlier words to look at. Every brain has them, so this is the scan for a brain without experts when you want real parts and not neuron groups. Either scan also records how hard each floor works (Floors only in the viewer), except a scan of experts. All of it runs here, on this replicant matrix.</span></span></label>
       <label class="lab-opt"><input type="checkbox" id="watch-think" ${think ? 'checked' : ''}> <span><strong>Let it think first</strong><br><span class="muted">The brain writes its thoughts before each answer, and the viewer shows them as their own part. Longer scans (about ${v.wordsThink} words each). Only brains that can think do.</span></span></label>
       <details ${ownName || ownQs ? 'open' : ''}><summary>Add a skill of your own</summary>
         <label for="watch-own-name">Its name</label> <input type="text" id="watch-own-name" maxlength="40" value="${esc(ownName)}" placeholder="Cooking">
@@ -56,6 +57,7 @@ export function createWatchPage({ api }) {
     if (el.id === 'watch-brain') { brain = el.value; msg = ''; askUnload = null; await loadBrain(); return true; }
     if (el.id === 'watch-per') { per = Number(el.value); return true; }
     if (el.id === 'watch-think') { think = el.checked; return true; }
+    if (el.id === 'watch-what') { what = el.value === 'heads' ? 'heads' : ''; return true; }
     if (el.dataset?.watchskill) { if (el.checked) picked.add(el.dataset.watchskill); else picked.delete(el.dataset.watchskill); return true; }
     if (el.id === 'watch-own-name' || el.id === 'watch-own-qs') return true; // typed in input(); a change redraws the count
     return false;
@@ -75,7 +77,7 @@ export function createWatchPage({ api }) {
     if (d.watchdelgo) { msg = ''; try { await api('/api/lab/watch/delete', { brain, id: d.watchdelgo }); } catch (e) { msg = e.message; } confirmDel = ''; return 'load'; }
     if ('watchgo' in d) {
       msg = '';
-      try { const r = await api('/api/lab/watch/start', { brain, skills: [...picked], per, think, own: { name: ownName, questions: ownQs }, unload: d.watchgo === 'unload' }); askUnload = r.needUnload ? r.names : null; } catch (e) { msg = e.message; }
+      try { const r = await api('/api/lab/watch/start', { brain, skills: [...picked], per, think, what, own: { name: ownName, questions: ownQs }, unload: d.watchgo === 'unload' }); askUnload = r.needUnload ? r.names : null; } catch (e) { msg = e.message; }
       return 'load';
     }
     return false;

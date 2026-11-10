@@ -58,6 +58,7 @@ export function createView(canvas, { still = false } = {}) {
   let staticCanvas = null, dirty = true, geom = null;
   let monoColour = ''; // the colour One colour uses, when the person picked one
   const oneColour = () => monoColour || lookOf(0)[0];
+  let floorsNow = null; // Floors only: how hard each floor works for the word being read (0..1 each), or null
   let mono = false; // One colour: every expert the same colour, so only what lights up stands out
   let caption = null, key = true, paths = true, picked = null, glass = 0.25, off = null, solid = new Map(), glow = 0.5, mark = 'glow'; // mark: how the experts in use show: 'glow', 'outline' (a bright edge, no light) or 'both'; glow: how bright the experts in use shine, 0 to 1.5; gentle to begin with, so nothing flashes hard // off: [Set of experts turned off, per floor] while a cut is being tried // glass: how see-through the voxels are, 0 (solid) to 0.85
   const css = () => { const s = getComputedStyle(document.body); const g = (n, d) => s.getPropertyValue(n).trim() || d; return { bg: g('--bg', '#1d1510'), text: g('--text', '#f3e7d3'), muted: g('--muted', '#c7b296'), line: g('--line', '#5a4030'), panel: g('--panel', '#2b1d14') }; };
@@ -178,6 +179,18 @@ export function createView(canvas, { still = false } = {}) {
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     ctx.drawImage(staticCanvas, 0, 0);
     ctx.globalCompositeOperation = 'lighter';
+    if (floorsNow) { // the whole floor glows by how hard it's working; no single blocks
+      const { W, D } = lay;
+      for (let l = 0; l < lay.L; l++) {
+        const v = floorsNow[l] || 0; if (v <= 0.02) continue;
+        const y = floorY(l), q = [g.P(0, y, 0), g.P(W, y, 0), g.P(W, y, D), g.P(0, y, D)];
+        ctx.beginPath(); ctx.moveTo(q[0][0], q[0][1]); for (let i = 1; i < 4; i++) ctx.lineTo(q[i][0], q[i][1]); ctx.closePath();
+        ctx.globalAlpha = Math.min(0.4, (0.03 + 0.22 * v * v) * Math.max(0.3, glow * 1.4)); // gentle: many floors add up ctx.fillStyle = oneColour(); ctx.fill();
+        if (v > 0.6) { ctx.globalAlpha = Math.min(0.5, 0.35 * (v - 0.6) / 0.4 * Math.max(0.3, glow)); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, g.s * 0.08); ctx.stroke(); }
+      }
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      drawWords(k); return;
+    }
     const missed = [], outlined = [];
     const pop = g.s * 0.5 * Math.cos(tilt);
     lit.slice(-TRAIL).forEach((f) => {
@@ -278,5 +291,6 @@ export function createView(canvas, { still = false } = {}) {
     return null;
   }
 
-  return { setData, set, get, cubeGap, draw, pick, setCaption, resize, layout: () => lay, still: () => still };
+  const setFloors = (a) => { floorsNow = Array.isArray(a) ? a : null; }; // every frame, so it doesn't redraw the block
+  return { setData, set, get, cubeGap, draw, setFloors, pick, setCaption, resize, layout: () => lay, still: () => still };
 }

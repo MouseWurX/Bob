@@ -181,11 +181,13 @@ export function createLayout({ post, openTasks, openDownloads }) {
   document.addEventListener('visibilitychange', mindListen);
   // FNRI's small cube: off until its switch is on, and it only listens while the section is showing
   const cubeBtn = $('mindDockCube');
-  let cubeOn = store.get('bob-mind-cube', '0') === '1', cube = null;
+  let cubeOn = store.get('bob-mind-cube', '1') === '1', cube = null, cubeOk = true; // the cube is how thinking shows to begin with; the text is the other choice
   function cubeListen() {
     cubeBtn.setAttribute('aria-checked', String(cubeOn)); cubeBtn.querySelector('.st').textContent = cubeOn ? 'On' : 'Off';
     const on = cubeOn && docked && !body.classList.contains('right-hidden') && !document.hidden;
-    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails') }, { still: () => body.classList.contains('still') || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches });
+    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails') }, { onWhy: (why) => { cubeOk = !why; cubeListen(); }, still: () => body.classList.contains('still') || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches });
+    // with the cube showing, the written thinking steps aside; it comes back when the cube is off or can't work here
+    $('mindDockBody').classList.toggle('cube-view', cubeOn && cubeOk);
     if (!cube) return;
     if (on) cube.connect(); else cube.disconnect();
     if (!cubeOn) cube.hide();

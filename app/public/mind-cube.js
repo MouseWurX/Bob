@@ -11,7 +11,7 @@ export const CUBE_SPEED = 14; // words a second
 // The colours: when this brain has an FNRI scan, Bob sends that scan's map along and every expert gets its skill's
 // colour (all-rounders a soft white outline); with no scan the cube is one colour and says how to get the rest.
 // els: { box, canvas, says, open, key, mono, colour, colourBox, details }. still() = animations are off (the last word is shown, nothing moves).
-export function createMindCube({ box, canvas, says, open, key = null, mono = null, colour = null, colourBox = null, details = null }, { still = () => false, EventSourceImpl = globalThis.EventSource } = {}) {
+export function createMindCube({ box, canvas, says, open, key = null, mono = null, colour = null, colourBox = null, details = null }, { still = () => false, onWhy = null, EventSourceImpl = globalThis.EventSource } = {}) {
   const view = createView(canvas);
   let es = null, traces = [], rec = null, sp = null, clip = -1, t = 0, raf = 0, last = 0, why = '', look = null;
   view.set({ glow: 0.4, glass: 0.3 });
@@ -80,7 +80,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   }
   function on(ev) {
     let j = null; try { j = JSON.parse(ev.data); } catch { return; }
-    if (j?.type === 'cube') { why = j.ok ? '' : String(j.why || ''); words(); } else if (j?.type === 'trace') { why = ''; add(j); }
+    if (j?.type === 'cube') { why = j.ok ? '' : String(j.why || ''); words(); try { onWhy?.(why); } catch {} } else if (j?.type === 'trace') { why = ''; add(j); }
   }
   open.onclick = () => {
     if (!rec) return;
