@@ -737,7 +737,10 @@ export function createCellar() {
     const inUse = [ch.brainsNow === e.id ? 'runs the brains' : '', e.id !== 'llamacpp' && e.id !== 'brainengine' ? '' : (ch.lab === e.id || (!ch.lab && ch.brainsNow === e.id)) ? 'the Lab uses it' : ''].filter(Boolean);
     const tags = inUse.length ? ` <span class="tag good">${esc(inUse.join(', '))}</span>` : '';
     let act;
-    if (live.has('engine:' + e.id)) act = progress(live.get('engine:' + e.id));
+    // 1.5.185 An update that came with files missing was kept aside, not put in: say so, and offer only those files.
+    const held = e.incomplete && !live.has('engine:' + e.id + '@missing') ? `<div class="engine-held" role="status"><p><strong>The ${esc(e.name)} update${e.incomplete.version ? ` (${esc(e.incomplete.version)})` : ''} is missing ${esc(e.incomplete.what)}</strong>, so Bob didn't put it in. The ${esc(e.name)} you have is still the one in use.</p><button class="get" data-engine="${esc(e.id)}" data-missing="1">Download the missing files</button></div>` : '';
+    if (live.has('engine:' + e.id + '@missing')) act = progress(live.get('engine:' + e.id + '@missing'));
+    else if (live.has('engine:' + e.id)) act = progress(live.get('engine:' + e.id));
     else if (e.installed) {
       const ver = e.found ? esc(e.found[0].toUpperCase() + e.found.slice(1)) : `Here${e.version ? `: ${esc(e.version)}` : ''}${e.tested && e.version === e.tested ? ', the tested build' : ''}`;
       act = `<div class="have">✓ ${ver}</div>`
@@ -747,7 +750,7 @@ export function createCellar() {
         + (e.own && e.canSwap ? `<button class="link" data-engineremove="${esc(e.id)}">Remove</button>` : '');
     } else if (e.available === false) act = `<div class="muted">${esc(e.note || 'Not for this replicant matrix yet.')}</div>`;
     else act = `<button class="get" data-engine="${esc(e.id)}">Get ${esc(e.name)}</button>`;
-    return `<article class="model" id="m-engine:${esc(e.id)}"><header><strong>${esc(e.name)}</strong>${tags}</header><p>${esc(e.what)}</p><div class="act">${act}</div><div class="confirm" hidden></div></article>`;
+    return `<article class="model" id="m-engine:${esc(e.id)}"><header><strong>${esc(e.name)}</strong>${tags}</header><p>${esc(e.what)}</p>${held}<div class="act">${act}</div><div class="confirm" hidden></div></article>`;
   }
   function ollamaCard() {
     const on = (data.engineChoices?.brainsNow || settings.engine) === 'ollama';
@@ -936,12 +939,17 @@ export function createCellar() {
       <div><strong>Your own theme</strong><p class="muted">Make or edit a theme on the <button type="button" class="link" data-tab="style">🎨 Style</button> page (Make your own theme).</p></div>`;
   }
 
+  // 1.5.181 "Memory kept for Windows" (built-in graphics only): how much free memory a brain load leaves alone.
+  const holdbackHtml = () => { const v = settings.apuHoldbackGB ?? 4; return `<div class="srow"><label class="pick"><strong>Memory kept for Windows: <b data-holdbacklabel>${v} GB</b></strong><input type="range" min="0" max="8" step="0.5" data-holdback value="${v}" aria-describedby="holdback-hint"></label>
+      <p class="muted" id="holdback-hint">With built-in graphics, a brain shares memory with Windows. Before loading one, Bob leaves this much free memory alone (4 GB to start with). Lower lets bigger brains load on a small machine. <strong>At 0, Windows may slow down, or Bob may close, if memory runs out.</strong></p></div>`; };
   // 1.5.98: old panel ids (Help links, cards, remembered open panels) land on the new panels.
   const ADV_MOVED = { 'adv-connections': 'adv-bobnet' };
   const ADV = [
     ['brains', '🧠 Brains', 'model roles session brains context thinking making reviewer beside moot keep chatting busy all tools at once', () => rolesHtml() + `
-      ${sswitch('mootBeside', settings.mootBeside === true, 'Let the reviewer sit beside Bob\'s main brain', keep('Off to start with. At High and Extreme effort, the reviewer normally swaps in for Bob\'s main brain. On: if there\'s enough free RAM, it loads beside the main brain instead, on the graphics card if there\'s room, otherwise on the processor, so the main brain carries on right after the check. Reviews on the processor are slower, so this suits a small Review brain. Bob\'s own engine only; not in the Gaming session.'))}
+      ${sswitch('mootBeside', settings.mootBeside === true, 'Let the reviewer sit beside Bob\'s main brain', keep('Off to start with. At High and Extreme effort, the reviewer normally swaps in for Bob\'s main brain. On: if there\'s enough free RAM, it loads beside the main brain instead, on the graphics card if there\'s room, otherwise on the processor, so the main brain carries on right after the check. Reviews on the processor are slower, so this suits a small Review brain. If there\'s no room here and Borrow a brain is on, a paired Bob that takes jobs and has a Review brain at least three quarters this size checks the work over Bob-Net instead. Otherwise the reviewer swaps in. Bob\'s built-in engine only; not in the Gaming session.'))}
+      ${sswitch('netReview', settings.netReview === true, 'Ask my other Bobs for a quick second look', keep('Off to start with. At Low and Medium effort there\'s normally no review. On, with Borrow a brain on: when one of your other Bobs takes jobs and has a Review brain at least three quarters the size of this one free, he checks Bob\'s longer replies over Bob-Net, once, with no fix round. If none is free, there\'s no check, and Bob doesn\'t swap brains for one. Short chit-chat is never checked.'))}
       ${sswitch('chatWhileBusy', settings.chatWhileBusy !== false, 'Keep chatting while Bob is busy', keep('While Bob makes a picture, clip, song or sound, or works on a long job (Medium effort and up, the Coding session, or anything past 20 seconds), plain chat messages are answered by his small brain beside the job, if there\'s enough free memory: on the graphics card when it has room for both, otherwise on the processor (Qwen3 4B Instruct 2507, if it\'s downloaded; otherwise messages wait). His main brain keeps working on the graphics card. Replies on the processor start slower (up to about half a minute). Messages with a picture attached, or at Medium effort and up, still wait. Off: every message waits until the job is done.'))}
+      ${hw?.gpu?.integrated ? holdbackHtml() : ''}
       ${sswitch('allTools', settings.allTools, 'Give Bob all his tools at once', 'Sends every tool with each message, which leaves less room for the chat. Leave off to keep chats light.')}`],
     ['house', '🖋 House style', 'house style defaults default length mood genre music picture style shape clip video sound effects morning time evening night times of day', () => `<p class="muted">Your defaults for music, pictures, clips, sound effects and times of day live on Equip Bob, next to each slot.</p><button type="button" data-gohouse>Open House style on Equip Bob</button>`],
     ['voice', '🔊 Voice details', 'kokoro chatterbox speed hey bob read aloud listen', () => voiceDetailsHtml()],
@@ -1458,7 +1466,8 @@ export function createCellar() {
           ? `<p>Download Brain Engine from Bob's own GitHub, on top of the tested llama.cpp build (about 700 MB in all with NVIDIA runtime files), checked against GitHub's checksums. It has its own folder, so llama.cpp stays as it is.</p>`
           : `<p>Download ${esc(({ llamacpp: 'llama.cpp', sdcpp: 'stable-diffusion.cpp', whispercpp: 'whisper.cpp', piper: 'Piper' })[b.dataset.engine] || b.dataset.engine)} from GitHub (usually 20 to 600 MB, more with NVIDIA runtime files).</p>`;
         if (eng?.installed && eng.canSwap) box.innerHTML += `<p class="muted">The new build goes in beside the one you have and takes its place when it's ready. The one you have now is kept, so Go back puts it straight back.${['llamacpp', 'brainengine'].includes(b.dataset.engine) ? ' A brain that is loaded is let go first.' : ''}</p>`;
-        box.innerHTML += `<div class="row"><button class="get" data-yes="engine:${esc(b.dataset.engine)}${b.dataset.newest ? '@newest' : ''}">Yes, download</button><button data-no>Cancel</button></div>`;
+        if (b.dataset.missing) box.innerHTML = `<p>Download only the files the ${esc(eng?.name || b.dataset.engine)} update is missing (${esc(eng?.incomplete?.what || 'the missing files')}), from the same GitHub release, checked against GitHub's checksums. Files already there aren't touched. Once it's whole, it takes the old one's place, and Go back still puts the old one back.</p>`;
+        box.innerHTML += `<div class="row"><button class="get" data-yes="engine:${esc(b.dataset.engine)}${b.dataset.missing ? '@missing' : b.dataset.newest ? '@newest' : ''}">Yes, download</button><button data-no>Cancel</button></div>`;
       }
       else if ('no' in b.dataset) b.closest('.confirm').hidden = true;
       else if (b.dataset.yes) { job = await api('/api/models/download', { id: b.dataset.yes }); draw(); }
@@ -1596,7 +1605,7 @@ export function createCellar() {
   const projAddState = () => { const b = dlg.querySelector('[data-projadd]'); if (b) b.disabled = !dlg.querySelector('#proj-path')?.value.trim(); };
   dlg.addEventListener('input', (e) => { if (e.target.id === 'proj-path') projAddState(); if (e.target.id === 'save-path') saveDirState(); });
   dlg.addEventListener('input', (e) => { const k = e.target.dataset?.rentadd; if (k === 'model' || k === 'name') delete e.target.dataset.auto; }); // 1.5.137: what you type yourself stays
-  dlg.addEventListener('input', (e) => { if (tab === 'style') stylePage.onInput(e.target); if (e.target.dataset?.ssearch !== undefined) { settingsQuery = e.target.value; filterSettings(); } if (e.target.dataset?.dial) showDials(dialValues()); });
+  dlg.addEventListener('input', (e) => { if (tab === 'style') stylePage.onInput(e.target); if (e.target.dataset?.ssearch !== undefined) { settingsQuery = e.target.value; filterSettings(); } if (e.target.dataset?.dial) showDials(dialValues()); if (e.target.dataset?.holdback !== undefined) { const lab = dlg.querySelector('[data-holdbacklabel]'); if (lab) lab.textContent = `${e.target.value} GB`; } });
 
   // 1.5.135: ➕ Your own brains, the Add form.
   dlg.addEventListener('submit', async (e) => {
@@ -1686,6 +1695,8 @@ export function createCellar() {
         box.outerHTML = gamingCardHtml();
         flash(dlg.querySelector('.seg3'), 'Saved.'); return;
       }
+      if (el.dataset.holdback !== undefined) { const r = await api('/api/settings', { apuHoldbackGB: Number(el.value) }); settings.apuHoldbackGB = r.apuHoldbackGB; el.value = r.apuHoldbackGB; const lab = dlg.querySelector('[data-holdbacklabel]'); if (lab) lab.textContent = `${r.apuHoldbackGB} GB`; flash(el.closest('.srow'), 'Saved.'); return; }
+      if (el.dataset.set === 'netReview') { const r = await api('/api/settings', { netReview: el.checked }); settings.netReview = r.netReview; el.checked = r.netReview; return; }
       if (el.dataset.set === 'mootBeside') { const r = await api('/api/settings', { mootBeside: el.checked }); settings.mootBeside = r.mootBeside; el.checked = r.mootBeside; return; }
       if (el.dataset.set === 'chatWhileBusy') { const r = await api('/api/settings', { chatWhileBusy: el.checked }); settings.chatWhileBusy = r.chatWhileBusy; el.checked = r.chatWhileBusy; return; }
       if (el.dataset.set === 'quickOnCpu') { const r = await api('/api/settings', { quickOnCpu: el.checked }); settings.quickOnCpu = r.quickOnCpu; el.checked = r.quickOnCpu; return; }

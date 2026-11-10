@@ -3,7 +3,7 @@
 // graphics, still counts as no graphics card. 1.5.79: the set paints too.
 import fs from 'node:fs';
 import { pickIntegrated, integratedGpu, sharedGraphicsGB, gpuInfo, apuGraphicsGB, parseApuJson, apuMemory, specLine, APU_HEADROOM_GB } from '../src/platform.js';
-import { apuRoom, APU_NO_ROOM } from '../src/brain.js';
+import { apuRoom, APU_NO_ROOM, apuHoldbackGB } from '../src/brain.js';
 import { packFor } from '../public/fit.js';
 
 let pass = 0, fail = 0;
@@ -139,6 +139,22 @@ check('a 10 GB brain on an 8 GB set-aside with little RAM free: shortened or ref
 r = await apuRoom(goBrain(8, 8), 'big', 32768, { freeMem: 12 * GB });
 check('the same brain with RAM free beyond the set-aside: loads', r.ok && !r.shortened, JSON.stringify(r));
 check('borrow on refusal: my own brain not fitting asks a paired Bob first, and only refuses when none is free', /if \(!room\.ok\) \{ ownRefused = room; borrowing = true;/.test(brainSrc) && /if \(ownRefused\) \{[^}]*throw new Error\(ownRefused\.line\)/.test(brainSrc));
+
+// ---- 1.5.181: "Memory kept for Windows" is a setting (two-Bob trial: the Legion Go on Auto, 6.6 of 15.2 GB free) ----
+const autoGo = (size, extra = {}) => ({ cfg: { sharedGraphics: true, reservedGraphicsGB: 0.5, ...extra }, gate: { brainBytes: (m, { ctx }) => size * GB + Math.min(ctx || 32768, 131072) * 60 * 1024 }, engine: { loaded: async () => [] } });
+check('holdback: 4 GB to start with, the owner\'s 0 to 8 GB when set, anything else falls back to 4', apuHoldbackGB({}) === 4 && apuHoldbackGB({ apuHoldbackGB: 0 }) === 0 && apuHoldbackGB({ apuHoldbackGB: 2.5 }) === 2.5 && apuHoldbackGB({ apuHoldbackGB: 12 }) === 4 && apuHoldbackGB({ apuHoldbackGB: 'x' }) === 4);
+r = await apuRoom(autoGo(2.5), 'qwen3-4b', 32768, { freeMem: 6.6 * GB });
+check('Auto, 6.6 GB free, 4 GB kept: a ~3 GB brain is refused (what the trial saw)', !r.ok, JSON.stringify(r));
+r = await apuRoom(autoGo(2.5, { apuHoldbackGB: 0 }), 'qwen3-4b', 32768, { freeMem: 6.6 * GB });
+check('...with 0 kept it loads', r.ok, JSON.stringify(r));
+r = await apuRoom(autoGo(4.8, { apuHoldbackGB: 0 }), 'coder-7b', 32768, { freeMem: 6.6 * GB });
+check('...and so does the ~5.3 GB Review brain (chat memory shortened if needed)', r.ok, JSON.stringify(r));
+r = await apuRoom(autoGo(8, { apuHoldbackGB: 0 }), 'big', 32768, { freeMem: 6.6 * GB });
+check('...but a brain bigger than what\'s free is still refused, with the plain line (no Windows share mentioned at 0 kept)', !r.ok && r.line === APU_NO_ROOM(r.needGB, r.roomGB, 0) && !/Windows/.test(r.line), JSON.stringify(r));
+const cellar181 = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
+check('Settings, Brains has the slider (built-in graphics only, 0 to 8 GB, half steps) with the warning about 0', /hw\?\.gpu\?\.integrated \? holdbackHtml\(\)/.test(cellar181) && /type="range" min="0" max="8" step="0\.5" data-holdback/.test(cellar181) && /At 0, Windows may slow down, or Bob may close, if memory runs out/.test(cellar181));
+const cfgSrc181 = fs.readFileSync(new URL('../src/config.js', import.meta.url), 'utf8');
+check('the setting is saved (0 to 8, rounded to half a GB) and the glossary explains it', /'apuHoldbackGB'\]/.test(cfgSrc181) && /out\.apuHoldbackGB = v/.test(cfgSrc181) && /<dt>Memory kept for Windows<\/dt>/.test(help));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

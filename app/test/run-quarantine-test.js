@@ -46,7 +46,7 @@ const qCards = (ctx) => ctx.events.filter((e) => e.type === 'approval' && e.kind
   for (let i = 0; i < 8; i++) await brain.runTool('poke', { n: 1 }, ctx);
   check('off: looping and failing never raises a card', qCards(ctx).length === 0);
   check('off: nothing is quarantined', loadState(cfg).active === null);
-  check('the reviewer prompt line is only added when on (moot.js imports it)', /Quarantine:/.test(QUARANTINE_LINE) && fs.readFileSync(new URL('../src/moot.js', import.meta.url), 'utf8').includes('quarantineOn(brain.cfg) ? `${CHECK_TASK}'));
+  check('the reviewer prompt line is only added when on (moot.js imports it)', /Quarantine:/.test(QUARANTINE_LINE) && fs.readFileSync(new URL('../src/moot.js', import.meta.url), 'utf8').includes('quarantine: quarantineOn(brain.cfg)'));
 }
 
 saveSettings(cfg, { quarantine: { on: true, sneaky: 1 } });

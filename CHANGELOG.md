@@ -4,7 +4,22 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
-## 1.5.188
+## 1.5.189
+
+Spreading a brain over another Bob's lent card (Bigger Bobs) now holds up on Wi-Fi.
+
+### Fixed
+
+- **A lent card no longer runs out of room partway through a load.** When a brain is spread, llama.cpp's fit now keeps 2 GB free on every card, the lent ones included, and works in smaller steps (`-ub 512`). That leaves room for the card's working memory. In a test on the replicant matrix, a handheld's card filled up with the brain itself and the load failed after nearly 7 minutes. Settings you made by hand are kept.
+- **A long first load isn't cut off at 5 minutes.** The first time, part of the brain goes over the network, and over Wi-Fi that's about 6 MB a second, so a big brain can take a quarter of an hour or more. Bob now waits as long as the brain's size needs, up to two hours, and says in the log every minute how long it's been. The log also says that a network cable is much faster, and that later loads only send what's missing.
+- **A spread that fails loads the brain here like always**, instead of leaving no brain. That Bob's card isn't asked again for a while. Only a failure to reach the card tries the other way (home network or Tailscale) next time. A card that ran out of room or time isn't woken up again right away over the other route.
+- Help: the Bigger Bobs section says all this.
+
+Tests in `test/run-llama-tools-test.js`.
+
+### Changed
+
+- **Bigger Bobs keeps a brain here when it fits.** Picking Bigger Bobs now sets **Spread big brains** to **Only brains too big for this replicant matrix**. Before, it picked **Any brain bigger than my card**. A brain that fits this card and memory together loads and runs much quicker here. In a test, Riker on a 16 GB card plus memory ran at 105.6 tokens a second, against 17.9 spread over a handheld on Wi-Fi. You can still pick **Any brain bigger than my card** for a fast cable network. A setting you already chose isn't changed.
 
 ### FNRI: use these for training
 
@@ -12,7 +27,17 @@ This file is made from app/docs/releases by `node installer/make-changelog.js` (
 
 Where it works: the list is saved on any computer that runs Bob. Training with it follows the Lab's judge training (rented, or at home where the Trainer pack fits).
 
-## 1.5.186
+## 1.5.188
+
+The firewall rule now keeps up with Bigger Bobs.
+
+### Fixed
+
+- **Settings, Bob-Net: "Bring the firewall rule up to date" now shows when a lent graphics card needs the home network.** With Bigger Bobs lending this Bob's card and **Use the home network first** on, the other Bob reaches the card over the home network. Bob's Windows firewall rule only let Tailscale in, but Bob still said ✓ and offered only Remove. Now Bob checks for the home network whenever either **Also over the home network** or a lent card with **Use the home network first** needs it. If the rule doesn't have it, he offers **Bring the firewall rule up to date**, and pressing it adds the home network (Windows asks you once). The ✓ line also says when the home network is let in. Tests in `test/run-firewall-test.js`.
+
+## 1.5.187
+
+A new FNRI workbench in the Lab: turn a part of a brain up or down, then see before and after.
 
 ### FNRI: dials, and before and after
 
@@ -21,6 +46,59 @@ Where it works: the list is saved on any computer that runs Bob. Training with i
 - **Brain Engine** gets `engine/patches/0003-dials.patch` (`GET`/`POST /dials`). Dials need a Brain Engine rebuilt with it; an older one says so when you scan.
 
 Where it works: wherever FNRI scans do (Windows and Linux with Brain Engine; not yet a Mac or Android). The viewer's comparison works on any saved scans.
+
+### Fixed
+
+- An engine update kept aside for missing files is still found when its note (bob-incomplete.json) starts with a byte-order mark, as a file saved by a Windows editor can. Before this, Bob didn't see the held update, so the **Download the missing files** button didn't show.
+
+## 1.5.186
+
+Engine updates that are missing files can be finished with one button.
+
+- **New: an update goes in only when it has all its files.** Before a new llama.cpp or Brain Engine build takes the old one's place, Bob checks it has the engine program, the llama.cpp library files (ggml) and, for an NVIDIA build, the CUDA runtime. If anything is missing, he doesn't put it in. The engine you have keeps working, and the new download is kept aside. Settings, Engines says what's missing and offers **Download the missing files**, which fetches only those files from the same release, checks them against GitHub's checksums, and then swaps the new build in, with Go back as usual. A download with files missing isn't retried three times. This works the same for the Update button and for **Keep engines up to date**. Help covers it in Settings: Engines and the FAQ **How do I update an engine?** Tests in `test/run-engine-libs-test.js` use the real llama.cpp b12032 file list in both orders.
+- **Bob's copies are never named after one of Bob's own brains.** The names a new copy gets (Bob puns first, then sci-fi names by job) no longer include Riker, Bill, Bobert, Homer, Milo, Luke, Calvin or Garfield, so a name always means one thing. A copy that already has one of those names, most likely the reviewer called Bobert, gets a fresh name and keeps it. Help covers it in Bob's copies and their names. Tests in `test/run-clan-test.js`.
+
+## 1.5.185
+
+Reviews over Bob-Net, a bigger Bob for harder checks, DeepSeek's thinking brains, and the home network for Bob-Net.
+
+Reviews over Bob-Net: another of your Bobs can check the work when the reviewer won't fit here. Fixes #30.
+
+- **High and Extreme effort**, with "Let the reviewer sit beside Bob's main brain" on: if there's room, the reviewer sits beside the main brain as before. If there isn't, and **Borrow brains from my other Bobs** is on, a paired Bob with a Review brain at least three quarters the size of this one's checks the work over Bob-Net. His brain does the thinking; every tool (file reads) still runs here, and the chat says who's checking. If none of them can, the reviewer swaps in here as before, and the chat says so.
+- **Ask my other Bobs for a quick second look** (Settings, off): at Low and Medium effort, a free paired Bob with a good enough Review brain checks longer replies once. If none is free, there's no check and no brain swap here. Short chit-chat is never checked.
+- The Bob doing the check needs **Take jobs from my other Bobs** on, isn't gaming or busy, and has a Review brain on Bob's built-in engine. Older Bobs don't list a Review brain, so they're never asked. A Bob that fails mid-check is skipped for 5 minutes, and the check carries on here.
+- Help, a Settings note and the Take jobs note explain it. Tests in `test/run-review-away-test.js`.
+
+Also, from three rounds of trying it on two real machines (a desktop and a handheld with built-in graphics):
+- **Memory kept for Windows** (Settings, Brains, shown with built-in graphics only): a slider from 0 to 8 GB, 4 GB to start with. With built-in graphics, a brain shares memory with Windows, and Bob leaves this much free memory alone before loading one. A 16 GB handheld can go lower so bigger brains load. At 0, Windows may slow down, or Bob may close, if memory runs out. It covers loading a brain and waking one when you start typing.
+- The chat now says which Bob is checking over Bob-Net, and the moot's summary names it ("… (over Bob-Net) checked: looks right"), not only the logbook.
+- A draft that came out as a tool step written as text (like "fetch_page with …") is no longer sent for a check and approved: the moot says the answer isn't finished.
+- If another Bob sends back an empty answer, for a borrowed reply or for a check, this Bob carries on by itself instead of leaving the reply empty.
+- **A check judges the right question.** The reviewer is now handed the question asked this turn, word for word, and told that lines inside files and tool results are quoted data. Files and tool results in what it reads are fenced off as such. (A small reviewer had read an old chat line inside Bob's logbook as the question.)
+- **A corrected answer about something else is set aside.** If the reviewer's corrected answer shares no words with the question while Bob's own answer does, Bob's answer stays, the chat says why, and no fix round starts.
+- **A Bob checking work for another doesn't crowd itself out.** A lent job never loads the chat brain beside it, and on built-in graphics one already there is let go first, so the Review brain gets the room (graphics memory and RAM, within Memory kept for Windows).
+- **A slower Bob gets time.** While the Bob doing a check keeps saying it's still loading or thinking, the asking Bob waits (up to 15 minutes). A refusal, a dropped line or a long silence still hands the check back at once.
+- **The check says who checked.** When another Bob checks over Bob-Net, the heading says so ("Handheld, second look over Bob-Net"), and the check is saved in the chat under that Bob's name. When none of the other Bobs can do it, the saved check says it happened here.
+- **Bob's answer stays unless the fix adds something real.** A corrected answer that's nearly the same as Bob's, or that brings in things none of what Bob looked up this turn says, no longer replaces his answer: the reviewer's points show as a note, and the result line says why.
+- **A Bob checking for another keeps its Review brain ready.** It stays loaded for 5 minutes after a check (it was 90 seconds, then the chat brain came back and the next check was short of room). Short of room on built-in graphics, a check is loaded with a smaller chat memory, as small as the work needs, before it's turned down. With 0 GB kept for Windows, the refusal no longer says Windows keeps a share.
+- **Long tool results fit.** When what Bob looked up is more than his brain's chat memory holds, the oldest results are shortened before the brain is asked, instead of the whole request being refused. If the brain still says it's too long, they're cut harder once more.
+- **A failed job keeps the chat.** The question stays, with the error as a note under it, even after a reload (a very long turn used to save an empty chat).
+- **Stuck repeating a tool:** at most 6 tool calls run from one reply, and after 3 repeats Bob is told to answer from what he has.
+- **Bob looks up his own features in his own Help first** (Bob-Net, the Lab, FNRI, the Forge and the rest), and the folder tool knows the real home folder instead of guessing one.
+
+A bigger Bob checks the harder jobs (PR #92):
+
+- **Ask a bigger Bob to check my harder jobs** (Settings, Bob-Net, off): at High and Extreme effort, the moot's check goes to one of your other Bobs whose Review brain is bigger than this one's, going by the size in the brain's name (High: the first bigger one in your list; Extreme: the biggest). Files the check wants to read are still read here. When none is free, or one says no or goes quiet, the chat says so and the check runs here.
+- **Check harder jobs for my other Bobs** (off) on the Bob that does the checks: he thinks on his Review brain with high thinking and keeps nothing. Computers only; the phone app doesn't check. Help, an FAQ ("Can a bigger Bob check my handheld's work?"), a glossary entry and the privacy page explain it. Tests in `test/run-bob-net-check-test.js`.
+
+Bob-Net and the home network (PR #91):
+
+- **New:** **Also over the home network** under Let my other replicant matrices in (off unless you turn it on). Your Bobs and your phone then reach each other straight over the home network when they're on the same one, which is quicker, and over Tailscale otherwise.
+- **Fixed:** Bob's Windows firewall rule now also lets in a lent graphics card's port (50052), and the home network when that's on. An older rule is offered for an update. Tests in `test/run-firewall-test.js`.
+
+- **DeepSeek's thinking brains.** The Brain catalogue has a DeepSeek family: DeepSeek's R1 thinking taught to smaller Qwen and Llama brains, from 1.5B (any laptop) to 32B (a 24 GB card), plus the 70B under Rented brains. Each writes out its reasoning step by step before it answers, and you can read it under 💭 Bob's thinking. They're from 2025, so they're marked Dated, and like every new brain they aren't recommended until they've been tried on real hardware.
+- When another Bob drops out in the middle of a check, the check says so and finishes here; the logbook says why a Bob is passed over for checks; and a check loaded here no longer brings the chat talker back beside it.
+- **Safer engine updates.** Before a new Brain Engine or llama.cpp build takes the old one's place, Bob checks that it's whole: the program plus its ggml and llama libraries. A download with only some of the files is turned down, and the engine you have stays as it was. **Fixed:** with an NVIDIA card, an engine download could pick llama.cpp's CUDA runtime file (cudart) instead of the engine itself, which left a Brain Engine update without its libraries; the runtime file is now only ever fetched beside the engine. Tests in `test/run-engine-keeper-test.js`.
 
 ## 1.5.184
 
