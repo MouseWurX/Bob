@@ -75,7 +75,7 @@ export function cleanSharePatch(cfg, b) {
   if ('mode' in b) {
     if (!['more', 'bigger'].includes(b.mode)) return { error: 'Pick More Bobs or Bigger Bobs.' };
     if (b.mode === 'more') Object.assign(next, { lendCard: false, spread: 'off' });
-    else { next.lendCard = true; if (next.spread === 'off') next.spread = 'big'; if (!next.borrow.bobs.length) return { error: 'Add one of your other Bobs first.' }; }
+    else { next.lendCard = true; if (next.spread === 'off') next.spread = 'big'; if (!next.borrow.bobs.length) return { error: 'Bigger Bobs needs another Bob to pool with. Add one of your other Bobs first.' }; }
   }
   if ('lendCard' in b) next.lendCard = b.lendCard === true; // off unless switched on
   if ('spread' in b) { if (!['off', 'toobig', 'big'].includes(b.spread)) return { error: 'Pick when to spread a brain.' }; next.spread = b.spread; }
