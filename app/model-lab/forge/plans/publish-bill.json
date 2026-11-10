@@ -1,6 +1,6 @@
 {
   "run": "publish-bill",
-  "note": "10 Nov: after Bill's run, rebuild 20Bob on the card from the stock teacher, his keep list and his adapter (both kept on the drive by his run), make his Q4 and Q3 files again, and put EVERYTHING on his public page: full-size weights, adapter, keep list, GGUF files and cards. The owner's rule from 10 Nov: everything public so it all uploads. No training, no teacher pass, nothing copied to the drive. About $5-7 on an H200, cap $30 / 3 h. Needs the drive (AP-JP-1), so it runs after Bill's run has ended.",
+  "note": "10 Nov: after Bill's run, rebuild 20Bob on the card from the stock teacher, his keep list and his adapter (both kept on the drive by his run), make his Q4 and Q3 files again, and put EVERYTHING on his public page: full-size weights, adapter, keep list, GGUF files and cards. The owner's rule from 10 Nov: everything public so it all uploads. No training, no teacher pass, nothing copied to the drive. About $5-7 on an H200, cap $30 / 3 h. Needs the drive (AP-JP-1), so it runs after Bill's run has ended. | With the FNRI scans (plan.scan): about 2-2.5 h, $11-14 on an H200; caps 4 h / $35.",
   "teacher": "Qwen/Qwen3.6-35B-A3B",
   "counts": "expert-counts-2026-11-04T23-23-19.json",
   "lessons": "out/lessons",
@@ -28,8 +28,8 @@
   "quants": "Q4_K_M,Q3_K_M",
   "general_tokens": 0,
   "rungs": [],
-  "hours_max": 3,
-  "dollars_max": 30,
+  "hours_max": 4,
+  "dollars_max": 35,
   "rent_minutes": 180,
   "download_quants": [],
   "publish": {
@@ -51,5 +51,20 @@
         "what": "Bill (20Bob): the 144-expert cut of Bobert, healed against his odds on every lesson set"
       }
     ]
+  },
+  "scan": {
+    "note": "10 Nov, the owner: FNRI scans of stock Qwen, Riker, Bobert and Bill on the same rental, after Bill's rebuild and upload. The bundle in fnri-bundle/ (one folder per brain, made by aifeui-bundle.mjs in the FNRI thread) goes up as in/scan.tgz; the stock Q4_K_M is made from the teacher first so all four are the same quant. About 1-1.2 h: ~15 min engine build, ~30 min stock conversion, ~5 min a brain. zip: where the PC puts one zip of all the recordings when they are home (relative to the forge folder).",
+    "from": "fnri-bundle",
+    "brains": [
+      "qwen",
+      "riker",
+      "bobert",
+      "bill"
+    ],
+    "stock": "Qwen3.6-35B-A3B",
+    "keep": {
+      "riker": "hf:MouseWurX/28Bob-Riker:28Bob-keep.json"
+    },
+    "zip": "../../fnri-videos/fnri-recordings.zip"
   }
 }

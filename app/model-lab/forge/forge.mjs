@@ -313,6 +313,10 @@ if (args.restart) {
     else { const tmp = path.join(outDir, 'forge', 'hf-token'); fs.writeFileSync(tmp, tok); await upload('hf-token', tmp); fs.unlinkSync(tmp); log(plan.publish ? `Hugging Face token sent to the pod (uploads go to ${plan.publish.user}/...)` : 'Hugging Face token sent to the pod (to fetch the benchmark brains; nothing is uploaded)'); }
   }
   for (const r of plan.rungs) if (r.keep_file) await upload(path.basename(r.keep_file), path.resolve(here, '..', r.keep_file)); // cut exactly like an earlier Bob
+  if (plan.scan?.from) { // 10 Nov: the FNRI scan bundle (a folder per brain) goes up as in/scan.tgz; run.sh unpacks it on the drive
+    const from = path.resolve(here, plan.scan.from); if (!fs.existsSync(from)) { log(`plan.scan.from is missing: ${from}`); process.exit(1); }
+    const stgz = path.join(outDir, 'forge', 'scan.tgz'); execSync(`tar czf "${stgz}" -C "${from}" .`, { stdio: 'inherit' }); await upload('scan.tgz', stgz); log(`scan bundle sent (${plan.scan.brains?.join(', ') || 'no brains listed'})`);
+  }
   // build 18: a benchmark brain rebuilt from his keep list + adapter: files not on Hugging Face (no hf: prefix) go up from out/bobs/<name>/
   for (const m of plan.benchmark?.models || []) if (m.file === 'rebuild') {
     for (const k of ['keep_file', 'adapter']) if (m[k] && !/^hf:/.test(m[k])) await upload(m[k], path.join(outDir, 'bobs', m.name, m[k]));
@@ -389,6 +393,22 @@ async function benchOnPod(name) {
   const mk = path.join(outDir, 'forge', `bench-done-${name}`); fs.writeFileSync(mk, new Date().toISOString()); await upload(`bench-done-${name}`, mk);
   benchDone.add(name); log(`benchmark: ${name} done; reports in ${dir}`);
 }
+// 10 Nov: the FNRI recordings (out/fnri/files.json lists them) come home to out/fnri/<run>/ once the pod says done
+let scanDone = false;
+async function fetchScan() {
+  if (!plan.scan || scanDone) return; scanDone = true;
+  try {
+    const r = await get('/out/fnri/files.json'); if (!r.ok) { log(`scan: no files.json on the pod (${r.status}); nothing to bring home`); return; }
+    const list = await r.json(); const dir = path.join(outDir, 'fnri', plan.run || 'run');
+    for (const f of list.files || []) await download(`fnri/${f.file}`, path.join(dir, f.file), f.bytes, null);
+    log(`FNRI recordings are on the PC: ${dir} (${(list.files || []).filter((f) => f.file.endsWith('recording.json')).length} recording(s))`);
+    if (plan.scan.zip) { // the owner, 10 Nov: "download videos when complete bundled in a zip" -- one zip of everything that came home, where the plan says
+      const zip = path.resolve(here, plan.scan.zip); fs.mkdirSync(path.dirname(zip), { recursive: true }); fs.rmSync(zip, { force: true });
+      const { execSync } = await import('node:child_process');
+      try { execSync(process.platform === 'win32' ? `tar -a -c -f "${zip}" -C "${dir}" .` : `cd "${dir}" && zip -qr "${zip}" .`, { stdio: 'inherit' }); log(`FNRI zip: ${zip}`); } catch (e) { log(`FNRI zip failed: ${e.message.slice(0, 120)}; the files are still in ${dir}`); }
+    }
+  } catch (e) { log(`scan download: ${e.message.slice(0, 160)}`); }
+}
 let driveBytes = -1; // 9 Nov: out/drive.json from the pod = the Forge-made brains really usable on the drive; kept at out/forge/drive.json for the Lab
 while (true) {
   await sleep(args.local ? 3000 : 60000);
@@ -437,6 +457,7 @@ while (true) {
     const rebuildOnly = Boolean(plan.rebuild); // 9 Nov: a rebuild-and-publish run puts everything on Hugging Face; nothing is downloaded, so the pod's "done" is the end
     const benchOnly = plan.benchmark_only === true; // 10 Nov: a benchmark-only run ends when the pod says done; the reports are already on this PC
     const finished = plan.lessons_only ? lessonsSent : rebuildOnly || benchOnly ? true : gotTrained && (scoresOnly ? (noOdds ? true : done.has('teacher')) : [...done].filter((n) => n !== 'teacher' && n !== trained).length >= Math.max(1, plan.rungs.length));
+    if (st.status?.phase === 'done' && plan.scan) await fetchScan();
     if (st.status?.phase === 'done' && finished) { await kill(plan.lessons_only ? 'lessons written; they are on this PC' : rebuildOnly ? 'rebuild finished; the Bobs are on Hugging Face' : benchOnly ? `benchmark finished; the reports are in ${path.join(outDir, 'bench', plan.run || 'run')}` : noOdds ? 'the taught Bob is back; no odds were made (odds: false)' : plan.rungs.length ? 'all Bobs downloaded' : scoresOnly ? 'teacher scores downloaded' : 'counts downloaded'); break; }
     if (st.status?.phase === 'failed' || (st.exit !== null && st.exit !== undefined && !st.running)) {
       log(`the pod run stopped (${st.status?.detail || 'exit ' + st.exit}). Last log lines:\n${st.log}`);

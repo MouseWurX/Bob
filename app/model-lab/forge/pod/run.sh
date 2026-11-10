@@ -544,6 +544,42 @@ PY
   rm -f $IN/hf-token
   [ "$RB_OK" -gt 0 ] || die "rebuild: no Bob was rebuilt"
   [ -z "$RB_WFAIL" ] || echo "FULL-SIZE WEIGHTS MISSING on Hugging Face for:$RB_WFAIL (see out/publish/*.log); a weights_only plan uploads them from the drive"
+  # --- FNRI scans (10 Nov): plan.scan {"from":"<PC folder>","brains":["qwen","riker","bobert","bill"],"stock":"Qwen3.6-35B-A3B",
+  #   "keep":{"riker":"hf:MouseWurX/28Bob-Riker:28Bob-keep.json"}}. The PC sends the folder as in/scan.tgz (one sub-folder per brain, each
+  # with pod/aifeui.sh, its plan, the engine patches and the viewer); the pod unpacks it onto the drive, makes the stock brain's Q4_K_M from
+  # the teacher if asked (stock/<name>-Q4_K_M.gguf, kept on the drive), runs each brain's scan in turn (the first builds the traced engine
+  # in aifeui-engine on the drive, the rest reuse it), and lists everything under out/fnri/ in out/fnri/files.json for the PC to bring home.
+  # A failed brain is logged and the next one runs. The scan tool itself belongs to the FNRI thread; this only drives it.
+  if [ -n "$(plan ".get('scan')")" ]; then
+    [ -f $IN/scan.tgz ] || die "scan: in/scan.tgz is missing (the PC sends plan.scan.from)"
+    mkdir -p $S/fnri-in $OUT/fnri && tar xzf $IN/scan.tgz -C $S/fnri-in || die "scan: unpacking in/scan.tgz"
+    STOCK=$(plan "['scan'].get('stock','')")
+    if [ -n "$STOCK" ]; then
+      if [ -f $S/stock/$STOCK-Q4_K_M.gguf ]; then echo "scan: stock $STOCK Q4_K_M already on the drive"; else
+        status scan "making the stock $STOCK Q4_K_M from the teacher (for a fair comparison)"
+        for i in $(seq 1 90); do [ -f $S/llama-ready ] || [ -f $S/llama-failed ] && break; sleep 20; done
+        if [ -f $S/llama-ready ]; then python3 export.py --model $S/teacher --out $S/stock --name "$STOCK" --teacher "$TEACHER" --llama $S/llama.cpp --quants Q4_K_M --what "The stock $STOCK, as released." > $OUT/fnri/stock.log 2>&1 || { echo "scan: stock GGUF failed (out/fnri/stock.log)"; tail -3 $OUT/fnri/stock.log; }
+        else echo "scan: llama tools unavailable, no stock GGUF (out/llama-setup.log)"; fi
+      fi
+    fi
+    for b in $(plist "['scan'].get('brains',[])" | tr , ' '); do
+      [ -f $S/fnri-in/$b/pod/aifeui.sh ] || { echo "scan $b: no $b/pod/aifeui.sh in the bundle; skipped"; continue; }
+      status scan "$b: FNRI scan on the card"
+      mkdir -p $OUT/fnri/$b
+      if FORGE_ROOT=$S AIFEUI_IN=$S/fnri-in/$b AIFEUI_OUT=$OUT/fnri/$b bash $S/fnri-in/$b/pod/aifeui.sh > $OUT/fnri/$b/run.log 2>&1; then echo "scan $b: done"
+      else echo "scan $b FAILED (out/fnri/$b/run.log)"; tail -3 $OUT/fnri/$b/run.log; fi
+      KS=$(plan "['scan'].get('keep',{}).get('$b','')"); [ -n "$KS" ] && { K=$(resolve_in "$KS" $OUT/fnri/$b); [ -f "$K" ] && echo "scan $b: keep list beside the recording" || echo "scan $b: keep list $KS not found"; }
+    done
+    python3 - $OUT/fnri <<'PY'
+import json,os,sys; d=sys.argv[1]; files=[]
+for r,_,fs in os.walk(d):
+    for f in fs:
+        p=os.path.join(r,f); rel=os.path.relpath(p,d).replace(os.sep,'/')
+        if rel!='files.json' and not rel.endswith('.part'): files.append({"file":rel,"bytes":os.path.getsize(p)})
+json.dump({"files":files},open(os.path.join(d,'files.json'),'w'),indent=1); print(len(files),"scan files listed")
+PY
+    status scan "finished: recordings under out/fnri"
+  fi
   # plan.drive_delete ["bobs/35Bob/gguf", ...]: drive folders the owner wants gone once Hugging Face hosts them. Only when every upload in
   # this run succeeded, only under bobs/ or runs/ (never the teacher, the odds, an adapter or a keep list), and what was removed is listed.
   if [ -z "$RB_WFAIL" ] && [ "$RB_OK" = "$NR" ] && [ "$S" != "$W" ]; then
