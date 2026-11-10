@@ -160,15 +160,17 @@ export function createLayout({ post, openTasks, openDownloads }) {
   // [-] = showing, press to hide; [+] = hidden, press to show. Bob's thinking uses the same button for its own
   // switch (below), because folding it also stops Bob passing his thinking along.
   function foldLook(b, open, name) { b.textContent = open ? '[\u2212]' : '[+]'; b.setAttribute('aria-expanded', String(open)); b.setAttribute('aria-label', `${open ? 'Hide' : 'Show'} ${name}`); b.title = `${open ? 'Hide' : 'Show'} ${name}`; }
-  const SEC_NAMES = { tasks: 'Tasks', net: 'Bob-Net', downloads: 'Downloads', memory: 'Memory' };
-  let folded = new Set(String(store.get('bob-now-folded', '') || '').split(',').filter((k) => SEC_NAMES[k]));
+  const SEC_NAMES = { tasks: 'Tasks', net: 'Bob-Net', downloads: 'Downloads', memory: 'Memory', graph: 'Resource use over time' };
+  // the graph is its own section, folded until asked for (as its old Show graph button was: bob-now-graph)
+  let folded = new Set(String(store.get('bob-now-folded', showGraph ? '' : 'graph') || '').split(',').filter((k) => SEC_NAMES[k]));
+  showGraph = !folded.has('graph');
   for (const sec of document.querySelectorAll('#nowSections > section[data-sec]')) {
     const id = sec.dataset.sec; if (!SEC_NAMES[id]) continue;
     const head = sec.querySelector('.now-sec'); if (!head) continue;
     if (!head.querySelector('.ctx-fill')) { const f = document.createElement('span'); f.className = 'ctx-fill'; head.appendChild(f); }
     const b = document.createElement('button'); b.type = 'button'; b.className = 'sec-fold'; b.dataset.fold = id;
     const show = () => { sec.classList.toggle('folded', folded.has(id)); foldLook(b, !folded.has(id), SEC_NAMES[id]); };
-    b.onclick = () => { if (folded.has(id)) folded.delete(id); else folded.add(id); store.set('bob-now-folded', [...folded].join(',')); show(); };
+    b.onclick = () => { if (folded.has(id)) folded.delete(id); else folded.add(id); store.set('bob-now-folded', [...folded].join(',')); show(); if (id === 'graph') { showGraph = !folded.has('graph'); graph(); } };
     head.appendChild(b); show();
   }
 
@@ -200,7 +202,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   function cubeListen() {
     cubeBtn.setAttribute('aria-checked', String(cubeOn)); cubeBtn.querySelector('.st').textContent = cubeOn ? 'On' : 'Off';
     const on = cubeOn && docked && !body.classList.contains('right-hidden') && !document.hidden;
-    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails') }, { onWhy: (why) => { cubeOk = !why; cubeListen(); }, still: () => body.classList.contains('still') || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches });
+    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails'), load: $('mindCubeLoad'), loadBox: $('mindCubeLoadBox') }, { onWhy: (why) => { cubeOk = !why; cubeListen(); }, still: () => body.classList.contains('still') || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches });
     // with the cube showing, the written thinking steps aside; it comes back when the cube is off or can't work here
     $('mindDockBody').classList.toggle('cube-view', cubeOn && cubeOk);
     if (!cube) return;
@@ -357,9 +359,8 @@ export function createLayout({ post, openTasks, openDownloads }) {
   };
   // A small line graph of the last 5 minutes: graphics memory, card busy and processor busy, as percentages.
   const graph = () => {
-    const el = $('nowGpu').querySelector('.mem-graph');
+    const el = $('nowGraph').querySelector('.mem-graph');
     if (!el) return;
-    el.hidden = !showGraph;
     if (!showGraph || hist.length < 2) { if (showGraph) el.innerHTML = '<span class="muted">Collecting a few readings...</span>'; return; }
     const W = 200, H = 48, n = 60, mins = brainSt?.session === 'Gaming' ? 15 : 5; // 60 readings, 5 or 15 s apart
     const path = (key) => hist.map((h, i) => (h[key] == null ? null : `${(W * (n - hist.length + i)) / (n - 1)},${H - (H * h[key]) / 100}`)).filter(Boolean).map((p, i) => (i ? 'L' : 'M') + p).join(' ');
@@ -383,8 +384,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
       // 1.5.3: graphics card and system memory (RAM), each with a meter; 1.5.30: the processor too.
       // 1.5.44: two parts per bar, Bob's (coloured by speed) and everything else (blue); splitLines() sizes them.
       const row = (pct, split) => `<div class="mem-row"><span class="mem-text"></span><div class="meter split" data-bar="${split}"><i class="m-bob"></i><i class="m-sys" style="width:${Math.min(100, Math.round(pct))}%"></i></div><span class="mem-split ${split}"></span></div>`;
-      el.innerHTML = `${gpu ? row((gpu.usedGB / gpu.totalGB) * 100, 'split-card') : '<div class="mem-row"><span class="mem-text"></span></div>'}${ram?.totalGB ? row((ram.usedGB / ram.totalGB) * 100, 'split-ram') : ''}${cpu?.loadPct != null ? row(cpu.loadPct, 'split-cpu') : ''}<div class="mem-brain"></div>
-        <button type="button" class="mem-graph-btn" aria-expanded="${showGraph}">${showGraph ? '[\u2212] Graph over time' : '[+] Graph over time'}</button><div class="mem-graph" hidden></div>`;
+      el.innerHTML = `${gpu ? row((gpu.usedGB / gpu.totalGB) * 100, 'split-card') : '<div class="mem-row"><span class="mem-text"></span></div>'}${ram?.totalGB ? row((ram.usedGB / ram.totalGB) * 100, 'split-ram') : ''}${cpu?.loadPct != null ? row(cpu.loadPct, 'split-cpu') : ''}<div class="mem-brain"></div>`;
       // 1.5.26: each meter names itself on its own line: "Graphics card · 9.1 of 15.9 GB in use (all apps)".
       const rows = el.querySelectorAll('.mem-row');
       rows[0].querySelector('.mem-text').textContent = gpu ? `Graphics card · ${gpu.usedGB} of ${gpu.totalGB} GB in use (all apps)${gpu.loadPct != null ? ` · ${gpu.loadPct}% busy` : ''}` : 'Graphics card · not detected';
@@ -392,7 +392,6 @@ export function createLayout({ post, openTasks, openDownloads }) {
       let i = 1;
       if (ram?.totalGB) rows[i++].querySelector('.mem-text').textContent = `RAM · ${ram.usedGB} of ${ram.totalGB} GB in use (all apps)`;
       if (cpu?.loadPct != null) rows[i].querySelector('.mem-text').textContent = `Processor · ${cpu.loadPct}% busy (all apps)`;
-      el.querySelector('.mem-graph-btn').onclick = () => { showGraph = !showGraph; try { localStorage.setItem('bob-now-graph', showGraph ? '1' : '0'); } catch {} pollGpu(); };
       brainLine();
       graph();
     } catch { pausedLine(true, 'Readings paused (Bob couldn\'t read the card)'); }

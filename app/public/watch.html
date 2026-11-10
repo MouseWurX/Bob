@@ -65,6 +65,9 @@
         <button id="watchFloors" type="button" class="brain-switch" role="switch" aria-checked="false" hidden title="The whole floor glows by how hard it is working for the word being read, instead of single blocks. Each floor is measured against its own usual range."><span class="lbl">Floors only</span><span class="st">Off</span></button>
         <button id="watchMono" type="button" class="brain-switch" role="switch" aria-checked="false" title="Every expert the same colour, so only what lights up stands out. The skills keep their tick boxes."><span class="lbl">One colour</span><span class="st">Off</span></button>
         <label id="watchMonoColourBox" hidden>The one colour <input type="color" id="watchMonoColour" value="#e69f00"></label>
+        <label for="watchLoad">Load in</label>
+        <select id="watchLoad" aria-describedby="watchLoadHint"></select>
+        <span id="watchLoadHint" class="muted">How the block builds itself when a scan opens, and how it comes apart when the next one loads. Picking one plays it.</span>
         <button id="watchPaths" type="button" class="brain-switch" role="switch" aria-checked="true"><span class="lbl">Lines between the experts in use</span><span class="st">On</span></button>
         <details id="watchWordsBox"><summary>What this shows, in words</summary><ul id="watchWords" class="tlist"></ul></details>
       </section>

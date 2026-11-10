@@ -11,9 +11,9 @@ import { fileURLToPath } from 'node:url';
 import { Lab } from '../src/lab.js';
 import { readGguf } from '../src/lab-gguf.js';
 import { readTrace, askTraced, tallyTrace, NO_TRACE } from '../src/lab-peek.js';
-import { WATCH_SKILLS, PER_CHOICES, pickSkills, partsOf, clipOf, watchView, startWatch, readRecording, deleteRecording, listRecordings, watchRoute, cubeMap, NO_HEADS, WATCH_WORDS, WATCH_WORDS_THINK, cleanKeep } from '../src/lab-watch.js';
+import { WATCH_SKILLS, PER_CHOICES, pickSkills, partsOf, clipOf, watchView, startWatch, readRecording, deleteRecording, listRecordings, watchRoute, cubeMap, cubeBrains, NO_HEADS, WATCH_WORDS, WATCH_WORDS_THINK, cleanKeep } from '../src/lab-watch.js';
 import { pagesRoute } from '../src/lab-pages.js';
-import { NAME, LONG_NAME, FORMAT, VERSION, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, SKILL_LOOKS, sideOf, LEANS, partOf, PART_LABEL, say, cutOf, cutEffect, keepList, setColour, resetColours, liveTrace, liveRecording, skillMap, mapLook, litSkills, coverKeep, cutSteps, EVEN_PICKS, findPatterns, PATTERN_CHOICES, hasFloors, floorScale, floorsAt, isHeads } from '../public/lab-watch-math.js';
+import { NAME, LONG_NAME, FORMAT, VERSION, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, SKILL_LOOKS, sideOf, LEANS, partOf, PART_LABEL, say, cutOf, cutEffect, keepList, setColour, resetColours, liveTrace, liveRecording, skillMap, mapLook, litSkills, coverKeep, cutSteps, EVEN_PICKS, findPatterns, PATTERN_CHOICES, hasFloors, floorScale, floorsAt, isHeads, LOAD_STYLES, loadStyle, loadOrder } from '../public/lab-watch-math.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -414,6 +414,29 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('the saved file is always the scan as made, never the patterns', /JSON\.stringify\(\{ \.\.\.base, parts \}\)/.test(js));
   check('the scan page offers attention heads, and says it all runs here', /id="watch-what"/.test(page) && /value="heads"/.test(page) && /runs here, on this replicant matrix/.test(page) && /what, own:/.test(page));
   check('Brain Engine\'s patch reports heads and floor activity, and Bob asks for heads only when chosen', /expert_trace_heads/.test(patch) && /kqv_out-/.test(patch) && /"heads"/.test(patch) && /heads \? \{ expert_trace_heads: true \} : \{\}/.test(peek));
+}
+
+// ---- load in and load out ----
+{
+  const box = { W: 5, D: 4, floors: 3, seed: 7 }, n = 60, per = 20;
+  const seqOf = (r) => [...r].map((v, i) => [v, i]).sort((a, b) => a[0] - b[0]).map((p) => p[1]);
+  check('every load style but All at once gives each place in the block its own turn', LOAD_STYLES.filter(([id]) => id !== 'none').every(([id]) => { const r = loadOrder(id, box); return r.length === n && new Set(r).size === n && Math.min(...r) === 0 && Math.max(...r) < 1; }));
+  check('All at once shows everything from the first moment, and an unknown style is Random', loadOrder('none', box).every((v) => v === 0) && loadStyle('nonsense') === 'random' && loadStyle('vase') === 'vase');
+  check('Random is the same for the same seed and different for another', String(loadOrder('random', box)) === String(loadOrder('random', box)) && String(loadOrder('random', box)) !== String(loadOrder('random', { ...box, seed: 8 })));
+  check('Random mixes the floors, the printer styles build from the bottom floor up', seqOf(loadOrder('random', box)).slice(0, per).some((s) => s >= per) && ['spiral', 'lines', 'rings'].every((id) => seqOf(loadOrder(id, box)).every((s, k) => Math.floor(s / per) === Math.floor(k / per))));
+  { const wall = (s) => { const i = s % per, x = i % 5, z = Math.floor(i / 5); return x === 0 || x === 4 || z === 0 || z === 3; }; const q = seqOf(loadOrder('vase', box));
+    check('Vase, then fill: the outer wall of every floor first, then the inside', q.slice(0, 42).every(wall) && q.slice(42).every((s) => !wall(s)) && Math.floor(q[41] / per) === 2 && Math.floor(q[42] / per) === 0); }
+  { const q = seqOf(loadOrder('spiral', { W: 5, D: 5, floors: 1 })); const far = (s) => Math.hypot(s % 5 - 2, Math.floor(s / 5) - 2);
+    check('Archimedean spiral starts in the middle of the floor and ends at a corner', q[0] === 12 && far(q[24]) > 2.8 && far(q[1]) === 1); }
+  { const q = seqOf(loadOrder('lines', box)); check('Rectilinear goes back and forth: each block is next to the one before it within a floor', q.slice(0, per).every((s, k) => k === 0 || Math.abs(s % 5 - q[k - 1] % 5) + Math.abs(Math.floor(s / 5) - Math.floor(q[k - 1] / 5)) === 1)); }
+  check('the cube is told which brains are loaded, by the names it shows', String(cubeBrains([{ name: 'a.gguf' }, { name: 'b.gguf', beside: true }, { name: 'a.gguf' }, null], (x) => x.toUpperCase())) === 'A.GGUF,B.GGUF' && cubeBrains(null).length === 0);
+  const view = read('public/watch-view.js'), js = read('public/watch.js'), cubeJs = read('public/mind-cube.js'), html = read('public/watch.html'), index = read('public/index.html'), server = read('src/server.js'), help = read('public/help-content.js');
+  check('the drawing leaves out the blocks whose turn has not come, and nothing lights up meanwhile', /if \(!shown\(l \+ baseFloors, i\)\) continue;/.test(view) && /if \(reveal < 1\) lit = \[\];/.test(view) && /sweep, loading:/.test(view));
+  check('with animations off the block simply appears', /if \(!rec \|\| !raf \|\| stillNow \|\| load === 'none' \|\| ms <= 0\) \{ reveal = to;/.test(view) && /view\.sweep\(1, LOAD_IN_MS, still\(\)\)/.test(js) && /if \(fresh && !still\(\)\)/.test(cubeJs) && /view\.sweep\(0, CUBE_OUT_MS, still\(\)\)/.test(cubeJs));
+  check('the viewer takes the old block apart before the next scan loads in', /if \(rec && !still\(\) && !view\.loading\(\)\) \{ view\.sweep\(0, LOAD_OUT_MS\)/.test(js) && /loadIn\(\);\n\}/.test(js));
+  check('Load in is a picker in the viewer and in the small cube\'s details, remembered under one name', /<select id="watchLoad"/.test(html) && /id="mindCubeLoadBox" class="muted" hidden/.test(index) && (js.match(/bob-fnri-load/g) || []).length === 2 && /bob-fnri-load/.test(cubeJs) && /loadBox\.hidden = !showDetails/.test(cubeJs));
+  check('the small cube comes apart when its brain is let go, told by Bob to cube pages only', /type === 'cube-brains'\) \{ gone\(j\.labels\)/.test(cubeJs) && /ev\?\.type === 'brain' && cubeClients\.size\) cubeBrainsNow\(\)/.test(server) && /for \(const res of cubeClients\) res\.write\(data\); \} catch/.test(server));
+  check('Help explains load in and load out, and the glossary has it', /<strong>Load in and load out\.<\/strong>/.test(help) && /<dt>Load in<\/dt>/.test(help) && /Vase, then fill/.test(help));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

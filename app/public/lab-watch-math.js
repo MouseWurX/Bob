@@ -364,3 +364,45 @@ export function findPatterns(rec, { k = PATTERN_DEFAULT } = {}) {
   const clips = rec.clips.map((c, ci) => { const b = by[ci].map((j) => rank.get(j)); const n = new Array(skills.length).fill(0); for (const x of b) n[x]++; let m = 0; for (let i = 1; i < n.length; i++) if (n[i] > n[m]) m = i; return { ...c, skill: skills[m].id, by: b }; });
   return { ...rec, skills: skills.map(({ id, label }) => ({ id, label })), clips, patterns: skills };
 }
+
+// ---- Load in, load out ----
+// The block builds itself voxel by voxel when a brain or a recording loads, and takes itself apart the same way when
+// it goes. The order is the person's pick, named after the ways a 3D printer lays plastic down. loadOrder gives every
+// place in the block (floor f, cell i of a W x D floor: f * W * D + i) a number from 0 to 1: a voxel is drawn once
+// the load has passed its number. 'none' is everything at once.
+export const LOAD_STYLES = [['random', 'Random'], ['spiral', 'Archimedean spiral'], ['lines', 'Rectilinear'], ['rings', 'Concentric'], ['vase', 'Vase, then fill'], ['none', 'All at once']];
+export const loadStyle = (s) => (LOAD_STYLES.some(([id]) => id === s) ? s : 'random');
+function seeded(seed) { let a = (seed >>> 0) || 1; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+export function loadOrder(style, { W, D, floors, seed = 1 }) {
+  const per = W * D, n = per * floors, rank = new Float32Array(n);
+  style = loadStyle(style);
+  if (style === 'none' || n < 1) return rank; // all 0: everything shows from the first moment
+  const seq = []; // every place, in the order it appears
+  const cx = (W - 1) / 2, cz = (D - 1) / 2;
+  const ring = (i) => Math.min(i % W, W - 1 - (i % W), Math.floor(i / W), D - 1 - Math.floor(i / W)); // 0 = the outer wall
+  const around = (i) => Math.atan2(Math.floor(i / W) - cz, (i % W) - cx);
+  const snake = (f, cells) => { // back and forth in rows, turned a quarter on every other floor, the way a printer fills
+    const key = (i) => { const x = i % W, z = Math.floor(i / W); return f % 2 ? [x, x % 2 ? D - 1 - z : z] : [z, z % 2 ? W - 1 - x : x]; };
+    return cells.map((i) => [key(i), i]).sort((a, b) => a[0][0] - b[0][0] || a[0][1] - b[0][1]).map((p) => p[1]);
+  };
+  const cells = Array.from({ length: per }, (_, i) => i);
+  if (style === 'random') {
+    for (let i = 0; i < n; i++) seq.push(i);
+    const r = seeded(seed); for (let i = n - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [seq[i], seq[j]] = [seq[j], seq[i]]; }
+  } else if (style === 'spiral') { // each floor from its middle outward along r = theta / 2pi: one cell further out with every turn
+    const key = (i) => { const r = Math.hypot((i % W) - cx, Math.floor(i / W) - cz), a = around(i) + Math.PI; return a + 2 * Math.PI * Math.max(0, Math.round(r - a / (2 * Math.PI))); };
+    const one = cells.map((i) => [key(i), i]).sort((a, b) => a[0] - b[0]).map((p) => p[1]);
+    for (let f = 0; f < floors; f++) for (const i of one) seq.push(f * per + i);
+  } else if (style === 'lines') {
+    for (let f = 0; f < floors; f++) for (const i of snake(f, cells)) seq.push(f * per + i);
+  } else if (style === 'rings') { // each floor's outer wall first, then ring by ring to the middle
+    const one = cells.map((i) => [ring(i), around(i), i]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((p) => p[2]);
+    for (let f = 0; f < floors; f++) for (const i of one) seq.push(f * per + i);
+  } else { // vase: the outer wall alone, round and round to the top, then the inside filled floor by floor
+    const wall = cells.filter((i) => ring(i) === 0).sort((a, b) => around(a) - around(b)), inside = cells.filter((i) => ring(i) > 0);
+    for (let f = 0; f < floors; f++) for (const i of wall) seq.push(f * per + i);
+    for (let f = 0; f < floors; f++) for (const i of snake(f, inside)) seq.push(f * per + i);
+  }
+  seq.forEach((slot, k) => { rank[slot] = k / n; });
+  return rank;
+}

@@ -3,22 +3,28 @@
 // Brain Engine for the trace (public/lab-watch-math.js liveTrace has the shape). The picture arrives when a reply is
 // finished and is then played word by word; nothing is saved. The same drawing as the big viewer (watch-view.js).
 import { createView } from './watch-view.js';
-import { specialise, liveRecording, partOf, PART_LABEL, say, NAME, mapLook, litSkills, lookOf } from './lab-watch-math.js';
+import { specialise, liveRecording, partOf, PART_LABEL, say, NAME, mapLook, litSkills, lookOf, LOAD_STYLES, loadStyle } from './lab-watch-math.js';
 
 const SPECIAL = /<\|[^|>]*\|>|<\/?think>/gi;
 export const CUBE_SPEED = 14; // words a second
+export const CUBE_IN_MS = 1600, CUBE_OUT_MS = 1100; // the block building itself when a brain's first reply arrives, and coming apart when the brain is let go
 
 // The colours: when this brain has an FNRI scan, Bob sends that scan's map along and every expert gets its skill's
 // colour (all-rounders a dashed white outline); with no scan the cube is one colour and says how to get the rest.
-// els: { box, canvas, says, open, key, mono, colour, colourBox, details }. still() = animations are off (the last word is shown, nothing moves).
-export function createMindCube({ box, canvas, says, open, key = null, mono = null, colour = null, colourBox = null, details = null }, { still = () => false, onWhy = null, EventSourceImpl = globalThis.EventSource } = {}) {
+// els: { box, canvas, says, open, key, mono, colour, colourBox, details, load, loadBox }. still() = animations are off (the last word is shown, nothing moves).
+export function createMindCube({ box, canvas, says, open, key = null, mono = null, colour = null, colourBox = null, details = null, load = null, loadBox = null }, { still = () => false, onWhy = null, EventSourceImpl = globalThis.EventSource } = {}) {
   const view = createView(canvas);
   let es = null, traces = [], rec = null, sp = null, clip = -1, t = 0, raf = 0, last = 0, why = '', look = null;
   view.set({ glow: 0.4, glass: 0.3 });
   // One colour: a quick switch, remembered. Every expert the same colour, so only what lights up stands out.
+  // Load in: how the block builds itself (and comes apart), the person's pick, shared with the big viewer
+  let whose = '', gen = 0;
+  const readLoad = () => { let s = 'random'; try { s = loadStyle(localStorage.getItem('bob-fnri-load')); } catch {} view.set({ load: s }); if (load) load.value = s; };
+  if (load) { for (const [id, label] of LOAD_STYLES) { const o = document.createElement('option'); o.value = id; o.textContent = label; load.append(o); } load.onchange = () => { try { localStorage.setItem('bob-fnri-load', loadStyle(load.value)); } catch {} readLoad(); if (rec) { view.set({ reveal: 0 }); view.sweep(1, CUBE_IN_MS, still()).then(() => { if (rec) view.draw(lit()); }); } }; }
+  readLoad();
   let showDetails = false; try { showDetails = localStorage.getItem('bob-cube-details') === '1'; } catch {} // to begin with: just the cube, Open in the big viewer and Show details
   let one = false; try { one = localStorage.getItem('bob-cube-mono') === '1'; } catch {}
-  const showOne = () => { view.set({ mono: one || !look }); if (mono) { mono.textContent = one ? 'Skill colours' : 'One colour'; mono.hidden = !look || !showDetails; } if (colourBox) colourBox.hidden = !(one || !look) || !rec || !showDetails; if (key && look) key.classList.toggle('off', one); };
+  const showOne = () => { view.set({ mono: one || !look }); if (mono) { mono.textContent = one ? 'Skill colours' : 'One colour'; mono.hidden = !look || !showDetails; } if (colourBox) colourBox.hidden = !(one || !look) || !rec || !showDetails; if (loadBox) loadBox.hidden = !showDetails; if (key && look) key.classList.toggle('off', one); };
   // the one colour is the person's to pick (it is also the colour of a brain with no scan yet), and it is remembered
   const keepC = (c) => { if (/^#[0-9a-f]{6}$/i.test(c || '')) { view.set({ monoColour: c }); if (colour) colour.value = c; return true; } return false; };
   try { keepC(localStorage.getItem('bob-cube-colour')); } catch {}
@@ -31,7 +37,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
 
   function words() {
     if (why) { says.textContent = why; return; }
-    if (!rec) { says.textContent = 'Waiting for Bob\'s next reply. The cube lights up when he finishes it. Replies come a little slower while this is on.'; return; }
+    if (!rec) { open.hidden = true; if (key) key.hidden = true; says.textContent = 'Waiting for Bob\'s next reply. The cube lights up when he finishes it. Replies come a little slower while this is on.'; return; }
     const c = rec.clips[clip], w = Math.min(c.e.length - 1, Math.floor(t));
     const pt = partOf(c, w), text = c.words.slice(pt.from, w + 1).join('').replace(SPECIAL, '').replace(/\s+/g, ' ').trim();
     const picks = c.e[w].reduce((a, l) => a + l.length, 0);
@@ -63,6 +69,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     const map = tr.map || null; if (map) { tr = { ...tr }; delete tr.map; }
     traces.push(tr); traces = traces.slice(-6);
     const r = liveRecording(traces, tr.label || 'Bob'); if (!r) return;
+    const fresh = !rec || whose !== (tr.label || 'Bob'); whose = tr.label || 'Bob'; gen++;
     rec = r; clip = rec.clips.length - 1;
     look = mapLook(map, { experts: rec.brain.experts, layers: rec.brain.layers, kind: rec.brain.kind });
     sp = look ? look.sp : specialise(rec);
@@ -76,10 +83,20 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
       } else key.textContent = `One colour for now: this brain has no ${NAME} scan yet. Make one in the Lab (${NAME}) and the cube colours every expert by its skill.`;
     }
     open.hidden = false; showOne();
+    // a brain's first reply: the block builds itself block by block, then the reply plays
+    if (fresh && !still()) { readLoad(); const g = gen; view.set({ reveal: 0 }); words(); view.sweep(1, CUBE_IN_MS).then(() => { if (g === gen) play(); }); return; }
     play();
+  }
+  // The brain was let go: the block comes apart block by block until nothing is left, then waits for the next reply.
+  function gone(labels) {
+    if (!rec || (Array.isArray(labels) && labels.includes(whose))) return;
+    const g = ++gen; cancelAnimationFrame(raf); raf = 0;
+    const clear = () => { if (g !== gen) return; rec = null; sp = null; look = null; traces = []; whose = ''; view.set({ reveal: 1 }); const c = canvas.getContext('2d'); c.clearRect(0, 0, canvas.width, canvas.height); words(); showOne(); };
+    view.sweep(0, CUBE_OUT_MS, still()).then(clear);
   }
   function on(ev) {
     let j = null; try { j = JSON.parse(ev.data); } catch { return; }
+    if (j?.type === 'cube-brains') { gone(j.labels); return; }
     if (j?.type === 'cube') { why = j.ok ? '' : String(j.why || ''); words(); try { onWhy?.(why); } catch {} } else if (j?.type === 'trace') { why = ''; add(j); }
   }
   open.onclick = () => {
@@ -94,6 +111,6 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     connect() { box.hidden = false; if (!es && EventSourceImpl) { es = new EventSourceImpl('/api/events?cube=1'); es.onmessage = on; } words(); if (rec) view.draw(lit()); },
     disconnect() { if (es) { es.close(); es = null; } cancelAnimationFrame(raf); raf = 0; },
     hide() { box.hidden = true; },
-    add, get rec() { return rec; }
+    add, gone, get rec() { return rec; }
   };
 }

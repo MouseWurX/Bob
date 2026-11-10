@@ -5,7 +5,8 @@
 // Its own window, so it can sit beside the Lab or a chat. The Lab opens it with ?brain=<id>&rec=<id>; it can also
 // open a recording file by itself (one made on another Bob, or on a rented card), with the Lab off.
 import { applySavedStyle } from './themes.js';
-import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind, cutOf, cutEffect, keepList, setColour, resetColours, COVERS, cutSteps, findPatterns, PATTERN_CHOICES, PATTERN_DEFAULT, hasFloors, floorScale, floorsAt } from './lab-watch-math.js';
+import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind, cutOf, cutEffect, keepList, setColour, resetColours, COVERS, cutSteps, findPatterns, PATTERN_CHOICES, PATTERN_DEFAULT, hasFloors, floorScale, floorsAt, LOAD_STYLES, loadStyle } from './lab-watch-math.js';
+const LOAD_IN_MS = 2200, LOAD_OUT_MS = 900;
 import { createView, GREY } from './watch-view.js';
 applySavedStyle();
 
@@ -43,7 +44,15 @@ function byHtml() {
 $('watchBy').onchange = (ev) => { const k = Number(ev.target.value) || 0; patternsOn = k > 0; if (k) patternK = k; say(patternsOn ? 'Sorting the words into patterns…' : ''); setTimeout(() => { relook(); say(''); }, 20); };
 $('watchFloors').onclick = (ev) => { floorsOn = !floorsOn; flipSw(ev.currentTarget, floorsOn); if (!floorsOn) view.setFloors(null); lastIdx = -1; need = true; };
 
+// A recording loads in block by block, in the order the person picked (Load in); the one before it comes apart first.
+let loadGen = 0;
 function load(j) {
+  const gen = ++loadGen;
+  if (rec && !still() && !view.loading()) { view.sweep(0, LOAD_OUT_MS).then(() => { if (gen === loadGen) loadNow(j); }); return; }
+  loadNow(j);
+}
+function loadIn() { view.set({ reveal: 0 }); view.sweep(1, LOAD_IN_MS, still()).then(() => { need = true; }); }
+function loadNow(j) {
   base = rec = cleanRecording(j); patternsOn = false; parts = j.parts && Array.isArray(j.parts.layers) ? j.parts : null;
   sp = specialise(rec);
   view.setData(rec, sp, parts);
@@ -63,6 +72,7 @@ function load(j) {
   $('watchZoomOne').textContent = w('One expert'); $('watchExpertWord').textContent = w('Expert');
   cube(); byHtml(); $('watchOnly').disabled = false;
   skillsHtml(); wordsHtml(); setMode('brain'); seek(0); say(''); cutHtml();
+  loadIn();
 }
 
 function skillsHtml() {
@@ -290,6 +300,9 @@ $('watchSpinSpeed').oninput = (ev) => { spinSpeed = Number(ev.target.value) || 0
 const FACES = { corner: [-0.62, 0.5], front: [0, 0.12], side: [Math.PI / 2, 0.12], back: [Math.PI, 0.12], top: [-0.62, 1.15] };
 $('watchFace').onchange = (ev) => { const v = FACES[ev.target.value]; if (!v) return; if (spin) { spin = false; flip($('watchSpin'), false); } if (still()) { view.set({ yaw: v[0], tilt: v[1] }); } else { const g = view.get(); const turns = Math.round((g.yaw - v[0]) / (2 * Math.PI)); aim = { yaw: v[0] + turns * 2 * Math.PI, tilt: v[1] }; } need = true; ev.target.value = ''; };
 $('watchMono').onclick = (ev) => { const on = ev.currentTarget.getAttribute('aria-checked') !== 'true'; flip(ev.currentTarget, on); view.set({ mono: on }); $('watchMonoColourBox').hidden = !on; try { localStorage.setItem('bob-watch-mono', on ? '1' : '0'); } catch {} need = true; };
+$('watchLoad').innerHTML = LOAD_STYLES.map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
+{ let s = 'random'; try { s = loadStyle(localStorage.getItem('bob-fnri-load')); } catch {} $('watchLoad').value = s; view.set({ load: s }); }
+$('watchLoad').onchange = (ev) => { const s = loadStyle(ev.target.value); view.set({ load: s }); try { localStorage.setItem('bob-fnri-load', s); } catch {} if (rec) loadIn(); };
 $('watchMonoColour').oninput = (ev) => { view.set({ monoColour: ev.target.value }); try { localStorage.setItem('bob-watch-mono-colour', ev.target.value); } catch {} need = true; };
 try { const c = localStorage.getItem('bob-watch-mono-colour'); if (/^#[0-9a-f]{6}$/i.test(c || '')) { $('watchMonoColour').value = c; view.set({ monoColour: c }); } if (localStorage.getItem('bob-watch-mono') === '1') { flip($('watchMono'), true); view.set({ mono: true }); $('watchMonoColourBox').hidden = false; } } catch {}
 $('watchPaths').onclick = (ev) => { const on = ev.currentTarget.getAttribute('aria-checked') !== 'true'; flip(ev.currentTarget, on); view.set({ paths: on }); need = true; };

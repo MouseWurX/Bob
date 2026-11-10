@@ -4,7 +4,7 @@
 // not experts are grey voxels in their true share of the weights. As a recording plays, the experts picked for the
 // word being read glow and lift, with a short trail, and thin lines join them floor to floor.
 // The page (public/watch.js) owns the controls and the words; this file only lays out and draws.
-import { lookOf, sideOf, say } from './lab-watch-math.js';
+import { lookOf, sideOf, say, loadOrder, loadStyle } from './lab-watch-math.js';
 
 export const GREY = '#8a8f98';
 export const WIRE_ALPHA = 0.5; // the all-rounders' outline: soft, never bright
@@ -63,8 +63,31 @@ export function createView(canvas, { still = false } = {}) {
   let caption = null, key = true, paths = true, picked = null, glass = 0.25, off = null, solid = new Map(), glow = 0.5, mark = 'glow'; // mark: how the experts in use show: 'glow', 'outline' (a bright edge, no light) or 'both'; glow: how bright the experts in use shine, 0 to 1.5; gentle to begin with, so nothing flashes hard // off: [Set of experts turned off, per floor] while a cut is being tried // glass: how see-through the voxels are, 0 (solid) to 0.85
   const css = () => { const s = getComputedStyle(document.body); const g = (n, d) => s.getPropertyValue(n).trim() || d; return { bg: g('--bg', '#1d1510'), text: g('--text', '#f3e7d3'), muted: g('--muted', '#c7b296'), line: g('--line', '#5a4030'), panel: g('--panel', '#2b1d14') }; };
 
-  function setData(r, s, parts) { rec = r; sp = s; lay = layoutOf(r, parts); dirty = true; picked = null; }
-  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'key') key = v !== false; else if (k === 'mono') mono = v === true; else if (k === 'monoColour') monoColour = /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v) : ''; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
+  // Load in and load out: `reveal` runs 0..1 and a voxel is drawn once it has passed that voxel's place in the order
+  // (lab-watch-math.js loadOrder). 1 = the whole block, which is also where it rests.
+  let reveal = 1, order = null, load = 'random', seed = 1, sweepRaf = 0, sweepEnd = null;
+  const reorder = () => { order = lay ? loadOrder(load, { W: lay.W, D: lay.D, floors: lay.L + lay.baseFloors, seed }) : null; };
+  const shown = (floor, i) => reveal >= 1 || (order ? order[floor * lay.W * lay.D + i] < reveal : false);
+  // Build the block (to = 1) or take it apart (to = 0) over `ms`. Resolves when it's done, or at once when stopped by
+  // another sweep. With animations off (stillNow) it jumps straight there.
+  function sweep(to, ms = 1600, stillNow = still) {
+    if (sweepEnd) { cancelAnimationFrame(sweepRaf); const e = sweepEnd; sweepEnd = null; e(); }
+    if (to === 1 && reveal <= 0) { seed = (Math.random() * 4294967296) >>> 0; reorder(); } // a new shuffle each time for Random
+    const raf = globalThis.requestAnimationFrame;
+    if (!rec || !raf || stillNow || load === 'none' || ms <= 0) { reveal = to; dirty = true; if (rec) draw(); return Promise.resolve(); }
+    const from = reveal, t0 = performance.now();
+    return new Promise((done) => {
+      sweepEnd = done;
+      const step = (now) => {
+        const k = Math.min(1, Math.max(0, (now - t0) / ms));
+        reveal = from + (to - from) * k; dirty = true; draw();
+        if (k < 1) sweepRaf = raf(step); else { sweepEnd = null; done(); }
+      };
+      sweepRaf = raf(step);
+    });
+  }
+  function setData(r, s, parts) { rec = r; sp = s; lay = layoutOf(r, parts); dirty = true; picked = null; reorder(); }
+  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'key') key = v !== false; else if (k === 'load') { load = loadStyle(v); reorder(); } else if (k === 'reveal') { reveal = Math.max(0, Math.min(1, v)); } else if (k === 'mono') mono = v === true; else if (k === 'monoColour') monoColour = /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v) : ''; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
   const get = () => ({ yaw, tilt, gap, zoom, glass, glow });
   // the gap between floors that makes the whole block as tall as it is wide: a cube
   const cubeGap = () => (lay ? Math.max(0.2, Math.min(5, Math.max(lay.W, lay.D) / Math.max(1, lay.L + lay.baseFloors))) : 0.9);
@@ -151,10 +174,11 @@ export function createView(canvas, { still = false } = {}) {
     // the plinth: what sits outside the layers
     if (!hidden.has('grey')) for (let f = 0; f < baseFloors; f++) {
       const n = Math.min(W * D, base - f * W * D);
-      for (const i of g.order) { if (i >= n) continue; const [cx, cz] = cellXY(i); const [x, y] = g.P(cx, f * gap + 0.5, cz); voxel(x, y, GREY, solid.get('grey') ?? 1); }
+      for (const i of g.order) { if (i >= n || !shown(f, i)) continue; const [cx, cz] = cellXY(i); const [x, y] = g.P(cx, f * gap + 0.5, cz); voxel(x, y, GREY, solid.get('grey') ?? 1); }
     }
     for (let l = 0; l < L; l++) {
       for (const i of g.order) {
+        if (!shown(l + baseFloors, i)) continue;
         const [cx, cz] = cellXY(i);
         const e = cellExpert[i];
         if (e >= 0) {
@@ -177,12 +201,13 @@ export function createView(canvas, { still = false } = {}) {
   function draw(lit = []) {
     if (!rec) return;
     resize();
+    if (reveal < 1) lit = []; // nothing lights up while the block is still being built or taken apart
     if (dirty || !staticCanvas) drawStatic();
     const g = geom, k = css();
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     ctx.drawImage(staticCanvas, 0, 0);
     ctx.globalCompositeOperation = 'lighter';
-    if (floorsNow) { // the whole floor glows by how hard it's working; no single blocks
+    if (floorsNow && reveal >= 1) { // the whole floor glows by how hard it's working; no single blocks
       const { W, D } = lay;
       for (let l = 0; l < lay.L; l++) {
         const v = floorsNow[l] || 0; if (v <= 0.02) continue;
@@ -234,7 +259,7 @@ export function createView(canvas, { still = false } = {}) {
       const r = Math.max(3, g.s * 0.42); ctx.strokeStyle = '#ff5a4f'; ctx.lineWidth = Math.max(1.5, g.s * 0.1);
       for (const [x, y] of missed) { ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.moveTo(x - r * 0.7, y + r * 0.7); ctx.lineTo(x + r * 0.7, y - r * 0.7); ctx.stroke(); }
     }
-    if (picked) {
+    if (picked && reveal >= 1) {
       const [cx, cz] = expertXY(picked.expert); const [x, y] = g.P(cx, floorY(picked.layer), cz);
       ctx.strokeStyle = k.text; ctx.lineWidth = Math.max(2, g.s * 0.12); face(ctx, g, x, y); ctx.stroke();
     }
@@ -295,5 +320,5 @@ export function createView(canvas, { still = false } = {}) {
   }
 
   const setFloors = (a) => { floorsNow = Array.isArray(a) ? a : null; }; // every frame, so it doesn't redraw the block
-  return { setData, set, get, cubeGap, draw, setFloors, pick, setCaption, resize, layout: () => lay, still: () => still };
+  return { setData, set, get, cubeGap, draw, sweep, loading: () => reveal < 1, setFloors, pick, setCaption, resize, layout: () => lay, still: () => still };
 }

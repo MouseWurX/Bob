@@ -443,3 +443,9 @@ export async function watchRoute({ req, p, isLocal, lab, b, send, res }) {
   if (p === '/api/lab/watch/delete') { send(res, 200, deleteRecording(lab, b)); return true; }
   return false;
 }
+
+// The small cube: the brains loaded right now, by the names the cube shows (so it can take itself apart when its
+// brain is let go). `loaded` is the engine's own list; a brain held beside the main one counts too.
+export function cubeBrains(loaded, friendly = (n) => n) {
+  return [...new Set((Array.isArray(loaded) ? loaded : []).map((m) => (m && m.name ? String(friendly(m.name)) : '')).filter(Boolean))];
+}

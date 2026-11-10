@@ -23,7 +23,7 @@ import { ModelShop } from './models.js';
 import { CatalogUpdates } from './catalog-update.js';
 import { checkEngine, seedBundledEngine, goBackEngine, removeEngine, brainsEngineSettings, engineChoices, brainsEngineNow } from './engines.js';
 import { liveTrace } from '../public/lab-watch-math.js';
-import { cubeMap } from './lab-watch.js';
+import { cubeMap, cubeBrains } from './lab-watch.js';
 import { EngineKeeper, keeperOn } from './engine-keeper.js';
 import { autostartOn, setAutostart } from './autostart.js';
 import { applyWindowState } from './app-icon.js';
@@ -102,6 +102,7 @@ const clients = new Set();
 // 1.5.53: the "Bob's thinking" window (public/mind.html) listens with ?mind=1. Only those windows get his thinking
 // as it streams; while none is open, Bob doesn't even pass it along (brain.mindWatchers), so it costs nothing.
 const mindClients = new Set();
+const cubeClients = new Set(); // FNRI's small cube pages (see below)
 
 let telegram = null; // Talk to Bob on Telegram (src/telegram.js), set once Bob's brain is ready
 let discord = null; // Bob on Discord (src/discord.js), set once Bob's brain is ready
@@ -109,6 +110,7 @@ function broadcast(ev) {
   if (ev?.type === 'think-start' && ev.model) ev = { ...ev, label: friendlyName(ev.model) }; // "Qwen 3.8 27B", not the raw tag
   const data = `data: ${JSON.stringify(ev)}\n\n`;
   for (const res of ev?.type === 'think' || ev?.type === 'think-start' ? mindClients : clients) res.write(data);
+  if (ev?.type === 'brain' && cubeClients.size) cubeBrainsNow(); // FNRI's small cube takes itself apart when its brain is let go
   try { telegram?.watch(ev); } catch {} // Talk to Bob on Telegram: only the Telegram chat's events, and only while it's on
   try { discord?.watch(ev); } catch {} // Bob on Discord: only Discord jobs' own events
   if (ev?.type === 'pair-done') try { introductions.soon(); } catch {} // 1.5.123: a new Bob on the list meets the others
@@ -124,8 +126,11 @@ setInterval(() => introductions.soon(0), 3600_000).unref();
 brain.mindWatchers = () => mindClients.size;
 // FNRI's small cube in "Bob's thinking" listens with ?cube=1. Only while one is open does Bob ask Brain Engine which
 // experts each reply used (it slows writing a little), and only those pages are told. Off for everyone else.
-const cubeClients = new Set();
 const cubeWhy = () => (brainsEngineNow(cfg) === 'brainengine' ? '' : 'The cube needs Brain Engine as the engine for Bob\'s brains (Settings > Engines). The engine in use now doesn\'t report which experts it picked.');
+// Which brains are loaded right now, by the names the cube knows them by. Told to the cube pages only.
+async function cubeBrainsNow() {
+  try { const labels = cubeBrains(await brain.engine.loaded(), friendlyName); const data = `data: ${JSON.stringify({ type: 'cube-brains', labels })}\n\n`; for (const res of cubeClients) res.write(data); } catch {}
+}
 if (brain.engine) {
   brain.engine.wantTrace = () => cubeClients.size > 0 && !cubeWhy();
   brain.engine.onTrace = (raw, model) => { const t = liveTrace(raw); if (!t) return; let map = null; try { map = cubeMap(lab, { model, label: friendlyName(model), experts: t.experts, layers: t.layers, kind: t.kind }); } catch {} // the colours, from this brain's newest scan
