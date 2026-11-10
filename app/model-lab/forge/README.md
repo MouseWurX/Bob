@@ -47,6 +47,12 @@ See plans\24-18.json. `rungs[].from` is `teacher` or an earlier rung's name; `ke
 `heal.experts`: `lora` (default), `full` (small Bobs only; 8-bit AdamW) or `frozen`.
 Specialists: point `counts` at the coding or thinking counts file and name the rung e.g. `8Bob Cypher`.
 
+**Names (the owner's rule, 10 November 2026).** A name belongs to one model. A job, skill, lesson set, step or persona never
+carries a model's name, and a model is never named after a job: model names (Bob, Bobert, Riker, Bill, any NBob) and job or
+skill names (coding, codefix, recover, clarify, review, ...) stay disjoint, in plans, keep lists, logs, cards, Help and Bob's own
+lines ("the reviewer checks the answer", never "Bobert checks the answer"). A shared name leaves a log or a plan ambiguous
+about which thing is meant. Outside lesson sets keep their source's name, which must not be a model name either.
+
 ## Untested until the first pod
 
 prune.py and the runner were tested here (fake model, fake pod). heal.py, lora.py, teacher.py, count.py and
@@ -116,3 +122,7 @@ deletes the pod, and the loss is the time spent (a few dollars).
 ## Build 19
 
 A teacher that only writes lessons can be any GGUF model on Hugging Face (`plan.teacher_gguf: {repo, file, slots, ctx, extra}`): the pod builds its CUDA llama-server, downloads the file (a split file loads from its first part), serves it on port 8001, and the PC's lesson writer talks to it exactly as it talks to vLLM. `plan.lessons_only: true` ends the run once the lessons are on the PC: nothing is scored, cut or healed, and the run is held to its own caps. The lesson writer takes `--persona <file>` (a `persona` key on a `write_lessons` set), appended after Bob's own system prompt. Two Forge windows can run side by side: each run keeps its own pod record (`out/forge/pod-token-<run>.json`), the pod carries the run's name, and `--kill <podId>` deletes one pod instead of every Forge pod. A cold pod with no network volume gets a longer door wait (`plan.door_minutes`, default 25 without a volume) since it must pull its image before it can answer.
+
+## 10 November 2026: a lesson set from the drive
+
+`plan.lessons_set "<key>"` takes the lesson set an earlier run kept on the drive (`lessons/<key>/`) in place of the PC's upload, so the teacher-score key is the same by construction and the scores under it are reused; the run stops before any pass if the plan's teacher, top, max_len or general budget would give another key. With it set the PC's extra sets are not sent. `plan.data_centers` pins where a card may be taken, `plan.volume_new: false` (and every `plan.rebuild` run) never makes a new drive, `plan.drive_delete` removes `bobs/<name>/gguf` folders once Hugging Face hosts them, and `node forge.mjs --drop-volume <id>` deletes a drive Forge made by mistake. A `rebuild.models[]` entry with `weights_only: true` and `source: "volume:<path>"` uploads a Bob's full-size weights from the drive and nothing else.
