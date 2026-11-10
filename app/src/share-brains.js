@@ -14,6 +14,7 @@
 // phone door's, and are never sent back to the page.
 import fs from 'node:fs';
 import { isTailscaleIp } from './phone-access.js';
+import { cleanCheck, checkRefusal, checkDown, CHECK_FIRST_WORD_MAX_MS } from './bob-net-check.js'; // 1.5.185
 
 export const PROTOCOL = 1;
 // About how many tokens a request is (4 characters a token is close enough to decide whether it fits a brain's room).
@@ -53,12 +54,13 @@ export function shareView(cfg) {
     takeJobs: s.takeJobs === true,
     passAlong: s.passAlong === true, // 1.5.123 Pass my Bob-Net along (src/bob-net-party.js)
     lendCard: s.lendCard === true, // Lend my graphics card (src/share-card.js), off unless switched on
+    lendChecks: s.lendChecks === true, // 1.5.185 Check harder jobs for my other Bobs (src/bob-net-check.js)
     spread: ['toobig', 'big'].includes(s.spread) ? s.spread : 'off', // Spread big brains over my other Bobs' cards
     // Bob-Net mode: More Bobs (the default: each Bob runs his own brain) or Bigger Bobs (they pool their cards).
     homeNet: s.homeNet !== false, // Bigger Bobs: Use the home network first (src/share-card.js), Tailscale as the backup
     mode: s.lendCard === true || ['toobig', 'big'].includes(s.spread) ? 'bigger' : 'more',
     doorOpen: doorOpen(cfg),
-    borrow: { on: b.on === true, jobs: b.jobs === true, when: WHEN.includes(b.when) ? b.when : 'gaming', bobs: (b.bobs || []).map((x) => ({ name: x.name, address: x.address, passcodeSet: String(x.passcode || '').length >= 6 })) }
+    borrow: { on: b.on === true, jobs: b.jobs === true, checks: b.checks === true, when: WHEN.includes(b.when) ? b.when : 'gaming', bobs: (b.bobs || []).map((x) => ({ name: x.name, address: x.address, passcodeSet: String(x.passcode || '').length >= 6 })) }
   };
 }
 
@@ -68,10 +70,12 @@ export const doorOpen = (cfg) => Boolean(cfg.remote?.enabled && String(cfg.remot
 export function cleanSharePatch(cfg, b) {
   const cur = cfg.share || {};
   const cb = cur.borrow || {};
-  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, homeNet: cur.homeNet !== false, spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
+  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendChecks: cur.lendChecks === true, homeNet: cur.homeNet !== false, spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
   if ('lend' in b) next.lend = b.lend === true;
   if ('takeJobs' in b) next.takeJobs = b.takeJobs === true; // 1.5.72, off unless switched on
   if ('passAlong' in b) next.passAlong = b.passAlong === true; // 1.5.123, off unless switched on
+  if ('lendChecks' in b) next.lendChecks = b.lendChecks === true; // 1.5.185, off unless switched on
+  if ('askChecks' in b) next.borrow.checks = b.askChecks === true; // 1.5.185, off unless switched on
   // Bob-Net mode: Bigger Bobs lends this card and spreads brains bigger than it; More Bobs turns both off.
   if ('mode' in b) {
     if (!['more', 'bigger'].includes(b.mode)) return { error: 'Pick More Bobs or Bigger Bobs.' };
@@ -97,7 +101,7 @@ export function cleanSharePatch(cfg, b) {
   if (b.removeBob) next.borrow.bobs = next.borrow.bobs.filter((x) => x.address !== cleanAddress(b.removeBob));
   if (Array.isArray(b.order)) { const at = (a) => { const i = b.order.map((x) => cleanAddress(x)).indexOf(a); return i < 0 ? 99 : i; }; next.borrow.bobs.sort((x, y) => at(x.address) - at(y.address)); }
   if ('borrow' in b) next.borrow.on = b.borrow === true;
-  if ((next.borrow.on || next.borrow.jobs || ('spread' in b && next.spread !== 'off')) && !next.borrow.bobs.length) return { error: 'Add one of your other Bobs first.' };
+  if ((next.borrow.on || next.borrow.jobs || ('askChecks' in b && next.borrow.checks) || ('spread' in b && next.spread !== 'off')) && !next.borrow.bobs.length) return { error: 'Add one of your other Bobs first.' };
   return { share: next };
 }
 
@@ -139,18 +143,21 @@ export function cleanLendRequest(b) {
 // POST /api/lend/chat: think one reply for another Bob, streaming it back as server-sent events:
 //   { type: 'token', text }  ...  { type: 'done', reply: { content, tool_calls } }  or  { type: 'error', error }
 export async function lendChat(brain, req, res, b, deps) {
-  const why = lendRefusal(brain, deps);
+  // 1.5.185: kind 'check' is a reviewer's check on this Bob's Review brain (src/bob-net-check.js), not a quick reply.
+  const checking = b?.kind === 'check';
+  const why = checking ? checkRefusal(brain, deps) : lendRefusal(brain, deps);
+  const pickBrain = checking ? deps.checkBrain : deps.quickBrain;
   if (why) { res.writeHead(409, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ busy: why })); }
   const ask = cleanLendRequest(b);
   if (ask.error) { res.writeHead(400, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ error: ask.error })); }
   // 1.5.72: a Bob knows his limits. A chat that won't fit his quick brain's room is turned down before he starts.
-  const room = deps.quickBrain(brain)?.ctx || 32768;
+  const room = pickBrain(brain)?.ctx || 32768;
   if (roughTokens(ask) + REPLY_ROOM > room) { res.writeHead(409, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ busy: 'too long', ctx: room })); }
   const stop = new AbortController();
   // 1.5.92: the asking Bob giving up (too slow, or his owner pressed Stop) closes the line: stop thinking then.
   // This listens on res, not req: the request body is already read by now, so req has closed and never says so again.
   res.on('close', () => { if (!res.writableEnded) stop.abort(); });
-  brain.lending = { since: Date.now(), for: cleanName(b.from) || 'another Bob' };
+  brain.lending = { since: Date.now(), for: cleanName(b.from) || 'another Bob', ...(checking ? { kind: 'check' } : {}) };
   brain.broadcast?.({ type: 'lending', on: true, for: brain.lending.for });
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
   const send = (ev) => { if (!res.writableEnded) res.write(`data: ${JSON.stringify(ev)}\n\n`); };
@@ -160,14 +167,14 @@ export async function lendChat(brain, req, res, b, deps) {
   let life = setInterval(() => send({ type: 'loading' }), deps.lifeMs || LIFE_MS);
   const quietNow = () => { if (life) { clearInterval(life); life = null; } };
   try {
-    const { model, cpu, ctx } = deps.quickBrain(brain);
+    const { model, cpu, ctx, think } = pickBrain(brain);
     const fit = await brain.fitCtx(model, ctx);
-    const use = (await brain.ensureModel(model, () => {}, stop.signal, 'bob', { cpu, ctx: fit })) || model;
+    const use = (await brain.ensureModel(model, () => {}, stop.signal, checking ? 'reviewer' : 'bob', { cpu, ctx: fit })) || model;
     if (stop.signal.aborted) throw new Error('stopped');
     send({ type: 'brain', label: brain.brainLabel?.(use) || use });
-    const reply = await brain.chatSafe({ model: use, messages: ask.messages, tools: ask.tools.length ? ask.tools : undefined, signal: stop.signal, cpu, think: false, ctx: fit, onToken: (t) => { quietNow(); send({ type: 'token', text: t }); } });
+    const reply = await brain.chatSafe({ model: use, messages: ask.messages, tools: ask.tools.length ? ask.tools : undefined, signal: stop.signal, cpu, think: checking ? (think || 'high') : false, ctx: fit, onToken: (t) => { quietNow(); send({ type: 'token', text: t }); } });
     send({ type: 'done', reply: { content: reply.content || '', tool_calls: reply.tool_calls } });
-    brain.log?.('lend', `thought a reply for ${brain.lending.for} in ${((Date.now() - t0) / 1000).toFixed(1)} s`); // never the words
+    brain.log?.('lend', `${checking ? 'checked a job' : 'thought a reply'} for ${brain.lending.for} in ${((Date.now() - t0) / 1000).toFixed(1)} s`); // never the words
   } catch (e) {
     send({ type: 'error', error: stop.signal.aborted ? 'stopped' : String(e.message || e).slice(0, 200) });
   } finally {
@@ -195,7 +202,8 @@ export function wantsBorrow(cfg, { session, busy, job, pics }) {
 }
 
 export class Lenders {
-  constructor(cfg, { fetchFn = globalThis.fetch, now = Date.now, firstWordMs = FIRST_WORD_MS, quietMs = QUIET_MS, firstWordMaxMs = FIRST_WORD_MAX_MS } = {}) {
+  constructor(cfg, { fetchFn = globalThis.fetch, now = Date.now, firstWordMs = FIRST_WORD_MS, quietMs = QUIET_MS, firstWordMaxMs = FIRST_WORD_MAX_MS, checkFirstWordMaxMs = CHECK_FIRST_WORD_MAX_MS } = {}) {
+    this.checkFirstWordMaxMs = checkFirstWordMaxMs;
     this.cfg = cfg; this.fetch = fetchFn; this.now = now; this.firstWordMs = firstWordMs; this.quietMs = quietMs; this.firstWordMaxMs = firstWordMaxMs;
     this.cookies = new Map(); // address -> bob_auth cookie (memory only)
     this.state = new Map(); // address -> { ok, at, brain, why }
@@ -304,7 +312,8 @@ export class Lenders {
   likely() { return this.bobs().some((b) => this.state.get(b.address)?.ok && this.now() - this.state.get(b.address).at < GOOD_FOR); }
 
   // One reply from a lender, same shape as engine.chat's. Throws if it can't (the caller thinks for itself).
-  async chat(bob, { messages, tools, signal, onToken, from }) {
+  async chat(bob, { messages, tools, signal, onToken, from, kind }) {
+    const checking = kind === 'check'; // 1.5.185: a reviewer's check on his bigger Review brain
     const quiet = new AbortController();
     const sig = signal ? AbortSignal.any([signal, quiet.signal]) : quiet.signal;
     let timer = setTimeout(() => quiet.abort(), this.firstWordMs);
@@ -314,9 +323,9 @@ export class Lenders {
     this.live.set(bob.address, 'thinking');
     const t0 = this.now();
     let firstAt = 0, words = 0;
-    const cap = setTimeout(() => { if (!firstAt) quiet.abort(); }, this.firstWordMaxMs); // "still loading" can't hold a reply forever
+    const cap = setTimeout(() => { if (!firstAt) quiet.abort(); }, checking ? Math.max(this.firstWordMaxMs, this.checkFirstWordMaxMs) : this.firstWordMaxMs); // "still loading" can't hold a reply forever
     try {
-      const r = await this.call(bob, '/api/lend/chat', { method: 'POST', body: { protocol: PROTOCOL, from, messages: plain, tools: tools || [] }, signal: sig, timeout: this.firstWordMs });
+      const r = await this.call(bob, '/api/lend/chat', { method: 'POST', body: { protocol: PROTOCOL, from, messages: plain, tools: tools || [], ...(checking ? { kind: 'check' } : {}) }, signal: sig, timeout: this.firstWordMs });
       if (r.status === 409) {
         const j = await r.json().catch(() => ({}));
         if (j.busy === 'too long' && Number(j.ctx) > 0) { this.note(bob, {}); this.state.get(bob.address).ctx = Number(j.ctx); } // he told us his room: remember it
@@ -350,7 +359,8 @@ export class Lenders {
       return { role: 'assistant', content: String(reply.content || ''), tool_calls: calls.length ? calls : undefined };
     } catch (e) {
       if (signal?.aborted) throw e;
-      if (e.why !== 'too long') this.markDown(bob, e.busy ? (e.why || 'busy') : quiet.signal.aborted ? 'too slow' : 'not reachable'); // too long: he's still fine for shorter chats
+      if (checking) checkDown(this, bob); // his quick replies are still fine
+      else if (e.why !== 'too long') this.markDown(bob, e.busy ? (e.why || 'busy') : quiet.signal.aborted ? 'too slow' : 'not reachable'); // too long: he's still fine for shorter chats
       throw quiet.signal.aborted ? new Error('too slow') : e;
     } finally { clearTimeout(timer); clearTimeout(cap); this.live.delete(bob.address); this.hold(bob.address, 5000); }
   }
@@ -369,6 +379,8 @@ export function cleanAbilities(j) {
   // Bob-Net could run. Numbers only; a Bob that doesn't say (the phone, an older Bob) simply has no room listed.
   const r = j?.room && typeof j.room === 'object' ? { vramGB: n(j.room.vramGB, 4096), ramGB: n(j.room.ramGB, 16384) } : null;
   if (r && (r.vramGB || r.ramGB)) out.room = r;
+  const check = cleanCheck(j); // 1.5.185: he checks harder jobs on his Review brain
+  if (check) out.check = check;
   if (typeof j?.name === 'string' && j.name.trim()) out.hisName = j.name.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 40);
   return out;
 }
@@ -380,7 +392,7 @@ export const bobNetRooms = (L) => (L?.bobs?.() || []).map((b) => ({ b, s: L.stat
 
 // The hello a desktop lender gives: quick replies (lend) and, with "Take jobs from my other Bobs" on, the whole jobs he
 // can really do on this computer right now. Never a job he'd have to fake: no picture model, no pictures.
-export function helloFor(brain, { why, quick, can, version, label, webOn, bigBrain, name = '', room = null }) {
+export function helloFor(brain, { why, quick, can, version, label, webOn, bigBrain, name = '', room = null, check = {} }) {
   const takesJobs = brain.cfg.share?.takeJobs === true && doorOpen(brain.cfg);
   const jobs = takesJobs ? [can.pictures && 'pictures', can.video && 'video', can.music && 'music', can.sfx && 'sfx', webOn && bigBrain && 'web', bigBrain && 'think'].filter(Boolean) : [];
   return {
@@ -389,6 +401,7 @@ export function helloFor(brain, { why, quick, can, version, label, webOn, bigBra
     device: 'computer', version, takesJobs, jobs, jobsBusy: takesJobs ? guestRefusal(brain) : '', queue: brain.queue?.filter?.((j) => j.state === 'waiting' || j.state === 'working').length || 0,
     name, passAlong: brain.cfg.share?.passAlong === true, // 1.5.123: for the party in Now running
     lendCard: brain.cfg.share?.lendCard === true && doorOpen(brain.cfg), // Lend my graphics card (src/share-card.js)
+    ...check, // 1.5.185 Check harder jobs for my other Bobs (src/bob-net-check.js checkHello)
     ...(room ? { room } : {}) // 1.5.137: graphics card and memory in GB, for the other Bob's Brain catalogue
   };
 }
