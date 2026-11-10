@@ -73,8 +73,11 @@ export function openGate({ host, port = RPC_PORT, allow, inner = INNER_PORT, log
 export function wantsSpread(cfg, { sizeGB, cardGB = Number(cfg.gpuVramGB) || Number(cfg.cardGB) || 0, ramGB = os.totalmem() / 1e9 } = {}) {
   const how = spreadOf(cfg);
   if (how === 'off' || !(sizeGB > 0)) return false;
-  if (how === 'big') return sizeGB > cardGB * 0.9;
-  return sizeGB > cardGB * 0.9 + Math.max(0, ramGB - 8);
+  // 1.5.195: built-in graphics share the memory (the handheld), and an unknown card can't be judged, so "bigger than
+  // my card" counts only on a real card. There, and on 'toobig', a brain that fits this machine stays here: the
+  // handheld spread its own 2.3 GB chat brain over Wi-Fi to another Bob's card, and its chats waited behind that.
+  if (how === 'big' && cardGB > 0 && cfg.sharedGraphics !== true) return sizeGB > cardGB * 0.9;
+  return sizeGB > (cfg.sharedGraphics === true ? 0 : cardGB * 0.9) + Math.max(0, ramGB - 8);
 }
 
 // ---------- Lending ----------
