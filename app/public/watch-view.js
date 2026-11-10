@@ -53,11 +53,11 @@ export function createView(canvas, { still = false } = {}) {
   let yaw = -0.62, tilt = 0.5, gap = 0.9, zoom = 1, fast = false;
   let hidden = new Set(); // skill indexes, plus 'never' and 'grey'
   let staticCanvas = null, dirty = true, geom = null;
-  let caption = null, paths = true, picked = null, glass = 0.5, off = null; // off: [Set of experts turned off, per floor] while a cut is being tried // glass: how see-through the voxels are, 0 (solid) to 0.85
+  let caption = null, paths = true, picked = null, glass = 0.25, off = null, solid = new Map(); // off: [Set of experts turned off, per floor] while a cut is being tried // glass: how see-through the voxels are, 0 (solid) to 0.85
   const css = () => { const s = getComputedStyle(document.body); const g = (n, d) => s.getPropertyValue(n).trim() || d; return { bg: g('--bg', '#1d1510'), text: g('--text', '#f3e7d3'), muted: g('--muted', '#c7b296'), line: g('--line', '#5a4030'), panel: g('--panel', '#2b1d14') }; };
 
   function setData(r, s, parts) { rec = r; sp = s; lay = layoutOf(r, parts); dirty = true; picked = null; }
-  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
+  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
   const get = () => ({ yaw, tilt, gap, zoom, glass });
   // the gap between floors that makes the whole block as tall as it is wide: a cube
   const cubeGap = () => (lay ? Math.max(0.2, Math.min(5, Math.max(lay.W, lay.D) / Math.max(1, lay.L + lay.baseFloors))) : 0.9);
@@ -110,7 +110,7 @@ export function createView(canvas, { still = false } = {}) {
     if (off && off[l]?.has(e)) return null;
     if (top < 0) return hidden.has('never') ? null : { color: null, alpha: 1 };
     if (hidden.has(top)) return null;
-    return { color: lookOf(top)[0], alpha: 0.28 + 0.72 * Math.min(1, sp.strength[l][e] * 1.6) };
+    return { color: lookOf(top)[0], alpha: (0.28 + 0.72 * Math.min(1, sp.strength[l][e] * 1.6)) * (solid.get(top) ?? 1) }; // solid: each skill's own opacity
   }
 
   function drawStatic() {
@@ -132,7 +132,7 @@ export function createView(canvas, { still = false } = {}) {
     // the plinth: what sits outside the layers
     if (!hidden.has('grey')) for (let f = 0; f < baseFloors; f++) {
       const n = Math.min(W * D, base - f * W * D);
-      for (const i of g.order) { if (i >= n) continue; const [cx, cz] = cellXY(i); const [x, y] = g.P(cx, f * gap + 0.5, cz); voxel(x, y, GREY, 1); }
+      for (const i of g.order) { if (i >= n) continue; const [cx, cz] = cellXY(i); const [x, y] = g.P(cx, f * gap + 0.5, cz); voxel(x, y, GREY, solid.get('grey') ?? 1); }
     }
     for (let l = 0; l < L; l++) {
       for (const i of g.order) {
@@ -144,7 +144,7 @@ export function createView(canvas, { still = false } = {}) {
           voxel(x, y, lk.color, lk.alpha, !lk.color);
         } else if (coreRank[i] >= 0 && grey[l] > 0 && !hidden.has('grey')) {
           const [x, y] = g.P(cx, floorY(l), cz);
-          voxel(x, y, GREY, 1);
+          voxel(x, y, GREY, solid.get('grey') ?? 1);
         }
       }
     }

@@ -11,7 +11,7 @@
 </head>
 <body class="watch-page">
   <header class="watch-head">
-    <h1 id="watchTitle">aiFEUI <span class="muted">AI Functional Expert Use Imaging</span></h1>
+    <h1 id="watchTitle">aiFEUI <span class="muted">aiFunctional Expert Utilization Imager</span></h1>
     <p id="watchSub" class="muted">A scan of a brain's experts lighting up as it works: one floor of voxels for each layer, coloured by skill.</p>
   </header>
   <div class="watch-main">
@@ -39,7 +39,7 @@
         <input type="range" id="watchGap" min="0.2" max="5" step="0.05" value="0.9">
         <button type="button" id="watchCube" class="link">Back to a cube</button>
         <label for="watchGlass">How see-through (coloured glass)</label>
-        <input type="range" id="watchGlass" min="0" max="0.85" step="0.05" value="0.5">
+        <input type="range" id="watchGlass" min="0" max="0.85" step="0.05" value="0.25">
         <div class="row watch-turn" role="group" aria-label="Turn and zoom the block">
           <button type="button" class="icon" id="watchLeft" title="Turn left" aria-label="Turn left">◀</button>
           <button type="button" class="icon" id="watchRight" title="Turn right" aria-label="Turn right">▶</button>
@@ -75,9 +75,10 @@
           <button type="button" id="watchStepBack" title="Back one word" aria-label="Back one word">◂</button>
           <button type="button" id="watchStep" title="Forward one word" aria-label="Forward one word">▸</button>
           <button type="button" id="watchNext" title="The next question" aria-label="The next question">⏭</button>
-          <label>Speed <select id="watchSpeed"><option value="3">Slow</option><option value="8" selected>Normal</option><option value="20">Fast</option><option value="50">Very fast</option></select></label>
+          <label>Speed <select id="watchSpeed"><option value="0.5">One word every two seconds</option><option value="1">One word a second</option><option value="3">Slow</option><option value="8" selected>Normal</option><option value="20">Fast</option><option value="50">Very fast</option></select></label>
           <label>Questions about <select id="watchOnly"><option value="">every skill</option></select></label>
           <button type="button" id="watchVideo" class="link">Save as a video</button>
+          <label>Video size <select id="watchVideoQ"><option value="1500000">Small (about 11 MB a minute)</option><option value="4000000" selected>Normal (about 30 MB a minute)</option><option value="8000000">Sharp (about 60 MB a minute)</option></select></label>
         </div>
         <label for="watchScrub" class="sr-only">Where in the recording</label>
         <input type="range" id="watchScrub" min="0" max="0" value="0" step="1">

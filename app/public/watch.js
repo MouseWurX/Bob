@@ -15,7 +15,7 @@ const still = () => document.body.classList.contains('still') || window.matchMed
 const view = createView($('watchCanvas'));
 const SPECIAL = /<\|[^|>]*\|>|<\/?think>/gi; // the chat layout's own markers, left out of the caption
 
-let rec = null, sp = null, parts = null, frames = [], t = 0, playing = false, speed = 8, only = '', hidden = new Set(), mode = 'brain', floor = 0, expert = 0, spin = false, spinSpeed = 0.25, aim = null, need = true, lastIdx = -1, lastLit = [], recorder = null, cutOn = false, keepN = 0, off = null, src = null, askedUnload = false;
+let rec = null, sp = null, parts = null, frames = [], t = 0, playing = false, speed = 8, only = '', hidden = new Set(), mode = 'brain', floor = 0, expert = 0, spin = false, spinSpeed = 0.25, aim = null, need = true, lastIdx = -1, lastLit = [], recorder = null, cutOn = false, keepN = 0, off = null, solid = new Map(), src = null, askedUnload = false;
 
 const w = (s) => inKind(rec, s); // the same sentence for a brain scanned by neuron groups
 function cube() { const g = view.cubeGap(); view.set({ gap: g }); $('watchGap').value = String(g); need = true; } // floors stacked as tall as they are wide
@@ -26,6 +26,7 @@ function load(j) {
   rec = cleanRecording(j); parts = j.parts && Array.isArray(j.parts.layers) ? j.parts : null;
   sp = specialise(rec);
   view.setData(rec, sp, parts);
+  solid = new Map(); view.set({ solid });
   cutOn = false; keepN = 0; off = null; askedUnload = false; view.set({ off: null }); flipSw($('watchCut'), false); $('watchKeep').value = '0'; $('watchKeep').max = rec.brain.experts;
   if (j.cut?.off) rec.cutOff = Number(j.cut.off) || 0;
   hidden = new Set(); only = ''; t = 0; playing = false; mode = 'brain'; floor = 0; expert = 0; lastIdx = -1;
@@ -44,7 +45,7 @@ function load(j) {
 
 function skillsHtml() {
   const never = sp.total - sp.used;
-  const row = (key, sw, label, n, title) => `<label class="watch-skill" title="${esc(w(title))}"><input type="checkbox" data-show="${esc(String(key))}" ${hidden.has(key) ? '' : 'checked'}> ${sw} <span>${esc(w(label))}</span><span class="n">${n}</span></label>`;
+  const row = (key, sw, label, n, title) => `<label class="watch-skill" title="${esc(w(title))}"><input type="checkbox" data-show="${esc(String(key))}" ${hidden.has(key) ? '' : 'checked'}> ${sw} <span>${esc(w(label))}</span><span class="n">${n}</span></label>${key === 'never' ? '' : `<input type="range" class="watch-solid" data-solid="${esc(String(key))}" min="0.1" max="1" step="0.05" value="${solid.get(key) ?? 1}" aria-label="${esc(w(`How solid: ${label}`))}" title="${esc(w(`How solid: ${label}`))}">`}`;
   $('watchSkills').innerHTML = `<legend>Show these</legend>${rec.skills.map((s, i) => row(i, `<span class="sw" style="background:${lookOf(i)[0]}">${lookOf(i)[1]}</span>`, s.label, sp.top.reduce((a, l) => a + l.filter((x) => x === i).length, 0).toLocaleString(), `Experts picked most often for ${s.label}. ${sp.per[i].leans.toLocaleString()} of them lean to it clearly.`)).join('')}
     ${row('grey', `<span class="sw" style="background:${GREY}"></span>`, 'Not experts', '', 'Attention, the router, the tuning rows and the word tables: every word passes through these.')}
     ${row('never', '<span class="sw never"></span>', 'Never picked', never.toLocaleString(), 'Experts none of these questions woke. A wider set of questions would wake more of them.')}`;
@@ -179,7 +180,7 @@ function startVideo() {
   const type = ['video/webm;codecs=vp9', 'video/webm', 'video/mp4'].find((m) => window.MediaRecorder?.isTypeSupported?.(m));
   if (!canvas.captureStream || !type) { say('This browser can\'t save a video of the picture. Bob\'s window and most desktop browsers can.'); return; }
   const chunks = [];
-  recorder = new MediaRecorder(canvas.captureStream(30), { mimeType: type, videoBitsPerSecond: 6e6 });
+  recorder = new MediaRecorder(canvas.captureStream(30), { mimeType: type, videoBitsPerSecond: Number($('watchVideoQ').value) || 4e6 });
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
   recorder.onstop = () => {
     const a = document.createElement('a');
@@ -200,6 +201,7 @@ $('watchSkills').addEventListener('change', (ev) => {
   if (ev.target.checked) hidden.delete(key); else hidden.add(key);
   view.set({ hidden }); cutHtml(); if (mode === 'floor') floorHtml(); lastIdx = -1; need = true;
 });
+$('watchSkills').addEventListener('input', (ev) => { const k = ev.target.dataset.solid; if (k === undefined) return; solid.set(k === 'grey' ? k : Number(k), Number(ev.target.value)); view.set({ solid }); need = true; });
 // ---- try a cut: what is unticked (and all but the busiest few on each floor) is turned off, not only hidden ----
 function cutHtml() {
   if (!rec) return;
@@ -278,7 +280,9 @@ document.querySelector('.watch-open').tabIndex = 0;
 
 // ---- start ----
 (async () => {
-  const q = new URLSearchParams(location.search), brain = q.get('brain'), id = q.get('rec');
+  const q = new URLSearchParams(location.search), brain = q.get('brain'), id = q.get('rec'), file = q.get('file');
+  // a recording sitting beside the viewer (the folder a rented card hands back): watch.html?file=recording.json
+  if (file && /^[\w.-]+\.json$/.test(file)) { try { const r = await fetch(`./${file}`); if (!r.ok) throw new Error(`Error ${r.status}`); src = null; load(await r.json()); } catch (e) { say(`Bob couldn't open that recording: ${e.message}`); } return; }
   if (brain && id) {
     try {
       const r = await fetch('/api/lab/watch/read', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ brain, id }) });

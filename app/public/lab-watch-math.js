@@ -9,7 +9,7 @@
 // own answer being read back (the experts lit while reading a word are the ones that wrote the next; `last` is the
 // final word written, which nothing read). Anything that writes this shape can be played: this Lab, or a rented card.
 // The name, in one place: the short one for tabs and titles, the long one where there's room.
-export const NAME = 'aiFEUI', LONG_NAME = 'AI Functional Expert Use Imaging';
+export const NAME = 'aiFEUI', LONG_NAME = 'aiFunctional Expert Utilization Imager';
 export const FORMAT = 'bob-expert-recording';
 export const VERSION = 1;
 export const MAX_CLIPS = 200, MAX_WORDS = 400, MAX_LAYERS = 400, MAX_EXPERTS = 4096, MAX_SKILLS = 12;

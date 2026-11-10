@@ -80,7 +80,7 @@ check('the timeline is every word of every question in order, or only one skill\
 { const d = expertDetail(rec, sp, 0, 0); check('one expert up close: its picks, its split between the skills, and the words it was picked for', d.picks === 40 && d.top === 0 && d.shares[0].skill === 0 && d.shares[0].pct === 100 && d.words[0].text === 'cat' && d.words[0].n === 37, JSON.stringify(d)); }
 check('every skill has its own colour and letter, twelve of each', SKILL_LOOKS.length === 12 && new Set(SKILL_LOOKS.map((x) => x[0])).size === 12 && new Set(SKILL_LOOKS.map((x) => x[1])).size === 12 && lookOf(13)[1] === 'B');
 check('a floor is as near square as the expert count allows', sideOf(256) === 16 && sideOf(128) === 12 && sideOf(8) === 3);
-check('the name lives in one place', NAME === 'aiFEUI' && LONG_NAME === 'AI Functional Expert Use Imaging');
+check('the name lives in one place', NAME === 'aiFEUI' && LONG_NAME === 'aiFunctional Expert Utilization Imager');
 
 // ---- a recording from a file is not trusted ----
 check('a file that isn\'t a recording is refused in plain words', (() => { try { cleanRecording({ hello: 1 }); return false; } catch (e) { return /isn't an expert recording/.test(e.message); } })());
@@ -258,7 +258,7 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('the words say neuron groups, never experts, and that the groups are a way of slicing', /mixture-of-experts/.test(lines[0]) && /way of slicing/.test(lines[0]) && lines.slice(1).every((x) => !/expert/i.test(x)) && /neuron groups/.test(lines[1]) && say(c5, lines[0]) === lines[0]);
   check('an expert scan\'s words are left as they were', say({ brain: { kind: 'experts' } }, 'Not experts') === 'Not experts' && say(c5, 'Not experts') === 'Other parts' && say(c5, '<div class="watch-expert">One expert</div>') === '<div class="watch-expert">One neuron group</div>');
   const html = read('public/watch.html'), view = read('public/watch-view.js'), js = read('public/watch.js');
-  check('the viewer starts as a cube of coloured glass, with a slider for how see-through', /id="watchGlass"/.test(html) && /id="watchCube"/.test(html) && /cubeGap/.test(view) && /glass/.test(view) && /cube\(\);/.test(js));
+  check('the viewer starts as a cube of coloured glass, with a slider for how see-through', /id="watchGlass"/.test(html) && /id="watchCube"/.test(html) && /cubeGap/.test(view) && /glass/.test(view) && /data-solid=/.test(js) && /solid\.get\(top\)/.test(view) && /cube\(\);/.test(js));
 }
 
 // ---- trying a cut ----
@@ -296,6 +296,25 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('a plain brain has no experts to switch off', await startWatch(l7, { brain: 'plain', again: 'x', keep }).then(() => false, (e) => /mixture-of-experts/.test(e.message)));
   const html = read('public/watch.html'), view = read('public/watch-view.js'), js = read('public/watch.js');
   check('the viewer has Try a cut: a switch, how many to keep, what it would cost, and Scan again', /id="watchCut"/.test(html) && /id="watchKeep"/.test(html) && /id="watchCutSays"/.test(html) && /id="watchRescan"/.test(html) && /cutEffect/.test(js) && /missed/.test(view) && /next best experts/.test(js));
+}
+
+// ---- the same scan on a rented card: everything packed, every dependency checked first ----
+{
+  const { bundle, VIEWER_FILES, llamaTag } = await import('../model-lab/forge/aifeui-bundle.mjs');
+  const out = path.join(tmp, 'rent-in');
+  const r = bundle({ brain: 'hf:someone/some-brain-GGUF:some-brain.Q4_K_M.gguf', out, skills: ['coding', 'chat'], per: 2, think: true });
+  const plan = JSON.parse(fs.readFileSync(path.join(out, 'aifeui-plan.json'), 'utf8'));
+  check('the pack has the plan: the brain, the questions, the pinned llama.cpp tag', plan.brain.startsWith('hf:') && plan.name === 'some-brain.Q4_K_M' && plan.skills.length === 2 && plan.skills[0].questions.length === 2 && plan.llama_tag === llamaTag() && plan.llama_tag.length > 2 && plan.think === true && plan.words === WATCH_WORDS_THINK);
+  check('the pack has Bob\'s engine (both patches) and Bob\'s viewer (every file it loads)', ['0001-expert-mask.patch', '0002-expert-trace.patch'].every((f) => fs.existsSync(path.join(out, 'engine-patches', f))) && VIEWER_FILES.every((f) => fs.existsSync(path.join(out, 'viewer', f))) && r.patches.length >= 2);
+  const loads = [...read('public/watch.js').matchAll(/from '\.\/([\w.-]+)'/g), ...read('public/watch-view.js').matchAll(/from '\.\/([\w.-]+)'/g)].map((m) => m[1]);
+  check('nothing the viewer loads is left out of the pack', loads.length >= 3 && loads.every((f) => VIEWER_FILES.includes(f)) && [...read('public/watch.html').matchAll(/(?:href|src)="\/([\w.-]+\.(?:css|js))"/g)].every((m) => VIEWER_FILES.includes(m[1])));
+  check('no brain, no pack', (() => { try { bundle({ out }); return false; } catch (e) { return /which brain/.test(e.message); } })());
+  const sh = read('model-lab/forge/pod/aifeui.sh'), py = read('model-lab/forge/pod/aifeui_scan.py');
+  check('on the card the checks run before anything is fetched or built, and a failed check stops it there', sh.indexOf('aifeui_scan.py" preflight') > 0 && sh.indexOf('aifeui_scan.py" preflight') < sh.indexOf('git clone') && sh.indexOf('aifeui_scan.py" preflight') < sh.indexOf('aifeui_scan.py" fetch') && /exit 2/.test(sh) && /Nothing was downloaded or built/.test(sh));
+  check('the checks cover the tools, the card, the disk, the brain, the engine patches and the viewer', ['tool: ', 'a graphics card is here', 'enough room on the disk', 'the brain can be reached', "Bob's engine patch", "Bob's viewer", 'the brain fits the card', 'at the pinned tag'].every((t) => py.includes(t)));
+  check('the engine is Bob\'s: the patches must apply, and the trace is proven before any question', /git apply/.test(sh) && /doesn't apply to llama\.cpp/.test(sh) && sh.indexOf('selftest') < sh.indexOf('" scan ') && /doesn't report the trace/.test(sh));
+  check('the card writes the same recording the Lab does, and leaves the viewer beside it', py.includes(`FORMAT, VERSION = '${FORMAT}', ${VERSION}`) && /watch\.html\?file=recording\.json/.test(sh) && /q\.get\('file'\)/.test(read('public/watch.js')));
+  check('the pack and the card scripts rent nothing and hold no keys', !/RUNPOD|api[_-]?key/i.test(sh + py + read('model-lab/forge/aifeui-bundle.mjs')));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
