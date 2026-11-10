@@ -64,7 +64,7 @@ import { trainerState } from './lab-teach.js'; // 1.5.16x the Lab's Trainer pack
 import { phoneView, cleanPhonePatch, findAddresses, newPasscode, isTailscaleIp } from './phone-access.js';
 import { firewallState, changeRule } from './firewall.js';
 import { shareView, cleanSharePatch, saveShare, lendChat, lendRefusal, helloFor, bobNetRooms } from './share-brains.js';
-import { lendCardRoute } from './share-card.js'; // Bob-Net: Lend my graphics card
+import { lendCardRoute, homeIps, isHomeIp, sameNet } from './share-card.js'; // Bob-Net: Lend my graphics card
 import { guestRoute, answerAway } from './share-jobs.js';
 import { Pairing, myName } from './bob-net-pair.js';
 import { partyView, Introductions } from './bob-net-party.js';
@@ -196,10 +196,12 @@ async function body(req) {
 const localHosts = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`, `[::1]:${cfg.port}`]);
 // 1.5.94: read again whenever "Let my other replicant matrices in" changes, so it works without a restart.
 let remote, remoteOn, remoteHosts, authToken;
+let remoteHome = false;
 function readRemote() {
   remote = cfg.remote || {};
   remoteOn = Boolean(remote.enabled && remote.passcode && String(remote.passcode).length >= 6);
   remoteHosts = new Set((remote.hosts || []).map((h) => String(h).toLowerCase()));
+  remoteHome = remoteOn && remote.homeNet === true; // Also over the home network (off unless switched on)
   authToken = crypto.createHash('sha256').update('bob:' + (remote.passcode || '') + ':' + cfg.agentDir).digest('hex');
 }
 readRemote();
@@ -215,6 +217,9 @@ function fromTailscaleOrLocal(addr) {
   const m = a.match(/^100\.(\d+)\./);
   return Boolean(m && Number(m[1]) >= 64 && Number(m[1]) <= 127);
 }
+// "Also over the home network" (off unless switched on): a home-network address on this replicant matrix's own
+// subnet counts too, never anything wider. Pairing still goes over Tailscale only.
+function fromAllowed(addr) { return fromTailscaleOrLocal(addr) || (remoteHome && homeIps().some((m) => sameNet(m.address, addr, m.netmask) && isHomeIp(addr))); }
 function hasCookie(req) {
   const c = String(req.headers.cookie || '').split(/;\s*/).find((x) => x.startsWith('bob_auth='));
   if (!c) return false;
@@ -229,13 +234,14 @@ const server = http.createServer(async (req, res) => {
     const isLocal = localHosts.has(host) && fromTailscaleOrLocal(req.socket.remoteAddress) && /^(127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)$/.test(req.socket.remoteAddress);
     // 1.5.97: this replicant matrix's own Tailscale addresses always count, so a stale saved list (a renamed or re-joined
     // device) can't shut your other Bobs out.
-    const isRemote = !isLocal && remoteOn && (remoteHosts.has(host) || ownTsHosts().has(host)) && fromTailscaleOrLocal(req.socket.remoteAddress);
+    const isRemote = !isLocal && remoteOn && (remoteHosts.has(host) || ownTsHosts().has(host)) && fromAllowed(req.socket.remoteAddress);
     if (!isLocal && !isRemote) return send(res, 403, { error: 'bad host' });
     const url = new URL(req.url, `http://${req.headers.host}`);
     const p = url.pathname;
 
     // 1.5.97 Bob-Net pairing: the other Bob doesn't know the passcode yet, so these four come before the passcode check.
     // They only reach through the open door (Tailscale only), and the passcode is handed over only after your Yes here.
+    if (isRemote && p.startsWith('/api/pair/') && !fromTailscaleOrLocal(req.socket.remoteAddress)) return send(res, 403, { error: 'Pairing goes over Tailscale only.' });
     if (isRemote && p.startsWith('/api/pair/')) {
       if (req.method === 'GET' && p === '/api/pair/hello') return send(res, 200, pairing.hello());
       if (req.method === 'POST' && req.headers['x-bob'] === '1' && !refuseForeign(req, host)) {
@@ -426,7 +432,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/phone-access' && (req.method === 'GET' || req.method === 'POST')) {
       if (!isLocal) return send(res, 403, { error: 'Phone access can only be changed on this replicant matrix itself.' });
       const found = await findAddresses(cfg.port);
-      if (req.method === 'GET') return send(res, 200, { ...phoneView(cfg), found, live: remoteLive(), firewall: await firewallState(cfg.port).catch(() => null) });
+      if (req.method === 'GET') return send(res, 200, { ...phoneView(cfg), found, live: remoteLive(), firewall: await firewallState(cfg.port, { home: remoteHome }).catch(() => null) });
       const b = await body(req);
       let made = '';
       if (b.newPasscode === true) { made = newPasscode(); b.passcode = made; }
@@ -434,17 +440,17 @@ const server = http.createServer(async (req, res) => {
       const out = cleanPhonePatch(cfg, b);
       if (out.error) return send(res, 400, { error: out.error });
       saveRemote(cfg, out.remote);
-      brain.log('settings', `phone access: ${out.remote.enabled ? 'on' : 'off'}, ${out.remote.hosts.length} address(es)${made || 'passcode' in b ? ', new passcode' : ''}`);
+      brain.log('settings', `phone access: ${out.remote.enabled ? 'on' : 'off'}${out.remote.homeNet ? ', home network too' : ''}, ${out.remote.hosts.length} address(es)${made || 'passcode' in b ? ', new passcode' : ''}`);
       applyRemote(); // 1.5.94: opens (or closes) the door now, no restart
-      return send(res, 200, { ...phoneView(cfg), found, live: remoteLive(), passcode: made || undefined, restart: false, firewall: await firewallState(cfg.port).catch(() => null) });
+      return send(res, 200, { ...phoneView(cfg), found, live: remoteLive(), passcode: made || undefined, restart: false, firewall: await firewallState(cfg.port, { home: remoteHome }).catch(() => null) });
     }
     // 1.5.94: "Let Tailscale through the firewall" (Windows asks once) and "Remove the firewall rule".
     if (p === '/api/phone-access/firewall' && req.method === 'POST') {
       if (!isLocal) return send(res, 403, { error: 'The firewall can only be changed on this replicant matrix itself.' });
       const b = await body(req);
-      const r = await changeRule(cfg.port, { add: b.add !== false, exe: process.versions.electron ? process.execPath : '' });
+      const r = await changeRule(cfg.port, { add: b.add !== false, exe: process.versions.electron ? process.execPath : '', home: remoteHome });
       brain.log('settings', `firewall rule ${b.add !== false ? 'add' : 'remove'} (your click): ${r.ok ? 'done' : r.why}`);
-      return send(res, 200, { ...r, firewall: await firewallState(cfg.port).catch(() => null) });
+      return send(res, 200, { ...r, firewall: await firewallState(cfg.port, { home: remoteHome }).catch(() => null) });
     }
     // Share brains between your Bobs (src/share-brains.js). Settings only from this PC; lending only through the phone door.
     if (p === '/api/share-brains' && (req.method === 'GET' || req.method === 'POST')) {
@@ -1080,11 +1086,12 @@ function tailscaleIps() {
   return out;
 }
 let ownTs = { at: 0, set: new Set() };
-function ownTsHosts() { if (Date.now() - ownTs.at > 30000) ownTs = { at: Date.now(), set: new Set(tailscaleIps().map((ip) => `${ip}:${cfg.port}`)) }; return ownTs.set; }
+function ownTsHosts() { if (Date.now() - ownTs.at > 30000) ownTs = { at: Date.now(), set: new Set([...tailscaleIps(), ...(remoteHome ? homeIps().map((m) => m.address) : [])].map((ip) => `${ip}:${cfg.port}`)) }; return ownTs.set; }
 function remoteLive() { return remoteOn && (startedWide || netServers.size > 0); }
 function applyRemote() {
   readRemote();
-  const want = remoteOn && !startedWide ? tailscaleIps() : [];
+  ownTs.at = 0; // the switch may have changed
+  const want = remoteOn && !startedWide ? [...tailscaleIps(), ...(remoteHome ? homeIps().map((m) => m.address) : [])] : [];
   for (const [ip, s] of netServers) if (!want.includes(ip)) { try { s.close(); } catch {} netServers.delete(ip); }
   for (const ip of want) {
     if (netServers.has(ip)) continue;

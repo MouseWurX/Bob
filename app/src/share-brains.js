@@ -14,6 +14,7 @@
 // phone door's, and are never sent back to the page.
 import fs from 'node:fs';
 import { isTailscaleIp } from './phone-access.js';
+import { homeIps, isHomeIp, sameNet } from './share-card.js';
 
 export const PROTOCOL = 1;
 // About how many tokens a request is (4 characters a token is close enough to decide whether it fits a brain's room).
@@ -195,8 +196,10 @@ export function wantsBorrow(cfg, { session, busy, job, pics }) {
 }
 
 export class Lenders {
-  constructor(cfg, { fetchFn = globalThis.fetch, now = Date.now, firstWordMs = FIRST_WORD_MS, quietMs = QUIET_MS, firstWordMaxMs = FIRST_WORD_MAX_MS } = {}) {
-    this.cfg = cfg; this.fetch = fetchFn; this.now = now; this.firstWordMs = firstWordMs; this.quietMs = quietMs; this.firstWordMaxMs = firstWordMaxMs;
+  constructor(cfg, { fetchFn = globalThis.fetch, now = Date.now, firstWordMs = FIRST_WORD_MS, quietMs = QUIET_MS, firstWordMaxMs = FIRST_WORD_MAX_MS, home = homeIps } = {}) {
+    this.cfg = cfg; this.fetch = fetchFn; this.now = now; this.firstWordMs = firstWordMs; this.quietMs = quietMs; this.firstWordMaxMs = firstWordMaxMs; this.home = home;
+    // Also over the home network: address -> his door on our home network (from his hello), and when it last failed.
+    this.near = new Map(); this.nearDown = new Map();
     this.cookies = new Map(); // address -> bob_auth cookie (memory only)
     this.state = new Map(); // address -> { ok, at, brain, why }
     // 1.5.72: Bobs thinking for us right now (address -> held until), so two replies at once go to two different Bobs.
@@ -208,24 +211,49 @@ export class Lenders {
   release(address) { this.inUse.delete(address); }
   bobs() { return (this.cfg.share?.borrow?.bobs || []).filter((x) => cleanAddress(x.address)); }
 
+  // His door on our home network, when he said he has one there and it hasn't failed lately; else ''.
+  nearOf(bob) { const a = this.near.get(bob.address); return a && !(this.nearDown.get(bob.address) > this.now()) ? a : ''; }
+  // From his hello: keep only an address on our own home network (never a public one, never another network).
+  learnNear(bob, list) {
+    const mine = this.home();
+    const pick = (Array.isArray(list) ? list : []).map((x) => String(x)).find((x) => { const m = x.match(/^([\d.]+):(\d{1,5})$/); return m && isHomeIp(m[1]) && mine.some((h) => sameNet(h.address, m[1], h.netmask)); });
+    if (pick) this.near.set(bob.address, pick); else this.near.delete(bob.address);
+  }
+
   async call(bob, path, { method = 'GET', body, signal, timeout = HELLO_MS } = {}) {
+    // Over his home-network door first when he has one (Also over the home network); if that doesn't answer, over
+    // Tailscale, and the home network isn't tried again for a while.
+    const near = this.nearOf(bob);
+    if (near) {
+      try { return await this.callAt(bob, near, path, { method, body, signal, timeout: Math.min(timeout, 4000) }); }
+      catch (e) {
+        if (signal?.aborted) throw e;
+        this.nearDown.set(bob.address, this.now() + 10 * 60000);
+        // A sent job or chat that timed out may have got there: never send it twice. It didn't connect at all: Tailscale.
+        if (method !== 'GET' && /timeout|abort/i.test(`${e?.name} ${e?.message}`)) throw e;
+      }
+    }
+    return this.callAt(bob, bob.address, path, { method, body, signal, timeout });
+  }
+
+  async callAt(bob, at, path, { method = 'GET', body, signal, timeout = HELLO_MS } = {}) {
     // The timeout covers getting an answer started (headers). It is cleared then, so a long streamed reply isn't cut off:
     // after that only the caller's own signal (the first-word and quiet timers in chat()) can stop it.
     const go = async () => {
       const t = new AbortController();
       const timer = setTimeout(() => t.abort(new Error('timeout')), timeout);
       const sig = signal ? AbortSignal.any([signal, t.signal]) : t.signal;
-      try { return await this.fetch(`http://${bob.address}${path}`, { method, redirect: 'manual', signal: sig, headers: { ...(body ? { 'content-type': 'application/json', 'x-bob': '1' } : {}), ...(this.cookies.has(bob.address) ? { cookie: this.cookies.get(bob.address) } : {}) }, body: body ? JSON.stringify(body) : undefined }); }
+      try { return await this.fetch(`http://${at}${path}`, { method, redirect: 'manual', signal: sig, headers: { ...(body ? { 'content-type': 'application/json', 'x-bob': '1' } : {}), ...(this.cookies.has(bob.address) ? { cookie: this.cookies.get(bob.address) } : {}) }, body: body ? JSON.stringify(body) : undefined }); }
       finally { clearTimeout(timer); }
     };
     let r = await go();
-    if (r.status === 401) { await this.login(bob, signal); r = await go(); }
+    if (r.status === 401) { await this.login(bob, signal, at); r = await go(); }
     return r;
   }
 
-  async login(bob, signal) {
+  async login(bob, signal, at = bob.address) {
     const t = AbortSignal.timeout(HELLO_MS);
-    const r = await this.fetch(`http://${bob.address}/login`, { method: 'POST', redirect: 'manual', signal: signal ? AbortSignal.any([signal, t]) : t, headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code: String(bob.passcode || '') }).toString() });
+    const r = await this.fetch(`http://${at}/login`, { method: 'POST', redirect: 'manual', signal: signal ? AbortSignal.any([signal, t]) : t, headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code: String(bob.passcode || '') }).toString() });
     const set = String(r.headers.get('set-cookie') || '').match(/bob_auth=[0-9a-f]+/);
     if (r.status !== 303 || !set) throw new Error(r.status === 429 ? 'too many tries' : 'passcode not accepted');
     this.cookies.set(bob.address, set[0]);
@@ -243,6 +271,7 @@ export class Lenders {
       // 1.5.72: what this Bob says he can do. ctx: his quick brain's room; speed: words a second he's seen lately;
       // jobs: whole jobs he takes (only with "Take jobs from my other Bobs" on there), and how busy his queue is.
       if (r.ok) Object.assign(out, cleanAbilities(j));
+      if (r.ok) this.learnNear(bob, j.home);
     } catch (e) { out = { ok: false, why: /passcode|tries/.test(e.message) ? e.message : 'not reachable' }; }
     const seen = this.state.get(bob.address);
     if (seen?.measured) out.measured = seen.measured; // what we timed ourselves outlives a hello
@@ -389,6 +418,8 @@ export function helloFor(brain, { why, quick, can, version, label, webOn, bigBra
     device: 'computer', version, takesJobs, jobs, jobsBusy: takesJobs ? guestRefusal(brain) : '', queue: brain.queue?.filter?.((j) => j.state === 'waiting' || j.state === 'working').length || 0,
     name, passAlong: brain.cfg.share?.passAlong === true, // 1.5.123: for the party in Now running
     lendCard: brain.cfg.share?.lendCard === true && doorOpen(brain.cfg), // Lend my graphics card (src/share-card.js)
+    // Also over the home network (off unless switched on): where this Bob's door is on the home network too.
+    home: brain.cfg.remote?.homeNet === true && doorOpen(brain.cfg) ? homeIps().map((m) => `${m.address}:${brain.cfg.port}`).slice(0, 4) : [],
     ...(room ? { room } : {}) // 1.5.137: graphics card and memory in GB, for the other Bob's Brain catalogue
   };
 }

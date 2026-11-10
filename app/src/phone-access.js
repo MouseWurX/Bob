@@ -57,13 +57,14 @@ export const newPasscode = () => String(crypto.randomInt(10_000_000, 100_000_000
 // What Settings shows. The passcode itself is never sent back, only whether one is set.
 export function phoneView(cfg) {
   const r = cfg.remote || {};
-  return { enabled: r.enabled === true, passcodeSet: String(r.passcode || '').length >= MIN_PASSCODE, hosts: r.hosts || [], port: cfg.port };
+  return { enabled: r.enabled === true, homeNet: r.homeNet === true, passcodeSet: String(r.passcode || '').length >= MIN_PASSCODE, hosts: r.hosts || [], port: cfg.port };
 }
 
 // A change from Settings, checked. Returns { remote } to save, or { error }.
 export function cleanPhonePatch(cfg, b) {
   const cur = cfg.remote || {};
-  const next = { enabled: cur.enabled === true, passcode: cur.passcode || '', hosts: cur.hosts || [], bindAddress: cur.bindAddress || '0.0.0.0' };
+  const next = { enabled: cur.enabled === true, homeNet: cur.homeNet === true, passcode: cur.passcode || '', hosts: cur.hosts || [], bindAddress: cur.bindAddress || '0.0.0.0' };
+  if ('homeNet' in b) next.homeNet = b.homeNet === true; // Also over the home network: off unless switched on
   if ('passcode' in b) {
     const p = String(b.passcode || '').trim();
     if (p.length < MIN_PASSCODE || p.length > 64) return { error: `The passcode needs at least ${MIN_PASSCODE} characters.` };
