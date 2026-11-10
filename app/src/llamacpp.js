@@ -402,22 +402,6 @@ export class LlamaCpp {
     if (!args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a))) return false;
     return !this.biggerThanMemory(gguf);
   }
-  // 1.5.19x "Keep busy experts on the graphics card" (llamacpp.moeCache, off): llama.cpp's MoE cache (b12032 and newer,
-  // --moe-cache-mib). Part of the card holds slots for experts that live in RAM (or on the drive); an expert a word
-  // picks is copied into a slot and stays while it's busy, so most picks run on the card. Only for a brain with
-  // experts that are kept off the card (fit or experts in RAM), on the card route, and never over a hand-set value.
-  moeCacheArgs(args, cpu, gguf) {
-    const mc = this.lc.moeCache;
-    if (!mc?.on || cpu || this.role === BESIDE) return [];
-    if (args.includes('--moe-cache-mib')) return [];
-    const n = this.buildNo();
-    if (!(n >= 12032)) return []; // an older or unknown build would refuse the flag and not start
-    if (!args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a))) return [];
-    let experts = 0;
-    try { experts = ggufInfo(gguf)?.experts || 0; } catch {}
-    if (!experts) return [];
-    return ['--moe-cache-mib', String(moeCacheMib(mc, cardGB(this.cfg)))];
-  }
   // The brain file is bigger than the card's share plus the RAM it may use. totalRam is swapped in by the tests.
   biggerThanMemory(gguf) {
     let size = 0;
@@ -488,7 +472,6 @@ export class LlamaCpp {
     // A brain bigger than the card and RAM: the processor's experts stay as they are in the file (no repacking into RAM),
     // so they can be read from the drive as needed (b12032 and newer know --no-repack).
     else if (!cpu && this.buildNo() >= 12032 && !args.some((a) => ['-nr', '--no-repack', '--repack'].includes(a)) && args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a)) && this.biggerThanMemory(gguf)) args.push('--no-repack');
-    args.push(...this.moeCacheArgs(args, cpu, gguf));
     // 1.5.19: one conversation at a time, so it gets the whole context (more slots split it into small pieces).
     if (!args.some((a) => ['-np', '--parallel'].includes(a))) args.push('-np', '1');
     args.push(...this.templateArgs(model, gguf, args));
@@ -907,11 +890,4 @@ export class LlamaCpp {
     if (held && /<\|(channel|message|start|end)\|>/.test(content)) content = cleanHarmony(content);
     return { role: 'assistant', content, tool_calls: tool_calls.length ? tool_calls : undefined };
   }
-}
-
-// The cache size: as set (256 MiB to 64 GiB), else a quarter of the card (4 GB on a 16 GB card), else 2 GB.
-export function moeCacheMib(mc = {}, cardGb = 0) {
-  const set = Number(mc.mib);
-  if (Number.isFinite(set) && set >= 256) return Math.min(65536, Math.round(set));
-  return cardGb > 0 ? Math.max(512, Math.round(cardGb * 1024 / 4)) : 2048;
 }

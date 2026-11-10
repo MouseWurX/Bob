@@ -10,7 +10,7 @@ const FIXED = { [T.U8]: 1, [T.I8]: 1, [T.U16]: 2, [T.I16]: 2, [T.U32]: 4, [T.I32
 const WANT = new Set(['general.architecture', 'general.name', 'general.basename', 'general.size_label', 'tokenizer.chat_template', 'tokenizer.chat_template.tool_use', 'general.base_model.0.repo_url', 'general.source.url', 'general.source.huggingface.repository']);
 // The shape keys, read per architecture (<arch>.block_count and so on): the context limit, and what the chat memory
 // (the KV cache) costs per token, so Bob can say whether a long context fits before loading it.
-const SHAPE = ['.context_length', '.block_count', '.attention.head_count_kv', '.attention.key_length', '.attention.value_length', '.full_attention_interval', '.rope.scaling.type', '.nextn_predict_layers', '.expert_count'];
+const SHAPE = ['.context_length', '.block_count', '.attention.head_count_kv', '.attention.key_length', '.attention.value_length', '.full_attention_interval', '.rope.scaling.type', '.nextn_predict_layers'];
 const MAX_HEADER = 256 * 1024 * 1024; // a sane header is far smaller; past this the file isn't a GGUF we understand
 
 class Reader {
@@ -94,9 +94,7 @@ export function ggufInfo(file) {
       // 1.5.16x Turbo: brains that carry their own guesser (a multi-token head, "nextn" in the file) need no draft brain.
       // 1.5.16x Teach it: where the brain's full weights live, when the file says (its Hugging Face original).
       origin: kv['general.source.huggingface.repository'] || kv['general.base_model.0.repo_url'] || kv['general.source.url'] || '',
-      mtp: Number(kv[`${kv['general.architecture']}.nextn_predict_layers`]) || 0,
-      // 1.5.19x: how many experts each layer has (0 = not a mixture-of-experts brain), for Keep busy experts on the card.
-      experts: Number(kv[`${kv['general.architecture']}.expert_count`]) || 0
+      mtp: Number(kv[`${kv['general.architecture']}.nextn_predict_layers`]) || 0
     };
   } catch { out = null; } finally { if (fd !== undefined) try { fs.closeSync(fd); } catch {} }
   cache.set(key, out);
