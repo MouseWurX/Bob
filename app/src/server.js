@@ -121,7 +121,7 @@ const introductions = new Introductions(cfg, { lenders: brain.lenders, pairing, 
 setTimeout(() => introductions.soon(0), 60_000).unref(); // once Bob is up, and then every hour
 setInterval(() => introductions.soon(0), 3600_000).unref();
 brain.mindWatchers = () => mindClients.size;
-// aiFEUI's small cube in "Bob's thinking" listens with ?cube=1. Only while one is open does Bob ask Brain Engine which
+// FNRI's small cube in "Bob's thinking" listens with ?cube=1. Only while one is open does Bob ask Brain Engine which
 // experts each reply used (it slows writing a little), and only those pages are told. Off for everyone else.
 const cubeClients = new Set();
 const cubeWhy = () => (brainsEngineNow(cfg) === 'brainengine' ? '' : 'The cube needs Brain Engine as the engine for Bob\'s brains (Settings > Engines). The engine in use now doesn\'t report which experts it picked.');

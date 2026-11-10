@@ -179,7 +179,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   dockBtn.onclick = () => { docked = !docked; store.set('bob-mind-dock', docked ? '1' : '0'); drawDock(); if (docked) $('mindDockLog').focus({ preventScroll: true }); };
   $('mindDockPop').onclick = () => { const w = window.open('/mind.html', 'bob-mind', 'popup,width=380,height=480'); try { w?.focus(); } catch {} };
   document.addEventListener('visibilitychange', mindListen);
-  // aiFEUI's small cube: off until its switch is on, and it only listens while the section is showing
+  // FNRI's small cube: off until its switch is on, and it only listens while the section is showing
   const cubeBtn = $('mindDockCube');
   let cubeOn = store.get('bob-mind-cube', '0') === '1', cube = null;
   function cubeListen() {

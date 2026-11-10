@@ -781,7 +781,7 @@ export class LlamaCpp {
         ...this.sampling(model, { tools: !!tools?.length, think, task }),
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
         ...(think === false ? { chat_template_kwargs: { enable_thinking: false } } : {}),
-        // aiFEUI's small cube in Bob's thinking: only while someone has it open, and only Brain Engine answers it
+        // FNRI's small cube in Bob's thinking: only while someone has it open, and only Brain Engine answers it
         ...(this.wantTrace?.() ? { expert_trace: true } : {}) }),
       signal
     });

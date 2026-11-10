@@ -1,4 +1,4 @@
-// 🧪 Computer Science Lab, Playground: aiFEUI (aiFunctional Expert Utilization Imager). A scan of a mixture-of-experts
+// 🧪 Computer Science Lab, Playground: FNRI (Functional Neural Response Imager). A scan of a mixture-of-experts
 // brain at work: Bob asks it a few simple questions for each skill on Brain Engine and records which experts every
 // layer picked for every word. The viewer (public/watch.html, its own window so it can sit beside the Lab or a chat)
 // plays the scan as a 3D block of voxels: a floor for each layer, experts coloured by the skill they lean to around

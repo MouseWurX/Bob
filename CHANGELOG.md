@@ -6,9 +6,9 @@ This file is made from app/docs/releases by `node installer/make-changelog.js` (
 
 ## 1.5.184
 
-A new Lab page: **aiFEUI**, a scan of a brain's experts lighting up as it works.
+A new Lab page: **FNRI**, a scan of a brain's experts lighting up as it works.
 
-- **New: aiFEUI (aiFunctional Expert Utilization Imager), in the Lab's Playground.** For a mixture-of-experts brain. Tick the skills to ask about (coding, maths, writing, knowledge, other languages, planning, everyday chat, running a game, using tools, summarising, logic puzzles, science, and sixteen more that start unticked, such as saying no kindly, common sense and admitting it doesn't know; up to 16 in one scan, or one of your own), and Bob asks the brain a few simple questions for each on Brain Engine, recording which experts every layer picked for every word. It's a Lab job: free, on this replicant matrix, it asks before unloading Bob's brain, waits while Gaming is on, and can be stopped.
+- **New: FNRI (Functional Neural Response Imager), in the Lab's Playground.** For a mixture-of-experts brain. Tick the skills to ask about (coding, maths, writing, knowledge, other languages, planning, everyday chat, running a game, using tools, summarising, logic puzzles, science, and sixteen more that start unticked, such as saying no kindly, common sense and admitting it doesn't know; up to 16 in one scan, or one of your own), and Bob asks the brain a few simple questions for each on Brain Engine, recording which experts every layer picked for every word. It's a Lab job: free, on this replicant matrix, it asks before unloading Bob's brain, waits while Gaming is on, and can be stopped.
 - **The viewer opens in its own window**, so it can sit beside the Lab or a chat. The brain is one 3D block of voxels: every layer is a floor, so the number of layers is the height; every expert is one voxel in the colour (and letter) of the skill that used it most, stronger the more it is that skill's own; the parts that aren't experts are a grey core up the middle and a grey base, at their true share of the weights. Press Play and the experts glow as the brain reads the question and writes the answer, with the words underneath.
 - **Turn it your way:** drag it, use the arrow buttons or keys, let it spin at a speed you set with a slider, or jump to a corner, the front, the side, the back or above. The lines between the experts in use can be switched off.
 - The experts in use can show as **a glow, an outline or both**, and every skill can have **a colour of your own**.
@@ -30,7 +30,7 @@ A new Lab page: **aiFEUI**, a scan of a brain's experts lighting up as it works.
 - **Brain Engine** gets the expert trace (`engine/patches/0002-expert-trace.patch`): `"expert_trace": true` on `/completion` reports the experts every layer picked for every token. Peek inside's live view uses the same trace, so it wakes up with the same build. Making a scan needs that build (Windows and Linux); until it's installed, Start the scan is greyed with the reason.
 - An honest note: in the brains measured so far, experts split work by word pattern more than by topic, so the skill colours come out blended, and the viewer says how blended. A few questions per skill show a pattern; they don't measure the brain.
 - For a rented card (nothing in the app rents one for this yet): `model-lab/forge/aifeui-bundle.mjs` packs the questions, Bob's engine patches and Bob's viewer into one folder, and `pod/aifeui.sh` on the card checks every dependency before it downloads or builds anything, builds Brain Engine with the patches, proves the trace with one word, scans, and leaves the recording with the viewer beside it.
-- Help: **The Playground's aiFEUI page**, an FAQ (**Can I see what's happening inside a brain?**) and two glossary entries. Tests in `test/run-lab-watch-test.js`.
+- Help: **The Playground's FNRI page**, an FAQ (**Can I see what's happening inside a brain?**) and two glossary entries. Tests in `test/run-lab-watch-test.js`.
 
 ## 1.5.183
 

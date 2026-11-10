@@ -1,4 +1,4 @@
-// aiFEUI (the Lab's Playground): the scan of which experts a mixture-of-experts brain picks, and its viewer window.
+// FNRI (the Lab's Playground): the scan of which experts a mixture-of-experts brain picks, and its viewer window.
 // The sums (which skill each expert leans to, the timeline, one expert up close), reading a recording from a file
 // that isn't trusted, Brain Engine's trace in the shape the engine patch gives it, the scan as a Lab job with a fake
 // engine (no brain is loaded, nothing on this replicant matrix is read), the routes, and that the pieces are wired:
@@ -80,7 +80,7 @@ check('the timeline is every word of every question in order, or only one skill\
 { const d = expertDetail(rec, sp, 0, 0); check('one expert up close: its picks, its split between the skills, and the words it was picked for', d.picks === 40 && d.top === 0 && d.shares[0].skill === 0 && d.shares[0].pct === 100 && d.words[0].text === 'cat' && d.words[0].n === 37, JSON.stringify(d)); }
 check('every skill has its own colour and letter, sixteen of each', SKILL_LOOKS.length === 16 && new Set(SKILL_LOOKS.map((x) => x[0])).size === 16 && new Set(SKILL_LOOKS.map((x) => x[1])).size === 16 && lookOf(17)[1] === 'B');
 check('a floor is as near square as the expert count allows', sideOf(256) === 16 && sideOf(128) === 12 && sideOf(8) === 3);
-check('the name lives in one place', NAME === 'aiFEUI' && LONG_NAME === 'aiFunctional Expert Utilization Imager');
+check('the name lives in one place', NAME === 'FNRI' && LONG_NAME === 'Functional Neural Response Imager');
 
 // ---- a recording from a file is not trusted ----
 check('a file that isn\'t a recording is refused in plain words', (() => { try { cleanRecording({ hello: 1 }); return false; } catch (e) { return /isn't an expert recording/.test(e.message); } })());
@@ -155,7 +155,7 @@ check('a scan needs a brain and at least one skill', await startWatch(lab, {}).t
   const ask = await startWatch(lab, { brain: 'moe', skills: ['coding', 'chat'], per: 2 });
   check('Bob\'s own brain leaves the card only after asking', ask.needUnload && ask.names[0] === 'Main' && !lab.job && served === 0);
   const r = await startWatch(lab, { brain: 'moe', skills: ['coding', 'chat'], per: 2 }, { unload: true });
-  check('the scan starts as a Lab job, with a step for each skill', r.started.kind === 'watch' && r.started.name === 'aiFEUI: Test MoE' && r.started.steps.length === 4 && lab.unloaded === true);
+  check('the scan starts as a Lab job, with a step for each skill', r.started.kind === 'watch' && r.started.name === 'FNRI: Test MoE' && r.started.steps.length === 4 && lab.unloaded === true);
   check('a second job is refused while it runs', await startWatch(lab, { brain: 'moe' }).then(() => false, (e) => /already busy/.test(e.message)));
   await wait(lab);
   const run = lab.runs[lab.runs.length - 1];
@@ -199,7 +199,7 @@ check('a scan needs a brain and at least one skill', await startWatch(lab, {}).t
 for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watch.js', 'public/watch-view.js', 'src/lab-watch.js', 'public/lab-playground.js']) { check(`${f} parses`, spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../${f}`, import.meta.url))]).status === 0); check(`${f} names no private brain`, !/thoth|heretic/i.test(read(f))); }
 {
   const pg = read('public/lab-playground.js'), page = read('public/lab-watch.js'), html = read('public/watch.html'), js = read('public/watch.js'), view = read('public/watch-view.js'), css = read('public/watch.css'), main = read('electron/main.cjs');
-  check('the Playground has the aiFEUI page, right after Peek inside', /\['peek', 'Peek inside'\], \['watch', 'aiFEUI'\]/.test(pg) && /watch: createWatchPage\(\{ api \}\)/.test(pg));
+  check('the Playground has the FNRI page, right after Peek inside', /\['peek', 'Peek inside'\], \['watch', 'FNRI'\]/.test(pg) && /watch: createWatchPage\(\{ api \}\)/.test(pg));
   check('the page opens the viewer in its own window and says so if pop-ups are blocked', page.includes("window.open(`/watch.html${q}`, 'bob-watch'") && /pop-ups/.test(page));
   check('Bob.exe lets the viewer open as its own window, one at a time, and keeps it on Bob\'s own page', /url === base \+ '\/watch\.html' \|\| url\.startsWith\(base \+ '\/watch\.html\?'\)/.test(main) && /watchWin\.loadURL\(url\)/.test(main) && /if \(!url\.startsWith\(base \+ '\/watch\.html'\)\) e\.preventDefault\(\)/.test(main));
   check('the viewer has no outside scripts or styles', !/https?:\/\//.test(html) && !/https?:\/\/(?!x)/.test(js.replace(/\/\/.*$/gm, '')) && /<script type="module" src="\/watch\.js">/.test(html));

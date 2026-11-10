@@ -117,9 +117,9 @@ deletes the pod, and the loss is the time spent (a few dollars).
 
 A teacher that only writes lessons can be any GGUF model on Hugging Face (`plan.teacher_gguf: {repo, file, slots, ctx, extra}`): the pod builds its CUDA llama-server, downloads the file (a split file loads from its first part), serves it on port 8001, and the PC's lesson writer talks to it exactly as it talks to vLLM. `plan.lessons_only: true` ends the run once the lessons are on the PC: nothing is scored, cut or healed, and the run is held to its own caps. The lesson writer takes `--persona <file>` (a `persona` key on a `write_lessons` set), appended after Bob's own system prompt. Two Forge windows can run side by side: each run keeps its own pod record (`out/forge/pod-token-<run>.json`), the pod carries the run's name, and `--kill <podId>` deletes one pod instead of every Forge pod. A cold pod with no network volume gets a longer door wait (`plan.door_minutes`, default 25 without a volume) since it must pull its image before it can answer.
 
-## aiFEUI on a rented card
+## FNRI on a rented card
 
-The Lab's aiFEUI scan (Playground) can also be made on a rented card, for a brain too big for the home card. Nothing in the app rents a card for this yet; these are the pieces.
+The Lab's FNRI scan (Playground) can also be made on a rented card, for a brain too big for the home card. Nothing in the app rents a card for this yet; these are the pieces.
 
 - `node model-lab/forge/aifeui-bundle.mjs --brain hf:<repo>:<file.gguf> --out <folder>` packs one folder: the questions (`aifeui-plan.json`), the card scripts (`pod/`), Bob's engine as patches (`engine-patches/`) and Bob's viewer (`viewer/`). It rents and uploads nothing.
 - On the card, with that folder as `/workspace/in`: `bash /workspace/in/pod/aifeui.sh`.

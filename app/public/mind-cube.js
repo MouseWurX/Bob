@@ -1,4 +1,4 @@
-// aiFEUI in small: a cube of Bob's brain in "Bob's thinking" (Now running), lighting up with the experts each reply
+// FNRI in small: a cube of Bob's brain in "Bob's thinking" (Now running), lighting up with the experts each reply
 // used. Off until its switch is turned on. While it's on it listens to /api/events?cube=1, and only then does Bob ask
 // Brain Engine for the trace (public/lab-watch-math.js liveTrace has the shape). The picture arrives when a reply is
 // finished and is then played word by word; nothing is saved. The same drawing as the big viewer (watch-view.js).
@@ -8,7 +8,7 @@ import { specialise, liveRecording, partOf, PART_LABEL, say, NAME, mapLook, litS
 const SPECIAL = /<\|[^|>]*\|>|<\/?think>/gi;
 export const CUBE_SPEED = 14; // words a second
 
-// The colours: when this brain has an aiFEUI scan, Bob sends that scan's map along and every expert gets its skill's
+// The colours: when this brain has an FNRI scan, Bob sends that scan's map along and every expert gets its skill's
 // colour (all-rounders a soft white outline); with no scan the cube is one colour and says how to get the rest.
 // els: { box, canvas, says, open, key, mono, colour, colourBox, details }. still() = animations are off (the last word is shown, nothing moves).
 export function createMindCube({ box, canvas, says, open, key = null, mono = null, colour = null, colourBox = null, details = null }, { still = () => false, EventSourceImpl = globalThis.EventSource } = {}) {

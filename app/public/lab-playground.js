@@ -9,10 +9,10 @@ import { createContextPage } from './lab-context.js'; // 1.5.16x Longer: how muc
 import { createTurboPage } from './lab-turbo.js'; // 1.5.16x Faster: Turbo (sec 15.1)
 import { createTeachPage } from './lab-teach.js'; // 1.5.16x Teach it: here, or as a Forge plan (sec 15.3)
 import { createDiffusionPage } from './lab-diffusion.js'; // Diffusion brains (llama-diffusion-cli)
-import { createWatchPage } from './lab-watch.js'; // aiFEUI: a scan of the experts lighting up, in its own window
+import { createWatchPage } from './lab-watch.js'; // FNRI: a scan of the experts lighting up, in its own window
 
 // 1.5.16x The Playground has four pages now: the quantization ladder and the three from thinking-paths sec 15.
-export const PLAY_PAGES = [['smaller', 'Smaller'], ['longer', 'Longer'], ['faster', 'Faster'], ['teach', 'Teach it'], ['peek', 'Peek inside'], ['watch', 'aiFEUI'], ['diffusion', 'Diffusion brains']];
+export const PLAY_PAGES = [['smaller', 'Smaller'], ['longer', 'Longer'], ['faster', 'Faster'], ['teach', 'Teach it'], ['peek', 'Peek inside'], ['watch', 'FNRI'], ['diffusion', 'Diffusion brains']];
 
 // `sections` (1.5.166): more pieces, each { html(), change(el), input(el), click(b, load), mounted() }; they make up the
 // Peek inside page. Events reach them only while that page shows.

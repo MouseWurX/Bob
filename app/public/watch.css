@@ -1,4 +1,4 @@
-/* 🧪 aiFEUI: the viewer window (public/watch.html). Uses the theme's colours. */
+/* 🧪 FNRI: the viewer window (public/watch.html). Uses the theme's colours. */
 body.watch-page { display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; font-size: 14px; }
 .watch-head { padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .watch-head h1 { font-size: 16px; margin: 0; }
