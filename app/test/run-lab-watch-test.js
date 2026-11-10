@@ -11,9 +11,9 @@ import { fileURLToPath } from 'node:url';
 import { Lab } from '../src/lab.js';
 import { readGguf } from '../src/lab-gguf.js';
 import { readTrace, askTraced, tallyTrace, NO_TRACE } from '../src/lab-peek.js';
-import { WATCH_SKILLS, PER_CHOICES, pickSkills, partsOf, clipOf, watchView, startWatch, readRecording, deleteRecording, listRecordings, watchRoute, cubeMap, cubeBrains, NO_HEADS, NO_DIALS, WATCH_WORDS, WATCH_WORDS_THINK, cleanKeep } from '../src/lab-watch.js';
+import { WATCH_SKILLS, PER_CHOICES, pickSkills, partsOf, clipOf, watchView, startWatch, readRecording, deleteRecording, listRecordings, watchRoute, cubeMap, cubeBrains, NO_HEADS, NO_DIALS, saveTargets, listTargets, readTargets, WATCH_WORDS, WATCH_WORDS_THINK, cleanKeep } from '../src/lab-watch.js';
 import { pagesRoute } from '../src/lab-pages.js';
-import { NAME, LONG_NAME, FORMAT, VERSION, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, SKILL_LOOKS, sideOf, LEANS, partOf, PART_LABEL, say, cutOf, cutEffect, keepList, setColour, resetColours, liveTrace, liveRecording, skillMap, mapLook, litSkills, coverKeep, cutSteps, EVEN_PICKS, findPatterns, PATTERN_CHOICES, hasFloors, floorScale, floorsAt, isHeads, LOAD_STYLES, loadStyle, loadOrder, cleanDials, skillDials, dialWords, dialScale, dialKey, compareScans, compareWords, DIAL_MAX } from '../public/lab-watch-math.js';
+import { NAME, LONG_NAME, FORMAT, VERSION, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, SKILL_LOOKS, sideOf, LEANS, partOf, PART_LABEL, say, cutOf, cutEffect, keepList, setColour, resetColours, liveTrace, liveRecording, skillMap, mapLook, litSkills, coverKeep, cutSteps, EVEN_PICKS, findPatterns, PATTERN_CHOICES, hasFloors, floorScale, floorsAt, isHeads, LOAD_STYLES, loadStyle, loadOrder, cleanDials, skillDials, dialWords, dialScale, dialKey, compareScans, compareWords, DIAL_MAX, movedBlocks, targetsOf, TARGET_FORMAT } from '../public/lab-watch-math.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -313,6 +313,15 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
     check('an older Brain Engine with no dials says so in plain words', /can't turn parts up or down yet/.test(NO_DIALS) && /Update it under Get models, Engines/.test(NO_DIALS));
     delete l7.stepFns.peekDials;
   }
+  { // use these for training: a list of blocks saved beside the recordings, read back checked, never taken for a recording
+    const before = listRecordings(cfg, { id: 'moe', name: 'Test MoE' }).length;
+    const sv = saveTargets(l7, { brain: 'moe', from: first.id, why: 'dials', label: '  Maths   blocks ', kind: 'experts', targets: [{ kind: 'expert', layer: 0, index: 1, scale: 2 }, { kind: 'expert', layer: 0, index: 1 }, { kind: 'ffn', layer: 1, index: 5 }] });
+    const lt = listTargets(cfg, { id: 'moe', name: 'Test MoE' }), rt = readTargets(l7, { brain: 'moe', id: sv.id });
+    check('a list of blocks for training is saved beside the scans, tidied, and read back', sv.count === 2 && /^targets-/.test(sv.id) && lt.length === 1 && lt[0].label === 'Maths blocks' && lt[0].why === 'dials' && rt.format === TARGET_FORMAT && rt.brain.layers === L && rt.brain.experts === E && rt.from === first.id && rt.targets.length === 2 && rt.targets.every((t) => !('scale' in t)) && rt.targets.find((t) => t.kind === 'ffn').index === 0);
+    check('the list never shows up as a scan', listRecordings(cfg, { id: 'moe', name: 'Test MoE' }).length === before);
+    const bad = (o) => { try { saveTargets(l7, { brain: 'moe', from: first.id, why: 'dials', ...o }); return false; } catch { return true; } };
+    check('a list with nothing in it, a block the brain hasn\'t got, an unknown source or a made-up file name are refused', bad({ targets: [] }) && bad({ targets: [{ kind: 'expert', layer: 0, index: 999 }] }) && bad({ why: 'x', targets: [{ kind: 'ffn', layer: 0 }] }) && (() => { try { readTargets(l7, { brain: 'moe', id: '../x' }); return false; } catch { return true; } })());
+  }
   check('a plain brain has no experts to switch off', await startWatch(l7, { brain: 'plain', again: 'x', keep }).then(() => false, (e) => /mixture-of-experts/.test(e.message)));
   const html = read('public/watch.html'), view = read('public/watch-view.js'), js = read('public/watch.js');
   check('the viewer has Try a cut: a switch, how many to keep, what it would cost, and Scan again', /id="watchCut"/.test(html) && /id="watchKeep"/.test(html) && /id="watchCutSays"/.test(html) && /id="watchRescan"/.test(html) && /cutEffect/.test(js) && /missed/.test(view) && /next best experts/.test(js));
@@ -471,6 +480,7 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('before and after: questions are matched, the picks compared word for word over the question, answers as text', cmp.clips.length === 2 && cmp.clips[0].moved === 3 / 8 && cmp.clips[0].sameAnswer === false && cmp.clips[1].moved === 0 && cmp.clips[1].sameAnswer === true && cmp.same === 1 && cmp.changed === 1 && cmp.moved === 3 / 16 && cmp.per[0].moved === 3 / 8 && cmp.clips[1].before === 1);
   check('the same scan against itself moves nothing', compareScans(before, before).moved === 0 && compareScans(before, before).changed === 0);
   check('the comparison is said in words', /1 of 2 answers changed\. Reading the same questions, 19% of the picks moved to other blocks\. A moved most \(38%\), B least \(0%\)\./.test(compareWords(cmp)) && /don't share any questions/.test(compareWords(compareScans(mkRec([]), after))));
+  { const mv = movedBlocks(before, after, { n: 3 }); check('the experts that moved most between two scans are found, biggest change first', mv.length === 3 && mv.every((t) => t.kind === 'expert') && mv.some((t) => t.layer === 0 && t.index === 1) && mv.some((t) => t.layer === 0 && t.index === 5) && movedBlocks(before, before).length === 0 && targetsOf([{ kind: 'ffn', layer: 1, index: 4, scale: 2 }])[0].index === 0); }
   const view = read('public/watch-view.js'), js = read('public/watch.js'), html = read('public/watch.html'), patch3 = read('engine/patches/0003-dials.patch'), readme = read('engine/README.md'), help = read('public/help-content.js'), srv = read('src/lab-watch.js');
   check('Brain Engine has the dials patch: experts, heads, attention and feed-forward, set over /dials and cleared with the prompt caches', /llama_set_dials/.test(patch3) && /LLAMA_DIAL_EXPERT/.test(patch3) && /LLAMA_DIAL_HEAD/.test(patch3) && /"\/dials"/.test(patch3) && /ffn_moe_weights_dialed/.test(patch3) && /cached prompts were computed with the old dials/.test(patch3) && /0003-dials\.patch/.test(readme) && !/thoth|heretic/i.test(patch3));
   check('the dials patch leaves ggml and the card backends alone', [...patch3.matchAll(/^diff --git a\/(\S+)/gm)].every((m) => /^(include\/llama\.h|src\/|tools\/server\/)/.test(m[1])));

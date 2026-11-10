@@ -5,7 +5,7 @@
 // Its own window, so it can sit beside the Lab or a chat. The Lab opens it with ?brain=<id>&rec=<id>; it can also
 // open a recording file by itself (one made on another Bob, or on a rented card), with the Lab off.
 import { applySavedStyle } from './themes.js';
-import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind, cutOf, cutEffect, keepList, setColour, resetColours, COVERS, cutSteps, findPatterns, PATTERN_CHOICES, PATTERN_DEFAULT, hasFloors, floorScale, floorsAt, LOAD_STYLES, loadStyle, cleanDials, skillDials, dialWords, dialScale, dialKey, compareScans, compareWords } from './lab-watch-math.js';
+import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind, cutOf, cutEffect, keepList, setColour, resetColours, COVERS, cutSteps, findPatterns, PATTERN_CHOICES, PATTERN_DEFAULT, hasFloors, floorScale, floorsAt, LOAD_STYLES, loadStyle, cleanDials, skillDials, dialWords, dialScale, dialKey, compareScans, compareWords, movedBlocks, targetsOf } from './lab-watch-math.js';
 const LOAD_IN_MS = 2200, LOAD_OUT_MS = 900;
 import { createView, GREY } from './watch-view.js';
 applySavedStyle();
@@ -101,7 +101,33 @@ function dialHtml() {
   const can = list.length && src && !patternsOn;
   $('watchDialScan').hidden = !can; $('watchDialScan').textContent = askedDialUnload ? 'Unload Bob\'s brain and scan again' : 'Scan again with these dials';
   $('watchDialClear').hidden = !dialEntries.length;
+  trainHtml();
 }
+
+// ---- use these for training: the blocks a training run may change, saved for the Lab's judge training ----
+function trainChoices() {
+  const out = [], part = partWord();
+  if (rec.brain.kind !== 'neurons') rec.skills.forEach((s, i) => { const items = skillDials(sp, i, 0); if (items.length) out.push({ id: `skill:${i}`, from: 'skill', skill: s.id, label: `Every ${part} of ${s.label} (${items.length.toLocaleString()})`, items: items.map((d) => ({ ...d, kind: part })) }); });
+  const dl = dialsNow(); if (dl.length) out.push({ id: 'dials', from: 'dials', label: `The dials set now (${dl.length.toLocaleString()})`, items: dl });
+  if (cmp && rec.brain.kind === 'experts') { const mv = movedBlocks(cmp.rec, base); if (mv.length) out.push({ id: 'moved', from: 'moved', label: `The ${mv.length} experts that moved most in Before and after`, items: mv }); }
+  return out;
+}
+function trainHtml() {
+  const box = $('watchTrainBox'); if (!rec || !src || patternsOn) { box.hidden = true; return; }
+  const ch = trainChoices(), sel = $('watchTrainFrom'), was = sel.value;
+  box.hidden = !ch.length; if (!ch.length) return;
+  sel.innerHTML = ch.map((c) => `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join('');
+  if (ch.some((c) => c.id === was)) sel.value = was;
+}
+$('watchTrainSave').onclick = async () => {
+  const c = trainChoices().find((x) => x.id === $('watchTrainFrom').value); if (!c || !src) return;
+  const label = $('watchTrainName').value.trim() || `${rec.brain.name}: ${c.label}`;
+  try {
+    const r = await fetch('/api/lab/watch/targets', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ brain: src.brain, from: src.id, why: c.from, skill: c.skill, label, kind: rec.brain.kind, targets: targetsOf(c.items) }) });
+    const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
+    $('watchTrainSays').textContent = `Saved "${j.label}" (${j.count.toLocaleString()} blocks). Pick it in the Lab's judge training under Teach only these parts.`; $('watchTrainName').value = '';
+  } catch (e) { $('watchTrainSays').textContent = `Bob couldn't save that list: ${e.message}`; }
+};
 $('watchDialWhat').onchange = () => { $('watchDialSkillBox').hidden = $('watchDialWhat').value !== 'skill'; };
 // which floor and block the dial is for: typed here, or chosen by pressing a block in the picture
 $('watchDialFloor').onchange = (ev) => { floor = Math.max(0, Math.min(rec.brain.layers - 1, (Math.floor(Number(ev.target.value)) || 1) - 1)); $('watchFloor').value = floor + 1; if (mode !== 'brain') setMode(mode); else dialHtml(); };
@@ -134,7 +160,7 @@ $('watchDialScan').onclick = async () => {
 
 // ---- before and after: this scan beside another scan of the same brain, word for word ----
 let cmp = null; // { rec, sp, map: this scan's question number -> the other scan's, result }
-function cmpOff() { cmp = null; $('watchHalfB').hidden = true; $('watchTagA').hidden = true; $('watchCmpView').hidden = true; $('watchCmpSays').textContent = ''; need = true; }
+function cmpOff() { cmp = null; setTimeout(trainHtml, 0); $('watchHalfB').hidden = true; $('watchTagA').hidden = true; $('watchCmpView').hidden = true; $('watchCmpSays').textContent = ''; need = true; }
 async function cmpList() {
   const box = $('watchCmpBox'), sel = $('watchCmpWith'); box.hidden = true;
   if (!src) return;
@@ -161,7 +187,7 @@ async function cmpWith(id) {
     viewB.setData(other, cmp.sp, j.parts && Array.isArray(j.parts.layers) ? j.parts : null); viewB.set({ key: false, load: 'none' });
     $('watchHalfB').hidden = false; $('watchTagA').hidden = false; $('watchCmpView').hidden = false;
     $('watchCmpSays').textContent = compareWords(result);
-    lastIdx = -1; cmpSync = ''; need = true;
+    lastIdx = -1; cmpSync = ''; need = true; trainHtml();
   } catch (e) { cmpOff(); $('watchCmpSays').textContent = `Bob couldn't compare with that scan: ${e.message}.`; }
 }
 $('watchCmpWith').onchange = (ev) => cmpWith(ev.target.value);
