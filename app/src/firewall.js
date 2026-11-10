@@ -17,6 +17,10 @@ const ports = (p) => `${p},${CARD_PORT}`;
 const from = (home) => (home ? `${TAILSCALE_RANGE},LocalSubnet` : TAILSCALE_RANGE);
 // Put at the start of the description of a block rule Bob switched off, so Remove can switch exactly those back on.
 export const MARK = '[Switched off by Bob] ';
+// Does the rule need this home network too? Yes with "Also over the home network" (phone access), and also when
+// this Bob lends his graphics card with Bigger Bobs' "Use the home network first" (on unless switched off), since
+// the other Bob then reaches the card's gate (CARD_PORT) over the home network, not Tailscale.
+export const firewallHome = (cfg, remoteHome = false) => remoteHome === true || (cfg?.share?.lendCard === true && cfg?.share?.homeNet !== false);
 
 const ps = (s) => `'${String(s).replace(/'/g, "''")}'`;
 // The commands run as admin: replace Bob's rule (so a changed port is picked up), and lift the block rules
@@ -61,7 +65,7 @@ export async function firewallState(port, { os_ = OS, run = runFile, home = fals
   const here = r.ok && has(Number(port));
   // An older rule (Bob's port only), or one without the home network when that's on: offered again, to bring it up to date.
   const behind = here && (!has(CARD_PORT) || (home && !/LocalSubnet/i.test(r.out)));
-  return { os: 'win', canAdd: true, ruleHere: here && !behind, behind, otherPort: r.ok && !here };
+  return { os: 'win', canAdd: true, ruleHere: here && !behind, behind, otherPort: r.ok && !here, home: home === true };
 }
 
 // Add (or remove) the rule as admin. Windows shows its prompt; resolves { ok, why }.

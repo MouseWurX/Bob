@@ -4,6 +4,14 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.188
+
+The firewall rule now keeps up with Bigger Bobs.
+
+### Fixed
+
+- **Settings, Bob-Net: "Bring the firewall rule up to date" now shows when a lent graphics card needs the home network.** With Bigger Bobs lending this Bob's card and **Use the home network first** on, the other Bob reaches the card over the home network. Bob's Windows firewall rule only let Tailscale in, but Bob still said ✓ and offered only Remove. Now Bob checks for the home network whenever either **Also over the home network** or a lent card with **Use the home network first** needs it. If the rule doesn't have it, he offers **Bring the firewall rule up to date**, and pressing it adds the home network (Windows asks you once). The ✓ line also says when the home network is let in. Tests in `test/run-firewall-test.js`.
+
 ## 1.5.187
 
 A new FNRI workbench in the Lab: turn a part of a brain up or down, then see before and after.
