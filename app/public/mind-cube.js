@@ -16,7 +16,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   let es = null, traces = [], rec = null, sp = null, clip = -1, t = 0, raf = 0, last = 0, why = '', look = null;
   view.set({ glow: 0.4, glass: 0.3 });
   // One colour: a quick switch, remembered. Every expert the same colour, so only what lights up stands out.
-  let showDetails = true; try { showDetails = localStorage.getItem('bob-cube-details') !== '0'; } catch {}
+  let showDetails = false; try { showDetails = localStorage.getItem('bob-cube-details') === '1'; } catch {} // to begin with: just the cube, Open in the big viewer and Show details
   let one = false; try { one = localStorage.getItem('bob-cube-mono') === '1'; } catch {}
   const showOne = () => { view.set({ mono: one || !look }); if (mono) { mono.setAttribute('aria-pressed', String(one)); mono.textContent = one ? 'Skill colours' : 'One colour'; mono.hidden = !look || !showDetails; } if (colourBox) colourBox.hidden = !(one || !look) || !rec || !showDetails; if (key && look) key.classList.toggle('off', one); };
   // the one colour is the person's to pick (it is also the colour of a brain with no scan yet), and it is remembered
