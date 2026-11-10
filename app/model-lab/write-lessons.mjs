@@ -17,6 +17,8 @@ const L = locate(o);
 if (!L.model) { console.error('Qwen3.6 GGUF not found. Pass --model.'); process.exit(1); }
 // --url <server>: use a rented teacher (vLLM) instead of starting llama-server here. Set LAB_API_KEY and LAB_MODEL_NAME.
 const remoteUrl = o.url ? String(o.url).replace(/\/$/, '') : null;
+// --persona <file>: appended to Bob's system prompt for every lesson (a voice for a themed set); Bob's own rules stay in front of it.
+const persona = o.persona ? fs.readFileSync(path.resolve(String(o.persona)), 'utf8').trim() : '';
 if (remoteUrl) process.env.LAB_REMOTE = '1'; else checkFree(o);
 const parallel = Math.max(1, Number(o.parallel) || 1);
 const kit = await loadBob(L.bob);
@@ -33,6 +35,19 @@ const JOBS = [
   ['writing', 'writing help: emails, messages, stories, poems, cover letters, rewording, summarising pasted text', 7],
   ['coding', 'programming help in C, C++, Rust, JavaScript, Python, Kotlin for Android, Unreal Engine C++ and Blueprints, Blender Python, web pages; bugs, explanations, small programs', 12],
   ['maths', 'maths and logic: arithmetic, percentages, unit conversions, word problems, puzzles', 5],
+  ['formats', 'answers that must follow an exact shape: reply only as JSON with given keys, a markdown table, a numbered list of exactly N items, yes/no only, a fixed template, CSV lines, exact wording to repeat', 0],
+  ['gamemaster', 'running a text adventure or a party game as the game master: describing a scene, an enemy, a fight round, a shop, a riddle; reacting to the player\'s action card; keeping score in a word game; story dice prompts', 0],
+  ['refusals', 'requests Bob should politely decline or steer to safety: malware, stalking someone, dangerous chemistry, cheating others, self-harm (reply with care and a helpline), plus borderline ones that are actually fine (security of their own PC, fiction with villains)', 0],
+  ['languages', 'ordinary chat and questions written in French, Spanish, German, Ukrainian, Tagalog or Punjabi (the person types in that language and expects the answer in it)', 0],
+  ['codefix', 'coding where the first attempt has a bug: the person asks for a small program or fix, Bob writes it, runs it with the run tool, reads the error, fixes it and runs it again until it works', 0],
+  ['recover', 'ordinary file, folder, web, reminder or office tasks where the first tool call fails (wrong path, file missing, no permission, timeout, bad format) and Bob must notice the error, try another way or say plainly what went wrong', 0],
+  ['clarify', 'requests too thin or ambiguous to act on safely (a bare word, two things it could mean, a missing file name, an unclear date) where the right move is one short clarifying question instead of guessing', 0],
+  ['notes', 'the person corrects Bob or states a preference or a fact about themselves or their setup ("no, I use Linux", "call me Sam", "always answer in metric") and Bob saves a short note to memory and uses it', 0],
+  ['newtool', 'tasks that need a tool Bob has not used before: he first looks at the list of available tools and their descriptions, picks one, reads what it needs, then calls it', 0],
+  ['selfhelp', 'questions about Bob himself (his settings, sessions, brains, Hands, where files go, what a button does) where Bob reads his own Help or settings first with the tools he has and answers from what he read, saying so, instead of guessing', 0],
+  ['selfcheck', 'tasks where Bob checks his own answer before sending it: re-reads the request, tests a claim or a calculation a second way, runs the code, or asks the reviewer, then corrects himself if needed and says what he checked', 0],
+  ['research', 'looking something up properly: a question that needs several sources or files, where Bob searches or reads more than one place, compares what they say, pulls out what matters, says what is uncertain and where each point came from', 0],
+  ['understand', 'a pasted text, log, message or described problem that must be understood before acting: Bob restates what it says and what is being asked in his own words, points out what is missing or unclear, and only then answers or asks', 0],
   ['science', 'physics, maths, chemistry and electronics: how things work, worked calculations, circuits and components, units, formulas, explaining a concept plainly, checking a calculation', 0],
   ['plans', 'planning: trips, projects, study plans, step-by-step plans for a big job', 4],
   ['reminders', 'reminders, to-do lists and the notice board: add, change, list, clear', 4],
@@ -50,6 +65,7 @@ const JOBS = [
 const onlyJobs = o.jobs ? String(o.jobs).split(',').map((x) => x.trim()).filter(Boolean) : null;
 const SCI_ANGLES = ['physics: motion, energy, forces, heat, light, with a worked calculation', 'electronics: circuits, Ohm\'s law, resistors, capacitors, transistors, microcontrollers, power supplies', 'chemistry: reactions, moles, acids and bases, materials, safety', 'maths beyond arithmetic: algebra, geometry, trig, probability, a bit of calculus', 'checking a calculation or unit conversion the person already did', 'explaining a science concept in plain words to a curious adult', 'practical engineering: batteries, motors, 3D printing materials, soldering, sensors'];
 const thinkMode = String(o.think || 'half');
+const dropTools = new Set(String(o['drop-tools'] || o.dropTools || '').split(',').filter(Boolean)); // --drop-tools ask_specialist,pick_session: these tools are not offered, so the teacher answers itself
 const CODE_ANGLES = ['fixing a bug in pasted code (include the code)', 'writing a small complete program from scratch', 'explaining what a piece of code does', 'JavaScript or TypeScript for a web page or Node', 'Python scripts and data handling', 'C++ or Rust, memory and performance', 'Unreal Engine C++ and Blueprints', 'Kotlin for Android apps', 'Blender Python add-ons and scripts', 'shell, PowerShell or batch scripts on Windows', 'SQL and databases', 'reading or writing files on the PC, then running the result', 'tests, refactors and code review', 'git, builds, packaging and errors from tools', 'software design: how to structure a small program, data layout, which approach and why', 'debugging a described problem step by step (crash, wrong output, slow code) without the code pasted', 'explaining a software engineering idea plainly (big-O, concurrency, APIs, memory, version control)'];
 const STYLES = ['short and casual', 'polite and detailed', 'with small typos', 'very brief, a few words', 'a bit frustrated', 'curious, asking why', 'in a hurry', 'chatty, with some context first', 'from a beginner', 'from an expert'];
 
@@ -72,7 +88,8 @@ const add = (job, text, extra = {}) => { const t = String(text || '').trim(); if
 if (!ideas.length && !onlyJobs) for (const p of kit.phrasings.filter((p) => !p.pic && !p.recent)) add(p.job, p.text, { from: 'phrasings' });
 // --jobs coding:3,science:1 gives weights; a job with weight 0 only runs when named.
 const jobW = Object.fromEntries((onlyJobs || []).map((x) => x.split(':')).map(([k, w]) => [k, Number(w) || null]));
-const JOBS2 = (onlyJobs ? JOBS.filter((j) => j[0] in jobW) : JOBS.filter((j) => j[2] > 0)).map((j) => [j[0], j[1], jobW[j[0]] || j[2]]);
+// a job named on the command line always gets a share: its ':weight', else its default, else 1 (the weight-0 jobs only run when named)
+const JOBS2 = (onlyJobs ? JOBS.filter((j) => j[0] in jobW) : JOBS.filter((j) => j[2] > 0)).map((j) => [j[0], j[1], jobW[j[0]] || j[2] || 1]);
 if (onlyJobs && !JOBS2.length) { console.error(`No such job: ${o.jobs}`); process.exit(1); }
 const share = JOBS2.reduce((a, j) => a + j[2], 0);
 for (const [job, what, w] of JOBS2) {
@@ -81,7 +98,7 @@ for (const [job, what, w] of JOBS2) {
   while (ideas.filter((i) => i.job === job).length < want && tries++ < (onlyJobs ? 120 : 40)) {
     await pauseGate(L.out); if (Date.now() > until) await stop(0);
     const style = STYLES[tries % STYLES.length];
-    const angle = job === 'coding' ? ` Focus this batch on ${CODE_ANGLES[tries % CODE_ANGLES.length]}.` : job === 'science' ? ` Focus this batch on ${SCI_ANGLES[tries % SCI_ANGLES.length]}.` : '';
+    const angle = job === 'coding' ? ` Focus this batch on ${CODE_ANGLES[tries % CODE_ANGLES.length]}. Each message is 2 to 4 sentences and names the language and what they are building, with enough detail (or pasted code) to answer properly.` : job === 'science' ? ` Focus this batch on ${SCI_ANGLES[tries % SCI_ANGLES.length]}.` : job === 'languages' ? ` This batch all in ${['French (Canada)', 'Spanish', 'German', 'Ukrainian', 'Tagalog', 'Punjabi', 'French', 'Portuguese'][tries % 8]}.` : job === 'formats' ? ` Each message must state the exact output shape it wants.` : '';
     try {
       const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `Write 25 different messages a person might type to their desktop AI assistant about: ${what}.${angle} Make them ${style}. Each one different in topic and wording. Use neutral or no names. Reply with only a JSON array of strings.` }], max: 2500, temperature: 1.0 });
       const arr = JSON.parse((msg.content || '').match(/\[[\s\S]*\]/)?.[0] || '[]');
@@ -100,6 +117,9 @@ console.log(`ideas total: ${ideas.length} (${pics.length} pictures)`);
 // ---- stage 2: lessons (Bob's real turns) ----
 const done = new Set(readJsonl(F.lessons).map((l) => l.idea));
 const toolsFor = (loaded) => kit.turn(loaded);
+async function failedResult(name, args) { // the recover/codefix jobs: the first tool call fails, so the student learns to read errors and carry on
+  const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `You are the "${name}" tool inside a desktop AI assistant on a Windows PC. It was called with ${JSON.stringify(args).slice(0, 1500)} and it FAILED this time (a realistic failure for this tool: wrong path, file missing, syntax error with a traceback, permission denied, timeout, bad format). Write only the short, realistic error output the tool would return.` }], think: false, max: 400 }); return (msg.content || 'Error: the tool failed.').trim();
+}
 async function fakeResult(name, args) {
   const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `You are the "${name}" tool inside a desktop AI assistant on a Windows PC. It was called with ${JSON.stringify(args).slice(0, 1500)}. Write the short, realistic plain-text result this tool would return (under 120 words). If it made or changed a file, give a plausible file name. If the request could not work, say why briefly. Only the result.` }], max: 300, temperature: 0.7 });
   return (msg.content || 'Done.').trim();
@@ -122,28 +142,32 @@ const imgPart = (file) => { const b = fs.readFileSync(path.join(picDir, file)); 
 // Mixed order (stable between runs), so stopping early still leaves a mix of every job.
 const h = (s) => crypto.createHash('md5').update(s).digest('hex');
 const order = [...ideas].sort((x, y) => (h(x.id) < h(y.id) ? -1 : 1));
-let n = done.size, i = 0;
+let n = done.size, i = 0, skipped = 0, rescued = 0;
 const queue = order.filter((x) => !done.has(x.id));
-async function one(idea, think) {
+async function one(idea, think, room = 1) { // room 2 = a second try with twice the word budget (build 18)
   const loaded = new Set(kit.guessGroups(idea.text));
   const user = idea.image ? { role: 'user', content: [{ type: 'text', text: idea.text }, imgPart(idea.image)] } : { role: 'user', content: idea.text };
   const saved = [{ role: 'user', content: idea.text, ...(idea.image ? { image: idea.image } : {}) }];
   const live = [user];
-  for (let step = 0; step < 5; step++) {
-    const t = toolsFor(loaded);
+  let failNext = idea.job === 'recover' || idea.job === 'codefix';
+  for (let step = 0; step < 6; step++) {
+    const t0 = toolsFor(loaded); const t = dropTools.size ? { ...t0, tools: (t0.tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)), system: String(t0.system || '').split('\n').filter((ln) => ![...dropTools].some((d) => ln.includes(d))).join('\n') } : t0; // dropped tools leave the offer AND the prompt text
     const set = setKey(t.system, t.tools);
-    const { msg, finish } = await chat(srv.url, { messages: [{ role: 'system', content: t.system }, ...live], tools: t.tools, think, max: think ? 6000 : 2000 });
+    const { msg, finish } = await chat(srv.url, { messages: [{ role: 'system', content: persona ? `${t.system}\n\n${persona}` : t.system }, ...live], tools: t.tools, think, max: (think ? 6000 : 2000) * room });
     if (finish === 'length') throw new Error('ran out of room');
     const a = { role: 'assistant', content: msg.content || '', ...(msg.reasoning_content ? { reasoning: msg.reasoning_content } : {}), ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}), set };
     saved.push(a); live.push({ role: 'assistant', content: a.content, ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) });
     if (!a.tool_calls) break;
+    for (const c of a.tool_calls) if (dropTools.has(c.function.name)) throw new Error(`called the dropped tool ${c.function.name}`); // the lesson is skipped, not saved
     for (const c of a.tool_calls) {
       let args = {}; try { args = JSON.parse(c.function.arguments || '{}'); } catch {}
-      const result = await toolResult(c.function.name, args, loaded);
+      const result = failNext ? await failedResult(c.function.name, args) : await toolResult(c.function.name, args, loaded); failNext = false;
       const tm = { role: 'tool', tool_call_id: c.id, name: c.function.name, content: result };
       saved.push(tm); live.push(tm);
     }
   }
+  const last = saved[saved.length - 1];
+  if (last.role !== 'assistant' || !String(last.content || '').trim()) throw new Error('no final answer (ran out of steps)');
   appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, messages: saved });
 }
 // --parallel N: N lessons at once (a rented server handles many together; the PC's llama-server is best at 1).
@@ -152,9 +176,17 @@ async function worker() {
     await pauseGate(L.out); if (Date.now() > until) return;
     const idea = queue.shift(); const think = thinkMode === 'all' ? true : thinkMode === 'none' ? false : (i++ % 2) === 1;
     try { await one(idea, think); n++; if (n % 25 === 0) console.log(`${n}/${target} lessons`); }
-    catch (e) { console.log(`skip ${idea.id}: ${e.message.slice(0, 100)}`); }
+    catch (e) {
+      // build 18 (8 Nov, the owner asked): a lesson that ran out of room is tried ONCE more instead of being dropped. With thinking on, the
+      // second try has thinking off (the thinking is what eats the budget); with it off, the second try gets twice the room.
+      if (e.message === 'ran out of room') {
+        try { await one(idea, false, think ? 1 : 2); n++; rescued++; if (n % 25 === 0) console.log(`${n}/${target} lessons`); continue; }
+        catch (e2) { skipped++; console.log(`skip ${idea.id}: ${e2.message.slice(0, 80)} (twice: with and without room for thinking)`); continue; }
+      }
+      skipped++; console.log(`skip ${idea.id}: ${e.message.slice(0, 100)}`);
+    }
   }
 }
 await Promise.all(Array.from({ length: parallel }, worker));
-console.log(`Done for now: ${n} lessons in ${F.lessons}`);
+console.log(`Done for now: ${n} lessons in ${F.lessons} (${skipped} ideas skipped, ${rescued} saved by a second try)`);
 await stop(0);

@@ -22,9 +22,13 @@ Every rental, including the ones that made nothing. Times are the owner's local 
 | 6 Nov 2026, morning | 1x H200 141 GB SXM + the rented network drive | 1.70 h | $5.29/h | **Failed attempt 4.** A counts-only run: write the new lesson sets, then count which experts each skill uses. A bug in the lesson writer gave the new skill jobs a weight of zero, so they wrote nothing, and the Forge stopped the card to limit the loss. 2,329 improved coding lessons from the run were kept after cleaning. Card time plus the drive's share. | $9.27 |
 | 6 Nov 2026, midday | 1x H200 141 GB SXM + the rented network drive | 1.66 h | $5.29/h | **Lessons and counts for the re-cut.** The bug fixed, the run wrote 2,898 lessons across 14 skill sets and counted which experts each of 24 skills uses in the full model. Those counts set the coverage cut for every Bob from here on. Card time plus the drive's share. | $8.88 |
 | 6 Nov 2026, morning to evening | 1x H200 141 GB SXM, no drive (none free in the drive's data centre) | 9.7 h | $5.29/h | **28Bob Riker.** Teacher pass (125 min, 26,628 pieces); 28Bob Riker (208 experts) cut and healed in a full pass (929 of 929 steps, 5.9 h); Q4, Q3 and adapter home. Benchmarked on 8 Nov and kept (see [Bob's own models](BOBS-OWN-MODELS.md#28bob-riker-the-one-that-stays)). Then a shell bug in the plan reader stopped 20Bob Bill v3 at its keep list and the machine deleted itself as designed, taking the full-precision Riker and the teacher's scores with it, because there was no drive. Both fixed in Forge build 15; the drive rule is now hard. Card time plus the working disk, from the rental service's statement. | $51.79 |
-| | | **37.1 h of card time** | | **Four failed attempts: $15.81, plus the stopped Bill step above. Five Bobs made; Riker (28Bob) is kept, the first Riker and Bill (v1 and v2) are retired and deleted, and Bill is next.** | **$183.90** |
+| 8 to 9 Nov 2026, overnight | 1x H200 141 GB SXM + the rented network drive (300 GB) | ~20 h | $5.29/h | **35Bob Bobert.** The full model wrote about 9,000 new lessons; teacher pass; 35Bob Bobert (256 experts, no cut — the full model trained on every lesson) in a full pass of 2,018 of 2,018 steps, 10.3 h at about 3,400 words a second with the fast kernels; Q4, Q3 and adapter home. Then the teacher-scoring pass, held to a 6 h budget, scored about 53% of the pieces (none skipped, no errors) and saved. About $105 of card time plus the 300 GB drive's share, from the rental service's statement. | $108.75 |
+| 9 Nov 2026, morning | 1x H200 141 GB SXM, wrong data centre | 5 min | $5.29/h | **Failed attempt 5.** The rebuild-and-publish run below, first try. The renter could not get a card where the drive is, so it made two empty drives elsewhere (deleted the same hour) and took a card in one of them, where Bobert's adapter is not; a shell ordering bug then stopped it in its first minute. Nothing made. Both fixed in Forge before the second try. | $0.40 |
+| 9 Nov 2026, morning | 1x H200 141 GB SXM + the rented network drive | 1.0 h | $5.29/h | **Riker and Bobert rebuilt and published.** No training: each Bob was put back together from the stock model, his keep list and his adapter, exported to Q4 and Q3, and uploaded to Hugging Face with his cards, adapter and keep list. Riker (28Bob) went up public with his full-size weights as well ([MouseWurX/28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker)). Bobert (35Bob) went up private until his home test; his full-size weights did not upload (see the next row). Card time plus the drive's share. | $5.44 |
+| 9 Nov 2026, afternoon | 1x H100 80 GB SXM + the rented network drive | 8 min | $3.99/h | **Bobert's full-size weights, second try.** An upload-only run from the drive; Hugging Face refused both tries: the account's private storage limit was reached (public repos such as Riker's are not counted). The weights stay safe on the drive; they go up once Bobert is public after his home test, or if the account gets more private room. The card deleted itself. | $0.34 |
+| | | **about 58 h of card time** | | **Six failed attempts: $16.55, plus the stopped Bill step above. Six Bobs made; Riker (28Bob) and Bobert (35Bob) are kept, the first Riker and Bill (v1 and v2) are retired and deleted, and Bill is next.** | **$298.83** |
 
-The total is taken from the rental service's statement; the lines above are rounded to the cent. Card time is paid from **prepaid credit**: the owner loads a balance onto the rental account in advance and each session draws it down, so that money is spent on the day it is loaded and used only when a card runs. The unused part is not shown here (no balances on these pages); it is already earmarked for the rungs still to make. A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists; the combined Bobert and Bill run needs it at 300 GB, about $21 a month.
+The total is taken from the rental service's statement; the lines above are rounded to the cent. Card time is paid from **prepaid credit**: the owner loads a balance onto the rental account in advance and each session draws it down, so that money is spent on the day it is loaded and used only when a card runs. The unused part is not shown here (no balances on these pages); it is already earmarked for the rungs still to make. A 100 GB network drive rented from the same service (it keeps the teacher weights, general text and adapters between sessions, so a session needs no re-download) costs about $7 a month while it exists; Bobert's run used it at 300 GB (about $21 a month), and Bill's run will need it again.
 
 ### Tools and subscriptions
 
@@ -38,7 +42,7 @@ The total is taken from the rental service's statement; the lines above are roun
 
 ## Projected: the rest of the family
 
-> **Revised 8 November 2026.** The first cut rule protected no skill and the coding lessons were weak (see [What went wrong with the first cut](BOBS-OWN-MODELS.md#what-went-wrong-with-the-first-cut)), so Riker and Bill are cut and healed again before Homer, with new lessons. Riker is done and paid for ($51.79, above). Next is one combined run, waiting on the owner's yes: about 9,000 more lessons written on the card, one teacher pass, **35Bob Bobert** (the full model trained on every lesson, no cut) in a full pass of about 16 hours, then 20Bob Bill cut from Bobert and healed. The rungs below follow the current plan, a ladder of six redrawn on 6 November after the coverage table: Mario and Goku are dropped and Luke moves to 7Bob.
+> **Revised 9 November 2026.** The first cut rule protected no skill and the coding lessons were weak (see [What went wrong with the first cut](BOBS-OWN-MODELS.md#what-went-wrong-with-the-first-cut)), so Riker and Bill are cut and healed again before Homer, with new lessons. Riker and **35Bob Bobert** (the full model trained on every lesson, no cut) are both done and paid for ($51.79 and $108.75, above). Next, when the owner gives the word, is **20Bob Bill**, cut from Bobert and healed in its own run of about 5 to 5.5 hours. The rungs below follow the current plan, a ladder of six redrawn on 6 November after the coverage table: Mario and Goku are dropped and Luke moves to 7Bob.
 
 These are estimates. They assume one full-pass heal with nothing trimmed at the 16k lesson length, about 5 to 5.5 hours of card time per rung, at by-the-hour rental rates from November 2026 that move weekly; each line is re-checked on the day it is rented.
 
@@ -46,15 +50,15 @@ These are estimates. They assume one full-pass heal with nothing trimmed at the 
 
 | Rung | Nickname | Experts kept per layer | Card | Projected |
 |---|---|---|---|---|
-| 35Bob | Bobert | 256, no cut: the teacher trained on every lesson | one combined run with Bill and about 9,000 new lessons: H200, 24 to 26 h | about $135 (with Bill) |
+| 35Bob | Bobert | 256, no cut: trained on every lesson | done (above) | $0 |
 | 28Bob | Riker | 208, coverage cut | done (above) | $0 |
-| 20Bob | Bill | 144, coverage cut, cut from Bobert | same run | included above |
+| 20Bob | Bill | 144, coverage cut, cut from Bobert | its own run (planned), H200 or H100 | $50 to $55 |
 | 14Bob | Homer | 96 | H200 | $29 |
 | 10Bob | Milo | 64 | H100 | $20 |
 | 7Bob | Luke | 40 | H100 | $20 |
 | 5Bob | Calvin | 24, kept only if it beats a stock 4B model | H100 | $20 |
 | 2Bob | Bender | 8, plus depth and width cuts (a stretch goal) | H100, longest heal | $30 to $40 |
-| | **Line B, remaining rungs** | | | **$254 to $264** |
+| | **Line B, remaining rungs** | | | **$169 to $184** |
 
 ### Specialists (line B, each cut from the general Bob one size up with its own expert count)
 
@@ -84,8 +88,8 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 
 | What | Projected |
 |---|---|
-| Rented network drive, about 2 more months (100 GB at about $7 a month, or 300 GB at about $21 for the combined run) | $14 to $42 |
-| Benchmarks, exports and the Hugging Face upload | $0 (done on the owner's PC) |
+| Rented network drive, about 2 more months (100 GB at about $7 a month, or 300 GB at about $21 during the Bobert and Bill runs) | $14 to $42 |
+| Benchmarks, exports and the Hugging Face uploads | about $6 a Bob when done on a card (Riker and Bobert, 9 Nov: $5.84 with the false start); $0 when done on the owner's PC |
 | Re-runs: one per rung if a heal scores badly | up to $20 each |
 | Code signing, when the project is visible enough | $0 (reapply to the SignPath Foundation, a free signing service for open-source projects), or about $10 a month for a cloud code-signing service, or $100 to $400 a year for a code-signing certificate |
 
@@ -95,24 +99,24 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 
 | | |
 |---|---|
-| GPU servers rented by the hour (every session above, failures included) | $183.90 |
+| GPU servers rented by the hour (every session above, failures included) | $298.83 |
 | Rented network drive so far | included in the line B session line above |
 | Claude subscription, November 2026 | $200.00 |
 | Claude extra usage, bought from 5 Nov 2026 on | $800.00 |
 | Code signing, hosting | $0.00 |
-| **Total spent so far** | **$1,183.90** |
+| **Total spent so far** | **$1,298.83** |
 
 **Projected, whole plan**
 
 | | Low | High |
 |---|---|---|
-| Spent so far (above) | $1,183.90 | $1,183.90 |
+| Spent so far (above) | $1,298.83 | $1,298.83 |
 | Line B remaining rungs (Homer to Bender) | $119 | $129 |
-| New lessons, 35Bob Bobert and 20Bob Bill (one combined run) | $135 | $135 |
+| 20Bob Bill, its own run (planned, not yet approved) | $50 | $55 |
 | Specialists (four, with their lessons) | $100 | $100 |
 | Rented network drive, about 2 more months (100 to 300 GB) | $14 | $42 |
 | Re-runs allowed (one per rung if a heal scores badly) | $0 | $60 |
 | Claude subscription while the family is finished, about 1 more month | $200 | $200 |
-| **Projected total, line B complete** | **about $1,752** | **about $1,850** |
+| **Projected total, line B complete** | **about $1,782** | **about $1,885** |
 | Line A as well, if the comparison after Homer earns it | +$179 | +$189 |
-| **Projected total, both lines** | **about $1,931** | **about $2,039** |
+| **Projected total, both lines** | **about $1,961** | **about $2,074** |

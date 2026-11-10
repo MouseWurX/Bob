@@ -19,30 +19,57 @@ json.dump(st,open(p,"w"))
 PY
 echo "== $(date -u +%H:%M:%S) $*"; }
 die() { status failed "$*"; echo "FAILED: $*"; exit 1; }
+# drive_list: which Forge-made brains are REALLY usable as teacher_model on the volume (bobs/<name>/model/config.json present AND
+# bobs/<name>/adapter.pt beside it; a dangling link to a dead pod disk does not count). Written to out/drive.json at setup and on
+# every exit, so the PC's Lab only offers brains that exist (9 Nov: Bobert's full model never fit the 100 GB drive, only his adapter).
+drive_list() { python3 - "$S" "$W" "$OUT/drive.json" <<'PY2' 2>/dev/null || true
+import glob,json,os,sys,time; S,W,out=sys.argv[1:4]; models=[]
+if S!=W:
+    for d in sorted(glob.glob(os.path.join(S,"bobs","*"))):
+        if os.path.isfile(os.path.join(d,"model","config.json")) and os.path.isfile(os.path.join(d,"adapter.pt")): models.append(f"bobs/{os.path.basename(d)}/model")
+json.dump({"models":models,"volume":S!=W,"at":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())},open(out,"w"))
+PY2
+}
 # --- Hugging Face from the card (build 17). The owner's rules: every output is kept on the volume; the odds may go up as a PRIVATE
 # dataset; NO Bob goes up until he has been tested at home and the owner lists him in plan.publish.models. Then the next run uploads
 # him from the volume. The token comes from the PC as in/hf-token and is never written anywhere else. No owner name, host or path in a card.
 hf_ok() { [ -n "$(plan ".get('publish')")" ] && [ -s $IN/hf-token ]; }
 publish_dir() {   # <local dir> <repo> <what> <model|dataset> <path in repo> [include globs...]
   local D=$1 REPO=$2 WHAT=$3 TYPE=$4 SUB=$5; shift 5; local INC=(); for g in "$@"; do INC+=(--include "$g"); done
-  local PRIV=""; [ "$(plan "['publish'].get('private',True)")" = "True" ] && PRIV="--private"
+  # PUB_PRIVATE (True/False) overrides publish.private for one upload (a rebuild run sets it per Bob: a tested Bob public, an untested one private)
+  local P="${PUB_PRIVATE:-$(plan "['publish'].get('private',True)")}"; local PRIV="" VIS=public; case "$P" in True|true|1) PRIV="--private"; VIS=private;; esac
+  # the log goes to out/publish/ (9 Nov: a weights upload failed and its log, written beside the weights, was deleted with them; the
+  # next upload's log overwrote the other copy). A failed upload is tried once more after a pause: big uploads fail on passing errors.
+  mkdir -p $OUT/publish; local LOG=$OUT/publish/$(echo "$REPO-$SUB-$WHAT" | tr -c 'A-Za-z0-9\n' '-' | tr -s '-').log; : > $LOG
   # Hugging Face takes files up to 50 GB. A bigger GGUF goes up in parts (llama-gguf-split, 45 GB each, name-00001-of-0000N.gguf,
   # which llama.cpp and Bob's Lab read as one brain); the whole file stays on the volume and the parts are deleted after the upload.
   local EXC=() SPLITS=() SPLIT=$S/llama.cpp/build/bin/llama-gguf-split f
   for f in "$D"/*.gguf; do
     [ -f "$f" ] || continue; [[ "$(basename "$f")" =~ -[0-9]{5}-of-[0-9]{5}\.gguf$ ]] && continue
     [ "$(stat -c %s "$f")" -gt 49000000000 ] || continue
-    if [ -x "$SPLIT" ] && ( cd "$(dirname "$SPLIT")" && LD_LIBRARY_PATH="$(dirname "$SPLIT"):${LD_LIBRARY_PATH:-}" "$SPLIT" --split --split-max-size 45G "$f" "${f%.gguf}" ) >> $D/publish.log 2>&1; then
+    if [ -x "$SPLIT" ] && ( cd "$(dirname "$SPLIT")" && LD_LIBRARY_PATH="$(dirname "$SPLIT"):${LD_LIBRARY_PATH:-}" "$SPLIT" --split --split-max-size 45G "$f" "${f%.gguf}" ) >> $LOG 2>&1; then
       EXC+=(--exclude "$(basename "$f")"); SPLITS+=("${f%.gguf}"); echo "$(basename "$f") is over 50 GB: going up in parts"
     else echo "$(basename "$f") is over 50 GB and couldn't be split (no llama-gguf-split): left out of the upload"; EXC+=(--exclude "$(basename "$f")"); fi
   done
-  status publish "$WHAT: uploading to Hugging Face ($REPO, private)"
-  local OK=1
-  if HF_TOKEN=$(cat $IN/hf-token) hf upload "$REPO" "$D" "$SUB" --repo-type $TYPE $PRIV "${INC[@]}" "${EXC[@]}" --commit-message "$WHAT from Bob's Forge" >> $D/publish.log 2>&1; then OK=0; fi
+  status publish "$WHAT: uploading to Hugging Face ($REPO, $VIS)"
+  local OK=1 try; for try in 1 2; do
+    if HF_TOKEN=$(cat $IN/hf-token) hf upload "$REPO" "$D" "$SUB" --repo-type $TYPE $PRIV "${INC[@]}" "${EXC[@]}" --commit-message "$WHAT from Bob's Forge" >> $LOG 2>&1; then OK=0; break; fi
+    echo "$WHAT: upload failed (try $try; see out/publish/$(basename $LOG))"; tail -3 $LOG; [ $try = 1 ] && { cp $LOG $LOG.try1; sleep 30; }
+  done
   for f in "${SPLITS[@]}"; do rm -f "$f"-[0-9][0-9][0-9][0-9][0-9]-of-[0-9][0-9][0-9][0-9][0-9].gguf; done
-  if [ $OK = 0 ]; then
-    echo "$WHAT is on Hugging Face (private): https://huggingface.co/$( [ $TYPE = dataset ] && echo datasets/ )$REPO"; return 0
-  else echo "$WHAT: upload failed (see publish.log)"; tail -3 $D/publish.log; return 1; fi
+  [ $OK = 0 ] && { echo "$WHAT is on Hugging Face ($VIS): https://huggingface.co/$( [ $TYPE = dataset ] && echo datasets/ )$REPO"; return 0; }
+  return 1
+}
+# set_visibility <repo> <model|dataset> <True|False = private>: "hf upload --private" only counts when a repo is CREATED, so a repo that
+# already exists (Riker's, with his recipe) is flipped here. Best effort: a failure is said, not fatal.
+set_visibility() {
+  HF_TOKEN=$(cat $IN/hf-token) python3 - "$1" "$2" "$3" <<'PY' || echo "could not set the visibility of $1 (set it by hand on Hugging Face)"
+import os,sys; from huggingface_hub import HfApi
+repo,typ,priv=sys.argv[1:4]; api=HfApi(token=os.environ["HF_TOKEN"]); want=priv in ("True","true","1")
+try: api.update_repo_settings(repo_id=repo, repo_type=typ, private=want)
+except AttributeError: api.update_repo_visibility(repo_id=repo, repo_type=typ, private=want)
+print(f"{repo} is now {'private' if want else 'PUBLIC'}")
+PY
 }
 write_model_card() {   # <dir with .bob.json cards> <name> <nickname>
   python3 - "$1" "$2" "$3" "$(plan "['teacher']")" <<'PY'
@@ -119,6 +146,11 @@ publish_tested() {
 # export.py writes <name>-files.json.pending; the PC only starts downloading once it is renamed, after keep_bob has marked the files
 release_files() { [ -f $OUT/$1/$2-files.json.pending ] && mv $OUT/$1/$2-files.json.pending $OUT/$1/$2-files.json; return 0; }
 plan() { python3 -c "import json,sys; p=json.load(open('$IN/plan.json')); v=p$1; print(json.dumps(v) if isinstance(v,(dict,list)) else ('' if v is None else v))" || echo "plan lookup failed: $1" >&2; }
+# hf_get/resolve_in are used by the rebuild AND benchmark sections, so they live here (9 Nov: a run died with "resolve_in: command not found" when they sat below the rebuild block)
+hf_get() {   # hf_get <repo> <path> <dir>: one file from Hugging Face with the pod's token (private repos too)
+  HF_TOKEN=$(cat $IN/hf-token 2>/dev/null) hf download "$1" "$2" --local-dir "$3" > /dev/null 2>&1 && [ -f "$3/$2" ]; }
+resolve_in() {   # resolve_in <spec> <dir> -> path: "hf:<repo>:<path>" is downloaded, anything else is a file in in/
+  case "$1" in hf:*) local R P; R=$(echo "$1" | cut -d: -f2); P=$(echo "$1" | cut -d: -f3); hf_get "$R" "$P" "$2" && echo "$2/$P" ;; "") echo "" ;; *) echo "$IN/$1" ;; esac; }
 plist() { plan "$1" | python3 -c "import json,sys; d=sys.stdin.read().strip(); print(','.join(json.loads(d)) if d else '')"; }   # a list field as a,b,c
 HOURS_MAX=$(plan ".get('hours_max',9)")
 # Self-destruct a little before the time cap, whatever happens (the PC-side watchdog is the main one).
@@ -126,12 +158,13 @@ HOURS_MAX=$(plan ".get('hours_max',9)")
 ELAPSED=$(python3 -c "import os; up=float(open('/proc/uptime').read().split()[0]); st=int(open('/proc/1/stat').read().rsplit(')',1)[1].split()[19])/os.sysconf('SC_CLK_TCK'); print(int(up-st))" 2>/dev/null || echo 0)
 ( sleep $(python3 -c "print(max(300, int(($HOURS_MAX*60-8)*60) - $ELAPSED))"); status failed "time cap reached, pod deleting itself"; \
   python3 -c "import os,urllib.request; r=urllib.request.Request('https://rest.runpod.io/v1/pods/'+os.environ['RUNPOD_POD_ID'], method='DELETE', headers={'Authorization':'Bearer '+os.environ.get('FORGE_RUNPOD_KEY', os.environ.get('RUNPOD_API_KEY',''))}); print(urllib.request.urlopen(r).read()[:200])" >> $OUT/watchdog.log 2>&1 ) &
-WD=$!; trap 'kill $WD 2>/dev/null' EXIT 
+WD=$!; trap 'drive_list; kill $WD 2>/dev/null' EXIT 
 
 status setup "installing tools"
 pip install -q aiohttp gguf sentencepiece huggingface_hub pyarrow accelerate 2>&1 | tail -1
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || echo "no nvidia-smi"
 df -h $W | tail -1; [ "$S" != "$W" ] && { echo "shared volume: $S"; ls $S; }
+drive_list   # the PC learns right away which Forge-made brains the drive really holds
 # fast kernels for the linear-attention layers (flash-linear-attention + causal-conv1d). Built in the background while the teacher
 # downloads; the teacher pass and every heal WAIT for them (build 15: before this they ran without the kernels if the compile was late).
 # causal-conv1d compiles for ~10 min, so the finished wheel is kept on the volume per card type and reused next time (seconds).
@@ -154,8 +187,9 @@ kernels() {
   python3 -c "import fla; print('fla', fla.__version__)" 2>&1 | tail -1
   echo "kernels done $rc"
 }
-[ -z "${FORGE_SETUP_ONLY:-}" ] && ! grep -q "kernels done 0" $OUT/kernels.log 2>/dev/null && ( kernels > $OUT/kernels.log 2>&1 ) &
-KERN=$!
+LESSONS_ONLY=$(plan ".get('lessons_only','')")
+TG=$(plan ".get('teacher_gguf','')")
+if [ -z "${FORGE_SETUP_ONLY:-}" ] && [ -z "$LESSONS_ONLY" ] && ! grep -q "kernels done 0" $OUT/kernels.log 2>/dev/null; then ( kernels > $OUT/kernels.log 2>&1 ) & KERN=$!; else echo "kernels done 0 (not needed)" >> $OUT/kernels.log; KERN=""; fi
 # wait for the kernels (up to 30 min); a failed build is reported and the run goes on without them (slower, not wrong)
 kernels_ready() {
   if [ -n "${KERN:-}" ] && kill -0 $KERN 2>/dev/null; then status setup "waiting for the fast kernels to finish building"; for i in $(seq 1 180); do kill -0 $KERN 2>/dev/null || break; sleep 10; done; fi
@@ -166,15 +200,32 @@ kernels_ready() {
 if [ -f $S/llama-ready ]; then echo "llama tools already built"; else
   rm -f $S/llama-failed; ( bash $POD/llama-tools.sh $S $(plan ".get('llama_tag','b11669')") > $OUT/llama-setup.log 2>&1 ) &
 fi
+# build 18: a CUDA llama-server for the benchmark phase, built in the background while the run trains (kept on the volume)
+if [ -n "$(plan ".get('benchmark')")" ] || [ -n "$TG" ]; then
+  if [ -f $S/llama-server-ready ] && [ -x $S/llama.cpp/build-cuda/bin/llama-server ]; then echo "CUDA llama-server already built"; else rm -f $S/llama-server-failed; ( bash $POD/llama-server-build.sh $S $(plan ".get('llama_tag','b11669')") > $OUT/llama-server-build.log 2>&1 ) & fi
+fi
 [ -n "${FORGE_SETUP_ONLY:-}" ] && { kill $WD 2>/dev/null; wait; cat $OUT/llama-setup.log; status done "setup only"; exit 0; }
 TEACHER=$(plan "['teacher']")
-status download "teacher weights ($TEACHER)"
+TREV=$(plan ".get('teacher_revision','')"); REV=(); [ -n "$TREV" ] && REV=(--revision "$TREV")   # pin the teacher to one HF revision (the Lab sets it when the owner gives one)
 dl() { hf download "$@" >/dev/null 2>$OUT/hf-dl.log || { echo "download retry (plain)"; HF_HUB_ENABLE_HF_TRANSFER=0 hf download "$@" >/dev/null 2>>$OUT/hf-dl.log; }; }
-dl "$TEACHER" --local-dir $S/teacher || die "teacher download (see out/hf-dl.log)"
+TGF=""
+if [ -n "$TG" ]; then
+  # build 19: a GGUF teacher (any llama.cpp model on Hugging Face) that only writes lessons through llama-server; no scores, no heal
+  TGR=$(plan "['teacher_gguf']['repo']"); TGP=$(plan "['teacher_gguf']['file']")
+  status download "teacher GGUF ($TGR, $TGP${TREV:+ @ $TREV})"
+  dl "$TGR" --include "$TGP" --local-dir $S/teacher-gguf "${REV[@]}" || die "teacher GGUF download (see out/hf-dl.log)"
+  TGF=$(find $S/teacher-gguf -name "$TGP" -name '*.gguf' | sort | head -1)   # the first part of a split file loads the rest
+  [ -f "$TGF" ] || die "no GGUF in $TGR matched $TGP"
+  du -sh $S/teacher-gguf; echo "teacher GGUF: $(basename "$TGF")"
+  GENERAL_TOKENS=0
+else
+status download "teacher weights ($TEACHER${TREV:+ @ $TREV})"
+dl "$TEACHER" --local-dir $S/teacher "${REV[@]}" || die "teacher download (see out/hf-dl.log)"
 [ -f $S/teacher/config.json ] && ls $S/teacher/*.safetensors >/dev/null 2>&1 || die "teacher download incomplete"
 du -sh $S/teacher
 [ "$S" != "$W" ] && echo "volume: $(df -h $S | awk 'NR==2{print $4" free of "$2}') (a trained teacher needs about 70 GB more; the odds about 20 GB)"
 GENERAL_TOKENS=$(plan ".get('general_tokens',30000000)")
+fi
 if [ "$GENERAL_TOKENS" -gt 0 ] && [ ! -d $S/general ]; then
   status download "general text (FineWeb-Edu sample + Tulu 3 chats)"
   dl HuggingFaceFW/fineweb-edu --repo-type dataset --include "sample/10BT/000_00000.parquet" --local-dir $S/general/fineweb-edu || echo "FineWeb-Edu download failed (going on without it)"
@@ -188,7 +239,26 @@ WL=$(plan ".get('write_lessons')")
 wl() { python3 -c "import json; w=json.load(open('$IN/plan.json'))['write_lessons']; w=w if isinstance(w,list) else [w]; print($1)"; }   # one set or a list of sets
 if [ -z "$WL" ] && ls $IN/lessons-extra-*.jsonl >/dev/null 2>&1; then touch $IN/lessons-ready; fi   # only PC-side extra sets: nothing to write, just merge
 if { [ -n "$WL" ] || [ -f $IN/lessons-ready ]; } && [ ! -f $IN/lessons-merged ]; then
-  if [ ! -f $IN/lessons-ready ]; then
+  if [ ! -f $IN/lessons-ready ] && [ -n "$TGF" ]; then
+    # build 19: wait for the CUDA llama-server (built in the background since setup), then serve the GGUF teacher on port 8001
+    status lessons "waiting for the CUDA llama-server build (teacher GGUF $(basename "$TGF"))"
+    for i in $(seq 1 240); do [ -f $S/llama-server-ready ] || [ -f $S/llama-server-failed ] && break; sleep 10; done
+    LS=$S/llama.cpp/build-cuda/bin/llama-server; export LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}"
+    [ -f $S/llama-server-cmake.log ] && cp -f $S/llama-server-cmake.log $OUT/ 2>/dev/null || true   # keep the build log where salvage can find it
+    [ -x $LS ] || die "no CUDA llama-server for the GGUF teacher (see out/llama-server-build.log and out/llama-server-cmake.log)"
+    TSLOTS=$(plan "['teacher_gguf'].get('slots',6)"); TCTX=$(plan "['teacher_gguf'].get('ctx',32768)")
+    status lessons "loading the teacher GGUF on the card ($TSLOTS slots, $TCTX each)"
+    ( LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" $LS -m "$TGF" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" --alias teacher -c $((TCTX * TSLOTS)) --jinja -fa on -ctk q8_0 -ctv q8_0 -np $TSLOTS -ngl 999 \
+        $(plan "['teacher_gguf'].get('extra','')") > $OUT/teacher-server.log 2>&1 ) &
+    VL=$!
+    for i in $(seq 1 120); do curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/health 2>/dev/null | grep -q 200 && break; kill -0 $VL 2>/dev/null || die "llama-server died (see out/teacher-server.log)"; sleep 10; done
+    curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/health | grep -q 200 || die "llama-server never came up (see out/teacher-server.log)"
+    status lessons "ready: the PC writes the lessons now (port 8001, GGUF teacher)"
+    LW_MAX=$(python3 -c "print(int(($(wl "sum(x.get('hours',1.5) for x in w)")+0.5)*120))")
+    for i in $(seq 1 $LW_MAX); do [ -f $IN/lessons-ready ] && break; kill -0 $VL 2>/dev/null || { status lessons "llama-server died while writing; waiting for the PC to finish or retry"; }; sleep 30; done
+    [ -f $IN/lessons-ready ] || die "the PC never sent the extra lessons"
+    kill $VL 2>/dev/null; sleep 3; pkill -9 -f "llama-server" 2>/dev/null; sleep 2
+  elif [ ! -f $IN/lessons-ready ]; then
     status lessons "starting the full Qwen server for the lesson writer"
     ( vllm serve $S/teacher --served-model-name teacher --port 8001 --api-key "$FORGE_TOKEN" --max-model-len $(wl "max(x.get('ctx',32768) for x in w)") \
         --gpu-memory-utilization 0.90 --max-num-seqs $(wl "max(x.get('seqs',32) for x in w)") --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 \
@@ -202,6 +272,13 @@ if { [ -n "$WL" ] || [ -f $IN/lessons-ready ]; } && [ ! -f $IN/lessons-merged ];
     [ -f $IN/lessons-ready ] || die "the PC never sent the extra lessons"
     pkill -f "vllm serve" 2>/dev/null; sleep 5; pkill -9 -f "vllm" 2>/dev/null
     for i in $(seq 1 60); do U=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1); [ "${U:-0}" -lt 4000 ] && break; sleep 5; done
+  fi
+  if [ -n "$LESSONS_ONLY" ]; then
+    N=$(cat $IN/lessons-ready 2>/dev/null || echo 0)
+    if [ "$S" != "$W" ]; then LD=$S/lessons/$(plan ".get('run','run')"); mkdir -p $LD; cp $IN/lessons-extra-*.jsonl $IN/toolsets-extra-*.json $LD/ 2>/dev/null; cp $OUT/*.log $LD/ 2>/dev/null; echo "lessons kept on the volume at $LD"; fi
+    rm -f $IN/hf-token
+    status done "lessons only: $N lessons written; they are on the PC"
+    exit 0
   fi
   status lessons "merging the extra lessons"
   python3 - $IN <<'PY' || die "lesson merge"
@@ -295,6 +372,112 @@ json.dump({"name":"counts","files":files},open(f"{d}/counts-files.json","w"))
 PY
   [ "$S" != "$W" ] && mkdir -p $S/counts && cp $OUT/counts/*.json $OUT/counts/ladder.md $S/counts/ 2>/dev/null
   status done "counts finished"; exit 0
+fi
+
+# --- rebuild and publish (9 Nov): bring finished Bobs back from the stock teacher + keep list + adapter, make their GGUF files, and put
+# EVERYTHING on Hugging Face: the full-size weights, the adapter, the keep list, the GGUFs and their cards. No training and no teacher
+# pass (no lessons are needed), and NOTHING is copied to the volume: the owner wants the GGUFs off the drive now that Hugging Face hosts them.
+# plan.rebuild: {"models":[{"name":"28Bob","nickname":"Riker","keep_file":"hf:MouseWurX/28Bob-Riker:28Bob-keep.json","adapter":"hf:MouseWurX/28Bob-Riker:28Bob-adapter.pt",
+#   "cards":"hf:MouseWurX/28Bob-Riker","private":false}, {"name":"35Bob","nickname":"Bobert","adapter":"volume:bobs/35Bob/adapter.pt","private":true,"what":"..."}]}
+# No keep_file = no cut (the adapter goes straight onto the stock teacher). keep_file/adapter: hf:<repo>:<path>, volume:<path on the drive>,
+# or a file the PC sent to in/; the drive's bobs/<name>/ is the fallback. private is per Bob (a tested Bob public, an untested one private);
+# publish.private is the fallback. The run ends here: a rebuild plan does nothing else.
+if [ -n "$(plan ".get('rebuild')")" ]; then
+  hf_ok || die "rebuild: plan.publish and the Hugging Face token are needed (everything goes up, nothing comes down)"
+  NR=$(plan "['rebuild']['models']" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"); mkdir -p $W/rebuild $OUT/rebuild
+  for b in $(seq 0 $((NR-1))); do   # every volume: input must be on this drive before anything else is waited for
+    for K in adapter keep_file; do V=$(plan "['rebuild']['models'][$b].get('$K','')"); case "$V" in volume:*) [ -f "$S/${V#volume:}" ] || die "rebuild: $V is not on this drive (the pod must run in the data centre that holds it)";; esac; done
+  done
+  # weights_only (9 Nov): {"name","nickname","source":"volume:bobs/35Bob/model","weights_only":true,"private":true} uploads the full-size
+  # weights of a Bob that is already on the drive, nothing else (no rebuild, no GGUF files, no llama tools): the repair for a failed weights upload.
+  NEED_LLAMA=0; for b in $(seq 0 $((NR-1))); do [ "$(plan "['rebuild']['models'][$b].get('weights_only',False)")" = "True" ] || NEED_LLAMA=1; done
+  if [ $NEED_LLAMA = 1 ]; then
+    status rebuild "waiting for the llama.cpp tools (the GGUF files need them)"
+    for i in $(seq 1 90); do [ -f $S/llama-ready ] || [ -f $S/llama-failed ] && break; sleep 20; done
+    [ -f $S/llama-ready ] || die "rebuild: llama tools unavailable (see out/llama-setup.log)"
+  fi
+  RB_OK=0; RB_WFAIL=""
+  for b in $(seq 0 $((NR-1))); do
+    BN=$(plan "['rebuild']['models'][$b]['name']"); BNICK=$(plan "['rebuild']['models'][$b].get('nickname','')"); MP=$(plan "['rebuild']['models'][$b].get('private','')")
+    if [ "$(plan "['rebuild']['models'][$b].get('weights_only',False)")" = "True" ]; then
+      SRC=$(plan "['rebuild']['models'][$b].get('source','volume:bobs/$BN/model')"); case "$SRC" in volume:*) SRCD=$S/${SRC#volume:} ;; *) SRCD=$W/$SRC ;; esac
+      [ -f "$SRCD/config.json" ] || die "rebuild $BN: no model at $SRC (config.json missing)"
+      [ -f "$SRCD/adapter.pt" ] || { [ -f "$S/bobs/$BN/adapter.pt" ] && cp "$S/bobs/$BN/adapter.pt" "$SRCD/adapter.pt" 2>/dev/null || true; }
+      REPO="$(plan "['publish']['user']")/$BN${BNICK:+-$BNICK}"
+      if [ -n "$MP" ]; then export PUB_PRIVATE="$MP"; else unset PUB_PRIVATE; fi
+      if publish_dir "$SRCD" "$REPO" "$BN full-size weights" model . "*.safetensors" "*.json" "*.jinja" "*.txt" "*.model" "adapter.pt"; then RB_OK=$((RB_OK+1)); else RB_WFAIL="$RB_WFAIL $BN"; fi
+      [ -n "$MP" ] && set_visibility "$REPO" model "$MP"
+      unset PUB_PRIVATE; echo "$BN${BNICK:+ $BNICK}: https://huggingface.co/$REPO"; continue
+    fi
+    KFS=$(plan "['rebuild']['models'][$b].get('keep_file','')"); ADS=$(plan "['rebuild']['models'][$b].get('adapter','')"); RIN=$W/rebuild/in-$BN; mkdir -p $RIN
+    case "$ADS" in volume:*) ADP=$S/${ADS#volume:} ;; "") ADP=$S/bobs/$BN/adapter.pt ;; *) ADP=$(resolve_in "$ADS" $RIN) ;; esac
+    case "$KFS" in volume:*) KFP=$S/${KFS#volume:} ;; "") KFP="" ;; *) KFP=$(resolve_in "$KFS" $RIN) ;; esac
+    [ -f "$ADP" ] || { [ -f $S/bobs/$BN/adapter.pt ] && ADP=$S/bobs/$BN/adapter.pt; }
+    [ -n "$KFS" ] && [ ! -f "$KFP" ] && [ -f $S/bobs/$BN/bob-keep.json ] && KFP=$S/bobs/$BN/bob-keep.json
+    [ -f "$ADP" ] || die "rebuild $BN: adapter missing ($ADS) -- a volume: path needs the pod in the data centre that holds that drive"
+    if [ -n "$KFS" ] && [ ! -f "$KFP" ]; then die "rebuild $BN: keep list missing ($KFS)"; fi
+    KFARG=(); [ -n "$KFS" ] && KFARG=(--keep-file "$KFP")
+    status rebuild "$BN: rebuilding from the stock teacher${KFS:+, his keep list} and his adapter"
+    rm -rf $W/rebuild/$BN $W/rebuild/$BN-cut
+    python3 rebuild.py --teacher $S/teacher "${KFARG[@]}" --adapter "$ADP" --dst $W/rebuild/$BN --name $BN > $OUT/rebuild/$BN-rebuild.log 2>&1 || { echo "rebuild $BN failed (see out/rebuild/$BN-rebuild.log)"; tail -3 $OUT/rebuild/$BN-rebuild.log; status rebuild "$BN: rebuild FAILED"; continue; }
+    status export "$BN: making the GGUF files"
+    WHAT=$(plan "['rebuild']['models'][$b].get('what','')"); WARG=(); [ -n "$WHAT" ] && WARG=(--what "$WHAT")
+    rm -rf "${OUT:?}"/"${BN:?}"; python3 export.py --model $W/rebuild/$BN --out $OUT/$BN --name "$BN" --nickname "$BNICK" --teacher "$TEACHER" --jobs "$(plan ".get('jobs','bob,deep,tinker,reviewer,office,ledger,scout')")" --llama $S/llama.cpp --quants $(plan ".get('quants','Q4_K_M')") --pending "${WARG[@]}" > $OUT/rebuild/$BN-export.log 2>&1 || { echo "export $BN failed (see out/rebuild/$BN-export.log)"; tail -3 $OUT/rebuild/$BN-export.log; status export "$BN: export FAILED"; continue; }
+    # the home benchmark block from the scored cards (plan cards: hf:<repo>, or cards the PC sent to in/) goes onto the fresh cards
+    CSRC=$(plan "['rebuild']['models'][$b].get('cards','')"); mkdir -p $W/rebuild/cards-$BN
+    case "$CSRC" in hf:*) for f in $OUT/$BN/*.bob.json; do hf_get "${CSRC#hf:}" "$(basename $f)" $W/rebuild/cards-$BN || true; done ;; *) cp $IN/$BN-*.bob.json $W/rebuild/cards-$BN/ 2>/dev/null ;; esac
+    python3 - $OUT/$BN $W/rebuild/cards-$BN <<'PY'
+import json,glob,os,sys; d,c=sys.argv[1:3]
+for f in glob.glob(f"{d}/*.bob.json"):
+    o=os.path.join(c,os.path.basename(f))
+    if os.path.exists(o):
+        new=json.load(open(f)); old=json.load(open(o))
+        if old.get("benchmark"): new["benchmark"]=old["benchmark"]; json.dump(new,open(f,"w"),indent=1); print("benchmark block kept for",os.path.basename(f))
+PY
+    # the small files sit in the repo root with everything else
+    [ -n "$KFS" ] && cp "$KFP" $OUT/$BN/$BN-keep.json; cp "$ADP" $OUT/$BN/$BN-adapter.pt
+    REPO="$(plan "['publish']['user']")/$BN${BNICK:+-$BNICK}"
+    if [ -n "$MP" ]; then export PUB_PRIVATE="$MP"; else unset PUB_PRIVATE; fi
+    write_model_card $OUT/$BN "$BN" "$BNICK"
+    publish_dir $OUT/$BN "$REPO" "$BN GGUF files, cards, keep list and adapter" model . "*.gguf" "*.bob.json" "README.md" "$BN-keep.json" "$BN-adapter.pt" || echo "publish $BN (GGUF files) failed"
+    publish_dir $W/rebuild/$BN "$REPO" "$BN full-size weights" model . "*.safetensors" "*.json" "*.jinja" "*.txt" "*.model" "adapter.pt" || { echo "publish $BN (weights) failed"; RB_WFAIL="$RB_WFAIL $BN"; }
+    [ -n "$MP" ] && set_visibility "$REPO" model "$MP"
+    unset PUB_PRIVATE
+    # every GGUF is on Hugging Face: the PC downloads nothing (the file list says where each one is), then the list is released
+    [ -f $OUT/$BN/$BN-files.json.pending ] && python3 - $OUT/$BN/$BN-files.json.pending "$REPO" <<'PY'
+import json,sys; p=sys.argv[1]; j=json.load(open(p))
+for f in j["files"]:
+    if f["file"].endswith(".gguf"): f["published"]=f"https://huggingface.co/{sys.argv[2]}/blob/main/{f['file']}"
+j["repo"]=sys.argv[2]; json.dump(j,open(p,"w"),indent=1)
+PY
+    release_files $BN "$BN"
+    echo "$BN${BNICK:+ $BNICK}: https://huggingface.co/$REPO"
+    rm -rf $W/rebuild/$BN $W/rebuild/$BN-cut $W/rebuild/cards-$BN; RB_OK=$((RB_OK+1))   # free the pod disk for the next Bob
+    status ready "$BN is on Hugging Face"
+  done
+  rm -f $IN/hf-token
+  [ "$RB_OK" -gt 0 ] || die "rebuild: no Bob was rebuilt"
+  [ -z "$RB_WFAIL" ] || echo "FULL-SIZE WEIGHTS MISSING on Hugging Face for:$RB_WFAIL (see out/publish/*.log); a weights_only plan uploads them from the drive"
+  # plan.drive_delete ["bobs/35Bob/gguf", ...]: drive folders the owner wants gone once Hugging Face hosts them. Only when every upload in
+  # this run succeeded, only under bobs/ or runs/ (never the teacher, the odds, an adapter or a keep list), and what was removed is listed.
+  if [ -z "$RB_WFAIL" ] && [ "$RB_OK" = "$NR" ] && [ "$S" != "$W" ]; then
+    for DD in $(plan ".get('drive_delete',[])" | python3 -c "import json,sys; print(' '.join(json.load(sys.stdin)))"); do
+      case "$DD" in bobs/*/gguf|bobs/*/gguf/*|runs/*) [ -e "$S/$DD" ] && { du -sh "$S/$DD" | sed 's/^/drive_delete: removing /'; rm -rf "${S:?}/$DD"; } || echo "drive_delete: $DD was not on the drive";; *) echo "drive_delete: $DD refused (only bobs/<name>/gguf and runs/ may be removed)";; esac
+    done
+    drive_list
+  fi
+  status done "rebuild finished: $RB_OK of $NR Bobs on Hugging Face${RB_WFAIL:+; full-size weights FAILED for$RB_WFAIL}"; exit 0
+fi
+
+# --- teach-it (9 Nov): plan.odds false with no rungs = an adapter-only fine-tune of the full teacher (train_teacher above) and nothing
+# else. Without this, "no rungs" is the lessons-and-odds run type and the fresh brain would spend hours scoring every lesson for odds
+# nobody asked for. The taught Bob (his GGUF files + adapter) is the whole result; he has come back or gone up in keep_bob already.
+if [ "$(plan ".get('odds','')")" = "False" ] && [ "$(plan "['rungs'].__len__()")" = "0" ]; then
+  echo "odds: false and no rungs: no teacher pass (a teach-it run; the taught Bob is the result)"
+  publish_tested
+  if [ "$S" != "$W" ]; then RT=$S/runs/$(plan ".get('run','run')")-$(date -u +%Y%m%dT%H%M); mkdir -p $RT; cp $OUT/*.log $OUT/*.json $OUT/*.txt $RT/ 2>/dev/null; for d in $OUT/*/; do [ -d "$d" ] && { mkdir -p $RT/$(basename $d); cp $d/*.json $d/*.md $d/*.txt $RT/$(basename $d)/ 2>/dev/null; }; done; echo "run files kept on the volume at $RT"; fi
+  rm -f $IN/hf-token
+  status done "teach-it finished: ${TNAME:-the taught Bob} is ready"; exit 0
 fi
 
 # --- teacher pass (once per lesson set, build 15): what the full Qwen thinks at every answer word (loaded in this process, no server) ---
@@ -453,6 +636,78 @@ PY
   # free disk: keep only the newest healed Bob (the next rung is cut from it)
   [ "$FROM" != "teacher" ] && [[ "$FROM" != */* ]] && [ -z "$(plan ".get('keep_healed','')")" ] && rm -rf $W/healed-$FROM   # keep_healed: every healed Bob stays (on a network volume, for the next session)
 done
+# --- benchmark on the card (build 18): the same brains, the same tests, a big card. The pod serves one brain at a time with a CUDA
+# llama-server on port 8001 (the PC runs its own test scripts over the URL, so home and rental numbers come from identical tests);
+# a brain can be rebuilt from the stock teacher + keep list + adapter (the owner's point, 8 Nov: no 17 GB upload from the PC).
+# plan.benchmark: {"models":[{"name":"28Bob","nickname":"Riker","file":"rebuild","keep_file":"hf:MouseWurX/28Bob-Riker:28Bob-keep.json",
+#   "adapter":"hf:MouseWurX/28Bob-Riker:28Bob-adapter.pt","cards":"hf:MouseWurX/28Bob-Riker","quant":"Q4_K_M","slots":1,"ctx":32768,"extra":""},
+#   {"name":"35Bob","file":"volume:bobs/35Bob/gguf/35Bob-Q4_K_M.gguf"}, {"name":"20Bob","file":"out:20Bob/20Bob-Q4_K_M.gguf"}], "hours_each":2}
+# file: rebuild | hf:<repo>:<path> | volume:<path on the drive> | out:<path in this run's out>. keep_file/adapter: hf:<repo>:<path> or a file the PC sent to in/.
+if [ -n "$(plan ".get('benchmark')")" ]; then
+  for i in $(seq 1 120); do [ -f $S/llama-server-ready ] || [ -f $S/llama-server-failed ] && break; sleep 20; done
+  LS=$S/llama.cpp/build-cuda/bin/llama-server; export LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}"
+  [ -f $S/llama-server-cmake.log ] && cp -f $S/llama-server-cmake.log $OUT/ 2>/dev/null || true
+  if [ -f $S/llama-server-ready ] && [ -x $LS ]; then
+    NB=$(plan "['benchmark']['models']" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"); mkdir -p $W/bench $OUT/bench
+    for b in $(seq 0 $((NB-1))); do
+      BN=$(plan "['benchmark']['models'][$b]['name']"); BF=$(plan "['benchmark']['models'][$b].get('file','')"); BQ=$(plan "['benchmark']['models'][$b].get('quant','Q4_K_M')"); BNICK=$(plan "['benchmark']['models'][$b].get('nickname','')")
+      case "$BF" in
+        rebuild)
+          BFILE=$S/bobs/$BN/gguf/$BN-$BQ.gguf
+          if [ ! -f "$BFILE" ]; then
+            KFP=$(resolve_in "$(plan "['benchmark']['models'][$b].get('keep_file','')")" $W/bench/in-$BN); ADP=$(resolve_in "$(plan "['benchmark']['models'][$b].get('adapter','')")" $W/bench/in-$BN)
+            [ -f $S/bobs/$BN/bob-keep.json ] && [ ! -f "$KFP" ] && KFP=$S/bobs/$BN/bob-keep.json; [ -f $S/bobs/$BN/adapter.pt ] && [ ! -f "$ADP" ] && ADP=$S/bobs/$BN/adapter.pt
+            { [ -f "$KFP" ] && [ -f "$ADP" ]; } || { echo "bench $BN: keep list or adapter missing (plan keep_file/adapter, or volume bobs/$BN); skipped"; continue; }
+            status bench "$BN: rebuilding from the stock teacher, his keep list and his adapter"
+            python3 rebuild.py --teacher $S/teacher --keep-file "$KFP" --adapter "$ADP" --dst $W/bench/rebuilt-$BN --name $BN > $OUT/bench/$BN-rebuild.log 2>&1 || { echo "bench $BN: rebuild failed (see out/bench/$BN-rebuild.log)"; continue; }
+            mkdir -p $S/bobs/$BN && cp "$KFP" $S/bobs/$BN/bob-keep.json && cp "$ADP" $S/bobs/$BN/adapter.pt
+            status export "$BN: making the GGUF files again"
+            rm -rf "${OUT:?}"/"${BN:?}"; python3 export.py --model $W/bench/rebuilt-$BN --out $OUT/$BN --name "$BN" --nickname "$BNICK" --teacher "$TEACHER" --jobs "$(plan ".get('jobs','bob,deep,tinker,reviewer,office,ledger,scout')")" --llama $S/llama.cpp --quants $(plan ".get('quants','Q4_K_M')") --pending > $OUT/bench/$BN-export.log 2>&1 || { echo "bench $BN: export failed (see out/bench/$BN-export.log)"; continue; }
+            rm -rf "${W:?}"/bench/rebuilt-"${BN:?}"
+            # the home benchmark block comes from the scored cards (plan cards: hf:<repo> or cards the PC sent to in/); the rebuilt files get it
+            CSRC=$(plan "['benchmark']['models'][$b].get('cards','')"); mkdir -p $W/bench/cards-$BN
+            case "$CSRC" in hf:*) for f in $OUT/$BN/*.bob.json; do hf_get "${CSRC#hf:}" "$(basename $f)" $W/bench/cards-$BN || true; done ;; *) cp $IN/$BN-*.bob.json $W/bench/cards-$BN/ 2>/dev/null ;; esac
+            python3 - $OUT/$BN $W/bench/cards-$BN <<'PY'
+import json,glob,os,sys; d,c=sys.argv[1:3]
+for f in glob.glob(f"{d}/*.bob.json"):
+    o=os.path.join(c,os.path.basename(f))
+    if os.path.exists(o):
+        new=json.load(open(f)); old=json.load(open(o))
+        if old.get("benchmark"): new["benchmark"]=old["benchmark"]; json.dump(new,open(f,"w"),indent=1); print("benchmark block kept for",os.path.basename(f))
+PY
+            keep_bob $BN "$BN" "$BNICK"
+            # the PC already has this Bob: every file stays on the volume (nothing re-downloaded)
+            [ -f $OUT/$BN/$BN-files.json.pending ] && python3 - $OUT/$BN/$BN-files.json.pending $BN <<'PY'
+import json,sys; p,d=sys.argv[1:3]; j=json.load(open(p))
+for f in j["files"]:
+    if f["file"].endswith(".gguf") and not f.get("published"): f["volume"]=f"bobs/{d}/gguf/{f['file']}"
+json.dump(j,open(p,"w"),indent=1)
+PY
+            release_files $BN "$BN"
+          fi ;;
+        hf:*) REPO=$(echo "$BF" | cut -d: -f2); FP=$(echo "$BF" | cut -d: -f3); status bench "$BN: downloading $FP from Hugging Face"
+          hf_get "$REPO" "$FP" $W/bench/hf-$BN || { echo "bench $BN: download failed"; continue; }; BFILE=$W/bench/hf-$BN/$FP ;;
+        volume:*) BFILE=$S/${BF#volume:} ;;
+        out:*) BFILE=$OUT/${BF#out:} ;;
+        *) echo "bench $BN: unknown file spec '$BF'"; continue ;;
+      esac
+      [ -f "$BFILE" ] || { echo "bench $BN: $BFILE is missing; skipped"; continue; }
+      SLOTS=$(plan "['benchmark']['models'][$b].get('slots',1)"); CTX=$(plan "['benchmark']['models'][$b].get('ctx',32768)")
+      status bench "$BN: loading on the card ($(basename $BFILE))"
+      LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" $LS -m "$BFILE" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" -c $CTX --jinja -fa on -ctk q8_0 -ctv q8_0 -np $SLOTS -ngl 999 $(plan "['benchmark']['models'][$b].get('extra','')") > $OUT/bench/$BN-server.log 2>&1 &
+      BS=$!
+      for i in $(seq 1 90); do curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/health 2>/dev/null | grep -q 200 && break; kill -0 $BS 2>/dev/null || break; sleep 10; done
+      kill -0 $BS 2>/dev/null || { echo "bench $BN: llama-server died (see out/bench/$BN-server.log)"; tail -3 $OUT/bench/$BN-server.log; continue; }
+      rm -f $IN/bench-done-$BN
+      status bench "$BN ready: the PC runs the tests now (port 8001, $SLOTS slot(s), ctx $CTX)"
+      BH=$(plan "['benchmark'].get('hours_each',2)")
+      for i in $(seq 1 $(python3 -c "print(int($BH*120))")); do [ -f $IN/bench-done-$BN ] && break; kill -0 $BS 2>/dev/null || { echo "bench $BN: the server died during the tests"; break; }; sleep 30; done
+      kill $BS 2>/dev/null; wait $BS 2>/dev/null; sleep 3
+      if [ -f $IN/bench-done-$BN ]; then echo "bench $BN: the PC finished its tests"; else echo "bench $BN: time ran out (hours_each $BH)"; fi
+    done
+    status bench "finished: the reports are on the PC under out/bench"
+  else echo "bench: no CUDA llama-server (see out/llama-server-build.log); skipped"; status bench "skipped: no CUDA llama-server"; fi
+fi
 # every log and report of this run stays on the volume too
 if [ "$S" != "$W" ]; then RT=$S/runs/$(plan ".get('run','run')")-$(date -u +%Y%m%dT%H%M); mkdir -p $RT; cp $OUT/*.log $OUT/*.json $OUT/*.txt $RT/ 2>/dev/null; for d in $OUT/*/; do [ -d "$d" ] && { mkdir -p $RT/$(basename $d); cp $d/*.json $d/*.md $d/*.txt $RT/$(basename $d)/ 2>/dev/null; }; done; echo "run files kept on the volume at $RT"; fi
 rm -f $IN/hf-token

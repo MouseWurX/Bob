@@ -114,6 +114,8 @@ export async function pauseGate(out) {
 
 // ---------- llama-server ----------
 export async function startServer({ server, model, mmproj, ctx = 32768, port = 8091, extra = [], logFile }) {
+  // build 18: LAB_URL (or --url in the scripts) = a server somebody else runs, such as the Forge's rented card; nothing is started here
+  if (process.env.LAB_URL) return { url: process.env.LAB_URL, stop: async () => {}, child: null, loadSec: 0, remote: true };
   if (!fs.existsSync(server)) throw new Error(`llama-server not found at ${server}. Pass --llama <folder>.`);
   const args = ['-m', model, '--host', '127.0.0.1', '--port', String(port), '-c', String(ctx), '--jinja', '-fa', 'on', '-ctk', 'q8_0', '-ctv', 'q8_0', '-np', '1', '--fit', 'on', ...(mmproj ? ['--mmproj', mmproj] : []), ...extra];
   const log = logFile ? fs.createWriteStream(logFile, { flags: 'a' }) : null;
