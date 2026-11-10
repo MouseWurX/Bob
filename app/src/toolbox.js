@@ -11,7 +11,7 @@ import { makerWords, makerWhat } from './selftools.js';
 import { mcpWords, mcpWhat } from './mcp.js';
 import { selfWorkWords } from './self-work.js';
 
-export const CORE = ['notice_board', 'remember', 'reminders', 'list_folder', 'read_file', 'web_search', 'fetch_page', 'bob_help', 'ask_specialist', 'show_made', 'pick_session', 'offer_setup', 'use_tools'];
+export const CORE = ['notice_board', 'remember', 'reminders', 'list_folder', 'read_file', 'web_search', 'fetch_page', 'bob_help', 'ask_specialist', 'show_made', 'pick_session', 'edit_my_message', 'offer_setup', 'use_tools'];
 
 // Groups Bob can add. `what` is what Bob reads in use_tools; `words` is the cheap pre-check on the user's message.
 const WORK_GROUPS = {

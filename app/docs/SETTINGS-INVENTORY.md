@@ -247,3 +247,11 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | Settings > Everyday > Tools and how-tos Bob made > 🗑 Recently deleted | Fold: "N waiting · each kept 30 days" / "nothing waiting". Each: name, kind, "gone for good <date>", Put back / Delete for good (asks: "Delete "<name>" for good? Its folder goes to the Recycle Bin." or "There's no getting it back." Delete for good / Keep it). Delete for good only on that replicant matrix itself (phone: 403 with words). | — | ok (approved with edits, 1.5.144) |
 | Settings > Show advanced settings > Hands > Tools Bob made > Remove | Now: "Removed. It waits 30 days under Recently deleted in 🧰 Tools and how-tos Bob made, where you can put it back; then its folder goes to the Recycle Bin." | — | ok (approved with edits, 1.5.144) |
 | Phone > Settings > Tools and how-tos Bob made | Same list from the first reachable Bob: Tools he wrote (N), How-tos he kept (N), Recently deleted (N); Delete (asks: Delete "<name>"? Delete / Keep it), Undo, Put back. Delete for good and Edit: on the PC. | — | ok (approved with edits, 1.5.144) |
+
+## Added with Let Bob fix his own messages
+
+| Where | Setting / text | Default | Status |
+|---|---|---|---|
+| Settings > Everyday > How Bob works | Let Bob fix his own messages: "Off unless you turn it on. When Bob gets something wrong, or a status line goes out of date, he changes his earlier message instead of sending a new one. Only his own messages, only in the chat he's in. The message says edited, and pressing that shows what it said first." | off | new (1.5.194) |
+| Chat page > under a message Bob changed | "edited" (button; title "Bob changed this message. Press to see what it said first."). Pressed: "First said: <the first wording>". | — | new (1.5.194) |
+| Discord DMs / Telegram / phone | A fix to a message already sent: "✏️ Fixed an earlier message. It now says: <new words>" (Discord DMs change the DM itself when it was one message). | — | new (1.5.194) |

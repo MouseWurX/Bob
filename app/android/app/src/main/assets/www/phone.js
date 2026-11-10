@@ -454,7 +454,12 @@
     else if (ev.type === 'made') {
       for (const it of ev.items || []) if (it.kind === 'audio' && it.url) { const x = { kind: 'audio', url: it.url, base }; current.media.push(x); current.node.append(mediaNode(x)); }
     }
-    else if (ev.type === 'tool') toast(`${bobName(base)}: ${ev.summary || ev.name}`);
+    else if (ev.type === 'edited') { // Let Bob fix his own messages: the fix goes into this reply's words, or one short line
+      const before = String(ev.before || '');
+      if (before && current.text.includes(before)) { current.text = current.text.replace(before, String(ev.text || '')); grow(''); }
+      else grow(`\n\n*✏️ Fixed an earlier message. It now says:* ${ev.text || ''}`);
+    }
+    else if (ev.type === 'tool') { if (ev.name !== 'edit_my_message') toast(`${bobName(base)}: ${ev.summary || ev.name}`); }
     else if (ev.type === 'error') grow(`\n\n*(${ev.text})*`);
     else if (ev.type === 'correction' || ev.type === 'busy-note' || ev.type === 'announce' || ev.type === 'aside') grow(`\n\n*${ev.text}*`);
     else if (ev.type === 'waiting-line') { if (!seenWaits.has(ev.id)) { seenWaits.add(ev.id); grow(`\n\n*${ev.text}*`); } } // 1.5.97: once per wait

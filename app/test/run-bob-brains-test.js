@@ -39,12 +39,14 @@ const fakeHF = ({ private: priv = [], missing = [] } = {}) => async (u) => {
   check(all.every((m) => m.files.length === 1 && /^https:\/\/huggingface\.co\/MouseWurX\/\d+Bob-\w+\/resolve\/[0-9a-f]{40}\//.test(m.files[0].url) && /^[0-9a-f]{64}$/.test(m.files[0].sha256) && m.files[0].bytes > 1e9 && m.files[0].verify), 'every file is pinned to a commit with its size and sha256');
   check(all.every((m) => /^\d{4}-\d{2}-\d{2}$/.test(m.published) && m.license === 'Apache 2.0' && m.jobs.length), 'each has a release day, licence and jobs');
   check(by('riker-28b').sizeGB === 17.5 && by('riker-28b-q3').sizeGB === 13.9, 'the size comes from the real file');
-  check(by('riker-28b-q3').squeezedOf === 'riker-28b' && by('riker-28b-q3').maxCardGB === 8 && by('bobert-35b-q3').squeezedOf === 'bobert-35b', 'the Q3s are the 8 GB card versions of the Q4s');
+  check(!by('riker-28b-q3').squeezedOf && !by('riker-28b-q3').maxCardGB && by('riker-28b-q3').bench && by('riker-28b-q3').vramGB <= 16, 'Riker\'s Q3 is a full 16 GB option (benchmarked within a point of the Q4), not a squeezed copy');
+  check(by('bobert-35b-q3').squeezedOf === 'bobert-35b' && by('bobert-35b-q3').maxCardGB === 8, 'Bobert\'s Q3 stays the 8 GB card version until his numbers are in');
+  check(!by('riker-28b').bobPick.length, 'Riker\'s Q4 is listed but no longer anyone\'s default');
   check(!by('qwen3.6-35b-a3b').dated && by('qwen3.6-35b-a3b'), 'Qwen3.6 35B-A3B stays in the list as it was');
 
   // Defaults on a 16 GB card (the ★ pick for each job)
   const hw = { vramGB: 16, ramGB: 32, packs: cat.packs };
-  check(pickFor('bob', cat.models, hw)?.id === 'riker-28b', `16 GB card: Riker is the everyday pick (${pickFor('bob', cat.models, hw)?.id})`);
+  check(pickFor('bob', cat.models, hw)?.id === 'riker-28b-q3', `16 GB card: Riker (quick) is the everyday pick (${pickFor('bob', cat.models, hw)?.id})`);
   check(pickFor('tinker', cat.models, hw)?.id === 'bobert-35b', `16 GB card: Bobert is the Coding pick (${pickFor('tinker', cat.models, hw)?.id})`);
   check(pickFor('deep', cat.models, hw)?.id === 'bobert-35b', `16 GB card: Bobert is the Deep thinking pick (${pickFor('deep', cat.models, hw)?.id})`);
   check(/Bob's own brain/.test(pickFor('bob', cat.models, hw)?.why || ''), 'the reason says it\'s Bob\'s own brain');
@@ -53,10 +55,10 @@ const fakeHF = ({ private: priv = [], missing = [] } = {}) => async (u) => {
 
   // Starter sets
   const big = packFor(cat.packs, 16), mid = packFor(cat.packs, 8);
-  check(big.slots['riker-28b']?.join() === 'bob' && big.slots['bobert-35b']?.join() === 'tinker,deep', 'Get Bob ready, 16 GB: Riker for Bob, Bobert for Coding and Deep thinking');
+  check(big.slots['riker-28b-q3']?.join() === 'bob' && !big.models.includes('riker-28b') && big.slots['bobert-35b']?.join() === 'tinker,deep', 'Get Bob ready, 16 GB: Riker (quick) for Bob, Bobert for Coding and Deep thinking');
   check(!big.models.includes('qwen3.6-35b-a3b') && big.slots['gemma4-26b']?.join() === 'office', '...the full Qwen leaves the set; Gemma 4 26B keeps Office');
   check(mid.slots['bobert-35b-q3']?.join() === 'tinker' && mid.tick.includes('bobert-35b-q3') && !mid.models.includes('qwen3-coder-30b'), 'Get Bob ready, 8 GB: Bobert\'s 8 GB version codes, ticked');
-  check(mid.slots['riker-28b-q3']?.join() === 'deep' && !mid.tick.includes('riker-28b-q3'), '...and Riker\'s 8 GB version thinks deep, unticked (slow there)');
+  check(!mid.models.some((id) => /riker/.test(id)), '...and no Riker on 8 GB cards: smaller Bobs will fit those better');
   check(Object.keys(big.slots).every((id) => big.models.includes(id)) && Object.keys(mid.slots).every((id) => mid.models.includes(id)), 'every starter slot names a model in its set');
 
   // The file: only the Bobs' entries, the starter sets and the day change; it stays valid JSON.
@@ -76,8 +78,8 @@ const fakeHF = ({ private: priv = [], missing = [] } = {}) => async (u) => {
   check(/isn't public/.test(err), `a private page is refused (${err})`);
   const c2 = fresh();
   const r2 = await fillBobBrains(c2, { fetchImpl: fakeHF({ private: ['MouseWurX/35Bob-Bobert'] }), only: 'riker' });
-  check(r2.added.join() === 'riker-28b,riker-28b-q3' && !c2.models.some((m) => /bobert/.test(m.id)) && !packFor(c2.packs, 16).models.includes('bobert-35b'), '--only riker puts Riker in and leaves Bobert out');
-  check(pickFor('tinker', c2.models, { vramGB: 16, ramGB: 32 })?.id !== 'riker-28b' || true, 'Riker alone doesn\'t claim Coding');
+  const before = fresh();
+  check(r2.added.join() === 'riker-28b,riker-28b-q3' && JSON.stringify(c2.models.filter((m) => /bobert/.test(m.id))) === JSON.stringify(before.models.filter((m) => /bobert/.test(m.id))), '--only riker puts Riker in and leaves Bobert as he was');
   const c3 = fresh();
   const err3 = await fillBobBrains(c3, { fetchImpl: fakeHF({ missing: ['28Bob-Q3_K_M.gguf'] }), only: 'riker' }).then(() => '', (e) => e.message);
   check(/isn't there/.test(err3), 'a missing file is refused');

@@ -4,6 +4,22 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.194
+
+My own brains take over as the defaults.
+
+### Riker and Bobert are Bob's default brains
+
+- **28Bob Riker (quick)** is my everyday brain on 16 GB cards. It's the smaller Riker file. On my tests it scores within a point of the bigger file, and it answers about half again as fast: ARC-Challenge 94.3% against 93.9%, 170 against 111 tokens a second. The bigger Riker file stays in the list for anyone who wants it.
+- **35Bob Bobert**, the whole Qwen3.6 35B taught my ways, does Coding and Deep thinking on 16 GB cards. His smaller file is the coder for 8 GB cards, ticked in that starter set, in place of Qwen3 Coder 30B. Both files are pinned to the exact version on Hugging Face and checked when they download.
+- Starter sets: 16 GB is Riker (quick) for chat, Bobert for coding and deep thinking, and Gemma 4 26B for office work. 8 GB gets Bobert's smaller file for coding.
+- The Qwen brains they took over from stay in the Brain catalogue.
+- Help: the FAQ **Why is Riker or Bobert my pick?** says all this.
+
+### New: Let Bob fix his own messages (off)
+
+- **Settings, How Bob works: Let Bob fix his own messages.** It's off unless you turn it on. When it's on and I get something wrong, or a status line I posted goes out of date, I change my earlier message instead of posting a new one. The chat window marks the message **edited**, and pressing that shows what it said first. It works the same in Discord DMs, Telegram and the phone app. I can only change my own messages, never yours. Help covers it in the glossary, and the user guide has it too. Tests in `test/run-edit-own-test.js`.
+
 ## 1.5.193
 
 A brain bigger than your card and memory together now loads from the drive instead of failing, and Bob can keep a big brain's busy experts on the graphics card.
