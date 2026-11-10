@@ -485,6 +485,16 @@ fi
 # data centre skips the pass), and on the PC (out/teacher/<key>/, downloaded as soon as they exist; a later pod with a fresh
 # volume gets them uploaded back instead of redoing the pass). The key names the lesson set exactly: the merged lessons +
 # toolsets, the teacher, top, max_len and the general-text budget. Rental 2 lost 2.5 h of this when the card deleted itself.
+# plan.lessons_set "<key>" (10 Nov): take the lesson set an earlier run kept on the drive (lessons/<key>/) instead of the PC's upload,
+# so the key is the same by construction and the teacher scores under it are reused. A PC copy that drifted by one byte would
+# otherwise cost a whole new teacher pass. The plan's teacher, top, max_len and general budget must still match: checked below.
+LSET=$(plan ".get('lessons_set','')")
+if [ -n "$LSET" ]; then
+  if [ "$S" != "$W" ] && [ -f $S/lessons/$LSET/lessons.jsonl ] && [ -f $S/lessons/$LSET/toolsets.json ]; then
+    cp $S/lessons/$LSET/lessons.jsonl $IN/lessons.jsonl && cp $S/lessons/$LSET/toolsets.json $IN/toolsets.json || die "copying lesson set $LSET from the drive"
+    echo "lesson set $LSET taken from the drive ($(wc -l < $IN/lessons.jsonl) lessons); the PC's set is not used"
+  else echo "lesson set $LSET is not on this drive (lessons/$LSET/): the PC's set is used and must give the same key"; fi
+fi
 KEY=$(python3 - $IN "$TEACHER_ID" "$(plan ".get('top',32)")" "$(plan ".get('max_len',8192)")" "$GENERAL_TOKENS" <<'PY'
 import hashlib,sys; h=hashlib.sha256()
 for f in ("lessons.jsonl","toolsets.json"):
@@ -492,6 +502,7 @@ for f in ("lessons.jsonl","toolsets.json"):
 h.update("|".join(sys.argv[2:]).encode()); print(h.hexdigest()[:16])
 PY
 )
+[ -n "$LSET" ] && [ "$KEY" != "$LSET" ] && die "lessons_set $LSET was asked for but this plan's key is $KEY: the teacher, top, max_len or general_tokens differ from the run that made it (fix the plan; no pass was started)"
 TDIR=$OUT/teacher; mkdir -p $TDIR; TPT=$TDIR/teacher.pt; CACHE=$TDIR/lessons-tok.pt; TC=$S/teacher-cache/$KEY
 echo "$KEY" > $TDIR/teacher-key.txt
 # keep the whole lesson set on the network volume beside its scores (the owner wants every input and output kept)

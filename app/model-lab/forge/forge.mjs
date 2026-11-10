@@ -319,7 +319,8 @@ if (args.restart) {
     if (!m.cards) for (const c of fs.existsSync(path.join(outDir, 'bobs', m.name)) ? fs.readdirSync(path.join(outDir, 'bobs', m.name)).filter((f) => f.endsWith('.bob.json')) : []) await upload(c, path.join(outDir, 'bobs', m.name, c));
   }
   // lesson sets already on the PC (e.g. out/lessons-coding) go up as extra sets too; the pod merges them with the rest
-  for (const [i, d] of (plan.extra_lessons || []).entries()) { // a folder (its lessons.jsonl) or a .jsonl file (with the toolsets.json beside it)
+  if (plan.lessons_set) log(`lessons_set ${plan.lessons_set}: the pod takes that lesson set from the drive; the PC's extra sets are not sent`);
+  for (const [i, d] of (plan.lessons_set ? [] : (plan.extra_lessons || [])).entries()) { // a folder (its lessons.jsonl) or a .jsonl file (with the toolsets.json beside it)
     const dd = path.resolve(here, '..', d); const lf = d.endsWith('.jsonl') ? dd : path.join(dd, 'lessons.jsonl'); const tf = path.join(path.dirname(lf), 'toolsets.json');
     await upload(`lessons-extra-pc${i}.jsonl`, lf); await upload(`toolsets-extra-pc${i}.json`, tf);
   }
