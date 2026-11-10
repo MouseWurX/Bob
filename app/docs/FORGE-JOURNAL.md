@@ -178,7 +178,7 @@ No card. Work on the lesson set and the Forge, all on paper and on the PC.
 |---|---|
 | Bobs made | 5: Riker v1, Bill v1, Riker v2, Bill v2 (all four retired and deleted 8 Nov), and Riker (28Bob) |
 | Bobs that are the current plan | Riker (28Bob), kept; Bobert (35Bob) and Bill (20Bob) next |
-| Failed paid attempts | 5 (three on 4 to 5 Nov, one on 6 Nov, one on 9 Nov) plus the stopped Bill step of 6 to 7 Nov |
+| Failed paid attempts | 6 (three on 4 to 5 Nov, one on 6 Nov, two on 9 Nov) plus the stopped Bill step of 6 to 7 Nov |
 | Outside lesson sets dropped for quality | 1 of 5 (GLM-5.1 agent traces, 8 Nov) |
 | Lessons written | about 9,500 across 17 sets (Bob's own); plus 9,059 taken from other teachers' published sets after a quality pass |
 | Card time | on the costs page |
@@ -210,6 +210,6 @@ No card. Work on the lesson set and the Forge, all on paper and on the PC.
 
 ### 9 November, later: Riker and Bobert on Hugging Face
 
-- **Published from a card, not trained.** A new Forge run type puts a finished Bob back together from the stock model, his keep list and his adapter (a merge of about fifteen minutes on an H200, no training), exports Q4 and Q3, and uploads everything to Hugging Face: the GGUF files, the brain cards, the adapter, the keep list, a README, and the full-size weights. Riker (28Bob), tested at home and kept, is public: [MouseWurX/28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker). Bobert (35Bob) went up private and stays so until he passes his home test; his full-size weights did not upload with the rest, which is being looked at. The run came to $5.44 and the card deleted itself.
+- **Published from a card, not trained.** A new Forge run type puts a finished Bob back together from the stock model, his keep list and his adapter (a merge of about fifteen minutes on an H200, no training), exports Q4 and Q3, and uploads everything to Hugging Face: the GGUF files, the brain cards, the adapter, the keep list, a README, and the full-size weights. Riker (28Bob), tested at home and kept, is public: [MouseWurX/28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker). Bobert (35Bob) went up private and stays so until he passes his home test; his full-size weights did not upload with the rest. The run came to $5.44 and the card deleted itself. A second, upload-only try that afternoon ($0.34) found the reason: Hugging Face's private storage limit for the account was reached (public repos such as Riker's do not count), so Bobert's weights wait on the drive until he is public after his home test.
 - **A false start, and two rules made hard.** The first try could not get a card in the data centre that holds the drive. The renter then did what it was built to do for a training run, which was wrong for this one: it made empty drives in two other data centres and took a card in one of them, where Bobert's adapter is not, and a shell ordering mistake (a helper used before it was defined) stopped it in its first minute. $0.40 lost; the two empty drives were deleted the same hour. Now a rebuild run never makes a drive, a plan can pin the data centres it may rent in, a missing input stops the run before anything else is waited for, and a drive made by mistake can be deleted from the Forge command line.
 - **Still to come:** Bobert's full-size weights, his home test, then Bill.
