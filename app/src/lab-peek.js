@@ -23,13 +23,18 @@ export const NO_TRACE = 'This Brain Engine build doesn\'t report which experts i
 // Does this Brain Engine build report its experts? The trace (engine/patches/0002-expert-trace.patch) adds the request
 // fields "expert_trace" and "expert_trace_heads", and their names are in the server program as plain text, so a read of
 // the file answers it before any brain is loaded (the 1.5.184 PC test: an older build showed Start the scan as ready).
-// Since b12032 the server's code lives in a library beside the program (llama-server-impl.dll on Windows,
-// libllama-server-impl.so / .dylib elsewhere) and the names are only in there (PC test of the 0003 rebuild), so every
-// llama-server file in the program's folder is read. { experts, heads } or null when nothing can be read. Kept per file,
-// size and time.
+// { experts, heads } or null when the file can't be read. Kept per file, size and time.
 const traceSeen = new Map();
-export const SERVER_PARTS = /^(lib)?llama-server([-_.][a-z0-9_-]*)?\.(exe|dll|so|dylib)$|^llama-server$/i;
-function namesIn(file, want, found) {
+// 1.5.191: in newer llama.cpp builds (b12032 on) the server's code lives in a library beside the program
+// (llama-server-impl.dll / libllama-server-impl.so), not in llama-server.exe itself (PC test of 1.5.189: Scan stayed
+// grey on a Brain Engine that had the trace). So the program and the llama libraries beside it are all read.
+export const TRACE_LIBS = /^(lib)?llama(-server-impl)?\.(dll|so|dylib)$/i;
+function scanFor(file, want, found) {
+  let st; try { st = fs.statSync(file); } catch { return false; }
+  const key = `${file}|${st.size}|${st.mtimeMs}`;
+  const seen = traceSeen.get(key);
+  if (seen) { seen.forEach((v, i) => { if (v) found[i] = true; }); return true; }
+  const mine = want.map(() => false);
   let fd = null;
   try {
     fd = fs.openSync(file, 'r');
@@ -39,29 +44,22 @@ function namesIn(file, want, found) {
       const n = fs.readSync(fd, buf, carry, size, pos);
       if (n <= 0) break;
       const view = buf.subarray(0, carry + n);
-      want.forEach((w, i) => { if (!found[i] && view.includes(w)) found[i] = true; });
-      if (found.every(Boolean)) break;
+      want.forEach((w, i) => { if (!mine[i] && view.includes(w)) mine[i] = true; });
+      if (mine.every(Boolean)) break;
       pos += n; carry = Math.min(keep, view.length); view.copy(buf, 0, view.length - carry);
     }
-    return true;
   } catch { return false; } finally { if (fd !== null) try { fs.closeSync(fd); } catch {} }
+  traceSeen.set(key, mine);
+  mine.forEach((v, i) => { if (v) found[i] = true; });
+  return true;
 }
 export function traceBuilt(exe) {
-  let st; try { st = fs.statSync(exe); } catch { return null; }
-  const dir = path.dirname(exe);
-  let near = []; try { near = fs.readdirSync(dir).filter((f) => SERVER_PARTS.test(f) && path.join(dir, f) !== path.join(dir, path.basename(exe))).sort(); } catch {}
-  const files = [exe, ...near.map((f) => path.join(dir, f))];
-  const stamps = files.map((f) => { try { const s = f === exe ? st : fs.statSync(f); return `${f}|${s.size}|${s.mtimeMs}`; } catch { return f; } });
-  const key = stamps.join('\n');
-  if (traceSeen.has(key)) return traceSeen.get(key);
   const want = [Buffer.from('expert_trace_heads'), Buffer.from('expert_trace')];
   const found = [false, false];
-  let read = 0;
-  for (const f of files) { if (namesIn(f, want, found)) read++; if (found.every(Boolean)) break; }
-  if (!read) return null;
-  const out = { experts: found[1], heads: found[0] };
-  traceSeen.set(key, out);
-  return out;
+  if (!scanFor(exe, want, found)) return null;
+  let libs = []; try { libs = fs.readdirSync(path.dirname(exe)).filter((f) => TRACE_LIBS.test(f)); } catch {}
+  for (const f of libs) { if (found[0] && found[1]) break; scanFor(path.join(path.dirname(exe), f), want, found); }
+  return { experts: found[1], heads: found[0] };
 }
 export const NO_ENGINE = 'The live view needs Brain Engine, the Lab\'s engine. Get it in Get models, Engines: Brain Engine.';
 

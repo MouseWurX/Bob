@@ -6,12 +6,54 @@ This file is made from app/docs/releases by `node installer/make-changelog.js` (
 
 ## 1.5.191
 
-### FNRI finds the rebuilt Brain Engine's scan
+Teach it learns squeeze-aware, Best answers' parts-only teaching changes the chosen weights directly, and FNRI finds the trace in newer Brain Engine builds.
 
-- **FNRI Scan works with the rebuilt Brain Engine.** Newer Brain Engine builds keep their server code in a library beside the program (llama-server-impl.dll on Windows), and Bob only looked in the program, so Scan stayed grey and said the engine was too old. Bob now looks in both.
-- **The FNRI page says "Reading this brain…"** while it looks a brain over, instead of showing nothing, and a slow answer for a brain you picked earlier no longer replaces the one you picked last.
+### Teach it: squeeze-aware (quantization-aware distillation)
 
-Where it works: Windows, Linux and Mac, wherever Brain Engine runs.
+- **A second way to learn:** "How it learns" now offers **From its lessons** (as before) or **From its full-size self (squeeze-aware)**. With squeeze-aware, every weight is rounded the way the small file will round it (Q5_K_M, Q4_K_M or Q3_K_M) while the brain learns. The brain learns to say what its own full-size self says on the lessons' questions, so the answers in the lessons don't matter. It learns around the rounding instead of being caught out by it later.
+- **Side by side:** Bob then makes the full-size file (Q8_0, the mark), the plain squeeze and the squeeze-aware squeeze, the last two the same size. He shows each one's surprise on ordinary English and the Quick quiz. If the squeeze-aware one isn't closer to the full-size brain, he says to keep the plain one.
+- **Where it runs:** here only, at 16-bit, so about half Teach it's usual sizes (16 GB holds about 4.5 billion weights). Rented says it runs here for now. Without llama-perplexity in the engine folder, the comparison uses the Quick quiz alone.
+- **The trainer:** teach.py's `--direct --squeeze TYPE` rounds each weight in blocks the way that GGUF type does, with a straight-through gradient, and learns from the brain's own top-16 odds (with one "everything else" bin). It saves the unrounded weights, and the file's own quantizer rounds them afterwards. On a tiny test brain at Q4_K_M, it cut the gap to the full-size brain by more than half.
+- **Help:** Teach it's page explains both ways, plus a glossary entry (Squeeze-aware) and an FAQ ("Can a brain learn to cope with being squeezed?"). Tests in `test/run-lab-pages-test.js`.
+
+### Best answers: Teach only these parts, directly
+
+- Bob now changes the chosen weights themselves, with no adapter. He does it one expert at a time, even where the full weights keep a layer's experts packed together. That holds the brain at 16-bit while it learns, so the biggest brain that fits here is about half the usual size. If a listed part can't be changed on its own, the block around it learns instead, and the result says how many parts that affected. teach.py's adapter path also names its layers explicitly now.
+
+### Fixed
+
+- **FNRI's Scan button works with the new Brain Engine.** Bob checks whether the engine can report its experts by reading the engine's files for the trace. In newer llama.cpp builds (b12032 on), the server's code sits in `llama-server-impl.dll` (`libllama-server-impl.so` on Linux) beside the program, not in `llama-server.exe` itself. Bob only read the program, so Scan stayed grey on a Brain Engine that had the trace. He now reads the llama libraries beside it too. Tests in `test/run-lab-watch-test.js`.
+
+**Where it works:** Windows and Linux with an NVIDIA card can answer, judge and teach. A Mac answers, judges and teaches in 16-bit, and squeeze-aware runs there too at the same 16-bit sizes. Android and the Raspberry Pi can answer and judge, and the teaching goes to a Forge plan.
+
+## 1.5.190
+
+A new Lab page where a bigger brain judges and a smaller one learns from its own best answers, and a lent graphics card reloads a spread brain almost without sending anything again.
+
+### Bigger Bobs: quicker reloads over Wi-Fi
+
+- **The lent card's store now keeps nearly all of a brain.** Brain Engine gets `engine/patches/0004-rpc-wifi.patch`. Before, the Bob lending his card kept only big pieces of the brain (10 MB and up) on his drive between loads. Now he keeps pieces from 1 MB up, so loading the same brain again sends almost nothing over the network. The card-sharing server can also be filled ahead of time from a brain file (`--seed`).
+- Brain Engine's download now carries the card-sharing library itself (`ggml-rpc.dll` on Windows, `libggml-rpc.so` on Linux), so both halves come from the same build.
+- This needs the rebuilt Brain Engine on both Bobs. Until then, everything works as before.
+- Help: the FAQ **Why is the first spread load so slow, and the next ones quicker?** and the glossary entry **Lent card's store**.
+
+A new Lab page: a bigger brain judges, and a smaller one learns from its own best answers.
+
+### Best answers (the Lab's Playground)
+
+- **How it works:** the small brain answers each question several times (2, 4 or 8). A bigger brain scores every answer from 0 to 10. When a lesson has a short exact answer, like a number or a word, a checker marks it instead of the judge. Nothing is copied out of the big brain's weights: it is only the judge.
+- **Three ways to learn:**
+  - **Best of its own:** the small brain is taught its best answer to each question. This is best-of-N self-training. It keeps the brain's own voice and repairs damage from cutting or squeezing.
+  - **Better and worse pairs:** the brain learns to lean toward the better of two of its answers (preference training, DPO).
+  - **Both:** the best answers first, then the pairs.
+- **When no answer is good enough:** if none of a question's answers scores 6 or more, the judge writes its own answer for that question, and that answer is taught. You can turn this off.
+- **Teach only these parts:** only some parts of the brain learn, and the rest stays frozen. You can pick the experts one skill uses, read from an FNRI scan. You can also pick a parts list saved in FNRI with **Use these for training**, which holds a skill's experts, the blocks you dialled, or the blocks that moved most. Where a brain's full weights keep a layer's experts fused together, that layer's whole feed-forward block learns instead, and the result says how many parts that affected.
+- **Held back:** about a tenth of the questions are never taught. They are asked before and after and scored by the same judge, so you can see a real gain, not a brain that learned the test. The Quick quiz also runs before and after, and best and worst answers can be shown side by side. To see which blocks moved, scan the old and new brain in FNRI and open Before and after.
+- **Where it runs:** answering and judging run here for free, with one brain on the card at a time. Teaching runs here when the brain fits the card, with Teach it's Trainer pack. If the brain doesn't fit, the best answers are saved as a Teach it Forge plan with caps at 0, and only the Forge tab's purchase card can start it. Nothing is rented from this page. The Forge learns from best answers only for now, so pairs and Teach only these parts run here.
+- **The trainer:** Teach it's trainer (teach.py) gets two additions. A better-and-worse pairs pass compares each answer against the brain as it was when the pass began. Parts-only teaching puts the adapter on those modules only.
+- **Help:** a Best answers page, two glossary entries (Best of N, Preference training) and an FAQ ("Can a bigger brain judge a smaller one and teach it?"). The tests are in `test/run-lab-best-test.js`.
+
+**Where it works:** Windows and Linux with an NVIDIA card can answer, judge and teach. A Mac answers, judges and teaches in 16-bit. Android and the Raspberry Pi can answer and judge, and the teaching goes to a Forge plan.
 
 ## 1.5.189
 

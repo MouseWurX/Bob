@@ -16,14 +16,7 @@ export function openViewer(brain = '', rec = '') {
 
 export function createWatchPage({ api }) {
   let v = null, bv = null, brain = '', picked = null, per = 0, ownName = '', ownQs = '', msg = '', askUnload = null, confirmDel = '', showQs = false, loading = false, think = false, what = '';
-  // The newest pick wins: an older answer that lands late is dropped. While it's read, the page says so (PC test of
-  // 1.5.189: the brain's box stayed empty with no word while the first read of a new engine was slow).
-  let asking = 0, reading = false;
-  async function loadBrain() {
-    bv = null; reading = false; if (!brain) return;
-    const n = ++asking, want = brain; reading = true;
-    try { const r = await api('/api/lab/watch/view', { brain: want }); if (n === asking && want === brain) bv = r; } catch (e) { if (n === asking) msg = e.message; } finally { if (n === asking) reading = false; }
-  }
+  async function loadBrain() { bv = null; if (!brain) return; try { bv = await api('/api/lab/watch/view', { brain }); } catch (e) { msg = e.message; } }
   async function load() {
     loading = true;
     try { v = await api('/api/lab/watch'); if (!picked) picked = new Set(v.skills.filter((s) => !s.extra).map((s) => s.id)); if (!per) per = v.per; if (!brain && v.brains.length === 1) brain = v.brains[0].id; await loadBrain(); } catch (e) { msg = e.message; }
@@ -52,7 +45,6 @@ export function createWatchPage({ api }) {
       ${askUnload ? `<div class="setup-offer" role="alert"><strong>Bob's brain is on the graphics card</strong><span>${esc(askUnload.join(', '))} is loaded. The scan needs the card, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-watchgo="unload">Unload it and start</button><button type="button" class="link" data-watchnounload>Not now</button></div></div>` : ''}
       <div class="row"><button type="button" class="get" data-watchgo ${n && !over ? '' : 'disabled'} ${over ? 'aria-describedby="watch-over"' : ''}>Start the scan</button></div>${over ? `<p id="watch-over" class="error" role="alert">A scan holds up to ${v.maxSkills} skills, so each keeps its own colour. Untick ${over}.</p>` : ''}`
         : `<div class="lab-check" aria-disabled="true"><p><strong>Scan this brain</strong> <span class="lab-later">Not yet</span></p><p class="muted">${esc(bv.live?.why || '')}</p></div>`) : ''}
-      ${brain && !bv && reading ? '<p class="muted" role="status">Reading this brain…</p>' : ''}
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
       ${brain && bv ? `<section class="lab-compare" aria-labelledby="watch-recs"><h4 id="watch-recs">Scans of this brain</h4>
         ${bv.recordings.length ? `<ul class="tlist">${bv.recordings.map((r) => `<li><strong>${esc(r.when)}</strong> · ${r.clips} questions, ${r.words.toLocaleString()} words · ${esc(r.skills.join(', '))}${r.saw ? `<br><span class="muted">${esc(r.saw)}</span>` : ''}
