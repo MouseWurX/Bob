@@ -2,6 +2,8 @@
 // node forge.mjs --plan plans\24-18.json        rent + run + download + delete (asks you to type yes first)
 // node forge.mjs --resume <podId> --plan ...    carry on watching a pod that is already running
 // node forge.mjs --send-plan <podId> --plan ...  send an edited plan to a running pod (quants etc. for the rungs not started yet)
+// node forge.mjs --send-token <podId> --plan ...  hand forge/hf-token.txt to a running pod (build 17)
+// plan.benchmark (build 18): after the rungs the pod serves each listed brain (rebuilt from keep list + adapter if asked) and this PC runs the plan's test commands against it
 // node forge.mjs --restart <podId> --plan ...   stop the run on a pod, upload the current code + plan, start it again (finished steps are kept)
 // node forge.mjs --status | --kill               list pods / delete every forge pod
 // node forge.mjs --places [cards]               where the wanted cards are in stock with storage (read-only), and your network volumes
@@ -93,12 +95,20 @@ if (args.places) { // where are the cards + storage right now (read-only)
   try { const d = await gql('{ myself { networkVolumes { id name size dataCenterId } } }'); console.log('network volumes:', JSON.stringify(d.myself?.networkVolumes || [])); } catch (e) { console.log(`volumes: ${e.message}`); }
   process.exit(0);
 }
+if (args['drop-volume']) { // 9 Nov: two empty volumes were made by the rent loop in data centres that only had the card for a minute; this deletes one by id and forgets it
+  const id = String(args['drop-volume']); const known = knownVolumes();
+  if (!known.find((v) => v.id === id)) { log(`${id} is not in ${volFile()}; nothing deleted (only volumes Forge made are dropped here)`); process.exit(1); }
+  await rp('DELETE', `/networkvolumes/${id}`); saveVolumes(known.filter((v) => v.id !== id)); log(`deleted the network volume ${id} and forgot it`); process.exit(0);
+}
 if (args.status || args.kill) {
   const pods = (await rp('GET', '/pods')) || [];
   for (const p of pods) log(`${p.id} ${p.name} ${p.desiredStatus} ${p.machine?.gpuTypeId || ''} $${p.costPerHr}/h`);
   if (!pods.length) log('no pods');
   if (args.kill) for (const p of pods) if (p.name?.startsWith('bob-forge')) {
-    try { const t = JSON.parse(fs.readFileSync(tokenFile, 'utf8')); if (t.pod === p.id) { podId = p.id; base = `https://${p.id}-8000.proxy.runpod.net`; hdr['X-Forge-Token'] = t.token; await salvage(); } } catch {}
+    if (args.kill !== true && String(args.kill) !== p.id) { log(`${p.id} kept (--kill ${args.kill} names another pod)`); continue; } // build 19: two runs side by side; --kill <podId> touches one
+    for (const tfn of fs.readdirSync(path.join(outDir, 'forge')).filter((n) => /^pod-token.*\.json$/.test(n))) {
+      try { const t = JSON.parse(fs.readFileSync(path.join(outDir, 'forge', tfn), 'utf8')); if (t.pod === p.id) { podId = p.id; base = `https://${p.id}-8000.proxy.runpod.net`; hdr['X-Forge-Token'] = t.token; await salvage(); } } catch {}
+    }
     await rp('DELETE', `/pods/${p.id}`); log(`deleted ${p.id}`);
   }
   process.exit(0);
@@ -112,17 +122,19 @@ if (!fs.existsSync(countsFile)) { console.error(`missing counts file ${countsFil
 const hoursMax = plan.hours_max || 9, dollarsMax = plan.dollars_max || 40;
 const token = crypto.randomBytes(16).toString('hex');
 
-let podId = args.resume || args.restart || args['send-plan'], price = 0, base = args.local || '';
+let podId = args.resume || args.restart || args['send-plan'] || args['send-token'], price = 0, base = args.local || '';
 const hdr = { 'X-Forge-Token': token };
-const tokenFile = path.join(outDir, 'forge', 'pod-token.json');
+// build 19: one pod record per run (two Forge windows can run side by side without touching each other's rental); an older run's single pod-token.json still works for --resume/--send-*
+const runTokenFile = path.join(outDir, 'forge', `pod-token-${String(plan.run || 'run').replace(/[^\w.-]/g, '_')}.json`), legacyTokenFile = path.join(outDir, 'forge', 'pod-token.json');
+const tokenFile = (podId && !fs.existsSync(runTokenFile) && fs.existsSync(legacyTokenFile)) ? legacyTokenFile : runTokenFile;
 if (podId) { const t = JSON.parse(fs.readFileSync(tokenFile, 'utf8')); hdr['X-Forge-Token'] = t.token; }
 
 async function rent() {
   const boot = zlib.gzipSync(fs.readFileSync(path.join(here, 'pod', 'bootstrap.py'))).toString('base64');
-  const rungs = (plan.train_teacher ? `${plan.train_teacher.name || '35Bob'} (the full Qwen trained on every lesson, no cut)${plan.rungs.length ? ', then ' : ''}` : '') + (plan.rungs.length ? plan.rungs.map((r) => r.name).join(', ') : plan.train_teacher ? '' : plan.skills ? 'expert counts per skill only (no Bob is cut; the counts come back for the differential table)' : 'lessons and the teacher scores only (no Bob is cut)') + (plan.publish ? ` -- Hugging Face (${plan.publish.user}, private): ${[plan.publish.odds ? 'the teacher odds' : '', ...(plan.publish.models || []).map((m) => `${m} (tested, from the drive)`)].filter(Boolean).join(', ') || 'nothing this run'}; no untested Bob is uploaded` : '') + (plan.download_quants ? `; only ${plan.download_quants.join(', ')} GGUF files come down to this PC, the rest stay on the drive` : '');
+  const rungs = plan.rebuild ? ((plan.rebuild.models || []).every((m) => m.weights_only) ? `upload the full-size weights of ${(plan.rebuild.models || []).map((m) => `${m.name}${m.nickname ? ` (${m.nickname}, ${m.private === false ? 'PUBLIC' : 'private'})` : ''}`).join(' and ')} from the drive to Hugging Face (${plan.publish?.user}); nothing is rebuilt or trained, nothing comes down to this PC` : `rebuild ${(plan.rebuild.models || []).map((m) => `${m.name}${m.nickname ? ` (${m.nickname}, ${m.private === false ? 'PUBLIC' : 'private'})` : ''}`).join(' and ')} from the stock teacher + adapter and put GGUFs, full weights, adapters and cards on Hugging Face (${plan.publish?.user}); nothing is trained, nothing comes down to this PC`) : plan.lessons_only ? `lessons only: ${plan.teacher_gguf ? `the GGUF teacher ${plan.teacher_gguf.repo} (${plan.teacher_gguf.file})` : 'the full Qwen'} writes them, nothing is scored, cut or healed` : (plan.train_teacher ? `${plan.train_teacher.name || '35Bob'} (the full Qwen trained on every lesson, no cut)${plan.rungs.length ? ', then ' : ''}` : '') + (plan.rungs.length ? plan.rungs.map((r) => r.name).join(', ') : plan.train_teacher ? '' : plan.skills ? 'expert counts per skill only (no Bob is cut; the counts come back for the differential table)' : 'lessons and the teacher scores only (no Bob is cut)') + (plan.publish ? ` -- Hugging Face (${plan.publish.user}, private): ${[plan.publish.odds ? 'the teacher odds' : '', ...(plan.publish.models || []).map((m) => `${m} (tested, from the drive)`)].filter(Boolean).join(', ') || 'nothing this run'}; no untested Bob is uploaded` : '') + (plan.download_quants ? `; only ${plan.download_quants.join(', ')} GGUF files come down to this PC, the rest stay on the drive` : '');
   console.log(`\nAbout to rent ONE GPU on RunPod to make: ${rungs}`);
   console.log(`Caps: ${hoursMax} hours or $${dollarsMax}, whichever comes first; the pod is deleted when the Bobs are downloaded, or at the cap.`);
-  if (plan.volume) { const kv = knownVolumes(); console.log(`Network volume: ${plan.volume.gb || 100} GB kept between sessions (about $${((plan.volume.gb || 100) * 0.07).toFixed(2)} a month each, a standing charge until deleted). Have: ${kv.length ? kv.map((v) => `${v.id} in ${v.name || v.dataCenterId}`).join(', ') : 'none'}. A card is only taken in a data centre with a volume; a new volume is made where the card is if ours are out.`); }
+  if (plan.volume) { const kv = knownVolumes(); console.log(`Network volume: ${plan.volume.gb || 100} GB kept between sessions (about $${((plan.volume.gb || 100) * 0.07).toFixed(2)} a month each, a standing charge until deleted). Have: ${kv.length ? kv.map((v) => `${v.id} in ${v.name || v.dataCenterId}`).join(', ') : 'none'}. ${plan.data_centers ? `Only in: ${plan.data_centers.join(', ')} (plan.data_centers).` : 'A card is only taken in a data centre with a volume'}${plan.volume_new === false || plan.rebuild ? '; NO new volume is made this run' : '; a new volume is made where the card is if ours are out'}.`); }
   const stepUpShown = stepUpFor(plan.gpus || GPUS);
   console.log(`Cards, in order of preference: ${(plan.gpus || GPUS).join(', ')}`);
   if (stepUpShown.length) console.log(`Step-up card(s) if none is free after ${plan.volume_wait_minutes || 20} minutes: ${stepUpShown.join(', ')}${plan.step_up_note ? ` (${plan.step_up_note})` : ''}\n`); else console.log('');
@@ -159,6 +171,10 @@ async function rent() {
       for (const p of places) if (!targets.find((t) => t.dc === p.id)) targets.push({ dc: p.id, name: p.name, vol: null, gpu: p.gpu, available: p.available });
       if (plan.volume_fallback === true && stepped && Date.now() - t0 > 2 * volWait * 60000 && !bare) { bare = true; log('volume_fallback is on: trying any data centre WITHOUT a volume as well (the teacher downloads again; nothing is kept)'); }
       if (bare) targets.push({ dc: null, name: 'anywhere', vol: null });
+      // 9 Nov: a rebuild run (or volume_new: false) reads files off a specific drive, so no new volume is ever made; plan.data_centers pins the places
+      if (plan.volume_new === false || plan.rebuild) targets = targets.filter((t) => t.vol);
+      if (Array.isArray(plan.data_centers)) targets = targets.filter((t) => t.dc && plan.data_centers.includes(t.dc));
+      if (!targets.length && attempt % 5 === 0) log(`no data centre to ask in this minute (our volumes: ${knownVolumes().map((v) => v.dataCenterId).join(', ') || 'none'}${plan.data_centers ? `; allowed: ${plan.data_centers.join(', ')}` : ''})`);
     } else targets = [{ dc: null, name: 'anywhere', vol: null }];
     for (const t of targets) {
       // a new volume only where the card is listed as in stock (RunPod's flag is strict, so this holds back only the "no" cases) and only once per run
@@ -168,10 +184,10 @@ async function rent() {
         if (plan.volume && t.dc && !useVol) { tried.add(t.dc); useVol = await volumeIn(t.dc, t.name); }
         if (useVol) root = '/forge';
         const pod = await rp('POST', '/pods', {
-          name: `bob-forge-${plan.rungs[0]?.name || 'counts'}`, imageName: plan.image || 'vllm/vllm-openai:v0.28.0', cloudType: 'SECURE',
+          name: `bob-forge-${plan.rungs[0]?.name || (plan.lessons_only ? 'lessons' : 'counts')}-${String(plan.run || '').replace(/[^\w.-]/g, '_').slice(0, 40)}`, imageName: plan.image || 'vllm/vllm-openai:v0.28.0', cloudType: 'SECURE',
           gpuTypeIds: cards, gpuTypePriority: 'custom', gpuCount: 1, volumeMountPath: '/workspace',
           ...(useVol ? { networkVolumeId: useVol.id, dataCenterIds: [useVol.dataCenterId], containerDiskInGb: plan.disk_gb || 350 } : { volumeInGb: plan.disk_gb || 350, containerDiskInGb: 40 }),
-          ports: plan.write_lessons ? ['8000/http', '8001/http'] : ['8000/http'], supportPublicIp: false,
+          ports: (plan.write_lessons || plan.benchmark) ? ['8000/http', '8001/http'] : ['8000/http'], supportPublicIp: false,
           // the PC's RunPod key goes in as FORGE_RUNPOD_KEY (RunPod injects its own limited RUNPOD_API_KEY into every pod, which cannot delete) so the pod can delete itself near the time cap even if this PC falls asleep.
           env: { FORGE_TOKEN: token, FORGE_RUNPOD_KEY: KEY, HF_HUB_ENABLE_HF_TRANSFER: '0', FORGE_HOURS_MAX: String(hoursMax), FORGE_ROOT: root, FORGE_SHARED: '/workspace' },
           dockerEntrypoint: ['bash', '-c'],
@@ -249,8 +265,20 @@ const t0 = JSON.parse(fs.readFileSync(tokenFile, 'utf8')).started || started;
 const cost = () => price * (Date.now() - t0) / 3.6e6;
 log(`waiting for the pod door at ${base}`);
 let up = false;
-for (let i = 0; i < 90 && !up; i++) { try { const r = await get('/status'); up = r.ok; } catch {} if (!up) await sleep(10000); }
-if (!up) { await kill('the pod never answered (15 min)'); process.exit(1); }
+// the pod has to pull its container image before bootstrap.py can answer; a cold pod with no volume in a slow region can take
+// well over 15 min, so the door wait is configurable (plan.door_minutes, default 15) and longer for no-volume runs
+const doorMin = plan.door_minutes || (plan.volume ? 15 : 25);
+const doorTries = Math.max(1, Math.round(doorMin * 6));
+for (let i = 0; i < doorTries && !up; i++) { try { const r = await get('/status'); up = r.ok; } catch {} if (!up) { if (i && i % 30 === 0) log(`still waiting for the pod door (${i / 6 | 0} min of ${doorMin})`); await sleep(10000); } }
+if (!up) { await kill(`the pod never answered (${doorMin} min)`); process.exit(1); }
+if (args['send-token']) {
+  // build 17: hand the Hugging Face token to a running pod after the fact (node forge.mjs --send-token <podId> --plan <plan>); the pod reads
+  // in/hf-token only at upload time, so this works any time before the odds or a listed Bob go up
+  const tf = path.join(here, 'hf-token.txt'); const tok = (process.env.HF_TOKEN || (fs.existsSync(tf) ? fs.readFileSync(tf, 'utf8') : '')).trim();
+  if (!tok) { log('no Hugging Face token: put it in forge/hf-token.txt (one line) or HF_TOKEN'); process.exit(1); }
+  const tmp = path.join(outDir, 'forge', 'hf-token'); fs.writeFileSync(tmp, tok); await upload('hf-token', tmp); fs.unlinkSync(tmp);
+  log('Hugging Face token is on the pod; uploads the plan allows will use it'); process.exit(0);
+}
 if (args['send-plan']) {
   // update plan.json on a running pod without touching the run (run.sh reads the plan again at the start of each rung)
   // same shape as the start path: keep files live on the pod by their bare names (build 14i)
@@ -285,6 +313,11 @@ if (args.restart) {
     else { const tmp = path.join(outDir, 'forge', 'hf-token'); fs.writeFileSync(tmp, tok); await upload('hf-token', tmp); fs.unlinkSync(tmp); log(`Hugging Face token sent to the pod (uploads go to ${plan.publish.user}/...)`); }
   }
   for (const r of plan.rungs) if (r.keep_file) await upload(path.basename(r.keep_file), path.resolve(here, '..', r.keep_file)); // cut exactly like an earlier Bob
+  // build 18: a benchmark brain rebuilt from his keep list + adapter: files not on Hugging Face (no hf: prefix) go up from out/bobs/<name>/
+  for (const m of plan.benchmark?.models || []) if (m.file === 'rebuild') {
+    for (const k of ['keep_file', 'adapter']) if (m[k] && !/^hf:/.test(m[k])) await upload(m[k], path.join(outDir, 'bobs', m.name, m[k]));
+    if (!m.cards) for (const c of fs.existsSync(path.join(outDir, 'bobs', m.name)) ? fs.readdirSync(path.join(outDir, 'bobs', m.name)).filter((f) => f.endsWith('.bob.json')) : []) await upload(c, path.join(outDir, 'bobs', m.name, c));
+  }
   // lesson sets already on the PC (e.g. out/lessons-coding) go up as extra sets too; the pod merges them with the rest
   for (const [i, d] of (plan.extra_lessons || []).entries()) { // a folder (its lessons.jsonl) or a .jsonl file (with the toolsets.json beside it)
     const dd = path.resolve(here, '..', d); const lf = d.endsWith('.jsonl') ? dd : path.join(dd, 'lessons.jsonl'); const tf = path.join(path.dirname(lf), 'toolsets.json');
@@ -302,13 +335,13 @@ async function writeLessonsOnPod() {
   let total = 0;
   for (let i = 0; i < sets.length; i++) total += await writeOneSet(sets[i], i);
   if (total < (plan.lessons_min || 50)) { log(`too few lessons (${total}); the run cannot go on`); await kill('lesson writing failed'); process.exit(1); }
-  fs.writeFileSync(path.join(outDir, 'forge', 'lessons-ready'), String(total)); await upload('lessons-ready', path.join(outDir, 'forge', 'lessons-ready'));
+  const lr = path.join(outDir, 'forge', `lessons-ready-${String(plan.run || 'run').replace(/[^\w.-]/g, '_')}`); fs.writeFileSync(lr, String(total)); await upload('lessons-ready', lr);
   log(`extra lessons sent (${total}); the pod carries on`);
 }
 async function writeOneSet(w, i) {
   const dir = w.dir || 'lessons-extra';
   const url = args.local ? 'http://127.0.0.1:8001' : `https://${podId}-8001.proxy.runpod.net`;
-  const argv = ['write-lessons.mjs', '--url', url, '--parallel', String(w.parallel || 16), '--jobs', w.jobs || 'coding', '--think', w.think || 'all', '--dir', dir, '--count', String(w.count || 800), '--hours', String(w.hours || 1.5), ...(w.drop_tools ? ['--drop-tools', w.drop_tools] : [])];
+  const argv = ['write-lessons.mjs', '--url', url, '--parallel', String(w.parallel || 16), '--jobs', w.jobs || 'coding', '--think', w.think || 'all', '--dir', dir, '--count', String(w.count || 800), '--hours', String(w.hours || 1.5), ...(w.drop_tools ? ['--drop-tools', w.drop_tools] : []), ...(w.persona ? ['--persona', path.resolve(here, '..', w.persona)] : [])];
   log(`writing ${w.count || 800} extra lessons through the pod (${w.jobs || 'coding'}, thinking ${w.think || 'all'})`);
   const { spawn } = await import('node:child_process');
   const code = await new Promise((res) => spawn(process.execPath, argv, { cwd: path.join(here, '..'), stdio: 'inherit', env: { ...process.env, LAB_API_KEY: hdr['X-Forge-Token'], LAB_MODEL_NAME: 'teacher', LAB_REMOTE: '1' } }).on('exit', res));
@@ -337,6 +370,25 @@ async function answerTeacherKey() {
     log('teacher scores uploaded; the pod carries on');
   } catch (e) { log(`teacher-key answer failed: ${e.message.slice(0, 120)} (the pod will do the teacher pass)`); }
 }
+// build 18: the pod serves one benchmark brain at a time; this PC runs the plan's commands against it ({{url}}, {{name}}, {{out}} are filled
+// in), saves what they print under out/bench/<run>/<name>/, then tells the pod to move on (in/bench-done-<name>).
+const benchDone = new Set();
+async function benchOnPod(name) {
+  const url = args.local ? 'http://127.0.0.1:8001' : `https://${podId}-8001.proxy.runpod.net`;
+  const dir = path.join(outDir, 'bench', plan.run || 'run', name); fs.mkdirSync(dir, { recursive: true });
+  const cmds = plan.benchmark.commands?.length ? plan.benchmark.commands : ['node experts-test.mjs --url {{url}} --counts 8 --out {{out}}'];
+  log(`benchmark: ${name} is served by the card; running ${cmds.length} test command(s) on this PC`);
+  for (const [i, c] of cmds.entries()) {
+    const cmd = c.replace(/{{url}}/g, url).replace(/{{name}}/g, name).replace(/{{out}}/g, dir).replace(/{{run}}/g, plan.run || 'run');
+    const lf = path.join(dir, `${String(i + 1).padStart(2, '0')}.log`); fs.writeFileSync(lf, `$ ${cmd}\n`);
+    log(`  ${cmd}`);
+    const code = await new Promise((res) => { const ch = spawn(cmd, { cwd: path.join(here, '..'), shell: true, windowsHide: true, env: { ...process.env, LAB_URL: url, LAB_API_KEY: hdr['X-Forge-Token'], LAB_MODEL_NAME: name, LAB_REMOTE: '1', LAB_OUT: dir } }); const w = (d) => { fs.appendFileSync(lf, d); process.stdout.write(d); }; ch.stdout.on('data', w); ch.stderr.on('data', w); ch.on('exit', res); ch.on('error', (e) => { w(`${e.message}\n`); res(1); }); });
+    fs.appendFileSync(lf, `\n[exit ${code}]\n`); if (code) log(`  command ${i + 1} ended with code ${code} (see ${lf})`);
+  }
+  const mk = path.join(outDir, 'forge', `bench-done-${name}`); fs.writeFileSync(mk, new Date().toISOString()); await upload(`bench-done-${name}`, mk);
+  benchDone.add(name); log(`benchmark: ${name} done; reports in ${dir}`);
+}
+let driveBytes = -1; // 9 Nov: out/drive.json from the pod = the Forge-made brains really usable on the drive; kept at out/forge/drive.json for the Lab
 while (true) {
   await sleep(args.local ? 3000 : 60000);
   let st = null;
@@ -349,6 +401,8 @@ while (true) {
     // build 15: the pod names the lesson set (out/teacher/teacher-key.txt); if this PC already has that set's teacher scores
     // (out/teacher/<key>/teacher.pt, from an earlier run), they go up instead of a 2-3 h teacher pass; otherwise the pod is told "none"
     if (!teacherAnswered && (st.files || []).find((f) => f.path === 'teacher/teacher-key.txt')) { teacherAnswered = true; await answerTeacherKey(); }
+    const dj = (st.files || []).find((f) => f.path === 'drive.json');
+    if (dj && dj.bytes !== driveBytes) { try { const r = await get('/out/drive.json'); if (r.ok) { fs.writeFileSync(path.join(outDir, 'forge', 'drive.json'), JSON.stringify(await r.json(), null, 1)); driveBytes = dj.bytes; log('drive list saved (out/forge/drive.json)'); } } catch (e) { log(`drive list: ${e.message.slice(0, 80)}`); } }
     for (const f of st.files || []) {
       const m = f.path.match(/^([^/]+)\/([^/]+)-files\.json$/);
       if (!m) continue;
@@ -374,11 +428,14 @@ while (true) {
       } catch (e) { log(`${name}: ${e.message.slice(0, 160)}`); }
     }
     if (st.status?.phase === 'lessons' && /^ready/.test(st.status?.detail || '') && !lessonsSent) { lessonsSent = true; await writeLessonsOnPod(); }
+    if (st.status?.phase === 'bench' && plan.benchmark) { const bm = (st.status.detail || '').match(/^(\S+) ready:/); if (bm && !benchDone.has(bm[1])) await benchOnPod(bm[1]); }
     const scoresOnly = !plan.rungs.length && !plan.skills; // no rungs, no counts: the run only writes lessons and makes the teacher scores
     const trained = plan.train_teacher ? (plan.train_teacher.name || '35Bob') : null; // build 17: the trained teacher comes back (or is published) like a Bob
     const gotTrained = !trained || done.has(trained);
-    const finished = gotTrained && (scoresOnly ? done.has('teacher') : [...done].filter((n) => n !== 'teacher' && n !== trained).length >= Math.max(1, plan.rungs.length));
-    if (st.status?.phase === 'done' && finished) { await kill(plan.rungs.length ? 'all Bobs downloaded' : scoresOnly ? 'teacher scores downloaded' : 'counts downloaded'); break; }
+    const noOdds = plan.odds === false && !plan.rungs.length; // 9 Nov: a teach-it run (train_teacher, no rungs, odds: false) ends when the taught Bob is back; no teacher scores are made
+    const rebuildOnly = Boolean(plan.rebuild); // 9 Nov: a rebuild-and-publish run puts everything on Hugging Face; nothing is downloaded, so the pod's "done" is the end
+    const finished = plan.lessons_only ? lessonsSent : rebuildOnly ? true : gotTrained && (scoresOnly ? (noOdds ? true : done.has('teacher')) : [...done].filter((n) => n !== 'teacher' && n !== trained).length >= Math.max(1, plan.rungs.length));
+    if (st.status?.phase === 'done' && finished) { await kill(plan.lessons_only ? 'lessons written; they are on this PC' : rebuildOnly ? 'rebuild finished; the Bobs are on Hugging Face' : noOdds ? 'the taught Bob is back; no odds were made (odds: false)' : plan.rungs.length ? 'all Bobs downloaded' : scoresOnly ? 'teacher scores downloaded' : 'counts downloaded'); break; }
     if (st.status?.phase === 'failed' || (st.exit !== null && st.exit !== undefined && !st.running)) {
       log(`the pod run stopped (${st.status?.detail || 'exit ' + st.exit}). Last log lines:\n${st.log}`);
       if (!args['keep-on-fail']) { await kill('run failed'); } else log('pod kept for a look (--keep-on-fail)');

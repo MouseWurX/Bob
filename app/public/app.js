@@ -22,6 +22,7 @@ import { createBrainBar } from './brain-bar.js';
 import { createHandsSwitch } from './hands-switch.js';
 import { installTips } from './tips.js';
 import { createWebSwitch } from './web-switch.js';
+import { createQuickSwitches } from './quick-switches.js'; // Autonomy and Screen use buttons
 import { createRentSwitch } from './rent-switch.js'; // 1.5.127 rented brains
 import { createGameLock } from './game-lock.js';
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
@@ -50,6 +51,7 @@ const $ = (id) => document.getElementById(id);
 const log = $('log'), input = $('input'), sendBtn = $('send'), stopBtn = $('stop'), statusEl = $('status');
 const brainBar = createBrainBar({ post: (u, d) => post(u, d), note: (t, k) => note(t, k) });
 const handsSwitch = createHandsSwitch({ note: (t, k) => note(t, k) });
+const quickSwitches = createQuickSwitches({ note: (t, k) => note(t, k) });
 const webSwitch = createWebSwitch({ note: (t, k) => note(t, k) });
 const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button
@@ -452,7 +454,7 @@ $('mindBtn')?.addEventListener('click', () => {
 });
 const mindTitle = (docked) => {
   const b = $('mindBtn'); if (!b) return;
-  b.dataset.tip = docked ? 'Bob\'s thinking is in Now running (Show here is on). Click to go to it; Pop out there opens the small window too.' : 'Opens a small always-on-top window showing Bob\'s thinking, which brain is working, moots and every step. Nothing runs for it while it\'s closed. To keep it in Now running instead, turn on Show here in its section there.';
+  b.dataset.tip = docked ? 'Bob\'s thinking is in Now running (its section is open). Press to go to it; Pop out there opens the small window too.' : 'Opens a small always-on-top window showing Bob\'s thinking, which brain is working, moots and every step. Nothing runs for it while it\'s closed. To keep it in Now running instead, press [+] on its section there.';
 };
 mindTitle(layout.mindDocked());
 window.addEventListener('bob-mind-dock', (e) => mindTitle(e.detail.docked));
@@ -466,6 +468,7 @@ function onEvent(ev) {
   if (ev.sessionId && ev.sessionId !== sessionId && ev.type !== 'reminder') return;
   if (ev.type === 'more-pictures' || ev.type === 'more-pictures-done') return more.handle(ev);
   if (ev.type === 'hands') handsSwitch.update(ev.settings);
+  if (ev.type === 'hands') quickSwitches.update(ev.settings); // Autonomy and Screen use
   if (ev.type === 'quarantine') return qBanner.update(ev.active);
   if (['lending', 'borrow', 'away', 'pair-done', 'queue'].includes(ev.type)) layout.net(); // 1.5.123: the Bob-Net party in Now running
   if (quarantineResult(ev)) return;
@@ -698,6 +701,7 @@ function onEvent(ev) {
     }
     case 'lab': labPage.update(ev.run); break; // 1.5.141
     case 'lab-full': labPage.fullUpdate(ev.full); break; // Bring in a full-size brain
+    case 'lab-diffusion': document.dispatchEvent(new CustomEvent('lab-diffusion', { detail: ev.now })); break; // Playground: Diffusion brains, live
     case 'lab-done': note(ev.ok ? `🧪 The Lab finished ${ev.name}${ev.score != null ? `: ${ev.score} out of 100 on the Lab test` : ''}. Open the Lab to see the report.` : `🧪 The Lab stopped on ${ev.name}: ${ev.error}`); break;
     case 'tidy-done':
       topicsPage.refresh();

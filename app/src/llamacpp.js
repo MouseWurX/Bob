@@ -16,6 +16,7 @@ import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } 
 import { exeName } from './platform.js';
 import { Embedder } from './embedder.js';
 import { ggufInfo } from './gguf.js';
+import { selfWorkOn } from './self-work.js';
 import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes } from './model-ctx.js';
 
 // 1.5.19: the context a brain gets when nothing else picks one. 32K fits a 26B brain on a 16 GB card.
@@ -84,6 +85,21 @@ export function keepAliveMs(cfg) {
 // sees the card (CUDA_VISIBLE_DEVICES=-1). Never in Gaming. Below normal priority, half the cores, and let go as soon as
 // nothing needs it. A call goes to it when its options carry beside: true.
 export const BESIDE = 'beside';
+// 1.5.189 Spreading a brain over another Bob's lent card (src/share-card.js). PC test Nov 10: Riker Q4 npc -> a
+// handheld over Wi-Fi moved 2.63 GB at about 6.6 MB/s, then failed at 413 s because --fit filled the lent card and left
+// no room for its working memory (a 387 MiB compute buffer at -ub 2048). So a spread load keeps more room free on
+// every card (--fit-target, MiB), works in smaller steps (-ub), and waits by the brain's size, not a fixed 5 minutes.
+export const SPREAD_FIT_TARGET_MIB = 2048;
+export const SPREAD_UBATCH = 512;
+export const SPREAD_MBPS = 4; // a slow Wi-Fi's MB per second, so the wait is long enough the first time
+export const spreadLoadSeconds = (sizeGB, base = 300) => Math.min(7200, Math.max(base, base + Math.ceil((Number(sizeGB) || 0) * 1000 / SPREAD_MBPS)));
+// The flags a spread load adds (unless set by hand): room kept free on each card, and smaller steps.
+export function spreadArgs(args) {
+  const add = [];
+  if (args.includes('--fit') && !args.some((a) => ['--fit-target', '-fitt'].includes(a))) add.push('--fit-target', String(SPREAD_FIT_TARGET_MIB));
+  if (!args.some((a) => ['-ub', '--ubatch-size'].includes(a))) add.push('-ub', String(SPREAD_UBATCH));
+  return add;
+}
 export function besideThreads(cpus = os.cpus()) {
   const logical = cpus.length || 2;
   const pairs = /AMD|Intel/i.test(String(cpus[0]?.model || '')) && logical % 2 === 0 && logical >= 4;
@@ -374,10 +390,38 @@ export class LlamaCpp {
   }
 
   // 1.5.90: no memory-mapping when some of the brain is placed in RAM on the card route (see buildArgs).
-  readsWhole(args, cpu) {
+  // 1.5.193: not when the brain is bigger than the card and RAM can hold together (gpt-oss 120B, about 63 GB, on a
+  // 16 GB card with 32 GB of RAM). Read in whole, it ran out of memory and never loaded; memory-mapped, the card takes
+  // its share, Windows keeps the busiest parts in RAM and the rest is read from the drive as words need it. Slow, but
+  // it runs. A few GB of RAM are left for the system and the chat's memory.
+  readsWhole(args, cpu, gguf) {
     if (cpu || this.lc.loadMode === 'mmap') return false;
     if (args.some((a) => ['--mmap', '--no-mmap', '--load-mode', '-lm'].includes(a))) return false; // set by hand
-    return args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a));
+    if (!args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a))) return false;
+    return !this.biggerThanMemory(gguf);
+  }
+  // 1.5.19x "Keep busy experts on the graphics card" (llamacpp.moeCache, off): llama.cpp's MoE cache (b12032 and newer,
+  // --moe-cache-mib). Part of the card holds slots for experts that live in RAM (or on the drive); an expert a word
+  // picks is copied into a slot and stays while it's busy, so most picks run on the card. Only for a brain with
+  // experts that are kept off the card (fit or experts in RAM), on the card route, and never over a hand-set value.
+  moeCacheArgs(args, cpu, gguf) {
+    const mc = this.lc.moeCache;
+    if (!mc?.on || cpu || this.role === BESIDE) return [];
+    if (args.includes('--moe-cache-mib')) return [];
+    const n = this.buildNo();
+    if (!(n >= 12032)) return []; // an older or unknown build would refuse the flag and not start
+    if (!args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a))) return [];
+    let experts = 0;
+    try { experts = ggufInfo(gguf)?.experts || 0; } catch {}
+    if (!experts) return [];
+    return ['--moe-cache-mib', String(moeCacheMib(mc, cardGB(this.cfg)))];
+  }
+  // The brain file is bigger than the card's share plus the RAM it may use. totalRam is swapped in by the tests.
+  biggerThanMemory(gguf) {
+    let size = 0;
+    try { size = fs.statSync(gguf).size; } catch { return false; }
+    const ram = (this.totalRam ? this.totalRam() : os.totalmem()) - 6e9, card = cardGB(this.cfg) * 1e9 * 0.8;
+    return ram > 0 && size > ram + card;
   }
   // --load-mode is in the builds Bob ships (b12032, the one tested); older builds only know --no-mmap.
   // 1.5.91: when the build can't be told, no flag at all (b12032 refuses --no-mmap, so a guess can stop the engine).
@@ -438,7 +482,11 @@ export class LlamaCpp {
     // When part of the brain stays in RAM (fit, or experts kept on the processor), read it all in at load instead of
     // letting Windows page it in during the first request. PC test 2026-11-04 (Qwen3.6, --fit, 128K): first reply
     // 27 s -> 1.4 s and RAM 21 -> 12 GB, for about 10 s more load. llamacpp.loadMode "mmap" keeps the old way.
-    if (this.readsWhole(args, cpu)) args.push(...this.noMmapArgs());
+    if (this.readsWhole(args, cpu, gguf)) args.push(...this.noMmapArgs());
+    // A brain bigger than the card and RAM: the processor's experts stay as they are in the file (no repacking into RAM),
+    // so they can be read from the drive as needed (b12032 and newer know --no-repack).
+    else if (!cpu && this.buildNo() >= 12032 && !args.some((a) => ['-nr', '--no-repack', '--repack'].includes(a)) && args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a)) && this.biggerThanMemory(gguf)) args.push('--no-repack');
+    args.push(...this.moeCacheArgs(args, cpu, gguf));
     // 1.5.19: one conversation at a time, so it gets the whole context (more slots split it into small pieces).
     if (!args.some((a) => ['-np', '--parallel'].includes(a))) args.push('-np', '1');
     args.push(...this.templateArgs(model, gguf, args));
@@ -462,8 +510,10 @@ export class LlamaCpp {
 
   // Long memory (YaRN): only with the switch on, a brain the guide covers, and a size past what it was made for.
   // Settings set by hand (llamacpp.args with --rope-scaling) win.
+  // "Let Bob work on repositories" (self-work.js) uses Long memory for its own job even with the switch off: a size past
+  // what the brain was made for only reaches here through that job (brain.fitCtx with stretch) or a pick with it on.
   stretchArgs(gguf, ctx) {
-    if (!stretchOn(this.cfg) || (this.lc.args || []).includes('--rope-scaling')) return [];
+    if (!(stretchOn(this.cfg) || selfWorkOn(this.cfg)) || (this.lc.args || []).includes('--rope-scaling')) return [];
     let info = null;
     try { info = ggufInfo(gguf); } catch {}
     const plan = stretchPlan(info);
@@ -579,6 +629,7 @@ export class LlamaCpp {
   }
 
   async stopServer() {
+    if (this.role !== BESIDE) this.spread?.close(); // lent cards go back with the brain
     const c = this.child;
     if (this.role === BESIDE && this.current) this.changed?.({ action: 'leave', model: this.current });
     this.child = null;
@@ -590,7 +641,7 @@ export class LlamaCpp {
     await new Promise((r) => { c.once('exit', r); c.kill(); setTimeout(r, 5000); });
   }
 
-  async preload(model, signal, { ctx, cpu = false, beside = false, reserveMB = 0, place = null } = {}) {
+  async preload(model, signal, { ctx, cpu = false, beside = false, reserveMB = 0, place = null, noSpread = false } = {}) {
     const b = this.route({ beside });
     if (b) return b.preload(model, signal, { ctx, cpu: true, reserveMB, place });
     if (this.role === BESIDE) cpu = true;
@@ -606,6 +657,19 @@ export class LlamaCpp {
     this.placed = null;
     const args = this.buildArgs(model, { ctx, cpu, card });
     await this.stopServer();
+    // Bob-Net: a brain too big for this replicant matrix can go over your other Bobs' lent cards (src/share-card.js).
+    // Off unless "Spread big brains over my other Bobs' cards" is on; none answering means it loads here like always.
+    let helpers = [];
+    let sizeGB = 0;
+    if (this.spread && !noSpread && this.role !== BESIDE && !cpu && card !== 'none') {
+      try { sizeGB = fs.statSync(this.resolve(model).gguf).size / 1e9; } catch {}
+      helpers = await this.spread.open({ sizeGB }).catch(() => []);
+      if (helpers.length) {
+        args.push('--rpc', helpers.join(','), ...spreadArgs(args));
+        const mins = Math.ceil(spreadLoadSeconds(sizeGB, this.lc.loadTimeoutSeconds || 300) / 60);
+        try { this.log?.('engine', `${model}: spread over ${helpers.length} other Bob${helpers.length > 1 ? 's' : ''}' card${helpers.length > 1 ? 's' : ''} (${helpers.join(', ')}). The first time, part of the brain is sent over the network: over Wi-Fi that can take a while (I'll wait up to ${mins} min), and a network cable is much faster. Later loads only send what's missing.`); } catch {}
+      }
+    }
     // A llama-server left over from a crash would hold the port: stop it first.
     const pidFile = path.join(this.cfg.dataDir, `llama-server${this.tag}.pid`);
     try {
@@ -628,6 +692,9 @@ export class LlamaCpp {
     child.stderr.on('data', keep);
     const failFile = path.join(this.cfg.dataDir, `llama-server${this.tag}-load-failed.txt`);
     const saveFail = (why) => {
+      // A lent card that failed isn't asked again for a while. Only a failure to reach it tries the other way (home
+      // network, then Tailscale) next time; one that ran out of room or time won't do better over the other way.
+      if (helpers.length) this.spread?.failed({ route: /connect|unreachable|refused|timed out connecting|no route/i.test(full) && !/alloc|out of memory|took too long/i.test(full + why) });
       try { fs.writeFileSync(failFile, `${new Date().toISOString()} ${model}: ${why}\n${[exe, ...args].join(' ')}\n\n${full}`); } catch {}
       try { this.log?.('engine', `${model}: ${why}; full llama-server output saved to ${path.basename(failFile)}`); } catch {}
     };
@@ -645,11 +712,13 @@ export class LlamaCpp {
     this.currentOwn = model.includes(':') && !this.lc.models?.[model] && Boolean(this.catalogFile(model));
     if (this.currentOwn && !(this.ownLogged ||= new Set()).has(model)) { this.ownLogged.add(model); try { this.log?.('engine', `${model}: running from Bob's downloaded copy (${path.basename(this.catalogFile(model).gguf)}) instead of Ollama's`); } catch {} }
     try { fs.writeFileSync(pidFile, String(child.pid)); } catch {}
-    const deadline = Date.now() + (this.lc.loadTimeoutSeconds || 300) * 1000;
+    const deadline = Date.now() + (helpers.length ? spreadLoadSeconds(sizeGB, this.lc.loadTimeoutSeconds || 300) : this.lc.loadTimeoutSeconds || 300) * 1000;
+    let said = Date.now(); // a spread load says how it's going once a minute, so a long first load isn't silent
     const ready = (async () => {
       while (Date.now() < deadline) {
         if (signal?.aborted) throw new Error('Stopped.');
         if (await this.health()) return;
+        if (helpers.length && Date.now() - said >= 60000) { said = Date.now(); try { this.log?.('engine', `${model}: still loading over Bob-Net, ${Math.round((Date.now() - t0) / 60000)} min so far`); } catch {} }
         await new Promise((r) => setTimeout(r, 500));
       }
       saveFail('took too long to load');
@@ -659,6 +728,11 @@ export class LlamaCpp {
       await Promise.race([ready, started]);
     } catch (e) {
       await this.stopServer();
+      // 1.5.189: a spread that failed loads here like always, instead of leaving no brain.
+      if (helpers.length && !signal?.aborted) {
+        try { this.log?.('engine', `${model}: spreading over Bob-Net didn't work, so I'm loading it here instead`); } catch {}
+        return this.preload(model, signal, { ctx, cpu, beside, reserveMB, place, noSpread: true });
+      }
       throw e;
     }
     started.catch(() => {}); // later exits are handled by isLoaded()
@@ -767,7 +841,9 @@ export class LlamaCpp {
       body: JSON.stringify({ model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, max_tokens: replyTokens(this.current === model ? this.currentCtx : null, MAX_REPLY_TOKENS), // 1.5.148: less on a small context. 1.5.26: no empty enums (llama.cpp rejects them)
         ...this.sampling(model, { tools: !!tools?.length, think, task }),
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
-        ...(think === false ? { chat_template_kwargs: { enable_thinking: false } } : {}) }),
+        ...(think === false ? { chat_template_kwargs: { enable_thinking: false } } : {}),
+        // FNRI's small cube in Bob's thinking: only while someone has it open, and only Brain Engine answers it
+        ...(this.wantTrace?.() ? { expert_trace: true } : {}) }),
       signal
     });
   }
@@ -792,6 +868,7 @@ export class LlamaCpp {
         if (!ev) continue; // a cut or odd line from the server: skip it rather than lose the whole reply
         if (ev.error) throw new Error('llama-server: ' + (ev.error.message || JSON.stringify(ev.error)));
         // 1.5.30: llama-server puts the reply's timings on its last chunk; kept for Now running.
+        if (ev.expert_trace && this.onTrace) { try { this.onTrace(ev.expert_trace, model); } catch {} }
         if (ev.timings) this.lastStats = replyStats({ model: this.current || model, messages, promptTokens: (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0), outTokens: ev.timings.predicted_n, tokPerSec: ev.timings.predicted_per_second, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX }) || this.lastStats;
         const d = ev.choices?.[0]?.delta || {};
         if (budget && d.reasoning_content && ++thought > budget && !content) onOver(); // stop.over marks it, so real errors aren't retried
@@ -827,4 +904,11 @@ export class LlamaCpp {
     if (held && /<\|(channel|message|start|end)\|>/.test(content)) content = cleanHarmony(content);
     return { role: 'assistant', content, tool_calls: tool_calls.length ? tool_calls : undefined };
   }
+}
+
+// The cache size: as set (256 MiB to 64 GiB), else a quarter of the card (4 GB on a 16 GB card), else 2 GB.
+export function moeCacheMib(mc = {}, cardGb = 0) {
+  const set = Number(mc.mib);
+  if (Number.isFinite(set) && set >= 256) return Math.min(65536, Math.round(set));
+  return cardGb > 0 ? Math.max(512, Math.round(cardGb * 1024 / 4)) : 2048;
 }

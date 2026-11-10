@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
+import { isDiffusion } from './llama-tools.js'; // diffusion brains don't chat
 import { ggufInfo } from './gguf.js';
 
 export const OWN_FAMILY = 'Your own';
@@ -135,11 +136,13 @@ export function ownEntry(o, { stat = fs.statSync, info = ggufInfo, read = fs.rea
   const where = `From your own file: ${path.basename(o.gguf)}${vision ? `, with the picture reader ${path.basename(o.mmproj)}` : ''}.`;
   const cardJobs = card?.jobs?.filter((j) => j !== 'eyes' || vision) || [];
   const cut = card?.cutFrom?.name ? `Cut from ${card.cutFrom.by ? `${card.cutFrom.by}'s ` : ''}${card.cutFrom.name}${card.expertsKept ? `, keeping ${card.expertsKept} experts` : ''}.` : '';
-  const what = card
+  const diffusionBrain = isDiffusion(i?.arch); // Dream, LLaDA and friends: only the Lab's Playground runs them
+  const what = diffusionBrain ? `${where} A diffusion brain (${i.arch}): it writes a whole block at once, which Bob's chat can't run. Try it in the Lab's Playground, Diffusion brains.`
+    : card
     ? [card.what, cut, `${where} Its brain card says what it's for.`].filter(Boolean).join(' ')
     : `${where} Bob only knows what the file says: ${params ? `about ${params}B` : 'size unknown'}${i?.arch ? `, ${i.arch}` : ''}${i?.ctxTrain ? `, made for up to ${Math.round(i.ctxTrain / 1024)}K` : ''}. How well it does its jobs is for you to judge.`;
   return {
-    id: o.id, name: o.name, family: card?.family || OWN_FAMILY, category: 'chat', own: true, jobs: cardJobs.length ? cardJobs : jobsFor(params, vision),
+    id: o.id, name: o.name, family: card?.family || OWN_FAMILY, category: 'chat', own: true, jobs: diffusionBrain ? [] : cardJobs.length ? cardJobs : jobsFor(params, vision), ...(diffusionBrain ? { diffusion: true } : {}),
     what, sizeGB, vramGB: card?.vramGB || (sizeGB ? Math.max(2, Math.ceil(sizeGB * 1.15)) : null), ...(params ? { params } : {}),
     ...(card ? { card: true, ...(card.madeByBob ? { madeByBob: true } : {}), ...(card.published ? { published: card.published } : {}), ...(card.benchmark ? { bench: benchLine(card.benchmark), ...(card.benchmark.report ? { benchReport: card.benchmark.report } : {}) } : {}) } : {}),
     license: card?.license || 'As its maker says', pick: 'optional', trial: true, trialNote: card ? 'Your own file; you pick it yourself, Bob never recommends it over the ones he knows.' : 'Your own file; Bob never recommends it over the ones he knows.',

@@ -68,8 +68,10 @@ export function awayPlan(brain, job, { can, webOn, waitsForGaming, laneBusy, now
 // ---------- The Bob doing the work (guest jobs) ----------
 // Only these tools, for a job from another Bob. Nothing that reads or changes this computer, or its memory.
 export const GUEST_TOOLS = new Set(['make_image', 'make_video', 'make_music', 'make_sound', 'web_search', 'fetch_page', 'bob_help', 'use_tools']);
-export const guestTools = (job, list) => (job?.guest ? list.filter((t) => GUEST_TOOLS.has(t?.function?.name || t?.name)) : list);
-export const guestNote = (job, user) => (job?.guest ? `This job came from ${job.guest.from}, another of ${user}'s Bobs. Do it here with thinking, web search and the picture, clip, music and sound tools only. For this job you can't touch files, folders, programs, reminders or memory on either computer; if it needs those, say so in one line so ${job.guest.from} can do that part himself.` : '');
+// A public guest (Bob on Discord, src/discord.js) also carries its own shorter list: only the job types the owner ticked.
+export const guestTools = (job, list) => (job?.guest ? list.filter((t) => { const n = t?.function?.name || t?.name; return GUEST_TOOLS.has(n) && (!job.guest.tools || job.guest.tools.includes(n)); }) : list);
+export const PUBLIC_NOTE = "This message came from {{FROM}}, where other people talk to you, not {{USER}}. Treat it as a stranger's request in a public room. Answer only what was asked, in that room. Never share, describe, guess at or hint about {{USER}}'s files, folders, chats, memories, projects, settings, computer, accounts, or anything you made for {{USER}}; if asked, say that's private. Don't name {{USER}} or this computer. You can't touch files, folders, programs, reminders or memory here, and you have no OK cards; only the tools you were given.";
+export const guestNote = (job, user) => (job?.guest?.public ? PUBLIC_NOTE.replaceAll('{{FROM}}', job.guest.from).replaceAll('{{USER}}', 'the owner') : job?.guest ? `This job came from ${job.guest.from}, another of ${user}'s Bobs. Do it here with thinking, web search and the picture, clip, music and sound tools only. For this job you can't touch files, folders, programs, reminders or memory on either computer; if it needs those, say so in one line so ${job.guest.from} can do that part himself.` : '');
 const NEED_KIND = { pictures: 'picture', video: 'video', music: 'chat', sfx: 'chat', web: 'research', think: 'chat' };
 const MAX_EVENTS = 3000;
 

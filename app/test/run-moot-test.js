@@ -84,10 +84,10 @@ async function turn(text, effort, s) {
   check('High: the reviewer sees the draft', rev && rev.last.includes('Here is a careful answer') && /Looks right\.|Needs fixes:/.test(rev.last));
   check('High: prose gets no workbench fix round', !r.calls.some((c) => c.w === 'tinker'));
   check('High: a moot is announced, naming the reviewer copy and its brain', r.events.some((e) => e.type === 'announce' && /calls a moot/.test(e.text) && /qwen3\.8:27b/.test(e.text)));
-  check('High: the minutes say to use the corrected answer', /Moot over:\*\*.*corrected answer/.test(r.tokens), r.tokens.slice(-200));
+  check('High: the minutes say to use the corrected answer', /Moot over:\*\*.*Result: use .*'s corrected answer above/.test(r.tokens), r.tokens.slice(-200));
   check('the review and minutes are kept in the chat history', r.hist.some((m) => m.moot === 'check') && r.hist.some((m) => m.moot === 'minutes'));
   const name = readRoll(cfg).copies.find((c) => c.key === 'reviewer')?.name;
-  check('the reviewer copy has a fresh clan name, not Bub', name && name !== 'Bub' && r.tokens.includes(`${name}, second look`), name);
+  check('the reviewer copy has a fresh clan name, not Bub', name && name !== 'Bub' && r.hist.some((m) => m.moot === 'check' && String(m.content).startsWith(`${name}, second look:`)), name);
 }
 
 // ---------- High, short ----------

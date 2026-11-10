@@ -316,10 +316,21 @@ Hands are Bob's way of doing things for you on your PC rather than just talking 
 - **Files:** zip and unzip, move, copy, rename, and tidy folders like Downloads.
 - **Run:** run a program, command or script you've approved.
 - **Schedules:** do a job at a set time.
-- **Apps:** click and type in another program for you.
+- **Apps:** click and type in another program for you, and, with a vision brain in his "Seeing pictures" slot, check each step by looking at a picture of the window (and click by place in apps that don't name their buttons).
+- **Use a browser:** Bob's own browser window ("Bob is browsing", separate from yours): open a page, read it, click, type, scroll, go back, one approved step at a time, with the same eyes check.
 - **Office documents and converting:** convert files (Word, Excel, PowerPoint and OpenDocument to and from each other or to PDF; pictures; sound; video), read office files, make new documents, spreadsheets and slides, and change them (fill cells, add rows and slides, replace text, fill a template).
 - **Security and privacy:** check the PC's protection, explain Defender alerts and start scans, look at suspicious downloads, scripts and emails without opening them, find and remove hidden details (like GPS in photos) before sharing, and check whether a website, link or sender is genuine from public records.
 - **Connected apps (MCP):** work inside Unreal Engine, Blender and other apps that offer their tools through an MCP add-on.
+
+### Use a browser
+
+Ask things like "open the Blender release notes and tell me what's new", "on that site, find the cheapest 2 TB drive", or "type fox in the search box and press Enter".
+
+- Settings → Show advanced settings → Hands: switch on **Use a browser**. A window titled **Bob is browsing** opens when he first opens a page. It is part of Bob, with its own cookies and sign-ins; your own browser is never touched or read.
+- Bob reads a page as text plus a numbered list of its links, buttons and fields, then does one thing at a time: click a number, type into a field, press Enter, Tab, Esc or an arrow, scroll, go back, or pick an option. Each action is a card ("Click link 'Downloads' on blender.org", **Do it** / **Allow the rest of this job** / **Deny**) unless "Let Bob work without asking" is on.
+- While **Don't send anything out** is on he only types into search boxes and never presses Send, Post, Submit, Buy, Pay or Upload, never fills other fields and never picks files. Switch the limit off to let him, still one card each. Password fields stay off-limits while that limit is on. His own pages, downloads, pop-ups and anything that isn't http(s) are always refused.
+- **Eyes checks:** with a vision brain in Equip Bob's "Seeing pictures" slot, Bob takes a picture of the page (or the app window, for the Apps Hand) after a step that says what should happen and asks his eyes whether it did. The result says yes, no or unsure; a no makes him read the page again instead of pressing on. **Bob checks his work with his eyes** (Settings, Hands) switches this off.
+- **Forget what Bob's browser knows** (Settings, Hands) clears the window's cookies, sign-ins and cache. Works on Windows, Mac and Linux; Bob for Android shows the cards while the window is on your replicant matrix.
 
 ### Connected apps (MCP)
 
@@ -414,7 +425,7 @@ Under the tabs, **Keep it simple** or **Professional** is one switch for the who
 
 The Lab has five tabs:
 
-- **Make a brain** walks you through five steps with tick boxes instead of command-line flags:
+- **Make a brain** starts by asking what you want to do (Make it smaller, Cut experts, Take out sight or hearing, Just test a brain, Everything, or Take out the refusal habit, which opens the Forge tab), then walks you through only the steps that job needs, with tick boxes instead of command-line flags. Everything is all five:
   1. **Pick a brain** you already have.
   2. **Lessons**: your chats with Bob, a lesson set you have, or a new one Bob writes with a teacher brain, or builds from your own files.
   3. **Make it smaller**: cut experts while keeping every skill covered, take out sight or hearing, then make the running files (Q4 and others).
@@ -422,10 +433,10 @@ The Lab has five tabs:
   5. **Test and use**: the Lab test runs on the new brain and the one it came from, and **Use in Bob** only appears after it. **Compare** puts tested brains side by side and saves the table as CSV or JSON.
 
   Or start from a goal (Everything smaller, Coding helper, Everyday chat and more) and Bob fills in the steps. **Show the recipe** shows the exact commands, so you can learn them or run them yourself.
-- **Forge**: every way of making a new brain, side by side, each with where it runs and what works best. Making a brain smaller, cutting experts, mixing two brains and stacking layers run here for free. Teaching a cut brain back needs a rented graphics card: the Forge writes the plan, and you start each run yourself.
+- **Forge**: every way of making a new brain, side by side, each with where it runs and what works best. Making a brain smaller, cutting experts, mixing two brains and stacking layers run here for free. Teaching a cut brain back needs a rented graphics card: the Forge writes the plan, and you start each run yourself. Under **Lessons to teach**, every lesson set is broken into parts by what it teaches, where it came from and whether it shows its thinking: **Pick its parts** leaves parts out, and a set's thinking can be taught as its own thinking path ("Think: name"). **Add a lesson set to the Lab** brings in a .jsonl or .json set from your replicant matrix or Hugging Face and breaks it up the same way.
 - **Learn**: short cards about how a brain works (what a token is, how the next word is picked, what temperature does), run on the brain Bob has loaded right now. If none is loaded, say anything to Bob in the chat first. Nothing here changes how he answers, and nothing is saved.
 - **Challenges**: short tests out of 100 for any brain you have, and a scoreboard that ranks brains against others of their own size.
-- **Playground**: **Smaller** makes one brain in six sizes and shows where it starts to slip; **Peek inside** shows which experts your work uses; **Longer**, **Faster** and **Teach it** try longer chats, faster settings and a short round of teaching.
+- **Playground**: **Smaller** makes one brain in six sizes and shows where it starts to slip; **Peek inside** shows which experts your work uses; **FNRI** scans a brain while it answers a few questions for each skill and plays it back in its own window as a 3D block of voxels, a floor for each layer, coloured by skill and glowing as the experts are used (tick boxes hide skills, three zoom levels, Save as a video); **Longer**, **Faster** and **Teach it** try longer chats, faster settings and a short round of teaching.
 
 | | | |
 |---|---|---|

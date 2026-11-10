@@ -14,11 +14,12 @@ export function phoneAccessHtml() {
 }
 
 // 1.5.94: what's in the way on this replicant matrix's firewall, and the one button that fixes it.
-function firewallHtml(f, port) {
+function firewallHtml(f, port, home = false) {
   if (!f) return '';
+  if (f.os === 'win' && f.behind) return `<div class="row"><span><strong>Bob's firewall rule needs bringing up to date.</strong> <span class="muted">It doesn't let in ${home ? 'this home network (which a lent graphics card with "Use the home network first" and "Also over the home network" need), or ' : ''}a lent graphics card (Bigger Bobs) yet. Windows asks you once.</span></span><button type="button" class="get" data-fw="add">Bring the firewall rule up to date</button></div>`;
   if (f.os === 'win') return f.ruleHere
-    ? `<div class="row"><span class="muted">✓ Windows Firewall lets Tailscale through to Bob (the rule "Bob (Tailscale only)").</span><button type="button" data-fw="remove">Remove the firewall rule</button></div>`
-    : `<div class="row"><span><strong>Windows Firewall may block your other replicant matrices.</strong> <span class="muted">One rule fixes it: Bob's port${port ? ` (${esc(port)})` : ''}, only from Tailscale addresses (100.64.0.0/10), nothing else on your network. Windows asks you once to allow the change. It also switches off any rule that blocks Bob's own program (Windows makes one if Cancel was clicked on its earlier question).</span></span><button type="button" class="get" data-fw="add">Let Tailscale through the firewall</button></div>`;
+    ? `<div class="row"><span class="muted">✓ Windows Firewall lets Tailscale${home ? ' and this home network' : ''} through to Bob (the rule "Bob (Tailscale only)").</span><button type="button" data-fw="remove">Remove the firewall rule</button></div>`
+    : `<div class="row"><span><strong>Windows Firewall may block your other replicant matrices.</strong> <span class="muted">One rule fixes it: Bob's port${port ? ` (${esc(port)})` : ''} and a lent graphics card's (50052), only from Tailscale addresses (100.64.0.0/10)${home ? ' and this home network' : ', nothing else on your network'}. Windows asks you once to allow the change. It also switches off any rule that blocks Bob's own program (Windows makes one if Cancel was pressed on its earlier question).</span></span><button type="button" class="get" data-fw="add">${home ? 'Let Tailscale and the home network through the firewall' : 'Let Tailscale through the firewall'}</button></div>`;
   if (f.os === 'linux' && f.line) return `<p class="muted">Your ${esc(f.firewall)} firewall is on and may block Tailscale. I can't change it myself (it needs your password). In a terminal: <code>${esc(f.line)}</code></p>`;
   if (f.os === 'mac') return '<p class="muted">If the macOS firewall is on, it asks once whether Bob may accept incoming connections: choose Allow.</p>';
   return '';
@@ -36,7 +37,8 @@ export async function mountPhoneAccess(box) {
         <button type="button" data-phone-find>Check again</button></div>
       <div class="row"><strong>Passcode</strong> <span class="muted">${shown ? `<code>${esc(shown)}</code> Type it into your phone or other Bob now: it isn't shown again.` : v.passcodeSet ? 'set (it\'s only shown once, when you make it).' : 'Not set yet. Turning on Let my other replicant matrices in makes one for you.'}</span>
         <button type="button" data-phone-newcode>Make a new passcode</button></div>
-      ${v.enabled ? firewallHtml(v.firewall, v.port) : ''}
+      ${v.enabled ? `<label class="switch"><input type="checkbox" data-phone-home ${v.homeNet ? 'checked' : ''}><span><strong>Also over the home network</strong> <span class="tag">off unless you turn it on</span><br><span class="muted">Your other Bobs and your phone can reach this Bob straight over your home network too, when they're on it: quicker than Tailscale, which stays the backup. Only from this home network, still with the passcode. Pairing stays on Tailscale. Turn it on on each Bob. Over the home network, the passcode and what your Bobs send travel without Tailscale's encryption, so someone else on that network could read them, so keep this for a home network you trust.</span></span></label>` : ''}
+      ${v.enabled ? firewallHtml(v.firewall, v.port, v.firewall?.home ?? v.homeNet) : ''}
       ${msg ? `<p class="muted" role="status">${esc(msg)}</p>` : ''}
       <details class="more"><summary>More</summary><p class="muted">On the phone: install Tailscale and sign in with the same account, open Bob for Android, Menu, Bobs on your network, and add the Address above. Then type the passcode and tap Log in. Making a new passcode signs every phone out. Turning this off closes the door straight away.</p></details>`;
   };
@@ -46,7 +48,7 @@ export async function mountPhoneAccess(box) {
     catch (e) { msg = e.message; }
     draw();
   };
-  box.addEventListener('change', (e) => { if (e.target.matches('[data-phone-on]')) change(e.target.checked && !v.passcodeSet ? { enabled: true, newPasscode: true } : { enabled: e.target.checked }); });
+  box.addEventListener('change', (e) => { if (e.target.matches('[data-phone-home]')) change({ homeNet: e.target.checked }); if (e.target.matches('[data-phone-on]')) change(e.target.checked && !v.passcodeSet ? { enabled: true, newPasscode: true } : { enabled: e.target.checked }); });
   box.addEventListener('click', async (e) => {
     const fw = e.target.closest('[data-fw]');
     if (fw) { // 1.5.94: Windows shows its own "make changes" prompt; nothing changes if the answer is No

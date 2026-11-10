@@ -1,2 +1,6 @@
 public/vendor/** -text
 android/app/src/main/assets/www/vendor/** -text
+
+# Pod scripts run under bash/python on Linux; keep LF even when cloned on Windows (CRLF breaks run.sh)
+*.sh text eol=lf
+model-lab/forge/pod/** text eol=lf

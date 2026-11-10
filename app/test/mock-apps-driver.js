@@ -50,6 +50,9 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       if (m.action === 'type' && w && w.process === 'notepad' && !w.title.startsWith('*')) w.title = `*${String(m.text).split('\n')[0].slice(0, 30)} - Notepad`;
       if (m.action === 'type') r.typed = m.text;
     }
+  } else if (m.op === 'clickat') {
+    if (!driving) { r.ok = false; r.error = "Bob isn't driving right now."; }
+    else r.did = `clicked at (${m.x}, ${m.y}) in "${(windows.find((x) => x.hwnd === m.hwnd) || {}).title || '?'}"`;
   } else if (m.op === 'quit') { out(r); process.exit(0); }
   out(r);
 });

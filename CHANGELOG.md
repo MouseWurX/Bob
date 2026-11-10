@@ -4,6 +4,318 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.193
+
+A brain bigger than your card and memory together now loads from the drive instead of failing, and Bob can keep a big brain's busy experts on the graphics card.
+
+### Fixed
+
+- **Very big brains load.** Since 1.5.90, a brain that sits partly in memory is read in whole when it loads. For a brain bigger than the card's share plus memory, like gpt-oss 120B (about 63 GB) on a 16 GB card with 32 GB of memory, that ran out of memory, so the brain never loaded. Now such a brain is read from the drive as it goes. The card takes its share, the busiest parts stay in memory, and the rest is read from the drive when the words need it. It's slow, but it runs. Brains that fit load exactly as before. Tests in `test/run-tuning-test.js`.
+
+### New (experimental, off)
+
+- **Keep busy experts on the graphics card** (Settings, Engines, Speed). This works for brains made of many small experts (Qwen 3.6, gpt-oss and the like) that don't fit on the card. Each word uses only a few experts, and some get picked far more often than others. With this on, part of the card holds the experts picked most, so most of each word runs on the card. This uses llama.cpp's MoE cache and needs llama.cpp b12032 or newer. **Room for busy experts (MB)** sets how much of the card it may use. Left empty, it uses a quarter of the card. A brain bigger than card and memory together also has its experts read from the drive as they're needed. Help: the FAQ **Can a brain bigger than my card run quickly?** and a glossary entry. Tests in `test/run-tuning-test.js`.
+
+## 1.5.192
+
+### FNRI: two brains side by side
+
+- **Two brains side by side** (in the FNRI viewer, under Before and after): Compare with now lists scans of other brains with the same floors too, and **Or open a scan file** takes a scan from anywhere, like one made on a rented card. Asked the same questions, the two play word for word with their names over them, and Bob says how many answers were the same and how many picks went to different experts. A cut brain is lined up with the brain it was cut from by its keep list (beside the brain's file, or inside the scan); without one, Bob says so.
+- **Save as a video** saves both pictures in one video when two are showing, and every video is named model-skill-quantization (riker-coding-q4_k_m, riker-vs-qwen-3.6-35b-a3b-coding-q4_k_m). Pick a skill in the player first for one skill's video.
+- A scan file opened beside the viewer (watch.html?file=…) now plays; it used to sit still. `&vs=other.json` opens a second scan beside it.
+- **For rented cards:** `model-lab/forge/pod/aifeui.sh` takes `AIFEUI_IN` and `AIFEUI_OUT`, so one card can scan several brains in turn, and `model-lab/forge/fnri-remote.mjs` scans a brain served elsewhere over HTTP (a forge benchmark step).
+
+Where it works: the viewer on any computer that runs Bob; scans as before.
+
+### Also
+
+- **FNRI's page says "Reading this brain…"** while it reads a brain you picked. If an answer for an earlier pick lands late, Bob drops it, so the box under **Which brain?** always says something.
+
+## 1.5.191
+
+Teach it learns squeeze-aware, Best answers' parts-only teaching changes the chosen weights directly, and FNRI finds the trace in newer Brain Engine builds.
+
+### Teach it: squeeze-aware (quantization-aware distillation)
+
+- **A second way to learn:** "How it learns" now offers **From its lessons** (as before) or **From its full-size self (squeeze-aware)**. With squeeze-aware, every weight is rounded the way the small file will round it (Q5_K_M, Q4_K_M or Q3_K_M) while the brain learns. The brain learns to say what its own full-size self says on the lessons' questions, so the answers in the lessons don't matter. It learns around the rounding instead of being caught out by it later.
+- **Side by side:** Bob then makes the full-size file (Q8_0, the mark), the plain squeeze and the squeeze-aware squeeze, the last two the same size. He shows each one's surprise on ordinary English and the Quick quiz. If the squeeze-aware one isn't closer to the full-size brain, he says to keep the plain one.
+- **Where it runs:** here only, at 16-bit, so about half Teach it's usual sizes (16 GB holds about 4.5 billion weights). Rented says it runs here for now. Without llama-perplexity in the engine folder, the comparison uses the Quick quiz alone.
+- **The trainer:** teach.py's `--direct --squeeze TYPE` rounds each weight in blocks the way that GGUF type does, with a straight-through gradient, and learns from the brain's own top-16 odds (with one "everything else" bin). It saves the unrounded weights, and the file's own quantizer rounds them afterwards. On a tiny test brain at Q4_K_M, it cut the gap to the full-size brain by more than half.
+- **Help:** Teach it's page explains both ways, plus a glossary entry (Squeeze-aware) and an FAQ ("Can a brain learn to cope with being squeezed?"). Tests in `test/run-lab-pages-test.js`.
+
+### Best answers: Teach only these parts, directly
+
+- Bob now changes the chosen weights themselves, with no adapter. He does it one expert at a time, even where the full weights keep a layer's experts packed together. That holds the brain at 16-bit while it learns, so the biggest brain that fits here is about half the usual size. If a listed part can't be changed on its own, the block around it learns instead, and the result says how many parts that affected. teach.py's adapter path also names its layers explicitly now.
+
+### Fixed
+
+- **FNRI's Scan button works with the new Brain Engine.** Bob checks whether the engine can report its experts by reading the engine's files for the trace. In newer llama.cpp builds (b12032 on), the server's code sits in `llama-server-impl.dll` (`libllama-server-impl.so` on Linux) beside the program, not in `llama-server.exe` itself. Bob only read the program, so Scan stayed grey on a Brain Engine that had the trace. He now reads the llama libraries beside it too. Tests in `test/run-lab-watch-test.js`.
+
+**Where it works:** Windows and Linux with an NVIDIA card can answer, judge and teach. A Mac answers, judges and teaches in 16-bit, and squeeze-aware runs there too at the same 16-bit sizes. Android and the Raspberry Pi can answer and judge, and the teaching goes to a Forge plan.
+
+## 1.5.190
+
+A new Lab page where a bigger brain judges and a smaller one learns from its own best answers, and a lent graphics card reloads a spread brain almost without sending anything again.
+
+### Bigger Bobs: quicker reloads over Wi-Fi
+
+- **The lent card's store now keeps nearly all of a brain.** Brain Engine gets `engine/patches/0004-rpc-wifi.patch`. Before, the Bob lending his card kept only big pieces of the brain (10 MB and up) on his drive between loads. Now he keeps pieces from 1 MB up, so loading the same brain again sends almost nothing over the network. The card-sharing server can also be filled ahead of time from a brain file (`--seed`).
+- Brain Engine's download now carries the card-sharing library itself (`ggml-rpc.dll` on Windows, `libggml-rpc.so` on Linux), so both halves come from the same build.
+- This needs the rebuilt Brain Engine on both Bobs. Until then, everything works as before.
+- Help: the FAQ **Why is the first spread load so slow, and the next ones quicker?** and the glossary entry **Lent card's store**.
+
+A new Lab page: a bigger brain judges, and a smaller one learns from its own best answers.
+
+### Best answers (the Lab's Playground)
+
+- **How it works:** the small brain answers each question several times (2, 4 or 8). A bigger brain scores every answer from 0 to 10. When a lesson has a short exact answer, like a number or a word, a checker marks it instead of the judge. Nothing is copied out of the big brain's weights: it is only the judge.
+- **Three ways to learn:**
+  - **Best of its own:** the small brain is taught its best answer to each question. This is best-of-N self-training. It keeps the brain's own voice and repairs damage from cutting or squeezing.
+  - **Better and worse pairs:** the brain learns to lean toward the better of two of its answers (preference training, DPO).
+  - **Both:** the best answers first, then the pairs.
+- **When no answer is good enough:** if none of a question's answers scores 6 or more, the judge writes its own answer for that question, and that answer is taught. You can turn this off.
+- **Teach only these parts:** only some parts of the brain learn, and the rest stays frozen. You can pick the experts one skill uses, read from an FNRI scan. You can also pick a parts list saved in FNRI with **Use these for training**, which holds a skill's experts, the blocks you dialled, or the blocks that moved most. Where a brain's full weights keep a layer's experts fused together, that layer's whole feed-forward block learns instead, and the result says how many parts that affected.
+- **Held back:** about a tenth of the questions are never taught. They are asked before and after and scored by the same judge, so you can see a real gain, not a brain that learned the test. The Quick quiz also runs before and after, and best and worst answers can be shown side by side. To see which blocks moved, scan the old and new brain in FNRI and open Before and after.
+- **Where it runs:** answering and judging run here for free, with one brain on the card at a time. Teaching runs here when the brain fits the card, with Teach it's Trainer pack. If the brain doesn't fit, the best answers are saved as a Teach it Forge plan with caps at 0, and only the Forge tab's purchase card can start it. Nothing is rented from this page. The Forge learns from best answers only for now, so pairs and Teach only these parts run here.
+- **The trainer:** Teach it's trainer (teach.py) gets two additions. A better-and-worse pairs pass compares each answer against the brain as it was when the pass began. Parts-only teaching puts the adapter on those modules only.
+- **Help:** a Best answers page, two glossary entries (Best of N, Preference training) and an FAQ ("Can a bigger brain judge a smaller one and teach it?"). The tests are in `test/run-lab-best-test.js`.
+
+**Where it works:** Windows and Linux with an NVIDIA card can answer, judge and teach. A Mac answers, judges and teaches in 16-bit. Android and the Raspberry Pi can answer and judge, and the teaching goes to a Forge plan.
+
+## 1.5.189
+
+Spreading a brain over another Bob's lent card (Bigger Bobs) now holds up on Wi-Fi.
+
+### Fixed
+
+- **A lent card no longer runs out of room partway through a load.** When a brain is spread, llama.cpp's fit now keeps 2 GB free on every card, the lent ones included, and works in smaller steps (`-ub 512`). That leaves room for the card's working memory. In a test on the replicant matrix, a handheld's card filled up with the brain itself and the load failed after nearly 7 minutes. Settings you made by hand are kept.
+- **A long first load isn't cut off at 5 minutes.** The first time, part of the brain goes over the network, and over Wi-Fi that's about 6 MB a second, so a big brain can take a quarter of an hour or more. Bob now waits as long as the brain's size needs, up to two hours, and says in the log every minute how long it's been. The log also says that a network cable is much faster, and that later loads only send what's missing.
+- **A spread that fails loads the brain here like always**, instead of leaving no brain. That Bob's card isn't asked again for a while. Only a failure to reach the card tries the other way (home network or Tailscale) next time. A card that ran out of room or time isn't woken up again right away over the other route.
+- Help: the Bigger Bobs section says all this.
+
+Tests in `test/run-llama-tools-test.js`.
+
+### Changed
+
+- **Bigger Bobs keeps a brain here when it fits.** Picking Bigger Bobs now sets **Spread big brains** to **Only brains too big for this replicant matrix**. Before, it picked **Any brain bigger than my card**. A brain that fits this card and memory together loads and runs much quicker here. In a test, Riker on a 16 GB card plus memory ran at 105.6 tokens a second, against 17.9 spread over a handheld on Wi-Fi. You can still pick **Any brain bigger than my card** for a fast cable network. A setting you already chose isn't changed.
+
+### FNRI: use these for training
+
+- **Use these for training** (in the FNRI viewer, under Dials): saves a list of blocks for the Lab's judge training. Pick every expert of one skill, the dials you've set, or the experts that moved most in Before and after, give the list a name, and save it. The judge training can then change only those weights and leave the rest of the brain as it is. Nothing is trained in the viewer; the list waits beside the brain's scans until you use it.
+
+Where it works: the list is saved on any computer that runs Bob. Training with it follows the Lab's judge training (rented, or at home where the Trainer pack fits).
+
+## 1.5.188
+
+The firewall rule now keeps up with Bigger Bobs.
+
+### Fixed
+
+- **Settings, Bob-Net: "Bring the firewall rule up to date" now shows when a lent graphics card needs the home network.** With Bigger Bobs lending this Bob's card and **Use the home network first** on, the other Bob reaches the card over the home network. Bob's Windows firewall rule only let Tailscale in, but Bob still said ✓ and offered only Remove. Now Bob checks for the home network whenever either **Also over the home network** or a lent card with **Use the home network first** needs it. If the rule doesn't have it, he offers **Bring the firewall rule up to date**, and pressing it adds the home network (Windows asks you once). The ✓ line also says when the home network is let in. Tests in `test/run-firewall-test.js`.
+
+## 1.5.187
+
+A new FNRI workbench in the Lab: turn a part of a brain up or down, then see before and after.
+
+### FNRI: dials, and before and after
+
+- **Dials** (in the FNRI viewer): turn one part of a brain up or down and scan again to see what changes. One expert or attention head, every expert of a skill, a floor's whole attention, or a floor's whole feed-forward block. 1 is as built, 0 is silent, 2 is twice as loud. It's the same as scaling that part's weights, done live in Brain Engine for that one scan: the brain's file is never changed. Blocks turned up have a light rim and a plus, blocks turned down are fainter with a dark rim and a minus.
+- **Before and after:** a scan made with dials (or with experts turned off) opens beside the scan it was made from, playing word for word. Under the pictures Bob says how many answers changed and how much of the picks moved, for each skill, and shows both answers. Compare with picks any other scan of the same brain.
+- **Brain Engine** gets `engine/patches/0003-dials.patch` (`GET`/`POST /dials`). Dials need a Brain Engine rebuilt with it; an older one says so when you scan.
+
+Where it works: wherever FNRI scans do (Windows and Linux with Brain Engine; not yet a Mac or Android). The viewer's comparison works on any saved scans.
+
+### Fixed
+
+- An engine update kept aside for missing files is still found when its note (bob-incomplete.json) starts with a byte-order mark, as a file saved by a Windows editor can. Before this, Bob didn't see the held update, so the **Download the missing files** button didn't show.
+
+## 1.5.186
+
+Engine updates that are missing files can be finished with one button.
+
+- **New: an update goes in only when it has all its files.** Before a new llama.cpp or Brain Engine build takes the old one's place, Bob checks it has the engine program, the llama.cpp library files (ggml) and, for an NVIDIA build, the CUDA runtime. If anything is missing, he doesn't put it in. The engine you have keeps working, and the new download is kept aside. Settings, Engines says what's missing and offers **Download the missing files**, which fetches only those files from the same release, checks them against GitHub's checksums, and then swaps the new build in, with Go back as usual. A download with files missing isn't retried three times. This works the same for the Update button and for **Keep engines up to date**. Help covers it in Settings: Engines and the FAQ **How do I update an engine?** Tests in `test/run-engine-libs-test.js` use the real llama.cpp b12032 file list in both orders.
+- **Bob's copies are never named after one of Bob's own brains.** The names a new copy gets (Bob puns first, then sci-fi names by job) no longer include Riker, Bill, Bobert, Homer, Milo, Luke, Calvin or Garfield, so a name always means one thing. A copy that already has one of those names, most likely the reviewer called Bobert, gets a fresh name and keeps it. Help covers it in Bob's copies and their names. Tests in `test/run-clan-test.js`.
+
+## 1.5.185
+
+Reviews over Bob-Net, a bigger Bob for harder checks, DeepSeek's thinking brains, and the home network for Bob-Net.
+
+Reviews over Bob-Net: another of your Bobs can check the work when the reviewer won't fit here. Fixes #30.
+
+- **High and Extreme effort**, with "Let the reviewer sit beside Bob's main brain" on: if there's room, the reviewer sits beside the main brain as before. If there isn't, and **Borrow brains from my other Bobs** is on, a paired Bob with a Review brain at least three quarters the size of this one's checks the work over Bob-Net. His brain does the thinking; every tool (file reads) still runs here, and the chat says who's checking. If none of them can, the reviewer swaps in here as before, and the chat says so.
+- **Ask my other Bobs for a quick second look** (Settings, off): at Low and Medium effort, a free paired Bob with a good enough Review brain checks longer replies once. If none is free, there's no check and no brain swap here. Short chit-chat is never checked.
+- The Bob doing the check needs **Take jobs from my other Bobs** on, isn't gaming or busy, and has a Review brain on Bob's built-in engine. Older Bobs don't list a Review brain, so they're never asked. A Bob that fails mid-check is skipped for 5 minutes, and the check carries on here.
+- Help, a Settings note and the Take jobs note explain it. Tests in `test/run-review-away-test.js`.
+
+Also, from three rounds of trying it on two real machines (a desktop and a handheld with built-in graphics):
+- **Memory kept for Windows** (Settings, Brains, shown with built-in graphics only): a slider from 0 to 8 GB, 4 GB to start with. With built-in graphics, a brain shares memory with Windows, and Bob leaves this much free memory alone before loading one. A 16 GB handheld can go lower so bigger brains load. At 0, Windows may slow down, or Bob may close, if memory runs out. It covers loading a brain and waking one when you start typing.
+- The chat now says which Bob is checking over Bob-Net, and the moot's summary names it ("… (over Bob-Net) checked: looks right"), not only the logbook.
+- A draft that came out as a tool step written as text (like "fetch_page with …") is no longer sent for a check and approved: the moot says the answer isn't finished.
+- If another Bob sends back an empty answer, for a borrowed reply or for a check, this Bob carries on by itself instead of leaving the reply empty.
+- **A check judges the right question.** The reviewer is now handed the question asked this turn, word for word, and told that lines inside files and tool results are quoted data. Files and tool results in what it reads are fenced off as such. (A small reviewer had read an old chat line inside Bob's logbook as the question.)
+- **A corrected answer about something else is set aside.** If the reviewer's corrected answer shares no words with the question while Bob's own answer does, Bob's answer stays, the chat says why, and no fix round starts.
+- **A Bob checking work for another doesn't crowd itself out.** A lent job never loads the chat brain beside it, and on built-in graphics one already there is let go first, so the Review brain gets the room (graphics memory and RAM, within Memory kept for Windows).
+- **A slower Bob gets time.** While the Bob doing a check keeps saying it's still loading or thinking, the asking Bob waits (up to 15 minutes). A refusal, a dropped line or a long silence still hands the check back at once.
+- **The check says who checked.** When another Bob checks over Bob-Net, the heading says so ("Handheld, second look over Bob-Net"), and the check is saved in the chat under that Bob's name. When none of the other Bobs can do it, the saved check says it happened here.
+- **Bob's answer stays unless the fix adds something real.** A corrected answer that's nearly the same as Bob's, or that brings in things none of what Bob looked up this turn says, no longer replaces his answer: the reviewer's points show as a note, and the result line says why.
+- **A Bob checking for another keeps its Review brain ready.** It stays loaded for 5 minutes after a check (it was 90 seconds, then the chat brain came back and the next check was short of room). Short of room on built-in graphics, a check is loaded with a smaller chat memory, as small as the work needs, before it's turned down. With 0 GB kept for Windows, the refusal no longer says Windows keeps a share.
+- **Long tool results fit.** When what Bob looked up is more than his brain's chat memory holds, the oldest results are shortened before the brain is asked, instead of the whole request being refused. If the brain still says it's too long, they're cut harder once more.
+- **A failed job keeps the chat.** The question stays, with the error as a note under it, even after a reload (a very long turn used to save an empty chat).
+- **Stuck repeating a tool:** at most 6 tool calls run from one reply, and after 3 repeats Bob is told to answer from what he has.
+- **Bob looks up his own features in his own Help first** (Bob-Net, the Lab, FNRI, the Forge and the rest), and the folder tool knows the real home folder instead of guessing one.
+
+A bigger Bob checks the harder jobs (PR #92):
+
+- **Ask a bigger Bob to check my harder jobs** (Settings, Bob-Net, off): at High and Extreme effort, the moot's check goes to one of your other Bobs whose Review brain is bigger than this one's, going by the size in the brain's name (High: the first bigger one in your list; Extreme: the biggest). Files the check wants to read are still read here. When none is free, or one says no or goes quiet, the chat says so and the check runs here.
+- **Check harder jobs for my other Bobs** (off) on the Bob that does the checks: he thinks on his Review brain with high thinking and keeps nothing. Computers only; the phone app doesn't check. Help, an FAQ ("Can a bigger Bob check my handheld's work?"), a glossary entry and the privacy page explain it. Tests in `test/run-bob-net-check-test.js`.
+
+Bob-Net and the home network (PR #91):
+
+- **New:** **Also over the home network** under Let my other replicant matrices in (off unless you turn it on). Your Bobs and your phone then reach each other straight over the home network when they're on the same one, which is quicker, and over Tailscale otherwise.
+- **Fixed:** Bob's Windows firewall rule now also lets in a lent graphics card's port (50052), and the home network when that's on. An older rule is offered for an update. Tests in `test/run-firewall-test.js`.
+
+- **DeepSeek's thinking brains.** The Brain catalogue has a DeepSeek family: DeepSeek's R1 thinking taught to smaller Qwen and Llama brains, from 1.5B (any laptop) to 32B (a 24 GB card), plus the 70B under Rented brains. Each writes out its reasoning step by step before it answers, and you can read it under 💭 Bob's thinking. They're from 2025, so they're marked Dated, and like every new brain they aren't recommended until they've been tried on real hardware.
+- When another Bob drops out in the middle of a check, the check says so and finishes here; the logbook says why a Bob is passed over for checks; and a check loaded here no longer brings the chat talker back beside it.
+- **Safer engine updates.** Before a new Brain Engine or llama.cpp build takes the old one's place, Bob checks that it's whole: the program plus its ggml and llama libraries. A download with only some of the files is turned down, and the engine you have stays as it was. **Fixed:** with an NVIDIA card, an engine download could pick llama.cpp's CUDA runtime file (cudart) instead of the engine itself, which left a Brain Engine update without its libraries; the runtime file is now only ever fetched beside the engine. Tests in `test/run-engine-keeper-test.js`.
+
+## 1.5.184
+
+A new Lab page: **FNRI**, a scan of a brain's experts lighting up as it works.
+
+- **New: FNRI (Functional Neural Response Imager), in the Lab's Playground.** For a mixture-of-experts brain. Tick the skills to ask about (coding, maths, writing, knowledge, other languages, planning, everyday chat, running a game, using tools, summarising, logic puzzles, science, and sixteen more that start unticked, such as saying no kindly, common sense and admitting it doesn't know; up to 16 in one scan, or one of your own), and Bob asks the brain a few simple questions for each on Brain Engine, recording which experts every layer picked for every word. It's a Lab job: free, on this replicant matrix, it asks before unloading Bob's brain, waits while Gaming is on, and can be stopped.
+- **The viewer opens in its own window**, so it can sit beside the Lab or a chat. The brain is one 3D block of voxels: every layer is a floor, so the number of layers is the height; every expert is one voxel in the colour (and letter) of the skill that used it most, stronger the more it is that skill's own; the parts that aren't experts are a grey core up the middle and a grey base, at their true share of the weights. Press Play and the experts glow as the brain reads the question and writes the answer, with the words underneath.
+- **Turn it your way:** drag it, use the arrow buttons or keys, let it spin at a speed you set with a slider, or jump to a corner, the front, the side, the back or above. The lines between the experts in use can be switched off.
+- The experts in use can show as **a glow, an outline or both**, and every skill can have **a colour of your own**.
+- **Glow** has its own slider and starts gentle, so the picture doesn't flash hard.
+- **Show the cube** (Bob's thinking, in Now running; on to begin with, and the written thinking is one switch away): a small cube of the brain Bob is chatting with, lit by the experts each reply used, played right after he finishes it. Needs Brain Engine as the engine for Bob's brains; replies come a little slower while it's on. Open in the big viewer hands it the last few replies. When that brain has a scan, the cube borrows its colours, so every expert shows its skill.
+- **Speed:** six speeds, from one word every two seconds to Very fast. **Video size:** Small, Normal or Sharp.
+- **Step by step:** Back one word and Forward one word beside Play, and a bar to drag; the picture and the words always show the same moment.
+- **Subtitles:** Question, Thinking and Answer, under the picture and in the saved video. Tick **Let it think first** before a scan to record the brain's thoughts as their own part (off to begin with).
+- **A cube of coloured glass:** the floors start stacked as tall as they are wide, and the voxels are see-through so the ones glowing deep inside show. A slider sets how see-through, each skill has its own slider for how solid its experts are, and Back to a cube undoes pulling the floors apart.
+- **Brains with no experts too:** the scan lights the busiest groups of neurons in each layer instead (256 equal groups, the 8 busiest for each word), and the viewer says neuron groups. The groups are a way of slicing, not parts the brain knows about.
+- **Three more ways to look, for any brain, all worked out on your own replicant matrix** (nothing to rent, nothing tuned per brain):
+  - **Attention heads:** on the scan page, What to light up, Attention heads. The busiest heads of every layer light for each word. They are real parts of the brain, like experts. Needs the Brain Engine from this release.
+  - **Floors only** (viewer switch): the whole floor glows by how hard it is working for the word, and the three busiest are named. For scans of neuron groups and attention heads.
+  - **Colour by: Patterns Bob found** (viewer, any scan): the words are sorted by which blocks they light, with no labels given, and each group is named by its most typical words. 6, 8, 12 or 16 patterns.
+- **One colour:** a quick switch under the small cube and in the big viewer. Every expert the same colour, so only what lights up stands out, in a colour you pick. The small cube starts as just the picture; Show details brings out the words, the key and the colour choices. Bob remembers these choices.
+- **Load in and load out:** the block builds itself one block at a time when a scan opens (and the small cube on a brain's first reply), and comes apart the same way when the next scan loads or the brain is let go. Load in picks the order: Random, Archimedean spiral, Rectilinear, Concentric, Vase, then fill, or All at once. Nothing moves when animations are off.
+- **All-rounders:** an expert every skill uses about alike, and often, keeps its faint colour and gets a dashed white outline, so it isn't taken for one that was only picked a few times. They have their own tick box.
+- **Cut it the way the Lab would** (in Try a cut): a real cut takes a mixture of experts from every colour. Pick "keep what every skill needs" or one of the Lab's sizes and the viewer works out which experts that cut removes from the scan, turns them off and hides them.
+- **Try a cut:** untick skills and switch on Turn off what's unticked, or keep only the busiest few on each floor. Those experts go dark, a crossed-out red ring shows each pick that wanted one, and the viewer says what share of the picks went to them. **Scan again with these turned off** asks the same questions with those experts really switched off in Brain Engine (the file isn't cut) and saves it as a new scan to compare.
+- **Show these:** tick boxes show or hide each skill's experts, the parts that aren't experts, and the experts never picked.
+- **How close:** the whole brain, one floor (every expert a square with its number), or one expert (how its work splits between the skills, and the words it was picked for most).
+- **Save as a video**, save the scan as a file, and open a scan file from another Bob.
+- It says the same thing in words (how many experts were used, how alike the skills are, a line for each skill), works with the keyboard, and never turns by itself when animations are off.
+- **New: Keep engines up to date** (Settings, Engines, under Check all for updates; on unless you turn it off). When Bob starts and about once a day, he checks Brain Engine (a rebuilt one counts, by its checksum) and his own llama.cpp (only up to the tested build, never past it or back from one you picked), and updates them by himself, only while no brain is loaded on that engine and he isn't busy. The update shows in Downloads, the old build is kept for Go back, and he says so in chat. The other engines still wait for your click. Windows and Linux; on a Mac or an ARM board only llama.cpp is kept on the tested build; on Android the engine comes with the app. Help, an FAQ (**Does Bob update his engines by himself?**), a glossary entry and the privacy pages say what goes out. Tests in `test/run-engine-keeper-test.js`.
+- **Brain Engine** gets the expert trace (`engine/patches/0002-expert-trace.patch`): `"expert_trace": true` on `/completion` reports the experts every layer picked for every token. Peek inside's live view uses the same trace, so it wakes up with the same build. Making a scan needs that build (Windows and Linux); until it's installed, Start the scan is greyed with the reason.
+- An honest note: in the brains measured so far, experts split work by word pattern more than by topic, so the skill colours come out blended, and the viewer says how blended. A few questions per skill show a pattern; they don't measure the brain.
+- For a rented card (nothing in the app rents one for this yet): `model-lab/forge/aifeui-bundle.mjs` packs the questions, Brain Engine's patches and Bob's viewer into one folder, and `pod/aifeui.sh` on the card checks every dependency before it downloads or builds anything, builds Brain Engine with the patches, proves the trace with one word, scans, and leaves the recording with the viewer beside it.
+- Help: **The Playground's FNRI page**, an FAQ (**Can I see what's happening inside a brain?**) and two glossary entries. Tests in `test/run-lab-watch-test.js`.
+- **Now running folds:** every section (Tasks, Downloads, Memory, Bob-Net, Bob's thinking) has a [−] in its title that folds it to one line, and a [+] that brings it back. Bob's thinking opens with its [+] (this replaces the Show here switch), and the graph is its own section now, Resource use over time, folded until you press its [+]. Bob remembers what you folded.
+
+Also in this release:
+
+- **Make a brain's chooser has a sixth card: Take out the refusal habit.** It sits on **What do you want to do?** beside Make it smaller, Cut experts, Take out sight or hearing, Just test a brain and Everything, step by step. Pressing it opens the Forge tab with that way unfolded, the same as pressing Use this way there, since it runs as a Forge way (free, on this replicant matrix) rather than through the five steps. Its safeguards are unchanged: the kept refusals are checked and taught back by default. Help: The Computer Science Lab, and the user guide's Make a brain line. Tests in `test/run-lab-test.js`.
+- **FNRI knows an older Brain Engine before it loads anything.** The Lab reads the Brain Engine program file for the expert trace; when it isn't there, **Start the scan** is greyed with the reason (get the newer Brain Engine), instead of loading a brain first and finding out after.
+- **New: Bob-Net gets a simple choice, more Bobs or bigger Bobs** (PR #91). Settings > Bob-Net > What they share starts with **What my Bobs do together**. **More Bobs** (the usual, and the default) keeps each Bob on his own brain and card. **Bigger Bobs** pools the Bobs' graphics cards over Tailscale, so one Bob can run a brain too big for his own card: it turns on **Lend my graphics card** and sets **Spread big brains over my other Bobs' cards** to **Any brain bigger than my card**, and those two show under it to fine-tune. More Bobs turns both off again. Pick Bigger Bobs on every Bob that should take part. Help row, FAQ "Can my Bobs run one big brain together?" and a glossary entry.
+- **New:** Under Bigger Bobs, **Use the home network first** (on): when two Bobs are on the same home network, a lent card is reached straight over it, which is quicker; otherwise, or after a load that failed that way, over Tailscale. The asking still goes through the Tailscale door with the passcode.
+- **Safer:** A lent card's server now listens on this machine only, behind a gate that lets in the asking Bob's address and nothing else, on the home network or on Tailscale. Tests in `test/run-llama-tools-test.js`.
+
+## 1.5.183
+
+A small Lab fix.
+
+- **Fixed:** With a job picked in Make a brain, the "Tick one brain above" hint now counts that job's own steps ("Steps 2 to 3" for Make it smaller, "Step 2" for Just test a brain), instead of always saying "Steps 2 to 5". Test in `test/run-lab-test.js`.
+
+## 1.5.182
+
+The Lab's Make a brain does one thing at a time.
+
+- **What do you want to do?** Make a brain now opens with a choice of five jobs: Make it smaller, Cut experts, Take out sight or hearing, Just test a brain, or Everything, step by step. Each job shows only the steps it needs, numbered from 1, and the parts it doesn't use are cleared so nothing happens by accident. Everything is the five steps as before. The Forge's **Use this way** buttons open the matching job.
+- Help: The Computer Science Lab and the user guide updated. Tests in `test/run-lab-test.js`.
+
+## 1.5.181
+
+The Lab's Professional switch says what it changes, and the Playground takes any brain you point it at.
+
+- **Professional, on every tab.** The line beside the switch now says what it changes on the tab you're on: the Forge's New Forge run form (skills to protect, running files, teaching back), the Challenges tab (run settings, the question log, your own packs, Guard rails in detail, every challenge as a column) and, new, the Playground's ladder (**which sizes to make**: untick the ones you don't need and it's shorter). Make a brain and Learn say they're the same in both modes, instead of looking like a switch that does nothing.
+- **Bring in a full-size brain, where you need it.** The Playground's Smaller page shows the Bring in box right under the brain list, open when the list is empty, with a Hugging Face name, a link, or **Pick a file here** for a file on this replicant matrix. The list also names the brains here that can't start the ladder and why (a running file already, or too big). The Forge tab's box is the same one.
+- **Make a brain** says plainly, when nothing is ticked, that steps 2 to 5 and Next open up once a brain is picked.
+- Fixed: since the Lab went on by default (1.5.172) the Playground's **Diffusion brains** page answered "The Computer Science Lab is off" for anyone who had never touched the switch, and the Settings summary said Lab: off. Both follow the switch properly now.
+- Help: The Computer Science Lab and The Lab's Playground tab updated. Tests in `test/run-lab-test.js`.
+- Phone (Bob for Android): the phone's Lab page shows the same notes and the same box; picking a file opens on the replicant matrix running Bob.
+
+## 1.5.180
+
+The Lab gets a lesson library.
+
+- **Every lesson set is broken into parts** (Lab, Forge, Lessons to teach): by what it teaches, where it came from, and whether it shows its thinking or answers straight away (split by the teacher's effort when a set records it). **Pick its parts** leaves out what you don't want; only the ticked lessons go to the card.
+- **Add a lesson set to the Lab:** a .jsonl or .json file on this replicant matrix (`~/` paths work on Mac and Linux), or one file of a Hugging Face set. Bob converts the common shapes (chat messages with tool calls and thinking, ShareGPT, instruction/output, prompt/response, question/answer) and keeps the licence from the set's card.
+- **Teach its thinking as a path called…:** the set's thinking lessons are tagged `Think: <name>` in the lesson's instructions, like a switch path, so the brain learns when to think that way.
+- **Trainer fix:** an answer with no thinking no longer learns the empty thinking box, so it's taught the way thinking off really works, and never teaches a brain to skip thinking when thinking is on. This matters only on the next rented run.
+- Help, glossary, FAQ and the user guide explain it. Tests in `test/run-lab-library-test.js`.
+
+## 1.5.179
+
+A build fix: the Mac download and the Raspberry Pi and ARM download are back.
+
+- 1.5.178's Mac build and its ARM Linux build (the AppImage for a Raspberry Pi 5 and other 64-bit ARM boards) stopped at their test step, so 1.5.178 came out without them. Two of the new checks assumed the test machine is an x86 PC and that every Linux has Brain Engine; on the Apple Silicon and ARM build machines neither is true. Both checks now say which computer they mean, and the whole test run was tried as if on an ARM machine before this release.
+- In Bob himself, one small thing: when Bob has his own Node.js for a code copy, the folder he puts first on the command path now follows the same computer type as the download.
+
+## 1.5.178
+
+A big one: Bob's own browser and eyes, quick Autonomy and Screen use buttons, Bob on Discord, Bob working on repositories, and more of Brain Engine's tools.
+
+**New, and not tried on real hardware yet.** Everything here is off until you switch it on, and every step Bob takes still shows a card unless you let him work without asking. These were built and tested here but nobody has clicked through them on a real replicant matrix yet. If you try them, tell us what happened at github.com/MouseWurX/Bob/issues.
+
+### Use a browser (a new Hand)
+- Settings, Show advanced settings, Hands: **Use a browser**. Bob gets his own browser window, titled **Bob is browsing**. It is part of Bob, with its own cookies and sign-ins; your own browser is never touched or read.
+- Ask "open the Blender release notes and tell me what's new" or "type fox in the search box and press Enter". Bob reads a page as text plus a numbered list of its links, buttons and fields, then does one thing at a time: click a number, type into a field, press Enter, Tab, Esc or an arrow, scroll, go back, pick an option. Each action is a card first (unless "Let Bob work without asking" is on).
+- While **Don't send anything out** is on he only types into search boxes and never presses Send, Post, Submit, Buy, Pay or Upload, never fills other fields and never picks files. Switch the limit off to let him, still one card each. Password fields stay off-limits while that limit is on. His own pages, downloads, pop-ups and anything that isn't http(s) are always refused.
+- **Forget what Bob's browser knows** (Settings, Hands) clears the window's cookies, sign-ins and cache.
+- Works on Windows, Mac and Linux inside Bob's app. Bob for Android shows the cards; the window is on your replicant matrix.
+
+### Eyes checks (the Apps Hand and the browser)
+- With a vision brain in Equip Bob's **Seeing pictures** slot, Bob takes a picture of the window after a step that says what should happen and asks his eyes whether it did. The result says yes, no or unsure, with one line of what he saw; a no makes him look again instead of pressing on. No new download: any vision brain in that slot does.
+- He can also answer a question about how a window or page looks ("is there a red error banner?"), for canvases, games, 3D viewports and apps that don't name their buttons.
+- **Click by place:** in an app with no named controls, Bob can click at a spot in the picture he took. The card says the exact spot, the red "Bob is driving" bar shows, and Esc or the mouse still stops him. Never in browsers, email or chat apps while "Don't send anything out" is on.
+- **Bob checks his work with his eyes** (Settings, Hands, under Bob's browser and eyes; on) switches the check off if you'd rather save the second it takes.
+
+### Two quick buttons at the top of the chat
+- **🔓 Autonomy** is the same switch as "Let Bob work without asking" in Settings, Hands. Turning it on asks you first, right there; turning it off never asks and works from your phone too. It needs Hands on.
+- **🖥 Screen use** turns on the Apps Hand (Windows) and Bob's own browser in one click, with eyes checks. It also turns the Hands master switch on, and says so if other Hands you'd ticked start working again. Every step still shows a card unless Autonomy is on. Press again to turn just those two Hands off (works from the phone too).
+- ✋ Hands now just says **On** while Bob works without asking; the orange **On** on Autonomy (and the banner) shows that instead of saying it twice.
+- The orange "Bob is working without asking" banner now lists what else he's let do, and gets bigger with each: using your apps (clicking, typing, switching windows), his browser, seeing the screen, and every hard limit you've switched off.
+- It has a **Hide** button. It comes back by itself if Bob is let past anything new, and Settings, Hands has **Show the banner again**.
+- Neither button lifts a hard limit: "Don't send anything out", "Never type into password fields" and the rest stay as you set them, and ✋ Hands still stops everything at once.
+
+### Elsewhere
+- Help: "The Browser Hand", the eyes checks under "The Apps Hand", the Settings: Hands list, and the FAQ "Can Bob use a browser or my screen like the big agents?". The user guide has a Use a browser section.
+
+### Bob on Discord (Settings, Online services, off)
+- **Bob on Discord:** Bob joins a server as a bot you make (never a user account) and answers in the channels you list when a message matches the wake phrase (`hey bob*` by default; the `*` is the job and can sit anywhere; a switch makes it case-sensitive). Discord jobs are guest jobs: only the job types you tick (chat and code help on; web, pictures, clips, music and sounds off), no files, Hands, memory or anything about you, and replies never ping anyone. Files go out only with **Share what Bob makes for Discord** on, and only ones made for that request.
+- **Private mode:** your own Bob in Discord DMs, paired to your own account by a code or your user ID.
+- The bot token is saved as the user variable `BOB_DISCORD_TOKEN` (or `~/.config/bob/env` on Mac and Linux), never in Bob's settings files.
+- Telegram: you type your own account (user ID or @username) in Settings; no account is assumed. The token can also live in `~/.config/bob/env` on Mac and Linux.
+
+### Bob works on repositories (Settings, How Bob works, off)
+- **Let Bob work on repositories:** a list of repositories (Bob's own first; https links or local folders). Each gets its own code copy, branch and patches; your originals are never changed and nothing is ever pushed.
+- Jobs are planned into research, edit and check tasks, each started fresh with the job's notes; the notes are compressed as they grow, so Long memory never overflows.
+- **Let my other Bobs help** (off): research tasks can go to your other Bobs on Bob-Net; they only read.
+- When Git or Node.js is missing, Bob can get his own copies (pinned and checked), kept in his own tools folder.
+
+### Brain Engine's extra tools, and brains over several cards
+- **Brain Engine gets four more of llama.cpp's tools**, built from the same tag: the standard speed test (`llama-bench`), the split-and-join tool (`llama-gguf-split`), the card-sharing server (`ggml-rpc-server`) and the diffusion brain runner (`llama-diffusion-cli`, which the official llama.cpp downloads leave out). Bob finds each one in the built-in engine's folder or in Brain Engine's.
+- **Lend my graphics card** and **Spread big brains over my other Bobs' cards** (Settings, Bob-Net, both off): one brain too big for one replicant matrix can run over several of your Bobs' cards, say the PC and the handheld together. The lending Bob opens his card only when a paired Bob asks through the passcode door, only on his own Tailscale address (never the home network or the internet), and only while it's used: it closes when the other Bob lets go, after 3 minutes with no word, or the moment he starts Gaming. Nothing but parts of the brain and its working numbers travels. If nobody lends, the brain loads at home like always. Not tried on two real machines yet.
+- **Brains in parts** (Lab, Forge, Bring in a full-size brain): a brain that comes as `name-00001-of-0000N.gguf` files is joined into one file after the download, so the Lab's ways can work on it; a part picked from your own folders is joined into the Lab's folder and your parts are left alone. The Forge splits a GGUF over Hugging Face's 50 GB limit into 45 GB parts before an upload.
+- **Add the standard speed test** (Lab, Challenges, off unless ticked): llama-bench's read and write speeds (pp512 / tg128) go on the scoreboard beside the Challenges' own speed, so your numbers can be compared with what other people post.
+- **Diffusion brains** (Lab, Playground, a sixth page): try a Dream, LLaDA or RND1 brain, which fills in a whole block of blanks over a number of steps instead of writing one word after another, and watch the answer form. Needs Brain Engine (Windows and Linux). Bob's chat can't run these, so your own diffusion brain gets no chat jobs.
+- The Brain Engine build also carries the direction finder (`llama-cvector-generator`) and the adapter tool (`llama-export-lora`). These tools arrive with the next Brain Engine download; until then Bob says which ones are missing.
+
+### Smaller fixes
+- **Settings, Brains:** the folds no longer squeeze into a thin 26-pixel strip.
+- Behind the scenes: a release check now fails if a test file isn't in the test list (two suites had been left out of it in 1.5.177).
+
 ## 1.5.177
 
 Brain Engine and Riker become the defaults, and the Engines list gets a rework.

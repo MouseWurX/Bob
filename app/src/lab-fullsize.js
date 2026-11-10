@@ -13,6 +13,7 @@ import { inspectOwn, ownModels, ownId, cleanOwnModels } from './own-models.js';
 import { saveSettings } from './config.js';
 import { fullSizeDirOf, labOn } from './lab.js';
 import { PLAY_MAX_GB } from './lab-playground.js';
+import { partsOf, joinParts } from './lab-split.js'; // brains in parts become one file (llama-gguf-split)
 
 const GB = 1e9;
 const round1 = (x) => Math.round(x * 10) / 10;
@@ -35,6 +36,8 @@ export async function lookFullSize(input, { fetchFn = fetch, token = process.env
   if (src.kind === 'file') {
     const seen = inspectOwn(src.path);
     if (seen.error) return { ok: false, error: seen.error };
+    const pp = partsOf(seen.file); // one part of a brain in parts: the whole size, and what Add will do
+    if (pp) { const gb = round1(pp.have.reduce((a, f) => { try { return a + fs.statSync(f).size; } catch { return a; } }, 0) / GB); return { ok: true, kind: 'file', name: seen.name.replace(/-\d{5}-of-\d{5}$/i, ''), path: seen.file, license: '', files: [{ file: path.basename(pp.first), gb, fits: fits(gb), full: isFull(seen.file), parts: pp.n, note: pp.missing.length ? `${pp.missing.length} of its ${pp.n} parts aren't in that folder. Put them all together first.` : `${pp.n} parts. Add joins them into one file in the Lab's full-size folder (about ${gb} GB more on disk); your parts stay where they are.` }], warn: isFull(seen.file) ? '' : 'Its name doesn\'t say F16 or BF16. If it\'s a running file (Q4 and friends), the Lab\'s ways won\'t start from it.' }; }
     return { ok: true, kind: 'file', name: seen.name, path: seen.file, license: '', files: [{ file: path.basename(seen.file), gb: seen.sizeGB, fits: fits(seen.sizeGB), full: isFull(seen.file) }], warn: isFull(seen.file) ? '' : 'Its name doesn\'t say F16 or BF16. If it\'s a running file (Q4 and friends), the Lab\'s ways won\'t start from it.' };
   }
   if (src.kind === 'link') {
@@ -58,7 +61,7 @@ export async function lookFullSize(input, { fetchFn = fetch, token = process.env
   const files = [];
   for (const f of full) {
     const m = f.file.match(/^(.*)-(\d{5})-of-(\d{5})\.gguf$/i); // split files: list the first part once, with the whole size
-    if (m) { if (m[2] !== '00001') continue; const parts = full.filter((x) => x.file.startsWith(m[1] + '-') && /-of-\d{5}\.gguf$/i.test(x.file)); const bytes = parts.reduce((a, x) => a + x.bytes, 0); const gb = round1(bytes / GB); files.push({ file: f.file, gb, fits: fits(gb), full: true, parts: parts.length, note: `${parts.length} parts; the Lab fetches them all.` }); continue; }
+    if (m) { if (m[2] !== '00001') continue; const parts = full.filter((x) => x.file.startsWith(m[1] + '-') && /-of-\d{5}\.gguf$/i.test(x.file)); const bytes = parts.reduce((a, x) => a + x.bytes, 0); const gb = round1(bytes / GB); files.push({ file: f.file, gb, fits: fits(gb), full: true, parts: parts.length, note: `${parts.length} parts; the Lab fetches them all and joins them into one file.` }); continue; }
     const gb = round1(f.bytes / GB); files.push({ file: f.file, gb, fits: fits(gb), full: true });
   }
   if (src.file) { const pick = files.find((x) => x.file === src.file); if (!pick) return { ok: false, error: `${src.repo} has no full-size file called ${src.file}.` }; }
@@ -74,7 +77,7 @@ export class FullSize {
   view() {
     const c = this.cur || this.last;
     if (!c) return null;
-    return { name: c.name, file: c.file, done: c.done, total: c.total, state: c.state, error: c.error || '', gb: round1((c.total || 0) / GB), doneGB: round1((c.done || 0) / GB), added: c.added || null, part: c.part || 0, parts: c.parts || 0 };
+    return { name: c.name, file: c.file, done: c.done, total: c.total, state: c.state, error: c.error || '', note: c.note || '', gb: round1((c.total || 0) / GB), doneGB: round1((c.done || 0) / GB), added: c.added || null, part: c.part || 0, parts: c.parts || 0 };
   }
   stop() { if (this.cur) { this.cur.ac.abort('stop'); return true; } return false; }
 
@@ -83,7 +86,7 @@ export class FullSize {
     if (this.cur) throw new Error(`${this.cur.name} is still coming down. Stop it first, or wait.`);
     const look = await lookFullSize(input, { fetchFn, token });
     if (!look.ok) throw new Error(look.error);
-    if (look.kind === 'file') return this.add(look.path, look.name);
+    if (look.kind === 'file') return this.addFile(look.path, look.name);
     const pick = look.files.find((x) => x.file === file) || (look.files.length === 1 ? look.files[0] : null);
     if (!pick) throw new Error(look.files.length ? 'Pick one of its files first.' : look.warn || 'There\'s no full-size file there.');
     if (pick.gb > MAX_FULL_GB) throw new Error(`${pick.file} is ${pick.gb} GB, too big to bring in.`);
@@ -107,7 +110,15 @@ export class FullSize {
           got += bytes;
         }
         c.done = got; if (!c.total) c.total = got;
-        const added = this.add(dests[0], look.name, { license: look.license, where: c.where });
+        // In parts: join them into one file (the Lab's ways read one file), then the parts go. If the join can't
+        // happen (no tool, no room), the first part goes on the list: the brain runs from its parts as they are.
+        let first = dests[0];
+        if (dests.length > 1) {
+          c.state = 'joining'; this.lab.broadcast({ type: 'lab-full', full: this.view() });
+          const j = await (this.joinFn || joinParts)(this.lab.cfg, dests[0], { outDir: path.dirname(dests[0]), dropParts: true, signal: ac.signal });
+          if (j.ok) first = j.file; else c.note = j.error;
+        }
+        const added = this.add(first, look.name, { license: look.license, where: c.where });
         c.added = added.added; c.state = 'done';
       } catch (e) {
         for (const d of dests) { try { fs.unlinkSync(d + '.part'); } catch {} }
@@ -144,6 +155,17 @@ export class FullSize {
     } catch (e) { out.destroy(); if (!signal?.aborted) { /* keep the part for next time */ } throw e; }
   }
 
+  // A file on this replicant matrix. One part of a brain in parts is joined into the Lab's full-size folder first (the
+  // Lab's ways read one file); your parts stay where they are. If the join can't happen, the first part goes on the
+  // list as it is, since the brain runs from its parts.
+  async addFile(file, name) {
+    const pp = partsOf(String(file || ''));
+    if (!pp) return this.add(file, name);
+    const j = await (this.joinFn || joinParts)(this.lab.cfg, pp.first, { outDir: fullSizeDir(this.lab.cfg), dropParts: false });
+    if (!j.ok) return { ...this.add(pp.first, name), note: j.error };
+    return { ...this.add(j.file, name), joined: j.parts };
+  }
+
   // Put a file on Bob's list as one of Your own brains (the same list Get models' "Add your own brain" writes).
   add(file, name, { license = '', where = '' } = {}) {
     const seen = inspectOwn(file);
@@ -176,7 +198,7 @@ export async function fullSizeRoute({ req, res, p, isLocal, lab, body, send }) {
   try {
     if (p === '/api/lab/full/get') { send(res, 200, await fullSize(lab).start({ input: String(b.input || ''), file: String(b.file || '') }, lab.fullDeps || {})); return true; }
     if (p === '/api/lab/full/stop') { send(res, 200, { stopped: fullSize(lab).stop() }); return true; }
-    if (p === '/api/lab/full/add') { send(res, 200, fullSize(lab).add(String(b.file || ''), String(b.name || ''))); return true; }
+    if (p === '/api/lab/full/add') { send(res, 200, await fullSize(lab).addFile(String(b.file || ''), String(b.name || ''))); return true; }
   } catch (e) { send(res, 400, { error: e.message }); return true; }
   return false;
 }

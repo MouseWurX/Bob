@@ -39,16 +39,27 @@ jobs:
         working-directory: llama.cpp
         run: |
           call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          cmake -S . -B build -G "Ninja Multi-Config" -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake -DLLAMA_BUILD_BORINGSSL=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_OPENMP=ON -DGGML_OPENMP_FETCH=ON
-          cmake --build build --config Release --target llama-server
-      - name: Pack (llama and server files only, never ggml)
+          cmake -S . -B build -G "Ninja Multi-Config" -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake -DLLAMA_BUILD_BORINGSSL=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_OPENMP=ON -DGGML_OPENMP_FETCH=ON -DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON
+          cmake --build build --config Release --target llama-server llama-bench llama-gguf-split ggml-rpc-server llama-diffusion-cli
+      - name: Build llama-cvector-generator and llama-export-lora on their own (CPU, static; upstream skips it when the backends load at run time)
+        shell: cmd
+        working-directory: llama.cpp
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          cmake -S . -B build-cv -G Ninja -D CMAKE_BUILD_TYPE=Release -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
+          cmake --build build-cv --target llama-cvector-generator llama-export-lora
+      - name: Pack (llama and server files, and the card-sharing backend; never the card backends)
         shell: bash
         run: |
           out=brain-engine-$TAG-win-x64
           mkdir "$out"
           cd llama.cpp/build/bin/Release
           cp llama-server.exe $(ls *.dll | grep -v '^ggml') "../../../../$out/"
+          # the four tools Bob uses beside the server: speed test, split/join, brain sharing over Tailscale, diffusion brains.
+          # ggml-rpc-server and the card-sharing backend (patch 0004) are copied by name (the ggml filter above is for the card backends, which stay the official ones).
+          cp llama-bench.exe llama-gguf-split.exe ggml-rpc-server.exe ggml-rpc.dll llama-diffusion-cli.exe "../../../../$out/"
           cd ../../../..
+          cp llama.cpp/build-cv/bin/llama-cvector-generator.exe llama.cpp/build-cv/bin/llama-export-lora.exe "$out/"
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
           cp app/engine/README.md "$out/README-Brain-Engine.md"
           ls -la "$out"
@@ -79,13 +90,16 @@ jobs:
       - name: Build
         working-directory: llama.cpp
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON
-          cmake --build build -j4 --target llama-server
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON
+          cmake --build build -j4 --target llama-server llama-bench llama-gguf-split ggml-rpc-server llama-diffusion-cli
+          # upstream skips cvector-generator and export-lora when the backends load at run time, so it gets its own CPU-only, static build
+          cmake -B build-cv -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
+          cmake --build build-cv -j4 --target llama-cvector-generator llama-export-lora
       - name: Pack
         run: |
           out=brain-engine-$TAG-linux-x64
           mkdir "$out"
-          cp llama.cpp/build/bin/llama-server $(ls llama.cpp/build/bin/*.so* | grep -v '/libggml') "$out/"
+          cp llama.cpp/build/bin/llama-server llama.cpp/build/bin/llama-bench llama.cpp/build/bin/llama-gguf-split llama.cpp/build/bin/ggml-rpc-server llama.cpp/build/bin/llama-diffusion-cli llama.cpp/build-cv/bin/llama-cvector-generator llama.cpp/build-cv/bin/llama-export-lora $(ls llama.cpp/build/bin/*.so* | grep -v '/libggml') llama.cpp/build/bin/libggml-rpc.so* "$out/"
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
           cp app/engine/README.md "$out/README-Brain-Engine.md"
           tar czf "$out.tar.gz" "$out"

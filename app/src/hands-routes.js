@@ -18,8 +18,14 @@
 //   POST /api/hands/sandbox    check again that the sandbox for Bob's own tools holds on this PC
 //   POST /api/hands/mcp        connected apps (src/mcp.js): { add: { name, cmd, args, cwd } | { name, url } } | { paste: text }
 //                              | { id, on } | { id, remove: true } | { id, check: true }  (new apps come in switched off)
+//   POST /api/hands/browser    { forget: true } clears what Bob's own browser window knows (its cookies, sign-ins, cache)
+//                              | { eyesCheck: bool } "Bob checks his work with his eyes" (src/eyes.js)
+//   POST /api/hands/quick      the two chat-page buttons (public/quick-switches.js): { free: bool } = Autonomy ("Let Bob
+//                              work without asking"); { screen: bool } = Screen use (the Apps and Browser Hands plus
+//                              eyes checks). Switching either OFF works from anywhere (like Stop); ON only on the PC.
+//                              Neither touches a hard limit.
 import { handsView, stopRun, stopEverything, holdHands, saveRecipe, removeRecipe, loadRecipes, runApproved } from './hands.js';
-import { handsSettings, cleanHands, HANDS, LIMITS, handOn } from './hands-settings.js';
+import { handsSettings, cleanHands, HANDS, LIMITS, handOn, handHere } from './hands-settings.js';
 import fs from 'node:fs';
 import { undoJob } from './hands-files.js';
 import { selfTest } from './hands-selftest.js';
@@ -38,6 +44,7 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
   if (p === '/api/hands/stop-all') { send(res, 200, { stopped: stopEverything(brain), ...handsView(cfg) }); return true; }
   if (p === '/api/hands/hold' && b.held === true) { send(res, 200, { stopped: holdHands(brain, true), ...handsView(cfg) }); return true; }
   if (p === '/api/hands/stop') { const ok = stopRun(String(b.runId || '')); if (ok) brain.log('hands', `Stop pressed on run ${b.runId}`); send(res, ok ? 200 : 404, { ok }); return true; }
+  if (p === '/api/hands/quick' && (b.free === false || b.screen === false)) { send(res, 200, quickSwitch(brain, cfg, b)); return true; }
   if (!isLocal) { send(res, 403, { error: 'Hands can only be changed on this replicant matrix itself.' }); return true; }
   try {
     if (p === '/api/hands/settings') {
@@ -57,6 +64,7 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
       if (Array.isArray(b.folders)) next.folders = b.folders.filter((f) => typeof f === 'string' && isDir(f)); // only folders that exist
       if (Array.isArray(b.readOnlyFolders)) next.readOnlyFolders = b.readOnlyFolders.filter((f) => typeof f === 'string' && isDir(f)); // 1.5.117
       if ('timeoutMin' in b) next.timeoutMin = b.timeoutMin;
+      if ('eyesCheck' in b) next.eyesCheck = b.eyesCheck !== false;
       const clean = cleanHands(next);
       brain.saveHands(clean);
       const changed = Object.keys(b).filter((k) => k !== 'limits').map((k) => (typeof b[k] === 'object' && !Array.isArray(b[k]) ? `${k} ${b[k].on ? 'on' : 'off'}` : k === 'enabled' ? `Hands ${b.enabled ? 'on' : 'off'}` : k === 'free' ? `work without asking ${b.free ? 'ON (no approval cards)' : 'off (asks again)'}` : k));
@@ -64,6 +72,7 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
       send(res, 200, handsView(cfg));
       return true;
     }
+    if (p === '/api/hands/quick') { send(res, 200, quickSwitch(brain, cfg, b)); return true; }
     if (p === '/api/hands/hold') { holdHands(brain, false); send(res, 200, handsView(cfg)); return true; }
     if (p === '/api/hands/undo') {
       const r = undoJob(cfg, b.id ? String(b.id) : '');
@@ -98,6 +107,20 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
       send(res, 200, { note, ...handsView(cfg) });
       return true;
     }
+    if (p === '/api/hands/browser') {
+      let note = '';
+      if (b.forget) {
+        const d = globalThis.bobBrowser;
+        if (!d) note = "Bob's browser is only there inside Bob's app, so there is nothing to forget here.";
+        else { await d.forget(); brain.log('hands', "browser: forgot what Bob's browser knew (your click)"); note = "Forgotten: Bob's browser window starts fresh, with no sign-ins or cookies."; }
+      } else if ('eyesCheck' in b) {
+        brain.saveHands(cleanHands({ ...handsSettings(cfg), eyesCheck: b.eyesCheck !== false }));
+        brain.log('hands', `settings: eyes checks ${b.eyesCheck !== false ? 'on' : 'off'}`);
+        note = b.eyesCheck !== false ? 'On: after each step in an app or his browser, Bob looks at a picture of it with his eyes brain when a step says what should happen.' : 'Off: Bob trusts what the app tells him and does not look.';
+      }
+      send(res, 200, { note, ...handsView(cfg) });
+      return true;
+    }
     if (p === '/api/hands/sandbox') { send(res, 200, { sandbox: await sandboxHolds(cfg, { fresh: true }), ...handsView(cfg) }); return true; }
     if (p === '/api/hands/selftest') { send(res, 200, await selfTest(cfg, { log: (k, t) => brain.log(k, t) })); return true; }
     if (p === '/api/hands/run-recipe') {
@@ -118,4 +141,40 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
   } catch (e) { send(res, 409, { error: e.message }); return true; }
   send(res, 404, { error: 'not found' });
   return true;
+}
+
+// The Hands behind the chat page's "Screen use" button: Apps (Windows only for now) and the browser.
+export const SCREEN_HANDS = ['apps', 'browser'];
+export const screenHandsHere = () => SCREEN_HANDS.filter((id) => handHere(id));
+
+// The two chat-page buttons. They only ever change free, the master switch, the Apps and Browser Hands and eyes
+// checks: never a hard limit, never held (✋ Hands stays the kill switch), never another Hand's own tick.
+//   { free: true }    Autonomy on. Needs Hands on (there's nothing to do without asking otherwise).
+//   { free: false }   Autonomy off: Bob asks before every action again.
+//   { screen: true }  Screen use on: master switch on, Apps + Browser on, eyes checks on. Every step still shows a
+//                     card unless Autonomy is on. `woke` lists other Hands that were ticked and now work too.
+//   { screen: false } Apps + Browser off (the master switch and the other Hands stay as they are).
+export function quickSwitch(brain, cfg, b) {
+  const cur = handsSettings(cfg);
+  const next = { ...cur };
+  let woke = [];
+  const said = [];
+  if ('free' in b) {
+    if (b.free === true && !cur.enabled) throw new Error('Hands are off, so there is nothing for Bob to do without asking. Turn on Screen use, or Hands in Settings, first.');
+    next.free = b.free === true;
+    said.push(`Autonomy (work without asking) ${next.free ? 'ON (no approval cards)' : 'off (asks again)'}`);
+  }
+  if ('screen' in b) {
+    const ids = screenHandsHere();
+    if (b.screen === true) {
+      if (!cur.enabled) woke = Object.keys(HANDS).filter((id) => !SCREEN_HANDS.includes(id) && handHere(id) && cur[id]?.on).map((id) => HANDS[id].label);
+      next.enabled = true;
+      next.eyesCheck = true;
+    }
+    for (const id of ids) next[id] = { on: b.screen === true };
+    said.push(`Screen use ${b.screen === true ? 'on' : 'off'} (${ids.map((id) => HANDS[id].label).join(', ')}${b.screen === true ? ', eyes checks' : ''})`);
+  }
+  brain.saveHands(cleanHands(next));
+  brain.log('hands', `chat-page button: ${said.join('; ')}`);
+  return { woke, ...handsView(cfg) };
 }

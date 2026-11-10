@@ -41,10 +41,14 @@ import { forgeDoesSenses } from './lab-senses.js';
 // 1.5.164 the Forge's home ways (mix, stack, take out the refusal habit) and Peek inside
 import { MIX_WAYS, MIX_IDS, planMix, mixGguf, planStack, stackGguf, shareOf } from './lab-merge.js';
 import { planRefusals, readDirections, pickLayers, removeRefusals, keptCheck, reflexCheck, PLAIN_PROMPTS, RELUCTANT_PROMPTS, writeTeachBack, TEACH_BACK_SET, LAYER_CHOICES, KEPT } from './lab-refusals.js';
-import { peekView, tallyTrace, addToTally, keepFromLit, askTraced, IDLE_MS, NO_TRACE, NO_ENGINE } from './lab-peek.js';
+import { peekView, tallyTrace, addToTally, keepFromLit, askTraced, IDLE_MS, NO_TRACE, NO_ENGINE, traceBuilt } from './lab-peek.js';
 import { usageFolder, keepFileOf } from './lab-usage.js';
 import { ownModels, OWN_FAMILY } from './own-models.js'; // Your own brains join the Lab's lists
 import { fullSizeRoute } from './lab-fullsize.js'; // Bring in a full-size brain
+import { benchBrain, benchLine } from './lab-bench.js'; // the standard speed test (llama-bench)
+import { findTool } from './llama-tools.js';
+import { diffusionRoute } from './lab-diffusion.js'; // Playground: Diffusion brains
+import { partsOf, pickLessons, addLessonSet, downloadHfLessons, ADDED_FILE } from './lab-library.js'; // the lesson library: sets broken into parts
 
 // 1.5.172 the Lab shows unless it is switched off (it was off until switched on before). Anything but false is on.
 export const labOn = (cfg) => cfg?.computerLab !== false;
@@ -454,11 +458,21 @@ export function lessonSets(cfg) {
     const file = path.join(root, d, 'lessons.jsonl');
     if (!fs.existsSync(file)) continue;
     const built = readJson(path.join(root, d, 'build.json'), null); // a set built from the owner's files (Lab 2c)
-    const meta = built || readJson(path.join(root, d, 'write.json'), {});
+    const added = built ? null : readJson(path.join(root, d, ADDED_FILE), null); // a set added from elsewhere (the lesson library)
+    const meta = built || added || readJson(path.join(root, d, 'write.json'), {});
     let count = 0; try { count = fs.readFileSync(file, 'utf8').split('\n').filter((x) => x.trim()).length; } catch {}
-    out.push({ id: d, name: meta.name || d, file, count, want: meta.count || 0, skills: built ? [...new Set((built.items || []).map((i) => i.skill).filter(Boolean))] : meta.skills || [], teacher: meta.teacherName || '', done: meta.done === true, built: Boolean(built), kinds: built?.kinds || [] });
+    out.push({ id: d, name: meta.name || d, file, count, want: meta.count || 0, skills: built ? [...new Set((built.items || []).map((i) => i.skill).filter(Boolean))] : meta.skills || [], teacher: meta.teacherName || '', done: meta.done === true || Boolean(added), built: Boolean(built), kinds: built?.kinds || [], ...(added ? { added: true, source: added.source || '', license: added.license || '', link: added.link || '' } : {}) });
   }
   return out;
+}
+
+// A set's parts for the page: each category, source and way of thinking with its count, plus the counts of every
+// combination so the page can show how many lessons are left as boxes are ticked off.
+export function partsView(dir) {
+  const p = partsOf(dir);
+  if (!p) return null;
+  const list = (o) => Object.entries(o || {}).map(([id, v]) => ({ id, label: v.label, count: v.count })).sort((a, b) => b.count - a.count);
+  return { total: p.total, categories: list(p.categories), sources: list(p.sources), thinking: list(p.thinking), cells: p.cells };
 }
 
 // ---- Lab 2c: a lesson set built from the owner's own files ----
@@ -549,7 +563,7 @@ export class Lab {
     const room = this.room();
     const cardGB = Number(this.cfg.gpuVramGB) || Number(this.cfg.cardGB) || 0; // the set size, or the card the hardware scan found
     const brains = this.brains().map((b) => { let f = null; try { f = inspect(b); } catch (e) { return { ...b, gguf: undefined, mmproj: undefined, error: e.message }; } return { id: b.id, name: b.name, family: b.family, community: b.community, naughty: b.naughty, madeInLab: b.madeInLab, license: b.license, facts: f && { arch: f.arch, experts: f.experts, used: f.used, groups: f.groups, layers: f.layers, fileType: f.fileType, fullSize: f.fullSize, sizeGB: f.sizeGB, sight: f.sight, hearing: f.hearing, readerGB: f.readerGB }, cuts: f ? cutSizes(f).map((c) => ({ ...c, fit: fitWords(c.gb, cardGB) })) : [], fit: f ? fitWords(f.sizeGB, cardGB) : '' }; });
-    return { on: labOn(this.cfg), mode: this.cfg.labPro === true ? 'pro' : 'simple', engine: this.engineView(), room, cardGB, sharedMemory: (this.platform?.() || { os: OS }).os === 'mac', brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, lessonKinds: KINDS, sampleCount: SAMPLE_COUNT, buildMax: BUILD_MAX, officeOk: Boolean(this.officeFor()), brainEngine: this.tools().brainEngine.found, packs: PACKS, myPacks: readMyPacks(labDir(this.cfg)).map(({ items, ...m }) => m), pro: { gen: { ...GEN_DEFAULT }, ctxChoices: CTX_CHOICES, maxRepeats: MAX_REPEATS, checks: MY_CHECKS, settings: GUARD_SETTINGS, styles: GUARD_STYLES }, scores: this.scores(), classes: CLASSES.map(([id, label, hint]) => ({ id, label, hint })), ladders: this.ladders(), playMaxGB: PLAY_MAX_GB, ladderSteps: LADDER.map(({ type, label }) => ({ type, label })), hardware: hardwareLine(this.cfg), version: this.version || '', mixWays: MIX_WAYS, layerChoices: LAYER_CHOICES.map(([id, label]) => ({ id, label })), kept: KEPT.map(({ id, label }) => ({ id, label })), homeMaxGB: PLAY_MAX_GB, cvector: this.tools().cvector.found || Boolean(this.stepFns.direction), full: this.fullSize ? this.fullSize.view() : null, fullDir: fullSizeDirOf(this.cfg), peekLive: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), plainPrompts: PLAIN_PROMPTS, reluctantPrompts: RELUCTANT_PROMPTS };
+    return { on: labOn(this.cfg), mode: this.cfg.labPro === true ? 'pro' : 'simple', engine: this.engineView(), room, cardGB, sharedMemory: (this.platform?.() || { os: OS }).os === 'mac', brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, lessonKinds: KINDS, sampleCount: SAMPLE_COUNT, buildMax: BUILD_MAX, officeOk: Boolean(this.officeFor()), brainEngine: this.tools().brainEngine.found, packs: PACKS, myPacks: readMyPacks(labDir(this.cfg)).map(({ items, ...m }) => m), pro: { gen: { ...GEN_DEFAULT }, ctxChoices: CTX_CHOICES, maxRepeats: MAX_REPEATS, checks: MY_CHECKS, settings: GUARD_SETTINGS, styles: GUARD_STYLES }, scores: this.scores(), classes: CLASSES.map(([id, label, hint]) => ({ id, label, hint })), ladders: this.ladders(), playMaxGB: PLAY_MAX_GB, ladderSteps: LADDER.map(({ type, label }) => ({ type, label })), hardware: hardwareLine(this.cfg), version: this.version || '', mixWays: MIX_WAYS, layerChoices: LAYER_CHOICES.map(([id, label]) => ({ id, label })), kept: KEPT.map(({ id, label }) => ({ id, label })), homeMaxGB: PLAY_MAX_GB, cvector: this.tools().cvector.found || Boolean(this.stepFns.direction), benchHere: this.benchTool().found || Boolean(this.stepFns.bench), full: this.fullSize ? this.fullSize.view() : null, fullDir: fullSizeDirOf(this.cfg), peekLive: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), plainPrompts: PLAIN_PROMPTS, reluctantPrompts: RELUCTANT_PROMPTS };
   }
 
   runView(r) { return { id: r.id, kind: r.kind || 'make', name: r.name, from: r.fromName, naughty: r.naughty, refusalsOut: r.refusalsOut, state: r.state, step: r.step, stepLabel: r.stepLabel, progress: r.progress, steps: r.steps?.map((s) => ({ id: s.id, label: s.label, state: s.state })), error: r.error, notes: r.notes || [], report: r.report, at: r.at, used: Boolean(r.used), sizeGB: r.sizeGB }; }
@@ -842,6 +856,8 @@ export class Lab {
     return { file: zip, lessons: all.length, changes: what };
   }
 
+  benchTool() { return findTool(this.cfg, 'bench'); }
+
   // 1.5.153 Challenges: run packs against one brain as a Lab job; the scoreboard keeps the newest score per pack.
   scores() { return scoreboard(readScores(scoresDir(this.cfg))); }
 
@@ -864,7 +880,10 @@ export class Lab {
       if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
     }
     const title = (id) => (PACKS.find((p) => p.id === id) || mine.find((m) => m.id === id)).title;
-    const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'challenge', name: `Challenges for ${brain.name}`, from: brain.id, fromName: brain.name, packs, gen, state: 'running', at: this.now(), steps: [{ id: 'serve', label: `Start ${brain.name}`, state: 'waiting' }, ...packs.map((id) => ({ id, label: title(id), state: 'waiting' }))], progress: 0 };
+    // The standard speed test after the challenges, when ticked (off unless ticked) and the tool is here.
+    const bench = c.bench === true;
+    if (bench && !this.benchTool().found && !this.stepFns.bench) throw new Error('The standard speed test (llama-bench) isn\'t here. It comes with the built-in engine and with Brain Engine (Get models > Engines). Untick it, or get one of them again.');
+    const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'challenge', name: `Challenges for ${brain.name}`, from: brain.id, fromName: brain.name, packs, gen, bench, state: 'running', at: this.now(), steps: [{ id: 'serve', label: `Start ${brain.name}`, state: 'waiting' }, ...packs.map((id) => ({ id, label: title(id), state: 'waiting' })), ...(bench ? [{ id: 'bench', label: 'The standard speed test (llama-bench)', state: 'waiting' }] : [])], progress: 0 };
     this.runs.push(runRec); this.save();
     const ac = new AbortController();
     this.job = { run: runRec, ac };
@@ -905,6 +924,17 @@ export class Lab {
           set(i + 1, 'done');
         }
       }
+      // The standard speed test loads the brain on its own, so the challenge server goes first.
+      let bench = null;
+      if (r.bench) {
+        srv?.stop(); srv = { ...srv, stop() {} };
+        const bi = r.steps.findIndex((x) => x.id === 'bench');
+        set(bi, 'running');
+        bench = await (fx.bench || ((g, o) => benchBrain(this.cfg, g, { ...o, tool: this.benchTool() })))(brain.gguf, { signal, onLine: (l) => { if (/benchmark \d+\/\d+/.test(l)) log(`bench: ${l.trim().slice(0, 200)}`); } });
+        if (signal.aborted) throw new Error('Stopped.');
+        set(bi, bench.ok ? 'done' : 'failed');
+        if (!bench.ok) log(`bench: ${bench.error}`);
+      }
       for (const id of packs) { // the last run's details, with the average score and the spread when it was repeated
         const all = runs[id], lastRun = all[all.length - 1], sp = all.length > 1 ? spread(all.map((x) => x.score)) : null;
         results[id] = sp ? { ...lastRun, score: sp.mean, spread: sp } : lastRun;
@@ -918,9 +948,9 @@ export class Lab {
       const file = scoreFile(scoresDir(this.cfg), slugOf(brain.name));
       // 1.5.168 only runs made with the ranked settings go on the scoreboard, and never your own packs.
       const ranked = rankable(gen), boardPacks = Object.fromEntries(Object.entries(results).filter(([id]) => PACK_IDS.includes(id)));
-      if (ranked && Object.keys(boardPacks).length) writeJson(file, mergeScores(readJson(file, null), { name: brain.name, sha256, sizeGB: facts.sizeGB, quant: facts.fileType, paramsB: facts.paramsB, activeB: facts.experts ? facts.activeB : 0, experts: facts.experts, madeHere: Boolean(brain.madeInLab), packs: boardPacks, tps, prefillTps, when: new Date(this.now()).toISOString().slice(0, 10), engine: this.engineName(), where: srv.where }));
+      if (ranked && Object.keys(boardPacks).length) writeJson(file, mergeScores(readJson(file, null), { name: brain.name, sha256, sizeGB: facts.sizeGB, quant: facts.fileType, paramsB: facts.paramsB, activeB: facts.experts ? facts.activeB : 0, experts: facts.experts, madeHere: Boolean(brain.madeInLab), packs: boardPacks, tps, prefillTps, when: new Date(this.now()).toISOString().slice(0, 10), engine: this.engineName(), where: srv.where, bench: bench?.ok ? bench : null }));
       const titleOf = (id) => (PACKS.find((p) => p.id === id) || mine.find((m) => m.id === id))?.title || id;
-      r.report = { challenges: packs.map((id) => ({ id, title: titleOf(id), score: results[id].score, right: results[id].right, of: results[id].of, skipped: results[id].skipped || '', ...(results[id].parts ? { parts: results[id].parts } : {}), ...(results[id].groups ? { groups: results[id].groups } : {}), ...(results[id].spread ? { spread: results[id].spread } : {}), ...(results[id].note ? { note: results[id].note } : {}) })), tps, settings: genLine(gen), ranked, hasLog: fs.existsSync(logFile) };
+      r.report = { challenges: packs.map((id) => ({ id, title: titleOf(id), score: results[id].score, right: results[id].right, of: results[id].of, skipped: results[id].skipped || '', ...(results[id].parts ? { parts: results[id].parts } : {}), ...(results[id].groups ? { groups: results[id].groups } : {}), ...(results[id].spread ? { spread: results[id].spread } : {}), ...(results[id].note ? { note: results[id].note } : {}) })), tps, settings: genLine(gen), ranked, hasLog: fs.existsSync(logFile), ...(bench ? { bench: bench.ok ? { read: bench.read, write: bench.write, prompt: bench.prompt, gen: bench.gen, line: benchLine(bench) } : { error: bench.error } } : {}) };
       r.state = 'done'; r.step = ''; r.stepLabel = ''; r.progress = 100;
       this.tell(r);
       this.broadcast({ type: 'lab-done', name: r.name, ok: true });
@@ -939,9 +969,12 @@ export class Lab {
     return readLadders(playDir(labDir(this.cfg))).map((l) => ({ id: l.id, brain: l.brain, when: l.when, state: l.state, deleted: Boolean(l.deleted), diskGB: l.diskGB, rows: ladderTable(l.rungs || []), saw: ladderSaw(ladderTable(l.rungs || [])), asked: l.asked || null, notes: l.notes || [] }));
   }
 
-  planLadder(from) {
+  planLadder(from, types) {
     const brain = this.brains().find((b) => b.id === String(from || ''));
     const problems = [], notes = [];
+    // Professional mode picks which sizes to make; anything not on the ladder is ignored, none picked means all six.
+    const steps = Array.isArray(types) && types.length ? LADDER.filter((x) => types.includes(x.type)) : LADDER;
+    if (Array.isArray(types) && types.length && !steps.length) problems.push('None of those sizes is on the ladder. Pick from Q8 down to Q2.');
     if (!brain) return { problems: ['Pick a brain for the ladder.'], notes };
     let f = null; try { f = inspect(brain); } catch (e) { problems.push(e.message); }
     if (f && !f.fullSize) problems.push(`${brain.name} is already a running file (${f.fileType}). The ladder starts from the full-size copy (F16 or BF16).`);
@@ -949,12 +982,12 @@ export class Lab {
     const t = this.tools();
     for (const k of ['quantize', 'imatrix', 'server']) if (!t[k].found) problems.push(`${path.basename(t[k].path)} isn't in the built-in engine's folder. Get models > Engines: the built-in engine has it; download the engine again if it's missing.`);
     if (!t.perplexity.found) notes.push(`${path.basename(t.perplexity.path)} isn't in the built-in engine's folder, so the ladder skips the surprise score and uses the Lab test alone.`);
-    const diskGB = f ? ladderDiskGB(f.sizeGB) : 0;
+    const diskGB = f ? ladderDiskGB(f.sizeGB, steps) : 0;
     const out = path.join(labModelsDir(this.cfg), 'playground', slugOf(brain.name));
     let freeGB = null;
     try { fs.mkdirSync(path.dirname(out), { recursive: true }); const st = fs.statfsSync(path.dirname(out)); freeGB = Math.round((st.bavail * st.bsize) / 1e9); } catch {}
     if (freeGB !== null && freeGB < diskGB + 5) problems.push(`The ladder needs about ${diskGB} GB of disk and there's ${freeGB} GB free. Free some space first.`);
-    return { brain, facts: f, problems, notes, diskGB, out, slug: slugOf(brain.name) };
+    return { brain, facts: f, problems, notes, diskGB, out, slug: slugOf(brain.name), steps };
   }
 
   async startLadder(c = {}, { unload = false } = {}) {
@@ -963,7 +996,7 @@ export class Lab {
     if (!room.ok) throw new Error(room.why);
     if (this.job) throw new Error('The Lab is already busy with a job. Wait for it, or stop it.');
     if (gaming(this.cfg)) throw new Error('Gaming is on, so the Lab waits. Switch the session to Normal to run it.');
-    const p = this.planLadder(c.from);
+    const p = this.planLadder(c.from, c.types);
     if (p.problems.length) throw new Error(p.problems[0]);
     this.freePeek(); // 1.5.164 Peek inside's engine goes first
     if (this.brain?.engine?.loaded) {
@@ -971,7 +1004,7 @@ export class Lab {
       if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
       if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
     }
-    const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'ladder', name: `Ladder for ${p.brain.name}`, slug: p.slug, from: p.brain.id, fromName: p.brain.name, state: 'running', at: this.now(), steps: [{ id: 'measure', label: 'Measure which weights matter most', state: 'waiting' }, ...LADDER.map((x) => ({ id: x.type, label: `Make and test ${x.label}`, state: 'waiting' }))], progress: 0 };
+    const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'ladder', name: `Ladder for ${p.brain.name}`, slug: p.slug, from: p.brain.id, fromName: p.brain.name, state: 'running', at: this.now(), steps: [{ id: 'measure', label: 'Measure which weights matter most', state: 'waiting' }, ...p.steps.map((x) => ({ id: x.type, label: `Make and test ${x.label}`, state: 'waiting' }))], progress: 0 };
     this.runs.push(runRec); this.save();
     const ac = new AbortController();
     this.job = { run: runRec, ac };
@@ -996,14 +1029,15 @@ export class Lab {
       const imatrix = path.join(p.out, 'imatrix.gguf');
       await fx.imatrix({ src: p.brain.gguf, corpus: tune, out: imatrix }, { recipe: { lessons: { chunks: 20 } }, signal });
       set(0, 'done');
-      for (let i = 0; i < LADDER.length; i++) {
-        const x = LADDER[i];
+      const ladder = p.steps || LADDER;
+      for (let i = 0; i < ladder.length; i++) {
+        const x = ladder[i];
         set(i + 1, 'running');
         const out = path.join(p.out, `${p.slug}-${x.type}.gguf`);
         await fx.quantize({ src: p.brain.gguf, out, type: x.type, imatrix }, { signal });
         let ppl = null;
         if (this.tools().perplexity.found || this.stepFns.perplexity) ppl = await fx.perplexity({ gguf: out, text: score }, { signal }).catch((e) => { if (signal.aborted) throw e; log(`perplexity: ${e.message}`); return null; });
-        const t = await fx.test({ gguf: out }, { signal, onProgress: (d) => { r.progress = Math.round((100 * (i + 1 + d)) / (LADDER.length + 1)); } });
+        const t = await fx.test({ gguf: out }, { signal, onProgress: (d) => { r.progress = Math.round((100 * (i + 1 + d)) / (ladder.length + 1)); } });
         let size = 0; try { size = Math.round((fs.statSync(out).size / 1e9) * 10) / 10; } catch {}
         record.rungs.push({ type: x.type, sizeGB: size, score: t.score, tps: t.tps || null, ppl });
         record.files[x.type] = out;
@@ -1097,7 +1131,7 @@ export class Lab {
     const dir = forgeDir(this.cfg);
     let saved = []; try { saved = fs.readdirSync(forgePlansDir(labDir(this.cfg))).filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, '')); } catch {}
     const live = this.forgeLive();
-    return { live, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), methods: METHODS, leftOut: LEFT_OUT, found: Boolean(dir), runs: forgeRuns(dir), brains: forgeBrains(dir), plans: forgePlans(dir), saved, keepFiles: this.keepFiles().map(({ path: _p, ...k }) => k), lessonSets: lessonSets(this.cfg).map((x) => ({ id: x.id, name: x.name, count: x.count })), skills: (() => { const b = forgePlans(dir)[0]; return b ? Object.keys(readJson(path.join(dir, 'forge', 'plans', `${b.id}.json`), {}).skills || {}) : []; })() };
+    return { live, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), methods: METHODS, leftOut: LEFT_OUT, found: Boolean(dir), runs: forgeRuns(dir), brains: forgeBrains(dir), plans: forgePlans(dir), saved, keepFiles: this.keepFiles().map(({ path: _p, ...k }) => k), lessonSets: lessonSets(this.cfg).map((x) => ({ id: x.id, name: x.name, count: x.count, added: x.added === true, license: x.license || '', source: x.source || '', parts: partsView(path.dirname(x.file)) })), skills: (() => { const b = forgePlans(dir)[0]; return b ? Object.keys(readJson(path.join(dir, 'forge', 'plans', `${b.id}.json`), {}).skills || {}) : []; })() };
   }
 
   forgePlan(form = {}) {
@@ -1106,7 +1140,42 @@ export class Lab {
     const id = String(form.base || '').replace(/[^\w.-]/g, '');
     const base = id ? readJson(path.join(dir, 'forge', 'plans', `${id}.json`), null) : null;
     if (id && !base) throw new Error('That Forge plan isn\'t there any more.');
-    return makeForgePlan(form, { base: base || {}, keepFiles: this.keepFiles(), lessonSets: lessonSets(this.cfg).map((x) => ({ id: x.id, dir: path.dirname(x.file) })) });
+    // The lesson library: a set with parts ticked off, or taught as its own thinking path, goes as a picked copy.
+    const picks = form.lessonParts && typeof form.lessonParts === 'object' ? form.lessonParts : {};
+    const ticked = new Set(Array.isArray(form.lessonSets) ? form.lessonSets : []);
+    const sets = lessonSets(this.cfg).map((x) => {
+      const dir = path.dirname(x.file), pick = picks[x.id];
+      const one = { id: x.id, name: x.name, dir, total: x.count, picked: x.count, privateOnly: x.added === true && !x.license };
+      if (!ticked.has(x.id) || !pick || typeof pick !== 'object') return one;
+      const arr = (v) => (Array.isArray(v) ? v.map(String).slice(0, 200) : []);
+      const r = pickLessons(dir, { offCategories: arr(pick.offCategories), offSources: arr(pick.offSources), offThinking: arr(pick.offThinking), pathName: String(pick.pathName || '') });
+      return { ...one, dir: r.dir || dir, picked: r.count, pathName: r.dir ? String(pick.pathName || '').trim() : '' };
+    });
+    return makeForgePlan(form, { base: base || {}, keepFiles: this.keepFiles(), lessonSets: sets });
+  }
+
+  // Add a lesson set from a file here or a .jsonl/.json file on Hugging Face: converted into the Lab's shape, then
+  // broken into parts. The Hugging Face card's licence is kept with it; a set with none is for private use only.
+  async addLibrarySet({ from = '', name = '' } = {}) {
+    const root = lessonSetsDir(this.cfg); fs.mkdirSync(root, { recursive: true });
+    let ref = String(from || '').trim().replace(/^"|"$/g, '').slice(0, 400);
+    if (/^~[\\/]/.test(ref)) ref = path.join(os.homedir(), ref.slice(2)); // ~/lessons/set.jsonl on Mac and Linux
+    if (!ref) throw new Error('Say where the lessons are: a full path to a .jsonl or .json file, or a Hugging Face set and file.');
+    if (path.isAbsolute(ref) || /^[A-Za-z]:[\\/]/.test(ref)) {
+      const r = addLessonSet({ root, from: ref, name, source: path.basename(ref).replace(/\.[^.]+$/, ''), now: this.now() });
+      return { id: r.id, name: r.name, count: r.count, skipped: r.skipped, license: '' };
+    }
+    const hf = parseHfRef(/^hf:/i.test(ref) || /^https?:/i.test(ref) || /^datasets\//i.test(ref) ? ref : `hf:datasets/${ref}`, 'dataset');
+    if (!hf || hf.kind !== 'dataset') throw new Error('That isn\'t a full path or a Hugging Face set. A set looks like owner/name:file.jsonl, or a huggingface.co link to the file.');
+    const card = await hfLookup(hf, { fetchFn: this.hfFetch || fetch });
+    if (card && card.ok === false) throw new Error(card.error || 'Hugging Face couldn\'t find that set.');
+    const tmp = path.join(labDir(this.cfg), 'downloads', `lessons-${Date.now()}${path.extname(hf.file || '.jsonl')}`);
+    try {
+      await downloadHfLessons({ repo: hf.repo, file: hf.file, revision: hf.revision, to: tmp, fetchFn: this.hfFetch || fetch });
+      const lic = String(card?.license || '').replace(/[^\w.+-]/g, '').slice(0, 60);
+      const r = addLessonSet({ root, from: tmp, name: name || hf.repo.split('/')[1], source: hf.repo, license: lic, link: `https://huggingface.co/datasets/${hf.repo}`, now: this.now() });
+      return { id: r.id, name: r.name, count: r.count, skipped: r.skipped, license: lic };
+    } finally { try { fs.rmSync(tmp, { force: true }); } catch {} }
   }
 
   saveForgePlan(form = {}) {
@@ -1622,8 +1691,11 @@ export class Lab {
     const brain = this.brains().find((b) => b.id === String(brainId || ''));
     if (!brain) throw new Error('Pick a brain to peek inside.');
     let facts = null; try { facts = inspect(brain); } catch {}
-    return peekView(this.cfg, brain, facts, { engineFound: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), traceOk: this.peekTraceOk ?? null });
+    return peekView(this.cfg, brain, facts, { engineFound: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), traceOk: this.peekTraceOk ?? this.traceProbe()?.experts ?? null });
   }
+
+  // Whether the Brain Engine here was built with the trace, read from the program file (null: can't tell, or a test's fake).
+  traceProbe() { if (this.stepFns.peekServe) return null; const be = this.tools().brainEngine; return be.found ? traceBuilt(be.path) : null; }
 
   // Brain Engine stays loaded between questions; any other job, or a while idle, unloads it.
   freePeek() { if (this.peekSrv) { try { this.peekSrv.srv.stop(); } catch {} clearTimeout(this.peekSrv.timer); this.peekSrv = null; } return { stopped: true }; }
@@ -1742,7 +1814,8 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (await recipesRoute({ req, res, p, isLocal, lab, body, send })) return true; // 1.5.154
     if (await sensesRoute({ req, res, p, isLocal, lab, body, send })) return true; // Give it eyes / Give it ears
     if (await pagesRoute({ req, res, p, isLocal, lab, body, send })) return true;
-    if (await fullSizeRoute({ req, res, p, isLocal, lab, body, send })) return true; // Bring in a full-size brain // 1.5.16x Playground: Longer, Faster, Teach it
+    if (await fullSizeRoute({ req, res, p, isLocal, lab, body, send })) return true;
+    if (await diffusionRoute({ req, res, p, isLocal, lab, body, send })) return true; // Playground: Diffusion brains // Bring in a full-size brain // 1.5.16x Playground: Longer, Faster, Teach it
     if (req.method === 'GET' && p === '/api/lab') { send(res, 200, lab.view()); return true; }
     if (req.method === 'GET' && p === '/api/lab/measures') { send(res, 200, { measures: lab.measures().map(({ rec, ...m }) => m) }); return true; }
     // 1.5.151 Learn: experiments on the brain Bob has loaded. Read-only, nothing is written, so any device Bob lets in may use them.
@@ -1779,8 +1852,8 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/mypack/delete') { send(res, 200, deleteMyPack(labDir(lab.cfg), b.id)); return true; }
     if (p === '/api/lab/challenge/log') { send(res, 200, lab.challengeLog(String(b.id || ''), { save: b.save === 'csv' || b.save === 'jsonl' ? b.save : '' })); return true; }
     if (p === '/api/lab/challenge') { send(res, 200, await lab.startChallenge(b.challenge, { unload: b.unload === true })); return true; } // 1.5.153
-    if (p === '/api/lab/ladder/plan') { const pl = lab.planLadder(b.from); send(res, 200, { problems: pl.problems, notes: pl.notes, diskGB: pl.diskGB }); return true; } // 1.5.156
-    if (p === '/api/lab/ladder') { send(res, 200, await lab.startLadder({ from: b.from }, { unload: b.unload === true })); return true; }
+    if (p === '/api/lab/ladder/plan') { const pl = lab.planLadder(b.from, b.types); send(res, 200, { problems: pl.problems, notes: pl.notes, diskGB: pl.diskGB, steps: pl.steps.map((x) => x.label) }); return true; } // 1.5.156
+    if (p === '/api/lab/ladder') { send(res, 200, await lab.startLadder({ from: b.from, types: b.types }, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/ladder/ask') { send(res, 200, await lab.startLadderAsk({ id: b.id, question: b.question }, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/ladder/delete') { send(res, 200, lab.deleteLadder(String(b.id || ''))); return true; }
     if (p === '/api/lab/forge/plan') { const r = lab.forgePlan(b.form); send(res, 200, { problems: r.problems, notes: r.notes, hours: r.hours, text: JSON.stringify(r.plan, null, 1) }); return true; } // 1.5.159
@@ -1791,6 +1864,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/forge/start') { send(res, 200, lab.forgeStart({ id: String(b.id || ''), hours: b.hours, dollars: b.dollars })); return true; }
     if (p === '/api/lab/forge/stop') { send(res, 200, await lab.forgeStop()); return true; }
     if (p === '/api/lab/forge/save') { send(res, 200, lab.saveForgePlan(b.form)); return true; }
+    if (p === '/api/lab/library/add') { send(res, 200, await lab.addLibrarySet({ from: String(b.from || ''), name: String(b.name || '').slice(0, 60) })); return true; } // the lesson library
     if (p === '/api/lab/home/plan') { const pl = lab.planHome(String(b.kind || ''), b.form); send(res, 200, { problems: pl.problems, notes: pl.notes, diskGB: pl.diskGB, layers: pl.stack?.layers || 0 }); return true; } // 1.5.164
     if (p === '/api/lab/home/start') { send(res, 200, await lab.startHome(String(b.kind || ''), b.form, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/refusals/try') { send(res, 200, await lab.tryRefusals(b.form, { unload: b.unload === true })); return true; }

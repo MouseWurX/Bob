@@ -392,6 +392,7 @@ function tuckAway(e) {
   trayHint();
   return true;
 }
+let watchWin = null; // the Lab's FNRI viewer window (public/watch.html), one at a time
 let mindWin = null; // 1.5.53: "Bob's thinking", opened from the chat page; nothing runs for it while it's closed
 
 // Small, in the bottom-right corner of the screen Bob is on, so it sits beside a game or an editor.
@@ -424,6 +425,8 @@ async function start() {
   try { home = await setUpHome(); } catch (e) { dialog.showErrorBox('Bob', `Bob couldn't set up his folder: ${e.message}`); app.quit(); return; }
   // An older Bob (from before Bob.exe) may already be running on the port: use it rather than fight it.
   if (!(await up(home.port))) {
+    // Bob's own browser window for the Browser hand (src/hands-browser.js reads globalThis.bobBrowser).
+    try { globalThis.bobBrowser = require('./browser-window.cjs').makeBobBrowser({ base: `http://127.0.0.1:${home.port}`, icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png') }); } catch (e) { console.error(`Bob's browser window isn't available: ${e.message}`); }
     try { await import(pathToFileURL(path.join(root, 'src', 'server.js')).href); }
     catch (e) { dialog.showErrorBox('Bob', `Bob's brain wouldn't start: ${e.message}`); app.quit(); return; }
     for (let i = 0; i < 80 && !(await up(home.port)); i++) await new Promise((r) => setTimeout(r, 250));
@@ -442,10 +445,24 @@ async function start() {
       if (mindWin) { mindWin.show(); mindWin.focus(); return { action: 'deny' }; }
       return { action: 'allow', overrideBrowserWindowOptions: mindOptions(win) };
     }
+    // The Lab's FNRI viewer: its own ordinary window (not on top), so it can sit beside the Lab or a chat.
+    if (url === base + '/watch.html' || url.startsWith(base + '/watch.html?')) {
+      if (watchWin) { watchWin.loadURL(url); watchWin.show(); watchWin.focus(); return { action: 'deny' }; }
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 820, minWidth: 360, minHeight: 480, title: 'FNRI', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
+    }
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
-  win.webContents.on('did-create-window', (child) => {
+  win.webContents.on('did-create-window', (child, details) => {
+    if (String(details?.url || '').startsWith(base + '/watch.html')) {
+      watchWin = child;
+      child.setMenu(null);
+      child.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+      child.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(base + '/watch.html')) e.preventDefault(); });
+      contextMenu(child, base);
+      child.on('closed', () => { watchWin = null; });
+      return;
+    }
     mindWin = child;
     child.setAlwaysOnTop(true, 'floating'); // above other windows, but not above Windows' own menus
     child.setMenu(null);

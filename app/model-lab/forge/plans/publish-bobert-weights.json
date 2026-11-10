@@ -1,0 +1,56 @@
+{
+  "run": "publish-bobert-weights",
+  "note": "9 Nov: rebuild Riker (28Bob) and Bobert (35Bob) on the card from the stock teacher + keep list + adapter, make their Q4 and Q3 GGUF files, and put EVERYTHING on Hugging Face: the full-size weights, the adapter, the keep list, the GGUFs and their cards. No training and no teacher pass; nothing is copied to the drive (the GGUFs come off the drive now that Hugging Face hosts them). Riker is tested, so he goes public; Bobert stays private until his home test. Quoted to the owner at about $18-25, cap $30.",
+  "teacher": "Qwen/Qwen3.6-35B-A3B",
+  "counts": "expert-counts-2026-11-04T23-23-19.json",
+  "lessons": "out/lessons",
+  "gpus": [
+    "NVIDIA A100 80GB PCIe",
+    "NVIDIA A100-SXM4-80GB",
+    "NVIDIA H100 80GB HBM3",
+    "NVIDIA H200"
+  ],
+  "step_up": [
+    "NVIDIA B200"
+  ],
+  "step_up_note": "an upload only: any card with room for the pod will do, the list is cheapest first",
+  "volume": {
+    "gb": 100,
+    "name": "bob-forge"
+  },
+  "volume_wait_minutes": 25,
+  "volume_fallback": false,
+  "volume_new": false,
+  "data_centers": [
+    "AP-JP-1"
+  ],
+  "disk_gb": 350,
+  "quants": "Q4_K_M,Q3_K_M",
+  "general_tokens": 0,
+  "rungs": [],
+  "hours_max": 2,
+  "dollars_max": 10,
+  "rent_minutes": 180,
+  "download_quants": [],
+  "publish": {
+    "user": "MouseWurX",
+    "private": true,
+    "odds": false,
+    "models": [],
+    "note": "The rebuild section below does the uploading, one Bob at a time, with its own public/private per Bob. publish.models stays empty so publish_tested has nothing extra to do. Token = forge/hf-token.txt on the PC (gitignored), never in a plan."
+  },
+  "rebuild": {
+    "models": [
+      {
+        "name": "35Bob",
+        "nickname": "Bobert",
+        "source": "volume:bobs/35Bob/model",
+        "weights_only": true,
+        "private": true
+      }
+    ]
+  },
+  "drive_delete": [
+    "bobs/35Bob/gguf"
+  ]
+}
