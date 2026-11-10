@@ -505,3 +505,51 @@ export function movedBlocks(before, after, { n = 64 } = {}) {
 }
 export const targetsOf = (list) => list.map((d) => ({ kind: d.kind, layer: d.layer, index: d.kind === 'expert' || d.kind === 'head' ? d.index : 0 }));
 export const TARGET_FORMAT = 'bob-fnri-targets';
+
+// ---- two different brains side by side ----
+// A cut brain's keep list says which of the stock brain's experts each of its experts was: layers[l][j] = the stock
+// id of its expert j on floor l (the forge's bob-keep.json, the Lab's <name>-keep.json). Checked against both brains;
+// null when it doesn't fit.
+export function keepMap(keep, { layers, experts, of = 0 }) {
+  const L = keep?.layers;
+  if (!Array.isArray(L) || L.length !== layers) return null;
+  const before = of || Number(keep.experts_before) || Number(keep.of) || 0;
+  for (const k of L) {
+    if (!Array.isArray(k) || k.length !== experts || new Set(k).size !== k.length) return null;
+    if (!k.every((x) => Number.isInteger(x) && x >= 0 && (!before || x < before))) return null;
+  }
+  return L.map((k) => k.slice());
+}
+// The cut brain's scan with its experts renamed to the stock brain's, so the two can be compared block for block.
+export function lineUp(rec, map, experts) {
+  return { ...rec, brain: { ...rec.brain, experts }, clips: rec.clips.map((c) => ({ ...c, e: c.e.map((row) => row.map((ids, l) => ids.map((x) => map[l]?.[x] ?? x))) })) };
+}
+// Can these two scans be compared, and how: { a, b } ready for compareScans (b may be lined up), or { why }.
+// a = the other scan, b = this one. keepA / keepB: each one's keep list, when it has one.
+export function pairUp(a, b, { keepA = null, keepB = null } = {}) {
+  if (a.brain.kind !== b.brain.kind) return { why: 'one scan is of experts and the other of neuron groups or attention heads, so the blocks don\'t line up' };
+  if (a.brain.layers !== b.brain.layers) return { why: `the two brains have a different number of floors (${a.brain.layers} and ${b.brain.layers}), so the blocks don't line up` };
+  if (a.brain.experts === b.brain.experts) return { a, b, lined: '' };
+  if (a.brain.kind !== 'experts') return { why: 'the two brains are a different size, so the blocks don\'t line up' };
+  const small = a.brain.experts < b.brain.experts ? 'a' : 'b', big = small === 'a' ? b : a, cut = small === 'a' ? a : b;
+  const map = keepMap(small === 'a' ? keepA : keepB, { layers: cut.brain.layers, experts: cut.brain.experts, of: big.brain.experts });
+  if (!map) return { why: `${cut.brain.name || 'one brain'} has ${cut.brain.experts} experts on each floor and ${big.brain.name || 'the other'} ${big.brain.experts}, and Bob has no list of which experts the smaller one kept (its keep file), so the blocks can't be lined up` };
+  const lined = lineUp(cut, map, big.brain.experts);
+  return small === 'a' ? { a: lined, b, lined: 'a' } : { a, b: lined, lined: 'b' };
+}
+export function pairWords(cmp, nameA, nameB) {
+  if (!cmp.clips.length) return 'These two scans don\'t share any questions, so there\'s nothing to compare.';
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  const most = [...cmp.per].sort((a, b) => b.moved - a.moved)[0], least = [...cmp.per].sort((a, b) => a.moved - b.moved)[0];
+  return `${nameA} and ${nameB} gave the same answer to ${cmp.same} of ${cmp.clips.length} questions. Reading the same questions, ${pct(cmp.moved)} of the picks went to different experts.${cmp.per.length > 1 ? ` ${most.label} differed most (${pct(most.moved)}), ${least.label} least (${pct(least.moved)}).` : ''}`;
+}
+// A video's file name, the owner's way: model-skill-quantization (riker-coding-q4_k_m), and for two brains
+// riker-vs-qwen-3.6-35b-a3b-coding-q4_k_m. The quantization is read from the brain's or the scan's name.
+export const QUANT_RE = /\b(I?Q\d(?:_[0-9A-Z]+)*|F16|BF16|F32|MXFP4)\b/i;
+export function videoName(rec, { skill = '', other = null } = {}) {
+  const quant = (s) => (String(s || '').match(QUANT_RE)?.[1] || '').toLowerCase();
+  const model = (r) => String(r.brain.name || 'brain').replace(QUANT_RE, '').toLowerCase().replace(/[^a-z0-9.]+/g, '-').replace(/^-+|-+$/g, '') || 'brain';
+  const q = quant(rec.brain.name) || quant(rec.name) || (other ? quant(other.brain.name) || quant(other.name) : '');
+  const sk = String(skill || 'all-skills').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  return [other ? `${model(rec)}-vs-${model(other)}` : model(rec), sk, q].filter(Boolean).join('-');
+}

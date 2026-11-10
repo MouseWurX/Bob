@@ -305,6 +305,25 @@ export function cubeMap(lab, { model = '', label = '', experts = 0, layers = 0, 
   return null;
 }
 
+// A cut brain's keep list: which of the stock brain's experts each of its experts was, per layer. The forge writes it
+// as bob-keep.json in the brain's folder and <name>-keep.json beside the GGUF it exports; the Lab writes <name>-keep.json
+// in the usage folder. Used to line a cut brain up with the brain it was cut from (Before and after, two brains).
+// { experts: before the cut, layers: [[stock ids]] } or null.
+export function keepBeside(brain, { layers = 0, experts = 0 } = {}) {
+  const g = String(brain?.gguf || ''); if (!g) return null;
+  const dir = path.dirname(g), stem = path.basename(g).replace(/\.gguf$/i, '').replace(/[-.](q\d.*|iq\d.*|f16|bf16|f32)$/i, '');
+  let names = []; try { names = fs.readdirSync(dir).filter((f) => /(^|-)keep\.json$/i.test(f)); } catch { return null; }
+  names.sort((a, b) => (b.startsWith(stem) - a.startsWith(stem)) || (b === 'bob-keep.json') - (a === 'bob-keep.json'));
+  for (const f of names) {
+    const j = readJson(path.join(dir, f), null), L = j?.layers;
+    if (!Array.isArray(L) || (layers && L.length !== layers)) continue;
+    if (!L.every((k) => Array.isArray(k) && k.every((x) => Number.isInteger(x) && x >= 0) && (!experts || k.length === experts) && new Set(k).size === k.length)) continue;
+    const before = Number(j.experts_before) || Math.max(...L.flat()) + 1;
+    return { experts: before, layers: L, file: f };
+  }
+  return null;
+}
+
 export function readRecording(lab, { brain: brainId, id } = {}) {
   const brain = lab.brains().find((b) => b.id === String(brainId || ''));
   if (!brain) throw new Error('Pick a brain first.');
@@ -312,7 +331,8 @@ export function readRecording(lab, { brain: brainId, id } = {}) {
   if (!j) throw new Error('That recording isn\'t here any more.');
   let dials = null; try { if (j.dials?.list?.length) dials = cleanDials(j.dials.list, { experts: j.brain?.kind === 'experts' || !j.brain?.kind ? Number(j.brain?.experts) || 0 : 0, layers: Number(j.brain?.layers) || 0 }); } catch {}
   const from = String(j.dials?.from || j.cut?.from || '').slice(0, 80); // the scan this one was made from (same questions), for Before and after
-  return { ...cleanRecording(j), parts: j.parts || null, saw: j.saw || '', ...(j.cut?.off ? { cut: { off: Number(j.cut.off) || 0 } } : {}), ...(dials?.length ? { dials } : {}), ...(from ? { from } : {}) };
+  const keep = j.brain?.kind === 'experts' || !j.brain?.kind ? keepBeside(brain, { layers: Number(j.brain?.layers) || 0, experts: Number(j.brain?.experts) || 0 }) : null;
+  return { ...cleanRecording(j), ...(keep ? { keep: { experts: keep.experts, layers: keep.layers } } : {}), parts: j.parts || null, saw: j.saw || '', ...(j.cut?.off ? { cut: { off: Number(j.cut.off) || 0 } } : {}), ...(dials?.length ? { dials } : {}), ...(from ? { from } : {}) };
 }
 
 // The experts to leave on, a list for each layer, checked: whole numbers in range, no repeats, and never fewer on a
