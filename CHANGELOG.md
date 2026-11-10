@@ -4,6 +4,16 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.185
+
+### FNRI: dials, and before and after
+
+- **Dials** (in the FNRI viewer): turn one part of a brain up or down and scan again to see what changes. One expert or attention head, every expert of a skill, a floor's whole attention, or a floor's whole feed-forward block. 1 is as built, 0 is silent, 2 is twice as loud. It's the same as scaling that part's weights, done live in Brain Engine for that one scan: the brain's file is never changed. Blocks turned up have a light rim and a plus, blocks turned down are fainter with a dark rim and a minus.
+- **Before and after:** a scan made with dials (or with experts turned off) opens beside the scan it was made from, playing word for word. Under the pictures Bob says how many answers changed and how much of the picks moved, for each skill, and shows both answers. Compare with picks any other scan of the same brain.
+- **Brain Engine** gets `engine/patches/0003-dials.patch` (`GET`/`POST /dials`). Dials need a Brain Engine rebuilt with it; an older one says so when you scan.
+
+Where it works: wherever FNRI scans do (Windows and Linux with Brain Engine; not yet a Mac or Android). The viewer's comparison works on any saved scans.
+
 ## 1.5.184
 
 A new Lab page: **FNRI**, a scan of a brain's experts lighting up as it works.

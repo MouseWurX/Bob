@@ -11,9 +11,9 @@ import { fileURLToPath } from 'node:url';
 import { Lab } from '../src/lab.js';
 import { readGguf } from '../src/lab-gguf.js';
 import { readTrace, askTraced, tallyTrace, NO_TRACE } from '../src/lab-peek.js';
-import { WATCH_SKILLS, PER_CHOICES, pickSkills, partsOf, clipOf, watchView, startWatch, readRecording, deleteRecording, listRecordings, watchRoute, cubeMap, cubeBrains, NO_HEADS, WATCH_WORDS, WATCH_WORDS_THINK, cleanKeep } from '../src/lab-watch.js';
+import { WATCH_SKILLS, PER_CHOICES, pickSkills, partsOf, clipOf, watchView, startWatch, readRecording, deleteRecording, listRecordings, watchRoute, cubeMap, cubeBrains, NO_HEADS, NO_DIALS, WATCH_WORDS, WATCH_WORDS_THINK, cleanKeep } from '../src/lab-watch.js';
 import { pagesRoute } from '../src/lab-pages.js';
-import { NAME, LONG_NAME, FORMAT, VERSION, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, SKILL_LOOKS, sideOf, LEANS, partOf, PART_LABEL, say, cutOf, cutEffect, keepList, setColour, resetColours, liveTrace, liveRecording, skillMap, mapLook, litSkills, coverKeep, cutSteps, EVEN_PICKS, findPatterns, PATTERN_CHOICES, hasFloors, floorScale, floorsAt, isHeads, LOAD_STYLES, loadStyle, loadOrder } from '../public/lab-watch-math.js';
+import { NAME, LONG_NAME, FORMAT, VERSION, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, SKILL_LOOKS, sideOf, LEANS, partOf, PART_LABEL, say, cutOf, cutEffect, keepList, setColour, resetColours, liveTrace, liveRecording, skillMap, mapLook, litSkills, coverKeep, cutSteps, EVEN_PICKS, findPatterns, PATTERN_CHOICES, hasFloors, floorScale, floorsAt, isHeads, LOAD_STYLES, loadStyle, loadOrder, cleanDials, skillDials, dialWords, dialScale, dialKey, compareScans, compareWords, DIAL_MAX } from '../public/lab-watch-math.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -302,6 +302,17 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   const second = listRecordings(cfg, { id: 'moe', name: 'Test MoE' })[0];
   const rec7 = readRecording(l7, { brain: 'moe', id: second.id });
   check('scan again asks the same questions with the experts switched off in the engine, and says so', masked && masked.length === L && masked[0].join() === '0,1,2,3' && rec7.clips.length === 2 && rec7.clips.map((x) => x.question).join() === readRecording(l7, { brain: 'moe', id: first.id }).clips.map((x) => x.question).join() && second.id !== first.id && rec7.cut.off === L * (E - 4) && /experts off/.test(rec7.name));
+  { // the same questions again with dials set: no experts off, the dials reach the engine, the scan remembers them and where it came from
+    let dialled = null; l7.stepFns.peekDials = async (u, list) => { dialled = list; }; masked = null;
+    await startWatch(l7, { brain: 'moe', again: first.id, dials: [{ kind: 'expert', layer: 0, index: 1, scale: 0 }, { kind: 'ffn', layer: 1, scale: 1.5 }, { kind: 'attn', layer: 0, scale: 1 }] }); await wait(l7);
+    const third = listRecordings(cfg, { id: 'moe', name: 'Test MoE' })[0], rec8 = readRecording(l7, { brain: 'moe', id: third.id });
+    check('scan again with dials sets them in the engine for that scan, and the scan says what was set and which scan it came from', dialled && dialled.length === 2 && masked === null && rec8.dials.length === 2 && rec8.from === first.id && /2 dials/.test(rec8.name) && !rec8.cut && rec7.from === first.id);
+    check('every dial as built is refused, and so is a dial the brain has no part for', await startWatch(l7, { brain: 'moe', again: first.id, dials: [{ kind: 'ffn', layer: 0, scale: 1 }] }).then(() => false, (e) => /every dial is as built/.test(e.message)) && await startWatch(l7, { brain: 'moe', again: first.id, dials: [{ kind: 'expert', layer: 0, index: 999, scale: 0 }] }).then(() => false, (e) => /experts 0 to/.test(e.message)));
+    l7.stepFns.peekDials = async () => { throw new Error(NO_DIALS); };
+    await startWatch(l7, { brain: 'moe', again: first.id, dials: [{ kind: 'ffn', layer: 0, scale: 0.5 }] }); await wait(l7);
+    check('an older Brain Engine with no dials says so in plain words', /can't turn parts up or down yet/.test(NO_DIALS) && /Update it under Get models, Engines/.test(NO_DIALS));
+    delete l7.stepFns.peekDials;
+  }
   check('a plain brain has no experts to switch off', await startWatch(l7, { brain: 'plain', again: 'x', keep }).then(() => false, (e) => /mixture-of-experts/.test(e.message)));
   const html = read('public/watch.html'), view = read('public/watch-view.js'), js = read('public/watch.js');
   check('the viewer has Try a cut: a switch, how many to keep, what it would cost, and Scan again', /id="watchCut"/.test(html) && /id="watchKeep"/.test(html) && /id="watchCutSays"/.test(html) && /id="watchRescan"/.test(html) && /cutEffect/.test(js) && /missed/.test(view) && /next best experts/.test(js));
@@ -439,6 +450,35 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('Load in is a picker in the viewer and in the small cube\'s details, remembered under one name', /<select id="watchLoad"/.test(html) && /id="mindCubeLoadBox" class="muted" hidden/.test(index) && (js.match(/bob-fnri-load/g) || []).length === 2 && /bob-fnri-load/.test(cubeJs) && /loadBox\.hidden = !showDetails/.test(cubeJs));
   check('the small cube comes apart when its brain is let go, told by Bob to cube pages only', /type === 'cube-brains'\) \{ gone\(j\.labels\)/.test(cubeJs) && /ev\?\.type === 'brain' && cubeClients\.size\) cubeBrainsNow\(\)/.test(server) && /for \(const res of cubeClients\) res\.write\(data\); \} catch/.test(server));
   check('Help explains load in and load out, and the glossary has it', /<strong>Load in and load out\.<\/strong>/.test(help) && /<dt>Load in<\/dt>/.test(help) && /Vase, then fill/.test(help));
+}
+
+// ---- dials, and before and after ----
+{
+  const shape = { experts: 6, layers: 2 };
+  const threw = (fn, re) => { try { fn(); return false; } catch (e) { return re.test(e.message); } };
+  const d = cleanDials([{ kind: 'expert', layer: 0, index: 2, scale: 0.5 }, { kind: 'expert', layer: 0, index: 2, scale: 0 }, { kind: 'attn', layer: 1, index: 9, scale: 1.5 }, { kind: 'ffn', layer: 1, scale: 1 }, { kind: 'head', layer: 0, index: 3, scale: 99 }], shape);
+  check('dials are tidied: one for each part (the last wins), nothing left at 1, the scale kept in range', d.length === 3 && d.find((x) => x.kind === 'expert').scale === 0 && d.find((x) => x.kind === 'attn').index === 0 && d.find((x) => x.kind === 'head').scale === DIAL_MAX && dialScale('x') === 1 && dialScale(0.333) === 0.33 && dialKey({ kind: 'ffn', layer: 1, index: 7 }) === 'ffn:1:0');
+  check('a dial for a part the brain doesn\'t have is refused in plain words', threw(() => cleanDials([{ kind: 'expert', layer: 0, index: 6, scale: 0 }], shape), /experts 0 to 5/) && threw(() => cleanDials([{ kind: 'ffn', layer: 2, scale: 0 }], shape), /floors 1 to 2/) && threw(() => cleanDials([{ kind: 'expert', layer: 0, index: 0, scale: 0 }], { experts: 0, layers: 2 }), /no experts/) && threw(() => cleanDials([{ kind: 'x', layer: 0, scale: 0 }], shape), /expert, a head/) && threw(() => cleanDials('x', shape), /list/));
+  const sp = { top: [[0, 0, 1, 1, -1, 1], [1, 0, 0, -1, 1, 1]] };
+  check('a whole skill is turned at once: every expert that leans to it', skillDials(sp, 1, 1.5).map((x) => `${x.layer}:${x.index}`).join() === '0:2,0:3,0:5,1:0,1:4,1:5' && skillDials(sp, 1, 1.5).every((x) => x.kind === 'expert' && x.scale === 1.5) && skillDials(sp, 5, 2).length === 0);
+  check('the dials are said in words', /Every part is as built/.test(dialWords([])) && /3 dials set \(1 expert, 1 attention head, the attention of 1 floor\): 2 turned up, 1 turned down\./.test(dialWords(d)));
+  // before and after
+  const mkRec = (clips) => ({ skills: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], clips });
+  const clip = (skill, question, e, answer, prompt = 2) => ({ skill, question, e, answer, prompt, words: e.map(() => 'w') });
+  const before = mkRec([clip('a', 'q1', [[[0, 1], [2, 3]], [[0, 1], [2, 3]], [[4], [5]]], 'yes'), clip('b', 'q2', [[[0, 1], [2, 3]], [[0, 1], [2, 3]]], 'no'), clip('b', 'only before', [[[0], [0]]], 'x', 1)]);
+  const after = mkRec([clip('a', 'q1', [[[0, 5], [2, 3]], [[4, 5], [2, 3]], [[0], [0]]], 'maybe'), clip('b', 'q2', [[[1, 0], [3, 2]], [[0, 1], [2, 3]]], ' no ')]);
+  const cmp = compareScans(before, after);
+  check('before and after: questions are matched, the picks compared word for word over the question, answers as text', cmp.clips.length === 2 && cmp.clips[0].moved === 3 / 8 && cmp.clips[0].sameAnswer === false && cmp.clips[1].moved === 0 && cmp.clips[1].sameAnswer === true && cmp.same === 1 && cmp.changed === 1 && cmp.moved === 3 / 16 && cmp.per[0].moved === 3 / 8 && cmp.clips[1].before === 1);
+  check('the same scan against itself moves nothing', compareScans(before, before).moved === 0 && compareScans(before, before).changed === 0);
+  check('the comparison is said in words', /1 of 2 answers changed\. Reading the same questions, 19% of the picks moved to other blocks\. A moved most \(38%\), B least \(0%\)\./.test(compareWords(cmp)) && /don't share any questions/.test(compareWords(compareScans(mkRec([]), after))));
+  const view = read('public/watch-view.js'), js = read('public/watch.js'), html = read('public/watch.html'), patch3 = read('engine/patches/0003-dials.patch'), readme = read('engine/README.md'), help = read('public/help-content.js'), srv = read('src/lab-watch.js');
+  check('Brain Engine has the dials patch: experts, heads, attention and feed-forward, set over /dials and cleared with the prompt caches', /llama_set_dials/.test(patch3) && /LLAMA_DIAL_EXPERT/.test(patch3) && /LLAMA_DIAL_HEAD/.test(patch3) && /"\/dials"/.test(patch3) && /ffn_moe_weights_dialed/.test(patch3) && /cached prompts were computed with the old dials/.test(patch3) && /0003-dials\.patch/.test(readme) && !/thoth|heretic/i.test(patch3));
+  check('the dials patch leaves ggml and the card backends alone', [...patch3.matchAll(/^diff --git a\/(\S+)/gm)].every((m) => /^(include\/llama\.h|src\/|tools\/server\/)/.test(m[1])));
+  check('the viewer has Dials: what to turn, how loud, a list to take them off, and a scan again', ['watchDialWhat', 'watchDialFloor', 'watchDialPart', 'watchDialSkill', 'watchDialScale', 'watchDialSet', 'watchDialClear', 'watchDialList', 'watchDialSays', 'watchDialScan'].every((id) => html.includes(`id="${id}"`)) && /again: src\.id, dials, what:/.test(js) && /data-undial/.test(js) && /role="status"/.test(html.match(/<p id="watchDialSays"[^>]*>/)[0]));
+  check('dialled blocks are marked by more than colour: a rim and a plus or a minus', /a solid rim, light when turned up and dark when turned down, with a tick mark/.test(view) && /light rim and a plus/.test(js));
+  check('the dials reach the engine only for the scan, after the experts mask', /if \(dials\) await \(lab\.stepFns\.peekDials \|\| setDials\)\(srv\.url, dials\);/.test(srv) && /res\.status === 404\) throw new Error\(NO_DIALS\)/.test(srv));
+  check('Before and after: a second picture that follows the first, opened by itself for a scan made from another', /id="watchCanvasB"/.test(html) && /id="watchCmpWith"/.test(html) && /class="watch-cmp" hidden aria-live="polite"/.test(html) && /function cmpFollow\(\)/.test(js) && /viewB\.draw\(litForB\(i, frac\)\)/.test(js) && /sel\.value = from; cmpWith\(from\);/.test(js));
+  check('Help explains dials and before and after, with an FAQ and a glossary entry', /<strong>Dials: turn a part up or down\.<\/strong>/.test(help) && /<strong>Before and after\.<\/strong>/.test(help) && /id: 'faq-aifeui-dials'/.test(help) && /<dt>Dial<\/dt>/.test(help));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

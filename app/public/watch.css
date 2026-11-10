@@ -5,11 +5,14 @@ body.watch-page { display: flex; flex-direction: column; height: 100vh; margin: 
 .watch-head h1 .muted { font-size: 12px; font-weight: 400; margin-left: 6px; }
 .watch-head p { margin: 2px 0 0; font-size: 12px; }
 .watch-main { flex: 1; min-height: 0; display: flex; }
-.watch-side { width: 270px; flex: none; overflow-y: auto; padding: 10px 12px; border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; gap: 10px; }
+.watch-side { width: 270px; flex: none; overflow-y: auto; overflow-x: hidden; padding: 10px 12px; border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; gap: 10px; }
 .watch-side section { display: flex; flex-direction: column; gap: 8px; }
 .watch-side fieldset { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 8px; margin: 0; display: flex; flex-direction: column; gap: 2px; }
 .watch-side select, .watch-side input[type="number"] { font: inherit; min-height: 32px; padding: 2px 6px; border-radius: var(--r); border: 1px solid var(--line); background: var(--card); color: var(--text); }
 .watch-side input[type="number"] { width: 70px; }
+.watch-side select { max-width: 100%; }
+.watch-side fieldset { min-width: 0; }
+.watch-side label { min-width: 0; }
 .watch-side input[type="range"] { width: 100%; }
 .watch-side button.link, .watch-player button.link, .watch-open { background: none; border: none; padding: 6px 0; min-height: 32px; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; display: inline-flex; align-items: center; }
 .watch-side button.link:hover, .watch-open:hover, .watch-player button.link:hover { color: var(--accent); }
@@ -21,7 +24,22 @@ body.watch-page { display: flex; flex-direction: column; height: 100vh; margin: 
 .watch-skill .n { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .watch-turn button.icon { width: 36px; height: 36px; }
 .watch-stage { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-#watchCanvas { flex: 1; min-height: 0; width: 100%; display: block; touch-action: none; cursor: grab; }
+.watch-pair { flex: 1; min-height: 0; display: flex; }
+.watch-half { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.watch-half[hidden], .watch-pair[hidden] { display: none; }
+.watch-half + .watch-half { border-left: 1px solid var(--line); }
+.watch-half[hidden] + .watch-half { border-left: none; }
+.watch-tag { position: absolute; top: 6px; right: 10px; margin: 0; padding: 1px 8px; font-size: 12px; font-weight: 600; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); z-index: 1; }
+#watchCanvas, #watchCanvasB { flex: 1; min-height: 0; width: 100%; display: block; touch-action: none; }
+#watchCanvas { cursor: grab; }
+.watch-cmp { padding: 8px 12px; border-top: 1px solid var(--line); max-height: 30%; overflow-y: auto; font-size: 13px; }
+.watch-cmp .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.watch-cmp .two p { margin: 4px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.watch-cmp .same { opacity: 0.75; }
+#watchDialList { margin: 4px 0; padding: 0; list-style: none; max-height: 140px; overflow-y: auto; }
+#watchDialList li { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 2px 0; }
+#watchDialList li span { flex: 1; min-width: 0; }
+#watchDialOut { font-variant-numeric: tabular-nums; }
 #watchCanvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .watch-player { padding: 8px 12px; border-top: 1px solid var(--line); background: var(--panel); }
 .watch-player input[type="range"] { width: 100%; }
@@ -50,7 +68,8 @@ body.watch-page { display: flex; flex-direction: column; height: 100vh; margin: 
   body.watch-page { height: auto; min-height: 100vh; overflow: auto; }
   .watch-main { flex-direction: column-reverse; }
   .watch-side { width: auto; border-right: none; border-top: 1px solid var(--line); overflow: visible; }
-  #watchCanvas { flex: none; height: 56vh; }
+  .watch-pair { flex: none; height: 56vh; }
+  .watch-cmp { max-height: none; }
 }
 .watch-solid { width: 100%; margin: -2px 0 4px; height: 14px; }
 .watch-colour { width: 26px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 3px; background: none; flex: none; cursor: pointer; }

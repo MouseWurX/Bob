@@ -406,3 +406,83 @@ export function loadOrder(style, { W, D, floors, seed = 1 }) {
   seq.forEach((slot, k) => { rank[slot] = k / n; });
   return rank;
 }
+
+// ---- Dials: turn a part of the brain up or down ----
+// A dial multiplies what one part adds: one expert or one attention head on a floor, a floor's whole attention, or a
+// floor's whole feed-forward block (its experts together). 1 is as built, 0 is silent, 2 is twice as loud. It's the
+// same as scaling that part's output weights, done live in Brain Engine: the brain's file is never changed.
+// A dial: { kind: 'expert' | 'head' | 'attn' | 'ffn', layer, index (expert or head number; 0 for the floor kinds), scale }.
+export const DIAL_KINDS = ['expert', 'head', 'attn', 'ffn'];
+export const DIAL_MAX = 4, MAX_DIALS = 20000;
+export const dialKey = (d) => `${d.kind}:${d.layer}:${d.kind === 'expert' || d.kind === 'head' ? d.index : 0}`;
+export const dialScale = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.round(Math.max(0, Math.min(DIAL_MAX, n)) * 100) / 100 : 1; };
+// Checked and tidied: known kinds, whole numbers in range, one dial for each part (the last one wins), nothing left
+// at 1. `experts` 0 = the brain has none, so expert dials are refused; head numbers are checked by Brain Engine,
+// which knows how many heads each layer has.
+export function cleanDials(list, { experts = 0, layers = 0 } = {}) {
+  if (!Array.isArray(list)) throw new Error('Dials come as a list.');
+  if (list.length > MAX_DIALS) throw new Error(`That's more than ${MAX_DIALS.toLocaleString()} dials.`);
+  const by = new Map();
+  for (const d of list) {
+    const kind = String(d?.kind || ''), layer = Number(d?.layer), part = kind === 'expert' || kind === 'head', index = part ? Number(d?.index) : 0;
+    if (!DIAL_KINDS.includes(kind)) throw new Error('A dial is for an expert, a head, a floor\'s attention or a floor\'s feed-forward block.');
+    if (!Number.isInteger(layer) || layer < 0 || layer >= layers) throw new Error(`This brain has floors 1 to ${layers}.`);
+    if (kind === 'expert' && !experts) throw new Error('This brain has no experts to dial.');
+    if (!Number.isInteger(index) || index < 0 || (kind === 'expert' && index >= experts) || index > 4096) throw new Error(kind === 'expert' ? `This brain has experts 0 to ${experts - 1}.` : 'That head number isn\'t one.');
+    const x = { kind, layer, index, scale: dialScale(d?.scale) };
+    by.delete(dialKey(x)); if (x.scale !== 1) by.set(dialKey(x), x);
+  }
+  return [...by.values()];
+}
+// Every expert that leans to one skill (or pattern), all on one setting: turning a whole skill up or down.
+export function skillDials(sp, skill, scale) {
+  const out = [];
+  sp.top.forEach((row, layer) => row.forEach((t, index) => { if (t === skill) out.push({ kind: 'expert', layer, index, scale: dialScale(scale) }); }));
+  return out;
+}
+// The dials in a sentence, for under the picture and for a screen reader.
+export function dialWords(dials) {
+  if (!dials?.length) return 'Every part is as built.';
+  const n = (k) => dials.filter((d) => d.kind === k).length, bits = [];
+  const many = (c, one) => `${c.toLocaleString()} ${one}${c === 1 ? '' : 's'}`;
+  if (n('expert')) bits.push(many(n('expert'), 'expert'));
+  if (n('head')) bits.push(many(n('head'), 'attention head'));
+  if (n('attn')) bits.push(`the attention of ${many(n('attn'), 'floor')}`);
+  if (n('ffn')) bits.push(`the feed-forward block of ${many(n('ffn'), 'floor')}`);
+  const up = dials.filter((d) => d.scale > 1).length, down = dials.length - up;
+  return `${dials.length.toLocaleString()} dial${dials.length === 1 ? '' : 's'} set (${bits.join(', ')}): ${up ? `${up.toLocaleString()} turned up` : ''}${up && down ? ', ' : ''}${down ? `${down.toLocaleString()} turned down` : ''}.`;
+}
+
+// ---- Before and after ----
+// Two scans of the same brain with the same questions (the second made with dials set or experts off), compared.
+// The words of each question are the same in both, so their picks line up word for word: `moved` is the share of
+// the question's picks that changed (0..1). Answers are compared as text. Clips are matched by skill and question.
+export function compareScans(before, after) {
+  const key = (c) => `${c.skill}\n${c.question}`;
+  const old = new Map(before.clips.map((c, i) => [key(c), i]));
+  const clips = [], per = after.skills.map((s) => ({ id: s.id, label: s.label, same: 0, changed: 0, moved: 0, n: 0 }));
+  let same = 0, changed = 0, movedSum = 0;
+  after.clips.forEach((c, ai) => {
+    const bi = old.get(key(c)); if (bi === undefined) return;
+    const b = before.clips[bi];
+    const n = Math.min(c.prompt, b.prompt, c.e.length, b.e.length);
+    let all = 0, kept = 0;
+    for (let w = 0; w < n; w++) for (let l = 0; l < c.e[w].length; l++) {
+      const was = new Set(b.e[w]?.[l] || []);
+      for (const x of c.e[w][l]) { all++; if (was.has(x)) kept++; }
+    }
+    const moved = all ? 1 - kept / all : 0, sameAnswer = b.answer.trim() === c.answer.trim();
+    clips.push({ before: bi, after: ai, skill: c.skill, question: c.question, moved, sameAnswer });
+    if (sameAnswer) same++; else changed++;
+    movedSum += moved;
+    const p = per.find((x) => x.id === c.skill); if (p) { p.n++; p.moved += moved; if (sameAnswer) p.same++; else p.changed++; }
+  });
+  for (const p of per) p.moved = p.n ? p.moved / p.n : 0;
+  return { clips, per: per.filter((p) => p.n), same, changed, moved: clips.length ? movedSum / clips.length : 0 };
+}
+export function compareWords(cmp) {
+  if (!cmp.clips.length) return 'These two scans don\'t share any questions, so there\'s nothing to compare.';
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  const most = [...cmp.per].sort((a, b) => b.moved - a.moved)[0], least = [...cmp.per].sort((a, b) => a.moved - b.moved)[0];
+  return `${cmp.changed} of ${cmp.clips.length} answers changed. Reading the same questions, ${pct(cmp.moved)} of the picks moved to other blocks.${cmp.per.length > 1 ? ` ${most.label} moved most (${pct(most.moved)}), ${least.label} least (${pct(least.moved)}).` : ''}`;
+}

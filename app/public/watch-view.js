@@ -87,7 +87,7 @@ export function createView(canvas, { still = false } = {}) {
     });
   }
   function setData(r, s, parts) { rec = r; sp = s; lay = layoutOf(r, parts); dirty = true; picked = null; reorder(); }
-  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'key') key = v !== false; else if (k === 'load') { load = loadStyle(v); reorder(); } else if (k === 'reveal') { reveal = Math.max(0, Math.min(1, v)); } else if (k === 'mono') mono = v === true; else if (k === 'monoColour') monoColour = /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v) : ''; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
+  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'key') key = v !== false; else if (k === 'dials') { dials = v && v.size ? v : null; } else if (k === 'load') { load = loadStyle(v); reorder(); } else if (k === 'reveal') { reveal = Math.max(0, Math.min(1, v)); } else if (k === 'mono') mono = v === true; else if (k === 'monoColour') monoColour = /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v) : ''; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
   const get = () => ({ yaw, tilt, gap, zoom, glass, glow });
   // the gap between floors that makes the whole block as tall as it is wide: a cube
   const cubeGap = () => (lay ? Math.max(0.2, Math.min(5, Math.max(lay.W, lay.D) / Math.max(1, lay.L + lay.baseFloors))) : 0.9);
@@ -135,6 +135,7 @@ export function createView(canvas, { still = false } = {}) {
   }
 
   // What one expert voxel looks like: its skill's colour, more solid the more it is that skill's own.
+  let dials = null; // Map 'layer:expert' -> scale, the dials set on single blocks: turned down = fainter, turned up = a bright rim
   function lookAt(l, e) {
     const top = sp.top[l][e];
     if (off && off[l]?.has(e)) return null;
@@ -184,8 +185,14 @@ export function createView(canvas, { still = false } = {}) {
         if (e >= 0) {
           const lk = lookAt(l, e); if (!lk) continue;
           const [x, y] = g.P(cx, floorY(l), cz);
-          voxel(x, y, lk.color, lk.alpha, !lk.color);
+          const dial = dials ? dials.get(`${l}:${e}`) : undefined;
+          voxel(x, y, lk.color, dial !== undefined && dial < 1 ? lk.alpha * (0.15 + 0.85 * dial) : lk.alpha, !lk.color);
           if (lk.even) wire(x, y);
+          if (dial !== undefined && dial !== 1) { // a dialled block: a solid rim, light when turned up and dark when turned down, with a tick mark on top so it isn't colour alone
+            c.globalAlpha = 0.9; c.strokeStyle = dial > 1 ? k.text : k.bg; c.lineWidth = Math.max(1.5, g.s * 0.1); face(c, g, x, y); c.stroke();
+            if (g.s > 6) { c.strokeStyle = dial > 1 ? k.bg : k.text; c.lineWidth = Math.max(1, g.s * 0.07); c.beginPath(); c.moveTo(x - g.s * 0.14, y); c.lineTo(x + g.s * 0.14, y); if (dial > 1) { c.moveTo(x, y - g.s * 0.09); c.lineTo(x, y + g.s * 0.09); } c.stroke(); }
+            c.globalAlpha = 1;
+          }
         } else if (coreRank[i] >= 0 && grey[l] > 0 && !hidden.has('grey')) {
           const [x, y] = g.P(cx, floorY(l), cz);
           voxel(x, y, GREY, solid.get('grey') ?? 1);
