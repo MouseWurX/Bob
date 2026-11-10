@@ -9,7 +9,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { appDir, saveSettings } from './config.js';
-import { ENGINES, engineStatus, engineChoices, installEngine, latestEngine } from './engines.js';
+import { ENGINES, engineStatus, engineChoices, installEngine, latestEngine, fetchMissing } from './engines.js';
 import { audioReady, voicesReady, aceModelsDir, aceFileOk, tidyAceCache } from './audio.js';
 import { maestroModels } from './maestro.js';
 import { gpuInfo, cpuName, specLine, shownRamGB, OS } from './platform.js';
@@ -423,7 +423,7 @@ export class ModelShop {
 
   describe(id) {
     if (id.startsWith('engine:')) {
-      const e = ENGINES.find((x) => x.id === id.slice(7).replace(/@newest$/, ''));
+      const e = ENGINES.find((x) => x.id === id.slice(7).replace(/@(?:newest|missing)$/, ''));
       if (!e) throw new Error('No such engine.');
       return { id, name: e.name, kind: 'engine' };
     }
@@ -493,7 +493,7 @@ export class ModelShop {
           d.tries = (d.tries || 0) + 1;
           d.error = String(e.message || e).slice(0, 300);
           // Network hiccups get two more tries, after 15 s and 1 min. A damaged file or a missing link doesn't.
-          const hopeless = /checksum|isn't one of those|different size on the website|changed on the website|no checksum|Not enough disk|No such|redirected|won't install|Python|Smart App Control|Hugging Face account|link .* is broken/i.test(d.error);
+          const hopeless = /checksum|is missing the|still missing|isn't one of those|different size on the website|changed on the website|no checksum|Not enough disk|No such|redirected|won't install|Python|Smart App Control|Hugging Face account|link .* is broken/i.test(d.error);
           if (!hopeless && d.tries < 3) { d.state = 'queued'; d.retryAt = Date.now() + (d.tries === 1 ? 15e3 : 60e3); pub.phase = 'retrying'; pub.error = `${d.error} Trying again in ${d.tries === 1 ? '15 seconds' : 'a minute'}.`; }
           else { d.state = 'failed'; d.doneAt = Date.now(); pub.phase = 'failed'; pub.error = d.error; }
         }
@@ -518,11 +518,13 @@ export class ModelShop {
   async runEngine(eid0, pub, signal, tick) {
     // 1.5.83: "engine:llamacpp@newest" is the "Get newer build" button; plain "engine:llamacpp" gets the tested build.
     const newest = eid0.endsWith('@newest');
-    const eid = eid0.replace(/@newest$/, '');
+    const missing = eid0.endsWith('@missing'); // 1.5.185 Download the missing files of an update kept aside
+    const eid = eid0.replace(/@(?:newest|missing)$/, '');
     const hw = await this.hardware();
     // A newer llama.cpp can't overwrite files the running llama-server holds open: let go of it first.
     if (['llamacpp', 'brainengine'].includes(eid) && this.engine?.stopServer) await this.engine.stopServer(); // 1.5.17x: Brain Engine too, now it runs the brains
-    const r = await installEngine(this.cfg, eid, { nvidia: /nvidia|geforce|rtx/i.test(hw.gpu?.name || ''), pub, signal, tick, newest });
+    const opts = { nvidia: /nvidia|geforce|rtx/i.test(hw.gpu?.name || ''), pub, signal, tick, newest };
+    const r = missing ? await fetchMissing(this.cfg, eid, opts) : await installEngine(this.cfg, eid, opts);
     pub.note = `${r.asset} (${r.version})`;
   }
 

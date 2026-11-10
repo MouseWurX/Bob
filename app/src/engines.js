@@ -240,7 +240,7 @@ export function swapIn(folder, stage, { keep = true } = {}) {
 // NVIDIA build with its CUDA runtime (other builds are smaller); the rest follow each engine's own "About" text.
 export const ENGINE_GB = { llamacpp: 0.6, brainengine: 0.7, sdcpp: 0.5, whispercpp: 0.1, piper: 0.1, audio: 12, kokoro: 0.1, chatterbox: 4, ffmpeg: 0.1, libreoffice: 0.35 };
 export function engineStatus(cfg) {
-  return ENGINES.filter((e0) => !e0.labOnly || cfg.computerLab !== false).map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.pinned || e.sha256 || (e.tag && !e.base)), tested: e.tested || null, group: ENGINE_GROUP[e.id] || 'helpers', canSwap: !sharedDir(e) && !e.install && !e.after, previous: !sharedDir(e) ? (installedMarker(cfg, e, previousDir(cfg, e))?.version || (fs.existsSync(previousDir(cfg, e)) ? 'the one before' : null)) : null, own: !sharedDir(e) && !e.install && fs.existsSync(path.join(cfg.agentDir, e.dir)) && !e.found?.(cfg), found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir) }));
+  return ENGINES.filter((e0) => !e0.labOnly || cfg.computerLab !== false).map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.pinned || e.sha256 || (e.tag && !e.base)), tested: e.tested || null, group: ENGINE_GROUP[e.id] || 'helpers', canSwap: !sharedDir(e) && !e.install && !e.after, previous: !sharedDir(e) ? (installedMarker(cfg, e, previousDir(cfg, e))?.version || (fs.existsSync(previousDir(cfg, e)) ? 'the one before' : null)) : null, own: !sharedDir(e) && !e.install && fs.existsSync(path.join(cfg.agentDir, e.dir)) && !e.found?.(cfg), found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir), incomplete: (() => { const h = !sharedDir(e) && cfg.agentDir ? incompleteUpdate(cfg, e) : null; return h ? { missing: h.missing, what: partsText(h.missing), version: h.mark?.version || '' } : null; })() }));
 }
 // 1.5.17x Engines rework: which engine runs the brains now, which one is picked for next time, and the Lab's.
 export function engineChoices(cfg) {
@@ -348,6 +348,43 @@ export function liftLibraries(folder) {
     }
   };
   try { walk(folder, 0); } catch {}
+}
+
+// 1.5.185 (the owner's rule: "if update has all files it can be applied, else do not apply and offer to download
+// missing files"). A llama.cpp-based engine (llama.cpp, Brain Engine) needs, beside llama-server: its ggml library
+// files (ggml*.dll on Windows, libggml*.so on Linux, libggml*.dylib on a Mac), and for a CUDA build the CUDA runtime
+// (cudart64_*.dll / libcudart.so*). The parts missing from a folder, [] = complete. Other engines aren't checked.
+export const ENGINE_PARTS = { exe: 'the engine program (llama-server)', llama: 'the llama.cpp library files (ggml)', runtime: 'the CUDA runtime files' };
+export function missingParts(folder, e, os_ = OS) {
+  if (!/^llama-server(\.exe)?$/.test(e?.exe || '')) return [];
+  let names = [];
+  try { names = fs.readdirSync(folder); } catch {}
+  const has = (re) => names.some((n) => re.test(n));
+  const lib = os_ === 'win' ? /^ggml.*\.dll$/i : os_ === 'mac' ? /^libggml.*\.dylib$/ : /^libggml.*\.so(\.\d+)*$/;
+  const cudaLib = os_ === 'win' ? /^ggml-cuda.*\.dll$/i : /^libggml-cuda.*\.so(\.\d+)*$/;
+  const cudart = os_ === 'win' ? /^cudart64_.*\.dll$/i : /^libcudart\.so(\.\d+)*$/;
+  const out = [];
+  if (!names.includes(e.exe)) out.push('exe');
+  if (!has(lib)) out.push('llama');
+  if (os_ !== 'mac' && has(cudaLib) && !has(cudart)) out.push('runtime');
+  return out;
+}
+export const partsText = (parts) => parts.map((p) => ENGINE_PARTS[p] || p).join(' and ');
+// The kept, incomplete update: <folder>.incomplete, with bob-incomplete.json saying what's missing.
+export const incompleteDir = (cfg, e) => path.join(cfg.agentDir, e.dir + '.incomplete');
+export function incompleteUpdate(cfg, e) {
+  try { const j = JSON.parse(fs.readFileSync(path.join(incompleteDir(cfg, e), 'bob-incomplete.json'), 'utf8')); return Array.isArray(j.missing) && j.missing.length ? j : null; } catch { return null; }
+}
+// An update with parts missing never takes the old engine's place: it's kept aside (so only the missing files need
+// downloading) and the old engine stays. Throws the plain reason, which offers the download.
+function holdIncomplete(cfg, e, stage, missing, mark) {
+  const dir = incompleteDir(cfg, e);
+  fs.rmSync(dir, { recursive: true, force: true });
+  try { fs.renameSync(stage, dir); fs.writeFileSync(path.join(dir, 'bob-incomplete.json'), JSON.stringify({ id: e.id, missing, mark, at: new Date().toISOString() }, null, 2)); }
+  catch { fs.rmSync(stage, { recursive: true, force: true }); }
+  const err = new Error(`The new ${e.name} download is missing ${partsText(missing)}, so I didn't put it in: it couldn't run a brain. I kept the ${e.name} you have, so nothing changed. Press Download the missing files on ${e.name} in Settings, Engines, and I'll fetch only those.`);
+  err.incomplete = missing;
+  throw err;
 }
 
 // Some zips put the programs in a subfolder (e.g. Release\). Move them up next to each other.
@@ -467,8 +504,12 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
     if (e.os === 'linux' && rt) liftLibraries(stage);
     if (e.os !== 'win') makeRunnable(stage);
   } catch (err) { if (replacing) fs.rmSync(stage, { recursive: true, force: true }); throw err; }
+  const mark = { version: rel.tag_name, asset: asset.name, print: assetPrint(asset), at: new Date().toISOString() };
+  const missing = missingParts(stage, e);
+  if (missing.length) holdIncomplete(cfg, e, stage, missing, mark); // a first install with parts missing is kept aside too
+  fs.rmSync(incompleteDir(cfg, e), { recursive: true, force: true });
   if (replacing) {
-    try { fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify({ version: rel.tag_name, asset: asset.name, print: assetPrint(asset), at: new Date().toISOString() }, null, 2)); } catch {}
+    try { fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify(mark, null, 2)); } catch {}
     try { swapIn(folder, stage); }
     catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Press Unload everything (or wait for the brain to go idle), then Try again.`); }
   }
@@ -513,11 +554,58 @@ async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
     fs.rmSync(over, { recursive: true, force: true });
     if (e.os !== 'win') makeRunnable(stage);
     if (!fs.existsSync(path.join(stage, e.exe))) throw new Error(`${e.name} unpacked, but ${e.exe} isn't in it. The release layout may have changed.`);
-    fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify({ version: own.rel.tag_name, base: base.rel.tag_name, asset: own.asset.name, print: assetPrint(own.asset), at: new Date().toISOString() }, null, 2));
   } catch (err) { fs.rmSync(stage, { recursive: true, force: true }); fs.rmSync(stage + '.own', { recursive: true, force: true }); throw err; }
+  const mark = { version: own.rel.tag_name, base: base.rel.tag_name, asset: own.asset.name, print: assetPrint(own.asset), at: new Date().toISOString() };
+  const missing = missingParts(stage, e);
+  if (missing.length) holdIncomplete(cfg, e, stage, missing, mark);
+  fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify(mark, null, 2));
+  fs.rmSync(incompleteDir(cfg, e), { recursive: true, force: true });
   try { swapIn(folder, stage); }
   catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Wait for the Lab job to finish (or press Unload everything), then try again.`); }
   return { version: own.rel.tag_name, asset: own.asset.name };
+}
+
+// 1.5.185 Download the missing files: only the parts the kept, incomplete update lacks, from the same releases (the
+// llama.cpp build for this card for ggml, its CUDA runtime file for the runtime). Files already there are never
+// overwritten, so Brain Engine's own files stay on top. Checked again; complete, it takes the old engine's place
+// (the old one kept for Go back); still not, it stays aside and the old engine stays.
+export async function fetchMissing(cfg, id, { nvidia, pub, signal, tick, find = findRelease, get = grab } = {}) {
+  const e = engineFor(ENGINES.find((x) => x.id === id));
+  if (!e) throw new Error('No such engine.');
+  const held = incompleteUpdate(cfg, e);
+  const dir = incompleteDir(cfg, e);
+  if (!held) throw new Error(`There's no unfinished ${e.name} update waiting for files.`);
+  if (held.missing.includes('exe')) { fs.rmSync(dir, { recursive: true, force: true }); throw new Error(`The ${e.name} download had no engine program in it, so there's nothing to finish. Press Check for updates to get it again.`); }
+  const b0 = engineFor(ENGINES.find((x) => x.id === (e.base || e.id)));
+  const b = { ...b0, tag: (e.base ? b0.tested || b0.tag : held.mark?.version) || b0.tested || b0.tag };
+  const { rel, asset } = await find(b, nvidia, signal);
+  const rtRe = nvidia && b.runtime(asset.name);
+  const rt = rtRe ? (rel.assets || []).find((a) => rtRe.test(a.name)) : null;
+  const tmp = dir + '.fetch';
+  const add = async (a) => {
+    fs.rmSync(tmp, { recursive: true, force: true }); fs.mkdirSync(tmp, { recursive: true });
+    try {
+      await get(a, tmp, pub, signal, tick);
+      flatten(tmp, [b.exe]);
+      if (e.os === 'linux') liftLibraries(tmp);
+      fs.cpSync(tmp, dir, { recursive: true, force: false, errorOnExist: false }); // what's there stays
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+  };
+  pub.done = 0; pub.total = (held.missing.includes('llama') ? asset.size || 0 : 0) + (rt?.size || 0);
+  if (held.missing.includes('llama')) await add(asset);
+  if (missingParts(dir, e).includes('runtime')) { if (!rt) throw new Error(`${b.name}'s release has no CUDA runtime file for this build.`); await add(rt); }
+  if (e.os !== 'win') makeRunnable(dir);
+  const missing = missingParts(dir, e);
+  if (missing.length) {
+    fs.writeFileSync(path.join(dir, 'bob-incomplete.json'), JSON.stringify({ ...held, missing, at: new Date().toISOString() }, null, 2));
+    const err = new Error(`${e.name} is still missing ${partsText(missing)} after fetching, so I left the one you have in place.`); err.incomplete = missing; throw err;
+  }
+  fs.writeFileSync(path.join(dir, `bob-${e.id}.json`), JSON.stringify({ ...held.mark, at: new Date().toISOString() }, null, 2));
+  const folder = path.join(cfg.agentDir, e.dir);
+  try { swapIn(folder, dir); }
+  catch (err) { throw new Error(`${e.name} is in use right now (${err.code || err.message}). Press Unload everything, then press Download the missing files again.`); }
+  fs.rmSync(path.join(folder, 'bob-incomplete.json'), { force: true });
+  return { version: held.mark?.version || null, asset: held.missing.includes('llama') ? asset.name : rt?.name || '' };
 }
 
 // LibreOffice: the official installer (pinned version and sha256) from TDF's archive, unpacked into Bob's folder
@@ -574,6 +662,7 @@ export function removeEngine(cfg, id) {
   try { fs.rmSync(folder, { recursive: true, force: true }); }
   catch (err) { throw new Error(`${e.name} is in use right now (${err.code || err.message}). Press Unload everything, then try again.`); }
   fs.rmSync(previousDir(cfg, e), { recursive: true, force: true });
+  fs.rmSync(incompleteDir(cfg, e), { recursive: true, force: true });
   return { removed: id };
 }
 

@@ -1626,3 +1626,4 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 /* Bob-Net: What my Bobs do together (More Bobs / Bigger Bobs). */
 .share-mode { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; margin: 8px 0; }
 .share-bigger { margin-left: 26px; }
+.engine-held { border-left: 3px solid var(--accent); padding: 4px 8px; margin: 6px 0; } /* 1.5.185 an engine update kept aside with files missing */
