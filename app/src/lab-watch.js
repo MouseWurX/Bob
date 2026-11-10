@@ -14,7 +14,7 @@ import { startServer } from './lab-test.js';
 import { readGguf, isExpertTensor } from './lab-gguf.js';
 import { askTraced, NO_TRACE, NO_ENGINE } from './lab-peek.js';
 import { readJson, writeJson, canStart, makeRoom, runJob, pageLog } from './lab-jobs.js';
-import { NAME, FORMAT, VERSION, cleanRecording, specialise, inWords, MAX_SKILLS } from '../public/lab-watch-math.js';
+import { NAME, FORMAT, VERSION, cleanRecording, specialise, inWords, MAX_SKILLS, skillMap } from '../public/lab-watch-math.js';
 
 export const WATCH_WORDS = 48;   // words of answer kept for each question
 export const WATCH_WORDS_THINK = 160; // and when the brain may think first: its thoughts need the room
@@ -281,6 +281,26 @@ export function listRecordings(cfg, brain) {
     if (j?.format !== FORMAT) return null;
     return { id: f.replace(/\.json$/, ''), name: j.name || '', when: j.when || '', at: Number(j.at) || 0, skills: (j.skills || []).map((s) => s.label), clips: (j.clips || []).length, words: (j.clips || []).reduce((a, c) => a + (c.e?.length || 0), 0), saw: j.saw || '' };
   }).filter(Boolean).sort((a, b) => b.at - a.at);
+}
+
+// The small cube's colours: the skill map of the newest scan of the brain Bob is chatting with, when there is one of
+// the same shape. `model` is what the engine calls the brain, `label` its friendly name. null when there's none.
+const mapCache = new Map();
+export function cubeMap(lab, { model = '', label = '', experts = 0, layers = 0, kind = 'experts' } = {}) {
+  const base = (p) => path.basename(String(p || '')).replace(/\.gguf$/i, '');
+  const brain = lab.brains().find((b) => b.id === model || base(b.gguf) === base(model) || (label && b.name === label));
+  if (!brain) return null;
+  for (const r of listRecordings(lab.cfg, brain)) {
+    const k = `${brain.id}|${r.id}|${r.at}`;
+    if (!mapCache.has(k)) {
+      let m = null; try { const rec = cleanRecording(readJson(recFile(lab.cfg, brain, r.id), null)); if (rec.skills.length > 1) m = skillMap(rec); } catch {}
+      if (mapCache.size > 8) mapCache.clear();
+      mapCache.set(k, m);
+    }
+    const m = mapCache.get(k);
+    if (m && m.experts === experts && m.layers === layers && m.kind === kind) return m;
+  }
+  return null;
 }
 
 export function readRecording(lab, { brain: brainId, id } = {}) {

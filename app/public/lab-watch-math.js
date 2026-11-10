@@ -62,8 +62,10 @@ export function cleanRecording(j) {
 // strength is how far that is above an even split: 0 = every skill uses it alike, 1 = only this skill ever did
 // (and it was picked often enough to trust that).
 // Returns { top[l][e] = skill index or -1 (never picked), strength[l][e], share[l][e][s], picks[l][e], words[s],
-//           per skill: { leans, mostly }, blend (0-100: how alike the skills' experts are), used, total }.
-export const LEANS = 0.15, MOSTLY = 0.5;
+//           per skill: { leans, mostly }, blend (0-100: how alike the skills' experts are), used, total,
+//           even[l][e] = every skill uses it about alike AND it was picked often enough to say so (an all-rounder,
+//           not a rarely used one), evens = how many }.
+export const LEANS = 0.15, MOSTLY = 0.5, EVEN_PICKS = 4; // an all-rounder was picked at least EVEN_PICKS times per skill
 export function specialise(rec) {
   const S = rec.skills.length, L = rec.brain.layers, E = rec.brain.experts;
   const idx = new Map(rec.skills.map((s, i) => [s.id, i]));
@@ -74,29 +76,31 @@ export function specialise(rec) {
     words[s] += c.e.length;
     for (const row of c.e) for (let l = 0; l < L; l++) for (const x of row[l] || []) count[l][x][s]++;
   }
-  const top = [], strength = [], share = [], picks = [];
+  const top = [], strength = [], share = [], picks = [], even = [];
   const per = rec.skills.map(() => ({ leans: 0, mostly: 0 }));
-  let used = 0, sumStrength = 0, sumPicks = 0;
+  let used = 0, sumStrength = 0, sumPicks = 0, evens = 0;
   for (let l = 0; l < L; l++) {
-    const tl = [], sl = [], shl = [], pl = [];
+    const tl = [], sl = [], shl = [], pl = [], el = [];
     for (let e = 0; e < E; e++) {
       const c = count[l][e];
       const rates = c.map((n, s) => (words[s] ? n / words[s] : 0));
       const sum = rates.reduce((a, b) => a + b, 0), n = c.reduce((a, b) => a + b, 0);
-      if (!n || !sum) { tl.push(-1); sl.push(0); shl.push(null); pl.push(0); continue; }
+      if (!n || !sum) { tl.push(-1); sl.push(0); shl.push(null); pl.push(0); el.push(false); continue; }
       let best = 0; for (let s = 1; s < S; s++) if (rates[s] > rates[best]) best = s;
       const sh = rates.map((r) => r / sum);
       // an expert picked only a handful of times looks one-sided by luck, so few picks pull the strength down
-      const st = S > 1 ? Math.max(0, (sh[best] - 1 / S) / (1 - 1 / S)) * (n / (n + 4 * S)) : 0;
+      const raw = S > 1 ? Math.max(0, (sh[best] - 1 / S) / (1 - 1 / S)) : 0;
+      const st = raw * (n / (n + 4 * S));
+      const ev = S > 1 && raw < LEANS && n >= EVEN_PICKS * S; el.push(ev); if (ev) evens++;
       tl.push(best); sl.push(st); shl.push(sh); pl.push(n);
       used++; sumStrength += st * n; sumPicks += n;
       if (st >= LEANS) per[best].leans++;
       if (st >= MOSTLY) per[best].mostly++;
     }
-    top.push(tl); strength.push(sl); share.push(shl); picks.push(pl);
+    top.push(tl); strength.push(sl); share.push(shl); picks.push(pl); even.push(el);
   }
   const blend = sumPicks ? Math.round(100 * (1 - sumStrength / sumPicks)) : 0;
-  return { top, strength, share, picks, words, per, blend, used, total: L * E };
+  return { top, strength, share, picks, words, per, blend, used, total: L * E, even, evens, count };
 }
 
 // The recording as one line of time: every word of every clip, in order. frames[i] = { clip, word }.
@@ -114,6 +118,7 @@ export function inWords(rec, sp) {
     : sp.blend >= 50 ? `The skills share a lot of their experts (${sp.blend}% alike), with some that lean to one skill.`
       : `The skills use fairly different experts here (${sp.blend}% alike).`);
   rec.skills.forEach((s, i) => { lines.push(`${lookOf(i)[1]}, ${s.label}: ${sp.per[i].leans.toLocaleString()} experts lean to it, ${sp.per[i].mostly.toLocaleString()} of them strongly. ${sp.words[i].toLocaleString()} words read.`); });
+  if (sp.evens) lines.push(`${sp.evens.toLocaleString()} experts are all-rounders: every skill used them about alike, and often. They have a soft white outline. A faint expert with no outline was only picked a few times.`);
   if (S < 2) lines.push('With one skill there is nothing to compare, so every expert it used gets its colour.');
   if (!isNeurons(rec)) return lines;
   return [`This brain isn't a mixture-of-experts one, so the scan lights groups of neurons: every layer's ${rec.brain.neurons ? rec.brain.neurons.toLocaleString() + ' ' : ''}hidden neurons are cut into ${rec.brain.experts} equal groups of neighbours, and the ${rec.brain.used} busiest light up for each word. The groups are a way of slicing, not parts the brain itself knows about.`, ...lines.map((l) => say(rec, l))];
@@ -164,9 +169,12 @@ export function say(rec, s) {
 // Trying a cut. off[l] = the set of experts turned off on floor l: the ones whose skill is unticked (skills = a set
 // of skill indexes), the never-picked ones (never = true), and all but the busiest keepN on each floor (keepN > 0).
 // A floor always keeps at least as many experts as the brain picks for a word (the busiest), as the engine does.
-export function cutOf(rec, sp, { skills = new Set(), never = false, keepN = 0 } = {}) {
+// cover (0.9, 0.95, 0.99) is the Lab's own cut instead of keepN: see coverKeep.
+export function cutOf(rec, sp, { skills = new Set(), never = false, keepN = 0, cover = 0 } = {}) {
   const E = rec.brain.experts, min = Math.max(1, rec.brain.used || 1);
+  const kept = cover ? coverKeep(rec, sp, cover).keep : null;
   return sp.picks.map((pl, l) => {
+    if (kept) { const off = new Set(); for (let e = 0; e < E; e++) if (!kept[l].has(e)) off.add(e); return off; }
     const byUse = pl.map((n, e) => [n, e]).sort((a, b) => b[0] - a[0] || a[1] - b[1]).map(([, e]) => e);
     const off = new Set();
     for (let e = 0; e < E; e++) { const top = sp.top[l][e]; if (top < 0 ? never : skills.has(top)) off.add(e); }
@@ -175,6 +183,37 @@ export function cutOf(rec, sp, { skills = new Set(), never = false, keepN = 0 } 
     return off;
   });
 }
+// The cut the Lab makes ("keep what every skill needs", src/lab-gguf.js coverageKeep), worked out on this scan's
+// counts: on each floor, for each skill, the busiest experts that carry `cover` of that skill's picks; all the skills'
+// lists together; then every floor brought to one size K (the biggest list) by overall use, every skill weighing the
+// same. So it removes a mixture: the experts no skill leans on much, whatever their colour. { keep: [Set per floor], K }.
+export const COVERS = [0.99, 0.95, 0.9];
+export function coverKeep(rec, sp, cover = 0.95) {
+  const S = rec.skills.length, E = rec.brain.experts, L = rec.brain.layers, min = Math.max(1, rec.brain.used || 1);
+  const unions = [], overall = [];
+  for (let l = 0; l < L; l++) {
+    const u = new Set(), o = new Array(E).fill(0);
+    for (let s = 0; s < S; s++) {
+      let t = 0; for (let e = 0; e < E; e++) t += sp.count[l][e][s];
+      if (!t) continue;
+      const order = []; for (let e = 0; e < E; e++) { const v = sp.count[l][e][s]; o[e] += v / t; order.push([v, e]); }
+      order.sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+      let sum = 0; for (const [v, e] of order) { u.add(e); sum += v; if (sum / t >= cover) break; }
+    }
+    unions.push(u); overall.push(o);
+  }
+  const K = Math.min(E, Math.max(min, ...unions.map((u) => u.size)));
+  const keep = unions.map((u, l) => {
+    const byUse = (a, b) => overall[l][b] - overall[l][a] || a - b;
+    let ids = [...u];
+    if (ids.length > K) ids = ids.sort(byUse).slice(0, K);
+    else for (const e of Array.from({ length: E }, (_, i) => i).sort(byUse)) { if (ids.length >= K) break; if (!u.has(e)) ids.push(e); }
+    return new Set(ids);
+  });
+  return { keep, K };
+}
+// The sizes the Lab's plain cut offers for a brain (src/lab.js cutSizes): how many experts to keep on each floor.
+export const cutSteps = (experts, used) => [0.75, 0.6, 0.5, 0.4, 0.3, 0.25].map((x) => Math.max(used || 1, Math.round((experts * x) / 8) * 8)).filter((n, i, a) => n < experts && a.indexOf(n) === i);
 // What that cut would take away, counted on this recording: every pick that went to an expert now turned off.
 // { off, total, picks, lost, pct, per: [{ picks, lost, pct } per skill] }. A real brain would pick its next best
 // experts instead, so this says how much it leaned on them, not how much worse it would get.
@@ -211,4 +250,26 @@ export function liveRecording(traces, name = 'Bob') {
     return cleanRecording({ format: FORMAT, version: VERSION, id: 'live', name, brain: { name, experts: last.experts, layers: last.layers, used: last.used, kind: last.kind, neurons: last.neurons },
       skills: [{ id: 'reply', label: 'Bob\'s replies' }], clips: same.map((t) => ({ skill: 'reply', question: 'What Bob just read and wrote', answer: '', prompt: t.prompt, words: t.words, e: t.e, last: t.last })) });
   } catch { return null; }
+}
+
+// The colours of a scan, small enough to send to the small cube: which skill each expert leans to, how strongly
+// (0-100) and which are all-rounders. skillMap makes it from a recording; mapLook turns it back into what the
+// drawing reads. null when the map is not for a brain of this shape.
+export function skillMap(rec, sp = specialise(rec)) {
+  return { experts: rec.brain.experts, layers: rec.brain.layers, kind: isNeurons(rec) ? 'neurons' : 'experts', name: rec.name || '', skills: rec.skills.map((s) => ({ id: s.id, label: s.label })),
+    top: sp.top, strength: sp.strength.map((r) => r.map((v) => Math.round(v * 100))), even: sp.even.map((r) => r.map((v) => (v ? 1 : 0))) };
+}
+export function mapLook(map, { experts, layers, kind = 'experts' }) {
+  if (!map || map.experts !== experts || map.layers !== layers || (map.kind || 'experts') !== kind || !Array.isArray(map.skills) || !map.skills.length || map.skills.length > MAX_SKILLS) return null;
+  const ok = (a) => Array.isArray(a) && a.length === layers && a.every((r) => Array.isArray(r) && r.length === experts);
+  if (!ok(map.top) || !ok(map.strength) || !ok(map.even)) return null;
+  const S = map.skills.length;
+  return { skills: map.skills.map((s) => ({ id: String(s.id), label: String(s.label).slice(0, 60) })),
+    sp: { top: map.top.map((r) => r.map((v) => (Number.isInteger(v) && v >= 0 && v < S ? v : -1))), strength: map.strength.map((r) => r.map((v) => Math.max(0, Math.min(1, (Number(v) || 0) / 100)))), even: map.even.map((r) => r.map(Boolean)) } };
+}
+// What the experts lit for one word are for, in words: [{ label, n }] busiest first, and how many are all-rounders.
+export function litSkills(look, row) {
+  const n = new Array(look.skills.length).fill(0); let evens = 0, never = 0;
+  row.forEach((ids, l) => { for (const e of ids || []) { const t = look.sp.top[l]?.[e] ?? -1; if (t < 0) never++; else if (look.sp.even[l][e]) evens++; else n[t]++; } });
+  return { skills: n.map((c, i) => ({ label: look.skills[i].label, n: c })).filter((x) => x.n).sort((a, b) => b.n - a.n), evens, never };
 }

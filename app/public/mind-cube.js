@@ -3,15 +3,17 @@
 // Brain Engine for the trace (public/lab-watch-math.js liveTrace has the shape). The picture arrives when a reply is
 // finished and is then played word by word; nothing is saved. The same drawing as the big viewer (watch-view.js).
 import { createView } from './watch-view.js';
-import { specialise, liveRecording, partOf, PART_LABEL, say, NAME } from './lab-watch-math.js';
+import { specialise, liveRecording, partOf, PART_LABEL, say, NAME, mapLook, litSkills, lookOf } from './lab-watch-math.js';
 
 const SPECIAL = /<\|[^|>]*\|>|<\/?think>/gi;
 export const CUBE_SPEED = 14; // words a second
 
-// els: { box, canvas, says, again, open }. still() = animations are off (the last word is shown, nothing moves).
-export function createMindCube({ box, canvas, says, again, open }, { still = () => false, EventSourceImpl = globalThis.EventSource } = {}) {
+// The colours: when this brain has an aiFEUI scan, Bob sends that scan's map along and every expert gets its skill's
+// colour (all-rounders a soft white outline); with no scan the cube is one colour and says how to get the rest.
+// els: { box, canvas, says, again, open, key }. still() = animations are off (the last word is shown, nothing moves).
+export function createMindCube({ box, canvas, says, again, open, key = null }, { still = () => false, EventSourceImpl = globalThis.EventSource } = {}) {
   const view = createView(canvas);
-  let es = null, traces = [], rec = null, sp = null, clip = -1, t = 0, raf = 0, last = 0, why = '';
+  let es = null, traces = [], rec = null, sp = null, clip = -1, t = 0, raf = 0, last = 0, why = '', look = null;
   view.set({ glow: 0.4, glass: 0.3 });
 
   function words() {
@@ -20,7 +22,9 @@ export function createMindCube({ box, canvas, says, again, open }, { still = () 
     const c = rec.clips[clip], w = Math.min(c.e.length - 1, Math.floor(t));
     const pt = partOf(c, w), text = c.words.slice(pt.from, w + 1).join('').replace(SPECIAL, '').replace(/\s+/g, ' ').trim();
     const picks = c.e[w].reduce((a, l) => a + l.length, 0);
-    says.textContent = say(rec, `${PART_LABEL[pt.part] === 'Question' ? 'Reading' : PART_LABEL[pt.part]}: ${text.length > 90 ? '…' + text.slice(-90) : text} (word ${w + 1} of ${c.e.length}, ${picks} experts)`);
+    let whose = '';
+    if (look) { const ls = litSkills(look, c.e[w]); const names = ls.skills.slice(0, 3).map((x) => `${x.label} ${x.n}`); if (ls.evens) names.push(`all-rounders ${ls.evens}`); if (names.length) whose = `: ${names.join(', ')}`; }
+    says.textContent = say(rec, `${PART_LABEL[pt.part] === 'Question' ? 'Reading' : PART_LABEL[pt.part]}: ${text.length > 90 ? '…' + text.slice(-90) : text} (word ${w + 1} of ${c.e.length}, ${picks} experts${whose})`);
   }
   function lit() {
     const c = rec.clips[clip], i = Math.min(c.e.length - 1, Math.floor(t)), frac = t - i, out = [];
@@ -43,10 +47,21 @@ export function createMindCube({ box, canvas, says, again, open }, { still = () 
     t = Math.max(0, c.prompt - 6); last = performance.now(); words(); raf = requestAnimationFrame(frame);
   }
   function add(tr) {
+    const map = tr.map || null; if (map) { tr = { ...tr }; delete tr.map; }
     traces.push(tr); traces = traces.slice(-6);
     const r = liveRecording(traces, tr.label || 'Bob'); if (!r) return;
-    rec = r; sp = specialise(rec); clip = rec.clips.length - 1;
-    view.setData(rec, sp, null); view.set({ gap: view.cubeGap() });
+    rec = r; clip = rec.clips.length - 1;
+    look = mapLook(map, { experts: rec.brain.experts, layers: rec.brain.layers, kind: rec.brain.kind });
+    sp = look ? look.sp : specialise(rec);
+    view.setData(look ? { ...rec, skills: look.skills } : rec, sp, null); view.set({ gap: view.cubeGap(), key: !look });
+    if (key) { // the colours in words and letters, under the picture (the picture is too small to carry them itself)
+      key.hidden = false; key.textContent = '';
+      if (look) {
+        look.skills.forEach((s, i) => { const sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = lookOf(i)[0]; sw.textContent = lookOf(i)[1]; const it = document.createElement('span'); it.className = 'it'; it.append(sw, ` ${s.label}`); key.append(it); });
+        const it = document.createElement('span'); it.className = 'it'; const sw = document.createElement('span'); sw.className = 'sw even'; it.append(sw, ' All-rounders (every skill alike)'); key.append(it);
+        const from = document.createElement('span'); from.className = 'from'; from.textContent = `Colours from this brain's latest ${NAME} scan${map.name ? `, "${map.name}"` : ''}.`; key.append(from);
+      } else key.textContent = `One colour for now: this brain has no ${NAME} scan yet. Make one in the Lab (${NAME}) and the cube colours every expert by its skill.`;
+    }
     again.hidden = false; open.hidden = false;
     play();
   }

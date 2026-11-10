@@ -185,7 +185,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   function cubeListen() {
     cubeBtn.setAttribute('aria-checked', String(cubeOn)); cubeBtn.querySelector('.st').textContent = cubeOn ? 'On' : 'Off';
     const on = cubeOn && docked && !body.classList.contains('right-hidden') && !document.hidden;
-    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), again: $('mindCubeAgain'), open: $('mindCubeOpen') }, { still: () => body.classList.contains('still') || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches });
+    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), again: $('mindCubeAgain'), open: $('mindCubeOpen'), key: $('mindCubeKey') }, { still: () => body.classList.contains('still') || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches });
     if (!cube) return;
     if (on) cube.connect(); else cube.disconnect();
     if (!cubeOn) cube.hide();

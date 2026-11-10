@@ -24,6 +24,8 @@
         <div class="row"><button type="button" id="watchAll" class="link">Show all</button><button type="button" id="watchNone" class="link">Hide all skills</button><button type="button" id="watchColours" class="link">Usual colours</button></div>
         <fieldset id="watchCutBox"><legend>Try a cut</legend>
           <button id="watchCut" type="button" class="brain-switch" role="switch" aria-checked="false"><span class="lbl">Turn off what's unticked</span><span class="st">Off</span></button>
+          <label id="watchCutHowBox">Cut it the way the Lab would <select id="watchCutHow" aria-describedby="watchCutHowHint"></select></label>
+          <span id="watchCutHowHint" class="muted">A real cut takes a mixture of experts from every colour: the ones no skill leans on much. Pick one and they are turned off and hidden.</span>
           <label>Keep only the busiest <input type="number" id="watchKeep" min="0" value="0" inputmode="numeric" aria-describedby="watchKeepHint"> on each floor</label>
           <span id="watchKeepHint" class="muted">0 keeps them all.</span>
           <p id="watchCutSays" class="muted" role="status"></p>

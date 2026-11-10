@@ -7,6 +7,9 @@
 import { lookOf, sideOf, say } from './lab-watch-math.js';
 
 export const GREY = '#8a8f98';
+export const WIRE_ALPHA = 0.5; // the all-rounders' outline: soft, never bright
+// white on a dark page; on a light page white wouldn't show, so a dark line there
+export const wireColour = (bg) => { const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(bg || '').trim()); if (!m) return '#ffffff'; const [r, g_, b] = m.slice(1).map((h) => parseInt(h, 16)); return 0.299 * r + 0.587 * g_ + 0.114 * b > 150 ? '#1b1b1b' : '#ffffff'; };
 const TRAIL = 6;
 
 // Where everything sits. The parts that are not experts (attention, the router, the tuning rows) are a core of grey
@@ -53,11 +56,11 @@ export function createView(canvas, { still = false } = {}) {
   let yaw = -0.62, tilt = 0.5, gap = 0.9, zoom = 1, fast = false;
   let hidden = new Set(); // skill indexes, plus 'never' and 'grey'
   let staticCanvas = null, dirty = true, geom = null;
-  let caption = null, paths = true, picked = null, glass = 0.25, off = null, solid = new Map(), glow = 0.5, mark = 'glow'; // mark: how the experts in use show: 'glow', 'outline' (a bright edge, no light) or 'both'; glow: how bright the experts in use shine, 0 to 1.5; gentle to begin with, so nothing flashes hard // off: [Set of experts turned off, per floor] while a cut is being tried // glass: how see-through the voxels are, 0 (solid) to 0.85
+  let caption = null, key = true, paths = true, picked = null, glass = 0.25, off = null, solid = new Map(), glow = 0.5, mark = 'glow'; // mark: how the experts in use show: 'glow', 'outline' (a bright edge, no light) or 'both'; glow: how bright the experts in use shine, 0 to 1.5; gentle to begin with, so nothing flashes hard // off: [Set of experts turned off, per floor] while a cut is being tried // glass: how see-through the voxels are, 0 (solid) to 0.85
   const css = () => { const s = getComputedStyle(document.body); const g = (n, d) => s.getPropertyValue(n).trim() || d; return { bg: g('--bg', '#1d1510'), text: g('--text', '#f3e7d3'), muted: g('--muted', '#c7b296'), line: g('--line', '#5a4030'), panel: g('--panel', '#2b1d14') }; };
 
   function setData(r, s, parts) { rec = r; sp = s; lay = layoutOf(r, parts); dirty = true; picked = null; }
-  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
+  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'key') key = v !== false; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
   const get = () => ({ yaw, tilt, gap, zoom, glass, glow });
   // the gap between floors that makes the whole block as tall as it is wide: a cube
   const cubeGap = () => (lay ? Math.max(0.2, Math.min(5, Math.max(lay.W, lay.D) / Math.max(1, lay.L + lay.baseFloors))) : 0.9);
@@ -110,7 +113,9 @@ export function createView(canvas, { still = false } = {}) {
     if (off && off[l]?.has(e)) return null;
     if (top < 0) return hidden.has('never') ? null : { color: null, alpha: 1 };
     if (hidden.has(top)) return null;
-    return { color: lookOf(top)[0], alpha: (0.28 + 0.72 * Math.min(1, sp.strength[l][e] * 1.6)) * (solid.get(top) ?? 1) }; // solid: each skill's own opacity
+    const even = Boolean(sp.even?.[l]?.[e]); // an all-rounder: every skill uses it alike, and often
+    if (even && hidden.has('even')) return null;
+    return { color: lookOf(top)[0], alpha: (0.28 + 0.72 * Math.min(1, sp.strength[l][e] * 1.6)) * (solid.get(top) ?? 1), even }; // solid: each skill's own opacity
   }
 
   function drawStatic() {
@@ -129,6 +134,12 @@ export function createView(canvas, { still = false } = {}) {
       c.globalAlpha = a; c.fillStyle = color; face(c, g, x, y); c.fill();
       if (glass && full && g.s > 7) { c.globalAlpha = Math.min(1, alpha * 0.5); c.strokeStyle = color; c.lineWidth = 1; c.stroke(); }
     };
+    // an all-rounder: its edges drawn as a soft white line drawing, so it isn't taken for a rarely used expert
+    const wire = (x, y) => {
+      c.globalAlpha = WIRE_ALPHA; c.strokeStyle = wireColour(k.bg); c.lineWidth = Math.max(1, g.s * 0.045);
+      face(c, g, x, y); c.stroke();
+      if (full && g.s > 5) { sides(c, g, x, y); c.stroke(); const b = g.corners[g.m]; c.beginPath(); c.moveTo(x + b[0], y + b[1]); c.lineTo(x + b[0], y + b[1] + g.down); c.stroke(); }
+    };
     // the plinth: what sits outside the layers
     if (!hidden.has('grey')) for (let f = 0; f < baseFloors; f++) {
       const n = Math.min(W * D, base - f * W * D);
@@ -142,6 +153,7 @@ export function createView(canvas, { still = false } = {}) {
           const lk = lookAt(l, e); if (!lk) continue;
           const [x, y] = g.P(cx, floorY(l), cz);
           voxel(x, y, lk.color, lk.alpha, !lk.color);
+          if (lk.even) wire(x, y);
         } else if (coreRank[i] >= 0 && grey[l] > 0 && !hidden.has('grey')) {
           const [x, y] = g.P(cx, floorY(l), cz);
           voxel(x, y, GREY, solid.get('grey') ?? 1);
@@ -216,17 +228,21 @@ export function createView(canvas, { still = false } = {}) {
     const fs = Math.round(12 * dpr), pad = Math.round(8 * dpr);
     ctx.font = `${fs}px system-ui, sans-serif`; ctx.textBaseline = 'middle';
     let x = pad, y = pad + fs / 2;
-    const item = (color, label, off) => {
+    const item = (color, label, off, wired) => {
       const w = ctx.measureText(label).width + fs * 1.9;
       if (x + w > cw - pad) { x = pad; y += fs * 1.6; }
       ctx.globalAlpha = off ? 0.35 : 1;
       if (color) { ctx.fillStyle = color; ctx.fillRect(x, y - fs * 0.4, fs * 0.8, fs * 0.8); } else { ctx.strokeStyle = k.muted; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y - fs * 0.4 + 0.5, fs * 0.8, fs * 0.8); }
+      if (wired) { ctx.globalAlpha = off ? 0.35 : 0.9; ctx.strokeStyle = wireColour(k.bg); ctx.lineWidth = Math.max(1, dpr); ctx.strokeRect(x + 0.5, y - fs * 0.4 + 0.5, fs * 0.8, fs * 0.8); ctx.globalAlpha = off ? 0.35 : 1; }
       ctx.fillStyle = k.text; ctx.fillText(label, x + fs * 1.1, y);
       ctx.globalAlpha = 1; x += w;
     };
-    rec.skills.forEach((s, i) => item(lookOf(i)[0], `${lookOf(i)[1]} ${s.label}`, hidden.has(i)));
-    item(GREY, say(rec, 'Not experts'), hidden.has('grey'));
-    item(null, 'Never picked', hidden.has('never'));
+    if (key) {
+      rec.skills.forEach((s, i) => item(lookOf(i)[0], `${lookOf(i)[1]} ${s.label}`, hidden.has(i)));
+      if (sp.evens ?? sp.even?.some((r) => r.some(Boolean))) item(GREY + '55', 'All-rounders', hidden.has('even'), true);
+      item(GREY, say(rec, 'Not experts'), hidden.has('grey'));
+      item(null, 'Never picked', hidden.has('never'));
+    }
     if (!caption) return;
     const lines = [caption.title, caption.text].filter(Boolean);
     const lh = fs * 1.5, boxH = lines.length * lh + pad;

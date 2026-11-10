@@ -23,6 +23,7 @@ import { ModelShop } from './models.js';
 import { CatalogUpdates } from './catalog-update.js';
 import { checkEngine, seedBundledEngine, goBackEngine, removeEngine, brainsEngineSettings, engineChoices, brainsEngineNow } from './engines.js';
 import { liveTrace } from '../public/lab-watch-math.js';
+import { cubeMap } from './lab-watch.js';
 import { autostartOn, setAutostart } from './autostart.js';
 import { applyWindowState } from './app-icon.js';
 import { capabilities } from './capabilities.js';
@@ -126,7 +127,8 @@ const cubeClients = new Set();
 const cubeWhy = () => (brainsEngineNow(cfg) === 'brainengine' ? '' : 'The cube needs Brain Engine as the engine for Bob\'s brains (Settings > Engines). The engine in use now doesn\'t report which experts it picked.');
 if (brain.engine) {
   brain.engine.wantTrace = () => cubeClients.size > 0 && !cubeWhy();
-  brain.engine.onTrace = (raw, model) => { const t = liveTrace(raw); if (!t) return; const data = `data: ${JSON.stringify({ type: 'trace', label: friendlyName(model), ...t })}\n\n`; for (const res of cubeClients) res.write(data); };
+  brain.engine.onTrace = (raw, model) => { const t = liveTrace(raw); if (!t) return; let map = null; try { map = cubeMap(lab, { model, label: friendlyName(model), experts: t.experts, layers: t.layers, kind: t.kind }); } catch {} // the colours, from this brain's newest scan
+    const data = `data: ${JSON.stringify({ type: 'trace', label: friendlyName(model), ...t, ...(map ? { map } : {}) })}\n\n`; for (const res of cubeClients) res.write(data); };
 }
 // 1.5.38: when Downloads change, a job waiting for one (a song waiting for the music models) may be able to go.
 const shop = new ModelShop(cfg, (ev) => { broadcast(ev); if (ev?.type === 'downloads') brain.downloadsChanged(); }, brain.engine);

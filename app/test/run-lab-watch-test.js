@@ -11,9 +11,9 @@ import { fileURLToPath } from 'node:url';
 import { Lab } from '../src/lab.js';
 import { readGguf } from '../src/lab-gguf.js';
 import { readTrace, askTraced, tallyTrace, NO_TRACE } from '../src/lab-peek.js';
-import { WATCH_SKILLS, PER_CHOICES, pickSkills, partsOf, clipOf, watchView, startWatch, readRecording, deleteRecording, listRecordings, watchRoute, WATCH_WORDS, WATCH_WORDS_THINK, cleanKeep } from '../src/lab-watch.js';
+import { WATCH_SKILLS, PER_CHOICES, pickSkills, partsOf, clipOf, watchView, startWatch, readRecording, deleteRecording, listRecordings, watchRoute, cubeMap, WATCH_WORDS, WATCH_WORDS_THINK, cleanKeep } from '../src/lab-watch.js';
 import { pagesRoute } from '../src/lab-pages.js';
-import { NAME, LONG_NAME, FORMAT, VERSION, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, SKILL_LOOKS, sideOf, LEANS, partOf, PART_LABEL, say, cutOf, cutEffect, keepList, setColour, resetColours, liveTrace, liveRecording } from '../public/lab-watch-math.js';
+import { NAME, LONG_NAME, FORMAT, VERSION, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, SKILL_LOOKS, sideOf, LEANS, partOf, PART_LABEL, say, cutOf, cutEffect, keepList, setColour, resetColours, liveTrace, liveRecording, skillMap, mapLook, litSkills, coverKeep, cutSteps, EVEN_PICKS } from '../public/lab-watch-math.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -163,6 +163,8 @@ check('a scan needs a brain and at least one skill', await startWatch(lab, {}).t
   const list = listRecordings(cfg, { id: 'moe', name: 'Test MoE' });
   check('the scan is listed with its skills, questions, words and what it saw', list.length === 1 && list[0].clips === 4 && list[0].words === 48 && list[0].skills.join() === 'Coding,Everyday chat' && /experts were picked/.test(list[0].saw) && run.report.watch.id === list[0].id);
   const got = readRecording(lab, { brain: 'moe', id: list[0].id });
+  { const gg = lab.brains().find((b) => b.id === 'moe').gguf; const m = cubeMap(lab, { model: gg, experts: E, layers: 2, kind: 'experts' });
+    check('the small cube finds the newest scan of the brain Bob is chatting with (by its file, id or name) and gets its colours', m && m.skills.length === 2 && m.top.length === 2 && m.top[0].length === E && cubeMap(lab, { model: 'moe', experts: E, layers: 2 }) === m && cubeMap(lab, { model: 'x', label: 'Test MoE', experts: E, layers: 2 }) === m && cubeMap(lab, { model: 'moe', experts: E + 1, layers: 2 }) === null && cubeMap(lab, { model: 'some-other-brain', experts: E, layers: 2 }) === null); }
   check('the viewer gets the clean recording with the brain\'s parts', got.format === FORMAT && got.clips.length === 4 && got.clips[0].prompt === 2 && got.clips[0].e.length === 12 && got.brain.experts === E && got.parts.layers.length === 2 && got.parts.outside > 0);
   const s = specialise(got);
   check('the made-up routing shows through: coding leans to experts 0 and 1, chat to 2 and 3, and both share 6 and 7', s.top[0][0] === 0 && s.top[0][2] === 1 && s.strength[1][6] === 0 && s.top[0][5] === -1);
@@ -339,6 +341,33 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('only this replicant matrix\'s own pages can turn the cube on, and it says why when the engine can\'t do it', /isLocal && url\.searchParams\.get\('cube'\) === '1'/.test(server) && /type: 'cube', ok: !cubeWhy\(\), why: cubeWhy\(\)/.test(server) && /cubeClients\.delete\(res\)/.test(server));
   check('the cube says in words what it shows, stays still when animations are off, and can open the big viewer', /says\.textContent/.test(cubeJs) && /if \(still\(\)\)/.test(cubeJs) && /bobWatch\?\.load/.test(cubeJs) && /role="img" aria-label=/.test(index));
   check('the chat endpoint of Brain Engine carries the trace with the last piece of a reply', /with the last piece of a streamed chat reply/.test(read('engine/patches/0002-expert-trace.patch')));
+}
+
+// ---- all-rounders, the cube's borrowed colours, and the cut the Lab would make ----
+{
+  // 2 skills, 1 floor, 6 experts, 2 picked a word. Expert 0: both skills alike and often (an all-rounder). Expert 1:
+  // only skill a. Expert 2: only skill b. Expert 3: once, by a (rarely used). 4 and 5: never.
+  const row = (a, b) => [[a, b]];
+  const mk = (skill, rows) => ({ skill, question: 'q', answer: 'a', prompt: 0, words: rows.map(() => 'w'), e: rows, last: '' });
+  const r = cleanRecording({ format: FORMAT, version: VERSION, id: 'x', name: 'two', brain: { name: 'b', experts: 6, layers: 1, used: 2 }, skills: [{ id: 'a', label: 'A skill' }, { id: 'b', label: 'B skill' }],
+    clips: [mk('a', [...Array.from({ length: 19 }, () => row(0, 1)), row(0, 3)]), mk('b', Array.from({ length: 20 }, () => row(0, 2)))] });
+  const s = specialise(r);
+  check('an expert every skill uses alike, and often, is an all-rounder; a rarely picked one is not, and neither is one skill\'s own', s.even[0][0] === true && s.even[0][1] === false && s.even[0][3] === false && s.even[0][4] === false && s.evens === 1 && s.picks[0][3] < EVEN_PICKS * 2 && s.strength[0][0] < LEANS);
+  check('the words under the picture count the all-rounders and say how they look', inWords(r, s).some((l) => /1 experts are all-rounders/.test(l) && /soft white outline/.test(l)));
+  const map = JSON.parse(JSON.stringify(skillMap(r, s))), look = mapLook(map, { experts: 6, layers: 1, kind: 'experts' });
+  check('a scan\'s colours travel to the small cube and come back the same', look && look.skills[1].label === 'B skill' && look.sp.top[0][1] === 0 && look.sp.top[0][2] === 1 && look.sp.top[0][4] === -1 && look.sp.even[0][0] === true && Math.abs(look.sp.strength[0][1] - s.strength[0][1]) < 0.01);
+  check('colours from a brain of another shape, or a broken map, are not used', mapLook(map, { experts: 8, layers: 1 }) === null && mapLook(map, { experts: 6, layers: 1, kind: 'neurons' }) === null && mapLook({ ...map, top: [[0]] }, { experts: 6, layers: 1 }) === null && mapLook(null, { experts: 6, layers: 1 }) === null && mapLook({ ...map, top: [[9, 0, 1, 0, -1, -1]] }, { experts: 6, layers: 1 }).sp.top[0][0] === -1);
+  const ls = litSkills(look, [[0, 1, 2, 2, 5]].map((x) => x));
+  check('the cube says which skills the lit experts belong to', ls.evens === 1 && ls.never === 1 && ls.skills[0].label === 'B skill' && ls.skills[0].n === 2 && ls.skills[1].label === 'A skill');
+  const ck = coverKeep(r, s, 0.95);
+  check('the Lab\'s cut keeps what every skill needs: a mixture, never one whole colour', ck.K === 3 && [0, 1, 2].every((e) => ck.keep[0].has(e)) && !ck.keep[0].has(3));
+  const offC = cutOf(r, s, { cover: 0.95 }), fxC = cutEffect(r, offC);
+  check('trying that cut turns off exactly the experts it would remove, and never more than the brain needs to keep', offC[0].size === 6 - ck.K && !offC[0].has(0) && offC[0].has(4) && offC[0].has(5) && fxC.off === 6 - ck.K && 6 - offC[0].size >= 2);
+  check('the Lab\'s plain sizes are offered too', JSON.stringify(cutSteps(256, 8)) === JSON.stringify([192, 152, 128, 104, 80, 64]) && cutSteps(8, 8).length === 0);
+  const html = read('public/watch.html'), view = read('public/watch-view.js'), js = read('public/watch.js'), cubeJs = read('public/mind-cube.js'), server = read('src/server.js'), index = read('public/index.html');
+  check('the viewer draws all-rounders as a soft white line drawing, with their own tick box', /WIRE_ALPHA = 0\.5/.test(view) && /if \(lk\.even\) wire\(x, y\)/.test(view) && /hidden\.has\('even'\)/.test(view) && /row\('even'/.test(js) && /All-rounders/.test(view));
+  check('Try a cut offers the Lab\'s own cuts', /id="watchCutHow"/.test(html) && /COVERS\.map/.test(js) && /cover: cutCover/.test(js));
+  check('the small cube borrows the colours of the brain\'s newest scan and names them under the picture', /cubeMap\(lab, \{ model/.test(server) && /mapLook\(map,/.test(cubeJs) && /id="mindCubeKey"/.test(index) && /has no \$\{NAME\} scan yet/.test(cubeJs));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
