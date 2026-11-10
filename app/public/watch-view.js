@@ -56,11 +56,14 @@ export function createView(canvas, { still = false } = {}) {
   let yaw = -0.62, tilt = 0.5, gap = 0.9, zoom = 1, fast = false;
   let hidden = new Set(); // skill indexes, plus 'never' and 'grey'
   let staticCanvas = null, dirty = true, geom = null;
+  let monoColour = ''; // the colour One colour uses, when the person picked one
+  const oneColour = () => monoColour || lookOf(0)[0];
+  let mono = false; // One colour: every expert the same colour, so only what lights up stands out
   let caption = null, key = true, paths = true, picked = null, glass = 0.25, off = null, solid = new Map(), glow = 0.5, mark = 'glow'; // mark: how the experts in use show: 'glow', 'outline' (a bright edge, no light) or 'both'; glow: how bright the experts in use shine, 0 to 1.5; gentle to begin with, so nothing flashes hard // off: [Set of experts turned off, per floor] while a cut is being tried // glass: how see-through the voxels are, 0 (solid) to 0.85
   const css = () => { const s = getComputedStyle(document.body); const g = (n, d) => s.getPropertyValue(n).trim() || d; return { bg: g('--bg', '#1d1510'), text: g('--text', '#f3e7d3'), muted: g('--muted', '#c7b296'), line: g('--line', '#5a4030'), panel: g('--panel', '#2b1d14') }; };
 
   function setData(r, s, parts) { rec = r; sp = s; lay = layoutOf(r, parts); dirty = true; picked = null; }
-  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'key') key = v !== false; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
+  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'key') key = v !== false; else if (k === 'mono') mono = v === true; else if (k === 'monoColour') monoColour = /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v) : ''; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
   const get = () => ({ yaw, tilt, gap, zoom, glass, glow });
   // the gap between floors that makes the whole block as tall as it is wide: a cube
   const cubeGap = () => (lay ? Math.max(0.2, Math.min(5, Math.max(lay.W, lay.D) / Math.max(1, lay.L + lay.baseFloors))) : 0.9);
@@ -113,6 +116,7 @@ export function createView(canvas, { still = false } = {}) {
     if (off && off[l]?.has(e)) return null;
     if (top < 0) return hidden.has('never') ? null : { color: null, alpha: 1 };
     if (hidden.has(top)) return null;
+    if (mono) return { color: oneColour(), alpha: 0.28, even: false };
     const even = Boolean(sp.even?.[l]?.[e]); // an all-rounder: every skill uses it alike, and often
     if (even && hidden.has('even')) return null;
     return { color: lookOf(top)[0], alpha: (0.28 + 0.72 * Math.min(1, sp.strength[l][e] * 1.6)) * (solid.get(top) ?? 1), even }; // solid: each skill's own opacity
@@ -190,7 +194,7 @@ export function createView(canvas, { still = false } = {}) {
           if (off && off[l]?.has(e)) { if (now) missed.push([x, y0]); continue; } // it was picked, and it's turned off
           if (top >= 0 && hidden.has(top)) continue;
           const y = y0 - (now ? pop : pop * a * 0.6);
-          const color = top >= 0 ? lookOf(top)[0] : '#ffffff';
+          const color = mono ? oneColour() : top >= 0 ? lookOf(top)[0] : '#ffffff';
           ctx.fillStyle = color;
           // the halo and the white core scale with Glow; the lit face itself stays visible even with Glow at 0
           if (mark !== 'glow') { if (now) outlined.push([x, y0, color]); if (mark === 'outline') { pts.push([x, y0]); continue; } }
@@ -237,7 +241,8 @@ export function createView(canvas, { still = false } = {}) {
       ctx.fillStyle = k.text; ctx.fillText(label, x + fs * 1.1, y);
       ctx.globalAlpha = 1; x += w;
     };
-    if (key) {
+    if (key && mono) { item(oneColour(), say(rec, 'Experts (one colour)')); item(GREY, say(rec, 'Not experts'), hidden.has('grey')); item(null, 'Never picked', hidden.has('never')); }
+    else if (key) {
       rec.skills.forEach((s, i) => item(lookOf(i)[0], `${lookOf(i)[1]} ${s.label}`, hidden.has(i)));
       if (sp.evens ?? sp.even?.some((r) => r.some(Boolean))) item(GREY + '55', 'All-rounders', hidden.has('even'), true);
       item(GREY, say(rec, 'Not experts'), hidden.has('grey'));

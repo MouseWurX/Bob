@@ -1611,4 +1611,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .mind-cube-key .sw { display: inline-flex; width: 14px; height: 14px; border-radius: 3px; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: black; vertical-align: -2px; }
 .mind-cube-key .sw.even { border: 1.5px solid var(--text); background: color-mix(in srgb, var(--muted) 30%, transparent); opacity: 0.8; }
 .mind-cube-key .from { flex-basis: 100%; }
+.mind-cube-key.off .it { opacity: 0.4; }
+.mind-cube input[type=color] { width: 32px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; vertical-align: middle; }
+.mind-cube .row { flex-wrap: wrap; align-items: center; gap: 2px 12px; }
 .mind-cube .link { background: none; border: none; padding: 4px 0; min-height: 32px; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; }

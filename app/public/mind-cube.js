@@ -11,10 +11,23 @@ export const CUBE_SPEED = 14; // words a second
 // The colours: when this brain has an aiFEUI scan, Bob sends that scan's map along and every expert gets its skill's
 // colour (all-rounders a soft white outline); with no scan the cube is one colour and says how to get the rest.
 // els: { box, canvas, says, again, open, key }. still() = animations are off (the last word is shown, nothing moves).
-export function createMindCube({ box, canvas, says, again, open, key = null }, { still = () => false, EventSourceImpl = globalThis.EventSource } = {}) {
+export function createMindCube({ box, canvas, says, again, open, key = null, mono = null, colour = null, colourBox = null, details = null }, { still = () => false, EventSourceImpl = globalThis.EventSource } = {}) {
   const view = createView(canvas);
   let es = null, traces = [], rec = null, sp = null, clip = -1, t = 0, raf = 0, last = 0, why = '', look = null;
   view.set({ glow: 0.4, glass: 0.3 });
+  // One colour: a quick switch, remembered. Every expert the same colour, so only what lights up stands out.
+  let one = false; try { one = localStorage.getItem('bob-cube-mono') === '1'; } catch {}
+  const showOne = () => { view.set({ mono: one || !look }); if (mono) { mono.setAttribute('aria-pressed', String(one)); mono.textContent = one ? 'Skill colours' : 'One colour'; mono.hidden = !look; } if (colourBox) colourBox.hidden = !(one || !look) || !rec; if (key && look) key.classList.toggle('off', one); };
+  // the one colour is the person's to pick (it is also the colour of a brain with no scan yet), and it is remembered
+  const keepC = (c) => { if (/^#[0-9a-f]{6}$/i.test(c || '')) { view.set({ monoColour: c }); if (colour) colour.value = c; return true; } return false; };
+  try { keepC(localStorage.getItem('bob-cube-colour')); } catch {}
+  if (colour) colour.oninput = () => { if (keepC(colour.value)) { try { localStorage.setItem('bob-cube-colour', colour.value); } catch {} if (rec) view.draw(lit()); } };
+  // Hide details: only the picture stays. The words are still there for a screen reader.
+  let showDetails = true; try { showDetails = localStorage.getItem('bob-cube-details') !== '0'; } catch {}
+  const showD = () => { says.classList.toggle('sr-only', !showDetails); if (key) key.classList.toggle('sr-only', !showDetails); if (details) { details.setAttribute('aria-pressed', String(showDetails)); details.textContent = showDetails ? 'Hide details' : 'Show details'; } };
+  if (details) details.onclick = () => { showDetails = !showDetails; try { localStorage.setItem('bob-cube-details', showDetails ? '1' : '0'); } catch {} showD(); };
+  showD();
+  if (mono) mono.onclick = () => { one = !one; try { localStorage.setItem('bob-cube-mono', one ? '1' : '0'); } catch {} showOne(); if (rec) view.draw(lit()); };
 
   function words() {
     if (why) { says.textContent = why; return; }
@@ -62,7 +75,7 @@ export function createMindCube({ box, canvas, says, again, open, key = null }, {
         const from = document.createElement('span'); from.className = 'from'; from.textContent = `Colours from this brain's latest ${NAME} scan${map.name ? `, "${map.name}"` : ''}.`; key.append(from);
       } else key.textContent = `One colour for now: this brain has no ${NAME} scan yet. Make one in the Lab (${NAME}) and the cube colours every expert by its skill.`;
     }
-    again.hidden = false; open.hidden = false;
+    again.hidden = false; open.hidden = false; showOne();
     play();
   }
   function on(ev) {
