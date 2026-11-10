@@ -310,6 +310,7 @@ function cleanLlamacpp(lc) {
   if ('noEyes' in out) out.noEyes = Array.isArray(out.noEyes) ? [...new Set(out.noEyes.filter((x) => typeof x === 'string' && /^[\w.:/-]{1,100}$/.test(x)))].slice(0, 200) : []; // Lab: brains loaded without their reader
   if ('brainEngine' in out) out.brainEngine = out.brainEngine !== false; // 1.5.169: run brains on Brain Engine when it's here
   if ('loadMode' in out) out.loadMode = out.loadMode === 'mmap' ? 'mmap' : 'auto'; // 1.5.90
+  if ('moeCache' in out) { const m = out.moeCache || {}; const mib = Number(m.mib); out.moeCache = { on: m.on === true, mib: Number.isInteger(mib) && mib >= 256 && mib <= 65536 ? mib : null }; } // 1.5.19x Keep busy experts on the card
   if ('draft' in out) {
     const d = out.draft || {};
     out.draft = {

@@ -4,6 +4,18 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.193
+
+A brain bigger than your card and memory together now loads from the drive instead of failing, and Bob can keep a big brain's busy experts on the graphics card.
+
+### Fixed
+
+- **Very big brains load.** Since 1.5.90, a brain that sits partly in memory is read in whole when it loads. For a brain bigger than the card's share plus memory, like gpt-oss 120B (about 63 GB) on a 16 GB card with 32 GB of memory, that ran out of memory, so the brain never loaded. Now such a brain is read from the drive as it goes. The card takes its share, the busiest parts stay in memory, and the rest is read from the drive when the words need it. It's slow, but it runs. Brains that fit load exactly as before. Tests in `test/run-tuning-test.js`.
+
+### New (experimental, off)
+
+- **Keep busy experts on the graphics card** (Settings, Engines, Speed). This works for brains made of many small experts (Qwen 3.6, gpt-oss and the like) that don't fit on the card. Each word uses only a few experts, and some get picked far more often than others. With this on, part of the card holds the experts picked most, so most of each word runs on the card. This uses llama.cpp's MoE cache and needs llama.cpp b12032 or newer. **Room for busy experts (MB)** sets how much of the card it may use. Left empty, it uses a quarter of the card. A brain bigger than card and memory together also has its experts read from the drive as they're needed. Help: the FAQ **Can a brain bigger than my card run quickly?** and a glossary entry. Tests in `test/run-tuning-test.js`.
+
 ## 1.5.192
 
 ### FNRI: two brains side by side
