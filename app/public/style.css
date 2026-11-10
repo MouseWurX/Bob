@@ -987,6 +987,7 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 
 /* 1.5.30: Bob vs everything else under each meter, and the small graph in Now running. */
 .now-gpu .mem-split { color: var(--muted, inherit); opacity: .85; }
+.mem-graph-sec { margin-top: 4px; }
 .now-gpu .mem-graph-btn { justify-self: start; min-height: 32px; padding: 4px 12px; border: 1px solid var(--line, currentColor); border-radius: 6px; background: transparent; color: var(--text, inherit); cursor: pointer; font: inherit; }
 .now-gpu .mem-paused { padding: 4px 6px; border: 1px dashed var(--line, currentColor); border-radius: 4px; color: var(--muted, inherit); }
 .now-gpu .g-wrap { display: grid; grid-template-columns: auto 1fr; gap: 4px; }
@@ -1388,6 +1389,10 @@ details.fold > summary .muted { font-weight: 400; font-size: 13px; }
 /* 1.5.138: Now running sections can be put in any order (the grip), and Bob's thinking can sit in the panel (Show here). */
 .now-sections { display: flex; flex-direction: column; gap: 6px; }
 .now-sections > section { position: relative; }
+.sec-fold { flex: none; min-width: 32px; min-height: 28px; padding: 0 4px; border: 1px solid var(--line, currentColor); border-radius: 6px; background: transparent; color: var(--muted, inherit); cursor: pointer; font: 600 12px ui-monospace, monospace; }
+.sec-fold:hover, .sec-fold:focus-visible { color: var(--text, inherit); }
+.now-sections section.folded > :not(.now-sec) { display: none !important; }
+.now-sections section.folded .now-sec .link { display: none; }
 .sec-order { display: inline-flex; align-items: center; gap: 4px; margin-right: 2px; }
 .sec-grip { min-width: 32px; min-height: 32px; margin: -6px 0; padding: 0 6px; border: 1px solid transparent; border-radius: var(--r); background: none; color: var(--muted); font: inherit; font-size: 14px; letter-spacing: -3px; cursor: grab; }
 .sec-grip:hover, .sec-grip:focus-visible, .sec-grip[aria-expanded="true"] { color: var(--text); border-color: var(--line); background: var(--card); }
@@ -1601,3 +1606,24 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .lab-pro .row { flex-wrap: wrap; gap: 8px; align-items: center; }
 .lab-log { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
 .lab-log td { vertical-align: top; overflow-wrap: anywhere; white-space: pre-wrap; }
+
+/* FNRI's small cube in Bob's thinking (Now running) */
+.mind-cube { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+.mind-cube canvas { width: 100%; height: 220px; display: block; border: 1px solid var(--line); border-radius: var(--r); }
+.mind-cube p { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+/* hidden from sight only: a screen reader still reads Bob's thinking written out while the cube shows */
+.cube-view .mind-log, .cube-view .mind-empty { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+.cube-view .mind-dock-foot { display: none; } /* Follow along, Clear, Order and Pop out all belong to the written thinking */
+.mind-cube-key { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.mind-cube-key .it { white-space: nowrap; }
+.mind-cube-key .sw { display: inline-flex; width: 14px; height: 14px; border-radius: 3px; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: black; vertical-align: -2px; }
+.mind-cube-key .sw.even { border: 1.5px dashed var(--text); background: color-mix(in srgb, var(--muted) 30%, transparent); opacity: 0.8; }
+.mind-cube-key .from { flex-basis: 100%; }
+.mind-cube-key.off .it { opacity: 0.4; }
+.mind-cube input[type=color] { width: 32px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; vertical-align: middle; }
+.mind-cube .row { flex-wrap: wrap; align-items: center; gap: 2px 12px; }
+.mind-cube .link { background: none; border: none; padding: 4px 0; min-height: 32px; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; }
+/* Bob-Net: What my Bobs do together (More Bobs / Bigger Bobs). */
+.share-mode { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; margin: 8px 0; }
+.share-bigger { margin-left: 26px; }
+.engine-held { border-left: 3px solid var(--accent); padding: 4px 8px; margin: 6px 0; } /* 1.5.185 an engine update kept aside with files missing */

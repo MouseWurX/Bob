@@ -17,16 +17,21 @@ export const FOUNDERS = {
 // to a fresh name the first time that copy is called.
 export const RETIRED = { reviewer: ['Bub'] };
 
+// Names of Bob's own models. A job that several brains can do never wears a model's name (the owner's rule,
+// 1.5.184), so no copy is given one, and a copy that already has one moves on to a fresh name from the list.
+export const MODEL_NAMES = ['Riker', 'Bill', 'Bobert', 'Homer', 'Milo', 'Luke', 'Calvin', 'Garfield', 'Bender', 'Cypher', 'Ponder', 'Audit', 'Relay'];
+const isModelName = (n) => MODEL_NAMES.some((m) => m.toLowerCase() === String(n || '').toLowerCase());
+
 // Names for later copies (cloud helpers and anything new), handed out in order, never reused.
 export const POOL = [
-  'Bobert', 'Bobby Tables', 'Bob++', 'Bobject', 'Bobzilla', 'Bobi-Wan', 'Bobba Fett', 'Bob-omb', 'Bobble', 'Bobsled',
+  'Bobby Tables', 'Bob++', 'Bobject', 'Bobzilla', 'Bobi-Wan', 'Bobba Fett', 'Bob-omb', 'Bobble', 'Bobsled',
   'Kebob', 'Bobbin', 'Roberto', 'Bobbit', 'Bobtimus Prime', 'Bobcorn', 'Discobob', 'Bobservatory', 'Thingamabob', 'Bobsidian',
   'Bobathan', 'Bobble-Head', 'Bobolith', 'Bobnoxious', 'Bobtail', 'Shishkebob', 'Bobbington', 'Robobob', 'Bobstacle', 'Bob 2: Electric Bobaloo'
 ];
 
 // When the Bob puns run out, copies borrow great sci-fi and fantasy names that suit their job, punned where possible.
 export const BY_JOB = {
-  tinker: ['Montgomery Bob', 'Bobi La Forge', 'Kaylee', 'Tony Bobstark', 'Hephaestus', 'Gimli', 'Bobby Wrench', 'Daedalus', 'Rocket', 'Chief O\'Bobrien', 'Fezzik', 'Bender', 'Q-Bob', 'Gizmo'],
+  tinker: ['Montgomery Bob', 'Bobi La Forge', 'Kaylee', 'Tony Bobstark', 'Hephaestus', 'Gimli', 'Bobby Wrench', 'Daedalus', 'Rocket', 'Chief O\'Bobrien', 'Fezzik', 'Q-Bob', 'Gizmo'],
   ledger: ['Hari Seldon', 'Deep Thought', 'Bobbage', 'Spock-keeper', 'Mr. Tally-Ho', 'The Abacus of Gondor', 'Tharkun the Thrifty', 'Bilbo Bookkeeper', 'Quark', 'Gringotts', 'Cogsworth', 'Ledger-main'],
   scout: ['Ford Prefect', 'Strider', 'Radagast', 'Uhura', 'Samwise', 'Arthur Dent', 'Bobi Tano', 'Wayfinder', 'Hermione', 'The Hitchhiker', 'Pathfinder Bob', 'Gandalf the Googler'],
   painter: ['Slartibartfast', 'Bob Fjordmaker', 'Luna Lovebob', 'Ferris Wheeler', 'Elrond Hues', 'Pixel Prime', 'Leonardo da Vinci-Bot', 'Bobsidian Brush', 'The Fjord Prefect'],
@@ -45,11 +50,11 @@ export function readRoll(cfg) {
 export function copyName(cfg, key, role) {
   const roll = readRoll(cfg);
   const have = roll.copies.find((c) => c.key === key);
-  if (have && !RETIRED[key]?.includes(have.name)) return have.name;
+  if (have && !RETIRED[key]?.includes(have.name) && !isModelName(have.name)) return have.name;
   if (have) have.key = `${key}:retired`; // stays on the roll (so the name is never reused) but no longer answers
   const used = new Set(roll.copies.map((c) => c.name.toLowerCase()));
   for (const f of Object.values(FOUNDERS)) used.add(f.name.toLowerCase());
-  for (const n of Object.values(RETIRED).flat()) used.add(n.toLowerCase());
+  for (const n of [...Object.values(RETIRED).flat(), ...MODEL_NAMES]) used.add(n.toLowerCase());
   const job = String(key).startsWith('cloud:') ? 'cloud' : String(key).split(':')[0];
   const free = (list) => (list || []).find((n) => !used.has(n.toLowerCase()));
   let name = FOUNDERS[key] && !roll.copies.some((c) => c.name === FOUNDERS[key].name) ? FOUNDERS[key].name : free(POOL) || free(BY_JOB[job]) || free(GENERAL) || free(Object.values(BY_JOB).flat());

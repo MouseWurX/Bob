@@ -9,8 +9,9 @@ import { fileURLToPath } from 'node:url';
 import { findTool, toolDirs, exeFor, runTool, missingWords, isDiffusion } from '../src/llama-tools.js';
 import { partsOf, joinedName, joinArgs, splitArgs, needsSplitForUpload, joinParts } from '../src/lab-split.js';
 import { benchArgs, readBench, benchLine, benchBrain } from '../src/lab-bench.js';
-import { CardLender, CardBorrower, wantsSpread, lendCardOn, lendCardRoute, RPC_PORT } from '../src/share-card.js';
-import { cleanSharePatch, shareView } from '../src/share-brains.js';
+import { CardLender, CardBorrower, wantsSpread, lendCardOn, lendCardRoute, RPC_PORT, INNER_PORT, admit, isHomeIp, pickHome, homeIps, openGate } from '../src/share-card.js';
+import { cleanSharePatch, shareView, Lenders } from '../src/share-brains.js';
+import { cleanPhonePatch, phoneView } from '../src/phone-access.js';
 import { diffusionArgs, readFrames } from '../src/lab-diffusion.js';
 import { mergeScores } from '../src/lab-challenges.js';
 
@@ -123,6 +124,17 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(p.share.lendCard === true, 'card: Lend my graphics card switches on');
   ok(cleanSharePatch(cfg, { spread: 'sideways' }).error, 'card: an unknown spread choice is refused');
   ok(/Add one of your other Bobs/.test(cleanSharePatch(cfg, { spread: 'big' }).error || ''), 'card: spreading needs a Bob on the list');
+  ok(shareView(cfg).mode === 'more', 'mode: More Bobs to start with');
+  ok(cleanSharePatch(cfg, { mode: 'huge' }).error, 'mode: an unknown mode is refused');
+  ok(/Add one of your other Bobs/.test(cleanSharePatch(cfg, { mode: 'bigger' }).error || ''), 'mode: Bigger Bobs needs a Bob on the list');
+  {
+    const withBob = { ...cfg, share: { borrow: { bobs: [{ name: 'Go', address: 'go.example.ts.net:7777', passcode: 'secret-2' }] } } };
+    const big = cleanSharePatch(withBob, { mode: 'bigger' }).share;
+    ok(big.lendCard === true && big.spread === 'toobig' && shareView({ ...withBob, share: big }).mode === 'bigger', 'mode: Bigger Bobs lends the card, and spreads only brains that don\'t fit this card and memory (loading here was 6 times quicker)');
+    ok(cleanSharePatch({ ...withBob, share: { ...big, spread: 'toobig' } }, { mode: 'bigger' }).share.spread === 'toobig', 'mode: Bigger Bobs keeps a spread choice already made');
+    const more = cleanSharePatch({ ...withBob, share: big }, { mode: 'more' }).share;
+    ok(more.lendCard === false && more.spread === 'off' && more.borrow.bobs.length === 1, 'mode: More Bobs turns both off and keeps the list');
+  }
   cfg.share = p.share;
   ok(lendCardOn(cfg), 'card: on with the door open');
   ok(!lendCardOn({ ...cfg, remote: { enabled: false } }), 'card: never with the door shut');
@@ -134,35 +146,66 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   const spawned = [];
   const spawnFn = (exe, args) => { const c = new EventEmitter(); c.stdout = new EventEmitter(); c.stderr = new EventEmitter(); c.exitCode = null; c.kill = () => { c.exitCode = 0; c.emit('exit', 0); }; spawned.push({ exe, args, c }); setTimeout(() => c.stderr.emit('data', 'Starting RPC server v3.0.0\n  endpoint : x\n'), 2); return c; };
   let gamingNow = false;
-  const lender = new CardLender(cfg, { spawnFn, tool: () => ({ found: true, path: '/be/ggml-rpc-server' }), ips: () => ['100.101.1.2'], gaming: () => gamingNow });
-  let r = await lender.open({ localAddr: ['192', '168', '1', '5'].join('.') });
-  ok(!r.ok && r.why === 'not tailscale' && !spawned.length, 'card: never opens on a home-network address');
-  r = await lender.open({ localAddr: '::ffff:100.104.9.9' });
+  const gates = [];
+  const gate = async (o) => { const g = { ...o, open: true, close() { g.open = false; } }; gates.push(g); return g; };
+  const H = (...x) => x.join('.'); // home-network addresses, built so no real one sits in the file
+  const myHome = [{ address: H(192, 168, 4, 185), netmask: '255.255.255.0' }];
+  const lender = new CardLender(cfg, { spawnFn, tool: () => ({ found: true, path: '/be/ggml-rpc-server' }), ips: () => ['100.101.1.2'], home: () => myHome, gate, gaming: () => gamingNow });
+  let r = await lender.open({ localAddr: H(192, 168, 1, 5), remoteAddr: H(192, 168, 1, 6) });
+  ok(!r.ok && r.why === 'not tailscale' && !spawned.length, 'card: the asking only comes through the Tailscale door');
+  r = await lender.open({ localAddr: '::ffff:100.104.9.9', remoteAddr: '100.102.0.7' });
   ok(!r.ok && r.why === 'not tailscale', 'card: only on this machine\'s own Tailscale address');
-  r = await lender.open({ localAddr: '::ffff:100.101.1.2', from: 'Legion Go' });
-  ok(r.ok && r.host === '100.101.1.2' && r.port === RPC_PORT, 'card: opens on the Tailscale address it was asked on');
-  ok(spawned.length === 1 && spawned[0].args.join(' ') === `-H 100.101.1.2 -p ${RPC_PORT} -c`, 'card: the server is bound to that address only, never 0.0.0.0');
-  r = await lender.open({ localAddr: '100.101.1.2' });
+  r = await lender.open({ localAddr: '::ffff:100.101.1.2', remoteAddr: '::ffff:100.102.0.7', from: 'Legion Go' });
+  ok(r.ok && r.host === '100.101.1.2' && r.port === RPC_PORT && r.via === 'tailscale', 'card: no home network offered, it opens on the Tailscale address it was asked on');
+  ok(spawned.length === 1 && spawned[0].args.join(' ') === `-H 127.0.0.1 -p ${INNER_PORT} -c`, 'card: the card server itself listens on this machine only');
+  ok(gates.length === 1 && gates[0].host === '100.101.1.2' && gates[0].allow === '100.102.0.7' && gates[0].port === RPC_PORT, 'card: the gate lets in only the Bob that asked');
+  r = await lender.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7' });
   ok(r.ok && spawned.length === 1, 'card: asked again, the same server carries on');
+  r = await lender.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(192, 168, 4, 189)] });
+  ok(r.ok && r.via === 'home' && r.host === H(192, 168, 4, 185) && gates.at(-1).allow === H(192, 168, 4, 189) && !gates[0].open, 'card: on the same home network, the gate moves there, for that Bob only');
+  r = await lender.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(10, 0, 0, 9), '8.8.8.8'] });
+  ok(r.ok && r.via === 'tailscale', 'card: a different home network, or a public address, stays on Tailscale');
+  {
+    const noHome = new CardLender({ ...cfg, share: { ...cfg.share, homeNet: false } }, { spawnFn, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate });
+    ok((await noHome.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', home: [H(192, 168, 4, 189)] })).via === 'tailscale', 'card: Use the home network first off, Tailscale only');
+    noHome.close();
+  }
+  ok(admit('100.102.0.7', '::ffff:100.102.0.7') && !admit('100.102.0.7', '100.102.0.8') && !admit('', '100.102.0.7'), 'card: the gate turns everyone else away');
+  {
+    // The real gate, on this machine's loopback only: the allowed address gets through to the card server, others don't.
+    const net = await import('node:net');
+    const echo = net.createServer((c) => c.pipe(c)); await new Promise((ok2) => echo.listen(0, '127.0.0.1', ok2));
+    const talk = (port) => new Promise((ok2) => { const c = net.connect({ host: '127.0.0.1', port }, () => c.write('hi')); let got = ''; c.on('data', (d) => { got += d; c.end(); }); c.on('close', () => ok2(got)); c.on('error', () => ok2('')); setTimeout(() => { c.destroy(); ok2(got); }, 1500); });
+    let g = await openGate({ host: '127.0.0.1', port: 0, allow: '127.0.0.1', inner: echo.address().port });
+    ok(await talk(g.port) === 'hi', 'card gate: the Bob that asked gets through to the card server');
+    g.close();
+    g = await openGate({ host: '127.0.0.1', port: 0, allow: '100.102.0.7', inner: echo.address().port });
+    ok(await talk(g.port) === '', 'card gate: anyone else is turned away at the door');
+    g.close(); echo.close();
+  }
+  ok(isHomeIp(H(192, 168, 0, 1)) && isHomeIp(H(10, 1, 2, 3)) && isHomeIp(H(172, 20, 0, 1)) && !isHomeIp(H(172, 32, 0, 1)) && !isHomeIp('100.101.1.2') && !isHomeIp('8.8.8.8'), 'card: what counts as a home-network address');
+  ok(pickHome(myHome, [H(192, 168, 5, 9)]) === null && pickHome(myHome, [H(192, 168, 4, 9)]).peer === H(192, 168, 4, 9), 'card: same home network means same subnet');
+  ok(homeIps({ eth: [{ family: 'IPv4', address: H(192, 168, 4, 185), netmask: '255.255.255.0', internal: false }], ts: [{ family: 'IPv4', address: '100.101.1.2', netmask: '255.192.0.0' }], lo: [{ family: 'IPv4', address: '127.0.0.1', internal: true }] }).map((x) => x.address).join() === H(192, 168, 4, 185), 'card: this machine\'s home-network addresses leave out Tailscale and loopback');
   gamingNow = true;
-  ok(lender.keep() === false && !lender.child && spawned[0].c.exitCode === 0, 'card: Gaming takes the card back at the next word');
-  r = await lender.open({ localAddr: '100.101.1.2' });
+  const lastGate = gates.at(-1);
+  ok(lender.keep() === false && !lender.child && !lastGate.open, 'card: Gaming takes the card back at the next word, gate and all');
+  r = await lender.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7' });
   ok(!r.ok && r.why === 'gaming', 'card: says no while gaming');
   gamingNow = false;
-  const res = await lendCardRoute(lender, { socket: { localAddress: '100.101.1.2' } }, { action: 'open' });
-  ok(res.status === 200 && res.body.ok, 'card: the route opens it');
+  const res = await lendCardRoute(lender, { socket: { localAddress: '100.101.1.2', remoteAddress: '100.102.0.7' } }, { action: 'open', home: [H(192, 168, 4, 189)] });
+  ok(res.status === 200 && res.body.ok && res.body.via === 'home', 'card: the route opens it, home network first');
   await lendCardRoute(lender, {}, { action: 'close' });
-  ok(!lender.child, 'card: the route closes it');
+  ok(!lender.child && !gates.at(-1).open, 'card: the route closes it');
   ok((await lendCardRoute(lender, {}, { action: 'rm -rf' })).status === 400, 'card: unknown actions are refused');
   const off = new CardLender({ ...cfg, share: {} }, { spawnFn, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'] });
-  ok((await off.open({ localAddr: '100.101.1.2' })).why === 'off', 'card: switch off, nothing opens');
+  ok((await off.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7' })).why === 'off', 'card: switch off, nothing opens');
 
   // The borrowing side, with a fake Bob-Net
   const bobs = [{ name: 'Go', address: '100.102.0.7:7777' }, { name: 'Phone', address: '100.103.0.9:7777' }];
   const calls = [];
   const lenders = { bobs: () => bobs, call: async (bob, p, o) => { calls.push([bob.name, o.body.action]); const host = bob.address.split(':')[0]; const j = bob.name === 'Go' ? { ok: true, host, port: RPC_PORT } : { ok: false, why: 'off' }; return { ok: true, json: async () => j }; } };
   const bcfg = { share: { spread: 'toobig' }, gpuVramGB: 16 };
-  const bw = new CardBorrower(bcfg, lenders, { name: () => 'PC' });
+  const bw = new CardBorrower(bcfg, lenders, { name: () => 'PC', home: () => [] });
   let at = await bw.open({ sizeGB: 10 });
   ok(!at.length && !calls.length, 'spread: a brain that fits isn\'t spread, and nobody is asked');
   at = await bw.open({ sizeGB: 200 });
@@ -174,9 +217,89 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   at = await bw.open({ sizeGB: 200 });
   ok(!at.length && !calls.some((c) => c[0] === 'Go'), 'spread: a card that failed a load isn\'t asked again for a while');
   const sneaky = { bobs: () => [bobs[0]], call: async () => ({ ok: true, json: async () => ({ ok: true, host: '8.8.8.8', port: 1 }) }) };
-  ok(!(await new CardBorrower(bcfg, sneaky).open({ sizeGB: 200 })).length, 'spread: a card server on another address than the Bob we reach is never used');
+  ok(!(await new CardBorrower(bcfg, sneaky, { home: () => [] }).open({ sizeGB: 200 })).length, 'spread: a card server on another address than the Bob we reach is never used');
+  {
+    const sent = [];
+    const homeBob = { bobs: () => [bobs[0]], call: async (bob, p, o) => { sent.push(o.body); if (o.body.action !== 'open') return { ok: true, json: async () => ({ ok: true }) }; return { ok: true, json: async () => (o.body.home.length ? { ok: true, host: H(192, 168, 4, 189), port: RPC_PORT, via: 'home' } : { ok: true, host: '100.102.0.7', port: RPC_PORT, via: 'tailscale' }) }; } };
+    const hb = new CardBorrower(bcfg, homeBob, { home: () => myHome });
+    let at2 = await hb.open({ sizeGB: 200 });
+    ok(sent[0].home.join() === H(192, 168, 4, 185) && at2[0] === `${H(192, 168, 4, 189)}:${RPC_PORT}`, 'spread: on the same home network, the card is reached over it');
+    hb.failed({ route: true }); sent.length = 0;
+    at2 = await hb.open({ sizeGB: 200 });
+    ok(!sent.find((b) => b.action === 'open').home.length && at2[0] === `100.102.0.7:${RPC_PORT}`, 'spread: the home network could not reach the card, so the next load goes over Tailscale');
+    hb.close();
+    const hb2 = new CardBorrower(bcfg, homeBob, { home: () => myHome });
+    await hb2.open({ sizeGB: 200 }); hb2.failed(); sent.length = 0;
+    ok(!(await hb2.open({ sizeGB: 200 })).length && !sent.some((b) => b.action === 'open'), 'spread: a load that ran out of room on his card isn\'t tried again over Tailscale right away');
+    hb2.close();
+    const far = { bobs: () => [bobs[0]], call: async () => ({ ok: true, json: async () => ({ ok: true, host: H(10, 9, 9, 9), port: RPC_PORT, via: 'home' }) }) };
+    ok(!(await new CardBorrower(bcfg, far, { home: () => myHome }).open({ sizeGB: 200 })).length, 'spread: a "home network" address that isn\'t ours is never used');
+    const off2 = new CardBorrower({ ...bcfg, share: { ...bcfg.share, homeNet: false } }, homeBob, { home: () => myHome }); sent.length = 0;
+    await off2.open({ sizeGB: 200 });
+    ok(!sent[0].home.length, 'spread: Use the home network first off, no home address is offered'); off2.close();
+  }
   const llamacpp = read(path.join(here, '..', 'src', 'llamacpp.js'));
-  ok(/args\.push\('--rpc', helpers\.join\(','\)\)/.test(llamacpp) && /this\.spread\?\.close\(\)/.test(llamacpp), 'spread: the engine adds --rpc and hands the cards back when the brain goes');
+  ok(/args\.push\('--rpc', helpers\.join\(','\)/.test(llamacpp) && /this\.spread\?\.close\(\)/.test(llamacpp), 'spread: the engine adds --rpc and hands the cards back when the brain goes');
+
+  {
+    const { spreadArgs, spreadLoadSeconds, SPREAD_FIT_TARGET_MIB, SPREAD_UBATCH } = await import('../src/llamacpp.js');
+    const add = spreadArgs(['-m', 'x.gguf', '--fit', 'on']);
+    ok(add.join(' ') === `--fit-target ${SPREAD_FIT_TARGET_MIB} -ub ${SPREAD_UBATCH}`, 'spread: more room is kept free on every card and the steps are smaller (the lent card ran out of room at -ub 2048)', add.join(' '));
+    ok(!spreadArgs(['--fit', 'on', '--fit-target', '512', '-ub', '1024']).length && spreadArgs(['-ngl', '999']).join(' ') === `-ub ${SPREAD_UBATCH}`, 'spread: settings made by hand stay, and without --fit only the step size is set');
+    const riker = spreadLoadSeconds(17.5);
+    ok(riker > 413 + 2.63e3 / 6.6 && riker >= 60 * 60 && riker <= 7200, 'spread: the wait grows with the brain (Riker over Wi-Fi gets over an hour, not 5 minutes)', riker);
+    ok(spreadLoadSeconds(0) === 300 && spreadLoadSeconds(0, 900) === 900 && spreadLoadSeconds(1e4) === 7200, 'spread: never less than the usual wait, never more than two hours');
+    ok(/return this\.preload\(model, signal, \{[^}]*noSpread: true \}\)/.test(llamacpp) && /!noSpread/.test(llamacpp), 'spread: a spread that failed loads here like always instead');
+    ok(/still loading over Bob-Net/.test(llamacpp) && /network cable is much faster/.test(llamacpp), 'spread: a long first load says how it is going, and that a cable is faster');
+  }
+}
+
+// ---- Also over the home network (the door) ----
+{
+  const H = (...x) => x.join('.');
+  const myHome = [{ address: H(192, 168, 4, 185), netmask: '255.255.255.0' }];
+  ok(cleanPhonePatch({ port: 7777, remote: { enabled: true, passcode: 'secret-1', hosts: ['100.101.1.2:7777'] } }, {}).remote.homeNet === false, 'home door: off to start with');
+  ok(cleanPhonePatch({ port: 7777, remote: { enabled: true, passcode: 'secret-1', hosts: ['100.101.1.2:7777'] } }, { homeNet: true }).remote.homeNet === true, 'home door: switches on');
+  ok(phoneView({ port: 7777, remote: { homeNet: true } }).homeNet === true, 'home door: Settings shows it');
+  const urls = [];
+  let nearUp = true;
+  const fetchFn = async (url, o) => {
+    urls.push(url);
+    if (url.includes(H(192, 168)) && !nearUp) throw new TypeError('fetch failed');
+    if (url.endsWith('/api/lend/hello')) return { ok: true, status: 200, json: async () => ({ lend: true, brain: 'x', home: [`${H(192, 168, 4, 189)}:7777`, '8.8.8.8:7777'] }) };
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+  const ls = new Lenders({ share: { borrow: { bobs: [] } } }, { fetchFn, home: () => myHome });
+  const go = { name: 'Go', address: '100.102.0.7:7777', passcode: 'secret-2' };
+  await ls.hello(go, { force: true });
+  ok(urls[0] === 'http://100.102.0.7:7777/api/lend/hello' && ls.nearOf(go) === `${H(192, 168, 4, 189)}:7777`, 'home door: the first hello goes over Tailscale and learns his home-network door');
+  urls.length = 0; await ls.call(go, '/api/lend/hello');
+  ok(urls[0] === `http://${H(192, 168, 4, 189)}:7777/api/lend/hello`, 'home door: then the home network goes first');
+  nearUp = false; urls.length = 0; await ls.call(go, '/api/lend/hello');
+  ok(urls.length === 2 && urls[1].startsWith('http://100.102.0.7:7777') && ls.nearOf(go) === '', 'home door: home network not answering, Tailscale is the backup, and home waits a while');
+  const ls2 = new Lenders({}, { fetchFn: async () => ({ ok: true, status: 200, json: async () => ({ lend: true, home: [`${H(10, 0, 0, 5)}:7777`, '8.8.8.8:7777'] }) }), home: () => myHome });
+  await ls2.hello(go, { force: true });
+  ok(ls2.nearOf(go) === '', 'home door: another network\'s address, or a public one, is never used');
+  {
+    let sends = 0;
+    const slow = new Lenders({}, { fetchFn: async (url) => { if (url.includes(H(192, 168))) { sends++; const e = new Error('timeout'); e.name = 'TimeoutError'; throw e; } sends++; return { ok: true, status: 200 }; }, home: () => myHome });
+    slow.near.set(go.address, `${H(192, 168, 4, 189)}:7777`);
+    let threw = false; try { await slow.call(go, '/api/borrow/job', { method: 'POST', body: { a: 1 } }); } catch { threw = true; }
+    ok(threw && sends === 1, 'home door: a sent job that timed out over the home network is never sent twice');
+  }
+  // A card asked for through the home-network door
+  const file = path.join(tmp, 'cfg2.json'); fs.writeFileSync(file, '{}');
+  const cfg = { configFile: file, remote: { enabled: true, passcode: 'secret-1', homeNet: true }, share: { lendCard: true } };
+  const gates = [];
+  const lender = new CardLender(cfg, { spawnFn: (exe, args) => { const c = new EventEmitter(); c.stdout = new EventEmitter(); c.stderr = new EventEmitter(); c.exitCode = null; c.kill = () => { c.exitCode = 0; }; setTimeout(() => c.stderr.emit('data', 'Starting RPC server\n'), 2); return c; }, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate: async (o) => { gates.push(o); return { close() {} }; } });
+  const r = await lender.open({ localAddr: H(192, 168, 4, 185), remoteAddr: H(192, 168, 4, 189) });
+  ok(r.ok && r.via === 'home' && gates[0].allow === H(192, 168, 4, 189), 'home door: a card asked for over the home network opens there, for that Bob only');
+  lender.close();
+  const shut = new CardLender({ ...cfg, remote: { ...cfg.remote, homeNet: false } }, { tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome });
+  ok((await shut.open({ localAddr: H(192, 168, 4, 185), remoteAddr: H(192, 168, 4, 189) })).why === 'not tailscale', 'home door: with it off, nothing over the home network');
+  const server = read(path.join(here, '..', 'src', 'server.js'));
+  ok(/p\.startsWith\('\/api\/pair\/'\) && !fromTailscaleOrLocal\(req\.socket\.remoteAddress\)\) return send\(res, 403/.test(server), 'home door: pairing stays on Tailscale only');
+  ok(/remoteHome && homeIps\(\)\.some\(\(m\) => sameNet\(m\.address, addr, m\.netmask\)/.test(server), 'home door: only this replicant matrix\'s own home network, never wider');
 }
 
 // ---- diffusion brains ----

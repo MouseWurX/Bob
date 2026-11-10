@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { installEngine, engineStatus, TESTED_LLAMA, ENGINES, engineFor } from '../src/engines.js';
+import { installEngine, engineStatus, TESTED_LLAMA, ENGINES, engineFor, pickAsset } from '../src/engines.js';
 import { OS } from '../src/platform.js';
 import { pickLlamaExe } from '../src/config.js';
 import { enginesFor } from '../public/equip.js';
@@ -60,7 +60,7 @@ if (e.unavailable) {
   };
   const baseName = OS === 'win' ? `llama-${TESTED_LLAMA}-bin-win-cpu-x64.zip` : `llama-${TESTED_LLAMA}-bin-ubuntu-x64.tar.gz`;
   const ownName = OS === 'win' ? `brain-engine-${TESTED_LLAMA}-win-x64.zip` : `brain-engine-${TESTED_LLAMA}-linux-x64.tar.gz`;
-  const base = mk(baseName, { [exe]: 'official server', [lib]: 'official llama', [OS === 'win' ? 'ggml-cuda.dll' : 'libggml-cuda.so']: 'card backend' });
+  const base = mk(baseName, { [exe]: 'official server', [lib]: 'official llama', [OS === 'win' ? 'ggml-cuda.dll' : 'libggml-cuda.so']: 'card backend', [OS === 'win' ? 'ggml-base.dll' : 'libggml-base.so']: 'ggml', [OS === 'win' ? 'cudart64_12.dll' : 'libcudart.so.12']: 'cuda runtime' }); // 1.5.185: a whole build (its ggml files and, with a card backend, the CUDA runtime)
   const own = mk(ownName, { [exe]: 'brain engine server', [lib]: 'brain engine llama', 'LICENSE-llama.cpp': 'MIT' });
   let corrupt = false;
   const realFetch = globalThis.fetch;
@@ -89,5 +89,17 @@ if (e.unavailable) {
   globalThis.fetch = realFetch;
 }
 fs.rmSync(tmp, { recursive: true, force: true });
+// 1.5.185: the graphics runtime file is never taken for the engine itself, whichever comes first in GitHub's list
+{
+  const W = engineFor(ENGINES.find((x) => x.id === 'llamacpp'), 'win', 'x64');
+  const names = ['cudart-llama-bin-win-cuda-12.4-x64.zip', 'llama-b12032-bin-win-cuda-12.4-x64.zip', 'llama-b12032-bin-win-vulkan-x64.zip', 'llama-b12032-bin-win-cpu-x64.zip'];
+  const list = names.map((name) => ({ name }));
+  check(pickAsset(list, W, true)?.name === 'llama-b12032-bin-win-cuda-12.4-x64.zip' && pickAsset([...list].reverse(), W, true)?.name === 'llama-b12032-bin-win-cuda-12.4-x64.zip', 'on an NVIDIA card the engine file is picked, never the cudart runtime, in either order');
+  check(W.runtime('llama-b12032-bin-win-cuda-12.4-x64.zip').test('cudart-llama-bin-win-cuda-12.4-x64.zip'), 'the runtime is still found beside it');
+  check(pickAsset([{ name: 'cudart-llama-bin-win-cuda-12.4-x64.zip' }], W, true) === null, 'a release with only the runtime gives no engine at all');
+  const src = fs.readFileSync(new URL('../src/engines.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  check(/if \(!fs\.existsSync\(path\.join\(stage, b\.exe\)\)\) throw new Error/.test(src) && src.indexOf('if (!fs.existsSync(path.join(stage, b.exe))) throw') < src.indexOf('try { swapIn(folder, stage); }\n  catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Wait for the Lab job'), 'Brain Engine is never swapped in unless the llama.cpp under it is whole');
+}
+
 console.log(failures ? `\n${failures} failed` : '\nAll passed');
 process.exit(failures ? 1 : 0);
