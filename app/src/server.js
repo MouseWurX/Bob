@@ -23,7 +23,7 @@ import { ModelShop } from './models.js';
 import { CatalogUpdates } from './catalog-update.js';
 import { checkEngine, seedBundledEngine, goBackEngine, removeEngine, brainsEngineSettings, engineChoices, brainsEngineNow } from './engines.js';
 import { liveTrace } from '../public/lab-watch-math.js';
-import { cubeMap, cubeBrains } from './lab-watch.js';
+import { cubeMap, cubeBrains, cubeShapes } from './lab-watch.js';
 import { EngineKeeper, keeperOn } from './engine-keeper.js';
 import { autostartOn, setAutostart } from './autostart.js';
 import { applyWindowState } from './app-icon.js';
@@ -107,10 +107,12 @@ const cubeClients = new Set(); // FNRI's small cube pages (see below)
 
 let telegram = null; // Talk to Bob on Telegram (src/telegram.js), set once Bob's brain is ready
 let discord = null; // Bob on Discord (src/discord.js), set once Bob's brain is ready
+let cubeLoading = ''; // the brain FNRI's small cube last saw starting to load
 function broadcast(ev) {
   if (ev?.type === 'think-start' && ev.model) ev = { ...ev, label: friendlyName(ev.model) }; // "Qwen 3.8 27B", not the raw tag
   const data = `data: ${JSON.stringify(ev)}\n\n`;
   for (const res of ev?.type === 'think' || ev?.type === 'think-start' ? mindClients : clients) res.write(data);
+  if (ev?.type === 'status') { const l = ['waking', 'loading'].includes(ev.state) ? String(ev.model || '') : ''; if (l !== cubeLoading) { cubeLoading = l; if (l && cubeClients.size) cubeBrainsNow(); } } // once as a brain starts loading, not every progress line
   if (ev?.type === 'brain' && cubeClients.size) cubeBrainsNow(); // FNRI's small cube takes itself apart when its brain is let go
   try { telegram?.watch(ev); } catch {} // Talk to Bob on Telegram: only the Telegram chat's events, and only while it's on
   try { discord?.watch(ev); } catch {} // Bob on Discord: only Discord jobs' own events
@@ -127,10 +129,18 @@ setInterval(() => introductions.soon(0), 3600_000).unref();
 brain.mindWatchers = () => mindClients.size;
 // FNRI's small cube in "Bob's thinking" listens with ?cube=1. Only while one is open does Bob ask Brain Engine which
 // experts each reply used (it slows writing a little), and only those pages are told. Off for everyone else.
-const cubeWhy = () => (brainsEngineNow(cfg) === 'brainengine' ? '' : 'The cube needs Brain Engine as the engine for Bob\'s brains (Settings > Engines). The engine in use now doesn\'t report which experts it picked.');
+// An older Brain Engine build can't report them either: then the cube says so instead of staying dark (before Update under Engines).
+const cubeWhy = () => (brainsEngineNow(cfg) !== 'brainengine' ? 'The cube needs Brain Engine as the engine for Bob\'s brains (Settings > Engines). The engine in use now doesn\'t report which experts it picked.'
+  : lab.traceProbe?.()?.experts === false ? 'This Brain Engine build is too old to report which experts it picked. Press Update on Brain Engine in Settings > Engines, and the cube lights up with the next reply.' : '');
 // Which brains are loaded right now, by the names the cube knows them by. Told to the cube pages only.
 async function cubeBrainsNow() {
-  try { const labels = cubeBrains(await brain.engine.loaded(), friendlyName); const data = `data: ${JSON.stringify({ type: 'cube-brains', labels })}\n\n`; for (const res of cubeClients) res.write(data); } catch {}
+  try {
+    const now = await brain.engine.loaded(), labels = cubeBrains(now, friendlyName);
+    // the shapes too, so the cube builds itself in one colour as a brain loads and waits there for the first reply
+    const st = brain.state || {}, loading = ['waking', 'loading'].includes(st.state) && st.model ? String(st.model) : '';
+    let shapes = []; try { shapes = cubeShapes(lab, [...now.map((m) => m?.name), loading], friendlyName); } catch {}
+    const data = `data: ${JSON.stringify({ type: 'cube-brains', labels, shapes, loading: loading ? friendlyName(loading) : '' })}\n\n`; for (const res of cubeClients) res.write(data);
+  } catch {}
 }
 if (brain.engine) {
   brain.engine.wantTrace = () => cubeClients.size > 0 && !cubeWhy();
@@ -320,7 +330,7 @@ const server = http.createServer(async (req, res) => {
       clients.add(res);
       const mind = url.searchParams.get('mind') === '1';
       if (mind) mindClients.add(res);
-      if (isLocal && url.searchParams.get('cube') === '1') { cubeClients.add(res); res.write(`data: ${JSON.stringify({ type: 'cube', ok: !cubeWhy(), why: cubeWhy() })}\n\n`); }
+      if (isLocal && url.searchParams.get('cube') === '1') { cubeClients.add(res); res.write(`data: ${JSON.stringify({ type: 'cube', ok: !cubeWhy(), why: cubeWhy() })}\n\n`); cubeBrainsNow(); }
       const ping = setInterval(() => res.write(': ping\n\n'), 20000);
       req.on('close', () => { clearInterval(ping); clients.delete(res); mindClients.delete(res); cubeClients.delete(res); });
       return;

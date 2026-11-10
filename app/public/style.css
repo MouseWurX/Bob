@@ -1614,6 +1614,13 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 /* FNRI's small cube in Bob's thinking (Now running) */
 .mind-cube { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
 .mind-cube canvas { width: 100%; height: 220px; display: block; border: 1px solid var(--line); border-radius: var(--r); }
+/* No brain loaded: a neon sign over the empty cube, flickering now and then (still when animations are off) */
+.mind-cube { position: relative; }
+.mind-cube p.mind-cube-sign { position: absolute; left: 0; right: 0; top: 0; height: 220px; display: flex; align-items: center; justify-content: center; margin: 0; pointer-events: none; font: 600 26px/1.1 system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; text-align: center; color: var(--accent); text-shadow: 0 0 4px currentColor, 0 0 12px currentColor, 0 0 28px currentColor; animation: mind-cube-neon 6s steps(1) infinite; }
+.mind-cube p.mind-cube-sign[hidden] { display: none; }
+@keyframes mind-cube-neon { 0%, 61%, 63%, 66%, 100% { opacity: 1; } 62%, 65% { opacity: .25; } 64% { opacity: .8; } 88% { opacity: .35; } 89% { opacity: 1; } }
+.still .mind-cube p.mind-cube-sign { animation: none; }
+@media (prefers-reduced-motion: reduce) { .mind-cube p.mind-cube-sign { animation: none; } }
 .mind-cube p { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
 /* hidden from sight only: a screen reader still reads Bob's thinking written out while the cube shows */
 .cube-view .mind-log, .cube-view .mind-empty { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }

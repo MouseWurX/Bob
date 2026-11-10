@@ -4,6 +4,16 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.195
+
+### FNRI's small cube says when Brain Engine needs updating
+
+- **The cube in Bob's thinking no longer stays dark on an older Brain Engine.** Bob runs on an older Brain Engine build until you press Update under Engines, and that build can't report which experts it used. The cube used to stay blank with no reason; now it says to press Update on Brain Engine in Settings > Engines, and lights up with the next reply once you have.
+- **The cube is there before the first reply.** As soon as a brain starts loading, the cube builds itself block by block in one colour, in that brain's own shape (floors and experts, or neuron groups for a brain without experts), then sits still until Bob thinks. That works on an older Brain Engine too.
+- **No brain loaded: a neon sign.** One of five, picked at random each time, flickering now and then (still when animations are off).
+
+Where it works: Windows, Linux and Mac, wherever Brain Engine runs.
+
 ## 1.5.194
 
 My own brains take over as the defaults.

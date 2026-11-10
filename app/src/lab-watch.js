@@ -516,6 +516,22 @@ export async function watchRoute({ req, p, isLocal, lab, b, send, res }) {
 
 // The small cube: the brains loaded right now, by the names the cube shows (so it can take itself apart when its
 // brain is let go). `loaded` is the engine's own list; a brain held beside the main one counts too.
+// The cube's empty shape for each loaded (or loading) brain, from its file: floors and experts, or for a brain without
+// experts the neuron groups Brain Engine reports (up to 256 a floor, engine patch 0002). It is drawn in one colour as
+// soon as the brain loads, before any reply, and on an engine that can't report experts at all.
+export const CUBE_GROUPS = 256;
+export function cubeShapes(lab, models, friendly = (n) => n) {
+  const base = (p) => path.basename(String(p || '')).replace(/\.gguf$/i, '');
+  const out = [];
+  for (const model of [...new Set((models || []).filter(Boolean).map(String))]) {
+    const label = String(friendly(model));
+    const brain = lab.brains().find((b) => b.id === model || base(b.gguf) === base(model) || b.name === label);
+    let f = null; try { f = brain ? inspect(brain) : null; } catch {}
+    if (!f?.layers) continue;
+    out.push({ label, experts: f.experts || CUBE_GROUPS, layers: f.layers, kind: f.experts ? 'experts' : 'neurons' });
+  }
+  return out;
+}
 export function cubeBrains(loaded, friendly = (n) => n) {
   return [...new Set((Array.isArray(loaded) ? loaded : []).map((m) => (m && m.name ? String(friendly(m.name)) : '')).filter(Boolean))];
 }
