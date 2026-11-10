@@ -27,7 +27,7 @@ export function ruleScript(port, exe = '', { home = false } = {}) {
   if (!Number.isInteger(p) || p < 1 || p > 65535) throw new Error('That isn\'t a port number.');
   const lines = [
     `Get-NetFirewallRule -DisplayName ${ps(RULE)} -ErrorAction SilentlyContinue | Remove-NetFirewallRule`,
-    `New-NetFirewallRule -DisplayName ${ps(RULE)} -Description ${ps(`Added by Bob when you pressed "Let Tailscale through the firewall". Lets your other replicant matrices reach Bob over Tailscale${home ? ' and this home network' : ' only'}.`)} -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${ports(p)} -RemoteAddress ${from(home)} -Profile Any | Out-Null`
+    `New-NetFirewallRule -DisplayName ${ps(RULE)} -Description ${ps(`Added by Bob when you pressed "${home ? 'Let Tailscale and the home network through the firewall' : 'Let Tailscale through the firewall'}". Lets your other replicant matrices reach Bob over Tailscale${home ? ' and this home network' : ' only'}.`)} -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${ports(p)} -RemoteAddress ${from(home)} -Profile Any | Out-Null`
   ];
   if (exe) lines.push(`Get-NetFirewallApplicationFilter -Program ${ps(exe)} -ErrorAction SilentlyContinue | Get-NetFirewallRule | Where-Object { $_.Direction -eq 'Inbound' -and $_.Action -eq 'Block' -and $_.Enabled -eq 'True' } | ForEach-Object { Set-NetFirewallRule -Name $_.Name -Enabled False -Description (${ps(MARK)} + $_.Description) }`);
   return lines.join('; ');
