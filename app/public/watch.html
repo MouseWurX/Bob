@@ -51,9 +51,10 @@
           <button type="button" id="watchTrainSave" class="get">Save for training</button>
           <p id="watchTrainSays" class="muted" role="status"></p>
         </fieldset>
-        <fieldset id="watchCmpBox" hidden><legend>Before and after</legend>
+        <fieldset id="watchCmpBox" hidden><legend>Before and after, or two brains</legend>
           <label>Compare with <select id="watchCmpWith" aria-describedby="watchCmpHint"></select></label>
-          <span id="watchCmpHint" class="muted">Another scan of this brain with the same questions. The two blocks play side by side, word for word.</span>
+          <label class="watch-open-b">Or open a scan file <input type="file" id="watchCmpFile" accept=".json,application/json"></label>
+          <span id="watchCmpHint" class="muted">Another scan with the same questions: of this brain, or of another brain with the same floors (a cut of it, or the brain it was cut from). The two blocks play side by side, word for word.</span>
           <p id="watchCmpSays" class="muted" role="status"></p>
         </fieldset>
         <label for="watchZoom">How close</label>

@@ -4,6 +4,17 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.193
+
+### FNRI: two brains side by side
+
+- **Two brains side by side** (in the FNRI viewer, under Before and after): Compare with now lists scans of other brains with the same floors too, and **Or open a scan file** takes a scan from anywhere, like one made on a rented card. Asked the same questions, the two play word for word with their names over them, and Bob says how many answers were the same and how many picks went to different experts. A cut brain is lined up with the brain it was cut from by its keep list (beside the brain's file, or inside the scan); without one, Bob says so.
+- **Save as a video** saves both pictures in one video when two are showing, and every video is named model-skill-quantization (riker-coding-q4_k_m, riker-vs-qwen-3.6-35b-a3b-coding-q4_k_m). Pick a skill in the player first for one skill's video.
+- A scan file opened beside the viewer (watch.html?file=…) now plays; it used to sit still. `&vs=other.json` opens a second scan beside it.
+- **For rented cards:** `model-lab/forge/pod/aifeui.sh` takes `AIFEUI_IN` and `AIFEUI_OUT`, so one card can scan several brains in turn, and `model-lab/forge/fnri-remote.mjs` scans a brain served elsewhere over HTTP (a forge benchmark step).
+
+Where it works: the viewer on any computer that runs Bob; scans as before.
+
 ## 1.5.191
 
 Teach it learns squeeze-aware, Best answers' parts-only teaching changes the chosen weights directly, and FNRI finds the trace in newer Brain Engine builds.

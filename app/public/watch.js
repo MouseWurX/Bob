@@ -5,7 +5,7 @@
 // Its own window, so it can sit beside the Lab or a chat. The Lab opens it with ?brain=<id>&rec=<id>; it can also
 // open a recording file by itself (one made on another Bob, or on a rented card), with the Lab off.
 import { applySavedStyle } from './themes.js';
-import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind, cutOf, cutEffect, keepList, setColour, resetColours, COVERS, cutSteps, findPatterns, PATTERN_CHOICES, PATTERN_DEFAULT, hasFloors, floorScale, floorsAt, LOAD_STYLES, loadStyle, cleanDials, skillDials, dialWords, dialScale, dialKey, compareScans, compareWords, movedBlocks, targetsOf } from './lab-watch-math.js';
+import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind, cutOf, cutEffect, keepList, setColour, resetColours, COVERS, cutSteps, findPatterns, PATTERN_CHOICES, PATTERN_DEFAULT, hasFloors, floorScale, floorsAt, LOAD_STYLES, loadStyle, cleanDials, skillDials, dialWords, dialScale, dialKey, compareScans, compareWords, movedBlocks, targetsOf, pairUp, pairWords, videoName } from './lab-watch-math.js';
 const LOAD_IN_MS = 2200, LOAD_OUT_MS = 900;
 import { createView, GREY } from './watch-view.js';
 applySavedStyle();
@@ -74,7 +74,7 @@ function loadNow(j) {
   cube(); byHtml(); $('watchOnly').disabled = false;
   skillsHtml(); wordsHtml(); setMode('brain'); seek(0); say(''); cutHtml();
   dialEntries = j.dials?.length ? [{ label: `From this scan: ${dialWords(j.dials)}`, items: j.dials }] : []; askedDialUnload = false; dialHtml();
-  cmpOff(); recFrom = String(j.from || ''); cmpList();
+  recKeep = j.keep || null; cmpOff(); recFrom = String(j.from || ''); cmpList();
   loadIn();
 }
 
@@ -109,7 +109,7 @@ function trainChoices() {
   const out = [], part = partWord();
   if (rec.brain.kind !== 'neurons') rec.skills.forEach((s, i) => { const items = skillDials(sp, i, 0); if (items.length) out.push({ id: `skill:${i}`, from: 'skill', skill: s.id, label: `Every ${part} of ${s.label} (${items.length.toLocaleString()})`, items: items.map((d) => ({ ...d, kind: part })) }); });
   const dl = dialsNow(); if (dl.length) out.push({ id: 'dials', from: 'dials', label: `The dials set now (${dl.length.toLocaleString()})`, items: dl });
-  if (cmp && rec.brain.kind === 'experts') { const mv = movedBlocks(cmp.rec, base); if (mv.length) out.push({ id: 'moved', from: 'moved', label: `The ${mv.length} experts that moved most in Before and after`, items: mv }); }
+  if (cmp && !cmp.cross && rec.brain.kind === 'experts') { const mv = movedBlocks(cmp.rec, base); if (mv.length) out.push({ id: 'moved', from: 'moved', label: `The ${mv.length} experts that moved most in Before and after`, items: mv }); }
   return out;
 }
 function trainHtml() {
@@ -161,35 +161,54 @@ $('watchDialScan').onclick = async () => {
 // ---- before and after: this scan beside another scan of the same brain, word for word ----
 let cmp = null; // { rec, sp, map: this scan's question number -> the other scan's, result }
 function cmpOff() { cmp = null; setTimeout(trainHtml, 0); $('watchHalfB').hidden = true; $('watchTagA').hidden = true; $('watchCmpView').hidden = true; $('watchCmpSays').textContent = ''; need = true; }
+// Scans of this brain, and of other brains with the same floors (another size of it, a cut of it, the brain it came
+// from), so two brains can play side by side on the same questions.
+let recKeep = null; // this scan's keep list (a cut brain's: which stock expert each of its experts was), when known
+const post = (u, b) => fetch(u, { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify(b) }).then(async (r) => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || `Error ${r.status}`); return j; });
 async function cmpList() {
-  const box = $('watchCmpBox'), sel = $('watchCmpWith'); box.hidden = true;
+  const box = $('watchCmpBox'), sel = $('watchCmpWith'); box.hidden = !rec; sel.parentElement.hidden = true;
   if (!src) return;
-  const mine = src.id, from = recFrom;
+  const mine = src.id, from = recFrom, here = src.brain;
   try {
-    const r = await fetch('/api/lab/watch/view', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ brain: src.brain }) });
-    const j = await r.json().catch(() => ({})); if (!r.ok || !src || src.id !== mine) return;
-    const others = (j.recordings || []).filter((x) => x.id !== mine);
-    if (!others.length) return;
-    sel.innerHTML = `<option value="">(nothing, just this scan)</option>${others.map((x) => `<option value="${esc(x.id)}">${esc(x.name || x.id)}${x.when ? `, ${esc(x.when)}` : ''}${x.id === from ? ' (the scan this one was made from)' : ''}</option>`).join('')}`;
-    box.hidden = false;
-    if (from && others.some((x) => x.id === from)) { sel.value = from; cmpWith(from); } // made with dials or a cut: the comparison is the point, so it opens
+    const j = await post('/api/lab/watch/view', { brain: here }); if (!src || src.id !== mine) return;
+    const others = (j.recordings || []).filter((x) => x.id !== mine).map((x) => ({ value: x.id, label: `${x.name || x.id}${x.when ? `, ${x.when}` : ''}${x.id === from ? ' (the scan this one was made from)' : ''}` }));
+    for (const b of (j.brains || []).filter((x) => x.id !== here && x.layers === rec.brain.layers)) {
+      try { const v = await post('/api/lab/watch/view', { brain: b.id }); for (const x of v.recordings || []) others.push({ value: `${b.id}|${x.id}`, label: `${b.name}: ${x.name || x.id}${x.when ? `, ${x.when}` : ''}` }); } catch {}
+    }
+    if (!src || src.id !== mine || !others.length) return;
+    sel.innerHTML = `<option value="">(nothing, just this scan)</option>${others.map((x) => `<option value="${esc(x.value)}">${esc(x.label)}</option>`).join('')}`;
+    sel.parentElement.hidden = false;
+    if (from && others.some((x) => x.value === from)) { sel.value = from; cmpWith(from); } // made with dials or a cut: the comparison is the point, so it opens
   } catch {}
 }
 async function cmpWith(id) {
   if (!id || !src) { cmpOff(); return; }
+  const [brain, rid] = id.includes('|') ? id.split('|') : [src.brain, id];
+  try { cmpWithRec(await post('/api/lab/watch/read', { brain, id: rid }), brain !== src.brain); } catch (e) { cmpOff(); $('watchCmpSays').textContent = `Bob couldn't compare with that scan: ${e.message}.`; }
+}
+// j: the other scan as read (its keep list too, when it has one). cross: another brain, so the two are named.
+function cmpWithRec(j, cross) {
   try {
-    const r = await fetch('/api/lab/watch/read', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ brain: src.brain, id }) });
-    const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
     const other = cleanRecording(j);
-    if (other.brain.experts !== base.brain.experts || other.brain.layers !== base.brain.layers || other.brain.kind !== base.brain.kind) throw new Error('that scan was made a different way (experts, neuron groups or attention heads), so the blocks don\'t line up');
-    const result = compareScans(other, base);
-    cmp = { rec: other, sp: specialise(other), map: new Map(result.clips.map((x) => [x.after, x.before])), result };
+    cross = cross || other.brain.name !== base.brain.name;
+    const pair = pairUp(other, base, { keepA: j.keep || null, keepB: recKeep });
+    if (pair.why) throw new Error(pair.why);
+    const result = compareScans(pair.a, pair.b);
+    const names = cross ? [other.brain.name || 'The other brain', base.brain.name || 'This brain'] : ['Before', 'After'];
+    cmp = { rec: other, sp: specialise(other), map: new Map(result.clips.map((x) => [x.after, x.before])), result, cross, names };
     viewB.setData(other, cmp.sp, j.parts && Array.isArray(j.parts.layers) ? j.parts : null); viewB.set({ key: false, load: 'none' });
+    $('watchHalfB').querySelector('.watch-tag').textContent = names[0]; $('watchTagA').textContent = names[1];
     $('watchHalfB').hidden = false; $('watchTagA').hidden = false; $('watchCmpView').hidden = false;
-    $('watchCmpSays').textContent = compareWords(result);
+    $('watchCmpSays').textContent = cmpWords() + (pair.lined ? ` ${(pair.lined === 'a' ? other : base).brain.name} is lined up with the bigger brain by its keep list.` : '');
     lastIdx = -1; cmpSync = ''; need = true; trainHtml();
   } catch (e) { cmpOff(); $('watchCmpSays').textContent = `Bob couldn't compare with that scan: ${e.message}.`; }
 }
+const cmpWords = () => (cmp.cross ? pairWords(cmp.result, cmp.names[0], cmp.names[1]) : compareWords(cmp.result));
+$('watchCmpFile').onchange = async (ev) => {
+  const f = ev.target.files?.[0]; ev.target.value = ''; if (!f || !rec) return;
+  if (f.size > 64e6) { $('watchCmpSays').textContent = 'That file is too big to be a scan.'; return; }
+  try { $('watchCmpWith').value = ''; cmpWithRec(JSON.parse(await f.text()), false); } catch { cmpOff(); $('watchCmpSays').textContent = 'That file isn\'t a scan from Bob\'s Lab.'; }
+};
 $('watchCmpWith').onchange = (ev) => cmpWith(ev.target.value);
 // the other block follows this one: the same turn, zoom, glass and what's hidden
 let cmpSync = '';
@@ -212,7 +231,7 @@ function cmpHtml(i) {
   const one = cmp.result.clips.find((x) => x.after === cur.clip), a = rec.clips[cur.clip];
   if (!one) { $('watchCmpView').innerHTML = '<p class="muted">The other scan didn\'t ask this question.</p>'; return; }
   const b = cmp.rec.clips[one.before];
-  $('watchCmpView').innerHTML = `<p><strong>${esc(compareWords(cmp.result))}</strong></p><p>This question: ${Math.round(one.moved * 100)}% of the picks moved while reading it, and the answer ${one.sameAnswer ? 'stayed the same' : 'changed'}.</p><div class="two${one.sameAnswer ? ' same' : ''}"><div><strong>Before</strong><p>${esc(b.answer || '(no answer)')}</p></div><div><strong>After</strong><p>${esc(a.answer || '(no answer)')}</p></div></div>`;
+  $('watchCmpView').innerHTML = `<p><strong>${esc(cmpWords())}</strong></p><p>This question: ${Math.round(one.moved * 100)}% of the picks ${cmp.cross ? 'went to different experts' : 'moved'} while reading it, and the answers ${one.sameAnswer ? (cmp.cross ? 'are the same' : 'stayed the same') : (cmp.cross ? 'differ' : 'changed')}.</p><div class="two${one.sameAnswer ? ' same' : ''}"><div><strong>${esc(cmp.names[0])}</strong><p>${esc(b.answer || '(no answer)')}</p></div><div><strong>${esc(cmp.names[1])}</strong><p>${esc(a.answer || '(no answer)')}</p></div></div>`;
 }
 
 function skillsHtml() {
@@ -349,23 +368,36 @@ function tick(now) {
     if (mode !== 'floor') view.draw(litFor(i, frac));
     if (cmp && mode !== 'floor') { cmpFollow(); viewB.draw(litForB(i, frac)); }
   }
+  if (comp) paintComp();
   requestAnimationFrame(tick);
 }
 
 // ---- a video of it ----
+// With two scans side by side, the video holds both pictures with their names over them, painted every frame.
+let comp = null;
+function paintComp() {
+  if (!comp) return;
+  const a = $('watchCanvasB'), b = $('watchCanvas'), c = comp.getContext('2d'), band = 34;
+  c.fillStyle = getComputedStyle(document.body).backgroundColor || '#000'; c.fillRect(0, 0, comp.width, comp.height);
+  c.drawImage(a, 0, band, comp.width / 2, comp.height - band); c.drawImage(b, comp.width / 2, band, comp.width / 2, comp.height - band);
+  c.fillStyle = getComputedStyle(document.body).color || '#fff'; c.font = '600 18px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(cmp?.names[0] || '', comp.width / 4, band / 2); c.fillText(cmp?.names[1] || '', (3 * comp.width) / 4, band / 2);
+}
 function startVideo() {
-  const canvas = $('watchCanvas');
+  const two = cmp && !$('watchHalfB').hidden, one = $('watchCanvas');
+  if (two) { const h = Math.max(one.height, $('watchCanvasB').height); comp = document.createElement('canvas'); comp.width = 2 * Math.round(h * Math.max(one.width / one.height, 0.6)) & ~1; comp.height = (h + 34) & ~1; paintComp(); } else comp = null;
+  const canvas = comp || one;
   const type = ['video/webm;codecs=vp9', 'video/webm', 'video/mp4'].find((m) => window.MediaRecorder?.isTypeSupported?.(m));
-  if (!canvas.captureStream || !type) { say('This browser can\'t save a video of the picture. Bob\'s window and most desktop browsers can.'); return; }
+  if (!canvas.captureStream || !type) { comp = null; say('This browser can\'t save a video of the picture. Bob\'s window and most desktop browsers can.'); return; }
   const chunks = [];
-  recorder = new MediaRecorder(canvas.captureStream(30), { mimeType: type, videoBitsPerSecond: Number($('watchVideoQ').value) || 4e6 });
+  recorder = new MediaRecorder(canvas.captureStream(30), { mimeType: type, videoBitsPerSecond: (Number($('watchVideoQ').value) || 4e6) * (two ? 2 : 1) });
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
   recorder.onstop = () => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(chunks, { type: type.split(';')[0] }));
-    a.download = `${(rec.brain.name || 'brain').replace(/[^\w.-]+/g, '-')}-experts.${type.includes('mp4') ? 'mp4' : 'webm'}`;
+    a.download = `${videoName(rec, { skill: only, other: two ? cmp.rec : null })}.${type.includes('mp4') ? 'mp4' : 'webm'}`;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60e3);
-    recorder = null; $('watchVideo').textContent = 'Save as a video';
+    recorder = null; comp = null; $('watchVideo').textContent = 'Save as a video';
   };
   seek(0); recorder.start(); setPlaying(true);
   $('watchVideo').textContent = 'Stop and save the video';
@@ -486,7 +518,12 @@ document.querySelector('.watch-open').tabIndex = 0;
 (async () => {
   const q = new URLSearchParams(location.search), brain = q.get('brain'), id = q.get('rec'), file = q.get('file');
   // a recording sitting beside the viewer (the folder a rented card hands back): watch.html?file=recording.json
-  if (file && /^[\w.-]+\.json$/.test(file)) { try { const r = await fetch(`./${file}`); if (!r.ok) throw new Error(`Error ${r.status}`); src = null; load(await r.json()); } catch (e) { say(`Bob couldn't open that recording: ${e.message}`); } return; }
+  // watch.html?file=riker.json&vs=qwen.json: the second one plays beside it (two brains, or before and after)
+  const vs = q.get('vs'), near = (f) => fetch(`./${f}`).then((r) => { if (!r.ok) throw new Error(`Error ${r.status}`); return r.json(); });
+  if (file && /^[\w.-]+\.json$/.test(file)) {
+    try { src = null; loadNow(await near(file)); if (vs && /^[\w.-]+\.json$/.test(vs)) cmpWithRec(await near(vs), false); } catch (e) { say(`Bob couldn't open that recording: ${e.message}`); }
+    requestAnimationFrame(tick); return;
+  }
   if (brain && id) {
     try {
       const r = await fetch('/api/lab/watch/read', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ brain, id }) });
