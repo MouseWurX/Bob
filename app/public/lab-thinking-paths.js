@@ -460,7 +460,7 @@ export const PATH_GROUPS = [
 },
 {
 "title": "Famous styles",
-"note": "Our own take on how some well-known AI models think. They're trained towards that kind of thinking with lessons written by Bob's own teacher brain, never from those models' answers or thoughts. Claude, Fable and Opus belong to Anthropic and GPT to OpenAI; neither company is involved with or endorses Bob.",
+"note": "Our own take on how some well-known AI models think. They're trained towards that kind of thinking with lessons written by Bob's own teacher brain, never from those models' answers or thoughts. Claude, Fable and Opus belong to Anthropic, GPT to OpenAI and DeepSeek to DeepSeek; none of those companies is involved with or endorses Bob.",
 "paths": [
 {
 "name": "Sherlock",
@@ -478,6 +478,12 @@ export const PATH_GROUPS = [
 "name": "Vulcan",
 "like": "GPT-like",
 "style": "By the book: pure logic, state the rule, neat numbered steps, and a tidy summary at the end.",
+"kind": "either"
+},
+{
+"name": "Columbo",
+"like": "DeepSeek-like",
+"style": "Think out loud and at length: try an approach, stop and say wait when something looks off, go back and check it another way, circle the small detail that doesn't fit, and only then give a short, clean answer.",
 "kind": "either"
 }
 ]
