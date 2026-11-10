@@ -399,6 +399,7 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 - **Let Bob fetch his newest brain list** (Going online): once a day Bob reads his brain list from his own GitHub page, so brains that came out after your version show up in the Brain catalogue. **Check now** does it at once. Only a list where every file is pinned with its size and sha256 is used; it adds and updates brains, never removes one. Nothing about you is sent (GitHub sees the request, like any web page).
 - **Show the naughty list**: other people's uncensored remixes of Qwen and Gemma brains, on the Naughty list side of the Brain catalogue (see [The Brain catalogue](#the-brain-catalogue)). Off: hidden everywhere.
 - **Let Bob learn how-tos**: after a job with a few steps goes well, Bob offers one card to keep the steps as a how-to, and follows them next time you ask for something like it. Nothing is kept until you press **Save how-to**. Edit or delete them in Settings, **📒 How-tos**. A how-to is plain text: Hands still ask for your OK as usual. They stay on your PC.
+- **Let Bob fix his own messages**: when Bob gets something wrong, or a status line goes out of date, he changes his earlier message instead of sending a new one. Only his own messages, only in the chat he's in. The message says **edited**; press it to see what it said first.
 - **Launch on start-up**: Bob opens when Windows starts.
 - **Cloud helpers**: hand a very big job to a paid online AI, using your own key. Bob asks you each time, because it costs money and sends that job off your PC.
 - **Rented brains** (Settings, Show advanced settings, Online services): hire a big brain for one job from a service you have an account with. Three kinds: pay per answer (OpenRouter, Together AI, Lambda, or any address plus key), RunPod serverless (per second, switches itself off) and a machine by the minute (RunPod, Vast.ai, Lambda; Bob starts and stops it, and it carries a timer so it stops on its own too). Set the **Spending limits** first: every one starts at $0 and nothing can be hired until they're set. Switch on **Let Bob hire from** a service (the first time, a card says what leaves your PC), add a rental (service plus model, and a card size for machines), and put it in the **🏗 Rented brain** slot on Equip Bob. Then use the **🏗 Rented brain** switch under the chat, or wait for Bob to offer it when a chat outgrows his brains here. Every hire starts from a **Hire it (about $…)** card that says the cost and exactly what leaves your PC: the chat of that job, the files you attached, Bob's instructions and what he remembers about you. His tools still run on your PC. Keys are environment variables Bob only reads (Mac and Linux: also `~/.config/bob/env`). Tasks shows the job as **Rented**; the Settings panel shows **Machines running** with **Stop everything now**. Bob's cost figures are estimates; the service's billing page is the real bill.
@@ -438,9 +439,10 @@ The Lab has five tabs:
 - **Challenges**: short tests out of 100 for any brain you have, and a scoreboard that ranks brains against others of their own size.
 - **Playground**: **Smaller** makes one brain in six sizes and shows where it starts to slip; **Peek inside** shows which experts your work uses; **FNRI** scans a brain while it answers a few questions for each skill and plays it back in its own window as a 3D block of voxels, a floor for each layer, coloured by skill and glowing as the experts are used (tick boxes hide skills, three zoom levels, Save as a video); **Longer**, **Faster** and **Teach it** try longer chats, faster settings and a short round of teaching.
 
-| | | |
-|---|---|---|
-| ![The Forge tab](screens/lab-forge.png) | ![The Challenges tab](screens/lab-challenges.png) | ![The Playground tab](screens/lab-playground.png) |
+| | |
+|---|---|
+| ![The Forge tab](screens/lab-forge.png) | ![The Learn tab](screens/lab-learn.png) |
+| ![The Challenges tab](screens/lab-challenges.png) | ![The Playground tab](screens/lab-playground.png) |
 
 Lab jobs need a replicant matrix with at least 12 GB of memory; a smaller one still shows the Lab and can start jobs on a bigger Bob on your Bob-Net. The phone app has no Lab. Every tab has its own page in Help, The Computer Science Lab.
 

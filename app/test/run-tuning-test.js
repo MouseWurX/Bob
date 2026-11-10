@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { tuning, cpuPlan, paintFlags, pictureFitFailed, pictureFitReset, SAFE_PAINT, startFile, promptHash } from '../src/tuning.js';
 import { tipsFrom, ratedSpeed, gatherFacts } from '../src/pc-check.js';
-import { LlamaCpp } from '../src/llamacpp.js';
+import { moeCacheMib, LlamaCpp } from '../src/llamacpp.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let failures = 0;
@@ -81,6 +81,13 @@ fs.mkdirSync(path.join(tmp, 'data'), { recursive: true });
   const has = (args, ...xs) => xs.every((x) => args.includes(x));
   lc.cfg.llamacpp.fit = true; ver('b12032');
   check(has(lc.buildArgs('qwen3:4b', {}), '--fit', '--load-mode', 'none'), 'fit on: the brain is read in at load (--load-mode none)');
+  // A brain bigger than the card's share plus RAM stays memory-mapped, so the rest is read from the drive (gpt-oss 120B on 16 GB + 32 GB).
+  lc.totalRam = () => 32e9; lc.cfg.gpuVramGB = 16;
+  check(has(lc.buildArgs('qwen3:4b', {}), '--fit', '--load-mode', 'none'), 'a brain that fits card and RAM is still read in at load');
+  lc.totalRam = () => 6e9 + 1; lc.cfg.gpuVramGB = 0;
+  check(lc.buildArgs('qwen3:4b', {}).includes('--fit') && !lc.buildArgs('qwen3:4b', {}).includes('--load-mode'), 'bigger than card and RAM: left memory-mapped (the rest from the drive)');
+  check(!lc.biggerThanMemory(path.join(tmp, 'no-such.gguf')), 'a file that is not there is not too big');
+  lc.totalRam = () => 64e9; delete lc.cfg.gpuVramGB;
   ver('b11500'); lc.cfg.llamacpp.fit = false; lc.cfg.llamacpp.nCpuMoe = { 'qwen3:4b': 8 };
   check(has(lc.buildArgs('qwen3:4b', {}), '--n-cpu-moe', '--no-mmap'), 'older build with experts in RAM: --no-mmap');
   delete lc.cfg.llamacpp.nCpuMoe;
@@ -91,6 +98,38 @@ fs.mkdirSync(path.join(tmp, 'data'), { recursive: true });
   delete lc.cfg.llamacpp.loadMode; lc.cfg.llamacpp.args = ['-fa', 'on', '--mmap'];
   check(!lc.buildArgs('qwen3:4b', {}).includes('--load-mode'), 'a load mode set by hand wins');
   delete lc.cfg.llamacpp.args;
+  // 1.5.19x Keep busy experts on the graphics card: llama.cpp's MoE cache, only for a mixture-of-experts brain kept partly off the card.
+  {
+    const parts = [];
+    const u32 = (v) => { const b = Buffer.alloc(4); b.writeUInt32LE(v); parts.push(b); };
+    const u64 = (v) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(v)); parts.push(b); };
+    const str = (x) => { const b = Buffer.from(x, 'utf8'); u64(b.length); parts.push(b); };
+    parts.push(Buffer.from('GGUF')); u32(3); u64(0); u64(2);
+    str('general.architecture'); u32(8); str('qwen35moe');
+    str('qwen35moe.expert_count'); u32(4); u32(256);
+    add('moebrain', 'a3b', 'ddd444');
+    fs.writeFileSync(path.join(models, 'blobs', 'sha256-ddd444'), Buffer.concat(parts));
+  }
+  lc.cfg.gpuVramGB = 16;
+  check(!lc.buildArgs('moebrain:a3b', {}).includes('--moe-cache-mib'), 'busy experts switch off: no MoE cache');
+  lc.cfg.llamacpp.moeCache = { on: true };
+  const mc = lc.buildArgs('moebrain:a3b', {});
+  check(mc.includes('--moe-cache-mib') && mc[mc.indexOf('--moe-cache-mib') + 1] === '4096', 'on: a quarter of a 16 GB card for busy experts');
+  check(!lc.buildArgs('qwen3:4b', {}).includes('--moe-cache-mib'), 'a brain without experts: no MoE cache');
+  check(!lc.buildArgs('moebrain:a3b', { cpu: true }).includes('--moe-cache-mib'), 'on the processor: no MoE cache');
+  lc.cfg.llamacpp.moeCache = { on: true, mib: 6144 };
+  check(lc.buildArgs('moebrain:a3b', {}).includes('6144'), 'the room set in Settings is used');
+  ver('b11500');
+  check(!lc.buildArgs('moebrain:a3b', {}).includes('--moe-cache-mib'), 'an older engine (before b12032) is never given the flag');
+  ver('b12032'); lc.cfg.llamacpp.fit = false;
+  check(!lc.buildArgs('moebrain:a3b', {}).includes('--moe-cache-mib'), 'whole brain on the card (fit off, no experts in RAM): no MoE cache');
+  lc.cfg.llamacpp.fit = true; delete lc.cfg.llamacpp.moeCache; delete lc.cfg.gpuVramGB;
+  check(moeCacheMib({}, 0) === 2048 && moeCacheMib({ mib: 100 }, 16) === 4096 && moeCacheMib({ mib: 999999 }, 16) === 65536, 'cache size: card share, a floor and a ceiling');
+  // A brain bigger than card and RAM also keeps its experts as they are in the file (no repacking into RAM).
+  lc.totalRam = () => 6e9 + 1; lc.cfg.gpuVramGB = 0;
+  check(lc.buildArgs('qwen3:4b', {}).includes('--no-repack'), 'bigger than card and RAM: --no-repack, so the drive can be read');
+  lc.totalRam = () => 64e9; delete lc.cfg.gpuVramGB;
+  check(!lc.buildArgs('qwen3:4b', {}).includes('--no-repack'), 'fits: repacking as usual');
   // 1.5.91: no marker anywhere (bundled engine, an exe set by hand): no guessed flag, so b12032 still starts.
   fs.rmSync(path.join(tmp, 'llama.cpp'), { recursive: true, force: true }); lc._loadFlag = null;
   check(lc.buildArgs('qwen3:4b', {}).includes('--fit') && !lc.buildArgs('qwen3:4b', {}).some((x) => ['--load-mode', '--no-mmap'].includes(x)), 'no build marker: no load flag at all (b12032 refuses --no-mmap)');

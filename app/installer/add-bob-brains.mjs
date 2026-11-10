@@ -18,10 +18,14 @@ export const BOBS = {
   riker: {
     repo: 'MouseWurX/28Bob-Riker',
     entries: [
-      { id: 'riker-28b', file: '28Bob-Q4_K_M.gguf', category: 'chat', jobs: RIKER_JOBS, name: '28Bob Riker', nickname: 'Riker', params: 28, vramGB: 16, pick: 'best', bobPick: ['bob'], what: RIKER_WHAT,
+      { id: 'riker-28b', file: '28Bob-Q4_K_M.gguf', category: 'chat', jobs: RIKER_JOBS, name: '28Bob Riker', nickname: 'Riker', params: 28, vramGB: 16, pick: 'optional', bobPick: [], what: RIKER_WHAT,
         bench: 'Benchmarked 2026-11-08: ARC-Challenge 93.9% (thinking on), ARC-Easy 98.3%; Bob\'s own test: tools 65, routing 96, needle 100 (the full Qwen: tools 67).' },
-      { id: 'riker-28b-q3', file: '28Bob-Q3_K_M.gguf', category: 'chat', jobs: RIKER_JOBS, name: '28Bob Riker (8 GB card version)', nickname: 'Riker', params: 28, vramGB: 12, pick: 'small', bobPick: ['deep'], squeezedOf: 'riker-28b', maxCardGB: 8,
-        what: 'Riker squeezed into a smaller file for cards of 8 GB or less. A little less sharp than the full one, and most of it sits in your RAM, so replies come slower. On a bigger card I use the full version instead.' }
+      // 1.5.169 (bench Nov 9-10, on a 16 GB card): the Q3 is within a point of the Q4 on every test and about 50% faster,
+      // because nearly all of it fits on the card. So it's the 16 GB default, not a squeezed copy (small cards get their own
+      // brains: Bill, Homer).
+      { id: 'riker-28b-q3', file: '28Bob-Q3_K_M.gguf', category: 'chat', jobs: RIKER_JOBS, name: '28Bob Riker (quick)', nickname: 'Riker', params: 28, vramGB: 15, pick: 'best', bobPick: ['bob'],
+        what: 'Riker in a smaller file. On my tests it scores within a point of the bigger file and answers about half again as fast, because nearly all of it fits on a 16 GB card.',
+        bench: 'Benchmarked 2026-11-09 on a 16 GB card: ARC-Challenge 94.3% (thinking on), ARC-Easy 97.3% (thinking off); Bob\'s own test: tools 64, needle 12 of 12; about 170 words a second, 14.7 GB on the card.' }
     ]
   },
   bobert: {
@@ -36,10 +40,10 @@ export const BOBS = {
 
 // Starter sets: which job each Bob takes over, per card. Only applied for the Bobs that went in.
 export const PACKS = {
-  big: { riker: { 'riker-28b': ['bob'] }, bobert: { 'bobert-35b': ['tinker', 'deep'] },
-    notes: { 'riker-28b': 'Bob\'s own everyday brain: about 30% faster than the full Qwen, with a big context (256K, how much it keeps in mind)', 'bobert-35b': 'Bob\'s own coding and deep-thinking brain: the whole Qwen3.6 35B, taught Bob\'s ways' } },
-  mid: { riker: { 'riker-28b-q3': ['deep'] }, bobert: { 'bobert-35b-q3': ['tinker'] }, tick: ['bobert-35b-q3'],
-    notes: { 'bobert-35b-q3': 'Bob\'s own coder, squeezed for your card; most of it sits in your RAM, so replies are slower', 'riker-28b-q3': 'Bob\'s own deep thinker, squeezed for your card; slow here, so it starts unticked' } }
+  big: { riker: { 'riker-28b-q3': ['bob'] }, bobert: { 'bobert-35b': ['tinker', 'deep'] },
+    notes: { 'riker-28b-q3': 'Bob\'s own everyday brain: nearly all of it fits on your card, so it\'s quick, with a big context (256K, how much it keeps in mind)', 'bobert-35b': 'Bob\'s own coding and deep-thinking brain: the whole Qwen3.6 35B, taught Bob\'s ways' } },
+  mid: { bobert: { 'bobert-35b-q3': ['tinker'] }, tick: ['bobert-35b-q3'],
+    notes: { 'bobert-35b-q3': 'Bob\'s own coder, squeezed for your card; most of it sits in your RAM, so replies are slower' } }
 };
 
 const getJson = async (fetchImpl, u) => {

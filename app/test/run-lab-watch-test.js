@@ -277,6 +277,8 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
     fs.writeFileSync(path.join(so, 'llama-server'), 'elf'); fs.writeFileSync(path.join(so, 'libllama-server-impl.so'), 'expert_trace');
     check('on Linux the same, from libllama-server-impl.so; a missing program is still unknown', traceBuilt(path.join(so, 'llama-server'))?.experts === true && traceBuilt(path.join(so, 'llama-server'))?.heads === false && traceBuilt(path.join(tmp, 'nope', 'llama-server.exe')) === null);
   }
+  { const pg = read('public/lab-watch.js');
+    check('while a brain is read the FNRI page says so, and a late answer for an older pick is dropped (PC test of 1.5.189)', /Reading this brain…/.test(pg) && /if \(n === asking && want === brain\) bv = r;/.test(pg)); }
   check('an expert scan\'s words are left as they were', say({ brain: { kind: 'experts' } }, 'Not experts') === 'Not experts' && say(c5, 'Not experts') === 'Other parts' && say(c5, '<div class="watch-expert">One expert</div>') === '<div class="watch-expert">One neuron group</div>');
   const html = read('public/watch.html'), view = read('public/watch-view.js'), js = read('public/watch.js');
   check('the viewer starts as a cube of coloured glass, with a slider for how see-through', /id="watchGlass"/.test(html) && /id="watchCube"/.test(html) && /cubeGap/.test(view) && /glass/.test(view) && /data-solid=/.test(js) && /id="watchGlow" min="0" max="1.5" step="0.05" value="0.5"/.test(html) && /glow = 0\.5/.test(view) && /solid\.get\(top\)/.test(view) && /cube\(\);/.test(js));
