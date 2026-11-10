@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { labDir, labModelsDir, inspect, slugOf, lessonSets } from './lab.js';
 import { startServer } from './lab-test.js';
-import { planTeach, saveTeachPlan, trainerState, hwOf, fetchBase, foldAdapter, quizFile, readLessonSource, lessonsPerHour, TRAINER } from './lab-teach.js';
+import { planTeach, saveTeachPlan, trainerState, hwOf, fetchBase, foldAdapter, foldFull, quizFile, readLessonSource, lessonsPerHour, TRAINER } from './lab-teach.js';
 import { TEACH_PY, FETCH_PY } from './lab-teach-script.js';
 import { watchDir, listRecordings, readRecording } from './lab-watch.js';
 import { specialise } from '../public/lab-watch-math.js';
@@ -158,7 +158,9 @@ export async function planBest(lab, c = {}) {
   // Teaching works on full weights: the learner's original (named in its file), or a folder/Hugging Face brain the
   // person points at (a cut brain's full-size folder, say).
   const weights = c.weights?.kind ? c.weights : { kind: 'lab', id: String(c.learner || '') };
-  const t = await planTeach(lab, { name: c.name, brain: weights, lessons: c.questions || {}, where: c.where });
+  // Parts-only teaching changes the chosen weights themselves (no adapter), at 16-bit, so the fit line is about half.
+  const parts = Boolean(c.targets?.kind && c.targets.kind !== 'none');
+  const t = await planTeach(lab, { name: c.name, brain: weights, lessons: c.questions || {}, where: c.where, direct: parts });
   const problems = t.problems.filter((x) => !/Pick the lessons|lesson set isn't here|\.jsonl lesson file/.test(x)), notes = [...t.notes.filter((x) => !/teacher's odds/.test(x))];
   const qs = readLessonSource(lab, c.questions || {});
   if (qs.problems.length) problems.push(qs.problems[0].replace(/lessons|lesson file/g, 'questions'));
@@ -174,7 +176,7 @@ export async function planBest(lab, c = {}) {
   }
   let targets = null;
   try { const r = resolveTargets(lab, c.learner, c.targets); if (r.list) targets = { count: r.list.length, label: r.label, experts: r.list.filter((x) => x.kind === 'expert').length }; } catch (e) { problems.push(e.message); }
-  if (targets) notes.push(`Only ${targets.label} are taught (${targets.count.toLocaleString()} part${targets.count === 1 ? '' : 's'}); the rest of the brain stays frozen. Where the full weights keep a layer's experts fused together, that layer's whole feed-forward block is taught instead, and the result says how many.`);
+  if (targets) notes.push(`Only ${targets.label} are taught (${targets.count.toLocaleString()} part${targets.count === 1 ? '' : 's'}); the rest of the brain stays frozen. Bob changes those weights themselves, one expert at a time even where the full weights keep a layer's experts packed together, so the brain is worked on at 16-bit. If a listed part isn't in the full weights, the result says how many were skipped.`);
   if (t.where === 'rented') {
     if (way !== 'best') problems.push('The Forge learns from best answers only for now. Better and worse pairs are taught here, on a brain that fits the card.');
     if (targets) problems.push('Teaching only some parts is done here for now, on a brain that fits the card. The Forge teaches the whole brain.');
@@ -292,11 +294,13 @@ export async function startBest(lab, c = {}, { unload = false } = {}) {
     fs.mkdirSync(work, { recursive: true });
     fs.writeFileSync(path.join(tr.dir, 'teach.py'), TEACH_PY); fs.writeFileSync(path.join(tr.dir, 'fetch.py'), FETCH_PY);
     const base = await fetchBase(lab, p._teach, work, { fx, signal, log, env, tr, progress });
-    const adapter = path.join(work, 'adapter'), tfile = path.join(data, 'targets.json');
+    // 1.5.190 with parts, teach.py --direct changes just those weights (each expert's own slice too) and saves the
+    // whole brain; without, it teaches an adapter that's folded in as before.
+    const adapter = path.join(work, targets ? 'taught' : 'adapter'), tfile = path.join(data, 'targets.json');
     if (targets) writeJson(tfile, { targets });
     let lastLoss = null, skipped = 0, learned = 0, mods = null, fell = 0, pairWon = null;
     const args = [path.join(tr.dir, 'teach.py'), '--base', base, '--out', adapter, '--epochs', '1',
-      ...(useBest && bestRows.length ? ['--lessons', bestFile] : []), ...(usePairs && pairRows.length ? ['--pairs', pairsFile] : []), ...(targets ? ['--targets', tfile] : [])];
+      ...(useBest && bestRows.length ? ['--lessons', bestFile] : []), ...(usePairs && pairRows.length ? ['--pairs', pairsFile] : []), ...(targets ? ['--targets', tfile, '--direct'] : [])];
     await fx.tool(tr.python, args, { signal, log, env, onLine: (l) => {
       let m;
       if ((m = l.match(/^progress (\d+) (\d+)/))) progress(75 + (12 * Number(m[1])) / Number(m[2]), `Teach: ${m[1]} of ${m[2]}${lastLoss !== null ? `, loss ${lastLoss}` : ''}`);
@@ -307,7 +311,12 @@ export async function startBest(lab, c = {}, { unload = false } = {}) {
       else if ((m = l.match(/^done (\d+)/))) learned = Number(m[1]);
     } });
     set('teach', 'done'); set('fold', 'running');
-    const { before: beforeFile, after } = await foldAdapter(lab, p._teach, work, base, adapter, { fx, signal, log, env, tr, progress });
+    let beforeFile = learner.gguf, after = path.join(work, `${p.slug}-Q4_K_M.gguf`);
+    if (targets) {
+      await foldFull(lab, adapter, { [after]: 'Q4_K_M' }, work, 'taught', { fx, signal, log, env, tr });
+      fs.rmSync(adapter, { recursive: true, force: true });
+      if (p._teach.brain.repo && base.startsWith(work)) fs.rmSync(path.join(work, 'base'), { recursive: true, force: true });
+    } else ({ before: beforeFile, after } = await foldAdapter(lab, p._teach, work, base, adapter, { fx, signal, log, env, tr, progress }));
     set('fold', 'done'); set('after', 'running');
     // 3. After: the new brain answers the held-back questions plainly, the judge scores them; then the Quick quiz.
     const afterAns = new Map();
@@ -333,7 +342,7 @@ export function bestSaw(t, p) {
   const bits = [];
   if (typeof t.before?.judge === 'number' && typeof t.after?.judge === 'number') bits.push(`On the ${t.held} held-back questions, ${p.judge.name} scored it ${t.before.judge} out of 100 before and ${t.after.judge} after.`);
   if (typeof t.average === 'number' && typeof t.bestOf === 'number') bits.push(`Its answers averaged ${t.average}; picking the best of ${t.answers} each time averaged ${t.bestOf}, and that gap is what it was taught.`);
-  if (t.parts) bits.push(`Only ${t.parts.modules} parts of the brain changed${t.parts.fellBack ? ` (${t.parts.fellBack} picked parts were fused in the weights, so their whole layer was taught)` : ''}.`);
+  if (t.parts) bits.push(`Only ${t.parts.modules} parts of the brain changed${t.parts.fellBack ? ` (${t.parts.fellBack} picked parts couldn't be changed on their own, so the block around each one learned instead)` : ''}.`);
   return bits.join(' ');
 }
 

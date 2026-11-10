@@ -25,29 +25,41 @@ export const NO_TRACE = 'This Brain Engine build doesn\'t report which experts i
 // the file answers it before any brain is loaded (the 1.5.184 PC test: an older build showed Start the scan as ready).
 // { experts, heads } or null when the file can't be read. Kept per file, size and time.
 const traceSeen = new Map();
-export function traceBuilt(exe) {
-  let st; try { st = fs.statSync(exe); } catch { return null; }
-  const key = `${exe}|${st.size}|${st.mtimeMs}`;
-  if (traceSeen.has(key)) return traceSeen.get(key);
-  const want = [Buffer.from('expert_trace_heads'), Buffer.from('expert_trace')];
-  const found = [false, false];
+// 1.5.191: in newer llama.cpp builds (b12032 on) the server's code lives in a library beside the program
+// (llama-server-impl.dll / libllama-server-impl.so), not in llama-server.exe itself (PC test of 1.5.189: Scan stayed
+// grey on a Brain Engine that had the trace). So the program and the llama libraries beside it are all read.
+export const TRACE_LIBS = /^(lib)?llama(-server-impl)?\.(dll|so|dylib)$/i;
+function scanFor(file, want, found) {
+  let st; try { st = fs.statSync(file); } catch { return false; }
+  const key = `${file}|${st.size}|${st.mtimeMs}`;
+  const seen = traceSeen.get(key);
+  if (seen) { seen.forEach((v, i) => { if (v) found[i] = true; }); return true; }
+  const mine = want.map(() => false);
   let fd = null;
   try {
-    fd = fs.openSync(exe, 'r');
+    fd = fs.openSync(file, 'r');
     const size = 4 << 20, keep = 64, buf = Buffer.alloc(size + keep);
     let carry = 0, pos = 0;
     for (;;) {
       const n = fs.readSync(fd, buf, carry, size, pos);
       if (n <= 0) break;
       const view = buf.subarray(0, carry + n);
-      want.forEach((w, i) => { if (!found[i] && view.includes(w)) found[i] = true; });
-      if (found[0] && found[1]) break;
+      want.forEach((w, i) => { if (!mine[i] && view.includes(w)) mine[i] = true; });
+      if (mine.every(Boolean)) break;
       pos += n; carry = Math.min(keep, view.length); view.copy(buf, 0, view.length - carry);
     }
-  } catch { return null; } finally { if (fd !== null) try { fs.closeSync(fd); } catch {} }
-  const out = { experts: found[1], heads: found[0] };
-  traceSeen.set(key, out);
-  return out;
+  } catch { return false; } finally { if (fd !== null) try { fs.closeSync(fd); } catch {} }
+  traceSeen.set(key, mine);
+  mine.forEach((v, i) => { if (v) found[i] = true; });
+  return true;
+}
+export function traceBuilt(exe) {
+  const want = [Buffer.from('expert_trace_heads'), Buffer.from('expert_trace')];
+  const found = [false, false];
+  if (!scanFor(exe, want, found)) return null;
+  let libs = []; try { libs = fs.readdirSync(path.dirname(exe)).filter((f) => TRACE_LIBS.test(f)); } catch {}
+  for (const f of libs) { if (found[0] && found[1]) break; scanFor(path.join(path.dirname(exe), f), want, found); }
+  return { experts: found[1], heads: found[0] };
 }
 export const NO_ENGINE = 'The live view needs Brain Engine, the Lab\'s engine. Get it in Get models, Engines: Brain Engine.';
 
