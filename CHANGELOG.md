@@ -35,6 +35,7 @@ A new Lab page: **FNRI**, a scan of a brain's experts lighting up as it works.
 - An honest note: in the brains measured so far, experts split work by word pattern more than by topic, so the skill colours come out blended, and the viewer says how blended. A few questions per skill show a pattern; they don't measure the brain.
 - For a rented card (nothing in the app rents one for this yet): `model-lab/forge/aifeui-bundle.mjs` packs the questions, Brain Engine's patches and Bob's viewer into one folder, and `pod/aifeui.sh` on the card checks every dependency before it downloads or builds anything, builds Brain Engine with the patches, proves the trace with one word, scans, and leaves the recording with the viewer beside it.
 - Help: **The Playground's FNRI page**, an FAQ (**Can I see what's happening inside a brain?**) and two glossary entries. Tests in `test/run-lab-watch-test.js`.
+- **Now running folds:** every section (Tasks, Downloads, Memory, Bob-Net, Bob's thinking) has a [−] in its title that folds it to one line, and a [+] that brings it back. Bob's thinking opens with its [+] (this replaces the Show here switch), and the graph under Memory has its own [+]. Bob remembers what you folded.
 
 ## 1.5.183
 

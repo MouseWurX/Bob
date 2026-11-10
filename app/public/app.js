@@ -454,7 +454,7 @@ $('mindBtn')?.addEventListener('click', () => {
 });
 const mindTitle = (docked) => {
   const b = $('mindBtn'); if (!b) return;
-  b.dataset.tip = docked ? 'Bob\'s thinking is in Now running (Show here is on). Click to go to it; Pop out there opens the small window too.' : 'Opens a small always-on-top window showing Bob\'s thinking, which brain is working, moots and every step. Nothing runs for it while it\'s closed. To keep it in Now running instead, turn on Show here in its section there.';
+  b.dataset.tip = docked ? 'Bob\'s thinking is in Now running (its section is open). Click to go to it; Pop out there opens the small window too.' : 'Opens a small always-on-top window showing Bob\'s thinking, which brain is working, moots and every step. Nothing runs for it while it\'s closed. To keep it in Now running instead, turn on Show here in its section there.';
 };
 mindTitle(layout.mindDocked());
 window.addEventListener('bob-mind-dock', (e) => mindTitle(e.detail.docked));

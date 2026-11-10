@@ -156,6 +156,22 @@ export function createLayout({ post, openTasks, openDownloads }) {
   });
   placeSections();
 
+  // ---- every section folds to its title with a [-] / [+] button, remembered in this window (bob-now-folded) ----
+  // [-] = showing, press to hide; [+] = hidden, press to show. Bob's thinking uses the same button for its own
+  // switch (below), because folding it also stops Bob passing his thinking along.
+  function foldLook(b, open, name) { b.textContent = open ? '[\u2212]' : '[+]'; b.setAttribute('aria-expanded', String(open)); b.setAttribute('aria-label', `${open ? 'Hide' : 'Show'} ${name}`); b.title = `${open ? 'Hide' : 'Show'} ${name}`; }
+  const SEC_NAMES = { tasks: 'Tasks', net: 'Bob-Net', downloads: 'Downloads', memory: 'Memory' };
+  let folded = new Set(String(store.get('bob-now-folded', '') || '').split(',').filter((k) => SEC_NAMES[k]));
+  for (const sec of document.querySelectorAll('#nowSections > section[data-sec]')) {
+    const id = sec.dataset.sec; if (!SEC_NAMES[id]) continue;
+    const head = sec.querySelector('.now-sec'); if (!head) continue;
+    if (!head.querySelector('.ctx-fill')) { const f = document.createElement('span'); f.className = 'ctx-fill'; head.appendChild(f); }
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'sec-fold'; b.dataset.fold = id;
+    const show = () => { sec.classList.toggle('folded', folded.has(id)); foldLook(b, !folded.has(id), SEC_NAMES[id]); };
+    b.onclick = () => { if (folded.has(id)) folded.delete(id); else folded.add(id); store.set('bob-now-folded', [...folded].join(',')); show(); };
+    head.appendChild(b); show();
+  }
+
   // ---- 1.5.138: Bob's thinking, docked (the same view as the pop-out window, public/mind-view.js) ----
   // Off unless turned on (Show here). Bob passes his thinking along only while this is on AND the panel is in view,
   // so with Now running hidden it costs nothing, just like a closed window.
@@ -168,8 +184,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
     if (on) mindView.connect(); else mindView.disconnect();
   }
   function drawDock() {
-    dockBtn.setAttribute('aria-checked', String(docked));
-    dockBtn.querySelector('.st').textContent = docked ? 'On' : 'Off';
+    foldLook(dockBtn, docked, 'Bob\'s thinking');
     $('mindDockBody').hidden = !docked;
     $('nowMind').classList.toggle('on', docked);
     const st = $('mindBtnSt'); if (st) st.hidden = !docked; // the chat-bar button says where the thinking is
@@ -369,7 +384,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
       // 1.5.44: two parts per bar, Bob's (coloured by speed) and everything else (blue); splitLines() sizes them.
       const row = (pct, split) => `<div class="mem-row"><span class="mem-text"></span><div class="meter split" data-bar="${split}"><i class="m-bob"></i><i class="m-sys" style="width:${Math.min(100, Math.round(pct))}%"></i></div><span class="mem-split ${split}"></span></div>`;
       el.innerHTML = `${gpu ? row((gpu.usedGB / gpu.totalGB) * 100, 'split-card') : '<div class="mem-row"><span class="mem-text"></span></div>'}${ram?.totalGB ? row((ram.usedGB / ram.totalGB) * 100, 'split-ram') : ''}${cpu?.loadPct != null ? row(cpu.loadPct, 'split-cpu') : ''}<div class="mem-brain"></div>
-        <button type="button" class="mem-graph-btn" aria-expanded="${showGraph}">${showGraph ? 'Hide graph' : 'Show graph'}</button><div class="mem-graph" hidden></div>`;
+        <button type="button" class="mem-graph-btn" aria-expanded="${showGraph}">${showGraph ? '[\u2212] Graph over time' : '[+] Graph over time'}</button><div class="mem-graph" hidden></div>`;
       // 1.5.26: each meter names itself on its own line: "Graphics card · 9.1 of 15.9 GB in use (all apps)".
       const rows = el.querySelectorAll('.mem-row');
       rows[0].querySelector('.mem-text').textContent = gpu ? `Graphics card · ${gpu.usedGB} of ${gpu.totalGB} GB in use (all apps)${gpu.loadPct != null ? ` · ${gpu.loadPct}% busy` : ''}` : 'Graphics card · not detected';
