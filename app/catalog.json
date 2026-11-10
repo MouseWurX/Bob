@@ -2624,8 +2624,8 @@
       "activeParams": 3,
       "license": "Apache 2.0",
       "commercial": true,
-      "pick": "best",
-      "bobPick": ["bob"],
+      "pick": "optional",
+      "bobPick": [],
       "madeByBob": true,
       "bench": "Benchmarked 2026-11-08: ARC-Challenge 93.9% (thinking on), ARC-Easy 98.3%; Bob's own test: tools 65, routing 96, needle 100 (the full Qwen: tools 67).",
       "cutFrom": {
@@ -2653,21 +2653,20 @@
       "family": "Bob",
       "category": "chat",
       "jobs": ["bob", "deep", "tinker", "reviewer", "office", "ledger", "scout"],
-      "name": "28Bob Riker (8 GB card version)",
+      "name": "28Bob Riker (quick)",
       "nickname": "Riker",
       "published": "2026-11-08",
-      "what": "Riker squeezed into a smaller file for cards of 8 GB or less. A little less sharp than the full one, and most of it sits in your RAM, so replies come slower. On a bigger card I use the full version instead.",
+      "what": "Riker in a smaller file. On my tests it scores within a point of the bigger file and answers about half again as fast, because nearly all of it fits on a 16 GB card.",
       "sizeGB": 13.9,
-      "vramGB": 12,
+      "vramGB": 15,
       "params": 28,
       "activeParams": 3,
       "license": "Apache 2.0",
       "commercial": true,
-      "pick": "small",
-      "bobPick": ["deep"],
+      "pick": "best",
+      "bobPick": ["bob"],
       "madeByBob": true,
-      "squeezedOf": "riker-28b",
-      "maxCardGB": 8,
+      "bench": "Benchmarked 2026-11-09 on a 16 GB card: ARC-Challenge 94.3% (thinking on), ARC-Easy 97.3% (thinking off); Bob's own test: tools 64, needle 12 of 12; about 170 words a second, 14.7 GB on the card.",
       "cutFrom": {
         "name": "Qwen3.6 35B-A3B",
         "by": "Alibaba",
@@ -2918,6 +2917,84 @@
           "deep": "$model"
         }
       }
+    },
+    {
+      "id": "bobert-35b",
+      "family": "Bob",
+      "category": "coding",
+      "jobs": ["tinker", "bob", "reviewer", "deep", "office", "ledger", "scout"],
+      "name": "35Bob Bobert",
+      "nickname": "Bobert",
+      "published": "2026-11-09",
+      "what": "Bob's own brain: the whole Qwen3.6 35B-A3B, taught Bob's ways in his workshop. Only 3B of it works at a time, so it stays quick with part of it in RAM.",
+      "sizeGB": 21.2,
+      "vramGB": 16,
+      "params": 35,
+      "activeParams": 3,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "best",
+      "bobPick": ["tinker", "deep"],
+      "madeByBob": true,
+      "cutFrom": {
+        "name": "Qwen3.6 35B-A3B",
+        "by": "Alibaba",
+        "hf": "Qwen/Qwen3.6-35B-A3B"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/MouseWurX/35Bob-Bobert/resolve/7dd5307168afc157098b9b589316e773dc78048f/35Bob-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 21166757984,
+          "sha256": "c4b2f9f4266d37349e92b66f86a9a7a1403affdf259c784bf5a08dcf71c16c94"
+        }
+      ],
+      "use": {
+        "models": {
+          "tinker": "$model"
+        }
+      }
+    },
+    {
+      "id": "bobert-35b-q3",
+      "family": "Bob",
+      "category": "coding",
+      "jobs": ["tinker", "bob", "reviewer", "deep", "office", "ledger", "scout"],
+      "name": "35Bob Bobert (8 GB card version)",
+      "nickname": "Bobert",
+      "published": "2026-11-09",
+      "what": "Bobert squeezed into a smaller file for cards of 8 GB or less. A little less sharp than the full one, and most of it sits in your RAM, so replies come slower. On a bigger card I use the full version instead.",
+      "sizeGB": 16.8,
+      "vramGB": 12,
+      "params": 35,
+      "activeParams": 3,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "small",
+      "bobPick": ["tinker"],
+      "madeByBob": true,
+      "squeezedOf": "bobert-35b",
+      "maxCardGB": 8,
+      "cutFrom": {
+        "name": "Qwen3.6 35B-A3B",
+        "by": "Alibaba",
+        "hf": "Qwen/Qwen3.6-35B-A3B"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/MouseWurX/35Bob-Bobert/resolve/7dd5307168afc157098b9b589316e773dc78048f/35Bob-Q3_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 16764764256,
+          "sha256": "5ab29e67f4f463cc9ef9cf791ab68850fcb45d503831adb4d6063d49007d8377"
+        }
+      ],
+      "use": {
+        "models": {
+          "tinker": "$model"
+        }
+      }
     }
   ],
   "packs": [
@@ -2926,9 +3003,9 @@
       "label": "16 GB card or more",
       "minVramGB": 12,
       "models": [
-        "riker-28b",
+        "bobert-35b",
+        "riker-28b-q3",
         "gemma4-26b",
-        "qwen3.6-35b-a3b",
         "z-image-turbo",
         "qwen-image-edit-2509",
         "wan2.2-ti2v-5b",
@@ -2938,11 +3015,7 @@
       ],
       "slots": {
         "gemma4-26b": [
-          "deep",
           "office"
-        ],
-        "qwen3.6-35b-a3b": [
-          "tinker"
         ],
         "z-image-turbo": [
           "image"
@@ -2964,15 +3037,19 @@
         "nomic-embed-text": [
           "embed"
         ],
-        "riker-28b": [
+        "riker-28b-q3": [
           "bob"
+        ],
+        "bobert-35b": [
+          "tinker",
+          "deep"
         ]
       },
       "notes": {
         "gemma4-e4b": "the quick brain, and it sees pictures and hears you",
-        "qwen3.6-35b-a3b": "everyday chat and coding in one load: a big context (256K, how much it keeps in mind). It answers Low-effort chat straight off and always thinks coding jobs through",
         "gemma4-26b": "Office and Deep thinking",
-        "riker-28b": "Bob's own everyday brain: about 30% faster than the full Qwen, with a big context (256K, how much it keeps in mind)"
+        "riker-28b-q3": "Bob's own everyday brain: nearly all of it fits on your card, so it's quick, with a big context (256K, how much it keeps in mind)",
+        "bobert-35b": "Bob's own coding and deep-thinking brain: the whole Qwen3.6 35B, taught Bob's ways"
       },
       "times": "Pictures take about 10 seconds each, clips a few minutes.",
       "cardGB": 16
@@ -2982,11 +3059,10 @@
       "label": "8 GB card",
       "minVramGB": 7,
       "models": [
-        "riker-28b-q3",
+        "bobert-35b-q3",
         "gemma4-e4b",
         "kokoro-v1",
         "nomic-embed-text",
-        "qwen3-coder-30b",
         "z-image-turbo-q5",
         "flux2-klein-4b",
         "wan2.2-ti2v-5b-q4"
@@ -3004,9 +3080,6 @@
         "nomic-embed-text": [
           "embed"
         ],
-        "qwen3-coder-30b": [
-          "tinker"
-        ],
         "z-image-turbo-q5": [
           "image"
         ],
@@ -3016,20 +3089,19 @@
         "wan2.2-ti2v-5b-q4": [
           "video"
         ],
-        "riker-28b-q3": [
-          "deep"
+        "bobert-35b-q3": [
+          "tinker"
         ]
       },
       "tick": [
-        "qwen3-coder-30b"
+        "bobert-35b-q3"
       ],
       "notes": {
         "gemma4-e4b": "one model for chat, quick brain, eyes and ears, so everyday chat never swaps",
-        "qwen3-coder-30b": "the best coder; most of it sits in your RAM, so replies are slower (roughly 15 to 25 words a second)",
         "z-image-turbo-q5": "a version of the painter made to fit your card",
         "flux2-klein-4b": "a small, quick editor: change a picture with words or keep a look from references",
         "wan2.2-ti2v-5b-q4": "slow on this card: keep clips to a few seconds",
-        "riker-28b-q3": "Bob's own deep thinker, squeezed for your card; slow here, so it starts unticked"
+        "bobert-35b-q3": "Bob's own coder, squeezed for your card; most of it sits in your RAM, so replies are slower"
       },
       "times": "Rough guesses, not yet measured on an 8 GB card: about 30 seconds to a minute a picture, a minute or two an edit, 10 minutes or more a short clip. Bob puts his brain away while he paints, so chat waits until the picture is done.",
       "cardGB": 8
