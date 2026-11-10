@@ -23,17 +23,16 @@ export const NO_TRACE = 'This Brain Engine build doesn\'t report which experts i
 // Does this Brain Engine build report its experts? The trace (engine/patches/0002-expert-trace.patch) adds the request
 // fields "expert_trace" and "expert_trace_heads", and their names are in the server program as plain text, so a read of
 // the file answers it before any brain is loaded (the 1.5.184 PC test: an older build showed Start the scan as ready).
-// { experts, heads } or null when the file can't be read. Kept per file, size and time.
+// Since b12032 the server's code lives in a library beside the program (llama-server-impl.dll on Windows,
+// libllama-server-impl.so / .dylib elsewhere) and the names are only in there (PC test of the 0003 rebuild), so every
+// llama-server file in the program's folder is read. { experts, heads } or null when nothing can be read. Kept per file,
+// size and time.
 const traceSeen = new Map();
-export function traceBuilt(exe) {
-  let st; try { st = fs.statSync(exe); } catch { return null; }
-  const key = `${exe}|${st.size}|${st.mtimeMs}`;
-  if (traceSeen.has(key)) return traceSeen.get(key);
-  const want = [Buffer.from('expert_trace_heads'), Buffer.from('expert_trace')];
-  const found = [false, false];
+export const SERVER_PARTS = /^(lib)?llama-server([-_.][a-z0-9_-]*)?\.(exe|dll|so|dylib)$|^llama-server$/i;
+function namesIn(file, want, found) {
   let fd = null;
   try {
-    fd = fs.openSync(exe, 'r');
+    fd = fs.openSync(file, 'r');
     const size = 4 << 20, keep = 64, buf = Buffer.alloc(size + keep);
     let carry = 0, pos = 0;
     for (;;) {
@@ -41,10 +40,25 @@ export function traceBuilt(exe) {
       if (n <= 0) break;
       const view = buf.subarray(0, carry + n);
       want.forEach((w, i) => { if (!found[i] && view.includes(w)) found[i] = true; });
-      if (found[0] && found[1]) break;
+      if (found.every(Boolean)) break;
       pos += n; carry = Math.min(keep, view.length); view.copy(buf, 0, view.length - carry);
     }
-  } catch { return null; } finally { if (fd !== null) try { fs.closeSync(fd); } catch {} }
+    return true;
+  } catch { return false; } finally { if (fd !== null) try { fs.closeSync(fd); } catch {} }
+}
+export function traceBuilt(exe) {
+  let st; try { st = fs.statSync(exe); } catch { return null; }
+  const dir = path.dirname(exe);
+  let near = []; try { near = fs.readdirSync(dir).filter((f) => SERVER_PARTS.test(f) && path.join(dir, f) !== path.join(dir, path.basename(exe))).sort(); } catch {}
+  const files = [exe, ...near.map((f) => path.join(dir, f))];
+  const stamps = files.map((f) => { try { const s = f === exe ? st : fs.statSync(f); return `${f}|${s.size}|${s.mtimeMs}`; } catch { return f; } });
+  const key = stamps.join('\n');
+  if (traceSeen.has(key)) return traceSeen.get(key);
+  const want = [Buffer.from('expert_trace_heads'), Buffer.from('expert_trace')];
+  const found = [false, false];
+  let read = 0;
+  for (const f of files) { if (namesIn(f, want, found)) read++; if (found.every(Boolean)) break; }
+  if (!read) return null;
   const out = { experts: found[1], heads: found[0] };
   traceSeen.set(key, out);
   return out;

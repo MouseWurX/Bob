@@ -4,6 +4,15 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.191
+
+### FNRI finds the rebuilt Brain Engine's scan
+
+- **FNRI Scan works with the rebuilt Brain Engine.** Newer Brain Engine builds keep their server code in a library beside the program (llama-server-impl.dll on Windows), and Bob only looked in the program, so Scan stayed grey and said the engine was too old. Bob now looks in both.
+- **The FNRI page says "Reading this brain…"** while it looks a brain over, instead of showing nothing, and a slow answer for a brain you picked earlier no longer replaces the one you picked last.
+
+Where it works: Windows, Linux and Mac, wherever Brain Engine runs.
+
 ## 1.5.189
 
 Spreading a brain over another Bob's lent card (Bigger Bobs) now holds up on Wi-Fi.
