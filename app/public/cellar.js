@@ -765,7 +765,7 @@ export function createCellar() {
       ${labEngineHtml()}
       <div><strong>Engine downloads</strong> ${tip('The programs that run the models, from their official GitHub pages (Brain Engine from Bob\'s own), matched to your graphics card. Update swaps a new build in and keeps the one before, so Go back puts it straight back without downloading. Bob checks a download\'s checksum, so a rebuilt engine with the same name still shows as an update.', 'Engine downloads')}
         <div class="row"><button type="button" data-checkall>Check all for updates</button></div>
-        ${sswitch('engineAuto', settings.engineUpdates?.auto !== false, 'Keep engines up to date', 'On unless you turn it off. When I start and about once a day, I check Brain Engine and my llama.cpp, and update them by myself, only while no brain is loaded on them. Go back puts the old build back. The other engines wait for your click.')}
+        ${sswitch('engineAuto', settings.engineUpdates?.auto !== false, 'Keep engines up to date', 'On unless you turn it off. When Bob starts and about once a day, he checks Brain Engine and llama.cpp, and updates them by himself, only while no brain is loaded on them. Go back puts the old build back. For the other engines, press Check for updates.')}
         ${groups}</div>
       ${qwenHtml()}
       <details class="more"><summary>More</summary>${speedHtml()}</details>`;
