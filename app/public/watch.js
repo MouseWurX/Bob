@@ -5,7 +5,7 @@
 // Its own window, so it can sit beside the Lab or a chat. The Lab opens it with ?brain=<id>&rec=<id>; it can also
 // open a recording file by itself (one made on another Bob, or on a rented card), with the Lab off.
 import { applySavedStyle } from './themes.js';
-import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind, cutOf, cutEffect, keepList, setColour, resetColours, COVERS, cutSteps, findPatterns, PATTERN_CHOICES, PATTERN_DEFAULT, hasFloors, floorScale, floorsAt, LOAD_STYLES, loadStyle } from './lab-watch-math.js';
+import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind, cutOf, cutEffect, keepList, setColour, resetColours, COVERS, cutSteps, findPatterns, PATTERN_CHOICES, PATTERN_DEFAULT, hasFloors, floorScale, floorsAt, LOAD_STYLES, loadStyle, cleanDials, skillDials, dialWords, dialScale, dialKey, compareScans, compareWords } from './lab-watch-math.js';
 const LOAD_IN_MS = 2200, LOAD_OUT_MS = 900;
 import { createView, GREY } from './watch-view.js';
 applySavedStyle();
@@ -14,6 +14,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const still = () => document.body.classList.contains('still') || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 const view = createView($('watchCanvas'));
+const viewB = createView($('watchCanvasB')); // Before and after: the scan it's compared with, on the left
 const SPECIAL = /<\|[^|>]*\|>|<\/?think>/gi; // the chat layout's own markers, left out of the caption
 
 let base = null, patternsOn = false, patternK = PATTERN_DEFAULT, floorsOn = false, fscale = null; // base: the recording as scanned; rec is base, or base sorted into the patterns Bob found
@@ -72,7 +73,120 @@ function loadNow(j) {
   $('watchZoomOne').textContent = w('One expert'); $('watchExpertWord').textContent = w('Expert');
   cube(); byHtml(); $('watchOnly').disabled = false;
   skillsHtml(); wordsHtml(); setMode('brain'); seek(0); say(''); cutHtml();
+  dialEntries = j.dials?.length ? [{ label: `From this scan: ${dialWords(j.dials)}`, items: j.dials }] : []; askedDialUnload = false; dialHtml();
+  cmpOff(); recFrom = String(j.from || ''); cmpList();
   loadIn();
+}
+
+// ---- dials: turn a part up or down, scan again, see what changed ----
+// Each entry in the list is one press of Set this dial: one block, one floor's attention or feed-forward block, or
+// every block of a skill. They are sent as one flat list (a later entry wins over an earlier one for the same part).
+let dialEntries = [], askedDialUnload = false, recFrom = '';
+const partWord = () => (rec.brain.kind === 'heads' ? 'head' : 'expert');
+const dialsNow = () => { try { return cleanDials(dialEntries.flatMap((x) => x.items), { experts: rec.brain.kind === 'neurons' ? 0 : rec.brain.experts, layers: rec.brain.layers }); } catch { return []; } };
+function dialHtml() {
+  if (!rec) return;
+  const what = $('watchDialWhat'), was = what.value, blocks = rec.brain.kind !== 'neurons';
+  // a scan of neuron groups has no single parts Brain Engine can turn, only whole floors
+  what.innerHTML = `${blocks ? `<option value="part">This ${partWord()} (floor ${floor + 1}, ${partWord()} ${expert})</option><option value="skill">Every ${partWord()} of one ${patternsOn ? 'pattern' : 'skill'}</option>` : ''}<option value="attn">Floor ${floor + 1}'s attention</option><option value="ffn">Floor ${floor + 1}'s feed-forward block${rec.brain.kind === 'experts' ? ' (all its experts together)' : ''}</option>`;
+  if ([...what.options].some((o) => o.value === was)) what.value = was;
+  $('watchDialSkillBox').hidden = what.value !== 'skill';
+  $('watchDialFloor').max = rec.brain.layers; $('watchDialFloor').value = floor + 1; $('watchDialPart').max = rec.brain.experts - 1; $('watchDialPart').value = expert;
+  $('watchDialPartBox').hidden = !blocks; $('watchDialPartWord').textContent = partWord() === 'head' ? 'Head' : 'Expert';
+  $('watchDialSkill').innerHTML = rec.skills.map((s, i) => `<option value="${i}">${esc(lookOf(i)[1])} ${esc(s.label)}</option>`).join('');
+  const list = dialsNow();
+  $('watchDialList').innerHTML = dialEntries.map((x, i) => `<li><span>${esc(x.label)}</span><button type="button" class="link" data-undial="${i}" aria-label="Take this dial off: ${esc(x.label)}">Take off</button></li>`).join('');
+  view.set({ dials: new Map(list.filter((d) => d.kind === (rec.brain.kind === 'heads' ? 'head' : 'expert')).map((d) => [`${d.layer}:${d.index}`, d.scale])) }); need = true;
+  $('watchDialSays').textContent = `${dialWords(list)}${list.length ? ' Blocks turned up have a light rim and a plus, blocks turned down are fainter with a dark rim and a minus.' : ' Press a block in the picture to choose it, or pick a floor under How close.'}`;
+  const can = list.length && src && !patternsOn;
+  $('watchDialScan').hidden = !can; $('watchDialScan').textContent = askedDialUnload ? 'Unload Bob\'s brain and scan again' : 'Scan again with these dials';
+  $('watchDialClear').hidden = !dialEntries.length;
+}
+$('watchDialWhat').onchange = () => { $('watchDialSkillBox').hidden = $('watchDialWhat').value !== 'skill'; };
+// which floor and block the dial is for: typed here, or chosen by pressing a block in the picture
+$('watchDialFloor').onchange = (ev) => { floor = Math.max(0, Math.min(rec.brain.layers - 1, (Math.floor(Number(ev.target.value)) || 1) - 1)); $('watchFloor').value = floor + 1; if (mode !== 'brain') setMode(mode); else dialHtml(); };
+$('watchDialPart').onchange = (ev) => { expert = Math.max(0, Math.min(rec.brain.experts - 1, Math.floor(Number(ev.target.value)) || 0)); $('watchExpert').value = expert; if (mode !== 'brain') setMode(mode); else dialHtml(); };
+$('watchDialScale').oninput = (ev) => { $('watchDialOut').textContent = `×${dialScale(ev.target.value).toFixed(2)}`; };
+$('watchDialSet').onclick = () => {
+  if (!rec) return;
+  const scale = dialScale($('watchDialScale').value), what = $('watchDialWhat').value, x = `×${scale.toFixed(2)}`;
+  let entry = null;
+  if (what === 'part') entry = { label: `Floor ${floor + 1}, ${partWord()} ${expert}: ${x}`, items: [{ kind: partWord(), layer: floor, index: expert, scale }] };
+  else if (what === 'skill') { const si = Number($('watchDialSkill').value) || 0; const items = skillDials(sp, si, scale).map((d) => ({ ...d, kind: partWord() })); if (!items.length) { say(`No ${partWord()} leans to ${rec.skills[si].label} in this scan, so there's nothing to turn.`); return; } entry = { label: `Every ${partWord()} of ${rec.skills[si].label} (${items.length.toLocaleString()}): ${x}`, items }; }
+  else entry = { label: `Floor ${floor + 1}'s ${what === 'attn' ? 'attention' : 'feed-forward block'}: ${x}`, items: [{ kind: what, layer: floor, index: 0, scale }] };
+  // the same part set again replaces its earlier entry
+  const keys = new Set(entry.items.map(dialKey));
+  dialEntries = dialEntries.filter((e0) => !(e0.items.length === entry.items.length && e0.items.every((d) => keys.has(dialKey(d)))));
+  dialEntries.push(entry); askedDialUnload = false; say(''); dialHtml();
+};
+$('watchDialList').addEventListener('click', (ev) => { const b = ev.target.closest('[data-undial]'); if (!b) return; dialEntries.splice(Number(b.dataset.undial), 1); askedDialUnload = false; dialHtml(); });
+$('watchDialClear').onclick = () => { dialEntries = []; askedDialUnload = false; dialHtml(); };
+$('watchDialScan').onclick = async () => {
+  const dials = dialsNow(); if (!dials.length || !src) return;
+  try {
+    const r = await fetch('/api/lab/watch/start', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ brain: src.brain, again: src.id, dials, what: rec.brain.kind === 'heads' ? 'heads' : '', unload: askedDialUnload }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
+    if (j.needUnload) { askedDialUnload = true; dialHtml(); say(`${(j.names || []).join(', ') || 'Bob\'s brain'} is on the graphics card, and the scan needs it. Press Unload Bob's brain and scan again to start. It loads again the next time you chat.`); return; }
+    askedDialUnload = false; dialHtml(); say(`The new scan has started. It asks the same questions with these dials set, and shows up on the Lab's ${NAME} page when it's done. Open it and Before and after compares the two.`);
+  } catch (e) { say(`Bob couldn't start that scan: ${e.message}`); }
+};
+
+// ---- before and after: this scan beside another scan of the same brain, word for word ----
+let cmp = null; // { rec, sp, map: this scan's question number -> the other scan's, result }
+function cmpOff() { cmp = null; $('watchHalfB').hidden = true; $('watchTagA').hidden = true; $('watchCmpView').hidden = true; $('watchCmpSays').textContent = ''; need = true; }
+async function cmpList() {
+  const box = $('watchCmpBox'), sel = $('watchCmpWith'); box.hidden = true;
+  if (!src) return;
+  const mine = src.id, from = recFrom;
+  try {
+    const r = await fetch('/api/lab/watch/view', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ brain: src.brain }) });
+    const j = await r.json().catch(() => ({})); if (!r.ok || !src || src.id !== mine) return;
+    const others = (j.recordings || []).filter((x) => x.id !== mine);
+    if (!others.length) return;
+    sel.innerHTML = `<option value="">(nothing, just this scan)</option>${others.map((x) => `<option value="${esc(x.id)}">${esc(x.name || x.id)}${x.when ? `, ${esc(x.when)}` : ''}${x.id === from ? ' (the scan this one was made from)' : ''}</option>`).join('')}`;
+    box.hidden = false;
+    if (from && others.some((x) => x.id === from)) { sel.value = from; cmpWith(from); } // made with dials or a cut: the comparison is the point, so it opens
+  } catch {}
+}
+async function cmpWith(id) {
+  if (!id || !src) { cmpOff(); return; }
+  try {
+    const r = await fetch('/api/lab/watch/read', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ brain: src.brain, id }) });
+    const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
+    const other = cleanRecording(j);
+    if (other.brain.experts !== base.brain.experts || other.brain.layers !== base.brain.layers || other.brain.kind !== base.brain.kind) throw new Error('that scan was made a different way (experts, neuron groups or attention heads), so the blocks don\'t line up');
+    const result = compareScans(other, base);
+    cmp = { rec: other, sp: specialise(other), map: new Map(result.clips.map((x) => [x.after, x.before])), result };
+    viewB.setData(other, cmp.sp, j.parts && Array.isArray(j.parts.layers) ? j.parts : null); viewB.set({ key: false, load: 'none' });
+    $('watchHalfB').hidden = false; $('watchTagA').hidden = false; $('watchCmpView').hidden = false;
+    $('watchCmpSays').textContent = compareWords(result);
+    lastIdx = -1; cmpSync = ''; need = true;
+  } catch (e) { cmpOff(); $('watchCmpSays').textContent = `Bob couldn't compare with that scan: ${e.message}.`; }
+}
+$('watchCmpWith').onchange = (ev) => cmpWith(ev.target.value);
+// the other block follows this one: the same turn, zoom, glass and what's hidden
+let cmpSync = '';
+function cmpFollow() {
+  const g = view.get(), st = JSON.stringify([g, [...hidden].map(String), $('watchMono').getAttribute('aria-checked'), $('watchMonoColour').value, $('watchMark').value]);
+  if (st === cmpSync) return; cmpSync = st;
+  viewB.set({ ...g, hidden, mono: $('watchMono').getAttribute('aria-checked') === 'true', monoColour: $('watchMonoColour').value, mark: $('watchMark').value, paths: $('watchPaths').getAttribute('aria-checked') === 'true' });
+}
+function litForB(i, frac) {
+  const out = [], cur = frames[i]; if (!cur || !cmp) return out;
+  const bi = cmp.map.get(cur.clip); if (bi === undefined) return out;
+  const c = cmp.rec.clips[bi], a = rec.clips[cur.clip];
+  // the question's words are the same in both; past them, each answer goes its own way, so keep step by word number
+  const at = (w) => (w < a.prompt ? Math.min(w, c.e.length - 1) : Math.min(c.prompt + (w - a.prompt), c.e.length - 1));
+  for (let k = 5; k >= 0; k--) { const f = frames[i - k]; if (!f || f.clip !== cur.clip) continue; out.push({ e: c.e[at(f.word)], age: k === 0 ? 0 : Math.min(1, (k + frac) / 6) }); }
+  return out;
+}
+function cmpHtml(i) {
+  if (!cmp) return; const cur = frames[i]; if (!cur) return;
+  const one = cmp.result.clips.find((x) => x.after === cur.clip), a = rec.clips[cur.clip];
+  if (!one) { $('watchCmpView').innerHTML = '<p class="muted">The other scan didn\'t ask this question.</p>'; return; }
+  const b = cmp.rec.clips[one.before];
+  $('watchCmpView').innerHTML = `<p><strong>${esc(compareWords(cmp.result))}</strong></p><p>This question: ${Math.round(one.moved * 100)}% of the picks moved while reading it, and the answer ${one.sameAnswer ? 'stayed the same' : 'changed'}.</p><div class="two${one.sameAnswer ? ' same' : ''}"><div><strong>Before</strong><p>${esc(b.answer || '(no answer)')}</p></div><div><strong>After</strong><p>${esc(a.answer || '(no answer)')}</p></div></div>`;
 }
 
 function skillsHtml() {
@@ -142,11 +256,12 @@ function litFor(i, frac) {
 function setMode(m) {
   mode = m; $('watchZoom').value = m;
   $('watchPick').hidden = m === 'brain'; $('watchExpertLbl').hidden = m !== 'expert';
-  $('watchCanvas').hidden = m === 'floor'; $('watchFloorView').hidden = m !== 'floor'; $('watchExpertView').hidden = m !== 'expert';
+  $('watchCanvas').hidden = m === 'floor'; $('watchPair').hidden = m === 'floor'; $('watchFloorView').hidden = m !== 'floor'; $('watchExpertView').hidden = m !== 'expert';
   $('watchVideo').disabled = m === 'floor';
   view.set({ picked: m === 'expert' ? { layer: floor, expert } : null });
   if (m === 'floor') floorHtml();
   if (m === 'expert') expertHtml();
+  dialHtml();
   lastIdx = -1; need = true;
 }
 
@@ -203,9 +318,10 @@ function tick(now) {
   if (need && rec) {
     need = false;
     const i = Math.floor(t), frac = playing ? t - i : 0;
-    if (i !== lastIdx) { lastIdx = i; caption(i); if (mode === 'floor') markFloor(i); }
+    if (i !== lastIdx) { lastIdx = i; caption(i); if (mode === 'floor') markFloor(i); cmpHtml(i); }
     if (floorsOn && fscale) { const fb = frames[i]; view.setFloors(fb ? floorsAt(base, fscale, fb.clip, fb.word) : null); }
     if (mode !== 'floor') view.draw(litFor(i, frac));
+    if (cmp && mode !== 'floor') { cmpFollow(); viewB.draw(litForB(i, frac)); }
   }
   requestAnimationFrame(tick);
 }

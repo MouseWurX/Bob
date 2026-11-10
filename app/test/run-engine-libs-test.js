@@ -49,6 +49,7 @@ check(/llama\.cpp library files \(ggml\) and the CUDA runtime files/.test(partsT
     const held = folder([exe, 'brain-engine-own.txt'], incompleteDir(cfg, e));
     fs.writeFileSync(path.join(held, 'bob-incomplete.json'), JSON.stringify({ id: e.id, missing: ['llama'], mark: { version: 'brain-engine-new', print: 'p' } }));
     check(incompleteUpdate(cfg, e)?.missing[0] === 'llama', 'the kept-aside update says what it lacks');
+    { const f = path.join(incompleteDir(cfg, e), 'bob-incomplete.json'); const keep = fs.readFileSync(f, 'utf8'); fs.writeFileSync(f, '\uFEFF' + keep); check(incompleteUpdate(cfg, e)?.missing[0] === 'llama', 'a note that starts with a BOM (saved by a Windows editor) is still read'); fs.writeFileSync(f, keep); }
     const st = engineStatus(cfg).find((x) => x.id === e.id);
     check(st.incomplete?.what === 'the llama.cpp library files (ggml)' && st.incomplete.version === 'brain-engine-new' && st.version === 'brain-engine-old', 'Settings, Engines shows the old one still in use and what the update is missing');
     const fetched = [];

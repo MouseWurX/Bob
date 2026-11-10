@@ -392,8 +392,9 @@ export function missingParts(folder, e, os_ = OS) {
 export const partsText = (parts) => parts.map((p) => ENGINE_PARTS[p] || p).join(' and ');
 // The kept, incomplete update: <folder>.incomplete, with bob-incomplete.json saying what's missing.
 export const incompleteDir = (cfg, e) => path.join(cfg.agentDir, e.dir + '.incomplete');
+// A note saved by a Windows editor can start with a BOM, which JSON.parse refuses, so it's stripped first.
 export function incompleteUpdate(cfg, e) {
-  try { const j = JSON.parse(fs.readFileSync(path.join(incompleteDir(cfg, e), 'bob-incomplete.json'), 'utf8')); return Array.isArray(j.missing) && j.missing.length ? j : null; } catch { return null; }
+  try { const j = JSON.parse(fs.readFileSync(path.join(incompleteDir(cfg, e), 'bob-incomplete.json'), 'utf8').replace(/^\uFEFF/, '')); return Array.isArray(j.missing) && j.missing.length ? j : null; } catch { return null; }
 }
 // An update with parts missing never takes the old engine's place: it's kept aside (so only the missing files need
 // downloading) and the old engine stays. Throws the plain reason, which offers the download.

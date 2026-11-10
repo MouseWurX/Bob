@@ -31,6 +31,24 @@
           <p id="watchCutSays" class="muted" role="status"></p>
           <button type="button" id="watchRescan" class="get" hidden>Scan again with these turned off</button>
         </fieldset>
+        <fieldset id="watchDialBox"><legend>Dials</legend>
+          <span id="watchDialHint" class="muted">Turn a part up or down, then scan again to see what changes. 1 is as built, 0 is silent, 2 is twice as loud. It's the same as scaling that part's weights, done live: the brain's file is never changed.</span>
+          <label>What to turn <select id="watchDialWhat"></select></label>
+          <div class="row"><label>Floor <input type="number" id="watchDialFloor" min="1" value="1" inputmode="numeric"></label><label id="watchDialPartBox"><span id="watchDialPartWord">Expert</span> <input type="number" id="watchDialPart" min="0" value="0" inputmode="numeric"></label></div>
+          <label id="watchDialSkillBox" hidden>Which one <select id="watchDialSkill"></select></label>
+          <label for="watchDialScale">How loud</label>
+          <input type="range" id="watchDialScale" min="0" max="2" step="0.05" value="1" aria-describedby="watchDialHint">
+          <output id="watchDialOut" for="watchDialScale">×1.00</output>
+          <div class="row"><button type="button" id="watchDialSet" class="get">Set this dial</button><button type="button" id="watchDialClear" class="link">All back to as built</button></div>
+          <ul id="watchDialList" class="tlist"></ul>
+          <p id="watchDialSays" class="muted" role="status"></p>
+          <button type="button" id="watchDialScan" class="get" hidden>Scan again with these dials</button>
+        </fieldset>
+        <fieldset id="watchCmpBox" hidden><legend>Before and after</legend>
+          <label>Compare with <select id="watchCmpWith" aria-describedby="watchCmpHint"></select></label>
+          <span id="watchCmpHint" class="muted">Another scan of this brain with the same questions. The two blocks play side by side, word for word.</span>
+          <p id="watchCmpSays" class="muted" role="status"></p>
+        </fieldset>
         <label for="watchZoom">How close</label>
         <select id="watchZoom"><option value="brain">The whole brain</option><option value="floor">One floor</option><option value="expert" id="watchZoomOne">One expert</option></select>
         <div id="watchPick" class="row" hidden>
@@ -80,7 +98,11 @@
       </section>
     </aside>
     <main class="watch-stage">
-      <canvas id="watchCanvas" tabindex="0" role="img" aria-label="The brain as a block of voxels. The words under it and the list on the left say the same thing."></canvas>
+      <div id="watchPair" class="watch-pair">
+        <div id="watchHalfB" class="watch-half" hidden><p class="watch-tag">Before</p><canvas id="watchCanvasB" role="img" aria-label="The scan it is compared with, playing the same word. The words under the pictures say what changed."></canvas></div>
+        <div class="watch-half"><p id="watchTagA" class="watch-tag" hidden>After</p><canvas id="watchCanvas" tabindex="0" role="img" aria-label="The brain as a block of voxels. The words under it and the list on the left say the same thing."></canvas></div>
+      </div>
+      <section id="watchCmpView" class="watch-cmp" hidden aria-live="polite"></section>
       <div id="watchFloorView" class="watch-floor" hidden></div>
       <section id="watchExpertView" class="watch-expert" hidden aria-live="polite"></section>
       <div id="watchPlayer" class="watch-player" hidden>
