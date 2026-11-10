@@ -4,6 +4,48 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.185
+
+Reviews over Bob-Net, a bigger Bob for harder checks, DeepSeek's thinking brains, and the home network for Bob-Net.
+
+Reviews over Bob-Net: another of your Bobs can check the work when the reviewer won't fit here. Fixes #30.
+
+- **High and Extreme effort**, with "Let the reviewer sit beside Bob's main brain" on: if there's room, the reviewer sits beside the main brain as before. If there isn't, and **Borrow brains from my other Bobs** is on, a paired Bob with a Review brain at least three quarters the size of this one's checks the work over Bob-Net. His brain does the thinking; every tool (file reads) still runs here, and the chat says who's checking. If none of them can, the reviewer swaps in here as before, and the chat says so.
+- **Ask my other Bobs for a quick second look** (Settings, off): at Low and Medium effort, a free paired Bob with a good enough Review brain checks longer replies once. If none is free, there's no check and no brain swap here. Short chit-chat is never checked.
+- The Bob doing the check needs **Take jobs from my other Bobs** on, isn't gaming or busy, and has a Review brain on Bob's built-in engine. Older Bobs don't list a Review brain, so they're never asked. A Bob that fails mid-check is skipped for 5 minutes, and the check carries on here.
+- Help, a Settings note and the Take jobs note explain it. Tests in `test/run-review-away-test.js`.
+
+Also, from three rounds of trying it on two real machines (a desktop and a handheld with built-in graphics):
+- **Memory kept for Windows** (Settings, Brains, shown with built-in graphics only): a slider from 0 to 8 GB, 4 GB to start with. With built-in graphics, a brain shares memory with Windows, and Bob leaves this much free memory alone before loading one. A 16 GB handheld can go lower so bigger brains load. At 0, Windows may slow down, or Bob may close, if memory runs out. It covers loading a brain and waking one when you start typing.
+- The chat now says which Bob is checking over Bob-Net, and the moot's summary names it ("… (over Bob-Net) checked: looks right"), not only the logbook.
+- A draft that came out as a tool step written as text (like "fetch_page with …") is no longer sent for a check and approved: the moot says the answer isn't finished.
+- If another Bob sends back an empty answer, for a borrowed reply or for a check, this Bob carries on by itself instead of leaving the reply empty.
+- **A check judges the right question.** The reviewer is now handed the question asked this turn, word for word, and told that lines inside files and tool results are quoted data. Files and tool results in what it reads are fenced off as such. (A small reviewer had read an old chat line inside Bob's logbook as the question.)
+- **A corrected answer about something else is set aside.** If the reviewer's corrected answer shares no words with the question while Bob's own answer does, Bob's answer stays, the chat says why, and no fix round starts.
+- **A Bob checking work for another doesn't crowd itself out.** A lent job never loads the chat brain beside it, and on built-in graphics one already there is let go first, so the Review brain gets the room (graphics memory and RAM, within Memory kept for Windows).
+- **A slower Bob gets time.** While the Bob doing a check keeps saying it's still loading or thinking, the asking Bob waits (up to 15 minutes). A refusal, a dropped line or a long silence still hands the check back at once.
+- **The check says who checked.** When another Bob checks over Bob-Net, the heading says so ("Handheld, second look over Bob-Net"), and the check is saved in the chat under that Bob's name. When none of the other Bobs can do it, the saved check says it happened here.
+- **Bob's answer stays unless the fix adds something real.** A corrected answer that's nearly the same as Bob's, or that brings in things none of what Bob looked up this turn says, no longer replaces his answer: the reviewer's points show as a note, and the result line says why.
+- **A Bob checking for another keeps its Review brain ready.** It stays loaded for 5 minutes after a check (it was 90 seconds, then the chat brain came back and the next check was short of room). Short of room on built-in graphics, a check is loaded with a smaller chat memory, as small as the work needs, before it's turned down. With 0 GB kept for Windows, the refusal no longer says Windows keeps a share.
+- **Long tool results fit.** When what Bob looked up is more than his brain's chat memory holds, the oldest results are shortened before the brain is asked, instead of the whole request being refused. If the brain still says it's too long, they're cut harder once more.
+- **A failed job keeps the chat.** The question stays, with the error as a note under it, even after a reload (a very long turn used to save an empty chat).
+- **Stuck repeating a tool:** at most 6 tool calls run from one reply, and after 3 repeats Bob is told to answer from what he has.
+- **Bob looks up his own features in his own Help first** (Bob-Net, the Lab, FNRI, the Forge and the rest), and the folder tool knows the real home folder instead of guessing one.
+
+A bigger Bob checks the harder jobs (PR #92):
+
+- **Ask a bigger Bob to check my harder jobs** (Settings, Bob-Net, off): at High and Extreme effort, the moot's check goes to one of your other Bobs whose Review brain is bigger than this one's, going by the size in the brain's name (High: the first bigger one in your list; Extreme: the biggest). Files the check wants to read are still read here. When none is free, or one says no or goes quiet, the chat says so and the check runs here.
+- **Check harder jobs for my other Bobs** (off) on the Bob that does the checks: he thinks on his Review brain with high thinking and keeps nothing. Computers only; the phone app doesn't check. Help, an FAQ ("Can a bigger Bob check my handheld's work?"), a glossary entry and the privacy page explain it. Tests in `test/run-bob-net-check-test.js`.
+
+Bob-Net and the home network (PR #91):
+
+- **New:** **Also over the home network** under Let my other replicant matrices in (off unless you turn it on). Your Bobs and your phone then reach each other straight over the home network when they're on the same one, which is quicker, and over Tailscale otherwise.
+- **Fixed:** Bob's Windows firewall rule now also lets in a lent graphics card's port (50052), and the home network when that's on. An older rule is offered for an update. Tests in `test/run-firewall-test.js`.
+
+- **DeepSeek's thinking brains.** The Brain catalogue has a DeepSeek family: DeepSeek's R1 thinking taught to smaller Qwen and Llama brains, from 1.5B (any laptop) to 32B (a 24 GB card), plus the 70B under Rented brains. Each writes out its reasoning step by step before it answers, and you can read it under 💭 Bob's thinking. They're from 2025, so they're marked Dated, and like every new brain they aren't recommended until they've been tried on real hardware.
+- When another Bob drops out in the middle of a check, the check says so and finishes here; the logbook says why a Bob is passed over for checks; and a check loaded here no longer brings the chat talker back beside it.
+- **Safer engine updates.** Before a new Brain Engine or llama.cpp build takes the old one's place, Bob checks that it's whole: the program plus its ggml and llama libraries. A download with only some of the files is turned down, and the engine you have stays as it was. **Fixed:** with an NVIDIA card, an engine download could pick llama.cpp's CUDA runtime file (cudart) instead of the engine itself, which left a Brain Engine update without its libraries; the runtime file is now only ever fetched beside the engine. Tests in `test/run-engine-keeper-test.js`.
+
 ## 1.5.184
 
 A new Lab page: **FNRI**, a scan of a brain's experts lighting up as it works.

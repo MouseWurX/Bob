@@ -1,7 +1,7 @@
 // 1.5.94 "Let my other replicant matrices in" with no manual steps: Bob listens on Tailscale without a restart, and
 // on Windows offers one firewall rule (one Windows prompt), scoped to Tailscale addresses and Bob's port.
 import fs from 'node:fs';
-import { RULE, TAILSCALE_RANGE, MARK, ruleScript, removeScript, encode, firewallState, changeRule } from '../src/firewall.js';
+import { RULE, TAILSCALE_RANGE, CARD_PORT, MARK, ruleScript, removeScript, encode, firewallState, changeRule } from '../src/firewall.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -10,8 +10,9 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
 // ---------- The rule itself ----------
 {
   const s = ruleScript(7777);
-  check('the rule is inbound TCP on Bob\'s port only', /-Direction Inbound -Action Allow -Protocol TCP -LocalPort 7777 /.test(s));
-  check('only Tailscale addresses get in', s.includes(`-RemoteAddress ${TAILSCALE_RANGE}`) && TAILSCALE_RANGE === '100.64.0.0/10');
+  check('the rule is inbound TCP on Bob\'s port and the lent card\'s gate only', /-Direction Inbound -Action Allow -Protocol TCP -LocalPort 7777,50052 /.test(s) && CARD_PORT === 50052);
+  check('the home network is let in only when that switch is on', !s.includes('LocalSubnet') && ruleScript(7777, '', { home: true }).includes(`-RemoteAddress ${TAILSCALE_RANGE},LocalSubnet `));
+  check('only Tailscale addresses get in', s.includes(`-RemoteAddress ${TAILSCALE_RANGE} `) && TAILSCALE_RANGE === '100.64.0.0/10');
   check('an old Bob rule is replaced, not doubled', s.indexOf('Remove-NetFirewallRule') < s.indexOf('New-NetFirewallRule'));
   check('no exe: no block rules touched', !s.includes('Disable-NetFirewallRule'));
   const w = ruleScript(7777, "C:\\Users\\you\\o'k Bob\\Bob.exe");
@@ -30,16 +31,22 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
 // ---------- Reading the state (no admin) ----------
 {
   const fake = (out, ok = true) => async () => ({ ok, out, err: '' });
-  let st = await firewallState(7777, { os_: 'win', run: fake(`Rule Name: ${RULE}\nLocalPort: 7777\n`) });
-  check('Windows: rule found by its port (labels are localized)', st.ruleHere === true && st.canAdd === true);
+  let st = await firewallState(7777, { os_: 'win', run: fake(`Rule Name: ${RULE}\nLocalPort: 7777,50052\n`) });
+  check('Windows: rule found by its ports (labels are localized)', st.ruleHere === true && st.canAdd === true);
+  st = await firewallState(7777, { os_: 'win', run: fake(`Rule Name: ${RULE}\nLocalPort: 7777\n`) });
+  check('Windows: an older rule without the card\'s port is offered again', st.ruleHere === false && st.behind === true);
+  st = await firewallState(7777, { os_: 'win', home: true, run: fake(`Rule Name: ${RULE}\nLocalPort: 7777,50052\nRemoteIP: 100.64.0.0/255.192.0.0\n`) });
+  check('Windows: with the home network on, a rule without it is offered again', st.behind === true);
+  st = await firewallState(7777, { os_: 'win', home: true, run: fake(`Rule Name: ${RULE}\nLocalPort: 7777,50052\nRemoteIP: 100.64.0.0/255.192.0.0,LocalSubnet\n`) });
+  check('Windows: with the home network in the rule, all set', st.ruleHere === true);
   st = await firewallState(7777, { os_: 'win', run: fake('No rules match the specified criteria.', false) });
   check('Windows: no rule', st.ruleHere === false && st.otherPort === false);
   st = await firewallState(7777, { os_: 'win', run: fake('Regelname: x\nLokaler Port: 8888\n') });
   check('Windows: a rule for another port counts as missing', st.ruleHere === false && st.otherPort === true);
   st = await firewallState(7777, { os_: 'linux', run: async (f, a) => ({ ok: a.includes('ufw'), out: '' }) });
-  check('Linux with ufw: the one line to run', st.line === 'sudo ufw allow in on tailscale0 to any port 7777 proto tcp' && !st.canAdd);
+  check('Linux with ufw: the one line to run', st.line === 'sudo ufw allow in on tailscale0 to any port 7777,50052 proto tcp' && !st.canAdd);
   st = await firewallState(7777, { os_: 'linux', run: async (f, a) => ({ ok: a.includes('firewalld'), out: '' }) });
-  check('Linux with firewalld: the one line to run', st.line === `sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="100.64.0.0/10" port port="7777" protocol="tcp" accept' && sudo firewall-cmd --reload` && !/trusted/.test(st.line));
+  check('Linux with firewalld: the one line to run', st.line === `sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="100.64.0.0/10" port port="7777" protocol="tcp" accept' && sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="100.64.0.0/10" port port="50052" protocol="tcp" accept' && sudo firewall-cmd --reload` && !/trusted/.test(st.line));
   st = await firewallState(7777, { os_: 'linux', run: async () => ({ ok: false, out: '' }) });
   check('Linux, no firewall on: nothing to do', st.line === '');
   st = await firewallState(7777, { os_: 'mac' });
@@ -53,7 +60,7 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   const run = async (file, args) => {
     calls.push([file, args]);
     if (file === 'powershell.exe') { ruleThere = true; return { ok: true, out: '', err: '' }; }
-    return { ok: true, out: ruleThere ? 'LocalPort: 7777' : 'nothing', err: '' };
+    return { ok: true, out: ruleThere ? 'LocalPort: 7777,50052' : 'nothing', err: '' };
   };
   const r = await changeRule(7777, { add: true, exe: 'C:\\Bob\\Bob.exe', os_: 'win', run });
   const ps = calls.find((c) => c[0] === 'powershell.exe');

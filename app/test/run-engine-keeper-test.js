@@ -8,7 +8,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EngineKeeper, keeperOn, keeperCandidates, dueUpdate, buildNumber, DAY_MS, FIRST_CHECK_MS } from '../src/engine-keeper.js';
-import { engineFor, ENGINES } from '../src/engines.js';
+import { engineFor, ENGINES, engineWhole, NOT_WHOLE, pickAsset } from '../src/engines.js';
+import { collect, writeZip, unzip } from '../src/zip.js';
 import { mergeSettings } from '../src/config.js';
 import { HELP } from '../public/help-content.js';
 
@@ -131,6 +132,42 @@ if (beOk) {
   check(Boolean(help('faq-engine-auto')) && /Android/.test(help('faq-engine-auto')) && /Mac/.test(help('faq-engine-auto')), 'FAQ: Does Bob update his engines by himself? (and where it doesn\'t apply)');
   check(/<dt>Keep engines up to date<\/dt>/.test(help('glossary')), 'the glossary has it');
   check(/Engine updates/.test(help('privacy')) && /Engine updates/.test(read('docs/legal/PRIVACY.md')), 'privacy pages say what goes out');
+}
+
+// ---- 1.5.185 (PC test of 1.5.184): an overlay-only Brain Engine zip must never replace a whole engine ----
+{ const be = { ...engineFor(ENGINES.find((x) => x.id === 'brainengine')), os: 'win', exe: 'llama-server.exe' };
+  const put = (dir, names) => { fs.mkdirSync(dir, { recursive: true }); for (const n of names) fs.writeFileSync(path.join(dir, n), 'x'); };
+  const whole = ['llama-server.exe', 'llama.dll', 'ggml.dll', 'ggml-base.dll', 'ggml-cpu-haswell.dll', 'ggml-cuda.dll', 'ggml-rpc.dll'];
+  const oldDir = path.join(tmp, 'brain-engine'); put(oldDir, whole);
+  // the republished zip: Bob's own files only, as a real zip, unpacked the way an update unpacks it
+  const src = path.join(tmp, 'own-only'); put(src, ['llama-server.exe', 'llama-cli.exe', 'bob-brainengine-notes.txt']);
+  const zipFile = path.join(tmp, 'brain-engine-win-x64.zip'); writeZip(zipFile, collect([src], src));
+  const stage = path.join(tmp, 'brain-engine.new'); unzip(zipFile, stage);
+  const why = engineWhole(stage, be, oldDir);
+  check(why === "its ggml libraries aren't in it", 'a fake zip with no ggml libraries is refused before the swap: ' + why);
+  check(/^The new Brain Engine download isn't a whole engine \(its ggml libraries aren't in it\), so I kept the one you have\. Nothing changed\.$/.test(NOT_WHOLE('Brain Engine', why)), 'and the line says the old engine stays');
+  const part = path.join(tmp, 'part'); put(part, ['llama-server.exe', 'ggml.dll', 'ggml-cpu-haswell.dll']);
+  check(/^(llama\.dll, ggml-base\.dll|ggml-base\.dll, llama\.dll) aren't in it$/.test(engineWhole(part, be, oldDir)), 'a build missing the core libraries the old one had is refused too: ' + engineWhole(part, be, oldDir));
+  const full = path.join(tmp, 'full'); put(full, whole);
+  check(engineWhole(full, be, oldDir) === '', 'a whole build goes in');
+  const cpu = path.join(tmp, 'cpu'); put(cpu, whole.filter((n) => !/cuda/.test(n)));
+  check(engineWhole(cpu, be, oldDir) === '', 'a whole build without the graphics-card library (a CPU build) still goes in');
+  check(engineWhole(path.join(tmp, 'nothing'), be, oldDir) === "llama-server.exe isn't in it", 'no program, no swap');
+  check(engineWhole(src, { id: 'sdcpp', exe: 'sd-cli.exe', os: 'win' }, oldDir) === '', 'other engines are not judged by llama.cpp\'s libraries');
+  const eng = fs.readFileSync(new URL('../src/engines.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  check(/const why = engineWhole\(stage, e, folder\); if \(why\) \{ fs\.rmSync\(stage, \{ recursive: true, force: true \}\); throw new Error\(NOT_WHOLE\(e\.name, why\)\); \} \}\n    try \{ fs\.writeFileSync/.test(eng) && /const why = engineWhole\(stage, e, fs\.existsSync\(folder\) \? folder : null\); if \(why\) throw new Error\(NOT_WHOLE\(e\.name, why\)\);/.test(eng), 'both update paths check before swapIn, and the old engine stays');
+}
+
+// ---- 1.5.185: the CUDA runtime zip is never picked as the engine (both orders of a real release's asset list) ----
+{ const ll = ENGINES.find((x) => x.id === 'llamacpp'); const win = engineFor(ll, 'win', 'x64');
+  const names = ['cudart-llama-bin-win-cuda-12.4-x64.zip', 'cudart-llama-bin-win-cuda-13.1-x64.zip', 'llama-b7100-bin-win-cpu-arm64.zip', 'llama-b7100-bin-win-cpu-x64.zip', 'llama-b7100-bin-win-cuda-12.4-x64.zip', 'llama-b7100-bin-win-cuda-13.1-x64.zip', 'llama-b7100-bin-win-hip-radeon-x64.zip', 'llama-b7100-bin-win-sycl-x64.zip', 'llama-b7100-bin-win-vulkan-x64.zip'];
+  const list = names.map((name) => ({ name }));
+  for (const [label, l] of [['as listed', list], ['reversed', [...list].reverse()]]) {
+    const n = pickAsset(l, win, true)?.name, c = pickAsset(l, win, false)?.name;
+    check(n === 'llama-b7100-bin-win-cuda-13.1-x64.zip' && c === 'llama-b7100-bin-win-vulkan-x64.zip', `${label}: with NVIDIA the newest CUDA engine (${n}), never a cudart- runtime zip; without, Vulkan (${c})`);
+  }
+  const only = [{ name: 'cudart-llama-bin-win-cuda-12.4-x64.zip' }, { name: 'llama-b7100-bin-win-cpu-x64.zip' }];
+  check(pickAsset(only, win, true)?.name === 'llama-b7100-bin-win-cpu-x64.zip', 'a release with only the runtime for CUDA falls back to a real engine build');
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

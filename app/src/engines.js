@@ -226,6 +226,24 @@ export const previousDir = (cfg, e) => path.join(cfg.agentDir, e.dir + '.previou
 export const ENGINE_GROUP = { brainengine: 'thinking', llamacpp: 'thinking', sdcpp: 'senses', whispercpp: 'senses', audio: 'senses', piper: 'voices', kokoro: 'voices', chatterbox: 'voices', uv: 'helpers', ffmpeg: 'helpers', libreoffice: 'helpers' };
 // Put a freshly unpacked build (stage) in the engine's place in one step. The build that was there moves to
 // <folder>.previous (one older build is kept, for Go back), unless keep is false.
+// PC test of 1.5.184: a Brain Engine download that held only Bob's own 19 files (no ggml libraries) went in as a
+// whole engine, and every brain then failed to start (0xC0000135, a missing library). Before a llama.cpp-family
+// engine takes the old one's place, the new folder must have the program and its libraries: at least the ggml and
+// llama libraries the old one had (on Windows, some at all). '' = whole; otherwise what's missing, in plain words.
+export const ENGINE_LIB = /^(lib)?(ggml|llama)[\w.-]*\.(dll|dylib|so(\.\d+)*)$/i;
+export function engineWhole(stage, e, old = null) {
+  if (!(e?.id === 'llamacpp' || e?.base === 'llamacpp')) return '';
+  if (!fs.existsSync(path.join(stage, e.exe))) return `${e.exe} isn't in it`;
+  const libs = (d) => { try { return fs.readdirSync(d).filter((f) => ENGINE_LIB.test(f)); } catch { return []; } };
+  const have = new Set(libs(stage).map((f) => f.toLowerCase()));
+  const had = old ? libs(old) : [];
+  if (!have.size && (had.length || e.os === 'win')) return 'its ggml libraries aren\'t in it';
+  const core = had.filter((f) => /^(lib)?(ggml|ggml-base|llama)\./i.test(f));
+  const missing = core.filter((f) => !have.has(f.toLowerCase()));
+  return missing.length ? `${missing.slice(0, 4).join(', ')} ${missing.length === 1 ? 'isn\'t' : 'aren\'t'} in it` : '';
+}
+export const NOT_WHOLE = (name, why) => `The new ${name} download isn't a whole engine (${why}), so I kept the one you have. Nothing changed.`;
+
 export function swapIn(folder, stage, { keep = true } = {}) {
   const prev = folder + '.previous';
   if (fs.existsSync(folder)) {
@@ -266,9 +284,13 @@ export async function latestEngine(cfg, id, nvidia, fetchImpl = fetch) {
 }
 
 // Pick the right zip from a release's asset list for this graphics card. Highest CUDA version wins.
+// PC test of 1.5.184: llama.cpp's CUDA pattern also matched "cudart-llama-bin-win-cuda-12.4-x64.zip" (the CUDA runtime
+// only, no llama-server), and when both CUDA versions tied that zip could be picked as the engine itself. The runtime is
+// fetched separately (runtime()), never as the engine.
+export const RUNTIME_ONLY = /^cudart-/i;
 export function pickAsset(assets, e, nvidia) {
   for (const re of [...(nvidia ? e.nvidia : []), ...e.other]) {
-    const hits = assets.filter((a) => re.test(a.name));
+    const hits = assets.filter((a) => re.test(a.name) && !RUNTIME_ONLY.test(a.name));
     if (!hits.length) continue;
     const ver = (n) => { const m = n.match(re) || []; return Number(m[1] ?? m[2] ?? 0); };
     hits.sort((a, b) => ver(b.name) - ver(a.name));
@@ -466,6 +488,7 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
     if (e.os !== 'win') makeRunnable(stage);
   } catch (err) { if (replacing) fs.rmSync(stage, { recursive: true, force: true }); throw err; }
   if (replacing) {
+    { const why = engineWhole(stage, e, folder); if (why) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(NOT_WHOLE(e.name, why)); } }
     try { fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify({ version: rel.tag_name, asset: asset.name, print: assetPrint(asset), at: new Date().toISOString() }, null, 2)); } catch {}
     try { swapIn(folder, stage); }
     catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Press Unload everything (or wait for the brain to go idle), then Try again.`); }
@@ -500,6 +523,8 @@ async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
     await grab(base.asset, stage, pub, signal, tick);
     if (rt) await grab(rt, stage, pub, signal, tick);
     flatten(stage, [b.exe]);
+    // the base has to be a whole engine before anything goes on top: never swap in a folder without it
+    if (!fs.existsSync(path.join(stage, b.exe))) throw new Error(`${b.name}'s download (${base.asset.name}) has no ${b.exe} in it, so I kept the ${e.name} you have.`);
     if (e.os === 'linux' && rt) liftLibraries(stage);
     const over = stage + '.own';
     fs.rmSync(over, { recursive: true, force: true }); fs.mkdirSync(over, { recursive: true });
@@ -509,6 +534,7 @@ async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
     fs.rmSync(over, { recursive: true, force: true });
     if (e.os !== 'win') makeRunnable(stage);
     if (!fs.existsSync(path.join(stage, e.exe))) throw new Error(`${e.name} unpacked, but ${e.exe} isn't in it. The release layout may have changed.`);
+    { const why = engineWhole(stage, e, fs.existsSync(folder) ? folder : null); if (why) throw new Error(NOT_WHOLE(e.name, why)); }
     fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify({ version: own.rel.tag_name, base: base.rel.tag_name, asset: own.asset.name, print: assetPrint(own.asset), at: new Date().toISOString() }, null, 2));
   } catch (err) { fs.rmSync(stage, { recursive: true, force: true }); fs.rmSync(stage + '.own', { recursive: true, force: true }); throw err; }
   try { swapIn(folder, stage); }

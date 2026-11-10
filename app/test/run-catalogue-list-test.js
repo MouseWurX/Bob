@@ -79,7 +79,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
   check('on the laptop the catalogue leaves it out and says where it went', !/id="cat-[a-z]+-nemotron-3\.5-bolt-74b"/.test(lap) && /class="muted too-big-note">\d+ more (is|are) too big for this replicant matrix\. [^<]*<button type="button" class="link" data-rentsettings>Rented brains<\/button>/.test(lap));
   const lapNet = catalogueHtml({ ...ctx, vramGB: 6, ramGB: 16, showUnsuited: true, bobNet: [{ name: 'npc', vramGB: 16, ramGB: 32 }] });
   check('with the big computer on the Bob-Net it stays, and the i says which Bob it fits', /id="cat-[a-z]+-nemotron-3\.5-bolt-74b"/.test(lapNet) && /Fits npc on your Bob-Net\./.test(lapNet));
-  check('on the 16 GB computer nothing in the list is too big', !/too-big-note/.test(catalogueHtml({ ...ctx, showUnsuited: true })));
+  const big16 = models.filter((m) => tooBigEverywhere(m, { vramGB: 16, ramGB: 32 }, [])).map((m) => m.id);
+  check('on the 16 GB computer only the DeepSeek R1 70B is too big, and the footer says one more', big16.join() === 'deepseek-r1-distill-llama-70b' && /class="muted too-big-note">1 more is too big/.test(catalogueHtml({ ...ctx, showUnsuited: true })), big16.join());
 }
 
 // ---- the hello carries the room; Bob-Net rooms come from the cached hellos ----
@@ -149,6 +150,21 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
   const server = read('src/server.js'), cellar = read('public/cellar.js');
   check('the server merges it at start, checks once a day only when due, and Check now is this replicant matrix only', /shop\.catalog = listUpdates\.merge\(shop\.shipped\)/.test(server) && /if \(listUpdates\.due\(\)\)/.test(server) && /p === '\/api\/catalog\/latest'\) \{\s*if \(!isLocal\)/.test(server));
   check('Settings: "Let Bob fetch his newest brain list" under Going online, off, with Check now', /sswitch\('catalogUpdates', settings\.catalogUpdates === true, 'Let Bob fetch his newest brain list', keep\('Off unless you turn it on\./.test(cellar) && /data-listcheck>Check now/.test(cellar));
+}
+
+// ---- DeepSeek's thinking brains (the owner, Nov 10: "i want to have access to their thinking") ----
+{
+  const R1 = ['deepseek-r1-distill-qwen-1.5b', 'deepseek-r1-distill-qwen-7b', 'deepseek-r1-distill-llama-8b', 'deepseek-r1-0528-qwen3-8b', 'deepseek-r1-distill-qwen-14b', 'deepseek-r1-distill-qwen-32b', 'deepseek-r1-distill-llama-70b'];
+  check('the seven R1 distills are in, under DeepSeek, untried, thinking brains', R1.every((id) => byId(id)?.family === 'DeepSeek' && byId(id).trial && byId(id).thinks === true && byId(id).jobs.includes('deep')), R1.filter((id) => !byId(id)).join(','));
+  check('each is one pinned Q4_K_M file with size and sha256', R1.every((id) => byId(id).files.length === 1 && /\/resolve\/[0-9a-f]{40}\/DeepSeek-R1-[\w.-]+-Q4_K_M\.gguf$/.test(byId(id).files[0].url) && byId(id).files[0].bytes > 0 && /^[0-9a-f]{64}$/.test(byId(id).files[0].sha256)));
+  check('they say who taught them and on what, and carry the Llama licence where it applies', R1.every((id) => byId(id).distilledFrom?.teacher === 'DeepSeek-R1' && byId(id).distilledFrom.base) && /Llama 3\.1/.test(byId('deepseek-r1-distill-llama-8b').license) && /Llama 3\.3/.test(byId('deepseek-r1-distill-llama-70b').license));
+  check('all but the newest are over a year old, so none is New, and each is Dated (kept, with newer ones named)', !R1.some((id) => newIds(models, { now: NOW }).has(id)) && R1.every((id) => byId(id).dated?.newer?.every((n) => byId(n))));
+  const tip = datedLine(byId('deepseek-r1-distill-qwen-14b'), models);
+  check('the Dated line never ends in two full stops', !/\.\./.test(tip) && !/\.\./.test(datedLine(byId('qwen2.5-coder-7b'), models)), tip);
+  const html = catalogueHtml({ ...ctx, showUnsuited: true });
+  check('their i says they write out their thinking, and who taught them', /Writes out its thinking before it answers; you can read it under Bob&#39;s thinking\.|Writes out its thinking before it answers; you can read it under Bob's thinking\./.test(html) && /Taught to think by DeepSeek-R1, on Alibaba&#39;s Qwen2\.5 14B\.|Taught to think by DeepSeek-R1, on Alibaba's Qwen2\.5 14B\./.test(html));
+  check('the 70B is offered under Rented brains on a 16 GB card, as a GGUF file a rented machine fetches', rentPicks(models, catalog.bigBrains, { vramGB: 16, ramGB: 32 }, []).some((p) => p.key === 'cat:deepseek-r1-distill-llama-70b' && /^unsloth\/DeepSeek-R1-Distill-Llama-70B-GGUF\/DeepSeek-R1-Distill-Llama-70B-Q4_K_M\.gguf$/.test(p.model) && p.card === '80'));
+  check('the DeepSeek family has its blurb', /R1 thinking/.test(FAMILIES.DeepSeek || ''));
 }
 
 // ---- no "(downloaded by Bob)" ----

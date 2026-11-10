@@ -89,7 +89,9 @@ export class CardLender {
     if (!lendCardOn(this.cfg)) return 'off';
     if (this.gaming()) return 'gaming';
     const ip = plainIp(localAddr);
-    if (!isTailscaleIp(ip) || !this.ips().includes(ip)) return 'not tailscale';
+    // Asked through the door: on its Tailscale address, or on its home-network address with "Also over the home network" on.
+    const door = (isTailscaleIp(ip) && this.ips().includes(ip)) || (this.cfg.remote?.homeNet === true && this.home().some((m) => m.address === ip));
+    if (!door) return 'not tailscale';
     if (!this.tool().found) return 'no tool';
     return '';
   }
@@ -102,7 +104,7 @@ export class CardLender {
     const why = this.refusal(localAddr);
     if (why) return { ok: false, why, error: why === 'no tool' ? missingWords('rpc') : why };
     const near = homeFirst(this.cfg) && Array.isArray(home) ? pickHome(this.home(), home.slice(0, 8)) : null;
-    const host = near ? near.host : plainIp(localAddr), allow = near ? near.peer : plainIp(remoteAddr), via = near ? 'home' : 'tailscale';
+    const host = near ? near.host : plainIp(localAddr), allow = near ? near.peer : plainIp(remoteAddr), via = near || isHomeIp(host) ? 'home' : 'tailscale';
     if (!allow) return { ok: false, why: 'failed', error: 'Bob couldn\'t tell who was asking.' };
     if (this.child && this.host === host && this.allow === allow) { this.keep(); return { ok: true, host, port: this.port, via }; }
     this.close();
@@ -168,7 +170,7 @@ export class CardBorrower {
     this.close();
     if (!wantsSpread(this.cfg, { sizeGB })) return [];
     const bobs = (this.lenders?.bobs?.() || []).filter((b) => !(this.down.get(b.address) > this.now()));
-    const mine = homeFirst(this.cfg) ? this.home() : [];
+    const here = this.home(), mine = homeFirst(this.cfg) ? here : [];
     const tries = await Promise.all(bobs.map(async (bob) => {
       try {
         const home = this.homeDown.get(bob.address) > this.now() ? [] : mine.map((m) => m.address);
@@ -177,7 +179,7 @@ export class CardBorrower {
         const host = bob.address.split(':')[0];
         if (!(r.ok && j.ok && Number(j.port) > 0)) return null;
         // Over the home network: his gate must be on our own home network. Otherwise on the Tailscale address we reach him on.
-        if (j.via === 'home') return home.length && mine.some((m) => isHomeIp(j.host) && sameNet(m.address, j.host, m.netmask)) ? { bob, via: 'home', at: `${j.host}:${Number(j.port)}` } : null;
+        if (j.via === 'home') return here.some((m) => isHomeIp(j.host) && sameNet(m.address, j.host, m.netmask)) ? { bob, via: 'home', at: `${j.host}:${Number(j.port)}` } : null;
         if (j.host === host || !isTailscaleIp(host)) return { bob, via: 'tailscale', at: `${j.host}:${Number(j.port)}` };
         return null;
       } catch { return null; }

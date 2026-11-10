@@ -86,7 +86,7 @@ function rowHtml(m, job, ctx) {
   const isNew = ctx.newIds?.has(m.id) === true;
   const dated = datedLine(m, ctx.allModels || ctx.models);
   const roomy = !here && s.level !== 'ok' ? roomOn(m, ctx.bobNet) : '';
-  const tip = [m.what, communityLine(m), where, out, isNew ? 'New: one of the five newest releases in its family.' : '', dated, m.trial ? `${TRIAL_LINE} ${m.trialNote || ''}`.trim() : '', m.bench || '', s.why, roomy ? `Fits ${roomy} on your Bob-Net.` : '', fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`].filter(Boolean).join('\n');
+  const tip = [m.what, communityLine(m), distilledLine(m), m.thinks ? THINKS_LINE : '', where, out, isNew ? 'New: one of the five newest releases in its family.' : '', dated, m.trial ? `${TRIAL_LINE} ${m.trialNote || ''}`.trim() : '', m.bench || '', s.why, roomy ? `Fits ${roomy} on your Bob-Net.` : '', fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`].filter(Boolean).join('\n');
   const tags = `${recTag}${makerTag(m)}${isOwn(m) ? (m.madeByBob ? '<span class="tag own-bob" tabindex="0" data-tip="Its brain card says it was made for Bob in his own workshop. Bob runs it from where it is and leaves the pick to you.">Bob\'s own brain</span>' : '<span class="tag" data-tip="A brain you added from a file on this replicant matrix. Bob runs it from where it is and never recommends it over the ones he knows.">Your own file</span>') : ''}${isNew ? `<span class="tag new-tag" tabindex="0" data-tip="${esc(`New: one of the five newest releases in the ${familyOf(m)} family.${out ? ` ${out}.` : ''}`)}">New</span>` : ''}${dated ? `<span class="tag dated-tag" tabindex="0" data-tip="${esc(dated)}">Dated</span>` : ''}${!rec && s.level !== 'ok' ? LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
   const on = isActive({ entry: m, value: m.id, installed: here }, ctx.active);
   const sw = job.id === 'phone' ? '<span class="muted">In the phone app</span>'
@@ -115,6 +115,7 @@ export const FAMILIES = {
   Granite: 'Made by IBM. Plain, steady brains for everyday work and office jobs, from a small 3B to a 30B.',
   Mistral: 'Made by Mistral AI in France. Ministral brains that see pictures, and Devstral for coding.',
   Nemotron: 'Made by NVIDIA. Quick brains built for tools and long jobs; some see pictures.',
+  DeepSeek: 'Made by DeepSeek. Their R1 thinking taught to smaller Qwen and Llama brains: each one writes out its reasoning step by step before it answers, and you can read it under Bob\'s thinking. The big DeepSeek brains are under Rented brains.',
   GLM: 'Made by Z.ai. A coding and tools brain that thinks before it answers.',
   Laguna: 'Made by Poolside. A coder that is small for what it does.',
   'GPT-OSS': 'Made by OpenAI, open to download. A careful thinker and reviewer.',
@@ -153,8 +154,12 @@ export const dayWords = (d) => (DATE_RE.test(d || '') ? `${MONTHS[Number(d.slice
 export function datedLine(m, all = []) {
   if (!m?.dated) return '';
   const names = [].concat(m.dated.newer || []).map((id) => all.find((x) => x.id === id)?.name).filter(Boolean);
-  return `Dated: ${m.dated.why || 'newer brains do this job better'}.${names.length ? ` Newer ones to try: ${names.join(', ')}.` : ''} It stays on the list; nothing is taken away.`;
+  return `Dated: ${String(m.dated.why || 'newer brains do this job better').replace(/\.$/, '')}.${names.length ? ` Newer ones to try: ${names.join(', ')}.` : ''} It stays on the list; nothing is taken away.`;
 }
+// A brain taught by a bigger one (catalog.json distilledFrom: { teacher, base, baseBy }), and one that writes out its
+// thinking before it answers (thinks: true): one line each in the i tip.
+export const distilledLine = (m) => (m?.distilledFrom?.teacher ? `Taught to think by ${m.distilledFrom.teacher}, on ${m.distilledFrom.baseBy ? `${m.distilledFrom.baseBy}'s ` : ''}${m.distilledFrom.base || 'a smaller brain'}.` : '');
+export const THINKS_LINE = 'Writes out its thinking before it answers; you can read it under Bob\'s thinking.';
 export const TRIAL_LINE = 'Not tried on a real replicant matrix yet, so I don\'t recommend it yet.';
 
 function familyHtml(job, fam, list, ctx) {

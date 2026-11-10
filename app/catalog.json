@@ -2687,6 +2687,237 @@
           "bob": "$model"
         }
       }
+    },
+    {
+      "id": "deepseek-r1-distill-qwen-1.5b",
+      "family": "DeepSeek",
+      "category": "chat",
+      "jobs": ["deep"],
+      "name": "DeepSeek R1 Distill Qwen 1.5B",
+      "what": "DeepSeek's thinking taught to a tiny Qwen: it writes out its reasoning step by step before it answers, so you can read how it got there. Fun to watch on a laptop or with no graphics card; good at simple sums, weak at everything else. Text only, no tools.",
+      "sizeGB": 1.1,
+      "vramGB": 2,
+      "params": 1.5,
+      "license": "MIT (built on Qwen2.5, Apache 2.0)",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "published": "2025-01-20",
+      "thinks": true,
+      "distilledFrom": {"teacher": "DeepSeek-R1", "base": "Qwen2.5 Math 1.5B", "baseBy": "Alibaba"},
+      "dated": {"newer": ["qwen3.5-2b"], "why": "From January 2025. Newer thinking brains reason as well or better, keep longer chats in mind and can use tools."},
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/3cb4d15544a2a5e07439592b9a0965b6445fbd34/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 1117321312,
+          "sha256": "f3bdf9cf31dee4b57ae4e455a1cb0d01b5c2c1b50d72d3112141c195506c2840"
+        }
+      ],
+      "use": {
+        "models": {
+          "deep": "$model"
+        }
+      }
+    },
+    {
+      "id": "deepseek-r1-distill-qwen-7b",
+      "family": "DeepSeek",
+      "category": "chat",
+      "jobs": ["deep", "reviewer"],
+      "name": "DeepSeek R1 Distill Qwen 7B",
+      "what": "DeepSeek's thinking in a 7B: it reasons out loud before it answers, strongest at maths and puzzles. Fits a 6 GB laptop card. Text only, no tools.",
+      "sizeGB": 4.7,
+      "vramGB": 6,
+      "params": 7,
+      "license": "MIT (built on Qwen2.5, Apache 2.0)",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "published": "2025-01-20",
+      "thinks": true,
+      "distilledFrom": {"teacher": "DeepSeek-R1", "base": "Qwen2.5 Math 7B", "baseBy": "Alibaba"},
+      "dated": {"newer": ["qwen3.5-9b", "deepseek-r1-0528-qwen3-8b"], "why": "From January 2025. Newer thinking brains reason as well or better, keep longer chats in mind and can use tools."},
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-7B-GGUF/resolve/097680e4eed7a83b3df6b0bb5e5134099cadf1b0/DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 4683073248,
+          "sha256": "78272d8d32084548bd450394a560eb2d70de8232ab96a725769b1f9171235c1c"
+        }
+      ],
+      "use": {
+        "models": {
+          "deep": "$model"
+        }
+      }
+    },
+    {
+      "id": "deepseek-r1-distill-llama-8b",
+      "family": "DeepSeek",
+      "category": "chat",
+      "jobs": ["deep", "reviewer"],
+      "name": "DeepSeek R1 Distill Llama 8B",
+      "what": "DeepSeek's thinking taught to Meta's Llama 3.1 8B: reasons out loud before it answers, often a little better at plain writing than the Qwen 7B. Text only, no tools.",
+      "sizeGB": 4.9,
+      "vramGB": 6,
+      "params": 8,
+      "license": "MIT, plus Meta's Llama 3.1 licence",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "published": "2025-01-20",
+      "thinks": true,
+      "distilledFrom": {"teacher": "DeepSeek-R1", "base": "Llama 3.1 8B", "baseBy": "Meta"},
+      "dated": {"newer": ["qwen3.5-9b", "deepseek-r1-0528-qwen3-8b"], "why": "From January 2025. Newer thinking brains reason as well or better, keep longer chats in mind and can use tools."},
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Llama-8B-GGUF/resolve/615f8936e16dfde29dcc00be71145d4d5ce8ed53/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 4920737216,
+          "sha256": "0addb1339a82385bcd973186cd80d18dcc71885d45eabd899781a118d03827d9"
+        }
+      ],
+      "use": {
+        "models": {
+          "deep": "$model"
+        }
+      }
+    },
+    {
+      "id": "deepseek-r1-0528-qwen3-8b",
+      "family": "DeepSeek",
+      "category": "chat",
+      "jobs": ["deep", "reviewer", "tinker"],
+      "name": "DeepSeek R1 0528 Qwen3 8B",
+      "what": "The later R1 (May 2025) taught to Qwen3 8B: the best thinker of the small DeepSeek brains, and it can use tools a little. Reasons out loud before it answers. Fits an 8 GB card. Text only.",
+      "sizeGB": 5.0,
+      "vramGB": 7,
+      "params": 8,
+      "license": "MIT (built on Qwen3, Apache 2.0)",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "published": "2025-05-29",
+      "thinks": true,
+      "distilledFrom": {"teacher": "DeepSeek-R1", "base": "Qwen3 8B", "baseBy": "Alibaba"},
+      "dated": {"newer": ["qwen3.5-9b"], "why": "From May 2025. Newer brains of this size think as well, use tools better and also see pictures."},
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF/resolve/eb48357c179d34dbf515983f798dfb8752a0f261/DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 5027785216,
+          "sha256": "a86349a4180c4e6bb43f874c29c404fa2be3f90b15509bd6d86f697dba724ec1"
+        }
+      ],
+      "use": {
+        "models": {
+          "deep": "$model"
+        }
+      }
+    },
+    {
+      "id": "deepseek-r1-distill-qwen-14b",
+      "family": "DeepSeek",
+      "category": "chat",
+      "jobs": ["deep", "reviewer"],
+      "name": "DeepSeek R1 Distill Qwen 14B",
+      "what": "DeepSeek's thinking in a 14B: a careful reasoner for maths, logic and checking work, shown step by step. Fits a 12 GB card, or a 16 GB one with room to spare. Text only, no tools.",
+      "sizeGB": 9.0,
+      "vramGB": 11,
+      "params": 14,
+      "license": "MIT (built on Qwen2.5, Apache 2.0)",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "published": "2025-01-20",
+      "thinks": true,
+      "distilledFrom": {"teacher": "DeepSeek-R1", "base": "Qwen2.5 14B", "baseBy": "Alibaba"},
+      "dated": {"newer": ["qwen3.6-27b", "qwen3.8-27b"], "why": "From January 2025. Newer thinking brains reason as well or better, keep longer chats in mind and can use tools."},
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-14B-GGUF/resolve/7b05b58b41f623e66fc74cd27b35475267b2f3e3/DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 8988109984,
+          "sha256": "67a7933cf2ad596a393c8e13b30bc4da2d50b283e250b78554aed18817eca31c"
+        }
+      ],
+      "use": {
+        "models": {
+          "deep": "$model"
+        }
+      }
+    },
+    {
+      "id": "deepseek-r1-distill-qwen-32b",
+      "family": "DeepSeek",
+      "category": "chat",
+      "jobs": ["deep", "reviewer"],
+      "name": "DeepSeek R1 Distill Qwen 32B",
+      "what": "The strongest DeepSeek thinker that still runs at home: reasons out loud at length, very good at maths and logic. Wants a 24 GB card; on 16 GB it runs, slowly. Text only, no tools.",
+      "sizeGB": 19.9,
+      "vramGB": 22,
+      "params": 32,
+      "license": "MIT (built on Qwen2.5, Apache 2.0)",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "published": "2025-01-20",
+      "thinks": true,
+      "distilledFrom": {"teacher": "DeepSeek-R1", "base": "Qwen2.5 32B", "baseBy": "Alibaba"},
+      "dated": {"newer": ["qwen3.8-27b", "qwen3.6-35b-a3b"], "why": "From January 2025. Newer thinking brains reason as well or better, keep longer chats in mind and can use tools."},
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-32B-GGUF/resolve/1938d05cc893a60f37be1dc16e7465038f4fca63/DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 19851335584,
+          "sha256": "ca171ca03554ee20cf67ad6b540610ae7eabb95af00c0abd36bb73542e140fb5"
+        }
+      ],
+      "use": {
+        "models": {
+          "deep": "$model"
+        }
+      }
+    },
+    {
+      "id": "deepseek-r1-distill-llama-70b",
+      "family": "DeepSeek",
+      "category": "chat",
+      "jobs": ["deep", "reviewer"],
+      "name": "DeepSeek R1 Distill Llama 70B",
+      "what": "The biggest DeepSeek R1 distill, on Meta's Llama 3.3 70B: deep step-by-step reasoning. Wants about 46 GB of graphics memory, so for most people it's one to rent a card for. Text only, no tools.",
+      "sizeGB": 42.5,
+      "vramGB": 46,
+      "params": 70,
+      "license": "MIT, plus Meta's Llama 3.3 licence",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "published": "2025-01-20",
+      "thinks": true,
+      "distilledFrom": {"teacher": "DeepSeek-R1", "base": "Llama 3.3 70B Instruct", "baseBy": "Meta"},
+      "dated": {"newer": ["qwen3.6-35b-a3b"], "why": "From January 2025. Newer thinking brains reason as well or better, keep longer chats in mind and can use tools."},
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Llama-70B-GGUF/resolve/732dd974083ea5877d7b6d788b36fe7c2e5eab36/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 42520396448,
+          "sha256": "952ff479c48ac3ece81fb6d9a5a03bfeac215e6caac780fbe91ff8cb0e05bcf3"
+        }
+      ],
+      "use": {
+        "models": {
+          "deep": "$model"
+        }
+      }
     }
   ],
   "packs": [
@@ -3022,7 +3253,7 @@
       "cardGB": 0
     }
   ],
-  "updated": "2026-11-09",
+  "updated": "2026-11-10",
   "bigBrains": [
     {
       "id": "mistral-large-4",

@@ -10,7 +10,8 @@ import { findTool, toolDirs, exeFor, runTool, missingWords, isDiffusion } from '
 import { partsOf, joinedName, joinArgs, splitArgs, needsSplitForUpload, joinParts } from '../src/lab-split.js';
 import { benchArgs, readBench, benchLine, benchBrain } from '../src/lab-bench.js';
 import { CardLender, CardBorrower, wantsSpread, lendCardOn, lendCardRoute, RPC_PORT, INNER_PORT, admit, isHomeIp, pickHome, homeIps, openGate } from '../src/share-card.js';
-import { cleanSharePatch, shareView } from '../src/share-brains.js';
+import { cleanSharePatch, shareView, Lenders } from '../src/share-brains.js';
+import { cleanPhonePatch, phoneView } from '../src/phone-access.js';
 import { diffusionArgs, readFrames } from '../src/lab-diffusion.js';
 import { mergeScores } from '../src/lab-challenges.js';
 
@@ -235,6 +236,54 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   }
   const llamacpp = read(path.join(here, '..', 'src', 'llamacpp.js'));
   ok(/args\.push\('--rpc', helpers\.join\(','\)\)/.test(llamacpp) && /this\.spread\?\.close\(\)/.test(llamacpp), 'spread: the engine adds --rpc and hands the cards back when the brain goes');
+}
+
+// ---- Also over the home network (the door) ----
+{
+  const H = (...x) => x.join('.');
+  const myHome = [{ address: H(192, 168, 4, 185), netmask: '255.255.255.0' }];
+  ok(cleanPhonePatch({ port: 7777, remote: { enabled: true, passcode: 'secret-1', hosts: ['100.101.1.2:7777'] } }, {}).remote.homeNet === false, 'home door: off to start with');
+  ok(cleanPhonePatch({ port: 7777, remote: { enabled: true, passcode: 'secret-1', hosts: ['100.101.1.2:7777'] } }, { homeNet: true }).remote.homeNet === true, 'home door: switches on');
+  ok(phoneView({ port: 7777, remote: { homeNet: true } }).homeNet === true, 'home door: Settings shows it');
+  const urls = [];
+  let nearUp = true;
+  const fetchFn = async (url, o) => {
+    urls.push(url);
+    if (url.includes(H(192, 168)) && !nearUp) throw new TypeError('fetch failed');
+    if (url.endsWith('/api/lend/hello')) return { ok: true, status: 200, json: async () => ({ lend: true, brain: 'x', home: [`${H(192, 168, 4, 189)}:7777`, '8.8.8.8:7777'] }) };
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+  const ls = new Lenders({ share: { borrow: { bobs: [] } } }, { fetchFn, home: () => myHome });
+  const go = { name: 'Go', address: '100.102.0.7:7777', passcode: 'secret-2' };
+  await ls.hello(go, { force: true });
+  ok(urls[0] === 'http://100.102.0.7:7777/api/lend/hello' && ls.nearOf(go) === `${H(192, 168, 4, 189)}:7777`, 'home door: the first hello goes over Tailscale and learns his home-network door');
+  urls.length = 0; await ls.call(go, '/api/lend/hello');
+  ok(urls[0] === `http://${H(192, 168, 4, 189)}:7777/api/lend/hello`, 'home door: then the home network goes first');
+  nearUp = false; urls.length = 0; await ls.call(go, '/api/lend/hello');
+  ok(urls.length === 2 && urls[1].startsWith('http://100.102.0.7:7777') && ls.nearOf(go) === '', 'home door: home network not answering, Tailscale is the backup, and home waits a while');
+  const ls2 = new Lenders({}, { fetchFn: async () => ({ ok: true, status: 200, json: async () => ({ lend: true, home: [`${H(10, 0, 0, 5)}:7777`, '8.8.8.8:7777'] }) }), home: () => myHome });
+  await ls2.hello(go, { force: true });
+  ok(ls2.nearOf(go) === '', 'home door: another network\'s address, or a public one, is never used');
+  {
+    let sends = 0;
+    const slow = new Lenders({}, { fetchFn: async (url) => { if (url.includes(H(192, 168))) { sends++; const e = new Error('timeout'); e.name = 'TimeoutError'; throw e; } sends++; return { ok: true, status: 200 }; }, home: () => myHome });
+    slow.near.set(go.address, `${H(192, 168, 4, 189)}:7777`);
+    let threw = false; try { await slow.call(go, '/api/borrow/job', { method: 'POST', body: { a: 1 } }); } catch { threw = true; }
+    ok(threw && sends === 1, 'home door: a sent job that timed out over the home network is never sent twice');
+  }
+  // A card asked for through the home-network door
+  const file = path.join(tmp, 'cfg2.json'); fs.writeFileSync(file, '{}');
+  const cfg = { configFile: file, remote: { enabled: true, passcode: 'secret-1', homeNet: true }, share: { lendCard: true } };
+  const gates = [];
+  const lender = new CardLender(cfg, { spawnFn: (exe, args) => { const c = new EventEmitter(); c.stdout = new EventEmitter(); c.stderr = new EventEmitter(); c.exitCode = null; c.kill = () => { c.exitCode = 0; }; setTimeout(() => c.stderr.emit('data', 'Starting RPC server\n'), 2); return c; }, tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome, gate: async (o) => { gates.push(o); return { close() {} }; } });
+  const r = await lender.open({ localAddr: H(192, 168, 4, 185), remoteAddr: H(192, 168, 4, 189) });
+  ok(r.ok && r.via === 'home' && gates[0].allow === H(192, 168, 4, 189), 'home door: a card asked for over the home network opens there, for that Bob only');
+  lender.close();
+  const shut = new CardLender({ ...cfg, remote: { ...cfg.remote, homeNet: false } }, { tool: () => ({ found: true, path: '/x' }), ips: () => ['100.101.1.2'], home: () => myHome });
+  ok((await shut.open({ localAddr: H(192, 168, 4, 185), remoteAddr: H(192, 168, 4, 189) })).why === 'not tailscale', 'home door: with it off, nothing over the home network');
+  const server = read(path.join(here, '..', 'src', 'server.js'));
+  ok(/p\.startsWith\('\/api\/pair\/'\) && !fromTailscaleOrLocal\(req\.socket\.remoteAddress\)\) return send\(res, 403/.test(server), 'home door: pairing stays on Tailscale only');
+  ok(/remoteHome && homeIps\(\)\.some\(\(m\) => sameNet\(m\.address, addr, m\.netmask\)/.test(server), 'home door: only this replicant matrix\'s own home network, never wider');
 }
 
 // ---- diffusion brains ----
