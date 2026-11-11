@@ -13,6 +13,8 @@ export const WANTS = [
     label: 'Take quick notes when you say "note:"', note: 'Saved at once with the date, in one text file.' },
   { card: 'how', key: 'docTools', setting: 'Read and search my documents', where: 'How Bob works',
     label: 'Read and search your documents', note: 'Word, Excel, PowerPoint, PDF and more. Nothing leaves this replicant matrix.' },
+  { card: 'how', key: 'docView', setting: 'Show documents in the side panel', where: 'How Bob works',
+    label: 'Show documents beside the chat', note: 'Word, Excel, PowerPoint and PDF open in the side panel.' },
   { card: 'how', key: 'sandboxCode', setting: 'Let Bob work things out in a sandbox', where: 'How Bob works',
     label: 'Work out sums, dates and money in a sandbox', note: 'A locked box that can\'t see your files, so I answer from the result, not a guess.' },
   { card: 'how', key: 'planFirst', setting: 'Show Bob\'s plan before big jobs', where: 'How Bob works',
