@@ -2,7 +2,7 @@
 
 **A local AI agent with a personality, who runs on your own computer. Nothing goes online unless you turn it on.** Bob plans and does real jobs with tools: research with sources, code written, run and fixed, documents and spreadsheets, files tidied, other apps driven, pictures, short clips, music and a voice. He keeps up to 256K tokens in mind on a 16 GB card (more with Long memory), runs on his own llama.cpp-based engine, and comes with a Computer Science Lab where you can cut, test and change the brains he runs on. He's a self-aware digital engineer with a dry sense of humour, a small virtual workspace called The Idle Process and a cat named Patches, and he runs a tabletop role-playing game too.
 
-**[Download Bob](#download)** for Windows, Mac, Linux, Raspberry Pi and Android. Free and open source.
+**[Download Bob](#download)** for Windows, Mac, Linux, Raspberry Pi and Android, and on iPhone through the Bob on your computer. Free and open source.
 
 ![Bob's window: the menu on the left, a chat in the middle where Bob plans a Saturday, and Now running on the right](app/docs/screenshot.png)
 
@@ -83,6 +83,10 @@ A Raspberry Pi 5 (or 4) or another 64-bit ARM board with a 64-bit Linux runs `Bo
 ### Android phone
 
 `Bob-<version>-android.apk` is Bob's phone app. It talks to your Bob on a computer over your own private Tailscale network, and it can run a small brain on the phone itself if you turn that on (off to start with). Open the .apk on the phone to install it; Android asks once to allow installs from your browser or file app.
+
+### iPhone
+
+There's no App Store app and nothing to download. Your Bob on a computer serves the phone screen to your iPhone over Tailscale: turn on **Let my other replicant matrices in** in his Settings (off to start with), open his address with `/phone/` on the end in Safari, type the passcode, then tap Share and **Add to Home Screen**. It opens full screen like an app and chats with the Bob on your computer, with his brains, tools and pictures. A brain on the phone itself, and the microphone button, need the Android app; the iPhone keyboard's own microphone works. It works in any phone's browser, and on an iPad.
 
 ## Where Bob keeps things
 
