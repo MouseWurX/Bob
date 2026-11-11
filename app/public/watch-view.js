@@ -69,7 +69,7 @@ export function createView(canvas, { still = false } = {}) {
 
   // Load in and load out: `reveal` runs 0..1 and a voxel is drawn once it has passed that voxel's place in the order
   // (lab-watch-math.js loadOrder). 1 = the whole block, which is also where it rests.
-  let reveal = 1, order = null, load = 'random', seed = 1, sweepRaf = 0, sweepEnd = null;
+  let reveal = 1, order = null, load = 'vase', seed = 1, sweepRaf = 0, sweepEnd = null;
   const reorder = () => { order = lay ? loadOrder(load, { W: lay.W, D: lay.D, floors: lay.L + lay.baseFloors, seed }) : null; };
   const shown = (floor, i) => reveal >= 1 || (order ? order[floor * lay.W * lay.D + i] < reveal : false);
   // Build the block (to = 1) or take it apart (to = 0) over `ms`. Resolves when it's done, or at once when stopped by
@@ -177,6 +177,16 @@ export function createView(canvas, { still = false } = {}) {
       if (full && g.s > 5) { sides(c, g, x, y); c.stroke(); const b = g.corners[g.m]; c.beginPath(); c.moveTo(x + b[0], y + b[1]); c.lineTo(x + b[0], y + b[1] + g.down); c.stroke(); }
       c.setLineDash([]);
     };
+    // Vase, then fill, while it builds: the newest blocks shine like the surface of water being poured in, so the slosh
+    // shows through the glass walls
+    const WAVE = 0.035;
+    const wave = (f, i, x, y, color) => {
+      if (load !== 'vase' || reveal >= 1 || !order) return;
+      const d = reveal - order[f * W * D + i]; if (d < 0 || d > WAVE) return;
+      const k2 = 1 - d / WAVE;
+      c.globalAlpha = 0.75 * k2; c.fillStyle = color || oneColour(); face(c, g, x, y); c.fill();
+      c.globalAlpha = 0.3 * k2; c.fillStyle = '#ffffff'; face(c, g, x, y); c.fill();
+    };
     // the plinth: what sits outside the layers
     if (!hidden.has('grey')) for (let f = 0; f < baseFloors; f++) {
       const n = Math.min(W * D, base - f * W * D);
@@ -192,6 +202,7 @@ export function createView(canvas, { still = false } = {}) {
           const [x, y] = g.P(cx, floorY(l), cz);
           const dial = dials ? dials.get(`${l}:${e}`) : undefined;
           voxel(x, y, lk.color, dial !== undefined && dial < 1 ? lk.alpha * (0.15 + 0.85 * dial) : lk.alpha, !lk.color);
+          wave(l + baseFloors, i, x, y, lk.color);
           if (lk.even) wire(x, y);
           if (dial !== undefined && dial !== 1) { // a dialled block: a solid rim, light when turned up and dark when turned down, with a tick mark on top so it isn't colour alone
             c.globalAlpha = 0.9; c.strokeStyle = dial > 1 ? k.text : k.bg; c.lineWidth = Math.max(1.5, g.s * 0.1); face(c, g, x, y); c.stroke();
@@ -201,6 +212,7 @@ export function createView(canvas, { still = false } = {}) {
         } else if (coreRank[i] >= 0 && grey[l] > 0 && !hidden.has('grey')) {
           const [x, y] = g.P(cx, floorY(l), cz);
           voxel(x, y, GREY, solid.get('grey') ?? 1);
+          wave(l + baseFloors, i, x, y, null);
         }
       }
     }

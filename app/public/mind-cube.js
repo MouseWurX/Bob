@@ -38,7 +38,7 @@ export function showWord(prev, layers, experts, used, rnd = Math.random) {
   return out;
 }
 
-export const CUBE_IN_MS = 1600, CUBE_OUT_MS = 1100; // the block building itself when a brain's first reply arrives, and coming apart when the brain is let go
+export const CUBE_IN_MS = 1600, CUBE_OUT_MS = 1100, VASE_IN_MS = 3200; // the block building itself when a brain's first reply arrives (Vase, then fill takes twice as long, so the water can be seen sloshing in), and coming apart when the brain is let go
 
 // The colours: when this brain has an FNRI scan, Bob sends that scan's map along and every expert gets its skill's
 // colour (all-rounders a dashed white outline); with no scan the cube is one colour and says how to get the rest.
@@ -62,8 +62,10 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   // One colour: a quick switch, remembered. Every expert the same colour, so only what lights up stands out.
   // Load in: how the block builds itself (and comes apart), the person's pick, shared with the big viewer
   let whose = '', gen = 0;
-  const readLoad = () => { let s = 'random'; try { s = loadStyle(localStorage.getItem('bob-fnri-load')); } catch {} view.set({ load: s }); if (load) load.value = s; };
-  if (load) { for (const [id, label] of LOAD_STYLES) { const o = document.createElement('option'); o.value = id; o.textContent = label; load.append(o); } load.onchange = () => { try { localStorage.setItem('bob-fnri-load', loadStyle(load.value)); } catch {} readLoad(); if (rec) { view.set({ reveal: 0 }); view.sweep(1, CUBE_IN_MS, still()).then(() => { if (rec) view.draw(lit()); }); } }; }
+  let loadNow = 'vase';
+  const inMs = () => (loadNow === 'vase' ? VASE_IN_MS : CUBE_IN_MS);
+  const readLoad = () => { let s = 'vase'; try { s = loadStyle(localStorage.getItem('bob-fnri-load')); } catch {} loadNow = s; view.set({ load: s }); if (load) load.value = s; };
+  if (load) { for (const [id, label] of LOAD_STYLES) { const o = document.createElement('option'); o.value = id; o.textContent = label; load.append(o); } load.onchange = () => { try { localStorage.setItem('bob-fnri-load', loadStyle(load.value)); } catch {} readLoad(); if (rec) { view.set({ reveal: 0 }); view.sweep(1, inMs(), still()).then(() => { if (rec) view.draw(lit()); }); } }; }
   readLoad();
   let showDetails = false; try { showDetails = localStorage.getItem('bob-cube-details') === '1'; } catch {} // to begin with: just the cube, Open in the big viewer and Show details
   let one = false; try { one = localStorage.getItem('bob-cube-mono') === '1'; } catch {}
@@ -74,6 +76,9 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   // With no colour of the person's own, the one colour is the theme's accent, read again each time (themes change)
   const tint = () => { if (ownColour) return; let a = ''; try { a = getComputedStyle(document.body).getPropertyValue('--accent').trim(); } catch {} if (/^#[0-9a-f]{3}$/i.test(a)) a = '#' + [...a.slice(1)].map((x) => x + x).join(''); if (/^#[0-9a-f]{6}$/i.test(a)) { view.set({ monoColour: a }); if (colour) colour.value = a; } };
   tint();
+  // The theme changed: the cube takes its new colour (and the new background) at once, resting or not
+  const retint = () => { if (!ownColour) tint(); view.set({}); if (rec) view.draw(lit()); else if (shell && !showTimer) view.draw([]); };
+  try { if (globalThis.MutationObserver && document.documentElement) new MutationObserver(retint).observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class', 'data-theme'] }); } catch {}
   if (colour) colour.oninput = () => { if (keepC(colour.value)) { ownColour = true; try { localStorage.setItem('bob-cube-colour', colour.value); } catch {} if (rec) view.draw(lit()); } };
   // Hide details: only the picture stays (the colour choices go with the details). The words are still there for a screen reader.
   const showD = () => { says.classList.toggle('sr-only', !showDetails); if (key) key.classList.toggle('sr-only', !showDetails); if (details) { details.textContent = showDetails ? 'Hide details' : 'Show details'; } showOne(); };
@@ -167,7 +172,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     }
     open.hidden = false; showOne();
     // a brain's first reply: the block builds itself block by block, then the reply plays
-    if (fresh && !still()) { readLoad(); const g = gen; view.set({ reveal: 0 }); words(); view.sweep(1, CUBE_IN_MS).then(() => { if (g === gen) play(); }); return; }
+    if (fresh && !still()) { readLoad(); const g = gen; view.set({ reveal: 0 }); words(); view.sweep(1, inMs()).then(() => { if (g === gen) play(); }); return; }
     play();
   }
   // The brain was let go: the block comes apart block by block until nothing is left, then waits for the next reply.
@@ -184,11 +189,12 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     const empty = { name: shell.label, brain: { name: shell.label, experts: shell.experts, layers: shell.layers, used: 0, kind: shell.kind, neurons: 0 }, skills: [{ id: 'bob', label: 'Bob' }], clips: [] };
     let esp = null; try { esp = specialise(empty); } catch { esp = null; }
     if (!esp) { shell = null; return false; }
+    esp = { ...esp, top: esp.top.map((r) => r.map(() => 0)) }; // the whole shape in the one colour (the theme's, or the person's own), not only the glow
     gen++; look = null; stopShow(); tint(); view.setData(empty, esp, null); view.set({ gap: view.cubeGap(), key: false, mono: true });
     if (key) key.hidden = true; open.hidden = true; showOne();
     const draw = () => view.draw([]);
-    if (still()) { view.set({ reveal: 1 }); draw(); } else { readLoad(); view.set({ reveal: 0 }); view.sweep(1, CUBE_IN_MS).then(draw); }
-    if (busy && !live() && !still() && !showTimer) showTimer = setTimeout(showTick, CUBE_IN_MS); // already thinking: the glow starts once the block is built
+    if (still()) { view.set({ reveal: 1 }); draw(); } else { readLoad(); view.set({ reveal: 0 }); view.sweep(1, inMs()).then(draw); }
+    if (busy && !live() && !still() && !showTimer) showTimer = setTimeout(showTick, inMs()); // already thinking: the glow starts once the block is built
     words(); return true;
   }
   function gone(labels, shapes = null, loading = '') {

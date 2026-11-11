@@ -371,8 +371,16 @@ export function findPatterns(rec, { k = PATTERN_DEFAULT } = {}) {
 // place in the block (floor f, cell i of a W x D floor: f * W * D + i) a number from 0 to 1: a voxel is drawn once
 // the load has passed its number. 'none' is everything at once.
 export const LOAD_STYLES = [['random', 'Random'], ['spiral', 'Archimedean spiral'], ['lines', 'Rectilinear'], ['rings', 'Concentric'], ['vase', 'Vase, then fill'], ['none', 'All at once']];
-export const loadStyle = (s) => (LOAD_STYLES.some(([id]) => id === s) ? s : 'random');
+export const loadStyle = (s) => (LOAD_STYLES.some(([id]) => id === s) ? s : 'vase'); // Vase, then fill is the one Bob starts with (the owner's pick)
 function seeded(seed) { let a = (seed >>> 0) || 1; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+// Vase, then fill: the inside rises like water poured in, its surface tipping one way then the other as it climbs and
+// settling as it nears the top. slosh = how high the water must be (in floors) before this place is under it. The tip
+// turns slower than the water climbs, so every column still fills from the bottom up (nothing floats).
+export function slosh(f, x, z, W, D, floors) {
+  const nx = W > 1 ? x / (W - 1) - 0.5 : 0, nz = D > 1 ? z / (D - 1) - 0.5 : 0, k = floors > 1 ? f / (floors - 1) : 0;
+  const tip = Math.min(3, Math.max(1, floors * 0.12)) * (1 - 0.7 * k), turn = f * 0.45;
+  return f + tip * (Math.cos(turn) * nx + Math.sin(turn) * 0.7 * nz) + 0.35 * Math.sin(nx * 9 + f * 0.9) * Math.cos(nz * 7 - f * 0.6) * (1 - 0.5 * k);
+}
 export function loadOrder(style, { W, D, floors, seed = 1 }) {
   const per = W * D, n = per * floors, rank = new Float32Array(n);
   style = loadStyle(style);
@@ -398,10 +406,12 @@ export function loadOrder(style, { W, D, floors, seed = 1 }) {
   } else if (style === 'rings') { // each floor's outer wall first, then ring by ring to the middle
     const one = cells.map((i) => [ring(i), around(i), i]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((p) => p[2]);
     for (let f = 0; f < floors; f++) for (const i of one) seq.push(f * per + i);
-  } else { // vase: the outer wall alone, round and round to the top, then the inside filled floor by floor
+  } else { // vase: the outer wall alone, round and round to the top, then the inside poured in like water
     const wall = cells.filter((i) => ring(i) === 0).sort((a, b) => around(a) - around(b)), inside = cells.filter((i) => ring(i) > 0);
     for (let f = 0; f < floors; f++) for (const i of wall) seq.push(f * per + i);
-    for (let f = 0; f < floors; f++) for (const i of snake(f, inside)) seq.push(f * per + i);
+    const pour = [];
+    for (let f = 0; f < floors; f++) for (const i of inside) pour.push([slosh(f, i % W, Math.floor(i / W), W, D, floors), f * per + i]);
+    pour.sort((a, b) => a[0] - b[0]); for (const p of pour) seq.push(p[1]);
   }
   seq.forEach((slot, k) => { rank[slot] = k / n; });
   return rank;
