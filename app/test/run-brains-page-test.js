@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setUpHtml, handLock, SETUPS, setupOf, setupPlan, duoNeedsQuick, brainsHtml, brainsInUse, emptyJobs, spareBrains, jobsFor, placeBarHtml, budget, brainJobs, senseSlots } from '../public/brains.js';
 import { HELP } from '../public/help-content.js';
+import { readyList, readyDefaults, readyOrder, SPLITS, splitPicks } from '../public/equip.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ' ' + extra}`); };
@@ -57,6 +58,26 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
   check('Equip Bob opens on the Brains page unless another view was chosen', /getItem\('bob-equip-view'\) \|\| 'brains'/.test(cellar) && /brainsHtml\(\{ \.\.\.eqCtx\(\)/.test(cellar));
   check('the two menus save through the same call the doll uses', /el\.dataset\.brainjob && el\.value\) \{[^}]*await equip\(el\.value, el\.dataset\.brainjob/.test(cellar) && /el\.dataset\.jobbrain && el\.value\) \{[^}]*await equip\(el\.dataset\.jobbrain, el\.value/.test(cellar));
   check('Help has the page, in Bob\'s voice, and the glossary names it', HELP.some((h) => h.id === 'brains-page' && /I load one big brain at a time/.test(h.html)) && /<dt>Brains page<\/dt>/.test(HELP.find((h) => h.id === 'glossary').html));
+}
+// ---- first-time setup: How should I split my brains? ----
+{
+  const pack = catalog.packs.find((p) => p.id === 'big') || catalog.packs.find((p) => (p.cardGB || 0) >= 16) || catalog.packs[0];
+  const fresh = catalog.models.map((m) => ({ ...m, status: { state: 'missing' } }));
+  const engines = (catalog.engines || []).map((e) => ({ ...e, installed: false }));
+  const rows = readyList({ pack, models: fresh, engines, hw: { vramGB: 16, ramGB: 32, nvidia: true }, mainEmpty: true });
+  const brainRows = rows.filter((r) => r.kind === 'model' && ['chat', 'coding', 'vision'].includes(r.category));
+  const ticked = (split) => brainRows.filter((r) => splitPicks(rows, split).has(r.id));
+  const all = readyDefaults(rows);
+  check('Specialists is exactly my usual picks, so nothing changes unless you choose', [...splitPicks(rows, 'specialists')].sort().join() === [...all].sort().join() && [...splitPicks(rows)].sort().join() === [...all].sort().join());
+  check('One brain ticks only the main brain', ticked('one').length >= 1 && ticked('one').every((r) => r.slots.includes('bob')) && ticked('one').length <= ticked('specialists').length, ticked('one').map((r) => r.id).join());
+  check('Quick + Big ticks the main, quick and deep brains and no other brain', ticked('duo').every((r) => r.slots.some((x) => ['bob', 'small', 'deep'].includes(x))) && ticked('duo').length >= ticked('one').length && ticked('duo').length <= ticked('specialists').length);
+  const notBrain = (set) => rows.filter((r) => r.kind === 'model' && !['chat', 'coding', 'vision'].includes(r.category) && set.has(r.id)).map((r) => r.id).sort().join();
+  check('pictures, clips and voices keep their ticks in every split', notBrain(splitPicks(rows, 'one')) === notBrain(all) && notBrain(splitPicks(rows, 'duo')) === notBrain(all));
+  check('fewer brains is never a bigger download', readyOrder(rows, splitPicks(rows, 'one')).sizeGB <= readyOrder(rows, splitPicks(rows, 'duo')).sizeGB && readyOrder(rows, splitPicks(rows, 'duo')).sizeGB <= readyOrder(rows, all).sizeGB);
+  check('the programs the ticked brains run on are still ticked', rows.filter((r) => r.kind === 'engine' && r.core && !r.here).every((r) => splitPicks(rows, 'one').has(r.id)));
+  check('four choices; Across my Bobs is shown, locked, and says when it opens', SPLITS.map((x) => x.id).join() === 'one,duo,specialists,bobs' && /Bob-Net/.test(SPLITS[3].lock) && SPLITS.slice(0, 3).every((x) => !x.lock));
+  const cellar = read('public/cellar.js');
+  check('the first-time screen offers it as labelled radio buttons, Specialists chosen at the start', /let wSplit = 'specialists'/.test(cellar) && /<legend><strong>How should I split my brains\?<\/strong>/.test(cellar) && /type="radio" name="wsplit" data-wsplit=/.test(cellar) && /wPicks = splitPicks\(rows, wSplit\)/.test(cellar));
 }
 // ---- Set up: one brain's own page ----
 {

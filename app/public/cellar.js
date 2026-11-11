@@ -3,7 +3,7 @@ import { setLook } from './bob-sprite.js';
 import { progressHtml, animateWorkers } from './progress.js';
 import { createStylePage } from './style-page.js';
 import { createSampler, sampleButton, sampleHint } from './voice-samples.js';
-import { equipHtml, allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml, readyList, readyDefaults, readyToggle, readyOrder, CHEST_SHOW } from './equip.js';
+import { equipHtml, allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml, readyList, readyDefaults, readyToggle, readyOrder, CHEST_SHOW, SPLITS, splitPicks } from './equip.js';
 import { brainsHtml, setupPlan, canCalibrate, brainsInUse } from './brains.js';
 import { hasExperts } from './place.js';
 import { suit as fitSuit, picksOf, unsuited, jobNames, SLOT_NAMES, canDo, packsFor } from './fit.js';
@@ -1052,6 +1052,7 @@ export function createCellar({ popOut = null } = {}) {
 
   // 1.5.91 "Get Bob ready": one list with every program and model, each with its own tick box, the recommended ones
   // ticked, sizes and free disk shown first, one OK. Bob puts each one in its slot himself when it's in.
+  let wSplit = 'specialists'; // 1.5.205 how the brains are split on the first-time screen; Specialists = my usual picks
   let wPicks = null; // ticked ids (models and "engine:<id>"); null = the recommended ones
   let wIds = []; // what the last press started, for Pause and Stop
   function welcomeRows() {
@@ -1060,7 +1061,7 @@ export function createCellar({ popOut = null } = {}) {
     const bad = (checks || []).filter((c) => !c.ok).map((c) => c.id);
     const rows = readyList({ pack, models: data.models, engines: data.engines || [], hw: hwCtx(), mainEmpty: !(main && equipped(main, eqCtx())), bad });
     for (const r of rows) if (r.kind === 'model' && !r.blocked) { const m = data.models.find((x) => x.id === r.id); const st = m && suit(m); if (st?.level === 'blocked') r.blocked = st.why; else if (st && st.level !== 'ok' && !r.here) r.warn = 'not recommended for this replicant matrix'; }
-    if (!wPicks) wPicks = readyDefaults(rows);
+    if (!wPicks) wPicks = splitPicks(rows, wSplit);
     return { pack, rows };
   }
   function welcomeHtml() {
@@ -1092,6 +1093,8 @@ export function createCellar({ popOut = null } = {}) {
       <p class="muted spec">${esc(hw.spec || 'specs not read yet')}</p>
       <p>Here's what I'd get so I can do everything on this replicant matrix: chat, code, see and make pictures, make clips, talk and listen. My picks are ticked. Untick anything you don't want, tick anything you do. Nothing downloads until you press the button, and I put each one in its slot myself when it's in.</p>
       <label class="pick"><strong>Setup</strong><select data-pack>${packsFor(data.packs, hw?.board === 'arm').map((p) => `<option value="${p.id}" ${p.id === pack.id ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}</select></label>
+      <fieldset class="split-pick"><legend><strong>How should I split my brains?</strong> <span class="muted">This only changes which brains are ticked below. You can change it any time on the Brains page.</span></legend>
+        ${SPLITS.map((x) => `<label class="split-opt${x.lock ? ' locked' : ''}"><input type="radio" name="wsplit" data-wsplit="${x.id}" ${x.id === wSplit ? 'checked' : ''} ${x.lock ? 'disabled' : ''}> <span><strong>${esc(x.name)}</strong> <span class="muted">${esc(x.does)}${x.lock ? ` 🔒 ${esc(x.lock)}` : ''}</span></span></label>`).join('')}</fieldset>
       <h4>Programs I run on</h4><ul class="packlist">${engines.map(row).join('')}</ul>
       <h4>Models</h4><ul class="packlist">${models.map(row).join('')}</ul>
       ${order.missing.length ? `<p class="warn-text">${order.missing.map((x) => `${esc(x.model)} runs on ${esc(x.engine)}, which isn't ticked.`).join(' ')} Tick it, or that model sits unused.</p>` : ''}
@@ -1746,6 +1749,7 @@ export function createCellar({ popOut = null } = {}) {
   const onChange = async (e) => {
     const el = e.target;
     try {
+      if (el.dataset.wsplit) { wSplit = el.dataset.wsplit; wPicks = null; draw(); dlg.querySelector(`[data-wsplit="${wSplit}"]`)?.focus(); return; } // 1.5.205 first-time: fewer or more brains ticked
       // 1.5.205 Set up: the slider and the number box save the same value.
       if (el.dataset.placemoe || el.dataset.placemoenum) { const max = Number(el.max) || 0; const n = Math.max(0, Math.min(max, Math.round(Number(el.value) || 0))); await placeSave(el.dataset.placemoe || el.dataset.placemoenum, { cpuMoe: n }); draw(); return; }
       // 1.5.205 the Brains page: give a brain another job, or pick a brain for an empty job.

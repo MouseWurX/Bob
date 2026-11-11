@@ -1742,3 +1742,6 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .cal-rows { border-collapse: collapse; margin-top: 6px; font-size: 13px; }
 .cal-rows td { padding: 3px 14px 3px 0; }
 .cal-rows tr.best td { color: var(--good); font-weight: 600; }
+.split-pick { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; margin: 10px 0; }
+.split-opt { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; }
+.split-opt.locked { opacity: .7; }
