@@ -26,7 +26,7 @@ Every rental, including the ones that made nothing. Times are the owner's local 
 | 9 Nov 2026, morning | 1x H200 141 GB SXM, wrong data centre | 5 min | $5.29/h | **Failed attempt 5.** The rebuild-and-publish run below, first try. The renter could not get a card where the drive is, so it made two empty drives elsewhere (deleted the same hour) and took a card in one of them, where Bobert's adapter is not; a shell ordering bug then stopped it in its first minute. Nothing made. Both fixed in Forge before the second try. | $0.40 |
 | 9 Nov 2026, morning | 1x H200 141 GB SXM + the rented network drive | 1.0 h | $5.29/h | **Riker and Bobert rebuilt and published.** No training: each Bob was put back together from the stock model, his keep list and his adapter, exported to Q4 and Q3, and uploaded to Hugging Face with his cards, adapter and keep list. Riker (28Bob) went up public with his full-size weights as well ([MouseWurX/28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker)). Bobert (35Bob) went up private until his home test; his full-size weights did not upload (see the next row). Card time plus the drive's share. | $5.44 |
 | 9 Nov 2026, afternoon | 1x H100 80 GB SXM + the rented network drive | 8 min | $3.99/h | **Bobert's full-size weights, second try.** An upload-only run from the drive; Hugging Face refused both tries: the account's private storage limit was reached (public repos such as Riker's are not counted). The weights stay safe on the drive; they go up once Bobert is public after his home test, or if the account gets more private room. The card deleted itself. | $0.34 |
-| 10 Nov 2026, morning | 1x H200 141 GB SXM + the rented network drive | running | $5.29/h | **20Bob Bill.** Cut from Bobert (144 experts per layer, the keep list built on the owner's PC) and healed against Bobert's saved next-word odds in one full pass: the odds from the Bobert run were reused, so no teacher pass. At the end the card benchmarks Riker, Bobert and Bill alike, and Bill's GGUF files go to Hugging Face public. Cap 28 h / $150. | (in progress) |
+| 10 to 11 Nov 2026 | 1x H200 141 GB SXM + the rented network drive | 18.2 h | $5.29/h | **20Bob Bill, made and published.** Cut from Bobert (144 experts per layer, the keep list built on the owner's PC) and healed against Bobert's saved next-word odds in one full pass (2,018 steps, 11.3 h): the odds from the Bobert run were reused, so no teacher pass. His Q4 and Q3 went to Hugging Face public ([MouseWurX/20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill)). Two things went wrong on the PC side: the Forge window there was closed from outside mid-heal, so the benchmark the card served was never measured, and the card then sat idle at the end for about two hours (about $11 of this row) until a new window deleted it. The Forge now deletes the card itself when a run ends. Cap 28 h / $150. | $96.27 |
 | 10 Nov 2026, morning | 1x H100 80 GB SXM + the rented network drive | 7 min | $3.99/h | **Bobert's full-size weights, third try: up.** The owner made the page public, which lifted the private storage limit, and the same upload-only run put all 21 shards on [MouseWurX/35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert). The card deleted itself; Bill's run on the same drive was not touched. | $0.44 |
 | | | **about 58 h of card time** | | **Six failed attempts: $16.55, plus the stopped Bill step above. Six Bobs made; Riker (28Bob) and Bobert (35Bob) are kept, the first Riker and Bill (v1 and v2) are retired and deleted, and Bill is next.** | **$298.83** |
 
@@ -101,20 +101,20 @@ Line A's full-precision Riker was lost with its machine, so line A starts with t
 
 | | |
 |---|---|
-| GPU servers rented by the hour (every session above, failures included; Bill's run not yet counted) | $299.27 |
+| GPU servers rented by the hour (every session above, failures included) | $395.54 |
 | Rented network drive so far | included in the line B session line above |
 | Claude subscription, November 2026 | $200.00 |
 | Claude extra usage, bought from 5 Nov 2026 on | $800.00 |
 | Code signing, hosting | $0.00 |
-| **Total spent so far** | **$1,299.27** |
+| **Total spent so far** | **$1,395.54** |
 
 **Projected, whole plan**
 
 | | Low | High |
 |---|---|---|
-| Spent so far (above) | $1,299.27 | $1,299.27 |
+| Spent so far (above) | $1,395.54 | $1,395.54 |
 | Line B remaining rungs (Homer to Bender) | $119 | $129 |
-| 20Bob Bill, its own run (running since 10 Nov; Bobert's odds reused, so no teacher pass) | $50 | $75 |
+| 20Bob Bill: his full-size weights, the missed benchmark and four brain scans on one card (planned) | $19 | $24 |
 | Specialists (four, with their lessons) | $100 | $100 |
 | Rented network drive, about 2 more months (100 to 300 GB) | $14 | $42 |
 | Re-runs allowed (one per rung if a heal scores badly) | $0 | $60 |
