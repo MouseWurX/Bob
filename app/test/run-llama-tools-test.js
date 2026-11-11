@@ -273,7 +273,11 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(/args\.push\('--rpc', helpers\.join\(','\)/.test(llamacpp) && /this\.spread\?\.close\(\)/.test(llamacpp), 'spread: the engine adds --rpc and hands the cards back when the brain goes');
 
   {
-    const { spreadArgs, spreadLoadSeconds, SPREAD_FIT_TARGET_MIB, SPREAD_UBATCH } = await import('../src/llamacpp.js');
+    const { spreadArgs, spreadLoadSeconds, SPREAD_FIT_TARGET_MIB, SPREAD_UBATCH, localDraftArgs } = await import('../src/llamacpp.js');
+    const listed = 'Available devices:\n  CUDA0: NVIDIA GeForce RTX 5070 Ti (16302 MiB, 15000 MiB free)\n  Vulkan1: AMD Radeon (8000 MiB)\n  RPC0[100.101.1.2:50052]: RPC\n';
+    ok(localDraftArgs(['-m', 'a.gguf', '-md', 'd.gguf', '-ngld', '99'], listed).join(' ') === '-devd CUDA0,Vulkan1', 'spread + Turbo: the guessing brain stays on this machine\'s own cards, never the lent ones');
+    { const a = ['-m', 'a.gguf', '-md', 'd.gguf', '-ngld', '99']; const add = localDraftArgs(a, 'Available devices:\n  (none)\n'); ok(add.join(' ') === '-ngld 0' && !a.includes('99'), 'spread + Turbo with no card listed here: the guesser runs on the processor here'); }
+    ok(!localDraftArgs(['-m', 'a.gguf', '--spec-type', 'draft-mtp'], listed).length && !localDraftArgs(['-m', 'a.gguf', '-md', 'd', '-devd', 'CUDA0'], listed).length, 'spread: a built-in guesser, or a device picked by hand, is left alone');
     const add = spreadArgs(['-m', 'x.gguf', '--fit', 'on']);
     ok(add.join(' ') === `--fit-target ${SPREAD_FIT_TARGET_MIB} -ub ${SPREAD_UBATCH}`, 'spread: more room is kept free on every card and the steps are smaller (the lent card ran out of room at -ub 2048)', add.join(' '));
     ok(!spreadArgs(['--fit', 'on', '--fit-target', '512', '-ub', '1024']).length && spreadArgs(['-ngl', '999']).join(' ') === `-ub ${SPREAD_UBATCH}`, 'spread: settings made by hand stay, and without --fit only the step size is set');

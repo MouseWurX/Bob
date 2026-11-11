@@ -101,6 +101,18 @@ export function spreadArgs(args) {
   if (!args.some((a) => ['-ub', '--ubatch-size'].includes(a))) add.push('-ub', String(SPREAD_UBATCH));
   return add;
 }
+// Spreading with a guessing brain (Turbo or a draft): the guesser must stay on this machine's own card. Left to
+// itself, llama.cpp splits it over every device, lent cards too, and then each guessed word waits on the network:
+// in the fake Wi-Fi test that made Turbo slower than none (10-14 against 25-28 words a second kept here).
+// listed: the engine's --list-devices output. Gives the args to add.
+export function localDraftArgs(args, listed = '') {
+  if (!args.includes('-md') || args.some((a) => ['-devd', '--device-draft', '--spec-draft-device'].includes(a))) return [];
+  const names = [...String(listed).matchAll(/^\s+([A-Za-z][A-Za-z0-9_]*\d+):/gm)].map((m) => m[1]).filter((n) => !/^RPC/i.test(n));
+  if (names.length) return ['-devd', names.join(',')];
+  const i = args.indexOf('-ngld'); // no card of its own listed: the guesser runs on the processor here, never over the network
+  if (i >= 0) { args.splice(i, 2); }
+  return ['-ngld', '0'];
+}
 export function besideThreads(cpus = os.cpus()) {
   const logical = cpus.length || 2;
   const pairs = /AMD|Intel/i.test(String(cpus[0]?.model || '')) && logical % 2 === 0 && logical >= 4;
@@ -652,6 +664,10 @@ export class LlamaCpp {
       helpers = await this.spread.open({ sizeGB }).catch(() => []);
       if (helpers.length) {
         args.push('--rpc', helpers.join(','), ...spreadArgs(args));
+        if (args.includes('-md')) {
+          const listed = await new Promise((res) => execFile(this.exePath(), ['--list-devices'], { windowsHide: true, timeout: 20000 }, (e, out, err) => res(`${out || ''}\n${err || ''}`))).catch(() => '');
+          args.push(...localDraftArgs(args, listed));
+        }
         const mins = Math.ceil(spreadLoadSeconds(sizeGB, this.lc.loadTimeoutSeconds || 300) / 60);
         try { this.log?.('engine', `${model}: spread over ${helpers.length} other Bob${helpers.length > 1 ? 's' : ''}' card${helpers.length > 1 ? 's' : ''} (${helpers.join(', ')}). The first time, part of the brain is sent over the network: over Wi-Fi that can take a while (I'll wait up to ${mins} min), and a network cable is much faster. Later loads only send what's missing.`); } catch {}
       }
