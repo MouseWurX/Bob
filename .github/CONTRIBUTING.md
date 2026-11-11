@@ -23,7 +23,7 @@ Thanks for helping. A few house rules:
   app/docs/legal/ASSETS-LICENSE.md). Only add third-party parts whose licence allows this, and list them in
   app/docs/legal/THIRD-PARTY.md.
 - **Versions.** Each change that ships bumps `bob.build` and `version` in `app/package.json` (see
-  [Versions](../README.md#versions)). Every release gets a note in `app/docs/releases/vX.Y.Z.md`.
+  [Versions](../app/docs/BUILDING.md#versions)). Every release gets a note in `app/docs/releases/vX.Y.Z.md`.
 - **Every platform.** A feature reaches Windows, Mac, Linux and the Android app, or says plainly where it
   doesn't. Help in the app (Bob's voice, the glossary and the FAQ) is updated with the feature, using the
   names on screen.
