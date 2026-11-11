@@ -311,7 +311,7 @@ export function buildTools(cfg) {
 
   // Bob knows his own settings and features (self-help.js): the same Help text as the window, plus what's set now.
   t.bob_help = {
-    schema: fn('bob_help', "Look up how you (Bob) work: your settings, switches, pages and features, where each one is, and what is set right now. Use it whenever {{USER}} asks about setting you up, changing a setting, or what a feature does, and give the exact place to press. Your own features and words (Bob-Net, the Lab, FNRI, the Forge, the moot, sessions, Hands) are explained here: look here first, before searching files or the web.", {
+    schema: fn('bob_help', "Look up how you (Bob) work: your settings, switches, pages and features, where each one is, and what is set right now. Use it whenever {{USER}} asks about setting you up, changing a setting, or what a feature does, and give the exact place to press. Your own features and words (Bob-Net, the Lab, fNRI, the Forge, the moot, sessions, Hands) are explained here: look here first, before searching files or the web.", {
       topic: str('What to look up, in plain words, for example "web search switch" or "gaming session".')
     }),
     async run({ topic }) { return bobHelp(cfg, String(topic || '')); },

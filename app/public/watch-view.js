@@ -1,4 +1,4 @@
-// 🧪 FNRI: the drawing. A mixture-of-experts brain as one 3D block of voxels on a plain canvas (no
+// 🧪 fNRI: the drawing. A mixture-of-experts brain as one 3D block of voxels on a plain canvas (no
 // libraries): every layer is a floor of rows, the floors stack upward, so the number of layers is the height. Each
 // expert is one voxel, coloured by the skill it leans to (fainter the more the skills share it); the parts that are
 // not experts are grey voxels in their true share of the weights. As a recording plays, the experts picked for the

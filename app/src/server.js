@@ -106,17 +106,17 @@ const clients = new Set();
 // 1.5.53: the "Bob's thinking" window (public/mind.html) listens with ?mind=1. Only those windows get his thinking
 // as it streams; while none is open, Bob doesn't even pass it along (brain.mindWatchers), so it costs nothing.
 const mindClients = new Set();
-const cubeClients = new Set(); // FNRI's small cube pages (see below)
+const cubeClients = new Set(); // fNRI's small cube pages (see below)
 
 let telegram = null; // Talk to Bob on Telegram (src/telegram.js), set once Bob's brain is ready
 let discord = null; // Bob on Discord (src/discord.js), set once Bob's brain is ready
-let cubeLoading = ''; // the brain FNRI's small cube last saw starting to load
+let cubeLoading = ''; // the brain fNRI's small cube last saw starting to load
 function broadcast(ev) {
   if (ev?.type === 'think-start' && ev.model) ev = { ...ev, label: friendlyName(ev.model) }; // "Qwen 3.8 27B", not the raw tag
   const data = `data: ${JSON.stringify(ev)}\n\n`;
   for (const res of ev?.type === 'think' || ev?.type === 'think-start' ? mindClients : clients) res.write(data);
   if (ev?.type === 'status') { const l = ['waking', 'loading'].includes(ev.state) ? String(ev.model || '') : ''; if (l !== cubeLoading) { cubeLoading = l; if (l && cubeClients.size) cubeBrainsNow(); } } // once as a brain starts loading, not every progress line
-  if (ev?.type === 'brain' && cubeClients.size) cubeBrainsNow(); // FNRI's small cube takes itself apart when its brain is let go
+  if (ev?.type === 'brain' && cubeClients.size) cubeBrainsNow(); // fNRI's small cube takes itself apart when its brain is let go
   try { telegram?.watch(ev); } catch {} // Talk to Bob on Telegram: only the Telegram chat's events, and only while it's on
   try { discord?.watch(ev); } catch {} // Bob on Discord: only Discord jobs' own events
   if (ev?.type === 'pair-done') try { introductions.soon(); } catch {} // 1.5.123: a new Bob on the list meets the others
@@ -131,7 +131,7 @@ const introductions = new Introductions(cfg, { lenders: brain.lenders, pairing, 
 setTimeout(() => introductions.soon(0), 60_000).unref(); // once Bob is up, and then every hour
 setInterval(() => introductions.soon(0), 3600_000).unref();
 brain.mindWatchers = () => mindClients.size;
-// FNRI's small cube in "Bob's thinking" listens with ?cube=1. Only while one is open does Bob ask Brain Engine which
+// fNRI's small cube in "Bob's thinking" listens with ?cube=1. Only while one is open does Bob ask Brain Engine which
 // experts each reply used (it slows writing a little), and only those pages are told. Off for everyone else.
 // An older Brain Engine build can't report them either: then the cube says so instead of staying dark (before Update under Engines).
 const cubeWhy = () => (brainsEngineNow(cfg) !== 'brainengine' ? 'The cube needs Brain Engine as the engine for Bob\'s brains (Settings > Engines). The engine in use now doesn\'t report which experts it picked.'

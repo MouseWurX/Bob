@@ -119,7 +119,7 @@ const VAR = { onAccent: 'on-accent', spriteBg: 'sprite-bg', dangerBg: 'danger-bg
 export function applyTheme(t, root = document.documentElement) {
   const c = fullColors(t);
   for (const [k, v] of Object.entries(c)) root.style.setProperty(`--${VAR[k] || k}`, v);
-  // the colour the FNRI cube's One colour starts with until the person picks their own: the theme's accent, or the
+  // the colour the fNRI cube's One colour starts with until the person picks their own: the theme's accent, or the
   // theme's own cube colour where it has one (Moondust's is a deep teal, the owner's pick)
   root.style.setProperty('--cube', HEX.test(t.cube || '') ? t.cube : c.accent);
   root.style.setProperty('--font', (FONTS[t.font] || FONTS.system).css);

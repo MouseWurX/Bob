@@ -1,4 +1,4 @@
-// 🧪 FNRI: the viewer window. Plays an expert recording (public/lab-watch-math.js has the format) as a 3D
+// 🧪 fNRI: the viewer window. Plays an expert recording (public/lab-watch-math.js has the format) as a 3D
 // block of voxels (public/watch-view.js): one floor for each layer, experts coloured by the skill they lean to,
 // around a grey core of the parts that are not experts, glowing as the brain reads each word. Tick boxes show or
 // hide each skill's experts; three zoom levels (the whole brain, one floor, one expert); Save as a video.
@@ -485,7 +485,7 @@ $('watchRescan').onclick = async () => {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
     if (j.needUnload) { setAsk(true); say(`${(j.names || []).join(', ') || 'Bob\'s brain'} is on the graphics card, and the scan needs it. Press Unload Bob's brain and scan again to start. It loads again the next time you chat.`); return; }
-    setAsk(false); say('The new scan has started. It asks the same questions with those experts switched off, and shows up on the Lab\'s FNRI page when it\'s done.');
+    setAsk(false); say('The new scan has started. It asks the same questions with those experts switched off, and shows up on the Lab\'s fNRI page when it\'s done.');
   } catch (e) { say(`Bob couldn't start that scan: ${e.message}`); }
 };
 $('watchAll').onclick = () => { hidden = new Set(); view.set({ hidden }); skillsHtml(); cutHtml(); if (mode === 'floor') floorHtml(); need = true; };

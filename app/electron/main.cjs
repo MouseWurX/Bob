@@ -394,7 +394,7 @@ function tuckAway(e) {
   trayHint();
   return true;
 }
-let watchWin = null; // the Lab's FNRI viewer window (public/watch.html), one at a time
+let watchWin = null; // the Lab's fNRI viewer window (public/watch.html), one at a time
 let mindWin = null; // 1.5.53: "Bob's thinking", opened from the chat page; nothing runs for it while it's closed
 
 // Small, in the bottom-right corner of the screen Bob is on, so it sits beside a game or an editor.
@@ -448,10 +448,10 @@ async function start() {
       if (mindWin) { mindWin.show(); mindWin.focus(); return { action: 'deny' }; }
       return { action: 'allow', overrideBrowserWindowOptions: mindOptions(win) };
     }
-    // The Lab's FNRI viewer: its own ordinary window (not on top), so it can sit beside the Lab or a chat.
+    // The Lab's fNRI viewer: its own ordinary window (not on top), so it can sit beside the Lab or a chat.
     if (url === base + '/watch.html' || url.startsWith(base + '/watch.html?')) {
       if (watchWin) { watchWin.loadURL(url); watchWin.show(); watchWin.focus(); return { action: 'deny' }; }
-      return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 820, minWidth: 360, minHeight: 480, title: 'FNRI', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 820, minWidth: 360, minHeight: 480, title: 'fNRI', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
     }
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };

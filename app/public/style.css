@@ -1614,7 +1614,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .lab-log { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
 .lab-log td { vertical-align: top; overflow-wrap: anywhere; white-space: pre-wrap; }
 
-/* FNRI's small cube in Bob's thinking (Now running) */
+/* fNRI's small cube in Bob's thinking (Now running) */
 .mind-cube { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
 .mind-cube canvas { width: 100%; height: 220px; display: block; border: 1px solid var(--line); border-radius: var(--r); }
 /* No brain loaded: a neon sign over the empty cube, flickering now and then (still when animations are off) */

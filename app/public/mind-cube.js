@@ -1,4 +1,4 @@
-// FNRI in small: a cube of Bob's brain in "Bob's thinking" (Now running), lighting up with the experts each reply
+// fNRI in small: a cube of Bob's brain in "Bob's thinking" (Now running), lighting up with the experts each reply
 // used. Off until its switch is turned on. While it's on it listens to /api/events?cube=1, and only then does Bob ask
 // Brain Engine for the trace (public/lab-watch-math.js liveTrace has the shape). The picture arrives when a reply is
 // finished and is then played word by word; nothing is saved. The same drawing as the big viewer (watch-view.js).
@@ -11,7 +11,7 @@ export const SIGNS = ['VACANCY', 'Nobody\'s home', 'Out to lunch', 'Gone thinkin
 export const pickSign = (rnd = Math.random) => SIGNS[Math.floor(rnd() * SIGNS.length) % SIGNS.length];
 export const CUBE_IN_MS = 1600, CUBE_OUT_MS = 1100; // the block building itself when a brain's first reply arrives, and coming apart when the brain is let go
 
-// The colours: when this brain has an FNRI scan, Bob sends that scan's map along and every expert gets its skill's
+// The colours: when this brain has an fNRI scan, Bob sends that scan's map along and every expert gets its skill's
 // colour (all-rounders a dashed white outline); with no scan the cube is one colour and says how to get the rest.
 // els: { box, canvas, says, open, key, mono, colour, colourBox, details, load, loadBox, spin, lines, linesBox }. still() = animations are off (the last word is shown, nothing moves).
 export function createMindCube({ box, canvas, says, open, key = null, mono = null, colour = null, colourBox = null, details = null, load = null, loadBox = null, spin = null, lines = null, linesBox = null }, { still = () => false, onWhy = null, EventSourceImpl = globalThis.EventSource } = {}) {

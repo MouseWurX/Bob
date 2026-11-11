@@ -1,4 +1,4 @@
-// FNRI weight map and difference map. Reads a brain file's own weights, no engine and no card: for every expert (or,
+// fNRI weight map and difference map. Reads a brain file's own weights, no engine and no card: for every expert (or,
 // in a brain without experts, every group of neurons the scan uses) how strong its weights are, and how much they
 // differ from another brain's. The viewer colours the block by it, and the glow still shows what the brain used.
 //
