@@ -284,7 +284,7 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
   const t = {};
 
   t.open_app = {
-    schema: fn('open_app', 'Open an app from {{USER}}\'s Start menu by its name (like "Notepad", "Paint", "Calculator", "Blender"). {{USER}} approves it first. Not terminals or admin tools (commands go through run_command).', { name: str('The app\'s name as it shows in the Start menu.') }),
+    schema: fn('open_app', 'Open an app by its Start menu name (like "Notepad" or "Blender"). {{USER}} approves first. Not terminals or admin tools.', { name: str('The app\'s name as it shows in the Start menu.') }),
     approvalGroup: (a) => `apps-open:${String(a.name || '').toLowerCase()}`,
     async check(args, ctx) {
       off(); notStopped(ctx);
@@ -325,10 +325,10 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
   };
 
   t.app_look = {
-    schema: fn('app_look', 'See which windows are open (leave window empty), or read one window: the names of its buttons, fields, menus and text, so you can say what to click. Password fields are never read. {{USER}} approves each look.', {
-      window: str('Part of the window title, or the program name (like "notepad"). Leave empty to list open windows.'),
-      picture: { type: 'boolean', description: 'Also take a picture of that window and show it in the chat.' },
-      ask: str('A question about how the window looks, answered by Bob\'s eyes brain from a picture (for canvases, games, viewports and apps whose buttons have no names). The picture\'s pixels are the x, y for app_act click_at.')
+    schema: fn('app_look', 'List the open windows (leave window empty), or read one: its buttons, fields, menus and text. Never reads password fields. {{USER}} approves each look.', {
+      window: str('Part of the window title or program name. Empty lists the windows.'),
+      picture: { type: 'boolean', description: 'Also show a picture of the window in the chat.' },
+      ask: str('A question about how the window looks, answered from a picture (for canvases, games and unnamed buttons). Its pixels are the x, y for app_act click_at.')
     }, []),
     approvalGroup: (a) => `apps-look:${String(a.window || '*').toLowerCase()}`,
     async check(args, ctx) {
@@ -368,18 +368,18 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
   };
 
   t.app_act = {
-    schema: fn('app_act', 'Do one thing in an open window: click a button, menu item, tab, checkbox or list item; type text into a field; press a key (like "Enter" or "Ctrl+S"); or click_at a place (x, y in the pixels of the picture app_look took) when the window has no named controls. Find names with app_look first. {{USER}} approves each action, and can stop you by moving the mouse or pressing Esc. Never in password fields. Give expect so Bob\'s eyes check the result.', {
+    schema: fn('app_act', 'Do one thing in an open window: click, type, press keys, or click_at x, y when nothing has names. Get the names from app_look first. {{USER}} approves each action and can stop you with the mouse or Esc. Never in password fields. Give expect so Bob\'s eyes check the result.', {
       window: str('Part of the window title, or the program name.'),
       action: str('What to do', { enum: ['click', 'type', 'keys', 'focus', 'click_at'] }),
-      type: str('The kind of thing, as app_look listed it (Button, Edit, MenuItem, TabItem, CheckBox, ListItem...).'),
+      type: str('The kind, as app_look listed it (Button, Edit, MenuItem...).'),
       name: str('Its name, as app_look listed it.'),
-      id: str('Its id, if app_look showed one (use it when names repeat).'),
-      nth: { type: 'integer', description: 'If several match, which one (1 = first).' },
-      text: str('type: the text. A one-line field gets it in place of what is there; a document (like Notepad\'s page) gets it added at the end. For a document you can give the window and leave type and name empty.'),
-      keys: str('keys: the key or combination, like "Enter", "Tab", "Ctrl+S".'),
-      x: { type: 'integer', description: 'click_at: how many pixels from the left edge of the window picture.' },
-      y: { type: 'integer', description: 'click_at: how many pixels from the top edge of the window picture.' },
-      expect: str('What should be true of the window afterwards, in one plain sentence (like "the document shows the word hello"). Bob checks it with his eyes brain and tells you yes or no.')
+      id: str('Its id, if listed (use it when names repeat).'),
+      nth: { type: 'integer', description: 'If several match, which (1 = first).' },
+      text: str('type: the text. A one-line field is replaced; a document gets it at the end (the window alone is enough).'),
+      keys: str('keys: like "Enter" or "Ctrl+S".'),
+      x: { type: 'integer', description: 'click_at: pixels from the left of the picture.' },
+      y: { type: 'integer', description: 'click_at: pixels from the top of the picture.' },
+      expect: str('What should be true afterwards, in one sentence. Bob\'s eyes check it.')
     }, ['window', 'action']),
     approvalGroup: (a) => `apps-act:${String(a.window || '').toLowerCase()}`,
     async check(args, ctx) {

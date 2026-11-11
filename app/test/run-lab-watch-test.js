@@ -1,4 +1,4 @@
-// FNRI (the Lab's Playground): the scan of which experts a mixture-of-experts brain picks, and its viewer window.
+// fNRI (the Lab's Playground): the scan of which experts a mixture-of-experts brain picks, and its viewer window.
 // The sums (which skill each expert leans to, the timeline, one expert up close), reading a recording from a file
 // that isn't trusted, Brain Engine's trace in the shape the engine patch gives it, the scan as a Lab job with a fake
 // engine (no brain is loaded, nothing on this replicant matrix is read), the routes, and that the pieces are wired:
@@ -80,7 +80,7 @@ check('the timeline is every word of every question in order, or only one skill\
 { const d = expertDetail(rec, sp, 0, 0); check('one expert up close: its picks, its split between the skills, and the words it was picked for', d.picks === 40 && d.top === 0 && d.shares[0].skill === 0 && d.shares[0].pct === 100 && d.words[0].text === 'cat' && d.words[0].n === 37, JSON.stringify(d)); }
 check('every skill has its own colour and letter, sixteen of each', SKILL_LOOKS.length === 16 && new Set(SKILL_LOOKS.map((x) => x[0])).size === 16 && new Set(SKILL_LOOKS.map((x) => x[1])).size === 16 && lookOf(17)[1] === 'B');
 check('a floor is as near square as the expert count allows', sideOf(256) === 16 && sideOf(128) === 12 && sideOf(8) === 3);
-check('the name lives in one place', NAME === 'FNRI' && LONG_NAME === 'Functional Neural Response Imager');
+check('the name lives in one place', NAME === 'fNRI' && LONG_NAME === 'Functional Neural Response Imager');
 
 // ---- a recording from a file is not trusted ----
 check('a file that isn\'t a recording is refused in plain words', (() => { try { cleanRecording({ hello: 1 }); return false; } catch (e) { return /isn't an expert recording/.test(e.message); } })());
@@ -155,7 +155,7 @@ check('a scan needs a brain and at least one skill', await startWatch(lab, {}).t
   const ask = await startWatch(lab, { brain: 'moe', skills: ['coding', 'chat'], per: 2 });
   check('Bob\'s own brain leaves the card only after asking', ask.needUnload && ask.names[0] === 'Main' && !lab.job && served === 0);
   const r = await startWatch(lab, { brain: 'moe', skills: ['coding', 'chat'], per: 2 }, { unload: true });
-  check('the scan starts as a Lab job, with a step for each skill', r.started.kind === 'watch' && r.started.name === 'FNRI: Test MoE' && r.started.steps.length === 4 && lab.unloaded === true);
+  check('the scan starts as a Lab job, with a step for each skill', r.started.kind === 'watch' && r.started.name === 'fNRI: Test MoE' && r.started.steps.length === 4 && lab.unloaded === true);
   check('a second job is refused while it runs', await startWatch(lab, { brain: 'moe' }).then(() => false, (e) => /already busy/.test(e.message)));
   await wait(lab);
   const run = lab.runs[lab.runs.length - 1];
@@ -199,7 +199,7 @@ check('a scan needs a brain and at least one skill', await startWatch(lab, {}).t
 for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watch.js', 'public/watch-view.js', 'src/lab-watch.js', 'public/lab-playground.js']) { check(`${f} parses`, spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../${f}`, import.meta.url))]).status === 0); check(`${f} names no private brain`, !/thoth|heretic/i.test(read(f))); }
 {
   const pg = read('public/lab-playground.js'), page = read('public/lab-watch.js'), html = read('public/watch.html'), js = read('public/watch.js'), view = read('public/watch-view.js'), css = read('public/watch.css'), main = read('electron/main.cjs');
-  check('the Playground has the FNRI page, right after Peek inside', /\['peek', 'Peek inside'\], \['watch', 'FNRI'\]/.test(pg) && /watch: createWatchPage\(\{ api \}\)/.test(pg));
+  check('the Playground has the fNRI page, right after Peek inside', /\['peek', 'Peek inside'\], \['watch', 'fNRI'\]/.test(pg) && /watch: createWatchPage\(\{ api \}\)/.test(pg));
   check('the page opens the viewer in its own window and says so if pop-ups are blocked', page.includes("window.open(`/watch.html${q}`, 'bob-watch'") && /pop-ups/.test(page));
   check('Bob.exe lets the viewer open as its own window, one at a time, and keeps it on Bob\'s own page', /url === base \+ '\/watch\.html' \|\| url\.startsWith\(base \+ '\/watch\.html\?'\)/.test(main) && /watchWin\.loadURL\(url\)/.test(main) && /if \(!url\.startsWith\(base \+ '\/watch\.html'\)\) e\.preventDefault\(\)/.test(main));
   check('the viewer has no outside scripts or styles', !/https?:\/\//.test(html) && !/https?:\/\/(?!x)/.test(js.replace(/\/\/.*$/gm, '')) && /<script type="module" src="\/watch\.js">/.test(html));
@@ -278,7 +278,7 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
     check('on Linux the same, from libllama-server-impl.so; a missing program is still unknown', traceBuilt(path.join(so, 'llama-server'))?.experts === true && traceBuilt(path.join(so, 'llama-server'))?.heads === false && traceBuilt(path.join(tmp, 'nope', 'llama-server.exe')) === null);
   }
   { const pg = read('public/lab-watch.js');
-    check('while a brain is read the FNRI page says so, and a late answer for an older pick is dropped (PC test of 1.5.189)', /Reading this brain…/.test(pg) && /if \(n === asking && want === brain\) bv = r;/.test(pg)); }
+    check('while a brain is read the fNRI page says so, and a late answer for an older pick is dropped (PC test of 1.5.189)', /Reading this brain…/.test(pg) && /if \(n === asking && want === brain\) bv = r;/.test(pg)); }
   check('an expert scan\'s words are left as they were', say({ brain: { kind: 'experts' } }, 'Not experts') === 'Not experts' && say(c5, 'Not experts') === 'Other parts' && say(c5, '<div class="watch-expert">One expert</div>') === '<div class="watch-expert">One neuron group</div>');
   const html = read('public/watch.html'), view = read('public/watch-view.js'), js = read('public/watch.js');
   check('the viewer starts as a cube of coloured glass, with a slider for how see-through', /id="watchGlass"/.test(html) && /id="watchCube"/.test(html) && /cubeGap/.test(view) && /glass/.test(view) && /data-solid=/.test(js) && /id="watchGlow" min="0" max="1.5" step="0.05" value="0.5"/.test(html) && /glow = 0\.5/.test(view) && /solid\.get\(top\)/.test(view) && /cube\(\);/.test(js));
@@ -396,7 +396,7 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   const cubeJs = read('public/mind-cube.js'), index = read('public/index.html'), layout = read('public/layout.js'), server = read('src/server.js'), llama = read('src/llamacpp.js');
   check('a scan holds up to sixteen skills, and says so', await startWatch(mk(), { brain: 'moe', skills: WATCH_SKILLS.map((x) => x.id) }).then(() => false, (e) => /up to 16 skills/.test(e.message)) && /watch-over/.test(read('public/lab-watch.js')));
   check('the small cube is how Bob\'s thinking shows to begin with, with the written thinking one switch away and whenever the cube can\'t work', /id="mindDockCube"[^>]*aria-checked="true"/.test(index) && /id="mindCubeBox" class="mind-cube" hidden/.test(index) && /store\.get\('bob-mind-cube', '1'\) === '1'/.test(layout) && /createMindCube/.test(layout) && /classList\.toggle\('cube-view', cubeOn && cubeOk\)/.test(layout) && /\.cube-view \.mind-log, \.cube-view \.mind-empty \{ position: absolute !important;/.test(read('public/style.css')));
-  check('a brain answering on the second server is traced for the cube too, and a reply without a trace leaves a line in the logbook', /this\.beside\.wantTrace = \(\) => this\.wantTrace\?\.\(\) \|\| false; this\.beside\.onTrace = \(raw, model\) => this\.onTrace\?\.\(raw, model\);/.test(llama) && /if \(asked && !traced\) this\.log\?\.\('engine', `FNRI cube: /.test(llama));
+  check('a brain answering on the second server is traced for the cube too, and a reply without a trace leaves a line in the logbook', /this\.beside\.wantTrace = \(\) => this\.wantTrace\?\.\(\) \|\| false; this\.beside\.onTrace = \(raw, model\) => this\.onTrace\?\.\(raw, model\);/.test(llama) && /if \(asked && !traced\) this\.log\?\.\('engine', `fNRI cube: /.test(llama));
   check('Bob asks the engine for the trace only while a cube with Real experts on is open, and only on Brain Engine', /wantTrace = \(\) => liveCubes\.size > 0 && !cubeWhy\(\)/.test(server) && /for \(const res of liveCubes\) res\.write\(data\); \};/.test(server) && /this\.wantTrace\?\.\(\) \? \{ expert_trace: true \}/.test(llama) && /brainsEngineNow\(cfg\) !== 'brainengine'/.test(server));
   check('an older Brain Engine build makes the cube say to press Update, instead of staying dark (1.5.193 on the owner\'s machines)', /lab\.traceProbe\?\.\(\)\?\.experts === false \? 'This Brain Engine build is too old/.test(server));
   check('only this replicant matrix\'s own pages can turn the cube on, and it says why when the engine can\'t do it', /isLocal && url\.searchParams\.get\('cube'\) === '1'/.test(server) && /const live = url\.searchParams\.get\('live'\) === '1', why = live \? cubeWhy\(\) : ''/.test(server) && /type: 'cube', ok: !why, why, live/.test(server) && /cubeClients\.delete\(res\); liveCubes\.delete\(res\);/.test(server));
@@ -511,8 +511,8 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
     const sp1 = sparkWord(40, 128, rnd), lit1 = sp1.reduce((a, l) => a + l.length, 0);
     check('resting, a few neurons fire now and then: 1 to 3, every few seconds, only while the section shows', sp1.length === 40 && lit1 >= 1 && lit1 <= 3 && sparkWord(0, 8, rnd).length === 0 && SPARK_MS[0] >= 2000 && SPARK_MS[1] > SPARK_MS[0] && /if \(!showing \|\| phase !== 'idle' \|\| live\(\) \|\| rec \|\| still\(\)\) return;/.test(cubeJs));
     check('with animations off the glow for show is one still frame and nothing sparks', /if \(still\(\)\) \{ show = \[\]; view\.draw\(on \? \[\{ e: showWord\(null/.test(cubeJs));
-    check('the glow for show takes the theme\'s accent unless you picked a colour of your own', /getPropertyValue\('--accent'\)/.test(cubeJs) && /const tint = \(\) => \{ if \(ownColour\) return;/.test(cubeJs) && /ownColour = true;/.test(cubeJs));
-    check('the whole cube, not only its glow, is in the theme\'s colour, and it changes the moment the theme does', /esp = \{ \.\.\.esp, top: esp\.top\.map\(\(r\) => r\.map\(\(\) => 0\)\) \}/.test(cubeJs) && /new MutationObserver\(retint\)/.test(cubeJs) && /const retint = \(\) => \{ if \(!ownColour\) tint\(\);/.test(cubeJs));
+    check('the glow for show takes the theme\'s cube colour unless you picked a colour of your own', /getPropertyValue\('--cube'\)/.test(read('public/watch-view.js')) && /const tint = \(\) => \{ if \(ownColour\) return;/.test(cubeJs) && /ownColour = true;/.test(cubeJs) && /const showLit = /.test(cubeJs));
+    check('the whole cube, not only its glow, is in the theme\'s colour, and it changes the moment the theme does', /esp = \{ \.\.\.esp, top: esp\.top\.map\(\(r\) => r\.map\(\(\) => 0\)\) \}/.test(cubeJs) && /new MutationObserver\(retint\)/.test(cubeJs) && /const retint = \(\) => \{ tint\(\); view\.set\(\{\}\);/.test(cubeJs));
     check('the small cube has faint edges so it reads as a cube; the big viewer leaves them off', /edges: true \}\); \/\/ edges/.test(cubeJs) && /let edges = false;/.test(read('public/watch-view.js')) && /ctx\.globalAlpha = 0\.16 \* Math\.min\(1, reveal \* 1\.5\)/.test(read('public/watch-view.js')));
     check('Real experts is a switch beside Show the cube, off to begin with, and only it asks for the trace', /id="mindCubeLive"[^>]*aria-checked="false"/.test(index) && /id="mindCubeLive"[^>]*title="[^"]*roughly 10 to 30% slower/.test(index) && /store\.get\('bob-cube-live', '0'\) === '1'/.test(read('public/layout.js')) && /'\/api\/events\?cube=1&live=1' : '\/api\/events\?cube=1'/.test(cubeJs) && /type === 'trace' && live\(\)/.test(cubeJs) && /cube\.relive\(\)/.test(read('public/layout.js')));
     check('the cube is told how many experts a word picks, for the glow for show', /used: Number\(f\.used\) \|\| 0/.test(read('src/lab-watch.js')));

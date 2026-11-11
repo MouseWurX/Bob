@@ -23,7 +23,7 @@ const PICK_IDS = { normal: 'normal', art: 'art', coding: 'coding', office: 'offi
 export const pickId = (x) => PICK_IDS[String(x || '').toLowerCase().trim()] || null;
 
 export const PICK_SCHEMA_TEXT = {
-  description: 'Change session to suit the work, judged from the whole chat, only when the job clearly fits another better. You go back to normal when quiet.',
+  description: 'Switch session to suit the work, only when the whole chat clearly fits another. It goes back to normal when quiet.',
   session: 'art: pictures, clips, music; coding: multi-step coding work; office: writing, spreadsheets, research; gaming: {{USER}} is gaming; normal: the rest',
   why: 'Few words, e.g. "for the fix".'
 };

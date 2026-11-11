@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { say, ttsReady, speakable, stopVoices } from '../src/tts.js';
+import { say, ttsReady, speakable, stopVoices, KOKORO_VOICES, DEFAULT_KOKORO_VOICE } from '../src/tts.js';
 import { capabilities } from '../src/capabilities.js';
 
 let pass = 0, fail = 0;
@@ -36,6 +36,13 @@ check('the voice stays loaded between sentences (same process)', k1.pid === k2.p
 try { await say(kcfg, 'please explode'); check('a voice error comes back as an error', false); } catch (e) { check('a voice error comes back as an error', /crashed/.test(e.message)); }
 const k3 = JSON.parse((await say(kcfg, 'Still here.')).toString('utf8', 16));
 check('the worker keeps going after an error', k3.pid === k1.pid);
+const k4 = JSON.parse((await say({ ...kcfg, tts: { ...kcfg.tts, voice: '' } }, 'Nobody picked.')).toString('utf8', 16));
+check('with no voice picked, Kokoro speaks as Onyx, the recommended voice', DEFAULT_KOKORO_VOICE === 'am_onyx' && k4.voice === 'am_onyx');
+check('Onyx leads the Kokoro voice list', KOKORO_VOICES[0][0] === DEFAULT_KOKORO_VOICE && KOKORO_VOICES.length === 22);
+const catalog = JSON.parse(fs.readFileSync(path.resolve('catalog.json'), 'utf8').replace(/^\uFEFF/, ''));
+check('the Kokoro voice pack in the catalogue sets Onyx', catalog.models.find((m) => m.id === 'kokoro-v1')?.use?.tts?.voice === DEFAULT_KOKORO_VOICE);
+const help = fs.readFileSync(path.resolve('public/help-content.js'), 'utf8').replace(/\r\n/g, '\n');
+check('Help: voice page, FAQ and glossary say Onyx is recommended', /inside it I recommend <strong>Onyx<\/strong>/.test(help) && help.includes("id: 'faq-voice-onyx'") && help.includes('<dt>Onyx</dt>'));
 fs.mkdirSync(path.join(dir, 'voices'), { recursive: true });
 fs.writeFileSync(path.join(dir, 'voices', 'bob.wav'), 'RIFF');
 const c1 = JSON.parse((await say({ ...kcfg, tts: { provider: 'chatterbox' } }, 'Hello.')).toString('utf8', 16));

@@ -1,4 +1,4 @@
-// 🧪 Computer Science Lab, Playground: FNRI. A recording of which experts a mixture-of-experts brain picks,
+// 🧪 Computer Science Lab, Playground: fNRI. A recording of which experts a mixture-of-experts brain picks,
 // word by word, while it answers a few simple questions for each skill; the viewer window (public/watch.html) plays
 // it as a 3D block of voxels, one floor per layer, coloured by the skill each expert leans to, glowing as it is used.
 //   The questions are plain data below, so anyone can read them. A few per skill is enough to see the pattern; it is

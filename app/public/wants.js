@@ -12,13 +12,15 @@ export const WANTS = [
   { card: 'how', key: 'quickNotes', setting: 'Let Bob take quick notes', where: 'How Bob works',
     label: 'Take quick notes when you say "note:"', note: 'Saved at once with the date, in one text file.' },
   { card: 'how', key: 'smartNotes', setting: 'Let Bob notice what\'s worth noting', where: 'How Bob works',
-    label: 'Notice what\'s worth noting by myself', note: 'Works with quick notes on.' },
+    label: 'Note things worth keeping on my own', note: 'Decisions, numbers, plans. I say 📝 Noted. Turns quick notes on too.' },
   { card: 'how', key: 'docTools', setting: 'Read and search my documents', where: 'How Bob works',
     label: 'Read and search your documents', note: 'Word, Excel, PowerPoint, PDF and more. Nothing leaves this replicant matrix.' },
   { card: 'how', key: 'docView', setting: 'Show documents in the side panel', where: 'How Bob works',
     label: 'Show documents beside the chat', note: 'Word, Excel, PowerPoint and PDF open in the side panel.' },
   { card: 'how', key: 'sandboxCode', setting: 'Let Bob work things out in a sandbox', where: 'How Bob works',
     label: 'Work out sums, dates and money in a sandbox', note: 'A locked box that can\'t see your files, so I answer from the result, not a guess.' },
+  { card: 'how', key: 'toolLearning', setting: 'Let Bob learn from his tools', where: 'How Bob works',
+    label: 'Learn from what works and what fails', note: 'One line on what fixed a tool, and a scorecard. It stays here.' },
   { card: 'how', key: 'planFirst', setting: 'Show Bob\'s plan before big jobs', where: 'How Bob works',
     label: 'Show you my plan before big jobs', note: 'Every step on one card, and I wait for your OK.' },
   { card: 'how', key: 'editOwn', setting: 'Let Bob fix his own messages', where: 'How Bob works',
@@ -56,11 +58,6 @@ export const WANTS_ELSEWHERE = [
 // (the test fails while a line here is also a Settings switch).
 export const WANTS_SOON = [
   { card: 'brains', label: 'Ask a bigger Bob to check my hard answers' },
-  { card: 'net', label: 'SCUT, a faster link for sharing a graphics card (experimental)' },
-  { card: 'net', label: 'SUDDAR scan, to see how far away each Bob is (experimental)' },
-  { card: 'may', label: 'Keep a note when a tool trips me up' },
-  { card: 'may', label: 'Say when to use each tool I make' },
-  { card: 'may', label: 'Keep score of my tools and offer to fix one that keeps failing' },
   { card: 'may', label: 'Browse the web in my own window' }
 ];
 
@@ -74,9 +71,10 @@ export const wantPatch = (key, on) => (key === 'autoCheck' ? { updates: { autoCh
 export function wantSaved(settings, key, reply = {}) {
   if (key === 'autoCheck') settings.updates = { ...(settings.updates || {}), autoCheck: reply.updates?.autoCheck === true };
   else if (key in reply) settings[key] = reply[key] === true;
+  if (key === 'smartNotes' && 'quickNotes' in reply) settings.quickNotes = reply.quickNotes === true; // smart notes switch quick notes on with them
   const on = wantOn(settings, key);
   const why = key === 'sandboxCode' ? reply.sandboxWhy : '';
-  return { on, say: why || (on ? 'On.' : 'Off.') };
+  return { on, say: why || (on ? (key === 'smartNotes' ? 'On, with quick notes.' : 'On.') : 'Off.') };
 }
 
 // Where Bob can start at sign-in (the same test as the Settings switch).

@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { safeSpawn } from './engine-blocked.js'; // 1.5.203: a blocked program comes back as 'error', not a throw
 import { exeName } from './platform.js';
 import { gaming } from './sessions.js';
 
@@ -52,7 +53,7 @@ export class Embedder {
     if (!file || !fs.existsSync(file)) throw new Error(`${model} isn't downloaded.`);
     this.stop();
     let log = '';
-    const child = spawn(this.exe(), [...(this.cfg.llamacpp?.preArgs || []), ...embedArgs(file, this.port)], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } });
+    const child = safeSpawn(spawn, this.exe(), [...(this.cfg.llamacpp?.preArgs || []), ...embedArgs(file, this.port)], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } });
     try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {}
     child.stdout.on('data', (d) => { log = (log + d).slice(-2000); });
     child.stderr.on('data', (d) => { log = (log + d).slice(-2000); });

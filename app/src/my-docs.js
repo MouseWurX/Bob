@@ -94,10 +94,10 @@ const STOPPED = { hits: 'I stopped at the first 30 finds.', files: `I stopped af
 
 export function findDocsTool(cfg) {
   return {
-    schema: fn('find_in_documents', 'Search {{USER}}\'s own files for words: inside Word, Excel, PowerPoint, OpenDocument, PDF, e-book and text files, and in file names, in the folders you may read. Gives each file with the line it was found in; read one with read_file.', {
-      words: str('The words to look for. Every word must be in the file (any order).'),
-      folder: str('Optional: one folder to search (full path). Leave out to search every folder you may read.'),
-      kind: str('Optional: documents (Word, PDF...), text (plain text files) or any. Default any.', { enum: ['any', 'documents', 'text'] })
+    schema: fn('find_in_documents', 'Search inside {{USER}}\'s files (Word, Excel, PowerPoint, PDF, e-books, text) and file names, in folders you may read. Gives each file with the matching line; open one with read_file.', {
+      words: str('Every word must be in the file, any order.'),
+      folder: str('Optional: one folder (full path). Default all you may read.'),
+      kind: str('Optional: documents, text or any (default).', { enum: ['any', 'documents', 'text'] })
     }, ['words']),
     async run({ words, folder, kind }, ctx = {}) {
       if (!docToolsOn(cfg)) return 'Searching inside documents is off. It\'s in Settings, How Bob works: "Read and search my documents".';
