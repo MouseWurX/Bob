@@ -2,6 +2,7 @@
 // Makes android/app/src/main/assets/www/shared.js from desktop Bob's own files, so the phone never drifts:
 //  - persona: Bob's backstory, personality and how he answers (src/persona.js), with the PC-only parts left out
 //  - models: the phone brain choices (android/phone-models.json), pinned files copied from catalog.json
+//  - prompt-words.js: saved prompts' words part (public/prompt-words.js), word for word, as globalThis.BobPrompts
 //  - avatars.js: the character screen's parts and composer (public/avatars.js), word for word, as a plain script
 //    (globalThis.BobAvatars), so the phone draws your Adventure character exactly as the desktop does (1.5.122)
 // Run: node android/tools/make-shared.mjs   (test/run-android-test.js fails if shared.js or avatars.js is stale)
@@ -13,6 +14,7 @@ import { CORE, DEFAULT_BACKSTORY, DEFAULT_CAT } from '../../src/persona.js';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const OUT = path.join(root, 'android/app/src/main/assets/www/shared.js');
 export const OUT_AVATARS = path.join(root, 'android/app/src/main/assets/www/avatars.js');
+export const OUT_PROMPTS = path.join(root, 'android/app/src/main/assets/www/prompt-words.js');
 
 // One section of CORE, from its heading line up to the next blank-line-separated heading.
 function section(heading) {
@@ -65,9 +67,21 @@ export function buildAvatars() {
   return `// Made by android/tools/make-shared.mjs from public/avatars.js. Don't edit.\n(function () {\n${body}\nglobalThis.BobAvatars = { ${names.join(', ')} };\n})();\n`;
 }
 
+// Saved prompts: the "/" menu's words part (public/prompt-words.js), the same way as avatars.js.
+export function buildPromptWords() {
+  const src = fs.readFileSync(path.join(root, 'public/prompt-words.js'), 'utf8').replace(/\r\n/g, '\n');
+  if (/^import\s/m.test(src)) throw new Error('public/prompt-words.js imports something now: update make-shared.mjs');
+  const names = [...src.matchAll(/^export (?:const|function) ([A-Za-z_]\w*)/gm)].map((m) => m[1]);
+  if (!names.includes('slashQuery') || !names.includes('insertPrompt')) throw new Error('public/prompt-words.js no longer exports slashQuery/insertPrompt: update make-shared.mjs');
+  const body = src.replace(/^export (const|function) /gm, '$1 ');
+  return `// Made by android/tools/make-shared.mjs from public/prompt-words.js. Don't edit.\n(function () {\n${body}\nglobalThis.BobPrompts = { ${names.join(', ')} };\n})();\n`;
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   fs.writeFileSync(OUT, buildShared());
   console.log(`wrote ${path.relative(root, OUT)}`);
   fs.writeFileSync(OUT_AVATARS, buildAvatars());
   console.log(`wrote ${path.relative(root, OUT_AVATARS)}`);
+  fs.writeFileSync(OUT_PROMPTS, buildPromptWords());
+  console.log(`wrote ${path.relative(root, OUT_PROMPTS)}`);
 }

@@ -19,6 +19,7 @@
 <footer>
   <div id="status"><span id="status-text"></span><button class="effort hidden" id="effort" aria-label="Effort"></button></div>
   <div class="photo-chip hidden" id="photo-chip"><img id="photo-preview" alt="The photo you picked"><span>Photo for Bob to work on</span><button class="plain" id="photo-drop" aria-label="Remove the photo">✕</button></div>
+  <div class="prompt-menu hidden" id="prompt-menu" role="listbox" aria-label="Saved prompts"></div>
   <div class="compose">
     <button id="mic" aria-label="Talk to Bob">🎙</button>
     <button id="photo" aria-label="Add a photo">📎</button>
@@ -115,6 +116,10 @@
   <p class="help-line">What a Bob on your Bob-Net made for himself: the tools he wrote and the how-tos he kept. Delete what you don't want him to have; it waits 30 days under Recently deleted, where Put back brings it back.</p>
   <div id="own-kit"></div>
   <p class="help-line" id="own-kit-msg" role="status"></p>
+  <h3>Saved prompts</h3>
+  <label class="switch"><div class="words"><strong>Pull up saved prompts with /</strong><p class="help-line">Type / at the start of the message box and tap a saved prompt. Its words go in the box for you to finish and send. Words in {curly brackets} are blanks: Next blank picks each one to type over. Off to start with.</p></div><span class="pill"><input type="checkbox" id="prompt-on"><span></span></span></label>
+  <div id="prompt-list"></div>
+  <p class="help-line" id="prompt-msg" role="status"></p>
   <h3>When I'm not working right</h3>
   <div class="btns"><button id="help-bundle">Save a help bundle</button></div>
   <p class="help-line">Saves one file with Bob's logs, the last chats, errors and this replicant matrix's facts, scrubbed of passcodes, keys and your name, so an agent or a person can work out what's wrong. Nothing is sent anywhere: it saves to this phone's Downloads.</p>
@@ -130,6 +135,7 @@
 
 <script src="shared.js"></script>
 <script src="avatars.js"></script>
+<script src="prompt-words.js"></script>
 <script src="logic.js"></script>
 <script src="help.js"></script>
 <script src="diagram-core.js"></script>

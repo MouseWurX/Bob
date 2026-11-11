@@ -274,7 +274,7 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   check('the sandbox has its own group for sums and dates', g.sandbox?.tools.includes('run_in_sandbox') && g.sandbox.words.test('how many days until Christmas') && g.sandbox.words.test('calculate the average'));
   Object.assign(cfg, { quickNotes: false, docTools: false, sandboxCode: false });
   check('guests (other Bobs, Discord channels) never get them', !/take_note|find_in_documents|run_in_sandbox/.test(read('src/share-jobs.js')));
-  check('bob_help lists the three switches', /Let Bob take quick notes: off \(Let Bob notice what's worth noting: off\); Read and search my documents: off; Show documents in the side panel: off; Let Bob work things out in a sandbox: off/.test(settingsNow({ cloud: [] })));
+  check('bob_help lists the three switches', /Let Bob take quick notes: off \(Let Bob notice what's worth noting: off\); Read and search my documents: off; Show documents in the side panel: off; Pull up saved prompts with \/: off; Let Bob work things out in a sandbox: off/.test(settingsNow({ cloud: [] })));
 }
 
 // ---------- settings page, server, Help ----------

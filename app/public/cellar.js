@@ -13,6 +13,7 @@ import { phoneAccessHtml, mountPhoneAccess } from './phone-access.js';
 import { telegramHtml, mountTelegram } from './telegram.js';
 import { discordHtml, mountDiscord } from './discord.js';
 import { checkinsHtml, mountCheckins } from './checkins.js';
+import { promptsHtml, mountPrompts } from './prompts.js'; // saved prompts and the / menu
 import { adventureSettingsHtml, mountAdventureSettings } from './adventure.js';
 import { gamesSettingsHtml, mountGamesSettings } from './games.js';
 import { shareBrainsHtml, mountShareBrains } from './share-brains.js';
@@ -969,6 +970,7 @@ export function createCellar({ popOut = null } = {}) {
     ['housekeeping', '🧹 Housekeeping', 'tidy old chats pictures logs', () => housekeepingHtml()],
     ['adventure', '🎲 Adventure', 'adventure game tabletop role-playing dice game master party bobs cards plot armour campaign', () => `<div class="adventure-box">${adventureSettingsHtml(settings.adventure || {})}</div>`],
     ['games', '🧩 Games', 'games twenty questions hangman word ladder five letters story dice quick brain banter chip in', () => `<div class="games-box">${gamesSettingsHtml(settings.games || {})}</div>`],
+    ['prompts', '📝 Saved prompts', 'saved prompts prompt library slash / menu template templates reuse snippets blanks variables {file} curly brackets', () => sswitch('promptMenu', settings.promptMenu === true, 'Pull up saved prompts with /', 'Off unless you turn it on. Type / at the start of the message box to pick a saved prompt. Its words go in the box for you to finish and send. Words in {curly brackets} are blanks: type over them, and Tab goes to the next one.') + promptsHtml()],
     ['checkins', '🔔 Check-ins', 'check in heartbeat schedule morning every day weekday hours notify alert tap shoulder downloads stuck failed tasks disk space own checks build finished', () => checkinsHtml()],
     ['remove', '🗑 Remove Bob', 'uninstall remove', () => settings.features?.uninstall === false ? macRemoveHtml() : `<div class="remove-bob">${more('Takes off Bob\'s program, his Start menu shortcut and "Launch on start-up". His chats, settings and models stay unless you tick them. Nothing else in the inn folder or in Windows is touched.')}<button data-removebob>Remove Bob…</button><div class="remove-confirm" hidden></div></div>`]
   ];
@@ -1128,6 +1130,7 @@ export function createCellar({ popOut = null } = {}) {
     mountTelegram(dlg.querySelector('.telegram-box')); // Online services: Talk to Bob on Telegram
     mountDiscord(dlg.querySelector('.discord-box')); // Online services: Bob on Discord
     mountCheckins(dlg.querySelector('.checkins-box')); // 1.5.78 Check-ins
+    mountPrompts(dlg.querySelector('.prompts-box')); // 📝 Saved prompts
     mountAdventureSettings(dlg.querySelector('.adventure-box'), { api, settings }); // 1.5.117 🎲 Adventure
     mountGamesSettings(dlg.querySelector('.games-box'), { api, settings }); // 1.5.121 🧩 Games
     mountShareBrains(dlg.querySelector('.share-box')); // Bob-Net: My other Bobs and What they share
@@ -1764,6 +1767,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.set === 'quickNotes') { const r = await api('/api/settings', { quickNotes: el.checked }); settings.quickNotes = r.quickNotes; el.checked = r.quickNotes; draw(); flash(dlg.querySelector('[data-set="quickNotes"]') || dlg, r.quickNotes ? 'On. Say "note:" and Bob writes it down.' : 'Off. Your notes file stays where it is.'); return; }
       if (el.dataset.set === 'smartNotes') { const r = await api('/api/settings', { smartNotes: el.checked }); settings.smartNotes = r.smartNotes; el.checked = r.smartNotes; flash(el, r.smartNotes ? 'On. Bob notes what\'s worth keeping and says 📝 Noted.' : 'Off. Bob only notes what you ask him to.'); return; }
       if (el.dataset.set === 'docTools') { const r = await api('/api/settings', { docTools: el.checked }); settings.docTools = r.docTools; el.checked = r.docTools; flash(el, r.docTools ? 'On. Bob can read and search your documents.' : 'Off. Bob reads plain text files only.'); return; }
+      if (el.dataset.set === 'promptMenu') { const r = await api('/api/settings', { promptMenu: el.checked }); settings.promptMenu = r.promptMenu; el.checked = r.promptMenu; flash(el, r.promptMenu ? 'On. Type / at the start of the message box.' : 'Off. Your prompts are kept.'); return; }
       if (el.dataset.set === 'docView') { const r = await api('/api/settings', { docView: el.checked }); settings.docView = r.docView; el.checked = r.docView; flash(el, r.docView ? 'On. Documents open in the side panel.' : 'Off. Documents open in their own app.'); return; }
       if (el.dataset.set === 'sandboxCode') { const r = await api('/api/settings', { sandboxCode: el.checked }); settings.sandboxCode = r.sandboxCode; el.checked = r.sandboxCode; flash(el, r.sandboxWhy || (r.sandboxCode ? (r.sandboxNet ? 'On. Bob works sums out in the sandbox, with the internet switched off.' : 'On. Bob works sums out in the sandbox. This Bob can\'t switch the internet off by itself, so code is checked for it instead.') : 'Off. Bob works sums out in his head.')); return; }
       if (el.dataset.set === 'editOwn') { const r = await api('/api/settings', { editOwn: el.checked }); settings.editOwn = r.editOwn; el.checked = r.editOwn; flash(el, r.editOwn ? 'On. Bob can fix his own earlier messages.' : 'Off. Bob sends a new message for any fix.'); return; }

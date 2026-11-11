@@ -104,6 +104,10 @@ globalThis.BobHelp = {
       html: `<p>Settings, <strong>Pick up where Bob left off</strong> (off to start with). Android sometimes closes apps in the background to save memory. With this on, if that happens in the middle of a phone-brain reply, I ask the question again when you come back.</p>`
     },
     {
+      id: 'saved-prompts', title: 'Saved prompts and the / menu',
+      html: `<p>Settings, <strong>Pull up saved prompts with /</strong> (off to start with). Save the things you ask me often, then type <strong>/</strong> at the start of the message box and tap one. Keep typing after the / to narrow the list down. Its words go in the box; nothing is sent until you tap Send.</p><p>Words in curly brackets, like {file} or {who}, are blanks. The first one is picked out, so just type over it, then tap <strong>Next blank</strong> above the box for the next. {date}, {time} and {day} fill themselves in from the phone's clock.</p><p>Add, change, delete and reorder them under Settings, Saved prompts. <strong>Add Bob's starters</strong> gives you four to try on an empty list. They stay on this phone; your other replicant matrices keep their own list (Settings, How Bob works, 📝 Saved prompts there).</p>`
+    },
+    {
       id: 'alerts', title: 'Alerts',
       html: `<p>When I'm in the background and a Bob on your network needs your OK, or has a check-in for you, Android shows a notification. The first time, Android asks if that's all right. Tap the notification to come back to me.</p><p>Check-ins are set up on your other replicant matrix (Settings, 🔔 Check-ins). The phone only shows them.</p>`
     },
@@ -197,6 +201,7 @@ globalThis.BobHelp = {
 <dt>Story dice</dt><dd>Six picture dice come up; we tell a story a line each until every die is in it. Always a shared point.</dd>
 <dt>Help bundle</dt><dd>One file from Save a help bundle (Settings, Save a help bundle): my logs, errors, last chats, settings without their secrets and this replicant matrix's facts, with a HANDOFF.md on top. I never send it anywhere.</dd>
 <dt>Handoff file (HANDOFF.md)</dt><dd>The first file in a help bundle, written for whoever helps (a person or an AI agent): what I am, my exact version and public code, what's wrong as far as I can tell, and what to try first.</dd>
+<dt>Saved prompt</dt><dd>Words you ask me often, saved with a short name. Type / at the start of the message box to pull one up. Blanks in {curly brackets} are what you fill in.</dd>
 <dt>OK card</dt><dd>A Bob on your network asking before he does something outside his own folder.</dd>
 </dl>`
     },
@@ -211,6 +216,7 @@ globalThis.BobHelp = {
 <tr><td>Your other replicant matrix says the phone didn't answer in time</td><td>The first borrowed reply is the slow one: the phone reads my whole instructions and tool list once. After that it only reads what's new. If it keeps happening, check Bob-Net, Lend my brain for a reason (warm, low battery, in use), and tap Open battery settings there.</td></tr>
 <tr><td>Can your other replicant matrix borrow the phone while I game?</td><td>Yes: that's what Lend my brain is for. Turn it on here, then on your other replicant matrix: Settings, Bob-Net, Borrow a brain. Keep the phone on its charger with the screen off.</td></tr>
 <tr><td>Can my Bobs introduce each other?</td><td>Yes, if you ask them to. Turn on Pass my Bob-Net along under Bob-Net here, and the same switch on the Bobs on your other replicant matrices (Settings, Bob-Net, What they share). A Bob paired with two of them tells each the other's name and address, and those two pair with no card. The phone only answers; Lend my brain has to be on here for the introduction to get in.</td></tr>
+<tr><td>Can I save prompts I use a lot?</td><td>Yes. Turn on Pull up saved prompts with / in Settings, add them under Saved prompts, then type / in the message box and tap one.</td></tr>
 <tr><td>It asks for the passcode again</td><td>The passcode was changed on your other replicant matrix. Type the new one under Bob-Net.</td></tr>
 <tr><td>The phone brain is slow or stops</td><td>Close big apps (games, the camera), let the phone cool down, or try Test speed. Gemma 4 E2B is the quicker one.</td></tr>
 <tr><td>The download stopped</td><td>Tap Resume. It carries on where it stopped. If it says the checksum didn't match, the file was damaged on the way and was deleted: download it again on Wi-Fi.</td></tr>

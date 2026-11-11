@@ -203,3 +203,11 @@ label.field { display: block; margin: 10px 0 4px; font-weight: 600; }
 .chest-pic { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: var(--raise); display: flex; align-items: center; justify-content: center; font-size: 32px; }
 .chest-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #chest-big img, #chest-big video { max-width: 100%; border-radius: 8px; }
+/* Saved prompts: the "/" menu above the message box, and Settings, Saved prompts */
+.prompt-menu { max-height: 40vh; overflow-y: auto; margin-bottom: 8px; background: var(--raise); border: 1px solid var(--line); border-radius: 14px; }
+.prompt-menu button { display: block; width: 100%; min-height: 48px; text-align: left; padding: 8px 12px; border: 0; border-radius: 0; background: none; }
+.prompt-menu button + button { border-top: 1px solid var(--line); }
+.prompt-menu button small { display: block; opacity: .75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prompt-menu p { margin: 8px 12px; }
+.prompt-row { padding: 8px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.prompt-form input, .prompt-form textarea { width: 100%; margin-top: 4px; }

@@ -34,6 +34,7 @@ import { createBobLife } from './bob-life.js';
 import { createViewer, outCard, fillPeeks } from './viewer.js';
 import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
+import { createPromptMenu } from './prompts.js'; // saved prompts: the / menu in the message box
 import { diagramHtml, saveRowsHtml, setupSaveAs, watchSaveAs } from './save-as.js';
 
 // Settings opens in its own window on a computer (minimise, maximise, close). The main window keeps
@@ -358,6 +359,8 @@ syncNotify();
 
 $('cellarBtn').onclick = () => cellar.open('shop', 'roles');
 $('settingsBtn').onclick = () => cellar.open('settings');
+// Saved prompts: "/" at the start of the message box (off unless turned on in Settings, How Bob works).
+createPromptMenu(input, { openSettings: () => cellar.open('settings', null, { jump: 'adv-prompts' }) });
 // 1.5.141: the Bob-Net heading in Now running opens Settings at Bob-Net (advanced shown, the section open).
 $('nowNetHead')?.addEventListener('click', () => cellar.open('settings', null, { jump: 'adv-bobnet' }));
 // What the Settings window changed: pass its announcements on, press the two voice buttons for it, and read the

@@ -1714,3 +1714,21 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .vdoc-off p { margin: 0 0 8px; }
 .vdoc-why { overflow-wrap: anywhere; }
 @media (max-width: 600px) { .vslide { aspect-ratio: auto; } }
+/* Saved prompts: the "/" menu above the message box (prompts.js), and Settings, 📝 Saved prompts. */
+.prompt-menu { max-height: min(45vh, 320px); overflow-y: auto; padding: 4px; background: var(--card); border-top: 1px solid var(--line); }
+.prompt-menu .pm-row { display: flex; flex-direction: column; gap: 1px; padding: 6px 10px; min-height: 40px; border-radius: var(--r); cursor: pointer; }
+.prompt-menu .pm-row span { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prompt-menu .pm-row.on, .prompt-menu .pm-row:hover { background: var(--panel); box-shadow: var(--shadow); }
+.prompt-menu .pm-empty { margin: 6px 10px; }
+.prompt-menu .pm-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px 2px; font-size: 11px; border-top: 1px solid var(--line); margin-top: 4px; }
+.prompt-file { padding: 4px 14px; background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; }
+.prompt-list { list-style: none; margin: 0 0 8px; padding: 0; }
+.prompt-list li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.prompt-item { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.prompt-item > span:first-child { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.prompt-item .row button { min-height: 32px; min-width: 32px; }
+.prompt-edit label { display: block; margin: 6px 0; }
+.prompt-edit input, .prompt-edit textarea { width: 100%; font: inherit; }
+@media (forced-colors: active) { .prompt-menu .pm-row.on { outline: 2px solid Highlight; } }
+.effort + .prompt-menu[hidden] + .composer { border-top: 0; }
+.prompt-menu { flex: none; }

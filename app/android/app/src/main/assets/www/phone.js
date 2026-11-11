@@ -19,7 +19,7 @@
     get(k, d) { try { const v = localStorage.getItem(`bob.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { localStorage.setItem(`bob.${k}`, JSON.stringify(v)); } catch { /* full or blocked: carry on in memory */ } }
   };
-  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, userName: '', theme: 'inn', effort: 'low', resume: false };
+  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, userName: '', theme: 'inn', effort: 'low', resume: false, promptMenu: false };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
   const saveSettings = () => store.set('settings', settings);
   let bobs = store.get('bobs', []); // [{ name, address, base }]
@@ -938,6 +938,7 @@
     $('read-aloud').checked = settings.readAloud;
     $('theme').value = settings.theme;
     $('resume').checked = settings.resume;
+    drawPrompts();
   }
   document.querySelectorAll('input[name="mode"]').forEach((r) => r.addEventListener('change', () => { settings.mode = r.value; saveSettings(); drawWho(); }));
   $('user-name').addEventListener('change', (e) => { settings.userName = e.target.value.replace(/[<>{}"`\\]/g, '').trim().slice(0, 40); saveSettings(); });
@@ -945,6 +946,78 @@
   $('theme').addEventListener('change', (e) => { settings.theme = e.target.value; saveSettings(); applyTheme(); });
   $('resume').addEventListener('change', (e) => { settings.resume = e.target.checked; saveSettings(); });
   const applyTheme = () => document.documentElement.setAttribute('data-theme', settings.theme);
+
+  // ---------- Saved prompts (this phone only; off to start with) ----------
+  // The same words part as desktop Bob (prompt-words.js). "/" at the start of the box shows the menu; a tap puts the
+  // prompt's words in the box, never sends them. Phones have no Tab key, so "Next blank" picks each blank in turn.
+  const P = globalThis.BobPrompts;
+  let prompts = P.cleanList(store.get('prompts', []));
+  let promptEdit = null; // null, 'new' or a prompt id
+  const savePrompts = () => store.set('prompts', prompts);
+  function drawPrompts(msg = '') {
+    $('prompt-on').checked = settings.promptMenu;
+    const list = $('prompt-list');
+    const form = (p = { id: '', name: '', text: '' }) => {
+      const name = el('input', { type: 'text', maxlength: P.MAX_NAME, value: p.name, placeholder: 'Name (what you type after /)', 'aria-label': 'Name' });
+      const text = el('textarea', { rows: 4, maxlength: P.MAX_TEXT, placeholder: 'The words. Blanks go in {curly brackets}.', 'aria-label': 'Words' });
+      text.value = p.text;
+      return el('div', { class: 'prompt-form gap' }, name, text, el('div', { class: 'btns' },
+        el('button', { class: 'main', text: 'Save', onclick: () => {
+          const r = P.savePrompt(prompts, { id: p.id || undefined, name: name.value, text: text.value });
+          if (r.error) { $('prompt-msg').textContent = r.error; return; }
+          prompts = r.list; savePrompts(); promptEdit = null; drawPrompts('Saved.');
+        } }),
+        el('button', { text: 'Cancel', onclick: () => { promptEdit = null; drawPrompts(); } })));
+    };
+    list.replaceChildren(...[
+      ...prompts.map((p, i) => promptEdit === p.id ? form(p) : el('div', { class: 'prompt-row' },
+        el('strong', { text: '/' + p.name }), el('p', { class: 'help-line', text: p.text.length > 160 ? p.text.slice(0, 160) + '…' : p.text }),
+        el('div', { class: 'btns' },
+          el('button', { text: '↑', 'aria-label': `Move ${p.name} up`, disabled: i === 0, onclick: () => { prompts = P.movePrompt(prompts, p.id, -1); savePrompts(); drawPrompts(); } }),
+          el('button', { text: '↓', 'aria-label': `Move ${p.name} down`, disabled: i === prompts.length - 1, onclick: () => { prompts = P.movePrompt(prompts, p.id, 1); savePrompts(); drawPrompts(); } }),
+          el('button', { text: 'Change', onclick: () => { promptEdit = p.id; drawPrompts(); } }),
+          el('button', { text: 'Delete', onclick: (e) => {
+            if (e.target.dataset.sure !== '1') { e.target.dataset.sure = '1'; e.target.textContent = 'Delete for good?'; return; }
+            prompts = P.deletePrompt(prompts, p.id); savePrompts(); drawPrompts(`Deleted /${p.name}.`);
+          } })))),
+      prompts.length ? null : el('p', { class: 'help-line', text: `None yet. Add your own, or start with a few of mine: ${P.STARTERS.map((x) => x.name).join(', ')}.` }),
+      promptEdit === 'new' ? form() : el('div', { class: 'btns' },
+        el('button', { text: '＋ Add a prompt', onclick: () => { promptEdit = 'new'; drawPrompts(); } }),
+        prompts.length ? null : el('button', { text: 'Add Bob\'s starters', onclick: () => {
+          for (const x of P.STARTERS) { const r = P.savePrompt(prompts, x); if (r.list) prompts = r.list; }
+          savePrompts(); drawPrompts('Added. Change or delete them as you like.');
+        } }))].filter(Boolean));
+    $('prompt-msg').textContent = msg;
+  }
+  $('prompt-on').addEventListener('change', (e) => { settings.promptMenu = e.target.checked; saveSettings(); drawPrompts(e.target.checked ? 'On. Type / in the message box.' : 'Off. Your prompts are kept.'); });
+
+  // The menu above the box. While a picked prompt still has a blank, it shows a Next blank button instead.
+  let blanksLeft = false;
+  function drawPromptMenu() {
+    const menu = $('prompt-menu'), b = $('text');
+    const q = settings.promptMenu ? P.slashQuery(b.value, b.selectionStart) : null;
+    if (q) {
+      const hits = P.matchPrompts(prompts, q.query);
+      menu.replaceChildren(...hits.map((p) => el('button', { role: 'option', onclick: () => usePrompt(q, p) }, el('strong', { text: p.name }), el('small', { text: p.text.replace(/\s+/g, ' ') }))));
+      if (!hits.length) menu.append(el('p', { class: 'help-line', text: prompts.length ? `No saved prompt called "${q.query}". Send works as usual.` : 'No saved prompts yet. Add some in ⚙ Settings, Saved prompts.' }));
+      menu.classList.remove('hidden');
+      return;
+    }
+    const next = blanksLeft && settings.promptMenu ? P.nextBlank(b.value, b.selectionEnd) : null;
+    const onIt = next && next.start === b.selectionStart && next.end === b.selectionEnd; // the only blank left is picked already
+    if (next && !onIt) { menu.replaceChildren(el('button', { text: `Next blank: {${next.name}} ›`, onclick: () => { b.focus(); b.setSelectionRange(next.start, next.end); drawPromptMenu(); } })); menu.classList.remove('hidden'); return; }
+    if (!next) blanksLeft = false;
+    menu.classList.add('hidden');
+    menu.replaceChildren();
+  }
+  function usePrompt(q, p) {
+    const b = $('text'), r = P.insertPrompt(b.value, q, p, new Date());
+    b.value = r.value;
+    b.focus();
+    b.setSelectionRange(r.select[0], r.select[1]);
+    blanksLeft = P.blanksOf(p.text).length > 0;
+    b.dispatchEvent(new Event('input'));
+  }
 
   // ---------- 1.5.144 Tools and how-tos Bob made (the other Bob's, through him) ----------
   // The same list as his Settings panel. Delete asks on the row, then the thing waits 30 days under Recently deleted;
@@ -1586,9 +1659,11 @@ ${chatOut}
   // ---------- Composer ----------
   const box = $('text');
   box.addEventListener('input', () => { box.style.height = 'auto'; box.style.height = `${Math.min(box.scrollHeight, 140)}px`; });
+  box.addEventListener('input', drawPromptMenu); // saved prompts: the "/" menu
+  box.addEventListener('click', () => { if (settings.promptMenu) drawPromptMenu(); });
   $('send').addEventListener('click', () => {
     if (current) return stopReply();
-    const t = box.value; box.value = ''; box.style.height = 'auto'; if (send(t) === false) box.value = t;
+    const t = box.value; box.value = ''; box.style.height = 'auto'; blanksLeft = false; drawPromptMenu(); if (send(t) === false) box.value = t;
   });
   // ---------- A photo for a Bob on your network ----------
   let photo = null; // { preview } while one is attached
