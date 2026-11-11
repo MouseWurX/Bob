@@ -2,6 +2,8 @@
 import { drawBob, setLook } from './bob-sprite.js';
 import { applyStyle, applySavedStyle } from './themes.js';
 applySavedStyle();
+import { startI18n, followSaved } from './i18n.js';
+startI18n();
 import { startSwap, sceneLabel } from './brain-swap.js';
 import { createVoice } from './voice.js';
 import { createCellar } from './cellar.js';
@@ -383,7 +385,7 @@ const labPage = createLab({ api, note: (t) => note(t) });
 $('labBtn').onclick = () => labPage.open();
 const showLab = (on) => { $('labBtn').hidden = !on; };
 window.addEventListener('bob-lab-switch', (e) => showLab(e.detail?.on === true));
-fetch('/api/settings').then((r) => r.json()).then((st) => showLab(st.computerLab !== false)).catch(() => {});
+fetch('/api/settings').then((r) => r.json()).then((st) => { showLab(st.computerLab !== false); if (st.language) followSaved(st.language); }).catch(() => {});
 const adventurePage = createAdventure({ api }); // 1.5.117 🎲 Adventure
 $('adventureBtn').onclick = () => adventurePage.open();
 const gamesPage = createGames({ api }); // 1.5.121 🧩 Games

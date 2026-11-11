@@ -21,6 +21,7 @@ import { tip, noteOrTip, stripTags, keep } from './tips.js';
 import { attributesHtml, cleanPersonality, greeting, PRESETS, DEFAULTS, isDefault } from './personality.js';
 import { esc, gb } from './util.js';
 import { wantsHtml, wantPatch, wantSaved } from './wants.js';
+import { LANGS, LANG_KEY, pickLang } from './i18n.js';
 import { GROUPS as SET_GROUPS, CARDS as SET_CARDS, VIEW_KEY, cardOf, startView, topicFor } from './settings-map.js';
 
 const $ = (id) => document.getElementById(id);
@@ -643,6 +644,7 @@ export function createCellar({ popOut = null } = {}) {
       ${sswitch('lookIcon', settings.lookIcon !== false, 'Use Bob\'s look as his icon', `On unless you turn it off. His icon on the ${settings.platform === 'darwin' ? 'Dock' : 'taskbar'}, in the tray and in the corner of his window shows the look you picked, and changes the moment you save a new one (a shortcut pinned to the taskbar may keep the usual icon: Windows draws those from the shortcut). Off: the usual Bob icon.${settings.trayHere ? '' : ' Only in Bob\'s own window, not in a browser.'}`, settings.trayHere ? '' : 'disabled')}
       ${srow('Theme', esc(theme?.name || 'Bob\'s Inn'), '<button type="button" class="mini" data-tab="style">Change</button>')}
       ${srow('Animations', `<span class="ttabs" role="radiogroup" aria-label="Animations">${mopt('on', 'On')}${mopt('system', settings.platform === 'win32' ? 'Follow Windows' : 'Follow the system')}${mopt('off', 'Off')}</span>`)}
+      ${srow('Language', `<select data-set="language" data-no-translate aria-label="Language">${LANGS.map((l) => `<option value="${l.code}" ${l.code === pickLang(settings.language) ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select> ${tip('The words on Bob\'s screens. English unless you pick another. Help and Bob\'s replies stay as they are: write to him in your language and he answers in it.', 'Language')}`)}
       ${srow('Bob\'s cat', `<input data-set="catName" maxlength="24" value="${esc(settings.catName || 'Patches')}" aria-label="Cat's name" style="width:12em"> ${tip('The cat in Bob\'s stories.', 'Bob\'s cat')}`)}
 `)}${panel('ev-how', '⚡ How Bob works', howSum, `
       <h4 class="ssub">How he works</h4>
@@ -1746,6 +1748,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.set === 'pictureNoWait') { const r = await api('/api/settings', { pictureNoWait: el.checked }); settings.pictureNoWait = r.pictureNoWait; el.checked = r.pictureNoWait; return; }
       if (['readyWhileTyping', 'gamesFirst', 'pictureFit'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k]; flash(el, 'Saved. Applies when the brain or picture model next loads.'); return; }
       if (el.dataset.set === 'autoSession') { const r = await api('/api/settings', { autoSession: el.checked }); settings.autoSession = r.autoSession; el.checked = r.autoSession; window.dispatchEvent(new CustomEvent('bob-auto-session', { detail: { autoSession: r.autoSession } })); flash(el, r.autoSession ? 'On. Bob picks the session himself.' : 'Off. The session only changes when you pick one.'); return; }
+      if (el.dataset.set === 'language') { const r = await api('/api/settings', { language: el.value }); settings.language = pickLang(r.language); try { localStorage.setItem(LANG_KEY, settings.language); } catch {} location.reload(); return; }
       if (el.dataset.set === 'tray' || el.dataset.set === 'lookIcon') { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k]; return; }
       if (el.dataset.set === 'selfWork') { const r = await api('/api/settings', { selfWork: { enabled: el.checked } }); settings.selfWork = r.selfWork; draw(); return; }
       if (el.dataset.selfwork) { const k = el.dataset.selfwork; const r = await api('/api/settings', { selfWork: { [k]: k === 'helpers' ? el.checked : k === 'ctx' ? Number(el.value) : el.value } }); settings.selfWork = r.selfWork; flash(el, 'Saved. Used on his next repository job.'); return; }

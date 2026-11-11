@@ -13,6 +13,7 @@ Update this file in the same handover as any change to settings.
 | Theme | (current theme, Change → Style) | Moondust (1.5.136; was Bob's Inn) | ok (approved with edits, 1.5.136) |
 | Animations | On / Follow Windows (other systems: Follow the system) / Off | On | ok (1.5.98) |
 | Bob's cat | (text box) | Patches | ok (1.5.2) |
+| Language | menu: English, Français, Español (`language`) | English | added, pending review |
 | One brain (snappier) | Every copy of Bob uses the main brain, so there's no brain swap. | off | ok (1.5.2) |
 | Launch Bob on start-up | Off unless you turn it on. | off | ok |
 | Keep Bob in the tray | On unless you turn it off. Closing or minimising Bob's window tucks him into the tray by the clock (Mac: the menu bar; Linux: your desktop's tray) instead of closing him, so he keeps running. Click his icon to open him again. To close him fully, right-click (Mac: click) his icon and pick **Quit Bob**. (Disabled in a browser.) | On (was Off before 1.5.134; the owner asked) | 1.5.134 |
