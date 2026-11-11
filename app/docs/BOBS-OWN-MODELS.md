@@ -4,6 +4,8 @@
 
 *This page is the plan, the method and the results so far, including the mistakes. It is updated as each model lands. The first one, Riker, is out on Hugging Face (links in his section below); the rest go up as each one passes its tests.*
 
+> **11 November 2026: Bill (20Bob) is out, and the three kept Bobs are benchmarked side by side.** Riker and Bobert tie; Bill is best at tool decisions and weakest at facts and code; see [the three side by side](#the-three-side-by-side). Bill's files: [MouseWurX/20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill), download [20Bob-Q4_K_M.gguf](https://huggingface.co/MouseWurX/20Bob-Bill/resolve/main/20Bob-Q4_K_M.gguf) (12.7 GB) or [20Bob-Q3_K_M.gguf](https://huggingface.co/MouseWurX/20Bob-Bill/resolve/main/20Bob-Q3_K_M.gguf).
+
 > **8 November 2026: the re-cut Riker (28Bob) is made, benchmarked and kept.** He codes better than any Bob before him (9 of 13 on the coding race, 6 of 6 on the quick code test, against the full model's 12 and 6), keeps tool calls level, and finds a fact in a 128K-token document every time; see [28Bob Riker](#28bob-riker-the-one-that-stays). The first four Bobs are retired and deleted. Next is one run that makes Bobert (35Bob, the full model trained on every lesson) and Bill (20Bob, cut from Bobert); the first release will be those three.
 
 Bob borrows his brains from other people's models. The best of them for a 16 GB graphics card, Qwen3.6-35B-A3B, is also too big for most of the devices Bob runs on: a gaming handheld with 8 GB to spare, a laptop with a 6 GB card, a phone, a Raspberry Pi. So we are making Bob a family of his own: **the same big model with its least-used parts cut away, then retrained with the big model as its teacher**, at sizes from 35 billion parameters down to 2. Every size keeps Bob's tool calls, his thinking on/off switch and his eyes (vision), and every size is called a Bob.
@@ -60,6 +62,26 @@ A plan file names the teacher, the lessons, the rungs (`keep` experts per layer,
 It is not a new architecture and not training from scratch. Published work prunes experts from other large mixture-of-experts models with modest loss at 25 to 50 percent removed; the Bob family cuts much further and relies on the healing to pay for it. 2Bob goes past what expert pruning can do and is also cut in depth (whole layers) and width (inside each layer), the way NVIDIA's Minitron models were made, which is why it is last and the riskiest.
 
 ## Results so far
+
+### The three side by side
+
+On 11 November all three of the kept Bobs were tested on one rented card (an A40) with the same two tests, each served straight from his public Q4 file, for $0.86. The **quick quiz** is 97 plain requests where Bob must pick the right tool, 20 short facts and 6 small coding tasks. The **held-out chats** replay 314 turns from real Bob conversations the Forge never trained on, and count how often the Bob makes the same tool decision the full model made. Speeds through a rented card include the internet round trip for every word, so they are left out. Home speeds are below each Bob.
+
+| Q4 | 28Bob Riker | 35Bob Bobert | 20Bob Bill |
+|---|---|---|---|
+| Experts kept per layer | 208 of 256 | 256, no cut | 144 of 256 |
+| File | 17.5 GB | 21 GB | 12.7 GB |
+| Fits a 16 GB card whole | no, a few experts in RAM | no, more in RAM | yes, with room |
+| Quiz: right tool | 47 of 97 (48%) | 46 of 97 (47%) | 42 of 97 (43%) |
+| Quiz: facts | 18 of 20 | 20 of 20 | 12 of 20 |
+| Quiz: code runs | 6 of 6 | 6 of 6 | 1 of 6 |
+| Held-out chats: right tool | 63 of 123 | 65 of 123 | 68 of 123 |
+| Held-out chats: right arguments | 39 of 123 | 38 of 123 | 41 of 123 |
+| Held-out chats: correctly no tool | 166 of 191 | 167 of 191 | 172 of 191 |
+| Held-out chats overall | 205 of 314 (65%) | 205 of 314 (65%) | 213 of 314 (68%) |
+| Home speed, 16 GB card | 111 tok/s | not measured at Q4 (Q3: 130 tok/s) | not measured yet |
+
+Verdict: Riker matches Bobert everywhere at a size that fits a 16 GB card far better, so he stays Bob's everyday brain. Bill is the best of the three at Bob's own tool decisions but lost much of the plain knowledge and coding that lived in the experts he was cut from; a heal on the same lessons cannot grow those back. He suits a tool-handling helper role, or a card too small for Riker. He is published as he is. If a better Bill is needed later, the route is a gentler cut (about 176 experts) or a heal with fact and code lessons, and his page would be updated in place.
 
 ### 28Bob Riker: the one that stays
 
