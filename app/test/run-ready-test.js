@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readyList, readyDefaults, readyToggle, readyOrder, packFor, MUSIC_ID } from '../public/equip.js';
+import { readyList, readyDefaults, readyToggle, readyOrder, packFor, MUSIC_ID, coreEngines, readyPlan } from '../public/equip.js';
 import { planFor, switchFor, applySwitch, NEEDS, SWITCH_KEYS, SetupOffers, HAND_CAN } from '../src/setup-offer.js';
 import { ModelShop } from '../src/models.js';
 import { Brain } from '../src/brain.js';
@@ -171,6 +171,23 @@ const models = (here = []) => catalog.models.map((m) => ({ ...m, status: { state
     try { await getOwnPython({ agentDir: tmp }, { runImpl: async (exe, a, o) => { args = { a, o }; } }); } catch { /* no python made by the fake */ }
     check('Mac and Linux: uv gets Python 3.12 into Bob\'s folder', args?.a.join(' ') === `python install ${OWN_PYTHON.version}` && args.o.env.UV_PYTHON_INSTALL_DIR.startsWith(tmp));
   }
+}
+
+// ---------- 1.5.202: Brain Engine, not plain llama.cpp, where it has a build ----------
+{
+  const withBE = (be = {}) => [...engines(), { id: 'brainengine', name: 'Brain Engine', sizeGB: 0.7, installed: false, available: true, ...be }];
+  const hw = { vramGB: 16, ramGB: 32, nvidia: true };
+  const pack = packFor(catalog.packs, 16, false);
+  const rows = readyList({ pack, models: models(), engines: withBE(), hw });
+  const ids = rows.map((r) => r.id), picks = readyDefaults(rows);
+  check('Get me ready offers Brain Engine and ticks it', ids.includes('engine:brainengine') && picks.has('engine:brainengine'));
+  check('plain llama.cpp is not offered where Brain Engine has a build', !ids.includes('engine:llamacpp'), ids.join());
+  check('whisper.cpp (ears) and the picture engine stay', picks.has('engine:whispercpp') && picks.has('engine:sdcpp'));
+  check('the bundled llama.cpp is not swapped for an NVIDIA one either', !rows.some((r) => r.swap) && !readyOrder(rows, picks).ids.includes('engine:llamacpp'));
+  const mac = readyList({ pack, models: models(), engines: withBE({ available: false }), hw: { vramGB: 16, ramGB: 32 } });
+  check('no Brain Engine build (Mac, ARM): llama.cpp as before', mac.some((r) => r.id === 'engine:llamacpp') && !mac.some((r) => r.id === 'engine:brainengine'));
+  check('core list', coreEngines(withBE()).join() === 'brainengine,sdcpp,whispercpp' && coreEngines(engines()).join() === 'llamacpp,sdcpp,whispercpp');
+  check('the starter plan uses Brain Engine too', readyPlan(hw, models(), withBE({}).map((e) => (e.id === 'llamacpp' ? { ...e, installed: true, bundled: true } : e))).ids.every((id) => id !== 'engine:llamacpp'));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

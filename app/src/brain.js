@@ -52,7 +52,7 @@ import { expectFrom, verifyOutput, afterTool, afterTurn } from './verify.js';
 import { brainMode, chatBrain, holdsChatBrain, bigSession, isBobs, sameModel, sleepAfterText, bigGraceMs, msText } from './brain-mode.js';
 import { WEB_TOOLS, WEB_OFF, webOn, webPrompt, linkPrompt, findLinks, refersToLink, linkTurn } from './web.js';
 import { editOwnOn, editOwnTool } from './edit-own.js';
-import { notesOn, notesTool } from './notes.js';
+import { notesOn, notesTool, smartNotesOn, notesPrompt } from './notes.js';
 import { docToolsOn, findDocsTool } from './my-docs.js';
 import { sandboxOn, sandboxTool } from './sandbox-code.js';
 import { autoSessionOn, pickSessionTool, autoSessionPrompt, switchLine, switchedNote, idleSession, cardBusy, IDLE_CHECK_MS } from './auto-session.js';
@@ -2024,6 +2024,12 @@ export class Brain {
       } else if (recall && wantVec) vec = (await Promise.race([hk.embed([text]), new Promise((r) => setTimeout(() => r(null), 1500))]))?.[0] || null;
       this.recallVec = { text, vec }; // the turn's vector, reused by other matches this turn (how-tos)
       if (recall) { const mem = await this.recallMemories(sessionId, text, { vec, topicProject }); if (mem) parts.push(mem); }
+      // Let Bob notice what's worth noting (notes.js): the quick notes that fit, and the project for a note's #tag.
+      if (smartNotesOn(this.cfg)) {
+        this.notesProject = activeProject(this.cfg, text, { sticky: (sessionId && this.memProject?.get?.(sessionId)) || '', topicProject }).project || topicProject || '';
+        const fit = notesPrompt(this.cfg, text, { project: this.notesProject });
+        if (fit) parts.push(fit);
+      }
     } catch {}
     return parts.join('\n\n');
   }

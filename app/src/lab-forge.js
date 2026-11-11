@@ -94,7 +94,7 @@ export function forgePlans(dir) {
   return files.map((f) => { try { const p = JSON.parse(fs.readFileSync(path.join(pdir, f), 'utf8')); return { id: f.replace(/\.json$/, ''), rungs: (p.rungs || []).map((r) => r.nickname || r.name), note: String(p.note || '').slice(0, 300) }; } catch { return null; } }).filter((p) => p && p.rungs.length);
 }
 
-const RUNG_KEYS = ['name', 'nickname', 'from', 'keep', 'keep_n', 'cover', 'max', 'keep_file', 'experts', 'hours'];
+const RUNG_KEYS = ['name', 'nickname', 'from', 'keep', 'keep_n', 'cover', 'max', 'keep_file', 'experts', 'hours', 'fold'];
 const QUANTS = ['Q4_K_M', 'Q3_K_M', 'Q5_K_M', 'Q6_K', 'Q8_0'];
 const word = (v, max = 40) => String(v ?? '').replace(/[^\w .-]/g, '').trim().slice(0, max);
 const num = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : null; };

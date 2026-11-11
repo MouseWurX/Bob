@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { OS } from './platform.js'; // 1.5.171 a Mac's graphics memory is shared, so the Challenges line says so
 import { spawn } from 'node:child_process';
+import { foldGguf, foldUse } from './lab-fold.js';
 import { readGguf, brainFacts, readerFacts, writeGguf, readCounts, busiest, coverageKeep, checkKeep, isHearingTensor, isSightTensor } from './lab-gguf.js';
 import { startServer, runQuiz, PARTS } from './lab-test.js';
 import { saveSettings } from './config.js';
@@ -43,6 +44,7 @@ import { MIX_WAYS, MIX_IDS, planMix, mixGguf, planStack, stackGguf, shareOf } fr
 import { planRefusals, readDirections, pickLayers, removeRefusals, keptCheck, reflexCheck, PLAIN_PROMPTS, RELUCTANT_PROMPTS, writeTeachBack, TEACH_BACK_SET, LAYER_CHOICES, KEPT } from './lab-refusals.js';
 import { peekView, tallyTrace, addToTally, keepFromLit, askTraced, IDLE_MS, NO_TRACE, NO_ENGINE, traceBuilt } from './lab-peek.js';
 import { usageFolder, keepFileOf } from './lab-usage.js';
+import { routerBias, switchState, switchOn, switchOff } from './lab-switch.js';
 import { ownModels, OWN_FAMILY } from './own-models.js'; // Your own brains join the Lab's lists
 import { fullSizeRoute } from './lab-fullsize.js'; // Bring in a full-size brain
 import { benchBrain, benchLine } from './lab-bench.js'; // the standard speed test (llama-bench)
@@ -177,6 +179,7 @@ export function cleanRecipe(r = {}) {
   const how = ['file', 'cover'].includes(s.cut?.how) ? s.cut.how : 'busiest';
   const cut = s.cut && typeof s.cut === 'object' ? {
     how, keep: how === 'cover' && !Number(s.cut.keep) ? 0 : Math.max(1, Math.min(1024, Number(s.cut.keep) || 0)), file: typeof s.cut.file === 'string' ? s.cut.file : '',
+    ...(s.cut.fold === true ? { fold: true } : {}), // Fold instead of drop (expert merging, src/lab-fold.js)
     ...(how === 'cover' ? { cover: [0.9, 0.95, 0.99].includes(Number(s.cut.cover)) ? Number(s.cut.cover) : 0.95, strong: [...new Set([].concat(s.cut.strong || []).map((x) => String(x).slice(0, 40)))].slice(0, 30) } : {})
   } : null;
   const l = r.lessons || {};
@@ -282,6 +285,7 @@ export function planRecipe(recipe, { brain, facts, tools, outDir, skillNamesFor 
   if (s.cut?.how === 'cover' && r.lessons.kind !== 'none' && skills.length === 1) notes.push(`These lessons have one skill (${skills[0]}), so the coverage cut keeps what that one needs. A lesson set with several skills (a "job" or "skill" on each lesson) protects each of them.`);
   if (s.cut?.how === 'cover') for (const x of s.cut.strong) if (!skills.includes(x)) problems.push(`There's no skill called ${x} in these lessons.`);
   if (s.cut?.how === 'file' && !s.cut.file) problems.push('Pick the expert list file.');
+  if (s.cut?.fold && facts.experts && !facts.fullSize) problems.push(`Folding blends the experts' numbers, so it needs the full-size file (F16 or BF16), and ${brain.name}'s file is a running file (${facts.fileType}). Start from the full-size copy, or untick Fold the rest in.`);
   if (r.lessons.kind === 'file' && !r.lessons.file) problems.push('Pick the lesson file.');
   for (const [k, p] of Object.entries(tools)) if (!p.found && ((k === 'imatrix' && s.cut?.how === 'busiest') || (k === 'quantize' && s.files.length) || k === 'server')) problems.push(`${path.basename(p.path)} isn't in Bob's engine folder. Settings, Engines, Bob's own engine has it; download the engine again if it's missing.`);
 
@@ -309,7 +313,7 @@ export function planRecipe(recipe, { brain, facts, tools, outDir, skillNamesFor 
   if (s.cut) {
     const out = path.join(dir, `${slug}-${s.cut.keep || 'cover'}x.gguf`);
     const n = s.cut.keep || 'the coverage number of';
-    steps.push({ id: 'cut', label: s.cut.keep ? `Cut to ${s.cut.keep} experts per layer` : 'Cut to the experts every skill needs', cmd: `# Bob's own cutter (no command-line tool does this yet): keep ${n} of ${facts.experts} experts per layer\n#   from ${q(brain.gguf)}\n#   to   ${q(out)}${s.cut.how === 'file' ? `\n#   with the expert list ${q(s.cut.file)}` : ''}${s.cut.how === 'cover' ? `\n#   coverage rule: every skill keeps ${Math.round(s.cut.cover * 100)}% of its routing in every layer${s.cut.strong.length ? ` (99% for ${s.cut.strong.join(', ')})` : ''}, the Forge's keep.py rule` : ''}`, src: file, out });
+    steps.push({ id: 'cut', fold: s.cut.fold === true, label: (s.cut.keep ? `Cut to ${s.cut.keep} experts per layer` : 'Cut to the experts every skill needs') + (s.cut.fold ? ', folding the rest in' : ''), cmd: `# Bob's own cutter (no command-line tool does this yet): keep ${n} of ${facts.experts} experts per layer${s.cut.fold ? '\n#   fold, don\'t drop: each other expert is blended into the kept expert whose router row is most alike,\n#   neurons lined up first, each weighing what it\'s used' : ''}\n#   from ${q(brain.gguf)}\n#   to   ${q(out)}${s.cut.how === 'file' ? `\n#   with the expert list ${q(s.cut.file)}` : ''}${s.cut.how === 'cover' ? `\n#   coverage rule: every skill keeps ${Math.round(s.cut.cover * 100)}% of its routing in every layer${s.cut.strong.length ? ` (99% for ${s.cut.strong.join(', ')})` : ''}, the Forge's keep.py rule` : ''}`, src: file, out });
     file = out;
   }
   let reader = brain.mmproj;
@@ -409,8 +413,9 @@ export function lessonSkillNames(lessons, fromFile = () => []) {
 }
 
 // Brain Engine's mask: one list per layer, null for a layer without experts (it keeps them all).
+// One entry per layer Brain Engine runs: the guesser's layer at the end (facts.mtp) isn't one of them, so it's left off.
 export function maskFor(keep, facts) {
-  const n = Math.max(facts.layers || 0, keep?.length || 0);
+  const n = facts.engineLayers > 0 ? facts.engineLayers : Math.max(facts.layers || 0, keep?.length || 0);
   return Array.from({ length: n }, (_, i) => (Array.isArray(keep?.[i]) ? keep[i] : null));
 }
 
@@ -607,7 +612,7 @@ export class Lab {
     if (p.problems.length) throw new Error(p.problems[0]);
     this.freePeek(); // 1.5.164 Peek inside's engine goes first
     if (p.steps.some((s) => s.card) && this.brain?.engine?.loaded) {
-      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard || m.usesCard);
       if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
       if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
     }
@@ -652,7 +657,7 @@ export class Lab {
     const p = this.planWrite(w);
     if (p.problems.length) throw new Error(p.problems[0]);
     if (this.brain?.engine?.loaded) {
-      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard || m.usesCard);
       if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
       if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
     }
@@ -759,7 +764,7 @@ export class Lab {
     const p = this.planBuild(b);
     if (p.problems.length) throw new Error(p.problems[0]);
     if (this.brain?.engine?.loaded) {
-      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard || m.usesCard);
       if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
       if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
     }
@@ -875,7 +880,7 @@ export class Lab {
     const gen = cleanGen(c.gen || {}); // 1.5.168 Simple mode sends nothing, so the defaults
     if (!this.tools().server.found) throw new Error(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Settings, Engines, Bob's own engine has it.`);
     if (this.brain?.engine?.loaded) {
-      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard || m.usesCard);
       if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
       if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
     }
@@ -1000,7 +1005,7 @@ export class Lab {
     if (p.problems.length) throw new Error(p.problems[0]);
     this.freePeek(); // 1.5.164 Peek inside's engine goes first
     if (this.brain?.engine?.loaded) {
-      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard || m.usesCard);
       if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
       if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
     }
@@ -1074,7 +1079,7 @@ export class Lab {
     if (!have.length) throw new Error('None of this ladder\'s files are here any more.');
     if (!question) throw new Error('Type a question to ask every size.');
     if (this.brain?.engine?.loaded) {
-      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard || m.usesCard);
       if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
       if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
     }
@@ -1299,7 +1304,7 @@ export class Lab {
     const log = (t) => { try { fs.mkdirSync(p.dir, { recursive: true }); fs.appendFileSync(path.join(p.dir, 'lab.log'), `${new Date().toISOString()} ${t}\n`); } catch {} };
     const tools = this.tools();
     const fx = { ...this.defaultSteps(tools, log), ...this.stepFns };
-    let keep = null, coverage = null, tried = null, keepDone = false; const tests = {}; const skillCounts = [];
+    let keep = null, coverage = null, tried = null, keepDone = false, lastCounts = null, foldedInfo = null; const tests = {}; const skillCounts = [];
     // The keep list, worked out once (by Try it first, or by the cut): from the busiest count, an expert list, or the
     // coverage rule over every skill's count.
     const keepNow = (src) => {
@@ -1341,6 +1346,7 @@ export class Lab {
           if (!counts.filter(Boolean).length) throw new Error('llama-imatrix gave no per-expert counts. Bob\'s engine may be too old for that; update it in Settings, Engines.');
           if (s.skill) skillCounts.push({ name: s.skill, counts });
           else {
+            lastCounts = counts;
             keep = busiest(counts, p.recipe.smaller.cut.keep);
             writeJson(path.join(p.dir, `${p.slug}-keep.json`), { name: p.recipe.name, experts: p.recipe.smaller.cut.keep, layers: keep });
           }
@@ -1355,7 +1361,11 @@ export class Lab {
           if (!keepDone) keep = keepNow(s.src);
           const why = checkKeep(readGguf(s.src), keep);
           if (why) throw new Error(why);
-          await fx.cut(s, { keep, onProgress, signal });
+          // Fold instead of drop: each expert weighs what it's used. Every skill's count weighs the same (shares), as in the coverage rule.
+          const use = !s.fold ? null : skillCounts.length ? foldUse(skillCounts.map((x) => x.counts)) : lastCounts;
+          if (s.fold && !use) r.notes = [...(r.notes || []), 'There were no counts for this cut (it used an expert list), so each kept expert weighs half and the experts folded into it share the other half.'];
+          const done = await fx.cut(s, { keep, fold: s.fold, counts: use, onProgress, signal });
+          if (s.fold && done?.folded != null) { foldedInfo = { experts: done.folded, kept: done.kept }; log(`fold: ${done.folded} experts folded into the ${done.kept} kept per layer`); }
         } else if (s.id === 'reader') {
           if (s.drop === 'none') fs.copyFileSync(s.src, s.out);
           else if (s.drop !== 'all') await fx.reader(s, { signal });
@@ -1372,7 +1382,7 @@ export class Lab {
       r.files = { gguf: p.finals[0], mmproj: p.reader || null };
       r.sizeGB = round1(size(p.finals[0]) / GB);
       if (tried && !tests.compare) tests.compare = { ...tried.full, engine: 'Brain Engine' };
-      r.report = { ...(tried ? { tried: { full: tried.full.score, masked: tried.masked.score } } : {}), made: tests.test, from: tests.compare || null, sizeGB: r.sizeGB, fromGB: round1(size(brain.gguf) / GB), at: this.now(), ...(coverage ? { coverage } : {}) };
+      r.report = { ...(tried ? { tried: { full: tried.full.score, masked: tried.masked.score } } : {}), made: tests.test, from: tests.compare || null, sizeGB: r.sizeGB, fromGB: round1(size(brain.gguf) / GB), at: this.now(), ...(coverage ? { coverage } : {}), ...(foldedInfo ? { folded: foldedInfo } : {}) };
       writeJson(path.join(p.dir, 'lab-report.json'), { name: r.name, from: brain.name, recipe: p.recipe, ...r.report });
       r.stepLabel = 'Write the measurement record'; this.tell(r);
       const facts = (() => { try { return brainFacts(readGguf(p.finals[0])); } catch { return {}; } })();
@@ -1396,7 +1406,7 @@ export class Lab {
     return {
       count: (s, { recipe, brain, signal }) => run(tools.imatrix.path, ['-m', brain.gguf, '-f', s.corpus, '-o', s.counts, '-c', '4096', '--chunks', String(recipe.lessons.chunks), '--fit', 'on'], { signal, log })
         .catch((e) => { if (signal.aborted) throw e; return run(tools.imatrix.path, ['-m', brain.gguf, '-f', s.corpus, '-o', s.counts, '-c', '4096', '--chunks', String(recipe.lessons.chunks), '-ngl', '0'], { signal, log }); }),
-      cut: async (s, { keep, onProgress, signal }) => writeGguf(s.src, s.out, { keep, onProgress, signal }),
+      cut: async (s, { keep, fold, counts, onProgress, signal }) => (fold ? foldGguf(s.src, s.out, { keep, counts, onProgress, signal }) : writeGguf(s.src, s.out, { keep, onProgress, signal })),
       reader: async (s, { signal }) => writeGguf(s.src, s.out, { drop: (t) => (s.drop === 'sight' ? isSightTensor(t.name) : isHearingTensor(t.name)), set: s.drop === 'sight' ? { 'clip.has_vision_encoder': false } : { 'clip.has_audio_encoder': false }, signal }),
       imatrix: (s, { recipe, signal }) => run(tools.imatrix.path, ['-m', s.src, '-f', s.corpus, '-o', s.out, '-c', '4096', '--chunks', String(recipe.lessons.chunks), '--fit', 'on'], { signal, log })
         .catch((e) => { if (signal.aborted) throw e; return run(tools.imatrix.path, ['-m', s.src, '-f', s.corpus, '-o', s.out, '-c', '4096', '--chunks', String(recipe.lessons.chunks), '-ngl', '0'], { signal, log }); }),
@@ -1479,7 +1489,7 @@ export class Lab {
     if (gaming(this.cfg)) throw new Error('Gaming is on, so the Lab waits. Switch the session to Normal to run it.');
     this.freePeek();
     if (card && this.brain?.engine?.loaded) {
-      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+      const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard || m.usesCard);
       if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
       if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
     }
@@ -1691,7 +1701,34 @@ export class Lab {
     const brain = this.brains().find((b) => b.id === String(brainId || ''));
     if (!brain) throw new Error('Pick a brain to peek inside.');
     let facts = null; try { facts = inspect(brain); } catch {}
-    return peekView(this.cfg, brain, facts, { engineFound: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), traceOk: this.peekTraceOk ?? this.traceProbe()?.experts ?? null });
+    return { ...peekView(this.cfg, brain, facts, { engineFound: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), traceOk: this.peekTraceOk ?? this.traceProbe()?.experts ?? null }), switch: this.switchView(brain) };
+  }
+
+  // 1.5.20x Switch experts off in the file (brains whose router has a bias, like gpt-oss): see lab-switch.js.
+  switchView(brain) {
+    let can = false; try { can = Boolean(routerBias(readGguf(brain.gguf))); } catch {}
+    return { can, state: can ? switchState(brain.gguf) : null };
+  }
+  async switchExperts({ brain: id, counts = null, back = false } = {}, { unload = false } = {}) {
+    const brain = this.brains().find((b) => b.id === String(id || ''));
+    if (!brain) throw new Error('Pick a brain first.');
+    if (!labOn(this.cfg)) throw new Error('The Computer Science Lab is off. Turn it on in Settings, How Bob works, Brains.');
+    if (this.job) throw new Error('The Lab is already busy with a job. Wait for it, or stop it.');
+    this.freePeek();
+    // The brain file changes, so nothing may have it loaded: Bob's own brain is unloaded first (it loads again on the next chat).
+    if (this.brain?.engine?.loaded) {
+      const loaded = await this.brain.engine.loaded().catch(() => []);
+      if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
+      if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
+    }
+    if (back) { switchOn(brain.gguf); return { switch: this.switchView(brain) }; }
+    const facts = inspect(brain);
+    const k = this.peekKeep({ brain: brain.id, counts });
+    const layers = readJson(k.file, {}).layers;
+    if (!Array.isArray(layers)) throw new Error('That keep list has no layers in it.');
+    switchOn(brain.gguf); // start from the brain as it came, so a new list replaces the last one
+    switchOff(brain.gguf, layers, { used: facts?.used || 1, when: new Date(this.now()).toISOString().slice(0, 10) });
+    return { switch: this.switchView(brain) };
   }
 
   // Whether the Brain Engine here was built with the trace, read from the program file (null: can't tell, or a test's fake).
@@ -1717,7 +1754,7 @@ export class Lab {
     if (!this.peekSrv || this.peekSrv.gguf !== brain.gguf) {
       this.freePeek();
       if (this.brain?.engine?.loaded) {
-        const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+        const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard || m.usesCard);
         if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
         if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
       }
@@ -1744,7 +1781,7 @@ export class Lab {
         if (!s.sha) s.sha = await (this.stepFns.fingerprint || sha256File)(brain.gguf, ac.signal);
         tallied = addToTally(this.cfg, brain, { sha256: s.sha, facts, counts: t.counts, tokens: t.words.length, when: new Date(this.now()).toISOString().slice(0, 10) });
       }
-      return { answer: got.answer, words: t.words, lit: t.lit, counts: t.counts, used: t.used, share: t.share, tps: got.tps || 0, where: s.srv.where || '', masked, tallied: tallied && { tokens: tallied.tokens, keepFile: path.basename(tallied.keepFile) } };
+      return { answer: got.answer, words: t.words, lit: t.lit, counts: t.counts, used: t.used, share: t.share, tps: Math.round((Number(got.tps) || 0) * 10) / 10, where: s.srv.where || '', masked, tallied: tallied && { tokens: tallied.tokens, keepFile: path.basename(tallied.keepFile) } };
     } catch (e) {
       if (e.message === NO_TRACE) { this.peekTraceOk = false; this.freePeek(); }
       throw e;
@@ -1871,6 +1908,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/peek/ask') { send(res, 200, await lab.peekAsk(b, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/peek/stop') { send(res, 200, lab.freePeek()); return true; }
     if (p === '/api/lab/peek/keep') { send(res, 200, lab.peekKeep(b)); return true; }
+    if (p === '/api/lab/peek/switch') { send(res, 200, await lab.switchExperts({ brain: b.brain, counts: Array.isArray(b.counts) ? b.counts : null, back: b.back === true }, { unload: b.unload === true })); return true; } // 1.5.20x
     if (p === '/api/lab/save') { const out = lab.saveResult(b, { version: lab.version || '' }); send(res, 200, { file: out.file }); return true; }
     if (p === '/api/lab/recipe') { send(res, 200, { recipes: lab.saveRecipe(b.recipe) }); return true; }
     send(res, 404, { error: 'no' }); return true;

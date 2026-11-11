@@ -210,7 +210,7 @@ export async function startUsage(lab, req = {}, { unload = false, isLocal = true
   if (tryWithout && !tools.brainEngine.found && !lab.stepFns.try) throw new Error('Trying without the cold and faint experts needs Brain Engine, Bob\'s Lab engine. Get it in Settings > Engines: Brain Engine (test build).');
   const things = thingTexts(cfg, ids, { file: req.file });
   if (lab.brain?.engine?.loaded) {
-    const loaded = (await lab.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+    const loaded = (await lab.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard || m.usesCard);
     if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
     if (loaded.length) await lab.brain.engine.unloadAll().catch(() => {});
   }
