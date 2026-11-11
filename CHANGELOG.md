@@ -4,6 +4,12 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.202
+
+Every clickable thing in the Lab lights up the same way.
+
+- **One outline for everything in the Lab.** Tabs, steps, the What do you want to do? cards, Use this way links, folds, tick-box rows, menus and boxes all show the same outline when the mouse is over them and when you reach them with the keyboard. Before, some had it and some didn't. A greyed-out control stays quiet, and in high-contrast mode the outline uses the system highlight colour.
+
 ## 1.5.201
 
 The Lab's Trainer pack installs on Windows with Smart App Control on, a settings file saved by PowerShell no longer sends Bob to the wrong home, and first-time setup asks what you'd like switched on.
