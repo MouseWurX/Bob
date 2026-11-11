@@ -1090,7 +1090,7 @@ const server = http.createServer(async (req, res) => {
       // The chosen folder goes AFTER homeView's spread (whose `folder` is the current home), so the confirm card and the move
       // itself name the folder that was picked (PC test 2026-11-06: the card read "Move everything to <current home>?").
       if (!b.confirm) return send(res, 200, { ok: true, ready: true, ...homeView(cfg), folder: path.resolve(folder), pickedCloud: synced(folder), pickedCloudWarning: cloudWarning(synced(folder)) });
-      if (!globalThis.bobHome?.move) return send(res, 200, { ok: false, error: 'Moving only works from Bob\'s own window (Bob.exe, Bob.app or the AppImage), not from a browser.' });
+      if (!globalThis.bobHome?.move) return send(res, 200, { ok: false, error: 'Moving only works from Bob\'s own window (Bob.exe, Bob.app, or Bob on Linux), not from a browser.' });
       brain.log('settings', `moving Bob's home to ${folder}`);
       brain.broadcast({ type: 'announce', text: `Moving my things to ${folder}. I'll close, copy everything across and open again. Big models take a while.` });
       send(res, 200, { ok: true, moving: true });

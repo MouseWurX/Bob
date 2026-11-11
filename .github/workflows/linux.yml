@@ -1,7 +1,9 @@
-# Bob for Linux: builds the AppImages on every new version on main (and on version tags, pull requests that are ready for review, and by hand).
-# Two of them, each built and started on its own kind of computer:
+# Bob for Linux: builds the AppImages, .debs and Flatpaks on every new version on main (and on version tags, pull requests
+# that are ready for review, and by hand). Each is built and started on its own kind of computer:
 #   x86_64  Bob-<version>-linux-x86_64.AppImage, for ordinary Linux PCs (GitHub's Ubuntu runner)
 #   arm64   Bob-<version>-linux-arm64.AppImage, for a Raspberry Pi 5 and other 64-bit ARM boards (GitHub's ARM runner)
+#   .deb    Bob-<version>-linux-amd64.deb / -arm64.deb, for Ubuntu, Debian, Mint, Pop!_OS (job "packages")
+#   Flatpak Bob-<version>-linux-x86_64.flatpak / -aarch64.flatpak, for any distro with Flatpak (job "packages")
 #  1. Runs all of Bob's tests on that Linux.
 #  2. Builds the AppImage with electron-builder (official Electron, Bob's files inside).
 #  3. Starts it on a virtual screen and checks Bob answers on 127.0.0.1:7777 (a real start, not just a build).
@@ -135,3 +137,133 @@ jobs:
           for i in $(seq 1 60); do gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 && break; sleep 30; done
           gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 || { echo "Release $v didn't appear; the AppImage is in this run's artifacts."; exit 0; }
           gh release upload "$v" dist/Bob-*-linux-*.AppImage dist/Bob-*-linux-*.AppImage.sha256 --clobber -R "$GITHUB_REPOSITORY"
+
+  # 1.5.204: the .deb and the Flatpak, next to the AppImage. Built from the same commit with the same bundled llama.cpp,
+  # then really installed (apt, flatpak install) and started, like the AppImage. Its own job, so the AppImage never
+  # waits on it, and continue-on-error: if a package can't be built (Flathub down, say), the AppImage release still
+  # goes out and nobody gets a failed-build e-mail; the missing file only means "Update Bob" waits for the next one.
+  packages:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            name: x86_64
+            deb: amd64
+            flatpak: x86_64
+            runner: ubuntu-24.04
+          - arch: arm64
+            name: arm64
+            deb: arm64
+            flatpak: aarch64
+            runner: ubuntu-24.04-arm
+    name: .deb and Flatpak (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: app
+    permissions:
+      contents: write # only used by "Add to the GitHub release", on main and version tags
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Build tools
+        run: npm ci --no-audit --no-fund
+      - name: Bundle the basic llama.cpp (the same tested release as the AppImage)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          for i in 1 2 3; do
+            node installer/bundle-engine.mjs . && exit 0
+            [ "$i" -lt 3 ] && echo "Try $i failed (often a download hiccup); trying again in 60 seconds." && sleep 60
+          done
+          exit 1
+      - name: Flatpak tools and the Flatpak runtime Bob is built on (from Flathub)
+        # flatpak-builder needs the Freedesktop runtime and SDK and Electron's base app; electron-builder would fetch
+        # them itself, but here they come first, with retries, so a Flathub hiccup isn't a build failure.
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq flatpak flatpak-builder elfutils xvfb dbus-x11 > /dev/null
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          v=$(node -p "require('./package.json').build.flatpak.runtimeVersion")
+          for i in 1 2 3; do
+            flatpak install --user -y --noninteractive --arch=${{ matrix.flatpak }} flathub org.freedesktop.Platform//$v org.freedesktop.Sdk//$v org.electronjs.Electron2.BaseApp//$v && exit 0
+            [ "$i" -lt 3 ] && echo "Try $i failed; trying again in 60 seconds." && sleep 60
+          done
+          exit 1
+      - name: Build the .deb and the Flatpak
+        run: npx electron-builder --linux deb flatpak --${{ matrix.arch }} --publish never
+      - name: Checksum
+        run: |
+          cd dist
+          for f in Bob-*-linux-*.deb Bob-*-linux-*.flatpak; do sha256sum "$f" | awk '{print $1}' > "$f.sha256"; done
+          ls -la Bob-*-linux-*
+          test -f Bob-*-linux-${{ matrix.deb }}.deb && test -f Bob-*-linux-${{ matrix.flatpak }}.flatpak
+      - name: Install the .deb, start it and check Bob answers
+        # The real thing: apt puts it in /opt/Bob (with the sandbox helper and AppArmor profile from the package), then
+        # it starts on a virtual screen, as a user would open it from the menu.
+        run: |
+          sudo apt-get install -y -qq ./dist/Bob-*-linux-${{ matrix.deb }}.deb > /dev/null
+          test -x /opt/Bob/bob && test -f /var/lib/dpkg/info/bob.list && command -v bob
+          export HOME="$RUNNER_TEMP/home-deb" && mkdir -p "$HOME" && export BOB_AGENT_DIR="$HOME/Bob"
+          xvfb-run -a /opt/Bob/bob > "$RUNNER_TEMP/bob-deb.log" 2>&1 &
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:7777/api/status > "$RUNNER_TEMP/status.json"; then ok=1; break; fi
+            sleep 2
+          done
+          tail -40 "$RUNNER_TEMP/bob-deb.log"
+          test "$ok" = 1 || { echo "The .deb Bob didn't answer on 7777"; exit 1; }
+          head -c 400 "$RUNNER_TEMP/status.json"; echo
+          test -f "$HOME/Bob/config.json" || { echo "The .deb Bob didn't make his home in the folder BOB_AGENT_DIR named"; exit 1; }
+          pkill -f /opt/Bob/bob || true
+          sleep 3
+          sudo apt-get remove -y -qq bob > /dev/null
+          test ! -e /opt/Bob/bob || { echo "apt remove left /opt/Bob/bob behind"; exit 1; }
+      - name: Install the Flatpak, start it and check Bob answers
+        # Installed for this user from the bundle, as "Update Bob" does, then started with flatpak run on a virtual screen.
+        # The Flatpak shares the network, so Bob's 127.0.0.1:7777 is the runner's.
+        run: |
+          flatpak install --user -y --noninteractive --bundle dist/Bob-*-linux-${{ matrix.flatpak }}.flatpak
+          flatpak info --user ca.mousewurx.bob
+          # flatpak run passes BOB_AGENT_DIR through --env; the folder is in the home the Flatpak may use.
+          export BOB_AGENT_DIR="$HOME/bob-flatpak-test"
+          dbus-run-session -- xvfb-run -a flatpak run --env=BOB_AGENT_DIR="$BOB_AGENT_DIR" ca.mousewurx.bob > "$RUNNER_TEMP/bob-fp.log" 2>&1 &
+          ok=0
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:7777/api/status > "$RUNNER_TEMP/status.json"; then ok=1; break; fi
+            sleep 2
+          done
+          tail -40 "$RUNNER_TEMP/bob-fp.log"
+          test "$ok" = 1 || { echo "The Flatpak Bob didn't answer on 7777"; exit 1; }
+          head -c 400 "$RUNNER_TEMP/status.json"; echo
+          test -f "$BOB_AGENT_DIR/config.json" || { echo "The Flatpak Bob didn't make his home in the folder BOB_AGENT_DIR named"; exit 1; }
+          flatpak kill ca.mousewurx.bob || true
+          # Installing the same bundle over itself, the way "Update Bob" does, must work while Bob's folder stays.
+          flatpak install --user -y --noninteractive --reinstall --bundle dist/Bob-*-linux-${{ matrix.flatpak }}.flatpak
+          test -f "$BOB_AGENT_DIR/config.json" || { echo "Reinstalling the Flatpak lost Bob's home"; exit 1; }
+      - name: Upload the .deb and the Flatpak
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Bob-${{ github.ref_name == 'main' && 'main' || github.sha }}-linux-${{ matrix.name }}-packages
+          path: |
+            app/dist/Bob-*-linux-*.deb
+            app/dist/Bob-*-linux-*.deb.sha256
+            app/dist/Bob-*-linux-*.flatpak
+            app/dist/Bob-*-linux-*.flatpak.sha256
+          if-no-files-found: error
+      - name: Add to the GitHub release
+        # Like the AppImage: waits for the Windows job's release vX.Y.Z (up to 30 minutes), then adds the files.
+        if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then v="$GITHUB_REF_NAME"; else v="v$(node -p "require('./package.json').version")"; fi
+          for i in $(seq 1 60); do gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 && break; sleep 30; done
+          gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 || { echo "Release $v didn't appear; the packages are in this run's artifacts."; exit 0; }
+          gh release upload "$v" dist/Bob-*-linux-*.deb dist/Bob-*-linux-*.deb.sha256 dist/Bob-*-linux-*.flatpak dist/Bob-*-linux-*.flatpak.sha256 --clobber -R "$GITHUB_REPOSITORY"

@@ -37,6 +37,7 @@
   "main": "electron/main.cjs",
   "desktopName": "bob.desktop",
   "author": "MouseWurX",
+  "homepage": "https://github.com/MouseWurX/Bob",
   "devDependencies": {
     "electron": "44.9.0",
     "electron-builder": "26.18.0"
@@ -46,6 +47,7 @@
     "productName": "Bob",
     "copyright": "MouseWurX",
     "asar": true,
+    "publish": null,
     "directories": {
       "output": "dist"
     },
@@ -96,6 +98,36 @@
           "StartupWMClass": "Bob"
         }
       }
+    },
+    "deb": {
+      "packageName": "bob",
+      "maintainer": "MouseWurX <https://github.com/MouseWurX/Bob>",
+      "vendor": "MouseWurX",
+      "recommends": [
+        "libappindicator3-1",
+        "pkexec | policykit-1"
+      ]
+    },
+    "flatpak": {
+      "runtime": "org.freedesktop.Platform",
+      "runtimeVersion": "25.08",
+      "sdk": "org.freedesktop.Sdk",
+      "base": "org.electronjs.Electron2.BaseApp",
+      "baseVersion": "25.08",
+      "branch": "stable",
+      "finishArgs": [
+        "--socket=wayland",
+        "--socket=x11",
+        "--share=ipc",
+        "--device=all",
+        "--socket=pulseaudio",
+        "--filesystem=home",
+        "--filesystem=xdg-config/autostart:create",
+        "--share=network",
+        "--talk-name=org.freedesktop.Notifications",
+        "--talk-name=org.kde.StatusNotifierWatcher",
+        "--talk-name=org.freedesktop.Flatpak"
+      ]
     },
     "portable": {
       "artifactName": "Bob-${version}.exe"

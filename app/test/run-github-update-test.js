@@ -123,6 +123,61 @@ const readStatus = () => JSON.parse(fs.readFileSync(gh.statusFile(cfg), 'utf8'))
   check('not running as an AppImage: refuses, and says where to download instead', /not running as an AppImage/.test(threw) && /releases/.test(threw));
 }
 
+// ---- Linux packages: the .deb and the Flatpak get their own kind of file, put in by the system's installer ----
+check('picks the .deb and the Flatpak by how this Bob was installed', gh.platformAsset('linux', 'x64', 'deb').re.test('Bob-1.5.60-linux-amd64.deb') && gh.platformAsset('linux', 'arm64', 'deb').re.test('Bob-1.5.60-linux-arm64.deb') && gh.platformAsset('linux', 'x64', 'flatpak').re.test('Bob-1.5.60-linux-x86_64.flatpak') && gh.platformAsset('linux', 'arm64', 'flatpak').re.test('Bob-1.5.60-linux-aarch64.flatpak') && !gh.platformAsset('linux', 'x64', 'deb').re.test('Bob-1.5.60-linux-x86_64.AppImage') && !gh.platformAsset('linux', 'x64', 'flatpak').re.test('Bob-1.5.60-linux-x86_64.flatpak.sha256'));
+{
+  const has = (...files) => (f) => files.includes(f);
+  check('knows a Flatpak Bob, an AppImage Bob and a .deb Bob apart', gh.linuxPackage({ FLATPAK_ID: 'ca.mousewurx.bob' }, '/app/lib/ca.mousewurx.bob/bob', has()) === 'flatpak' && gh.linuxPackage({ APPIMAGE: '/x/B.AppImage' }, '/tmp/.mount_x/bob', has()) === 'appimage' && gh.linuxPackage({}, '/opt/Bob/bob', has('/var/lib/dpkg/info/bob.list')) === 'deb');
+  check('a Bob in /opt/Bob that dpkg doesn\'t know, or another Flatpak, isn\'t taken for a package', gh.linuxPackage({}, '/opt/Bob/bob', has()) === '' && gh.linuxPackage({ FLATPAK_ID: 'org.other.App' }, '/app/bin/x', has()) === '');
+  check('a .deb Bob updates himself only where pkexec can ask for the password', gh.selfUpdate({}, 'linux', '/opt/Bob/bob', '44.9.0', has('/var/lib/dpkg/info/bob.list', '/usr/bin/pkexec')).ok && /pkexec/.test(gh.selfUpdate({}, 'linux', '/opt/Bob/bob', '44.9.0', has('/var/lib/dpkg/info/bob.list')).why));
+  check('a Flatpak Bob updates himself', gh.selfUpdate({ FLATPAK_ID: 'ca.mousewurx.bob' }, 'linux', '/app/bin/bob', '44.9.0', has()).ok);
+  check('Flatpak: installed for the whole computer or this user only, read from /.flatpak-info', gh.flatpakScope(() => '[Instance]\napp-path=/var/lib/flatpak/app/ca.mousewurx.bob/x86_64/master/abc/files\n') === 'system' && gh.flatpakScope(() => '[Instance]\napp-path=/home/sam/.local/share/flatpak/app/ca.mousewurx.bob/x/files\n') === 'user' && gh.flatpakScope(() => { throw new Error('no file'); }) === 'user');
+}
+{
+  const debFile = `Bob-${next}-linux-amd64.deb`;
+  const debBytes = Buffer.from('new deb bytes, version next, long enough');
+  const fake = fakeGithub({ files: { [debFile]: debBytes, [linuxFile]: newBytes } });
+  const exists = (f) => f === '/var/lib/dpkg/info/bob.list' || f === '/usr/bin/pkexec';
+  const c = await checkAll({ fetchImpl: fake.fetchImpl, platform: 'linux', arch: 'x64', env: {}, execPath: '/opt/Bob/bob', exists, electron: '44.9.0' });
+  check('.deb: "Check for updates" offers the new .deb, not the AppImage', c.newer && c.canRun && c.from === 'github' && c.github.file === debFile, JSON.stringify(c.github));
+  await gh.startGithubUpdate(cfg, { fetchImpl: fake.fetchImpl, platform: 'linux', arch: 'x64', env: {}, execPath: '/opt/Bob/bob', exists, electron: '44.9.0' });
+  await gh.githubJob().promise;
+  const sw = gh.githubJob().swap;
+  check('.deb: the checked .deb waits in Bob\'s update folder; nothing in the system changes yet', readStatus().ready === true && sw?.kind === 'deb' && fs.readFileSync(sw.from).equals(debBytes), readStatus().error);
+  const script = gh.swapScript(sw, 4242);
+  check('.deb: on restart, apt puts it in through pkexec (the desktop\'s password window), then Bob opens again', /^while kill -0 4242 /.test(script) && script.includes(`pkexec /usr/bin/apt-get install -y --allow-downgrades '${sw.from}'`) && /nohup '\/opt\/Bob\/bob'/.test(script));
+  if (process.platform !== 'win32') {
+    // A cancelled password (pkexec says 126): the old Bob opens again and the status says why, as real JSON.
+    const { execFileSync } = await import('node:child_process');
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-fake-bin-'));
+    fs.writeFileSync(path.join(bin, 'pkexec'), '#!/bin/sh\nexit 126\n', { mode: 0o755 });
+    execFileSync('/bin/sh', ['-c', script.replace(/^while kill.*$/m, 'true').replace(/nohup .*$/m, 'true')], { env: { PATH: `${bin}:/usr/bin:/bin` } });
+    const st = readStatus();
+    check('.deb: a cancelled password changes nothing, keeps the download and says so next time', st.id === 'failed' && /didn't go in/.test(st.error) && fs.existsSync(sw.from));
+    fs.writeFileSync(path.join(bin, 'pkexec'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    execFileSync('/bin/sh', ['-c', script.replace(/^while kill.*$/m, 'true').replace(/nohup .*$/m, 'true')], { env: { PATH: `${bin}:/usr/bin:/bin` } });
+    check('.deb: once it went in, the download is cleared away', !fs.existsSync(sw.from));
+    fs.rmSync(bin, { recursive: true, force: true });
+  }
+}
+{
+  const fpFile = `Bob-${next}-linux-x86_64.flatpak`;
+  const fpBytes = Buffer.from('new flatpak bytes, version next, long enough');
+  const fake = fakeGithub({ files: { [fpFile]: fpBytes, [linuxFile]: newBytes } });
+  const env = { FLATPAK_ID: 'ca.mousewurx.bob' };
+  const readFile = () => '[Instance]\napp-path=/var/lib/flatpak/app/ca.mousewurx.bob/x86_64/master/abc/files\n';
+  await gh.startGithubUpdate(cfg, { fetchImpl: fake.fetchImpl, platform: 'linux', arch: 'x64', env, execPath: '/app/lib/ca.mousewurx.bob/bob', exists: () => false, readFile, electron: '44.9.0' });
+  await gh.githubJob().promise;
+  const sw = gh.githubJob().swap;
+  check('Flatpak: the checked .flatpak waits for the restart', readStatus().ready === true && sw?.kind === 'flatpak' && fs.readFileSync(sw.from).equals(fpBytes), readStatus().error);
+  const script = gh.swapScript(sw, 4242);
+  check('Flatpak: waits until no Bob Flatpak runs, installs over the old one in the same place, opens Bob again', /flatpak ps --columns=application/.test(script) && script.includes(`flatpak install --system -y --noninteractive --reinstall --bundle '${sw.from}'`) && /nohup flatpak run 'ca\.mousewurx\.bob'/.test(script) && !/kill -0/.test(script));
+  let spawned = null;
+  gh.restartIntoNew(cfg, { spawnImpl: (exe, args, opts) => { spawned = { exe, args, opts }; return { unref() {} }; }, quit: () => {} });
+  await new Promise((r) => setTimeout(r, 400));
+  check('Flatpak: the restart script runs outside the sandbox (flatpak-spawn --host)', spawned?.exe === 'flatpak-spawn' && spawned.args[0] === '--host' && spawned.args[1] === '/bin/sh');
+}
+
 // ---- Windows: unpack the zip, hand the new Bob to the update window with -Prebuilt ----
 {
   const zipFile = path.join(root, 'made.zip');
