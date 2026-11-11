@@ -15,6 +15,8 @@ export const WANTS = [
     label: 'Search the web when a question needs it', note: 'Only the search words and page addresses go online.' },
   { group: 'How I work', key: 'planFirst', setting: 'Show Bob\'s plan before big jobs', where: 'How Bob works',
     label: 'Show you my plan before big jobs', note: 'Every step on one card, and I wait for your OK.' },
+  { group: 'How I work', key: 'quickSeesJob', setting: 'Let Bob\'s Quick brain see the big job', where: 'Brains',
+    label: 'Tell you how a long job is going', note: 'While my big brain works, my Quick brain can see what it\'s on, and pass it a note from you.' },
   { group: 'How I work', key: 'editOwn', setting: 'Let Bob fix his own messages', where: 'How Bob works',
     label: 'Fix my own messages instead of sending new ones', note: 'A fixed message says edited, and pressing that shows what it said first.' },
   { group: 'How I work', key: 'howtos', setting: 'Let Bob learn how-tos', where: 'How Bob works',
@@ -57,8 +59,9 @@ const canAutostart = (s) => s?.platform === 'win32' || s?.platform === 'darwin' 
 export function wantsHtml(settings, esc) {
   const groups = [...new Set(WANTS.map((w) => w.group))];
   const row = (w) => {
-    const off = w.key === 'autostart' && !canAutostart(settings);
-    const note = off ? 'Not on Linux yet, the same as in Settings.' : w.note;
+    const noChat = w.key === 'quickSeesJob' && settings?.chatWhileBusy === false;
+    const off = (w.key === 'autostart' && !canAutostart(settings)) || noChat;
+    const note = noChat ? 'Needs Keep chatting while Bob is busy, in Settings, Brains.' : off ? 'Not on Linux yet, the same as in Settings.' : w.note;
     return `<li><label class="switch"><input type="checkbox" data-want="${esc(w.key)}" ${wantOn(settings, w.key) ? 'checked' : ''} ${off ? 'disabled' : ''}><span><strong>${esc(w.label)}</strong>${note ? `<br><span class="muted">${esc(note)}</span>` : ''} <span class="want-said muted" aria-live="polite"></span></span></label></li>`;
   };
   return `<section class="ready wants" id="sub-wants"><h3>Do you want me to:</h3>

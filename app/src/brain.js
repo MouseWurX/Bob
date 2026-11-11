@@ -52,6 +52,7 @@ import { expectFrom, verifyOutput, afterTool, afterTurn } from './verify.js';
 import { brainMode, chatBrain, holdsChatBrain, bigSession, isBobs, sameModel, sleepAfterText, bigGraceMs, msText } from './brain-mode.js';
 import { WEB_TOOLS, WEB_OFF, webOn, webPrompt, linkPrompt, findLinks, refersToLink, linkTurn } from './web.js';
 import { editOwnOn, editOwnTool } from './edit-own.js';
+import { JobWatch, meanwhileOn, meanwhileLine, watchTools, WATCH_TOOLS, noteForBig, noteGotLine, claimsJobGuess, JOB_GUESS_CORRECTION, JOB_GUESS_NUDGE } from './meanwhile.js';
 import { notesOn, notesTool, smartNotesOn, notesPrompt } from './notes.js';
 import { docToolsOn, findDocsTool } from './my-docs.js';
 import { sandboxOn, sandboxTool } from './sandbox-code.js';
@@ -308,11 +309,11 @@ export function claimsPcAction(text) {
 export function claimsObservation(text) {
   const t = String(text || '');
   if (/\b(?:earlier|last time|yesterday|before you asked)\b/i.test(t)) return false; // talking about a past turn, where a tool may have run
-  return /\bI(?:'ve| have|'m| am| was|'d| had|)\s+(?:just\s+|been\s+|also\s+|quietly\s+)*(?:observ|notic|monitor|scout|measur|watch|analy[sz]|profil|scann|investigat|benchmark|keeping an eye|looking into|checking|checked|poking at|digging into)\w*\b[^.!?\n]{0,100}\b(?:system|cpu|gpu|vram|memory|ram|files?|cache|caching|loop|process(?:es)?|threads?|disk|network|logs?|queue|code|performance|utili[sz]ation|handles?|drivers?|registry|pc|computer|server|kernel|latency|throughput|background)\b/i.test(t)
+  return /\bI(?:'ve| have|'m| am| was|'d| had|)\s+(?:just\s+|been\s+|also\s+|quietly\s+)*(?:observ|notic|monitor|scout|measur|watch|analy[sz]|profil|scann|investigat|benchmark|keeping an eye|looking into|checking|checked|poking at|digging into)\w*\b[^.!?\n]{0,100}\b(?:system|cpu|gpu|vram|memory|ram|files?|cache|caching|loop|process(?:es)?|threads?|disk|network|logs?|queue|code|performance|utili[sz]ation|handles?|drivers?|registry|pc|computer|server|kernel|latency|throughput|background|job|task|steps?|big brain)\b/i.test(t)
     || /\b(?:CPU|GPU|VRAM|RAM|disk|network) (?:utili[sz]ation|usage|load|temperature|temps?) (?:is|are|looks?|has been|seems?)\b/i.test(t);
 }
 export const OBSERVE_CORRECTION = 'Nothing was actually checked in that reply. Bob said he checked, but no check ran.';
-const OBSERVE_NUDGE = 'You described noticing, watching or checking something on the PC, but no tool ran this turn, so it was invented. Answer again in a line or two, using only the "Right now" line, the chat, or what {{USER}} said. No made-up system details, and no question unless you need the answer.';
+const OBSERVE_NUDGE = 'You described noticing, watching or checking something on the PC, but no tool ran this turn, so it was invented. Answer again in a line or two, using only the "Right now" line (and the Meanwhile line, if there is one), the chat, or what {{USER}} said. No made-up system details, and no question unless you need the answer.';
 // The only things he knows about the PC without a tool, so small talk has something true to stand on.
 // #33: the cat is only in it when withCat (the cat turns), so Patches isn't in front of the brain every turn.
 export function realState({ model, session, waiting = 0, cat, turn = 0, withCat = true, mem = { free: freeMemNow(), total: os.totalmem() } }) {
@@ -481,6 +482,8 @@ export class Brain {
     this.tools.show_plan = showPlanTool(this); // 1.5.78: the plan card before big jobs (plan.js), only with its setting on
     this.tools.ask_together = askTogetherTool(this); // 1.5.42: every OK a job needs on one card (together.js) // the toolbox (toolbox.js): groups added only when a job needs them
     this.tools.pick_session = pickSessionTool(this); // 1.5.43: Bob changes session himself (auto-session.js)
+    Object.assign(this.tools, watchTools(this)); // Let Bob's Quick brain see the big job (meanwhile.js), only with its setting on
+    this.watch = new JobWatch(); // the job on the big brain, as the app sees it (meanwhile.js); never saved
     this.tools.edit_my_message = editOwnTool(this); // Let Bob fix his own messages (edit-own.js), only with its setting on
     this.tools.take_note = notesTool(this); // Let Bob take quick notes (notes.js), only with its setting on
     this.tools.find_in_documents = findDocsTool(cfg); // Read and search my documents (my-docs.js), only with its setting on
@@ -1195,7 +1198,15 @@ export class Brain {
     args = args || {};
     const held = await qGate(this, name, args, ctx, tool);
     if (held) { qAfter(this, name, args, held.text, ctx, tool); return held; }
+    // Let Bob's Quick brain see the big job: the step goes in the job's record first (still going), its result after.
+    const watched = ctx?.job && !WATCH_TOOLS.includes(name) ? this.watch?.for(ctx.job) : null;
+    if (watched) {
+      if (name === 'show_plan' && Array.isArray(args.steps)) this.watch.plan(ctx.job, args.steps.length);
+      let sum = name; try { sum = tool?.summary ? tool.summary(args) : name; } catch {}
+      this.watch.step(ctx.job, sum);
+    }
     const res = await this.runToolNow(name, args, ctx, tool);
+    if (watched) this.watch.result(ctx.job, res?.text);
     // 1.5.95: a file type named in the ask is saved before the tool's answer goes back, so Bob can say so.
     if (ctx?.saves?.length) {
       await Promise.allSettled(ctx.saves.splice(0));
@@ -1426,7 +1437,7 @@ export class Brain {
     let can = {};
     try { can = capabilities(this.cfg); } catch {}
     // 1.5.91: make_image, make_video, make_music and make_sound stay listed when they aren't set up: calling one shows the Set it up card.
-    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', !editOwnOn(this.cfg) && 'edit_my_message', !notesOn(this.cfg) && 'take_note', !docToolsOn(this.cfg) && 'find_in_documents', !sandboxOn(this.cfg) && 'run_in_sandbox', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), !(selfWorkOn(this.cfg) && readyRepos(this.cfg).length) && 'work_on_repo', ...toolsOff(this.cfg)].filter(Boolean));
+    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', !editOwnOn(this.cfg) && 'edit_my_message', ...(meanwhileOn(this.cfg) ? [] : WATCH_TOOLS), !notesOn(this.cfg) && 'take_note', !docToolsOn(this.cfg) && 'find_in_documents', !sandboxOn(this.cfg) && 'run_in_sandbox', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), !(selfWorkOn(this.cfg) && readyRepos(this.cfg).length) && 'work_on_repo', ...toolsOff(this.cfg)].filter(Boolean));
   }
   usable(name, off = this.offTools()) { return Boolean(this.tools[name]) && !off.has(name); }
   // 1.5.41: whether OKs are asked on cards right now (so a job's OKs can go on one card). Not with "work without asking".
@@ -1436,6 +1447,22 @@ export class Brain {
     const who = this.cfg.userName || 'the user';
     const off = this.offTools();
     return names.filter((n) => n !== 'use_tools' && this.usable(n, off)).map((n) => tidySchema(JSON.parse(JSON.stringify(this.tools[n].schema).replaceAll('{{USER}}', who).replaceAll('{{HOME}}', JSON.stringify(os.homedir()).slice(1, -1)))));
+  }
+
+  // Let Bob's Quick brain see the big job (meanwhile.js): notes passed along for this job go in before its next step.
+  readNotes(ctx, msgs) {
+    const notes = ctx?.job ? this.watch?.takeNotes(ctx.job) : [];
+    if (!notes?.length) return 0;
+    msgs.push({ role: 'system', content: noteForBig(notes, this.cfg.userName || 'the user'), hidden: true });
+    ctx.emit?.({ type: 'announce', text: noteGotLine(notes) });
+    this.log('meanwhile', `the big job read ${notes.length} note${notes.length === 1 ? '' : 's'} passed along to it`);
+    return notes.length;
+  }
+
+  // Let Bob's Quick brain see the big job: look_at_job and pass_note, only in a quick reply beside a running job.
+  withWatchTools(list, job) {
+    const out = list.filter((t) => !WATCH_TOOLS.includes(t.function?.name));
+    return job?.side && meanwhileOn(this.cfg) && this.watch.job ? out.concat(this.toolSchemas(WATCH_TOOLS)) : out;
   }
 
   // The front desk's tools for this step: the core, plus the groups added so far this turn (toolbox.js).
@@ -1852,7 +1879,16 @@ export class Brain {
     const turnId = job?.id || crypto.randomUUID();
     const controller = new AbortController();
     let flagged = false; // an error or correction note under this reply: no sleepy aside (never joke about a real failure)
-    const emit = (ev) => { if (['error', 'correction', 'held', 'waiting'].includes(ev.type)) flagged = true; this.broadcast({ ...ev, turnId, sessionId }); };
+    // Let Bob's Quick brain see the big job: the main lane's job gets a record (meanwhile.js), and its thinking (only
+    // passed along while Bob's thinking window is open) and copies go in it too.
+    if (lane === 'talk' && job && !job.side) this.watch.start(job, { session: currentSession(this.cfg).label });
+    const watched = lane === 'talk' && job && !job.side ? job : null;
+    const emit = (ev) => {
+      if (['error', 'correction', 'held', 'waiting'].includes(ev.type)) flagged = true;
+      if (watched && ev.type === 'think') this.watch.think(watched, ev.text);
+      if (watched && ev.type === 'hat' && ev.copy) this.watch.step(watched, `${ev.copy} took over (${ev.label || 'a copy'})`);
+      this.broadcast({ ...ev, turnId, sessionId });
+    };
     this.turns.set(lane, { turnId, sessionId, controller, ...(job?.beside ? { beside: true } : {}) });
     emit({ type: 'start', text: text.slice(0, 140) });
     if (job?.pickUp) emit({ type: 'announce', text: carryOnLine(job) }); // 1.5.38: picked up after a restart
@@ -1892,6 +1928,7 @@ export class Brain {
         const switchTo = job?.switchTo && job.state === 'done' ? job.switchTo : null;
         if (switchTo) { job.switchTo = undefined; job.switchedTo = switchTo.id; Object.assign(job, { state: 'waiting', error: undefined, doneAt: undefined, steps: [] }); this.queue = [job, ...this.queue.filter((x) => x !== job)]; }
         this.turns.delete(lane);
+        if (watched) this.watch.end(watched.id);
         this.rentals?.turnDone(job); // 1.5.127: a hired machine stops once no job uses it
         this.lastActivity = Date.now();
         // Gaming: now and then a scripted sleepy aside under a normal finished reply (a feeling, never a fact about the job).
@@ -2114,7 +2151,9 @@ export class Brain {
     // Small extras, only on some turns: the effort note (High/Extreme) and now and then a moment with the cat.
     const turnNo = msgs.filter((m) => m.role === 'user').length;
     const state = realState({ model, session: currentSession(this.cfg).label, waiting: this.queue.filter((j) => j.state === 'waiting').length, cat: this.cfg.catName, turn: turnNo, withCat: catTurn(turnNo) });
-    const extras = [state, guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
+    // Let Bob's Quick brain see the big job: a quick reply beside it gets the Meanwhile line, written by the app.
+    const meanwhile = job?.side && meanwhileOn(this.cfg) && this.watch.job ? meanwhileLine(this.watch.job) : '';
+    const extras = [state, meanwhile, guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
     const brainCtx = await this.fitCtx(model, wantCtx);
     // 1.5.127: a chat that no longer fits the biggest brain here, with a rented brain in its slot: offer it (the job carries on here meanwhile).
     if (!job?.rent && !job?.side && !job?.guest && this.rentals.current() && !ctx.rentOffered) {
@@ -2193,7 +2232,9 @@ export class Brain {
     }
 
     for (let step = 0; step < MAX_STEPS; step++) {
-      const tools = ctx.noTools ? [] : guestTools(job, this.frontDeskTools(ctx.loaded)); // #57 stopgap: after repeats, answer
+      const tools = ctx.noTools ? [] : guestTools(job, this.withWatchTools(this.frontDeskTools(ctx.loaded), job)); // #57 stopgap: after repeats, answer
+      // The big brain reads notes passed along to it at the start of each step, and its chat says so.
+      if (!job?.side) this.readNotes(ctx, msgs);
       // 1.5.66: Bob's own one-more-go after a reply that missed. On Qwen3.6 (everyday chat answers without thinking)
       // the retry thinks it through: thinking is set per request, so the same loaded brain does it, no reload.
       if (ctx.retrying && think === false && LONG_CODER.test(String(model || ''))) {
@@ -2303,6 +2344,17 @@ export class Brain {
         msgs.push({ role: 'system', content: OBSERVE_NUDGE.replaceAll('{{USER}}', this.cfg.userName || 'the user'), hidden: true }); ctx.retrying = true;
         this.log('honesty', 'Bob described an observation with no tool result; corrected and asked to answer again');
         noteStrike(this, ctx, 'claims', 'described something on this replicant matrix with no tool behind it');
+        await qAsk(this, ctx);
+        continue;
+      }
+      if (job?.side && meanwhileOn(this.cfg) && !reply.tool_calls && !ctx.jobGuessChecked && !msgs.slice(turnStart).some((m) => m.role === 'tool' && m.tool_name === 'look_at_job') && claimsJobGuess(reply.content)) {
+        // Let Bob's Quick brain see the big job: "it's 80% done" or "about 5 minutes left" has nothing behind it.
+        ctx.jobGuessChecked = true;
+        emit({ type: 'correction', text: JOB_GUESS_CORRECTION });
+        reply.correction = JOB_GUESS_CORRECTION;
+        msgs.push({ role: 'system', content: JOB_GUESS_NUDGE, hidden: true }); ctx.retrying = true;
+        this.log('honesty', 'the Quick brain guessed how far along the big job is; corrected and asked to answer again');
+        noteStrike(this, ctx, 'claims', 'guessed how far along the big job was');
         await qAsk(this, ctx);
         continue;
       }
@@ -2641,6 +2693,7 @@ export class Brain {
     const did = []; // what this copy did, handed back to the main conversation afterwards
     for (let step = 0; step < maxSteps; step++) {
       let reply = null;
+      if (!ctx.job?.side) this.readNotes(ctx, messages); // notes passed along by the Quick brain (meanwhile.js)
       if (via) reply = await this.lenders.chat(via, { messages, tools: this.toolSchemas(hatTools), signal: ctx.signal, from: this.cfg.windowsName || 'Bob', kind: 'check', onToken: (t) => ctx.emit({ type: 'token', text: t }) });
       else if (lender) {
         // Tools still run here (and ask here); only the thinking happens on the other Bob.
