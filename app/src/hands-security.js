@@ -239,7 +239,7 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
   };
 
   t.inspect_file = {
-    schema: fn('inspect_file', 'Check whether a download, script, email (.eml), Office file, PDF, picture or shortcut looks dangerous, WITHOUT opening or running it: what it really is, tricks in its name, where it came from, its signature, risky code, phishing signs, and hidden details (GPS, author) someone could read if it is shared. Or pass text: a pasted email (with headers), command or script.', {
+    schema: fn('inspect_file', 'Check if a download, script, email (.eml), Office file, PDF, picture or shortcut looks dangerous, WITHOUT opening it: what it really is, name tricks, origin, signature, risky code, phishing signs, hidden details. Or check pasted text: an email with headers, a command or a script.', {
       path: str('Full path of the file.'),
       text: str('Or: pasted text to check (an email with its headers, a command, a script, a link).')
     }, []),
@@ -254,7 +254,7 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
   };
 
   t.strip_metadata = {
-    schema: fn('strip_metadata', 'Make clean copies of photos (jpg, png, webp), Word, Excel and PowerPoint files (and sound or video, if FFmpeg is set up) without their hidden details: GPS location, camera, author, company, AI prompt. The originals stay as they are; copies are named name-clean. {{USER}} sees a card first.', {
+    schema: fn('strip_metadata', 'Make clean copies of photos and Office files (and sound or video, with FFmpeg) without hidden details: GPS, camera, author, company, AI prompt. Originals stay; copies end in -clean. {{USER}} sees a card first.', {
       paths: { type: 'array', items: { type: 'string' }, description: 'Full paths of the files.' },
       folder: str('Optional: the folder for the clean copies.')
     }, ['paths']),
@@ -293,10 +293,10 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
   };
 
   t.osint_lookup = {
-    schema: fn('osint_lookup', 'Research from public records, to tell whether something is genuine: site = a website\'s age, registrar, certificate history, email settings, look-alike names and breaches; link = where a link really goes (follow: true also follows short links hop by hop without loading the page); sender = the domain behind an email address; ip = which network owns an internet address. Never for researching private people.', {
+    schema: fn('osint_lookup', 'Check from public records whether something is genuine. site = a website\'s age, owner, certificates, look-alikes and breaches; link = where a link really goes; sender = the domain behind an email address; ip = who owns an internet address. Never for researching private people.', {
       kind: str('site, link, sender or ip', { enum: ['site', 'link', 'sender', 'ip'] }),
       value: str('The website, link, email address or IP address.'),
-      follow: { type: 'boolean', description: 'link only: also follow its redirects (this contacts the link\'s site).' }
+      follow: { type: 'boolean', description: 'link only: follow its redirects (contacts the link\'s site).' }
     }, ['kind', 'value']),
     async run({ kind, value, follow }, ctx) {
       off(cfg);
@@ -333,7 +333,7 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
   };
 
   t.check_exposure = {
-    schema: fn('check_exposure', '{{USER}}\'s own exposure. site = has a website (one they have an account with) been breached, and what leaked; email = how to check their own email address for breaches; password = how to check a password safely (never ask for a password in chat); footprint = how to see what is public about themselves.', {
+    schema: fn('check_exposure', 'Check {{USER}}\'s own exposure. site = was a site they use breached, and what leaked; email = how to check their email for breaches; password = how to check one safely (never ask for it in chat); footprint = how to see what is public about them.', {
       kind: str('site, email, password or footprint', { enum: ['site', 'email', 'password', 'footprint'] }),
       value: str('site: the website, like adobe.com.')
     }, ['kind']),
@@ -351,7 +351,7 @@ export function securityTools(brain, { env = process.env, fetchImpl, resolver, p
   };
 
   t.security_tips = {
-    schema: fn('security_tips', 'Your notes on staying safe and researching well. Topics: phishing, passwords, 2fa, updates, backups, wifi, router, sharing, scams, defender, hacked, ransomware, accounts, devices, privacy, opsec, search (search operators), osint (checking what\'s real), footprint. Read the topic before advising.', {
+    schema: fn('security_tips', 'Read your notes on a safety topic before advising: phishing, passwords, 2fa, updates, backups, wifi, router, sharing, scams, defender, hacked, ransomware, accounts, devices, privacy, opsec, search, osint, footprint.', {
       topic: str('A topic from the list, or a few words.')
     }),
     async run({ topic }) { off(cfg); return tipsFor(topic); },

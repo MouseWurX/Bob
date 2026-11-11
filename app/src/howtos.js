@@ -193,7 +193,7 @@ export function howtoTools(brain) {
   const fn = (name, description, properties = {}, required = []) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
   return {
     save_howto: {
-      schema: fn('save_howto', 'When {{USER}} asks you to keep the steps of a job that worked as a how-to: puts a card in the chat with the steps, for {{USER}} to save. Only {{USER}}\'s click saves it.', { name: { type: 'string', description: 'A short name for the how-to' } }),
+      schema: fn('save_howto', 'When {{USER}} asks to keep the steps of a job that worked: show them on a card to save as a how-to. Only {{USER}}\'s click saves it.', { name: { type: 'string', description: 'A short name for the how-to' } }),
       async run({ name } = {}, ctx = {}) {
         const now = worthOffering(ctx.trail);
         const last = brain.lastTrail?.get(ctx.sessionId);
@@ -207,7 +207,7 @@ export function howtoTools(brain) {
       summary: () => 'Writing down the steps as a how-to'
     },
     my_howtos: {
-      schema: fn('my_howtos', 'List the how-tos (steps from jobs that worked) {{USER}} saved for you.'),
+      schema: fn('my_howtos', 'List the how-tos {{USER}} saved for you.'),
       async run() {
         const list = brain.howtos.list();
         if (!list.length) return 'No how-tos saved yet. After a job with a few steps goes well, I offer a card to save it.';

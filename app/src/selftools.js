@@ -528,16 +528,16 @@ export function selfToolsTools(brain) {
   const t = {};
 
   t.make_tool = {
-    schema: fn('make_tool', "Make yourself a new tool when none of yours fits a job. Write plain JavaScript (an ES module using only Node's built-in parts: fs, path, crypto, zlib...; no packages, no require, no child_process) that does `export async function run(input, { workDir, filesDir }) { ... return 'answer'; }`. It runs in a sandbox: it may read its own folder and the folders in reads, and write its work folder and the folders in writes. A test run and your reviewer check it, then {{USER}} OKs it on one card. Making it again with the same name replaces it.", {
+    schema: fn('make_tool', "Make yourself a new tool when none of yours fits. Write an ES module using only Node's built-in parts (no packages, require or child_process) that does `export async function run(input, { workDir, filesDir }) { ... return 'answer'; }`. In its sandbox it reads its own folder and reads, and writes its work folder and writes. A test, your reviewer and {{USER}}'s OK come first. The same name replaces it.", {
       name: str('Short name, lower case with _, like csv_to_json.'),
       what: str('One plain line: what it does.'),
       inputs: { type: 'object', description: 'Its inputs: { "name": { "type": "string|number|boolean", "description": "..." } }.' },
       code: str('The whole tool.mjs.'),
       test: { type: 'object', description: 'A sample input to try it with before it is added.' },
-      reads: { type: 'array', items: { type: 'string' }, description: 'Full paths of folders it needs to read (only folders ticked for Hands). Leave empty if none.' },
-      writes: { type: 'array', items: { type: 'string' }, description: 'Full paths of folders it needs to save in (only folders ticked for Hands). Leave empty if none.' },
+      reads: { type: 'array', items: { type: 'string' }, description: 'Folders it reads (only ones ticked for Hands). Empty if none.' },
+      writes: { type: 'array', items: { type: 'string' }, description: 'Folders it saves in (only ones ticked for Hands). Empty if none.' },
       internet: { type: 'boolean', description: 'true only if it must fetch things from the internet.' },
-      downloads: { type: 'array', items: { type: 'object' }, description: 'Files it needs, each { url, sha256, bytes, file }, pinned to one exact version. They go in its files folder.' }
+      downloads: { type: 'array', items: { type: 'object' }, description: 'Files it needs, each { url, sha256, bytes, file }, pinned to one version.' }
     }, ['name', 'what', 'inputs', 'code', 'test']),
     alone: true, // its card is its own, never part of an "all together" card: it needs its own check first
     async check(args, ctx = {}) {
@@ -633,7 +633,7 @@ export function selfToolsTools(brain) {
   };
 
   t.my_tools = {
-    schema: fn('my_tools', 'List the tools you made, or turn one off or delete one ({{USER}} OKs a delete; it can be put back for 30 days).', {
+    schema: fn('my_tools', 'List the tools you made, turn one off, or delete one ({{USER}} OKs a delete; it can come back for 30 days).', {
       action: str('What to do', { enum: ['list', 'off', 'remove'] }),
       name: str('The tool (for off and remove).')
     }, ['action']),

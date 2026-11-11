@@ -78,10 +78,10 @@ const listed = (xs) => xs.map((x) => `${x.n}. ${x.text}`).join('\n');
 export function notesTool(brain) {
   const cfg = brain.cfg;
   return {
-    schema: fn('take_note', 'Quick notes for {{USER}}: add a note the moment {{USER}} says "note", "jot down" or "write down" something, list them, find them by a word or #tag, or take one away. Add it in their own words; don\'t ask first.', {
+    schema: fn('take_note', 'Quick notes: add one the moment {{USER}} says "note", "jot down" or "write down", in their words, without asking. Also list, find (by word or #tag) or remove.', {
       action: str('add, list, find or remove', { enum: ['add', 'list', 'find', 'remove'] }),
-      text: str('add: the note, in {{USER}}\'s words (keep any #tags). find: the words or #tag to look for. remove: a few words of the note, to be sure it is the right one.'),
-      number: { type: 'integer', description: 'remove: the note\'s number from list or find.' }
+      text: str('add: the note in {{USER}}\'s words (keep #tags). find: words or a #tag. remove: a few words of the note.'),
+      number: { type: 'integer', description: 'remove: its number from list or find.' }
     }, ['action']),
     async run({ action, text, number }) {
       if (!notesOn(cfg)) return 'Quick notes are off. They\'re in Settings, How Bob works: "Let Bob take quick notes".';
