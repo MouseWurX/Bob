@@ -1,0 +1,9 @@
+/* Bob for iPhone: the phone screen in a browser (public/phone/web-bridge.js). Hand-written; not made by make-shared.mjs.
+   Hides what only Bob for Android can do (the phone brain, lending, pairing, adding other Bobs), since this page
+   can only reach the Bob that served it. Nothing here changes Bob for Android: it never loads this file. */
+[data-web] header, [data-web] .panel > .top { padding-top: calc(8px + env(safe-area-inset-top)); }
+[data-web] header, [data-web] footer, [data-web] .panel > .top, [data-web] .panel > .body { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+[data-web] [data-go="brain"], [data-web] [data-go="memory"], [data-web] #brain, [data-web] #memory { display: none !important; }
+[data-web] #bobs h3:not(:first-of-type), [data-web] #bobs .box:has(#add-name), [data-web] #bobs label.switch, [data-web] #lend-box, [data-web] #pass-along-msg { display: none !important; }
+[data-web] #settings h3:first-of-type, [data-web] #settings label.choice, [data-web] #settings h3:last-of-type, [data-web] #settings label.switch:has(#resume) { display: none !important; }
+.web-offscreen { position: fixed; top: -1000px; left: 0; opacity: 0; }

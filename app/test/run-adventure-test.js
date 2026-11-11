@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { rollAction, heartsLost, flairBonus, outcomeOf, cleanSheet, cardFromWords, parseGm, secondCard, gmSystem, turnPrompt, playerSystem, cleanAdventure, gmBrain, refusal, Adventure, adventureRoute, listGames, loadGame, CARDS, CLASSES, ARMOUR, STAT_POINTS, statPoints, HEARTS, DEFAULT_CARDS } from '../src/adventure.js';
+import { rollAction, heartsLost, flairBonus, outcomeOf, cleanSheet, cardFromWords, parseGm, secondCard, gmSystem, turnPrompt, playerSystem, cleanAdventure, gmBrain, refusal, Adventure, adventureRoute, listGames, loadGame, CARDS, CLASSES, ARMOUR, STAT_POINTS, statPoints, HEARTS, DEFAULT_CARDS, STARTS, START_IDS, SETTINGS, cleanExtras, memoryLines, recapPrompt, isHuman, MAX_HEARTS, listCharacters } from '../src/adventure.js';
 import { HELP } from '../public/help-content.js';
 import { plainText, settingsNow } from '../src/self-help.js';
 import { SETTING_KEYS, mergeSettings } from '../src/config.js';
@@ -64,11 +64,12 @@ check('every card rolls one of the four stats', Object.values(CARDS).every((c) =
 }
 
 // ---- settings: defaults, nothing on ----
-check('Adventure settings have defaults and only known values', JSON.stringify(cleanAdventure({})) === '{"gm":"biggest","players":"own"}' && cleanAdventure({ gm: 'main', players: 'gm' }).gm === 'main' && cleanAdventure({ gm: 'x', players: 'y' }).players === 'own');
+check('Adventure settings have defaults and only known values', JSON.stringify(cleanAdventure({})) === '{"gm":"biggest","players":"own","extras":{"dice":false,"sounds":false,"voice":false,"pictures":false,"scenePics":false,"music":false}}' && cleanAdventure({ gm: 'main', players: 'gm' }).gm === 'main' && cleanAdventure({ gm: 'x', players: 'y' }).players === 'own');
+check('table extras are kept when saved, and only known ticks', (() => { const c = { settingsFile: '', agentDir: '' }; mergeSettings(c, { adventure: { extras: { music: true, scenePics: true, bogus: true } } }); return c.adventure.extras.music === true && c.adventure.extras.scenePics === false && !('bogus' in c.adventure.extras); })());
 check('the setting is saved under its own key and cleaned', SETTING_KEYS.includes('adventure') && (() => { const c = { settingsFile: '', agentDir: '' }; mergeSettings(c, { adventure: { gm: 'main', players: 'bogus' } }); return c.adventure.gm === 'main' && c.adventure.players === 'own'; })());
 check('the game master is the Deep thinking brain when picked, else the main Brain, on the card, thinking off (1.5.120: speed)', gmBrain({ sessionBrains: { deep: 'big' }, models: { bob: 'main' } }).model === 'big' && gmBrain({ models: { bob: 'main' } }).model === 'main' && gmBrain({ adventure: { gm: 'main' }, sessionBrains: { deep: 'big' }, models: { bob: 'main' } }).model === 'main' && gmBrain({ models: { bob: 'main' } }).cpu === false && gmBrain({ models: { bob: 'main' } }).think === false);
 check('refused in the Gaming session, and with no brain equipped', /Gaming/.test(refusal({ session: 'light', models: { bob: 'main' } })) && /Equip a Brain/.test(refusal({ session: 'normal', models: {} })) && refusal({ session: 'normal', models: { bob: 'main' } }) === '');
-check('Bob can say the Adventure settings', /Adventure/.test(settingsNow({ cfg: {} }.cfg)) && /Biggest brain/.test(settingsNow({})) && /Their own Bob/.test(settingsNow({})));
+check('Bob can say the Adventure settings', /Adventure/.test(settingsNow({ cfg: {} }.cfg)) && /Biggest brain/.test(settingsNow({})) && /Their own Bob/.test(settingsNow({})) && /Table extras \(ticked on the start card\): none/.test(settingsNow({})) && /Table extras[^;]*: Dice you can see, Music/.test(settingsNow({ adventure: { extras: { dice: true, music: true } } })));
 
 // ---- the game loop with a fake brain ----
 function setup({ lenderOk = true, lenderFails = false } = {}) {
@@ -305,6 +306,73 @@ for (const busy of ['turn', 'waking', 'queued']) {
   check('status: a new game started right after End keeps Thinking while it runs (the End reset does not clobber it)', brain.state.state === 'thinking', `(now ${brain.state.state})`);
   await again;
   await a.end({ keep: false });
+}
+
+// ---- 1.5.204: the Adventure upgrade (enemies' hearts, rewards, quests, your own words, Ask, friends, starts, extras) ----
+check('8 ready-made starts, each with a known setting, a name and a hook', START_IDS.length === 8 && START_IDS.every((id) => SETTINGS[STARTS[id].setting] && STARTS[id].name && STARTS[id].hook.length > 20));
+check('table extras are all off unless ticked, and scene pictures need pictures', JSON.stringify(Object.values(cleanExtras({}))) === '[false,false,false,false,false,false]' && cleanExtras({ scenePics: true }).scenePics === false && cleanExtras({ pictures: true, scenePics: true }).scenePics === true && cleanExtras({ dice: 'yes' }).dice === false);
+{ const p = parseGm('Two goblins!<<<{"kind":"fight","foes":{"Goblin":2,"Goblin boss":4,"Dragon":99},"reward":{"Sam":"might"},"quest":{"add":["Find the bell"],"done":"Get out of the cellar"}}>>>');
+  check('parseGm: enemies and their hearts (a silly number is dropped), a reward, and the quest log', p.foes.Goblin === 2 && p.foes['Goblin boss'] === 4 && !('Dragon' in p.foes) && p.reward.Sam === 'might' && p.quest.add[0] === 'Find the bell' && p.quest.done[0] === 'Get out of the cellar');
+  check('parseGm: no foes said means "not said" (null), not "no enemies"', parseGm('Quiet.<<<{"kind":"place"}>>>').foes === null && JSON.stringify(parseGm('Quiet.<<<{"foes":{}}>>>').foes) === '{}');
+}
+check('memoryLines: the game master is reminded of enemies standing, the quest log and who was met', (() => { const m = memoryLines({ foes: [{ name: 'Goblin', hearts: 1, max: 2 }, { name: 'Rat', hearts: 0, max: 1 }], quests: [{ text: 'Find the bell', done: false }, { text: 'Escape', done: true }], met: [{ name: 'the miller' }] }); return /Goblin 1\/2/.test(m) && !/Rat/.test(m) && /still open: Find the bell/.test(m) && /done: Escape/.test(m) && /the miller/.test(m); })());
+check('"Last time...": the recap asks for a reminder and keeps the scene', /Last time\.\.\./.test(recapPrompt({}, { name: 'Sam' })) && /question for Sam/.test(recapPrompt({}, { name: 'Sam' })) && /scene: 0/.test(recapPrompt({}, {})));
+{ const actor = { name: 'Sam', who: 'you', hearts: 5 };
+  check('turnPrompt: your own words are passed on as words, and a hit on an enemy is told', /says what they do: "I leap"/.test(turnPrompt({ actor, card: 'attack', words: 'I leap', said: true })) && /Goblin takes 1 heart \(now 1 of 2\)/.test(turnPrompt({ actor, card: 'attack', hit: { name: 'Goblin', dmg: 1, hearts: 1, max: 2 } })));
+}
+{ const f = cleanSheet({ name: 'Juno', cls: 'bard', who: 'friend', max: 7, hearts: 9 }, { who: 'friend' });
+  check('a friend is a human player, with more hearts if they earned them (never more than the most)', f.who === 'friend' && isHuman(f) && !isHuman({ who: 'bob' }) && f.max === 7 && f.hearts === 7 && cleanSheet({ max: 40 }).max === HEARTS && cleanSheet({ max: MAX_HEARTS }).max === MAX_HEARTS);
+}
+{ const { a, cfg, calls, setGm } = setup();
+  setGm(['Goblins in the mill!<<<{"cards":["attack","talk"],"kind":"fight","next":"Sam","scene":1,"title":"The mill","foes":{"Goblin":2},"quest":{"add":["Find the miller\'s daughter"]}}>>>']);
+  await a.start({ story: 'miller', pace: 'short', you: { name: 'Sam', cls: 'cleric', armour: 'some' }, friends: [{ name: 'Juno', cls: 'bard' }], extras: { pictures: true, music: true } });
+  await until(() => a.waitingFor);
+  let v = a.view();
+  const sam = v.game.party[0], juno = v.game.party[1];
+  check('a ready-made start brings its setting and hook, and a friend sits at the table with a face', a.game.setting === STARTS.miller.setting && v.game.hook === STARTS.miller.hook && juno.who === 'friend' && juno.name === 'Juno' && juno.look && v.game.party.length === 2);
+  check('the hook reaches the game master', calls.chat.some((c) => c.messages[0].content.includes(STARTS.miller.hook)));
+  check("extras that can't be made here are left out, with a note (and nothing was painted)", v.game.log.some((l) => /Left out: pictures .* music/.test(l.text)) && cfg.adventure.extras.pictures === true);
+  check('the enemy is on the table with its hearts, and the quest log has started', v.game.foes.length === 1 && v.game.foes[0].name === 'Goblin' && v.game.foes[0].hearts === 2 && v.game.quests[0].text === "Find the miller's daughter" && !v.game.quests[0].done);
+  let e = ''; try { a.act({ card: 'attack', seat: juno.id }); } catch (x) { e = x.message; }
+  check("a friend's screen can't play someone else's turn", /Sam's turn/.test(e));
+  e = ''; try { a.act({ card: 'say', words: '   ' }); } catch (x) { e = x.message; }
+  check('Say it your way needs words', /Say what you do first/.test(e));
+  setGm(['The goblin is asleep on its feet. (This answer is not a turn.)']);
+  a.ask({ q: 'Is the goblin tired?' });
+  check('Ask the game master: the table waits while it answers', a.view().asking === true);
+  e = ''; try { a.act({ card: 'attack' }); } catch (x) { e = x.message; }
+  check('no turn while a question is being answered', /answering your question/.test(e));
+  await until(() => !a.asking);
+  v = a.view();
+  const ooc = v.game.log.find((l) => l.who === 'ooc');
+  check("the answer is kept in the log, out of character, and it's still your turn", ooc && ooc.q === 'Is the goblin tired?' && /asleep/.test(ooc.text) && v.waitingFor === sam.id);
+  check('a question is never fed back to the game master as story', (() => { const before = calls.chat.length; return a.gmMessages(a.game, 'x').every((m) => !/asleep on its feet/.test(m.content)) && before === calls.chat.length; })());
+  setGm(['You cut it down!<<<{"kind":"fight","next":"Juno","foes":{"Goblin":1},"reward":{"Sam":"might"},"quest":{"done":["Find the miller\'s daughter"]}}>>>', 'Juno sings.<<<{"kind":"fight","next":"Sam","foes":{"Goblin":0}}>>>']);
+  const mightBefore = sam.stats.might;
+  a.act({ card: 'attack', target: 'Goblin', pick: 'Sword' });
+  await until(() => a.waitingFor === juno.id);
+  v = a.view();
+  const hit = v.game.log.find((l) => l.who === 'you' && l.roll)?.roll?.hit;
+  check('an attack that lands takes a heart off the enemy it was aimed at', hit && hit.name === 'Goblin' && hit.dmg === 1 && hit.hearts === 1 && calls.chat.some((c) => /Goblin takes 1 heart \(now 1 of 2\)/.test(c.messages.at(-1).content)));
+  check('a reward: +1 Might, shown in the log and on the sheet', v.game.party[0].stats.might === mightBefore + 1 && v.game.party[0].gains.includes('+1 Might') && v.game.log.some((l) => l.reward && /Sam earned \+1 Might/.test(l.text)));
+  check('what Sam earned is kept with a saved character, for the next game', listCharacters(cfg).some((c) => c.name === 'Sam' && c.gains?.includes('+1 Might') && c.stats.might === mightBefore + 1));
+  check('one reward per character per scene', a.reward(a.game, 'Sam', 'heart') === '' && a.game.party[0].max === HEARTS);
+  check('the quest is ticked off', v.game.quests[0].done === true);
+  check("then it's the friend's turn, on the same table", v.waitingFor === juno.id && v.game.cards?.length > 0);
+  a.act({ card: 'say', words: 'I sing a rousing song at the goblin', seat: juno.id });
+  await until(() => a.waitingFor === sam.id);
+  v = a.view();
+  const said = v.game.log.find((l) => l.said);
+  check("a friend's own words are logged and rolled like a card", said && said.name === 'Juno' && /💬 I sing/.test(said.text) && said.roll && said.roll.statId);
+  check('an enemy at zero hearts is shown as down', v.game.foes[0].hearts === 0);
+  check('Skip the rest is harmless when nothing is being made', a.skipPrep().game.id === v.game.id);
+  await a.end({ keep: false });
+}
+{ const { a } = setup();
+  const g = { party: [cleanSheet({ name: 'Ox', cls: 'fighter' }, { who: 'bob' })], scenes: [{ title: 'x' }], log: [] };
+  check('a reward to a stat already at 5 becomes one more heart', a.reward(g, 'Ox', 'might') === 'one more heart' && g.party[0].max === HEARTS + 1 && g.party[0].stats.might === 5);
+  g.scenes.push({ title: 'y' });
+  check('a trick reward is kept as a trick', a.reward(g, 'Ox', 'trick: Shield bash') === 'the trick Shield bash' && g.party[0].tricks.includes('Shield bash'));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

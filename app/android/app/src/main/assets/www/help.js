@@ -25,6 +25,10 @@ globalThis.BobHelp = {
       html: `<p>Settings, <strong>Read replies aloud</strong> (off to start with). I read each reply in your phone's own voice. To change the voice or speed, use Android's Settings, Text-to-speech. The fancy voices (Kokoro, Chatterbox, Piper) live on your other replicant matrix.</p>`
     },
     {
+      id: 'maths', title: 'Maths as formulas',
+      html: `<p>Settings, Look, <strong>Show maths as formulas</strong> (off to start with). Brains write maths as code, like <code>\\frac{1}{2}</code> for a half. With this on I draw it as real formulas: fractions stacked, powers raised. Prices like $5 stay prices. It's all done on the phone, nothing goes online. A formula I can't read shows as I wrote it, in red. Keyboard shortcuts are only on my computer window, not here.</p>`
+    },
+    {
       id: 'who', title: 'Who answers',
       html: `<p>Settings, <strong>Who answers</strong>:</p>
 <ul><li><strong>Automatic</strong> (the starting position): a Bob on your network when one is reachable, otherwise the phone brain if it's on.</li>
@@ -104,6 +108,28 @@ globalThis.BobHelp = {
       html: `<p>Settings, <strong>Pick up where Bob left off</strong> (off to start with). Android sometimes closes apps in the background to save memory. With this on, if that happens in the middle of a phone-brain reply, I ask the question again when you come back.</p>`
     },
     {
+      id: 'to-bottom', title: 'Back to the newest message',
+      html: `<p>Scroll up to read and a round button with a down arrow shows at the bottom middle of the chat. Tap it to go back to the newest message. While I'm still answering, three dots on it breathe slowly. If your phone is set to reduce motion, they hold still.</p>`
+    },
+    {
+      id: 'redo', title: 'Try again and Edit',
+      html: `<p>Settings, <strong>Show Try again and Edit in the chat</strong> (on to start with). With it on, <strong>Try again</strong> under my latest answer gets a new answer to your last message, and <strong>Edit</strong> under your last message lets you change it and tap <strong>Send again</strong>. What was there before is kept under your message: tap <strong>1 earlier version</strong> to see it (the last 5 are kept). The buttons hide while I'm still on that chat.</p><p>When a Bob on your network answered, he takes his old answer back too if his own <strong>Show Try again and Edit in the chat</strong> is on (Settings, How Bob works on that replicant matrix). If it's off, he gets your message as a new one. On your other replicant matrix you can also edit earlier messages, not just the last.</p>`
+    },
+    {
+      id: 'saved-prompts', title: 'Saved prompts and the / menu',
+      html: `<p>Settings, <strong>Pull up saved prompts with /</strong> (off to start with). Save the things you ask me often, then type <strong>/</strong> at the start of the message box and tap one. Keep typing after the / to narrow the list down. Its words go in the box; nothing is sent until you tap Send.</p><p>Words in curly brackets, like {file} or {who}, are blanks. The first one is picked out, so just type over it, then tap <strong>Next blank</strong> above the box for the next. {date}, {time} and {day} fill themselves in from the phone's clock.</p><p>Add, change, delete and reorder them under Settings, Saved prompts. <strong>Add Bob's starters</strong> gives you four to try on an empty list. They stay on this phone; your other replicant matrices keep their own list (Settings, How Bob works, 📝 Saved prompts there).</p>`
+    },
+    {
+      id: 'lock', title: 'Passcode lock',
+      html: `<p>Settings, <strong>🔒 Passcode lock</strong> (off to start with). Anyone holding this phone can open me and read our chats. A passcode stops that.</p>
+<ul><li><strong>Save passcode:</strong> at least 4 characters, typed twice. To change it, type the one you have now too. I never keep a copy, only a lock it opens.</li>
+<li><strong>Ask for a passcode to open Bob:</strong> a passcode screen each time I open.</li>
+<li><strong>Lock again after:</strong> back to the passcode screen when nobody has touched me for that many minutes. 0 means only when I open.</li>
+<li><strong>Lock my chats and memory:</strong> this phone's chats and my memory are kept scrambled (encrypted) in my storage, opened by the passcode. Off puts them back to plain.</li>
+<li><strong>Lock Bob now:</strong> back to the passcode screen at once.</li></ul>
+<p><strong>⚠ If you forget the passcode, your locked chats and memory are gone for good.</strong> Nobody can open them, not even me, and there is no reset. Write it down first. Your other replicant matrix has its own lock, in its Settings, This replicant matrix, Passcode lock.</p>`
+    },
+    {
       id: 'alerts', title: 'Alerts',
       html: `<p>When I'm in the background and a Bob on your network needs your OK, or has a check-in for you, Android shows a notification. The first time, Android asks if that's all right. Tap the notification to come back to me.</p><p>Check-ins are set up on your other replicant matrix (Settings, 🔔 Check-ins). The phone only shows them.</p>`
     },
@@ -123,7 +149,10 @@ globalThis.BobHelp = {
     {
       id: 'adventure', title: 'Adventure',
       html: `<p>Menu, <strong>Adventure</strong>: a tabletop role-playing game, the kind you'd play with dice and friends round a table. The game master is your other Bob, on your other replicant matrix; the party is you plus his other Bobs. This phone shows the same table he shows and plays your turns. I'm too small to be game master myself: the phone brain never runs a game, so a Bob on your Bob-Net has to be reachable, and nothing here starts a game by itself.</p>
-<p><strong>Starting a game.</strong> Pick a <strong>Setting</strong> (Classic fantasy, Space, Spooky, Pick for me, or type your own), make <strong>Your character</strong> (a name, a class, one thing about them, or <strong>🎲 Roll one for me</strong>), give them a look under <strong>Looks like</strong>, tick <strong>Who plays</strong> and pick <strong>How long</strong>: Short (3 scenes), Evening (6) or Campaign (saved between sittings). Every character gets their own <strong>Plot armour</strong>: None (the dice decide), Some (one bad roll a scene is rolled again), Lots (can't die) or Legendary (nothing worse than a close call). <strong>Start a new game</strong> loads the game master brain over there; Pause or End lets it go again. The first turn takes longest.</p>
+<p><strong>Starting a game.</strong> Pick a <strong>Setting</strong> (Classic fantasy, Space, Spooky, Pick for me, or type your own) and <strong>Tonight's story</strong> (Make one up, or one of eight ready-made ideas), make <strong>Your character</strong> (a name, a class, one thing about them, or <strong>🎲 Roll one for me</strong>), give them a look under <strong>Looks like</strong>, tick <strong>Who plays</strong> and pick <strong>How long</strong>: Short (3 scenes), Evening (6) or Campaign (saved between sittings). Every character gets their own <strong>Plot armour</strong>: None (the dice decide), Some (one bad roll a scene is rolled again), Lots (can't die) or Legendary (nothing worse than a close call). <strong>Start a new game</strong> loads the game master brain over there; Pause or End lets it go again. The first turn takes longest.</p>
+<p><strong>Friends.</strong> <strong>➕ Add a friend</strong> under Who plays gives a real person a character (up to three). On their own phone they open Adventure and pick their character under <strong>This phone plays</strong>; only that character's turns come up there. <strong>Everyone at the table here</strong> plays every human turn on this phone.</p>
+<p><strong>On your turn.</strong> Tap a card, or type what you do in your own words under <strong>Say it your way</strong> (🎤 lets you say it). <strong>❓ Ask</strong> puts a question to the game master out of character; it doesn't use your turn. Enemies sit on the table with their hearts, and Attack lets you <strong>Aim at</strong> one. After a big moment the game master may give a character a stat point, a heart, a trick or a spell (⭐ in the log); they keep it for next game. <strong>📓 Journal</strong> opens on the quest log.</p>
+<p><strong>Table extras</strong> (all off until ticked): dice you can see, sounds, reading aloud with this phone's voice, pictures and music. Pictures and music are made on your other replicant matrix before the game (<strong>Skip the rest</strong> starts sooner) and need their models there. 🔊 / 🔇 hushes it all.</p>
 <p><strong>Looks like.</strong> Your character has a look of its own; my avatar stays mine. <strong>🧍 Change the look</strong> opens the character screen: Body (Man, Woman, Robot, Alien), Build, Hair and Hair colour, Skin, Beard, Glasses, Outfit and Outfit colour, Armour, Weapon and Shield, with a preview and a sentence saying what it adds up to. <strong>🎲 Surprise me</strong> rolls one, <strong>Start over</strong> goes back to plain, <strong>Use for this character</strong> keeps it. It's the same screen as on your other replicant matrix, drawn the same way, so the party looks alike on both.</p>
 <p><strong>Saved characters.</strong> <strong>💾 Save this character</strong> keeps the name, class, the one thing about them, plot armour and the look on your other replicant matrix, beside the saved campaigns. Next time, pick them under <strong>Saved characters</strong>. <strong>Delete this character</strong> asks first (<strong>Delete for good</strong> or <strong>Keep it</strong>). Nothing is saved on this phone.</p>
 <p><strong>Your turn.</strong> You get <strong>action cards</strong>, only the ones that fit the scene: ⚔ Attack, 🛡 Defend, 🤫 Sneak, 💬 Talk, ✨ Magic, 🎒 Use item, 🔍 Look closer, 🤝 Help an ally, 🏃 Run and ✍ Something else. Some open a second card with the details (which attack, which spell, who to talk to); every second card has <strong>← Back</strong>. Then <strong>How does it play out?</strong> asks for a line of flair: add one (a good line earns +2) and tap <strong>🎲 Roll it</strong>, or <strong>Skip the flair</strong>. Bobs don't get cards; they just say what they do. The app rolls for everyone: a d20 plus a stat; 15 or more is a hit, 10 to 14 a hit at a cost, under 10 a miss. Five <strong>hearts</strong> each; at zero with no plot armour you choose <strong>Go out in style</strong> or <strong>Wake up captured</strong>.</p>
@@ -177,6 +206,7 @@ globalThis.BobHelp = {
 <dt>Tailscale</dt><dd>A free app that makes a private, scrambled link between your own devices, wherever they are.</dd>
 <dt>Model family</dt><dd>Models made by the same team and built the same way, like Qwen or Gemma. One family comes in many sizes, from phone-sized to big. Under Phone brain each family has its own header you open and close.</dd>
 <dt>Replicant matrix</dt><dd>What I call the computer a Bob runs on. Here that's this replicant matrix (this phone); your other Bobs each live on their own, like your other replicant matrix at home. It's still your computer or phone; it's just my name for it.</dd>
+<dt>Passcode lock</dt><dd>A passcode screen before I open, off to start with (Settings, Passcode lock). With Lock my chats and memory on, this phone's chats and my memory are scrambled too, and a lost passcode means they're gone for good.</dd>
 <dt>Passcode</dt><dd>The code you make on your other replicant matrix under Let my other replicant matrices in (or on the phone under Lend my brain). It proves the device asking is yours.</dd>
 <dt>Lend my brain</dt><dd>This phone thinks quick replies for your other Bobs. They send words; the phone sends words back. The phone only thinks: no tools, files or programs run here for them, and nothing is kept.</dd>
 <dt>Borrowed brain</dt><dd>What your other replicant matrix calls it when another of your replicant matrices thinks a reply for him.</dd>
@@ -185,7 +215,7 @@ globalThis.BobHelp = {
 <dt>Free memory when idle</dt><dd>The phone brain unloads after a quiet spell, so the phone stays quick.</dd>
 <dt>Introduced</dt><dd>Paired through a third Bob of yours that has Pass my Bob-Net along on: he tells this phone and another Bob each other's name and address, and they pair with no card.</dd>
 <dt>Game master</dt><dd>Your other Bob, when he runs an Adventure: he sets the scenes, plays everyone who isn't at the table, and says what the dice mean. The phone brain can't be one.</dd>
-<dt>Hearts</dt><dd>A character's health in an Adventure. A miss can cost one; at zero hearts you choose Go out in style or Wake up captured.</dd>
+<dt>Hearts</dt><dd>A character's health in an Adventure: five to start, up to eight as they earn more. Enemies have them too. A miss can cost one; at zero hearts you choose Go out in style or Wake up captured.</dd>
 <dt>Plot armour</dt><dd>How safe a character is from bad dice in an Adventure: None, Some, Lots or Legendary. Asked for every character at the start of every game.</dd>
 <dt>Bestiary</dt><dd>The 📖 Characters page in an Adventure: your saved heroes (You), the table (Party), everyone the game master has named (Met, drawn as they appear) and the usual enemies with their hearts (Enemies).</dd>
 <dt>Character screen</dt><dd>Where you build a look from parts (body, hair, outfit, armour, weapon and so on) for your Adventure character. The parts are the same ones my own avatars are drawn from, so it blinks and talks like any look.</dd>
@@ -197,6 +227,9 @@ globalThis.BobHelp = {
 <dt>Story dice</dt><dd>Six picture dice come up; we tell a story a line each until every die is in it. Always a shared point.</dd>
 <dt>Help bundle</dt><dd>One file from Save a help bundle (Settings, Save a help bundle): my logs, errors, last chats, settings without their secrets and this replicant matrix's facts, with a HANDOFF.md on top. I never send it anywhere.</dd>
 <dt>Handoff file (HANDOFF.md)</dt><dd>The first file in a help bundle, written for whoever helps (a person or an AI agent): what I am, my exact version and public code, what's wrong as far as I can tell, and what to try first.</dd>
+<dt>Try again</dt><dd>A button under my latest answer (Settings, Show Try again and Edit in the chat): a new answer to your last message. The old one is kept as an earlier version.</dd>
+<dt>Earlier version</dt><dd>Under your message: what was there before you tapped Try again or Edit.</dd>
+<dt>Saved prompt</dt><dd>Words you ask me often, saved with a short name. Type / at the start of the message box to pull one up. Blanks in {curly brackets} are what you fill in.</dd>
 <dt>OK card</dt><dd>A Bob on your network asking before he does something outside his own folder.</dd>
 </dl>`
     },
@@ -204,19 +237,23 @@ globalThis.BobHelp = {
       id: 'faq', title: 'Questions and fixes',
       html: `<table>
 <tr><th>What happens</th><th>What to do</th></tr>
+<tr><td>No Try again or Edit under the messages</td><td>Settings, Show Try again and Edit in the chat: turn it back on. The buttons also hide while I'm still answering in that chat.</td></tr>
 <tr><td>The chest is empty or says no Bob is reachable</td><td>The chest is your other Bob's Made by Bob list, so it needs him on Tailscale. Once he's reachable, open the menu and tap Chest again.</td></tr>
+<tr><td>I forgot my passcode</td><td>If Lock my chats and memory was on, those chats and my memory are gone for good: the passcode is the only key and there is no reset. To start fresh, clear my storage (Android Settings, Apps, Bob, Storage, Clear storage); that removes the lock, the chats and your phone settings. Your other replicant matrix's chats aren't touched.</td></tr>
 <tr><td>The pill says Nobody home</td><td>Tap it. Usually your other replicant matrix is asleep, or Tailscale is off on the phone or your other replicant matrix.</td></tr>
 <tr><td>"Isn't letting other replicant matrices in yet"</td><td>On your other replicant matrix: Bob's Settings, Bob-Net, Let my other replicant matrices in. Turn it on, then restart Bob on your other replicant matrix.</td></tr>
 <tr><td>"That isn't a Tailscale address"</td><td>Use the address your other replicant matrix's Let my other replicant matrices in setting shows: a name ending in .ts.net, or a number starting 100.</td></tr>
 <tr><td>Your other replicant matrix says the phone didn't answer in time</td><td>The first borrowed reply is the slow one: the phone reads my whole instructions and tool list once. After that it only reads what's new. If it keeps happening, check Bob-Net, Lend my brain for a reason (warm, low battery, in use), and tap Open battery settings there.</td></tr>
 <tr><td>Can your other replicant matrix borrow the phone while I game?</td><td>Yes: that's what Lend my brain is for. Turn it on here, then on your other replicant matrix: Settings, Bob-Net, Borrow a brain. Keep the phone on its charger with the screen off.</td></tr>
 <tr><td>Can my Bobs introduce each other?</td><td>Yes, if you ask them to. Turn on Pass my Bob-Net along under Bob-Net here, and the same switch on the Bobs on your other replicant matrices (Settings, Bob-Net, What they share). A Bob paired with two of them tells each the other's name and address, and those two pair with no card. The phone only answers; Lend my brain has to be on here for the introduction to get in.</td></tr>
+<tr><td>Can I save prompts I use a lot?</td><td>Yes. Turn on Pull up saved prompts with / in Settings, add them under Saved prompts, then type / in the message box and tap one.</td></tr>
 <tr><td>It asks for the passcode again</td><td>The passcode was changed on your other replicant matrix. Type the new one under Bob-Net.</td></tr>
 <tr><td>The phone brain is slow or stops</td><td>Close big apps (games, the camera), let the phone cool down, or try Test speed. Gemma 4 E2B is the quicker one.</td></tr>
 <tr><td>The download stopped</td><td>Tap Resume. It carries on where it stopped. If it says the checksum didn't match, the file was damaged on the way and was deleted: download it again on Wi-Fi.</td></tr>
 <tr><td>Pictures don't show</td><td>Very big files stay on your other replicant matrix; they're in Made by Bob there.</td></tr>
 <tr><td>Can the phone brain see pictures?</td><td>Not yet on the phone. Send them to a Bob on your network for now.</td></tr>
 <tr><td>Can the phone brain run an Adventure?</td><td>No: it's too small to be game master. The table lives on your other replicant matrix; the phone shows it and plays your turns. Get your other Bob on Tailscale and open Adventure here.</td></tr>
+<tr><td>Can a friend play from their phone?</td><td>Yes. Add them as a friend on the start card; on their phone, open Adventure and pick their character under This phone plays. The game runs on your other replicant matrix either way.</td></tr>
 <tr><td>Can my Adventure character look different from Bob?</td><td>Yes. On the start card, under Looks like, tap 🧍 Change the look and build one from parts: any body, hair, outfit, armour and weapon. It's your character's look, saved with the game and under Saved characters; my own avatar doesn't change.</td></tr>
 <tr><td>How tough are the enemies in an Adventure?</td><td>The usual dozen are on the Enemies tab of 📖 Characters with their hearts: a giant rat has one, a goblin two, an orc four, a dragon six. The game master uses those as written and takes hearts off them as the story goes; anything else he invents, and a boss simply has more. Whoever he brings on lands on Met, drawn.</td></tr>
 <tr><td>Can the phone brain play the games?</td><td>No. The app on your other replicant matrix runs them and his quick brain talks; the phone shows the board and sends your moves. Get your other Bob on Tailscale and open Games here.</td></tr>

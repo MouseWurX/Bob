@@ -5,8 +5,10 @@
 // in small batches, and nothing here is saved. Closing the window stops all of it.
 // 1.5.138: the drawing moved to public/mind-view.js, shared with the "Bob's thinking" section of Now running.
 import { applySavedStyle } from './themes.js';
+import { startI18n } from './i18n.js';
 import { createMindView } from './mind-view.js';
 applySavedStyle();
+startI18n();
 
 const $ = (id) => document.getElementById(id);
 const view = createMindView({ log: $('mindLog'), now: $('mindNow'), brains: $('mindBrains'), follow: $('mindFollow'), clear: $('mindClear'), order: $('mindOrder') });

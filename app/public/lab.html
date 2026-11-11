@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en" class="lab-window">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bob · Computer Science Lab</title>
+  <meta name="theme-color" content="#2b1d14">
+  <link rel="icon" href="/icons/bob-32.png" sizes="32x32">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- The Computer Science Lab in its own window. The main window opens it; on a phone the Lab stays a page there. -->
+  <main class="mid paged">
+    <dialog id="lab" class="cellar page lab-dlg" aria-labelledby="lab-title">
+      <div class="cellar-head"><h2 id="lab-title">🧪 Computer Science Lab</h2><button id="lab-close" type="button" class="icon" hidden aria-label="Close">✕</button></div>
+      <div id="lab-body"></div>
+    </dialog>
+  </main>
+  <p id="lab-note" class="lab-note" role="status" aria-live="polite"></p>
+  <script type="module" src="/lab-window.js"></script>
+</body>
+</html>

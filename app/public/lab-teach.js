@@ -44,7 +44,7 @@ export function createTeachPage({ api }) {
     return (v.runs || []).map((r) => `<section class="lab-compare"><h4>${esc(r.name)} <span class="muted">· from ${esc(r.from)} · ${esc(r.state)}</span></h4>
       ${r.report?.squeeze ? squeezeHtml(r.report) : ''}
       ${r.report ? `<p>Quick quiz${r.report.squeeze ? ` (plain ${esc(r.report.squeeze.type)} and squeeze-aware)` : ''}: ${r.report.from ? `${r.report.from.score} before, ` : ''}${r.report.made.score} after, out of 100. ${r.report.learned} lessons learned${r.report.skipped ? `, ${r.report.skipped} skipped (they didn't fit its chat format)` : ''}. ${r.report.sizeGB} GB.</p>
-        <p class="muted">Made here. It's benchmarked, but it never becomes Bob's brain on its own: Use in Bob puts it in the list, and you pick it. Run all on the Challenges tab compares it properly.</p>
+        <p class="muted">Made here. It's benchmarked, but it never becomes Bob's brain on its own: Use in Bob puts it in the list, and you pick it. Run all on the Test tab compares it properly.</p>
         <div class="row"><button type="button" class="get" data-tchuse="${esc(r.id)}" ${r.used ? 'disabled' : ''}>${r.used ? 'In Bob' : 'Use in Bob'}</button></div>` : r.error ? `<p class="error">${esc(r.error)}</p>` : ''}</section>`).join('');
   }
 

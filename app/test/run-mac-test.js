@@ -141,6 +141,31 @@ check('Python on a Mac: python.org first, then Homebrew', unixPythonGuesses('mac
   check('the release workflow has a Mac job on Apple Silicon', /\n  mac:\r?\n[\s\S]*runs-on: macos-1\d/.test(wf) && /make-release-mac\.sh/.test(wf));
 }
 
+// ---------------------------------------------------------------- Developer ID signing and notarization (off)
+{
+  const rd = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const sh = rd('../installer/make-release-mac.sh');
+  const nt = rd('../installer/notarize-mac.sh');
+  const ent = rd('../installer/mac-entitlements.plist');
+  const wf = rd('../../.github/workflows/build.yml');
+  const doc = rd('../docs/SIGNING-MAC.md');
+  const mac = wf.slice(wf.indexOf('\n  mac:'), wf.indexOf('\n  signed-build:'));
+  check('Mac signing: ad hoc unless MAC_SIGN_IDENTITY is set', /if \[ -n "\$\{MAC_SIGN_IDENTITY:-\}" \]; then[\s\S]*else[\s\S]*codesign --force --deep --sign - "\$APP"[\s\S]*fi/.test(sh));
+  check('Mac signing: Developer ID uses the hardened runtime, a timestamp and the entitlements, innermost first, no --deep', /--options runtime --timestamp --entitlements "\$ENT"/.test(sh) && /sort -rn/.test(sh) && !/--deep --sign "\$MAC_SIGN_IDENTITY"/.test(sh));
+  check('Mac signing: an empty keychain list is safe on macOS\'s bash 3.2', /\$\{KC\[@\]\+"\$\{KC\[@\]\}"\}/.test(sh));
+  const keys = [...ent.matchAll(/<key>([^<]+)<\/key>/g)].map((m) => m[1]).sort();
+  check('Mac entitlements: only JIT, library validation and the microphone, no debugging hook', keys.join() === ['com.apple.security.cs.allow-jit', 'com.apple.security.cs.allow-unsigned-executable-memory', 'com.apple.security.cs.disable-library-validation', 'com.apple.security.device.audio-input'].join() && !/get-task-allow/.test(ent.replace(/<!--[\s\S]*?-->/g, '')), keys.join());
+  check('notarizing: notarytool submit --wait with a timeout, then stapler staple and validate, zip and .sha256 made again', /notarytool submit "\$ZIP"[^\n]*--wait --timeout/.test(nt) && /stapler staple "\$APP"/.test(nt) && /stapler validate/.test(nt) && /ditto -c -k/.test(nt) && /\.sha256/.test(nt));
+  check('notarizing: stops plainly on an ad hoc app, missing keys or Apple saying no', /Signature=adhoc/.test(nt) && /MAC_NOTARY_KEY MAC_NOTARY_KEY_ID MAC_NOTARY_ISSUER/.test(nt) && /"\$STATUS" != "Accepted"/.test(nt) && /notarytool log/.test(nt));
+  check('build.yml: the certificate step runs only when MAC_SIGNING_ENABLED is "true", never for a fork\'s pull request', /if: \$\{\{ vars\.MAC_SIGNING_ENABLED == 'true' && \(github\.event_name != 'pull_request' \|\| github\.event\.pull_request\.head\.repo\.full_name == github\.repository\) \}\}/.test(mac));
+  check('build.yml: notarizing and the keychain clean-up only run once the certificate is ready', /Notarize Bob\.app[^\n]*\n\s+if: \$\{\{ env\.MAC_KEYCHAIN != '' \}\}/.test(mac) && /if: \$\{\{ always\(\) && env\.MAC_KEYCHAIN != '' \}\}\n\s+run: security delete-keychain/.test(mac));
+  const order = ['Get the Developer ID certificate ready', 'Make Bob.app', 'Notarize Bob.app', 'Bob.app opens', 'Does macOS open Bob.app without Open Anyway', 'Upload Mac zip', 'Add to the GitHub release', 'Remove the signing keychain'].map((n) => mac.indexOf(n));
+  check('build.yml: Mac steps in order (certificate, build, notarize, check, upload, clean up)', order.every((i, k) => i > 0 && (k === 0 || i > order[k - 1])), order.join());
+  check('build.yml: the Open Anyway check fails only when REQUIRE_MAC_NOTARIZED is "true"', /spctl --assess --type execute/.test(mac) && /\[ "\$\{\{ vars\.REQUIRE_MAC_NOTARIZED \}\}" = "true" \] && exit 1/.test(mac));
+  check('build.yml: secrets reach only the steps that need them, and the key files are removed', /MAC_CERT_P12: \$\{\{ secrets\.MAC_CERT_P12 \}\}/.test(mac) && /MAC_NOTARY_KEY_TEXT: \$\{\{ secrets\.MAC_NOTARY_KEY \}\}/.test(mac) && /rm -f "\$RUNNER_TEMP\/bob-cert\.p12"/.test(mac) && /rm -f "\$MAC_NOTARY_KEY"/.test(mac) && (wf.match(/secrets\.MAC_/g) || []).length === 3);
+  check('SIGNING-MAC.md lists every switch the workflow reads', ['MAC_SIGNING_ENABLED', 'MAC_SIGN_IDENTITY', 'MAC_NOTARY_KEY_ID', 'MAC_NOTARY_ISSUER', 'MAC_CERT_P12', 'MAC_CERT_PASSWORD', 'MAC_NOTARY_KEY', 'REQUIRE_MAC_NOTARIZED'].every((v) => doc.includes('`' + v + '`') && wf.includes(v)));
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

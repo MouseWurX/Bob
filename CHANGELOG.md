@@ -4,6 +4,55 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.204
+
+A big one: Adventure grows up, I can make 3D parts and read maths, I come in French and Spanish, and a lot of new switches, every one of them off until you turn it on (except Try again and Edit).
+
+### New
+
+- **Enemies you can see.** Every enemy in the scene sits on the table with its hearts, and the app keeps the count. An attack that lands takes one heart off the enemy you **Aim at** (two on a natural 20); I take more off for a good spell or a clever idea. At zero they're down, and they stay behind when the party moves on.
+- **Characters who get stronger.** After a big moment I may reward one character: a stat point, one more heart (up to eight), a new trick or a new spell, once a scene at most. Your character keeps it: it's saved with them, so next game they start where they left off.
+- **A quest log.** 📓 Journal opens on what the party means to do or find out, ticked off when it's settled. It reminds me too, with the enemies standing and everyone you've met, so loose ends don't get lost.
+- **Say it your way.** Type what you do in your own words instead of picking a card, or press 🎤 **Speak it** and say it. I work out which stat it rolls, the same as for a Bob player.
+- **Ask the game master.** On your turn, ask me anything out of character: a rule, what's in the room, who that was again. It doesn't use your turn.
+- **Tonight's story.** Eight ready-made openings across the settings (The miller's daughter, The dragon sends a bill, The market under the hill and five more), or Make one up.
+- **"Last time..."** A continued campaign opens with a short reminder of where things stand.
+- **Friends at the table.** ➕ **Add a friend** (up to three) gives a real person a character and turns of their own. They can share this screen, or play from their own phone in Bob for Android, where **This phone plays** picks their character.
+- **🧰 Table extras**, all off until you tick them on the start card: **Dice you can see** (a die tumbles and lands), **Sounds** (dice, steel, spells, doors), **Read it aloud** (my voice reads the game master's lines), **Pictures** (backdrops painted before the game), **A new picture every scene**, and **Music** (a calm tune and a fight tune). Pictures and music need their models from Get models; without them I say so and play on. While I make them you see what I'm on, and **Skip the rest** starts the game sooner. 🔊 / 🔇 at the table hushes it all.
+- **Let Bob make 3D models** (Settings, How Bob works; both off). STL, OBJ and GLB files open in a 3D viewer in the side panel and on the phone, with nothing to install. **Let Bob make 3D parts** turns an OpenSCAD recipe into an STL (Windows uses OpenSCAD 2021.01, checked on every download). **Let Bob turn pictures into 3D models** sends one picture through TRELLIS.2 for a textured model, with a new **3D workshop** engine (about 17 GB).
+- **Let Bob's Quick brain see the big job** (Settings, Brains, under Keep chatting; off). While a long job runs, the Quick brain knows what it's on, can look at the steps, and can pass it a note. A note never stops the job.
+- **Brains page.** Equip Bob opens on what this replicant matrix holds and which brain does which job. Each brain says how it runs here (on your card, card + memory, card + memory + storage, with another Bob's help, or too big). Each brain gets a Set up page with Auto or By hand and **Calibrate**. In the catalogue you can **Remove** an entry from your own list, or **Add a model** from a Hugging Face page (pinned, and never my pick until it's tried).
+- **Search my documents by meaning** (under Read and search my documents; off). An index made while I'm idle finds files that are close in meaning, after the exact-word finds.
+- **Let other apps use Bob's brains** (Settings, Other apps; off). VS Code, Open WebUI and scripts can use my brains at `localhost:7777/v1`, with a key. A small command line comes too: `bob ask`, `bob status` and `bob models`.
+- **Let Claude use Bob's hands** (Settings, Other apps; off). The Claude app and Claude Code can use my Hands and tools on this computer, and every call shows my OK card. Connect buttons set it up with no terminal.
+- **Assistant presets** (Settings, Bob himself; off). A different me per chat: instructions, brain, effort, temperature and which tools. Pick one from 🎭 Preset in the chat, or on the phone.
+- **Try again and Edit in the chat** (on unless you turn it off). Try again under my latest answer, and Edit under your messages. What was there before is kept as earlier versions. A round button takes you back to the newest message, and new words no longer pull you down while you read.
+- **Save chats as files and bring chats in** (off). Save a chat as Markdown, JSON or PDF, or **Share…** it with names, folders and keys taken out. **Bring in chats…** reads ChatGPT, Claude and Open WebUI exports.
+- **Language** (Settings, Bob himself): English, Français or Español for my screens. Help stays in English for now, and I answer in whatever language you write in.
+- **Show maths as formulas** (off) draws maths in my replies as real formulas, on the phone too. **Keyboard shortcuts** (off) adds Ctrl+Shift+O for a new chat, Ctrl+K to search, Esc to stop and more, with a list in the app.
+- **Saved prompts and a / menu** (off). Type / in the message box to pull up a saved prompt, with blanks to fill in. On the phone too.
+- **🔒 Passcode lock** (Settings, This replicant matrix; off). Ask for a passcode to open me, lock again after a while, and keep chats and memory scrambled on disk. On the phone too.
+- **Bob for iPhone.** Your Bob on a computer serves the phone screen at `/phone/`. Add it to the Home Screen in Safari over Tailscale. There's nothing to download, and it needs **Let my other replicant matrices in** on.
+- **Tool packs from other people**, a Hand that's off to start with. Add a folder or .zip of tools and jobs. Every pack comes in switched off, runs in the sandbox, and every use shows a card. The guide for pack makers is `app/docs/TOOL-PACKS.md`.
+- **Linux .deb and Flatpak** downloads beside the AppImage, for x86_64 and arm64. **Update Bob** fetches the same kind you have.
+- **🗄 Back up and move** (Settings, This replicant matrix). **Save a backup…** makes one zip of chats, settings, memory, notes and what I made. Keys go in only if you tick it, locked with a passcode. **Restore from a backup** puts it in at the next start, and keeps what it replaces. **Back up by itself** is off. The phone gets its own backup and restore.
+- **The engine code map.** My code map now lists Brain Engine's patches, and `app/engine/ENGINE-MAP.md` says where each one hooks into llama.cpp and what to check when moving to a newer one.
+
+### Changed
+- **The Adventure page has the Settings look**: the start card is in panels (Story, Your character, Who plays, How long, Table extras, Continue a campaign), wider on a big screen and one column on a small one.
+- **The phone's Adventure screen has all of it too**: story ideas, friends, This phone plays, enemies, rewards, the quest log, Say it your way with the phone's microphone, Ask, and the table extras with the phone's own voice.
+- **The Lab has its own window** on a computer, with tabs sorted by task (Make a brain, Teach, Test, Look inside, Learn, Forge, My Lab), one place to start, and a button on every "nothing here yet" message. **My Lab** shows what you've made, with scores.
+- **The thinking cube glows for show by default**, so it no longer slows replies down. **Real experts** (beside Show the cube; off) brings back the live view of which experts fire.
+- **New engines are tried before they replace the old one** (Windows). A new engine build runs once in its side folder first. If Windows stops it, or it can't see your graphics card, the old one stays and I say why. **Check this PC** says whether Smart App Control is on, and I never change it. `docs/SIGNING.md` says what's signed and what isn't.
+- **Mac signing is built in and switched off**, ready for when there's an Apple Developer ID. Until then Macs still ask once for Open Anyway.
+- **The README is rewritten so it's easier to scan**, with today's pictures, the fNRI clips playing in the page, and the scores side by side.
+
+### Fixed
+- **The Adventure settings now keep the table-extra ticks** between games.
+- **Go back on an engine now stays put.** After you press Go back in Settings, Engines, I don't fetch the newer build again at the next start. **Try again**, a build you get by hand, or a newer Brain Engine in a new Bob ends it.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. Adventure: Windows, Mac, Linux and Bob for Android (through the Bob on your replicant matrix). Pictures and music are made where the painter and the music models are. With Animations off, the die doesn't tumble and the enemies don't shake. Help: "Adventure: I run a tabletop game", "Can a friend play an Adventure with me?", "Do Adventure characters get stronger?".
+
 ## 1.5.203
 
 My engine gets its own name and its own version numbers, Bigger Bobs gets a fast link made for Wi-Fi, and I've got a new voice to recommend.

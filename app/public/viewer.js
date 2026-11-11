@@ -6,6 +6,8 @@
 import { esc, render } from './rich.js';
 import { songCard, fillSongs } from './song-player.js';
 import { isDocName, drawDoc } from './doc-view.js';
+import './model-core.js'; // 3D models (shared with the phone app)
+const { isModelName } = globalThis.BobModel;
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -13,8 +15,8 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch {} }
 };
 const narrow = () => window.innerWidth <= 900;
-const KIND_WORD = { image: 'Picture', video: 'Clip', audio: 'Sound', document: 'Document', text: 'Document', folder: 'Folder', file: 'File' };
-const ICON = { image: '🖼️', video: '🎞️', audio: '🔊', document: '📄', text: '📄', folder: '📁', file: '📦' };
+const KIND_WORD = { image: 'Picture', video: 'Clip', audio: 'Sound', document: 'Document', text: 'Document', model: '3D model', folder: 'Folder', file: 'File' };
+const ICON = { image: '🖼️', video: '🎞️', audio: '🔊', document: '📄', text: '📄', model: '🧊', folder: '📁', file: '📦' };
 // The word on a card and in the panel: spreadsheets and web pages get their own word (clarity review).
 export const kindWord = (kind, name = '') => (/\.(csv|tsv|xlsx?|ods)$/i.test(name) ? 'Spreadsheet' : /\.html?$/i.test(name) ? 'Web page' : KIND_WORD[kind] || 'File');
 export const kindIcon = (kind, name = '') => (/\.(csv|tsv|xlsx?|ods)$/i.test(name) ? '📊' : /\.html?$/i.test(name) ? '🌐' : ICON[kind] || ICON.file);
@@ -30,9 +32,10 @@ export function friendlySize(n) {
 }
 const kindOf = (x) => {
   const k = x.kind === 'text' ? 'document' : x.kind || (x.type && x.type !== 'file' ? x.type : 'file');
+  if (k === 'file' && isModelName(x.name)) return 'model'; // 3D models open in the 3D viewer (model-core.js)
   return k === 'file' && /\.(pdf|docx?|xlsx?|pptx?|odt|ods|odp|rtf)$/i.test(x.name || '') ? 'document' : k;
 };
-const isText = (name) => /\.(txt|md|csv|tsv|json|log|html?|css|m?js|cjs|tsx?|jsx|py|c|h|cpp|hpp|cs|rs|java|kts?|gradle|xml|ya?ml|ini|cfg|toml|ps1|bat|cmd|sh|lua|gd|sql|svg|srt|vtt)$/i.test(name || '');
+const isText = (name) => /\.(txt|md|csv|tsv|json|log|html?|css|m?js|cjs|tsx?|jsx|py|c|h|cpp|hpp|cs|rs|java|kts?|gradle|xml|ya?ml|ini|cfg|toml|ps1|bat|cmd|sh|lua|gd|sql|svg|srt|vtt|scad)$/i.test(name || '');
 const pathFromUrl = (url) => { try { return url.startsWith('/api/file?') ? new URL(url, location.origin).searchParams.get('path') : url; } catch { return url; } };
 
 // 1.5.125: a small picture of a picture or clip, made once by the brain and kept (/api/thumb). If there's none to be had
@@ -65,6 +68,7 @@ export function outCard(item) {
   if (kind === 'image' && url) thumb = `<button type="button" class="out-thumb" data-view ${data} title="Open in the side panel"><img src="${esc(url)}" alt="${esc(name)}" loading="lazy"></button>`;
   else if (kind === 'video' && url) thumb = `<video class="out-media" src="${esc(url)}" controls muted loop preload="metadata" aria-label="Clip Bob made"></video>`;
   else if (kind === 'audio' && url) thumb = `<audio class="out-media" src="${esc(url)}" controls preload="none" aria-label="Sound Bob made"></audio>`;
+  else if (kind === 'model' && url) thumb = `<button type="button" class="out-peek out-3d" data-view ${data} title="Turn it and zoom in the side panel"><span aria-hidden="true">🧊</span> View in 3D</button>`;
   else if (peekable && url) thumb = `<button type="button" class="out-peek" data-view ${data} data-peek="${esc(url)}" title="Open in the side panel"><span class="muted">Loading a preview...</span></button>`;
   const what = kindWord(kind, name);
   // The size comes with the item, or is looked up once the card is on screen (fillPeeks).
@@ -136,7 +140,7 @@ export function createViewer({ post, note }) {
   }
 
   // ---- Made by Bob ----
-  const FILTERS = [['', 'All'], ['image', 'Pictures'], ['video', 'Clips'], ['audio', 'Sounds'], ['document', 'Documents'], ['file', 'Other files']];
+  const FILTERS = [['', 'All'], ['image', 'Pictures'], ['video', 'Clips'], ['audio', 'Sounds'], ['document', 'Documents'], ['model', '3D models'], ['file', 'Other files']];
   async function drawMade() {
     if (active !== 'made') return;
     if (!main.querySelector('.made')) {
@@ -167,6 +171,14 @@ export function createViewer({ post, note }) {
     const head = `<div class="vitem-head"><strong>${esc(t.name)}</strong><span class="muted">${esc(kindWord(t.kind, t.name))}${t.bytes != null && t.kind !== 'folder' ? ` · ${esc(friendlySize(t.bytes))}` : ''}</span></div>`;
     if (t.kind === 'image') { main.innerHTML = `${head}<div class="vstage"><img class="vimg" src="${esc(url)}" alt="${esc(t.name)}" title="Click to see it at full size"></div>${tools}`; return; }
     if (t.kind === 'video') { main.innerHTML = `${head}<div class="vstage"><video src="${esc(url)}" controls loop autoplay muted></video></div>${tools}`; return; }
+    if (t.kind === 'model' && url) { // 3D models (STL, OBJ, GLB): turn and zoom them right here (model-core.js)
+      main.innerHTML = `${head}<div class="vstage vmodel"><p class="muted">Loading the 3D model...</p></div>${tools}`;
+      const stage = main.querySelector('.vmodel');
+      try {
+        await globalThis.BobModel.showModel(stage, { url, name: t.name, still: document.body.classList.contains('still') });
+      } catch (err) { if (stage.isConnected) stage.innerHTML = `<p class="muted">${esc(err.message || 'Bob couldn\'t show that model.')} You can still open it in its app.</p>`; }
+      return;
+    }
     if (t.kind === 'audio') { // 1.5.41: the bigger song player, playing straight away
       main.innerHTML = `${head}<div class="vstage vaudio">${songCard({ url, name: t.name, path: t.path }, { big: true })}</div>${tools}`;
       fillSongs(main);

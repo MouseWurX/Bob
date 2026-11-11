@@ -2,6 +2,7 @@
 // steps: count which experts the lessons use (llama-imatrix), cut the experts (Bob's own cutter, src/lab-gguf.js),
 // take out sight or hearing, make the running files (llama-quantize), then the Lab test (src/lab-test.js). Nothing is
 // rented and nothing is downloaded here; the rented parts are Lab 2. One Lab job at a time, never while Gaming is on.
+import { readJson as vaultJson } from './vault.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -373,7 +374,7 @@ export function lessonSkills(cfg, lessons) {
     const dir = path.join(cfg.dataDir, 'sessions');
     let files = []; try { files = fs.readdirSync(dir).filter((f) => /\.json$/.test(f) && !/\.summary\.json$/.test(f)); } catch {}
     for (const f of files) {
-      const j = readJson(path.join(dir, f), []);
+      let j = []; try { j = vaultJson(path.join(dir, f), []); } catch {} // 🔒 a locked chat (passcode not typed yet) is left out
       for (const m of Array.isArray(j) ? j : j.messages || []) if (m.role === 'user' || m.role === 'assistant') add(m.role, typeof m.content === 'string' ? m.content : '');
     }
   } else if (lessons.kind === 'file') {

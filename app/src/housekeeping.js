@@ -8,6 +8,7 @@
 // Asking means a list with a tick and a cross per item; nothing goes without that click, unless the user chose
 // automatic for that kind. Everything removed goes to the Recycle Bin (recycle.js). Pinned chats, pictures
 // and topics are never touched. Every action goes in the logbook. Only Bob's own folders are touched.
+import { readText, writeText, appendText, vaultOn, hasKey } from './vault.js'; // 🔒 Lock my chats and memory
 import fs from 'node:fs';
 import path from 'node:path';
 import { appDir, findOutput } from './config.js';
@@ -18,6 +19,7 @@ import { Topics, normName, topicText } from './topics.js';
 import { Embedder } from './embedder.js';
 import { recallOn, parseMemory, MemoryVectors } from './recall.js';
 import { gaming } from './sessions.js';
+import { DocIndex, docMeaningOn, queryVector } from './doc-index.js';
 import { catalogFileFor } from './llamacpp.js';
 import {
   chatIds, chatInfo, chatFiles, wholeChat, readChat, readOlder, writeChat, writeOlder, readSummary, writeSummary,
@@ -77,7 +79,7 @@ export class Housekeeper {
 
   stop() { clearInterval(this.timer); this.pause(); }
   // The user is back: anything the housekeeper is asking the brain stops at once.
-  pause() { this.controller?.abort(); }
+  pause() { this.controller?.abort(); this.docStop?.abort(); }
 
   get settings() { return hkSettings(this.cfg); }
   state() {
@@ -151,7 +153,7 @@ export class Housekeeper {
     // 1.5.7: the cached Electron download is never offered any more. "Double-click to build Bob" reuses it, and without
     // it a rebuild has to download about 150 MB again (and fails offline). spareElectron() stays for anyone who wants it.
     try {
-      const { repeats } = memoryRepeats(fs.readFileSync(cfg.memoryFile, 'utf8'));
+      const { repeats } = memoryRepeats(readText(cfg.memoryFile));
       if (repeats) add({ key: 'memory-repeats', kind: 'spare', label: `${repeats} repeated line${repeats === 1 ? '' : 's'} in Bob's memory file`, detail: 'the first copy of each stays', bytes: 0, touched: mtime(cfg.memoryFile), actions: ['delete'], def: 'delete' });
     } catch {}
 
@@ -246,10 +248,10 @@ export class Housekeeper {
       return `${lines.length} old logbook lines (to the Recycle Bin as ${path.basename(old)})`;
     }
     if (it.key === 'memory-repeats') {
-      const text = fs.readFileSync(cfg.memoryFile, 'utf8');
+      const text = readText(cfg.memoryFile);
       const { repeats, text: tidy } = memoryRepeats(text);
       backupMemory(cfg);
-      fs.writeFileSync(cfg.memoryFile, tidy);
+      writeText(cfg, cfg.memoryFile, tidy);
       return `${repeats} repeated memory lines (the old memory file is in the Recycle Bin)`;
     }
     if (it.kind === 'topics') { this.forget(it.ref, { mode: 'note' }); return `the chat parts of "${it.label}" (its note stays)`; }
@@ -294,11 +296,11 @@ export class Housekeeper {
     const list = [].concat(facts || []).map((f) => String(f).replace(/\s+/g, ' ').trim()).filter((f) => f.length > 3 && f.length < 300).slice(0, 8);
     if (!list.length) return 0;
     let text = '';
-    try { text = fs.readFileSync(this.cfg.memoryFile, 'utf8'); } catch {}
+    try { text = readText(this.cfg.memoryFile); } catch {}
     const have = new Set(text.split('\n').map(memKey).filter(Boolean));
     const day = dateOf(Date.now());
     const add = list.filter((f) => { const k = memKey(f); if (have.has(k)) return false; have.add(k); return true; }).map((f) => `- ${f} (${day})${topic ? ` [topic: ${topic.replace(/[\][]/g, '')}]` : ''}${project && recallOn(this.cfg) ? ` [project: ${String(project).replace(/[\][]/g, '').slice(0, 60)}]` : ''}\n`);
-    if (add.length) fs.appendFileSync(this.cfg.memoryFile, (text && !text.endsWith('\n') ? '\n' : '') + add.join(''));
+    if (add.length) appendText(this.cfg, this.cfg.memoryFile, (text && !text.endsWith('\n') ? '\n' : '') + add.join(''));
     return add.length;
   }
 
@@ -406,7 +408,7 @@ export class Housekeeper {
     const others = new Set(this.topics.load().topics.filter((x) => x.id !== id).flatMap((x) => x.pics || []));
     const onlyHere = [...pics, ...(t.pics || [])].filter((u, i, a) => a.indexOf(u) === i && !others.has(u) && /^\/images\//.test(u));
     let memory = [];
-    try { memory = fs.readFileSync(this.cfg.memoryFile, 'utf8').split('\n').filter((l) => tagOf(l) === normName(t.name)); } catch {}
+    try { memory = readText(this.cfg.memoryFile).split('\n').filter((l) => tagOf(l) === normName(t.name)); } catch {}
     return { topic: { id: t.id, name: t.name, project: t.project, note: t.note, pinned: t.pinned }, mode, chats, messages: chats.reduce((n, c) => n + c.count, 0), pictures: onlyHere, memory: mode === 'all' ? memory : [], keepsNote: mode !== 'all' };
   }
 
@@ -419,9 +421,9 @@ export class Housekeeper {
     for (const s of t.spans || []) n += this.redact(s.session, new Set(s.msgIds), t.name);
     if (mode === 'all') {
       try {
-        const text = fs.readFileSync(this.cfg.memoryFile, 'utf8');
+        const text = readText(this.cfg.memoryFile);
         const kept = text.split('\n').filter((l) => tagOf(l) !== normName(t.name));
-        if (kept.length !== text.split('\n').length) { backupMemory(this.cfg); fs.writeFileSync(this.cfg.memoryFile, kept.join('\n')); }
+        if (kept.length !== text.split('\n').length) { backupMemory(this.cfg); writeText(this.cfg, this.cfg.memoryFile, kept.join('\n')); }
       } catch {}
       this.topics.remove(id);
     } else {
@@ -479,14 +481,38 @@ export class Housekeeper {
   async fillMemoryVectors() {
     if (!recallOn(this.cfg) || gaming(this.cfg)) return 0;
     let text = '';
-    try { text = fs.readFileSync(this.cfg.memoryFile, 'utf8'); } catch { return 0; }
+    try { text = readText(this.cfg.memoryFile); } catch { return 0; }
     const model = this.cfg.housekeeping?.embedModel || 'nomic-embed-text';
     this.memVecs ||= new MemoryVectors(this.cfg);
     return this.memVecs.fill(parseMemory(text), (texts) => this.embed(texts), model);
   }
 
+  // Search my documents by meaning (doc-index.js): new and changed documents get their meaning numbers while Bob
+  // is idle, a batch at a time, never in the Gaming session. Works with housekeeping off.
+  docRoots() { return (this.cfg.readRoots || []).filter((r) => r !== this.cfg.innDir); }
+  async fillDocIndex() {
+    if (!docMeaningOn(this.cfg) || gaming(this.cfg)) return null;
+    this.docIndex ||= new DocIndex(this.cfg);
+    const model = this.cfg.housekeeping?.embedModel || 'nomic-embed-text';
+    const r = await this.docIndex.fill(this.docRoots(), (texts) => this.embed(texts), model, { signal: (this.docStop = new AbortController()).signal });
+    if (r.added || r.dropped) this.log(`document index: ${r.added} read, ${r.dropped} gone${r.left ? `, ${r.left} still to do` : ''}`);
+    return r;
+  }
+  // The files that mean what q means: [{ file, at, len, score }], or null when it can't (no model, Gaming session, empty).
+  async docsByMeaning(q, roots) {
+    if (!docMeaningOn(this.cfg) || gaming(this.cfg)) return null;
+    this.docIndex ||= new DocIndex(this.cfg);
+    if (!this.docIndex.view().pieces) return null;
+    const v = await queryVector(this, q, this.docIndex.load().model);
+    return v ? this.docIndex.search(v, { roots: roots || this.docRoots() }) : null;
+  }
+  docIndexView() { return docMeaningOn(this.cfg) ? (this.docIndex ||= new DocIndex(this.cfg)).view() : null; }
+  forgetDocIndex() { this.docStop?.abort(); (this.docIndex ||= new DocIndex(this.cfg)).clear(); }
+
   async tick({ force = false } = {}) {
+    if (vaultOn(this.cfg) && !hasKey()) return { skipped: true, locked: true }; // 🔒 chats are locked until the passcode is typed
     if (recallOn(this.cfg) && (force || this.idle()) && !this.working) { try { await this.fillMemoryVectors(); } catch {} }
+    if (docMeaningOn(this.cfg) && (force || this.idle()) && !this.working) { try { await this.fillDocIndex(); } catch {} }
     const hk = this.settings;
     if (!force && (!hk.enabled || !this.idle())) return { skipped: true };
     if (this.working) return { busy: true };

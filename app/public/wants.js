@@ -9,18 +9,32 @@ import { CARDS } from './settings-map.js';
 // key: the setting. setting: the switch's name in Settings (the Help and the tests use it). where: its Settings panel.
 // card: the Settings card it sits under.
 export const WANTS = [
+  { card: 'bob', key: 'mathView', setting: 'Show maths as formulas', where: 'Bob himself',
+    label: 'Show maths as real formulas', note: 'Fractions, powers and roots instead of code.' },
+  { card: 'bob', key: 'shortcuts', setting: 'Keyboard shortcuts', where: 'Bob himself',
+    label: 'Answer to keyboard shortcuts', note: 'Ctrl+Shift+O new chat, Ctrl+K search, Esc stops me. Ctrl+/ lists them.' },
   { card: 'how', key: 'quickNotes', setting: 'Let Bob take quick notes', where: 'How Bob works',
     label: 'Take quick notes when you say "note:"', note: 'Saved at once with the date, in one text file.' },
   { card: 'how', key: 'smartNotes', setting: 'Let Bob notice what\'s worth noting', where: 'How Bob works',
     label: 'Note things worth keeping on my own', note: 'Decisions, numbers, plans. I say 📝 Noted. Turns quick notes on too.' },
   { card: 'how', key: 'docTools', setting: 'Read and search my documents', where: 'How Bob works',
     label: 'Read and search your documents', note: 'Word, Excel, PowerPoint, PDF and more. Nothing leaves this replicant matrix.' },
+  { card: 'how', key: 'docMeaning', setting: 'Search my documents by meaning', where: 'How Bob works',
+    label: 'Find documents by what they mean, not just the words', note: 'Works with reading your documents on. The index stays on this replicant matrix.' },
   { card: 'how', key: 'docView', setting: 'Show documents in the side panel', where: 'How Bob works',
     label: 'Show documents beside the chat', note: 'Word, Excel, PowerPoint and PDF open in the side panel.' },
+  { card: 'how', key: 'chatFiles', setting: 'Save chats as files and bring chats in', where: 'How Bob works',
+    label: 'Save chats as files, and bring in chats from ChatGPT and others', note: 'Markdown, JSON or PDF out; ChatGPT, Claude and Open WebUI exports in.' },
+  { card: 'how', key: 'promptMenu', setting: 'Pull up saved prompts with /', where: '📝 Saved prompts',
+    label: 'Pull up your saved prompts when you type /', note: 'The words you use often, in the box in two keys.' },
   { card: 'how', key: 'sandboxCode', setting: 'Let Bob work things out in a sandbox', where: 'How Bob works',
     label: 'Work out sums, dates and money in a sandbox', note: 'A locked box that can\'t see your files, so I answer from the result, not a guess.' },
   { card: 'how', key: 'toolLearning', setting: 'Let Bob learn from his tools', where: 'How Bob works',
     label: 'Learn from what works and what fails', note: 'One line on what fixed a tool, and a scorecard. It stays here.' },
+  { card: 'how', key: 'parts3d', setting: 'Let Bob make 3D parts', where: 'How Bob works',
+    label: 'Make 3D parts for a printer', note: 'Brackets, boxes and fixes as STL files. Needs OpenSCAD (free).' },
+  { card: 'how', key: 'model3d', setting: 'Let Bob turn pictures into 3D models', where: 'How Bob works',
+    label: 'Turn pictures into 3D models', note: 'Figurines and props with colour. Needs an NVIDIA card and about 22 GB.' },
   { card: 'how', key: 'planFirst', setting: 'Show Bob\'s plan before big jobs', where: 'How Bob works',
     label: 'Show you my plan before big jobs', note: 'Every step on one card, and I wait for your OK.' },
   { card: 'how', key: 'editOwn', setting: 'Let Bob fix his own messages', where: 'How Bob works',
@@ -31,6 +45,8 @@ export const WANTS = [
     label: 'Pick up where I left off after a restart', note: 'Finished steps aren\'t done again.' },
   { card: 'brains', key: 'oneBrain', setting: 'One brain (snappier)', where: 'How Bob works',
     label: 'Use one brain for everything', note: 'No 20-second stops to swap brains.' },
+  { card: 'brains', key: 'quickSeesJob', setting: 'Let Bob\'s Quick brain see the big job', where: 'Brains',
+    label: 'Tell you how a long job is going', note: 'My Quick brain sees what my big brain is on, and can pass it a note.' },
   { card: 'brains', key: 'memoryRecall', setting: 'Remember only what fits', where: 'Speed & memory',
     label: 'Read only the memories that fit each message', note: 'Keeps chats light.' },
   { card: 'online', key: 'webSearch', setting: 'Let Bob search the web', where: 'How Bob works',
@@ -45,13 +61,15 @@ export const WANTS = [
 
 // The bigger ones have choices of their own, so the list only points at them. id: the Settings section it opens.
 export const WANTS_ELSEWHERE = [
+  { card: 'bob', id: 'adv-presets', label: 'Work a different way in each chat (🎭 Assistant presets)' },
   { card: 'how', id: 'adv-checkins', label: 'Check in on you by myself (🔔 Check-ins)' },
   { card: 'net', id: 'adv-bobnet', label: 'Talk to me from your phone (🌐 Bob-Net)' },
   { card: 'online', id: 'adv-online', label: 'Chat on Discord or Telegram (☁ Online services)' },
   { card: 'may', id: 'adv-hands', label: 'Use your files and programs (✋ Hands)' },
   { card: 'fun', id: 'adv-adventure', label: 'Run a tabletop adventure (🎲 Adventure)' },
   { card: 'fun', id: 'adv-games', label: 'Play word games (🧩 Games)' },
-  { card: 'pc', id: 'adv-housekeeping', label: 'Tidy up while I\'m idle (🧹 Housekeeping)' }
+  { card: 'pc', id: 'adv-housekeeping', label: 'Tidy up while I\'m idle (🧹 Housekeeping)' },
+  { card: 'pc', id: 'ev-lock', label: 'Ask for a passcode, and lock your chats (🔒 Passcode lock)' }
 ];
 
 // Being built: shown as plain words, never a tick. When one ships, its line moves up into WANTS or WANTS_ELSEWHERE

@@ -567,7 +567,7 @@ export function cubeShapes(lab, models, friendly = (n) => n) {
     const brain = lab.brains().find((b) => b.id === model || base(b.gguf) === base(model) || b.name === label);
     let f = null; try { f = brain ? inspect(brain) : null; } catch {}
     if (!f?.layers) continue;
-    out.push({ label, experts: f.experts || CUBE_GROUPS, layers: f.layers, kind: f.experts ? 'experts' : 'neurons' });
+    out.push({ label, experts: f.experts || CUBE_GROUPS, layers: f.layers, kind: f.experts ? 'experts' : 'neurons', used: Number(f.used) || 0 }); // used: how many experts a word picks, for the cube's made-up glow
   }
   return out;
 }

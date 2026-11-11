@@ -4,7 +4,8 @@
 #  2. Makes the release zip in the installed layout: Electron's official electron.exe, unchanged and
 #     renamed Bob.exe, with Bob's files in resources\app (installer\make-release.ps1).
 #  2b. On a Mac runner (Apple Silicon): runs the tests again, makes Bob.app (installer/make-release-mac.sh: Electron's
-#     official Mac app, renamed, with Bob's files inside, signed ad hoc), checks that Bob's own engines for Mac
+#     official Mac app, renamed, with Bob's files inside, signed ad hoc, or with an Apple Developer ID and notarized
+#     once MAC_SIGNING_ENABLED is "true": app/docs/SIGNING-MAC.md), checks that Bob's own engines for Mac
 #     download and start (installer/mac-smoke.mjs), opens Bob.app once to see his brain answers, and adds
 #     Bob-<version>-mac-arm64.zip to the same release. A failure here never holds back the Windows release.
 #  3. Builds Bob.exe from source with electron-builder (Bob's own name and icon) and, once SignPath is set
@@ -126,6 +127,31 @@ jobs:
           node-version: 22
       - name: Tests (on macOS)
         run: npm test
+      # Apple Developer ID signing and notarization (app/docs/SIGNING-MAC.md): off until the owner says yes to an Apple
+      # Developer Program account. Then: variable MAC_SIGNING_ENABLED = true, MAC_SIGN_IDENTITY, MAC_NOTARY_KEY_ID,
+      # MAC_NOTARY_ISSUER, and the secrets MAC_CERT_P12 (base64), MAC_CERT_PASSWORD and MAC_NOTARY_KEY (the .p8 text).
+      # A pull request from a fork never gets the secrets, so it builds ad hoc as before.
+      - name: Get the Developer ID certificate ready (only when Mac signing is on)
+        if: ${{ vars.MAC_SIGNING_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        env:
+          MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          MAC_SIGN_IDENTITY: ${{ vars.MAC_SIGN_IDENTITY }}
+        run: |
+          [ -n "$MAC_CERT_P12" ] && [ -n "$MAC_CERT_PASSWORD" ] && [ -n "$MAC_SIGN_IDENTITY" ] || { echo "Mac signing is on, but MAC_CERT_P12, MAC_CERT_PASSWORD or MAC_SIGN_IDENTITY is missing."; exit 1; }
+          # A throwaway keychain with a random password, only for this run; removed at the end of the job.
+          kc="$RUNNER_TEMP/bob-signing.keychain-db"; kcpw="$(uuidgen)"
+          security create-keychain -p "$kcpw" "$kc"
+          security set-keychain-settings -lut 3600 "$kc"
+          security unlock-keychain -p "$kcpw" "$kc"
+          echo "$MAC_CERT_P12" | base64 --decode > "$RUNNER_TEMP/bob-cert.p12"
+          security import "$RUNNER_TEMP/bob-cert.p12" -k "$kc" -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/bob-cert.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$kcpw" "$kc" > /dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$kc" | grep -F "$MAC_SIGN_IDENTITY" > /dev/null || { echo "The keychain has no identity called MAC_SIGN_IDENTITY."; exit 1; }
+          echo "MAC_SIGN_IDENTITY=$MAC_SIGN_IDENTITY" >> "$GITHUB_ENV"
+          echo "MAC_KEYCHAIN=$kc" >> "$GITHUB_ENV"
       - name: Make Bob.app
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -136,6 +162,18 @@ jobs:
             [ "$i" -lt 3 ] && echo "Try $i failed (often a download hiccup); trying again in 60 seconds." && sleep 60
           done
           exit 1
+      - name: Notarize Bob.app with Apple (only when Mac signing is on)
+        if: ${{ env.MAC_KEYCHAIN != '' }}
+        env:
+          MAC_NOTARY_KEY_TEXT: ${{ secrets.MAC_NOTARY_KEY }}
+          MAC_NOTARY_KEY_ID: ${{ vars.MAC_NOTARY_KEY_ID }}
+          MAC_NOTARY_ISSUER: ${{ vars.MAC_NOTARY_ISSUER }}
+        run: |
+          export MAC_NOTARY_KEY="$RUNNER_TEMP/bob-notary.p8"
+          printf '%s\n' "$MAC_NOTARY_KEY_TEXT" > "$MAC_NOTARY_KEY"
+          code=0; bash installer/notarize-mac.sh dist arm64 || code=$? # the key file goes even if Apple says no
+          rm -f "$MAC_NOTARY_KEY"
+          exit $code
       - name: Bob's engines for Mac download and start
         env:
           GH_TOKEN: ${{ github.token }}
@@ -157,6 +195,15 @@ jobs:
           cat dist/mac-arm64/check/log.txt | tail -40
           if [ $ok = 1 ]; then echo "Bob answered:"; head -c 600 dist/mac-arm64/check/status.json; echo; else echo "Bob.app didn't answer on port 7777 within 90 s"; exit 1; fi
           ls "$HOME/Bob"
+      - name: Does macOS open Bob.app without Open Anyway? (fails only once REQUIRE_MAC_NOTARIZED is "true")
+        run: |
+          if spctl --assess --type execute --verbose=2 dist/mac-arm64/check/Bob.app 2>&1 | tee dist/mac-arm64/check/spctl.txt; then
+            echo "✓ Bob.app is signed with a Developer ID and notarized: macOS opens it without Open Anyway." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Bob.app is signed ad hoc, so macOS asks for Open Anyway the first time (app/docs/SIGNING-MAC.md)." | tee -a "$GITHUB_STEP_SUMMARY"
+            [ "${{ vars.REQUIRE_MAC_NOTARIZED }}" = "true" ] && exit 1
+          fi
+          exit 0
       - name: Upload Mac zip
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -177,6 +224,9 @@ jobs:
           for i in $(seq 1 60); do gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 && break; sleep 30; done
           if ! gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then echo "Release $v didn't appear, so the Mac zip is only an artifact of this run."; exit 0; fi
           gh release upload "$v" dist/Bob-*-mac-arm64.zip dist/Bob-*-mac-arm64.zip.sha256 --clobber -R "$GITHUB_REPOSITORY"
+      - name: Remove the signing keychain
+        if: ${{ always() && env.MAC_KEYCHAIN != '' }}
+        run: security delete-keychain "$MAC_KEYCHAIN" || true
 
   signed-build:
     # Off until SignPath Foundation has approved the project and the settings below are in place:

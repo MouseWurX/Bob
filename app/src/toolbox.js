@@ -9,6 +9,7 @@
 import { HANDS, handOn, handOffWhy } from './hands-settings.js';
 import { makerWords, makerWhat } from './selftools.js';
 import { mcpWords, mcpWhat } from './mcp.js';
+import { packsWords, packsWhat } from './toolpacks.js';
 import { selfWorkWords } from './self-work.js';
 
 export const CORE = ['notice_board', 'remember', 'reminders', 'list_folder', 'read_file', 'web_search', 'fetch_page', 'bob_help', 'ask_specialist', 'show_made', 'pick_session', 'edit_my_message', 'take_note', 'offer_setup', 'use_tools'];
@@ -29,6 +30,11 @@ const WORK_GROUPS = {
     what: 'write or edit files, save spreadsheets, search inside files and documents, map a codebase',
     tools: ['write_file', 'edit_file', 'save_spreadsheet', 'search_files', 'find_in_documents', 'code_map'],
     words: /\b(save|write|edit|documents?|txt|csv|xlsx|spreadsheet|excel|pdfs?|word (?:doc|file)s?|search (?:my|the|in|for)|find (?:in|where|the (?:file|doc|document|pdf))|grep|jot|text file|notes? file|(?:in|through) my (?:files|documents|docs|folders)|where did I (?:mention|write|put|say|save)|which (?:file|document|doc|pdf))\b/i
+  },
+  parts3d: { // "Let Bob make 3D parts" (parts3d.js): only while it's on (offTools hides it otherwise)
+    what: 'make exact 3D parts (STL files for a 3D printer) from an OpenSCAD recipe: brackets, boxes, lids, spacers, replacement parts; and turn a picture into a textured 3D model (GLB): figurines, characters, props',
+    tools: ['make_3d_part', 'make_3d_model'],
+    words: /\b(3d|3-d|stl|openscad|scad|cad|3d ?print\w*|printable|bracket|enclosure|spacer|washer|standoff|knob|hinge|gear|cog|replacement part|spare part|part for|glb|figurine|sculpt\w*|miniature|3d model|mesh)s?\b/i
   },
   sandbox: { // "Let Bob work things out in a sandbox" (sandbox-code.js): only while it's on (offTools hides it otherwise)
     what: 'work out sums, money, dates, unit conversions, counting and sorting exactly, by running a little code in a locked sandbox',
@@ -91,6 +97,8 @@ export function groupsFor(brain) {
     if (id === 'maker') Object.assign(g[id], { what: makerWhat(brain.cfg), words: makerWords(brain.cfg) });
     // The connected apps by name, so "in Blender, add a cube" finds them.
     if (id === 'mcp') Object.assign(g[id], { what: mcpWhat(brain.cfg), words: mcpWords(brain.cfg) });
+    // Tool packs from other people (toolpacks.js) by name, so "count the words with the word tools pack" finds them.
+    if (id === 'packs') Object.assign(g[id], { what: packsWhat(brain.cfg), words: packsWords(brain.cfg) });
   }
   // Only groups with at least one tool Bob can use on this PC right now.
   const out = {};
@@ -112,13 +120,19 @@ export function groupsFor(brain) {
 export const groupOf = (brain, name) => Object.entries(groupsFor(brain)).find(([, x]) => x.tools.includes(name))?.[0] || null;
 
 // The groups the user's words point at this turn.
+// Assistant presets (presets.js): only the groups a chat's preset allows. `only` null = every group, as usual.
+export function onlyGroups(groups, only) {
+  if (!only) return groups;
+  return Object.fromEntries(Object.entries(groups).filter(([id]) => only.has(id)));
+}
+
 export function guessGroups(brain, text) {
   const t = String(text || '');
   return Object.entries(groupsFor(brain)).filter(([, x]) => x.words.test(t)).map(([id]) => id);
 }
 
 // The chat chip when a group is added (clarity reviewer's words; Hands match their names in Settings).
-const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', documents: 'Using his document tools', files: 'Using his file tools', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', browser: 'Using Hands: his browser', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', selfwork: 'Working on a repository', cloud: 'Using a cloud helper' };
+const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', parts3d: 'Using his 3D part tools', documents: 'Using his document tools', files: 'Using his file tools', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', browser: 'Using Hands: his browser', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', selfwork: 'Working on a repository', cloud: 'Using a cloud helper' };
 
 export const allToolsOn = (cfg) => cfg.allTools === true;
 
@@ -137,8 +151,10 @@ export function useToolsTool(brain) {
       }
     },
     async run({ group }, ctx) {
-      const groups = groupsFor(brain);
+      const all = groupsFor(brain);
+      const groups = onlyGroups(all, ctx?.loaded?.only);
       const id = String(group || '').toLowerCase().trim();
+      if (all[id] && !groups[id]) return `This chat's assistant preset leaves out ${id}. Say so in a line; a chat without this preset can use it.`;
       const handId = Object.keys(HANDS).find((h) => h === id);
       if (!groups[id]) {
         if (handId && !handOn(brain.cfg, handId)) return handOffWhy(brain.cfg, handId);
@@ -179,8 +195,8 @@ export function fillUseTools(schema, groups, loaded) {
 // One line in the front desk's prompt naming the groups not added yet (router test, 2026-11-02: without it,
 // small brains said "I can't make pictures yet" instead of calling use_tools). About 80 tokens.
 export function toolboxPrompt(brain, loaded) {
-  if (allToolsOn(brain.cfg)) return '';
-  const open = Object.entries(groupsFor(brain)).filter(([id]) => !loaded.has(id));
+  if (allToolsOn(brain.cfg) && !loaded?.only) return '';
+  const open = Object.entries(onlyGroups(groupsFor(brain), loaded?.only)).filter(([id]) => !loaded.has(id));
   if (!open.length) return '';
   return `\n\nMore you CAN do: call use_tools with a group, then its tool. ${open.map(([id, x]) => `${id} = ${x.what}`).join('; ')}. Never say you can't do these.`;
 }

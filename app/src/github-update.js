@@ -8,6 +8,10 @@
 //            app's folder can't be written to, the checked Bob.app is shown in Finder to drag over by hand.
 //   Linux    the new AppImage goes next to the running one, takes its place on restart (the old one is kept as
 //            <name>.previous), and opens again.
+//            A .deb Bob (installed in /opt/Bob) gets the new .deb; on restart, once he has closed, the desktop asks
+//            for the password (pkexec), apt installs it over the old one, and he opens again.
+//            A Flatpak Bob gets the new .flatpak; on restart, once he has closed, Flatpak installs it over the old
+//            one for this user (or the whole computer, whichever it was) and opens him again.
 // Only ever on a click ("Check for updates", "Update Bob"), or at start-up if "Check for updates when Bob starts"
 // is on, and then only to look. Nothing is downloaded or installed without a click.
 import fs from 'node:fs';
@@ -33,11 +37,39 @@ export function compareVersions(a, b) {
   return 0;
 }
 
-// Which release file fits this computer, and whether this Bob can swap itself for it.
-export function platformAsset(platform = process.platform, arch = process.arch) {
+// Bob's Flatpak id, the same as his app id everywhere else.
+export const FLATPAK_ID = 'ca.mousewurx.bob';
+// The .deb puts Bob in /opt/Bob (electron-builder's layout); dpkg's list of the package's files proves it came from the .deb.
+export const DEB_DIR = '/opt/Bob';
+export const DEB_PACKAGE = 'bob';
+
+// How this Linux Bob was installed: 'flatpak', 'appimage', 'deb', or '' (run from source, or another way).
+export function linuxPackage(env = process.env, execPath = process.execPath, exists = fs.existsSync) {
+  if (env.FLATPAK_ID === FLATPAK_ID) return 'flatpak';
+  if (env.APPIMAGE) return 'appimage';
+  if (path.posix.dirname(String(execPath)) === DEB_DIR && exists(`/var/lib/dpkg/info/${DEB_PACKAGE}.list`)) return 'deb';
+  return '';
+}
+
+// The release file names on Linux, per kind of package and processor (electron-builder's own names for each).
+const LINUX_FILES = {
+  appimage: { x64: 'x86_64.AppImage', arm64: 'arm64.AppImage' },
+  deb: { x64: 'amd64.deb', arm64: 'arm64.deb' },
+  flatpak: { x64: 'x86_64.flatpak', arm64: 'aarch64.flatpak' }
+};
+const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Which release file fits this computer, and whether this Bob can swap itself for it. On Linux `pkg` (linuxPackage)
+// picks the same kind of file this Bob came as; the AppImage when it's not known.
+export function platformAsset(platform = process.platform, arch = process.arch, pkg = 'appimage') {
   if (platform === 'win32') return arch === 'x64' || arch === 'arm64' ? { kind: 'win', re: /^Bob-.+-win-x64\.zip$/ } : null;
   if (platform === 'darwin') return arch === 'arm64' ? { kind: 'mac', re: /^Bob-.+-mac-arm64\.zip$/ } : null;
-  if (platform === 'linux') return arch === 'x64' ? { kind: 'linux', re: /^Bob-.+-linux-x86_64\.AppImage$/ } : arch === 'arm64' ? { kind: 'linux', re: /^Bob-.+-linux-arm64\.AppImage$/ } : null;
+  if (platform === 'linux') {
+    const kind = LINUX_FILES[pkg] ? pkg : 'appimage';
+    const tail = LINUX_FILES[kind][arch];
+    if (!tail) return null;
+    return { kind: kind === 'appimage' ? 'linux' : kind, re: new RegExp(`^Bob-.+-linux-${reEsc(tail)}$`) };
+  }
   return null;
 }
 
@@ -48,15 +80,21 @@ export function macBundle(execPath = process.execPath) {
 }
 
 // Can this Bob put a downloaded release in place by himself? Says why not, in words, when he can't.
-export function selfUpdate(env = process.env, platform = process.platform, execPath = process.execPath, electron = process.versions.electron) {
+export function selfUpdate(env = process.env, platform = process.platform, execPath = process.execPath, electron = process.versions.electron, exists = fs.existsSync) {
   if (platform === 'win32') return env.BOB_APP_DIR && electron ? { ok: true } : { ok: false, why: 'I\'m running from source here, not from Bob.exe, so there\'s no Bob.exe for me to update. Get the new source, or install the zip from ' + RELEASES_PAGE + '.' };
   if (platform === 'darwin') return macBundle(execPath) ? { ok: true } : { ok: false, why: 'I\'m not running as Bob.app here, so there\'s nothing for me to swap. Download the Mac zip from ' + RELEASES_PAGE + '.' };
-  if (platform === 'linux') return env.APPIMAGE ? { ok: true } : { ok: false, why: 'I\'m not running as an AppImage here, so there\'s nothing for me to swap. Download the AppImage from ' + RELEASES_PAGE + '.' };
+  if (platform === 'linux') {
+    const pkg = linuxPackage(env, execPath, exists);
+    if (pkg === 'appimage') return { ok: true };
+    if (pkg === 'deb') return exists('/usr/bin/pkexec') ? { ok: true } : { ok: false, why: 'I was installed from the .deb, and putting a new one in needs your password, but this computer has no pkexec to ask for it. Download the new .deb from ' + RELEASES_PAGE + ' and open it, or run: sudo apt install ./Bob-<version>-linux-amd64.deb' };
+    if (pkg === 'flatpak') return { ok: true };
+    return { ok: false, why: 'I\'m not running as an AppImage, a .deb or a Flatpak here, so there\'s nothing for me to swap. Download Bob from ' + RELEASES_PAGE + '.' };
+  }
   return { ok: false, why: 'There\'s no Bob for this kind of computer on GitHub yet.' };
 }
 
 // The Latest release and the file for this computer. Throws in plain words when GitHub can't be reached.
-export async function latestRelease({ fetchImpl = fetch, signal, platform = process.platform, arch = process.arch } = {}) {
+export async function latestRelease({ fetchImpl = fetch, signal, platform = process.platform, arch = process.arch, env = process.env, execPath = process.execPath, exists = fs.existsSync } = {}) {
   let res;
   try { res = await fetchImpl(API, { headers: { 'user-agent': 'Bob', accept: 'application/vnd.github+json' }, signal }); }
   catch { throw new Error(`Couldn't reach GitHub (no internet?). Try again later, or download the newest release from github.com/${REPO}/releases.`); }
@@ -64,7 +102,7 @@ export async function latestRelease({ fetchImpl = fetch, signal, platform = proc
   const rel = await res.json();
   const label = (parseVersion(rel.tag_name) || []).join('.');
   if (!label) throw new Error(`GitHub's newest release (${rel.tag_name || 'no name'}) doesn't have a version number I understand.`);
-  const want = platformAsset(platform, arch);
+  const want = platformAsset(platform, arch, platform === 'linux' ? linuxPackage(env, execPath, exists) : undefined);
   const assets = Array.isArray(rel.assets) ? rel.assets : [];
   const asset = want ? assets.find((a) => want.re.test(a.name)) || null : null;
   const sha = asset ? assets.find((a) => a.name === asset.name + '.sha256') || null : null;
@@ -134,9 +172,9 @@ export function cleanEnv(env = process.env) {
 // Downloads and checks the newest release, then gets it ready. `handOff(source)` starts the Windows update
 // window (update.js); the Mac and Linux steps happen here. Runs in the background; progress goes to the same
 // status file the update window uses, so Settings and the chat show the same steps.
-export async function startGithubUpdate(cfg, { fetchImpl = fetch, handOff, platform = process.platform, arch = process.arch, env = process.env, execPath = process.execPath, electron = process.versions.electron, rel: known } = {}) {
+export async function startGithubUpdate(cfg, { fetchImpl = fetch, handOff, platform = process.platform, arch = process.arch, env = process.env, execPath = process.execPath, electron = process.versions.electron, exists = fs.existsSync, readFile = (f) => fs.readFileSync(f, 'utf8'), rel: known } = {}) {
   if (job && !job.finished) throw new Error('An update is already running.');
-  const can = selfUpdate(env, platform, execPath, electron);
+  const can = selfUpdate(env, platform, execPath, electron, exists);
   if (!can.ok) throw new Error(can.why);
   const ctl = new AbortController();
   job = { finished: false, ctl };
@@ -145,7 +183,7 @@ export async function startGithubUpdate(cfg, { fetchImpl = fetch, handOff, platf
   const st = (step, text, extra = {}) => writeStatus(cfg, { mode: 'github', source: 'github', version: known?.label || '', step, of: steps.length, id: ['ask', 'download', 'check', 'ready-up', 'done'][step - 1], text, done: false, error: '', ready: false, steps, startedAt, ...extra });
   const promise = (async () => {
     st(1, steps[0]);
-    const rel = await latestRelease({ fetchImpl, signal: ctl.signal, platform, arch });
+    const rel = await latestRelease({ fetchImpl, signal: ctl.signal, platform, arch, env, execPath, exists });
     if (rel.why) throw new Error(rel.why);
     known = rel;
     steps = STEPS(rel.label, MB(rel.asset.size));
@@ -163,7 +201,7 @@ export async function startGithubUpdate(cfg, { fetchImpl = fetch, handOff, platf
     if (got !== want) { fs.rmSync(file + '.part', { force: true }); throw new Error('The download didn\'t match its checksum, so I threw it away and changed nothing. Try again; if it keeps happening, download it from the releases page yourself (github.com/' + REPO + '/releases).'); }
     fs.renameSync(file + '.part', file);
     st(4, steps[3], { version: rel.label, log: `Checksum matches: ${want.slice(0, 12)}…` });
-    const kind = platformAsset(platform, arch).kind;
+    const kind = rel.kind;
     if (kind === 'win') {
       const out = path.join(dir, 'unpacked');
       fs.mkdirSync(out, { recursive: true });
@@ -198,6 +236,12 @@ export async function startGithubUpdate(cfg, { fetchImpl = fetch, handOff, platf
           log: `I couldn't replace Bob in ${path.basename(path.dirname(bundle)) === 'Applications' ? 'Applications' : path.dirname(bundle)}. I've opened the new copy in Finder: quit me, drag it into ${path.basename(path.dirname(bundle)) === 'Applications' ? 'Applications' : path.dirname(bundle)} (replace the old one), then open it.` });
         return;
       }
+    } else if (kind === 'deb' || kind === 'flatpak') {
+      // A package is put in by the system's own installer once this Bob has closed (restartIntoNew). The checked
+      // download waits here until then; nothing in the system changes before "Restart Bob now".
+      job.swap = kind === 'deb'
+        ? { kind, from: file, exe: execPath, status: statusFile(cfg), label: rel.label }
+        : { kind, from: file, id: FLATPAK_ID, scope: flatpakScope(readFile), status: statusFile(cfg), label: rel.label };
     } else {
       const target = env.APPIMAGE;
       const next = target + '.new';
@@ -214,10 +258,47 @@ export async function startGithubUpdate(cfg, { fetchImpl = fetch, handOff, platf
   return { ok: true, from: 'github', to: known ? { label: known.label } : null };
 }
 
+// A Flatpak Bob installed for this user only (~/.local/share/flatpak) or for the whole computer
+// (/var/lib/flatpak): /.flatpak-info inside the sandbox says which. The update goes in the same place.
+export function flatpakScope(readFile = (f) => fs.readFileSync(f, 'utf8')) {
+  let info = '';
+  try { info = readFile('/.flatpak-info'); } catch {}
+  const m = String(info).match(/^app-path\s*=\s*(.+)$/m);
+  return m && /^\/var\/lib\/flatpak\//.test(m[1].trim()) ? 'system' : 'user';
+}
+
+// What the status says when a package couldn't go in (the restart script writes it, so the next Bob shows it).
+export function packageFailStatus(sw, why) {
+  return { mode: 'github', source: 'github', version: sw.label || '', step: 4, of: 5, id: 'failed', text: why, done: false, ready: false, steps: [], error: `${why} Nothing was changed, and the download is still in ${path.dirname(sw.from)}.` };
+}
+
 // Mac and Linux: swap the checked download in once this Bob has closed, then open the new one. A small shell
 // script does it, because Bob can't replace himself while he's running.
+//   deb      pkexec asks for the password in the desktop's own window, then apt installs the .deb over the old one.
+//   flatpak  runs outside the sandbox (flatpak-spawn --host), waits until no Bob Flatpak runs, then installs the
+//            bundle over the old one (Flatpak keeps Bob's own folder, ~/.var/app/ca.mousewurx.bob, as it is).
+// Either way Bob opens again, the new one or (if the install was cancelled or failed) the old one, and the status
+// file says what happened.
 export function swapScript(sw, pid) {
   const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+  if (sw.kind === 'deb' || sw.kind === 'flatpak') {
+    const fail = (why) => `printf '%s' ${q(JSON.stringify(packageFailStatus(sw, why), null, 1))} > ${q(sw.status)}`;
+    const wait = sw.kind === 'deb'
+      ? `while kill -0 ${Number(pid)} 2>/dev/null; do sleep 0.5; done`
+      // The host can't see Bob's process number inside the sandbox; flatpak ps lists the running Flatpaks. At most 2 minutes.
+      : `n=0; while [ $n -lt 240 ] && flatpak ps --columns=application 2>/dev/null | grep -qx ${q(sw.id)}; do sleep 0.5; n=$((n+1)); done`;
+    const install = sw.kind === 'deb'
+      ? `pkexec /usr/bin/apt-get install -y --allow-downgrades ${q(sw.from)}`
+      : `flatpak install --${sw.scope === 'system' ? 'system' : 'user'} -y --noninteractive --reinstall --bundle ${q(sw.from)}`;
+    const open = sw.kind === 'deb' ? `nohup ${q(sw.exe)} >/dev/null 2>&1 &` : `nohup flatpak run ${q(sw.id)} >/dev/null 2>&1 &`;
+    return [
+      wait,
+      `if ${install} >${q(sw.from + '.log')} 2>&1; then rm -f ${q(sw.from)} ${q(sw.from + '.log')}; else`,
+      `  ${fail(sw.kind === 'deb' ? 'The new .deb didn\'t go in (the password was cancelled, or apt said no; its words are in the .log next to the download).' : 'Flatpak didn\'t put the new Bob in (its words are in the .log next to the download).')}`,
+      'fi',
+      open
+    ].join('\n');
+  }
   const open = sw.kind === 'mac' ? `/usr/bin/open ${q(sw.to)}` : `nohup ${q(sw.to)} >/dev/null 2>&1 &`;
   return [
     `while kill -0 ${Number(pid)} 2>/dev/null; do sleep 0.5; done`,
@@ -231,7 +312,10 @@ export function swapScript(sw, pid) {
 export function restartIntoNew(cfg, { spawnImpl = spawn, quit = () => (globalThis.bobQuit ? globalThis.bobQuit() : process.exit(0)) } = {}) {
   const sw = job?.swap;
   if (!sw || !fs.existsSync(sw.from)) throw new Error('There is no new Bob ready to switch to yet.');
-  const child = spawnImpl('/bin/sh', ['-c', swapScript(sw, process.pid)], { detached: true, stdio: 'ignore', env: cleanEnv() });
+  // A Flatpak Bob runs the script outside his sandbox, where Flatpak itself is (the --talk-name=org.freedesktop.Flatpak permission).
+  const child = sw.kind === 'flatpak'
+    ? spawnImpl('flatpak-spawn', ['--host', '/bin/sh', '-c', swapScript(sw, process.pid)], { detached: true, stdio: 'ignore', env: cleanEnv() })
+    : spawnImpl('/bin/sh', ['-c', swapScript(sw, process.pid)], { detached: true, stdio: 'ignore', env: cleanEnv() });
   child?.unref?.();
   writeStatus(cfg, { ...(() => { try { return JSON.parse(fs.readFileSync(statusFile(cfg), 'utf8')); } catch { return {}; } })(), text: 'Restarting into the new Bob.', ready: true, done: true });
   setTimeout(quit, 300);

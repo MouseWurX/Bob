@@ -21,12 +21,19 @@ import { copyName } from './clan.js';
 import { saveSettings } from './config.js';
 import { sameModel } from './brain-mode.js';
 import { LOOK_ID_RE } from './look.js';
-import { ENEMIES, enemyLine, meet, listMet, forgetMet } from './bestiary.js';
+import { capabilities } from './capabilities.js';
+import { ENEMIES, enemyLine, meet, listMet, forgetMet, kindOf, lookFor, enemyById } from './bestiary.js';
 
 export const STATS = { might: 'Might', wits: 'Wits', charm: 'Charm', luck: 'Luck' };
 export const STAT_IDS = Object.keys(STATS);
 export const STAT_POINTS = 12; // to spread over the four stats, 1-5 each
 export const HEARTS = 5;
+// 1.5.204: characters grow. A reward can raise a stat (1-5) or add a heart, up to MAX_HEARTS; once a stat is at 5,
+// a stat reward becomes an extra heart instead.
+export const MAX_HEARTS = 8;
+export const FOE_HEARTS = 12; // the most hearts the app keeps for one enemy (a boss)
+// Humans at the table: the owner, and (1.5.204) friends who play their turns on a phone or on this screen.
+export const isHuman = (c) => c?.who === 'you' || c?.who === 'friend';
 // Each class brings a light spell list and the attacks its kit allows (the second card under Magic and Attack).
 export const CLASSES = {
   fighter: { name: 'Fighter', stats: { might: 5, wits: 2, charm: 2, luck: 3 }, item: 'a dented but faithful sword', trick: 'Never backs down', attacks: ['One-handed, shield up', 'Two-handed, all in', 'Thrown blade', 'Shove or grapple'], spells: [] },
@@ -54,6 +61,33 @@ export const SETTINGS = {
   spooky: { name: 'Spooky', hint: 'A fog-bound town, a manor, things that knock.' },
   pick: { name: 'Pick for me', hint: 'The game master chooses.' }
 };
+// 1.5.204 Ready-made starts: a story idea for one evening, picked on the start card (or "Make one up").
+export const STARTS = {
+  miller: { setting: 'fantasy', name: "The miller's daughter", hook: "A village miller's daughter vanished on the night the mill wheel turned backwards." },
+  invoice: { setting: 'fantasy', name: 'The dragon sends a bill', hook: "A dragon has sent the town a bill. The town is fairly sure it doesn't owe one." },
+  market: { setting: 'fantasy', name: 'The market under the hill', hook: 'Once a year the goblins open a market under the hill. This year someone stole the market.' },
+  freighter: { setting: 'space', name: 'The quiet freighter', hook: 'A freighter drifts into your lane with every light on, and nobody answers the hail.' },
+  vault: { setting: 'space', name: 'The station job', hook: "The richest man on the station keeps one thing in his safe. The party has been hired to borrow it." },
+  manor: { setting: 'spooky', name: 'One night in the manor', hook: 'An aunt nobody remembers left the party her manor, on one condition: spend a night in it.' },
+  train: { setting: 'spooky', name: 'The last train', hook: "The midnight train stops at a station that isn't on any map." },
+  lighthouse: { setting: 'spooky', name: 'The inland light', hook: 'Every night the lighthouse turns its beam inland, toward the woods.' }
+};
+export const START_IDS = Object.keys(STARTS);
+
+// 1.5.204 Table extras, ticked on the start card for each game (all off until ticked; the last choice is remembered).
+// dice and voice happen in the window; sounds are the window's own unless the PC made a set; pictures and music are
+// made on this replicant matrix before the game master loads ("Setting the table"), with the graphics card.
+export const EXTRAS = {
+  dice: 'Roll the dice on screen',
+  sounds: 'Sound effects',
+  voice: 'Read the story aloud',
+  pictures: 'Pictures behind the story',
+  scenePics: 'A new picture for every scene',
+  music: 'Music'
+};
+export const EXTRA_IDS = Object.keys(EXTRAS);
+export function cleanExtras(x = {}) { const out = {}; for (const id of EXTRA_IDS) out[id] = x?.[id] === true; if (!out.pictures) out.scenePics = false; return out; }
+
 export const PACES = { short: { name: 'Short', scenes: 3, what: 'three scenes' }, evening: { name: 'Evening', scenes: 6, what: 'six scenes' }, campaign: { name: 'Campaign', scenes: 0, what: 'as many as you like, saved between sittings' } };
 
 // The owner's action cards. Each rolls one stat. Bob players never see cards; they just say what they do.
@@ -140,14 +174,18 @@ export const statPoints = (stats) => STAT_IDS.reduce((n, id) => n + (Number(stat
 export function cleanSheet(b = {}, { who = 'you', fallbackName = 'Hero' } = {}) {
   const cls = CLASS_IDS.includes(b.cls) ? b.cls : (b.cls && clip(b.cls, 20)) || 'fighter';
   const known = CLASSES[cls];
+  const max = Number.isInteger(b.max) && b.max >= HEARTS && b.max <= MAX_HEARTS ? b.max : HEARTS;
   return {
     id: /^[a-z0-9-]{1,40}$/.test(String(b.id || '')) ? b.id : crypto.randomUUID().slice(0, 8),
-    who: ['you', 'bob', 'net'].includes(b.who) ? b.who : who,
+    who: ['you', 'friend', 'bob', 'net'].includes(b.who) ? b.who : who,
     name: clip(b.name, 40) || fallbackName,
     cls,
     className: known?.name || cls,
     stats: cleanStats(b.stats, known ? cls : 'fighter'),
-    hearts: Number.isInteger(b.hearts) && b.hearts >= 0 && b.hearts <= HEARTS ? b.hearts : HEARTS,
+    max, // 1.5.204: hearts can grow, up to MAX_HEARTS
+    hearts: Number.isInteger(b.hearts) && b.hearts >= 0 && b.hearts <= max ? b.hearts : max,
+    gains: (Array.isArray(b.gains) ? b.gains.map((x) => clip(x, 60)) : []).filter(Boolean).slice(-12), // 1.5.204: what they earned, in words
+    charId: /^[a-z0-9-]{4,40}$/.test(String(b.charId || '')) ? b.charId : '', // 1.5.204: the saved character this sheet came from
     trait: clip(b.trait, 120) || known?.trick || 'Never says die',
     item: clip(b.item, 120) || known?.item || 'a lucky coin',
     // The light inventory and spell list behind the second cards. The game master adds to them as the story goes.
@@ -157,6 +195,7 @@ export function cleanSheet(b = {}, { who = 'you', fallbackName = 'Hero' } = {}) 
     armour: ARMOUR_IDS.includes(b.armour) ? b.armour : DEFAULT_ARMOUR,
     look: LOOK_ID_RE.test(String(b.look || '')) ? String(b.look) : '', // 1.5.122: the character's own look (a design from the character screen or an avatar id); never Bob's
     address: who === 'net' || b.who === 'net' ? clip(b.address, 80) : '',
+    tricks: (Array.isArray(b.tricks) ? b.tricks.map((x) => clip(x, 60)) : []).filter(Boolean).slice(0, 12), // 1.5.204: tricks earned in play
     rerollUsed: false,
     out: b.out === true // out of the game (captured, retired, gone out in style)
   };
@@ -211,8 +250,17 @@ export function parseGm(text) {
   if (meta.hearts && typeof meta.hearts === 'object') for (const [k, v] of Object.entries(meta.hearts)) { const n = Number(v); if (Number.isInteger(n) && Math.abs(n) <= HEARTS) hearts[clip(k, 40)] = n; }
   const names = (k) => (Array.isArray(meta[k]) ? meta[k].map((x) => clip(x, 60)).filter(Boolean).slice(0, 10) : null);
   const byName = (k) => { const out = {}; if (meta[k] && typeof meta[k] === 'object') for (const [n, v] of Object.entries(meta[k])) { const l = (Array.isArray(v) ? v : [v]).map((x) => clip(x, 60)).filter(Boolean); if (l.length) out[clip(n, 40)] = l; } return out; };
+  // 1.5.204: enemies' hearts as they stand ({"Goblin": 2}), rewards ({"Name": "might" | "heart" | "trick: ..." | "spell: ..."}),
+  // and the quest log ({"add": [...], "done": [...]}).
+  const foes = meta.foes && typeof meta.foes === 'object' && !Array.isArray(meta.foes) ? {} : null; // null: the game master didn't say
+  if (foes) for (const [k, v] of Object.entries(meta.foes)) { const n = Number(v); if (Number.isInteger(n) && n >= 0 && n <= FOE_HEARTS && clip(k, 40)) foes[clip(k, 40)] = n; }
+  const reward = {};
+  if (meta.reward && typeof meta.reward === 'object' && !Array.isArray(meta.reward)) for (const [k, v] of Object.entries(meta.reward)) { const t = clip(v, 60); if (t && clip(k, 40)) reward[clip(k, 40)] = t; }
+  const q = meta.quest && typeof meta.quest === 'object' ? meta.quest : {};
+  const qList = (x) => (Array.isArray(x) ? x : x ? [x] : []).map((t) => clip(t, 100)).filter(Boolean).slice(0, 4);
   return {
     narration,
+    foes, reward, quest: { add: qList(q.add), done: qList(q.done) },
     here: names('here'), exits: names('exits'), give: byName('give'), take: byName('take'), teach: byName('teach'),
     cards: cards.length ? [...new Set(cards.includes('other') ? cards : [...cards, 'other'])] : null,
     hearts,
@@ -224,12 +272,25 @@ export function parseGm(text) {
   };
 }
 
-const sheetLine = (c) => `${c.name} (${c.className}${c.who === 'you' ? ', played by the owner' : c.who === 'net' ? ', a Bob playing himself' : ', a Bob I play'}): Might ${c.stats.might}, Wits ${c.stats.wits}, Charm ${c.stats.charm}, Luck ${c.stats.luck}; ${c.hearts}/${HEARTS} hearts; trait: ${c.trait}; carries ${c.item}; plot armour ${ARMOUR[c.armour].name}${c.out ? '; OUT OF THE GAME' : ''}.`;
+const sheetLine = (c) => `${c.name} (${c.className}${c.who === 'you' ? ', played by the owner' : c.who === 'friend' ? ', played by a friend at the table' : c.who === 'net' ? ', a Bob playing himself' : ', a Bob I play'}): Might ${c.stats.might}, Wits ${c.stats.wits}, Charm ${c.stats.charm}, Luck ${c.stats.luck}; ${c.hearts}/${c.max || HEARTS} hearts; trait: ${c.trait}; carries ${c.item}${c.tricks?.length ? `; tricks: ${c.tricks.join(', ')}` : ''}; plot armour ${ARMOUR[c.armour].name}${c.out ? '; OUT OF THE GAME' : ''}.`;
+// 1.5.204: what the game master must not forget: enemies standing, the quest log, people met.
+const foeLine = (f) => `${f.name} ${f.hearts}/${f.max} hearts${f.hearts ? '' : ' (down)'}`;
+export function memoryLines(game) {
+  const out = [];
+  const foes = (game.foes || []).filter((f) => f.hearts > 0);
+  if (foes.length) out.push(`Enemies in this scene (the app keeps their hearts): ${foes.map(foeLine).join('; ')}.`);
+  const open = (game.quests || []).filter((q) => !q.done), done = (game.quests || []).filter((q) => q.done);
+  if (open.length) out.push(`Quest log, still open: ${open.map((q) => q.text).join('; ')}.`);
+  if (done.length) out.push(`Quest log, done: ${done.slice(-6).map((q) => q.text).join('; ')}.`);
+  const met = (game.met || []).slice(-16).map((m) => m.name);
+  if (met.length) out.push(`People and creatures met so far: ${met.join(', ')}.`);
+  return out.join('\n');
+}
 
 export function gmSystem(game, { user = 'the owner' } = {}) {
   const party = game.party.map(sheetLine).join('\n');
   const pace = PACES[game.pace] || PACES.evening;
-  return `You are Bob, running a tabletop role-playing game as the game master. The table: ${user} (plays ${game.party.find((c) => c.who === 'you')?.name || 'their character'}) and a party of Bobs. Setting: ${game.settingText}.
+  return `You are Bob, running a tabletop role-playing game as the game master. The table: ${user} (plays ${game.party.find((c) => c.who === 'you')?.name || 'their character'})${game.party.some((c) => c.who === 'friend') ? `, friends playing ${game.party.filter((c) => c.who === 'friend').map((c) => c.name).join(' and ')}` : ''} and a party of Bobs.${game.hook ? ` Tonight's story starts from this idea: ${game.hook}` : ''} Setting: ${game.settingText}.
 
 The party:
 ${party}
@@ -237,8 +298,9 @@ ${party}
 House rules (loose, for fun):
 - Play centres on fights, conversations, places worth poking at and choices. Long travel is one montage sentence, then the next scene. The game is ${pace.what}; plan the story to fit, with a proper ending.
 - Every action is rolled by the app: d20 + a stat. 15 or more is a hit, 10 to 14 a hit at a cost, under 10 a miss. You never roll and never invent numbers; use the result the app gives you. A good description earned +2 already.
-- Hearts, not hit points. The app takes hearts off the party by the rules. You take hearts off enemies as you see fit and say so in the story. A boss simply has more. Plot armour: ${ARMOUR_IDS.map((a) => `${ARMOUR[a].name} = ${ARMOUR[a].what}`).join(' ')} Honour each character's armour.
-- Magic works every time, the roll decides how well. No spell lists, no inventory, no initiative. After a big scene you may offer one character a new trick or a stat point, in a sentence.
+- Hearts, not hit points. The app takes hearts off the party by the rules. Enemies have hearts too, and the app keeps count: list every enemy in the scene in foes with the hearts it has right now (most have 1 to 3, a boss more, at most 12; 0 means down). When the app says an attack took hearts off one, start from its number. Spells and clever ideas can take hearts off enemies too: just lower the number. Plot armour: ${ARMOUR_IDS.map((a) => `${ARMOUR[a].name} = ${ARMOUR[a].what}`).join(' ')} Honour each character's armour.
+- Magic works every time, the roll decides how well. No spell lists, no inventory, no initiative. After a big moment (a fight won, a puzzle solved, a brave choice) you may reward one character with reward: "might", "wits", "charm" or "luck" for a stat point, "heart" for one more heart, or "trick: <a short name>" for a new trick. Rarely, one per character per scene, and say it in the story too. Rewards stay with the character for the next game.
+- Keep the quest log: quest add for something the party now means to do or find out, quest done when it's settled. A few words each.
 - At zero hearts with no armour the character's player decides: go out in style, or wake up captured. Nobody dies to a roll they didn't see coming.
 - The owner's Attack, Magic, Use item, Talk, Help and Run cards open a second card: attacks their kit allows, their spells, their items, who's here, allies, the ways out. Keep "here" and "exits" true to the scene, hand out items with give, and a new spell now and then with teach.
 - You narrate; you are not a character. Address the players as "you" and describe everyone else in the third person. Never write "I" or "my" as the narrator, only inside a character's quoted speech.
@@ -246,24 +308,30 @@ House rules (loose, for fun):
 - Keep it moving: 60 to 120 words a turn, end on a question, a threat or a choice. Everyone gets a turn in order; enemies act when you say. Speak in Bob's own voice: dry, warm, a little nerdy, never cruel. Never use real people, brands or other games' names.
 
 End EVERY reply with one line of JSON between <<< and >>> that the app reads and nobody sees. The JSON line is the very last thing you write: one opening brace, one closing brace, then >>> and nothing after it. Never write anything after >>>.
-<<<{"cards":["attack","talk"],"hearts":{"Name":-1},"kind":"fight","next":"Name","scene":0,"title":"","here":["the innkeeper","a hooded stranger"],"exits":["the cellar door","back to the street"],"give":{"Name":["a rusty key"]},"take":{},"teach":{}}>>>
-cards: which of these fit the NEXT player's turn (owner only): ${CARD_IDS.join(', ')}. hearts: changes for party members only, by name, this turn (leave {} for none). kind: fight, talk, place, choice, montage, or end when the story is over. next: whose turn is next. scene: 1 only when the party moves to a new place or a new situation (a scene usually lasts a round or two, after everyone has had a turn), with its title; otherwise 0. here: everyone and everything in the scene right now, people and creatures, enemies included (the app draws each one for the bestiary). exits: the ways out of here. give/take: items a character gains or loses this turn, by name. teach: a new spell a character learns, by name (rarely).`;
+<<<{"cards":["attack","talk"],"hearts":{"Name":-1},"kind":"fight","next":"Name","scene":0,"title":"","here":["the innkeeper","a hooded stranger"],"exits":["the cellar door","back to the street"],"give":{"Name":["a rusty key"]},"take":{},"teach":{},"foes":{"Goblin":2},"reward":{},"quest":{"add":["Find out who hired the goblins"],"done":[]}}>>>
+foes: every enemy in the scene and its hearts now, by name ({} when there are none). reward: rarely, by name. quest: add and done lines for the quest log. cards: which of these fit the NEXT player's turn (the humans only): ${CARD_IDS.join(', ')}. hearts: changes for party members only, by name, this turn (leave {} for none). kind: fight, talk, place, choice, montage, or end when the story is over. next: whose turn is next. scene: 1 only when the party moves to a new place or a new situation (a scene usually lasts a round or two, after everyone has had a turn), with its title; otherwise 0. here: everyone and everything in the scene right now, people and creatures, enemies included (the app draws each one for the bestiary). exits: the ways out of here. give/take: items a character gains or loses this turn, by name. teach: a new spell a character learns, by name (rarely).`;
 }
 
 export function openingPrompt(game) {
   const first = game.party[0];
-  return `Start the adventure. Open with a short scene that puts the whole party somewhere interesting with something to react to, name the scene (scene: 1, title), and end with a question for ${first.name}, whose turn is first. ${game.summary ? `We're continuing a campaign. The story so far: ${game.summary}` : ''}`;
+  return `Start the adventure. Open with a short scene that puts the whole party somewhere interesting with something to react to${game.hook ? `, built on tonight's idea (${game.hook})` : ''}, name the scene (scene: 1, title), start the quest log with what the party is after, and end with a question for ${first.name}, whose turn is first. ${game.summary ? `We're continuing a campaign. The story so far: ${game.summary}` : ''}`;
 }
 
-export function turnPrompt({ actor, card, pick, words, flair, roll, lost }) {
-  const did = actor.who === 'you' ? `${actor.name} plays the ${CARDS[card]?.name || 'Something else'} card${pick ? ` (${pick})` : ''}${flair ? ` and describes it: "${flair}"` : ''}.` : `${actor.name} says: "${words}"`;
+// 1.5.204 "Last time...": when a saved campaign is continued, the game master reminds the table where things stand.
+export function recapPrompt(game, actor) {
+  return `We're back at the table after a break. Before play goes on, remind everyone where things stand: start with "Last time..." and tell it in three or four sentences (who the party met, what they decided, what is still open), then set the scene again and end with a question for ${actor?.name || 'the next player'}, whose turn it is. Keep scene: 0.`;
+}
+
+export function turnPrompt({ actor, card, pick, words, flair, roll, lost, said, hit }) {
+  const did = isHuman(actor) && !said ? `${actor.name} plays the ${CARDS[card]?.name || 'Something else'} card${pick ? ` (${pick})` : ''}${flair ? ` and describes it: "${flair}"` : ''}.` : `${actor.name} says what they do: "${words}"`;
+  const struck = hit ? ` ${hit.name} takes ${hit.dmg} heart${hit.dmg === 1 ? '' : 's'} (now ${hit.hearts} of ${hit.max}${hit.hearts ? '' : ', down'}).` : '';
   const dice = roll ? ` The app rolled ${roll.die} + ${STATS[roll.statId]} ${roll.stat}${roll.bonus ? ` + ${roll.bonus} for flair` : ''} = ${roll.total}${roll.rerolled ? ' (rerolled once, plot armour)' : ''}${roll.floored ? ' (plot armour held it up)' : ''}: ${OUTCOME_WORDS[roll.outcome]}.${lost ? ` ${actor.name} loses ${lost} heart${lost === 1 ? '' : 's'} (now ${actor.hearts}).` : ''}` : '';
-  return `${did}${dice} Tell what happens, then hand the turn to the next player in order.`;
+  return `${did}${dice}${struck} Tell what happens, then hand the turn to the next player in order.`;
 }
 
 // A Bob player's instructions: one short paragraph, in character, his own choice. No dice (the app rolls).
 export function playerSystem(sheet, game, { ownName = 'Bob' } = {}) {
-  return `You are ${ownName}, playing ${sheet.name}, a ${sheet.className}, in a tabletop adventure run by another Bob as game master. Setting: ${game.settingText}. Your character: trait "${sheet.trait}", carries ${sheet.item}, ${sheet.hearts}/${HEARTS} hearts. The rest of the party: ${game.party.filter((c) => c.id !== sheet.id).map((c) => `${c.name} the ${c.className}`).join(', ')}.
+  return `You are ${ownName}, playing ${sheet.name}, a ${sheet.className}, in a tabletop adventure run by another Bob as game master. Setting: ${game.settingText}. Your character: trait "${sheet.trait}", carries ${sheet.item}, ${sheet.hearts}/${sheet.max || HEARTS} hearts. The rest of the party: ${game.party.filter((c) => c.id !== sheet.id).map((c) => `${c.name} the ${c.className}`).join(', ')}.
 On your turn, say what ${sheet.name} does, in one short paragraph (40 to 80 words), first person, in character, with a bit of personality. Decide for yourself; don't ask the game master for options. Never roll dice or say how it turns out: the app rolls and the game master tells. No JSON, no headings.`;
 }
 
@@ -298,10 +366,16 @@ export function listCharacters(cfg) {
 }
 export function cleanCharacter(b = {}) {
   const s = cleanSheet(b, { who: 'you', fallbackName: 'Hero' });
-  return { id: /^[a-z0-9-]{4,40}$/.test(String(b.id || '')) ? b.id : crypto.randomUUID().slice(0, 12), name: s.name, cls: s.cls, trait: s.trait, armour: s.armour, look: s.look, at: Date.now() };
+  // 1.5.204: what the character earned in play comes along (stats, hearts, tricks, spells, the list of gains).
+  const grown = b.stats || b.gains?.length || b.tricks?.length || Number(b.max) > HEARTS;
+  return { id: /^[a-z0-9-]{4,40}$/.test(String(b.id || '')) ? b.id : crypto.randomUUID().slice(0, 12), name: s.name, cls: s.cls, trait: s.trait, armour: s.armour, look: s.look, at: Date.now(),
+    ...(grown ? { stats: s.stats, max: s.max, gains: s.gains, tricks: s.tricks, ...(Array.isArray(b.spells) ? { spells: s.spells } : {}) } : {}) };
 }
 export function saveCharacter(cfg, b) {
-  const c = cleanCharacter(b);
+  // 1.5.204: saving from the start card or the You tab keeps what the character earned in play.
+  const old = listCharacters(cfg).find((x) => x.id === b?.id);
+  const keep = old ? Object.fromEntries(['stats', 'max', 'gains', 'tricks', 'spells'].filter((k) => old[k] !== undefined).map((k) => [k, old[k]])) : {};
+  const c = cleanCharacter({ ...keep, ...b });
   const list = [c, ...listCharacters(cfg).filter((x) => x.id !== c.id && x.name.toLowerCase() !== c.name.toLowerCase())].slice(0, 24);
   fs.mkdirSync(dir(cfg), { recursive: true });
   fs.writeFileSync(charsFile(cfg), JSON.stringify(list));
@@ -317,7 +391,8 @@ export function deleteCharacter(cfg, id) {
 export function cleanAdventure(a = {}) {
   return {
     gm: a.gm === 'main' ? 'main' : 'biggest', // which brain is the game master
-    players: a.players === 'gm' ? 'gm' : 'own' // who plays the other Bobs: their own Bob when reachable, or the game master brain
+    players: a.players === 'gm' ? 'gm' : 'own', // who plays the other Bobs: their own Bob when reachable, or the game master brain
+    extras: cleanExtras(a.extras) // 1.5.204: the table extras last ticked on the start card (all off until ticked)
   };
 }
 
@@ -335,6 +410,22 @@ export function refusal(cfg) {
   return '';
 }
 
+// ---------- Setting the table (1.5.204) ----------
+// Pictures and music are made on this replicant matrix before the game master loads, with the same painter and audio
+// workshop as the chat (so they also land in Made by Bob). Each kind of scene shares a picture and a tune.
+export const PROP_SCENES = { place: 'a wide view of where the story happens, somewhere worth exploring', fight: 'a tense moment just before a fight, danger closing in', talk: 'a warm, lamp-lit place where people meet and talk' };
+export const SOUNDS = { steel: 'a sword striking a shield, one sharp metallic clang', spell: 'a short shimmering magical spell, sparkling chime', door: 'a heavy old wooden door creaking open' };
+export const sceneKey = (kind) => (kind === 'fight' ? 'fight' : kind === 'talk' ? 'talk' : 'place');
+export function propPrompt(game, key, scene = '') {
+  const what = key === 'scene' ? scene : PROP_SCENES[key] || PROP_SCENES.place;
+  return clip(`${game.settingText}${game.hook ? ` ${game.hook}` : ''} Scene: ${what}. Painted storybook illustration, rich colour, soft light, wide shot, no people in the foreground, no text, no letters, no words.`, 600);
+}
+export function soundPrompt(game, kind, key) {
+  if (kind === 'music') return clip(`Instrumental background music for a tabletop adventure (${game.settingText}). ${key === 'fight' ? 'Tense battle music, driving drums, rising strings' : 'Calm, curious exploring music, gentle and warm'}. Loops well, no vocals.`, 400);
+  const space = /space|ship|station|star/i.test(game.settingText);
+  return key === 'steel' && space ? 'a short laser blaster shot' : SOUNDS[key] || SOUNDS.steel;
+}
+
 // ---------- The game ----------
 export const GM_WHO = 'gm';
 export class Adventure {
@@ -347,6 +438,13 @@ export class Adventure {
     this.pending = null; // the owner's act while a turn is resolving
   }
   get cfg() { return this.brain.cfg; }
+  // 1.5.204: which table extras this replicant matrix can make (pictures and music need the painter and the audio
+  // workshop; sounds and dice work everywhere, from the window itself).
+  extrasCan() {
+    let c = {};
+    try { c = capabilities(this.cfg) || {}; } catch {}
+    return { dice: true, sounds: true, voice: true, pictures: Boolean(c.pictures), scenePics: Boolean(c.pictures), music: Boolean(c.music), madeSounds: Boolean(c.sfx) };
+  }
   emit(ev) { this.brain.broadcast?.({ type: 'adventure', ...ev }); }
 
   // Who could play: the local Bobs the game master brain voices, plus every Bob on "My other Bobs" (checked when asked).
@@ -360,12 +458,14 @@ export class Adventure {
 
   view() {
     const g = this.game;
-    if (!g) return { game: null, busy: '', saved: listGames(this.cfg), characters: listCharacters(this.cfg), met: listMet(this.cfg), enemies: ENEMIES, lastParty: lastParty(this.cfg), settings: cleanAdventure(this.cfg.adventure), refusal: refusal(this.cfg) };
+    const starts = Object.entries(STARTS).map(([id, s]) => ({ id, ...s }));
+    const extras = cleanExtras(this.cfg.adventure?.extras), can = this.extrasCan();
+    if (!g) return { game: null, busy: '', saved: listGames(this.cfg), characters: listCharacters(this.cfg), met: listMet(this.cfg), enemies: ENEMIES, lastParty: lastParty(this.cfg), settings: cleanAdventure(this.cfg.adventure), refusal: refusal(this.cfg), starts, extras, can };
     return {
-      game: { id: g.id, title: g.title, settingText: g.settingText, pace: g.pace, status: g.status, party: g.party, turn: g.turn, round: g.round, scenes: g.scenes.slice(-4), sceneCount: g.scenes.length, log: g.log.slice(-40).map(({ raw, ...l }) => l), summary: g.summary, cards: g.cards, kind: g.kind, here: g.here || [], exits: g.exits || [], met: (g.met || []).slice(-30), at: g.at,
+      game: { id: g.id, title: g.title, settingText: g.settingText, hook: g.hook || '', pace: g.pace, status: g.status, party: g.party, foes: g.foes || [], quests: g.quests || [], extras: g.extras || cleanExtras(), props: g.props || {}, prep: this.prep || null, turn: g.turn, round: g.round, scenes: g.scenes.slice(-4), sceneCount: g.scenes.length, log: g.log.slice(-40).map(({ raw, ...l }) => l), summary: g.summary, cards: g.cards, kind: g.kind, here: g.here || [], exits: g.exits || [], met: (g.met || []).slice(-30), at: g.at,
         // The second card behind each of the owner's cards, as things stand (Back on the page returns to the hand).
         second: this.waitingFor ? Object.fromEntries((g.cards || []).map((c) => [c, secondCard(c, g.party.find((x) => x.id === this.waitingFor) || g.party[0], g)]).filter(([, v]) => v)) : {} },
-      busy: this.busy, waitingFor: this.waitingFor, saved: listGames(this.cfg), characters: listCharacters(this.cfg), met: listMet(this.cfg), enemies: ENEMIES, settings: cleanAdventure(this.cfg.adventure), refusal: refusal(this.cfg)
+      busy: this.busy, waitingFor: this.waitingFor, asking: this.asking || false, saved: listGames(this.cfg), starts, extras, can, characters: listCharacters(this.cfg), met: listMet(this.cfg), enemies: ENEMIES, settings: cleanAdventure(this.cfg.adventure), refusal: refusal(this.cfg)
     };
   }
   push() { this.emit({ ev: 'state', ...this.view() }); }
@@ -375,18 +475,29 @@ export class Adventure {
   async start(b = {}) {
     if (this.game && this.game.status === 'playing') throw new Error('A game is already on. Pause or end it first.');
     const why = refusal(this.cfg); if (why) throw new Error(why);
-    const setting = SETTINGS[b.setting] ? b.setting : 'own';
+    // 1.5.204: a ready-made start brings its own setting unless one was picked.
+    const story = STARTS[b.story] ? b.story : '';
+    let setting = SETTINGS[b.setting] ? b.setting : b.setting === 'own' ? 'own' : story ? STARTS[story].setting : 'own';
+    if (story && setting === 'pick') setting = STARTS[story].setting;
     const settingText = setting === 'own' ? clip(b.settingText, 300) || SETTINGS.fantasy.hint : setting === 'pick' ? 'your choice: surprise the table' : `${SETTINGS[setting].name}. ${SETTINGS[setting].hint}`;
-    const you = cleanSheet({ ...(b.you || {}), who: 'you' }, { who: 'you', fallbackName: this.cfg.userName || 'Hero' });
+    // 1.5.204: a saved character comes with what it earned last time.
+    const saved = b.you?.charId ? listCharacters(this.cfg).find((c) => c.id === b.you.charId) : null;
+    const grown = saved ? Object.fromEntries(['stats', 'max', 'gains', 'tricks', 'spells'].filter((k) => saved[k] !== undefined).map((k) => [k, saved[k]])) : {};
+    const you = cleanSheet({ ...grown, ...(b.you || {}), who: 'you' }, { who: 'you', fallbackName: 'Hero' });
+    // 1.5.204: friends at the table play their own turns, on a phone or on this screen.
+    const friends = (Array.isArray(b.friends) ? b.friends : []).slice(0, 3).map((x, i) => cleanSheet({ ...x, who: 'friend' }, { who: 'friend', fallbackName: `Friend ${i + 1}` }));
+    for (const f of friends) if (!f.look) f.look = lookFor(f.name, { shape: 'person' }); // a face of their own, the same for the same name
     const bobs = (Array.isArray(b.bobs) ? b.bobs : []).slice(0, 5).map((x, i) => cleanSheet({ ...x, who: x.who === 'net' ? 'net' : 'bob' }, { who: x.who === 'net' ? 'net' : 'bob', fallbackName: `Bob ${i + 1}` }));
-    if (!bobs.length) throw new Error('Tick at least one Bob to play with you.');
+    if (!bobs.length && !friends.length) throw new Error('Tick at least one Bob, or add a friend, to play with you.');
     const names = new Set();
-    for (const c of [you, ...bobs]) { let n = c.name, k = 2; while (names.has(n.toLowerCase())) n = `${c.name} ${k++}`; c.name = n; names.add(n.toLowerCase()); }
-    this.game = { id: crypto.randomUUID().slice(0, 12), title: clip(b.title, 60) || `${you.name} and company`, setting, settingText, pace: PACES[b.pace] ? b.pace : 'evening', status: 'playing', party: [you, ...bobs], turn: 0, round: 1, scenes: [], log: [], summary: '', cards: null, kind: null, at: this.now(), started: this.now() };
+    for (const c of [you, ...friends, ...bobs]) { let n = c.name, k = 2; while (names.has(n.toLowerCase())) n = `${c.name} ${k++}`; c.name = n; names.add(n.toLowerCase()); }
+    const extras = cleanExtras(b.extras);
+    try { saveSettings(this.cfg, { adventure: { ...cleanAdventure(this.cfg.adventure), extras } }); } catch {} // the start card remembers the ticks
+    this.game = { id: crypto.randomUUID().slice(0, 12), title: clip(b.title, 60) || (story ? STARTS[story].name : `${you.name} and company`), setting, settingText, hook: story ? STARTS[story].hook : '', pace: PACES[b.pace] ? b.pace : 'evening', status: 'playing', party: [you, ...friends, ...bobs], turn: 0, round: 1, scenes: [], log: [], summary: '', cards: null, kind: null, foes: [], quests: [], extras, props: {}, at: this.now(), started: this.now() };
     this.save();
     this.push();
     await this.noteGmBefore(true);
-    this.run().catch((e) => this.fail(e));
+    this.run({ prep: true }).catch((e) => this.fail(e));
     return this.view();
   }
 
@@ -396,11 +507,11 @@ export class Adventure {
     const g = loadGame(this.cfg, id);
     if (!g) throw new Error("I can't find that campaign.");
     for (const c of g.party) c.rerollUsed = false;
-    this.game = { ...g, status: 'playing', cards: null };
+    this.game = { foes: [], quests: [], props: {}, extras: cleanExtras(), ...g, status: 'playing', cards: null };
     this.game.log.push({ who: 'app', text: 'Picking up where we left off.', at: this.now() });
     this.push();
     await this.noteGmBefore(true);
-    this.run({ resume: true }).catch((e) => this.fail(e));
+    this.run({ resume: true, recap: true }).catch((e) => this.fail(e)); // 1.5.204: "Last time..." first
     return this.view();
   }
 
@@ -481,15 +592,46 @@ export class Adventure {
   remove(id) { deleteGame(this.cfg, id); this.push(); return this.view(); }
 
   // The owner's turn: a card and optional flair. Resolves when the app has taken it (the turn itself runs on).
-  act({ card, pick, flair }) {
+  // 1.5.204: card 'say' is "Say it your way": the words decide which stat rolls. target: the enemy an attack is aimed at.
+  // seat: the character the phone or screen is playing for (a friend's phone only plays its friend's turns).
+  act({ card, pick, flair, target, words, seat }) {
     const g = this.game;
     if (!g || g.status !== 'playing' || !this.waitingFor) throw new Error("It isn't your turn yet.");
-    if (!CARD_IDS.includes(card)) throw new Error('Pick one of the cards.');
-    if (g.cards && !g.cards.includes(card)) throw new Error("That card doesn't fit this scene.");
+    if (seat && seat !== this.waitingFor) throw new Error(`It's ${g.party.find((c) => c.id === this.waitingFor)?.name || 'someone else'}'s turn.`);
+    if (this.asking) throw new Error('One moment: the game master is answering your question.');
+    if (card === 'say') { if (!clip(words, 400)) throw new Error('Say what you do first.'); }
+    else {
+      if (!CARD_IDS.includes(card)) throw new Error('Pick one of the cards.');
+      if (g.cards && !g.cards.includes(card)) throw new Error("That card doesn't fit this scene.");
+    }
     const take = this.pending; this.pending = null; this.waitingFor = null;
-    take?.({ card, pick: clip(pick, 60), flair: clip(flair, 400) });
+    take?.({ card, pick: clip(pick, 60), flair: clip(flair, 400), target: clip(target, 40), words: clip(words, 400) });
     return this.view();
   }
+
+  // 1.5.204 Ask the game master: an out-of-character question on your turn (a recap, a rule, what's in the room).
+  // It doesn't use the turn, and the answer is kept in the log but never fed back to the game master as story.
+  ask({ q }) {
+    const g = this.game;
+    const text = clip(q, 300);
+    if (!text) throw new Error('Type a question first.');
+    if (!g || g.status !== 'playing' || !this.waitingFor || this.busy || this.asking || !this.stop) throw new Error('Ask on your turn, while the table waits for you.');
+    this.asking = true; this.push();
+    const signal = this.stop.signal;
+    (async () => {
+      try {
+        const raw = await this.gm(this.gmMessages(g, `A question from the table, out of character. It is NOT a turn: answer it in a few sentences as the game master, don't move the story on, don't hand the turn over, and write no JSON line. The question: ${text}`), { onToken: (t) => this.emit({ ev: 'token', who: 'ask', text: t }) });
+        if (signal.aborted) return;
+        g.log.push({ who: 'ooc', name: 'You asked', q: text, text: clip(parseGm(raw).narration || 'No answer came.', 1200), at: this.now() });
+        this.save();
+      } catch (e) { if (!signal.aborted) g.log.push({ who: 'app', text: `The game master couldn't answer that one: ${String(e.message || e).slice(0, 160)}`, at: this.now() }); }
+      finally { this.asking = false; this.push(); }
+    })();
+    return this.view();
+  }
+
+  // 1.5.204 Skip the rest of "Setting the table": the game starts with whatever is made so far.
+  skipPrep() { if (this.prep) { this.prep.skip = true; try { this.propStop?.abort(new Error('skipped')); } catch {} } return this.view(); }
 
   // The owner's choice at zero hearts: style (goes out in style) or captured.
   fate({ choice }) {
@@ -520,8 +662,9 @@ export class Adventure {
   }
 
   gmMessages(g, task) {
-    const recent = g.log.filter((l) => l.who !== 'app').slice(-14).map((l) => ({ role: l.who === 'gm' ? 'assistant' : 'user', content: l.who === 'gm' ? l.raw || l.text : `${l.name}: ${l.text}${l.dice ? ` [${l.dice}]` : ''}` }));
-    return [{ role: 'system', content: gmSystem(g, { user: this.cfg.userName || 'the owner' }) + (g.summary ? `\n\nThe story so far: ${g.summary}` : '') }, ...recent, { role: 'user', content: task }];
+    const recent = g.log.filter((l) => l.who !== 'app' && l.who !== 'ooc').slice(-20).map((l) => ({ role: l.who === 'gm' ? 'assistant' : 'user', content: l.who === 'gm' ? l.raw || l.text : `${l.name}: ${l.text}${l.dice ? ` [${l.dice}]` : ''}` }));
+    const mem = memoryLines(g); // 1.5.204: enemies standing, the quest log and who they've met, so long games don't forget
+    return [{ role: 'system', content: gmSystem(g, { user: this.cfg.userName || 'the owner' }) + (g.summary ? `\n\nThe story so far: ${g.summary}` : '') + (mem ? `\n\n${mem}` : '') }, ...recent, { role: 'user', content: task }];
   }
 
   // One Bob player's turn: his own Bob over Bob-Net, or the game master brain in his voice.
@@ -549,7 +692,7 @@ export class Adventure {
       const c = g.party.find((x) => x.name.toLowerCase() === name.toLowerCase());
       if (!c || c.out) continue;
       const floor = ['lots', 'legendary'].includes(c.armour) ? 1 : 0;
-      c.hearts = Math.max(floor, Math.min(HEARTS, c.hearts + d));
+      c.hearts = Math.max(floor, Math.min(c.max || HEARTS, c.hearts + d));
     }
     const find = (name) => g.party.find((x) => x.name.toLowerCase() === String(name).toLowerCase());
     for (const [n, l] of Object.entries(p.give)) { const c = find(n); if (c) c.items = [...new Set([...c.items, ...l])].slice(0, 20); }
@@ -567,13 +710,125 @@ export class Adventure {
     if (fresh || !g.scenes.length) {
       g.scenes.push({ n: g.scenes.length + 1, title: p.title || `Scene ${g.scenes.length + 1}`, kind: p.kind || g.kind || 'place', at: this.now(), turn: g.turns || 0 });
       for (const c of g.party) c.rerollUsed = false; // the "Some" reroll comes back each scene
-      if (p.kind === 'montage') for (const c of g.party) if (!c.out) c.hearts = HEARTS; // rests are free
+      if (p.kind === 'montage') for (const c of g.party) if (!c.out) c.hearts = c.max || HEARTS; // rests are free
+      if (p.foes === null) g.foes = (g.foes || []).filter((f) => f.hearts > 0); // the fallen stay behind in the old scene
     }
+    this.applyFoes(g, p.foes);
+    for (const [n, what] of Object.entries(p.reward || {})) this.reward(g, n, what);
+    this.applyQuest(g, p.quest);
     if (p.here) meet(g, p.here, this.cfg); // 1.5.124: the bestiary's Met tab, after the scene is on the books so the entries carry its title
     g.log.push({ who: 'gm', name: 'Game master', text: p.narration || '(The game master went quiet.)', raw, at: this.now() });
     const pace = PACES[g.pace];
     const limitHit = pace.scenes && g.scenes.length > pace.scenes && p.newScene;
     return { ...p, over: p.over || limitHit };
+  }
+
+  // 1.5.204 The enemies on the table. The game master names every enemy in the scene with its hearts; the app keeps
+  // the count between turns and takes hearts off when an attack lands. A name it already knows keeps its face and
+  // its most hearts; a new one gets the bestiary's look and, for the dozen, at least their usual hearts as its top.
+  applyFoes(g, foes) {
+    if (!foes) return;
+    const old = g.foes || [];
+    g.foes = Object.entries(foes).slice(0, 8).map(([name, n]) => {
+      const was = old.find((f) => f.name.toLowerCase() === name.toLowerCase());
+      if (was) return { ...was, hearts: Math.min(n, FOE_HEARTS), max: Math.max(was.max, n) };
+      const kind = kindOf(name), e = kind.enemy ? enemyById(kind.enemy) : null;
+      const max = Math.min(FOE_HEARTS, Math.max(n, n > 0 ? 1 : e?.hearts || 1));
+      return { id: crypto.createHash('sha1').update(name.toLowerCase()).digest('hex').slice(0, 10), name, type: e?.id || '', look: lookFor(name, kind), hearts: n, max };
+    });
+  }
+
+  // 1.5.204 A reward from the game master: a stat point, one more heart, a trick or a spell. One per character per
+  // scene. A stat already at 5 becomes a heart. What they earned is kept with the saved character for the next game.
+  reward(g, name, what) {
+    const c = g.party.find((x) => x.name.toLowerCase() === String(name).toLowerCase());
+    if (!c || c.out) return '';
+    const scene = g.scenes.length;
+    if (c.rewardScene === scene) return '';
+    const w = String(what || '').toLowerCase().replace(/^\+?\s*1\s*/, '').trim();
+    const stat = STAT_IDS.find((s) => w === s || w.startsWith(`${s} `) || w === STATS[s].toLowerCase());
+    const m = String(what || '').match(/^\s*(trick|spell)\s*:\s*(.+)$/i);
+    let gain = '';
+    if (stat && c.stats[stat] < 5) { c.stats[stat] += 1; gain = `+1 ${STATS[stat]}`; }
+    else if ((stat || /^(an? )?(extra |more )?hearts?$|^one more heart$/.test(w)) && (c.max || HEARTS) < MAX_HEARTS) { c.max = (c.max || HEARTS) + 1; c.hearts = Math.min(c.max, c.hearts + 1); gain = 'one more heart'; }
+    else if (m) {
+      const n = clip(m[2], 60);
+      if (m[1].toLowerCase() === 'spell') { if (!c.spells.includes(n)) c.spells = [...c.spells, n].slice(0, 12); gain = `the spell ${n}`; }
+      else { c.tricks = c.tricks || []; if (!c.tricks.includes(n)) c.tricks = [...c.tricks, n].slice(0, 12); gain = `the trick ${n}`; }
+    }
+    if (!gain) return '';
+    c.rewardScene = scene;
+    c.gains = [...(c.gains || []), gain.replace(/^the /, '').replace(/^./, (x) => x.toUpperCase())].slice(-12);
+    g.log.push({ who: 'app', text: `⭐ ${c.name} earned ${gain}.`, reward: true, at: this.now() });
+    this.emit({ ev: 'reward', who: c.id, name: c.name, gain });
+    if (isHuman(c)) this.keepGrowth(g);
+    return gain;
+  }
+
+  // What a human's character earned goes to their saved character (made if there was none), so it carries on.
+  keepGrowth(g) {
+    for (const c of g.party.filter(isHuman)) {
+      if (!c.gains?.length) continue;
+      try {
+        const list = saveCharacter(this.cfg, { id: c.charId || '', name: c.name, cls: c.cls, trait: c.trait, armour: c.armour, look: c.look, stats: c.stats, max: c.max, gains: c.gains, tricks: c.tricks || [], spells: c.spells });
+        if (!c.charId) c.charId = list[0]?.id || '';
+      } catch {}
+    }
+  }
+
+  // 1.5.204 The quest log: what the party means to do or find out, and what's settled.
+  applyQuest(g, q) {
+    if (!q || (!q.add?.length && !q.done?.length)) return;
+    g.quests = g.quests || [];
+    const same = (a, b) => { a = a.toLowerCase(); b = b.toLowerCase(); return a === b || a.includes(b) || b.includes(a); };
+    const scene = g.scenes[g.scenes.length - 1]?.title || '';
+    for (const t of q.add || []) if (!g.quests.some((x) => same(x.text, t))) g.quests.push({ text: t, done: false, scene });
+    for (const t of q.done || []) { const x = g.quests.find((y) => !y.done && same(y.text, t)); if (x) { x.done = true; x.doneIn = scene; } }
+    g.quests = g.quests.slice(-24);
+  }
+
+  // 1.5.204 Setting the table: pictures, music and sounds made before the game master loads (the PC can take the
+  // time). Each one can be skipped; whatever can't be made here is simply left out.
+  // The list of things to make for this game (and a note in the log about any that can't be made here).
+  prepJobs(g) {
+    const x = g.extras || {}, can = this.extrasCan();
+    const jobs = [];
+    if (x.pictures && can.pictures) for (const key of Object.keys(PROP_SCENES)) jobs.push({ kind: 'picture', key, what: `painting ${key === 'place' ? 'the scenery' : key === 'fight' ? 'a fight' : 'a meeting place'}` });
+    if (x.music && can.music) for (const key of ['calm', 'fight']) jobs.push({ kind: 'music', key, what: `composing ${key === 'fight' ? 'fight' : 'exploring'} music` });
+    if (x.sounds && can.madeSounds) for (const key of Object.keys(SOUNDS)) jobs.push({ kind: 'sfx', key, what: `making the ${key === 'steel' ? 'weapon' : key} sound` });
+    const missing = [x.pictures && !can.pictures && 'pictures (no painter here yet)', x.music && !can.music && 'music (the music models aren\'t here yet)'].filter(Boolean);
+    if (missing.length) g.log.push({ who: 'app', text: `Left out: ${missing.join(', ')}. Get models has them.`, at: this.now() });
+    return jobs;
+  }
+  async setTable(g, jobs) {
+    if (!jobs?.length) return;
+    g.props = g.props || {};
+    this.prep = { done: 0, total: jobs.length, what: '' };
+    for (const j of jobs) {
+      if (this.stop?.signal.aborted || this.prep.skip) break;
+      this.prep.what = j.what; this.busy = 'prep'; this.push();
+      try { const url = await this.makeProp(g, j); if (url) g.props[`${j.kind}:${j.key}`] = url; }
+      catch (e) { if (this.stop?.signal.aborted) throw e; if (!this.prep.skip) g.log.push({ who: 'app', text: `Couldn't finish ${j.what}: ${String(e.message || e).slice(0, 140)}`, at: this.now() }); }
+      this.prep.done += 1;
+    }
+    const skipped = this.prep.skip;
+    this.prep = null;
+    g.log.push({ who: 'app', text: skipped ? 'Skipped the rest of the setting up. On with the game.' : 'The table is set.', at: this.now() });
+    this.save();
+  }
+
+  // One picture, tune or sound, through the same painter and audio workshop as the chat. Returns its address.
+  async makeProp(g, j) {
+    const ctrl = new AbortController(), outer = this.stop.signal, off = () => ctrl.abort(new Error('stopped'));
+    outer.addEventListener('abort', off, { once: true });
+    this.propStop = ctrl;
+    let got = '';
+    const ctx = { signal: ctrl.signal, pics: [], wantsEdit: false, emit: (ev) => { if ((ev.type === 'image' || ev.type === 'audio') && ev.url) got = ev.url; else if (ev.type === 'announce') this.emit({ ev: 'announce', text: ev.text }); } };
+    try {
+      if (j.kind === 'picture') await this.brain.makeImage({ prompt: propPrompt(g, j.key, j.scene), width: 1024, height: 576, mode: 'new' }, ctx);
+      else await this.brain.makeSound(j.kind, { prompt: soundPrompt(g, j.kind, j.key), seconds: j.kind === 'music' ? 60 : 3, title: `${g.title}: ${j.key}` }, ctx);
+    } finally { outer.removeEventListener('abort', off); this.propStop = null; }
+    return got;
   }
 
   nextTurn(g) {
@@ -586,12 +841,23 @@ export class Adventure {
     return null;
   }
 
-  async run({ resume = false } = {}) {
+  async run({ resume = false, prep = false, recap = false } = {}) {
     const g = this.game;
     this.stop = new AbortController();
     const signal = this.stop.signal;
     const stream = (who) => (t) => this.emit({ ev: 'token', who, text: t });
     try {
+      const jobs = prep ? this.prepJobs(g) : [];
+      if (jobs.length) { await this.setTable(g, jobs); if (signal.aborted) return; }
+      if (recap && g.log.some((l) => l.who === 'gm') && g.status === 'playing') {
+        // 1.5.204 "Last time...": a continued campaign opens with a reminder of where things stand.
+        this.busy = 'gm'; this.push();
+        const raw = await this.gm(this.gmMessages(g, recapPrompt(g, g.party[g.turn])), { onToken: stream('gm') });
+        if (signal.aborted) return;
+        this.applyGm(g, raw);
+        g.log[g.log.length - 1].recap = true;
+        this.save();
+      }
       if (!resume || !g.log.some((l) => l.who === 'gm')) {
         this.busy = 'gm'; this.push();
         const raw = await this.gm(this.gmMessages(g, openingPrompt(g)), { onToken: stream('gm') });
@@ -604,13 +870,20 @@ export class Adventure {
       while (!signal.aborted && g.status === 'playing') {
         const actor = g.party[g.turn];
         if (!actor || actor.out) { if (!this.nextTurn(g)) { await this.finish(g); return; } continue; }
-        let card, pick = '', flair = '', words = '';
-        if (actor.who === 'you') {
+        let card, pick = '', flair = '', words = '', target = '', said = false;
+        if (isHuman(actor)) {
           this.busy = ''; this.waitingFor = actor.id; this.push();
           const got = await new Promise((res) => { this.pending = res; signal.addEventListener('abort', () => res(null), { once: true }); });
           if (!got || signal.aborted) return;
-          card = got.card; pick = got.pick; flair = got.flair;
-          g.log.push({ who: 'you', name: actor.name, id: actor.id, text: `${CARDS[card].icon} ${CARDS[card].name}${pick ? ` (${pick})` : ''}${flair ? `: ${flair}` : ''}`, at: this.now() });
+          target = got.target || '';
+          if (got.card === 'say') {
+            // 1.5.204 Say it your way: the words pick the stat, the same as a Bob player's.
+            said = true; words = got.words; card = cardFromWords(words);
+            g.log.push({ who: 'you', name: actor.name, id: actor.id, text: `💬 ${words}`, said: true, at: this.now() });
+          } else {
+            card = got.card; pick = got.pick; flair = got.flair;
+            g.log.push({ who: 'you', name: actor.name, id: actor.id, text: `${CARDS[card].icon} ${CARDS[card].name}${pick ? ` (${pick})` : ''}${target ? ` at ${target}` : ''}${flair ? `: ${flair}` : ''}`, at: this.now() });
+          }
         } else {
           this.busy = 'player'; this.waitingFor = null; this.push();
           const w = await this.playerWords(actor, g);
@@ -621,27 +894,43 @@ export class Adventure {
         }
         // The dice: one roll, plot armour applied, hearts by the rules. Shown on the page before the game master speaks.
         const statId = CARDS[card].stat;
-        const bonus = actor.who === 'you' ? flairBonus(flair) : 0;
+        const bonus = isHuman(actor) ? flairBonus(said ? words : flair) : 0;
         const roll = { ...rollAction({ stat: actor.stats[statId], bonus, armour: actor.armour, rerollUsed: actor.rerollUsed, rnd: this.rnd }), statId };
         if (roll.rerolled) actor.rerollUsed = true;
         const fight = (g.kind === 'fight') && CARDS[card].fight !== false && card !== 'talk' && card !== 'look';
         const lost = heartsLost(roll, { fight, armour: actor.armour, hearts: actor.hearts });
         actor.hearts = Math.max(0, actor.hearts - lost);
-        const diceText = `${roll.die}${roll.rerolled ? ' (rerolled)' : ''} + ${STATS[statId]} ${roll.stat}${bonus ? ` + ${bonus} flair` : ''} = ${roll.total}${roll.floored ? ', held up by plot armour' : ''}: ${OUTCOME_WORDS[roll.outcome]}${lost ? `, ${lost} heart${lost === 1 ? '' : 's'} lost` : ''}`;
+        // 1.5.204: an attack that lands takes a heart off the enemy it was aimed at (two on a natural 20). Aimed at:
+        // the enemy picked on the card, else the one named in the words, else the first one still standing.
+        let hit = null;
+        if (card === 'attack' && roll.outcome !== 'miss') {
+          const up = (g.foes || []).filter((f) => f.hearts > 0);
+          const named = (t) => { const s = String(t || '').toLowerCase(); return s ? up.find((f) => f.name.toLowerCase() === s) || up.find((f) => s.includes(f.name.toLowerCase())) : null; };
+          const f = named(target) || named(pick) || named(flair) || named(words) || up[0];
+          if (f) { const dmg = Math.min(f.hearts, roll.natural === 20 ? 2 : 1); f.hearts -= dmg; hit = { id: f.id, name: f.name, dmg, hearts: f.hearts, max: f.max }; }
+        }
+        const diceText = `${roll.die}${roll.rerolled ? ' (rerolled)' : ''} + ${STATS[statId]} ${roll.stat}${bonus ? ` + ${bonus} flair` : ''} = ${roll.total}${roll.floored ? ', held up by plot armour' : ''}: ${OUTCOME_WORDS[roll.outcome]}${lost ? `, ${lost} heart${lost === 1 ? '' : 's'} lost` : ''}${hit ? `, ${hit.name} ${hit.hearts ? `loses ${hit.dmg}` : 'is down'}` : ''}`;
         g.log[g.log.length - 1].dice = diceText;
-        g.log[g.log.length - 1].roll = { ...roll, card, lost };
+        g.log[g.log.length - 1].roll = { ...roll, card, lost, hit };
         g.turns = (g.turns || 0) + 1;
-        this.emit({ ev: 'roll', who: actor.id, name: actor.name, card, roll, lost, text: diceText });
+        this.emit({ ev: 'roll', who: actor.id, name: actor.name, card, roll, lost, hit, text: diceText });
         this.busy = 'gm'; this.push();
-        const raw = await this.gm(this.gmMessages(g, turnPrompt({ actor, card, pick, words, flair, roll, lost })), { onToken: stream('gm') });
+        const raw = await this.gm(this.gmMessages(g, turnPrompt({ actor, card, pick, words, flair, roll, lost, said, hit })), { onToken: stream('gm') });
         if (signal.aborted) return;
         const p = this.applyGm(g, raw);
+        // 1.5.204: a new picture for a new scene, when that was ticked (the game master waits while it's painted).
+        if (p.newScene && g.extras?.scenePics && this.extrasCan().pictures) {
+          const sc = g.scenes[g.scenes.length - 1];
+          this.busy = 'prep'; this.prep = { done: 0, total: 1, what: `painting ${sc.title}` }; this.push();
+          try { const url = await this.makeProp(g, { kind: 'picture', key: 'scene', scene: clip(`${sc.title}. ${p.narration}`, 300) }); if (url) sc.pic = url; } catch (e) { if (signal.aborted) return; }
+          this.prep = null;
+        }
         if (actor.hearts === 0 && actor.armour !== 'lots' && actor.armour !== 'legendary') await this.fallen(actor, g);
         if (p.over) { await this.finish(g); return; }
         if (g.scenes.length % 3 === 0 && p.newScene) await this.summarise(g);
         const next = this.nextTurn(g);
         if (!next) { await this.finish(g); return; }
-        g.cards = next.who === 'you' ? (p.cards || DEFAULT_CARDS[g.kind || 'place']) : null;
+        g.cards = isHuman(next) ? (p.cards || DEFAULT_CARDS[g.kind || 'place']) : null;
         this.save();
         this.push();
       }
@@ -653,7 +942,7 @@ export class Adventure {
   // Zero hearts, no armour: the player decides. A Bob player picks for himself (captured, he's got a story to tell).
   async fallen(actor, g) {
     let choice = 'captured';
-    if (actor.who === 'you') {
+    if (isHuman(actor)) {
       this.busy = ''; this.emit({ ev: 'fate', who: actor.id, name: actor.name }); this.push();
       choice = await new Promise((res) => { this.fateWait = res; this.stop.signal.addEventListener('abort', () => res(null), { once: true }); });
       if (!choice) return;
@@ -673,6 +962,7 @@ export class Adventure {
 
   async finish(g) {
     g.status = 'over';
+    this.keepGrowth(g);
     g.log.push({ who: 'app', text: 'The end. The campaign is saved under Continue, if you want an epilogue.', at: this.now() });
     this.save();
     this.letGo();
@@ -695,7 +985,9 @@ export async function adventureRoute({ req, res, p, brain, body, send, isLocal =
     const b = await body(req);
     if (p === '/api/adventure/start') return send(res, 200, await a.start(b)), true;
     if (p === '/api/adventure/continue') return send(res, 200, await a.continueGame(String(b.id || ''))), true;
-    if (p === '/api/adventure/act') return send(res, 200, a.act({ card: String(b.card || ''), pick: b.pick, flair: b.flair })), true;
+    if (p === '/api/adventure/act') return send(res, 200, a.act({ card: String(b.card || ''), pick: b.pick, flair: b.flair, target: b.target, words: b.words, seat: b.seat ? String(b.seat) : '' })), true;
+    if (p === '/api/adventure/ask') return send(res, 200, a.ask({ q: b.q })), true; // 1.5.204
+    if (p === '/api/adventure/skip') return send(res, 200, a.skipPrep()), true; // 1.5.204
     if (p === '/api/adventure/fate') return send(res, 200, a.fate({ choice: String(b.choice || '') })), true;
     if (p === '/api/adventure/pause') return send(res, 200, await a.pause()), true;
     if (p === '/api/adventure/resume') return send(res, 200, await a.resume()), true;

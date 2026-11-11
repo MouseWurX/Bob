@@ -20,7 +20,7 @@ const SPREAD = [
   ['toobig', 'Only brains too big for this replicant matrix', 'A brain bigger than this card and memory can hold together goes over the cards your other Bobs lend.'],
   ['big', 'Any brain bigger than my card', 'Also brains that would otherwise spill from the card into memory. Only faster on a quick network (a cable, or fast Wi-Fi close to the router).']
 ];
-const CAN = { pictures: 'pictures', video: 'clips', music: 'music', sfx: 'sounds', web: 'web research', think: 'Medium-effort thinking' };
+const CAN = { pictures: 'pictures', video: 'clips', music: 'music', sfx: 'sounds', model3d: '3D models', web: 'web research', think: 'Medium-effort thinking' };
 // 1.5.123 Pass my Bob-Net along: what came of each introduction this Bob made.
 const INTRO = { introduced: (d) => `${esc(d.a)} and ${esc(d.b)}: introduced, so they pair by themselves.`, already: (d) => `${esc(d.a)} and ${esc(d.b)}: already on each other's list.`, off: (d) => `${esc(d.who)} has Pass my Bob-Net along off, so no introduction.`, old: (d) => `${esc(d.who)} can't be introduced yet: Bob there needs an update (the phone app doesn't know this yet).`, quiet: (d) => `${esc(d.who)} wasn't reachable. Bob tries again in an hour.`, no: (d) => `${esc(d.who)} said no. Bob tries again in an hour.` };
 const sinceShort = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? 'just now' : m === 1 ? '1 min ago' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };

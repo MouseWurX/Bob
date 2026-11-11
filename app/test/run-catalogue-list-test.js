@@ -70,15 +70,17 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // ---- too big for every Bob on the Bob-Net: Rented brains ----
 {
   const small = { vramGB: 6, ramGB: 16 }, bolt = byId('nemotron-3.5-bolt-74b');
-  check('on a 6 GB laptop alone, the 24 GB Bolt 74B is too big everywhere', tooBigEverywhere(bolt, small, []));
-  check('with a 16 GB card Bob on the Bob-Net it isn\'t (it runs, slowly, there)', !tooBigEverywhere(bolt, small, [{ name: 'npc', vramGB: 16, ramGB: 32 }]));
-  check('a brain that runs well on a Bob-Net Bob names him', roomOn(byId('qwen3.6-27b'), [{ name: 'Go', vramGB: 8, ramGB: 16 }, { name: 'npc', vramGB: 24, ramGB: 32 }]) === 'npc' && roomOn(byId('qwen3.6-27b'), [{ name: 'Go', vramGB: 8 }]) === '');
+  const r70 = byId('deepseek-r1-distill-llama-70b');
+  check('on a 6 GB laptop alone, the 42 GB DeepSeek R1 70B is too big everywhere', tooBigEverywhere(r70, small, []) && tooBigEverywhere(bolt, { vramGB: 6, ramGB: 8 }, []));
+  check('1.5.205: the card alone no longer decides: the Bolt 74B (made of experts) stays, partly read from the drive', !tooBigEverywhere(bolt, small, []) && !tooBigEverywhere(byId('qwen3.6-35b-a3b'), small, []) && tooBigEverywhere(byId('qwen3.6-27b'), small, []));
+  check('with a 16 GB card Bob on the Bob-Net it isn\'t (it runs, slowly, there)', !tooBigEverywhere(bolt, small, [{ name: 'big-pc', vramGB: 16, ramGB: 32 }]));
+  check('a brain that runs well on a Bob-Net Bob names him', roomOn(byId('qwen3.6-27b'), [{ name: 'Go', vramGB: 8, ramGB: 16 }, { name: 'big-pc', vramGB: 24, ramGB: 32 }]) === 'big-pc' && roomOn(byId('qwen3.6-27b'), [{ name: 'Go', vramGB: 8 }]) === '');
   check('only "won\'t run well" counts: slow, installed, half downloaded, your own or a squeezed file never leave', !tooBigEverywhere(byId('qwen3.6-27b'), { vramGB: 16, ramGB: 32 }, []) && !tooBigEverywhere({ ...bolt, status: { state: 'installed' } }, small, []) && !tooBigEverywhere({ ...bolt, status: { state: 'partial' } }, small, []) && !tooBigEverywhere({ ...bolt, own: true }, small, []) && !tooBigEverywhere({ ...bolt, maxCardGB: 8 }, { vramGB: 16 }, []));
   check('media models are never moved', !tooBigEverywhere({ id: 'v', category: 'video', vramGB: 40 }, small, []));
   const lap = catalogueHtml({ ...ctx, vramGB: 6, ramGB: 16, showUnsuited: true });
-  check('on the laptop the catalogue leaves it out and says where it went', !/id="cat-[a-z]+-nemotron-3\.5-bolt-74b"/.test(lap) && /class="muted too-big-note">\d+ more (is|are) too big for this replicant matrix\. [^<]*<button type="button" class="link" data-rentsettings>Rented brains<\/button>/.test(lap));
-  const lapNet = catalogueHtml({ ...ctx, vramGB: 6, ramGB: 16, showUnsuited: true, bobNet: [{ name: 'npc', vramGB: 16, ramGB: 32 }] });
-  check('with the big computer on the Bob-Net it stays, and the i says which Bob it fits', /id="cat-[a-z]+-nemotron-3\.5-bolt-74b"/.test(lapNet) && /Fits npc on your Bob-Net\./.test(lapNet));
+  check('on the laptop the catalogue leaves it out and says where it went', !/id="cat-[a-z]+-deepseek-r1-distill-llama-70b"/.test(lap) && /id="cat-[a-z]+-nemotron-3\.5-bolt-74b"/.test(lap) && /class="muted too-big-note">\d+ more (is|are) too big for this replicant matrix\. [^<]*<button type="button" class="link" data-rentsettings>Rented brains<\/button>/.test(lap));
+  const lapNet = catalogueHtml({ ...ctx, vramGB: 6, ramGB: 16, showUnsuited: true, bobNet: [{ name: 'big-pc', vramGB: 16, ramGB: 32 }] });
+  check('with the big computer on the Bob-Net it stays, and the i says which Bob it fits', /id="cat-[a-z]+-nemotron-3\.5-bolt-74b"/.test(lapNet) && /Fits big-pc on your Bob-Net\./.test(lapNet));
   const big16 = models.filter((m) => tooBigEverywhere(m, { vramGB: 16, ramGB: 32 }, [])).map((m) => m.id);
   check('on the 16 GB computer only the DeepSeek R1 70B is too big, and the footer says one more', big16.join() === 'deepseek-r1-distill-llama-70b' && /class="muted too-big-note">1 more is too big/.test(catalogueHtml({ ...ctx, showUnsuited: true })), big16.join());
 }
@@ -89,19 +91,19 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
   const h = helloFor(brain, { why: 'off', quick: null, can: {}, version: 'x', label: () => '', room: { vramGB: 16, ramGB: 32 } });
   check('a desktop hello says his graphics card and memory', h.room?.vramGB === 16 && h.room?.ramGB === 32);
   check('the asker keeps only numbers, capped; a hello without a room has none', JSON.stringify(cleanAbilities({ room: { vramGB: '16', ramGB: 1e9, evil: '<x>' } }).room) === JSON.stringify({ vramGB: 16, ramGB: 16384 }) && !('room' in cleanAbilities({})) && !('room' in cleanAbilities({ room: { vramGB: -3 } })));
-  const L = { bobs: () => [{ name: 'npc', address: 'a' }, { name: 'phone', address: 'b' }, { name: 'old', address: 'c' }], state: new Map([['a', { ok: true, room: { vramGB: 16, ramGB: 32 } }], ['b', { ok: true, device: 'phone', room: { vramGB: 0, ramGB: 8 } }], ['c', { ok: true }]]) };
-  check('Bob-Net rooms: computers that said their room; phones and older Bobs left out', JSON.stringify(bobNetRooms(L)) === JSON.stringify([{ name: 'npc', vramGB: 16, ramGB: 32 }]));
+  const L = { bobs: () => [{ name: 'big-pc', address: 'a' }, { name: 'phone', address: 'b' }, { name: 'old', address: 'c' }], state: new Map([['a', { ok: true, room: { vramGB: 16, ramGB: 32 } }], ['b', { ok: true, device: 'phone', room: { vramGB: 0, ramGB: 8 } }], ['c', { ok: true }]]) };
+  check('Bob-Net rooms: computers that said their room; phones and older Bobs left out', JSON.stringify(bobNetRooms(L)) === JSON.stringify([{ name: 'big-pc', vramGB: 16, ramGB: 32 }]));
   const server = read('src/server.js');
   check('/api/models adds the rooms, asking only Bobs already listed, never for more than 2.5 s', /bobNet: bobNetRooms\(brain\.lenders\)/.test(server) && /setTimeout\(r, 2500\)/.test(server) && /room: myRoom/.test(server));
 }
 
 // ---- Rented brains: Pick a brain from Bob's list ----
 {
-  const picks = rentPicks(models, catalog.bigBrains, { vramGB: 6, ramGB: 16 }, [], 'win32');
+  const picks = rentPicks(models, catalog.bigBrains, { vramGB: 6, ramGB: 8 }, [], 'win32');
   check('the picker lists every really big brain', catalog.bigBrains.every((b) => picks.some((p) => p.key === `big:${b.id}`)));
   check('and the catalogue brains too big for your Bobs, as a GGUF file a rented machine can fetch', picks.some((p) => p.key === 'cat:nemotron-3.5-bolt-74b' && /^nvidia\/[\w.-]+\/[\w.-]+\.gguf$/.test(p.model) && p.card === '48'));
   check('no squeezed file, and naughty ones only when the caller passes them (Settings passes only what\'s visible)', !picks.some((p) => p.key === 'cat:qwen3.6-35b-a3b-q3') && /rentPicks\(visibleModels\(data\?\.models \|\| \[\], naughtyOn\(\)\)/.test(read('public/cellar.js')));
-  check('none that fit one of your Bobs', !rentPicks(models, [], { vramGB: 6 }, [{ name: 'npc', vramGB: 24, ramGB: 64 }]).some((p) => p.key === 'cat:nemotron-3.5-bolt-74b'));
+  check('none that fit one of your Bobs', !rentPicks(models, [], { vramGB: 6 }, [{ name: 'big-pc', vramGB: 24, ramGB: 64 }]).some((p) => p.key === 'cat:nemotron-3.5-bolt-74b'));
   check('pay-per-answer-only brains carry no machine model; multi-card ones say how many', picks.filter((p) => p.answerOnly).every((p) => p.model === '') && picks.some((p) => p.cards === 8));
   check('rentAsOf turns a pinned file into Owner/Repo/file.gguf, and nothing else', rentAsOf({ files: [{ role: 'gguf', url: 'https://huggingface.co/a/b/resolve/0123456789abcdef0123456789abcdef01234567/x.gguf' }] }) === 'a/b/x.gguf' && rentAsOf({ files: [{ role: 'gguf', url: 'https://evil.example/a/b/resolve/0123456789abcdef0123456789abcdef01234567/x.gguf' }] }) === '' && rentAsOf({}) === '');
   const list = [{ id: 'deepseek/deepseek-v4-pro' }, { id: 'z-ai/glm-5.3' }, { id: 'google/gemma-4-31b-it' }, { id: 'qwen/qwen3.6-27b' }];
@@ -148,7 +150,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
   check('GitHub not answering is said plainly', (await down.check(catalog)).why === 'GitHub didn\'t answer in time.');
   fs.rmSync(tmp, { recursive: true, force: true });
   const server = read('src/server.js'), cellar = read('public/cellar.js');
-  check('the server merges it at start, checks once a day only when due, and Check now is this replicant matrix only', /shop\.catalog = listUpdates\.merge\(shop\.shipped\)/.test(server) && /if \(listUpdates\.due\(\)\)/.test(server) && /p === '\/api\/catalog\/latest'\) \{\s*if \(!isLocal\)/.test(server));
+  check('the server merges it at start, checks once a day only when due, and Check now is this replicant matrix only', /shop\.catalog = mergeAdded\(listUpdates\.merge\(shop\.shipped\), cfg\)/.test(server) && /if \(listUpdates\.due\(\)\)/.test(server) && /p === '\/api\/catalog\/latest'\) \{\s*if \(!isLocal\)/.test(server));
   check('Settings: "Let Bob fetch his newest brain list" under Going online, off, with Check now', /sswitch\('catalogUpdates', settings\.catalogUpdates === true, 'Let Bob fetch his newest brain list', keep\('Off unless you turn it on\./.test(cellar) && /data-listcheck>Check now/.test(cellar));
 }
 

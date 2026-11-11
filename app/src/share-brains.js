@@ -463,7 +463,7 @@ export class Lenders {
 }
 
 // ---------- What a Bob can do (1.5.72) ----------
-export const NEEDS = ['pictures', 'video', 'music', 'sfx', 'web', 'think'];
+export const NEEDS = ['pictures', 'video', 'music', 'sfx', 'model3d', 'web', 'think'];
 export function cleanAbilities(j) {
   const n = (x, max) => (Number.isFinite(Number(x)) && Number(x) > 0 ? Math.min(Number(x), max) : 0);
   const out = { ctx: n(j?.ctx, 1048576), speed: n(j?.speed, 1000), takesJobs: j?.takesJobs === true };

@@ -13,6 +13,7 @@ Update this file in the same handover as any change to settings.
 | Theme | (current theme, Change → Style) | Moondust (1.5.136; was Bob's Inn) | ok (approved with edits, 1.5.136) |
 | Animations | On / Follow Windows (other systems: Follow the system) / Off | On | ok (1.5.98) |
 | Bob's cat | (text box) | Patches | ok (1.5.2) |
+| Language | menu: English, Français, Español (`language`) | English | added, pending review |
 | One brain (snappier) | Every copy of Bob uses the main brain, so there's no brain swap. | off | ok (1.5.2) |
 | Launch Bob on start-up | Off unless you turn it on. | off | ok |
 | Keep Bob in the tray | On unless you turn it off. Closing or minimising Bob's window tucks him into the tray by the clock (Mac: the menu bar; Linux: your desktop's tray) instead of closing him, so he keeps running. Click his icon to open him again. To close him fully, right-click (Mac: click) his icon and pick **Quit Bob**. (Disabled in a browser.) | On (was Off before 1.5.134; the owner asked) | 1.5.134 |
@@ -44,6 +45,8 @@ Update this file in the same handover as any change to settings.
 | Hands > Check a password safely | box + Check button under Security and privacy | password field (not saved) | empty | needs sign-off |
 | Hands | Connected apps (MCP) | long "what" text | off | ok (clear with edits, 2026-11-04) |
 | Hands > Connected apps | per app: On switch, Check, Show tools, Remove, Get uv for me (when uv is missing); card: Allow / Allow the rest of this job / Deny, Show details, This one always asks; Add a connected app (Fill in for Blender, Fill in for Unreal Engine, Name, Program to start, Arguments, Or its address, Add app); Paste a setup from another app (Add these) | each app off when added | no apps | ok (clear with edits, 2026-11-04) |
+| Hands | Tool packs from other people | long "what" text | off | new (not reviewed yet) |
+| Hands > Tool packs | per pack: On switch (off when added; disabled when its files changed or its folder is gone), name, version, by, what, link, per tool: what it may do + Show code, jobs with step counts, Remove (click again); box "Add a pack" + Add pack, problems listed under it; card: Allow / Allow the rest of this job (only tools that don't change files or use the internet) / Deny, Show details, Tools from packs always ask | each pack off when added | no packs | new (not reviewed yet) |
 | Hands | Folders the Files Hand may work in; Stop a command after | | none | ok |
 | Housekeeping | Tidy up old things by himself | Only while he's idle (10 minutes quiet, nothing running)… | off | ok (1.5.2) |
 | Housekeeping | Load a brain for it if none is loaded | Off: … so a game keeps the graphics card. | off | ok (1.5.2) |
@@ -56,6 +59,7 @@ Update this file in the same handover as any change to settings.
 | 🎲 Adventure | Which brain is the game master | The game needs one good storyteller. Biggest brain is the Deep thinking slot, or the main Brain when nothing is in it; always on the graphics card, thinking on. It loads when a game starts and is let go on Pause or End. | Biggest brain | ok (approved with edits, 1.5.119) |
 | 🎲 Adventure | Who plays the other Bobs | Their own Bob: a Bob on your Bob-Net list thinks his own turns over there, in his own voice, through the same door as Lend my brain. What goes to him: the scene so far and his character's sheet, over Tailscale to your own Bob only; nothing else from this replicant matrix. When he can't (gaming, busy, not reachable), the game master brain plays him that turn and says so. The game master brain: every Bob at the table is played here. | Their own Bob when reachable | ok (approved with edits, 1.5.119) |
 | 🎲 Adventure (menu page) | Start a new game / Setting / Your character / Who plays / Plot armour / How long / Continue a campaign | The game page; nothing loads until Start a new game is pressed | nothing on | ok (approved with edits, 1.5.119) |
+| 🎲 Adventure (start card) | 🧰 Table extras: Dice you can see / Sounds / Read it aloud / Pictures / A new picture every scene (needs Pictures) / Music. Saved as adventure.extras; Bob can say them. Pictures and music need their models from Get models, made before the game (Skip the rest). Also on the start card: Tonight's story (8 ready-made openings or Make one up), ➕ Add a friend (up to 3). Phone: This phone plays. | all off | new (1.5.204) |
 | 🧩 Games | Which brain plays games | Quick brain: my small brain, the one that answers quick messages; it loads in a few seconds and a game needs nothing bigger. In the Gaming session it's the Gaming brain on the processor, so a game never touches the graphics card. Main Brain: the brain the chat uses, for wittier lines at the cost of a longer load. Either way it loads when a game starts and is let go when the game ends. | Quick brain | ok (approved with edits, 1.5.121) |
 | 🧩 Games | How often Bob chips in | In Hangman, Word ladder and Five letters the app runs the game and I comment. After every move: a line after each guess. Now and then: about every other move. Only at the end: the app keeps quiet until the game is over, which is quickest on a slow replicant matrix. Twenty questions and Story dice are all talk, so this doesn't change them. | After every move | ok (approved with edits, 1.5.121) |
 | 🧩 Games (menu page) | ▶ Start per game / I think, you guess · You think, I guess / Shelf / You climb, I cheer · Climb together, turn about / I open · You open / 🏁 Stop / Hint / Back a rung / Wrap it up / Scoreboard | The games page; nothing loads until ▶ Start is pressed | nothing on | ok (approved with edits, 1.5.121) |
@@ -147,7 +151,9 @@ Update this file in the same handover as any change to settings.
 | Settings > How Bob works | Pick up where Bob left off after a restart (was "Pick up unfinished jobs after a restart") | off | ok (approved with edits, 1.5.38) |
 | Settings > Everyday > 📦 Bob's home folder (1.5.125) | Kept in <folder> · models N GB; red line if inside AppData/Temp/Caches; New folder + Browse… + Move here…; confirm card "Move everything to …?" with Yes, move everything / Not now. Same row at the top of the first-run screen under "My home folder" ("I keep my things in"). Settings text third person; first-run copy in Bob's voice. Cloud-synced folders (OneDrive, Dropbox, Google Drive, iCloud, pCloud, Nextcloud, Proton Drive, MEGA, Box, IDrive, Sync.com) are allowed but ALWAYS recommended against (owner rule 2026-11-06): red line in the panel and on the summary, red note + "Move there anyway" on the confirm card, first-start dialog "Pick another folder… / Use it anyway", install window orange warning + "Use it anyway" on a second press. Refuses AppData, Temp, Windows, a whole drive, a folder inside the current home. | The folder picked at install / first open (suggested <user folder>\Bob); older installs keep %LOCALAPPDATA%\Bob until moved | ok (approved with edits, 1.5.125) |
 | Equip Bob > 🧰 Chest (under Bob) (1.5.125) | Opens the Chest in the Inventory column: thumbnails + names of the Made by Bob list (newest 24), "New things are saved in" folder with Change folder… / Use Bob's own folder / Show in folder (same setting as Where Bob saves things), Open Made by Bob. Phone: menu, Chest. | Chest closed; folder = Where Bob saves things | ok (approved with edits, 1.5.125) |
+| Settings > This replicant matrix > 🔒 Passcode lock (new) | Make / Change the passcode (passcode you have now, new passcode, same again, Save passcode); **Ask for a passcode to open Bob**: "Bob's window and Settings show a passcode screen first. Bob keeps working behind it (reminders, schedules, downloads). Each time Bob starts, it asks again."; **Lock again after** N minutes of nothing (0: only when Bob starts); **Lock my chats and memory**: "Your chats and Bob's memory file are kept scrambled on disk…" + red warning "If you forget the passcode, your locked chats and memory are gone for good. Nobody can open them, not even Bob, and there is no reset." Turning it on asks once (Yes, lock them / Not now); **🔒 Lock Bob now**. All inputs always shown. Kept in config.json only. Phone: Bob for Android Settings, 🔒 Passcode lock (same controls, its own passcode). Help "Settings: Passcode lock", glossary Passcode lock / Encryption, FAQ "Can I stop other people reading my chats?", "I forgot my passcode" | off; no passcode; 0 minutes; chats and memory plain | new, waits on review |
 | Settings > Everyday > 💾 Where Bob saves things | saveDir: Folder, Browse…, Save here, Show in folder, Use Bob's own folder | Bob's own folder (Made by Bob) | ok (approved with edits, songs) |
+| Settings > This replicant matrix > 🗄 Back up and move | Save a backup… (six parts, all ticked; Keys and passcodes, locked: off, passcode twice, at least 8 characters); Restore from a backup (Pick a backup…, parts ticked, passcode for keys, Restore these, Restart Bob now); Back up by itself (backup.auto), Folder + Browse… + Save folder, How often (day/week), Keep the newest (1-30), Back up to this folder now | auto off, weekly, keep 5, no folder; keys unticked | new (needs settings review) |
 | Settings > Brains | Keep chatting while Bob is busy (1.5.51: also beside long text jobs, on a second llama-server on the processor) | ON (the owner's explicit exception to opt-in, 2026-11-03) | ok (approved with edits, 1.5.41; 1.5.51 approved with edits) |
 | Settings > Brains | Let the reviewer sit beside Bob's main brain (mootBeside) | off | ok (approved with edits, 1.5.51) |
 | Settings > Brains (built-in graphics only) | Memory kept for Windows (apuHoldbackGB), slider 0 to 8 GB | 4 GB | new in 1.5.181 (owner's ask), needs wording review |
@@ -259,6 +265,15 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | Chat page > under a message Bob changed | "edited" (button; title "Bob changed this message. Press to see what it said first."). Pressed: "First said: <the first wording>". | — | new (1.5.194) |
 | Discord DMs / Telegram / phone | A fix to a message already sent: "✏️ Fixed an earlier message. It now says: <new words>" (Discord DMs change the DM itself when it was one message). | — | new (1.5.194) |
 
+## Added with assistant presets
+
+| Where | Setting / text | Default | Status |
+|---|---|---|---|
+| Settings > Bob himself > 🎭 Assistant presets | Assistant presets for chats: "Off unless you turn it on. Save sets of instructions, brain, starting effort, temperature and tools, then pick one for any chat from 🎭 Preset next to Effort. A chat with no preset is plain Bob." | off | new, awaiting review |
+| same, each preset (always shown, editable with the switch off) | Name; Instructions ("What Bob does or how he talks in chats with this preset, in your own words. His honesty, safety and asking first never change."); Brain (Bob's usual brain / a brain in his slots); Starting effort (Leave Effort as it is / Low / Medium / High / Extreme); Temperature (empty = usual, 0 to 2); Tools (As usual / Only these / Talking only (no tools), with a tick per tool group); Save; Remove (press twice) | usual | new, awaiting review |
+| Chat page, Effort row | 🎭 Preset menu: None (plain Bob) or a saved preset. Shows while the switch is on and a preset exists | None | new, awaiting review |
+| Bob for Android, next to Effort | 🎭 button steps through the presets of the Bob it talks to, for the chat you're in | No preset | new, awaiting review |
+
 ## Added with quick notes, document reading and the sandbox
 
 | Where | Setting / text | Default | Status |
@@ -267,6 +282,10 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | Settings > Everyday > How Bob works (with quick notes on) | Open my notes (button): "One plain text file, one note per line. Notes Bob takes away are kept in the archive folder." | — | new, awaiting review |
 | Settings > Everyday > How Bob works (with quick notes on) | Let Bob notice what's worth noting (smartNotes): Bob notes decisions, numbers, dates, plans, names, links and ideas on his own, says "📝 Noted", tags by project, replaces near-copies, and brings fitting notes back up. Works only while quick notes is on. | Off | new (1.5.202) |
 | Settings > Everyday > How Bob works | Read and search my documents: "Off unless you turn it on. Bob reads Word, Excel, PowerPoint, OpenDocument, PDF, e-book and Rich Text files with nothing extra installed, and can search inside them for words in the folders he may read (Documents, Desktop and Downloads). Nothing leaves this replicant matrix and nothing is kept on disk. Old .doc, .xls and .ppt files need the Office documents Hand." | off | new, awaiting review |
+| Settings > Everyday > How Bob works | Search my documents by meaning: "Off unless you turn it on. Works with reading and searching documents on. A search also finds files that mean what you asked in other words. While Bob is idle he makes an index of your documents with the Memory slot's embedding model; it stays on this replicant matrix, holds numbers and file names but not the words, and is deleted when you turn this off." |
+| Settings > How Bob works > 📝 Saved prompts | Pull up saved prompts with / (promptMenu): "Off unless you turn it on. Type / at the start of the message box to pick a saved prompt. Its words go in the box for you to finish and send. Words in {curly brackets} are blanks: type over them, and Tab goes to the next one." | Off | new, awaiting review |
+| Settings > How Bob works > 📝 Saved prompts | My prompts list (works on or off): ＋ Add a prompt (Name, Words), Change, Delete (press twice), ↑ ↓, Add Bob's starters (empty list only). Kept in inn/saved-prompts.json. | — | new, awaiting review |
+| Android > Settings > Saved prompts | Pull up saved prompts with / (phone's own list, kept on the phone), with Next blank above the box | Off | new, awaiting review |
 | Settings > Everyday > How Bob works | Let Bob work things out in a sandbox: "Off unless you turn it on. For sums, dates, money and counting, Bob runs a few lines of code in a locked box and answers from the result instead of guessing. The box is empty and thrown away after each run: it can't see your files or start programs, code that goes online is refused, and it stops after 20 seconds." Where the lock doesn't hold: "The sandbox doesn't hold on this replicant matrix (<why>), so this stays off." | off | new, awaiting review |
 
 ## Changed with the first-time list regrouped like Settings
@@ -292,3 +311,39 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | --- | --- | --- | --- |
 | Settings > Everyday > How Bob works | Let Bob learn from his tools: "Off unless you turn it on. When a tool fails and then works, Bob keeps one line on what fixed it and reads it next time. He also counts what works and what fails, and offers to fix a tool that keeps failing. It all stays on this replicant matrix." | Off | While on: the scorecard (tool, ✓ wins, ✗ misses, "keeps failing") and **Forget what he learned**. Also on the Welcome's "Do you want me to:" list. |
 
+## Added with Let Bob's Quick brain see the big job
+
+| Where | Setting / text | Default | Status |
+|---|---|---|---|
+| Settings > Brains (under Keep chatting while Bob is busy) | Let Bob's Quick brain see the big job: "Off unless you turn it on. When Bob chats beside a long job, his Quick brain knows what the big brain is on: the job, how long it has run and its last step. Ask, and it shows you the steps so far, or passes the big brain a note from you, which it reads at its next step. Stopping a job is still your Stop button. Works while Keep chatting while Bob is busy is on." | Off | new |
+| Welcome > Do you want me to: > 🧠 Brains and speed (after One brain) | "Tell you how a long job is going" / "My Quick brain sees what my big brain is on, and can pass it a note." | Off | new |
+| Chat, quick reply beside a job | Tool lines "looked at the big job", "passed a note along: "<note>"" | — | new |
+| Chat of the big job | "📨 Your note reached me: "<note>"" (or "📨 N notes reached me.") at its next step | — | new |
+| Chat, under a quick reply | "Nobody knows how long the job has left. That part was a guess; the Meanwhile line only says how far it's got." | — | new |
+## Added with Try again and Edit
+
+| Where | Setting / text | Default | Status |
+|---|---|---|---|
+| Settings > Everyday > How Bob works | Show Try again and Edit in the chat: "On unless you turn it off. Try again, under Bob's latest answer, gets a new answer to your last message. Edit, under your messages, lets you change what you said and send it again; Bob answers from there. What was there before is kept under your message as an earlier version." | on (owner's exception to opt-in) | new |
+| Chat page > under Bob's latest answer | "Try again" (button; title "Get a new answer to your last message"). Hidden while Bob is on that chat. | — | new |
+| Chat page > under your messages | "Edit" (button; title "Change what you said and send it again"). Opens a box with "Send again" and "Cancel"; on an earlier message: "Bob answers from here. What came after this message is kept under it as an earlier version." | — | new |
+| Chat page > under a message with earlier versions | "1 earlier version" / "N earlier versions" (button; title "What was there before Try again or Edit. Press to see it."). Pressed: each version with "You:" and "Bob:" lines. Your changed message says "edited" (title "You changed this message. Press to see what it said first."). | — | new |
+| Chat page > while busy | "Bob is still on this chat. Wait until he has finished, or press Stop first." | — | new |
+| Android app > Settings > In the chat | Show Try again and Edit in the chat: "On unless you turn it off. Try again gets a new answer to your last message. Edit changes your last message and sends it again. What was there before is kept under your message." | on (owner's exception to opt-in) | new |
+## Added with 3D parts and the 3D viewer
+
+| Where | Setting / text | Default | Status |
+|---|---|---|---|
+| Settings > Everyday > How Bob works | Let Bob make 3D parts (parts3d): "Off unless you turn it on. Ask for a bracket, a box, a spacer or a replacement part, and Bob writes it as an OpenSCAD recipe in millimetres and makes an STL file for a 3D printer. It shows in a 3D viewer beside the chat, where you can turn it and zoom. Recipes can't read your files, start programs or go online." plus whether OpenSCAD is here | off | new, awaiting PC check |
+| Welcome, Do you want me to: | "Make 3D parts for a printer" (same switch) | off | new |
+| Settings > Engines (helpers) | OpenSCAD: Get (only where src/openscad-pins.json has a checked download), or found on this replicant matrix | not installed | new |
+| Side panel, Made by Bob | 3D models filter; STL, OBJ and GLB open in the 3D viewer (no setting) | — | new |
+
+## Added with picture to 3D (3D workshop)
+
+| Where | Setting / text | Default | Status |
+|---|---|---|---|
+| Settings > Everyday > How Bob works | Let Bob turn pictures into 3D models (model3d): "Off unless you turn it on. Ask for a figurine, a creature or a prop, and Bob paints a picture of it (or uses one you give him) and turns it into a textured 3D model with TRELLIS.2, shown in the 3D viewer. Takes 1 to 5 minutes. Needs an NVIDIA graphics card." plus whether the 3D workshop is set up | off | new |
+| Welcome, Do you want me to: | "Turn pictures into 3D models" (same switch) | off | new |
+| Settings > Engines (senses) | 3D workshop: Get (only where model3d/addons-pins.json has checked add-ons; Windows and Linux x64 with an NVIDIA card), about 22 GB with the models; Mac and ARM say to send the job to a PC Bob | not installed | new |
+| Settings > Bob-Net | Send/Take jobs: "3D models" is a new kind of job a PC Bob can take | — | new |

@@ -196,13 +196,18 @@ export function createLayout({ post, openTasks, openDownloads }) {
   dockBtn.onclick = () => { docked = !docked; store.set('bob-mind-dock', docked ? '1' : '0'); drawDock(); if (docked) $('mindDockLog').focus({ preventScroll: true }); };
   $('mindDockPop').onclick = () => { const w = window.open('/mind.html', 'bob-mind', 'popup,width=380,height=480'); try { w?.focus(); } catch {} };
   document.addEventListener('visibilitychange', mindListen);
-  // fNRI's small cube: off until its switch is on, and it only listens while the section is showing
-  const cubeBtn = $('mindDockCube');
+  // fNRI's small cube: it only listens while the section is showing. Its glow is for show unless Real experts is on
+  // (off to begin with), which makes Bob ask Brain Engine for the experts each reply used, and that slows his replies.
+  const cubeBtn = $('mindDockCube'), liveBtn = $('mindCubeLive');
+  let cubeLive = store.get('bob-cube-live', '0') === '1';
+  const drawLive = () => { if (!liveBtn) return; liveBtn.setAttribute('aria-checked', String(cubeLive)); liveBtn.querySelector('.st').textContent = cubeLive ? 'On' : 'Off'; };
+  drawLive();
+  if (liveBtn) liveBtn.onclick = () => { cubeLive = !cubeLive; store.set('bob-cube-live', cubeLive ? '1' : '0'); drawLive(); cubeOk = true; if (cube) cube.relive(); cubeListen(); };
   let cubeOn = store.get('bob-mind-cube', '1') === '1', cube = null, cubeOk = true; // the cube is how thinking shows to begin with; the text is the other choice
   function cubeListen() {
     cubeBtn.setAttribute('aria-checked', String(cubeOn)); cubeBtn.querySelector('.st').textContent = cubeOn ? 'On' : 'Off';
     const on = cubeOn && docked && !body.classList.contains('right-hidden') && !document.hidden;
-    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails'), load: $('mindCubeLoad'), loadBox: $('mindCubeLoadBox'), spin: $('mindCubeSpin'), lines: $('mindCubeLines'), linesBox: $('mindCubeLinesBox') }, { onWhy: (why) => { cubeOk = !why; cubeListen(); }, still: () => body.classList.contains('still') });
+    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails'), load: $('mindCubeLoad'), loadBox: $('mindCubeLoadBox'), spin: $('mindCubeSpin'), lines: $('mindCubeLines'), linesBox: $('mindCubeLinesBox') }, { onWhy: (why) => { cubeOk = !why; cubeListen(); }, still: () => body.classList.contains('still'), live: () => cubeLive });
     // with the cube showing, the written thinking steps aside; it comes back when the cube is off or can't work here
     $('mindDockBody').classList.toggle('cube-view', cubeOn && cubeOk);
     if (!cube) return;
@@ -404,8 +409,8 @@ export function createLayout({ post, openTasks, openDownloads }) {
   // Hidden until Bob-Net is in use (a Bob on the list, or Lend / Take jobs on), so a fresh Bob shows nothing new.
   // Polled every 15 s while the pane is open (30 s in Gaming), and straight away after a lend, a borrow, a job sent away
   // or a pairing (net() below, from app.js). Colour never stands alone: the words say the same thing.
-  const NEED = { pictures: 'a picture', video: 'a clip', music: 'music', sfx: 'a sound', web: 'web research', think: 'some thinking' };
-  const CAN = { pictures: 'pictures', video: 'clips', music: 'music', sfx: 'sounds', web: 'web research', think: 'thinking' };
+  const NEED = { pictures: 'a picture', video: 'a clip', music: 'music', sfx: 'a sound', model3d: 'a 3D model', web: 'web research', think: 'some thinking' };
+  const CAN = { pictures: 'pictures', video: 'clips', music: 'music', sfx: 'sounds', model3d: '3D models', web: 'web research', think: 'thinking' };
   const WHY = { gaming: 'gaming, so not lending', busy: 'busy with his own job', off: 'not lending', 'not reachable': 'not reachable', 'door closed': 'door shut over there', 'passcode not accepted': 'passcode not accepted', 'too slow': 'too slow last time', 'too long': 'no room for this chat', 'no brain': 'no quick brain' };
   const sinceShort = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? 'just now' : m === 1 ? '1 min ago' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
   const netRow = (b) => {

@@ -6,8 +6,12 @@
 # Electron's zip is checked against Electron's own SHASUMS256.txt before anything is used.
 # Changing the app's files breaks Electron's signature, so the finished app is signed again "ad hoc" (no Apple
 # account: Apple Silicon Macs only open signed programs). The first time, macOS asks the user to allow it in
-# System Settings > Privacy & Security > Open Anyway. Signing with an Apple Developer ID (and notarizing) would
-# remove that step; it needs a paid Apple account, so it isn't done here.
+# System Settings > Privacy & Security > Open Anyway.
+# Apple Developer ID (off unless MAC_SIGN_IDENTITY is set; see docs/SIGNING-MAC.md): every program file is signed
+# inside-out with the Developer ID, the hardened runtime, a secure timestamp and installer/mac-entitlements.plist,
+# so Apple can notarize it (installer/notarize-mac.sh) and macOS opens it without Open Anyway.
+#   MAC_SIGN_IDENTITY   e.g. "Developer ID Application: Your Name (TEAMID1234)", already in a keychain
+#   MAC_KEYCHAIN        optional: the keychain that holds it (build.yml makes a throwaway one)
 # Used by .github/workflows/build.yml on a macOS runner (needs ditto, codesign, sips, iconutil, PlistBuddy). Usage:
 #   installer/make-release-mac.sh [out-dir] [arch]       (arch: arm64, the default, or x64)
 set -euo pipefail
@@ -88,9 +92,27 @@ pbset CFBundleIconFile bob.icns
 pbset NSMicrophoneUsageDescription "Bob listens only when you press the microphone button or turn on Hey Bob, and hears you on this Mac."
 pbset NSHumanReadableCopyright "MouseWurX. Bob's code is GPL-3.0-or-later; Electron is MIT."
 
-# Sign again, ad hoc, so macOS on Apple Silicon will run it, and check the result.
-codesign --force --deep --sign - "$APP"
-codesign --verify --deep --strict "$APP"
+if [ -n "${MAC_SIGN_IDENTITY:-}" ]; then
+  # Developer ID. Apple wants every program inside signed on its own, innermost first (--deep is for ad hoc only):
+  # loose programs and libraries (Electron's helpers, the bundled engine), then frameworks and helper apps, then Bob.app.
+  ENT="$SOURCE/installer/mac-entitlements.plist"
+  KC=(); [ -n "${MAC_KEYCHAIN:-}" ] && KC=(--keychain "$MAC_KEYCHAIN")
+  # ${KC[@]+...}: macOS's own bash 3.2 calls an empty array "unbound" under set -u.
+  sign() { codesign --force --sign "$MAC_SIGN_IDENTITY" ${KC[@]+"${KC[@]}"} --options runtime --timestamp --entitlements "$ENT" "$1"; }
+  # Deepest paths first, so nothing is signed before what's inside it.
+  bylen() { awk '{ print length($0) "\t" $0 }' | sort -rn | cut -f2-; }
+  while IFS= read -r f; do
+    if file -b "$f" | grep -q 'Mach-O'; then sign "$f"; fi
+  done < <(find "$APP/Contents" -type f ! -path "*/_CodeSignature/*" | bylen)
+  while IFS= read -r b; do sign "$b"; done < <(find "$APP/Contents" -depth \( -name '*.framework' -o -name '*.app' \) -type d | bylen)
+  sign "$APP"
+  codesign --verify --deep --strict --verbose=2 "$APP"
+  codesign --display --verbose=2 "$APP" 2>&1 | grep -E '^(Authority|TeamIdentifier|Timestamp|Runtime)' || true
+else
+  # Ad hoc, so macOS on Apple Silicon will run it, and check the result.
+  codesign --force --deep --sign - "$APP"
+  codesign --verify --deep --strict "$APP"
+fi
 
 ZIP="$OUT/Bob-$VERSION-mac-$ARCH.zip"
 rm -f "$ZIP"

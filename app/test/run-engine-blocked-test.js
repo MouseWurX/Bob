@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { windowsBlocked, fallBackIfBlocked, safeSpawn, engineOf, blockedSay, onEngineFallback, buildWords } from '../src/engine-blocked.js';
 import { engineFor, ENGINES, engineBlocked, engineStatus, goBackEngine, installedMarker } from '../src/engines.js';
-import { EngineKeeper } from '../src/engine-keeper.js';
+import { EngineKeeper, keeperCandidates } from '../src/engine-keeper.js';
 import { HELP } from '../public/help-content.js';
 
 let failures = 0, passed = 0;
@@ -83,6 +83,27 @@ off();
   check(fallBackIfBlocked(cfg, exe, sac) === null, 'with no build kept from before, there is nothing to go back to');
 }
 
+// 1.5.204 (PC test): Go back pressed by hand holds until Try again or a new pin, so the next start doesn't fetch it again.
+{
+  fs.rmSync(path.join(tmp, 'brain-engine'), { recursive: true, force: true }); fs.rmSync(path.join(tmp, 'brain-engine.previous'), { recursive: true, force: true });
+  put('brain-engine', 'brain-engine-v3'); put('brain-engine.previous', 'brain-engine-b12282');
+  goBackEngine(cfg, 'brainengine');
+  const rec = engineBlocked(cfg, 'brainengine');
+  check(installedMarker(cfg, BE)?.version === 'brain-engine-b12282' && rec?.manual === true && rec.version === 'brain-engine-v3' && rec.windows === false, 'Go back by hand keeps a note of the build it left');
+  check(engineStatus(cfg).find((e) => e.id === 'brainengine').blocked?.manual === true, '...and Settings, Engines knows it was by hand');
+  let asked = 0;
+  const same = new EngineKeeper(cfg, { pin: { tag: 'brain-engine-v3', print: 'sha256:brain-engine-v3' }, check: async () => { asked++; return { latest: 'brain-engine-v3', print: 'sha256:brain-engine-v3' }; } });
+  check(await same.withBob() === null && asked === 0, 'the next start doesn\'t fetch the build you went back from');
+  const newer = new EngineKeeper(cfg, { pin: { tag: 'brain-engine-v4', print: 'sha256:brain-engine-v4' }, check: async () => { asked++; return null; } });
+  await newer.withBob();
+  // Brain Engine isn't kept up to date where it has no build (a Mac, ARM): nothing is checked there either way.
+  const beHere = keeperCandidates(cfg).some((x) => x.id === 'brainengine');
+  check(asked === (beHere ? 1 : 0), 'a new Bob with a newer pin checks again');
+  goBackEngine(cfg, 'brainengine');
+  check(installedMarker(cfg, BE)?.version === 'brain-engine-v3' && !engineBlocked(cfg), 'Try again puts it back and ends the hold');
+  check(/e\.blocked\?\.manual \? `<div class="engine-held" role="status"><p><strong>You went back to the previous build<\/strong>/.test(read('public/cellar.js')), 'Settings says you went back by hand, with Try again');
+}
+
 // Wiring: every engine start goes through safeSpawn; the brain loads again on the old engine; chat and Settings.
 const lc = read('src/llamacpp.js'), emb = read('src/embedder.js'), sc = read('src/share-card.js'), server = read('src/server.js'), cellar = read('public/cellar.js');
 check(/const child = safeSpawn\(spawn, exe, args,/.test(lc) && /const back = fallBackIfBlocked\(this\.cfg, exe, e\);/.test(lc) && /if \(e\.fellBack && !signal\?\.aborted\) \{[\s\S]{0,120}return this\.preload\(model, signal,/.test(lc), 'the brain (and the talker beside a job) goes back and loads again on the old engine');
@@ -91,7 +112,9 @@ check(/onEngineFallback\(\(r\) => \{ try \{ brain\.log\('engine', r\.say\); broa
 check(/e\.blocked \? `<button data-engineback="\$\{esc\(e\.id\)\}">Try again<\/button>`/.test(cellar) && /Windows blocked the new build/.test(cellar), 'Settings, Engines says Windows blocked it and offers Try again');
 check(/Go back to the previous engine \(\$\{esc\(prevName\(e, e\.previous\)\)\}\)/.test(cellar) && /replace\(\/\^brain-engine-\(b\\d\+\)\$\/, 'llama\.cpp \$1'\)/.test(cellar), 'the undo button reads "Go back to the previous engine (llama.cpp b12282)"');
 const h = HELP.find((x) => x.id === 'smart-app-control'), faq = HELP.find((x) => x.id === 'faq-smart-app-control'), g = HELP.find((x) => x.id === 'glossary');
-check(h && /Try again/.test(h.html) && /never switch Smart App Control off/.test(h.html) && faq && /<dt>Smart App Control<\/dt>/.test(g.html), 'Help, FAQ and the glossary explain Smart App Control');
+// 1.5.204 (the owner: "prepare people for that"): Help now says how to turn it off and what that costs, and that
+// Bob never changes it himself.
+check(h && /Try again/.test(h.html) && /I never change it myself/.test(h.html) && /pick <strong>Off<\/strong>/.test(h.html) && /can't be turned back on/.test(h.html) && faq && /<dt>Smart App Control<\/dt>/.test(g.html), 'Help, FAQ and the glossary explain Smart App Control, how to turn it off and what that costs');
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failures} failed`);

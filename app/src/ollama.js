@@ -183,12 +183,12 @@ export class Ollama {
     }
   }
 
-  async chatOnce({ model, messages, tools, signal, onToken, onThink, cpu = false, think, ctx }) {
+  async chatOnce({ model, messages, tools, signal, onToken, onThink, cpu = false, think, ctx, temperature }) {
     const thinkSend = await this.thinkField(model, think);
     const res = await fetch(this.url + '/api/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model, messages, tools: tools && tools.length ? tools : undefined, stream: true, keep_alive: this.keepAlive(model), options: this.opts(cpu, ctx),
+      body: JSON.stringify({ model, messages, tools: tools && tools.length ? tools : undefined, stream: true, keep_alive: this.keepAlive(model), options: Number.isFinite(temperature) ? { ...this.opts(cpu, ctx), temperature } : this.opts(cpu, ctx), // an assistant preset's own temperature
         // Deep thought: gpt-oss takes a reasoning level; other models don't all understand "think", so it's only sent to gpt-oss.
         think: thinkSend }),
       signal

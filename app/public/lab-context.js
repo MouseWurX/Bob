@@ -4,6 +4,7 @@
 import { esc } from './rich.js';
 import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 import { meter, fitsAnswer, ladderSizes, kLabel, STOPS, SQUEEZE, STRETCH } from './lab-context-math.js';
+import { goBtn } from './lab-go.js'; // a button to where the message points
 
 export function createContextPage({ api }) {
   let v = null, from = '', at = 5, squeeze = 'half', stretch = 1, sizes = [1024, 4096, 16384, 32768], forget = true, plan = null, msg = '', used = '', askUnload = null, loading = false;
@@ -65,7 +66,7 @@ export function createContextPage({ api }) {
     const b = brain();
     return `<h3>${nameNow('How much can it hold?')}</h3>
       <p class="muted">How much chat a brain can keep in mind, what more costs in memory and speed, and what it forgets past that. Free, here.</p>
-      <fieldset><legend>Which brain?</legend>${v.brains.map((x) => `<label class="lab-opt"><input type="radio" name="ctxfrom" value="${esc(x.id)}" ${from === x.id ? 'checked' : ''}> <span><strong>${esc(x.name)}</strong><br><span class="muted">${x.sizeGB} GB${x.max ? `, made for ${kLabel(x.max)}` : ''}</span></span></label>`).join('') || '<p>There are no brains here yet. Get one from Get models.</p>'}</fieldset>
+      <fieldset><legend>Which brain?</legend>${v.brains.map((x) => `<label class="lab-opt"><input type="radio" name="ctxfrom" value="${esc(x.id)}" ${from === x.id ? 'checked' : ''}> <span><strong>${esc(x.name)}</strong><br><span class="muted">${x.sizeGB} GB${x.max ? `, made for ${kLabel(x.max)}` : ''}</span></span></label>`).join('') || '<p>There are no brains here yet. Get one from Get models.' + goBtn('models') + '</p>'}</fieldset>
       ${b ? meterHtml(b) + ladderHtml(b) : ''}
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
       ${(v.runs || []).filter((r) => !from || r.brain.id === from).map((r, i) => resultHtml({ ...r, saw: r.saw || '' }, i)).join('')}`;

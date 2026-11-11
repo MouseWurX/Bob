@@ -15,6 +15,9 @@ Bob is a free, open-source AI helper that runs on your own computer: Windows 10 
 - "Hands" (each one off until you switch it on): file jobs, running programs you approve, schedules, and clicking and typing in other apps, working inside apps such as Unreal Engine and Blender through their MCP add-ons, office documents, and a security and privacy sidekick (Defender checks, suspicious files and emails, hidden photo details, website checks), with an approval card for each action unless you choose otherwise
 - sessions (Normal, Art, Coding, Office, Gaming) that decide how Bob shares your PC, including a Gaming session that keeps the graphics card for your games
 - the Computer Science Lab: make your own brain from one you have (cut experts, take out sight or hearing, mix two brains), test it on short challenges and see inside it, with every command shown
+- his own brains: Riker, Bobert and Bill, cut and retrained from an open model to fit everyday graphics cards, with their scores and lesson sets published ([Bob's own models](BOBS-OWN-MODELS.md))
+- Bob-Net: your Bobs on a PC, laptop, handheld and phone share graphics cards and memory, pass jobs along and check each other's work, over your home network or Tailscale
+- documents read and searched with nothing extra installed, and shown beside the chat
 - a character: a dry-humoured digital engineer with his own looks, voices and personality settings
 
 Bob's code is GPL-3.0-or-later and his art and writing are CC BY-SA 4.0. He has no accounts and sends no telemetry, and anything that reaches the internet (web search, cloud helpers, phone access) is off until you switch it on. Downloads wait for you to confirm them. See the [README](../../README.md), the [user guide](USER-GUIDE.md) and the [privacy policy](legal/PRIVACY.md).
