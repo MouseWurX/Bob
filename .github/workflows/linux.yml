@@ -161,6 +161,7 @@ jobs:
             runner: ubuntu-24.04-arm
     name: .deb and Flatpak (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: app
@@ -205,6 +206,7 @@ jobs:
           ls -la Bob-*-linux-*
           test -f Bob-*-linux-${{ matrix.deb }}.deb && test -f Bob-*-linux-${{ matrix.flatpak }}.flatpak
       - name: Install the .deb, start it and check Bob answers
+        timeout-minutes: 15 # a stuck mirror or a Bob that never starts must not hold the runner for hours
         # The real thing: apt puts it in /opt/Bob (with the sandbox helper and AppArmor profile from the package), then
         # it starts on a virtual screen, as a user would open it from the menu.
         run: |
@@ -230,6 +232,7 @@ jobs:
           sudo apt-get remove -y -qq bob > /dev/null
           test ! -e /opt/Bob/bob || { echo "apt remove left /opt/Bob/bob behind"; exit 1; }
       - name: Install the Flatpak, start it and check Bob answers
+        timeout-minutes: 15 # a stuck mirror or a Bob that never starts must not hold the runner for hours
         # Installed for this user from the bundle, as "Update Bob" does, then started with flatpak run on a virtual screen.
         # The Flatpak shares the network, so Bob's 127.0.0.1:7777 is the runner's.
         run: |
