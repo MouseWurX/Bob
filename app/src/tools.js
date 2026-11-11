@@ -1,5 +1,6 @@
 // Bob's tools. Each tool has a JSON schema for the model, an optional approval check,
 // and a run function. Anything risky goes through approval; the inn folder is Bob's own space.
+import { appendText } from './vault.js'; // 🔒 Lock my chats and memory
 import fs from 'node:fs';
 import path from 'node:path';
 import { isInside, insideAny, appDir, findOutput } from './config.js';
@@ -184,7 +185,7 @@ export function buildTools(cfg) {
       if (!fact) throw new Error('Nothing to remember.');
       const clean = String(fact).replace(/\s+/g, ' ').trim();
       const line = `- ${recallOn(cfg) ? tagLine(`${clean} (${today(cfg)})`, project) : `${clean} (${today(cfg)})`}\n`;
-      fs.appendFileSync(cfg.memoryFile, line);
+      appendText(cfg, cfg.memoryFile, line);
       return recallOn(cfg) && project ? `Remembered, in the ${String(project).replace(/[\][]/g, '').trim()} memory bank.` : 'Remembered.';
     },
     summary: ({ fact, project }) => `remember: ${String(fact).slice(0, 80)}${project ? ` (${project})` : ''}`

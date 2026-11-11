@@ -3,12 +3,14 @@
 // keep up without a reload. Nothing here talks to the internet.
 import { applySavedStyle } from './themes.js';
 import { createCellar } from './cellar.js';
+import { watchLock } from './lock-settings.js';
 import { createHelp } from './help.js';
 import { installTips } from './tips.js';
 import { CHANNEL, RELAY, jumpFromHash, message } from './settings-link.js';
 
 applySavedStyle();
 installTips();
+watchLock(); // 🔒 back to the lock screen once Bob locks
 
 const chan = 'BroadcastChannel' in window ? new BroadcastChannel(CHANNEL) : null;
 const tell = (name, detail) => { try { chan?.postMessage(message(name, detail)); } catch {} };

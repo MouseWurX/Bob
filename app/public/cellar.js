@@ -10,6 +10,7 @@ import { drawBob } from './bob-sprite.js';
 import { handsSettingsHtml, mountHandsSettings } from './hands.js';
 import { quarantineSettingsHtml, mountQuarantineSettings } from './quarantine.js';
 import { phoneAccessHtml, mountPhoneAccess } from './phone-access.js';
+import { lockSettingsHtml, mountLockSettings, lockSummary } from './lock-settings.js'; // 🔒 Passcode lock
 import { telegramHtml, mountTelegram } from './telegram.js';
 import { discordHtml, mountDiscord } from './discord.js';
 import { checkinsHtml, mountCheckins } from './checkins.js';
@@ -615,6 +616,8 @@ export function createCellar({ popOut = null } = {}) {
     // 1.5.79 How-tos (closed, it shows how many and whether he learns new ones).
     // 1.5.125 Bob's home folder (closed, it shows the home folder; red when it's somewhere temporary).
     ['ev-home', '📦 Bob\'s home folder', () => { const h = homeInfo || {}; return h.tempLike ? `${settings?.home || ''} · in ${h.tempLike}: move it` : h.synced ? `${h.folder || settings?.home || ''} · a ${h.synced} folder, synced to the cloud: not recommended` : `${h.folder || settings?.home || ''}${h.modelsText ? ` · models ${h.modelsText}` : ''}`; }, () => homeHtml()],
+    // 🔒 Passcode lock (closed, it shows whether it's on and whether chats and memory are locked).
+    ['ev-lock', '🔒 Passcode lock', () => lockSummary(settings?.passcodeLock), () => lockSettingsHtml()],
     ['ev-save', '💾 Where Bob saves things', () => { const sd = settings?.saveDir || {}; return sd.missing ? 'Picked folder not found · saving in Bob\'s own folder' : sd.custom ? sd.folder : 'Bob\'s own folder (Made by Bob)'; }, () => saveDirHtml()],
     // 1.5.144 🧰 Tools and how-tos Bob made (closed, it shows how many of each and how many wait on the shelf).
     ['ev-howtos', '🧰 Tools and how-tos Bob made', () => { const c = ownKit ? { tools: ownKit.tools.length, howtos: ownKit.howtos.length, deleted: ownKit.deleted.length } : (settings?.ownKit || { tools: 0, howtos: settings?.howtoCount || 0, deleted: 0 }); const bit = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`; return c.tools || c.howtos ? `${bit(c.tools, 'tool')} · ${bit(c.howtos, 'how-to')}${c.deleted ? ` · ${c.deleted} recently deleted` : ''}` : 'Nothing made yet'; }, () => ownKitHtml()]];
@@ -821,7 +824,7 @@ export function createCellar({ popOut = null } = {}) {
     const l = mb.last;
     const last = l ? `Last message: ${l.lines} of ${l.of} memories, matched by ${l.by === 'meaning' ? 'meaning' : 'words'}${l.project ? ` (${esc(l.project)} memory bank)` : ''}.` : '';
     return `<div class="memory-banks"><p class="muted"><strong>Memory banks:</strong> ${list || 'General 0'}. ${last}</p>
-      <button type="button" data-openmemory>Open Bob's memory file</button> <span class="muted">One line per memory. Add [project: Name] (a name from Projects) to put a line in that project's bank, or [always] to have Bob read it every time.</span></div>`;
+      <button type="button" data-openmemory>Open Bob's memory file</button> <span class="muted">One line per memory. Add [project: Name] (a name from Projects) to put a line in that project's bank, or [always] to have Bob read it every time.</span><div class="mem-edit"></div></div>`;
   }
 
   // 1.5.24: speed for this PC. Three switches (off unless turned on) and a before-and-after speed test.
@@ -1125,6 +1128,7 @@ export function createCellar({ popOut = null } = {}) {
     mountHandsSettings(dlg.querySelector('.hands-box')); // loads its own data; does nothing off the Settings tab
     mountQuarantineSettings(dlg.querySelector('.q-box'));
     mountPhoneAccess(dlg.querySelector('.phone-box')); // Bob-Net, This Bob: Let my other replicant matrices in
+    mountLockSettings(dlg.querySelector('.lock-box'), { onChange: (v) => { if (settings) settings.passcodeLock = v; const n = dlg.querySelector('[data-panel="ev-lock"] .spanel-note'); if (n) n.textContent = lockSummary(v); } }); // 🔒 Passcode lock
     mountTelegram(dlg.querySelector('.telegram-box')); // Online services: Talk to Bob on Telegram
     mountDiscord(dlg.querySelector('.discord-box')); // Online services: Bob on Discord
     mountCheckins(dlg.querySelector('.checkins-box')); // 1.5.78 Check-ins
@@ -1337,6 +1341,13 @@ export function createCellar({ popOut = null } = {}) {
       if ('savedir' in b.dataset) { const v = dlg.querySelector('#save-path')?.value.trim(); if (v) await saveDirTo(v); return; }
       if ('saveown' in b.dataset) { await saveDirTo(''); return; }
       if ('opennotes' in b.dataset) { try { await api('/api/open', { path: settings?.quickNotesFile || '' }); } catch (err) { flash(b, err.message); } return; }
+      // 🔒 With Lock my chats and memory on, the file is scrambled on disk: it opens here instead of in a text editor.
+      if ('openmemory' in b.dataset && settings?.passcodeLock?.encrypt) {
+        const box = b.parentElement.querySelector('.mem-edit');
+        try { const r = await api('/api/memory/text'); if (box) box.innerHTML = `<label class="muted" for="mem-text">Bob's memory (locked on disk, so it opens here)</label><textarea id="mem-text">${esc(r.text || '')}</textarea><div class="row"><button type="button" data-memsave>Save</button><span class="muted mem-out" aria-live="polite"></span></div>`; } catch (err) { flash(b, err.message); }
+        return;
+      }
+      if ('memsave' in b.dataset) { const box = b.closest('.mem-edit'); try { await api('/api/memory/text', { text: box.querySelector('textarea').value }); box.querySelector('.mem-out').textContent = 'Saved.'; } catch (err) { flash(b, err.message); } return; }
       if ('openmemory' in b.dataset) { try { await api('/api/open', { path: settings?.memoryBanks?.file || '' }); } catch (err) { flash(b, err.message); } return; }
       if ('saveopen' in b.dataset) { try { await api('/api/open', { path: settings?.saveDir?.folder || '' }); } catch (err) { const eb = dlg.querySelector('.save-error'); if (eb) { eb.textContent = err.message; eb.hidden = false; } } return; }
       if ('projbrowse' in b.dataset) { const r = await api('/api/pick-folder', {}); const box = dlg.querySelector('#proj-path'); if (r.folder && box) { box.value = r.folder; projAddState(); const nm = dlg.querySelector('#proj-name'); if (nm && !nm.value) nm.value = r.folder.split(/[\\/]/).filter(Boolean).pop() || ''; } else if (r.error) { const eb = dlg.querySelector('.proj-error'); if (eb) { eb.textContent = r.error; eb.hidden = false; } } return; }

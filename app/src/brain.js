@@ -1,5 +1,6 @@
 // Bob's brain: runs a conversation turn, picks the right model, announces swaps,
 // calls tools, asks the user for approval when needed, and keeps a logbook.
+import { readText, writeJson } from './vault.js'; // 🔒 Lock my chats and memory
 import { ownModels } from './own-models.js';
 import fs from 'node:fs';
 import { writeJsonAtomic } from './util.js';
@@ -719,7 +720,7 @@ export class Brain {
   // forText (helpers' jobs): with "Remember only what fits" on, the lines that fit the job, matched by words.
   memory(forText = '') {
     try {
-      const m = fs.readFileSync(this.cfg.memoryFile, 'utf8');
+      const m = readText(this.cfg.memoryFile);
       // 1.5.79: with recall on, the instructions keep only the [always] lines; the rest come per message (recall()).
       if (recallOn(this.cfg)) {
         const always = alwaysText(m);
@@ -736,7 +737,7 @@ export class Brain {
   // 1.5.79: the memory lines that fit this message, from the general bank and the active project's bank.
   async recallMemories(sessionId, text, { vec = null, topicProject = '' } = {}) {
     let m = '';
-    try { m = fs.readFileSync(this.cfg.memoryFile, 'utf8'); } catch { return ''; }
+    try { m = readText(this.cfg.memoryFile); } catch { return ''; }
     const lines = parseMemory(m);
     if (!lines.length) return '';
     this.memProject ||= new Map();
@@ -755,7 +756,7 @@ export class Brain {
   session(id) {
     if (!this.sessions.has(id)) {
       let msgs = [];
-      try { msgs = JSON.parse(fs.readFileSync(this.sessionFile(id), 'utf8')); } catch {}
+      try { msgs = JSON.parse(readText(this.sessionFile(id))); } catch (e) { if (e.code === 'VAULT_LOCKED') return msgs; } // 🔒 a locked chat is never cached as empty
       this.sessions.set(id, msgs);
     }
     return this.sessions.get(id);
@@ -781,7 +782,7 @@ export class Brain {
     while (msgs.length && msgs[0].role !== 'user') dropped.push(msgs.shift()); // never start mid tool-call
     if (dropped.length) { try { keepOlder(this.cfg, id, dropped); } catch {} }
     for (const m of msgs) delete m.images; // pictures stay on the shelf; Bob keeps the description
-    try { writeJsonAtomic(this.sessionFile(id), msgs, 0); } catch {}
+    try { writeJson(this.cfg, this.sessionFile(id), msgs); } catch {} // 🔒 locked when Lock my chats and memory is on
   }
 
   history(id) {

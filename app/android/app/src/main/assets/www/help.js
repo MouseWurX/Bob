@@ -104,6 +104,16 @@ globalThis.BobHelp = {
       html: `<p>Settings, <strong>Pick up where Bob left off</strong> (off to start with). Android sometimes closes apps in the background to save memory. With this on, if that happens in the middle of a phone-brain reply, I ask the question again when you come back.</p>`
     },
     {
+      id: 'lock', title: 'Passcode lock',
+      html: `<p>Settings, <strong>🔒 Passcode lock</strong> (off to start with). Anyone holding this phone can open me and read our chats. A passcode stops that.</p>
+<ul><li><strong>Save passcode:</strong> at least 4 characters, typed twice. To change it, type the one you have now too. I never keep a copy, only a lock it opens.</li>
+<li><strong>Ask for a passcode to open Bob:</strong> a passcode screen each time I open.</li>
+<li><strong>Lock again after:</strong> back to the passcode screen when nobody has touched me for that many minutes. 0 means only when I open.</li>
+<li><strong>Lock my chats and memory:</strong> this phone's chats and my memory are kept scrambled (encrypted) in my storage, opened by the passcode. Off puts them back to plain.</li>
+<li><strong>Lock Bob now:</strong> back to the passcode screen at once.</li></ul>
+<p><strong>⚠ If you forget the passcode, your locked chats and memory are gone for good.</strong> Nobody can open them, not even me, and there is no reset. Write it down first. Your other replicant matrix has its own lock, in its Settings, This replicant matrix, Passcode lock.</p>`
+    },
+    {
       id: 'alerts', title: 'Alerts',
       html: `<p>When I'm in the background and a Bob on your network needs your OK, or has a check-in for you, Android shows a notification. The first time, Android asks if that's all right. Tap the notification to come back to me.</p><p>Check-ins are set up on your other replicant matrix (Settings, 🔔 Check-ins). The phone only shows them.</p>`
     },
@@ -177,6 +187,7 @@ globalThis.BobHelp = {
 <dt>Tailscale</dt><dd>A free app that makes a private, scrambled link between your own devices, wherever they are.</dd>
 <dt>Model family</dt><dd>Models made by the same team and built the same way, like Qwen or Gemma. One family comes in many sizes, from phone-sized to big. Under Phone brain each family has its own header you open and close.</dd>
 <dt>Replicant matrix</dt><dd>What I call the computer a Bob runs on. Here that's this replicant matrix (this phone); your other Bobs each live on their own, like your other replicant matrix at home. It's still your computer or phone; it's just my name for it.</dd>
+<dt>Passcode lock</dt><dd>A passcode screen before I open, off to start with (Settings, Passcode lock). With Lock my chats and memory on, this phone's chats and my memory are scrambled too, and a lost passcode means they're gone for good.</dd>
 <dt>Passcode</dt><dd>The code you make on your other replicant matrix under Let my other replicant matrices in (or on the phone under Lend my brain). It proves the device asking is yours.</dd>
 <dt>Lend my brain</dt><dd>This phone thinks quick replies for your other Bobs. They send words; the phone sends words back. The phone only thinks: no tools, files or programs run here for them, and nothing is kept.</dd>
 <dt>Borrowed brain</dt><dd>What your other replicant matrix calls it when another of your replicant matrices thinks a reply for him.</dd>
@@ -205,6 +216,7 @@ globalThis.BobHelp = {
       html: `<table>
 <tr><th>What happens</th><th>What to do</th></tr>
 <tr><td>The chest is empty or says no Bob is reachable</td><td>The chest is your other Bob's Made by Bob list, so it needs him on Tailscale. Once he's reachable, open the menu and tap Chest again.</td></tr>
+<tr><td>I forgot my passcode</td><td>If Lock my chats and memory was on, those chats and my memory are gone for good: the passcode is the only key and there is no reset. To start fresh, clear my storage (Android Settings, Apps, Bob, Storage, Clear storage); that removes the lock, the chats and your phone settings. Your other replicant matrix's chats aren't touched.</td></tr>
 <tr><td>The pill says Nobody home</td><td>Tap it. Usually your other replicant matrix is asleep, or Tailscale is off on the phone or your other replicant matrix.</td></tr>
 <tr><td>"Isn't letting other replicant matrices in yet"</td><td>On your other replicant matrix: Bob's Settings, Bob-Net, Let my other replicant matrices in. Turn it on, then restart Bob on your other replicant matrix.</td></tr>
 <tr><td>"That isn't a Tailscale address"</td><td>Use the address your other replicant matrix's Let my other replicant matrices in setting shows: a name ending in .ts.net, or a number starting 100.</td></tr>

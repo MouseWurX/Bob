@@ -1,4 +1,5 @@
 // Bob's local server: serves the panel and a small API. Only listens on this PC.
+import { readText, writeText, vaultOn } from './vault.js'; // 🔒 Lock my chats and memory
 import { ramNow, memGB } from './server-ram.js';
 import { cpuLoad } from './speed-stats.js';
 import os from 'node:os';
@@ -79,6 +80,7 @@ import { saveHelpBundle, bundleBytes, revealFile } from './help-bundle.js';
 import { notesFile, ensureNotesFile } from './notes.js';
 import { clearDocCache } from './my-docs.js';
 import { sandboxHolds } from './selftools.js';
+import { Lock, lockOn, lockView, lockPage, OPEN_WHILE_LOCKED } from './lock.js'; // 🔒 Passcode lock (off unless you turn it on)
 
 const cfg = loadConfig();
 // 1.5.76: the basic llama.cpp that comes inside Bob's download goes into his engine folder, if he has none yet.
@@ -94,7 +96,7 @@ function speedView() {
 // 1.5.79: the memory banks for Settings (general + one per project), and what the last message recalled.
 function memoryBanksView() {
   let text = '';
-  try { text = fs.readFileSync(cfg.memoryFile, 'utf8'); } catch {}
+  try { text = readText(cfg.memoryFile); } catch {}
   const last = brain?.lastRecall || null;
   return { banks: memoryBanks(cfg, text), last, file: cfg.memoryFile };
 }
@@ -251,6 +253,7 @@ readRemote();
 // matrix's Tailscale addresses, never on every address. Only an explicit remote.bindAddress in config.json binds wide.
 const startedWide = Boolean(remoteOn && remote.bindAddress);
 const loginTries = [];
+const winLock = new Lock(cfg, { log: (k, t) => brain.log(k, t) });
 
 // Phone access over Tailscale only: loopback or the Tailscale range (100.64.0.0/10).
 function fromTailscaleOrLocal(addr) {
@@ -313,6 +316,32 @@ const server = http.createServer(async (req, res) => {
       }
       return send(res, 401, LOGIN_PAGE, 'text/html; charset=utf-8');
     }
+
+    // 🔒 Passcode lock (off unless you turn it on): on this replicant matrix, nothing but the lock screen until the
+    // passcode is typed. Phones and other Bobs come through the door above with its own passcode instead.
+    if (isLocal && lockOn(cfg)) {
+      if (req.method === 'POST' && p === '/unlock') {
+        const origin = String(req.headers.origin || '').toLowerCase();
+        if (origin && origin !== `http://${host}`) return send(res, 403, { error: 'refused (other website)' });
+        let raw = '';
+        for await (const c of req) { raw += c; if (raw.length > 2000) break; }
+        const form = new URLSearchParams(raw);
+        const next = form.get('next') || '/';
+        const r = winLock.unlock(form.get('code') || '');
+        if (r.error) { brain.log('settings', 'passcode lock: a wrong passcode was typed'); return send(res, r.code, lockPage({ next, wrong: r.error, encrypt: vaultOn(cfg) }), 'text/html; charset=utf-8'); }
+        res.writeHead(303, { location: /^\/[^/]/.test(next) || next === '/' ? next : '/', 'set-cookie': winLock.cookie(r.token), 'cache-control': 'no-store' });
+        return res.end();
+      }
+      if (!winLock.allowed(req)) {
+        if (req.method === 'GET' && p === '/api/status') return send(res, 200, { locked: true, version: VERSION });
+        if (req.method === 'GET' && p === '/api/lock/state') return send(res, 200, { enabled: true, locked: true });
+        if (!OPEN_WHILE_LOCKED(req.method, p)) {
+          if (p.startsWith('/api/')) return send(res, 401, { error: 'Bob is locked.', locked: true });
+          return send(res, 401, lockPage({ next: req.method === 'GET' ? req.url : '/', encrypt: vaultOn(cfg) }), 'text/html; charset=utf-8');
+        }
+      } else if (req.method === 'POST') winLock.touch(req);
+    }
+    if (req.method === 'GET' && p === '/api/lock/state') return send(res, 200, { enabled: isLocal && lockOn(cfg), locked: false });
 
     if (req.method === 'POST' && req.headers['x-bob'] !== '1') return send(res, 403, { error: 'missing header' });
     // More locks on the same door (the x-bob header alone already makes a browser ask first, and Bob never says yes):
@@ -469,7 +498,35 @@ const server = http.createServer(async (req, res) => {
     // 1.5.74: whether the core engines start (first-run step 1, and Settings, Engines).
     if (req.method === 'GET' && p === '/api/engines/check') return send(res, 200, { checks: await Promise.all(['llamacpp', 'sdcpp', 'whispercpp'].map((id) => checkEngine(cfg, id))) });
     if (req.method === 'GET' && p === '/api/settings') {
-      return send(res, 200, { apuHoldbackGB: apuHoldbackGB(cfg), autostart: autostartOn(), tray: cfg.tray !== false, lookIcon: cfg.lookIcon !== false, catalogUpdates: cfg.catalogUpdates === true, computerLab: labOn(cfg), computerLabRoom: labRoom(), qwenPresets: cleanPresets(cfg.qwenPresets), qwenDefaults: Object.fromEntries(Object.entries(QWEN_PRESETS).map(([id, p]) => [id, { label: p.label, ...qwenPreset(id) }])), trayHere: Boolean(globalThis.bobWindow), setupDone: Boolean(cfg.setupDone), wantsAsked: cfg.wantsAsked === true, look: cfg.look || null, lookText: lookText(cfg.look), personality: cleanPersonality(cfg.personality), lookComments: cfg.lookComments === true, userName: cfg.userName || '', callMe: cfg.callMe || '', windowsName: cfg.windowsName || '', engine: cfg.engine, workshop: workshopView(), catName: cfg.catName || 'Patches', version: VERSION, oneBrain: cfg.oneBrain === true, allTools: cfg.allTools === true, memoryRecall: cfg.memoryRecall === true, memoryBanks: memoryBanksView(), resumeJobs: cfg.resumeJobs === true, planFirst: cfg.planFirst === true, autoSession: autoSessionOn(cfg), gamingLock: cfg.gamingLock === true, sessionBy: cfg.sessionBy === 'bob' ? 'bob' : 'you', quickOnCpu: cfg.quickOnCpu === true, chatWhileBusy: cfg.chatWhileBusy !== false, mootBeside: cfg.mootBeside === true, netReview: cfg.netReview === true, webSearch: cfg.webSearch === true, naughtyList: cfg.naughtyList === true, howtos: cfg.howtos === true, editOwn: cfg.editOwn === true, quickNotes: cfg.quickNotes === true, smartNotes: cfg.smartNotes === true, quickNotesFile: notesFile(cfg), docTools: cfg.docTools === true, docView: cfg.docView === true, sandboxCode: cfg.sandboxCode === true, howtoCount: brain.howtos?.load().length || 0, ownKit: ownKitCounts(cfg, brain), gamingCard: gamingCard(cfg), gamingCardNow: brain.engine?.currentCard || null, pictureNoWait: cfg.pictureNoWait !== false, ...tuning(cfg), downloads: { concurrent: cfg.downloads?.concurrent === 2 ? 2 : 1, resumeOnStart: cfg.downloads?.resumeOnStart === true }, updates: { autoCheck: cfg.updates?.autoCheck === true }, engineUpdates: engineKeeper.view(), ollamaKeepAlive: keepTime(cfg), brainMode: brainMode(cfg), tts: { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice || 'am_michael', speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '', voicesFolder: path.join(cfg.innDir, 'voices') }, kokoroVoices: KOKORO_VOICES, session: currentSession(cfg), sessions: Object.entries(SESSIONS).map(([id, x]) => ({ id, ...x, ...(OS === 'mac' && x.whatMac ? { what: x.whatMac } : {}) })), sessionBrains: sessionBrains(cfg), activeModels: cfg.activeModels || {}, sessionCtx: cfg.sessionCtx || {}, brainCtxOn: cfg.brainCtxOn === true, brainCtxStretch: cfg.brainCtxStretch === true, brainCtx: cfg.brainCtx || {}, speed: speedView(), style: cfg.style || {}, painter: cfg.painter?.engine || 'comfy', platform: process.platform, os: OS, features: features(), home: cfg.agentDir, housekeeping: hkSettings(cfg), hands: handsSettings(cfg), houseStyle: cleanHouseStyle(cfg.houseStyle), projectList: Object.entries(cfg.projects || {}).filter(([, p]) => !isInside(codeCopyRoot(cfg), p)).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) })), selfWork: selfWorkNow(), defaultProject: cfg.defaultProject || '', saveDir: saveDirView() });
+      return send(res, 200, { apuHoldbackGB: apuHoldbackGB(cfg), autostart: autostartOn(), tray: cfg.tray !== false, lookIcon: cfg.lookIcon !== false, catalogUpdates: cfg.catalogUpdates === true, computerLab: labOn(cfg), computerLabRoom: labRoom(), qwenPresets: cleanPresets(cfg.qwenPresets), qwenDefaults: Object.fromEntries(Object.entries(QWEN_PRESETS).map(([id, p]) => [id, { label: p.label, ...qwenPreset(id) }])), trayHere: Boolean(globalThis.bobWindow), setupDone: Boolean(cfg.setupDone), wantsAsked: cfg.wantsAsked === true, look: cfg.look || null, lookText: lookText(cfg.look), personality: cleanPersonality(cfg.personality), lookComments: cfg.lookComments === true, userName: cfg.userName || '', callMe: cfg.callMe || '', windowsName: cfg.windowsName || '', engine: cfg.engine, workshop: workshopView(), catName: cfg.catName || 'Patches', version: VERSION, oneBrain: cfg.oneBrain === true, allTools: cfg.allTools === true, memoryRecall: cfg.memoryRecall === true, memoryBanks: memoryBanksView(), resumeJobs: cfg.resumeJobs === true, planFirst: cfg.planFirst === true, autoSession: autoSessionOn(cfg), gamingLock: cfg.gamingLock === true, sessionBy: cfg.sessionBy === 'bob' ? 'bob' : 'you', quickOnCpu: cfg.quickOnCpu === true, chatWhileBusy: cfg.chatWhileBusy !== false, mootBeside: cfg.mootBeside === true, netReview: cfg.netReview === true, webSearch: cfg.webSearch === true, naughtyList: cfg.naughtyList === true, howtos: cfg.howtos === true, editOwn: cfg.editOwn === true, quickNotes: cfg.quickNotes === true, smartNotes: cfg.smartNotes === true, quickNotesFile: notesFile(cfg), docTools: cfg.docTools === true, docView: cfg.docView === true, sandboxCode: cfg.sandboxCode === true, howtoCount: brain.howtos?.load().length || 0, ownKit: ownKitCounts(cfg, brain), gamingCard: gamingCard(cfg), gamingCardNow: brain.engine?.currentCard || null, pictureNoWait: cfg.pictureNoWait !== false, ...tuning(cfg), downloads: { concurrent: cfg.downloads?.concurrent === 2 ? 2 : 1, resumeOnStart: cfg.downloads?.resumeOnStart === true }, updates: { autoCheck: cfg.updates?.autoCheck === true }, engineUpdates: engineKeeper.view(), ollamaKeepAlive: keepTime(cfg), brainMode: brainMode(cfg), tts: { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice || 'am_michael', speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '', voicesFolder: path.join(cfg.innDir, 'voices') }, kokoroVoices: KOKORO_VOICES, session: currentSession(cfg), sessions: Object.entries(SESSIONS).map(([id, x]) => ({ id, ...x, ...(OS === 'mac' && x.whatMac ? { what: x.whatMac } : {}) })), sessionBrains: sessionBrains(cfg), activeModels: cfg.activeModels || {}, sessionCtx: cfg.sessionCtx || {}, brainCtxOn: cfg.brainCtxOn === true, brainCtxStretch: cfg.brainCtxStretch === true, brainCtx: cfg.brainCtx || {}, speed: speedView(), style: cfg.style || {}, painter: cfg.painter?.engine || 'comfy', platform: process.platform, os: OS, features: features(), home: cfg.agentDir, housekeeping: hkSettings(cfg), hands: handsSettings(cfg), houseStyle: cleanHouseStyle(cfg.houseStyle), projectList: Object.entries(cfg.projects || {}).filter(([, p]) => !isInside(codeCopyRoot(cfg), p)).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) })), selfWork: selfWorkNow(), defaultProject: cfg.defaultProject || '', saveDir: saveDirView(), passcodeLock: lockView(cfg) });
+    }
+    // 🔒 Passcode lock (Settings, This replicant matrix). Only from this replicant matrix, only once you're in.
+    if (p === '/api/lock' && (req.method === 'GET' || req.method === 'POST')) {
+      if (!isLocal) return send(res, 403, { error: 'The passcode lock can only be changed on this replicant matrix itself.' });
+      if (req.method === 'GET') return send(res, 200, lockView(cfg, winLock));
+      const b = await body(req);
+      const wasOn = lockOn(cfg);
+      const r = winLock.change(b);
+      if (r.error) return send(res, 400, { error: r.error });
+      const extra = !wasOn && lockOn(cfg) ? { 'set-cookie': winLock.cookie(winLock.grant()) } : {};
+      return send(res, 200, { ...r.view, changed: r.changed }, 'application/json', extra);
+    }
+    // 🔒 With Lock my chats and memory on, the memory file is scrambled on disk, so it's edited here instead of in a text editor.
+    if (p === '/api/memory/text' && (req.method === 'GET' || req.method === 'POST')) {
+      if (!isLocal) return send(res, 403, { error: 'Bob\'s memory can only be edited on this replicant matrix itself.' });
+      try {
+        if (req.method === 'GET') { let text = ''; try { text = readText(cfg.memoryFile); } catch (e) { if (e.code === 'VAULT_LOCKED') throw e; } return send(res, 200, { text, locked: vaultOn(cfg) }); }
+        const b = await body(req);
+        writeText(cfg, cfg.memoryFile, String(b.text ?? '').slice(0, 500000));
+        brain.log('settings', "Bob's memory edited in Settings (your click)");
+        return send(res, 200, { ok: true });
+      } catch (e) { return send(res, e.code === 'VAULT_LOCKED' ? 401 : 500, { error: e.message }); }
+    }
+    if (p === '/api/lock/now' && req.method === 'POST') {
+      if (!isLocal || !lockOn(cfg)) return send(res, 400, { error: 'The passcode lock is off.' });
+      winLock.lockNow();
+      brain.log('settings', 'passcode lock: locked now (your click)');
+      return send(res, 200, { ok: true });
     }
     // Let my phone in (Settings, Bob-Net). Only from this PC; takes effect when Bob restarts.
     if (p === '/api/phone-access' && (req.method === 'GET' || req.method === 'POST')) {

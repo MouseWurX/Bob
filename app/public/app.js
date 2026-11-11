@@ -5,6 +5,7 @@ applySavedStyle();
 import { startSwap, sceneLabel } from './brain-swap.js';
 import { createVoice } from './voice.js';
 import { createCellar } from './cellar.js';
+import { watchLock } from './lock-settings.js';
 import { CHANNEL as SETTINGS_CHANNEL, WINDOW_NAME, WINDOW_SIZE, settingsUrl, wantsWindow, accept as acceptSettings } from './settings-link.js';
 import { createShelf, uploadRef, fixSideways } from './shelf.js';
 import { summary, size } from './progress.js';
@@ -59,6 +60,7 @@ const api = async (url, data) => {
 const tasks = createTasks({ post: (u, d) => post(u, d) });
 const downloads = createDownloads({ api, post: (u, d) => post(u, d) });
 installTips();
+watchLock(); // 🔒 Passcode lock: back to the lock screen once Bob locks
 const layout = createLayout({ post: (u, d) => post(u, d), openTasks: () => tasks.open(), openDownloads: () => downloads.open() });
 
 const $ = (id) => document.getElementById(id);

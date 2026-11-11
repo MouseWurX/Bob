@@ -1,6 +1,7 @@
 // Bob for Android: the phone screen. Talks to Android through window.BobPhone (Bridge.kt).
 // Decisions live in logic.js (tested); this file draws and wires things up.
-(() => {
+// 🔒 It starts once lock.js says the phone is open (straight away while the passcode lock is off).
+(globalThis.BobLock ? globalThis.BobLock.ready() : Promise.resolve()).then(() => {
   const L = globalThis.BobLogic;
   const S = globalThis.BobShared;
   const $ = (id) => document.getElementById(id);
@@ -16,8 +17,9 @@
 
   // ---------- Storage (this phone only) ----------
   const store = {
-    get(k, d) { try { const v = localStorage.getItem(`bob.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } },
-    set(k, v) { try { localStorage.setItem(`bob.${k}`, JSON.stringify(v)); } catch { /* full or blocked: carry on in memory */ } }
+    // 🔒 Through lock.js: chats and memory come back unscrambled once the passcode was typed.
+    get(k, d) { try { const v = globalThis.BobLock ? globalThis.BobLock.get(k) : localStorage.getItem(`bob.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { if (globalThis.BobLock) globalThis.BobLock.set(k, JSON.stringify(v)); else localStorage.setItem(`bob.${k}`, JSON.stringify(v)); } catch { /* full or blocked: carry on in memory */ } }
   };
   const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, userName: '', theme: 'inn', effort: 'low', resume: false };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
@@ -933,6 +935,7 @@
 
   function drawSettings() {
     drawOwnKit();
+    globalThis.BobLock?.drawSettings();
     document.querySelectorAll('input[name="mode"]').forEach((r) => { r.checked = r.value === settings.mode; });
     $('user-name').value = settings.userName;
     $('read-aloud').checked = settings.readAloud;
@@ -1631,4 +1634,4 @@ ${chatOut}
     if (c) { chat = c; drawChat(); note('Picking up where I left off.'); queue.push({ chatId: c.id, text: pending.text, to: 'phone' }); setTimeout(pump, 1500); }
   }
   globalThis.bob._test = { send, settings, live, bobs: () => bobs, setPhoneStatus: (s) => { phoneStatus = s; drawWho(); } };
-})();
+});
