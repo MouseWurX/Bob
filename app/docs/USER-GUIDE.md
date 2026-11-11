@@ -428,7 +428,7 @@ Bob is an assistant you use every day and a workbench for the brains he runs on,
 
 Under the tabs, **Keep it simple** or **Professional** is one switch for the whole Lab: simple shows the usual choices with Bob's defaults filled in, Professional shows every control a tab has, and leads each job, way, page and challenge with its proper name (quantization, expert pruning, abliteration, speculative decoding, ARC-style and so on), with the plain words after it in brackets. The same switch is in Settings, How Bob works, Brains, as **Lab: Professional mode**.
 
-The Lab has five tabs:
+The Lab has seven tabs:
 
 - **Make a brain** starts by asking what you want to do (Make it smaller, Cut experts, Take out sight or hearing, Just test a brain, Everything, or Take out the refusal habit, which opens the Forge tab), then walks you through only the steps that job needs, with tick boxes instead of command-line flags. Everything is all five:
   1. **Pick a brain** you already have.
