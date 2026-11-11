@@ -1,4 +1,5 @@
 // Tests "Remove Bob": what it plans to remove, the guards against removing anything else, and the window.
+import { serverText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -49,7 +50,7 @@ check('inn\\bob and models\\bob go only when passed, and only folders with those
 check('data and models go to the Recycle Bin; only the program folder is deleted outright', /SendToRecycleBin/.test(ps) && /Recycle-Folder \$Inn/.test(ps) && /Recycle-Folder \$Models/.test(ps) && /Remove-Folder \$AppDir/.test(ps) && !/Remove-Folder \$(Inn|Models|ElectronData)/.test(ps));
 check('it also waits for any program running from the Bob app folder, not just the port', /Get-Process[^\n]*Where-Object \{ \$_\.Path -and \$_\.Path\.StartsWith\(\$prefix/.test(ps));
 check('the window script is plain ASCII with no PowerShell 7 syntax', !/[^\x00-\x7F]/.test(ps) && !/\?\?/.test(ps));
-const server = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
+const server = serverText();
 check('removal is local only, needs the confirm, and turns off Launch on start-up first', /p === '\/api\/uninstall'\) \{\s*if \(!isLocal\)/.test(server) && /confirm !== 'remove'/.test(server) && /if \(autostartOn\(\)\) await setAutostart\(cfg, false\)/.test(server));
 const ui = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8');
 check('Settings shows the full path and says the rest of the inn stays', /Also delete everything in <code>\$\{esc\(pl\.inn\)\}<\/code>/.test(ui) && /The rest of the inn folder/.test(ui));

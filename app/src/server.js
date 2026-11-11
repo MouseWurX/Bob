@@ -8,7 +8,7 @@ import { lookText, LOOK_ID_RE } from './look.js';
 import { cleanPersonality } from '../public/personality.js';
 import { cleanHouseStyle } from '../public/house-style.js';
 import { pickFolder } from './pick-folder.js';
-import { pickFile, inspectOwn, ownModels, ownId, cleanOwnModels, ownEntries } from './own-models.js';
+import { ownEntries } from './own-models.js';
 import { selfWorkView, gatherBrains, makeCodeCopy, applyCodeCopy, cleanSelfWork, repoNamed, codeCopyRoot } from './self-work.js'; // "Let Bob work on repositories"
 import { catalogFileFor } from './llamacpp.js';
 import { ensureTool } from './self-work-tools.js'; // 1.5.135 brains of your own
@@ -18,7 +18,6 @@ import crypto from 'node:crypto';
 import { cleanPresets, qwenPreset, QWEN_PRESETS } from './model-family.js';
 import { loadConfig, appDir, saveSettings, saveRemote, replaceSettings, cleanProjects, VERSION, findOutput, saveDirProblem, applySaveDir, isInside } from './config.js';
 import { Brain, apuHoldbackGB } from './brain.js';
-import { transcribe } from './stt.js';
 import { ModelShop } from './models.js';
 import { CatalogUpdates } from './catalog-update.js';
 import { checkEngine, seedBundledEngine, goBackEngine, removeEngine, brainsEngineSettings, engineChoices, brainsEngineNow } from './engines.js';
@@ -39,20 +38,21 @@ import { autoSessionOn } from './auto-session.js';
 import { ctxOn, stretchOn, choicesFor, pickedCtx, bobsPick, ctxGuide, SAFE_CTX } from './model-ctx.js';
 import { SLOT_NAMES } from '../public/fit.js';
 import { gamingCard, GAMING_CARD } from './gaming-card.js';
-import { plan as uninstallPlan, startUninstall } from './uninstall.js';
-import { voiceList, publicView, sampleFor, clearSamples } from './voice-samples.js';
-import { checkAll, startAny, updateStatus, requestRestart } from './update.js';
-import { describe as describeFile, openFile, peek as peekFile } from './files.js';
-import { wavePeaks } from './wave.js';
-import { thumbFor, canThumb } from './thumbs.js';
-import { homeView, homeProblem, synced, cloudWarning } from './home.js';
 import { refuseForeign } from './guard.js';
-import { search } from './search.js';
-import { hkSettings, cleanHousekeeping, KINDS, UNITS } from './housekeeping.js';
+import { hkSettings, cleanHousekeeping, KINDS } from './housekeeping.js';
 import { banks as memoryBanks, recallOn } from './recall.js';
 import { handsRoute } from './hands-routes.js';
-import { ownKitView, ownKitCounts, ownKitDelete, ownKitRestore, ownKitPurge } from './own-kit.js';
+import { ownKitCounts } from './own-kit.js';
 import { quarantineRoute } from './quarantine-routes.js';
+import { howtosRoute } from './howtos-routes.js';
+import { ownModelsRoute } from './own-models-routes.js';
+import { saveRoute } from './save-routes.js';
+import { voiceRoute } from './voice-routes.js';
+import { refsRoute } from './refs-routes.js';
+import { queueRoute } from './queue-routes.js';
+import { updateRoute } from './update-routes.js';
+import { tidyRoute } from './tidy-routes.js';
+import { filesRoute } from './files-routes.js';
 import { schedulesRoute, startSchedules } from './hands-schedules.js';
 import { checkinsRoute, startCheckins } from './checkins.js';
 import { adventureRoute } from './adventure.js';
@@ -219,6 +219,10 @@ function serveFile(res, dir, rel, extra = {}) {
     send(res, 200, buf, TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', extra);
   });
 }
+// The src/*-routes.js files get these two: the same as send and serveFile, but they return true, so
+// `return send(...)` there tells this server the request was answered.
+const answered = (...a) => { send(...a); return true; };
+const servedFile = (...a) => { serveFile(...a); return true; };
 
 // 1.5.95: a diagram file from the window that drew it (a PNG or PDF can be several MB as base64).
 async function bigBody(req, limit = 36e6) {
@@ -352,34 +356,7 @@ const server = http.createServer(async (req, res) => {
       } catch {}
       return send(res, 200, st);
     }
-    // 1.5.79 How-tos: the list (Settings), the chat card's answer (the phone too), and the person's own edits (PC only). Stored on this PC only.
-    if (req.method === 'GET' && p === '/api/howtos') return send(res, 200, { on: cfg.howtos === true, howtos: brain.howtos.list() });
-    if (req.method === 'POST' && p === '/api/howtos/answer') {
-      const b = await body(req);
-      return send(res, 200, await brain.answerHowto(String(b.id || ''), b.save === true, typeof b.name === 'string' ? b.name : ''));
-    }
-    if (req.method === 'POST' && p === '/api/howtos/edit') {
-      if (!isLocal) return send(res, 403, { error: 'How-tos can only be changed on this replicant matrix itself.' });
-      const b = await body(req);
-      try { return send(res, 200, { ok: true, howto: brain.howtos.edit(String(b.id || ''), { name: b.name, when: b.when, steps: b.steps }) }); }
-      catch (e) { return send(res, 400, { error: e.message }); }
-    }
-    if (req.method === 'POST' && p === '/api/howtos/delete') {
-      if (!isLocal) return send(res, 403, { error: 'How-tos can only be changed on this replicant matrix itself.' });
-      const b = await body(req);
-      return send(res, 200, { ok: brain.howtos.remove(String(b.id || '')) });
-    }
-    // 1.5.144 🧰 Tools and how-tos Bob made (src/own-kit.js): the list, Delete (to the shelf, 30 days), Put back,
-    // Delete for good. Delete and Put back work from a paired phone too; Delete for good only on this PC.
-    if (req.method === 'GET' && p === '/api/own-kit') return send(res, 200, ownKitView(cfg, brain));
-    if (req.method === 'POST' && (p === '/api/own-kit/delete' || p === '/api/own-kit/restore' || p === '/api/own-kit/purge')) {
-      if (p === '/api/own-kit/purge' && !isLocal) return send(res, 403, { error: 'Delete for good only works on this replicant matrix itself. From the phone you can delete (30 days to put it back) and put back.' });
-      const b = await body(req);
-      try {
-        const did = p.endsWith('/delete') ? ownKitDelete(cfg, brain, b) : p.endsWith('/restore') ? ownKitRestore(cfg, brain, b) : ownKitPurge(cfg, brain, b);
-        return send(res, 200, { ...did, view: ownKitView(cfg, brain) });
-      } catch (e) { return send(res, 400, { error: e.message }); }
-    }
+    if (await howtosRoute({ req, res, p, isLocal, cfg, brain, body, send: answered })) return;
     if (req.method === 'POST' && p === '/api/more-pictures') {
       // "Make another picture?" in the chat box: { id, more }. An old card (timed out, replaced) just says so.
       const b = await body(req);
@@ -566,44 +543,7 @@ const server = http.createServer(async (req, res) => {
       if (!isLocal) return send(res, 403, { error: 'Folders can only be picked on this replicant matrix itself.' });
       try { const b = await body(req).catch(() => ({})); return send(res, 200, { folder: await pickFolder({ purpose: ['save', 'home'].includes(b?.purpose) ? b.purpose : 'project' }) }); } catch (e) { return send(res, 200, { error: e.message }); }
     }
-    // 1.5.135: brains of your own. Pick a .gguf on this replicant matrix (local window only), add it to Bob's list, or take it off.
-    if (req.method === 'POST' && p === '/api/own-models/pick') {
-      if (!isLocal) return send(res, 403, { error: 'A file can only be picked on this replicant matrix itself.' });
-      try { const b = await body(req).catch(() => ({})); const kind = ['mmproj', 'docs'].includes(b?.kind) ? b.kind : 'gguf'; const file = await pickFile({ kind }); return send(res, 200, file ? { file, ...(kind === 'gguf' ? inspectOwn(file) : {}) } : { file: '' }); } catch (e) { return send(res, 200, { error: e.message }); }
-    }
-    if (req.method === 'POST' && p === '/api/own-models/inspect') {
-      if (!isLocal) return send(res, 403, { error: `Brains of your own can only be added or removed on ${myName() || "the Bob's own replicant matrix"} itself, not from the phone.` });
-      const b = await body(req).catch(() => ({})); return send(res, 200, inspectOwn(b?.file));
-    }
-    if (req.method === 'POST' && p === '/api/own-models') {
-      if (!isLocal) return send(res, 403, { error: `Brains of your own can only be added or removed on ${myName() || "the Bob's own replicant matrix"} itself, not from the phone.` });
-      const b = await body(req).catch(() => ({}));
-      const seen = inspectOwn(b?.gguf);
-      if (seen.error) return send(res, 400, { error: seen.error });
-      if (b?.mmproj) { const mm = inspectOwn(b.mmproj); if (mm.error) return send(res, 400, { error: `The picture reader: ${mm.error}` }); }
-      const list = ownModels(cfg);
-      if (list.some((o) => o.gguf.toLowerCase() === seen.file.toLowerCase())) return send(res, 400, { error: 'That file is already on Bob\'s list.' });
-      const name = String(b?.name || '').trim() || seen.name;
-      const next = cleanOwnModels([...list, { id: ownId(name, list), name, gguf: seen.file, mmproj: b?.mmproj || '' }]);
-      if (next.length === list.length) return send(res, 400, { error: 'Bob couldn\'t add that one (the list is full, or the name is empty).' });
-      saveSettings(cfg, { ownModels: next });
-      brain.catalogNames = null;
-      return send(res, 200, { ownModels: next, added: next[next.length - 1] });
-    }
-    if (req.method === 'POST' && p === '/api/own-models/remove') {
-      if (!isLocal) return send(res, 403, { error: `Brains of your own can only be added or removed on ${myName() || "the Bob's own replicant matrix"} itself, not from the phone.` });
-      const b = await body(req).catch(() => ({}));
-      const list = ownModels(cfg);
-      const gone = list.find((o) => o.id === b?.id);
-      if (!gone) return send(res, 404, { error: 'That brain isn\'t on Bob\'s list.' });
-      // Only the list entry goes; the file stays where it is. Any slot wearing it is emptied (the Brain falls back to the main pick).
-      const models = Object.fromEntries(Object.entries(cfg.models || {}).filter(([, v]) => v === gone.id).map(([k]) => [k, '']));
-      const patch = { ownModels: list.filter((o) => o.id !== gone.id) };
-      if (Object.keys(models).length) patch.models = models;
-      saveSettings(cfg, patch);
-      brain.catalogNames = null;
-      return send(res, 200, { ownModels: patch.ownModels, cleared: Object.keys(models) });
-    }
+    if (await ownModelsRoute({ req, res, p, isLocal, cfg, brain, body, send: answered })) return;
     if (req.method === 'POST' && p.startsWith('/api/models/') || req.method === 'POST' && p === '/api/settings') {
       if (!isLocal) return send(res, 403, { error: 'Downloads and settings can only be changed on this replicant matrix itself.' });
       const b = await body(req);
@@ -772,9 +712,7 @@ const server = http.createServer(async (req, res) => {
       } catch (e) { return send(res, 409, { error: e.message }); }
       return send(res, 404, { error: 'not found' });
     }
-    // 1.5.118 Save a help bundle (Settings, This replicant matrix and updates): one zip an agent or a person can read to
-    // work out what's wrong with this Bob (help-bundle.js). POST on this replicant matrix: picks a folder, writes the
-    // zip there and shows it. GET from a paired phone: the same zip as a download, which the phone saves itself.
+    if (await saveRoute({ req, res, p, isLocal, cfg, brain, shop, body, bigBody, send: answered })) return;
     // "Let Bob work on repositories": Make the code copy of one repository (git clone into inn/own-code/<name>).
     // Only on this replicant matrix, only with the switch on, and never over a copy that's already there.
     if (req.method === 'POST' && p === '/api/self-work/copy') {
@@ -790,50 +728,6 @@ const server = http.createServer(async (req, res) => {
       applyCodeCopy(cfg);
       brain.log('settings', r.ok ? `repositories: code copy of ${repo.name} ${r.already ? 'already there' : 'made'} at ${r.dir}` : `repositories: code copy of ${repo.name} not made: ${r.why}`);
       return send(res, 200, { ...r, selfWork: selfWorkNow() });
-    }
-    if (p === '/api/help-bundle') {
-      const deps = { brain, shop, checkEngine, speedHistory, capabilities };
-      if (req.method === 'GET') {
-        try {
-          const z = await bundleBytes(cfg, deps);
-          brain.log('settings', `help bundle sent to ${isLocal ? 'this replicant matrix' : 'a paired device'} (${z.brainNote ? "with Bob's own note" : 'automatic'})`);
-          res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Length': z.data.length, 'Content-Disposition': `attachment; filename="${z.name}"` });
-          return res.end(z.data);
-        } catch (e) { return send(res, 500, { error: e.message }); }
-      }
-      if (req.method === 'POST') {
-        if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
-        const b = await body(req).catch(() => ({}));
-        let folder = '', picked = true;
-        try { folder = await pickFolder({ purpose: 'bundle' }); } catch { picked = false; }
-        if (picked && !folder) return send(res, 200, { ok: false, cancelled: true });
-        if (!folder) folder = path.join(cfg.painterDir || cfg.innDir, 'help-bundles'); // no folder picker here: Bob's own folder
-        try {
-          const r = await saveHelpBundle(cfg, folder, { ...deps, brainNote: b.brain === false ? false : undefined });
-          brain.log('settings', `help bundle saved: ${path.basename(r.file)} (${r.brainNote ? "with Bob's own note" : `automatic: ${r.why}`})`);
-          const shown = revealFile(r.file);
-          return send(res, 200, { ...r, shown, pickedFolder: picked });
-        } catch (e) { return send(res, 200, { ok: false, why: e.message }); }
-      }
-    }
-    // 1.5.95 Save as: keep something Bob made as another file type (pictures, clips, songs; save-as.js).
-    if (req.method === 'POST' && p === '/api/save-as') {
-      const b = await body(req);
-      try {
-        const r = await saveAs(cfg, { name: b.name, format: b.format }, brain.saveAsOpts || {});
-        if (r.need === 'ffmpeg') { let offer = null; await brain.offerSetup('ffmpeg', { emit: (ev) => { offer = ev; } }, { quiet: true }).catch(() => ''); return send(res, 200, { ok: false, need: 'ffmpeg', offer }); }
-        try { brain.made.add(r.file, { tool: 'save_as' }); } catch {}
-        return send(res, 200, { ok: true, ...r });
-      } catch (e) { return send(res, 200, { ok: false, why: e.message }); }
-    }
-    // 1.5.95: a diagram drawn in a chat window, saved as PNG, SVG or PDF next to its text (diagram.js).
-    if (req.method === 'POST' && p === '/api/diagram/save') {
-      try {
-        const b = await bigBody(req);
-        const r = saveExport(cfg, { name: b.name, format: b.format, data: b.data });
-        try { brain.made.add(r.file, { tool: 'make_diagram' }); } catch {}
-        return send(res, 200, { ok: true, ...r });
-      } catch (e) { return send(res, 200, { ok: false, why: e.message }); }
     }
     // 1.5.91: the chat's Set it up card (the phone's too, like approval cards: the card's id is the permission).
     if (req.method === 'POST' && p === '/api/setup/answer') {
@@ -855,51 +749,9 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/hands/schedules' && await schedulesRoute({ req, res, p, isLocal, brain, body, send })) return;
     if (p.startsWith('/api/hands') && await handsRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
     if (p.startsWith('/api/quarantine') && await quarantineRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
-    if (req.method === 'POST' && p === '/api/transcribe') {
-      const chunks = [];
-      let size = 0;
-      for await (const c of req) { size += c.length; if (size > 15e6) return send(res, 413, { error: 'Recording too long.' }); chunks.push(c); }
-      try { return send(res, 200, { text: await transcribe(cfg, Buffer.concat(chunks)) }); }
-      catch (e) { return send(res, 502, { error: e.message }); }
-    }
-    // The reference shelf. Uploads are raw image bytes; name, kind and notes ride in the query string.
-    if (req.method === 'GET' && p === '/api/refs') return send(res, 200, brain.refs.list().map((r) => ({ ...r, ...brain.refs.info(r), url: `/refs/${r.file}` })));
-    // An upright copy of a picture that was stored on its side (phone photos), made by Bob's window.
-    if (req.method === 'POST' && p === '/api/refs/upright') {
-      const chunks = [];
-      let size = 0;
-      for await (const c of req) { size += c.length; if (size > 15e6) return send(res, 413, { error: 'That picture is too big (15 MB max).' }); chunks.push(c); }
-      try {
-        const r = brain.refs.replace(String(url.searchParams.get('id') || ''), Buffer.concat(chunks));
-        brain.log('refs', `turned ${r.name} upright`);
-        return send(res, 200, { ...r, url: `/refs/${r.file}` });
-      } catch (e) { return send(res, 400, { error: e.message }); }
-    }
-    if (req.method === 'POST' && p === '/api/refs') {
-      const chunks = [];
-      let size = 0;
-      for await (const c of req) { size += c.length; if (size > 15e6) return send(res, 413, { error: 'That picture is too big (15 MB max).' }); chunks.push(c); }
-      try {
-        const q = url.searchParams;
-        const r = brain.refs.add(Buffer.concat(chunks), { name: q.get('name'), kind: q.get('kind'), notes: q.get('notes') });
-        brain.log('refs', `added ${r.name} (${r.kind})`);
-        return send(res, 200, { ...r, url: `/refs/${r.file}` });
-      } catch (e) { return send(res, 400, { error: e.message }); }
-    }
-    if (req.method === 'POST' && (p === '/api/refs/update' || p === '/api/refs/delete')) {
-      const b = await body(req);
-      try {
-        if (p === '/api/refs/delete') return send(res, 200, { removed: brain.refs.remove(String(b.id)) });
-        const r = brain.refs.update(String(b.id), { name: b.name, kind: b.kind, notes: b.notes });
-        return send(res, 200, { ...r, url: `/refs/${r.file}` });
-      } catch (e) { return send(res, 400, { error: e.message }); }
-    }
-    if (req.method === 'GET' && p.startsWith('/refs/')) {
-      const f = path.basename(decodeURIComponent(p.slice(6)));
-      if (!/^[0-9a-f]{8}\.(png|jpg|webp)$/.test(f)) return send(res, 404, { error: 'not found' });
-      return serveFile(res, brain.refs.dir, f);
-    }
-    if (req.method === 'GET' && p === '/api/queue') return send(res, 200, brain.queueView());
+    if (await voiceRoute({ req, res, p, isLocal, cfg, shop, body, send: answered, TYPES })) return;
+    if (await refsRoute({ req, res, p, url, brain, body, send: answered, serveFile: servedFile })) return;
+    if (await queueRoute({ req, res, p, brain, body, send: answered })) return;
     if (req.method === 'GET' && p === '/api/downloads') return send(res, 200, shop.downloadsView());
     if (req.method === 'GET' && p === '/api/gpu') {
       // The whole graphics card (every app) and system memory (1.5.3). Bob's own brain line in Now running comes
@@ -914,134 +766,11 @@ const server = http.createServer(async (req, res) => {
       out.costMs = { wait: Math.round((performance.now() - t0) * 10) / 10, bobCpu: Math.round((c.user + c.system) / 100) / 10, cardCheck: gpuCache.ms ?? null };
       return send(res, 200, out);
     }
-    if (req.method === 'GET' && p === '/api/update/check') return send(res, 200, await checkAll());
-    if (req.method === 'GET' && p === '/api/update/status') return send(res, 200, updateStatus(cfg) || {});
-    if (req.method === 'POST' && p === '/api/update/restart') {
-      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
-      const { when } = await body(req);
-      try { return send(res, 200, requestRestart(cfg, when, { isBusy: () => brain.turns.size > 0 || brain.queue.some((j) => j.state === 'waiting') || Boolean(shop.job) })); } catch (e) { return send(res, 409, { error: e.message }); }
-    }
-    // "Remove Bob" (Settings): only on the PC itself, after the window's confirm.
-    if (req.method === 'GET' && p === '/api/uninstall') { const pl = uninstallPlan(cfg); return send(res, 200, { canRun: pl.canRun, why: pl.why, app: pl.app, inn: pl.inn, models: pl.models }); }
-    if (req.method === 'POST' && p === '/api/uninstall') {
-      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
-      const { confirm, notes, models } = await body(req);
-      if (confirm !== 'remove') return send(res, 400, { error: 'Confirm first.' });
-      try {
-        if (autostartOn()) await setAutostart(cfg, false); // take the login item away before the program goes
-        const r = startUninstall(cfg, { notes: notes === true, models: models === true });
-        brain.log('settings', `removing Bob (notes ${notes === true}, models ${models === true})`);
-        brain.broadcast({ type: 'announce', text: 'Packing up. A small window finishes removing me once I have closed. It was a pleasure.' });
-        send(res, 200, r);
-        setTimeout(() => (globalThis.bobQuit ? globalThis.bobQuit() : process.exit(0)), 1500);
-        return;
-      } catch (e) { return send(res, 409, { error: e.message }); }
-    }
-    if (req.method === 'POST' && (p === '/api/update/start' || p === '/api/quit')) {
-      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
-      if (p === '/api/quit') { brain.log('settings', 'closing for an update'); brain.broadcast({ type: 'announce', text: 'Closing for a moment to switch to the new Bob. Back in a few seconds.' }); send(res, 200, { ok: true }); setTimeout(() => (globalThis.bobQuit ? globalThis.bobQuit() : process.exit(0)), 300); return; }
-      try { const r = await startAny(cfg); brain.log('settings', `update started (${r.via}): ${r.from.label} -> ${r.to?.label}`); return send(res, 200, r); }
-      catch (e) { return send(res, 409, { error: e.message }); }
-    }
-    if (req.method === 'POST' && (p === '/api/queue/cancel' || p === '/api/queue/retry')) {
-      const { id } = await body(req);
-      const ok = p.endsWith('cancel') ? brain.cancelJob(String(id)) : brain.retryJob(String(id));
-      return send(res, ok ? 200 : 404, { ok });
-    }
-    if (req.method === 'POST' && p === '/api/queue/move') {
-      const { id, before } = await body(req);
-      const ok = brain.moveJob(String(id), before ? String(before) : null);
-      return send(res, ok ? 200 : 404, { ok });
-    }
-    if (req.method === 'POST' && p === '/api/queue/remove') {
-      const { id } = await body(req);
-      const ok = brain.removeJob(String(id));
-      return send(res, ok ? 200 : 404, { ok });
-    }
-    if (req.method === 'POST' && p === '/api/queue/clear') return send(res, 200, { ok: brain.clearCompleted() });
-    if (req.method === 'POST' && p === '/api/speak') {
-      const { text } = await body(req);
-      try { return send(res, 200, await say(cfg, String(text || '')), 'audio/wav'); }
-      catch (e) { return send(res, 409, { error: e.message }); }
-    }
-    // Voice samples: listing looks at files only; a sample is made (or found) only when asked for.
-    if (req.method === 'GET' && p === '/api/voice/samples') return send(res, 200, { voices: publicView(voiceList(cfg, shop)) });
-    if (req.method === 'POST' && p === '/api/voice/sample') {
-      const { engine, voice } = await body(req);
-      try {
-        const r = await sampleFor(cfg, shop, String(engine || ''), String(voice || ''));
-        if (r.file) return send(res, 200, fs.readFileSync(r.file), TYPES[path.extname(r.file).toLowerCase()] || 'audio/wav');
-        return send(res, 200, r);
-      } catch (e) { return send(res, 409, { error: e.message }); }
-    }
-    if (req.method === 'POST' && p === '/api/voice/samples/clear') { if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' }); clearSamples(cfg); return send(res, 200, { ok: true }); }
-    if (req.method === 'POST' && p === '/api/stop') return send(res, 200, { stopped: brain.stop() });
+    if (await updateRoute({ req, res, p, isLocal, cfg, brain, shop, body, send: answered })) return;
 
-    // Housekeeping, topics, past chats and search. Reading works from the phone too; changes only on the PC.
-    const hk = brain.housekeeper;
-    if (req.method === 'GET' && p === '/api/chats') return send(res, 200, { chats: hk.chats(), tidied: hk.summaries().slice(0, 200) });
-    if (req.method === 'GET' && p === '/api/topics') return send(res, 200, hk.topics.list());
-    if (req.method === 'GET' && p === '/api/topics/messages') {
-      const t = hk.topics.get(String(url.searchParams.get('id') || ''));
-      if (!t) return send(res, 404, { error: 'No such topic.' });
-      return send(res, 200, hk.topicMessages(t));
-    }
-    if (req.method === 'GET' && p === '/api/topics/forget-preview') {
-      try { return send(res, 200, hk.forgetPreview(String(url.searchParams.get('id') || ''), { mode: url.searchParams.get('mode') === 'all' ? 'all' : 'note' })); }
-      catch (e) { return send(res, 404, { error: e.message }); }
-    }
-    if (req.method === 'GET' && p === '/api/search') return send(res, 200, search(cfg, { topics: hk.topics, summaries: hk.summaries() }, String(url.searchParams.get('q') || '').slice(0, 200)));
-    if (req.method === 'GET' && p === '/api/hk') { const st = hk.state(); return send(res, 200, { settings: hkSettings(cfg), kinds: KINDS, units: Object.keys(UNITS), items: hk.publicItems(), lastRun: st.lastRun, lastScan: st.lastScan, working: hk.working }); }
-    if (req.method === 'POST' && (p.startsWith('/api/hk/') || p.startsWith('/api/topics/') || p === '/api/pin')) {
-      if (!isLocal) return send(res, 403, { error: 'Tidying and topics can only be changed on this replicant matrix itself.' });
-      const b = await body(req);
-      try {
-        if (p === '/api/hk/scan') return send(res, 200, { items: hk.publicItems(hk.scan()) });
-        if (p === '/api/hk/tidy') { if (!hk.items.length) hk.scan(); return send(res, 200, { results: await hk.tidy([].concat(b.choices || []).slice(0, 2000)), items: hk.publicItems() }); }
-        if (p === '/api/hk/run') {
-          if (hk.working) return send(res, 200, { busy: true });
-          hk.tick({ force: true }).then((did) => broadcast({ type: 'tidy-done', ...did })).catch((e) => broadcast({ type: 'tidy-done', error: e.message }));
-          return send(res, 200, { started: true });
-        }
-        if (p === '/api/pin') return send(res, 200, { pins: hk.pin(String(b.kind), String(b.id), b.pinned === true) });
-        const id = String(b.id || '');
-        if (p === '/api/topics/rename') return send(res, 200, hk.topics.rename(id, b.name, b.project));
-        if (p === '/api/topics/edit') return send(res, 200, hk.topics.edit(id, { note: b.note, summary: b.summary, open: b.open }));
-        if (p === '/api/topics/pin') return send(res, 200, hk.topics.pin(id, b.pinned === true));
-        if (p === '/api/topics/fade') return send(res, 200, hk.topics.fade(id, b.after && UNITS[b.after.unit] ? { n: Number(b.after.n), unit: b.after.unit } : null));
-        if (p === '/api/topics/merge') { const into = hk.topics.merge(id, String(b.into || '')); brain.log('topics', `merged a topic into ${into}`); return send(res, 200, { id: into }); }
-        if (p === '/api/topics/move') return send(res, 200, { ok: hk.topics.moveMessage(String(b.session || ''), String(b.msgId || ''), String(b.to || '')) });
-        if (p === '/api/topics/forget') return send(res, 200, hk.forget(id, { mode: b.mode === 'all' ? 'all' : 'note', pictures: b.pictures === true }));
-        if (p === '/api/topics/accept') return send(res, 200, hk.topics.change(id, (t) => { if (t.suggested) { t.note = t.suggested.note || t.note; t.summary = t.suggested.summary || t.summary; t.suggested = undefined; } }));
-        return send(res, 404, { error: 'not found' });
-      } catch (e) { return send(res, 409, { error: e.message }); }
-    }
+    if (await tidyRoute({ req, res, p, url, isLocal, cfg, brain, body, send: answered, broadcast })) return;
 
-    // Files Bob mentions: a preview in the chat, plus Open / Show in folder / Copy (open and copy only on the PC itself).
-    if (req.method === 'POST' && p === '/api/file/info') {
-      const b = await body(req);
-      return send(res, 200, [].concat(b.paths || []).slice(0, 20).map((x) => { const d = describeFile(cfg, x); return { mention: String(x).slice(0, 1000), ...d, path: isLocal ? d.path : undefined }; }));
-    }
-    if (req.method === 'GET' && p === '/api/file') {
-      const d = describeFile(cfg, url.searchParams.get('path') || '');
-      if (!d.ok || d.kind === 'folder' || (!isLocal && !d.path.startsWith(path.resolve(cfg.innDir) + path.sep))) return send(res, 404, { error: 'not found' });
-      // A page or picture Bob wrote is shown, never run: no scripts, no reaching Bob's own pages.
-      return serveFile(res, path.dirname(d.path), path.basename(d.path), { 'content-security-policy': 'sandbox; default-src \'none\'; img-src \'self\' data:; media-src \'self\'; style-src \'unsafe-inline\'' });
-    }
-    // The side panel: the start of a text file, and the list of everything Bob made.
-    if (req.method === 'GET' && p === '/api/file/peek') {
-      const d = describeFile(cfg, url.searchParams.get('path') || '');
-      if (!d.ok || (!isLocal && !d.path.startsWith(path.resolve(cfg.innDir) + path.sep))) return send(res, 404, { error: 'not found' });
-      const r = peekFile(cfg, d.path, url.searchParams.get('max'));
-      return r.ok ? send(res, 200, r) : send(res, 404, { error: 'not found' });
-    }
-    // 1.5.41: a song's player: its title, style and lyrics (from the Made by Bob list) and the bars of its shape (wave.js).
-    if (req.method === 'GET' && p === '/api/song') {
-      const d = describeFile(cfg, url.searchParams.get('path') || '');
-      if (!d.ok || d.kind !== 'audio' || (!isLocal && !d.path.startsWith(path.resolve(cfg.innDir) + path.sep) && !brain.made.has(d.path))) return send(res, 404, { error: 'not found' });
-      const w = wavePeaks(d.path, url.searchParams.get('bars'));
-      return send(res, 200, { ok: true, name: d.name, bytes: d.bytes, ...(brain.made.songInfo(d.path) || {}), seconds: w.seconds, peaks: w.peaks });
-    }
+    if (await filesRoute({ req, res, p, url, isLocal, cfg, brain, body, send: answered, serveFile: servedFile })) return;
     // 1.5.79: the memories that fit a message, for a chat the phone answers with its own brain (Android app note).
     // Empty while "Remember only what fits" is off. Phone access already guards every /api call.
     if (req.method === 'POST' && p === '/api/memory/recall') {
@@ -1050,63 +779,6 @@ const server = http.createServer(async (req, res) => {
       const text = String(b.text || '').slice(0, 4000);
       const r = await brain.recall(String(b.session || '').replace(/[^\w-]/g, '').slice(0, 64) || null, text).catch(() => '');
       return send(res, 200, { on: true, text: r, always: brain.memory() });
-    }
-    // 1.5.125: a small picture for the chest and Made by Bob, made once and kept (src/thumbs.js). 404 means "show the
-    // file itself or the kind's icon". Same rules as /api/file: over the home network only what's in the inn or on the Made list.
-    if (req.method === 'GET' && p === '/api/thumb') {
-      const d = describeFile(cfg, url.searchParams.get('path') || '');
-      if (!d.ok || d.kind === 'folder' || !canThumb(d.name) || (!isLocal && !d.path.startsWith(path.resolve(cfg.innDir) + path.sep) && !brain.made.has(d.path))) return send(res, 404, { error: 'not found' });
-      const t = await thumbFor(cfg, d.path);
-      if (!t.ok) return send(res, 404, { error: t.why });
-      return serveFile(res, path.dirname(t.file), path.basename(t.file), { 'cache-control': 'private, max-age=86400' });
-    }
-    // 1.5.125 Bob's home folder: his home folder (models, programs, notes, settings) and a move to another one.
-    if (req.method === 'GET' && p === '/api/home') {
-      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
-      return send(res, 200, homeView(cfg));
-    }
-    if (req.method === 'POST' && p === '/api/home') {
-      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
-      const b = await body(req);
-      const folder = String(b.folder || '').trim();
-      const why = homeProblem(folder, { current: cfg.agentDir });
-      if (why) return send(res, 200, { ok: false, error: why });
-      if (path.resolve(folder).toLowerCase() === path.resolve(cfg.agentDir).toLowerCase()) return send(res, 200, { ok: true, same: true });
-      // The chosen folder goes AFTER homeView's spread (whose `folder` is the current home), so the confirm card and the move
-      // itself name the folder that was picked (PC test 2026-11-06: the card read "Move everything to <current home>?").
-      if (!b.confirm) return send(res, 200, { ok: true, ready: true, ...homeView(cfg), folder: path.resolve(folder), pickedCloud: synced(folder), pickedCloudWarning: cloudWarning(synced(folder)) });
-      if (!globalThis.bobHome?.move) return send(res, 200, { ok: false, error: 'Moving only works from Bob\'s own window (Bob.exe, Bob.app or the AppImage), not from a browser.' });
-      brain.log('settings', `moving Bob's home to ${folder}`);
-      brain.broadcast({ type: 'announce', text: `Moving my things to ${folder}. I'll close, copy everything across and open again. Big models take a while.` });
-      send(res, 200, { ok: true, moving: true });
-      setTimeout(() => globalThis.bobHome.move(path.resolve(folder)), 800);
-      return;
-    }
-    if (req.method === 'GET' && p === '/api/made') {
-      const list = brain.made.list({ kind: url.searchParams.get('kind') || '', q: url.searchParams.get('q') || '', limit: Math.min(200, Number(url.searchParams.get('limit')) || 60) });
-      const inn = path.resolve(cfg.innDir) + path.sep;
-      // 1.5.133: over the door, the same rule as /images/ below: anything Bob made that the door would hand out (his own
-      // inn\ folder, or a Made by Bob file in any save folder), so a Bob whose save folder was moved no longer shows the
-      // phone an empty Chest. Paths never leave this Bob.
-      const servable = (x) => { try { return path.resolve(findOutput(cfg, path.basename(x.path))) === path.resolve(x.path); } catch { return false; } };
-      return send(res, 200, isLocal ? list : list.filter((x) => x.path && (x.path.startsWith(inn) || servable(x))).map((x) => ({ ...x, path: undefined })));
-    }
-    if (req.method === 'POST' && (p === '/api/open' || p === '/api/clipboard')) {
-      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
-      const b = await body(req);
-      if (p === '/api/clipboard') {
-        if (!globalThis.bobShell?.copy) return send(res, 200, { ok: false });
-        globalThis.bobShell.copy(String(b.text ?? '').slice(0, 2e6));
-        return send(res, 200, { ok: true });
-      }
-      try { const r = openFile(cfg, String(b.path || ''), { reveal: b.reveal === true }); brain.log('open', `${b.reveal ? 'showed in folder' : 'opened'} ${path.basename(r.file)}`); return send(res, 200, { ok: true }); }
-      catch (e) { return send(res, 409, { error: e.message }); }
-    }
-    if (req.method === 'GET' && p.startsWith('/images/')) {
-      const f = findOutput(cfg, decodeURIComponent(p.slice(8))); // 1.5.41: where Bob saves now, his own folder, or an older pick
-      // Over the home network, a folder the user picked only gives out what Bob made there (it can hold their own files too).
-      if (!isLocal && path.resolve(path.dirname(f)) !== path.resolve(cfg.defaultPainterDir) && !brain.made.has(f)) return send(res, 404, { error: 'not found' });
-      return serveFile(res, path.dirname(f), path.basename(f));
     }
     if (req.method === 'GET') return serveFile(res, publicDir, p === '/' ? 'index.html' : decodeURIComponent(p.slice(1)));
     send(res, 404, { error: 'not found' });

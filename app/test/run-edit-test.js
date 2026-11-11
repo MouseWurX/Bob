@@ -1,5 +1,6 @@
 // Picture edits: Bob never quietly paints a new picture when an edit was meant, and says when an edit model
 // is on this replicant matrix but not assigned.
+import { serverText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -132,7 +133,7 @@ const { editPrompt } = await import('../src/brain.js');
 {
   const sh = fs.readFileSync(fileURLToPath(new URL('../public/shelf.js', import.meta.url)), 'utf8');
   const app = fs.readFileSync(fileURLToPath(new URL('../public/app.js', import.meta.url)), 'utf8');
-  const srv = fs.readFileSync(fileURLToPath(new URL('../src/server.js', import.meta.url)), 'utf8');
+  const srv = serverText();
   check('uploads are turned upright in the window first (imageOrientation from-image)', /imageOrientation: 'from-image'/.test(sh) && /upright\(file\)/.test(sh));
   const help = fs.readFileSync(fileURLToPath(new URL('../public/help-content.js', import.meta.url)), 'utf8');
   check('Help says photos are turned upright and camera details removed', /Hidden camera details, such as where a photo was taken, are removed/.test(help));

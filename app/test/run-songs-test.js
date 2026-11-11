@@ -1,5 +1,6 @@
 // 1.5.41: songs show in the chat with Bob's song player (title, bars of the song's shape, lyrics), and
 // Settings > Where Bob saves things picks the folder for pictures, clips, songs and sounds.
+import { serverText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -94,7 +95,7 @@ function wav(file, { rate = 8000, channels = 2, bits = 16, float = false, second
   check('the chat wires the player once and keeps song cards while words stream in', /wireSongs\(\);/.test(app) && /r\.el\.insertBefore\(tpl\.content, keep\)/.test(app));
   check('the side panel plays a song in the big player', /songCard\(\{ url, name: t\.name, path: t\.path \}, \{ big: true \}\)/.test(viewer));
   check('the song arrives with its title in the chat and in the saved reply', /title: ev\.song\.title, sound: ev\.song\.sound/.test(app) && /title: ev\.song\.title, sound: ev\.song\.sound/.test(read('src/brain.js')));
-  check('the server answers /api/song with the shape and what the list knows', /p === '\/api\/song'/.test(read('src/server.js')) && /wavePeaks\(d\.path/.test(read('src/server.js')));
+  check('the server answers /api/song with the shape and what the list knows', /p === '\/api\/song'/.test(serverText()) && /wavePeaks\(d\.path/.test(serverText()));
   check('make_music can take a title', /title: str\('Optional: a short song title/.test(read('src/tools.js')));
 }
 
@@ -139,7 +140,7 @@ const base = () => ({ agentDir, innDir, dataDir, painterDir: own, readRoots: [in
   check('a whole drive is refused', /not a whole drive/.test(saveDirProblem(c2, path.parse(tmp).root)));
   check('a typed name that isn\'t a whole path is refused', /Type the whole folder path/.test(saveDirProblem(c2, 'Music')));
   check('saved settings keep only whole paths', mergeSettings({}, { saveDir: 'relative\\x', saveDirsUsed: ['/a', 'b', 5] }).saveDir === '' && JSON.stringify(mergeSettings({}, { saveDirsUsed: ['/a', 'b'] }).saveDirsUsed) === JSON.stringify([path.resolve('/a')]));
-  const srv = read('src/server.js');
+  const srv = serverText();
   check('the server checks a folder before saving it and remembers the old one', /saveDirProblem\(cfg, want\)/.test(srv) && /saveDirsUsed: used/.test(srv) && /applySaveDir\(cfg\);/.test(srv));
   check('over the home network, a picked folder only gives out what Bob made there', /!isLocal && path\.resolve\(path\.dirname\(f\)\) !== path\.resolve\(cfg\.defaultPainterDir\) && !brain\.made\.has\(f\)/.test(srv));
   const cellar = read('public/cellar.js');
