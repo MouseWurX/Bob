@@ -230,7 +230,7 @@ export const VERSION = (() => {
 // Languages Bob's screens come in (public/i18n.js has the names and words). English is the default.
 export const LANGUAGES = ['en', 'fr', 'es'];
 export const cleanRemoved = (v) => [...new Set((Array.isArray(v) ? v : []).filter((k) => typeof k === 'string' && /^[\w.:/-]{1,100}$/.test(k)))].slice(0, 500);
-export const SETTING_KEYS = ['language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', 'apuHoldbackGB'];
+export const SETTING_KEYS = ['language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', 'talkOver', 'readDocs', 'netVoices', 'netVoiceMap', 'carryIn', 'phoneGlance', 'apuHoldbackGB'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -289,6 +289,13 @@ function clean(patch) {
   if ('docTools' in out) out.docTools = out.docTools === true; // "Read and search my documents", off by default (my-docs.js)
   if ('docMeaning' in out) out.docMeaning = out.docMeaning === true; // "Search my documents by meaning", off by default (doc-index.js)
   if ('chatFiles' in out) out.chatFiles = out.chatFiles === true; // "Save chats as files and bring chats in", off by default (chat-files.js)
+  // Voice, phone and Bob-Net (items 133 to 142, 2026-11-11): every switch off unless turned on.
+  if ('talkOver' in out) out.talkOver = out.talkOver === true; // "Talk over Bob" (public/voice.js)
+  if ('readDocs' in out) out.readDocs = out.readDocs === true; // "Read documents aloud" (public/read-aloud.js)
+  if ('netVoices' in out) out.netVoices = out.netVoices === true; // "A voice per Bob" (src/tts.js netVoiceFor)
+  if ('netVoiceMap' in out) out.netVoiceMap = cleanVoiceMap(out.netVoiceMap);
+  if ('carryIn' in out) out.carryIn = out.carryIn === true; // "Take chats from my other Bobs" (src/carry.js)
+  if ('phoneGlance' in out) out.phoneGlance = out.phoneGlance === true; // "Let my phone see how I'm doing" (src/glance.js)
   if ('mathView' in out) out.mathView = out.mathView === true; // "Show maths as formulas", off by default (public/math-core.js)
   if ('shortcuts' in out) out.shortcuts = out.shortcuts === true; // "Keyboard shortcuts", off by default (public/shortcuts.js)
   if ('docView' in out) out.docView = out.docView === true; // "Show documents in the side panel", off by default (files.js docPeek)
@@ -446,6 +453,17 @@ export function cleanStyle(st) {
       for (const f of ['blueprint', 'outlined', 'flat']) if (t[f] === true) theme[f] = true;
       return theme;
     });
+  }
+  return out;
+}
+
+// A voice per Bob: { "Bob on the laptop": "bm_george" }. Names as they are on the Bob-Net list, voices from Kokoro's list.
+export function cleanVoiceMap(m) {
+  const out = {};
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return out;
+  for (const [k, v] of Object.entries(m).slice(0, 30)) {
+    const name = String(k).replace(/[\u0000-\u001f<>"'`]/g, '').trim().slice(0, 40);
+    if (name && (v === 'auto' || /^[a-z]{2}_[a-z]{2,12}$/.test(String(v)))) out[name] = String(v); // 'auto': picked from his name
   }
   return out;
 }

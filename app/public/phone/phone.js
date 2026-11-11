@@ -21,7 +21,9 @@
     get(k, d) { try { const v = globalThis.BobLock ? globalThis.BobLock.get(k) : localStorage.getItem(`bob.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { if (globalThis.BobLock) globalThis.BobLock.set(k, JSON.stringify(v)); else localStorage.setItem(`bob.${k}`, JSON.stringify(v)); } catch { /* full or blocked: carry on in memory */ } }
   };
-  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, mathView: false, userName: '', theme: 'moondust', effort: 'low', resume: false, redo: true, promptMenu: false };
+  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, mathView: false, userName: '', theme: 'moondust', effort: 'low', resume: false, redo: true, promptMenu: false,
+    // Voice, phone and Bob-Net (items 133 to 142, 2026-11-11): every one off to start with.
+    talkOver: false, wakeOn: false, netVoices: false, shareOn: false, widgetReminder: false, lowData: 'off', hfAgain: true, readerSpeed: 1 };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
   // Bob's Inn was the starting theme until Moondust took over on every system. Settings are saved whole, so a phone
   // that never chose a theme has 'inn' saved too: it moves to Moondust once. A theme picked in Settings stays.
@@ -67,12 +69,17 @@
       else if (m.event === 'net-state') { const st = (live[m.base] ||= {}); const was = st.up; st.up = m.up; if (m.up && !was) refreshBob(m.base, { listen: false }); drawWho(); }
       else if (m.event === 'brain') onBrainEvent(m);
       else if (m.event === 'pair') onPair(m.data);
-      else if (m.event === 'app' && m.visible) { refreshAll(); }
+      else if (m.event === 'app') { appVisible = m.visible === true; if (m.visible) refreshAll(); syncEars(); }
+      else if (m.event === 'said') onSaid(m);
+      else if (m.event === 'ears') onEars(m);
+      else if (m.event === 'share') takeShare();
+      else if (m.event === 'widget') takeWidget();
     },
     back() {
       const open = [...document.querySelectorAll('.panel')].find((p) => !p.classList.contains('hidden'));
       if (!open) return false;
       open.classList.add('hidden');
+      panelClosed(open.id);
       return true;
     }
   };
@@ -192,7 +199,7 @@
   function replyTools(m) {
     const t = el('div', { class: 'tools' });
     t.append(el('button', { text: 'Copy', onclick: () => phone('copy', { text: m.text }).then(() => toast('Copied')) }));
-    t.append(el('button', { text: 'Read aloud', onclick: () => phone('speech.say', { text: plain(m.text) }) }));
+    t.append(el('button', { text: 'Read aloud', onclick: () => sayOut(plain(m.text), { by: m.by }) }));
     // A phone-brain reply can be asked again of a Bob on the network.
     const up = liveBobs()[0];
     if (m.by === 'phone' && up && m.q) t.append(el('button', { text: `Ask ${up.name} instead`, onclick: () => send(m.q, { to: up.base }) }));
@@ -285,7 +292,14 @@
     return box;
   }
 
-  function mediaNode(x) {
+  function mediaNode(x, { tapped = false } = {}) {
+    // Low-data mode: pictures, clips and songs wait for a tap instead of coming down by themselves.
+    if (!tapped && lowNow()) {
+      const what = { image: 'picture', video: 'clip', audio: 'song', diagram: 'diagram', model: '3D model' }[x.kind] || 'file';
+      const b = el('button', { class: 'low-data-tap', text: `Low-data mode: tap to load the ${what}` });
+      b.addEventListener('click', () => b.replaceWith(mediaNode(x, { tapped: true })));
+      return b;
+    }
     if (x.kind === 'diagram') return diagramNode(x);
     if (x.kind === 'model') return modelNode(x);
     const holder = el('div', { class: 'small dim', text: x.kind === 'audio' ? 'Getting the song…' : 'Getting it from your other replicant matrix…' });
@@ -401,6 +415,8 @@
       }
       return true;
     }
+    // Carry on on another Bob: a chat carried over to one of your Bobs stays with him while he's reachable.
+    if (!to && chat.bob && liveBobs().some((b) => b.base === chat.bob)) to = chat.bob;
     if (!to) {
       const job = L.bigJob(text);
       const a = answerer(job);
@@ -440,7 +456,8 @@
       if (current.media?.length) current.msg.media = current.media;
       saveChats();
       if (current.node) current.node.replaceWith(drawMsg(current.msg));
-      if (settings.readAloud && current.text) phone('speech.say', { text: plain(current.text) }).catch(() => {});
+      if (current.text && (hf.open || settings.readAloud)) sayOut(plain(current.text), { by: current.msg.by, sid: hf.open ? 'hf' : 'bob' });
+      if (hf.open) { hf.last = { text: plain(current.text || ''), by: current.msg.by }; hfDraw(current.text ? 'Bob is talking…' : 'Tap Talk'); }
     }
     current = null;
     store.set('pending', null);
@@ -746,17 +763,17 @@
     drawWho();
     if (!$('bobs').classList.contains('hidden')) drawBobs();
   }
-  function refreshAll() { bobs.forEach((b) => refreshBob(b.base)); refreshPhone(); phone('pair.waiting').then((l) => (l || []).forEach(onPair)).catch(() => {}); }
+  function refreshAll() { bobs.forEach((b) => refreshBob(b.base)); refreshPhone(); checkMetered(); setTimeout(fillWidget, 4000); phone('pair.waiting').then((l) => (l || []).forEach(onPair)).catch(() => {}); }
 
   // ---------- Panels ----------
   function open(id) {
-    document.querySelectorAll('.panel').forEach((p) => p.classList.add('hidden'));
+    document.querySelectorAll('.panel:not(.hidden)').forEach((p) => { p.classList.add('hidden'); panelClosed(p.id); });
     if (id === 'new') { newChat(); return; }
     $(id).classList.remove('hidden');
-    ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, adventure: drawAdventure, games: drawGames, chest: drawChest, memory: drawMemory, settings: drawSettings, help: drawHelp }[id] || (() => {}))();
+    ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, adventure: drawAdventure, games: drawGames, chest: drawChest, memory: drawMemory, settings: drawSettings, help: drawHelp, glance: drawGlance, reader: drawReader, carry: drawCarry, handsfree: hfOpen }[id] || (() => {}))();
     if (id === 'bobs') watchLend();
   }
-  document.querySelectorAll('.panel .back').forEach((b) => b.addEventListener('click', () => b.closest('.panel').classList.add('hidden')));
+  document.querySelectorAll('.panel .back').forEach((b) => b.addEventListener('click', () => { const p = b.closest('.panel'); p.classList.add('hidden'); panelClosed(p.id); }));
   document.querySelectorAll('#menu [data-go]').forEach((b) => b.addEventListener('click', () => open(b.dataset.go)));
   $('open-menu').addEventListener('click', () => open('menu'));
   $('who').addEventListener('click', () => open(bobs.length || !settings.phoneOn ? 'bobs' : 'brain'));
@@ -1053,6 +1070,13 @@
     $('theme').value = settings.theme;
     $('resume').checked = settings.resume;
     $('redo').checked = settings.redo;
+    $('talk-over').checked = settings.talkOver === true;
+    $('wake-on').checked = settings.wakeOn === true;
+    $('net-voices').checked = settings.netVoices === true;
+    $('widget-reminder').checked = settings.widgetReminder === true;
+    $('low-data').value = settings.lowData;
+    $('share-on').checked = settings.shareOn === true;
+    phone('share.state').then((on) => { settings.shareOn = on === true; $('share-on').checked = settings.shareOn; saveSettings(); }).catch(() => {});
     drawPrompts();
   }
   document.querySelectorAll('input[name="mode"]').forEach((r) => r.addEventListener('change', () => { settings.mode = r.value; saveSettings(); drawWho(); }));
@@ -1976,7 +2000,8 @@ ${chatOut}
   function dropPhoto(tellAndroid = true) { photo = null; drawPhoto(); if (tellAndroid) phone('photo.clear').catch(() => {}); }
   $('photo').addEventListener('click', () => phone('photo.pick').then((p) => { if (p && p.preview) { photo = p; drawPhoto(); box.focus(); } }).catch((e) => { if (e.message !== 'replaced') toast(`Couldn't add the photo: ${e.message}.`); }));
   $('photo-drop').addEventListener('click', () => dropPhoto());
-  $('mic').addEventListener('click', () => phone('speech.listen').then((t) => { if (t) send(t); }).catch((e) => toast(e.message)));
+  // The 🎙 window and Bob's ears can't both have the microphone: the ears wait while it's open.
+  $('mic').addEventListener('click', () => { ear.micOpen = true; syncEars(); phone('speech.listen').then((t) => { if (t) send(t); }).catch((e) => toast(e.message)).finally(() => { ear.micOpen = false; syncEars(); }); });
   function stopReply() {
     if (!current) return;
     if (current.kind === 'phone') phone('brain.stop');
@@ -1988,6 +2013,269 @@ ${chatOut}
     const copy = e.target.closest('[data-copy]');
     if (copy) phone('copy', { text: copy.parentElement.querySelector('code').textContent }).then(() => toast('Copied'));
   });
+
+
+  // ======================================================================================================
+  // Voice, phone and Bob-Net (items 133 to 142, 2026-11-11). Every switch here starts off.
+  // ======================================================================================================
+  var appVisible = true;
+
+  // ---------- Speaking: one place, so Talk over Bob, Hands-free and Read aloud know when Bob talks ----------
+  // A voice per Bob: a reply from one of your Bobs gets his own pitch and pace (logic.js voiceFor), the phone brain the
+  // phone's normal voice.
+  const ear = { mode: 'off', speaking: false, saying: '', armed: false, bargeStop: false, micOpen: false, quietTimer: 0 };
+  function sayOut(text, { by = '', sid = 'bob', rate = 1 } = {}) {
+    const v = settings.netVoices && by && by !== 'phone' ? L.voiceFor(bobName(by)) : { pitch: 1, rate: 1 };
+    ear.saying = String(text || '');
+    return phone('speech.say', { text, rate: rate * v.rate, pitch: v.pitch, sid }).catch(() => {});
+  }
+  function onSaid(m) {
+    if (m.state === 'start') { clearTimeout(ear.quietTimer); ear.speaking = true; syncEars(); return; }
+    // Between pieces of a long read, he's quiet for a moment: the ears only change if he stays quiet.
+    clearTimeout(ear.quietTimer);
+    ear.quietTimer = setTimeout(() => { ear.speaking = false; if (!ear.bargeStop) syncEars(); }, 700);
+    const sid = String(m.sid || '');
+    if (sid.startsWith('rd')) readerSaid(m.state);
+    else if (sid === 'hf' && m.state === 'done' && hf.open) { if (settings.hfAgain) { hf.listen = true; hfDraw('Listening…'); syncEars(); } else hfDraw('Tap Talk'); }
+  }
+
+  // ---------- Bob's ears (Ears.kt): Talk over Bob, Hey Bob, Hands-free ----------
+  // Only one of them has the microphone at a time: Hands-free, then Talk over Bob while he talks, then Hey Bob.
+  function earsWant() {
+    if (ear.micOpen || !appVisible) return 'off';
+    if (hf.open) return hf.listen ? 'once' : ear.speaking && settings.talkOver ? 'barge' : 'off';
+    if (ear.armed) return 'once';
+    if (ear.speaking) return settings.talkOver ? 'barge' : 'off';
+    return settings.wakeOn ? 'wake' : 'off';
+  }
+  function syncEars() {
+    const want = earsWant();
+    if (want === ear.mode) return;
+    ear.mode = want;
+    (want === 'off' ? phone('ears.stop') : phone('ears.start', { mode: want })).then((ok) => {
+      if (want !== 'off' && ok === false) { ear.mode = 'off'; toast("This phone has no speech recognition, so Bob can't listen by himself."); }
+    }).catch((e) => { ear.mode = 'off'; earsFailed(e.message); });
+  }
+  function earsFailed(why) {
+    toast(`Bob can't listen: ${why}.`);
+    if (/not allowed/.test(why)) { settings.wakeOn = false; settings.talkOver = false; saveSettings(); if (hf.open) hfDraw('The microphone isn\'t allowed. Allow it in Android\'s settings for Bob.'); }
+  }
+  function onEars(m) {
+    const text = String(m.text || '').trim();
+    if (m.kind === 'error') { ear.mode = 'off'; return earsFailed(text); }
+    if (m.kind === 'ready') { if (hf.open && m.mode === 'once') hfDraw('Listening…'); return; }
+    if (m.kind === 'barge') {
+      // Talk over Bob: words that aren't his own echo stop him at once; the rest of what you say is sent.
+      if (!ear.speaking || L.selfEcho(text, ear.saying)) return;
+      ear.bargeStop = true;
+      phone('speech.quiet').catch(() => {});
+      readerStop(false);
+      return;
+    }
+    if (m.kind !== 'heard') return;
+    if (m.mode === 'once') ear.mode = 'off';
+    if (m.mode === 'barge') {
+      if (!ear.bargeStop) { if (L.selfEcho(text, ear.saying)) return; phone('speech.quiet').catch(() => {}); readerStop(false); }
+      ear.bargeStop = false; ear.speaking = false;
+      const w = L.talkOver(text);
+      if (w.send) { if (hf.open) hfHeard(w.send); else send(w.send); } else toast('Stopped.');
+      syncEars();
+      return;
+    }
+    if (hf.open && m.mode === 'once') { hf.listen = false; hfHeard(text); syncEars(); return; }
+    if (ear.armed && m.mode === 'once') { ear.armed = false; if (text) send(text); else toast("I didn't catch that."); syncEars(); return; }
+    if (m.mode === 'wake') {
+      const w = L.wakeWord(text);
+      if (!w.woke) return;
+      if (w.rest.length > 2) { send(w.rest); return; }
+      ear.armed = true; toast('Listening…'); syncEars(); // "Hey Bob" on its own: the next thing said is the message
+      setTimeout(() => { if (ear.armed) { ear.armed = false; syncEars(); } }, 8000);
+    }
+  }
+
+  // ---------- Hands-free: big buttons, speak and listen only ----------
+  const hf = { open: false, listen: false, last: null };
+  function hfOpen() {
+    hf.open = true; hf.listen = false;
+    $('hf-again').checked = settings.hfAgain !== false;
+    hfDraw('Tap Talk, then say what you want.');
+    syncEars();
+  }
+  function hfDraw(state) {
+    $('hf-state').textContent = state;
+    $('hf-talk').textContent = hf.listen ? '👂 Listening' : '🎙 Talk';
+    $('hf-talk').setAttribute('aria-pressed', String(hf.listen));
+  }
+  function hfHeard(text) {
+    if (!text) return hfDraw("I didn't catch that. Tap Talk.");
+    $('hf-said').textContent = `You: ${text}`;
+    const w = L.talkOver(text);
+    if (w.stop && !w.send) { phone('speech.quiet').catch(() => {}); return hfDraw('Stopped. Tap Talk.'); }
+    hfDraw('Bob is thinking…');
+    if (send(text) === false) hfDraw("That didn't send. Tap Talk to try again.");
+  }
+  $('hf-talk').addEventListener('click', () => { phone('speech.quiet').catch(() => {}); hf.listen = !hf.listen; hfDraw(hf.listen ? 'Listening…' : 'Tap Talk'); syncEars(); });
+  $('hf-stop').addEventListener('click', () => { hf.listen = false; phone('speech.quiet').catch(() => {}); stopReply(); hfDraw('Stopped. Tap Talk.'); syncEars(); });
+  $('hf-repeat').addEventListener('click', () => { if (hf.last?.text) sayOut(hf.last.text, { by: hf.last.by, sid: 'hf' }); else hfDraw('Nothing to say again yet.'); });
+  $('hf-again').addEventListener('change', (e) => { settings.hfAgain = e.target.checked; saveSettings(); });
+
+  // A panel was closed (Back, or another panel opened).
+  function panelClosed(id) {
+    if (id === 'handsfree') { hf.open = false; hf.listen = false; phone('speech.quiet').catch(() => {}); syncEars(); }
+    if (id === 'glance') clearInterval(glanceTimer);
+    if (id === 'reader') readerStop(true);
+  }
+
+  // ---------- Read a document aloud ----------
+  const reader = { name: '', pieces: [], at: 0, playing: false };
+  const readerKey = () => `${reader.name}|${reader.pieces.length}`;
+  function drawReader(msg = '') {
+    $('reader-speed').value = String(settings.readerSpeed);
+    const has = reader.pieces.length > 0;
+    $('reader-controls').classList.toggle('hidden', !has);
+    $('reader-play').textContent = reader.playing ? '⏸ Pause' : '▶ Play';
+    $('reader-msg').textContent = msg || (has ? `${reader.name}: piece ${Math.min(reader.at + 1, reader.pieces.length)} of ${reader.pieces.length} (${Math.round((reader.at / reader.pieces.length) * 100)}%)` : 'Pick a text file, paste some words, or read Bob\'s last reply.');
+  }
+  function readerLoad(name, text) {
+    readerStop(true);
+    reader.name = String(name || 'Pasted words').slice(0, 80);
+    reader.pieces = L.readPieces(text);
+    const places = store.get('readerPlaces', {});
+    const p = places[readerKey()];
+    reader.at = p && p.at < reader.pieces.length ? p.at : 0;
+    drawReader(reader.pieces.length ? (reader.at ? `Picks up at ${Math.round((reader.at / reader.pieces.length) * 100)}%, where you stopped.` : '') : 'There are no words in that to read.');
+  }
+  function readerKeep() {
+    const places = store.get('readerPlaces', {});
+    delete places[readerKey()];
+    places[readerKey()] = { at: reader.at };
+    const keys = Object.keys(places);
+    for (const k of keys.slice(0, Math.max(0, keys.length - 30))) delete places[k];
+    store.set('readerPlaces', places);
+  }
+  function readerGo() { if (!reader.playing) return; if (reader.at >= reader.pieces.length) { reader.playing = false; reader.at = 0; readerKeep(); return drawReader('The end. Play starts again from the top.'); } sayOut(reader.pieces[reader.at], { sid: `rd${reader.at}`, rate: settings.readerSpeed }); drawReader(); }
+  function readerSaid(state) {
+    if (state === 'done' && reader.playing) { reader.at++; readerKeep(); readerGo(); }
+    else if (state === 'error') { reader.playing = false; drawReader("The phone's voice stopped. Tap Play to carry on."); }
+  }
+  function readerStop(quiet) { if (!reader.playing) return; reader.playing = false; readerKeep(); if (quiet) phone('speech.quiet').catch(() => {}); drawReader(); }
+  $('reader-file').addEventListener('click', () => phone('file.pick', { kind: 'text' }).then((t) => { if (t != null) readerLoad('A file from this phone', t); }).catch((e) => { if (e.message !== 'replaced') drawReader(`That file wouldn't open: ${e.message}.`); }));
+  $('reader-paste').addEventListener('click', () => readerLoad('Pasted words', $('reader-text').value));
+  $('reader-last').addEventListener('click', () => { const m = [...(chat?.msgs || [])].reverse().find((x) => x.who === 'bob' && x.text); if (m) readerLoad("Bob's last reply", m.text); else drawReader('There\'s no reply in this chat yet.'); });
+  $('reader-play').addEventListener('click', () => { if (reader.playing) return readerStop(true); reader.playing = true; readerGo(); });
+  $('reader-back').addEventListener('click', () => { const was = reader.playing; readerStop(true); reader.at = Math.max(0, reader.at - 1); readerKeep(); if (was) { reader.playing = true; readerGo(); } else drawReader(); });
+  $('reader-next').addEventListener('click', () => { const was = reader.playing; readerStop(true); reader.at = Math.min(Math.max(0, reader.pieces.length - 1), reader.at + 1); readerKeep(); if (was) { reader.playing = true; readerGo(); } else drawReader(); });
+  $('reader-speed').addEventListener('change', (e) => { settings.readerSpeed = Number(e.target.value) || 1; saveSettings(); });
+
+  // ---------- Your Bobs on the phone ----------
+  let glanceTimer = 0;
+  async function glanceOf(b) {
+    const r = await phone('net.get', { address: b.address, path: '/api/bob-net/glance' });
+    if (r.status === 200) return { ok: true, g: JSON.parse(r.body) };
+    if (r.status === 409) return { why: `${b.name} isn't sharing how he's doing. On that replicant matrix: Settings, Bob-Net, Let my phone see how I'm doing.` };
+    if (r.status === 404) return { why: `${b.name} is an older Bob. Update him to see this.` };
+    if (r.status === 401) return { why: `${b.name} wants the passcode again (Bob-Net).` };
+    return { why: shortError(r.body) };
+  }
+  async function drawGlance() {
+    clearInterval(glanceTimer);
+    glanceTimer = setInterval(() => { if (!$('glance').classList.contains('hidden')) drawGlance(); }, 15000);
+    const list = $('glance-list');
+    if (!bobs.length) { list.replaceChildren(el('p', { class: 'dim', text: 'No Bobs added yet. Add one under Bob-Net.' })); return; }
+    const rows = await Promise.all(bobs.map(async (b) => {
+      const st = live[b.base] || {};
+      const head = el('div', { class: 'title' }, el('i', { class: `dot ${st.up && st.signedIn ? 'net' : 'none'}` }), b.name);
+      if (!st.up || !st.signedIn) return el('div', { class: 'box' }, head, el('p', { class: 'help-line', text: !st.signedIn ? 'Needs the passcode (Bob-Net).' : "Can't reach right now. Is that replicant matrix on, with Tailscale?" }));
+      let r;
+      try { r = await glanceOf(b); } catch (e) { r = { why: e.message }; }
+      if (!r.ok) return el('div', { class: 'box' }, head, el('p', { class: 'help-line', text: r.why }));
+      const w = L.glanceWords(r.g);
+      return el('div', { class: 'box' }, head,
+        el('p', { text: `${w.state}${w.brain ? ` · ${w.brain}` : ''}` }),
+        w.card ? el('p', { class: 'help-line', text: `${w.card}${w.heat ? ` · ${w.heat}` : ''}${w.mem ? ` · ${w.mem}` : ''}` }) : null,
+        el('p', { class: 'help-line', text: w.jobs.length ? `Jobs: ${w.jobs.join('; ')}` : 'No jobs running.' }),
+        w.reminder ? el('p', { class: 'help-line', text: `Next reminder: ${w.reminder}` }) : null);
+    }));
+    list.replaceChildren(...rows, el('p', { class: 'help-line', text: `Checked ${new Date().toLocaleTimeString()}. It checks again every 15 seconds while this page is open.` }));
+  }
+
+  // ---------- The home-screen widget: your next reminder (Settings, off to start with) ----------
+  async function fillWidget() {
+    try {
+      if (!(await phone('widget.count'))) return; // no widget on the home screen: nothing to fill, nothing asked
+      if (!settings.widgetReminder) return phone('widget.set', { text: '', when: '' });
+      for (const b of liveBobs()) {
+        const r = await glanceOf(b).catch(() => ({}));
+        if (r.ok) return phone('widget.set', { text: r.g.nextReminder?.text || '', when: r.g.nextReminder?.local || '' });
+      }
+    } catch { /* not on a phone (tests) */ }
+  }
+  setInterval(() => { if (appVisible && settings.widgetReminder) fillWidget(); }, 10 * 60e3);
+  function takeWidget() {
+    phone('widget.take').then((what) => {
+      if (what === 'talk') $('mic').click();
+      else if (what === 'ask') { document.querySelectorAll('.panel:not(.hidden)').forEach((p) => { p.classList.add('hidden'); panelClosed(p.id); }); box.focus(); }
+    }).catch(() => {});
+  }
+
+  // ---------- Share to Bob (Settings, off to start with) ----------
+  function takeShare() {
+    phone('share.take').then((s) => {
+      if (!s) return;
+      if (s.error) toast(`That share didn't come through: ${s.error}.`);
+      if (s.photo?.preview) { photo = s.photo; drawPhoto(); }
+      if (s.file?.unsupported) toast('Bob takes words, links, pictures and text files from other apps. Other files: send them from your other replicant matrix.');
+      const words = L.shareWords(s);
+      if (words) { box.value = box.value ? `${box.value}\n\n${words}` : words; box.dispatchEvent(new Event('input')); }
+      document.querySelectorAll('.panel:not(.hidden)').forEach((p) => { p.classList.add('hidden'); panelClosed(p.id); });
+      box.focus();
+      if (words || s.photo) toast('Shared into the message box. Add to it, then tap Send.');
+    }).catch(() => {});
+  }
+
+  // ---------- Low-data mode ----------
+  let metered = false;
+  const lowNow = () => L.lowData(settings.lowData, metered);
+  function checkMetered() { phone('net.metered').then((m) => { metered = m === true; }).catch(() => {}); }
+
+  // ---------- Carry on on another Bob ----------
+  function drawCarry(msg = '') {
+    const list = $('carry-list');
+    const up = liveBobs();
+    const kids = [];
+    if (!chat || !chat.msgs.some((m) => m.who === 'you' || m.who === 'bob')) kids.push(el('p', { class: 'dim', text: 'This chat is empty. Start one, then carry it over.' }));
+    else if (!up.length) kids.push(el('p', { class: 'dim', text: "None of your Bobs is reachable right now. They're under Bob-Net." }));
+    else {
+      kids.push(el('p', { class: 'help-line', text: `"${chat.title}"${chat.bob ? `, now with ${bobName(chat.bob)}` : ''}.` }));
+      for (const b of up) kids.push(el('div', { class: 'btns' }, el('button', { class: chat.bob === b.base ? '' : 'main', text: chat.bob === b.base ? `Send it to ${b.name} again` : `Carry on with ${b.name}`, onclick: () => carryTo(b) })));
+      if (chat.bob) kids.push(el('div', { class: 'btns' }, el('button', { text: 'Let Settings pick who answers again', onclick: () => { delete chat.bob; saveChats(); drawCarry('Who answers this chat is back to Settings, Who answers.'); drawWho(); } })));
+    }
+    if (msg) kids.push(el('p', { class: 'help-line', role: 'status', text: msg }));
+    list.replaceChildren(...kids);
+  }
+  async function carryTo(b) {
+    drawCarry(`Sending it to ${b.name}…`);
+    try {
+      const r = await phone('net.post', { address: b.address, path: '/api/bob-net/carry', body: JSON.stringify({ from: 'your phone', title: chat.title, sessionId: `phone-${chat.id}`, msgs: L.carryMsgs(chat) }) });
+      if (r.status === 200) {
+        chat.bob = b.base; saveChats(); drawWho();
+        note(`📡 This chat is with ${b.name} now: he has everything said so far, and it's in his Past chats too. Carry on here.`);
+        drawCarry(`Done. ${b.name} has it.`);
+      } else if (r.status === 404) drawCarry(`${b.name} is an older Bob that can't take chats yet. Update him first.`);
+      else drawCarry(shortError(r.body));
+    } catch (e) { drawCarry(`Couldn't reach ${b.name}: ${e.message}.`); }
+  }
+
+  // ---------- The new switches ----------
+  $('talk-over').addEventListener('change', (e) => { settings.talkOver = e.target.checked; saveSettings(); syncEars(); });
+  $('wake-on').addEventListener('change', (e) => { settings.wakeOn = e.target.checked; saveSettings(); syncEars(); if (e.target.checked) toast('Listening for "Hey Bob" while Bob is open.'); });
+  $('net-voices').addEventListener('change', (e) => { settings.netVoices = e.target.checked; saveSettings(); });
+  $('widget-reminder').addEventListener('change', (e) => { settings.widgetReminder = e.target.checked; saveSettings(); fillWidget(); });
+  $('low-data').addEventListener('change', (e) => { settings.lowData = ['off', 'mobile', 'always'].includes(e.target.value) ? e.target.value : 'off'; saveSettings(); checkMetered(); });
+  $('share-on').addEventListener('change', (e) => phone('share.on', { on: e.target.checked }).then((on) => { settings.shareOn = on === true; e.target.checked = settings.shareOn; saveSettings(); toast(settings.shareOn ? 'Bob is in the Share menu now.' : 'Bob is out of the Share menu.'); }).catch((err) => { e.target.checked = settings.shareOn; toast(err.message); }));
+  takeShare();
+  takeWidget();
+  syncEars();
 
   // 1.5.97: each ⏳ waiting line shows once (the PC updates it every minute).
   var seenWaits = new Set();

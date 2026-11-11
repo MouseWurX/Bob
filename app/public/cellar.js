@@ -994,7 +994,18 @@ export function createCellar({ popOut = null } = {}) {
   function bobNetHtml() {
     return `<h4 class="ssub">This Bob</h4>
       ${phoneAccessHtml()}
-      ${shareBrainsHtml()}`;
+      ${shareBrainsHtml()}
+      <h4 class="ssub">Chats and your phone</h4>
+      ${sswitch('carryIn', settings.carryIn === true, 'Take chats from my other Bobs', 'Off unless you turn it on. Your other Bobs and your phone can hand a chat over to this Bob with Carry on on another Bob, and you keep going here. It lands in Past chats as a new chat; the original stays where it was. Only what you and Bob said comes over: no files, pictures or memory.')}
+      ${sswitch('phoneGlance', settings.phoneGlance === true, 'Let my phone see how I\'m doing', 'Off unless you turn it on. Bob for Android\'s Your Bobs page (and its home-screen widget) can show whether this Bob is up or busy, his brain, the graphics card\'s heat and memory, the jobs running and your next reminder. Only your signed-in phone and your other Bobs can ask, over Tailscale; the card is read at most every 20 seconds.')}`;
+  }
+
+  // A voice per Bob: one menu per Bob on the Bob-Net list. "Bob picks" uses a voice from his name.
+  function netVoicesHtml() {
+    const names = settings.netBobs || [];
+    if (!names.length) return '<p class="muted">No other Bobs on your Bob-Net list yet, so there are no voices to pick.</p>';
+    const map = settings.netVoiceMap || {};
+    return `<div class="net-voices">${names.map((n) => `<label class="pick-inline"><span>${esc(n)}</span><select data-netvoice="${esc(n)}" aria-label="Voice for ${esc(n)}"><option value="auto">Bob picks one from his name</option>${(settings.kokoroVoices || []).map(([id, label]) => `<option value="${esc(id)}" ${map[n] === id ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>`).join('')}</div>`;
   }
 
   function voiceDetailsHtml() {
@@ -1003,6 +1014,10 @@ export function createCellar({ popOut = null } = {}) {
     return `<div class="voice-settings">${voiceHtml()}</div>
       ${prox('ear', 'Listen for "Hey Bob"', 'Only while this window is open. Same as Listen in the left menu.')}
       ${prox('speak', 'Read replies aloud', 'Same as Read aloud in the left menu.')}
+      ${sswitch('talkOver', settings.talkOver === true, 'Talk over Bob', 'Off unless you turn it on. While Bob reads aloud, the microphone stays open: start speaking and he stops and listens. "Stop" on its own just stops him; anything else is sent as your next message. Headphones work best, so he doesn\'t hear himself. Only while this window is open.')}
+      ${sswitch('readDocs', settings.readDocs === true, 'Read documents aloud', 'Off unless you turn it on. A document in the side panel gets 🔊 Read aloud: Play, Pause, Back, Next and a speed, in Bob\'s voice (or this computer\'s voice). He remembers where you stopped in each document, on this computer.')}
+      ${sswitch('netVoices', settings.netVoices === true, 'A voice per Bob', 'Off unless you turn it on. A reply another of your Bobs thought (a borrowed brain) is read aloud in his own voice, so you can hear who\'s talking. Pick each Bob\'s voice below, or leave it to Bob, who picks one from his name. Needs the Kokoro voice; with another voice every Bob sounds the same.')}
+      ${netVoicesHtml()}
       <p class="muted">Hearing you and the other voices are on the <button type="button" class="link" data-tab="speech">💬 Voice &amp; conversation</button> page.</p>`;
   }
 
@@ -1028,11 +1043,11 @@ export function createCellar({ popOut = null } = {}) {
       ${sswitch('allTools', settings.allTools, 'Give Bob all his tools at once', 'Sends every tool with each message, which leaves less room for the chat. Leave off to keep chats light.')}`],
     ['house', '🖋 House style', 'house style defaults default length mood genre music picture style shape clip video sound effects morning time evening night times of day', () => `<p class="muted">Your defaults for music, pictures, clips, sound effects and times of day live on Equip Bob, next to each slot.</p><button type="button" data-gohouse>Open House style on Equip Bob</button>`],
     ['presets', '🎭 Assistant presets', 'assistant presets preset per chat instructions system prompt persona character role brain effort temperature tools talking only', () => '<div class="presets-box"></div>'],
-    ['voice', '🔊 Voice details', 'kokoro chatterbox speed hey bob read aloud listen', () => voiceDetailsHtml()],
+    ['voice', '🔊 Voice details', 'kokoro chatterbox speed hey bob read aloud listen talk over interrupt stop barge in read documents aloud a voice per bob voices bob-net', () => voiceDetailsHtml()],
     ['look', '🌓 Look & feel', 'theme editor now running layout', () => lookExtrasHtml()],
     ['speed', '⚡ Speed & memory', 'speed memory free memory quiet keep alive unload idle graphics card quick answers processor pictures without waiting ready while you type games go first picture settings gaming graphics card borrow automatic never always remember only what fits memory banks recall speed test', () => speedMemoryHtml()],
     ['engines', '⚙ Engines', 'engine engines brain engine lab engine gear update updates go back remove check all ollama llama.cpp downloads newer build tested build fit to free graphics memory speculative decoding draft flags threads batch', () => enginesHtml()],
-    ['bobnet', '🌐 Bob-Net', 'bob-net bobnet phone android tailscale address passcode firewall let my phone in let my other replicant matrices in other bobs share brains lend borrow take jobs send jobs', () => bobNetHtml()],
+    ['bobnet', '🌐 Bob-Net', 'bob-net bobnet phone android tailscale address passcode firewall let my phone in let my other replicant matrices in other bobs share brains lend borrow take jobs send jobs carry on take chats move chat phone see how doing your bobs widget card heat', () => bobNetHtml()],
     ['online', '☁ Online services', 'online internet cloud helpers api key anthropic openai gemini openrouter telegram discord bot token pairing wake phrase rented brains rent hire runpod vast lambda together spending cap limit machine', () => onlineHtml()],
     ['apps', '🔌 Other apps', 'other apps comfyui workflows port unreal blender mcp openai compatible api vs code continue opencode command line terminal cli key claude claude code desktop connect hands key', () => otherAppsHtml()],
     ['hands', '✋ Hands', 'files run commands schedules apps permission quarantine reviewer', () => handsSettingsHtml() + quarantineSettingsHtml()],
@@ -1939,6 +1954,9 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.set === 'model3d') { const r = await api('/api/settings', { model3d: el.checked }); settings.model3d = r.model3d; settings.model3dHere = r.model3dHere; el.checked = r.model3d; flash(el, r.model3d ? (r.model3dHere ? 'On. Ask Bob for a 3D model of anything.' : 'On. Bob needs the 3D workshop too: he offers it the first time you ask.') : 'Off. Bob doesn\'t make 3D models from pictures.'); return; }
       if (el.dataset.set === 'parts3d') { const r = await api('/api/settings', { parts3d: el.checked }); settings.parts3d = r.parts3d; settings.openscadHere = r.openscadHere; el.checked = r.parts3d; flash(el, r.parts3d ? (r.openscadHere ? 'On. Ask Bob for a part and he makes it.' : 'On. Bob needs OpenSCAD too: he offers it the first time you ask for a part.') : 'Off. Bob doesn\'t make 3D parts.'); return; }
       if (el.dataset.set === 'sandboxCode') { const r = await api('/api/settings', { sandboxCode: el.checked }); settings.sandboxCode = r.sandboxCode; el.checked = r.sandboxCode; flash(el, r.sandboxWhy || (r.sandboxCode ? (r.sandboxNet ? 'On. Bob works sums out in the sandbox, with the internet switched off.' : 'On. Bob works sums out in the sandbox. This Bob can\'t switch the internet off by itself, so code is checked for it instead.') : 'Off. Bob works sums out in his head.')); return; }
+      // Voice, phone and Bob-Net (items 133 to 142): plain switches, off unless turned on.
+      if (['talkOver', 'readDocs', 'netVoices', 'carryIn', 'phoneGlance'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k] === true; window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: { [k]: r[k] === true } })); flash(el, r[k] ? 'On.' : 'Off.'); return; }
+      if (el.dataset.netvoice) { const r = await api('/api/settings', { netVoiceMap: { [el.dataset.netvoice]: el.value } }); settings.netVoiceMap = r.netVoiceMap || {}; window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: {} })); flash(el, 'Saved.'); return; }
       if (el.dataset.set === 'editOwn') { const r = await api('/api/settings', { editOwn: el.checked }); settings.editOwn = r.editOwn; el.checked = r.editOwn; flash(el, r.editOwn ? 'On. Bob can fix his own earlier messages.' : 'Off. Bob sends a new message for any fix.'); return; }
       if (el.dataset.set === 'chatRedo') { const r = await api('/api/settings', { chatRedo: el.checked }); settings.chatRedo = r.chatRedo; el.checked = r.chatRedo; window.dispatchEvent(new CustomEvent('bob-chat-redo', { detail: r.chatRedo })); flash(el, r.chatRedo ? 'On. Try again and Edit show in the chat.' : 'Off. The chat shows Copy only.'); return; }
       if (el.dataset.set === 'netReview') { const r = await api('/api/settings', { netReview: el.checked }); settings.netReview = r.netReview; el.checked = r.netReview; return; }

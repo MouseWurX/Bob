@@ -6,6 +6,7 @@ import { startI18n, followSaved } from './i18n.js';
 startI18n();
 import { startSwap, sceneLabel } from './brain-swap.js';
 import { createVoice } from './voice.js';
+import { createReader } from './read-aloud.js'; // Read documents aloud (item 136, off unless turned on)
 import { createCellar } from './cellar.js';
 import { watchLock } from './lock-settings.js';
 import { CHANNEL as SETTINGS_CHANNEL, WINDOW_NAME, WINDOW_SIZE, settingsUrl, wantsWindow, accept as acceptSettings } from './settings-link.js';
@@ -100,6 +101,7 @@ let busy = false;
 const replies = new Map(); // turnId -> { el, text } of the reply being streamed (two can run at once in an Art session)
 const running = new Set();  // turnIds of jobs running now
 let talkingUntil = 0;
+const borrowedBy = new Map(); // turnId -> the Bob who thought this reply (A voice per Bob)
 let swapStop = null, swapEl = null;
 let lastModel = null;
 
@@ -321,29 +323,44 @@ function hideSwap() {
 
 // ---------- Read aloud ----------
 // Bob's own voice (Piper, from the cellar) when he has one; otherwise the Windows voices.
+// Voice, phone and Bob-Net (items 135 and 139): Talk over Bob keeps the microphone open while he talks, and A voice
+// per Bob reads a reply another of your Bobs thought in that Bob's voice. Both off unless turned on (Settings, Voice details).
 let ownVoice = false;
-const sayQueue = [];
+const sayQueue = []; // [{ text, bob }]
 let saying = false;
+let stopSaying = null; // stops the clip playing now
+const voiceNet = { talkOver: false, netVoices: false };
+let reader = null; // Read documents aloud (public/read-aloud.js)
+async function readVoiceNet() { try { const s = await (await fetch('/api/settings')).json(); voiceNet.talkOver = s.talkOver === true; voiceNet.netVoices = s.netVoices === true; reader?.setOn(s.readDocs === true); } catch {} }
+window.addEventListener('focus', readVoiceNet);
+// A pitch from a Bob's name, for this computer's own voices (Bob's own Kokoro voice gets a whole other voice instead).
+function pitchFor(name) { let h = 2166136261; for (const c of String(name || '').toLowerCase()) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; } return name ? [0.8, 0.88, 0.95, 1.08, 1.16, 1.25][h % 6] : 1; }
+function talking(on) { try { voice?.speaking(on); } catch {} }
 async function sayNext() {
   if (saying || !sayQueue.length) return;
   saying = true;
-  const text = sayQueue.shift();
+  const { text, bob } = sayQueue.shift();
+  talking(true);
   try {
-    const r = await fetch('/api/speak', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ text }) });
+    const r = await fetch('/api/speak', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ text, ...(bob && voiceNet.netVoices ? { bob } : {}) }) });
     if (!r.ok) throw new Error('no voice');
     const url = URL.createObjectURL(await r.blob());
     const a = new Audio(url);
     talkingUntil = Date.now() + 60000;
-    await new Promise((res) => { a.onended = res; a.onerror = res; a.play().catch(res); });
+    await new Promise((res) => { stopSaying = () => { a.pause(); res(); }; a.onended = res; a.onerror = res; a.play().catch(res); });
+    stopSaying = null;
     URL.revokeObjectURL(url);
-  } catch { ownVoice = false; browserSpeak(text); }
+  } catch { ownVoice = false; browserSpeak(text, bob); }
   talkingUntil = 0;
   saying = false;
+  if (!sayQueue.length) talking(false);
   sayNext();
 }
+// Stop reading aloud now (Talk over Bob, or the speaker switch going off): the queue empties too.
+function hush() { sayQueue.length = 0; try { stopSaying?.(); } catch {} try { speechSynthesis.cancel(); } catch {} talkingUntil = 0; talking(false); }
 let winVoiceName = '';
 window.addEventListener('bob-voice', (e) => { winVoiceName = e.detail?.windowsVoice || ''; });
-function browserSpeak(text) {
+function browserSpeak(text, bob = '') {
   if (!('speechSynthesis' in window)) return;
   const plain = text.replace(/```[\s\S]*?```/g, ' (code) ').replace(/[*_`#>]/g, '').replace(/https?:\/\/\S+/g, 'a link').slice(0, 800);
   const u = new SpeechSynthesisUtterance(plain);
@@ -352,15 +369,16 @@ function browserSpeak(text) {
   const v = (winVoiceName && all.find((x) => x.name === winVoiceName)) || all.find((x) => /en-(CA|US|GB)/.test(x.lang) && /male|david|guy|george|ryan/i.test(x.name));
   if (v) u.voice = v;
   u.rate = 1.02;
-  u.onstart = () => { talkingUntil = Date.now() + 60000; };
-  u.onend = () => { talkingUntil = 0; };
+  if (bob && voiceNet.netVoices) u.pitch = pitchFor(bob);
+  u.onstart = () => { talkingUntil = Date.now() + 60000; talking(true); };
+  u.onend = () => { talkingUntil = 0; if (!speechSynthesis.pending) talking(false); };
   speechSynthesis.speak(u);
 }
 // Read aloud skips stage directions like *yawns* and just says the words.
 const sayAside = (t) => String(t).replace(/\*[^*]+\*\s*/g, '').trim();
-function speak(text) {
+function speak(text, bob = '') {
   if (!speakOn || !text) return;
-  if (ownVoice) { sayQueue.push(text); sayNext(); } else browserSpeak(text);
+  if (ownVoice) { sayQueue.push({ text, bob }); sayNext(); } else browserSpeak(text, bob);
 }
 const speakBtn = $('speak');
 // Toggles show their state in words, not just a colour.
@@ -370,7 +388,7 @@ function setToggle(btn, on, title) {
   if (title) btn.title = title;
 }
 const syncSpeak = () => setToggle(speakBtn, speakOn, speakOn ? 'Bob reads his replies aloud (click to stop)' : 'Bob reads his replies aloud');
-speakBtn.onclick = () => { speakOn = !speakOn; store.set('bob-speak', speakOn ? '1' : '0'); if (!speakOn) { sayQueue.length = 0; try { speechSynthesis.cancel(); } catch {} } syncSpeak(); };
+speakBtn.onclick = () => { speakOn = !speakOn; store.set('bob-speak', speakOn ? '1' : '0'); if (!speakOn) hush(); syncSpeak(); };
 syncSpeak();
 
 const notifyBtn = $('notify');
@@ -725,6 +743,7 @@ function onEvent(ev) {
       break;
     case 'borrow': // 1.5.55 Share brains: another of your Bobs thinks this reply (src/share-brains.js)
       endReply(ev);
+      if (ev.action === 'start') borrowedBy.set(ev.turnId, String(ev.name || '')); else borrowedBy.delete(ev.turnId); // A voice per Bob
       if (ev.action === 'start') add('note borrow', `📡 Borrowed brain: ${esc(ev.name)}${ev.brain ? ` (${esc(ev.brain)})` : ''} thinks this one. The tools still run here.`);
       else add('note borrow', `📡 ${esc(ev.name)} ${ev.why === 'too slow' ? 'didn\'t answer in time' : ev.partial ? 'dropped out mid-answer' : 'couldn\'t take it'}, so Bob thinks this one himself.`);
       break;
@@ -787,6 +806,9 @@ function onEvent(ev) {
       if (ev.error) note(`Housekeeping stopped: ${ev.error}`, 'error');
       else note(`Housekeeping: ${[ev.summaries && `summed up ${ev.summaries} chat${ev.summaries === 1 ? '' : 's'}`, ev.topics && `filed ${ev.topics} chat${ev.topics === 1 ? '' : 's'} under topics`, ev.auto && `tidied ${ev.auto} thing${ev.auto === 1 ? '' : 's'}`, ev.ask && `${ev.ask} thing${ev.ask === 1 ? '' : 's'} to look at in Tidy up`].filter(Boolean).join(', ') || 'nothing to do'}.${ev.error ? '' : ''}`);
       if (ev.ask != null) countBadge($('tidyBtn'), ev.ask);
+      break;
+    case 'carried': // Carry on on another Bob (src/carry.js): another of your Bobs or your phone handed a chat over
+      add('note borrow', `📡 ${esc(ev.from || 'Another of your Bobs')} handed over a chat: <strong>${esc(ev.title || '')}</strong>. <button type="button" class="link" data-carried="${esc(ev.id || '')}">Open it</button>`);
       break;
     case 'reminder':
       add('approval', `<p><strong>Reminder:</strong> ${esc(ev.text)}</p><div class="done">${esc(ev.local || '')}</div>`);
@@ -851,7 +873,8 @@ function onEvent(ev) {
       running.delete(ev.turnId);
       setBusy(running.size > 0);
       if (rep?.media?.length) life.react('proud'); else if (finished) life.react('done');
-      if (finished) { speak(finished); if (aside) speak(sayAside(aside)); ping('Bob replied', finished.slice(0, 120)); }
+      const by = borrowedBy.get(ev.turnId) || ''; borrowedBy.delete(ev.turnId);
+      if (finished) { speak(finished, by); if (aside) speak(sayAside(aside)); ping('Bob replied', finished.slice(0, 120)); }
       break;
     }
   }
@@ -1152,6 +1175,7 @@ log.addEventListener('click', async (e) => {
   const b = e.target.closest('button, a.file-link');
   if (!b || !log.contains(b)) return;
   const msg = b.closest('.msg');
+  if (b.dataset.carried) return openChat(b.dataset.carried); // a chat another of your Bobs handed over
   if ('redo' in b.dataset) return redoSend(null, null);
   if ('editMsg' in b.dataset) return editInPlace(msg);
   if ('copyMsg' in b.dataset) return copyText(copyWords(msg), b);
@@ -1249,8 +1273,12 @@ const voice = createVoice({
     if (state === 'armed') { talkingUntil = Date.now() + 300; statusEl.textContent = 'Listening...'; }
     if (msg) note(msg, 'error');
   },
-  isQuiet: () => saying || ('speechSynthesis' in window && speechSynthesis.speaking)
+  isQuiet: () => saying || ('speechSynthesis' in window && speechSynthesis.speaking),
+  talkOver: () => voiceNet.talkOver && speakOn, // Talk over Bob (Settings, Voice details; off unless turned on)
+  onBarge: () => { hush(); statusEl.textContent = 'Listening...'; }
 });
+reader = createReader({ hush, ownVoice: () => ownVoice, onTalk: (on) => talking(on) });
+readVoiceNet();
 micBtn.onclick = () => voice.push().catch((e) => note('I can\'t use the microphone: ' + e.message, 'error'));
 const syncEar = () => setToggle(earBtn, wakeOn, wakeOn ? 'Listening for "Hey Bob" (click to stop)' : 'Listen for "Hey Bob" while this window is open');
 earBtn.onclick = async () => {

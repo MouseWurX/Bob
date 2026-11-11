@@ -18,7 +18,7 @@ globalThis.BobHelp = {
     },
     {
       id: 'mic', title: 'Talking instead of typing',
-      html: `<p>Tap 🎙 and speak. Your phone's own speech recognition turns it into text and sends it. On most recent phones (the Galaxy S22 included) that happens on the phone itself. The first time, Android asks if I can use the microphone. I only listen while that 🎙 window is open; there's no "Hey Bob" on the phone, because keeping the microphone open all day eats the battery.</p>`
+      html: `<p>Tap 🎙 and speak. Your phone's own speech recognition turns it into text and sends it. On most recent phones (the Galaxy S22 included) that happens on the phone itself. The first time, Android asks if I can use the microphone. Otherwise I only listen while that 🎙 window is open, unless you turn on one of the voice switches in Settings: <strong>Talk over Bob</strong>, <strong>Listen for "Hey Bob" while Bob is open</strong>, or <strong>Hands-free</strong> in the menu. Each starts off. I never listen with my screen closed.</p>`
     },
     {
       id: 'read-aloud', title: 'Read replies aloud',
@@ -198,8 +198,70 @@ globalThis.BobHelp = {
       html: `<p>Bob is inspired by the wonderful books of Dennis E. Taylor. Bob is an independent, fan-made project. It is not affiliated with, sponsored by or endorsed by Dennis E. Taylor or by his publishers, distributors or licensees. All characters, names, titles, stories and other rights in those books remain the property of their respective owners. Bob contains no text from the books; any similar names or ideas are used only as a tribute.</p><p>This app's code is free software (GPL 3 or later), and its art and writing are CC BY-SA 4.0. Those licences cover only MouseWurX's own work, not anything that belongs to the author or his publishers.</p>`
     },
     {
+      id: 'talk-over', title: 'Talk over Bob',
+      html: `<p>Settings, Voice, <strong>Talk over Bob</strong> (off to start with). While I'm reading a reply aloud, just start talking: I stop and listen. Say "stop" (or "quiet", "enough") on its own and I only stop. Say anything else and I stop and send it as your next message.</p>
+<p>The microphone is only open while I'm reading aloud, and only with my screen showing. Without headphones the phone can hear me through its own speaker; I ignore words that are mostly what I'm saying, but headphones work best. Same switch on your other replicant matrix: Settings, Voice details.</p>`
+    },
+    {
+      id: 'wake', title: 'Hey Bob on the phone',
+      html: `<p>Settings, Voice, <strong>Listen for "Hey Bob" while Bob is open</strong> (off to start with). Say "Hey Bob, what's on tomorrow?" and it's sent, no tap needed. "Hey Bob" on its own and I listen for the next thing you say (8 seconds).</p>
+<p>Only while my screen is showing: when you switch apps or the screen goes off, I stop listening, and I start again when you come back. It uses Android's own speech recognition over and over, so it costs some battery, and on some phones it beeps each time it starts. I stop listening while I talk, unless <strong>Talk over Bob</strong> is on.</p>`
+    },
+    {
+      id: 'hands-free', title: 'Hands-free',
+      html: `<p>Menu, <strong>Hands-free</strong>. A big-button page for when your hands are busy (cooking, the workshop, walking): tap <strong>🎙 Talk</strong>, say what you want, and I answer out loud, whatever Read replies aloud is set to.</p>
+<ul><li><strong>Listen again after Bob answers</strong> (on in Hands-free): when I finish talking, I listen for your next words by myself, so a whole conversation needs one tap. Turn it off to tap Talk each time.</li>
+<li><strong>■ Stop</strong> stops me talking or thinking. <strong>🔁 Say it again</strong> repeats my last answer.</li>
+<li>Say "stop" to stop me mid-sentence (Talk over Bob works here too, if it's on).</li></ul>
+<p>Leaving the page (Back) stops the listening. Nothing new switches on.</p>`
+    },
+    {
+      id: 'reader', title: 'Read a document aloud',
+      html: `<p>Menu, <strong>Read aloud</strong>. I read a document to you in the phone's voice: <strong>Pick a text file</strong> from the phone, paste words in, or <strong>Bob's last reply</strong>. Then <strong>▶ Play</strong>, <strong>⏸ Pause</strong>, <strong>⏮</strong> and <strong>⏭</strong> (one piece back or on; a piece is a few sentences), and <strong>Speed</strong> from 0.75× to 2×.</p>
+<p>I remember where you stopped in each one (the last 30), on this phone, so Play carries on from there next time. Code and links are skipped, like Read replies aloud. Word, PDF and other documents: read them on your other replicant matrix, where Settings, Voice details, <strong>Read documents aloud</strong> adds a player to the document panel.</p>`
+    },
+    {
+      id: 'net-voices', title: 'A voice per Bob',
+      html: `<p>Settings, Voice, <strong>A voice per Bob</strong> (off to start with). Read aloud gives each of your Bobs his own pitch and pace, picked from his name, so with two or three Bobs in the conversation you can hear who's talking. The phone brain keeps the phone's normal voice. The same Bob always sounds the same. To change the voice itself, use Android's Settings, Text-to-speech.</p>
+<p>On your other replicant matrix the same switch (Settings, Voice details) uses a whole different Kokoro voice for each Bob, and lets you pick them.</p>`
+    },
+    {
+      id: 'share', title: 'Share to Bob',
+      html: `<p>Settings, <strong>Take shares from other apps</strong> (off to start with). With it on I'm in every app's <strong>Share</strong> menu. Share to me and:</p>
+<ul><li>a link or words land in the message box;</li><li>a picture is attached, like 📎, for a Bob on your network to look at;</li><li>a small text file (up to 512 KB: .txt, .md, .csv, .json and so on) comes in as its words.</li></ul>
+<p>Nothing is sent until you add what you want and tap Send. Other kinds of file I can't take on the phone; send them from your other replicant matrix. Turn the switch off and I'm out of the Share menu again.</p>`
+    },
+    {
+      id: 'widget', title: 'The home-screen widget',
+      html: `<p>Long-press your home screen, <strong>Widgets</strong>, <strong>Bob</strong>, and drag it out. It has an <strong>Ask Bob</strong> box (opens me with the keyboard up), a <strong>🎙</strong> (opens me listening) and one line for your next reminder.</p>
+<p>The reminder line is filled only with Settings, <strong>Show my next reminder on the widget</strong> on (off to start with), and only while I'm open: I ask your other Bob every 10 minutes, and he has to have <strong>Let my phone see how I'm doing</strong> on (his Settings, Bob-Net). The widget itself never goes online. Without the switch it just says "Tap to ask Bob".</p>`
+    },
+    {
+      id: 'carry', title: 'Carry on on another Bob',
+      html: `<p>Menu, <strong>Carry on on another Bob</strong>. Started a chat with the phone brain on the bus and want the big brain at home? Tap <strong>Carry on with</strong> one of your Bobs: he gets everything you and I said in this chat, it shows up in his Past chats, and from then on he answers this chat while he's reachable. Keep typing here, or open it there.</p>
+<p>That Bob has to have Settings, Bob-Net, <strong>Take chats from my other Bobs</strong> on (off to start with). Only the words travel, over Tailscale: no files, pictures or memory. <strong>Let Settings pick who answers again</strong> undoes the pairing for this chat. On your other replicant matrix, Past chats has <strong>Carry on on…</strong> under each chat to hand it to another computer.</p>`
+    },
+    {
+      id: 'glance', title: 'Your Bobs',
+      html: `<p>Menu, <strong>Your Bobs</strong>. One line per Bob on your list: up and ready, busy, or gaming; his brain; the graphics card's heat (cool, warm or hot, in °C) and memory; the jobs running or waiting; and your next reminder. It checks again every 15 seconds while the page is open, and not at all when it's closed.</p>
+<p>Each Bob only answers with Settings, Bob-Net, <strong>Let my phone see how I'm doing</strong> on there (off to start with). The heat needs an NVIDIA card; other cards show the rest.</p>`
+    },
+    {
+      id: 'low-data', title: 'Low-data mode',
+      html: `<p>Settings, Data, <strong>Low-data mode</strong>: <strong>Off</strong> (to start with), <strong>Only on mobile data</strong> or <strong>Always</strong>. With it on, chats are text only: pictures, clips, songs, diagrams and 3D models from your other Bob wait as a <strong>tap to load</strong> button instead of coming down by themselves. Only on mobile data goes by what Android says about the connection (a metered one), checked each time I come to the front.</p>`
+    },
+    {
       id: 'glossary', title: 'Glossary',
       html: `<dl>
+<dt>Talk over</dt><dd>Speaking while I read aloud, so I stop and listen. Settings, Voice, Talk over Bob.</dd>
+<dt>Wake word</dt><dd>"Hey Bob": the words that make me listen without a tap. Settings, Voice.</dd>
+<dt>Hands-free</dt><dd>The big-button page where we only speak and listen. Menu, Hands-free.</dd>
+<dt>Piece</dt><dd>A few sentences: what Read aloud reads at a time, and what ⏮ and ⏭ skip.</dd>
+<dt>Share menu</dt><dd>Android's list of apps you can send a link, picture or file to from another app. I'm in it while Take shares from other apps is on.</dd>
+<dt>Widget</dt><dd>A small piece of an app that sits on your home screen. Mine has Ask Bob, 🎙 and your next reminder.</dd>
+<dt>Carry on</dt><dd>Handing a chat to another of your Bobs, words and all, so you keep going there.</dd>
+<dt>Metered connection</dt><dd>One Android counts as costing by the megabyte, usually mobile data. Low-data mode can go by it.</dd>
+<dt>Low-data mode</dt><dd>Text only: what your other Bob makes waits for your tap. Settings, Data.</dd>
 <dt>Bob on your network</dt><dd>A Bob running on one of your replicant matrices that lets this phone in. He does the heavy lifting.</dd>
 <dt>Phone brain</dt><dd>A small AI model that runs on this phone, without the internet.</dd>
 <dt>Chest</dt><dd>The newest things your other Bob made, shown as little pictures with names. Menu, Chest here; under Bob on Equip Bob on your other replicant matrix.</dd>
@@ -258,6 +320,14 @@ globalThis.BobHelp = {
 <tr><td>How tough are the enemies in an Adventure?</td><td>The usual dozen are on the Enemies tab of 📖 Characters with their hearts: a giant rat has one, a goblin two, an orc four, a dragon six. The game master uses those as written and takes hearts off them as the story goes; anything else he invents, and a boss simply has more. Whoever he brings on lands on Met, drawn.</td></tr>
 <tr><td>Can the phone brain play the games?</td><td>No. The app on your other replicant matrix runs them and his quick brain talks; the phone shows the board and sends your moves. Get your other Bob on Tailscale and open Games here.</td></tr>
 <tr><td>How do I get help with my Bob?</td><td>First try the rows above, then ask me in the chat. If I'm the one not working, Settings, Save a help bundle: one file with my logs, errors, last chats and this replicant matrix's facts, with your name, passcodes, keys and Tailscale addresses taken out, written for a helper (a person or an AI agent) to read first. Paste it to the agent you use, or open an issue at github.com/MouseWurX/Bob/issues with it attached and a line about what you saw. Bob is free software made by volunteers, so an issue is a request, not a ticket; the bundle makes it one that can be answered. See Save a help bundle.</td></tr>
+<tr><td>Can I stop Bob reading aloud by talking?</td><td>Yes: Settings, Voice, Talk over Bob. Say "stop" to stop him, or just say your next message. Headphones work best.</td></tr>
+<tr><td>Can I say "Hey Bob" on the phone?</td><td>Yes, while my screen is showing: Settings, Voice, Listen for "Hey Bob" while Bob is open. It's off to start with because it uses battery.</td></tr>
+<tr><td>Hey Bob doesn't hear me</td><td>Check the microphone is allowed (Android's Settings, Apps, Bob, Permissions), that my screen is showing, and that the 🎙 window isn't open. Some phones need Google's speech recognition installed.</td></tr>
+<tr><td>Bob isn't in the Share menu</td><td>Settings, Sharing and the widget, Take shares from other apps. Some apps only show the apps you used last: look under More.</td></tr>
+<tr><td>The widget says "Tap to ask Bob" and no reminder</td><td>Turn on Show my next reminder on the widget here, and Let my phone see how I'm doing on your other Bob (Settings, Bob-Net). It updates while I'm open.</td></tr>
+<tr><td>Your Bobs says a Bob isn't sharing</td><td>On that replicant matrix: Settings, Bob-Net, Let my phone see how I'm doing.</td></tr>
+<tr><td>Can I move a chat from the phone to my computer?</td><td>Yes: Menu, Carry on on another Bob. That Bob needs Take chats from my other Bobs on (his Settings, Bob-Net).</td></tr>
+<tr><td>Pictures don't load on mobile data</td><td>That's Low-data mode: tap the button to load one, or set it to Off in Settings, Data.</td></tr>
 <tr><td>Can I use the phone away from home?</td><td>Yes, as long as your other replicant matrix is on and Tailscale is on at both ends. Without that, the phone brain can still chat.</td></tr>
 </table>`
     }

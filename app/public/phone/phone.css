@@ -274,3 +274,10 @@ input[type="number"] { min-height: 44px; border-radius: 10px; border: 1px solid 
 .fx-die.nat20 .fx-face { box-shadow: 0 0 24px var(--accent); } .fx-die.gone { opacity: 0; }
 @keyframes fx-tumble { from { transform: rotate(0); } to { transform: rotate(60deg); } }
 @media (prefers-reduced-motion: reduce) { .fx-die .fx-face, .adv-member.hit { animation: none; } }
+
+/* Voice, phone and Bob-Net (2026-11-11) */
+.handsfree .hf-state { font-size: 1.6rem; text-align: center; margin: 1.2rem 0 .4rem; }
+.handsfree .hf-buttons { display: grid; gap: .8rem; margin: 1rem 0; }
+.handsfree .hf-big { font-size: 1.5rem; min-height: 4.5rem; border-radius: 1.2rem; }
+.handsfree #hf-talk[aria-pressed="true"] { outline: 3px solid var(--accent); }
+.low-data-tap { margin: .4rem 0; }
