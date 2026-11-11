@@ -19,7 +19,7 @@
     get(k, d) { try { const v = localStorage.getItem(`bob.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { localStorage.setItem(`bob.${k}`, JSON.stringify(v)); } catch { /* full or blocked: carry on in memory */ } }
   };
-  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, userName: '', theme: 'inn', effort: 'low', resume: false };
+  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, mathView: false, userName: '', theme: 'inn', effort: 'low', resume: false };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
   const saveSettings = () => store.set('settings', settings);
   let bobs = store.get('bobs', []); // [{ name, address, base }]
@@ -936,12 +936,21 @@
     document.querySelectorAll('input[name="mode"]').forEach((r) => { r.checked = r.value === settings.mode; });
     $('user-name').value = settings.userName;
     $('read-aloud').checked = settings.readAloud;
+    $('math-view').checked = settings.mathView === true;
     $('theme').value = settings.theme;
     $('resume').checked = settings.resume;
   }
   document.querySelectorAll('input[name="mode"]').forEach((r) => r.addEventListener('change', () => { settings.mode = r.value; saveSettings(); drawWho(); }));
   $('user-name').addEventListener('change', (e) => { settings.userName = e.target.value.replace(/[<>{}"`\\]/g, '').trim().slice(0, 40); saveSettings(); });
   $('read-aloud').addEventListener('change', (e) => { settings.readAloud = e.target.checked; saveSettings(); });
+  // Show maths as formulas: KaTeX (vendor/katex/) loads the first time it's switched on; the chat is drawn again.
+  function applyMath() {
+    const on = settings.mathView === true;
+    if (!on) { BobMath.setOn(false); return Promise.resolve(); }
+    return BobMath.load('vendor/katex/').then(() => { BobMath.setOn(true, 'mathml'); }, () => { settings.mathView = false; BobMath.setOn(false); });
+  }
+  $('math-view').addEventListener('change', (e) => { settings.mathView = e.target.checked; saveSettings(); applyMath().then(() => { $('math-view').checked = settings.mathView; drawChat(); }); });
+  if (settings.mathView) applyMath().then(drawChat);
   $('theme').addEventListener('change', (e) => { settings.theme = e.target.value; saveSettings(); applyTheme(); });
   $('resume').addEventListener('change', (e) => { settings.resume = e.target.checked; saveSettings(); });
   const applyTheme = () => document.documentElement.setAttribute('data-theme', settings.theme);

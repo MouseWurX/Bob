@@ -25,6 +25,10 @@ globalThis.BobHelp = {
       html: `<p>Settings, <strong>Read replies aloud</strong> (off to start with). I read each reply in your phone's own voice. To change the voice or speed, use Android's Settings, Text-to-speech. The fancy voices (Kokoro, Chatterbox, Piper) live on your other replicant matrix.</p>`
     },
     {
+      id: 'maths', title: 'Maths as formulas',
+      html: `<p>Settings, Look, <strong>Show maths as formulas</strong> (off to start with). Brains write maths as code, like <code>\\frac{1}{2}</code> for a half. With this on I draw it as real formulas: fractions stacked, powers raised. Prices like $5 stay prices. It's all done on the phone, nothing goes online. A formula I can't read shows as I wrote it, in red. Keyboard shortcuts are only on my computer window, not here.</p>`
+    },
+    {
       id: 'who', title: 'Who answers',
       html: `<p>Settings, <strong>Who answers</strong>:</p>
 <ul><li><strong>Automatic</strong> (the starting position): a Bob on your network when one is reachable, otherwise the phone brain if it's on.</li>

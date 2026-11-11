@@ -35,6 +35,8 @@ import { createViewer, outCard, fillPeeks } from './viewer.js';
 import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
 import { diagramHtml, saveRowsHtml, setupSaveAs, watchSaveAs } from './save-as.js';
+import './math-core.js'; // Show maths as formulas: KaTeX, loaded only while the switch is on
+import { installShortcuts, listHtml as shortcutListHtml } from './shortcuts.js';
 
 // Settings opens in its own window on a computer (minimise, maximise, close). The main window keeps
 // its left menu and Now running; what changes over there comes back on a BroadcastChannel (settings-link.js).
@@ -366,7 +368,7 @@ settingsChan?.addEventListener('message', (e) => {
   const m = acceptSettings(e.data); if (!m) return;
   if (m.kind === 'press') { $(m.id)?.click(); return; }
   if (m.kind === 'event') { (m.name === 'bob-door' ? document : window).dispatchEvent(new CustomEvent(m.name, { detail: m.detail })); return; }
-  fetch('/api/settings').then((r) => r.json()).then((st) => { setLook(st.look); applyStyle(st.style); }).catch(() => {});
+  fetch('/api/settings').then((r) => r.json()).then((st) => { setLook(st.look); applyStyle(st.style); applyMath(st.mathView === true, true); shortcutsOn = st.shortcuts === true; }).catch(() => {});
 });
 // Settings, Get models and Style are pages in the main area: Chat or New chat goes back to the chat.
 for (const id of ['chatBtn', 'newchat']) $(id).addEventListener('click', () => { if ($('cellar').open) $('cellar').close(); });
@@ -986,6 +988,8 @@ function decorate(el, text, media = []) {
   }
   return el;
 }
+// A message with formulas copies as the brain wrote it (the LaTeX), which pastes cleanly anywhere.
+const copyWords = (msg) => (msg.querySelector('.katex') ? rawText.get(msg) : '') || plainText(msg) || rawText.get(msg) || '';
 function plainText(el) {
   const c = el.cloneNode(true);
   for (const x of c.querySelectorAll('.msg-tools, .mini, .file-cards, .qtag')) x.remove();
@@ -1006,7 +1010,7 @@ log.addEventListener('click', async (e) => {
   const b = e.target.closest('button, a.file-link');
   if (!b || !log.contains(b)) return;
   const msg = b.closest('.msg');
-  if ('copyMsg' in b.dataset) return copyText(plainText(msg) || rawText.get(msg) || '', b);
+  if ('copyMsg' in b.dataset) return copyText(copyWords(msg), b);
   if ('copyLinks' in b.dataset) return copyText([...new Set([...msg.querySelectorAll('a[href^="http"]')].map((a) => a.href))].join('\n'), b);
   if ('copyCode' in b.dataset) return copyText(b.parentElement.querySelector('code')?.textContent || '', b);
   if (b.dataset.copyLink) return copyText(b.dataset.copyLink, b);
@@ -1138,7 +1142,61 @@ function offerWants() {
 }
 
 // ---------- Start ----------
+// ---------- Show maths as formulas (Settings, Bob himself; off unless you turn it on) ----------
+// KaTeX is loaded from Bob's own files the first time it's needed. redraw: the switch changed, so the chat is drawn again.
+async function applyMath(on, redraw = false) {
+  if (on === BobMath.isOn()) return;
+  if (on) { try { await BobMath.load('/vendor/katex/'); } catch { note('Formulas couldn\'t be drawn: Bob\'s maths files are missing. They show as written.', 'error'); return; } }
+  BobMath.setOn(on);
+  if (redraw && !busy && log.querySelector('.msg')) { log.innerHTML = ''; await loadHistory(40); }
+}
+
+// ---------- Keyboard shortcuts (shortcuts.js; the extra ones while Settings, Bob himself, Keyboard shortcuts is on) ----------
+let shortcutsOn = false;
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+function showShortcuts() {
+  let dlg = $('keysDlg');
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'keysDlg'; dlg.className = 'keys-dlg'; dlg.setAttribute('aria-label', 'Keyboard shortcuts');
+    document.body.appendChild(dlg);
+    dlg.addEventListener('click', (e) => { if (e.target === dlg || e.target.closest('[data-keys-close]')) dlg.close(); });
+  }
+  dlg.innerHTML = `<h3>Keyboard shortcuts</h3>${shortcutListHtml({ mac: isMac, on: shortcutsOn })}<p><button type="button" class="big" data-keys-close>Close</button></p>`;
+  if (!dlg.open) dlg.showModal();
+}
+window.addEventListener('bob-shortcuts', showShortcuts);
+window.addEventListener('bob-display', (e) => { const d = e.detail || {}; if ('shortcuts' in d) shortcutsOn = d.shortcuts === true; if ('mathView' in d) applyMath(d.mathView === true, true); }); // Help, Keyboard shortcuts: Show the list
+installShortcuts({
+  doc: document,
+  isOn: () => shortcutsOn,
+  ctx: () => {
+    const a = document.activeElement;
+    return { mac: isMac, typing: Boolean(a?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')), inInput: a === input, empty: !input.value, busy, dialog: Boolean(document.querySelector('dialog[open]')) };
+  },
+  act: (id) => {
+    if (id === 'newChat') { if (busy) return false; if ($('cellar').open) $('cellar').close(); $('newchat').click(); input.focus(); }
+    else if (id === 'stop') { if (stopBtn.hidden) return false; stopBtn.click(); }
+    else if (id === 'search') topicsPage.open();
+    else if (id === 'session') { sessionSel.focus(); try { sessionSel.showPicker(); } catch {} }
+    else if (id === 'focus') input.focus();
+    else if (id === 'lastMsg') {
+      const mine = [...log.querySelectorAll('.msg.you')].pop();
+      const t = mine && (rawText.get(mine) ?? plainText(mine));
+      if (!t) return false;
+      input.value = t; input.setSelectionRange(t.length, t.length);
+    } else if (id === 'copyReply') {
+      const his = [...log.querySelectorAll('.msg.bob')].pop();
+      if (!his) return false;
+      copyText(copyWords(his)).then((ok) => note(ok ? 'Copied Bob\'s last reply.' : 'Couldn\'t copy. Use the Copy button under the reply.'));
+    } else if (id === 'settings') $('settingsBtn').click();
+    else if (id === 'list') showShortcuts();
+    return true;
+  }
+});
+
 async function start() {
+  try { const st = await (await fetch('/api/settings')).json(); shortcutsOn = st.shortcuts === true; await applyMath(st.mathView === true); } catch {}
   await loadHistory(20);
   let cat = 'Patches';
   try { cat = (await (await fetch('/api/settings')).json()).catName || cat; } catch {}

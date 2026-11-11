@@ -9,6 +9,10 @@ import { CARDS } from './settings-map.js';
 // key: the setting. setting: the switch's name in Settings (the Help and the tests use it). where: its Settings panel.
 // card: the Settings card it sits under.
 export const WANTS = [
+  { card: 'bob', key: 'mathView', setting: 'Show maths as formulas', where: 'Bob himself',
+    label: 'Show maths as real formulas', note: 'Fractions, powers and roots instead of code.' },
+  { card: 'bob', key: 'shortcuts', setting: 'Keyboard shortcuts', where: 'Bob himself',
+    label: 'Answer to keyboard shortcuts', note: 'Ctrl+Shift+O new chat, Ctrl+K search, Esc stops me. Ctrl+/ lists them.' },
   { card: 'how', key: 'quickNotes', setting: 'Let Bob take quick notes', where: 'How Bob works',
     label: 'Take quick notes when you say "note:"', note: 'Saved at once with the date, in one text file.' },
   { card: 'how', key: 'smartNotes', setting: 'Let Bob notice what\'s worth noting', where: 'How Bob works',

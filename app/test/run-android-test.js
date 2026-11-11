@@ -74,7 +74,7 @@ check('markdown links: only http(s), opened by the phone', !/javascript:/.test(m
 // Help covers every setting and screen on the page.
 const html = fs.readFileSync(path.join(www, 'index.html'), 'utf8');
 const ids = H.sections.map((s) => s.id);
-const need = { 'phone-on': 'phone-brain', 'free-idle': 'free-memory', 'idle-min': 'free-memory', mode: 'who', 'user-name': 'user-name', 'read-aloud': 'read-aloud', theme: 'theme', resume: 'resume', mic: 'mic', effort: 'effort', bobs: 'bobs', memory: 'memory', chats: 'past-chats', 'lend-on': 'lend', 'pass-along': 'pass-along' };
+const need = { 'phone-on': 'phone-brain', 'free-idle': 'free-memory', 'idle-min': 'free-memory', mode: 'who', 'user-name': 'user-name', 'read-aloud': 'read-aloud', 'math-view': 'maths', theme: 'theme', resume: 'resume', mic: 'mic', effort: 'effort', bobs: 'bobs', memory: 'memory', chats: 'past-chats', 'lend-on': 'lend', 'pass-along': 'pass-along' };
 for (const [ctl, sec] of Object.entries(need)) check(`help covers ${ctl}`, (html.includes(`id="${ctl}"`) || html.includes(`name="${ctl}"`)) && ids.includes(sec));
 const controls = [...html.matchAll(/<(?:input|select)[^>]*(?:id|name)="([\w-]+)"/g)].map((m) => m[1]).filter((x) => !['chat-search', 'help-search', 'add-name', 'add-address', 'memory-text'].includes(x));
 for (const c of new Set(controls)) check(`setting ${c} has a help entry`, c in need);

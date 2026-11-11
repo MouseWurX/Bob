@@ -101,8 +101,13 @@
       .replace(/\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]{1,500})\)/g, (_, t, u) => `<a href="#" data-link="${u}">${t}</a>`)
       .replace(/(^|[\s(])(https?:\/\/[^\s<)]{3,500})/g, (_, pre, u) => `${pre}<a href="#" data-link="${u}">${u}</a>`);
   }
-  function markdown(text) {
+  // Formulas (math-core.js) are drawn while Show maths as formulas is on: each one is held aside as a placeholder
+  // so the escaping and the bold and italics can't touch it, then put back.
+  function markdown(text, opts = {}) {
     const out = [];
+    const math = 'math' in opts ? opts.math : globalThis.BobMath?.renderer?.() || null;
+    const keep = [];
+    const restore = (s) => s.replace(/\u0001(\d+)\u0002/g, (m, i) => keep[Number(i)] ?? '');
     const parts = String(text || '').split(/```/);
     parts.forEach((part, i) => {
       if (i % 2 === 1) {
@@ -110,19 +115,21 @@
         out.push(`<pre><button class="copy" data-copy>Copy</button><code>${esc(body.replace(/\n$/, ''))}</code></pre>`);
         return;
       }
-      const lines = esc(part).split('\n');
+      const held = math && globalThis.BobMath ? globalThis.BobMath.find(part).map((p) => (p.tex == null ? p.text : `\u0001${keep.push(math(p.tex, p.display)) - 1}\u0002`)).join('') : part;
+      const lines = esc(held).split('\n');
       let list = null;
       for (const line of lines) {
         const li = line.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)$/);
         if (li) { if (!list) { list = []; } list.push(`<li>${inline(li[1])}</li>`); continue; }
         if (list) { out.push(`<ul>${list.join('')}</ul>`); list = null; }
+        if (/^\s*\u0001\d+\u0002\s*$/.test(line) && /^<div/.test(restore(line.trim()))) { out.push(line.trim()); continue; } // a formula on its own line
         const h = line.match(/^#{1,4}\s+(.*)$/);
         if (h) out.push(`<p><strong>${inline(h[1])}</strong></p>`);
         else if (line.trim()) out.push(`<p>${inline(line)}</p>`);
       }
       if (list) out.push(`<ul>${list.join('')}</ul>`);
     });
-    return out.join('');
+    return restore(out.join(''));
   }
 
   // Short title for a chat from its first message.
