@@ -618,12 +618,12 @@ index 0000000..356ab2f
 +bool scut_recv(scut * b, void * data, size_t size) { return b->recv(data, size); }
 diff --git a/ggml/src/ggml-rpc/scut.h b/ggml/src/ggml-rpc/scut.h
 new file mode 100644
-index 0000000..2605d65
+index 0000000..b42454e
 --- /dev/null
 +++ b/ggml/src/ggml-rpc/scut.h
 @@ -0,0 +1,46 @@
 +#pragma once
-+// SCUT: Bob's own transport for card sharing over home Wi-Fi (Brain Engine patch 0005).
++// SCUT (Signals and Communications - Universal Transceiver): Bob's own transport for card sharing over home Wi-Fi (Brain Engine patch 0005).
 +//
 +// Opt-in (GGML_RPC_SCUT=1 on both machines), agreed in the HELLO handshake through conn_caps, and the original TCP
 +// protocol is used whenever either side doesn't offer it or the UDP path doesn't answer. The RPC commands themselves
