@@ -316,6 +316,14 @@ ${set('Alerts', 'Off', 'Pops up a notification when I need you, for example when
 <dl>${set('Show models that don\'t suit this replicant matrix', 'Off', 'Shows the hidden models, each with the reason it doesn\'t suit. Remembered.')}</dl>
 <p>I judge your replicant matrix by the graphics card and RAM shown at the top of each model page. No guessing, just the numbers.</p>` },
 
+  { id: 'brains-page', group: 'Models', title: 'The Brains page: each brain, its jobs, where it sits', words: 'brains page brain picker jobs chips plus job add a brain card memory storage drive where a brain lives sits placement senses and tools paper doll plain list equip bob confusing which brain does what replicant matrix pc computer laptop mac device machine',
+    html: `<p><strong>Equip Bob</strong> opens on the Brains page. It answers three things at a glance: which brains I use, which jobs each one does, and where each one sits on this replicant matrix. Click my picture, or Get models in the menu, to open it.</p>
+<ul><li><strong>This replicant matrix.</strong> What my biggest brain in use takes from the graphics card, the memory and the drive when it's loaded. I load one big brain at a time and swap when a job needs another, so they don't add up.</li>
+<li><strong>Brains in use.</strong> One row per brain. The chips are its jobs. <strong>+ job</strong> gives it another one (only jobs it can do are listed), and the ✕ on a chip takes it off a job that can go without. The bar says where it sits: <strong>Card</strong> is quickest, <strong>Memory</strong> is slower, <strong>Storage</strong> (read from the drive as needed) is slowest. A brain on several jobs loads once, so fewer brains means fewer swaps.</li>
+<li><strong>Jobs with no brain of their own.</strong> Each says what happens while it's empty. Pick a brain for it, or press <strong>Get one</strong> to see the catalogue for that job.</li>
+<li><strong>Add a brain.</strong> Brains already here with no job, and the door to the ${go('catalogue', 'Brain catalogue')}.</li>
+<li><strong>Senses and tools.</strong> Hearing, voice, painter, picture editor, video, music, sound effects, memory and the rented brain. <strong>Change</strong> opens the choices for that one right there.</li></ul>
+<p>Nothing changes until you pick it, and nothing downloads without a list first. The <strong>Paper doll</strong> and the <strong>Plain list</strong> are still there, at the top right: same choices, different view. See ${go('equip', 'Equip Bob: choosing his models')} for what each job does, and ${go('recommended', 'How Bob picks models')} for how I choose.</p>` },
   { id: 'equip', group: 'Models', title: 'Equip Bob: choosing his models', words: 'slots paper doll kit drag brain quick deep coding second look eyes memory ears voice painter editor video music sound plain list chest outputs made files thumbnails',
     html: `<p>I use a different model for each kind of job. <strong>Equip Bob</strong> shows them like a character sheet: me in the middle, with a slot for each job. Yes, I'm aware I'm the NPC getting kitted out. Click my picture, or Get models in the menu, to open it.</p>
 <table><tr><th>Slot</th><th>What it does</th></tr>
@@ -1544,6 +1552,7 @@ ${set('Check in now', 'A button', 'Does a round straight away and shows the resu
 <dt>Brain Engine</dt><dd>My own fork of llama.cpp, made to give me more room to work with brains. Based on llama.cpp, not an official build. The only engine for my brains now, wherever it has a build.</dd>
 <dt>Brain in parts</dt><dd>A big brain cut into several files (name-00001-of-00003.gguf), because Hugging Face takes files only up to 50 GB. See ${go('faq-parts', 'Why does a brain come in several files?')}.</dd>
 <dt>Brain swap</dt><dd>Putting one brain away and loading another, usually 10 to 20 seconds.</dd>
+<dt>Brains page</dt><dd>The first view of Equip Bob: each brain I use, the jobs it does, and where it sits (card, memory, drive). See ${go('brains-page', 'The Brains page')}.</dd>
 <dt>Built-in graphics</dt><dd>Graphics that are part of the processor and share this replicant matrix's memory, as in handhelds and thin laptops. Bob runs his brains on them, and paints there too, slowly.</dd>
 <dt>Campaign</dt><dd>An Adventure saved between sittings, under Continue a campaign on the start card.</dd>
 <dt>Card (in the chat)</dt><dd>A box in the chat that shows a file, a picture, or something I want your OK for.</dd>

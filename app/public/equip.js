@@ -130,7 +130,7 @@ export function shownKit(slot, ctx) {
   return { shown, hidden: all.length - shown.length };
 }
 
-function kitHtml(slot, ctx) {
+export function kitHtml(slot, ctx) {
   if (!slot) return '<p class="muted">Pick a slot around Bob to see what fits it.</p>';
   if (slot.how === 'rent') return rentKitHtml(slot, ctx); // 1.5.127
   const cur = equipped(slot, ctx);

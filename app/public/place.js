@@ -18,8 +18,8 @@ export const placeWord = (where, hw = {}) => (where === 'card' && hw.unified ? '
 const QUANT_RE = /(?:^|[-_.])((?:UD-)?I?Q\d(?:_[A-Z0-9]+)*|MXFP\d|BF16|F16|F32|FP8)(?=[-_.]|$)/i;
 export function quantOf(m) {
   if (m?.quant) return String(m.quant);
-  const f = (m?.files || []).find((x) => x.role === 'gguf' || /\.gguf$/i.test(x.url || '')) || null;
-  const name = String(f?.url || m?.ownFile || '').split(/[\\/]/).pop();
+  const f = (m?.files || []).find((x) => x.role === 'gguf' || /\.gguf$/i.test(x.url || x.name || '')) || null;
+  const name = String(f?.url || f?.name || m?.ownFile || '').split(/[\\/]/).pop();
   const hit = name.match(QUANT_RE);
   return hit ? hit[1].toUpperCase().replace(/^UD-/, '') : '';
 }
@@ -29,7 +29,7 @@ export function quantOf(m) {
 export function hasExperts(m) {
   if (typeof m?.experts === 'boolean') return m.experts;
   if (m?.activeParams) return true;
-  const names = [m?.id, m?.name, m?.rentAs, ...(m?.files || []).map((f) => f.url)].join(' ');
+  const names = [m?.id, m?.name, m?.rentAs, ...(m?.files || []).map((f) => f.url || f.name)].join(' ');
   return /\d+(?:\.\d+)?B-A\d+(?:\.\d+)?B\b/i.test(names) || /gpt-oss/i.test(names);
 }
 
@@ -50,7 +50,13 @@ export function placeFor(m, hw = {}, rooms = []) {
   const out = (where, extra = {}) => ({ where, word: placeWord(where, hw), cardGB: 0, memGB: 0, storageGB: 0, why: '', ...extra });
   const r1 = (n) => Math.round(n * 10) / 10;
   // The catalogue's own figure for the card (it counts the chat's memory) decides "on the card", as before.
-  if (!hw.unified && hw.vramGB && (m?.vramGB || need) <= hw.vramGB) return out('card', { cardGB: size });
+  if (!hw.unified && hw.vramGB && (m?.vramGB || need) <= hw.vramGB) {
+    // Some brains made of experts are tested to run well on a card smaller than their file: the busy parts sit on the
+    // card and the rest waits in memory. Say so, and never show more on the card than the card holds.
+    if (size <= card) return out('card', { cardGB: size });
+    const onCard = r1(Math.max(0, card - ROOM.chatGB));
+    return out('memory', { cardGB: onCard, memGB: r1(size - onCard), runsWell: true, why: `Runs well here: the busy parts sit on the card (${gb(onCard)}), the rest waits in memory.` });
+  }
   if (hw.unified && need <= ram) return out('card', { memGB: size });
   if (!hw.unified && need <= card + ram) {
     const onCard = r1(Math.min(size, Math.max(0, card - ROOM.chatGB)));

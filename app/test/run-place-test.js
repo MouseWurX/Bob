@@ -13,7 +13,8 @@ const pc = { vramGB: 16, ramGB: 32 }, laptop = { vramGB: 6, ramGB: 16 }, noCard 
 const oss120 = { id: 'gpt-oss-120b', name: 'GPT-OSS 120B', sizeGB: 63.4, vramGB: 66, files: [{ role: 'gguf', url: 'https://huggingface.co/x/y/resolve/0/gpt-oss-120b-MXFP4.gguf' }] };
 
 check('a brain that fits the card lives on the card', placeFor(by('riker-28b-q3'), pc).where === 'card');
-{ const p = placeFor(by('bobert-35b'), pc); check('35Bob Bobert (21 GB) on a 16 GB card: on the card by the catalogue\'s own figure', p.where === 'card', JSON.stringify(p)); }
+{ const p = placeFor(by('bobert-35b'), pc); check('35Bob Bobert (21 GB) runs well on a 16 GB card, but the card never shows more than it holds', p.where === 'memory' && p.runsWell && p.cardGB <= 15 && Math.abs(p.cardGB + p.memGB - 21.2) < 0.11 && /Runs well here/.test(p.why), JSON.stringify(p)); }
+{ const q = placeFor({ sizeGB: 12, vramGB: 13, files: [{ role: 'gguf', name: '28Bob-Q3_K_M.gguf' }] }, pc); check('a file known only by its name still tells its quantization', q.where === 'card' && quantOf({ files: [{ role: 'gguf', name: '28Bob-Q3_K_M.gguf' }] }) === 'Q3_K_M'); }
 { const p = placeFor(by('deepseek-r1-distill-llama-70b'), pc); check('a 42 GB brain without experts on 16 + 32: too big for home, and it says why', p.where === 'rent' && /every part/.test(p.why), JSON.stringify(p)); }
 { const p = placeFor(by('nemotron-3.5-bolt-74b'), pc); check('a 24 GB brain on a 16 GB card: card + memory, and the parts add up', p.where === 'memory' && Math.abs(p.cardGB + p.memGB - 23.8) < 0.11, JSON.stringify(p)); }
 { const p = placeFor(oss120, pc); check('GPT-OSS 120B on 16 + 32: card + memory + storage', p.where === 'storage' && p.storageGB > 0 && Math.abs(p.cardGB + p.memGB + p.storageGB - 63.4) < 0.11 && p.word === 'Card + memory + storage', JSON.stringify(p)); }

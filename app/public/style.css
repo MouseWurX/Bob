@@ -1693,3 +1693,29 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .settings-window .cellar.page { padding: 0 16px; }
 .settings-window #cellar-close { display: none; }
 .settings-window .cellar[data-page="Settings"] .cellar-tabs, .settings-window .cellar[data-page="Style"] .cellar-tabs .tabs-row:first-child { display: none; }
+
+/* 1.5.205 the Brains page: each brain, its jobs and where it sits */
+.brains-page { display: grid; gap: 12px; }
+.brains-panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; }
+.brains-panel h3 { margin: 0 0 8px; }
+.brains-panel h4 { margin: 12px 0 6px; font-size: 13px; color: var(--muted); }
+.brain-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.brain-row { display: grid; grid-template-columns: minmax(150px, 1.1fr) minmax(160px, 1.6fr) minmax(180px, 1.4fr); gap: 10px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; }
+.brain-jobs { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.job-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; border: 1px solid var(--accent); border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
+.chip-x { background: none; border: 0; color: var(--muted); padding: 0; margin: 0 -4px 0 0; min-width: 24px; min-height: 24px; line-height: 1; cursor: pointer; }
+.chip-x:hover, .chip-x:focus-visible { color: var(--text); }
+.job-add { font-size: 13px; max-width: 11em; }
+.place-bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); font-size: 12px; font-weight: 600; }
+.place-bar span { display: grid; place-items: center; white-space: nowrap; overflow: hidden; color: var(--on-accent); padding: 0 4px; }
+.place-bar .pb-card { background: var(--good); }
+.place-bar .pb-mem { background: var(--warn); }
+.place-bar .pb-drive { background: color-mix(in srgb, var(--you) 55%, var(--text)); }
+.place-why { display: block; font-size: 12px; margin-top: 3px; }
+.job-empty, .sense-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; }
+.sense-row.sel { border-color: var(--accent); }
+.budget-row { display: grid; grid-template-columns: 80px 1fr minmax(120px, auto); gap: 10px; align-items: center; margin-bottom: 4px; }
+.budget-row .meter { margin: 0; }
+.brains-panel .kit-panel:empty { display: none; }
+.brains-panel .kit-panel { margin-top: 10px; }
+@media (max-width: 760px) { .brain-row { grid-template-columns: 1fr; } .budget-row { grid-template-columns: 70px 1fr; } .budget-row .muted { grid-column: 1 / 3; } }

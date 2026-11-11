@@ -4,6 +4,7 @@ import { progressHtml, animateWorkers } from './progress.js';
 import { createStylePage } from './style-page.js';
 import { createSampler, sampleButton, sampleHint } from './voice-samples.js';
 import { equipHtml, allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml, readyList, readyDefaults, readyToggle, readyOrder, CHEST_SHOW } from './equip.js';
+import { brainsHtml } from './brains.js';
 import { suit as fitSuit, picksOf, unsuited, jobNames, SLOT_NAMES, canDo, packsFor } from './fit.js';
 import { catalogueHtml, familyOf, visibleModels, isNaughty, VIEWS, dayWords, rentPicks } from './catalogue.js';
 import { drawBob } from './bob-sprite.js';
@@ -254,7 +255,7 @@ export function createCellar({ popOut = null } = {}) {
     let body = '';
     if (tab === 'settings') body = settingsHtml();
     else if (tab === 'style') body = stylePage.html(settings);
-    else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="doll">Back to Equip Bob</button></p>${rolesHtml()}` : (roles ? equipHtml(eqCtx()) : '<p class="muted">Loading...</p>');
+    else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}` : !roles ? '<p class="muted">Loading...</p>' : eqView === 'doll' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${equipHtml(eqCtx())}` : brainsHtml({ ...eqCtx(), bobNet: data?.bobNet || [] }); // 1.5.205 the Brains page comes first
     else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], bobNet: data?.bobNet || [], naughtyOn: naughtyOn(), catView, ownForm, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
     else if (tab === 'found') body = `<p class="muted">Scanned ${data.scannedAt ? new Date(data.scannedAt).toLocaleString() : 'never'}. <button data-scan>Look again</button></p>${extrasHtml() || '<p>Nothing extra found.</p>'}`;
     else if (GROUPS.some((g) => g.id === tab)) body = groupHtml(GROUPS.find((g) => g.id === tab));
@@ -1193,7 +1194,7 @@ export function createCellar({ popOut = null } = {}) {
     try { homeInfo = await api('/api/home'); } catch (e) { homeInfo = { error: e.message, folder: settings?.home || '' }; }
     const y = dlg.scrollTop; draw(); dlg.scrollTop = y;
   }
-  let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-equip-view') || 'doll'; } catch { return 'doll'; } })();
+  let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-equip-view') || 'brains'; } catch { return 'brains'; } })();
   function eqCtx() {
     return { roles, models: shownModels(), brains: settings?.sessionBrains || {}, embed: roles?.current?.embed || '', selected: eqSelected, vramGB: hw?.vramGB || hw?.gpu?.vramGB || null, unified: Boolean(hw?.gpu?.unified), integrated: Boolean(hw?.gpu?.integrated), arm: hw?.board === 'arm', ramGB: hw?.ramGB || null, freeGB: hw?.freeGB ?? null, platform: settings?.platform, showUnsuited,
       famOpen, packs: data?.packs || [], packId: starterPack, picks: starterPicks, engines: data?.engines || [], starterOpen,
@@ -1244,6 +1245,7 @@ export function createCellar({ popOut = null } = {}) {
     await eqReload();
     eqSelected = slotId;
     draw();
+    if (eqView === 'brains' && slot.kind === 'llm') offer = false; // the Brains page gives a brain more jobs from its own row
     const panel = dlg.querySelector('.kit-panel');
     if (r.needsEngine && panel) askEngine(panel);
     if (offer && value && slot.kind === 'llm') offerMore(slot, value);
@@ -1697,6 +1699,9 @@ export function createCellar({ popOut = null } = {}) {
   const onChange = async (e) => {
     const el = e.target;
     try {
+      // 1.5.205 the Brains page: give a brain another job, or pick a brain for an empty job.
+      if (el.dataset.brainjob && el.value) { const y = dlg.scrollTop; await equip(el.value, el.dataset.brainjob, { offer: false }); dlg.scrollTop = y; return; }
+      if (el.dataset.jobbrain && el.value) { const y = dlg.scrollTop; await equip(el.dataset.jobbrain, el.value, { offer: false }); dlg.scrollTop = y; return; }
       if (el.dataset.proxy) { const side = $(el.dataset.proxy); if (side && (side.getAttribute('aria-pressed') === 'true') !== el.checked) side.click(); setTimeout(() => { el.checked = side?.getAttribute('aria-pressed') === 'true'; }, 300); return; }
       if (el.dataset.mainproject !== undefined) { await saveProjects(settings.projectList || [], el.dataset.mainproject); return; }
       if (el.dataset.hs) { // 1.5.34 House style boxes (Equip Bob): the whole group is saved, so an emptied box clears
