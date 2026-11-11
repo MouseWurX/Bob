@@ -304,6 +304,8 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         if (!inBackground) return
         when (ev.optString("type")) {
             "approval" -> notifyNow("Bob needs an OK", ev.optString("text").take(140))
+            // "Show reminders on my phone" (on the PC, 🧰 More tools): only reminders sent for the phone.
+            "reminder" -> if (ev.optBoolean("phone")) notifyNow("Bob: reminder", ev.optString("text").take(140))
             "checkin" -> {
                 val items = ev.optJSONArray("items") ?: JSONArray()
                 val titles = (0 until minOf(items.length(), 5)).mapNotNull { items.optJSONObject(it)?.optString("title")?.takeIf { t -> t.isNotBlank() } }

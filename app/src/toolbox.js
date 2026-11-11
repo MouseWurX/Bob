@@ -11,6 +11,7 @@ import { makerWords, makerWhat } from './selftools.js';
 import { mcpWords, mcpWhat } from './mcp.js';
 import { packsWords, packsWhat } from './toolpacks.js';
 import { selfWorkWords } from './self-work.js';
+import { GROUP_WORDS, GROUP_TOOLS, GROUP_WHAT } from './more-tools.js'; // 🧰 More tools, each only while its switch is on
 
 export const CORE = ['notice_board', 'remember', 'reminders', 'list_folder', 'read_file', 'web_search', 'fetch_page', 'bob_help', 'ask_specialist', 'show_made', 'pick_session', 'edit_my_message', 'take_note', 'offer_setup', 'use_tools'];
 
@@ -89,6 +90,7 @@ const PICTURE_WHAT = { make_image: 'make pictures', make_video: 'make video clip
 export function groupsFor(brain) {
   const g = {};
   for (const [id, x] of Object.entries(WORK_GROUPS)) g[id] = { ...x };
+  for (const id of Object.keys(GROUP_TOOLS)) g[id] = { what: GROUP_WHAT[id], tools: GROUP_TOOLS[id], words: GROUP_WORDS[id] };
   // The user's repositories by name, so "fix the login bug in WeatherApp" finds the tool (self-work.js).
   g.selfwork.words = selfWorkWords(brain.cfg, g.selfwork.words);
   for (const [id, hand] of Object.entries(HANDS)) {

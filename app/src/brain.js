@@ -10,7 +10,7 @@ import os from 'node:os';
 import { Ollama } from './ollama.js';
 import { memGB } from './server-ram.js';
 import { LlamaCpp } from './llamacpp.js';
-import { buildTools, today, loadReminders, saveReminders } from './tools.js';
+import { buildTools, today, loadReminders, saveReminders, moveOn } from './tools.js';
 import { systemPrompt, HATS } from './persona.js';
 import { lookPrompt } from './look.js';
 import { applyHouseStyle, usedLine, houseStylePrompt } from '../public/house-style.js';
@@ -60,6 +60,18 @@ import { REDO_NOTE, EDIT_NOTE } from './redo.js';
 import { notesOn, notesTool, smartNotesOn, notesPrompt } from './notes.js';
 import { docToolsOn, findDocsTool } from './my-docs.js';
 import { sandboxOn, sandboxTool } from './sandbox-code.js';
+import { moreToolsOff, toolOn as moreOn } from './more-tools.js'; // 🧰 More tools (Settings, How Bob works), each off by default
+import { calculatorTool } from './calc.js';
+import { passwordTool } from './passwords.js';
+import { emailTool } from './email-read.js';
+import { calendarTool } from './calendar-read.js';
+import { watchTool, checkDueWatches } from './page-watch.js';
+import { apiTool } from './web-api.js';
+import { dataTool } from './data-query.js';
+import { chartTool } from './charts.js';
+import { spellTool } from './spell.js';
+import { meetingTool } from './meeting-notes.js';
+import { compareTool } from './compare-files.js';
 import { parts3dOn, parts3dTool } from './parts3d.js';
 import { model3dOn, model3dTool } from './model3d.js';
 import { autoSessionOn, pickSessionTool, autoSessionPrompt, switchLine, switchedNote, idleSession, cardBusy, IDLE_CHECK_MS } from './auto-session.js';
@@ -488,6 +500,12 @@ export class Brain {
     fs.mkdirSync(this.sessionDir, { recursive: true });
     this.reminderTimer = setInterval(() => this.checkReminders(), 15000);
     this.reminderTimer.unref?.();
+    // 🧰 "Let Bob watch web pages": every 5 minutes, the pages that are due are read again (page-watch.js).
+    this.watchTimer = setInterval(() => checkDueWatches(this.cfg, (text) => {
+      this.broadcast({ type: 'reminder', text, watch: true, ...(moreOn(this.cfg, 'phoneReminders') ? { phone: true } : {}) });
+      this.log('page watch', text.split('\n')[0]);
+    }).catch((e) => this.log('page watch', `check failed: ${e.message}`)), 5 * 60 * 1000);
+    this.watchTimer.unref?.();
     this.housekeeper = new Housekeeper(cfg, this);
     this.tools.forget_topic = forgetTopicTool(this);
     Object.assign(this.tools, handsTools(this), scheduleTools(this), officeTools(this), securityTools(this), selfToolsTools(this), howtoTools(this)); // Hands: off until the user turns them on (see hands-settings.js)
@@ -501,6 +519,16 @@ export class Brain {
     this.tools.take_note = notesTool(this); // Let Bob take quick notes (notes.js), only with its setting on
     this.tools.find_in_documents = findDocsTool(cfg, { keeper: () => this.housekeeper }); // Read and search my documents (my-docs.js), only with its setting on
     this.tools.run_in_sandbox = sandboxTool(this); // Let Bob work things out in a sandbox (sandbox-code.js), only with its setting on
+    // 🧰 More tools (more-tools.js): each one only while its own switch is on (offTools hides the rest).
+    const on = (k) => () => moreOn(this.cfg, k);
+    Object.assign(this.tools, {
+      calculate: calculatorTool(cfg, on('calculator')), make_password: passwordTool(cfg, on('passwords')),
+      read_email: emailTool(cfg, on('email')), read_calendar: calendarTool(cfg, on('calendar')),
+      watch_page: watchTool(cfg, on('pageWatch')), call_api: apiTool(cfg, on('webApi')),
+      query_data: dataTool(cfg, on('dataQuery')), make_chart: chartTool(cfg, on('charts')),
+      check_spelling: spellTool(cfg, on('spellCheck')), meeting_notes: meetingTool(cfg, on('meetingNotes')),
+      compare_files: compareTool(cfg, on('compareFiles'))
+    });
     this.tools.make_3d_part = parts3dTool(this); // Let Bob make 3D parts (parts3d.js), only with its setting on
     this.tools.make_3d_model = model3dTool(this); // Let Bob turn pictures into 3D models (model3d.js), only with its setting on
     // 1.5.91: the Set it up card for something missing or switched off. Listed only while something is (offTools).
@@ -655,12 +683,17 @@ export class Brain {
 
   checkReminders() {
     const list = loadReminders(this.cfg);
-    const due = list.filter((r) => r.at <= Date.now());
+    const now = Date.now();
+    const due = list.filter((r) => r.at <= now);
     if (!due.length) return;
-    saveReminders(this.cfg, list.filter((r) => r.at > Date.now()));
+    // 🧰 More tools: a repeating reminder moves on to its next time instead of going (tools.js moveOn).
+    saveReminders(this.cfg, [...list.filter((r) => r.at > now), ...due.filter((r) => r.every).map((r) => moveOn(r, this.cfg.timeZone, now))]);
+    // "Show reminders on my phone" (off by default): the phone app shows it as a card, and a notification
+    // when it's in the background (phone.js, Bridge.kt).
+    const phone = this.cfg.moreTools?.phoneReminders === true;
     for (const r of due) {
-      this.broadcast({ type: 'reminder', text: r.text, local: r.local });
-      this.log('reminder', r.text);
+      this.broadcast({ type: 'reminder', text: r.text, local: r.local, ...(r.every ? { every: r.every } : {}), ...(phone ? { phone: true } : {}) });
+      this.log('reminder', `${r.text}${r.every ? ` (every ${r.every})` : ''}`);
     }
   }
 
@@ -1455,7 +1488,7 @@ export class Brain {
     let can = {};
     try { can = capabilities(this.cfg); } catch {}
     // 1.5.91: make_image, make_video, make_music and make_sound stay listed when they aren't set up: calling one shows the Set it up card.
-    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', !editOwnOn(this.cfg) && 'edit_my_message', ...(meanwhileOn(this.cfg) ? [] : WATCH_TOOLS), !notesOn(this.cfg) && 'take_note', !docToolsOn(this.cfg) && 'find_in_documents', !sandboxOn(this.cfg) && 'run_in_sandbox', !parts3dOn(this.cfg) && 'make_3d_part', !model3dOn(this.cfg) && 'make_3d_model', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), !(selfWorkOn(this.cfg) && readyRepos(this.cfg).length) && 'work_on_repo', ...toolsOff(this.cfg)].filter(Boolean));
+    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', !editOwnOn(this.cfg) && 'edit_my_message', ...(meanwhileOn(this.cfg) ? [] : WATCH_TOOLS), !notesOn(this.cfg) && 'take_note', !docToolsOn(this.cfg) && 'find_in_documents', !sandboxOn(this.cfg) && 'run_in_sandbox', !parts3dOn(this.cfg) && 'make_3d_part', !model3dOn(this.cfg) && 'make_3d_model', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), !(selfWorkOn(this.cfg) && readyRepos(this.cfg).length) && 'work_on_repo', ...moreToolsOff(this.cfg), ...toolsOff(this.cfg)].filter(Boolean));
   }
   usable(name, off = this.offTools()) { return Boolean(this.tools[name]) && !off.has(name); }
   // 1.5.41: whether OKs are asked on cards right now (so a job's OKs can go on one card). Not with "work without asking".

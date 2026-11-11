@@ -1,5 +1,6 @@
 // Loads config.json and works out the folders Bob uses.
 import { cleanOwnModels } from './own-models.js';
+import { cleanMoreTools } from './more-tools.js';
 import { cleanHouseStyle } from '../public/house-style.js';
 import { cleanPresetList } from './presets.js';
 import { cleanHousekeeping } from './hk-settings.js';
@@ -230,7 +231,7 @@ export const VERSION = (() => {
 // Languages Bob's screens come in (public/i18n.js has the names and words). English is the default.
 export const LANGUAGES = ['en', 'fr', 'es'];
 export const cleanRemoved = (v) => [...new Set((Array.isArray(v) ? v : []).filter((k) => typeof k === 'string' && /^[\w.:/-]{1,100}$/.test(k)))].slice(0, 500);
-export const SETTING_KEYS = ['language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', 'apuHoldbackGB'];
+export const SETTING_KEYS = ['moreTools', 'language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', 'apuHoldbackGB'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -297,6 +298,7 @@ function clean(patch) {
   if ('presetList' in out) out.presetList = cleanPresetList(out.presetList); // the saved presets (presets.js)
   if ('promptMenu' in out) out.promptMenu = out.promptMenu === true; // "Pull up saved prompts with /", off by default (prompts.js)
   if ('sandboxCode' in out) out.sandboxCode = out.sandboxCode === true; // "Let Bob work things out in a sandbox", off by default (sandbox-code.js)
+  if ('moreTools' in out) out.moreTools = cleanMoreTools(out.moreTools); // 🧰 More tools, every switch off by default (more-tools.js)
   if ('parts3d' in out) out.parts3d = out.parts3d === true; // "Let Bob make 3D parts", off by default (parts3d.js)
   if ('model3d' in out) out.model3d = out.model3d === true; // "Let Bob turn pictures into 3D models", off by default (model3d.js)
   if ('tray' in out) out.tray = out.tray !== false; // 1.5.94 "Keep Bob in the tray"; on unless switched off since 1.5.134 (the owner asked for it)

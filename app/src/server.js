@@ -61,6 +61,7 @@ import { banks as memoryBanks, recallOn } from './recall.js';
 import { handsRoute } from './hands-routes.js';
 import { ownKitView, ownKitCounts, ownKitDelete, ownKitRestore, ownKitPurge } from './own-kit.js';
 import { quarantineRoute } from './quarantine-routes.js';
+import { moreToolsRoute } from './more-tools-routes.js'; // 🧰 More tools (Settings, How Bob works)
 import { schedulesRoute, startSchedules } from './hands-schedules.js';
 import { checkinsRoute, startCheckins } from './checkins.js';
 import { adventureRoute } from './adventure.js';
@@ -1116,6 +1117,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/hands/schedules' && await schedulesRoute({ req, res, p, isLocal, brain, body, send })) return;
     if (p.startsWith('/api/hands') && await handsRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
     if (p.startsWith('/api/quarantine') && await quarantineRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
+    if (p === '/api/more-tools' && await moreToolsRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
     if (req.method === 'POST' && p === '/api/transcribe') {
       const chunks = [];
       let size = 0;

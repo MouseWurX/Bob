@@ -29,7 +29,7 @@ export const MIN_PASSCODE = 8;
 // What a backup can hold, in the order Settings lists it. Paths are inside the inn folder ('/' at the end = a folder).
 export const PARTS = [
   { id: 'chats', label: 'Chats', what: 'Every chat, its summary and which ones are pinned.', paths: ['bob/sessions/', 'bob/chat-summaries.json', 'bob/topics.json', 'bob/housekeeping.json'] },
-  { id: 'settings', label: 'Settings', what: 'Everything set in Settings, check-ins, reminders, scheduled jobs, apps you connected, his voice sample and what he calls you.', paths: ['bob/settings.json', 'saved-prompts.json', 'bob/chat-presets.json', 'bob/chat-start/', 'bob/schedules.json', 'bob/reminders.json', 'bob/checkins.json', 'bob/mcp-servers.json', 'bob/hands-recipes.json', 'bob/clan.json', 'bob/about-me.md', 'bob/backstory.md', 'bob/equip-plan.json', 'voices/'] },
+  { id: 'settings', label: 'Settings', what: 'Everything set in Settings, check-ins, reminders, scheduled jobs, apps you connected, his voice sample and what he calls you.', paths: ['bob/settings.json', 'saved-prompts.json', 'bob/chat-presets.json', 'bob/chat-start/', 'bob/schedules.json', 'bob/reminders.json', 'bob/page-watches.json', 'bob/checkins.json', 'bob/mcp-servers.json', 'bob/hands-recipes.json', 'bob/clan.json', 'bob/about-me.md', 'bob/backstory.md', 'bob/equip-plan.json', 'voices/'] },
   { id: 'memory', label: 'Memory', what: 'What Bob remembers about you, his how-tos, the notice board and his logbook.', paths: ['bob-memory.md', 'bob/memory-vectors.json', 'bob/howtos.json', 'notice-board.md', 'logbook.md', 'archive/'] },
   { id: 'notes', label: 'Notes and records', what: 'Quick notes and the records (ledgers) he keeps for you.', paths: ['quick-notes.md', 'ledger/'] },
   { id: 'tools', label: 'Tools Bob made', what: 'The little tools he wrote himself. They come back switched off until you OK them again.', paths: ['tools/'] },
@@ -46,18 +46,21 @@ export const NOT_BACKED_UP = [
   'bob/selftools.json', 'bob/quarantine.json', 'bob/lab/', 'bob/hands-runs.json', 'bob/hands-journal.json', 'bob/downloads.json',
   'bob/queue.json', 'bob/electron/', 'bob/doc-index.json', 'bob/claude-door.json', 'bob/tool-packs.json', 'tool-packs/', 'bob/sd-server-args.txt', 'bob/backup-state.json', 'bob/restore-result.json',
   'bob/seeded-brains.json', 'bob/keys.json', 'bob/bob-net-link-keys.json', // brains seeded on a lent card (worked out again); locked secrets and Bob-Net link keys are locked to this computer (keys travel in the locked part; Bobs pair again)
-  'painter/', 'references/', 'workshop/', 'own-code/', 'documents/', 'tools/_scratch/', 'restore-waiting/', 'restore-waiting.new/'
+  'painter/', 'references/', 'workshop/', 'own-code/', 'documents/', 'tools/_scratch/', 'tools/_pyscratch/', 'restore-waiting/', 'restore-waiting.new/'
 ];
 
 // The names of keys Bob reads from the computer's own variables (Windows: your user variables; Mac and Linux:
 // ~/.config/bob/env). Only these, plus a typed-in "Another service" key name, ever go in the locked part.
-export const KEY_NAMES = ['BOB_DISCORD_TOKEN', 'BOB_TELEGRAM_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'TOGETHER_API_KEY', 'LAMBDA_API_KEY', 'RUNPOD_API_KEY', 'VAST_API_KEY', 'HF_TOKEN'];
+export const KEY_NAMES = ['BOB_DISCORD_TOKEN', 'BOB_TELEGRAM_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'TOGETHER_API_KEY', 'LAMBDA_API_KEY', 'RUNPOD_API_KEY', 'VAST_API_KEY', 'HF_TOKEN', 'BOB_EMAIL_PASSWORD'];
 const KEY_NAME_RE = /^[A-Z][A-Z0-9_]{2,63}$/;
 
 export function keyNames(cfg = {}) {
   const extra = [];
   for (const r of [].concat(cfg.rentals?.list || [])) if (KEY_NAME_RE.test(r?.keyEnv || '')) extra.push(r.keyEnv);
   for (const c of [].concat(cfg.cloud || [])) if (KEY_NAME_RE.test(c?.apiKeyEnv || '')) extra.push(c.apiKeyEnv);
+  // 🧰 More tools: each calendar link and web-service key (more-tools.js names them).
+  for (const c of [].concat(cfg.moreTools?.calendars || [])) if (/^[a-z0-9]{1,12}$/.test(c?.id || '')) extra.push(`BOB_CALENDAR_${c.id.toUpperCase()}`);
+  for (const a of [].concat(cfg.moreTools?.apis || [])) if (/^[a-z0-9]{1,12}$/.test(a?.id || '')) extra.push(`BOB_API_${a.id.toUpperCase()}`);
   return [...new Set([...KEY_NAMES, ...extra])];
 }
 

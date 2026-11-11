@@ -32,7 +32,7 @@ const MAX_READ_BYTES = 20 * 1024 * 1024;
 // fetch_page stops reading a page after this many bytes, and hands it over 15,000 characters at a time.
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
 const MAX_PAGE = 15000;
-async function readCapped(res, max) {
+export async function readCapped(res, max) {
   const parts = []; let n = 0;
   for await (const chunk of res.body || []) { parts.push(chunk); n += chunk.length; if (n >= max) break; }
   return Buffer.concat(parts).subarray(0, max).toString('utf8');
@@ -111,7 +111,7 @@ function resolveUserPath(p) {
   return path.resolve(p);
 }
 
-function htmlToText(html) {
+export function htmlToText(html) {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -143,6 +143,45 @@ export function loadReminders(cfg) {
 }
 export function saveReminders(cfg, list) {
   fs.writeFileSync(path.join(cfg.dataDir, 'reminders.json'), JSON.stringify(list, null, 2));
+}
+
+// 🧰 More tools, "Let reminders repeat": how a repeating reminder moves on, in the wall-clock time it was set in
+// (so 9:00 stays 9:00 across a clock change). Month ends stick to the last day (31 Jan, 28 Feb, 31 Mar).
+export const REPEATS = ['day', 'weekday', 'weekend', 'week', '2 weeks', 'month', 'year'];
+const pad2 = (n) => String(n).padStart(2, '0');
+function partsOf(local) {
+  const m = String(local).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})/);
+  if (!m) throw new Error('Time must look like 2026-11-01T15:30');
+  return { y: +m[1], mo: +m[2], d: +m[3], h: +m[4], mi: +m[5], day: +m[3] };
+}
+const localOf = ({ y, mo, d, h, mi }) => `${y}-${pad2(mo)}-${pad2(d)}T${pad2(h)}:${pad2(mi)}`;
+const weekdayOf = ({ y, mo, d }) => new Date(Date.UTC(y, mo - 1, d)).getUTCDay(); // 0 Sunday
+const daysIn = (y, mo) => new Date(Date.UTC(y, mo, 0)).getUTCDate();
+function addDays(p, n) { const t = new Date(Date.UTC(p.y, p.mo - 1, p.d + n)); return { ...p, y: t.getUTCFullYear(), mo: t.getUTCMonth() + 1, d: t.getUTCDate() }; }
+const fits = (p, every) => (every === 'weekday' ? ![0, 6].includes(weekdayOf(p)) : every === 'weekend' ? [0, 6].includes(weekdayOf(p)) : true);
+// The first time for a weekday or weekend reminder is the first such day from the time asked.
+export function firstRepeat(local, every) {
+  let p = partsOf(local);
+  for (let i = 0; i < 7 && !fits(p, every); i++) p = addDays(p, 1);
+  return localOf(p);
+}
+export function nextRepeat(local, every, day) {
+  const p = partsOf(local);
+  const keep = day || p.d;
+  if (every === 'day') return localOf(addDays(p, 1));
+  if (every === 'week') return localOf(addDays(p, 7));
+  if (every === '2 weeks') return localOf(addDays(p, 14));
+  if (every === 'weekday' || every === 'weekend') { let q = addDays(p, 1); for (let i = 0; i < 7 && !fits(q, every); i++) q = addDays(q, 1); return localOf(q); }
+  if (every === 'month') { let y = p.y, mo = p.mo + 1; if (mo > 12) { mo = 1; y++; } return localOf({ ...p, y, mo, d: Math.min(keep, daysIn(y, mo)) }); }
+  if (every === 'year') { const y = p.y + 1; return localOf({ ...p, y, d: Math.min(keep, daysIn(y, p.mo)) }); }
+  throw new Error(`I can't repeat "${every}".`);
+}
+// A repeating reminder that went off (or was missed while Bob was closed): its next time after now.
+export function moveOn(r, timeZone, now = Date.now()) {
+  let local = r.local, at = r.at;
+  const day = r.day || partsOf(r.local).d;
+  for (let i = 0; i < 2000 && at <= now; i++) { local = nextRepeat(local, r.every, day); at = zonedToEpoch(local, timeZone); }
+  return { ...r, local, at, day };
 }
 
 export function cloudProviders(cfg) {
@@ -196,22 +235,30 @@ export function buildTools(cfg) {
   };
 
   t.reminders = {
-    schema: fn('reminders', "Set, list or cancel a reminder. Bob pops up at the time, while the PC is on.", {
-      action: str('add, list or cancel', { enum: ['add', 'list', 'cancel'] }),
-      time: str('add: local time, YYYY-MM-DDTHH:mm.'),
-      text: str('add: what to remind about.'),
-      id: str('cancel: the id from list.')
-    }, ['action']),
-    async run({ action, time, text, id }) {
+    // 🧰 More tools, "Let reminders repeat" (off by default): an `every` field, and the list shows it.
+    get schema() {
+      const rep = cfg.moreTools?.repeatReminders === true;
+      return fn('reminders', `Set, list or cancel a reminder. Bob pops up at the time, while the PC is on.${rep ? ' A reminder can repeat.' : ''}`, {
+        action: str('add, list or cancel', { enum: ['add', 'list', 'cancel'] }),
+        time: str(rep ? 'add: local time, YYYY-MM-DDTHH:mm. For a repeating one, the first time.' : 'add: local time, YYYY-MM-DDTHH:mm.'),
+        text: str('add: what to remind about.'),
+        ...(rep ? { every: str('add, only to repeat: day, weekday, weekend, week, 2 weeks, month or year. "Every Monday at 9" = the next Monday 09:00 and week.', { enum: REPEATS }) } : {}),
+        id: str('cancel: the id from list.')
+      }, ['action']);
+    },
+    async run({ action, time, text, id, every }) {
       const list = loadReminders(cfg);
       if (action === 'add') {
         if (!text) throw new Error('What should I remind about?');
         const at = zonedToEpoch(time, cfg.timeZone);
         if (at < Date.now() - 60000) throw new Error('That time has already passed.');
-        const r = { id: Math.random().toString(36).slice(2, 8), at, local: time, text: String(text).slice(0, 300) };
+        const rep = every && cfg.moreTools?.repeatReminders === true && REPEATS.includes(every) ? every : '';
+        if (every && !rep && cfg.moreTools?.repeatReminders !== true) throw new Error('Repeating reminders are off. They\'re in Settings, How Bob works, 🧰 More tools: "Let reminders repeat". Set a one-off one, and say so.');
+        const r = { id: Math.random().toString(36).slice(2, 8), at, local: time, text: String(text).slice(0, 300), ...(rep ? { every: rep } : {}) };
+        if (rep) { r.local = firstRepeat(time, rep); r.at = zonedToEpoch(r.local, cfg.timeZone); }
         list.push(r);
         saveReminders(cfg, list);
-        return `Reminder ${r.id} set for ${time}: ${r.text}`;
+        return `Reminder ${r.id} set for ${r.local}${rep ? `, then every ${rep}` : ''}: ${r.text}`;
       }
       if (action === 'cancel') {
         const left = list.filter((r) => r.id !== id);
@@ -219,9 +266,9 @@ export function buildTools(cfg) {
         saveReminders(cfg, left);
         return 'Cancelled.';
       }
-      return list.length ? list.map((r) => `${r.id}: ${r.local} - ${r.text}`).join('\n') : 'No reminders set.';
+      return list.length ? list.map((r) => `${r.id}: ${r.local}${r.every ? ` (every ${r.every})` : ''} - ${r.text}`).join('\n') : 'No reminders set.';
     },
-    summary: ({ action, time }) => `reminder: ${action}${time ? ' ' + time : ''}`
+    summary: ({ action, time, every }) => `reminder: ${action}${time ? ' ' + time : ''}${every ? ` (every ${every})` : ''}`
   };
 
   t.list_folder = {

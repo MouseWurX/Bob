@@ -14,6 +14,7 @@ import { quarantineSettingsHtml, mountQuarantineSettings } from './quarantine.js
 import { phoneAccessHtml, mountPhoneAccess } from './phone-access.js';
 import { lockSettingsHtml, mountLockSettings, lockSummary } from './lock-settings.js'; // 🔒 Passcode lock
 import { secretsHtml, mountSecrets } from './secrets.js';
+import { moreToolsHtml, mountMoreTools } from './more-tools.js';
 import { telegramHtml, mountTelegram } from './telegram.js';
 import { discordHtml, mountDiscord } from './discord.js';
 import { appsDoorHtml, mountAppsDoor } from './apps-door.js';
@@ -1040,6 +1041,7 @@ export function createCellar({ popOut = null } = {}) {
     ['adventure', '🎲 Adventure', 'adventure game tabletop role-playing dice game master party bobs cards plot armour campaign', () => `<div class="adventure-box">${adventureSettingsHtml(settings.adventure || {})}</div>`],
     ['games', '🧩 Games', 'games twenty questions hangman word ladder five letters story dice quick brain banter chip in', () => `<div class="games-box">${gamesSettingsHtml(settings.games || {})}</div>`],
     ['prompts', '📝 Saved prompts', 'saved prompts prompt library slash / menu template templates reuse snippets blanks variables {file} curly brackets', () => sswitch('promptMenu', settings.promptMenu === true, 'Pull up saved prompts with /', 'Off unless you turn it on. Type / at the start of the message box to pick a saved prompt. Its words go in the box for you to finish and send. Words in {curly brackets} are blanks: type over them, and Tab goes to the next one.') + promptsHtml()],
+    ['tools', '🧰 More tools', 'more tools calculator sums units convert python sandbox password passphrase pin reminders repeat every phone email mail imap calendar ics webcal watch page web api key service csv database sql query chart graph spelling grammar meeting recording transcript notes speakers compare files diff what changed', () => moreToolsHtml()],
     ['checkins', '🔔 Check-ins', 'check in heartbeat schedule morning every day weekday hours notify alert tap shoulder downloads stuck failed tasks disk space own checks build finished', () => checkinsHtml()],
     ['remove', '🗑 Remove Bob', 'uninstall remove', () => settings.features?.uninstall === false ? macRemoveHtml() : `<div class="remove-bob">${more('Takes off Bob\'s program, his Start menu shortcut and "Launch on start-up". His chats, settings and models stay unless you tick them. Nothing else in the inn folder or in Windows is touched.')}<button data-removebob>Remove Bob…</button><div class="remove-confirm" hidden></div></div>`]
   ];
@@ -1199,6 +1201,7 @@ export function createCellar({ popOut = null } = {}) {
     mountHandsSettings(dlg.querySelector('.hands-box')); // loads its own data; does nothing off the Settings tab
     mountQuarantineSettings(dlg.querySelector('.q-box'));
     mountSecrets(dlg.querySelector('.secrets-box')); // This replicant matrix: 🔐 Locked secrets
+    mountMoreTools(dlg.querySelector('.more-tools-box')); // How Bob works: 🧰 More tools
     mountPhoneAccess(dlg.querySelector('.phone-box')); // Bob-Net, This Bob: Let my other replicant matrices in
     mountLockSettings(dlg.querySelector('.lock-box'), { onChange: (v) => { if (settings) settings.passcodeLock = v; const n = dlg.querySelector('[data-panel="ev-lock"] .spanel-note'); if (n) n.textContent = lockSummary(v); } }); // 🔒 Passcode lock
     mountTelegram(dlg.querySelector('.telegram-box')); // Online services: Talk to Bob on Telegram

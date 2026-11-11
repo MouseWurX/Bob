@@ -1,5 +1,6 @@
 // Bob's panel: chat, approvals, status, taskbar badge, read-aloud, and the brain-swap machine.
 import { drawBob, setLook } from './bob-sprite.js';
+import { secretNoteHtml, wireSecretNote } from './more-tools.js'; // 🧰 More tools: a password Bob made
 import { applyStyle, applySavedStyle } from './themes.js';
 applySavedStyle();
 import { startI18n, followSaved } from './i18n.js';
@@ -788,8 +789,13 @@ function onEvent(ev) {
       else note(`Housekeeping: ${[ev.summaries && `summed up ${ev.summaries} chat${ev.summaries === 1 ? '' : 's'}`, ev.topics && `filed ${ev.topics} chat${ev.topics === 1 ? '' : 's'} under topics`, ev.auto && `tidied ${ev.auto} thing${ev.auto === 1 ? '' : 's'}`, ev.ask && `${ev.ask} thing${ev.ask === 1 ? '' : 's'} to look at in Tidy up`].filter(Boolean).join(', ') || 'nothing to do'}.${ev.error ? '' : ''}`);
       if (ev.ask != null) countBadge($('tidyBtn'), ev.ask);
       break;
+    case 'secret-note': { // 🧰 More tools, "Let Bob make passwords": shown here once, never saved, never spoken
+      const el = add('approval', secretNoteHtml(ev));
+      wireSecretNote(el, ev);
+      break;
+    }
     case 'reminder':
-      add('approval', `<p><strong>Reminder:</strong> ${esc(ev.text)}</p><div class="done">${esc(ev.local || '')}</div>`);
+      add('approval', `<p><strong>${ev.watch ? 'Page watch' : 'Reminder'}:</strong> ${esc(ev.text)}</p><div class="done">${esc([ev.local, ev.every ? `repeats every ${ev.every}` : ''].filter(Boolean).join(' · '))}</div>`);
       speak('Reminder: ' + ev.text);
       badge(true);
       try { if ('Notification' in window && Notification.permission === 'granted' && store.get('bob-alerts', '1') === '1') new Notification('Bob: reminder', { body: ev.text, icon: '/icons/bob-192.png', requireInteraction: true }); } catch {}
