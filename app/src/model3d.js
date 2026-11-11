@@ -3,8 +3,8 @@
 // It needs an NVIDIA graphics card (CUDA). Its add-ons are compiled by GitHub (.github/workflows/model3d-addons.yml)
 // from the commits pinned in model3d/sources.json, never on the user's computer; Bob downloads them from his own
 // GitHub release, each checked against its sha256 (model3d/addons-pins.json). The weights (about 17 GB) come from
-// Hugging Face at pinned revisions and the big files are checked too. One of them, Meta's DINOv3 picture reader,
-// is gated: the user accepts its terms on Hugging Face and gives Bob their own HF_TOKEN.
+// Hugging Face at pinned revisions and the big files are checked too. Meta's DINOv3 picture reader comes from an exact,
+// ungated copy (camenduru's, with Meta's licence file in it), so nobody needs a Hugging Face account or token.
 // Macs, AMD and Intel cards and the phone: send the job to a PC Bob over Bob-Net.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -150,7 +150,7 @@ export async function setupModel3d(cfg, { pub, tick, signal }, { grab, run = run
   return { version: `TRELLIS.2 ${SOURCES.code.trellis2.commit.slice(0, 7)}` };
 }
 
-export const GATED_WORDS = 'Everything is set up except one part: Meta\'s DINOv3 picture reader, which Hugging Face only gives to people who accept its terms. Sign in at huggingface.co, open facebook/dinov3-vitl16-pretrain-lvd1689m and accept the terms, make a read token (Settings, Access Tokens), put it in HF_TOKEN in the environment Bob starts from, then press Get again. Bob carries on from where he stopped.';
+export const GATED_WORDS = 'Everything is set up except one part: Hugging Face refused one of the 3D brains (it may have been made private or gated since this build of Bob). Nothing else was changed. If you have a Hugging Face account that can open it, put a read token in HF_TOKEN in the environment Bob starts from and press Get again; Bob carries on from where he stopped.';
 
 export const runner = (cfg) => cfg.model3dScript || path.join(MODEL3D_DIR, 'bob-trellis.py');
 

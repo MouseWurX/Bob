@@ -114,7 +114,7 @@ export const ENGINES = [
   {
     // 🧊 Picture to 3D (model3d.js): the same uv, a private Python 3.12, PyTorch for CUDA 12.8, add-ons GitHub compiled
     // for Bob (pinned in model3d/addons-pins.json, sha256-checked), TRELLIS.2 at its pinned commit and its weights.
-    id: 'model3d', name: '3D workshop', what: `Picture to 3D: TRELLIS.2 (Microsoft, MIT) turns one picture into a textured 3D model. Needs an NVIDIA graphics card; 16 GB is best, smaller cards may run out of memory. About 22 GB with the models. One part, Meta's DINOv3 picture reader, needs your own free Hugging Face token. NVIDIA's nvdiffrast part is for non-commercial use.`,
+    id: 'model3d', name: '3D workshop', what: `Picture to 3D: TRELLIS.2 (Microsoft, MIT) turns one picture into a textured 3D model. Needs an NVIDIA graphics card; 16 GB is best, smaller cards may run out of memory. About 22 GB with the models. Meta's DINOv3 picture reader comes under Meta's DINOv3 licence (no military or weapons use). NVIDIA's nvdiffrast part is for non-commercial use.`,
     repo: 'astral-sh/uv', dir: 'audio-workshop', exe: 'uv.exe',
     nvidia: [], other: [/^uv-x86_64-pc-windows-msvc\.zip$/],
     runtime: () => null,

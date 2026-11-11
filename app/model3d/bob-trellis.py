@@ -5,7 +5,7 @@
 #    "quality": "fast" | "best", "seed": 42, "texture": 1024, "faces": 200000}
 # It prints "PROGRESS <n>/<total> <words>" lines while it works and "DONE <file>" at the end.
 # Nothing is uploaded. Downloads come only from huggingface.co, at the exact revisions in sources.json, and the
-# big files are checked against their sha256. HF_TOKEN (the user's own) is only needed for the gated DINOv3 reader.
+# big files are checked against their sha256. No account or token is needed (HF_TOKEN is passed on only if the user set one).
 import hashlib
 import json
 import os
@@ -44,7 +44,7 @@ def download(job):
             got = hf_hub_download(w["repo"], f["path"], revision=w["revision"], local_dir=local_dir(models, w["repo"]))
         except Exception as e:  # gated, offline, ...
             msg = str(e)
-            if w.get("gated") and ("401" in msg or "403" in msg or "gated" in msg.lower() or "restricted" in msg.lower()):
+            if ("401" in msg or "403" in msg or "gated" in msg.lower() or "restricted" in msg.lower()):
                 print(f"GATED {w['repo']}", flush=True)
                 sys.exit(3)
             raise
@@ -64,7 +64,7 @@ def download(job):
         if not v.startswith("ckpts/"):  # a part kept in another repo, e.g. microsoft/TRELLIS-image-large/ckpts/...
             parts = v.split("/")
             args["models"][k] = "../" + parts[1] + "/" + "/".join(parts[2:])
-    args["image_cond_model"]["args"]["model_name"] = local_dir(models, "facebook/dinov3-vitl16-pretrain-lvd1689m")
+    args["image_cond_model"]["args"]["model_name"] = local_dir(models, "camenduru/dinov3-vitl16-pretrain-lvd1689m")
     args["rembg_model"]["args"]["model_name"] = local_dir(models, "ZhengPeng7/BiRefNet")
     json.dump(up, open(os.path.join(local_dir(models, "microsoft/TRELLIS.2-4B"), "bob-pipeline.json"), "w", encoding="utf-8"), indent=2)
     print("DONE " + models, flush=True)

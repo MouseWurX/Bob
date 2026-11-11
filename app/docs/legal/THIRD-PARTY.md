@@ -32,7 +32,7 @@ separate program:
 | 3D workshop (Let Bob turn pictures into 3D models): TRELLIS.2 code and weights, o-voxel, CuMesh, FlexGEMM, utils3d | MIT (Microsoft; Jianfeng Xiang; Ruicheng Wang). Eigen inside o-voxel: MPL-2.0 |
 | 3D workshop: nvdiffrast and nvdiffrec (texture painting) | NVIDIA Source Code License: **non-commercial use only**; Bob says so on the Get card |
 | 3D workshop: BiRefNet background remover (ZhengPeng7/BiRefNet) | MIT (used in place of RMBG-2.0, which is non-commercial) |
-| 3D workshop: DINOv3 picture reader (facebook/dinov3-vitl16-pretrain-lvd1689m) | DINOv3 License (Meta); gated on Hugging Face, so each user accepts it with their own account and token |
+| 3D workshop: DINOv3 picture reader (Meta's facebook/dinov3-vitl16-pretrain-lvd1689m, from the exact ungated copy camenduru/dinov3-vitl16-pretrain-lvd1689m, which carries Meta's licence file) | DINOv3 License (Meta): use and redistribution allowed with the licence; no military, weapons or ITAR uses |
 | Models in the model shop | each entry in `catalog.json` lists its licence and whether commercial use is allowed |
 
 Bob leaves out models whose licences forbid commercial use where a good alternative exists (for example

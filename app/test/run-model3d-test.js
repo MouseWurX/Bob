@@ -35,7 +35,8 @@ const PINS = { release: 'model3d-addons-1', 'win-x64': [wheel('cumesh-0.0.1-cp31
   const big = SOURCES.weights.flatMap((w) => w.files.map((f) => ({ ...f, gated: w.gated }))).filter((f) => f.bytes > 1e8 && !f.gated);
   check('every big file that isn\'t gated has its sha256', big.length >= 8 && big.every((f) => /^[0-9a-f]{64}$/.test(f.sha256 || '')));
   check('the background remover is the MIT BiRefNet, not the non-commercial RMBG-2.0', SOURCES.weights.some((w) => w.repo === 'ZhengPeng7/BiRefNet' && w.license === 'MIT') && !SOURCES.weights.some((w) => /RMBG/i.test(w.repo)));
-  check('DINOv3 is marked gated', SOURCES.weights.find((w) => /dinov3/.test(w.repo))?.gated === true);
+  const dino = SOURCES.weights.find((w) => /dinov3/.test(w.repo));
+  check('DINOv3 comes ungated, with Meta\'s licence file and its sha256', !dino.gated && dino.files.some((f) => f.path === 'LICENSE.md') && /^[0-9a-f]{64}$/.test(dino.files.find((f) => f.path === 'model.safetensors').sha256));
   check('the weights add up to about 17 GB', WEIGHTS_GB > 15 && WEIGHTS_GB < 18, String(WEIGHTS_GB));
   check('PyTorch for CUDA 12.8 and RTX 20 to 50 cards', SOURCES.cudaIndex.endsWith('/cu128') && /12\.0/.test(SOURCES.cudaArchs) && /8\.6/.test(SOURCES.cudaArchs));
 }
@@ -79,7 +80,7 @@ const PINS = { release: 'model3d-addons-1', 'win-x64': [wheel('cumesh-0.0.1-cp31
 {
   const e = ENGINES.find((x) => x.id === 'model3d');
   check('the 3D workshop is an engine (senses, about 22 GB)', Boolean(e) && ENGINE_GROUP.model3d === 'senses' && ENGINE_GB.model3d >= 20);
-  check('it says the nvdiffrast part is non-commercial, and DINOv3 needs a token', /non-commercial/.test(e.what) && /Hugging Face token/.test(e.what));
+  check('it says the nvdiffrast part is non-commercial, and names DINOv3\'s licence', /non-commercial/.test(e.what) && /DINOv3 licence/.test(e.what));
   check('a Mac gets no Get button and is told why', Boolean(engineFor(e, 'mac').unavailable));
   check('it uses the same uv as the audio tools', e.repo === 'astral-sh/uv' && e.dir === 'audio-workshop' && typeof e.after === 'function');
   check('the Set it up card knows it', NEEDS.model3d?.engine === 'model3d');
@@ -116,7 +117,7 @@ fs.mkdirSync(cfg.painterDir, { recursive: true });
   check('then installed without pulling anything else in', calls.some((c) => c.args[0] === 'pip' && c.args.includes('--no-deps') && c.args.some((a) => /cumesh.*\.whl$/.test(a))));
   check('uv never fetches a Python of its own', calls.filter((c) => c.exe.startsWith('uv')).every((c) => c.env?.UV_PYTHON_DOWNLOADS === 'never'));
   const dl = calls.find((c) => /bob-trellis\.py$/.test(c.args[0] || ''));
-  check('the weights come through the runner, with the user\'s own token', dl && JSON.parse(dl.input).action === 'download' && dl.env.HF_TOKEN === 'hf_test');
+  check('the weights come through the runner (a token is passed on only if set)', dl && JSON.parse(dl.input).action === 'download' && dl.env.HF_TOKEN === 'hf_test');
   check('it\'s marked ready, and says which TRELLIS.2', model3dReady(cfg) && /TRELLIS\.2 [0-9a-f]{7}/.test(r.version));
 
   // the gated DINOv3: a plain message with the steps, not a stack of Python
@@ -126,7 +127,7 @@ fs.mkdirSync(cfg.painterDir, { recursive: true });
   const gatedRun = async (exe, args, o) => { if (/bob-trellis\.py$/.test(args[0] || '')) throw Object.assign(new Error('python failed (code 3)'), { tail: 'GATED facebook/dinov3-vitl16-pretrain-lvd1689m' }); return run(exe, args, o); };
   let msg = '';
   try { await setupModel3d(cfg2, { pub, tick }, { grab, run: gatedRun, pins: PINS, key: 'win-x64', env: {}, findPython: async () => '/p', ownPython: async () => '/p312' }); } catch (e) { msg = e.message; }
-  check('a gated download explains what to do', msg === GATED_WORDS && /accept the terms/.test(msg) && /HF_TOKEN/.test(msg));
+  check('a refused download explains what to do', msg === GATED_WORDS && /HF_TOKEN/.test(msg));
   let none = '';
   try { await setupModel3d(cfg2, { pub, tick }, { grab, run, pins: {}, key: 'win-x64' }); } catch (e) { none = e.message; }
   check('without pins it won\'t set anything up', /aren't built and checked/.test(none));
@@ -196,7 +197,7 @@ fs.mkdirSync(cfg.painterDir, { recursive: true });
   check('Do you want me to: lists it', WANTS.some((w) => w.key === 'model3d' && w.setting === 'Let Bob turn pictures into 3D models'));
   check('bob_help reports it', /Let Bob turn pictures into 3D models: off/.test(settingsNow({})));
   const h = HELP.find((x) => x.id === 'model3d');
-  check('Help in Bob\'s voice, with the token steps and every platform', h && /\bI paint\b/.test(h.html) && /HF_TOKEN/.test(h.html) && /Mac/.test(h.html) && /Android/.test(h.html) && /non-commercial/.test(h.html));
+  check('Help in Bob\'s voice, with the licence and every platform', h && /\bI paint\b/.test(h.html) && /military/.test(h.html) && /Mac/.test(h.html) && /Android/.test(h.html) && /non-commercial/.test(h.html));
   check('the FAQ says yes now', /Let Bob turn pictures into 3D models/.test(HELP.find((x) => x.id === 'faq-3d-models')?.html || ''));
   const g = HELP.find((x) => x.id === 'glossary')?.html || '';
   check('glossary: TRELLIS.2 and GLB', /<dt>TRELLIS\.2<\/dt>/.test(g) && /<dt>GLB<\/dt>/.test(g));
