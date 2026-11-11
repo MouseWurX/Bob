@@ -1489,6 +1489,41 @@ button.gm-sq:hover, button.gm-sq:focus-visible { background: #a9cdf0; outline: 2
 .gm-q { font-size: 17px; }
 .gm-choicegrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin-bottom: 8px; }
 .gm-choicegrid button { text-align: left; min-height: 40px; }
+/* 🧩 Games, the second set (items 123 to 132): chess, sudoku, mini crossword, letter grid, noughts, code breaker */
+.gm-chess { --sq: clamp(30px, 7vw, 46px); display: grid; grid-template-columns: repeat(8, var(--sq)); grid-auto-rows: var(--sq); gap: 0; width: max-content; max-width: 100%; border: 2px solid var(--line); margin: 6px 0; }
+.gm-sq { width: 100%; height: 100%; min-width: 0 !important; margin: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important; font-size: clamp(20px, 4.5vw, 32px); line-height: 1; color: #111; }
+.gm-sq.w { color: #fff; text-shadow: 0 0 2px #000, 0 0 1px #000; } .gm-sq.b { color: #111; }
+.gm-sq.light { background: #eeeed2; } .gm-sq.dark { background: #8ca2ad; }
+.gm-sq.last { box-shadow: inset 0 0 0 3px #e8c547aa; } .gm-sq.pick { box-shadow: inset 0 0 0 3px var(--accent); }
+.gm-sq.to::after { content: ''; display: block; width: 28%; height: 28%; margin: auto; border-radius: 50%; background: #0005; }
+.gm-sq:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.gm-moves { font-family: ui-monospace, Consolas, monospace; font-size: 13px; max-height: 4.5em; overflow: auto; }
+.gm-sudoku { --sq: clamp(28px, 6vw, 40px); display: grid; grid-template-columns: repeat(9, var(--sq)); grid-auto-rows: var(--sq); width: max-content; max-width: 100%; border: 2px solid var(--text); margin: 6px 0; }
+.gm-cell { width: 100%; height: 100%; min-width: 0 !important; margin: 0 !important; padding: 0 !important; border-radius: 0 !important; border: 1px solid var(--line) !important; font-size: 18px; background: var(--card); color: var(--accent); }
+.gm-cell.given { color: var(--text); font-weight: 700; } .gm-cell.sel { background: var(--good-bg); } .gm-cell.focus { box-shadow: inset 0 0 0 2px #e8c547; }
+.gm-cell.shown { color: var(--muted, #888); font-style: italic; }
+.gm-cell.rb { border-right: 2px solid var(--text) !important; } .gm-cell.bb { border-bottom: 2px solid var(--text) !important; }
+.gm-pad button { min-width: 36px; }
+.gm-cross { display: grid; grid-template-columns: repeat(5, 48px); gap: 2px; width: max-content; margin: 6px 0; }
+.gm-xblock { background: #101010; border: 1px solid var(--line); border-radius: 2px; }
+.gm-xcell { position: relative; display: block; }
+.gm-xcell input { width: 48px; height: 48px; text-align: center; font-size: 22px; text-transform: uppercase; padding: 0; border: 1px solid var(--line); border-radius: 2px; background: var(--card); color: var(--text); }
+.gm-xcell .n { position: absolute; left: 3px; top: 1px; font-size: 10px; color: var(--muted, #888); pointer-events: none; }
+.gm-xcell.wrong input { background: #c0392b33; border-color: #c0392b; }
+.gm-clues { display: flex; flex-wrap: wrap; gap: 4px 24px; } .gm-clues ol { margin: 4px 0; padding-left: 22px; }
+.gm-lgrid { display: grid; grid-template-columns: repeat(4, 52px); gap: 6px; margin: 6px 0; }
+.gm-lgrid span { display: grid; place-items: center; height: 52px; border-radius: 8px; background: var(--card); border: 1px solid var(--line); font: 700 24px ui-monospace, Consolas, monospace; }
+.gm-noughts { display: grid; grid-template-columns: repeat(3, 72px); gap: 6px; margin: 6px 0; }
+.gm-noughts button { height: 72px; font-size: 36px; padding: 0 !important; }
+.gm-noughts button.win { background: var(--good-bg); border-color: var(--accent); }
+.gm-colours button { font-size: 22px; min-width: 42px; }
+.gm-coderow { font-size: 26px; letter-spacing: 4px; margin: 4px 0; }
+.gm-coderows { padding-left: 26px; } .gm-coderows li { font-size: 20px; } .gm-pegs { font-size: 13px; margin-left: 8px; letter-spacing: 1px; }
+.gm-riddle { font-size: 17px; } .gm-riddles li { margin: 2px 0; }
+.gm-two { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 4px 0; }
+.gm-two input[type=text] { width: 9em; }
+.gm-turn { margin: 4px 0; } .gm-kept { margin: 6px 0; } .gm-stories { padding-left: 20px; }
+@media (max-width: 520px) { .gm-cross { grid-template-columns: repeat(5, 40px); } .gm-xcell input { width: 40px; height: 40px; } .gm-noughts { grid-template-columns: repeat(3, 60px); } .gm-noughts button { height: 60px; } }
 @media (max-width: 520px) { .gm-four-cols, .gm-four-board { grid-template-columns: repeat(var(--cols), 36px); } .gm-cell { width: 36px; height: 36px; } .gm-sea { grid-template-columns: 16px repeat(var(--n), 24px); grid-auto-rows: 24px; } .gm-sq { width: 24px; height: 24px; } }
 @media (max-width: 520px) { .gm-games li { flex-wrap: wrap; } .gm-key { min-width: 28px; } .tile { width: 34px; height: 34px; font-size: 17px; } }
 

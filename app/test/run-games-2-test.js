@@ -139,7 +139,7 @@ check('48: the rude list holds', !politeWord('bastard') && politeWord('badger'))
   check('48: Forget them takes them out', !(JSON.parse(fs.readFileSync(path.join(tmp, 'games', 'words.json'), 'utf8')).hangman.animals)); }
 
 // ---- item 49: Easy, Normal, Hard ----
-check('49: levels for the games that have them; Normal when unknown', HAS_LEVEL.length === 7 && !HAS_LEVEL.includes('story') && !HAS_LEVEL.includes('twenty') && cleanLevel('x') === 'normal' && cleanLevel('hard') === 'hard');
+check('49: levels for the games that have them; Normal when unknown', HAS_LEVEL.length === 9 && HAS_LEVEL.includes('sudoku') && HAS_LEVEL.includes('grid') && !HAS_LEVEL.includes('story') && !HAS_LEVEL.includes('twenty') && cleanLevel('x') === 'normal' && cleanLevel('hard') === 'hard');
 { const e = setup(), h = setup();
   await e.games.start({ kind: 'hangman', level: 'easy' }); await h.games.start({ kind: 'hangman', level: 'hard' });
   check('49: Hangman lives and word length follow the level', e.games.game.lives === 9 && h.games.game.lives === 5 && e.games.game.word.length <= 6 && h.games.game.word.length >= 8 && e.games.view().game.lives === 9, `${e.games.game.word} ${h.games.game.word}`);
@@ -266,7 +266,7 @@ check('trivia: the question goes out with its four choices and nothing else', /^
   check('FAQ and glossary', ['faq-games-daily', 'faq-games-trivia-bobs', 'faq-games-keep'].every((x) => ids.has(x)) && ['<dt>Four in a row</dt>', '<dt>Hidden fleet</dt>', "<dt>Liar's dice</dt>", '<dt>Trivia night</dt>', "<dt>Today's puzzle</dt>", '<dt>Keep an unfinished game</dt>', '<dt>Easy, Normal, Hard</dt>'].every((x) => glossary.includes(x)));
   check('the dictionary carries its licence notice, and THIRD-PARTY lists it', /Kevin Atkinson/.test(read('src/games-dict.js')) && /SCOWL/.test(read('docs/legal/THIRD-PARTY.md')));
   check('the test runs with npm test', /run-games-2-test/.test(JSON.parse(read('package.json')).scripts.test)); }
-check('every game has a what line, and HAS_DAILY is Five letters and Word ladder', Object.values(GAMES).every((g) => g.what) && JSON.stringify(HAS_DAILY) === '["letters","ladder"]');
+check('every game has a what line, and HAS_DAILY is Five letters, Word ladder and the Mini crossword', Object.values(GAMES).every((g) => g.what) && JSON.stringify(HAS_DAILY) === '["letters","ladder","crossword"]');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

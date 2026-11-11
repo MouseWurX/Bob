@@ -6,6 +6,7 @@
 // boards: Four in a row, Hidden fleet, Liar's dice, Trivia night.
 import { esc } from './util.js';
 import { tip } from './tips.js';
+import { PLUS, PLUS_OPTS, plusExtras, twoPlayerHtml, plusPayload, storiesHtml, keepStoryHtml, plusControls, plusFinal, plusClick, plusInput, plusKey, plusReset, plusRefocus, plusFocusIn } from './games-plus.js'; // items 123 to 132
 
 const $ = (id) => document.getElementById(id);
 export const SHELVES = { any: 'Any shelf', animals: 'Animals', food: 'Food and drink', house: 'Around the house', outside: 'Out of doors', jobs: 'Jobs people do', moves: 'Things that move' };
@@ -17,7 +18,9 @@ const LEVEL_TIPS = {
   four: 'How far ahead I look: Easy plays loosely, Hard looks six moves ahead.',
   fleet: 'Easy: I fire anywhere. Normal: when I hit, I work along the ship. Hard: I also hunt in a checkerboard.',
   liar: 'Easy: I bluff a lot and call too soon. Hard: I weigh every bid on the odds.',
-  trivia: 'Easy: everyday questions. Normal: a mix. Hard: the harder ones.'
+  trivia: 'Easy: everyday questions. Normal: a mix. Hard: the harder ones.',
+  sudoku: 'Easy: 40 numbers given, and the hints alone can finish it. Normal: 32 given. Hard: 26 given. Every puzzle has one answer.',
+  grid: 'Easy: four minutes and I find few words. Normal: three minutes. Hard: two minutes, and I hunt harder.'
 };
 const FACES = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
 const COLS = 'ABCDEFGHIJ';
@@ -27,8 +30,8 @@ export function createGames({ api }) {
   const dlg = $('games'), body = $('games-body');
   $('games-close').onclick = () => dlg.close();
   let v = null, msg = '', note = '', live = '', open = false, typed = '', stopping = false;
-  const opts = { role: 'guess', shelf: 'any', together: false, bobStarts: false, fourBob: false, liarBob: false, wild: true, withBobs: false, kind20: 'animal', level: {} };
-  const startData = (kind, daily = false) => ({ kind, role: opts.role, shelf: opts.shelf, together: opts.together, bobStarts: kind === 'four' ? opts.fourBob : kind === 'liar' ? opts.liarBob : opts.bobStarts, level: opts.level[kind] || 'normal', wild: opts.wild, withBobs: opts.withBobs, daily });
+  const opts = { role: 'guess', shelf: 'any', together: false, bobStarts: false, fourBob: false, liarBob: false, wild: true, withBobs: false, kind20: 'animal', level: {}, ...PLUS_OPTS };
+  const startData = (kind, daily = false) => ({ kind, role: opts.role, shelf: opts.shelf, together: opts.together, bobStarts: kind === 'four' ? opts.fourBob : kind === 'liar' ? opts.liarBob : opts.bobStarts, level: opts.level[kind] || 'normal', wild: opts.wild, withBobs: opts.withBobs, daily, ...plusPayload(opts, kind, v?.twoPlayer), ...(plusReset(), {}) });
 
   async function load() {
     try { v = await api('/api/games'); } catch (e) { msg = e.message; }
@@ -56,6 +59,7 @@ export function createGames({ api }) {
       liar: `<div class="gm-choices" role="radiogroup" aria-label="Who bids first">${radio('liarBob', false, 'You bid first')}${radio('liarBob', true, 'I bid first')}</div> <label><input type="checkbox" data-wild ${opts.wild ? 'checked' : ''}> Ones are wild</label>`,
       trivia: `<label><input type="checkbox" data-withbobs ${opts.withBobs ? 'checked' : ''} ${v?.bobNet ? '' : 'disabled'}> Ask the Bobs on my Bob-Net to play</label> ${tip('Each Bob on your Bob-Net list answers on his own replicant matrix with his own brain. All he is sent is the question and the four choices, over Tailscale to your own Bobs only. A Bob who is busy or not reachable just sits it out.', 'Bobs on my Bob-Net')}${v?.bobNet ? '' : ' <span class="muted">(no Bobs on your Bob-Net list yet)</span>'}`
     };
+    Object.assign(extras, plusExtras(opts, radio));
     const levelRow = (id) => (v?.hasLevel || []).includes(id) ? `<div class="gm-choices" role="radiogroup" aria-label="How hard">${Object.entries(v.levels || {}).map(([l, n]) => `<button type="button" role="radio" aria-checked="${(opts.level[id] || 'normal') === l}" data-level="${l}" data-game="${id}">${n}</button>`).join('')} ${tip(LEVEL_TIPS[id] || '', 'How hard')}</div>` : '';
     const dailyRow = (id) => {
       if (!(v?.hasDaily || []).includes(id)) return '';
@@ -71,9 +75,9 @@ export function createGames({ api }) {
     return `<section class="gm-lobby">
       ${refusal}
       <p>Pick a game. ${tip('The app runs the game: it picks the secret word, checks every guess, counts the lives and keeps the score. My quick brain only talks, so a game plays fine on a small brain and even in the Gaming session. Nothing loads until you press Start, and the brain is let go when the game ends.', 'How the games work')}</p>
-      <ul class="gm-games">${Object.entries(v?.games || {}).map(([id, g]) => `<li><div class="gm-ico" aria-hidden="true">${g.icon}</div><div class="gm-about"><strong>${esc(g.name)}</strong><p class="muted">${esc(g.what)}</p>${extras[id] || ''}${levelRow(id)}${dailyRow(id)}${wordsRow(id)}</div><button type="button" class="yes" data-start="${id}" ${v?.refusal ? 'disabled' : ''}>▶ Start</button></li>`).join('')}</ul>
+      <ul class="gm-games">${Object.entries(v?.games || {}).map(([id, g]) => `<li><div class="gm-ico" aria-hidden="true">${g.icon}</div><div class="gm-about"><strong>${esc(g.name)}</strong><p class="muted">${esc(g.what)}</p>${extras[id] || ''}${twoPlayerHtml(opts, id, v?.twoPlayer)}${levelRow(id)}${dailyRow(id)}${wordsRow(id)}</div><button type="button" class="yes" data-start="${id}" ${v?.refusal ? 'disabled' : ''}>▶ Start</button></li>`).join('')}</ul>
       ${msg ? `<p class="gm-msg" role="alert">${esc(msg)}</p>` : ''}${note ? `<p class="gm-note" role="status">${esc(note)}</p>` : ''}
-      ${scoreHtml()}
+      ${scoreHtml()}${storiesHtml(v)}
     </section>`;
   }
 
@@ -82,7 +86,7 @@ export function createGames({ api }) {
     return g.log.map((l) => {
       if (l.who === 'app') return `<p class="gm-app muted">${esc(l.text)}</p>`;
       const tag = l.hint ? ' <span class="tag">hint</span>' : l.guess ? ' <span class="tag">a guess</span>' : '';
-      return `<div class="gm-line ${l.who}"><span class="gm-who">${l.who === 'you' ? 'You' : 'Bob'}${tag}</span><p>${esc(l.text)}</p></div>`;
+      return `<div class="gm-line ${l.who}"><span class="gm-who">${l.who === 'you' ? esc(l.player || 'You') : 'Bob'}${tag}</span><p>${esc(l.text)}</p></div>`;
     }).join('');
   }
   function keyboard(g, { used = {}, clickable = true } = {}) {
@@ -90,6 +94,7 @@ export function createGames({ api }) {
   }
   function controls(g) {
     if (g.status !== 'playing') return '';
+    if (PLUS.has(g.kind)) return plusControls(g, v);
     const busy = v.busy;
     const dis = busy ? 'disabled' : '';
     if (g.carry) return `<div class="gm-hand"><p><strong>My move.</strong> <span class="muted">This game was kept from last time.</span></p><div class="row"><button type="button" class="yes" data-carry ${dis}>Carry on</button></div></div>`;
@@ -199,11 +204,12 @@ export function createGames({ api }) {
       <div class="gm-top"><strong>${g.icon} ${esc(g.name)}</strong> ${result ? `<span class="tag">${result}</span>` : ''}<span class="gm-fill"></span><button type="button" data-end ${stopping ? 'disabled' : ''}>${over ? 'Back to the games' : '🏁 Stop'}</button></div>
       ${stopping ? '<div class="gm-hand gm-stop" role="group" aria-label="Stop this game?"><p><strong>Stop this game?</strong> It counts as unfinished.</p><div class="row"><button type="button" class="danger" data-stopyes>Stop the game</button><button type="button" data-stopno>Keep playing</button></div></div>' : ''}
       ${g.kind === 'story' ? diceHtml(g) : ''}
-      ${over && g.kind === 'four' ? fourHtml(g, false) : ''}${over && g.kind === 'fleet' ? fleetHtml(g, false) : ''}${over && g.kind === 'liar' ? liarHtml(g) : ''}${over && g.kind === 'trivia' ? triviaScores(g) : ''}
+      ${over && g.kind === 'four' ? fourHtml(g, false) : ''}${over && g.kind === 'fleet' ? fleetHtml(g, false) : ''}${over && g.kind === 'liar' ? liarHtml(g) : ''}${over && g.kind === 'trivia' ? triviaScores(g) : ''}${PLUS.has(g.kind) ? plusFinal(g) : ''}
       ${g.daily ? '<p class="muted">📅 Today\'s puzzle</p>' : g.level && g.level !== 'normal' ? `<p class="muted">${esc(v.levels?.[g.level] || '')}</p>` : ''}
       <div class="gm-log" id="gm-log" aria-live="polite">${logHtml(g)}<div class="gm-live" id="gm-live" hidden></div></div>
       ${v.busy ? '<p class="gm-busy muted" role="status">Bob is thinking…</p>' : ''}
-      ${controls(g)}
+      ${g.two && !over ? `<p class="gm-turn"><strong>${esc(g.two[g.twoTurn] || '')}'s turn.</strong> <span class="muted">Pass the screen when you've moved.</span></p>` : ''}
+      ${controls(g)}${keepStoryHtml(g)}
       ${msg ? `<p class="gm-msg" role="alert">${esc(msg)}</p>` : ''}
     </section>`;
   }
@@ -230,6 +236,9 @@ export function createGames({ api }) {
   const text = () => body.querySelector('[data-text]')?.value?.trim() || '';
   body.addEventListener('click', async (e) => {
     const t = e.target.closest('button'); if (!t) return;
+    const pm = plusClick(t, { game: v?.game, opts, text });
+    if (pm === 'drawn') { draw(); return; }
+    if (pm) return call(pm.url || '/api/games/act', pm.data);
     if (t.dataset.opt) { const val = t.dataset.val; opts[t.dataset.opt] = val === 'true' ? true : val === 'false' ? false : val; draw(); return; }
     if (t.dataset.start) { t.disabled = true; return call('/api/games/start', startData(t.dataset.start)); }
     if (t.dataset.daily) { t.disabled = true; return call('/api/games/start', startData(t.dataset.daily, true)); }
@@ -273,6 +282,17 @@ export function createGames({ api }) {
     if ('kind20' in d) opts.kind20 = e.target.value;
     if ('wild' in d) opts.wild = e.target.checked;
     if ('withbobs' in d) opts.withBobs = e.target.checked;
+    if ('gmTwo' in d) { opts.two = e.target.checked; draw(); }
+    if (d.gmOpt || 'gmPromo' in d) plusInput(e, { game: v?.game, opts });
+  });
+  // Typing: a crossword letter goes straight in (then on to the next square); names are remembered as you type.
+  body.addEventListener('focusin', plusFocusIn);
+  let later = null;
+  body.addEventListener('input', (e) => {
+    const r = plusInput(e, { game: v?.game, opts });
+    if (!r) return;
+    clearTimeout(later);
+    later = setTimeout(async () => { await call('/api/games/act', { letters: r.letters }); plusRefocus(v?.game); }, 700);
   });
   // Ask Bob for new words: he suggests, the dictionary decides, and the page says what made it in.
   async function words(what) {
@@ -281,10 +301,13 @@ export function createGames({ api }) {
     draw();
   }
   body.addEventListener('keydown', (e) => {
+    const k = plusKey(e, { game: v?.game });
+    if (k) { e.preventDefault(); call('/api/games/act', k); return; }
+    if (e.key === 'Enter' && e.target.matches('[data-gm-ask]')) { e.preventDefault(); body.querySelector('[data-gm-askgo]')?.click(); return; }
     if (e.key !== 'Enter' || !e.target.matches('[data-text]')) return;
     if (e.target.tagName === 'TEXTAREA' && !e.ctrlKey) return;
     e.preventDefault();
-    (body.querySelector('[data-ask],[data-climb],[data-try],[data-word],[data-line],[data-fire]'))?.click();
+    (body.querySelector('[data-ask],[data-climb],[data-try],[data-word],[data-line],[data-fire],[data-gm-move],[data-gm-gword],[data-gm-ranswer]'))?.click();
   });
   dlg.addEventListener('close', () => { open = false; });
 
@@ -302,6 +325,7 @@ export function gamesSettingsHtml(g = {}) {
     <div><strong>Which brain plays games</strong> ${tip('Quick brain: my small brain, the one that answers quick messages; it loads in a few seconds and a game needs nothing bigger. In the Gaming session it\'s the Gaming brain on the processor, so a game never touches the graphics card. Main Brain: the brain the chat uses, for wittier lines at the cost of a longer load. Either way it loads when a game starts and is let go when the game ends.', 'Which brain plays games')}<div class="ttabs" role="radiogroup" aria-label="Which brain plays games">${opt('brain', 'quick', brain, 'Quick brain')}${opt('brain', 'main', brain, 'Main Brain')}</div></div>
     <div><strong>How often Bob chips in</strong> ${tip('In Hangman, Word ladder, Five letters, Four in a row, Hidden fleet, Liar\'s dice and Trivia night the app runs the game and I comment. After every move: a line after each guess. Now and then: about every other move. Only at the end: the app keeps quiet until the game is over, which is quickest on a slow replicant matrix. Twenty questions and Story dice are all talk, so this doesn\'t change them.', 'How often Bob chips in')}<div class="ttabs" role="radiogroup" aria-label="How often Bob chips in">${opt('talk', 'every', talk, 'After every move')}${opt('talk', 'some', talk, 'Now and then')}${opt('talk', 'end', talk, 'Only at the end')}</div></div>
     <div><strong>Keep an unfinished game</strong> ${tip('When Bob closes in the middle of a game, the game is saved in my data folder and comes back when you open 🧩 Games again. Off: closing Bob ends the game.', 'Keep an unfinished game')}<div class="ttabs" role="radiogroup" aria-label="Keep an unfinished game">${opt('keep', 'false', String(g.keep === true), 'Off')}${opt('keep', 'true', String(g.keep === true), 'On')}</div></div>
+    <div><strong>Kid mode</strong> ${tip('For playing with young children. Easier words in Hangman, Five letters and Twenty questions, the gentlest levels in Chess, Noughts and crosses, Code breaker and the Letter grid, and I only ever tease kindly.', 'Kid mode')}<div class="ttabs" role="radiogroup" aria-label="Kid mode">${opt('kid', 'false', String(g.kid === true), 'Off')}${opt('kid', 'true', String(g.kid === true), 'On')}</div></div>
     <p class="muted">The games themselves live on the 🧩 Games page in the menu. Nothing runs until you press Start there.</p>
   </div>`;
 }

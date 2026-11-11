@@ -19,6 +19,7 @@ import { saveSettings } from './config.js';
 import { FOUR, FIVE, HANGMAN, SHELVES, SECRETS, KINDS, DICE } from './games-words.js';
 import { DICT } from './games-dict.js';
 import { TRIVIA, TRIVIA_SHELVES } from './games-trivia.js';
+import * as plus from './games-plus.js'; // items 123 to 132: Chess, Sudoku, Mini crossword, Letter grid, Noughts and crosses, Code breaker, Riddles; Kid mode, two players, keep a story
 import { LEVELS, cleanLevel, COLS, ROWS, emptyBoard, drop, fourWinner, boardFull, fourMove, SEA, FLEET, cellName, parseCell, placeFleet, fireAt, fleetMove, LIAR_DICE, roll, bidWords, countFace, validRaise, liarMove, TRIVIA_ROUNDS, LETTERS4, TRIVIA_LEVELS, pickedLetter, triviaPrompt } from './games-more.js';
 
 export const GAMES = {
@@ -32,9 +33,10 @@ export const GAMES = {
   liar: { icon: '🤥', name: "Liar's dice", what: 'Five hidden dice each. Bid how many of a face are on the table, or call my bid a lie. Wrong costs a die.' },
   trivia: { icon: '💡', name: 'Trivia night', what: 'Ten questions, four choices each. We both answer; the app marks them. Bring the Bobs on your Bob-Net if you like.' }
 };
+Object.assign(GAMES, plus.PLUS_GAMES); // items 123 to 129 (src/games-plus.js)
 // The games with Easy, Normal and Hard, and the ones with a daily puzzle.
-export const HAS_LEVEL = ['hangman', 'ladder', 'letters', 'four', 'fleet', 'liar', 'trivia'];
-export const HAS_DAILY = ['letters', 'ladder'];
+export const HAS_LEVEL = ['hangman', 'ladder', 'letters', 'four', 'fleet', 'liar', 'trivia', 'sudoku', 'grid'];
+export const HAS_DAILY = ['letters', 'ladder', 'crossword'];
 export const LEVEL_RULES = {
   hangman: { easy: { lives: 9, len: [3, 6] }, normal: { lives: 7, len: [3, 12] }, hard: { lives: 5, len: [8, 12] } },
   ladder: { easy: { min: 2, max: 3 }, normal: { min: 3, max: 5 }, hard: { min: 5, max: 7 } },
@@ -53,7 +55,8 @@ export function cleanGames(g = {}) {
   return {
     brain: g.brain === 'main' ? 'main' : 'quick', // which brain plays: the quick brain, or the main Brain
     talk: TALK[g.talk] ? g.talk : 'every', // how often Bob comments in the games the app runs (Hangman, Word ladder, Five letters, drop 2)
-    keep: g.keep === true // 1.5.206: keep an unfinished game when Bob closes; off until ticked
+    keep: g.keep === true, // 1.5.206: keep an unfinished game when Bob closes; off until ticked
+    kid: g.kid === true // Kid mode (item 130): easier words, gentle teasing only; off until ticked
   };
 }
 // The games brain. Quick: the small brain on the card (or on the processor with "Keep the graphics card free for quick
@@ -212,9 +215,10 @@ export function keepWords(reply, have, what) {
 
 // ---------- What the brain is told ----------
 // Short on purpose: 150 tokens of system prompt, a line of game state, and one line back. E4B does this well.
-export const persona = (cfg) => `You are ${cfg.windowsName || 'Bob'}, a friendly AI with a dry sense of humour, playing a quick game with ${cfg.userName || 'your friend'}. Keep it light. One or two short sentences at most, unless told otherwise. No lists, no headings, no emoji.`;
+export const persona = (cfg) => `You are ${cfg.windowsName || 'Bob'}, a friendly AI with a dry sense of humour, playing a quick game with ${cfg.userName || 'your friend'}. Keep it light. One or two short sentences at most, unless told otherwise. No lists, no headings, no emoji.${plus.isKid(cfg) ? plus.KID_PERSONA : ''}`;
 export const BANTER_RULES = 'Never say the secret word, never spell it, never say which letters are in it or how long it is. Tease, cheer or sympathise, nothing more.';
 export function teasePrompt(g, moment) {
+  if (plus.PLUS_GAMES[g.kind]) return plus.teaseFor(g, moment);
   if (g.kind === 'hangman') return `We're playing Hangman. The secret word is "${g.word}" (from the shelf ${SHELVES[g.shelf]}). The board shows ${maskWord(g.word, g.guessed)}. Wrong guesses so far: ${g.wrong} of ${g.lives || LIVES}. What just happened: ${moment}. ${BANTER_RULES}`;
   if (g.kind === 'letters') return `We're playing Five letters (guess the five-letter word in six tries). The secret word is "${g.answer}". Guesses so far: ${g.guesses.map((x) => x.word).join(', ') || 'none'}. Try ${g.guesses.length} of ${g.max || TRIES}. What just happened: ${moment}. ${BANTER_RULES}`;
   if (g.kind === 'ladder') return `We're playing Word ladder: from "${g.start}" to "${g.end}", one letter a step, real words only. The rungs so far: ${g.steps.join(' → ')}. The shortest climb is ${g.shortest} steps. What just happened: ${moment}. Don't suggest the next word. Tease, cheer or sympathise, nothing more.`;
@@ -231,6 +235,7 @@ export function hintPrompt(g) {
   return '';
 }
 export function endPrompt(g) {
+  if (plus.PLUS_GAMES[g.kind]) return plus.endFor(g);
   const won = g.won === 'you' ? 'I won' : g.won === 'bob' ? 'you won' : g.won === 'both' ? 'we did it together' : 'nobody won';
   if (g.kind === 'hangman') return `Hangman is over: ${won}. The word was "${g.word}"; ${g.wrong} wrong guesses, ${g.hints} hints. Say the word now and one line about the game.`;
   if (g.kind === 'letters') return `Five letters is over: ${won}${g.won === 'you' ? ` in ${g.guesses.length} tries` : ''}. The word was "${g.answer}". Say the word now and one line about the game.`;
@@ -318,11 +323,12 @@ export class Games {
     const words = loadWords(this.cfg), day = dayKey(this.now());
     const daily = Object.fromEntries(HAS_DAILY.map((k) => { const d = this.scores._daily?.[k] || {}; return [k, { today: d.days?.[day] || '', streak: d.last === day || d.last === yesterday(day) ? d.streak || 0 : 0, best: d.best || 0 }]; }));
     const extra = { hangman: Object.fromEntries(Object.keys(SHELVES).map((k) => [k, (words.hangman[k] || []).length])), twenty: Object.fromEntries(Object.keys(KINDS).map((k) => [k, (words.twenty[k] || []).length])) };
-    return { game: pub, busy: this.busy, scores: this.scores, settings: cleanGames(this.cfg.games), refusal: refusal(this.cfg), games: GAMES, talk: TALK, levels: LEVELS, hasLevel: HAS_LEVEL, hasDaily: HAS_DAILY, daily, day, extra, shelves: SHELVES, kinds: KINDS, bobNet: (this.brain.lenders?.bobs?.() || []).length };
+    return { game: pub, busy: this.busy, scores: this.scores, settings: cleanGames(this.cfg.games), refusal: refusal(this.cfg), games: GAMES, talk: TALK, levels: LEVELS, hasLevel: HAS_LEVEL, hasDaily: HAS_DAILY, daily, day, extra, shelves: SHELVES, kinds: KINDS, bobNet: (this.brain.lenders?.bobs?.() || []).length, twoPlayer: plus.TWO_PLAYER, stories: plus.listStories(this.cfg).slice(0, 20) };
   }
   publicGame(g) {
     const over = g.status === 'over';
-    const base = { id: g.id, kind: g.kind, name: GAMES[g.kind].name, icon: GAMES[g.kind].icon, status: g.status, won: g.won || '', log: g.log, started: g.started, level: g.level || '', daily: g.daily || '', carry: !over && !this.busy && !this.acting && bobOwes(g) };
+    const base = { id: g.id, kind: g.kind, name: GAMES[g.kind].name, icon: GAMES[g.kind].icon, status: g.status, won: g.won || '', log: g.log, started: g.started, level: g.level || '', daily: g.daily || '', carry: !over && !this.busy && !this.acting && bobOwes(g), hints: g.hints, kid: Boolean(g.kid), two: g.two || null, twoTurn: g.twoTurn ?? 0, champ: g.champ || '', kept: g.kept || '' };
+    if (plus.PLUS_GAMES[g.kind]) return { ...base, ...plus.publicView(g) };
     if (g.kind === 'twenty') return { ...base, role: g.role, secretKind: g.secretKind, asked: g.asked, max: QUESTIONS, questions: g.questions, guessing: Boolean(g.pending), pendingGuess: g.pending || '', secret: over && g.secret ? g.secret[0] : '' };
     if (g.kind === 'hangman') return { ...base, shelf: SHELVES[g.shelf], masked: maskWord(g.word, g.guessed), guessed: g.guessed, wrong: g.wrong, lives: g.lives || LIVES, hints: g.hints, word: over ? g.word : '', length: g.word.length };
     if (g.kind === 'ladder') return { ...base, start: g.start, end: g.end, steps: g.steps, shortest: g.shortest, together: g.together, whose: g.whose, hints: g.hints, path: over ? g.path : null };
@@ -365,12 +371,17 @@ export class Games {
     const level = daily ? 'normal' : HAS_LEVEL.includes(kind) ? cleanLevel(b.level) : '';
     const words = loadWords(this.cfg);
     const g = { id: crypto.randomBytes(5).toString('hex'), kind, status: 'playing', won: '', log: [], started: this.now(), hints: 0, level, daily };
+    const kid = plus.isKid(this.cfg);
+    // Two players on one screen (item 131): the turn passes after every move; Bob only comments.
+    if (plus.TWO_PLAYER.includes(kind) && b.players) { g.two = plus.cleanPlayers(b.players); g.twoTurn = 0; }
+    let opening = '';
+    if (plus.PLUS_GAMES[kind]) opening = plus.setUp(g, b, { rnd, now: this.now, kid, cfg: this.cfg });
     if (kind === 'twenty') {
       g.role = b.role === 'think' ? 'think' : 'guess'; // guess: Bob thinks of something, you guess. think: you think, Bob guesses.
       g.asked = 0; g.questions = []; g.pending = '';
       if (g.role === 'guess') {
         const extra = Object.entries(words.twenty).flatMap(([k, list]) => (KINDS[k] ? list.map((w) => [k, w]) : []));
-        const s = pick([...SECRETS, ...extra], this.rnd); g.secretKind = s[0]; g.secret = s.slice(1);
+        const s = pick(kid ? SECRETS.filter((x) => x[0] === 'animal' || x[0] === 'food') : [...SECRETS, ...extra], this.rnd); g.secretKind = s[0]; g.secret = s.slice(1);
       } else g.secretKind = '';
     } else if (kind === 'hangman') {
       const r = LEVEL_RULES.hangman[level];
@@ -379,7 +390,7 @@ export class Games {
       const fit = all.filter((w) => w.length >= r.len[0] && w.length <= r.len[1]);
       g.word = pick(fit.length >= 5 ? fit : all, this.rnd); g.guessed = []; g.wrong = 0; g.lives = r.lives;
     } else if (kind === 'ladder') {
-      Object.assign(g, pickLadder(rnd, LEVEL_RULES.ladder[level])); g.steps = [g.start]; g.together = !daily && b.together === true; g.whose = 'you'; g.path = null;
+      Object.assign(g, pickLadder(rnd, LEVEL_RULES.ladder[level])); g.steps = [g.start]; g.together = !daily && !g.two && b.together === true; g.whose = 'you'; g.path = null;
     } else if (kind === 'letters') {
       g.answer = pick(FIVE, rnd); g.guesses = []; g.max = LEVEL_RULES.letters[level].tries;
     } else if (kind === 'story') {
@@ -408,9 +419,12 @@ export class Games {
         g.netAsked = bobs.length; // how many were asked, so the opening line can say who couldn't come
       }
     }
+    if (kid && !daily) plus.kidSecret(g, this.rnd);
     this.game = g;
     this.stop = new AbortController();
     this.push();
+    if (opening) { this.line('app', opening); if (g.two) this.line('app', `${g.two[0]} goes first.`); await plus.opening(this); this.push(); return this.view(); }
+    if (g.two) this.line('app', `${g.two[0]} and ${g.two[1]} take turns; ${g.two[0]} goes first. I'll keep score and cheer.`);
     const lvl = level && level !== 'normal' ? ` (${LEVELS[level]})` : '';
     const today = daily ? "Today's puzzle, the same for everyone with Bob today. " : '';
     // The opening line. Twenty questions and Story dice are brain games, so Bob speaks first when it's his turn.
@@ -455,6 +469,7 @@ export class Games {
     if (g.kind === 'hangman') return [g.word];
     if (g.kind === 'letters') return [g.answer];
     if (g.kind === 'twenty' && g.role === 'guess') return g.secret;
+    if (plus.PLUS_GAMES[g.kind]) return plus.secretFor(g);
     return null;
   }
   // A tease after a move, if the setting says so now. Failures are quiet: the game goes on without the line.
@@ -465,6 +480,8 @@ export class Games {
   }
   async finish(won) {
     const g = this.game;
+    if (g.two && won === 'you') { g.champ = g.two[g.twoTurn ?? 0]; this.line('app', `${g.champ} wins!`); won = 'both'; }
+    clearTimeout(this.timer);
     g.status = 'over'; g.won = won;
     if (g.kind === 'ladder') g.path = ladderPath(g.start, g.end);
     this.scores = tally(this.scores || loadScores(this.cfg), g.kind, won);
@@ -491,6 +508,7 @@ export class Games {
       else if (g.kind === 'letters') this.line('app', `Game stopped. The word was ${g.answer.toUpperCase()}.`);
       else if (g.kind === 'ladder') { g.path = ladderPath(g.steps.at(-1), g.end); this.line('app', `Climb stopped. One way up: ${(ladderPath(g.start, g.end) || []).map((w) => w.toUpperCase()).join(' → ')}.`); }
       else if (g.kind === 'twenty' && g.role === 'guess') this.line('app', `Game stopped. It was ${g.secret[0]}.`);
+      else if (plus.PLUS_GAMES[g.kind]) { clearTimeout(this.timer); this.line('app', plus.stopLine(g)); }
       else this.line('app', 'Game stopped.');
       if (!quiet) {
         this.scores = tally(this.scores || loadScores(this.cfg), g.kind, 'none');
@@ -542,6 +560,7 @@ export class Games {
     if (!g || g.status !== 'playing') throw new Error('No game on. Press Start first.');
     if (this.busy || this.acting) throw new Error("Hold on, I'm still talking.");
     this.acting = true;
+    const who = g.two ? g.two[g.twoTurn ?? 0] : '', from = g.log.length;
     try {
       if (b.carry === true) { if (!bobOwes(g)) throw new Error('Your move.'); if (!this.stop) this.stop = new AbortController(); await this.carryOn(); }
       else if (g.kind === 'twenty') await this.actTwenty(b);
@@ -553,9 +572,19 @@ export class Games {
       else if (g.kind === 'fleet') await this.actFleet(b);
       else if (g.kind === 'liar') await this.actLiar(b);
       else if (g.kind === 'trivia') await this.actTrivia(b);
+      else if (plus.PLUS_GAMES[g.kind]) await plus.act(this, b);
+      if (g.two) this.passTurn(b, who, from);
     } finally { this.acting = false; }
     this.push();
     return this.view();
+  }
+  // Two players, one screen: the move counts for whoever's turn it was, then the turn passes (noughts follows the marks).
+  passTurn(b, who, from) {
+    const g = this.game;
+    for (const l of g.log.slice(from)) if (l.who === 'you') l.player = who;
+    if (g.status !== 'playing' || b.back === true || b.hint === true) return;
+    g.twoTurn = g.kind === 'noughts' ? (g.mark === 'X' ? 0 : 1) : 1 - (g.twoTurn ?? 0);
+    this.line('app', `${g.two[g.twoTurn]}'s turn.`);
   }
   // Bob's move that was due when the game was put away (a kept game picked up again).
   async carryOn() {
@@ -945,19 +974,30 @@ export async function gamesRoute({ req, res, p, brain, body, send, isLocal = tru
   const a = gamesFor(brain);
   try {
     if (req.method === 'GET' && p === '/api/games') { send(res, 200, a.view()); return true; }
+    if (req.method === 'GET' && p === '/api/games/story') { // a kept story page; only names made by keepStory are read
+      const html = plus.readStory(brain.cfg, new URL(req.url || '/', 'http://x').searchParams.get('file'));
+      if (!html) { send(res, 404, { error: 'No such story.' }); return true; }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" }); res.end(html); return true;
+    }
     if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }
     const b = await body(req);
     if (p === '/api/games/start') return send(res, 200, await a.start(b)), true;
     if (p === '/api/games/act') return send(res, 200, await a.act(b)), true;
     if (p === '/api/games/end') return send(res, 200, await a.end()), true;
     if (p === '/api/games/close') return send(res, 200, a.close()), true;
+    if (p === '/api/games/keep-story') { // Keep a story (item 132): a finished Story dice story as a page to save or print
+      const g = a.game;
+      if (!g || g.kind !== 'story' || g.status !== 'over') throw new Error('Finish a Story dice story first.');
+      g.kept = plus.keepStory(brain.cfg, g, { you: brain.cfg.userName || 'You', bob: brain.cfg.windowsName || 'Bob' });
+      a.push(); send(res, 200, { ...a.view(), file: g.kept, url: `/api/games/story?file=${encodeURIComponent(g.kept)}` }); return true;
+    }
     if (p === '/api/games/words' || p === '/api/games/words/forget') { // 1.5.206: Bob's new words, only from this replicant matrix
       if (!isLocal) { send(res, 403, { error: 'New words can only be added on this replicant matrix itself.' }); return true; }
       send(res, 200, p.endsWith('/forget') ? a.forgetWords(b) : await a.newWords(b)); return true;
     }
     if (p === '/api/games/settings') { // Settings, 🧩 Games: only from this replicant matrix
       if (!isLocal) { send(res, 403, { error: 'Games settings can only be changed on this replicant matrix itself.' }); return true; }
-      const next = cleanGames({ ...cleanGames(brain.cfg.games), ...b, ...('keep' in b ? { keep: b.keep === true || b.keep === 'true' } : {}) });
+      const next = cleanGames({ ...cleanGames(brain.cfg.games), ...b, ...('keep' in b ? { keep: b.keep === true || b.keep === 'true' } : {}), ...('kid' in b ? { kid: b.kid === true || b.kid === 'true' } : {}) });
       saveSettings(brain.cfg, { games: next });
       a.persist();
       send(res, 200, { settings: next }); return true;

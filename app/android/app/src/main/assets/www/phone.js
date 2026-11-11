@@ -1747,14 +1747,14 @@ ${chatOut}
   // ---------- 🧩 Games: small games your other Bob plays with you (the app there runs the game; the phone draws the board) ----------
   // The phone brain is never used for a game. Nothing starts until you press ▶ Start.
   const GAMES = {
-    order: ['twenty', 'hangman', 'ladder', 'letters', 'story', 'four', 'fleet', 'liar', 'trivia'],
+    order: ['twenty', 'hangman', 'ladder', 'letters', 'story', 'four', 'fleet', 'liar', 'trivia', 'chess', 'sudoku', 'crossword', 'grid', 'noughts', 'codes', 'riddles'],
     faces: ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'],
     shelves: { any: 'Any shelf', animals: 'Animals', food: 'Food and drink', house: 'Around the house', outside: 'Out of doors', jobs: 'Jobs people do', moves: 'Things that move' },
     rows: ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM']
   };
-  const gam = { v: null, msg: '', live: '', base: null, timer: null, last: '', draft: '', opts: { role: 'guess', shelf: 'any', together: false, bobStarts: false, fourBob: false, liarBob: false, wild: true, withBobs: false, level: {} } };
+  const gam = { v: null, msg: '', live: '', base: null, timer: null, last: '', draft: '', opts: { role: 'guess', shelf: 'any', together: false, bobStarts: false, fourBob: false, liarBob: false, wild: true, withBobs: false, level: {}, strength: 2, colour: 'w', bobPlays: true, nLevel: 'easy', codeRole: 'break', two: false, p1: '', p2: '' }, pick: '', cell: -1, code: [] };
   // 1.5.206: what ▶ Start (or 📅 Today's puzzle) sends for a game.
-  const gamStart = (kind, daily = false) => { const o = gam.opts; return gamCall('/api/games/start', { kind, role: o.role, shelf: o.shelf, together: o.together, bobStarts: kind === 'four' ? o.fourBob : kind === 'liar' ? o.liarBob : o.bobStarts, level: o.level[kind] || 'normal', wild: o.wild, withBobs: o.withBobs, daily }); };
+  const gamStart = (kind, daily = false) => { const o = gam.opts; gam.pick = ''; gam.cell = -1; gam.code = []; return gamCall('/api/games/start', { kind, shelf: o.shelf, together: o.together, bobStarts: kind === 'four' ? o.fourBob : kind === 'liar' ? o.liarBob : o.bobStarts, level: kind === 'noughts' ? o.nLevel : o.level[kind] || 'normal', wild: o.wild, withBobs: o.withBobs, daily, strength: Number(o.strength), colour: o.colour, bobPlays: o.bobPlays, role: kind === 'codes' ? o.codeRole : o.role, ...(o.two && (gam.v?.twoPlayer || []).includes(kind) ? { players: [o.p1, o.p2] } : {}) }); };
   const gamOpen = () => !$('games').classList.contains('hidden');
   // ---- 1.5.125 🧰 Chest: the newest things your other Bob made, as little pictures with names (his Made by Bob list).
   // The pictures come small from /api/thumb (made once on your other replicant matrix, kept there); a tap shows the thing
@@ -1848,6 +1848,7 @@ ${chatOut}
       const g = info[kind] || {};
       return el('div', { class: 'box' }, el('div', { class: 'title' }, el('span', { text: g.icon || '' }), el('span', { text: g.name || kind })),
         el('p', { class: 'help-line', text: g.what || '' }), options,
+        (v.twoPlayer || []).includes(kind) ? gamTwo() : null,
         (v.hasLevel || []).includes(kind) ? chips(Object.entries(v.levels || {}), o.level[kind] || 'normal', 'How hard', (id) => { o.level[kind] = id; gamDraw(); }) : null,
         el('div', { class: 'btns' }, el('button', { class: 'main', text: '▶ Start', disabled: Boolean(v.refusal), onclick: () => gamStart(kind) }),
           (v.hasDaily || []).includes(kind) ? el('button', { text: "📅 Today's puzzle", disabled: Boolean(v.refusal || v.daily?.[kind]?.today), onclick: () => gamStart(kind, true) }) : null),
@@ -1870,6 +1871,14 @@ ${chatOut}
       row('fleet', null),
       row('liar', el('div', {}, chips([[false, 'You bid first'], [true, 'I bid first']], o.liarBob, 'Who bids first', (id) => { o.liarBob = id; gamDraw(); }), tick('Ones are wild', o.wild, (x) => { o.wild = x; }))),
       row('trivia', el('div', {}, tick('Ask the Bobs on my Bob-Net to play', o.withBobs, (x) => { o.withBobs = x; }, !v.bobNet), el('p', { class: 'help-line', text: v.bobNet ? 'Each one answers on his own replicant matrix; all he is sent is the question and the four choices.' : 'No Bobs on your Bob-Net list yet.' }))),
+      row('chess', el('div', {}, chips([[1, 'Beginner'], [2, 'Casual'], [3, 'Club'], [4, 'Strong'], [5, 'Strongest']], o.strength, 'Strength', (id) => { o.strength = id; gamDraw(); }), chips([['w', 'White'], ['b', 'Black'], ['random', 'Either']], o.colour, 'Your colour', (id) => { o.colour = id; gamDraw(); }))),
+      row('sudoku', null),
+      row('crossword', null),
+      row('grid', chips([[true, 'Bob hunts too'], [false, 'Just me']], o.bobPlays, 'Does Bob hunt too', (id) => { o.bobPlays = id; gamDraw(); })),
+      row('noughts', el('div', {}, chips([['kid', 'Little one'], ['easy', 'Easy'], ['perfect', "Can't be beaten"]], o.nLevel, 'Bob plays', (id) => { o.nLevel = id; gamDraw(); }), chips([[false, 'You start'], [true, 'Bob starts']], o.bobStarts, 'Who starts', (id) => { o.bobStarts = id; gamDraw(); }))),
+      row('codes', chips([['break', 'You break my code'], ['make', 'I break yours']], o.codeRole, 'Who breaks the code', (id) => { o.codeRole = id; gamDraw(); })),
+      row('riddles', null),
+      (v.stories || []).length ? el('p', { class: 'help-line', text: `${v.stories.length} kept stor${v.stories.length === 1 ? 'y' : 'ies'} on your other replicant matrix, under 🧩 Games there, ready to print.` }) : null,
       el('p', { class: 'help-line', text: 'New Hangman words and Twenty questions things from Bob are asked for on your other replicant matrix (🧩 Games there).' }),
       gam.msg ? el('p', { class: 'note bad', role: 'alert', text: gam.msg }) : null,
       played.length ? el('h3', { text: 'Scoreboard' }) : null,
@@ -1883,7 +1892,7 @@ ${chatOut}
     return el('div', { class: 'adv-log', id: 'gam-log' }, (g.log || []).map((l) => {
       if (l.who === 'app') return el('p', { class: 'note', text: l.text || '' });
       return el('div', { class: `adv-turn${l.who === 'you' ? ' you' : ''}` },
-        el('span', { class: 'adv-who' }, el('span', { text: l.who === 'you' ? 'You' : 'Bob' }), l.hint ? el('span', { class: 'badge quiet', text: 'hint' }) : null, l.guess ? el('span', { class: 'badge quiet', text: 'a guess' }) : null),
+        el('span', { class: 'adv-who' }, el('span', { text: l.who === 'you' ? l.player || 'You' : 'Bob' }), l.hint ? el('span', { class: 'badge quiet', text: 'hint' }) : null, l.guess ? el('span', { class: 'badge quiet', text: 'a guess' }) : null),
         el('p', { text: l.text || '' }));
     }), el('div', { class: 'adv-live hidden', id: 'gam-live' }));
   }
@@ -1905,12 +1914,14 @@ ${chatOut}
         : el('button', { text: '🏁 Stop', onclick: (e) => { const t = e.currentTarget; if (!t.dataset.sure) { t.dataset.sure = '1'; t.textContent = 'Stop this game? It counts as unfinished. Tap again to stop.'; return; } gamCall('/api/games/end', {}); } })));
     const busy = v.busy ? el('p', { class: 'note', text: 'Bob is thinking…' }) : null;
     const msg = gam.msg ? el('p', { class: 'note bad', role: 'alert', text: gam.msg }) : null;
-    const play = g.carry ? gamCarry : { twenty: gamTwenty, hangman: gamHangman, ladder: gamLadder, letters: gamLetters, story: gamStory, four: gamFour, fleet: gamFleet, liar: gamLiar, trivia: gamTrivia }[g.kind];
-    const board = { four: gamFour, fleet: gamFleet, liar: gamLiar, trivia: gamTrivia }[g.kind];
+    const plus = { chess: gamChess, sudoku: gamSudoku, crossword: gamCross, grid: gamGrid, noughts: gamNoughts, codes: gamCodes, riddles: gamRiddles };
+    const play = g.carry ? gamCarry : { twenty: gamTwenty, hangman: gamHangman, ladder: gamLadder, letters: gamLetters, story: gamStory, four: gamFour, fleet: gamFleet, liar: gamLiar, trivia: gamTrivia, ...plus }[g.kind];
+    const board = { four: gamFour, fleet: gamFleet, liar: gamLiar, trivia: gamTrivia, story: gamKeep, ...plus }[g.kind];
     const controls = over ? (board ? el('div', { class: 'card' }, ...board(g).flat().filter(Boolean)) : null)
       : el('div', { class: 'card' }, ...(play || (() => []))(g).flat().filter(Boolean));
     const tagLine = g.daily ? el('p', { class: 'help-line', text: "📅 Today's puzzle" }) : g.level && g.level !== 'normal' ? el('p', { class: 'help-line', text: v.levels?.[g.level] || '' }) : null;
-    return [top, tagLine, gamLog(g), busy, msg, controls];
+    const turn = g.two && !over ? el('p', { class: 'note', text: `${g.two[g.twoTurn] || ''}'s turn. Pass the phone when you've moved.` }) : null;
+    return [top, tagLine, gamLog(g), busy, msg, turn, controls];
   }
   function gamTwenty(g) {
     const n = Math.min((g.asked || 0) + 1, g.max || 20);
@@ -2010,6 +2021,78 @@ ${chatOut}
     if (!q) return [scores];
     return [el('div', { class: 'q' }, el('strong', { text: `Question ${g.at + 1} of ${g.of}.` }), el('div', { class: 'help-line', text: q.shelf || '' })), el('p', { text: q.q }),
       el('div', { class: 'choices' }, q.choices.map((c, i) => el('button', { text: `${'ABCD'[i]}  ${c}`, disabled: Boolean(gam.v.busy), onclick: () => gamAct({ answer: 'ABCD'[i] }) }))), scores];
+  }
+
+  // ---- 🧩 the second set (items 123 to 132): the app on your other replicant matrix runs these too ----
+  function gamTwo() {
+    const o = gam.opts;
+    const name = (k, ph) => el('input', { type: 'text', maxlength: 24, placeholder: ph, 'aria-label': ph, value: o[k], oninput: (e) => { o[k] = e.target.value; } });
+    return el('div', {}, el('label', { class: 'field' }, el('input', { type: 'checkbox', checked: o.two, onchange: (e) => { o.two = e.target.checked; gamDraw(); } }), el('span', { text: ' Two players, one screen' })),
+      o.two ? el('div', { class: 'row' }, name('p1', 'First player'), name('p2', 'Second player')) : null);
+  }
+  function gamKeep(g) {
+    if (g.status !== 'over' || !g.lines?.length) return [];
+    if (g.kept) return [el('p', { class: 'note', text: '📜 Kept. The page is in 🧩 Games on your other replicant matrix, under Kept stories, ready to read, save or print.' })];
+    return [el('div', { class: 'btns' }, el('button', { class: 'main', text: '📜 Keep this story', onclick: () => gamCall('/api/games/keep-story', {}) }))];
+  }
+  const PIECES = { K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙', k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
+  function gamChess(g) {
+    const over = g.status !== 'playing', yours = !over && g.turn === g.youAre && !gam.v.busy, flip = g.youAre === 'b', legal = g.legal || [];
+    const cells = [];
+    for (let k = 0; k < 8; k++) for (let j = 0; j < 8; j++) {
+      const r = flip ? k : 7 - k, f = flip ? 7 - j : j, name = 'abcdefgh'[f] + (r + 1), p = g.board[r * 8 + f];
+      const to = gam.pick && legal.some((m) => m.from === gam.pick && m.to === name);
+      cells.push(el('button', { class: `sq ${(f + r) % 2 ? 'light' : 'dark'}${gam.pick === name ? ' pick' : ''}${to ? ' to' : ''}${g.last && (g.last.from === name || g.last.to === name) ? ' last' : ''}`, text: p ? PIECES[p] : '', 'aria-label': name, disabled: !yours, onclick: () => {
+        if (to) { const from = gam.pick; gam.pick = ''; return gamAct({ from, to: name, promo: 'q' }); }
+        gam.pick = legal.some((m) => m.from === name) ? name : ''; gamDraw();
+      } }));
+    }
+    const pairs = []; for (let k = 0; k < g.moves.length; k += 2) pairs.push(`${k / 2 + 1}. ${g.moves[k]}${g.moves[k + 1] ? ' ' + g.moves[k + 1] : ''}`);
+    return [el('div', { class: 'chess' }, cells), el('p', { class: 'help-line', text: `${over ? g.result || '' : yours ? 'Your move: tap a piece, then its square.' : "Bob's move."}${g.check ? ' Check!' : ''} ${g.strengthName}.` }),
+      pairs.length ? el('p', { class: 'help-line', text: pairs.join('  ') }) : null,
+      over ? null : el('div', { class: 'btns' }, el('button', { text: 'Take back', disabled: !yours || g.moves.length < 2, onclick: () => gamAct({ undo: true }) }), el('button', { text: 'Offer a draw', onclick: () => gamAct({ draw: true }) }), el('button', { text: 'Resign', onclick: () => gamAct({ resign: true }) }))];
+  }
+  function gamSudoku(g) {
+    const over = g.status !== 'playing', ans = g.answer;
+    const cells = g.grid.map((n, i) => { const show = n || (ans ? ans[i] : 0); return el('button', { class: `cell${g.given[i] ? ' given' : ''}${gam.cell === i ? ' sel' : ''}${i === g.focus ? ' focus' : ''}${i % 9 === 2 || i % 9 === 5 ? ' rb' : ''}${Math.floor(i / 9) === 2 || Math.floor(i / 9) === 5 ? ' bb' : ''}`, text: show ? String(show) : '', 'aria-label': `Row ${Math.floor(i / 9) + 1}, column ${i % 9 + 1}: ${show || 'empty'}`, disabled: over || g.given[i], onclick: () => { gam.cell = i; gamDraw(); } }); });
+    return [el('div', { class: 'sudoku' }, cells), over ? null : el('div', { class: 'row' }, [1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((n) => el('button', { text: n ? String(n) : 'Clear', disabled: gam.cell < 0 || Boolean(gam.v.busy), onclick: () => gamAct({ cell: gam.cell, value: n }) }))),
+      over ? null : el('div', { class: 'btns' }, el('button', { text: 'Hint: next step and why', onclick: () => gamAct({ hint: true }) }), el('button', { text: 'Hint and fill it in', onclick: () => gamAct({ hint: true, fill: true }) })),
+      el('p', { class: 'help-line', text: `${g.levelName} · ${g.mistakes} slips · ${g.hints || 0} hints` })];
+  }
+  function gamCross(g) {
+    const over = g.status !== 'playing', show = g.answer || g.letters, nums = {};
+    for (const c of g.clues) nums[c.cells[0]] = c.num;
+    const cells = show.map((ch, i) => g.blocks.includes(i) ? el('span', { class: 'xblock' }) : el('label', { class: `xcell${(g.wrong || []).includes(i) ? ' wrong' : ''}` }, nums[i] ? el('span', { class: 'n', text: String(nums[i]) }) : null,
+      el('input', { type: 'text', maxlength: 1, value: (ch || '').toUpperCase(), 'aria-label': `Square ${i + 1}`, disabled: over, autocapitalize: 'characters', onfocus: () => { gam.cell = i; }, oninput: (e) => gamAct({ cell: i, letter: e.target.value.slice(-1) }) })));
+    const list = (d) => el('div', {}, el('strong', { text: d === 'across' ? 'Across' : 'Down' }), ...g.clues.filter((c) => c.dir === d).map((c) => el('p', { class: 'help-line', text: `${c.num}. ${c.clue}` })));
+    return [el('div', { class: 'cross' }, cells), list('across'), list('down'),
+      over ? null : el('div', { class: 'btns' }, el('button', { text: 'Check my letters', onclick: () => gamAct({ check: true }) }), el('button', { text: 'Show this square', onclick: () => { if (gam.cell >= 0) gamAct({ reveal: gam.cell }); } }))];
+  }
+  function gamGrid(g) {
+    const over = g.status !== 'playing', left = Math.max(0, Math.round((g.ends - Date.now()) / 1000));
+    return [el('div', { class: 'lgrid' }, g.grid.map((c) => el('span', { text: c === 'qu' ? 'Qu' : c.toUpperCase() }))),
+      el('p', { class: 'help-line', text: over ? `You ${g.points?.you ?? 0}, Bob ${g.points?.bob ?? 0}. The grid held ${g.total}.` : `About ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left · ${g.found.length} found` }),
+      over ? null : gamBox('A word…', 'Add', (t) => { if (t.trim()) gamAct({ word: t.trim() }); }, [el('button', { text: "I'm done", onclick: () => gamAct({ done: true }) })]),
+      g.found.length ? el('p', { class: 'help-line', text: g.found.map((w) => w.toUpperCase()).join(', ') }) : null];
+  }
+  function gamNoughts(g) {
+    const over = g.status !== 'playing', mine = !over && !gam.v.busy && (g.two || g.mark === 'X');
+    return [el('div', { class: 'noughts' }, g.board.map((m, i) => el('button', { class: g.line.includes(i) ? 'win' : '', text: m === 'X' ? '✕' : m === 'O' ? '◯' : '', 'aria-label': `Square ${i + 1}: ${m || 'empty'}`, disabled: !mine || Boolean(m), onclick: () => gamAct({ cell: i }) }))),
+      el('p', { class: 'help-line', text: g.levelName || '' })];
+  }
+  function gamCodes(g) {
+    const over = g.status !== 'playing', dot = (c) => g.colours.find((x) => x[0] === c)?.[2] || '⚪';
+    const rows = g.tries.map((t) => el('p', { text: `${[...t.guess].map(dot).join('')}  ${'⚫'.repeat(t.black)}${'⚪'.repeat(t.white)}` }));
+    if (over) return [...rows, g.code ? el('p', { class: 'help-line', text: `The code: ${[...g.code].map(dot).join('')}` }) : null];
+    if (g.role === 'make' && g.codeSet) return [...rows, el('div', { class: 'btns' }, el('button', { class: 'main', text: "Bob's next try", onclick: () => gamAct({ next: true }) }))];
+    return [...rows, el('p', { class: 'code-row', text: `${gam.code.map(dot).join('')}${'◌'.repeat(4 - gam.code.length)}` }),
+      el('div', { class: 'row' }, g.colours.map(([id, name, d]) => el('button', { text: d, 'aria-label': name, onclick: () => { if (gam.code.length < 4) { gam.code.push(id); gamDraw(); } } })), el('button', { text: 'Clear', onclick: () => { gam.code = []; gamDraw(); } })),
+      el('div', { class: 'btns' }, el('button', { class: 'main', text: g.role === 'make' ? 'Set my code' : 'Try it', disabled: gam.code.length < 4, onclick: () => { const code = gam.code.join(''); gam.code = []; gamAct({ code }); } }))];
+  }
+  function gamRiddles(g) {
+    if (g.status !== 'playing') return (g.results || []).map((r) => el('p', { class: 'help-line', text: `${r.solved ? '✓' : '✗'} ${r.riddle} ${r.answer}` }));
+    return [el('p', {}, el('strong', { text: g.riddle })), el('p', { class: 'help-line', text: `Riddle ${g.at + 1} of ${g.of} · guess ${Math.min(g.tries + 1, g.max)} of ${g.max} · ${g.solved} solved` }),
+      ...gamBox('Your answer…', 'Answer', (t) => { if (t.trim()) gamAct({ answer: t.trim() }); }, [el('button', { text: 'Hint', onclick: () => gamAct({ hint: true }) }), el('button', { text: 'Skip', onclick: () => gamAct({ skip: true }) })])];
   }
 
   // ---------- Help ----------
