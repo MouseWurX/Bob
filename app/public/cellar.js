@@ -13,6 +13,7 @@ import { handsSettingsHtml, mountHandsSettings } from './hands.js';
 import { quarantineSettingsHtml, mountQuarantineSettings } from './quarantine.js';
 import { phoneAccessHtml, mountPhoneAccess } from './phone-access.js';
 import { lockSettingsHtml, mountLockSettings, lockSummary } from './lock-settings.js'; // 🔒 Passcode lock
+import { secretsHtml, mountSecrets } from './secrets.js';
 import { telegramHtml, mountTelegram } from './telegram.js';
 import { discordHtml, mountDiscord } from './discord.js';
 import { appsDoorHtml, mountAppsDoor } from './apps-door.js';
@@ -581,17 +582,23 @@ export function createCellar({ popOut = null } = {}) {
 
   function housekeepingHtml() {
     const hk = settings.housekeeping || {};
-    const KINDS = [['chats', 'Chats', 'summed up first, so the topic notes and a summary stay'], ['pictures', 'Pictures and clips Bob made', ''], ['sounds', 'Sounds and music Bob made', ''], ['tasks', 'Finished tasks', 'the chats keep what was said'], ['logs', 'Logbook and update logs', '']];
+    const KINDS = [['chats', 'Chats', 'summed up first, so the topic notes and a summary stay'], ['pictures', 'Pictures and clips Bob made', ''], ['sounds', 'Sounds and music Bob made', ''], ['tasks', 'Finished tasks', 'the chats keep what was said'], ['logs', 'Logbook and update logs', ''], ['folders', 'Files in folders you added', 'always asks first']];
     const units = ['minutes', 'hours', 'days', 'weeks', 'months'];
-    return `<div class="housekeeping"><span class="tag">off unless you turn it on</span>
-       ${tip('Bob tidies up after himself while he\'s idle: he sums up the older part of long chats, files what you talked about under Topics, moves lasting facts to his memory file, and offers to clear away things that haven\'t come up for a while. Removed things go to the Recycle Bin. Pinned chats, pictures and topics are never touched, and everything he does goes in the logbook.', 'Housekeeping')}
+    const folders = hk.extraFolders || [];
+    // Nov 11: on by default, his own files only; the folders list below adds more (always "ask first").
+    const folderRows = `<h4 class="ssub">Folders you point him to ${tip('By default Bob only tidies his own files. Add a folder here, like Downloads, and he also offers old files from it in Tidy up. He always asks first for these, and they go to the Recycle Bin. System folders, your whole home folder and Bob\'s own folder can\'t be added.', 'Folders you point him to')}</h4>
+      ${folders.length ? folders.map((f) => `<div class="srow"><span class="svalue">${esc(f)}</span><span class="sact"><button type="button" class="mini" data-hkfolderrm="${esc(f)}">Remove</button></span></div>`).join('') : '<p class="muted">None yet. Bob only tidies his own files.</p>'}
+      <div class="row"><input data-hkfoldernew maxlength="400" placeholder="Full path, like C:\\Users\\you\\Downloads" aria-label="Folder for Bob to tidy" style="flex:1;min-width:12em"><button type="button" class="mini" data-hkfolderadd>Add folder</button><span class="muted hk-folder-out" aria-live="polite"></span></div>`;
+    return `<div class="housekeeping"><span class="tag">on unless you turn it off</span>
+       ${tip('Bob tidies up after himself while he\'s idle: he sums up the older part of long chats, files what you talked about under Topics, moves lasting facts to his memory file, and offers to clear away things that haven\'t come up for a while. By default he only touches his own files. Removed things go to the Recycle Bin. Pinned chats, pictures and topics are never touched, and everything he does goes in the logbook.', 'Housekeeping')}
       <label class="switch"><input type="checkbox" data-hk="enabled" ${hk.enabled ? 'checked' : ''}><span><strong>Tidy up old things by himself</strong> ${tip('Only while he\'s idle (10 minutes quiet, nothing running). He mentions old things at most once a day.', 'Tidy up old things by himself')}</span></label>
       <label class="switch"><input type="checkbox" data-hk="wakeBrain" ${hk.wakeBrain ? 'checked' : ''}><span><strong>Load a brain for it if none is loaded</strong> ${tip('Loads a brain just for tidying. Leave off while gaming.', 'Load a brain for it if none is loaded')}</span></label>
       <table class="hk-table"><thead><tr><th>What</th><th>When it hasn't come up for</th><th>Then</th></tr></thead><tbody>
       ${KINDS.map(([k, label, note]) => { const c = hk[k] || {}; return `<tr><td>${esc(label)}${note ? `<br><span class="muted">${esc(note)}</span>` : ''}</td>
         <td><input type="number" min="1" max="999" data-hkkind="${k}" data-hkfield="n" value="${esc(c.n || '')}" aria-label="${esc(label)}: how many" style="width:5em"> <select data-hkkind="${k}" data-hkfield="unit" aria-label="${esc(label)}: unit">${units.map((u) => `<option ${u === c.unit ? 'selected' : ''}>${u}</option>`).join('')}</select></td>
-        <td><select data-hkkind="${k}" data-hkfield="mode" aria-label="${esc(label)}: what then"><option value="ask" ${c.mode !== 'auto' ? 'selected' : ''}>Ask me first</option><option value="auto" ${c.mode === 'auto' ? 'selected' : ''}>Tidy automatically</option></select></td></tr>`; }).join('')}
+        <td><select data-hkkind="${k}" data-hkfield="mode" aria-label="${esc(label)}: what then"><option value="ask" ${c.mode !== 'auto' ? 'selected' : ''}>Ask me first</option>${k === 'folders' ? '' : `<option value="auto" ${c.mode === 'auto' ? 'selected' : ''}>Tidy automatically</option>`}</select></td></tr>`; }).join('')}
       </tbody></table>
+      ${folderRows}
       <div class="row"><button data-opentidy>Open Tidy up</button><button data-hkrun>Tidy up now</button><span class="muted hk-out"></span></div></div>`;
   }
 
@@ -621,19 +628,25 @@ export function createCellar({ popOut = null } = {}) {
   const selfWorkHtml = () => {
     const w = settings.selfWork || {};
     const sizeName = (v) => (v >= 1048576 ? `${v / 1048576}M` : `${Math.round(v / 1024)}K`);
-    const head = sswitch('selfWork', w.enabled === true, 'Let Bob work on repositories', keep('Off unless you turn it on. On: when you ask, Bob edits code in his own app or a repository on your list. He works on a copy with his biggest brain, shows a card for every edit and command, and hands you a git branch and patch to look over. Nothing is sent anywhere. If Git or Node.js is missing, he downloads his own copy into his folder (35 to 55 MB each).'));
-    if (w.enabled !== true) return head;
+    const head = sswitch('selfWork', w.enabled === true, 'Let Bob work on repositories', keep('Off unless you turn it on. On: when you ask, Bob edits code in his own app or a repository on your list. He works on a copy with the brain you pick below (his biggest unless you change it), shows a card for every edit and command, and hands you a git branch and patch to look over. Nothing is sent anywhere. If Git or Node.js is missing, he downloads his own copy into his folder (35 to 55 MB each).'));
+    // Every setting shows whether the switch is on or off, so it can be set first (the owner's rule, 2026-11-11).
+    // The brain list (the owner, 2026-11-11): the biggest first, then your own brains and the ones doing a job, then the
+    // catalogue's other brains here, then the catalogue's brains to get first.
+    const groupName = { big: 'Recommended: the biggest', jobs: 'Your own brains and the ones doing a job', here: 'Other brains on this replicant matrix', get: 'In the catalogue, get it first' };
+    const shown = w.model || (w.missing ? w.picked : ''); // the brain he'd really use; a picked one that isn't here yet only shows when nothing is
+    const optName = (b) => `${b.name}${b.jobs?.length ? ` (${b.jobs.join(', ')})` : ''}${b.here === false ? ' (not downloaded)' : ''}`;
+    const groups = ['big', 'jobs', 'here', 'get'].map((g) => [g, (w.brains || []).filter((b) => (b.group || 'big') === g)]).filter(([, l]) => l.length);
     const brain = w.brains?.length
-      ? `<select data-selfwork="model" aria-label="Brain for working on repositories">${w.brains.map((b) => `<option value="${esc(b.id)}" ${b.id === w.model ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select>`
-      : '<span class="muted">Neither Bobert nor Qwen3.6 35B is on this replicant matrix yet. Get Qwen3.6 35B-A3B in Get models, or add your Bobert file under Brains of your own.</span>';
-    const mem = `<select data-selfwork="ctx" aria-label="Long memory for working on repositories">${(w.ctxChoices || [524288, 1048576]).map((v) => `<option value="${v}" ${v === w.ctx ? 'selected' : ''}>${sizeName(v)}</option>`).join('')}</select> ${tip('How much of a repository Bob keeps in mind at once on these jobs. Both are past the 256K the brain was made for, so it\'s stretched (Long memory). If the size won\'t fit your graphics card and RAM, he uses 256K and says so in the chat.', 'Long memory for these jobs')}`;
+      ? `<select data-selfwork="model" aria-label="Brain for working on repositories">${shown ? '' : '<option value="" selected>Pick a brain</option>'}${groups.map(([g, l]) => `<optgroup label="${esc(groupName[g])}">${l.map((b) => `<option value="${esc(b.id)}" ${b.id === shown ? 'selected' : ''}>${esc(optName(b))}</option>`).join('')}</optgroup>`).join('')}</select> ${tip('Bob uses his biggest brain unless you pick another: Bobert, else Qwen3.6 35B. Your own tuned brains and the brains doing a job show their jobs. A brain from the catalogue that isn\'t here yet needs Get models first. A smaller brain is quicker but makes more mistakes on a big repository.', 'Brain for these jobs')}${w.missing ? `<br><span class="muted">${esc(w.missing)} isn't downloaded yet: get it in Get models. Until then Bob uses the one shown here.</span>` : ''}`
+      : '<span class="muted">There are no brains on this replicant matrix yet. Get one in Get models (Qwen3.6 35B-A3B is the one Bob would use), or add your own under Brains of your own.</span>';
+    const mem = `<select data-selfwork="ctx" aria-label="Long memory for working on repositories">${(w.ctxChoices || [524288, 1048576]).map((v) => `<option value="${v}" ${v === w.ctx ? 'selected' : ''}>${sizeName(v)}</option>`).join('')}</select> ${tip('How much of a repository Bob keeps in mind at once on these jobs. Both are past what most brains were made for (Qwen3.6 35B: 256K), so it\'s stretched (Long memory). If the size won\'t fit your graphics card and RAM, he uses 256K and says so in the chat.', 'Long memory for these jobs')}`;
     const repoRow = (r) => srow(esc(r.name) + (r.own ? ' <span class="muted">(Bob himself)</span>' : ''),
       `<span class="muted">${esc(r.source)}</span>${r.ready ? `<br><span class="muted">Code copy: ${esc(r.dir)}</span>` : ''}`,
       `${r.ready ? '' : `<button type="button" class="mini" data-selfcopy="${esc(r.id)}">Make the code copy</button>`}${r.own ? '' : `<button type="button" class="mini" data-selfrm="${esc(r.id)}">Remove</button>`}`);
     const add = (w.repos || []).length - 1 < (w.maxRepos || 20)
       ? `<div class="row self-add"><input data-selfnew="name" maxlength="40" placeholder="Name" aria-label="Repository name" style="width:9em"><input data-selfnew="source" maxlength="400" placeholder="https link or folder" aria-label="Repository link or folder" style="flex:1;min-width:12em"><button type="button" class="mini" data-selfadd>Add</button> ${tip('A GitHub (or other https) link, or the full path of a folder on this replicant matrix that is already a git repository. Bob copies it with Git into his inn folder and only ever works on that copy. A private link needs Git here to know your sign-in already; a folder you cloned yourself always works.', 'Add a repository')}</div>`
       : '';
-    const helpers = `<label class="switch srow-switch"><input type="checkbox" data-selfwork="helpers" ${w.helpers ? 'checked' : ''}><span><strong>Let my other Bobs help</strong>${noteOrTip(keep(`Off unless you turn it on. On a big job Bob splits the work into tasks; the research tasks (reading and looking things up) can go to your other Bobs on Bob-Net at the same time, but only ones running Bobert or Qwen3.6 35B. They only think: what they read is read here and sent to them, and edits, commands and the patch always stay on this replicant matrix. ${w.bobNet ? `${w.bobNet} Bob${w.bobNet === 1 ? '' : 's'} on your Bob-Net list.` : 'Your Bob-Net list is empty: add your other Bobs in Settings, Bob-Net.'}`), 'Let my other Bobs help')}</span></label>`;
+    const helpers = `<label class="switch srow-switch"><input type="checkbox" data-selfwork="helpers" ${w.helpers ? 'checked' : ''}><span><strong>Let my other Bobs help</strong>${noteOrTip(keep(`Off unless you turn it on. On a big job Bob splits the work into tasks; the research tasks (reading and looking things up) can go to your other Bobs on Bob-Net at the same time, but only ones running Bobert, Qwen3.6 35B or the brain picked above. They only think: what they read is read here and sent to them, and edits, commands and the patch always stay on this replicant matrix. ${w.bobNet ? `${w.bobNet} Bob${w.bobNet === 1 ? '' : 's'} on your Bob-Net list.` : 'Your Bob-Net list is empty: add your other Bobs in Settings, Bob-Net.'}`), 'Let my other Bobs help')}</span></label>`;
     return `${head}<div class="self-work-rows">${srow('Brain for these jobs', brain)}${srow('Long memory', mem)}${helpers}<h4 class="ssub">Repositories</h4>${(w.repos || []).map(repoRow).join('')}${add}<p class="muted self-copy-out" aria-live="polite"></p></div>`;
   };
 
@@ -654,6 +667,8 @@ export function createCellar({ popOut = null } = {}) {
     ['ev-home', '📦 Bob\'s home folder', () => { const h = homeInfo || {}; return h.tempLike ? `${settings?.home || ''} · in ${h.tempLike}: move it` : h.synced ? `${h.folder || settings?.home || ''} · a ${h.synced} folder, synced to the cloud: not recommended` : `${h.folder || settings?.home || ''}${h.modelsText ? ` · models ${h.modelsText}` : ''}`; }, () => homeHtml()],
     // 🔒 Passcode lock (closed, it shows whether it's on and whether chats and memory are locked).
     ['ev-lock', '🔒 Passcode lock', () => lockSummary(settings?.passcodeLock), () => lockSettingsHtml()],
+    // 🔐 Locked secrets (on by default): passcodes, tokens and keys kept scrambled (public/secrets.js).
+    ['ev-secrets', '🔐 Locked secrets', () => (settings?.lockSecrets === false ? 'Off · passcodes and keys are kept plain' : 'On · passcodes, tokens and keys are kept scrambled'), () => secretsHtml()],
     ['ev-save', '💾 Where Bob saves things', () => { const sd = settings?.saveDir || {}; return sd.missing ? 'Picked folder not found · saving in Bob\'s own folder' : sd.custom ? sd.folder : 'Bob\'s own folder (Made by Bob)'; }, () => saveDirHtml()],
     // Back up and move (src/backup.js): one zip of chats, settings, memory and notes; restore it on another computer.
     ['ev-backup', '🗄 Back up and move', () => backup.note(), () => backup.html()],
@@ -1189,6 +1204,7 @@ export function createCellar({ popOut = null } = {}) {
     dlg.classList.toggle('wide', mode === 'shop' && tab === 'roles' && eqView !== 'list');
     mountHandsSettings(dlg.querySelector('.hands-box')); // loads its own data; does nothing off the Settings tab
     mountQuarantineSettings(dlg.querySelector('.q-box'));
+    mountSecrets(dlg.querySelector('.secrets-box')); // This replicant matrix: 🔐 Locked secrets
     mountPhoneAccess(dlg.querySelector('.phone-box')); // Bob-Net, This Bob: Let my other replicant matrices in
     mountLockSettings(dlg.querySelector('.lock-box'), { onChange: (v) => { if (settings) settings.passcodeLock = v; const n = dlg.querySelector('[data-panel="ev-lock"] .spanel-note'); if (n) n.textContent = lockSummary(v); } }); // 🔒 Passcode lock
     mountTelegram(dlg.querySelector('.telegram-box')); // Online services: Talk to Bob on Telegram
@@ -1516,6 +1532,13 @@ export function createCellar({ popOut = null } = {}) {
         return;
       }
       if ('opentidy' in b.dataset) { dlg.close(); window.dispatchEvent(new Event('bob-tidy')); return; }
+      if ('hkfolderadd' in b.dataset || b.dataset.hkfolderrm) {
+        const box = dlg.querySelector('[data-hkfoldernew]');
+        const r = await api('/api/settings', { housekeeping: b.dataset.hkfolderrm ? { removeFolder: b.dataset.hkfolderrm } : { addFolder: box?.value || '' } });
+        if (r.housekeeping) settings.housekeeping = r.housekeeping;
+        if (r.hkFolderError) { const out = b.parentElement.querySelector('.hk-folder-out'); if (out) out.textContent = r.hkFolderError; return; }
+        draw(); return;
+      }
       if ('hkrun' in b.dataset) { const r = await api('/api/hk/run', {}); b.parentElement.querySelector('.hk-out').textContent = r.busy ? 'Bob is already on it.' : 'Started. Bob tells you in the chat when he\'s done; chats are summed up only with a brain loaded.'; return; }
       if (b.dataset.usevoice) { const r = await api('/api/settings', { tts: { voice: b.dataset.usevoice } }); settings.tts = { ...settings.tts, ...r.tts }; draw(); return; }
       if (b.dataset.starter) {

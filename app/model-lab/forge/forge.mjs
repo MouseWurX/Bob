@@ -13,8 +13,29 @@ import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+// 🔐 Locked secrets: the Hugging Face token. HF_TOKEN wins; otherwise forge/hf-token.locked, which Windows keeps
+// locked with DPAPI for this Windows account. A plain forge/hf-token.txt is locked the first time it's read (the
+// .txt is then removed). On a Mac or Linux the plain .txt is still read, as before.
+function hfToken() {
+  if (process.env.HF_TOKEN) return process.env.HF_TOKEN.trim();
+  const txt = path.join(here, 'hf-token.txt'), locked = path.join(here, 'hf-token.locked');
+  const ps = (verb, input) => execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `Add-Type -AssemblyName System.Security; $e=[Text.Encoding]::UTF8.GetBytes('bob forge token'); $b=[Convert]::FromBase64String([Console]::In.ReadLine()); [Convert]::ToBase64String([Security.Cryptography.ProtectedData]::${verb}($b,$e,'CurrentUser'))`], { input: input + '\n', encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true, timeout: 20000 }).trim();
+  if (process.platform === 'win32' && fs.existsSync(locked)) {
+    try { return Buffer.from(ps('Unprotect', fs.readFileSync(locked, 'utf8').trim()), 'base64').toString('utf8').trim(); }
+    catch { log('forge/hf-token.locked could not be opened by this Windows account: put the token in forge/hf-token.txt again'); }
+  }
+  if (!fs.existsSync(txt)) return '';
+  const tok = fs.readFileSync(txt, 'utf8').replace(/\r?\n/g, '').trim();
+  if (tok && process.platform === 'win32') {
+    try { fs.writeFileSync(locked, ps('Protect', Buffer.from(tok, 'utf8').toString('base64')) + '\n'); fs.rmSync(txt, { force: true }); log('locked the Hugging Face token (forge/hf-token.txt is now forge/hf-token.locked, DPAPI)'); }
+    catch { /* stays plain; next run tries again */ }
+  }
+  return tok;
+}
 const args = Object.fromEntries(process.argv.slice(2).map((a, i, arr) => a.startsWith('--') ? [a.slice(2), arr[i + 1]?.startsWith('--') || arr[i + 1] === undefined ? true : arr[i + 1]] : []).filter((x) => x.length));
 const KEY = process.env.RUNPOD_API_KEY;
 if (!KEY) { console.error('RUNPOD_API_KEY is not set (the "Save RunPod key" step).'); process.exit(1); }
@@ -274,7 +295,7 @@ if (!up) { await kill(`the pod never answered (${doorMin} min)`); process.exit(1
 if (args['send-token']) {
   // build 17: hand the Hugging Face token to a running pod after the fact (node forge.mjs --send-token <podId> --plan <plan>); the pod reads
   // in/hf-token only at upload time, so this works any time before the odds or a listed Bob go up
-  const tf = path.join(here, 'hf-token.txt'); const tok = (process.env.HF_TOKEN || (fs.existsSync(tf) ? fs.readFileSync(tf, 'utf8') : '')).trim();
+  const tok = hfToken();
   if (!tok) { log('no Hugging Face token: put it in forge/hf-token.txt (one line) or HF_TOKEN'); process.exit(1); }
   const tmp = path.join(outDir, 'forge', 'hf-token'); fs.writeFileSync(tmp, tok); await upload('hf-token', tmp); fs.unlinkSync(tmp);
   log('Hugging Face token is on the pod; uploads the plan allows will use it'); process.exit(0);
@@ -308,7 +329,7 @@ if (args.restart) {
   await upload('toolsets.json', path.join(lessonsDir, 'toolsets.json'));
   await upload('counts.json', countsFile);
   if (plan.publish) { // build 17: the pod uploads the GGUF files to Hugging Face itself; the token lives in forge/hf-token.txt (never in the plan or the repo)
-    const tf = path.join(here, 'hf-token.txt'); const tok = (process.env.HF_TOKEN || (fs.existsSync(tf) ? fs.readFileSync(tf, 'utf8') : '')).trim();
+    const tok = hfToken();
     if (!tok) log('plan.publish is set but there is no Hugging Face token (forge/hf-token.txt, one line, or HF_TOKEN): the pod will keep the files for download instead');
     else { const tmp = path.join(outDir, 'forge', 'hf-token'); fs.writeFileSync(tmp, tok); await upload('hf-token', tmp); fs.unlinkSync(tmp); log(`Hugging Face token sent to the pod (uploads go to ${plan.publish.user}/...)`); }
   }

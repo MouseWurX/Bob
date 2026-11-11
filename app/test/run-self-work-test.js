@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   selfWorkOn, cleanSelfWork, codeCopyDir, codeCopyRoot, patchDir, hasCodeCopy, applyCodeCopy, CODE_COPY_PROJECT, bigBrainOk, isStockQwen35,
-  bigBrains, pickBigBrain, gatherBrains, selfCtx, selfWorkTask, selfWorkParts, makeCodeCopy, selfWorkView, SELF_CTX_DEFAULT, SELF_REPO, BOB_REPO,
+  bigBrains, pickBigBrain, pickedMissing, gatherBrains, selfCtx, selfWorkTask, selfWorkParts, makeCodeCopy, selfWorkView, SELF_CTX_DEFAULT, SELF_REPO, BOB_REPO,
   cleanSource, cleanRepos, reposOf, repoNamed, readyRepos, projectName, baseOf, nameFrom, selfWorkWords
 } from '../src/self-work.js';
 import { SETTING_KEYS, isInside } from '../src/config.js';
@@ -69,11 +69,39 @@ check('remixes and smaller brains don\'t', !['qwen3.6-35b-a3b-heretic', 'qwen3.6
   check('nothing to pick when neither is here', pickBigBrain({}, bigBrains([{ id: 'riker' }])) === null);
 }
 {
-  const own = [{ id: 'own-1', name: 'Bobert', sizeGB: 19.7, status: { state: 'installed' } }, { id: 'own-2', name: 'Bobert old', status: { state: 'missing' } }];
-  const list = gatherBrains({ models: { bob: 'qwen3.6:35b', small: 'qwen3.5-4b' } }, { own, catalogFile: (id) => (id === 'qwen3.6-35b-a3b' ? { gguf: 'x.gguf' } : null), size: () => 21e9 });
-  check('gathers own files that are here, catalogue files that are here, and equipped slots', list.map((b) => b.id).join(',') === 'own-1,qwen3.6-35b-a3b,qwen3.6:35b', list.map((b) => b.id).join(','));
-  const v = selfWorkView({ ...cfg, selfWork: { enabled: true } }, list);
-  check('Settings sees the switch, 512K, the brain Bob would use, and Bob first in the list with no copy made', v.enabled && v.ctx === 524288 && v.model === 'own-1' && v.repos[0].own && v.repos[0].ready === false && v.brains.length === 3 && v.helpers === false);
+  const own = [{ id: 'own-1', name: 'Bobert', sizeGB: 19.7, status: { state: 'installed' } }, { id: 'own-2', name: 'Bobert old', status: { state: 'missing' } }, { id: 'own-3', name: 'My tuned coder', sizeGB: 9, status: { state: 'installed' } }];
+  const catalog = [
+    { id: 'qwen3.6-35b-a3b', name: 'Qwen3.6 35B-A3B', category: 'coding', ollama: 'qwen3.6:35b', sizeGB: 23, files: [{ role: 'gguf' }] },
+    { id: 'riker-28b', name: 'Riker', category: 'chat', sizeGB: 17.5, files: [{ role: 'gguf' }] },
+    { id: 'gemma4-12b', name: 'Gemma 4 12B', category: 'chat', sizeGB: 7.4, files: [{ role: 'gguf' }] },
+    { id: 'gemma4-31b', name: 'Gemma 4 31B', category: 'chat', sizeGB: 18.8, files: [{ role: 'gguf' }] },
+    { id: 'gemma4-12b-heretic', name: 'Gemma naughty', category: 'chat', naughty: true, sizeGB: 7.5, files: [{ role: 'gguf' }] },
+    { id: 'flux', name: 'Flux', category: 'images', files: [{ role: 'gguf' }] },
+    { id: 'kokoro', name: 'Kokoro', category: 'voice', files: [] }
+  ];
+  const here = new Set(['qwen3.6-35b-a3b', 'riker-28b', 'gemma4-12b']);
+  const deps = { own, catalog, catalogFile: (id) => (here.has(id) ? { gguf: `${id}.gguf` } : null), size: () => 21e9 };
+  const c0 = { models: { bob: 'qwen3.6:35b', tinker: 'riker-28b', reviewer: 'riker-28b', small: 'qwen3.5:4b' } };
+  const list = gatherBrains(c0, deps);
+  const ids = list.map((b) => b.id).join(',');
+  check('the biggest come first and are recommended (Bobert, then Qwen 35B)', list[0].id === 'own-1' && list[1].id === 'qwen3.6-35b-a3b' && list.slice(0, 2).every((b) => b.group === 'big'), ids);
+  check('...an Ollama name in a job slot finds its catalogue brain and gives it the job', list[1].jobs.includes('Brain') && !list.some((b) => b.id === 'qwen3.6:35b'), ids);
+  check('then your own tuned brains and the brains doing a job, with their jobs', list.filter((b) => b.group === 'jobs').map((b) => b.id).sort().join(',') === 'own-3,qwen3.5:4b,riker-28b' && list.find((b) => b.id === 'riker-28b').jobs.join(',') === 'Coding,Review', ids);
+  check('then the catalogue\'s other brains on this replicant matrix, then the ones to get first', list.find((b) => b.id === 'gemma4-12b').group === 'here' && list.find((b) => b.id === 'gemma4-31b').group === 'get' && list.find((b) => b.id === 'gemma4-31b').here === false && list.at(-1).id === 'gemma4-31b', ids);
+  check('only text brains: no pictures or voices, no missing own files, no naughty list while it\'s off', !/flux|kokoro|own-2|heretic/.test(ids), ids);
+  check('...the naughty list counts when it\'s on', gatherBrains({ ...c0, naughtyList: true }, deps).some((b) => b.id === 'gemma4-12b-heretic'));
+  check('Bob uses the biggest unless you pick another that is here', pickBigBrain(c0, list).id === 'own-1' && pickBigBrain({ ...c0, selfWork: { model: 'gemma4-12b' } }, list).id === 'gemma4-12b');
+  check('a picked brain that isn\'t downloaded: Bob uses the biggest that is here, and says which one is missing', pickBigBrain({ selfWork: { model: 'gemma4-31b' } }, list).id === 'own-1' && pickedMissing({ selfWork: { model: 'gemma4-31b' } }, list).name === 'Gemma 4 31B' && pickedMissing({ selfWork: { model: 'own-1' } }, list) === null);
+  const small = gatherBrains({ models: { tinker: 'riker-28b' } }, { ...deps, own: [], catalogFile: (id) => (id === 'riker-28b' ? { gguf: 'r.gguf' } : null) });
+  check('no Bobert or Qwen 35B: the brain doing the Coding job', pickBigBrain({}, small).id === 'riker-28b');
+  check('a brain is here but not Bobert, Qwen 35B or a Coding brain: the biggest one here, never a catalogue one to get', pickBigBrain({}, gatherBrains({}, { ...deps, own: [], catalogFile: (id) => (id === 'gemma4-12b' || id === 'riker-28b' ? { gguf: `${id}.gguf` } : null), size: (f) => (f.startsWith('riker') ? 17.5e9 : 7.4e9) })).id === 'riker-28b' && pickBigBrain({}, gatherBrains({}, { ...deps, own: [], catalogFile: (id) => (id === 'gemma4-12b' ? { gguf: 'g.gguf' } : null) })).id === 'gemma4-12b');
+  check('Settings shows the brain Bob would really use, even when the picked one is not downloaded', /const shown = w\.model \|\| \(w\.missing \? w\.picked : ''\)/.test(fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8')));
+  check('nothing here at all: nothing to pick', pickBigBrain({}, gatherBrains({}, { ...deps, own: [], catalogFile: () => null })) === null);
+  const v = selfWorkView({ ...cfg, ...c0, selfWork: { enabled: true } }, list);
+  check('Settings sees the switch, 512K, the brain Bob would use, every brain with its group and jobs, and Bob first in the list with no copy made', v.enabled && v.ctx === 524288 && v.model === 'own-1' && v.repos[0].own && v.repos[0].ready === false && v.brains.length === list.length && v.brains.find((b) => b.id === 'riker-28b').group === 'jobs' && v.brains.find((b) => b.id === 'gemma4-31b').here === false && v.helpers === false);
+  const vm = selfWorkView({ ...cfg, selfWork: { enabled: true, model: 'gemma4-31b' } }, list);
+  check('...and a picked brain that isn\'t here yet', vm.picked === 'gemma4-31b' && vm.missing === 'Gemma 4 31B');
+  check('the real catalogue offers many brains (not just one) and never Bill', (() => { const all = gatherBrains({}); return all.length > 20 && all.every((b) => b.group === 'get') && !all.some((b) => /\bbill\b/i.test(b.name)); })());
 }
 
 // ---------- The job ----------
@@ -220,6 +248,8 @@ check('remixes and smaller brains don\'t', !['qwen3.6-35b-a3b-heretic', 'qwen3.6
   check('with "Let my other Bobs help" off, no other Bob is asked', asked === 0 && !said.some((e) => /🛰/.test(e.text || '')) && !helpersOn({ selfWork: {} }));
   const picked = await pickHelpers({ bobs: () => [{ name: 'A', address: 'a' }], busyHere: () => false, hello: async () => ({ ok: true, brain: '28Bob-Riker' }), hold() {} });
   check('only Bobs running Bobert or Qwen 35B help', picked.length === 0 && (await pickHelpers(null)).length === 0);
+  const sameRiker = await pickHelpers({ bobs: () => [{ name: 'A', address: 'a' }], busyHere: () => false, hello: async () => ({ ok: true, brain: '28Bob-Riker' }), hold() {} }, { same: '28Bob-Riker' });
+  check('...or Bobs running the same brain picked here', sameRiker.length === 1);
 }
 
 // ---------- Git and Node.js: his own copies when they're missing (the owner's ask) ----------

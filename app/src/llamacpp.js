@@ -675,8 +675,9 @@ export class LlamaCpp {
     let sizeGB = 0;
     if (this.role !== BESIDE) this.spreadNow = false;
     if (this.spread && !noSpread && this.role !== BESIDE && !cpu && card !== 'none') {
-      try { sizeGB = fs.statSync(this.resolve(model).gguf).size / 1e9; } catch {}
-      helpers = await this.spread.open({ sizeGB }).catch(() => []);
+      let file = '';
+      try { file = this.resolve(model).gguf; sizeGB = fs.statSync(file).size / 1e9; } catch {}
+      helpers = await this.spread.open({ sizeGB, file }).catch(() => []);
       if (helpers.length) {
         args.push('--rpc', helpers.join(','), ...spreadArgs(args));
         this.spreadNow = true; // item 14: a reply over Wi-Fi may pause longer
@@ -698,7 +699,7 @@ export class LlamaCpp {
     let full = ''; // 1.5.133: the whole output (up to 256 KB) goes to a file when a load fails; the message keeps the end
     if (args.includes('--slot-save-path')) { try { fs.mkdirSync(startDir(this.cfg), { recursive: true }); } catch {} }
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
-    if (helpers.length) env = { ...env, ...scutEnv(this.cfg) }; // SCUT (off unless switched on): the fast link to the lent cards
+    if (helpers.length) env = { ...env, ...scutEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
     const child = safeSpawn(spawn, exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
     // 1.5.24 "Let games go first": on the processor, the engine yields to games (below normal priority).

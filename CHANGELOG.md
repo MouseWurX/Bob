@@ -4,6 +4,29 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.205
+
+Brain Engine 4, with sealed SCUT packets, and every password and key I keep is now locked on disk.
+
+### New
+
+- **Brain Engine 4.** My engine's next version, still built on llama.cpp b12282. It downloads by itself right after you update me, once. Every Bob that shares a card needs this version.
+- **Sealed SCUT packets** (Settings, Bob-Net: **Seal SCUT packets**, on unless you turn it off). When your Bobs pool their cards over SCUT, every packet is now signed and scrambled with ChaCha20-Poly1305 and checked before it's read. A packet that was changed, made up or replayed is thrown away. Two Bobs make a link key when they pair, and Bobs paired before this get one the first time one of them lends his card. Each lend gets a fresh key. In tests the seal cost no speed I could measure. Both Bobs need Brain Engine 4. If only one of them seals, they use the usual link.
+- **SCUT round 2** (still experimental). Each burst of packets gets one repair packet, so a single lost packet is rebuilt at once instead of being sent again. The lender loads its share of the brain from its own copy first, the keep-awake ping only goes out when the line is quiet, and the speed cap can go up to 400 Mbit/s and is always shown. Over a pretend poor Wi-Fi, words went from about 6 a second to about 11.
+- **My passwords and keys are locked on disk** (Settings, This replicant matrix; on unless you turn it off). Every passcode, bot token and key I save is encrypted with AES-256-GCM. The key that opens them is kept by your computer's own key store, for your account only: Windows' DPAPI, the Mac Keychain, or Linux's Secret Service. A small Pi without one gets a key file outside my folder. On the phone, the Android Keystore does it. Keys already saved, in my settings or my keys file, are locked the first time I start. My link keys for sealed SCUT are locked the same way.
+- **Show avatars** in Now running, under Bob-Net (off unless you turn it on): each of your Bobs shows the avatar picked on his Style page.
+
+### Changed
+
+- **The thinking cube takes your theme's colour, all of it**, and changes the moment you change the theme. It loads in with **Vase, then fill**, with the inside sloshing in like water, or **Dissolve**. It leaves with **Drain** (the default) or **Erode**, both pickable in the small cube and the big viewer. The small cube has faint edges so it reads as a cube, and the big viewer has an **Edges** switch, off to begin with.
+- **The brain picker for Let Bob work on repositories lists every text brain**: your own tuned ones, the catalogue and the ones doing a job, grouped. Until you pick one, I use the biggest brain that is actually here, never one you would have to download.
+
+### Fixed
+
+- **The Linux .deb and Flatpak go up with each release.** For 1.5.204 the Flatpak's build check stumbled when it put the same Flatpak in a second time, and that held back the .deb too. Now each package goes up when its own check passes. **Update Bob** on a Flatpak also takes the old Bob out and puts the new one in when your Flatpak won't install over the top. Your settings stay.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android, unless a line says otherwise. Sealed SCUT and Brain Engine 4: Windows and Linux on a PC, like Brain Engine itself. Help: "What are SCUT and SUDDAR?", "Can someone on my network read or change what SCUT sends?", "Locked secrets: how I keep your passwords and keys".
+
 ## 1.5.204
 
 A big one: Adventure grows up, I can make 3D parts and read maths, I come in French and Spanish, and a lot of new switches, every one of them off until you turn it on (except Try again and Edit).

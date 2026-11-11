@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { findTool, toolDirs, exeFor, runTool, missingWords, isDiffusion } from '../src/llama-tools.js';
 import { partsOf, joinedName, joinArgs, splitArgs, needsSplitForUpload, joinParts } from '../src/lab-split.js';
 import { benchArgs, readBench, benchLine, benchBrain } from '../src/lab-bench.js';
-import { CardLender, CardBorrower, wantsSpread, lendCardOn, lendCardRoute, RPC_PORT, INNER_PORT, admit, isHomeIp, pickHome, homeIps, openGate, udpRelay, scutOn, scutMbps, scutEnv, SCUT_MBPS } from '../src/share-card.js';
+import { CardLender, CardBorrower, wantsSpread, lendCardOn, lendCardRoute, RPC_PORT, INNER_PORT, admit, isHomeIp, pickHome, homeIps, openGate, udpRelay, scutOn, scutMbps, scutEnv, SCUT_MBPS, findOwnBrain, cleanBrain, cardStoreDir } from '../src/share-card.js';
 import { cleanSharePatch, shareView, Lenders } from '../src/share-brains.js';
 import { cleanPhonePatch, phoneView } from '../src/phone-access.js';
 import { diffusionArgs, readFrames } from '../src/lab-diffusion.js';
@@ -198,7 +198,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(gates.every((g) => g.udp === false), 'SCUT: off, the gate opens no UDP side');
   {
     const on = { ...cfg, share: { ...cfg.share, scut: true } };
-    ok(scutMbps(on) === 100 && scutMbps({ share: { scutMbps: 300 } }) === 300 && scutMbps({ share: { scutMbps: 9999 } }) === 100 && SCUT_MBPS.join() === '50,100,300', 'SCUT: the speed cap is 50, 100 or 300 Mbit/s, 100 unless picked');
+    ok(scutMbps(on) === 100 && scutMbps({ share: { scutMbps: 300 } }) === 300 && scutMbps({ share: { scutMbps: 9999 } }) === 100 && scutMbps({ share: { scutMbps: 400 } }) === 400 && SCUT_MBPS.join() === '50,100,300,400', 'SCUT: the speed cap is 50, 100, 300 or 400 Mbit/s, 100 unless picked');
     const e = scutEnv(on, { lend: true });
     ok(e.GGML_RPC_SCUT === '1' && e.GGML_RPC_SCUT_MBPS === '100' && e.GGML_RPC_SCUT_PUBLIC_PORT === String(RPC_PORT) && !('GGML_RPC_SCUT_PUBLIC_PORT' in scutEnv(on)), 'SCUT: the lent card names the gate\'s port in its offer; the borrowing engine only switches it on');
     const sp = [], gs = [];
@@ -206,6 +206,48 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     const r2 = await l2.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7' });
     ok(r2.ok && sp[0].env.GGML_RPC_SCUT === '1' && sp[0].env.PATH === '/bin' && gs[0].udp === true, 'SCUT: on, the card server gets it and the gate passes UDP too');
     l2.close();
+  }
+  {
+    // Send the brain early: the lender fills its card store from its own copy of the brain first (Brain Engine --seed).
+    const dir = path.join(tmp, 'seed'), models = path.join(dir, 'models', 'bob', 'chat');
+    fs.mkdirSync(models, { recursive: true });
+    const brainFile = path.join(models, 'big-brain-Q4.gguf'); fs.writeFileSync(brainFile, Buffer.alloc(4096, 1));
+    const on = { ...cfg, dataDir: dir, bobModelsDir: path.join(dir, 'models', 'bob'), share: { ...cfg.share, scut: true } };
+    ok(findOwnBrain(on, { file: 'big-brain-Q4.gguf', bytes: 4096 }) === brainFile, 'send early: the lender finds its own copy by name and size');
+    ok(!findOwnBrain(on, { file: 'big-brain-Q4.gguf', bytes: 4097 }) && !findOwnBrain(on, { file: '../../secret.gguf', bytes: 4096 }) && !findOwnBrain(on, { file: 'notes.txt', bytes: 4096 }), 'send early: a different size, a path, or a file that is not a brain finds nothing');
+    ok(cleanBrain({ file: '/a/b/x.gguf', bytes: 5 }).file === 'x.gguf' && cleanBrain({ file: 'x.exe', bytes: 5 }) === null && cleanBrain({ file: 'x.gguf', bytes: -1 }) === null, 'send early: only a brain\'s file name and size are taken from the asker');
+    ok(cardStoreDir({ LLAMA_CACHE: '/c' }, 'linux', '/h') === path.join('/c', 'rpc') && cardStoreDir({}, 'linux', '/h') === path.join('/h', '.cache', 'llama.cpp', 'rpc') && cardStoreDir({ LOCALAPPDATA: 'L' }, 'win32', '/h') === path.join('L', 'llama.cpp', 'rpc'), 'send early: the card store is where the engine keeps it');
+    const runs = [];
+    const seedSpawn = (x, a, o) => { if (a[0] === '--seed') { runs.push(a); const c = new EventEmitter(); c.stdout = new EventEmitter(); c.stderr = new EventEmitter(); c.exitCode = null; c.kill = () => {}; setTimeout(() => { c.stdout.emit('data', 'seed: done\n'); c.exitCode = 0; c.emit('exit', 0); }, 2); return c; } return spawnFn(x, a, o); };
+    const mk = (c, o = {}) => new CardLender(c, { spawnFn: seedSpawn, tool: () => ({ found: true, path: '/be/ggml-rpc-server' }), ips: () => ['100.101.1.2'], home: () => myHome, gate: async (g) => ({ ...g, udp: true, close() {} }), env: {}, free: () => 100e9, ...o });
+    const brain = { file: 'big-brain-Q4.gguf', bytes: 4096 };
+    let l3 = mk(on);
+    let r3 = await l3.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', brain });
+    ok(r3.ok && r3.seeded === 'seeded' && runs.length === 1 && runs[0].join(' ') === `--seed ${brainFile} -c`, 'send early: the lender loads the brain from its own copy before the card server starts');
+    l3.close();
+    l3 = mk(on);
+    r3 = await l3.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', brain });
+    ok(r3.seeded === 'already' && runs.length === 1, 'send early: once per brain, remembered across restarts');
+    l3.close();
+    fs.rmSync(path.join(dir, 'seeded-brains.json'));
+    l3 = mk(on, { free: () => 5e9 });
+    r3 = await l3.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', brain });
+    ok(r3.ok && r3.seeded === 'no room' && runs.length === 1, 'send early: never when the disk would be left with less than 10 GB; the brain just comes over the network');
+    l3.close();
+    l3 = mk({ ...on, share: { ...on.share, scut: false } });
+    r3 = await l3.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7', brain });
+    ok(r3.ok && !r3.seeded && runs.length === 1, 'send early: off with SCUT off');
+    l3.close();
+    const sent = [];
+    const one = { bobs: () => [{ name: 'Go', address: '100.102.0.7:7777' }], call: async (bob, p, o) => { sent.push(o); return { ok: true, json: async () => ({ ok: true, host: '100.102.0.7', port: RPC_PORT }) }; } };
+    const b1 = new CardBorrower({ ...on, share: { ...on.share, spread: 'toobig' }, gpuVramGB: 16 }, one, { home: () => [] });
+    await b1.open({ sizeGB: 200, file: brainFile });
+    ok(sent[0].body.brain?.file === 'big-brain-Q4.gguf' && sent[0].body.brain.bytes === 4096 && sent[0].timeout > 60000, 'send early: with SCUT on, the borrower names the brain (file name and size only) and waits while it loads');
+    b1.close(); sent.length = 0;
+    const b2 = new CardBorrower({ share: { spread: 'toobig' }, gpuVramGB: 16 }, one, { home: () => [] });
+    await b2.open({ sizeGB: 200, file: brainFile });
+    ok(!('brain' in sent[0].body) && sent[0].timeout === 8000, 'send early: with SCUT off, nothing about the brain is sent');
+    b2.close();
   }
   {
     // The real UDP half of the gate, on loopback: the asking Bob's datagrams reach the card server and its answers come back; anyone else's don't.
@@ -221,7 +263,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     ok(await ask(relay.port) === '' && seen.some((x) => /turned away UDP/.test(x)), 'SCUT gate: anyone else\'s UDP is turned away');
     relay.close(); card.close();
   }
-  ok(/if \(helpers\.length\) env = \{ \.\.\.env, \.\.\.scutEnv\(this\.cfg\) \}/.test(read(path.join(here, '..', 'src', 'llamacpp.js'))), 'SCUT: the engine that spreads a brain switches it on only with helpers');
+  ok(/if \(helpers\.length\) env = \{ \.\.\.env, \.\.\.scutEnv\(this\.cfg\)[, }]/.test(read(path.join(here, '..', 'src', 'llamacpp.js'))), 'SCUT: the engine that spreads a brain switches it on only with helpers');
   ok(isHomeIp(H(192, 168, 0, 1)) && isHomeIp(H(10, 1, 2, 3)) && isHomeIp(H(172, 20, 0, 1)) && !isHomeIp(H(172, 32, 0, 1)) && !isHomeIp('100.101.1.2') && !isHomeIp('8.8.8.8'), 'card: what counts as a home-network address');
   ok(pickHome(myHome, [H(192, 168, 5, 9)]) === null && pickHome(myHome, [H(192, 168, 4, 9)]).peer === H(192, 168, 4, 9), 'card: same home network means same subnet');
   ok(homeIps({ eth: [{ family: 'IPv4', address: H(192, 168, 4, 185), netmask: '255.255.255.0', internal: false }], ts: [{ family: 'IPv4', address: '100.101.1.2', netmask: '255.192.0.0' }], lo: [{ family: 'IPv4', address: '127.0.0.1', internal: true }] }).map((x) => x.address).join() === H(192, 168, 4, 185), 'card: this machine\'s home-network addresses leave out Tailscale and loopback');

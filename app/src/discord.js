@@ -29,11 +29,12 @@ import fs from 'node:fs';
 import { readJsonFile } from './util.js';
 import os from 'node:os';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
 import crypto from 'node:crypto';
 import { rentKeyEnv } from './rental.js';
 import { scrubber } from './help-bundle.js';
 import { outputDirs } from './config.js';
+import { readConfigFile, writeConfigFile } from './config.js';
+import { saveKey, forgetPlainKey } from './secret-box.js';
 
 export const TOKEN_ENV = 'BOB_DISCORD_TOKEN';
 export const DISCORD_SESSION = 'discord'; // session ids are discord-<channel id>
@@ -97,11 +98,11 @@ export function cleanWake(w) {
 // open this door. Only the Settings page on this PC calls this.
 export function saveDiscord(cfg, patch) {
   // 1.5.201: an unreadable config.json stops the save (it used to be taken as empty and written over, losing the rest).
-  const raw = readJsonFile(cfg.configFile);
+  const raw = readConfigFile(cfg);
   raw.discord = { ...(raw.discord || {}), ...patch };
   for (const k of Object.keys(raw.discord)) if (raw.discord[k] === undefined) delete raw.discord[k];
   delete raw.discord.token; // never kept here
-  fs.writeFileSync(cfg.configFile, JSON.stringify(raw, null, 2));
+  writeConfigFile(cfg, raw);
   cfg.discord = raw.discord;
 }
 
@@ -178,28 +179,20 @@ export function chunks(text, max = MAX_TEXT) {
   return out;
 }
 
-// Saves the pasted token where Bob reads keys from: the Windows user variables, or ~/.config/bob/env.
-export function storeToken(token, { platform = process.platform, home = os.homedir(), run = execFile } = {}) {
+// Saves the pasted token in Bob's locked store (🔐 Locked secrets, inn\bob\keys.json, src/secret-box.js), where his
+// key lookups find it, and takes away any plain copy an older Bob left (the Windows user variable, or its line in
+// ~/.config/bob/env). With Locked secrets switched off it is kept in keys.json plain.
+export function storeToken(token, { cfg, platform = process.platform, home = os.homedir(), run } = {}) {
   return new Promise((resolve, reject) => {
-    if (platform === 'win32') {
-      return run('reg', ['add', 'HKCU\\Environment', '/v', TOKEN_ENV, '/t', 'REG_SZ', '/d', token, '/f'], { windowsHide: true, timeout: 5000 }, (e) => (e ? reject(new Error('Windows didn\'t save it.')) : resolve()));
-    }
-    try {
-      const dir = path.join(home, '.config', 'bob');
-      fs.mkdirSync(dir, { recursive: true });
-      const f = path.join(dir, 'env');
-      let lines = [];
-      try { lines = fs.readFileSync(f, 'utf8').split(/\r?\n/).filter((l) => l && !new RegExp(`^\\s*(export\\s+)?${TOKEN_ENV}\\s*=`).test(l)); } catch {}
-      lines.push(`${TOKEN_ENV}=${token}`);
-      fs.writeFileSync(f, lines.join('\n') + '\n', { mode: 0o600 });
-      try { fs.chmodSync(f, 0o600); } catch {}
-      resolve();
-    } catch (e) { reject(new Error(`Couldn't save it: ${e.code || 'error'}`)); }
+    try { saveKey(cfg, TOKEN_ENV, token); }
+    catch (e) { return reject(new Error(e.code === 'BOX_STUCK' ? e.message : `Couldn't save it: ${e.code || e.message || 'error'}`)); }
+    forgetPlainKey(TOKEN_ENV, { platform, home, ...(run ? { run } : {}) });
+    resolve();
   });
 }
 
 export class DiscordBridge {
-  constructor(brain, { fetchImpl = globalThis.fetch, WebSocketImpl = globalThis.WebSocket, env = rentKeyEnv(), now = Date.now, wait = (ms) => new Promise((r) => setTimeout(r, ms)), store = storeToken, cleanOpts } = {}) {
+  constructor(brain, { fetchImpl = globalThis.fetch, WebSocketImpl = globalThis.WebSocket, env = rentKeyEnv(), now = Date.now, wait = (ms) => new Promise((r) => setTimeout(r, ms)), store, cleanOpts } = {}) {
     this.brain = brain;
     this.cfg = brain.cfg;
     this.fetch = fetchImpl;
@@ -207,7 +200,7 @@ export class DiscordBridge {
     this.env = env;
     this.now = now;
     this.wait = wait;
-    this.store = store;
+    this.store = store || ((t) => storeToken(t, { cfg: this.cfg }));
     this.clean = cleaner(this.cfg, cleanOpts);
     this.pasted = ''; // a token pasted this run, until Windows hands it to new processes
     this.running = false;

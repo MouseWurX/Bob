@@ -62,7 +62,7 @@ fs.writeFileSync(path.join(tmp, 'config.json'), JSON.stringify(cfg));
 
 const { server: mock, calls: mockCalls } = await startMockOllama(OLLAMA_PORT);
 const bob = spawn(process.execPath, [path.join(here, '..', 'src', 'server.js')], {
-  env: { ...process.env, BOB_CONFIG: path.join(tmp, 'config.json'), BOB_AGENT_DIR: path.join(tmp, 'Bob home'), BOB_OLLAMA_URL: `http://127.0.0.1:${OLLAMA_PORT}`, BOB_PORT: String(BOB_PORT) },
+  env: { ...process.env, BOB_TEST: '1', BOB_CONFIG: path.join(tmp, 'config.json'), BOB_AGENT_DIR: path.join(tmp, 'Bob home'), BOB_OLLAMA_URL: `http://127.0.0.1:${OLLAMA_PORT}`, BOB_PORT: String(BOB_PORT) },
   stdio: ['ignore', 'pipe', 'pipe']
 });
 bob.stderr.on('data', (d) => process.stderr.write(d));
@@ -119,9 +119,9 @@ try {
   check((await post('/api/open', {}, { 'x-bob': '1', 'content-type': 'text/plain' })).status === 415, 'a text/plain body is refused');
   check((await fetch(base + '/api/uninstall', { method: 'POST', headers: { 'x-bob': '1' }, body: '{"confirm":"remove"}' })).status === 415, 'a body with no content type is refused');
   check((await post('/api/activity', {}, { 'x-bob': '1', origin: base, 'sec-fetch-site': 'same-origin' })).status === 200, "Bob's own page still gets through");
-  // Housekeeping (1.1.0): off by default, and its pages answer.
+  // Housekeeping (1.1.0): on by default since Nov 11 (his own files only), and its pages answer.
   const hkInfo = await (await fetch(base + '/api/hk')).json();
-  check(hkInfo.settings?.enabled === false && Object.values(hkInfo.settings).filter((x) => typeof x === 'object').every((k) => k.mode === 'ask'), 'housekeeping is off by default and every kind asks first');
+  check(hkInfo.settings?.enabled === true && hkInfo.settings.extraFolders?.length === 0 && Object.values(hkInfo.settings).filter((x) => x && typeof x === 'object' && !Array.isArray(x)).every((k) => k.mode === 'ask'), 'housekeeping is on by default (his own files only) and every kind asks first');
   check(Array.isArray(await (await fetch(base + '/api/topics')).json()), 'the Topics page answers');
   check(Array.isArray((await (await fetch(base + '/api/chats')).json()).chats), 'the past chats list answers');
   check((await post('/api/topics/forget', { id: 'nope' })).status === 409, 'forgetting an unknown topic is refused');

@@ -1,4 +1,4 @@
-// Bob the housekeeper. Off unless the user turns it on (Settings, Housekeeping).
+// Bob the housekeeper. On unless the user turns it off (Settings, Housekeeping; on by default since Nov 11).
 // When on, and only while Bob is idle, he:
 //   - sums up the older part of long chats (instead of forgetting it) and moves lasting facts to his memory file,
 //   - sorts what was said into topics (topics.js), so old chats can go while "where we landed" stays,
@@ -7,13 +7,15 @@
 // Each kind has its own age limit and its own mode: "ask me" (the default) or "tidy automatically" (opt-in).
 // Asking means a list with a tick and a cross per item; nothing goes without that click, unless the user chose
 // automatic for that kind. Everything removed goes to the Recycle Bin (recycle.js). Pinned chats, pictures
-// and topics are never touched. Every action goes in the logbook. Only Bob's own folders are touched.
+// and topics are never touched. Every action goes in the logbook. By default only Bob's own folders are touched;
+// folders the user adds (extraFolders) are offered too, always "ask first", never tidied by himself.
 import { readText, writeText, appendText, vaultOn, hasKey } from './vault.js'; // 🔒 Lock my chats and memory
 import fs from 'node:fs';
 import path from 'node:path';
-import { appDir, findOutput } from './config.js';
-import { UNITS, KINDS, ageMs, cleanHousekeeping, hkSettings } from './hk-settings.js';
-export { UNITS, KINDS, ageMs, cleanHousekeeping, hkSettings };
+import { appDir, findOutput, isInside } from './config.js';
+import os from 'node:os';
+import { UNITS, KINDS, ageMs, cleanHousekeeping, cleanFolder, hkSettings } from './hk-settings.js';
+export { UNITS, KINDS, ageMs, cleanHousekeeping, cleanFolder, hkSettings };
 import { recycle, backupToBin, mayRecycle } from './recycle.js';
 import { Topics, normName, topicText } from './topics.js';
 import { Embedder } from './embedder.js';
@@ -61,6 +63,42 @@ export function memoryRepeats(text) {
     kept.push(line);
   }
   return { repeats: n, text: kept.join('\n') };
+}
+
+// ---------- Folders the user points him to (Nov 11) ----------
+// By default housekeeping only touches Bob's own files. The user can add folders; old files in them are only ever
+// offered in Tidy up (never tidied by himself), and go to the Recycle Bin. Some folders are refused outright.
+const SYSTEM_DIR = /^(?:[a-z]:[\\/](?:windows|program files(?: \(x86\))?|programdata)|\/(?:bin|boot|dev|etc|lib|lib32|lib64|proc|run|sbin|sys|usr|var|opt|snap|system|library|applications|private))(?:[\\/]|$)/i;
+export function folderRefusal(cfg, f, { home = cfg.userHome || os.homedir(), exists = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } } } = {}) {
+  if (SYSTEM_DIR.test(f)) return 'That is a system folder. Bob leaves those alone.';
+  const same = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+  if (home && same(f, home)) return 'That is your whole home folder. Pick a folder inside it, like Downloads.';
+  for (const own of [cfg.agentDir, cfg.dataDir, cfg.innDir].filter(Boolean)) {
+    if (isInside(f, own) || same(f, own)) return 'That folder holds Bob himself. Pick one that doesn\'t.';
+    if (isInside(own, f)) return 'That is one of Bob\'s own folders. He already looks after it.';
+  }
+  if (!exists(f)) return 'I can\'t find that folder.';
+  return '';
+}
+
+// Old files in the added folders, oldest first. Hidden files and folders are skipped; the walk stops at a sensible size.
+export function oldFolderFiles(folders, cutoff, { maxFiles = 300, maxSeen = 20000, maxDepth = 6 } = {}) {
+  const out = [];
+  let seen = 0;
+  const walk = (dir, depth, root) => {
+    if (depth > maxDepth || seen > maxSeen) return;
+    let list = [];
+    try { list = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const d of list) {
+      if (++seen > maxSeen) return;
+      if (d.name.startsWith('.') || /^(desktop\.ini|thumbs\.db)$/i.test(d.name)) continue;
+      const full = path.join(dir, d.name);
+      if (d.isDirectory()) walk(full, depth + 1, root);
+      else if (d.isFile()) { const t = mtime(full); if (t && t < cutoff) out.push({ file: full, root, touched: t }); }
+    }
+  };
+  for (const f of folders) walk(f, 0, f);
+  return out.sort((a, b) => a.touched - b.touched).slice(0, maxFiles);
 }
 
 export class Housekeeper {
@@ -148,6 +186,13 @@ export class Housekeeper {
     for (const t of this.topics.load().topics) {
       if (t.pinned || !t.fade || now - (t.lastSeen || 0) <= ageMs(t.fade)) continue;
       add({ key: `topic:${t.id}`, kind: 'topics', ref: t.id, label: `${t.project ? t.project + ' > ' : ''}${t.name}`, detail: `you asked Bob to forget it after ${t.fade.n} ${t.fade.unit} unused; the note stays`, bytes: 0, touched: t.lastSeen || 0, actions: ['forget'], def: 'forget' });
+    }
+
+    // Files in folders the user added (Nov 11): only these folders, only ever "ask first".
+    if (hk.extraFolders?.length) {
+      for (const x of oldFolderFiles(hk.extraFolders, now - ageMs(hk.folders))) {
+        add({ key: `folder:${x.file}`, kind: 'folders', label: path.relative(x.root, x.file) || path.basename(x.file), detail: `in ${x.root}, last changed ${dateOf(x.touched)}`, bytes: sizeOf(x.file), touched: x.touched, actions: ['delete'], def: 'delete', paths: [x.file] });
+      }
     }
 
     // Spare copies: always asked about, never tidied automatically.
@@ -550,7 +595,7 @@ export class Housekeeper {
       const st = this.state();
       if (force || Date.now() - st.lastScan > SCAN_EVERY) {
         const items = this.scan();
-        const auto = items.filter((i) => hk[i.kind]?.mode === 'auto' && hk.enabled);
+        const auto = items.filter((i) => hk[i.kind]?.mode === 'auto' && hk.enabled && i.kind !== 'folders'); // added folders: always ask
         if (auto.length) did.auto = (await this.tidy(auto.map((i) => ({ key: i.key, action: i.def })), { auto: true })).filter((r) => r.done && r.done !== 'kept').length;
         did.ask = this.items.length;
         const s2 = this.state();

@@ -285,9 +285,9 @@ You can rename, merge, pin and drag messages between topics. One **search box** 
 
 To make Bob forget something, either use **Forget** on a topic or simply say "forget what we said about…". You always see a preview first, and you can choose to keep just the short note or remove everything.
 
-### Housekeeping (off unless you turn it on)
+### Housekeeping (on unless you turn it off)
 
-Long chats and old files pile up. Housekeeping is Bob tidying up while he's idle. It's **off by default**. When you turn it on, Bob can:
+Long chats and old files pile up. Housekeeping is Bob tidying up while he's idle. It's **on by default**, and by default it only touches **Bob's own files**. Bob can:
 
 - sum up the older part of a long chat instead of forgetting it,
 - file chats under Topics,
@@ -295,6 +295,8 @@ Long chats and old files pile up. Housekeeping is Bob tidying up while he's idle
 - find things that haven't come up for a while: old chats, pictures and sounds he made, finished tasks, old log lines and repeated notes.
 
 For each kind of thing you choose how old is "old" (from minutes to months), and whether Bob should **ask me first** (you get a list with a tick and a cross for each item) or **tidy automatically**.
+
+**Folders you point him to:** to have Bob help with one of your own folders (Downloads, say), type its full path under **Folders you point him to** and press **Add folder**. Old files from it (6 months by default) show up in Tidy up. Bob always asks first for these, never tidies them by himself, and anything cleared goes to the Recycle Bin. System folders, your whole home folder and Bob's own folder can't be added.
 
 Safety nets:
 
@@ -406,6 +408,10 @@ Ask things like "turn report.docx into a PDF", "what's in budget.xlsx?", "make a
 - He saves only in the folders ticked for Hands, plus his own Documents folder. LibreOffice runs hidden with Bob's own settings, never runs macros in the files, and closes when the job is done; so does FFmpeg.
 - He can't turn a PDF back into a good Word file, because the layout breaks. He can read its words and make a new Word document from them instead.
 
+### Locked secrets
+
+On to start with (Settings, This replicant matrix, **🔐 Locked secrets**). Every passcode, bot token and key Bob saves is kept scrambled (AES-256-GCM): the phone-access passcode, your other Bobs' passcodes, door keys in config.json, the Discord bot token, the keys in Apps Bob can use, and any key saved in the panel. The key that unscrambles them is kept by the computer for your account: Windows DPAPI, the Mac Keychain, the Linux Secret Service (GNOME Keyring, KWallet), or a key file only your account can read in `~/.config/bob` when none of those answers. On Android, the Android Keystore. Plain secrets from an older Bob (including the old `BOB_DISCORD_TOKEN` user variable and the lines in `~/.config/bob/env`) are locked the first time he starts. If the box can't be opened (Bob's folder copied from another computer), saved secrets read as empty and are never written over; **Start a new locked box** starts again.
+
 ### Security and privacy
 
 Bob isn't an antivirus: keep Microsoft Defender (or your own antivirus). This Hand makes him a sidekick for it. Ask things like "is my PC protected?", "what did Defender find?", "run a quick scan", "what starts with Windows?", "is this download safe?", "is this email real?" (paste it with its headers), "clean this photo before I post it", "is this website legit?", "where does this link go?" or "was Adobe ever breached?".
@@ -464,7 +470,7 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 - **Let Bob turn pictures into 3D models**: ask for a figurine, a creature or a prop and Bob paints a picture of it (or uses yours), then TRELLIS.2 turns it into a textured GLB model in the 3D viewer, in 1 to 5 minutes. Needs an NVIDIA graphics card (16 GB is best) and the 3D workshop from Settings, Engines (about 22 GB). Its add-ons are compiled by GitHub for Bob, never on your computer. Meta's DINOv3 picture reader comes as an exact ungated copy with Meta's licence (free, also for work; no military or weapons uses). On a Mac or with an AMD or Intel card, send the job to a PC Bob over Bob-Net.
 - **Launch on start-up**: Bob opens when Windows starts.
 - **Cloud helpers**: hand a very big job to a paid online AI, using your own key. Bob asks you each time, because it costs money and sends that job off your PC.
-- **Rented brains** (Settings, Online services): hire a big brain for one job from a service you have an account with. Three kinds: pay per answer (OpenRouter, Together AI, Lambda, or any address plus key), RunPod serverless (per second, switches itself off) and a machine by the minute (RunPod, Vast.ai, Lambda; Bob starts and stops it, and it carries a timer so it stops on its own too). Set the **Spending limits** first: every one starts at $0 and nothing can be hired until they're set. Switch on **Let Bob hire from** a service (the first time, a card says what leaves your PC), add a rental (service plus model, and a card size for machines), and put it in the **🏗 Rented brain** slot on Equip Bob. Then use the **🏗 Rented brain** switch under the chat, or wait for Bob to offer it when a chat outgrows his brains here. Every hire starts from a **Hire it (about $…)** card that says the cost and exactly what leaves your PC: the chat of that job, the files you attached, Bob's instructions and what he remembers about you. His tools still run on your PC. Keys are environment variables Bob only reads (Mac and Linux: also `~/.config/bob/env`). Tasks shows the job as **Rented**; the Settings panel shows **Machines running** with **Stop everything now**. Bob's cost figures are estimates; the service's billing page is the real bill.
+- **Rented brains** (Settings, Online services): hire a big brain for one job from a service you have an account with. Three kinds: pay per answer (OpenRouter, Together AI, Lambda, or any address plus key), RunPod serverless (per second, switches itself off) and a machine by the minute (RunPod, Vast.ai, Lambda; Bob starts and stops it, and it carries a timer so it stops on its own too). Set the **Spending limits** first: every one starts at $0 and nothing can be hired until they're set. Switch on **Let Bob hire from** a service (the first time, a card says what leaves your PC), add a rental (service plus model, and a card size for machines), and put it in the **🏗 Rented brain** slot on Equip Bob. Then use the **🏗 Rented brain** switch under the chat, or wait for Bob to offer it when a chat outgrows his brains here. Every hire starts from a **Hire it (about $…)** card that says the cost and exactly what leaves your PC: the chat of that job, the files you attached, Bob's instructions and what he remembers about you. His tools still run on your PC. Keys are environment variables, or keys saved in Settings, This replicant matrix, **Locked secrets** (kept scrambled). Tasks shows the job as **Rented**; the Settings panel shows **Machines running** with **Stop everything now**. Bob's cost figures are estimates; the service's billing page is the real bill.
   - **Pick a brain from Bob's list** (top of Add a rental): the really big brains no home computer can run (DeepSeek, GLM-5, Kimi, Mistral Large and more) and the catalogue brains too big for your Bobs. For a machine Bob fills in the model and card size; for pay per answer press **Find it on this service** and Bob looks it up on that service's own list (its switch must be on). He never sets more than one card himself.
 - **Music and sound effects**: extra downloads for the audio tools.
 - **Extra voices.**

@@ -14,7 +14,9 @@ engines/
 # Bob's model lab: lessons, counts, downloaded Bobs and Forge logs stay on the machine that made them
 model-lab/out/
 model-lab/forge/hf-token.txt
+model-lab/forge/hf-token.locked
 app/model-lab/out/
 app/model-lab/forge/hf-token.txt
+app/model-lab/forge/hf-token.locked
 __pycache__/
 *.pyc
