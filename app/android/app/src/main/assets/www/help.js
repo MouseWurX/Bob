@@ -104,8 +104,12 @@ globalThis.BobHelp = {
       html: `<p>Settings, <strong>Pick up where Bob left off</strong> (off to start with). Android sometimes closes apps in the background to save memory. With this on, if that happens in the middle of a phone-brain reply, I ask the question again when you come back.</p>`
     },
     {
+      id: 'to-bottom', title: 'Back to the newest message',
+      html: `<p>Scroll up to read and a round button with a down arrow shows at the bottom middle of the chat. Tap it to go back to the newest message. While I'm still answering, three dots on it breathe slowly. If your phone is set to reduce motion, they hold still.</p>`
+    },
+    {
       id: 'redo', title: 'Try again and Edit',
-      html: `<p>Settings, <strong>Show Try again and Edit in the chat</strong> (off to start with). With it on, <strong>Try again</strong> under my latest answer gets a new answer to your last message, and <strong>Edit</strong> under your last message lets you change it and tap <strong>Send again</strong>. What was there before is kept under your message: tap <strong>1 earlier version</strong> to see it (the last 5 are kept). The buttons hide while I'm still on that chat.</p><p>When a Bob on your network answered, he takes his old answer back too if his own <strong>Show Try again and Edit in the chat</strong> is on (Settings, How Bob works on that replicant matrix). If it's off, he gets your message as a new one. On your other replicant matrix you can also edit earlier messages, not just the last.</p>`
+      html: `<p>Settings, <strong>Show Try again and Edit in the chat</strong> (on to start with). With it on, <strong>Try again</strong> under my latest answer gets a new answer to your last message, and <strong>Edit</strong> under your last message lets you change it and tap <strong>Send again</strong>. What was there before is kept under your message: tap <strong>1 earlier version</strong> to see it (the last 5 are kept). The buttons hide while I'm still on that chat.</p><p>When a Bob on your network answered, he takes his old answer back too if his own <strong>Show Try again and Edit in the chat</strong> is on (Settings, How Bob works on that replicant matrix). If it's off, he gets your message as a new one. On your other replicant matrix you can also edit earlier messages, not just the last.</p>`
     },
     {
       id: 'alerts', title: 'Alerts',
@@ -210,7 +214,7 @@ globalThis.BobHelp = {
       id: 'faq', title: 'Questions and fixes',
       html: `<table>
 <tr><th>What happens</th><th>What to do</th></tr>
-<tr><td>No Try again or Edit under the messages</td><td>Settings, Show Try again and Edit in the chat: turn it on. The buttons also hide while I'm still answering in that chat.</td></tr>
+<tr><td>No Try again or Edit under the messages</td><td>Settings, Show Try again and Edit in the chat: turn it back on. The buttons also hide while I'm still answering in that chat.</td></tr>
 <tr><td>The chest is empty or says no Bob is reachable</td><td>The chest is your other Bob's Made by Bob list, so it needs him on Tailscale. Once he's reachable, open the menu and tap Chest again.</td></tr>
 <tr><td>The pill says Nobody home</td><td>Tap it. Usually your other replicant matrix is asleep, or Tailscale is off on the phone or your other replicant matrix.</td></tr>
 <tr><td>"Isn't letting other replicant matrices in yet"</td><td>On your other replicant matrix: Bob's Settings, Bob-Net, Let my other replicant matrices in. Turn it on, then restart Bob on your other replicant matrix.</td></tr>

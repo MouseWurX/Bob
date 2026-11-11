@@ -19,7 +19,7 @@
     get(k, d) { try { const v = localStorage.getItem(`bob.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { localStorage.setItem(`bob.${k}`, JSON.stringify(v)); } catch { /* full or blocked: carry on in memory */ } }
   };
-  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, userName: '', theme: 'inn', effort: 'low', resume: false, redo: false };
+  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, userName: '', theme: 'inn', effort: 'low', resume: false, redo: true };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
   const saveSettings = () => store.set('settings', settings);
   let bobs = store.get('bobs', []); // [{ name, address, base }]
@@ -120,7 +120,7 @@
     return node;
   }
 
-  // ---------- Try again and Edit (Settings, In the chat). Off unless you turn it on. ----------
+  // ---------- Try again and Edit (Settings, In the chat). On unless you turn it off. ----------
   // Try again under the latest answer, Edit under your latest message. What was there before is kept under your
   // message as an earlier version. A Bob on your network forgets it too (his "Show Try again and Edit" switch on);
   // with his switch off he gets the message as a new one.
@@ -340,6 +340,19 @@
     $('send').textContent = current ? '■' : '➤';
     $('send').setAttribute('aria-label', current ? 'Stop' : 'Send');
     drawRedo(); // Try again and Edit hide while this chat is busy
+    drawToBottom();
+  }
+
+  // Scrolled up to read: a round button at the bottom middle goes back to the newest message, with three dots that
+  // breathe slowly while Bob is still answering in this chat.
+  function drawToBottom() {
+    const box = $('chat'), b = $('to-bottom');
+    if (!box || !b) return;
+    const away = box.scrollHeight - box.scrollTop - box.clientHeight > 120;
+    b.classList.toggle('hidden', !away);
+    const working = away && Boolean(current && chat && current.chatId === chat.id);
+    b.classList.toggle('working', working);
+    b.setAttribute('aria-label', working ? 'Bob is still answering. Go to the newest message' : 'Go to the newest message');
   }
 
   // ---------- Sending ----------
@@ -1020,6 +1033,8 @@
   $('read-aloud').addEventListener('change', (e) => { settings.readAloud = e.target.checked; saveSettings(); });
   $('theme').addEventListener('change', (e) => { settings.theme = e.target.value; saveSettings(); applyTheme(); });
   $('resume').addEventListener('change', (e) => { settings.resume = e.target.checked; saveSettings(); });
+  $('chat').addEventListener('scroll', drawToBottom, { passive: true });
+  $('to-bottom').addEventListener('click', () => { const box = $('chat'); box.scrollTo({ top: box.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); });
   $('redo').addEventListener('change', (e) => { settings.redo = e.target.checked; saveSettings(); drawRedo(); });
   const applyTheme = () => document.documentElement.setAttribute('data-theme', settings.theme);
 

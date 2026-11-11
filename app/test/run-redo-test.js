@@ -20,8 +20,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\r\n/g, '\n');
 
 // ---------- The switch ----------
-check('off unless turned on', !redoOn({}) && !redoOn({ chatRedo: 'yes' }) && redoOn({ chatRedo: true }));
-check('only true turns it on when saved', mergeSettings({}, { chatRedo: 'true' }).chatRedo === false && mergeSettings({}, { chatRedo: true }).chatRedo === true);
+check('on unless turned off (owner\'s exception)', redoOn({}) && redoOn({ chatRedo: true }) && !redoOn({ chatRedo: false }));
+check('only false turns it off when saved', mergeSettings({}, { chatRedo: 'no' }).chatRedo === true && mergeSettings({}, { chatRedo: false }).chatRedo === false);
 
 // ---------- The change itself ----------
 const chat = () => [
@@ -70,7 +70,7 @@ const chat = () => [
 
 // ---------- Busy chats and the switch on the server ----------
 {
-  const fake = { cfg: {}, turns: new Map(), queue: [], sess: chat(), session() { return this.sess; }, saved: 0, saveSession() { this.saved++; }, sent: [], broadcast(ev) { this.sent.push(ev); } };
+  const fake = { cfg: { chatRedo: false }, turns: new Map(), queue: [], sess: chat(), session() { return this.sess; }, saved: 0, saveSession() { this.saved++; }, sent: [], broadcast(ev) { this.sent.push(ev); } };
   check('off: refused, nothing changed', /is off/.test(redo(fake, 'main').error || '') && fake.sess.length === 7);
   fake.cfg.chatRedo = true;
   fake.queue.push({ sessionId: 'main', state: 'waiting' });
@@ -136,13 +136,13 @@ const run = async (text, extra) => { const { jobId } = brain.enqueue('main', tex
   check('the edit box: Send again, Cancel, Esc and Enter', /Send again/.test(app) && /data-edit-cancel/.test(app) && /e\.key === 'Escape'/.test(app));
   check('the switch from the Settings window reaches the chat', RELAY.includes('bob-chat-redo') && /addEventListener\('bob-chat-redo'/.test(app));
   const server = read('src/server.js');
-  check('the server: the redo route, the setting saved and shown', /p === '\/api\/chat\/redo'/.test(server) && /typeof b\.chatRedo === 'boolean'/.test(server) && /chatRedo: cfg\.chatRedo === true/.test(server));
+  check('the server: the redo route, the setting saved and shown', /p === '\/api\/chat\/redo'/.test(server) && /typeof b\.chatRedo === 'boolean'/.test(server) && /chatRedo: cfg\.chatRedo !== false/.test(server));
   const cellar = read('public/cellar.js');
-  check('the switch is in How Bob works, off unless turned on', /sswitch\('chatRedo', settings\.chatRedo === true, 'Show Try again and Edit in the chat', 'Off unless you turn it on/.test(cellar));
-  check('on the Do you want me to list', WANTS.some((w) => w.key === 'chatRedo' && w.setting === 'Show Try again and Edit in the chat'));
+  check('the switch is in How Bob works, on unless turned off', /sswitch\('chatRedo', settings\.chatRedo !== false, 'Show Try again and Edit in the chat', 'On unless you turn it off/.test(cellar));
+  check('not on the Do you want me to list (that list is for things that start off)', !WANTS.some((w) => w.key === 'chatRedo'));
   check('Bob can read the setting in his own Help', /Show Try again and Edit in the chat/.test(read('src/self-help.js')));
   const phone = read('android/app/src/main/assets/www/phone.js');
-  check('the Android app: its own switch, off to start with', /redo: false \}/.test(phone) && /id="redo"/.test(read('android/app/src/main/assets/www/index.html')));
+  check('the Android app: its own switch, on to start with', /redo: true \}/.test(phone) && /id="redo"/.test(read('android/app/src/main/assets/www/index.html')));
   check('the Android app: Try again and Edit, earlier versions kept, the Bob on the network told', /text: 'Try again'/.test(phone) && /text: 'Edit'/.test(phone) && /you\.versions = /.test(phone) && /\/api\/chat\/redo/.test(phone));
   const entry = HELP.find((e) => e.id === 'redo'), faq = HELP.find((e) => e.id === 'faq-redo'), gl = HELP.find((e) => e.id === 'glossary');
   check('Help in Bob\'s voice, with where it works', entry && /I take that answer back/.test(entry.html) && /Windows, Mac, Linux/.test(entry.html) && /Android app/.test(entry.html));
@@ -151,6 +151,11 @@ const run = async (text, extra) => { const { jobId } = brain.enqueue('main', tex
   const ph = read('android/app/src/main/assets/www/help.js');
   check('the Android app\'s Help, glossary and questions', /id: 'redo'/.test(ph) && /<dt>Try again<\/dt>/.test(ph) && /No Try again or Edit under the messages/.test(ph));
   check('in the settings inventory', /Show Try again and Edit in the chat/.test(read('docs/SETTINGS-INVENTORY.md')));
+  // Back to the newest message: the round down-arrow button, with breathing dots while Bob works.
+  check('a go-to-bottom button in the chat window and the Android app', /id="toBottom"/.test(read('public/index.html')) && /id="to-bottom"/.test(read('android/app/src/main/assets/www/index.html')));
+  check('scrolled up: new words don\'t pull you down; sending does', /if \(stick\) log\.scrollTop = log\.scrollHeight;/.test(app) && /stick = true; \/\/ sending takes you to the bottom/.test(app));
+  check('the dots show only while Bob is busy, and breathe unless animations are off', /toggle\('working', !toBottom\.hidden && busy\)/.test(app) && /body\.still \.to-bottom \.tb-dots i \{ animation: none/.test(read('public/style.css')) && /prefers-reduced-motion: reduce\) \{ \.to-bottom/.test(read('android/app/src/main/assets/www/phone.css')));
+  check('Help for it, here and on Android', HELP.some((e) => e.id === 'to-bottom') && /id: 'to-bottom'/.test(ph));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

@@ -143,7 +143,29 @@ for (const ev of ['pointermove', 'keydown', 'focus']) window.addEventListener(ev
 document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeBob(); });
 
 // ---------- Rendering ----------
-function scrollDown() { log.scrollTop = log.scrollHeight; }
+// Follow along at the bottom, unless you've scrolled up to read: then new words don't pull you down, and a round
+// button at the bottom middle takes you back (with three dots that breathe slowly while Bob is still working).
+let stick = true;
+const nearBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+const toBottom = $('toBottom');
+function drawToBottom() {
+  toBottom.hidden = stick || nearBottom();
+  toBottom.classList.toggle('working', !toBottom.hidden && busy);
+  toBottom.setAttribute('aria-label', toBottom.classList.contains('working') ? 'Bob is still working. Go to the newest message' : 'Go to the newest message');
+}
+function scrollDown(force = false) {
+  if (force) stick = true;
+  if (stick) log.scrollTop = log.scrollHeight;
+  drawToBottom();
+}
+function goBottom() {
+  stick = true;
+  log.scrollTo({ top: log.scrollHeight, behavior: document.body.classList.contains('still') ? 'auto' : 'smooth' });
+  drawToBottom();
+}
+log.addEventListener('scroll', () => { stick = nearBottom(); drawToBottom(); }, { passive: true });
+toBottom.addEventListener('click', () => { goBottom(); $('input')?.focus({ preventScroll: true }); });
+window.addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'End' && !toBottom.hidden) { e.preventDefault(); goBottom(); } });
 function add(cls, html) {
   const el = document.createElement('div');
   el.className = cls;
@@ -405,7 +427,7 @@ async function openChat(id, msgId) {
   if (busy) { note('Bob is busy in this chat. Open the other one when he has finished.'); return; }
   sessionId = id;
   store.set('bob-session', sessionId);
-  log.innerHTML = '';
+  log.innerHTML = ''; stick = true;
   await loadHistory(40);
   const el = msgId && log.querySelector(`[data-mid="${CSS.escape(msgId)}"]`);
   if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2500); }
@@ -432,7 +454,7 @@ $('newchat').onclick = () => {
   if (busy) return;
   sessionId = 'chat-' + Date.now();
   store.set('bob-session', sessionId);
-  log.innerHTML = '';
+  log.innerHTML = ''; stick = true;
   note('New conversation. Bob still remembers what\'s in his memory file and on your to-do list.');
 };
 
@@ -766,7 +788,7 @@ function onEvent(ev) {
       return;
     }
     case 'rewound': // Try again or Edit pressed in another window of this chat: draw it again from the saved chat
-      if (!redoing && ev.id !== redoneId) { log.innerHTML = ''; loadHistory(40); }
+      if (!redoing && ev.id !== redoneId) { log.innerHTML = ''; stick = true; loadHistory(40); }
       redoneId = '';
       return;
     case 'correction':
@@ -829,6 +851,7 @@ async function post(url, data) {
 function setBusy(b) {
   busy = b;
   stopBtn.hidden = !b;
+  drawToBottom(); // the dots on the go-to-bottom button
   drawRedo(); // Try again and Edit hide while Bob is busy
 }
 
@@ -1010,7 +1033,7 @@ async function redoSend(id, text) {
     const r = await post('/api/chat/redo', { sessionId, ...(id ? { id } : {}), ...(text != null ? { text } : {}) }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
     if (!r.ok) { note(r.data.error || 'Something went wrong.', 'error'); return; }
     redoneId = r.data.id;
-    log.innerHTML = '';
+    log.innerHTML = ''; stick = true;
     await loadHistory(40);
     const bubble = log.querySelector(`.msg.you[data-mid="${CSS.escape(r.data.id)}"]`);
     const level = effort.get();
@@ -1142,6 +1165,7 @@ $('composer').onsubmit = async (e) => {
   const text = input.value.trim() || (pending.length ? 'Have a look at this.' : '');
   if (!text) return;
   const pics = pending;
+  stick = true; // sending takes you to the bottom
   const bubble = add('msg you', esc(text) + picsHtml(pics) + '<span class="qtag">sending...</span>');
   decorate(bubble, text);
   input.value = '';
@@ -1245,7 +1269,7 @@ async function start() {
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
   try {
-    const st = await (await fetch('/api/settings')).json(); winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo === true; drawRedo(); drawSessions(st.sessions, st.session, st.sessionBy);
+    const st = await (await fetch('/api/settings')).json(); winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"
     if (st.updates?.autoCheck) { const c = await (await fetch('/api/update/check')).json(); if (c.newer) note(`A newer Bob (${c.available.label}) is out${c.from === 'github' ? ' on GitHub' : ''}. Settings, This replicant matrix and updates, Check for updates.`); }

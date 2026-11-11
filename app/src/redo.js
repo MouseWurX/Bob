@@ -1,4 +1,5 @@
-// Try again and Edit in the chat (Settings, How Bob works: "Show Try again and Edit in the chat"). Off unless you turn it on.
+// Try again and Edit in the chat (Settings, How Bob works: "Show Try again and Edit in the chat"). On unless you turn
+// it off (the owner's call, Nov 11 2026: an exception to opt-in, like the Lab button; nothing runs by itself).
 //
 //   - Try again, under Bob's latest answer: his answer to your last message is taken back and he answers it afresh.
 //   - Edit, under one of your messages: you change what you said and send it again. Bob answers from there, so what
@@ -9,7 +10,7 @@
 // is waiting or running.
 import { said, newMsgId } from './chats.js';
 
-export const redoOn = (cfg) => cfg?.chatRedo === true;
+export const redoOn = (cfg) => cfg?.chatRedo !== false;
 export const KEEP_VERSIONS = 5;
 export const MAX_TEXT = 20000;
 const KEEP_SAID = 40, KEEP_CHARS = 6000;

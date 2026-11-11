@@ -243,7 +243,7 @@ function clean(patch) {
   if ('howtos' in out) out.howtos = out.howtos === true; // 1.5.79 "Let Bob learn how-tos", off by default
   if ('wantsAsked' in out) out.wantsAsked = out.wantsAsked === true; // the chat's one-time "Do you want me to" offer (wants.js)
   if ('editOwn' in out) out.editOwn = out.editOwn === true; // "Let Bob fix his own messages", off by default (edit-own.js)
-  if ('chatRedo' in out) out.chatRedo = out.chatRedo === true; // "Show Try again and Edit in the chat", off by default (redo.js)
+  if ('chatRedo' in out) out.chatRedo = out.chatRedo !== false; // "Show Try again and Edit in the chat", ON unless turned off (owner's exception, redo.js)
   if ('quickNotes' in out) out.quickNotes = out.quickNotes === true; // "Let Bob take quick notes", off by default (notes.js)
   if ('smartNotes' in out) out.smartNotes = out.smartNotes === true; // "Let Bob notice what's worth noting", off by default (notes.js)
   if ('docTools' in out) out.docTools = out.docTools === true; // "Read and search my documents", off by default (my-docs.js)

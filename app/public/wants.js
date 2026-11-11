@@ -23,8 +23,6 @@ export const WANTS = [
     label: 'Show you my plan before big jobs', note: 'Every step on one card, and I wait for your OK.' },
   { card: 'how', key: 'editOwn', setting: 'Let Bob fix his own messages', where: 'How Bob works',
     label: 'Fix my own messages instead of sending new ones', note: 'It says edited, and shows what it said first.' },
-  { card: 'how', key: 'chatRedo', setting: 'Show Try again and Edit in the chat', where: 'How Bob works',
-    label: 'Show Try again and Edit in the chat', note: 'A new answer, or change what you said. Earlier versions are kept.' },
   { card: 'how', key: 'howtos', setting: 'Let Bob learn how-tos', where: 'How Bob works',
     label: 'Learn how-tos from jobs that went well', note: 'I ask before keeping one, and follow it next time.' },
   { card: 'how', key: 'resumeJobs', setting: 'Pick up where Bob left off after a restart', where: 'How Bob works',
