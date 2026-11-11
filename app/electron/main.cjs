@@ -439,7 +439,8 @@ async function start() {
     width: 1200, height: 820, minWidth: 360, minHeight: 480,
     title: 'Bob', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'),
     backgroundColor: '#1d1510', autoHideMenuBar: true, show: !process.argv.includes('--hidden'),
-    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }
+    // plugins: the built-in PDF viewer, so "Show documents in the side panel" can show a PDF's pages (no other plugins exist).
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, plugins: true }
   });
   const base = `http://127.0.0.1:${home.port}`;
   // Links to the web open in the normal browser; Bob's window only ever shows Bob.

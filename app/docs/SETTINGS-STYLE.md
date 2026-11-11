@@ -34,6 +34,8 @@ Verdicts are **Approved**, **Approved with edits** (make the listed edits, no se
 12. **Errors say how to fix it.** Say what happened and the next step, with no apology and no vague "something went wrong".
 13. **Buttons are verbs.** Write "Download 20 GB", "Check for updates" or "Run first-time setup", not "OK" or "Go". Confirmations name the cost.
 
+14. **Always there, always fillable.** A setting never appears, disappears or locks because a box isn't ticked. Draw every control all the time, save its value while the feature is off, and let it take effect when the feature is switched on. Only when something truly can't work on this replicant matrix (no key, wrong system) may a control be greyed out, with one line saying why. Buttons that do something right now (run, pair, check) may wait for their switch, with a line saying so.
+
 ## Glossary (use these words)
 | Say | Not |
 |---|---|
