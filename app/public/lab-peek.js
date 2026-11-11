@@ -5,6 +5,7 @@
 // traced word to the tally, which Cut these out and Send to the Forge use. Its own module; the Playground places it.
 // The map is a canvas with text under it (never colour alone): a line per layer, the totals, and the cold experts.
 import { esc } from './rich.js';
+import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 
 export function createPeek({ api, view, cutWith = () => {}, toForge = () => {} }) {
   let brain = '', data = null, thing = 'total', question = 'Write a haiku about rain, then explain what a prime number is.', asks = [], busy = false, msg = '', askUnload = null, tally = false, showCold = false, scrub = -1, perLayer = false, compare = false;
@@ -83,7 +84,7 @@ export function createPeek({ api, view, cutWith = () => {}, toForge = () => {} }
   function html() {
     const list = brains(), d = data, counts = shown();
     const things = d?.have ? [['total', 'Everything counted so far'], ...d.things.map((t, i) => [String(i), `${t.name}${t.source === 'peek' ? ' (Peek inside)' : ''}`]), ...(cur() ? [['live', 'The last question']] : [])] : (cur() ? [['live', 'The last question']] : []);
-    return `<section class="lab-compare peek" id="lab-peek" aria-labelledby="peek-h" tabindex="-1"><h3 id="peek-h">Peek inside: which experts did you use for that?</h3>
+    return `<section class="lab-compare peek" id="lab-peek" aria-labelledby="peek-h" tabindex="-1"><h3 id="peek-h">${nameNow('Peek inside: which experts did you use for that?')}</h3>
       <p class="muted">A mixture-of-experts brain picks a few experts in every layer for every word. This map shows them: layers across, experts down, one square per expert, darker where it does more of the work; an outlined square did nothing for what was counted. Level one comes from the usage map's counts (Make a brain, step 1). Level two asks the brain a question on Brain Engine and lights up the experts it picked, word by word.</p>
       <fieldset><legend>Which brain?</legend>${list.length ? `<select id="peek-brain" aria-label="Which brain"><option value="">(pick one)</option>${list.map((b) => `<option value="${esc(b.id)}" ${brain === b.id ? 'selected' : ''}>${esc(b.name)} · ${b.facts.experts} experts, ${b.facts.layers} layers</option>`).join('')}</select>` : '<p>There\'s no mixture-of-experts brain here to peek inside. Get one in Get models (one with "experts" or "A3B" in its name).</p>'}</fieldset>
       ${brain && d ? `${things.length ? `<label for="peek-thing">Show</label> <select id="peek-thing">${things.map(([id, l]) => `<option value="${esc(id)}" ${thing === id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>` : ''}

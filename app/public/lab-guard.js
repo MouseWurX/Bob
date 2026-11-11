@@ -4,6 +4,7 @@
 // the Playground: the Lab page places guard.html() in the Challenges tab and hands over its events.
 // Also here: how the Challenges list groups the packs, and the three Guard rails numbers for a report or the board.
 import { esc } from './rich.js';
+import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 
 // The packs in two groups for the Challenges list: the first eight, then the rest.
 // 1.5.171 "about 2 min on a 16 GB card" was the same line for everyone. The packs' minutes are a rough guess on a 16 GB
@@ -34,13 +35,13 @@ export function createGuard({ api, isPro = () => false }) {
   const turns = () => g.messages.filter((m) => m.role === 'user').length;
 
   function html() {
-    if (!g.open) return `<section class="lab-guard" aria-labelledby="lab-guard-h"><h3 id="lab-guard-h" tabindex="-1">Guard rails: test your own brain</h3>
+    if (!g.open) return `<section class="lab-guard" aria-labelledby="lab-guard-h"><h3 id="lab-guard-h" tabindex="-1">${nameNow('Guard rails: test your own brain')}</h3>
       <p class="muted">Try your own words on the brain Bob has loaded and see whether it keeps to its rules. You can change its system prompt. If it does something you didn't want, write the answer you wanted and save it as a lesson, so you can teach it later. It's your brain, on this replicant matrix; nothing is shared.</p>
       <div class="row"><button type="button" class="link" data-guard="open">Open the sandbox</button></div></section>`;
     const i = g.info || {};
     const chatRows = g.messages.map((m) => `<li class="lab-guard-${m.role}"><strong>${m.role === 'user' ? 'You' : 'Brain'}</strong> <span>${esc(m.content)}</span></li>`).join('');
     const max = i.maxTurns || 30;
-    return `<section class="lab-guard" aria-labelledby="lab-guard-h"><h3 id="lab-guard-h" tabindex="-1">Guard rails: test your own brain</h3>
+    return `<section class="lab-guard" aria-labelledby="lab-guard-h"><h3 id="lab-guard-h" tabindex="-1">${nameNow('Guard rails: test your own brain')}</h3>
       ${!i.ready ? `<p class="muted" role="status">${esc(i.why || 'Loading…')}</p>` : `<p class="muted">Talking to <strong>${esc(i.brain)}</strong>, with its normal settings, not temperature 0, so you see what it does in use.</p>`}
       <p><label for="lab-guard-system">System prompt (what the brain is told before you speak)</label><br><textarea id="lab-guard-system" rows="3" data-guardf="system">${esc(g.system)}</textarea></p>
       <ol class="lab-guard-chat" aria-live="polite" aria-label="The conversation">${chatRows || '<li class="muted">Nothing said yet.</li>'}</ol>

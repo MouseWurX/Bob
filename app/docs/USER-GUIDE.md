@@ -422,7 +422,7 @@ Bob is an assistant you use every day and a workbench for the brains he runs on,
 
 ![The Computer Science Lab on Make a brain](screens/lab.png)
 
-Under the tabs, **Keep it simple** or **Professional** is one switch for the whole Lab: simple shows the usual choices with Bob's defaults filled in, Professional shows every control a tab has. The same switch is in Settings, How Bob works, Brains, as **Lab: Professional mode**.
+Under the tabs, **Keep it simple** or **Professional** is one switch for the whole Lab: simple shows the usual choices with Bob's defaults filled in, Professional shows every control a tab has, and leads each job, way, page and challenge with its proper name (quantization, expert pruning, abliteration, speculative decoding, ARC-style and so on), with the plain words after it in brackets. The same switch is in Settings, How Bob works, Brains, as **Lab: Professional mode**.
 
 The Lab has five tabs:
 

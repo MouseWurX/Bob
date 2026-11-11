@@ -2,6 +2,7 @@
 // better-or-worse pairs of them, or both, optionally only in the parts FNRI shows a skill uses. The server side is
 // src/lab-best.js. Screens are in third person; Help (lab-best) is in Bob's voice.
 import { esc } from './rich.js';
+import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 import { newSource, sourceRowHtml, sourceOut, sourceEvent } from './lab-source.js';
 
 const WAYS = [
@@ -43,7 +44,7 @@ export function createBestPage({ api }) {
     if (!f.learner) return '';
     const recs = parts?.recordings || [], lists = parts?.lists || [];
     const rec = recs.find((r) => r.id === f.tRec);
-    return `<fieldset><legend>Teach only these parts</legend>
+    return `<fieldset><legend>${nameNow('Teach only these parts')}</legend>
       <label class="lab-opt"><input type="radio" name="bsttpick" value="none" ${f.tPick === 'none' ? 'checked' : ''}> <span><strong>No, the whole brain</strong><br><span class="muted">The usual way: small changes spread through every layer.</span></span></label>
       <label class="lab-opt"><input type="radio" name="bsttpick" value="file" ${f.tPick === 'file' ? 'checked' : ''} ${lists.length ? '' : 'disabled'}> <span><strong>A parts list saved in FNRI</strong><br><span class="muted">${lists.length ? 'Saved with Use these for training in the FNRI viewer: a skill\'s experts, the blocks you dialled, or the blocks that moved most.' : 'None yet for this brain. In FNRI, Use these for training saves one.'}</span></span></label>
       ${f.tPick === 'file' && lists.length ? `<select data-bst="tFile" aria-label="Parts list"><option value="">Pick one</option>${lists.map((l) => `<option value="${esc(l.id)}" ${f.tFile === l.id ? 'selected' : ''}>${esc(l.label || l.id)} (${l.count} parts)</option>`).join('')}</select>` : ''}
@@ -73,7 +74,7 @@ export function createBestPage({ api }) {
     if (!v) return `<p class="muted" role="status">${loading ? 'Reading your brains…' : ''}</p>${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}`;
     const L = v.brains.find((b) => b.id === f.learner);
     const judges = v.brains.filter((b) => b.id !== f.learner && (!L || b.paramsB > L.paramsB));
-    return `<h3>Best answers: a bigger brain judges, a smaller one learns</h3>
+    return `<h3>${nameNow('Best answers: a bigger brain judges, a smaller one learns')}</h3>
       <p class="muted">The small brain answers each question several times. A bigger brain scores every answer (a short exact answer, like a number, is just checked). Then the small brain is taught from its own best answers, or learns which of two answers was better, or both. Some questions are held back and asked only before and after, so the result is honest. Answering and judging run here, for free; teaching runs here when the brain fits the card, and otherwise goes to the Forge as a plan.</p>
       ${v.trainer.ok ? '' : `<p class="muted">Teaching here needs the Trainer pack (about ${v.trainer.sizeGB} GB); Teach it, on this tab, gets it.</p>`}
       <label for="bst-name">Name for the new brain</label><input id="bst-name" data-bst="name" maxlength="40" value="${esc(f.name)}">
