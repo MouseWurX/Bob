@@ -1633,6 +1633,10 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .mind-cube p.mind-cube-sign[hidden] { display: none; }
 @keyframes mind-cube-neon { 0%, 61%, 63%, 66%, 100% { opacity: 1; } 62%, 65% { opacity: .25; } 64% { opacity: .8; } 88% { opacity: .35; } 89% { opacity: 1; } }
 .still .mind-cube p.mind-cube-sign { animation: none; }
+/* the cube's pulse from a message sent to Bob's first word: opacity only, so the card does it without redrawing anything */
+@keyframes mind-cube-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+.mind-cube.pulse canvas { animation: mind-cube-pulse 1.4s ease-in-out infinite; }
+.still .mind-cube.pulse canvas { animation: none; opacity: .7; }
 .mind-cube p { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
 /* hidden from sight only: a screen reader still reads Bob's thinking written out while the cube shows */
 .cube-view .mind-log, .cube-view .mind-empty { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }

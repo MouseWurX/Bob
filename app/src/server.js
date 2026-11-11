@@ -107,6 +107,7 @@ const clients = new Set();
 // as it streams; while none is open, Bob doesn't even pass it along (brain.mindWatchers), so it costs nothing.
 const mindClients = new Set();
 const cubeClients = new Set(); // FNRI's small cube pages (see below)
+const liveCubes = new Set(); // the cube pages with Real experts on: only these make Bob ask Brain Engine for the trace
 
 let telegram = null; // Talk to Bob on Telegram (src/telegram.js), set once Bob's brain is ready
 let discord = null; // Bob on Discord (src/discord.js), set once Bob's brain is ready
@@ -131,8 +132,9 @@ const introductions = new Introductions(cfg, { lenders: brain.lenders, pairing, 
 setTimeout(() => introductions.soon(0), 60_000).unref(); // once Bob is up, and then every hour
 setInterval(() => introductions.soon(0), 3600_000).unref();
 brain.mindWatchers = () => mindClients.size;
-// FNRI's small cube in "Bob's thinking" listens with ?cube=1. Only while one is open does Bob ask Brain Engine which
-// experts each reply used (it slows writing a little), and only those pages are told. Off for everyone else.
+// FNRI's small cube in "Bob's thinking" listens with ?cube=1. On its own it glows for show while Bob thinks, which
+// costs the engine nothing. With Real experts on (?cube=1&live=1) Bob asks Brain Engine which experts each reply used
+// (that slows writing), and only while such a page is open. Off for everyone else.
 // An older Brain Engine build can't report them either: then the cube says so instead of staying dark (before Update under Engines).
 const cubeWhy = () => (brainsEngineNow(cfg) !== 'brainengine' ? 'The cube needs Brain Engine as the engine for Bob\'s brains (Settings > Engines). The engine in use now doesn\'t report which experts it picked.'
   : lab.traceProbe?.()?.experts === false ? 'This Brain Engine build is too old to report which experts it picked. Press Update on Brain Engine in Settings > Engines, and the cube lights up with the next reply.' : '');
@@ -147,9 +149,9 @@ async function cubeBrainsNow() {
   } catch {}
 }
 if (brain.engine) {
-  brain.engine.wantTrace = () => cubeClients.size > 0 && !cubeWhy();
+  brain.engine.wantTrace = () => liveCubes.size > 0 && !cubeWhy();
   brain.engine.onTrace = (raw, model) => { const t = liveTrace(raw); if (!t) return; let map = null; try { map = cubeMap(lab, { model, label: friendlyName(model), experts: t.experts, layers: t.layers, kind: t.kind }); } catch {} // the colours, from this brain's newest scan
-    const data = `data: ${JSON.stringify({ type: 'trace', label: friendlyName(model), ...t, ...(map ? { map } : {}) })}\n\n`; for (const res of cubeClients) res.write(data); };
+    const data = `data: ${JSON.stringify({ type: 'trace', label: friendlyName(model), ...t, ...(map ? { map } : {}) })}\n\n`; for (const res of liveCubes) res.write(data); }; // the real picks go to Real experts pages only
 }
 // 1.5.38: when Downloads change, a job waiting for one (a song waiting for the music models) may be able to go.
 const shop = new ModelShop(cfg, (ev) => { broadcast(ev); if (ev?.type === 'downloads') brain.downloadsChanged(); }, brain.engine);
@@ -334,9 +336,9 @@ const server = http.createServer(async (req, res) => {
       clients.add(res);
       const mind = url.searchParams.get('mind') === '1';
       if (mind) mindClients.add(res);
-      if (isLocal && url.searchParams.get('cube') === '1') { cubeClients.add(res); res.write(`data: ${JSON.stringify({ type: 'cube', ok: !cubeWhy(), why: cubeWhy() })}\n\n`); cubeBrainsNow(); }
+      if (isLocal && url.searchParams.get('cube') === '1') { const live = url.searchParams.get('live') === '1', why = live ? cubeWhy() : ''; cubeClients.add(res); if (live) liveCubes.add(res); res.write(`data: ${JSON.stringify({ type: 'cube', ok: !why, why, live })}\n\n`); cubeBrainsNow(); }
       const ping = setInterval(() => res.write(': ping\n\n'), 20000);
-      req.on('close', () => { clearInterval(ping); clients.delete(res); mindClients.delete(res); cubeClients.delete(res); });
+      req.on('close', () => { clearInterval(ping); clients.delete(res); mindClients.delete(res); cubeClients.delete(res); liveCubes.delete(res); });
       return;
     }
     // Keep Bob light (1.5.2): the Brain label on the chat page, and waking the small brain when someone types.
