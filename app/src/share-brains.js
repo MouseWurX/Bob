@@ -17,6 +17,7 @@ import { readJsonFile } from './util.js';
 import { isTailscaleIp } from './phone-access.js';
 import { homeIps, isHomeIp, sameNet, SCUT_MBPS } from './share-card.js';
 import { cleanCheck, checkRefusal, checkDown, CHECK_FIRST_WORD_MAX_MS } from './bob-net-check.js'; // 1.5.185
+import { readConfigFile, writeConfigFile } from './config.js';
 
 export const PROTOCOL = 1;
 // About how many tokens a request is (4 characters a token is close enough to decide whether it fits a brain's room).
@@ -118,9 +119,9 @@ export function cleanSharePatch(cfg, b) {
 }
 
 export function saveShare(cfg, share) {
-  const raw = readJsonFile(cfg.configFile);
+  const raw = readConfigFile(cfg);
   raw.share = share;
-  fs.writeFileSync(cfg.configFile, JSON.stringify(raw, null, 2));
+  writeConfigFile(cfg, raw);
   cfg.share = share;
 }
 

@@ -8,7 +8,7 @@ export const GROUPS = [
   ['Brains', ['adv-brains', 'adv-speed', 'adv-engines']],
   ['Connections', ['adv-bobnet', 'adv-online', 'adv-apps']],
   ['What Bob may do', ['adv-hands', 'ev-howtos', 'adv-adventure', 'adv-games']],
-  ['This replicant matrix', ['ev-pc', 'ev-projects', 'ev-home', 'ev-save', 'adv-housekeeping', 'adv-remove']]
+  ['This replicant matrix', ['ev-pc', 'ev-projects', 'ev-home', 'ev-secrets', 'ev-save', 'adv-housekeeping', 'adv-remove']]
 ];
 
 // Simple: the cards. `about` says what's inside, in a few plain words.
@@ -20,7 +20,7 @@ export const CARDS = [
   { id: 'online', icon: '☁', name: 'Online and other apps', about: 'Cloud helpers, Telegram, Discord, rented brains, ComfyUI.', topics: ['adv-online', 'adv-apps'] },
   { id: 'may', icon: '✋', name: 'What Bob may do', about: 'Files, programs, apps and the tools he made.', topics: ['adv-hands', 'ev-howtos'] },
   { id: 'fun', icon: '🎲', name: 'Fun', about: 'Adventure and games.', topics: ['adv-adventure', 'adv-games'] },
-  { id: 'pc', icon: '💻', name: 'This replicant matrix', about: 'Updates, folders, tidying up and removing Bob.', topics: ['ev-pc', 'ev-projects', 'ev-home', 'ev-save', 'adv-housekeeping', 'adv-remove'] }
+  { id: 'pc', icon: '💻', name: 'This replicant matrix', about: 'Updates, folders, locked secrets, tidying up and removing Bob.', topics: ['ev-pc', 'ev-projects', 'ev-home', 'ev-secrets', 'ev-save', 'adv-housekeeping', 'adv-remove'] }
 ];
 
 export const VIEW_KEY = 'bob-settings-view';

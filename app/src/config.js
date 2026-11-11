@@ -14,6 +14,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { exeName, onPath } from './platform.js';
 import { cleanRentals } from './rental.js'; // 1.5.127 rented brains
+import { openBox, useBox, lockOn, mapSecrets, plainCount, writeSecretJson, openCopy, useKeysFile, memoryKeeper, IN_TEST, ensureBox } from './secret-box.js';
 
 // Where Ollama keeps its models on this PC: OLLAMA_MODELS if it's set, else Bob's own models folder if Ollama's files
 // are there (how the installer sets Ollama up), else Ollama's usual folder in the user's home (~/.ollama/models).
@@ -53,6 +54,7 @@ export function loadConfig() {
   // A fresh copy of the source has no config.json (it's never published): start from the example.
   if (!process.env.BOB_CONFIG && !fs.existsSync(file)) fs.copyFileSync(path.join(appDir, 'config.example.json'), file);
   const cfg = readJsonFile(file);
+  const asRead = structuredClone(cfg); // config.json as it is on disk, for locking any plain secrets in it (below)
   cfg.configFile = file;
   if (process.env.BOB_AGENT_DIR) cfg.agentDir = process.env.BOB_AGENT_DIR;
   if (process.env.BOB_OLLAMA_URL) cfg.ollamaUrl = process.env.BOB_OLLAMA_URL;
@@ -129,8 +131,32 @@ export function loadConfig() {
   if (cfg.callMe) cfg.userName = cfg.callMe;
   cfg.autostart = cfg.autostart === true; // opt-in: off unless the user turned it on
   applySaveDir(cfg);
+  openSecrets(cfg, asRead);
   return cfg;
 }
+
+// 🔐 Locked secrets (src/secret-box.js, on by default): open Bob's box, read config.json's locked passcodes, tokens and
+// keys into memory, and lock any still plain on disk (from an older Bob) the first time he starts. A box that can't
+// be opened leaves the file as it is. What happened goes in cfg.boxNotes for the logbook.
+function openSecrets(cfg, asRead) {
+  cfg.boxNotes = [];
+  const box = useBox(openBox({ dataDir: cfg.dataDir, keepers: IN_TEST || process.env.BOB_TEST === '1' ? [memoryKeeper('test')] : undefined, log: (m) => cfg.boxNotes.push(m) }));
+  useKeysFile(path.join(cfg.dataDir, 'keys.json'));
+  mapSecrets(cfg, (v) => box.open(v));
+  if (box.stuck) cfg.boxNotes.push(`locked secrets: the box (${box.label}) didn't open, so saved passcodes and keys read as empty until it does or a new box is started`);
+  if (!lockOn(cfg) || !box.ready) return;
+  const plain = plainCount(asRead);
+  if (!plain) return;
+  try {
+    writeSecretJson(cfg, cfg.configFile, asRead, 2);
+    cfg.boxNotes.push(`locked secrets: locked ${plain} plain secret${plain === 1 ? '' : 's'} in config.json with ${box.label}`);
+  } catch (e) { cfg.boxNotes.push(`locked secrets: couldn't lock config.json (${e.code || e.message})`); }
+}
+
+// config.json with its secrets opened, for the Settings savers that change one part of it and write it back.
+export const readConfigFile = (cfg) => openCopy(readJsonFile(cfg.configFile), ensureBox(cfg));
+// ...and written back with every secret locked (unless Locked secrets is switched off).
+export const writeConfigFile = (cfg, raw) => writeSecretJson(cfg, cfg.configFile, raw, 2);
 
 // The configured program if it exists; otherwise the first match in the engine folder, its bin\ or Release\ subfolder.
 // 1.5.169: Brain Engine (Bob's fork of llama.cpp, Settings > Engines) is the default engine for brains. When its
@@ -194,7 +220,7 @@ export const VERSION = (() => {
   } catch { return { release: '0.9', branch: '', build: 0, label: '0.9.0' }; }
 })();
 
-export const SETTING_KEYS = ['smartNotes', 'toolLearning', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'apuHoldbackGB'];
+export const SETTING_KEYS = ['smartNotes', 'toolLearning', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'apuHoldbackGB', 'lockSecrets'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -230,6 +256,7 @@ function clean(patch) {
   if ('mootBeside' in out) out.mootBeside = out.mootBeside === true; // 1.5.51, off unless switched on
   if ('apuHoldbackGB' in out) { const v = Math.round(Number(out.apuHoldbackGB) * 2) / 2; if (Number.isFinite(v) && v >= 0 && v <= 8) out.apuHoldbackGB = v; else delete out.apuHoldbackGB; } // 1.5.181 Memory kept for Windows (built-in graphics), 0 to 8 GB
   if ('netReview' in out) out.netReview = out.netReview === true; // #30, off unless switched on
+  if ('lockSecrets' in out) out.lockSecrets = out.lockSecrets !== false; // 🔐 Locked secrets, ON unless switched off (src/secret-box.js)
   if ('webSearch' in out) out.webSearch = out.webSearch === true;
   if ('naughtyList' in out) out.naughtyList = out.naughtyList === true; // 1.5.132 "Show the naughty list", off unless switched on
   if ('catalogUpdates' in out) out.catalogUpdates = out.catalogUpdates === true; // 1.5.137 "Let Bob fetch his newest brain list", off unless switched on
@@ -482,9 +509,9 @@ export function replaceSettings(cfg, patch) {
 // Let my phone in (src/phone-access.js): phone access lives in config.json only, never in settings.json, so nothing that
 // can write Bob's settings file can open the door. Only the Settings page on this PC calls this (server.js, local only).
 export function saveRemote(cfg, remote) {
-  const raw = readJsonFile(cfg.configFile);
+  const raw = readConfigFile(cfg);
   raw.remote = { ...(raw.remote || {}), ...remote };
-  writeJsonAtomic(cfg.configFile, raw, 2);
+  writeConfigFile(cfg, raw);
   cfg.remote = raw.remote;
 }
 

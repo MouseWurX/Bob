@@ -70,6 +70,8 @@ const SECRET_EXT = new Set(['.jks', '.keystore', '.p12', '.pfx', '.pem', '.key',
 export function isSensitive(cfg, file) {
   const own = [path.join(appDir, 'config.json'), process.env.BOB_CONFIG].filter(Boolean);
   if (own.some((f) => isInside(f, file))) return true;
+  // 🔐 Bob's locked store and the box that opens it (src/secret-box.js): always off-limits, like his config.
+  if (cfg.dataDir && path.resolve(path.dirname(file)) === path.resolve(cfg.dataDir) && /^(keys\.json|secret-box(\..*)?\.json|mcp-servers\.json)$/i.test(path.basename(file))) return true;
   if (!limitOn(cfg, 'secrets')) return false;
   const base = path.basename(file);
   if (SECRET_NAME.test(base) || SECRET_EXT.has(path.extname(base).toLowerCase())) return true;

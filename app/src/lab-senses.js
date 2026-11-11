@@ -14,6 +14,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import { readGguf, readerFacts, isSightTensor } from './lab-gguf.js';
+import { keyValue } from './secret-box.js';
 
 export const SENSES = {
   sight: { label: 'eyes', give: 'Give it eyes', has: 'sees pictures', pack: 'Looking at pictures', try: 'Look at a picture' },
@@ -65,7 +66,7 @@ export const sourceWords = (s) => (s.kind === 'file' ? `your file ${path.basenam
 
 // One GET, with the token only to huggingface.co itself. Redirects (Hugging Face sends big files to its file store)
 // are followed by hand so the token never goes along to the next host.
-export async function getFile(url, { fetchFn = fetch, token = process.env.HF_TOKEN || '', headers = {}, signal } = {}) {
+export async function getFile(url, { fetchFn = fetch, token = keyValue('HF_TOKEN'), headers = {}, signal } = {}) {
   let u = url;
   for (let hop = 0; hop < 5; hop++) {
     const host = new URL(u).hostname;
