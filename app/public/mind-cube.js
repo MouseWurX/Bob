@@ -58,7 +58,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   canvas.insertAdjacentElement('afterend', sign);
   let signNow = '';
   const showSign = (on) => { if (on && !signNow) signNow = pickSign(); if (!on) signNow = ''; sign.textContent = signNow; sign.hidden = !on; };
-  view.set({ glow: 0.4, glass: 0.3 });
+  view.set({ glow: 0.4, glass: 0.3, edges: true }); // edges: a faint outline, so it reads as a cube
   // One colour: a quick switch, remembered. Every expert the same colour, so only what lights up stands out.
   // Load in: how the block builds itself (and comes apart), the person's pick, shared with the big viewer
   let whose = '', gen = 0;

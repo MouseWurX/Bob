@@ -69,6 +69,7 @@ export function createView(canvas, { still = false } = {}) {
 
   // Load in and load out: `reveal` runs 0..1 and a voxel is drawn once it has passed that voxel's place in the order
   // (lab-watch-math.js loadOrder). 1 = the whole block, which is also where it rests.
+  let edges = false; // a faint line along the block's twelve edges
   let reveal = 1, order = null, load = 'vase', seed = 1, sweepRaf = 0, sweepEnd = null;
   const reorder = () => { order = lay ? loadOrder(load, { W: lay.W, D: lay.D, floors: lay.L + lay.baseFloors, seed }) : null; };
   const shown = (floor, i) => reveal >= 1 || (order ? order[floor * lay.W * lay.D + i] < reveal : false);
@@ -91,7 +92,7 @@ export function createView(canvas, { still = false } = {}) {
     });
   }
   function setData(r, s, parts) { rec = r; sp = s; lay = layoutOf(r, parts); dirty = true; picked = null; reorder(); }
-  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'key') key = v !== false; else if (k === 'dials') { dials = v && v.size ? v : null; } else if (k === 'load') { load = loadStyle(v); reorder(); } else if (k === 'reveal') { reveal = Math.max(0, Math.min(1, v)); } else if (k === 'mono') mono = v === true; else if (k === 'heat') heat = v && Array.isArray(v.vals) ? v : null; else if (k === 'monoColour') monoColour = /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v) : ''; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
+  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'key') key = v !== false; else if (k === 'dials') { dials = v && v.size ? v : null; } else if (k === 'load') { load = loadStyle(v); reorder(); } else if (k === 'reveal') { reveal = Math.max(0, Math.min(1, v)); } else if (k === 'mono') mono = v === true; else if (k === 'edges') edges = v === true; else if (k === 'heat') heat = v && Array.isArray(v.vals) ? v : null; else if (k === 'monoColour') monoColour = /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v) : ''; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
   const get = () => ({ yaw, tilt, gap, zoom, glass, glow });
   // the gap between floors that makes the whole block as tall as it is wide: a cube
   const cubeGap = () => (lay ? Math.max(0.2, Math.min(5, Math.max(lay.W, lay.D) / Math.max(1, lay.L + lay.baseFloors))) : 0.9);
@@ -230,6 +231,14 @@ export function createView(canvas, { still = false } = {}) {
     const g = geom, k = css();
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     ctx.drawImage(staticCanvas, 0, 0);
+    if (edges && reveal > 0) { // the block's own edges, very faint, so it reads as a cube (the small cube asks for them)
+      const { W, D } = lay, y0 = 0.5 - Math.min(0.34, gap * 0.45), y1 = (g.floors - 1) * gap + 0.5, xs = [0.1, W - 0.1], zs = [0.1, D - 0.1];
+      const pt = (i) => g.P(xs[i & 1], i & 4 ? y1 : y0, zs[(i >> 1) & 1]);
+      ctx.globalAlpha = 0.16 * Math.min(1, reveal * 1.5); ctx.strokeStyle = k.text; ctx.lineWidth = Math.max(1, canvas.width / Math.max(1, canvas.clientWidth));
+      ctx.beginPath();
+      for (const [a, b] of [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]]) { const p = pt(a), q = pt(b); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); }
+      ctx.stroke(); ctx.globalAlpha = 1;
+    }
     ctx.globalCompositeOperation = 'lighter';
     if (floorsNow && reveal >= 1) { // the whole floor glows by how hard it's working; no single blocks
       const { W, D } = lay;
