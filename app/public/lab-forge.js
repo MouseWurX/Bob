@@ -2,6 +2,7 @@
 // Forge's past runs, and a form that writes a Forge plan. Its own module, like the Playground: the Lab page only
 // places it and hands over its events. Nothing here starts a rental.
 import { esc } from './rich.js';
+import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 import { PATH_GROUPS, BUNDLES, PERSONALITY, TEACH } from './lab-thinking-paths.js'; // 1.5.160
 import { createHomeWays } from './lab-home-ways.js'; // 1.5.164 Mix two brains, Stack layers, Take out the refusal habit: here, free
 import { newSource, sourceRowHtml, sourceOut, sourceEvent } from './lab-source.js'; // 1.5.163 one chooser for where things come from
@@ -21,7 +22,7 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
   const sendForm = () => ({ ...form, brain: { pick: form.brain.pick, source: form.brain.pick === 'source' ? sourceOut(form.brain.source) : null }, lessons: form.lessons.map(sourceOut).filter(Boolean), thinking: { mode: form.thinking.mode, paths: Object.entries(form.thinking.shares).filter(([, v]) => v > 0).map(([name, share]) => ({ name, share })), own: form.thinking.own, ownShare: form.thinking.ownShare, personality: form.thinking.personality } });
   async function recheck() { check = null; saved = ''; if (!fv?.found) return; try { check = await api('/api/lab/forge/plan', { form: sendForm() }); } catch (e) { fmsg = e.message; } }
 
-  const card = (m) => `<li class="forge-card${m.ready ? '' : ' dim'}"><h4 id="forge-m-${m.id}">${esc(m.title)}</h4>
+  const card = (m) => `<li class="forge-card${m.ready ? '' : ' dim'}"><h4 id="forge-m-${m.id}">${nameNow(m.title)}</h4>
     <p class="muted"><span class="forge-where">${esc(WHERE[m.where] || m.where)}</span></p>
     <p>${esc(m.what)}</p>
     <p class="forge-tips-h"><strong>Best practice</strong></p><ul class="forge-tips">${m.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
@@ -149,7 +150,7 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
       ${lessonsHtml()}
       ${thinkingHtml()}
       ${proOnly(`<fieldset><legend>Teaching back</legend>
-        ${[['lora', 'Light (recommended)', 'Teaches small add-ons to every layer and the experts.'], ['full', 'Full', 'Teaches every weight. Small brains only.'], ['frozen', 'Experts left alone', 'Only the rest of the brain is taught.']].map(([v, l, h]) => `<label class="lab-opt"><input type="radio" name="forge-experts" value="${v}" ${form.heal.experts === v ? 'checked' : ''}> <span><strong>${esc(l)}</strong><br><span class="muted">${esc(h)}</span></span></label>`).join('')}
+        ${[['lora', 'Light (recommended)', 'Teaches small add-ons to every layer and the experts.'], ['full', 'Full', 'Teaches every weight. Small brains only.'], ['frozen', 'Experts left alone', 'Only the rest of the brain is taught.']].map(([v, l, h]) => `<label class="lab-opt"><input type="radio" name="forge-experts" value="${v}" ${form.heal.experts === v ? 'checked' : ''}> <span><strong>${nameNow(l)}</strong><br><span class="muted">${esc(h)}</span></span></label>`).join('')}
         ${num('forge-epochs', 'Passes over the lessons', form.heal.epochs, 0.25, 3, 0.25, 'One full pass is the rule. Bob sets each brain\'s time limit a third above the estimate, so a pass is never cut short.')}
       </fieldset>`)}
       <fieldset><legend>Caps</legend>

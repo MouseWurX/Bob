@@ -4,6 +4,7 @@
 // Take out the refusal habit: the safeguards (the kept-refusals check, teaching them back, the naughty list) are on by
 // default; unticking one opens a second confirmation. The card's plain line always stays.
 import { esc } from './rich.js';
+import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 import { createFullSize } from './lab-fullsize.js';
 
 export const HOME_WAYS = ['mix', 'stack', 'refusals'];
@@ -43,11 +44,11 @@ export function createHomeWays({ api, view }) {
 
   function mixHtml() {
     const ways = v().mixWays || [];
-    return `<h4 id="home-mix-h">Mix two brains</h4>
+    return `<h4 id="home-mix-h">${nameNow('Mix two brains')}</h4>
       <p class="muted">One brain from two fine-tunes of the same parent. Both must be the same shape of brain: the same kind, the same layers, the same sizes of weights. The Lab checks that and says so in words.</p>
       ${noBrains()}
       ${pick('mix-a', mix.a, 'The first brain')} ${pick('mix-b', mix.b, 'The second brain')}
-      <fieldset><legend>How to mix</legend>${ways.map((w) => `<label class="lab-opt"><input type="radio" name="home-mixhow" value="${w.id}" ${mix.how === w.id ? 'checked' : ''}> <span><strong>${esc(w.label)}</strong><br><span class="muted">${esc(w.hint)}</span></span></label>`).join('')}</fieldset>
+      <fieldset><legend>How to mix</legend>${ways.map((w) => `<label class="lab-opt"><input type="radio" name="home-mixhow" value="${w.id}" ${mix.how === w.id ? 'checked' : ''}> <span><strong>${nameNow(w.label)}</strong><br><span class="muted">${esc(w.hint)}</span></span></label>`).join('')}</fieldset>
       ${mix.how === 'ties' ? pick('mix-parent', mix.parent, 'The parent both came from') : ''}
       <label class="forge-num" for="home-mix-lean">Lean towards <input id="home-mix-lean" type="range" min="-100" max="100" step="5" value="${mix.lean}" aria-valuetext="${mix.lean === 0 ? 'even' : mix.lean < 0 ? `${-mix.lean}% towards the first` : `${mix.lean}% towards the second`}"></label>
       <span class="muted" id="home-mix-lean-h" role="status">${mix.lean === 0 ? 'Even: half and half.' : mix.lean < 0 ? `${50 - mix.lean / 2}% the first brain, ${50 + mix.lean / 2}% the second.` : `${50 - mix.lean / 2}% the first brain, ${50 + mix.lean / 2}% the second.`}</span>
@@ -58,7 +59,7 @@ export function createHomeWays({ api, view }) {
   function stackHtml() {
     const a = brain(stack.a), b = brain(stack.b), la = a?.facts?.layers || 0, lb = b?.facts?.layers || 0;
     const total = stack.ranges.reduce((s, r) => s + Math.max(0, Number(r.end) - Number(r.start) + 1), 0);
-    return `<h4 id="home-stack-h">Stack layers</h4>
+    return `<h4 id="home-stack-h">${nameNow('Stack layers')}</h4>
       <p class="muted">A taller brain from the layers of one or two matching brains, written end to end and renumbered. <strong>Stacked brains nearly always ramble until they're taught back. This is for seeing what happens, not for using.</strong></p>
       ${noBrains()}
       ${pick('stack-a', stack.a, 'The first brain')} ${pick('stack-b', stack.b, 'The second brain', { allowNone: true, none: '(only the first)' })}
@@ -78,7 +79,7 @@ export function createHomeWays({ api, view }) {
     const box = (k, label, hint) => `<label class="lab-opt"><input type="checkbox" data-home="ref-${k}" ${ref[k] ? 'checked' : ''}> <span><strong>${esc(label)}</strong><br><span class="muted">${esc(hint)}</span></span></label>`;
     const ask = confirm ? `<div class="setup-offer" role="alertdialog" aria-labelledby="home-confirm-h"><strong id="home-confirm-h">${confirm === 'teachBack' ? 'Make it without teaching back the kept refusals?' : confirm === 'check' ? 'Make it without the kept-refusals check?' : 'Take it off the naughty list?'}</strong><span>${confirm === 'naughty' ? 'The brain will show in the normal lists, with its plain line "Made in the Lab with the refusal habit taken out". It\'s still never the default, never starred and never picked quietly.' : confirm === 'check' ? 'You won\'t see whether it still declines the five kinds Bob always keeps. The brain itself is the same either way.' : 'It may answer anything, including the kinds Bob always declines. Keep it to private use on this replicant matrix.'}</span><div class="row"><button type="button" class="get" data-homeconfirm="${confirm}">${confirm === 'naughty' ? 'Take it off' : 'Make it anyway'}</button><button type="button" class="link" data-homekeep>${confirm === 'naughty' ? 'Keep it on' : 'Keep them ticked'}</button></div></div>` : '';
     const lists = `<details><summary>The two prompt lists the direction is found from</summary><p class="muted">Ordinary requests on one side; on the other, mild requests brains often decline by reflex, though nobody is harmed by an answer. Both ship with the Lab, as they are.</p><div class="home-lists"><ul class="tlist">${(v().plainPrompts || []).map((p) => `<li>${esc(p)}</li>`).join('')}</ul><ul class="tlist">${(v().reluctantPrompts || []).map((p) => `<li>${esc(p)}</li>`).join('')}</ul></div></details>`;
-    return `<h4 id="home-refusals-h">Take out the refusal habit</h4>
+    return `<h4 id="home-refusals-h">${nameNow('Take out the refusal habit')}</h4>
       <p class="muted">A brain's habit of declining shows up as one direction in its working numbers. The Lab finds that direction from two short prompt lists and takes it out of the weights. After that the brain stops saying "I can't help with that" by reflex. It doesn't learn anything new; nothing is trained, so it's quick and free. It also takes out the refusals every Bob brain keeps, so the safeguards below are on unless you turn them off.</p>
       <p class="muted">These brains are for experiments kept on this replicant matrix. Made this way, a brain is never the default, never starred, never picked quietly, and never published or uploaded by Bob. Each use is your own pick.</p>
       ${noBrains()}

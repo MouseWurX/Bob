@@ -2,6 +2,7 @@
 // the main brain; the page suggests a draft from the same family that fits next to it, or uses the brain's own
 // guesser. Try it runs Turbo off and on (src/lab-turbo.js); the guess-length slider moves over what was measured.
 import { esc } from './rich.js';
+import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 
 export function createTurboPage({ api }) {
   let v = null, from = '', guesser = '', draft = '', guess = [2, 4, 8, 16], prompt = 'code', plan = null, msg = '', used = '', askUnload = null, pick = {}, loading = false;
@@ -12,7 +13,7 @@ export function createTurboPage({ api }) {
   function pickHtml(b) {
     const own = b.mtp ? `<label class="lab-opt"><input type="radio" name="tbguess" value="own" ${guesser === 'own' ? 'checked' : ''}> <span><strong>Its own guesser</strong> <span class="tag good">built in</span><br><span class="muted">${esc(b.name)} carries a multi-token head, so nothing else needs to load.</span></span></label>` : '';
     const drafts = b.drafts.map((d) => `<label class="lab-opt${d.fits ? '' : ' dim'}"><input type="radio" name="tbguess" value="draft:${esc(d.id)}" ${guesser === 'draft' && draft === d.id ? 'checked' : ''} ${d.fits ? '' : 'disabled'}> <span><strong>${esc(d.name)}</strong> <span class="muted">${d.sizeGB} GB</span><br><span class="muted">${d.fits ? `Both fit on the card (about ${d.needGB} GB).` : `Not enough room next to ${esc(b.name)}: both need about ${d.needGB} GB. Try a smaller draft or a smaller size of ${esc(b.name)} (the quantization ladder shows them).`}</span></span></label>`).join('');
-    return `<fieldset><legend>Who guesses?</legend>${own}${drafts || (b.mtp ? '' : `<p>There's no smaller brain from ${esc(b.name)}'s family here to guess for it. The smallest brain of the same family is the best guesser; get one from Get models.</p>`)}</fieldset>`;
+    return `<fieldset><legend>${nameNow('Who guesses?')}</legend>${own}${drafts || (b.mtp ? '' : `<p>There's no smaller brain from ${esc(b.name)}'s family here to guess for it. The smallest brain of the same family is the best guesser; get one from Get models.</p>`)}</fieldset>`;
   }
 
   function rowsHtml(rec, i) {
@@ -34,7 +35,7 @@ export function createTurboPage({ api }) {
   function html() {
     if (!v) return `<p class="muted" role="status">${loading ? 'Reading your brains…' : ''}</p>${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}`;
     const b = main();
-    return `<h3>Make it faster: Turbo</h3>
+    return `<h3>${nameNow('Make it faster: Turbo')}</h3>
       <p class="muted">A small brain races ahead and guesses the next few words. The big brain checks all the guesses in one go, which is nearly as cheap as making one word, and every right guess is free speed. The answer is exactly what the main brain would have said on its own; only the speed changes.</p>
       <fieldset><legend>The main brain</legend>${v.brains.map((x) => `<label class="lab-opt"><input type="radio" name="tbfrom" value="${esc(x.id)}" ${from === x.id ? 'checked' : ''}> <span><strong>${esc(x.name)}</strong><br><span class="muted">${x.sizeGB} GB${x.mtp ? ', has its own guesser' : x.drafts.some((d) => d.fits) ? `, ${x.drafts.filter((d) => d.fits).length} draft${x.drafts.filter((d) => d.fits).length === 1 ? '' : 's'} fit next to it` : ''}${x.saved?.on ? ' · Turbo is on in Bob' : ''}</span></span></label>`).join('') || '<p>There are no brains here yet.</p>'}</fieldset>
       ${b ? `${pickHtml(b)}
