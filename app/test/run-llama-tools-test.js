@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { findTool, toolDirs, exeFor, runTool, missingWords, isDiffusion } from '../src/llama-tools.js';
 import { partsOf, joinedName, joinArgs, splitArgs, needsSplitForUpload, joinParts } from '../src/lab-split.js';
 import { benchArgs, readBench, benchLine, benchBrain } from '../src/lab-bench.js';
-import { CardLender, CardBorrower, wantsSpread, lendCardOn, lendCardRoute, RPC_PORT, INNER_PORT, admit, isHomeIp, pickHome, homeIps, openGate } from '../src/share-card.js';
+import { CardLender, CardBorrower, wantsSpread, lendCardOn, lendCardRoute, RPC_PORT, INNER_PORT, admit, isHomeIp, pickHome, homeIps, openGate, udpRelay, scutOn, scutMbps, scutEnv, SCUT_MBPS } from '../src/share-card.js';
 import { cleanSharePatch, shareView, Lenders } from '../src/share-brains.js';
 import { cleanPhonePatch, phoneView } from '../src/phone-access.js';
 import { diffusionArgs, readFrames } from '../src/lab-diffusion.js';
@@ -44,6 +44,13 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   for (const t of ['llama-bench', 'llama-gguf-split', 'ggml-rpc-server', 'llama-diffusion-cli']) ok((wf.match(new RegExp(t, 'g')) || []).length >= 4, `Brain Engine build: builds and packs ${t} (Windows and Linux)`);
   ok((wf.match(/-DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON/g) || []).length === 2, 'Brain Engine build: RPC and the examples (the diffusion runner) on, both systems');
   ok((wf.match(/set\(BUILD_NUMBER \$\{tag#b\}\)/g) || []).length === 2, 'Brain Engine build: --version says the tag\'s build number, not "build 1" from the one-commit clone, both systems');
+  ok((wf.match(/out=brain-engine-\$BEV-/g) || []).length === 2 && (wf.match(/publish\.sh "\$BEV" "\$TAG"/g) || []).length === 2 && /bob\.brainEngineVersion/.test(wf), 'Brain Engine build: files and release take its own version number (brain-engine-v<N>), built on the tested llama.cpp tag');
+  const pub = read(path.join(here, '..', 'engine', 'publish.sh'));
+  ok(/ver="\$1"; tag="\$2"; file="\$3"/.test(pub) && /rel="brain-engine-\$ver"/.test(pub) && /Brain Engine \$\{ver#v\} \(built on llama\.cpp \$tag/.test(pub), 'publish.sh names the release by Brain Engine\'s own version');
+  const pkg = JSON.parse(read(path.join(here, '..', 'package.json')));
+  ok(Number.isInteger(pkg.bob.brainEngineVersion) && pkg.bob.brainEngineVersion >= 3, 'package.json carries Brain Engine\'s own version number');
+  const cel = read(path.join(here, '..', 'public', 'cellar.js'));
+  ok(/brain-engine-v\(\\d\+\)\$/.test(cel) && /built on llama\.cpp \$\{e\.basedOn\}/.test(cel), 'Settings, Engines says "version N, built on llama.cpp bNNNN", not the file tag');
   const readme = read(path.join(here, '..', 'engine', 'README.md'));
   ok(/ggml-rpc-server/.test(readme) && /llama-diffusion-cli/.test(readme) && /Tailscale/.test(readme), 'Brain Engine README: lists the new tools and how the card server is kept to Tailscale');
 }
@@ -147,7 +154,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(wantsSpread({ share: { spread: 'big' } }, { sizeGB: 20, cardGB: 16, ramGB: 32 }) && !wantsSpread({ share: { spread: 'big' } }, { sizeGB: 9, cardGB: 16, ramGB: 32 }), 'spread: "bigger than my card" means more than the card');
 
   const spawned = [];
-  const spawnFn = (exe, args) => { const c = new EventEmitter(); c.stdout = new EventEmitter(); c.stderr = new EventEmitter(); c.exitCode = null; c.kill = () => { c.exitCode = 0; c.emit('exit', 0); }; spawned.push({ exe, args, c }); setTimeout(() => c.stderr.emit('data', 'Starting RPC server v3.0.0\n  endpoint : x\n'), 2); return c; };
+  const spawnFn = (exe, args, opts = {}) => { const c = new EventEmitter(); c.stdout = new EventEmitter(); c.stderr = new EventEmitter(); c.exitCode = null; c.kill = () => { c.exitCode = 0; c.emit('exit', 0); }; spawned.push({ exe, args, c, env: opts.env || {} }); setTimeout(() => c.stderr.emit('data', 'Starting RPC server v3.0.0\n  endpoint : x\n'), 2); return c; };
   let gamingNow = false;
   const gates = [];
   const gate = async (o) => { const g = { ...o, open: true, close() { g.open = false; } }; gates.push(g); return g; };
@@ -186,6 +193,35 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     ok(await talk(g.port) === '', 'card gate: anyone else is turned away at the door');
     g.close(); echo.close();
   }
+  // SCUT: Bob's fast link (Brain Engine patch 0005), off unless switched on, on both Bobs.
+  ok(!scutOn(cfg) && !Object.keys(scutEnv(cfg)).length && !('GGML_RPC_SCUT' in (spawned[0].env || {})), 'SCUT: off unless switched on, so the engines are started as before');
+  ok(gates.every((g) => g.udp === false), 'SCUT: off, the gate opens no UDP side');
+  {
+    const on = { ...cfg, share: { ...cfg.share, scut: true } };
+    ok(scutMbps(on) === 100 && scutMbps({ share: { scutMbps: 300 } }) === 300 && scutMbps({ share: { scutMbps: 9999 } }) === 100 && SCUT_MBPS.join() === '50,100,300', 'SCUT: the speed cap is 50, 100 or 300 Mbit/s, 100 unless picked');
+    const e = scutEnv(on, { lend: true });
+    ok(e.GGML_RPC_SCUT === '1' && e.GGML_RPC_SCUT_MBPS === '100' && e.GGML_RPC_SCUT_PUBLIC_PORT === String(RPC_PORT) && !('GGML_RPC_SCUT_PUBLIC_PORT' in scutEnv(on)), 'SCUT: the lent card names the gate\'s port in its offer; the borrowing engine only switches it on');
+    const sp = [], gs = [];
+    const l2 = new CardLender(on, { spawnFn: (x, a, o) => { const c = spawnFn(x, a, o); sp.push(o); return c; }, tool: () => ({ found: true, path: '/be/ggml-rpc-server' }), ips: () => ['100.101.1.2'], home: () => myHome, gate: async (o) => { gs.push(o); return { ...o, udp: true, close() {} }; }, env: { PATH: '/bin' } });
+    const r2 = await l2.open({ localAddr: '100.101.1.2', remoteAddr: '100.102.0.7' });
+    ok(r2.ok && sp[0].env.GGML_RPC_SCUT === '1' && sp[0].env.PATH === '/bin' && gs[0].udp === true, 'SCUT: on, the card server gets it and the gate passes UDP too');
+    l2.close();
+  }
+  {
+    // The real UDP half of the gate, on loopback: the asking Bob's datagrams reach the card server and its answers come back; anyone else's don't.
+    const dgram = await import('node:dgram');
+    const card = dgram.createSocket('udp4'); card.on('message', (m, r) => card.send(Buffer.concat([Buffer.from('re:'), m]), r.port, r.address));
+    await new Promise((ok2) => card.bind(0, '127.0.0.1', ok2));
+    const ask = (port) => new Promise((ok2) => { const c = dgram.createSocket('udp4'); let got = ''; c.on('message', (m) => { got = String(m); c.close(); ok2(got); }); c.send('hi', port, '127.0.0.1'); setTimeout(() => { try { c.close(); } catch {} ok2(got); }, 600); });
+    let relay = await udpRelay({ host: '127.0.0.1', port: 0, allow: '127.0.0.1', inner: card.address().port });
+    ok(await ask(relay.port) === 're:hi', 'SCUT gate: the Bob that asked reaches the card server over UDP, and hears back');
+    relay.close();
+    const seen = [];
+    relay = await udpRelay({ host: '127.0.0.1', port: 0, allow: '100.102.0.7', inner: card.address().port, log: (a, b) => seen.push(b) });
+    ok(await ask(relay.port) === '' && seen.some((x) => /turned away UDP/.test(x)), 'SCUT gate: anyone else\'s UDP is turned away');
+    relay.close(); card.close();
+  }
+  ok(/if \(helpers\.length\) env = \{ \.\.\.env, \.\.\.scutEnv\(this\.cfg\) \}/.test(read(path.join(here, '..', 'src', 'llamacpp.js'))), 'SCUT: the engine that spreads a brain switches it on only with helpers');
   ok(isHomeIp(H(192, 168, 0, 1)) && isHomeIp(H(10, 1, 2, 3)) && isHomeIp(H(172, 20, 0, 1)) && !isHomeIp(H(172, 32, 0, 1)) && !isHomeIp('100.101.1.2') && !isHomeIp('8.8.8.8'), 'card: what counts as a home-network address');
   ok(pickHome(myHome, [H(192, 168, 5, 9)]) === null && pickHome(myHome, [H(192, 168, 4, 9)]).peer === H(192, 168, 4, 9), 'card: same home network means same subnet');
   ok(homeIps({ eth: [{ family: 'IPv4', address: H(192, 168, 4, 185), netmask: '255.255.255.0', internal: false }], ts: [{ family: 'IPv4', address: '100.101.1.2', netmask: '255.192.0.0' }], lo: [{ family: 'IPv4', address: '127.0.0.1', internal: true }] }).map((x) => x.address).join() === H(192, 168, 4, 185), 'card: this machine\'s home-network addresses leave out Tailscale and loopback');

@@ -58,5 +58,21 @@ check('Help names the new groups and the default', /Moondust/.test(HELP.find((h)
   const sp = fs.readFileSync(new URL('../public/style-page.js', import.meta.url), 'utf8');
   check('Style page: "Follow Windows" only on Windows, "Follow the system" elsewhere', /settings\.platform === 'win32' \? 'Follow Windows' : 'Follow the system'/.test(sp));
 }
+// 1.5.202: the cube's One colour starts as the theme's accent (on Moondust #03666d, RGB 3, 102, 109, the owner's pick)
+// until the person picks their own; the thinking cube turns slowly by default; the lines have a brightness slider
+{
+  const wv = read('public/watch-view.js'), mc = read('public/mind-cube.js'), wj = read('public/watch.js'), th = read('public/themes.js');
+  check('Moondust gives the One colour #03666d', findTheme('moondust')?.cube === '#03666d' && findTheme('slate')?.cube === '#03666d');
+  check('every theme sets --cube: its own cube colour, else its accent', /setProperty\('--cube', HEX\.test\(t\.cube \|\| ''\) \? t\.cube : c\.accent\)/.test(th));
+  check('only Moondust overrides its accent for the cube', PRESETS.filter((x) => x.cube).map((x) => x.id).join() === 'moondust');
+  const ix = read('public/index.html'), wh = read('public/watch.html');
+  check('the thinking cube turns by default, at the slowest speed, and never while animations are off', /const SPIN = 0\.05;/.test(mc) && /let turning = true; try \{ turning = localStorage\.getItem\('bob-cube-spin'\) !== '0'/.test(mc) && /still\(\) \|\| \(!rec && !shell\)/.test(mc) && /min="0\.05"/.test(wh.match(/id="watchSpinSpeed"[^>]*/)?.[0] || ''));
+  check('a brightness slider for the lines, in the thinking pane and the big viewer, shared', /id="mindCubeLines"/.test(ix) && /id="watchLines"/.test(wh) && /bob-fnri-lines/.test(mc) && /bob-fnri-lines/.test(wj));
+  check('the lines are drawn plainly in the theme\'s text colour, much brighter than before', /ctx\.globalAlpha = 0\.7 \* lines; ctx\.strokeStyle = k\.text/.test(wv) && !/Math\.min\(0\.08, 0\.045/.test(wv));
+  check('the person\'s own pick always wins over the theme', /monoColour \|\| themeColour\(\) \|\| lookOf\(0\)\[0\]/.test(wv));
+  check('the colour boxes show the theme colour until a pick is saved', /if \(!picked && colour\) colour\.value = view\.oneColour\(\)/.test(mc) && /\$\('watchMonoColour'\)\.value = view\.oneColour\(\)/.test(wj));
+  check('the second block only gets a colour the person picked', /monoColour: monoPicked \? \$\('watchMonoColour'\)\.value : ''/.test(wj));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

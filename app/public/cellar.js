@@ -331,6 +331,8 @@ export function createCellar({ popOut = null } = {}) {
   }
 
   // Bob's own voice: which Kokoro voice and how fast. Piper voices and Chatterbox are picked in Model roles.
+  // The Kokoro voice Bob recommends (Onyx), from the server so there's one place to change it.
+  const kokoroDefault = () => settings.kokoroDefault || 'am_onyx';
   const voiceOf = (engine, voice) => voices.find((v) => v.engine === engine && v.voice === voice);
   const hear = (engine, voice, label) => sampleButton(engine, voice, label, sampleHint(voiceOf(engine, voice)));
   // Every Kokoro voice with a play button, so they can be compared without picking each one.
@@ -340,7 +342,7 @@ export function createCellar({ popOut = null } = {}) {
     const cur = settings.tts?.voice;
     return `<details class="voices"><summary>Hear all ${list.length} Kokoro voices</summary>
       ${list[0].installed ? '' : list[0].filesHere ? engineStep(engineById('kokoro'), 'Voices downloaded') + '<p class="muted">Until then only the voices that come with Bob can play.</p>' : '<p class="muted">Kokoro isn\'t set up yet: it needs the voice pack (below) and the Kokoro engine (Settings, Engines). Until then only the voices that come with Bob can play.</p>'}
-      <ul class="voice-grid">${list.map((v) => `<li class="sample-row"><span>${esc(v.label)}${canUse && v.voice === cur ? ' <span class="tag good">Bob\'s voice</span>' : ''}</span>${v.have === 'none' ? `<span class="muted">${v.filesHere ? 'after the Kokoro engine' : 'needs Kokoro'}</span>` : hear('kokoro', v.voice, 'Play')}${canUse && v.voice !== cur ? `<button type="button" class="link" data-usevoice="${esc(v.voice)}">Use</button>` : ''}</li>`).join('')}</ul></details>`;
+      <ul class="voice-grid">${list.map((v) => `<li class="sample-row"><span>${esc(v.label)}${v.voice === kokoroDefault() ? ' <span class="tag rec">★ Recommended</span>' : ''}${canUse && v.voice === cur ? ' <span class="tag good">Bob\'s voice</span>' : ''}</span>${v.have === 'none' ? `<span class="muted">${v.filesHere ? 'after the Kokoro engine' : 'needs Kokoro'}</span>` : hear('kokoro', v.voice, 'Play')}${canUse && v.voice !== cur ? `<button type="button" class="link" data-usevoice="${esc(v.voice)}">Use</button>` : ''}</li>`).join('')}</ul></details>`;
   }
 
   // 1.5.33: one picker for Bob's voice everywhere it's chosen: the engine, then (nested under it) the voice inside that
@@ -360,10 +362,10 @@ export function createCellar({ popOut = null } = {}) {
   function nestedVoiceHtml() {
     const t = settings.tts || {}, cur = speechNow();
     if (/kokoro/.test(cur)) {
-      const v = t.voice || 'am_michael';
+      const v = t.voice || kokoroDefault();
       // Not set up yet: a button right here to set it up (the voice samples that come with Bob still play).
       const ready = voices.find((x) => x.engine === 'kokoro')?.installed;
-      return `<span class="voice-nest"><label class="pick-inline"><span>Voice</span><select data-tts="voice" aria-label="Kokoro voice">${(settings.kokoroVoices || []).map(([id, label]) => `<option value="${esc(id)}" ${id === v ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>${hear('kokoro', v, 'Play sample')}${ready ? '' : '<button type="button" class="mini" data-gocat="speech" data-gomodel="kokoro-v1">Set up Kokoro</button>'}</span>`;
+      return `<span class="voice-nest"><label class="pick-inline"><span>Voice</span><select data-tts="voice" aria-label="Kokoro voice">${(settings.kokoroVoices || []).map(([id, label]) => `<option value="${esc(id)}" ${id === v ? 'selected' : ''}>${esc(label)}${id === kokoroDefault() ? ' · recommended' : ''}</option>`).join('')}</select></label>${hear('kokoro', v, 'Play sample')}${ready ? '' : '<button type="button" class="mini" data-gocat="speech" data-gomodel="kokoro-v1">Set up Kokoro</button>'}</span>`;
     }
     if (cur === 'windows') {
       const list = winVoices(), w = t.windowsVoice || '';
@@ -383,7 +385,7 @@ export function createCellar({ popOut = null } = {}) {
     const t = settings.tts || {};
     const head = `<div class="voice-head"><strong>Bob's voice</strong>${voicePickHtml()}</div>`;
     if (t.provider === 'kokoro') return `${head}<div class="row">
-      <label class="pick"><strong>Speed: <b data-speedlabel>${(t.speed || 1).toFixed(1)}×</b></strong><input type="range" min="0.6" max="1.6" step="0.1" data-tts="speed" value="${t.speed || 1}"></label></div>${engineStep(engineById('kokoro'), voiceOf('kokoro', t.voice || 'am_michael')?.filesHere ? 'Voices downloaded' : 'Kokoro is picked as Bob\'s voice')}${kokoroGrid(true)}`;
+      <label class="pick"><strong>Speed: <b data-speedlabel>${(t.speed || 1).toFixed(1)}×</b></strong><input type="range" min="0.6" max="1.6" step="0.1" data-tts="speed" value="${t.speed || 1}"></label></div>${engineStep(engineById('kokoro'), voiceOf('kokoro', t.voice || kokoroDefault())?.filesHere ? 'Voices downloaded' : 'Kokoro is picked as Bob\'s voice')}${kokoroGrid(true)}`;
     if (t.provider === 'chatterbox') return `${head}<div><p class="muted">To copy a voice, put a clear 10 to 20 second recording named bob.wav in ${esc(t.voicesFolder)}. Only use a voice you have the right to use (your own, or one you have permission for).</p>${voiceOf('chatterbox', 'bob')?.installed ? `<p class="sample-row">${hear('chatterbox', 'bob')}</p>` : engineStep(engineById('chatterbox'), 'Chatterbox is picked as Bob\'s voice')}</div>`;
     return head;
   }
@@ -395,9 +397,9 @@ export function createCellar({ popOut = null } = {}) {
     const llms = roles?.options?.llm || [];
     const n = (k, label, hint) => `<label class="pick"><span>${label}</span><input type="text" inputmode="numeric" data-speed="${k}" value="${esc(sp[k] ?? '')}" placeholder="${hint}" style="width:7em"></label>`;
     const models = [...new Set([...llms.map((o) => o.value), ...Object.keys(sp.modelArgs || {})])];
-    return `<div><strong>Speed (Bob's own engine)</strong>${settings.engine === 'llamacpp' ? '' : ' <span class="tag">only used with Bob\'s own engine</span>'} ${tip('Changes apply the next time a brain loads. Leave a box empty for llama.cpp\'s default.', 'Speed')}
+    return `<div><strong>Speed (Bob's own engine)</strong>${settings.engine === 'llamacpp' ? '' : ' <span class="tag">only used with Bob\'s own engine</span>'} ${tip('Changes apply the next time a brain loads. Leave a box empty for the engine\'s default.', 'Speed')}
       <div class="row">${n('threads', 'Threads', 'auto')}${n('batch', 'Batch', '2048')}${n('ubatch', 'Micro-batch', '512')}</div>
-      <label class="switch"><input type="checkbox" data-fit ${sp.fit !== false ? 'checked' : ''}><span><strong>Fit to free graphics memory</strong> <span class="tag good">recommended</span> ${tip('Fits each brain around whatever else is using the graphics card right now. Faster and steadier than a fixed split. Needs llama.cpp b12000 or newer.', 'Fit to free graphics memory')}</span></label>
+      <label class="switch"><input type="checkbox" data-fit ${sp.fit !== false ? 'checked' : ''}><span><strong>Fit to free graphics memory</strong> <span class="tag good">recommended</span> ${tip('Fits each brain around whatever else is using the graphics card right now. Faster and steadier than a fixed split.', 'Fit to free graphics memory')}</span></label>
       <label class="switch"><input type="checkbox" data-draft="enabled" ${d.enabled && d.model ? 'checked' : ''}><span><strong>Speculative decoding</strong> <span class="tag warn">experimental</span> ${tip('A small "draft" brain guesses ahead and the big one checks: often 1.5 to 2 times faster, same answers. The draft must be from the same family (for example a small Qwen for a big Qwen). Not every pair works: check that Bob got faster. The exact command is in inn\\bob\\llama-server-args.txt.', 'Speculative decoding')}</span></label>
       <div class="row"><label class="pick"><span>Draft brain</span><select data-draft="model"><option value="">Pick one</option>${llms.map((o) => `<option value="${esc(o.value)}" ${o.value === d.model ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}${d.model && !llms.some((o) => o.value === d.model) ? `<option selected value="${esc(d.model)}">${esc(d.model)}</option>` : ''}</select></label>
         <label class="pick"><span>Guess up to (words ahead)</span><input type="text" inputmode="numeric" data-draft="max" value="${esc(d.max ?? 16)}" style="width:5em" aria-label="Guess up to this many words ahead"></label>
@@ -405,7 +407,7 @@ export function createCellar({ popOut = null } = {}) {
       ${turboRowsHtml(sp, llms)}
       ${sp.trainer ? `<p class="muted">The Lab's Trainer pack is here (for Teach it). <button type="button" class="link" data-trainerremove aria-expanded="false">Remove the Trainer pack</button></p>` : ''}
       <div class="row"><label class="pick"><span>Extra settings for one brain</span><select data-margsmodel>${models.map((m) => `<option ${m === speedModel ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>
-        <label class="pick" style="flex:1"><span>llama.cpp flags (for example <code>--n-cpu-moe 8</code>)</span><input type="text" data-margs value="${esc((sp.modelArgs?.[speedModel || models[0]] || []).join(' '))}" placeholder="none"></label></div>
+        <label class="pick" style="flex:1"><span>Engine flags (for example <code>--n-cpu-moe 8</code>)</span><input type="text" data-margs value="${esc((sp.modelArgs?.[speedModel || models[0]] || []).join(' '))}" placeholder="none"></label></div>
     </div>`;
   }
 
@@ -571,7 +573,7 @@ export function createCellar({ popOut = null } = {}) {
   let settingsQuery = '';
   function voiceNow() {
     const t = settings.tts || {};
-    if (t.provider === 'kokoro') { const k = (settings.kokoroVoices || []).find(([id]) => id === (t.voice || 'am_michael')); return { name: `${k ? k[1] : t.voice} (Kokoro)`, play: hear('kokoro', t.voice || 'am_michael', 'Play sample') }; }
+    if (t.provider === 'kokoro') { const k = (settings.kokoroVoices || []).find(([id]) => id === (t.voice || kokoroDefault())); return { name: `${k ? k[1] : t.voice} (Kokoro)`, play: hear('kokoro', t.voice || kokoroDefault(), 'Play sample') }; }
     if (t.provider === 'chatterbox') return { name: 'Chatterbox (copies voices\\bob.wav)', play: hear('chatterbox', 'bob', 'Play sample') };
     if (t.provider === 'piper') { const v = voices.find((x) => x.engine === 'piper' && x.installed); return { name: v ? `${v.label} (Piper)` : 'Piper', play: v ? hear('piper', v.voice, 'Play sample') : '' }; }
     return { name: 'The voice built into Windows', play: sampleButton('windows', 'default', 'Play sample', 'The voice built into Windows.') };
@@ -628,7 +630,7 @@ export function createCellar({ popOut = null } = {}) {
     // Closed panels show what's set now, not just what's inside.
     const onoff = (v) => (v ? 'on' : 'off');
     const t = settings.tts || {};
-    const voiceSum = t.provider === 'kokoro' ? `Kokoro, ${((settings.kokoroVoices || []).find(([id]) => id === (t.voice || 'am_michael'))?.[1] || t.voice).replace(/ \(.*$/, '')}` : t.provider === 'piper' ? 'Piper' : t.provider === 'chatterbox' ? 'Chatterbox' : 'Windows';
+    const voiceSum = t.provider === 'kokoro' ? `Kokoro, ${((settings.kokoroVoices || []).find(([id]) => id === (t.voice || kokoroDefault()))?.[1] || t.voice).replace(/ \(.*$/, '')}` : t.provider === 'piper' ? 'Piper' : t.provider === 'chatterbox' ? 'Chatterbox' : 'Windows';
     const bobSum = `Voice: ${voiceSum} · Look: ${lookName} · Theme: ${theme?.name || 'Moondust'}`;
     const howSum = howSumNow();
     // 1.5.117: the version and Check for updates sit on the closed panel's line, so no scrolling to check.
@@ -656,6 +658,8 @@ export function createCellar({ popOut = null } = {}) {
       ${`<div class="srow"><button type="button" data-opennotes>Open my notes</button> <span class="muted">One plain text file, one note per line. Notes Bob takes away are kept in the archive folder.</span></div>`}
       ${sswitch('docTools', settings.docTools === true, 'Read and search my documents', 'Off unless you turn it on. Bob reads Word, Excel, PowerPoint, OpenDocument, PDF, e-book and Rich Text files with nothing extra installed, and can search inside them for words in the folders he may read (Documents, Desktop and Downloads). Nothing leaves this replicant matrix and nothing is kept on disk. Old .doc, .xls and .ppt files need the Office documents Hand.')}
       ${sswitch('docView', settings.docView === true, 'Show documents in the side panel', 'Off unless you turn it on. Word, Excel, PowerPoint, OpenDocument, e-book and Rich Text files open in the panel beside the chat as their words, tables and slides, and a PDF as its pages where this window can draw them. Nothing extra to install, nothing kept on disk. Off: these files get an Open in its app button.')}
+      ${sswitch('toolLearning', settings.toolLearning === true, 'Let Bob learn from his tools', 'Off unless you turn it on. When a tool fails and then works, Bob keeps one line on what fixed it and reads it next time. He also counts what works and what fails, and offers to fix a tool that keeps failing. It all stays on this replicant matrix.')}
+      ${settings.toolLearning ? `<div class="srow">${(settings.toolScores || []).length ? `<span class="muted">${settings.toolScores.slice(0, 6).map((t) => `${esc(t.name.replace(/^use_my_tool:/, ''))} ${t.wins}✓ ${t.misses}✗${t.often ? ' (keeps failing)' : ''}`).join(' · ')}</span> <button type="button" data-forgettools>Forget what he learned</button>` : '<span class="muted">Nothing learned yet.</span>'}</div>` : ''}
       ${sswitch('sandboxCode', settings.sandboxCode === true, 'Let Bob work things out in a sandbox', 'Off unless you turn it on. For sums, dates, money and counting, Bob runs a few lines of code in a locked box and answers from the result instead of guessing. The box is empty and thrown away after each run: it can\'t see your files or start programs, code that goes online is refused, and it stops after 20 seconds.')}
       ${sswitch('resumeJobs', settings.resumeJobs, 'Pick up where Bob left off after a restart', 'If Bob closes in the middle of a job (an update, a restart or a crash), he carries on when he opens again. Steps that finished aren\'t done again, and the step that got cut off is done again from the start. Unfinished downloads carry on too. If the cut-off step was typing into an app, moving or deleting files, editing a file or running a command, the job waits in Tasks so you can check first.')}
       <h4 class="ssub">Starting and closing</h4>
@@ -732,7 +736,7 @@ export function createCellar({ popOut = null } = {}) {
     const now = ch.brainsNow || only;
     const line = only === 'brainengine'
       ? (now === 'brainengine' ? 'Bob\'s brains run on Brain Engine, the only engine that fits him now.' : 'Brain Engine is the only engine that fits Bob\'s brains now. It isn\'t here yet: Get it under Thinking, below. Until then the llama.cpp already here stands in.')
-      : `Bob's brains run on his own llama.cpp here. ${be?.note || 'There\'s no Brain Engine build for this replicant matrix yet.'} He moves to Brain Engine when there is one.`;
+      : `Bob's brains run on plain llama.cpp here. ${be?.note || 'There\'s no Brain Engine build for this replicant matrix yet.'} He moves to Brain Engine when there is one.`;
     return `<p data-engine-now><strong>Engine for brains:</strong> ${esc(ENGINE_NAMES[only])} <span class="muted">${esc(line)}</span></p>`;
   }
   function labEngineHtml() {
@@ -741,25 +745,30 @@ export function createCellar({ popOut = null } = {}) {
         <select data-labengine aria-label="Engine for the Lab">${[['', 'Same as Bob\'s brains'], ['brainengine', 'Brain Engine'], ['llamacpp', 'llama.cpp']].map(([v, l]) => `<option value="${v}" ${v === lab ? 'selected' : ''}>${l}</option>`).join('')}</select>
         <span class="muted">Which engine the Computer Science Lab makes, tests and runs brains with, from its next job. If a tool is only in one engine's download (the direction finder, say), the Lab still finds it there. The Lab page shows the same choice at the top.</span></label>`;
   }
+  // Brain Engine is Bob's own engine: its builds are named by the llama.cpp they're built on, said that way.
+  const verName = (e, v) => (e.id !== 'brainengine' ? v : String(v || '').replace(/^brain-engine-v(\d+)$/, (m, n) => `version ${n}${e.basedOn ? `, built on llama.cpp ${e.basedOn}` : ''}`).replace(/^brain-engine-(b\d+)$/, 'built on llama.cpp $1'));
+  // 1.5.203: the Go back button names the build plainly: "the previous engine (llama.cpp b12282)" or "(version 3)".
+  const prevName = (e, v) => String(v || '').replace(/^brain-engine-v(\d+)$/, 'version $1').replace(/^brain-engine-(b\d+)$/, 'llama.cpp $1');
   function engineCard(e) {
     const ch = data.engineChoices || {};
     const inUse = [ch.brainsNow === e.id ? 'runs the brains' : '', e.id !== 'llamacpp' && e.id !== 'brainengine' ? '' : (ch.lab === e.id || (!ch.lab && ch.brainsNow === e.id)) ? 'the Lab uses it' : ''].filter(Boolean);
     const tags = inUse.length ? ` <span class="tag good">${esc(inUse.join(', '))}</span>` : '';
     let act;
     // 1.5.185 An update that came with files missing was kept aside, not put in: say so, and offer only those files.
-    const held = e.incomplete && !live.has('engine:' + e.id + '@missing') ? `<div class="engine-held" role="status"><p><strong>The ${esc(e.name)} update${e.incomplete.version ? ` (${esc(e.incomplete.version)})` : ''} is missing ${esc(e.incomplete.what)}</strong>, so Bob didn't put it in. The ${esc(e.name)} you have is still the one in use.</p><button class="get" data-engine="${esc(e.id)}" data-missing="1">Download the missing files</button></div>` : '';
+    const held = e.incomplete && !live.has('engine:' + e.id + '@missing') ? `<div class="engine-held" role="status"><p><strong>The ${esc(e.name)} update${e.incomplete.version ? ` (${esc(verName(e, e.incomplete.version))})` : ''} is missing ${esc(e.incomplete.what)}</strong>, so Bob didn't put it in. The ${esc(e.name)} you have is still the one in use.</p><button class="get" data-engine="${esc(e.id)}" data-missing="1">Download the missing files</button></div>` : '';
     if (live.has('engine:' + e.id + '@missing')) act = progress(live.get('engine:' + e.id + '@missing'));
     else if (live.has('engine:' + e.id)) act = progress(live.get('engine:' + e.id));
     else if (e.installed) {
-      const ver = e.found ? esc(e.found[0].toUpperCase() + e.found.slice(1)) : `Here${e.version ? `: ${esc(e.version)}` : ''}${e.tested && e.version === e.tested ? ', the tested build' : ''}`;
+      const ver = e.found ? esc(e.found[0].toUpperCase() + e.found.slice(1)) : `Here${e.version ? `: ${esc(verName(e, e.version))}` : ''}${e.tested && e.version === e.tested ? ', the tested build' : ''}`;
       act = `<div class="have">✓ ${ver}</div>`
         + (e.pinned || e.available === false || e.found ? '' : `<button data-checkengine="${esc(e.id)}">Check for updates</button>`)
-        + (e.previous && e.canSwap ? `<button data-engineback="${esc(e.id)}">Go back to ${esc(e.previous)}</button>` : '')
-        + (e.tested && e.version && e.version !== e.tested && !e.found && !e.previous ? `<button data-engine="${esc(e.id)}">Go back to the tested build (${esc(e.tested)})</button>` : '')
+        + (e.previous && e.canSwap ? (e.blocked ? `<button data-engineback="${esc(e.id)}">Try again</button>` : `<button data-engineback="${esc(e.id)}">Go back to the previous engine (${esc(prevName(e, e.previous))})</button>`) : '')
+        + (e.tested && e.version && e.version !== e.tested && !e.found && !e.previous ? `<button data-engine="${esc(e.id)}">Go back to the tested build (${esc(verName(e, e.tested))})</button>` : '')
         + (e.own && e.canSwap ? `<button class="link" data-engineremove="${esc(e.id)}">Remove</button>` : '');
     } else if (e.available === false) act = `<div class="muted">${esc(e.note || 'Not for this replicant matrix yet.')}</div>`;
     else act = `<button class="get" data-engine="${esc(e.id)}">Get ${esc(e.name)}</button>`;
-    return `<article class="model" id="m-engine:${esc(e.id)}"><header><strong>${esc(e.name)}</strong>${tags}</header><p>${esc(e.what)}</p>${held}<div class="act">${act}</div><div class="confirm" hidden></div></article>`;
+    const blockedNote = e.blocked ? `<div class="engine-held" role="status"><p><strong>${e.blocked.windows ? 'Windows blocked the new build' : 'The new build wouldn\'t start'}${e.blocked.version ? ` (${esc(prevName(e, e.blocked.version))})` : ''}</strong>, so Bob went back to the one he had before and uses that.${e.blocked.windows ? ' Windows\' Smart App Control stops programs that aren\'t signed yet.' : ''} <strong>Try again</strong> puts the new one back in. Help has more under Smart App Control.</p></div>` : '';
+    return `<article class="model" id="m-engine:${esc(e.id)}"><header><strong>${esc(e.name)}</strong>${tags}</header><p>${esc(e.what)}</p>${held}${blockedNote}<div class="act">${act}</div><div class="confirm" hidden></div></article>`;
   }
   function enginesHtml() {
     const all = data.engines || [];
@@ -774,7 +783,7 @@ export function createCellar({ popOut = null } = {}) {
       ${labEngineHtml()}
       <div><strong>Engine downloads</strong> ${tip('The programs that run the models, from their official GitHub pages (Brain Engine from Bob\'s own), matched to your graphics card. Update swaps a new build in and keeps the one before, so Go back puts it straight back without downloading. Bob checks a download\'s checksum, so a rebuilt engine with the same name still shows as an update.', 'Engine downloads')}
         <div class="row"><button type="button" data-checkall>Check all for updates</button></div>
-        ${sswitch('engineAuto', settings.engineUpdates?.auto !== false, 'Keep engines up to date', 'On unless you turn it off. When Bob starts and about once a day, he checks his llama.cpp and updates it by himself, only while no brain is loaded on it. Brain Engine updates with Bob himself, whatever this says. Go back puts the old build back. The other engines wait until you press Check for updates.')}
+        ${sswitch('engineAuto', settings.engineUpdates?.auto !== false, 'Keep engines up to date', 'On unless you turn it off. When Bob starts and about once a day, he checks the plain llama.cpp that stands in for Brain Engine and updates it by himself, only while no brain is loaded on it. Brain Engine updates with Bob himself, whatever this says. Go back puts the old build back. The other engines wait until you press Check for updates.')}
         ${groups}</div>
       ${qwenHtml()}
       <details class="more"><summary>More</summary>${speedHtml()}</details>`;
@@ -1336,6 +1345,7 @@ export function createCellar({ popOut = null } = {}) {
       if ('savebrowse' in b.dataset) { const r = await api('/api/pick-folder', { purpose: 'save' }); const box = dlg.querySelector('#save-path'); if (r.folder && box) { box.value = r.folder; saveDirState(); await saveDirTo(r.folder); } else if (r.error) { const eb = dlg.querySelector('.save-error'); if (eb) { eb.textContent = r.error; eb.hidden = false; } } return; }
       if ('savedir' in b.dataset) { const v = dlg.querySelector('#save-path')?.value.trim(); if (v) await saveDirTo(v); return; }
       if ('saveown' in b.dataset) { await saveDirTo(''); return; }
+      if ('forgettools' in b.dataset) { try { const r = await api('/api/settings', { toolLearningForget: true }); settings.toolScores = r.toolScores || []; draw(); } catch (err) { flash(b, err.message); } return; }
       if ('opennotes' in b.dataset) { try { await api('/api/open', { path: settings?.quickNotesFile || '' }); } catch (err) { flash(b, err.message); } return; }
       if ('openmemory' in b.dataset) { try { await api('/api/open', { path: settings?.memoryBanks?.file || '' }); } catch (err) { flash(b, err.message); } return; }
       if ('saveopen' in b.dataset) { try { await api('/api/open', { path: settings?.saveDir?.folder || '' }); } catch (err) { const eb = dlg.querySelector('.save-error'); if (eb) { eb.textContent = err.message; eb.hidden = false; } } return; }
@@ -1763,6 +1773,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.holdback !== undefined) { const r = await api('/api/settings', { apuHoldbackGB: Number(el.value) }); settings.apuHoldbackGB = r.apuHoldbackGB; el.value = r.apuHoldbackGB; const lab = dlg.querySelector('[data-holdbacklabel]'); if (lab) lab.textContent = `${r.apuHoldbackGB} GB`; flash(el.closest('.srow'), 'Saved.'); return; }
       if (el.dataset.set === 'quickNotes') { const r = await api('/api/settings', { quickNotes: el.checked }); settings.quickNotes = r.quickNotes; el.checked = r.quickNotes; draw(); flash(dlg.querySelector('[data-set="quickNotes"]') || dlg, r.quickNotes ? 'On. Say "note:" and Bob writes it down.' : 'Off. Your notes file stays where it is.'); return; }
       if (el.dataset.set === 'smartNotes') { const r = await api('/api/settings', { smartNotes: el.checked }); settings.smartNotes = r.smartNotes; el.checked = r.smartNotes; flash(el, r.smartNotes ? 'On. Bob notes what\'s worth keeping and says 📝 Noted.' : 'Off. Bob only notes what you ask him to.'); return; }
+      if (el.dataset.set === 'toolLearning') { const r = await api('/api/settings', { toolLearning: el.checked }); settings.toolLearning = r.toolLearning; el.checked = r.toolLearning; draw(); flash(dlg.querySelector('[data-set="toolLearning"]') || dlg, r.toolLearning ? 'On. Bob learns from what works and what fails.' : 'Off. Bob keeps what he learned but stops using it.'); return; }
       if (el.dataset.set === 'docTools') { const r = await api('/api/settings', { docTools: el.checked }); settings.docTools = r.docTools; el.checked = r.docTools; flash(el, r.docTools ? 'On. Bob can read and search your documents.' : 'Off. Bob reads plain text files only.'); return; }
       if (el.dataset.set === 'docView') { const r = await api('/api/settings', { docView: el.checked }); settings.docView = r.docView; el.checked = r.docView; flash(el, r.docView ? 'On. Documents open in the side panel.' : 'Off. Documents open in their own app.'); return; }
       if (el.dataset.set === 'sandboxCode') { const r = await api('/api/settings', { sandboxCode: el.checked }); settings.sandboxCode = r.sandboxCode; el.checked = r.sandboxCode; flash(el, r.sandboxWhy || (r.sandboxCode ? (r.sandboxNet ? 'On. Bob works sums out in the sandbox, with the internet switched off.' : 'On. Bob works sums out in the sandbox. This Bob can\'t switch the internet off by itself, so code is checked for it instead.') : 'Off. Bob works sums out in his head.')); return; }
@@ -1818,7 +1829,7 @@ export function createCellar({ popOut = null } = {}) {
       else if ('pack' in el.dataset) { hw.suggestedPack = el.value; wPicks = null; draw(); }
       else if (el.dataset.want) { // wants.js: "Do you want me to:" on the Welcome, the same switches as in Settings
         const k = el.dataset.want, said = el.closest('label')?.querySelector('.want-said');
-        try { const r = wantSaved(settings, k, await api('/api/settings', wantPatch(k, el.checked))); el.checked = r.on; if (said) said.textContent = r.say; }
+        try { const r = wantSaved(settings, k, await api('/api/settings', wantPatch(k, el.checked))); el.checked = r.on; if (said) said.textContent = r.say; if (k === 'smartNotes') { const q = el.closest('.wants')?.querySelector('[data-want="quickNotes"]'); if (q) q.checked = settings.quickNotes === true; } }
         catch (err) { el.checked = false; if (said) said.textContent = err.message; }
       }
       else if ('wpick' in el.dataset) { const { rows } = welcomeRows(); wPicks = readyToggle(rows, wPicks, el.dataset.wpick, el.checked); draw(); }
@@ -1863,7 +1874,7 @@ export function createCellar({ popOut = null } = {}) {
   function askEngine(where) {
     const box = document.createElement('div');
     box.className = 'confirm';
-    box.innerHTML = `<p>That model is a loose file Ollama can't run. It needs Bob's own engine (llama.cpp). Switch engines? Everything else keeps working; it takes effect when Bob restarts.</p><div class="row"><button class="get" data-switchengine="llamacpp">Switch to Bob's own engine</button><button data-no>Keep Ollama</button></div>`;
+    box.innerHTML = `<p>That model is a loose file Ollama can't run. It needs Bob's own engine, Brain Engine. Switch engines? Everything else keeps working; it takes effect when Bob restarts.</p><div class="row"><button class="get" data-switchengine="llamacpp">Switch to Bob's own engine</button><button data-no>Keep Ollama</button></div>`;
     where.appendChild(box);
   }
 

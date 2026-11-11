@@ -41,11 +41,11 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.202-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.202-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.202-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.202-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.202-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.202-linux-x86_64.AppImage) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.202-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.202-linux-arm64.AppImage) |
-| **Android phone** | [`Bob-1.5.202-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.202-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.203-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.203-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.203-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.203-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.203-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.203-linux-x86_64.AppImage) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.203-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.203-linux-arm64.AppImage) |
+| **Android phone** | [`Bob-1.5.203-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.203-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
@@ -58,11 +58,11 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 | ⚙ **Settings you can find** | Eight plain cards, or an Advanced list of every section with a search box, in its own window. |
 | ✅ **"Do you want me to:"** | First-time setup lists what Bob can do that starts switched off. Tick what you want. |
 | 🛰 **SCUT and SUDDAR** (experimental) | SCUT is Bob's own fast link for one brain running over two Bobs' cards on Wi-Fi: a lost bit is sent again in milliseconds. SUDDAR scans your other Bobs and times each answer. |
-| 🎙 **Onyx, Bob's voice** | Deep, calm and a little dry. It's the recommended voice, and the one Bob uses until you pick another. |
-| ⚡ **Brain Engine 3** | Bob's own engine on a newer llama.cpp base. It carries SCUT and updates itself with Bob. |
-| 🧪 **A simpler Lab** | Its own window, tabs sorted by task, one place to start, and **My Lab** for everything you've made. Plus folding experts, switching them off without cutting the file, and colouring a brain by its weights. |
+| 🎙 **Onyx, Bob's voice** | Deep, calm and a little dry. Bob's recommended Kokoro voice, marked ★ in the voice list. |
+| ⚡ **Brain Engine 3** | Bob's own engine now has its own version numbers. It carries SCUT, and it updates with Bob. |
+| 🧪 **More in the Lab** | Fold experts instead of dropping them, switch experts off without cutting the file, and colour a brain by its weights. |
 
-**Coming next:** 3D models and OpenSCAD parts · an iPhone Home Screen app · Try again and Edit in the chat · save, share and import chats · search documents by meaning · presets and saved prompts · maths shown as formulas · a passcode lock · back up Bob and move him to another computer · French and Spanish · other apps and Claude using Bob · tool packs · .deb and Flatpak.
+**Coming next:** a simpler Lab in its own window · 3D models and OpenSCAD parts · an iPhone Home Screen app · Try again and Edit in the chat · save, share and import chats · search documents by meaning · presets and saved prompts · maths shown as formulas · a passcode lock · back up Bob and move him to another computer · French and Spanish · other apps and Claude using Bob · tool packs · .deb and Flatpak.
 
 The [changelog](CHANGELOG.md) has every release.
 
@@ -101,33 +101,31 @@ The [changelog](CHANGELOG.md) has every release.
 
 ## The Computer Science Lab
 
-Most AI apps are for talking to a model or for building one. Bob does both. **🧪 Lab** in the menu opens in its own window, so you can change a brain while Bob keeps chatting.
+Most AI apps are for talking to a model or for building one. Bob does both. **🧪 Lab** in the menu is where you change a brain, on your own computer, while Bob keeps chatting.
 
-![The Computer Science Lab in its own window: seven tabs, Keep it simple or Professional, and Make a brain asking What do you want to do? with Cut experts picked and the 28Bob Riker brain ticked](app/docs/screens/lab.png)
+![The Computer Science Lab on Make a brain: Keep it simple or Professional, then goals to start from such as Everything smaller, Coding helper and Everyday chat](app/docs/screens/lab.png)
 
 | Tab | What you do there |
 |---|---|
-| **Make a brain** | Starts with one question: **What do you want to do?** Make it smaller, cut experts, take out sight or hearing, just test, or everything step by step. Each job shows only the steps it needs, and **Use in Bob** only appears after the test. |
-| **Teach** | **Teach it** teaches a brain a lesson set, here if it fits your card. **Best answers** has a bigger brain judge a smaller one's answers, then teaches it its best. |
-| **Test** | **Challenges** are short tests out of 100, with a scoreboard by size. **Smaller**, **Longer** and **Faster** show how small, how long and how fast a brain can go. |
-| **Look inside** | **Peek inside** shows which experts your work uses. **fNRI** scans a brain while it answers and plays it back in 3D. |
+| **Make a brain** | Pick a brain and a goal. Bob cuts the experts your work doesn't use, takes out sight or hearing you don't need, makes the Q4 to Q8 files and tests the result. **Use in Bob** only appears after the test. |
+| **Forge** | Every way to make a brain, side by side: smaller, cut, folded, mixed, or taught back on a rented card. |
 | **Learn** | Hands-on cards on how a brain works, run on the brain Bob has loaded. |
-| **Forge** | Every way to make a brain, side by side: smaller, cut, mixed, stacked, or taught back on a rented card. |
-| **My Lab** | Everything the Lab has made and measured: brains, scores, size ladders, lesson sets, recipes and recent jobs. |
+| **Challenges** | Short tests out of 100 and a scoreboard by size. |
+| **Playground** | How small, how long, how fast. Teach it, pick its best answers, peek inside, and scan it with fNRI. |
 
 - **Keep it simple or Professional.** Simple fills in Bob's defaults. Professional shows every control and its proper name. **Show the recipe** prints every command the Lab runs.
-- **Brain Engine** is Bob's own engine, built on llama.cpp. It switches a brain's experts on and off while it's loaded, so the Lab can try a cut before writing a file.
-- **fNRI** (functional Neural Response Imager) shows a brain as a 3D block: one floor per layer, every expert coloured by the skill that used it most.
+- **Brain Engine** is Bob's own engine. It switches a brain's experts on and off while it's loaded, so the Lab can try a cut before writing a file.
+- **fNRI** (functional Neural Response Imager) scans a brain while it answers and shows it as a 3D block: one floor per layer, every expert coloured by the skill that used it most.
 
 <details>
-<summary><b>More pictures:</b> Teach, Test, Forge and My Lab</summary>
+<summary><b>More pictures:</b> Forge, Learn, Challenges and Playground</summary>
 
 | | |
 |---|---|
-| ![The Teach tab on Teach it: what each size of graphics card can teach, and the Trainer pack it needs](app/docs/screens/lab-teach.png) | ![The Test tab on Challenges: pick a brain, then short tests with how long each takes](app/docs/screens/lab-test.png) |
-| **Teach** | **Test** |
-| ![The Forge tab: Ways to make a brain, each card with where it runs and best practice folded under it](app/docs/screens/lab-forge.png) | ![The My Lab tab: brains you made, scores, size ladders, lesson sets, saved recipes and recent jobs, each with a link to its page](app/docs/screens/lab-my-lab.png) |
-| **Forge** | **My Lab** |
+| ![The Forge tab: Ways to make a brain, each card with where it runs and best practice](app/docs/screens/lab-forge.png) | ![The Learn tab: What is a token? splits a sentence into its tokens with their numbers](app/docs/screens/lab-learn.png) |
+| **Forge** | **Learn** |
+| ![The Challenges tab: pick a brain, then short tests with how long each takes](app/docs/screens/lab-challenges.png) | ![The Playground tab on Faster: a small brain guesses ahead and the big brain checks](app/docs/screens/lab-playground.png) |
+| **Challenges** | **Playground** |
 
 </details>
 
@@ -171,7 +169,7 @@ Same tests, same rented card, each Bob served from his public Q4 file. Riker mat
 | [What they cost](app/docs/COSTS.md) | Every rental, itemized, failures included. |
 | [Brain races](app/docs/BRAIN-RACES.md) · [test results](app/docs/test-results/README.md) | How other brains score on the same tests and the same PC. |
 
-Bob downloads the right file for your card himself.
+Bob picks Riker's file for your card himself: Q4, or Q3 on an 8 GB card.
 
 ## Bob-Net: Bobs working together
 

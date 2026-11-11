@@ -109,7 +109,7 @@ export function browserTools(brain, { driver = null, track = () => () => {} } = 
   const t = {};
 
   t.browser_open = {
-    schema: fn('browser_open', 'Open a web address in Bob\'s own browser window (separate from {{USER}}\'s browser). {{USER}} approves it first. Then call browser_read to see what is on the page. Only http and https pages; never Bob\'s own pages.', { url: str('The full address, like https://example.com/page.') }),
+    schema: fn('browser_open', 'Open a web address in Bob\'s own browser window (not {{USER}}\'s). {{USER}} approves first. Then read it with browser_read. http and https only.', { url: str('The full address, like https://example.com/page.') }),
     approvalGroup: (a) => `browser-open:${hostOf(a.url)}`,
     async check(args, ctx) {
       off();
@@ -135,11 +135,11 @@ export function browserTools(brain, { driver = null, track = () => () => {} } = 
   };
 
   t.browser_read = {
-    schema: fn('browser_read', 'Read the page open in Bob\'s browser: its text, and a numbered list of what can be used (links, buttons, fields, boxes). A long page comes in parts. Use the numbers with browser_act. No approval needed: the page is already in Bob\'s window.', {
-      part: { type: 'integer', description: 'Which part of a long page (1 = first).' },
-      find: str('Jump to the part containing this text.'),
-      picture: { type: 'boolean', description: 'Also take a picture of the page and show it in the chat.' },
-      ask: str('A question about how the page looks, answered by Bob\'s eyes brain from a picture (for pictures, charts, canvases and layout the text can\'t tell you).')
+    schema: fn('browser_read', 'Read the page in Bob\'s browser: its text and a numbered list of links, buttons and fields for browser_act. A long page comes in parts. No OK needed.', {
+      part: { type: 'integer', description: 'Which part (1 = first).' },
+      find: str('Jump to the part with this text.'),
+      picture: { type: 'boolean', description: 'Also show a picture of the page in the chat.' },
+      ask: str('A question about how the page looks, answered from a picture (charts, pictures, layout).')
     }, []),
     async run(args, ctx) {
       off();
@@ -162,14 +162,14 @@ export function browserTools(brain, { driver = null, track = () => () => {} } = 
   };
 
   t.browser_act = {
-    schema: fn('browser_act', 'Do one thing on the page in Bob\'s browser: click a numbered thing, type into a field, press a key (Enter, Tab, Esc, arrows), scroll, go back, or pick an option in a select box. Get the numbers from browser_read first. {{USER}} approves each action. Give expect so Bob\'s eyes check the result.', {
+    schema: fn('browser_act', 'Do one thing on the page in Bob\'s browser: click, type, press a key, scroll, go back or pick an option, by its number from browser_read. {{USER}} approves each action. Give expect so Bob\'s eyes check the result.', {
       action: str('What to do', { enum: ['click', 'type', 'keys', 'scroll', 'back', 'select'] }),
-      n: { type: 'integer', description: 'The number of the thing, from browser_read (click, type, select; optional for keys).' },
+      n: { type: 'integer', description: 'Its number from browser_read.' },
       text: str('type: the text. It replaces what is in the field.'),
-      keys: str('keys: one key: Enter, Tab, Esc, Up, Down, Left, Right, PageUp, PageDown, Home, End, Backspace, Delete, Space.'),
+      keys: str('keys: one key, like Enter, Tab, Esc, Down or PageDown.'),
       option: str('select: the option to pick, by its words.'),
       direction: str('scroll: down (default) or up.', { enum: ['down', 'up'] }),
-      expect: str('What should be true of the page afterwards, in one plain sentence (like "the search results show"). Bob checks it with his eyes brain and tells you yes or no.')
+      expect: str('What should be true afterwards, in one sentence. Bob\'s eyes check it.')
     }, ['action']),
     approvalGroup: () => `browser-act:${hostOf(state.url)}`,
     async check(args, ctx) {

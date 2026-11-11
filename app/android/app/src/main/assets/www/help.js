@@ -97,7 +97,7 @@ globalThis.BobHelp = {
     },
     {
       id: 'theme', title: 'Theme',
-      html: `<p>Settings, <strong>Theme</strong>: Bob's Inn (dark, the starting position), Light, or Follow the phone (matches Android's dark mode).</p>`
+      html: `<p>Settings, <strong>Theme</strong>: Moondust (dark, the starting position: quiet grey with a teal accent, the same one Bob starts with on your other replicant matrices), Bob's Inn (dark, warm tavern browns), Light, or Follow the phone (matches Android's dark mode). A theme you pick stays picked.</p>`
     },
     {
       id: 'resume', title: 'Pick up where Bob left off',

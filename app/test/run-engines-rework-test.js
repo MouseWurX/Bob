@@ -56,8 +56,8 @@ const put = (dir, files, mark) => { fs.mkdirSync(dir, { recursive: true }); for 
 
 // Check for updates against a fake GitHub: a rebuilt Brain Engine (same tag, new file) shows as "rebuilt".
 {
-  const be = path.join(A, 'brain-engine'), tag = `brain-engine-${TESTED_LLAMA}`;
-  const name = process.platform === 'win32' ? `brain-engine-${TESTED_LLAMA}-win-x64.zip` : `brain-engine-${TESTED_LLAMA}-linux-x64.tar.gz`;
+  const be = path.join(A, 'brain-engine'), tag = ENGINES.find((x) => x.id === 'brainengine').tag; // its own number (1.5.203: brain-engine-v3)
+  const name = process.platform === 'win32' ? `${tag}-win-x64.zip` : `${tag}-linux-x64.tar.gz`;
   const asset = { id: 7, name, size: 5, updated_at: '2026-11-09T00:00:00Z', digest: 'sha256:new' };
   put(be, [exe('llama-server')], { id: 'brainengine', version: tag, print: 'sha256:old', at: '2026-11-01T00:00:00Z' });
   const fakeFetch = async (u) => ({ ok: true, json: async () => (u.includes(`/tags/${tag}`) ? { tag_name: tag, prerelease: true, assets: [asset] } : []) });

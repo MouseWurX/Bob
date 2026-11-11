@@ -19,8 +19,11 @@
     get(k, d) { try { const v = localStorage.getItem(`bob.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { localStorage.setItem(`bob.${k}`, JSON.stringify(v)); } catch { /* full or blocked: carry on in memory */ } }
   };
-  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, userName: '', theme: 'inn', effort: 'low', resume: false };
+  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, userName: '', theme: 'moondust', effort: 'low', resume: false };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
+  // Bob's Inn was the starting theme until Moondust took over on every system. Settings are saved whole, so a phone
+  // that never chose a theme has 'inn' saved too: it moves to Moondust once. A theme picked in Settings stays.
+  if (settings.theme === 'inn' && !settings.themePicked) settings.theme = 'moondust';
   const saveSettings = () => store.set('settings', settings);
   let bobs = store.get('bobs', []); // [{ name, address, base }]
   let chats = store.get('chats', []); // [{ id, title, at, msgs: [{ who, text, by, media }] }]
@@ -942,7 +945,7 @@
   document.querySelectorAll('input[name="mode"]').forEach((r) => r.addEventListener('change', () => { settings.mode = r.value; saveSettings(); drawWho(); }));
   $('user-name').addEventListener('change', (e) => { settings.userName = e.target.value.replace(/[<>{}"`\\]/g, '').trim().slice(0, 40); saveSettings(); });
   $('read-aloud').addEventListener('change', (e) => { settings.readAloud = e.target.checked; saveSettings(); });
-  $('theme').addEventListener('change', (e) => { settings.theme = e.target.value; saveSettings(); applyTheme(); });
+  $('theme').addEventListener('change', (e) => { settings.theme = e.target.value; settings.themePicked = true; saveSettings(); applyTheme(); });
   $('resume').addEventListener('change', (e) => { settings.resume = e.target.checked; saveSettings(); });
   const applyTheme = () => document.documentElement.setAttribute('data-theme', settings.theme);
 

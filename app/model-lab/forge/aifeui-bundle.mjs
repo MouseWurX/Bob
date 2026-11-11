@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// FNRI on a rented card: pack everything the card needs into one folder, ready to upload as the card's /workspace/in.
+// fNRI on a rented card: pack everything the card needs into one folder, ready to upload as the card's /workspace/in.
 //   node model-lab/forge/aifeui-bundle.mjs --brain hf:<repo>:<file.gguf> --name "Brain name" --out <folder>
 //        [--skills coding,maths] [--per 4] [--think] [--keep-experts <file.json>]
 // The folder gets: aifeui-plan.json (the questions, the pinned llama.cpp tag), pod/ (aifeui.sh and aifeui_scan.py),
