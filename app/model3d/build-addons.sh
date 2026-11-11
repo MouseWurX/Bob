@@ -15,7 +15,12 @@ mkdir -p "$work" "$out"
 j() { node -e "const s=require(process.argv[1]);const v=process.argv[2].split('.').reduce((o,k)=>o&&o[k],s);process.stdout.write(v==null?'':String(v))" "$src" "$1"; }
 
 case "$osname" in
-  win-x64) py="$work/venv/Scripts/python.exe" ;;
+  win-x64)
+    py="$work/venv/Scripts/python.exe"
+    # Git Bash has its own /usr/bin/link (a Unix tool) ahead of Visual Studio's link.exe: put MSVC's folder first.
+    cl_dir="$(dirname "$(command -v cl)")"
+    export PATH="$cl_dir:$PATH"
+    command -v link ;;
   *) py="$work/venv/bin/python" ;;
 esac
 
