@@ -483,7 +483,7 @@ export class Brain {
     this.tools.pick_session = pickSessionTool(this); // 1.5.43: Bob changes session himself (auto-session.js)
     this.tools.edit_my_message = editOwnTool(this); // Let Bob fix his own messages (edit-own.js), only with its setting on
     this.tools.take_note = notesTool(this); // Let Bob take quick notes (notes.js), only with its setting on
-    this.tools.find_in_documents = findDocsTool(cfg); // Read and search my documents (my-docs.js), only with its setting on
+    this.tools.find_in_documents = findDocsTool(cfg, { keeper: () => this.housekeeper }); // Read and search my documents (my-docs.js), only with its setting on
     this.tools.run_in_sandbox = sandboxTool(this); // Let Bob work things out in a sandbox (sandbox-code.js), only with its setting on
     // 1.5.91: the Set it up card for something missing or switched off. Listed only while something is (offTools).
     this.tools.offer_setup = {

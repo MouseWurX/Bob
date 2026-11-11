@@ -18,6 +18,7 @@ import { Topics, normName, topicText } from './topics.js';
 import { Embedder } from './embedder.js';
 import { recallOn, parseMemory, MemoryVectors } from './recall.js';
 import { gaming } from './sessions.js';
+import { DocIndex, docMeaningOn, queryVector } from './doc-index.js';
 import { catalogFileFor } from './llamacpp.js';
 import {
   chatIds, chatInfo, chatFiles, wholeChat, readChat, readOlder, writeChat, writeOlder, readSummary, writeSummary,
@@ -77,7 +78,7 @@ export class Housekeeper {
 
   stop() { clearInterval(this.timer); this.pause(); }
   // The user is back: anything the housekeeper is asking the brain stops at once.
-  pause() { this.controller?.abort(); }
+  pause() { this.controller?.abort(); this.docStop?.abort(); }
 
   get settings() { return hkSettings(this.cfg); }
   state() {
@@ -485,8 +486,31 @@ export class Housekeeper {
     return this.memVecs.fill(parseMemory(text), (texts) => this.embed(texts), model);
   }
 
+  // Search my documents by meaning (doc-index.js): new and changed documents get their meaning numbers while Bob
+  // is idle, a batch at a time, never in the Gaming session. Works with housekeeping off.
+  docRoots() { return (this.cfg.readRoots || []).filter((r) => r !== this.cfg.innDir); }
+  async fillDocIndex() {
+    if (!docMeaningOn(this.cfg) || gaming(this.cfg)) return null;
+    this.docIndex ||= new DocIndex(this.cfg);
+    const model = this.cfg.housekeeping?.embedModel || 'nomic-embed-text';
+    const r = await this.docIndex.fill(this.docRoots(), (texts) => this.embed(texts), model, { signal: (this.docStop = new AbortController()).signal });
+    if (r.added || r.dropped) this.log(`document index: ${r.added} read, ${r.dropped} gone${r.left ? `, ${r.left} still to do` : ''}`);
+    return r;
+  }
+  // The files that mean what q means: [{ file, at, len, score }], or null when it can't (no model, Gaming session, empty).
+  async docsByMeaning(q, roots) {
+    if (!docMeaningOn(this.cfg) || gaming(this.cfg)) return null;
+    this.docIndex ||= new DocIndex(this.cfg);
+    if (!this.docIndex.view().pieces) return null;
+    const v = await queryVector(this, q, this.docIndex.load().model);
+    return v ? this.docIndex.search(v, { roots: roots || this.docRoots() }) : null;
+  }
+  docIndexView() { return docMeaningOn(this.cfg) ? (this.docIndex ||= new DocIndex(this.cfg)).view() : null; }
+  forgetDocIndex() { this.docStop?.abort(); (this.docIndex ||= new DocIndex(this.cfg)).clear(); }
+
   async tick({ force = false } = {}) {
     if (recallOn(this.cfg) && (force || this.idle()) && !this.working) { try { await this.fillMemoryVectors(); } catch {} }
+    if (docMeaningOn(this.cfg) && (force || this.idle()) && !this.working) { try { await this.fillDocIndex(); } catch {} }
     const hk = this.settings;
     if (!force && (!hk.enabled || !this.idle())) return { skipped: true };
     if (this.working) return { busy: true };

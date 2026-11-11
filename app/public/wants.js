@@ -15,6 +15,8 @@ export const WANTS = [
     label: 'Notice what\'s worth noting by myself', note: 'Works with quick notes on.' },
   { card: 'how', key: 'docTools', setting: 'Read and search my documents', where: 'How Bob works',
     label: 'Read and search your documents', note: 'Word, Excel, PowerPoint, PDF and more. Nothing leaves this replicant matrix.' },
+  { card: 'how', key: 'docMeaning', setting: 'Search my documents by meaning', where: 'How Bob works',
+    label: 'Find documents by what they mean, not just the words', note: 'Works with reading your documents on. The index stays on this replicant matrix.' },
   { card: 'how', key: 'docView', setting: 'Show documents in the side panel', where: 'How Bob works',
     label: 'Show documents beside the chat', note: 'Word, Excel, PowerPoint and PDF open in the side panel.' },
   { card: 'how', key: 'sandboxCode', setting: 'Let Bob work things out in a sandbox', where: 'How Bob works',
