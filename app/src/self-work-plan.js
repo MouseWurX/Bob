@@ -19,7 +19,7 @@ export const NOTES_MAX = 24000; // characters (~6K tokens); past this the notes 
 export const NOTES_TARGET = 9000;
 export const MAX_TASKS = 12;
 export const TASK_STEPS = 40;
-export const READ_TOOLS = ['list_folder', 'read_file', 'search_files', 'web_search', 'fetch_page'];
+export const READ_TOOLS = ['list_folder', 'code_map', 'read_file', 'search_files', 'web_search', 'fetch_page'];
 export const helpersOn = (cfg) => cfg?.selfWork?.helpers === true;
 
 export const notesDir = (cfg, repo) => path.join(codeCopyRoot(cfg), 'notes', repo.id);

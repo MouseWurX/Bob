@@ -160,3 +160,22 @@ export function wasBlocked(cfg, id, { version = '', print = '' } = {}) {
   if (print && b.print) return b.print === print;
   return Boolean(version) && b.version === version;
 }
+
+// 1.5.204 (the owner, Nov 11: "we need to prepare people for that, it may make it so bob doesnt install or run, so they
+// may need to know"). Once, when Bob starts on a Windows PC with Smart App Control on (or in its trial mode), he says
+// what it can do and what the choice is, in plain words. He says it again only if the state changes. Read-only.
+export const SAC_NOTICE = {
+  on: 'A heads-up: Windows Smart App Control is on here. My files aren\'t code signed yet, so Windows may stop one of my engines, or a future version of me. If it blocks a new engine, I go back to the one before by myself. If it ever stops me altogether, turning Smart App Control off is the fix until I\'m signed. That\'s your choice, and I never change it. Help, "Windows blocked my engine" has the steps and the trade-offs.',
+  evaluation: 'A heads-up: Windows Smart App Control is in its trial mode here, and Windows may turn it on by itself later. My files aren\'t code signed yet, so then it could stop one of my engines. If it blocks a new engine, I go back to the one before by myself. Help, "Windows blocked my engine" explains it.',
+};
+export async function sacNoticeOnce(cfg, { platform = process.platform, reg = runReg, say = () => {} } = {}) {
+  const state = await sacState({ platform, reg });
+  if (!SAC_NOTICE[state] || !cfg?.agentDir) return '';
+  const file = path.join(cfg.agentDir, 'sac-told.json');
+  let told = '';
+  try { told = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, '')).state || ''; } catch {}
+  if (told === state) return '';
+  say(SAC_NOTICE[state]);
+  try { fs.writeFileSync(file, JSON.stringify({ state, at: new Date().toISOString() }, null, 2)); } catch {}
+  return state;
+}

@@ -46,6 +46,7 @@ import { toolsOff, HANDS, handOn, handOffWhy, freeOn, computerWord } from './han
 import { gate as qGate, after as qAfter, maybeAsk as qAsk, noteStrike, copyHeld } from './quarantine.js';
 import { wantsPictureEdit, recentPicture, editHint } from './intent.js';
 import { SAVE_AS, namedType, saveAs } from './save-as.js';
+import { recordCall, learnedLine, loadLearning, toolLearnOn } from './tool-learn.js';
 import { CORE, groupsFor, groupOf, guessGroups, allToolsOn, useToolsTool, fillUseTools, tidySchema, STICKY_TURNS, toolboxPrompt, saysCant } from './toolbox.js';
 import { Gate, Ledger, safeToResume, interruptedNote, withRetry, slimHandoff, carryOnPlan, carryOnLine, finishedSteps, MAX_AUTO_RESUMES, isBareOk, NOTHING_TO_OK, NOTHING_TO_OK_BUSY, queuedLine, plainDoing } from './handoff.js';
 import { expectFrom, verifyOutput, afterTool, afterTurn } from './verify.js';
@@ -487,7 +488,7 @@ export class Brain {
     this.tools.run_in_sandbox = sandboxTool(this); // Let Bob work things out in a sandbox (sandbox-code.js), only with its setting on
     // 1.5.91: the Set it up card for something missing or switched off. Listed only while something is (offTools).
     this.tools.offer_setup = {
-      schema: { type: 'function', function: { name: 'offer_setup', description: 'Something {{USER}} asked for needs a part that isn\'t set up or a setting that is off: show a card with one button that sets it up or switches it on, then the job carries on by itself. For pictures, video, music and sound effects, just call make_image, make_video, make_music or make_sound instead: they show the card themselves.', parameters: { type: 'object', properties: { what: { type: 'string', enum: [...Object.keys(NEEDS), ...SWITCH_KEYS], description: 'pictures, edits, video, music, sfx, voice (read replies aloud), hearing (hear {{USER}} talk), web (Web search), workshop (ComfyUI workflows), or hand:<id> for a Hand that is off (hand:files, hand:run, hand:schedules, hand:apps, hand:browser, hand:office, hand:security, hand:maker, hand:mcp)' } }, required: ['what'] } } },
+      schema: { type: 'function', function: { name: 'offer_setup', description: 'When {{USER}}\'s request needs a missing part or a setting that is off: show a card with one button that sets it up, then the job carries on. For pictures, video, music and sound, just call make_image, make_video, make_music or make_sound: they show the card.', parameters: { type: 'object', properties: { what: { type: 'string', enum: [...Object.keys(NEEDS), ...SWITCH_KEYS], description: 'What to set up. voice = read replies aloud, hearing = hear {{USER}} talk, workshop = ComfyUI, hand:<id> = a Hand that is off.' } }, required: ['what'] } } },
       run: ({ what }, ctx) => this.offerSetup(String(what || ''), ctx),
       summary: ({ what }) => `offer to set up: ${what}`
     };
@@ -514,7 +515,7 @@ export class Brain {
   // ---------- Share brains (1.5.55) ----------
   borrowCase(job, pics) { return { session: currentSession(this.cfg).id, busy: this.turns.size > 1 || this.queue.some((j) => j.state === 'working' && j !== job), job, pics }; }
   borrowLikely() { return wantsBorrow(this.cfg, this.borrowCase(null, [])) && this.lenders.likely(); }
-  lenderStatus() { return this.lenders.bobs().map((b) => { const s = this.lenders.state.get(b.address); return { address: b.address, name: b.name, ok: s ? s.ok : null, why: s?.why || '', brain: s?.brain || '', device: s?.device || '', ctx: s?.ctx || 0, speed: s?.measured?.tokPerSec || s?.speed || 0, jobs: s?.jobs || [], jobsBusy: s?.jobsBusy || '' }; }); }
+  lenderStatus() { return this.lenders.bobs().map((b) => { const s = this.lenders.state.get(b.address); return { address: b.address, name: b.name, ok: s ? s.ok : null, why: s?.why || '', brain: s?.brain || '', device: s?.device || '', ctx: s?.ctx || 0, speed: s?.measured?.tokPerSec || s?.speed || 0, jobs: s?.jobs || [], jobsBusy: s?.jobsBusy || '', ms: s?.ok ? s?.ms || 0 : 0, lendCard: s?.lendCard === true, scut: s?.scut === true }; }); }
 
   // ---------- Keep Bob light (1.5.2) ----------
   // Loads the chat brain ahead of a message: someone started typing, or "Always on" wants it back after a job.
@@ -1202,6 +1203,7 @@ export class Brain {
       if (ctx.savedAs?.length && res && typeof res.text === 'string') res.text += ` Also saved as ${ctx.savedAs.splice(0).join(', ')}, as asked (the original is kept too).`;
     }
     qAfter(this, name, args, res.text, ctx, tool);
+    recordCall(this.cfg, name === 'use_my_tool' && args.name ? `use_my_tool:${args.name}` : name, args, res?.text, ctx); // "Let Bob learn from his tools" (tool-learn.js)
     return res;
   }
 
@@ -1435,7 +1437,12 @@ export class Brain {
   toolSchemas(names) {
     const who = this.cfg.userName || 'the user';
     const off = this.offTools();
-    return names.filter((n) => n !== 'use_tools' && this.usable(n, off)).map((n) => tidySchema(JSON.parse(JSON.stringify(this.tools[n].schema).replaceAll('{{USER}}', who).replaceAll('{{HOME}}', JSON.stringify(os.homedir()).slice(1, -1)))));
+    const learned = toolLearnOn(this.cfg) ? loadLearning(this.cfg) : null; // tool notes and the scorecard (tool-learn.js)
+    return names.filter((n) => n !== 'use_tools' && this.usable(n, off)).map((n) => {
+      const s = tidySchema(JSON.parse(JSON.stringify(this.tools[n].schema).replaceAll('{{USER}}', who).replaceAll('{{HOME}}', JSON.stringify(os.homedir()).slice(1, -1))));
+      if (learned && s.function) s.function.description += learnedLine(this.cfg, n, learned);
+      return s;
+    });
   }
 
   // The front desk's tools for this step: the core, plus the groups added so far this turn (toolbox.js).
@@ -2625,7 +2632,7 @@ export class Brain {
       scout: ['web_search', 'fetch_page'],
       painter: ['make_image', 'make_video', 'save_reference', 'make_music', 'make_sound', 'workshop_list', 'workshop_run'],
       // run_command / run_recipe only when the Run hand is on (toolSchemas leaves them out otherwise); each run is approved.
-      tinker: ['list_folder', 'read_file', 'search_files', 'edit_file', 'write_file', 'web_search', 'fetch_page', 'run_command', 'run_recipe'],
+      tinker: ['list_folder', 'code_map', 'read_file', 'search_files', 'edit_file', 'write_file', 'web_search', 'fetch_page', 'run_command', 'run_recipe'],
       reviewer: ['list_folder', 'read_file', 'search_files']
     }[hat] || [];
     const maxSteps = Number(steps) > 0 ? Math.min(Number(steps), 100) : hat === 'tinker' ? 30 : hat === 'reviewer' ? 15 : MAX_STEPS;

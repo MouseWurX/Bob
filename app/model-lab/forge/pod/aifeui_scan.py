@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""FNRI on a rented card: the checks, the brain, and the scan. Called by aifeui.sh; standard library only.
+"""fNRI on a rented card: the checks, the brain, and the scan. Called by aifeui.sh; standard library only.
 
   preflight  every dependency checked before anything is downloaded or built (exit 1 if any check fails)
   fetch      the brain file: "hf:<repo>:<path>" is downloaded, anything else is a file already here; prints its path

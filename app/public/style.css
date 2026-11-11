@@ -1,20 +1,21 @@
 :root {
-  --bg: #1d1510;
-  --panel: #2b1d14;
-  --card: #3a281b;
-  --line: #5a4030;
-  --text: #f3e7d3;
-  --muted: #c7b296;
-  --accent: #e7a64a;
-  --good: #7fbf7a;
-  --bad: #e07a6a;
-  --you: #34465a;
-  --warn: #e7a64a;
-  --on-accent: #2b1d14;
-  --sprite-bg: #4a3220;
-  --danger-bg: #4a2a1e;
-  --good-bg: #2f4a2c;
-  --backdrop: rgba(10, 6, 4, 0.7);
+  /* Moondust, the theme Bob starts with, so the first moment before themes.js runs isn't a flash of another theme */
+  --bg: #121212;
+  --panel: #1c1c1c;
+  --card: #262626;
+  --line: #2e2e2e;
+  --text: #e4e4e4;
+  --muted: #9a9a9a;
+  --accent: #4fb3bf;
+  --good: #357f88;
+  --bad: #e0685a;
+  --you: #2a464a;
+  --warn: #d9a23e;
+  --on-accent: #121212;
+  --sprite-bg: #262626;
+  --danger-bg: #3f2522;
+  --good-bg: #1d3335;
+  --backdrop: rgba(0, 0, 0, 0.7);
   --font: "Segoe UI", system-ui, sans-serif;
   --mono: Consolas, "Cascadia Mono", monospace;
   --r: 8px;
@@ -1624,7 +1625,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .lab-log { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
 .lab-log td { vertical-align: top; overflow-wrap: anywhere; white-space: pre-wrap; }
 
-/* FNRI's small cube in Bob's thinking (Now running) */
+/* fNRI's small cube in Bob's thinking (Now running) */
 .mind-cube { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
 .mind-cube canvas { width: 100%; height: 220px; display: block; border: 1px solid var(--line); border-radius: var(--r); }
 /* No brain loaded: a neon sign over the empty cube, flickering now and then (still when animations are off) */

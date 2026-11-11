@@ -1699,7 +1699,7 @@
       "family": "Kokoro",
       "category": "speech",
       "name": "Kokoro voice pack (22 English voices)",
-      "what": "Natural-sounding voices that run on the processor: Michael, George, Lewis, Heart, Emma and more. Pick the voice in Settings after it's in. Bob's pick for his own voice.",
+      "what": "Natural-sounding voices that run on the processor: Onyx, Michael, George, Lewis, Heart, Emma and more. Onyx, a deep, calm voice, is the one Bob recommends; pick another in Settings after it's in. Bob's pick for his own voice.",
       "sizeGB": 0.354,
       "vramGB": 0,
       "license": "Apache 2.0 + MIT",
@@ -1727,7 +1727,7 @@
           "provider": "kokoro",
           "model": "$file:model",
           "voices": "$file:voices",
-          "voice": "am_michael"
+          "voice": "am_onyx"
         }
       }
     },

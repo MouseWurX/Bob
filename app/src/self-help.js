@@ -60,7 +60,7 @@ export function settingsNow(cfg) {
     `Keep engines up to date: ${onOff(cfg.engineUpdates?.auto !== false)}`,
     `Show Bob's plan before big jobs: ${onOff(cfg.planFirst === true)}`,
     `Pick up where Bob left off after a restart: ${onOff(cfg.resumeJobs === true)}; Carry on unfinished downloads when Bob starts: ${onOff(cfg.downloads?.resumeOnStart === true || cfg.resumeJobs === true)}`,
-    `Bob's engine: ${cfg.engine === 'ollama' ? 'Ollama' : "Bob's own (llama.cpp)"}`,
+    `Bob's engine: ${cfg.engine === 'ollama' ? 'Ollama' : "Brain Engine, Bob's own"}`,
     `Voice: ${cfg.tts?.provider || 'Windows voice'}`,
     `Hands: ${hands}${h.enabled ? `; Let Bob work without asking ${onOff(h.free)}` : ''}`,
     `Housekeeping: ${onOff(cfg.housekeeping?.enabled === true)}`,

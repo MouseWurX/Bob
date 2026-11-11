@@ -4,6 +4,17 @@ Windows 11's **Smart App Control** stops program files (`.exe`, `.dll`) that Win
 
 "Knows" means Microsoft's cloud has seen the exact same file run safely on many PCs. That's why an **unchanged** official file usually runs even without a signature, and a file **we build ourselves** might not. Each new build is a new file, so Windows has to guess. In 1.5.203 it guessed no for the new Brain Engine.
 
+## If Windows stops Bob
+
+Until Bob is code signed, Smart App Control may stop Bob, or one of his engines, from running on a Windows 11 PC that has it on.
+
+- **A new engine is blocked:** you don't need to do anything. Bob tries each new engine before using it and keeps the old one, and if a blocked one slips through he goes back by himself and says so once.
+- **Bob himself won't start, or keeps losing his engines:** turning Smart App Control off is the fix for now. Press Start, type *Smart App Control*, open it and pick **Off**.
+- **Think first:** Smart App Control protects your PC from unknown programs. On older Windows 11 builds, once it's off it can't be turned back on without resetting Windows. Newer builds (25H2 with the April 2026 Windows Security update) can turn it back on.
+- **Bob never changes it.** He reads whether it's on (Check this PC shows it) and tells you once, in plain words, when he starts on a PC where it's on.
+
+Once Bob's Windows files are signed, none of this is needed.
+
 ## What Bob ships or downloads for Windows
 
 | What | Who builds it | Signed? | Risk |
@@ -24,7 +35,7 @@ Windows 11's **Smart App Control** stops program files (`.exe`, `.dll`) that Win
 1. **Falls back when a block happens** (1.5.203). If Windows stops the engine, Bob goes back to the previous engine by himself, says so once, and offers Try again.
 2. **Tries before trusting** (1.5.204). A new thinking engine runs once in its side folder (`llama-server --list-devices`) before it takes the old one's place. If Windows stops it, or it can no longer see the graphics card the old one could (a stopped card library), the old one stays and Bob explains why. Nothing breaks.
 3. **Doesn't fetch a blocked build again**. The stopped build is remembered by its file. A rebuilt or signed one is still fetched.
-4. **Check this PC shows Smart App Control** (on, trial mode or off) in plain words, with the reminder that Bob never changes it.
+4. **Check this PC shows Smart App Control** (on, trial mode or off) in plain words, with the reminder that Bob never changes it. When Bob starts on a PC where it's on, he says so once in chat, with the choice and its trade-offs.
 5. **The release check lists unsigned files**. `brain-engine.yml` puts the list in each build's summary. Once signing is set up, the repository variable `REQUIRE_SIGNED=true` makes an unsigned file fail the build before anything is released.
 6. **Change as few files as possible**. Brain Engine only replaces the llama files and the card-sharing file. The card libraries (`ggml-cuda.dll` and the rest) stay the official ones, which Windows already knows. Keep it that way.
 

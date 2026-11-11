@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { sacFromReg, sacState, signedPe, unsignedIn, looksBlocked, countDevices, tryEngine, readBlocks, wasBlocked, noteBlocked, clearBlocked, SAC_WORDS } from '../src/app-control.js';
+import { sacNoticeOnce, sacFromReg, sacState, signedPe, unsignedIn, looksBlocked, countDevices, tryEngine, readBlocks, wasBlocked, noteBlocked, clearBlocked, SAC_WORDS } from '../src/app-control.js';
 import { trialOrKeep, setEngineTrial, ENGINES } from '../src/engines.js';
 import { tipsFrom } from '../src/pc-check.js';
 import { report, markdown } from '../installer/check-signed.js';
@@ -104,6 +104,19 @@ check(/is on/.test(tip(1)?.title || '') && /never changes/.test(tip(1).steps.joi
 check(/trial mode/.test(tip(2)?.title || ''), 'Check this PC: trial mode explained');
 check(!tip(0) && tipsFrom({ sac: 0 }).fine.some((f) => /Smart App Control is off/.test(f)), 'off: one fine line, no tip');
 check(!tip(undefined) && !tipsFrom({}).fine.some((f) => /Smart App Control/.test(f)), 'not known (Linux, Mac): nothing said');
+
+// The one-time heads-up.
+const said = [];
+const say = (t) => said.push(t);
+const hcfg = { agentDir: fs.mkdtempSync(path.join(tmp, 'h-')) };
+await sacNoticeOnce(hcfg, { platform: 'win32', reg: async () => reg(1), say });
+await sacNoticeOnce(hcfg, { platform: 'win32', reg: async () => reg(1), say });
+check(said.length === 1 && /code signed/.test(said[0]) && /never change it/.test(said[0]) && /your choice/.test(said[0]), 'Smart App Control on: one heads-up, once, saying it\'s the owner\'s choice and Bob never changes it');
+await sacNoticeOnce(hcfg, { platform: 'win32', reg: async () => reg(2), say });
+check(said.length === 2 && /trial mode/.test(said[1]), 'said again only when the state changes');
+await sacNoticeOnce({ agentDir: fs.mkdtempSync(path.join(tmp, 'h-')) }, { platform: 'win32', reg: async () => reg(0), say });
+await sacNoticeOnce({ agentDir: fs.mkdtempSync(path.join(tmp, 'h-')) }, { platform: 'linux', reg: async () => { throw new Error('no'); }, say });
+check(said.length === 2, 'off, or not Windows: nothing said');
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failures} failed`);

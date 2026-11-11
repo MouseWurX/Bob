@@ -137,9 +137,9 @@ Every Bob so far was cut by counting how often the router picks each expert. REA
 - Checked without a card: `prune.py` then `fold.py` on a tiny made-up model (a shuffled copy folded back in leaves the expert as it was; use-weighted blend; router rows; other tensors and the number type untouched).
 - Unknown until it is tried: whether a folded and healed brain beats a dropped and healed one. The first use should make one rung both ways and compare.
 
-## FNRI on a rented card
+## fNRI on a rented card
 
-The Lab's FNRI scan (Playground) can also be made on a rented card, for a brain too big for the home card. Nothing in the app rents a card for this yet; these are the pieces.
+The Lab's fNRI scan (Playground) can also be made on a rented card, for a brain too big for the home card. Nothing in the app rents a card for this yet; these are the pieces.
 
 - `node model-lab/forge/aifeui-bundle.mjs --brain hf:<repo>:<file.gguf> --out <folder>` packs one folder: the questions (`aifeui-plan.json`), the card scripts (`pod/`), Brain Engine as patches (`engine-patches/`) and Bob's viewer (`viewer/`). It rents and uploads nothing.
 - On the card, with that folder as `/workspace/in`: `bash /workspace/in/pod/aifeui.sh`.

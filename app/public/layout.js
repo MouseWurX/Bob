@@ -196,13 +196,13 @@ export function createLayout({ post, openTasks, openDownloads }) {
   dockBtn.onclick = () => { docked = !docked; store.set('bob-mind-dock', docked ? '1' : '0'); drawDock(); if (docked) $('mindDockLog').focus({ preventScroll: true }); };
   $('mindDockPop').onclick = () => { const w = window.open('/mind.html', 'bob-mind', 'popup,width=380,height=480'); try { w?.focus(); } catch {} };
   document.addEventListener('visibilitychange', mindListen);
-  // FNRI's small cube: off until its switch is on, and it only listens while the section is showing
+  // fNRI's small cube: off until its switch is on, and it only listens while the section is showing
   const cubeBtn = $('mindDockCube');
   let cubeOn = store.get('bob-mind-cube', '1') === '1', cube = null, cubeOk = true; // the cube is how thinking shows to begin with; the text is the other choice
   function cubeListen() {
     cubeBtn.setAttribute('aria-checked', String(cubeOn)); cubeBtn.querySelector('.st').textContent = cubeOn ? 'On' : 'Off';
     const on = cubeOn && docked && !body.classList.contains('right-hidden') && !document.hidden;
-    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails'), load: $('mindCubeLoad'), loadBox: $('mindCubeLoadBox') }, { onWhy: (why) => { cubeOk = !why; cubeListen(); }, still: () => body.classList.contains('still') });
+    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails'), load: $('mindCubeLoad'), loadBox: $('mindCubeLoadBox'), spin: $('mindCubeSpin'), lines: $('mindCubeLines'), linesBox: $('mindCubeLinesBox') }, { onWhy: (why) => { cubeOk = !why; cubeListen(); }, still: () => body.classList.contains('still') });
     // with the cube showing, the written thinking steps aside; it comes back when the cube is off or can't work here
     $('mindDockBody').classList.toggle('cube-view', cubeOn && cubeOk);
     if (!cube) return;
