@@ -9,6 +9,7 @@ import { sealOn, newLinkKey, newSalt, lendKey, keyName, linkKey, saveLinkKey, fo
 import { CardLender, CardBorrower, lendCardRoute, RPC_PORT, scutSealOn } from '../src/share-card.js';
 import { shareView, cleanSharePatch } from '../src/share-brains.js';
 import { Pairing } from '../src/bob-net-pair.js';
+import { isSensitive } from '../src/tools.js';
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('PASS', m); } else { fail++; console.log('FAIL', m); } };
@@ -42,6 +43,7 @@ const box = (name) => { const d = path.join(tmp, name); fs.mkdirSync(d, { recurs
   fs.writeFileSync(file, '{"100.1.1.1": "short", "100.1.1.2": 5}');
   ok(linkKey(cfg, '100.1.1.1') === '' && linkKey(cfg, '100.1.1.2') === '', 'a damaged key file gives no keys');
   ok(!saveLinkKey({}, '100.1.1.1', k), 'no data folder, nothing saved');
+  ok(isSensitive({ ...cfg, limits: {} }, file) && isSensitive({ ...cfg, limits: { secrets: false } }, file), 'Bob\'s own file tools never open the link keys, whatever the limits say');
 }
 
 // --- The lend: what each side sends and works out ---

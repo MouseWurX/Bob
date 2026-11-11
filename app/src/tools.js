@@ -67,7 +67,8 @@ const SECRET_NAME = /^(local\.properties|keystore\.properties|google-services\.j
 const SECRET_EXT = new Set(['.jks', '.keystore', '.p12', '.pfx', '.pem', '.key', '.db', '.sqlite', '.sqlite3', '.kdbx']);
 // Bob's own config is always off-limits; the rest only while the "Keep secret files private" hard limit is on.
 export function isSensitive(cfg, file) {
-  const own = [path.join(appDir, 'config.json'), process.env.BOB_CONFIG].filter(Boolean);
+  // Bob-Net link keys (sealed SCUT packets, src/scut-seal.js) are always off-limits, like config.json.
+  const own = [path.join(appDir, 'config.json'), process.env.BOB_CONFIG, cfg?.dataDir ? path.join(cfg.dataDir, 'bob-net-link-keys.json') : ''].filter(Boolean);
   if (own.some((f) => isInside(f, file))) return true;
   if (!limitOn(cfg, 'secrets')) return false;
   const base = path.basename(file);
