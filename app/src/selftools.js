@@ -206,7 +206,7 @@ export function cleanSpec(cfg, a = {}) {
     if (isSensitive(cfg, r)) { problems.push(`${r} holds keys or passwords, so it stays off-limits.`); return null; }
     if (insideAny(own, r) || own.some((o) => isInside(r, o))) { problems.push(`${r} is (or holds) Bob's own folders, which tools can't touch.`); return null; }
     if (write && insideAny(readOnlyRoots(cfg), r)) { problems.push(`${r} is read-only for Bob.`); return null; }
-    if (!insideAny(roots, r)) { problems.push(`${r} isn't one of the folders ticked for Hands (Settings, Show advanced settings, Hands). Ask ${cfg.userName || 'the user'} to tick it first.`); return null; }
+    if (!insideAny(roots, r)) { problems.push(`${r} isn't one of the folders ticked for Hands (Settings, Hands). Ask ${cfg.userName || 'the user'} to tick it first.`); return null; }
     return r;
   }).filter(Boolean);
   const reads = folders(a.reads, false), writes = folders(a.writes, true);
@@ -379,7 +379,7 @@ function writeDraft(cfg, spec, code) {
   const { test, ...meta } = spec;
   fs.writeFileSync(path.join(dir, 'tool.mjs'), code);
   fs.writeFileSync(path.join(dir, 'tool.json'), JSON.stringify({ ...meta, test, madeBy: 'Bob', made: new Date().toISOString() }, null, 1));
-  fs.writeFileSync(path.join(dir, 'README.txt'), `${spec.name}\n${'='.repeat(spec.name.length)}\n\nA tool Bob made for himself.\n\nWhat it does: ${spec.what}\nIt may read: ${spec.reads.join('; ') || 'only its own folder'}\nIt may change: ${spec.writes.join('; ') || 'only its own work folder'}\nInternet: ${spec.internet ? 'yes' : 'no'}\n\nIf you change any file here, Bob turns the tool off until it is checked and OK'd again.\nRemove it in Settings, Show advanced settings, Hands, Tools Bob made.\n`);
+  fs.writeFileSync(path.join(dir, 'README.txt'), `${spec.name}\n${'='.repeat(spec.name.length)}\n\nA tool Bob made for himself.\n\nWhat it does: ${spec.what}\nIt may read: ${spec.reads.join('; ') || 'only its own folder'}\nIt may change: ${spec.writes.join('; ') || 'only its own work folder'}\nInternet: ${spec.internet ? 'yes' : 'no'}\n\nIf you change any file here, Bob turns the tool off until it is checked and OK'd again.\nRemove it in Settings, Hands, Tools Bob made.\n`);
   return dir;
 }
 
@@ -490,7 +490,7 @@ export async function useTool(cfg, name, input, { signal } = {}) {
   const t = listTools(cfg).find((x) => x.name === name);
   if (a?.deleted) throw new Error(shelvedWords(cfg, name));
   if (!a || !t) throw new Error(`There's no tool called ${name}. Tools I made: ${usableTools(cfg).map((x) => x.name).join(', ') || 'none yet'}.`);
-  if (t.state === 'off') throw new Error(`The ${name} tool is turned off (Settings, Show advanced settings, Hands, Tools Bob made).`);
+  if (t.state === 'off') throw new Error(`The ${name} tool is turned off (Settings, Hands, Tools Bob made).`);
   if (t.state === 'changed') throw new Error(`I turned ${name} off because its files changed since it was OK'd. It has to be checked again before I use it.`);
   if (t.state === 'missing') throw new Error(`${name}'s folder is gone.`);
   const holds = await sandboxHolds(cfg);
@@ -646,7 +646,7 @@ export function selfToolsTools(brain) {
     },
     async run({ action, name }) {
       off(cfg);
-      if (action === 'off') { setToolOn(cfg, String(name), false); log('selftools', `turned off ${name}`); return `Turned ${name} off. ${cfg.userName || 'The user'} can turn it back on in Settings, Show advanced settings, Hands.`; }
+      if (action === 'off') { setToolOn(cfg, String(name), false); log('selftools', `turned off ${name}`); return `Turned ${name} off. ${cfg.userName || 'The user'} can turn it back on in Settings, Hands.`; }
       if (action === 'remove') { deleteTool(cfg, String(name)); log('selftools', `deleted ${name} (on the shelf 30 days)`); return `Deleted ${name}. ${cfg.userName || 'The user'} can put it back within 30 days in Settings, 🧰 Tools and how-tos Bob made, Recently deleted.`; }
       const all = listTools(cfg);
       if (!all.length) return 'No tools made yet.';

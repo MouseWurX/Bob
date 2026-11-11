@@ -191,7 +191,7 @@ export function createGames({ api }) {
   };
 }
 
-// Settings, Show advanced settings, 🧩 Games. Neither is "on": both just have a default.
+// Settings, 🧩 Games. Neither is "on": both just have a default.
 export function gamesSettingsHtml(g = {}) {
   const opt = (name, val, cur, label) => `<button type="button" role="radio" aria-checked="${cur === val}" data-gm-set="${name}" data-val="${val}">${label}</button>`;
   const brain = g.brain || 'quick', talk = g.talk || 'every';

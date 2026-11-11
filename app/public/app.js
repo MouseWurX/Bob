@@ -5,6 +5,7 @@ applySavedStyle();
 import { startSwap, sceneLabel } from './brain-swap.js';
 import { createVoice } from './voice.js';
 import { createCellar } from './cellar.js';
+import { CHANNEL as SETTINGS_CHANNEL, WINDOW_NAME, WINDOW_SIZE, settingsUrl, wantsWindow, accept as acceptSettings } from './settings-link.js';
 import { createShelf, uploadRef, fixSideways } from './shelf.js';
 import { summary, size } from './progress.js';
 import { createTasks, createDownloads, makeSortable, neighbour, taskRow } from './lists.js';
@@ -35,7 +36,20 @@ import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
 import { diagramHtml, saveRowsHtml, setupSaveAs, watchSaveAs } from './save-as.js';
 
-const cellar = createCellar();
+// Settings opens in its own window on a computer (minimise, maximise, close). The main window keeps
+// its left menu and Now running; what changes over there comes back on a BroadcastChannel (settings-link.js).
+const settingsChan = 'BroadcastChannel' in window ? new BroadcastChannel(SETTINGS_CHANNEL) : null;
+let settingsWin = null;
+function openSettingsWindow(jump) {
+  if (!wantsWindow({ hasChannel: Boolean(settingsChan), coarse: matchMedia('(pointer: coarse)').matches, standalone: matchMedia('(display-mode: standalone)').matches, width: window.innerWidth })) return false;
+  try {
+    if (settingsWin && !settingsWin.closed) settingsChan.postMessage({ from: 'main', name: 'bob-goto', detail: jump || '' });
+    else settingsWin = window.open(settingsUrl(jump), WINDOW_NAME, WINDOW_SIZE);
+    settingsWin?.focus();
+  } catch { settingsWin = null; }
+  return Boolean(settingsWin);
+}
+const cellar = createCellar({ popOut: openSettingsWindow });
 const api = async (url, data) => {
   const r = await fetch(url, data === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify(data) });
   const j = await r.json().catch(() => ({}));
@@ -346,6 +360,14 @@ $('cellarBtn').onclick = () => cellar.open('shop', 'roles');
 $('settingsBtn').onclick = () => cellar.open('settings');
 // 1.5.141: the Bob-Net heading in Now running opens Settings at Bob-Net (advanced shown, the section open).
 $('nowNetHead')?.addEventListener('click', () => cellar.open('settings', null, { jump: 'adv-bobnet' }));
+// What the Settings window changed: pass its announcements on, press the two voice buttons for it, and read the
+// look and theme again.
+settingsChan?.addEventListener('message', (e) => {
+  const m = acceptSettings(e.data); if (!m) return;
+  if (m.kind === 'press') { $(m.id)?.click(); return; }
+  if (m.kind === 'event') { (m.name === 'bob-door' ? document : window).dispatchEvent(new CustomEvent(m.name, { detail: m.detail })); return; }
+  fetch('/api/settings').then((r) => r.json()).then((st) => { setLook(st.look); applyStyle(st.style); }).catch(() => {});
+});
 // Settings, Get models and Style are pages in the main area: Chat or New chat goes back to the chat.
 for (const id of ['chatBtn', 'newchat']) $(id).addEventListener('click', () => { if ($('cellar').open) $('cellar').close(); });
 $('styleBtn').onclick = () => cellar.open('shop', 'style');
@@ -643,7 +665,7 @@ function onEvent(ev) {
       else if (ev.action === 'used') add('note borrow muted', `🏗 ${esc(ev.rental)}: about ${esc(ev.usd)} so far this job; ${esc(ev.monthUsd)} this month.`);
       else if (ev.action === 'stop') add('note borrow', ev.stopped ? `🏗 Stopped the rented machine (${esc(ev.service)}) after ${ev.minutes} min, ${esc(ev.usd)}: ${esc(ev.why)}.` : `🏗 I couldn't stop the rented machine on ${esc(ev.service)} (${esc(ev.machine || '')}). Please stop it on their website so it doesn't keep billing.`);
       else if (ev.action === 'warn') add('note borrow', `🏗 ${esc(ev.text)}`);
-      else if (ev.action === 'leftover') add('note borrow', `🏗 ${ev.machines.length === 1 ? 'A rented machine is' : `${ev.machines.length} rented machines are`} still running from before: ${ev.machines.map((m) => `${esc(m.service)} ${esc(m.id)}${m.perHour ? ` (about $${(+m.perHour).toFixed(2)} an hour)` : ''}`).join(', ')}. Stop them in Settings, Show advanced settings, Online services, Rented brains.`);
+      else if (ev.action === 'leftover') add('note borrow', `🏗 ${ev.machines.length === 1 ? 'A rented machine is' : `${ev.machines.length} rented machines are`} still running from before: ${ev.machines.map((m) => `${esc(m.service)} ${esc(m.id)}${m.perHour ? ` (about $${(+m.perHour).toFixed(2)} an hour)` : ''}`).join(', ')}. Stop them in Settings, Online services, Rented brains.`);
       else if (ev.action === 'slot') { rentSwitch.update(ev.rental); window.dispatchEvent(new CustomEvent('bob-rent-slot', { detail: { rental: ev.rental } })); }
       break;
     case 'borrow': // 1.5.55 Share brains: another of your Bobs thinks this reply (src/share-brains.js)

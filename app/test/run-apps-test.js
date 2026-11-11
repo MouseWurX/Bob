@@ -90,9 +90,9 @@ const cards = () => events.filter((e) => e.type === 'approval');
   const masterOff = { userName: 'Sam', hands: { enabled: false, apps: { on: true } } };
   const appsOff = { userName: 'Sam', hands: { enabled: true, apps: { on: false } } };
   const held = { userName: 'Sam', hands: { enabled: true, held: true, apps: { on: true } } };
-  check('when everything is off, Bob says both switches to turn on, by their Settings names', handOffWhy(allOff, 'apps') === 'Hands are off in Settings. Sam can turn on "Let Bob use Hands" and "Open and use apps" in Settings, Show advanced settings, Hands.');
+  check('when everything is off, Bob says both switches to turn on, by their Settings names', handOffWhy(allOff, 'apps') === 'Hands are off in Settings. Sam can turn on "Let Bob use Hands" and "Open and use apps" in Settings, Hands.');
   check('when only the master switch is off, Bob names it', /Hands are off in Settings \(the "Let Bob use Hands" switch\)/.test(handOffWhy(masterOff, 'apps')));
-  check('when only the Apps hand is off, Bob names it', handOffWhy(appsOff, 'apps') === 'The "Open and use apps" Hand is off. Sam can turn it on in Settings, Show advanced settings, Hands.');
+  check('when only the Apps hand is off, Bob names it', handOffWhy(appsOff, 'apps') === 'The "Open and use apps" Hand is off. Sam can turn it on in Settings, Hands.');
   check('when stopped on the chat page, Bob says so', /chat page/.test(handOffWhy(held, 'apps')));
   const p0 = handsPrompt(allOff);
   check("with Hands off, Bob's prompt still tells him which are off, why, and to say so plainly (\"open Notepad\" -> a clear reason)", /off right now/.test(p0) && /Open and use apps/.test(p0) && /Let Bob use Hands/.test(p0) && /don't refuse without a reason or make one up/.test(p0));
@@ -100,7 +100,7 @@ const cards = () => events.filter((e) => e.type === 'approval');
   check("with Hands on, Bob is told the PC is real, to quote a tool's error, to claim only what a tool did, and to retry rather than repeat an old failure", /Hands act on it for real/.test(pOn) && /never blame a simulation/.test(pOn) && /Never say you did something on \S+'s Windows PC \(opened.* unless a tool result in this turn says it was done/.test(pOn) && /Never say you did something/.test(p0) && /call the tool again instead of repeating/.test(pOn));
   const p1 = handsPrompt(appsOff);
   // 1.5.102: Hands that are simply off share one "turn them on" line instead of one each.
-  check('with some Hands on, the off ones are still explained', /off right now[^\n]*Open and use apps/.test(p1) && /Sam can turn them on in Settings, Show advanced settings, Hands\./.test(p1) && (p1.match(/Show advanced settings/g) || []).length === 1);
+  check('with some Hands on, the off ones are still explained', /off right now[^\n]*Open and use apps/.test(p1) && /Sam can turn them on in Settings, Hands\./.test(p1) && !/Show advanced settings/.test(p1));
 }
 check("Bob's prompt explains look-then-act when the Apps hand is on", /app_look/.test(handsPrompt(cfg)) && !/app_look/.test(handsPrompt({ ...cfg, hands: { ...cfg.hands, apps: { on: false } } })));
 {

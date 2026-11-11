@@ -88,7 +88,7 @@ export function tipsFrom(facts, { today = new Date() } = {}) {
   const d = facts.disk;
   if (d && (/hdd/i.test(d.media) || /usb/i.test(d.bus))) {
     tips.push({ id: 'disk', level: 'fix', title: `Bob's models are on a ${/usb/i.test(d.bus) ? 'USB drive' : 'hard drive'} (${facts.drive}:)`, why: 'Brains load from disk each time Bob wakes, so a slow drive adds many seconds to every first reply.',
-      steps: ['Move the models folder to your fastest drive (an SSD inside this replicant matrix).', 'In Bob, open Settings, then Show advanced settings, and point Bob at the new folder.'] });
+      steps: ['Move the models folder to your fastest drive (an SSD inside this replicant matrix).', 'In Bob, open Settings, and point Bob at the new folder.'] });
   } else if (d?.media) fine.push(`Models are on a fast drive (${facts.drive}:).`);
   if (facts.nvidia) {
     const others = (facts.nvidia.apps || []).filter((a) => a.gb >= 0.5);

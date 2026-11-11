@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en" class="settings-window">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bob · Settings</title>
+  <meta name="theme-color" content="#2b1d14">
+  <link rel="icon" href="/icons/bob-32.png" sizes="32x32">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Settings in its own window. The main window opens it; on a phone Settings stays a page there. -->
+  <main class="mid paged">
+    <dialog id="cellar" class="cellar page" aria-labelledby="cellar-title">
+      <div class="cellar-head"><h2 id="cellar-title">Settings</h2><button id="cellar-close" type="button" class="back" hidden>Close</button></div>
+      <div id="cellar-body"></div>
+    </dialog>
+  </main>
+  <!-- Stand-ins for the two left-menu buttons the Voice details switches press; the main window does the pressing. -->
+  <button id="ear" type="button" hidden aria-pressed="false" tabindex="-1"></button>
+  <button id="speak" type="button" hidden aria-pressed="false" tabindex="-1"></button>
+  <dialog id="help" class="cellar" aria-labelledby="help-title">
+    <div class="cellar-head"><h2 id="help-title">Help</h2><button id="help-close" class="icon" title="Close (Esc)" aria-label="Close">✕</button></div>
+    <div id="help-body"></div>
+  </dialog>
+  <script type="module" src="/settings-window.js"></script>
+</body>
+</html>

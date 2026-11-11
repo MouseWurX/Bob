@@ -1,4 +1,4 @@
-// Settings, Show advanced settings, 🔔 Check-ins (src/checkins.js). Off unless you turn it on.
+// Settings, 🔔 Check-ins (src/checkins.js). Off unless you turn it on.
 // On a schedule you pick, Bob looks over his downloads, tasks and schedules (and your own lines) and only taps
 // you on the shoulder when something needs you. The chat card for it is drawn in app.js ('checkin').
 import { esc } from './util.js';
