@@ -21,7 +21,7 @@ export const OLD_EXT = ['doc', 'xls', 'ppt'];
 export const MAX_DOC_BYTES = 50 * 1024 * 1024; // the file itself
 const MAX_UNZIPPED = 200 * 1024 * 1024; // everything taken out of one zip, together
 const MAX_RATIO = 200; // an entry may grow up to this many times its packed size
-const MAX_OUT = 2_000_000; // characters kept from one document
+export const MAX_OUT = 2_000_000; // characters kept from one document
 
 const extOf = (f) => path.extname(String(f || '')).slice(1).toLowerCase();
 export const isDoc = (f) => DOC_EXT.includes(extOf(f));

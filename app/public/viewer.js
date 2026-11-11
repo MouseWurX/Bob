@@ -1,10 +1,11 @@
 // The side panel: anything Bob made opens here, next to the chat, in its own tab (like a preview pane).
 // Pictures, clips and sounds play here; documents and code show as text (a web page Bob wrote can be
-// previewed with its scripts switched off); other files get Open in its app / Show in folder.
+// previewed with its scripts switched off); documents go to doc-view.js; other files get Open in its app / Show in folder.
 // The first tab, "Made by Bob", lists everything he has made, newest first, to call any of it up again.
 // Chat cards (outCard) are small previews: a thumbnail or the first lines, and a click opens the panel.
 import { esc, render } from './rich.js';
 import { songCard, fillSongs } from './song-player.js';
+import { isDocName, drawDoc } from './doc-view.js';
 import './model-core.js'; // 3D models (shared with the phone app)
 const { isModelName } = globalThis.BobModel;
 
@@ -200,6 +201,12 @@ export function createViewer({ post, note }) {
       if (j.ext === '.md') { stage.innerHTML = `<div class="vmd">${render(j.text)}</div>${cut}`; return; }
       if (j.ext === '.csv' || j.ext === '.tsv') { stage.innerHTML = tableHtml(j.text, j.ext === '.tsv' ? '\t' : ',') + cut; return; }
       stage.innerHTML = `<pre class="vcode"><code>${esc(j.text)}</code></pre>${cut}`;
+      return;
+    }
+    // Word, Excel, PowerPoint, PDF and friends: their words, sheets or slides (doc-view.js; "Show documents in the side panel").
+    if (t.kind !== 'folder' && t.path && isDocName(t.name)) {
+      main.innerHTML = `${head}<div class="vstage vdocstage"></div>${tools}`;
+      drawDoc(main.querySelector('.vdocstage'), t, { isActive: () => active === t.key });
       return;
     }
     const why = t.kind === 'folder' ? 'A folder. Open it to see what\'s inside.' : 'Bob can\'t show this kind of file here. Open it in its app to see it.';
