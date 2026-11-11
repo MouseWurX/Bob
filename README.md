@@ -1,21 +1,39 @@
-# Bob of The Idle Process
+<h1 align="center">Bob of The Idle Process</h1>
 
-**A local AI agent with a personality, who runs on your own computer.** Bob plans and does real jobs with tools, comes with a Computer Science Lab for changing the brains he runs on, has a family of brains of his own, and shares graphics cards and jobs with the other Bobs on your network. Free, open source, and nothing goes online unless you turn it on.
+<p align="center"><b>A local AI agent with a personality. He runs on your own computer, and nothing goes online unless you turn it on.</b></p>
 
-**[Download Bob](#download)** for Windows, Mac, Linux, Raspberry Pi and Android.
+<p align="center">
+  <a href="#download"><b>Download</b></a> ·
+  <a href="#what-bob-does">What Bob does</a> ·
+  <a href="#the-computer-science-lab">The Lab</a> ·
+  <a href="#bobs-own-brains">Brains and scores</a> ·
+  <a href="#bob-net-bobs-working-together">Bob-Net</a> ·
+  <a href="app/docs/README.md">All the docs</a>
+</p>
 
-![Bob's window: the menu on the left, a chat in the middle where Bob plans a Saturday, and Now running on the right](app/docs/screenshot.png)
+![Bob's window: the menu on the left, a chat in the middle where Bob plans a Saturday, and Now running on the right with his thinking and tasks](app/docs/screenshot.png)
+
+<p align="center">Windows · Mac · Linux · Raspberry Pi · Android &nbsp;|&nbsp; free and open source &nbsp;|&nbsp; no account, no telemetry</p>
 
 ## At a glance
 
 | | |
 |---|---|
+| 🛠 **[A real agent](#what-bob-does)** | Research with sources, code written, run and fixed, documents read and shown beside the chat, files, other apps, pictures, clips, music and a voice. |
 | 🧪 **[Computer Science Lab](#the-computer-science-lab)** | Cut, teach, mix, race and look inside a brain, then test it next to the one it came from. No command line. |
-| 🧠 **[Bob's own brains](#bobs-own-brains)** | A model family cut and retrained to run Bob on small cards. Riker, the first, is Bob's default brain. |
-| 📡 **[Bob-Net](#bob-net-bobs-working-together)** | Your Bobs pool their graphics cards and memory, pass jobs along and check each other's work, over Tailscale or your home network. |
+| 🧠 **[Bob's own brains](#bobs-own-brains)** | Three models cut and retrained to run Bob on everyday graphics cards, with every score, lesson set and dollar published. |
+| 📡 **[Bob-Net](#bob-net-bobs-working-together)** | Your Bobs pool graphics cards and memory, pass jobs along and check each other's work, on your home network or Tailscale. |
 | 🎮 **[Gaming friendly](#light-on-your-machine)** | The brain unloads when idle, and a Gaming session leaves the graphics card to your game. |
-| 🔓 **Open source and private** | GPL-3.0. No accounts, no telemetry. Your chats, notes and models stay on your computer. |
-| 🛠 **[A real agent](#what-bob-does)** | Research with sources, code written, run and fixed, documents, files, other apps, pictures, clips, music and a voice. |
+| 🔓 **Private and open** | GPL-3.0. Your chats, notes and models stay on your computer. Everything optional starts switched off. |
+
+## See a brain think
+
+| | |
+|:---:|:---:|
+| ![The cube builds itself as a brain loads, glows while it answers, and comes apart when it unloads](app/docs/screens/fnri-cube-load-unload.gif) | ![The cube glowing as Qwen3.6-35B-A3B answers](app/docs/screens/fnri-cube-thinking.gif) |
+| **Load, think, unload.** One floor per layer. | **Answering, live.** Each lit block is an expert at work. |
+
+This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch the full minute](app/docs/screens/fnri-cube-qwen3.6-35b-a3b.mp4) · [what it shows](#the-computer-science-lab)
 
 ## Download
 
@@ -23,60 +41,140 @@
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.201-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.201-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.201-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.201-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.201-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.201-linux-x86_64.AppImage) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.201-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.201-linux-arm64.AppImage) |
-| **Android phone** | [`Bob-1.5.201-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.201-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.202-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.202-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.202-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.202-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.202-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.202-linux-x86_64.AppImage) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.202-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.202-linux-arm64.AppImage) |
+| **Android phone** | [`Bob-1.5.202-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.202-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
+## What's new
+
+| | |
+|---|---|
+| 📄 **Documents beside the chat** | Word, Excel, PowerPoint and PDF open in the side panel. Bob reads and searches them with nothing extra installed. |
+| 📝 **Notes that take themselves** | Say "note:" and Bob writes it down. Let him, and he also notes decisions, dates and numbers as they come up. |
+| ⚙ **Settings you can find** | Eight plain cards, or an Advanced list of every section with a search box, in its own window. |
+| ✅ **"Do you want me to:"** | First-time setup lists what Bob can do that starts switched off. Tick what you want. |
+| ⚡ **Brain Engine on a newer base** | Bob's engine moved up 250 llama.cpp builds and updates itself with Bob. |
+| 🧪 **More in the Lab** | Fold experts instead of dropping them, switch experts off without cutting the file, and colour a brain by its weights. |
+
+**Coming next:** Brain Engine 3 with **SCUT**, Bob's own fast link for sharing a brain over Wi-Fi (experimental) · Onyx as Bob's recommended voice · 3D models in the side panel and parts made with OpenSCAD · a simpler Lab in its own window. The [changelog](CHANGELOG.md) has every release.
+
+## What Bob does
+
+| | |
+|---|---|
+| ![A chat about a garden budget on the left, and the spreadsheet open in the side panel on the right](app/docs/screens/documents.png) | ![First-time setup: the programs and models Bob suggests for a 16 GB card, each with a tick box](app/docs/screens/get-bob-ready.png) |
+| **Documents beside the chat.** Sheets, slides, pages and PDFs. | **Ready in one button.** Bob reads your card and fetches what fits. |
+| ![Equip Bob: Bob in the middle with a slot for every job around him](app/docs/screens/equip-bob.png) | ![The adventure table: three characters, the game master's story, and cards for the player's turn](app/docs/screens/adventure.png) |
+| **Equip Bob.** A slot for every job, a model for every slot. | **Adventure.** Bob runs the table; the app rolls the dice. |
+
+- **Work:** plans and reminders, web research with sources, code written, run and fixed, documents and spreadsheets read, searched and written.
+- **Make:** pictures painted and edited, short clips, songs and sound effects, and a voice (22 Kokoro voices and more).
+- **Hands (opt-in):** tidy files, run scripts you approve, keep a schedule, click around other apps, use his own browser window, and work inside Blender or Unreal Engine through MCP. Every action shows a card first.
+- **Remember:** Topics, notes and memory banks keep what matters between chats. Exact sums are worked out in a locked sandbox, not guessed.
+- **Lots of context:** 256K tokens (about 195,000 words) on a 16 GB card, and up to 1M with Long memory.
+- **A character:** eleven personality dials, 133 avatars, a cat named Patches, and opinions about your code.
+- **Big brains when you want them:** rent one for a single job from a service you have an account with. Off to start, with spending limits that start at $0.
+
+<details>
+<summary><b>More pictures:</b> Settings, the first-time list, games, the bestiary, themes and Help</summary>
+
+| | |
+|---|---|
+| ![Settings, Simple: eight cards such as Bob himself, How Bob works and Brains and speed](app/docs/screens/settings.png) | ![Settings, Advanced: every section in a side list, with Bob himself open](app/docs/screens/settings-advanced.png) |
+| **Settings, Simple:** eight cards. | **Settings, Advanced:** every section, with search. |
+| ![Do you want me to: tick boxes for quick notes, reading documents, the sandbox and more](app/docs/screens/do-you-want.png) | ![Games: twenty questions, hangman, word ladder, five letters and story dice](app/docs/screens/games.png) |
+| **"Do you want me to:"** Everything optional, in one list. | **Games:** five word games that run on a small brain. |
+| ![The bestiary: goblins, skeletons, wolves and friends with hearts and a line from Bob](app/docs/screens/bestiary.png) | ![Style: themes such as Moondust, Nightside and Otterbend](app/docs/screens/style.png) |
+| **The bestiary:** the usual suspects, drawn as they appear. | **Style:** themes named after worlds, or build your own. |
+| ![Help, written by Bob: a search box, topics on the left, Getting started on the right](app/docs/screens/help.png) | |
+| **Help (F1):** written by Bob, with a glossary and FAQ. | |
+
+</details>
+
 ## The Computer Science Lab
 
-Most AI apps are for one of two things: talking to a model, or building one. Bob does both. **🧪 Lab** in the menu is where you change a brain instead of only talking to it, on your own computer, while Bob keeps chatting. **Keep it simple** shows the usual choices with Bob's defaults filled in; **Professional** shows every control. **Show the recipe** prints every command the Lab runs, so it teaches the command line instead of hiding it.
+Most AI apps are for talking to a model or for building one. Bob does both. **🧪 Lab** in the menu is where you change a brain, on your own computer, while Bob keeps chatting.
 
 ![The Computer Science Lab on Make a brain: Keep it simple or Professional, then goals to start from such as Everything smaller, Coding helper and Everyday chat](app/docs/screens/lab.png)
+
+| Tab | What you do there |
+|---|---|
+| **Make a brain** | Pick a brain and a goal. Bob cuts the experts your work doesn't use, takes out sight or hearing you don't need, makes the Q4 to Q8 files and tests the result. **Use in Bob** only appears after the test. |
+| **Forge** | Every way to make a brain, side by side: smaller, cut, folded, mixed, or taught back on a rented card. |
+| **Learn** | Hands-on cards on how a brain works, run on the brain Bob has loaded. |
+| **Challenges** | Short tests out of 100 and a scoreboard by size. |
+| **Playground** | How small, how long, how fast. Teach it, pick its best answers, peek inside, and scan it with fNRI. |
+
+- **Keep it simple or Professional.** Simple fills in Bob's defaults. Professional shows every control and its proper name. **Show the recipe** prints every command the Lab runs.
+- **Brain Engine** is Bob's own engine, built on llama.cpp. It switches a brain's experts on and off while it's loaded, so the Lab can try a cut before writing a file.
+- **fNRI** (functional Neural Response Imager) scans a brain while it answers and shows it as a 3D block: one floor per layer, every expert coloured by the skill that used it most.
+
+<details>
+<summary><b>More pictures:</b> Forge, Learn, Challenges and Playground</summary>
 
 | | |
 |---|---|
 | ![The Forge tab: Ways to make a brain, each card with where it runs and best practice](app/docs/screens/lab-forge.png) | ![The Learn tab: What is a token? splits a sentence into its tokens with their numbers](app/docs/screens/lab-learn.png) |
-| **Forge:** every way to make a brain, side by side. | **Learn:** hands-on cards on how a brain works. |
-| ![The Challenges tab: short tests with how many questions and about how long each takes](app/docs/screens/lab-challenges.png) | ![The Playground tab: Smaller, Longer, Faster, Teach it and Peek inside](app/docs/screens/lab-playground.png) |
-| **Challenges:** tests out of 100 and a scoreboard. | **Playground:** how small, how long, how fast. |
+| **Forge** | **Learn** |
+| ![The Challenges tab: pick a brain, then short tests with how long each takes](app/docs/screens/lab-challenges.png) | ![The Playground tab on Faster: a small brain guesses ahead and the big brain checks](app/docs/screens/lab-playground.png) |
+| **Challenges** | **Playground** |
 
-- **Make a brain:** pick a brain and some lessons, cut the experts your work doesn't use, take out sight or hearing you don't need, make the Q4 to Q8 files, then test it. **Use in Bob** only appears after the test.
-- **Brain Engine:** Bob's own version of llama.cpp, and his default engine. It switches a mixture-of-experts brain's experts on and off while it's loaded, so the Lab can try a cut before writing a file. Built on llama.cpp by the ggml authors, MIT licence.
-- **FNRI, the Functional Neural Response Imager:** scans a brain while it answers and shows it as a 3D block, one floor per layer, every expert coloured by the skill that used it most. Press Play and the experts glow as it reads and writes.
+</details>
 
-[![FNRI's cube: stock Qwen3.6-35B-A3B's experts glowing as it answers](app/docs/screens/fnri-cube-qwen3.6-35b-a3b.png)](app/docs/screens/fnri-cube-qwen3.6-35b-a3b.mp4)
-*Stock Qwen3.6-35B-A3B thinking out loud, recorded live from the cube (click for the video).*
-
-Lab jobs need at least 12 GB of memory; a smaller computer can start them on a bigger Bob on your Bob-Net. Making an FNRI scan needs Brain Engine on Windows or Linux. More in the [user guide](app/docs/USER-GUIDE.md#11-the-computer-science-lab).
+Lab jobs need at least 12 GB of memory; a smaller computer can start them on a bigger Bob on your Bob-Net. Making an fNRI scan needs Brain Engine, on Windows or Linux. More in the [user guide](app/docs/USER-GUIDE.md#11-the-computer-science-lab).
 
 ## Bob's own brains
 
-A family of models cut from a large open model and retrained to run Bob on small cards and handhelds, made with the same tools that are in the Lab. [How they're made](app/docs/BOBS-OWN-MODELS.md) · [what they cost](app/docs/COSTS.md).
+Three models made from Qwen3.6-35B-A3B with the same tools that are in the Lab: the least-used experts are cut away, then the brain is taught back against the full model. All three are Apache 2.0 and free to download.
 
-**Riker (28Bob)**, Bob's default brain, is Qwen3.6-35B-A3B with 208 of its 256 experts kept in every layer, then healed on about 9,000 lessons Bob wrote for himself.
+| | **Riker** (28Bob) | **Bobert** (35Bob) | **Bill** (20Bob) |
+|---|---|---|---|
+| What he is | Bob's everyday brain | The full model, taught every lesson | The smallest so far |
+| Experts kept per layer | 208 of 256 | 256, no cut | 144 of 256 |
+| File at Q4 | 17.5 GB | 21 GB | 12.7 GB |
+| On a 16 GB card | A few experts in RAM | More in RAM | Fits whole |
+| Tool decisions, 314 held-out chat turns | 65% | 65% | **68%** |
+| Short facts | 18 of 20 | **20 of 20** | 12 of 20 |
+| Code that runs | **6 of 6** | **6 of 6** | 1 of 6 |
+| Download | [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) | [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) | [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) |
 
-| Test (16 GB card) | Riker | Full Qwen3.6-35B-A3B |
+Same tests, same rented card, each Bob served from his public Q4 file. Riker matches Bobert at a size that suits a 16 GB card, so he is Bob's default. Bill is best at tool decisions and weakest at facts and code, and is published as he is.
+
+**Riker against the model he was cut from**, at home on a 16 GB card:
+
+| Test | Riker | Full Qwen3.6-35B-A3B |
 |---|---|---|
 | ARC-Challenge, thinking off / on | 92.9% / 93.9% | 95.8% (off) |
 | ARC-Easy, thinking off / on | 97.6% / 98.3% | 98.9% (off) |
-| Tool calls | 65% | 67% |
-| Coding race, thinking on | 9 of 13 | 12 of 13 |
-| Speed | 111 words a second | 83 words a second |
+| Tool decisions, held-out chats | 65% | 67% |
+| Coding race, 13 tasks, thinking on | 9 | 12 |
+| One fact hidden in up to 128K tokens | 12 of 12 | 12 of 12 |
+| Speed | **111 tokens a second** | 83 tokens a second |
 
-Files: 17.5 GB at Q4 (16 GB cards), 13.9 GB at Q3 (8 GB cards), Apache 2.0, on Hugging Face at **[MouseWurX/28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker)**. His lessons are at [MouseWurX/bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons). Bob downloads the right one for your card himself.
+**Open data and write-ups**
+
+| | |
+|---|---|
+| [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) | The lessons the Bobs learned from: chat, tool calls, thinking on and off. CC BY-SA 4.0. |
+| [bob-odds](https://huggingface.co/datasets/MouseWurX/bob-odds) | The teacher's next-word odds used to teach each cut brain back. |
+| [How they're made](app/docs/BOBS-OWN-MODELS.md) | The method, every result, and what went wrong along the way. |
+| [What they cost](app/docs/COSTS.md) | Every rental, itemized, failures included. |
+| [Brain races](app/docs/BRAIN-RACES.md) · [test results](app/docs/test-results/README.md) | How other brains score on the same tests and the same PC. |
+
+Bob downloads the right file for your card himself.
 
 ## Bob-Net: Bobs working together
 
-Put Bob on your PC, laptop, handheld and phone, and they find each other over your own private [Tailscale](https://tailscale.com) network. Every part is off until you turn it on.
+Put Bob on your PC, laptop, handheld and phone, and they find each other on your home network or your own private [Tailscale](https://tailscale.com) network. Every part is off until you turn it on.
 
-<img src="app/docs/screens/phone.png" width="260" align="right" alt="Bob for Android: the phone asks the PC's Bob for a wireframe fox and gets it back">
+<img src="app/docs/screens/phone.png" width="240" align="right" alt="Bob for Android: the phone asks the PC's Bob for a wireframe fox and gets it back">
 
-- **Pool graphics cards and memory.** A brain too big for one computer is spread over your Bobs' cards and memory, so one brain runs on several machines. A brain bigger than the card and memory together can still run from a fast SSD.
-- **Fast on your home network.** Bobs use the home network when both are on it, and Tailscale when they're apart. The first load sends the brain once; later loads only send what's missing. A brain that fits on one computer stays there, because that's quicker than any network.
+- **Pool graphics cards and memory.** A brain too big for one computer is spread over your Bobs' cards and memory. One bigger than all of that can still run from a fast SSD.
+- **Fast where it counts.** The first load sends the brain once; later loads send only what's missing. A brain that fits on one computer stays there, because that beats any network.
 - **Bobs working in concert.** Borrow a bigger Bob's brain for a reply, send a job to whichever Bob is free, or have a bigger Bob check a handheld's harder work.
 - **The phone app** talks to the Bob on your PC, and can run a small brain on the phone itself.
 - **Adventures together:** your other Bobs join the party in the tabletop game.
@@ -85,31 +183,13 @@ Put Bob on your PC, laptop, handheld and phone, and they find each other over yo
 
 ## Light on your machine
 
-- **The brain unloads when idle**, and big models load only for the job that needs them.
-- **🎮 Gaming session:** Bob chats on the processor with a small brain and borrows a little of the graphics card only when your game leaves room. Pictures and big jobs wait in Tasks until you switch back. **Let games go first** has him use fewer processor cores while you play.
-- **Lots of context on a normal card:** the starter brain keeps 256K tokens (about 195,000 words) in mind on a 16 GB card. **Long memory** stretches Qwen brains up to 1M tokens.
-
-More in [How Bob stays fast and light](app/docs/PERFORMANCE.md).
-
-## What Bob does
-
 | | |
 |---|---|
-| ![Get Bob ready: the first-run page lists the engines and models Bob suggests for this computer](app/docs/screens/get-bob-ready.png) | ![Equip Bob: pick a slot, then a model for it; a starter set for your graphics card is one button](app/docs/screens/equip-bob.png) |
-| **Ready in one button.** Bob reads your card and RAM and fetches what fits. No Python, no terminal. | **Equip Bob:** a slot for every job, and a starter set for your card. |
-| ![The adventure table: three characters, the game master's narration, and cards for the player's turn](app/docs/screens/adventure.png) | ![Games: twenty questions, hangman, word ladder, five letters and story dice](app/docs/screens/games.png) |
-| **Adventure:** Bob is the game master; the app rolls the dice. | **Games:** five word games that run fine on a small brain. |
-| ![The bestiary: goblins, skeletons, wolves and friends with hearts and a line from Bob](app/docs/screens/bestiary.png) | ![Style: themes such as Moondust, Nightside and Otterbend, with Animations and Layout](app/docs/screens/style.png) |
-| **The bestiary:** everyone you meet, drawn as they appear. | **Style:** themes, 133 avatars, or build your own look. |
-| ![Settings: This replicant matrix and updates, then Bob himself with his voice, look, theme and animations](app/docs/screens/settings.png) | ![Help, written by Bob: a search box, topics on the left, Getting started on the right](app/docs/screens/help.png) |
-| **Settings:** everyday rows first, advanced ones behind a switch. | **Help (F1):** written by Bob himself, with a glossary and FAQ. |
+| Graphics memory Bob holds while idle | **None.** The brain unloads, and big models load only for the job that needs them. |
+| 🎮 Gaming session, first word of a reply | **0.1 seconds** with the brain loaded, on the processor, with the graphics card left to your game. |
+| Context on a 16 GB card | **256K tokens**, and up to 1M with Long memory. |
 
-- **Work:** plans and reminders, documents and spreadsheets, web research with sources, code written, run and fixed.
-- **Make:** pictures painted and edited, short clips, songs and sound effects, and a voice (22 Kokoro voices and more).
-- **Hands (opt-in):** tidy files, run scripts you approve, keep a schedule, click around other apps, use his own browser window, and work inside Blender or Unreal Engine through MCP. Every action shows a card first.
-- **Remember:** Topics, notes and memory banks keep what matters between chats.
-- **A character:** eleven personality dials, a cat named Patches, and opinions about your code.
-- **Big brains when you want them:** hire a big brain for one job from a service you have an account with. Off to start, with spending limits that start at $0.
+Pictures and big jobs wait in Tasks while you play, and **Let games go first** has Bob use fewer processor cores. The measurements are in [How Bob stays fast and light](app/docs/PERFORMANCE.md).
 
 ## Getting Bob
 
@@ -146,11 +226,11 @@ Bob's program and his things live apart, so updating never touches your models o
 
 The **[user guide](app/docs/USER-GUIDE.md)** walks through everything in plain English, and **Help** (F1) inside Bob has a section for every setting. You can also just ask Bob how to set something up: he knows his own settings.
 
-Other docs: [Bob and similar projects](app/docs/COMPARISON.md) · [Brain races](app/docs/BRAIN-RACES.md) · [Changelog](CHANGELOG.md).
+Every other page, from benchmarks to building from source, is listed in **[the docs](app/docs/README.md)**.
 
 ## Removing Bob
 
-**From Bob:** Settings, Show advanced settings, Remove Bob, **Remove Bob…**. Bob closes, and a small window removes his program, the Start menu shortcut, the start-up entry and his window data. Two boxes, unticked by default, also remove his chats and settings and the models he downloaded (to the Recycle Bin).
+**From Bob:** Settings, This replicant matrix, **Remove Bob…**. Bob closes, and a small window removes his program, the Start menu shortcut, the start-up entry and his window data. Two boxes, unticked by default, also remove his chats and settings and the models he downloaded (to the Recycle Bin).
 
 **By hand:** turn off "Launch on start-up", close Bob, then delete the `Bob app` folder, `Bob.lnk` in the Start menu, `%APPDATA%\Bob`, and, if you want, Bob's home folder.
 
@@ -159,6 +239,8 @@ Bob installs no services or drivers and needs no admin rights.
 ## Credits
 
 Bob is inspired by the wonderful books of Dennis E. Taylor. Bob is an independent, fan-made project. It is not affiliated with, sponsored by or endorsed by Dennis E. Taylor or by his publishers, distributors or licensees. All characters, names, titles, stories and other rights in those books remain the property of their respective owners. Bob contains no text from the books; any similar names or ideas are used only as a tribute. The licences below cover only MouseWurX's own original work in this repository, not anything that belongs to the author or his publishers. If you hold rights in those books and have a concern, please [open an issue](https://github.com/MouseWurX/Bob/issues) and we'll respond promptly.
+
+Bob's own brains are made from [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) by Alibaba's Qwen team (Apache 2.0). Brain Engine is built on [llama.cpp](https://github.com/ggml-org/llama.cpp) by the ggml authors (MIT).
 
 Testing and releases: **Porter**, a Claude assistant made by Anthropic, carried Bob's builds through testing on real hardware and out the door as releases. Thanks, Porter.
 

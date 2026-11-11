@@ -9,6 +9,10 @@ Two promises run through everything Bob does:
 - **Nothing leaves your PC unless you say so.** Bob only goes online to download something you picked, to search the web if you turned on **Let Bob search the web**, to use a cloud helper you switched on yourself, or to run a job on a rented brain you hired with a card (see Optional extras).
 - **Nothing extra is switched on until you switch it on.** Anything optional starts off. Bob may suggest something, but you decide.
 
+![Bob's window: the menu on the left, the chat in the middle, and Now running on the right](screenshot.png)
+
+**Contents:** [Getting started](#1-getting-started) · [Finding your way around](#2-finding-your-way-around) · [Equip Bob](#3-equip-bob-choosing-his-models) · [Personality](#4-bobs-personality) · [Sessions](#5-sessions-matching-bob-to-what-youre-doing) · [Memory](#6-topics-and-housekeeping-bobs-memory) · [Pictures and video](#7-pictures-edits-and-video) · [Hands](#8-hands-letting-bob-do-things-on-your-pc-opt-in) · [Voice](#9-voice) · [Optional extras](#10-optional-extras-all-off-until-you-turn-them-on) · [The Lab](#11-the-computer-science-lab) · [Updating and removing](#12-updating-and-removing-bob) · [Troubleshooting](#13-when-something-goes-wrong) · [Glossary](#glossary)
+
 ---
 
 ## 1. Getting started
@@ -22,6 +26,11 @@ Two promises run through everything Bob does:
 6. When the downloads finish, say hello. You can ask Bob himself how to set anything up: he knows all his settings and what's set right now.
 
 You can close Bob while things download. Unfinished downloads wait, paused, and carry on when you press Resume.
+
+| | |
+|---|---|
+| ![Get me ready: the programs and models Bob suggests, each with a tick box](screens/get-bob-ready.png) | ![Do you want me to: every switch that starts off, in one list](screens/do-you-want.png) |
+| **Get me ready:** one list, one button. | **Do you want me to:** tick what you'd like switched on. |
 
 ### What do I need?
 
@@ -58,6 +67,10 @@ Handy things in the chat:
 - 📎 attaches a picture, and 🎙 lets you talk instead of typing.
 - You can send as many messages as you like. Each one becomes a task, and Bob works through them in order. None get lost.
 
+![A chat about a garden budget, with the spreadsheet open in the side panel](screens/documents.png)
+
+*A file Bob mentions gets a card. **View** opens it in the side panel; with **Show documents in the side panel** on, that includes Word, Excel, PowerPoint and PDF files.*
+
 ### Settings, Get models and Style
 
 These open as a page in the middle of the window, in place of the chat. **← Back to chat** (or Esc, or Chat in the menu) takes you back. A bar along the top of the page, which stays put while you scroll, jumps between Equip Bob, the model pages, Style and Settings, so clicking Bob's picture gets you everywhere too.
@@ -65,6 +78,11 @@ These open as a page in the middle of the window, in place of the chat. **← Ba
 - **Get models:** Equip Bob, the model shops (Voice & conversation, Coding, Seeing pictures, Pictures & video) and **On this PC**.
 - **Settings** starts as one short page showing what's set now: Bob's voice (with **Play sample** and **Change**), his look, the colours, animations, the cat's name, one brain, launch on start-up, Projects, **Where Bob saves things**, **Let Bob search the web**, **Show Bob's plan before big jobs** and checking for updates (off unless you turn them on), and the version, graphics card and disk space, with **Check for updates**, **Run first-time setup**, **Save a help bundle** and **Check this replicant matrix**.
 - **Simple or Advanced:** a toggle at the top swaps two layouts of the same settings. **Simple** shows eight cards; press one to open its sections. **Advanced** lists every section down the side. A search box finds a setting in both. On a computer, Settings opens in its own window (minimise, maximise, close); on a phone it's a page. The sections: Brains (model roles, session brains, context), House style, Voice details, Look & feel, Speed & memory, Engines, Bob-Net (your phone and your other Bobs), Online services (cloud helpers, Telegram), Other apps (ComfyUI), Hands, Housekeeping, Check-ins and Remove Bob. Longer explanations fold behind **More**.
+
+| | |
+|---|---|
+| ![Settings, Simple: eight cards](screens/settings.png) | ![Settings, Advanced: every section down the side](screens/settings-advanced.png) |
+| **Simple** | **Advanced** |
 
 ---
 
@@ -79,6 +97,8 @@ These open as a page in the middle of the window, in place of the chat. **← Ba
 Bob uses different AI **models** for different jobs, the way a person might use a different tool for each task. **Equip Bob** shows them like a character sheet in a game: a picture of Bob with a slot for each job.
 
 **To open it**, click Bob's picture (or click **Get models** in the left menu: it opens on Equip Bob).
+
+![Equip Bob: Bob in the middle, with a slot for every job around him](screens/equip-bob.png)
 
 ### The slots
 

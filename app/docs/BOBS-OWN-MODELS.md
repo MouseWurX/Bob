@@ -4,6 +4,8 @@
 
 *This page is the plan, the method and the results so far, including the mistakes. It is updated as each model lands. The first one, Riker, is out on Hugging Face (links in his section below); the rest go up as each one passes its tests.*
 
+> **11 November 2026: Bill (20Bob) is out, and the three kept Bobs are benchmarked side by side.** Riker and Bobert tie; Bill is best at tool decisions and weakest at facts and code; see [the three side by side](#the-three-side-by-side). Bill's files: [MouseWurX/20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill), download [20Bob-Q4_K_M.gguf](https://huggingface.co/MouseWurX/20Bob-Bill/resolve/main/20Bob-Q4_K_M.gguf) (12.7 GB) or [20Bob-Q3_K_M.gguf](https://huggingface.co/MouseWurX/20Bob-Bill/resolve/main/20Bob-Q3_K_M.gguf).
+
 > **8 November 2026: the re-cut Riker (28Bob) is made, benchmarked and kept.** He codes better than any Bob before him (9 of 13 on the coding race, 6 of 6 on the quick code test, against the full model's 12 and 6), keeps tool calls level, and finds a fact in a 128K-token document every time; see [28Bob Riker](#28bob-riker-the-one-that-stays). The first four Bobs are retired and deleted. Next is one run that makes Bobert (35Bob, the full model trained on every lesson) and Bill (20Bob, cut from Bobert); the first release will be those three.
 
 Bob borrows his brains from other people's models. The best of them for a 16 GB graphics card, Qwen3.6-35B-A3B, is also too big for most of the devices Bob runs on: a gaming handheld with 8 GB to spare, a laptop with a 6 GB card, a phone, a Raspberry Pi. So we are making Bob a family of his own: **the same big model with its least-used parts cut away, then retrained with the big model as its teacher**, at sizes from 35 billion parameters down to 2. Every size keeps Bob's tool calls, his thinking on/off switch and his eyes (vision), and every size is called a Bob.
@@ -61,6 +63,26 @@ It is not a new architecture and not training from scratch. Published work prune
 
 ## Results so far
 
+### The three side by side
+
+On 11 November all three of the kept Bobs were tested on one rented card (an A40) with the same two tests, each served straight from his public Q4 file, for $0.86. The **quick quiz** is 97 plain requests where Bob must pick the right tool, 20 short facts and 6 small coding tasks. The **held-out chats** replay 314 turns from real Bob conversations the Forge never trained on, and count how often the Bob makes the same tool decision the full model made. Speeds through a rented card include the internet round trip for every word, so they are left out. Home speeds are below each Bob.
+
+| Q4 | 28Bob Riker | 35Bob Bobert | 20Bob Bill |
+|---|---|---|---|
+| Experts kept per layer | 208 of 256 | 256, no cut | 144 of 256 |
+| File | 17.5 GB | 21 GB | 12.7 GB |
+| Fits a 16 GB card whole | no, a few experts in RAM | no, more in RAM | yes, with room |
+| Quiz: right tool | 47 of 97 (48%) | 46 of 97 (47%) | 42 of 97 (43%) |
+| Quiz: facts | 18 of 20 | 20 of 20 | 12 of 20 |
+| Quiz: code runs | 6 of 6 | 6 of 6 | 1 of 6 |
+| Held-out chats: right tool | 63 of 123 | 65 of 123 | 68 of 123 |
+| Held-out chats: right arguments | 39 of 123 | 38 of 123 | 41 of 123 |
+| Held-out chats: correctly no tool | 166 of 191 | 167 of 191 | 172 of 191 |
+| Held-out chats overall | 205 of 314 (65%) | 205 of 314 (65%) | 213 of 314 (68%) |
+| Home speed, 16 GB card | 111 tok/s | not measured at Q4 (Q3: 130 tok/s) | not measured yet |
+
+Verdict: Riker matches Bobert everywhere at a size that fits a 16 GB card far better, so he stays Bob's everyday brain. Bill is the best of the three at Bob's own tool decisions but lost much of the plain knowledge and coding that lived in the experts he was cut from; a heal on the same lessons cannot grow those back. He suits a tool-handling helper role, or a card too small for Riker. He is published as he is. If a better Bill is needed later, the route is a gentler cut (about 176 experts) or a heal with fact and code lessons, and his page would be updated in place.
+
 ### 28Bob Riker: the one that stays
 
 Re-cut from the teacher on 6 November with the coverage keep list at 208 of 256 experts per layer, healed for a full pass on a rented H200 (929 of 929 steps, 5.9 hours) on the clean lesson set: 8,635 lessons plus 424 held out, and 10 million tokens of general text. Benchmarked on the owner's PC on 8 November and kept. From here he is just Riker; the first Riker and Bill (v1 and v2, below) are retired and their files deleted.
@@ -68,6 +90,7 @@ Re-cut from the teacher on 6 November with the coverage keep list at 208 of 256 
 - Held-out loss 0.401 before healing, 0.362 after (the teacher: 0.324); distance from the teacher 0.087 to 0.067. General text 2.154 to 2.158, so outside knowledge held level.
 - Files: Q4 17.49 GB, Q3 13.87 GB, adapter 1.74 GB. At Q4 he needs some experts in RAM on a 16 GB card; the Q3 file fits more of him on the card.
 - **Download (9 November):** [MouseWurX/28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) on Hugging Face, Apache 2.0. [28Bob-Q4_K_M.gguf](https://huggingface.co/MouseWurX/28Bob-Riker/resolve/main/28Bob-Q4_K_M.gguf) for 16 GB cards, [28Bob-Q3_K_M.gguf](https://huggingface.co/MouseWurX/28Bob-Riker/resolve/main/28Bob-Q3_K_M.gguf) for 8 GB and under. The same page carries the full-precision weights (safetensors, 17 shards), the adapter and keep list that rebuild him from the teacher, the heal report and his benchmark cards. The lesson set is [MouseWurX/bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) (CC BY-SA 4.0).
+- **Bobert (35Bob) download (10 November):** [MouseWurX/35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) on Hugging Face, Apache 2.0: [35Bob-Q4_K_M.gguf](https://huggingface.co/MouseWurX/35Bob-Bobert/resolve/main/35Bob-Q4_K_M.gguf) (about 20 GB, for 24 GB cards or a 16 GB card with experts in RAM) and [35Bob-Q3_K_M.gguf](https://huggingface.co/MouseWurX/35Bob-Bobert/resolve/main/35Bob-Q3_K_M.gguf) (about 16 GB), with his adapter, benchmark cards and the full-precision weights (safetensors, 21 shards). He is the full Qwen3.6-35B-A3B trained on every lesson, no cut, and the teacher of every Bob after him. The owner put him up before his home test, so take his numbers from the ARC and Lab tests on the page as they land; the teacher's next-word odds he scored for the heals are [MouseWurX/bob-odds](https://huggingface.co/datasets/MouseWurX/bob-odds).
 - **An honest note on the cut.** The rule says 99% coverage for tools, coding and exact formats and 95% for everything else. By mistake, the keep list Riker was cut with used 95% for every skill. The ladder table below is still the real measurement of what 208 experts keep (97 to 98% on average for a typical skill, 92 to 93% in the worst layer). The bug is fixed in the Forge, and Bill's keep list will use the full rule.
 
 All on the same PC, at Q4, 8 experts per word, the same settings for every model:
