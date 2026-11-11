@@ -1745,3 +1745,13 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .split-pick { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; margin: 10px 0; }
 .split-opt { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; }
 .split-opt.locked { opacity: .7; }
+/* 1.5.205 Add a model page: the pop-up that lists a page's files */
+.pick-pop { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; max-width: min(640px, 94vw); max-height: 86vh; overflow: auto; }
+.pick-pop::backdrop { background: color-mix(in srgb, var(--bg) 70%, transparent); }
+.pick-pop h3 { margin: 0 0 6px; }
+.pick-list { margin: 10px 0; }
+.pick-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pick-row label { display: flex; align-items: center; gap: 8px; min-height: 32px; cursor: pointer; }
+.pick-row.locked label { cursor: default; opacity: .7; }
+.pick-row .pick-why { flex: 1 1 12em; overflow-wrap: anywhere; }
+.cat-removed { margin-top: 14px; }

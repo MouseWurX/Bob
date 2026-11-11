@@ -16,11 +16,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { cleanPresets, qwenPreset, QWEN_PRESETS } from './model-family.js';
-import { loadConfig, appDir, saveSettings, saveRemote, replaceSettings, cleanProjects, VERSION, findOutput, saveDirProblem, applySaveDir, isInside } from './config.js';
+import { loadConfig, appDir, saveSettings, saveRemote, replaceSettings, cleanProjects, VERSION, findOutput, saveDirProblem, applySaveDir, isInside, cleanRemoved } from './config.js';
 import { Brain, apuHoldbackGB } from './brain.js';
 import { transcribe } from './stt.js';
 import { ModelShop } from './models.js';
 import { CatalogUpdates } from './catalog-update.js';
+import { readPage, makeEntry, cleanAdded, mergeAdded, sweepAdded, ADDED_MAX } from './catalog-added.js';
 import { checkEngine, seedBundledEngine, goBackEngine, removeEngine, brainsEngineSettings, engineChoices, brainsEngineNow } from './engines.js';
 import { liveTrace } from '../public/lab-watch-math.js';
 import { cubeMap, cubeBrains, cubeShapes } from './lab-watch.js';
@@ -32,6 +33,7 @@ import { cloudStatus } from './cloud.js';
 import { rentRoute } from './rental-routes.js'; // 1.5.127 rented brains
 import { Lab, labRoute, labOn, labRoom } from './lab.js'; // 1.5.141 Computer Science Lab
 import { startCalibrate, useCalibrated, calResult } from './brain-calibrate.js'; // 1.5.205
+import { splitRemoved } from './catalog-removed.js'; // 1.5.205
 import { say, KOKORO_VOICES, stopVoices } from './tts.js';
 process.on('exit', () => stopVoices()); // never leave a voice holding the graphics card
 import { workshopDir, listWorkflows, ensureWorkshop } from './workshop.js';
@@ -169,8 +171,8 @@ const engineKeeper = new EngineKeeper(cfg, {
 // 1.5.137: Bob's newest brain list from GitHub, only with "Let Bob fetch his newest brain list" on: once a day, the
 // first look a minute and a half after start, and Check now in Settings. Off: the shipped list, nothing fetched.
 const listUpdates = new CatalogUpdates(cfg, { log: (k, m) => brain.log(k, m) });
-shop.catalog = listUpdates.merge(shop.shipped);
-const checkList = async () => { const r = await listUpdates.check(shop.shipped); shop.catalog = listUpdates.merge(shop.shipped); return r; };
+shop.catalog = mergeAdded(listUpdates.merge(shop.shipped), cfg);
+const checkList = async () => { const r = await listUpdates.check(shop.shipped); shop.catalog = mergeAdded(listUpdates.merge(shop.shipped), cfg); return r; };
 setTimeout(() => { if (listUpdates.due()) checkList().catch(() => {}); }, 90_000).unref();
 setInterval(() => { if (listUpdates.due()) checkList().catch(() => {}); }, 3600_000).unref();
 // 1.5.24: the card's size, for picture settings matched to it (only used when that switch is on).
@@ -406,7 +408,14 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/models') {
       const bobs = brain.lenders?.bobs?.() || [];
       if (bobs.length) await Promise.race([Promise.all(bobs.map((x) => brain.lenders.hello(x).catch(() => null))), new Promise((r) => setTimeout(r, 2500))]);
-      return send(res, 200, { ...(await shop.list()), bobNet: bobNetRooms(brain.lenders) });
+      // 1.5.205 entries taken off this replicant matrix's own list are left out, unless the model is here, half
+      // downloaded or in a slot (then it stays so it can still be used and deleted). The shipped list is untouched.
+      const all = await shop.list();
+      // An added brain that was downloaded once and whose file is gone now leaves the list by itself (Put back is still there).
+      const sw = sweepAdded(all.models || [], cfg.catalogAddedGot, cfg.catalogRemoved);
+      if (sw.changed) saveSettings(cfg, { catalogAddedGot: sw.got, catalogRemoved: cleanRemoved(sw.removed) });
+      const { models, removed } = splitRemoved(all.models || [], cfg.catalogRemoved, inUseIds());
+      return send(res, 200, { ...all, models, removed, bobNet: bobNetRooms(brain.lenders) });
     }
     if (req.method === 'GET' && p === '/api/cloud') return send(res, 200, cloudStatus(cfg));
     // 1.5.137: the newest brain list: how it stands, and Check now (only from this replicant matrix).
@@ -603,6 +612,27 @@ const server = http.createServer(async (req, res) => {
       brain.catalogNames = null;
       return send(res, 200, { ownModels: next, added: next[next.length - 1] });
     }
+    // 1.5.205 Add a model page: look at a page's files, then add the picked ones to this replicant matrix's own list.
+    if (req.method === 'POST' && (p === '/api/catalog-added/look' || p === '/api/catalog-added/add')) {
+      if (!isLocal) return send(res, 403, { error: `Model pages can only be added on ${myName() || "the Bob's own replicant matrix"} itself, not from the phone.` });
+      const b = await body(req).catch(() => ({}));
+      const page = await readPage(String(b?.page || ''));
+      if (!page.ok) return send(res, 400, { error: page.error });
+      const mine = new Set(cleanAdded(cfg.catalogAdded).map((e) => e.id));
+      const view = { repo: page.repo, commit: page.commit, license: page.license, reader: page.reader ? { name: page.reader.name, sizeGB: Math.round(page.reader.bytes / 1e8) / 10 } : null,
+        choices: page.choices.map((c) => ({ key: c.key, quant: c.quant, sizeGB: c.sizeGB, parts: c.parts, can: c.can, why: c.why, added: mine.has(makeEntry(page, c).id) })) };
+      if (p.endsWith('/look')) return send(res, 200, view);
+      const keys = new Set([].concat(b?.keys || []).map(String));
+      const picked = page.choices.filter((c) => c.can && keys.has(c.key)).map((c) => makeEntry(page, c));
+      if (!picked.length) return send(res, 400, { error: 'Tick at least one to add.' });
+      const next = cleanAdded([...cleanAdded(cfg.catalogAdded).filter((e) => !picked.some((x) => x.id === e.id)), ...picked]);
+      if (!picked.every((x) => next.some((e) => e.id === x.id))) return send(res, 400, { error: `Your list of added brains is full (${ADDED_MAX}). Remove one you don't use first.` });
+      const ids = new Set(picked.map((x) => x.id));
+      saveSettings(cfg, { catalogAdded: next, catalogRemoved: (cfg.catalogRemoved || []).filter((x) => !ids.has(x)) });
+      mergeAdded(shop.shipped, cfg); if (shop.catalog !== shop.shipped) mergeAdded(shop.catalog, cfg);
+      brain.catalogNames = null;
+      return send(res, 200, { ok: true, added: picked.map((x) => ({ id: x.id, name: x.name })) });
+    }
     if (req.method === 'POST' && p === '/api/own-models/remove') {
       if (!isLocal) return send(res, 403, { error: `Brains of your own can only be added or removed on ${myName() || "the Bob's own replicant matrix"} itself, not from the phone.` });
       const b = await body(req).catch(() => ({}));
@@ -700,6 +730,9 @@ const server = http.createServer(async (req, res) => {
           if (b.style && typeof b.style === 'object') { saveSettings(cfg, { style: { ...(cfg.style || {}), ...b.style } }); out.style = cfg.style; }
           if (typeof b.session === 'string') { saveSettings(cfg, { session: b.session }); out.session = await brain.setSession(cfg.session || 'normal'); }
           if (b.sessionBrains && typeof b.sessionBrains === 'object') { saveSettings(cfg, { sessionBrains: b.sessionBrains }); out.sessionBrains = sessionBrains(cfg); }
+          // 1.5.205 Remove / Put back one catalogue entry on this replicant matrix's own list.
+          if (typeof b.catalogRemove === 'string') { saveSettings(cfg, { catalogRemoved: cleanRemoved([...(cfg.catalogRemoved || []), b.catalogRemove]) }); out.catalogRemoved = cfg.catalogRemoved || []; }
+          if (typeof b.catalogPutBack === 'string') { cfg.catalogRemoved = (cfg.catalogRemoved || []).filter((x) => x !== b.catalogPutBack); saveSettings(cfg, { catalogRemoved: cfg.catalogRemoved }); out.catalogRemoved = cfg.catalogRemoved; }
           if (b.activeModels && typeof b.activeModels === 'object') { saveSettings(cfg, { activeModels: b.activeModels }); out.activeModels = cfg.activeModels || {}; } // 1.5.56 Brain catalogue
           if (b.tts && typeof b.tts === 'object') { saveSettings(cfg, { tts: { ...(typeof b.tts.voice === 'string' ? { voice: b.tts.voice } : {}), ...(typeof b.tts.speed === 'number' ? { speed: b.tts.speed } : {}), ...(typeof b.tts.windowsVoice === 'string' ? { windowsVoice: b.tts.windowsVoice } : {}) } }); out.tts = { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice, speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '' }; }
           if (b.speed && typeof b.speed === 'object') { const sp = Object.fromEntries(Object.entries(b.speed).filter(([k]) => ['threads', 'batch', 'ubatch', 'ctx', 'draft', 'modelArgs', 'args', 'fit', 'turbo', 'brainEngine'].includes(k))); saveSettings(cfg, { llamacpp: sp }); out.speed = speedView(); if ('brainEngine' in sp) out.restart = true; }
@@ -737,7 +770,7 @@ const server = http.createServer(async (req, res) => {
           if (typeof b.autoSession === 'boolean') { saveSettings(cfg, { autoSession: b.autoSession }); out.autoSession = autoSessionOn(cfg); brain.armIdleCheck(); }
           if (typeof b.webSearch === 'boolean') { saveSettings(cfg, { webSearch: b.webSearch }); out.webSearch = cfg.webSearch === true; }
           if (typeof b.naughtyList === 'boolean') { saveSettings(cfg, { naughtyList: b.naughtyList }); out.naughtyList = cfg.naughtyList === true; } // 1.5.132
-          if (typeof b.catalogUpdates === 'boolean') { saveSettings(cfg, { catalogUpdates: b.catalogUpdates }); out.catalogUpdates = cfg.catalogUpdates === true; shop.catalog = listUpdates.merge(shop.shipped); if (out.catalogUpdates) out.listCheck = await checkList(); } // 1.5.137
+          if (typeof b.catalogUpdates === 'boolean') { saveSettings(cfg, { catalogUpdates: b.catalogUpdates }); out.catalogUpdates = cfg.catalogUpdates === true; shop.catalog = mergeAdded(listUpdates.merge(shop.shipped), cfg); if (out.catalogUpdates) out.listCheck = await checkList(); } // 1.5.137
           if (typeof b.computerLab === 'boolean') { if (b.computerLab && !labRoom().ok) out.computerLabWhy = labRoom().why; else saveSettings(cfg, { computerLab: b.computerLab }); out.computerLab = labOn(cfg); } // 1.5.141
           if (typeof b.howtos === 'boolean') { saveSettings(cfg, { howtos: b.howtos }); out.howtos = cfg.howtos === true; }
           if (typeof b.editOwn === 'boolean') { saveSettings(cfg, { editOwn: b.editOwn }); out.editOwn = cfg.editOwn === true; }
@@ -1188,6 +1221,9 @@ function selfWorkNow() {
   try { brains = gatherBrains(cfg, { own: ownEntries(cfg), catalogFile: (id) => catalogFileFor(cfg, id) }); } catch {}
   return { ...selfWorkView(cfg, brains), bobNet: brain.lenders?.bobs?.().length || 0 };
 }
+
+// 1.5.205 The models in a slot right now (by catalogue id or engine name), so a removed entry in use isn't hidden.
+function inUseIds() { return new Set([...Object.values(cfg.models || {}), ...Object.values(sessionBrains(cfg) || {})].filter((m) => typeof m === 'string' && m)); }
 
 // 1.5.205 For the Brains page's Set up: each brain in use, how many layers its file has (null when the built-in
 // engine doesn't run it), and what was set by hand. Reading it changes nothing.

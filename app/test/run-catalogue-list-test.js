@@ -150,7 +150,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
   check('GitHub not answering is said plainly', (await down.check(catalog)).why === 'GitHub didn\'t answer in time.');
   fs.rmSync(tmp, { recursive: true, force: true });
   const server = read('src/server.js'), cellar = read('public/cellar.js');
-  check('the server merges it at start, checks once a day only when due, and Check now is this replicant matrix only', /shop\.catalog = listUpdates\.merge\(shop\.shipped\)/.test(server) && /if \(listUpdates\.due\(\)\)/.test(server) && /p === '\/api\/catalog\/latest'\) \{\s*if \(!isLocal\)/.test(server));
+  check('the server merges it at start, checks once a day only when due, and Check now is this replicant matrix only', /shop\.catalog = mergeAdded\(listUpdates\.merge\(shop\.shipped\), cfg\)/.test(server) && /if \(listUpdates\.due\(\)\)/.test(server) && /p === '\/api\/catalog\/latest'\) \{\s*if \(!isLocal\)/.test(server));
   check('Settings: "Let Bob fetch his newest brain list" under Going online, off, with Check now', /sswitch\('catalogUpdates', settings\.catalogUpdates === true, 'Let Bob fetch his newest brain list', keep\('Off unless you turn it on\./.test(cellar) && /data-listcheck>Check now/.test(cellar));
 }
 

@@ -15,6 +15,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { exeName, onPath } from './platform.js';
 import { cleanRentals } from './rental.js'; // 1.5.127 rented brains
+import { cleanAdded } from './catalog-added.js'; // 1.5.205 model pages added by the owner
 
 // Where Ollama keeps its models on this PC: OLLAMA_MODELS if it's set, else Bob's own models folder if Ollama's files
 // are there (how the installer sets Ollama up), else Ollama's usual folder in the user's home (~/.ollama/models).
@@ -195,7 +196,8 @@ export const VERSION = (() => {
   } catch { return { release: '0.9', branch: '', build: 0, label: '0.9.0' }; }
 })();
 
-export const SETTING_KEYS = ['brainPlace', 'smartNotes', 'quickNotes', 'docTools', 'sandboxCode', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'apuHoldbackGB'];
+export const cleanRemoved = (v) => [...new Set((Array.isArray(v) ? v : []).filter((k) => typeof k === 'string' && /^[\w.:/-]{1,100}$/.test(k)))].slice(0, 500);
+export const SETTING_KEYS = ['catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'quickNotes', 'docTools', 'sandboxCode', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'apuHoldbackGB'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -284,6 +286,10 @@ function clean(patch) {
     const a = out.activeModels && typeof out.activeModels === 'object' ? out.activeModels : {};
     out.activeModels = Object.fromEntries(Object.entries(a).filter(([k, v]) => /^[\w.:/-]{1,100}$/.test(k) && typeof v === 'boolean').slice(0, 300));
   }
+  // 1.5.205 entries the owner took off this replicant matrix's own list (the shipped catalogue is never changed).
+  if ('catalogRemoved' in out) out.catalogRemoved = cleanRemoved(out.catalogRemoved);
+  if ('catalogAdded' in out) out.catalogAdded = cleanAdded(out.catalogAdded);
+  if ('catalogAddedGot' in out) out.catalogAddedGot = cleanRemoved(out.catalogAddedGot);
   if ('style' in out) out.style = cleanStyle(out.style);
   if ('catName' in out) out.catName = typeof out.catName === 'string' && /^[\p{L}\p{N}' .-]{1,24}$/u.test(out.catName.trim()) ? out.catName.trim() : undefined;
   if (out.workshop) {

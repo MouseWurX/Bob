@@ -103,12 +103,48 @@ function rowHtml(m, job, ctx) {
   const act = job.id === 'phone' ? '' : worn ? '<span class="tag good">equipped</span>'
     : value ? `<button type="button" data-catequip="${esc(job.id)}" data-catvalue="${esc(value)}">Equip</button>`
     : here ? '' : isOwn(m) ? '<span class="tag warn" data-tip="Bob can\'t find the file where it was. Put it back, or remove the brain from his list under ➕ Your own brains.">File not found</span>' : (ctx.action ? ctx.action(m) : `<button class="get" data-get="${esc(m.id)}">Get</button>`);
+  // 1.5.205 Remove: takes an entry that isn't on this replicant matrix off your own list (asked first; Put back at the
+  // bottom of the catalogue). One that's here is deleted first, in On this replicant matrix; your own brains have their own Remove.
+  const removeBtn = job.id === 'phone' || here || isOwn(m) || m.status?.state === 'partial' ? '' : `<button type="button" class="mini cat-remove" data-catremove="${esc(m.id)}" aria-label="Remove ${esc(m.name)} from my list">Remove</button>`;
   // 1.5.133: community and naughty rows look different by more than colour: a solid stripe (community) or a dashed
   // one (naughty list) down the left, a light tint, and their tags in words.
   const kind = isNaughty(m) ? ' naughty' : isCommunity(m) ? ' community' : '';
   return `<li class="cat-row model${kind}${!here && !rec && s.level !== 'ok' ? ' dim' : ''}" id="cat-${esc(job.id)}-${esc(m.id)}">
     <span class="kit-name">${esc(m.name)}</span><span class="muted">${esc(sizeLine(m))}</span>${tags}${tipHtml(tip, `About ${m.name}`)}${src ? `<a class="src-link" href="${esc(src.url)}" target="_blank" rel="noopener noreferrer" data-tip="Where it comes from: ${esc(src.label)}" aria-label="Where ${esc(m.name)} comes from">↗</a>` : ''}
-    ${m.benchReport ? `<a class="src-link bench-link" href="${esc(m.benchReport)}" target="_blank" rel="noopener noreferrer" aria-label="Full report: how ${esc(m.name)} did in its benchmark">Full report</a>` : ''}<span class="cat-act">${sw}${act}</span><div class="confirm" hidden></div></li>`;
+    ${m.benchReport ? `<a class="src-link bench-link" href="${esc(m.benchReport)}" target="_blank" rel="noopener noreferrer" aria-label="Full report: how ${esc(m.name)} did in its benchmark">Full report</a>` : ''}<span class="cat-act">${sw}${act}${removeBtn}</span><div class="confirm" hidden></div></li>`;
+}
+
+// 1.5.205 Add a model page: paste a model's page, then pick which of its files (one per quantization) to add.
+export function addPageHtml(ctx) {
+  const a = ctx.addPage || {};
+  return `<section class="cat-job add-page" id="catjob-addpage"><h3>🔗 Add a model page ${tipHtml('Paste a model\'s Hugging Face page and I list its .gguf files, one per quantization. Tick the ones you want and they join this replicant matrix\'s list with a Get button. Each is pinned to the page as it is today and checked after it downloads. I haven\'t tried them, so I never recommend one over the brains I know.', 'About adding a model page')}</h3>
+    <p class="muted">A model I don't list? Paste its page and pick which sizes to add. Only this replicant matrix's list changes. <button type="button" class="mini help-link" data-help="faq-add-page" aria-label="Help: adding a model page">? Help</button></p>
+    <form class="own-form" data-addpageform><label>Model page <input type="text" data-addpageurl maxlength="400" placeholder="https://huggingface.co/owner/name-GGUF" value="${esc(a.url || '')}" required></label>
+      ${a.error ? `<p class="error" role="alert">${esc(a.error)}</p>` : ''}${a.done ? `<p class="muted" role="status">${esc(a.done)}</p>` : ''}
+      <div class="row"><button type="submit" class="get" ${a.busy ? 'disabled' : ''}>${a.busy ? 'Reading the page…' : 'Show its files'}</button></div></form></section>`;
+}
+// The pop-up: every choice on the page stays listed; one that can't be added is locked and says why.
+export function pagePickHtml(view, hw = {}) {
+  const rows = (view.choices || []).map((c, i) => {
+    const pl = placeFor({ sizeGB: c.sizeGB, name: `${view.repo} ${c.key}` }, hw, hw.bobNet);
+    const lock = c.added ? 'Already on your list.' : c.can ? '' : c.why;
+    return `<li class="cat-row pick-row${lock ? ' locked' : ''}"><label><input type="checkbox" data-pickkey="${esc(c.key)}" ${lock ? 'disabled' : ''} aria-describedby="pick-${i}"> <strong>${esc(c.quant || c.key.split('/').pop())}</strong></label><span class="muted">${gb(c.sizeGB)}</span>${hw.ramGB ? `<span class="tag ${pl.where === 'card' ? 'ok' : 'warn'} place-tag">${esc(pl.word)}</span>` : ''}<span class="muted pick-why" id="pick-${i}">${esc(lock || c.key.split('/').pop())}</span></li>`;
+  }).join('');
+  return `<h3 id="pick-title">Pick what to add</h3>
+    <p class="muted"><strong>${esc(view.repo)}</strong>${view.license ? ` · licence: ${esc(view.license)}` : ''}${view.reader ? ` · comes with a picture reader (${gb(view.reader.sizeGB)})` : ''}</p>
+    <ul class="kit-list cat-list pick-list">${rows}</ul>
+    <p class="muted">Nothing downloads yet: each one joins your list with a Get button. Not ones I've tried, so never my pick. You can remove any of them later.</p>
+    <p class="error" data-pickerr role="alert" hidden></p>
+    <div class="row"><button type="button" class="get" data-pickadd>Add to my list</button><button type="button" data-pickcancel>Cancel</button></div>`;
+}
+
+// 1.5.205 What you took off your own list, with a way back. The list Bob ships with is never changed.
+export function removedHtml(ctx) {
+  const gone = ctx.removed || [];
+  if (!gone.length) return '';
+  return `<details class="cat-job cat-removed" id="cat-removed"${ctx.removedOpen ? ' open' : ''}><summary>Removed from your list (${gone.length})</summary>
+    <p class="muted">Entries you took off this replicant matrix's list. Put one back any time.</p>
+    <ul class="kit-list cat-list">${gone.map((m) => `<li class="cat-row model"><span class="kit-name">${esc(m.name)}</span><span class="muted">${m.sizeGB != null ? gb(m.sizeGB) : ''}</span><span class="cat-act"><button type="button" class="mini" data-catputback="${esc(m.id)}" aria-label="Put ${esc(m.name)} back on the list">Put back</button></span></li>`).join('')}</ul></details>`;
 }
 
 // 1.5.101: inside each job, models sit under one header per family (Qwen, Gemma and so on). Every family starts
@@ -280,7 +316,7 @@ export function catalogueHtml(ctx0) {
   }
   return `<div class="cat-top">${toggle}<p class="muted">Every model Bob knows, by the job it does, then by family. Press a family's name to open its list. Turn <strong>Active</strong> on for the ones you want to see in Equip Bob and the brain menus. ${tipHtml(`Picked for this replicant matrix: ${card}. ★ Recommended is Bob's pick for that job here. Brains not tried on a real replicant matrix yet are listed but not recommended. New means one of the five newest releases in its family; Dated means newer brains do its job better (it stays on the list). Turning Active off only hides a model; it stays on this replicant matrix (your computer). Turning it on for a model you don't have yet shows it in Equip Bob with a Get button.`, 'How the catalogue works')} ${keep('Downloads always ask first, with the size.')} ${famBtns} <button type="button" class="mini help-link" data-help="catalogue" aria-label="Help: the Brain catalogue">? Help</button></p>
     ${nav}</div>
-    ${jobs.map((j) => jobHtml(j, ctx)).join('')}${ownHtml(ctx)}${othersHtml(ctx)}`;
+    ${jobs.map((j) => jobHtml(j, ctx)).join('')}${ownHtml(ctx)}${addPageHtml(ctx)}${othersHtml(ctx)}${removedHtml(ctx)}`;
 }
 
 // 1.5.137: the brains Rented brains offers to fill in Add a rental: the really big ones (catalog.json bigBrains, too big

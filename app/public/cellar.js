@@ -7,7 +7,7 @@ import { equipHtml, allSlots, HELPERS, equipped, entryOf, packFor, starterTicks,
 import { brainsHtml, setupPlan, canCalibrate, brainsInUse } from './brains.js';
 import { hasExperts } from './place.js';
 import { suit as fitSuit, picksOf, unsuited, jobNames, SLOT_NAMES, canDo, packsFor } from './fit.js';
-import { catalogueHtml, familyOf, visibleModels, isNaughty, VIEWS, dayWords, rentPicks } from './catalogue.js';
+import { catalogueHtml, pagePickHtml, familyOf, visibleModels, isNaughty, VIEWS, dayWords, rentPicks } from './catalogue.js';
 import { drawBob } from './bob-sprite.js';
 import { handsSettingsHtml, mountHandsSettings } from './hands.js';
 import { quarantineSettingsHtml, mountQuarantineSettings } from './quarantine.js';
@@ -95,6 +95,31 @@ export function createCellar({ popOut = null } = {}) {
   const setCatView = (v) => { catView = VIEWS.includes(v) ? v : 'well'; try { localStorage.setItem('bob-cat-view', catView); } catch {} };
   // 1.5.135: ➕ Your own brains: the Add form in progress (a picked .gguf, its name, an optional picture reader).
   let ownForm = null;
+  // 1.5.205 Add a model page: the pasted link, then a pop-up to pick which of the page's files to add.
+  let addPage = null;
+  function pagePick(view, link) {
+    const pop = document.createElement('dialog');
+    pop.className = 'pick-pop'; pop.setAttribute('aria-labelledby', 'pick-title');
+    pop.innerHTML = pagePickHtml(view, { ...eqCtx(), bobNet: data?.bobNet || [] });
+    const shut = () => { pop.close(); pop.remove(); };
+    pop.addEventListener('cancel', (e) => { e.preventDefault(); shut(); });
+    pop.addEventListener('click', async (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      if ('pickcancel' in b.dataset) return shut();
+      if (!('pickadd' in b.dataset)) return;
+      const keys = [...pop.querySelectorAll('[data-pickkey]:checked')].map((x) => x.dataset.pickkey);
+      const err = pop.querySelector('[data-pickerr]');
+      if (!keys.length) { err.hidden = false; err.textContent = 'Tick at least one to add.'; return; }
+      b.disabled = true;
+      const r = await api('/api/catalog-added/add', { page: link, keys }).catch((x) => ({ error: x.message }));
+      if (r.error) { b.disabled = false; err.hidden = false; err.textContent = r.error; return; }
+      shut();
+      addPage = { url: '', done: `Added ${r.added.map((x) => x.name).join(', ')}. ${r.added.length === 1 ? 'It is' : 'They are'} in the "Added by you" family under Brain, with a Get button.` };
+      await ownRefresh(); draw();
+    });
+    document.body.appendChild(pop); pop.showModal();
+    pop.querySelector('[data-pickkey]:not([disabled])')?.focus();
+  }
   async function ownPick(kind) {
     const r = await api('/api/own-models/pick', { kind }).catch((e) => ({ error: e.message }));
     if (r.error) { ownForm = { ...(ownForm || { file: '', name: '' }), error: r.error }; draw(); if (!ownForm.file) dlg.querySelector('[data-ownpath]')?.focus(); return null; }
@@ -257,7 +282,7 @@ export function createCellar({ popOut = null } = {}) {
     if (tab === 'settings') body = settingsHtml();
     else if (tab === 'style') body = stylePage.html(settings);
     else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}` : !roles ? '<p class="muted">Loading...</p>' : eqView === 'doll' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${equipHtml(eqCtx())}` : brainsHtml({ ...eqCtx(), bobNet: data?.bobNet || [], setupAsk, setUp: setUpBrain, place: placeData, calAsk }); // 1.5.205 the Brains page comes first
-    else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], bobNet: data?.bobNet || [], naughtyOn: naughtyOn(), catView, ownForm, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
+    else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], removed: data?.removed || [], bobNet: data?.bobNet || [], naughtyOn: naughtyOn(), catView, ownForm, addPage, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
     else if (tab === 'found') body = `<p class="muted">Scanned ${data.scannedAt ? new Date(data.scannedAt).toLocaleString() : 'never'}. <button data-scan>Look again</button></p>${extrasHtml() || '<p>Nothing extra found.</p>'}`;
     else if (GROUPS.some((g) => g.id === tab)) body = groupHtml(GROUPS.find((g) => g.id === tab));
     else {
@@ -1345,6 +1370,18 @@ export function createCellar({ popOut = null } = {}) {
       if ('owncancel' in b.dataset) { ownForm = null; draw(); return; }
       if ('ownpathopen' in b.dataset) { ownForm = { file: '', name: '' }; draw(); dlg.querySelector('[data-ownpath]')?.focus(); return; }
       if ('owndo' in b.dataset) { return; } // the form's submit handler does it
+      // 1.5.205 Remove a catalogue entry from this replicant matrix's own list (asked first), and Put back.
+      if (b.dataset.catremove) {
+        const li = b.closest('li'), box = li?.querySelector('.confirm'); if (!box) return;
+        box.hidden = false; box.innerHTML = `<p>Take <strong>${esc(li.querySelector('.kit-name')?.textContent || 'it')}</strong> off your list? Only this replicant matrix's list changes, and nothing is deleted. You can put it back at the bottom of the catalogue.</p><div class="row"><button type="button" class="get" data-catremove2="${esc(b.dataset.catremove)}">Remove</button><button type="button" class="mini" data-catremovecancel>Cancel</button></div>`;
+        box.querySelector('button')?.focus(); return;
+      }
+      if ('catremovecancel' in b.dataset) { const box = b.closest('.confirm'); if (box) { box.hidden = true; box.innerHTML = ''; } return; }
+      if (b.dataset.catremove2 || b.dataset.catputback) {
+        b.disabled = true; const y = dlg.scrollTop;
+        await api('/api/settings', b.dataset.catremove2 ? { catalogRemove: b.dataset.catremove2 } : { catalogPutBack: b.dataset.catputback }).catch(() => {});
+        data = { ...data, ...(await api('/api/models').catch(() => data)) }; draw(); dlg.scrollTop = y; return;
+      }
       if (b.dataset.ownremove) {
         const li = b.closest('li'); const box = li?.querySelector('.confirm');
         if (!box) return;
@@ -1726,6 +1763,16 @@ export function createCellar({ popOut = null } = {}) {
 
   // 1.5.135: ➕ Your own brains, the Add form.
   dlg.addEventListener('submit', async (e) => {
+    const pageForm = e.target.closest?.('[data-addpageform]');
+    if (pageForm) {
+      e.preventDefault();
+      const link = pageForm.querySelector('[data-addpageurl]')?.value.trim() || '';
+      addPage = { url: link, busy: true }; draw();
+      const r = await api('/api/catalog-added/look', { page: link }).catch((x) => ({ error: x.message }));
+      addPage = r.error ? { url: link, error: r.error } : { url: link }; draw();
+      if (r.error) dlg.querySelector('[data-addpageurl]')?.focus(); else pagePick(r, link);
+      return;
+    }
     const form = e.target.closest?.('[data-ownform]');
     if (!form || !ownForm) return;
     e.preventDefault();
