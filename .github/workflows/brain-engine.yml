@@ -72,7 +72,30 @@ jobs:
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
           cp app/engine/README.md "$out/README-Brain-Engine.md"
           ls -la "$out"
-          7z a "$out.zip" "./$out/*"
+      # Smart App Control (app/docs/SIGNING.md): off until the owner's Microsoft Artifact Signing account is set up.
+      # Then: variable ARTIFACT_SIGNING_ENABLED = true, ARTIFACT_SIGNING_ENDPOINT, ARTIFACT_SIGNING_ACCOUNT,
+      # ARTIFACT_SIGNING_PROFILE, AZURE_TENANT_ID, AZURE_CLIENT_ID, and the secret AZURE_CLIENT_SECRET.
+      - name: Sign every program file (Microsoft Artifact Signing)
+        if: ${{ vars.ARTIFACT_SIGNING_ENABLED == 'true' }}
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\brain-engine-${{ env.TAG }}-win-x64
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: List unsigned files (Smart App Control; fails only once REQUIRE_SIGNED is "true")
+        shell: bash
+        run: node app/installer/check-signed.js "brain-engine-$TAG-win-x64" --summary "$GITHUB_STEP_SUMMARY" ${{ vars.REQUIRE_SIGNED == 'true' && '--require' || '' }}
+      - name: Zip
+        shell: bash
+        run: 7z a "brain-engine-$TAG-win-x64.zip" "./brain-engine-$TAG-win-x64/*"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: brain-engine-win-x64

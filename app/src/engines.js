@@ -11,6 +11,7 @@ import { OS, exeName, onPath } from './platform.js';
 import { unzip } from './zip.js';
 import { brainEngineBuilt } from './config.js';
 import { fileURLToPath } from 'node:url';
+import { tryEngine, noteBlocked, clearBlocked } from './app-control.js';
 
 // The opt-in office helpers are pinned to exact versions and checksums (src/office-pins.json, installer/pin-office.js).
 export function officePins() {
@@ -254,6 +255,20 @@ export function engineWhole(stage, e, old = null) {
   return missing.length ? `${missing.slice(0, 4).join(', ')} ${missing.length === 1 ? 'isn\'t' : 'aren\'t'} in it` : '';
 }
 export const NOT_WHOLE = (name, why) => `The new ${name} download isn't a whole engine (${why}), so I kept the one you have. Nothing changed.`;
+
+// 1.5.204 Smart App Control (app-control.js): a new llama.cpp-family build is tried in its side folder before it takes
+// the old one's place. If Windows stops it, or it can't see the graphics card the old one could, the old one stays,
+// the build is remembered (so it isn't fetched again by itself) and the reason comes back in plain words.
+// Tests swap the trial for a fake with setEngineTrial.
+let engineTrial = tryEngine;
+export const setEngineTrial = (f) => { engineTrial = f || tryEngine; };
+export async function trialOrKeep(cfg, e, stage, folder, mark) {
+  const t = await engineTrial(stage, e, { old: fs.existsSync(folder) ? folder : null });
+  if (t?.ok !== false) { clearBlocked(cfg, e.id); return; }
+  fs.rmSync(stage, { recursive: true, force: true });
+  noteBlocked(cfg, e.id, mark, t.why);
+  const err = new Error(t.words); err.blocked = t.why; throw err;
+}
 
 export function swapIn(folder, stage, { keep = true } = {}) {
   const prev = folder + '.previous';
@@ -542,6 +557,7 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
   fs.rmSync(incompleteDir(cfg, e), { recursive: true, force: true });
   if (replacing) {
     try { fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify(mark, null, 2)); } catch {}
+    await trialOrKeep(cfg, e, stage, folder, mark);
     try { swapIn(folder, stage); }
     catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Press Unload everything (or wait for the brain to go idle), then Try again.`); }
   }
@@ -592,6 +608,7 @@ async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
   if (missing.length) holdIncomplete(cfg, e, stage, missing, mark);
   fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify(mark, null, 2));
   fs.rmSync(incompleteDir(cfg, e), { recursive: true, force: true });
+  await trialOrKeep(cfg, e, stage, folder, mark);
   try { swapIn(folder, stage); }
   catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Wait for the Lab job to finish (or press Unload everything), then try again.`); }
   return { version: own.rel.tag_name, asset: own.asset.name };
@@ -634,6 +651,7 @@ export async function fetchMissing(cfg, id, { nvidia, pub, signal, tick, find = 
   }
   fs.writeFileSync(path.join(dir, `bob-${e.id}.json`), JSON.stringify({ ...held.mark, at: new Date().toISOString() }, null, 2));
   const folder = path.join(cfg.agentDir, e.dir);
+  await trialOrKeep(cfg, e, dir, folder, held.mark);
   try { swapIn(folder, dir); }
   catch (err) { throw new Error(`${e.name} is in use right now (${err.code || err.message}). Press Unload everything, then press Download the missing files again.`); }
   fs.rmSync(path.join(folder, 'bob-incomplete.json'), { force: true });
