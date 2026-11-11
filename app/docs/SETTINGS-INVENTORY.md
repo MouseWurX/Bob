@@ -291,3 +291,12 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | Welcome, Do you want me to: | "Make 3D parts for a printer" (same switch) | off | new |
 | Settings > Engines (helpers) | OpenSCAD: Get (only where src/openscad-pins.json has a checked download), or found on this replicant matrix | not installed | new |
 | Side panel, Made by Bob | 3D models filter; STL, OBJ and GLB open in the 3D viewer (no setting) | — | new |
+
+## Added with picture to 3D (3D workshop)
+
+| Where | Setting / text | Default | Status |
+|---|---|---|---|
+| Settings > Everyday > How Bob works | Let Bob turn pictures into 3D models (model3d): "Off unless you turn it on. Ask for a figurine, a creature or a prop, and Bob paints a picture of it (or uses one you give him) and turns it into a textured 3D model with TRELLIS.2, shown in the 3D viewer. Takes 1 to 5 minutes. Needs an NVIDIA graphics card." plus whether the 3D workshop is set up | off | new |
+| Welcome, Do you want me to: | "Turn pictures into 3D models" (same switch) | off | new |
+| Settings > Engines (senses) | 3D workshop: Get (only where model3d/addons-pins.json has checked add-ons; Windows and Linux x64 with an NVIDIA card), about 22 GB with the models; Mac and ARM say to send the job to a PC Bob | not installed | new |
+| Settings > Bob-Net | Send/Take jobs: "3D models" is a new kind of job a PC Bob can take | — | new |

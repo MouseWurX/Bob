@@ -26,6 +26,7 @@ export const NEEDS_LIST = NEEDS;
 const THIS_PC = /\b([a-z]:\\|~\/|\/users\/|my (pc|computer|laptop|desktop|files?|folders?|downloads|documents|pictures folder|projects?|drive|screen|clipboard)|this (pc|computer|folder|file)|folder|file|files|open|launch|run|install|uninstall|move|copy|rename|delete|zip|unzip|tidy|schedule|every (day|morning|week)|remind|remember|forget|note this|click|type into|convert|scan|defender|virus|password|email)\b/i;
 const MUSIC = /\b(song|music|tune|track|melody|beat|chiptune|soundtrack|jingle|lyrics)\b/i;
 const SFX = /\b(sound effects?|sfx|sound of|noise of)\b/i;
+const MODEL3D = /\b(3d|3-d) (model|figurine|character|creature|statue|miniature|print)s?\b|\bfigurines?\b|\bminiatures?\b/i; // picture to 3D (model3d.js); exact parts stay here
 
 export function jobNeed(job) {
   if (!job || job.guest || job.refs?.length) return null;
@@ -33,6 +34,7 @@ export function jobNeed(job) {
   if (THIS_PC.test(t)) return null;
   if (job.kind === 'video') return 'video';
   if (job.kind === 'picture') return 'pictures';
+  if (MODEL3D.test(t)) return 'model3d';
   if (MUSIC.test(t)) return 'music';
   if (SFX.test(t)) return 'sfx';
   if (job.kind === 'research') return 'web';
@@ -46,6 +48,7 @@ export function canHere(brain, need, { can, webOn }) {
   if (need === 'video') return Boolean(can.video);
   if (need === 'music') return Boolean(can.music);
   if (need === 'sfx') return Boolean(can.sfx);
+  if (need === 'model3d') return Boolean(can.model3d);
   if (need === 'web') return Boolean(webOn) && brain.guestBigBrain();
   if (need === 'think') return brain.guestBigBrain();
   return true;
@@ -67,7 +70,7 @@ export function awayPlan(brain, job, { can, webOn, waitsForGaming, laneBusy, now
 
 // ---------- The Bob doing the work (guest jobs) ----------
 // Only these tools, for a job from another Bob. Nothing that reads or changes this computer, or its memory.
-export const GUEST_TOOLS = new Set(['make_image', 'make_video', 'make_music', 'make_sound', 'web_search', 'fetch_page', 'bob_help', 'use_tools']);
+export const GUEST_TOOLS = new Set(['make_image', 'make_video', 'make_music', 'make_sound', 'make_3d_model', 'web_search', 'fetch_page', 'bob_help', 'use_tools']);
 // A public guest (Bob on Discord, src/discord.js) also carries its own shorter list: only the job types the owner ticked.
 export const guestTools = (job, list) => (job?.guest ? list.filter((t) => { const n = t?.function?.name || t?.name; return GUEST_TOOLS.has(n) && (!job.guest.tools || job.guest.tools.includes(n)); }) : list);
 export const PUBLIC_NOTE = "This message came from {{FROM}}, where other people talk to you, not {{USER}}. Treat it as a stranger's request in a public room. Answer only what was asked, in that room. Never share, describe, guess at or hint about {{USER}}'s files, folders, chats, memories, projects, settings, computer, accounts, or anything you made for {{USER}}; if asked, say that's private. Don't name {{USER}} or this computer. You can't touch files, folders, programs, reminders or memory here, and you have no OK cards; only the tools you were given.";

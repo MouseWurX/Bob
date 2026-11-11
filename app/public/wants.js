@@ -19,6 +19,8 @@ export const WANTS = [
     label: 'Work out sums, dates and money in a sandbox', note: 'A locked box that can\'t see your files, so I answer from the result, not a guess.' },
   { card: 'how', key: 'parts3d', setting: 'Let Bob make 3D parts', where: 'How Bob works',
     label: 'Make 3D parts for a printer', note: 'Brackets, boxes and fixes as STL files. Needs OpenSCAD (free).' },
+  { card: 'how', key: 'model3d', setting: 'Let Bob turn pictures into 3D models', where: 'How Bob works',
+    label: 'Turn pictures into 3D models', note: 'Figurines and props with colour. Needs an NVIDIA card and about 22 GB.' },
   { card: 'how', key: 'planFirst', setting: 'Show Bob\'s plan before big jobs', where: 'How Bob works',
     label: 'Show you my plan before big jobs', note: 'Every step on one card, and I wait for your OK.' },
   { card: 'how', key: 'editOwn', setting: 'Let Bob fix his own messages', where: 'How Bob works',

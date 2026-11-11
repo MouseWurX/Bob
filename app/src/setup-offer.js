@@ -21,7 +21,8 @@ export const NEEDS = {
   voice: { slot: 'speech', cats: ['speech'], say: 'read replies aloud', what: 'a voice' },
   hearing: { slot: 'voice', cats: ['voice'], say: 'hear you talk', what: 'ears (speech to text)' },
   ffmpeg: { engine: 'ffmpeg', say: 'save things in other file types (MP3, JPG, WebM...)', what: 'FFmpeg, the converter' }, // 1.5.95 Save as
-  openscad: { engine: 'openscad', say: 'make 3D parts', what: 'OpenSCAD, the 3D part maker' } // Let Bob make 3D parts (parts3d.js)
+  openscad: { engine: 'openscad', say: 'make 3D parts', what: 'OpenSCAD, the 3D part maker' }, // Let Bob make 3D parts (parts3d.js)
+  model3d: { engine: 'model3d', say: 'turn pictures into 3D models', what: 'the 3D workshop (TRELLIS.2, about 22 GB)' } // Let Bob turn pictures into 3D models (model3d.js)
 };
 // The tool that does each job, so a call to it can be turned into an offer.
 export const TOOL_NEED = { make_image: 'pictures', make_video: 'video', make_music: 'music', make_sound: 'sfx' };

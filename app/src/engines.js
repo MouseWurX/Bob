@@ -12,6 +12,7 @@ import { unzip } from './zip.js';
 import { brainEngineBuilt } from './config.js';
 import { fileURLToPath } from 'node:url';
 import { findOpenscad, openscadPins, openscadAllowed } from './parts3d.js';
+import { setupModel3d, model3dReady, model3dWhy } from './model3d.js';
 
 // The opt-in office helpers are pinned to exact versions and checksums (src/office-pins.json, installer/pin-office.js).
 export function officePins() {
@@ -109,6 +110,21 @@ export const ENGINES = [
     linuxArm64: { other: [/^uv-aarch64-unknown-linux-gnu\.tar\.gz$/] },
     after: setupWorkshop,
     ready: (cfg) => { const a = audioReady(cfg); return a.music || a.sfx; }
+  },
+  {
+    // 🧊 Picture to 3D (model3d.js): the same uv, a private Python 3.12, PyTorch for CUDA 12.8, add-ons GitHub compiled
+    // for Bob (pinned in model3d/addons-pins.json, sha256-checked), TRELLIS.2 at its pinned commit and its weights.
+    id: 'model3d', name: '3D workshop', what: `Picture to 3D: TRELLIS.2 (Microsoft, MIT) turns one picture into a textured 3D model. Needs an NVIDIA graphics card; 16 GB is best, smaller cards may run out of memory. About 22 GB with the models. One part, Meta's DINOv3 picture reader, needs your own free Hugging Face token. NVIDIA's nvdiffrast part is for non-commercial use.`,
+    repo: 'astral-sh/uv', dir: 'audio-workshop', exe: 'uv.exe',
+    nvidia: [], other: [/^uv-x86_64-pc-windows-msvc\.zip$/],
+    runtime: () => null,
+    // getters: model3d.js may not be loaded yet when this list is made (audio.js and model3d.js import each other's neighbours)
+    get unavailable() { return model3dWhy('win', 'x64'); },
+    mac: { get unavailable() { return model3dWhy('mac', 'arm64'); } },
+    linux: { other: [/^uv-x86_64-unknown-linux-gnu\.tar\.gz$/], get unavailable() { return model3dWhy('linux', 'x64'); } },
+    linuxArm64: { get unavailable() { return model3dWhy('linux', 'arm64'); } },
+    after: (cfg, o) => setupModel3d(cfg, o, { grab }),
+    ready: (cfg) => model3dReady(cfg)
   },
   {
     // Same uv as the audio tools; only the small Kokoro package is added. The voice files come from Voice & conversation, Talking.
@@ -256,7 +272,7 @@ export const sharedDir = (e) => ENGINES.filter((x) => x.dir === e.dir).length > 
 // The build kept from before the last update, for Go back.
 export const previousDir = (cfg, e) => path.join(cfg.agentDir, e.dir + '.previous');
 // Where each engine sits on the Engines page.
-export const ENGINE_GROUP = { brainengine: 'thinking', llamacpp: 'thinking', sdcpp: 'senses', whispercpp: 'senses', audio: 'senses', piper: 'voices', kokoro: 'voices', chatterbox: 'voices', uv: 'helpers', ffmpeg: 'helpers', libreoffice: 'helpers', openscad: 'helpers' };
+export const ENGINE_GROUP = { brainengine: 'thinking', llamacpp: 'thinking', sdcpp: 'senses', whispercpp: 'senses', audio: 'senses', piper: 'voices', kokoro: 'voices', chatterbox: 'voices', uv: 'helpers', ffmpeg: 'helpers', libreoffice: 'helpers', openscad: 'helpers', model3d: 'senses' };
 // Put a freshly unpacked build (stage) in the engine's place in one step. The build that was there moves to
 // <folder>.previous (one older build is kept, for Go back), unless keep is false.
 // PC test of 1.5.184: a Brain Engine download that held only Bob's own 19 files (no ggml libraries) went in as a
@@ -289,7 +305,7 @@ export function swapIn(folder, stage, { keep = true } = {}) {
 
 // 1.5.72: rough download sizes (GB), so the one-click Welcome total counts the programs too. llama.cpp's is the
 // NVIDIA build with its CUDA runtime (other builds are smaller); the rest follow each engine's own "About" text.
-export const ENGINE_GB = { llamacpp: 0.6, brainengine: 0.7, sdcpp: 0.5, whispercpp: 0.1, piper: 0.1, audio: 12, kokoro: 0.1, chatterbox: 4, ffmpeg: 0.1, libreoffice: 0.35, openscad: 0.03 };
+export const ENGINE_GB = { llamacpp: 0.6, brainengine: 0.7, sdcpp: 0.5, whispercpp: 0.1, piper: 0.1, audio: 12, kokoro: 0.1, chatterbox: 4, ffmpeg: 0.1, libreoffice: 0.35, openscad: 0.03, model3d: 22 };
 export function engineStatus(cfg) {
   return ENGINES.filter((e0) => !e0.labOnly || cfg.computerLab !== false).map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install && !e.anyOS), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.pinned || e.sha256 || (e.tag && !e.base)), tested: e.tested || null, group: ENGINE_GROUP[e.id] || 'helpers', canSwap: !sharedDir(e) && !e.install && !e.after, previous: !sharedDir(e) ? (installedMarker(cfg, e, previousDir(cfg, e))?.version || (fs.existsSync(previousDir(cfg, e)) ? 'the one before' : null)) : null, own: !sharedDir(e) && !e.install && fs.existsSync(path.join(cfg.agentDir, e.dir)) && !e.found?.(cfg), found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir), incomplete: (() => { const h = !sharedDir(e) && cfg.agentDir ? incompleteUpdate(cfg, e) : null; return h ? { missing: h.missing, what: partsText(h.missing), version: h.mark?.version || '' } : null; })() }));
 }

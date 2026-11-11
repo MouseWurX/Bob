@@ -404,8 +404,8 @@ export function createLayout({ post, openTasks, openDownloads }) {
   // Hidden until Bob-Net is in use (a Bob on the list, or Lend / Take jobs on), so a fresh Bob shows nothing new.
   // Polled every 15 s while the pane is open (30 s in Gaming), and straight away after a lend, a borrow, a job sent away
   // or a pairing (net() below, from app.js). Colour never stands alone: the words say the same thing.
-  const NEED = { pictures: 'a picture', video: 'a clip', music: 'music', sfx: 'a sound', web: 'web research', think: 'some thinking' };
-  const CAN = { pictures: 'pictures', video: 'clips', music: 'music', sfx: 'sounds', web: 'web research', think: 'thinking' };
+  const NEED = { pictures: 'a picture', video: 'a clip', music: 'music', sfx: 'a sound', model3d: 'a 3D model', web: 'web research', think: 'some thinking' };
+  const CAN = { pictures: 'pictures', video: 'clips', music: 'music', sfx: 'sounds', model3d: '3D models', web: 'web research', think: 'thinking' };
   const WHY = { gaming: 'gaming, so not lending', busy: 'busy with his own job', off: 'not lending', 'not reachable': 'not reachable', 'door closed': 'door shut over there', 'passcode not accepted': 'passcode not accepted', 'too slow': 'too slow last time', 'too long': 'no room for this chat', 'no brain': 'no quick brain' };
   const sinceShort = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? 'just now' : m === 1 ? '1 min ago' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
   const netRow = (b) => {
