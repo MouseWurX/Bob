@@ -388,7 +388,7 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 
 ## 9. Voice
 
-- **Read aloud:** Bob can speak his replies. Kokoro is the recommended voice (22 voices, runs on the processor). Every voice has a **Play** button with a short sample (the same line in each voice) that works before you download anything.
+- **Read aloud:** Bob can speak his replies. Kokoro is the recommended voice (22 voices, runs on the processor), and inside it Onyx (deep and calm) is the recommended voice: Bob uses it until you pick another, and it is marked ★ Recommended in the list. Every voice has a **Play** button with a short sample (the same line in each voice) that works before you download anything.
 - **Talk to Bob:** with the Hearing you slot filled, use 🎙 or say "Hey Bob" hands-free (if you turn that on).
 
 ---

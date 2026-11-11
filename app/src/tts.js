@@ -24,8 +24,10 @@ export function ttsReady(cfg) {
 }
 
 // Kokoro's voices (in the Kokoro v1.0 voice pack). a = American, b = British; f = woman, m = man.
+// 1.5.203: Onyx (deep, calm, a little dry) is the voice Bob recommends and uses until someone picks another; it leads the list.
+export const DEFAULT_KOKORO_VOICE = 'am_onyx';
 export const KOKORO_VOICES = [
-  ['am_michael', 'Michael (US man)'], ['am_adam', 'Adam (US man)'], ['am_eric', 'Eric (US man)'], ['am_liam', 'Liam (US man)'], ['am_onyx', 'Onyx (US man, deep)'], ['am_puck', 'Puck (US man, lively)'], ['am_fenrir', 'Fenrir (US man)'], ['am_echo', 'Echo (US man)'],
+  ['am_onyx', 'Onyx (US man, deep)'], ['am_michael', 'Michael (US man)'], ['am_adam', 'Adam (US man)'], ['am_eric', 'Eric (US man)'], ['am_liam', 'Liam (US man)'], ['am_puck', 'Puck (US man, lively)'], ['am_fenrir', 'Fenrir (US man)'], ['am_echo', 'Echo (US man)'],
   ['bm_george', 'George (British man)'], ['bm_lewis', 'Lewis (British man)'], ['bm_daniel', 'Daniel (British man)'], ['bm_fable', 'Fable (British man)'],
   ['af_heart', 'Heart (US woman)'], ['af_bella', 'Bella (US woman)'], ['af_nicole', 'Nicole (US woman, soft)'], ['af_sarah', 'Sarah (US woman)'], ['af_sky', 'Sky (US woman)'], ['af_nova', 'Nova (US woman)'],
   ['bf_emma', 'Emma (British woman)'], ['bf_isabella', 'Isabella (British woman)'], ['bf_alice', 'Alice (British woman)'], ['bf_lily', 'Lily (British woman)']
@@ -80,7 +82,7 @@ async function sayPython(cfg, engine, words, signal) {
   const t = cfg.tts || {};
   const out = path.join(os.tmpdir(), `bob-say-${crypto.randomUUID().slice(0, 8)}.wav`);
   const job = { id: crypto.randomUUID().slice(0, 8), engine, text: words, out, speed: t.speed || 1 };
-  if (engine === 'kokoro') Object.assign(job, { model: t.model, voices: t.voices, voice: t.voice || 'am_michael' });
+  if (engine === 'kokoro') Object.assign(job, { model: t.model, voices: t.voices, voice: t.voice || DEFAULT_KOKORO_VOICE });
   if (engine === 'chatterbox') {
     // Copying a voice: a clear 10 to 20 second recording at <inn>\voices\bob.wav (or tts.ref).
     const ref = t.ref || path.join(cfg.innDir, 'voices', 'bob.wav');

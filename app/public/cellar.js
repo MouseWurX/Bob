@@ -328,6 +328,8 @@ export function createCellar() {
   }
 
   // Bob's own voice: which Kokoro voice and how fast. Piper voices and Chatterbox are picked in Model roles.
+  // The Kokoro voice Bob recommends (Onyx), from the server so there's one place to change it.
+  const kokoroDefault = () => settings.kokoroDefault || 'am_onyx';
   const voiceOf = (engine, voice) => voices.find((v) => v.engine === engine && v.voice === voice);
   const hear = (engine, voice, label) => sampleButton(engine, voice, label, sampleHint(voiceOf(engine, voice)));
   // Every Kokoro voice with a play button, so they can be compared without picking each one.
@@ -337,7 +339,7 @@ export function createCellar() {
     const cur = settings.tts?.voice;
     return `<details class="voices"><summary>Hear all ${list.length} Kokoro voices</summary>
       ${list[0].installed ? '' : list[0].filesHere ? engineStep(engineById('kokoro'), 'Voices downloaded') + '<p class="muted">Until then only the voices that come with Bob can play.</p>' : '<p class="muted">Kokoro isn\'t set up yet: it needs the voice pack (below) and the Kokoro engine (Settings, Engines). Until then only the voices that come with Bob can play.</p>'}
-      <ul class="voice-grid">${list.map((v) => `<li class="sample-row"><span>${esc(v.label)}${canUse && v.voice === cur ? ' <span class="tag good">Bob\'s voice</span>' : ''}</span>${v.have === 'none' ? `<span class="muted">${v.filesHere ? 'after the Kokoro engine' : 'needs Kokoro'}</span>` : hear('kokoro', v.voice, 'Play')}${canUse && v.voice !== cur ? `<button type="button" class="link" data-usevoice="${esc(v.voice)}">Use</button>` : ''}</li>`).join('')}</ul></details>`;
+      <ul class="voice-grid">${list.map((v) => `<li class="sample-row"><span>${esc(v.label)}${v.voice === kokoroDefault() ? ' <span class="tag rec">★ Recommended</span>' : ''}${canUse && v.voice === cur ? ' <span class="tag good">Bob\'s voice</span>' : ''}</span>${v.have === 'none' ? `<span class="muted">${v.filesHere ? 'after the Kokoro engine' : 'needs Kokoro'}</span>` : hear('kokoro', v.voice, 'Play')}${canUse && v.voice !== cur ? `<button type="button" class="link" data-usevoice="${esc(v.voice)}">Use</button>` : ''}</li>`).join('')}</ul></details>`;
   }
 
   // 1.5.33: one picker for Bob's voice everywhere it's chosen: the engine, then (nested under it) the voice inside that
@@ -357,10 +359,10 @@ export function createCellar() {
   function nestedVoiceHtml() {
     const t = settings.tts || {}, cur = speechNow();
     if (/kokoro/.test(cur)) {
-      const v = t.voice || 'am_michael';
+      const v = t.voice || kokoroDefault();
       // Not set up yet: a button right here to set it up (the voice samples that come with Bob still play).
       const ready = voices.find((x) => x.engine === 'kokoro')?.installed;
-      return `<span class="voice-nest"><label class="pick-inline"><span>Voice</span><select data-tts="voice" aria-label="Kokoro voice">${(settings.kokoroVoices || []).map(([id, label]) => `<option value="${esc(id)}" ${id === v ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>${hear('kokoro', v, 'Play sample')}${ready ? '' : '<button type="button" class="mini" data-gocat="speech" data-gomodel="kokoro-v1">Set up Kokoro</button>'}</span>`;
+      return `<span class="voice-nest"><label class="pick-inline"><span>Voice</span><select data-tts="voice" aria-label="Kokoro voice">${(settings.kokoroVoices || []).map(([id, label]) => `<option value="${esc(id)}" ${id === v ? 'selected' : ''}>${esc(label)}${id === kokoroDefault() ? ' · recommended' : ''}</option>`).join('')}</select></label>${hear('kokoro', v, 'Play sample')}${ready ? '' : '<button type="button" class="mini" data-gocat="speech" data-gomodel="kokoro-v1">Set up Kokoro</button>'}</span>`;
     }
     if (cur === 'windows') {
       const list = winVoices(), w = t.windowsVoice || '';
@@ -380,7 +382,7 @@ export function createCellar() {
     const t = settings.tts || {};
     const head = `<div class="voice-head"><strong>Bob's voice</strong>${voicePickHtml()}</div>`;
     if (t.provider === 'kokoro') return `${head}<div class="row">
-      <label class="pick"><strong>Speed: <b data-speedlabel>${(t.speed || 1).toFixed(1)}×</b></strong><input type="range" min="0.6" max="1.6" step="0.1" data-tts="speed" value="${t.speed || 1}"></label></div>${engineStep(engineById('kokoro'), voiceOf('kokoro', t.voice || 'am_michael')?.filesHere ? 'Voices downloaded' : 'Kokoro is picked as Bob\'s voice')}${kokoroGrid(true)}`;
+      <label class="pick"><strong>Speed: <b data-speedlabel>${(t.speed || 1).toFixed(1)}×</b></strong><input type="range" min="0.6" max="1.6" step="0.1" data-tts="speed" value="${t.speed || 1}"></label></div>${engineStep(engineById('kokoro'), voiceOf('kokoro', t.voice || kokoroDefault())?.filesHere ? 'Voices downloaded' : 'Kokoro is picked as Bob\'s voice')}${kokoroGrid(true)}`;
     if (t.provider === 'chatterbox') return `${head}<div><p class="muted">To copy a voice, put a clear 10 to 20 second recording named bob.wav in ${esc(t.voicesFolder)}. Only use a voice you have the right to use (your own, or one you have permission for).</p>${voiceOf('chatterbox', 'bob')?.installed ? `<p class="sample-row">${hear('chatterbox', 'bob')}</p>` : engineStep(engineById('chatterbox'), 'Chatterbox is picked as Bob\'s voice')}</div>`;
     return head;
   }
@@ -564,7 +566,7 @@ export function createCellar() {
   let settingsQuery = '';
   function voiceNow() {
     const t = settings.tts || {};
-    if (t.provider === 'kokoro') { const k = (settings.kokoroVoices || []).find(([id]) => id === (t.voice || 'am_michael')); return { name: `${k ? k[1] : t.voice} (Kokoro)`, play: hear('kokoro', t.voice || 'am_michael', 'Play sample') }; }
+    if (t.provider === 'kokoro') { const k = (settings.kokoroVoices || []).find(([id]) => id === (t.voice || kokoroDefault())); return { name: `${k ? k[1] : t.voice} (Kokoro)`, play: hear('kokoro', t.voice || kokoroDefault(), 'Play sample') }; }
     if (t.provider === 'chatterbox') return { name: 'Chatterbox (copies voices\\bob.wav)', play: hear('chatterbox', 'bob', 'Play sample') };
     if (t.provider === 'piper') { const v = voices.find((x) => x.engine === 'piper' && x.installed); return { name: v ? `${v.label} (Piper)` : 'Piper', play: v ? hear('piper', v.voice, 'Play sample') : '' }; }
     return { name: 'The voice built into Windows', play: sampleButton('windows', 'default', 'Play sample', 'The voice built into Windows.') };
@@ -621,7 +623,7 @@ export function createCellar() {
     // Closed panels show what's set now, not just what's inside.
     const onoff = (v) => (v ? 'on' : 'off');
     const t = settings.tts || {};
-    const voiceSum = t.provider === 'kokoro' ? `Kokoro, ${((settings.kokoroVoices || []).find(([id]) => id === (t.voice || 'am_michael'))?.[1] || t.voice).replace(/ \(.*$/, '')}` : t.provider === 'piper' ? 'Piper' : t.provider === 'chatterbox' ? 'Chatterbox' : 'Windows';
+    const voiceSum = t.provider === 'kokoro' ? `Kokoro, ${((settings.kokoroVoices || []).find(([id]) => id === (t.voice || kokoroDefault()))?.[1] || t.voice).replace(/ \(.*$/, '')}` : t.provider === 'piper' ? 'Piper' : t.provider === 'chatterbox' ? 'Chatterbox' : 'Windows';
     const bobSum = `Voice: ${voiceSum} · Look: ${lookName} · Theme: ${theme?.name || 'Moondust'}`;
     const howSum = howSumNow();
     // 1.5.117: the version and Check for updates sit on the closed panel's line, so no scrolling to check.
