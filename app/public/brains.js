@@ -153,7 +153,7 @@ function brainRowHtml(b, ctx) {
   const trial = b.entry?.trial ? '<span class="tag">Not tried yet</span>' : '';
   return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name"><strong>${esc(b.name)}</strong> ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span></div>
     <div class="brain-jobs">${chips}${jobSelect(b.value, jobsFor(b.value, ctx), `Give ${b.name} another job`)}</div>
-    <div class="brain-place">${placeBarHtml(b.entry, ctx)}<div class="brain-act"><span class="muted">${handOn(b.value, ctx) ? 'By hand' : 'Auto'}</span><button type="button" class="mini" data-brainsetup="${esc(b.value)}" aria-label="Set up ${esc(b.name)}">Set up</button></div></div></li>`;
+    <div class="brain-place">${placeBarHtml(b.entry, ctx)}<div class="brain-act"><span class="muted">${handOn(b.value, ctx) ? 'By hand' : 'Auto'}</span><span><button type="button" class="mini" data-calibrate="${esc(b.value)}" ${calLock(b, ctx) || ctx.place?.job?.state === 'running' ? 'disabled' : ''} aria-label="Calibrate ${esc(b.name)}"${calLock(b, ctx) ? ` title="${esc(calLock(b, ctx))}"` : ''}>⏱ Calibrate</button> <button type="button" class="mini" data-brainsetup="${esc(b.value)}" aria-label="Set up ${esc(b.name)}">Set up</button></span></div></div></li>`;
 }
 
 // ---- Set up: one brain's own page. Its jobs, and where it sits (Auto, or by hand for a brain made of experts). ----
@@ -170,6 +170,42 @@ export function handLock(b, ctx) {
   if (p.pinned) return 'A number in the settings file (llamacpp.nCpuMoe) is in charge of this brain. Remove it there to set it here.';
   return '';
 }
+// ---- Calibrate: time this brain a few ways on this replicant matrix; the result is a recommendation, never a change. ----
+// Why Calibrate is locked for this brain, or ''.
+export function calLock(b, ctx) {
+  const hand = handLock(b, ctx);
+  if (hand && !/settings file/.test(hand)) return hand;
+  if (ctx.place && !ctx.place.engineHere) return 'My built-in engine isn\'t on this replicant matrix yet.';
+  if (ctx.place?.busy) return 'The Lab is busy with another job. Calibrating waits for it.';
+  return '';
+}
+export const canCalibrate = (ctx) => brainsInUse(ctx).filter((b) => !calLock(b, ctx));
+const mins = (n) => `about ${Math.max(5, n * 8)} minutes`;
+// The job line while calibrating, or the question before unloading a brain in use.
+function calStatusHtml(ctx) {
+  const j = ctx.place?.job;
+  if (j && j.state === 'running') return `<div class="cal-run" role="status"><strong>Calibrating.</strong> ${esc(j.stepLabel || 'Starting…')} <span class="muted">${j.progress || 0}%</span><div class="meter"><i style="width:${j.progress || 0}%"></i></div><button type="button" class="mini" data-calstop>Stop</button></div>`;
+  const a = ctx.calAsk;
+  if (!a) return '';
+  if (a.error) return `<div class="setup-ask"><p class="error">${esc(a.error)}</p><div class="row"><button type="button" class="mini" data-calcancel>Close</button></div></div>`;
+  return `<div class="setup-ask" role="group" aria-label="Calibrate"><p>${a.needUnload ? `${esc((a.names || []).join(', '))} ${a.names?.length === 1 ? 'is' : 'are'} loaded. Calibrating unloads ${a.names?.length === 1 ? 'it' : 'them'} first, and I can't chat until it's done.` : `Calibrating ${a.models.length === 1 ? 'this brain' : `${a.models.length} brains, one after another,`} takes ${mins(a.models.length)} and keeps the graphics card busy. I can't chat while it runs.`} Nothing is changed at the end: you get a recommendation to use or ignore.</p><div class="row"><button type="button" class="get" data-calgo${a.needUnload ? ' data-unload="1"' : ''}>${a.needUnload ? 'Unload and calibrate' : 'Calibrate'}</button><button type="button" class="mini" data-calcancel>Cancel</button></div></div>`;
+}
+function calibrateHtml(b, ctx) {
+  const p = placeOf(b.value, ctx);
+  const lock = calLock(b, ctx);
+  const cal = p?.cal || null;
+  const running = ctx.place?.job?.state === 'running';
+  const set = p?.set || { mode: 'auto' };
+  const best = cal?.best || null;
+  const inUse = best && (best.mode === 'hand' ? set.mode === 'hand' && set.cpuMoe === best.cpuMoe : set.mode !== 'hand');
+  const rows = (cal?.rows || []).map((r) => `<tr${best && ((best.mode === 'auto' && r.id === 'auto') || (best.mode === 'hand' && r.cpuMoe === best.cpuMoe && r.id !== 'auto')) ? ' class="best"' : ''}><td>${r.id === 'auto' ? 'Auto' : `By hand, ${r.cpuMoe} in memory`}</td><td>${r.failed ? `<span class="muted">${esc(r.failed)}</span>` : `${r.tps} words a second`}</td><td>${r.failed || r.firstWordS == null ? '' : `first word ${r.firstWordS} s`}</td><td>${best && ((best.mode === 'auto' && r.id === 'auto') || (best.mode === 'hand' && r.cpuMoe === best.cpuMoe && r.id !== 'auto')) ? '★ recommended' : ''}</td></tr>`).join('');
+  return `<section class="brains-panel"><h3>Calibration ${tipHtml('I start this brain in a trial engine a few ways (Auto, then by hand with more and more layers\' experts in memory), ask the same short question each time, and read the words a second. The fastest becomes the recommendation. Nothing changes until you press Use recommended.', 'About calibrating')}</h3>
+      <div class="row"><button type="button" class="mini" data-calibrate="${esc(b.value)}" ${lock || running ? 'disabled' : ''}>⏱ Calibrate</button><button type="button" class="mini" data-caluse="${esc(b.value)}" ${best && !inUse && !running ? '' : 'disabled'}>Use recommended</button>${best ? `<span class="tag ${inUse ? 'good' : ''}">★ recommended: ${best.mode === 'hand' ? `By hand, ${best.cpuMoe}` : 'Auto'}${inUse ? ' (in use)' : ''}</span>` : ''}</div>
+      ${calStatusHtml(ctx)}
+      <p class="muted">${lock ? `🔒 ${esc(lock)}` : cal ? `Last calibrated ${esc(cal.when || '')}. ${esc(best?.why || 'No try ran.')}` : 'Not calibrated yet. Auto is in charge until you say otherwise.'}</p>
+      ${rows ? `<table class="cal-rows"><caption class="sr-only">What each try measured</caption>${rows}</table>` : ''}</section>`;
+}
+
 export function setUpHtml(b, ctx) {
   const p = placeOf(b.value, ctx);
   const set = p?.set || { mode: 'auto' };
@@ -190,7 +226,9 @@ export function setUpHtml(b, ctx) {
       <div class="num-row"><label for="place-moe"><strong>Layers that keep their experts in memory</strong><br><span class="muted">0 puts everything on the card. More frees the card and is slower.</span></label>
         <input type="range" id="place-moe" min="0" max="${layers || 1}" step="1" value="${n}" data-placemoe="${esc(b.value)}" ${dis} aria-describedby="place-lock">
         <input type="number" min="0" max="${layers || 1}" step="1" value="${n}" data-placemoenum="${esc(b.value)}" ${dis} aria-label="Layers that keep their experts in memory, as a number" inputmode="numeric"><span class="muted">of ${layers || '?'}</span></div>
+      ${p?.cal?.best ? `<p class="muted">★ Recommended by the last calibration: ${p.cal.best.mode === 'hand' ? `<strong>${p.cal.best.cpuMoe}</strong> by hand` : '<strong>Auto</strong>'}.</p>` : ''}
       <p class="muted" id="place-lock">${lock ? `🔒 ${esc(lock)}` : hand ? 'In use. Takes effect the next time this brain loads.' : 'Set the number any time; it is used once you switch to By hand.'}</p></section>
+    ${calibrateHtml(b, ctx)}
     </div>`;
 }
 
@@ -222,7 +260,8 @@ export function brainsHtml(ctx) {
     <div class="brains-page">
     ${budgetHtml(ctx)}
     ${setupsHtml(ctx)}
-    <section class="brains-panel"><h3>Brains in use</h3>
+    <section class="brains-panel"><div class="panel-head"><h3>Brains in use</h3><button type="button" class="mini" data-calibrate="*" ${canCalibrate(ctx).length && ctx.place?.job?.state !== 'running' ? '' : 'disabled'} title="${canCalibrate(ctx).length ? 'Time every brain that can be calibrated, one after another' : 'No brain in use can be calibrated here: only brains made of experts that my built-in engine runs'}">⏱ Calibrate all</button></div>
+      ${calStatusHtml(ctx)}
       ${used.length ? `<ul class="brain-list">${used.map((b) => brainRowHtml(b, ctx)).join('')}</ul>` : '<p class="muted">No brain yet. Pick one for a job below, or get one from the catalogue.</p>'}
       ${empty.length ? `<h4>Jobs with no brain of their own</h4><ul class="brain-list">${empty.map((s) => emptyJobHtml(s, ctx)).join('')}</ul>` : ''}</section>
     <section class="brains-panel"><h3>Add a brain</h3>

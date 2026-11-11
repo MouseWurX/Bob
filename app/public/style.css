@@ -1735,3 +1735,10 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .num-row { display: grid; grid-template-columns: minmax(200px, 1.2fr) minmax(140px, 1.5fr) 5.5em auto; gap: 12px; align-items: center; margin-top: 8px; }
 .num-row input[type=number] { width: 100%; text-align: right; }
 @media (max-width: 760px) { .num-row { grid-template-columns: 1fr 5.5em auto; } .num-row label { grid-column: 1 / 4; } }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+.panel-head h3 { margin: 0; }
+.cal-run { border: 1px solid var(--accent); border-radius: var(--r); padding: 8px 12px; margin: 8px 0; }
+.cal-run .meter { margin: 6px 0; }
+.cal-rows { border-collapse: collapse; margin-top: 6px; font-size: 13px; }
+.cal-rows td { padding: 3px 14px 3px 0; }
+.cal-rows tr.best td { color: var(--good); font-weight: 600; }

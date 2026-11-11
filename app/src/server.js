@@ -31,6 +31,7 @@ import { capabilities } from './capabilities.js';
 import { cloudStatus } from './cloud.js';
 import { rentRoute } from './rental-routes.js'; // 1.5.127 rented brains
 import { Lab, labRoute, labOn, labRoom } from './lab.js'; // 1.5.141 Computer Science Lab
+import { startCalibrate, useCalibrated, calResult } from './brain-calibrate.js'; // 1.5.205
 import { say, KOKORO_VOICES, stopVoices } from './tts.js';
 process.on('exit', () => stopVoices()); // never leave a voice holding the graphics card
 import { workshopDir, listWorkflows, ensureWorkshop } from './workshop.js';
@@ -448,6 +449,17 @@ const server = http.createServer(async (req, res) => {
     // 1.5.87: each equipped brain, the most it was made for, Bob's pick and the size picked by hand (Settings > Brains).
     if (req.method === 'GET' && p === '/api/brain-ctx') return send(res, 200, await brainCtxView());
     if (req.method === 'GET' && p === '/api/brain-place') return send(res, 200, brainPlaceView()); // 1.5.205
+    // 1.5.205 Calibrate: time a brain a few ways and recommend one. Started only from this replicant matrix itself.
+    if (req.method === 'POST' && p.startsWith('/api/brain-place/')) {
+      if (!isLocal) return send(res, 403, { error: 'Calibrating can only be started on this replicant matrix itself for now.' });
+      const b = (await body(req)) || {};
+      try {
+        if (p === '/api/brain-place/calibrate') return send(res, 200, await startCalibrate(lab, (Array.isArray(b.brains) ? b.brains : []).slice(0, 16).map((x) => ({ model: String(x?.model || ''), name: String(x?.name || '').slice(0, 120), experts: x?.experts === true })), { unload: b.unload === true }));
+        if (p === '/api/brain-place/use') return send(res, 200, useCalibrated(lab, String(b.model || '')));
+        if (p === '/api/brain-place/stop') return send(res, 200, lab.job?.run?.kind === 'calibrate' ? lab.stop() : { stopped: false });
+      } catch (e) { return send(res, 400, { error: e.message }); }
+      return send(res, 404, { error: 'no' });
+    }
     // What an Ollama model can do (completion, vision, audio, tools, thinking), for Equip Bob's "also use it for".
     if (req.method === 'GET' && p === '/api/models/caps') {
       const name = String(url.searchParams.get('name') || '');
@@ -1184,9 +1196,11 @@ function brainPlaceView() {
   const brains = {};
   for (const model of models) {
     const info = cfg.engine === 'llamacpp' ? brain.engine?.placeInfo?.(model) || null : null;
-    brains[model] = { layers: info?.layers || null, set: cfg.brainPlace?.[model] || { mode: 'auto' }, pinned: Number.isInteger(cfg.llamacpp?.nCpuMoe?.[model]) };
+    const cal = calResult(cfg, model);
+    brains[model] = { layers: info?.layers || null, set: cfg.brainPlace?.[model] || { mode: 'auto' }, pinned: Number.isInteger(cfg.llamacpp?.nCpuMoe?.[model]), cal: cal ? { when: cal.when, best: cal.best, rows: cal.rows } : null };
   }
-  return { engine: cfg.engine || '', brains };
+  const run = lab.job?.run?.kind === 'calibrate' ? lab.runView(lab.job.run) : null;
+  return { engine: cfg.engine || '', brains, job: run, busy: Boolean(lab.job) && !run, engineHere: cfg.engine === 'llamacpp' && lab.tools().server.found };
 }
 
 async function brainCtxView() {

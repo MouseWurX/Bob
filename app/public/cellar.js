@@ -4,7 +4,8 @@ import { progressHtml, animateWorkers } from './progress.js';
 import { createStylePage } from './style-page.js';
 import { createSampler, sampleButton, sampleHint } from './voice-samples.js';
 import { equipHtml, allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml, readyList, readyDefaults, readyToggle, readyOrder, CHEST_SHOW } from './equip.js';
-import { brainsHtml, setupPlan } from './brains.js';
+import { brainsHtml, setupPlan, canCalibrate, brainsInUse } from './brains.js';
+import { hasExperts } from './place.js';
 import { suit as fitSuit, picksOf, unsuited, jobNames, SLOT_NAMES, canDo, packsFor } from './fit.js';
 import { catalogueHtml, familyOf, visibleModels, isNaughty, VIEWS, dayWords, rentPicks } from './catalogue.js';
 import { drawBob } from './bob-sprite.js';
@@ -255,7 +256,7 @@ export function createCellar({ popOut = null } = {}) {
     let body = '';
     if (tab === 'settings') body = settingsHtml();
     else if (tab === 'style') body = stylePage.html(settings);
-    else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}` : !roles ? '<p class="muted">Loading...</p>' : eqView === 'doll' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${equipHtml(eqCtx())}` : brainsHtml({ ...eqCtx(), bobNet: data?.bobNet || [], setupAsk, setUp: setUpBrain, place: placeData }); // 1.5.205 the Brains page comes first
+    else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}` : !roles ? '<p class="muted">Loading...</p>' : eqView === 'doll' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${equipHtml(eqCtx())}` : brainsHtml({ ...eqCtx(), bobNet: data?.bobNet || [], setupAsk, setUp: setUpBrain, place: placeData, calAsk }); // 1.5.205 the Brains page comes first
     else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], bobNet: data?.bobNet || [], naughtyOn: naughtyOn(), catView, ownForm, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
     else if (tab === 'found') body = `<p class="muted">Scanned ${data.scannedAt ? new Date(data.scannedAt).toLocaleString() : 'never'}. <button data-scan>Look again</button></p>${extrasHtml() || '<p>Nothing extra found.</p>'}`;
     else if (GROUPS.some((g) => g.id === tab)) body = groupHtml(GROUPS.find((g) => g.id === tab));
@@ -1161,6 +1162,7 @@ export function createCellar({ popOut = null } = {}) {
   }
   async function load() {
     [data, hw, settings, roles, cloud, caps, bctx, rent] = await Promise.all([api('/api/models'), api('/api/hardware'), api('/api/settings'), api('/api/roles'), api('/api/cloud'), api('/api/capabilities').catch(() => ({})), api('/api/brain-ctx').catch(() => ({ on: false, brains: [] })), api('/api/rent').catch(() => rent)]);
+    await placeLoad(); calWatch(); // 1.5.205 the Brains page: each brain's placement and calibration
     speedRuns = (await api('/api/speed-test').catch(() => ({}))).history || [];
     voices = (await api('/api/voice/samples').catch(() => ({}))).voices || [];
     job = data.job;
@@ -1197,6 +1199,28 @@ export function createCellar({ popOut = null } = {}) {
   let setUpBrain = '', placeData = null; // 1.5.205 the brain whose Set up page is open, and /api/brain-place
   const placeLoad = async () => { placeData = await api('/api/brain-place').catch(() => placeData); };
   const placeSave = async (model, patch) => { const cur = placeData?.brains?.[model]?.set || { mode: 'auto' }; await api('/api/settings', { brainPlace: { [model]: { ...cur, ...patch } } }); await placeLoad(); };
+  // 1.5.205 Calibrate: the question before it starts ({ models, needUnload, names, error }), and a slow poll while it runs.
+  let calAsk = null, calTimer = null;
+  const calWatch = () => {
+    if (calTimer || placeData?.job?.state !== 'running') return;
+    calTimer = setInterval(async () => {
+      await placeLoad();
+      const on = placeData?.job?.state === 'running';
+      if (!on) { clearInterval(calTimer); calTimer = null; }
+      if (dlg.open !== false && mode === 'shop' && tab === 'roles' && eqView === 'brains' && !dlg.querySelector('select:focus, input:focus')) draw();
+    }, 2500);
+  };
+  const calStart = async (unload) => {
+    const ctx = { ...eqCtx(), place: placeData };
+    const brains = brainsInUse(ctx).filter((x) => calAsk.models.includes(x.value)).map((x) => ({ model: x.value, name: x.name, experts: Boolean(x.entry && hasExperts(x.entry)) }));
+    try {
+      const r = await api('/api/brain-place/calibrate', { brains, unload });
+      if (r.needUnload) calAsk = { ...calAsk, needUnload: true, names: r.names || [] };
+      else if (r.error) calAsk = { ...calAsk, error: r.error };
+      else calAsk = null;
+    } catch (e) { calAsk = { ...calAsk, error: e.message || 'Calibrating didn\'t start.' }; }
+    await placeLoad(); calWatch();
+  };
   let setupAsk = ''; // 1.5.205 the Brains page: the setup whose list of changes is showing
   let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-equip-view') || 'brains'; } catch { return 'brains'; } })();
   function eqCtx() {
@@ -1233,7 +1257,7 @@ export function createCellar({ popOut = null } = {}) {
     if (changed) await eqReload();
     return changed;
   }
-  async function eqReload() { [roles, settings, bctx] = await Promise.all([api('/api/roles'), api('/api/settings'), api('/api/brain-ctx').catch(() => bctx)]); }
+  async function eqReload() { [roles, settings, bctx] = await Promise.all([api('/api/roles'), api('/api/settings'), api('/api/brain-ctx').catch(() => bctx)]); await placeLoad(); }
   // Puts a model in a slot (or takes it off with value ''), then redraws. Returns what the server said.
   async function equipSlot(slot, value) {
     let r = {};
@@ -1439,6 +1463,12 @@ export function createCellar({ popOut = null } = {}) {
         const y = dlg.scrollTop; draw(); dlg.scrollTop = y; return;
       }
       if (b.dataset.catequip) { const y = dlg.scrollTop; await equip(b.dataset.catequip, b.dataset.catvalue, { offer: false }); dlg.scrollTop = y; return; }
+      // 1.5.205 Calibrate one brain or all of them: always a question first, with how long it takes.
+      if (b.dataset.calibrate) { if (!placeData) await placeLoad(); const all = canCalibrate({ ...eqCtx(), place: placeData }).map((x) => x.value); calAsk = { models: b.dataset.calibrate === '*' ? all : [b.dataset.calibrate] }; draw(); dlg.querySelector('.setup-ask')?.scrollIntoView({ block: 'nearest' }); return; }
+      if ('calcancel' in b.dataset) { calAsk = null; draw(); return; }
+      if ('calgo' in b.dataset) { b.disabled = true; await calStart(b.dataset.unload === '1'); draw(); return; }
+      if ('calstop' in b.dataset) { await api('/api/brain-place/stop', {}).catch(() => {}); await placeLoad(); draw(); return; }
+      if (b.dataset.caluse) { await api('/api/brain-place/use', { model: b.dataset.caluse }).catch(() => {}); await placeLoad(); draw(); return; }
       // 1.5.205 one brain's Set up page: open, back, and Auto or By hand.
       if ('brainsetup' in b.dataset) { setUpBrain = b.dataset.brainsetup; if (setUpBrain) await placeLoad(); draw(); if (setUpBrain) dlg.scrollTop = 0; else dlg.querySelector('#brain-' + CSS.escape(b.dataset.brainsetup || ''))?.scrollIntoView({ block: 'nearest' }); return; }
       if (b.dataset.placemode) { await placeSave(b.dataset.model, { mode: b.dataset.placemode }); draw(); return; }
