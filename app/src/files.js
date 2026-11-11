@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { insideAny, outputDirs, findOutput } from './config.js';
 import { isSensitive } from './tools.js';
+import { docText, DocError, DOC_EXT, OLD_EXT, MAX_OUT as DOC_MAX_OUT } from './doc-text.js';
 
 // Open works only for pictures, sounds, clips, documents and art files (an allowlist, so nothing that runs code
 // on opening: programs, scripts, shortcuts, web pages, .blend files with their Python). Show in folder works for anything allowed.
@@ -70,4 +71,31 @@ export function peek(cfg, p, max = PEEK_MAX) {
   const fd = fs.openSync(d.path, 'r');
   try { fs.readSync(fd, buf, 0, n, 0); } finally { fs.closeSync(fd); }
   return { ok: true, name: d.name, ext: path.extname(d.path).toLowerCase(), text: buf.toString('utf8').replace(/\uFFFD+$/, ''), cut: d.bytes > n, bytes: d.bytes };
+}
+
+// "Show documents in the side panel" (off unless turned on): the words, tables and slides of a Word, Excel,
+// PowerPoint, OpenDocument, PDF, e-book or Rich Text file, read by doc-text.js with nothing extra installed.
+// Nothing is kept on disk; the panel draws it with public/doc-view.js. A PDF can also be shown as its pages (pdfFile).
+export const docViewOn = (cfg) => cfg?.docView === true;
+const VIEW_EXT = new Set([...DOC_EXT, ...OLD_EXT].map((e) => `.${e}`));
+export const viewableDoc = (name) => VIEW_EXT.has(path.extname(String(name || '')).toLowerCase());
+export function docPeek(cfg, p, { read = docText } = {}) {
+  const d = describe(cfg, p);
+  if (!d.ok || d.kind === 'folder' || !viewableDoc(d.name)) return { ok: false };
+  const ext = path.extname(d.path).toLowerCase();
+  if (!docViewOn(cfg)) return { ok: true, off: true, name: d.name, ext };
+  try {
+    const text = read(d.path);
+    return { ok: true, name: d.name, ext, text, cut: text.length >= DOC_MAX_OUT, bytes: d.bytes };
+  } catch (e) {
+    return { ok: true, name: d.name, ext, error: e instanceof DocError ? e.message : 'I couldn\'t read that file. It may be damaged, locked by a password, or still being saved.' };
+  }
+}
+// A PDF the panel may show as pages: only a real PDF (it starts with %PDF), only while the switch is on.
+export function pdfFile(cfg, p, { readHead = (f) => { const b = Buffer.alloc(5); const fd = fs.openSync(f, 'r'); try { fs.readSync(fd, b, 0, 5, 0); } finally { fs.closeSync(fd); } return b; } } = {}) {
+  if (!docViewOn(cfg)) return null;
+  const d = describe(cfg, p);
+  if (!d.ok || d.kind === 'folder' || path.extname(d.path).toLowerCase() !== '.pdf') return null;
+  try { if (readHead(d.path).toString('latin1') !== '%PDF-') return null; } catch { return null; }
+  return d;
 }

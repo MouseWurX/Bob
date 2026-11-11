@@ -287,8 +287,8 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 
 | Where | Setting / text | Default | Status |
 |---|---|---|---|
-| Settings > Brains (under Keep chatting while Bob is busy, only while that's on) | Let Bob's Quick brain see the big job: "Off unless you turn it on. When Bob chats beside a long job, his Quick brain knows what the big brain is on: the job, how long it has run and its last step. Ask, and it shows you the steps so far, or passes the big brain a note from you, which it reads at its next step. Stopping a job is still your Stop button." | Off | new |
-| Welcome > Do you want me to: > 🧠 Brains and speed (after One brain) | "Tell you how a long job is going" / "My Quick brain sees what my big brain is on, and can pass it a note." Greyed out with "Needs Keep chatting while Bob is busy, in Settings, Brains." when that's off. | Off | new |
+| Settings > Brains (under Keep chatting while Bob is busy) | Let Bob's Quick brain see the big job: "Off unless you turn it on. When Bob chats beside a long job, his Quick brain knows what the big brain is on: the job, how long it has run and its last step. Ask, and it shows you the steps so far, or passes the big brain a note from you, which it reads at its next step. Stopping a job is still your Stop button. Works while Keep chatting while Bob is busy is on." | Off | new |
+| Welcome > Do you want me to: > 🧠 Brains and speed (after One brain) | "Tell you how a long job is going" / "My Quick brain sees what my big brain is on, and can pass it a note." | Off | new |
 | Chat, quick reply beside a job | Tool lines "looked at the big job", "passed a note along: "<note>"" | — | new |
 | Chat of the big job | "📨 Your note reached me: "<note>"" (or "📨 N notes reached me.") at its next step | — | new |
 | Chat, under a quick reply | "Nobody knows how long the job has left. That part was a guess; the Meanwhile line only says how far it's got." | — | new |

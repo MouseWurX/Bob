@@ -137,13 +137,13 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
 // ---------- Settings, first-time setup, Help ----------
 {
   const cellar = read('public/cellar.js'), server = read('src/server.js');
-  check('the switch is in Brains, under Keep chatting, off unless turned on', /settings\.chatWhileBusy !== false \? sswitch\('quickSeesJob', settings\.quickSeesJob === true, 'Let Bob\\'s Quick brain see the big job', keep\('Off unless you turn it on/.test(cellar));
+  check('the switch is in Brains, under Keep chatting, always there, off unless turned on', /\$\{sswitch\('quickSeesJob', settings\.quickSeesJob === true, 'Let Bob\\'s Quick brain see the big job', keep\('Off unless you turn it on/.test(cellar));
   check('the server saves and shows it', /typeof b\.quickSeesJob === 'boolean'/.test(server) && /quickSeesJob: cfg\.quickSeesJob === true/.test(server));
   const w = WANTS.find((x) => x.key === 'quickSeesJob');
   const one = WANTS.findIndex((x) => x.key === 'oneBrain');
   check('first-time setup: its own tick with the brains, where its switch is in Settings, right after One brain', w && w.card === 'brains' && WANTS[one + 1] === w && w.label === 'Tell you how a long job is going');
   const esc = (s) => String(s);
-  check('first-time setup: off and greyed out when Keep chatting is off', /data-want="quickSeesJob"  disabled/.test(wantsHtml({ chatWhileBusy: false }, esc)) && /Needs Keep chatting/.test(wantsHtml({ chatWhileBusy: false }, esc)));
+  check('first-time setup: never locked, even with Keep chatting off', !/data-want="quickSeesJob"  disabled/.test(wantsHtml({ chatWhileBusy: false }, esc)));
   check('first-time setup: unticked to start', /data-want="quickSeesJob"  >/.test(wantsHtml({}, esc)) || !/data-want="quickSeesJob" checked/.test(wantsHtml({}, esc)));
   const topic = HELP.find((h) => h.id === 'meanwhile');
   check('Help in Bob\'s voice', topic && /my Quick brain/.test(topic.html) && /Stop<\/strong> button/.test(topic.html) && /Windows, Mac, Linux and Android/.test(topic.html));
