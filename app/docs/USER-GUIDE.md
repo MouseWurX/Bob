@@ -343,6 +343,7 @@ Settings, **This replicant matrix**, **Back up and move** saves one zip with you
 Hands are Bob's way of doing things for you on your PC rather than just talking about them:
 
 - **Files:** zip and unzip, move, copy, rename, and tidy folders like Downloads.
+- **Sort and rename:** rename and move a whole music, video or photo collection to your own naming rules, or send new files from Downloads or an output folder into your library.
 - **Run:** run a program, command or script you've approved.
 - **Schedules:** do a job at a set time.
 - **Apps:** click and type in another program for you, and, with a vision brain in his "Seeing pictures" slot, check each step by looking at a picture of the window (and click by place in apps that don't name their buttons).
@@ -351,6 +352,18 @@ Hands are Bob's way of doing things for you on your PC rather than just talking 
 - **Security and privacy:** check the PC's protection, explain Defender alerts and start scans, look at suspicious downloads, scripts and emails without opening them, find and remove hidden details (like GPS in photos) before sharing, and check whether a website, link or sender is genuine from public records.
 - **Connected apps (MCP):** work inside Unreal Engine, Blender and other apps that offer their tools through an MCP add-on.
 - **Tool packs from other people:** use tools and jobs someone else made for Bob, from a folder or .zip you add.
+
+### Sort and rename
+
+Ask things like "sort my music folder" or "put my downloads where they belong".
+
+- Settings → Hands: switch on **Sort and rename** and tick the folders Bob may work in.
+- **Sort and rename: naming rules** (same page) has one rule per kind of file: the file types it takes, which ones (any, only TV episodes, or not TV episodes), the **New name**, and **Send to**. A "/" makes folders and words in curly brackets fill in from the file: `{artist}/{album}/{track} {title}` gives `Queen/A Night at the Opera/11 Bohemian Rhapsody.mp3`. Each rule shows an example. **Words you can use in a name** lists them all.
+- Empty **Send to** sorts in place. A folder there moves that kind of file into it (it must be a ticked folder), so Downloads can feed your Music or Videos folder.
+- Starting rules: Music (`{albumartist}/{album}/{track} {title}`), TV episodes (`{show}/Season {season}/{show} - S{season}E{episode}`) and Films (`{title} ({year})/{title} ({year})`) are on; Photos (`{year}/{year}-{month}/{date} {name}`) is off. **Back to the starting rules** restores them.
+- Bob reads song tags (MP3, FLAC, Ogg, Opus, M4A), TV tags in MP4 files, S01E02 or 1x02 in names, a film's year, and the date a photo was taken; an untagged song is named from its file name and its Artist/Album folders. Subtitles and lyrics with the same name go along.
+- The card lists every rename with a tick. Nothing is overwritten, files still downloading are skipped, and a card holds up to 1,000 files (ask again for the next lot). Emptied folders are removed; **Undo** puts everything back, folders too.
+- Windows, Mac and Linux. On Bob for Android you approve the card; the files and the rules stay on the replicant matrix Bob runs on.
 
 ### Use a browser
 

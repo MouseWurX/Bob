@@ -48,6 +48,8 @@ Update this file in the same handover as any change to settings.
 | Hands | Tool packs from other people | long "what" text | off | new (not reviewed yet) |
 | Hands > Tool packs | per pack: On switch (off when added; disabled when its files changed or its folder is gone), name, version, by, what, link, per tool: what it may do + Show code, jobs with step counts, Remove (click again); box "Add a pack" + Add pack, problems listed under it; card: Allow / Allow the rest of this job (only tools that don't change files or use the internet) / Deny, Show details, Tools from packs always ask | each pack off when added | no packs | new (not reviewed yet) |
 | Hands | Folders the Files Hand may work in; Stop a command after | | none | ok |
+| Hands | Sort and rename | long "what" text | off | new |
+| Hands > Sort and rename: naming rules | per rule: On switch + name, File types, Which (Any of these files / Only TV episodes (S01E02) / Not TV episodes), New name, Send to, Example, Remove this rule; Save rules, Add a rule, Back to the starting rules; Words you can use in a name | Music, TV episodes, Films on; Photos off; Send to empty | starting rules | new |
 | Housekeeping | Tidy up old things by himself | Only while he's idle (10 minutes quiet, nothing running)… | off | ok (1.5.2) |
 | Housekeeping | Load a brain for it if none is loaded | Off: … so a game keeps the graphics card. | off | ok (1.5.2) |
 | Housekeeping | Per item: Chats 3 months, Pictures and clips 6 months, Sounds and music 3 months, Finished tasks 3 days, Logbook 3 months | | as listed | ok |

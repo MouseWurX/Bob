@@ -141,6 +141,31 @@ function newToolCard(ev, { add, answer }) {
 // Settings, Hands: the tools Bob made. Each can be turned off, its code shown, or removed. 1.5.144: Remove puts it on
 // the Recently deleted shelf (Settings, 🧰 Tools and how-tos Bob made) for 30 days, same as Delete there.
 const TOOL_STATE = { on: '', off: 'turned off', changed: 'off: its files changed since you OK\'d it', missing: 'its folder is gone' };
+// Sort and rename (src/sort-library.js): the naming rule for each kind of file. Always drawn, saved while
+// the Hand is off (settings rule 14). "/" in a pattern makes folders; a rule can send its files to its own folder.
+const WHEN = { '': 'Any of these files', episode: 'Only TV episodes (S01E02)', notEpisode: 'Not TV episodes' };
+function sortHtml(v, s) {
+  const rules = s.sortRules || [];
+  const ex = v.sort?.examples || {};
+  const tokens = Object.entries(v.sort?.tokens || {}).map(([k, w]) => `<code>{${esc(k)}}</code> ${esc(w)}`).join(', ');
+  return `<div class="hands-sort"><h4 class="ssub">Sort and rename: naming rules</h4>
+    <p class="muted">One rule per kind of file. "/" makes folders. Leave "Send to" empty to sort in place; fill it to move that kind there (say, from Downloads into your Music folder).</p>
+    ${rules.map((r, i) => `<fieldset class="sort-rule" data-srule="${i}" data-id="${esc(r.id)}"><legend><label class="switch small"><input type="checkbox" data-sr="on" ${r.on ? 'checked' : ''}><span><input type="text" data-sr="label" value="${esc(r.label)}" aria-label="Rule name" size="18"></span></label></legend>
+      <label class="pick"><span>File types</span><input type="text" data-sr="exts" value="${esc(r.exts.join(', '))}" placeholder=".mp3, .flac"></label>
+      <label class="pick"><span>Which</span><select data-sr="when">${Object.entries(WHEN).map(([k, w]) => `<option value="${k}" ${r.when === k ? 'selected' : ''}>${w}</option>`).join('')}</select></label>
+      <label class="pick"><span>New name</span><input type="text" data-sr="pattern" value="${esc(r.pattern)}" placeholder="{artist}/{album}/{track} {title}"></label>
+      <label class="pick"><span>Send to</span><input type="text" data-sr="dest" value="${esc(r.dest)}" placeholder="Sort in place"></label>
+      ${ex[r.id] ? `<p class="muted">Example: <code>${esc(ex[r.id])}</code></p>` : ''}
+      <button type="button" class="link" data-hsortdel="${i}">Remove this rule</button></fieldset>`).join('')}
+    <div class="row"><button type="button" data-hsortsave>Save rules</button><button type="button" data-hsortadd>Add a rule</button><button type="button" class="link" data-hsortreset>Back to the starting rules</button></div>
+    <details class="more"><summary>Words you can use in a name</summary><p class="muted">${tokens}. Numbers get two digits (03); <code>{n:3}</code> gives three. Anything a file doesn't say is left out, or "Unknown artist" and "Unknown album".</p></details>
+    <p class="muted">Send-to folders must be in the folders ticked below.</p></div>`;
+}
+const readRules = (box) => [...box.querySelectorAll('.sort-rule')].map((f) => {
+  const val = (k) => f.querySelector(`[data-sr="${k}"]`);
+  return { id: f.dataset.id || '', label: val('label').value, on: val('on').checked, exts: val('exts').value.split(/[,\s]+/).filter(Boolean), when: val('when').value, pattern: val('pattern').value, dest: val('dest').value.trim() };
+}).map((r, i) => ({ ...r, id: r.id || (r.label || 'rule').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 24) || `rule${i + 1}` }));
+
 function selfToolsHtml(st, on) {
   if (!st) return '';
   const rows = st.tools.map((t) => `<li class="mytool"><label class="switch small"><input type="checkbox" data-hmytool="${esc(t.name)}" ${t.state === 'on' ? 'checked' : ''} ${t.state === 'changed' || t.state === 'missing' ? 'disabled' : ''}><span><strong>${esc(t.name)}</strong> ${TOOL_STATE[t.state] ? `<span class="warn-text">${esc(TOOL_STATE[t.state])}</span>` : ''}<br><span class="muted">${esc(t.what)}</span><br><span class="muted">Can change: ${esc(t.writes.join('; ') || 'nothing outside its folder')}. Internet: ${t.internet ? 'yes' : 'no'}. Made ${esc(when(t.at))}${t.lastUsed ? `, last used ${esc(when(t.lastUsed))}` : ', not used yet'}.</span></span></label>
@@ -359,6 +384,7 @@ export async function mountHandsSettings(box) {
       ${selfToolsHtml(v.selfTools, s.enabled && s.maker?.on)}
       ${mcpHtml(v.mcp, s.enabled && s.mcp?.on)}
       ${packsHtml(v.packs, s.enabled && s.packs?.on)}
+      ${sortHtml(v, s)}
       <div class="hands-limits"><h4 class="ssub">Limits that always apply <span class="tag">all on to start with</span></h4>
         <p class="muted">These hard limits hold whether or not Bob asks first. Switch one off only if you need what it blocks.</p>
         ${(v.limits || []).map((l) => `<label class="switch small"><input type="checkbox" data-hlimit="${esc(l.id)}" ${s.limits?.[l.id] !== false ? 'checked' : ''}><span><strong>${esc(l.label)}</strong><br><span class="muted">${esc(l.on)}</span>${l.more ? `<details class="more"><summary>More</summary><span class="muted">${esc(l.more)}</span></details>` : ''}${s.limits?.[l.id] === false ? `<br><span class="warn-text">Off: ${esc(l.off)}</span>` : ''}${l.id === 'readOnly' ? readOnlyHtml(v, s) : ''}</span></label>`).join('')}
@@ -366,7 +392,7 @@ export async function mountHandsSettings(box) {
       <div class="hands-folders"><strong>Folders the Files Hand may work in</strong>
         ${folders.length ? folders.map((f) => `<label class="switch small"><input type="checkbox" data-hfolder="${esc(f)}" ${s.folders.includes(f) ? 'checked' : ''}><span>${esc(f)}</span></label>`).join('') : '<p class="muted">No folders yet.</p>'}
         <div class="row"><input type="text" data-hnewfolder placeholder="Add a folder: C:\\Users\\you\\Pictures" aria-label="Add a folder" style="flex:1"><button type="button" data-haddfolder>Add</button></div>
-        <p class="muted">The Office documents and converting Hand saves in these folders too (and in Bob's own Documents folder). Bob's own folders stay off-limits even inside these, and so do read-only projects and files with keys or passwords while those hard limits are on.</p></div>
+        <p class="muted">Sort and rename works only in these folders too. The Office documents and converting Hand saves in these folders too (and in Bob's own Documents folder). Bob's own folders stay off-limits even inside these, and so do read-only projects and files with keys or passwords while those hard limits are on.</p></div>
       <label class="pick"><strong>Stop a command after</strong><select data-htimeout>${[1, 5, 15, 30, 60, 120].map((m) => `<option value="${m}" ${m === s.timeoutMin ? 'selected' : ''}>${m < 60 ? `${m} minute${m === 1 ? '' : 's'}` : `${m / 60} hour${m === 60 ? '' : 's'}`}</option>`).join('')}</select></label>
       <div class="hands-recipes"><strong>Recipes</strong> <span class="muted">Saved commands you can run in one click, or ask Bob for by name ("run my build recipe"). He still asks before each run, unless he's working without asking.</span>
         ${v.recipes.length ? `<ul>${v.recipes.map((r) => `<li><button type="button" class="big" data-hrun="${esc(r.name)}" ${s.enabled && s.run?.on ? '' : 'disabled'}>▶ ${esc(r.name)}</button> <code>${esc([r.cmd, ...(r.args || [])].join(' '))}</code> <span class="muted">in ${esc(r.cwd)}</span> <button type="button" class="link" data-hdelrecipe="${esc(r.name)}">Remove</button></li>`).join('')}</ul>` : ''}
@@ -413,6 +439,8 @@ export async function mountHandsSettings(box) {
     const el = e.target;
     e.stopPropagation();
     try {
+      if (el.dataset.sr === 'on') return await set({ sortRules: readRules(box) }, el.checked ? 'Rule on.' : 'Rule off. Bob leaves those files alone.');
+      if (el.dataset.sr) return; // the other rule boxes save with Save rules
       if ('hmaster' in el.dataset) return await set({ enabled: el.checked }, el.checked ? 'Hands on. Now switch on the ones you want; he still asks every time.' : 'All Hands off.');
       if ('hfree' in el.dataset && el.checked) { el.checked = false; return askFree(); }
       if ('hfree' in el.dataset) return await set({ free: el.checked }, el.checked ? 'On. Bob works without asking now. The hard limits still apply, and ✋ Hands on the chat page stops him.' : 'Off. Bob asks before every action again.');
@@ -455,6 +483,10 @@ export async function mountHandsSettings(box) {
         say(v.settings.folders.length > before ? 'Added.' : 'That isn\'t a full folder path (like C:\\Users\\you\\Pictures).');
         return;
       }
+      if ('hsortsave' in b.dataset) return await set({ sortRules: readRules(box) }, 'Naming rules saved.');
+      if ('hsortadd' in b.dataset) return await set({ sortRules: [...readRules(box), { label: 'New rule', on: false, exts: [], when: '', pattern: '{name}', dest: '' }] }, 'Added a rule at the bottom. It starts switched off.');
+      if (b.dataset.hsortdel) return await set({ sortRules: readRules(box).filter((_, i) => String(i) !== b.dataset.hsortdel) }, 'Rule removed.');
+      if ('hsortreset' in b.dataset) return await set({ sortRules: [] }, 'Back to the starting rules.');
       if ('hpwcheck' in b.dataset) return await checkPassword(box);
       if (b.dataset.hgetengine) { b.disabled = true; try { await post('/api/models/download', { id: 'engine:' + b.dataset.hgetengine }); say('Downloading. It shows in Downloads; this line turns to ✓ when it\'s ready.'); } catch (e) { b.disabled = false; say(e.message); } return; }
       if (b.dataset.hmytoolcode) { const pre = b.closest('li').querySelector('.mytool-code'); if (!pre.hidden) { pre.hidden = true; b.textContent = 'Show code'; return; } const r = await post('/api/hands/mytools', { name: b.dataset.hmytoolcode, code: true }); pre.textContent = r.code; pre.hidden = false; b.textContent = 'Hide code'; return; }

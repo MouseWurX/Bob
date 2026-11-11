@@ -1947,3 +1947,6 @@ a.mini.button:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 .lock-warn { color: var(--bad); }
 .lock-ask { background: var(--danger-bg); border: 1px solid var(--bad); border-radius: var(--r); padding: 10px 12px; }
 .mem-edit textarea { width: 100%; min-height: 12em; box-sizing: border-box; font: inherit; }
+.hands-sort .sort-rule { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; padding: 6px 10px 8px; }
+.hands-sort .sort-rule legend input[type="text"] { font-weight: 600; }
+.hands-sort .sort-rule .pick input[type="text"] { width: 100%; max-width: 420px; }
