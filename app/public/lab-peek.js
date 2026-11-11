@@ -75,15 +75,15 @@ export function createPeek({ api, view, cutWith = () => {}, toForge = () => {} }
         <label for="peek-scrub">Word by word</label> <input id="peek-scrub" type="range" min="-1" max="${words.length - 1}" value="${scrub}" aria-valuetext="${scrub < 0 ? 'the whole answer' : `word ${scrub + 1}: ${esc(words[scrub]?.text || '')}`}"> <span id="peek-scrub-h" role="status" class="muted">${scrub < 0 ? 'The whole answer.' : `Word ${scrub + 1} of ${words.length}: "${esc(words[scrub]?.text || '')}", ${(words[scrub]?.layers || []).reduce((a, l) => a + l.length, 0)} experts.`}</span>` : ''}
       ${compare && asks.length >= 2 ? compareHtml() : ''}</div>`;
   }
-  // 1.5.20x Switch these off in the file: only for a brain whose router has a bias (gpt-oss).
+  // 1.5.20x Turn off unused experts: only for a brain whose router has a bias (gpt-oss).
   function switchHtml() {
     const sw = data?.switch;
     if (!sw?.can) return '';
     const st = sw.state;
-    return `<div class="lab-check peek-switch"><p><strong>Switch experts off in the file</strong>${st ? ` <span class="tag">${st.off.toLocaleString()} switched off</span>` : ''}</p>
-      <p class="muted">This brain's router lets me switch experts off without cutting anything: it never picks them again, in any engine, and the ones it never picks are never read. Only a few kilobytes of the file change, so it takes seconds, and Switch them all back on puts it back exactly as it was. The file stays the same size; Cut these out is what makes it smaller.</p>
+    return `<div class="lab-check peek-switch"><p><strong>Turn off unused experts</strong>${st ? ` <span class="tag">${st.off.toLocaleString()} switched off</span>` : ''}</p>
+      <p class="muted">This brain's router lets me switch experts off without cutting anything: it never picks them again, in any engine, and the ones it never picks are never read. Only a few kilobytes of the file change, so it takes seconds, and Turn them all back on puts it back exactly as it was. The file stays the same size; Cut these out is what makes it smaller.</p>
       ${switchAsk ? `<div class="setup-offer" role="alert"><strong>Bob's brain is loaded</strong><span>${esc(switchAsk.names.join(', '))} is loaded. The brain file changes, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-peekswunload>Unload it and go on</button><button type="button" class="link" data-peeksworry>Not now</button></div></div>` : ''}
-      <div class="row"><button type="button" class="get" data-peekswoff ${busy ? 'disabled' : ''}>${st ? 'Switch off these instead' : 'Switch these off in the file'}</button>${st ? `<button type="button" class="link" data-peekswon ${busy ? 'disabled' : ''}>Switch them all back on</button>` : ''}</div>
+      <div class="row"><button type="button" class="get" data-peekswoff ${busy ? 'disabled' : ''}>${st ? 'Turn off these instead' : 'Turn off unused experts'}</button>${st ? `<button type="button" class="link" data-peekswon ${busy ? 'disabled' : ''}>Turn them all back on</button>` : ''}</div>
       <p class="muted">It uses the same kept experts as Cut these out${cur() && thing === 'live' ? ', from the experts the last question lit up' : ', from the tally'}.</p></div>`;
   }
   function compareHtml() {

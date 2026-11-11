@@ -1,4 +1,4 @@
-// 1.5.20x Switch experts off in the file: a made-up gpt-oss-shaped brain (router with a bias), switched off in place,
+// 1.5.20x Turn off unused experts: a made-up gpt-oss-shaped brain (router with a bias), switched off in place,
 // switched back on byte for byte, refused where it can't work, and the words on the Peek inside page and in Help.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -82,7 +82,7 @@ switchOn(h); check('half precision: back on byte for byte', sha(h) === h0);
 
 // The page and Help.
 const page = read('public/lab-peek.js'), help = read('public/help-content.js'), lab = read('src/lab.js');
-check('Peek inside offers it only where the router has a bias', page.includes('Switch these off in the file') && page.includes('if (!sw?.can) return'));
+check('Peek inside offers it only where the router has a bias', page.includes('Turn off unused experts') && page.includes('if (!sw?.can) return'));
 check('the page asks before unloading Bob\'s brain', page.includes('data-peekswunload') && lab.includes("'/api/lab/peek/switch'"));
 check('Help: FAQ and glossary', help.includes("id: 'faq-switch-off-experts'") && help.includes('<dt>Switched-off expert</dt>'));
 
