@@ -21,6 +21,9 @@ const PIN = officePins();
 const PIPER_ARM64_SHA = 'fea0fd2d87c54dbc7078d0f878289f404bd4d6eea6e7444a77835d1537ab88eb';
 // 1.5.83: the llama.cpp release every speed test and brain race used (package.json bob.bundledLlamaTag, also the one
 // bundled in the download). Get and Get Bob ready install this one; "Check for a newer build" can still fetch the newest.
+// Brain Engine has its own version numbers (1.5.203: Brain Engine 3, built on llama.cpp bundledLlamaTag); Bob downloads
+// the release his pin names (bob.brainEngine.tag). Builds from before then were named after their llama.cpp tag.
+const PIN_TAG = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.brainEngine?.tag || ''; } catch { return ''; } })();
 export const TESTED_LLAMA = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.bundledLlamaTag || ''; } catch { return ''; } })();
 // LibreOffice comes from The Document Foundation's own archive, not GitHub.
 const TDF_HOSTS = [/^downloadarchive\.documentfoundation\.org$/, /^download\.documentfoundation\.org$/];
@@ -49,11 +52,11 @@ export const ENGINES = [
     // same tag (base), in its own folder: Bob's built-in llama.cpp is never touched. 1.5.169: the default engine for
     // brains, listed for everyone (not only while the Lab is on). When it's here Bob runs his brains on it
     // (config.js pickLlamaExe); Settings, Engines can switch back to plain llama.cpp.
-    id: 'brainengine', name: 'Brain Engine', what: 'Bob\'s default engine for brains: his own fork of llama.cpp, made to give him more room to work with brains (it can switch experts off without reloading, for the Lab). Based on llama.cpp, not an official build. When it\'s here, Bob runs his brains on it. It has its own folder, so the built-in llama.cpp stays as it is.',
-    repo: 'MouseWurX/Bob', tag: TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : '', base: 'llamacpp', dir: 'brain-engine', exe: 'llama-server.exe',
+    id: 'brainengine', name: 'Brain Engine', what: 'Bob\'s own engine for brains, made to give him more room to work with them (it can switch experts off without reloading, for the Lab). Built on the open-source llama.cpp, not an official llama.cpp build. When it\'s here, Bob runs his brains on it. It has its own folder, so the plain llama.cpp that came with Bob stays as it is.',
+    repo: 'MouseWurX/Bob', tag: PIN_TAG || (TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : ''), base: 'llamacpp', dir: 'brain-engine', exe: 'llama-server.exe',
     nvidia: [], other: [/^brain-engine-.*-win-x64\.zip$/], runtime: () => null,
     mac: { unavailable: 'Brain Engine has no Mac build yet.' },
-    linux: { tag: TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : '', other: [/^brain-engine-.*-linux-x64\.tar\.gz$/] },
+    linux: { tag: PIN_TAG || (TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : ''), other: [/^brain-engine-.*-linux-x64\.tar\.gz$/] },
     linuxArm64: { unavailable: 'Brain Engine has no ARM Linux build yet.' }
   },
   {
@@ -233,6 +236,13 @@ export function isNewer(mark, rel, asset) {
 export const sharedDir = (e) => ENGINES.filter((x) => x.dir === e.dir).length > 1;
 // The build kept from before the last update, for Go back.
 export const previousDir = (cfg, e) => path.join(cfg.agentDir, e.dir + '.previous');
+// 1.5.203: a new build Windows wouldn't run, that Bob went back from by himself (engine-blocked.js). Kept until Try
+// again (Go back) is pressed, so he doesn't try it on every load and the update doesn't fetch it again.
+export const BLOCKED_FILE = 'engine-blocked.json';
+export function engineBlocked(cfg, id) {
+  try { const r = JSON.parse(fs.readFileSync(path.join(cfg.agentDir, BLOCKED_FILE), 'utf8')); return r && r.engine && (!id || r.engine === id) ? r : null; } catch { return null; }
+}
+export const clearEngineBlocked = (cfg) => { try { fs.rmSync(path.join(cfg.agentDir, BLOCKED_FILE), { force: true }); } catch {} };
 // Where each engine sits on the Engines page.
 export const ENGINE_GROUP = { brainengine: 'thinking', llamacpp: 'thinking', sdcpp: 'senses', whispercpp: 'senses', audio: 'senses', piper: 'voices', kokoro: 'voices', chatterbox: 'voices', uv: 'helpers', ffmpeg: 'helpers', libreoffice: 'helpers' };
 // Put a freshly unpacked build (stage) in the engine's place in one step. The build that was there moves to
@@ -269,7 +279,7 @@ export function swapIn(folder, stage, { keep = true } = {}) {
 // NVIDIA build with its CUDA runtime (other builds are smaller); the rest follow each engine's own "About" text.
 export const ENGINE_GB = { llamacpp: 0.6, brainengine: 0.7, sdcpp: 0.5, whispercpp: 0.1, piper: 0.1, audio: 12, kokoro: 0.1, chatterbox: 4, ffmpeg: 0.1, libreoffice: 0.35 };
 export function engineStatus(cfg) {
-  return ENGINES.filter((e0) => !e0.labOnly || cfg.computerLab !== false).map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.pinned || e.sha256 || (e.tag && !e.base)), tested: e.tested || null, group: ENGINE_GROUP[e.id] || 'helpers', canSwap: !sharedDir(e) && !e.install && !e.after, previous: !sharedDir(e) ? (installedMarker(cfg, e, previousDir(cfg, e))?.version || (fs.existsSync(previousDir(cfg, e)) ? 'the one before' : null)) : null, own: !sharedDir(e) && !e.install && fs.existsSync(path.join(cfg.agentDir, e.dir)) && !e.found?.(cfg), found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir), incomplete: (() => { const h = !sharedDir(e) && cfg.agentDir ? incompleteUpdate(cfg, e) : null; return h ? { missing: h.missing, what: partsText(h.missing), version: h.mark?.version || '' } : null; })() }));
+  return ENGINES.filter((e0) => !e0.labOnly || cfg.computerLab !== false).map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.pinned || e.sha256 || (e.tag && !e.base)), tested: e.tested || null, basedOn: e.base ? installedMarker(cfg, e)?.base || null : null, group: ENGINE_GROUP[e.id] || 'helpers', canSwap: !sharedDir(e) && !e.install && !e.after, previous: !sharedDir(e) ? (installedMarker(cfg, e, previousDir(cfg, e))?.version || (fs.existsSync(previousDir(cfg, e)) ? 'the one before' : null)) : null, own: !sharedDir(e) && !e.install && fs.existsSync(path.join(cfg.agentDir, e.dir)) && !e.found?.(cfg), found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir), blocked: (() => { const b = engineBlocked(cfg, e.id); return b ? { version: b.version || '', windows: b.windows === true } : null; })(), incomplete: (() => { const h = !sharedDir(e) && cfg.agentDir ? incompleteUpdate(cfg, e) : null; return h ? { missing: h.missing, what: partsText(h.missing), version: h.mark?.version || '' } : null; })() }));
 }
 // 1.5.17x Engines rework: which engine runs the brains now, which one is picked for next time, and the Lab's.
 export function engineChoices(cfg) {
@@ -679,6 +689,7 @@ export function goBackEngine(cfg, id) {
     if (!fs.existsSync(folder) && fs.existsSync(tmp)) { try { fs.renameSync(tmp, folder); } catch {} }
     throw new Error(`${e.name} is in use right now (${err.code || err.message}). Press Unload everything, then try again.`);
   }
+  if (engineBlocked(cfg, id)) clearEngineBlocked(cfg); // Try again: the blocked build is back in, and gets another go
   return { version: installedMarker(cfg, e)?.version || null, previous: installedMarker(cfg, e, prev)?.version || null };
 }
 

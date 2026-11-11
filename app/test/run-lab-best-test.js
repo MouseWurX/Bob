@@ -1,5 +1,5 @@
 // 1.5.188 The Playground's Best answers page: a bigger brain judges, a smaller one learns from its own best answers
-// (best-of-N), from better-or-worse pairs (DPO), or both, optionally only in the parts FNRI points at. Fake engine,
+// (best-of-N), from better-or-worse pairs (DPO), or both, optionally only in the parts fNRI points at. Fake engine,
 // fake trainer: no Python, no downloads, never the tester's own machine.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -56,7 +56,7 @@ const setDir = path.join(dataDir, 'lab', 'lessons', 'maths'); fs.mkdirSync(setDi
 fs.writeFileSync(path.join(setDir, 'lessons.jsonl'), Array.from({ length: 40 }, (_, i) => JSON.stringify({ messages: [{ role: 'user', content: `Question ${i}: what is ${i} + ${i}?` }, { role: 'assistant', content: i % 2 ? `It is ${2 * i}, because adding a number to itself doubles it.` : String(2 * i) }] })).join('\n'));
 fs.writeFileSync(path.join(setDir, 'write.json'), JSON.stringify({ name: 'Maths' }));
 
-// An FNRI scan of Small: experts 0 and 1 lean to maths, 2 and 3 to words. And a parts list saved from the viewer.
+// An fNRI scan of Small: experts 0 and 1 lean to maths, 2 and 3 to words. And a parts list saved from the viewer.
 const watch = path.join(dataDir, 'lab', 'watch', 'small'); fs.mkdirSync(watch, { recursive: true });
 const clip = (skill, ex) => ({ skill, question: 'q', answer: 'a', prompt: 1, words: ['a', 'b', 'c'], e: [[[ex[0]], [ex[1]]], [[ex[0]], [ex[1]]], [[ex[0]], [ex[1]]]] });
 fs.writeFileSync(path.join(watch, 'scan1.json'), JSON.stringify({ format: 'bob-expert-recording', version: 1, id: 'scan1', name: 'Small scan', when: '2026-11-10', brain: { name: 'Small', experts: 4, layers: 2, used: 1 }, skills: [{ id: 'maths', label: 'Maths' }, { id: 'words', label: 'Words' }], clips: [clip('maths', [0, 1]), clip('maths', [1, 0]), clip('words', [2, 3]), clip('words', [3, 2])] }));
@@ -119,13 +119,13 @@ fs.mkdirSync(path.dirname(py), { recursive: true }); fs.writeFileSync(py, ''); f
   check('parts are checked against the brain\'s shape', cleanTargets([{ kind: 'expert', layer: 1, index: 3 }, { kind: 'expert', layer: 1, index: 3 }, { kind: 'ffn', layer: 0 }], { layers: 2, experts: 4 }).length === 2 && /floors 1 to 2/.test((() => { try { cleanTargets([{ kind: 'attn', layer: 2 }], { layers: 2, experts: 4 }); } catch (e) { return e.message; } })()) && /experts 0 to 3/.test((() => { try { cleanTargets([{ kind: 'expert', layer: 0, index: 4 }], { layers: 2, experts: 4 }); } catch (e) { return e.message; } })()) && /is an expert/.test((() => { try { cleanTargets([{ kind: 'neuron', layer: 0 }], { layers: 2 }); } catch (e) { return e.message; } })()));
 }
 
-// ---- parts from FNRI ----
+// ---- parts from fNRI ----
 {
   const lab = mk();
   const sk = resolveTargets(lab, 'small', { kind: 'skill', recording: 'scan1', skill: 'maths' });
-  check('a skill\'s experts come from an FNRI scan: only the ones that lean to it', sk.list.length === 4 && sk.list.every((t) => t.kind === 'expert' && t.index <= 1) && /Maths/.test(sk.label));
+  check('a skill\'s experts come from an fNRI scan: only the ones that lean to it', sk.list.length === 4 && sk.list.every((t) => t.kind === 'expert' && t.index <= 1) && /Maths/.test(sk.label));
   const fl = resolveTargets(lab, 'small', { kind: 'file', id: 'dialled' });
-  check('a parts list saved in the FNRI viewer is read and checked', fl.list.length === 2 && fl.list[1].kind === 'attn' && fl.label === 'The blocks I dialled');
+  check('a parts list saved in the fNRI viewer is read and checked', fl.list.length === 2 && fl.list[1].kind === 'attn' && fl.label === 'The blocks I dialled');
   check('the whole brain is the default', resolveTargets(lab, 'small', {}).list === null && resolveTargets(lab, 'small', { kind: 'none' }).list === null);
   check('the parts lists are listed for the picker, and the scans with their skills', listTargetFiles(cfg, { id: 'small' }).length === 1 && bestParts(lab, 'small').recordings[0].skills.length === 2 && bestParts(lab, 'small').lists[0].count === 2);
   fs.writeFileSync(path.join(watch, 'targets-wrong.json'), JSON.stringify({ format: 'bob-fnri-targets', version: 1, brain: { experts: 128, layers: 48 }, label: 'x', targets: [] }));
@@ -230,7 +230,7 @@ fs.mkdirSync(path.dirname(py), { recursive: true }); fs.writeFileSync(py, ''); f
   else { const [c0, ...a0] = pyCmd; const c = spawnSync(c0, [...a0, '-c', `import ast,sys; ast.parse(open(sys.argv[1], encoding='utf-8').read())`, py]); check('the trainer is valid Python', c.status === 0, String(c.stderr || '')); }
   check('Best answers is a Playground page, after Teach it', PLAY_PAGES.findIndex(([id]) => id === 'best') === PLAY_PAGES.findIndex(([id]) => id === 'teach') + 1);
   for (const f of ['public/lab-best.js', 'src/lab-best.js']) { check(`${f} parses`, spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../${f}`, import.meta.url))]).status === 0); check(`${f} names no private brain`, !/thoth|heretic|bob[i]verse/i.test(read(f))); }
-  check('the page uses the label FNRI\'s button points at', /Teach only these parts/.test(read('public/lab-best.js')));
+  check('the page uses the label fNRI\'s button points at', /Teach only these parts/.test(read('public/lab-best.js')));
   const h = HELP.find((x) => x.id === 'lab-best');
   check('Help explains it in Bob\'s voice: both ways, the parts, held back, rented', h && /Best of its own/.test(h.html) && /Better and worse pairs/.test(h.html) && /Teach only these parts/.test(h.html) && /held back/.test(h.html) && /Forge/.test(h.html) && /\bI\b/.test(h.html));
   check('a glossary entry and an FAQ', /Best-of-N|best of N/i.test(HELP.map((x) => x.html).join(' ')) && HELP.some((x) => x.group === 'FAQ' && /judge/i.test(x.title)));

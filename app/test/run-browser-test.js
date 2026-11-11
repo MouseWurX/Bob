@@ -11,6 +11,7 @@ import { urlProblem, browserBlock, keyFor, searchLike, BROWSER_TOOLS, browserPro
 import { eyesVerdict, eyesPrompt, eyesWhy, eyesOn, eyesCheck } from '../src/eyes.js';
 import { guessGroups, groupsFor } from '../src/toolbox.js';
 import { AppsDriver, sendOutBlock } from '../src/hands-apps.js';
+import { SWITCH_KEYS } from '../src/setup-offer.js';
 import { Brain } from '../src/brain.js';
 process.env.BOB_PLATFORM = 'win32';
 
@@ -252,7 +253,7 @@ const hp = read('public/hands.js');
 check('the Settings page shows Bob\'s browser and eyes: the window, Forget, and the eyes switch', /browserHtml\(v\.browser/.test(hp) && /data-hbrowserforget/.test(hp) && /data-heyes/.test(hp) && /Forget what Bob's browser knows/.test(hp) && /Bob checks his work with his eyes/.test(hp));
 check('the routes take forget and eyesCheck', /\/api\/hands\/browser/.test(read('src/hands-routes.js')) && /eyesCheck/.test(read('src/hands-routes.js')));
 check('the user guide and README mention the browser and the eyes', /### Use a browser/.test(read('docs/USER-GUIDE.md')) && /his own browser window/.test(read('../README.md')));
-check('offer_setup knows hand:browser', /hand:browser/.test(read('src/brain.js')));
+check('offer_setup knows hand:browser', SWITCH_KEYS.includes('hand:browser') && /SWITCH_KEYS/.test(read('src/brain.js')));
 check('the release note is there', fs.readdirSync(path.join(here, '..', 'docs', 'releases')).some((f) => /Use a browser/.test(read(`docs/releases/${f}`))));
 
 console.log(`${pass} passed, ${fail} failed`);

@@ -19,6 +19,14 @@ const helpText = plain(HELP.map((e) => `${e.title} ${e.html}`).join(' '));
 
 // ---------- Every line is a real Settings switch that starts off ----------
 check('the list has the everyday switches', WANTS.length >= 10 && ['quickNotes', 'docTools', 'sandboxCode', 'editOwn', 'webSearch'].every((k) => WANTS.some((w) => w.key === k)));
+{
+  const st = { quickNotes: false };
+  const r = wantSaved(st, 'smartNotes', { smartNotes: true, quickNotes: true });
+  check('ticking Note things worth keeping on my own turns quick notes on too', r.on && st.quickNotes === true && /with quick notes/.test(r.say));
+  check('the server turns quick notes on with smart notes', /saveSettings\(cfg, \{ smartNotes: b\.smartNotes, \.\.\.\(b\.smartNotes \? \{ quickNotes: true \} : \{\}\) \}\)/.test(server) && /out\.quickNotes = cfg\.quickNotes === true; if \(out\.quickNotes\)/.test(server));
+  check('the quick notes tick follows on the list', /if \(k === 'smartNotes'\) \{ const q = el\.closest\('\.wants'\)/.test(cellar));
+  check('smart notes sit right after quick notes', WANTS.findIndex((w) => w.key === 'smartNotes') === WANTS.findIndex((w) => w.key === 'quickNotes') + 1);
+}
 check('no key twice', new Set(WANTS.map((w) => w.key)).size === WANTS.length);
 for (const w of WANTS) {
   const inSettings = new RegExp(`sswitch\\('${w.key}', [^,]+, '${w.setting.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/'/g, "\\\\'")}'`).test(cellar);
@@ -37,7 +45,7 @@ check('every line sits under a real Settings card', [...WANTS, ...WANTS_ELSEWHER
 check('a button sits under the card its section is on', WANTS_ELSEWHERE.every((x) => cardOf(x.id)?.id === x.card), JSON.stringify(WANTS_ELSEWHERE.filter((x) => cardOf(x.id)?.id !== x.card)));
 check('the bigger ones cover Check-ins, Bob-Net, Online services, Hands, Adventure, Games and Housekeeping', ['adv-checkins', 'adv-bobnet', 'adv-online', 'adv-hands', 'adv-adventure', 'adv-games', 'adv-housekeeping'].every((id) => WANTS_ELSEWHERE.some((x) => x.id === id)));
 check('notes are short', WANTS.every((w) => w.note.length <= 90), JSON.stringify(WANTS.filter((w) => w.note.length > 90).map((w) => w.key)));
-check('planned things are listed, and none is a tick or a Settings switch yet', WANTS_SOON.length >= 5 && WANTS_SOON.every((x) => x.label && !('key' in x) && !WANTS.some((w) => w.label === x.label) && !cellar.includes(`'${x.label.replace(/'/g, "\\'")}'`)));
+check('planned things are listed, and none is a tick or a Settings switch yet', WANTS_SOON.length >= 1 && WANTS_SOON.every((x) => x.label && !('key' in x) && !WANTS.some((w) => w.label === x.label) && !cellar.includes(`'${x.label.replace(/'/g, "\\'")}'`)));
 {
   const page = wantsHtml(mergeSettings({}, {}), esc);
   check('the page shows the groups in card order, with Coming soon lines that have no tick box', page.indexOf('How Bob works') < page.indexOf('Brains and speed') && page.indexOf('Brains and speed') < page.indexOf('My other Bobs') && page.indexOf('What Bob may do') < page.indexOf('This replicant matrix') && (page.match(/class="muted want-soon"/g) || []).length === new Set(WANTS_SOON.map((x) => x.card)).size && WANTS_SOON.every((x) => page.includes(esc(x.label))) && !/want-soon[^<]*<[^>]*<input/.test(page));

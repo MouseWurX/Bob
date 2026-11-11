@@ -177,7 +177,7 @@ export function askTogetherTool(brain) {
       type: 'function',
       function: {
         name: 'ask_together',
-        description: 'Before a job that needs more than one OK from {{USER}} (files, commands, apps, edits, schedules, cloud helpers), list every one of those steps here first, with the exact tool and arguments you will use. {{USER}} sees them all on one card and allows or denies them together. Then do the steps with the same arguments; the allowed ones won\'t ask again. Leave out steps that need no OK.',
+        description: 'Before a job that needs several OKs, list those steps here with the exact tool and args. {{USER}} allows or denies them on one card; then call them with the same args and they won\'t ask again. Leave out steps that need no OK.',
         parameters: {
           type: 'object',
           properties: {

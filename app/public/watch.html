@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#2b1d14">
-<title>FNRI</title>
+<meta name="theme-color" content="#1c1c1c">
+<title>fNRI</title>
 <link rel="icon" href="/icons/bob-32.png">
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/watch.css">
 </head>
 <body class="watch-page">
   <header class="watch-head">
-    <h1 id="watchTitle">FNRI <span class="muted">Functional Neural Response Imager</span></h1>
+    <h1 id="watchTitle">fNRI <span class="muted">Functional Neural Response Imager</span></h1>
     <p id="watchSub" class="muted">A scan of a brain's experts lighting up as it works: one floor of voxels for each layer, coloured by skill.</p>
   </header>
   <div class="watch-main">
     <aside class="watch-side" aria-label="Controls">
       <section id="watchEmpty">
-        <p>Nothing is loaded yet. Make a scan in the Lab (Playground, FNRI), or open a recording file here.</p>
+        <p>Nothing is loaded yet. Make a scan in the Lab (Playground, fNRI), or open a recording file here.</p>
       </section>
       <section id="watchControls" hidden>
         <fieldset id="watchSkills"><legend>Show these</legend></fieldset>
@@ -98,6 +98,8 @@
         <select id="watchLoad" aria-describedby="watchLoadHint"></select>
         <span id="watchLoadHint" class="muted">How the block builds itself when a scan opens, and how it comes apart when the next one loads. Picking one plays it.</span>
         <button id="watchPaths" type="button" class="brain-switch" role="switch" aria-checked="true"><span class="lbl">Lines between the experts in use</span><span class="st">On</span></button>
+        <label for="watchLines">How bright the lines are</label>
+        <input type="range" id="watchLines" min="0" max="1" step="0.05" value="0.5">
         <details id="watchWordsBox"><summary>What this shows, in words</summary><ul id="watchWords" class="tlist"></ul></details>
       </section>
       <section class="watch-files">

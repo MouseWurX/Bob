@@ -20,9 +20,11 @@
 import { isTailscaleIp } from './phone-access.js';
 import { findTool, missingWords } from './llama-tools.js';
 import { spawn } from 'node:child_process';
+import { safeSpawn } from './engine-blocked.js'; // 1.5.203: a blocked program comes back as 'error', not a throw
 import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
+import dgram from 'node:dgram';
 
 export const RPC_PORT = 50052; // the gate other Bobs reach
 export const INNER_PORT = 50053; // the card server itself, on 127.0.0.1 only
@@ -31,6 +33,14 @@ export const KEEP_MS = 60000; // the asker says "still using it" this often
 export const SPREAD = ['off', 'toobig', 'big'];
 const DOWN_MS = 10 * 60000; // a Bob whose card failed a load isn't asked again for this long
 
+// SCUT (Brain Engine patch 0005): Bob's own fast link for the brain's numbers, off unless switched on. Both Bobs need it
+// on; the engines agree on it when they connect and stay on the usual link (TCP) if either side doesn't, or if the
+// UDP path doesn't answer. It paces itself under a speed cap so the rest of the home network isn't crowded.
+export const SCUT_MBPS = [50, 100, 300];
+export const scutOn = (cfg) => cfg.share?.scut === true;
+export const scutMbps = (cfg) => (SCUT_MBPS.includes(Number(cfg.share?.scutMbps)) ? Number(cfg.share.scutMbps) : 100);
+// What the engine is started with. lend: the card server, behind the gate, says the gate's port (UDP too) in its offer.
+export const scutEnv = (cfg, { lend = false } = {}) => (scutOn(cfg) ? { GGML_RPC_SCUT: '1', GGML_RPC_SCUT_MBPS: String(scutMbps(cfg)), ...(lend ? { GGML_RPC_SCUT_PUBLIC_PORT: String(RPC_PORT) } : {}) } : {});
 export const lendCardOn = (cfg) => cfg.share?.lendCard === true && Boolean(cfg.remote?.enabled && String(cfg.remote?.passcode || '').length >= 6);
 export const spreadOf = (cfg) => (SPREAD.includes(cfg.share?.spread) ? cfg.share.spread : 'off');
 // This machine's own Tailscale addresses.
@@ -54,7 +64,9 @@ export const homeFirst = (cfg) => cfg.share?.homeNet !== false; // on unless swi
 export const admit = (allow, remote) => Boolean(allow) && plainIp(remote) === allow;
 
 // The gate: listens on host:port and passes only `allow` through to the card server on 127.0.0.1. Gives { close }.
-export function openGate({ host, port = RPC_PORT, allow, inner = INNER_PORT, log = () => {} }) {
+// udp (SCUT): the same port on UDP too, passed the same way: only `allow`'s datagrams go in, and the card server's
+// answers go back to it. If UDP can't open, the gate still works and SCUT stays on TCP by itself.
+export function openGate({ host, port = RPC_PORT, allow, inner = INNER_PORT, udp = false, log = () => {} }) {
   return new Promise((resolve, reject) => {
     const socks = new Set();
     const srv = net.createServer((sock) => {
@@ -64,7 +76,30 @@ export function openGate({ host, port = RPC_PORT, allow, inner = INNER_PORT, log
       sock.pipe(up); up.pipe(sock);
     });
     srv.once('error', reject);
-    srv.listen(port, host, () => { srv.off('error', reject); resolve({ port: srv.address().port, close: () => { srv.close(); for (const s of socks) s.destroy(); } }); });
+    srv.listen(port, host, async () => {
+      srv.off('error', reject);
+      const got = srv.address().port;
+      const relay = udp ? await udpRelay({ host, port: got, allow, inner, log }).catch((e) => { log('bob-net', `lent graphics card: SCUT's UDP side didn't open (${String(e.message || e).slice(0, 80)}), so it stays on the usual link`); return null; }) : null;
+      resolve({ port: got, udp: Boolean(relay), close: () => { srv.close(); for (const s of socks) s.destroy(); relay?.close(); } });
+    });
+  });
+}
+
+// The gate's UDP half: outer on host:port (only `allow` in), inner on 127.0.0.1 towards the card server.
+export function udpRelay({ host, port, allow, inner = INNER_PORT, log = () => {} }) {
+  return new Promise((resolve, reject) => {
+    const outer = dgram.createSocket('udp4'), back = dgram.createSocket('udp4');
+    let peer = null, turned = 0;
+    const close = () => { for (const s of [outer, back]) { try { s.close(); } catch {} } };
+    outer.on('message', (m, r) => {
+      if (!admit(allow, r.address)) { if (turned++ === 0) log('bob-net', `lent graphics card: turned away UDP from ${plainIp(r.address)}`); return; }
+      peer = { address: r.address, port: r.port };
+      back.send(m, inner, '127.0.0.1');
+    });
+    back.on('message', (m) => { if (peer) outer.send(m, peer.port, peer.address); });
+    for (const s of [outer, back]) s.on('error', () => {});
+    outer.once('error', (e) => { close(); reject(e); });
+    outer.bind(port, host, () => back.bind(0, '127.0.0.1', () => resolve({ port: outer.address().port, close })));
   });
 }
 
@@ -82,8 +117,8 @@ export function wantsSpread(cfg, { sizeGB, cardGB = Number(cfg.gpuVramGB) || Num
 
 // ---------- Lending ----------
 export class CardLender {
-  constructor(cfg, { spawnFn = spawn, tool = () => findTool(cfg, 'rpc'), ips = tailscaleIps, home = homeIps, gate = openGate, gaming = () => false, now = Date.now, log = () => {} } = {}) {
-    Object.assign(this, { cfg, spawnFn, tool, ips, home, gate, gaming, now, log });
+  constructor(cfg, { spawnFn = spawn, tool = () => findTool(cfg, 'rpc'), ips = tailscaleIps, home = homeIps, gate = openGate, gaming = () => false, now = Date.now, log = () => {}, env = process.env } = {}) {
+    Object.assign(this, { cfg, spawnFn, tool, ips, home, gate, gaming, now, log, env });
     this.child = null; this.gateway = null; this.host = ''; this.allow = ''; this.via = ''; this.port = 0; this.last = 0; this.from = ''; this.timer = null;
   }
 
@@ -112,7 +147,7 @@ export class CardLender {
     if (this.child && this.host === host && this.allow === allow) { this.keep(); return { ok: true, host, port: this.port, via }; }
     this.close();
     const t = this.tool();
-    const child = this.spawnFn(t.path, ['-H', '127.0.0.1', '-p', String(INNER_PORT), '-c'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(t.path) });
+    const child = safeSpawn(this.spawnFn, t.path, ['-H', '127.0.0.1', '-p', String(INNER_PORT), '-c'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(t.path), env: { ...this.env, ...scutEnv(this.cfg, { lend: true }) } });
     let out = '';
     const ready = await new Promise((resolve) => {
       const done = (v) => { clearTimeout(timer); resolve(v); };
@@ -124,12 +159,12 @@ export class CardLender {
     });
     if (!ready) { try { child.kill(); } catch {} return { ok: false, why: 'failed', error: `The card-sharing server didn't start${out ? ` (${out.trim().split(/\r?\n/).pop().slice(0, 160)})` : ''}.` }; }
     let gateway;
-    try { gateway = await this.gate({ host, port: RPC_PORT, allow, inner: INNER_PORT, log: this.log }); }
+    try { gateway = await this.gate({ host, port: RPC_PORT, allow, inner: INNER_PORT, udp: scutOn(this.cfg), log: this.log }); }
     catch (e) { try { child.kill(); } catch {} return { ok: false, why: 'failed', error: `The card-sharing gate didn't open on ${host}:${RPC_PORT} (${String(e.message || e).slice(0, 120)}).` }; }
     child.once('exit', () => { if (this.child === child) { this.close(); this.log('bob-net', 'lent graphics card: the card-sharing server stopped'); } });
     Object.assign(this, { child, gateway, host, allow, via, port: RPC_PORT, from: String(from).slice(0, 40) });
     this.keep();
-    this.log('bob-net', `lent graphics card to ${this.from || 'another Bob'} over ${via === 'home' ? 'the home network' : 'Tailscale'} (${host}:${RPC_PORT}, only ${allow} let in)`);
+    this.log('bob-net', `lent graphics card to ${this.from || 'another Bob'} over ${via === 'home' ? 'the home network' : 'Tailscale'} (${host}:${RPC_PORT}, only ${allow} let in${gateway.udp ? ', SCUT ready' : ''})`);
     return { ok: true, host, port: RPC_PORT, via };
   }
 

@@ -10,7 +10,7 @@
 // Everything outside (GitHub, the loaded brains, the downloads, the chat) comes in as functions, so tests use fakes.
 import fs from 'node:fs';
 import path from 'node:path';
-import { ENGINES, engineFor, installedMarker, brainsEngineNow, sharedDir, TESTED_LLAMA, brainEnginePin, brainEngineStale } from './engines.js';
+import { ENGINES, engineFor, installedMarker, brainsEngineNow, sharedDir, TESTED_LLAMA, brainEnginePin, brainEngineStale, engineBlocked } from './engines.js';
 
 export const KEEPER_ENGINES = ['brainengine', 'llamacpp'];
 export const FIRST_CHECK_MS = 2 * 60e3; // after start, so the window is open and the first brain has loaded
@@ -66,7 +66,7 @@ export class EngineKeeper {
   // The first look after start always asks ("checks on start"); after that, about once a day.
   start() { this.schedule(FIRST_CHECK_MS, true); this.d.setTimer(() => this.withBob().catch(() => {}), WITH_BOB_MS); return this; }
 
-  // 1.5.196 (the owner, Nov 10: "it should update with Bob himself, not standalone"; FNRI on the PC found Bob on a new
+  // 1.5.196 (the owner, Nov 10: "it should update with Bob himself, not standalone"; fNRI on the PC found Bob on a new
   // version with the old engine). Brain Engine updates with Bob: when the build here (its own marker) isn't the one this
   // Bob names (package.json bob.brainEngine), the named build comes along at the next start, whatever the Keep engines
   // up to date switch says, the same way Bob's own files do. GitHub is asked once, only to make sure the file there
@@ -78,6 +78,9 @@ export class EngineKeeper {
     const e = keeperCandidates(this.cfg).find((x) => x.id === 'brainengine');
     const mark = e && installedMarker(this.cfg, e);
     if (!brainEngineStale(mark, pin)) return null;
+    // 1.5.203: Windows blocked this very build and Bob went back from it: don't fetch it again (Try again in Settings).
+    const blocked = engineBlocked(this.cfg, 'brainengine');
+    if (blocked && blocked.version === pin.tag && (!blocked.print || blocked.print === pin.print)) return null;
     let r = null;
     try { r = await this.d.check('brainengine'); } catch (err) { this.state.lastError = `Brain Engine: ${err.message}`.slice(0, 300); this.write(); return null; }
     if (!r || (r.print && r.print === mark.print && r.latest === mark.version)) return null;
@@ -126,6 +129,7 @@ export class EngineKeeper {
     for (const e of keeperCandidates(this.cfg)) {
       if (this.pending.has(e.id)) continue;
       if (e.id === 'brainengine' && pin) continue; // 1.5.196: Brain Engine goes with Bob (withBob), not on its own
+      if (engineBlocked(this.cfg, e.id)) continue; // 1.5.203: went back from a blocked build; Try again first
       try { const due = await dueUpdate(this.cfg, e, { check: this.d.check, tested: this.d.tested ?? TESTED_LLAMA }); if (due) this.pending.set(e.id, { ...due, queued: false, saidWait: false }); }
       catch (err) { this.state.lastError = `${e.name}: ${err.message}`.slice(0, 300); }
     }

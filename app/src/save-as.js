@@ -83,9 +83,9 @@ export function saveAsTool() {
       type: 'function',
       function: {
         name: 'save_as',
-        description: 'Keep a picture, clip, song or sound you made as another file type (the original stays). Pictures: png, jpg, webp, gif. Clips: mp4, webm, gif. Songs and sounds: wav, mp3, ogg, flac. Diagrams: the Save as row under the diagram does it.',
+        description: 'Save a copy of something you made as another file type; the original stays. Pictures: png, jpg, webp, gif. Clips: mp4, webm, gif. Sound: wav, mp3, ogg, flac. Not diagrams.',
         parameters: { type: 'object', properties: {
-          name: { type: 'string', description: 'The file name you made (like 2026-11-04-ab12cd34.wav), or "last" for the newest thing that can be that type.' },
+          name: { type: 'string', description: 'The file name, or "last" for the newest.' },
           format: { type: 'string', enum: ['png', 'jpg', 'webp', 'gif', 'mp4', 'webm', 'wav', 'mp3', 'ogg', 'flac'] }
         }, required: ['name', 'format'] }
       }

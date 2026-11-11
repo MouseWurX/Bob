@@ -541,7 +541,7 @@ export function forgetTopicTool(brain) {
       type: 'function',
       function: {
         name: 'forget_topic',
-        description: 'Forget what was said about a topic when {{USER}} asks ("forget what we said about X"). {{USER}} always sees a preview and decides. mode "note" (default) forgets the chat parts but keeps the short topic note; "all" also forgets the note and the memory lines filed under it.',
+        description: 'Forget what was said about a topic, when {{USER}} asks. {{USER}} sees a preview and decides. mode note (default) keeps the short topic note; all forgets that too.',
         parameters: { type: 'object', properties: { topic: { type: 'string', description: 'The topic, in the user\'s words.' }, mode: { type: 'string', enum: ['note', 'all'] } }, required: ['topic'] }
       }
     },

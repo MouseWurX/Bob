@@ -581,9 +581,9 @@ export function mcpTools(brain, { track } = {}) {
 
   const t = {};
   t.mcp_tools = {
-    schema: fn('mcp_tools', 'See the tools a connected app offers (Unreal Engine, Blender and so on, through MCP) and the inputs each one takes. Call it before mcp_use. Without app: lists the connected apps.', {
+    schema: fn('mcp_tools', 'List the tools a connected app offers (Blender, Unreal and so on) and their inputs. Call it before mcp_use. No app = list the connected apps.', {
       app: str('The connected app, by name (optional).'),
-      find: str('Optional: a few words to narrow the list, like "material" or "spawn".')
+      find: str('Optional: words to narrow the list, like "material".')
     }, []),
     async run(args, ctx) {
       off();
@@ -610,10 +610,10 @@ export function mcpTools(brain, { track } = {}) {
   };
 
   t.mcp_use = {
-    schema: fn('mcp_use', 'Use one tool of a connected app (from mcp_tools): the app, the exact tool name, and its inputs as an object. {{USER}} sees it on a card first.', {
+    schema: fn('mcp_use', 'Use one tool of a connected app, with its inputs. {{USER}} sees a card first.', {
       app: str('The connected app, by name.'),
       tool: str('The exact tool name, as mcp_tools listed it.'),
-      inputs: { type: 'object', description: 'The tool\'s inputs, like {"name": "Cube"}. Leave out if it takes none.' },
+      inputs: { type: 'object', description: 'Its inputs, like {"name": "Cube"}. Leave out if none.' },
       why: str('One short line: what this is for.')
     }, ['app', 'tool']),
     // "Allow the rest of this job" covers the same tool in the same app, except tools that run code or delete things:
