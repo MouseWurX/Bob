@@ -38,11 +38,47 @@ function relook() {
   skillsHtml(); wordsHtml(); cutHtml(); if (mode === 'floor') floorHtml(); if (mode === 'expert') expertHtml(); seek(Math.min(t, frames.length - 1));
 }
 function byHtml() {
-  $('watchBy').innerHTML = `<option value="">The skills you asked about</option>${PATTERN_CHOICES.map((k) => `<option value="${k}">Patterns Bob found (${k} of them)</option>`).join('')}`;
+  const wOk = src && base.brain.kind !== 'heads'; // the weight maps read the brain's own file, so it has to be in this Bob's Lab
+  $('watchBy').innerHTML = `<option value="">The skills you asked about</option>${PATTERN_CHOICES.map((k) => `<option value="${k}">Patterns Bob found (${k} of them)</option>`).join('')}${wOk ? `<option value="w">${esc(w('How strong each expert\'s weights are'))}</option><option value="d">${esc(w('How much each expert differs from another brain'))}</option>` : ''}`;
+  heatOff();
   const f = hasFloors(base); fscale = f ? floorScale(base) : null; floorsOn = false; view.setFloors(null);
   $('watchFloors').hidden = !f; flipSw($('watchFloors'), false);
 }
-$('watchBy').onchange = (ev) => { const k = Number(ev.target.value) || 0; patternsOn = k > 0; if (k) patternK = k; say(patternsOn ? 'Sorting the words into patterns…' : ''); setTimeout(() => { relook(); say(''); }, 20); };
+// Weight map and difference map: the block coloured by the brain's own weights (src/lab-weights.js), the glow still
+// showing what it used. Patterns and skills go back to how they were scanned.
+let heatOn = '';
+function heatOff() { heatOn = ''; view.set({ heat: null }); $('watchByVsBox').hidden = true; $('watchByVsHint').hidden = true; $('watchBySays').textContent = ''; need = true; }
+async function heatLoad(vs = '') {
+  const says = $('watchBySays'), want = heatOn;
+  if (want === 'd' && !vs) { says.textContent = 'Pick the brain to compare with.'; return; }
+  says.textContent = 'Reading the weights from the brain file…';
+  try {
+    const r = await post('/api/lab/watch/weights', { brain: src.brain, vs, kind: base.brain.kind, experts: base.brain.experts, layers: base.brain.layers });
+    if (heatOn !== want) return;
+    const by = r.raw.map((fl) => { const v = fl.filter((x) => Number.isFinite(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0; });
+    const most = by.indexOf(Math.max(...by)) + 1;
+    view.set(r.kind === 'change' ? { heat: { vals: r.vals, low: `Same as ${r.vs}`, high: 'Changed the most' } } : { heat: { vals: r.vals, low: 'Weaker (for its floor)', high: 'Stronger (for its floor)' } });
+    says.textContent = r.kind === 'change' ? w(`Coloured by how much each expert's weights differ from ${r.vs}. Floor ${most} changed the most, ${Math.round(by[most - 1] * 100)}% on average. Some difference is only rounding when both are packed small, so compare the colours with each other more than with zero.`)
+      : w(`Coloured by how strong each expert's weights are, against the others on its floor. Glow still shows what the brain used, so a bright word on a dark block is a weak expert doing the work.`);
+    lastIdx = -1; need = true;
+  } catch (e) { if (heatOn === want) { says.textContent = ''; say(e.message); } }
+}
+async function vsHtml() {
+  const sel = $('watchByVs');
+  sel.innerHTML = '<option value="">(pick a brain)</option>';
+  try { const r = await fetch('/api/lab/watch', { headers: { 'x-bob': '1' } }).then((x) => x.json()); sel.innerHTML += (r.brains || []).filter((b) => b.id !== src.brain).map((b) => `<option value="${esc(b.id)}">${esc(b.name)}</option>`).join(''); } catch {}
+}
+$('watchByVs').onchange = (ev) => { if (heatOn === 'd') heatLoad(ev.target.value); };
+$('watchBy').onchange = (ev) => {
+  const v = ev.target.value;
+  if (v === 'w' || v === 'd') {
+    if (patternsOn) { patternsOn = false; relook(); }
+    heatOn = v; $('watchByVsBox').hidden = v !== 'd'; $('watchByVsHint').hidden = v !== 'd';
+    if (v === 'd') { vsHtml(); $('watchBySays').textContent = 'Pick the brain to compare with.'; } else heatLoad();
+    return;
+  }
+  heatOff();
+  const k = Number(v) || 0; patternsOn = k > 0; if (k) patternK = k; say(patternsOn ? 'Sorting the words into patterns…' : ''); setTimeout(() => { relook(); say(''); }, 20); };
 $('watchFloors').onclick = (ev) => { floorsOn = !floorsOn; flipSw(ev.currentTarget, floorsOn); if (!floorsOn) view.setFloors(null); lastIdx = -1; need = true; };
 
 // A recording loads in block by block, in the order the person picked (Load in); the one before it comes apart first.

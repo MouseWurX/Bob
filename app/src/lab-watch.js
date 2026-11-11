@@ -13,6 +13,7 @@ import { labDir, inspect, slugOf } from './lab.js';
 import { startServer } from './lab-test.js';
 import { readGguf, isExpertTensor } from './lab-gguf.js';
 import { askTraced, NO_TRACE, NO_ENGINE } from './lab-peek.js';
+import { weightMap, changeMap, shade, WEIGHTS_FORMAT } from './lab-weights.js';
 import { readJson, writeJson, canStart, makeRoom, runJob, pageLog } from './lab-jobs.js';
 import { NAME, FORMAT, VERSION, cleanRecording, specialise, inWords, MAX_SKILLS, skillMap, cleanDials, targetsOf, TARGET_FORMAT } from '../public/lab-watch-math.js';
 
@@ -500,6 +501,43 @@ export async function startWatch(lab, c = {}, { unload = false } = {}) {
   });
 }
 
+// The weight map (how strong each block's weights are) and the difference map (how much each block differs from another
+// brain: the one it was cut or healed from, say). Read from the brain files, never from the engine, and kept beside the
+// scans so a second look is instant (made again when either file changes). `kind`, `experts`, `layers`: the scan's shape.
+// { kind: 'weights' | 'change', vals: [[0..1 or null]], raw: [[number or null]], vs, ms }
+const weightBusy = new Set();
+export async function weightsFor(lab, { brain: brainId, vs = '', kind = 'experts', experts = 0, layers = 0 } = {}, { now = Date.now } = {}) {
+  const brain = lab.brains().find((b) => b.id === String(brainId || ''));
+  if (!brain?.gguf) throw new Error('This scan\'s brain isn\'t in the Lab here, so Bob can\'t read its weights. Open the scan from the Lab on the Bob that has the brain.');
+  if (kind === 'heads') throw new Error('The weight map colours experts and neuron groups. Open an expert or neuron scan of this brain for it.');
+  const shape = { kind: kind === 'neurons' ? 'neurons' : 'experts', experts: Number(experts) || 0, layers: Number(layers) || 0 };
+  if (!shape.experts || !shape.layers) throw new Error('This scan doesn\'t say how the brain is built.');
+  const other = vs ? lab.brains().find((b) => b.id === String(vs)) : null;
+  if (vs && !other?.gguf) throw new Error('Pick the brain to compare with from the list.');
+  if (other && other.id === brain.id) throw new Error('Pick a different brain to compare with: a brain is always the same as itself.');
+  const stamp = (f) => { const st = fs.statSync(f); return `${st.size}:${Math.round(st.mtimeMs)}`; };
+  const file = path.join(brainDir(lab.cfg, brain), `weightmap-${other ? slugOf(other.id) : 'self'}-${shape.kind}.json`);
+  const key = `${stamp(brain.gguf)}|${other ? stamp(other.gguf) : ''}|${shape.experts}x${shape.layers}`;
+  const hit = readJson(file, null);
+  let map = hit?.format === WEIGHTS_FORMAT && hit.key === key ? hit : null;
+  const t0 = now();
+  if (!map) {
+    if (weightBusy.has(file)) throw new Error('Bob is already reading these weights. Give it a moment and try again.');
+    weightBusy.add(file);
+    try {
+      if (!other) map = await weightMap(brain.gguf, shape);
+      else {
+        let keep = null;
+        if (shape.kind === 'experts') { let fo = null; try { fo = inspect(other); } catch {} if (fo?.experts && fo.experts !== shape.experts) { const k = keepBeside(brain, { layers: shape.layers, experts: shape.experts }); if (!k || k.experts !== fo.experts) throw new Error(`${brain.name} has ${shape.experts} experts on a floor and ${other.name} has ${fo.experts}, and there's no keep list beside ${brain.name} saying which of them it kept. Pick the brain it was made from, or put its keep list beside it.`); keep = k; } }
+        map = await changeMap(brain.gguf, other.gguf, shape, { keep });
+      }
+      map = { ...map, key };
+      try { fs.mkdirSync(path.dirname(file), { recursive: true }); writeJson(file, map); } catch {}
+    } finally { weightBusy.delete(file); }
+  }
+  return { kind: map.kind, vals: shade(map), raw: map.layers, vs: other ? other.name : '', ms: now() - t0 };
+}
+
 // Mounted by src/lab-pages.js. Reading is open to this Bob's own pages (the viewer window, a paired phone);
 // recording and deleting only on this replicant matrix itself.
 export async function watchRoute({ req, p, isLocal, lab, b, send, res }) {
@@ -510,6 +548,7 @@ export async function watchRoute({ req, p, isLocal, lab, b, send, res }) {
   if (!isLocal) { send(res, 403, { error: 'Lab jobs can only be started on this replicant matrix itself for now.' }); return true; }
   if (p === '/api/lab/watch/start') { send(res, 200, await startWatch(lab, b, { unload: b.unload === true })); return true; }
   if (p === '/api/lab/watch/targets') { send(res, 200, saveTargets(lab, b)); return true; }
+  if (p === '/api/lab/watch/weights') { send(res, 200, await weightsFor(lab, b)); return true; }
   if (p === '/api/lab/watch/delete') { send(res, 200, deleteRecording(lab, b)); return true; }
   return false;
 }
