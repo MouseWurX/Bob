@@ -133,7 +133,7 @@ export const WORDS = {
   "Fun": "Loisirs",
   "Adventure and games.": "Aventure et jeux.",
   "This replicant matrix": "Cette matrice réplicante",
-  "Updates, passcode, folders, backups, tidying up and removing Bob.": "Mises à jour, code d'accès, dossiers, sauvegardes, rangement et suppression de Bob.",
+  "Updates, passcode, secrets, folders, backups, tidying, removing Bob.": "Mises à jour, code d'accès, secrets, dossiers, sauvegardes, rangement et suppression de Bob.",
   "Bob": "Bob",
   "Brains": "Cerveaux",
   "Connections": "Connexions",

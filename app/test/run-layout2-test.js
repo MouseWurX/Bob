@@ -13,7 +13,7 @@ const every = ui.slice(ui.indexOf('function everydayHtml'), ui.indexOf('function
 const order = [...every.matchAll(/panel\('(ev-[a-z]+)'/g)].map((m) => m[1]);
 check('Everyday order: updates first, then Bob himself, How Bob works, then the extras', order.join(',') === 'ev-pc,ev-bob,ev-how', order.join(','));
 const extras = [...ui.slice(ui.indexOf('const EVERY_EXTRA'), ui.indexOf('function everydayHtml')).matchAll(/\['(ev-[a-z]+)'/g)].map((m) => m[1]);
-check('…Projects, Bob\'s home folder, 🔒 Passcode lock, Where Bob saves things, Back up and move, How-tos', extras.join(',') === 'ev-projects,ev-home,ev-lock,ev-save,ev-backup,ev-howtos', extras.join(','));
+check('…Projects, Bob\'s home folder, Locked secrets, 🔒 Passcode lock, Where Bob saves things, Back up and move, How-tos', extras.join(',') === 'ev-projects,ev-home,ev-lock,ev-secrets,ev-save,ev-backup,ev-howtos', extras.join(','));
 check('the updates line carries the version and a working Check for updates button, and stays while open', /<button type="button" class="mini" data-checkupdate>Check for updates<\/button> <span class="update-out"><\/span>/.test(every) && /'', true\)\}\$\{panel\('ev-bob'/.test(every) && /\.spanel\[open\] \.spanel-note\.keep \{ display: block; \}/.test(css));
 check('a button on a panel line never folds the panel', /if \(b\.tagName === 'BUTTON' && b\.closest\('summary'\)\) e\.preventDefault\(\);/.test(ui));
 check('a waiting update reads "Bob x is ready · Restart Bob now" on that line', /function readyLine\(\)[\s\S]*is ready · <button type="button" class="mini get" data-restartnow>Restart Bob now<\/button>/.test(ui) && /readyLine\(\);/.test(ui.slice(ui.indexOf('function draw()'))));

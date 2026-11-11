@@ -13,6 +13,7 @@ import { handsSettingsHtml, mountHandsSettings } from './hands.js';
 import { quarantineSettingsHtml, mountQuarantineSettings } from './quarantine.js';
 import { phoneAccessHtml, mountPhoneAccess } from './phone-access.js';
 import { lockSettingsHtml, mountLockSettings, lockSummary } from './lock-settings.js'; // 🔒 Passcode lock
+import { secretsHtml, mountSecrets } from './secrets.js';
 import { telegramHtml, mountTelegram } from './telegram.js';
 import { discordHtml, mountDiscord } from './discord.js';
 import { appsDoorHtml, mountAppsDoor } from './apps-door.js';
@@ -621,19 +622,25 @@ export function createCellar({ popOut = null } = {}) {
   const selfWorkHtml = () => {
     const w = settings.selfWork || {};
     const sizeName = (v) => (v >= 1048576 ? `${v / 1048576}M` : `${Math.round(v / 1024)}K`);
-    const head = sswitch('selfWork', w.enabled === true, 'Let Bob work on repositories', keep('Off unless you turn it on. On: when you ask, Bob edits code in his own app or a repository on your list. He works on a copy with his biggest brain, shows a card for every edit and command, and hands you a git branch and patch to look over. Nothing is sent anywhere. If Git or Node.js is missing, he downloads his own copy into his folder (35 to 55 MB each).'));
-    if (w.enabled !== true) return head;
+    const head = sswitch('selfWork', w.enabled === true, 'Let Bob work on repositories', keep('Off unless you turn it on. On: when you ask, Bob edits code in his own app or a repository on your list. He works on a copy with the brain you pick below (his biggest unless you change it), shows a card for every edit and command, and hands you a git branch and patch to look over. Nothing is sent anywhere. If Git or Node.js is missing, he downloads his own copy into his folder (35 to 55 MB each).'));
+    // Every setting shows whether the switch is on or off, so it can be set first (the owner's rule, 2026-11-11).
+    // The brain list (the owner, 2026-11-11): the biggest first, then your own brains and the ones doing a job, then the
+    // catalogue's other brains here, then the catalogue's brains to get first.
+    const groupName = { big: 'Recommended: the biggest', jobs: 'Your own brains and the ones doing a job', here: 'Other brains on this replicant matrix', get: 'In the catalogue, get it first' };
+    const shown = w.model || (w.missing ? w.picked : ''); // the brain he'd really use; a picked one that isn't here yet only shows when nothing is
+    const optName = (b) => `${b.name}${b.jobs?.length ? ` (${b.jobs.join(', ')})` : ''}${b.here === false ? ' (not downloaded)' : ''}`;
+    const groups = ['big', 'jobs', 'here', 'get'].map((g) => [g, (w.brains || []).filter((b) => (b.group || 'big') === g)]).filter(([, l]) => l.length);
     const brain = w.brains?.length
-      ? `<select data-selfwork="model" aria-label="Brain for working on repositories">${w.brains.map((b) => `<option value="${esc(b.id)}" ${b.id === w.model ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select>`
-      : '<span class="muted">Neither Bobert nor Qwen3.6 35B is on this replicant matrix yet. Get Qwen3.6 35B-A3B in Get models, or add your Bobert file under Brains of your own.</span>';
-    const mem = `<select data-selfwork="ctx" aria-label="Long memory for working on repositories">${(w.ctxChoices || [524288, 1048576]).map((v) => `<option value="${v}" ${v === w.ctx ? 'selected' : ''}>${sizeName(v)}</option>`).join('')}</select> ${tip('How much of a repository Bob keeps in mind at once on these jobs. Both are past the 256K the brain was made for, so it\'s stretched (Long memory). If the size won\'t fit your graphics card and RAM, he uses 256K and says so in the chat.', 'Long memory for these jobs')}`;
+      ? `<select data-selfwork="model" aria-label="Brain for working on repositories">${shown ? '' : '<option value="" selected>Pick a brain</option>'}${groups.map(([g, l]) => `<optgroup label="${esc(groupName[g])}">${l.map((b) => `<option value="${esc(b.id)}" ${b.id === shown ? 'selected' : ''}>${esc(optName(b))}</option>`).join('')}</optgroup>`).join('')}</select> ${tip('Bob uses his biggest brain unless you pick another: Bobert, else Qwen3.6 35B. Your own tuned brains and the brains doing a job show their jobs. A brain from the catalogue that isn\'t here yet needs Get models first. A smaller brain is quicker but makes more mistakes on a big repository.', 'Brain for these jobs')}${w.missing ? `<br><span class="muted">${esc(w.missing)} isn't downloaded yet: get it in Get models. Until then Bob uses the one shown here.</span>` : ''}`
+      : '<span class="muted">There are no brains on this replicant matrix yet. Get one in Get models (Qwen3.6 35B-A3B is the one Bob would use), or add your own under Brains of your own.</span>';
+    const mem = `<select data-selfwork="ctx" aria-label="Long memory for working on repositories">${(w.ctxChoices || [524288, 1048576]).map((v) => `<option value="${v}" ${v === w.ctx ? 'selected' : ''}>${sizeName(v)}</option>`).join('')}</select> ${tip('How much of a repository Bob keeps in mind at once on these jobs. Both are past what most brains were made for (Qwen3.6 35B: 256K), so it\'s stretched (Long memory). If the size won\'t fit your graphics card and RAM, he uses 256K and says so in the chat.', 'Long memory for these jobs')}`;
     const repoRow = (r) => srow(esc(r.name) + (r.own ? ' <span class="muted">(Bob himself)</span>' : ''),
       `<span class="muted">${esc(r.source)}</span>${r.ready ? `<br><span class="muted">Code copy: ${esc(r.dir)}</span>` : ''}`,
       `${r.ready ? '' : `<button type="button" class="mini" data-selfcopy="${esc(r.id)}">Make the code copy</button>`}${r.own ? '' : `<button type="button" class="mini" data-selfrm="${esc(r.id)}">Remove</button>`}`);
     const add = (w.repos || []).length - 1 < (w.maxRepos || 20)
       ? `<div class="row self-add"><input data-selfnew="name" maxlength="40" placeholder="Name" aria-label="Repository name" style="width:9em"><input data-selfnew="source" maxlength="400" placeholder="https link or folder" aria-label="Repository link or folder" style="flex:1;min-width:12em"><button type="button" class="mini" data-selfadd>Add</button> ${tip('A GitHub (or other https) link, or the full path of a folder on this replicant matrix that is already a git repository. Bob copies it with Git into his inn folder and only ever works on that copy. A private link needs Git here to know your sign-in already; a folder you cloned yourself always works.', 'Add a repository')}</div>`
       : '';
-    const helpers = `<label class="switch srow-switch"><input type="checkbox" data-selfwork="helpers" ${w.helpers ? 'checked' : ''}><span><strong>Let my other Bobs help</strong>${noteOrTip(keep(`Off unless you turn it on. On a big job Bob splits the work into tasks; the research tasks (reading and looking things up) can go to your other Bobs on Bob-Net at the same time, but only ones running Bobert or Qwen3.6 35B. They only think: what they read is read here and sent to them, and edits, commands and the patch always stay on this replicant matrix. ${w.bobNet ? `${w.bobNet} Bob${w.bobNet === 1 ? '' : 's'} on your Bob-Net list.` : 'Your Bob-Net list is empty: add your other Bobs in Settings, Bob-Net.'}`), 'Let my other Bobs help')}</span></label>`;
+    const helpers = `<label class="switch srow-switch"><input type="checkbox" data-selfwork="helpers" ${w.helpers ? 'checked' : ''}><span><strong>Let my other Bobs help</strong>${noteOrTip(keep(`Off unless you turn it on. On a big job Bob splits the work into tasks; the research tasks (reading and looking things up) can go to your other Bobs on Bob-Net at the same time, but only ones running Bobert, Qwen3.6 35B or the brain picked above. They only think: what they read is read here and sent to them, and edits, commands and the patch always stay on this replicant matrix. ${w.bobNet ? `${w.bobNet} Bob${w.bobNet === 1 ? '' : 's'} on your Bob-Net list.` : 'Your Bob-Net list is empty: add your other Bobs in Settings, Bob-Net.'}`), 'Let my other Bobs help')}</span></label>`;
     return `${head}<div class="self-work-rows">${srow('Brain for these jobs', brain)}${srow('Long memory', mem)}${helpers}<h4 class="ssub">Repositories</h4>${(w.repos || []).map(repoRow).join('')}${add}<p class="muted self-copy-out" aria-live="polite"></p></div>`;
   };
 
@@ -654,6 +661,8 @@ export function createCellar({ popOut = null } = {}) {
     ['ev-home', '📦 Bob\'s home folder', () => { const h = homeInfo || {}; return h.tempLike ? `${settings?.home || ''} · in ${h.tempLike}: move it` : h.synced ? `${h.folder || settings?.home || ''} · a ${h.synced} folder, synced to the cloud: not recommended` : `${h.folder || settings?.home || ''}${h.modelsText ? ` · models ${h.modelsText}` : ''}`; }, () => homeHtml()],
     // 🔒 Passcode lock (closed, it shows whether it's on and whether chats and memory are locked).
     ['ev-lock', '🔒 Passcode lock', () => lockSummary(settings?.passcodeLock), () => lockSettingsHtml()],
+    // 🔐 Locked secrets (on by default): passcodes, tokens and keys kept scrambled (public/secrets.js).
+    ['ev-secrets', '🔐 Locked secrets', () => (settings?.lockSecrets === false ? 'Off · passcodes and keys are kept plain' : 'On · passcodes, tokens and keys are kept scrambled'), () => secretsHtml()],
     ['ev-save', '💾 Where Bob saves things', () => { const sd = settings?.saveDir || {}; return sd.missing ? 'Picked folder not found · saving in Bob\'s own folder' : sd.custom ? sd.folder : 'Bob\'s own folder (Made by Bob)'; }, () => saveDirHtml()],
     // Back up and move (src/backup.js): one zip of chats, settings, memory and notes; restore it on another computer.
     ['ev-backup', '🗄 Back up and move', () => backup.note(), () => backup.html()],
@@ -1189,6 +1198,7 @@ export function createCellar({ popOut = null } = {}) {
     dlg.classList.toggle('wide', mode === 'shop' && tab === 'roles' && eqView !== 'list');
     mountHandsSettings(dlg.querySelector('.hands-box')); // loads its own data; does nothing off the Settings tab
     mountQuarantineSettings(dlg.querySelector('.q-box'));
+    mountSecrets(dlg.querySelector('.secrets-box')); // This replicant matrix: 🔐 Locked secrets
     mountPhoneAccess(dlg.querySelector('.phone-box')); // Bob-Net, This Bob: Let my other replicant matrices in
     mountLockSettings(dlg.querySelector('.lock-box'), { onChange: (v) => { if (settings) settings.passcodeLock = v; const n = dlg.querySelector('[data-panel="ev-lock"] .spanel-note'); if (n) n.textContent = lockSummary(v); } }); // 🔒 Passcode lock
     mountTelegram(dlg.querySelector('.telegram-box')); // Online services: Talk to Bob on Telegram

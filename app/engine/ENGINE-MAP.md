@@ -2,7 +2,7 @@
 
 This is the guide to what Brain Engine changes in llama.cpp, where each change hooks in, and what to re-check when moving to a newer llama.cpp. [README.md](README.md) says what each patch is for and how to build and move it. This page is the "where and how" for whoever does the rebase.
 
-Brain Engine 3 is llama.cpp **b12282** plus the five patches below, about +1,900/-6 lines across 20 files. Only 0004 and 0005 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
+Brain Engine 4 is llama.cpp **b12282** plus the six patches below, about +2,160/-13 lines across 21 files. Only 0004, 0005 and 0006 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
 
 Bob's own code map lists these patches too: one line each, with the files they change, the lines they add and take out, and the main names they add.
 
@@ -79,6 +79,17 @@ Then run `engine/try-newer.sh <tag>`. Every patch must go on, and the Linux buil
 - **Bob callers:** `src/share-card.js` (`scutEnv`), `src/share-brains.js`, `src/llamacpp.js`, `src/brain.js`, `src/firewall.js`.
 - **Re-check on rebase:** checklist item 5. A peer without SCUT must still connect on the plain link, and answers must stay identical with SCUT on or off.
 - **Tests:** `test/run-llama-tools-test.js` (env and workflow wiring). The PC/Go real test is Bigger Bobs over Wi-Fi with SCUT on and off: same answer, faster with it on.
+
+### 0006-scut-seal: every SCUT packet signed and scrambled
+- **Upstream files:** new `ggml/src/ggml-rpc/scut-seal.h` (header-only ChaCha20-Poly1305 from RFC 8439, plus HChaCha20; no OpenSSL), `ggml/src/ggml-rpc/scut.cpp`, `ggml/src/ggml-rpc/scut.h`. Sits on top of 0005, so it only touches SCUT's own files.
+- **Hooks:**
+  - The SCUT offer gets version 2 with the `OF_SEAL` flag. Engines without 0006 only take version 1, so they never switch to a link they can't read and stay on the plain link.
+  - Each direction gets its own key, made with HChaCha20 from Bob's key and both offers.
+  - Every datagram is the readable 20-byte header, an 8-byte counter (the nonce), the scrambled body and a 16-byte tag. The receive path checks the seal (`unseal`) before anything in the datagram is used; forged, damaged, wrong-key and replayed packets are dropped.
+- **Environment:** `GGML_RPC_SCUT_KEY` (64 hex digits, the lending side, or one key for all), `GGML_RPC_SCUT_KEYS="host:port=hex,host=hex"` (the borrowing side, one per lender; `=off` means no SCUT with that one). Also `GGML_RPC_SCUT_FEC`.
+- **Bob callers:** `src/scut-seal.js` (link keys, kept locked with `src/secret-box.js`), `src/bob-net-pair.js` (a key made at pairing), `src/share-card.js` and `src/share-brains.js` (pass the keys), `src/tools.js` (the key file is on the never-touch list).
+- **Re-check on rebase:** 0005 must go on first. A sealed Bob and an unsealed one must fall back to the plain link, never a link one side can't read. Same answers sealed or not.
+- **Tests:** `test/run-scut-seal-test.js` (keys, pairing, locked key file). The PC test is Bigger Bobs over Wi-Fi with SCUT on, sealed (the default) and unsealed.
 
 ## What's not covered yet
 

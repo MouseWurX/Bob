@@ -14,7 +14,7 @@ import { recallOn, tagLine } from './recall.js';
 import { diagramTool } from './diagram.js';
 import { saveAsTool } from './save-as.js';
 import { isPrivateHost } from './security-web.js';
-import { selfWorkOn, hasCodeCopy, codeCopyRoot, codeCopyDir, gatherBrains, pickBigBrain, selfCtx, selfWorkParts, SELF_STEPS, repoNamed, reposOf, baseOf } from './self-work.js';
+import { selfWorkOn, hasCodeCopy, codeCopyRoot, codeCopyDir, gatherBrains, pickBigBrain, pickedMissing, selfCtx, selfWorkParts, SELF_STEPS, repoNamed, reposOf, baseOf } from './self-work.js';
 import { runManaged } from './self-work-plan.js';
 import { ownEntries } from './own-models.js';
 import { ensureTool } from './self-work-tools.js';
@@ -69,8 +69,11 @@ const SECRET_NAME = /^(local\.properties|keystore\.properties|google-services\.j
 const SECRET_EXT = new Set(['.jks', '.keystore', '.p12', '.pfx', '.pem', '.key', '.db', '.sqlite', '.sqlite3', '.kdbx']);
 // Bob's own config is always off-limits; the rest only while the "Keep secret files private" hard limit is on.
 export function isSensitive(cfg, file) {
-  const own = [path.join(appDir, 'config.json'), process.env.BOB_CONFIG].filter(Boolean);
+  // Bob-Net link keys (sealed SCUT packets, src/scut-seal.js) are always off-limits, like config.json.
+  const own = [path.join(appDir, 'config.json'), process.env.BOB_CONFIG, cfg?.dataDir ? path.join(cfg.dataDir, 'bob-net-link-keys.json') : ''].filter(Boolean);
   if (own.some((f) => isInside(f, file))) return true;
+  // 🔐 Bob's locked store and the box that opens it (src/secret-box.js): always off-limits, like his config.
+  if (cfg.dataDir && path.resolve(path.dirname(file)) === path.resolve(cfg.dataDir) && /^(keys\.json|secret-box(\..*)?\.json|mcp-servers\.json)$/i.test(path.basename(file))) return true;
   if (!limitOn(cfg, 'secrets')) return false;
   const base = path.basename(file);
   if (SECRET_NAME.test(base) || SECRET_EXT.has(path.extname(base).toLowerCase())) return true;
@@ -489,7 +492,7 @@ export function buildTools(cfg) {
   };
 
   // "Let Bob work on his own app" (self-work.js, off by default): the coding hat on the code copy (a separate copy of Bob's code),
-  // only on the biggest brain (Bobert, else stock Qwen3.6 35B) with Long memory stretched past 256K. Every edit and
+  // on the brain picked in Settings (the biggest by default: Bobert, else stock Qwen3.6 35B) with Long memory stretched past 256K. Every edit and
   // command still asks; the running Bob (his program folder and settings) stays locked.
   t.work_on_repo = {
     schema: fn('work_on_repo', "Change code in one of {{USER}}'s listed repositories, or in your own app (repository \"Bob\") when asked. Works on a code copy, never the original, and returns a branch and patch. {{USER}} approves every change.", {
@@ -503,12 +506,14 @@ export function buildTools(cfg) {
       if (!repo) throw new Error(`I don't have a repository called "${which}". The list: ${reposOf(cfg).map((r) => r.name).join(', ')}. Add one in ${where}.`);
       if (!hasCodeCopy(cfg, repo)) throw new Error(`There's no code copy of ${repo.name} to work on yet. Press "Make the code copy" next to it in ${where}.`);
       if (!String(job || '').trim()) throw new Error('Say what to change.');
-      const brains = gatherBrains(cfg, { own: ownEntries(cfg), catalogFile: (id) => catalogFileFor(cfg, id) });
+      const brains = gatherBrains(cfg, { own: ownEntries(cfg), catalog: ctx.brain?.shop?.catalog?.models, catalogFile: (id) => catalogFileFor(cfg, id) });
+      const missing = pickedMissing(cfg, brains);
       const pick = pickBigBrain(cfg, brains);
-      if (!pick) throw new Error('This job only runs on my biggest brain, Bobert or Qwen3.6 35B, and neither is on this replicant matrix. Get Qwen3.6 35B-A3B in Get models, or add your Bobert file under Brains of your own.');
+      if (missing && !pick) throw new Error(`The brain picked for these jobs, ${missing.name}, isn't downloaded yet. Get it in Get models, or pick another in ${where}.`);
+      if (!pick) throw new Error(`There's no brain for this job on this replicant matrix yet. Pick one in ${where}, or get Qwen3.6 35B-A3B (the one I'd use) in Get models.`);
       const want = selfCtx(cfg);
       const got = await Promise.resolve(ctx.brain.fitCtx?.(pick.id, want, { longRun: true })).catch(() => null) || want;
-      ctx.emit?.({ type: 'announce', text: `🔧 Off to the workbench: ${repo.own ? 'my own code' : repo.name}, in the copy at ${codeCopyDir(cfg, repo)}, on ${pick.name} with ${ctxLabel(got)} of memory${got < want ? ` (${ctxLabel(want)} won't fit this replicant matrix's card and RAM)` : ' (Long memory)'}. Every change shows its card.` });
+      ctx.emit?.({ type: 'announce', text: `🔧 Off to the workbench: ${repo.own ? 'my own code' : repo.name}, in the copy at ${codeCopyDir(cfg, repo)}, on ${pick.name}${missing ? ` (${missing.name}, the one picked, isn't downloaded yet)` : ''} with ${ctxLabel(got)} of memory${got < want ? ` (${ctxLabel(want)} won't fit this replicant matrix's card and RAM)` : ' (Long memory)'}. Every change shows its card.` });
       // The owner's ask: Git and Node.js 20+ fetched when they're missing (his own copies, in his folder only).
       // Node only for Bob himself and repositories with a package.json.
       const runOn = handOn(cfg, 'run');

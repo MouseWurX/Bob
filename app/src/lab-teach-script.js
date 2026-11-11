@@ -511,7 +511,7 @@ if __name__ == '__main__':
 `;
 
 // Downloads a Hugging Face brain's weights (only the files a trainer needs) with the huggingface_hub the pack
-// installs. The token, when there is one, comes from the environment (HF_TOKEN), never from Bob's files.
+// installs. The token, when there is one, comes from the environment (HF_TOKEN), or from Settings, Locked secrets, handed over as HF_TOKEN.
 export const FETCH_PY = String.raw`
 import sys
 from huggingface_hub import snapshot_download

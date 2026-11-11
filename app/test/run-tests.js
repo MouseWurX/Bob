@@ -62,7 +62,7 @@ fs.writeFileSync(path.join(tmp, 'config.json'), JSON.stringify(cfg));
 
 const { server: mock, calls: mockCalls } = await startMockOllama(OLLAMA_PORT);
 const bob = spawn(process.execPath, [path.join(here, '..', 'src', 'server.js')], {
-  env: { ...process.env, BOB_CONFIG: path.join(tmp, 'config.json'), BOB_AGENT_DIR: path.join(tmp, 'Bob home'), BOB_OLLAMA_URL: `http://127.0.0.1:${OLLAMA_PORT}`, BOB_PORT: String(BOB_PORT) },
+  env: { ...process.env, BOB_TEST: '1', BOB_CONFIG: path.join(tmp, 'config.json'), BOB_AGENT_DIR: path.join(tmp, 'Bob home'), BOB_OLLAMA_URL: `http://127.0.0.1:${OLLAMA_PORT}`, BOB_PORT: String(BOB_PORT) },
   stdio: ['ignore', 'pipe', 'pipe']
 });
 bob.stderr.on('data', (d) => process.stderr.write(d));
