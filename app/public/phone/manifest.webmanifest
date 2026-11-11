@@ -1,0 +1,17 @@
+{
+  "name": "Bob",
+  "short_name": "Bob",
+  "description": "Bob on your phone: the phone screen, served by the Bob on your PC.",
+  "id": "/phone/",
+  "start_url": "/phone/",
+  "scope": "/phone/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1d1510",
+  "theme_color": "#2b1d14",
+  "icons": [
+    { "src": "/phone/shared/icons/bob-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/phone/shared/icons/bob-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/phone/shared/icons/bob-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

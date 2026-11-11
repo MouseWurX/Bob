@@ -1621,7 +1621,7 @@ ${chatOut}
   drawChat();
   drawWho();
   sendBrainConfig();
-  phone('device').then((d) => { deviceModel = String(d.model || ''); $('about').textContent = `Bob ${d.version} for Android · ${d.maker} ${d.model}, Android ${d.android}`; }).catch(() => {});
+  phone('device').then((d) => { deviceModel = String(d.model || ''); $('about').textContent = d.about || `Bob ${d.version} for Android · ${d.maker} ${d.model}, Android ${d.android}`; }).catch(() => {});
   refreshAll();
   // Pick up where Bob left off (opt-in): a phone-brain reply Android cut short is asked again.
   const pending = store.get('pending', null);

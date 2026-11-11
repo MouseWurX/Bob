@@ -4,6 +4,8 @@
 //  - models: the phone brain choices (android/phone-models.json), pinned files copied from catalog.json
 //  - avatars.js: the character screen's parts and composer (public/avatars.js), word for word, as a plain script
 //    (globalThis.BobAvatars), so the phone draws your Adventure character exactly as the desktop does (1.5.122)
+//  - public/phone/: the same phone screen for iPhone (and any phone browser), served by desktop Bob at /phone/ and
+//    added to the Home Screen like an app. Copied word for word; only index.html gains the web parts (1.5.204)
 // Run: node android/tools/make-shared.mjs   (test/run-android-test.js fails if shared.js or avatars.js is stale)
 import fs from 'node:fs';
 import path from 'node:path';
@@ -65,9 +67,46 @@ export function buildAvatars() {
   return `// Made by android/tools/make-shared.mjs from public/avatars.js. Don't edit.\n(function () {\n${body}\nglobalThis.BobAvatars = { ${names.join(', ')} };\n})();\n`;
 }
 
+// 1.5.204 Bob for iPhone: the phone screen, served by desktop Bob at /phone/. These files are copied from www; the
+// web-only parts (web-bridge.js, web.css, manifest.webmanifest) are hand-written in public/phone/ and never touched.
+// Icons, fonts, Mermaid and diagram-core.js aren't copied: the server hands /phone/shared/, /phone/vendor/ and
+// /phone/diagram-core.js out of public/ (they're the same files).
+export const WEB_DIR = path.join(root, 'public/phone');
+export const WEB_COPIED = ['phone.js', 'phone.css', 'logic.js', 'help.js', 'shared.js', 'avatars.js'];
+export function buildWebPhone() {
+  const www = path.join(root, 'android/app/src/main/assets/www');
+  const read = (f) => fs.readFileSync(path.join(www, f), 'utf8').replace(/\r\n/g, '\n');
+  const out = {};
+  for (const f of WEB_COPIED) out[f] = read(f);
+  let html = read('index.html');
+  const swap = (from, to) => { if (!html.includes(from)) throw new Error(`www/index.html changed ("${from.slice(0, 40)}"): update buildWebPhone in make-shared.mjs`); html = html.replace(from, to); };
+  swap('<html lang="en" data-theme="inn">', '<html lang="en" data-theme="inn" data-web>');
+  // The web page talks to the Bob that served it (connect-src 'self'), and photos you pick preview from blob: URLs.
+  swap("img-src 'self' data:; media-src 'self' data:;", "img-src 'self' data: blob:; media-src 'self' data: blob:;");
+  swap("connect-src 'none';", "connect-src 'self';");
+  swap('<title>Bob</title>', [
+    '<title>Bob</title>',
+    '<!-- Made by android/tools/make-shared.mjs from android/app/src/main/assets/www/index.html. Don\'t edit. -->',
+    '<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">',
+    '<meta name="apple-mobile-web-app-capable" content="yes">',
+    '<meta name="mobile-web-app-capable" content="yes">',
+    '<meta name="apple-mobile-web-app-title" content="Bob">',
+    '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">',
+    '<meta name="theme-color" content="#2b1d14">',
+    '<link rel="apple-touch-icon" href="shared/icons/bob-192.png">'
+  ].join('\n'));
+  swap('<link rel="stylesheet" href="phone.css">', '<link rel="stylesheet" href="phone.css">\n<link rel="stylesheet" href="web.css">');
+  swap('<script src="shared.js"></script>', '<script src="web-bridge.js"></script>\n<script src="shared.js"></script>');
+  out['index.html'] = html;
+  return out;
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   fs.writeFileSync(OUT, buildShared());
   console.log(`wrote ${path.relative(root, OUT)}`);
   fs.writeFileSync(OUT_AVATARS, buildAvatars());
   console.log(`wrote ${path.relative(root, OUT_AVATARS)}`);
+  fs.mkdirSync(WEB_DIR, { recursive: true });
+  for (const [f, text] of Object.entries(buildWebPhone())) fs.writeFileSync(path.join(WEB_DIR, f), text);
+  console.log(`wrote ${path.relative(root, WEB_DIR)}/ (the phone screen for iPhone)`);
 }

@@ -31,7 +31,7 @@ export async function mountPhoneAccess(box) {
   const draw = () => {
     const hosts = v.hosts.length ? v.hosts : v.found;
     box.innerHTML = `<span class="tag">off unless you turn it on</span>
-      <label class="switch"><input type="checkbox" data-phone-on ${v.enabled ? 'checked' : ''}><span><strong>Let my other replicant matrices in</strong><br><span class="muted">Your phone (Bob for Android) and your other Bobs can reach this Bob over Tailscale with the passcode below. Nothing else on your network can.</span></span></label>
+      <label class="switch"><input type="checkbox" data-phone-on ${v.enabled ? 'checked' : ''}><span><strong>Let my other replicant matrices in</strong><br><span class="muted">Your phone (Bob for Android, or an iPhone) and your other Bobs can reach this Bob over Tailscale with the passcode below. Nothing else on your network can.</span></span></label>
       ${restart ? '<p class="muted"><strong>Restart Bob to apply this.</strong> Close his window and open him again from the Start menu.</p>' : v.enabled && !v.live ? '<p class="muted">On, but I\'m not on Tailscale yet. Start Tailscale and sign in: I pick it up within a minute, no restart.</p>' : ''}
       <div class="row"><strong>Address</strong> <span class="muted">Type this into your phone or your other Bob.</span> ${hosts.length ? hosts.map((h) => `<code>${esc(h)}</code>`).join(' or ') : '<span class="muted">No Tailscale address found on this replicant matrix. Install Tailscale and sign in, then check again.</span>'}
         <button type="button" data-phone-find>Check again</button></div>
@@ -40,7 +40,7 @@ export async function mountPhoneAccess(box) {
       ${`<label class="switch"><input type="checkbox" data-phone-home ${v.homeNet ? 'checked' : ''}><span><strong>Also over the home network</strong> <span class="tag">off unless you turn it on</span><br><span class="muted">Your other Bobs and your phone can reach this Bob straight over your home network too, when they're on it: quicker than Tailscale, which stays the backup. Only from this home network, still with the passcode. Pairing stays on Tailscale. Turn it on on each Bob. Over the home network, the passcode and what your Bobs send travel without Tailscale's encryption, so someone else on that network could read them, so keep this for a home network you trust.</span></span></label>`}
       ${v.enabled ? firewallHtml(v.firewall, v.port, v.firewall?.home ?? v.homeNet) : ''}
       ${msg ? `<p class="muted" role="status">${esc(msg)}</p>` : ''}
-      <details class="more"><summary>More</summary><p class="muted">On the phone: install Tailscale and sign in with the same account, open Bob for Android, Menu, Bobs on your network, and add the Address above. Then type the passcode and tap Log in. Making a new passcode signs every phone out. Turning this off closes the door straight away.</p></details>`;
+      <details class="more"><summary>More</summary><p class="muted">On the phone: install Tailscale and sign in with the same account, open Bob for Android, Menu, Bobs on your network, and add the Address above. Then type the passcode and tap Log in. On an iPhone: in Safari, go to the Address with /phone/ on the end, type the passcode, then Share, Add to Home Screen. Making a new passcode signs every phone out. Turning this off closes the door straight away.</p></details>`;
   };
   const load = async () => { v = await api('/api/phone-access'); draw(); };
   const change = async (patch) => {

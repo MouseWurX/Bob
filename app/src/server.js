@@ -202,7 +202,7 @@ function workshopView() {
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.webm': 'video/webm', '.mp4': 'video/mp4', '.avi': 'video/x-msvideo', '.svg': 'image/svg+xml', '.mmd': 'text/plain; charset=utf-8',
-  '.ico': 'image/x-icon', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.flac': 'audio/flac', '.ogg': 'audio/ogg',
+  '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.flac': 'audio/flac', '.ogg': 'audio/ogg',
   '.gif': 'image/gif', '.m4a': 'audio/mp4', '.mov': 'video/quicktime', '.pdf': 'application/pdf', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.csv': 'text/plain; charset=utf-8', '.log': 'text/plain; charset=utf-8'
 };
 
@@ -268,7 +268,10 @@ function hasCookie(req) {
   const v = Buffer.from(c.slice(9)), t = Buffer.from(authToken);
   return v.length === t.length && crypto.timingSafeEqual(v, t);
 }
-const LOGIN_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Bob</title><link rel="icon" href="/icons/bob-32.png"><style>body{background:#1d1510;color:#f3e7d3;font:16px "Segoe UI",system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0}form{background:#2b1d14;padding:24px;border-radius:12px;display:grid;gap:12px;width:min(320px,90vw)}input,button{font:inherit;padding:10px;border-radius:8px;border:1px solid #5a4030}input{background:#1d1510;color:#f3e7d3}button{background:#e7a64a;color:#2b1d14;font-weight:700;border:none}</style></head><body><form method="post" action="/login"><img src="/icons/bob-192.png" width="64" height="64" alt=""><label for="c">Bob's passcode</label><input id="c" name="code" type="password" autocomplete="current-password" required><button>Come in</button></form></body></html>`;
+const LOGIN_PAGE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Bob</title><link rel="icon" href="/icons/bob-32.png"><style>body{background:#1d1510;color:#f3e7d3;font:16px "Segoe UI",system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0}form{background:#2b1d14;padding:24px;border-radius:12px;display:grid;gap:12px;width:min(320px,90vw)}input,button{font:inherit;padding:10px;border-radius:8px;border:1px solid #5a4030}input{background:#1d1510;color:#f3e7d3}button{background:#e7a64a;color:#2b1d14;font-weight:700;border:none}a{color:#e7a64a}p{margin:0;font-size:14px}</style></head><body><form method="post" action="/login">{{NEXT}}<img src="/icons/bob-192.png" width="64" height="64" alt=""><label for="c">Bob's passcode</label><input id="c" name="code" type="password" autocomplete="current-password" required><button>Come in</button>{{PHONE}}</form></body></html>`;
+// Bob for iPhone: the login page remembers whether you came for the phone screen (/phone/) and goes back there.
+const loginPage = (p) => LOGIN_PAGE_HTML.replace('{{NEXT}}', p.startsWith('/phone') ? '<input type="hidden" name="next" value="/phone/">' : '')
+  .replace('{{PHONE}}', p.startsWith('/phone') ? '' : '<p>On a phone? <a href="/phone/">Open the phone screen</a></p>');
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -296,6 +299,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (isRemote && !hasCookie(req)) {
       if (p.startsWith('/icons/')) return serveFile(res, publicDir, p.slice(1));
+      // Bob for iPhone: its icons and Home Screen card hold nothing private (an iPhone may fetch them without the cookie).
+      if (p.startsWith('/phone/shared/icons/')) return serveFile(res, publicDir, p.slice('/phone/shared/'.length));
+      if (p === '/phone/manifest.webmanifest') return serveFile(res, publicDir, p.slice(1));
       if (req.method === 'POST' && p === '/login') {
         const now = Date.now();
         while (loginTries.length && now - loginTries[0] > 60000) loginTries.shift();
@@ -303,15 +309,15 @@ const server = http.createServer(async (req, res) => {
         loginTries.push(now);
         let raw = '';
         for await (const c of req) { raw += c; if (raw.length > 2000) break; }
-        const code = new URLSearchParams(raw).get('code') || '';
+        const form = new URLSearchParams(raw), code = form.get('code') || '';
         const a = crypto.createHash('sha256').update(code).digest(), b = crypto.createHash('sha256').update(String(remote.passcode)).digest();
         if (crypto.timingSafeEqual(a, b)) {
-          res.writeHead(303, { location: '/', 'set-cookie': `bob_auth=${authToken}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000` });
+          res.writeHead(303, { location: form.get('next') === '/phone/' ? '/phone/' : '/', 'set-cookie': `bob_auth=${authToken}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000` });
           return res.end();
         }
-        return send(res, 401, LOGIN_PAGE, 'text/html; charset=utf-8');
+        return send(res, 401, loginPage(form.get('next') === '/phone/' ? '/phone/' : '/'), 'text/html; charset=utf-8');
       }
-      return send(res, 401, LOGIN_PAGE, 'text/html; charset=utf-8');
+      return send(res, 401, loginPage(p), 'text/html; charset=utf-8');
     }
 
     if (req.method === 'POST' && req.headers['x-bob'] !== '1') return send(res, 403, { error: 'missing header' });
@@ -1122,6 +1128,14 @@ const server = http.createServer(async (req, res) => {
       // Over the home network, a folder the user picked only gives out what Bob made there (it can hold their own files too).
       if (!isLocal && path.resolve(path.dirname(f)) !== path.resolve(cfg.defaultPainterDir) && !brain.made.has(f)) return send(res, 404, { error: 'not found' });
       return serveFile(res, path.dirname(f), path.basename(f));
+    }
+    // Bob for iPhone (public/phone/, made by android/tools/make-shared.mjs): the phone screen, added to the Home Screen
+    // like an app. Its icons, fonts, Mermaid and diagram drawer are desktop Bob's own files, not copies.
+    if (req.method === 'GET' && p.startsWith('/phone')) {
+      if (p === '/phone') { res.writeHead(301, { location: '/phone/' }); return res.end(); }
+      if (p === '/phone/') return serveFile(res, publicDir, 'phone/index.html');
+      if (/^\/phone\/shared\/(icons|fonts)\//.test(p)) return serveFile(res, publicDir, decodeURIComponent(p.slice('/phone/shared/'.length)));
+      if (p.startsWith('/phone/vendor/') || p === '/phone/diagram-core.js') return serveFile(res, publicDir, decodeURIComponent(p.slice('/phone/'.length)));
     }
     if (req.method === 'GET') return serveFile(res, publicDir, p === '/' ? 'index.html' : decodeURIComponent(p.slice(1)));
     send(res, 404, { error: 'not found' });
