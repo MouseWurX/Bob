@@ -36,7 +36,7 @@ const DOWN_MS = 10 * 60000; // a Bob whose card failed a load isn't asked again 
 // SCUT (Brain Engine patch 0005): Bob's own fast link for the brain's numbers, off unless switched on. Both Bobs need it
 // on; the engines agree on it when they connect and stay on the usual link (TCP) if either side doesn't, or if the
 // UDP path doesn't answer. It paces itself under a speed cap so the rest of the home network isn't crowded.
-export const SCUT_MBPS = [50, 100, 300];
+export const SCUT_MBPS = [50, 100, 300, 400];
 export const scutOn = (cfg) => cfg.share?.scut === true;
 export const SEED_MS = 20 * 60000; // the most a lender spends filling its card store from its own copy of a brain
 const SEED_SPARE = 10e9; // the disk room a seed always leaves free

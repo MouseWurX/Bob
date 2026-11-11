@@ -191,7 +191,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(gates.every((g) => g.udp === false), 'SCUT: off, the gate opens no UDP side');
   {
     const on = { ...cfg, share: { ...cfg.share, scut: true } };
-    ok(scutMbps(on) === 100 && scutMbps({ share: { scutMbps: 300 } }) === 300 && scutMbps({ share: { scutMbps: 9999 } }) === 100 && SCUT_MBPS.join() === '50,100,300', 'SCUT: the speed cap is 50, 100 or 300 Mbit/s, 100 unless picked');
+    ok(scutMbps(on) === 100 && scutMbps({ share: { scutMbps: 300 } }) === 300 && scutMbps({ share: { scutMbps: 9999 } }) === 100 && scutMbps({ share: { scutMbps: 400 } }) === 400 && SCUT_MBPS.join() === '50,100,300,400', 'SCUT: the speed cap is 50, 100, 300 or 400 Mbit/s, 100 unless picked');
     const e = scutEnv(on, { lend: true });
     ok(e.GGML_RPC_SCUT === '1' && e.GGML_RPC_SCUT_MBPS === '100' && e.GGML_RPC_SCUT_PUBLIC_PORT === String(RPC_PORT) && !('GGML_RPC_SCUT_PUBLIC_PORT' in scutEnv(on)), 'SCUT: the lent card names the gate\'s port in its offer; the borrowing engine only switches it on');
     const sp = [], gs = [];
