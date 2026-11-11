@@ -89,7 +89,8 @@ function tableHtml(rows, { letters = false, label = '' } = {}) {
 }
 
 // The panel's HTML for what GET /api/file/doc sent back (j) — everything escaped, nothing from the file runs.
-export function docHtml(j, { pages = false } = {}) {
+// at ("Show the page and line", src/doc-more.js): { kind: 'page'|'slide'|'paragraph', n } — a PDF opens at that page.
+export function docHtml(j, { pages = false, at = null } = {}) {
   if (j.off) {
     return `<div class="vdoc-off"><p>I can show this here, beside the chat, once <strong>Show documents in the side panel</strong> is on (Settings, How Bob works). It's off unless you turn it on.</p><p><button type="button" class="mini" data-docview-on>Turn it on</button></p></div>`;
   }
@@ -98,7 +99,7 @@ export function docHtml(j, { pages = false } = {}) {
   const parts = docParts(j.error ? '' : j.text, j.ext);
   const cut = j.cut || parts.cut ? '<p class="muted">That\'s the first part of it. Open it in its app to see the rest.</p>' : '';
   const switchRow = pdf && pages ? `<div class="vswitch" role="group" aria-label="Show as"><button type="button" class="mini" data-docas="pages" aria-pressed="true">Pages</button><button type="button" class="mini" data-docas="words" aria-pressed="false">Words</button></div>` : '';
-  const pdfFrame = pdf && pages ? `<iframe class="vpage vpdf" src="/api/file/pdf?path=${encodeURIComponent(j.path || '')}" title="${esc(j.name || 'PDF')}" referrerpolicy="no-referrer"></iframe>` : '';
+  const pdfFrame = pdf && pages ? `<iframe class="vpage vpdf" src="/api/file/pdf?path=${encodeURIComponent(j.path || '')}${at?.kind === 'page' && at.n > 0 ? `#page=${Number(at.n)}` : ''}" title="${esc(j.name || 'PDF')}" referrerpolicy="no-referrer"></iframe>` : '';
   if (parts.view === 'sheets') {
     if (!parts.sheets.length) return '<p class="muted">That spreadsheet is empty.</p>';
     const tabs = parts.sheets.length > 1 ? `<div class="vswitch" role="group" aria-label="Sheets">${parts.sheets.map((s, i) => `<button type="button" class="mini" data-sheet="${i}" aria-pressed="${i === 0}">${esc(s.name)}</button>`).join('')}</div>` : `<p class="muted">${esc(parts.sheets[0].name)}</p>`;
@@ -116,6 +117,23 @@ export function docHtml(j, { pages = false } = {}) {
   return `<div class="vdoc vdoc-words">${switchRow}${pdfFrame}<div class="vdoc-text"${pdfFrame ? ' hidden' : ''}>${words}${cut}</div></div>`;
 }
 
+// "Show the page and line" (src/doc-more.js): scroll the words to the slide or paragraph, and mark it for a moment.
+// A PDF shown as pages opens at its page by itself (docHtml); shown as words, its page can't be told apart, so it
+// stays at the top.
+export function placeElement(stage, at) {
+  if (!at || !(at.n > 0)) return null;
+  if (at.kind === 'slide') return stage.querySelector(`.vslide[aria-label="Slide ${Number(at.n)}"]`);
+  if (at.kind === 'paragraph' || at.kind === 'line') return stage.querySelectorAll('.vdoc-text > p, .vdoc-text > .vtable')[at.n - 1] || null;
+  return null;
+}
+export function goToPlace(stage, at) {
+  const el = placeElement(stage, at);
+  if (!el) return;
+  el.classList.add('flash');
+  try { el.scrollIntoView({ block: 'center' }); } catch {}
+  setTimeout(() => el.classList.remove('flash'), 2500);
+}
+
 // Can this window draw a PDF's pages itself? (Chrome, Edge, Firefox and Bob.exe can; the Android app can't.)
 export const canShowPdf = () => typeof navigator !== 'undefined' && navigator.pdfViewerEnabled === true;
 
@@ -127,7 +145,8 @@ export async function drawDoc(stage, t, { isActive = () => true, onTurnedOn = ()
   if (!isActive()) return;
   if (!j) { stage.innerHTML = '<p class="muted">I couldn\'t read that file. It may have moved.</p>'; return; }
   j.path = t.path;
-  stage.innerHTML = docHtml(j, { pages: canShowPdf() });
+  stage.innerHTML = docHtml(j, { pages: canShowPdf(), at: t.at });
+  goToPlace(stage, t.at);
   stage.onclick = async (e) => {
     const on = e.target.closest('[data-docview-on]');
     if (on) {

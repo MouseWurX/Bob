@@ -331,6 +331,16 @@ function fontMaps(buf, streams) {
 }
 
 export function pdfText(buf) {
+  const text = tidy(pdfPages(buf).join('\n\n'));
+  const letters = (text.match(/[\p{L}\p{N}\s.,;:!?'"()-]/gu) || []).length;
+  if (text.replace(/\s/g, '').length < 20) throw new DocError(`I found no words in that PDF. It's probably a scan (pictures of pages): attach a page as a picture and an eyes brain can read it.`);
+  if (letters / text.length < 0.7) throw new DocError(`That PDF keeps its words in a way I can't untangle without help. ${OFFICE_HINT}`);
+  return text;
+}
+
+// The words of each page of a PDF, in order (pages with no words left out). "Show the page and line" (my-docs.js)
+// uses it to say which page a find is on.
+export function pdfPages(buf) {
   if (!buf.subarray(0, 1024).toString('latin1').includes('%PDF')) throw new DocError('That doesn\'t look like a PDF inside.');
   if (/\/Encrypt\s/.test(buf.toString('latin1', Math.max(0, buf.length - 4096)))) throw new DocError(`That PDF is locked (encrypted), so I can't read its words. ${OFFICE_HINT}`);
   const streams = pdfStreams(buf);
@@ -377,11 +387,7 @@ export function pdfText(buf) {
     }
     if (out.trim()) pages.push(tidy(out));
   }
-  const text = tidy(pages.join('\n\n'));
-  const letters = (text.match(/[\p{L}\p{N}\s.,;:!?'"()-]/gu) || []).length;
-  if (text.replace(/\s/g, '').length < 20) throw new DocError(`I found no words in that PDF. It's probably a scan (pictures of pages): attach a page as a picture and an eyes brain can read it.`);
-  if (letters / text.length < 0.7) throw new DocError(`That PDF keeps its words in a way I can't untangle without help. ${OFFICE_HINT}`);
-  return text;
+  return pages;
 }
 
 // ---------------------------------------------------------------- the one way in

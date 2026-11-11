@@ -717,6 +717,11 @@ export function createCellar({ popOut = null } = {}) {
       ${sswitch('docTools', settings.docTools === true, 'Read and search my documents', 'Off unless you turn it on. Bob reads Word, Excel, PowerPoint, OpenDocument, PDF, e-book and Rich Text files with nothing extra installed, and can search inside them for words in the folders he may read (Documents, Desktop and Downloads). Nothing leaves this replicant matrix and nothing is kept on disk. Old .doc, .xls and .ppt files need the Office documents Hand.')}
       ${sswitch('docMeaning', settings.docMeaning === true, 'Search my documents by meaning', 'Off unless you turn it on. Works with reading and searching documents on. A search also finds files that mean what you asked in other words. While Bob is idle he makes an index of your documents with the Memory slot\'s embedding model; it stays on this replicant matrix, holds numbers and file names but not the words, and is deleted when you turn this off.')}
       ${settings.docIndex ? `<div class="srow muted" data-docindex>${settings.docIndex.files ? `${settings.docIndex.files} ${settings.docIndex.files === 1 ? 'document' : 'documents'} in the index${settings.docIndex.building ? ', adding more now' : ''}.` : (settings.docIndex.building ? 'Making the index now.' : 'The index is made while Bob is idle.')}</div>` : ''}
+      ${sswitch('docFresh', settings.docFresh === true, 'Keep my documents fresh', 'Off unless you turn it on. Works with Search my documents by meaning on. When a document is saved, added or deleted in a folder Bob may read, he reads it again (or drops it) within a minute, instead of waiting until he\'s idle. Never in the Gaming session or while he\'s answering.')}
+      ${sswitch('docPlaces', settings.docPlaces === true, 'Show the page and line', 'Off unless you turn it on. Works with reading and searching documents on. When Bob finds something in your documents, he says where: the page of a PDF, the slide, the sheet, the paragraph of a Word file, or the line of a text file. Click that place in his answer to open the file beside the chat, at that spot.')}
+      ${notesFoldersHtml()}
+      ${sswitch('weeklyDigest', settings.weeklyDigest === true, 'A Sunday digest', 'Off unless you turn it on. Every Sunday from 9 in the morning (or the next time Bob is open, up to Tuesday), Bob puts one short note in the chat: the week\'s chats, the reminders that went off, and what he noticed. It\'s saved in the digests folder too. No brain is loaded for it and nothing goes online.')}
+      <div class="srow"><button type="button" data-digestnow>Make this week's digest now</button> <span class="muted digest-out"></span></div>
       ${sswitch('docView', settings.docView === true, 'Show documents in the side panel', 'Off unless you turn it on. Word, Excel, PowerPoint, OpenDocument, e-book and Rich Text files open in the panel beside the chat as their words, tables and slides, and a PDF as its pages where this window can draw them. Nothing extra to install, nothing kept on disk. Off: these files get an Open in its app button.')}
       ${sswitch('toolLearning', settings.toolLearning === true, 'Let Bob learn from his tools', 'Off unless you turn it on. When a tool fails and then works, Bob keeps one line on what fixed it and reads it next time. He also counts what works and what fails, and offers to fix a tool that keeps failing. It all stays on this replicant matrix.')}
       ${settings.toolLearning ? `<div class="srow">${(settings.toolScores || []).length ? `<span class="muted">${settings.toolScores.slice(0, 6).map((t) => `${esc(t.name.replace(/^use_my_tool:/, ''))} ${t.wins}✓ ${t.misses}✗${t.often ? ' (keeps failing)' : ''}`).join(' · ')}</span> <button type="button" data-forgettools>Forget what he learned</button>` : '<span class="muted">Nothing learned yet.</span>'}</div>` : ''}
@@ -779,6 +784,10 @@ export function createCellar({ popOut = null } = {}) {
       ${sswitch('memoryRecall', settings.memoryRecall === true, 'Remember only what fits', 'With each message, Bob reads only the memories that fit it (up to 8), not his whole memory file, so chats stay light. Off: he reads all of it every time.')}
       ${more('Each project gets its own memory bank: while you talk about one project, Bob leaves the other projects\' memories out. To have him read a line every time, add [always] to it in his memory file. He matches by meaning when the 🗂 Memory (finding past chats) model is downloaded (it runs on the processor, never in the Gaming session), and by words otherwise.')}
       ${settings.memoryRecall ? memoryBanksHtml() : ''}
+      ${sswitch('memorySources', settings.memorySources === true, 'Note where each memory came from', 'Off unless you turn it on. Each new memory keeps a link to the chat it was learned in. Below, Where my memories came from lists them with Open the chat and Forget, so a wrong one is easy to trace and fix.')}
+      ${sswitch('memoryExpiry', settings.memoryExpiry === true, 'Let memories run out', 'Off unless you turn it on. Say "remember this for the week" (or for a day, a month, or until a date) and Bob stops reading that memory once the time is up, then takes it out of his memory file when he\'s idle. The old file goes to the Recycle Bin first.')}
+      ${sswitch('memoryWhere', settings.memoryWhere === true, 'Keep project memories to their project', 'Off unless you turn it on. Works with Remember only what fits on. A memory in a project\'s bank comes back only while Bob works on that project: you name it, or he opens a file in its folder or repository. In other chats he reads only your general memories.')}
+      <div class="srow memory-sources"><button type="button" data-memsources>Where my memories came from</button> <span class="muted">Every memory, newest first, with the chat it came from.</span><div class="mem-src"></div></div>
       ${speedTestHtml()}`;
   }
 
@@ -884,6 +893,26 @@ export function createCellar({ popOut = null } = {}) {
     const again = dlg.querySelector('[data-qbox]');
     flash(again, msg || (settings.qwenPresets.on ? 'Saved. Used from the next reply.' : 'Off. Bob uses Qwen\'s settings again.'));
     again.querySelector(el.dataset.qfield ? `[data-qpreset="${el.closest('[data-qpreset]')?.dataset.qpreset}"] [data-qfield="${el.dataset.qfield}"]` : el.dataset.qreset ? `[data-qreset="${el.dataset.qreset}"]` : '[data-set="qwenPresetsOn"]')?.focus();
+  }
+
+  // Search my notes apps too (doc-more.js): an Obsidian vault or a folder of OneNote exports joins the folders Bob reads.
+  function notesFoldersHtml() {
+    const list = settings.notesFolders || [];
+    const rows = list.map((n, i) => `<li><strong>${n.kind === 'onenote' ? 'OneNote export' : 'Obsidian vault'}:</strong> ${esc(n.path)}${n.missing ? ' <span class="muted">(not found)</span>' : n.kind === 'obsidian' && !n.vault ? ' <span class="muted">(no .obsidian folder here, read as plain notes)</span>' : ''} <button type="button" class="mini" data-notesdrop="${i}">Take off</button></li>`).join('');
+    return `<div class="srow notes-folders"><strong>Search my notes apps too</strong> <span class="muted">Works with reading and searching documents on. Add an Obsidian vault, or a folder you exported OneNote notebooks into (OneNote: File, Export, as Word or PDF). Bob then searches them like your documents. Nothing is changed in them.</span>
+      ${rows ? `<ul class="packlist">${rows}</ul>` : '<p class="muted">No notes folders yet.</p>'}
+      <button type="button" data-notesadd="obsidian">Add an Obsidian vault…</button> <button type="button" data-notesadd="onenote">Add a OneNote export folder…</button> <span class="muted notes-out"></span></div>`;
+  }
+
+  // Note where each memory came from (memory-more.js): the list, opened from Speed & memory.
+  async function showMemorySources(box) {
+    box.innerHTML = '<p class="muted">Reading the memory file…</p>';
+    let r;
+    try { r = await api('/api/memory/sources'); } catch (err) { box.innerHTML = `<p class="muted">${esc(err.message)}</p>`; return; }
+    const rows = r.rows || [];
+    if (!rows.length) { box.innerHTML = '<p class="muted">Bob\'s memory file is empty.</p>'; return; }
+    const from = (x) => (x.from ? (x.chatGone ? `From a chat that was tidied away${x.title ? `: ${esc(x.title)}` : ''}.` : `<button type="button" class="mini" data-memchat="${esc(x.from)}">Open the chat</button> ${esc(x.title || '')}`) : '<span class="muted">Where it came from wasn\'t noted.</span>');
+    box.innerHTML = `${r.on ? '' : '<p class="muted">Note where each memory came from is off, so new memories won\'t say where they came from.</p>'}<ul class="packlist mem-src-list">${rows.map((x) => `<li data-memkey="${esc(x.key)}"><strong>${esc(x.text)}</strong>${x.project ? ` <span class="muted">[${esc(x.project)}]</span>` : ''}${x.until ? ` <span class="muted">${x.expired ? 'ran out' : 'until'} ${esc(x.until)}</span>` : ''}<br>${from(x)} <button type="button" class="mini" data-memforget="${esc(x.key)}">Forget</button></li>`).join('')}</ul>`;
   }
 
   // 1.5.79: the memory banks, shown under "Remember only what fits" while it's on.
@@ -1472,6 +1501,22 @@ export function createCellar({ popOut = null } = {}) {
         return;
       }
       if ('memsave' in b.dataset) { const box = b.closest('.mem-edit'); try { await api('/api/memory/text', { text: box.querySelector('textarea').value }); box.querySelector('.mem-out').textContent = 'Saved.'; } catch (err) { flash(b, err.message); } return; }
+      if ('memsources' in b.dataset) { const box = b.closest('.memory-sources')?.querySelector('.mem-src'); if (box) await showMemorySources(box); return; }
+      if (b.dataset.memchat) { window.dispatchEvent(new CustomEvent('bob-open-chat', { detail: { id: b.dataset.memchat } })); flash(b, 'Opened in the chat window.'); return; }
+      if (b.dataset.memforget) { try { await api('/api/memory/forget', { key: b.dataset.memforget }); b.closest('li')?.remove(); } catch (err) { flash(b, err.message); } return; }
+      if (b.dataset.notesadd) {
+        const r = await api('/api/pick-folder', {});
+        const out = dlg.querySelector('.notes-out');
+        if (r.error) { if (out) out.textContent = r.error; return; }
+        if (!r.folder) return;
+        const list = [...(settings.notesFolders || []).map(({ kind, path }) => ({ kind, path })), { kind: b.dataset.notesadd, path: r.folder }];
+        const s2 = await api('/api/settings', { notesFolders: list }); settings.notesFolders = s2.notesFolders || []; draw(); return;
+      }
+      if (b.dataset.notesdrop != null) {
+        const list = (settings.notesFolders || []).map(({ kind, path }) => ({ kind, path })).filter((_, i) => String(i) !== b.dataset.notesdrop);
+        const s2 = await api('/api/settings', { notesFolders: list }); settings.notesFolders = s2.notesFolders || []; draw(); return;
+      }
+      if ('digestnow' in b.dataset) { const out = b.parentElement.querySelector('.digest-out'); try { const r = await api('/api/digest/now', {}); if (out) out.textContent = `Done: ${r.counts.chats} chats, ${r.counts.reminders} reminders, ${r.counts.noticed} things noticed. It's in the chat and in the digests folder.`; } catch (err) { if (out) out.textContent = err.message; } return; }
       if ('openmemory' in b.dataset) { try { await api('/api/open', { path: settings?.memoryBanks?.file || '' }); } catch (err) { flash(b, err.message); } return; }
       if ('saveopen' in b.dataset) { try { await api('/api/open', { path: settings?.saveDir?.folder || '' }); } catch (err) { const eb = dlg.querySelector('.save-error'); if (eb) { eb.textContent = err.message; eb.hidden = false; } } return; }
       if ('projbrowse' in b.dataset) { const r = await api('/api/pick-folder', {}); const box = dlg.querySelector('#proj-path'); if (r.folder && box) { box.value = r.folder; projAddState(); const nm = dlg.querySelector('#proj-name'); if (nm && !nm.value) nm.value = r.folder.split(/[\\/]/).filter(Boolean).pop() || ''; } else if (r.error) { const eb = dlg.querySelector('.proj-error'); if (eb) { eb.textContent = r.error; eb.hidden = false; } } return; }
@@ -1961,6 +2006,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.set === 'quickOnCpu') { const r = await api('/api/settings', { quickOnCpu: el.checked }); settings.quickOnCpu = r.quickOnCpu; el.checked = r.quickOnCpu; return; }
       if (el.dataset.set === 'planFirst') { const r = await api('/api/settings', { planFirst: el.checked }); settings.planFirst = r.planFirst; el.checked = r.planFirst; return; }
       if (el.dataset.set === 'resumeJobs') { const r = await api('/api/settings', { resumeJobs: el.checked }); settings.resumeJobs = r.resumeJobs; el.checked = r.resumeJobs; return; }
+      if (['memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'weeklyDigest'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k] === true; el.checked = settings[k]; flash(el, settings[k] ? 'On.' : 'Off.'); return; }
       if (el.dataset.set === 'memoryRecall') { const r = await api('/api/settings', { memoryRecall: el.checked }); settings.memoryRecall = r.memoryRecall; settings.memoryBanks = r.memoryBanks; draw(); return; }
       if (el.dataset.set === 'allTools') { const r = await api('/api/settings', { allTools: el.checked }); settings.allTools = r.allTools; el.checked = r.allTools; return; }
       if (el.dataset.set === 'oneBrain') { const r = await api('/api/settings', { oneBrain: el.checked }); settings.oneBrain = r.oneBrain; el.checked = r.oneBrain; return; }

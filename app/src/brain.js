@@ -34,6 +34,7 @@ import { runWorkflow } from './workshop.js';
 import { pickedCtx, GAMING_CTX } from './model-ctx.js';
 import { currentSession, modelFor, quickOnCpu, laneOf, suggestSession, SESSIONS, sessionBrains, brainDefaults, CTX_CHOICES, LONG_CODER, waitsForGaming, GAMING_TAG, GAMING_HINT, gaming } from './sessions.js';
 import { recallOn, alwaysText, parseMemory, pickMemories, activeProject, recallText, MemoryVectors } from './recall.js';
+import { expiryOn, whereOn, memoryForPrompt, projectOfCall } from './memory-more.js'; // memory items 87 to 89, each off by default
 import { stampMessages, keepOlder, readSummary, newMsgId } from './chats.js';
 import { Housekeeper, hkSettings, forgetTopicTool } from './housekeeping.js';
 import { handsTools, handsPrompt } from './hands.js';
@@ -739,14 +740,15 @@ export class Brain {
   // forText (helpers' jobs): with "Remember only what fits" on, the lines that fit the job, matched by words.
   memory(forText = '') {
     try {
-      const m = readText(this.cfg.memoryFile);
+      const day = expiryOn(this.cfg) ? today(this.cfg) : ''; // "Let memories run out": a line past its day isn't read
+      const m = memoryForPrompt(readText(this.cfg.memoryFile), this.cfg, day);
       // 1.5.79: with recall on, the instructions keep only the [always] lines; the rest come per message (recall()).
       if (recallOn(this.cfg)) {
-        const always = alwaysText(m);
+        const always = alwaysText(m, { today: day });
         if (!forText) return always;
-        const lines = parseMemory(m);
+        const lines = parseMemory(m, { today: day });
         const { project } = activeProject(this.cfg, forText, { bankNames: [...new Set(lines.map((l) => l.project).filter(Boolean))] });
-        const picked = pickMemories(lines, { text: forText, project }).filter((l) => !l.always);
+        const picked = pickMemories(lines, { text: forText, project, strict: whereOn(this.cfg) }).filter((l) => !l.always);
         return [always, picked.map((l) => `- ${l.text}${l.project ? ` [${l.project}]` : ''}`).join('\n')].filter(Boolean).join('\n');
       }
       return m.length > 4000 ? m.slice(-4000) : m;
@@ -757,7 +759,7 @@ export class Brain {
   async recallMemories(sessionId, text, { vec = null, topicProject = '' } = {}) {
     let m = '';
     try { m = readText(this.cfg.memoryFile); } catch { return ''; }
-    const lines = parseMemory(m);
+    const lines = parseMemory(m, { today: expiryOn(this.cfg) ? today(this.cfg) : '' });
     if (!lines.length) return '';
     this.memProject ||= new Map();
     const bankNames = [...new Set(lines.map((l) => l.project).filter(Boolean))];
@@ -766,10 +768,19 @@ export class Brain {
     const hk = this.housekeeper;
     const model = this.cfg.housekeeping?.embedModel || 'nomic-embed-text';
     const vecs = vec && hk ? (hk.memVecs ||= new MemoryVectors(this.cfg)).load(vecKey(model)) : {};
-    const picked = pickMemories(lines, { text, project, qvec: vec, vecs });
+    const picked = pickMemories(lines, { text, project, qvec: vec, vecs, strict: whereOn(this.cfg) });
     const fresh = picked.filter((l) => !l.always);
     this.lastRecall = { at: Date.now(), session: sessionId, project, lines: fresh.length, of: lines.length, by: vec ? 'meaning' : 'words' };
     return recallText(fresh, { project, user: this.cfg.userName || 'the user' });
+  }
+
+  // "Keep project memories to their project" (memory-more.js): a tool that worked on a file in one project's folder
+  // makes that the chat's project, so its memory bank comes back on the next message. Off: nothing changes.
+  noteWhereWorking(sessionId, args) {
+    if (!sessionId || !whereOn(this.cfg)) return '';
+    const project = projectOfCall(this.cfg, args);
+    if (project) (this.memProject ||= new Map()).set(sessionId, project);
+    return project;
   }
 
   session(id) {
@@ -1308,6 +1319,7 @@ export class Brain {
       ctx.offeredNow = false;
       try { text = String(await tool.run(args, ctx)); }
       catch (e) { if (ctx.signal.aborted) throw e; text = `Error: ${e.message}`; }
+      this.noteWhereWorking(ctx.sessionId, args);
       // The system checks it really happened (verify.js): a missing or broken output, or an action that didn't take,
       // gets one more go before Bob is told it failed. Approvals aren't asked twice.
       if (ctx.ledger) ctx.ledger.toolStart = startedAt;

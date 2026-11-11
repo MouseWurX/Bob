@@ -553,6 +553,7 @@
     const mine = current && current.kind === 'net' && current.base === base && ev.sessionId === `phone-${current.chatId}`;
     if (ev.type === 'approval' && String(ev.sessionId || '').startsWith('phone-')) return approvalCard(base, ev);
     if (ev.type === 'checkin') return checkinCard(base, ev);
+    if (ev.type === 'digest') return digestCard(base, ev); // A Sunday digest from that Bob (src/digest.js)
     if (ev.type === 'howto-offer' && String(ev.sessionId || '').startsWith('phone-')) return howtoCard(base, ev);
     if (ev.type === 'offer-setup' && String(ev.sessionId || '').startsWith('phone-')) return setupCard(base, ev); // 1.5.91
     if (ev.type === 'offer-rent' && String(ev.sessionId || '').startsWith('phone-')) return rentCard(base, ev); // 1.5.127 rented brains
@@ -634,6 +635,18 @@
     const card = el('div', { class: 'card' },
       el('div', { class: 'q' }, el('strong', { text: `"${bobName(base)}" check-in` })),
       el('ul', {}, items.map((it) => el('li', {}, el('strong', { text: String(it.title || '') }), it.detail ? el('div', { text: String(it.detail) }) : null))),
+      el('div', { class: 'row' }, el('button', { text: 'Got it', onclick: () => card.remove() })));
+    $('chat').append(card);
+    card.scrollIntoView({ block: 'end' });
+  }
+
+  // A networked Bob's Sunday digest (switched on on that replicant matrix): the week in one short note. Read-only here.
+  function digestCard(base, ev) {
+    const lines = String(ev.text || '').split('\n').slice(1, 60).filter((l) => l.trim());
+    if (!lines.length) return;
+    const card = el('div', { class: 'card' },
+      el('div', { class: 'q' }, el('strong', { text: `"${bobName(base)}" Sunday digest: ${String(ev.title || '')}` })),
+      el('div', {}, lines.map((l) => (/^## /.test(l) ? el('strong', { text: l.slice(3) }) : el('div', { text: l.replace(/^- /, '• ') })))),
       el('div', { class: 'row' }, el('button', { text: 'Got it', onclick: () => card.remove() })));
     $('chat').append(card);
     card.scrollIntoView({ block: 'end' });

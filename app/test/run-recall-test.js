@@ -121,7 +121,7 @@ const brain = read('src/brain.js'), hk = read('src/housekeeping.js'), server = r
 check('recall() adds the memories that fit, only with the setting on', /if \(recall\) \{ const mem = await this\.recallMemories/.test(brain));
 check('no embedding in the Gaming session', /!gaming\(this\.cfg\)/.test(brain) && /recallOn\(this\.cfg\) \|\| gaming\(this\.cfg\)/.test(hk));
 check('housekeeping fills vectors while idle, even with housekeeping off', /if \(recallOn\(this\.cfg\) && \(force \|\| this\.idle\(\)\)/.test(hk) && hk.indexOf('fillMemoryVectors(); } catch') < hk.indexOf('if (!force && (!hk.enabled'));
-check('facts from a project\'s topic go to its bank', /this\.addFacts\(g\.facts, g\.name, g\.project\)/.test(hk));
+check('facts from a project\'s topic go to its bank', /this\.addFacts\(g\.facts, g\.name, g\.project(?:, id)?\)/.test(hk));
 check('settings: the switch, banks and Open Bob\'s memory file', /sswitch\('memoryRecall'/.test(cellar) && /Memory banks:/.test(cellar) && /data-openmemory/.test(cellar) && /memoryBanks: memoryBanksView\(\)/.test(server));
 check('Help: section, glossary, FAQ and the setting', /id: 'memory-recall'/.test(help) && /<dt>Memory bank<\/dt>/.test(help) && /id: 'faq-memory-recall'/.test(help) && /set\('Remember only what fits', 'Off'/.test(help));
 check('the phone can ask for the memories that fit (off: empty)', /p === '\/api\/memory\/recall'/.test(server) && /if \(!recallOn\(cfg\)\) return send\(res, 200, \{ on: false, text: '' \}\)/.test(server));

@@ -9,6 +9,7 @@ import { cleanCheckins } from './checkin-settings.js';
 import { cleanHands } from './hands-settings.js';
 import { cleanPresets } from './model-family.js';
 import { cleanSelfWork, applyCodeCopy } from './self-work.js';
+import { cleanNotesFolders, applyNotes } from './notes-folders.js'; // "Search my notes apps too", off until a folder is added
 import fs from 'node:fs';
 import { writeJsonAtomic, readJsonFile } from './util.js';
 import path from 'node:path';
@@ -230,7 +231,7 @@ export const VERSION = (() => {
 // Languages Bob's screens come in (public/i18n.js has the names and words). English is the default.
 export const LANGUAGES = ['en', 'fr', 'es'];
 export const cleanRemoved = (v) => [...new Set((Array.isArray(v) ? v : []).filter((k) => typeof k === 'string' && /^[\w.:/-]{1,100}$/.test(k)))].slice(0, 500);
-export const SETTING_KEYS = ['language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', 'apuHoldbackGB'];
+export const SETTING_KEYS = ['language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', 'memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'notesFolders', 'weeklyDigest', 'apuHoldbackGB'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -288,6 +289,9 @@ function clean(patch) {
   if ('smartNotes' in out) out.smartNotes = out.smartNotes === true; // "Let Bob notice what's worth noting", off by default (notes.js)
   if ('docTools' in out) out.docTools = out.docTools === true; // "Read and search my documents", off by default (my-docs.js)
   if ('docMeaning' in out) out.docMeaning = out.docMeaning === true; // "Search my documents by meaning", off by default (doc-index.js)
+  // Memory and documents, items 87 to 93 (memory-more.js, doc-more.js, digest.js): all off by default.
+  for (const k of ['memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'weeklyDigest']) if (k in out) out[k] = out[k] === true;
+  if ('notesFolders' in out) out.notesFolders = cleanNotesFolders(out.notesFolders);
   if ('chatFiles' in out) out.chatFiles = out.chatFiles === true; // "Save chats as files and bring chats in", off by default (chat-files.js)
   if ('mathView' in out) out.mathView = out.mathView === true; // "Show maths as formulas", off by default (public/math-core.js)
   if ('shortcuts' in out) out.shortcuts = out.shortcuts === true; // "Keyboard shortcuts", off by default (public/shortcuts.js)
@@ -519,6 +523,7 @@ export function saveDirProblem(cfg, dir) {
 function applyProjects(cfg) {
   if (Array.isArray(cfg.projectList)) cfg.projects = Object.fromEntries(cfg.projectList.map((p) => [p.name, p.path]));
   if (cfg.defaultProject && !(cfg.projects || {})[cfg.defaultProject]) cfg.defaultProject = '';
+  applyNotes(cfg); // notes folders (Obsidian, OneNote exports) join the folders Bob may read (notes-folders.js)
   return applyCodeCopy(cfg); // "Let Bob work on repositories": the code copies are projects while the switch is on
 }
 

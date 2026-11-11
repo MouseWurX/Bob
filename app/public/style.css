@@ -1953,3 +1953,7 @@ a.mini.button:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 .lock-warn { color: var(--bad); }
 .lock-ask { background: var(--danger-bg); border: 1px solid var(--bad); border-radius: var(--r); padding: 10px 12px; }
 .mem-edit textarea { width: 100%; min-height: 12em; box-sizing: border-box; font: inherit; }
+/* "Show the page and line" (src/doc-more.js): the place link after a file, and the spot it opens at in the side panel */
+.file-link.file-place { white-space: nowrap; }
+.vdoc .flash, .vslide.flash { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vcode mark.vat { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; }

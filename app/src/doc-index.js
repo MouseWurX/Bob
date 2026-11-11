@@ -100,7 +100,7 @@ export class DocIndex {
       let added = 0, done = 0;
       for (const t of todo) {
         if (signal?.aborted || done >= INDEX.perRun || now() - start > INDEX.runMs) break;
-        const text = readWords(t.file, t.st, read);
+        const text = readWords(t.file, t.st, read, this.cfg);
         const ps = pieces(text);
         const vecs = [];
         for (let i = 0; i < ps.length; i += INDEX.batch) {
@@ -115,6 +115,39 @@ export class DocIndex {
       if (done >= todo.length && (!w.stopped || w.stopped === 'cap')) d.lastFull = now();
       if ((added || dropped) && this.data === d) this.save(); // not if the index was forgotten meanwhile
       return { added, dropped, left: todo.length - done };
+    } finally { this.building = false; }
+  }
+
+  // "Keep my documents fresh" (doc-more.js): just these files, read again now (or dropped when they're gone, or no
+  // longer in a folder Bob may read). The same pieces and numbers as fill(). Returns { added, dropped }.
+  async refreshFiles(files, embed, model, { read, max = 20 } = {}) {
+    if (this.building) return { added: 0, dropped: 0, busy: true };
+    this.building = true;
+    try {
+      const d = this.load(model);
+      d.model = model;
+      let added = 0, dropped = 0;
+      for (const file of [...new Set(files)].slice(0, max)) {
+        let st = null;
+        try { st = fs.statSync(file); } catch {}
+        const ok = st?.isFile() && insideAny(this.cfg.readRoots || [], file) && !isSensitive(this.cfg, file) && [...DOC_EXT, ...TEXT_EXT].includes(path.extname(file).slice(1).toLowerCase());
+        if (!ok) { if (d.files[file]) { delete d.files[file]; dropped++; } continue; }
+        const key = `${st.size}:${st.mtimeMs}`;
+        if (d.files[file]?.k === key) continue;
+        const text = readWords(file, st, read, this.cfg);
+        const ps = pieces(text);
+        const vecs = [];
+        for (let i = 0; i < ps.length; i += INDEX.batch) {
+          const part = ps.slice(i, i + INDEX.batch);
+          const got = await embed(part.map((p) => asDoc(model, text.slice(p.at, p.at + p.len).replace(/\s+/g, ' '))));
+          if (!got) { if ((added || dropped) && this.data === d) this.save(); return { added, dropped, noModel: true }; }
+          part.forEach((p, j) => { if (Array.isArray(got[j])) vecs.push([p.at, p.len, squeeze(got[j])]); });
+        }
+        d.files[file] = { k: key, p: vecs };
+        added++;
+      }
+      if ((added || dropped) && this.data === d) this.save();
+      return { added, dropped };
     } finally { this.building = false; }
   }
 

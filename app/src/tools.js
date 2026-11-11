@@ -11,6 +11,7 @@ import { limitOn, readOnlyRoots, handOn } from './hands-settings.js';
 import { listWorkflows, workshopDir } from './workshop.js';
 import { bobHelp } from './self-help.js';
 import { recallOn, tagLine } from './recall.js';
+import { expiryOn, untilTag, fromTag } from './memory-more.js'; // memory items 87 and 88, off by default
 import { diagramTool } from './diagram.js';
 import { saveAsTool } from './save-as.js';
 import { isPrivateHost } from './security-web.js';
@@ -182,15 +183,19 @@ export function buildTools(cfg) {
       const banks = recallOn(cfg) ? Object.keys(cfg.projects || {}) : [];
       return fn('remember', 'Save a lasting fact about {{USER}}, like a preference or a plan. Never secrets or passwords.', {
         fact: str('One short sentence.'),
-        ...(recallOn(cfg) ? { project: str(`Only for a fact about one project: its name${banks.length ? ` (${banks.join(', ')})` : ''}. Leave out for anything general.`) } : {})
+        ...(recallOn(cfg) ? { project: str(`Only for a fact about one project: its name${banks.length ? ` (${banks.join(', ')})` : ''}. Leave out for anything general.`) } : {}),
+        // "Let memories run out" (memory-more.js): only offered while that switch is on.
+        ...(expiryOn(cfg) ? { keep: str('Only when {{USER}} says how long: day, week, month, "3 days", or a date (YYYY-MM-DD). Leave out to keep it.') } : {})
       }, ['fact']);
     },
-    async run({ fact, project }) {
+    async run({ fact, project, keep }, ctx = {}) {
       if (!fact) throw new Error('Nothing to remember.');
       const clean = String(fact).replace(/\s+/g, ' ').trim();
-      const line = `- ${recallOn(cfg) ? tagLine(`${clean} (${today(cfg)})`, project) : `${clean} (${today(cfg)})`}\n`;
+      const until = untilTag(cfg, keep, today(cfg));
+      const line = `- ${recallOn(cfg) ? tagLine(`${clean} (${today(cfg)})`, project) : `${clean} (${today(cfg)})`}${until}${fromTag(cfg, ctx.sessionId)}\n`;
       appendText(cfg, cfg.memoryFile, line);
-      return recallOn(cfg) && project ? `Remembered, in the ${String(project).replace(/[\][]/g, '').trim()} memory bank.` : 'Remembered.';
+      const till = until ? ` I'll stop reading it after ${until.match(/\d{4}-\d{2}-\d{2}/)[0]}.` : '';
+      return (recallOn(cfg) && project ? `Remembered, in the ${String(project).replace(/[\][]/g, '').trim()} memory bank.` : 'Remembered.') + till;
     },
     summary: ({ fact, project }) => `remember: ${String(fact).slice(0, 80)}${project ? ` (${project})` : ''}`
   };

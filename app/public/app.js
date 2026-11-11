@@ -442,6 +442,8 @@ $('gamesBtn').onclick = () => gamesPage.open();
 const helpPage = createHelp();
 $('helpBtn').onclick = () => helpPage.open();
 window.addEventListener('bob-tidy', () => tidyPage.open());
+// Settings, Where my memories came from: Open the chat a memory was learned in (memory-more.js).
+window.addEventListener('bob-open-chat', (e) => { const id = String(e.detail?.id || '').replace(/[^a-zA-Z0-9-]/g, ''); if (!id) return; if ($('cellar').open) $('cellar').close(); openChat(id); try { window.focus(); } catch {} });
 // "Ask Bob what he thinks" (Equip Bob, Attributes): puts the question in the chat and sends it.
 window.addEventListener('bob-ask', (e) => { const t = String(e.detail || '').slice(0, 300); if (!t) return; $('input').value = t; $('composer').requestSubmit(); });
 // Click Bob (or press Enter on him) to open Equip Bob.
@@ -794,6 +796,12 @@ function onEvent(ev) {
       badge(true);
       try { if ('Notification' in window && Notification.permission === 'granted' && store.get('bob-alerts', '1') === '1') new Notification('Bob: reminder', { body: ev.text, icon: '/icons/bob-192.png', requireInteraction: true }); } catch {}
       break;
+    case 'digest': {
+      // A Sunday digest (src/digest.js): the week in one short note, also saved in the digests folder.
+      add('approval', `<p><strong>Sunday digest:</strong> ${esc(ev.title || '')}</p>${render(String(ev.text || '').replace(/^# .*\n+/, '').replace(/^## (.*)$/gm, '**$1**'))}${ev.file ? `<div class="row"><button type="button" class="mini" data-open="${esc(ev.file)}">Open the note</button></div>` : ''}`);
+      badge(true);
+      break;
+    }
     case 'checkin': {
       // 1.5.78 Check-ins: only sent when something needs you (src/checkins.js). Nothing is changed by it.
       const items = ev.items || [];
@@ -1159,6 +1167,14 @@ log.addEventListener('click', async (e) => {
   if ('copyCode' in b.dataset) return copyText(b.parentElement.querySelector('code')?.textContent || '', b);
   if (b.dataset.copyLink) return copyText(b.dataset.copyLink, b);
   if (b.dataset.copyPath) return copyText(b.dataset.copyPath, b);
+  // "Show the page and line" (src/doc-more.js): "(page 3)" after a file opens it beside the chat, at that place.
+  if (b.dataset.at && b.dataset.file) {
+    e.preventDefault();
+    const [kind, n] = b.dataset.at.split(':');
+    const file = b.dataset.file, name = file.split(/[\\/]/).pop();
+    viewer.open({ path: file, name, kind: 'text', url: `/api/file?path=${encodeURIComponent(file)}`, at: { kind, n: Number(n) } });
+    return;
+  }
   const which = b.dataset.open ?? b.dataset.reveal ?? b.dataset.file;
   if (which != null) {
     e.preventDefault();
