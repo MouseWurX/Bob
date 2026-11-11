@@ -517,6 +517,9 @@ $('watchLoad').onchange = (ev) => { const s = loadStyle(ev.target.value); view.s
 $('watchMonoColour').oninput = (ev) => { monoPicked = true; view.set({ monoColour: ev.target.value }); try { localStorage.setItem('bob-watch-mono-colour', ev.target.value); } catch {} need = true; };
 $('watchMonoColour').value = view.oneColour(); // the theme's colour (Moondust: #03666d) until the person picks one
 try { const c = localStorage.getItem('bob-watch-mono-colour'); if (/^#[0-9a-f]{6}$/i.test(c || '')) { monoPicked = true; $('watchMonoColour').value = c; view.set({ monoColour: c }); } if (localStorage.getItem('bob-watch-mono') === '1') { flip($('watchMono'), true); view.set({ mono: true }); $('watchMonoColourBox').hidden = false; } } catch {}
+// how bright the lines are: the person's pick, shared with the thinking cube
+{ let v = 0.5; try { const s = localStorage.getItem('bob-fnri-lines'); if (s !== null && Number.isFinite(Number(s))) v = Math.max(0, Math.min(1, Number(s))); } catch {} $('watchLines').value = String(v); view.set({ lines: v }); }
+$('watchLines').oninput = (ev) => { view.set({ lines: Number(ev.target.value) }); try { localStorage.setItem('bob-fnri-lines', String(ev.target.value)); } catch {} need = true; };
 $('watchPaths').onclick = (ev) => { const on = ev.currentTarget.getAttribute('aria-checked') !== 'true'; flip(ev.currentTarget, on); view.set({ paths: on }); need = true; };
 $('watchPlay').onclick = () => setPlaying(!playing);
 const step = (d) => { setPlaying(false); seek(Math.floor(t) + d); };
