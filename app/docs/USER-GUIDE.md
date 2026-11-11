@@ -268,6 +268,24 @@ Small brains often pick the right tool and then get what goes into it wrong. Bob
 - Once a chat fills half his memory, tool results from earlier messages become one line each.
 - While the embedding model is in use anyway (Topics or Remember only what fits), the tools a message means are added, not only the ones its words name.
 
+### Jobs: how Bob works through a job (off unless you turn them on)
+
+Settings, Jobs (under How Bob works) has eleven switches. Each works by itself and starts off.
+
+- **Steer Bob mid-job:** type in the chat while he works and he reads it before his next step.
+- **Show Stop after this step:** a softer Stop. The running step finishes and keeps its result, then he answers.
+- **Give each job a time limit** (5 to 60 minutes, 10 to start): a bar shows the time left, and a card asks whether to give him more.
+- **Show a receipt after each job:** files changed, commands run and pages read, with Open and Undo (Undo lasts a week).
+- **Run the tests after code edits:** npm test, cargo test, go test or pytest, before he says done. The command still asks you first.
+- **Ask one question before a vague big job:** a pick-one card when a big ask could mean two things.
+- **Remember a no for the whole chat:** a denied step, and your reason from the Why not? box, last the rest of the chat.
+- **Reuse look-ups for an hour:** the same search or page comes from memory, not the web.
+- **Show sources under web answers:** numbered links to the pages he read.
+- **Say how sure Bob is:** one line when pages disagree or results are thin.
+- **Make file:line links clickable:** opens VS Code, Cursor or VSCodium at that line (or shows the file in its folder).
+
+On Android you can steer a job, read the receipt and answer the time card. The other parts are on the computer only.
+
 ---
 
 ## 6. Topics and housekeeping: Bob's memory

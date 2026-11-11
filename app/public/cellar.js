@@ -1019,6 +1019,25 @@ export function createCellar({ popOut = null } = {}) {
       <div><strong>Your own theme</strong><p class="muted">Make or edit a theme on the <button type="button" class="link" data-tab="style">🎨 Style</button> page (Make your own theme).</p></div>`;
   }
 
+  // Settings, Jobs (src/job-helps.js): how Bob works through a job. Eleven switches, all off unless you turn them on.
+  const jobsHtml = () => {
+    const j = settings.jobHelps || {};
+    const sw = (k, label, note) => sswitch('jh' + k[0].toUpperCase() + k.slice(1), j[k] === true, label, note);
+    return `<p class="muted">How I work through a job. All off unless you turn them on.</p>
+      ${sw('steer', 'Steer Bob mid-job', 'Type in the chat while I work on a job there, and I read it before my next step instead of after the whole job.')}
+      ${sw('softStop', 'Show Stop after this step', 'A softer button beside Stop: the step running now finishes and keeps its result, then I tell you what I did and what\'s left.')}
+      ${sw('timeLimit', 'Give each job a time limit', 'A bar shows the time left. When it runs out, a card asks whether to give me more; with no answer in 2 minutes I wrap up.')}
+      <div class="srow"><label class="pick"><strong>Time limit</strong> <select data-jhminutes aria-label="Time limit">${[5, 10, 15, 20, 30, 45, 60].map((m) => `<option value="${m}" ${(j.minutes || 10) === m ? 'selected' : ''}>${m} minutes</option>`).join('')}</select></label></div>
+      ${sw('receipt', 'Show a receipt after each job', 'Files changed, commands run and pages read, each with Open or Undo. Undo works for a week, while the file still holds what I wrote.')}
+      ${sw('runTests', 'Run the tests after code edits', 'In a project with tests, I run them after changing its code and fix what fails before I say done. The command still asks you first.')}
+      ${sw('askFirst', 'Ask one question before a vague big job', 'If a big ask could mean two things, I ask you to pick one first, instead of guessing and doing the wrong thing.')}
+      ${sw('rememberNo', 'Remember a no for the whole chat', 'When you deny a step I remember it, with your reason if you type one, and don\'t offer the same thing again in other words.')}
+      ${sw('lookupCache', 'Reuse look-ups for an hour', 'The same search or page within an hour comes from my memory, not the web again.')}
+      ${sw('sources', 'Show sources under web answers', 'Numbered links to the pages I actually read, under the answer.')}
+      ${sw('howSure', 'Say how sure Bob is', 'When pages disagree or results are thin, one line saying how sure I am.')}
+      ${sw('fileLinks', 'Make file:line links clickable', 'A file and line in my replies about code opens your editor there. On this replicant matrix only, not the phone.')}
+      <div class="srow"><label class="pick"><strong>Open file:line links in</strong> <select data-jheditor aria-label="Open file:line links in">${[['vscode', 'VS Code'], ['cursor', 'Cursor'], ['vscodium', 'VSCodium'], ['system', 'Show it in its folder']].map(([v, n]) => `<option value="${v}" ${(j.editor || 'vscode') === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>`;
+  };
   // 1.5.181 "Memory kept for Windows" (built-in graphics only): how much free memory a brain load leaves alone.
   const holdbackHtml = () => { const v = settings.apuHoldbackGB ?? 4; return `<div class="srow"><label class="pick"><strong>Memory kept for Windows: <b data-holdbacklabel>${v} GB</b></strong><input type="range" min="0" max="8" step="0.5" data-holdback value="${v}" aria-describedby="holdback-hint"></label>
       <p class="muted" id="holdback-hint">With built-in graphics, a brain shares memory with Windows. Before loading one, Bob leaves this much free memory alone (4 GB to start with). Lower lets bigger brains load on a small machine. <strong>At 0, Windows may slow down, or Bob may close, if memory runs out.</strong></p></div>`; };
@@ -1045,6 +1064,7 @@ export function createCellar({ popOut = null } = {}) {
     ['housekeeping', '🧹 Housekeeping', 'tidy old chats pictures logs', () => housekeepingHtml()],
     ['adventure', '🎲 Adventure', 'adventure game tabletop role-playing dice game master party bobs cards plot armour campaign', () => `<div class="adventure-box">${adventureSettingsHtml(settings.adventure || {})}</div>`],
     ['games', '🧩 Games', 'games twenty questions hangman word ladder five letters story dice quick brain banter chip in', () => `<div class="games-box">${gamesSettingsHtml(settings.games || {})}</div>`],
+    ['jobs', '🔁 Jobs', 'jobs job steer mid-job stop after this step time limit minutes receipt undo run tests after code edits question vague remember no deny reason reuse look-ups cache sources how sure file line links editor vs code cursor', () => jobsHtml()],
     ['prompts', '📝 Saved prompts', 'saved prompts prompt library slash / menu template templates reuse snippets blanks variables {file} curly brackets', () => sswitch('promptMenu', settings.promptMenu === true, 'Pull up saved prompts with /', 'Off unless you turn it on. Type / at the start of the message box to pick a saved prompt. Its words go in the box for you to finish and send. Words in {curly brackets} are blanks: type over them, and Tab goes to the next one.') + promptsHtml()],
     ['checkins', '🔔 Check-ins', 'check in heartbeat schedule morning every day weekday hours notify alert tap shoulder downloads stuck failed tasks disk space own checks build finished', () => checkinsHtml()],
     ['remove', '🗑 Remove Bob', 'uninstall remove', () => settings.features?.uninstall === false ? macRemoveHtml() : `<div class="remove-bob">${more('Takes off Bob\'s program, his Start menu shortcut and "Launch on start-up". His chats, settings and models stay unless you tick them. Nothing else in the inn folder or in Windows is touched.')}<button data-removebob>Remove Bob…</button><div class="remove-confirm" hidden></div></div>`]
@@ -1924,6 +1944,13 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.set === 'pictureNoWait') { const r = await api('/api/settings', { pictureNoWait: el.checked }); settings.pictureNoWait = r.pictureNoWait; el.checked = r.pictureNoWait; return; }
       if (['readyWhileTyping', 'gamesFirst', 'pictureFit'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k]; flash(el, 'Saved. Applies when the brain or picture model next loads.'); return; }
       if (el.dataset.set === 'autoSession') { const r = await api('/api/settings', { autoSession: el.checked }); settings.autoSession = r.autoSession; el.checked = r.autoSession; window.dispatchEvent(new CustomEvent('bob-auto-session', { detail: { autoSession: r.autoSession } })); flash(el, r.autoSession ? 'On. Bob picks the session himself.' : 'Off. The session only changes when you pick one.'); return; }
+      if (/^jh[A-Z]/.test(el.dataset.set || '') || el.dataset.jhminutes !== undefined || el.dataset.jheditor !== undefined) { // Settings, Jobs
+        const k = el.dataset.set ? el.dataset.set[2].toLowerCase() + el.dataset.set.slice(3) : '';
+        const r = await api('/api/settings', { jobHelps: k ? { [k]: el.checked } : el.dataset.jhminutes !== undefined ? { minutes: Number(el.value) } : { editor: el.value } });
+        settings.jobHelps = r.jobHelps; if (k) el.checked = r.jobHelps?.[k] === true;
+        window.dispatchEvent(new CustomEvent('bob-jobhelps', { detail: r.jobHelps }));
+        flash(el, 'Saved.'); return;
+      }
       if (el.dataset.set === 'language') { const r = await api('/api/settings', { language: el.value }); settings.language = pickLang(r.language); try { localStorage.setItem(LANG_KEY, settings.language); } catch {} location.reload(); return; }
       if (el.dataset.set === 'tray' || el.dataset.set === 'lookIcon') { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k]; return; }
       if (el.dataset.set === 'selfWork') { const r = await api('/api/settings', { selfWork: { enabled: el.checked } }); settings.selfWork = r.selfWork; draw(); return; }

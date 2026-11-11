@@ -247,7 +247,9 @@ globalThis.bobLoginItem = loginItem(app);
 globalThis.bobShell = {
   openPath: (f) => shell.openPath(f),
   showItemInFolder: (f) => shell.showItemInFolder(f),
-  copy: (text) => clipboard.writeText(String(text))
+  copy: (text) => clipboard.writeText(String(text)),
+  // Settings, Jobs, Clickable file:line links: only an editor's own address (vscode://, cursor://, vscodium://).
+  openUrl: (url) => (/^(?:vscode|cursor|vscodium):\/\/file\//.test(String(url)) ? shell.openExternal(String(url)) : null)
 };
 // 1.5.125: small pictures for the chest and Made by Bob (src/thumbs.js), shrunk by Electron's own image code,
 // so no image library and no model is needed. PNG bytes, the longer side `size` pixels, or null.

@@ -580,6 +580,7 @@
     else if (ev.type === 'tool') { if (ev.name !== 'edit_my_message') toast(`${bobName(base)}: ${ev.summary || ev.name}`); }
     else if (ev.type === 'error') grow(`\n\n*(${ev.text})*`);
     else if (ev.type === 'correction' || ev.type === 'busy-note' || ev.type === 'announce' || ev.type === 'aside') grow(`\n\n*${ev.text}*`);
+    else if (ev.type === 'receipt' && Array.isArray(ev.items)) grow(`\n\n*🧾 What this job did:*\n${ev.items.slice(0, 20).map((i) => `- ${i.what} ${i.path || i.text || i.url || ''}`).join('\n')}`); // Settings, Jobs (Open and Undo are on the computer)
     else if (ev.type === 'waiting-line') { if (!seenWaits.has(ev.id)) { seenWaits.add(ev.id); grow(`\n\n*${ev.text}*`); } } // 1.5.97: once per wait
     else if (ev.type === 'steps') { if (current.msg && Array.isArray(ev.list)) current.msg.steps = ev.list.slice(0, 30); } // item 10
     else if (ev.type === 'stuck') { const c = chats.find((x) => x.id === current.chatId); if (c) c.stuck = true; } // item 8

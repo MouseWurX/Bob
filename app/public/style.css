@@ -1957,3 +1957,13 @@ a.mini.button:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 .lock-warn { color: var(--bad); }
 .lock-ask { background: var(--danger-bg); border: 1px solid var(--bad); border-radius: var(--r); padding: 10px 12px; }
 .mem-edit textarea { width: 100%; min-height: 12em; box-sizing: border-box; font: inherit; }
+
+/* Settings, Jobs (public/job-helps.js) */
+.stop-after { background: transparent; color: var(--bad); border: 1px solid var(--bad); font-weight: 600; padding: 7px 12px; margin-right: 6px; }
+.job-clock { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 0.85em; color: var(--muted, inherit); }
+.job-clock-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--line, rgba(127,127,127,.25)); overflow: hidden; }
+.job-clock-bar > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .5s; }
+.note.receipt ul.receipt-list { margin: 4px 0 0; padding-left: 1.2em; }
+.note.receipt li { margin: 2px 0; overflow-wrap: anywhere; }
+.approval .why-not { flex: 1 1 14em; min-width: 0; }
+a.file-line { text-decoration: underline dotted; }

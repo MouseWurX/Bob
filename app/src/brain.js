@@ -58,6 +58,7 @@ import { WEB_TOOLS, WEB_OFF, webOn, webPrompt, linkPrompt, findLinks, refersToLi
 import { editOwnOn, editOwnTool } from './edit-own.js';
 import { JobWatch, meanwhileOn, meanwhileLine, watchTools, WATCH_TOOLS, noteForBig, noteGotLine, noteAfterAnswer, noteMissedLine, asksAboutJob, NO_JOB_LINE, noteAsk, statusLine, noteQueuedLine, claimsJobGuess, JOB_GUESS_CORRECTION, JOB_GUESS_NUDGE } from './meanwhile.js';
 import { REDO_NOTE, EDIT_NOTE } from './redo.js';
+import { steerNote, SOFT_STOP_NOTE, SOFT_STOP_LINE, TIME_UP_NOTE, timeCheck, receiptBefore, receiptAfter, testsNudge, askFirstNote, noteNo, flushNoes, cachedLook, keepLook, jobHelpsPrompt, afterAnswer, cleanJobHelps } from './job-helps.js'; // Settings, Jobs (items 51-61)
 import { notesOn, notesTool, smartNotesOn, notesPrompt } from './notes.js';
 import { docToolsOn, findDocsTool } from './my-docs.js';
 import { sandboxOn, sandboxTool } from './sandbox-code.js';
@@ -1319,7 +1320,11 @@ export class Brain {
       let sum = name; try { sum = tool?.summary ? tool.summary(args) : name; } catch {}
       this.watch.step(ctx.job, sum);
     }
-    const res = await this.runToolNow(name, args, ctx, tool);
+    const before = receiptBefore(this, name, args, ctx); // Jobs (job-helps.js): what a file held, for the receipt's Undo
+    const res = cachedLook(this, name, args, ctx) || await this.runToolNow(name, args, ctx, tool); // Jobs: Reuse look-ups
+    keepLook(this, name, args, res);
+    receiptAfter(this, name, args, res, ctx, before);
+    noteNo(this, ctx, name, args, res?.text); // Jobs: Remember a "no" for the whole chat
     if (watched) this.watch.result(ctx.job, res?.text);
     // 1.5.95: a file type named in the ask is saved before the tool's answer goes back, so Bob can say so.
     if (ctx?.saves?.length) {
@@ -1816,6 +1821,9 @@ export class Brain {
     // Let Bob's Quick brain see the big job (PC test 1.5.203): "tell the job to ..." and "how's it going?" can't wait
     // behind the job they're about. When no Quick brain can take the message right now (one is already answering, or
     // there's no room for it), the app passes the note along or answers from the job's record itself, at once.
+    // Jobs, Steer him mid-job (job-helps.js, off unless turned on): typed in the running job's own chat, it goes to the job.
+    const steered = steerNote(this, sessionId, text, attach, extra, { asksAboutJob, meanwhile: meanwhileOn(this.cfg) });
+    if (steered) return steered;
     const quickAnswer = this.jobAnswer(sessionId, text, attach, extra);
     if (quickAnswer) return quickAnswer;
     this.housekeeper?.pause(); // anything the housekeeper was asking the brain gives way at once
@@ -2392,7 +2400,7 @@ export class Brain {
     // just before the latest message (meanwhileNear). A question about the job after it ended gets the no-job line.
     const meanwhile = !meanwhileOn(this.cfg) || job?.guest ? '' : job?.side && this.watch.job ? meanwhileLine(this.watch.job) : asksAboutJob(text) && !this.watch.job ? NO_JOB_LINE : '';
     ctx.meanwhile = job?.side ? meanwhile : '';
-    const extras = [state, meanwhile, presetPrompt(ctx.preset, this.cfg.userName || 'the user'), guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
+    const extras = [state, meanwhile, presetPrompt(ctx.preset, this.cfg.userName || 'the user'), guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), jobHelpsPrompt(this.cfg, job), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
     const brainCtx = await this.fitCtx(model, wantCtx);
     // 1.5.127: a chat that no longer fits the biggest brain here, with a rented brain in its slot: offer it (the job carries on here meanwhile).
     if (!job?.rent && !job?.side && !job?.guest && this.rentals.current() && !ctx.rentOffered) {
@@ -2489,7 +2497,15 @@ export class Brain {
       const note = ctx.lastRound ? LAST_ROUND_NOTE(who) : onTrackNote({ ask: text, turn: out.slice(turnStart), step, max: maxSteps, who });
       return note ? [...out, { role: 'system', content: note }] : out;
     };
+    // Jobs, One question before a vague big job (job-helps.js): a hint to ask once with ask_user before starting.
+    if (!again) { const ask = askFirstNote(this, ctx, text); if (ask) msgs.push({ role: 'system', content: ask, hidden: true }); }
     for (let step = 0; step < maxSteps; step++) {
+      // Jobs (job-helps.js): "Stop after this step" pressed, or the job's time limit used up: no more tools, he wraps up.
+      if (!ctx.lastRound && step > 0) {
+        const who = this.cfg.userName || 'the user';
+        if (job?.stopAfter && !ctx.softStopped) { ctx.softStopped = true; ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: SOFT_STOP_NOTE(who), hidden: true }); emit({ type: 'announce', text: SOFT_STOP_LINE }); }
+        else if (await timeCheck(this, ctx) === 'wrap') { ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: TIME_UP_NOTE(who, cleanJobHelps(this.cfg.jobHelps).minutes), hidden: true }); }
+      } else if (step === 0) await timeCheck(this, ctx);
       if (step === maxSteps - 1 && !this.plainLoop && !ctx.noTools && msgs.slice(turnStart).some((m) => m.role === 'tool')) { ctx.noTools = true; ctx.lastRound = true; this.log('tool', 'the last step: no more tools, so he answers with what he has'); }
       const tools = ctx.noTools ? [] : guestTools(job, this.withWatchTools(this.frontDeskTools(ctx.loaded), job)); // #57 stopgap: after repeats, answer
       // The big brain reads notes passed along to it at the start of each step, and its chat says so.
@@ -2671,7 +2687,11 @@ export class Brain {
         continue;
       }
       if (!reply.tool_calls && !job?.side && !ctx.noteRedo && this.watch.for(job)?.notes.length) { ctx.noteRedo = true; this.readNotes(ctx, msgs, noteAfterAnswer); continue; }
-      if (!reply.tool_calls) { this.keepGroups(sessionId, used); return; }
+      if (!reply.tool_calls && !ctx.noTools) { // Jobs, Run the tests after code edits (job-helps.js): before he says done
+        const tests = testsNudge(this, ctx);
+        if (tests) { const g = groupOf(this, 'run_command'); if (g) ctx.loaded.add(g); msgs.push({ role: 'system', content: tests, hidden: true }); ctx.retrying = true; emit({ type: 'token', text: '\n\n' }); continue; }
+      }
+      if (!reply.tool_calls) { afterAnswer(this, ctx, reply); this.keepGroups(sessionId, used); return; }
       let ended = false;
       ctx.painted = null; // what the painter made in this round (for the quick hand-back below)
       // 1.5.78: "Show Bob's plan before big jobs": a big job waits for its plan card (plan.js).
@@ -2757,6 +2777,7 @@ export class Brain {
         if (res.endsTurn) ended = true;
         if (ctx.switchTo && !ended) { ended = true; emit({ type: 'announce', text: switchLine(ctx.switchTo.id, ctx.switchTo.why) }); } // 1.5.41: the job runs again in the new session
       }
+      flushNoes(ctx, msgs); // Jobs: a "no" goes into the chat after the round's results, so it lasts the whole chat
       if (ctx.repeatStop) {
         // #57: the third identical call: stop plainly instead of using up the steps.
         emit({ type: 'token', text: `\n\n${REPEAT_STOP_LINE}` });
@@ -2796,6 +2817,7 @@ export class Brain {
         msgs.push({ role: 'assistant', content: last.content });
         if (ctx.hatNotes) { last.content = `${last.content}\n\n${ctx.hatNotes}`; ctx.hatNotes = ''; }
         this.checkTurn(ctx, msgs.at(-1), false); // a hat answered: no second go, but never a silent miss
+        afterAnswer(this, ctx, msgs.at(-1));
         this.keepGroups(sessionId, used);
         return;
       }

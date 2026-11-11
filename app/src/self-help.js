@@ -4,6 +4,7 @@
 import { houseStylePrompt } from '../public/house-style.js';
 import { HELP } from '../public/help-content.js';
 import { webOn } from './web.js';
+import { jobHelpsNow } from './job-helps.js';
 import { currentSession } from './sessions.js';
 import { gamingCard } from './gaming-card.js';
 import { brainMode } from './brain-mode.js';
@@ -61,6 +62,7 @@ export function settingsNow(cfg) {
     `Check for updates when Bob starts: ${onOff(cfg.updates?.autoCheck === true)}`,
     `Keep engines up to date: ${onOff(cfg.engineUpdates?.auto !== false)}`,
     `Show Bob's plan before big jobs: ${onOff(cfg.planFirst === true)}`,
+    jobHelpsNow(cfg),
     `Pick up where Bob left off after a restart: ${onOff(cfg.resumeJobs === true)}; Carry on unfinished downloads when Bob starts: ${onOff(cfg.downloads?.resumeOnStart === true || cfg.resumeJobs === true)}`,
     `Bob's engine: ${cfg.engine === 'ollama' ? 'Ollama' : "Brain Engine, Bob's own"}`,
     `Voice: ${cfg.tts?.provider || 'Windows voice'}`,

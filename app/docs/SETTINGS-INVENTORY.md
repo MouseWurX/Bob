@@ -349,3 +349,24 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | Welcome, Do you want me to: | "Turn pictures into 3D models" (same switch) | off | new |
 | Settings > Engines (senses) | 3D workshop: Get (only where model3d/addons-pins.json has checked add-ons; Windows and Linux x64 with an NVIDIA card), about 22 GB with the models; Mac and ARM say to send the job to a PC Bob | not installed | new |
 | Settings > Bob-Net | Send/Take jobs: "3D models" is a new kind of job a PC Bob can take | — | new |
+
+## Added with Jobs (items 51 to 61)
+
+| Where | Setting / text | Default | Status |
+|---|---|---|---|
+| Settings > Jobs | Steer Bob mid-job: "Type in the chat while I work on a job there, and I read it before my next step instead of after the whole job." | Off | new |
+| Settings > Jobs | Show Stop after this step: "A softer button beside Stop: the step running now finishes and keeps its result, then I tell you what I did and what's left." | Off | new |
+| Settings > Jobs | Give each job a time limit: "A bar shows the time left. When it runs out, a card asks whether to give me more; with no answer in 2 minutes I wrap up." | Off | new |
+| Settings > Jobs | Time limit: "5, 10, 15, 20, 30, 45 or 60 minutes" | 10 minutes | new |
+| Settings > Jobs | Show a receipt after each job: "Files changed, commands run and pages read, each with Open or Undo. Undo works for a week, while the file still holds what I wrote." | Off | new |
+| Settings > Jobs | Run the tests after code edits: "In a project with tests, I run them after changing its code and fix what fails before I say done. The command still asks you first." | Off | new |
+| Settings > Jobs | Ask one question before a vague big job: "If a big ask could mean two things, I ask you to pick one first, instead of guessing and doing the wrong thing." | Off | new |
+| Settings > Jobs | Remember a no for the whole chat: "When you deny a step I remember it, with your reason if you type one, and don't offer the same thing again in other words." | Off | new |
+| Settings > Jobs | Reuse look-ups for an hour: "The same search or page within an hour comes from my memory, not the web again." | Off | new |
+| Settings > Jobs | Show sources under web answers: "Numbered links to the pages I actually read, under the answer." | Off | new |
+| Settings > Jobs | Say how sure Bob is: "When pages disagree or results are thin, one line saying how sure I am." | Off | new |
+| Settings > Jobs | Make file:line links clickable: "A file and line in my replies about code opens your editor there. On this replicant matrix only, not the phone." | Off | new |
+| Settings > Jobs | Open file:line links in: "VS Code, Cursor, VSCodium or Show it in its folder" | VS Code | new |
+| Chat, beside Stop | Stop after this step (only with its switch on) | — | new |
+| Chat, plain OK card | Why not? (optional, I'll remember for this chat) (only with Remember a no on) | — | new |
+| Chat, under a job | 🧾 What this job did: … with Open and Undo | — | new |

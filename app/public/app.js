@@ -43,6 +43,7 @@ import { createPromptMenu } from './prompts.js'; // saved prompts: the / menu in
 import { diagramHtml, saveRowsHtml, setupSaveAs, watchSaveAs } from './save-as.js';
 import './math-core.js'; // Show maths as formulas: KaTeX, loaded only while the switch is on
 import { installShortcuts, listHtml as shortcutListHtml } from './shortcuts.js';
+import { createJobHelps } from './job-helps.js'; // Settings, Jobs: Stop after this step, time bar, receipts, file:line links
 
 // Settings opens in its own window on a computer (minimise, maximise, close). The main window keeps
 // its left menu and Now running; what changes over there comes back on a BroadcastChannel (settings-link.js).
@@ -74,6 +75,7 @@ const $ = (id) => document.getElementById(id);
 const log = $('log'), input = $('input'), sendBtn = $('send'), stopBtn = $('stop'), statusEl = $('status');
 const brainBar = createBrainBar({ post: (u, d) => post(u, d), note: (t, k) => note(t, k) });
 const handsSwitch = createHandsSwitch({ note: (t, k) => note(t, k) });
+const jobHelps = createJobHelps({ api: (u, d) => api(u, d), add: (c, h) => add(c, h), note: (t, k) => note(t, k), log, stopBtn, scrollDown: () => scrollDown() });
 const quickSwitches = createQuickSwitches({ note: (t, k) => note(t, k) });
 const webSwitch = createWebSwitch({ note: (t, k) => note(t, k) });
 const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
@@ -400,6 +402,7 @@ settingsChan?.addEventListener('message', (e) => {
   const m = acceptSettings(e.data); if (!m) return;
   if (m.kind === 'press') { $(m.id)?.click(); return; }
   if (m.kind === 'event') { (m.name === 'bob-door' ? document : window).dispatchEvent(new CustomEvent(m.name, { detail: m.detail })); return; }
+  jobHelps.refresh();
   fetch('/api/settings').then((r) => r.json()).then((st) => { setLook(st.look); applyStyle(st.style); applyMath(st.mathView === true, true); shortcutsOn = st.shortcuts === true; }).catch(() => {});
 });
 // Settings, Get models and Style are pages in the main area: Chat or New chat goes back to the chat.
@@ -554,6 +557,7 @@ function onEvent(ev) {
   if (['lending', 'borrow', 'away', 'pair-done', 'queue'].includes(ev.type)) layout.net(); // 1.5.123: the Bob-Net party in Now running
   if (quarantineResult(ev)) return;
   if (onHandsEvent(ev, { add, scrollDown, note })) return;
+  if (jobHelps.event(ev)) return; // Settings, Jobs: the time bar and the receipt card
   switch (ev.type) {
     case 'queue':
       drawQueue(ev.jobs || []);
@@ -783,10 +787,11 @@ function onEvent(ev) {
       if (handsApproval(ev, { add, answer: (allow, rows) => post('/api/approve', { id: ev.id, allow, rows }) })) { ping('Bob needs your OK', ev.text); layout.needsYou(); break; }
       const diff = ev.diff ? `<pre class="diff"><code>${esc(ev.diff)}</code></pre>` : '';
       const all = ev.allowAll ? '<button class="all">Allow the rest of this job</button>' : '';
-      const card = add('approval', `<p><strong>Bob wants to:</strong> ${esc(ev.text)}</p>${diff}<div class="row"><button class="yes">Allow</button>${all}<button class="no">Deny</button></div>`);
+      const card = add('approval', `<p><strong>Bob wants to:</strong> ${esc(ev.text)}</p>${diff}<div class="row"><button class="yes">Allow</button>${all}<button class="no">Deny</button>${jobHelps.whyBox()}</div>`);
       const answer = async (allow) => {
-        card.querySelector('.row').outerHTML = `<div class="done">${allow === 'all' ? 'Allowed for the rest of this job' : allow ? 'Allowed' : 'Denied'}</div>`;
-        await post('/api/approve', { id: ev.id, allow });
+        const why = allow ? '' : String(card.querySelector('.why-not')?.value || '').trim(); // Settings, Jobs: Remember a "no"
+        card.querySelector('.row').outerHTML = `<div class="done">${allow === 'all' ? 'Allowed for the rest of this job' : allow ? 'Allowed' : why ? `Denied: ${esc(why)}` : 'Denied'}</div>`;
+        await post('/api/approve', { id: ev.id, allow, ...(why ? { note: why } : {}) });
       };
       card.querySelector('.yes').onclick = () => answer(true);
       card.querySelector('.no').onclick = () => answer(false);
@@ -906,6 +911,7 @@ async function post(url, data) {
 function setBusy(b) {
   busy = b;
   stopBtn.hidden = !b;
+  jobHelps.busy(b); // Settings, Jobs: Stop after this step shows beside Stop
   drawToBottom(); // the dots on the go-to-bottom button
   drawRedo(); // Try again and Edit hide while Bob is busy
 }
@@ -1177,6 +1183,7 @@ window.addEventListener('bob-chat-redo', (e) => { redoOnNow = e.detail === true;
 function decorate(el, text, media = []) {
   if (!el || el.querySelector(':scope > .msg-tools')) return el;
   rawText.set(el, text || '');
+  if (el.classList.contains('bob')) jobHelps.links(el); // Settings, Jobs: file:line links open the editor there
   const { files } = renderRich(text || '');
   const made = (media || []).map((m) => m.url).filter((u) => typeof u === 'string' && u.startsWith('/images/'));
   for (const v of el.querySelectorAll('img[src^="/images/"], audio[src^="/images/"], video[src^="/images/"]')) made.push(v.getAttribute('src'));
