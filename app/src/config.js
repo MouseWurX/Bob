@@ -5,6 +5,7 @@ import { cleanPresetList } from './presets.js';
 import { cleanHousekeeping } from './hk-settings.js';
 import { cleanBrainCtx } from './model-ctx.js';
 import { cleanBrainPlace } from './brain-place.js';
+import { EXTRA_SWITCHES, cleanMemType } from './engine-extras.js'; // list items 94-100
 import { cleanCheckins } from './checkin-settings.js';
 import { cleanHands } from './hands-settings.js';
 import { cleanPresets } from './model-family.js';
@@ -230,7 +231,7 @@ export const VERSION = (() => {
 // Languages Bob's screens come in (public/i18n.js has the names and words). English is the default.
 export const LANGUAGES = ['en', 'fr', 'es'];
 export const cleanRemoved = (v) => [...new Set((Array.isArray(v) ? v : []).filter((k) => typeof k === 'string' && /^[\w.:/-]{1,100}$/.test(k)))].slice(0, 500);
-export const SETTING_KEYS = ['language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', 'apuHoldbackGB'];
+export const SETTING_KEYS = ['copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'brainMemType', 'language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', 'apuHoldbackGB'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -281,6 +282,9 @@ function clean(patch) {
   if ('selfWork' in out) out.selfWork = cleanSelfWork(out.selfWork); // "Let Bob work on repositories" (self-work.js), off by default
   if ('howtos' in out) out.howtos = out.howtos === true; // 1.5.79 "Let Bob learn how-tos", off by default
   if ('wantsAsked' in out) out.wantsAsked = out.wantsAsked === true; // the chat's one-time "Do you want me to" offer (wants.js)
+  // List items 94-100, engine and speed extras (engine-extras.js), each off unless switched on
+  for (const k of EXTRA_SWITCHES) if (k in out) out[k] = out[k] === true;
+  if ('brainMemType' in out) out.brainMemType = cleanMemType(out.brainMemType); // 100 memory type per brain; Standard when not set
   if ('quickSeesJob' in out) out.quickSeesJob = out.quickSeesJob === true; // "Let Bob's Quick brain see the big job", off by default (meanwhile.js)
   if ('editOwn' in out) out.editOwn = out.editOwn === true; // "Let Bob fix his own messages", off by default (edit-own.js)
   if ('chatRedo' in out) out.chatRedo = out.chatRedo !== false; // "Show Try again and Edit in the chat", ON unless turned off (owner's exception, redo.js)

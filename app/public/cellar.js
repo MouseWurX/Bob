@@ -48,7 +48,7 @@ export function createCellar({ popOut = null } = {}) {
   const dlg = $('cellar');
   const backup = makeBackupPanel({ api, redraw: () => { const y = dlg.scrollTop; draw(); dlg.scrollTop = y; } }); // Back up and move
   let speedModel = '';
-  let speedRuns = [];
+  let speedRuns = [], speedLogData = null; // speedLogData: 96 Speed history (/api/speed-log)
   let rent = { services: [], rentals: [], caps: {}, running: [], leftover: [], recent: [] }; // 1.5.127 rented brains
   let rentPickOpen = false; // 1.5.137: Add a rental opens by itself when you come from the catalogue's "Rented brains" link
   // 1.5.137: fills Add a rental from the brain picked in "Pick a brain from Bob's list", for the service picked.
@@ -773,7 +773,42 @@ export function createCellar({ popOut = null } = {}) {
       ${sswitch('memoryRecall', settings.memoryRecall === true, 'Remember only what fits', 'With each message, Bob reads only the memories that fit it (up to 8), not his whole memory file, so chats stay light. Off: he reads all of it every time.')}
       ${more('Each project gets its own memory bank: while you talk about one project, Bob leaves the other projects\' memories out. To have him read a line every time, add [always] to it in his memory file. He matches by meaning when the 🗂 Memory (finding past chats) model is downloaded (it runs on the processor, never in the Gaming session), and by words otherwise.')}
       ${settings.memoryRecall ? memoryBanksHtml() : ''}
+      ${engineExtrasHtml()}
       ${speedTestHtml()}`;
+  }
+
+  // List items 94-98: engine and speed extras, each off unless turned on. (99 sits in Engines, 100 on the Brains page.)
+  function engineExtrasHtml() {
+    const bat = settings.onBattery === true ? 'On battery right now.' : settings.onBattery === false ? 'Plugged in right now.' : settings.laptopMode ? 'No battery found, so nothing changes here.' : '';
+    return `<div class="tune engine-extras"><strong>Engine extras</strong> <span class="tag">off unless you turn it on</span>
+         ${tip('Each switch is separate. They work with Brain Engine and llama.cpp; Ollama runs its own way, so only the speed history and Laptop mode reach it. Bob\'s Android app runs its own small engine and isn\'t changed by these.', 'Engine extras')}
+        ${sswitch('copyGuess', settings.copyGuess === true, 'Guess ahead by copying from the chat', 'When Bob rewrites code or a document, most of the words are already in the chat. The engine guesses them by copying and the brain checks each guess, so edits come out faster and the answer is the same. No second brain needed. Not used while Turbo is on for that brain.')}
+        ${sswitch('preloadNext', settings.preloadNext === true, 'Load the next brain early', 'When Bob hands a job to another brain (like the coder), he reads that brain\'s file into memory while the first one is still writing, so the swap is quicker. Only when there\'s room: the brain plus 4 GB free.')}
+        ${sswitch('laptopMode', settings.laptopMode === true, 'Laptop mode', `On battery, Bob's Quick brain answers the chat and the engine uses half the cores. Plugged in, nothing changes.${bat ? ' ' + keep(bat) : ''}`)}
+        ${sswitch('newCardTest', settings.newCardTest === true, 'Test a new graphics card by itself', 'When Bob starts and sees a different graphics card, he runs the one-minute speed test once he\'s free, and puts brains set by hand on the Brains page back on Auto.')}
+        ${sswitch('speedLog', settings.speedLog === true, 'Keep a speed history', 'After each reply, Bob adds its words per second to one line per day, brain and engine version. Only the numbers are kept, here, for 90 days.')}
+        ${speedLogHtml()}
+      </div>`;
+  }
+
+  // 96 Speed history: one small line chart per brain, words a second by day, with a mark where the engine changed.
+  function speedLogHtml() {
+    if (!settings.speedLog) return '';
+    const brains = speedLogData?.brains || [];
+    if (!brains.length) return '<p class="muted">No replies counted yet. The chart starts with the next one.</p>';
+    const W = 260, H = 60;
+    const chart = (b) => {
+      const pts = b.points.slice(-30), top = Math.max(...pts.map((p) => p.avg), 1);
+      const x = (i) => (pts.length > 1 ? (i * W) / (pts.length - 1) : W / 2), y = (v) => H - 4 - (v / top) * (H - 8);
+      const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.avg).toFixed(1)}`).join(' ');
+      const marks = pts.map((p, i) => (i && p.engine !== pts[i - 1].engine ? `<line x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="0" y2="${H}" class="speed-mark"><title>${esc(p.engine || 'engine')} from ${esc(p.day)}</title></line>` : '')).join('');
+      const last = pts[pts.length - 1];
+      const words = `${esc(b.model)}: ${last.avg} words a second on ${esc(last.day)}, highest ${top}.`;
+      return `<figure class="speed-log"><figcaption><strong>${esc(b.model)}</strong> <span class="muted">${last.avg} words/s · ${esc(last.engine || '')}</span></figcaption>
+        <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${words}">${marks}<path d="${line}" class="speed-line" fill="none"/></svg>
+        ${b.slower ? `<p class="speed-slower">⚠ Slower since ${esc(b.slower.engine || 'the engine changed')}: ${b.slower.after} words a second, was ${b.slower.before} on ${esc(b.slower.from || 'the one before')}. Go back in Settings, Engines puts the old engine back.</p>` : ''}</figure>`;
+    };
+    return `<div class="speed-logs">${brains.map(chart).join('')}</div>`;
   }
 
   // 1.5.98: Engines (the rest of Engines & speed). The fine-tuning sits under More.
@@ -840,6 +875,7 @@ export function createCellar({ popOut = null } = {}) {
       ${labEngineHtml()}
       <div><strong>Engine downloads</strong> ${tip('The programs that run the models, from their official GitHub pages (Brain Engine from Bob\'s own), matched to your graphics card. Update swaps a new build in and keeps the one before, so Go back puts it straight back without downloading. Bob checks a download\'s checksum, so a rebuilt engine with the same name still shows as an update.', 'Engine downloads')}
         <div class="row"><button type="button" data-checkall>Check all for updates</button></div>
+        ${sswitch('engineNotes', settings.engineNotes === true, 'Tell me what engine updates change', `Off unless you turn it on. When an engine update finishes, Bob adds one or two plain lines to his message in the chat: what it changes for you.${settings.engineNotes && settings.engineNote ? ` The engine you have now: ${esc(settings.engineNote)}` : ''}`)}
         ${sswitch('engineAuto', settings.engineUpdates?.auto !== false, 'Keep engines up to date', 'On unless you turn it off. When Bob starts and about once a day, he checks the plain llama.cpp that stands in for Brain Engine and updates it by himself, only while no brain is loaded on it. Brain Engine updates with Bob himself, whatever this says. Go back puts the old build back. The other engines wait until you press Check for updates.')}
         ${groups}</div>
       ${qwenHtml()}
@@ -1030,8 +1066,8 @@ export function createCellar({ popOut = null } = {}) {
     ['presets', '🎭 Assistant presets', 'assistant presets preset per chat instructions system prompt persona character role brain effort temperature tools talking only', () => '<div class="presets-box"></div>'],
     ['voice', '🔊 Voice details', 'kokoro chatterbox speed hey bob read aloud listen', () => voiceDetailsHtml()],
     ['look', '🌓 Look & feel', 'theme editor now running layout', () => lookExtrasHtml()],
-    ['speed', '⚡ Speed & memory', 'speed memory free memory quiet keep alive unload idle graphics card quick answers processor pictures without waiting ready while you type games go first picture settings gaming graphics card borrow automatic never always remember only what fits memory banks recall speed test', () => speedMemoryHtml()],
-    ['engines', '⚙ Engines', 'engine engines brain engine lab engine gear update updates go back remove check all ollama llama.cpp downloads newer build tested build fit to free graphics memory speculative decoding draft flags threads batch', () => enginesHtml()],
+    ['speed', '⚡ Speed & memory', 'speed memory free memory quiet keep alive unload idle graphics card quick answers processor pictures without waiting ready while you type games go first picture settings gaming graphics card borrow automatic never always remember only what fits memory banks recall speed test engine extras guess ahead copying load the next brain early laptop mode battery new graphics card speed history chart', () => speedMemoryHtml()],
+    ['engines', '⚙ Engines', 'engine engines brain engine lab engine gear update updates go back remove check all ollama llama.cpp downloads newer build tested build fit to free graphics memory speculative decoding draft flags threads batch tell me what engine updates change plain words', () => enginesHtml()],
     ['bobnet', '🌐 Bob-Net', 'bob-net bobnet phone android tailscale address passcode firewall let my phone in let my other replicant matrices in other bobs share brains lend borrow take jobs send jobs', () => bobNetHtml()],
     ['online', '☁ Online services', 'online internet cloud helpers api key anthropic openai gemini openrouter telegram discord bot token pairing wake phrase rented brains rent hire runpod vast lambda together spending cap limit machine', () => onlineHtml()],
     ['apps', '🔌 Other apps', 'other apps comfyui workflows port unreal blender mcp openai compatible api vs code continue opencode command line terminal cli key claude claude code desktop connect hands key', () => otherAppsHtml()],
@@ -1243,6 +1279,7 @@ export function createCellar({ popOut = null } = {}) {
     [data, hw, settings, roles, cloud, caps, bctx, rent] = await Promise.all([api('/api/models'), api('/api/hardware'), api('/api/settings'), api('/api/roles'), api('/api/cloud'), api('/api/capabilities').catch(() => ({})), api('/api/brain-ctx').catch(() => ({ on: false, brains: [] })), api('/api/rent').catch(() => rent)]);
     await placeLoad(); calWatch(); // 1.5.205 the Brains page: each brain's placement and calibration
     speedRuns = (await api('/api/speed-test').catch(() => ({}))).history || [];
+    speedLogData = await api('/api/speed-log').catch(() => null); // 96
     voices = (await api('/api/voice/samples').catch(() => ({}))).voices || [];
     job = data.job;
     await applyStarter().catch(() => {});
@@ -1572,6 +1609,7 @@ export function createCellar({ popOut = null } = {}) {
       // 1.5.205 one brain's Set up page: open, back, and Auto or By hand.
       if ('brainsetup' in b.dataset) { setUpBrain = b.dataset.brainsetup; if (setUpBrain) await placeLoad(); draw(); if (setUpBrain) dlg.scrollTop = 0; else dlg.querySelector('#brain-' + CSS.escape(b.dataset.brainsetup || ''))?.scrollIntoView({ block: 'nearest' }); return; }
       if (b.dataset.placemode) { await placeSave(b.dataset.model, { mode: b.dataset.placemode }); draw(); return; }
+      if (b.dataset.memtype) { await api('/api/settings', { brainMemType: { [b.dataset.model]: b.dataset.memtype } }); await placeLoad(); draw(); return; } // 100
       // 1.5.205 setups on the Brains page: show the list of changes first; Apply saves them one job at a time.
       if ('setup' in b.dataset) { setupAsk = b.dataset.setup; draw(); dlg.querySelector('.setup-ask')?.scrollIntoView({ block: 'nearest' }); return; }
       if ('setupbobnet' in b.dataset) { setupAsk = ''; sampler.stop(); setTab('settings'); jumpTo = 'adv-bobnet'; draw(); return; }
@@ -1909,6 +1947,14 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.sctx) { const v = el.value ? Number(el.value) : null; const r = await api('/api/settings', { sessionCtx: { [el.dataset.sctx]: v } }); settings.sessionCtx = r.sessionCtx; flash(el, 'Saved. Applies when the brain next loads.'); return; }
       if (el.dataset.sbrain) { const r = await api('/api/settings', { sessionBrains: { [el.dataset.sbrain]: el.value } }); settings.sessionBrains = r.sessionBrains; flash(el, 'Saved.'); return; }
       if (el.dataset.set === 'pictureNoWait') { const r = await api('/api/settings', { pictureNoWait: el.checked }); settings.pictureNoWait = r.pictureNoWait; el.checked = r.pictureNoWait; return; }
+      // List items 94-99: engine and speed extras, each saved on its own.
+      if (['copyGuess', 'preloadNext', 'laptopMode', 'newCardTest', 'speedLog', 'engineNotes'].includes(el.dataset.set)) {
+        const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k];
+        if ('onBattery' in r) settings.onBattery = r.onBattery; if ('engineNote' in r) settings.engineNote = r.engineNote; if (k === 'engineNotes') { const y = dlg.scrollTop; draw(); dlg.scrollTop = y; }
+        if (k === 'speedLog') { speedLogData = await api('/api/speed-log').catch(() => speedLogData); const y = dlg.scrollTop; draw(); dlg.scrollTop = y; }
+        flash(el, !r[k] ? 'Off.' : k === 'copyGuess' ? 'On. Applies the next time a brain loads.' : k === 'laptopMode' ? (r.onBattery === true ? 'On. On battery now: applies the next time a brain loads.' : r.onBattery === false ? 'On. Plugged in now, so nothing changes yet.' : 'On. No battery found here, so nothing changes.') : k === 'newCardTest' ? 'On. Bob looks for a new card each time he starts.' : 'On.');
+        return;
+      }
       if (['readyWhileTyping', 'gamesFirst', 'pictureFit'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k]; flash(el, 'Saved. Applies when the brain or picture model next loads.'); return; }
       if (el.dataset.set === 'autoSession') { const r = await api('/api/settings', { autoSession: el.checked }); settings.autoSession = r.autoSession; el.checked = r.autoSession; window.dispatchEvent(new CustomEvent('bob-auto-session', { detail: { autoSession: r.autoSession } })); flash(el, r.autoSession ? 'On. Bob picks the session himself.' : 'Off. The session only changes when you pick one.'); return; }
       if (el.dataset.set === 'language') { const r = await api('/api/settings', { language: el.value }); settings.language = pickLang(r.language); try { localStorage.setItem(LANG_KEY, settings.language); } catch {} location.reload(); return; }

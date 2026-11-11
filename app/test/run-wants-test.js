@@ -1,5 +1,6 @@
 // "Do you want me to:" on the Welcome (public/wants.js): every line is an existing Settings switch that starts off,
 // saved the same way, explained in Help; the chat offers the list once to Bobs set up before it, and never again.
+import { EXTRA_SWITCHES } from '../src/engine-extras.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,7 +36,7 @@ for (const w of WANTS) {
   check(`${w.key} is a saved setting`, saved);
   const fresh = mergeSettings({}, {});
   check(`${w.key} starts off`, !wantOn(fresh, w.key) && !wantOn({}, w.key));
-  const handled = w.key === 'autostart' ? server.includes("'autostart' in b") : w.key === 'autoCheck' ? server.includes('b.updates.autoCheck') : server.includes(`typeof b.${w.key} === 'boolean'`);
+  const handled = w.key === 'autostart' ? server.includes("'autostart' in b") : w.key === 'autoCheck' ? server.includes('b.updates.autoCheck') : server.includes(`typeof b.${w.key} === 'boolean'`) || (EXTRA_SWITCHES.includes(w.key) && server.includes("for (const k of EXTRA_SWITCHES) if (typeof b[k] === 'boolean')")); // list items 94-99 share one line
   check(`the server saves ${w.key}`, handled);
   check(`${w.key} is in Help, in both names`, helpText.includes(plain(w.label)) && helpText.includes(plain(w.setting)), w.label);
 }

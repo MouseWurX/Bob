@@ -5,6 +5,7 @@
 import { SLOTS, allSlots, equipped, entryOf, slotTakes, isActive, tipHtml, kitHtml, starterHtml } from './equip.js';
 import { placeFor, sizeLine, placeWord, hasExperts } from './place.js';
 import { esc, gb } from './util.js';
+import { memTypeTrade } from './mem-types.js';
 
 // The jobs a brain can hold (every thinking slot; the rented brain is its own thing).
 export const brainJobs = () => allSlots().filter((s) => s.kind === 'llm');
@@ -228,8 +229,22 @@ export function setUpHtml(b, ctx) {
         <input type="number" min="0" max="${layers || 1}" step="1" value="${n}" data-placemoenum="${esc(b.value)}" ${dis} aria-label="Layers that keep their experts in memory, as a number" inputmode="numeric"><span class="muted">of ${layers || '?'}</span></div>
       ${p?.cal?.best ? `<p class="muted">★ Recommended by the last calibration: ${p.cal.best.mode === 'hand' ? `<strong>${p.cal.best.cpuMoe}</strong> by hand` : '<strong>Auto</strong>'}.</p>` : ''}
       <p class="muted" id="place-lock">${lock ? `🔒 ${esc(lock)}` : hand ? 'In use. Takes effect the next time this brain loads.' : 'Set the number any time; it is used once you switch to By hand.'}</p></section>
+    ${memTypeHtml(b, ctx)}
     ${calibrateHtml(b, ctx)}
     </div>`;
+}
+
+// 100 The engine's chat memory type for this brain: Standard unless picked. Only Bob's own engine has the choice.
+export function memTypeHtml(b, ctx) {
+  const p = placeOf(b.value, ctx);
+  const cur = p?.memType || 'standard';
+  const off = p ? p.memEngine === false : true;
+  const rows = memTypeTrade(p?.kv32);
+  const seg = (r) => `<button type="button" class="seg-btn${r.id === cur ? ' on' : ''}" data-memtype="${r.id}" data-model="${esc(b.value)}" aria-pressed="${r.id === cur}" ${off ? 'disabled' : ''}>${esc(r.name)}</button>`;
+  return `<section class="brains-panel"><h3>Chat memory type ${tipHtml('The chat memory (KV cache) sits beside the brain on the card and grows as a chat gets longer. Standard is what I use unless you pick. Sharper keeps it at full detail: twice the room, a touch more exact on long code. Smaller packs it tighter: about half the room, so a longer chat fits, a little less exact. A change takes effect the next time this brain loads.', 'About the chat memory type')}</h3>
+      <div class="seg" role="group" aria-label="Chat memory type for ${esc(b.name)}">${rows.map(seg).join('')}</div>
+      <ul class="mem-trade">${rows.map((r) => `<li${r.id === cur ? ' class="on"' : ''}><strong>${esc(r.name)}</strong>${r.gb != null ? ` · about ${r.gb} GB for a 32K chat` : ''} <span class="muted">${esc(r.about)}</span></li>`).join('')}</ul>
+      <p class="muted">${off ? '🔒 Only with Brain Engine or llama.cpp. Ollama sets its chat memory for every brain at once.' : cur === 'standard' ? 'Standard. Takes effect the next time this brain loads.' : 'In use. Takes effect the next time this brain loads.'}</p></section>`;
 }
 
 function emptyJobHtml(slot, ctx) {

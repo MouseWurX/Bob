@@ -18,9 +18,10 @@ import { Embedder } from './embedder.js';
 import { ggufInfo } from './gguf.js';
 import { placeArgs } from './brain-place.js';
 import { selfWorkOn } from './self-work.js';
-import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes } from './model-ctx.js';
+import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes, kvBytes } from './model-ctx.js';
 import { scutEnv } from './share-card.js'; // SCUT, the fast link to lent cards
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
+import { memArgs, copyGuessArgs, draftNumArgs, laptopThreads } from './engine-extras.js'; // list items 94-100
 
 // 1.5.19: the context a brain gets when nothing else picks one. 32K fits a 26B brain on a 16 GB card.
 
@@ -229,6 +230,10 @@ export class LlamaCpp {
   // 1.5.87: the longest context a model was made for, from its GGUF header, so nothing asks for more (null: unknown).
   // 1.5.205 What the Brains page needs to offer a by-hand placement: how many layers the file has. null when this
   // engine can't find the file (then the page keeps the control locked and says why).
+  // 100: the chat memory this brain needs at a context with the Standard (8-bit) type, in GB (null: can't read it).
+  kvGB(model, ctx) {
+    try { const b = kvBytes(ggufInfo(this.resolve(model).gguf)?.shape, ctx, ['-ctk', 'q8_0', '-ctv', 'q8_0']); return b ? Math.round((b / 1024 ** 3) * 10) / 10 : null; } catch { return null; }
+  }
   placeInfo(model) {
     try { const layers = ggufInfo(this.resolve(model).gguf)?.shape?.layers || 0; return layers ? { layers } : null; } catch { return null; }
   }
@@ -250,7 +255,7 @@ export class LlamaCpp {
     const gb = (b) => Math.round((b / 1024 ** 3) * 10) / 10;
     try {
       const f = this.resolve(model).gguf;
-      const need = needBytes(fs.statSync(f).size, ggufInfo(f)?.shape, ctx, this.lc.args || ['-ctk', 'q8_0', '-ctv', 'q8_0']);
+      const need = needBytes(fs.statSync(f).size, ggufInfo(f)?.shape, ctx, memArgs(this.cfg, model, this.lc.args)); // 100: the brain's memory type
       if (!need) return { fits: null };
       const room = roomBytes(ramBytes, cardBytes);
       return { fits: need <= room, needGB: gb(need), roomGB: gb(room) };
@@ -457,8 +462,10 @@ export class LlamaCpp {
       // Long memory: past what the brain was made for, its positions are stretched (YaRN) to the size picked.
       ...this.stretchArgs(gguf, ctx || lc.ctx || DEFAULT_CTX),
       ...(mmproj && lc.vision !== false && !(lc.noEyes || []).includes(model) ? ['--mmproj', mmproj] : []), // Lab: "Load without eyes and ears" for one brain
-      ...(lc.args || ['-fa', 'on', '-ctk', 'q8_0', '-ctv', 'q8_0']),
-      ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : num(lc.threads, '-t')),
+      // 100 (opt-in, the Brains page): the brain's chat memory type, Standard (8-bit) unless picked. Flags set by hand win.
+      ...memArgs(this.cfg, model, lc.args),
+      // 98 Laptop mode (opt-in): on battery, half the cores. Games-first and threads set by hand win.
+      ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : laptopThreads(this.cfg) ? ['-t', String(laptopThreads(this.cfg))] : num(lc.threads, '-t')),
       ...num(lc.batch, '-b'), ...num(lc.ubatch, '-ub'),
       // 1.5.24 "Get Bob ready while you type": on the processor, his reading of the instructions is kept on disk.
       ...(cpu && tuning(this.cfg).readyWhileTyping ? ['--slot-save-path', startDir(this.cfg)] : []),
@@ -493,16 +500,19 @@ export class LlamaCpp {
     // built-in guesser (a multi-token head) needs no second brain; a draft brain is named, never a path.
     const tb = lc.turbo?.[model];
     if (tb?.on && !cpu && (tb.mtp || (tb.draft && tb.draft !== model))) {
-      if (tb.mtp) args.push('--spec-type', 'draft-mtp', '--draft-max', String(tb.max || 8));
-      else { let dg = null; try { dg = this.resolve(tb.draft).gguf; } catch {} if (dg) args.push('-md', dg, '--draft-max', String(tb.max || 8), '--draft-min', '0', '-ngld', '99'); }
+      // Engines from about b9530 refuse the old --draft-max/--draft-min and won't start (draftNumArgs picks the names).
+      if (tb.mtp) args.push('--spec-type', 'draft-mtp', ...draftNumArgs(this.buildNo(), tb.max || 8));
+      else { let dg = null; try { dg = this.resolve(tb.draft).gguf; } catch {} if (dg) args.push('-md', dg, ...draftNumArgs(this.buildNo(), tb.max || 8, 0), '-ngld', '99'); }
       return args;
     }
     const d = lc.draft;
     if (d?.model && d.model !== model && d.enabled !== false && !cpu) {
       // A file path (a .gguf, or a draft blob inside Ollama's models folder) or an Ollama model name.
       const draft = path.isAbsolute(d.model) || /\.gguf$/i.test(d.model) ? d.model : this.resolve(d.model).gguf;
-      args.push('-md', draft, ...num(d.max ?? 16, '--draft-max'), ...num(d.min ?? 1, '--draft-min'), '-ngld', String(d.ngld ?? 99));
+      args.push('-md', draft, ...draftNumArgs(this.buildNo(), d.max ?? 16, d.min ?? 1), '-ngld', String(d.ngld ?? 99));
     }
+    // 94 Guess-ahead from the chat (opt-in): with no draft brain, the engine guesses by copying what the chat holds.
+    args.push(...copyGuessArgs(this.cfg, { build: this.buildNo(), args }));
     return args;
   }
 
@@ -861,6 +871,9 @@ export class LlamaCpp {
     });
   }
 
+  // 96 Speed history: each reply's numbers are passed on (server.js keeps them when the switch is on).
+  statsOut(st) { if (st) { try { (this.onStats || this.main?.onStats)?.(st); } catch {} } return st; }
+
   async readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver }) {
     let content = '';
     let held = null; // null: not decided yet; false: streaming normally; a string: held back
@@ -882,7 +895,7 @@ export class LlamaCpp {
         if (ev.error) throw new Error('llama-server: ' + (ev.error.message || JSON.stringify(ev.error)));
         // 1.5.30: llama-server puts the reply's timings on its last chunk; kept for Now running.
         if (ev.expert_trace && this.onTrace) { traced = true; try { this.onTrace(ev.expert_trace, model); } catch (e) { this.log?.('engine', `fNRI cube: couldn't read ${model}'s trace: ${e.message}`); } }
-        if (ev.timings) this.lastStats = replyStats({ model: this.current || model, messages, promptTokens: (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0), outTokens: ev.timings.predicted_n, tokPerSec: ev.timings.predicted_per_second, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX }) || this.lastStats;
+        if (ev.timings) this.lastStats = this.statsOut(replyStats({ model: this.current || model, messages, promptTokens: (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0), outTokens: ev.timings.predicted_n, tokPerSec: ev.timings.predicted_per_second, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX })) || this.lastStats;
         const d = ev.choices?.[0]?.delta || {};
         if (budget && d.reasoning_content && ++thought > budget && !content) onOver(); // stop.over marks it, so real errors aren't retried
         if (d.reasoning_content && onThink) onThink(d.reasoning_content); // 1.5.53: only while the thinking window is open
@@ -900,6 +913,8 @@ export class LlamaCpp {
           calls[i] = calls[i] || { name: '', args: '' };
           if (tc.function?.name) calls[i].name += tc.function.name;
           if (tc.function?.arguments) calls[i].args += tc.function.arguments;
+          // 95 Load the next brain early: the brain hears a hand-off while it is still being written.
+          if (this.onToolCall && calls[i].name) { try { this.onToolCall(calls[i].name, calls[i].args); } catch {} }
         }
       }
     }

@@ -120,6 +120,9 @@ Update this file in the same handover as any change to settings.
 | Help, Sessions and Effort | "Session: what the graphics card is kept for. Effort: how hard Bob works on each message." | — | ok |
 | Settings > Speed & memory > Speed for this replicant matrix | Get Bob ready while you type · Let games go first · Match picture settings to my graphics card | all off | ok (approved with edits, hw tuning) |
 | Settings > Speed & memory | Test Bob's speed (button + last 6 results) | | ok (approved with edits) |
+| Settings > Speed & memory > Engine extras | Guess ahead by copying from the chat · Load the next brain early · Laptop mode · Test a new graphics card by itself · Keep a speed history (with a chart per brain) | all off unless turned on (list items 94-98) |
+| Settings > Engines | Tell me what engine updates change | off unless turned on (list item 99) |
+| Brains page > Set up | Chat memory type: Standard · Sharper · Smaller | Standard unless picked (list item 100) |
 | Settings > Everyday footer | Check this replicant matrix (read-only tips) | | ok (approved with edits) |
 | Settings > This replicant matrix and updates (1.5.118) | **Save a help bundle** (button). ⓘ: "Saves one zip with Bob's logs, the last chats, errors and this replicant matrix's facts, scrubbed of passcodes, keys and your name, so an agent or a person can work out what's wrong. Nothing is sent anywhere: you pick where it goes." Manual: nothing happens until the click; the folder picker chooses where; the folder opens afterwards. Help "Save a help bundle", glossary Help bundle / Handoff file, FAQ "How do I get help with my Bob?" | — | ok (placement and wording by the settings thread, 2026-11-05) |
 | Get models > Equip Bob > Attributes | He comments once when you change his look | off (1.5.116; on before) | ok (approved) |

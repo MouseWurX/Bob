@@ -129,18 +129,18 @@ check('Bob reads whether a brain carries its own guesser, and where its full wei
   const seen = [];
   const tlab = mk({
     serve: async (o) => { seen.push(o); return { url: 'http://fake', where: 'card', stop: () => {} }; },
-    chat: async () => { const o = seen[seen.length - 1]; const n = Number(o.args[o.args.indexOf('--draft-max') + 1]) || 0; return { text: 'def avg(): pass', timings: { predicted_per_second: n ? (n === 8 ? 70 : 40 + n) : 40, ...(n ? { draft_n: 100, draft_n_accepted: 100 - n * 5 } : {}) } }; }
+    chat: async () => { const o = seen[seen.length - 1]; const n = Number(o.args[o.args.indexOf('--spec-draft-n-max') + 1]) || 0; return { text: 'def avg(): pass', timings: { predicted_per_second: n ? (n === 8 ? 70 : 40 + n) : 40, ...(n ? { draft_n: 100, draft_n_accepted: 100 - n * 5 } : {}) } }; }
   });
   await startTurbo(tlab, { brain: 'big', draft: 'small', guess: [2, 8, 16] }); await wait(tlab);
   const run = tlab.runs[tlab.runs.length - 1];
   const rec = run.report?.turbo;
-  check('Try it runs Off then each guess length, with the draft brain', run.state === 'done' && seen.length === 4 && seen[0].args.length === 0 && seen[1].args.join(' ').includes(`-md ${smallFile} --draft-max 2`) && seen[1].cpuOk === false, run.error || '');
+  check('Try it runs Off then each guess length, with the draft brain', run.state === 'done' && seen.length === 4 && seen[0].args.length === 0 && seen[1].args.join(' ').includes(`-md ${smallFile} --spec-draft-n-max 2`) && seen[1].cpuOk === false, run.error || '');
   check('each row has words a second, the accept rate and whether the words were the same', rec.rows.length === 4 && rec.rows[0].accept === null && rec.rows[1].accept === 90 && rec.rows.every((r) => r.same));
   check('the best length is picked, and the line explains why more isn\'t always faster', rec.best.guess === 8 && /1\.75x/.test(run.report.saw) && /isn't always faster/.test(run.report.saw), run.report.saw);
   check('no gain is said plainly', bestGuess([{ guess: 0, tps: 40 }, { guess: 4, tps: 40.5 }]) === null && /didn't make/.test(turboSaw({ brain: { name: 'X' }, rows: [{ guess: 0, tps: 40, same: true }], best: null })));
   seen.length = 0;
   await startTurbo(tlab, { brain: 'mtp', guesser: 'own', guess: [4] }); await wait(tlab);
-  check('a brain with its own guesser runs with --spec-type draft-mtp and nothing else loaded', seen[1].args.join(' ') === '--spec-type draft-mtp --draft-max 4');
+  check('a brain with its own guesser runs with --spec-type draft-mtp and nothing else loaded', seen[1].args.join(' ') === '--spec-type draft-mtp --spec-draft-n-max 4');
   const u = useTurbo(tlab, { brain: 'big', draft: 'small', guess: 8 });
   check('Use this in Bob saves that brain\'s Turbo row (a name, never a path)', cfg.llamacpp.turbo.big.on === true && cfg.llamacpp.turbo.big.draft === 'small' && cfg.llamacpp.turbo.big.max === 8 && /Turbo is on for Big/.test(u.line));
   saveSettings(cfg, { llamacpp: { turbo: { evil: { on: true, draft: 'C:\\x\\y.gguf' }, self: { on: true, draft: 'self' } } } });
@@ -149,7 +149,7 @@ check('Bob reads whether a brain carries its own guesser, and where its full wei
   clearInterval(e.idleTimer);
   e.resolve = (m) => ({ gguf: files[m] || bigFile });
   const ab = e.buildArgs('big').join(' '), am = e.buildArgs('mtp').join(' '), ao = e.buildArgs('lonely').join(' ');
-  check('Bob\'s engine gets the per-brain Turbo, the built-in guesser, or the old one-draft setting', ab.includes(`-md ${smallFile} --draft-max 8 --draft-min 0 -ngld 99`) && am.includes('--spec-type draft-mtp --draft-max 4') && !am.includes('-md') && ao.includes(`-md ${smallFile} --draft-max 16`), `${ab} | ${am} | ${ao}`);
+  check('Bob\'s engine gets the per-brain Turbo, the built-in guesser, or the old one-draft setting', ab.includes(`-md ${smallFile} --spec-draft-n-max 8 --spec-draft-n-min 0 -ngld 99`) && am.includes('--spec-type draft-mtp --spec-draft-n-max 4') && !am.includes('-md') && ao.includes(`-md ${smallFile} --spec-draft-n-max 16`), `${ab} | ${am} | ${ao}`);
   useTurbo(tlab, { brain: 'big', off: true });
   check('Turbo can be switched off again for one brain', !cfg.llamacpp.turbo.big);
 }

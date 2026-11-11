@@ -1032,6 +1032,17 @@ video.out-media { max-height: 240px; border-radius: calc(var(--r) * 0.75); }
 .speed-table { overflow-x: auto; }
 .speed-table table { border-collapse: collapse; font-size: 0.9em; min-width: 560px; }
 .speed-table th, .speed-table td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line, rgba(127,127,127,.3)); vertical-align: top; }
+/* List item 96: speed history charts, one per brain (Settings, Speed & memory) */
+.speed-logs { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+.speed-log { margin: 0; max-width: 100%; }
+.speed-log svg { display: block; max-width: 100%; height: auto; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); }
+.speed-line { stroke: var(--accent); stroke-width: 2; }
+.speed-mark { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.speed-slower { color: var(--bad); margin: 4px 0 0; }
+/* List item 100: chat memory type on the Brains page */
+.mem-trade { list-style: none; padding: 0; margin: 6px 0; }
+.mem-trade li { padding: 2px 0; }
+.mem-trade li.on strong { color: var(--accent); }
 .pc-check { margin-top: 8px; }
 .help-bundle:not(:empty) { margin-top: 8px; }
 .pc-tip { border: 1px solid var(--line, rgba(127,127,127,.3)); border-radius: 8px; padding: 8px 12px; margin: 8px 0; }

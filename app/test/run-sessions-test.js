@@ -83,7 +83,7 @@ const a = lc.buildArgs('big', { ctx: 32768 });
 const at = (f) => a[a.indexOf(f) + 1];
 check('llama.cpp: session context size is used', at('-c') === '32768');
 check('llama.cpp: threads, batch and micro-batch', at('-t') === '8' && at('-b') === '4096' && at('-ub') === '1024');
-check('llama.cpp: speculative decoding with the draft brain', at('-md') === small && at('--draft-max') === '16' && at('--draft-min') === '2' && at('-ngld') === '99');
+check('llama.cpp: speculative decoding with the draft brain', at('-md') === small && at('--spec-draft-n-max') === '16' && at('--spec-draft-n-min') === '2' && at('-ngld') === '99');
 check('llama.cpp: per-model flags', a.includes('--n-cpu-moe') && at('--n-cpu-moe') === '8');
 check('llama.cpp: the draft brain gets no draft of its own', !lc.buildArgs('small').includes('-md'));
 { const c = lc.buildArgs('big', { cpu: true }); check('llama.cpp on the processor: no layers on the card, no --fit, no draft brain', c[c.indexOf('-ngl') + 1] === '0' && !c.includes('--fit') && !c.includes('-md')); }
