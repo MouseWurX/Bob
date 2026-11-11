@@ -1,4 +1,4 @@
-// 🧪 Computer Science Lab, Playground: FNRI. A recording of which experts a mixture-of-experts brain picks,
+// 🧪 Computer Science Lab, Playground: fNRI. A recording of which experts a mixture-of-experts brain picks,
 // word by word, while it answers a few simple questions for each skill; the viewer window (public/watch.html) plays
 // it as a 3D block of voxels, one floor per layer, coloured by the skill each expert leans to, glowing as it is used.
 //   The questions are plain data below, so anyone can read them. A few per skill is enough to see the pattern; it is
@@ -265,7 +265,7 @@ export function pickSkills({ skills = null, per = PER_DEFAULT, own = null } = {}
 
 // What the Lab page needs: the skills on offer, and for a brain its recordings and whether it can record here.
 export function watchView(lab, brainId = '') {
-  const moe = lab.brains().map((b) => { let f = null; try { f = inspect(b); } catch {} return f?.layers ? { id: b.id, name: b.name, experts: f.experts || 0, layers: f.layers } : null; }).filter(Boolean);
+  const moe = lab.brains().map((b) => { let f = null; try { f = inspect(b); } catch {} return f?.layers ? { id: b.id, name: b.name, experts: f.experts || 0, layers: f.layers, runLayers: f.runLayers || f.layers } : null; }).filter(Boolean);
   const base = { brains: moe, skills: WATCH_SKILLS.map((s) => ({ id: s.id, label: s.label, count: s.questions.length, questions: s.questions, extra: s.extra === true })), maxSkills: MAX_SKILLS, perChoices: PER_CHOICES, per: PER_DEFAULT, ownMax: OWN_MAX, words: WATCH_WORDS, wordsThink: WATCH_WORDS_THINK };
   const brain = lab.brains().find((b) => b.id === String(brainId || ''));
   if (!brain) return { ...base, brain: '', recordings: [], live: null };

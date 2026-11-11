@@ -4,6 +4,35 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.203
+
+My engine gets its own name and its own version numbers, Bigger Bobs gets a fast link made for Wi-Fi, and I've got a new voice to recommend.
+
+### Changed
+
+- **Brain Engine is my engine, and I call it that.** Help, Settings, the Lab, Get Bob ready and the guides no longer say I run on "my own llama.cpp". Brain Engine is my own engine for brains. It's built on the open-source llama.cpp, and the credit and its MIT licence stay where they belong: the Brain Engine Help page, the glossary, the README and the third-party notices. Plain llama.cpp is still named where it's really used: on a Mac or an ARM board, and as the stand-in until Brain Engine has downloaded. In Settings, Engines, Brain Engine's version now reads "built on llama.cpp b12282" instead of its file tag. The speed boxes say "the engine's default" and "Engine flags".
+- **It's spelled fNRI now**, after the fMRI scan it's named for, everywhere you read it.
+- **The "Do you want me to:" list on the Welcome is grouped like the Settings cards**, with two more ticks (one brain for everything, and reading only the memories that fit), buttons for Check-ins, Adventure, Games and Housekeeping beside Hands, Bob-Net and Online services, and a few Coming soon lines for things still being built. A button opens the Settings window and the Welcome stays open. **Notice what's worth noting** and **Learn from what works and what fails** are ticks there too.
+- **Brain Engine has its own version numbers.** This one is **Brain Engine 3**, built on llama.cpp b12282. Its numbers don't follow llama.cpp's any more, so a new Brain Engine on the same llama.cpp is simply the next number. Settings, Engines will say "version 3, built on llama.cpp b12282" once it's here. The two builds before it keep their old names.
+- **Shorter, plainer words in the Lab and Settings.** Each description now says what the thing does, in a line or two. The expert switch in Peek inside is now **Turn off unused experts**, **Turn off these instead** and **Turn them all back on**.
+- **Shorter, plainer descriptions for my tools.** The notes I read about each tool say what it does in fewer words (about 11,200 tokens for all of them, from about 13,200), so a small brain has more room to think. Nothing a tool does has changed. A new test, `test/run-tool-wording-test.js`, keeps them short.
+- **The cube's One colour starts as your theme's accent colour**, on every theme, and on Moondust as a deep teal (#03666d). If you've picked your own colour, I keep it.
+- **My thinking cube turns slowly by itself** (Stop turning under Show details; never while animations are off), and **its lines are brighter**, in the theme's text colour so they show on light themes too, with a **Lines** slider in the thinking pane and the big viewer.
+- **Onyx is my recommended voice.** Kokoro's Onyx is deep, calm and a little dry, which is how I hear myself. It's what I use until you pick another, and it has a ★ Recommended tag in Settings, Voice. If you've already picked a voice, I keep it. Help: "Which voice should Bob use?". Tests in `test/run-tts-test.js`.
+- **Let Bob learn from his tools**, one switch under How Bob works, off unless you turn it on. When a tool fails and then works, I keep one line on what fixed it and read it next time, and Settings shows a scorecard of what worked and what didn't (Forget it clears it). Tools I make for myself get a "use me when" line, so I pick them at the right time. Help: "Let Bob learn from his tools".
+- **Code map and jump-to-line.** A new read-only tool, code_map, lists a code file's parts with their line numbers, and read_file can start at a line, so a small brain can find an error without reading a whole file.
+
+### Fixed
+
+- **Peek inside says Riker has 40 layers**, the ones that run, not the 41 in the file (the extra one is a built-in guesser that an ordinary answer never uses). The scan list counts the same way.
+
+### New
+
+- **SCUT (Signals and Communications - Universal Transceiver): my fast link for Bigger Bobs, made for Wi-Fi. Experimental.** When your Bobs pool their graphics cards, the usual link can wait up to a third of a second each time a bit goes missing on the air, which Wi-Fi does a lot. SCUT sends just the missing bit again within a few milliseconds. Same brain, same answers, faster words: in a test over a pretend everyday Wi-Fi, about 9 words a second went up to about 15. It keeps under the **SCUT speed cap** (up to 100 Mbit/s unless you pick another) and slows down by itself when the network gets busy, so your other devices aren't crowded out. Off unless you turn it on, on both Bobs. If either has it off, or a firewall stops it, they use the usual link and nothing breaks. It uses the card's port (50052) on UDP as well as TCP, so on Windows press the firewall button again. It's in Brain Engine 3, so both Bobs need this version. Help: "What are SCUT and SUDDAR?".
+- **SUDDAR (Signal and Uplink Delay Detection and Ranging) scan** (it was Check them, and it's experimental) on the Bob-Net list calls each of your Bobs and times his answer, so you can see how far away each one is: under 8 ms is close, up to 40 ms is Wi-Fi close, more is far. It also shows who lends his card, and whether with SCUT.
+
+**Where it works:** Brain Engine 3 and SCUT on Windows and x64 Linux. A Mac and an ARM board keep plain llama.cpp and the usual link. The naming and the voice change everywhere.
+
 ## 1.5.202
 
 Brain Engine moves onto a newer llama.cpp, the Lab can switch a gpt-oss brain's experts off right in the file, and quick notes can notice things on their own.

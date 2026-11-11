@@ -66,7 +66,7 @@ export class EngineKeeper {
   // The first look after start always asks ("checks on start"); after that, about once a day.
   start() { this.schedule(FIRST_CHECK_MS, true); this.d.setTimer(() => this.withBob().catch(() => {}), WITH_BOB_MS); return this; }
 
-  // 1.5.196 (the owner, Nov 10: "it should update with Bob himself, not standalone"; FNRI on the PC found Bob on a new
+  // 1.5.196 (the owner, Nov 10: "it should update with Bob himself, not standalone"; fNRI on the PC found Bob on a new
   // version with the old engine). Brain Engine updates with Bob: when the build here (its own marker) isn't the one this
   // Bob names (package.json bob.brainEngine), the named build comes along at the next start, whatever the Keep engines
   // up to date switch says, the same way Bob's own files do. GitHub is asked once, only to make sure the file there

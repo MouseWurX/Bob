@@ -18,6 +18,7 @@ import { Embedder } from './embedder.js';
 import { ggufInfo } from './gguf.js';
 import { selfWorkOn } from './self-work.js';
 import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes } from './model-ctx.js';
+import { scutEnv } from './share-card.js'; // SCUT, the fast link to lent cards
 
 // 1.5.19: the context a brain gets when nothing else picks one. 32K fits a 26B brain on a 16 GB card.
 
@@ -179,7 +180,7 @@ export class LlamaCpp {
       this.beside.resolve = (m) => this.resolve(m); // same model files (tests replace resolve on the main engine)
       this.beside.catalogFile = (id) => this.catalogFile(id);
       this.beside.main = this; // so a card reader set on the main engine (tests) also counts for the second server
-      // FNRI's small cube: a brain answering on the second server is traced too, and told to the same cube
+      // fNRI's small cube: a brain answering on the second server is traced too, and told to the same cube
       this.beside.wantTrace = () => this.wantTrace?.() || false; this.beside.onTrace = (raw, model) => this.onTrace?.(raw, model);
       // 1.5.53: the brain hears when a second brain joins or leaves (chat page: second-brain events, Bob's head grows).
       this.beside.changed = (ev) => { try { this.onBeside?.(ev); } catch {} };
@@ -670,7 +671,8 @@ export class LlamaCpp {
     let log = '';
     let full = ''; // 1.5.133: the whole output (up to 256 KB) goes to a file when a load fails; the message keeps the end
     if (args.includes('--slot-save-path')) { try { fs.mkdirSync(startDir(this.cfg), { recursive: true }); } catch {} }
-    const env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
+    let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
+    if (helpers.length) env = { ...env, ...scutEnv(this.cfg) }; // SCUT (off unless switched on): the fast link to the lent cards
     const child = spawn(exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
     // 1.5.24 "Let games go first": on the processor, the engine yields to games (below normal priority).
     if (this.role === BESIDE || (cpu && cpuPlan(this.cfg)?.lowPriority)) { try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {} }
@@ -829,7 +831,7 @@ export class LlamaCpp {
         ...this.sampling(model, { tools: !!tools?.length, think, task }),
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
         ...(think === false ? { chat_template_kwargs: { enable_thinking: false } } : {}),
-        // FNRI's small cube in Bob's thinking: only while someone has it open, and only Brain Engine answers it
+        // fNRI's small cube in Bob's thinking: only while someone has it open, and only Brain Engine answers it
         ...(this.wantTrace?.() ? { expert_trace: true } : {}) }),
       signal
     });
@@ -838,7 +840,7 @@ export class LlamaCpp {
   async readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver }) {
     let content = '';
     let held = null; // null: not decided yet; false: streaming normally; a string: held back
-    let thought = 0, traced = false; const asked = this.wantTrace?.() === true; // FNRI's small cube: was the trace asked for, and did it come
+    let thought = 0, traced = false; const asked = this.wantTrace?.() === true; // fNRI's small cube: was the trace asked for, and did it come
     const calls = [];
     let buf = '';
     const decoder = new TextDecoder();
@@ -852,10 +854,10 @@ export class LlamaCpp {
         const data = line.slice(5).trim();
         if (data === '[DONE]') continue;
         const ev = parseJson(data);
-        if (!ev) { if (asked && data.includes('"expert_trace"')) this.log?.('engine', `FNRI cube: ${model}'s trace came back unreadable (${data.length.toLocaleString()} characters)`); continue; } // a cut or odd line from the server: skip it rather than lose the whole reply
+        if (!ev) { if (asked && data.includes('"expert_trace"')) this.log?.('engine', `fNRI cube: ${model}'s trace came back unreadable (${data.length.toLocaleString()} characters)`); continue; } // a cut or odd line from the server: skip it rather than lose the whole reply
         if (ev.error) throw new Error('llama-server: ' + (ev.error.message || JSON.stringify(ev.error)));
         // 1.5.30: llama-server puts the reply's timings on its last chunk; kept for Now running.
-        if (ev.expert_trace && this.onTrace) { traced = true; try { this.onTrace(ev.expert_trace, model); } catch (e) { this.log?.('engine', `FNRI cube: couldn't read ${model}'s trace: ${e.message}`); } }
+        if (ev.expert_trace && this.onTrace) { traced = true; try { this.onTrace(ev.expert_trace, model); } catch (e) { this.log?.('engine', `fNRI cube: couldn't read ${model}'s trace: ${e.message}`); } }
         if (ev.timings) this.lastStats = replyStats({ model: this.current || model, messages, promptTokens: (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0), outTokens: ev.timings.predicted_n, tokPerSec: ev.timings.predicted_per_second, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX }) || this.lastStats;
         const d = ev.choices?.[0]?.delta || {};
         if (budget && d.reasoning_content && ++thought > budget && !content) onOver(); // stop.over marks it, so real errors aren't retried
@@ -877,7 +879,7 @@ export class LlamaCpp {
         }
       }
     }
-    if (asked && !traced) this.log?.('engine', `FNRI cube: ${model} answered without an expert trace (an older Brain Engine, or not Brain Engine)`);
+    if (asked && !traced) this.log?.('engine', `fNRI cube: ${model} answered without an expert trace (an older Brain Engine, or not Brain Engine)`);
     const tool_calls = calls.filter(Boolean).map((c) => {
       let args = {};
       try { args = c.args ? JSON.parse(c.args) : {}; } catch { args = {}; }

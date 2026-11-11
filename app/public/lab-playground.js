@@ -11,10 +11,10 @@ import { createTurboPage } from './lab-turbo.js'; // 1.5.16x Faster: Turbo (sec 
 import { createBestPage } from './lab-best.js'; // 1.5.188 Best answers: a bigger brain judges, a smaller one learns
 import { createTeachPage } from './lab-teach.js'; // 1.5.16x Teach it: here, or as a Forge plan (sec 15.3)
 import { createDiffusionPage } from './lab-diffusion.js'; // Diffusion brains (llama-diffusion-cli)
-import { createWatchPage } from './lab-watch.js'; // FNRI: a scan of the experts lighting up, in its own window
+import { createWatchPage } from './lab-watch.js'; // fNRI: a scan of the experts lighting up, in its own window
 
 // 1.5.16x The Playground has four pages now: the quantization ladder and the three from thinking-paths sec 15.
-export const PLAY_PAGES = [['smaller', 'Smaller'], ['longer', 'Longer'], ['faster', 'Faster'], ['teach', 'Teach it'], ['best', 'Best answers'], ['peek', 'Peek inside'], ['watch', 'FNRI'], ['diffusion', 'Diffusion brains']];
+export const PLAY_PAGES = [['smaller', 'Smaller'], ['longer', 'Longer'], ['faster', 'Faster'], ['teach', 'Teach it'], ['best', 'Best answers'], ['peek', 'Peek inside'], ['watch', 'fNRI'], ['diffusion', 'Diffusion brains']];
 
 // `sections` (1.5.166): more pieces, each { html(), change(el), input(el), click(b, load), mounted() }; they make up the
 // Peek inside page. Events reach them only while that page shows.
@@ -100,7 +100,7 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
     const steps = (v().ladderSteps || []).map((s) => s.label).join(', ');
     return `<div id="lab-page-playground" role="tabpanel" aria-labelledby="lab-tab-playground">${navHtml()}
       <h3>${nameNow('How small can a brain get?')}</h3>
-      <p class="muted">Bob takes one small brain and makes it ${steps ? `in six sizes (${esc(steps)})` : 'in six sizes'}, then measures each the same way: how big it is, how fast it writes, its Lab score, and how surprised it is by a page of Bob's Help it never tuned on. Smaller files lose detail, and this shows you where that starts to matter. It runs here, for free. It takes disk, and Bob shows how much before it starts.</p>
+      <p class="muted">Makes one small brain ${steps ? `in six sizes (${esc(steps)})` : 'in six sizes'} and tests each for size, speed, score and Surprise, so you see where smaller starts to hurt. Free, here; Bob shows the disk space first.</p>
       ${runsHtml}
       <fieldset><legend>Which brain?</legend>${list.length ? list.map((b) => `<label class="lab-opt"><input type="radio" name="playfrom" value="${esc(b.id)}" ${from === b.id ? 'checked' : ''}> <span><strong>${esc(b.name)}</strong><br><span class="muted">${b.facts.sizeGB} GB full size.</span></span></label>`).join('')
         : `<p><strong>There's no brain here the ladder can start from yet.</strong> It needs a small brain's full-size file (F16 or BF16, up to ${v().playMaxGB || 9} GB), like a 1B to 4B brain. Bob's downloads are running files, so use <strong>Bring in a full-size brain</strong> just below: a Hugging Face name, a link, or <strong>Pick a file here</strong>.</p>`}

@@ -15,7 +15,7 @@
 import fs from 'node:fs';
 import { readJsonFile } from './util.js';
 import { isTailscaleIp } from './phone-access.js';
-import { homeIps, isHomeIp, sameNet } from './share-card.js';
+import { homeIps, isHomeIp, sameNet, SCUT_MBPS } from './share-card.js';
 import { cleanCheck, checkRefusal, checkDown, CHECK_FIRST_WORD_MAX_MS } from './bob-net-check.js'; // 1.5.185
 
 export const PROTOCOL = 1;
@@ -64,6 +64,8 @@ export function shareView(cfg) {
     spread: ['toobig', 'big'].includes(s.spread) ? s.spread : 'off', // Spread big brains over my other Bobs' cards
     // Bob-Net mode: More Bobs (the default: each Bob runs his own brain) or Bigger Bobs (they pool their cards).
     homeNet: s.homeNet !== false, // Bigger Bobs: Use the home network first (src/share-card.js), Tailscale as the backup
+    scut: s.scut === true, // SCUT, the fast link for Bigger Bobs (src/share-card.js), off unless switched on
+    scutMbps: SCUT_MBPS.includes(Number(s.scutMbps)) ? Number(s.scutMbps) : 100,
     mode: s.lendCard === true || ['toobig', 'big'].includes(s.spread) ? 'bigger' : 'more',
     doorOpen: doorOpen(cfg),
     borrow: { on: b.on === true, jobs: b.jobs === true, checks: b.checks === true, when: WHEN.includes(b.when) ? b.when : 'gaming', bobs: (b.bobs || []).map((x) => ({ name: x.name, address: x.address, passcodeSet: String(x.passcode || '').length >= 6 })) }
@@ -76,7 +78,7 @@ export const doorOpen = (cfg) => Boolean(cfg.remote?.enabled && String(cfg.remot
 export function cleanSharePatch(cfg, b) {
   const cur = cfg.share || {};
   const cb = cur.borrow || {};
-  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendChecks: cur.lendChecks === true, homeNet: cur.homeNet !== false, spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
+  const next = { lend: cur.lend === true, takeJobs: cur.takeJobs === true, passAlong: cur.passAlong === true, lendCard: cur.lendCard === true, lendChecks: cur.lendChecks === true, homeNet: cur.homeNet !== false, scut: cur.scut === true, scutMbps: SCUT_MBPS.includes(Number(cur.scutMbps)) ? Number(cur.scutMbps) : 100, spread: ['toobig', 'big'].includes(cur.spread) ? cur.spread : 'off', borrow: { on: cb.on === true, jobs: cb.jobs === true, checks: cb.checks === true, when: WHEN.includes(cb.when) ? cb.when : 'gaming', bobs: (cb.bobs || []).slice() } };
   if ('lend' in b) next.lend = b.lend === true;
   if ('takeJobs' in b) next.takeJobs = b.takeJobs === true; // 1.5.72, off unless switched on
   if ('passAlong' in b) next.passAlong = b.passAlong === true; // 1.5.123, off unless switched on
@@ -92,6 +94,8 @@ export function cleanSharePatch(cfg, b) {
   }
   if ('lendCard' in b) next.lendCard = b.lendCard === true; // off unless switched on
   if ('homeNet' in b) next.homeNet = b.homeNet !== false;
+  if ('scut' in b) next.scut = b.scut === true; // off unless switched on
+  if ('scutMbps' in b) { if (!SCUT_MBPS.includes(Number(b.scutMbps))) return { error: 'Pick a speed cap for SCUT.' }; next.scutMbps = Number(b.scutMbps); }
   if ('spread' in b) { if (!['off', 'toobig', 'big'].includes(b.spread)) return { error: 'Pick when to spread a brain.' }; next.spread = b.spread; }
   if ('sendJobs' in b) next.borrow.jobs = b.sendJobs === true; // 1.5.72, off unless switched on
   if ('when' in b) { if (!WHEN.includes(b.when)) return { error: 'Pick when to borrow.' }; next.borrow.when = b.when; }
@@ -316,13 +320,15 @@ export class Lenders {
     const s = this.state.get(bob.address);
     if (!force && s && this.now() - s.at < (s.ok ? GOOD_FOR : DOWN_FOR)) return s;
     let out;
+    const t0 = Date.now();
     try {
       const r = await this.call(bob, '/api/lend/hello');
+      const ms = Date.now() - t0; // SUDDAR: how long his answer took, there and back
       const j = await r.json().catch(() => ({}));
       out = r.ok && j.lend === true && !j.busy ? { ok: true, brain: String(j.brain || '').slice(0, 60), device: String(j.device || '').slice(0, 20) } : { ok: false, why: j.busy || (r.status === 401 ? 'passcode not accepted' : r.status === 403 ? 'door closed' : `answered ${r.status}`) };
       // 1.5.72: what this Bob says he can do. ctx: his quick brain's room; speed: words a second he's seen lately;
       // jobs: whole jobs he takes (only with "Take jobs from my other Bobs" on there), and how busy his queue is.
-      if (r.ok) Object.assign(out, cleanAbilities(j));
+      if (r.ok) Object.assign(out, cleanAbilities(j), { ms });
       if (r.ok) this.learnNear(bob, j.home);
     } catch (e) { out = { ok: false, why: /passcode|tries/.test(e.message) ? e.message : 'not reachable' }; }
     const seen = this.state.get(bob.address);
@@ -465,6 +471,8 @@ export function cleanAbilities(j) {
   out.jobsBusy = typeof j?.jobsBusy === 'string' ? j.jobsBusy.slice(0, 40) : '';
   out.queue = n(j?.queue, 999);
   out.passAlong = j?.passAlong === true; // 1.5.123: he introduces his Bobs to each other
+  out.lendCard = j?.lendCard === true; // Bigger Bobs: he lends his card
+  out.scut = j?.scut === true; // SCUT: he has the fast link on
   // 1.5.137: his room (graphics card and memory, in GB), so the Brain catalogue knows which brains a Bob on the
   // Bob-Net could run. Numbers only; a Bob that doesn't say (the phone, an older Bob) simply has no room listed.
   const r = j?.room && typeof j.room === 'object' ? { vramGB: n(j.room.vramGB, 4096), ramGB: n(j.room.ramGB, 16384) } : null;
@@ -493,6 +501,7 @@ export function helloFor(brain, { why, quick, can, version, label, webOn, bigBra
     device: 'computer', version, takesJobs, jobs, jobsBusy: takesJobs ? guestRefusal(brain) : '', queue: brain.queue?.filter?.((j) => j.state === 'waiting' || j.state === 'working').length || 0,
     name, passAlong: brain.cfg.share?.passAlong === true, // 1.5.123: for the party in Now running
     lendCard: brain.cfg.share?.lendCard === true && doorOpen(brain.cfg), // Lend my graphics card (src/share-card.js)
+    scut: brain.cfg.share?.scut === true, // SCUT, the fast link for a lent card (src/share-card.js)
     ...(review?.model ? { review: { brain: label(review.model), ctx: review.ctx || 0, gb: review.gb || 0 } } : {}), // #30: checks work for his other Bobs
     // Also over the home network (off unless switched on): where this Bob's door is on the home network too.
     home: brain.cfg.remote?.homeNet === true && doorOpen(brain.cfg) ? homeIps().map((m) => `${m.address}:${brain.cfg.port}`).slice(0, 4) : [],

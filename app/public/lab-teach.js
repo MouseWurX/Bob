@@ -64,7 +64,7 @@ export function createTeachPage({ api }) {
   function html() {
     if (!v) return `<p class="muted" role="status">${loading ? 'Reading your brains…' : ''}</p>${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}`;
     return `<h3>${nameNow('Teach it: here or rented')}</h3>
-      <p class="muted">Teach a brain a lesson set. When the brain is small enough for this replicant matrix's card, it's taught here, for free: a small set of extra weights (an adapter) is trained and folded into a new brain file. When it isn't, the same choices go to the Forge, rented, so you fill them in once.</p>
+      <p class="muted">Teaches a brain a lesson set. If it fits this card, it's taught here, free. If not, the same choices go to the Forge as a rented run.</p>
       <table class="lab-report"><caption class="muted">What can be taught here, by graphics memory (an adapter on a 4-bit copy of the brain).</caption><tr><th scope="col">Card</th><th scope="col">A brain up to</th><th scope="col">A mixture of experts up to</th></tr>${v.fit.map((r) => `<tr><th scope="row">${r.gb} GB</th><td>about ${r.dense}B</td><td>about ${r.moe}B total</td></tr>`).join('')}</table>
       ${trainerHtml()}
       <label for="tch-name">Name for the new brain</label><input id="tch-name" data-tch="name" maxlength="40" value="${esc(f.name)}">

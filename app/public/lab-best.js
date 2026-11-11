@@ -1,5 +1,5 @@
 // 1.5.188 🧪 Playground: Best answers. A bigger brain judges; a smaller one learns from its own best answers, or from
-// better-or-worse pairs of them, or both, optionally only in the parts FNRI shows a skill uses. The server side is
+// better-or-worse pairs of them, or both, optionally only in the parts fNRI shows a skill uses. The server side is
 // src/lab-best.js. Screens are in third person; Help (lab-best) is in Bob's voice.
 import { esc } from './rich.js';
 import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
@@ -46,10 +46,10 @@ export function createBestPage({ api }) {
     const rec = recs.find((r) => r.id === f.tRec);
     return `<fieldset><legend>${nameNow('Teach only these parts')}</legend>
       <label class="lab-opt"><input type="radio" name="bsttpick" value="none" ${f.tPick === 'none' ? 'checked' : ''}> <span><strong>No, the whole brain</strong><br><span class="muted">The usual way: small changes spread through every layer.</span></span></label>
-      <label class="lab-opt"><input type="radio" name="bsttpick" value="file" ${f.tPick === 'file' ? 'checked' : ''} ${lists.length ? '' : 'disabled'}> <span><strong>A parts list saved in FNRI</strong><br><span class="muted">${lists.length ? 'Saved with Use these for training in the FNRI viewer: a skill\'s experts, the blocks you dialled, or the blocks that moved most.' : 'None yet for this brain. In FNRI, Use these for training saves one.'}</span></span></label>
+      <label class="lab-opt"><input type="radio" name="bsttpick" value="file" ${f.tPick === 'file' ? 'checked' : ''} ${lists.length ? '' : 'disabled'}> <span><strong>A parts list saved in fNRI</strong><br><span class="muted">${lists.length ? 'Saved with Use these for training in the fNRI viewer: a skill\'s experts, the blocks you dialled, or the blocks that moved most.' : 'None yet for this brain. In fNRI, Use these for training saves one.'}</span></span></label>
       ${f.tPick === 'file' && lists.length ? `<select data-bst="tFile" aria-label="Parts list"><option value="">Pick one</option>${lists.map((l) => `<option value="${esc(l.id)}" ${f.tFile === l.id ? 'selected' : ''}>${esc(l.label || l.id)} (${l.count} parts)</option>`).join('')}</select>` : ''}
-      <label class="lab-opt"><input type="radio" name="bsttpick" value="skill" ${f.tPick === 'skill' ? 'checked' : ''} ${recs.length ? '' : 'disabled'}> <span><strong>The experts one skill uses</strong><br><span class="muted">${recs.length ? 'Read from an FNRI scan of this brain: only the experts that lean to that skill learn; everything else stays frozen.' : 'Scan this brain in FNRI first (Playground, FNRI).'}</span></span></label>
-      ${f.tPick === 'skill' && recs.length ? `<div class="row"><select data-bst="tRec" aria-label="FNRI scan"><option value="">Which scan</option>${recs.map((r) => `<option value="${esc(r.id)}" ${f.tRec === r.id ? 'selected' : ''}>${esc(r.name || r.id)}${r.when ? ` · ${esc(r.when)}` : ''}</option>`).join('')}</select>
+      <label class="lab-opt"><input type="radio" name="bsttpick" value="skill" ${f.tPick === 'skill' ? 'checked' : ''} ${recs.length ? '' : 'disabled'}> <span><strong>The experts one skill uses</strong><br><span class="muted">${recs.length ? 'Read from an fNRI scan of this brain: only the experts that lean to that skill learn; everything else stays frozen.' : 'Scan this brain in fNRI first (Playground, fNRI).'}</span></span></label>
+      ${f.tPick === 'skill' && recs.length ? `<div class="row"><select data-bst="tRec" aria-label="fNRI scan"><option value="">Which scan</option>${recs.map((r) => `<option value="${esc(r.id)}" ${f.tRec === r.id ? 'selected' : ''}>${esc(r.name || r.id)}${r.when ? ` · ${esc(r.when)}` : ''}</option>`).join('')}</select>
         ${rec ? `<select data-bst="tSkill" aria-label="Skill"><option value="">Which skill</option>${rec.skills.map((s) => `<option value="${esc(s.id)}" ${f.tSkill === s.id ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</select>` : ''}</div>` : ''}
     </fieldset>`;
   }
@@ -65,7 +65,7 @@ export function createBestPage({ api }) {
         <p class="muted">${t.asked} questions; ${t.taughtBest} best answers${t.rescued ? ` (${t.rescued} written by the judge, where none of its own was good enough)` : ''} and ${t.pairs} pairs to learn from. ${t.checked ? `${t.checked} had a short exact answer, so a checker marked them instead of the judge. ` : ''}${t.unreadable ? `${t.unreadable} judgement${t.unreadable === 1 ? '' : 's'} couldn't be read and ${t.unreadable === 1 ? 'was' : 'were'} skipped. ` : ''}${t.parts ? `${t.parts.modules} parts of the brain changed${t.parts.fellBack ? `; ${t.parts.fellBack} picked parts couldn't be changed on their own, so the block around each one learned instead` : ''}. ` : ''}${t.sizeGB ? `${t.sizeGB} GB.` : ''}</p>
         ${(t.examples || []).length ? `<details><summary>Best and worst answers, side by side</summary>${t.examples.map((x) => `<div class="lab-pair"><p><strong>${esc(x.question)}</strong></p><p><span class="muted">Best (${x.bestScore} of 10):</span> ${esc(x.best)}</p><p><span class="muted">Worst (${x.worstScore} of 10):</span> ${esc(x.worst)}</p></div>`).join('')}</details>` : ''}
         ${t.line ? `<p role="status">${esc(t.line)}</p>` : ''}
-        ${t.made ? `<p class="muted">Made here. It never becomes Bob's brain on its own: Use in Bob puts it in the list, and you pick it. To see which blocks moved, scan it and ${esc(r.from)} in FNRI with the same skill and open Before and after.</p>
+        ${t.made ? `<p class="muted">Made here. It never becomes Bob's brain on its own: Use in Bob puts it in the list, and you pick it. To see which blocks moved, scan it and ${esc(r.from)} in fNRI with the same skill and open Before and after.</p>
         <div class="row"><button type="button" class="get" data-bstuse="${esc(r.id)}" ${r.used ? 'disabled' : ''}>${r.used ? 'In Bob' : 'Use in Bob'}</button></div>` : ''}` : r.error ? `<p class="error">${esc(r.error)}</p>` : ''}</section>`;
     }).join('');
   }
@@ -75,7 +75,7 @@ export function createBestPage({ api }) {
     const L = v.brains.find((b) => b.id === f.learner);
     const judges = v.brains.filter((b) => b.id !== f.learner && (!L || b.paramsB > L.paramsB));
     return `<h3>${nameNow('Best answers: a bigger brain judges, a smaller one learns')}</h3>
-      <p class="muted">The small brain answers each question several times. A bigger brain scores every answer (a short exact answer, like a number, is just checked). Then the small brain is taught from its own best answers, or learns which of two answers was better, or both. Some questions are held back and asked only before and after, so the result is honest. Answering and judging run here, for free; teaching runs here when the brain fits the card, and otherwise goes to the Forge as a plan.</p>
+      <p class="muted">The small brain answers each question a few times, a bigger brain scores the answers, and the small one learns from its best. Free here; if it's too big to teach on this card, it's saved as a Forge plan.</p>
       ${v.trainer.ok ? '' : `<p class="muted">Teaching here needs the Trainer pack (about ${v.trainer.sizeGB} GB); Teach it, on this tab, gets it.</p>`}
       <label for="bst-name">Name for the new brain</label><input id="bst-name" data-bst="name" maxlength="40" value="${esc(f.name)}">
       <div class="row"><label for="bst-learner">The brain that learns</label><select id="bst-learner" data-bst="learner"><option value="">Pick one</option>${v.brains.map((b) => `<option value="${esc(b.id)}" ${f.learner === b.id ? 'selected' : ''}>${esc(b.name)}${b.paramsB ? ` · ${b.paramsB}B` : ''}</option>`).join('')}</select></div>

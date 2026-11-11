@@ -103,13 +103,14 @@ export function brainFacts(g) {
   const layers = Number(g.meta[`${arch}.block_count`]) || 0;
   // Brains with their own guesser (Qwen3.5/3.6, GLM) count its layer in block_count; Brain Engine on llama.cpp b12282 doesn't.
   const mtp = Math.min(layers, Number(g.meta[`${arch}.nextn_predict_layers`]) || 0);
+  const runLayers = layers - mtp || layers; // the number to show people (Riker: 41 in the file, 40 run)
   const ft = g.meta['general.file_type'];
   const expertLayers = [...new Set(g.tensors.map((t) => isExpertTensor(t.name) && Number(t.name.split('.')[1])).filter((n) => Number.isInteger(n)))].sort((a, b) => a - b);
   // 1.5.161 how many weights it has, in billions, and for a mixture of experts how many work on each word
   let all = 0, exp = 0;
   for (const t of g.tensors) { const n = t.dims.reduce((a, d) => a * Number(d), 1); all += n; if (isExpertTensor(t.name)) exp += n; }
   const paramsB = Math.round((all / 1e9) * 10) / 10, activeB = experts && used ? Math.round(((all - exp + (exp * used) / experts) / 1e9) * 10) / 10 : paramsB;
-  return { arch, name: g.meta['general.name'] || '', experts, used, groups, layers, mtp, engineLayers: layers - mtp, expertLayers, fileType: FILE_TYPES[ft] || (ft == null ? '' : `type ${ft}`), fullSize: FULL_SIZE.has(ft), size: g.size, params: all, paramsB, activeB };
+  return { arch, name: g.meta['general.name'] || '', experts, used, groups, layers, mtp, engineLayers: layers - mtp, runLayers, expertLayers, fileType: FILE_TYPES[ft] || (ft == null ? '' : `type ${ft}`), fullSize: FULL_SIZE.has(ft), size: g.size, params: all, paramsB, activeB };
 }
 
 // The picture and sound readers (mmproj files): which senses one file holds.

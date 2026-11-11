@@ -134,7 +134,7 @@ export function removeNote(cfg, n, check = '', { now = new Date() } = {}) {
 
 const listed = (xs) => xs.map((x) => `${x.n}. ${x.text}`).join('\n');
 
-const SCHEMA_BASE = 'Quick notes for {{USER}}: add a note the moment {{USER}} says "note", "jot down" or "write down" something, list them, find them by a word or #tag, or take one away. Add it in their own words; don\'t ask first.';
+const SCHEMA_BASE = 'Quick notes: add one the moment {{USER}} says "note", "jot down" or "write down", in their words, without asking. Also list, find (by word or #tag) or remove.';
 const SCHEMA_SMART = ' Also add a note yourself, with noticed true, when the chat shows something {{USER}} will want later: a decision, a number, a date, a plan, a name, a link, an idea of theirs. One short line each, only what\'s worth keeping (not small talk, not what\'s already noted, never passwords or keys). Each time, end your reply with "📝 Noted: <the note>".';
 
 export function notesTool(brain) {
@@ -144,8 +144,8 @@ export function notesTool(brain) {
       const smart = smartNotesOn(cfg);
       return fn('take_note', SCHEMA_BASE + (smart ? SCHEMA_SMART : ''), {
         action: str('add, list, find or remove', { enum: ['add', 'list', 'find', 'remove'] }),
-        text: str('add: the note, in {{USER}}\'s words (keep any #tags). find: the words or #tag to look for. remove: a few words of the note, to be sure it is the right one.'),
-        number: { type: 'integer', description: 'remove: the note\'s number from list or find.' },
+        text: str('add: the note in {{USER}}\'s words (keep #tags). find: words or a #tag. remove: a few words of the note.'),
+        number: { type: 'integer', description: 'remove: its number from list or find.' },
         ...(smart ? { noticed: { type: 'boolean', description: 'add: true when you noted it on your own, not because {{USER}} asked.' } } : {})
       }, ['action']);
     },

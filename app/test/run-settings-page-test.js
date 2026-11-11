@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { ModelShop } from '../src/models.js';
 import { BUNDLED_KOKORO, SAMPLE_LINE } from '../src/voice-samples.js';
 import { KOKORO_VOICES } from '../src/tts.js';
@@ -54,7 +56,12 @@ check('Advanced has (1.5.98 order) Brains, House style, Voice details, Look & fe
 check('old panel ids still work: Connections lands on Bob-Net, in jumps, remembered panels and Help', /ADV_MOVED = \{ 'adv-connections': 'adv-bobnet' \}/.test(ui) && /id === 'adv-connections' \? 'adv-bobnet'/.test(ui) && /'settings-connections': 'settings-bobnet'/.test(read('public/help.js')));
 check('Advanced has a search box that filters sections', /data-ssearch/.test(ui) && /function filterSettings/.test(ui) && /settingsQuery = e\.target\.value; if \(settingsQuery\.trim\(\)\) applyView\(\)/.test(ui));
 check('Voice details has Hey Bob and Read aloud, working the same switches as the left menu', /prox\('ear'/.test(ui) && /prox\('speak'/.test(ui) && /el\.dataset\.proxy/.test(ui));
-check('engine choice, engine downloads, fit to memory, speculative decoding and flags are in Engines', /function enginesHtml[\s\S]*engineGearHtml\(\)[\s\S]*labEngineHtml\(\)[\s\S]*Engine downloads[\s\S]*speedHtml\(\)/.test(ui) && /data-engine-now/.test(ui) && !/name="brainsEngine"/.test(ui) && /data-fit/.test(ui) && /Speculative decoding/.test(ui) && /llama\.cpp flags/.test(ui));
+{ // every page script parses (1.5.203: one unescaped apostrophe in a Settings line stopped the whole Settings page)
+  const dir = fileURLToPath(new URL('../public/', import.meta.url));
+  const bad = fs.readdirSync(dir).filter((f) => f.endsWith('.js')).filter((f) => spawnSync(process.execPath, ['--check', path.join(dir, f)]).status !== 0);
+  check('every script in public/ parses', bad.length === 0, bad.join(', '));
+}
+check('engine choice, engine downloads, fit to memory, speculative decoding and flags are in Engines', /function enginesHtml[\s\S]*engineGearHtml\(\)[\s\S]*labEngineHtml\(\)[\s\S]*Engine downloads[\s\S]*speedHtml\(\)/.test(ui) && /data-engine-now/.test(ui) && !/name="brainsEngine"/.test(ui) && /data-fit/.test(ui) && /Speculative decoding/.test(ui) && /Engine flags/.test(ui));
 check('long help folds behind More', /const more = \(text\) => `<details class="more"><summary>More<\/summary>/.test(ui) && (ui.match(/\$\{more\(/g) || []).length >= 2);
 check('animations and Now running buttons work on the Settings page too', /tab === 'settings' && \(b\.dataset\.motion \|\| b\.dataset\.nowneed\)/.test(ui));
 
