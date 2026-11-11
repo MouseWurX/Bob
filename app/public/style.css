@@ -417,6 +417,12 @@ body:not(.right-hidden) .now-toggle .badge { display: none; }
 .net-dot.ok { background: var(--good); }
 .net-dot.busy { background: var(--accent); }
 .net-dot.down { background: var(--bad); }
+/* Show their faces (Bob-Net in Now running): each Bob's avatar beside his line, crisp pixels, off unless switched on */
+.net-tools { margin: 2px 0 4px; }
+.now .titem.net:has(.net-face) { grid-template-columns: auto auto 1fr; }
+.now .titem.net:has(.net-face) .ttext { grid-column: 3; }
+.net-face { width: 32px; height: 32px; image-rendering: pixelated; border-radius: 4px; }
+.net-face.none { display: inline-flex; align-items: center; justify-content: center; font-size: 18px; }
 .now-gpu .meter { margin: 0; }
 .tag.needs-you { background: var(--danger-bg); color: var(--warn); }
 body.right-hidden .now, body.right-hidden .grab { display: none; }

@@ -7,6 +7,7 @@ import { currentStyle } from './themes.js';
 import { catMoment } from './patches.js';
 import { createBrainBay } from './brain-swap.js';
 import { esc } from './util.js';
+import { drawBob } from './bob-sprite.js'; // the faces on the Bob-Net list
 import { createMindCube } from './mind-cube.js';
 import { createMindView } from './mind-view.js'; // 1.5.138: Bob's thinking, docked
 import { DEFAULT_ORDER, SECTION_NAME, applyOrder, dropBefore } from './now-sections.js';
@@ -408,6 +409,13 @@ export function createLayout({ post, openTasks, openDownloads }) {
   const CAN = { pictures: 'pictures', video: 'clips', music: 'music', sfx: 'sounds', web: 'web research', think: 'thinking' };
   const WHY = { gaming: 'gaming, so not lending', busy: 'busy with his own job', off: 'not lending', 'not reachable': 'not reachable', 'door closed': 'door shut over there', 'passcode not accepted': 'passcode not accepted', 'too slow': 'too slow last time', 'too long': 'no room for this chat', 'no brain': 'no quick brain' };
   const sinceShort = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? 'just now' : m === 1 ? '1 min ago' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+  // Show their faces (off unless switched on, remembered in this window): each Bob's avatar from Style, drawn small
+  // beside his line. He sends his look id with the hello the list already uses, so nothing extra goes over the network.
+  // A Bob with no look to send (the phone app, a Bob older than 1.5.205) keeps his 📱 or 💻 in the face's place.
+  let faces = store.get('bob-net-faces', '0') === '1', lastNet = null;
+  const netFace = (look, name, icon) => !faces ? ''
+    : look ? `<canvas class="net-face" width="32" height="32" data-look="${esc(look)}" role="img" aria-label="${esc(name)}'s face"></canvas>`
+      : `<span class="net-face none" aria-hidden="true">${icon}</span>`;
   const netRow = (b) => {
     let state, tone;
     if (b.thinking) { state = 'thinking a reply for me'; tone = 'busy'; }
@@ -419,9 +427,10 @@ export function createLayout({ post, openTasks, openDownloads }) {
     if (b.jobs?.length) extra.push(`takes ${b.jobs.map((j) => CAN[j] || j).join(', ')}`);
     if (b.lastUsed) extra.push(`thought for me ${sinceShort(Date.now() - b.lastUsed)}`);
     if (b.passAlong) extra.push('passes Bob-Net along');
-    return `<li class="titem net"><span class="net-dot ${tone}" aria-hidden="true"></span><span class="ttext"><strong>${b.device === 'phone' ? '📱' : '💻'} ${esc(b.name)}</strong> · ${esc(state)}${extra.length ? `<br><span class="muted">${esc(extra.join(' · '))}</span>` : ''}</span></li>`;
+    return `<li class="titem net"><span class="net-dot ${tone}" aria-hidden="true"></span>${netFace(b.look, b.name, b.device === 'phone' ? '📱' : '💻')}<span class="ttext"><strong>${b.device === 'phone' ? '📱' : '💻'} ${esc(b.name)}</strong> · ${esc(state)}${extra.length ? `<br><span class="muted">${esc(extra.join(' · '))}</span>` : ''}</span></li>`;
   };
   function drawNet(v) {
+    lastNet = v;
     const sec = $('nowNet');
     if (!sec) return;
     if (sec.hidden !== !v?.on) { sec.hidden = !v?.on; placeSections(); }
@@ -430,9 +439,15 @@ export function createLayout({ post, openTasks, openDownloads }) {
     if (h.lending) doing.push(`thinking a reply for ${h.lending.for}`);
     for (const g of h.guests || []) doing.push(`${g.state === 'working' ? 'making' : 'about to make'} ${NEED[g.need] || g.need} for ${g.from}`);
     const shares = [h.lend && 'lends his brain', h.takeJobs && 'takes jobs', h.passAlong && 'passes Bob-Net along'].filter(Boolean);
-    const mine = `<li class="titem net me"><span class="net-dot ${doing.length ? 'busy' : h.door ? 'ok' : ''}" aria-hidden="true"></span><span class="ttext"><strong>🏠 This Bob (${esc(h.name)})</strong> · ${esc(doing.join('; ') || (h.door ? 'nothing for the others right now' : 'door shut: the others can\'t reach him'))}${shares.length ? `<br><span class="muted">${esc(shares.join(' · '))}</span>` : ''}</span></li>`;
-    $('nowNetList').innerHTML = mine + (v.bobs || []).map(netRow).join('');
+    const mine = `<li class="titem net me"><span class="net-dot ${doing.length ? 'busy' : h.door ? 'ok' : ''}" aria-hidden="true"></span>${netFace(h.look || 'sysop', h.name, '🏠')}<span class="ttext"><strong>🏠 This Bob (${esc(h.name)})</strong> · ${esc(doing.join('; ') || (h.door ? 'nothing for the others right now' : 'door shut: the others can\'t reach him'))}${shares.length ? `<br><span class="muted">${esc(shares.join(' · '))}</span>` : ''}</span></li>`;
+    const list = $('nowNetList');
+    list.innerHTML = mine + (v.bobs || []).map(netRow).join('');
+    for (const cv of list.querySelectorAll('canvas.net-face')) { const c = cv.getContext('2d'); if (!c) continue; c.imageSmoothingEnabled = false; try { drawBob(c, cv.width, {}, cv.dataset.look); } catch {} }
   }
+  const facesBtn = $('nowNetFaces');
+  function drawFacesBtn() { if (!facesBtn) return; facesBtn.setAttribute('aria-checked', String(faces)); facesBtn.querySelector('.st').textContent = faces ? 'On' : 'Off'; }
+  if (facesBtn) facesBtn.onclick = () => { faces = !faces; store.set('bob-net-faces', faces ? '1' : '0'); drawFacesBtn(); if (lastNet) drawNet(lastNet); };
+  drawFacesBtn();
   async function pollNet() {
     clearTimeout(netTimer);
     if (body.classList.contains('right-hidden') || document.hidden) return;
