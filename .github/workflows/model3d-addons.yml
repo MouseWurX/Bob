@@ -36,7 +36,8 @@ jobs:
           $url = 'https://developer.download.nvidia.com/compute/cuda/12.8.1/local_installers/cuda_12.8.1_572.61_windows.exe'
           Invoke-WebRequest $url -OutFile cuda.exe
           (Get-Item cuda.exe).Length
-          $parts = 'nvcc_12.8','cudart_12.8','cublas_dev_12.8','cusparse_dev_12.8','cusolver_dev_12.8','curand_dev_12.8','cufft_dev_12.8','nvrtc_dev_12.8','thrust_12.8','crt_12.8','nvtx_12.8'
+          # names from NVIDIA's Toolkit Subpackages table for 12.8 (an unknown name makes the whole install fail)
+          $parts = 'nvcc_12.8','cudart_12.8','cuda_profiler_api_12.8','nvjitlink_12.8','nvrtc_12.8','nvrtc_dev_12.8','nvtx_12.8','thrust_12.8','cublas_12.8','cublas_dev_12.8','cusparse_12.8','cusparse_dev_12.8','cusolver_12.8','cusolver_dev_12.8','curand_12.8','curand_dev_12.8','cufft_12.8','cufft_dev_12.8'
           $p = Start-Process -Wait -PassThru -FilePath .\cuda.exe -ArgumentList (@('-s') + $parts)
           "installer exit code: $($p.ExitCode)"
           $cuda = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8'

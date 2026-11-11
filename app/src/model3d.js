@@ -97,7 +97,7 @@ const is312 = async (py, run = runProg) => { try { return /3\.12\./.test(await r
 // add-ons, TRELLIS.2's code at its pinned commit, then the weights.
 export async function setupModel3d(cfg, { pub, tick, signal }, { grab, run = runProg, fetchImpl = fetch, env = process.env, pins = addonPins(), key = machineKey(), findPython = findSystemPython, ownPython = getOwnPython } = {}) {
   const wheels = addonsFor(key, pins);
-  if (!wheels) throw new Error(model3dWhy(OS, process.arch, pins));
+  if (!wheels) throw new Error(key ? model3dWhy(key === 'win-x64' ? 'win' : 'linux', 'x64', pins) : model3dWhy(OS, process.arch, pins));
   const dir = shopDir(cfg);
   fs.mkdirSync(dir, { recursive: true });
   const uvEnv = { UV_CACHE_DIR: path.join(dir, 'cache'), UV_PYTHON_DOWNLOADS: 'never' };
