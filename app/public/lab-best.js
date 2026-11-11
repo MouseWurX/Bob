@@ -75,7 +75,7 @@ export function createBestPage({ api }) {
     const L = v.brains.find((b) => b.id === f.learner);
     const judges = v.brains.filter((b) => b.id !== f.learner && (!L || b.paramsB > L.paramsB));
     return `<h3>${nameNow('Best answers: a bigger brain judges, a smaller one learns')}</h3>
-      <p class="muted">The small brain answers each question several times. A bigger brain scores every answer (a short exact answer, like a number, is just checked). Then the small brain is taught from its own best answers, or learns which of two answers was better, or both. Some questions are held back and asked only before and after, so the result is honest. Answering and judging run here, for free; teaching runs here when the brain fits the card, and otherwise goes to the Forge as a plan.</p>
+      <p class="muted">The small brain answers each question a few times, a bigger brain scores the answers, and the small one learns from its best. Free here; if it's too big to teach on this card, it's saved as a Forge plan.</p>
       ${v.trainer.ok ? '' : `<p class="muted">Teaching here needs the Trainer pack (about ${v.trainer.sizeGB} GB); Teach it, on this tab, gets it.</p>`}
       <label for="bst-name">Name for the new brain</label><input id="bst-name" data-bst="name" maxlength="40" value="${esc(f.name)}">
       <div class="row"><label for="bst-learner">The brain that learns</label><select id="bst-learner" data-bst="learner"><option value="">Pick one</option>${v.brains.map((b) => `<option value="${esc(b.id)}" ${f.learner === b.id ? 'selected' : ''}>${esc(b.name)}${b.paramsB ? ` · ${b.paramsB}B` : ''}</option>`).join('')}</select></div>

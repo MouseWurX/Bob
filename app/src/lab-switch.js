@@ -1,9 +1,9 @@
-// 1.5.20x Switch experts off in the file: for a brain whose router carries a bias (gpt-oss does, most brains don't),
+// 1.5.20x Turn off unused experts: for a brain whose router carries a bias (gpt-oss does, most brains don't),
 // an expert can be switched off for good by setting its router bias very low, so the router never picks it. The file
 // keeps its shape and size, so any engine runs it (official llama.cpp, Ollama, a phone), each layer may keep a
 // different number of experts, and an expert that is never picked is never read from the drive or RAM. Only the
 // router's numbers are rewritten (128 per layer on gpt-oss, a few kilobytes), in place, in seconds. The first values
-// are saved beside the brain (<file>.experts-off.json), so Switch them all back on puts back exactly what was there.
+// are saved beside the brain (<file>.experts-off.json), so Turn them all back on puts back exactly what was there.
 import fs from 'node:fs';
 import { readGguf } from './lab-gguf.js';
 

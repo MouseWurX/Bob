@@ -64,7 +64,7 @@ export function createContextPage({ api }) {
     if (!v) return `<p class="muted" role="status">${loading ? 'Reading your brains…' : ''}</p>${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}`;
     const b = brain();
     return `<h3>${nameNow('How much can it hold?')}</h3>
-      <p class="muted">A brain can only keep so much of a chat in mind at once: its window. Here you can see what a longer window costs in memory and speed, where it stops fitting, and what a brain forgets when a chat outgrows it. It all runs here, for free.</p>
+      <p class="muted">How much chat a brain can keep in mind, what more costs in memory and speed, and what it forgets past that. Free, here.</p>
       <fieldset><legend>Which brain?</legend>${v.brains.map((x) => `<label class="lab-opt"><input type="radio" name="ctxfrom" value="${esc(x.id)}" ${from === x.id ? 'checked' : ''}> <span><strong>${esc(x.name)}</strong><br><span class="muted">${x.sizeGB} GB${x.max ? `, made for ${kLabel(x.max)}` : ''}</span></span></label>`).join('') || '<p>There are no brains here yet. Get one from Get models.</p>'}</fieldset>
       ${b ? meterHtml(b) + ladderHtml(b) : ''}
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
