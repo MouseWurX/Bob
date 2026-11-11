@@ -19,6 +19,20 @@ json.dump(st,open(p,"w"))
 PY
 echo "== $(date -u +%H:%M:%S) $*"; }
 die() { status failed "$*"; echo "FAILED: $*"; exit 1; }
+# pod_delete: the pod removes itself through the rental service's API (the same call the time-cap watchdog makes)
+pod_delete() { python3 -c "import os,urllib.request; r=urllib.request.Request('https://rest.runpod.io/v1/pods/'+os.environ['RUNPOD_POD_ID'], method='DELETE', headers={'Authorization':'Bearer '+os.environ.get('FORGE_RUNPOD_KEY', os.environ.get('RUNPOD_API_KEY',''))}); print(urllib.request.urlopen(r).read()[:200])" >> $OUT/watchdog.log 2>&1; }
+# run_done <detail>: the run's last word. 10 Nov: Bill's run finished at "done" and the PC's watcher window had died, so nobody deleted
+# the pod and it billed for two idle hours. Now the pod deletes ITSELF: as soon as the PC says it has everything (in/pc-finished,
+# which forge.mjs sends before its own delete), or after plan.done_grace_minutes (default 120, enough for a 13 GB download on a
+# home line) if the PC never answers. The time-cap watchdog still stands behind both.
+run_done() {
+  status done "$*"
+  local GRACE; GRACE=$(plan ".get('done_grace_minutes',120)")
+  ( for i in $(seq 1 $(python3 -c "print(max(6, int($GRACE*6)))")); do [ -f $IN/pc-finished ] && break; sleep 10; done
+    echo "== $(date -u +%H:%M:%S) done: $([ -f $IN/pc-finished ] && echo 'the PC has everything' || echo "no word from the PC in $GRACE minutes"); the pod deletes itself" >> $OUT/run.log 2>/dev/null
+    pod_delete ) > /dev/null 2>&1 &
+  disown $! 2>/dev/null || true
+}
 # drive_list: which Forge-made brains are REALLY usable as teacher_model on the volume (bobs/<name>/model/config.json present AND
 # bobs/<name>/adapter.pt beside it; a dangling link to a dead pod disk does not count). Written to out/drive.json at setup and on
 # every exit, so the PC's Lab only offers brains that exist (9 Nov: Bobert's full model never fit the 100 GB drive, only his adapter).
@@ -289,7 +303,7 @@ if [ "$(plan ".get('benchmark_only',False)")" = "True" ]; then
   done
   run_bench
   rm -f $IN/hf-token
-  status done "benchmark finished: the reports are on the PC under out/bench"; exit 0
+  run_done "benchmark finished: the reports are on the PC under out/bench"; exit 0
 fi
 TEACHER=$(plan "['teacher']")
 TREV=$(plan ".get('teacher_revision','')"); REV=(); [ -n "$TREV" ] && REV=(--revision "$TREV")   # pin the teacher to one HF revision (the Lab sets it when the owner gives one)
@@ -363,7 +377,7 @@ if { [ -n "$WL" ] || [ -f $IN/lessons-ready ]; } && [ ! -f $IN/lessons-merged ];
     N=$(cat $IN/lessons-ready 2>/dev/null || echo 0)
     if [ "$S" != "$W" ]; then LD=$S/lessons/$(plan ".get('run','run')"); mkdir -p $LD; cp $IN/lessons-extra-*.jsonl $IN/toolsets-extra-*.json $LD/ 2>/dev/null; cp $OUT/*.log $LD/ 2>/dev/null; echo "lessons kept on the volume at $LD"; fi
     rm -f $IN/hf-token
-    status done "lessons only: $N lessons written; they are on the PC"
+    run_done "lessons only: $N lessons written; they are on the PC"
     exit 0
   fi
   status lessons "merging the extra lessons"
@@ -457,7 +471,7 @@ for f in sorted(os.listdir(d)):
 json.dump({"name":"counts","files":files},open(f"{d}/counts-files.json","w"))
 PY
   [ "$S" != "$W" ] && mkdir -p $S/counts && cp $OUT/counts/*.json $OUT/counts/ladder.md $S/counts/ 2>/dev/null
-  status done "counts finished"; exit 0
+  run_done "counts finished"; exit 0
 fi
 
 # --- rebuild and publish (9 Nov): bring finished Bobs back from the stock teacher + keep list + adapter, make their GGUF files, and put
@@ -588,7 +602,7 @@ PY
     done
     drive_list
   fi
-  status done "rebuild finished: $RB_OK of $NR Bobs on Hugging Face${RB_WFAIL:+; full-size weights FAILED for$RB_WFAIL}"; exit 0
+  run_done "rebuild finished: $RB_OK of $NR Bobs on Hugging Face${RB_WFAIL:+; full-size weights FAILED for$RB_WFAIL}"; exit 0
 fi
 
 # --- teach-it (9 Nov): plan.odds false with no rungs = an adapter-only fine-tune of the full teacher (train_teacher above) and nothing
@@ -599,7 +613,7 @@ if [ "$(plan ".get('odds','')")" = "False" ] && [ "$(plan "['rungs'].__len__()")
   publish_tested
   if [ "$S" != "$W" ]; then RT=$S/runs/$(plan ".get('run','run')")-$(date -u +%Y%m%dT%H%M); mkdir -p $RT; cp $OUT/*.log $OUT/*.json $OUT/*.txt $RT/ 2>/dev/null; for d in $OUT/*/; do [ -d "$d" ] && { mkdir -p $RT/$(basename $d); cp $d/*.json $d/*.md $d/*.txt $RT/$(basename $d)/ 2>/dev/null; }; done; echo "run files kept on the volume at $RT"; fi
   rm -f $IN/hf-token
-  status done "teach-it finished: ${TNAME:-the taught Bob} is ready"; exit 0
+  run_done "teach-it finished: ${TNAME:-the taught Bob} is ready"; exit 0
 fi
 
 # --- teacher pass (once per lesson set, build 15): what the full Qwen thinks at every answer word (loaded in this process, no server) ---
@@ -773,4 +787,4 @@ if [ -n "$(plan ".get('benchmark')")" ]; then run_bench; fi
 # every log and report of this run stays on the volume too
 if [ "$S" != "$W" ]; then RT=$S/runs/$(plan ".get('run','run')")-$(date -u +%Y%m%dT%H%M); mkdir -p $RT; cp $OUT/*.log $OUT/*.json $OUT/*.txt $RT/ 2>/dev/null; for d in $OUT/*/; do [ -d "$d" ] && { mkdir -p $RT/$(basename $d); cp $d/*.json $d/*.md $d/*.txt $RT/$(basename $d)/ 2>/dev/null; }; done; echo "run files kept on the volume at $RT"; fi
 rm -f $IN/hf-token
-status done "all rungs finished"
+run_done "all rungs finished"

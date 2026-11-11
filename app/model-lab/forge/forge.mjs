@@ -219,6 +219,8 @@ async function salvage() {
 async function kill(why) {
   log(`deleting pod ${podId} (${why})`);
   if (args.local) return;
+  // 10 Nov: tell the pod the PC has everything, so its own self-delete (run.sh `run_done`) does not wait out the grace period if this delete fails
+  try { const mk = path.join(outDir, 'forge', 'pc-finished'); fs.writeFileSync(mk, new Date().toISOString()); await upload('pc-finished', mk); } catch {}
   if (!/downloaded/.test(why)) await salvage();
   for (let i = 0; i < 5; i++) { try { await rp('DELETE', `/pods/${podId}`); log('pod deleted'); return; } catch (e) { log(e.message.slice(0, 120)); await sleep(5000); } }
 }
