@@ -152,6 +152,11 @@ hf_get() {   # hf_get <repo> <path> <dir>: one file from Hugging Face with the p
 resolve_in() {   # resolve_in <spec> <dir> -> path: "hf:<repo>:<path>" is downloaded, anything else is a file in in/
   case "$1" in hf:*) local R P; R=$(echo "$1" | cut -d: -f2); P=$(echo "$1" | cut -d: -f3); hf_get "$R" "$P" "$2" && echo "$2/$P" ;; "") echo "" ;; *) echo "$IN/$1" ;; esac; }
 plist() { plan "$1" | python3 -c "import json,sys; d=sys.stdin.read().strip(); print(','.join(json.loads(d)) if d else '')"; }   # a list field as a,b,c
+# REAP scoring (plan "score": "reap" or "mass"; left out or "counts" = pick counts, as every Bob so far). With it the counting
+# passes also record router weight x output size per expert (reap.py) and keep.py / prune.py judge the experts by that.
+SCORE=$(plan ".get('score','counts')"); case "$SCORE" in reap|mass) REAP=--reap;; *) SCORE=counts; REAP=;; esac
+# a plain cut can only use the score when its counts file carries the REAP table (one counted on the PC does not)
+cutby() { [ "$SCORE" != counts ] && python3 -c "import json,sys; sys.exit(0 if json.load(open('$1')).get('mass') else 1)" 2>/dev/null && echo $SCORE || echo counts; }
 HOURS_MAX=$(plan ".get('hours_max',9)")
 # Self-destruct a little before the time cap, whatever happens (the PC-side watchdog is the main one).
 # elapsed = container age (from the init process start), never the host's uptime
@@ -359,10 +364,10 @@ fi
 if [ "$(plan "['rungs'].__len__()")" = "0" ] && [ -n "$(plan ".get('skills')")" ]; then
   mkdir -p $OUT/counts
   status count "counting the experts the full Qwen uses for every skill (one model load)"
-  python3 countskills.py --model $S/teacher --lessons $IN --skills "$(plan "['skills']")" --out-dir $OUT/counts --prefix counts-teacher --pieces $(plan ".get('skill_pieces',300)") --cache $W/lessons-tok.pt --max-len $(plan ".get('max_len',8192)") $GEN || die "skill counts"
+  python3 countskills.py --model $S/teacher --lessons $IN --skills "$(plan "['skills']")" --out-dir $OUT/counts --prefix counts-teacher --pieces $(plan ".get('skill_pieces',300)") --cache $W/lessons-tok.pt --max-len $(plan ".get('max_len',8192)") $GEN $REAP || die "skill counts"
   CARGS=$(python3 -c "import json,os; p=json.load(open('$IN/plan.json')); print(','.join(f'{k}=$OUT/counts/counts-teacher-{k}.json' for k in p['skills'] if os.path.exists(f'$OUT/counts/counts-teacher-{k}.json')))")
   status count "building the ladder table"
-  python3 keep.py --counts "$CARGS" --report $OUT/counts/ladder.md --name teacher --cover $(plan ".get('cover',0.95)") --strong "$(plist ".get('strong',[])")" --strong-cover $(plan ".get('strong_cover',0.99)") --ladder $(plan ".get('ladder','240,224,208,192,176,160,144,128,112,96,80,64,48,32')") || die "ladder"
+  python3 keep.py --counts "$CARGS" --report $OUT/counts/ladder.md --name teacher --cover $(plan ".get('cover',0.95)") --strong "$(plist ".get('strong',[])")" --strong-cover $(plan ".get('strong_cover',0.99)") --ladder $(plan ".get('ladder','240,224,208,192,176,160,144,128,112,96,80,64,48,32')") --by $SCORE || die "ladder"
   python3 - $OUT/counts <<'PY'
 import json,os,sys,hashlib; d=sys.argv[1]; files=[]
 for f in sorted(os.listdir(d)):
@@ -588,17 +593,17 @@ PY
       # coverage cut: count every skill on the source model, then keep what each skill needs
       mkdir -p $OUT/$NAME
       status cut "$NAME: counting the experts used for every skill in $FROM"
-      python3 countskills.py --model $SRC --lessons $IN --skills "$(plan "['skills']")" --out-dir $W --prefix counts-$NAME --pieces $(plan ".get('skill_pieces',300)") --cache $CACHE --max-len $(plan ".get('max_len',8192)") $GEN || die "$NAME skill counts"
+      python3 countskills.py --model $SRC --lessons $IN --skills "$(plan "['skills']")" --out-dir $W --prefix counts-$NAME --pieces $(plan ".get('skill_pieces',300)") --cache $CACHE --max-len $(plan ".get('max_len',8192)") $GEN $REAP || die "$NAME skill counts"
       CARGS=$(python3 -c "import json,os; p=json.load(open('$IN/plan.json')); print(','.join(f'{k}=$W/counts-$NAME-{k}.json' for k in p['skills'] if os.path.exists(f'$W/counts-$NAME-{k}.json')))")
       status cut "$NAME: building the coverage keep list"
       python3 keep.py --counts "$CARGS" --out $W/keep-$NAME.json --report $OUT/$NAME/coverage.md --name $NAME \
         --cover $(plan "['rungs'][$i].get('cover',p.get('cover',0.95))") --strong "$(plist ".get('strong',[])")" --strong-cover $(plan ".get('strong_cover',0.99)") \
-        --keep $(plan "['rungs'][$i].get('keep_n',0)") --max $(plan "['rungs'][$i].get('max',0)") || die "$NAME keep list"
+        --keep $(plan "['rungs'][$i].get('keep_n',0)") --max $(plan "['rungs'][$i].get('max',0)") --by $SCORE || die "$NAME keep list"
       KEEP=$(python3 -c "import json; print(json.load(open('$W/keep-$NAME.json'))['experts'])"); KF=keep-$NAME.json; cp $W/keep-$NAME.json $IN/keep-$NAME.json
       status cut "$NAME: coverage cut keeps $KEEP of the experts (see coverage.md)"
     fi
     if [ -n "$KF" ]; then echo "cutting with the keep list $KF"; python3 prune.py --src $SRC --dst $W/cut-$NAME --keep-file $IN/$KF --name $NAME || die "$NAME cut"
-    else python3 prune.py --src $SRC --dst $W/cut-$NAME --counts $COUNTS --keep $KEEP --name $NAME || die "$NAME cut"; fi
+    else python3 prune.py --src $SRC --dst $W/cut-$NAME --counts $COUNTS --keep $KEEP --by $(cutby $COUNTS) --name $NAME || die "$NAME cut"; fi
   fi
   status heal "$NAME: healing against the teacher"
   kernels_ready
@@ -618,7 +623,7 @@ PY
   fi
   [ -z "${RAW:-}" ] && NAME_OUT="$NAME"
   status count "$NAME: counting which experts it uses now"
-  python3 count.py --model $W/healed-$NAME --lessons $IN --out $W/counts-$NAME.json --cache $CACHE $GEN --lessons-max $( [ -n "${RAW:-}" ] && echo 300 || echo 600 ) || echo "count failed for $NAME (next rung will use the plan's counts)"
+  python3 count.py --model $W/healed-$NAME --lessons $IN --out $W/counts-$NAME.json --cache $CACHE $GEN $REAP --lessons-max $( [ -n "${RAW:-}" ] && echo 300 || echo 600 ) || echo "count failed for $NAME (next rung will use the plan's counts)"
   cp $W/counts-$NAME.json $OUT/$NAME/ 2>/dev/null
   [ -f $W/healed-$NAME/adapter.pt ] && cp $W/healed-$NAME/adapter.pt $OUT/$NAME/$NAME-adapter.pt
   if [ "$S" != "$W" ]; then mkdir -p $S/bobs/$NAME && cp $W/healed-$NAME/adapter.pt $S/bobs/$NAME/adapter.pt 2>/dev/null; cp $W/healed-$NAME/bob-keep.json $S/bobs/$NAME/ 2>/dev/null; cp $W/counts-$NAME.json $S/bobs/$NAME/ 2>/dev/null; fi

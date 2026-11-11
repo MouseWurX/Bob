@@ -201,6 +201,22 @@ check('Help has a page for goals, the estimate and the usage map', help && /usag
 check('Help says a goal-shaped brain is not much smaller', /won't be much smaller/.test(help.html));
 check('the release note exists, with no ladder names', fs.existsSync(new URL('../docs/releases/v1.5.154.md', import.meta.url)) && !/garfield|riker/i.test(read('docs/releases/v1.5.154.md')));
 
+// ---- Forge build 20: REAP scoring is wired through, off unless the plan asks, and every script run.sh calls is here ----
+{
+  const sh = read('model-lab/forge/pod/run.sh');
+  const called = [...new Set([...sh.matchAll(/python3 ([a-z_]+\.py)/g)].map((m) => m[1]))];
+  const missing = called.filter((f) => !fs.existsSync(new URL(`../model-lab/forge/pod/${f}`, import.meta.url)));
+  check('every card script run.sh calls is in the repository', called.length > 5 && !missing.length, missing.join());
+  check('the score comes from the plan and defaults to counting picks', /SCORE=\$\(plan "\.get\('score','counts'\)"\)/.test(sh) && /reap\|mass\) REAP=--reap;; \*\) SCORE=counts; REAP=;;/.test(sh));
+  check('both counting passes and both keep lists get the choice', (sh.match(/countskills\.py [^\n]*\$REAP/g) || []).length === 2 && (sh.match(/count\.py [^\n]*\$REAP/g) || []).length === 1 && (sh.match(/keep\.py [^\n]*(\\\n[^\n]*){0,2}--by \$SCORE/g) || []).length === 2);
+  check('a plain cut only uses the score when its counts carry it', /prune\.py [^\n]*--by \$\(cutby \$COUNTS\)/.test(sh) && /cutby\(\) \{[^\n]*\.get\('mass'\)[^\n]*echo counts/.test(sh));
+  const keepPy = read('model-lab/forge/pod/keep.py'), reapPy = read('model-lab/forge/pod/reap.py');
+  check('keep.py judges by counts unless told, and REAP must be given a size', /"--by", default="counts", choices=\["counts", "reap", "mass"\]/.test(keepPy) && /does not say how many to keep/.test(keepPy));
+  check('the scorer is off unless asked and never stops a count', /score=False/.test(reapPy) && /except Exception as e:[^\n]*\n\s+self\._off/.test(reapPy));
+  const faq = HELP.find((e) => e.id === 'faq-reap'), gl = HELP.find((e) => e.id === 'glossary');
+  check('Help says what REAP is and where it is used, with an FAQ and a glossary entry', faq && /count/.test(faq.html) && /"score": "reap"/.test(faq.html) && /nothing changes unless you choose it/.test(faq.html) && /<dt>REAP \(expert scoring\)<\/dt>/.test(gl.html));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 fs.rmSync(tmp, { recursive: true, force: true });
 process.exit(fail ? 1 : 0);

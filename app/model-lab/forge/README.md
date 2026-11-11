@@ -117,6 +117,17 @@ deletes the pod, and the loss is the time spent (a few dollars).
 
 A teacher that only writes lessons can be any GGUF model on Hugging Face (`plan.teacher_gguf: {repo, file, slots, ctx, extra}`): the pod builds its CUDA llama-server, downloads the file (a split file loads from its first part), serves it on port 8001, and the PC's lesson writer talks to it exactly as it talks to vLLM. `plan.lessons_only: true` ends the run once the lessons are on the PC: nothing is scored, cut or healed, and the run is held to its own caps. The lesson writer takes `--persona <file>` (a `persona` key on a `write_lessons` set), appended after Bob's own system prompt. Two Forge windows can run side by side: each run keeps its own pod record (`out/forge/pod-token-<run>.json`), the pod carries the run's name, and `--kill <podId>` deletes one pod instead of every Forge pod. A cold pod with no network volume gets a longer door wait (`plan.door_minutes`, default 25 without a volume) since it must pull its image before it can answer.
 
+## Build 20 (11 November 2026, untested on a card): REAP scoring, off unless the plan asks
+
+Every Bob so far was cut by counting how often the router picks each expert. REAP (Router-weighted Expert Activation Pruning, arXiv 2510.13999) also weighs how hard an expert pushes: the router's weight for it times the size of what it wrote.
+
+- `plan.score`: `"counts"` (default, nothing changes), `"reap"` (the paper's score: that product averaged over the expert's picks) or `"mass"` (the same product summed, so how often and how hard both count).
+- `pod/reap.py`: one scorer shared by `count.py` and `countskills.py`. With `--reap` (run.sh adds it when `score` is not `counts`) each count file also carries a `mass` table beside `layers`; the counts are unchanged. A count file made before this has no `mass`, and is counted again when a scored run needs it. The scorer runs each picked expert a second time to measure its output, about twice the expert work of the counting pass. If the model's expert weights are not laid out as one tensor per layer it says so once in the log, switches itself off and the counts carry on.
+- `pod/keep.py --by counts|reap|mass`: what the keep list is built from. The report's kept shares stay shares of the routing counts whichever is chosen, so a REAP list and a counted list can be read side by side. `--by reap` ranks experts but does not size the cut, so the rung needs `keep_n`; `--by mass` works with the coverage rule's own size. The keep file records `by`.
+- `pod/prune.py --by`: the same choice for a plain `keep: N` rung. run.sh only passes the score when that rung's counts file has a `mass` table (one counted on the PC does not) and otherwise cuts by counts.
+- `keep.py` and `countskills.py`, which run.sh has called since build 14, are now in this folder; they were missing from the repository.
+- Checked without a card: `keep.py` on made-up count files (each `--by`, the refusals), and the scorer against a brute-force sum on a tiny made-up model. The hook on the real model's expert module is untested until a run.
+
 ## FNRI on a rented card
 
 The Lab's FNRI scan (Playground) can also be made on a rented card, for a brain too big for the home card. Nothing in the app rents a card for this yet; these are the pieces.
