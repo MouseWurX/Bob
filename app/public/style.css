@@ -175,6 +175,8 @@ body.still .mic.on { animation: none; }
 .packlist { list-style: none; padding: 0; }
 .packlist li { padding: 4px 0; }
 .packlist input { accent-color: var(--accent); }
+.wantlist .switch input { flex: none; } /* wants.js: the tick boxes keep their size when the words wrap */
+.wants .row button { margin: 4px 6px 4px 0; }
 body.still .meter i { transition: none; }
 
 .roles { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
