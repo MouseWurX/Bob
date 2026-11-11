@@ -179,7 +179,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   // so with Now running hidden it costs nothing, just like a closed window.
   mindView = createMindView({ log: $('mindDockLog'), now: $('mindDockNow'), follow: $('mindDockFollow'), clear: $('mindDockClear'), order: $('mindDockOrder') });
   const dockBtn = $('mindDock');
-  docked = store.get('bob-mind-dock', '0') === '1';
+  docked = store.get('bob-mind-dock', '1') === '1'; // open to begin with, so the cube is there (1.5.196)
   function mindListen() {
     if (!mindView) return;
     const on = docked && !body.classList.contains('right-hidden') && !document.hidden;
@@ -202,7 +202,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   function cubeListen() {
     cubeBtn.setAttribute('aria-checked', String(cubeOn)); cubeBtn.querySelector('.st').textContent = cubeOn ? 'On' : 'Off';
     const on = cubeOn && docked && !body.classList.contains('right-hidden') && !document.hidden;
-    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails'), load: $('mindCubeLoad'), loadBox: $('mindCubeLoadBox') }, { onWhy: (why) => { cubeOk = !why; cubeListen(); }, still: () => body.classList.contains('still') || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches });
+    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails'), load: $('mindCubeLoad'), loadBox: $('mindCubeLoadBox') }, { onWhy: (why) => { cubeOk = !why; cubeListen(); }, still: () => body.classList.contains('still') });
     // with the cube showing, the written thinking steps aside; it comes back when the cube is off or can't work here
     $('mindDockBody').classList.toggle('cube-view', cubeOn && cubeOk);
     if (!cube) return;

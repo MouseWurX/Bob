@@ -57,7 +57,7 @@ const beOk = !engineFor(ENGINES.find((e) => e.id === 'brainengine')).unavailable
 }
 
 // The keeper: checks when due, waits while a brain is loaded on the engine, queues the download, says so.
-function rig({ cfg, newer = true, loaded = [], busy = '' } = {}) {
+function rig({ cfg, newer = true, loaded = [], busy = '', pin = null, latest = 'brain-engine-b100', print = 'sha256:new' } = {}) {
   const said = [], queued = [], dls = new Map(), timers = [];
   let t = 1_000_000_000_000, checks = 0;
   const r = {
@@ -65,7 +65,7 @@ function rig({ cfg, newer = true, loaded = [], busy = '' } = {}) {
     set loaded(v) { loaded = v; }, set busy(v) { busy = v; }, advance(ms) { t += ms; },
     keeper: new EngineKeeper(cfg, {
       now: () => t, setTimer: (fn, ms) => { timers.push(ms); return { fn, ms }; }, clearTimer: () => {},
-      check: async (id) => { checks++; return { id, newer, rebuilt: true, installed: 'brain-engine-b100', latest: 'brain-engine-b100' }; },
+      check: async (id) => { checks++; return { id, newer, rebuilt: true, installed: 'brain-engine-b100', latest, print }; }, pin,
       tested: 'b100', loaded: async () => loaded, busy: () => busy,
       queue: async (id) => { queued.push(id); dls.set(id, { state: 'queued' }); },
       download: (id) => dls.get(id) || null, say: (s) => said.push(s)
@@ -167,6 +167,37 @@ if (beOk) {
   }
   const only = [{ name: 'cudart-llama-bin-win-cuda-12.4-x64.zip' }, { name: 'llama-b7100-bin-win-cpu-x64.zip' }];
   check(pickAsset(only, win, true)?.name === 'llama-b7100-bin-win-cpu-x64.zip', 'a release with only the runtime for CUDA falls back to a real engine build');
+}
+
+// 1.5.196 (the owner: Brain Engine updates with Bob, not on its own). The engine's own marker against the build this Bob names.
+{
+  const { brainEnginePin, brainEngineStale, BRAIN_ENGINE_PIN } = await import('../src/engines.js');
+  check(BRAIN_ENGINE_PIN?.tag?.startsWith('brain-engine-') && /^sha256:[0-9a-f]{64}$/.test(BRAIN_ENGINE_PIN['win-x64']) && /^sha256:[0-9a-f]{64}$/.test(BRAIN_ENGINE_PIN['linux-x64']), 'this Bob names his Brain Engine build: the release and each file\'s checksum');
+  const pins = { tag: 'brain-engine-b200', 'win-x64': 'sha256:w', 'linux-x64': 'sha256:l' };
+  check(brainEnginePin(pins, 'win32', 'x64').print === 'sha256:w' && brainEnginePin(pins, 'linux', 'x64').print === 'sha256:l' && brainEnginePin(pins, 'darwin', 'arm64') === null && brainEnginePin(pins, 'linux', 'arm64') === null, 'the pin for this replicant matrix; none on a Mac or an ARM board');
+  const pin = { tag: 'brain-engine-b200', print: 'sha256:w' };
+  check(brainEngineStale({ version: 'brain-engine-b100', print: 'sha256:w' }, pin) && brainEngineStale({ version: 'brain-engine-b200', print: 'sha256:old' }, pin) && !brainEngineStale({ version: 'brain-engine-b200', print: 'sha256:w' }, pin), 'stale when the release or the file differs (a rebuild under the same name counts)');
+  check(!brainEngineStale(null, pin) && !brainEngineStale({ version: 'x' }, null), 'no marker (not here, or put there by hand) or no pin: left alone');
+}
+if (beOk) {
+  const A = home(); put(A, 'brain-engine', 'brainengine', 'brain-engine-b100');
+  const pin = { tag: 'brain-engine-b200', print: 'sha256:new' };
+  const r = rig({ cfg: { agentDir: A, engine: 'llamacpp', engineUpdates: { auto: false } }, pin, latest: 'brain-engine-b200', print: 'sha256:new' });
+  r.keeper.start();
+  check(r.timers[1] === 5000, 'Brain Engine is looked at right after start, before the first brain loads');
+  await r.keeper.withBob();
+  check(r.queued[0] === 'brainengine' && /the build that goes with this Bob/.test(r.said.at(-1) || ''), 'Bob is new, the engine is old: the matching build comes along, even with Keep engines up to date off', r.said.join(' | '));
+  const mk = path.join(A, 'brain-engine', 'bob-brainengine.json');
+  fs.writeFileSync(mk, JSON.stringify({ version: 'brain-engine-b100', print: 'sha256:x' }));
+  const r2 = rig({ cfg: { agentDir: A, engine: 'llamacpp' }, pin, latest: 'brain-engine-b100', print: 'sha256:x' });
+  await r2.keeper.withBob();
+  check(r2.queued.length === 0 && r2.checks === 1, 'GitHub has nothing different from what\'s here: nothing fetched again and again');
+  await r2.keeper.tick({ force: true });
+  check(r2.checks === 1, 'and Brain Engine no longer follows the newest build on its own');
+  fs.writeFileSync(mk, JSON.stringify({ version: 'brain-engine-b200', print: 'sha256:new' }));
+  const r3 = rig({ cfg: { agentDir: A, engine: 'llamacpp' }, pin });
+  await r3.keeper.withBob();
+  check(r3.checks === 0 && r3.queued.length === 0, 'already the build that goes with this Bob: no question, no download');
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

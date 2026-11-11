@@ -179,6 +179,8 @@ export class LlamaCpp {
       this.beside.resolve = (m) => this.resolve(m); // same model files (tests replace resolve on the main engine)
       this.beside.catalogFile = (id) => this.catalogFile(id);
       this.beside.main = this; // so a card reader set on the main engine (tests) also counts for the second server
+      // FNRI's small cube: a brain answering on the second server is traced too, and told to the same cube
+      this.beside.wantTrace = () => this.wantTrace?.() || false; this.beside.onTrace = (raw, model) => this.onTrace?.(raw, model);
       // 1.5.53: the brain hears when a second brain joins or leaves (chat page: second-brain events, Bob's head grows).
       this.beside.changed = (ev) => { try { this.onBeside?.(ev); } catch {} };
     }
@@ -400,22 +402,6 @@ export class LlamaCpp {
     if (!args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a))) return false;
     return !this.biggerThanMemory(gguf);
   }
-  // 1.5.19x "Keep busy experts on the graphics card" (llamacpp.moeCache, off): llama.cpp's MoE cache (b12032 and newer,
-  // --moe-cache-mib). Part of the card holds slots for experts that live in RAM (or on the drive); an expert a word
-  // picks is copied into a slot and stays while it's busy, so most picks run on the card. Only for a brain with
-  // experts that are kept off the card (fit or experts in RAM), on the card route, and never over a hand-set value.
-  moeCacheArgs(args, cpu, gguf) {
-    const mc = this.lc.moeCache;
-    if (!mc?.on || cpu || this.role === BESIDE) return [];
-    if (args.includes('--moe-cache-mib')) return [];
-    const n = this.buildNo();
-    if (!(n >= 12032)) return []; // an older or unknown build would refuse the flag and not start
-    if (!args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a))) return [];
-    let experts = 0;
-    try { experts = ggufInfo(gguf)?.experts || 0; } catch {}
-    if (!experts) return [];
-    return ['--moe-cache-mib', String(moeCacheMib(mc, cardGB(this.cfg)))];
-  }
   // The brain file is bigger than the card's share plus the RAM it may use. totalRam is swapped in by the tests.
   biggerThanMemory(gguf) {
     let size = 0;
@@ -486,7 +472,6 @@ export class LlamaCpp {
     // A brain bigger than the card and RAM: the processor's experts stay as they are in the file (no repacking into RAM),
     // so they can be read from the drive as needed (b12032 and newer know --no-repack).
     else if (!cpu && this.buildNo() >= 12032 && !args.some((a) => ['-nr', '--no-repack', '--repack'].includes(a)) && args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a)) && this.biggerThanMemory(gguf)) args.push('--no-repack');
-    args.push(...this.moeCacheArgs(args, cpu, gguf));
     // 1.5.19: one conversation at a time, so it gets the whole context (more slots split it into small pieces).
     if (!args.some((a) => ['-np', '--parallel'].includes(a))) args.push('-np', '1');
     args.push(...this.templateArgs(model, gguf, args));
@@ -851,7 +836,7 @@ export class LlamaCpp {
   async readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver }) {
     let content = '';
     let held = null; // null: not decided yet; false: streaming normally; a string: held back
-    let thought = 0;
+    let thought = 0, traced = false; const asked = this.wantTrace?.() === true; // FNRI's small cube: was the trace asked for, and did it come
     const calls = [];
     let buf = '';
     const decoder = new TextDecoder();
@@ -865,10 +850,10 @@ export class LlamaCpp {
         const data = line.slice(5).trim();
         if (data === '[DONE]') continue;
         const ev = parseJson(data);
-        if (!ev) continue; // a cut or odd line from the server: skip it rather than lose the whole reply
+        if (!ev) { if (asked && data.includes('"expert_trace"')) this.log?.('engine', `FNRI cube: ${model}'s trace came back unreadable (${data.length.toLocaleString()} characters)`); continue; } // a cut or odd line from the server: skip it rather than lose the whole reply
         if (ev.error) throw new Error('llama-server: ' + (ev.error.message || JSON.stringify(ev.error)));
         // 1.5.30: llama-server puts the reply's timings on its last chunk; kept for Now running.
-        if (ev.expert_trace && this.onTrace) { try { this.onTrace(ev.expert_trace, model); } catch {} }
+        if (ev.expert_trace && this.onTrace) { traced = true; try { this.onTrace(ev.expert_trace, model); } catch (e) { this.log?.('engine', `FNRI cube: couldn't read ${model}'s trace: ${e.message}`); } }
         if (ev.timings) this.lastStats = replyStats({ model: this.current || model, messages, promptTokens: (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0), outTokens: ev.timings.predicted_n, tokPerSec: ev.timings.predicted_per_second, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX }) || this.lastStats;
         const d = ev.choices?.[0]?.delta || {};
         if (budget && d.reasoning_content && ++thought > budget && !content) onOver(); // stop.over marks it, so real errors aren't retried
@@ -890,6 +875,7 @@ export class LlamaCpp {
         }
       }
     }
+    if (asked && !traced) this.log?.('engine', `FNRI cube: ${model} answered without an expert trace (an older Brain Engine, or not Brain Engine)`);
     const tool_calls = calls.filter(Boolean).map((c) => {
       let args = {};
       try { args = c.args ? JSON.parse(c.args) : {}; } catch { args = {}; }
@@ -904,11 +890,4 @@ export class LlamaCpp {
     if (held && /<\|(channel|message|start|end)\|>/.test(content)) content = cleanHarmony(content);
     return { role: 'assistant', content, tool_calls: tool_calls.length ? tool_calls : undefined };
   }
-}
-
-// The cache size: as set (256 MiB to 64 GiB), else a quarter of the card (4 GB on a 16 GB card), else 2 GB.
-export function moeCacheMib(mc = {}, cardGb = 0) {
-  const set = Number(mc.mib);
-  if (Number.isFinite(set) && set >= 256) return Math.min(65536, Math.round(set));
-  return cardGb > 0 ? Math.max(512, Math.round(cardGb * 1024 / 4)) : 2048;
 }

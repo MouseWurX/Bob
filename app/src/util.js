@@ -9,6 +9,11 @@ export const clip = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(
 // A file's size in bytes, or 0 if it isn't there.
 export const fileSize = (p) => { try { return fs.statSync(p).size; } catch { return 0; } };
 // The first {...} in a brain's answer, or null.
+// 1.5.201: a JSON file as it's saved. A file written by Windows PowerShell (Set-Content, Out-File) starts with a UTF-8
+// byte-order mark, which JSON.parse refuses; it's dropped first. A file that still can't be read throws, so a caller
+// never takes "unreadable" for "empty" and writes over it.
+export const stripBom = (t) => String(t ?? '').replace(/^\uFEFF/, '');
+export const readJsonFile = (file) => JSON.parse(stripBom(fs.readFileSync(file, 'utf8')));
 export function parseJson(text) {
   const s = String(text || '');
   const a = s.indexOf('{'), b = s.lastIndexOf('}');

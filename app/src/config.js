@@ -8,7 +8,7 @@ import { cleanHands } from './hands-settings.js';
 import { cleanPresets } from './model-family.js';
 import { cleanSelfWork, applyCodeCopy } from './self-work.js';
 import fs from 'node:fs';
-import { writeJsonAtomic } from './util.js';
+import { writeJsonAtomic, readJsonFile } from './util.js';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -52,7 +52,7 @@ export function loadConfig() {
   const file = process.env.BOB_CONFIG || path.join(sourceRoot(), 'config.json');
   // A fresh copy of the source has no config.json (it's never published): start from the example.
   if (!process.env.BOB_CONFIG && !fs.existsSync(file)) fs.copyFileSync(path.join(appDir, 'config.example.json'), file);
-  const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const cfg = readJsonFile(file);
   cfg.configFile = file;
   if (process.env.BOB_AGENT_DIR) cfg.agentDir = process.env.BOB_AGENT_DIR;
   if (process.env.BOB_OLLAMA_URL) cfg.ollamaUrl = process.env.BOB_OLLAMA_URL;
@@ -119,7 +119,12 @@ export function loadConfig() {
     console.error(`config.json asks for a ${cfg.llamacpp.legacyCtx}-token context for every brain; using each session's own size instead (pick one in Settings, Show advanced settings, Brains to override).`);
   }
   cfg.settingsFile = path.join(cfg.dataDir, 'settings.json');
-  try { mergeSettings(cfg, JSON.parse(fs.readFileSync(cfg.settingsFile, 'utf8'))); } catch {}
+  const hand = { engine: cfg.engine, brainEngine: cfg.llamacpp?.brainEngine }; // what config.json itself says
+  try { mergeSettings(cfg, readJsonFile(cfg.settingsFile)); } catch {}
+  // 1.5.196: Brain Engine is the only engine for Bob's brains (onlyBrainEngine, below). An older pick of plain llama.cpp
+  // or Ollama in Settings is set aside here, after settings.json, and the program is picked again with that.
+  cfg.engineMoved = onlyBrainEngine(cfg, { hand });
+  if (cfg.engineMoved.length) cfg.llamacpp.exe = pickLlamaExe(cfg.llamacpp.exe, cfg.agentDir, { brainEngine: cfg.llamacpp.brainEngine });
   // "What should Bob call you?" (Attributes, first-run). Kept in inn\bob\settings.json, never in config.json.
   if (cfg.callMe) cfg.userName = cfg.callMe;
   cfg.autostart = cfg.autostart === true; // opt-in: off unless the user turned it on
@@ -128,7 +133,7 @@ export function loadConfig() {
 }
 
 // The configured program if it exists; otherwise the first match in the engine folder, its bin\ or Release\ subfolder.
-// 1.5.169: Brain Engine (Bob's fork of llama.cpp, Get models > Engines) is the default engine for brains. When its
+// 1.5.169: Brain Engine (Bob's fork of llama.cpp, Settings > Engines) is the default engine for brains. When its
 // folder holds llama-server, Bob runs his brains on it, unless Settings, Engines says plain llama.cpp
 // (llamacpp.brainEngine false). A llama-server set by hand somewhere else always wins; one set to Bob's own llama.cpp
 // folder counts as the default. No Brain Engine (a Mac, an ARM board, not downloaded): llama.cpp as before.
@@ -144,6 +149,21 @@ export function pickLlamaExe(configured, agentDir, { brainEngine, platform = pro
   if (p) return p;
   if (platform === 'linux') { const q = onPath(name); if (q) return q; }
   return configured && !within(be, configured) ? configured : path.join(everyday, name);
+}
+
+// 1.5.196 (the owner, Nov 10: "Bob's Brain Engine should be the only engine", the others don't fit him any more).
+// Where Brain Engine has a build (Windows, x64 Linux), it is the only engine for Bob's brains: an old pick of plain llama.cpp
+// or Ollama moves to it. Where it has none yet (a Mac, an ARM board), Bob's own llama.cpp runs them until it does.
+// Ollama is never the brains' engine now. Until Brain Engine is downloaded, the llama.cpp already here stands in.
+// Returns the engines moved away from, for the logbook.
+export const brainEngineBuilt = (platform = process.platform, arch = process.arch) => platform === 'win32' || (platform === 'linux' && arch === 'x64');
+// As with a llama-server set by hand, an engine written by hand into config.json itself still wins (hand).
+export function onlyBrainEngine(cfg, { platform, arch, hand = {} } = {}) {
+  const moved = [];
+  if (cfg.engine === 'ollama' && hand.engine !== 'ollama') { cfg.engine = 'llamacpp'; moved.push('Ollama'); }
+  cfg.llamacpp = cfg.llamacpp || {};
+  if (brainEngineBuilt(platform, arch) && cfg.llamacpp.brainEngine === false && hand.brainEngine !== false) { cfg.llamacpp.brainEngine = true; moved.push('llama.cpp'); }
+  return moved;
 }
 
 export function findExe(configured, dir, names, platform = process.platform) {
@@ -174,7 +194,7 @@ export const VERSION = (() => {
   } catch { return { release: '0.9', branch: '', build: 0, label: '0.9.0' }; }
 })();
 
-export const SETTING_KEYS = ['planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'apuHoldbackGB'];
+export const SETTING_KEYS = ['quickNotes', 'docTools', 'sandboxCode', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'apuHoldbackGB'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -221,6 +241,11 @@ function clean(patch) {
   if ('qwenPresets' in out) out.qwenPresets = cleanPresets(out.qwenPresets); // 1.5.148 "Choose my own word settings", off unless switched on
   if ('selfWork' in out) out.selfWork = cleanSelfWork(out.selfWork); // "Let Bob work on repositories" (self-work.js), off by default
   if ('howtos' in out) out.howtos = out.howtos === true; // 1.5.79 "Let Bob learn how-tos", off by default
+  if ('wantsAsked' in out) out.wantsAsked = out.wantsAsked === true; // the chat's one-time "Do you want me to" offer (wants.js)
+  if ('editOwn' in out) out.editOwn = out.editOwn === true; // "Let Bob fix his own messages", off by default (edit-own.js)
+  if ('quickNotes' in out) out.quickNotes = out.quickNotes === true; // "Let Bob take quick notes", off by default (notes.js)
+  if ('docTools' in out) out.docTools = out.docTools === true; // "Read and search my documents", off by default (my-docs.js)
+  if ('sandboxCode' in out) out.sandboxCode = out.sandboxCode === true; // "Let Bob work things out in a sandbox", off by default (sandbox-code.js)
   if ('tray' in out) out.tray = out.tray !== false; // 1.5.94 "Keep Bob in the tray"; on unless switched off since 1.5.134 (the owner asked for it)
   if ('lookIcon' in out) out.lookIcon = out.lookIcon !== false; // 1.5.94 "Use Bob's look as his icon"; on unless switched off since 1.5.134 (the owner asked for it)
   if ('houseStyle' in out) out.houseStyle = cleanHouseStyle(out.houseStyle); // 1.5.34 House style (public/house-style.js)
@@ -310,7 +335,6 @@ function cleanLlamacpp(lc) {
   if ('noEyes' in out) out.noEyes = Array.isArray(out.noEyes) ? [...new Set(out.noEyes.filter((x) => typeof x === 'string' && /^[\w.:/-]{1,100}$/.test(x)))].slice(0, 200) : []; // Lab: brains loaded without their reader
   if ('brainEngine' in out) out.brainEngine = out.brainEngine !== false; // 1.5.169: run brains on Brain Engine when it's here
   if ('loadMode' in out) out.loadMode = out.loadMode === 'mmap' ? 'mmap' : 'auto'; // 1.5.90
-  if ('moeCache' in out) { const m = out.moeCache || {}; const mib = Number(m.mib); out.moeCache = { on: m.on === true, mib: Number.isInteger(mib) && mib >= 256 && mib <= 65536 ? mib : null }; } // 1.5.19x Keep busy experts on the card
   if ('draft' in out) {
     const d = out.draft || {};
     out.draft = {
@@ -444,7 +468,7 @@ function applyProjects(cfg) {
 export function replaceSettings(cfg, patch) {
   const safe = clean(patch);
   let saved = {};
-  try { saved = JSON.parse(fs.readFileSync(cfg.settingsFile, 'utf8')); } catch {}
+  try { saved = readJsonFile(cfg.settingsFile); } catch {}
   for (const [k, v] of Object.entries(safe)) { saved[k] = v; cfg[k] = v; }
   writeJsonAtomic(cfg.settingsFile, saved, 2);
   applyProjects(cfg);
@@ -455,7 +479,7 @@ export function replaceSettings(cfg, patch) {
 // Let my phone in (src/phone-access.js): phone access lives in config.json only, never in settings.json, so nothing that
 // can write Bob's settings file can open the door. Only the Settings page on this PC calls this (server.js, local only).
 export function saveRemote(cfg, remote) {
-  const raw = JSON.parse(fs.readFileSync(cfg.configFile, 'utf8'));
+  const raw = readJsonFile(cfg.configFile);
   raw.remote = { ...(raw.remote || {}), ...remote };
   writeJsonAtomic(cfg.configFile, raw, 2);
   cfg.remote = raw.remote;
@@ -464,7 +488,7 @@ export function saveRemote(cfg, remote) {
 export function saveSettings(cfg, patch) {
   const safe = clean(patch);
   let saved = {};
-  try { saved = JSON.parse(fs.readFileSync(cfg.settingsFile, 'utf8')); } catch {}
+  try { saved = readJsonFile(cfg.settingsFile); } catch {}
   deepMerge(saved, safe);
   writeJsonAtomic(cfg.settingsFile, saved, 2);
   deepMerge(cfg, safe);

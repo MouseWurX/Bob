@@ -61,7 +61,7 @@ export function traceBuilt(exe) {
   for (const f of libs) { if (found[0] && found[1]) break; scanFor(path.join(path.dirname(exe), f), want, found); }
   return { experts: found[1], heads: found[0] };
 }
-export const NO_ENGINE = 'The live view needs Brain Engine, the Lab\'s engine. Get it in Get models, Engines: Brain Engine.';
+export const NO_ENGINE = 'The live view needs Brain Engine, the Lab\'s engine. Get it in Settings, Engines: Brain Engine.';
 
 // One brain's map data for the page: the things counted so far, the totals, per-layer lines, and whether live is possible.
 export function peekView(cfg, brain, facts, { engineFound = false, traceOk = null } = {}) {

@@ -3,6 +3,7 @@
 // it starts to get worse. Then the same question, asked of every size. Its own module so the Lab page (public/lab.js)
 // only places it and hands over its events, like the cut recipes.
 import { esc } from './rich.js';
+import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 import { saveHtml } from './lab-save.js';
 import { createFullSize, fullSizeWhyNot } from './lab-fullsize.js'; // Bring in a full-size brain, right where the list is empty
 import { createContextPage } from './lab-context.js'; // 1.5.16x Longer: how much can it hold (thinking-paths sec 15.2)
@@ -98,7 +99,7 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
     const others = (v().brains || []).filter((b) => !list.includes(b));
     const steps = (v().ladderSteps || []).map((s) => s.label).join(', ');
     return `<div id="lab-page-playground" role="tabpanel" aria-labelledby="lab-tab-playground">${navHtml()}
-      <h3>How small can a brain get?</h3>
+      <h3>${nameNow('How small can a brain get?')}</h3>
       <p class="muted">Bob takes one small brain and makes it ${steps ? `in six sizes (${esc(steps)})` : 'in six sizes'}, then measures each the same way: how big it is, how fast it writes, its Lab score, and how surprised it is by a page of Bob's Help it never tuned on. Smaller files lose detail, and this shows you where that starts to matter. It runs here, for free. It takes disk, and Bob shows how much before it starts.</p>
       ${runsHtml}
       <fieldset><legend>Which brain?</legend>${list.length ? list.map((b) => `<label class="lab-opt"><input type="radio" name="playfrom" value="${esc(b.id)}" ${from === b.id ? 'checked' : ''}> <span><strong>${esc(b.name)}</strong><br><span class="muted">${b.facts.sizeGB} GB full size.</span></span></label>`).join('')

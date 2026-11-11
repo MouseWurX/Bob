@@ -97,7 +97,7 @@ const mk = () => {
 };
 // A Trainer pack that's "here", so teaching here can start.
 const trDir = path.join(tmp, 'trainer'); const py = process.platform === 'win32' ? path.join(trDir, 'venv', 'Scripts', 'python.exe') : path.join(trDir, 'venv', 'bin', 'python');
-fs.mkdirSync(path.dirname(py), { recursive: true }); fs.writeFileSync(py, ''); fs.mkdirSync(path.join(trDir, 'llama.cpp'), { recursive: true }); fs.writeFileSync(path.join(trDir, 'llama.cpp', 'convert_hf_to_gguf.py'), ''); fs.writeFileSync(path.join(trDir, 'trainer.json'), JSON.stringify({ ok: true, version: 'test' }));
+fs.mkdirSync(path.dirname(py), { recursive: true }); fs.writeFileSync(py, ''); fs.mkdirSync(path.join(trDir, 'llama.cpp'), { recursive: true }); fs.writeFileSync(path.join(trDir, 'llama.cpp', 'convert_hf_to_gguf.py'), ''); fs.writeFileSync(path.join(trDir, 'trainer.json'), JSON.stringify({ ok: true, python: path.relative(trDir, py), version: 'test' }));
 
 // ---- the pieces ----
 {

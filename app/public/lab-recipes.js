@@ -3,6 +3,7 @@
 // five steps; the estimate shows what a job takes here and what the rented part would cost, before anything runs;
 // the usage map counts which experts a brain uses for the things you test it on, and which it never touches.
 import { esc } from './rich.js';
+import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 import { DEVICES } from './lab-recipes-list.js';
 
 export function createRecipes({ api, recipe, view, replan, draw }) {
@@ -61,7 +62,7 @@ export function createRecipes({ api, recipe, view, replan, draw }) {
   const ids = (l) => l.map((x) => (x.layer !== undefined ? `layer ${x.layer}: ${x.experts.join(', ')}` : '')).join('; ');
   function usageHtml() {
     const b = brain();
-    const head = '<h3 id="lab-usage-h">Usage map: which experts does it use?</h3>';
+    const head = `<h3 id="lab-usage-h">${nameNow('Usage map: which experts does it use?')}</h3>`;
     if (!b) return `<section class="lab-usage" id="lab-usage" aria-labelledby="lab-usage-h">${head}<p class="muted">Pick a brain in step 1, then tick what to test it on.</p></section>`;
     if (!b.facts?.experts) return `<section class="lab-usage" id="lab-usage" aria-labelledby="lab-usage-h">${head}<p class="muted">${esc(b.name)} isn't a mixture-of-experts brain, so there are no experts to count.</p></section>`;
     const L = usage?.have ? usage.lists : null;
@@ -70,7 +71,7 @@ export function createRecipes({ api, recipe, view, replan, draw }) {
       <p class="muted">${esc(b.name)} has ${b.facts.experts} experts in each layer and wakes ${b.facts.used} for every word. Tick what to test it on, and Bob counts which experts wake up for each one, and which never do. It's free and runs here, a few minutes for each thing.</p>
       <fieldset><legend>Test it on</legend>${options.map(opt).join('')}
         ${pick.has('path') ? `<p><label>File or folder <input id="lab-usage-path" type="text" value="${esc(upath)}" autocomplete="off"></label></p>` : ''}</fieldset>
-      <label class="lab-opt${v().brainEngine ? '' : ' dim'}"><input type="checkbox" data-utry ${tryWithout ? 'checked' : ''} ${v().brainEngine ? '' : 'disabled'}> <span><strong>Then try it without the cold and faint experts</strong><br><span class="muted">${v().brainEngine ? 'Brain Engine switches them off for a moment and gives the Lab test with and without them. Nothing is written to disk.' : 'Needs Brain Engine, Bob\'s Lab engine. Get it in Get models &gt; Engines: Brain Engine (test build).'}</span></span></label>
+      <label class="lab-opt${v().brainEngine ? '' : ' dim'}"><input type="checkbox" data-utry ${tryWithout ? 'checked' : ''} ${v().brainEngine ? '' : 'disabled'}> <span><strong>Then try it without the cold and faint experts</strong><br><span class="muted">${v().brainEngine ? 'Brain Engine switches them off for a moment and gives the Lab test with and without them. Nothing is written to disk.' : 'Needs Brain Engine, Bob\'s Lab engine. Get it in Settings &gt; Engines: Brain Engine (test build).'}</span></span></label>
       ${askUnload ? `<div class="setup-offer" role="alert"><strong>Bob's brain is on the graphics card</strong><span>${esc(askUnload.join(', '))} is loaded. Counting needs the graphics card, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-uunload>Unload it and count</button><button type="button" class="link" data-unounload>Not now</button></div></div>` : ''}
       <div class="row"><button type="button" class="get" data-usagestart ${busy() || !pick.size ? 'disabled' : ''}>${busy() ? 'The Lab is busy' : 'Count'}</button></div>
       ${umsg ? `<p class="error" role="alert">${esc(umsg)}</p>` : ''}

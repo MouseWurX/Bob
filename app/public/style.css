@@ -76,6 +76,10 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent);
 .msg a + .mini[data-copy-link] { padding: 0 4px; font-size: 11px; margin-left: 3px; }
 .msg-tools { display: flex; gap: 4px; justify-content: flex-end; margin-top: 6px; white-space: normal; }
 .msg.you .msg-tools .mini { color: inherit; opacity: .75; }
+/* Let Bob fix his own messages: "edited" under a message he changed, and what it said first */
+.edited-note { margin-top: 6px; font-size: .85em; }
+.edited-note .link { min-height: 32px; padding: 0 4px; }
+.edited-was { margin-top: 4px; padding-left: 8px; border-left: 2px solid var(--line); white-space: pre-wrap; }
 .msg.bob pre { position: relative; }
 .msg.bob pre .copy-code { position: absolute; top: 4px; right: 4px; font-family: inherit; }
 .msg a.file-link { color: var(--accent); text-decoration: underline dotted; }
@@ -171,6 +175,8 @@ body.still .mic.on { animation: none; }
 .packlist { list-style: none; padding: 0; }
 .packlist li { padding: 4px 0; }
 .packlist input { accent-color: var(--accent); }
+.wantlist .switch input { flex: none; } /* wants.js: the tick boxes keep their size when the words wrap */
+.wants .row button { margin: 4px 6px 4px 0; }
 body.still .meter i { transition: none; }
 
 .roles { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
@@ -1427,6 +1433,7 @@ details.fold > summary .muted { font-weight: 400; font-size: 13px; }
 .lab-opt input[type=radio], .lab-opt input[type=checkbox] { margin-top: 3px; min-width: 18px; min-height: 18px; }
 .lab-opt.dim { opacity: .65; }
 .lab-later { font-size: 11px; font-weight: 600; border: 1px dashed var(--line); border-radius: 999px; padding: 0 6px; margin-left: 4px; }
+.lab-plain { font-weight: 400; color: var(--muted); } /* 1.5.199 Professional mode: the plain words after a proper name */
 .lab-sub { margin-left: 26px; }
 .lab-steps ol { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 10px 0; }
 .lab-step { border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; min-height: 32px; background: none; color: inherit; }
@@ -1610,6 +1617,12 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 /* FNRI's small cube in Bob's thinking (Now running) */
 .mind-cube { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
 .mind-cube canvas { width: 100%; height: 220px; display: block; border: 1px solid var(--line); border-radius: var(--r); }
+/* No brain loaded: a neon sign over the empty cube, flickering now and then (still when animations are off) */
+.mind-cube { position: relative; }
+.mind-cube p.mind-cube-sign { position: absolute; left: 0; right: 0; top: 0; height: 220px; display: flex; align-items: center; justify-content: center; margin: 0; pointer-events: none; font: 600 26px/1.1 system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; text-align: center; color: var(--accent); text-shadow: 0 0 4px currentColor, 0 0 12px currentColor, 0 0 28px currentColor; animation: mind-cube-neon 6s steps(1) infinite; }
+.mind-cube p.mind-cube-sign[hidden] { display: none; }
+@keyframes mind-cube-neon { 0%, 61%, 63%, 66%, 100% { opacity: 1; } 62%, 65% { opacity: .25; } 64% { opacity: .8; } 88% { opacity: .35; } 89% { opacity: 1; } }
+.still .mind-cube p.mind-cube-sign { animation: none; }
 .mind-cube p { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
 /* hidden from sight only: a screen reader still reads Bob's thinking written out while the cube shows */
 .cube-view .mind-log, .cube-view .mind-empty { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }

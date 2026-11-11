@@ -24,7 +24,7 @@ const models = (here = []) => catalog.models.map((m) => ({ ...m, status: { state
   const pack = packFor(catalog.packs, 16, false);
   const rows = readyList({ pack, models: models(), engines: engines(), hw });
   const ids = rows.map((r) => r.id);
-  check('every program and model has its own row', ['engine:llamacpp', 'engine:sdcpp', 'engine:whispercpp', 'engine:kokoro', 'qwen3.6-35b-a3b', 'z-image-turbo', 'wan2.2-ti2v-5b', 'kokoro-v1', 'nomic-embed-text'].every((id) => ids.includes(id)), ids.join(','));
+  check('every program and model has its own row', ['engine:llamacpp', 'engine:sdcpp', 'engine:whispercpp', 'engine:kokoro', 'bobert-35b', 'riker-28b-q3', 'z-image-turbo', 'wan2.2-ti2v-5b', 'kokoro-v1', 'nomic-embed-text'].every((id) => ids.includes(id)), ids.join(','));
   const picks = readyDefaults(rows);
   check('the recommended ones come ticked', picks.has('wan2.2-ti2v-5b') && picks.has('z-image-turbo') && picks.has('engine:sdcpp'));
   check('music is offered but left unticked (a large optional download)', ids.includes(MUSIC_ID) && !picks.has(MUSIC_ID) && !picks.has('engine:audio'));

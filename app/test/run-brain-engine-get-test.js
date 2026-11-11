@@ -1,4 +1,4 @@
-// 1.5.157 Get Brain Engine (Get models, Engines). 1.5.169: listed for everyone and the default engine for brains. The official llama.cpp build of the tested
+// 1.5.157 Get Brain Engine (Settings, Engines). 1.5.169: listed for everyone and the default engine for brains. The official llama.cpp build of the tested
 // tag goes in its own brain-engine folder with Brain Engine's own files on top, both checked against GitHub's sha256;
 // Bob's everyday llama.cpp folder is never touched. Fake GitHub, real archives.
 // Run: node test/run-brain-engine-get-test.js

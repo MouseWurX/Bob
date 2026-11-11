@@ -283,7 +283,7 @@ export function planRecipe(recipe, { brain, facts, tools, outDir, skillNamesFor 
   if (s.cut?.how === 'cover') for (const x of s.cut.strong) if (!skills.includes(x)) problems.push(`There's no skill called ${x} in these lessons.`);
   if (s.cut?.how === 'file' && !s.cut.file) problems.push('Pick the expert list file.');
   if (r.lessons.kind === 'file' && !r.lessons.file) problems.push('Pick the lesson file.');
-  for (const [k, p] of Object.entries(tools)) if (!p.found && ((k === 'imatrix' && s.cut?.how === 'busiest') || (k === 'quantize' && s.files.length) || k === 'server')) problems.push(`${path.basename(p.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it; download the engine again if it's missing.`);
+  for (const [k, p] of Object.entries(tools)) if (!p.found && ((k === 'imatrix' && s.cut?.how === 'busiest') || (k === 'quantize' && s.files.length) || k === 'server')) problems.push(`${path.basename(p.path)} isn't in Bob's engine folder. Settings, Engines, Bob's own engine has it; download the engine again if it's missing.`);
 
   let file = brain.gguf;
   if (s.cut?.how === 'busiest') {
@@ -303,7 +303,7 @@ export function planRecipe(recipe, { brain, facts, tools, outDir, skillNamesFor 
   if (s.try) {
     // Try it first: Brain Engine runs the whole brain with only the kept experts switched on, so the Lab test shows
     // what the cut will do before any file is written. The same run, with every expert on, is the "before" score.
-    if (!tools.brainEngine?.found) problems.push('Try it first needs Brain Engine, Bob\'s Lab engine, on this replicant matrix. Get it in Get models > Engines: Brain Engine, or untick Try it first.');
+    if (!tools.brainEngine?.found) problems.push('Try it first needs Brain Engine, Bob\'s Lab engine, on this replicant matrix. Get it in Settings > Engines: Brain Engine, or untick Try it first.');
     steps.push({ id: 'try', label: 'Try it first: test with only the kept experts switched on', cmd: `${q(tools.brainEngine?.path || 'brain-engine/llama-server')} -m ${q(brain.gguf)} -c 8192 --jinja --fit on\n# the Lab test with every expert on, then POST /expert-mask {"keep": <the keep list>} and the Lab test again${s.tryStop ? '\n# stop here if it scores more than 10 points lower on the Lab test' : ''}`, gguf: brain.gguf, card: true });
   }
   if (s.cut) {
@@ -337,7 +337,7 @@ export function planRecipe(recipe, { brain, facts, tools, outDir, skillNamesFor 
       if (!steps.some((x) => x.id === 'lessons')) steps.unshift({ id: 'lessons', label: r.lessons.kind === 'chats' ? 'Gather your chats with Bob as lessons' : 'Read the lesson set', cmd: `# Bob writes the lessons as one text file: ${q(corpus)}`, corpus });
       imatrix = path.join(dir, 'imatrix.gguf');
       steps.push({ id: 'imatrix', label: 'Measure which weights matter most', cmd: `${q(tools.imatrix.path)} -m ${q(file)} -f ${q(corpus)} -o ${q(imatrix)} -c 4096 --chunks ${r.lessons.chunks} --fit on`, src: file, corpus, out: imatrix, card: true });
-      if (!tools.imatrix?.found && !problems.some((x) => x.includes(path.basename(tools.imatrix.path)))) problems.push(`${path.basename(tools.imatrix.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it; download the engine again if it's missing.`);
+      if (!tools.imatrix?.found && !problems.some((x) => x.includes(path.basename(tools.imatrix.path)))) problems.push(`${path.basename(tools.imatrix.path)} isn't in Bob's engine folder. Settings, Engines, Bob's own engine has it; download the engine again if it's missing.`);
     }
   }
   const finals = [];
@@ -638,7 +638,7 @@ export class Lab {
       const lic = teacherLicence(t.license);
       if (!lic.ok) problems.push(lic.note); else if (lic.note) notes.push(lic.note);
       if (t.naughty) notes.push(`${t.name} is on the naughty list, so its lessons teach its ways too.`);
-      if (!this.tools().server.found) problems.push(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it.`);
+      if (!this.tools().server.found) problems.push(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Settings, Engines, Bob's own engine has it.`);
     }
     notes.push('A teacher teaches best when it\'s at least as good as the brain you\'ll teach: the brain you\'re going to cut is often the best teacher here.');
     const hours = Math.max(1, Math.round((x.count * SECONDS_PER_LESSON) / 3600));
@@ -719,7 +719,7 @@ export class Lab {
     if (t) {
       const lic = teacherLicence(t.license);
       if (!lic.ok) problems.push(lic.note); else if (lic.note) notes.push(lic.note);
-      if (!this.tools().server.found) problems.push(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it.`);
+      if (!this.tools().server.found) problems.push(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Settings, Engines, Bob's own engine has it.`);
     }
     const skills = [...new Set(x.items.map((i) => i.skill))];
     if (skills.length > 12) problems.push(`That's ${skills.length} skills. Keep it to 12 or fewer, or the coverage cut has nothing to protect: give files that belong together the same skill name.`);
@@ -873,7 +873,7 @@ export class Lab {
     const packs = [...new Set([].concat(c.packs || []).filter((id) => PACK_IDS.includes(id) || mine.some((m) => m.id === id)))];
     if (!packs.length) throw new Error('Tick at least one challenge.');
     const gen = cleanGen(c.gen || {}); // 1.5.168 Simple mode sends nothing, so the defaults
-    if (!this.tools().server.found) throw new Error(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it.`);
+    if (!this.tools().server.found) throw new Error(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Settings, Engines, Bob's own engine has it.`);
     if (this.brain?.engine?.loaded) {
       const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
       if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
@@ -882,7 +882,7 @@ export class Lab {
     const title = (id) => (PACKS.find((p) => p.id === id) || mine.find((m) => m.id === id)).title;
     // The standard speed test after the challenges, when ticked (off unless ticked) and the tool is here.
     const bench = c.bench === true;
-    if (bench && !this.benchTool().found && !this.stepFns.bench) throw new Error('The standard speed test (llama-bench) isn\'t here. It comes with the built-in engine and with Brain Engine (Get models > Engines). Untick it, or get one of them again.');
+    if (bench && !this.benchTool().found && !this.stepFns.bench) throw new Error('The standard speed test (llama-bench) isn\'t here. It comes with the built-in engine and with Brain Engine (Settings > Engines). Untick it, or get one of them again.');
     const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'challenge', name: `Challenges for ${brain.name}`, from: brain.id, fromName: brain.name, packs, gen, bench, state: 'running', at: this.now(), steps: [{ id: 'serve', label: `Start ${brain.name}`, state: 'waiting' }, ...packs.map((id) => ({ id, label: title(id), state: 'waiting' })), ...(bench ? [{ id: 'bench', label: 'The standard speed test (llama-bench)', state: 'waiting' }] : [])], progress: 0 };
     this.runs.push(runRec); this.save();
     const ac = new AbortController();
@@ -980,7 +980,7 @@ export class Lab {
     if (f && !f.fullSize) problems.push(`${brain.name} is already a running file (${f.fileType}). The ladder starts from the full-size copy (F16 or BF16).`);
     if (f && f.sizeGB > PLAY_MAX_GB) problems.push(`${brain.name} is ${f.sizeGB} GB. The ladder is for small brains, up to ${PLAY_MAX_GB} GB full size, so it fits in an evening and on the disk.`);
     const t = this.tools();
-    for (const k of ['quantize', 'imatrix', 'server']) if (!t[k].found) problems.push(`${path.basename(t[k].path)} isn't in the built-in engine's folder. Get models > Engines: the built-in engine has it; download the engine again if it's missing.`);
+    for (const k of ['quantize', 'imatrix', 'server']) if (!t[k].found) problems.push(`${path.basename(t[k].path)} isn't in the built-in engine's folder. Settings > Engines: the built-in engine has it; download the engine again if it's missing.`);
     if (!t.perplexity.found) notes.push(`${path.basename(t.perplexity.path)} isn't in the built-in engine's folder, so the ladder skips the surprise score and uses the Lab test alone.`);
     const diskGB = f ? ladderDiskGB(f.sizeGB, steps) : 0;
     const out = path.join(labModelsDir(this.cfg), 'playground', slugOf(brain.name));
@@ -1338,7 +1338,7 @@ export class Lab {
         } else if (s.id === 'count') {
           await fx.count(s, { brain, recipe: p.recipe, signal });
           const counts = readCounts(s.counts);
-          if (!counts.filter(Boolean).length) throw new Error('llama-imatrix gave no per-expert counts. Bob\'s engine may be too old for that; update it in Get models, Engines.');
+          if (!counts.filter(Boolean).length) throw new Error('llama-imatrix gave no per-expert counts. Bob\'s engine may be too old for that; update it in Settings, Engines.');
           if (s.skill) skillCounts.push({ name: s.skill, counts });
           else {
             keep = busiest(counts, p.recipe.smaller.cut.keep);
@@ -1526,7 +1526,7 @@ export class Lab {
       refusals = pr.refusals; problems.push(...pr.problems.filter((x) => !a.problem || !/full-size|GB full size/.test(x))); notes.push(...pr.notes);
       bytes = a.facts ? a.facts.sizeGB * 1e9 : 0;
     } else problems.push('There\'s no home way by that name.');
-    if (!tools.server.found && !this.stepFns.test) problems.push('The built-in engine (llama-server) isn\'t here, so the new brain can\'t be tested. Get it in Get models, Engines.');
+    if (!tools.server.found && !this.stepFns.test) problems.push('The built-in engine (llama-server) isn\'t here, so the new brain can\'t be tested. Get it in Settings, Engines.');
     let freeGB = null;
     try { fs.mkdirSync(path.dirname(dir), { recursive: true }); const st = fs.statfsSync(path.dirname(dir)); freeGB = Math.round((st.bavail * st.bsize) / 1e9); } catch {}
     const diskGB = Math.round((bytes / 1e9) * 10) / 10;

@@ -76,7 +76,7 @@ export function planContext(lab, c = {}) {
   const fit = fitsAnswer({ name: b.name, fileBytes: b.fileBytes, perToken: b.perToken, max: null, squeeze, cardBytes: v.cardBytes, ramBytes: v.ramBytes });
   if (b.perToken && fit.all && top > fit.all) problems.push(`${kLabel(top)} won't fit next to ${b.name} on this replicant matrix (it holds about ${kLabel(fit.all)}). Untick the biggest sizes or pick a smaller cache.`);
   else if (b.perToken && fit.card && top > fit.card) notes.push(`From ${kLabel(fit.card * 2)} up, part of it runs from RAM, so the speed drop you see there is the spill as well as the length.`);
-  if (!lab.tools().server.found) problems.push(`${path.basename(lab.tools().server.path)} isn't in Bob's engine folder. Get models > Engines: the built-in engine has it.`);
+  if (!lab.tools().server.found) problems.push(`${path.basename(lab.tools().server.path)} isn't in Bob's engine folder. Settings > Engines: the built-in engine has it.`);
   const minutes = Math.max(1, Math.round(sizes.reduce((a, n) => a + n / 1500, 0) / 60));
   notes.push(`About ${minutes} minute${minutes === 1 ? '' : 's'} on a fast card; much longer if it spills into RAM.`);
   return { brain: b, sizes, stretch, squeeze, forget: c.forget === true, top, problems, notes };

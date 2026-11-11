@@ -3,6 +3,7 @@
 // opt-in Trainer pack. Rented: the same choices saved as a Forge plan for the Forge tab's purchase card. Brains and
 // lessons come from here, Hugging Face or another link, with the Lab's one chooser (public/lab-source.js).
 import { esc } from './rich.js';
+import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 import { newSource, sourceRowHtml, sourceOut, sourceEvent } from './lab-source.js';
 
 export function createTeachPage({ api }) {
@@ -62,7 +63,7 @@ export function createTeachPage({ api }) {
 
   function html() {
     if (!v) return `<p class="muted" role="status">${loading ? 'Reading your brains…' : ''}</p>${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}`;
-    return `<h3>Teach it: here or rented</h3>
+    return `<h3>${nameNow('Teach it: here or rented')}</h3>
       <p class="muted">Teach a brain a lesson set. When the brain is small enough for this replicant matrix's card, it's taught here, for free: a small set of extra weights (an adapter) is trained and folded into a new brain file. When it isn't, the same choices go to the Forge, rented, so you fill them in once.</p>
       <table class="lab-report"><caption class="muted">What can be taught here, by graphics memory (an adapter on a 4-bit copy of the brain).</caption><tr><th scope="col">Card</th><th scope="col">A brain up to</th><th scope="col">A mixture of experts up to</th></tr>${v.fit.map((r) => `<tr><th scope="row">${r.gb} GB</th><td>about ${r.dense}B</td><td>about ${r.moe}B total</td></tr>`).join('')}</table>
       ${trainerHtml()}
@@ -78,8 +79,8 @@ export function createTeachPage({ api }) {
         <label class="lab-opt"><input type="radio" name="tchlesspick" value="source" ${f.lessonsPick === 'source' ? 'checked' : ''}> <span><strong>Somewhere else</strong><br><span class="muted">A .jsonl file here, a Hugging Face dataset file, or a link to a .jsonl file.</span></span></label>
         ${f.lessonsPick === 'source' ? sourceRowHtml('tch-lessons', 'Where they are', f.lessons, 'dataset') : ''}</fieldset>
       <fieldset><legend>How it learns</legend>
-        <label class="lab-opt"><input type="radio" name="tchway" value="lessons" ${f.way === 'lessons' ? 'checked' : ''}> <span><strong>From its lessons</strong><br><span class="muted">It learns the lessons' answers.</span></span></label>
-        <label class="lab-opt"><input type="radio" name="tchway" value="squeeze" ${f.way === 'squeeze' ? 'checked' : ''}> <span><strong>From its full-size self (squeeze-aware)</strong><br><span class="muted">For a brain you'll run squeezed small. It learns with its weights rounded like the small file, to say what its full-size self says. Bob then shows the plain and the squeeze-aware file side by side. Here only, at 16-bit, so about half the sizes above.</span></span></label>
+        <label class="lab-opt"><input type="radio" name="tchway" value="lessons" ${f.way === 'lessons' ? 'checked' : ''}> <span><strong>${nameNow('From its lessons')}</strong><br><span class="muted">It learns the lessons' answers.</span></span></label>
+        <label class="lab-opt"><input type="radio" name="tchway" value="squeeze" ${f.way === 'squeeze' ? 'checked' : ''}> <span><strong>${nameNow('From its full-size self (squeeze-aware)')}</strong><br><span class="muted">For a brain you'll run squeezed small. It learns with its weights rounded like the small file, to say what its full-size self says. Bob then shows the plain and the squeeze-aware file side by side. Here only, at 16-bit, so about half the sizes above.</span></span></label>
         ${f.way === 'squeeze' ? `<label for="tch-squeeze">The small file it learns for</label><select id="tch-squeeze" data-tch="squeeze">${(v.squeezeTypes || ['Q5_K_M', 'Q4_K_M', 'Q3_K_M']).map((t) => `<option ${f.squeeze === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>` : ''}</fieldset>
       <div class="row"><label for="tch-epochs">Times through the lessons</label><select id="tch-epochs" data-tch="epochs">${[1, 2, 3].map((n) => `<option ${f.epochs === n ? 'selected' : ''}>${n}</option>`).join('')}</select>
         <label class="lab-opt"><input type="checkbox" data-tch="rented" ${f.rented ? 'checked' : ''}> <span><strong>Teach it rented anyway</strong></span></label></div>
