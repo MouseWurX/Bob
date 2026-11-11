@@ -36,7 +36,7 @@ export function createTurboPage({ api }) {
     if (!v) return `<p class="muted" role="status">${loading ? 'Reading your brains…' : ''}</p>${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}`;
     const b = main();
     return `<h3>${nameNow('Make it faster: Turbo')}</h3>
-      <p class="muted">A small brain races ahead and guesses the next few words. The big brain checks all the guesses in one go, which is nearly as cheap as making one word, and every right guess is free speed. The answer is exactly what the main brain would have said on its own; only the speed changes.</p>
+      <p class="muted">A small brain guesses the next few words and the big brain checks them all at once. Right guesses are free speed. The answer is exactly what the big brain would say alone.</p>
       <fieldset><legend>The main brain</legend>${v.brains.map((x) => `<label class="lab-opt"><input type="radio" name="tbfrom" value="${esc(x.id)}" ${from === x.id ? 'checked' : ''}> <span><strong>${esc(x.name)}</strong><br><span class="muted">${x.sizeGB} GB${x.mtp ? ', has its own guesser' : x.drafts.some((d) => d.fits) ? `, ${x.drafts.filter((d) => d.fits).length} draft${x.drafts.filter((d) => d.fits).length === 1 ? '' : 's'} fit next to it` : ''}${x.saved?.on ? ' · Turbo is on in Bob' : ''}</span></span></label>`).join('') || '<p>There are no brains here yet.</p>'}</fieldset>
       ${b ? `${pickHtml(b)}
       <fieldset><legend>Guess lengths to try</legend><div class="row">${v.guess.map((n) => `<label class="lab-opt"><input type="checkbox" data-tblen="${n}" ${guess.includes(n) ? 'checked' : ''}> <span><strong>${n} words ahead</strong></span></label>`).join('')}</div></fieldset>

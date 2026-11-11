@@ -100,7 +100,7 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
     const steps = (v().ladderSteps || []).map((s) => s.label).join(', ');
     return `<div id="lab-page-playground" role="tabpanel" aria-labelledby="lab-tab-playground">${navHtml()}
       <h3>${nameNow('How small can a brain get?')}</h3>
-      <p class="muted">Bob takes one small brain and makes it ${steps ? `in six sizes (${esc(steps)})` : 'in six sizes'}, then measures each the same way: how big it is, how fast it writes, its Lab score, and how surprised it is by a page of Bob's Help it never tuned on. Smaller files lose detail, and this shows you where that starts to matter. It runs here, for free. It takes disk, and Bob shows how much before it starts.</p>
+      <p class="muted">Makes one small brain ${steps ? `in six sizes (${esc(steps)})` : 'in six sizes'} and tests each for size, speed, score and Surprise, so you see where smaller starts to hurt. Free, here; Bob shows the disk space first.</p>
       ${runsHtml}
       <fieldset><legend>Which brain?</legend>${list.length ? list.map((b) => `<label class="lab-opt"><input type="radio" name="playfrom" value="${esc(b.id)}" ${from === b.id ? 'checked' : ''}> <span><strong>${esc(b.name)}</strong><br><span class="muted">${b.facts.sizeGB} GB full size.</span></span></label>`).join('')
         : `<p><strong>There's no brain here the ladder can start from yet.</strong> It needs a small brain's full-size file (F16 or BF16, up to ${v().playMaxGB || 9} GB), like a 1B to 4B brain. Bob's downloads are running files, so use <strong>Bring in a full-size brain</strong> just below: a Hugging Face name, a link, or <strong>Pick a file here</strong>.</p>`}

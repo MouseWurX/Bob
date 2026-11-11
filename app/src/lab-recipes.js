@@ -62,6 +62,11 @@ export function applyRecipe(lab, r = {}, recipeId, deviceId, { isLocal = true, b
   if (size.tooBig) notes.push(`Even the smallest cut (${size.keep} experts, about ${size.gb} GB) is too big for ${device.here ? 'this replicant matrix' : device.label.toLowerCase()}. Pick a bigger device, or start from a smaller brain.`);
   if (rc.tiny && facts.sight) out.smaller.sight = true;
   if (rc.tiny && facts.hearing) out.smaller.hearing = true;
+  if (rc.fold && out.smaller.cut) {
+    out.smaller.cut.fold = true;
+    if (facts.fullSize) notes.push('Folding: each expert that isn\'t kept is blended into the kept expert most like it. Nobody has shown yet that this beats dropping once the brain is taught back, so test it beside a plain cut at the same size.');
+    else notes.push(`${brain.name}'s file is a running file (${facts.fileType}), and folding blends the experts' numbers, so it needs the full-size copy (F16 or BF16). Bring that in first.`);
+  }
   out.smaller.files = size.type ? [size.type] : [];
   out.smaller.measure = out.smaller.files.length > 0;
   out.smaller.try = Boolean(out.smaller.cut) && lab.tools().brainEngine.found;
@@ -76,7 +81,7 @@ export function applyRecipe(lab, r = {}, recipeId, deviceId, { isLocal = true, b
   // its own defaults (9 hours, $40), so nothing may hand this plan to the Forge until the owner has typed real caps.
   const ct = out.smaller.cut;
   const healH = ct ? rentedEstimate({ lessons: BOB_LESSONS, experts: Number(ct.keep) && facts.experts ? Math.round((ct.keep / facts.experts) * 256) : undefined })?.parts.find((x) => /^Teach it back/.test(x.what))?.hours : 0;
-  const forge = ct ? { rungs: [{ name: out.name, from: 'teacher', keep: ct.keep || 'cover', cover: rc.cover, ...(ct.how === 'file' && ct.file ? { keep_file: ct.file } : {}) }], strong: rc.protect.filter((p) => /^[a-z]+$/.test(p)), strong_cover: 0.99, heal: { experts: 'lora', epochs: 1, hours: Math.ceil((healH || 16) * 1.3) }, hours_max: 0, dollars_max: 0, note: rc.heal } : null;
+  const forge = ct ? { rungs: [{ name: out.name, from: 'teacher', keep: ct.keep || 'cover', cover: rc.cover, ...(ct.fold ? { fold: true } : {}), ...(ct.how === 'file' && ct.file ? { keep_file: ct.file } : {}) }], strong: rc.protect.filter((p) => /^[a-z]+$/.test(p)), strong_cover: 0.99, heal: { experts: 'lora', epochs: 1, hours: Math.ceil((healH || 16) * 1.3) }, hours_max: 0, dollars_max: 0, note: rc.heal } : null;
   return { recipe: out, notes, size: { ...size, device: device.label }, source, forge, recipeId: rc.id };
 }
 

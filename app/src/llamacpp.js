@@ -313,7 +313,9 @@ export class LlamaCpp {
     try { size = fs.statSync(this.resolve(this.current).gguf).size; } catch {}
     const vram = this.role === BESIDE && this.currentCard !== 'whole' ? 0 : await this.vramOf(this.child.pid);
     // Without a per-process figure from nvidia-smi, how the model splits between card and RAM is unknown.
-    return [{ name: this.current, own: Boolean(this.currentOwn), size, vram, split: vram > 0, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX }, ...side];
+    // usesCard: it was started on the card. Windows' nvidia-smi often can't say how much one process holds (0), so the
+    // Lab's "unload first" checks can't go by vram alone.
+    return [{ name: this.current, own: Boolean(this.currentOwn), size, vram, split: vram > 0, usesCard: this.role !== BESIDE && !this.currentCpu, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX }, ...side];
   }
 
   // Graphics memory llama-server holds, in bytes, from nvidia-smi (ships with the NVIDIA driver). 0 when unknown.

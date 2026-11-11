@@ -141,7 +141,7 @@ How to read the misses:
 - **3.5 GB of RAM**, which leaves plenty for a game on a 32 GB PC.
 - Qwen3 1.7B is faster and lighter (2.1 GB) and a good choice for PCs with less RAM, but it scored 20 and once faked a tool call. Gemma 4 E4B is a fine brain on the card, but on the processor it is about 4 times slower to start and, on this engine, much more hesitant with tools.
 
-You can change it: Settings, Show advanced settings, Brains, Session brains.
+You can change it: Settings, Brains, Session brains.
 
 ### The card or processor rule
 
@@ -155,7 +155,7 @@ Where each brain runs, in plain terms:
 | Office | the graphics card | One all-rounder brain, no swaps. |
 | Gaming | the processor (borrows a little of the card only when it's free) | The card belongs to your game. |
 
-**Why not run everything on the processor all the time?** Because long prompts are where the processor hurts. With a 4,300-token prompt, Gemma 4 E4B takes about **31 s** to the first word on the processor and about **4.4 s** on the card. Short chats on a small instruct brain are fine on the processor; long ones on a bigger brain are not. So in Normal it's a choice: **Keep the graphics card free for quick answers** (Settings, Show advanced settings, Speed & memory) moves Low-effort replies to the processor, and it is off by default.
+**Why not run everything on the processor all the time?** Because long prompts are where the processor hurts. With a 4,300-token prompt, Gemma 4 E4B takes about **31 s** to the first word on the processor and about **4.4 s** on the card. Short chats on a small instruct brain are fine on the processor; long ones on a bigger brain are not. So in Normal it's a choice: **Keep the graphics card free for quick answers** (Settings, Speed & memory) moves Low-effort replies to the processor, and it is off by default.
 
 ### Gaming and the graphics card
 
@@ -168,7 +168,7 @@ Borrowing 0.6 GB is great when the card is idle-ish, and rude when a game is usi
 
 The game wins every fight for the processor, so a processor brain under full load is useless: over four minutes for a one-line answer. On the card, the same brain answers in about 2 seconds and costs the game 2 to 4%. When it's the card that's busy and the processor has room, the processor brain is fine (the idle tables above).
 
-So since Bob 1.5.32, **Gaming session: graphics card** (Settings, Show advanced settings, Speed & memory) is a three-position switch:
+So since Bob 1.5.32, **Gaming session: graphics card** (Settings, Speed & memory) is a three-position switch:
 
 | Position | What Bob does |
 |---|---|
@@ -227,7 +227,7 @@ Bob ships his own engine, **llama.cpp**, so he needs nothing else installed. (Ol
 - **No thinking on Low effort**: quick replies skip the thinking step entirely. Gemma 4 used to spend about 200 tokens thinking before the first word.
 - **Speculative decoding** (off, experimental): a small draft brain guesses ahead and the big one checks. It's often 1.5 to 2 times faster with identical answers, but it depends on the pair, so measure it.
 
-For tinkerers, every one of these is in Settings, Show advanced settings, Engines. The exact command Bob used is saved next to his notes, so you can see what ran.
+For tinkerers, every one of these is in Settings, Engines. The exact command Bob used is saved next to his notes, so you can see what ran.
 
 ---
 
@@ -243,7 +243,7 @@ Every word Bob sends to the brain has to be read before the reply starts. So:
 
 ## Opt-in speed switches
 
-These are all **off until you turn them on** (Settings, Show advanced settings, Speed & memory). Bob never changes your PC's settings by himself.
+These are all **off until you turn them on** (Settings, Speed & memory). Bob never changes your PC's settings by himself.
 
 - **Get Bob ready while you type**: starts loading and reading his instructions as soon as you start typing. On the processor he also keeps a copy of that reading on disk, so the next start is quicker.
 - **Let games go first**: when Bob works on the processor, he uses fewer cores at lower priority. His replies may be a little slower; your frame rate stays smooth. Worth turning on if you game with Bob open.

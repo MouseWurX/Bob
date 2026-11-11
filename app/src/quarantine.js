@@ -1,4 +1,4 @@
-// Quarantine (opt-in, asks first). Settings → Show advanced settings → Hands → "Let the reviewer quarantine Bob".
+// Quarantine (opt-in, asks first). Settings → Hands → "Let the reviewer quarantine Bob".
 // Off by default. When it's on, Bob's reviewer copy keeps an eye on what Bob and his copies do. If one of them goes
 // off track, the reviewer stops him at his next action and asks the user whether to quarantine him. Nothing is
 // quarantined without the user's click.

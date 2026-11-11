@@ -35,9 +35,10 @@ export const TEMPLATES = [
     forge: { extra_lessons: [{ file: '<lessons-ext-*.jsonl>', odds: false }] }
   },
   {
-    template: 'merge-experts', title: 'Merge experts', where: 'rented', needs: ['experts'], later: true,
-    help: 'Folds rarely used experts into the ones kept instead of dropping them.',
-    lab: null, forge: null
+    template: 'merge-experts', title: 'Merge experts', where: 'either', needs: ['experts'],
+    help: 'Fold, don\'t drop: each expert that isn\'t kept is blended into the kept expert most like it, so some of what it knew stays. The fold runs here, for free, on a full-size file. It still wants teaching back afterwards, and that part needs a rented card.',
+    lab: { lessons: { kind: 'chats' }, smaller: { cut: { how: 'cover', fold: true }, files: [] }, test: { compare: true } },
+    forge: { rung: { keep: 'cover', cover: 0.95, fold: true }, heal: { experts: 'lora', epochs: 1, alpha: 0.7 } }
   },
   {
     template: 'layer-width-cut', title: 'Layer or width cut', where: 'rented', needs: [], later: true,
@@ -68,7 +69,7 @@ export function applyTemplate(recipe, t, { keepDefault = 8, fullSize = true, bra
   out.lessons = { ...out.lessons, ...(l.lessons || {}) };
   out.smaller = {
     sight: false, hearing: false,
-    cut: s.cut ? { how: s.cut.how || 'busiest', keep: keepDefault, file: '' } : null,
+    cut: s.cut ? { how: s.cut.how || 'busiest', keep: keepDefault, file: '', ...(s.cut.how === 'cover' ? { cover: 0.95, strong: [] } : {}), ...(s.cut.fold ? { fold: true } : {}) } : null,
     files: fullSize ? [...(s.files || [])] : [],
     measure: Boolean(fullSize && s.measure && (s.files || []).length)
   };

@@ -38,6 +38,8 @@ jobs:
           tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
           echo "TAG=$tag" >> "$GITHUB_ENV"
           git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
+          # A one-commit clone counts "build 1"; say the tag's number instead, so --version reads like llama.cpp's own builds.
+          sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
           for p in app/engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
       - name: Install Ninja
         run: choco install ninja
@@ -95,6 +97,8 @@ jobs:
           tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
           echo "TAG=$tag" >> "$GITHUB_ENV"
           git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
+          # A one-commit clone counts "build 1"; say the tag's number instead, so --version reads like llama.cpp's own builds.
+          sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
           for p in app/engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
       - name: Build
         working-directory: llama.cpp

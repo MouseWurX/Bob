@@ -10,7 +10,7 @@ export const SESSIONS = {
   // 1.5.23: Deep thought is gone (Effort Medium/High does that job); Light is now Gaming, and keeps Effort on Low.
   // Gaming (some games use 14 of 16 GB): nothing loads on the card. Chat and hearing run on the processor;
   // pictures, video, music and Medium-and-up jobs wait in Tasks until the session changes.
-  light: { label: 'Gaming', icon: '🎮', what: 'Keeps the graphics card for your games. Bob chats and listens on the processor with a small brain, which usually starts answering within a few seconds. Pictures and big jobs wait until you switch back. How much of the card he may borrow is set in Settings, Show advanced settings, Speed & memory (Automatic to start with).', whatMac: 'Keeps memory free for your games. Bob chats and listens on the processor with a small brain, which usually starts answering within a few seconds. Pictures and big jobs wait until you switch back.', brain: 'gaming', cpu: true, effortLow: true }
+  light: { label: 'Gaming', icon: '🎮', what: 'Keeps the graphics card for your games. Bob chats and listens on the processor with a small brain, which usually starts answering within a few seconds. Pictures and big jobs wait until you switch back. How much of the card he may borrow is set in Settings, Speed & memory (Automatic to start with).', whatMac: 'Keeps memory free for your games. Bob chats and listens on the processor with a small brain, which usually starts answering within a few seconds. Pictures and big jobs wait until you switch back.', brain: 'gaming', cpu: true, effortLow: true }
 };
 
 // Which model each session's brain is. the user can change these on the Sessions tab; the defaults come

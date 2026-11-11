@@ -32,6 +32,9 @@ def keep_lists(args, n_layers, n_experts):
     c = json.load(open(args.counts))
     assert c["experts"] == n_experts, f"counts are for {c['experts']} experts, model has {n_experts}"
     rows = c["layers"]
+    if args.by != "counts":  # judge by the REAP score (mass per pick) or by mass; see reap.py and keep.py
+        assert c.get("mass"), f"{args.counts} has no REAP scores; count it again with --reap, or cut --by counts"
+        rows = [None if not m else (m if args.by == "mass" else [(x / n if n else 0.0) for x, n in zip(m, r)]) for m, r in zip(c["mass"], rows)]
     have = [r for r in rows if r]
     avg = [sum(r[e] for r in have) / len(have) for e in range(n_experts)] if have else [0.0] * n_experts
     out = []
@@ -44,7 +47,7 @@ def keep_lists(args, n_layers, n_experts):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", required=True); ap.add_argument("--dst", required=True)
-    ap.add_argument("--counts"); ap.add_argument("--keep", type=int); ap.add_argument("--keep-file")
+    ap.add_argument("--counts"); ap.add_argument("--keep", type=int); ap.add_argument("--keep-file"); ap.add_argument("--by", default="counts", choices=["counts", "reap", "mass"])
     ap.add_argument("--name", default="Bob")
     args = ap.parse_args()
     if not args.keep_file and not (args.counts and args.keep): sys.exit("need --counts and --keep, or --keep-file")

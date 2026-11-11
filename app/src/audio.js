@@ -432,7 +432,7 @@ export function songFileName(title, now = new Date()) {
 // kind: 'music' | 'sfx'. Returns { file, name }.
 export async function makeAudio(cfg, kind, { prompt, lyrics, seconds, title }, { signal, onProgress }) {
   const can = audioReady(cfg);
-  if (!can[kind]) throw new Error(kind === 'music' ? 'Music isn\'t set up yet. Get the audio tools in Settings (left menu), Show advanced settings, Engines.' : 'Sound effects aren\'t set up yet. Get the audio tools in Settings (left menu), Show advanced settings, Engines.');
+  if (!can[kind]) throw new Error(kind === 'music' ? 'Music isn\'t set up yet. Get the audio tools in Settings (left menu), Engines.' : 'Sound effects aren\'t set up yet. Get the audio tools in Settings (left menu), Engines.');
   fs.mkdirSync(cfg.painterDir, { recursive: true });
   const name = songFileName(songTitle({ title, prompt }, kind));
   const out = path.join(cfg.painterDir, name);

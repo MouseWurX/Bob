@@ -32,7 +32,7 @@ export function createRecipes({ api, recipe, view, replan, draw }) {
       ${x.later ? '<span class="lab-later">Not built yet</span>' : x.measureOnly ? `<button type="button" class="link" data-openusage aria-describedby="lab-rch-${x.id}" ${b ? '' : 'disabled'}>Open the usage map</button>` : `<button type="button" class="link" data-userecipe="${x.id}" aria-describedby="lab-rc-${x.id} lab-rch-${x.id}" ${b ? '' : 'disabled'}>${recipeId === x.id ? 'Use it again' : 'Use this goal'}</button>`}</li>`).join('');
     const sz = applied?.size;
     return `<section class="lab-recipes" aria-labelledby="lab-recipes-h"><h3 id="lab-recipes-h">Start from a goal</h3>
-      <p class="muted">Pick what the new brain is for and where it will run, and Bob fills in steps 2 to 5. You can still change every box, and nothing starts until you press Start.${b ? '' : ' Pick a brain in step 1 first.'}</p>
+      <p class="muted">Pick what the brain is for and where it runs; Bob fills in steps 2 to 5, and nothing starts until you press Start.${b ? '' : ' Pick a brain in step 1 first.'}</p>
       <p><label for="lab-device">Where it will run</label> <select id="lab-device">${opts}</select></p>
       <ul class="lab-recipe-list">${cards}</ul>
       ${applied ? `<div class="lab-check" role="status"><p><strong>${esc(list.find((x) => x.id === recipeId)?.title || '')} for ${esc((sz?.device || '').replace(/^A /, 'a ').replace(/^An /, 'an ').replace(/^This /, 'this '))}:</strong> ${sz?.whole ? 'no cut needed' : `${sz?.keep} experts per layer`}, about ${sz?.gb} GB${sz?.type ? ` as a ${sz.type.slice(0, 2)} file` : ''}.</p>${applied.notes.map((n) => `<p class="muted">${esc(n)}</p>`).join('')}</div>` : ''}

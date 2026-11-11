@@ -58,7 +58,7 @@ const size = (step) => JSON.stringify(step.tools).length;
   const steps = await turn('hmm', [call('write_file', { path: target, content: 'x' })], 's6');
   check('calling a tool from a group not added yet still works (the group is added)', steps.length === 2 && names(steps[1]).includes('write_file'));
   const off = await brain.runTool('run_command', { cmd: 'echo', args: ['hi'] }, { emit: () => {}, signal: new AbortController().signal, allowAll: new Set() });
-  check('a tool from a Hand that is off is refused with how to turn it on', /(switched off|is off).*Settings, Show advanced settings, Hands/.test(off.text), off.text);
+  check('a tool from a Hand that is off is refused with how to turn it on', /(switched off|is off).*Settings, Hands/.test(off.text), off.text);
   const bad = await turn('hmm', [call('use_tools', { group: 'run' })], 's7');
   check('use_tools on a Hand that is off says how to turn it on', bad.length === 2);
 }

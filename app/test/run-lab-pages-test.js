@@ -11,7 +11,7 @@ import { ggufInfo } from '../src/gguf.js';
 import { meter, fitLines, fitsAnswer, ladderSizes, keptFrom, squeezeOf, GiB, STOPS } from '../public/lab-context-math.js';
 import { haystack, found, contextView, planContext, startContext, useContext, contextSaw, forgetTurns, FORGET_FACTS } from '../src/lab-context.js';
 import { draftsFor, planTurbo, startTurbo, useTurbo, bestGuess, turboSaw, turboView } from '../src/lab-turbo.js';
-import { teachFit, SQUEEZE_TYPES, lessonsPerHour, teachDiskGB, readBrainSource, readLessonSource, planTeach, saveTeachPlan, startTeach, useTaught, trainerState, startTrainerInstall, removeTrainer, blockedWords, uvUrl, FIT_ROWS, TRAINER } from '../src/lab-teach.js';
+import { NO_CUDA, teachFit, SQUEEZE_TYPES, lessonsPerHour, teachDiskGB, readBrainSource, readLessonSource, planTeach, saveTeachPlan, startTeach, useTaught, trainerState, startTrainerInstall, removeTrainer, blockedWords, uvUrl, FIT_ROWS, TRAINER } from '../src/lab-teach.js';
 import { TEACH_PY, FETCH_PY } from '../src/lab-teach-script.js';
 import { pagesRoute } from '../src/lab-pages.js';
 import { LlamaCpp } from '../src/llamacpp.js';
@@ -209,10 +209,11 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
 // ---- Teach it here, fake trainer ----
 {
   const tr = path.join(tmp, 'trainer');
-  const calls = [];
+  const calls = []; let noCuda = false;
   const lab = mk({
     tool: async (exe, args, o) => {
       calls.push([path.basename(exe), args]);
+      if (noCuda && args[0] === '-c') throw new Error('exit 3');
       if (args.includes('-xf') || args.includes('-xzf')) { const to = args[args.indexOf('-C') + 1]; fs.mkdirSync(to, { recursive: true }); fs.writeFileSync(path.join(to, exe.endsWith('tar.exe') || exe === 'tar' ? (args.includes('-xzf') ? 'convert_hf_to_gguf.py' : exe.endsWith('.exe') ? 'uv.exe' : 'uv') : 'x'), ''); }
       if (args[0] === 'venv') { const py = process.platform === 'win32' ? path.join(args[3], 'Scripts', 'python.exe') : path.join(args[3], 'bin', 'python'); fs.mkdirSync(path.dirname(py), { recursive: true }); fs.writeFileSync(py, ''); }
       const out = args[args.indexOf('-o') + 1] || args[args.indexOf('--outfile') + 1];
@@ -236,6 +237,16 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
   check('getting the Trainer pack is its own Lab job: uv, Python, the libraries (pinned), the converters', irun.state === 'done' && trainerState(cfg).ok && calls.some(([, a]) => a[0] === 'pip' && a.includes('torch==2.14.1')) && !calls.some(([, a]) => a[0] === 'venv'), irun.error || '');
   const signedPy = path.join(tr, 'python-signed', 'python.exe');
   check('on Windows the trainer runs from a private copy of Bob\'s own signed Python, not a venv (Smart App Control blocks the venv launcher)', trainerState(cfg).python === signedPy && fs.readFileSync(signedPy, 'utf8') === 'signed' && calls.some(([, a]) => a[0] === 'pip' && a[a.indexOf('--python') + 1] === signedPy));
+  check('the Trainer pack\'s converters come from the same llama.cpp Bob runs', TRAINER.llamacpp === JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob.bundledLlamaTag);
+  check('torch comes from the CUDA 13.0 index, and on an NVIDIA card the install ends by asking torch whether it sees the card', TRAINER.torchIndex.endsWith('/whl/cu130') && calls.some(([, a]) => a[0] === 'pip' && a.includes(TRAINER.torchIndex)) && calls.some(([e, a]) => e === 'python.exe' && a[0] === '-c' && /torch\.cuda\.is_available\(\)/.test(a[1])));
+  removeTrainer(lab); calls.length = 0; noCuda = true;
+  await startTrainerInstall(lab); await wait(lab); noCuda = false;
+  const nrun = lab.runs[lab.runs.length - 1];
+  check('a torch that can\'t see the NVIDIA card stops the install with plain words, and the pack isn\'t marked ready', nrun.state !== 'done' && nrun.error === NO_CUDA && /NVIDIA driver/.test(NO_CUDA) && !trainerState(cfg).ok, nrun.error || '');
+  const gi = lab.gpuInfo; lab.gpuInfo = async () => ({ name: 'AMD Radeon RX 7800 XT', vramGB: 16 }); removeTrainer(lab); calls.length = 0;
+  await startTrainerInstall(lab); await wait(lab); lab.gpuInfo = gi;
+  check('with no NVIDIA card there\'s no card check', lab.runs[lab.runs.length - 1].state === 'done' && !calls.some(([, a]) => a[0] === '-c'));
+  removeTrainer(lab); await startTrainerInstall(lab); await wait(lab);
   check('a Smart App Control block is said in plain words, with no security change', /Smart App Control blocked/.test(blockedWords(new Error('An Application Control policy has blocked this file. (os error 4551)')).message) && /doesn't change Windows security/.test(blockedWords(new Error('os error 4551')).message) && blockedWords(new Error('other')).message === 'other');
   calls.length = 0;
   const res = await startTeach(lab, { name: 'Taught Big', brain: { kind: 'lab', id: 'big' }, lessons: { kind: 'set', id: 'my-set' } });

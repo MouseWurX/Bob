@@ -36,13 +36,13 @@ export function createGuard({ api, isPro = () => false }) {
 
   function html() {
     if (!g.open) return `<section class="lab-guard" aria-labelledby="lab-guard-h"><h3 id="lab-guard-h" tabindex="-1">${nameNow('Guard rails: test your own brain')}</h3>
-      <p class="muted">Try your own words on the brain Bob has loaded and see whether it keeps to its rules. You can change its system prompt. If it does something you didn't want, write the answer you wanted and save it as a lesson, so you can teach it later. It's your brain, on this replicant matrix; nothing is shared.</p>
+      <p class="muted">Send your own messages to Bob's loaded brain and see if it keeps to its rules. If it slips, write the answer you wanted and save it as a lesson. Nothing is shared.</p>
       <div class="row"><button type="button" class="link" data-guard="open">Open the sandbox</button></div></section>`;
     const i = g.info || {};
     const chatRows = g.messages.map((m) => `<li class="lab-guard-${m.role}"><strong>${m.role === 'user' ? 'You' : 'Brain'}</strong> <span>${esc(m.content)}</span></li>`).join('');
     const max = i.maxTurns || 30;
     return `<section class="lab-guard" aria-labelledby="lab-guard-h"><h3 id="lab-guard-h" tabindex="-1">${nameNow('Guard rails: test your own brain')}</h3>
-      ${!i.ready ? `<p class="muted" role="status">${esc(i.why || 'Loading…')}</p>` : `<p class="muted">Talking to <strong>${esc(i.brain)}</strong>, with its normal settings, not temperature 0, so you see what it does in use.</p>`}
+      ${!i.ready ? `<p class="muted" role="status">${esc(i.why || 'Loading…')}</p>` : `<p class="muted">Talking to <strong>${esc(i.brain)}</strong>, with its normal settings, as in a real chat.</p>`}
       <p><label for="lab-guard-system">System prompt (what the brain is told before you speak)</label><br><textarea id="lab-guard-system" rows="3" data-guardf="system">${esc(g.system)}</textarea></p>
       <ol class="lab-guard-chat" aria-live="polite" aria-label="The conversation">${chatRows || '<li class="muted">Nothing said yet.</li>'}</ol>
       <p class="muted" id="lab-guard-turns">Turn ${turns()} of ${max}.</p>

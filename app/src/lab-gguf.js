@@ -101,13 +101,15 @@ export function brainFacts(g) {
   const used = Number(g.meta[`${arch}.expert_used_count`]) || 0;
   const groups = Number(g.meta[`${arch}.expert_group_count`]) || 0;
   const layers = Number(g.meta[`${arch}.block_count`]) || 0;
+  // Brains with their own guesser (Qwen3.5/3.6, GLM) count its layer in block_count; Brain Engine on llama.cpp b12282 doesn't.
+  const mtp = Math.min(layers, Number(g.meta[`${arch}.nextn_predict_layers`]) || 0);
   const ft = g.meta['general.file_type'];
   const expertLayers = [...new Set(g.tensors.map((t) => isExpertTensor(t.name) && Number(t.name.split('.')[1])).filter((n) => Number.isInteger(n)))].sort((a, b) => a - b);
   // 1.5.161 how many weights it has, in billions, and for a mixture of experts how many work on each word
   let all = 0, exp = 0;
   for (const t of g.tensors) { const n = t.dims.reduce((a, d) => a * Number(d), 1); all += n; if (isExpertTensor(t.name)) exp += n; }
   const paramsB = Math.round((all / 1e9) * 10) / 10, activeB = experts && used ? Math.round(((all - exp + (exp * used) / experts) / 1e9) * 10) / 10 : paramsB;
-  return { arch, name: g.meta['general.name'] || '', experts, used, groups, layers, expertLayers, fileType: FILE_TYPES[ft] || (ft == null ? '' : `type ${ft}`), fullSize: FULL_SIZE.has(ft), size: g.size, params: all, paramsB, activeB };
+  return { arch, name: g.meta['general.name'] || '', experts, used, groups, layers, mtp, engineLayers: layers - mtp, expertLayers, fileType: FILE_TYPES[ft] || (ft == null ? '' : `type ${ft}`), fullSize: FULL_SIZE.has(ft), size: g.size, params: all, paramsB, activeB };
 }
 
 // The picture and sound readers (mmproj files): which senses one file holds.
@@ -122,8 +124,9 @@ export function readerFacts(g) {
   };
 }
 
-// Tensors that hold one slab per expert, with the expert number as the last dimension.
-const EXPERT_RE = /^blk\.\d+\.(ffn_(gate|up|down|gate_up)_exps\.(weight|bias|scale)|ffn_gate_inp\.weight|exp_probs_b\.bias)$/;
+// Tensors that hold one slab per expert, with the expert number as the last dimension. The router's bias counts too
+// (gpt-oss has one, a number per expert): left uncut it stays at the old expert count and the cut file won't load.
+const EXPERT_RE = /^blk\.\d+\.(ffn_(gate|up|down|gate_up)_exps\.(weight|bias|scale)|ffn_gate_inp\.(weight|bias)|exp_probs_b\.bias)$/;
 export const isExpertTensor = (name) => EXPERT_RE.test(name);
 // Sound-reader tensors in a combined reader file (llama.cpp's mmproj): a.* and the sound projector mm.a.*. Everything
 // else that isn't shared belongs to sight.

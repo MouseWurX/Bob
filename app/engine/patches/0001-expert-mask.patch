@@ -1,8 +1,8 @@
 diff --git a/include/llama.h b/include/llama.h
-index 3877b69..1c6fab8 100644
+index 428f51f..58b7e19 100644
 --- a/include/llama.h
 +++ b/include/llama.h
-@@ -603,6 +603,8 @@ extern "C" {
+@@ -604,6 +604,8 @@ extern "C" {
      LLAMA_API int32_t llama_model_n_embd_out   (const struct llama_model * model);
      LLAMA_API int32_t llama_model_n_layer      (const struct llama_model * model);
      LLAMA_API int32_t llama_model_n_layer_nextn(const struct llama_model * model);
@@ -11,7 +11,7 @@ index 3877b69..1c6fab8 100644
      LLAMA_API int32_t llama_model_n_head       (const struct llama_model * model);
      LLAMA_API int32_t llama_model_n_head_kv    (const struct llama_model * model);
      LLAMA_API int32_t llama_model_n_swa        (const struct llama_model * model);
-@@ -747,6 +749,14 @@ extern "C" {
+@@ -748,6 +750,14 @@ extern "C" {
                           int32_t   il_start,
                           int32_t   il_end);
  
@@ -189,10 +189,10 @@ index f0b1e50..94cfae6 100644
  // llama_adapter_lora
  //
 diff --git a/src/llama-context.cpp b/src/llama-context.cpp
-index 4141e3c..ca1af5e 100644
+index 670adcc..c2fef3b 100644
 --- a/src/llama-context.cpp
 +++ b/src/llama-context.cpp
-@@ -176,6 +176,7 @@ llama_context::llama_context(
+@@ -183,6 +183,7 @@ llama_context::llama_context(
                llama_context_params params) :
      model(model),
      cvec(std::make_unique<llama_adapter_cvec>()),
@@ -200,7 +200,7 @@ index 4141e3c..ca1af5e 100644
      loras(std::make_unique<llama_adapter_loras>()),
      // MTP uses the embd input for the hidden state
      balloc(std::make_unique<llama_batch_allocr>(model.hparams.n_pos_per_embd(),
-@@ -1522,6 +1523,14 @@ bool llama_context::set_adapter_cvec(
+@@ -1836,6 +1837,14 @@ bool llama_context::set_adapter_cvec(
      return res;
  }
  
@@ -215,7 +215,7 @@ index 4141e3c..ca1af5e 100644
  llm_graph_result * llama_context::process_ubatch(const llama_ubatch & ubatch, llm_graph_type gtype, llama_memory_context_i * mctx, ggml_status & ret) {
      if (mctx && !mctx->apply()) {
          LLAMA_LOG_ERROR("%s: failed to apply memory context\n", __func__);
-@@ -2719,6 +2728,7 @@ llm_graph_params llama_context::graph_params(
+@@ -3115,6 +3124,7 @@ llm_graph_params llama_context::graph_params(
          /*.sched       =*/ sched.get(),
          /*.backend_cpu =*/ backend_cpu,
          /*.cvec        =*/ cvec.get(),
@@ -223,7 +223,7 @@ index 4141e3c..ca1af5e 100644
          /*.loras       =*/ loras.get(),
          /*.mctx        =*/ mctx,
          /*.cross       =*/ &cross,
-@@ -4446,6 +4456,15 @@ int32_t llama_set_adapter_cvec(
+@@ -4912,6 +4922,15 @@ int32_t llama_set_adapter_cvec(
      return res ? 0 : -1;
  }
  
@@ -240,10 +240,10 @@ index 4141e3c..ca1af5e 100644
  // memory
  //
 diff --git a/src/llama-context.h b/src/llama-context.h
-index 6938fb1..61e50ad 100644
+index f406143..5fb4208 100644
 --- a/src/llama-context.h
 +++ b/src/llama-context.h
-@@ -135,6 +135,8 @@ struct llama_context {
+@@ -151,6 +151,8 @@ struct llama_context {
                  int32_t   il_start,
                  int32_t   il_end);
  
@@ -252,7 +252,7 @@ index 6938fb1..61e50ad 100644
      // process a single ubatch with a specific graph type
      // if memory_context is provided, it will be applied first to the context's memory
      // ret contains the status of the graph computation
-@@ -302,6 +304,7 @@ private:
+@@ -340,6 +342,7 @@ private:
      llama_cparams cparams;
  
      llama_adapter_cvec_ptr  cvec;
@@ -261,10 +261,10 @@ index 6938fb1..61e50ad 100644
  
      llama_cross cross; // TODO: tmp for handling cross-attention - need something better probably
 diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
-index 43eb46e..826ea06 100644
+index 847a3e1..df2db39 100644
 --- a/src/llama-graph.cpp
 +++ b/src/llama-graph.cpp
-@@ -1503,6 +1503,7 @@ llm_graph_context::llm_graph_context(const llm_graph_params & params) :
+@@ -1577,6 +1577,7 @@ llm_graph_context::llm_graph_context(const llm_graph_params & params) :
      sched            (params.sched),
      backend_cpu      (params.backend_cpu),
      cvec             (params.cvec),
@@ -272,7 +272,7 @@ index 43eb46e..826ea06 100644
      loras            (params.loras),
      mctx             (params.mctx),
      cross            (params.cross),
-@@ -2176,6 +2177,13 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+@@ -2290,6 +2291,13 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
          cb(logits, "ffn_moe_logits_biased", il);
      }
  
@@ -286,7 +286,7 @@ index 43eb46e..826ea06 100644
      ggml_tensor * probs = nullptr;
      switch (gating_op) {
          case LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX:
-@@ -2205,6 +2213,10 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+@@ -2319,6 +2327,10 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
      if (exp_probs_b != nullptr) {
          selection_probs = ggml_add(ctx0, probs, exp_probs_b);
          cb(selection_probs, "ffn_moe_probs_biased", il);
@@ -298,7 +298,7 @@ index 43eb46e..826ea06 100644
  
      // llama4 doesn't have exp_probs_b, and sigmoid is only used after top_k
 diff --git a/src/llama-graph.h b/src/llama-graph.h
-index f9497de..4582d24 100644
+index 636a1c5..ef1caa0 100644
 --- a/src/llama-graph.h
 +++ b/src/llama-graph.h
 @@ -802,6 +802,7 @@ struct llm_graph_params {
@@ -309,15 +309,15 @@ index f9497de..4582d24 100644
      const llama_adapter_loras    * loras;
      const llama_memory_context_i * mctx;
      const llama_cross            * cross;
-@@ -905,6 +906,7 @@ struct llm_graph_params {
-             arch  == other.arch  &&
+@@ -915,6 +916,7 @@ struct llm_graph_params {
+             model == other.model &&
              gtype == other.gtype &&
              cvec  == other.cvec  &&
 +            emask == other.emask &&
              loras == other.loras &&
              cross == other.cross;
      }
-@@ -1060,6 +1062,7 @@ struct llm_graph_context {
+@@ -1077,6 +1079,7 @@ struct llm_graph_context {
      ggml_backend_t backend_cpu; // TODO: needed by build_attn_mha, figure out a way to remove?
  
      const llama_adapter_cvec     * cvec;
@@ -326,10 +326,10 @@ index f9497de..4582d24 100644
      const llama_memory_context_i * mctx;
      const llama_cross            * cross;
 diff --git a/src/llama-model.cpp b/src/llama-model.cpp
-index f45d30c..e513bcc 100644
+index cd49ccd..c328d8d 100644
 --- a/src/llama-model.cpp
 +++ b/src/llama-model.cpp
-@@ -3467,6 +3467,10 @@ int32_t llama_model_n_layer_nextn(const llama_model * model) {
+@@ -3598,6 +3598,10 @@ int32_t llama_model_n_layer_nextn(const llama_model * model) {
      return model->hparams.n_layer_nextn;
  }
  
@@ -341,10 +341,10 @@ index f45d30c..e513bcc 100644
      return model->hparams.dflash_selector_top_k;
  }
 diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
-index 9377e3c..ead0a3f 100644
+index 5d97267..f230b40 100644
 --- a/tools/server/server-context.cpp
 +++ b/tools/server/server-context.cpp
-@@ -1111,6 +1111,8 @@ private:
+@@ -1114,6 +1114,8 @@ private:
  
      std::unique_ptr<server_prompt_cache> prompt_cache;
  
@@ -353,7 +353,7 @@ index 9377e3c..ead0a3f 100644
      server_metrics metrics;
  
      // queued prompt stats - llama_decode() is async, so the timing is only valid after a sync
-@@ -3407,11 +3409,116 @@ private:
+@@ -3418,11 +3420,116 @@ private:
                      res->id = task.id;
                      queue_results.send(std::move(res));
                  } break;
@@ -468,9 +468,9 @@ index 9377e3c..ead0a3f 100644
 +    }
 +
      void iterate(std::vector<server_slot> & slots, std::function<void(server_slot &)> callback) {
-         for (auto & slot : slots) {
-             try {
-@@ -6749,6 +6856,44 @@ void server_routes::init_routes() {
+         for (int pass = 0; pass < 2; ++pass) {
+             for (auto & slot : slots) {
+@@ -6680,6 +6787,44 @@ void server_routes::init_routes() {
          res->ok(result->to_json());
          return res;
      };
@@ -516,10 +516,10 @@ index 9377e3c..ead0a3f 100644
  
  std::unique_ptr<server_res_generator> server_routes::handle_slots_save(const server_http_req & req, int id_slot) {
 diff --git a/tools/server/server-context.h b/tools/server/server-context.h
-index d283c91..f1031f5 100644
+index 4b145cb..bf2f025 100644
 --- a/tools/server/server-context.h
 +++ b/tools/server/server-context.h
-@@ -136,6 +136,8 @@ struct server_routes {
+@@ -138,6 +138,8 @@ struct server_routes {
      server_http_context::handler_t post_systemone;
      server_http_context::handler_t get_lora_adapters;
      server_http_context::handler_t post_lora_adapters;
@@ -529,7 +529,7 @@ index d283c91..f1031f5 100644
      // to be used in router mode
      json get_model_info() const;
 diff --git a/tools/server/server-task.h b/tools/server/server-task.h
-index 21b649a..51d7673 100644
+index 6d550d1..c1e1d23 100644
 --- a/tools/server/server-task.h
 +++ b/tools/server/server-task.h
 @@ -31,6 +31,7 @@ enum server_task_type {
@@ -540,7 +540,7 @@ index 21b649a..51d7673 100644
      SERVER_TASK_TYPE_TTS,
  };
  
-@@ -241,6 +242,9 @@ struct server_task {
+@@ -243,6 +244,9 @@ struct server_task {
      // used by SERVER_TASK_TYPE_SET_LORA
      std::map<int, float> set_lora; // mapping adapter ID -> scale
  
@@ -550,7 +550,7 @@ index 21b649a..51d7673 100644
      // used by SERVER_TASK_TYPE_TTS
      mtmd_helper::gen_audio::inp tts_inp;
  
-@@ -683,6 +687,11 @@ struct server_task_result_apply_lora : server_task_result {
+@@ -685,6 +689,11 @@ struct server_task_result_apply_lora : server_task_result {
      virtual json to_json() override;
  };
  
@@ -563,10 +563,10 @@ index 21b649a..51d7673 100644
      server_tokens tokens;
  
 diff --git a/tools/server/server.cpp b/tools/server/server.cpp
-index 8b1d426..cd75982 100644
+index 4e838cb..1a5d790 100644
 --- a/tools/server/server.cpp
 +++ b/tools/server/server.cpp
-@@ -209,6 +209,8 @@ static void server_register_routes(server_http_context & ctx_http, server_routes
+@@ -211,6 +211,8 @@ static void server_register_routes(server_http_context & ctx_http, server_routes
      // LoRA adapters hotswap
      ctx_http.get ("/lora-adapters",            ex_wrapper(routes.get_lora_adapters));
      ctx_http.post("/lora-adapters",            ex_wrapper(routes.post_lora_adapters));
@@ -575,7 +575,7 @@ index 8b1d426..cd75982 100644
      // Save & load slots
      ctx_http.get ("/slots",                    ex_wrapper(routes.get_slots));
      ctx_http.post("/slots/:id_slot",           ex_wrapper(routes.post_slots));
-@@ -519,6 +521,8 @@ static int server_run_router(common_params & params, int argc, char ** argv, con
+@@ -522,6 +524,8 @@ static int server_run_router(common_params & params, int argc, char ** argv, con
      routes.post_responses_tok_oai      = models_routes->proxy_post;
      routes.get_lora_adapters           = models_routes->proxy_get;
      routes.post_lora_adapters          = models_routes->proxy_post;

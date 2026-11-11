@@ -47,7 +47,7 @@ export function guardPath(cfg, p, { mustExist = true, what = 'that' } = {}) {
   if (cfg.settingsFile && path.resolve(cfg.settingsFile) === full) throw new Error("That's my own settings file, which I can't change.");
   if (insideAny([...readOnlyRoots(cfg), appDir, cfg.dataDir].filter(Boolean), full)) throw new Error(`${full} is read-only for me.`);
   const roots = handsRoots(cfg);
-  if (!insideAny(roots, full)) throw new Error(roots.length ? `I can only work with files in: ${roots.join('; ')}. You can tick more folders in Settings, Show advanced settings, Hands.` : 'No folders are ticked for the Files Hand yet. Tick some in Settings, Show advanced settings, Hands.');
+  if (!insideAny(roots, full)) throw new Error(roots.length ? `I can only work with files in: ${roots.join('; ')}. You can tick more folders in Settings, Hands.` : 'No folders are ticked for the Files Hand yet. Tick some in Settings, Hands.');
   if (mustExist && !fs.existsSync(full)) throw new Error(`${what === 'that' ? full : what} doesn't exist.`);
   return full;
 }

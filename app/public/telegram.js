@@ -1,4 +1,4 @@
-// Settings, Show advanced settings, Online services: "Talk to Bob on Telegram" (src/telegram.js). Off unless you turn it on.
+// Settings, Online services: "Talk to Bob on Telegram" (src/telegram.js). Off unless you turn it on.
 import { esc } from './util.js';
 
 async function api(url, data) {

@@ -23,13 +23,13 @@ const STEPS = [['brain', '1 Pick a brain'], ['lessons', '2 Lessons'], ['smaller'
 // One job at a time (the owner asked that every module can be done on its own). Each job shows only the steps and the
 // parts of step 3 it needs; Everything is the five steps as they were. The recipe is the same shape either way.
 const JOBS = [
-  { id: 'smaller', title: 'Make it smaller', what: 'Running files (Q8 down to Q3) from a full-size brain, then the Lab test.', steps: ['brain', 'smaller', 'test'], parts: ['files'] },
-  { id: 'cut', title: 'Cut experts', what: 'Keep the experts your work uses and drop the rest. A set of lessons shows which ones, then the Lab test.', steps: ['brain', 'lessons', 'smaller', 'where', 'test'], parts: ['cut'] },
-  { id: 'senses', title: 'Take out sight or hearing', what: 'Leave the picture or sound reader behind; everything else stays. Then the Lab test.', steps: ['brain', 'smaller', 'test'], parts: ['senses'] },
-  { id: 'test', title: 'Just test a brain', what: 'The Lab test on a brain as it is, with a second brain to compare if you like.', steps: ['brain', 'test'], parts: [] },
-  { id: 'full', title: 'Everything, step by step', what: 'All five steps: lessons, every way to make it smaller, where it runs, the test.', steps: ['brain', 'lessons', 'smaller', 'where', 'test'], parts: ['senses', 'cut', 'files', 'later'] },
+  { id: 'smaller', title: 'Make it smaller', what: 'Shrinks a full-size brain into running files (Q8 to Q3), then tests them.', steps: ['brain', 'smaller', 'test'], parts: ['files'] },
+  { id: 'cut', title: 'Cut experts', what: 'Keeps the experts your work uses, drops the rest, then tests it.', steps: ['brain', 'lessons', 'smaller', 'where', 'test'], parts: ['cut'] },
+  { id: 'senses', title: 'Take out sight or hearing', what: 'Removes the part that reads pictures or sound, then tests it.', steps: ['brain', 'smaller', 'test'], parts: ['senses'] },
+  { id: 'test', title: 'Just test a brain', what: 'Tests a brain as it is, beside another if you like.', steps: ['brain', 'test'], parts: [] },
+  { id: 'full', title: 'Everything, step by step', what: 'All five steps, one after another.', steps: ['brain', 'lessons', 'smaller', 'where', 'test'], parts: ['senses', 'cut', 'files', 'later'] },
   // The sixth card is a Forge way, not a Make a brain job: it opens the Forge tab with that way unfolded, same as pressing Use this way there.
-  { id: 'refusals', title: 'Take out the refusal habit', what: 'Find the direction a brain says no by reflex and take it out of the weights. The kept refusals are checked and taught back by default. Runs free on this replicant matrix, on the Forge tab.', steps: [], parts: [], forge: 'refusals' },
+  { id: 'refusals', title: 'Take out the refusal habit', what: 'Stops a brain saying no by reflex. The refusals you keep stay. Free, on the Forge tab.', steps: [], parts: [], forge: 'refusals' },
 ];
 // What the switch changes on each tab, said right beside it, so Professional never looks like a button that does nothing.
 const MODE_NOTES = {
@@ -58,7 +58,7 @@ export function createLab({ api, note }) {
     if (!hasPart('cut')) { r.smaller.cut = null; r.smaller.try = false; r.template = ''; }
     if (!hasPart('files')) { r.smaller.files = []; r.smaller.measure = false; }
   }
-  const jobsHtml = () => `<fieldset class="lab-jobs"><legend>What do you want to do?</legend><p class="muted">One thing at a time. Each job shows only the steps it needs.</p><div class="lab-cards">${JOBS.map((j) => `<button type="button" class="lab-card${job === j.id ? ' on' : ''}" data-job="${j.id}" aria-pressed="${job === j.id}"><strong>${nm(j.title)}</strong><span class="muted">${esc(j.what)}</span></button>`).join('')}</div></fieldset>`;
+  const jobsHtml = () => `<fieldset class="lab-jobs"><legend>What do you want to do?</legend><p class="muted">Each job shows only the steps it needs.</p><div class="lab-cards">${JOBS.map((j) => `<button type="button" class="lab-card${job === j.id ? ' on' : ''}" data-job="${j.id}" aria-pressed="${job === j.id}"><strong>${nm(j.title)}</strong><span class="muted">${esc(j.what)}</span></button>`).join('')}</div></fieldset>`;
   const learn = createLearn({ api, info: () => view, saves: () => saves });
   // 1.5.153 Challenges: which brain, which packs, the scoreboard's sort, and the Save panels (one per result).
   const ch = { from: '', packs: ['quiz', 'reasoning', 'sums', 'rules', 'tools', 'code'], bench: false, sort: 'name', down: false, by: 'class', kind: 'all', here: false, fits: false, wide: false }; // 1.5.162 the board by class of model
@@ -126,7 +126,7 @@ export function createLab({ api, note }) {
     return `<fieldset><legend>Which brain do you want to start from?</legend>${view.brains.map((b) => {
       const f = b.facts;
       if (!f) return radio('from', b.id, false, b.name, '', b.error || 'Bob couldn\'t read its file.');
-      const can = [f.experts ? `cut experts (${f.experts} per layer, ${f.used} picked per word)` : 'everything except an expert cut (it isn\'t a mixture-of-experts brain)', f.sight && 'take out sight', f.hearing && 'take out hearing', f.fullSize ? 'make running files' : `it's already a running file (${f.fileType})`].filter(Boolean).join(', ');
+      const can = [f.experts ? `cut experts (${f.experts} per layer, ${f.used} used per word)` : 'everything but an expert cut (it has no experts)', f.sight && 'take out sight', f.hearing && 'take out hearing', f.fullSize ? 'make running files' : `it's already a running file (${f.fileType})`].filter(Boolean).join(', ');
       return radio('from', b.id, r.from === b.id, `${b.name}${b.madeInLab ? ' (made in the Lab)' : ''}${b.community ? ' · community' : ''}`, `${f.sizeGB} GB. ${b.fit} In the Lab: ${can}.${b.license ? ` Licence: ${b.license}.` : ''}`);
     }).join('')}</fieldset>
     ${r.from ? '' : `<p role="status"><strong>Tick one brain above to go on.</strong> ${steps().length > 2 ? `Steps 2 to ${steps().length}` : 'Step 2'} and Next open up as soon as a brain is picked.</p>`}
@@ -136,8 +136,8 @@ export function createLab({ api, note }) {
   function lessonsStep() {
     const l = r.lessons;
     return `<fieldset><legend>Lessons</legend>
-      <p class="muted">Lessons are what the new brain should be good at. Here they're used to count which experts your kind of work uses, so an expert cut keeps those.</p>
-      ${radio('lessons', 'none', l.kind === 'none', 'No lessons', 'For steps that don\'t need them: take out sight or hearing, make the running files, or cut with an expert list you have.')}
+      <p class="muted">Examples of your work. Bob counts which experts they use, so a cut keeps those.</p>
+      ${radio('lessons', 'none', l.kind === 'none', 'No lessons', 'For jobs that don\'t need them: taking out sight or hearing, making running files, or cutting with a list you have.')}
       ${radio('lessons', 'chats', l.kind === 'chats', 'My chats with Bob', 'Your past chats, as they are. They stay on this replicant matrix.')}
       ${view.lessonSets.length ? radio('lessons', 'set', l.kind === 'set', 'A lesson set I wrote or built here', 'One Bob wrote in the Lab with a teacher brain, or one built from your own files.') : ''}
       ${l.kind === 'set' ? `<p><label>Lesson set <select id="lab-lessons-set"><option value="">(pick one)</option>${view.lessonSets.map((x) => `<option value="${esc(x.id)}" ${l.set === x.id ? 'selected' : ''}>${esc(x.name)}: ${x.count} lessons${x.skills.length ? ` (${esc(x.skills.map(skillLabel).join(', '))})` : ''}${x.built ? ', built from your files' : ''}${x.done ? '' : ', not finished'}</option>`).join('')}</select></label></p>` : ''}
@@ -147,7 +147,7 @@ export function createLab({ api, note }) {
       ${writeHtml()}
       ${buildHtml()}
       ${setsHtml()}
-      ${later('Record the teacher\'s odds', 'Bob saves the teacher\'s top 32 guesses for every word, not only its answer. A brain learns much more from the odds than from the words alone.')}
+      ${later('Save the teacher\'s guesses', 'Saves the teacher\'s top 32 guesses for each word, not just its answer. A brain learns far more that way.')}
     </fieldset>`;
   }
 
@@ -282,36 +282,37 @@ export function createLab({ api, note }) {
     return `<fieldset><legend>${jobOf() && job !== 'full' ? esc(jobOf().title) : 'Make it smaller (these run in this order)'}</legend>
       ${!hasPart('senses') ? '' : box('sight', s.sight, 'Take out sight', f.sight ? `The picture reader is left behind. Saves about ${f.readerGB || 1} GB on disk and on the card. The brain can't read pictures any more; everything else is the same.` : '', f.sight ? '' : 'This brain can\'t see pictures.')}
       ${!hasPart('senses') ? '' : box('hearing', s.hearing, 'Take out hearing', f.hearing ? 'The sound reader is left behind. The brain can\'t hear sound any more; everything else is the same.' : '', f.hearing ? '' : 'This brain can\'t hear sound.')}
-      ${!hasPart('cut') ? '' : box('cut', Boolean(cut), 'Cut experts', 'Keeps the experts your work uses and drops the rest. Without Teach it back (Lab 2) it loses some general knowledge first, so test it.', f.experts ? '' : 'This brain isn\'t a mixture-of-experts brain.')}
+      ${!hasPart('cut') ? '' : box('cut', Boolean(cut), 'Cut experts', 'Keeps the experts your work uses and drops the rest. It loses some general knowledge, so test it.', f.experts ? '' : 'This brain isn\'t a mixture-of-experts brain.')}
       ${cut && hasPart('cut') ? `<div class="lab-sub">
-        ${radio('cuthow', 'cover', cut.how === 'cover', 'Keep every skill covered (recommended)', 'Counts each skill in your lessons on its own and keeps the experts every skill needs, not only the busiest overall. It\'s how Bob\'s own brains are cut.')}
+        ${radio('cuthow', 'cover', cut.how === 'cover', 'Keep every skill covered (recommended)', 'Keeps the experts each skill needs, not just the busiest overall. How Bob\'s own brains are cut.')}
         ${cut.how === 'cover' ? `<div class="lab-sub"><fieldset><legend>How much of each skill to keep</legend>
-          ${[[0.95, '95% (recommended)', 'Each skill keeps the experts that do 95% of its work, in every layer.'], [0.9, '90%', 'Smaller, but every skill loses a little more.'], [0.99, '99%', 'Bigger. Almost nothing is lost.']].map(([v, l, h]) => radio('cover', String(v), cut.cover === v, l, h)).join('')}
+          ${[[0.95, '95% (recommended)', 'Each skill keeps the experts doing 95% of its work.'], [0.9, '90%', 'Smaller, but every skill loses a little more.'], [0.99, '99%', 'Bigger. Almost nothing is lost.']].map(([v, l, h]) => radio('cover', String(v), cut.cover === v, l, h)).join('')}
         </fieldset>
         ${plan?.skills?.length > 1 ? `<fieldset><legend>Protect these skills more (99%)</legend>${plan.skills.map((k) => `<label class="lab-opt"><input type="checkbox" data-strong="${esc(k)}" ${cut.strong?.includes(k) ? 'checked' : ''}> <span>${esc(k)}</span></label>`).join('')}</fieldset>` : ''}</div>` : ''}
-        ${radio('cuthow', 'busiest', cut.how === 'busiest', 'Keep the busiest experts', 'Counted on all the lessons from step 2 together.')}
-        ${radio('cuthow', 'file', cut.how === 'file', 'Use an expert list I have', 'A keep list from an earlier cut (for example a *-keep.json).')}
+        ${radio('cuthow', 'busiest', cut.how === 'busiest', 'Keep the busiest experts', 'The most-used experts across all your lessons.')}
+        ${radio('cuthow', 'file', cut.how === 'file', 'Use an expert list I have', 'A list saved from an earlier cut (a *-keep.json).')}
         ${cut.how === 'file' ? `<p><label>Expert list file <input id="lab-keep-file" type="text" value="${esc(cut.file)}"></label></p>` : ''}
-        <fieldset><legend>How many experts to keep per layer</legend>${cut.how === 'cover' ? radio('keep', 'auto', !cut.keep, 'As many as the skills need (recommended)', 'Bob works it out after counting. The report says how many, and how much of each skill stayed.') : ''}${cutSizes.map((c) => radio('keep', String(c.keep), cut.keep === c.keep, `${c.keep} experts · about ${c.gb} GB`, c.fit)).join('')}
+        <fieldset><legend>How many experts to keep per layer</legend>${cut.how === 'cover' ? radio('keep', 'auto', !cut.keep, 'As many as the skills need (recommended)', 'Bob works it out. The report says how many he kept.') : ''}${cutSizes.map((c) => radio('keep', String(c.keep), cut.keep === c.keep, `${c.keep} experts · about ${c.gb} GB`, c.fit)).join('')}
         <label class="lab-opt"><input type="radio" name="keep" value="custom" ${!cut.keep || cutSizes.some((c) => c.keep === cut.keep) ? '' : 'checked'}> <span><strong>Custom</strong> <input id="lab-keep-n" type="number" min="${f.used || 1}" max="${(f.experts || 2) - 1}" value="${cut.keep || ''}" aria-label="Experts to keep per layer"></span></label></fieldset>
-        ${box('try', s.try, 'Try it first, before cutting', `Brain Engine runs ${b?.name || 'the brain'} with only the kept experts switched on and gives it the Lab test, so you see the score before any file is written. It counts as the test of ${b?.name || 'the brain'} too.`, view.brainEngine ? '' : 'Needs Brain Engine, Bob\'s Lab engine (a version of llama.cpp that can switch experts off). Get it in Settings > Engines: Brain Engine.')}
+        ${box('fold', cut.fold === true, 'Fold the rest in, instead of dropping them', 'Blends each dropped expert into the kept one most like it, so some of what it knew stays. Slower than a plain cut; still needs retraining after.', f.fullSize === false ? `Needs the full-size file (F16 or BF16); ${b?.name || 'this brain'}'s is a running file.` : '')}
+        ${box('try', s.try, 'Try it first, before cutting', `Tests ${b?.name || 'the brain'} with only the kept experts turned on, so you see the score before anything is cut.`, view.brainEngine ? '' : 'Needs Brain Engine, Bob\'s Lab engine (a version of llama.cpp that can switch experts off). Get it in Settings > Engines: Brain Engine.')}
         ${s.try ? `<div class="lab-sub">${box('tryStop', s.tryStop, 'Stop if it scores more than 10 points lower on the Lab test', 'Then nothing is cut, and you can keep more experts or protect more skills.')}</div>` : ''}
       </div>` : ''}
-      ${!hasPart('later') ? '' : later('Layer cut (Experimental)', 'Fewer layers: the least-used ones, measured on your lessons.')}
-      ${!hasPart('later') ? '' : later('Width cut (Experimental)', 'A narrower brain. This one hurts most and needs the longest teach-back.')}
-      ${!hasPart('later') ? '' : later('Teach it back', 'Teaches the cut brain back against the original with the lessons and odds ("heal" in the forge). Light (quick; recommended) or Full.')}
-      ${!hasPart('later') ? '' : later('Make it one file', 'Folds the taught-back part into the brain so it\'s one file ("fold" in the forge).')}
+      ${!hasPart('later') ? '' : later('Layer cut (Experimental)', 'Removes the least-used layers.')}
+      ${!hasPart('later') ? '' : later('Width cut (Experimental)', 'Makes every layer narrower. Hurts most; needs the longest retraining.')}
+      ${!hasPart('later') ? '' : later('Teach it back', 'The original brain retrains the cut one, so it gets back what it lost.')}
+      ${!hasPart('later') ? '' : later('Make it one file', 'Joins the retrained part into the brain file.')}
       ${!hasPart('files') ? '' : `<fieldset><legend>${nm('Make the running files')}</legend>
-        ${f.fullSize ? '' : `<p class="muted">${esc(b?.name || 'This brain')} is already a running file (${esc(f.fileType || '?')}), so it stays as it is. Making running files needs the full-size copy (F16 or BF16).</p>`}
+        ${f.fullSize ? '' : `<p class="muted">${esc(b?.name || 'This brain')} is already a running file (${esc(f.fileType || '?')}). Making running files needs the full-size copy (F16 or BF16).</p>`}
         ${view.types.filter((t) => t !== 'Q3_K_M' || (f.sizeGB || 99) <= 16).map((t) => box(`file:${t}`, s.files.includes(t), TYPE_NOTE[t], f.sizeGB ? `About ${Math.round(f.sizeGB * ({ Q4_K_M: 0.3, Q5_K_M: 0.36, Q6_K: 0.41, Q8_0: 0.53, Q3_K_M: 0.25 }[t] || 0.3) * 10) / 10} GB from this brain${cut ? ' before the cut' : ''}.` : '', f.fullSize ? '' : 'Needs the full-size copy.')).join('')}
-        ${s.files.length ? box('measure', s.measure, 'Measure before making the running files (recommended)', 'Before the running files, Bob measures which weights matter most on your lessons, on the cut brain itself. The running files lose less that way, most of all at Q4 and Q3. Adds a few minutes on the graphics card.', r.lessons.kind === 'none' ? 'Needs lessons to measure on: pick a lesson set in step 2.' : '') : ''}
+        ${s.files.length ? box('measure', s.measure, 'Measure before making the running files (recommended)', 'Finds which parts matter most for your lessons, so the running files lose less. A few extra minutes.', r.lessons.kind === 'none' ? 'Needs lessons to measure on: pick a lesson set in step 2.' : '') : ''}
       </fieldset>`}
     </fieldset>`;
   }
 
   function whereStep() {
     return `<fieldset><legend>Where it runs</legend>
-      ${radio('where', 'here', true, 'This replicant matrix', 'Free. Uses this replicant matrix\'s card and disk. Bob asks before he unloads his own brain to make room, and the Lab waits while Gaming is on.')}
+      ${radio('where', 'here', true, 'This replicant matrix', 'Free. Uses this card and disk. Bob asks before unloading his own brain, and waits while Gaming is on.')}
       ${later('Rented card(s)', 'One card, a few cards in a row, or several at once, with limits you set. Only shows when Let Bob hire is on in Online services.')}
     </fieldset>`;
   }
@@ -319,7 +320,7 @@ export function createLab({ api, note }) {
   function testStep() {
     return `<fieldset><legend>Test and use</legend>
       <p>Every Lab brain takes the Lab test before it can go into Bob: ${Object.values(PARTS).join(', ').toLowerCase()}.</p>
-      ${box('compare', r.test.compare, `Test ${brain()?.name || 'the brain I started from'} too, to compare`, 'Takes about as long again. Shows plainly if the new brain does worse.')}
+      ${box('compare', r.test.compare, `Test ${brain()?.name || 'the brain I started from'} too, to compare`, 'Takes about as long again. Shows if the new brain does worse.')}
     </fieldset>`;
   }
 
@@ -339,6 +340,7 @@ export function createLab({ api, note }) {
       ${x.kind === 'build' && x.report ? `<br><span class="muted">${x.report.lessons} lessons built in ${x.report.minutes} minutes${x.report.held ? `, ${x.report.held} passages held back` : ''}. Pick it in step 2, under A lesson set I wrote or built here, or open it under Sets built from your files.</span>` : ''}
       ${x.kind === 'sample' && x.report ? `<br><span class="muted">${x.report.lessons} sample lessons in ${x.report.minutes} minutes${x.report.held ? `, ${x.report.held} passages held back` : ''}. They're under Build a new set from my files, in step 2.</span>` : ''}
       ${x.kind === 'challenge' && x.report ? `<table class="lab-report"><caption class="muted">Challenges (out of 100)</caption><tr><th scope="col">Challenge</th><th scope="col">Score</th><th scope="col">Right</th></tr>${x.report.challenges.map((c) => `<tr><th scope="row">${esc(c.title)}</th><td>${c.score ?? '-'}</td><td>${c.skipped ? esc(c.skipped) : `${c.right} of ${c.of}`}${c.parts ? `<br><span class="muted">${esc(guardPartsLine(c.parts))}</span>` : ''}${c.note ? `<br><span class="muted">${esc(c.note)}</span>` : ''}</td></tr>`).join('')}</table>${x.report.bench ? `<p class="muted">${esc(x.report.bench.line || `The standard speed test didn't finish: ${x.report.bench.error || ''}`)}</p>` : ''}${view.mode === 'pro' ? px.reportExtraHtml(x) : ''}${saveHtml(x.id, saveState(x.id), view.hardware)}` : ''}
+      ${x.report?.folded ? `<p class="muted">Folded, not dropped: ${Number(x.report.folded.experts)} experts were blended into the ${Number(x.report.folded.kept)} kept per layer. It hasn't been taught back yet, so test it beside a plain cut at the same size.</p>` : ''}
       ${x.report?.coverage ? `<table class="lab-report"><caption class="muted">Coverage cut: kept ${x.report.coverage.experts} of ${x.report.coverage.of} experts per layer</caption><tr><th scope="col">Skill</th><th scope="col">Kept, on average</th><th scope="col">Worst layer</th></tr>${x.report.coverage.skills.map((k) => `<tr><th scope="row">${esc(k.name)}</th><td>${k.average}%</td><td>${k.worst}% (layer ${k.worstLayer})</td></tr>`).join('')}</table>` : ''}
       ${homeReportHtml(x)}
       ${x.report?.tried && x.kind !== 'refusals-try' ? `<br><span class="muted">Tried first on Brain Engine: ${x.report.tried.masked} with only the kept experts, ${x.report.tried.full} with all of them.</span>` : ''}
@@ -400,7 +402,7 @@ export function createLab({ api, note }) {
       ${t.rows.map((r) => `<tr><th scope="row">${esc(r[0])}</th>${r.slice(1).map((c) => `<td>${esc(String(c))}</td>`).join('')}</tr>`).join('')}</table>
       ${saveHtml('board', saveState('board'), view.hardware)}`;
     return `<div id="lab-page-challenges" role="tabpanel" aria-labelledby="lab-tab-challenges">
-      <p class="muted">Short tests, out of 100, for any brain on this replicant matrix. I ask every question at temperature 0 with thinking off, so the same brain gets the same score twice. The scores only mean something next to each other, here: they aren't the numbers you see in papers.</p>
+      <p class="muted">Short tests, scored out of 100. The same brain always gets the same score. Compare scores here only: they aren't the numbers in papers.</p>
       ${runsHtml()}
       <fieldset><legend>Which brain?</legend>${brains.length ? brains.map((b) => radio('chfrom', b.id, ch.from === b.id, `${b.name}${b.madeInLab ? ' (made in the Lab)' : ''}`, `${b.facts.sizeGB} GB. ${b.fit}`)).join('') : '<p>There are no brains here the Lab can run yet. Get one in Get models first.</p>'}</fieldset>
       ${packGroups(view.packs).map((grp) => `<fieldset><legend>${esc(grp.label)}</legend>${grp.packs.map((p) => `<label class="lab-opt"><input type="checkbox" data-pack="${esc(p.id)}" ${ch.packs.includes(p.id) ? 'checked' : ''}> <span><strong>${nm(p.title)}</strong> <span class="muted">· ${p.count} questions · ${esc(packMinutesLine(p.minutes, view.cardGB, view.sharedMemory))}</span><br><span class="muted">${esc(p.what)}</span></span></label>`).join('')}</fieldset>`).join('')}
@@ -433,7 +435,7 @@ export function createLab({ api, note }) {
     const html = { brain: brainStep, lessons: lessonsStep, smaller: smallerStep, where: whereStep, test: testStep }[step]();
     const busy = running();
     body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-make" role="tabpanel" aria-labelledby="lab-tab-make">
-      <p class="muted">Make your own brain from one on this replicant matrix. Each step says what it does and whether this replicant matrix can do it. Show the recipe shows the exact commands, if you want to learn them.</p>
+      <p class="muted">Make a new brain from one you have. Show the recipe gives the exact commands.</p>
       ${view.recipes.length ? `<p><label>Start from a saved recipe <select id="lab-recipe"><option value="">(none)</option>${view.recipes.map((x, n) => `<option value="${n}">${esc(x.name)}</option>`).join('')}</select></label></p>` : ''}
       ${runsHtml()}
       ${rc.galleryHtml()}
@@ -511,6 +513,7 @@ export function createLab({ api, note }) {
       else if (k === 'cut') r.smaller.cut = el.checked ? { how: 'cover', keep: 0, cover: 0.95, strong: [], file: '' } : null;
       else if (k === 'compare') r.test.compare = el.checked;
       else if (k === 'measure') r.smaller.measure = el.checked;
+      else if (k === 'fold') { if (r.smaller.cut) { if (el.checked) r.smaller.cut.fold = true; else delete r.smaller.cut.fold; } }
       else if (k === 'try') { r.smaller.try = el.checked; r.smaller.tryStop = el.checked; }
       else if (k === 'tryStop') r.smaller.tryStop = el.checked;
       else if (k.startsWith('file:')) { const t = k.slice(5); const first = !r.smaller.files.length; r.smaller.files = el.checked ? [...new Set([...r.smaller.files, t])] : r.smaller.files.filter((x) => x !== t); if (first && el.checked && r.lessons.kind !== 'none') r.smaller.measure = true; if (!r.smaller.files.length) r.smaller.measure = false; }

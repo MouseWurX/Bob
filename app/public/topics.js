@@ -51,7 +51,7 @@ export function createTopics({ api, openChat }) {
   }
 
   function topicsHtml() {
-    if (!topics.length) return `<p class="muted">No topics yet. Bob files what you talk about under topics while he's idle, once Housekeeping is on (Settings, Show advanced settings). You can also do it now.</p><button type="button" data-runnow>Sort my chats into topics now</button>`;
+    if (!topics.length) return `<p class="muted">No topics yet. Bob files what you talk about under topics while he's idle, once Housekeeping is on (Settings, Housekeeping). You can also do it now.</p><button type="button" data-runnow>Sort my chats into topics now</button>`;
     const groups = new Map();
     for (const t of topics) { const k = t.project || 'Other'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); }
     return `<p class="muted">What you and Bob have talked about, by project. ${topics.length} topic${topics.length === 1 ? '' : 's'}. <button type="button" class="link" data-runnow>Refresh now</button></p>
