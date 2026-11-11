@@ -568,6 +568,8 @@ PY
   # in aifeui-engine on the drive, the rest reuse it), and lists everything under out/fnri/ in out/fnri/files.json for the PC to bring home.
   # A failed brain is logged and the next one runs. The scan tool itself belongs to the FNRI thread; this only drives it.
   if [ -n "$(plan ".get('scan')")" ]; then
+    # 11 Nov: the scan's engine build clones llama.cpp with git, which the rental image lacks (the first scan run stopped at its preflight)
+    command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; } >/dev/null 2>&1 || echo "git could not be installed; the scans will say so"
     [ -f $IN/scan.tgz ] || die "scan: in/scan.tgz is missing (the PC sends plan.scan.from)"
     mkdir -p $S/fnri-in $OUT/fnri && tar xzf $IN/scan.tgz -C $S/fnri-in || die "scan: unpacking in/scan.tgz"
     STOCK=$(plan "['scan'].get('stock','')")

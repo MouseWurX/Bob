@@ -21,6 +21,8 @@ plan() { python3 -c "import json,sys; v=json.load(open(sys.argv[1])).get(sys.arg
 
 # ---- step 0: every dependency, before anything else ----
 status checking "checking everything the scan needs"
+# 11 Nov: the rental image had no git and the first scan run stopped at the checks; install it the way the Forge's llama-server build does
+command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; } >/dev/null 2>&1 || true
 python3 "$POD/aifeui_scan.py" preflight --plan "$PLAN" --patches "$PATCHES" --viewer "$VIEWER" --work "$W" --out "$OUT/preflight.json"
 rc=$?
 [ $rc -eq 0 ] || { status failed "a check failed before anything was downloaded or built; see preflight.json"; say "Stopped at the checks. Nothing was downloaded or built."; exit 2; }
