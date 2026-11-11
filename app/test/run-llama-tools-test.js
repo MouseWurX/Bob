@@ -256,7 +256,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     ok(await ask(relay.port) === '' && seen.some((x) => /turned away UDP/.test(x)), 'SCUT gate: anyone else\'s UDP is turned away');
     relay.close(); card.close();
   }
-  ok(/if \(helpers\.length\) env = \{ \.\.\.env, \.\.\.scutEnv\(this\.cfg\) \}/.test(read(path.join(here, '..', 'src', 'llamacpp.js'))), 'SCUT: the engine that spreads a brain switches it on only with helpers');
+  ok(/if \(helpers\.length\) env = \{ \.\.\.env, \.\.\.scutEnv\(this\.cfg\)[, }]/.test(read(path.join(here, '..', 'src', 'llamacpp.js'))), 'SCUT: the engine that spreads a brain switches it on only with helpers');
   ok(isHomeIp(H(192, 168, 0, 1)) && isHomeIp(H(10, 1, 2, 3)) && isHomeIp(H(172, 20, 0, 1)) && !isHomeIp(H(172, 32, 0, 1)) && !isHomeIp('100.101.1.2') && !isHomeIp('8.8.8.8'), 'card: what counts as a home-network address');
   ok(pickHome(myHome, [H(192, 168, 5, 9)]) === null && pickHome(myHome, [H(192, 168, 4, 9)]).peer === H(192, 168, 4, 9), 'card: same home network means same subnet');
   ok(homeIps({ eth: [{ family: 'IPv4', address: H(192, 168, 4, 185), netmask: '255.255.255.0', internal: false }], ts: [{ family: 'IPv4', address: '100.101.1.2', netmask: '255.192.0.0' }], lo: [{ family: 'IPv4', address: '127.0.0.1', internal: true }] }).map((x) => x.address).join() === H(192, 168, 4, 185), 'card: this machine\'s home-network addresses leave out Tailscale and loopback');
