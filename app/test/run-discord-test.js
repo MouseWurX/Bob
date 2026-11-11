@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DiscordBridge, discordView, discordRoute, DM_SESSION, cleanDiscordPatch, matchWake, jobTypeOf, toolsFor, cleaner, saveDiscord, storeToken, discordSettings, INTENTS, TOKEN_ENV } from '../src/discord.js';
 import { guestTools, guestNote } from '../src/share-jobs.js';
+import { savedKey } from '../src/secret-box.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -162,14 +163,16 @@ check('the reply cleaner hides a Discord token too', !cleaner({})(`token ${TOKEN
 b.onClose(4004);
 check('a refused token stops trying and says so', !b.running && b.status === 'bad token');
 
-// Saving a pasted token (Mac/Linux file; Windows uses reg).
+// Saving a pasted token: into Bob's locked store (🔐 Locked secrets), and any old plain copy taken away.
 const home = path.join(dir, 'home');
-await storeToken(TOKEN, { platform: 'linux', home });
+fs.mkdirSync(path.join(home, '.config', 'bob'), { recursive: true });
+fs.writeFileSync(path.join(home, '.config', 'bob', 'env'), `${TOKEN_ENV}=old.plain.one\n`);
+await storeToken(TOKEN, { cfg: brain.cfg, platform: 'linux', home });
 const envFile = fs.readFileSync(path.join(home, '.config', 'bob', 'env'), 'utf8');
-check('a pasted token is saved in ~/.config/bob/env on Mac and Linux', envFile.includes(`${TOKEN_ENV}=${TOKEN}`));
+check('a pasted token is saved locked, and the old plain line leaves ~/.config/bob/env', savedKey(TOKEN_ENV) === TOKEN && !envFile.includes(TOKEN_ENV));
 let regArgs = null;
-await storeToken(TOKEN, { platform: 'win32', run: (cmd, args, o, cb) => { regArgs = [cmd, ...args]; cb(null); } });
-check('on Windows it goes into the user variables (HKCU\\Environment)', regArgs?.[0] === 'reg' && regArgs.includes('HKCU\\Environment') && regArgs.includes(TOKEN_ENV));
+await storeToken(TOKEN, { cfg: brain.cfg, platform: 'win32', run: (cmd, args) => { regArgs = [cmd, ...args]; return ''; } });
+check('on Windows the old user variable an older Bob wrote is taken away (HKCU\\Environment)', regArgs?.[0] === 'reg' && regArgs[1] === 'delete' && regArgs.includes(TOKEN_ENV) && !regArgs.includes(TOKEN));
 let bad = '';
 try { await b.saveToken('not a token'); } catch (e) { bad = e.message; }
 check('something that isn\'t a bot token is refused', /doesn't look like/.test(bad));

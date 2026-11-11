@@ -171,7 +171,7 @@ check('picks the .deb and the Flatpak by how this Bob was installed', gh.platfor
   const sw = gh.githubJob().swap;
   check('Flatpak: the checked .flatpak waits for the restart', readStatus().ready === true && sw?.kind === 'flatpak' && fs.readFileSync(sw.from).equals(fpBytes), readStatus().error);
   const script = gh.swapScript(sw, 4242);
-  check('Flatpak: waits until no Bob Flatpak runs, installs over the old one in the same place, opens Bob again', /flatpak ps --columns=application/.test(script) && script.includes(`flatpak install --system -y --noninteractive --reinstall --bundle '${sw.from}'`) && /nohup flatpak run 'ca\.mousewurx\.bob'/.test(script) && !/kill -0/.test(script));
+  check('Flatpak: waits until no Bob Flatpak runs, installs over the old one in the same place, opens Bob again', /flatpak ps --columns=application/.test(script) && script.includes(`flatpak install --system -y --noninteractive --reinstall --bundle '${sw.from}'`) && script.includes(`|| { flatpak uninstall --system -y --noninteractive 'ca.mousewurx.bob' && flatpak install --system -y --noninteractive --bundle '${sw.from}'; }`) && /nohup flatpak run 'ca\.mousewurx\.bob'/.test(script) && !/kill -0/.test(script));
   let spawned = null;
   gh.restartIntoNew(cfg, { spawnImpl: (exe, args, opts) => { spawned = { exe, args, opts }; return { unref() {} }; }, quit: () => {} });
   await new Promise((r) => setTimeout(r, 400));

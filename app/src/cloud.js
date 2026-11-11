@@ -2,6 +2,7 @@
 // Keys are never stored by Bob: they come from Windows environment variables you set yourself.
 // Addresses are fixed here, so a settings file can't redirect your text somewhere else.
 import { execFileSync } from 'node:child_process';
+import { savedKey } from './secret-box.js';
 
 // A key added in Windows after Bob started isn't in process.env yet, so also look in the user's
 // saved environment (HKCU\Environment). The key's value never leaves this module except in the request to its provider.
@@ -12,7 +13,8 @@ export function keyEnv() {
     get(target, k) {
       if (typeof k !== 'string') return undefined;
       if (target[k]) return target[k];
-      if (process.platform !== 'win32' || !/^[A-Z0-9_]{3,64}$/.test(k)) return undefined;
+      if (!/^[A-Z0-9_]{3,64}$/.test(k)) return undefined;
+      if (process.platform !== 'win32') return savedKey(k) || undefined; // 🔐 a key saved in Settings (secret-box.js)
       const hit = regCache.get(k);
       if (hit && Date.now() - hit.at < 60000) return hit.value;
       let value;
@@ -24,7 +26,7 @@ export function keyEnv() {
         value = m ? m[1].trim() : undefined;
       } catch { value = undefined; }
       regCache.set(k, { at: Date.now(), value });
-      return value;
+      return value || savedKey(k) || undefined;
     }
   });
 }

@@ -3,8 +3,8 @@
 //
 // Bob's own program folder and settings stay locked (config.js ownReadOnlyRoots): this never lifts that. Instead he
 // works on a CODE COPY: a separate git copy of his code from GitHub, in inn/own-code/bob, made by the user's
-// click (and the same for every repository the user adds, in inn/own-code/<name>). He wears his coding hat (the code copy of Bob), but only on the biggest brain (Bobert, else stock
-// Qwen3.6 35B) and with Long memory (YaRN) stretched past the 256K it was made for. Every edit and every command
+// click (and the same for every repository the user adds, in inn/own-code/<name>). He wears his coding hat (the code copy of Bob), on the biggest brain by default (Bobert, else stock
+// Qwen3.6 35B; any text brain can be picked in Settings) and with Long memory (YaRN) stretched past the 256K it was made for. Every edit and every command
 // still shows its card; git push is still refused by the "Don't send anything out" limit. What comes out is a git
 // branch and a patch file for the user to look over.
 //
@@ -96,14 +96,21 @@ export function applyCodeCopy(cfg, deps) {
 }
 
 // ---- Which brain ----
-// Only the biggest: Bobert (Bob's own 35B cut, a file on this replicant matrix), else the stock Qwen3.6 35B-A3B from the
-// catalogue or Ollama. Remixes (heretic, distilled) don't count: the owner said Bobert or Qwen 35B.
+// Recommended: the biggest, Bobert (Bob's own 35B cut) else the stock Qwen3.6 35B-A3B (the owner on 2026-11-09:
+// "Bobert or Qwen 35B"). The owner on 2026-11-11: the picker must also offer the catalogue's brains and the tuned
+// brains given a job, so any text brain can be picked; the biggest stays the default.
 export const isBobert = (s) => /bobert/i.test(String(s || ''));
 export const isStockQwen35 = (s) => /^(?:qwen3\.[56][-:]35b(?:-a3b)?(?:[-_](?:q\d\w*|ud\w*|instruct))*)$/i.test(String(s || '')) && !/heretic|abliter|distill|opus/i.test(String(s || ''));
 export const bigBrainOk = (id, name = '') => isBobert(id) || isBobert(name) || isStockQwen35(id);
 
-// candidates: [{ id, name, sizeGB }] of brains on this replicant matrix (the caller gathers them: own files, the
-// catalogue's files, equipped slots). Bobert first (bigger file first), then Qwen 35B (bigger first).
+// The job names Settings uses for each brain slot (cfg.models keys).
+export const JOB_NAMES = { bob: 'Brain', small: 'Quick brain', deep: 'Deep thinking', tinker: 'Coding', reviewer: 'Review', eyes: 'Seeing pictures', ledger: 'Spreadsheets', scout: 'Research', painter: 'Prompt writer' };
+// The picker's groups, in order: big (recommended), jobs (your own tuned brains and the ones doing a job), here (other
+// catalogue brains on this replicant matrix), get (in the catalogue, not downloaded yet).
+export const BRAIN_GROUPS = ['big', 'jobs', 'here', 'get'];
+
+// candidates: [{ id, name, sizeGB, here?, own?, jobs? }]. Only the Bobert/Qwen 35B ones, Bobert first (bigger file first),
+// then Qwen 35B (bigger first). Kept for Bob-Net helpers (self-work-plan.js) and the default pick.
 export function bigBrains(candidates = []) {
   const seen = new Set();
   const list = [];
@@ -114,21 +121,59 @@ export function bigBrains(candidates = []) {
   }
   return list.sort((a, b) => (b.bobert - a.bobert) || (b.sizeGB - a.sizeGB));
 }
-// Gathers the candidates from what's on this replicant matrix. own: ownEntries(cfg) (own-models.js); catalogFile(id):
-// catalogFileFor (llamacpp.js), { gguf } or null; size(file): bytes. Equipped slots count too (an Ollama name).
-export const STOCK_IDS = ['qwen3.6-35b-a3b', 'qwen3.6-35b-a3b-q3'];
-export function gatherBrains(cfg, { own = [], catalogFile = () => null, size = (f) => fs.statSync(f).size } = {}) {
+
+const readCatalog = () => { try { return JSON.parse(fs.readFileSync(new URL('../catalog.json', import.meta.url), 'utf8')).models || []; } catch { return []; } };
+// A catalogue entry that can do this job: a text brain (chat or coding) with a GGUF file. Naughty-list brains only when
+// that list is switched on (Settings, the same as Get models).
+const textBrain = (e, cfg) => e && ['chat', 'coding'].includes(e.category) && !e.diffusion && (e.files || []).some((f) => f.role === 'gguf') && (e.naughty !== true || cfg?.naughtyList === true);
+
+// Gathers every brain the picker offers. own: ownEntries(cfg) (own-models.js); catalog: catalog.json's models;
+// catalogFile(id): catalogFileFor (llamacpp.js), { gguf } or null when it isn't on this replicant matrix; size(file): bytes.
+// Equipped slots (cfg.models, a catalogue id or an Ollama name) count too and give their brain its job names.
+// Returns [{ id, name, sizeGB, here, group, jobs: ['Coding', ...] }] in picker order.
+export function gatherBrains(cfg, { own = [], catalog, catalogFile = () => null, size = (f) => fs.statSync(f).size } = {}) {
+  if (!Array.isArray(catalog)) catalog = readCatalog();
   const gb = (f) => { try { return Math.round((size(f) / 1e9) * 10) / 10; } catch { return 0; } };
-  const out = [];
-  for (const e of own) if (e?.status?.state === 'installed') out.push({ id: e.id, name: e.name, sizeGB: e.sizeGB || 0 });
-  for (const id of STOCK_IDS) { let f = null; try { f = catalogFile(id); } catch {} if (f?.gguf) out.push({ id, name: id === STOCK_IDS[0] ? 'Qwen3.6 35B-A3B' : 'Qwen3.6 35B-A3B (Q3)', sizeGB: gb(f.gguf) }); }
-  for (const m of Object.values(cfg?.models || {})) if (typeof m === 'string') out.push({ id: m, name: m, sizeGB: 0 });
-  return bigBrains(out);
+  const byId = new Map();
+  const add = (b) => { if (b?.id && !byId.has(b.id)) byId.set(b.id, { jobs: [], ...b }); return byId.get(b?.id); };
+  for (const e of own) if (e?.status?.state === 'installed') add({ id: e.id, name: e.name || e.id, sizeGB: Number(e.sizeGB) || 0, here: true, own: true });
+  for (const e of catalog) {
+    if (!textBrain(e, cfg)) continue;
+    let f = null; try { f = catalogFile(e.id); } catch {}
+    add({ id: e.id, name: e.name || e.id, sizeGB: f?.gguf ? gb(f.gguf) || Number(e.sizeGB) || 0 : Number(e.sizeGB) || 0, here: Boolean(f?.gguf), ollama: e.ollama || '' });
+  }
+  // The brain in each job slot: it gets the job's name; a slot holding a name Bob has no entry for (an Ollama brain) is
+  // its own row.
+  for (const [job, m] of Object.entries(cfg?.models || {})) {
+    if (typeof m !== 'string' || !m) continue;
+    const hit = byId.get(m) || [...byId.values()].find((b) => b.ollama && (b.ollama === m || `${b.ollama}:latest` === m || b.ollama === `${m}:latest`));
+    const b = hit || add({ id: m, name: m, sizeGB: 0, here: true });
+    const label = JOB_NAMES[job] || job;
+    if (!b.jobs.includes(label)) b.jobs.push(label);
+    b.inJob = true;
+  }
+  const bigIds = new Set(bigBrains([...byId.values()].filter((b) => b.here)).map((b) => b.id));
+  const out = [...byId.values()].map((b) => ({
+    id: b.id, name: b.name, sizeGB: b.sizeGB, here: b.here === true, jobs: b.jobs,
+    group: bigIds.has(b.id) ? 'big' : !b.here ? 'get' : (b.own || b.inJob) ? 'jobs' : 'here',
+    bobert: isBobert(b.id) || isBobert(b.name)
+  }));
+  return out.sort((a, b) => (BRAIN_GROUPS.indexOf(a.group) - BRAIN_GROUPS.indexOf(b.group)) || (b.bobert - a.bobert) || (b.sizeGB - a.sizeGB) || a.name.localeCompare(b.name));
 }
-// The one Bob uses: the picked one while it's still here, else the first.
+// The one Bob uses: the picked one while it's on this replicant matrix, else the biggest (Bobert, then Qwen 35B), else
+// the brain doing the Coding job, else the biggest brain that is here. Never a catalogue brain that isn't downloaded
+// (PC test of 1.5.205). null when no brain is here at all.
 export function pickBigBrain(cfg, list) {
   const want = cfg?.selfWork?.model;
-  return (want && list.find((b) => b.id === want)) || list[0] || null;
+  const here = list.filter((b) => b.here !== false);
+  return (want && here.find((b) => b.id === want)) || here.find((b) => (b.group ? b.group === 'big' : bigBrainOk(b.id, b.name)))
+    || here.find((b) => b.jobs?.includes(JOB_NAMES.tinker))
+    || [...here].sort((a, b) => (Number(b.sizeGB) || 0) - (Number(a.sizeGB) || 0))[0] || null;
+}
+// The picked brain when it isn't on this replicant matrix (in the catalogue, not downloaded yet), else null.
+export function pickedMissing(cfg, list) {
+  const want = cfg?.selfWork?.model;
+  return (want && list.find((b) => b.id === want && b.here === false)) || null;
 }
 
 // ---- The job ----
@@ -217,7 +262,7 @@ export async function makeCodeCopy(cfg, repo = BOB_REPO, { git = 'git', run = ru
 export function selfWorkView(cfg, brains = [], deps) {
   const pick = pickBigBrain(cfg, brains);
   return {
-    enabled: selfWorkOn(cfg), helpers: cfg?.selfWork?.helpers === true, ctx: selfCtx(cfg), ctxChoices: SELF_CTX, model: pick?.id || '', brains: brains.map((b) => ({ id: b.id, name: b.name })), maxRepos: MAX_REPOS,
+    enabled: selfWorkOn(cfg), helpers: cfg?.selfWork?.helpers === true, ctx: selfCtx(cfg), ctxChoices: SELF_CTX, model: pick?.id || '', picked: cfg?.selfWork?.model || '', missing: pickedMissing(cfg, brains)?.name || '', brains: brains.map((b) => ({ id: b.id, name: b.name, here: b.here !== false, group: b.group || 'big', jobs: b.jobs || [] })), maxRepos: MAX_REPOS,
     repos: reposOf(cfg).map((r) => ({ ...r, own: r.own === true, dir: cfg.innDir ? codeCopyDir(cfg, r) : '', ready: hasCodeCopy(cfg, r, deps), patches: cfg.innDir ? patchDir(cfg, r) : '' }))
   };
 }

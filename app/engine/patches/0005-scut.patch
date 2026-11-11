@@ -17,10 +17,10 @@ index 8976651..2c592a4 100644
  # RDMA auto-detection: Linux RoCE/IB via libibverbs, Apple RDMA-over-Thunderbolt via librdma
 diff --git a/ggml/src/ggml-rpc/scut.cpp b/ggml/src/ggml-rpc/scut.cpp
 new file mode 100644
-index 0000000..590f964
+index 0000000..942ea87
 --- /dev/null
 +++ b/ggml/src/ggml-rpc/scut.cpp
-@@ -0,0 +1,597 @@
+@@ -0,0 +1,689 @@
 +// SCUT, Brain Engine patch 0005: see scut.h for what it is and why.
 +#include "scut.h"
 +#include "log.h"
@@ -80,7 +80,10 @@ index 0000000..590f964
 +constexpr size_t   MAX_QUEUE = 16384;      // segments waiting or in flight (~19 MiB); the sender waits beyond this
 +constexpr size_t   RX_AHEAD  = 16384;      // out-of-order segments the receiver holds
 +
-+enum : uint8_t { T_DATA = 1, T_ACK = 2, T_PING = 3, T_PONG = 4, T_CLOSE = 5 };
++enum : uint8_t { T_DATA = 1, T_ACK = 2, T_PING = 3, T_PONG = 4, T_CLOSE = 5, T_FEC = 6 };
++// offer flags
++constexpr uint8_t OF_FEC = 1;   // understands repair packets (T_FEC)
++constexpr uint32_t FEC_MAX = 8; // a burst of up to this many segments gets one repair packet
 +
 +#pragma pack(push, 1)
 +struct offer_t {           // what goes into conn_caps (24 bytes)
@@ -124,6 +127,11 @@ index 0000000..590f964
 +    return (end && *end == 0) ? (uint32_t) x : def;
 +}
 +
++// Learn the rhythm: what each peer's line carried last time (bytes per second, by address), so the next connection to
++// it (llama.cpp opens several, and reconnects for each load) starts near the right pace instead of feeling its way up.
++static std::mutex g_pace_mu;
++static std::map<uint32_t, double> g_pace;
++
 +} // namespace
 +
 +struct scut {
@@ -135,6 +143,7 @@ index 0000000..590f964
 +    uint64_t     my_nonce = 0;
 +    uint32_t     cap_bps = 0;        // bytes per second, the lower of both sides' caps
 +    bool         awake = true;
++    bool         fec = false;        // both sides understand repair packets (and GGML_RPC_SCUT_FEC isn't 0)
 +
 +    // test only: drop this share of outgoing datagrams (GGML_RPC_SCUT_TEST_DROP, per thousand)
 +    uint32_t     test_drop = 0;
@@ -184,11 +193,19 @@ index 0000000..590f964
 +    std::thread io;
 +
 +    // counters, printed at the end with GGML_RPC_DEBUG
-+    uint64_t n_sent = 0, n_resent = 0, n_recv = 0, n_dropped_test = 0;
++    uint64_t n_sent = 0, n_resent = 0, n_recv = 0, n_dropped_test = 0, n_fec_sent = 0, n_fec_fixed = 0;
++    int64_t  last_tx = 0;            // anything sent at all: data, acks, repair packets
++    uint32_t burst_first = 0;        // first segment since the last flush: one message's burst
++    // receiver side of the repair packets: copies of the last segments (in order or not) and the repairs waiting
++    struct fec_t { uint32_t k; uint16_t lens[FEC_MAX]; std::vector<uint8_t> x; };
++    std::map<uint32_t, std::vector<uint8_t>> recent;
++    std::map<uint32_t, fec_t> fecs;
 +
 +    ~scut() {
 +        stop = true;
 +        if (io.joinable()) io.join();
++        { double best = 0; for (double v : bw_ring) best = std::max(best, v);
++          if (conn && best > 0) { std::lock_guard<std::mutex> g(g_pace_mu); g_pace[peer.sin_addr.s_addr] = best; } }
 +        if (udp != BL_INVALID) {
 +            if (conn) { hdr_t h = {}; h.magic = PKT_MAGIC; h.type = T_CLOSE; h.conn = conn; raw_send(&h, sizeof(h)); }
 +            bl_close(udp);
@@ -196,12 +213,70 @@ index 0000000..590f964
 +#ifdef _WIN32
 +        if (conn) timeEndPeriod(1);
 +#endif
-+        if (conn) LOG_DBG("[scut] closed: %llu datagrams sent, %llu resent, %llu received; pace %.1f MB/s, round trip %.1f ms (quietest %.1f)\n", (unsigned long long) n_sent, (unsigned long long) n_resent, (unsigned long long) n_recv, rate / 1e6, srtt / 1000, min_rtt / 1000);
++        if (conn) LOG_DBG("[scut] closed: %llu datagrams sent, %llu resent, %llu received, %llu repairs sent, %llu fixed by repairs; pace %.1f MB/s, round trip %.1f ms (quietest %.1f)\n", (unsigned long long) n_sent, (unsigned long long) n_resent, (unsigned long long) n_recv, (unsigned long long) n_fec_sent, (unsigned long long) n_fec_fixed, rate / 1e6, srtt / 1000, min_rtt / 1000);
 +    }
 +
 +    void raw_send(const void * p, size_t n) {
 +        if (test_drop && (rng() % 1000) < test_drop) { n_dropped_test++; return; }
 +        sendto(udp, (const char *) p, (int) n, 0, (const sockaddr *) &peer, sizeof(peer));
++        last_tx = now_us();
++    }
++    // One repair packet for the burst [first, first+k): the XOR of its segments, so the receiver can rebuild any one
++    // that the air loses without asking for it again (a lost last packet would otherwise wait for the resend timer).
++    void send_fec(uint32_t first, uint32_t k) {
++        if (k == 0 || k > FEC_MAX) return;
++        int32_t at = (int32_t) (first - snd_una);
++        if (at < 0 || (size_t) at + k > q.size()) return;           // already acked, or not all queued
++        uint8_t buf[sizeof(hdr_t) + FEC_MAX * 2 + SEG] = {};
++        uint16_t * lens = (uint16_t *) (buf + sizeof(hdr_t));
++        uint8_t * x = buf + sizeof(hdr_t) + k * 2;
++        size_t mx = 0;
++        for (uint32_t i = 0; i < k; i++) {
++            const seg_t & sg = q[(size_t) at + i];
++            if (!sg.sent) return;                                    // still waiting on the pace: not a small burst
++            lens[i] = sg.len; mx = std::max<size_t>(mx, sg.len);
++            for (size_t j = 0; j < sg.len; j++) x[j] ^= sg.data[j];
++        }
++        hdr_t * h = (hdr_t *) buf;
++        h->magic = PKT_MAGIC; h->type = T_FEC; h->conn = conn; h->seq = first; h->flags = (uint8_t) k; h->len = (uint16_t) (k * 2 + mx);
++        h->ts = (uint32_t) now_us();
++        raw_send(buf, sizeof(hdr_t) + k * 2 + mx);
++        n_fec_sent++;
++    }
++    void on_fec(const hdr_t & h, const uint8_t * body, size_t n) {
++        uint32_t k = h.flags;
++        if (k == 0 || k > FEC_MAX || n < k * 2 || h.len > n) return;
++        if ((int32_t) (h.seq + k - rcv_next) <= 0) return;          // all of it arrived already
++        fec_t f; f.k = k; memcpy(f.lens, body, k * 2);
++        f.x.assign(body + k * 2, body + h.len);
++        fecs[h.seq] = std::move(f);
++        try_fec(h.seq);
++    }
++    bool have_seg(uint32_t s) const { return (int32_t) (s - rcv_next) < 0 || ooo.count(s); }
++    void try_fec(uint32_t first) {
++        auto it = fecs.find(first);
++        if (it == fecs.end()) return;
++        fec_t & f = it->second;
++        uint32_t missing = 0, n_missing = 0;
++        for (uint32_t i = 0; i < f.k; i++) if (!have_seg(first + i)) { missing = first + i; n_missing++; }
++        if (n_missing == 0) { fecs.erase(it); return; }
++        if (n_missing > 1) return;
++        std::vector<uint8_t> x = f.x;
++        for (uint32_t i = 0; i < f.k; i++) {
++            uint32_t s = first + i;
++            if (s == missing) continue;
++            const std::vector<uint8_t> * d = nullptr;
++            auto r = recent.find(s); if (r != recent.end()) d = &r->second;
++            auto o = ooo.find(s);    if (!d && o != ooo.end()) d = &o->second;
++            if (!d || d->size() != f.lens[i]) return;                // can't rebuild without the others
++            for (size_t j = 0; j < d->size() && j < x.size(); j++) x[j] ^= (*d)[j];
++        }
++        uint16_t len = f.lens[missing - first];
++        if (len > x.size()) return;
++        fecs.erase(it);
++        hdr_t h = {}; h.seq = missing; h.len = len; h.ts = ack_ts;
++        n_fec_fixed++;
++        on_data(h, x.data(), len);
 +    }
 +
 +    // ---- sender ----
@@ -326,11 +401,20 @@ index 0000000..590f964
 +    void on_data(const hdr_t & h, const uint8_t * body, size_t n) {
 +        if (h.len > n || h.len > SEG) return;
 +        ack_due = true;
-+        ack_ts = h.ts;
++        if (h.ts) ack_ts = h.ts;
 +        int32_t ahead = (int32_t) (h.seq - rcv_next);
 +        if (ahead < 0) return;                         // already have it (the ack is resent)
 +        if ((size_t) ahead >= RX_AHEAD) return;
-+        if (ahead > 0) { ooo.emplace(h.seq, std::vector<uint8_t>(body, body + h.len)); return; }
++        if (fec) {
++            recent[h.seq].assign(body, body + h.len);
++            while (recent.size() > 4 * FEC_MAX) recent.erase(recent.begin());
++            while (!fecs.empty() && (int32_t) (fecs.begin()->first + 4 * FEC_MAX - rcv_next) < 0) fecs.erase(fecs.begin());
++        }
++        if (ahead > 0) {
++            ooo.emplace(h.seq, std::vector<uint8_t>(body, body + h.len));
++            if (fec && !fecs.empty()) { std::vector<uint32_t> ks; for (auto & kv : fecs) ks.push_back(kv.first); for (uint32_t k : ks) try_fec(k); }
++            return;
++        }
 +        deliver(std::vector<uint8_t>(body, body + h.len));
 +        rcv_next++;
 +        for (auto it = ooo.find(rcv_next); it != ooo.end(); it = ooo.find(rcv_next)) {
@@ -338,6 +422,7 @@ index 0000000..590f964
 +            ooo.erase(it);
 +            rcv_next++;
 +        }
++        if (fec && !fecs.empty()) { std::vector<uint32_t> ks; for (auto & kv : fecs) ks.push_back(kv.first); for (uint32_t k : ks) try_fec(k); }
 +    }
 +    void deliver(std::vector<uint8_t> && v) {
 +        if (v.empty()) return;
@@ -400,6 +485,7 @@ index 0000000..590f964
 +                    size_t bn = (size_t) n - sizeof(hdr_t);
 +                    switch (h.type) {
 +                        case T_DATA: on_data(h, body, bn); last_data_activity = t; break;
++                        case T_FEC:  if (fec) on_fec(h, body, bn); last_data_activity = t; break;
 +                        case T_ACK:  on_ack(h, body, bn, t); break;
 +                        case T_PING: { hdr_t o = h; o.type = T_PONG; raw_send(&o, sizeof(o)); break; }
 +                        case T_PONG: { uint32_t s = (uint32_t) t - h.ts; if (s < 5000000) rtt_sample((double) s); break; }
@@ -411,7 +497,7 @@ index 0000000..590f964
 +            }
 +            pump(t);
 +            // keep a handheld's Wi-Fi awake while words are flowing
-+            if (awake && t - last_data_activity < 3000000 && t - last_ping > 25000) {
++            if (awake && t - last_data_activity < 3000000 && t - last_ping > 25000 && t - last_tx > 25000) {
 +                hdr_t h = {}; h.magic = PKT_MAGIC; h.type = T_PING; h.conn = conn; h.seq = ping_seq++; h.ts = (uint32_t) t;
 +                raw_send(&h, sizeof(h));
 +                last_ping = t;
@@ -456,6 +542,8 @@ index 0000000..590f964
 +        std::unique_lock<std::mutex> lk(mu);
 +        if (have_cur && cur.len > 0 && !queue_cur(lk)) return false;
 +        pump(now_us()); // send now from this thread: no waiting for the I/O thread to wake up
++        if (fec) send_fec(burst_first, snd_next - burst_first);
++        burst_first = snd_next;
 +        return !dead;
 +    }
 +    bool recv(void * data, size_t size) {
@@ -523,6 +611,7 @@ index 0000000..590f964
 +    // behind a relay (Bob's gate passes UDP on its own port to this one), the offer names the relay's port
 +    if (server) { uint32_t pp = env_u32("GGML_RPC_SCUT_PUBLIC_PORT", 0); if (pp > 0 && pp < 65536) o.udp_port = htons((uint16_t) pp); }
 +    o.mbps = env_u32("GGML_RPC_SCUT_MBPS", 300);
++    if (env_u32("GGML_RPC_SCUT_FEC", 1) != 0) o.flags |= OF_FEC;
 +    memcpy(caps, &o, sizeof(o));
 +    LOG_DBG("[scut] offered on udp port %d\n", ntohs(bound.sin_port));
 +    return b;
@@ -572,7 +661,10 @@ index 0000000..590f964
 +    uint32_t mbps = std::max<uint32_t>(1, std::min(mine ? mine : 300, ro.mbps ? ro.mbps : 300));
 +    b->cap_bps = mbps * 125000u;
 +    b->rate = std::min<double>(b->cap_bps, 12.5e6); // start at 100 Mbit/s and grow while nothing is lost
++    { std::lock_guard<std::mutex> g(g_pace_mu); auto it = g_pace.find(b->peer.sin_addr.s_addr);
++      if (it != g_pace.end()) { b->rate = std::min<double>(b->cap_bps, std::max(2e6, it->second)); for (double & v : b->bw_ring) v = it->second * 0.8; } }
 +    b->awake = env_u32("GGML_RPC_SCUT_AWAKE", 1) != 0;
++    b->fec = (ro.flags & OF_FEC) && env_u32("GGML_RPC_SCUT_FEC", 1) != 0;
 +    b->test_drop = env_u32("GGML_RPC_SCUT_TEST_DROP", 0);
 +    b->rng.seed((uint32_t) b->my_nonce);
 +

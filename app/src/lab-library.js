@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { keyValue } from './secret-box.js';
 
 export const PARTS_FILE = 'parts.json';
 export const ADDED_FILE = 'added.json';
@@ -254,7 +255,7 @@ export function addLessonSet({ root, from, name, source, license = '', link = ''
 
 // A Hugging Face lesson file (.jsonl or .json) downloaded to a temporary file for addLessonSet. fetchFn and token
 // are injected by tests; the token goes only to huggingface.co and is never shown or saved.
-export async function downloadHfLessons({ repo, file, revision = '', to, fetchFn = fetch, token = process.env.HF_TOKEN || '', maxBytes = ADD_MAX_BYTES }) {
+export async function downloadHfLessons({ repo, file, revision = '', to, fetchFn = fetch, token = keyValue('HF_TOKEN'), maxBytes = ADD_MAX_BYTES }) {
   if (!/\.(jsonl|json)$/i.test(file || '')) throw new Error('Name one .jsonl or .json file in the set, like owner/name:data/train.jsonl. Sets kept only as .parquet can be named in a Forge plan instead; they\'re brought in when the run starts.');
   const url = `https://huggingface.co/datasets/${repo}/resolve/${encodeURIComponent(revision || 'main')}/${file.split('/').map(encodeURIComponent).join('/')}`;
   const res = await fetchFn(url, { headers: token ? { authorization: `Bearer ${token}` } : {}, redirect: 'follow' });

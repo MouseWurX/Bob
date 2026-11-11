@@ -22,6 +22,7 @@ import { TEACH_PY, FETCH_PY } from './lab-teach-script.js';
 import { getOwnPython, ownPythonDir } from './audio.js';
 import { ladderTexts } from './lab-playground.js';
 import { readJson, writeJson, isInsideDir, exeName, canStart, makeRoom, runJob, runTool, pageLog } from './lab-jobs.js';
+import { keyValue } from './secret-box.js';
 
 // ---- The fit rule (the card shows which row applies and why; the person can always pick rented) ----
 // Card memory -> the biggest dense brain taught here (adapter on a 4-bit base), and a mixture of experts by its total.
@@ -333,7 +334,7 @@ export async function startTeach(lab, c = {}, { unload = false } = {}) {
     const base = await fetchBase(lab, p, work, { fx, signal, log, env, tr, progress });
     set('brain', 'done'); set('lessons', 'running');
     let lessonsFile = p.lessons.file;
-    const hfHead = process.env.HF_TOKEN ? { Authorization: `Bearer ${process.env.HF_TOKEN}` } : {};
+    const hfHead = keyValue('HF_TOKEN') ? { Authorization: `Bearer ${keyValue('HF_TOKEN')}` } : {};
     if (p.lessons.repo) { lessonsFile = path.join(work, 'lessons.jsonl'); await fx.download(`https://huggingface.co/datasets/${p.lessons.repo}/resolve/${encodeURIComponent(p.lessons.revision || 'main')}/${p.lessons.hfFile.split('/').map(encodeURIComponent).join('/')}`, lessonsFile, { signal, headers: hfHead, maxBytes: 4e9 }); }
     if (p.lessons.url) { lessonsFile = path.join(work, 'lessons.jsonl'); await fx.download(p.lessons.url, lessonsFile, { signal, maxBytes: 4e9 }); }
     set('lessons', 'done'); set('teach', 'running');
@@ -406,9 +407,11 @@ export async function foldFull(lab, dir, outs, work, tag, { fx, signal, log, env
 }
 // The full weights to teach, for Teach it and the Best answers page: a folder here, or fetched from Hugging Face or
 // a link into the work folder. Returns the folder that holds config.json.
+// A Hugging Face key saved in Settings (🔐 Locked secrets) reaches the download helper only, as HF_TOKEN.
+const withHfToken = (env) => { const t = keyValue('HF_TOKEN'); return t && !(env || process.env).HF_TOKEN ? { ...(env || process.env), HF_TOKEN: t } : env; };
 export async function fetchBase(lab, p, work, { fx, signal, log, env, tr, progress = () => {} }) {
   let base = p.brain.folder;
-  if (!base && p.brain.repo) { base = path.join(work, 'base'); await fx.tool(tr.python, [path.join(tr.dir, 'fetch.py'), p.brain.repo, p.brain.revision || '', base], { signal, log, env }); }
+  if (!base && p.brain.repo) { base = path.join(work, 'base'); await fx.tool(tr.python, [path.join(tr.dir, 'fetch.py'), p.brain.repo, p.brain.revision || '', base], { signal, log, env: withHfToken(env) }); }
   if (!base && p.brain.url) {
     const a = path.join(work, 'brain-archive'); await fx.download(p.brain.url, a, { signal, onProgress: (gt, t) => t && progress((10 * gt) / t) });
     base = path.join(work, 'base'); fs.mkdirSync(base, { recursive: true }); await fx.tool(tarExe(), ['-xf', a, '-C', base], { signal, log }); fs.rmSync(a, { force: true });

@@ -289,7 +289,9 @@ export function swapScript(sw, pid) {
       : `n=0; while [ $n -lt 240 ] && flatpak ps --columns=application 2>/dev/null | grep -qx ${q(sw.id)}; do sleep 0.5; n=$((n+1)); done`;
     const install = sw.kind === 'deb'
       ? `pkexec /usr/bin/apt-get install -y --allow-downgrades ${q(sw.from)}`
-      : `flatpak install --${sw.scope === 'system' ? 'system' : 'user'} -y --noninteractive --reinstall --bundle ${q(sw.from)}`;
+      // Some Flatpak versions (1.14, Ubuntu 24.04) refuse --reinstall for a bundle ("already installed"; the 1.5.204 build
+      // test). Then the old Bob is taken out (his settings and ~/.var/app folder stay) and the new one put in.
+      : (() => { const at = `--${sw.scope === 'system' ? 'system' : 'user'} -y --noninteractive`; return `{ flatpak install ${at} --reinstall --bundle ${q(sw.from)} || { flatpak uninstall ${at} ${q(sw.id)} && flatpak install ${at} --bundle ${q(sw.from)}; }; }`; })();
     const open = sw.kind === 'deb' ? `nohup ${q(sw.exe)} >/dev/null 2>&1 &` : `nohup flatpak run ${q(sw.id)} >/dev/null 2>&1 &`;
     return [
       wait,

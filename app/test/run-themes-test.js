@@ -70,7 +70,7 @@ check('Help names the new groups and the default', /Moondust/.test(HELP.find((h)
   check('a brightness slider for the lines, in the thinking pane and the big viewer, shared', /id="mindCubeLines"/.test(ix) && /id="watchLines"/.test(wh) && /bob-fnri-lines/.test(mc) && /bob-fnri-lines/.test(wj));
   check('the lines are drawn plainly in the theme\'s text colour, much brighter than before', /ctx\.globalAlpha = 0\.7 \* lines; ctx\.strokeStyle = k\.text/.test(wv) && !/Math\.min\(0\.08, 0\.045/.test(wv));
   check('the person\'s own pick always wins over the theme', /monoColour \|\| themeColour\(\) \|\| lookOf\(0\)\[0\]/.test(wv));
-  check('the colour boxes show the theme colour until a pick is saved', /if \(!picked && colour\) colour\.value = view\.oneColour\(\)/.test(mc) && /\$\('watchMonoColour'\)\.value = view\.oneColour\(\)/.test(wj));
+  check('the colour boxes show the theme colour until a pick is saved', /const tint = \(\) => \{ if \(ownColour\) return; if \(colour\) colour\.value = view\.oneColour\(\); \}/.test(mc) && /\$\('watchMonoColour'\)\.value = view\.oneColour\(\)/.test(wj));
   check('the second block only gets a colour the person picked', /monoColour: monoPicked \? \$\('watchMonoColour'\)\.value : ''/.test(wj));
 }
 

@@ -140,7 +140,7 @@ cfg.readRoots = []; cfg.readOnlyRoots = [];
 fs.writeFileSync(path.join(tmp, 'config.json'), JSON.stringify(cfg));
 const PORT = 7811;
 const bob = spawn(process.execPath, [path.join(here, '..', 'src', 'server.js')], {
-  env: { ...process.env, BOB_CONFIG: path.join(tmp, 'config.json'), BOB_AGENT_DIR: path.join(tmp, 'Bob home'), BOB_PORT: String(PORT) },
+  env: { ...process.env, BOB_TEST: '1', BOB_CONFIG: path.join(tmp, 'config.json'), BOB_AGENT_DIR: path.join(tmp, 'Bob home'), BOB_PORT: String(PORT) },
   stdio: ['ignore', 'pipe', 'inherit']
 });
 await new Promise((r) => bob.stdout.once('data', r));
