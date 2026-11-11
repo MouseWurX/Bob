@@ -62,7 +62,7 @@ export function taskRow(j, { movable, full }) {
   // 1.5.23: a job that needs the graphics card waits while the Gaming session is on.
   const tag = j.gaming ? `<span class="tag queued gaming">${esc(j.gaming.tag)}</span>` : j.waitsFor ? '<span class="tag queued">Waiting for a download</span>' : `<span class="tag ${status.replace(' ', '-')}">${j.delegatedTo?.sent && status === 'delegated' ? `Sent to ${esc(j.delegatedTo.copy)}` : `${esc(STATUS[status] || status)}${status === 'delegated' && j.delegatedTo ? `: ${esc(j.delegatedTo.copy)}` : ''}`}</span>`;
   const sub = status === 'delegated' && j.delegatedTo ? `${esc(j.delegatedTo.copy)} (${esc(j.delegatedTo.label)}) is on it`
-    : status === 'completed' ? `Completed ${when(j.doneAt)}`
+    : status === 'completed' ? `Completed ${when(j.doneAt)}${j.delegatedTo?.sent ? ` by ${esc(j.delegatedTo.copy)}` : ''}`
     : j.gaming ? esc(j.gaming.hint)
     : j.waitsFor ? `Runs by itself when ${esc(j.waitsFor)} finishes downloading (see Downloads)`
     : j.pickUp && status === 'queued' ? 'Picking up where it left off before Bob closed'

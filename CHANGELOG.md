@@ -4,19 +4,72 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
-## 1.5.195
+## 1.5.198
+
+"Keep busy experts on the graphics card" is gone. It made big brains write slower, not faster.
+
+### Removed
+
+- **Keep busy experts on the graphics card** (from 1.5.193) is taken out. On the test PC (gpt-oss 120B, a 16 GB card, 32 GB of RAM), every size we tried, from 2 to 8 GB, made writing about 2.5 to 3 times slower than with it off. Each word picks different experts, so the card spent its time copying them instead of working. The switch, its setting and its Help are gone. If you had it on, nothing to do: it's simply off now.
+
+### Kept
+
+- **A brain bigger than your card and RAM together still runs.** It stays on your drive and Bob reads the parts he needs as he goes. New in Help: "Can Bob run a brain bigger than my graphics card and RAM together?", with the measured speeds (about 17 words a second writing for a 63 GB brain on that PC), and a glossary entry, "Read from the drive". Tests in `test/run-tuning-test.js`.
+
+## 1.5.197
+
+Bob stops asking for the same thing over and over.
+
+### Fixed
+
+- **No more asking the same thing again and again in one reply.** Before, if Bob called a tool with exactly the same request twice in one reply, only some tools caught it, and a stuck brain could use up all eight steps repeating itself. Now every tool is covered. A repeat gets back the first answer instead of running again. On the third identical call, Bob stops and says: "(I asked for the same thing three times, so I've stopped. Could you point me at what I'm missing?)" Looking at an app and listing schedules are never counted. After Bob does something (a doing tool or a Hand), the count starts over, so read, write, read again still reads fresh. The cap of six calls per reply and the round with no tools stay as they were. Tests in `test/run-repeat-guard-test.js`.
+
+Co-authored-by: Bob. He planned this one himself on his second try at issue #57, and Claude finished it.
+
+### FNRI cube
+
+- **A brain answering on Bob's second server** (beside the main one) now lights the cube too. A reply that comes back without the experts it used leaves a line in the logbook saying so.
+- **Where Brain Engine lives:** messages in the Lab that said to get or update Brain Engine under "Get models, Engines" now say Settings, Engines, where it really is. Tests in `test/run-lab-watch-test.js`.
+- **Bob's thinking is the top section of Now running, and it starts open**, so the cube is the first thing there. If you already moved or folded it, your own order stays. Tests in `test/run-mind-test.js`.
+- **A trace piece that can't be read now leaves a line in the logbook**, to help find why the cube stays dark on some machines.
+- **Coming with the next Brain Engine build: the cube for brains without experts (like Qwen3 4B).** Brain Engine dropped the whole trace for those brains once a prompt was longer than one step of reading (512 words' worth by default), which every real chat is. The fix is in Brain Engine's patch 0002. It reaches you when the next Brain Engine build comes out with a Bob release. Mixture-of-experts brains were never affected.
+
+## 1.5.196
+
+Brain Engine is now the only engine for Bob's brains. The FNRI cube is there before the first reply. Plus four Bob-Net fixes from the Tailscale test between two of your Bobs.
+
+### Brain Engine is the only engine for brains
+
+- **One engine for Bob's brains: Brain Engine.** The other engines don't fit him any more, so Settings > Engines no longer offers llama.cpp or Ollama for brains. It just says what runs them. If you'd picked llama.cpp or Ollama before, Bob moves over by himself the next time he starts and notes it in the logbook. Until Brain Engine is downloaded, the llama.cpp already here stands in. Help: Engine for brains. Tests in `test/run-engines-rework-test.js`.
+- **Not yet on a Mac or an ARM board (Raspberry Pi).** Brain Engine has no build there yet, so Bob runs his brains on his own llama.cpp until it does. Ollama is no longer used for brains anywhere.
+- **Brain Engine updates with Bob, not on its own.** Each Bob now names the Brain Engine build that goes with him. Right after he starts, he compares it with the one here, using the engine's own record of its build and checksum, not Bob's version. If they differ, the matching build comes along by itself, even with Keep engines up to date off. That's the gap that left a PC on a new Bob with an old engine today. Keep engines up to date is now for llama.cpp. Help: Keep engines up to date. Tests in `test/run-engine-keeper-test.js`.
+- An engine written by hand into config.json itself still wins, as before.
 
 ### FNRI's small cube says when Brain Engine needs updating
 
-- **The cube in Bob's thinking no longer stays dark on an older Brain Engine.** Bob runs on an older Brain Engine build until you press Update under Engines, and that build can't report which experts it used. The cube used to stay blank with no reason; now it says to press Update on Brain Engine in Settings > Engines, and lights up with the next reply once you have.
-- **The cube is there before the first reply.** As soon as a brain starts loading, the cube builds itself block by block in one colour, in that brain's own shape (floors and experts, or neuron groups for a brain without experts), then sits still until Bob thinks. That works on an older Brain Engine too.
+- **The cube in Bob's thinking no longer stays dark on an older Brain Engine.** Bob runs on an older Brain Engine build until you press Update under Engines, and that build can't report which experts it used. The cube used to stay blank with no reason. Now it says to press Update on Brain Engine in Settings > Engines, and lights up with the next reply once you have.
+- **The cube is there before the first reply.** As soon as a brain starts loading, the cube builds itself block by block in one colour, in that brain's own shape (floors and experts, or neuron groups for a brain without experts). Then it sits still until Bob thinks. That works on an older Brain Engine too.
 - **No brain loaded: a neon sign.** One of five, picked at random each time, flickering now and then (still when animations are off).
-- **A brain answering on Bob's second server** (beside the main one) now lights the cube too, and a reply that comes back without the experts it used leaves a line in the logbook saying so.
-- **Where Brain Engine lives:** messages in the Lab that said to get or update Brain Engine under "Get models, Engines" now say Settings, Engines, where it really is.
-- **Bob's thinking is the top section of Now running, open, to begin with**, so the cube is the first thing there. Anyone who already moved or folded it keeps their own order.
-- **The cube now works with brains that have no experts (like Qwen3 4B) when Bob's instructions are long.** Brain Engine dropped the whole trace for those brains once a prompt was longer than one step of reading (512 words' worth by default), which every real chat is. Fixed in Brain Engine (patch 0002); it takes a Brain Engine rebuild. Mixture-of-experts brains were never affected.
+- Where it works: Windows and Linux on a PC, wherever Brain Engine runs. Tests in `test/run-lab-watch-test.js`.
 
-Where it works: Windows, Linux and Mac, wherever Brain Engine runs.
+### Bob-Net
+
+- **A job sent to another of your Bobs still says so when it's done.** Tasks showed "Sent to …" while it ran, then forgot once it finished. Now a finished job reads "Completed … by Go" (or whichever Bob ran it). Try again clears it. Tests in `test/run-queue-test.js`.
+- **A borrowed reply leaves a line in the logbook.** When Borrow a brain worked, the logbook said nothing, so it looked like nothing happened. Now there's one line per reply, like "📡 Go thought this reply (1.0 s to first word)". It never has the words. Tests in `test/run-queue-test.js`.
+- **No more long reload after a short lend.** After thinking one quick reply for another Bob, a lender went straight back to loading its own quick brain, which took 78 s on the test machine. Now it lets go of what the lend loaded and waits until you type. "Always on" still keeps the brain loaded, as before. Help: Lend my brain. Tests in `test/run-share-brains-test.js`.
+- **Borrow a brain: who switched it off.** On one test Bob the switch was found off. Every other Bob-Net change (mode, Lend my card, Spread, adding or removing a Bob, and the rest) is now tested to leave it on. A flip of the switch now writes what changed it in the logbook, so if it happens again we'll see why. Tests in `test/run-share-brains-test.js`.
+
+## 1.5.195
+
+A fourth famous style in the Lab: Raider. A handheld no longer spreads a small brain over Bob-Net.
+
+### Lab: Raider, a DeepSeek-like thought path
+
+- **Raider (DeepSeek-like)** joins Sherlock, Watson and Vulcan under Famous styles in Teach it a way of thinking. It's the long, dig-in-and-think-out-loud style. Try a path, stop and say "wait" when something looks off, and try another way. Circle the detail that doesn't fit, then bring back a short clean answer. Like the other three, it's taught with lessons my own teacher brain writes in that style. Nothing comes from the model's own thoughts, and DeepSeek isn't involved. Help: Teach it a way of thinking. Tests in `test/run-lab-test.js`.
+
+### Fixed
+
+- **A handheld with built-in graphics no longer spreads a small brain over Bob-Net.** On a machine whose graphics share its memory, or where no card size is known, Bob couldn't judge "bigger than my card". So with Bigger Bobs on, a handheld spread its own 2.3 GB chat brain over Wi-Fi to another Bob's card, and its chats waited behind that. Now, on such a machine, only a brain too big for its memory spreads, even with **Any brain bigger than my card**. A brain that fits stays here. Tests in `test/run-llama-tools-test.js`.
 
 ## 1.5.194
 

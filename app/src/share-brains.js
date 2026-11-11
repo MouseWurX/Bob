@@ -225,8 +225,10 @@ export async function lendChat(brain, req, res, b, deps) {
     brain.broadcast?.({ type: 'lending', on: false, for: who });
     res.end();
     // Back to light, same as after his own jobs. A review comes back for its next step in a moment, so his Review brain waits.
-    if (forReview) { brain.reviewHold = setTimeout(() => { brain.reviewHold = null; brain.settle?.().catch?.(() => {}); }, deps.reviewHoldMs ?? REVIEW_HOLD_MS); brain.reviewHold.unref?.(); }
-    else setTimeout(() => brain.settle?.().catch?.(() => {}), 0);
+    // 1.5.196 (Tailscale test: a 2 s lend cost the lender a 78 s reload): after a lend he lets go of what the lend brought,
+    // but doesn't load his own quick brain back. That waits until his owner types (or "Always on" holds it, as before).
+    if (forReview) { brain.reviewHold = setTimeout(() => { brain.reviewHold = null; brain.settle?.({ noWake: true }).catch?.(() => {}); }, deps.reviewHoldMs ?? REVIEW_HOLD_MS); brain.reviewHold.unref?.(); }
+    else setTimeout(() => brain.settle?.({ noWake: true }).catch?.(() => {}), 0);
   }
 }
 

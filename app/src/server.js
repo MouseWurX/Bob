@@ -85,7 +85,7 @@ const publicDir = path.join(appDir, 'public');
 // llama.cpp speed settings, as the app shows them.
 function speedView() {
   const lc = cfg.llamacpp || {};
-  return { fit: typeof lc.fit === 'boolean' ? lc.fit : null, threads: lc.threads || null, batch: lc.batch || null, ubatch: lc.ubatch || null, ctx: lc.ctx || null, draft: lc.draft || { enabled: false, model: '', max: 16, min: 1, ngld: 99 }, modelArgs: lc.modelArgs || {}, args: lc.args || null, turbo: lc.turbo || {}, trainer: trainerState(cfg).ok, brainEngine: lc.brainEngine !== false, moeCache: { on: lc.moeCache?.on === true, mib: Number(lc.moeCache?.mib) || null }, onBrainEngine: /[\\/]brain-engine[\\/]/.test(lc.exe || '') }; // 1.5.16x Turbo per brain, the Lab's Trainer pack
+  return { fit: typeof lc.fit === 'boolean' ? lc.fit : null, threads: lc.threads || null, batch: lc.batch || null, ubatch: lc.ubatch || null, ctx: lc.ctx || null, draft: lc.draft || { enabled: false, model: '', max: 16, min: 1, ngld: 99 }, modelArgs: lc.modelArgs || {}, args: lc.args || null, turbo: lc.turbo || {}, trainer: trainerState(cfg).ok, brainEngine: lc.brainEngine !== false, onBrainEngine: /[\\/]brain-engine[\\/]/.test(lc.exe || '') }; // 1.5.16x Turbo per brain, the Lab's Trainer pack
 }
 // 1.5.41 Where Bob saves things, as Settings shows it: the folder now, Bob's own, and whether a picked one has gone.
 // 1.5.79: the memory banks for Settings (general + one per project), and what the last message recalled.
@@ -120,6 +120,7 @@ function broadcast(ev) {
 }
 
 const brain = new Brain(cfg, broadcast);
+if (cfg.engineMoved?.length) brain.log('settings', `brains now run on ${cfg.llamacpp.brainEngine !== false && brainsEngineNow(cfg) === 'brainengine' ? 'Brain Engine' : 'my own llama.cpp'} (was set to ${cfg.engineMoved.join(' and ')}; Brain Engine is the only engine for my brains now)`); // 1.5.196
 // 1.5.97 Pair with my other Bobs (src/bob-net-pair.js): find them on Tailscale, a Yes card there, passcodes swapped.
 const pairing = new Pairing(cfg, { broadcast, log: (k, t) => brain.log(k, t), version: VERSION, ownAddresses: () => tailscaleIps().map((ip) => `${ip}:${cfg.port}`), vouched: (a, t) => introductions.vouched(a, t) });
 // 1.5.123 Pass my Bob-Net along (src/bob-net-party.js): your Bobs introduce each other; also the party in Now running.
@@ -498,7 +499,10 @@ const server = http.createServer(async (req, res) => {
       const b = await body(req);
       const out = cleanSharePatch(cfg, b);
       if (out.error) return send(res, 400, { error: out.error });
+      const wasBorrowing = cfg.share?.borrow?.on === true;
       saveShare(cfg, out.share);
+      // 1.5.196 (Tailscale test: Borrow a brain was found off on the Go): a flip of that switch says what flipped it.
+      if (wasBorrowing !== out.share.borrow.on) brain.log('borrow', `Borrow a brain switched ${out.share.borrow.on ? 'on' : 'off'} (Settings, ${Object.keys(b).filter((k) => k !== 'check').join(', ') || 'no change asked'})`);
       brain.lenders.state.clear();
       if (!out.share.lendCard) brain.cardLender.close(); // switched off: a lent card closes now
       brain.log('settings', `share brains: lend card ${out.share.lendCard ? 'on' : 'off'}, spread ${out.share.spread}, lend ${out.share.lend ? 'on' : 'off'}, borrow ${out.share.borrow.on ? out.share.borrow.when : 'off'}, pass along ${out.share.passAlong ? 'on' : 'off'}, ${out.share.borrow.bobs.length} Bob(s)`);
@@ -681,7 +685,7 @@ const server = http.createServer(async (req, res) => {
           if (b.sessionBrains && typeof b.sessionBrains === 'object') { saveSettings(cfg, { sessionBrains: b.sessionBrains }); out.sessionBrains = sessionBrains(cfg); }
           if (b.activeModels && typeof b.activeModels === 'object') { saveSettings(cfg, { activeModels: b.activeModels }); out.activeModels = cfg.activeModels || {}; } // 1.5.56 Brain catalogue
           if (b.tts && typeof b.tts === 'object') { saveSettings(cfg, { tts: { ...(typeof b.tts.voice === 'string' ? { voice: b.tts.voice } : {}), ...(typeof b.tts.speed === 'number' ? { speed: b.tts.speed } : {}), ...(typeof b.tts.windowsVoice === 'string' ? { windowsVoice: b.tts.windowsVoice } : {}) } }); out.tts = { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice, speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '' }; }
-          if (b.speed && typeof b.speed === 'object') { const sp = Object.fromEntries(Object.entries(b.speed).filter(([k]) => ['threads', 'batch', 'ubatch', 'ctx', 'draft', 'modelArgs', 'args', 'fit', 'turbo', 'brainEngine', 'moeCache'].includes(k))); saveSettings(cfg, { llamacpp: sp }); out.speed = speedView(); if ('brainEngine' in sp) out.restart = true; }
+          if (b.speed && typeof b.speed === 'object') { const sp = Object.fromEntries(Object.entries(b.speed).filter(([k]) => ['threads', 'batch', 'ubatch', 'ctx', 'draft', 'modelArgs', 'args', 'fit', 'turbo', 'brainEngine'].includes(k))); saveSettings(cfg, { llamacpp: sp }); out.speed = speedView(); if ('brainEngine' in sp) out.restart = true; }
           if (b.sessionCtx && typeof b.sessionCtx === 'object') { saveSettings(cfg, { sessionCtx: b.sessionCtx }); out.sessionCtx = cfg.sessionCtx; }
           // 1.5.87: how much each brain keeps in mind, picked per brain (switch off unless turned on).
           if (typeof b.brainCtxOn === 'boolean') { saveSettings(cfg, { brainCtxOn: b.brainCtxOn }); out.brainCtxOn = cfg.brainCtxOn === true; }
@@ -745,8 +749,9 @@ const server = http.createServer(async (req, res) => {
           if (b.downloads && typeof b.downloads === 'object') { saveSettings(cfg, { downloads: { ...(cfg.downloads || {}), ...b.downloads } }); out.downloads = cfg.downloads; shop.pumpDownloads(); }
           if (typeof b.catName === 'string') { saveSettings(cfg, { catName: b.catName }); out.catName = cfg.catName || 'Patches'; }
           if (b.workshop && typeof b.workshop === 'object') { saveSettings(cfg, { workshop: b.workshop }); if (cfg.workshop?.enabled) ensureWorkshop(cfg); out.workshop = workshopView(); }
-          if (b.engine === 'ollama' || b.engine === 'llamacpp') { saveSettings(cfg, { engine: b.engine }); out.restart = true; }
-          // 1.5.17x Settings > Engines' ⚙ picker: Brain Engine, llama.cpp or Ollama for Bob's brains (next time he starts).
+          if (b.engine === 'llamacpp') { // 1.5.196: never Ollama now (Brain Engine is the only engine for brains)
+            saveSettings(cfg, { engine: b.engine }); out.restart = true; }
+          // 1.5.17x Settings > Engines' engine for brains. 1.5.196: only the one engine Bob may use here (brainsEngineSettings refuses the rest).
           if (typeof b.brainsEngine === 'string' && brainsEngineSettings(b.brainsEngine)) { saveSettings(cfg, brainsEngineSettings(b.brainsEngine)); out.restart = true; out.engineChoices = engineChoices(cfg); }
           // The Lab's engine: '' (same as Bob's brains), Brain Engine or llama.cpp. Used from the Lab's next job.
           if (typeof b.labEngine === 'string') { saveSettings(cfg, { labEngine: b.labEngine }); out.engineChoices = engineChoices(cfg); }

@@ -140,6 +140,8 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(!lendCardOn({ ...cfg, remote: { enabled: false } }), 'card: never with the door shut');
 
   ok(!wantsSpread({ share: { spread: 'off' } }, { sizeGB: 90, cardGB: 16, ramGB: 32 }), 'spread: off never spreads');
+  ok(!wantsSpread({ sharedGraphics: true, share: { spread: 'big' } }, { sizeGB: 2.3, cardGB: 4, ramGB: 16 }) && !wantsSpread({ share: { spread: 'big' } }, { sizeGB: 2.3, cardGB: 0, ramGB: 16 }), 'spread: a handheld with built-in graphics (or no card known) never spreads a small brain that fits it, even on "bigger than my card" (the 1.5.193 handheld spread its 2.3 GB chat brain over Wi-Fi)');
+  ok(wantsSpread({ sharedGraphics: true, share: { spread: 'big' } }, { sizeGB: 20, cardGB: 4, ramGB: 16 }) && !wantsSpread({ sharedGraphics: true, share: { spread: 'toobig' } }, { sizeGB: 7, cardGB: 4, ramGB: 16 }), 'spread: with built-in graphics, only a brain too big for its memory spreads');
   ok(wantsSpread({ share: { spread: 'toobig' } }, { sizeGB: 50, cardGB: 16, ramGB: 32 }) && !wantsSpread({ share: { spread: 'toobig' } }, { sizeGB: 20, cardGB: 16, ramGB: 32 }), 'spread: "too big" means more than card and memory hold');
   ok(wantsSpread({ share: { spread: 'big' } }, { sizeGB: 20, cardGB: 16, ramGB: 32 }) && !wantsSpread({ share: { spread: 'big' } }, { sizeGB: 9, cardGB: 16, ramGB: 32 }), 'spread: "bigger than my card" means more than the card');
 
