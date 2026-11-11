@@ -43,6 +43,7 @@ import { MIX_WAYS, MIX_IDS, planMix, mixGguf, planStack, stackGguf, shareOf } fr
 import { planRefusals, readDirections, pickLayers, removeRefusals, keptCheck, reflexCheck, PLAIN_PROMPTS, RELUCTANT_PROMPTS, writeTeachBack, TEACH_BACK_SET, LAYER_CHOICES, KEPT } from './lab-refusals.js';
 import { peekView, tallyTrace, addToTally, keepFromLit, askTraced, IDLE_MS, NO_TRACE, NO_ENGINE, traceBuilt } from './lab-peek.js';
 import { usageFolder, keepFileOf } from './lab-usage.js';
+import { routerBias, switchState, switchOn, switchOff } from './lab-switch.js';
 import { ownModels, OWN_FAMILY } from './own-models.js'; // Your own brains join the Lab's lists
 import { fullSizeRoute } from './lab-fullsize.js'; // Bring in a full-size brain
 import { benchBrain, benchLine } from './lab-bench.js'; // the standard speed test (llama-bench)
@@ -1691,7 +1692,34 @@ export class Lab {
     const brain = this.brains().find((b) => b.id === String(brainId || ''));
     if (!brain) throw new Error('Pick a brain to peek inside.');
     let facts = null; try { facts = inspect(brain); } catch {}
-    return peekView(this.cfg, brain, facts, { engineFound: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), traceOk: this.peekTraceOk ?? this.traceProbe()?.experts ?? null });
+    return { ...peekView(this.cfg, brain, facts, { engineFound: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), traceOk: this.peekTraceOk ?? this.traceProbe()?.experts ?? null }), switch: this.switchView(brain) };
+  }
+
+  // 1.5.20x Switch experts off in the file (brains whose router has a bias, like gpt-oss): see lab-switch.js.
+  switchView(brain) {
+    let can = false; try { can = Boolean(routerBias(readGguf(brain.gguf))); } catch {}
+    return { can, state: can ? switchState(brain.gguf) : null };
+  }
+  async switchExperts({ brain: id, counts = null, back = false } = {}, { unload = false } = {}) {
+    const brain = this.brains().find((b) => b.id === String(id || ''));
+    if (!brain) throw new Error('Pick a brain first.');
+    if (!labOn(this.cfg)) throw new Error('The Computer Science Lab is off. Turn it on in Settings, How Bob works, Brains.');
+    if (this.job) throw new Error('The Lab is already busy with a job. Wait for it, or stop it.');
+    this.freePeek();
+    // The brain file changes, so nothing may have it loaded: Bob's own brain is unloaded first (it loads again on the next chat).
+    if (this.brain?.engine?.loaded) {
+      const loaded = await this.brain.engine.loaded().catch(() => []);
+      if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
+      if (loaded.length) await this.brain.engine.unloadAll().catch(() => {});
+    }
+    if (back) { switchOn(brain.gguf); return { switch: this.switchView(brain) }; }
+    const facts = inspect(brain);
+    const k = this.peekKeep({ brain: brain.id, counts });
+    const layers = readJson(k.file, {}).layers;
+    if (!Array.isArray(layers)) throw new Error('That keep list has no layers in it.');
+    switchOn(brain.gguf); // start from the brain as it came, so a new list replaces the last one
+    switchOff(brain.gguf, layers, { used: facts?.used || 1, when: new Date(this.now()).toISOString().slice(0, 10) });
+    return { switch: this.switchView(brain) };
   }
 
   // Whether the Brain Engine here was built with the trace, read from the program file (null: can't tell, or a test's fake).
@@ -1871,6 +1899,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/peek/ask') { send(res, 200, await lab.peekAsk(b, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/peek/stop') { send(res, 200, lab.freePeek()); return true; }
     if (p === '/api/lab/peek/keep') { send(res, 200, lab.peekKeep(b)); return true; }
+    if (p === '/api/lab/peek/switch') { send(res, 200, await lab.switchExperts({ brain: b.brain, counts: Array.isArray(b.counts) ? b.counts : null, back: b.back === true }, { unload: b.unload === true })); return true; } // 1.5.20x
     if (p === '/api/lab/save') { const out = lab.saveResult(b, { version: lab.version || '' }); send(res, 200, { file: out.file }); return true; }
     if (p === '/api/lab/recipe') { send(res, 200, { recipes: lab.saveRecipe(b.recipe) }); return true; }
     send(res, 404, { error: 'no' }); return true;
