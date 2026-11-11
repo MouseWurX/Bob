@@ -198,6 +198,7 @@ label.field { display: block; margin: 10px 0 4px; font-weight: 600; }
 .adv-hearts { color: var(--bad); letter-spacing: 1px; overflow-wrap: anywhere; }
 .adv-prep { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .adv-log { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+.adv-book { width: 100%; height: 70vh; border: 1px solid var(--line, #8884); border-radius: 8px; background: #fff; } /* 1.5.206 the storybook */
 .adv-gm, .adv-turn, .adv-live { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; overflow-wrap: anywhere; }
 .adv-turn.you { background: var(--you); border-color: transparent; }
 .adv-live { border-style: dashed; }

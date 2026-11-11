@@ -1334,6 +1334,8 @@ ${chatOut}
     classStats: { fighter: 'Might 5 · Wits 2 · Charm 2 · Luck 3', rogue: 'Might 2 · Wits 4 · Charm 3 · Luck 3', wizard: 'Might 1 · Wits 5 · Charm 2 · Luck 4', cleric: 'Might 3 · Wits 3 · Charm 4 · Luck 2', ranger: 'Might 3 · Wits 4 · Charm 1 · Luck 4', bard: 'Might 1 · Wits 3 · Charm 5 · Luck 3' },
     armour: { none: ['None', 'The dice decide. A bad run can kill the character.'], some: ['Some', 'One bad roll a scene is rolled again.'], lots: ['Lots', "Can't die. A terrible roll still costs something."], legendary: ['Legendary', 'Nothing worse than a close call, ever.'] },
     settings: { fantasy: 'Classic fantasy', space: 'Space', spooky: 'Spooky', pick: 'Pick for me', own: 'My own' },
+    tones: { cosy: 'Cosy', normal: 'Normal', grim: 'Grim' }, // 1.5.206
+    world: { people: 'People', places: 'Places', promises: 'Promises', threads: 'Open threads' },
     paces: { short: 'Short (3 scenes)', evening: 'Evening (6 scenes)', campaign: 'Campaign (saved between sittings)' },
     heroes: ['Wren', 'Tobin', 'Mara', 'Quill', 'Hesper', 'Dax', 'Ilse', 'Corvin', 'Pip', 'Sable', 'Juno', 'Oswin'],
     traits: ['never leaves a door unopened', 'collects teeth, politely', 'owes money in three towns', 'talks to the horse first', 'afraid of nothing but geese', 'keeps a list of grudges, alphabetical']
@@ -1344,7 +1346,7 @@ ${chatOut}
   // 1.5.122: your character has a look of its own (the character screen, any body); never Bob's avatar. The
   // parts, maps and palettes are the desktop's own (avatars.js, made from public/avatars.js), drawn here on a canvas.
   const AV = globalThis.BobAvatars;
-  const advYou = { name: '', cls: 'fighter', trait: '', armour: 'some', setting: 'fantasy', settingText: '', story: '', pace: 'evening', look: AV.encodeParts(AV.DEFAULT_PARTS), savedId: '' };
+  const advYou = { name: '', cls: 'fighter', trait: '', armour: 'some', setting: 'fantasy', settingText: '', story: '', tone: 'normal', keepOut: '', pace: 'evening', look: AV.encodeParts(AV.DEFAULT_PARTS), savedId: '' };
   const advChar = { open: false, parts: null, delAsk: '' }; // the character screen: open, the parts being picked, "Delete <name>?" showing
   // 1.5.124 The 📖 Characters page (the bestiary): null = not open; else { tab, edit: a saved character's id or 'new', draft, ask: id awaiting delete }.
   adv.chars = null;
@@ -1394,6 +1396,12 @@ ${chatOut}
     if (!advOpen()) return;
     const body = $('adv-body'); body.textContent = '';
     const g = adv.v?.game;
+    if (adv.book) {
+      const frame = el('iframe', { class: 'adv-book', title: 'Storybook', sandbox: '' }); frame.srcdoc = adv.book.replace(/<nav>[\s\S]*?<\/nav>/, '');
+      body.append(el('div', { class: 'btns' }, el('button', { text: '← Back', onclick: () => { adv.book = null; advDraw(); } })), frame,
+        el('p', { class: 'help-line', text: 'To keep a copy, open the Storybook on your other replicant matrix and press Save a copy.' }));
+      return;
+    }
     body.append(...(adv.chars ? advCharsPage() : g ? advTable(g) : [advStart()]).flat().filter(Boolean));
     const log = $('adv-log'); if (log) log.scrollTop = log.scrollHeight;
     for (const [who, x] of adv.live) if (x.text) advShowLive(el('span', { class: 'adv-who', text: advWho(who) }), el('p', { text: x.text }));
@@ -1552,7 +1560,12 @@ ${chatOut}
         advYou.setting === 'own' ? el('input', { type: 'text', maxlength: 300, placeholder: 'A sunken city, a heist, a haunted train…', value: advYou.settingText, 'aria-label': 'Your own setting', onchange: (e) => { advYou.settingText = e.target.value; } }) : null,
         el('label', { class: 'field', text: "Tonight's story" }),
         advChips({ '': '✍ Make one up', ...Object.fromEntries(starts.map((s) => [s.id, s.name])) }, story ? story.id : '', "Tonight's story", (id) => { advYou.story = id; advDraw(); }),
-        el('p', { class: 'help-line adv-hook', text: story ? story.hook : 'Your other Bob makes up a story to fit the setting.' })),
+        el('p', { class: 'help-line adv-hook', text: story ? story.hook : 'Your other Bob makes up a story to fit the setting.' }),
+        el('label', { class: 'field', text: 'Tone' }),
+        advChips(ADV.tones, advYou.tone, 'Tone', (id) => { advYou.tone = id; advDraw(); }),
+        el('label', { class: 'field', text: 'Keep out of the story' }),
+        el('input', { type: 'text', maxlength: 300, placeholder: "spiders, drowning, anything you'd rather skip", value: advYou.keepOut, 'aria-label': 'Keep out of the story', oninput: (e) => { advYou.keepOut = e.target.value; } }),
+        el('p', { class: 'help-line', text: 'Cosy keeps danger mild and kind; Normal is a proper adventure; Grim is darker, never gory. The game master and the Bob players leave out anything you list.' })),
       advSection('🧍', 'Your character',
         el('div', { class: 'adv-look' }, advFace(advYou.look, 64, advLookWhat(advYou.look)),
           el('div', {}, el('button', { 'aria-expanded': String(advChar.open), text: advChar.open ? '🧍 Close the character screen' : '🧍 Change the look', onclick: () => { advChar.open = !advChar.open; if (advChar.open) advChar.parts = AV.decodeParts(advYou.look) || { ...AV.DEFAULT_PARTS }; advDraw(); } }),
@@ -1607,13 +1620,14 @@ ${chatOut}
           el('p', { class: 'help-line', text: `${s.setting} · ${s.scenes} scene${s.scenes === 1 ? '' : 's'} · ${(s.party || []).join(', ')}${s.status === 'over' ? ' · ended' : ''}` }),
           el('div', { class: 'btns' },
             el('button', { class: 'main', text: 'Continue', disabled: Boolean(v?.refusal), onclick: () => advCall('/api/adventure/continue', { id: s.id }) }),
+            el('button', { text: '📕 Storybook', onclick: () => advBook(s.id) }),
             el('button', { text: 'Delete', onclick: (e) => { const t = e.currentTarget; if (!t.dataset.sure) { t.dataset.sure = '1'; t.textContent = 'Delete this campaign? Tap again to delete it.'; return; } advCall('/api/adventure/delete', { id: s.id }); } }))))) : null);
   }
   async function advStartGame(e) {
     const bobsIn = (adv.players || []).filter((p) => advParty.get(p.address || p.name)?.ticked && p.ok !== false)
       .map((p) => { const st = advParty.get(p.address || p.name); return { who: p.who, name: p.name, address: p.address || '', armour: st.armour, cls: st.cls }; });
     e.currentTarget.disabled = true;
-    await advCall('/api/adventure/start', { setting: advYou.setting, settingText: advYou.settingText, story: advYou.story || '', pace: advYou.pace, you: { name: advYou.name || 'Hero', cls: advYou.cls, trait: advYou.trait, armour: advYou.armour, look: advYou.look || '', charId: advYou.savedId || '' }, friends: adv.friends.map((f, i) => ({ name: f.name || `Friend ${i + 1}`, cls: f.cls, armour: f.armour })), bobs: bobsIn, extras: adv.ex || {} });
+    await advCall('/api/adventure/start', { setting: advYou.setting, settingText: advYou.settingText, story: advYou.story || '', tone: advYou.tone || 'normal', keepOut: advYou.keepOut || '', pace: advYou.pace, you: { name: advYou.name || 'Hero', cls: advYou.cls, trait: advYou.trait, armour: advYou.armour, look: advYou.look || '', charId: advYou.savedId || '' }, friends: adv.friends.map((f, i) => ({ name: f.name || `Friend ${i + 1}`, cls: f.cls, armour: f.armour })), bobs: bobsIn, extras: adv.ex || {} });
     adv.spoken = ''; advFx();
   }
   // ---- the table ----
@@ -1643,6 +1657,7 @@ ${chatOut}
         hasSound ? el('button', { 'aria-pressed': String(adv.hush), text: adv.hush ? '🔇 Quiet' : '🔊 Sound', onclick: () => { adv.hush = !adv.hush; if (adv.hush) advFxStop(); advDraw(); advFx(); } }) : null,
         el('button', { text: '📓 Journal', 'aria-pressed': String(adv.journal), onclick: () => { adv.journal = !adv.journal; advDraw(); } }),
         el('button', { text: '📖 Characters', onclick: () => advCharsOpen('party') }),
+        g.status === 'over' ? el('button', { text: '📕 Storybook', onclick: () => advBook(g.id) }) : null,
         el('button', { text: g.status === 'over' ? 'Close' : '🏁 End game', onclick: async (e) => { const t = e.currentTarget; if (g.status !== 'over' && !t.dataset.sure) { t.dataset.sure = '1'; t.textContent = 'End this game? It stays under Continue. Tap again to end it.'; return; } advFxStop(); await advCall('/api/adventure/end', { keep: true }); adv.players = null; advLoad(); } })),
       // 1.5.204 Play as: with friends at the table, each phone can play just its own seat.
       humans.length > 1 ? el('label', { class: 'field', text: 'This phone plays' }) : null,
@@ -1651,6 +1666,10 @@ ${chatOut}
     const journal = adv.journal ? el('div', { class: 'box' },
       el('strong', { text: '📜 Quest log' }),
       open.length || done.length ? el('ul', { class: 'adv-quests' }, open.map((q) => el('li', { text: `☐ ${q.text}` })), done.map((q) => el('li', { class: 'dim', text: `☑ ${q.text} (done)` }))) : el('p', { class: 'help-line', text: 'Nothing on it yet. The game master adds what the party sets out to do.' }),
+      el('strong', { text: '📚 World book' }),
+      Object.keys(ADV.world).some((k) => (g.world?.[k] || []).length)
+        ? Object.keys(ADV.world).filter((k) => (g.world?.[k] || []).length).map((k) => el('p', { class: 'help-line', text: `${ADV.world[k]}: ${g.world[k].map((e) => (e.note ? `${e.name} (${e.note})` : e.name)).join('; ')}` }))
+        : el('p', { class: 'help-line', text: 'Empty so far. The game master writes down people, places, promises and open threads as the story goes.' }),
       el('strong', { text: 'The story so far' }), el('p', { text: g.summary || 'Nothing written down yet; the game master sums things up every three scenes.' }),
       humans.map((c) => el('p', { class: 'help-line', text: `${c.name}: Might ${c.stats.might} · Wits ${c.stats.wits} · Charm ${c.stats.charm} · Luck ${c.stats.luck}${c.items?.length ? ` · 🎒 ${c.items.join(', ')}` : ''}${c.spells?.length ? ` · ✨ ${c.spells.join(', ')}` : ''}${c.tricks?.length ? ` · 🃏 ${c.tricks.join(', ')}` : ''}${c.gains?.length ? ` · ⭐ ${c.gains.join(', ')}` : ''}` })),
       g.scenes.length ? el('p', { class: 'help-line', text: g.scenes.map((s) => `Scene ${s.n}: ${s.title}`).join(' · ') }) : null) : null;
@@ -1671,7 +1690,10 @@ ${chatOut}
     }), el('div', { class: 'adv-live hidden', id: 'adv-live' }));
     const fate = v.fate ? el('div', { class: 'card' }, el('div', { class: 'q' }, el('strong', { text: `${v.fate.name} is at zero hearts.` }), el('div', { text: 'Your call.' })),
       el('div', { class: 'row' }, el('button', { text: 'Go out in style', onclick: () => { adv.v.fate = null; advCall('/api/adventure/fate', { choice: 'style' }); } }), el('button', { class: 'main', text: 'Wake up captured', onclick: () => { adv.v.fate = null; advCall('/api/adventure/fate', { choice: 'captured' }); } }))) : null;
-    const wrap = el('div', { class: `adv-table${bg ? ' adv-has-bg' : ''}` }, top, journal, prep, party, foes, log, busy ? el('p', { class: 'note', text: busy }) : null, fate, g.status === 'playing' ? advHand(g) : null, adv.msg ? el('p', { class: 'note bad', role: 'alert', text: adv.msg }) : null);
+    // 1.5.206 Take that back: a few seconds before the dice roll.
+    const tb = v.takeBack && g.status === 'playing' && (!adv.seat || adv.seat === v.takeBack.id) ? el('div', { class: 'card', role: 'status' }, el('div', { class: 'q' }, el('strong', { text: 'The dice roll in a moment.' }), el('div', { class: 'help-line', text: 'Picked the wrong card?' })),
+      el('div', { class: 'btns' }, el('button', { text: '↩ Take that back', onclick: () => advCall('/api/adventure/takeback', { seat: adv.seat || '' }) }), el('button', { class: 'main', text: '🎲 Roll now', onclick: () => advCall('/api/adventure/takeback', { seat: adv.seat || '', now: true }) }))) : null;
+    const wrap = el('div', { class: `adv-table${bg ? ' adv-has-bg' : ''}` }, top, journal, prep, party, foes, log, busy ? el('p', { class: 'note', text: busy }) : null, fate, tb, g.status === 'playing' ? advHand(g) : null, adv.msg ? el('p', { class: 'note bad', role: 'alert', text: adv.msg }) : null);
     if (bg) wrap.style.setProperty('--adv-bg', `url("${bg}")`);
     return [wrap];
   }
@@ -1691,7 +1713,7 @@ ${chatOut}
       }
       const up = (g.foes || []).filter((f) => f.hearts > 0);
       const flair = el('textarea', { rows: 2, maxlength: 400, 'aria-label': 'How does it play out?', placeholder: p.card === 'other' ? 'Say what you do…' : 'Add some flair…' });
-      return el('div', { class: 'card' }, el('div', { class: 'q' }, el('strong', { text: `${ADV.icons[p.card]} ${ADV.names[p.card]}${p.pick ? ` (${p.pick})` : ''}` }), el('span', { class: 'dim small', text: ` rolls ${ADV.stats[p.card]}` })),
+      return el('div', { class: 'card' }, el('div', { class: 'q' }, el('strong', { text: `${ADV.icons[p.card]} ${ADV.names[p.card]}${p.pick ? ` (${p.pick})` : ''}` }), el('span', { class: 'dim small', text: ` rolls ${ADV.stats[p.card]}${g.odds?.[p.card] ? `: ${g.odds[p.card].words}. A good line adds +2.` : ''}` })),
         p.card === 'attack' && up.length ? el('label', { class: 'field', text: 'Aim at' }) : null,
         p.card === 'attack' && up.length ? advChips(Object.fromEntries(up.map((f) => [f.name, `${f.name} ${hearts(f.hearts, f.max)}`])), p.target || up[0].name, 'Aim at', (x) => { adv.picked = { ...p, target: x }; advDraw(); }) : null,
         el('label', { class: 'field', text: 'How does it play out?' }), el('p', { class: 'help-line', text: 'Optional. A good line earns +2.' }), flair,
@@ -1703,7 +1725,9 @@ ${chatOut}
     const ask = el('input', { type: 'text', maxlength: 300, 'aria-label': 'Your question', placeholder: 'What did the innkeeper say about the well?' });
     return el('div', { class: 'card' }, el('div', { class: 'q' }, el('strong', { text: `${me?.name || 'Your'}'s turn.` }), me?.who === 'friend' ? el('span', { class: 'badge quiet', text: 'a friend' }) : null, el('div', { class: 'help-line', text: "Pick a card; the app rolls for you. Cards that don't fit this scene are left out." })),
       el('div', { class: 'adv-cards' }, (g.cards || []).map((c) => el('button', { class: `adv-card${c === 'other' ? ' other' : ''}`, onclick: () => { adv.picked = { card: c }; advDraw(); } },
-        el('span', { class: 'adv-ico', text: ADV.icons[c] || '' }), el('span', { text: ADV.names[c] || c }), el('span', { class: 'dim small', text: `${ADV.stats[c] || ''}${g.second?.[c] ? ' ›' : ''}` })))),
+        el('span', { class: 'adv-ico', text: ADV.icons[c] || '' }), el('span', { text: ADV.names[c] || c }), el('span', { class: 'dim small', text: `${ADV.stats[c] || ''}${g.second?.[c] ? ' ›' : ''}` }),
+        g.odds?.[c] ? el('span', { class: 'dim small', 'aria-label': g.odds[c].words, text: `${g.odds[c].need > 20 ? '—' : `${g.odds[c].need}+`} · ${g.odds[c].hit}%` }) : null))),
+      el('p', { class: 'help-line', text: 'The number on a card is what the die needs for a hit, and about how likely that is (plot armour counted in).' }),
       el('label', { class: 'field', text: 'Or say it your way' }), el('p', { class: 'help-line', text: 'Type what you do; the words decide which stat rolls.' }), say,
       el('div', { class: 'btns' },
         el('button', { class: 'main', text: '🎲 Do it', onclick: async () => { const words = say.value.trim(); if (!words) { adv.msg = 'Say what you do first.'; advDraw(); return; } adv.say = ''; adv.picked = { card: 'say', done: true }; await advCall('/api/adventure/act', { card: 'say', words, seat: adv.seat || '' }); } }),
@@ -1712,6 +1736,12 @@ ${chatOut}
         ? el('div', {}, el('label', { class: 'field', text: 'Ask the game master' }), el('p', { class: 'help-line', text: "Out of character, and it doesn't use your turn: a recap, a rule, what's in the room." }), ask,
           el('div', { class: 'btns' }, el('button', { class: 'main', text: 'Ask', onclick: async () => { const q = ask.value.trim(); if (!q) return; adv.askOpen = false; await advCall('/api/adventure/ask', { q }); } }), el('button', { text: 'Never mind', onclick: () => { adv.askOpen = false; advDraw(); } })))
         : el('div', { class: 'btns' }, el('button', { text: '❓ Ask the game master', onclick: () => { adv.askOpen = true; advDraw(); } })));
+  }
+  // 1.5.206 The storybook: the story and its pictures as one page, fetched from your other Bob and shown here.
+  async function advBook(id) {
+    const b = advBob(); if (!b) return;
+    try { const r = await phone('net.get', { address: b.address, path: `/api/adventure/storybook/${encodeURIComponent(id)}` }); if (r.status >= 400) throw new Error("That storybook isn't there."); adv.book = r.body || ''; adv.msg = ''; } catch (e) { adv.msg = e.message; }
+    advDraw();
   }
   async function advGo(flair) {
     const p = adv.picked, g = adv.v?.game; adv.picked = { ...p, done: true };

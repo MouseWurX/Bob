@@ -1330,6 +1330,11 @@ details.fold > summary .muted { font-weight: 400; font-size: 13px; }
 .adv-card { display: grid; justify-items: center; gap: 2px; min-width: 96px; padding: 8px 10px !important; }
 .adv-card .adv-ico { font-size: 22px; }
 .adv-card .muted { font-size: 11px; }
+.adv-card .adv-odds { font-size: 11px; font-variant-numeric: tabular-nums; opacity: .85; } /* 1.5.206 odds on the cards */
+.adv-odds-note { font-size: 12px; margin: 4px 0; }
+.adv-keep { display: block; margin-top: 8px; }
+.adv-keep input { width: 100%; }
+.adv-takeback { border-style: dashed; }
 .adv-card.other { border-style: dashed; }
 .adv-fate { border-color: var(--bad); }
 @media (prefers-reduced-motion: reduce) { .adv-roll { animation: none; } }
