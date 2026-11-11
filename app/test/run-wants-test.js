@@ -18,6 +18,14 @@ const helpText = plain(HELP.map((e) => `${e.title} ${e.html}`).join(' '));
 
 // ---------- Every line is a real Settings switch that starts off ----------
 check('the list has the everyday switches', WANTS.length >= 10 && ['quickNotes', 'docTools', 'sandboxCode', 'editOwn', 'webSearch'].every((k) => WANTS.some((w) => w.key === k)));
+{
+  const st = { quickNotes: false };
+  const r = wantSaved(st, 'smartNotes', { smartNotes: true, quickNotes: true });
+  check('ticking Note things worth keeping on my own turns quick notes on too', r.on && st.quickNotes === true && /with quick notes/.test(r.say));
+  check('the server turns quick notes on with smart notes', /saveSettings\(cfg, \{ smartNotes: b\.smartNotes, \.\.\.\(b\.smartNotes \? \{ quickNotes: true \} : \{\}\) \}\)/.test(server) && /out\.quickNotes = cfg\.quickNotes === true; if \(out\.quickNotes\)/.test(server));
+  check('the quick notes tick follows on the list', /if \(k === 'smartNotes'\) \{ const q = el\.closest\('\.wants'\)/.test(cellar));
+  check('smart notes sit right after quick notes', WANTS.findIndex((w) => w.key === 'smartNotes') === WANTS.findIndex((w) => w.key === 'quickNotes') + 1);
+}
 check('no key twice', new Set(WANTS.map((w) => w.key)).size === WANTS.length);
 for (const w of WANTS) {
   const inSettings = new RegExp(`sswitch\\('${w.key}', [^,]+, '${w.setting.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/'/g, "\\\\'")}'`).test(cellar);

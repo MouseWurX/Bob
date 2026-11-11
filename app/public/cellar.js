@@ -1816,7 +1816,7 @@ export function createCellar({ popOut = null } = {}) {
       else if ('pack' in el.dataset) { hw.suggestedPack = el.value; wPicks = null; draw(); }
       else if (el.dataset.want) { // wants.js: "Do you want me to:" on the Welcome, the same switches as in Settings
         const k = el.dataset.want, said = el.closest('label')?.querySelector('.want-said');
-        try { const r = wantSaved(settings, k, await api('/api/settings', wantPatch(k, el.checked))); el.checked = r.on; if (said) said.textContent = r.say; }
+        try { const r = wantSaved(settings, k, await api('/api/settings', wantPatch(k, el.checked))); el.checked = r.on; if (said) said.textContent = r.say; if (k === 'smartNotes') { const q = el.closest('.wants')?.querySelector('[data-want="quickNotes"]'); if (q) q.checked = settings.quickNotes === true; } }
         catch (err) { el.checked = false; if (said) said.textContent = err.message; }
       }
       else if ('wpick' in el.dataset) { const { rows } = welcomeRows(); wPicks = readyToggle(rows, wPicks, el.dataset.wpick, el.checked); draw(); }

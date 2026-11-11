@@ -7,6 +7,8 @@
 export const WANTS = [
   { group: 'Everyday help', key: 'quickNotes', setting: 'Let Bob take quick notes', where: 'How Bob works',
     label: 'Take quick notes when you say "note:"', note: 'I write it down at once with the date and time, in one plain text file you can open.' },
+  { group: 'Everyday help', key: 'smartNotes', setting: 'Let Bob notice what\'s worth noting', where: 'How Bob works',
+    label: 'Note things worth keeping on my own', note: 'A decision, a number, a plan, a name. I say 📝 Noted each time. Ticking this turns quick notes on too.' },
   { group: 'Everyday help', key: 'docTools', setting: 'Read and search my documents', where: 'How Bob works',
     label: 'Read and search your documents', note: 'Word, Excel, PowerPoint, PDF and more, in Documents, Desktop and Downloads. Nothing leaves this replicant matrix.' },
   { group: 'Everyday help', key: 'sandboxCode', setting: 'Let Bob work things out in a sandbox', where: 'How Bob works',
@@ -46,9 +48,10 @@ export const wantPatch = (key, on) => (key === 'autoCheck' ? { updates: { autoCh
 export function wantSaved(settings, key, reply = {}) {
   if (key === 'autoCheck') settings.updates = { ...(settings.updates || {}), autoCheck: reply.updates?.autoCheck === true };
   else if (key in reply) settings[key] = reply[key] === true;
+  if (key === 'smartNotes' && 'quickNotes' in reply) settings.quickNotes = reply.quickNotes === true; // smart notes switch quick notes on with them
   const on = wantOn(settings, key);
   const why = key === 'sandboxCode' ? reply.sandboxWhy : '';
-  return { on, say: why || (on ? 'On.' : 'Off.') };
+  return { on, say: why || (on ? (key === 'smartNotes' ? 'On, with quick notes.' : 'On.') : 'Off.') };
 }
 
 // Where Bob can start at sign-in (the same test as the Settings switch).

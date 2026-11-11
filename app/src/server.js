@@ -727,7 +727,7 @@ const server = http.createServer(async (req, res) => {
           if (typeof b.howtos === 'boolean') { saveSettings(cfg, { howtos: b.howtos }); out.howtos = cfg.howtos === true; }
           if (typeof b.editOwn === 'boolean') { saveSettings(cfg, { editOwn: b.editOwn }); out.editOwn = cfg.editOwn === true; }
           if (typeof b.quickNotes === 'boolean') { saveSettings(cfg, { quickNotes: b.quickNotes }); out.quickNotes = cfg.quickNotes === true; if (out.quickNotes) { try { ensureNotesFile(cfg); } catch {} } } // notes.js
-          if (typeof b.smartNotes === 'boolean') { saveSettings(cfg, { smartNotes: b.smartNotes }); out.smartNotes = cfg.smartNotes === true; } // notes.js, only works with quick notes on
+          if (typeof b.smartNotes === 'boolean') { saveSettings(cfg, { smartNotes: b.smartNotes, ...(b.smartNotes ? { quickNotes: true } : {}) }); out.smartNotes = cfg.smartNotes === true; out.quickNotes = cfg.quickNotes === true; if (out.quickNotes) { try { ensureNotesFile(cfg); } catch {} } } // notes.js: needs quick notes, so turning it on turns them on too
           if (typeof b.docTools === 'boolean') { saveSettings(cfg, { docTools: b.docTools }); out.docTools = cfg.docTools === true; if (!out.docTools) clearDocCache(); } // my-docs.js
           if (typeof b.sandboxCode === 'boolean') { // sandbox-code.js: only switched on where the sandbox holds
             if (b.sandboxCode) { const h = await sandboxHolds(cfg); if (!h.ok) out.sandboxWhy = `The sandbox doesn't hold on this replicant matrix (${h.why}), so this stays off.`; else { saveSettings(cfg, { sandboxCode: true }); out.sandboxNet = h.net === true; } }
