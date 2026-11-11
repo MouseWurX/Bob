@@ -375,7 +375,7 @@ export class Housekeeper {
     return summary;
   }
 
-  get summariesFile() { return path.join(this.cfg.dataDir, 'chat-summaries.json'); }
+  get summariesFile() { return path.join(this.cfg.profileDir || this.cfg.dataDir, 'chat-summaries.json'); } // 👥 a profile's own (profiles.js)
   summaries() { try { return JSON.parse(fs.readFileSync(this.summariesFile, 'utf8')); } catch { return []; } }
 
   // The chat moments a topic came from, for the Topics page (newest first).
@@ -511,6 +511,7 @@ export class Housekeeper {
 
   async tick({ force = false } = {}) {
     if (vaultOn(this.cfg) && !hasKey()) return { skipped: true, locked: true }; // 🔒 chats are locked until the passcode is typed
+    if (this.cfg.profileNow) return { skipped: true, profile: true }; // 👥 housekeeping only tidies the owner's things (profiles.js)
     if (recallOn(this.cfg) && (force || this.idle()) && !this.working) { try { await this.fillMemoryVectors(); } catch {} }
     if (docMeaningOn(this.cfg) && (force || this.idle()) && !this.working) { try { await this.fillDocIndex(); } catch {} }
     const hk = this.settings;

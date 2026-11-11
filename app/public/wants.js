@@ -13,6 +13,16 @@ export const WANTS = [
     label: 'Show maths as real formulas', note: 'Fractions, powers and roots instead of code.' },
   { card: 'bob', key: 'shortcuts', setting: 'Keyboard shortcuts', where: 'Bob himself',
     label: 'Answer to keyboard shortcuts', note: 'Ctrl+Shift+O new chat, Ctrl+K search, Esc stops me. Ctrl+/ lists them.' },
+  { card: 'bob', key: 'readableFont', setting: 'Easier-to-read font', where: '🌓 Look & feel',
+    label: 'Use an easier-to-read font', note: 'Plainer letters with more room between them and between lines.' },
+  { card: 'how', key: 'todayCard', setting: 'Show a today card when Bob opens', where: '🗓 Everyday helpers',
+    label: 'Show you a today card when I open', note: 'Weather, today\'s reminders and jobs, and the last check-in. Once a day.' },
+  { card: 'how', key: 'focusTimer', setting: 'Focus timer', where: '🗓 Everyday helpers',
+    label: 'Keep quiet while you focus', note: 'A ⏱ Focus button. My taps on the shoulder wait until it ends.' },
+  { card: 'how', key: 'receipts', setting: 'Keep a spending sheet from receipts', where: '🗓 Everyday helpers',
+    label: 'Keep a spending sheet from receipt photos', note: 'Snap a receipt and I add it. The sheet stays here, locked.' },
+  { card: 'how', key: 'updateTour', setting: 'Show what\'s new after an update', where: '🗓 Everyday helpers',
+    label: 'Show you what\'s new after an update', note: 'Up to three cards, each with Turn on.' },
   { card: 'how', key: 'quickNotes', setting: 'Let Bob take quick notes', where: 'How Bob works',
     label: 'Take quick notes when you say "note:"', note: 'Saved at once with the date, in one text file.' },
   { card: 'how', key: 'smartNotes', setting: 'Let Bob notice what\'s worth noting', where: 'How Bob works',
@@ -55,6 +65,8 @@ export const WANTS = [
     label: 'Fetch my newest brain list once a day', note: 'From my own GitHub page. Nothing downloads by itself.' },
   { card: 'pc', key: 'autostart', setting: 'Launch Bob on start-up', where: 'How Bob works',
     label: 'Start when you sign in to this replicant matrix', note: '' },
+  { card: 'pc', key: 'trayDot', setting: 'Show a dot on the tray icon', where: '🗓 Everyday helpers',
+    label: 'Put a dot on my tray icon when something waits for you', note: 'Gone when you look.' },
   { card: 'pc', key: 'autoCheck', setting: 'Check for updates when Bob starts', where: 'This replicant matrix and updates',
     label: 'Check for a newer me when I start', note: 'I only tell you. Updating takes your click.' }
 ];
@@ -69,6 +81,7 @@ export const WANTS_ELSEWHERE = [
   { card: 'fun', id: 'adv-adventure', label: 'Run a tabletop adventure (🎲 Adventure)' },
   { card: 'fun', id: 'adv-games', label: 'Play word games (🧩 Games)' },
   { card: 'pc', id: 'adv-housekeeping', label: 'Tidy up while I\'m idle (🧹 Housekeeping)' },
+  { card: 'how', id: 'adv-daily', label: 'Give each person their own chats and memory (👥 Profiles, in 🗓 Everyday helpers)' },
   { card: 'pc', id: 'ev-lock', label: 'Ask for a passcode, and lock your chats (🔒 Passcode lock)' }
 ];
 

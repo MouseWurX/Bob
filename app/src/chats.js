@@ -8,7 +8,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { readJson as vaultRead, writeJson as vaultWrite } from './vault.js';
 
-export const sessionDir = (cfg) => path.join(cfg.dataDir, 'sessions');
+export const sessionDir = (cfg) => cfg.sessionsDir || path.join(cfg.dataDir, 'sessions'); // 👥 a profile's own folder while it's open (profiles.js)
 export const safeId = (id) => String(id || '').replace(/[^a-zA-Z0-9-]/g, '').slice(0, 80);
 export const chatFile = (cfg, id) => path.join(sessionDir(cfg), safeId(id) + '.json');
 export const olderFile = (cfg, id) => path.join(sessionDir(cfg), safeId(id) + '.older.json');

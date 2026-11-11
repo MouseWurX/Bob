@@ -26,7 +26,8 @@ check('every tool has a description', all.every((f) => f.description.trim().leng
 // Before the wording pass: all tools ~47,500 characters, the starting core ~8,800.
 // 1.5.204: seven new tools (3D model and part, tool packs x3, look_at_job, pass_note), all off until switched on,
 // took the total from 39,000 to about 42,800. Each one is still under the per-tool limits above.
-check('all tools together stay under 43,000 characters', size(all) < 43000, String(size(all)));
+// Everyday helpers: spending_sheet (receipts.js, off until switched on, and hidden while off) adds about 640.
+check('all tools together stay under 43,500 characters', size(all) < 43500, String(size(all)));
 const core = all.filter((f) => CORE.includes(f.name));
 check('the tools every chat starts with stay under 8,000 characters', size(core) < 8000, String(size(core)));
 check('no tool talks about GPU plumbing the brain can\'t act on', !all.some((f) => /steps out of the GPU/.test(f.description)));

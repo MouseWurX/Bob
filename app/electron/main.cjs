@@ -330,8 +330,11 @@ function showBob() {
   win.focus();
 }
 
+// 150 "Show a dot on the tray icon" (off by default): while something waits for you, the tray picture has a dot;
+// Windows also puts it on the taskbar button, and a Mac shows a dot on the Dock icon.
+const dotted = () => Boolean(winState.trayDot && winState.dot && winState.dotIcons);
 function trayImage() {
-  const ic = winState.icons;
+  const ic = dotted() ? winState.dotIcons : winState.icons;
   if (ic) {
     if (process.platform === 'linux') return nativeImage.createFromBuffer(ic[32]);
     const img = nativeImage.createEmpty();
@@ -366,10 +369,12 @@ function refreshWindowBits() {
         tray.setContextMenu(trayMenu());
         tray.on('click', showBob); // Windows and Linux: a click opens him (Mac shows the menu)
       } else tray.setImage(trayImage());
-      tray.setToolTip(MAC ? 'Bob' : 'Bob: click to open him, right-click to quit him');
+      tray.setToolTip(dotted() ? 'Bob: something is ready or needs you' : MAC ? 'Bob' : 'Bob: click to open him, right-click to quit him');
     } else if (tray) { tray.destroy(); tray = null; }
     if (MAC) { if (app.dock) app.dock.setIcon(bigImage()); }
     else if (win) win.setIcon(winState.icons ? bigImage() : iconFile(process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'));
+    if (MAC && app.dock) app.dock.setBadge(dotted() ? '•' : '');
+    if (process.platform === 'win32' && win) win.setOverlayIcon(dotted() ? nativeImage.createFromBuffer(winState.dotIcons.badge) : null, dotted() ? 'Something is ready or needs you' : '');
   } catch (e) { console.error('Bob: tray or icon', e.message); }
 }
 globalThis.bobWindow = { apply: (s) => { winState = { ...winState, ...s }; refreshWindowBits(); } };

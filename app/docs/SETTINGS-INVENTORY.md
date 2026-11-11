@@ -348,3 +348,17 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | Welcome, Do you want me to: | "Turn pictures into 3D models" (same switch) | off | new |
 | Settings > Engines (senses) | 3D workshop: Get (only where model3d/addons-pins.json has checked add-ons; Windows and Linux x64 with an NVIDIA card), about 22 GB with the models; Mac and ARM say to send the job to a PC Bob | not installed | new |
 | Settings > Bob-Net | Send/Take jobs: "3D models" is a new kind of job a PC Bob can take | — | new |
+
+## Settings: Look & feel and 🗓 Everyday helpers (items 143 to 150)
+| Setting | Hint | Default | Review |
+|---|---|---|---|
+| Settings > Bob himself > 🌓 Look & feel | Text size (`textSize`, 80 to 160 in steps of 10): "The chat, the message box and Settings, bigger or smaller. 100% to start with. Saved for this Bob, on every window." | 100% | new, awaiting review |
+| Settings > Bob himself > 🌓 Look & feel | Easier-to-read font (`readableFont`): "Off to start with. A plainer font with more space between letters, words and lines, for the chat and Settings. Good for tired eyes and for dyslexia." | Off | new, awaiting review |
+| Settings > How Bob works > 🗓 Everyday helpers | Show a today card when Bob opens (`todayCard`) | Off | new, awaiting review |
+| Settings > How Bob works > 🗓 Everyday helpers | Place for the weather (`todayPlace`, text): empty = no weather; only the place name goes to open-meteo.com | Empty | new, awaiting review |
+| Settings > How Bob works > 🗓 Everyday helpers | Focus timer (`focusTimer`): the ⏱ Focus button beside Effort, 15/25/45/60 minutes | Off | new, awaiting review |
+| Settings > How Bob works > 🗓 Everyday helpers | Keep a spending sheet from receipts (`receipts`); the sheet, totals, Delete (press twice) and Save as a spreadsheet (CSV) sit under it, on or off. Kept locked in inn/bob/spending.json | Off | new, awaiting review |
+| Settings > How Bob works > 🗓 Everyday helpers | Show what's new after an update (`updateTour`, with `tourSeen`) | Off | new, awaiting review |
+| Settings > How Bob works > 🗓 Everyday helpers | Show a dot on the tray icon (`trayDot`); in a browser the line says it's only in Bob's own window | Off | new, awaiting review |
+| Settings > How Bob works > 🗓 Everyday helpers | Profiles for other people (`profilesOn`); people list, ＋ Add a person (Name, Their passcode), Remove (press twice). People kept in config.json `profiles`, their chats in inn/profiles/ | Off | new, awaiting review |
+| Android > Settings > Look | Text size (slider) and Easier-to-read font, kept on the phone | 100%, Off | new, awaiting review |

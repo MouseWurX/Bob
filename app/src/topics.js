@@ -33,8 +33,9 @@ export function overlap(a, b) {
 export class Topics {
   constructor(cfg) {
     this.cfg = cfg;
-    this.file = path.join(cfg.dataDir, 'topics.json');
   }
+  // 👥 While a profile is open (profiles.js) its topics live in its own folder, so nobody sees the owner's.
+  get file() { return path.join(this.cfg.profileDir || this.cfg.dataDir, 'topics.json'); }
 
   load() {
     try {

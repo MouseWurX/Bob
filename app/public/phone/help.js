@@ -25,6 +25,10 @@ globalThis.BobHelp = {
       html: `<p>Settings, <strong>Read replies aloud</strong> (off to start with). I read each reply in your phone's own voice. To change the voice or speed, use Android's Settings, Text-to-speech. The fancy voices (Kokoro, Chatterbox, Piper) live on your other replicant matrix.</p>`
     },
     {
+      id: 'text-size', title: 'Bigger words and an easier font',
+      html: `<p>Settings, Look. <strong>Text size</strong> makes the chat, the message box and Settings bigger or smaller (80% to 160%; 100% to start with). <strong>Easier-to-read font</strong> (off to start with) swaps in plainer letters with more room between letters, words and lines. Both are kept on the phone. The other everyday helpers (the today card, the focus timer, receipts, profiles) are on your computer's Bob.</p>`
+    },
+    {
       id: 'maths', title: 'Maths as formulas',
       html: `<p>Settings, Look, <strong>Show maths as formulas</strong> (off to start with). Brains write maths as code, like <code>\\frac{1}{2}</code> for a half. With this on I draw it as real formulas: fractions stacked, powers raised. Prices like $5 stay prices. It's all done on the phone, nothing goes online. A formula I can't read shows as I wrote it, in red. Keyboard shortcuts are only on my computer window, not here.</p>`
     },

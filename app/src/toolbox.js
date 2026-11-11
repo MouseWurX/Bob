@@ -41,6 +41,11 @@ const WORK_GROUPS = {
     tools: ['run_in_sandbox'],
     words: /\b(calculat\w*|work (?:it |this |that )?out|how (?:many|much|long) (?:days|weeks|months|years|hours|minutes|until|till|since|left)|add (?:up|these|them)|total|sum|average|mean|median|percent\w*|per cent|interest|compound|tip|split (?:the )?(?:bill|cost)|convert (?:\d|this|that|these)|in (?:km|miles|kg|lbs?|pounds|celsius|fahrenheit|inches|cm|feet|metres|meters|litres|liters|gallons|ounces)|sort (?:this|these|them|the list)|count (?:the|how|these)|regex|pattern|run (?:the |some |this )?(?:code|numbers|maths?|math)|sandbox|exact(?:ly)?)\b/i
   },
+  spending: { // 🧾 "Keep a spending sheet from receipts" (receipts.js): only while it's on (offTools hides it otherwise)
+    what: 'add a receipt from a picture to the private spending sheet, list it, or total it up',
+    tools: ['spending_sheet'],
+    words: /\b(receipts?|spending|spent|expenses?|bills? (?:from|at)|how much (?:did )?i (?:spend|spent)|budget)\b/i
+  },
   memory: {
     what: 'forget a topic you keep notes on',
     tools: ['forget_topic'],

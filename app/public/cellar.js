@@ -20,6 +20,7 @@ import { appsDoorHtml, mountAppsDoor } from './apps-door.js';
 import { claudeDoorHtml, mountClaudeDoor } from './claude-door.js'; // Let Claude use Bob's hands
 import { checkinsHtml, mountCheckins } from './checkins.js';
 import { promptsHtml, mountPrompts } from './prompts.js'; // saved prompts and the / menu
+import { mountEveryday, applyReading, TEXT_MIN, TEXT_MAX, TEXT_STEP } from './everyday.js'; // 🗓 Everyday helpers
 import { adventureSettingsHtml, mountAdventureSettings } from './adventure.js';
 import { gamesSettingsHtml, mountGamesSettings } from './games.js';
 import { shareBrainsHtml, mountShareBrains } from './share-brains.js';
@@ -1009,10 +1010,27 @@ export function createCellar({ popOut = null } = {}) {
   function lookExtrasHtml() {
     const st = settings.style || {};
     const opt = (val, label, on) => `<button type="button" role="radio" aria-checked="${on}" data-nowneed="${val}">${label}</button>`;
-    return `<div><strong>Now running</strong><div class="ttabs" role="radiogroup" aria-label="Open Now running when a task needs me">${opt('0', 'Leave Now running as it is', st.openNowOnNeed !== true)}${opt('1', 'Open Now running when a task needs me', st.openNowOnNeed === true)}</div></div>
+    const ts = settings.textSize || 100;
+    return `<div class="srow"><label class="pick"><strong>Text size: <b data-textsizelabel>${ts}%</b></strong><input type="range" min="${TEXT_MIN}" max="${TEXT_MAX}" step="${TEXT_STEP}" data-textsize value="${ts}" aria-describedby="textsize-hint"></label>
+      <p class="muted" id="textsize-hint">The chat, the message box and Settings, bigger or smaller. 100% to start with. Saved for this Bob, on every window.</p></div>
+      ${sswitch('readableFont', settings.readableFont === true, 'Easier-to-read font', 'Off to start with. A plainer font with more space between letters, words and lines, for the chat and Settings. Good for tired eyes and for dyslexia.')}
+      <div><strong>Now running</strong><div class="ttabs" role="radiogroup" aria-label="Open Now running when a task needs me">${opt('0', 'Leave Now running as it is', st.openNowOnNeed !== true)}${opt('1', 'Open Now running when a task needs me', st.openNowOnNeed === true)}</div></div>
       <div><strong>Your own theme</strong><p class="muted">Make or edit a theme on the <button type="button" class="link" data-tab="style">🎨 Style</button> page (Make your own theme).</p></div>`;
   }
 
+  // 🗓 Everyday helpers (everyday.js): each switch off to start with. The boxes below fill themselves (mountEveryday).
+  const dailyHtml = () => `<div class="everyday-box">
+      ${sswitch('todayCard', settings.todayCard === true, 'Show a today card when Bob opens', 'Off to start with. Once a day, the first time his window opens: the weather, today\'s reminders and scheduled jobs, and what the last check-in found.')}
+      <div class="srow"><label class="pick"><strong>Place for the weather</strong><input data-todayplace maxlength="60" value="${esc(settings.todayPlace || '')}" placeholder="Your town" aria-describedby="todayplace-hint" style="width:14em"></label>
+      <p class="muted" id="todayplace-hint">Empty: no weather. With a town here, only its name goes to open-meteo.com (free, no account), once a day.</p></div>
+      ${sswitch('focusTimer', settings.focusTimer === true, 'Focus timer', 'Off to start with. Shows ⏱ Focus beside Effort. Pick 15, 25, 45 or 60 minutes: Bob keeps his check-ins, reminders and other notes to himself until it ends, then says how it went. Replies to what you ask still come.')}
+      ${sswitch('receipts', settings.receipts === true, 'Keep a spending sheet from receipts', 'Off to start with. Attach a photo of a receipt and say "add this receipt": Bob reads it and adds the date, shop, total and a category. The sheet stays on this replicant matrix, always locked. Needs a brain that can see pictures.')}
+      <div class="spend-box"></div>
+      ${sswitch('updateTour', settings.updateTour === true, 'Show what\'s new after an update', 'Off to start with. After an update, up to three cards in the chat for the new switches, each with Turn on. Once per version.')}
+      ${sswitch('trayDot', settings.trayDot === true, 'Show a dot on the tray icon', `Off to start with. A dot on Bob\'s tray icon when a reply is ready or something needs you while his window is hidden. Windows also shows it on the taskbar button, a Mac on the Dock icon. Gone when you look.${settings.trayHere ? '' : ' Only in Bob\'s own window: in a browser this does nothing.'}`)}
+      ${sswitch('profilesOn', settings.profilesOn === true, 'Profiles for other people', 'Off to start with. On a shared replicant matrix, each person gets their own chats and memory, locked with their own passcode. They pick their name on the lock screen. Needs the passcode lock with Lock my chats and memory.')}
+      <div class="people-box"></div>
+    </div>`;
   // 1.5.181 "Memory kept for Windows" (built-in graphics only): how much free memory a brain load leaves alone.
   const holdbackHtml = () => { const v = settings.apuHoldbackGB ?? 4; return `<div class="srow"><label class="pick"><strong>Memory kept for Windows: <b data-holdbacklabel>${v} GB</b></strong><input type="range" min="0" max="8" step="0.5" data-holdback value="${v}" aria-describedby="holdback-hint"></label>
       <p class="muted" id="holdback-hint">With built-in graphics, a brain shares memory with Windows. Before loading one, Bob leaves this much free memory alone (4 GB to start with). Lower lets bigger brains load on a small machine. <strong>At 0, Windows may slow down, or Bob may close, if memory runs out.</strong></p></div>`; };
@@ -1040,6 +1058,7 @@ export function createCellar({ popOut = null } = {}) {
     ['adventure', '🎲 Adventure', 'adventure game tabletop role-playing dice game master party bobs cards plot armour campaign', () => `<div class="adventure-box">${adventureSettingsHtml(settings.adventure || {})}</div>`],
     ['games', '🧩 Games', 'games twenty questions hangman word ladder five letters story dice quick brain banter chip in', () => `<div class="games-box">${gamesSettingsHtml(settings.games || {})}</div>`],
     ['prompts', '📝 Saved prompts', 'saved prompts prompt library slash / menu template templates reuse snippets blanks variables {file} curly brackets', () => sswitch('promptMenu', settings.promptMenu === true, 'Pull up saved prompts with /', 'Off unless you turn it on. Type / at the start of the message box to pick a saved prompt. Its words go in the box for you to finish and send. Words in {curly brackets} are blanks: type over them, and Tab goes to the next one.') + promptsHtml()],
+    ['daily', '🗓 Everyday helpers', 'everyday helpers today card weather reminders morning focus timer pomodoro quiet do not disturb receipt receipts spending sheet expenses budget csv profiles people family shared pc guest tour what\'s new after an update tray dot badge text size font', () => dailyHtml()],
     ['checkins', '🔔 Check-ins', 'check in heartbeat schedule morning every day weekday hours notify alert tap shoulder downloads stuck failed tasks disk space own checks build finished', () => checkinsHtml()],
     ['remove', '🗑 Remove Bob', 'uninstall remove', () => settings.features?.uninstall === false ? macRemoveHtml() : `<div class="remove-bob">${more('Takes off Bob\'s program, his Start menu shortcut and "Launch on start-up". His chats, settings and models stay unless you tick them. Nothing else in the inn folder or in Windows is touched.')}<button data-removebob>Remove Bob…</button><div class="remove-confirm" hidden></div></div>`]
   ];
@@ -1208,6 +1227,7 @@ export function createCellar({ popOut = null } = {}) {
     mountCheckins(dlg.querySelector('.checkins-box')); // 1.5.78 Check-ins
     mountPresets(dlg.querySelector('.presets-box')); // Assistant presets for chats (loads its own list)
     mountPrompts(dlg.querySelector('.prompts-box')); // 📝 Saved prompts
+    mountEveryday(dlg.querySelector('.everyday-box'), { settings, flash: (el, m) => flash(el, m) }); // 🗓 Everyday helpers
     mountAdventureSettings(dlg.querySelector('.adventure-box'), { api, settings }); // 1.5.117 🎲 Adventure
     mountGamesSettings(dlg.querySelector('.games-box'), { api, settings }); // 1.5.121 🧩 Games
     mountShareBrains(dlg.querySelector('.share-box')); // Bob-Net: My other Bobs and What they share
@@ -1819,7 +1839,7 @@ export function createCellar({ popOut = null } = {}) {
   dlg.addEventListener('input', (e) => { const d = e.target.dataset || {}; if (d.placemoe) { const n = dlg.querySelector('[data-placemoenum]'); if (n) n.value = e.target.value; } else if (d.placemoenum) { const r = dlg.querySelector('[data-placemoe]'); if (r) r.value = e.target.value; } }); // 1.5.205 slider and number box stay in step
   dlg.addEventListener('input', (e) => { backup.onInput(e.target); if (e.target.id === 'proj-path') projAddState(); if (e.target.id === 'save-path') saveDirState(); });
   dlg.addEventListener('input', (e) => { const k = e.target.dataset?.rentadd; if (k === 'model' || k === 'name') delete e.target.dataset.auto; }); // 1.5.137: what you type yourself stays
-  dlg.addEventListener('input', (e) => { if (tab === 'style') stylePage.onInput(e.target); if (e.target.dataset?.ssearch !== undefined) { settingsQuery = e.target.value; if (settingsQuery.trim()) applyView(); else { draw(); const box = dlg.querySelector('[data-ssearch]'); box?.focus(); } } if (e.target.dataset?.dial) showDials(dialValues()); if (e.target.dataset?.holdback !== undefined) { const lab = dlg.querySelector('[data-holdbacklabel]'); if (lab) lab.textContent = `${e.target.value} GB`; } });
+  dlg.addEventListener('input', (e) => { if (tab === 'style') stylePage.onInput(e.target); if (e.target.dataset?.ssearch !== undefined) { settingsQuery = e.target.value; if (settingsQuery.trim()) applyView(); else { draw(); const box = dlg.querySelector('[data-ssearch]'); box?.focus(); } } if (e.target.dataset?.dial) showDials(dialValues()); if (e.target.dataset?.holdback !== undefined) { const lab = dlg.querySelector('[data-holdbacklabel]'); if (lab) lab.textContent = `${e.target.value} GB`; } if (e.target.dataset?.textsize !== undefined) { const lab = dlg.querySelector('[data-textsizelabel]'); if (lab) lab.textContent = `${e.target.value}%`; } });
 
   // 1.5.135: ➕ Your own brains, the Add form.
   dlg.addEventListener('submit', async (e) => {
@@ -1925,6 +1945,13 @@ export function createCellar({ popOut = null } = {}) {
         const box = el.closest('.seg3');
         box.outerHTML = gamingCardHtml();
         flash(dlg.querySelector('.seg3'), 'Saved.'); return;
+      }
+      if (el.dataset.textsize !== undefined) { const r = await api('/api/settings', { textSize: Number(el.value) }); settings.textSize = r.textSize; el.value = r.textSize; applyReading(settings); window.dispatchEvent(new CustomEvent('bob-display', { detail: { textSize: r.textSize } })); flash(el.closest('.srow'), 'Saved.'); return; }
+      if (['readableFont', 'todayCard', 'focusTimer', 'receipts', 'updateTour', 'trayDot', 'profilesOn'].includes(el.dataset.set)) { // 🗓 Everyday helpers
+        const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k] === true; el.checked = settings[k];
+        applyReading(settings); window.dispatchEvent(new CustomEvent('bob-display', { detail: { [k]: settings[k] } }));
+        const SAY = { readableFont: ['On. The plainer font is on the chat and Settings.', 'Off. The theme\'s own font is back.'], todayCard: ['On. The card shows the next time Bob\'s window opens (once a day).', 'Off.'], focusTimer: ['On. ⏱ Focus is beside Effort, under the chat.', 'Off.'], receipts: ['On. Attach a receipt photo and say "add this receipt".', 'Off. The sheet is kept, locked.'], updateTour: ['On. After the next update, a few cards show what\'s new.', 'Off.'], trayDot: ['On. A dot shows on the tray icon when something waits for you.', 'Off.'], profilesOn: ['On. Add people below; they pick their name on the lock screen.', 'Off. The lock screen only asks for the owner\'s passcode. People and their chats are kept.'] };
+        flash(el, SAY[k][settings[k] ? 0 : 1]); if (k === 'profilesOn') mountEveryday(dlg.querySelector('.everyday-box'), { settings, flash: (x, m) => flash(x, m) }); return;
       }
       if (el.dataset.holdback !== undefined) { const r = await api('/api/settings', { apuHoldbackGB: Number(el.value) }); settings.apuHoldbackGB = r.apuHoldbackGB; el.value = r.apuHoldbackGB; const lab = dlg.querySelector('[data-holdbacklabel]'); if (lab) lab.textContent = `${r.apuHoldbackGB} GB`; flash(el.closest('.srow'), 'Saved.'); return; }
       if (el.dataset.set === 'quickNotes') { const r = await api('/api/settings', { quickNotes: el.checked }); settings.quickNotes = r.quickNotes; el.checked = r.quickNotes; draw(); flash(dlg.querySelector('[data-set="quickNotes"]') || dlg, r.quickNotes ? 'On. Say "note:" and Bob writes it down.' : 'Off. Your notes file stays where it is.'); return; }

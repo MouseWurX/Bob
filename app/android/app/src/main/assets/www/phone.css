@@ -274,3 +274,10 @@ input[type="number"] { min-height: 44px; border-radius: 10px; border: 1px solid 
 .fx-die.nat20 .fx-face { box-shadow: 0 0 24px var(--accent); } .fx-die.gone { opacity: 0; }
 @keyframes fx-tumble { from { transform: rotate(0); } to { transform: rotate(60deg); } }
 @media (prefers-reduced-motion: reduce) { .fx-die .fx-face, .adv-member.hit { animation: none; } }
+
+/* Everyday helpers: Text size (80% to 160%) on the chat, the message box and Settings, and the easier-to-read font. */
+:root { --text-zoom: 1; }
+#chat > *, #text, #settings .body > * { zoom: var(--text-zoom); }
+html.readable-font body, html.readable-font button, html.readable-font input, html.readable-font select, html.readable-font textarea { font-family: Verdana, "Atkinson Hyperlegible", "DejaVu Sans", Roboto, sans-serif; letter-spacing: .02em; word-spacing: .08em; }
+html.readable-font .msg, html.readable-font .help-line { line-height: 1.7; }
+input[type="range"] { width: 100%; min-height: 44px; }

@@ -1953,3 +1953,34 @@ a.mini.button:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 .lock-warn { color: var(--bad); }
 .lock-ask { background: var(--danger-bg); border: 1px solid var(--bad); border-radius: var(--r); padding: 10px 12px; }
 .mem-edit textarea { width: 100%; min-height: 12em; box-sizing: border-box; font: inherit; }
+
+/* 🗓 Everyday helpers (everyday.js). Text size: the chat, the message box and Settings, 80% to 160% (100% to start
+   with). The children are zoomed, not the scrolling boxes, so the page still fits the window. */
+:root { --text-zoom: 1; }
+.log > *, #input, #cellar-body > *, #help-body > * { zoom: var(--text-zoom); }
+/* Easier-to-read font (off to start with): plain letter shapes, more room between letters, words and lines.
+   Code keeps its own font. Wins over a theme's font on purpose. */
+html.readable-font body, html.readable-font input, html.readable-font textarea, html.readable-font button, html.readable-font select {
+  font-family: Verdana, "Atkinson Hyperlegible", "DejaVu Sans", Tahoma, "Segoe UI", sans-serif !important; letter-spacing: .02em; word-spacing: .08em;
+}
+html.readable-font .msg, html.readable-font .muted, html.readable-font dd, html.readable-font p, html.readable-font li { line-height: 1.7; }
+html.readable-font code, html.readable-font pre, html.readable-font kbd { font-family: var(--mono) !important; letter-spacing: 0; word-spacing: 0; }
+/* The today card, the tour cards and the focus timer. */
+.today-list { margin: 4px 0; padding-left: 4px; list-style: none; }
+.today-list li { margin: 2px 0; }
+.tour-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin: 8px 0; }
+.tour-card { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
+.tour-card button { align-self: flex-start; margin-top: auto; }
+.focus-btn[aria-checked="true"] { border-color: var(--accent); }
+.focus-pick { position: relative; display: inline-flex; }
+.focus-pick[hidden] { display: none; }
+.effort [data-focus] { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; min-height: 40px; min-width: 64px; padding: 4px 12px; font: inherit; color: var(--text); background: none; border: 1px solid var(--line); border-radius: var(--r); cursor: pointer; line-height: 1.15; }
+.effort [data-focus] small { font-size: 10px; color: var(--muted); }
+.spend-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0; }
+.spend-table th, .spend-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.spend-sum { margin: 6px 0; }
+.people-list { list-style: none; padding: 0; margin: 6px 0; }
+.people-list li { padding: 3px 0; }
+.people-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.everyday-box .spend-box, .everyday-box .people-box { margin: 0 0 10px 0; }
+.approval.today-card, .approval.tour, .approval.focus-done { background: var(--card); border-color: var(--line); }

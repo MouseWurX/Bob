@@ -21,7 +21,7 @@
     get(k, d) { try { const v = globalThis.BobLock ? globalThis.BobLock.get(k) : localStorage.getItem(`bob.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { if (globalThis.BobLock) globalThis.BobLock.set(k, JSON.stringify(v)); else localStorage.setItem(`bob.${k}`, JSON.stringify(v)); } catch { /* full or blocked: carry on in memory */ } }
   };
-  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, mathView: false, userName: '', theme: 'moondust', effort: 'low', resume: false, redo: true, promptMenu: false };
+  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, mathView: false, userName: '', theme: 'moondust', effort: 'low', resume: false, redo: true, promptMenu: false, textSize: 100, readableFont: false };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
   // Bob's Inn was the starting theme until Moondust took over on every system. Settings are saved whole, so a phone
   // that never chose a theme has 'inn' saved too: it moves to Moondust once. A theme picked in Settings stays.
@@ -1067,6 +1067,18 @@
   $('math-view').addEventListener('change', (e) => { settings.mathView = e.target.checked; saveSettings(); applyMath().then(() => { $('math-view').checked = settings.mathView; drawChat(); }); });
   if (settings.mathView) applyMath().then(drawChat);
   $('theme').addEventListener('change', (e) => { settings.theme = e.target.value; settings.themePicked = true; saveSettings(); applyTheme(); });
+  // Everyday helpers: Text size and the easier-to-read font, kept on the phone.
+  const applyReading = () => {
+    const n = Math.min(160, Math.max(80, Math.round((Number(settings.textSize) || 100) / 10) * 10));
+    document.documentElement.style.setProperty('--text-zoom', String(n / 100));
+    document.documentElement.classList.toggle('readable-font', settings.readableFont === true);
+    if ($('text-size')) { $('text-size').value = String(n); $('text-size-now').textContent = `${n}%`; }
+    if ($('readable-font')) $('readable-font').checked = settings.readableFont === true;
+  };
+  $('text-size')?.addEventListener('input', (e) => { $('text-size-now').textContent = `${e.target.value}%`; });
+  $('text-size')?.addEventListener('change', (e) => { settings.textSize = Number(e.target.value); saveSettings(); applyReading(); });
+  $('readable-font')?.addEventListener('change', (e) => { settings.readableFont = e.target.checked; saveSettings(); applyReading(); });
+  applyReading();
   $('resume').addEventListener('change', (e) => { settings.resume = e.target.checked; saveSettings(); });
   $('chat').addEventListener('scroll', drawToBottom, { passive: true });
   $('to-bottom').addEventListener('click', () => { const box = $('chat'); box.scrollTo({ top: box.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); });
