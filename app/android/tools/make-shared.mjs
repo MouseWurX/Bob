@@ -85,7 +85,7 @@ export function buildPromptWords() {
 // Icons, fonts, Mermaid and diagram-core.js aren't copied: the server hands /phone/shared/, /phone/vendor/ and
 // /phone/diagram-core.js out of public/ (they're the same files).
 export const WEB_DIR = path.join(root, 'public/phone');
-export const WEB_COPIED = ['phone.js', 'phone.css', 'logic.js', 'help.js', 'shared.js', 'avatars.js'];
+export const WEB_COPIED = ['phone.js', 'phone.css', 'logic.js', 'help.js', 'shared.js', 'avatars.js', 'prompt-words.js', 'table-fx.js', 'math-core.js', 'model-core.js']; // every script www/index.html loads except lock.js (Android's own) and diagram-core.js (served from desktop Bob)
 export function buildWebPhone() {
   const www = path.join(root, 'android/app/src/main/assets/www');
   const read = (f) => fs.readFileSync(path.join(www, f), 'utf8').replace(/\r\n/g, '\n');

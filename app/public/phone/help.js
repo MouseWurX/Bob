@@ -112,8 +112,8 @@ globalThis.BobHelp = {
       html: `<p>Scroll up to read and a round button with a down arrow shows at the bottom middle of the chat. Tap it to go back to the newest message. While I'm still answering, three dots on it breathe slowly. If your phone is set to reduce motion, they hold still.</p>`
     },
     {
-      id: 'redo', title: 'Try again and Edit',
-      html: `<p>Settings, <strong>Show Try again and Edit in the chat</strong> (on to start with). With it on, <strong>Try again</strong> under my latest answer gets a new answer to your last message, and <strong>Edit</strong> under your last message lets you change it and tap <strong>Send again</strong>. What was there before is kept under your message: tap <strong>1 earlier version</strong> to see it (the last 5 are kept). The buttons hide while I'm still on that chat.</p><p>When a Bob on your network answered, he takes his old answer back too if his own <strong>Show Try again and Edit in the chat</strong> is on (Settings, How Bob works on that replicant matrix). If it's off, he gets your message as a new one. On your other replicant matrix you can also edit earlier messages, not just the last.</p>`
+      id: 'redo', title: 'The … menu: Try again, Edit, Copy, Delete',
+      html: `<p>Tap the <strong>…</strong> at the top right of a message:</p><ul><li><strong>Try again</strong> (my latest answer): a new answer to your last message.</li><li><strong>Edit</strong>: your last message, sent again; or my words, fixed here without sending anything.</li><li><strong>Copy</strong>: the whole message.</li><li><strong>Delete</strong>: your message goes with my answer to it; mine goes alone. I ask once first, and it can't be undone.</li></ul><p>Try again, Edit and Delete need Settings, <strong>Show Try again, Edit and Delete in the chat</strong> (on to start with), and wait while I'm still on that chat. Try again and Edit keep what was there as an earlier version (tap <strong>1 earlier version</strong>). Read aloud is in the menu too.</p><p>When a Bob on your network answered, Try again and Edit take his old answer back too (his own switch on). Edit and Delete on this phone change only this phone's copy of the chat: he still remembers what he said.</p>`
     },
     {
       id: 'saved-prompts', title: 'Saved prompts and the / menu',
@@ -227,7 +227,8 @@ globalThis.BobHelp = {
 <dt>Story dice</dt><dd>Six picture dice come up; we tell a story a line each until every die is in it. Always a shared point.</dd>
 <dt>Help bundle</dt><dd>One file from Save a help bundle (Settings, Save a help bundle): my logs, errors, last chats, settings without their secrets and this replicant matrix's facts, with a HANDOFF.md on top. I never send it anywhere.</dd>
 <dt>Handoff file (HANDOFF.md)</dt><dd>The first file in a help bundle, written for whoever helps (a person or an AI agent): what I am, my exact version and public code, what's wrong as far as I can tell, and what to try first.</dd>
-<dt>Try again</dt><dd>A button under my latest answer (Settings, Show Try again and Edit in the chat): a new answer to your last message. The old one is kept as an earlier version.</dd>
+<dt>Try again</dt><dd>In the … menu of my latest answer: a new answer to your last message. The old one is kept as an earlier version.</dd>
+<dt>… menu</dt><dd>The … at the top right of a message: Try again, Edit, Copy, Delete.</dd>
 <dt>Earlier version</dt><dd>Under your message: what was there before you tapped Try again or Edit.</dd>
 <dt>Saved prompt</dt><dd>Words you ask me often, saved with a short name. Type / at the start of the message box to pull one up. Blanks in {curly brackets} are what you fill in.</dd>
 <dt>OK card</dt><dd>A Bob on your network asking before he does something outside his own folder.</dd>
@@ -237,7 +238,8 @@ globalThis.BobHelp = {
       id: 'faq', title: 'Questions and fixes',
       html: `<table>
 <tr><th>What happens</th><th>What to do</th></tr>
-<tr><td>No Try again or Edit under the messages</td><td>Settings, Show Try again and Edit in the chat: turn it back on. The buttons also hide while I'm still answering in that chat.</td></tr>
+<tr><td>No Try again, Edit or Delete in the … menu</td><td>Settings, Show Try again, Edit and Delete in the chat: turn it back on. They also wait while I'm still answering in that chat.</td></tr>
+<tr><td>Can I get a deleted message back?</td><td>No. Delete is for good, so I ask once first. Try again and Edit keep the old version instead.</td></tr>
 <tr><td>The chest is empty or says no Bob is reachable</td><td>The chest is your other Bob's Made by Bob list, so it needs him on Tailscale. Once he's reachable, open the menu and tap Chest again.</td></tr>
 <tr><td>I forgot my passcode</td><td>If Lock my chats and memory was on, those chats and my memory are gone for good: the passcode is the only key and there is no reset. To start fresh, clear my storage (Android Settings, Apps, Bob, Storage, Clear storage); that removes the lock, the chats and your phone settings. Your other replicant matrix's chats aren't touched.</td></tr>
 <tr><td>The pill says Nobody home</td><td>Tap it. Usually your other replicant matrix is asleep, or Tailscale is off on the phone or your other replicant matrix.</td></tr>

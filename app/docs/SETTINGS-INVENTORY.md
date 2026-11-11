@@ -324,12 +324,12 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 
 | Where | Setting / text | Default | Status |
 |---|---|---|---|
-| Settings > Everyday > How Bob works | Show Try again, Edit and Delete in the chat: "On unless you turn it off. Try again, under Bob's latest answer, gets a new answer to your last message. Edit and Delete are in the … menu at the top right of a message. Edit on yours changes what you said and sends it again (what was there before is kept as an earlier version); on Bob's it fixes his words without sending anything. Delete takes a message out of the chat." | on (owner's exception to opt-in) | new |
+| Settings > Everyday > How Bob works | Show Try again, Edit and Delete in the chat: "On unless you turn it off. Adds them to each message's … menu." | on (owner's exception to opt-in) | new |
 | Chat page > under Bob's latest answer | "Try again" (button; title "Get a new answer to your last message"). Hidden while Bob is on that chat. | — | new |
 | Chat page > under your messages | "Edit" (button; title "Change what you said and send it again"). Opens a box with "Send again" and "Cancel"; on an earlier message: "Bob answers from here. What came after this message is kept under it as an earlier version." | — | new |
 | Chat page > under a message with earlier versions | "1 earlier version" / "N earlier versions" (button; title "What was there before Try again or Edit. Press to see it."). Pressed: each version with "You:" and "Bob:" lines. Your changed message says "edited" (title "You changed this message. Press to see what it said first."). | — | new |
 | Chat page > while busy | "Bob is still on this chat. Wait until he has finished, or press Stop first." | — | new |
-| Android app > Settings > In the chat | Show Try again and Edit in the chat: "On unless you turn it off. Try again gets a new answer to your last message. Edit changes your last message and sends it again. What was there before is kept under your message." | on (owner's exception to opt-in) | new |
+| Android app > Settings > In the chat | Show Try again, Edit and Delete in the chat: "On unless you turn it off. Adds them to each message's … menu." | on (owner's exception to opt-in) | new |
 ## Added with 3D parts and the 3D viewer
 
 | Where | Setting / text | Default | Status |

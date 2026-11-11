@@ -61,8 +61,15 @@ header .bob img { width: 32px; height: 32px; border-radius: 8px; }
 .msg.you { align-self: flex-end; background: var(--you); border-bottom-right-radius: 4px; white-space: pre-wrap; }
 .msg.bob { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
 .msg .by { font-size: 12px; color: var(--dim); margin-bottom: 4px; display: flex; gap: 6px; align-items: center; }
-.msg .tools { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-.msg .tools button { min-height: 36px; font-size: 14px; padding: 0 10px; }
+.msg { position: relative; }
+/* The ... menu at the top right of a message: Try again, Edit, Copy, Delete (always shown; phones have no mouse-over) */
+.msg .msg-more { position: absolute; top: -12px; right: 6px; min-width: 36px; min-height: 28px; padding: 0 8px; font-size: 16px; line-height: 1; color: var(--dim); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+.msg.you .msg-more { background: var(--you); }
+.msg-menu { position: absolute; top: 18px; right: 6px; z-index: 20; display: flex; flex-direction: column; min-width: 150px; max-width: 260px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 6px 20px #00000066; white-space: normal; }
+.msg-menu button { text-align: left; min-height: 44px; padding: 0 12px; background: transparent; border: 0; border-radius: 8px; font-size: 15px; }
+.msg-menu button:active { background: var(--line); }
+.msg-menu button.danger { color: #e06c75; font-weight: 600; }
+.msg-menu-ask { margin: 6px 10px; font-size: 14px; }
 .fold-note { margin-top: 6px; font-size: 14px; }
 .fold-note > button { min-height: 36px; padding: 0 4px; text-decoration: underline; }
 .versions-list { margin: 4px 0 0; padding-left: 20px; opacity: .85; }

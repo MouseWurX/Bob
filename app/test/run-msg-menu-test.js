@@ -93,8 +93,8 @@ const fakeBrain = (cfg = {}, extra = {}) => {
   check('every answer Bob says gets its id at once (so the menu works on it before a reload)', /if \(!job\?\.guest && typeof reply\.content === 'string' && reply\.content\.trim\(\)\) \{ reply\.id \|\|= newMsgId\(\)/.test(brain));
   check('the saved chat says who edited a message', /editedBy: 'you'/.test(brain));
   const app = read('public/app.js');
-  check('every message gets the ... button, labelled for screen readers', /class="msg-more" data-msg-more aria-haspopup="menu" aria-expanded="false" aria-label="Message menu: Copy, Edit, Delete"/.test(app));
-  check('the menu has Copy, Copy links, Edit and Delete', /\['copy-msg', 'Copy'/.test(app) && /'Copy links'/.test(app) && /'Edit'/.test(app) && /'Delete'/.test(app));
+  check('every message gets the ... button, labelled for screen readers', /class="msg-more" data-msg-more aria-haspopup="menu" aria-expanded="false" aria-label="Message menu: Try again, Edit, Copy, Delete"/.test(app));
+  check('the menu has Try again, Edit, Copy and Delete, in that order', (() => { const a = app.indexOf("'Try again', wait"), b = app.indexOf("'Edit', wait"), c = app.indexOf("['copy-msg', 'Copy'"), d = app.indexOf("'Delete', wait"); return a > 0 && a < b && b < c && c < d; })());
   check('Delete asks once, in the menu itself, never a pop-up box', /Delete this message and Bob\\'s answer to it\?/.test(app) && /data-m="del-yes"/.test(app) && /data-m="del-no"/.test(app) && !/confirm\(/.test(app.slice(app.indexOf('const msgMenu'), app.indexOf('return { toggle, pick, close }'))));
   check('Edit on Bob\'s message sends nothing', /\/api\/chat\/msg-edit/.test(app) && /Nothing is sent\. Bob reads the new words from now on/.test(app));
   check('the keyboard works: arrows, Home, End, Esc', ['ArrowDown', 'ArrowUp', 'Home', 'End', 'Escape'].every((k) => app.includes(`e.key === '${k}'`)));
@@ -108,10 +108,24 @@ const fakeBrain = (cfg = {}, extra = {}) => {
   check('menu items are big enough to press', /\.msg-menu button \{[^}]*min-height: 32px/.test(css));
 }
 
+// ---------- The phone screen and the Android app ----------
+{
+  const www = read('android/app/src/main/assets/www/phone.js');
+  check('phone: every message gets the ... button', /node\.append\(moreButton\(\)\)/.test(www) && /class: 'msg-more', text: '…'/.test(www));
+  check('phone: Try again, Edit, Copy, Delete in that order', (() => { const a = www.indexOf("['Try again',"), b = www.indexOf("['Edit',"), c = www.indexOf("['Copy',"), d = www.indexOf("['Delete',"); return a > 0 && a < b && b < c && c < d; })());
+  check('phone: Delete asks once, yours goes with the answer to it', /Delete this message and Bob\\'s answer to it\?/.test(www) && /if \(m\.who === 'you'\) while \(end < c\.msgs\.length && c\.msgs\[end\]\.who !== 'you'\) end\+\+;/.test(www));
+  check('phone: Edit on Bob\'s words saves here, nothing sent', /function editBob\(node\)/.test(www) && /m\.edited = Date\.now\(\); saveChats\(\);/.test(www));
+  check('phone: no style attribute set from code (its CSP)', !/setAttribute\('style'/.test(www));
+  check('the phone screen (iPhone) is the same copy', read('public/phone/phone.js') === www);
+  check('phone Settings names Delete', /Show Try again, Edit and Delete in the chat/.test(read('android/app/src/main/assets/www/index.html')));
+  const ph = read('android/app/src/main/assets/www/help.js');
+  check('phone Help, glossary and FAQ', /The … menu: Try again, Edit, Copy, Delete/.test(ph) && /<dt>… menu<\/dt>/.test(ph) && /Can I get a deleted message back\?/.test(ph));
+}
+
 // ---------- Help, glossary, FAQ, Settings ----------
 {
   const topic = HELP.find((h) => h.id === 'msg-menu');
-  check('Help has a topic in Bob\'s voice', topic && /my message/.test(topic.html) && /Copy/.test(topic.html) && /Delete/.test(topic.html) && /Windows, Mac and Linux/.test(topic.html) && /Android app keep their own buttons/.test(topic.html));
+  check('Help has a topic in Bob\'s voice', topic && /On mine, fix my words/.test(topic.html) && /Try again/.test(topic.html) && /Copy/.test(topic.html) && /Delete/.test(topic.html) && /phone screen and the Android app/.test(topic.html));
   const faq = HELP.find((h) => h.id === 'faq-msg-delete');
   check('an FAQ says a deleted message is gone for good', faq && /for good/.test(faq.html));
   const all = HELP.map((h) => h.html).join('\n');

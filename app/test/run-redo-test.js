@@ -129,8 +129,8 @@ const run = async (text, extra) => { const { jobId } = brain.enqueue('main', tex
 // ---------- The window, the phone, Settings, Help ----------
 {
   const app = read('public/app.js');
-  check('Try again under Bob\'s latest answer, Edit in the ... menu of your messages', /data-redo title="Get a new answer to your last message">Try again/.test(app) && /'edit-msg' : 'edit-bob', 'Edit'/.test(app) && /'Change what you said and send it again'/.test(app));
-  check('the buttons hide while Bob is busy', /if \(!redoOnNow \|\| busy \|\| redoing\) return;/.test(app) && /drawRedo\(\); \/\/ Try again and Edit hide while Bob is busy/.test(app));
+  check('Try again (Bob\'s latest answer) and Edit (your messages) are in the ... menu', /msg === redoTarget\(\)\) list\.push\(\['redo', 'Try again'/.test(app) && /'edit-msg' : 'edit-bob', 'Edit'/.test(app) && /'Change what you said and send it again'/.test(app));
+  check('they wait while Bob is busy', /const wait = busy \|\| redoing;/.test(app) && /drawRedo\(\); \/\/ Try again and Edit hide while Bob is busy/.test(app));
   check('the window sends the message again with redo after taking back', /\/api\/chat\/redo/.test(app) && /redo: r\.data\.edited \? 'edit' : 'again'/.test(app));
   check('earlier versions show under your message, also after a reload', /if \(m\.versions\?\.length\) markVersions\(el, m\.versions\)/.test(app));
   check('the edit box: Send again, Cancel, Esc and Enter', /Send again/.test(app) && /data-edit-cancel/.test(app) && /e\.key === 'Escape'/.test(app));
@@ -143,13 +143,13 @@ const run = async (text, extra) => { const { jobId } = brain.enqueue('main', tex
   check('Bob can read the setting in his own Help', /Show Try again, Edit and Delete in the chat/.test(read('src/self-help.js')));
   const phone = read('android/app/src/main/assets/www/phone.js');
   check('the Android app: its own switch, on to start with', /redo: true[,}]/.test(phone) && /id="redo"/.test(read('android/app/src/main/assets/www/index.html')));
-  check('the Android app: Try again and Edit, earlier versions kept, the Bob on the network told', /text: 'Try again'/.test(phone) && /text: 'Edit'/.test(phone) && /you\.versions = /.test(phone) && /\/api\/chat\/redo/.test(phone));
+  check('the Android app: Try again and Edit, earlier versions kept, the Bob on the network told', /\['Try again', /.test(phone) && /\['Edit', /.test(phone) && /you\.versions = /.test(phone) && /\/api\/chat\/redo/.test(phone));
   const entry = HELP.find((e) => e.id === 'redo'), faq = HELP.find((e) => e.id === 'faq-redo'), gl = HELP.find((e) => e.id === 'glossary');
   check('Help in Bob\'s voice, with where it works', entry && /I take that answer back/.test(entry.html) && /Windows, Mac, Linux/.test(entry.html) && /Android app/.test(entry.html));
   check('an FAQ', faq?.group === 'FAQ' && /\?$/.test(faq.title));
   check('glossary entries', /<dt>Try again<\/dt>/.test(gl.html) && /<dt>Earlier version<\/dt>/.test(gl.html));
   const ph = read('android/app/src/main/assets/www/help.js');
-  check('the Android app\'s Help, glossary and questions', /id: 'redo'/.test(ph) && /<dt>Try again<\/dt>/.test(ph) && /No Try again or Edit under the messages/.test(ph));
+  check('the Android app\'s Help, glossary and questions', /id: 'redo'/.test(ph) && /<dt>Try again<\/dt>/.test(ph) && /No Try again, Edit or Delete in the … menu/.test(ph));
   check('in the settings inventory', /Show Try again, Edit and Delete in the chat/.test(read('docs/SETTINGS-INVENTORY.md')));
   // Back to the newest message: the round down-arrow button, with breathing dots while Bob works.
   check('a go-to-bottom button in the chat window and the Android app', /id="toBottom"/.test(read('public/index.html')) && /id="to-bottom"/.test(read('android/app/src/main/assets/www/index.html')));

@@ -115,7 +115,7 @@
       const node = el('div', { class: 'msg you' }, el('div', { class: 'words', text: m.text }));
       if (m.edited) node.append(foldNote('edited', 'You changed this message. Tap to see what it said first.', el('div', { class: 'words', text: `First said: ${m.was || ''}` })));
       if (m.versions?.length) node.append(foldNote(m.versions.length === 1 ? '1 earlier version' : `${m.versions.length} earlier versions`, 'What was here before Try again or Edit. Tap to see it.', versionsList(m.versions)));
-      node.append(el('div', { class: 'tools' }));
+      node.append(moreButton());
       node._m = m;
       return node;
     }
@@ -123,7 +123,8 @@
     const by = m.by === 'phone' ? '📱 Phone brain' : `🖥 ${bobName(m.by)}`;
     const node = el('div', { class: 'msg bob' }, el('div', { class: 'by', text: by }), el('div', { class: 'words', html: L.markdown(m.text) }));
     for (const x of m.media || []) node.append(mediaNode(x));
-    node.append(replyTools(m));
+    if (m.edited) node.append(foldNote('edited', 'You changed Bob\'s words here. Tap to see what he said first.', el('div', { class: 'words', text: `First said: ${m.was || ''}` })));
+    node.append(moreButton());
     node._m = m;
     return node;
   }
@@ -145,17 +146,74 @@
       (v.said || []).map((x) => el('div', { text: `${x.role === 'user' ? 'You' : 'Bob'}: ${String(x.content || '').slice(0, 1500)}` })))));
   }
   const chatBusy = (c) => Boolean(current && current.chatId === c?.id) || queue.some((j) => j.chatId === c?.id);
-  function drawRedo() {
-    const box = $('chat');
-    for (const b of box.querySelectorAll('.redo-btn')) b.remove();
-    if (!settings.redo || !chat || chatBusy(chat)) return;
-    const nodes = [...box.children].filter((n) => n._m);
+  // Try again, Edit, Copy and Delete are in each message's ... menu (top right), built fresh each time it opens.
+  // Try again: on the latest answer (or your latest message while it has none). Edit: your latest message (sent again),
+  // or any of Bob's (his words change here, nothing is sent). Delete: yours goes with the answers to it; his goes alone.
+  // While the chat is busy, an open menu shuts.
+  function drawRedo() { if (!chat || chatBusy(chat)) closeMenu(); }
+  const moreButton = () => el('button', { class: 'msg-more', text: '…', 'aria-label': 'Message menu: Try again, Edit, Copy, Delete', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onclick: (e) => openMenu(e.currentTarget.parentElement, e.currentTarget) });
+  let menuOpen = null;
+  function closeMenu() { if (!menuOpen) return; menuOpen.box.remove(); menuOpen.btn.setAttribute('aria-expanded', 'false'); menuOpen = null; }
+  function redoNode() {
+    const nodes = [...$('chat').children].filter((n) => n._m);
     const you = [...nodes].reverse().find((n) => n._m.who === 'you');
-    if (!you) return;
-    const answer = [...nodes].reverse().find((n) => n._m.who === 'bob' && nodes.indexOf(n) > nodes.indexOf(you));
-    you.querySelector('.tools')?.append(el('button', { class: 'redo-btn', text: 'Edit', title: 'Change what you said and send it again', onclick: () => editBox(you) }));
-    (answer || you).querySelector('.tools')?.append(el('button', { class: 'redo-btn', text: 'Try again', title: 'Get a new answer to your last message', onclick: () => redo() }));
+    if (!you) return null;
+    return [...nodes].reverse().find((n) => n._m.who === 'bob' && nodes.indexOf(n) > nodes.indexOf(you)) || you;
   }
+  function openMenu(node, btn) {
+    if (menuOpen?.node === node) return closeMenu();
+    closeMenu();
+    const m = node._m, you = m.who === 'you', busy = chatBusy(chat), on = settings.redo;
+    const lastYou = chat && chat.msgs.map((x) => x.who).lastIndexOf('you') === chat.msgs.indexOf(m);
+    const wait = (f) => () => { if (busy) return toast('Bob is still on this chat. Wait until he has finished, or tap Stop first.'); closeMenu(); f(); };
+    const items = [];
+    if (on && node === redoNode()) items.push(['Try again', wait(() => redo())]);
+    if (on && (!you || lastYou)) items.push(['Edit', wait(() => (you ? editBox(node) : editBob(node)))]);
+    items.push(['Copy', () => { closeMenu(); phone('copy', { text: m.text }).then(() => toast('Copied')); }]);
+    if (on) items.push(['Delete', wait(() => askDelete(node))]);
+    if (!you) items.push(['Read aloud', () => { closeMenu(); phone('speech.say', { text: plain(m.text) }); }]);
+    // A phone-brain reply can be asked again of a Bob on the network.
+    const up = liveBobs()[0];
+    if (!you && m.by === 'phone' && up && m.q) items.push([`Ask ${up.name} instead`, () => { closeMenu(); send(m.q, { to: up.base }); }]);
+    const box = el('div', { class: 'msg-menu', role: 'menu' }, items.map(([text, onclick]) => el('button', { role: 'menuitem', text, onclick })));
+    node.append(box);
+    btn.setAttribute('aria-expanded', 'true');
+    menuOpen = { node, btn, box };
+    box.scrollIntoView({ block: 'nearest' });
+  }
+  function askDelete(node) {
+    const m = node._m, you = m.who === 'you';
+    const box = el('div', { class: 'msg-menu', role: 'menu' },
+      el('p', { class: 'msg-menu-ask', text: you ? 'Delete this message and Bob\'s answer to it?' : 'Delete this answer?' }),
+      el('button', { role: 'menuitem', class: 'danger', text: 'Delete', onclick: () => { closeMenu(); deleteMsg(m); } }),
+      el('button', { role: 'menuitem', text: 'Keep it', onclick: () => closeMenu() }));
+    node.append(box);
+    menuOpen = { node, btn: node.querySelector('.msg-more'), box };
+  }
+  function deleteMsg(m) {
+    const c = chat;
+    if (!c || chatBusy(c)) return;
+    const at = c.msgs.indexOf(m);
+    if (at < 0) return;
+    let end = at + 1;
+    if (m.who === 'you') while (end < c.msgs.length && c.msgs[end].who !== 'you') end++;
+    c.msgs.splice(at, end - at);
+    saveChats();
+    drawChat();
+  }
+  // Change Bob's words here: nothing is sent; the phone brain reads the new words from now on.
+  function editBob(node) {
+    if (node.querySelector('.edit-box')) return;
+    const m = node._m;
+    const t = el('textarea', { rows: '4', 'aria-label': 'Bob\'s words' });
+    t.value = m.text;
+    const box = el('div', { class: 'edit-box' }, t, el('div', { class: 'row' },
+      el('button', { class: 'main', text: 'Save', onclick: () => { const v = t.value.trim(); if (!v) return t.focus(); if (v !== String(m.text).trim()) { if (m.was == null) m.was = m.text; m.text = v; m.edited = Date.now(); saveChats(); } drawChat(); } }),
+      el('button', { text: 'Cancel', onclick: () => box.remove() })));
+    node.append(box);
+    t.focus();
+  }
+  document.addEventListener('click', (e) => { if (menuOpen && e.target.isConnected && !menuOpen.node.contains(e.target)) closeMenu(); });
   function editBox(node) {
     if (node.querySelector('.edit-box')) return;
     const m = node._m, photo = /^📷 /.test(m.text);
@@ -189,15 +247,6 @@
     pump();
   }
 
-  function replyTools(m) {
-    const t = el('div', { class: 'tools' });
-    t.append(el('button', { text: 'Copy', onclick: () => phone('copy', { text: m.text }).then(() => toast('Copied')) }));
-    t.append(el('button', { text: 'Read aloud', onclick: () => phone('speech.say', { text: plain(m.text) }) }));
-    // A phone-brain reply can be asked again of a Bob on the network.
-    const up = liveBobs()[0];
-    if (m.by === 'phone' && up && m.q) t.append(el('button', { text: `Ask ${up.name} instead`, onclick: () => send(m.q, { to: up.base }) }));
-    return t;
-  }
 
   // Save to this phone: keep something Bob made on the phone (Pictures, Movies, Music or Download, in a Bob folder),
   // as it is or as another file type. Another type is made by the Bob that made it (a copy stays there too).

@@ -1029,19 +1029,20 @@ function editedMsg(ev) {
   el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2500);
 }
 // ---------- Try again and Edit (Settings, How Bob works; src/redo.js). Off unless you turn it on. ----------
-// Try again sits under Bob's latest answer; Edit is in the ... menu of each of your messages Bob has saved. Either one takes back what
+// Try again is in the ... menu of Bob's latest answer; Edit in the ... menu of each of your messages Bob has saved. Either one takes back what
 // came after, keeps it under your message as an earlier version, and sends your message (again). Hidden while Bob is busy.
 let redoOnNow = false, redoing = false, redoneId = '';
 const lastYou = () => [...log.querySelectorAll(':scope > .msg.you')].pop() || null;
-function drawRedo() {
-  for (const x of log.querySelectorAll('[data-redo], [data-edit-msg]')) x.remove();
-  if (!redoOnNow || busy || redoing) return;
+// Where Try again goes: Bob's latest answer, or your latest message while it has none. It's in that message's ... menu.
+function redoTarget() {
   const you = lastYou();
-  if (!you?.dataset.mid) return;
+  if (!you?.dataset.mid) return null;
   let answer = null;
   for (let n = you.nextElementSibling; n; n = n.nextElementSibling) if (n.matches('.msg.bob:not(.aside-msg)')) answer = n;
-  (answer || you).querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-redo title="Get a new answer to your last message">Try again</button>');
+  return answer || you;
 }
+// Try again and Edit live in the ... menu, built fresh each time it opens; an open one shuts when Bob gets busy.
+function drawRedo() { if (busy || redoing || !redoOnNow) window.dispatchEvent(new Event('bob-msg-menu-close')); }
 function versionsHtml(list) {
   const cut = (t) => { const x = String(t || ''); return esc(x.length > 1500 ? x.slice(0, 1500) + '…' : x); };
   return list.slice().reverse().map((v, i) => `<li><span class="muted">${i === 0 ? 'Latest earlier version' : `${i + 1} versions back`}${v.at ? ` · ${esc(new Date(v.at).toLocaleString())}` : ''}</span><div><strong>You:</strong> ${cut(v.text)}</div>${(v.said || []).map((m) => `<div><strong>${m.role === 'user' ? 'You' : 'Bob'}:</strong> ${cut(m.content) || (m.media?.length ? `<em>${m.media.length} thing${m.media.length === 1 ? '' : 's'} made</em>` : '')}</div>`).join('') || '<div class="muted">No answer yet.</div>'}</li>`).join('');
@@ -1121,16 +1122,15 @@ const msgMenu = (() => {
   }
   function items(msg) {
     const you = msg.classList.contains('you');
-    const links = msg.querySelectorAll('a[href^="http"]').length;
-    const list = [['copy-msg', 'Copy', 'Copy this message']];
-    if (links) list.push(['copy-links', links === 1 ? 'Copy link' : 'Copy links', 'Copy every link in this message']);
     const id = you ? (msg.dataset.mid || '').trim() : singleId(msg);
-    if (redoOnNow && id && !msg.classList.contains('aside-msg')) {
-      const wait = busy || redoing;
-      const why = 'Bob is still on this chat. Wait until he has finished.';
-      list.push([you ? 'edit-msg' : 'edit-bob', 'Edit', wait ? why : you ? 'Change what you said and send it again' : 'Change Bob\'s words. Nothing is sent; Bob reads the new words from now on.', wait]);
-      list.push(['del-msg', 'Delete', wait ? why : you ? 'Take this message out of the chat, with Bob\'s answer to it' : 'Take this answer out of the chat', wait]);
-    }
+    const on = redoOnNow && id && !msg.classList.contains('aside-msg');
+    const wait = busy || redoing;
+    const why = 'Bob is still on this chat. Wait until he has finished.';
+    const list = [];
+    if (on && msg === redoTarget()) list.push(['redo', 'Try again', wait ? why : 'Get a new answer to your last message', wait]);
+    if (on) list.push([you ? 'edit-msg' : 'edit-bob', 'Edit', wait ? why : you ? 'Change what you said and send it again' : 'Change Bob\'s words. Nothing is sent.', wait]);
+    list.push(['copy-msg', 'Copy', 'Copy this message']);
+    if (on) list.push(['del-msg', 'Delete', wait ? why : you ? 'Delete this message and Bob\'s answer to it' : 'Delete this answer', wait]);
     return list;
   }
   function draw(box, list) {
@@ -1152,7 +1152,7 @@ const msgMenu = (() => {
     if (b.getAttribute('aria-disabled') === 'true') { note('Bob is still on this chat. Wait until he has finished, or press Stop first.'); return; }
     const k = b.dataset.m, btn = open?.btn;
     if (k === 'copy-msg') { close(true); return copyText(copyWords(msg), btn); }
-    if (k === 'copy-links') { close(true); return copyText([...new Set([...msg.querySelectorAll('a[href^="http"]')].map((a) => a.href))].join('\n'), btn); }
+    if (k === 'redo') { close(); return redoSend(null, null); }
     if (k === 'edit-msg') { close(); return editInPlace(msg); }
     if (k === 'edit-bob') { close(); return editBob(msg); }
     if (k === 'del-msg') { // asked in the menu itself, never a pop-up box
@@ -1220,6 +1220,7 @@ const msgMenu = (() => {
     else if (e.key === 'End') { e.preventDefault(); all[all.length - 1]?.focus(); }
     else if (e.key === 'Tab') close();
   });
+  window.addEventListener('bob-msg-menu-close', () => close());
   return { toggle, pick, close };
 })();
 
@@ -1232,8 +1233,8 @@ function decorate(el, text, media = []) {
   const links = [...el.querySelectorAll('a[href^="http"]')].length;
   const tools = document.createElement('div');
   tools.className = 'msg-tools';
-  el.appendChild(tools); // Try again goes here; Copy, Edit and Delete are in the ... menu (msgMenu below)
-  el.insertAdjacentHTML('beforeend', '<button type="button" class="msg-more" data-msg-more aria-haspopup="menu" aria-expanded="false" aria-label="Message menu: Copy, Edit, Delete" title="Copy, Edit, Delete">…</button>');
+  el.appendChild(tools); // Try again, Edit, Copy and Delete are in the ... menu (msgMenu below)
+  el.insertAdjacentHTML('beforeend', '<button type="button" class="msg-more" data-msg-more aria-haspopup="menu" aria-expanded="false" aria-label="Message menu: Try again, Edit, Copy, Delete" title="Try again, Edit, Copy, Delete">…</button>');
   fillPeeks(el);
   const want = [...new Set([...files, ...made])];
   if (want.length && el.classList.contains('bob')) {
