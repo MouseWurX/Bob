@@ -22,9 +22,10 @@ Verdicts are **Approved**, **Approved with edits** (make the listed edits, no se
 4. **The label says what "on" means.** A switch reads as a statement that is true when it's on ("Launch Bob on start-up"). Don't use negatives ("Don't …") or unclear pairs ("Mode: A/B").
 5. **Show the current value.** Every row shows what it's set to right now, without opening anything.
 6. **Opt-in and safe defaults.** Anything automatic, background, network, cloud, download, file or app-control setting ships **off**. Where that helps, the hint says "Off unless you turn it on." Defaults never cost the person data, money or GPU memory they didn't ask for.
-7. **Everyday or Advanced.**
+7. **Simple or Advanced.** Both views hold every setting; the toggle only changes how they're laid out. Simple is eight topic cards, Advanced a side list. A new section goes on one card and in one group (public/settings-map.js).
+   Which panel a setting belongs in:
    - **Everyday** is for things a non-technical person would change in the first week: voice, look, colours, animations, cat's name, one brain, start-up, updates.
-   - **Advanced** (behind "Show advanced settings", remembered, off by default) is for the rest, sorted into Brains, House style, Voice details, Look & feel, Speed & memory, Engines, Bob-Net, Online services, Other apps, Hands, Housekeeping, Check-ins and Remove Bob.
+   - **The other panels** are for the rest, sorted into Brains, House style, Voice details, Look & feel, Speed & memory, Engines, Bob-Net, Online services, Other apps, Hands, Housekeeping, Check-ins and Remove Bob.
    - Models go on **Get models**. Live work goes in **Now running**, Tasks and Downloads.
 8. **Use the same names everywhere.** Use the words in the glossary below, and don't invent synonyms.
 9. **Use units people know.** Write GB, seconds, minutes and "about 20 seconds". Keep tokens, ports and flags to Advanced, each with a gloss.
@@ -48,4 +49,4 @@ Verdicts are **Approved**, **Approved with edits** (make the listed edits, no se
 | Equip Bob | model roles, who does what |
 | Graphics memory, graphics card | VRAM (on Everyday pages) |
 | RAM | system memory, main memory |
-| Settings / Show advanced settings | preferences, config |
+| Settings / Simple, Advanced | preferences, config |

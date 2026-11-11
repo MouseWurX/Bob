@@ -57,7 +57,7 @@ export function createHandsSwitch({ note }) {
     btn.title = free ? 'Hands are on and Bob is working without asking. Click to stop him right away.'
       : state === 'ready' ? 'Hands are on (Bob still asks before every action). Click to stop them right away.'
       : state === 'stopped' ? 'Hands are stopped. Click to let Bob use them again.'
-      : 'Hands are off in Settings, so there is nothing to stop. Turn them on in Settings, Show advanced settings, Hands.';
+      : 'Hands are off in Settings, so there is nothing to stop. Turn them on in Settings, Hands.';
   }
 
   async function load() { try { view = await call('/api/hands'); s = view.settings; draw(); } catch {} }
@@ -65,7 +65,7 @@ export function createHandsSwitch({ note }) {
   async function toggle() {
     if (!s) await load();
     if (!s) return;
-    if (!s.enabled) { note('Hands are off in Settings, so there is nothing to stop. Turn them on in Settings, Show advanced settings, Hands.'); return; }
+    if (!s.enabled) { note('Hands are off in Settings, so there is nothing to stop. Turn them on in Settings, Hands.'); return; }
     btn.disabled = true;
     try {
       const r = await call('/api/hands/hold', { held: !s.held });

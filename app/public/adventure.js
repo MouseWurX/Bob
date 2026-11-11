@@ -264,7 +264,7 @@ export function createAdventure({ api }) {
   };
 }
 
-// Settings, Show advanced settings, 🎲 Adventure. Neither is "on": both just have a default.
+// Settings, 🎲 Adventure. Neither is "on": both just have a default.
 export function adventureSettingsHtml(a = {}) {
   const opt = (name, val, cur, label) => `<button type="button" role="radio" aria-checked="${cur === val}" data-adv-set="${name}" data-val="${val}">${label}</button>`;
   return `<div class="adventure-settings">

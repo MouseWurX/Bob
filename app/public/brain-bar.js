@@ -29,14 +29,14 @@ export function createBrainBar({ post, note }) {
     sw.setAttribute('aria-checked', String(on));
     swSt.textContent = on ? 'On' : 'Off';
     swLabel.title = on
-      ? `On: gives the graphics memory back after Bob has been quiet for ${st.sleepAfter || '5 minutes'}. Typing loads it again (${secs(st.wakeSeconds)}). Change the time in Settings, Show advanced settings, Speed & memory.`
+      ? `On: gives the graphics memory back after Bob has been quiet for ${st.sleepAfter || '5 minutes'}. Typing loads it again (${secs(st.wakeSeconds)}). Change the time in Settings, Speed & memory.`
       : st.bigSession
         ? `Off: in the ${st.session} session Bob's brain is a big one, so it's still freed ${st.bigGrace || '2 minutes'} after each job.`
         : 'Off: Bob\'s small brain stays loaded so he answers straight away. Big brains (coding, deep thought, pictures, video) are still freed right after their job.';
     const chat = st.models.find((m) => m.chat);
     const mem = where(st.gb, st.ramGB, !(chat && !chat.onCard), st.models.some((m) => m.estimate));
     let text, title;
-    if (!st.engineOk) { text = 'Brain: engine not answering'; title = 'Bob can\'t reach his engine. Check it\'s running (Settings, Show advanced settings, Engines).'; }
+    if (!st.engineOk) { text = 'Brain: engine not answering'; title = 'Bob can\'t reach his engine. Check it\'s running (Settings, Engines).'; }
     else if (st.state === 'waking') { text = 'Brain: loading...'; title = `Loading the small brain (${secs(st.wakeSeconds)}).`; }
     else if (st.state === 'working') { text = `Brain: working · ${mem}`; title = `In memory now: ${list() || 'loading'}. Big brains are freed when the job is done.${whole}`; }
     else if (st.state === 'awake') {

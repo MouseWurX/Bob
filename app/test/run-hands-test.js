@@ -253,7 +253,7 @@ const put = (rel, body = 'x', root = work) => { const f = path.join(root, rel); 
   let onCard = () => true, pick = () => undefined;
 
   const off = { ...cfg, hands: { ...cfg.hands, files: { on: false } } };
-  check('a Hand that is off refuses even if the tool is called', throws(() => handsTools({ cfg: off }).file_hands.check({ action: 'move', paths: [], to: work }), /Hand is off. Sam can turn it on in Settings, Show advanced settings, Hands/));
+  check('a Hand that is off refuses even if the tool is called', throws(() => handsTools({ cfg: off }).file_hands.check({ action: 'move', paths: [], to: work }), /Hand is off. Sam can turn it on in Settings, Hands/));
   check('Bob\'s prompt lists the Hands that are on, and says which are off and why', /switched on: Files/.test(handsPrompt(cfg)) && !/switched on/.test(handsPrompt({ ...cfg, hands: {} })) && /off right now/.test(handsPrompt({ ...cfg, hands: {} })));
 
   const a = put('t/a.txt'), b = put('t/b.txt');

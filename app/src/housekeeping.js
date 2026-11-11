@@ -1,4 +1,4 @@
-// Bob the housekeeper. Off unless the user turns it on (Settings, Show advanced settings, Housekeeping).
+// Bob the housekeeper. Off unless the user turns it on (Settings, Housekeeping).
 // When on, and only while Bob is idle, he:
 //   - sums up the older part of long chats (instead of forgetting it) and moves lasting facts to his memory file,
 //   - sorts what was said into topics (topics.js), so old chats can go while "where we landed" stays,

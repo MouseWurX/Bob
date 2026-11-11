@@ -1640,3 +1640,46 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .share-mode { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; margin: 8px 0; }
 .share-bigger { margin-left: 26px; }
 .engine-held { border-left: 3px solid var(--accent); padding: 4px 8px; margin: 6px 0; } /* 1.5.185 an engine update kept aside with files missing */
+
+/* Settings: Simple (topic cards) and Advanced (a side list), one toggle; and Settings in its own window. */
+.set-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.set-top input[type="search"] { flex: 1 1 220px; max-width: 420px; min-height: 36px; }
+.set-view button { min-height: 36px; padding: 4px 16px; }
+.set-view button[aria-checked="true"] { border-color: var(--accent); box-shadow: var(--shadow); font-weight: 700; }
+.set-body { display: flex; gap: 16px; align-items: flex-start; }
+.set-main { flex: 1; min-width: 0; max-width: 900px; }
+.set-page .everyday { max-width: none; }
+.set-page .advanced { margin-top: 0; }
+.set-page .spanel[hidden], .set-cards[hidden], .set-back[hidden], .set-nav [hidden] { display: none !important; }
+.set-nav { flex: none; width: 250px; display: grid; gap: 2px; position: sticky; top: calc(var(--cellar-head-h, 56px) + var(--cellar-tabs-h, 0px) + 8px); max-height: calc(100vh - var(--cellar-head-h, 56px) - var(--cellar-tabs-h, 0px) - 24px); overflow: auto; }
+.set-nav h4 { margin: 10px 10px 2px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.set-nav h4:first-child { margin-top: 0; }
+.set-nav button { text-align: left; background: transparent; border: 0; min-height: 36px; padding: 6px 10px; }
+.set-nav button:hover { background: var(--card); }
+.set-nav button[aria-current="page"] { background: var(--card); color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); font-weight: 700; }
+.set-advanced .set-page .spanel > summary { cursor: default; }
+.set-advanced .set-page .spanel > summary::before { display: none; }
+.set-advanced .set-page .spanel-note { padding-left: 0; }
+.set-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.set-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; min-height: 132px; padding: 14px; }
+.set-card:hover { border-color: var(--accent); }
+.set-card strong { font-size: 16px; }
+.set-card-icon { font-size: 26px; line-height: 1.1; }
+.set-card-now { margin-top: auto; padding-top: 6px; color: var(--accent); font-size: 13px; }
+.set-back { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 10px; }
+.set-back button { min-height: 36px; padding: 4px 14px; }
+.set-back h3 { margin: 0; font-size: 18px; }
+.settings.searching .set-nav, .settings.searching .set-cards, .settings.searching .set-back { display: none !important; }
+@media (max-width: 760px) {
+  .set-body { flex-direction: column; }
+  .set-nav { position: static; width: auto; max-height: none; display: flex; flex-wrap: wrap; gap: 4px; }
+  .set-nav h4 { flex-basis: 100%; margin: 8px 0 0; }
+  .set-nav button { border: 1px solid var(--line); }
+}
+/* The Settings window: only Settings, edge to edge. The window's own buttons close it. */
+.settings-window, .settings-window body { height: 100%; margin: 0; }
+.settings-window body { display: flex; flex-direction: column; }
+.settings-window .mid { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.settings-window .cellar.page { padding: 0 16px; }
+.settings-window #cellar-close { display: none; }
+.settings-window .cellar[data-page="Settings"] .cellar-tabs, .settings-window .cellar[data-page="Style"] .cellar-tabs .tabs-row:first-child { display: none; }

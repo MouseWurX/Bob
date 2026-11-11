@@ -494,7 +494,7 @@ export const serversOn = (cfg) => loadServers(cfg).filter((s) => s.on);
 export function mcpPrompt(cfg) {
   if (!handOn(cfg, 'mcp')) return '';
   const on = serversOn(cfg);
-  if (!on.length) return ` Connected apps: none switched on yet; ${cfg.userName || 'the user'} adds and switches them on in Settings, Show advanced settings, Hands, under Connected apps.`;
+  if (!on.length) return ` Connected apps: none switched on yet; ${cfg.userName || 'the user'} adds and switches them on in Settings, Hands, under Connected apps.`;
   return ` Connected apps (MCP): ${on.map((s) => s.name).join(', ')}. To work in one, call mcp_tools with its name to see its tools and their inputs, then mcp_use with the exact tool name and inputs. Use these rather than clicking in that app with app_act.`;
 }
 const BASE_WORDS = 'mcp|connected apps?|unreal|ue5|ue4|editor|blueprints?|levels?|actors?|blender|meshe?s?|scenes?|viewport|materials?|modifiers?|objects?|3d|model(?:l)?ing|rig|sculpt\\w*|keyframes?';
@@ -563,7 +563,7 @@ export function mcpTools(brain, { track } = {}) {
     const s = findServer(cfg, name);
     const on = serversOn(cfg);
     if (!s) throw new Error(`There's no connected app called "${name || ''}". ${on.length ? `Switched on: ${on.map((x) => x.name).join(', ')}.` : 'None is switched on yet.'}`);
-    if (!s.on) throw new Error(`${s.name} is switched off in Settings, Show advanced settings, Hands, Connected apps. ${cfg.userName || 'The user'} can switch it on there.`);
+    if (!s.on) throw new Error(`${s.name} is switched off in Settings, Hands, Connected apps. ${cfg.userName || 'The user'} can switch it on there.`);
     return s;
   };
   // The app's full tool list, from the app itself (cached on the connection while it runs).
@@ -589,7 +589,7 @@ export function mcpTools(brain, { track } = {}) {
       off();
       if (!args.app) {
         const list = loadServers(cfg);
-        if (!list.length) return 'No connected apps yet. The user adds them in Settings, Show advanced settings, Hands, under Connected apps.';
+        if (!list.length) return 'No connected apps yet. The user adds them in Settings, Hands, under Connected apps.';
         return list.map((s) => `${s.name}: ${s.on ? 'on' : 'switched off'}${s.tools.length ? `, ${s.tools.length} tools` : ''}`).join('\n');
       }
       const s = pickServer(args.app);

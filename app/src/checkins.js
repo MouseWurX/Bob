@@ -1,4 +1,4 @@
-// Check-ins (Settings, Show advanced settings, 🔔 Check-ins): on a schedule you pick, Bob looks over his own
+// Check-ins (Settings, 🔔 Check-ins): on a schedule you pick, Bob looks over his own
 // state and only taps you on the shoulder when something needs you. Off unless you turn it on.
 //
 // Two kinds of checks:

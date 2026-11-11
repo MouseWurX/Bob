@@ -116,7 +116,7 @@ export function loadConfig() {
   if (Number(cfg.llamacpp?.ctx) > LEGACY_CTX_CAP) {
     cfg.llamacpp.legacyCtx = cfg.llamacpp.ctx;
     delete cfg.llamacpp.ctx;
-    console.error(`config.json asks for a ${cfg.llamacpp.legacyCtx}-token context for every brain; using each session's own size instead (pick one in Settings, Show advanced settings, Brains to override).`);
+    console.error(`config.json asks for a ${cfg.llamacpp.legacyCtx}-token context for every brain; using each session's own size instead (pick one in Settings, Brains to override).`);
   }
   cfg.settingsFile = path.join(cfg.dataDir, 'settings.json');
   const hand = { engine: cfg.engine, brainEngine: cfg.llamacpp?.brainEngine }; // what config.json itself says

@@ -27,7 +27,7 @@ const extOf = (f) => path.extname(String(f || '')).slice(1).toLowerCase();
 export const isDoc = (f) => DOC_EXT.includes(extOf(f));
 
 export class DocError extends Error {}
-const OFFICE_HINT = 'The Office documents Hand (Settings, Show advanced settings, Hands) reads it with LibreOffice.';
+const OFFICE_HINT = 'The Office documents Hand (Settings, Hands) reads it with LibreOffice.';
 
 // ---------------------------------------------------------------- zip, in memory
 
