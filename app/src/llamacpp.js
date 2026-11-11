@@ -662,8 +662,9 @@ export class LlamaCpp {
     let helpers = [];
     let sizeGB = 0;
     if (this.spread && !noSpread && this.role !== BESIDE && !cpu && card !== 'none') {
-      try { sizeGB = fs.statSync(this.resolve(model).gguf).size / 1e9; } catch {}
-      helpers = await this.spread.open({ sizeGB }).catch(() => []);
+      let file = '';
+      try { file = this.resolve(model).gguf; sizeGB = fs.statSync(file).size / 1e9; } catch {}
+      helpers = await this.spread.open({ sizeGB, file }).catch(() => []);
       if (helpers.length) {
         args.push('--rpc', helpers.join(','), ...spreadArgs(args));
         if (args.includes('-md')) {

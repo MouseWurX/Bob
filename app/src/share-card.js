@@ -24,6 +24,7 @@ import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
 import dgram from 'node:dgram';
+import fs from 'node:fs';
 
 export const RPC_PORT = 50052; // the gate other Bobs reach
 export const INNER_PORT = 50053; // the card server itself, on 127.0.0.1 only
@@ -37,6 +38,38 @@ const DOWN_MS = 10 * 60000; // a Bob whose card failed a load isn't asked again 
 // UDP path doesn't answer. It paces itself under a speed cap so the rest of the home network isn't crowded.
 export const SCUT_MBPS = [50, 100, 300];
 export const scutOn = (cfg) => cfg.share?.scut === true;
+export const SEED_MS = 20 * 60000; // the most a lender spends filling its card store from its own copy of a brain
+const SEED_SPARE = 10e9; // the disk room a seed always leaves free
+
+// Where the card server keeps the weights it was sent (llama.cpp's cache folder, then rpc), as the engine finds it.
+export function cardStoreDir(env = process.env, platform = process.platform, home = os.homedir()) {
+  if (env.LLAMA_CACHE) return path.join(env.LLAMA_CACHE, 'rpc');
+  const base = platform === 'win32' ? env.LOCALAPPDATA || path.join(home, 'AppData', 'Local')
+    : platform === 'darwin' ? path.join(home, 'Library', 'Caches') : env.XDG_CACHE_HOME || path.join(home, '.cache');
+  return path.join(base, 'llama.cpp', 'rpc');
+}
+
+// "Send the brain early": this Bob's own copy of the brain another Bob is about to spread (same file name, same size),
+// or ''. Looked for in Bob's brains folder and in the files picked with Equip; never anywhere else on the disk.
+export function findOwnBrain(cfg, { file, bytes } = {}) {
+  const name = path.basename(String(file || ''));
+  if (!/\.gguf$/i.test(name) || !(Number(bytes) > 0)) return '';
+  const root = cfg.bobModelsDir || path.join(cfg.agentDir || '.', 'models', 'bob');
+  const tries = [];
+  for (const v of Object.values(cfg.llamacpp?.models || {})) { const g = typeof v === 'string' ? v : v?.gguf; if (g) tries.push(g); }
+  try { for (const d of fs.readdirSync(root, { withFileTypes: true })) if (d.isDirectory()) tries.push(path.join(root, d.name, name)); } catch {}
+  return tries.find((p) => { try { return path.basename(p) === name && fs.statSync(p).size === Number(bytes) && !fs.existsSync(p + '.part'); } catch { return false; } }) || '';
+}
+
+// Free bytes on the drive that holds dir (or its nearest folder that exists), or -1 when unknown.
+export function freeBytes(dir) {
+  for (let d = dir, i = 0; i < 12; i++, d = path.dirname(d)) {
+    try { const s = fs.statfsSync(d); return s.bavail * s.bsize; } catch {}
+    if (path.dirname(d) === d) break;
+  }
+  return -1;
+}
+
 export const scutMbps = (cfg) => (SCUT_MBPS.includes(Number(cfg.share?.scutMbps)) ? Number(cfg.share.scutMbps) : 100);
 // What the engine is started with. lend: the card server, behind the gate, says the gate's port (UDP too) in its offer.
 export const scutEnv = (cfg, { lend = false } = {}) => (scutOn(cfg) ? { GGML_RPC_SCUT: '1', GGML_RPC_SCUT_MBPS: String(scutMbps(cfg)), ...(lend ? { GGML_RPC_SCUT_PUBLIC_PORT: String(RPC_PORT) } : {}) } : {});
@@ -116,8 +149,9 @@ export function wantsSpread(cfg, { sizeGB, cardGB = Number(cfg.gpuVramGB) || Num
 
 // ---------- Lending ----------
 export class CardLender {
-  constructor(cfg, { spawnFn = spawn, tool = () => findTool(cfg, 'rpc'), ips = tailscaleIps, home = homeIps, gate = openGate, gaming = () => false, now = Date.now, log = () => {}, env = process.env } = {}) {
-    Object.assign(this, { cfg, spawnFn, tool, ips, home, gate, gaming, now, log, env });
+  constructor(cfg, { spawnFn = spawn, tool = () => findTool(cfg, 'rpc'), ips = tailscaleIps, home = homeIps, gate = openGate, gaming = () => false, now = Date.now, log = () => {}, env = process.env, findBrain = (b) => findOwnBrain(cfg, b), free = freeBytes, seedMs = SEED_MS } = {}) {
+    Object.assign(this, { cfg, spawnFn, tool, ips, home, gate, gaming, now, log, env, findBrain, free, seedMs });
+    this.seeded = this.loadSeeded(); this.seeding = null;
     this.child = null; this.gateway = null; this.host = ''; this.allow = ''; this.via = ''; this.port = 0; this.last = 0; this.from = ''; this.timer = null;
   }
 
@@ -135,9 +169,49 @@ export class CardLender {
 
   view() { return { lending: Boolean(this.child), to: this.from, via: this.via, since: this.child ? this.last : 0 }; }
 
+  get seededFile() { return this.cfg.dataDir ? path.join(this.cfg.dataDir, 'seeded-brains.json') : ''; }
+  loadSeeded() { try { return new Set(JSON.parse(fs.readFileSync(this.seededFile, 'utf8')).filter((x) => typeof x === 'string').slice(-50)); } catch { return new Set(); } }
+
+  // "Send the brain early" (with SCUT on): before the card server starts, fill its store from this machine's own copy
+  // of the brain, so the first load doesn't push gigabytes over Wi-Fi. The asking Bob still offers each weight's
+  // hash first and sends only what isn't here, so a copy that differs just means those weights travel as before.
+  // Once per brain (remembered); never when the disk would be left with less than 10 GB.
+  async seed(brain) {
+    if (!scutOn(this.cfg) || !brain || typeof brain !== 'object') return '';
+    const bytes = Number(brain.bytes), key = `${path.basename(String(brain.file || ''))}:${bytes}`;
+    if (this.seeded.has(key)) return 'already';
+    const file = this.findBrain({ file: brain.file, bytes });
+    if (!file) return 'no copy';
+    const room = this.free(cardStoreDir(this.env));
+    if (room >= 0 && room < bytes + SEED_SPARE) { this.log('bob-net', `lent graphics card: not loading ${path.basename(file)} from this machine's own copy, the disk is too full`); return 'no room'; }
+    if (this.seeding) return this.seeding;
+    const t = this.tool();
+    this.log('bob-net', `lent graphics card: loading ${path.basename(file)} from this machine's own copy first, so it doesn't cross the network`);
+    this.seeding = new Promise((resolve) => {
+      let child, out = '';
+      try { child = this.spawnFn(t.path, ['--seed', file, '-c'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(t.path), env: this.env }); }
+      catch { resolve('failed'); return; }
+      const look = (d) => { out = (out + d).slice(-2000); };
+      child.stdout?.on('data', look); child.stderr?.on('data', look);
+      const timer = setTimeout(() => { try { child.kill(); } catch {} }, this.seedMs);
+      const done = (v) => { clearTimeout(timer); resolve(v); };
+      child.once('error', () => done('failed'));
+      child.once('exit', (code) => done(code === 0 ? 'seeded' : 'failed'));
+    }).then((v) => {
+      this.seeding = null;
+      if (v === 'seeded') {
+        this.seeded.add(key);
+        try { if (this.seededFile) fs.writeFileSync(this.seededFile, JSON.stringify([...this.seeded].slice(-50))); } catch {}
+        this.log('bob-net', `lent graphics card: ${path.basename(file)} is ready on this card's store`);
+      } else this.log('bob-net', `lent graphics card: couldn't load ${path.basename(file)} from this machine's own copy, so it comes over the network as usual`);
+      return v;
+    });
+    return this.seeding;
+  }
+
   // localAddr / remoteAddr: the two ends of the door request (over Tailscale). home: the asker's home-network
   // addresses, when it would like the home network.
-  async open({ localAddr, remoteAddr, from = '', home = [] } = {}) {
+  async open({ localAddr, remoteAddr, from = '', home = [], brain = null } = {}) {
     const why = this.refusal(localAddr);
     if (why) return { ok: false, why, error: why === 'no tool' ? missingWords('rpc') : why };
     const near = homeFirst(this.cfg) && Array.isArray(home) ? pickHome(this.home(), home.slice(0, 8)) : null;
@@ -145,6 +219,8 @@ export class CardLender {
     if (!allow) return { ok: false, why: 'failed', error: 'Bob couldn\'t tell who was asking.' };
     if (this.child && this.host === host && this.allow === allow) { this.keep(); return { ok: true, host, port: this.port, via }; }
     this.close();
+    const seeded = await this.seed(brain);
+    if (this.refusal(localAddr)) return { ok: false, why: this.refusal(localAddr), error: this.refusal(localAddr) }; // Gaming started (or the switch went off) while it filled
     const t = this.tool();
     const child = this.spawnFn(t.path, ['-H', '127.0.0.1', '-p', String(INNER_PORT), '-c'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(t.path), env: { ...this.env, ...scutEnv(this.cfg, { lend: true }) } });
     let out = '';
@@ -164,7 +240,7 @@ export class CardLender {
     Object.assign(this, { child, gateway, host, allow, via, port: RPC_PORT, from: String(from).slice(0, 40) });
     this.keep();
     this.log('bob-net', `lent graphics card to ${this.from || 'another Bob'} over ${via === 'home' ? 'the home network' : 'Tailscale'} (${host}:${RPC_PORT}, only ${allow} let in${gateway.udp ? ', SCUT ready' : ''})`);
-    return { ok: true, host, port: RPC_PORT, via };
+    return { ok: true, host, port: RPC_PORT, via, ...(seeded ? { seeded } : {}) };
   }
 
   keep() {
@@ -190,7 +266,14 @@ export function lendCardRoute(lender, req, b = {}) {
   if (!action) return Promise.resolve({ status: 400, body: { error: 'no' } });
   if (action === 'keep') return Promise.resolve({ status: 200, body: { ok: lender.keep() } });
   if (action === 'close') { lender.close(); return Promise.resolve({ status: 200, body: { ok: true } }); }
-  return lender.open({ localAddr: req.socket?.localAddress, remoteAddr: req.socket?.remoteAddress, from: b.from, home: Array.isArray(b.home) ? b.home.map(String) : [] }).then((r) => ({ status: 200, body: r }));
+  return lender.open({ localAddr: req.socket?.localAddress, remoteAddr: req.socket?.remoteAddress, from: b.from, home: Array.isArray(b.home) ? b.home.map(String) : [], brain: cleanBrain(b.brain) }).then((r) => ({ status: 200, body: r }));
+}
+
+// The brain an asking Bob is about to spread: { file: name only, bytes }, or null.
+export function cleanBrain(b) {
+  if (!b || typeof b !== 'object') return null;
+  const file = path.basename(String(b.file || '')).slice(0, 200), bytes = Math.floor(Number(b.bytes));
+  return /\.gguf$/i.test(file) && bytes > 0 && bytes < 2e12 ? { file, bytes } : null;
 }
 
 // ---------- Borrowing ----------
@@ -203,15 +286,19 @@ export class CardBorrower {
 
   // The helpers for one load: ['host:50052', ...], or [] (load here like always). Each Bob is asked over Tailscale;
   // his card is reached over the home network when we're both on it, else over Tailscale.
-  async open({ sizeGB } = {}) {
+  // file: the brain's own file here; with SCUT on, its name and size go along so a lender with its own copy loads
+  // from that (the call then waits longer, as long as that takes).
+  async open({ sizeGB, file = '' } = {}) {
     this.close();
+    let brain = null;
+    if (scutOn(this.cfg) && file) { try { brain = cleanBrain({ file, bytes: fs.statSync(file).size }); } catch {} }
     if (!wantsSpread(this.cfg, { sizeGB })) return [];
     const bobs = (this.lenders?.bobs?.() || []).filter((b) => !(this.down.get(b.address) > this.now()));
     const here = this.home(), mine = homeFirst(this.cfg) ? here : [];
     const tries = await Promise.all(bobs.map(async (bob) => {
       try {
         const home = this.homeDown.get(bob.address) > this.now() ? [] : mine.map((m) => m.address);
-        const r = await this.lenders.call(bob, '/api/lend/card', { method: 'POST', body: { action: 'open', from: this.name(), home }, timeout: 8000 });
+        const r = await this.lenders.call(bob, '/api/lend/card', { method: 'POST', body: { action: 'open', from: this.name(), home, ...(brain ? { brain } : {}) }, timeout: brain ? SEED_MS + 15000 : 8000 });
         const j = await r.json().catch(() => ({}));
         const host = bob.address.split(':')[0];
         if (!(r.ok && j.ok && Number(j.port) > 0)) return null;
