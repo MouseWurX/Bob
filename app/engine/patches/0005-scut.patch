@@ -17,10 +17,10 @@ index 8976651..2c592a4 100644
  # RDMA auto-detection: Linux RoCE/IB via libibverbs, Apple RDMA-over-Thunderbolt via librdma
 diff --git a/ggml/src/ggml-rpc/scut.cpp b/ggml/src/ggml-rpc/scut.cpp
 new file mode 100644
-index 0000000..356ab2f
+index 0000000..590f964
 --- /dev/null
 +++ b/ggml/src/ggml-rpc/scut.cpp
-@@ -0,0 +1,595 @@
+@@ -0,0 +1,597 @@
 +// SCUT, Brain Engine patch 0005: see scut.h for what it is and why.
 +#include "scut.h"
 +#include "log.h"
@@ -34,6 +34,8 @@ index 0000000..356ab2f
 +#  include <winsock2.h>
 +#  include <ws2tcpip.h>
 +#  include <mmsystem.h>
++#  undef min // in case windows.h came in through another header before NOMINMAX
++#  undef max
 +#  pragma comment(lib, "winmm.lib")
 +typedef int socklen_compat_t;
 +#  define BL_POLL WSAPoll
@@ -618,10 +620,10 @@ index 0000000..356ab2f
 +bool scut_recv(scut * b, void * data, size_t size) { return b->recv(data, size); }
 diff --git a/ggml/src/ggml-rpc/scut.h b/ggml/src/ggml-rpc/scut.h
 new file mode 100644
-index 0000000..b42454e
+index 0000000..1e3a8e7
 --- /dev/null
 +++ b/ggml/src/ggml-rpc/scut.h
-@@ -0,0 +1,46 @@
+@@ -0,0 +1,49 @@
 +#pragma once
 +// SCUT (Signals and Communications - Universal Transceiver): Bob's own transport for card sharing over home Wi-Fi (Brain Engine patch 0005).
 +//
@@ -643,6 +645,9 @@ index 0000000..b42454e
 +#include <memory>
 +
 +#ifdef _WIN32
++#  ifndef NOMINMAX
++#    define NOMINMAX
++#  endif
 +#  include <winsock2.h>
 +typedef SOCKET scut_fd_t;
 +#else
