@@ -223,7 +223,7 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   const brain = read('src/brain.js');
   check('the brain adds fitting notes to what he carries, only with smart notes on', /if \(smartNotesOn\(this\.cfg\)\) \{[\s\S]{0,400}notesPrompt\(this\.cfg, text/.test(brain));
   const cellar = read('public/cellar.js'), server = read('src/server.js');
-  check('the switch sits under quick notes, off unless turned on', cellar.includes("settings.quickNotes ? sswitch('smartNotes', settings.smartNotes === true, 'Let Bob notice what\\'s worth noting', 'Off unless you turn it on."));
+  check('the switch sits under quick notes, always shown, off unless turned on', /sswitch\('quickNotes'[^\n]*\n\s*\$\{sswitch\('smartNotes'/.test(cellar.replace(/\r\n/g, '\n')) && cellar.includes("${sswitch('smartNotes', settings.smartNotes === true, 'Let Bob notice what\\'s worth noting', 'Off unless you turn it on."));
   check('the server saves and shows it', server.includes("typeof b.smartNotes === 'boolean'") && server.includes('smartNotes: cfg.smartNotes === true'));
   const help = HELP.find((e) => e.id === 'quick-notes').html;
   check('Help explains noticing, filing and remembering, and the FAQ is there', /I notice/.test(help) && /I file them/.test(help) && /I remember them/.test(help) && HELP.some((e) => e.id === 'faq-notes-junk'));
