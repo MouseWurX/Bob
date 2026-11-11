@@ -103,7 +103,7 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
       const say = (t) => setImmediate(() => s.emit('data', Buffer.from(t)));
       if (cmd === 'UID' && /SEARCH/.test(line)) say(`* SEARCH 41 42\r\n${tag} OK done\r\n`);
       else if (cmd === 'UID' && /FETCH/.test(line)) {
-        const h = 'From: Ann <ann@example.com>\r\nSubject: =?utf-8?B?SGVsbG8gdGhlcmU=?=\r\nDate: Mon, 9 Nov 2026 10:00:00 +0000\r\n\r\n';
+        const h = 'From: Ann <ann@example.test>\r\nSubject: =?utf-8?B?SGVsbG8gdGhlcmU=?=\r\nDate: Mon, 9 Nov 2026 10:00:00 +0000\r\n\r\n';
         say(`* 1 FETCH (UID 42 FLAGS () BODY[HEADER.FIELDS (FROM SUBJECT DATE)] {${Buffer.byteLength(h)}}\r\n${h})\r\n${tag} OK done\r\n`);
       } else say(`${tag} OK done\r\n`);
     };
@@ -111,7 +111,7 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
     setImmediate(() => s.emit('data', Buffer.from('* OK ready\r\n')));
     return s;
   };
-  const cfg = { moreTools: { email: true, emailHost: 'imap.example.com', emailUser: 'me@example.com' } };
+  const cfg = { moreTools: { email: true, emailHost: 'imap.example.com', emailUser: 'me@example.test' } };
   const r = await listMail(cfg, { days: 3 }, { connect: async () => fakeSocket(), password: 'app-pass' });
   check('mail is listed from the fake server', r.total >= 1 && /Hello there/.test(JSON.stringify(r)));
   check('the mailbox is opened read-only (EXAMINE, never SELECT)', sent.some((l) => /EXAMINE/.test(l)) && !sent.some((l) => /\bSELECT\b/.test(l)));
@@ -143,7 +143,7 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
   check('the first look remembers the part', !r.changed && /129/.test(r.watch.part || ''), r.problem || '');
   r = await checkWatch(r.watch, { fetchImpl: page('Price $99.99 In stock') });
   check('a change is noticed', r.changed === true, r.problem || '');
-  r = await checkWatch({ ...w0, url: 'http://192.168.1.10/' }, { fetchImpl: page('x') });
+  r = await checkWatch({ ...w0, url: 'http://127.0.0.1/' }, { fetchImpl: page('x') });
   check('home-network addresses are refused', /home network/.test(r.problem || ''));
 }
 

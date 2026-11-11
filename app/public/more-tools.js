@@ -54,7 +54,7 @@ export async function mountMoreTools(box) {
       ${byKey('email')}
       <div class="row"><label><strong>Mail server</strong> <input data-mt-email="host" maxlength="120" value="${esc(v.emailHost)}" placeholder="imap.example.com" spellcheck="false"></label>
         <label>Port <input data-mt-email="port" type="number" min="1" max="65535" value="${esc(v.emailPort)}" style="width:6em"></label></div>
-      <div class="row"><label>Account <input data-mt-email="user" maxlength="200" value="${esc(v.emailUser)}" placeholder="you@example.com" spellcheck="false" autocomplete="off"></label>
+      <div class="row"><label>Account <input data-mt-email="user" maxlength="200" value="${esc(v.emailUser)}" placeholder="you@example.test" spellcheck="false" autocomplete="off"></label>
         <label>Folder <input data-mt-email="folder" maxlength="100" value="${esc(v.emailFolder)}" style="width:8em"></label></div>
       <div class="row"><label>App password <input data-mt-email="password" type="password" autocomplete="off" placeholder="${v.emailPasswordSaved ? 'Saved and locked' : 'Paste an app password'}"></label>
         <button type="button" data-mt-emailsave>Save</button> <button type="button" class="mini" data-mt-emailtest>Test</button>${v.emailPasswordSaved ? ' <button type="button" class="mini" data-mt-emailforget>Forget password</button>' : ''}

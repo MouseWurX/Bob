@@ -553,6 +553,7 @@
     const mine = current && current.kind === 'net' && current.base === base && ev.sessionId === `phone-${current.chatId}`;
     if (ev.type === 'approval' && String(ev.sessionId || '').startsWith('phone-')) return approvalCard(base, ev);
     if (ev.type === 'checkin') return checkinCard(base, ev);
+    if (ev.type === 'reminder' && ev.phone) return reminderCard(base, ev); // 🧰 "Show reminders on my phone" (set on the replicant matrix)
     if (ev.type === 'howto-offer' && String(ev.sessionId || '').startsWith('phone-')) return howtoCard(base, ev);
     if (ev.type === 'offer-setup' && String(ev.sessionId || '').startsWith('phone-')) return setupCard(base, ev); // 1.5.91
     if (ev.type === 'offer-rent' && String(ev.sessionId || '').startsWith('phone-')) return rentCard(base, ev); // 1.5.127 rented brains
@@ -561,6 +562,7 @@
     if (!mine) return;
     if (ev.type === 'start') current.turnId = ev.turnId;
     else if (ev.type === 'token') grow(ev.text || '');
+    else if (ev.type === 'secret-note') secretCard(ev); // 🧰 a password Bob made: shown once, not kept in the chat
     else if (ev.type === 'diagram') { const x = { kind: 'diagram', url: ev.url, base, title: ev.title || '' }; current.media.push(x); current.node.append(mediaNode(x)); }
     else if (ev.type === 'image' || ev.type === 'video') { const x = { kind: ev.type, url: ev.url, base }; current.media.push(x); current.node.append(mediaNode(x)); }
     else if (ev.type === 'made') {
@@ -623,6 +625,29 @@
         el('button', { text: 'Change something', onclick: () => { change.classList.remove('hidden'); note.focus(); } }),
         el('button', { text: 'Not now (Bob drops this job)', onclick: () => send({ allow: false }) })),
       change);
+    $('chat').append(card);
+    card.scrollIntoView({ block: 'end' });
+  }
+
+  // 🧰 "Show reminders on my phone" (Settings, How Bob works, 🧰 More tools on the replicant matrix): a reminder set on your other
+  // Bob pops up here too. In the background, Android shows it as a notification (Bridge.kt).
+  function reminderCard(base, ev) {
+    const card = el('div', { class: 'card' },
+      el('div', { class: 'q' }, el('strong', { text: `⏰ Reminder from "${bobName(base)}"` }), el('div', { text: String(ev.text || '') })),
+      ev.every ? el('p', { class: 'help-line', text: `Repeats every ${String(ev.every)}.` }) : null,
+      el('div', { class: 'row' }, el('button', { text: 'Got it', onclick: () => card.remove() })));
+    $('chat').append(card);
+    card.scrollIntoView({ block: 'end' });
+  }
+
+  // 🧰 "Let Bob make passwords": shown here once, with Copy. Not kept in the chat, not read aloud.
+  function secretCard(ev) {
+    const items = Array.isArray(ev.items) ? ev.items.slice(0, 10).map(String) : [];
+    const card = el('div', { class: 'card' },
+      el('div', { class: 'q' }, el('strong', { text: `🔑 ${String(ev.title || 'Your password')}` })),
+      ...items.map((s) => el('div', { class: 'row' }, el('code', { text: s }), el('button', { text: 'Copy', onclick: (e) => { navigator.clipboard?.writeText(s).then(() => { e.target.textContent = 'Copied'; }).catch(() => {}); } }))),
+      el('p', { class: 'help-line', text: String(ev.note || 'Only shown here, once.') }),
+      el('div', { class: 'row' }, el('button', { text: 'Done', onclick: () => card.remove() })));
     $('chat').append(card);
     card.scrollIntoView({ block: 'end' });
   }

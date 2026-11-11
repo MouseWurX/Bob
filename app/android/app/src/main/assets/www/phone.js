@@ -553,7 +553,7 @@
     const mine = current && current.kind === 'net' && current.base === base && ev.sessionId === `phone-${current.chatId}`;
     if (ev.type === 'approval' && String(ev.sessionId || '').startsWith('phone-')) return approvalCard(base, ev);
     if (ev.type === 'checkin') return checkinCard(base, ev);
-    if (ev.type === 'reminder' && ev.phone) return reminderCard(base, ev); // 🧰 "Show reminders on my phone" (set on the PC)
+    if (ev.type === 'reminder' && ev.phone) return reminderCard(base, ev); // 🧰 "Show reminders on my phone" (set on the replicant matrix)
     if (ev.type === 'howto-offer' && String(ev.sessionId || '').startsWith('phone-')) return howtoCard(base, ev);
     if (ev.type === 'offer-setup' && String(ev.sessionId || '').startsWith('phone-')) return setupCard(base, ev); // 1.5.91
     if (ev.type === 'offer-rent' && String(ev.sessionId || '').startsWith('phone-')) return rentCard(base, ev); // 1.5.127 rented brains
@@ -629,7 +629,7 @@
     card.scrollIntoView({ block: 'end' });
   }
 
-  // 🧰 "Show reminders on my phone" (Settings, How Bob works, 🧰 More tools on the PC): a reminder set on your other
+  // 🧰 "Show reminders on my phone" (Settings, How Bob works, 🧰 More tools on the replicant matrix): a reminder set on your other
   // Bob pops up here too. In the background, Android shows it as a notification (Bridge.kt).
   function reminderCard(base, ev) {
     const card = el('div', { class: 'card' },
