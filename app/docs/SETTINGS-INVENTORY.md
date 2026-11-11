@@ -266,6 +266,15 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | Settings > Everyday > How Bob works | Read and search my documents: "Off unless you turn it on. Bob reads Word, Excel, PowerPoint, OpenDocument, PDF, e-book and Rich Text files with nothing extra installed, and can search inside them for words in the folders he may read (Documents, Desktop and Downloads). Nothing leaves this replicant matrix and nothing is kept on disk. Old .doc, .xls and .ppt files need the Office documents Hand." | off | new, awaiting review |
 | Settings > Everyday > How Bob works | Let Bob work things out in a sandbox: "Off unless you turn it on. For sums, dates, money and counting, Bob runs a few lines of code in a locked box and answers from the result instead of guessing. The box is empty and thrown away after each run: it can't see your files or start programs, code that goes online is refused, and it stops after 20 seconds." Where the lock doesn't hold: "The sandbox doesn't hold on this replicant matrix (<why>), so this stays off." | off | new, awaiting review |
 
+## Changed with the first-time list regrouped like Settings
+
+| Where | What it says | Starts | Status |
+|---|---|---|---|
+| Welcome, "Do you want me to:" | Intro now: "All of these are off until you tick them. A tick is saved at once. The groups match the cards in Settings, where you can change your mind any time. A button opens the bigger ones in Settings." Groups are the Settings cards, in the same order: How Bob works / Brains and speed / My other Bobs / Online and other apps / What Bob may do / Fun / This replicant matrix | all off | new, awaiting review |
+| same, two more ticks | "Use one brain for everything" (No 20-second stops to swap brains.) = One brain (snappier); "Read only the memories that fit each message" (Keeps chats light.) = Remember only what fits | off | new, awaiting review |
+| same, more buttons | Check in on you by myself (Check-ins); Run a tabletop adventure (Adventure); Play word games (Games); Tidy up while I'm idle (Housekeeping), beside Bob-Net, Online services and Hands. On a computer a button opens the Settings window and the Welcome stays open | n/a | new, awaiting review |
+| same, "Coming soon:" lines (plain words, no tick) | Notice what's worth noting by myself; Ask a bigger Bob to check my hard answers; SCUT, a faster link for sharing a graphics card (experimental); SUDDAR scan, to see how far away each Bob is (experimental); Keep a note when a tool trips me up; Say when to use each tool I make; Keep score of my tools and offer to fix one that keeps failing; Browse the web in my own window | n/a | new, awaiting review. When one ships, move its line from `WANTS_SOON` to `WANTS` or `WANTS_ELSEWHERE` in `public/wants.js` |
+
 ## Added with Do you want me to: (first-time setup)
 
 | Where | Setting / text | Default | Status |
