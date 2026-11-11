@@ -1,20 +1,21 @@
 :root {
-  --bg: #1d1510;
-  --panel: #2b1d14;
-  --card: #3a281b;
-  --line: #5a4030;
-  --text: #f3e7d3;
-  --muted: #c7b296;
-  --accent: #e7a64a;
-  --good: #7fbf7a;
-  --bad: #e07a6a;
-  --you: #34465a;
-  --warn: #e7a64a;
-  --on-accent: #2b1d14;
-  --sprite-bg: #4a3220;
-  --danger-bg: #4a2a1e;
-  --good-bg: #2f4a2c;
-  --backdrop: rgba(10, 6, 4, 0.7);
+  /* Moondust, the theme Bob starts with, so the first moment before themes.js runs isn't a flash of another theme */
+  --bg: #121212;
+  --panel: #1c1c1c;
+  --card: #262626;
+  --line: #2e2e2e;
+  --text: #e4e4e4;
+  --muted: #9a9a9a;
+  --accent: #4fb3bf;
+  --good: #357f88;
+  --bad: #e0685a;
+  --you: #2a464a;
+  --warn: #d9a23e;
+  --on-accent: #121212;
+  --sprite-bg: #262626;
+  --danger-bg: #3f2522;
+  --good-bg: #1d3335;
+  --backdrop: rgba(0, 0, 0, 0.7);
   --font: "Segoe UI", system-ui, sans-serif;
   --mono: Consolas, "Cascadia Mono", monospace;
   --r: 8px;
@@ -177,6 +178,8 @@ body.still .mic.on { animation: none; }
 .packlist input { accent-color: var(--accent); }
 .wantlist .switch input { flex: none; } /* wants.js: the tick boxes keep their size when the words wrap */
 .wants .row button { margin: 4px 6px 4px 0; }
+.wants h4 { margin: 18px 0 4px; } /* one heading per Settings card */
+.wants .want-soon { margin: 6px 0 0; font-size: .92em; }
 body.still .meter i { transition: none; }
 
 .roles { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
@@ -1622,7 +1625,7 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .lab-log { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
 .lab-log td { vertical-align: top; overflow-wrap: anywhere; white-space: pre-wrap; }
 
-/* FNRI's small cube in Bob's thinking (Now running) */
+/* fNRI's small cube in Bob's thinking (Now running) */
 .mind-cube { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
 .mind-cube canvas { width: 100%; height: 220px; display: block; border: 1px solid var(--line); border-radius: var(--r); }
 /* No brain loaded: a neon sign over the empty cube, flickering now and then (still when animations are off) */
@@ -1691,3 +1694,24 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .settings-window .cellar.page { padding: 0 16px; }
 .settings-window #cellar-close { display: none; }
 .settings-window .cellar[data-page="Settings"] .cellar-tabs, .settings-window .cellar[data-page="Style"] .cellar-tabs .tabs-row:first-child { display: none; }
+
+/* "Show documents in the side panel" (doc-view.js): words and tables, sheets, slides, a PDF's pages. */
+.vdocstage { align-items: stretch; }
+.vdoc { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.vdoc-text { line-height: 1.55; overflow-wrap: anywhere; }
+.vdoc-text p { margin: 0 0 0.7em; }
+.vdoc-text .vtable { margin: 0 0 0.9em; }
+.vdoc .vtable { max-height: 70vh; }
+.vdoc .vtable td { white-space: pre-wrap; min-width: 3ch; vertical-align: top; }
+.vdoc-sheets .vtable th[scope="row"], .vdoc-sheets .vtable thead th { color: var(--muted); font-weight: 500; text-align: center; }
+.vdoc-sheets .vtable th[scope="row"] { position: sticky; left: 0; top: auto; }
+.vdoc-sheets .vtable thead th { z-index: 1; }
+.vpdf { min-height: 70vh; }
+.vslide { position: relative; border: 1px solid var(--line); border-radius: calc(var(--r) * 0.75); background: var(--card); padding: 14px 16px 12px 44px; aspect-ratio: 16 / 9; overflow: auto; }
+.vslide h3 { margin: 0 0 8px; font-size: 1.05em; }
+.vslide p { margin: 0 0 4px; }
+.vslide-n { position: absolute; left: 12px; top: 14px; font-size: 12px; opacity: 0.7; }
+.vslide-notes { margin-top: 8px; font-size: 0.92em; }
+.vdoc-off p { margin: 0 0 8px; }
+.vdoc-why { overflow-wrap: anywhere; }
+@media (max-width: 600px) { .vslide { aspect-ratio: auto; } }

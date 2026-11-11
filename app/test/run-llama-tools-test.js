@@ -44,6 +44,13 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   for (const t of ['llama-bench', 'llama-gguf-split', 'ggml-rpc-server', 'llama-diffusion-cli']) ok((wf.match(new RegExp(t, 'g')) || []).length >= 4, `Brain Engine build: builds and packs ${t} (Windows and Linux)`);
   ok((wf.match(/-DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON/g) || []).length === 2, 'Brain Engine build: RPC and the examples (the diffusion runner) on, both systems');
   ok((wf.match(/set\(BUILD_NUMBER \$\{tag#b\}\)/g) || []).length === 2, 'Brain Engine build: --version says the tag\'s build number, not "build 1" from the one-commit clone, both systems');
+  ok((wf.match(/out=brain-engine-\$BEV-/g) || []).length === 2 && (wf.match(/publish\.sh "\$BEV" "\$TAG"/g) || []).length === 2 && /bob\.brainEngineVersion/.test(wf), 'Brain Engine build: files and release take its own version number (brain-engine-v<N>), built on the tested llama.cpp tag');
+  const pub = read(path.join(here, '..', 'engine', 'publish.sh'));
+  ok(/ver="\$1"; tag="\$2"; file="\$3"/.test(pub) && /rel="brain-engine-\$ver"/.test(pub) && /Brain Engine \$\{ver#v\} \(built on llama\.cpp \$tag/.test(pub), 'publish.sh names the release by Brain Engine\'s own version');
+  const pkg = JSON.parse(read(path.join(here, '..', 'package.json')));
+  ok(Number.isInteger(pkg.bob.brainEngineVersion) && pkg.bob.brainEngineVersion >= 3, 'package.json carries Brain Engine\'s own version number');
+  const cel = read(path.join(here, '..', 'public', 'cellar.js'));
+  ok(/brain-engine-v\(\\d\+\)\$/.test(cel) && /built on llama\.cpp \$\{e\.basedOn\}/.test(cel), 'Settings, Engines says "version N, built on llama.cpp bNNNN", not the file tag');
   const readme = read(path.join(here, '..', 'engine', 'README.md'));
   ok(/ggml-rpc-server/.test(readme) && /llama-diffusion-cli/.test(readme) && /Tailscale/.test(readme), 'Brain Engine README: lists the new tools and how the card server is kept to Tailscale');
 }

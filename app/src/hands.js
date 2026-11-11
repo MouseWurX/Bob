@@ -135,10 +135,10 @@ export function handsTools(brain, opts = {}) {
   const t = {};
 
   t.file_hands = {
-    schema: fn('file_hands', "Work with files in the folders {{USER}} allowed: move, copy, rename (one or many), zip, unzip, tidy a folder into subfolders by kind (Pictures, Documents, Installers...), or recycle (to the Recycle Bin). delete removes for good and only works if {{USER}} switched off the Recycle Bin only limit; use recycle unless told to delete for good. Nothing is overwritten and every job except delete can be undone.", {
+    schema: fn('file_hands', "Move, copy, rename (one or many), zip, unzip, tidy a folder into subfolders by kind, or recycle files, in the folders {{USER}} allowed. Nothing is overwritten and all but delete can be undone. Use recycle; delete is for good, only when told, and only if {{USER}} turned off Recycle Bin only.", {
       action: str('What to do', { enum: ['move', 'copy', 'rename', 'tidy', 'zip', 'unzip', 'recycle', 'delete'] }),
-      paths: list('Full paths of the files or folders (for tidy: the folder; for unzip: the zip).'),
-      to: str('move/copy: destination folder. zip: the new zip file (optional). unzip: where to unpack (optional; default a new folder next to the zip).'),
+      paths: list('Full paths (tidy: the folder; unzip: the zip).'),
+      to: str('move/copy: the folder to put them in. zip: the new zip (optional). unzip: where to unpack (optional).'),
       newName: str('rename one item: the new name.'),
       find: str('rename many: text to find in each name.'),
       replace: str('rename many: what to put instead.'),
@@ -174,7 +174,7 @@ export function handsTools(brain, opts = {}) {
   };
 
   t.undo_files = {
-    schema: fn('undo_files', 'Undo a file job Bob did (the latest one, or one by its undo id). {{USER}} approves it.', { id: str('Undo id (optional; default the latest job).') }, []),
+    schema: fn('undo_files', 'Undo a file job (the latest, or one by its undo id). {{USER}} approves it.', { id: str('Undo id (optional; default the latest job).') }, []),
     approvalGroup: 'files',
     check({ id }) {
       off(cfg, 'files');
@@ -202,8 +202,8 @@ export function handsTools(brain, opts = {}) {
   const runCard = (c, cwd, why) => ({ text: `Run this ${c.kind}${why ? ` (${String(why).slice(0, 200)})` : ''}. Output shows live, with a Stop button. Not as administrator.`, command: c.line, cwd });
 
   t.run_command = {
-    schema: fn('run_command', 'Run one program, script or command on {{USER}}\'s PC, in a folder. No shell: give the program and its arguments separately (cmd "npm", args ["run","build"]). {{USER}} sees the exact command and approves it. Never as administrator; nothing that asks for a password will work. Use the Files Hand (file_hands) for moving, zipping or throwing away files.', {
-      cmd: str('The program or script, like "git", "npm", "python", "C:\\\\Tools\\\\build.bat".'),
+    schema: fn('run_command', 'Run one program or script in a folder. No shell: give the program and its arguments apart (cmd "npm", args ["run","build"]). {{USER}} sees and approves the exact command. Never as administrator; password prompts won\'t work. Use file_hands for moving, zipping or deleting files.', {
+      cmd: str('The program, like "git", "npm" or "python".'),
       args: list('Its arguments, one per item.'),
       cwd: str('Full path of the folder to run it in.'),
       why: str('One short line: what this is for.')
@@ -215,7 +215,7 @@ export function handsTools(brain, opts = {}) {
   };
 
   t.run_recipe = {
-    schema: fn('run_recipe', 'Run one of {{USER}}\'s saved recipes (saved commands) by name. Use action "list" to see them. {{USER}} still approves each run.', {
+    schema: fn('run_recipe', 'Run one of {{USER}}\'s saved commands (recipes) by name, or list them. {{USER}} approves each run.', {
       action: str('run or list', { enum: ['run', 'list'] }),
       name: str('The recipe name (for run).')
     }, ['action']),

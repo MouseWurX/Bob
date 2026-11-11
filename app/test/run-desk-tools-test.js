@@ -223,7 +223,7 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   const brain = read('src/brain.js');
   check('the brain adds fitting notes to what he carries, only with smart notes on', /if \(smartNotesOn\(this\.cfg\)\) \{[\s\S]{0,400}notesPrompt\(this\.cfg, text/.test(brain));
   const cellar = read('public/cellar.js'), server = read('src/server.js');
-  check('the switch sits under quick notes, off unless turned on', cellar.includes("settings.quickNotes ? sswitch('smartNotes', settings.smartNotes === true, 'Let Bob notice what\\'s worth noting', 'Off unless you turn it on."));
+  check('the switch sits under quick notes, always shown, off unless turned on', cellar.includes("${sswitch('smartNotes', settings.smartNotes === true, 'Let Bob notice what\\'s worth noting', 'Off unless you turn it on."));
   check('the server saves and shows it', server.includes("typeof b.smartNotes === 'boolean'") && server.includes('smartNotes: cfg.smartNotes === true'));
   const help = HELP.find((e) => e.id === 'quick-notes').html;
   check('Help explains noticing, filing and remembering, and the FAQ is there', /I notice/.test(help) && /I file them/.test(help) && /I remember them/.test(help) && HELP.some((e) => e.id === 'faq-notes-junk'));
@@ -274,7 +274,7 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   check('the sandbox has its own group for sums and dates', g.sandbox?.tools.includes('run_in_sandbox') && g.sandbox.words.test('how many days until Christmas') && g.sandbox.words.test('calculate the average'));
   Object.assign(cfg, { quickNotes: false, docTools: false, sandboxCode: false });
   check('guests (other Bobs, Discord channels) never get them', !/take_note|find_in_documents|run_in_sandbox/.test(read('src/share-jobs.js')));
-  check('bob_help lists the three switches', /Let Bob take quick notes: off \(Let Bob notice what's worth noting: off\); Read and search my documents: off; Let Bob work things out in a sandbox: off/.test(settingsNow({ cloud: [] })));
+  check('bob_help lists the three switches', /Let Bob take quick notes: off \(Let Bob notice what's worth noting: off\); Read and search my documents: off; Show documents in the side panel: off; Let Bob work things out in a sandbox: off/.test(settingsNow({ cloud: [] })));
 }
 
 // ---------- settings page, server, Help ----------

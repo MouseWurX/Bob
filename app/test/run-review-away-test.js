@@ -213,7 +213,7 @@ check('an empty answer from another Bob (a check, or a borrowed reply) counts as
   check('at most 6 tool calls run from one reply; after 3 skipped repeats the next round has no tools and he answers', MAX_CALLS_PER_REPLY === 6 && REPEATS_THEN_ANSWER === 3 && /Answer now from the results above, with no more tool calls/.test(ANSWER_NOW_NUDGE) && /const tools = ctx\.noTools \? \[\] : guestTools/.test(bs) && (bs.match(/ctx\.repeatSkips = \(ctx\.repeatSkips \|\| 0\) \+ 1;/g) || []).length >= 2);
   // Tests A and B: Bob searched a made-up user folder and never his own help.
   const ts = fs.readFileSync(new URL('../src/tools.js', import.meta.url), 'utf8');
-  check('his own features are looked up in his own help first, and the folder tool is told the real home folder', /look here first, before searching files or the web/.test(ts) && /home folder here is \{\{HOME\}\}; never guess another/.test(ts) && /replaceAll\('\{\{HOME\}\}', JSON\.stringify\(os\.homedir\(\)\)\.slice\(1, -1\)\)/.test(bs));
+  check('his own features are looked up in his own help first, and the folder tool is told the real home folder', /look here first, before searching files or the web/.test(ts) && /home folder is \{\{HOME\}\}; never guess another/.test(ts) && /replaceAll\('\{\{HOME\}\}', JSON\.stringify\(os\.homedir\(\)\)\.slice\(1, -1\)\)/.test(bs));
 }
 
 // ---------- 1.5.185: the PC's notes after TRIAL3 ----------

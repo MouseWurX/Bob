@@ -1,8 +1,8 @@
 <resources>
     <style name="Theme.Bob" parent="Theme.AppCompat.NoActionBar">
-        <item name="android:windowBackground">@color/inn</item>
-        <item name="android:statusBarColor">@color/inn</item>
-        <item name="android:navigationBarColor">@color/inn</item>
+        <item name="android:windowBackground">@color/moondust</item>
+        <item name="android:statusBarColor">@color/moondust</item>
+        <item name="android:navigationBarColor">@color/moondust</item>
     </style>
-    <color name="inn">#1d1510</color>
+    <color name="moondust">#121212</color>
 </resources>

@@ -109,7 +109,7 @@ export function chatReadout(msgs, scrub, max = CHAT_MESSAGES) {
 
 // Everything the bundle knows, without a brain. Each lookup is separate and a failed one is written as such.
 export async function gatherFacts(cfg, { brain, shop, checkEngine, speedHistory, capabilities } = {}) {
-  const facts = { bob: { version: VERSION.label, build: VERSION.build, engine: cfg.engine === 'ollama' ? 'Ollama' : "Bob's own (llama.cpp)", agentDir: cfg.agentDir, innDir: cfg.innDir, appDir: cfg.appDir || '', port: cfg.port, electron: Boolean(globalThis.bobWindow), at: new Date().toISOString() } };
+  const facts = { bob: { version: VERSION.label, build: VERSION.build, engine: cfg.engine === 'ollama' ? 'Ollama' : "Brain Engine, Bob's own", agentDir: cfg.agentDir, innDir: cfg.innDir, appDir: cfg.appDir || '', port: cfg.port, electron: Boolean(globalThis.bobWindow), at: new Date().toISOString() } };
   facts.platform = { os: process.platform, release: os.release(), arch: process.arch, node: process.versions.node, electron: process.versions.electron || null, ramGB: Math.round(os.totalmem() / 1024 ** 3), freeRamGB: Math.round(os.freemem() / 1024 ** 3 * 10) / 10, cpus: os.cpus().length, cpu: os.cpus()[0]?.model || '' };
   const tryGet = async (name, fn) => { try { facts[name] = await fn(); } catch (e) { facts[name] = { failed: e.message }; } };
   await tryGet('hardware', () => shop?.hardware ? shop.hardware() : null);

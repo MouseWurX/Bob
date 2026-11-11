@@ -6,7 +6,7 @@
 // It prints "progress <done> <total>", "loss <n>", "skipped <n>" and "done <n>" for the Lab to show.
 // 1.5.188 for the Best answers page: --lessons is optional, --pairs <jsonl> ({"messages", "chosen", "rejected"}) adds
 // a better/worse pairs pass (DPO: lean toward the better answer, measured against the brain as it was before the pass),
-// and --targets <json> ({"targets": [{kind: expert|head|attn|ffn, layer, index}]}, FNRI's shape) puts the adapter only
+// and --targets <json> ({"targets": [{kind: expert|head|attn|ffn, layer, index}]}, fNRI's shape) puts the adapter only
 // on those parts; everything else stays frozen. It prints "targets <modules> <fell back>" and "pairs <n>".
 export const TEACH_PY = String.raw`
 import argparse, json, math, os, random, sys, time

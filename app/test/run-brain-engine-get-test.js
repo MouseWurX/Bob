@@ -19,8 +19,11 @@ const cfg = { agentDir: path.join(tmp, 'Agent'), computerLab: true };
 fs.mkdirSync(cfg.agentDir, { recursive: true });
 
 const st = engineStatus({ agentDir: cfg.agentDir }).find((e) => e.id === 'brainengine');
-check(st && st.name === 'Brain Engine' && /default engine/.test(st.what) && /Based on llama\.cpp, not an official build/.test(st.what) && !st.pinned, 'it is listed with the Lab off too, as the default engine, not official llama.cpp, with a Check for updates (rebuilds keep the name)');
-check(ENGINES.find((e) => e.id === 'brainengine').tag === `brain-engine-${TESTED_LLAMA}`, 'it is pinned to the pre-release for the tested llama.cpp tag');
+check(st && st.name === 'Brain Engine' && /own engine for brains/.test(st.what) && /not an official llama\.cpp build/.test(st.what) && !st.pinned, 'it is listed with the Lab off too, as the default engine, not official llama.cpp, with a Check for updates (rebuilds keep the name)');
+{ const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const be = ENGINES.find((e) => e.id === 'brainengine');
+  check(be.tag === pkg.bob.brainEngine.tag && be.linux.tag === pkg.bob.brainEngine.tag, 'Bob downloads the Brain Engine release his pin names (its own version, not one made from the llama.cpp tag)'); }
+check(/^brain-engine-v\d+$/.test(ENGINES.find((e) => e.id === 'brainengine').tag) && ENGINES.find((e) => e.id === 'brainengine').base === 'llamacpp' && ENGINES.find((e) => e.id === 'llamacpp').tested === TESTED_LLAMA, 'it is pinned to its own numbered pre-release, on top of the tested llama.cpp build');
 
 // 1.5.169: which llama-server Bob runs brains on (fake folders, no real computer).
 {

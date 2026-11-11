@@ -137,13 +137,13 @@ export function showMadeTool(brain) {
       type: 'function',
       function: {
         name: 'show_made',
-        description: 'Show {{USER}} things you ALREADY made or saved (pictures, clips, sounds, documents, files), newest first, in the chat and the side panel. For a new picture use make_image instead.',
+        description: 'Show things you ALREADY made or saved (pictures, clips, sounds, documents), newest first. For a new picture use make_image.',
         parameters: {
           type: 'object',
           properties: {
             kind: { type: 'string', enum: ['image', 'video', 'audio', 'document', 'any'], description: 'What kind (default any)' },
             name: { type: 'string', description: 'Words from the file name (optional)' },
-            count: { type: 'integer', description: 'How many, newest first (default 1, at most 6)' }
+            count: { type: 'integer', description: 'How many (default 1, at most 6)' }
           },
           required: []
         }

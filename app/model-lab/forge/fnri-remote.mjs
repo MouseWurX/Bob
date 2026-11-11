@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// FNRI against a brain served somewhere else: a rented card's Brain Engine, reached over HTTP. It asks the same
-// questions the Lab's FNRI scan asks, one at a time with the trace on, and writes the same recording file, ready for
-// the viewer's "Open a recording file" or the Lab's FNRI folder.
+// fNRI against a brain served somewhere else: a rented card's Brain Engine, reached over HTTP. It asks the same
+// questions the Lab's fNRI scan asks, one at a time with the trace on, and writes the same recording file, ready for
+// the viewer's "Open a recording file" or the Lab's fNRI folder.
 //   node model-lab/forge/fnri-remote.mjs --url <server> --name "Brain name" --out <folder> [--quant Q4_K_M]
 //        [--skills coding,maths] [--per 8] [--think] [--heads]
 // --url, --name and --out also come from LAB_URL, LAB_MODEL_NAME and LAB_OUT, and the server's key from LAB_API_KEY,

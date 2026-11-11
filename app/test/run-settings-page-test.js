@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { ModelShop } from '../src/models.js';
 import { BUNDLED_KOKORO, SAMPLE_LINE } from '../src/voice-samples.js';
 import { KOKORO_VOICES } from '../src/tts.js';
@@ -54,7 +56,12 @@ check('Advanced has (1.5.98 order) Brains, House style, Voice details, Look & fe
 check('old panel ids still work: Connections lands on Bob-Net, in jumps, remembered panels and Help', /ADV_MOVED = \{ 'adv-connections': 'adv-bobnet' \}/.test(ui) && /id === 'adv-connections' \? 'adv-bobnet'/.test(ui) && /'settings-connections': 'settings-bobnet'/.test(read('public/help.js')));
 check('Advanced has a search box that filters sections', /data-ssearch/.test(ui) && /function filterSettings/.test(ui) && /settingsQuery = e\.target\.value; if \(settingsQuery\.trim\(\)\) applyView\(\)/.test(ui));
 check('Voice details has Hey Bob and Read aloud, working the same switches as the left menu', /prox\('ear'/.test(ui) && /prox\('speak'/.test(ui) && /el\.dataset\.proxy/.test(ui));
-check('engine choice, engine downloads, fit to memory, speculative decoding and flags are in Engines', /function enginesHtml[\s\S]*engineGearHtml\(\)[\s\S]*labEngineHtml\(\)[\s\S]*Engine downloads[\s\S]*speedHtml\(\)/.test(ui) && /data-engine-now/.test(ui) && !/name="brainsEngine"/.test(ui) && /data-fit/.test(ui) && /Speculative decoding/.test(ui) && /llama\.cpp flags/.test(ui));
+{ // every page script parses (1.5.203: one unescaped apostrophe in a Settings line stopped the whole Settings page)
+  const dir = fileURLToPath(new URL('../public/', import.meta.url));
+  const bad = fs.readdirSync(dir).filter((f) => f.endsWith('.js')).filter((f) => spawnSync(process.execPath, ['--check', path.join(dir, f)]).status !== 0);
+  check('every script in public/ parses', bad.length === 0, bad.join(', '));
+}
+check('engine choice, engine downloads, fit to memory, speculative decoding and flags are in Engines', /function enginesHtml[\s\S]*engineGearHtml\(\)[\s\S]*labEngineHtml\(\)[\s\S]*Engine downloads[\s\S]*speedHtml\(\)/.test(ui) && /data-engine-now/.test(ui) && !/name="brainsEngine"/.test(ui) && /data-fit/.test(ui) && /Speculative decoding/.test(ui) && /Engine flags/.test(ui));
 check('long help folds behind More', /const more = \(text\) => `<details class="more"><summary>More<\/summary>/.test(ui) && (ui.match(/\$\{more\(/g) || []).length >= 2);
 check('animations and Now running buttons work on the Settings page too', /tab === 'settings' && \(b\.dataset\.motion \|\| b\.dataset\.nowneed\)/.test(ui));
 
@@ -122,6 +129,21 @@ else check('self-test: the Windows task Status is skipped off Windows', byName('
 check('self-test cleans up its throwaway folder and logs to the logbook', st.cleaned && JSON.stringify(fs.readdirSync(cfg.innDir)) === JSON.stringify(before) && logs.some((l) => /self-test \(your click\): 5 of 5/.test(l)), JSON.stringify(logs));
 check('self-test works with every Hand off (it is your click, on dummy files only)', st.passed === 5);
 check('the Self-test button is in Settings, Hands, and the route is PC-only', /data-hselftest>Run the self-test/.test(hands) && /if \(!isLocal\)[\s\S]*\/api\/hands\/selftest/.test(read('src/hands-routes.js')));
+
+// ---------- Nothing appears, disappears or locks because a box isn't ticked ----------
+{
+  const page = (f) => read(f).replace(/\r\n/g, '\n');
+  const cellarSrc = page('public/cellar.js'), handsSrc = page('public/hands.js'), tg = page('public/telegram.js'), dc = page('public/discord.js'), phone = page('public/phone-access.js');
+  check('no Settings switch is drawn only when another setting is on', !/\$\{settings\.[\w.?]+( === true| !== false)? \? sswitch\(/.test(cellarSrc));
+  check('"Let Bob notice what\'s worth noting" and "Lab: Professional mode" are always there', /\$\{sswitch\('smartNotes'/.test(cellarSrc) && /\$\{sswitch\('labPro'/.test(cellarSrc));
+  check('Housekeeping and the Qwen numbers can be set before their switch is on', !/hk\.enabled \? '' : 'disabled'/.test(cellarSrc) && !/data-qfield[^\n]*\$\{on \? '' : 'disabled'\}/.test(cellarSrc) && !/data-qreset[^\n]*\$\{on \? '' : 'disabled'\}/.test(cellarSrc));
+  check('each brain\'s size can be picked before "Pick how much each brain keeps in mind" is on', !/\$\{on \? \(rows \?/.test(cellarSrc) && !/\$\{on && bctx\?\.canStretch/.test(cellarSrc));
+  check('each Hand, and working without asking, can be ticked before Hands is on', !/data-hfree[^\n>]*\$\{s\.enabled \? '' : 'disabled'\}/.test(handsSrc) && !/data-hand=[^\n>]*\$\{s\.enabled \? '' : 'disabled'\}/.test(handsSrc));
+  check('a recipe can be added before the Run programs Hand is on', !/\$\{s\.enabled && s\.run\?\.on \? `<details/.test(handsSrc));
+  check('Telegram and Discord choices can be made before they are on', !/, !v\.(enabled|dmEnabled)\)/.test(tg + dc) && !/\$\{off \? 'disabled' : ''\}/.test(dc) && !/\$\{v\.(enabled|dmEnabled) \? `<div class="row"><strong>Your (Telegram|Discord) account/.test(tg + dc));
+  check('"Also over the home network" is there before the door is open', !/\$\{v\.enabled \? `<label class="switch"><input type="checkbox" data-phone-home/.test(phone));
+  check('the style guide carries the rule', /never appears, disappears or locks because a box isn't ticked/.test(read('docs/SETTINGS-STYLE.md')));
+}
 
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

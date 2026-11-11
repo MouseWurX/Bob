@@ -74,7 +74,7 @@ export function showPlanTool(brain) {
       type: 'function',
       function: {
         name: 'show_plan',
-        description: 'Before a big job, show {{USER}} your plan on one card and wait: every step in plain words, in order. For a step that needs an OK (files, commands, apps, edits, schedules, cloud helpers), add the exact tool and args you will use, so its OK is on the same card. {{USER}} can say go ahead, ask for a change, or say not now.',
+        description: 'Before a big job, show {{USER}} your plan on one card and wait. Give every step in plain words; for a step that needs an OK, add the exact tool and args, so its OK is on the card too.',
         parameters: {
           type: 'object',
           properties: {

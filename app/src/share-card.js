@@ -21,6 +21,7 @@ import { sealOn, sealAsk, cleanSealAsk, lenderSeal, borrowerSeal, keysEnv } from
 import { isTailscaleIp } from './phone-access.js';
 import { findTool, missingWords } from './llama-tools.js';
 import { spawn } from 'node:child_process';
+import { safeSpawn } from './engine-blocked.js'; // 1.5.203: a blocked program comes back as 'error', not a throw
 import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
@@ -192,7 +193,7 @@ export class CardLender {
     this.log('bob-net', `lent graphics card: loading ${path.basename(file)} from this machine's own copy first, so it doesn't cross the network`);
     this.seeding = new Promise((resolve) => {
       let child, out = '';
-      try { child = this.spawnFn(t.path, ['--seed', file, '-c'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(t.path), env: this.env }); }
+      try { child = safeSpawn(this.spawnFn, t.path, ['--seed', file, '-c'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(t.path), env: this.env }); }
       catch { resolve('failed'); return; }
       const look = (d) => { out = (out + d).slice(-2000); };
       child.stdout?.on('data', look); child.stderr?.on('data', look);
@@ -228,7 +229,7 @@ export class CardLender {
     const t = this.tool();
     // Sealed SCUT packets: this lend's key for the card server, made from the pair's link key and a fresh salt.
     const sealed = lenderSeal(this.cfg, { on: scutSealOn(this.cfg), ask: seal, asker: plainIp(remoteAddr), log: this.log });
-    const child = this.spawnFn(t.path, ['-H', '127.0.0.1', '-p', String(INNER_PORT), '-c'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(t.path), env: { ...this.env, ...scutEnv(this.cfg, { lend: true }), ...sealed.env } });
+    const child = safeSpawn(this.spawnFn, t.path, ['-H', '127.0.0.1', '-p', String(INNER_PORT), '-c'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(t.path), env: { ...this.env, ...scutEnv(this.cfg, { lend: true }), ...sealed.env } });
     let out = '';
     const ready = await new Promise((resolve) => {
       const done = (v) => { clearTimeout(timer); resolve(v); };

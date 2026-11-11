@@ -95,7 +95,7 @@ function wav(file, { rate = 8000, channels = 2, bits = 16, float = false, second
   check('the side panel plays a song in the big player', /songCard\(\{ url, name: t\.name, path: t\.path \}, \{ big: true \}\)/.test(viewer));
   check('the song arrives with its title in the chat and in the saved reply', /title: ev\.song\.title, sound: ev\.song\.sound/.test(app) && /title: ev\.song\.title, sound: ev\.song\.sound/.test(read('src/brain.js')));
   check('the server answers /api/song with the shape and what the list knows', /p === '\/api\/song'/.test(read('src/server.js')) && /wavePeaks\(d\.path/.test(read('src/server.js')));
-  check('make_music can take a title', /title: str\('Optional: a short song title/.test(read('src/tools.js')));
+  check('make_music can take a title', /title: str\('Optional: 2 to 5 words/.test(read('src/tools.js')));
 }
 
 // ---------- Made by Bob keeps song details ----------

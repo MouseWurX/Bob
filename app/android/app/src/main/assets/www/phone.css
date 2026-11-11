@@ -3,6 +3,13 @@
 @font-face { font-family: 'Plex'; src: url('shared/fonts/ibm-plex-mono-latin-700-normal.woff2') format('woff2'); font-weight: 700; }
 
 :root {
+  /* Moondust, the theme Bob starts with on every system: the desktop's Moondust colours, with button edges a shade
+     lighter and the green kept for "good" so both show up on a small screen */
+  --bg: #121212; --panel: #1c1c1c; --raise: #262626; --line: #3a3a3a;
+  --text: #e4e4e4; --dim: #9a9a9a; --accent: #4fb3bf; --on-accent: #121212;
+  --you: #2a464a; --good: #7fc77f; --warn: #d9a23e; --bad: #e0685a; --phone: #8fb7e8;
+}
+:root[data-theme="inn"] {
   --bg: #1d1510; --panel: #2b1d14; --raise: #3a281c; --line: #5a4030;
   --text: #f3e7d3; --dim: #c2ad92; --accent: #e7a64a; --on-accent: #2b1d14;
   --you: #4a3322; --good: #7fc77f; --warn: #f0c060; --bad: #ef7d6b; --phone: #8fb7e8;

@@ -124,7 +124,7 @@ async function finishMove(home, file) {
   let box = null;
   try {
     box = new BrowserWindow({ width: 460, height: 180, resizable: false, minimizable: false, frame: true, title: 'Bob', autoHideMenuBar: true, webPreferences: { sandbox: true } });
-    box.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`<body style="font:15px system-ui;background:#1d1510;color:#f1e9dc;padding:20px"><b>Moving my things…</b><p>From ${from}<br>to ${to}.</p><p>This takes a while with big models. Please leave me to it.</p></body>`));
+    box.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`<body style="font:15px system-ui;background:#121212;color:#e4e4e4;padding:20px"><b>Moving my things…</b><p>From ${from}<br>to ${to}.</p><p>This takes a while with big models. Please leave me to it.</p></body>`));
   } catch {}
   try {
     fs.mkdirSync(to, { recursive: true });
@@ -394,7 +394,7 @@ function tuckAway(e) {
   trayHint();
   return true;
 }
-let watchWin = null; // the Lab's FNRI viewer window (public/watch.html), one at a time
+let watchWin = null; // the Lab's fNRI viewer window (public/watch.html), one at a time
 let settingsWin = null; // the Settings window (public/settings.html), one at a time
 let mindWin = null; // 1.5.53: "Bob's thinking", opened from the chat page; nothing runs for it while it's closed
 
@@ -404,7 +404,7 @@ function mindOptions(parent) {
   const width = 380, height = 480;
   return {
     width, height, minWidth: 260, minHeight: 200, x: area.x + area.width - width - 16, y: area.y + area.height - height - 16,
-    title: 'Bob\'s thinking', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510',
+    title: 'Bob\'s thinking', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212',
     autoHideMenuBar: true, alwaysOnTop: true, minimizable: true, maximizable: false, fullscreenable: false,
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }
   };
@@ -438,8 +438,9 @@ async function start() {
   win = new BrowserWindow({
     width: 1200, height: 820, minWidth: 360, minHeight: 480,
     title: 'Bob', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'),
-    backgroundColor: '#1d1510', autoHideMenuBar: true, show: !process.argv.includes('--hidden'),
-    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }
+    backgroundColor: '#121212', autoHideMenuBar: true, show: !process.argv.includes('--hidden'),
+    // plugins: the built-in PDF viewer, so "Show documents in the side panel" can show a PDF's pages (no other plugins exist).
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, plugins: true }
   });
   const base = `http://127.0.0.1:${home.port}`;
   // Links to the web open in the normal browser; Bob's window only ever shows Bob.
@@ -449,15 +450,15 @@ async function start() {
       if (mindWin) { mindWin.show(); mindWin.focus(); return { action: 'deny' }; }
       return { action: 'allow', overrideBrowserWindowOptions: mindOptions(win) };
     }
-    // The Lab's FNRI viewer: its own ordinary window (not on top), so it can sit beside the Lab or a chat.
+    // The Lab's fNRI viewer: its own ordinary window (not on top), so it can sit beside the Lab or a chat.
     if (url === base + '/watch.html' || url.startsWith(base + '/watch.html?')) {
       if (watchWin) { watchWin.loadURL(url); watchWin.show(); watchWin.focus(); return { action: 'deny' }; }
-      return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 820, minWidth: 360, minHeight: 480, title: 'FNRI', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 820, minWidth: 360, minHeight: 480, title: 'fNRI', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
     }
     // Settings is its own ordinary window too (minimise, maximise, close), one at a time.
     if (url === base + '/settings.html' || url.startsWith(base + '/settings.html#')) {
       if (settingsWin) { if (settingsWin.webContents.getURL() !== url) settingsWin.loadURL(url); if (settingsWin.isMinimized()) settingsWin.restore(); settingsWin.show(); settingsWin.focus(); return { action: 'deny' }; }
-      return { action: 'allow', overrideBrowserWindowOptions: { width: 1040, height: 780, minWidth: 360, minHeight: 480, title: 'Bob · Settings', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 1040, height: 780, minWidth: 360, minHeight: 480, title: 'Bob · Settings', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
     }
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
