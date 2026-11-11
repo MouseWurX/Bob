@@ -335,13 +335,20 @@ export function equipHtml(ctx) {
 // Gemma 4 E4B with room for it (a card of 8 GB or more, or 16 GB of shared memory on a Mac or built-in graphics),
 // otherwise Gemma 4 E2B. An ARM board (Raspberry Pi 5): Qwen3.5 2B with 4 GB, Gemma 4 E2B with 8 GB, on the processor.
 export const CORE_ENGINES = ['llamacpp', 'sdcpp', 'whispercpp'];
+// The core programs on this replicant matrix. 1.5.202: where Brain Engine has a build it is the only engine for brains
+// (1.5.196), so Get me ready offers it and not plain llama.cpp, which brains no longer run on there and which would
+// leave the Lab's and Brain Engine's features without their engine. Where it has no build (a Mac, an ARM board): llama.cpp.
+export function coreEngines(engines = []) {
+  const be = engines.find((e) => e.id === 'brainengine');
+  return CORE_ENGINES.map((id) => (id === 'llamacpp' && be && be.available !== false ? 'brainengine' : id));
+}
 export function starterBrain({ vramGB, ramGB, unified, integrated, arm } = {}) {
   if (arm) return (ramGB || 0) >= 6 ? 'gemma4-e2b' : 'qwen3.5-2b';
   if (unified || integrated) return (ramGB || 0) >= 16 ? 'gemma4-e4b' : 'gemma4-e2b';
   return (vramGB || 0) >= 8 ? 'gemma4-e4b' : 'gemma4-e2b';
 }
 export function readyPlan(hwCtx, models, engines) {
-  const eng = CORE_ENGINES.map((id) => engines.find((e) => e.id === id)).filter((e) => e && e.available !== false);
+  const eng = coreEngines(engines).map((id) => engines.find((e) => e.id === id)).filter((e) => e && e.available !== false);
   // 1.5.76: the llama.cpp that came with Bob is the basic build; with an NVIDIA card the faster CUDA build replaces it.
   const ids = eng.filter((e) => !e.installed || (e.bundled && hwCtx.nvidia)).map((e) => 'engine:' + e.id);
   const brain = models.find((m) => m.id === starterBrain(hwCtx)) || null;
@@ -378,7 +385,8 @@ export function readyList({ pack, models = [], engines = [], hw = {}, mainEmpty 
       rec: !engBlocked && m.id !== MUSIC_ID && !big?.models.includes(m.id) && (m === brain || ticks.has(m.id)), note: big?.models.includes(m.id) ? big.notes?.[m.id] || big.note || '' : (pack?.untick || []).includes(m.id) ? pack?.notes?.[m.id] || '' : '' /* only notes that explain an untick; the rest repeat the slots */, category: m.category });
   }
   // The programs: the core three, plus whatever the listed models run on.
-  const engIds = [...new Set([...CORE_ENGINES.map((id) => 'engine:' + id), ...rows.flatMap((r) => r.needs)])];
+  const core = coreEngines(engines);
+  const engIds = [...new Set([...core.map((id) => 'engine:' + id), ...rows.flatMap((r) => r.needs)])];
   const eng = [];
   for (const id of engIds) {
     const e = engById(id.slice(7));
@@ -386,7 +394,7 @@ export function readyList({ pack, models = [], engines = [], hw = {}, mainEmpty 
     const broken = e.installed && bad.includes(e.id); // here but won't start: get it again
     const swap = e.bundled && hw.nvidia; // the basic llama.cpp that came with Bob, swapped for the NVIDIA build
     const neededBy = rows.filter((r) => r.rec && r.needs.includes(id));
-    eng.push({ id, kind: 'engine', name: e.name, sizeGB: e.sizeGB || 0, here: e.installed && !swap && !broken, swap, broken, rec: CORE_ENGINES.includes(e.id) || neededBy.length > 0, what: e.what || '' });
+    eng.push({ id, kind: 'engine', name: e.name, sizeGB: e.sizeGB || 0, here: e.installed && !swap && !broken, swap, broken, core: core.includes(e.id), rec: core.includes(e.id) || neededBy.length > 0, what: e.what || '' });
   }
   return [...eng, ...rows];
 }
@@ -394,7 +402,7 @@ export function readyList({ pack, models = [], engines = [], hw = {}, mainEmpty 
 export const readyDefaults = (rows) => {
   const picks = new Set(rows.filter((r) => r.kind === 'model' && r.rec && !r.here && !r.blocked && !r.warn).map((r) => r.id));
   // The core programs, and the ones a ticked model runs on.
-  for (const r of rows) if (r.kind === 'engine' && !r.here && (CORE_ENGINES.includes(r.id.slice(7)) || rows.some((m) => picks.has(m.id) && (m.needs || []).includes(r.id)))) picks.add(r.id);
+  for (const r of rows) if (r.kind === 'engine' && !r.here && ((r.core ?? CORE_ENGINES.includes(r.id.slice(7))) || rows.some((m) => picks.has(m.id) && (m.needs || []).includes(r.id)))) picks.add(r.id);
   return picks;
 };
 // Ticking a model ticks the programs it runs on.
