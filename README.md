@@ -62,7 +62,9 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 | ⚡ **Brain Engine 3** | Bob's own engine on a newer llama.cpp base. It carries SCUT and updates itself with Bob. |
 | 🧪 **A simpler Lab** | Its own window, tabs sorted by task, one place to start, and **My Lab** for everything you've made. Plus folding experts, switching them off without cutting the file, and colouring a brain by its weights. |
 
-**Coming next:** 3D models in the side panel, and parts made with OpenSCAD. The [changelog](CHANGELOG.md) has every release.
+**Coming next:** 3D models and OpenSCAD parts · an iPhone Home Screen app · Try again and Edit in the chat · save, share and import chats · search documents by meaning · presets and saved prompts · maths shown as formulas · a passcode lock · French and Spanish · other apps and Claude using Bob · tool packs · .deb and Flatpak.
+
+The [changelog](CHANGELOG.md) has every release.
 
 ## What Bob does
 
