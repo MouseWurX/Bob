@@ -179,7 +179,7 @@ fs.mkdirSync(cfg.painterDir, { recursive: true });
   check('drafts run nothing', (wf.match(/!github\.event\.pull_request\.draft/g) || []).length === 2);
   check('every action is pinned to a full commit', [...wf.matchAll(/uses: ([^\s]+)/g)].every((m) => /@[0-9a-f]{40}$/.test(m[1])));
   check('it publishes only when started by hand', (wf.match(/github\.event_name == 'workflow_dispatch' && inputs\.publish/g) || []).length === 2);
-  check('Windows and Linux, CUDA 12.8', /cuda_12\.8\.1_windows/.test(wf) && /nvidia\/cuda:12\.8\.1-devel-ubuntu22\.04/.test(wf));
+  check('Windows and Linux, CUDA 12.8', /cuda_12\.8\.1_[\d.]*_?windows/.test(wf) && /nvidia\/cuda:12\.8\.1-devel-ubuntu22\.04/.test(wf));
   const sh = read('model3d/build-addons.sh');
   check('the build checks out exact commits and verifies them', /rev-parse HEAD\)" = "\$commit"/.test(sh) && /--no-build-isolation --no-deps/.test(sh) && /SHA256SUMS-/.test(sh));
   const py = read('model3d/bob-trellis.py');

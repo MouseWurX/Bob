@@ -32,12 +32,15 @@ jobs:
       - name: Install CUDA 12.8 (compiler and headers only)
         shell: pwsh
         run: |
-          $url = 'https://developer.download.nvidia.com/compute/cuda/12.8.1/network_installers/cuda_12.8.1_windows_network.exe'
+          # The full installer (about 3 GB): the network one fetches each part again and failed quietly here.
+          $url = 'https://developer.download.nvidia.com/compute/cuda/12.8.1/local_installers/cuda_12.8.1_572.61_windows.exe'
           Invoke-WebRequest $url -OutFile cuda.exe
-          $parts = 'nvcc_12.8','cudart_12.8','cublas_dev_12.8','cusparse_dev_12.8','cusolver_dev_12.8','curand_dev_12.8','cufft_dev_12.8','nvrtc_dev_12.8','thrust_12.8','crt_12.8','nvtx_12.8','visual_studio_integration_12.8'
-          Start-Process -Wait -FilePath .\cuda.exe -ArgumentList (@('-s') + $parts)
+          (Get-Item cuda.exe).Length
+          $parts = 'nvcc_12.8','cudart_12.8','cublas_dev_12.8','cusparse_dev_12.8','cusolver_dev_12.8','curand_dev_12.8','cufft_dev_12.8','nvrtc_dev_12.8','thrust_12.8','crt_12.8','nvtx_12.8'
+          $p = Start-Process -Wait -PassThru -FilePath .\cuda.exe -ArgumentList (@('-s') + $parts)
+          "installer exit code: $($p.ExitCode)"
           $cuda = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8'
-          if (-not (Test-Path "$cuda\bin\nvcc.exe")) { throw 'CUDA did not install' }
+          if (-not (Test-Path "$cuda\bin\nvcc.exe")) { Get-ChildItem 'C:\Program Files\NVIDIA GPU Computing Toolkit' -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 40 FullName; throw 'CUDA did not install' }
           "CUDA_PATH=$cuda" | Out-File -Append $env:GITHUB_ENV
           "CUDA_HOME=$cuda" | Out-File -Append $env:GITHUB_ENV
           "$cuda\bin" | Out-File -Append $env:GITHUB_PATH
