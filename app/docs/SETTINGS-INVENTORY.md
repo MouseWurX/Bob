@@ -254,3 +254,12 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | Settings > Everyday > How Bob works | Let Bob fix his own messages: "Off unless you turn it on. When Bob gets something wrong, or a status line goes out of date, he changes his earlier message instead of sending a new one. Only his own messages, only in the chat he's in. The message says edited, and pressing that shows what it said first." | off | new (1.5.194) |
 | Chat page > under a message Bob changed | "edited" (button; title "Bob changed this message. Press to see what it said first."). Pressed: "First said: <the first wording>". | — | new (1.5.194) |
 | Discord DMs / Telegram / phone | A fix to a message already sent: "✏️ Fixed an earlier message. It now says: <new words>" (Discord DMs change the DM itself when it was one message). | — | new (1.5.194) |
+
+## Added with quick notes, document reading and the sandbox
+
+| Where | Setting / text | Default | Status |
+|---|---|---|---|
+| Settings > Everyday > How Bob works | Let Bob take quick notes: "Off unless you turn it on. Say "note: ..." or "jot this down" in any chat, here, on your phone, in Discord DMs or Telegram, and Bob writes it down at once with the date and time. Ask for your notes, or find them by a word or #tag." | off | new, awaiting review |
+| Settings > Everyday > How Bob works (with quick notes on) | Open my notes (button): "One plain text file, one note per line. Notes Bob takes away are kept in the archive folder." | — | new, awaiting review |
+| Settings > Everyday > How Bob works | Read and search my documents: "Off unless you turn it on. Bob reads Word, Excel, PowerPoint, OpenDocument, PDF, e-book and Rich Text files with nothing extra installed, and can search inside them for words in the folders he may read (Documents, Desktop and Downloads). Nothing leaves this replicant matrix and nothing is kept on disk. Old .doc, .xls and .ppt files need the Office documents Hand." | off | new, awaiting review |
+| Settings > Everyday > How Bob works | Let Bob work things out in a sandbox: "Off unless you turn it on. For sums, dates, money and counting, Bob runs a few lines of code in a locked box and answers from the result instead of guessing. The box is empty and thrown away after each run: it can't see your files or start programs, code that goes online is refused, and it stops after 20 seconds." Where the lock doesn't hold: "The sandbox doesn't hold on this replicant matrix (<why>), so this stays off." | off | new, awaiting review |

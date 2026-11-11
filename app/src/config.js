@@ -194,7 +194,7 @@ export const VERSION = (() => {
   } catch { return { release: '0.9', branch: '', build: 0, label: '0.9.0' }; }
 })();
 
-export const SETTING_KEYS = ['planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'apuHoldbackGB'];
+export const SETTING_KEYS = ['quickNotes', 'docTools', 'sandboxCode', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'apuHoldbackGB'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -242,6 +242,9 @@ function clean(patch) {
   if ('selfWork' in out) out.selfWork = cleanSelfWork(out.selfWork); // "Let Bob work on repositories" (self-work.js), off by default
   if ('howtos' in out) out.howtos = out.howtos === true; // 1.5.79 "Let Bob learn how-tos", off by default
   if ('editOwn' in out) out.editOwn = out.editOwn === true; // "Let Bob fix his own messages", off by default (edit-own.js)
+  if ('quickNotes' in out) out.quickNotes = out.quickNotes === true; // "Let Bob take quick notes", off by default (notes.js)
+  if ('docTools' in out) out.docTools = out.docTools === true; // "Read and search my documents", off by default (my-docs.js)
+  if ('sandboxCode' in out) out.sandboxCode = out.sandboxCode === true; // "Let Bob work things out in a sandbox", off by default (sandbox-code.js)
   if ('tray' in out) out.tray = out.tray !== false; // 1.5.94 "Keep Bob in the tray"; on unless switched off since 1.5.134 (the owner asked for it)
   if ('lookIcon' in out) out.lookIcon = out.lookIcon !== false; // 1.5.94 "Use Bob's look as his icon"; on unless switched off since 1.5.134 (the owner asked for it)
   if ('houseStyle' in out) out.houseStyle = cleanHouseStyle(out.houseStyle); // 1.5.34 House style (public/house-style.js)

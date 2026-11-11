@@ -52,6 +52,9 @@ import { expectFrom, verifyOutput, afterTool, afterTurn } from './verify.js';
 import { brainMode, chatBrain, holdsChatBrain, bigSession, isBobs, sameModel, sleepAfterText, bigGraceMs, msText } from './brain-mode.js';
 import { WEB_TOOLS, WEB_OFF, webOn, webPrompt, linkPrompt, findLinks, refersToLink, linkTurn } from './web.js';
 import { editOwnOn, editOwnTool } from './edit-own.js';
+import { notesOn, notesTool } from './notes.js';
+import { docToolsOn, findDocsTool } from './my-docs.js';
+import { sandboxOn, sandboxTool } from './sandbox-code.js';
 import { autoSessionOn, pickSessionTool, autoSessionPrompt, switchLine, switchedNote, idleSession, cardBusy, IDLE_CHECK_MS } from './auto-session.js';
 import { readCard } from './gaming-card.js';
 import { Lenders, wantsBorrow, roughTokens } from './share-brains.js';
@@ -479,6 +482,9 @@ export class Brain {
     this.tools.ask_together = askTogetherTool(this); // 1.5.42: every OK a job needs on one card (together.js) // the toolbox (toolbox.js): groups added only when a job needs them
     this.tools.pick_session = pickSessionTool(this); // 1.5.43: Bob changes session himself (auto-session.js)
     this.tools.edit_my_message = editOwnTool(this); // Let Bob fix his own messages (edit-own.js), only with its setting on
+    this.tools.take_note = notesTool(this); // Let Bob take quick notes (notes.js), only with its setting on
+    this.tools.find_in_documents = findDocsTool(cfg); // Read and search my documents (my-docs.js), only with its setting on
+    this.tools.run_in_sandbox = sandboxTool(this); // Let Bob work things out in a sandbox (sandbox-code.js), only with its setting on
     // 1.5.91: the Set it up card for something missing or switched off. Listed only while something is (offTools).
     this.tools.offer_setup = {
       schema: { type: 'function', function: { name: 'offer_setup', description: 'Something {{USER}} asked for needs a part that isn\'t set up or a setting that is off: show a card with one button that sets it up or switches it on, then the job carries on by itself. For pictures, video, music and sound effects, just call make_image, make_video, make_music or make_sound instead: they show the card themselves.', parameters: { type: 'object', properties: { what: { type: 'string', enum: [...Object.keys(NEEDS), ...SWITCH_KEYS], description: 'pictures, edits, video, music, sfx, voice (read replies aloud), hearing (hear {{USER}} talk), web (Web search), workshop (ComfyUI workflows), or hand:<id> for a Hand that is off (hand:files, hand:run, hand:schedules, hand:apps, hand:browser, hand:office, hand:security, hand:maker, hand:mcp)' } }, required: ['what'] } } },
@@ -1420,7 +1426,7 @@ export class Brain {
     let can = {};
     try { can = capabilities(this.cfg); } catch {}
     // 1.5.91: make_image, make_video, make_music and make_sound stay listed when they aren't set up: calling one shows the Set it up card.
-    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', !editOwnOn(this.cfg) && 'edit_my_message', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), !(selfWorkOn(this.cfg) && readyRepos(this.cfg).length) && 'work_on_repo', ...toolsOff(this.cfg)].filter(Boolean));
+    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', !editOwnOn(this.cfg) && 'edit_my_message', !notesOn(this.cfg) && 'take_note', !docToolsOn(this.cfg) && 'find_in_documents', !sandboxOn(this.cfg) && 'run_in_sandbox', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), !(selfWorkOn(this.cfg) && readyRepos(this.cfg).length) && 'work_on_repo', ...toolsOff(this.cfg)].filter(Boolean));
   }
   usable(name, off = this.offTools()) { return Boolean(this.tools[name]) && !off.has(name); }
   // 1.5.41: whether OKs are asked on cards right now (so a job's OKs can go on one card). Not with "work without asking".
