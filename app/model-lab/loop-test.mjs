@@ -29,34 +29,14 @@ const plain = Boolean(o.plain);
 brain.cfg.loopHelpOff = plain;
 
 // ---- the jobs: every plain request with a group from test/phrasings.js, plus jobs that take several steps ----
-const MULTI = [
-  { job: 'multi', text: 'find out how tall the eiffel tower is and save it in a text file called tower.txt', group: 'documents', need: ['web_search', 'write_file'] },
-  { job: 'multi', text: 'read notes.txt and put the to-dos from it on my notice board', group: null, need: ['read_file', 'notice_board'] },
-  { job: 'multi', text: 'look up the weather in Calgary and Denver and tell me which is warmer', group: null, need: ['web_search'] },
-  { job: 'multi', text: 'check report.txt, it says the total is wrong, fix the total line', group: 'documents', need: ['read_file', 'edit_file'] },
-  { job: 'multi', text: 'what is in missing.txt? if it is not there, look in the inn folder for something like it', group: null, need: ['read_file', 'list_folder'] },
-  { job: 'multi', text: 'search for the three newest llama.cpp releases and put them in a spreadsheet', group: 'documents', need: ['web_search', 'save_spreadsheet'] },
-  { job: 'multi', text: 'remember that my cat is called Patches, then remind me tomorrow at 9 to feed him', group: null, need: ['remember', 'reminders'] },
-  { job: 'multi', text: 'read the page https://example.com/news and give me the two main points', group: null, need: ['fetch_page'] }
-];
+const entry = await import(pathToFileURL(path.join(L.bob, 'src', 'lab-entry.js')).href); // the jobs and stand-ins the Lab test shares
+const MULTI = entry.MULTI.map((j) => ({ job: 'multi', ...j }));
 let jobs = (kit.phrasings || []).filter((p) => p.group && !p.pic && !p.recent).map((p) => ({ ...p, need: [] }));
 if (o.quick) jobs = jobs.filter((_, i) => i % 4 === 0);
 if (o.jobs) jobs = jobs.slice(0, Number(o.jobs));
 jobs.push(...MULTI);
 
 // ---- fake tools: fixed results, a couple of failures on purpose ----
-const RESULTS = {
-  web_search: (a) => `1. ${a.query} - Example Encyclopedia: ${a.query} is about 330 m (as of 2026). https://example.org/a\n2. More on ${a.query}: https://example.org/b`,
-  fetch_page: (a) => `Page ${a.url}: The council approved the new bridge. Bus fares go up 5% in March. Weather: sunny.`,
-  read_file: (a) => (/missing/i.test(a.path || '') ? 'Error: ENOENT: no such file or directory' : /report/i.test(a.path || '') ? 'Line 1: apples 3\nLine 2: pears 4\nTotal: 9' : 'To do: call the plumber\nTo do: buy milk'),
-  list_folder: () => 'notes.txt\nreport.txt\nmissing-old.txt',
-  edit_file: (a) => (a.find ? `Changed ${a.path}.` : 'Error: find is missing'),
-  write_file: (a) => `Saved ${a.path}.`,
-  save_spreadsheet: () => 'Saved ledger\\releases.csv.',
-  notice_board: (a) => (a.action === 'write' ? 'Saved the board.' : 'The notice board is empty.'),
-  remember: () => 'Remembered.',
-  reminders: () => 'Reminder set for tomorrow 09:00.'
-};
 const runs = [];
 const realRun = brain.runTool.bind(brain);
 const REAL = new Set(['use_tools', 'bob_help', 'offer_setup', 'pick_session', 'show_plan', 'ask_together']); // Bob's own answers
@@ -66,8 +46,7 @@ brain.runTool = async (name, args, ctx) => {
   const ok = params ? !checkArgs(params, args).problems.length : true;
   runs.push({ name, args, complete: ok });
   if (REAL.has(name)) return realRun(name, args, ctx);
-  const f = RESULTS[name];
-  return { text: f ? f(args || {}) : `${name}: done (test stand-in).` };
+  return { text: entry.standIn(name, args) };
 };
 brain.ensureModel = async () => {}; brain.fitCtx = async () => Number(o.ctx); brain.recall = async () => '';
 

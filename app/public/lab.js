@@ -17,6 +17,7 @@ import { createPlayground, PLAY_PAGES } from './lab-playground.js'; // 1.5.156 P
 import { createPeek } from './lab-peek.js'; // 1.5.164 Playground: Peek inside
 import { homeReportHtml } from './lab-home-ways.js'; // 1.5.164 the Forge's home ways' lines in the runs list
 import { goBtn, goWhere } from './lab-go.js'; // a button on every "get one in Get models" message
+import { queueHtml, queueClick, queueBtn, queueAdd } from './lab-queue.js'; // Nov 11: the job queue
 import { mineHtml } from './lab-mine.js'; // My Lab: what this Lab has made and measured, in one list
 
 const $ = (id) => document.getElementById(id);
@@ -49,6 +50,8 @@ const MODE_NOTES = {
   mine: 'The same in both modes.',
 };
 const TYPE_NOTE = { Q4_K_M: 'Q4 (recommended)', Q5_K_M: 'Q5', Q6_K: 'Q6', Q8_0: 'Q8', Q3_K_M: 'Q3 (only for brains meant for 8 GB or less)' };
+// Show the wobble (Nov 11): "71 ± 4" when three runs were made, else just the score.
+const withWobble = (r, id) => (r.scores[id] == null ? '-' : r.wobble?.[id] != null ? `${r.scores[id]} ± ${r.wobble[id]}` : r.scores[id]);
 const PARTS = { general: 'General knowledge', tools: 'Picking the right tool', coding: 'Coding', following: 'Following instructions' };
 
 // `go(where)` opens Get models, Settings (Engines) or the chat for the "take me there" buttons. `page`: the Lab fills its
@@ -84,8 +87,9 @@ export function createLab({ api, note, go, page = false }) {
   }
   const jobsHtml = () => `<fieldset class="lab-jobs"><legend>What do you want to do?</legend><p class="muted">Each job shows only the steps it needs.</p><div class="lab-cards">${JOBS.map((j) => `<button type="button" class="lab-card${job === j.id ? ' on' : ''}" data-job="${j.id}" aria-pressed="${job === j.id}"><strong>${nm(j.title)}</strong><span class="muted">${esc(j.what)}</span></button>`).join('')}</div></fieldset>`;
   const learn = createLearn({ api, info: () => view, saves: () => saves });
+  const chBody = () => ({ from: ch.from, packs: ch.packs, ...(ch.bench && view.benchHere ? { bench: true } : {}), ...(ch.wobble ? { wobble: true } : {}), ...(view.mode === 'pro' ? { gen: px.gen() } : {}) });
   // 1.5.153 Challenges: which brain, which packs, the scoreboard's sort, and the Save panels (one per result).
-  const ch = { from: '', packs: ['quiz', 'reasoning', 'sums', 'rules', 'tools', 'code'], bench: false, sort: 'name', down: false, by: 'class', kind: 'all', here: false, fits: false, wide: false }; // 1.5.162 the board by class of model
+  const ch = { from: '', packs: ['quiz', 'reasoning', 'sums', 'rules', 'tools', 'code'], bench: false, wobble: false, sort: 'name', down: false, by: 'class', kind: 'all', here: false, fits: false, wide: false }; // 1.5.162 the board by class of model
   const saves = {};
   const saveState = (k) => (saves[k] ||= { open: false, format: 'png', hardware: false, saved: '', error: '' });
   let measures = [], picked = [], table = null, saved = '';
@@ -355,15 +359,15 @@ export function createLab({ api, note, go, page = false }) {
   }
 
   function runsHtml() {
-    if (!view.runs.length) return '';
-    return `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.kind === 'write' ? `lessons, taught by ${esc(x.from)}` : x.kind === 'challenge' ? 'challenges' : x.kind === 'ladder' ? 'quantization ladder' : x.kind === 'ladder-ask' ? 'same question, every size' : x.kind === 'watch' ? 'a scan of its experts' : x.kind === 'mix' ? `a mix of ${esc(x.from)}` : x.kind === 'stack' ? `stacked layers of ${esc(x.from)}` : x.kind === 'refusals' ? `${esc(x.from)} with the refusal habit taken out` : x.kind === 'refusals-try' ? 'try it first, nothing written' : x.kind === 'build' || x.kind === 'sample' ? `${x.kind === 'sample' ? 'sample lessons' : 'lessons'} from your files, taught by ${esc(x.from)}` : `from ${esc(x.from)}`} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
+    if (!view.runs.length) return queueHtml(view.queue);
+    return queueHtml(view.queue) + `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.kind === 'write' ? `lessons, taught by ${esc(x.from)}` : x.kind === 'challenge' ? 'challenges' : x.kind === 'ladder' ? 'quantization ladder' : x.kind === 'ladder-ask' ? 'same question, every size' : x.kind === 'watch' ? 'a scan of its experts' : x.kind === 'mix' ? `a mix of ${esc(x.from)}` : x.kind === 'stack' ? `stacked layers of ${esc(x.from)}` : x.kind === 'refusals' ? `${esc(x.from)} with the refusal habit taken out` : x.kind === 'refusals-try' ? 'try it first, nothing written' : x.kind === 'build' || x.kind === 'sample' ? `${x.kind === 'sample' ? 'sample lessons' : 'lessons'} from your files, taught by ${esc(x.from)}` : `from ${esc(x.from)}`} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
       ${x.state === 'running' ? ' <button type="button" class="link" data-stop>Stop</button>' : ''}
       ${x.state === 'failed' || x.state === 'stopped' ? `<br><span class="muted">${esc(x.error || '')}</span>` : ''}
       ${(x.notes || []).map((n) => `<br><span class="muted">${esc(n)}</span>`).join('')}
       ${x.kind === 'write' && x.report ? `<br><span class="muted">${x.report.lessons} lessons written in ${x.report.minutes} minutes. Pick it in step 2, under A lesson set I wrote or built here.</span>` : ''}
       ${x.kind === 'build' && x.report ? `<br><span class="muted">${x.report.lessons} lessons built in ${x.report.minutes} minutes${x.report.held ? `, ${x.report.held} passages held back` : ''}. Pick it in step 2, under A lesson set I wrote or built here, or open it under Sets built from your files.</span>` : ''}
       ${x.kind === 'sample' && x.report ? `<br><span class="muted">${x.report.lessons} sample lessons in ${x.report.minutes} minutes${x.report.held ? `, ${x.report.held} passages held back` : ''}. They're under Build a new set from my files, in step 2.</span>` : ''}
-      ${x.kind === 'challenge' && x.report ? `<table class="lab-report"><caption class="muted">Challenges (out of 100)</caption><tr><th scope="col">Challenge</th><th scope="col">Score</th><th scope="col">Right</th></tr>${x.report.challenges.map((c) => `<tr><th scope="row">${esc(c.title)}</th><td>${c.score ?? '-'}</td><td>${c.skipped ? esc(c.skipped) : `${c.right} of ${c.of}`}${c.parts ? `<br><span class="muted">${esc(guardPartsLine(c.parts))}</span>` : ''}${c.note ? `<br><span class="muted">${esc(c.note)}</span>` : ''}</td></tr>`).join('')}</table>${x.report.bench ? `<p class="muted">${esc(x.report.bench.line || `The standard speed test didn't finish: ${x.report.bench.error || ''}`)}</p>` : ''}${view.mode === 'pro' ? px.reportExtraHtml(x) : ''}${saveHtml(x.id, saveState(x.id), view.hardware)}` : ''}
+      ${x.kind === 'challenge' && x.report ? `<table class="lab-report"><caption class="muted">Challenges (out of 100)</caption><tr><th scope="col">Challenge</th><th scope="col">Score</th><th scope="col">Right</th></tr>${x.report.challenges.map((c) => `<tr><th scope="row">${esc(c.title)}</th><td>${c.score ?? '-'}${c.wobble != null ? ` ± ${c.wobble}` : ''}</td><td>${c.skipped ? esc(c.skipped) : `${c.right} of ${c.of}`}${c.parts ? `<br><span class="muted">${esc(guardPartsLine(c.parts))}</span>` : ''}${c.note ? `<br><span class="muted">${esc(c.note)}</span>` : ''}</td></tr>`).join('')}</table>${x.report.bench ? `<p class="muted">${esc(x.report.bench.line || `The standard speed test didn't finish: ${x.report.bench.error || ''}`)}</p>` : ''}${view.mode === 'pro' ? px.reportExtraHtml(x) : ''}${saveHtml(x.id, saveState(x.id), view.hardware)}` : ''}
       ${x.report?.folded ? `<p class="muted">Folded, not dropped: ${Number(x.report.folded.experts)} experts were blended into the ${Number(x.report.folded.kept)} kept per layer. It hasn't been taught back yet, so test it beside a plain cut at the same size.</p>` : ''}
       ${x.report?.coverage ? `<table class="lab-report"><caption class="muted">Coverage cut: kept ${x.report.coverage.experts} of ${x.report.coverage.of} experts per layer</caption><tr><th scope="col">Skill</th><th scope="col">Kept, on average</th><th scope="col">Worst layer</th></tr>${x.report.coverage.skills.map((k) => `<tr><th scope="row">${esc(k.name)}</th><td>${k.average}%</td><td>${k.worst}% (layer ${k.worstLayer})</td></tr>`).join('')}</table>` : ''}
       ${homeReportHtml(x)}
@@ -388,7 +392,7 @@ export function createLab({ api, note, go, page = false }) {
     const key = ch.sort, val = (r) => (key === 'name' ? r.name.toLowerCase() : key === 'size' ? r.sizeGB ?? -1 : key === 'speed' ? r.tps ?? -1 : key === '__more' ? moreOf(r)?.mean ?? -1 : r.scores[key] ?? -1);
     rows.sort((a, b) => { const x = val(a), y = val(b); const c = x < y ? -1 : x > y ? 1 : 0; return ch.down ? -c : c; });
     const head = ['Brain', ...cols.map(([, t]) => t), 'Size', 'Words a second'];
-    return { title: 'Lab scoreboard', head, rows: rows.map((r) => [r.name, ...cols.map(([id]) => (id === '__more' ? (moreOf(r) ? `${moreOf(r).mean} (${moreOf(r).n} of ${moreOf(r).of})` : '-') : r.scores[id] ?? '-')), r.sizeGB ? `${r.sizeGB} GB` : '-', r.tps ?? '-']), note: 'Scores out of 100, temperature 0, thinking off. Only comparable with other scores from the same replicant matrix.' };
+    return { title: 'Lab scoreboard', head, rows: rows.map((r) => [r.name, ...cols.map(([id]) => (id === '__more' ? (moreOf(r) ? `${moreOf(r).mean} (${moreOf(r).n} of ${moreOf(r).of})` : '-') : withWobble(r, id))), r.sizeGB ? `${r.sizeGB} GB` : '-', r.tps ?? '-']), note: 'Scores out of 100, temperature 0, thinking off. ± is the wobble from three runs: a gap smaller than it may be luck. Only comparable with other scores from the same replicant matrix.' };
   }
   // 1.5.161 The local leaderboard: brains ranked inside classes of models by their total weights, not by graphics card.
   const wts = (r) => (r.paramsB ? `${r.paramsB}B${r.moe && r.activeB ? `, ${r.activeB}B at work` : ''}` : '-');
@@ -396,12 +400,12 @@ export function createLab({ api, note, go, page = false }) {
   function classTable() { // the same boards, for Save: one table with the class in its own column
     const name = Object.fromEntries((view.classes || []).map((c) => [c.id, c.label]));
     const rows = boardRows().sort((a, b) => (view.classes || []).findIndex((c) => c.id === a.cls) - (view.classes || []).findIndex((c) => c.id === b.cls) || order(a, b));
-    return { title: 'Lab leaderboard by class', head: ['Class', 'Brain', 'Overall', 'Weights', 'Quant', 'Size', 'Words a second', ...PACK_COLS().map(([, t]) => t)], rows: rows.map((r) => [name[r.cls] || 'Not placed yet', r.name, r.overall ?? '-', wts(r), r.quant || '-', r.sizeGB ? `${r.sizeGB} GB` : '-', r.bench ? `${r.tps ?? '-'} (standard: reads ${r.bench.read ?? '-'}, writes ${r.bench.write ?? '-'})` : r.tps ?? '-', ...PACK_COLS().map(([id]) => (r.scores[id] == null ? '-' : r.old.includes(id) ? `${r.scores[id]} (older test)` : r.scores[id]))]), note: 'Classes by total weights. Overall = average of every challenge, run with the current version of each test; brains that haven\'t run them all sit below the ones that have. Scores out of 100, temperature 0, thinking off. Only comparable with other scores from the same replicant matrix.' };
+    return { title: 'Lab leaderboard by class', head: ['Class', 'Brain', 'Overall', 'Weights', 'Quant', 'Size', 'Words a second', ...PACK_COLS().map(([, t]) => t)], rows: rows.map((r) => [name[r.cls] || 'Not placed yet', r.name, r.overall ?? '-', wts(r), r.quant || '-', r.sizeGB ? `${r.sizeGB} GB` : '-', r.bench ? `${r.tps ?? '-'} (standard: reads ${r.bench.read ?? '-'}, writes ${r.bench.write ?? '-'})` : r.tps ?? '-', ...PACK_COLS().map(([id]) => (r.scores[id] == null ? '-' : r.old.includes(id) ? `${r.scores[id]} (older test)` : withWobble(r, id)))]), note: 'Classes by total weights. Overall = average of every challenge, run with the current version of each test; brains that haven\'t run them all sit below the ones that have. Scores out of 100, temperature 0, thinking off. Only comparable with other scores from the same replicant matrix.' };
   }
   const order = (a, b) => Number(Boolean(b.all)) - Number(Boolean(a.all)) || (b.overall ?? -1) - (a.overall ?? -1) || (b.tps ?? 0) - (a.tps ?? 0) || (a.sizeGB ?? 0) - (b.sizeGB ?? 0);
   function classTables() {
     const rows = boardRows(), classes = [...(view.classes || []), { id: '', label: 'Not placed yet', hint: 'Scored before classes. Run any challenge on it again to place it.' }];
-    const cell = (r, id) => { const v = r.scores[id]; if (v == null) return '<td>-</td>'; return r.old.includes(id) ? `<td class="muted"><s>${v}</s><span class="sr-only"> (older test, not counted)</span></td>` : `<td>${v}</td>`; };
+    const cell = (r, id) => { const v = r.scores[id]; if (v == null) return '<td>-</td>'; return r.old.includes(id) ? `<td class="muted"><s>${v}</s><span class="sr-only"> (older test, not counted)</span></td>` : `<td>${esc(String(withWobble(r, id)))}</td>`; };
     const out = classes.map((c) => {
       const list = rows.filter((r) => r.cls === c.id).sort(order); // ran them all first, then overall, speed, smaller file
       if (!list.length) return '';
@@ -432,10 +436,14 @@ export function createLab({ api, note, go, page = false }) {
       ${packGroups(view.packs).map((grp) => `<fieldset><legend>${esc(grp.label)}</legend>${grp.packs.map((p) => `<label class="lab-opt"><input type="checkbox" data-pack="${esc(p.id)}" ${ch.packs.includes(p.id) ? 'checked' : ''}> <span><strong>${nm(p.title)}</strong> <span class="muted">· ${p.count} questions · ${esc(packMinutesLine(p.minutes, view.cardGB, view.sharedMemory))}</span><br><span class="muted">${esc(p.what)}</span></span></label>`).join('')}</fieldset>`).join('')}
       ${askUnload?.challenge ? `<div class="setup-offer" role="alert"><strong>Bob's brain is on the graphics card</strong><span>${esc(askUnload.join(', '))} is loaded. The challenges need the card, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-unload>Unload it and start</button><button type="button" class="link" data-nounload>Not now</button></div></div>` : ''}
       ${view.mode === 'pro' ? px.myPacksHtml(ch.packs) + px.settingsHtml() : ''}
+      <label class="lab-opt"><input type="checkbox" data-chwobble ${ch.wobble ? 'checked' : ''}> <span><strong>Show the wobble</strong> <span class="muted">· three times as long · off unless ticked</span><br><span class="muted">Runs each challenge three times and shows ± beside the score, so a small win isn't taken for a real one. These runs don't change the scoreboard's scores, only its ±.</span></span></label>
       <label class="lab-opt"><input type="checkbox" data-chbench ${ch.bench ? 'checked' : ''} ${view.benchHere ? '' : 'disabled'}> <span><strong>${nm('Add the standard speed test')}</strong> <span class="muted">· about 1 to 3 minutes · off unless ticked</span><br><span class="muted">${view.benchHere ? 'llama-bench, the speed test other people post: how fast the brain reads 512 words and writes 128. Your numbers can be compared with theirs for the same card.' : 'llama-bench isn\'t here. It comes with the built-in engine and with Brain Engine (Settings, Engines).'}</span></span></label>
-      <div class="row"><button type="button" class="get" data-chgo ${ch.from && ch.packs.length && !busy ? '' : 'disabled'}>${busy ? 'The Lab is busy' : 'Run the challenges'}</button></div>
+      <div class="row"><button type="button" class="get" data-chgo ${ch.from && ch.packs.length && !busy ? '' : 'disabled'}>${busy ? 'The Lab is busy' : 'Run the challenges'}</button>${queueBtn('challenge', Boolean(ch.from && ch.packs.length))}</div>
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
       <section class="lab-compare"><h3>Scoreboard</h3>${board}</section>
+      <section class="lab-recheck" aria-labelledby="lab-recheck-h"><h3 id="lab-recheck-h">After engine updates</h3>
+        <label class="lab-opt"><input type="checkbox" data-recheck ${view.recheck?.on ? 'checked' : ''}> <span><strong>Check my main brain after engine updates</strong> <span class="muted">· off unless ticked</span><br><span class="muted">When the engine updates, I run the Lab test on my main brain once I've been quiet for 10 minutes, and tell you if its score or speed dropped.</span></span></label>
+        ${view.recheck?.last ? `<p class="muted">Last check (${esc(view.recheck.last.when)}, ${esc(view.recheck.last.engine || 'engine update')}): ${view.recheck.last.after ? `${esc(view.recheck.last.name)} ${view.recheck.last.before ? `${view.recheck.last.before.score} → ` : ''}${view.recheck.last.after.score} on the Lab test${view.recheck.last.after.tps ? `, ${view.recheck.last.after.tps} words a second` : ''}. ${view.recheck.last.warn ? 'It slipped.' : 'No real drop.'}` : esc(view.recheck.last.note || '')}</p>` : ''}</section>
       ${gd.html()}
     </div>`;
   }
@@ -494,6 +502,8 @@ export function createLab({ api, note, go, page = false }) {
     if (isCh() && gd.change(el)) return; // 1.5.164 the Guard rails sandbox keeps its own words
     if (el.name === 'chfrom') { ch.from = el.value; return draw(); }
     if ('chbench' in el.dataset) { ch.bench = el.checked; return draw(); }
+    if ('chwobble' in el.dataset) { ch.wobble = el.checked; return draw(); }
+    if ('recheck' in el.dataset) { try { view.recheck = await api('/api/lab/recheck', { on: el.checked }); } catch (err) { msg = err.message; } return draw(); }
     if (el.dataset.pack) { const k = el.dataset.pack; ch.packs = el.checked ? [...new Set([...ch.packs, k])] : ch.packs.filter((x) => x !== k); return draw(); }
     if (el.dataset.savefmt) { saveState(el.dataset.savefmt).format = el.value; return draw(); }
     if (el.dataset.savehw) { saveState(el.dataset.savehw).hardware = el.checked; return draw(); }
@@ -571,6 +581,14 @@ export function createLab({ api, note, go, page = false }) {
     if (b.dataset.tab) { await show(b.dataset.tab); $(`lab-tab-${tab}`)?.focus(); return; }
     if (b.dataset.labgo) { const w = goWhere(b.dataset.labgo); if (w) go?.(w); return; } // "Open Get models" and friends
     if (b.dataset.playpage && SUBS[tab]?.includes(b.dataset.playpage)) { await show(tab, b.dataset.playpage); $(`play-page-${sub[tab]}`)?.focus(); return; }
+    { // Nov 11: the job queue's own buttons, on any page
+      let nq = null; try { nq = await queueClick(b, api); } catch (err) { msg = err.message; return draw(); }
+      if (nq) { view.queue = nq; return draw(); }
+    }
+    if (b.dataset.qadd === 'challenge') {
+      try { const name = view.brains.find((x) => x.id === ch.from)?.name || 'a brain'; view.queue = await queueAdd(api, 'challenge', { challenge: chBody() }, `Challenges for ${name}${ch.wobble ? ' (wobble)' : ''}`); } catch (err) { msg = err.message; }
+      return draw();
+    }
     if (b.dataset.minego) { const [t, p] = b.dataset.minego.split(':'); await show(t, p); $(`lab-tab-${tab}`)?.focus(); return; }
     if (isLearn()) return;
     if (b.dataset.boardby) { ch.by = b.dataset.boardby; draw(); body.querySelector(`[data-boardby="${ch.by}"]`)?.focus(); return; }
@@ -590,7 +608,7 @@ export function createLab({ api, note, go, page = false }) {
     }
     if ('chgo' in b.dataset || (askUnload?.challenge && 'unload' in b.dataset)) {
       try {
-        const res = await api('/api/lab/challenge', { challenge: { from: ch.from, packs: ch.packs, ...(ch.bench && view.benchHere ? { bench: true } : {}), ...(view.mode === 'pro' ? { gen: px.gen() } : {}) }, unload: 'unload' in b.dataset });
+        const res = await api('/api/lab/challenge', { challenge: chBody(), unload: 'unload' in b.dataset });
         if (res.needUnload) { askUnload = Object.assign(res.names, { challenge: true }); return draw(); }
         askUnload = null;
       } catch (err) { msg = err.message; }
@@ -667,6 +685,7 @@ export function createLab({ api, note, go, page = false }) {
     close() { if (dlg.open) dlg.close(); },
     // Progress from the Lab job (the server's 'lab' events).
     fullUpdate(full) { if (!view) return; view.full = full; if (dlg.open) draw(); if (full?.state === 'done' || full?.state === 'failed') load(); }, // Bring in a full-size brain: progress, then the lists again
+    queueUpdate(q) { if (!view || !q) return; view.queue = q; if (dlg.open) draw(); },
     update(run) { if (!view) return; rc.runUpdate(run); const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if ((run.kind === 'challenge' || run.kind?.startsWith('ladder') || ['mix', 'stack', 'refusals', 'refusals-try'].includes(run.kind)) && run.state !== 'running') { load(); return; } if (isLearn()) return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
   };
 }

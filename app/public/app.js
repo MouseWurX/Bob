@@ -778,7 +778,9 @@ function onEvent(ev) {
       for (const b of el.querySelectorAll('button')) b.onclick = () => { el.remove(); if (b.dataset.t === 'look') tidyPage.open(); };
       break;
     }
-    case 'lab': labPage.update(ev.run); break; // 1.5.141 (the Lab's own window reads these itself)
+    case 'lab': labPage.update(ev.run); break;
+    case 'lab-queue': labPage.queueUpdate?.(ev.queue); break; // Nov 11: the Lab's job queue
+    case 'lab-recheck': note(ev.text); break; // Nov 11: a brain slipped after an engine update // 1.5.141 (the Lab's own window reads these itself)
     case 'lab-full': labPage.fullUpdate(ev.full); break; // Bring in a full-size brain
     case 'lab-diffusion': document.dispatchEvent(new CustomEvent('lab-diffusion', { detail: ev.now })); break; // Playground: Diffusion brains, live
     case 'lab-done': note(ev.ok ? `🧪 The Lab finished ${ev.name}${ev.score != null ? `: ${ev.score} out of 100 on the Lab test` : ''}. Open the Lab to see the report.` : `🧪 The Lab stopped on ${ev.name}: ${ev.error}`); break;

@@ -148,10 +148,19 @@ function budgetHtml(ctx) {
 
 const jobSelect = (value, jobs, label) => (jobs.length ? `<select class="job-add" data-brainjob="${esc(value)}" aria-label="${esc(label)}"><option value="">+ job</option>${jobs.map((s) => `<option value="${esc(s.id)}">${s.icon} ${esc(s.name)}</option>`).join('')}</select>` : '');
 
+// Lab scores on the Brains page (Nov 11): what the Lab measured on this replicant matrix, when it has. ctx.labScores =
+// { "<brain id>": { tools, coding, overall, tps, when, wobble } } from /api/lab/brain-scores.
+export function labLine(b, ctx) {
+  const s = ctx.labScores?.[b.entry?.id || b.value] || ctx.labScores?.[b.value];
+  if (!s) return '';
+  const bits = [s.tools != null && `tools ${s.tools}`, s.coding != null && `coding ${s.coding}`, s.tps && `${s.tps} words a second here`].filter(Boolean);
+  return bits.length ? `Lab: ${bits.join(' · ')}${s.when ? ` (${s.when})` : ''}` : '';
+}
+const labLineHtml = (b, ctx) => { const t = labLine(b, ctx); return t ? `<br><span class="muted lab-line" title="Scores out of 100 from the Lab's tests on this replicant matrix">🧪 ${esc(t)}</span>` : ''; };
 function brainRowHtml(b, ctx) {
   const chips = b.jobs.map((s) => `<span class="job-chip" title="${esc(s.does)}">${s.icon} ${esc(s.name)}${s.off ? `<button type="button" class="chip-x" data-unequip="${esc(s.id)}" aria-label="Take ${esc(b.name)} off ${esc(s.name)}">✕</button>` : ''}</span>`).join('');
   const trial = b.entry?.trial ? '<span class="tag">Not tried yet</span>' : '';
-  return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name"><strong>${esc(b.name)}</strong> ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span></div>
+  return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name"><strong>${esc(b.name)}</strong> ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${labLineHtml(b, ctx)}</div>
     <div class="brain-jobs">${chips}${jobSelect(b.value, jobsFor(b.value, ctx), `Give ${b.name} another job`)}</div>
     <div class="brain-place">${placeBarHtml(b.entry, ctx)}<div class="brain-act"><span class="muted">${handOn(b.value, ctx) ? 'By hand' : 'Auto'}</span><span><button type="button" class="mini" data-calibrate="${esc(b.value)}" ${calLock(b, ctx) || ctx.place?.job?.state === 'running' ? 'disabled' : ''} aria-label="Calibrate ${esc(b.name)}"${calLock(b, ctx) ? ` title="${esc(calLock(b, ctx))}"` : ''}>⏱ Calibrate</button> <button type="button" class="mini" data-brainsetup="${esc(b.value)}" aria-label="Set up ${esc(b.name)}">Set up</button></span></div></div></li>`;
 }
@@ -265,7 +274,7 @@ export function brainsHtml(ctx) {
       ${used.length ? `<ul class="brain-list">${used.map((b) => brainRowHtml(b, ctx)).join('')}</ul>` : '<p class="muted">No brain yet. Pick one for a job below, or get one from the catalogue.</p>'}
       ${empty.length ? `<h4>Jobs with no brain of their own</h4><ul class="brain-list">${empty.map((s) => emptyJobHtml(s, ctx)).join('')}</ul>` : ''}</section>
     <section class="brains-panel"><h3>Add a brain</h3>
-      ${spare.length ? `<ul class="brain-list">${spare.map((b) => `<li class="brain-row spare"><div class="brain-name"><strong>${esc(b.name)}</strong><br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')} · on this replicant matrix, no job yet</span></div><div class="brain-jobs">${jobSelect(b.value, jobsFor(b.value, ctx), `Give ${b.name} a job`)}</div><div class="brain-place">${placeBarHtml(b.entry, ctx)}</div></li>`).join('')}</ul>` : ''}
+      ${spare.length ? `<ul class="brain-list">${spare.map((b) => `<li class="brain-row spare"><div class="brain-name"><strong>${esc(b.name)}</strong><br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')} · on this replicant matrix, no job yet</span>${labLineHtml(b, ctx)}</div><div class="brain-jobs">${jobSelect(b.value, jobsFor(b.value, ctx), `Give ${b.name} a job`)}</div><div class="brain-place">${placeBarHtml(b.entry, ctx)}</div></li>`).join('')}</ul>` : ''}
       <p class="get-more"><button type="button" class="get-more-btn" data-tab="catalogue">📚 Brain catalogue: every brain, by job and size</button></p></section>
     <section class="brains-panel"><h3>Senses and tools</h3>
       <ul class="brain-list">${senseSlots().map((s) => senseRowHtml(s, ctx)).join('')}</ul>

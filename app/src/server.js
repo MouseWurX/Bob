@@ -29,7 +29,9 @@ import { checkEngine, seedBundledEngine, goBackEngine, removeEngine, brainsEngin
 import { onEngineFallback } from './engine-blocked.js';
 import { sacNoticeOnce } from './app-control.js';
 import { liveTrace } from '../public/lab-watch-math.js';
-import { cubeMap, cubeBrains, cubeShapes } from './lab-watch.js';
+import { cubeMap, cubeBrains, cubeShapes, listRecordings, startWatch } from './lab-watch.js';
+import { LabQueue } from './lab-queue.js'; // Nov 11: the Lab's job queue
+import { recheckTick, QUIET_MIN } from './lab-recheck.js'; // Nov 11: check again after engine updates
 import { EngineKeeper, keeperOn } from './engine-keeper.js';
 import { autostartOn, setAutostart } from './autostart.js';
 import { applyWindowState } from './app-icon.js';
@@ -178,6 +180,15 @@ if (brain.engine) {
 const shop = new ModelShop(cfg, (ev) => { broadcast(ev); if (ev?.type === 'downloads') brain.downloadsChanged(); }, brain.engine);
 const lab = new Lab(cfg, { shop, brain, broadcast }); // 1.5.141
 lab.version = VERSION.label; // 1.5.153 the foot of a saved Lab result
+// Nov 11: the Lab's job queue (lab-queue.js), its fNRI scans for My Lab, and the check after engine updates.
+lab.listScans = () => lab.brains().flatMap((b) => listRecordings(cfg, b).map((x) => ({ brain: b.name, brainId: b.id, id: x.id, name: x.name, when: x.when, at: x.at, skills: x.skills.length }))).sort((a, b) => b.at - a.at);
+lab.queue = new LabQueue(lab, {
+  starters: { challenge: (x) => lab.startChallenge(x.challenge, { unload: true }), ladder: (x) => lab.startLadder({ from: x.from, types: x.types }, { unload: true }), watch: (x) => startWatch(lab, x, { unload: true }) },
+  busy: () => brain.turns.size > 0 || brain.queue.some((j) => j.state === 'waiting') || Boolean(shop.job),
+  idle: () => Date.now() - brain.lastActivity >= QUIET_MIN * 60e3,
+  onTick: () => { try { const v = lab.engineView(); recheckTick({ lab, queue: lab.queue, mainId: cfg.models?.bob, version: v.version ? `${v.name} ${v.version}` : '', engine: v.version ? `${v.name} ${v.version}` : '', rows: lab.scores() }); } catch {} }
+});
+lab.queue.start();
 // 1.5.184 Keep engines up to date (src/engine-keeper.js): on unless switched off in Settings, Engines. Checks two
 // minutes after start and about daily; updates only while no brain is loaded on that engine and nothing is busy.
 // 1.5.203: Bob went back to the engine he had before because Windows blocked the new one: say so in chat, once.

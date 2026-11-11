@@ -36,6 +36,7 @@ function connect() {
   es.onmessage = (m) => {
     let ev; try { ev = JSON.parse(m.data); } catch { return; }
     if (ev.type === 'lab') lab.update(ev.run);
+    else if (ev.type === 'lab-queue') lab.queueUpdate(ev.queue); // Nov 11: the job queue
     else if (ev.type === 'lab-full') lab.fullUpdate(ev.full);
     else if (ev.type === 'lab-diffusion') document.dispatchEvent(new CustomEvent('lab-diffusion', { detail: ev.now }));
   };

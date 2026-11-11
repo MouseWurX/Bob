@@ -7,7 +7,7 @@ import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professiona
 import { newSource, sourceRowHtml, sourceOut, sourceEvent } from './lab-source.js';
 
 export function createTeachPage({ api }) {
-  let v = null, msg = '', plan = null, done = '', askUnload = null, loading = false, confirmRemove = false;
+  let v = null, mTeacher = '', mMsg = '', mUnload = false, msg = '', plan = null, done = '', askUnload = null, loading = false, confirmRemove = false;
   const f = { name: '', brainPick: 'mine', brainId: '', brain: newSource('hf'), lessonsPick: 'set', setId: '', lessons: newSource('hf'), epochs: 1, rented: false, way: 'lessons', squeeze: 'Q4_K_M' };
   const look = (x) => api('/api/lab/forge/hf', { ref: x.value, kind: x === f.brain ? 'model' : 'dataset' });
   async function load() { loading = true; try { v = await api('/api/lab/teach'); } catch (e) { msg = e.message; } loading = false; }
@@ -78,6 +78,10 @@ export function createTeachPage({ api }) {
         ${f.lessonsPick === 'set' ? (v.sets.length ? `<select data-tch="setId" aria-label="Lesson set"><option value="">Pick one</option>${v.sets.map((s) => `<option value="${esc(s.id)}" ${f.setId === s.id ? 'selected' : ''}>${esc(s.name)} (${s.count})</option>`).join('')}</select>` : '<p class="muted">No lesson sets yet. Make a brain, step 2, writes or builds one.</p>') : ''}
         <label class="lab-opt"><input type="radio" name="tchlesspick" value="source" ${f.lessonsPick === 'source' ? 'checked' : ''}> <span><strong>Somewhere else</strong><br><span class="muted">A .jsonl file here, a Hugging Face dataset file, or a link to a .jsonl file.</span></span></label>
         ${f.lessonsPick === 'source' ? sourceRowHtml('tch-lessons', 'Where they are', f.lessons, 'dataset') : ''}</fieldset>
+      <fieldset><legend>Teach it from my mistakes</legend>
+        <p class="muted">${v.mistakes ? `You've saved ${v.mistakes} ${v.mistakes === 1 ? 'reply' : 'replies'} as tests.` : 'No saved tests yet. Press Save as a test on a reply that went wrong.'} A teacher brain answers each of those asks the right way, as Bob with his real tools, and they become the lesson set "From my mistakes" to pick above.</p>
+        <select data-tch="mTeacher" aria-label="Teacher for my mistakes"><option value="">Pick a teacher</option>${(v.teachers || []).map((b) => `<option value="${esc(b.id)}" ${mTeacher === b.id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select>
+        <button type="button" class="link" data-tchmistakes ${v.mistakes && mTeacher ? '' : 'disabled'}>Write the lessons</button>${mMsg ? `<p class="muted" role="status">${esc(mMsg)}</p>` : ''}</fieldset>
       <fieldset><legend>How it learns</legend>
         <label class="lab-opt"><input type="radio" name="tchway" value="lessons" ${f.way === 'lessons' ? 'checked' : ''}> <span><strong>${nameNow('From its lessons')}</strong><br><span class="muted">It learns the lessons' answers.</span></span></label>
         <label class="lab-opt"><input type="radio" name="tchway" value="squeeze" ${f.way === 'squeeze' ? 'checked' : ''}> <span><strong>${nameNow('From its full-size self (squeeze-aware)')}</strong><br><span class="muted">For a brain you'll run squeezed small. It learns with its weights rounded like the small file, to say what its full-size self says. Bob then shows the plain and the squeeze-aware file side by side. Here only, at 16-bit, so about half the sizes above.</span></span></label>
@@ -93,6 +97,7 @@ export function createTeachPage({ api }) {
   async function change(el) {
     const k = el.dataset?.tch;
     if (k === 'name') { f.name = el.value; return false; }
+    if (k === 'mTeacher') { mTeacher = el.value; return true; }
     if (k === 'brainId' || k === 'setId') { f[k] = el.value; await replan(); return true; }
     if (k === 'epochs') { f.epochs = Number(el.value); await replan(); return true; }
     if (k === 'rented') { f.rented = el.checked; await replan(); return true; }
@@ -115,6 +120,11 @@ export function createTeachPage({ api }) {
     if ('tchtrainer' in d) { try { await api('/api/lab/teach/trainer', {}); } catch (e) { msg = e.message; } return 'load'; }
     if ('tchrented' in d) { try { done = (await api('/api/lab/teach/rented', out())).line; } catch (e) { msg = e.message; } return 'draw'; }
     if (d.tchuse) { try { await api('/api/lab/teach/use', { id: d.tchuse }); done = 'It\'s in Bob now: Equip Bob lists it, and you pick it when you want it.'; await load(); } catch (e) { msg = e.message; } return 'draw'; }
+    if ('tchmistakes' in d) { // Nov 11: Teach it from my mistakes
+      mMsg = '';
+      try { const r = await api('/api/lab/mistakes', { teacher: mTeacher, unload: mUnload }); mUnload = Boolean(r.needUnload); mMsg = r.needUnload ? `${r.names.join(', ')} is on the card. Press Write the lessons again to unload it and start.` : 'Writing them now: Lab jobs shows how far it is. Then pick "From my mistakes" above.'; } catch (e) { mMsg = e.message; }
+      return 'load';
+    }
     if ('tchgo' in d) {
       msg = '';
       try { const r = await api('/api/lab/teach/start', { ...out(), unload: d.tchgo === 'unload' }); askUnload = r.needUnload ? r.names : null; } catch (e) { msg = e.message; }
