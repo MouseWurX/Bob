@@ -416,6 +416,13 @@ while (true) {
   await sleep(args.local ? 3000 : 60000);
   let st = null;
   try { const r = await get('/status'); if (r.ok) st = await r.json(); } catch (e) { log(`status: ${e.message.slice(0, 80)}`); }
+  // 10 Nov: Bill's run lost its watcher mid-way (an error inside one pass of this loop ended the process), so the benchmark never ran
+  // and the pod sat idle at "done". One bad pass is now logged and the next minute tries again; only the loop's own breaks end it.
+  let ended = false;
+  try { ended = await pass(st); } catch (e) { log(`watcher: ${(e && e.stack) || e}; trying again next minute`); }
+  if (ended) break;
+}
+async function pass(st) {
   if (st) {
     const ph = `${st.status?.phase || '?'}: ${st.status?.detail || ''}`;
     if (ph !== lastPhase) { lastPhase = ph; log(`[pod] ${ph}`); }
@@ -460,13 +467,14 @@ while (true) {
     const benchOnly = plan.benchmark_only === true; // 10 Nov: a benchmark-only run ends when the pod says done; the reports are already on this PC
     const finished = plan.lessons_only ? lessonsSent : rebuildOnly || benchOnly ? true : gotTrained && (scoresOnly ? (noOdds ? true : done.has('teacher')) : [...done].filter((n) => n !== 'teacher' && n !== trained).length >= Math.max(1, plan.rungs.length));
     if (st.status?.phase === 'done' && plan.scan) await fetchScan();
-    if (st.status?.phase === 'done' && finished) { await kill(plan.lessons_only ? 'lessons written; they are on this PC' : rebuildOnly ? 'rebuild finished; the Bobs are on Hugging Face' : benchOnly ? `benchmark finished; the reports are in ${path.join(outDir, 'bench', plan.run || 'run')}` : noOdds ? 'the taught Bob is back; no odds were made (odds: false)' : plan.rungs.length ? 'all Bobs downloaded' : scoresOnly ? 'teacher scores downloaded' : 'counts downloaded'); break; }
+    if (st.status?.phase === 'done' && finished) { await kill(plan.lessons_only ? 'lessons written; they are on this PC' : rebuildOnly ? 'rebuild finished; the Bobs are on Hugging Face' : benchOnly ? `benchmark finished; the reports are in ${path.join(outDir, 'bench', plan.run || 'run')}` : noOdds ? 'the taught Bob is back; no odds were made (odds: false)' : plan.rungs.length ? 'all Bobs downloaded' : scoresOnly ? 'teacher scores downloaded' : 'counts downloaded'); return true; }
     if (st.status?.phase === 'failed' || (st.exit !== null && st.exit !== undefined && !st.running)) {
       log(`the pod run stopped (${st.status?.detail || 'exit ' + st.exit}). Last log lines:\n${st.log}`);
       if (!args['keep-on-fail']) { await kill('run failed'); } else log('pod kept for a look (--keep-on-fail)');
-      break;
+      return true;
     }
   }
-  if ((Date.now() - t0) / 3.6e6 > hoursMax || cost() > dollarsMax) { log(`cap reached ($${cost().toFixed(2)}, ${((Date.now() - t0) / 3.6e6).toFixed(1)} h)`); await kill('cap'); break; }
+  if ((Date.now() - t0) / 3.6e6 > hoursMax || cost() > dollarsMax) { log(`cap reached ($${cost().toFixed(2)}, ${((Date.now() - t0) / 3.6e6).toFixed(1)} h)`); await kill('cap'); return true; }
+  return false;
 }
 log(`finished: ${[...done].join(', ') || 'nothing downloaded'}; about $${cost().toFixed(2)} spent on this pod${plan.volume ? '; the network volume stays (healed Bobs + teacher kept for next time)' : ''}`);

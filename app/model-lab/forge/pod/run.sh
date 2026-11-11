@@ -558,6 +558,9 @@ PY
   rm -f $IN/hf-token
   [ "$RB_OK" -gt 0 ] || die "rebuild: no Bob was rebuilt"
   [ -z "$RB_WFAIL" ] || echo "FULL-SIZE WEIGHTS MISSING on Hugging Face for:$RB_WFAIL (see out/publish/*.log); a weights_only plan uploads them from the drive"
+  # a rebuild run can benchmark too (10 Nov): the same block as the end of a training run, so Bill's missed head-to-head can be
+  # made up on the publish run (file: hf:<repo>:<path> | volume:<path> | out:<name>/<file> for a Bob rebuilt just above)
+  if [ -n "$(plan ".get('benchmark')")" ]; then run_bench; fi
   # --- FNRI scans (10 Nov): plan.scan {"from":"<PC folder>","brains":["qwen","riker","bobert","bill"],"stock":"Qwen3.6-35B-A3B",
   #   "keep":{"riker":"hf:MouseWurX/28Bob-Riker:28Bob-keep.json"}}. The PC sends the folder as in/scan.tgz (one sub-folder per brain, each
   # with pod/aifeui.sh, its plan, the engine patches and the viewer); the pod unpacks it onto the drive, makes the stock brain's Q4_K_M from
