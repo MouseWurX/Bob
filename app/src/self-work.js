@@ -131,7 +131,8 @@ const textBrain = (e, cfg) => e && ['chat', 'coding'].includes(e.category) && !e
 // catalogFile(id): catalogFileFor (llamacpp.js), { gguf } or null when it isn't on this replicant matrix; size(file): bytes.
 // Equipped slots (cfg.models, a catalogue id or an Ollama name) count too and give their brain its job names.
 // Returns [{ id, name, sizeGB, here, group, jobs: ['Coding', ...] }] in picker order.
-export function gatherBrains(cfg, { own = [], catalog = readCatalog(), catalogFile = () => null, size = (f) => fs.statSync(f).size } = {}) {
+export function gatherBrains(cfg, { own = [], catalog, catalogFile = () => null, size = (f) => fs.statSync(f).size } = {}) {
+  if (!Array.isArray(catalog)) catalog = readCatalog();
   const gb = (f) => { try { return Math.round((size(f) / 1e9) * 10) / 10; } catch { return 0; } };
   const byId = new Map();
   const add = (b) => { if (b?.id && !byId.has(b.id)) byId.set(b.id, { jobs: [], ...b }); return byId.get(b?.id); };

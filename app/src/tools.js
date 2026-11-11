@@ -502,7 +502,7 @@ export function buildTools(cfg) {
       if (!repo) throw new Error(`I don't have a repository called "${which}". The list: ${reposOf(cfg).map((r) => r.name).join(', ')}. Add one in ${where}.`);
       if (!hasCodeCopy(cfg, repo)) throw new Error(`There's no code copy of ${repo.name} to work on yet. Press "Make the code copy" next to it in ${where}.`);
       if (!String(job || '').trim()) throw new Error('Say what to change.');
-      const brains = gatherBrains(cfg, { own: ownEntries(cfg), catalogFile: (id) => catalogFileFor(cfg, id) });
+      const brains = gatherBrains(cfg, { own: ownEntries(cfg), catalog: ctx.brain?.shop?.catalog?.models, catalogFile: (id) => catalogFileFor(cfg, id) });
       const missing = pickedMissing(cfg, brains);
       if (missing) throw new Error(`The brain picked for these jobs, ${missing.name}, isn't downloaded yet. Get it in Get models, or pick another in ${where}.`);
       const pick = pickBigBrain(cfg, brains);

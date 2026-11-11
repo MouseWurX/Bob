@@ -246,6 +246,8 @@ check('remixes and smaller brains don\'t', !['qwen3.6-35b-a3b-heretic', 'qwen3.6
   check('with "Let my other Bobs help" off, no other Bob is asked', asked === 0 && !said.some((e) => /🛰/.test(e.text || '')) && !helpersOn({ selfWork: {} }));
   const picked = await pickHelpers({ bobs: () => [{ name: 'A', address: 'a' }], busyHere: () => false, hello: async () => ({ ok: true, brain: '28Bob-Riker' }), hold() {} });
   check('only Bobs running Bobert or Qwen 35B help', picked.length === 0 && (await pickHelpers(null)).length === 0);
+  const sameRiker = await pickHelpers({ bobs: () => [{ name: 'A', address: 'a' }], busyHere: () => false, hello: async () => ({ ok: true, brain: '28Bob-Riker' }), hold() {} }, { same: '28Bob-Riker' });
+  check('...or Bobs running the same brain picked here', sameRiker.length === 1);
 }
 
 // ---------- Git and Node.js: his own copies when they're missing (the owner's ask) ----------

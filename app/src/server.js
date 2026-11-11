@@ -1191,7 +1191,7 @@ process.on('uncaughtException', (e) => { console.error('Uncaught:', e); try { br
 // 1.5.87: the equipped brains for "How much each brain keeps in mind": one row per model file, with the jobs it does.
 function selfWorkNow() {
   let brains = [];
-  try { brains = gatherBrains(cfg, { own: ownEntries(cfg), catalogFile: (id) => catalogFileFor(cfg, id) }); } catch {}
+  try { brains = gatherBrains(cfg, { own: ownEntries(cfg), catalog: shop.catalog?.models, catalogFile: (id) => catalogFileFor(cfg, id) }); // the catalogue Bob shows (with list updates) } catch {}
   return { ...selfWorkView(cfg, brains), bobNet: brain.lenders?.bobs?.().length || 0 };
 }
 
