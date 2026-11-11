@@ -89,16 +89,19 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
 
   const unloadHtml = () => `<div class="setup-offer" role="alert"><strong>Bob's brain is on the graphics card</strong><span>${esc(askUnload.names.join(', '))} is loaded. The ladder needs the graphics card, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-playunload>Unload it and start</button><button type="button" class="link" data-playnounload>Not now</button></div></div>`;
 
-  function html(runsHtml) {
+  // `nav` and `tabId`: the Lab's tabs group these pages by task (Teach, Test, Look inside, Learn) and hand in their own row of pages.
+  function html(runsHtml, nav = navHtml(), tabId = 'playground') {
     watchRuns();
-    if (page !== 'smaller') return `<div id="lab-page-playground" role="tabpanel" aria-labelledby="lab-tab-playground">${navHtml()}${runsHtml}${cur().html()}</div>`;
-    return ladderPage(runsHtml);
+    if (page !== 'smaller') return `<div id="lab-page-${tabId}" role="tabpanel" aria-labelledby="lab-tab-${tabId}">${nav}${runsHtml}${cur().html()}</div>`;
+    return ladderPage(runsHtml, nav, tabId);
   }
-  function ladderPage(runsHtml) {
+  // Show one page, reading its lists the first time.
+  async function go(id) { if (id !== 'smaller' && !pages[id]) return false; page = id; if (page !== 'smaller' && !loaded.has(page)) { loaded.add(page); await cur().load(); } return true; }
+  function ladderPage(runsHtml, nav, tabId) {
     const list = starts();
     const others = (v().brains || []).filter((b) => !list.includes(b));
     const steps = (v().ladderSteps || []).map((s) => s.label).join(', ');
-    return `<div id="lab-page-playground" role="tabpanel" aria-labelledby="lab-tab-playground">${navHtml()}
+    return `<div id="lab-page-${tabId}" role="tabpanel" aria-labelledby="lab-tab-${tabId}">${nav}
       <h3>${nameNow('How small can a brain get?')}</h3>
       <p class="muted">Makes one small brain ${steps ? `in six sizes (${esc(steps)})` : 'in six sizes'} and tests each for size, speed, score and Surprise, so you see where smaller starts to hurt. Free, here; Bob shows the disk space first.</p>
       ${runsHtml}
@@ -164,5 +167,5 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
     return true;
   }
 
-  return { html, change, input, click, saveTable, mounted: () => { if (page === 'peek') for (const s of sections) s.mounted?.(); } };
+  return { html, go, get page() { return page; }, change, input, click, saveTable, mounted: () => { if (page === 'peek') for (const s of sections) s.mounted?.(); } };
 }

@@ -6,6 +6,7 @@
 // The map is a canvas with text under it (never colour alone): a line per layer, the totals, and the cold experts.
 import { esc } from './rich.js';
 import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
+import { goBtn } from './lab-go.js'; // a button to where the message points
 
 export function createPeek({ api, view, cutWith = () => {}, toForge = () => {} }) {
   let brain = '', data = null, thing = 'total', question = 'Write a haiku about rain, then explain what a prime number is.', asks = [], busy = false, msg = '', askUnload = null, tally = false, showCold = false, scrub = -1, perLayer = false, compare = false, switchAsk = null;
@@ -97,7 +98,7 @@ export function createPeek({ api, view, cutWith = () => {}, toForge = () => {} }
     const things = d?.have ? [['total', 'Everything counted so far'], ...d.things.map((t, i) => [String(i), `${t.name}${t.source === 'peek' ? ' (Peek inside)' : ''}`]), ...(cur() ? [['live', 'The last question']] : [])] : (cur() ? [['live', 'The last question']] : []);
     return `<section class="lab-compare peek" id="lab-peek" aria-labelledby="peek-h" tabindex="-1"><h3 id="peek-h">${nameNow('Peek inside: which experts did you use for that?')}</h3>
       <p class="muted">Shows which experts a brain uses: layers across, experts down. Darker squares do more work; outlined ones did nothing. Ask it a question below to light up the experts it picks, word by word.</p>
-      <fieldset><legend>Which brain?</legend>${list.length ? `<select id="peek-brain" aria-label="Which brain"><option value="">(pick one)</option>${list.map((b) => `<option value="${esc(b.id)}" ${brain === b.id ? 'selected' : ''}>${esc(b.name)} · ${b.facts.experts} experts, ${b.facts.engineLayers || b.facts.layers} layers</option>`).join('')}</select>` : '<p>There\'s no mixture-of-experts brain here to peek inside. Get one in Get models (one with "experts" or "A3B" in its name).</p>'}</fieldset>
+      <fieldset><legend>Which brain?</legend>${list.length ? `<select id="peek-brain" aria-label="Which brain"><option value="">(pick one)</option>${list.map((b) => `<option value="${esc(b.id)}" ${brain === b.id ? 'selected' : ''}>${esc(b.name)} · ${b.facts.experts} experts, ${b.facts.engineLayers || b.facts.layers} layers</option>`).join('')}</select>` : '<p>There\'s no mixture-of-experts brain here to peek inside. Get one in Get models (one with "experts" or "A3B" in its name).' + goBtn('models') + '</p>'}</fieldset>
       ${brain && d ? `${things.length ? `<label for="peek-thing">Show</label> <select id="peek-thing">${things.map(([id, l]) => `<option value="${esc(id)}" ${thing === id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>` : ''}
         ${counts ? `<canvas id="peek-map" class="peek-map" aria-label="The expert map: layers across, experts down"></canvas>` : `<p class="muted">Nothing counted for this brain yet. Run the usage map (Make a brain, step 1, Open the usage map), or ask it a question below with Brain Engine.</p>`}
         ${d.have ? `<p class="muted">Across everything counted: ${d.cold.toLocaleString()} of ${(d.experts * d.layers).toLocaleString()} experts were never used, about ${d.coldShare}% of the brain. That's only for what <em>you</em> tested, so test widely before you cut.</p>` : ''}

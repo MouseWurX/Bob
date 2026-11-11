@@ -2,6 +2,7 @@
 // fill in at once over its steps, instead of one word after another.
 import { esc } from './rich.js';
 import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
+import { goBtn } from './lab-go.js'; // a button to where the message points
 
 export function createDiffusionPage({ api }) {
   let v = null, from = '', prompt = 'Write a short poem about a cat who learns to code.', steps = 64, length = 256, msg = '', askUnload = null, loading = false;
@@ -27,7 +28,7 @@ export function createDiffusionPage({ api }) {
     return `<h3>${nameNow('Diffusion brains: the whole answer at once')}</h3>
       <p class="muted">Most brains write one word at a time. These (Dream, LLaDA, RND1) fill in the whole answer at once, over several passes. More passes: slower but better. Bob's chat can't run them, so they live here.</p>
       ${v.tool ? '' : `<p class="muted"><strong>${esc(v.toolWhy)}</strong></p>`}
-      <fieldset><legend>Which brain?</legend>${v.brains.length ? v.brains.map((b) => `<label class="lab-opt"><input type="radio" name="dffrom" value="${esc(b.id)}" ${from === b.id ? 'checked' : ''}> <span><strong>${esc(b.name)}</strong><br><span class="muted">${b.sizeGB ?? '?'} GB, ${esc(b.arch)}</span></span></label>`).join('') : '<p>No diffusion brains here yet. Get one as a GGUF (search Hugging Face for Dream or LLaDA GGUF), then add it with Add your own brain in Get models, or Bring in a full-size brain in the Forge.</p>'}</fieldset>
+      <fieldset><legend>Which brain?</legend>${v.brains.length ? v.brains.map((b) => `<label class="lab-opt"><input type="radio" name="dffrom" value="${esc(b.id)}" ${from === b.id ? 'checked' : ''}> <span><strong>${esc(b.name)}</strong><br><span class="muted">${b.sizeGB ?? '?'} GB, ${esc(b.arch)}</span></span></label>`).join('') : '<p>No diffusion brains here yet. Get one as a GGUF (search Hugging Face for Dream or LLaDA GGUF), then add it with Add your own brain in Get models, or Bring in a full-size brain in the Forge.' + goBtn('models') + '</p>'}</fieldset>
       <label for="df-q"><strong>Ask</strong></label><textarea id="df-q" rows="3" maxlength="2000">${esc(prompt)}</textarea>
       <div class="row"><label>Steps <select data-dfsteps>${v.steps.map((s) => `<option ${s === steps ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
         <label>Length <select data-dflen>${v.lengths.map((s) => `<option value="${s}" ${s === length ? 'selected' : ''}>about ${s} words</option>`).join('')}</select></label></div>

@@ -4,6 +4,28 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.204
+
+The Computer Science Lab gets a tidy: its own window, tabs sorted by what you're doing, and each thing in one place.
+
+### Changed
+
+- **The Lab opens in its own window on a computer**, like Settings, so it can sit beside the chat with the usual minimise, maximise and close buttons. On a phone or tablet it's still a page. The FNRI viewer opens from it as before.
+- **The Lab's tabs are sorted by what you're doing: Make a brain, Teach, Test, Look inside, Learn, Forge, My Lab.** Nothing was taken out. The eight pages that hid under Playground now sit where you'd look for them: **Test** has Challenges, Smaller, Longer and Faster; **Teach** has Teach it and Best answers; **Look inside** has Peek inside and FNRI; **Learn** has the experiments and Diffusion brains. Help: "Where did the Lab's Playground and Challenges tabs go?".
+- **Make a brain starts with one question, "What do you want to do?"** The goal cards used to sit above it and asked for a brain from a step that wasn't on screen. Goals and templates are now inside the jobs that cut experts, under **Fill the steps for me**, and the usage map shows there too.
+- **One line under the Lab's tabs**: Keep it simple or Professional, one short line on what Professional adds on this tab, and the Lab engine. It used to take three.
+- **The Forge tab is shorter.** Each way's Best practice folds away under its card, and the sight and hearing steps fold under **Add sight or hearing to a brain**.
+
+### New
+
+- **My Lab**, a new Lab tab: one list of what the Lab has made and measured on this replicant matrix (brains, scores, size ladders, lesson sets, saved recipes and recent jobs), each with a button to its page. It shows no file paths.
+- **A button on every "nothing here yet" message in the Lab.** Where a page said "get one in Get models" or "no engine found", a button beside it now opens Get models or Settings, Engines. Learn, with no brain loaded, has **Go to the chat**.
+
+### Fixed
+
+- **Left and right arrow keys on a row of Lab pages move along that row.** They used to jump the top tabs.
+- **Cut these out, in Peek inside, opens Make a brain on the Cut experts job** with step 3 showing. With no job picked it used to show no steps.
+
 ## 1.5.202
 
 Brain Engine moves onto a newer llama.cpp, the Lab can switch a gpt-oss brain's experts off right in the file, and quick notes can notice things on their own.

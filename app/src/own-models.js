@@ -137,7 +137,7 @@ export function ownEntry(o, { stat = fs.statSync, info = ggufInfo, read = fs.rea
   const cardJobs = card?.jobs?.filter((j) => j !== 'eyes' || vision) || [];
   const cut = card?.cutFrom?.name ? `Cut from ${card.cutFrom.by ? `${card.cutFrom.by}'s ` : ''}${card.cutFrom.name}${card.expertsKept ? `, keeping ${card.expertsKept} experts` : ''}.` : '';
   const diffusionBrain = isDiffusion(i?.arch); // Dream, LLaDA and friends: only the Lab's Playground runs them
-  const what = diffusionBrain ? `${where} A diffusion brain (${i.arch}): it writes a whole block at once, which Bob's chat can't run. Try it in the Lab's Playground, Diffusion brains.`
+  const what = diffusionBrain ? `${where} A diffusion brain (${i.arch}): it writes a whole block at once, which Bob's chat can't run. Try it in the Lab: Learn, Diffusion brains.`
     : card
     ? [card.what, cut, `${where} Its brain card says what it's for.`].filter(Boolean).join(' ')
     : `${where} Bob only knows what the file says: ${params ? `about ${params}B` : 'size unknown'}${i?.arch ? `, ${i.arch}` : ''}${i?.ctxTrain ? `, made for up to ${Math.round(i.ctxTrain / 1024)}K` : ''}. How well it does its jobs is for you to judge.`;

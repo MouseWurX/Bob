@@ -415,7 +415,7 @@ export function createCellar({ popOut = null } = {}) {
     const rows = Object.entries(sp.turbo || {}).filter(([, t]) => t);
     if (!rows.length) return '';
     const nameOf = (id) => llms.find((o) => o.value === id)?.label || id;
-    return `<div><strong>Turbo, per brain</strong> ${tip('Set from the Lab, Playground, Faster: "Use this in Bob". For these brains this wins over the draft brain above. Its own guesser means the brain carries a multi-token head, so nothing else loads.', 'Turbo, per brain')}
+    return `<div><strong>Turbo, per brain</strong> ${tip('Set from the Lab, Test, Faster: "Use this in Bob". For these brains this wins over the draft brain above. Its own guesser means the brain carries a multi-token head, so nothing else loads.', 'Turbo, per brain')}
       ${rows.map(([id, t]) => `<div class="row"><label class="switch"><input type="checkbox" data-turbo="${esc(id)}" data-turbok="on" ${t.on ? 'checked' : ''}><span><strong>${esc(nameOf(id))}</strong> <span class="muted">${t.mtp ? 'its own guesser' : `${esc(nameOf(t.draft))} guessing`}</span></span></label>
         <label class="pick"><span>Guess ahead</span><input type="text" inputmode="numeric" data-turbo="${esc(id)}" data-turbok="max" value="${esc(t.max ?? 8)}" style="width:4em" aria-label="Guess this many words ahead for ${esc(nameOf(id))}"></label>
         <button type="button" class="link" data-turboremove="${esc(id)}">Remove</button></div>`).join('')}</div>`;

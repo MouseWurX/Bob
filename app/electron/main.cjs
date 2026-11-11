@@ -396,6 +396,7 @@ function tuckAway(e) {
 }
 let watchWin = null; // the Lab's FNRI viewer window (public/watch.html), one at a time
 let settingsWin = null; // the Settings window (public/settings.html), one at a time
+let labWin = null; // the Computer Science Lab window (public/lab.html), one at a time
 let mindWin = null; // 1.5.53: "Bob's thinking", opened from the chat page; nothing runs for it while it's closed
 
 // Small, in the bottom-right corner of the screen Bob is on, so it sits beside a game or an editor.
@@ -460,10 +461,42 @@ async function start() {
       if (settingsWin) { if (settingsWin.webContents.getURL() !== url) settingsWin.loadURL(url); if (settingsWin.isMinimized()) settingsWin.restore(); settingsWin.show(); settingsWin.focus(); return { action: 'deny' }; }
       return { action: 'allow', overrideBrowserWindowOptions: { width: 1040, height: 780, minWidth: 360, minHeight: 480, title: 'Bob · Settings', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
     }
+    // The Computer Science Lab is its own ordinary window as well, one at a time.
+    if (url === base + '/lab.html') {
+      if (labWin) { if (labWin.isMinimized()) labWin.restore(); labWin.show(); labWin.focus(); return { action: 'deny' }; }
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 860, minWidth: 360, minHeight: 480, title: 'Bob · Computer Science Lab', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
+    }
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
+  // The FNRI viewer window, whichever window opened it (Bob's or the Lab's).
+  const adoptWatch = (child) => {
+    watchWin = child;
+    child.setMenu(null);
+    child.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+    child.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(base + '/watch.html')) e.preventDefault(); });
+    contextMenu(child, base);
+    child.on('closed', () => { watchWin = null; });
+  };
   win.webContents.on('did-create-window', (child, details) => {
+    if (String(details?.url || '') === base + '/lab.html') {
+      labWin = child;
+      child.setMenu(null);
+      // The Lab opens the FNRI viewer; web links go to the normal browser; nothing else opens from it.
+      child.webContents.setWindowOpenHandler(({ url }) => {
+        if (url === base + '/watch.html' || url.startsWith(base + '/watch.html?')) {
+          if (watchWin) { watchWin.loadURL(url); watchWin.show(); watchWin.focus(); return { action: 'deny' }; }
+          return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 820, minWidth: 360, minHeight: 480, title: 'FNRI', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
+        }
+        if (/^https?:/.test(url)) shell.openExternal(url);
+        return { action: 'deny' };
+      });
+      child.webContents.on('did-create-window', (grand, d) => { if (String(d?.url || '').startsWith(base + '/watch.html')) adoptWatch(grand); });
+      child.webContents.on('will-navigate', (e, url) => { if (url !== base + '/lab.html') e.preventDefault(); });
+      contextMenu(child, base);
+      child.on('closed', () => { labWin = null; });
+      return;
+    }
     if (String(details?.url || '').startsWith(base + '/settings.html')) {
       settingsWin = child;
       child.setMenu(null);
@@ -473,15 +506,7 @@ async function start() {
       child.on('closed', () => { settingsWin = null; });
       return;
     }
-    if (String(details?.url || '').startsWith(base + '/watch.html')) {
-      watchWin = child;
-      child.setMenu(null);
-      child.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
-      child.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(base + '/watch.html')) e.preventDefault(); });
-      contextMenu(child, base);
-      child.on('closed', () => { watchWin = null; });
-      return;
-    }
+    if (String(details?.url || '').startsWith(base + '/watch.html')) { adoptWatch(child); return; }
     mindWin = child;
     child.setAlwaysOnTop(true, 'floating'); // above other windows, but not above Windows' own menus
     child.setMenu(null);

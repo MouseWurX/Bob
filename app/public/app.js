@@ -14,6 +14,7 @@ import { esc, render, renderRich } from './rich.js';
 import { createTopics } from './topics.js';
 import { createTidy } from './tidy.js';
 import { createLab } from './lab.js'; // 1.5.141 Computer Science Lab
+import { CHANNEL as LAB_CHANNEL, WINDOW_NAME as LAB_WINDOW_NAME, WINDOW_SIZE as LAB_WINDOW_SIZE, LAB_URL, labWantsWindow, accept as labAccept } from './lab-link.js'; // the Lab's own window
 import { createAdventure } from './adventure.js';
 import { createGames } from './games.js';
 import { createHelp } from './help.js';
@@ -379,8 +380,25 @@ const tidyPage = createTidy({ api, onCount: (n) => countBadge($('tidyBtn'), n) }
 $('topicsBtn').onclick = () => topicsPage.open();
 $('tidyBtn').onclick = () => tidyPage.open();
 // 1.5.141: 🧪 Lab in the left pane while Show the Computer Science Lab is on (1.5.172: on unless switched off).
-const labPage = createLab({ api, note: (t) => note(t) });
-$('labBtn').onclick = () => labPage.open();
+// The Lab's "take me there" buttons: Get models, Settings (Engines), the chat.
+const labGo = (where) => {
+  labPage.close();
+  if (where === 'models') $('cellarBtn').click();
+  else if (where === 'engines') cellar.open('settings', null, { jump: 'adv-engines' });
+  else if (where === 'chat') $('input')?.focus();
+  try { window.focus(); } catch {}
+};
+const labPage = createLab({ api, note: (t) => note(t), go: labGo });
+// On a computer the Lab opens in its own window, like Settings; on a phone or tablet it stays a page here.
+const labChan = 'BroadcastChannel' in window ? new BroadcastChannel(LAB_CHANNEL) : null;
+let labWin = null;
+function openLabWindow() {
+  if (!labWantsWindow({ hasChannel: Boolean(labChan), coarse: matchMedia('(pointer: coarse)').matches, standalone: matchMedia('(display-mode: standalone)').matches, width: window.innerWidth })) return false;
+  try { if (!labWin || labWin.closed) labWin = window.open(LAB_URL, LAB_WINDOW_NAME, LAB_WINDOW_SIZE); labWin?.focus(); } catch { labWin = null; }
+  return Boolean(labWin);
+}
+labChan?.addEventListener('message', (e) => { const m = labAccept(e.data); if (m?.kind === 'go') labGo(m.where); else if (m?.kind === 'note') note(m.text); });
+$('labBtn').onclick = () => { if (!openLabWindow()) labPage.open(); };
 const showLab = (on) => { $('labBtn').hidden = !on; };
 window.addEventListener('bob-lab-switch', (e) => showLab(e.detail?.on === true));
 fetch('/api/settings').then((r) => r.json()).then((st) => showLab(st.computerLab !== false)).catch(() => {});
@@ -723,7 +741,7 @@ function onEvent(ev) {
       for (const b of el.querySelectorAll('button')) b.onclick = () => { el.remove(); if (b.dataset.t === 'look') tidyPage.open(); };
       break;
     }
-    case 'lab': labPage.update(ev.run); break; // 1.5.141
+    case 'lab': labPage.update(ev.run); break; // 1.5.141 (the Lab's own window reads these itself)
     case 'lab-full': labPage.fullUpdate(ev.full); break; // Bring in a full-size brain
     case 'lab-diffusion': document.dispatchEvent(new CustomEvent('lab-diffusion', { detail: ev.now })); break; // Playground: Diffusion brains, live
     case 'lab-done': note(ev.ok ? `🧪 The Lab finished ${ev.name}${ev.score != null ? `: ${ev.score} out of 100 on the Lab test` : ''}. Open the Lab to see the report.` : `🧪 The Lab stopped on ${ev.name}: ${ev.error}`); break;

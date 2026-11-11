@@ -6,6 +6,7 @@
 // skills, starts the scan (src/lab-watch.js) and lists the scans made; the Playground places it.
 import { esc } from './rich.js';
 import { NAME, LONG_NAME } from './lab-watch-math.js';
+import { goBtn } from './lab-go.js'; // a button to where the message points
 
 export function openViewer(brain = '', rec = '') {
   const q = brain && rec ? `?brain=${encodeURIComponent(brain)}&rec=${encodeURIComponent(rec)}` : '';
@@ -37,7 +38,7 @@ export function createWatchPage({ api }) {
     const over = Math.max(0, v.skills.filter((s) => picked.has(s.id)).length + (ownName.trim() && ownQs.trim() ? 1 : 0) - (v.maxSkills || 16));
     return `<h3>${esc(NAME)}: watch a brain's experts light up</h3>
       <p class="muted">${esc(LONG_NAME)}, a scan of a brain at work. Bob asks it a few questions per skill and shows which experts it used, as a 3D block: one floor per layer, each expert coloured by the skill that used it most. Press Play to watch it light up word by word. Brains with no experts show their busiest neurons instead.</p>
-      <fieldset><legend>Which brain?</legend>${v.brains.length ? `<select id="watch-brain" aria-label="Which brain"><option value="">(pick one)</option>${v.brains.map((b) => `<option value="${esc(b.id)}" ${brain === b.id ? 'selected' : ''}>${esc(b.name)} · ${b.experts ? `${b.experts} experts` : 'no experts: neuron groups'}, ${b.engineLayers || b.layers} layers</option>`).join('')}</select>` : '<p>There\'s no brain here to scan yet. Get one in Get models.</p>'}</fieldset>
+      <fieldset><legend>Which brain?</legend>${v.brains.length ? `<select id="watch-brain" aria-label="Which brain"><option value="">(pick one)</option>${v.brains.map((b) => `<option value="${esc(b.id)}" ${brain === b.id ? 'selected' : ''}>${esc(b.name)} · ${b.experts ? `${b.experts} experts` : 'no experts: neuron groups'}, ${b.engineLayers || b.layers} layers</option>`).join('')}</select>` : '<p>There\'s no brain here to scan yet. Get one in Get models.' + goBtn('models') + '</p>'}</fieldset>
       ${brain && bv ? (bv.live?.ok ? `
       <fieldset><legend>Skills to ask about</legend>${v.skills.map((s) => `<label class="lab-opt"><input type="checkbox" data-watchskill="${esc(s.id)}" ${picked.has(s.id) ? 'checked' : ''}> <span><strong>${esc(s.label)}</strong><br><span class="muted">Like: ${esc(s.questions[0])}</span></span></label>`).join('')}
         <button type="button" class="link" data-watchqs aria-expanded="${showQs}">Show every question</button>
