@@ -422,9 +422,11 @@ async function loadHistory(n = 20) {
       if (m.id) el.dataset.mid = m.id;
       if (m.role !== 'user') bubbleMedia.set(el, m.media || []);
       if (m.edited) markEdited(el, m.was);
+      if (m.versions?.length) markVersions(el, m.versions);
       if (m.correction) note(m.correction, 'error');
     }
   } catch {}
+  drawRedo();
 }
 $('newchat').onclick = () => {
   if (busy) return;
@@ -758,6 +760,15 @@ function onEvent(ev) {
       return;
     }
     case 'edited': editedMsg(ev); return;
+    case 'asked': { // Try again and Edit: the id of the message you sent, so Edit can find it in the saved chat
+      const bub = jobBubbles.get(ev.turnId);
+      if (bub && ev.id) { bub.dataset.mid = ev.id; drawRedo(); }
+      return;
+    }
+    case 'rewound': // Try again or Edit pressed in another window of this chat: draw it again from the saved chat
+      if (!redoing && ev.id !== redoneId) { log.innerHTML = ''; loadHistory(40); }
+      redoneId = '';
+      return;
     case 'correction':
       // The app's own check, under Bob's reply: he said he did something on the PC and no action ran.
       endReply(ev);
@@ -818,6 +829,7 @@ async function post(url, data) {
 function setBusy(b) {
   busy = b;
   stopBtn.hidden = !b;
+  drawRedo(); // Try again and Edit hide while Bob is busy
 }
 
 // ---------- The queue: what's waiting, what's running, what failed ----------
@@ -936,7 +948,8 @@ function markEdited(el, was) {
   el.querySelector(':scope > .edited-note')?.remove();
   const box = document.createElement('div');
   box.className = 'edited-note';
-  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="Bob changed this message. Press to see what it said first.">edited</button><div class="edited-was muted" hidden><strong>First said:</strong> ${esc(was || '')}</div>`;
+  const who = el.classList.contains('you') ? 'You' : 'Bob';
+  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="${who} changed this message. Press to see what it said first.">edited</button><div class="edited-was muted" hidden><strong>First said:</strong> ${esc(was || '')}</div>`;
   const b = box.querySelector('button'), w = box.querySelector('.edited-was');
   b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
   el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
@@ -960,6 +973,83 @@ function editedMsg(ev) {
   markEdited(el, ev.was);
   el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2500);
 }
+// ---------- Try again and Edit (Settings, How Bob works; src/redo.js). Off unless you turn it on. ----------
+// Try again sits under Bob's latest answer, Edit under each of your messages Bob has saved. Either one takes back what
+// came after, keeps it under your message as an earlier version, and sends your message (again). Hidden while Bob is busy.
+let redoOnNow = false, redoing = false, redoneId = '';
+const lastYou = () => [...log.querySelectorAll(':scope > .msg.you')].pop() || null;
+function drawRedo() {
+  for (const x of log.querySelectorAll('[data-redo], [data-edit-msg]')) x.remove();
+  if (!redoOnNow || busy || redoing) return;
+  for (const el of log.querySelectorAll(':scope > .msg.you[data-mid]')) el.querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-edit-msg title="Change what you said and send it again">Edit</button>');
+  const you = lastYou();
+  if (!you?.dataset.mid) return;
+  let answer = null;
+  for (let n = you.nextElementSibling; n; n = n.nextElementSibling) if (n.matches('.msg.bob:not(.aside-msg)')) answer = n;
+  (answer || you).querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-redo title="Get a new answer to your last message">Try again</button>');
+}
+function versionsHtml(list) {
+  const cut = (t) => { const x = String(t || ''); return esc(x.length > 1500 ? x.slice(0, 1500) + '…' : x); };
+  return list.slice().reverse().map((v, i) => `<li><span class="muted">${i === 0 ? 'Latest earlier version' : `${i + 1} versions back`}${v.at ? ` · ${esc(new Date(v.at).toLocaleString())}` : ''}</span><div><strong>You:</strong> ${cut(v.text)}</div>${(v.said || []).map((m) => `<div><strong>${m.role === 'user' ? 'You' : 'Bob'}:</strong> ${cut(m.content) || (m.media?.length ? `<em>${m.media.length} thing${m.media.length === 1 ? '' : 's'} made</em>` : '')}</div>`).join('') || '<div class="muted">No answer yet.</div>'}</li>`).join('');
+}
+function markVersions(el, list) {
+  el.querySelector(':scope > .versions-note')?.remove();
+  if (!list?.length) return;
+  const box = document.createElement('div');
+  box.className = 'versions-note';
+  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="What was here before Try again or Edit. Press to see it.">${list.length === 1 ? '1 earlier version' : `${list.length} earlier versions`}</button><ol class="versions-list muted" hidden>${versionsHtml(list)}</ol>`;
+  const b = box.querySelector('button'), w = box.querySelector('ol');
+  b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
+  el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
+}
+// Take back and send again. text: the new words (Edit), or none (Try again).
+async function redoSend(id, text) {
+  if (busy || redoing) { note('Bob is still on this chat. Wait until he has finished, or press Stop first.'); return; }
+  redoing = true; drawRedo();
+  try {
+    const r = await post('/api/chat/redo', { sessionId, ...(id ? { id } : {}), ...(text != null ? { text } : {}) }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
+    if (!r.ok) { note(r.data.error || 'Something went wrong.', 'error'); return; }
+    redoneId = r.data.id;
+    log.innerHTML = '';
+    await loadHistory(40);
+    const bubble = log.querySelector(`.msg.you[data-mid="${CSS.escape(r.data.id)}"]`);
+    const level = effort.get();
+    const s = await post('/api/chat', { sessionId, text: r.data.text, redo: r.data.edited ? 'edit' : 'again', effort: level, ...(rentSwitch.on() ? { rent: true } : {}) }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
+    if (!s.ok) { note(s.data.error || 'Something went wrong.', 'error'); return; }
+    if (bubble) { jobBubbles.set(s.data.jobId, bubble); bubble.insertAdjacentHTML('beforeend', `<span class="qtag">${s.data.ahead ? `queued, ${s.data.ahead} ahead` : 'queued'}</span>`); }
+    life.react('heard');
+    if (lastJobs.some((j) => j.id === s.data.jobId && j.state !== 'waiting')) drawQueue(lastJobs);
+  } finally { redoing = false; drawRedo(); scrollDown(); }
+}
+// Edit in place: a box with your words, Send again and Cancel. Esc cancels, Enter sends (Shift+Enter for a new line).
+function editInPlace(el) {
+  if (el.querySelector(':scope > .edit-box')) return;
+  const was = rawText.get(el) || '';
+  const later = el !== lastYou() || [...log.querySelectorAll(':scope > .msg.bob')].some((b) => el.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const box = document.createElement('form');
+  box.className = 'edit-box';
+  box.innerHTML = `<label class="sr-only" for="edit-${el.dataset.mid}">Your message</label><textarea id="edit-${el.dataset.mid}" rows="3">${esc(was)}</textarea>${later ? '<span class="muted">Bob answers from here. What came after this message is kept under it as an earlier version.</span>' : ''}<div class="row"><button type="submit">Send again</button><button type="button" class="link" data-edit-cancel>Cancel</button></div>`;
+  el.classList.add('editing');
+  el.appendChild(box);
+  const t = box.querySelector('textarea');
+  t.focus(); t.setSelectionRange(t.value.length, t.value.length);
+  const close = () => { box.remove(); el.classList.remove('editing'); };
+  box.querySelector('[data-edit-cancel]').onclick = close;
+  t.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); box.requestSubmit(); }
+  });
+  box.onsubmit = (e) => {
+    e.preventDefault();
+    const text = t.value.trim();
+    if (!text) { t.focus(); return; }
+    if (text === was.trim()) { close(); return; }
+    close();
+    redoSend(el.dataset.mid, text);
+  };
+}
+window.addEventListener('bob-chat-redo', (e) => { redoOnNow = e.detail === true; drawRedo(); });
+
 function decorate(el, text, media = []) {
   if (!el || el.querySelector(':scope > .msg-tools')) return el;
   rawText.set(el, text || '');
@@ -1006,6 +1096,8 @@ log.addEventListener('click', async (e) => {
   const b = e.target.closest('button, a.file-link');
   if (!b || !log.contains(b)) return;
   const msg = b.closest('.msg');
+  if ('redo' in b.dataset) return redoSend(null, null);
+  if ('editMsg' in b.dataset) return editInPlace(msg);
   if ('copyMsg' in b.dataset) return copyText(plainText(msg) || rawText.get(msg) || '', b);
   if ('copyLinks' in b.dataset) return copyText([...new Set([...msg.querySelectorAll('a[href^="http"]')].map((a) => a.href))].join('\n'), b);
   if ('copyCode' in b.dataset) return copyText(b.parentElement.querySelector('code')?.textContent || '', b);
@@ -1153,7 +1245,7 @@ async function start() {
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
   try {
-    const st = await (await fetch('/api/settings')).json(); winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); autoSession = st.autoSession !== false; drawSessions(st.sessions, st.session, st.sessionBy);
+    const st = await (await fetch('/api/settings')).json(); winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo === true; drawRedo(); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"
     if (st.updates?.autoCheck) { const c = await (await fetch('/api/update/check')).json(); if (c.newer) note(`A newer Bob (${c.available.label}) is out${c.from === 'github' ? ' on GitHub' : ''}. Settings, This replicant matrix and updates, Check for updates.`); }

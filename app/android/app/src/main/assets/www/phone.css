@@ -56,6 +56,14 @@ header .bob img { width: 32px; height: 32px; border-radius: 8px; }
 .msg .by { font-size: 12px; color: var(--dim); margin-bottom: 4px; display: flex; gap: 6px; align-items: center; }
 .msg .tools { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .msg .tools button { min-height: 36px; font-size: 14px; padding: 0 10px; }
+.fold-note { margin-top: 6px; font-size: 14px; }
+.fold-note > button { min-height: 36px; padding: 0 4px; text-decoration: underline; }
+.versions-list { margin: 4px 0 0; padding-left: 20px; opacity: .85; }
+.versions-list li { margin: 6px 0; }
+.edit-box { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.edit-box textarea { width: 100%; box-sizing: border-box; font: inherit; min-height: 4.5em; }
+.edit-box .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.edit-box button { min-height: 36px; }
 .msg img, .msg video { max-width: 100%; border-radius: 8px; margin-top: 6px; display: block; }
 .msg audio { width: 100%; margin-top: 6px; }
 .note { align-self: center; max-width: 92%; font-size: 14px; color: var(--dim); text-align: center; padding: 4px 8px; }

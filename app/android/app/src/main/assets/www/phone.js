@@ -19,7 +19,7 @@
     get(k, d) { try { const v = localStorage.getItem(`bob.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { localStorage.setItem(`bob.${k}`, JSON.stringify(v)); } catch { /* full or blocked: carry on in memory */ } }
   };
-  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, userName: '', theme: 'inn', effort: 'low', resume: false };
+  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, userName: '', theme: 'inn', effort: 'low', resume: false, redo: false };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
   const saveSettings = () => store.set('settings', settings);
   let bobs = store.get('bobs', []); // [{ name, address, base }]
@@ -88,6 +88,7 @@
     if (!chat || !chat.msgs.length) box.append(greeting());
     for (const m of chat?.msgs || []) box.append(drawMsg(m));
     box.scrollTop = box.scrollHeight;
+    drawRedo();
   }
 
   function greeting() {
@@ -102,13 +103,82 @@
   }
 
   function drawMsg(m) {
-    if (m.who === 'you') return el('div', { class: 'msg you', text: m.text });
+    if (m.who === 'you') {
+      const node = el('div', { class: 'msg you' }, el('div', { class: 'words', text: m.text }));
+      if (m.edited) node.append(foldNote('edited', 'You changed this message. Tap to see what it said first.', el('div', { class: 'words', text: `First said: ${m.was || ''}` })));
+      if (m.versions?.length) node.append(foldNote(m.versions.length === 1 ? '1 earlier version' : `${m.versions.length} earlier versions`, 'What was here before Try again or Edit. Tap to see it.', versionsList(m.versions)));
+      node.append(el('div', { class: 'tools' }));
+      node._m = m;
+      return node;
+    }
     if (m.who === 'note') return el('div', { class: `note${m.bad ? ' bad' : ''}`, text: m.text });
     const by = m.by === 'phone' ? '📱 Phone brain' : `🖥 ${bobName(m.by)}`;
     const node = el('div', { class: 'msg bob' }, el('div', { class: 'by', text: by }), el('div', { class: 'words', html: L.markdown(m.text) }));
     for (const x of m.media || []) node.append(mediaNode(x));
     node.append(replyTools(m));
+    node._m = m;
     return node;
+  }
+
+  // ---------- Try again and Edit (Settings, In the chat). Off unless you turn it on. ----------
+  // Try again under the latest answer, Edit under your latest message. What was there before is kept under your
+  // message as an earlier version. A Bob on your network forgets it too (his "Show Try again and Edit" switch on);
+  // with his switch off he gets the message as a new one.
+  function foldNote(label, title, inner) {
+    const box = el('div', { class: 'fold-note' });
+    inner.hidden = true;
+    const b = el('button', { class: 'plain mini', text: label, title, 'aria-expanded': 'false', onclick: () => { inner.hidden = !inner.hidden; b.setAttribute('aria-expanded', String(!inner.hidden)); } });
+    box.append(b, inner);
+    return box;
+  }
+  function versionsList(list) {
+    return el('ol', { class: 'versions-list' }, list.slice().reverse().map((v) => el('li', {},
+      el('div', { text: `You: ${v.text}` }),
+      (v.said || []).map((x) => el('div', { text: `${x.role === 'user' ? 'You' : 'Bob'}: ${String(x.content || '').slice(0, 1500)}` })))));
+  }
+  const chatBusy = (c) => Boolean(current && current.chatId === c?.id) || queue.some((j) => j.chatId === c?.id);
+  function drawRedo() {
+    const box = $('chat');
+    for (const b of box.querySelectorAll('.redo-btn')) b.remove();
+    if (!settings.redo || !chat || chatBusy(chat)) return;
+    const nodes = [...box.children].filter((n) => n._m);
+    const you = [...nodes].reverse().find((n) => n._m.who === 'you');
+    if (!you) return;
+    const answer = [...nodes].reverse().find((n) => n._m.who === 'bob' && nodes.indexOf(n) > nodes.indexOf(you));
+    you.querySelector('.tools')?.append(el('button', { class: 'redo-btn', text: 'Edit', title: 'Change what you said and send it again', onclick: () => editBox(you) }));
+    (answer || you).querySelector('.tools')?.append(el('button', { class: 'redo-btn', text: 'Try again', title: 'Get a new answer to your last message', onclick: () => redo() }));
+  }
+  function editBox(node) {
+    if (node.querySelector('.edit-box')) return;
+    const m = node._m, photo = /^📷 /.test(m.text);
+    const was = photo ? m.text.slice(3) : m.text;
+    const t = el('textarea', { rows: '3', 'aria-label': 'Your message' });
+    t.value = was;
+    const box = el('div', { class: 'edit-box' }, t, el('div', { class: 'row' },
+      el('button', { class: 'main', text: 'Send again', onclick: () => { const v = t.value.trim(); if (!v) return t.focus(); box.remove(); if (v !== was.trim()) redo(photo ? `📷 ${v}` : v); } }),
+      el('button', { text: 'Cancel', onclick: () => box.remove() })));
+    node.append(box);
+    t.focus();
+  }
+  // text: the new words (Edit), or none (Try again).
+  function redo(text = null) {
+    const c = chat;
+    if (!c || chatBusy(c)) return toast('Bob is still on this chat. Wait until he has finished, or tap Stop first.');
+    const at = c.msgs.map((m) => m.who).lastIndexOf('you');
+    if (at < 0) return;
+    const you = c.msgs[at], tail = c.msgs.slice(at + 1);
+    const by = [...tail].reverse().find((m) => m.who === 'bob')?.by || null;
+    you.versions = [...(you.versions || []), { at: you.edited || Date.now(), text: you.text, said: tail.filter((m) => m.who === 'bob' || m.who === 'you').map((m) => ({ role: m.who === 'you' ? 'user' : 'assistant', content: String(m.text || '').slice(0, 6000) })) }].slice(-5);
+    c.msgs.splice(at + 1);
+    if (text != null) { if (you.was == null) you.was = you.text; you.text = text; you.edited = Date.now(); }
+    saveChats();
+    drawChat();
+    const words = you.text.replace(/^📷 /, '');
+    // The same answerer as last time when it's still there (so it can take its answer back); otherwise whoever answers now.
+    let to = by === 'phone' ? (phoneReady() ? 'phone' : null) : by && liveBobs().some((b) => b.base === by) ? by : null;
+    if (!to) { const a = answerer(L.bigJob(words)); if (a.kind === 'none') return note(nobodyWhy(a.why), true); to = a.kind === 'net' ? a.bob.base : 'phone'; }
+    queue.push({ chatId: c.id, text: words, to, ...(to === by && to !== 'phone' ? { redo: text != null ? 'edit' : 'again' } : {}) });
+    pump();
   }
 
   function replyTools(m) {
@@ -269,6 +339,7 @@
     $('status-text').textContent = t;
     $('send').textContent = current ? '■' : '➤';
     $('send').setAttribute('aria-label', current ? 'Stop' : 'Send');
+    drawRedo(); // Try again and Edit hide while this chat is busy
   }
 
   // ---------- Sending ----------
@@ -326,7 +397,7 @@
     const c = chats.find((x) => x.id === job.chatId);
     if (!c) return pump();
     if (job.to === 'phone') return askPhone(c, job.text);
-    return askNet(c, job.text, job.to, job.photo);
+    return askNet(c, job.text, job.to, job.photo, job.redo);
   }
 
   function finish() {
@@ -340,6 +411,7 @@
     current = null;
     store.set('pending', null);
     pump();
+    drawRedo();
   }
 
   function startReply(c, kind, by, q) {
@@ -413,7 +485,7 @@
   }
 
   // ---------- Bobs on the network ----------
-  function askNet(c, text, base, withPhoto = false) {
+  function askNet(c, text, base, withPhoto = false, redoKind = null) {
     current = startReply(c, 'net', base, text);
     current.base = base;
     const b = bobs.find((x) => x.base === base);
@@ -424,12 +496,15 @@
         return [JSON.parse(r.body).id];
       })
       : Promise.resolve([]);
-    upload.then((refs) => phone('net.post', { address: b.address, path: '/api/chat', body: JSON.stringify({ sessionId: `phone-${c.id}`, text, effort: settings.effort, ...(refs.length ? { refs } : {}) }) }))
+    // Try again or Edit: that Bob takes back his answer first (redo.js). His switch off, or an older Bob: a new message.
+    const takeBack = () => !redoKind ? Promise.resolve(null) : phone('net.post', { address: b.address, path: '/api/chat/redo', body: JSON.stringify({ sessionId: `phone-${c.id}`, last: true, ...(redoKind === 'edit' ? { text } : {}) }) })
+      .then((r) => { if (r.status === 200) return redoKind; if (r.status === 404 || /is off|no message of yours|older part/.test(shortError(r.body))) return null; throw Object.assign(new Error(shortError(r.body)), { said: true }); });
+    upload.then((refs) => takeBack().then((again) => phone('net.post', { address: b.address, path: '/api/chat', body: JSON.stringify({ sessionId: `phone-${c.id}`, text, effort: settings.effort, ...(refs.length ? { refs } : {}), ...(again ? { redo: again } : {}) }) })))
       .then((r) => {
         if (r.status === 401) { live[base].signedIn = false; grow(`*("${b.name}" wants the passcode again. It's under Bob-Net.)*`); finish(); drawWho(); }
         else if (r.status >= 400) { grow(`*("${b.name}" said no: ${shortError(r.body)})*`); finish(); }
       })
-      .catch((e) => { grow(`*(Couldn't reach "${b.name}": ${e.message}. Check that Tailscale is on here and there. On that replicant matrix, Settings, Bob-Net: "Let my other replicant matrices in" should be on, and on Windows press "Let Tailscale through the firewall" if it shows.)*`); finish(); });
+      .catch((e) => { if (e.said) { grow(`*("${b.name}" said no: ${e.message})*`); finish(); return; } grow(`*(Couldn't reach "${b.name}": ${e.message}. Check that Tailscale is on here and there. On that replicant matrix, Settings, Bob-Net: "Let my other replicant matrices in" should be on, and on Windows press "Let Tailscale through the firewall" if it shows.)*`); finish(); });
     drawStatus();
   }
   const shortError = (body) => { try { return JSON.parse(body).error || 'unknown'; } catch { return String(body).slice(0, 120); } };
@@ -938,12 +1013,14 @@
     $('read-aloud').checked = settings.readAloud;
     $('theme').value = settings.theme;
     $('resume').checked = settings.resume;
+    $('redo').checked = settings.redo;
   }
   document.querySelectorAll('input[name="mode"]').forEach((r) => r.addEventListener('change', () => { settings.mode = r.value; saveSettings(); drawWho(); }));
   $('user-name').addEventListener('change', (e) => { settings.userName = e.target.value.replace(/[<>{}"`\\]/g, '').trim().slice(0, 40); saveSettings(); });
   $('read-aloud').addEventListener('change', (e) => { settings.readAloud = e.target.checked; saveSettings(); });
   $('theme').addEventListener('change', (e) => { settings.theme = e.target.value; saveSettings(); applyTheme(); });
   $('resume').addEventListener('change', (e) => { settings.resume = e.target.checked; saveSettings(); });
+  $('redo').addEventListener('change', (e) => { settings.redo = e.target.checked; saveSettings(); drawRedo(); });
   const applyTheme = () => document.documentElement.setAttribute('data-theme', settings.theme);
 
   // ---------- 1.5.144 Tools and how-tos Bob made (the other Bob's, through him) ----------

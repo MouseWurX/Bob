@@ -104,6 +104,10 @@ globalThis.BobHelp = {
       html: `<p>Settings, <strong>Pick up where Bob left off</strong> (off to start with). Android sometimes closes apps in the background to save memory. With this on, if that happens in the middle of a phone-brain reply, I ask the question again when you come back.</p>`
     },
     {
+      id: 'redo', title: 'Try again and Edit',
+      html: `<p>Settings, <strong>Show Try again and Edit in the chat</strong> (off to start with). With it on, <strong>Try again</strong> under my latest answer gets a new answer to your last message, and <strong>Edit</strong> under your last message lets you change it and tap <strong>Send again</strong>. What was there before is kept under your message: tap <strong>1 earlier version</strong> to see it (the last 5 are kept). The buttons hide while I'm still on that chat.</p><p>When a Bob on your network answered, he takes his old answer back too if his own <strong>Show Try again and Edit in the chat</strong> is on (Settings, How Bob works on that replicant matrix). If it's off, he gets your message as a new one. On your other replicant matrix you can also edit earlier messages, not just the last.</p>`
+    },
+    {
       id: 'alerts', title: 'Alerts',
       html: `<p>When I'm in the background and a Bob on your network needs your OK, or has a check-in for you, Android shows a notification. The first time, Android asks if that's all right. Tap the notification to come back to me.</p><p>Check-ins are set up on your other replicant matrix (Settings, 🔔 Check-ins). The phone only shows them.</p>`
     },
@@ -197,6 +201,8 @@ globalThis.BobHelp = {
 <dt>Story dice</dt><dd>Six picture dice come up; we tell a story a line each until every die is in it. Always a shared point.</dd>
 <dt>Help bundle</dt><dd>One file from Save a help bundle (Settings, Save a help bundle): my logs, errors, last chats, settings without their secrets and this replicant matrix's facts, with a HANDOFF.md on top. I never send it anywhere.</dd>
 <dt>Handoff file (HANDOFF.md)</dt><dd>The first file in a help bundle, written for whoever helps (a person or an AI agent): what I am, my exact version and public code, what's wrong as far as I can tell, and what to try first.</dd>
+<dt>Try again</dt><dd>A button under my latest answer (Settings, Show Try again and Edit in the chat): a new answer to your last message. The old one is kept as an earlier version.</dd>
+<dt>Earlier version</dt><dd>Under your message: what was there before you tapped Try again or Edit.</dd>
 <dt>OK card</dt><dd>A Bob on your network asking before he does something outside his own folder.</dd>
 </dl>`
     },
@@ -204,6 +210,7 @@ globalThis.BobHelp = {
       id: 'faq', title: 'Questions and fixes',
       html: `<table>
 <tr><th>What happens</th><th>What to do</th></tr>
+<tr><td>No Try again or Edit under the messages</td><td>Settings, Show Try again and Edit in the chat: turn it on. The buttons also hide while I'm still answering in that chat.</td></tr>
 <tr><td>The chest is empty or says no Bob is reachable</td><td>The chest is your other Bob's Made by Bob list, so it needs him on Tailscale. Once he's reachable, open the menu and tap Chest again.</td></tr>
 <tr><td>The pill says Nobody home</td><td>Tap it. Usually your other replicant matrix is asleep, or Tailscale is off on the phone or your other replicant matrix.</td></tr>
 <tr><td>"Isn't letting other replicant matrices in yet"</td><td>On your other replicant matrix: Bob's Settings, Bob-Net, Let my other replicant matrices in. Turn it on, then restart Bob on your other replicant matrix.</td></tr>
