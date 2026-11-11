@@ -23,7 +23,7 @@ And four tools Bob runs beside the server, built from the same tag in the main b
 
 The build turns on `-DGGML_RPC=ON` so the card server exists. Its `ggml-rpc` backend file is Brain Engine's own (patch 0004). The other ggml files are never swapped.
 
-The **Brain Engine** workflow (`.github/workflows/brain-engine.yml`) builds them when `engine/` changes, or by hand.
+The **Brain Engine** workflow (`.github/workflows/brain-engine.yml`) builds them when `engine/` changes on main or in a pull request that is ready for review, and by hand. Pushes to work branches and draft pull requests build nothing, so a patch that is still being worked on never sends a failed-build e-mail. Check a new or changed patch with your own build first: `bash engine/try-newer.sh` for a move to a newer tag, or apply the patches to a clone of the tag and build the same targets as the workflow (on Windows too when the patch touches code that includes `windows.h`).
 
 ## Moving to a newer llama.cpp
 

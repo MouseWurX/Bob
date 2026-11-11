@@ -57,6 +57,7 @@ jobs:
           name: brain-engine-patches-${{ steps.try.outputs.new }}
           path: try-newer/patches/
       - name: Tell the owner (one open issue, edited each week)
+        continue-on-error: true # GitHub being busy must not turn the run red
         if: steps.try.outputs.result == 'applied' || steps.try.outputs.result == 'needs-a-hand'
         shell: bash
         env:
