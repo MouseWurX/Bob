@@ -24,8 +24,7 @@ export const docMeaningOn = (cfg) => docToolsOn(cfg) && cfg?.docMeaning === true
 export const INDEX = { files: 3000, piecesPerFile: 40, piece: 1200, overlap: 200, perRun: 150, runMs: 90e3, batch: 16, hits: 8, minScore: 0.45 };
 
 // nomic-embed-text was taught to tell questions from passages by these two openings; other models don't need them.
-const asDoc = (model, t) => (/nomic/i.test(model || '') ? `search_document: ${t}` : t);
-const asQuery = (model, t) => (/nomic/i.test(model || '') ? `search_query: ${t}` : t);
+import { asDoc, asQuery } from './embed-prefix.js';
 
 // Where each piece starts and how long it is. Pieces overlap a little so a sentence cut in two is whole in one of them.
 export function pieces(text, { size = INDEX.piece, overlap = INDEX.overlap, max = INDEX.piecesPerFile } = {}) {

@@ -256,6 +256,18 @@ High and Extreme end with **moot minutes**: who checked what, and what's still o
 
 **💭 Bob's thinking**, at the top of the chat, opens a small window that stays on top of your other windows. It shows, live: what Bob is doing, which brains he holds and where (graphics card or processor), his thinking as it streams (his copies too, so you can watch a moot), brain loads and swaps, each tool step and the notes he keeps for himself. Low effort replies skip thinking, so there you mostly see steps. Bob only sends his thinking along while the window is open, and nothing in it is saved.
 
+### How Bob keeps his tool calls on track (always on)
+
+Small brains often pick the right tool and then get what goes into it wrong. Bob's app checks every step, with no extra brain and no wait:
+
+- Before a tool runs, what Bob put into it is checked against what the tool needs. Sure mistakes are mended (broken brackets, a field under another name, "5" for 5). A call still missing something doesn't run; Bob gets one line saying what to send, and an example the second time.
+- After an error, Bob gets one plain hint on what usually works.
+- "I'll look that up" with no tool run gets one nudge to really do it, and a retry thinks it through on a brain that can think.
+- The same search in other words isn't run twice. Several look-ups in one reply run side by side.
+- On a job with several steps, a short note reminds Bob of your words, what came back and how many steps are left. The last step has no tools, so he always says what he found.
+- Once a chat fills half his memory, tool results from earlier messages become one line each.
+- While the embedding model is in use anyway (Topics or Remember only what fits), the tools a message means are added, not only the ones its words name.
+
 ---
 
 ## 6. Topics and housekeeping: Bob's memory

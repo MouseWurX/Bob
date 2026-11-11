@@ -57,7 +57,8 @@ check('the glossary says coding always thinks and chat doesn\'t', /Thinking firs
   check('the chat says so plainly', evs.some((e) => e.type === 'announce' && /thinking it through this time/.test(e.text)));
   const g = make('gemma4:26b');
   const gevs = await run(g);
-  check('another brain retries as before (no thinking line)', g.calls.length === 2 && g.calls[1].think === false && !gevs.some((e) => e.type === 'announce' && /thinking it through/.test(e.text)), JSON.stringify(g.calls));
+  // Nov 11 (loop-help.js): every brain's retry may think now; only Qwen3.6's says so in the chat.
+  check('another brain\'s retry may think too, quietly (no thinking line)', g.calls.length === 2 && g.calls[1].think !== false && !gevs.some((e) => e.type === 'announce' && /thinking it through/.test(e.text)), JSON.stringify(g.calls));
   check('Help says the second go thinks it through', /second go thinks it through: same brain, no reload/.test(faq.html));
   fs.rmSync(tmp, { recursive: true, force: true });
 }

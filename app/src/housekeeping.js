@@ -17,6 +17,7 @@ export { UNITS, KINDS, ageMs, cleanHousekeeping, hkSettings };
 import { recycle, backupToBin, mayRecycle } from './recycle.js';
 import { Topics, normName, topicText } from './topics.js';
 import { Embedder } from './embedder.js';
+import { asDoc, embedModel, vecKey, freshVec } from './embed-prefix.js';
 import { recallOn, parseMemory, MemoryVectors } from './recall.js';
 import { gaming } from './sessions.js';
 import { DocIndex, docMeaningOn, queryVector } from './doc-index.js';
@@ -333,13 +334,13 @@ export class Housekeeper {
     const groups = (Array.isArray(r.topics) ? r.topics : []).map((g) => ({ ...g, pics: [].concat(g.msgIds || []).flatMap((x) => media[x] || []) }));
     // Embeddings catch "art direction" vs "art style"; without them, names are matched.
     let vecs = null;
-    if (groups.length) vecs = await this.embed(groups.map((g) => `${g.project || ''} > ${g.name}: ${g.summary || ''}`));
+    if (groups.length) vecs = await this.embed(groups.map((g) => asDoc(embedModel(this.cfg), `${g.project || ''} > ${g.name}: ${g.summary || ''}`)));
     const touched = this.topics.absorb(id, groups.map((g, i) => ({ ...g, vec: vecs?.[i] })), {
       at,
       match: (g, topics) => {
         if (!g.vec) return null;
         let best = null, score = 0.86;
-        for (const t of topics) { if (!t.vec) continue; const s = cosineLocal(g.vec, t.vec); if (s > score) { score = s; best = t; } }
+        for (const t of topics) { if (!freshVec(t)) continue; const s = cosineLocal(g.vec, t.vec); if (s > score) { score = s; best = t; } }
         return best;
       }
     });
@@ -351,9 +352,9 @@ export class Housekeeper {
   }
 
   async refreshVectors() {
-    const need = this.topics.load().topics.filter((t) => !t.vec);
+    const need = this.topics.staleVectors().slice(0, 64);
     if (!need.length) return;
-    const vecs = await this.embed(need.map(topicText));
+    const vecs = await this.embed(need.map((t) => asDoc(embedModel(this.cfg), topicText(t))));
     if (vecs) this.topics.setVectors(Object.fromEntries(need.map((t, i) => [t.id, vecs[i]])));
   }
 
@@ -482,9 +483,25 @@ export class Housekeeper {
     if (!recallOn(this.cfg) || gaming(this.cfg)) return 0;
     let text = '';
     try { text = readText(this.cfg.memoryFile); } catch { return 0; }
-    const model = this.cfg.housekeeping?.embedModel || 'nomic-embed-text';
+    const model = embedModel(this.cfg);
     this.memVecs ||= new MemoryVectors(this.cfg);
-    return this.memVecs.fill(parseMemory(text), (texts) => this.embed(texts), model);
+    return this.memVecs.fill(parseMemory(text), (texts) => this.embed(texts.map((t) => asDoc(model, t))), vecKey(model));
+  }
+
+  // Nov 11: vectors made before the search openings (embed-prefix.js) are made again while Bob is idle, a batch at a
+  // time: topics, and how-tos. Until then those are matched by words. Never in the Gaming session.
+  async refreshOldVectors() {
+    if (gaming(this.cfg)) return 0;
+    let n = 0;
+    if (this.topics.staleVectors().some((t) => t.note || t.summary)) { await this.refreshVectors(); n++; }
+    const how = this.brain?.howtos;
+    const stale = how?.staleVectors?.().slice(0, 32) || [];
+    if (stale.length) {
+      const v = await this.embed(stale.map((r) => asDoc(embedModel(this.cfg), `${r.name}. ${r.when}`)));
+      if (v) stale.forEach((r, i) => { if (v[i]) how.setVec(r.id, v[i]); });
+      n++;
+    }
+    return n;
   }
 
   // Search my documents by meaning (doc-index.js): new and changed documents get their meaning numbers while Bob
@@ -513,6 +530,7 @@ export class Housekeeper {
     if (vaultOn(this.cfg) && !hasKey()) return { skipped: true, locked: true }; // 🔒 chats are locked until the passcode is typed
     if (recallOn(this.cfg) && (force || this.idle()) && !this.working) { try { await this.fillMemoryVectors(); } catch {} }
     if (docMeaningOn(this.cfg) && (force || this.idle()) && !this.working) { try { await this.fillDocIndex(); } catch {} }
+    if ((this.settings.enabled || recallOn(this.cfg)) && (force || this.idle()) && !this.working) { try { await this.refreshOldVectors(); } catch {} }
     const hk = this.settings;
     if (!force && (!hk.enabled || !this.idle())) return { skipped: true };
     if (this.working) return { busy: true };

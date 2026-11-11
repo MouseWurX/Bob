@@ -904,9 +904,10 @@ export class LlamaCpp {
     }
     if (asked && !traced) this.log?.('engine', `fNRI cube: ${model} answered without an expert trace (an older Brain Engine, or not Brain Engine)`);
     const tool_calls = calls.filter(Boolean).map((c) => {
-      let args = {};
-      try { args = c.args ? JSON.parse(c.args) : {}; } catch { args = {}; }
-      return { function: { name: c.name, arguments: args } };
+      let args = {}, raw;
+      try { args = c.args ? JSON.parse(c.args) : {}; } catch { args = {}; raw = c.args; }
+      // Nov 11: broken JSON is kept as written, so the call can be mended before it runs (loop-help.js).
+      return { function: { name: c.name, arguments: args, ...(raw !== undefined ? { raw } : {}) } };
     });
     if (!tool_calls.length && tools?.length) {
       const names = new Set(tools.map((t) => t.function?.name).filter(Boolean));

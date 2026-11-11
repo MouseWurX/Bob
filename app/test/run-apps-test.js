@@ -253,7 +253,7 @@ if (process.platform !== 'win32') check('off Windows the real helper says it nee
   const b = fs.readFileSync(path.join(here, '..', 'src', 'brain.js'), 'utf8');
   check('a claim with no Hands tool done this turn gets a visible correction and one chance to really do it', /if \(!reply\.tool_calls && !ctx\.handsDid && !ctx\.claimChecked && claimsPcAction\(reply\.content\)\)/.test(b) && /emit\(\{ type: 'correction', text: CLAIM_CORRECTION \}\)/.test(b) && /reply\.correction = CLAIM_CORRECTION/.test(b) && /continue;/.test(b) && CLAIM_CORRECTION === 'Nothing was actually done on this replicant matrix in that reply. Bob said he did, but no action ran.');
   check('the nudge stays out of the chat the user sees', /role: 'system', content: CLAIM_NUDGE, hidden: true/.test(b) && /\.filter\(\(m\) => \(m\.role === 'user' \|\| m\.role === 'assistant'\)/.test(b));
-  check('the brain sees history through the stale-error filter', /messages: \[sys, \.\.\.staleHandErrors\(msgs, turnStart\)\]/.test(b));
+  check('the brain sees history through the stale-error filter', /messages: \[sys, \.\.\.(?:loopView\()?staleHandErrors\(msgs, turnStart\)(?:, step\))?\]/.test(b));
 }
 
 // UI
