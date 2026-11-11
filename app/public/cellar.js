@@ -21,6 +21,7 @@ import { tip, noteOrTip, stripTags, keep } from './tips.js';
 import { attributesHtml, cleanPersonality, greeting, PRESETS, DEFAULTS, isDefault } from './personality.js';
 import { esc, gb } from './util.js';
 import { wantsHtml, wantPatch, wantSaved } from './wants.js';
+import { mountPresets } from './presets.js'; // Assistant presets for chats
 import { GROUPS as SET_GROUPS, CARDS as SET_CARDS, VIEW_KEY, cardOf, startView, topicFor } from './settings-map.js';
 
 const $ = (id) => document.getElementById(id);
@@ -958,6 +959,7 @@ export function createCellar({ popOut = null } = {}) {
       ${hw?.gpu?.integrated ? holdbackHtml() : ''}
       ${sswitch('allTools', settings.allTools, 'Give Bob all his tools at once', 'Sends every tool with each message, which leaves less room for the chat. Leave off to keep chats light.')}`],
     ['house', '🖋 House style', 'house style defaults default length mood genre music picture style shape clip video sound effects morning time evening night times of day', () => `<p class="muted">Your defaults for music, pictures, clips, sound effects and times of day live on Equip Bob, next to each slot.</p><button type="button" data-gohouse>Open House style on Equip Bob</button>`],
+    ['presets', '🎭 Assistant presets', 'assistant presets preset per chat instructions system prompt persona character role brain effort temperature tools talking only', () => '<div class="presets-box"></div>'],
     ['voice', '🔊 Voice details', 'kokoro chatterbox speed hey bob read aloud listen', () => voiceDetailsHtml()],
     ['look', '🌓 Look & feel', 'theme editor now running layout', () => lookExtrasHtml()],
     ['speed', '⚡ Speed & memory', 'speed memory free memory quiet keep alive unload idle graphics card quick answers processor pictures without waiting ready while you type games go first picture settings gaming graphics card borrow automatic never always remember only what fits memory banks recall speed test', () => speedMemoryHtml()],
@@ -1128,6 +1130,7 @@ export function createCellar({ popOut = null } = {}) {
     mountTelegram(dlg.querySelector('.telegram-box')); // Online services: Talk to Bob on Telegram
     mountDiscord(dlg.querySelector('.discord-box')); // Online services: Bob on Discord
     mountCheckins(dlg.querySelector('.checkins-box')); // 1.5.78 Check-ins
+    mountPresets(dlg.querySelector('.presets-box')); // Assistant presets for chats (loads its own list)
     mountAdventureSettings(dlg.querySelector('.adventure-box'), { api, settings }); // 1.5.117 🎲 Adventure
     mountGamesSettings(dlg.querySelector('.games-box'), { api, settings }); // 1.5.121 🧩 Games
     mountShareBrains(dlg.querySelector('.share-box')); // Bob-Net: My other Bobs and What they share

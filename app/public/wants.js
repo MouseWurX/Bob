@@ -43,6 +43,7 @@ export const WANTS = [
 
 // The bigger ones have choices of their own, so the list only points at them. id: the Settings section it opens.
 export const WANTS_ELSEWHERE = [
+  { card: 'bob', id: 'adv-presets', label: 'Work a different way in each chat (🎭 Assistant presets)' },
   { card: 'how', id: 'adv-checkins', label: 'Check in on you by myself (🔔 Check-ins)' },
   { card: 'net', id: 'adv-bobnet', label: 'Talk to me from your phone (🌐 Bob-Net)' },
   { card: 'online', id: 'adv-online', label: 'Chat on Discord or Telegram (☁ Online services)' },

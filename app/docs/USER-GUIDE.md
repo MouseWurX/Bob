@@ -201,6 +201,10 @@ As you move a dial, Bob's **greeting** changes so you can hear the difference ri
 
 Bob also knows what he looks like. Change his look under **Style** and he'll comment on it, once.
 
+### Assistant presets: a different Bob per chat
+
+Switch on **Assistant presets for chats** (Settings, Bob himself, 🎭 Assistant presets; off unless you turn it on) to save presets: a name, your own instructions, a brain from Bob's slots, a starting effort, a temperature and which tools he may use (as usual, only the groups you tick, or talking only). Pick one for the chat you're in from **🎭 Preset** next to Effort, or with the 🎭 button in Bob for Android. A chat with no preset is plain Bob, and a preset never switches on a tool or Hand that is off.
+
 ---
 
 ## 5. Sessions: matching Bob to what you're doing

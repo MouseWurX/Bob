@@ -112,6 +112,12 @@ export function groupsFor(brain) {
 export const groupOf = (brain, name) => Object.entries(groupsFor(brain)).find(([, x]) => x.tools.includes(name))?.[0] || null;
 
 // The groups the user's words point at this turn.
+// Assistant presets (presets.js): only the groups a chat's preset allows. `only` null = every group, as usual.
+export function onlyGroups(groups, only) {
+  if (!only) return groups;
+  return Object.fromEntries(Object.entries(groups).filter(([id]) => only.has(id)));
+}
+
 export function guessGroups(brain, text) {
   const t = String(text || '');
   return Object.entries(groupsFor(brain)).filter(([, x]) => x.words.test(t)).map(([id]) => id);
@@ -137,8 +143,10 @@ export function useToolsTool(brain) {
       }
     },
     async run({ group }, ctx) {
-      const groups = groupsFor(brain);
+      const all = groupsFor(brain);
+      const groups = onlyGroups(all, ctx?.loaded?.only);
       const id = String(group || '').toLowerCase().trim();
+      if (all[id] && !groups[id]) return `This chat's assistant preset leaves out ${id}. Say so in a line; a chat without this preset can use it.`;
       const handId = Object.keys(HANDS).find((h) => h === id);
       if (!groups[id]) {
         if (handId && !handOn(brain.cfg, handId)) return handOffWhy(brain.cfg, handId);
@@ -179,8 +187,8 @@ export function fillUseTools(schema, groups, loaded) {
 // One line in the front desk's prompt naming the groups not added yet (router test, 2026-11-02: without it,
 // small brains said "I can't make pictures yet" instead of calling use_tools). About 80 tokens.
 export function toolboxPrompt(brain, loaded) {
-  if (allToolsOn(brain.cfg)) return '';
-  const open = Object.entries(groupsFor(brain)).filter(([id]) => !loaded.has(id));
+  if (allToolsOn(brain.cfg) && !loaded?.only) return '';
+  const open = Object.entries(onlyGroups(groupsFor(brain), loaded?.only)).filter(([id]) => !loaded.has(id));
   if (!open.length) return '';
   return `\n\nMore you CAN do: call use_tools with a group, then its tool. ${open.map(([id, x]) => `${id} = ${x.what}`).join('; ')}. Never say you can't do these.`;
 }

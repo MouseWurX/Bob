@@ -46,7 +46,8 @@ import { toolsOff, HANDS, handOn, handOffWhy, freeOn, computerWord } from './han
 import { gate as qGate, after as qAfter, maybeAsk as qAsk, noteStrike, copyHeld } from './quarantine.js';
 import { wantsPictureEdit, recentPicture, editHint } from './intent.js';
 import { SAVE_AS, namedType, saveAs } from './save-as.js';
-import { CORE, groupsFor, groupOf, guessGroups, allToolsOn, useToolsTool, fillUseTools, tidySchema, STICKY_TURNS, toolboxPrompt, saysCant } from './toolbox.js';
+import { CORE, groupsFor, groupOf, guessGroups, allToolsOn, useToolsTool, fillUseTools, tidySchema, STICKY_TURNS, toolboxPrompt, saysCant, onlyGroups } from './toolbox.js';
+import { presetFor, presetGroups, presetBrain, presetPrompt, LimitedGroups } from './presets.js';
 import { Gate, Ledger, safeToResume, interruptedNote, withRetry, slimHandoff, carryOnPlan, carryOnLine, finishedSteps, MAX_AUTO_RESUMES, isBareOk, NOTHING_TO_OK, NOTHING_TO_OK_BUSY, queuedLine, plainDoing } from './handoff.js';
 import { expectFrom, verifyOutput, afterTool, afterTurn } from './verify.js';
 import { brainMode, chatBrain, holdsChatBrain, bigSession, isBobs, sameModel, sleepAfterText, bigGraceMs, msText } from './brain-mode.js';
@@ -1441,9 +1442,13 @@ export class Brain {
   // The front desk's tools for this step: the core, plus the groups added so far this turn (toolbox.js).
   // With "Give Bob all his tools at once" on, every usable tool, the way it was before.
   frontDeskTools(loaded) {
-    if (allToolsOn(this.cfg)) return this.toolSchemas(Object.keys(this.tools));
-    const groups = groupsFor(this);
-    const names = [...CORE, ...[...loaded].flatMap((g) => groups[g]?.tools || [])];
+    if (allToolsOn(this.cfg) && !loaded?.only) return this.toolSchemas(Object.keys(this.tools));
+    // Assistant presets (presets.js): a chat's preset can narrow the groups. Its copies of Bob have their own tools, so
+    // handing a job to one (ask_specialist) is left out too while a preset narrows them.
+    const groups = onlyGroups(groupsFor(this), loaded?.only);
+    if (allToolsOn(this.cfg)) for (const g of Object.keys(groups)) loaded.add(g);
+    const core = loaded?.only ? CORE.filter((n) => n !== 'ask_specialist') : CORE;
+    const names = [...core, ...[...loaded].flatMap((g) => groups[g]?.tools || [])];
     // 1.5.41: ask_together comes along once a group with tools that ask for an OK is added.
     if (names.some((n) => this.tools[n]?.check && this.usable(n))) names.push('ask_together');
     if (planOn(this.cfg)) names.push('show_plan'); // 1.5.78: always there while the setting is on (plan.js)
@@ -2078,6 +2083,11 @@ export class Brain {
     ctx.ledger = new Ledger({ job, expect: expectFrom(text, { pics }), save: () => this.saveQueue() });
     this.gate.track(signal, ctx.ledger);
     ctx.loaded = this.startGroups(sessionId, text); // toolbox groups this turn (use_tools adds more)
+    // Assistant presets (presets.js, off unless switched on): this chat's preset, if it has one. Its tool groups are a
+    // limit no later add gets past; "Talking only" means no tools at all. Never for guests (Discord, Telegram).
+    ctx.preset = job?.guest ? null : presetFor(this.cfg, sessionId);
+    const presetOnly = presetGroups(ctx.preset);
+    if (presetOnly) { ctx.loaded = new LimitedGroups(ctx.loaded, presetOnly); if (!presetOnly.size) ctx.noTools = true; }
     if (wantsEdit && groupsFor(this).pictures) ctx.loaded.add('pictures'); // 1.5.94: an edit needs make_image at hand
     out.ctx = ctx;
     const used = new Set();
@@ -2087,6 +2097,14 @@ export class Brain {
     // 1.5.16: a Low-effort chat reply doesn't think first (gemma4 and others think by default, which delays every reply).
     // Medium and up, and sessions that set a level (Deep thought), keep their thinking.
     if (think === undefined && !bigThinker(job)) think = false;
+    // A preset's own brain: Low effort in the Normal session only (Medium and up draft on the big brains as usual, and the
+    // other sessions keep their brain, so Gaming never loads a big one). Only a brain still in one of Bob's slots.
+    const pBrain = ctx.preset && !job?.side && !bigThinker(job) && currentSession(this.cfg).id === 'normal' ? presetBrain(this.cfg, ctx.preset) : '';
+    if (pBrain) {
+      ({ model, cpu, ctx: wantCtx } = modelFor({ ...this.cfg, quickOnCpu: false, oneBrain: false, models: { ...this.cfg.models, bob: pBrain } }, 'bob'));
+      beside = undefined;
+      this.log('chat', `preset "${ctx.preset.name}": ${pBrain} answers`);
+    }
     // 1.5.66: Qwen3.6 as the main Brain (everyday chat): no thinking first, and the same long load (256K since 1.5.86) its Coding copy
     // uses, so chat and coding don't reload the brain between them. A context picked by hand for Normal still wins.
     if (!job?.side && !bigThinker(job) && currentSession(this.cfg).id === 'normal' && !CTX_CHOICES.includes(this.cfg.sessionCtx?.normal)) {
@@ -2097,7 +2115,7 @@ export class Brain {
     // 1.5.69: with "Keep the graphics card free for quick answers" on, Low chat runs on the small Quick brain, which is
     // poor at reading web pages. A message with a link in it (or one about a link from earlier) goes to the main Brain
     // instead, like any other hand-off. Normal session only: Gaming keeps its own small brain (never E4B, never the card).
-    if (!job?.side && !bigThinker(job) && !again && quickOnCpu(this.cfg) && currentSession(this.cfg).id === 'normal'
+    if (!job?.side && !bigThinker(job) && !again && !pBrain && quickOnCpu(this.cfg) && currentSession(this.cfg).id === 'normal'
       && webOn(this.cfg) && this.usable('fetch_page') && linkTurn(text, msgs.slice(0, turnStart))) {
       const main = modelFor({ ...this.cfg, quickOnCpu: false }, 'bob');
       if (main.model && !sameModel(main.model, model)) {
@@ -2114,7 +2132,7 @@ export class Brain {
     // Small extras, only on some turns: the effort note (High/Extreme) and now and then a moment with the cat.
     const turnNo = msgs.filter((m) => m.role === 'user').length;
     const state = realState({ model, session: currentSession(this.cfg).label, waiting: this.queue.filter((j) => j.state === 'waiting').length, cat: this.cfg.catName, turn: turnNo, withCat: catTurn(turnNo) });
-    const extras = [state, guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
+    const extras = [state, presetPrompt(ctx.preset, this.cfg.userName || 'the user'), guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
     const brainCtx = await this.fitCtx(model, wantCtx);
     // 1.5.127: a chat that no longer fits the biggest brain here, with a rented brain in its slot: offer it (the job carries on here meanwhile).
     if (!job?.rent && !job?.side && !job?.guest && this.rentals.current() && !ctx.rentOffered) {
@@ -2273,6 +2291,7 @@ export class Brain {
         this.setState('thinking', '', model);
         reply = await this.chatSafe({
           model, messages: [sys, ...staleHandErrors(msgs, turnStart)], tools, signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
+          ...(ctx.preset && ctx.preset.temperature !== null ? { temperature: ctx.preset.temperature } : {}), // a preset's own temperature
           onToken: (t) => emit({ type: 'token', text: t })
         }, { emit });
       }

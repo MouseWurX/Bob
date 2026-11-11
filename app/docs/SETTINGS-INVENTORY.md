@@ -256,6 +256,15 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | Chat page > under a message Bob changed | "edited" (button; title "Bob changed this message. Press to see what it said first."). Pressed: "First said: <the first wording>". | — | new (1.5.194) |
 | Discord DMs / Telegram / phone | A fix to a message already sent: "✏️ Fixed an earlier message. It now says: <new words>" (Discord DMs change the DM itself when it was one message). | — | new (1.5.194) |
 
+## Added with assistant presets
+
+| Where | Setting / text | Default | Status |
+|---|---|---|---|
+| Settings > Bob himself > 🎭 Assistant presets | Assistant presets for chats: "Off unless you turn it on. Save sets of instructions, brain, starting effort, temperature and tools, then pick one for any chat from 🎭 Preset next to Effort. A chat with no preset is plain Bob." | off | new, awaiting review |
+| same, each preset (always shown, editable with the switch off) | Name; Instructions ("What Bob does or how he talks in chats with this preset, in your own words. His honesty, safety and asking first never change."); Brain (Bob's usual brain / a brain in his slots); Starting effort (Leave Effort as it is / Low / Medium / High / Extreme); Temperature (empty = usual, 0 to 2); Tools (As usual / Only these / Talking only (no tools), with a tick per tool group); Save; Remove (press twice) | usual | new, awaiting review |
+| Chat page, Effort row | 🎭 Preset menu: None (plain Bob) or a saved preset. Shows while the switch is on and a preset exists | None | new, awaiting review |
+| Bob for Android, next to Effort | 🎭 button steps through the presets of the Bob it talks to, for the chat you're in | No preset | new, awaiting review |
+
 ## Added with quick notes, document reading and the sandbox
 
 | Where | Setting / text | Default | Status |

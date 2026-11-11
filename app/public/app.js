@@ -28,6 +28,7 @@ import { createRentSwitch } from './rent-switch.js'; // 1.5.127 rented brains
 import { createGameLock } from './game-lock.js';
 import { quarantineCard, quarantineResult, createQuarantineBanner } from './quarantine.js';
 import { createEffort } from './effort.js';
+import { createPresetPicker } from './presets.js'; // Assistant presets for chats
 import { createCatAntics } from './cat-antics.js';
 import { createBubbles } from './say-bubbles.js';
 import { createBobLife } from './bob-life.js';
@@ -85,6 +86,7 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch {} }
 };
 let sessionId = store.get('bob-session', 'main');
+const presetPicker = createPresetPicker({ note: (t, k) => note(t, k), effort, session: () => sessionId });
 let speakOn = store.get('bob-speak', '0') === '1';
 let busy = false;
 const replies = new Map(); // turnId -> { el, text } of the reply being streamed (two can run at once in an Art session)
@@ -406,6 +408,7 @@ async function openChat(id, msgId) {
   sessionId = id;
   store.set('bob-session', sessionId);
   log.innerHTML = '';
+  presetPicker.load();
   await loadHistory(40);
   const el = msgId && log.querySelector(`[data-mid="${CSS.escape(msgId)}"]`);
   if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2500); }
@@ -431,6 +434,7 @@ $('newchat').onclick = () => {
   sessionId = 'chat-' + Date.now();
   store.set('bob-session', sessionId);
   log.innerHTML = '';
+  presetPicker.load({ apply: false });
   note('New conversation. Bob still remembers what\'s in his memory file and on your to-do list.');
 };
 

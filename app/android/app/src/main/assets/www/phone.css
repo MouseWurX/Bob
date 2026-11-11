@@ -75,6 +75,8 @@ header .bob img { width: 32px; height: 32px; border-radius: 8px; }
 footer { padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--line); }
 #status { font-size: 13px; color: var(--dim); min-height: 18px; padding: 0 4px 6px; display: flex; gap: 10px; align-items: center; }
 #status .effort { margin-left: auto; min-height: 30px; font-size: 13px; padding: 0 10px; border-radius: 999px; }
+#status #preset + .effort { margin-left: 6px; }
+#status #preset { max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .compose { display: flex; gap: 8px; align-items: flex-end; }
 .photo-chip { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .photo-chip img { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; }

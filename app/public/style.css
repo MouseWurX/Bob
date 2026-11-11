@@ -1714,3 +1714,16 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .vdoc-off p { margin: 0 0 8px; }
 .vdoc-why { overflow-wrap: anywhere; }
 @media (max-width: 600px) { .vslide { aspect-ratio: auto; } }
+
+/* Assistant presets (public/presets.js): the 🎭 Preset menu next to Effort, and the editor in Settings. */
+.preset-pick[hidden] { display: none; }
+.preset-pick select { font: inherit; font-size: 12px; max-width: 14em; min-height: 24px; color: var(--text); background: var(--bg, transparent); border: 1px solid var(--line); border-radius: var(--r); }
+.preset-pick.on { color: var(--text); border-color: var(--accent); }
+.preset-item { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; margin: 6px 0; }
+.preset-item > summary { cursor: pointer; }
+.preset-fields { display: grid; gap: 8px; margin-top: 8px; }
+.preset-fields .block { display: grid; gap: 4px; }
+.preset-fields textarea { width: 100%; box-sizing: border-box; font: inherit; }
+.preset-tools { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; }
+.preset-groups { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0; }
+.preset-groups label, .preset-tools > label { min-height: 32px; display: inline-flex; align-items: center; gap: 6px; }

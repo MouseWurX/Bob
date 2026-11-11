@@ -788,7 +788,7 @@ export class LlamaCpp {
     } finally { opts.signal?.removeEventListener?.('abort', onAbort); }
   }
 
-  async chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver, task }) {
+  async chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver, task, temperature }) {
     // 1.5.52: a brain whose template refused a mid-chat system note gets them folded in from then on (foldSystem).
     this.noMidSystem ||= new Set();
     // 1.5.60: ask the loaded brain's chat template up front, so a template that refuses mid-chat system notes is
@@ -805,7 +805,7 @@ export class LlamaCpp {
       } catch {}
     }
     if (this.noMidSystem.has(model)) messages = foldSystem(messages);
-    const res = await this.post(model, messages, tools, signal, think, task);
+    const res = await this.post(model, messages, tools, signal, think, task, temperature);
     if (!res.ok) {
       // 1.5.60: the template's refusal sits deep in a long error (after the template source), so look at all of it.
       const full = await res.text();
@@ -813,7 +813,7 @@ export class LlamaCpp {
       if (!this.noMidSystem.has(model) && MID_SYSTEM_REFUSED.test(full)) {
         this.noMidSystem.add(model);
         this.log?.('engine', `${model}: its chat template only takes a system message first, so Bob's notes go in as user notes from now on`);
-        return this.chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver, task });
+        return this.chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver, task, temperature });
       }
       if (MID_SYSTEM_REFUSED.test(full)) this.log?.('engine', `${model}: refused a system message even after folding (roles ${(messages || []).map((m) => (m.role || '?')[0]).join('')}, ${full.length} chars of error)`);
       throw new Error(`llama-server returned ${res.status}: ${text}`);
@@ -821,12 +821,14 @@ export class LlamaCpp {
     return this.readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver });
   }
 
-  post(model, messages, tools, signal, think, task) {
+  // `temperature`: an assistant preset's own (presets.js); otherwise the brain's usual word settings decide.
+  post(model, messages, tools, signal, think, task, temperature) {
     return fetch(this.url + '/v1/chat/completions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, max_tokens: replyTokens(this.current === model ? this.currentCtx : null, MAX_REPLY_TOKENS), // 1.5.148: less on a small context. 1.5.26: no empty enums (llama.cpp rejects them)
         ...this.sampling(model, { tools: !!tools?.length, think, task }),
+        ...(Number.isFinite(temperature) ? { temperature } : {}),
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
         ...(think === false ? { chat_template_kwargs: { enable_thinking: false } } : {}),
         // FNRI's small cube in Bob's thinking: only while someone has it open, and only Brain Engine answers it

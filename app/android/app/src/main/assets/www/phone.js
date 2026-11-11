@@ -74,7 +74,10 @@
 
   // ---------- Chats ----------
   let chat = chats[0] && Date.now() - chats[0].at < 6 * 3600e3 ? chats[0] : null; // carry on today's chat
-  function newChat() { chat = null; drawChat(); }
+  // 🎭 Assistant presets: made on your other Bob (Settings, Bob himself) and picked here per chat. `pending` holds a
+  // pick made before the chat's first message, which is when the chat gets its id; it goes to that Bob just before it.
+  const presets = { key: null, on: false, list: [], picked: '', pending: null };
+  function newChat() { chat = null; presets.pending = null; drawChat(); }
   function ensureChat(firstText) {
     if (!chat) { chat = { id: Math.random().toString(36).slice(2, 10), title: L.chatTitle(firstText), at: Date.now(), msgs: [] }; chats.unshift(chat); }
     chat.at = Date.now();
@@ -257,6 +260,7 @@
     drawWho.last = a.kind + (a.bob?.base || '');
     $('effort').classList.toggle('hidden', a.kind !== 'net');
     $('effort').textContent = `Effort: ${settings.effort[0].toUpperCase()}${settings.effort.slice(1)}`;
+    loadPresets(); drawPreset();
     drawStatus();
   }
 
@@ -424,7 +428,10 @@
         return [JSON.parse(r.body).id];
       })
       : Promise.resolve([]);
-    upload.then((refs) => phone('net.post', { address: b.address, path: '/api/chat', body: JSON.stringify({ sessionId: `phone-${c.id}`, text, effort: settings.effort, ...(refs.length ? { refs } : {}) }) }))
+    const pick = presets.pending;
+    presets.pending = null;
+    upload.then((refs) => (pick === null ? refs : phone('net.post', { address: b.address, path: '/api/presets/pick', body: JSON.stringify({ sessionId: `phone-${c.id}`, id: pick }) }).catch(() => null).then(() => { presets.key = null; return refs; })))
+      .then((refs) => phone('net.post', { address: b.address, path: '/api/chat', body: JSON.stringify({ sessionId: `phone-${c.id}`, text, effort: settings.effort, ...(refs.length ? { refs } : {}) }) }))
       .then((r) => {
         if (r.status === 401) { live[base].signedIn = false; grow(`*("${b.name}" wants the passcode again. It's under Bob-Net.)*`); finish(); drawWho(); }
         else if (r.status >= 400) { grow(`*("${b.name}" said no: ${shortError(r.body)})*`); finish(); }
@@ -1053,6 +1060,45 @@ ${chatOut}
       }
     } catch (e) { logError('help-bundle', e.message); msg.textContent = `Couldn't save the bundle: ${e.message}`; }
     btn.disabled = false;
+  });
+
+  function presetBob() { const a = answerer(); return a.kind === 'net' ? a.bob : null; }
+  async function loadPresets() {
+    const b = presetBob();
+    const key = b ? `${b.base}|${chat?.id || ''}` : '';
+    if (key === presets.key) return;
+    presets.key = key;
+    if (!b) { presets.on = false; drawPreset(); return; }
+    try {
+      const r = await phone('net.get', { address: b.address, path: `/api/presets?session=${encodeURIComponent(`phone-${chat?.id || 'new'}`)}` });
+      const v = JSON.parse(r.body || '{}');
+      presets.on = r.status < 400 && v.on === true; presets.list = Array.isArray(v.list) ? v.list : [];
+      presets.picked = chat ? v.picked || '' : presets.pending || '';
+    } catch { presets.on = false; }
+    drawPreset();
+  }
+  function drawPreset() {
+    const btn = $('preset'); if (!btn) return;
+    const show = presets.on && presets.list.length > 0 && Boolean(presetBob());
+    btn.classList.toggle('hidden', !show);
+    const p = presets.list.find((x) => x.id === presets.picked);
+    btn.textContent = `🎭 ${p ? p.name : 'No preset'}`;
+    btn.setAttribute('aria-label', `Assistant preset for this chat: ${p ? p.name : 'none'}. Tap for the next one.`);
+  }
+  $('preset')?.addEventListener('click', async () => {
+    const ids = ['', ...presets.list.map((p) => p.id)];
+    const next = ids[(ids.indexOf(presets.picked) + 1) % ids.length];
+    const p = presets.list.find((x) => x.id === next);
+    presets.picked = next;
+    if (p?.effort) { settings.effort = p.effort; saveSettings(); }
+    drawPreset(); drawWho();
+    if (!chat) { presets.pending = next; toast(p ? `Your next chat uses ${p.name}.` : 'Your next chat is plain Bob.'); return; }
+    const b = presetBob(); if (!b) return;
+    try {
+      const r = await phone('net.post', { address: b.address, path: '/api/presets/pick', body: JSON.stringify({ sessionId: `phone-${chat.id}`, id: next }) });
+      if (r.status >= 400) throw new Error(JSON.parse(r.body || '{}').error || `said no (${r.status})`);
+      toast(p ? `This chat uses ${p.name} now.` : 'This chat is plain Bob again.');
+    } catch (e) { toast(`Couldn't change the preset: ${e.message}`); presets.key = null; loadPresets(); }
   });
 
   const EFFORTS = ['low', 'medium', 'high', 'extreme'];
