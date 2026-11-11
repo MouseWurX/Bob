@@ -24,7 +24,7 @@ check('hello carries the name and the pass-along switch', hello.name === 'desk' 
 const ab = cleanAbilities({ ...hello, name: 'de<sk>' });
 check('…and the asker keeps both, cleaned', ab.passAlong === true && ab.hisName === 'desk');
 
-// ---------- Show their faces (the avatars on the Bob-Net list) ----------
+// ---------- Show avatars (the avatars on the Bob-Net list) ----------
 {
   const mk = (look) => helloFor({ cfg: { look, share: {} }, queue: [] }, { why: '', quick: null, can: {}, version: '1.5.205', label: () => '', name: 'desk' });
   check('hello carries this Bob\'s look', mk('robot-3').look === 'robot-3' && mk('c:ab1.2').look === 'c:ab1.2');
@@ -42,11 +42,11 @@ check('…and the asker keeps both, cleaned', ab.passAlong === true && ab.hisNam
   check('the party gives each Bob\'s look, and this Bob\'s own', v.here.look === 'm-7' && v.bobs.find((b) => b.name === 'Go').look === 'alien-4' && v.bobs.find((b) => b.name === 'Phone').look === '');
   check('…and no look for this Bob with none picked', partyView({ cfg: { share: { lend: true } }, lenders: null, queue: [] }).here.look === '');
   const html = read('public/index.html'), lay = read('public/layout.js');
-  check('Show their faces is a switch in the Bob-Net section, off to begin with', /id="nowNetFaces"[^>]*role="switch"[^>]*aria-checked="false"/.test(html) && html.indexOf('id="nowNetFaces"') > html.indexOf('id="nowNet"') && html.indexOf('id="nowNetFaces"') < html.indexOf('id="nowNetList"'));
-  check('…remembered per window, off unless switched on', /store\.get\('bob-net-faces', '0'\) === '1'/.test(lay));
-  check('…faces are drawn with the avatar painter, named for screen readers', /drawBob\(c, cv\.width, \{\}, cv\.dataset\.look\)/.test(lay) && /aria-label="\$\{esc\(name\)\}'s face"/.test(lay));
+  check('Show avatars is a switch in the Bob-Net section, off to begin with', /id="nowNetAvatars"[^>]*role="switch"[^>]*aria-checked="false"/.test(html) && html.indexOf('id="nowNetAvatars"') > html.indexOf('id="nowNet"') && html.indexOf('id="nowNetAvatars"') < html.indexOf('id="nowNetList"'));
+  check('…remembered per window, off unless switched on', /store\.get\('bob-net-avatars', '0'\) === '1'/.test(lay));
+  check('…avatars are drawn with the avatar painter, named for screen readers', /drawBob\(c, cv\.width, \{\}, cv\.dataset\.look\)/.test(lay) && /aria-label="\$\{esc\(name\)\}'s avatar"/.test(lay));
   const help = read('public/help-content.js');
-  check('…with Help, a glossary line and an FAQ', help.includes("id: 'faq-faces'") && help.includes('<dt>Show their faces</dt>') && /Show their faces<\/strong>, just under the heading/.test(help));
+  check('…with Help, a glossary line and an FAQ', help.includes("id: 'faq-avatars'") && help.includes('<dt>Show avatars</dt>') && /Show avatars<\/strong>, just under the heading/.test(help));
 }
 
 // ---------- the party reading ----------

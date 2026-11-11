@@ -17,7 +17,7 @@ import { readJsonFile } from './util.js';
 import { isTailscaleIp } from './phone-access.js';
 import { homeIps, isHomeIp, sameNet, SCUT_MBPS } from './share-card.js';
 import { cleanCheck, checkRefusal, checkDown, CHECK_FIRST_WORD_MAX_MS } from './bob-net-check.js'; // 1.5.185
-import { LOOK_ID_RE } from './look.js'; // the faces on the Bob-Net list
+import { LOOK_ID_RE } from './look.js'; // the avatars on the Bob-Net list
 
 export const PROTOCOL = 1;
 // About how many tokens a request is (4 characters a token is close enough to decide whether it fits a brain's room).
@@ -335,7 +335,7 @@ export class Lenders {
     const seen = this.state.get(bob.address);
     if (seen?.measured) out.measured = seen.measured; // what we timed ourselves outlives a hello
     if (seen?.reviewDownUntil) out.reviewDownUntil = seen.reviewDownUntil; // #30: a review he couldn't do, too
-    if (!out.look && seen?.look) out.look = seen.look; // his face stays on the Bob-Net list while he's away
+    if (!out.look && seen?.look) out.look = seen.look; // his avatar stays on the Bob-Net list while he's away
     out.at = this.now();
     this.state.set(bob.address, out);
     return out;
@@ -483,7 +483,7 @@ export function cleanAbilities(j) {
   if (j?.review && typeof j.review === 'object' && j.review.brain) out.review = { brain: String(j.review.brain).slice(0, 60), ctx: n(j.review.ctx, 1048576), gb: n(j.review.gb, 1024) };
   const check = cleanCheck(j); // 1.5.185: he checks harder jobs on his Review brain
   if (check) out.check = check;
-  // His look (the avatar picked in Style), for his face on the Bob-Net list in Now running. Only a real look id.
+  // His look (the avatar picked in Style), for his avatar on the Bob-Net list in Now running. Only a real look id.
   if (typeof j?.look === 'string' && LOOK_ID_RE.test(j.look)) out.look = j.look;
   if (typeof j?.name === 'string' && j.name.trim()) out.hisName = j.name.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 40);
   return out;
@@ -504,7 +504,7 @@ export function helloFor(brain, { why, quick, can, version, label, webOn, bigBra
     brain: quick ? label(quick.model) : '', ctx: quick?.ctx || 0, speed: brain.engine?.lastStats?.tokPerSec || 0,
     device: 'computer', version, takesJobs, jobs, jobsBusy: takesJobs ? guestRefusal(brain) : '', queue: brain.queue?.filter?.((j) => j.state === 'waiting' || j.state === 'working').length || 0,
     name, passAlong: brain.cfg.share?.passAlong === true, // 1.5.123: for the party in Now running
-    ...(LOOK_ID_RE.test(String(brain.cfg.look || '')) ? { look: brain.cfg.look } : {}), // his avatar, for the faces on the others' Bob-Net lists
+    ...(LOOK_ID_RE.test(String(brain.cfg.look || '')) ? { look: brain.cfg.look } : {}), // his avatar, for the avatars on the others' Bob-Net lists
     lendCard: brain.cfg.share?.lendCard === true && doorOpen(brain.cfg), // Lend my graphics card (src/share-card.js)
     scut: brain.cfg.share?.scut === true, // SCUT, the fast link for a lent card (src/share-card.js)
     ...(review?.model ? { review: { brain: label(review.model), ctx: review.ctx || 0, gb: review.gb || 0 } } : {}), // #30: checks work for his other Bobs
