@@ -24,6 +24,7 @@ import { LOOK_ID_RE } from './look.js';
 import { capabilities } from './capabilities.js';
 import { ENEMIES, enemyLine, meet, listMet, forgetMet, kindOf, lookFor, enemyById } from './bestiary.js';
 import { repairJson } from './loop-help.js';
+import { journeyRoute } from './adventure-journey.js';
 
 export const STATS = { might: 'Might', wits: 'Wits', charm: 'Charm', luck: 'Luck' };
 export const STAT_IDS = Object.keys(STATS);
@@ -1199,6 +1200,7 @@ export async function adventureRoute({ req, res, p, brain, body, send, isLocal =
   const a = adventureFor(brain);
   try {
     if (req.method === 'GET' && p === '/api/adventure') { send(res, 200, a.view()); return true; }
+    if (p === '/api/adventure/journey' || p.startsWith('/api/adventure/journey/')) return await journeyRoute({ req, res, p, brain, body, send }, { listCharacters, saveCharacter }); // 1.5.206 🧭 Journey
     if (req.method === 'GET' && p === '/api/adventure/players') { send(res, 200, { players: await a.players() }); return true; }
     // 1.5.206 The storybook: /api/adventure/storybook/<id> to read, .../<id>/save to save a copy.
     const sb = req.method === 'GET' && /^\/api\/adventure\/storybook\/([a-z0-9-]{4,40})(\/save)?$/.exec(p);

@@ -1467,6 +1467,30 @@ ${chatOut}
   }
   // ---- 📖 Characters: You / Party / Met / Enemies (the bestiary lives on your other Bob; this shows it) ----
   function advCharsOpen(tab = 'you') { adv.chars = { tab, edit: null, draft: null, ask: '' }; advDraw(); }
+  // 1.5.206 🧭 Journey: the tile-map game, the PC's own screen (BobJourneyPlay), played here with the pad; the save
+  // lives on your other Bob, like the table. Bob's own looks are the PC's, so here he wears a robot avatar.
+  let advJourney = null;
+  function advJourneyOpen() {
+    const J = globalThis.BobJourneyPlay, R = globalThis.BobJourneyRules, S = globalThis.BobJourneySides;
+    if (!J || !R || !S) { adv.msg = 'Journey needs the newer phone screen.'; advDraw(); return; }
+    advJourney?.stop();
+    const chars = adv.v?.characters || [];
+    const sv = chars.find((c) => c.id === advYou.savedId);
+    const party = [
+      { id: 'you', name: advYou.name || sv?.name || 'Hero', cls: advYou.cls, look: advYou.look, who: 'you', stats: sv?.stats, charId: advYou.savedId || '' },
+      { id: 'bob', name: advBob()?.name || 'Bob', cls: 'wizard', look: 'robot-3', who: 'bob' },
+      ...chars.filter((c) => c.id !== advYou.savedId).slice(0, 8).map((c) => ({ id: `c-${c.id}`, name: c.name, cls: c.cls, look: c.look, who: 'friend', stats: c.stats }))
+    ];
+    $('adventure').classList.add('hidden');
+    $('journey').classList.remove('hidden');
+    advJourney = J.mountJourney($('journey-body'), {
+      R, S, A: AV, party, bobLook: 'robot-3',
+      enemyLooks: Object.fromEntries((adv.v?.enemies || []).map((e) => [e.id, e.look])),
+      lookOf: (id) => AV.avatar(id), api: (p, body) => advApi(p, body),
+      still: () => matchMedia('(prefers-reduced-motion: reduce)').matches,
+      onClose: () => { advJourney = null; $('journey').classList.add('hidden'); $('adventure').classList.remove('hidden'); advDraw(); }
+    });
+  }
   function advCharsPage() {
     const v = adv.v || {}, ch = adv.chars, g = v.game;
     const tabs = [['you', '🧍 You'], ['party', '👥 Party'], ['met', '📖 Met'], ['enemies', '⚔ Enemies']];
@@ -1583,7 +1607,8 @@ ${chatOut}
         el('div', { class: 'btns' },
           el('button', { text: '💾 Save this character', onclick: async () => { try { const r = await advApi('/api/adventure/characters/save', { id: advYou.savedId || '', name: advYou.name || 'Hero', cls: advYou.cls, trait: advYou.trait, armour: advYou.armour, look: advYou.look }); adv.v = { ...adv.v, characters: r.characters }; adv.last = JSON.stringify(adv.v); advYou.savedId = r.characters[0]?.id || ''; adv.msg = ''; } catch (e) { adv.msg = e.message; } advDraw(); } }),
           advYou.savedId && advChar.delAsk !== advYou.savedId ? el('button', { text: 'Delete this character', onclick: () => { advChar.delAsk = advYou.savedId; advDraw(); } }) : null,
-          el('button', { text: '📖 Characters', onclick: () => advCharsOpen('you') })),
+          el('button', { text: '📖 Characters', onclick: () => advCharsOpen('you') }),
+          el('button', { text: '🧭 Journey', onclick: () => advJourneyOpen() })),
         advYou.savedId && advChar.delAsk === advYou.savedId ? el('div', { class: 'btns' }, el('span', { text: `Delete ${sv?.name || 'this character'}?` }),
           el('button', { class: 'danger', text: 'Delete for good', onclick: async () => { advChar.delAsk = ''; try { const r = await advApi('/api/adventure/characters/delete', { id: advYou.savedId }); adv.v = { ...adv.v, characters: r.characters }; adv.last = JSON.stringify(adv.v); advYou.savedId = ''; } catch (e) { adv.msg = e.message; } advDraw(); } }),
           el('button', { text: 'Keep it', onclick: () => { advChar.delAsk = ''; advDraw(); } })) : null,

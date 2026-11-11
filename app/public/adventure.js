@@ -12,6 +12,7 @@ import { tip } from './tips.js';
 import { motionOff } from './themes.js';
 import { createVoice } from './voice.js';
 import { rollDie, createSounds, createMusic, createReader } from './table-fx.js';
+import { openJourney } from './journey.js'; // 1.5.206 🧭 Journey
 
 const $ = (id) => document.getElementById(id);
 export const CARD_ICONS = { attack: '⚔', defend: '🛡', sneak: '🤫', talk: '💬', magic: '✨', item: '🎒', look: '🔍', help: '🤝', run: '🏃', other: '✍' };
@@ -107,7 +108,7 @@ export function createAdventure({ api }) {
         <label>Plot armour ${armourSel(you.armour, 'data-you="armour"')}</label>
       </div></div>
       ${grown}
-      <div class="row adv-row"><button type="button" class="mini" data-you-look aria-expanded="${lookOpen}">🧍 ${lookOpen ? 'Close the character screen' : 'Change the look'}</button><button type="button" class="mini" data-roll-you>🎲 Roll one for me</button><button type="button" class="mini" data-chars-open>📖 Characters</button></div>
+      <div class="row adv-row"><button type="button" class="mini" data-you-look aria-expanded="${lookOpen}">🧍 ${lookOpen ? 'Close the character screen' : 'Change the look'}</button><button type="button" class="mini" data-roll-you>🎲 Roll one for me</button><button type="button" class="mini" data-chars-open>📖 Characters</button><button type="button" class="mini" data-journey title="Walk a tile map with the arrow keys and fight in turn-based battles">🧭 Journey</button></div>
       ${lookOpen ? '<div class="char-box"></div>' : ''}
       <div class="adv-chars">${chars.length ? `<label>Saved characters <select data-saved-char aria-label="Saved characters"><option value="">Pick one…</option>${chars.map((c) => `<option value="${esc(c.id)}" ${c.id === you.savedId ? 'selected' : ''}>${esc(c.name)} (${esc(CLASSES[c.cls] || c.cls)})${c.gains?.length ? ` ⭐${c.gains.length}` : ''}</option>`).join('')}</select></label>` : ''}
         <button type="button" class="mini" data-save-char>💾 Save this character</button>${you.savedId ? (delAsk === you.savedId ? `<span>Delete ${esc(sv?.name || 'this character')}?</span> <button type="button" class="mini danger" data-del-char="${esc(you.savedId)}">Delete for good</button><button type="button" class="link" data-del-keep>Keep it</button>` : `<button type="button" class="mini" data-del-ask="${esc(you.savedId)}">Delete this character</button>`) : ''} ${tip('Saved characters keep the name, class, the one thing about them, plot armour and the look, and whatever they earned in play (stat points, hearts, tricks, spells), so the same hero comes back stronger. They live beside the saved campaigns on this replicant matrix.', 'Saved characters')}</div>`);
@@ -371,6 +372,7 @@ export function createAdventure({ api }) {
     if (t.dataset.pace) { you.pace = t.dataset.pace; draw(); return; }
     if ('youLook' in t.dataset) { lookOpen = !lookOpen; draw(); return; }
     if ('charsOpen' in t.dataset) { chars = { tab: 'you' }; draw(); return; }
+    if ('journey' in t.dataset) { openJourney({ api, you, characters: v?.characters || [], enemies: v?.enemies || [] }); return; } // 1.5.206
     if ('charsBack' in t.dataset) { chars = null; draw(); return; }
     if (t.dataset.charsTab) { chars = { tab: t.dataset.charsTab }; draw(); return; }
     if (t.dataset.charsEdit) { chars.edit = t.dataset.charsEdit; chars.draft = null; draw(); return; }

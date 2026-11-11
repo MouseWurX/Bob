@@ -1,0 +1,49 @@
+/* 🧭 Journey (1.5.206): the tile-map game's screen. The same file is used on the phone (copied to www/journey.css by
+   android/tools/make-shared.mjs), so it only uses the theme colours both have, with plain fallbacks. */
+.journey { width: min(820px, 98vw); }
+.jy { display: flex; flex-direction: column; gap: 8px; padding: 10px; outline: none; }
+.jy-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.jy-where { font-weight: 600; }
+.jy-gold { color: var(--muted, #aaa); }
+.jy-spacer { flex: 1; }
+.jy-stage { position: relative; }
+.jy-canvas { display: block; width: 100%; height: auto; aspect-ratio: 240 / 176; image-rendering: pixelated; image-rendering: crisp-edges; border-radius: 6px; background: #000; border: 2px solid var(--line, #2e2e2e); }
+.jy-box { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* read aloud; drawn on the canvas */
+.jy-pad { display: grid; grid-template-columns: repeat(3, 48px) 1fr repeat(2, 56px); grid-template-rows: repeat(3, 40px); gap: 4px; align-items: center; user-select: none; touch-action: none; }
+.jy-pad button { min-height: 40px; font-size: 18px; padding: 0; }
+.jy-pad [data-dir="up"] { grid-column: 2; grid-row: 1; }
+.jy-pad [data-dir="left"] { grid-column: 1; grid-row: 2; }
+.jy-pad [data-dir="down"] { grid-column: 2; grid-row: 3; }
+.jy-pad [data-dir="right"] { grid-column: 3; grid-row: 2; }
+.jy-pad .jy-a { grid-column: 6; grid-row: 2; border-radius: 50%; height: 52px; font-weight: 700; }
+.jy-pad .jy-b { grid-column: 5; grid-row: 3; border-radius: 50%; height: 46px; font-weight: 700; }
+@media (hover: hover) and (pointer: fine) { .jy-pad { grid-template-rows: repeat(3, 30px); } .jy-pad button { min-height: 30px; font-size: 14px; } .jy-pad .jy-a { height: 40px; } .jy-pad .jy-b { height: 36px; } }
+.jy-party { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 12px; }
+.jy-party li { padding: 4px 8px; border-radius: 6px; border: 1px solid transparent; display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; }
+.jy-party li.on { border-color: var(--accent, #4fb3bf); }
+.jy-party li.down { opacity: 0.55; }
+.jy-sheets .jy-stats { border: 0; font-size: 0.9em; grid-column: 1 / -1; }
+.jy-bar { appearance: none; -webkit-appearance: none; display: inline-block; width: 56px; height: 6px; border: 0; border-radius: 3px; background: rgba(127, 127, 127, 0.3); vertical-align: middle; overflow: hidden; color: #e05a4f; }
+.jy-bar::-webkit-progress-bar { background: rgba(127, 127, 127, 0.3); }
+.jy-bar::-webkit-progress-value { background: #e05a4f; }
+.jy-bar::-moz-progress-bar { background: #e05a4f; }
+.jy-bar.sp { color: #4f9de0; }
+.jy-bar.sp::-webkit-progress-value { background: #4f9de0; }
+.jy-bar.sp::-moz-progress-bar { background: #4f9de0; }
+.jy-foes { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.jy-foes li.down { opacity: 0.5; text-decoration: line-through; }
+.jy-cmds { display: flex; flex-wrap: wrap; gap: 6px; }
+.jy-cmds button { min-height: 40px; min-width: 96px; }
+.jy-ask { margin: 6px 0; }
+.jy-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.jy-tabs [aria-selected="true"], .jy-who-row [aria-checked="true"] { border-color: var(--accent, #4fb3bf); }
+.jy-who-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.jy-doll { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+.jy-turn { width: 240px; height: 84px; image-rendering: pixelated; background: rgba(127, 127, 127, 0.12); border-radius: 6px; }
+.jy-kit-picks { display: flex; flex-direction: column; gap: 6px; }
+.jy-kit-picks label { display: flex; gap: 8px; align-items: center; }
+.jy-bag { list-style: none; padding: 0; margin: 0 0 8px; display: flex; flex-direction: column; gap: 6px; }
+.jy-title { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.jy-who { display: flex; flex-wrap: wrap; gap: 6px 14px; border: 1px solid var(--line, #2e2e2e); border-radius: 6px; }
+.jy-keys { font-size: 0.9em; }
+.journey-look { margin-bottom: 10px; }
