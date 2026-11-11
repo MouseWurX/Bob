@@ -21,6 +21,7 @@ import { loadConfig, appDir, saveSettings, saveRemote, replaceSettings, cleanPro
 import { presetsView, presetsOn, pickPreset } from './presets.js';
 import { Brain, apuHoldbackGB } from './brain.js';
 import { redo, redoOn } from './redo.js';
+import { msgMenu } from './msg-menu.js';
 import { transcribe } from './stt.js';
 import { ModelShop } from './models.js';
 import { CatalogUpdates } from './catalog-update.js';
@@ -500,6 +501,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/chat/redo') {
       const b = await body(req).catch(() => ({}));
       const r = redo(brain, String(b.sessionId || 'main'), { ...(b.id ? { id: String(b.id) } : {}), ...(b.last === true ? { last: true } : {}), ...(typeof b.text === 'string' ? { text: b.text } : {}) });
+      return send(res, r.error ? 400 : 200, r);
+    }
+    // The "..." menu on a chat message (msg-menu.js): Edit on Bob's message, Delete on any. { sessionId, id, text? }.
+    if (req.method === 'POST' && (p === '/api/chat/msg-edit' || p === '/api/chat/msg-delete')) {
+      const b = await body(req).catch(() => ({}));
+      const r = msgMenu(brain, String(b.sessionId || 'main'), p.endsWith('edit') ? 'edit' : 'delete', { id: String(b.id || ''), ...(typeof b.text === 'string' ? { text: b.text } : {}) });
       return send(res, r.error ? 400 : 200, r);
     }
     // Model shop and settings. Downloads and settings changes only from this PC, never from the phone.

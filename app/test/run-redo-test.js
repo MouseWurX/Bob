@@ -129,7 +129,7 @@ const run = async (text, extra) => { const { jobId } = brain.enqueue('main', tex
 // ---------- The window, the phone, Settings, Help ----------
 {
   const app = read('public/app.js');
-  check('Try again under Bob\'s latest answer, Edit under your messages', /data-redo title="Get a new answer to your last message">Try again/.test(app) && /data-edit-msg title="Change what you said and send it again">Edit/.test(app));
+  check('Try again under Bob\'s latest answer, Edit in the ... menu of your messages', /data-redo title="Get a new answer to your last message">Try again/.test(app) && /'edit-msg' : 'edit-bob', 'Edit'/.test(app) && /'Change what you said and send it again'/.test(app));
   check('the buttons hide while Bob is busy', /if \(!redoOnNow \|\| busy \|\| redoing\) return;/.test(app) && /drawRedo\(\); \/\/ Try again and Edit hide while Bob is busy/.test(app));
   check('the window sends the message again with redo after taking back', /\/api\/chat\/redo/.test(app) && /redo: r\.data\.edited \? 'edit' : 'again'/.test(app));
   check('earlier versions show under your message, also after a reload', /if \(m\.versions\?\.length\) markVersions\(el, m\.versions\)/.test(app));
@@ -138,9 +138,9 @@ const run = async (text, extra) => { const { jobId } = brain.enqueue('main', tex
   const server = read('src/server.js');
   check('the server: the redo route, the setting saved and shown', /p === '\/api\/chat\/redo'/.test(server) && /typeof b\.chatRedo === 'boolean'/.test(server) && /chatRedo: cfg\.chatRedo !== false/.test(server));
   const cellar = read('public/cellar.js');
-  check('the switch is in How Bob works, on unless turned off', /sswitch\('chatRedo', settings\.chatRedo !== false, 'Show Try again and Edit in the chat', 'On unless you turn it off/.test(cellar));
+  check('the switch is in How Bob works, on unless turned off', /sswitch\('chatRedo', settings\.chatRedo !== false, 'Show Try again, Edit and Delete in the chat', 'On unless you turn it off/.test(cellar));
   check('not on the Do you want me to list (that list is for things that start off)', !WANTS.some((w) => w.key === 'chatRedo'));
-  check('Bob can read the setting in his own Help', /Show Try again and Edit in the chat/.test(read('src/self-help.js')));
+  check('Bob can read the setting in his own Help', /Show Try again, Edit and Delete in the chat/.test(read('src/self-help.js')));
   const phone = read('android/app/src/main/assets/www/phone.js');
   check('the Android app: its own switch, on to start with', /redo: true[,}]/.test(phone) && /id="redo"/.test(read('android/app/src/main/assets/www/index.html')));
   check('the Android app: Try again and Edit, earlier versions kept, the Bob on the network told', /text: 'Try again'/.test(phone) && /text: 'Edit'/.test(phone) && /you\.versions = /.test(phone) && /\/api\/chat\/redo/.test(phone));
@@ -150,7 +150,7 @@ const run = async (text, extra) => { const { jobId } = brain.enqueue('main', tex
   check('glossary entries', /<dt>Try again<\/dt>/.test(gl.html) && /<dt>Earlier version<\/dt>/.test(gl.html));
   const ph = read('android/app/src/main/assets/www/help.js');
   check('the Android app\'s Help, glossary and questions', /id: 'redo'/.test(ph) && /<dt>Try again<\/dt>/.test(ph) && /No Try again or Edit under the messages/.test(ph));
-  check('in the settings inventory', /Show Try again and Edit in the chat/.test(read('docs/SETTINGS-INVENTORY.md')));
+  check('in the settings inventory', /Show Try again, Edit and Delete in the chat/.test(read('docs/SETTINGS-INVENTORY.md')));
   // Back to the newest message: the round down-arrow button, with breathing dots while Bob works.
   check('a go-to-bottom button in the chat window and the Android app', /id="toBottom"/.test(read('public/index.html')) && /id="to-bottom"/.test(read('android/app/src/main/assets/www/index.html')));
   check('scrolled up: new words don\'t pull you down; sending does', /if \(stick\) log\.scrollTop = log\.scrollHeight;/.test(app) && /stick = true; \/\/ sending takes you to the bottom/.test(app));

@@ -1,4 +1,4 @@
-// Try again and Edit in the chat (Settings, How Bob works: "Show Try again and Edit in the chat"). On unless you turn
+// Try again and Edit in the chat (Settings, How Bob works: "Show Try again, Edit and Delete in the chat"; Delete is in msg-menu.js). On unless you turn
 // it off (the owner's call, Nov 11 2026: an exception to opt-in, like the Lab button; nothing runs by itself).
 //
 //   - Try again, under Bob's latest answer: his answer to your last message is taken back and he answers it afresh.
@@ -70,7 +70,7 @@ export const BUSY_LINE = 'Bob is still on this chat. Wait until he has finished,
 
 // The whole step, as the server runs it: check, change, save. The window then sends the message with redo: true.
 export function redo(brain, sessionId, args = {}) {
-  if (!redoOn(brain.cfg)) return { error: '"Show Try again and Edit in the chat" is off (Settings, How Bob works).' };
+  if (!redoOn(brain.cfg)) return { error: '"Show Try again, Edit and Delete in the chat" is off (Settings, How Bob works).' };
   if (chatBusy(brain, sessionId)) return { error: BUSY_LINE };
   const msgs = brain.session(sessionId);
   const r = rewind(msgs, args);

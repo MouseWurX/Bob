@@ -805,7 +805,7 @@ export class Brain {
   history(id) {
     return this.session(id)
       .filter((m) => (m.role === 'user' || m.role === 'assistant') && (m.content || m.media?.length || m.correction))
-      .map((m) => ({ role: m.role, id: m.id, at: m.at, ...(m.forgotten ? { forgotten: true } : {}), content: m.role === 'user' && m.text != null ? m.text : (m.content || ''), ...(m.media?.length ? { media: m.media } : {}), ...(m.correction ? { correction: m.correction } : {}), ...(m.edited ? { edited: m.edited, was: m.was ?? '' } : {}), ...(m.role === 'user' && m.versions?.length ? { versions: m.versions } : {}), pics: (m.refs || []).map((id) => this.refs.find(id)).filter(Boolean).map((r) => ({ name: r.name, url: `/refs/${r.file}` })) }));
+      .map((m) => ({ role: m.role, id: m.id, at: m.at, ...(m.forgotten ? { forgotten: true } : {}), content: m.role === 'user' && m.text != null ? m.text : (m.content || ''), ...(m.media?.length ? { media: m.media } : {}), ...(m.correction ? { correction: m.correction } : {}), ...(m.edited ? { edited: m.edited, was: m.was ?? '', ...(m.editedBy === 'you' ? { editedBy: 'you' } : {}) } : {}), ...(m.role === 'user' && m.versions?.length ? { versions: m.versions } : {}), pics: (m.refs || []).map((id) => this.refs.find(id)).filter(Boolean).map((r) => ({ name: r.name, url: `/refs/${r.file}` })) }));
   }
 
   // Makes sure a model is in memory, telling the user first if it means a wait. Goes through the gate: the action
@@ -2390,8 +2390,9 @@ export class Brain {
       // He's seen the new look once; that's enough.
       if (this.cfg.lookChange) { try { saveSettings(this.cfg, { lookChange: null }); } catch {} this.cfg.lookChange = null; }
       msgs.push(reply);
-      // Let Bob fix his own messages: what he just said gets its id now, so the window can find the bubble if he changes it later.
-      if (editOwnOn(this.cfg) && !job?.guest && typeof reply.content === 'string' && reply.content.trim()) { reply.id ||= newMsgId(); reply.at ||= Date.now(); emit({ type: 'said', id: reply.id }); }
+      // What he just said gets its id now, so the window can find the bubble: for the "..." menu on it (Edit, Delete;
+      // msg-menu.js), and if he changes it later (Let Bob fix his own messages).
+      if (!job?.guest && typeof reply.content === 'string' && reply.content.trim()) { reply.id ||= newMsgId(); reply.at ||= Date.now(); emit({ type: 'said', id: reply.id }); }
       if (!reply.tool_calls && !ctx.handsDid && !ctx.claimChecked && claimsPcAction(reply.content)) {
         // Said he did something on the PC that no tool did: say so to the user, and give him one go to really do it.
         ctx.claimChecked = true;
