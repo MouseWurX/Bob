@@ -4,7 +4,7 @@
 // not experts are grey voxels in their true share of the weights. As a recording plays, the experts picked for the
 // word being read glow and lift, with a short trail, and thin lines join them floor to floor.
 // The page (public/watch.js) owns the controls and the words; this file only lays out and draws.
-import { lookOf, sideOf, say, loadOrder, loadStyle } from './lab-watch-math.js';
+import { lookOf, sideOf, say, loadOrder, loadStyle, unloadStyle } from './lab-watch-math.js';
 
 export const GREY = '#8a8f98';
 // Weight map and difference map: a colour-blind-safe ramp (viridis), dark blue for low to yellow for high.
@@ -70,14 +70,15 @@ export function createView(canvas, { still = false } = {}) {
   // Load in and load out: `reveal` runs 0..1 and a voxel is drawn once it has passed that voxel's place in the order
   // (lab-watch-math.js loadOrder). 1 = the whole block, which is also where it rests.
   let edges = false; // a faint line along the block's twelve edges
-  let reveal = 1, order = null, load = 'vase', seed = 1, sweepRaf = 0, sweepEnd = null;
-  const reorder = () => { order = lay ? loadOrder(load, { W: lay.W, D: lay.D, floors: lay.L + lay.baseFloors, seed }) : null; };
+  let reveal = 1, order = null, orderIn = null, orderOut = null, load = 'vase', unload = 'drain', going = 1, seed = 1, sweepRaf = 0, sweepEnd = null;
+  const reorder = () => { const box = lay ? { W: lay.W, D: lay.D, floors: lay.L + lay.baseFloors, seed } : null; orderIn = box ? loadOrder(load, box) : null; orderOut = box ? loadOrder(unload, box) : null; order = going === 1 ? orderIn : orderOut; };
   const shown = (floor, i) => reveal >= 1 || (order ? order[floor * lay.W * lay.D + i] < reveal : false);
   // Build the block (to = 1) or take it apart (to = 0) over `ms`. Resolves when it's done, or at once when stopped by
   // another sweep. With animations off (stillNow) it jumps straight there.
   function sweep(to, ms = 1600, stillNow = still) {
     if (sweepEnd) { cancelAnimationFrame(sweepRaf); const e = sweepEnd; sweepEnd = null; e(); }
-    if (to === 1 && reveal <= 0) { seed = (Math.random() * 4294967296) >>> 0; reorder(); } // a new shuffle each time for Random
+    if (to === 1 && reveal <= 0) { seed = (Math.random() * 4294967296) >>> 0; } // a new shuffle each time for Dissolve
+    going = to === 1 ? 1 : 0; reorder(); // Load in builds it, Load out takes it apart: each its own order
     const raf = globalThis.requestAnimationFrame;
     if (!rec || !raf || stillNow || load === 'none' || ms <= 0) { reveal = to; dirty = true; if (rec) draw(); return Promise.resolve(); }
     const from = reveal, t0 = performance.now();
@@ -92,7 +93,7 @@ export function createView(canvas, { still = false } = {}) {
     });
   }
   function setData(r, s, parts) { rec = r; sp = s; lay = layoutOf(r, parts); dirty = true; picked = null; reorder(); }
-  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'key') key = v !== false; else if (k === 'dials') { dials = v && v.size ? v : null; } else if (k === 'load') { load = loadStyle(v); reorder(); } else if (k === 'reveal') { reveal = Math.max(0, Math.min(1, v)); } else if (k === 'mono') mono = v === true; else if (k === 'edges') edges = v === true; else if (k === 'heat') heat = v && Array.isArray(v.vals) ? v : null; else if (k === 'monoColour') monoColour = /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v) : ''; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
+  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'key') key = v !== false; else if (k === 'dials') { dials = v && v.size ? v : null; } else if (k === 'load') { load = loadStyle(v); reorder(); } else if (k === 'unload') { unload = unloadStyle(v); reorder(); } else if (k === 'reveal') { reveal = Math.max(0, Math.min(1, v)); } else if (k === 'mono') mono = v === true; else if (k === 'edges') edges = v === true; else if (k === 'heat') heat = v && Array.isArray(v.vals) ? v : null; else if (k === 'monoColour') monoColour = /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v) : ''; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
   const get = () => ({ yaw, tilt, gap, zoom, glass, glow });
   // the gap between floors that makes the whole block as tall as it is wide: a cube
   const cubeGap = () => (lay ? Math.max(0.2, Math.min(5, Math.max(lay.W, lay.D) / Math.max(1, lay.L + lay.baseFloors))) : 0.9);
@@ -178,11 +179,11 @@ export function createView(canvas, { still = false } = {}) {
       if (full && g.s > 5) { sides(c, g, x, y); c.stroke(); const b = g.corners[g.m]; c.beginPath(); c.moveTo(x + b[0], y + b[1]); c.lineTo(x + b[0], y + b[1] + g.down); c.stroke(); }
       c.setLineDash([]);
     };
-    // Vase, then fill, while it builds: the newest blocks shine like the surface of water being poured in, so the slosh
-    // shows through the glass walls
+    // Vase, then fill (and Drain going out): the newest blocks shine like the surface of water being poured in or drained
+    // out, so the slosh shows through the glass walls
     const WAVE = 0.035;
     const wave = (f, i, x, y, color) => {
-      if (load !== 'vase' || reveal >= 1 || !order) return;
+      if ((going === 1 ? load !== 'vase' : unload !== 'drain') || reveal >= 1 || !order) return;
       const d = reveal - order[f * W * D + i]; if (d < 0 || d > WAVE) return;
       const k2 = 1 - d / WAVE;
       c.globalAlpha = 0.75 * k2; c.fillStyle = color || oneColour(); face(c, g, x, y); c.fill();

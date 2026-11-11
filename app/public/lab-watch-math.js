@@ -370,8 +370,12 @@ export function findPatterns(rec, { k = PATTERN_DEFAULT } = {}) {
 // it goes. The order is the person's pick, named after the ways a 3D printer lays plastic down. loadOrder gives every
 // place in the block (floor f, cell i of a W x D floor: f * W * D + i) a number from 0 to 1: a voxel is drawn once
 // the load has passed its number. 'none' is everything at once.
-export const LOAD_STYLES = [['random', 'Random'], ['spiral', 'Archimedean spiral'], ['lines', 'Rectilinear'], ['rings', 'Concentric'], ['vase', 'Vase, then fill'], ['none', 'All at once']];
-export const loadStyle = (s) => (LOAD_STYLES.some(([id]) => id === s) ? s : 'vase'); // Vase, then fill is the one Bob starts with (the owner's pick)
+// Load in: how the block builds itself; Load out: how it comes apart. The owner's picks: Dissolve or Vase, then fill
+// coming in (Vase to begin with), Drain or Erode going out (Drain to begin with).
+export const LOAD_STYLES = [['random', 'Dissolve'], ['vase', 'Vase, then fill']];
+export const UNLOAD_STYLES = [['drain', 'Drain'], ['erode', 'Erode']];
+export const loadStyle = (s) => (LOAD_STYLES.some(([id]) => id === s) ? s : 'vase');
+export const unloadStyle = (s) => (UNLOAD_STYLES.some(([id]) => id === s) ? s : 'drain');
 function seeded(seed) { let a = (seed >>> 0) || 1; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 // Vase, then fill: the inside rises like water poured in, its surface tipping one way then the other as it climbs and
 // settling as it nears the top. slosh = how high the water must be (in floors) before this place is under it. The tip
@@ -381,32 +385,27 @@ export function slosh(f, x, z, W, D, floors) {
   const tip = Math.min(3, Math.max(1, floors * 0.12)) * (1 - 0.7 * k), turn = f * 0.45;
   return f + tip * (Math.cos(turn) * nx + Math.sin(turn) * 0.7 * nz) + 0.35 * Math.sin(nx * 9 + f * 0.9) * Math.cos(nz * 7 - f * 0.6) * (1 - 0.5 * k);
 }
+// The order the blocks come in (rank 0..1 for every place; taken apart, it runs backwards: the highest rank goes first).
+// random = Dissolve; vase = Vase, then fill; drain = the same order, so going out the water drains down, sloshing, then
+// the wall unwinds; erode = the inside first, the surface last, so going out it wears away from the outside in.
+const ORDERS = ['random', 'vase', 'drain', 'erode', 'none'];
 export function loadOrder(style, { W, D, floors, seed = 1 }) {
   const per = W * D, n = per * floors, rank = new Float32Array(n);
-  style = loadStyle(style);
+  style = ORDERS.includes(style) ? style : 'vase';
   if (style === 'none' || n < 1) return rank; // all 0: everything shows from the first moment
   const seq = []; // every place, in the order it appears
   const cx = (W - 1) / 2, cz = (D - 1) / 2;
   const ring = (i) => Math.min(i % W, W - 1 - (i % W), Math.floor(i / W), D - 1 - Math.floor(i / W)); // 0 = the outer wall
   const around = (i) => Math.atan2(Math.floor(i / W) - cz, (i % W) - cx);
-  const snake = (f, cells) => { // back and forth in rows, turned a quarter on every other floor, the way a printer fills
-    const key = (i) => { const x = i % W, z = Math.floor(i / W); return f % 2 ? [x, x % 2 ? D - 1 - z : z] : [z, z % 2 ? W - 1 - x : x]; };
-    return cells.map((i) => [key(i), i]).sort((a, b) => a[0][0] - b[0][0] || a[0][1] - b[0][1]).map((p) => p[1]);
-  };
   const cells = Array.from({ length: per }, (_, i) => i);
   if (style === 'random') {
     for (let i = 0; i < n; i++) seq.push(i);
     const r = seeded(seed); for (let i = n - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [seq[i], seq[j]] = [seq[j], seq[i]]; }
-  } else if (style === 'spiral') { // each floor from its middle outward along r = theta / 2pi: one cell further out with every turn
-    const key = (i) => { const r = Math.hypot((i % W) - cx, Math.floor(i / W) - cz), a = around(i) + Math.PI; return a + 2 * Math.PI * Math.max(0, Math.round(r - a / (2 * Math.PI))); };
-    const one = cells.map((i) => [key(i), i]).sort((a, b) => a[0] - b[0]).map((p) => p[1]);
-    for (let f = 0; f < floors; f++) for (const i of one) seq.push(f * per + i);
-  } else if (style === 'lines') {
-    for (let f = 0; f < floors; f++) for (const i of snake(f, cells)) seq.push(f * per + i);
-  } else if (style === 'rings') { // each floor's outer wall first, then ring by ring to the middle
-    const one = cells.map((i) => [ring(i), around(i), i]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((p) => p[2]);
-    for (let f = 0; f < floors; f++) for (const i of one) seq.push(f * per + i);
-  } else { // vase: the outer wall alone, round and round to the top, then the inside poured in like water
+  } else if (style === 'erode') { // deepest first, the surface last, roughened so it wears away unevenly
+    const r = seeded(seed), deep = [];
+    for (let f = 0; f < floors; f++) for (const i of cells) deep.push([Math.min(ring(i), f, floors - 1 - f) + r() * 2.5, f * per + i]);
+    deep.sort((a, b) => b[0] - a[0]); for (const d of deep) seq.push(d[1]);
+  } else { // vase and drain: the outer wall alone, round and round to the top, then the inside poured in like water
     const wall = cells.filter((i) => ring(i) === 0).sort((a, b) => around(a) - around(b)), inside = cells.filter((i) => ring(i) > 0);
     for (let f = 0; f < floors; f++) for (const i of wall) seq.push(f * per + i);
     const pour = [];

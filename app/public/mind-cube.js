@@ -5,7 +5,7 @@
 // (public/lab-watch-math.js liveTrace has the shape), which slows his replies. The real picture arrives when a reply is
 // finished and is then played word by word; nothing is saved. The same drawing as the big viewer (watch-view.js).
 import { createView } from './watch-view.js';
-import { specialise, liveRecording, partOf, PART_LABEL, say, NAME, mapLook, litSkills, lookOf, LOAD_STYLES, loadStyle } from './lab-watch-math.js';
+import { specialise, liveRecording, partOf, PART_LABEL, say, NAME, mapLook, litSkills, lookOf, LOAD_STYLES, loadStyle, UNLOAD_STYLES, unloadStyle } from './lab-watch-math.js';
 
 const SPECIAL = /<\|[^|>]*\|>|<\/?think>/gi;
 export const CUBE_SPEED = 14; // words a second
@@ -38,12 +38,12 @@ export function showWord(prev, layers, experts, used, rnd = Math.random) {
   return out;
 }
 
-export const CUBE_IN_MS = 1600, CUBE_OUT_MS = 1100, VASE_IN_MS = 3200; // the block building itself when a brain's first reply arrives (Vase, then fill takes twice as long, so the water can be seen sloshing in), and coming apart when the brain is let go
+export const CUBE_IN_MS = 1600, CUBE_OUT_MS = 1100, VASE_IN_MS = 3200, DRAIN_OUT_MS = 2200; // the block building itself when a brain's first reply arrives (Vase, then fill and Drain take about twice as long, so the water can be seen sloshing), and coming apart when the brain is let go
 
 // The colours: when this brain has an FNRI scan, Bob sends that scan's map along and every expert gets its skill's
 // colour (all-rounders a dashed white outline); with no scan the cube is one colour and says how to get the rest.
 // els: { box, canvas, says, open, key, mono, colour, colourBox, details, load, loadBox }. still() = animations are off (the last word is shown, nothing moves).
-export function createMindCube({ box, canvas, says, open, key = null, mono = null, colour = null, colourBox = null, details = null, load = null, loadBox = null }, { still = () => false, onWhy = null, live = () => false, EventSourceImpl = globalThis.EventSource } = {}) {
+export function createMindCube({ box, canvas, says, open, key = null, mono = null, colour = null, colourBox = null, details = null, load = null, unload = null, loadBox = null }, { still = () => false, onWhy = null, live = () => false, EventSourceImpl = globalThis.EventSource } = {}) {
   const view = createView(canvas);
   let es = null, traces = [], rec = null, sp = null, clip = -1, t = 0, raf = 0, last = 0, why = '', look = null;
   // Before the first reply (and on an engine that can't report experts) the cube is the brain's empty shape in one
@@ -64,8 +64,13 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   let whose = '', gen = 0;
   let loadNow = 'vase';
   const inMs = () => (loadNow === 'vase' ? VASE_IN_MS : CUBE_IN_MS);
-  const readLoad = () => { let s = 'vase'; try { s = loadStyle(localStorage.getItem('bob-fnri-load')); } catch {} loadNow = s; view.set({ load: s }); if (load) load.value = s; };
-  if (load) { for (const [id, label] of LOAD_STYLES) { const o = document.createElement('option'); o.value = id; o.textContent = label; load.append(o); } load.onchange = () => { try { localStorage.setItem('bob-fnri-load', loadStyle(load.value)); } catch {} readLoad(); if (rec) { view.set({ reveal: 0 }); view.sweep(1, inMs(), still()).then(() => { if (rec) view.draw(lit()); }); } }; }
+  let unloadNow = 'drain';
+  const outMs = () => (unloadNow === 'drain' ? DRAIN_OUT_MS : CUBE_OUT_MS);
+  const readUnload = () => { let s = unloadNow; try { const x = localStorage.getItem('bob-fnri-unload'); if (x) s = unloadStyle(x); } catch {} unloadNow = s; view.set({ unload: s }); if (unload) unload.value = s; };
+  if (unload) { for (const [id, label] of UNLOAD_STYLES) { const o = document.createElement('option'); o.value = id; o.textContent = label; unload.append(o); } unload.onchange = () => { const v = unloadStyle(unload.value); try { localStorage.setItem('bob-fnri-unload', v); } catch {} unloadNow = v; view.set({ unload: v }); }; }
+  readUnload();
+  const readLoad = () => { let s = loadNow; try { const x = localStorage.getItem('bob-fnri-load'); if (x) s = loadStyle(x); } catch {} loadNow = s; view.set({ load: s }); if (load) load.value = s; };
+  if (load) { for (const [id, label] of LOAD_STYLES) { const o = document.createElement('option'); o.value = id; o.textContent = label; load.append(o); } load.onchange = () => { const v = loadStyle(load.value); try { localStorage.setItem('bob-fnri-load', v); } catch {} loadNow = v; view.set({ load: v }); if (rec) { view.set({ reveal: 0 }); view.sweep(1, inMs(), still()).then(() => { if (rec) view.draw(lit()); }); } }; }
   readLoad();
   let showDetails = false; try { showDetails = localStorage.getItem('bob-cube-details') === '1'; } catch {} // to begin with: just the cube, Open in the big viewer and Show details
   let one = false; try { one = localStorage.getItem('bob-cube-mono') === '1'; } catch {}
@@ -202,14 +207,14 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
       const keep = (Array.isArray(labels) && labels.includes(shell.label)) || loading === shell.label;
       if (keep) { loadingNow = String(loading || ''); words(); return; }
       const g = ++gen; const next = shapes; stopShow();
-      view.sweep(0, CUBE_OUT_MS, still()).then(() => { if (g !== gen) return; shell = null; const c = canvas.getContext('2d'); c.clearRect(0, 0, canvas.width, canvas.height); if (!ready(next, loading)) words(); });
+      view.sweep(0, outMs(), still()).then(() => { if (g !== gen) return; shell = null; const c = canvas.getContext('2d'); c.clearRect(0, 0, canvas.width, canvas.height); if (!ready(next, loading)) words(); });
       return;
     }
     if (!rec) { ready(shapes, loading); return; }
     if (Array.isArray(labels) && labels.includes(whose)) return;
     const g = ++gen; cancelAnimationFrame(raf); raf = 0;
     const clear = () => { if (g !== gen) return; rec = null; sp = null; look = null; traces = []; whose = ''; view.set({ reveal: 1 }); const c = canvas.getContext('2d'); c.clearRect(0, 0, canvas.width, canvas.height); words(); showOne(); ready(shapes, loading); };
-    view.sweep(0, CUBE_OUT_MS, still()).then(clear);
+    view.sweep(0, outMs(), still()).then(clear);
   }
   function on(ev) {
     let j = null; try { j = JSON.parse(ev.data); } catch { return; }

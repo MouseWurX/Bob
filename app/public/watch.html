@@ -96,7 +96,11 @@
         <label id="watchMonoColourBox" hidden>The one colour <input type="color" id="watchMonoColour" value="#e69f00"></label>
         <label for="watchLoad">Load in</label>
         <select id="watchLoad" aria-describedby="watchLoadHint"></select>
-        <span id="watchLoadHint" class="muted">How the block builds itself when a scan opens, and how it comes apart when the next one loads. Picking one plays it.</span>
+        <span id="watchLoadHint" class="muted">How the block builds itself when a scan opens. Picking one plays it.</span>
+        <label for="watchUnload">Load out</label>
+        <select id="watchUnload" aria-describedby="watchUnloadHint"></select>
+        <span id="watchUnloadHint" class="muted">How it comes apart when the next scan loads. Picking one plays it, then builds it back.</span>
+        <button id="watchEdges" type="button" class="brain-switch" role="switch" aria-checked="false" title="A faint line along the block's edges, so it reads as a cube."><span class="lbl">Edges</span><span class="st">Off</span></button>
         <button id="watchPaths" type="button" class="brain-switch" role="switch" aria-checked="true"><span class="lbl">Lines between the experts in use</span><span class="st">On</span></button>
         <details id="watchWordsBox"><summary>What this shows, in words</summary><ul id="watchWords" class="tlist"></ul></details>
       </section>
