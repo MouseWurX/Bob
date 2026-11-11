@@ -29,5 +29,16 @@ const core = all.filter((f) => CORE.includes(f.name));
 check('the tools every chat starts with stay under 8,000 characters', size(core) < 8000, String(size(core)));
 check('no tool talks about GPU plumbing the brain can\'t act on', !all.some((f) => /steps out of the GPU/.test(f.description)));
 
+// "Let Bob learn from his tools": the line he kept is on the tool he is handed, and runTool keeps it.
+cfg.toolLearning = true;
+const job = { emit: () => {}, signal: new AbortController().signal };
+await brain.runTool('read_file', { path: 'notes.txt' }, job);
+fs.writeFileSync(path.join(innDir, 'notes.txt'), 'hi');
+await brain.runTool('read_file', { path: path.join(innDir, 'notes.txt') }, job);
+const rf = brain.toolSchemas(['read_file'])[0].function.description;
+check('with the switch on, read_file carries what fixed it last time', /Last time: .* was fixed by: path/.test(rf), rf);
+cfg.toolLearning = false;
+check('with it off, the description is the plain one', !/Last time/.test(brain.toolSchemas(['read_file'])[0].function.description));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

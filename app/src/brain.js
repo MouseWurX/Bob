@@ -46,6 +46,7 @@ import { toolsOff, HANDS, handOn, handOffWhy, freeOn, computerWord } from './han
 import { gate as qGate, after as qAfter, maybeAsk as qAsk, noteStrike, copyHeld } from './quarantine.js';
 import { wantsPictureEdit, recentPicture, editHint } from './intent.js';
 import { SAVE_AS, namedType, saveAs } from './save-as.js';
+import { recordCall, learnedLine, loadLearning, toolLearnOn } from './tool-learn.js';
 import { CORE, groupsFor, groupOf, guessGroups, allToolsOn, useToolsTool, fillUseTools, tidySchema, STICKY_TURNS, toolboxPrompt, saysCant } from './toolbox.js';
 import { Gate, Ledger, safeToResume, interruptedNote, withRetry, slimHandoff, carryOnPlan, carryOnLine, finishedSteps, MAX_AUTO_RESUMES, isBareOk, NOTHING_TO_OK, NOTHING_TO_OK_BUSY, queuedLine, plainDoing } from './handoff.js';
 import { expectFrom, verifyOutput, afterTool, afterTurn } from './verify.js';
@@ -1202,6 +1203,7 @@ export class Brain {
       if (ctx.savedAs?.length && res && typeof res.text === 'string') res.text += ` Also saved as ${ctx.savedAs.splice(0).join(', ')}, as asked (the original is kept too).`;
     }
     qAfter(this, name, args, res.text, ctx, tool);
+    recordCall(this.cfg, name === 'use_my_tool' && args.name ? `use_my_tool:${args.name}` : name, args, res?.text, ctx); // "Let Bob learn from his tools" (tool-learn.js)
     return res;
   }
 
@@ -1435,7 +1437,12 @@ export class Brain {
   toolSchemas(names) {
     const who = this.cfg.userName || 'the user';
     const off = this.offTools();
-    return names.filter((n) => n !== 'use_tools' && this.usable(n, off)).map((n) => tidySchema(JSON.parse(JSON.stringify(this.tools[n].schema).replaceAll('{{USER}}', who).replaceAll('{{HOME}}', JSON.stringify(os.homedir()).slice(1, -1)))));
+    const learned = toolLearnOn(this.cfg) ? loadLearning(this.cfg) : null; // tool notes and the scorecard (tool-learn.js)
+    return names.filter((n) => n !== 'use_tools' && this.usable(n, off)).map((n) => {
+      const s = tidySchema(JSON.parse(JSON.stringify(this.tools[n].schema).replaceAll('{{USER}}', who).replaceAll('{{HOME}}', JSON.stringify(os.homedir()).slice(1, -1))));
+      if (learned && s.function) s.function.description += learnedLine(this.cfg, n, learned);
+      return s;
+    });
   }
 
   // The front desk's tools for this step: the core, plus the groups added so far this turn (toolbox.js).
