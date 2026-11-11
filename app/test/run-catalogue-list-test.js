@@ -70,13 +70,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // ---- too big for every Bob on the Bob-Net: Rented brains ----
 {
   const small = { vramGB: 6, ramGB: 16 }, bolt = byId('nemotron-3.5-bolt-74b');
-  check('on a 6 GB laptop alone, the 24 GB Bolt 74B is too big everywhere', tooBigEverywhere(bolt, small, []));
+  const r70 = byId('deepseek-r1-distill-llama-70b');
+  check('on a 6 GB laptop alone, the 42 GB DeepSeek R1 70B is too big everywhere', tooBigEverywhere(r70, small, []) && tooBigEverywhere(bolt, { vramGB: 6, ramGB: 8 }, []));
+  check('1.5.205: the card alone no longer decides: the Bolt 74B (made of experts) stays, partly read from the drive', !tooBigEverywhere(bolt, small, []) && !tooBigEverywhere(byId('qwen3.6-35b-a3b'), small, []) && tooBigEverywhere(byId('qwen3.6-27b'), small, []));
   check('with a 16 GB card Bob on the Bob-Net it isn\'t (it runs, slowly, there)', !tooBigEverywhere(bolt, small, [{ name: 'npc', vramGB: 16, ramGB: 32 }]));
   check('a brain that runs well on a Bob-Net Bob names him', roomOn(byId('qwen3.6-27b'), [{ name: 'Go', vramGB: 8, ramGB: 16 }, { name: 'npc', vramGB: 24, ramGB: 32 }]) === 'npc' && roomOn(byId('qwen3.6-27b'), [{ name: 'Go', vramGB: 8 }]) === '');
   check('only "won\'t run well" counts: slow, installed, half downloaded, your own or a squeezed file never leave', !tooBigEverywhere(byId('qwen3.6-27b'), { vramGB: 16, ramGB: 32 }, []) && !tooBigEverywhere({ ...bolt, status: { state: 'installed' } }, small, []) && !tooBigEverywhere({ ...bolt, status: { state: 'partial' } }, small, []) && !tooBigEverywhere({ ...bolt, own: true }, small, []) && !tooBigEverywhere({ ...bolt, maxCardGB: 8 }, { vramGB: 16 }, []));
   check('media models are never moved', !tooBigEverywhere({ id: 'v', category: 'video', vramGB: 40 }, small, []));
   const lap = catalogueHtml({ ...ctx, vramGB: 6, ramGB: 16, showUnsuited: true });
-  check('on the laptop the catalogue leaves it out and says where it went', !/id="cat-[a-z]+-nemotron-3\.5-bolt-74b"/.test(lap) && /class="muted too-big-note">\d+ more (is|are) too big for this replicant matrix\. [^<]*<button type="button" class="link" data-rentsettings>Rented brains<\/button>/.test(lap));
+  check('on the laptop the catalogue leaves it out and says where it went', !/id="cat-[a-z]+-deepseek-r1-distill-llama-70b"/.test(lap) && /id="cat-[a-z]+-nemotron-3\.5-bolt-74b"/.test(lap) && /class="muted too-big-note">\d+ more (is|are) too big for this replicant matrix\. [^<]*<button type="button" class="link" data-rentsettings>Rented brains<\/button>/.test(lap));
   const lapNet = catalogueHtml({ ...ctx, vramGB: 6, ramGB: 16, showUnsuited: true, bobNet: [{ name: 'npc', vramGB: 16, ramGB: 32 }] });
   check('with the big computer on the Bob-Net it stays, and the i says which Bob it fits', /id="cat-[a-z]+-nemotron-3\.5-bolt-74b"/.test(lapNet) && /Fits npc on your Bob-Net\./.test(lapNet));
   const big16 = models.filter((m) => tooBigEverywhere(m, { vramGB: 16, ramGB: 32 }, [])).map((m) => m.id);
@@ -97,7 +99,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // ---- Rented brains: Pick a brain from Bob's list ----
 {
-  const picks = rentPicks(models, catalog.bigBrains, { vramGB: 6, ramGB: 16 }, [], 'win32');
+  const picks = rentPicks(models, catalog.bigBrains, { vramGB: 6, ramGB: 8 }, [], 'win32');
   check('the picker lists every really big brain', catalog.bigBrains.every((b) => picks.some((p) => p.key === `big:${b.id}`)));
   check('and the catalogue brains too big for your Bobs, as a GGUF file a rented machine can fetch', picks.some((p) => p.key === 'cat:nemotron-3.5-bolt-74b' && /^nvidia\/[\w.-]+\/[\w.-]+\.gguf$/.test(p.model) && p.card === '48'));
   check('no squeezed file, and naughty ones only when the caller passes them (Settings passes only what\'s visible)', !picks.some((p) => p.key === 'cat:qwen3.6-35b-a3b-q3') && /rentPicks\(visibleModels\(data\?\.models \|\| \[\], naughtyOn\(\)\)/.test(read('public/cellar.js')));

@@ -2,6 +2,7 @@
 // Equip Bob), with its size, how it suits this PC and smaller machines, and where it comes from (an exact Hugging Face
 // commit, or Ollama). Each model has an Active switch: active models show in the slots and menus, the rest stay here,
 // so the pickers stay short. Pure HTML builders; cellar.js handles the clicks.
+import { placeFor, quantOf, sizeLine } from './place.js';
 import { canDo, suit, pickFor, deviceFit, sourceOf, SLOT_NAMES, roomOn, tooBigEverywhere } from './fit.js';
 import { allSlots, isActive, tipHtml, slotValue, equipped } from './equip.js';
 import { keep } from './tips.js';
@@ -86,8 +87,13 @@ function rowHtml(m, job, ctx) {
   const isNew = ctx.newIds?.has(m.id) === true;
   const dated = datedLine(m, ctx.allModels || ctx.models);
   const roomy = !here && s.level !== 'ok' ? roomOn(m, ctx.bobNet) : '';
-  const tip = [m.what, communityLine(m), distilledLine(m), m.thinks ? THINKS_LINE : '', where, out, isNew ? 'New: one of the five newest releases in its family.' : '', dated, m.trial ? `${TRIAL_LINE} ${m.trialNote || ''}`.trim() : '', m.bench || '', s.why, roomy ? `Fits ${roomy} on your Bob-Net.` : '', fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`].filter(Boolean).join('\n');
-  const tags = `${recTag}${makerTag(m)}${isOwn(m) ? (m.madeByBob ? '<span class="tag own-bob" tabindex="0" data-tip="Its brain card says it was made for Bob in his own workshop. Bob runs it from where it is and leaves the pick to you.">Bob\'s own brain</span>' : '<span class="tag" data-tip="A brain you added from a file on this replicant matrix. Bob runs it from where it is and never recommends it over the ones he knows.">Your own file</span>') : ''}${isNew ? `<span class="tag new-tag" tabindex="0" data-tip="${esc(`New: one of the five newest releases in the ${familyOf(m)} family.${out ? ` ${out}.` : ''}`)}">New</span>` : ''}${dated ? `<span class="tag dated-tag" tabindex="0" data-tip="${esc(dated)}">Dated</span>` : ''}${!rec && s.level !== 'ok' ? LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
+  // 1.5.205: a brain bigger than the card says how it would run here (card + memory, + storage, with another Bob's
+  // help) instead of "doesn't suit". Blocked ones and squeezed files for smaller cards keep their own words.
+  const place = isBrain(m) && (s.level === 'slow' || s.level === 'no') && !s.squeezed && ctx.ramGB ? placeFor(m, ctx, ctx.bobNet) : null;
+  const placeTag = place && place.where !== 'card' && place.where !== 'rent' ? `<span class="tag warn place-tag" tabindex="0" data-tip="${esc(place.why)}">${esc(place.word)}</span>` : '';
+  const quant = quantOf(m);
+  const tip = [m.what, communityLine(m), distilledLine(m), m.thinks ? THINKS_LINE : '', where, out, isNew ? 'New: one of the five newest releases in its family.' : '', dated, m.trial ? `${TRIAL_LINE} ${m.trialNote || ''}`.trim() : '', m.bench || '', quant ? `Squeezed to ${quant} (how tightly the file is packed; a lower number is smaller and a little less sharp).` : '', place && placeTag ? place.why : s.why, roomy ? `Fits ${roomy} on your Bob-Net.` : '', fits, `Licence ${m.license}${m.commercial === false ? ' (personal use only)' : ''}`].filter(Boolean).join('\n');
+  const tags = `${recTag}${makerTag(m)}${isOwn(m) ? (m.madeByBob ? '<span class="tag own-bob" tabindex="0" data-tip="Its brain card says it was made for Bob in his own workshop. Bob runs it from where it is and leaves the pick to you.">Bob\'s own brain</span>' : '<span class="tag" data-tip="A brain you added from a file on this replicant matrix. Bob runs it from where it is and never recommends it over the ones he knows.">Your own file</span>') : ''}${isNew ? `<span class="tag new-tag" tabindex="0" data-tip="${esc(`New: one of the five newest releases in the ${familyOf(m)} family.${out ? ` ${out}.` : ''}`)}">New</span>` : ''}${dated ? `<span class="tag dated-tag" tabindex="0" data-tip="${esc(dated)}">Dated</span>` : ''}${!rec && s.level !== 'ok' ? placeTag || LEVEL_TAG[s.level] || '' : ''}${here ? '<span class="tag good">On this replicant matrix</span>' : ''}`;
   const on = isActive({ entry: m, value: m.id, installed: here }, ctx.active);
   const sw = job.id === 'phone' ? '<span class="muted">In the phone app</span>'
     : `<button type="button" class="mini-switch" role="switch" aria-checked="${on}" data-active="${esc(m.id)}" aria-label="Active: ${esc(m.name)}">Active <span class="st">${on ? 'On' : 'Off'}</span></button>`;
@@ -101,7 +107,7 @@ function rowHtml(m, job, ctx) {
   // one (naughty list) down the left, a light tint, and their tags in words.
   const kind = isNaughty(m) ? ' naughty' : isCommunity(m) ? ' community' : '';
   return `<li class="cat-row model${kind}${!here && !rec && s.level !== 'ok' ? ' dim' : ''}" id="cat-${esc(job.id)}-${esc(m.id)}">
-    <span class="kit-name">${esc(m.name)}</span><span class="muted">${gb(m.sizeGB)}</span>${tags}${tipHtml(tip, `About ${m.name}`)}${src ? `<a class="src-link" href="${esc(src.url)}" target="_blank" rel="noopener noreferrer" data-tip="Where it comes from: ${esc(src.label)}" aria-label="Where ${esc(m.name)} comes from">↗</a>` : ''}
+    <span class="kit-name">${esc(m.name)}</span><span class="muted">${esc(sizeLine(m))}</span>${tags}${tipHtml(tip, `About ${m.name}`)}${src ? `<a class="src-link" href="${esc(src.url)}" target="_blank" rel="noopener noreferrer" data-tip="Where it comes from: ${esc(src.label)}" aria-label="Where ${esc(m.name)} comes from">↗</a>` : ''}
     ${m.benchReport ? `<a class="src-link bench-link" href="${esc(m.benchReport)}" target="_blank" rel="noopener noreferrer" aria-label="Full report: how ${esc(m.name)} did in its benchmark">Full report</a>` : ''}<span class="cat-act">${sw}${act}</span><div class="confirm" hidden></div></li>`;
 }
 
@@ -175,6 +181,14 @@ function familyHtml(job, fam, list, ctx) {
     <ul class="kit-list cat-list">${list.map((m) => rowHtml(m, job, ctx)).join('')}</ul></details>`;
 }
 
+// Bigger than the card but it still runs here: with the rest in memory, partly from the drive, or with another Bob.
+const isBrain = (m) => Boolean(m?.jobs) && ['chat', 'coding', 'vision'].includes(m.category);
+function runsSomehow(m, ctx) {
+  const s = suit(m, ctx, ctx.platform);
+  if (s.level === 'blocked' || s.squeezed || !ctx.ramGB || !ctx.vramGB || !isBrain(m)) return false;
+  return placeFor(m, ctx, ctx.bobNet).where !== 'rent';
+}
+
 function jobHtml(job, ctx) {
   // 1.5.137: a brain too big for this replicant matrix and for every Bob on your Bob-Net isn't listed here at all; it's
   // under Rented brains (and the Lab), where a rented card can run it. Installed ones always stay.
@@ -182,7 +196,7 @@ function jobHtml(job, ctx) {
   const list = all.filter((m) => !tooBigEverywhere(m, ctx, ctx.bobNet, ctx.platform));
   const away = all.length - list.length;
   // Bob's pick first, then what's here, then what fits, then the rest.
-  const rank = (m) => (pickFor(job.id, ctx.models, ctx)?.id === m.id ? 0 : m.status?.state === 'installed' ? 1 : suit(m, ctx, ctx.platform).level === 'ok' ? 2 : 3);
+  const rank = (m) => (pickFor(job.id, ctx.models, ctx)?.id === m.id ? 0 : m.status?.state === 'installed' ? 1 : suit(m, ctx, ctx.platform).level === 'ok' ? 2 : runsSomehow(m, ctx) ? 2.5 : 3);
   const sorted = [...list].sort((a, b) => rank(a) - rank(b));
   const hide = sorted.filter((m) => rank(m) === 3);
   const shown = ctx.showUnsuited ? sorted : sorted.filter((m) => !hide.includes(m));
