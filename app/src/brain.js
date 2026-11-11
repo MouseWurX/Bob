@@ -1240,12 +1240,14 @@ export class Brain {
     try {
       ctx.picked = null;
       if (tool.check) {
-        const need = await tool.check(args, ctx);
+        let need = await tool.check(args, ctx);
+        // "Let Claude use Bob's hands" (claude-door.js): the card names the app that asked.
+        if (need && ctx.via) need = typeof need === 'string' ? `${ctx.via} (through Bob): ${need}` : { ...need, text: `${ctx.via} (through Bob): ${need.text}` };
         const group = typeof tool.approvalGroup === 'function' ? tool.approvalGroup(args) : tool.approvalGroup;
         // "Let Bob work without asking" (Settings, Hands; off by default): no card, but the hard limits in check()
         // still apply, every action still goes in the logbook and the chat, and ✋ Hands turns it off at once.
         // Tools marked alwaysAsk (cloud helpers: they cost money) still show their card.
-        if (need && !tool.alwaysAsk && freeOn(this.cfg)) {
+        if (need && !tool.alwaysAsk && !ctx.alwaysAsk && freeOn(this.cfg)) { // a call from another app always shows its card
           const text = typeof need === 'string' ? need : need.text;
           this.log('approval', `done without asking: ${text}${need.command ? ` [${need.command}]` : ''}`);
           ctx.emit({ type: 'auto-approved', text, command: need.command || '', rows: Array.isArray(need.plan) ? need.plan.filter((r) => !r.blocked).length : null });

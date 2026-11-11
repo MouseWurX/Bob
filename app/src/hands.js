@@ -8,6 +8,7 @@
 // - "Allow the rest of this job" only covers the same kind of action in the same job, and ends with the job.
 // - No administrator rights, no passwords, never secret files or read-only folders, never his own settings.
 // - Everything goes in the logbook; file jobs can be undone.
+import { stopAll as stopDoorCalls } from './claude-door.js';
 import fs from 'node:fs';
 import { writeJsonAtomic } from './util.js';
 import path from 'node:path';
@@ -50,7 +51,7 @@ export function holdHands(brain, held) {
   const cur = handsSettings(brain.cfg);
   if (!held && !cur.enabled) throw new Error('Hands are off in Settings. Turn them on there first (Settings, Hands).');
   let n = 0;
-  if (held) { for (const r of running.values()) { r.controller.abort(); n++; } n += brain.denyHands?.() || 0; }
+  if (held) { for (const r of running.values()) { r.controller.abort(); n++; } n += brain.denyHands?.() || 0; n += stopDoorCalls(); } // and anything Claude asked for
   brain.saveHands(cleanHands({ ...cur, held }));
   brain.log?.('hands', held ? `Hands switch on the chat page: stopped (${n} thing${n === 1 ? '' : 's'} stopped)` : 'Hands switch on the chat page: back on');
   return n;
@@ -60,6 +61,7 @@ export function stopEverything(brain) {
   let n = 0;
   for (const r of running.values()) { r.controller.abort(); n++; }
   stopAllServers(); // connected apps Bob started (they're in running too; this catches any still starting)
+  n += stopDoorCalls(); // calls from the Claude app or Claude Code (claude-door.js)
   if (brain) {
     n += brain.denyHands?.() || 0;
     const next = cleanHands({ ...handsSettings(brain.cfg), enabled: false, free: false }); // asks again next time

@@ -12,6 +12,7 @@ import { quarantineSettingsHtml, mountQuarantineSettings } from './quarantine.js
 import { phoneAccessHtml, mountPhoneAccess } from './phone-access.js';
 import { telegramHtml, mountTelegram } from './telegram.js';
 import { discordHtml, mountDiscord } from './discord.js';
+import { claudeDoorHtml, mountClaudeDoor } from './claude-door.js'; // Let Claude use Bob's hands
 import { checkinsHtml, mountCheckins } from './checkins.js';
 import { adventureSettingsHtml, mountAdventureSettings } from './adventure.js';
 import { gamesSettingsHtml, mountGamesSettings } from './games.js';
@@ -858,7 +859,8 @@ export function createCellar({ popOut = null } = {}) {
          ${tip('For jobs Bob\'s own engines can\'t do (custom nodes, face fixers, long multi-step graphs). Bob drives ComfyUI for you; it just has to be running on this replicant matrix (for example from Pinokio). Add workflows to the workflows folder as Workflow > Export (API) files.', 'ComfyUI workflows')}
         <label class="switch"><input type="checkbox" data-set="workshop" ${settings.workshop?.enabled ? 'checked' : ''}><span><strong>Let Bob use ComfyUI</strong><br><span class="muted">${settings.workshop?.folder ? `Workflows folder: ${esc(settings.workshop.folder)} · ${settings.workshop.count || 0} workflow${settings.workshop.count === 1 ? '' : 's'}` : 'Off.'}</span></span></label>
         <label class="pick"><strong>ComfyUI port</strong><input data-set="workshopPort" inputmode="numeric" value="${esc(settings.workshop?.port || 8188)}" aria-label="ComfyUI port" style="width:7em"></label></div>
-      <p class="muted">Apps Bob works inside (Unreal Engine, Blender) are under Hands, Connected apps (MCP).</p>`;
+      <p class="muted">Apps Bob works inside (Unreal Engine, Blender) are under Hands, Connected apps (MCP).</p>
+      ${claudeDoorHtml()}`;
   }
   // 1.5.127 Rented brains: a big brain hired for one job from a service the owner has an account with.
   function rentHtml() {
@@ -964,7 +966,7 @@ export function createCellar({ popOut = null } = {}) {
     ['engines', '⚙ Engines', 'engine engines brain engine lab engine gear update updates go back remove check all ollama llama.cpp downloads newer build tested build fit to free graphics memory speculative decoding draft flags threads batch', () => enginesHtml()],
     ['bobnet', '🌐 Bob-Net', 'bob-net bobnet phone android tailscale address passcode firewall let my phone in let my other replicant matrices in other bobs share brains lend borrow take jobs send jobs', () => bobNetHtml()],
     ['online', '☁ Online services', 'online internet cloud helpers api key anthropic openai gemini openrouter telegram discord bot token pairing wake phrase rented brains rent hire runpod vast lambda together spending cap limit machine', () => onlineHtml()],
-    ['apps', '🔌 Other apps', 'other apps comfyui workflows port unreal blender mcp', () => otherAppsHtml()],
+    ['apps', '🔌 Other apps', 'other apps comfyui workflows port unreal blender mcp claude claude code desktop connect hands key', () => otherAppsHtml()],
     ['hands', '✋ Hands', 'files run commands schedules apps permission quarantine reviewer', () => handsSettingsHtml() + quarantineSettingsHtml()],
     ['housekeeping', '🧹 Housekeeping', 'tidy old chats pictures logs', () => housekeepingHtml()],
     ['adventure', '🎲 Adventure', 'adventure game tabletop role-playing dice game master party bobs cards plot armour campaign', () => `<div class="adventure-box">${adventureSettingsHtml(settings.adventure || {})}</div>`],
@@ -1127,6 +1129,7 @@ export function createCellar({ popOut = null } = {}) {
     mountPhoneAccess(dlg.querySelector('.phone-box')); // Bob-Net, This Bob: Let my other replicant matrices in
     mountTelegram(dlg.querySelector('.telegram-box')); // Online services: Talk to Bob on Telegram
     mountDiscord(dlg.querySelector('.discord-box')); // Online services: Bob on Discord
+    mountClaudeDoor(dlg.querySelector('.claude-door-box')); // Other apps: Let Claude use Bob's hands
     mountCheckins(dlg.querySelector('.checkins-box')); // 1.5.78 Check-ins
     mountAdventureSettings(dlg.querySelector('.adventure-box'), { api, settings }); // 1.5.117 🎲 Adventure
     mountGamesSettings(dlg.querySelector('.games-box'), { api, settings }); // 1.5.121 🧩 Games

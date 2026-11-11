@@ -59,6 +59,7 @@ import { adventureRoute } from './adventure.js';
 import { gamesRoute } from './games.js';
 import { telegramRoute, startTelegram } from './telegram.js';
 import { discordRoute, startDiscord } from './discord.js';
+import { doorRoute, doorSettingsRoute } from './claude-door.js'; // Let Claude use Bob's hands
 import { handsSettings } from './hands-settings.js';
 import { tuning, TUNING_KEYS, pictureFitReset } from './tuning.js';
 import { gatherFacts, tipsFrom } from './pc-check.js';
@@ -280,6 +281,9 @@ const server = http.createServer(async (req, res) => {
     if (!isLocal && !isRemote) return send(res, 403, { error: 'bad host' });
     const url = new URL(req.url, `http://${req.headers.host}`);
     const p = url.pathname;
+    // "Let Claude use Bob's hands" (claude-door.js): the MCP door for apps on this replicant matrix. It has its own
+    // locks (off unless switched on, this computer only, no web pages, a key per app), so it comes before the page checks.
+    if (p === '/mcp') return doorRoute({ req, res, brain, isLocal });
 
     // 1.5.97 Bob-Net pairing: the other Bob doesn't know the passcode yet, so these four come before the passcode check.
     // They only reach through the open door (Tailscale only), and the passcode is handed over only after your Yes here.
@@ -851,6 +855,7 @@ const server = http.createServer(async (req, res) => {
     if (p.startsWith('/api/games') && await gamesRoute({ req, res, p, isLocal, brain, body, send })) return; // 1.5.121 🧩 Games
     if (p === '/api/telegram' && await telegramRoute({ req, res, p, isLocal, brain, body, send })) return;
     if (p === '/api/discord' && await discordRoute({ req, res, p, isLocal, brain, body, send })) return;
+    if (p === '/api/claude-door' && await doorSettingsRoute({ req, res, p, isLocal, brain, cfg, body, send })) return;
     if (p.startsWith('/api/lab') && await labRoute({ req, res, p, isLocal, lab, body, send })) return; // 1.5.141 Computer Science Lab
     if (p.startsWith('/api/rent') && await rentRoute({ req, res, p, isLocal, brain, cfg, body, send })) return; // 1.5.127 rented brains
     if (p === '/api/hands/schedules' && await schedulesRoute({ req, res, p, isLocal, brain, body, send })) return;
