@@ -11,7 +11,7 @@ import { makerWords, makerWhat } from './selftools.js';
 import { mcpWords, mcpWhat } from './mcp.js';
 import { selfWorkWords } from './self-work.js';
 
-export const CORE = ['notice_board', 'remember', 'reminders', 'list_folder', 'read_file', 'web_search', 'fetch_page', 'bob_help', 'ask_specialist', 'show_made', 'pick_session', 'edit_my_message', 'offer_setup', 'use_tools'];
+export const CORE = ['notice_board', 'remember', 'reminders', 'list_folder', 'read_file', 'web_search', 'fetch_page', 'bob_help', 'ask_specialist', 'show_made', 'pick_session', 'edit_my_message', 'take_note', 'offer_setup', 'use_tools'];
 
 // Groups Bob can add. `what` is what Bob reads in use_tools; `words` is the cheap pre-check on the user's message.
 const WORK_GROUPS = {
@@ -26,9 +26,14 @@ const WORK_GROUPS = {
     words: /\b(flow ?charts?|diagrams?|mind ?maps?|org(?:ani[sz]ation(?:al)?)? charts?|family trees?|decision trees?|process (?:map|chart)s?|gantt|timelines?|pie charts?|bar charts?|swim ?lanes?|wireframes?|boxes and arrows|map (?:it |this |that |them )?out|lay (?:it |this |that )?out visually|chart (?:out|how)|(?:draw|sketch|show) (?:me )?(?:how|the steps|the process|the flow)|visual(?:ly)? (?:show|map|lay)|mermaid|uml|er diagram|sequence)\b/i
   },
   documents: {
-    what: 'write or edit files, save spreadsheets, search inside files',
-    tools: ['write_file', 'edit_file', 'save_spreadsheet', 'search_files'],
-    words: /\b(save|write|edit|document|txt|csv|xlsx|spreadsheet|excel|search (?:my|the|in|for)|find (?:in|where)|grep|jot|text file|notes? file|(?:in|through) my files|where did I (?:mention|write|put|say))\b/i
+    what: 'write or edit files, save spreadsheets, search inside files and documents',
+    tools: ['write_file', 'edit_file', 'save_spreadsheet', 'search_files', 'find_in_documents'],
+    words: /\b(save|write|edit|documents?|txt|csv|xlsx|spreadsheet|excel|pdfs?|word (?:doc|file)s?|search (?:my|the|in|for)|find (?:in|where|the (?:file|doc|document|pdf))|grep|jot|text file|notes? file|(?:in|through) my (?:files|documents|docs|folders)|where did I (?:mention|write|put|say|save)|which (?:file|document|doc|pdf))\b/i
+  },
+  sandbox: { // "Let Bob work things out in a sandbox" (sandbox-code.js): only while it's on (offTools hides it otherwise)
+    what: 'work out sums, money, dates, unit conversions, counting and sorting exactly, by running a little code in a locked sandbox',
+    tools: ['run_in_sandbox'],
+    words: /\b(calculat\w*|work (?:it |this |that )?out|how (?:many|much|long) (?:days|weeks|months|years|hours|minutes|until|till|since|left)|add (?:up|these|them)|total|sum|average|mean|median|percent\w*|per cent|interest|compound|tip|split (?:the )?(?:bill|cost)|convert (?:\d|this|that|these)|in (?:km|miles|kg|lbs?|pounds|celsius|fahrenheit|inches|cm|feet|metres|meters|litres|liters|gallons|ounces)|sort (?:this|these|them|the list)|count (?:the|how|these)|regex|pattern|run (?:the |some |this )?(?:code|numbers|maths?|math)|sandbox|exact(?:ly)?)\b/i
   },
   memory: {
     what: 'forget a topic you keep notes on',
