@@ -26,9 +26,9 @@
     "build": 249,
     "bundledLlamaTag": "b12282",
     "brainEngine": {
-      "tag": "brain-engine-b12032",
-      "win-x64": "sha256:bc724d746912b70397b0b57da9ed8e8d583265750d6055750f23a5b332364237",
-      "linux-x64": "sha256:fd8914c5e150fdbae4aca4d8241a25fc2a9b5738d919757c35ef13e554a472e2"
+      "tag": "brain-engine-b12282",
+      "win-x64": "sha256:0e2535894bb75da544e26cf9afbcb363b3794b253a9b20a5baa839fad9ed5b8d",
+      "linux-x64": "sha256:eea14bbac8ebacc1acd74899cecf2d159f8f6957ce111f0f6567e5b04b4c7386"
     },
     "electronSha256": "88e08039d0ef359bab9f674e8051fa103bd8628ea7c5a5e1daaa610a8a0c6931",
     "layout": "From 0.9.32 Bob app\\Bob.exe is Electron's official electron.exe (devDependencies.electron), only renamed, and Bob's files sit in Bob app\\resources\\app. Updates never build an exe. electronSha256 (optional) pins the official zip's checksum; otherwise it is checked against Electron's SHASUMS256.txt. electron-builder (dist scripts) is only for making a portable exe by hand.",
