@@ -64,6 +64,11 @@ wheel() {
   fetch "$name"
   dir="$work/src-$name"
   [ -z "$(j "code.$name.dir")" ] || dir="$dir/$(j "code.$name.dir")"
+  if [ "$name" = flex_gemm ]; then
+    # Visual Studio needs "template" before data_ptr<T> where T comes from a generic lambda (gcc doesn't mind it)
+    sed -i 's/\.data_ptr<T>()/.template data_ptr<T>()/g' "$dir/flex_gemm/kernels/cuda/spconv/sparse_neighbor_map.cu"
+    grep -q 'template data_ptr<T>' "$dir/flex_gemm/kernels/cuda/spconv/sparse_neighbor_map.cu"
+  fi
   echo "::group::building $name"
   "$py" -m pip wheel --no-build-isolation --no-deps -w "$out" "$dir"
   echo "::endgroup::"
