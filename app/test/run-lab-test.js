@@ -643,7 +643,7 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   const spawned = [];
   const fakeSpawn = (exe, args, opts) => { const rec = { args, stdin: '', opts }; spawned.push(rec); return { pid: 4242, stdin: { write: (t) => { rec.stdin += t; }, end: () => {} }, unref: () => {}, on: (ev, f) => { if (ev === 'exit') setTimeout(f, 1); } }; };
   const cLab = new Lab({ ...cfg }, { shop, room: big });
-  cLab.forgeSpawn = fakeSpawn; cLab.forgeAlive = (pid) => pid === 4242;
+  cLab.forgeSpawn = fakeSpawn; cLab.forgeAlive = (pid) => pid === 4242; const killed = []; cLab.forgeKill = (pid) => killed.push(pid); // never signal a real process: 4242 can be anything on the test computer
   let keyEnv = {}; cLab.rentEnv = () => keyEnv;
   const spFile = path.join(dataDir, 'lab', 'forge-plans', 'first.json');
   check('a plan with caps of 0 can\'t start, and the switch starts off', cLab.forgeCard('first').problems.some((x) => /caps are 0/.test(x)) && cLab.forgeCard('first').problems.some((x) => /Let the Lab start Forge runs/.test(x)) && cfg.labForgeStart !== true);
@@ -683,14 +683,14 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   check('the plan warns about fighting paths, mixed moods and the longer teacher pass', tp.notes.some((n) => /Concise and Thorough pull against/.test(n)) && tp.notes.some((n) => /Moods mixed/.test(n)) && tp.notes.some((n) => /starts over/.test(n)));
   check('ticking thinking with no path or personality is a problem in words', makeForgePlan({ rungs: [{ name: 'a', keep: 128 }], teach: { thinking: 100 } }, { base: {} }).problems.some((x) => /pick at least one thought path/.test(x)));
   check('the form has what to teach, blend or switch, your own path, personality and learn from', ['What to teach', 'Learn from', 'Start from a set', 'Your own path', 'Alignment', 'Mood (best as a switch)', 'Blend', 'Switch'].every((w) => pf.includes(w)) && /type="number" min="0" max="100"/.test(pf));
-  check('Stop deletes only this run\'s card, by its id, never every Forge card', stopRes.pod && spawned.at(-1).args.slice(-2).join(' ') === '--kill abc123xyz' && !JSON.stringify(cLab.forgeView()).includes('never-shown'));
+  check('Stop deletes only this run\'s card, by its id, never every Forge card', stopRes.pod && killed.join() === '4242' && spawned.at(-1).args.slice(-2).join(' ') === '--kill abc123xyz' && !JSON.stringify(cLab.forgeView()).includes('never-shown'));
   // 1.5.163 lessons from Hugging Face: the Forge's importer runs first, on a copy of the plan
   {
     const sp2 = [];
     let impCode = 0, impKeeps = false;
     const fs2 = (exe, args, opts) => { const rec = { args, opts, stdin: '' }; sp2.push(rec); const isImp = args.some((a) => /import-lessons\.mjs$/.test(a)); return { pid: isImp ? 5151 : 4242, stdin: { write: (t) => { rec.stdin += t; }, end: () => {} }, unref: () => {}, on: (ev, f) => { if (ev === 'exit' && isImp) setTimeout(() => { const pl = JSON.parse(fs.readFileSync(args.at(-1), 'utf8')); if (!impKeeps) { delete pl.hf_lessons; pl.extra_lessons = ['/abs/lessons-hf-1']; } fs.writeFileSync(args.at(-1), JSON.stringify(pl)); f(impCode); }, 5); } }; };
     const hLab = new Lab({ ...cfg, labForgeStart: true }, { shop, room: big });
-    hLab.forgeSpawn = fs2; hLab.forgeAlive = (pid) => pid === 5151 || pid === 4242; hLab.rentEnv = () => ({ RUNPOD_API_KEY: 'rpa_TESTKEY0000000000' });
+    hLab.forgeSpawn = fs2; hLab.forgeAlive = (pid) => pid === 5151 || pid === 4242; hLab.forgeKill = () => {}; hLab.rentEnv = () => ({ RUNPOD_API_KEY: 'rpa_TESTKEY0000000000' });
     try { fs.unlinkSync(hLab.forgeLiveFile()); } catch {}
     const hfFile = path.join(dataDir, 'lab', 'forge-plans', 'hfp.json');
     fs.writeFileSync(hfFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(spFile, 'utf8')), run: 'hfp', hf_lessons: [{ repo: 'o/n', license: 'mit' }] }));

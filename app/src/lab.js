@@ -1253,7 +1253,7 @@ export class Lab {
   async forgeStop() {
     const rec = readJson(this.forgeLiveFile(), null);
     if (!rec) throw new Error('No Forge run was started from the Lab.');
-    if (rec.pid > 0) { try { process.kill(rec.pid); } catch {} } // never 0: that would mean every process in the group
+    if (rec.pid > 0) { try { (this.forgeKill || process.kill)(rec.pid); } catch {} } // never 0: that would mean every process in the group
     if (rec.importing) { writeJson(this.forgeLiveFile(), { ...rec, importing: false, stopped: true, pid: 0 }); return { stopped: true, pod: false }; } // nothing rented yet
     const dir = forgeDir(this.cfg), plan = readJson(path.join(forgePlansDir(labDir(this.cfg)), `${rec.plan}.json`), {}), pod = dir ? runPodId(dir, plan.run || rec.plan) : '';
     if (pod) {
