@@ -9,6 +9,8 @@ export const WANTS = [
     label: 'Take quick notes when you say "note:"', note: 'I write it down at once with the date and time, in one plain text file you can open.' },
   { group: 'Everyday help', key: 'docTools', setting: 'Read and search my documents', where: 'How Bob works',
     label: 'Read and search your documents', note: 'Word, Excel, PowerPoint, PDF and more, in Documents, Desktop and Downloads. Nothing leaves this replicant matrix.' },
+  { group: 'Everyday help', key: 'docView', setting: 'Show documents in the side panel', where: 'How Bob works',
+    label: 'Show documents beside the chat', note: 'Word, Excel, PowerPoint and PDF files open in the side panel instead of another app.' },
   { group: 'Everyday help', key: 'sandboxCode', setting: 'Let Bob work things out in a sandbox', where: 'How Bob works',
     label: 'Work out sums, dates and money in a sandbox', note: 'A few lines of code in a locked box that can\'t see your files, thrown away after each run, so I answer from the result instead of guessing.' },
   { group: 'Everyday help', key: 'webSearch', setting: 'Let Bob search the web', where: 'How Bob works',
