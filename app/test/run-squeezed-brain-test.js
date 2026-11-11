@@ -18,8 +18,9 @@ const gguf = q3.files.find((f) => f.role === 'gguf');
 check('it is a Q3 file pinned to an exact Hugging Face commit with a checksum', /\/resolve\/[0-9a-f]{40}\/.*Q3_K/.test(gguf.url) && /^[0-9a-f]{64}$/.test(gguf.sha256) && gguf.bytes > 1e10 && gguf.verify);
 check('same commit as the full version, sharing its picture file', gguf.url.split('/resolve/')[1].slice(0, 40) === full.files[0].url.split('/resolve/')[1].slice(0, 40) && q3.files.find((f) => f.role === 'mmproj')?.saveAs === full.files.find((f) => f.role === 'mmproj')?.saveAs);
 check('it is smaller than the full version', q3.sizeGB < full.sizeGB && q3.vramGB < full.vramGB);
-check('every other brain stays at Q4 or better (1.5.169: or is an 8 GB card version of Bob\'s own)', models.filter((m) => m.jobs && m.files && m.id !== q3.id && !(m.madeByBob && m.squeezedOf && m.maxCardGB <= 8)).every((m) => m.files.filter((f) => f.role === 'gguf').every((f) => !/[-_]Q[1-3]_/i.test(f.url))));
-check('every squeezed file is only for small cards', models.filter((m) => m.files?.some((f) => f.role === 'gguf' && /[-_]Q[1-3]_/i.test(f.url))).every((m) => m.maxCardGB && m.maxCardGB <= 8 && m.squeezedOf));
+// 1.5.169: the owner's rule bends for Bob's own brains: a Q3 of one ships when it was benchmarked against its Q4 (Riker's Q3).
+check('every other brain stays at Q4 or better (1.5.169: or is Bob\'s own, benchmarked)', models.filter((m) => m.jobs && m.files && m.id !== q3.id && !(m.madeByBob && (m.bench || (m.squeezedOf && m.maxCardGB <= 8)))).every((m) => m.files.filter((f) => f.role === 'gguf').every((f) => !/[-_]Q[1-3]_/i.test(f.url))));
+check('every squeezed file is only for small cards (1.5.169: except Bob\'s own, benchmarked against its Q4)', models.filter((m) => !(m.madeByBob && m.bench) && m.files?.some((f) => f.role === 'gguf' && /[-_]Q[1-3]_/i.test(f.url))).every((m) => m.maxCardGB && m.maxCardGB <= 8 && m.squeezedOf));
 
 const s16 = suit(q3, pc(16));
 check('16 GB card: the squeezed one is not for you, with a plain reason', s16.level === 'no' && /full version/.test(s16.why), JSON.stringify(s16));

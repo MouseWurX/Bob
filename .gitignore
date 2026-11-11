@@ -16,3 +16,5 @@ model-lab/out/
 model-lab/forge/hf-token.txt
 app/model-lab/out/
 app/model-lab/forge/hf-token.txt
+__pycache__/
+*.pyc

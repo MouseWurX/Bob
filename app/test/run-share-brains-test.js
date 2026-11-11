@@ -60,10 +60,10 @@ check('a lent request needs a question', cleanLendRequest({ messages: [{ role: '
 
 // ---------- a pretend lender: the real lendChat behind a door like server.js's ----------
 const logs = [];
-let mode = 'ok', settled = 0, hung = 0, aborted = 0, released = 0;
+let settleOpts; let mode = 'ok', settled = 0, hung = 0, aborted = 0, released = 0;
 const lender = {
   cfg: { share: { lend: true }, remote: { enabled: true, passcode: 'lend-1234' } }, turns: new Map(), queue: [], lending: null,
-  log: (k, t) => logs.push(`${k}: ${t}`), broadcast: () => {}, settle: async () => { settled++; }, gate: { done: (sig) => { if (sig) released++; } },
+  log: (k, t) => logs.push(`${k}: ${t}`), broadcast: () => {}, settle: async (o) => { settled++; settleOpts = o; }, gate: { done: (sig) => { if (sig) released++; } },
   brainLabel: () => 'Gemma 4 E2B', fitCtx: async (m, c) => c,
   ensureModel: async (m, _p, signal) => { if (mode === 'cold' || mode === 'forever') await new Promise((r) => { const t = setTimeout(r, mode === 'cold' ? 500 : 5000); signal?.addEventListener('abort', () => { clearTimeout(t); r(); }); }); return m; },
   chatSafe: async ({ messages, tools, onToken, signal }) => {
@@ -106,6 +106,7 @@ const r1 = await L.chat(picked, { messages: [{ role: 'system', content: 'sys' },
 check('the reply streams back', streamed === 'Hello from the phone' && r1.content === 'Hello from the phone (hi)' && !r1.tool_calls);
 check('the lender keeps no words in his logbook', logs.length === 1 && !logs[0].includes('hi') && /thought a reply/.test(logs[0]));
 check('the lender goes back to light after', await new Promise((r) => setTimeout(() => r(settled === 1), 20)));
+check('1.5.196: after a lend he does not load his own quick brain back (that waits until his owner types)', settleOpts?.noWake === true);
 check('the lender is free again', lender.lending === null);
 check('the lender gives the graphics card back after lending', released === 1, `released ${released}`);
 mode = 'tool';
@@ -158,6 +159,16 @@ try { await new Lenders({ share: { borrow: { on: true, bobs: [bob] } } }, { fetc
 check('no first word by the hard limit: too slow, even while loading', forever === 'too slow', forever);
 await new Promise((r) => setTimeout(r, 200));
 check('and that lender stopped loading too', lender.lending === null);
+
+// 1.5.196 (Tailscale test: Borrow a brain switched itself off on the Go). Every other change keeps it on.
+{
+  const on = { ...base, share: cleanSharePatch(base, { addBob: { name: 'Go', address: '100.101.2.9', passcode: '87654321' }, borrow: true }).share };
+  for (const patch of [{ mode: 'bigger' }, { mode: 'more' }, { lendCard: true }, { lendCard: false }, { spread: 'big' }, { homeNet: false }, { lend: true }, { takeJobs: true }, { passAlong: true }, { lendChecks: true }, { askChecks: true }, { sendJobs: true }, { when: 'always' }, { addBob: { name: 'Pi', address: '100.101.2.10', passcode: '12345678' } }, { removeBob: '100.101.2.10' }, { order: ['100.101.2.9:7777'] }, { check: true }]) {
+    const out = cleanSharePatch(on, patch);
+    check(`Borrow a brain stays on through ${Object.keys(patch).join(', ')}`, !out.error && out.share.borrow.on === true, out.error || '');
+  }
+  check('only the Borrow switch turns it off', cleanSharePatch(on, { borrow: false }).share.borrow.on === false);
+}
 
 srv.close();
 console.log(`\n${pass} passed, ${fail} failed`);

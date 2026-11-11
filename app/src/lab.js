@@ -41,13 +41,14 @@ import { forgeDoesSenses } from './lab-senses.js';
 // 1.5.164 the Forge's home ways (mix, stack, take out the refusal habit) and Peek inside
 import { MIX_WAYS, MIX_IDS, planMix, mixGguf, planStack, stackGguf, shareOf } from './lab-merge.js';
 import { planRefusals, readDirections, pickLayers, removeRefusals, keptCheck, reflexCheck, PLAIN_PROMPTS, RELUCTANT_PROMPTS, writeTeachBack, TEACH_BACK_SET, LAYER_CHOICES, KEPT } from './lab-refusals.js';
-import { peekView, tallyTrace, addToTally, keepFromLit, askTraced, IDLE_MS, NO_TRACE, NO_ENGINE } from './lab-peek.js';
+import { peekView, tallyTrace, addToTally, keepFromLit, askTraced, IDLE_MS, NO_TRACE, NO_ENGINE, traceBuilt } from './lab-peek.js';
 import { usageFolder, keepFileOf } from './lab-usage.js';
 import { ownModels, OWN_FAMILY } from './own-models.js'; // Your own brains join the Lab's lists
 import { fullSizeRoute } from './lab-fullsize.js'; // Bring in a full-size brain
 import { benchBrain, benchLine } from './lab-bench.js'; // the standard speed test (llama-bench)
 import { findTool } from './llama-tools.js';
 import { diffusionRoute } from './lab-diffusion.js'; // Playground: Diffusion brains
+import { partsOf, pickLessons, addLessonSet, downloadHfLessons, ADDED_FILE } from './lab-library.js'; // the lesson library: sets broken into parts
 
 // 1.5.172 the Lab shows unless it is switched off (it was off until switched on before). Anything but false is on.
 export const labOn = (cfg) => cfg?.computerLab !== false;
@@ -282,7 +283,7 @@ export function planRecipe(recipe, { brain, facts, tools, outDir, skillNamesFor 
   if (s.cut?.how === 'cover') for (const x of s.cut.strong) if (!skills.includes(x)) problems.push(`There's no skill called ${x} in these lessons.`);
   if (s.cut?.how === 'file' && !s.cut.file) problems.push('Pick the expert list file.');
   if (r.lessons.kind === 'file' && !r.lessons.file) problems.push('Pick the lesson file.');
-  for (const [k, p] of Object.entries(tools)) if (!p.found && ((k === 'imatrix' && s.cut?.how === 'busiest') || (k === 'quantize' && s.files.length) || k === 'server')) problems.push(`${path.basename(p.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it; download the engine again if it's missing.`);
+  for (const [k, p] of Object.entries(tools)) if (!p.found && ((k === 'imatrix' && s.cut?.how === 'busiest') || (k === 'quantize' && s.files.length) || k === 'server')) problems.push(`${path.basename(p.path)} isn't in Bob's engine folder. Settings, Engines, Bob's own engine has it; download the engine again if it's missing.`);
 
   let file = brain.gguf;
   if (s.cut?.how === 'busiest') {
@@ -302,7 +303,7 @@ export function planRecipe(recipe, { brain, facts, tools, outDir, skillNamesFor 
   if (s.try) {
     // Try it first: Brain Engine runs the whole brain with only the kept experts switched on, so the Lab test shows
     // what the cut will do before any file is written. The same run, with every expert on, is the "before" score.
-    if (!tools.brainEngine?.found) problems.push('Try it first needs Brain Engine, Bob\'s Lab engine, on this replicant matrix. Get it in Get models > Engines: Brain Engine, or untick Try it first.');
+    if (!tools.brainEngine?.found) problems.push('Try it first needs Brain Engine, Bob\'s Lab engine, on this replicant matrix. Get it in Settings > Engines: Brain Engine, or untick Try it first.');
     steps.push({ id: 'try', label: 'Try it first: test with only the kept experts switched on', cmd: `${q(tools.brainEngine?.path || 'brain-engine/llama-server')} -m ${q(brain.gguf)} -c 8192 --jinja --fit on\n# the Lab test with every expert on, then POST /expert-mask {"keep": <the keep list>} and the Lab test again${s.tryStop ? '\n# stop here if it scores more than 10 points lower on the Lab test' : ''}`, gguf: brain.gguf, card: true });
   }
   if (s.cut) {
@@ -336,7 +337,7 @@ export function planRecipe(recipe, { brain, facts, tools, outDir, skillNamesFor 
       if (!steps.some((x) => x.id === 'lessons')) steps.unshift({ id: 'lessons', label: r.lessons.kind === 'chats' ? 'Gather your chats with Bob as lessons' : 'Read the lesson set', cmd: `# Bob writes the lessons as one text file: ${q(corpus)}`, corpus });
       imatrix = path.join(dir, 'imatrix.gguf');
       steps.push({ id: 'imatrix', label: 'Measure which weights matter most', cmd: `${q(tools.imatrix.path)} -m ${q(file)} -f ${q(corpus)} -o ${q(imatrix)} -c 4096 --chunks ${r.lessons.chunks} --fit on`, src: file, corpus, out: imatrix, card: true });
-      if (!tools.imatrix?.found && !problems.some((x) => x.includes(path.basename(tools.imatrix.path)))) problems.push(`${path.basename(tools.imatrix.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it; download the engine again if it's missing.`);
+      if (!tools.imatrix?.found && !problems.some((x) => x.includes(path.basename(tools.imatrix.path)))) problems.push(`${path.basename(tools.imatrix.path)} isn't in Bob's engine folder. Settings, Engines, Bob's own engine has it; download the engine again if it's missing.`);
     }
   }
   const finals = [];
@@ -457,11 +458,21 @@ export function lessonSets(cfg) {
     const file = path.join(root, d, 'lessons.jsonl');
     if (!fs.existsSync(file)) continue;
     const built = readJson(path.join(root, d, 'build.json'), null); // a set built from the owner's files (Lab 2c)
-    const meta = built || readJson(path.join(root, d, 'write.json'), {});
+    const added = built ? null : readJson(path.join(root, d, ADDED_FILE), null); // a set added from elsewhere (the lesson library)
+    const meta = built || added || readJson(path.join(root, d, 'write.json'), {});
     let count = 0; try { count = fs.readFileSync(file, 'utf8').split('\n').filter((x) => x.trim()).length; } catch {}
-    out.push({ id: d, name: meta.name || d, file, count, want: meta.count || 0, skills: built ? [...new Set((built.items || []).map((i) => i.skill).filter(Boolean))] : meta.skills || [], teacher: meta.teacherName || '', done: meta.done === true, built: Boolean(built), kinds: built?.kinds || [] });
+    out.push({ id: d, name: meta.name || d, file, count, want: meta.count || 0, skills: built ? [...new Set((built.items || []).map((i) => i.skill).filter(Boolean))] : meta.skills || [], teacher: meta.teacherName || '', done: meta.done === true || Boolean(added), built: Boolean(built), kinds: built?.kinds || [], ...(added ? { added: true, source: added.source || '', license: added.license || '', link: added.link || '' } : {}) });
   }
   return out;
+}
+
+// A set's parts for the page: each category, source and way of thinking with its count, plus the counts of every
+// combination so the page can show how many lessons are left as boxes are ticked off.
+export function partsView(dir) {
+  const p = partsOf(dir);
+  if (!p) return null;
+  const list = (o) => Object.entries(o || {}).map(([id, v]) => ({ id, label: v.label, count: v.count })).sort((a, b) => b.count - a.count);
+  return { total: p.total, categories: list(p.categories), sources: list(p.sources), thinking: list(p.thinking), cells: p.cells };
 }
 
 // ---- Lab 2c: a lesson set built from the owner's own files ----
@@ -627,7 +638,7 @@ export class Lab {
       const lic = teacherLicence(t.license);
       if (!lic.ok) problems.push(lic.note); else if (lic.note) notes.push(lic.note);
       if (t.naughty) notes.push(`${t.name} is on the naughty list, so its lessons teach its ways too.`);
-      if (!this.tools().server.found) problems.push(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it.`);
+      if (!this.tools().server.found) problems.push(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Settings, Engines, Bob's own engine has it.`);
     }
     notes.push('A teacher teaches best when it\'s at least as good as the brain you\'ll teach: the brain you\'re going to cut is often the best teacher here.');
     const hours = Math.max(1, Math.round((x.count * SECONDS_PER_LESSON) / 3600));
@@ -708,7 +719,7 @@ export class Lab {
     if (t) {
       const lic = teacherLicence(t.license);
       if (!lic.ok) problems.push(lic.note); else if (lic.note) notes.push(lic.note);
-      if (!this.tools().server.found) problems.push(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it.`);
+      if (!this.tools().server.found) problems.push(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Settings, Engines, Bob's own engine has it.`);
     }
     const skills = [...new Set(x.items.map((i) => i.skill))];
     if (skills.length > 12) problems.push(`That's ${skills.length} skills. Keep it to 12 or fewer, or the coverage cut has nothing to protect: give files that belong together the same skill name.`);
@@ -862,7 +873,7 @@ export class Lab {
     const packs = [...new Set([].concat(c.packs || []).filter((id) => PACK_IDS.includes(id) || mine.some((m) => m.id === id)))];
     if (!packs.length) throw new Error('Tick at least one challenge.');
     const gen = cleanGen(c.gen || {}); // 1.5.168 Simple mode sends nothing, so the defaults
-    if (!this.tools().server.found) throw new Error(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Get models, Engines, Bob's own engine has it.`);
+    if (!this.tools().server.found) throw new Error(`${path.basename(this.tools().server.path)} isn't in Bob's engine folder. Settings, Engines, Bob's own engine has it.`);
     if (this.brain?.engine?.loaded) {
       const loaded = (await this.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
       if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
@@ -871,7 +882,7 @@ export class Lab {
     const title = (id) => (PACKS.find((p) => p.id === id) || mine.find((m) => m.id === id)).title;
     // The standard speed test after the challenges, when ticked (off unless ticked) and the tool is here.
     const bench = c.bench === true;
-    if (bench && !this.benchTool().found && !this.stepFns.bench) throw new Error('The standard speed test (llama-bench) isn\'t here. It comes with the built-in engine and with Brain Engine (Get models > Engines). Untick it, or get one of them again.');
+    if (bench && !this.benchTool().found && !this.stepFns.bench) throw new Error('The standard speed test (llama-bench) isn\'t here. It comes with the built-in engine and with Brain Engine (Settings > Engines). Untick it, or get one of them again.');
     const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'challenge', name: `Challenges for ${brain.name}`, from: brain.id, fromName: brain.name, packs, gen, bench, state: 'running', at: this.now(), steps: [{ id: 'serve', label: `Start ${brain.name}`, state: 'waiting' }, ...packs.map((id) => ({ id, label: title(id), state: 'waiting' })), ...(bench ? [{ id: 'bench', label: 'The standard speed test (llama-bench)', state: 'waiting' }] : [])], progress: 0 };
     this.runs.push(runRec); this.save();
     const ac = new AbortController();
@@ -969,7 +980,7 @@ export class Lab {
     if (f && !f.fullSize) problems.push(`${brain.name} is already a running file (${f.fileType}). The ladder starts from the full-size copy (F16 or BF16).`);
     if (f && f.sizeGB > PLAY_MAX_GB) problems.push(`${brain.name} is ${f.sizeGB} GB. The ladder is for small brains, up to ${PLAY_MAX_GB} GB full size, so it fits in an evening and on the disk.`);
     const t = this.tools();
-    for (const k of ['quantize', 'imatrix', 'server']) if (!t[k].found) problems.push(`${path.basename(t[k].path)} isn't in the built-in engine's folder. Get models > Engines: the built-in engine has it; download the engine again if it's missing.`);
+    for (const k of ['quantize', 'imatrix', 'server']) if (!t[k].found) problems.push(`${path.basename(t[k].path)} isn't in the built-in engine's folder. Settings > Engines: the built-in engine has it; download the engine again if it's missing.`);
     if (!t.perplexity.found) notes.push(`${path.basename(t.perplexity.path)} isn't in the built-in engine's folder, so the ladder skips the surprise score and uses the Lab test alone.`);
     const diskGB = f ? ladderDiskGB(f.sizeGB, steps) : 0;
     const out = path.join(labModelsDir(this.cfg), 'playground', slugOf(brain.name));
@@ -1120,7 +1131,7 @@ export class Lab {
     const dir = forgeDir(this.cfg);
     let saved = []; try { saved = fs.readdirSync(forgePlansDir(labDir(this.cfg))).filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, '')); } catch {}
     const live = this.forgeLive();
-    return { live, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), methods: METHODS, leftOut: LEFT_OUT, found: Boolean(dir), runs: forgeRuns(dir), brains: forgeBrains(dir), plans: forgePlans(dir), saved, keepFiles: this.keepFiles().map(({ path: _p, ...k }) => k), lessonSets: lessonSets(this.cfg).map((x) => ({ id: x.id, name: x.name, count: x.count })), skills: (() => { const b = forgePlans(dir)[0]; return b ? Object.keys(readJson(path.join(dir, 'forge', 'plans', `${b.id}.json`), {}).skills || {}) : []; })() };
+    return { live, allowed: this.cfg.labForgeStart === true, hasKey: Boolean(this.forgeKeys()[FORGE_KEY]), methods: METHODS, leftOut: LEFT_OUT, found: Boolean(dir), runs: forgeRuns(dir), brains: forgeBrains(dir), plans: forgePlans(dir), saved, keepFiles: this.keepFiles().map(({ path: _p, ...k }) => k), lessonSets: lessonSets(this.cfg).map((x) => ({ id: x.id, name: x.name, count: x.count, added: x.added === true, license: x.license || '', source: x.source || '', parts: partsView(path.dirname(x.file)) })), skills: (() => { const b = forgePlans(dir)[0]; return b ? Object.keys(readJson(path.join(dir, 'forge', 'plans', `${b.id}.json`), {}).skills || {}) : []; })() };
   }
 
   forgePlan(form = {}) {
@@ -1129,7 +1140,42 @@ export class Lab {
     const id = String(form.base || '').replace(/[^\w.-]/g, '');
     const base = id ? readJson(path.join(dir, 'forge', 'plans', `${id}.json`), null) : null;
     if (id && !base) throw new Error('That Forge plan isn\'t there any more.');
-    return makeForgePlan(form, { base: base || {}, keepFiles: this.keepFiles(), lessonSets: lessonSets(this.cfg).map((x) => ({ id: x.id, dir: path.dirname(x.file) })) });
+    // The lesson library: a set with parts ticked off, or taught as its own thinking path, goes as a picked copy.
+    const picks = form.lessonParts && typeof form.lessonParts === 'object' ? form.lessonParts : {};
+    const ticked = new Set(Array.isArray(form.lessonSets) ? form.lessonSets : []);
+    const sets = lessonSets(this.cfg).map((x) => {
+      const dir = path.dirname(x.file), pick = picks[x.id];
+      const one = { id: x.id, name: x.name, dir, total: x.count, picked: x.count, privateOnly: x.added === true && !x.license };
+      if (!ticked.has(x.id) || !pick || typeof pick !== 'object') return one;
+      const arr = (v) => (Array.isArray(v) ? v.map(String).slice(0, 200) : []);
+      const r = pickLessons(dir, { offCategories: arr(pick.offCategories), offSources: arr(pick.offSources), offThinking: arr(pick.offThinking), pathName: String(pick.pathName || '') });
+      return { ...one, dir: r.dir || dir, picked: r.count, pathName: r.dir ? String(pick.pathName || '').trim() : '' };
+    });
+    return makeForgePlan(form, { base: base || {}, keepFiles: this.keepFiles(), lessonSets: sets });
+  }
+
+  // Add a lesson set from a file here or a .jsonl/.json file on Hugging Face: converted into the Lab's shape, then
+  // broken into parts. The Hugging Face card's licence is kept with it; a set with none is for private use only.
+  async addLibrarySet({ from = '', name = '' } = {}) {
+    const root = lessonSetsDir(this.cfg); fs.mkdirSync(root, { recursive: true });
+    let ref = String(from || '').trim().replace(/^"|"$/g, '').slice(0, 400);
+    if (/^~[\\/]/.test(ref)) ref = path.join(os.homedir(), ref.slice(2)); // ~/lessons/set.jsonl on Mac and Linux
+    if (!ref) throw new Error('Say where the lessons are: a full path to a .jsonl or .json file, or a Hugging Face set and file.');
+    if (path.isAbsolute(ref) || /^[A-Za-z]:[\\/]/.test(ref)) {
+      const r = addLessonSet({ root, from: ref, name, source: path.basename(ref).replace(/\.[^.]+$/, ''), now: this.now() });
+      return { id: r.id, name: r.name, count: r.count, skipped: r.skipped, license: '' };
+    }
+    const hf = parseHfRef(/^hf:/i.test(ref) || /^https?:/i.test(ref) || /^datasets\//i.test(ref) ? ref : `hf:datasets/${ref}`, 'dataset');
+    if (!hf || hf.kind !== 'dataset') throw new Error('That isn\'t a full path or a Hugging Face set. A set looks like owner/name:file.jsonl, or a huggingface.co link to the file.');
+    const card = await hfLookup(hf, { fetchFn: this.hfFetch || fetch });
+    if (card && card.ok === false) throw new Error(card.error || 'Hugging Face couldn\'t find that set.');
+    const tmp = path.join(labDir(this.cfg), 'downloads', `lessons-${Date.now()}${path.extname(hf.file || '.jsonl')}`);
+    try {
+      await downloadHfLessons({ repo: hf.repo, file: hf.file, revision: hf.revision, to: tmp, fetchFn: this.hfFetch || fetch });
+      const lic = String(card?.license || '').replace(/[^\w.+-]/g, '').slice(0, 60);
+      const r = addLessonSet({ root, from: tmp, name: name || hf.repo.split('/')[1], source: hf.repo, license: lic, link: `https://huggingface.co/datasets/${hf.repo}`, now: this.now() });
+      return { id: r.id, name: r.name, count: r.count, skipped: r.skipped, license: lic };
+    } finally { try { fs.rmSync(tmp, { force: true }); } catch {} }
   }
 
   saveForgePlan(form = {}) {
@@ -1292,7 +1338,7 @@ export class Lab {
         } else if (s.id === 'count') {
           await fx.count(s, { brain, recipe: p.recipe, signal });
           const counts = readCounts(s.counts);
-          if (!counts.filter(Boolean).length) throw new Error('llama-imatrix gave no per-expert counts. Bob\'s engine may be too old for that; update it in Get models, Engines.');
+          if (!counts.filter(Boolean).length) throw new Error('llama-imatrix gave no per-expert counts. Bob\'s engine may be too old for that; update it in Settings, Engines.');
           if (s.skill) skillCounts.push({ name: s.skill, counts });
           else {
             keep = busiest(counts, p.recipe.smaller.cut.keep);
@@ -1480,7 +1526,7 @@ export class Lab {
       refusals = pr.refusals; problems.push(...pr.problems.filter((x) => !a.problem || !/full-size|GB full size/.test(x))); notes.push(...pr.notes);
       bytes = a.facts ? a.facts.sizeGB * 1e9 : 0;
     } else problems.push('There\'s no home way by that name.');
-    if (!tools.server.found && !this.stepFns.test) problems.push('The built-in engine (llama-server) isn\'t here, so the new brain can\'t be tested. Get it in Get models, Engines.');
+    if (!tools.server.found && !this.stepFns.test) problems.push('The built-in engine (llama-server) isn\'t here, so the new brain can\'t be tested. Get it in Settings, Engines.');
     let freeGB = null;
     try { fs.mkdirSync(path.dirname(dir), { recursive: true }); const st = fs.statfsSync(path.dirname(dir)); freeGB = Math.round((st.bavail * st.bsize) / 1e9); } catch {}
     const diskGB = Math.round((bytes / 1e9) * 10) / 10;
@@ -1645,8 +1691,11 @@ export class Lab {
     const brain = this.brains().find((b) => b.id === String(brainId || ''));
     if (!brain) throw new Error('Pick a brain to peek inside.');
     let facts = null; try { facts = inspect(brain); } catch {}
-    return peekView(this.cfg, brain, facts, { engineFound: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), traceOk: this.peekTraceOk ?? null });
+    return peekView(this.cfg, brain, facts, { engineFound: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), traceOk: this.peekTraceOk ?? this.traceProbe()?.experts ?? null });
   }
+
+  // Whether the Brain Engine here was built with the trace, read from the program file (null: can't tell, or a test's fake).
+  traceProbe() { if (this.stepFns.peekServe) return null; const be = this.tools().brainEngine; return be.found ? traceBuilt(be.path) : null; }
 
   // Brain Engine stays loaded between questions; any other job, or a while idle, unloads it.
   freePeek() { if (this.peekSrv) { try { this.peekSrv.srv.stop(); } catch {} clearTimeout(this.peekSrv.timer); this.peekSrv = null; } return { stopped: true }; }
@@ -1815,6 +1864,7 @@ export async function labRoute({ req, res, p, isLocal, lab, body, send }) {
     if (p === '/api/lab/forge/start') { send(res, 200, lab.forgeStart({ id: String(b.id || ''), hours: b.hours, dollars: b.dollars })); return true; }
     if (p === '/api/lab/forge/stop') { send(res, 200, await lab.forgeStop()); return true; }
     if (p === '/api/lab/forge/save') { send(res, 200, lab.saveForgePlan(b.form)); return true; }
+    if (p === '/api/lab/library/add') { send(res, 200, await lab.addLibrarySet({ from: String(b.from || ''), name: String(b.name || '').slice(0, 60) })); return true; } // the lesson library
     if (p === '/api/lab/home/plan') { const pl = lab.planHome(String(b.kind || ''), b.form); send(res, 200, { problems: pl.problems, notes: pl.notes, diskGB: pl.diskGB, layers: pl.stack?.layers || 0 }); return true; } // 1.5.164
     if (p === '/api/lab/home/start') { send(res, 200, await lab.startHome(String(b.kind || ''), b.form, { unload: b.unload === true })); return true; }
     if (p === '/api/lab/refusals/try') { send(res, 200, await lab.tryRefusals(b.form, { unload: b.unload === true })); return true; }

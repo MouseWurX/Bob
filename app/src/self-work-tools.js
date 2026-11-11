@@ -53,9 +53,9 @@ export const probe = (file, args) => new Promise((resolve) => {
 });
 
 // The commands Bob runs in the code copy find his own Git and Node first (their folders go first on the PATH).
-export function toolPath(cfg, env = process.env, { os_ = OS, exists = fs.existsSync } = {}) {
+export function toolPath(cfg, env = process.env, { os_ = OS, arch = process.arch, exists = fs.existsSync } = {}) {
   const key = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') || 'PATH';
-  const dirs = [ownNode(cfg, { os_, exists }) && ownNodeBin(cfg, os_), ownGit(cfg, { os_, exists }) && ownGitBin(cfg)].filter(Boolean);
+  const dirs = [ownNode(cfg, { os_, arch, exists }) && ownNodeBin(cfg, os_, arch), ownGit(cfg, { os_, exists }) && ownGitBin(cfg)].filter(Boolean);
   if (!dirs.length) return env;
   return { ...env, [key]: [...dirs, env[key] || ''].filter(Boolean).join(os_ === 'win' ? ';' : ':') };
 }

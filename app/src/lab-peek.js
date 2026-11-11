@@ -20,7 +20,48 @@ export const PEEK_THING = 'Peek inside';
 export const IDLE_MS = 3 * 60e3; // how long Brain Engine stays loaded after a question
 export const MAX_WORDS = 240;
 export const NO_TRACE = 'This Brain Engine build doesn\'t report which experts it picked yet. The map still shows what the usage map counted; the live view comes with the next Brain Engine build.';
-export const NO_ENGINE = 'The live view needs Brain Engine, the Lab\'s engine. Get it in Get models, Engines: Brain Engine.';
+// Does this Brain Engine build report its experts? The trace (engine/patches/0002-expert-trace.patch) adds the request
+// fields "expert_trace" and "expert_trace_heads", and their names are in the server program as plain text, so a read of
+// the file answers it before any brain is loaded (the 1.5.184 PC test: an older build showed Start the scan as ready).
+// { experts, heads } or null when the file can't be read. Kept per file, size and time.
+const traceSeen = new Map();
+// 1.5.191: in newer llama.cpp builds (b12032 on) the server's code lives in a library beside the program
+// (llama-server-impl.dll / libllama-server-impl.so), not in llama-server.exe itself (PC test of 1.5.189: Scan stayed
+// grey on a Brain Engine that had the trace). So the program and the llama libraries beside it are all read.
+export const TRACE_LIBS = /^(lib)?llama(-server-impl)?\.(dll|so|dylib)$/i;
+function scanFor(file, want, found) {
+  let st; try { st = fs.statSync(file); } catch { return false; }
+  const key = `${file}|${st.size}|${st.mtimeMs}`;
+  const seen = traceSeen.get(key);
+  if (seen) { seen.forEach((v, i) => { if (v) found[i] = true; }); return true; }
+  const mine = want.map(() => false);
+  let fd = null;
+  try {
+    fd = fs.openSync(file, 'r');
+    const size = 4 << 20, keep = 64, buf = Buffer.alloc(size + keep);
+    let carry = 0, pos = 0;
+    for (;;) {
+      const n = fs.readSync(fd, buf, carry, size, pos);
+      if (n <= 0) break;
+      const view = buf.subarray(0, carry + n);
+      want.forEach((w, i) => { if (!mine[i] && view.includes(w)) mine[i] = true; });
+      if (mine.every(Boolean)) break;
+      pos += n; carry = Math.min(keep, view.length); view.copy(buf, 0, view.length - carry);
+    }
+  } catch { return false; } finally { if (fd !== null) try { fs.closeSync(fd); } catch {} }
+  traceSeen.set(key, mine);
+  mine.forEach((v, i) => { if (v) found[i] = true; });
+  return true;
+}
+export function traceBuilt(exe) {
+  const want = [Buffer.from('expert_trace_heads'), Buffer.from('expert_trace')];
+  const found = [false, false];
+  if (!scanFor(exe, want, found)) return null;
+  let libs = []; try { libs = fs.readdirSync(path.dirname(exe)).filter((f) => TRACE_LIBS.test(f)); } catch {}
+  for (const f of libs) { if (found[0] && found[1]) break; scanFor(path.join(path.dirname(exe), f), want, found); }
+  return { experts: found[1], heads: found[0] };
+}
+export const NO_ENGINE = 'The live view needs Brain Engine, the Lab\'s engine. Get it in Settings, Engines: Brain Engine.';
 
 // One brain's map data for the page: the things counted so far, the totals, per-layer lines, and whether live is possible.
 export function peekView(cfg, brain, facts, { engineFound = false, traceOk = null } = {}) {
@@ -89,16 +130,34 @@ export function keepFromLit(counts, facts) {
   return rows.map((r) => (r ? r.sort((a, b) => b[0] - a[0] || a[1] - b[1]).slice(0, K).map(([, e]) => e).sort((a, b) => a - b) : null));
 }
 
-// Ask Brain Engine one question with the trace on. ask = the server's url; returns { answer, trace, tokens } or
-// throws NO_TRACE when the build has no trace.
-export async function askTraced(url, question, { signal, fetchImpl = fetch, maxWords = MAX_WORDS } = {}) {
-  const t = await fetchImpl(url + '/apply-template', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', content: question }], chat_template_kwargs: { enable_thinking: false } }), signal: AbortSignal.timeout(30e3) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+// The trace as Brain Engine gives it (engine/patches/0002-expert-trace.patch): rows = every word the brain read, in
+// order, { t: its text, e: [[expert ids] per layer] }; the first n_prompt are the question, the rest its own answer
+// read back; last = the final word written. The experts lit while reading a word are the ones that wrote the next,
+// so the answer's rows start at the last word of the question. Older shapes (rows only) pass through as they were.
+export function readTrace(raw, pieces = []) {
+  if (raw && Array.isArray(raw.rows)) {
+    const rows = raw.rows.map((r) => ({ t: String(r?.t ?? ''), e: Array.isArray(r?.e) ? r.e : [], a: Array.isArray(r?.a) ? r.a : null }));
+    const acts = rows.every((r) => r.a); // how hard each layer worked for each word (neuron groups and attention heads only)
+    const P = Math.max(0, Math.min(rows.length, Number(raw.n_prompt) || 0));
+    const last = String(raw.last ?? '');
+    const from = Math.max(P - 1, 0);
+    return { trace: rows.slice(from).map((r) => r.e), tokens: [...rows.slice(from + 1).map((r) => r.t), last], read: { words: rows.map((r) => r.t), e: rows.map((r) => r.e), prompt: P, last, ...(acts ? { a: rows.map((r) => r.a) } : {}) },
+      shape: { kind: raw.kind === 'neurons' ? 'neurons' : raw.kind === 'heads' ? 'heads' : 'experts', experts: Number(raw.n_expert) || 0, used: Number(raw.n_expert_used) || 0, layers: Number(raw.n_layer) || 0, neurons: Number(raw.n_ff) || 0 } };
+  }
+  return { trace: raw, tokens: pieces, read: null };
+}
+
+// Ask Brain Engine one question with the trace on. ask = the server's url; returns { answer, trace, tokens, read }
+// or throws NO_TRACE when the build has no trace. One question at a time: the engine only gives the trace to a
+// request that had the brain to itself.
+export async function askTraced(url, question, { signal, fetchImpl = fetch, maxWords = MAX_WORDS, think = false, heads = false } = {}) {
+  const t = await fetchImpl(url + '/apply-template', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', content: question }], chat_template_kwargs: { enable_thinking: think === true } }), signal: AbortSignal.timeout(30e3) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   const prompt = t?.prompt || `<|im_start|>user\n${question}<|im_end|>\n<|im_start|>assistant\n`;
-  const res = await fetchImpl(url + '/completion', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt, n_predict: maxWords, temperature: 0, expert_trace: true, return_tokens: true, cache_prompt: false }), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(300e3)]) : AbortSignal.timeout(300e3) });
+  const res = await fetchImpl(url + '/completion', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt, n_predict: maxWords, temperature: 0, expert_trace: true, ...(heads ? { expert_trace_heads: true } : {}), return_tokens: true, cache_prompt: false }), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(300e3)]) : AbortSignal.timeout(300e3) });
   if (!res.ok) throw new Error(`Brain Engine answered ${res.status}.`);
   const j = await res.json();
-  const trace = j.expert_trace ?? j.experts_trace ?? j.experts ?? null;
-  if (!trace) throw new Error(NO_TRACE);
+  const raw = j.expert_trace ?? j.experts_trace ?? j.experts ?? null;
+  if (!raw) throw new Error(NO_TRACE);
   const pieces = Array.isArray(j.tokens_text) ? j.tokens_text : Array.isArray(j.tokens) && typeof j.tokens[0] === 'object' ? j.tokens : [];
-  return { answer: String(j.content || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim(), trace, tokens: pieces, tps: Number(j.timings?.predicted_per_second) || 0 };
+  return { answer: String(j.content || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim(), ...readTrace(raw, pieces), tps: Number(j.timings?.predicted_per_second) || 0 };
 }

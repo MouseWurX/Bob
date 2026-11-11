@@ -3,6 +3,7 @@
 // (a Forge plan, started only from the Forge tab's purchase card), and measure before and after. Its own module like
 // the Playground: the Lab page only places it (html) and hands over its events (change, click).
 import { esc } from './rich.js';
+import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 import { newSource, sourceRowHtml, sourceEvent } from './lab-source.js'; // the Lab's one chooser: here, Hugging Face or a link
 
 export function createSenses({ api, draw = () => {} }) {
@@ -105,7 +106,7 @@ export function createSenses({ api, draw = () => {} }) {
 
   function html() {
     if (!sv) { if (!loading) load().then(draw); return '<section class="forge-senses" id="lab-senses"><h3>Give it eyes, give it ears</h3><p class="muted">Loading…</p></section>'; }
-    return `<section class="forge-senses" id="lab-senses" aria-labelledby="senses-h"><h3 id="senses-h">Give it eyes, give it ears</h3>
+    return `<section class="forge-senses" id="lab-senses" aria-labelledby="senses-h"><h3 id="senses-h">${nameNow('Give it eyes, give it ears')}</h3>
       <p>A brain that sees is a text brain plus a small reader file: an eye, and a tiny translator that turns what the eye saw into the brain's own kind of words. Ears are the same with an ear. Taking them out is just not loading that file. Adding them is borrowing a reader from a relative, trying it here for free, and sharpening it on a rented card if it's blurry.</p>
       <details><summary>Honest limits</summary><ul><li>Eyes cost memory: about 1 GB on the card for a common eye, and a little time for every picture.</li><li>A reader only fits a brain from the same family, at the same size. One from another family needs a new translator (rented).</li><li>Handhelds can carry a small eye, not a big one.</li><li>A brain that was cut hard may need a longer sharpen to see well.</li><li>Speaking out loud is a different thing: Bob's voice reads the words aloud.</li></ul></details>
       ${ask ? `<div class="lab-ask" role="alertdialog" aria-labelledby="senses-ask-h"><p id="senses-ask-h">${esc(ask.names.join(', '))} ${ask.names.length === 1 ? 'is' : 'are'} on the graphics card. Unload to make room?</p><button type="button" class="get" data-senses-unload>Unload and go</button> <button type="button" class="link" data-senses-nounload>Not now</button></div>` : ''}

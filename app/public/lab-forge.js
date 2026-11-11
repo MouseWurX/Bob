@@ -2,6 +2,7 @@
 // Forge's past runs, and a form that writes a Forge plan. Its own module, like the Playground: the Lab page only
 // places it and hands over its events. Nothing here starts a rental.
 import { esc } from './rich.js';
+import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 import { PATH_GROUPS, BUNDLES, PERSONALITY, TEACH } from './lab-thinking-paths.js'; // 1.5.160
 import { createHomeWays } from './lab-home-ways.js'; // 1.5.164 Mix two brains, Stack layers, Take out the refusal habit: here, free
 import { newSource, sourceRowHtml, sourceOut, sourceEvent } from './lab-source.js'; // 1.5.163 one chooser for where things come from
@@ -11,7 +12,8 @@ const WHERE = { here: 'Here, free', rented: 'Rented card', both: 'Here, or a ren
 export function createForge({ api, goMake, view = () => null, runs = () => '' }) {
   const hw = createHomeWays({ api, view }); // 1.5.164
   let fv = null, loading = false, fmsg = '', check = null, showPlan = false, saved = '', buy = null, stopAsk = false;
-  const form = { base: '', run: '', rungs: [{ name: '', nickname: '', how: 'number', keep: 128, keepFile: '' }], strong: [], quants: ['Q4_K_M'], heal: { experts: 'lora', epochs: 1, learn: 'answer', thinking_weight: 0.5, odds_cover: 'answer' }, teach: {}, thinking: { mode: 'blend', shares: {}, own: '', ownShare: 0, personality: { alignment: {}, rules: {}, mood: {} } }, hours_max: 0, dollars_max: 0, note: '', brain: { pick: '', source: newSource('hf') }, lessonSets: [], lessons: [] }; // 1.5.163 the brain to start from, and lessons from anywhere
+  const lib = { from: '', name: '', busy: false, msg: '', open: {} }; // the lesson library: add a set, pick its parts
+  const form = { base: '', run: '', rungs: [{ name: '', nickname: '', how: 'number', keep: 128, keepFile: '' }], strong: [], quants: ['Q4_K_M'], heal: { experts: 'lora', epochs: 1, learn: 'answer', thinking_weight: 0.5, odds_cover: 'answer' }, teach: {}, thinking: { mode: 'blend', shares: {}, own: '', ownShare: 0, personality: { alignment: {}, rules: {}, mood: {} } }, hours_max: 0, dollars_max: 0, note: '', brain: { pick: '', source: newSource('hf') }, lessonSets: [], lessonParts: {}, lessons: [] }; // 1.5.163 the brain to start from, and lessons from anywhere
 
   async function load() { loading = true; try { fv = await api('/api/lab/forge'); if (!form.base && fv?.plans?.[0]) form.base = fv.plans[0].id; } catch (e) { fmsg = e.message; } loading = false; }
   // The form's thinking state as the server reads it (paths with a share above 0 only).
@@ -20,7 +22,7 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
   const sendForm = () => ({ ...form, brain: { pick: form.brain.pick, source: form.brain.pick === 'source' ? sourceOut(form.brain.source) : null }, lessons: form.lessons.map(sourceOut).filter(Boolean), thinking: { mode: form.thinking.mode, paths: Object.entries(form.thinking.shares).filter(([, v]) => v > 0).map(([name, share]) => ({ name, share })), own: form.thinking.own, ownShare: form.thinking.ownShare, personality: form.thinking.personality } });
   async function recheck() { check = null; saved = ''; if (!fv?.found) return; try { check = await api('/api/lab/forge/plan', { form: sendForm() }); } catch (e) { fmsg = e.message; } }
 
-  const card = (m) => `<li class="forge-card${m.ready ? '' : ' dim'}"><h4 id="forge-m-${m.id}">${esc(m.title)}</h4>
+  const card = (m) => `<li class="forge-card${m.ready ? '' : ' dim'}"><h4 id="forge-m-${m.id}">${nameNow(m.title)}</h4>
     <p class="muted"><span class="forge-where">${esc(WHERE[m.where] || m.where)}</span></p>
     <p>${esc(m.what)}</p>
     <p class="forge-tips-h"><strong>Best practice</strong></p><ul class="forge-tips">${m.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
@@ -95,11 +97,38 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
     </fieldset>`;
   }
   // Lessons to teach: the Lab's own sets by tick, then any set from this replicant matrix, Hugging Face or a link.
+  // The lesson library: each Lab set is broken into parts by category, source and thinking. Untick a part to leave it
+  // out; name a thinking path to teach the set's thinking lessons under their own "Think:" tag.
+  const pickOf = (id) => (form.lessonParts[id] ||= { offCategories: [], offSources: [], offThinking: [], pathName: '' });
+  const AXES = [['categories', 'offCategories', 'What it teaches'], ['sources', 'offSources', 'Where it came from'], ['thinking', 'offThinking', 'Thinking']];
+  function leftOf(parts, pk) {
+    const oc = new Set(pk.offCategories), os = new Set(pk.offSources), ot = new Set(pk.offThinking);
+    return Object.entries(parts.cells || {}).reduce((n, [k, v]) => { const [c, s, t] = k.split('\t'); return oc.has(c) || os.has(s) || ot.has(t) ? n : n + v; }, 0);
+  }
+  function partsHtml(x) {
+    const parts = x.parts; if (!parts || !form.lessonSets.includes(x.id)) return '';
+    const pk = pickOf(x.id), open = lib.open[x.id];
+    const box = (axis, key, p) => `<label class="lab-opt"><input type="checkbox" data-forgepart="${esc(x.id)}" data-axis="${key}" value="${esc(p.id)}" ${pk[key].includes(p.id) ? '' : 'checked'}> <span>${esc(p.label)} <span class="muted">· ${p.count}</span></span></label>`;
+    return `<div class="forge-parts"><button type="button" class="link" data-forgeparts="${esc(x.id)}" aria-expanded="${open ? 'true' : 'false'}">${open ? 'Hide its parts' : 'Pick its parts'}</button> <span class="muted">${leftOf(parts, pk)} of ${parts.total} lessons picked</span>
+      ${open ? `${AXES.map(([axis, key, title]) => (parts[axis] || []).length ? `<fieldset><legend>${title}</legend>${parts[axis].map((p) => box(axis, key, p)).join('')}</fieldset>` : '').join('')}
+        <label>Teach its thinking as a path called <input data-forgepathname="${esc(x.id)}" value="${esc(pk.pathName)}" maxlength="40" placeholder="(leave empty to blend it in)"></label>
+        <p class="muted">With a name, the lessons that show their thinking are tagged "Think: name", so the brain thinks this way only when a chat asks for it. Lessons that answer straight away are taught with thinking off.</p>` : ''}</div>`;
+  }
+  function libraryHtml() {
+    return `<details ${lib.msg || lib.from ? 'open' : ''}><summary>Add a lesson set to the Lab</summary>
+      <p class="muted">A file on this replicant matrix (.jsonl or .json), or one file of a Hugging Face set, like owner/name:data/train.jsonl. Bob converts it to the Lab's lessons and breaks it into parts by what it teaches, where it came from, and whether it shows its thinking. Nothing is uploaded.</p>
+      <label>Where it is <input id="forge-lib-from" value="${esc(lib.from)}" maxlength="400" placeholder="${/win/i.test(navigator.userAgentData?.platform || navigator.platform || '') ? 'C:\\lessons\\set.jsonl' : '~/lessons/set.jsonl'} or owner/name:file.jsonl"></label>
+      <label>Name <input id="forge-lib-name" value="${esc(lib.name)}" maxlength="60" placeholder="(from the file)"></label>
+      <div class="row"><button type="button" class="get" data-forgelibadd ${lib.busy ? 'disabled' : ''}>${lib.busy ? 'Adding…' : 'Add it'}</button></div>
+      ${lib.msg ? `<p role="status">${esc(lib.msg)}</p>` : ''}
+    </details>`;
+  }
   function lessonsHtml() {
     const sets = fv.lessonSets || [];
     return `<fieldset><legend>Lessons to teach</legend>
       <p class="muted">The plan's own lessons are always taught. Add more here.</p>
-      ${sets.length ? sets.map((x) => `<label class="lab-opt"><input type="checkbox" data-forgeset="${esc(x.id)}" ${form.lessonSets.includes(x.id) ? 'checked' : ''}> <span><strong>${esc(x.name)}</strong> <span class="muted">· ${x.count} lessons, written or built in the Lab</span></span></label>`).join('') : '<p class="muted">No lesson sets written or built in the Lab yet. The Make a brain tab writes them.</p>'}
+      ${sets.length ? sets.map((x) => `<label class="lab-opt"><input type="checkbox" data-forgeset="${esc(x.id)}" ${form.lessonSets.includes(x.id) ? 'checked' : ''}> <span><strong>${esc(x.name)}</strong> <span class="muted">· ${x.count} lessons, ${x.added ? `added from ${esc(x.source || 'elsewhere')}${x.license ? `, licence ${esc(x.license)}` : ', no licence: keep what you make private'}` : 'written or built in the Lab'}</span></span></label>${partsHtml(x)}`).join('') : '<p class="muted">No lesson sets in the Lab yet. The Make a brain tab writes them, or add one below.</p>'}
+      ${libraryHtml()}
       ${form.lessons.map((x, i) => sourceRowHtml(`forge-lesson-${i}`, `Lesson set ${i + 1}`, x, 'dataset', { removable: true })).join('')}
       ${form.lessons.length < 4 ? '<button type="button" class="link" data-forgelessonadd>Add a lesson set from somewhere else</button>' : ''}
       <p class="muted">Sets from Hugging Face or a link are downloaded here and put into the Lab's lesson format before the run. Formats read: chat messages, instruction and output, prompt and response, question and answer; files .jsonl, .json, .csv and .parquet.</p>
@@ -121,7 +150,7 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
       ${lessonsHtml()}
       ${thinkingHtml()}
       ${proOnly(`<fieldset><legend>Teaching back</legend>
-        ${[['lora', 'Light (recommended)', 'Teaches small add-ons to every layer and the experts.'], ['full', 'Full', 'Teaches every weight. Small brains only.'], ['frozen', 'Experts left alone', 'Only the rest of the brain is taught.']].map(([v, l, h]) => `<label class="lab-opt"><input type="radio" name="forge-experts" value="${v}" ${form.heal.experts === v ? 'checked' : ''}> <span><strong>${esc(l)}</strong><br><span class="muted">${esc(h)}</span></span></label>`).join('')}
+        ${[['lora', 'Light (recommended)', 'Teaches small add-ons to every layer and the experts.'], ['full', 'Full', 'Teaches every weight. Small brains only.'], ['frozen', 'Experts left alone', 'Only the rest of the brain is taught.']].map(([v, l, h]) => `<label class="lab-opt"><input type="radio" name="forge-experts" value="${v}" ${form.heal.experts === v ? 'checked' : ''}> <span><strong>${nameNow(l)}</strong><br><span class="muted">${esc(h)}</span></span></label>`).join('')}
         ${num('forge-epochs', 'Passes over the lessons', form.heal.epochs, 0.25, 3, 0.25, 'One full pass is the rule. Bob sets each brain\'s time limit a third above the estimate, so a pass is never cut short.')}
       </fieldset>`)}
       <fieldset><legend>Caps</legend>
@@ -178,6 +207,10 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
     else if (el.id === 'forge-run') form.run = el.value;
     else if (el.id === 'forge-brain') { form.brain.pick = el.value; }
     else if (el.dataset?.src) { const x = srcOf(el.dataset.src); if (!x) return false; await sourceEvent(el, x, look); }
+    else if (el.dataset?.forgepart) { const pk = pickOf(el.dataset.forgepart), key = el.dataset.axis; if (!pk[key]) return false; pk[key] = el.checked ? pk[key].filter((v) => v !== el.value) : [...new Set([...pk[key], el.value])]; }
+    else if (el.dataset?.forgepathname) pickOf(el.dataset.forgepathname).pathName = el.value.slice(0, 40);
+    else if (el.id === 'forge-lib-from') { lib.from = el.value; return 'draw'; }
+    else if (el.id === 'forge-lib-name') { lib.name = el.value; return 'draw'; }
     else if (el.dataset?.forgeset) { const id = el.dataset.forgeset; form.lessonSets = el.checked ? [...new Set([...form.lessonSets, id])] : form.lessonSets.filter((v) => v !== id); }
     else if (el.dataset.rung !== undefined) { const r = form.rungs[Number(el.dataset.rung)]; if (r) r[el.dataset.f] = el.value; }
     else if (el.id?.startsWith('forge-keep-')) { const r = form.rungs[Number(el.id.slice(11))]; if (r) r.keep = Number(el.value); }
@@ -210,6 +243,13 @@ export function createForge({ api, goMake, view = () => null, runs = () => '' })
     if ('forgeaddrung' in d) { const last = form.rungs.at(-1); form.rungs.push({ name: '', nickname: '', how: 'cover', keep: Math.max(8, Math.round((last.keep || 128) * 0.7)), keepFile: '' }); await recheck(); return 'draw'; }
     if (d.forgermrung) { form.rungs.splice(Number(d.forgermrung), 1); await recheck(); return 'draw'; }
     if (d.src) { const x = srcOf(d.src); if (!x) return true; if (d.srcact === 'remove') { form.lessons.splice(Number(d.src.split('-').pop()), 1); } else await sourceEvent(b, x, look); await recheck(); return 'draw'; }
+    if (d.forgeparts) { lib.open[d.forgeparts] = !lib.open[d.forgeparts]; return 'draw'; }
+    if ('forgelibadd' in d && !lib.busy) {
+      lib.busy = true; lib.msg = '';
+      try { const r = await api('/api/lab/library/add', { from: lib.from, name: lib.name }); lib.msg = `Added ${r.name}: ${r.count} lessons${r.skipped ? ` (${r.skipped} rows left out: no answer, or an earlier step of a longer chat)` : ''}.${r.license ? '' : ' It came with no licence, so keep anything you make from it private.'}`; lib.from = ''; lib.name = ''; await load(); }
+      catch (e) { lib.msg = e.message; }
+      lib.busy = false; return 'draw';
+    }
     if ('forgelessonadd' in d) { if (form.lessons.length < 4) form.lessons.push(newSource('hf')); return 'draw'; }
     if ('forgeshow' in d) { showPlan = !showPlan; if (showPlan && !check) await recheck(); return 'draw'; }
     if ('forgesave' in d) { try { saved = (await api('/api/lab/forge/save', { form: sendForm() })).file; fmsg = ''; await load(); } catch (e) { fmsg = e.message; } return 'draw'; }

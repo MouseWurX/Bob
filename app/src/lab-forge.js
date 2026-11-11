@@ -168,6 +168,12 @@ export function makeForgePlan(form = {}, { base = {}, keepFiles = [], lessonSets
   if (brain.pick !== 'source' || src?.kind !== 'link') delete plan.teacher_url;
   // Lessons: the Lab's own sets go as folders the Forge uploads; sets from elsewhere go to the importer first.
   const ownSets = (Array.isArray(form.lessonSets) ? form.lessonSets : []).map((id) => lessonSets.find((x) => x.id === id)).filter(Boolean);
+  for (const x of ownSets) { // the lesson library: parts ticked off, or a part taught as its own thinking path
+    if (x.picked === 0) problems.push(`${x.name}: every part is ticked off, so no lessons are left. Tick at least one category, source and way of thinking.`);
+    else if (Number.isFinite(x.total) && x.picked < x.total) notes.push(`${x.name}: ${x.picked} of ${x.total} lessons picked.`);
+    if (x.pathName) notes.push(`${x.name}: its lessons that show their thinking are tagged "Think: ${x.pathName}", so the brain thinks that way when a chat asks for it.`);
+    if (x.privateOnly) notes.push(`${x.name} came with no licence, so there's no clear right to share what you make from it: keep it private.`);
+  }
   const extra = [...(Array.isArray(base.extra_lessons) ? base.extra_lessons : []), ...ownSets.map((x) => path.resolve(x.dir))];
   if (extra.length) plan.extra_lessons = [...new Set(extra)]; else delete plan.extra_lessons;
   const imports = [];

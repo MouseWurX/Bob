@@ -322,6 +322,7 @@ export async function sendAway(brain, job, plan, { lenders = brain.lenders, time
   else if (finished && !failed) job.state = 'done';
   else { job.state = 'failed'; job.error = `${lender.name} ${failed}`.slice(0, 200); if (!finished) emit({ type: 'error', text: `${lender.name} ${failed}. Try again runs it here or on another Bob.` }); }
   job.doneAt = Date.now();
+  job.sentTo = lender.name; // 1.5.196: the finished job still says which Bob ran it (Tasks, /api/jobs)
   brain.saveQueue();
   emit({ type: 'done' });
   setTimeout(() => brain.pump(), 0);

@@ -1,5 +1,5 @@
 // One search box over everything Bob keeps: chats (old parts too), chat summaries, topics, the pictures and
-// sounds he made, and the notes (memory file, about-me, notice board). Plain word matching, on this PC only.
+// sounds he made, and the notes (memory file, about-me, notice board, quick notes). Plain word matching, on this PC only.
 import fs from 'node:fs';
 import path from 'node:path';
 import { chatIds, wholeChat, spoken, said, chatTitle, readSummary } from './chats.js';
@@ -34,11 +34,11 @@ export function search(cfg, { topics, summaries = [] }, q) {
     const own = cfg.defaultPainterDir || cfg.painterDir;
     for (const f of fs.readdirSync(own)) if (hits(`${f} ${f.replace(/[-_.]/g, ' ')}`, ts)) out.push({ type: 'file', title: f, url: `/images/${encodeURIComponent(f)}`, at: fs.statSync(path.join(own, f)).mtimeMs });
   } catch {}
-  const notes = [['memory', cfg.memoryFile, "Bob's memory"], ['about', path.join(cfg.dataDir, 'about-me.md'), 'About you'], ['board', cfg.noticeBoard, 'Notice board']];
+  const notes = [['memory', cfg.memoryFile, "Bob's memory"], ['about', path.join(cfg.dataDir, 'about-me.md'), 'About you'], ['board', cfg.noticeBoard, 'Notice board'], ['quick', path.join(cfg.innDir || '', 'quick-notes.md'), 'Quick notes']];
   for (const [kind, f, label] of notes) {
     let text = '';
     try { text = fs.readFileSync(f, 'utf8'); } catch { continue; }
-    for (const line of text.split('\n')) if (line.trim() && hits(line, ts)) out.push({ type: 'note', kind, title: label, snippet: snippet(line, ts), at: 0 });
+    for (const line of text.split('\n')) if (line.trim() && !(kind === 'quick' && !/^- /.test(line)) && hits(line, ts)) out.push({ type: 'note', kind, title: label, snippet: snippet(line, ts), at: 0 });
   }
   const rank = { topic: 0, summary: 1, note: 2, chat: 3, removed: 4, file: 5 };
   return out.sort((a, b) => (rank[a.type] - rank[b.type]) || (b.at - a.at)).slice(0, MAX);

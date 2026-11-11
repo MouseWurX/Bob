@@ -64,6 +64,10 @@ def render(tok, lesson, sets, max_len):
     ids = list(ids)[:max_len]
     start = tok.convert_tokens_to_ids("<|im_start|>"); end = tok.convert_tokens_to_ids("<|im_end|>")
     asst = tok.encode("assistant", add_special_tokens=False)
+    # An answer with no thinking gets the template's empty think box. With thinking off, Qwen puts that empty box in
+    # the prompt itself, so it is never the brain's own words: leave it out of the answer, or the brain learns to skip
+    # thinking even when thinking is on. Answers with thinking keep their whole think box (thinking on).
+    empty = tok.encode("<think>\n\n</think>\n\n", add_special_tokens=False)
     mask = [0] * len(ids)
     i = 0
     while i < len(ids):
@@ -74,6 +78,8 @@ def render(tok, lesson, sets, max_len):
             k = j
             while k < len(ids) and ids[k] != end: k += 1
             for p in range(j, min(k + 1, len(ids))): mask[p] = 1
+            if empty and ids[j: j + len(empty)] == empty:
+                for p in range(j, min(j + len(empty), len(ids))): mask[p] = 0
             i = k + 1
         else:
             i += 1

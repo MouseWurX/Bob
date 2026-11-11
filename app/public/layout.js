@@ -7,6 +7,7 @@ import { currentStyle } from './themes.js';
 import { catMoment } from './patches.js';
 import { createBrainBay } from './brain-swap.js';
 import { esc } from './util.js';
+import { createMindCube } from './mind-cube.js';
 import { createMindView } from './mind-view.js'; // 1.5.138: Bob's thinking, docked
 import { DEFAULT_ORDER, SECTION_NAME, applyOrder, dropBefore } from './now-sections.js';
 
@@ -155,20 +156,37 @@ export function createLayout({ post, openTasks, openDownloads }) {
   });
   placeSections();
 
+  // ---- every section folds to its title with a [-] / [+] button, remembered in this window (bob-now-folded) ----
+  // [-] = showing, press to hide; [+] = hidden, press to show. Bob's thinking uses the same button for its own
+  // switch (below), because folding it also stops Bob passing his thinking along.
+  function foldLook(b, open, name) { b.textContent = open ? '[\u2212]' : '[+]'; b.setAttribute('aria-expanded', String(open)); b.setAttribute('aria-label', `${open ? 'Hide' : 'Show'} ${name}`); b.title = `${open ? 'Hide' : 'Show'} ${name}`; }
+  const SEC_NAMES = { tasks: 'Tasks', net: 'Bob-Net', downloads: 'Downloads', memory: 'Memory', graph: 'Resource use over time' };
+  // the graph is its own section, folded until asked for (as its old Show graph button was: bob-now-graph)
+  let folded = new Set(String(store.get('bob-now-folded', showGraph ? '' : 'graph') || '').split(',').filter((k) => SEC_NAMES[k]));
+  showGraph = !folded.has('graph');
+  for (const sec of document.querySelectorAll('#nowSections > section[data-sec]')) {
+    const id = sec.dataset.sec; if (!SEC_NAMES[id]) continue;
+    const head = sec.querySelector('.now-sec'); if (!head) continue;
+    if (!head.querySelector('.ctx-fill')) { const f = document.createElement('span'); f.className = 'ctx-fill'; head.appendChild(f); }
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'sec-fold'; b.dataset.fold = id;
+    const show = () => { sec.classList.toggle('folded', folded.has(id)); foldLook(b, !folded.has(id), SEC_NAMES[id]); };
+    b.onclick = () => { if (folded.has(id)) folded.delete(id); else folded.add(id); store.set('bob-now-folded', [...folded].join(',')); show(); if (id === 'graph') { showGraph = !folded.has('graph'); graph(); } };
+    head.appendChild(b); show();
+  }
+
   // ---- 1.5.138: Bob's thinking, docked (the same view as the pop-out window, public/mind-view.js) ----
   // Off unless turned on (Show here). Bob passes his thinking along only while this is on AND the panel is in view,
   // so with Now running hidden it costs nothing, just like a closed window.
   mindView = createMindView({ log: $('mindDockLog'), now: $('mindDockNow'), follow: $('mindDockFollow'), clear: $('mindDockClear'), order: $('mindDockOrder') });
   const dockBtn = $('mindDock');
-  docked = store.get('bob-mind-dock', '0') === '1';
+  docked = store.get('bob-mind-dock', '1') === '1'; // open to begin with, so the cube is there (1.5.196)
   function mindListen() {
     if (!mindView) return;
     const on = docked && !body.classList.contains('right-hidden') && !document.hidden;
     if (on) mindView.connect(); else mindView.disconnect();
   }
   function drawDock() {
-    dockBtn.setAttribute('aria-checked', String(docked));
-    dockBtn.querySelector('.st').textContent = docked ? 'On' : 'Off';
+    foldLook(dockBtn, docked, 'Bob\'s thinking');
     $('mindDockBody').hidden = !docked;
     $('nowMind').classList.toggle('on', docked);
     const st = $('mindBtnSt'); if (st) st.hidden = !docked; // the chat-bar button says where the thinking is
@@ -178,6 +196,23 @@ export function createLayout({ post, openTasks, openDownloads }) {
   dockBtn.onclick = () => { docked = !docked; store.set('bob-mind-dock', docked ? '1' : '0'); drawDock(); if (docked) $('mindDockLog').focus({ preventScroll: true }); };
   $('mindDockPop').onclick = () => { const w = window.open('/mind.html', 'bob-mind', 'popup,width=380,height=480'); try { w?.focus(); } catch {} };
   document.addEventListener('visibilitychange', mindListen);
+  // FNRI's small cube: off until its switch is on, and it only listens while the section is showing
+  const cubeBtn = $('mindDockCube');
+  let cubeOn = store.get('bob-mind-cube', '1') === '1', cube = null, cubeOk = true; // the cube is how thinking shows to begin with; the text is the other choice
+  function cubeListen() {
+    cubeBtn.setAttribute('aria-checked', String(cubeOn)); cubeBtn.querySelector('.st').textContent = cubeOn ? 'On' : 'Off';
+    const on = cubeOn && docked && !body.classList.contains('right-hidden') && !document.hidden;
+    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails'), load: $('mindCubeLoad'), loadBox: $('mindCubeLoadBox') }, { onWhy: (why) => { cubeOk = !why; cubeListen(); }, still: () => body.classList.contains('still') });
+    // with the cube showing, the written thinking steps aside; it comes back when the cube is off or can't work here
+    $('mindDockBody').classList.toggle('cube-view', cubeOn && cubeOk);
+    if (!cube) return;
+    if (on) cube.connect(); else cube.disconnect();
+    if (!cubeOn) cube.hide();
+  }
+  cubeBtn.onclick = () => { cubeOn = !cubeOn; store.set('bob-mind-cube', cubeOn ? '1' : '0'); cubeListen(); };
+  document.addEventListener('visibilitychange', cubeListen);
+  window.addEventListener('bob-mind-dock', cubeListen);
+  cubeListen();
   drawDock();
 
   // ---- the panel's lists ----
@@ -324,9 +359,8 @@ export function createLayout({ post, openTasks, openDownloads }) {
   };
   // A small line graph of the last 5 minutes: graphics memory, card busy and processor busy, as percentages.
   const graph = () => {
-    const el = $('nowGpu').querySelector('.mem-graph');
+    const el = $('nowGraph').querySelector('.mem-graph');
     if (!el) return;
-    el.hidden = !showGraph;
     if (!showGraph || hist.length < 2) { if (showGraph) el.innerHTML = '<span class="muted">Collecting a few readings...</span>'; return; }
     const W = 200, H = 48, n = 60, mins = brainSt?.session === 'Gaming' ? 15 : 5; // 60 readings, 5 or 15 s apart
     const path = (key) => hist.map((h, i) => (h[key] == null ? null : `${(W * (n - hist.length + i)) / (n - 1)},${H - (H * h[key]) / 100}`)).filter(Boolean).map((p, i) => (i ? 'L' : 'M') + p).join(' ');
@@ -350,8 +384,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
       // 1.5.3: graphics card and system memory (RAM), each with a meter; 1.5.30: the processor too.
       // 1.5.44: two parts per bar, Bob's (coloured by speed) and everything else (blue); splitLines() sizes them.
       const row = (pct, split) => `<div class="mem-row"><span class="mem-text"></span><div class="meter split" data-bar="${split}"><i class="m-bob"></i><i class="m-sys" style="width:${Math.min(100, Math.round(pct))}%"></i></div><span class="mem-split ${split}"></span></div>`;
-      el.innerHTML = `${gpu ? row((gpu.usedGB / gpu.totalGB) * 100, 'split-card') : '<div class="mem-row"><span class="mem-text"></span></div>'}${ram?.totalGB ? row((ram.usedGB / ram.totalGB) * 100, 'split-ram') : ''}${cpu?.loadPct != null ? row(cpu.loadPct, 'split-cpu') : ''}<div class="mem-brain"></div>
-        <button type="button" class="mem-graph-btn" aria-expanded="${showGraph}">${showGraph ? 'Hide graph' : 'Show graph'}</button><div class="mem-graph" hidden></div>`;
+      el.innerHTML = `${gpu ? row((gpu.usedGB / gpu.totalGB) * 100, 'split-card') : '<div class="mem-row"><span class="mem-text"></span></div>'}${ram?.totalGB ? row((ram.usedGB / ram.totalGB) * 100, 'split-ram') : ''}${cpu?.loadPct != null ? row(cpu.loadPct, 'split-cpu') : ''}<div class="mem-brain"></div>`;
       // 1.5.26: each meter names itself on its own line: "Graphics card · 9.1 of 15.9 GB in use (all apps)".
       const rows = el.querySelectorAll('.mem-row');
       rows[0].querySelector('.mem-text').textContent = gpu ? `Graphics card · ${gpu.usedGB} of ${gpu.totalGB} GB in use (all apps)${gpu.loadPct != null ? ` · ${gpu.loadPct}% busy` : ''}` : 'Graphics card · not detected';
@@ -359,7 +392,6 @@ export function createLayout({ post, openTasks, openDownloads }) {
       let i = 1;
       if (ram?.totalGB) rows[i++].querySelector('.mem-text').textContent = `RAM · ${ram.usedGB} of ${ram.totalGB} GB in use (all apps)`;
       if (cpu?.loadPct != null) rows[i].querySelector('.mem-text').textContent = `Processor · ${cpu.loadPct}% busy (all apps)`;
-      el.querySelector('.mem-graph-btn').onclick = () => { showGraph = !showGraph; try { localStorage.setItem('bob-now-graph', showGraph ? '1' : '0'); } catch {} pollGpu(); };
       brainLine();
       graph();
     } catch { pausedLine(true, 'Readings paused (Bob couldn\'t read the card)'); }

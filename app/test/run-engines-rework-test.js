@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assetPrint, isNewer, swapIn, goBackEngine, removeEngine, engineStatus, latestEngine, brainsEngineNow, brainsEnginePick, brainsEngineSettings, labEngineDirs, engineNameOf, engineChoices, ENGINES, TESTED_LLAMA } from '../src/engines.js';
+import { assetPrint, isNewer, swapIn, goBackEngine, removeEngine, engineStatus, latestEngine, brainsEngineNow, brainsEnginePick, brainsEngineSettings, labEngineDirs, engineNameOf, engineChoices, engineFor, ENGINES, TESTED_LLAMA } from '../src/engines.js';
 import { Lab } from '../src/lab.js';
 
 let failures = 0, passed = 0;
@@ -61,7 +61,8 @@ const put = (dir, files, mark) => { fs.mkdirSync(dir, { recursive: true }); for 
   const asset = { id: 7, name, size: 5, updated_at: '2026-11-09T00:00:00Z', digest: 'sha256:new' };
   put(be, [exe('llama-server')], { id: 'brainengine', version: tag, print: 'sha256:old', at: '2026-11-01T00:00:00Z' });
   const fakeFetch = async (u) => ({ ok: true, json: async () => (u.includes(`/tags/${tag}`) ? { tag_name: tag, prerelease: true, assets: [asset] } : []) });
-  if (process.platform === 'win32' || process.platform === 'linux') {
+  // 1.5.179: only where Brain Engine has a build (Windows and x86_64 Linux); ARM Linux has none, so the Check isn't offered there.
+  if ((process.platform === 'win32' || process.platform === 'linux') && !engineFor(ENGINES.find((x) => x.id === 'brainengine')).unavailable) {
     const r = await latestEngine({ agentDir: A }, 'brainengine', false, fakeFetch);
     check(r.newer && r.rebuilt && r.latest === tag, 'a rebuilt Brain Engine shows as an update, marked rebuilt');
     fs.writeFileSync(path.join(be, 'bob-brainengine.json'), JSON.stringify({ version: tag, print: 'sha256:new' }));
@@ -84,8 +85,22 @@ const put = (dir, files, mark) => { fs.mkdirSync(dir, { recursive: true }); for 
   const cfgBe = { agentDir: A, engine: 'llamacpp', llamacpp: { exe: path.join(A, 'brain-engine', exe('llama-server')) } };
   const cfgLc = { agentDir: A, engine: 'llamacpp', llamacpp: { exe: path.join(A, 'llama.cpp', exe('llama-server')), brainEngine: false } };
   check(brainsEngineNow(cfgBe) === 'brainengine' && brainsEngineNow(cfgLc) === 'llamacpp' && brainsEngineNow({ agentDir: A, engine: 'ollama' }) === 'ollama', 'which engine runs the brains now, from the program in use');
-  check(brainsEnginePick({ engine: 'llamacpp', llamacpp: {} }) === 'brainengine' && brainsEnginePick(cfgLc) === 'llamacpp' && brainsEnginePick({ engine: 'ollama' }) === 'ollama', 'what the ⚙ shows as picked (Brain Engine unless switched)');
-  check(JSON.stringify(brainsEngineSettings('llamacpp')) === JSON.stringify({ engine: 'llamacpp', llamacpp: { brainEngine: false } }) && brainsEngineSettings('ollama').engine === 'ollama' && brainsEngineSettings('nonsense') === null, 'each ⚙ choice saves the settings it stands for; nonsense saves nothing');
+  // 1.5.196 (the owner): Brain Engine is the only engine for Bob's brains where it has a build; llama.cpp only where it has none.
+  check(brainsEnginePick(cfgLc, true) === 'brainengine' && brainsEnginePick({ engine: 'ollama' }, true) === 'brainengine' && brainsEnginePick(cfgLc, false) === 'llamacpp', 'Brain Engine is the only pick where it has a build; llama.cpp where it has none');
+  check(JSON.stringify(brainsEngineSettings('brainengine', true)) === JSON.stringify({ engine: 'llamacpp', llamacpp: { brainEngine: true } }) && brainsEngineSettings('llamacpp', true) === null && brainsEngineSettings('ollama', true) === null && brainsEngineSettings('ollama', false) === null && brainsEngineSettings('llamacpp', false)?.engine === 'llamacpp' && brainsEngineSettings('nonsense') === null, 'llama.cpp and Ollama can\'t be picked where Brain Engine has a build; Ollama never');
+  {
+    const { onlyBrainEngine, brainEngineBuilt } = await import('../src/config.js');
+    check(brainEngineBuilt('win32', 'x64') && brainEngineBuilt('win32', 'arm64') && brainEngineBuilt('linux', 'x64') && !brainEngineBuilt('linux', 'arm64') && !brainEngineBuilt('darwin', 'arm64'), 'Brain Engine has builds for Windows and x64 Linux only');
+    const old = { engine: 'llamacpp', llamacpp: { brainEngine: false } };
+    check(onlyBrainEngine(old, { platform: 'win32', arch: 'x64' }).join() === 'llama.cpp' && old.llamacpp.brainEngine === true, 'an old llama.cpp pick moves to Brain Engine on Windows');
+    const oll = { engine: 'ollama' };
+    check(onlyBrainEngine(oll, { platform: 'darwin', arch: 'arm64' }).join() === 'Ollama' && oll.engine === 'llamacpp', 'an old Ollama pick moves to Bob\'s own llama.cpp on a Mac');
+    const mac = { engine: 'llamacpp', llamacpp: { brainEngine: false } };
+    check(onlyBrainEngine(mac, { platform: 'darwin', arch: 'arm64' }).length === 0 && mac.llamacpp.brainEngine === false, 'a Mac keeps llama.cpp (no Brain Engine build yet)');
+    check(onlyBrainEngine({ engine: 'llamacpp', llamacpp: {} }, { platform: 'linux', arch: 'x64' }).length === 0, 'nothing to move: nothing logged');
+    const byHand = { engine: 'ollama', llamacpp: { brainEngine: false } };
+    check(onlyBrainEngine(byHand, { platform: 'win32', arch: 'x64', hand: { engine: 'ollama', brainEngine: false } }).length === 0 && byHand.engine === 'ollama', 'an engine written by hand into config.json itself still wins');
+  }
   const be = path.join(A, 'brain-engine'), lc = path.join(A, 'llama.cpp');
   check(labEngineDirs({ ...cfgBe, labEngine: '' })[0] === be, 'Lab "Same as Bob\'s brains": Brain Engine\'s folder when the brains run on it');
   check(labEngineDirs({ ...cfgBe, labEngine: 'llamacpp' })[0] === lc, 'Lab on llama.cpp: the plain llama.cpp folder, even while the brains run on Brain Engine');
@@ -113,11 +128,11 @@ const put = (dir, files, mark) => { fs.mkdirSync(dir, { recursive: true }); for 
 {
   const read = (f) => fs.readFileSync(fileURLToPath(new URL(f, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
   const ui = read('../public/cellar.js'), help = read('../public/help-content.js'), labUi = read('../public/lab.js');
-  check(/class="engine-gear"/.test(ui) && /⚙/.test(ui) && /name="brainsEngine"/.test(ui) && /data-labengine/.test(ui), 'Engines has the ⚙ engine-for-brains picker and the Lab\'s picker');
+  check(/data-engine-now/.test(ui) && !/name="brainsEngine"/.test(ui) && /the only engine that fits him now/.test(ui) && /data-labengine/.test(ui), 'Engines says Brain Engine runs the brains (1.5.196: no picker), and has the Lab\'s picker');
   check(/data-checkall/.test(ui) && /data-engineback/.test(ui) && /data-engineremove/.test(ui) && /data-engineremoveyes/.test(ui), 'Check all for updates, Go back, and Remove (which asks first)');
   check(/engine-group/.test(ui) && /'thinking', 'Thinking'/.test(ui), 'the engines are grouped and folded, Thinking first');
   check(/data-labengine/.test(labUi) && /Lab engine/.test(labUi), 'the Lab shows its engine on every tab');
-  check(/faq-engine-update/.test(help) && /<dt>Engine for the Lab<\/dt>/.test(help) && /Engine for brains \(the ⚙\)/.test(help), 'Help, an FAQ and a glossary entry in Bob\'s voice');
+  check(/faq-engine-update/.test(help) && /<dt>Engine for the Lab<\/dt>/.test(help) && /'Engine for brains', 'Brain Engine'/.test(help), 'Help, an FAQ and a glossary entry in Bob\'s voice');
   check(!/Run brains on Brain Engine/.test(ui + help), 'the old on/off switch is gone (the ⚙ replaces it)');
 }
 

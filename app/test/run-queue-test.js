@@ -25,6 +25,15 @@ const v = view([job('w', 'waiting'), job('r', 'working', { steps: [] }), delegat
 check('statuses read Queued, In progress, Delegated, Completed', v.map((j) => j.status).join(',') === 'queued,in progress,delegated,completed', v.map((j) => j.status).join(','));
 check('a delegated task names the copy doing it', v[2].delegatedTo?.copy === 'Segfault' && v[2].delegatedTo.label === 'Coding');
 check('a completed task carries when it finished', v[3].doneAt === 5 && v[3].delegatedTo === null);
+{ // 1.5.196 (Tailscale test): a job sent whole to another Bob still says so once it's finished
+  const sv = view([job('s', 'done', { doneAt: 7, sentTo: 'Go' }), job('f', 'failed', { sentTo: 'Go' }), job('again', 'waiting', { sentTo: 'Go' })]);
+  check('a finished job sent to another Bob names that Bob', sv[0].status === 'completed' && sv[0].delegatedTo?.copy === 'Go' && sv[0].delegatedTo.sent === true);
+  check('a failed one does too', sv[1].delegatedTo?.copy === 'Go');
+  check('a job waiting again does not', sv[2].delegatedTo === null);
+}
+{ const { borrowedLine } = await import('../src/brain.js');
+  const l = borrowedLine('Go', 1040);
+  check('a borrowed reply leaves a logbook line: who and how long, no words', l.includes('Go thought this reply') && l.includes('1.0 s to first word'), l); }
 
 const f2 = { queue: [job('w', 'waiting'), job('x', 'done'), job('y', 'cancelled'), job('z', 'failed')], saveQueue() {} };
 P.clearCompleted.call(f2);

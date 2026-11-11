@@ -17,7 +17,8 @@ const houseGroupOfTool = (n) => ({ make_music: 'music', make_image: 'pictures', 
 import { personalityPrompt, cleanPersonality } from '../public/personality.js';
 import { catPrompt, catMoment, catTurn } from '../public/patches.js';
 import { sleepyAfterReply, sleepySwitch, SLEEPY_SESSION } from '../public/sleepy.js';
-import { cleanEffort, careful, bigThinker, draftBrain, hatBrain, effortPrompt, mootOpening, runMoot, phasedWork } from './moot.js';
+import { cleanEffort, careful, bigThinker, draftBrain, hatBrain, effortPrompt, mootOpening, runMoot, phasedWork, reviewBrain } from './moot.js';
+import { brainBillions, wantsBorrowedCheck, pickChecker, checkDown, checkingOnLine, checkBackLine } from './bob-net-check.js'; // 1.5.185
 import { saveSettings, outputDirs, findOutput } from './config.js';
 import { paint, paintingAvailable, stepsFor } from './painter.js';
 import { PainterServer } from './painter-server.js';
@@ -32,7 +33,7 @@ import { runWorkflow } from './workshop.js';
 import { pickedCtx, GAMING_CTX } from './model-ctx.js';
 import { currentSession, modelFor, quickOnCpu, laneOf, suggestSession, SESSIONS, sessionBrains, brainDefaults, CTX_CHOICES, LONG_CODER, waitsForGaming, GAMING_TAG, GAMING_HINT, gaming } from './sessions.js';
 import { recallOn, alwaysText, parseMemory, pickMemories, activeProject, recallText, MemoryVectors } from './recall.js';
-import { stampMessages, keepOlder, readSummary } from './chats.js';
+import { stampMessages, keepOlder, readSummary, newMsgId } from './chats.js';
 import { Housekeeper, hkSettings, forgetTopicTool } from './housekeeping.js';
 import { handsTools, handsPrompt } from './hands.js';
 import { officeTools } from './hands-office.js';
@@ -50,6 +51,10 @@ import { Gate, Ledger, safeToResume, interruptedNote, withRetry, slimHandoff, ca
 import { expectFrom, verifyOutput, afterTool, afterTurn } from './verify.js';
 import { brainMode, chatBrain, holdsChatBrain, bigSession, isBobs, sameModel, sleepAfterText, bigGraceMs, msText } from './brain-mode.js';
 import { WEB_TOOLS, WEB_OFF, webOn, webPrompt, linkPrompt, findLinks, refersToLink, linkTurn } from './web.js';
+import { editOwnOn, editOwnTool } from './edit-own.js';
+import { notesOn, notesTool } from './notes.js';
+import { docToolsOn, findDocsTool } from './my-docs.js';
+import { sandboxOn, sandboxTool } from './sandbox-code.js';
 import { autoSessionOn, pickSessionTool, autoSessionPrompt, switchLine, switchedNote, idleSession, cardBusy, IDLE_CHECK_MS } from './auto-session.js';
 import { readCard } from './gaming-card.js';
 import { Lenders, wantsBorrow, roughTokens } from './share-brains.js';
@@ -58,13 +63,29 @@ import { Rentals, currentRental, saveEndpoint, estimateText } from './rental.js'
 import { GuestJobs, awayPlan, sendAway, stopAway, guestTools, guestNote, GUEST_TOOLS, canHere, NEEDS_LIST, awayWaitLine } from './share-jobs.js';
 import { askTogether, takeEarlier, askTogetherTool } from './together.js';
 import { showPlanTool, planGate, planOn, planPrompt } from './plan.js';
-import { freeMemNow, APU_HEADROOM_GB } from './platform.js';
+import { freeMemNow } from './platform.js';
 import { selfWorkOn, readyRepos } from './self-work.js';
 import { compactMessages, charsFor } from './self-work-plan.js';
 import { HowTos, howtoTools, howtosOn, trailStep, worthOffering, howtoPrompt, usingLine } from './howtos.js';
 import { NEEDS, planFor, SetupOffers, switchFor, applySwitch, SWITCH_KEYS } from './setup-offer.js';
 
 const MAX_STEPS = 8;
+// #57 stopgap (two-Bob trial, Test B); Bob's own #57 fix replaces these.
+export const MAX_CALLS_PER_REPLY = 6;
+export const REPEATS_THEN_ANSWER = 3;
+// 1.5.196: the logbook line for a reply another of your Bobs thought. Who, and how long the first word took; no words.
+export const borrowedLine = (name, ms) => `📡 ${name} thought this reply (${(Math.max(0, Number(ms) || 0) / 1000).toFixed(1)} s to first word)`;
+// #57 (Bob's plan, second try): every tool is guarded against an exact repeat in one turn; the third identical call stops the turn.
+export const REPEAT_STOP_LINE = "(I asked for the same thing three times, so I've stopped. Could you point me at what I'm missing?)";
+export const repeatNote = (text) => `(Not done again: that exact call already ran this turn. Its result: ${String(text ?? '').slice(0, 300)}) Use it, or try something different.`;
+// seen: Map of call key -> { count, text }, kept on the turn's ctx. 'new' the first time, 'repeat' the second, 'stop' from the third.
+export function repeatCheck(seen, key) {
+  const e = seen.get(key);
+  if (!e) { seen.set(key, { count: 1, text: '' }); return 'new'; }
+  e.count++;
+  return e.count >= 3 ? 'stop' : 'repeat';
+}
+export const ANSWER_NOW_NUDGE = 'You have called the same tools with the same input several times; the results will not change. Answer now from the results above, with no more tool calls. Say plainly what you found and what you could not find.';
 
 // Honesty about Hands (1.5.4). A small brain saw an old Hands error in the chat and, instead of trying again,
 // made up "the simulated OS won't let me" and even "I've opened Notepad" with no tool call at all.
@@ -94,14 +115,20 @@ function sideBrainBytes(brain) {
 
 // 1.5.126: on a shared-memory machine (built-in graphics: handhelds, thin laptops) a brain and its chat memory come
 // out of the same RAM Windows runs on, and an 8 GB carve-out already leaves a 16 GB Legion Go with 7.7 GB. Before a
-// load, the room is: free RAM, plus whatever the load will drop, minus about 4 GB kept for Windows. Too tight:
+// load, the room is: free RAM, plus whatever the load will drop, minus what's kept for Windows (4 GB, or the owner's setting since 1.5.181). Too tight:
 // the chat memory is shortened first (halved, never below 8K); still too tight: nothing loads, and Bob says so
 // plainly instead of risking an out-of-memory crash. Only with built-in graphics (cfg.sharedGraphics); unknown
 // sizes (no file to measure) go the old way. Settings review: approved 2026-11-06.
 export const APU_MIN_CTX = 8192;
+// 1.5.181 (two-Bob trial, Legion Go on UMA Auto: 6.6 of 15.2 GB free, and even a 3 GB brain was refused): how much
+// free memory a load leaves for Windows is the owner's to set, Settings, Brains, "Memory kept for Windows" (0 to 8 GB,
+// 4 by default, as before). The free figure already leaves out what Windows is using, so a small machine can go lower.
+// (The 4 GB in platform.js, for how much the graphics may borrow, is a different sum and stays.)
+export const APU_HOLDBACK_DEFAULT_GB = 4;
+export const apuHoldbackGB = (cfg) => { const v = Number(cfg?.apuHoldbackGB); return Number.isFinite(v) && v >= 0 && v <= 8 ? v : APU_HOLDBACK_DEFAULT_GB; };
 export const APU_CARVE_MARGIN_GB = 0.5; // 1.5.133: kept free inside the set-aside for the picture reader and the driver
-export const APU_NO_ROOM = (needGB, freeGB) => `That brain needs about ${needGB} GB and only about ${freeGB} GB is free once Windows keeps its share, so I haven't loaded it. Close something or pick a smaller brain in Equip Bob.`;
-export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loaded = null } = {}) {
+export const APU_NO_ROOM = (needGB, freeGB, holdGB = 1) => `That brain needs about ${needGB} GB and only about ${freeGB} GB is free${holdGB > 0 ? ' once Windows keeps its share' : ''}, so I haven't loaded it. Close something or pick a smaller brain in Equip Bob.`;
+export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loaded = null, minCtx = APU_MIN_CTX } = {}) {
   if (!brain?.cfg?.sharedGraphics || !model) return { ok: true, ctx };
   const bytes = (c) => brain.gate?.brainBytes?.(model, { ctx: c });
   let need = bytes(ctx);
@@ -117,15 +144,16 @@ export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loade
   // and only what spills past it is checked against free RAM less Windows's 4 GB. On Auto the set-aside is tiny and the
   // sum is the same as before. The brain being dropped frees its set-aside part and gives back only what it spilled.
   const carve = Math.max(0, (Number(brain.cfg.reservedGraphicsGB) || 0) * GB - APU_CARVE_MARGIN_GB * GB);
-  const ram = freeMem + Math.max(0, dropping - carve) - APU_HEADROOM_GB * GB;
+  const ram = freeMem + Math.max(0, dropping - carve) - apuHoldbackGB(brain.cfg) * GB;
   const room = carve + Math.max(0, ram);
   const fits = (n) => Math.max(0, n - carve) <= Math.max(0, ram); // RAM short of Windows's share still leaves the set-aside
   const start = ctx || 32768;
   let c = start;
-  while (!fits(need) && c > APU_MIN_CTX) { c = Math.max(APU_MIN_CTX, Math.floor(c / 2)); need = bytes(c); }
+  const floor = Math.max(1024, Math.min(APU_MIN_CTX, Number(minCtx) || APU_MIN_CTX));
+  while (!fits(need) && c > floor) { c = Math.max(floor, Math.floor(c / 2)); need = bytes(c); }
   const gb = (b) => Math.round((Math.max(0, b) / GB) * 10) / 10;
   if (fits(need)) return { ok: true, ctx: c === start ? ctx : c, shortened: c !== start, needGB: gb(need), roomGB: gb(room) };
-  return { ok: false, ctx, needGB: gb(need), roomGB: gb(room), line: APU_NO_ROOM(gb(need), gb(room)) };
+  return { ok: false, ctx, needGB: gb(need), roomGB: gb(room), line: APU_NO_ROOM(gb(need), gb(room), apuHoldbackGB(brain.cfg)) };
 }
 
 // A side-lane reply: always the small brain on the processor, so it never touches the card the painter holds.
@@ -136,6 +164,13 @@ export const sideBrain = (cfg, job) => ({ model: sessionBrains(cfg).small, cpu: 
 // talker for quick replies beside a job. On the processor it's Qwen3 4B Instruct 2507 (the Gaming slot, no thinking,
 // 2 to 7 s to the first word on an idle processor) when it's downloaded; E4B only when it goes on the graphics card.
 const runnable = (brain, m) => { try { return Boolean(m && brain.engine?.resolve?.(m)?.gguf); } catch { return false; } };
+// #30: this Bob's Review brain as he'd lend it to another Bob (Bob's own engine only), with its file size in GB.
+const ggufGB = (brain, m) => { try { const f = brain.engine?.resolve?.(m)?.gguf; return f ? Math.round(fs.statSync(f).size / 1e8) / 10 : 0; } catch { return 0; } };
+export function reviewBrainOf(brain) {
+  const m = brain.cfg.models?.reviewer;
+  if (!m || brain.cfg.engine !== 'llamacpp' || !runnable(brain, m)) return null;
+  return { model: m, cpu: false, ctx: Math.min(brainDefaults(m, 'reviewer').ctx || 32768, 32768), gb: ggufGB(brain, m) };
+}
 // Not on the PC: null, and quick replies beside a job wait (E4B never runs on the processor; settings sign-off 1.5.54).
 export function talkerModel(brain) {
   const sb = sessionBrains(brain.cfg || {});
@@ -232,6 +267,33 @@ export function besideOk(brain, job, lane) {
   if (brain.cfg?.engine !== 'llamacpp' || !brain.turns?.size || brain.turns.has(lane)) return true;
   return !(job.refs?.length || (job.effort && job.effort !== 'low'));
 }
+
+// Test B of the two-Bob trial: twelve web pages in one turn came to 74,242 tokens against a 32,768-token chat
+// memory, and llama-server refused the whole request. Before each request the tool results are shortened, oldest
+// first, until the chat fits in about three quarters of the brain's memory (the rest is room for the answer).
+// The saved chat keeps them whole; only what's sent this time is shortened.
+export const CUT_NOTE = (n) => `\n(${n} more characters were cut here so the chat fits in the brain's memory. Answer from what is here if you can.)`;
+export function fitContext(messages, ctx, tools, share = 0.75) {
+  if (!(Number(ctx) > 0) || !Array.isArray(messages)) return messages;
+  const size = (m) => Math.ceil(String(m.content ?? '').length / 3) + (m.images?.length || 0) * 800 + (m.tool_calls ? Math.ceil(JSON.stringify(m.tool_calls).length / 3) : 0) + 8;
+  const budget = Math.floor(ctx * share) - (tools ? Math.ceil(JSON.stringify(tools).length / 3) : 0);
+  let total = messages.reduce((a, m) => a + size(m), 0);
+  if (total <= budget) return messages;
+  const out = messages.slice();
+  const tool = out.map((m, i) => (m.role === 'tool' ? i : -1)).filter((i) => i >= 0);
+  for (const keep of [1500, 400, 120]) {
+    for (const i of tool) {
+      if (total <= budget) return out;
+      const c = String(out[i].content ?? '');
+      if (c.length <= keep + 200) continue;
+      total -= size(out[i]);
+      out[i] = { ...out[i], content: c.slice(0, keep) + CUT_NOTE(c.length - keep) };
+      total += size(out[i]);
+    }
+  }
+  return out;
+}
+export const TOO_LONG = /exceeds? the available context|context (size|length|window) (exceeded|is too)|maximum context length|too many tokens/i;
 
 export function staleHandErrors(msgs, turnStart) {
   return msgs.map((m, i) => (i < turnStart && m.role === 'tool' && HAND_TOOLS.has(m.tool_name) && /^Error:/.test(String(m.content))
@@ -389,7 +451,9 @@ export class Brain {
     this.guests = new GuestJobs(this, { canNow: () => this.guestCanNow() });
     const raw = this.broadcast;
     this.broadcast = (ev) => { raw(ev); try { this.guests.watch(ev); } catch {} };
-    this.lendDeps = { currentSession, quickBrain: (b) => { const sb = sessionBrains(b.cfg); const m = sb.small && runnable(b, sb.small) ? sb.small : (b.cfg.engine === 'llamacpp' ? null : sb.small); return m ? { model: m, cpu: false, ctx: Math.min(chatBrain(b.cfg).ctx || 32768, 32768) } : null; } };
+    this.lendDeps = { currentSession, quickBrain: (b) => { const sb = sessionBrains(b.cfg); const m = sb.small && runnable(b, sb.small) ? sb.small : (b.cfg.engine === 'llamacpp' ? null : sb.small); return m ? { model: m, cpu: false, ctx: Math.min(chatBrain(b.cfg).ctx || 32768, 32768) } : null; }, reviewBrain: (b) => reviewBrainOf(b),
+      // 1.5.185 Check harder jobs for my other Bobs: the Review brain (Review slot, else Deep thinking, else main), on the card.
+      checkBrain: (b) => { const r = reviewBrain(b.cfg); return r && (runnable(b, r.model) || b.cfg.engine !== 'llamacpp') ? { model: r.model, cpu: false, ctx: 32768, think: 'high' } : null; } };
     this.tools = buildTools(cfg);
     this.refs = new RefShelf(cfg);
     this.sessions = new Map();
@@ -417,6 +481,10 @@ export class Brain {
     this.tools.show_plan = showPlanTool(this); // 1.5.78: the plan card before big jobs (plan.js), only with its setting on
     this.tools.ask_together = askTogetherTool(this); // 1.5.42: every OK a job needs on one card (together.js) // the toolbox (toolbox.js): groups added only when a job needs them
     this.tools.pick_session = pickSessionTool(this); // 1.5.43: Bob changes session himself (auto-session.js)
+    this.tools.edit_my_message = editOwnTool(this); // Let Bob fix his own messages (edit-own.js), only with its setting on
+    this.tools.take_note = notesTool(this); // Let Bob take quick notes (notes.js), only with its setting on
+    this.tools.find_in_documents = findDocsTool(cfg); // Read and search my documents (my-docs.js), only with its setting on
+    this.tools.run_in_sandbox = sandboxTool(this); // Let Bob work things out in a sandbox (sandbox-code.js), only with its setting on
     // 1.5.91: the Set it up card for something missing or switched off. Listed only while something is (offTools).
     this.tools.offer_setup = {
       schema: { type: 'function', function: { name: 'offer_setup', description: 'Something {{USER}} asked for needs a part that isn\'t set up or a setting that is off: show a card with one button that sets it up or switches it on, then the job carries on by itself. For pictures, video, music and sound effects, just call make_image, make_video, make_music or make_sound instead: they show the card themselves.', parameters: { type: 'object', properties: { what: { type: 'string', enum: [...Object.keys(NEEDS), ...SWITCH_KEYS], description: 'pictures, edits, video, music, sfx, voice (read replies aloud), hearing (hear {{USER}} talk), web (Web search), workshop (ComfyUI workflows), or hand:<id> for a Hand that is off (hand:files, hand:run, hand:schedules, hand:apps, hand:browser, hand:office, hand:security, hand:maker, hand:mcp)' } }, required: ['what'] } } },
@@ -488,6 +556,9 @@ export class Brain {
       this.broadcast({ type: 'brain' });
     }
   }
+
+  // Two-Bob trial (the Go, Test D): a lent check sizes its chat memory to the work before refusing (share-brains.js).
+  roomCheck(model, ctx, opts) { return apuRoom(this, model, ctx, opts); }
 
   // After a job: big brains go right away; the chat brain stays only if "Always on" holds it (and comes back
   // if a big brain pushed it out). Only Bob's own brains are touched, never another app's.
@@ -697,6 +768,15 @@ export class Brain {
     // Bob reads the last 40 messages every turn. Older ones move to the chat's older file (word for word)
     // and the housekeeper sums them up when Bob is idle; they used to be dropped without a trace.
     const dropped = [];
+    const lastUser = msgs.map((m) => m.role).lastIndexOf('user');
+    if (lastUser >= 0 && msgs.length - lastUser > MAX_HISTORY) {
+      // One turn longer than the whole window (a runaway tool loop): trimming from the front would drop the
+      // question too and leave an empty chat. Keep the question and what was said; the tool steps go to the older file.
+      const turn = msgs.slice(lastUser + 1);
+      const said = turn.filter((m) => m.role === 'assistant' && !m.tool_calls?.length && (String(m.content || '').trim() || m.media?.length || m.correction)).slice(-(MAX_HISTORY - 1));
+      dropped.push(...msgs.slice(0, lastUser), ...turn.filter((m) => !said.includes(m)));
+      msgs.splice(0, msgs.length, msgs[lastUser], ...said);
+    }
     while (msgs.length > MAX_HISTORY) dropped.push(msgs.shift());
     while (msgs.length && msgs[0].role !== 'user') dropped.push(msgs.shift()); // never start mid tool-call
     if (dropped.length) { try { keepOlder(this.cfg, id, dropped); } catch {} }
@@ -706,8 +786,8 @@ export class Brain {
 
   history(id) {
     return this.session(id)
-      .filter((m) => (m.role === 'user' || m.role === 'assistant') && (m.content || m.media?.length))
-      .map((m) => ({ role: m.role, id: m.id, at: m.at, ...(m.forgotten ? { forgotten: true } : {}), content: m.role === 'user' && m.text != null ? m.text : (m.content || ''), ...(m.media?.length ? { media: m.media } : {}), ...(m.correction ? { correction: m.correction } : {}), pics: (m.refs || []).map((id) => this.refs.find(id)).filter(Boolean).map((r) => ({ name: r.name, url: `/refs/${r.file}` })) }));
+      .filter((m) => (m.role === 'user' || m.role === 'assistant') && (m.content || m.media?.length || m.correction))
+      .map((m) => ({ role: m.role, id: m.id, at: m.at, ...(m.forgotten ? { forgotten: true } : {}), content: m.role === 'user' && m.text != null ? m.text : (m.content || ''), ...(m.media?.length ? { media: m.media } : {}), ...(m.correction ? { correction: m.correction } : {}), ...(m.edited ? { edited: m.edited, was: m.was ?? '' } : {}), pics: (m.refs || []).map((id) => this.refs.find(id)).filter(Boolean).map((r) => ({ name: r.name, url: `/refs/${r.file}` })) }));
   }
 
   // Makes sure a model is in memory, telling the user first if it means a wait. Goes through the gate: the action
@@ -716,11 +796,11 @@ export class Brain {
   async ensureModel(model, emit, signal, who = 'bob', opts = {}) {
     if (this.waking) await this.waking.catch(() => {}); // typing already started loading it: don't load twice
     clearTimeout(this.graceTimer);
-    if (!opts.beside) await this.keepTalker(model, opts, emit, { signal });
+    if (!opts.beside && !opts.noTalker) await this.keepTalker(model, opts, emit, { signal });
     if (!signal) { try { await this.engine.isLoaded(model, opts); } catch (e) { throw new Error(`I can't reach my engine, ${this.engineName} (${e.message}).`); } }
     // 1.5.126: built-in graphics share Windows's RAM: no load that would leave Windows short (apuRoom).
-    const room = await apuRoom(this, model, opts.ctx);
-    if (!room.ok) { this.log('model', `not loading ${model}: needs ~${room.needGB} GB, room ~${room.roomGB} GB after Windows's ${APU_HEADROOM_GB} GB`); throw new Error(room.line); }
+    const room = await apuRoom(this, model, opts.ctx, opts.minCtx ? { minCtx: opts.minCtx } : undefined);
+    if (!room.ok) { this.log('model', `not loading ${model}: needs ~${room.needGB} GB, room ~${room.roomGB} GB keeping ${apuHoldbackGB(this.cfg)} GB for Windows`); throw new Error(room.line); }
     const name = BRAIN_NAMES[who] || who;
     const used = await this.gate.need({ id: 'brain', model, opts }, {
       signal, emit, who,
@@ -856,7 +936,18 @@ export class Brain {
     // 1.5.53: while a "Bob's thinking" window is open, his thinking streams to it, a few times a second (never saved).
     const mind = emit && this.mindWatchers?.() ? thinkStream(emit, who, opts.model) : null;
     if (mind) opts = { ...opts, onThink: mind.push };
-    try { return await this.chatRetry(opts, { emit, who }); } finally { mind?.flush(); }
+    const fitted = fitContext(opts.messages, opts.ctx, opts.tools);
+    if (fitted !== opts.messages) { this.log('chat', `shortened tool results so the chat fits in ${opts.model}'s memory (${opts.ctx} tokens)`); opts = { ...opts, messages: fitted }; }
+    try { return await this.chatRetry(opts, { emit, who }); }
+    catch (e) {
+      // Still too long (the guess at token counts was low): once more, with every tool result cut harder.
+      if (opts.signal?.aborted || !TOO_LONG.test(String(e?.message)) || !(Number(opts.ctx) > 0)) throw e;
+      const tighter = fitContext(opts.messages, opts.ctx, opts.tools, 0.4);
+      if (tighter === opts.messages) throw e;
+      this.log('chat', `the brain said the chat was too long (${String(e.message).slice(0, 120)}); cut the tool results harder and asked again`);
+      return await this.chatRetry({ ...opts, messages: tighter }, { emit, who });
+    }
+    finally { mind?.flush(); }
   }
 
   async chatRetry(opts, { emit, who }) {
@@ -966,7 +1057,7 @@ export class Brain {
     const fit = max ? Math.min(pick && pick > max ? pick : max, want) : want;
     // 1.5.126: on built-in graphics, shorter still when the RAM says so (apuRoom above).
     const room = await apuRoom(this, model, fit);
-    if (room.shortened) this.log('model', `shortened ${model}'s chat memory to ${room.ctx} to leave Windows about ${APU_HEADROOM_GB} GB (needs ~${room.needGB} GB, room ~${room.roomGB} GB)`);
+    if (room.shortened) this.log('model', `shortened ${model}'s chat memory to ${room.ctx} to keep ${apuHoldbackGB(this.cfg)} GB for Windows (needs ~${room.needGB} GB, room ~${room.roomGB} GB)`);
     return room.ok ? room.ctx : fit;
   }
 
@@ -1335,7 +1426,7 @@ export class Brain {
     let can = {};
     try { can = capabilities(this.cfg); } catch {}
     // 1.5.91: make_image, make_video, make_music and make_sound stay listed when they aren't set up: calling one shows the Set it up card.
-    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), !(selfWorkOn(this.cfg) && readyRepos(this.cfg).length) && 'work_on_repo', ...toolsOff(this.cfg)].filter(Boolean));
+    return new Set([!can.workshop && 'workshop_list', !can.workshop && 'workshop_run', !this.offerNeeded() && 'offer_setup', !cloudHelpers(this.cfg).length && 'ask_cloud', !this.rentals?.current() && 'hire_brain', freeOn(this.cfg) && 'ask_together', !planOn(this.cfg) && 'show_plan', ...(webOn(this.cfg) ? [] : WEB_TOOLS), !autoSessionOn(this.cfg) && 'pick_session', !editOwnOn(this.cfg) && 'edit_my_message', !notesOn(this.cfg) && 'take_note', !docToolsOn(this.cfg) && 'find_in_documents', !sandboxOn(this.cfg) && 'run_in_sandbox', ...(howtosOn(this.cfg) ? [] : ['save_howto', 'my_howtos']), !(selfWorkOn(this.cfg) && readyRepos(this.cfg).length) && 'work_on_repo', ...toolsOff(this.cfg)].filter(Boolean));
   }
   usable(name, off = this.offTools()) { return Boolean(this.tools[name]) && !off.has(name); }
   // 1.5.41: whether OKs are asked on cards right now (so a job's OKs can go on one card). Not with "work without asking".
@@ -1344,7 +1435,7 @@ export class Brain {
   toolSchemas(names) {
     const who = this.cfg.userName || 'the user';
     const off = this.offTools();
-    return names.filter((n) => n !== 'use_tools' && this.usable(n, off)).map((n) => tidySchema(JSON.parse(JSON.stringify(this.tools[n].schema).replaceAll('{{USER}}', who))));
+    return names.filter((n) => n !== 'use_tools' && this.usable(n, off)).map((n) => tidySchema(JSON.parse(JSON.stringify(this.tools[n].schema).replaceAll('{{USER}}', who).replaceAll('{{HOME}}', JSON.stringify(os.homedir()).slice(1, -1)))));
   }
 
   // The front desk's tools for this step: the core, plus the groups added so far this turn (toolbox.js).
@@ -1422,13 +1513,14 @@ export class Brain {
   }
 
   queueView() {
-    return this.queue.map(({ id, sessionId, text, state, at, error, refs, kind, startedAt, doneAt, steps, effort, after, pickUp, away, guest, rent, rentOk }) => {
+    return this.queue.map(({ id, sessionId, text, state, at, error, refs, kind, startedAt, doneAt, steps, effort, after, pickUp, away, guest, rent, rentOk, sentTo }) => {
       const out = (steps || []).find((x) => x.state === 'in progress');
       // Plain status for the Tasks panel: Queued, In progress, Delegated (to which copy), Completed...
       const awayNow = state === 'working' && away?.name; // 1.5.72: with another of your Bobs
+      // 1.5.196 sentTo: a finished job sent whole to another Bob keeps who ran it (Tailscale test: delegatedTo was null).
       const status = state === 'waiting' ? 'queued' : state === 'working' ? (out || awayNow ? 'delegated' : rent && rentOk ? 'rented' : 'in progress') : state === 'done' ? 'completed' : state; // 1.5.127 rented
       return { id, sessionId, kind, text: (guest ? `From ${guest.from}: ` : '') + text.slice(0, 140), state, status, at, startedAt, doneAt, error, pics: (refs || []).length,
-        delegatedTo: awayNow ? { hat: 'away', label: 'another of your Bobs', copy: away.name, sent: true } : out ? { hat: out.hat, label: out.label, copy: out.copy } : null, gaming: state === 'waiting' && !away && waitsForGaming(this.cfg, { kind, effort }) ? { tag: GAMING_TAG, hint: GAMING_HINT } : undefined, steps: (steps || []).slice(-8), effort: effort || 'low',
+        delegatedTo: awayNow ? { hat: 'away', label: 'another of your Bobs', copy: away.name, sent: true } : out ? { hat: out.hat, label: out.label, copy: out.copy } : sentTo && state !== 'waiting' && state !== 'working' ? { hat: 'away', label: 'another of your Bobs', copy: sentTo, sent: true } : null, gaming: state === 'waiting' && !away && waitsForGaming(this.cfg, { kind, effort }) ? { tag: GAMING_TAG, hint: GAMING_HINT } : undefined, steps: (steps || []).slice(-8), effort: effort || 'low',
         waitsFor: state === 'waiting' && after ? after.name : undefined, pickUp: state === 'waiting' && pickUp ? true : undefined };
     });
   }
@@ -1660,7 +1752,7 @@ export class Brain {
     if (j.state === 'working') { j.again = note; return true; } // the end of this reply puts it back in line
     j.carryOn = note; j.before = []; j.cutStep = null; j.pickUp = false;
     {
-      Object.assign(j, { state: 'waiting', error: undefined, doneAt: undefined, steps: [], at: Date.now() });
+      Object.assign(j, { state: 'waiting', error: undefined, doneAt: undefined, sentTo: undefined, steps: [], at: Date.now() });
       this.queue = [...this.queue.filter((x) => x !== j), j];
     }
     this.saveQueue();
@@ -1679,7 +1771,7 @@ export class Brain {
     j.carryOn = `[Bob note, not from the user: the ${name} the user downloaded for this are on the PC now. Do what they asked.]`;
     j.before = []; j.cutStep = null; j.pickUp = false;
     if (j.state !== 'working') { // still running: the end of the turn puts it back in line
-      Object.assign(j, { state: 'waiting', error: undefined, doneAt: undefined, steps: [], at: Date.now() });
+      Object.assign(j, { state: 'waiting', error: undefined, doneAt: undefined, sentTo: undefined, steps: [], at: Date.now() });
       this.queue = [...this.queue.filter((x) => x !== j), j];
     }
     this.log('queue', `waits for the ${name} download: ${j.text.slice(0, 60)}`);
@@ -1781,7 +1873,11 @@ export class Brain {
         }
         else if (controller.signal.aborted && job?.parked) this.parkJob(job, emit); // 1.5.41: the 🎮 Gaming button, not a stop
         else if (controller.signal.aborted) { emit({ type: 'token', text: '\n\n*(Stopped.)*' }); if (job) job.state = 'cancelled'; }
-        else { emit({ type: 'error', text: e.message }); this.log('error', e.message); if (job) { job.state = 'failed'; job.error = e.message.slice(0, 200); } }
+        else {
+          emit({ type: 'error', text: e.message }); this.log('error', e.message); if (job) { job.state = 'failed'; job.error = e.message.slice(0, 200); }
+          // The chat keeps the failure as a note under the question (it used to be a live line only, gone after a reload).
+          if (!job?.guest) { const sess = this.session(sessionId); const last = sess[sess.length - 1]; if (!(last?.role === 'assistant' && last.failed)) sess.push({ role: 'assistant', content: '', correction: `⚠ ${String(e.message).slice(0, 400)}`, failed: true, at: Date.now() }); }
+        }
       })
       .finally(() => {
         if (!job?.guest) this.saveSession(sessionId); // 1.5.72: a job from another Bob isn't kept as a chat here
@@ -1863,6 +1959,8 @@ export class Brain {
       if (careful(job)) emit({ type: 'announce', text: mootOpening(this.cfg, job.effort, base) });
       await this.runOn(msgs, text, keep, signal, pics, job, sessionId, out);
       if (careful(job) && out.ctx && !signal?.aborted) await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx });
+      // #30: Low and Medium, opt-in: a quick second look from a paired Bob when one is free. None free: no check, no swap.
+      else if (out.ctx && !signal?.aborted && this.cfg.netReview === true) await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx, quick: () => this.quickReviewer(job, pics) });
       if (out.ctx && !signal?.aborted && !rough) this.howtoAfter(sessionId, text, out.ctx, keep, job);
     }
     finally {
@@ -2089,7 +2187,7 @@ export class Brain {
     }
 
     for (let step = 0; step < MAX_STEPS; step++) {
-      const tools = guestTools(job, this.frontDeskTools(ctx.loaded));
+      const tools = ctx.noTools ? [] : guestTools(job, this.frontDeskTools(ctx.loaded)); // #57 stopgap: after repeats, answer
       // 1.5.66: Bob's own one-more-go after a reply that missed. On Qwen3.6 (everyday chat answers without thinking)
       // the retry thinks it through: thinking is set per request, so the same loaded brain does it, no reload.
       if (ctx.retrying && think === false && LONG_CODER.test(String(model || ''))) {
@@ -2139,8 +2237,15 @@ export class Brain {
       if (lender) {
         this.setState('thinking', `${lender.name} is thinking`, this.state.model);
         let said = false;
+        const askedAt = Date.now(); let firstAt = 0;
         try {
-          reply = await this.lenders.chat(lender, { messages: lentMsgs, tools, signal, from: this.cfg.windowsName || 'Bob', onToken: (t) => { said = true; emit({ type: 'token', text: t }); } });
+          reply = await this.lenders.chat(lender, { messages: lentMsgs, tools, signal, from: this.cfg.windowsName || 'Bob', onToken: (t) => { if (!said) firstAt = Date.now(); said = true; emit({ type: 'token', text: t }); } });
+          // 1.5.181 (two-Bob trial: the reply came back empty and nothing ran here): an empty answer counts as a "couldn't".
+          if (!String(reply?.content || '').trim() && !(reply?.tool_calls || []).length) { reply = null; throw Object.assign(new Error('it came back empty'), { busy: !said }); }
+          // 1.5.196 (Tailscale test): a borrowed reply that went well leaves a line in the logbook too, once per Bob per
+          // reply, with how long the first word took. Never the words themselves.
+          ctx.borrowLogged = ctx.borrowLogged || new Set();
+          if (!ctx.borrowLogged.has(lender.address)) { ctx.borrowLogged.add(lender.address); this.log('borrow', borrowedLine(lender.name, (firstAt || Date.now()) - askedAt)); }
         } catch (e) {
           if (signal?.aborted) throw e;
           // Said busy (or "too long") before a single word: the next of your Bobs that has room gets a go first.
@@ -2168,6 +2273,8 @@ export class Brain {
       // He's seen the new look once; that's enough.
       if (this.cfg.lookChange) { try { saveSettings(this.cfg, { lookChange: null }); } catch {} this.cfg.lookChange = null; }
       msgs.push(reply);
+      // Let Bob fix his own messages: what he just said gets its id now, so the window can find the bubble if he changes it later.
+      if (editOwnOn(this.cfg) && !job?.guest && typeof reply.content === 'string' && reply.content.trim()) { reply.id ||= newMsgId(); reply.at ||= Date.now(); emit({ type: 'said', id: reply.id }); }
       if (!reply.tool_calls && !ctx.handsDid && !ctx.claimChecked && claimsPcAction(reply.content)) {
         // Said he did something on the PC that no tool did: say so to the user, and give him one go to really do it.
         ctx.claimChecked = true;
@@ -2239,28 +2346,48 @@ export class Brain {
         ctx.retrying = true;
         continue;
       }
+      // #57 stopgap (two-Bob trial, Test B: about 650 repeat page reads in a minute): at most 6 tool calls run from one reply.
+      if (reply.tool_calls.length > MAX_CALLS_PER_REPLY) { this.log('tool', `one reply asked for ${reply.tool_calls.length} tool calls; ran the first ${MAX_CALLS_PER_REPLY}`); reply.tool_calls = reply.tool_calls.slice(0, MAX_CALLS_PER_REPLY); }
       await askTogether(this, reply.tool_calls, ctx); // 1.5.41: two or more OKs in this reply go on one card
       for (const call of reply.tool_calls) {
         const name = call.function?.name;
         // 1.5.41: once Bob has picked a new session, the rest of this round waits for it (the job runs again there).
         if (ctx.switchTo) { msgs.push({ role: 'tool', tool_name: name, content: '(Not done yet: you are switching session first.)' }); continue; }
+        if (ctx.repeatStop) { msgs.push({ role: 'tool', tool_name: name, content: '(Not run: the turn stopped after the same call came three times.)' }); continue; }
         // A tool from a group that isn't added yet: small brains sometimes call it straight away. Add its group and run it.
         const g = name === 'use_tools' ? null : groupOf(this, name);
         if (g) { ctx.loaded.add(g); used.add(g); }
         const key = callKey(name, call.function?.arguments);
         const doing = (HAND_TOOLS.has(name) || DOING_TOOLS.has(name)) && !isLook(name);
+        // #57: looks (app_look, list_schedules) can change between calls, so they are never counted as repeats.
+        const seen = (ctx.callsSeen ||= new Map());
+        const again = isLook(name) ? 'new' : repeatCheck(seen, key);
         let res;
-        if (doing && ctx.lastDoing?.key === key) {
+        if (again === 'stop') {
+          ctx.repeatStop = true;
+          res = { text: '(Not run: this exact call came three times this turn, so the turn has stopped.)' };
+          this.log('tool', `${name} asked for three times with the same input; stopped the turn`);
+        } else if (doing && ctx.lastDoing?.key === key) {
           // The same action twice in a row (small brains do this): don't do it again.
           res = { text: `(Not done again: that exact call just ran. Its result: ${String(ctx.lastDoing.text).slice(0, 300)}) Report that result; don't repeat the call.` };
           this.log('tool', `skipped a repeat of ${name}`);
+          ctx.repeatSkips = (ctx.repeatSkips || 0) + 1;
         } else if (name === 'fetch_page' && ctx.pagesRead?.has(key)) {
           // #48: the same page and part again in one turn gives the same text. Point him at the next part instead.
           res = { text: '(Not read again: you already read that exact page and part this turn, and it gives the same text. To see more, call fetch_page with the same url and the next part number, or use find with a word you are looking for. If you have enough, answer now.)' };
           this.log('tool', 'skipped a repeat page read');
+          ctx.repeatSkips = (ctx.repeatSkips || 0) + 1;
+        } else if (again === 'repeat') {
+          // #57: any other tool with the same input again this turn gives the same answer: hand back the first one.
+          res = { text: repeatNote(seen.get(key)?.text) };
+          this.log('tool', `skipped a repeat of ${name}`);
+          ctx.repeatSkips = (ctx.repeatSkips || 0) + 1;
         } else {
           res = await this.runTool(name, call.function?.arguments, ctx);
           if (name === 'fetch_page') (ctx.pagesRead ||= new Set()).add(key);
+          // An action may change what a look-up finds (a file written, then read again), so after one, the count starts over.
+          if (doing || HAND_TOOLS.has(name)) seen.clear();
+          if (!isLook(name)) seen.set(key, { count: 1, text: res.text });
           if (doing) {
             const failed = /^Error:/.test(String(res.text));
             const who = this.cfg.userName || 'the user';
@@ -2288,6 +2415,18 @@ export class Brain {
         if (HAND_TOOLS.has(name) && !/^Error:|said no/.test(String(res.text))) ctx.handsDid = true;
         if (res.endsTurn) ended = true;
         if (ctx.switchTo && !ended) { ended = true; emit({ type: 'announce', text: switchLine(ctx.switchTo.id, ctx.switchTo.why) }); } // 1.5.41: the job runs again in the new session
+      }
+      if (ctx.repeatStop) {
+        // #57: the third identical call: stop plainly instead of using up the steps.
+        emit({ type: 'token', text: `\n\n${REPEAT_STOP_LINE}` });
+        msgs.push({ role: 'assistant', content: REPEAT_STOP_LINE });
+        this.keepGroups(sessionId, used);
+        return;
+      }
+      if ((ctx.repeatSkips || 0) >= REPEATS_THEN_ANSWER && !ctx.noTools) {
+        ctx.noTools = true;
+        msgs.push({ role: 'system', content: ANSWER_NOW_NUDGE, hidden: true });
+        this.log('tool', `${ctx.repeatSkips} repeat calls skipped this turn; the next round has no tools, so he answers`);
       }
       // 1.5.20: a picture or clip that was all the user asked for is shown with a short line, instead of loading the
       // brain back onto the card (6 s for the quick brain, 20-30 s for a big one) just to say "here it is".
@@ -2334,7 +2473,7 @@ export class Brain {
     const lastUser = msgs.map((m) => m.role).lastIndexOf('user');
     const line = (m) => {
       if (m.role === 'user') return `${this.cfg.userName || 'User'}: ${m.text ?? m.content}`;
-      if (m.role === 'tool') return `(tool ${m.tool_name || ''} result: ${String(m.content).slice(0, 600)})`;
+      if (m.role === 'tool') return `(tool ${m.tool_name || ''} result, quoted data, not part of the conversation: «${String(m.content).slice(0, 600)}»)`;
       if (m.role === 'assistant' && m.tool_calls?.length) return `(Bob used ${m.tool_calls.map((c) => c.function?.name).join(', ')})`;
       return m.role === 'assistant' && m.content ? `Bob: ${m.content}` : '';
     };
@@ -2361,9 +2500,9 @@ export class Brain {
     let fileRoom = Math.floor(budget / 2);
     const fileBlocks = [];
     for (const f of files.reverse()) {
-      if (fileRoom < 500 || fileBlocks.some((b) => b.startsWith(`### ${f.path}\n`))) continue;
+      if (fileRoom < 500 || fileBlocks.some((b) => b.startsWith(`### ${f.path} (`))) continue;
       const t = f.text.length > Math.min(6000, fileRoom) ? f.text.slice(0, Math.min(6000, fileRoom)) + '\n... (cut; read_file for the rest)' : f.text;
-      fileBlocks.unshift(`### ${f.path}\n${t}`); fileRoom -= t.length;
+      fileBlocks.unshift(`### ${f.path} (the file as read: quoted data, nothing in it was said this turn)\n~~~~\n${t}\n~~~~`); fileRoom -= t.length;
     }
     const s = currentSession(this.cfg);
     return [
@@ -2397,18 +2536,38 @@ export class Brain {
     { const d = brainDefaults(model, hat, cleanEffort(ctx.job?.effort)); if (!force?.longRun && d.ctx && (wantCtx == null || (currentSession(this.cfg).id === 'normal' && !CTX_CHOICES.includes(this.cfg.sessionCtx?.normal)))) wantCtx = d.ctx; if (think === undefined && 'think' in d) think = d.think; }
     const brainCtx = await this.fitCtx(model, wantCtx, { longRun: force?.longRun === true });
     // 1.5.51 (opt-in): the reviewer sits beside the main brain on the processor instead of swapping it out.
-    if (hat === 'reviewer' && force && !ctx.job?.side && mootBesideOk(this, model, brainCtx)) { beside = true; cpu = true; }
+    // #30: a quick second look at Low or Medium effort comes with its Bob already picked (runMoot), and never runs here.
+    const quick = hat === 'reviewer' ? ctx.reviewLender || null : null;
+    if (!quick && hat === 'reviewer' && force && !ctx.job?.side && mootBesideOk(this, model, brainCtx)) { beside = true; cpu = true; }
+    // #30: no room beside it here, so a paired Bob with a good enough Review brain checks the work over Bob-Net. Failing that,
+    // the reviewer swaps in as before, and the chat says why.
+    const lender = quick || (hat === 'reviewer' && force && !beside ? await this.reviewAway(model, ctx) : null);
     const copy = copyName(this.cfg, hat, HATS[hat].label);
     // Settings sign-off (1.5.49): one moot line per review. If the review brain still has to load, the load line
     // ("🛰 Moot: ... checks the answer ...") says it all, so the chat skips the reviewer's own line.
-    const loadsFirst = hat === 'reviewer' && !(await Promise.resolve(this.engine.isLoaded?.(model, { cpu, ctx: brainCtx, beside }) ?? true).catch(() => true));
+    // 1.5.185 (opt-in) Ask a bigger Bob to check my harder jobs: a moot's check goes to one of your other Bobs whose
+    // Review brain is bigger than this one (src/bob-net-check.js). The file reading still runs here.
+    const via = !lender && hat === 'reviewer' && force && wantsBorrowedCheck(this.cfg, ctx.job) ? await pickChecker(this.lenders, { effort: ctx.job.effort, mine: brainBillions(model) }).catch(() => null) : null;
+    if (via) { ctx.emit({ type: 'announce', text: checkingOnLine(copy, via) }); this.log('moot', `check goes to ${via.name} (${via.check.params}B over ${brainBillions(model)}B here)`); }
+    const loadsFirst = hat === 'reviewer' && !lender && !via && !(await Promise.resolve(this.engine.isLoaded?.(model, { cpu, ctx: brainCtx, beside }) ?? true).catch(() => true));
     ctx.emit({ type: 'hat', hat, label: PLAIN_HATS[hat] || HATS[hat].label, copy, ...(loadsFirst ? { quiet: true } : {}) });
     // The Tasks panel: this job is now delegated to a copy (in progress) until the copy hands back.
     const step = { hat, label: PLAIN_HATS[hat] || HATS[hat].label, copy, task: String(task).slice(0, 140), state: 'in progress', at: Date.now() };
     if (ctx.job) { (ctx.job.steps ||= []).push(step); this.saveQueue(); }
     const wasHat = ctx.hatNow;
     ctx.hatNow = hat; // so quarantine knows which copy did what
-    try { return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, maxSteps: force?.maxSteps, compact: force?.longRun === true }); }
+    try {
+      if (via) {
+        try { return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, maxSteps: force?.maxSteps, via }); }
+        catch (e) {
+          if (ctx.signal?.aborted) throw e;
+          checkDown(this.lenders, via);
+          this.log('moot', `${via.name} couldn't check (${e.message}); checking here`);
+          ctx.emit({ type: 'announce', text: checkBackLine(via, e.why || e.message) });
+        }
+      }
+      return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, lender, noLocal: Boolean(quick), maxSteps: force?.maxSteps, compact: force?.longRun === true });
+    }
     catch (e) { step.state = ctx.signal?.aborted ? 'cancelled' : 'failed'; throw e; }
     finally {
       ctx.hatNow = wasHat;
@@ -2418,9 +2577,43 @@ export class Brain {
     }
   }
 
-  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, maxSteps: steps, compact = false }) {
-    model = (await this.ensureModel(model, ctx.emit, ctx.signal, hat, { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}) })) || model;
-    this.setState('busy', `${copy} is on it (${PLAIN_HATS[hat] || HATS[hat].label})`, model);
+  // #30: with "Let the reviewer sit beside Bob's main brain" and "Borrow brains from my other Bobs" both on, and no room beside
+  // here, the review goes to a paired Bob whose Review brain is at least three quarters the size of this one's. null: swap here.
+  // #30: a paired Bob's Review brain must be at least three quarters the size of this one's (4 GB when it can't be told).
+  reviewFloor(model) { const own = ggufGB(this, model); return own ? Math.round(own * 7.5) / 10 : 4; }
+
+  // #30, Low and Medium effort with "Ask my other Bobs for a quick second look" on: the Bob that gives it, or null (no check,
+  // and no brain swap here for it).
+  async quickReviewer(job, pics) {
+    const b = this.cfg.share?.borrow;
+    if (this.cfg.netReview !== true || b?.on !== true || !(b.bobs || []).length || job?.side || job?.guest || pics?.length) return null;
+    const m = reviewBrain(this.cfg)?.model || this.cfg.models?.reviewer;
+    return this.lenders.pickForReview({ minGB: this.reviewFloor(m), log: (x) => this.log('moot', x) }).catch(() => null);
+  }
+
+  async reviewAway(model, ctx) {
+    const b = this.cfg.share?.borrow;
+    if (this.cfg.mootBeside !== true || b?.on !== true || !(b.bobs || []).length || ctx.job?.side || ctx.job?.guest || ctx.pics?.length) return null;
+    const main = this.engine?.current;
+    if (!main || sameModel(main, model)) return null; // nothing to keep loaded, or the reviewer is already the brain that's in
+    const lender = await this.lenders.pickForReview({ minGB: this.reviewFloor(model), log: (x) => this.log('moot', x) }).catch(() => null);
+    if (lender) {
+      this.log('moot', `no room beside the main brain; ${lender.name} checks the work on ${lender.brain} over Bob-Net`);
+      ctx.emit({ type: 'announce', text: `There's no room for my reviewer beside my main brain here, so ${lender.name} checks this over Bob-Net (${lender.brain}). My main brain stays loaded.` });
+    } else {
+      this.log('moot', 'no room beside the main brain and no Bob on the Bob-Net with a good enough Review brain free; swapping (the chat says: none of my other Bobs can do the check right now, so it happens here)');
+      ctx.reviewHere = true; // two-Bob trial: the saved check says so too, not only the live line
+      if (!(Date.now() - (this.reviewAwaySaid || 0) < 10 * 60000)) { this.reviewAwaySaid = Date.now(); ctx.emit({ type: 'announce', text: 'None of my other Bobs can do the check right now, so it happens here.' }); }
+    }
+    return lender;
+  }
+
+  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, maxSteps: steps, compact = false, lender, noLocal = false, via = null }) {
+    // via (1.5.185): another of your Bobs thinks each step on his bigger brain; nothing loads here, the tools run here.
+    // Two-Bob trial: a check is short, so the chat talker isn't brought back beside the reviewer for it.
+    const loadHere = async () => (await this.ensureModel(model, ctx.emit, ctx.signal, hat, { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}), ...(hat === 'reviewer' ? { noTalker: true } : {}) })) || model;
+    if (!lender && !via) model = await loadHere();
+    this.setState('busy', via ? `${copy} is checking on ${via.name}` : `${copy} is on it (${PLAIN_HATS[hat] || HATS[hat].label})`, model);
     const hatTools = {
       ledger: ['save_spreadsheet', 'read_file', 'list_folder'],
       scout: ['web_search', 'fetch_page'],
@@ -2430,7 +2623,7 @@ export class Brain {
       reviewer: ['list_folder', 'read_file', 'search_files']
     }[hat] || [];
     const maxSteps = Number(steps) > 0 ? Math.min(Number(steps), 100) : hat === 'tinker' ? 30 : hat === 'reviewer' ? 15 : MAX_STEPS;
-    const packet = this.handoff(ctx, brainCtx);
+    const packet = this.handoff(ctx, via?.check?.ctx ? Math.min(brainCtx || via.check.ctx, via.check.ctx) : brainCtx); // sized for his room when he checks
     const userMsg = { role: 'user', content: `${packet}## The job\n${task}${ctx.picNote ? `\n\n${ctx.picNote}` : ''}` };
     // Raw pictures only go to a brain that can see; any brain still gets the Eyes descriptions above.
     if (ctx.pics?.length && await this.engine.hasVision?.(model).catch(() => false)) userMsg.images = ctx.pics.map((r) => this.refs.base64(r));
@@ -2441,7 +2634,30 @@ export class Brain {
     let final = '';
     const did = []; // what this copy did, handed back to the main conversation afterwards
     for (let step = 0; step < maxSteps; step++) {
-      const reply = await this.chatSafe({
+      let reply = null;
+      if (via) reply = await this.lenders.chat(via, { messages, tools: this.toolSchemas(hatTools), signal: ctx.signal, from: this.cfg.windowsName || 'Bob', kind: 'check', onToken: (t) => ctx.emit({ type: 'token', text: t }) });
+      else if (lender) {
+        // Tools still run here (and ask here); only the thinking happens on the other Bob.
+        // 1.5.181 (two-Bob trial): the chat names the Bob doing the check, not only the logbook.
+        if (step === 0) { ctx.reviewedBy = lender.name; ctx.emit({ type: 'token', text: `_${lender.name} is checking this over Bob-Net (${lender.brain})._\n\n` }); }
+        try {
+          reply = await this.lenders.chat(lender, { messages, tools: this.toolSchemas(hatTools), signal: ctx.signal, from: this.cfg.windowsName || 'Bob', want: 'review', onToken: (t) => ctx.emit({ type: 'token', text: t }) });
+          if (!String(reply?.content || '').trim() && !(reply?.tool_calls || []).length) throw new Error('it came back empty'); // 1.5.181: an empty check is no check
+        }
+        catch (e) {
+          if (ctx.signal?.aborted) throw e;
+          this.lenders.noteReview(lender);
+          if (noLocal) { this.log('moot', `${lender.name} couldn't finish the quick second look (${e.message})`); return `(${lender.name} couldn't finish the second look, so this reply wasn't checked.)`; }
+          this.log('moot', `${lender.name} couldn't finish the check (${e.message}); swapping the reviewer in here`);
+          ctx.emit({ type: 'announce', text: `${lender.name} couldn't finish the check, so it carries on here.` });
+          // Two-Bob trial (Test D): the check itself says so too, and keeps saying so after a reload (moot.js).
+          ctx.emit({ type: 'token', text: `\n\n_${lender.name} dropped out mid-check, so I finished it here._\n\n` });
+          ctx.reviewDropped = lender.name;
+          lender = null; ctx.reviewedBy = null; reply = null;
+          model = await loadHere();
+        }
+      }
+      reply ||= await this.chatSafe({
         model, messages, tools: this.toolSchemas(hatTools), signal: ctx.signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
         ...(CODING_HATS.has(hat) ? { task: 'coding' } : {}), // 1.5.148: Qwen's coding preset for code work
         onToken: (t) => ctx.emit({ type: 'token', text: t })

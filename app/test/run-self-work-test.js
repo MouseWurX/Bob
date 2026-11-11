@@ -244,8 +244,8 @@ check('remixes and smaller brains don\'t', !['qwen3.6-35b-a3b-heretic', 'qwen3.6
   check('Linux: says how, since it needs a password', (await getOwnGit(c, { os_: 'linux' }).catch((e) => e.message)) === GIT_LINUX && /sudo apt install git/.test(GIT_LINUX));
   const e1 = await ensureTool(c, 'node', { os_: 'win', arch: 'x64', run: async () => 'v22.1.0' });
   check('ensureTool: nothing fetched when it\'s here', e1.fetched === false);
-  const env = toolPath(c, { Path: 'C:\\Windows' }, { os_: 'win' });
-  check('commands in the code copy find his own Node and Git first (Windows keeps its Path key)', env.Path.split(';')[0] === ownNodeBin(c, 'win') && env.Path.split(';')[1] === ownGitBin(c) && env.Path.endsWith('C:\\Windows'));
+  const env = toolPath(c, { Path: 'C:\\Windows' }, { os_: 'win', arch: 'x64' }); // 1.5.179: the test says which computer, so it passes on an ARM test machine too
+  check('commands in the code copy find his own Node and Git first (Windows keeps its Path key)', env.Path.split(';')[0] === ownNodeBin(c, 'win', 'x64') && env.Path.split(';')[1] === ownGitBin(c) && env.Path.endsWith('C:\\Windows'));
   check('...and the PATH is left alone when he has none of his own', toolPath({ agentDir: path.join(tmp, 'none') }, { PATH: '/usr/bin' }, { os_: 'linux' }).PATH === '/usr/bin');
   check('only commands run inside the code copy get them', /isInside\(codeCopyRoot\(cfg\), cwd\) \? \{ env: toolPath\(cfg, safeEnv\(\)\) \}/.test(read('src/hands.js')));
   check('the job fetches what\'s missing only with Run programs on (Node only for Bob or a repository with a package.json), and says so in the chat', read('src/tools.js').includes("if (runOn) {\n        const need = [['git', 'Git'], ...(repo.own || fs.existsSync(path.join(codeCopyDir(cfg, repo), 'package.json')) ? [['node', 'Node.js']] : [])];") && /📦/.test(read('src/tools.js')));

@@ -3,22 +3,25 @@
 // it starts to get worse. Then the same question, asked of every size. Its own module so the Lab page (public/lab.js)
 // only places it and hands over its events, like the cut recipes.
 import { esc } from './rich.js';
+import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 import { saveHtml } from './lab-save.js';
 import { createFullSize, fullSizeWhyNot } from './lab-fullsize.js'; // Bring in a full-size brain, right where the list is empty
 import { createContextPage } from './lab-context.js'; // 1.5.16x Longer: how much can it hold (thinking-paths sec 15.2)
 import { createTurboPage } from './lab-turbo.js'; // 1.5.16x Faster: Turbo (sec 15.1)
+import { createBestPage } from './lab-best.js'; // 1.5.188 Best answers: a bigger brain judges, a smaller one learns
 import { createTeachPage } from './lab-teach.js'; // 1.5.16x Teach it: here, or as a Forge plan (sec 15.3)
 import { createDiffusionPage } from './lab-diffusion.js'; // Diffusion brains (llama-diffusion-cli)
+import { createWatchPage } from './lab-watch.js'; // FNRI: a scan of the experts lighting up, in its own window
 
 // 1.5.16x The Playground has four pages now: the quantization ladder and the three from thinking-paths sec 15.
-export const PLAY_PAGES = [['smaller', 'Smaller'], ['longer', 'Longer'], ['faster', 'Faster'], ['teach', 'Teach it'], ['peek', 'Peek inside'], ['diffusion', 'Diffusion brains']];
+export const PLAY_PAGES = [['smaller', 'Smaller'], ['longer', 'Longer'], ['faster', 'Faster'], ['teach', 'Teach it'], ['best', 'Best answers'], ['peek', 'Peek inside'], ['watch', 'FNRI'], ['diffusion', 'Diffusion brains']];
 
 // `sections` (1.5.166): more pieces, each { html(), change(el), input(el), click(b, load), mounted() }; they make up the
 // Peek inside page. Events reach them only while that page shows.
 export function createPlayground({ api, view, saveState, sections = [] }) {
   let page = 'smaller';
   const peek = { kind: 'peek', html: () => sections.map((s) => s.html()).join(''), load: async () => {}, change: async (el) => { for (const s of sections) if (await s.change?.(el)) return true; return false; }, input: (el) => sections.some((s) => s.input?.(el)), click: async () => false };
-  const pages = { longer: createContextPage({ api }), faster: createTurboPage({ api }), teach: createTeachPage({ api }), peek, diffusion: createDiffusionPage({ api }) };
+  const pages = { longer: createContextPage({ api }), faster: createTurboPage({ api }), teach: createTeachPage({ api }), best: createBestPage({ api }), peek, watch: createWatchPage({ api }), diffusion: createDiffusionPage({ api }) };
   const loaded = new Set(), seen = new Map();
   const cur = () => pages[page];
   const refocus = (id) => { if (id) setTimeout(() => document.getElementById(id)?.focus(), 0); };
@@ -96,7 +99,7 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
     const others = (v().brains || []).filter((b) => !list.includes(b));
     const steps = (v().ladderSteps || []).map((s) => s.label).join(', ');
     return `<div id="lab-page-playground" role="tabpanel" aria-labelledby="lab-tab-playground">${navHtml()}
-      <h3>How small can a brain get?</h3>
+      <h3>${nameNow('How small can a brain get?')}</h3>
       <p class="muted">Bob takes one small brain and makes it ${steps ? `in six sizes (${esc(steps)})` : 'in six sizes'}, then measures each the same way: how big it is, how fast it writes, its Lab score, and how surprised it is by a page of Bob's Help it never tuned on. Smaller files lose detail, and this shows you where that starts to matter. It runs here, for free. It takes disk, and Bob shows how much before it starts.</p>
       ${runsHtml}
       <fieldset><legend>Which brain?</legend>${list.length ? list.map((b) => `<label class="lab-opt"><input type="radio" name="playfrom" value="${esc(b.id)}" ${from === b.id ? 'checked' : ''}> <span><strong>${esc(b.name)}</strong><br><span class="muted">${b.facts.sizeGB} GB full size.</span></span></label>`).join('')

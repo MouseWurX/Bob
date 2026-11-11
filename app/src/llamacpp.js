@@ -85,6 +85,21 @@ export function keepAliveMs(cfg) {
 // sees the card (CUDA_VISIBLE_DEVICES=-1). Never in Gaming. Below normal priority, half the cores, and let go as soon as
 // nothing needs it. A call goes to it when its options carry beside: true.
 export const BESIDE = 'beside';
+// 1.5.189 Spreading a brain over another Bob's lent card (src/share-card.js). PC test Nov 10: Riker Q4 npc -> a
+// handheld over Wi-Fi moved 2.63 GB at about 6.6 MB/s, then failed at 413 s because --fit filled the lent card and left
+// no room for its working memory (a 387 MiB compute buffer at -ub 2048). So a spread load keeps more room free on
+// every card (--fit-target, MiB), works in smaller steps (-ub), and waits by the brain's size, not a fixed 5 minutes.
+export const SPREAD_FIT_TARGET_MIB = 2048;
+export const SPREAD_UBATCH = 512;
+export const SPREAD_MBPS = 4; // a slow Wi-Fi's MB per second, so the wait is long enough the first time
+export const spreadLoadSeconds = (sizeGB, base = 300) => Math.min(7200, Math.max(base, base + Math.ceil((Number(sizeGB) || 0) * 1000 / SPREAD_MBPS)));
+// The flags a spread load adds (unless set by hand): room kept free on each card, and smaller steps.
+export function spreadArgs(args) {
+  const add = [];
+  if (args.includes('--fit') && !args.some((a) => ['--fit-target', '-fitt'].includes(a))) add.push('--fit-target', String(SPREAD_FIT_TARGET_MIB));
+  if (!args.some((a) => ['-ub', '--ubatch-size'].includes(a))) add.push('-ub', String(SPREAD_UBATCH));
+  return add;
+}
 export function besideThreads(cpus = os.cpus()) {
   const logical = cpus.length || 2;
   const pairs = /AMD|Intel/i.test(String(cpus[0]?.model || '')) && logical % 2 === 0 && logical >= 4;
@@ -164,6 +179,8 @@ export class LlamaCpp {
       this.beside.resolve = (m) => this.resolve(m); // same model files (tests replace resolve on the main engine)
       this.beside.catalogFile = (id) => this.catalogFile(id);
       this.beside.main = this; // so a card reader set on the main engine (tests) also counts for the second server
+      // FNRI's small cube: a brain answering on the second server is traced too, and told to the same cube
+      this.beside.wantTrace = () => this.wantTrace?.() || false; this.beside.onTrace = (raw, model) => this.onTrace?.(raw, model);
       // 1.5.53: the brain hears when a second brain joins or leaves (chat page: second-brain events, Bob's head grows).
       this.beside.changed = (ev) => { try { this.onBeside?.(ev); } catch {} };
     }
@@ -375,10 +392,22 @@ export class LlamaCpp {
   }
 
   // 1.5.90: no memory-mapping when some of the brain is placed in RAM on the card route (see buildArgs).
-  readsWhole(args, cpu) {
+  // 1.5.193: not when the brain is bigger than the card and RAM can hold together (gpt-oss 120B, about 63 GB, on a
+  // 16 GB card with 32 GB of RAM). Read in whole, it ran out of memory and never loaded; memory-mapped, the card takes
+  // its share, Windows keeps the busiest parts in RAM and the rest is read from the drive as words need it. Slow, but
+  // it runs. A few GB of RAM are left for the system and the chat's memory.
+  readsWhole(args, cpu, gguf) {
     if (cpu || this.lc.loadMode === 'mmap') return false;
     if (args.some((a) => ['--mmap', '--no-mmap', '--load-mode', '-lm'].includes(a))) return false; // set by hand
-    return args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a));
+    if (!args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a))) return false;
+    return !this.biggerThanMemory(gguf);
+  }
+  // The brain file is bigger than the card's share plus the RAM it may use. totalRam is swapped in by the tests.
+  biggerThanMemory(gguf) {
+    let size = 0;
+    try { size = fs.statSync(gguf).size; } catch { return false; }
+    const ram = (this.totalRam ? this.totalRam() : os.totalmem()) - 6e9, card = cardGB(this.cfg) * 1e9 * 0.8;
+    return ram > 0 && size > ram + card;
   }
   // --load-mode is in the builds Bob ships (b12032, the one tested); older builds only know --no-mmap.
   // 1.5.91: when the build can't be told, no flag at all (b12032 refuses --no-mmap, so a guess can stop the engine).
@@ -439,7 +468,10 @@ export class LlamaCpp {
     // When part of the brain stays in RAM (fit, or experts kept on the processor), read it all in at load instead of
     // letting Windows page it in during the first request. PC test 2026-11-04 (Qwen3.6, --fit, 128K): first reply
     // 27 s -> 1.4 s and RAM 21 -> 12 GB, for about 10 s more load. llamacpp.loadMode "mmap" keeps the old way.
-    if (this.readsWhole(args, cpu)) args.push(...this.noMmapArgs());
+    if (this.readsWhole(args, cpu, gguf)) args.push(...this.noMmapArgs());
+    // A brain bigger than the card and RAM: the processor's experts stay as they are in the file (no repacking into RAM),
+    // so they can be read from the drive as needed (b12032 and newer know --no-repack).
+    else if (!cpu && this.buildNo() >= 12032 && !args.some((a) => ['-nr', '--no-repack', '--repack'].includes(a)) && args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a)) && this.biggerThanMemory(gguf)) args.push('--no-repack');
     // 1.5.19: one conversation at a time, so it gets the whole context (more slots split it into small pieces).
     if (!args.some((a) => ['-np', '--parallel'].includes(a))) args.push('-np', '1');
     args.push(...this.templateArgs(model, gguf, args));
@@ -594,7 +626,7 @@ export class LlamaCpp {
     await new Promise((r) => { c.once('exit', r); c.kill(); setTimeout(r, 5000); });
   }
 
-  async preload(model, signal, { ctx, cpu = false, beside = false, reserveMB = 0, place = null } = {}) {
+  async preload(model, signal, { ctx, cpu = false, beside = false, reserveMB = 0, place = null, noSpread = false } = {}) {
     const b = this.route({ beside });
     if (b) return b.preload(model, signal, { ctx, cpu: true, reserveMB, place });
     if (this.role === BESIDE) cpu = true;
@@ -613,10 +645,15 @@ export class LlamaCpp {
     // Bob-Net: a brain too big for this replicant matrix can go over your other Bobs' lent cards (src/share-card.js).
     // Off unless "Spread big brains over my other Bobs' cards" is on; none answering means it loads here like always.
     let helpers = [];
-    if (this.spread && this.role !== BESIDE && !cpu && card !== 'none') {
-      let sizeGB = 0; try { sizeGB = fs.statSync(this.resolve(model).gguf).size / 1e9; } catch {}
+    let sizeGB = 0;
+    if (this.spread && !noSpread && this.role !== BESIDE && !cpu && card !== 'none') {
+      try { sizeGB = fs.statSync(this.resolve(model).gguf).size / 1e9; } catch {}
       helpers = await this.spread.open({ sizeGB }).catch(() => []);
-      if (helpers.length) { args.push('--rpc', helpers.join(',')); try { this.log?.('engine', `${model}: spread over ${helpers.length} other Bob${helpers.length > 1 ? 's' : ''}' card${helpers.length > 1 ? 's' : ''} (${helpers.join(', ')})`); } catch {} }
+      if (helpers.length) {
+        args.push('--rpc', helpers.join(','), ...spreadArgs(args));
+        const mins = Math.ceil(spreadLoadSeconds(sizeGB, this.lc.loadTimeoutSeconds || 300) / 60);
+        try { this.log?.('engine', `${model}: spread over ${helpers.length} other Bob${helpers.length > 1 ? 's' : ''}' card${helpers.length > 1 ? 's' : ''} (${helpers.join(', ')}). The first time, part of the brain is sent over the network: over Wi-Fi that can take a while (I'll wait up to ${mins} min), and a network cable is much faster. Later loads only send what's missing.`); } catch {}
+      }
     }
     // A llama-server left over from a crash would hold the port: stop it first.
     const pidFile = path.join(this.cfg.dataDir, `llama-server${this.tag}.pid`);
@@ -640,7 +677,9 @@ export class LlamaCpp {
     child.stderr.on('data', keep);
     const failFile = path.join(this.cfg.dataDir, `llama-server${this.tag}-load-failed.txt`);
     const saveFail = (why) => {
-      if (helpers.length) this.spread?.failed(); // a lent card that failed isn't asked again for a while
+      // A lent card that failed isn't asked again for a while. Only a failure to reach it tries the other way (home
+      // network, then Tailscale) next time; one that ran out of room or time won't do better over the other way.
+      if (helpers.length) this.spread?.failed({ route: /connect|unreachable|refused|timed out connecting|no route/i.test(full) && !/alloc|out of memory|took too long/i.test(full + why) });
       try { fs.writeFileSync(failFile, `${new Date().toISOString()} ${model}: ${why}\n${[exe, ...args].join(' ')}\n\n${full}`); } catch {}
       try { this.log?.('engine', `${model}: ${why}; full llama-server output saved to ${path.basename(failFile)}`); } catch {}
     };
@@ -658,11 +697,13 @@ export class LlamaCpp {
     this.currentOwn = model.includes(':') && !this.lc.models?.[model] && Boolean(this.catalogFile(model));
     if (this.currentOwn && !(this.ownLogged ||= new Set()).has(model)) { this.ownLogged.add(model); try { this.log?.('engine', `${model}: running from Bob's downloaded copy (${path.basename(this.catalogFile(model).gguf)}) instead of Ollama's`); } catch {} }
     try { fs.writeFileSync(pidFile, String(child.pid)); } catch {}
-    const deadline = Date.now() + (this.lc.loadTimeoutSeconds || 300) * 1000;
+    const deadline = Date.now() + (helpers.length ? spreadLoadSeconds(sizeGB, this.lc.loadTimeoutSeconds || 300) : this.lc.loadTimeoutSeconds || 300) * 1000;
+    let said = Date.now(); // a spread load says how it's going once a minute, so a long first load isn't silent
     const ready = (async () => {
       while (Date.now() < deadline) {
         if (signal?.aborted) throw new Error('Stopped.');
         if (await this.health()) return;
+        if (helpers.length && Date.now() - said >= 60000) { said = Date.now(); try { this.log?.('engine', `${model}: still loading over Bob-Net, ${Math.round((Date.now() - t0) / 60000)} min so far`); } catch {} }
         await new Promise((r) => setTimeout(r, 500));
       }
       saveFail('took too long to load');
@@ -672,6 +713,11 @@ export class LlamaCpp {
       await Promise.race([ready, started]);
     } catch (e) {
       await this.stopServer();
+      // 1.5.189: a spread that failed loads here like always, instead of leaving no brain.
+      if (helpers.length && !signal?.aborted) {
+        try { this.log?.('engine', `${model}: spreading over Bob-Net didn't work, so I'm loading it here instead`); } catch {}
+        return this.preload(model, signal, { ctx, cpu, beside, reserveMB, place, noSpread: true });
+      }
       throw e;
     }
     started.catch(() => {}); // later exits are handled by isLoaded()
@@ -780,7 +826,9 @@ export class LlamaCpp {
       body: JSON.stringify({ model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, max_tokens: replyTokens(this.current === model ? this.currentCtx : null, MAX_REPLY_TOKENS), // 1.5.148: less on a small context. 1.5.26: no empty enums (llama.cpp rejects them)
         ...this.sampling(model, { tools: !!tools?.length, think, task }),
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
-        ...(think === false ? { chat_template_kwargs: { enable_thinking: false } } : {}) }),
+        ...(think === false ? { chat_template_kwargs: { enable_thinking: false } } : {}),
+        // FNRI's small cube in Bob's thinking: only while someone has it open, and only Brain Engine answers it
+        ...(this.wantTrace?.() ? { expert_trace: true } : {}) }),
       signal
     });
   }
@@ -788,7 +836,7 @@ export class LlamaCpp {
   async readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver }) {
     let content = '';
     let held = null; // null: not decided yet; false: streaming normally; a string: held back
-    let thought = 0;
+    let thought = 0, traced = false; const asked = this.wantTrace?.() === true; // FNRI's small cube: was the trace asked for, and did it come
     const calls = [];
     let buf = '';
     const decoder = new TextDecoder();
@@ -802,9 +850,10 @@ export class LlamaCpp {
         const data = line.slice(5).trim();
         if (data === '[DONE]') continue;
         const ev = parseJson(data);
-        if (!ev) continue; // a cut or odd line from the server: skip it rather than lose the whole reply
+        if (!ev) { if (asked && data.includes('"expert_trace"')) this.log?.('engine', `FNRI cube: ${model}'s trace came back unreadable (${data.length.toLocaleString()} characters)`); continue; } // a cut or odd line from the server: skip it rather than lose the whole reply
         if (ev.error) throw new Error('llama-server: ' + (ev.error.message || JSON.stringify(ev.error)));
         // 1.5.30: llama-server puts the reply's timings on its last chunk; kept for Now running.
+        if (ev.expert_trace && this.onTrace) { traced = true; try { this.onTrace(ev.expert_trace, model); } catch (e) { this.log?.('engine', `FNRI cube: couldn't read ${model}'s trace: ${e.message}`); } }
         if (ev.timings) this.lastStats = replyStats({ model: this.current || model, messages, promptTokens: (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0), outTokens: ev.timings.predicted_n, tokPerSec: ev.timings.predicted_per_second, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX }) || this.lastStats;
         const d = ev.choices?.[0]?.delta || {};
         if (budget && d.reasoning_content && ++thought > budget && !content) onOver(); // stop.over marks it, so real errors aren't retried
@@ -826,6 +875,7 @@ export class LlamaCpp {
         }
       }
     }
+    if (asked && !traced) this.log?.('engine', `FNRI cube: ${model} answered without an expert trace (an older Brain Engine, or not Brain Engine)`);
     const tool_calls = calls.filter(Boolean).map((c) => {
       let args = {};
       try { args = c.args ? JSON.parse(c.args) : {}; } catch { args = {}; }

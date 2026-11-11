@@ -11,7 +11,7 @@ import { ggufInfo } from '../src/gguf.js';
 import { meter, fitLines, fitsAnswer, ladderSizes, keptFrom, squeezeOf, GiB, STOPS } from '../public/lab-context-math.js';
 import { haystack, found, contextView, planContext, startContext, useContext, contextSaw, forgetTurns, FORGET_FACTS } from '../src/lab-context.js';
 import { draftsFor, planTurbo, startTurbo, useTurbo, bestGuess, turboSaw, turboView } from '../src/lab-turbo.js';
-import { teachFit, lessonsPerHour, teachDiskGB, readBrainSource, readLessonSource, planTeach, saveTeachPlan, startTeach, useTaught, trainerState, startTrainerInstall, removeTrainer, uvUrl, FIT_ROWS, TRAINER } from '../src/lab-teach.js';
+import { teachFit, SQUEEZE_TYPES, lessonsPerHour, teachDiskGB, readBrainSource, readLessonSource, planTeach, saveTeachPlan, startTeach, useTaught, trainerState, startTrainerInstall, removeTrainer, blockedWords, uvUrl, FIT_ROWS, TRAINER } from '../src/lab-teach.js';
 import { TEACH_PY, FETCH_PY } from '../src/lab-teach-script.js';
 import { pagesRoute } from '../src/lab-pages.js';
 import { LlamaCpp } from '../src/llamacpp.js';
@@ -160,6 +160,7 @@ check('16 GB teaches a 9B dense brain or a 15B mixture of experts here, and says
 check('a 6 GB laptop teaches up to about 2B; bigger goes rented', teachFit({ os_: 'win', arch: 'x64', cardGB: 6, paramsB: 1.7 }).here && !teachFit({ os_: 'win', arch: 'x64', cardGB: 6, paramsB: 4 }).here);
 check('phones and the Pi always go rented, with a reason', /Phones and the Raspberry Pi/.test(teachFit({ cardGB: 8, paramsB: 1, os_: 'android' }).why) && !teachFit({ cardGB: 8, paramsB: 1, os_: 'linux', arch: 'arm64' }).here);
 check('no NVIDIA card goes rented; a Mac teaches in 16-bit, so about half', !teachFit({ os_: 'win', arch: 'x64', cardGB: 16, paramsB: 2, nvidia: false }).here && teachFit({ os_: 'win', arch: 'x64', cardGB: 16, paramsB: 3, unified: true, nvidia: false }).here && !teachFit({ os_: 'win', arch: 'x64', cardGB: 16, paramsB: 5, unified: true, nvidia: false }).here);
+check('the ways that change the brain\'s own weights teach at 16-bit, so about half the size, and say so', teachFit({ os_: 'win', arch: 'x64', cardGB: 16, paramsB: 4, sixteen: true }).here && !teachFit({ os_: 'win', arch: 'x64', cardGB: 16, paramsB: 8, sixteen: true }).here && !teachFit({ os_: 'win', arch: 'x64', cardGB: 16, paramsB: 8, moe: true, sixteen: true }).here && /16-bit/.test(teachFit({ os_: 'win', arch: 'x64', cardGB: 16, paramsB: 4, sixteen: true }).why));
 check('an unknown size asks to look it up first', /look it up first/.test(teachFit({ os_: 'win', arch: 'x64', cardGB: 16, paramsB: 0 }).why));
 check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bigger', lessonsPerHour(4) === 2000 && lessonsPerHour(8) === 1000 && teachDiskGB(4).work > teachDiskGB(4, { download: false }).work);
 
@@ -197,6 +198,10 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
   check('rented teaching is saved as a Forge plan for the form: the brain, adapter only, no odds pass, the lesson folder, caps 0', plan.teacher === 'Qwen/Qwen3.6-35B-A3B' && plan.train_teacher.experts === 'lora' && plan.train_teacher.hours >= 1 && plan.odds === false && plan.extra_lessons[0] === setDir && plan.hours_max === 0 && plan.dollars_max === 0 && plan.rungs.length === 0 && /Nothing is rented yet/.test(saved.line));
   check('the page never sees the lesson file\'s path', !JSON.stringify(saved.plan).includes(dataDir));
   check('the Forge only teaches Qwen3.5/3.6 mixtures of experts, so others are refused for rented', /only teaches Qwen3.5 and 3.6/.test((await planTeach(lab, { name: 'X', where: 'rented', brain: { kind: 'hf', repo: 'Qwen/Qwen3-4B' }, lessons: { kind: 'set', id: 'my-set' } })).problems.join(' ')));
+  const sq = await planTeach(lab, { name: 'Sq', way: 'squeeze', squeeze: 'Q3_K_M', brain: { kind: 'hf', repo: 'Qwen/Qwen3-4B' }, lessons: { kind: 'set', id: 'my-set' } });
+  check('squeeze-aware: the file type is kept, it works on the whole brain at 16-bit, needs more disk, and says what it does', sq.way === 'squeeze' && sq.squeeze === 'Q3_K_M' && sq.direct && sq.where === 'here' && sq.disk.work > p.disk.work && /Squeeze-aware/.test(sq.notes.join(' ')) && !sq.problems.some((x) => /export-lora/.test(x)));
+  check('an unknown file type falls back to Q4_K_M; the list is Q5_K_M, Q4_K_M, Q3_K_M', (await planTeach(lab, { name: 'Sq', way: 'squeeze', squeeze: 'IQ1_S', brain: { kind: 'hf', repo: 'Qwen/Qwen3-4B' }, lessons: { kind: 'set', id: 'my-set' } })).squeeze === 'Q4_K_M' && SQUEEZE_TYPES.join() === 'Q5_K_M,Q4_K_M,Q3_K_M');
+  check('squeeze-aware never goes to the Forge: rented says it runs here for now', /runs here for now/.test((await planTeach(lab, { name: 'Sq', way: 'squeeze', where: 'rented', brain: { kind: 'hf', repo: 'Qwen/Qwen3.6-35B-A3B' }, lessons: { kind: 'set', id: 'my-set' } })).problems.join(' ')));
   const ph = await saveTeachPlan(lab, { name: 'From HF', brain: { kind: 'hf', repo: 'Qwen/Qwen3.6-35B-A3B' }, lessons: { kind: 'hf', repo: 'o/n', file: 'train.jsonl' } });
   check('Hugging Face lessons go in the plan by name for the Forge\'s importer, private when there\'s no licence', ph.plan.hf_lessons[0].repo === 'o/n' && ph.plan.hf_lessons[0].private_only === true && !ph.plan.extra_lessons);
 }
@@ -211,13 +216,15 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
       if (args.includes('-xf') || args.includes('-xzf')) { const to = args[args.indexOf('-C') + 1]; fs.mkdirSync(to, { recursive: true }); fs.writeFileSync(path.join(to, exe.endsWith('tar.exe') || exe === 'tar' ? (args.includes('-xzf') ? 'convert_hf_to_gguf.py' : exe.endsWith('.exe') ? 'uv.exe' : 'uv') : 'x'), ''); }
       if (args[0] === 'venv') { const py = process.platform === 'win32' ? path.join(args[3], 'Scripts', 'python.exe') : path.join(args[3], 'bin', 'python'); fs.mkdirSync(path.dirname(py), { recursive: true }); fs.writeFileSync(py, ''); }
       const out = args[args.indexOf('-o') + 1] || args[args.indexOf('--outfile') + 1];
-      if (args.includes('Q4_K_M')) fs.writeFileSync(args[1], Buffer.alloc(1000));
+      if (path.basename(exe).startsWith('llama-quantize')) fs.writeFileSync(args[1], Buffer.alloc(1000));
       else if (out && (args.includes('-o') || args.includes('--outfile'))) fs.writeFileSync(out, '');
       if (args.includes('--lessons')) { for (let i = 1; i <= 3; i++) o.onLine(`progress ${i} 3`); o.onLine('loss 1.2345'); o.onLine('skipped 2'); o.onLine('done 38'); }
+      if (args.includes('--squeeze')) o.onLine('drift 0.012000 0.007000');
       return '';
     },
     download: async (url, out) => { fs.mkdirSync(path.dirname(out), { recursive: true }); fs.writeFileSync(out, ''); return 1; },
-    quiz: async (l, gguf) => ({ score: /before/.test(gguf) || gguf === bigFile ? 50 : 62, tps: 30 })
+    quiz: async (l, gguf) => ({ score: /before/.test(gguf) || gguf === bigFile ? 50 : 62, tps: 30 }),
+    ownPython: async () => { const d = path.join(tmp, 'own-python'); fs.mkdirSync(path.join(d, 'Lib'), { recursive: true }); fs.writeFileSync(path.join(d, 'python.exe'), 'signed'); return path.join(d, 'python.exe'); }
   });
   lab.hfFetch = async () => ({ ok: true, status: 200, json: async () => ({ cardData: { license: 'apache-2.0' }, safetensors: { total: 4.0e9 }, siblings: [{ rfilename: 'model.safetensors' }] }) });
   lab.gpuInfo = async () => ({ name: 'NVIDIA GeForce RTX 5070 Ti', vramGB: 16 });
@@ -226,7 +233,10 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
   check('the Trainer pack isn\'t here until it\'s fetched', !trainerState(cfg).ok && trainerState(cfg).dir === tr && uvUrl('win', 'x64').endsWith(`/${TRAINER.uv}/uv-x86_64-pc-windows-msvc.zip`));
   await startTrainerInstall(lab); await wait(lab);
   const irun = lab.runs[lab.runs.length - 1];
-  check('getting the Trainer pack is its own Lab job: uv, Python, the libraries (pinned), the converters', irun.state === 'done' && trainerState(cfg).ok && calls.some(([, a]) => a[0] === 'pip' && a.includes('torch==2.14.1')) && calls.some(([, a]) => a[0] === 'venv' && a.includes(TRAINER.python)), irun.error || '');
+  check('getting the Trainer pack is its own Lab job: uv, Python, the libraries (pinned), the converters', irun.state === 'done' && trainerState(cfg).ok && calls.some(([, a]) => a[0] === 'pip' && a.includes('torch==2.14.1')) && !calls.some(([, a]) => a[0] === 'venv'), irun.error || '');
+  const signedPy = path.join(tr, 'python-signed', 'python.exe');
+  check('on Windows the trainer runs from a private copy of Bob\'s own signed Python, not a venv (Smart App Control blocks the venv launcher)', trainerState(cfg).python === signedPy && fs.readFileSync(signedPy, 'utf8') === 'signed' && calls.some(([, a]) => a[0] === 'pip' && a[a.indexOf('--python') + 1] === signedPy));
+  check('a Smart App Control block is said in plain words, with no security change', /Smart App Control blocked/.test(blockedWords(new Error('An Application Control policy has blocked this file. (os error 4551)')).message) && /doesn't change Windows security/.test(blockedWords(new Error('os error 4551')).message) && blockedWords(new Error('other')).message === 'other');
   calls.length = 0;
   const res = await startTeach(lab, { name: 'Taught Big', brain: { kind: 'lab', id: 'big' }, lessons: { kind: 'set', id: 'my-set' } });
   await wait(lab);
@@ -238,9 +248,22 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
   useTaught(lab, run.id);
   const made = JSON.parse(fs.readFileSync(path.join(dataDir, 'lab', 'made.json'), 'utf8')).find((m) => m.id === 'lab-teach-taught-big');
   check('Use in Bob marks it made here, lists its lessons, and doesn\'t make it the default', made?.madeHere === true && made.lessons.join() === 'My set' && /Taught here from Big/.test(made.what) && !cfg.models);
+  calls.length = 0;
+  lab.stepFns.perplexity = async (st) => (/full-Q8_0/.test(st.gguf) ? 8 : /plain-/.test(st.gguf) ? 9 : 8.4);
+  await startTeach(lab, { name: 'Squeezed', way: 'squeeze', squeeze: 'Q4_K_M', brain: { kind: 'hf', repo: 'Qwen/Qwen3-4B' }, lessons: { kind: 'set', id: 'my-set' } });
+  await wait(lab);
+  const srun = lab.runs[lab.runs.length - 1], teachArgs = calls.find(([, a]) => String(a[0]).endsWith('teach.py'))?.[1] || [];
+  check('squeeze-aware runs as a Lab job, teaching the brain itself with the rounding of the file it aims at', srun.state === 'done' && srun.steps.every((x) => x.state === 'done') && teachArgs.includes('--direct') && teachArgs[teachArgs.indexOf('--squeeze') + 1] === 'Q4_K_M' && teachArgs.includes('--lr'), srun.error || '');
+  check('it makes the full-size Q8_0, the plain and the squeeze-aware file, and no adapter', calls.some(([, a]) => a.includes('Q8_0')) && calls.filter(([e, a]) => e.startsWith('llama-quantize') && a.includes('Q4_K_M')).length === 2 && !calls.some(([e]) => e.startsWith('llama-export-lora')) && /squeezed-Q4_K_M\.gguf$/.test(srun.files.gguf));
+  check('the result puts plain and squeeze-aware side by side with the full-size brain', srun.report.squeeze.type === 'Q4_K_M' && srun.report.squeeze.surprise.full === 8 && srun.report.squeeze.surprise.plain === 9 && srun.report.squeeze.surprise.aware === 8.4 && srun.report.squeeze.drift.plain === 0.012 && srun.report.squeeze.drift.aware === 0.007 && srun.report.from.score === 62 && srun.report.made.score === 62);
+  check('the big in-between files and the taught folder are cleaned up', !fs.existsSync(path.join(cfg.bobModelsDir, 'lab', 'teach', 'squeezed', 'taught')) && !fs.existsSync(path.join(cfg.bobModelsDir, 'lab', 'teach', 'squeezed', 'base-f16.gguf')) && !fs.existsSync(path.join(cfg.bobModelsDir, 'lab', 'teach', 'squeezed', 'taught-f16.gguf')));
   check('a run that doesn\'t fit here won\'t start here', await startTeach(lab, { name: 'Huge', brain: { kind: 'hf', repo: 'Qwen/Qwen3-4B' }, lessons: { kind: 'set', id: 'my-set' }, where: 'rented' }).then(() => false, (e) => /goes rented/.test(e.message)));
   removeTrainer(lab);
   check('the Trainer pack can be removed, and only from its own folder', !fs.existsSync(tr) && !trainerState(cfg).ok);
+  lab.platform = () => ({ os: 'linux', arch: 'x64' }); calls.length = 0;
+  await startTrainerInstall(lab); await wait(lab);
+  check('on Linux and Mac it makes its own venv with uv\'s Python, as before', lab.runs[lab.runs.length - 1].state === 'done' && calls.some(([, a]) => a[0] === 'venv' && a.includes(TRAINER.python)) && trainerState(cfg, { os: 'linux', arch: 'x64' }).python === path.join(tr, 'venv', 'bin', 'python'), lab.runs[lab.runs.length - 1].error || '');
+  removeTrainer(lab);
 }
 
 // ---- the route ----

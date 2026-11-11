@@ -1,6 +1,7 @@
 // 🧪 Playground: Diffusion brains (src/lab-diffusion.js). Pick a diffusion brain, ask, and watch the whole answer
 // fill in at once over its steps, instead of one word after another.
 import { esc } from './rich.js';
+import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 
 export function createDiffusionPage({ api }) {
   let v = null, from = '', prompt = 'Write a short poem about a cat who learns to code.', steps = 64, length = 256, msg = '', askUnload = null, loading = false;
@@ -23,7 +24,7 @@ export function createDiffusionPage({ api }) {
   function html() {
     if (!v) return `<p class="muted" role="status">${loading ? 'Looking for diffusion brains…' : ''}</p>${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}`;
     const running = v.now?.state === 'running';
-    return `<h3>Diffusion brains: the whole answer at once</h3>
+    return `<h3>${nameNow('Diffusion brains: the whole answer at once')}</h3>
       <p class="muted">Most brains write one word after another. A diffusion brain (Dream, LLaDA, RND1) starts from a block of blanks and fills them all in over a number of steps, surest words first, a bit like a picture coming out of noise. More steps: slower, and usually better. Bob's chat can't run these, so they live here.</p>
       ${v.tool ? '' : `<p class="muted"><strong>${esc(v.toolWhy)}</strong></p>`}
       <fieldset><legend>Which brain?</legend>${v.brains.length ? v.brains.map((b) => `<label class="lab-opt"><input type="radio" name="dffrom" value="${esc(b.id)}" ${from === b.id ? 'checked' : ''}> <span><strong>${esc(b.name)}</strong><br><span class="muted">${b.sizeGB ?? '?'} GB, ${esc(b.arch)}</span></span></label>`).join('') : '<p>No diffusion brains here yet. Get one as a GGUF (search Hugging Face for Dream or LLaDA GGUF), then add it with Add your own brain in Get models, or Bring in a full-size brain in the Forge.</p>'}</fieldset>

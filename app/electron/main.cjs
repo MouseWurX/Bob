@@ -12,6 +12,7 @@ const { app, BrowserWindow, shell, Menu, dialog, clipboard, screen, Tray, native
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
+const { readHomeFrom, badHomeLine, stripBom } = require('./home-json.cjs');
 
 // Before anything else: the name decides Bob's user-data folder (and so the single-instance lock), and the
 // id matches the Start menu shortcut, so the taskbar shows Bob's icon rather than Electron's.
@@ -48,11 +49,10 @@ if (MAC) {
 // Linux: the AppImage file's own folder (APPIMAGE), not the read-only place it is mounted while it runs.
 const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || (process.env.APPIMAGE && path.dirname(process.env.APPIMAGE)) || path.dirname(process.execPath);
 
+const homeFiles = () => [path.join(exeDir, 'home.json'), path.join(app.getPath('appData'), 'Bob', 'home.json')];
+// 1.5.201 (electron/home-json.cjs): a PowerShell byte-order mark is dropped; an unreadable home.json is reported, never skipped.
 function readHome() {
-  for (const f of [path.join(exeDir, 'home.json'), path.join(app.getPath('appData'), 'Bob', 'home.json')]) {
-    try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch {}
-  }
-  return {};
+  return readHomeFrom(homeFiles()).home;
 }
 
 // Bob.exe sitting somewhere inside an existing Bob folder (one with an "inn"), like Bob home\Bob app or
@@ -155,7 +155,9 @@ async function finishMove(home, file) {
 }
 
 async function setUpHome() {
-  let home = readHome();
+  const read = readHomeFrom(homeFiles());
+  if (read.bad) { dialog.showErrorBox('Bob', badHomeLine(read)); return null; } // the caller quits
+  let home = read.home;
   if (!home.agentDir) home = { ...findNearbyHome(), ...home };
   const { defaultHome } = await import(pathToFileURL(path.join(root, 'src', 'platform.js')).href);
   const { suggestedHome, homeProblem, synced, cloudWarning } = await import(pathToFileURL(path.join(root, 'src', 'home.js')).href);
@@ -186,7 +188,7 @@ async function setUpHome() {
   process.env.BOB_APP_DIR = exeDir;
   process.env.BOB_CONFIG = config;
   let port = 7777;
-  try { port = Number(JSON.parse(fs.readFileSync(config, 'utf8')).port) || 7777; } catch {}
+  try { port = Number(JSON.parse(stripBom(fs.readFileSync(config, 'utf8'))).port) || 7777; } catch {}
   return { agentDir, config, port };
 }
 
@@ -392,6 +394,7 @@ function tuckAway(e) {
   trayHint();
   return true;
 }
+let watchWin = null; // the Lab's FNRI viewer window (public/watch.html), one at a time
 let mindWin = null; // 1.5.53: "Bob's thinking", opened from the chat page; nothing runs for it while it's closed
 
 // Small, in the bottom-right corner of the screen Bob is on, so it sits beside a game or an editor.
@@ -422,6 +425,7 @@ async function start() {
   if (handOverToNewBob()) { app.quit(); return; }
   let home;
   try { home = await setUpHome(); } catch (e) { dialog.showErrorBox('Bob', `Bob couldn't set up his folder: ${e.message}`); app.quit(); return; }
+  if (!home) { app.quit(); return; } // 1.5.201: an unreadable home.json, already said
   // An older Bob (from before Bob.exe) may already be running on the port: use it rather than fight it.
   if (!(await up(home.port))) {
     // Bob's own browser window for the Browser hand (src/hands-browser.js reads globalThis.bobBrowser).
@@ -444,10 +448,24 @@ async function start() {
       if (mindWin) { mindWin.show(); mindWin.focus(); return { action: 'deny' }; }
       return { action: 'allow', overrideBrowserWindowOptions: mindOptions(win) };
     }
+    // The Lab's FNRI viewer: its own ordinary window (not on top), so it can sit beside the Lab or a chat.
+    if (url === base + '/watch.html' || url.startsWith(base + '/watch.html?')) {
+      if (watchWin) { watchWin.loadURL(url); watchWin.show(); watchWin.focus(); return { action: 'deny' }; }
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 820, minWidth: 360, minHeight: 480, title: 'FNRI', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
+    }
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
-  win.webContents.on('did-create-window', (child) => {
+  win.webContents.on('did-create-window', (child, details) => {
+    if (String(details?.url || '').startsWith(base + '/watch.html')) {
+      watchWin = child;
+      child.setMenu(null);
+      child.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+      child.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(base + '/watch.html')) e.preventDefault(); });
+      contextMenu(child, base);
+      child.on('closed', () => { watchWin = null; });
+      return;
+    }
     mindWin = child;
     child.setAlwaysOnTop(true, 'floating'); // above other windows, but not above Windows' own menus
     child.setMenu(null);

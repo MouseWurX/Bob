@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { copyName, readRoll, FOUNDERS, POOL, BY_JOB, RETIRED } from '../src/clan.js';
+import { copyName, readRoll, FOUNDERS, POOL, BY_JOB, RETIRED, MODEL_NAMES } from '../src/clan.js';
 import { systemPrompt } from '../src/persona.js';
 
 let pass = 0, fail = 0;
@@ -24,10 +24,18 @@ const oldRoll = readRoll({ dataDir: oldDir }).copies;
 check('an old roll with Bub as reviewer rolls a fresh name and keeps Bub retired', moved === POOL[0] && oldRoll.some((c) => c.name === 'Bub' && c.key === 'reviewer:retired') && copyName({ dataDir: oldDir }, 'reviewer') === moved, moved);
 check('Bub is never handed out again', RETIRED.reviewer.includes('Bub') && Array.from({ length: 40 }, (_, i) => copyName({ dataDir: oldDir }, `cloud:x${i}`)).every((n) => n !== 'Bub'));
 fs.rmSync(oldDir, { recursive: true, force: true });
+// The owner's rule (1.5.184): a job never wears a model's name. A roll whose reviewer is Bobert moves on, and no model name is ever handed out.
+check('no model name is in any name list', [...Object.values(FOUNDERS).map((f) => f.name), ...POOL, ...Object.values(BY_JOB).flat()].every((n) => !MODEL_NAMES.map((m) => m.toLowerCase()).includes(n.toLowerCase())));
+const bobDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-clan-model-'));
+fs.writeFileSync(path.join(bobDir, 'clan.json'), JSON.stringify({ copies: [{ key: 'reviewer', name: 'Bobert' }] }));
+const rename = copyName({ dataDir: bobDir }, 'reviewer');
+check('a reviewer named after a model moves on to a fresh name, and keeps it', rename === POOL[0] && rename !== 'Bobert' && copyName({ dataDir: bobDir }, 'reviewer') === rename && readRoll({ dataDir: bobDir }).copies.some((c) => c.name === 'Bobert' && c.key === 'reviewer:retired'), rename);
+check('model names are never handed out', Array.from({ length: 120 }, (_, i) => copyName({ dataDir: bobDir }, `cloud:m${i}`)).every((n) => !MODEL_NAMES.includes(n)));
+fs.rmSync(bobDir, { recursive: true, force: true });
 const extra = Array.from({ length: POOL.length + 5 }, (_, i) => copyName(cfg, `cloud:test${i}`));
 const all = readRoll(cfg).copies.map((c) => c.name.toLowerCase());
 check('no two copies ever share a name, even past the name list', new Set(all).size === all.length, `${all.length} copies`);
-check('new copies get Bob puns first', extra[0] === 'Bobby Tables' && extra[1] === 'Bob++');
+check('new copies get Bob puns first', extra[0] === POOL[1] && extra[1] === POOL[2]);
 check('after the Bob puns, cloud copies get sci-fi names suited to the job', extra[POOL.length - 1] === 'Zaphod', extra[POOL.length - 1]);
 check('every name in the list plays on Bob', [...Object.values(FOUNDERS).map((f) => f.name), ...POOL].every((n) => /bob|bub|robert/i.test(n)));
 const sp = systemPrompt({ hat: 'tinker', now: 'now', copy: 'Bobcat' });

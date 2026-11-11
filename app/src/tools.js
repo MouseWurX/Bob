@@ -19,6 +19,8 @@ import { ownEntries } from './own-models.js';
 import { ensureTool } from './self-work-tools.js';
 import { catalogFileFor } from './llamacpp.js';
 import { ctxLabel } from './model-ctx.js';
+import { isDoc, docText, OLD_EXT, MAX_DOC_BYTES } from './doc-text.js';
+import { docToolsOn } from './my-docs.js';
 
 const MAX_READ = 20000;
 // Runnable file types Bob won't write outside a project, on every platform (Windows, Mac and Linux kinds together).
@@ -218,7 +220,7 @@ export function buildTools(cfg) {
   };
 
   t.list_folder = {
-    schema: fn('list_folder', "List the files in a folder on {{USER}}'s PC.", { path: str('Full folder path.') }),
+    schema: fn('list_folder', "List the files in a folder on {{USER}}'s PC. {{USER}}'s home folder here is {{HOME}}; never guess another.", { path: str('Full folder path.') }),
     async run({ path: p }) {
       const dir = resolveUserPath(p);
       if (!insideAny(cfg.readRoots, dir)) throw new Error(`I'm not allowed to look in ${dir}. Allowed: ${cfg.readRoots.join('; ')}`);
@@ -245,9 +247,20 @@ export function buildTools(cfg) {
       if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to read ${file}.`);
       if (isSensitive(cfg, file)) throw new Error(SECRET_MSG);
       const size = fs.statSync(file).size;
+      // "Read and search my documents" (my-docs.js): Word, Excel, PowerPoint, OpenDocument, e-books, RTF and PDF as text.
+      const ext = path.extname(file).slice(1).toLowerCase();
+      if (docToolsOn(cfg) && isDoc(file)) {
+        if (size > MAX_DOC_BYTES) throw new Error(`That file is ${Math.round(size / 1048576)} MB. I read documents up to ${MAX_DOC_BYTES / 1048576} MB.`);
+        const words = docText(file);
+        return pieceOf(words || '(That document has no words in it.)', { part, find }, MAX_READ, 'read_file again with the same path and');
+      }
       if (size > MAX_READ_BYTES) throw new Error(`That file is ${Math.round(size / 1048576)} MB, too big to read as text. I read files up to 20 MB.`);
       const buf = fs.readFileSync(file);
-      if (buf.subarray(0, 4096).includes(0)) return '(That looks like a binary file, so I can\'t read it as text.)';
+      if (buf.subarray(0, 4096).includes(0) || (isDoc(file) && ext !== 'rtf') || OLD_EXT.includes(ext)) {
+        if (isDoc(file) && !docToolsOn(cfg)) return `(That's a document, not plain text. To read it, ${cfg.userName || 'the user'} can turn on "Read and search my documents" in Settings, How Bob works, or the Office documents Hand; say so in one line.)`;
+        if (OLD_EXT.includes(ext)) return '(That\'s an old Office file, which needs the Office documents Hand (office_read) to read.)';
+        return '(That looks like a binary file, so I can\'t read it as text.)';
+      }
       const text = buf.toString('utf8');
       return pieceOf(text, { part, find }, MAX_READ, 'read_file again with the same path and');
     },
@@ -298,7 +311,7 @@ export function buildTools(cfg) {
 
   // Bob knows his own settings and features (self-help.js): the same Help text as the window, plus what's set now.
   t.bob_help = {
-    schema: fn('bob_help', "Look up how you (Bob) work: your settings, switches, pages and features, where each one is, and what is set right now. Use it whenever {{USER}} asks about setting you up, changing a setting, or what a feature does, and give the exact place to click.", {
+    schema: fn('bob_help', "Look up how you (Bob) work: your settings, switches, pages and features, where each one is, and what is set right now. Use it whenever {{USER}} asks about setting you up, changing a setting, or what a feature does, and give the exact place to press. Your own features and words (Bob-Net, the Lab, FNRI, the Forge, the moot, sessions, Hands) are explained here: look here first, before searching files or the web.", {
       topic: str('What to look up, in plain words, for example "web search switch" or "gaming session".')
     }),
     async run({ topic }) { return bobHelp(cfg, String(topic || '')); },

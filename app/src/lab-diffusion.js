@@ -99,7 +99,7 @@ export function diffusion(lab) { if (!lab.diffusion) lab.diffusion = new Diffusi
 // Routes. Looking is fine from the phone; starting and stopping only on this replicant matrix (it takes the card).
 export async function diffusionRoute({ req, res, p, isLocal, lab, body, send }) {
   if (!ROUTES.includes(p)) return false;
-  if (!lab.cfg || !labOn(lab.cfg)) { send(res, 403, { error: 'The Computer Science Lab is off.' }); return true; } // 1.5.182 the Lab is on unless switched off, so Diffusion follows labOn like every other page
+  if (!lab.cfg || !labOn(lab.cfg)) { send(res, 403, { error: 'The Computer Science Lab is off.' }); return true; } // 1.5.181 the Lab is on unless switched off, so Diffusion follows labOn like every other page
   const d = diffusion(lab);
   if (req.method === 'GET' && p === '/api/lab/diffusion') { send(res, 200, d.view()); return true; }
   if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }
