@@ -1624,7 +1624,7 @@ export function createCellar({ popOut = null } = {}) {
         await load();
       }
       else if ('skip' in b.dataset) { await api('/api/settings', { setupDone: true, wantsAsked: true }); settings.wantsAsked = true; mode = 'shop'; dlg.close(); }
-      else if (b.dataset.wantjump) { mode = 'shop'; setTab('settings'); jumpTo = b.dataset.wantjump; draw(); } // wants.js: the bigger switches
+      else if (b.dataset.wantjump) { if (popOut && popOut(b.dataset.wantjump)) return; mode = 'shop'; setTab('settings'); jumpTo = b.dataset.wantjump; draw(); } // wants.js: the bigger switches (in the Settings window when there is one, so the Welcome stays put)
     } catch (err) { alertIn(b, err.message); }
   });
 
