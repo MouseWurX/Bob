@@ -177,6 +177,8 @@ body.still .mic.on { animation: none; }
 .packlist input { accent-color: var(--accent); }
 .wantlist .switch input { flex: none; } /* wants.js: the tick boxes keep their size when the words wrap */
 .wants .row button { margin: 4px 6px 4px 0; }
+.wants h4 { margin: 18px 0 4px; } /* one heading per Settings card */
+.wants .want-soon { margin: 6px 0 0; font-size: .92em; }
 body.still .meter i { transition: none; }
 
 .roles { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
