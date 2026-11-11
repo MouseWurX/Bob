@@ -49,6 +49,8 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
+**On Windows 11?** Bob isn't code signed yet, so Smart App Control may stop him from running. [Read this first](#windows-11-smart-app-control).
+
 ## What's new
 
 | | |
@@ -205,7 +207,16 @@ Pictures and big jobs wait in Tasks while you play, and **Let games go first** h
 4. **Start Bob:** double-click **Bob.exe** in the `Bob` folder.
 5. **Pick his brains:** Bob suggests engines and models for your card. Click **Get Bob ready**. Nothing big downloads until you press it.
 
-`Bob.exe` is Electron's official program, only renamed, so Smart App Control doesn't block it. To update: Settings, **Check for updates**, then **Update Bob**.
+`Bob.exe` is Electron's official program, only renamed, which Windows usually trusts. To update: Settings, **Check for updates**, then **Update Bob**.
+
+#### Windows 11: Smart App Control
+
+> [!WARNING]
+> Bob isn't code signed yet. If your PC has Smart App Control on, Windows may stop Bob, or one of his engines, from running. It has no **Run anyway**.
+> - **If it blocks a new engine,** Bob goes back to the one before by himself.
+> - **If it blocks Bob,** the fix until Bob is signed is to turn it off: press Start, type *Smart App Control*, open it and pick **Off**.
+>
+> Think about it first. Smart App Control protects your PC from unknown programs, and on some versions of Windows 11 it can't be turned back on without resetting Windows. Bob never changes it himself.
 
 ### Other computers
 
@@ -259,7 +270,7 @@ Contributions are welcome: see [CONTRIBUTING.md](.github/CONTRIBUTING.md). Secur
 
 ## Code signing policy
 
-**Bob's releases are not code-signed yet.** We applied to the [SignPath Foundation](https://signpath.org) (free signing for open-source projects) in November 2026; they asked us to come back once the project has more public visibility. Until then, Windows shows "Windows protected your PC" the first time: click **More info**, then **Run anyway**, and use the `.sha256` file to check the download. If Bob is useful to you, a star on this page genuinely helps.
+**Bob's releases are not code-signed yet.** We applied to the [SignPath Foundation](https://signpath.org) (free signing for open-source projects) in November 2026; they asked us to come back once the project has more public visibility. Until then, Windows shows "Windows protected your PC" the first time: click **More info**, then **Run anyway**, and use the `.sha256` file to check the download. Windows 11's Smart App Control is stricter than that prompt and has no Run anyway: see [the note under Getting Bob](#windows-11-smart-app-control). If Bob is useful to you, a star on this page genuinely helps.
 
 Once signing is set up:
 
