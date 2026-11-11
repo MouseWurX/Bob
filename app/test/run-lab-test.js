@@ -65,6 +65,9 @@ const g = readGguf(brainFile);
 const f = brainFacts(g);
 check('reads a made-up mixture-of-experts brain', f.arch === 'testmoe' && f.experts === 8 && f.used === 2 && f.layers === 2 && f.fullSize && f.expertLayers.join() === '0,1', JSON.stringify(f));
 { const all = g.tensors.reduce((a, t) => a + t.dims.reduce((x, d) => x * Number(d), 1), 0); check('it counts every weight in the file, for the leaderboard classes', f.params === all && all > 0 && typeof f.paramsB === 'number' && typeof f.activeB === 'number'); }
+check('a brain with no built-in guesser shows all its layers', f.runLayers === 2);
+{ const meta = { ...g.meta, 'testmoe.nextn_predict_layers': 1 }; const mf = brainFacts({ ...g, meta }); check('a built-in guesser layer is left out of the layer count people see, not the file count', mf.layers === 2 && mf.runLayers === 1); }
+check('Peek inside and the scan show the layers that run', /b\.facts\.runLayers \|\| b\.facts\.layers/.test(fs.readFileSync(new URL('../public/lab-peek.js', import.meta.url), 'utf8')) && /b\.runLayers \|\| b\.layers/.test(fs.readFileSync(new URL('../public/lab-watch.js', import.meta.url), 'utf8')));
 const keep = [[1, 3, 5, 7], [0, 2, 4, 6]];
 check('a good keep list passes', checkKeep(g, keep) === '');
 check('a keep list smaller than the picks per word is refused', /at least 2/.test(checkKeep(g, [[1], [2]])));
@@ -528,7 +531,7 @@ check('every code challenge has a function name and cases', CODE.every((c) => /^
   for (const p of ['/api/lab/ladder', '/api/lab/ladder/ask', '/api/lab/ladder/delete']) await labRoute({ req: { method: 'POST' }, res: {}, p, isLocal: false, lab: plLab, body: async () => ({ from: 'test-moe', id: 'x' }), send: (res, code, j) => sent3.push([code, j]) });
   check('the ladder only starts, asks and deletes from this replicant matrix itself', sent3.length === 3 && sent3.every(([code]) => code === 403));
   const pg = read('public/lab-playground.js');
-  check('the Playground tab uses the reviewed words, a table as well as bars, and Save', ['How small can a brain get?', 'Make the ladder', 'Same question, every size', 'Ask every size', 'Delete all', 'What you just saw', 'Compared with Q8', 'Delete the six sizes for good? The table stays.', 'Delete them', 'Keep them', 'Bob takes one small brain', 'needs the graphics card'].every((w) => pg.includes(w)) && !/I take one|I show how much|ordinary writing/.test(pg) && /<th scope="col">/.test(pg) && /aria-hidden="true"/.test(pg) && /saveHtml\(/.test(pg));
+  check('the Playground tab uses the reviewed words, a table as well as bars, and Save', ['How small can a brain get?', 'Make the ladder', 'Same question, every size', 'Ask every size', 'Delete all', 'What you just saw', 'Compared with Q8', 'Delete the six sizes for good? The table stays.', 'Delete them', 'Keep them', 'needs the graphics card', 'Makes one small brain'].every((w) => pg.includes(w)) && !/I take one|I show how much|ordinary writing/.test(pg) && /<th scope="col">/.test(pg) && /aria-hidden="true"/.test(pg) && /saveHtml\(/.test(pg));
   check('Help has a Playground page in Bob\'s voice', /id: 'lab-playground'/.test(read('public/help-content.js')) && /how small can a brain get before it gets worse/.test(read('public/help-content.js')));
   check('the Playground never sends anything to a rental', !/runpod|\brent/i.test(pg) && !/runpod|\brent/i.test(read('src/lab-playground.js')));
 }
