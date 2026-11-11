@@ -34,7 +34,7 @@ export MAX_JOBS="${MAX_JOBS:-4}"
 export BUILD_TARGET=cuda
 export DISTUTILS_USE_SDK=1
 
-# fetch <name>: clone the pinned commit (and pinned submodules) into $work/<name>
+# fetch <name>: clone the pinned commit (and pinned submodules, outer ones listed before the ones inside them) into $work/<name>
 fetch() {
   local name="$1" repo commit dir
   repo="$(j "code.$name.repo")"; commit="$(j "code.$name.commit")"; dir="$work/src-$name"
