@@ -3,6 +3,7 @@
 // five steps; the estimate shows what a job takes here and what the rented part would cost, before anything runs;
 // the usage map counts which experts a brain uses for the things you test it on, and which it never touches.
 import { esc } from './rich.js';
+import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 import { DEVICES } from './lab-recipes-list.js';
 
 export function createRecipes({ api, recipe, view, replan, draw }) {
@@ -61,7 +62,7 @@ export function createRecipes({ api, recipe, view, replan, draw }) {
   const ids = (l) => l.map((x) => (x.layer !== undefined ? `layer ${x.layer}: ${x.experts.join(', ')}` : '')).join('; ');
   function usageHtml() {
     const b = brain();
-    const head = '<h3 id="lab-usage-h">Usage map: which experts does it use?</h3>';
+    const head = `<h3 id="lab-usage-h">${nameNow('Usage map: which experts does it use?')}</h3>`;
     if (!b) return `<section class="lab-usage" id="lab-usage" aria-labelledby="lab-usage-h">${head}<p class="muted">Pick a brain in step 1, then tick what to test it on.</p></section>`;
     if (!b.facts?.experts) return `<section class="lab-usage" id="lab-usage" aria-labelledby="lab-usage-h">${head}<p class="muted">${esc(b.name)} isn't a mixture-of-experts brain, so there are no experts to count.</p></section>`;
     const L = usage?.have ? usage.lists : null;

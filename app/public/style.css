@@ -1431,6 +1431,7 @@ details.fold > summary .muted { font-weight: 400; font-size: 13px; }
 .lab-opt input[type=radio], .lab-opt input[type=checkbox] { margin-top: 3px; min-width: 18px; min-height: 18px; }
 .lab-opt.dim { opacity: .65; }
 .lab-later { font-size: 11px; font-weight: 600; border: 1px dashed var(--line); border-radius: 999px; padding: 0 6px; margin-left: 4px; }
+.lab-plain { font-weight: 400; color: var(--muted); } /* 1.5.199 Professional mode: the plain words after a proper name */
 .lab-sub { margin-left: 26px; }
 .lab-steps ol { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 10px 0; }
 .lab-step { border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; min-height: 32px; background: none; color: inherit; }
