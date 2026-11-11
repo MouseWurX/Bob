@@ -52,7 +52,7 @@ import { expectFrom, verifyOutput, afterTool, afterTurn } from './verify.js';
 import { brainMode, chatBrain, holdsChatBrain, bigSession, isBobs, sameModel, sleepAfterText, bigGraceMs, msText } from './brain-mode.js';
 import { WEB_TOOLS, WEB_OFF, webOn, webPrompt, linkPrompt, findLinks, refersToLink, linkTurn } from './web.js';
 import { editOwnOn, editOwnTool } from './edit-own.js';
-import { JobWatch, meanwhileOn, meanwhileLine, watchTools, WATCH_TOOLS, noteForBig, noteGotLine, claimsJobGuess, JOB_GUESS_CORRECTION, JOB_GUESS_NUDGE } from './meanwhile.js';
+import { JobWatch, meanwhileOn, meanwhileLine, watchTools, WATCH_TOOLS, noteForBig, noteGotLine, noteAfterAnswer, noteMissedLine, asksAboutJob, NO_JOB_LINE, noteAsk, statusLine, noteQueuedLine, claimsJobGuess, JOB_GUESS_CORRECTION, JOB_GUESS_NUDGE } from './meanwhile.js';
 import { notesOn, notesTool, smartNotesOn, notesPrompt } from './notes.js';
 import { docToolsOn, findDocsTool } from './my-docs.js';
 import { sandboxOn, sandboxTool } from './sandbox-code.js';
@@ -319,6 +319,13 @@ const OBSERVE_NUDGE = 'You described noticing, watching or checking something on
 export function realState({ model, session, waiting = 0, cat, turn = 0, withCat = true, mem = { free: freeMemNow(), total: os.totalmem() } }) {
   const gb = (b) => (b / 1e9).toFixed(1);
   return `Right now (real, from the app): you're thinking on ${model || 'no brain'}${session ? ` in the ${session} session` : ''}; ${waiting ? `${waiting} more message${waiting === 1 ? '' : 's'} waiting` : 'nothing else waiting'}; the PC's RAM is ${gb(mem.total - mem.free)} of ${gb(mem.total)} GB in use${withCat ? `; ${catMoment(cat, turn)}` : ''}.`;
+}
+// The Meanwhile line again as a short note just before the latest message, where a small brain reads it last.
+export function meanwhileNear(list, line) {
+  if (!line) return list;
+  const at = list.findLastIndex((m) => m.role === 'user');
+  const note = { role: 'system', content: line };
+  return at < 0 ? [...list, note] : [...list.slice(0, at), note, ...list.slice(at)];
 }
 export const CLAIM_CORRECTION = 'Nothing was actually done on this replicant matrix in that reply. Bob said he did, but no action ran.';
 const CLAIM_NUDGE = 'You just said you did something on the PC, but no tool did it in this turn. Never claim that. If it should be done, call the right tool now; if you cannot, say plainly that you have not done it and why (the tool\'s own words if it gave an error).';
@@ -1449,11 +1456,30 @@ export class Brain {
     return names.filter((n) => n !== 'use_tools' && this.usable(n, off)).map((n) => tidySchema(JSON.parse(JSON.stringify(this.tools[n].schema).replaceAll('{{USER}}', who).replaceAll('{{HOME}}', JSON.stringify(os.homedir()).slice(1, -1)))));
   }
 
+  // Let Bob's Quick brain see the big job: the app's own answer to a message about the running job, or null.
+  jobAnswer(sessionId, text, attach, extra = {}, { freeMem } = {}) {
+    if (!meanwhileOn(this.cfg) || extra.guest || (attach || []).length || !this.watch?.job) return null;
+    const note = noteAsk(text), asks = !note && asksAboutJob(text);
+    if (!note && !asks) return null;
+    const probe = { kind: 'chat', text, refs: [], effort: 'low' };
+    const quickNow = !this.turns.has(SIDE_LANE) && (sideOk(this, probe, freeMem != null ? { freeMem } : undefined) || besideBigOk(this, probe, freeMem != null ? { freeMem } : undefined));
+    if (quickNow) return null; // the Quick brain takes it, with the Meanwhile line and its two tools
+    let answer;
+    if (note) {
+      const r = this.watch.note(note);
+      if (r.error) return null;
+      answer = noteQueuedLine(note);
+      this.log('meanwhile', 'a note was passed along to the big job (by the app: no Quick brain free)');
+    } else answer = statusLine(this.watch.job);
+    setTimeout(() => this.broadcast({ type: 'busy-note', sessionId, text: answer }), 0);
+    return { jobId: null, turnId: null, ahead: 0, answered: answer };
+  }
+
   // Let Bob's Quick brain see the big job (meanwhile.js): notes passed along for this job go in before its next step.
-  readNotes(ctx, msgs) {
+  readNotes(ctx, msgs, say = noteForBig) {
     const notes = ctx?.job ? this.watch?.takeNotes(ctx.job) : [];
     if (!notes?.length) return 0;
-    msgs.push({ role: 'system', content: noteForBig(notes, this.cfg.userName || 'the user'), hidden: true });
+    msgs.push({ role: 'system', content: say(notes, this.cfg.userName || 'the user'), hidden: true });
     ctx.emit?.({ type: 'announce', text: noteGotLine(notes) });
     this.log('meanwhile', `the big job read ${notes.length} note${notes.length === 1 ? '' : 's'} passed along to it`);
     return notes.length;
@@ -1605,6 +1631,11 @@ export class Brain {
       setTimeout(() => this.broadcast({ type: 'busy-note', sessionId, text: answer }), 0);
       return { jobId: null, turnId: null, ahead: 0, answered: answer };
     }
+    // Let Bob's Quick brain see the big job (PC test 1.5.203): "tell the job to ..." and "how's it going?" can't wait
+    // behind the job they're about. When no Quick brain can take the message right now (one is already answering, or
+    // there's no room for it), the app passes the note along or answers from the job's record itself, at once.
+    const quickAnswer = this.jobAnswer(sessionId, text, attach, extra);
+    if (quickAnswer) return quickAnswer;
     this.housekeeper?.pause(); // anything the housekeeper was asking the brain gives way at once
     this.endMore(null, 'new job'); // a new message answers "Make another picture?"; the job loads what it needs
     const job = { id: crypto.randomUUID(), sessionId, text, refs: [].concat(attach || []).slice(0, 4), state: 'waiting', at: Date.now(), kind: extra.kind || Brain.guessKind(text, [].concat(attach || []).length > 0), effort: cleanEffort(effort), ...(extra.guest ? { guest: extra.guest } : {}), ...(extra.rent ? { rent: true } : {}) }; // 1.5.127 rent: the 🏗 switch on the chat page
@@ -1886,6 +1917,7 @@ export class Brain {
     const emit = (ev) => {
       if (['error', 'correction', 'held', 'waiting'].includes(ev.type)) flagged = true;
       if (watched && ev.type === 'think') this.watch.think(watched, ev.text);
+      if (watched && ev.type === 'token') this.watch.wrote(watched, ev.text);
       if (watched && ev.type === 'hat' && ev.copy) this.watch.step(watched, `${ev.copy} took over (${ev.label || 'a copy'})`);
       this.broadcast({ ...ev, turnId, sessionId });
     };
@@ -1928,7 +1960,7 @@ export class Brain {
         const switchTo = job?.switchTo && job.state === 'done' ? job.switchTo : null;
         if (switchTo) { job.switchTo = undefined; job.switchedTo = switchTo.id; Object.assign(job, { state: 'waiting', error: undefined, doneAt: undefined, steps: [] }); this.queue = [job, ...this.queue.filter((x) => x !== job)]; }
         this.turns.delete(lane);
-        if (watched) this.watch.end(watched.id);
+        if (watched) { const left = this.watch.takeNotes(watched); if (left.length) emit({ type: 'announce', text: noteMissedLine(left) }); this.watch.end(watched.id); }
         this.rentals?.turnDone(job); // 1.5.127: a hired machine stops once no job uses it
         this.lastActivity = Date.now();
         // Gaming: now and then a scripted sleepy aside under a normal finished reply (a feeling, never a fact about the job).
@@ -2152,7 +2184,10 @@ export class Brain {
     const turnNo = msgs.filter((m) => m.role === 'user').length;
     const state = realState({ model, session: currentSession(this.cfg).label, waiting: this.queue.filter((j) => j.state === 'waiting').length, cat: this.cfg.catName, turn: turnNo, withCat: catTurn(turnNo) });
     // Let Bob's Quick brain see the big job: a quick reply beside it gets the Meanwhile line, written by the app.
-    const meanwhile = job?.side && meanwhileOn(this.cfg) && this.watch.job ? meanwhileLine(this.watch.job) : '';
+    // PC test (1.5.203): a small Quick brain answered about the job before; the line names the running one, and also goes
+    // just before the latest message (meanwhileNear). A question about the job after it ended gets the no-job line.
+    const meanwhile = !meanwhileOn(this.cfg) || job?.guest ? '' : job?.side && this.watch.job ? meanwhileLine(this.watch.job) : asksAboutJob(text) && !this.watch.job ? NO_JOB_LINE : '';
+    ctx.meanwhile = job?.side ? meanwhile : '';
     const extras = [state, meanwhile, guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
     const brainCtx = await this.fitCtx(model, wantCtx);
     // 1.5.127: a chat that no longer fits the biggest brain here, with a rented brain in its slot: offer it (the job carries on here meanwhile).
@@ -2313,7 +2348,7 @@ export class Brain {
         model = (await this.ensureModel(model, emit, signal, 'bob', { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}) })) || model;
         this.setState('thinking', '', model);
         reply = await this.chatSafe({
-          model, messages: [sys, ...staleHandErrors(msgs, turnStart)], tools, signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
+          model, messages: [sys, ...meanwhileNear(staleHandErrors(msgs, turnStart), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')], tools, signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
           onToken: (t) => emit({ type: 'token', text: t })
         }, { emit });
       }
@@ -2394,6 +2429,9 @@ export class Brain {
         }
         this.log('toolbox', 'Bob gave an empty reply twice');
       } else if (!reply.tool_calls && this.checkTurn(ctx, reply, true)) { ctx.retrying = true; continue; } // asked for something that didn't happen: one more go
+      // Let Bob's Quick brain see the big job: a note that came while the big brain was writing its answer (no next step)
+      // still reaches it, once: it says what changes, or that it saw it (PC test 1.5.203: the note never arrived).
+      if (!reply.tool_calls && !job?.side && !ctx.noteRedo && this.watch.for(job)?.notes.length) { ctx.noteRedo = true; this.readNotes(ctx, msgs, noteAfterAnswer); continue; }
       if (!reply.tool_calls) { this.keepGroups(sessionId, used); return; }
       let ended = false;
       ctx.painted = null; // what the painter made in this round (for the quick hand-back below)

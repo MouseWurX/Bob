@@ -29,7 +29,7 @@ export class JobWatch {
 
   start(job, { now = Date.now(), session = '' } = {}) {
     if (!job || job.side || job.guest) { this.job = null; return; }
-    this.job = { id: job.id, title: clip(job.text, 80), session, startedAt: job.startedAt ?? now, steps: [], planned: 0, thinking: '', notes: [], read: 0 };
+    this.job = { id: job.id, title: clip(job.text, 80), session, startedAt: job.startedAt ?? now, steps: [], planned: 0, thinking: '', notes: [], read: 0, chars: 0, tail: '' };
   }
   end(jobId) { if (this.job && (!jobId || this.job.id === jobId)) this.job = null; }
   for(job) { return job && this.job && this.job.id === job.id ? this.job : null; }
@@ -42,6 +42,8 @@ export class JobWatch {
   }
   result(job, text) { const w = this.for(job); const s = w?.steps[w.steps.length - 1]; if (s && !s.result) s.result = clip(text, 200) || '(no answer)'; }
   plan(job, count) { const w = this.for(job); if (w && count > 0) w.planned = Math.min(99, Math.round(count)); }
+  // What the big brain has written so far (PC test 1.5.203: a 6,000-word answer has no steps, so the line said nothing).
+  wrote(job, text) { const w = this.for(job); if (!w) return; const t = String(text || ''); w.chars += t.length; w.tail = (w.tail + t).slice(-300); }
   think(job, text) { const w = this.for(job); if (!w) return; w.thinking = (w.thinking + String(text || '')).slice(-THINK_KEEP); }
 
   // pass_note: a note for the big brain. Returns { ok } or { error }.
@@ -63,10 +65,12 @@ export function meanwhileLine(w, now = Date.now()) {
   if (!w) return '';
   const n = w.steps.length;
   const last = w.steps[n - 1];
-  const at = n ? `step ${n}${w.planned >= n ? ` of about ${w.planned}` : ''}` : 'no steps yet';
+  const words = Math.round((w.chars || 0) / 6 / 50) * 50; // about 6 characters a word, to the nearest 50
+  const at = n ? `step ${n}${w.planned >= n ? ` of about ${w.planned}` : ''}` : words ? 'writing its answer' : 'no steps yet';
+  const writ = words ? `, about ${words.toLocaleString('en-US')} words written so far` : '';
   const lastBit = last ? `; last step: ${clip(last.what, 60)}, ${last.result ? worked(last.result) : 'still going'}` : '';
   const waiting = w.notes.length ? `; ${w.notes.length === 1 ? 'a note is' : `${w.notes.length} notes are`} waiting for it` : '';
-  return `Meanwhile (real, from the app): your big brain is on "${clip(w.title, 60)}"${w.session ? ` (${w.session} session)` : ''}, ${mins(now - w.startedAt)} in, ${at}${lastBit}${waiting}. That is all you know about it; for more, call look_at_job. Never guess how long it has left.`;
+  return `Meanwhile (real, from the app): the job running right now is "${clip(w.title, 60)}"${w.session ? ` (${w.session} session)` : ''}, ${mins(now - w.startedAt)} in, ${at}${writ}${lastBit}${waiting}. Earlier replies in this chat are about jobs that already finished. That is all you know about this one; for more, call look_at_job. Never guess how long it has left.`;
 }
 
 // 2. What look_at_job hands back.
@@ -78,11 +82,30 @@ export function jobDetail(w, { thinkingOn = false, now = Date.now() } = {}) {
   const think = !thinkingOn
     ? "Its thinking isn't passed along while Bob's thinking window is closed."
     : w.thinking ? `The newest part of its thinking (it may change its mind):\n${w.thinking.slice(-2000)}` : 'No thinking yet.';
-  return `The job on the big brain: "${w.title}", ${mins(now - w.startedAt)} in${w.planned ? `, with a plan of about ${w.planned} steps` : ''}.\nSteps so far:\n${steps}\n${think}\nTell the user in plain words; don't guess what comes next or how long is left.`;
+  const words = Math.round((w.chars || 0) / 6);
+  const writing = words ? `\nWritten so far: about ${words.toLocaleString('en-US')} words. It ends: "…${clip(w.tail, 200)}"` : '';
+  return `The job on the big brain: "${w.title}", ${mins(now - w.startedAt)} in${w.planned ? `, with a plan of about ${w.planned} steps` : ''}.\nSteps so far:\n${steps}${writing}\n${think}\nTell the user in plain words; don't guess what comes next or how long is left.`;
 }
 
 // 3. How a note reaches the big brain at its next step.
 export const noteForBig = (notes, who) => `${notes.length === 1 ? 'A note' : 'Notes'} from ${who}, passed along by your Quick brain while you work:\n${notes.map((n) => `- "${n.text}"`).join('\n')}\nTake it into account from this step on. A note is not an order to stop: only ${who} stops or pauses a job, with the Stop button.`;
+// The job gave its answer before its next step: the note goes in once more, and the big brain says what changes.
+export const noteAfterAnswer = (notes, who) => `${noteForBig(notes, who)}\nYour answer above is already shown to ${who}. If the note changes it, do or say what changes now; if not, say in one line that you saw it.`;
+// The job ended (stopped, failed, or a second note came after the last step) with a note nobody read.
+export const noteMissedLine = (notes) => `📨 The job finished before it could read ${notes.length === 1 ? `your note ("${clip(notes[0].text, 100)}")` : `your ${notes.length} notes`}. Send it as a new message if you still want it.`;
+// A quick reply about the job, with no job running any more: say so, so an older answer isn't taken for it.
+export const asksAboutJob = (text) => /\b(?:how(?:'s| is| are)? (?:it|the job|that|things|my|the) ?(?:\w+ )?going|progress|status|still (?:working|going|busy)|done yet|finished yet|tell (?:the|my|your) (?:job|big brain)|pass (?:it|this|that|a note) (?:on|along)|what(?:'s| is) (?:it|the job|your big brain) (?:doing|on))\b/i.test(String(text || ''));
+// "tell the job to keep it short": the app passes it along by itself when the Quick brain can't take the message
+// right now (PC test 1.5.203: it waited behind the job and never arrived). Returns the note's words, or ''.
+export function noteAsk(text) {
+  const m = String(text || '').trim().match(/^(?:(?:can|could) you |please |hey,? )*(?:tell|ask|remind) (?:the job|my job|your job|the big brain|my big brain|your big brain|it|bob's big brain)(?: to| that)?[ ,:]+(.{2,400})$/i)
+    || String(text || '').trim().match(/^(?:pass (?:this|it|a note) (?:on|along)(?: to the job)?|note for the job)[ ,:]+(.{2,400})$/i);
+  return m ? m[1].replace(/[.!]+$/, '').trim() : '';
+}
+// The app's own answer to "how's it going?" when no Quick brain can take it right now: the record, word for word.
+export const statusLine = (w, now = Date.now()) => meanwhileLine(w, now).replace(/^Meanwhile \(real, from the app\): the job running right now is/, 'My big brain is on').replace(/ Earlier replies in this chat.*$/, '');
+export const noteQueuedLine = (text) => `📨 Passed along to the job: "${clip(text, 120)}". My big brain reads it at its next step.`;
+export const NO_JOB_LINE = 'Meanwhile (real, from the app): no job is running on the big brain right now; anything earlier in this chat is about jobs that already finished.';
 export const noteGotLine = (notes) => (notes.length === 1 ? `📨 Your note reached me: "${clip(notes[0].text, 120)}"` : `📨 ${notes.length} notes reached me.`);
 
 // The Quick brain's two tools. They only work in a quick reply beside a job (ctx.job.side), with the setting on.

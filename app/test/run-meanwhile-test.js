@@ -5,9 +5,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Brain, claimsObservation } from '../src/brain.js';
+import { Brain, claimsObservation, meanwhileNear, SIDE_LANE } from '../src/brain.js';
 import { mergeSettings } from '../src/config.js';
-import { JobWatch, meanwhileOn, meanwhileLine, jobDetail, watchTools, claimsJobGuess, noteForBig, STEP_KEEP, NOTES_MAX } from '../src/meanwhile.js';
+import { JobWatch, meanwhileOn, meanwhileLine, jobDetail, watchTools, claimsJobGuess, noteForBig, noteAsk, asksAboutJob, statusLine, STEP_KEEP, NOTES_MAX } from '../src/meanwhile.js';
 import { WANTS, wantsHtml } from '../public/wants.js';
 import { HELP } from '../public/help-content.js';
 
@@ -82,6 +82,24 @@ check('only true turns it on when saved', mergeSettings({}, { quickSeesJob: 'tru
   check('pass_note never stops the job: its own words point at the Stop button', /Never to stop or pause it/.test(t.pass_note.schema.function.description) && /press Stop/.test(t.pass_note.schema.function.description));
 }
 
+// ---------- PC test 1.5.203: a long answer with no steps, and notes that came too late ----------
+{
+  const w = new JobWatch();
+  const job = { id: 'lh', text: 'Write a 6,000-word history of lighthouses', startedAt: 0 };
+  w.start(job);
+  w.wrote(job, 'word '.repeat(2400));
+  const line = meanwhileLine(w.job, 5 * 60_000);
+  check('a long answer with no steps: the line says it is writing, and about how much', /writing its answer, about 2,000 words written so far/.test(line), line);
+  check('the line names the running job and says earlier replies were other jobs', /the job running right now is "Write a 6,000-word history of lighthouses"/.test(line) && /Earlier replies in this chat are about jobs that already finished/.test(line));
+  check('look closer shows how the writing ends so far', /Written so far: about 2,000 words/.test(jobDetail(w.job)) && /It ends: "…/.test(jobDetail(w.job)));
+  check('the app\'s own status line', /^My big brain is on "Write a 6,000-word history of lighthouses", 5 minutes in, writing its answer/.test(statusLine(w.job, 5 * 60_000)) && !/Never guess/.test(statusLine(w.job, 5 * 60_000)));
+  check('"tell the job to ..." is a note', noteAsk('tell the job to keep the last chapters short') === 'keep the last chapters short' && noteAsk('Could you tell the big brain that I want metric.') === 'I want metric' && noteAsk('pass this along: use metres') === 'use metres');
+  check('other messages are not notes', !noteAsk('tell me a joke') && !noteAsk('how big is the moon?'));
+  check('"how\'s it going?" is about the job', asksAboutJob("how's it going?") && asksAboutJob('is it done yet?') && !asksAboutJob('how big is the moon?'));
+  const near = meanwhileNear([{ role: 'user', content: 'plants' }, { role: 'assistant', content: 'a plant guide' }, { role: 'user', content: "how's it going?" }], 'LINE');
+  check('the line also goes just before the latest message', near[2].role === 'system' && near[2].content === 'LINE' && near[3].content === "how's it going?");
+}
+
 // ---------- Honesty ----------
 check('a guess at the time left is caught', claimsJobGuess('It should be done in about 5 minutes left.') && claimsJobGuess('About 3 more minutes to go.') && claimsJobGuess("It's almost done!") && claimsJobGuess('The job is 80% done.'));
 check('plain facts from the line are fine', !claimsJobGuess('My big brain is on step 3, about 6 minutes in; the last step worked.') && !claimsJobGuess('It has been going for 6 minutes.'));
@@ -124,7 +142,7 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
   const msgs = [{ role: 'user', content: 'how is it going?' }];
   await brain.runOn(msgs, 'how is it going?', (e) => events.push(e), new AbortController().signal, [], job, 'side-chat').catch((e) => console.log(e.message));
   const sys = seen[0]?.messages?.[0]?.content || '';
-  check('the quick reply gets the Meanwhile line beside Right now', /Right now \(real, from the app\)/.test(sys) && /Meanwhile \(real, from the app\): your big brain is on "Build the photo album"/.test(sys) && /4 minutes in, step 1/.test(sys));
+  check('the quick reply gets the Meanwhile line beside Right now', /Right now \(real, from the app\)/.test(sys) && /Meanwhile \(real, from the app\): the job running right now is "Build the photo album"/.test(sys) && /4 minutes in, step 1/.test(sys));
   check('the quick reply gets look_at_job and pass_note', seen[0]?.names.includes('look_at_job') && seen[0]?.names.includes('pass_note'));
   cfg.quickSeesJob = false;
   seen.length = 0;
@@ -132,6 +150,42 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
   await brain.runOn([{ role: 'user', content: 'and now?' }], 'and now?', () => {}, new AbortController().signal, [], { ...job, id: 'q2' }, 'side-chat').catch(() => {});
   check('off: no Meanwhile line and no tools', !/Meanwhile \(real/.test(seen[0]?.messages?.[0]?.content || '') && !seen[0]?.names.includes('pass_note'));
   cfg.quickSeesJob = true;
+}
+
+{
+  // PC test 1.5.203 (2): a note asked for while the Quick brain is busy answering is passed along by the app at once.
+  brain.watch.start({ id: 'big2', text: 'Write a 6,000-word history of lighthouses', startedAt: Date.now() - 60_000 });
+  brain.turns.set(SIDE_LANE, { turnId: 'x' });
+  const before = brain.queue.length;
+  const r = brain.enqueue('main', 'tell the job to keep the last chapters short');
+  check('a note while the Quick brain is busy: passed along by the app, nothing queued', /Passed along to the job: "keep the last chapters short"/.test(r.answered || '') && brain.queue.length === before && brain.watch.job.notes[0]?.text === 'keep the last chapters short');
+  const r2 = brain.enqueue('main', "how's it going?");
+  check('"how\'s it going?" while the Quick brain is busy: answered from the record at once', /^My big brain is on "Write a 6,000-word history/.test(r2.answered || '') && brain.queue.length === before);
+  cfg.quickSeesJob = false;
+  const r3 = brain.enqueue('main', "how's it going? (off)");
+  check('off: nothing is answered by the app', !r3.answered);
+  await until(() => ['done', 'failed'].includes(brain.queue.find((j) => j.id === r3.jobId)?.state));
+  cfg.quickSeesJob = true;
+  brain.turns.delete(SIDE_LANE);
+  brain.watch.end('big2');
+}
+{
+  // PC test 1.5.203 (2): a note that comes while the big brain writes its one long answer still reaches it, once.
+  seen.length = 0; events.length = 0;
+  script = [{ role: 'assistant', content: 'Chapter 1 ... chapter 9.' }, { role: 'assistant', content: 'Noted: the last chapters are now short.' }];
+  onCall = () => { brain.watch.note('keep the last chapters short'); };
+  const { jobId } = brain.enqueue('main', 'Write a long history of lighthouses');
+  await until(() => ['done', 'failed'].includes(brain.queue.find((j) => j.id === jobId)?.state));
+  check('a note after the last step: the big brain gets one more go with it', seen.length === 2 && seen[1].messages.some((m) => m.role === 'system' && /keep the last chapters short/.test(m.content) && /already shown/.test(m.content)));
+  check('...and the chat says it arrived', events.some((e) => e.type === 'announce' && /Your note reached me/.test(e.text)));
+  // A note that comes after that one more go is never lost in silence.
+  seen.length = 0; events.length = 0;
+  script = [{ role: 'assistant', content: 'Done.' }, { role: 'assistant', content: 'Saw it.' }];
+  let n = 0;
+  brain.engine.chat = async ({ tools, messages }) => { seen.push({ names: tools.map((t) => t.function.name), messages }); brain.watch.note(`note ${++n}`); return script.shift() || { role: 'assistant', content: 'done' }; };
+  const j2 = brain.enqueue('main', 'Write another long one');
+  await until(() => ['done', 'failed'].includes(brain.queue.find((j) => j.id === j2.jobId)?.state));
+  check('a note nobody could read: the chat says so, and to send it again', events.some((e) => e.type === 'announce' && /finished before it could read your note \("note 2"\)/.test(e.text)));
 }
 
 // ---------- Settings, first-time setup, Help ----------
