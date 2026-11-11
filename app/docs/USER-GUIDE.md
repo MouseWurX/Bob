@@ -322,6 +322,7 @@ Hands are Bob's way of doing things for you on your PC rather than just talking 
 - **Office documents and converting:** convert files (Word, Excel, PowerPoint and OpenDocument to and from each other or to PDF; pictures; sound; video), read office files, make new documents, spreadsheets and slides, and change them (fill cells, add rows and slides, replace text, fill a template).
 - **Security and privacy:** check the PC's protection, explain Defender alerts and start scans, look at suspicious downloads, scripts and emails without opening them, find and remove hidden details (like GPS in photos) before sharing, and check whether a website, link or sender is genuine from public records.
 - **Connected apps (MCP):** work inside Unreal Engine, Blender and other apps that offer their tools through an MCP add-on.
+- **Tool packs from other people:** use tools and jobs someone else made for Bob, from a folder or .zip you add.
 
 ### Use a browser
 
@@ -343,6 +344,16 @@ Apps with an MCP add-on (Unreal Engine and Blender have them) can offer Bob thei
 - Every step shows a card that says in plain words what Bob will do, with the exact tool and inputs under **Show details** (**Allow** / **Allow the rest of this job** / **Deny**), unless "Let Bob work without asking" is on. Tools that run code inside the app or can delete things show the code and always ask (no "rest of this job"). The hard limits apply to the inputs, including the blocked-commands list on any code a tool would run inside the app.
 - While **Don't send anything out** is on, Bob only talks to apps on this computer (localhost / 127.0.0.1).
 - Works the same on Windows, Mac and Linux. The phone app shows the same cards for jobs sent from the phone; the apps themselves run on the PC.
+
+### Tool packs from other people
+
+A tool pack is a folder (or a .zip of one) that someone else made: a `bob-pack.json` file plus a little plain JavaScript. It gives Bob new tools and jobs without changing his code. How to make one: [TOOL-PACKS.md](TOOL-PACKS.md).
+
+- Settings → Hands → **Tool packs**: type the full path of the folder or .zip and press **Add pack**. Bob checks it first and says exactly why if it can't be added (programs inside, code that starts programs or reaches the internet without saying so, missing files).
+- Every pack comes in switched off. Look at what each tool may do (**Show code**), then switch the pack on, and the **Tool packs from other people** Hand above it.
+- Tools run in Bob's sandbox, only see the files on their card (each in a folder ticked for Hands, under the hard limits), and **always ask**, even with "Let Bob work without asking" on. A job is written steps Bob follows with his own Hands, each asking as usual.
+- If a pack's files change after you add it, it switches off until you add it again. **Remove** sends it to the Recycle Bin.
+- Windows, Mac and Linux, wherever the sandbox holds. From the phone app, packs run on the PC and the cards show on the phone; packs are added on the PC.
 
 ### Office documents and converting
 

@@ -9,6 +9,7 @@
 import { HANDS, handOn, handOffWhy } from './hands-settings.js';
 import { makerWords, makerWhat } from './selftools.js';
 import { mcpWords, mcpWhat } from './mcp.js';
+import { packsWords, packsWhat } from './toolpacks.js';
 import { selfWorkWords } from './self-work.js';
 
 export const CORE = ['notice_board', 'remember', 'reminders', 'list_folder', 'read_file', 'web_search', 'fetch_page', 'bob_help', 'ask_specialist', 'show_made', 'pick_session', 'edit_my_message', 'take_note', 'offer_setup', 'use_tools'];
@@ -91,6 +92,8 @@ export function groupsFor(brain) {
     if (id === 'maker') Object.assign(g[id], { what: makerWhat(brain.cfg), words: makerWords(brain.cfg) });
     // The connected apps by name, so "in Blender, add a cube" finds them.
     if (id === 'mcp') Object.assign(g[id], { what: mcpWhat(brain.cfg), words: mcpWords(brain.cfg) });
+    // Tool packs from other people (toolpacks.js) by name, so "count the words with the word tools pack" finds them.
+    if (id === 'packs') Object.assign(g[id], { what: packsWhat(brain.cfg), words: packsWords(brain.cfg) });
   }
   // Only groups with at least one tool Bob can use on this PC right now.
   const out = {};

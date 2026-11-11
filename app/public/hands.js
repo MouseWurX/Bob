@@ -79,6 +79,9 @@ export function handsApproval(ev, { add, answer }) {
         <td>${esc(OPS[r.op] || r.op)}${r.note ? `<br><span class="muted">${esc(r.note)}</span>` : ''}</td><td class="path">${esc(r.from)}</td>
         <td class="path">${esc(r.to)}${r.blocked ? `<br><span class="why">✗ ${esc(r.blocked)}</span>` : ''}</td></tr>`).join('')}
       </tbody></table></div>`;
+  } else if (ev.pack) {
+    // Tool packs from other people (src/toolpacks.js): who made it, the exact inputs under Show details, always asks.
+    body = `<p class="muted">${esc(ev.where || '')}. Made by someone else, not by Bob.</p><details><summary>Show details</summary><pre class="cmd"><code>${esc(ev.command)}</code></pre></details><p class="warn-text">Tools from packs always ask.</p>`;
   } else if (ev.mcp) {
     // Connected apps: plain words in the first line; code a tool would run is shown as it is; the exact call under Show details.
     body = `${ev.mcp.code ? `<pre class="cmd"><code>${esc(ev.mcp.code)}</code></pre>` : ''}<details><summary>Show details</summary><pre class="cmd"><code>${esc(ev.command)}</code></pre></details><p class="muted">${esc(ev.where || '')}</p>${ev.mcp.always ? '<p class="warn-text">This one always asks.</p>' : ''}`;
@@ -153,6 +156,25 @@ function sandboxRow(st) {
   const sb = st.sandbox ? (st.sandbox.ok ? `Sandbox holds ✓ <span class="muted">checked ${esc(when(st.sandbox.at || Date.now()))}</span>` : `<span class="warn-text">Making and using tools is refused: the sandbox didn't hold on this replicant matrix (${esc(st.sandbox.why)}).</span>`) : '<span class="muted">Sandbox not checked yet.</span>';
   return `<div class="hands-sandbox"><strong>Sandbox</strong> <span class="muted">The locked room where tools Bob made run. This checks it still holds.</span>
     <div class="row"><button type="button" data-hsandbox>Check the sandbox</button> <span>${sb}</span></div></div>`;
+}
+
+// Settings, Hands: Tool packs from other people (src/toolpacks.js). Each pack has its own switch (off when added),
+// what it adds, Show code for each tool, and Remove. Adding: the full path of a folder or .zip on this replicant matrix.
+// Always drawn (SETTINGS-STYLE rule 14); a pack switched on here only works once the Hand above is on too.
+const PACK_STATE = { on: '', off: '', changed: 'off: its files changed since you added it', missing: 'its folder is gone' };
+function packsHtml(m, on) {
+  if (!m) return '';
+  const toolRow = (pk, t) => `<li><code>${esc(t.name)}</code>: ${esc(t.what)} <span class="muted">${t.files === 'change' ? 'Can change the files you give it.' : t.files === 'read' ? 'Can read the files you give it.' : 'Can\'t see your files.'} Internet: ${t.internet ? 'yes' : 'no'}.</span> <button type="button" data-hpackcode="${esc(pk.id)}" data-tool="${esc(t.name)}">Show code</button><pre class="cmd pack-code" hidden></pre></li>`;
+  const rows = m.packs.map((pk) => `<li class="pack"><label class="switch small"><input type="checkbox" data-hpack="${esc(pk.id)}" ${pk.state === 'on' ? 'checked' : ''} ${pk.state === 'changed' || pk.state === 'missing' ? 'disabled' : ''} aria-label="${esc(pk.name)} on"><span><strong>${esc(pk.name)}</strong> <span class="muted">${esc(pk.version)}, by ${esc(pk.by)}</span> ${PACK_STATE[pk.state] ? `<span class="warn-text">${esc(PACK_STATE[pk.state])}</span>` : ''}<br><span class="muted">${esc(pk.what)}${pk.link ? ` ${esc(pk.link)}` : ''}</span><br><span class="muted">Added ${esc(when(pk.at))}${pk.lastUsed ? `, last used ${esc(when(pk.lastUsed))}` : ', not used yet'}.</span></span></label>
+      ${pk.tools.length ? `<ul class="pack-tools">${pk.tools.map((t) => toolRow(pk, t)).join('')}</ul>` : ''}
+      ${pk.jobs.length ? `<ul class="pack-jobs muted">${pk.jobs.map((j) => `<li>Job: <strong>${esc(j.name)}</strong> (${j.steps.length} step${j.steps.length === 1 ? '' : 's'})</li>`).join('')}</ul>` : ''}
+      <div class="row"><button type="button" data-hpackdel="${esc(pk.id)}" aria-label="Remove ${esc(pk.name)}">Remove</button></div></li>`).join('');
+  return `<div class="hands-packs${on ? '' : ' dim'}"><strong>Tool packs</strong> <span class="muted">${m.packs.length} of ${m.max}</span>
+    <p class="muted">Tools and jobs other people made for Bob. Each pack comes in switched off. Its tools run in the sandbox, see only the files on their card, and ask you every time.${on ? '' : ' They work once the Tool packs from other people Hand above is on.'}</p>
+    ${m.packs.length ? `<ul>${rows}</ul>` : '<p class="muted">None yet.</p>'}
+    <div class="row"><input type="text" data-hnewpack placeholder="Add a pack: C:\\Users\\you\\Downloads\\word-tools.zip" aria-label="Full path of a tool pack folder or .zip" style="flex:1"><button type="button" data-haddpack>Add pack</button></div>
+    <p class="muted">Only add packs from people you trust. Bob checks the code first and refuses programs, hidden code and anything that reaches the internet unless the pack says so, but he can't tell whether a tool does what it says.</p>
+    <ul class="pack-problems warn-text" hidden></ul></div>`;
 }
 
 // Settings, Hands: Connected apps (MCP, src/mcp.js). Each app has its own switch (off when added), a Check button
@@ -336,6 +358,7 @@ export async function mountHandsSettings(box) {
       ${browserHtml(v.browser, s, s.enabled && s.browser?.on)}
       ${selfToolsHtml(v.selfTools, s.enabled && s.maker?.on)}
       ${mcpHtml(v.mcp, s.enabled && s.mcp?.on)}
+      ${packsHtml(v.packs, s.enabled && s.packs?.on)}
       <div class="hands-limits"><h4 class="ssub">Limits that always apply <span class="tag">all on to start with</span></h4>
         <p class="muted">These hard limits hold whether or not Bob asks first. Switch one off only if you need what it blocks.</p>
         ${(v.limits || []).map((l) => `<label class="switch small"><input type="checkbox" data-hlimit="${esc(l.id)}" ${s.limits?.[l.id] !== false ? 'checked' : ''}><span><strong>${esc(l.label)}</strong><br><span class="muted">${esc(l.on)}</span>${l.more ? `<details class="more"><summary>More</summary><span class="muted">${esc(l.more)}</span></details>` : ''}${s.limits?.[l.id] === false ? `<br><span class="warn-text">Off: ${esc(l.off)}</span>` : ''}${l.id === 'readOnly' ? readOnlyHtml(v, s) : ''}</span></label>`).join('')}
@@ -399,6 +422,7 @@ export async function mountHandsSettings(box) {
       if (el.dataset.hfolder) { const f = el.dataset.hfolder; return await set({ folders: el.checked ? [...v.settings.folders, f] : v.settings.folders.filter((x) => x !== f) }); }
       if ('htimeout' in el.dataset) return await set({ timeoutMin: Number(el.value) });
       if (el.dataset.hmytool) { v = await post('/api/hands/mytools', { name: el.dataset.hmytool, on: el.checked }); draw(); return say(el.checked ? 'Tool on.' : 'Tool off. Bob won\'t use it until you turn it back on.'); }
+      if (el.dataset.hpack) { const r = await post('/api/hands/packs', { id: el.dataset.hpack, on: el.checked }); v = r; draw(); return say(r.note); }
       if (el.dataset.hmcp) { const r = await post('/api/hands/mcp', { id: el.dataset.hmcp, on: el.checked }); v = r; draw(); return say(r.note); }
       if (el.dataset.hsched) { sched = await post('/api/hands/schedules', { id: el.dataset.hsched, on: el.checked }); draw(); return say(el.checked ? 'Schedule on.' : 'Schedule off.'); }
       if ('hschedtask' in el.dataset) { try { sched = await post('/api/hands/schedules', { windowsTask: el.checked }); draw(); say(el.checked ? 'Added the "Bob schedules" task: Windows wakes Bob (hidden) when a schedule is due. Remove Bob takes it away too.' : 'Removed the Windows task.'); } catch (err) { el.checked = !el.checked; say(err.message); } return; }
@@ -445,6 +469,17 @@ export async function mountHandsSettings(box) {
       }
       if ('hbrowserforgetyes' in b.dataset) { const r = await post('/api/hands/browser', { forget: true }); v = r; draw(); return say(r.note); }
       if ('hbrowserforgetno' in b.dataset) { b.closest('.free-confirm')?.remove(); return say('Kept.'); }
+      if (b.dataset.hpackcode) { const pre = b.closest('li').querySelector('.pack-code'); if (!pre.hidden) { pre.hidden = true; b.textContent = 'Show code'; return; } const r = await post('/api/hands/packs', { id: b.dataset.hpackcode, tool: b.dataset.tool, code: true }); pre.textContent = r.code; pre.hidden = false; b.textContent = 'Hide code'; return; }
+      if (b.dataset.hpackdel) { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to remove'; return; } const r = await post('/api/hands/packs', { id: b.dataset.hpackdel, remove: true }); v = r; draw(); return say(r.note); }
+      if ('haddpack' in b.dataset) {
+        const f = box.querySelector('[data-hnewpack]').value.trim();
+        if (!f) return say('Type the full path of the pack\'s folder or .zip file.');
+        b.disabled = true; say('Checking the pack…');
+        const r = await post('/api/hands/packs', { add: f }); v = r; draw();
+        const ul = box.querySelector('.pack-problems');
+        if (ul && r.problems?.length) { ul.innerHTML = r.problems.map((x) => `<li>${esc(x)}</li>`).join(''); ul.hidden = false; return say('That pack can\'t be added. The reasons are under Tool packs.'); }
+        return say(r.note);
+      }
       if (b.dataset.hmcpcheck) { b.disabled = true; say('Checking (the first time can take a minute while it gets ready)…'); const r = await post('/api/hands/mcp', { id: b.dataset.hmcpcheck, check: true }); v = r; draw(); return say(r.note); }
       if (b.dataset.hmcptools) { const ul = b.closest('li').querySelector('.mcp-tools'); ul.hidden = !ul.hidden; b.textContent = ul.hidden ? 'Show tools' : 'Hide tools'; return; }
       if (b.dataset.hmcpdel) { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to remove'; return; } const r = await post('/api/hands/mcp', { id: b.dataset.hmcpdel, remove: true }); v = r; draw(); return say(r.note); }

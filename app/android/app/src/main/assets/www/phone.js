@@ -471,7 +471,7 @@
     if (ev.planCard) return planCard(base, ev);
     const name = bobName(base);
     const b = bobs.find((x) => x.base === base);
-    const what = ev.together ? `${ev.together.length} things for one job` : ev.mcp ? `${ev.mcp.app}: ${ev.command}` : ev.command ? `run: ${ev.command}` : '';
+    const what = ev.together ? `${ev.together.length} things for one job` : ev.mcp ? `${ev.mcp.app}: ${ev.command}` : ev.pack ? `${ev.pack.name} pack (by ${ev.pack.by}): ${ev.command}` : ev.command ? `run: ${ev.command}` : '';
     const answer = (allow) => phone('net.post', { address: b.address, path: '/api/approve', body: JSON.stringify({ id: ev.id, allow }) }).then(() => card.remove()).catch(() => toast("Couldn't reach your other replicant matrix"));
     const card = el('div', { class: 'card', 'data-approval': ev.id },
       el('div', { class: 'q' }, el('strong', { text: `"${name}" needs your OK` }), el('div', { text: ev.text || '' })),

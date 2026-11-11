@@ -18,6 +18,8 @@
 //   POST /api/hands/sandbox    check again that the sandbox for Bob's own tools holds on this PC
 //   POST /api/hands/mcp        connected apps (src/mcp.js): { add: { name, cmd, args, cwd } | { name, url } } | { paste: text }
 //                              | { id, on } | { id, remove: true } | { id, check: true }  (new apps come in switched off)
+//   POST /api/hands/packs      tool packs from other people (src/toolpacks.js): { add: path of a folder or .zip } (comes in
+//                              switched off) | { id, on } | { id, remove: true } | { id, tool, code: true }
 //   POST /api/hands/browser    { forget: true } clears what Bob's own browser window knows (its cookies, sign-ins, cache)
 //                              | { eyesCheck: bool } "Bob checks his work with his eyes" (src/eyes.js)
 //   POST /api/hands/quick      the two chat-page buttons (public/quick-switches.js): { free: bool } = Autonomy ("Let Bob
@@ -32,6 +34,7 @@ import { selfTest } from './hands-selftest.js';
 import { pwnedRange } from './security-web.js';
 import { setToolOn, deleteTool, toolCode, sandboxHolds } from './selftools.js';
 import { addServer, importSetup, setServerOn, removeServer, checkServer } from './mcp.js';
+import { addPack, setPackOn, removePack, packCode } from './toolpacks.js';
 import { track } from './hands.js';
 import { VERSION } from './config.js';
 const isDir = (f) => { try { return fs.statSync(f).isDirectory(); } catch { return false; } };
@@ -103,6 +106,23 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
         const r = await checkServer(cfg, String(b.id), { log: (k, t) => brain.log(k, t), track, version: VERSION.label });
         brain.log('hands', `connected app ${b.id} checked: ${r.ok ? `${r.tools} tools` : r.why}`);
         note = r.ok ? `Reached it: ${r.tools} tool${r.tools === 1 ? '' : 's'}.` : `Couldn't reach it: ${r.why}`;
+      }
+      send(res, 200, { note, ...handsView(cfg) });
+      return true;
+    }
+    if (p === '/api/hands/packs') {
+      let note = '';
+      if (b.id && b.code) { send(res, 200, { id: b.id, tool: b.tool, code: packCode(cfg, String(b.id), String(b.tool || '')) }); return true; }
+      if (typeof b.add === 'string') {
+        try {
+          const r = addPack(cfg, b.add);
+          brain.log('hands', `tool pack ${r.updated ? 'updated' : 'added'} (switched off): ${r.pack.name} ${r.pack.version} by ${r.pack.by}`);
+          note = `${r.updated ? 'Updated' : 'Added'} ${r.pack.name}, switched off. Look at what it adds (Show code on each tool), then switch it on.`;
+        } catch (e) { send(res, 200, { note: e.message, problems: e.problems || [], ...handsView(cfg) }); return true; }
+      } else if (b.id && b.remove) { removePack(cfg, String(b.id)); brain.log('hands', `tool pack removed: ${b.id}`); note = 'Removed.'; }
+      else if (b.id && 'on' in b) {
+        try { const pk = await setPackOn(cfg, String(b.id), b.on === true); brain.log('hands', `tool pack ${pk.name} switched ${b.on ? 'on' : 'off'}`); note = b.on ? `On. Bob asks before every use of ${pk.name}'s tools.` : 'Off.'; }
+        catch (e) { note = e.message; }
       }
       send(res, 200, { note, ...handsView(cfg) });
       return true;

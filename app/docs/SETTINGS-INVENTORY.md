@@ -44,6 +44,8 @@ Update this file in the same handover as any change to settings.
 | Hands > Check a password safely | box + Check button under Security and privacy | password field (not saved) | empty | needs sign-off |
 | Hands | Connected apps (MCP) | long "what" text | off | ok (clear with edits, 2026-11-04) |
 | Hands > Connected apps | per app: On switch, Check, Show tools, Remove, Get uv for me (when uv is missing); card: Allow / Allow the rest of this job / Deny, Show details, This one always asks; Add a connected app (Fill in for Blender, Fill in for Unreal Engine, Name, Program to start, Arguments, Or its address, Add app); Paste a setup from another app (Add these) | each app off when added | no apps | ok (clear with edits, 2026-11-04) |
+| Hands | Tool packs from other people | long "what" text | off | new (not reviewed yet) |
+| Hands > Tool packs | per pack: On switch (off when added; disabled when its files changed or its folder is gone), name, version, by, what, link, per tool: what it may do + Show code, jobs with step counts, Remove (click again); box "Add a pack" + Add pack, problems listed under it; card: Allow / Allow the rest of this job (only tools that don't change files or use the internet) / Deny, Show details, Tools from packs always ask | each pack off when added | no packs | new (not reviewed yet) |
 | Hands | Folders the Files Hand may work in; Stop a command after | | none | ok |
 | Housekeeping | Tidy up old things by himself | Only while he's idle (10 minutes quiet, nothing running)… | off | ok (1.5.2) |
 | Housekeeping | Load a brain for it if none is loaded | Off: … so a game keeps the graphics card. | off | ok (1.5.2) |

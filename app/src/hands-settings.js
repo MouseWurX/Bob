@@ -57,6 +57,11 @@ export const HANDS = {
     label: 'Connected apps (MCP)',
     what: 'Works inside apps that offer Bob their tools through MCP, such as Unreal Engine or Blender with their MCP add-on: placing things in a level, changing a scene, reading what is there. You add each app below and switch it on; Bob starts or reaches it only when a job needs it and lets it go after 5 minutes unused. Every step shows a card with the app, the tool and its exact inputs. Only apps on this replicant matrix while "Don\'t send anything out" is on.',
     tools: ['mcp_tools', 'mcp_use']
+  },
+  packs: {
+    label: 'Tool packs from other people',
+    what: 'Use tools and jobs that someone else made for Bob, from a folder or .zip you add below. Each pack comes in switched off and is checked first: plain JavaScript only, no programs. Its tools run in the same locked sandbox as the tools Bob makes himself, see only the files named on their card, and ask you every time, even when Bob works without asking. A job is written steps that Bob follows with his own Hands, each asking as usual.',
+    tools: ['pack_tools', 'use_pack_tool', 'pack_job']
   }
 };
 
