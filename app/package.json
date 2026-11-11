@@ -24,7 +24,7 @@
     "patch": 198,
     "branch": "",
     "build": 249,
-    "bundledLlamaTag": "b12032",
+    "bundledLlamaTag": "b12282",
     "brainEngine": {
       "tag": "brain-engine-b12032",
       "win-x64": "sha256:bc724d746912b70397b0b57da9ed8e8d583265750d6055750f23a5b332364237",
