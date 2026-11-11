@@ -186,6 +186,7 @@ jobs:
           done
           exit 1
       - name: Flatpak tools and the Flatpak runtime Bob is built on (from Flathub)
+        timeout-minutes: 15
         # flatpak-builder needs the Freedesktop runtime and SDK and Electron's base app; electron-builder would fetch
         # them itself, but here they come first, with retries, so a Flathub hiccup isn't a build failure.
         run: |
