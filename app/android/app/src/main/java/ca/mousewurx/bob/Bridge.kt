@@ -310,6 +310,8 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                 if (titles.isNotEmpty()) notifyNow("Bob: check-in", titles.joinToString(", ").take(140))
             }
             "done" -> send(JSONObject().put("event", "net-done-bg").put("turnId", ev.optString("turnId")))
+            // Lab item 110: "Tell my phone when a Lab job ends" (the Lab's My Lab tab, off unless ticked) marks these phone = true.
+            "lab-done" -> if (ev.optBoolean("phone")) notifyNow(if (ev.optBoolean("ok")) "Bob: Lab job done" else "Bob: Lab job stopped", (if (ev.optBoolean("ok")) ev.optString("name") else ev.optString("name") + ": " + ev.optString("error")).take(140))
         }
     }
 

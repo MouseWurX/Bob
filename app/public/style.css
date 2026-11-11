@@ -1667,6 +1667,14 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 /* 1.5.161 the leaderboard by class */
 .lab-chips { flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 .lab-chip { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; background: none; color: inherit; font: inherit; min-height: 32px; cursor: pointer; }
+/* Lab items 101 and 109: the Taste test's two answers side by side (stacked on a phone), and word meanings. */
+.lab-taste-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 640px) { .lab-taste-pair { grid-template-columns: 1fr; } }
+.lab-taste-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.lab-taste-text { white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 360px; overflow: auto; flex: 1; }
+.lab-ba td, .lab-ba th { vertical-align: top; white-space: pre-wrap; overflow-wrap: anywhere; }
+.lab-word { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; position: relative; }
+.lab-word:hover::after, .lab-word:focus::after { content: attr(data-mean); position: absolute; left: 0; top: 100%; z-index: 20; width: max-content; max-width: min(320px, 80vw); padding: 6px 8px; border-radius: 6px; background: var(--panel); color: inherit; border: 1px solid var(--line); font-weight: normal; font-size: 0.9em; line-height: 1.35; white-space: normal; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
 .lab-chip.on { background: var(--accent); color: var(--on-accent); border-color: transparent; }
 .lab-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .lab-class { margin-top: 12px; }
