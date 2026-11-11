@@ -465,8 +465,8 @@ The Lab has five tabs:
 
 | | |
 |---|---|
-| ![The Forge tab](screens/lab-forge.png) | ![The Learn tab](screens/lab-learn.png) |
-| ![The Challenges tab](screens/lab-challenges.png) | ![The Playground tab](screens/lab-playground.png) |
+| ![The Teach tab](screens/lab-teach.png) | ![The Test tab on Challenges](screens/lab-test.png) |
+| ![The Forge tab](screens/lab-forge.png) | ![The My Lab tab](screens/lab-my-lab.png) |
 
 Lab jobs need a replicant matrix with at least 12 GB of memory; a smaller one still shows the Lab and can start jobs on a bigger Bob on your Bob-Net. The phone app has no Lab. Every tab has its own page in Help, The Computer Science Lab.
 
