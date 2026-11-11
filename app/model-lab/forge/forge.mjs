@@ -384,6 +384,7 @@ async function answerTeacherKey() {
 // in), saves what they print under out/bench/<run>/<name>/, then tells the pod to move on (in/bench-done-<name>).
 const benchDone = new Set();
 async function benchOnPod(name) {
+  const { spawn } = await import('node:child_process'); // 11 Nov: was missing; Bill's publish run looped on 'spawn is not defined' at the first benchmark
   const url = args.local ? 'http://127.0.0.1:8001' : `https://${podId}-8001.proxy.runpod.net`;
   const dir = path.join(outDir, 'bench', plan.run || 'run', name); fs.mkdirSync(dir, { recursive: true });
   const cmds = plan.benchmark.commands?.length ? plan.benchmark.commands : ['node experts-test.mjs --url {{url}} --counts 8 --out {{out}}'];
