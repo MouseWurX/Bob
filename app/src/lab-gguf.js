@@ -122,8 +122,9 @@ export function readerFacts(g) {
   };
 }
 
-// Tensors that hold one slab per expert, with the expert number as the last dimension.
-const EXPERT_RE = /^blk\.\d+\.(ffn_(gate|up|down|gate_up)_exps\.(weight|bias|scale)|ffn_gate_inp\.weight|exp_probs_b\.bias)$/;
+// Tensors that hold one slab per expert, with the expert number as the last dimension. The router's bias counts too
+// (gpt-oss has one, a number per expert): left uncut it stays at the old expert count and the cut file won't load.
+const EXPERT_RE = /^blk\.\d+\.(ffn_(gate|up|down|gate_up)_exps\.(weight|bias|scale)|ffn_gate_inp\.(weight|bias)|exp_probs_b\.bias)$/;
 export const isExpertTensor = (name) => EXPERT_RE.test(name);
 // Sound-reader tensors in a combined reader file (llama.cpp's mmproj): a.* and the sound projector mm.a.*. Everything
 // else that isn't shared belongs to sight.

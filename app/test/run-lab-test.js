@@ -58,7 +58,7 @@ const expertT = (L, kind) => ({ name: `blk.${L}.ffn_${kind}_exps.weight`, dims: 
 const brainFile = path.join(tmp, 'moe.gguf');
 makeGguf(brainFile, [['general.architecture', 8, 'testmoe'], ['general.name', 8, 'Test MoE'], ['testmoe.block_count', 4, 2], ['testmoe.expert_count', 4, E], ['testmoe.expert_used_count', 4, 2], ['general.file_type', 4, 1], ['tokenizer.ggml.tokens_ids', 9, [1, 2, 3]]], [
   { name: 'token_embd.weight', dims: [EMB, 5], fill: (i) => i },
-  ...[0, 1].flatMap((L) => [expertT(L, 'gate'), expertT(L, 'up'), expertT(L, 'down'), { name: `blk.${L}.ffn_gate_inp.weight`, dims: [EMB, E], fill: (i) => 1000 * L + 100 * Math.floor(i / EMB) + (i % EMB) }, { name: `blk.${L}.attn_q.weight`, dims: [EMB, EMB], fill: (i) => -i }])
+  ...[0, 1].flatMap((L) => [expertT(L, 'gate'), expertT(L, 'up'), expertT(L, 'down'), { name: `blk.${L}.ffn_gate_inp.weight`, dims: [EMB, E], fill: (i) => 1000 * L + 100 * Math.floor(i / EMB) + (i % EMB) }, { name: `blk.${L}.ffn_gate_inp.bias`, dims: [E], fill: (i) => 1000 * L + i }, { name: `blk.${L}.attn_q.weight`, dims: [EMB, EMB], fill: (i) => -i }])
 ]);
 
 const g = readGguf(brainFile);
@@ -87,6 +87,7 @@ const up1 = floats(c, cutFile, 'blk.1.ffn_up_exps.weight');
 check('expert slabs kept are exactly the chosen ones, in order', up1.length === 4 * EMB * FF && [0, 2, 4, 6].every((e, k) => up1[k * EMB * FF] === 1000 + 100 * e), up1.filter((_, i) => i % (EMB * FF) === 0).join());
 const r0 = floats(c, cutFile, 'blk.0.ffn_gate_inp.weight');
 check('the router keeps the same experts\' rows', [1, 3, 5, 7].every((e, k) => r0[k * EMB] === 100 * e));
+check('the router\'s bias (gpt-oss has one) is cut to the same experts', floats(c, cutFile, 'blk.1.ffn_gate_inp.bias').join() === '1000,1002,1004,1006' && c.tensors.find((t) => t.name === 'blk.0.ffn_gate_inp.bias').dims.join() === '4');
 check('tensors without experts are copied unchanged', floats(c, cutFile, 'blk.1.attn_q.weight').join() === floats(g, brainFile, 'blk.1.attn_q.weight').join() && floats(c, cutFile, 'token_embd.weight').join() === floats(g, brainFile, 'token_embd.weight').join());
 check('the expert tensor dims say 4', c.tensors.find((t) => t.name === 'blk.0.ffn_down_exps.weight').dims.join() === `${FF},${EMB},4`);
 check('the cut file is smaller', fs.statSync(cutFile).size < fs.statSync(brainFile).size);
