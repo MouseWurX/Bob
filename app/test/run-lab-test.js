@@ -736,20 +736,35 @@ check('looking at a comparison works from another device', sent[3][0] === 200 &&
 await labRoute({ req: fakeReq('GET'), res: {}, p: '/api/lab/measures', isLocal: true, lab, body: async () => ({}), send: (res, code, j) => sent.push([code, j]) });
 check('the measures list has no file contents or paths', sent[4][0] === 200 && sent[4][1].measures.length === lab.measures().length && !JSON.stringify(sent[4][1]).includes(tmp) && !('rec' in sent[4][1].measures[0]));
 
-// The quiz, against a fake server.
+// The quiz, against a fake server. Nov 11: the tool part goes round Bob's loop with his real tools, so the fake
+// answers a tool job with the call it needs (one at a time), then in words once a tool result is back.
 const fakeFetch = globalThis.fetch;
+const { ENTRY_JOBS, entryTools } = await import('../src/lab-entry.js');
+const realTools = await entryTools();
 globalThis.fetch = async (url, o) => {
-  const q = JSON.parse(o.body).messages[0].content;
-  const tool = (n) => ({ choices: [{ message: { content: '', tool_calls: [{ function: { name: n } }] } }], timings: { predicted_per_second: 20 } });
+  const b = JSON.parse(o.body), msgs = b.messages;
+  const q = msgs.find((m) => m.role === 'user').content;
   const say = (t) => ({ choices: [{ message: { content: `<think>hmm</think>${t}` } }], timings: { predicted_per_second: 20 } });
-  const hit = QUIZ.tools.find(([x]) => x === q);
-  const body = hit ? tool(hit[1]) : /capital of France/.test(q) ? say('Paris') : /banana/.test(q) ? say('banana') : say('no idea');
-  return { ok: true, json: async () => body };
+  const job = ENTRY_JOBS.find(([x]) => x === q);
+  if (job) {
+    const done = msgs.filter((m) => m.role === 'tool').length;
+    const next = job[1][done];
+    const args = { web_search: { query: 'x' }, fetch_page: { url: 'https://example.com/news' }, read_file: { path: 'notes.txt' }, list_folder: { path: 'inn' }, write_file: { path: 'tower.txt', content: '330 m' }, edit_file: { path: 'report.txt', find: 'Total: 9', replace: 'Total: 7' }, search_files: { text: 'shopping' }, notice_board: { action: 'write', content: '- buy bread' }, remember: { fact: 'x' }, reminders: { action: 'add', time: 'tomorrow 9:00', text: 'feed Patches' }, save_spreadsheet: { name: 'releases', csv: 'a,b' }, make_image: { prompt: 'cat in a hat' } };
+    if (!next || !b.tools) return { ok: true, json: async () => say('Done.') };
+    // the first call goes in with its main input under another name, to show the loop mends it
+    const a = done === 0 && next === 'web_search' ? { q: 'x' } : args[next];
+    return { ok: true, json: async () => ({ choices: [{ message: { content: '', tool_calls: [{ function: { name: next, arguments: JSON.stringify(a) } }] } }], timings: { predicted_per_second: 20 } }) };
+  }
+  return { ok: true, json: async () => (/capital of France/.test(q) ? say('Paris') : /banana/.test(q) ? say('banana') : say('no idea')) };
 };
-const quiz = await runQuiz('http://fake');
+const quizLog = [];
+const quiz = await runQuiz('http://fake', { log: (x) => quizLog.push(x) });
 globalThis.fetch = fakeFetch;
-check('the quiz marks tool picks and answers, thinking stripped', quiz.parts.tools.score === 100 && quiz.parts.general.right === 1 && quiz.parts.following.right === 1 && quiz.tps === 20 && quiz.score > 0 && quiz.score < 100, JSON.stringify(quiz.parts));
-check('the quiz tools are made up, not Bob\'s real ones', TOOLS.every((t) => !/hands|files_|run_/.test(t.function.name)));
+check('the quiz marks tool jobs and answers, thinking stripped', quiz.parts.general.right === 1 && quiz.parts.following.right === 1 && quiz.tps === 20 && quiz.score > 0 && quiz.score < 100, JSON.stringify(quiz.parts));
+check('the tool part is Bob\'s real tools, round his loop', realTools.length >= 10 && realTools.every((t) => !['get_weather', 'make_picture', 'set_reminder'].includes(t.function.name)) && quiz.parts.tools.of === ENTRY_JOBS.length, JSON.stringify(quiz.parts.tools));
+check('jobs that need a call the fake can make all pass, the mended one too', quiz.parts.tools.right === ENTRY_JOBS.length, JSON.stringify(quizLog.filter((x) => x.answer.startsWith('(ran') && !x.ok).map((x) => x.answer)));
+check('the quiz has 10 coding asks and says when the code wasn\'t run', QUIZ.coding.length === 10 && quiz.codeChecked === false);
+check('the old one-shot tool picks stay for the Pick the tool challenge', TOOLS.every((t) => !/hands|files_|run_/.test(t.function.name)));
 
 // ---- 1.5.151 Learn: experiments on the loaded brain, against a pretend llama-server ----
 {

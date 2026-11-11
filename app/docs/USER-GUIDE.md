@@ -256,6 +256,18 @@ High and Extreme end with **moot minutes**: who checked what, and what's still o
 
 **💭 Bob's thinking**, at the top of the chat, opens a small window that stays on top of your other windows. It shows, live: what Bob is doing, which brains he holds and where (graphics card or processor), his thinking as it streams (his copies too, so you can watch a moot), brain loads and swaps, each tool step and the notes he keeps for himself. Low effort replies skip thinking, so there you mostly see steps. Bob only sends his thinking along while the window is open, and nothing in it is saved.
 
+### How Bob keeps his tool calls on track (always on)
+
+Small brains often pick the right tool and then get what goes into it wrong. Bob's app checks every step, with no extra brain and no wait:
+
+- Before a tool runs, what Bob put into it is checked against what the tool needs. Sure mistakes are mended (broken brackets, a field under another name, "5" for 5). A call still missing something doesn't run; Bob gets one line saying what to send, and an example the second time.
+- After an error, Bob gets one plain hint on what usually works.
+- "I'll look that up" with no tool run gets one nudge to really do it, and a retry thinks it through on a long coding brain.
+- The same search in other words isn't run twice. Several look-ups in one reply run side by side.
+- On a job with several steps, a short note reminds Bob of your words, what came back and how many steps are left. The last step has no tools, so he always says what he found.
+- Once a chat fills half his memory, tool results from earlier messages become one line each.
+- While the embedding model is in use anyway (Topics or Remember only what fits), the tools a message means are added, not only the ones its words name.
+
 ---
 
 ## 6. Topics and housekeeping: Bob's memory
@@ -273,9 +285,9 @@ You can rename, merge, pin and drag messages between topics. One **search box** 
 
 To make Bob forget something, either use **Forget** on a topic or simply say "forget what we said about…". You always see a preview first, and you can choose to keep just the short note or remove everything.
 
-### Housekeeping (off unless you turn it on)
+### Housekeeping (on unless you turn it off)
 
-Long chats and old files pile up. Housekeeping is Bob tidying up while he's idle. It's **off by default**. When you turn it on, Bob can:
+Long chats and old files pile up. Housekeeping is Bob tidying up while he's idle. It's **on by default**, and by default it only touches **Bob's own files**. Bob can:
 
 - sum up the older part of a long chat instead of forgetting it,
 - file chats under Topics,
@@ -283,6 +295,8 @@ Long chats and old files pile up. Housekeeping is Bob tidying up while he's idle
 - find things that haven't come up for a while: old chats, pictures and sounds he made, finished tasks, old log lines and repeated notes.
 
 For each kind of thing you choose how old is "old" (from minutes to months), and whether Bob should **ask me first** (you get a list with a tick and a cross for each item) or **tidy automatically**.
+
+**Folders you point him to:** to have Bob help with one of your own folders (Downloads, say), type its full path under **Folders you point him to** and press **Add folder**. Old files from it (6 months by default) show up in Tidy up. Bob always asks first for these, never tidies them by himself, and anything cleared goes to the Recycle Bin. System folders, your whole home folder and Bob's own folder can't be added.
 
 Safety nets:
 
@@ -343,6 +357,7 @@ Settings, **This replicant matrix**, **Back up and move** saves one zip with you
 Hands are Bob's way of doing things for you on your PC rather than just talking about them:
 
 - **Files:** zip and unzip, move, copy, rename, and tidy folders like Downloads.
+- **Sort and rename:** rename and move a whole music, video or photo collection to your own naming rules, or send new files from Downloads or an output folder into your library.
 - **Run:** run a program, command or script you've approved.
 - **Schedules:** do a job at a set time.
 - **Apps:** click and type in another program for you, and, with a vision brain in his "Seeing pictures" slot, check each step by looking at a picture of the window (and click by place in apps that don't name their buttons).
@@ -351,6 +366,18 @@ Hands are Bob's way of doing things for you on your PC rather than just talking 
 - **Security and privacy:** check the PC's protection, explain Defender alerts and start scans, look at suspicious downloads, scripts and emails without opening them, find and remove hidden details (like GPS in photos) before sharing, and check whether a website, link or sender is genuine from public records.
 - **Connected apps (MCP):** work inside Unreal Engine, Blender and other apps that offer their tools through an MCP add-on.
 - **Tool packs from other people:** use tools and jobs someone else made for Bob, from a folder or .zip you add.
+
+### Sort and rename
+
+Ask things like "sort my music folder" or "put my downloads where they belong".
+
+- Settings → Hands: switch on **Sort and rename** and tick the folders Bob may work in.
+- **Sort and rename: naming rules** (same page) has one rule per kind of file: the file types it takes, which ones (any, only TV episodes, or not TV episodes), the **New name**, and **Send to**. A "/" makes folders and words in curly brackets fill in from the file: `{artist}/{album}/{track} {title}` gives `Queen/A Night at the Opera/11 Bohemian Rhapsody.mp3`. Each rule shows an example. **Words you can use in a name** lists them all.
+- Empty **Send to** sorts in place. A folder there moves that kind of file into it (it must be a ticked folder), so Downloads can feed your Music or Videos folder.
+- Starting rules: Music (`{albumartist}/{album}/{track} {title}`), TV episodes (`{show}/Season {season}/{show} - S{season}E{episode}`) and Films (`{title} ({year})/{title} ({year})`) are on; Photos (`{year}/{year}-{month}/{date} {name}`) is off. **Back to the starting rules** restores them.
+- Bob reads song tags (MP3, FLAC, Ogg, Opus, M4A), TV tags in MP4 files, S01E02 or 1x02 in names, a film's year, and the date a photo was taken; an untagged song is named from its file name and its Artist/Album folders. Subtitles and lyrics with the same name go along.
+- The card lists every rename with a tick. Nothing is overwritten, files still downloading are skipped, and a card holds up to 1,000 files (ask again for the next lot). Emptied folders are removed; **Undo** puts everything back, folders too.
+- Windows, Mac and Linux. On Bob for Android you approve the card; the files and the rules stay on the replicant matrix Bob runs on.
 
 ### Use a browser
 
@@ -445,7 +472,7 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 - **Let Bob learn how-tos**: after a job with a few steps goes well, Bob offers one card to keep the steps as a how-to, and follows them next time you ask for something like it. Nothing is kept until you press **Save how-to**. Edit or delete them in Settings, **📒 How-tos**. A how-to is plain text: Hands still ask for your OK as usual. They stay on your PC.
 - **Let Bob fix his own messages**: when Bob gets something wrong, or a status line goes out of date, he changes his earlier message instead of sending a new one. Only his own messages, only in the chat he's in. The message says **edited**; press it to see what it said first.
 - **Let Bob's Quick brain see the big job** (Settings, Brains; off unless you turn it on, needs **Keep chatting while Bob is busy**): when Bob chats beside a long job, his Quick brain knows what the big brain is on, how long it has run and how its last step went. Ask, and it shows the steps so far, or passes the big brain a note it reads at its next step. It never guesses how long is left, and stopping a job stays your Stop button.
-- **Show Try again and Edit in the chat** (on unless you turn it off): **Try again** under Bob's latest answer gets a new answer to your last message; **Edit** under your messages lets you change what you said and send it again, and Bob answers from there. What was there before is kept under your message as an earlier version (the last 5).
+- **Show Try again, Edit and Delete in the chat** (on unless you turn it off): adds them to the **…** menu at the top right of each message (with **Copy**). **Try again** (Bob's latest answer) gets a new answer. **Edit** on yours changes it and sends it again; on Bob's it fixes his words without sending anything. **Delete** takes your message out with Bob's answer to it, or one answer of his. Try again and Edit keep the old version; Delete doesn't.
 - **Let Bob take quick notes**: say "note: ..." in any chat (the window, the phone app, Discord DMs, Telegram) and Bob writes it down with the date and time in one plain text file, `quick-notes.md` in his inn folder. Ask for your notes, or find them by a word or #tag. **Open my notes** opens the file. Notes he takes away are copied to the archive folder first.
 - **Read and search my documents**: Bob reads Word, Excel, PowerPoint, OpenDocument, PDF, e-book and Rich Text files with nothing extra installed, and searches inside them for words, in the folders he may read (Documents, Desktop and Downloads). Nothing leaves your computer and nothing is kept on disk. Old .doc, .xls and .ppt files need the Office documents Hand; a scanned PDF needs its pages attached as pictures.
 - **Let Bob learn from his tools**: when a tool fails and then works, Bob keeps one line on what fixed it and reads it next time. He also counts what works and what fails for each tool, and offers to fix one that keeps failing. The scorecard shows under the switch, with **Forget what he learned**. Off unless you turn it on; it all stays on your computer.

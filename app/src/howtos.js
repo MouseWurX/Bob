@@ -7,6 +7,7 @@
 // alike: cfg.dataDir); the phone app sees the PC's how-tos through the PC.
 // (The plan called them "recipes"; renamed because the Run Hand already has recipes, its saved commands.)
 import fs from 'node:fs';
+import { EMBED_PREFIX_V, freshVec } from './embed-prefix.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { cosine, overlap, words } from './topics.js';
@@ -140,7 +141,9 @@ export class HowTos {
     return true;
   }
 
-  setVec(id, vec) { const list = this.loadAll(); const r = list.find((x) => x.id === id && !x.deleted); if (r && vec?.length) { r.vec = vec; this.save(list); } }
+  setVec(id, vec) { const list = this.loadAll(); const r = list.find((x) => x.id === id && !x.deleted); if (r && vec?.length) { r.vec = vec; r.vp = EMBED_PREFIX_V; this.save(list); } }
+  // How-tos whose meaning vector is missing or older than the search openings (embed-prefix.js).
+  staleVectors() { return this.load().filter((r) => !freshVec(r)); }
 
   // The one how-to that fits this request best, or null. Words always; meaning too when a vector is at hand.
   match(text, vec = null) {
@@ -150,7 +153,7 @@ export class HowTos {
       const w = overlap(text, `${r.name} ${r.when}`);
       const shared = [...words(text)].filter((x) => words(`${r.name} ${r.when}`).has(x)).length;
       let s = shared >= 2 && w >= WORD_MATCH ? w : 0;
-      if (vec && r.vec) { const c = cosine(vec, r.vec); if (c >= MEANING_MATCH) s = Math.max(s, c); }
+      if (vec && freshVec(r)) { const c = cosine(vec, r.vec); if (c >= MEANING_MATCH) s = Math.max(s, c); }
       if (s > score) { score = s; best = r; }
     }
     if (!best) return null;

@@ -73,6 +73,8 @@ import { showPlanTool, planGate, planOn, planPrompt } from './plan.js';
 import { freeMemNow } from './platform.js';
 import { selfWorkOn, readyRepos } from './self-work.js';
 import { compactMessages, charsFor } from './self-work-plan.js';
+import { asDoc, asQuery, embedModel, vecKey } from './embed-prefix.js';
+import { fixCalls, errorHint, promisesAction, PROMISE_NUDGE, PROMISE_LOG, nearKey, onTrackNote, LAST_ROUND_NOTE, tidyOld, togetherCalls, meaningPick, GroupVectors } from './loop-help.js';
 import { HowTos, howtoTools, howtosOn, trailStep, worthOffering, howtoPrompt, usingLine } from './howtos.js';
 import { NEEDS, planFor, SetupOffers, switchFor, applySwitch, SWITCH_KEYS } from './setup-offer.js';
 
@@ -464,7 +466,14 @@ export class Brain {
     this.awayApprovals = new Map();
     this.guests = new GuestJobs(this, { canNow: () => this.guestCanNow() });
     const raw = this.broadcast;
-    this.broadcast = (ev) => { raw(ev); try { this.guests.watch(ev); } catch {} };
+    // 1.5.206 PC check: a card made while no page was open never showed. Waiting cards are kept until answered, and
+    // /api/events hands them to each page that connects.
+    this.waitingCards = new Map();
+    this.broadcast = (ev) => {
+      if (ev?.type === 'approval' && ev.id) this.waitingCards.set(ev.id, ev);
+      else if (ev?.type === 'approval-result' && ev.id) this.waitingCards.delete(ev.id);
+      raw(ev); try { this.guests.watch(ev); } catch {}
+    };
     this.lendDeps = { currentSession, quickBrain: (b) => { const sb = sessionBrains(b.cfg); const m = sb.small && runnable(b, sb.small) ? sb.small : (b.cfg.engine === 'llamacpp' ? null : sb.small); return m ? { model: m, cpu: false, ctx: Math.min(chatBrain(b.cfg).ctx || 32768, 32768) } : null; }, reviewBrain: (b) => reviewBrainOf(b),
       // 1.5.185 Check harder jobs for my other Bobs: the Review brain (Review slot, else Deep thinking, else main), on the card.
       checkBrain: (b) => { const r = reviewBrain(b.cfg); return r && (runnable(b, r.model) || b.cfg.engine !== 'llamacpp') ? { model: r.model, cpu: false, ctx: 32768, think: 'high' } : null; } };
@@ -763,7 +772,7 @@ export class Brain {
     if (sessionId && why === 'named') this.memProject.set(sessionId, project);
     const hk = this.housekeeper;
     const model = this.cfg.housekeeping?.embedModel || 'nomic-embed-text';
-    const vecs = vec && hk ? (hk.memVecs ||= new MemoryVectors(this.cfg)).load(model) : {};
+    const vecs = vec && hk ? (hk.memVecs ||= new MemoryVectors(this.cfg)).load(vecKey(model)) : {};
     const picked = pickMemories(lines, { text, project, qvec: vec, vecs });
     const fresh = picked.filter((l) => !l.always);
     this.lastRecall = { at: Date.now(), session: sessionId, project, lines: fresh.length, of: lines.length, by: vec ? 'meaning' : 'words' };
@@ -805,7 +814,7 @@ export class Brain {
   history(id) {
     return this.session(id)
       .filter((m) => (m.role === 'user' || m.role === 'assistant') && (m.content || m.media?.length || m.correction))
-      .map((m) => ({ role: m.role, id: m.id, at: m.at, ...(m.forgotten ? { forgotten: true } : {}), content: m.role === 'user' && m.text != null ? m.text : (m.content || ''), ...(m.media?.length ? { media: m.media } : {}), ...(m.correction ? { correction: m.correction } : {}), ...(m.edited ? { edited: m.edited, was: m.was ?? '' } : {}), ...(m.role === 'user' && m.versions?.length ? { versions: m.versions } : {}), pics: (m.refs || []).map((id) => this.refs.find(id)).filter(Boolean).map((r) => ({ name: r.name, url: `/refs/${r.file}` })) }));
+      .map((m) => ({ role: m.role, id: m.id, at: m.at, ...(m.forgotten ? { forgotten: true } : {}), content: m.role === 'user' && m.text != null ? m.text : (m.content || ''), ...(m.media?.length ? { media: m.media } : {}), ...(m.correction ? { correction: m.correction } : {}), ...(m.edited ? { edited: m.edited, was: m.was ?? '', ...(m.editedBy === 'you' ? { editedBy: 'you' } : {}) } : {}), ...(m.role === 'user' && m.versions?.length ? { versions: m.versions } : {}), pics: (m.refs || []).map((id) => this.refs.find(id)).filter(Boolean).map((r) => ({ name: r.name, url: `/refs/${r.file}` })) }));
   }
 
   // Makes sure a model is in memory, telling the user first if it means a wait. Goes through the gate: the action
@@ -1006,7 +1015,7 @@ export class Brain {
     let picked = null, steps = null, note = '';
     const allowed = await new Promise((resolve) => {
       const timer = setTimeout(() => done(false), APPROVAL_TIMEOUT_MS); // through done(), so the card leaves the list too
-      const done = (v, rows, items, said) => { clearTimeout(timer); this.approvals.delete(id); this.handApprovals.delete(id); picked = rows ?? null; steps = items ?? null; note = typeof said === 'string' ? said.slice(0, 500) : ''; resolve(v); };
+      const done = (v, rows, items, said) => { clearTimeout(timer); this.approvals.delete(id); this.waitingCards?.delete(id); this.handApprovals.delete(id); picked = rows ?? null; steps = items ?? null; note = typeof said === 'string' ? said.slice(0, 500) : ''; resolve(v); };
       this.approvals.set(id, done);
       signal.addEventListener('abort', () => done(false), { once: true });
     });
@@ -1532,6 +1541,60 @@ export class Brain {
     const sticky = this.stickyGroups.get(sessionId);
     if (sticky) for (const [g, left] of sticky) { if (left > 0) loaded.add(g); }
     return loaded;
+  }
+
+  // Nov 11: the loop's helps (loop-help.js) are always on. loopHelpOff is for the loop test only (model-lab/loop-test.mjs
+  // compares with and without them); it is not a setting and nothing in Bob's window changes it.
+  // 1.5.206 PC check: loopHelpOff can also be a list of help names, so the loop test can switch one off at a time
+  // (model-lab/loop-test.mjs --off think,note): mend, together, meaning, tidy, note, last, think, promise, near, hint.
+  get plainLoop() { return this.cfg?.loopHelpOff === true; }
+  helpOff(name) { const o = this.cfg?.loopHelpOff; return o === true || (Array.isArray(o) && o.includes(name)); }
+
+  // Nov 11 (loop-help.js): check each call against its tool before it runs. Sure fixes are made (mended JSON, a field
+  // under another name, "5" for 5, "Week" for "week"); a call still missing what it needs gets call.bounce, the
+  // line handed back instead of running it (with an example call the second time the same tool bounces).
+  mendCalls(calls, ctx) {
+    if (this.helpOff('mend')) { for (const c of calls) delete c.function?.raw; return { fixed: 0, bounced: 0 }; }
+    const sum = fixCalls(calls, this.tools, { bounced: (ctx.bounced ||= new Map()) });
+    for (const c of calls) if (c.fixed) this.log('tool', `${c.function?.name}: mended the call (${c.fixed.join(', ')})`);
+    return sum;
+  }
+
+  // Nov 11: two or more look-ups in one reply (web_search, fetch_page, read_file...) run side by side. Only tools that
+  // never ask for an OK, never a repeat; the loop then hands each result back in order as usual.
+  async lookTogether(calls, ctx) {
+    const done = new Map();
+    if (this.helpOff('together')) return done;
+    const seen = new Set();
+    const picked = togetherCalls(calls, this.tools, {
+      skip: (c) => {
+        const key = nearKey(c.function.name, c.function.arguments) || callKey(c.function.name, c.function.arguments);
+        if (seen.has(key) || ctx.callsSeen?.has(key) || ctx.pagesRead?.has(key) || ctx.repeatStop || ctx.switchTo) return true;
+        seen.add(key); return false;
+      }
+    });
+    if (!picked.length) return done;
+    this.log('tool', `${picked.length} look-ups side by side: ${picked.map((c) => c.function.name).join(', ')}`);
+    await Promise.all(picked.map((c) => this.runTool(c.function.name, c.function.arguments, ctx)
+      .then((r) => done.set(c, r), (e) => { if (ctx.signal?.aborted) throw e; done.set(c, { text: `Error: ${e.message}` }); })));
+    return done;
+  }
+
+  // Nov 11: the tool groups a message means (loop-help.js), from the Memory slot's embedding model. Only when it's in
+  // use anyway (housekeeping or "Remember only what fits" on), never in the Gaming session, and at most 1.5 seconds:
+  // the first time, the groups' own vectors are made in the background and words alone pick this turn.
+  async meaningGroups(text) {
+    const hk = this.housekeeper;
+    if (!hk || this.helpOff('meaning') || gaming(this.cfg) || !(hkSettings(this.cfg).enabled || recallOn(this.cfg)) || String(text || '').trim().length < 6) return [];
+    const groups = groupsFor(this);
+    if (!Object.keys(groups).length) return [];
+    const limit = (p) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), 1500).unref?.())]);
+    this.groupVecs ||= new GroupVectors(this.cfg);
+    const fill = this.groupVecsFill ||= this.groupVecs.for(Object.fromEntries(Object.entries(groups).map(([id, g]) => [id, { what: g.what }])), (t) => hk.embed(t)).finally(() => { this.groupVecsFill = null; });
+    const vecs = await limit(fill.catch(() => null));
+    if (!vecs) return [];
+    const q = this.recallVec?.text === text && this.recallVec.vec ? this.recallVec.vec : (await limit(hk.embed([asQuery(embedModel(this.cfg), text)]).catch(() => null)))?.[0];
+    return meaningPick(q, vecs);
   }
 
   // After a turn: groups used this turn stay for the next few messages; the rest count down.
@@ -2088,7 +2151,7 @@ export class Brain {
     // Its meaning, for matching, only when the Memory model is in use anyway (never started just for this).
     try {
       const hk = this.housekeeper;
-      if (hk && hkSettings(this.cfg).enabled) Promise.race([hk.embed([`${r.name}. ${r.when}`]), new Promise((ok) => setTimeout(() => ok(null), 3000))]).then((v) => { if (v?.[0]) this.howtos.setVec(r.id, v[0]); }).catch(() => {});
+      if (hk && hkSettings(this.cfg).enabled) Promise.race([hk.embed([asDoc(embedModel(this.cfg), `${r.name}. ${r.when}`)]), new Promise((ok) => setTimeout(() => ok(null), 3000))]).then((v) => { if (v?.[0]) this.howtos.setVec(r.id, v[0]); }).catch(() => {});
     } catch {}
     return { ok: true, saved: r };
   }
@@ -2106,11 +2169,11 @@ export class Brain {
       // 1.5.79: "Remember only what fits" embeds the message too (same 1.5 s limit; words are matched if it's slow).
       const wantVec = hk && (hkSettings(this.cfg).enabled || recall) && !gaming(this.cfg);
       if (hk && hk.topics.load().topics.length) {
-        if (wantVec) vec = (await Promise.race([hk.embed([text]), new Promise((r) => setTimeout(() => r(null), 1500))]))?.[0] || null;
+        if (wantVec) vec = (await Promise.race([hk.embed([asQuery(embedModel(this.cfg), text)]), new Promise((r) => setTimeout(() => r(null), 1500))]))?.[0] || null;
         const notes = hk.topics.relevant(text, { vec, k: 3 });
         topicProject = notes[0]?.project || '';
         if (notes.length) parts.push(`Notes from earlier talks (topics; the user can edit these):\n${notes.map((t) => `- ${t.project ? t.project + ' > ' : ''}${t.name}: ${(t.note || t.summary).slice(0, 600)}${t.open?.length ? ` Open: ${t.open.join('; ')}` : ''}`).join('\n')}`);
-      } else if (recall && wantVec) vec = (await Promise.race([hk.embed([text]), new Promise((r) => setTimeout(() => r(null), 1500))]))?.[0] || null;
+      } else if (recall && wantVec) vec = (await Promise.race([hk.embed([asQuery(embedModel(this.cfg), text)]), new Promise((r) => setTimeout(() => r(null), 1500))]))?.[0] || null;
       this.recallVec = { text, vec }; // the turn's vector, reused by other matches this turn (how-tos)
       if (recall) { const mem = await this.recallMemories(sessionId, text, { vec, topicProject }); if (mem) parts.push(mem); }
       // Let Bob notice what's worth noting (notes.js): the quick notes that fit, and the project for a note's #tag.
@@ -2235,6 +2298,14 @@ export class Brain {
     if (!model) throw new Error('I don\'t have a brain yet. Open Get models (in the menu on the left) and pick one; the first-time setup suggests the right one for this replicant matrix.');
     this.setState('thinking', '', this.state.model);
     let earlier = job?.guest?.public ? '' : await this.recall(sessionId, text); // Bob on Discord: nothing of the owner's
+    // Nov 11 (loop-help.js): the tool groups the message means, as well as the ones its words name. Only while the
+    // embedding model is in use anyway (topics or "Remember only what fits"); never started just for this.
+    if (!ctx.noTools && !again && !job?.guest && !allToolsOn(this.cfg)) {
+      const add = await this.meaningGroups(text).catch(() => []);
+      const fresh = add.filter((g) => !ctx.loaded.has(g));
+      for (const g of fresh) ctx.loaded.add(g);
+      if (fresh.length) this.log('toolbox', `added by meaning: ${fresh.join(', ')}`);
+    }
     // 1.5.79 How-tos (off by default): the one saved how-to that fits this request goes in for this turn, and the chat says so.
     if (howtosOn(this.cfg) && !again && !job?.guest) {
       let howto = null;
@@ -2300,16 +2371,30 @@ export class Brain {
       else if (refersToLink(text)) { const u = earlierLink(); if (u) await openLink(u, 'opened the link from earlier in the chat first'); }
     }
 
+    // Nov 11 (loop-help.js): what the brain sees each step: old results as one line once the chat is long, and on a
+    // long job a short "where we are" note last. The last step has no tools, so he answers instead of running out.
+    const loopView = (list, step) => {
+      if (this.plainLoop) return list;
+      const { list: out, tidied } = this.helpOff('tidy') ? { list, tidied: 0 } : tidyOld(list, turnStart, brainCtx);
+      if (tidied && !ctx.tidySaid) { ctx.tidySaid = true; this.log('chat', `the chat is long: ${tidied} older tool results set aside as one line each`); }
+      const who = this.cfg.userName || 'the user';
+      const note = ctx.lastRound ? LAST_ROUND_NOTE(who) : this.helpOff('note') ? '' : onTrackNote({ ask: text, turn: out.slice(turnStart), step, max: MAX_STEPS, who });
+      return note ? [...out, { role: 'system', content: note }] : out;
+    };
     for (let step = 0; step < MAX_STEPS; step++) {
+      if (step === MAX_STEPS - 1 && !this.helpOff('last') && !ctx.noTools && msgs.slice(turnStart).some((m) => m.role === 'tool')) { ctx.noTools = true; ctx.lastRound = true; this.log('tool', 'the last step: no more tools, so he answers with what he has'); }
       const tools = ctx.noTools ? [] : guestTools(job, this.withWatchTools(this.frontDeskTools(ctx.loaded), job)); // #57 stopgap: after repeats, answer
       // The big brain reads notes passed along to it at the start of each step, and its chat says so.
       if (!job?.side) this.readNotes(ctx, msgs);
       // 1.5.66: Bob's own one-more-go after a reply that missed. On Qwen3.6 (everyday chat answers without thinking)
       // the retry thinks it through: thinking is set per request, so the same loaded brain does it, no reload.
-      if (ctx.retrying && think === false && LONG_CODER.test(String(model || ''))) {
+      // 1.5.206 PC check: thinking on every retry (Nov 11) cut "answered in words" from 98% to 81% on Riker, because a
+      // thinking retry can spend the reply on thinking and say nothing. Back to the long coders only, unless a brain's
+      // retries are asked to think (loopHelpOn: ['think'], for the loop test).
+      if (ctx.retrying && think === false && (LONG_CODER.test(String(model || '')) || (this.cfg?.loopHelpOn || []).includes('think'))) {
         think = undefined;
-        emit({ type: 'announce', text: 'Trying again, thinking it through this time.' });
-        this.log('chat', 'one more go, with thinking on');
+        if (LONG_CODER.test(String(model || ''))) emit({ type: 'announce', text: 'Trying again, thinking it through this time.' });
+        this.log('chat', 'one more go, with thinking on (if this brain thinks)');
       }
       ctx.retrying = false;
       const pub = Boolean(job?.guest?.public); // Bob on Discord: no memory, about-me or backstory of the owner's
@@ -2321,7 +2406,7 @@ export class Brain {
       if (borrowing) {
         const who = this.cfg.userName || 'the user';
         const lentSys = { role: 'system', content: this.withLimits(systemPrompt({ now: 'given in the note just before the latest message', memory: pub ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: pub ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, who) }), ctx.loaded) };
-        const hist = staleHandErrors(msgs, turnStart);
+        const hist = loopView(staleHandErrors(msgs, turnStart), step);
         const at = hist.findLastIndex((m) => m.role === 'user');
         const note = { role: 'system', content: `Current date and time for ${who}: ${this.now()}.${extras}${earlier ? `\n\n${earlier}` : ''}` };
         lentMsgs = at < 0 ? [lentSys, ...hist, note] : [lentSys, ...hist.slice(0, at), note, ...hist.slice(at)];
@@ -2342,7 +2427,7 @@ export class Brain {
         this.setState('thinking', `${rName} (rented) is thinking`, this.state.model);
         if (!ctx.rentSaid) { ctx.rentSaid = true; emit({ type: 'rent', action: 'thinking', rental: rName, service: this.rentals.view().rentals.find((r) => r.id === rented.id)?.serviceName || '' }); }
         try {
-          reply = await this.rentals.chat(rented, { messages: [sys, ...staleHandErrors(msgs, turnStart)], tools, signal, think, job, emit, onToken: (t) => emit({ type: 'token', text: t }) });
+          reply = await this.rentals.chat(rented, { messages: [sys, ...loopView(staleHandErrors(msgs, turnStart), step)], tools, signal, think, job, emit, onToken: (t) => emit({ type: 'token', text: t }) });
         } catch (e) {
           if (signal?.aborted) throw e;
           this.log('rent', `${rName} couldn't take it (${e.message}); thinking it here`);
@@ -2382,7 +2467,7 @@ export class Brain {
         model = (await this.ensureModel(model, emit, signal, 'bob', { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}) })) || model;
         this.setState('thinking', '', model);
         reply = await this.chatSafe({
-          model, messages: [sys, ...meanwhileNear(staleHandErrors(msgs, turnStart), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')], tools, signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
+          model, messages: [sys, ...meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')], tools, signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
           ...(ctx.preset && ctx.preset.temperature !== null ? { temperature: ctx.preset.temperature } : {}), // a preset's own temperature
           onToken: (t) => emit({ type: 'token', text: t })
         }, { emit });
@@ -2390,8 +2475,11 @@ export class Brain {
       // He's seen the new look once; that's enough.
       if (this.cfg.lookChange) { try { saveSettings(this.cfg, { lookChange: null }); } catch {} this.cfg.lookChange = null; }
       msgs.push(reply);
-      // Let Bob fix his own messages: what he just said gets its id now, so the window can find the bubble if he changes it later.
-      if (editOwnOn(this.cfg) && !job?.guest && typeof reply.content === 'string' && reply.content.trim()) { reply.id ||= newMsgId(); reply.at ||= Date.now(); emit({ type: 'said', id: reply.id }); }
+      // Nov 11 (loop-help.js): what goes into each call is checked against the tool, and mended where that's sure.
+      if (reply.tool_calls?.length) this.mendCalls(reply.tool_calls, ctx);
+      // What he just said gets its id now, so the window can find the bubble: for the "..." menu on it (Edit, Delete;
+      // msg-menu.js), and if he changes it later (Let Bob fix his own messages).
+      if (!job?.guest && typeof reply.content === 'string' && reply.content.trim()) { reply.id ||= newMsgId(); reply.at ||= Date.now(); emit({ type: 'said', id: reply.id }); }
       if (!reply.tool_calls && !ctx.handsDid && !ctx.claimChecked && claimsPcAction(reply.content)) {
         // Said he did something on the PC that no tool did: say so to the user, and give him one go to really do it.
         ctx.claimChecked = true;
@@ -2466,6 +2554,14 @@ export class Brain {
       } else if (!reply.tool_calls && this.checkTurn(ctx, reply, true)) { ctx.retrying = true; continue; } // asked for something that didn't happen: one more go
       // Let Bob's Quick brain see the big job: a note that came while the big brain was writing its answer (no next step)
       // still reaches it, once: it says what changes, or that it saw it (PC test 1.5.203: the note never arrived).
+      // Nov 11 (loop-help.js): "I'll look that up." and nothing ran: one nudge to really do it.
+      if (!reply.tool_calls && !empty && !this.helpOff('promise') && !ctx.promiseChecked && !ctx.noTools && promisesAction(reply.content)) {
+        ctx.promiseChecked = true;
+        msgs.push({ role: 'system', content: PROMISE_NUDGE, hidden: true }); ctx.retrying = true;
+        this.log('honesty', PROMISE_LOG);
+        emit({ type: 'token', text: '\n\n' });
+        continue;
+      }
       if (!reply.tool_calls && !job?.side && !ctx.noteRedo && this.watch.for(job)?.notes.length) { ctx.noteRedo = true; this.readNotes(ctx, msgs, noteAfterAnswer); continue; }
       if (!reply.tool_calls) { this.keepGroups(sessionId, used); return; }
       let ended = false;
@@ -2479,7 +2575,8 @@ export class Brain {
       }
       // #57 stopgap (two-Bob trial, Test B: about 650 repeat page reads in a minute): at most 6 tool calls run from one reply.
       if (reply.tool_calls.length > MAX_CALLS_PER_REPLY) { this.log('tool', `one reply asked for ${reply.tool_calls.length} tool calls; ran the first ${MAX_CALLS_PER_REPLY}`); reply.tool_calls = reply.tool_calls.slice(0, MAX_CALLS_PER_REPLY); }
-      await askTogether(this, reply.tool_calls, ctx); // 1.5.41: two or more OKs in this reply go on one card
+      await askTogether(this, reply.tool_calls.filter((c) => !c.bounce), ctx); // 1.5.41: two or more OKs in this reply go on one card
+      const early = await this.lookTogether(reply.tool_calls, ctx); // Nov 11: look-ups in one reply run side by side
       for (const call of reply.tool_calls) {
         const name = call.function?.name;
         // 1.5.41: once Bob has picked a new session, the rest of this round waits for it (the job runs again there).
@@ -2488,13 +2585,17 @@ export class Brain {
         // A tool from a group that isn't added yet: small brains sometimes call it straight away. Add its group and run it.
         const g = name === 'use_tools' ? null : groupOf(this, name);
         if (g) { ctx.loaded.add(g); used.add(g); }
-        const key = callKey(name, call.function?.arguments);
+        const key = (!this.helpOff('near') && nearKey(name, call.function?.arguments)) || callKey(name, call.function?.arguments); // "moon size" = "size of the moon?"
         const doing = (HAND_TOOLS.has(name) || DOING_TOOLS.has(name)) && !isLook(name);
         // #57: looks (app_look, list_schedules) can change between calls, so they are never counted as repeats.
         const seen = (ctx.callsSeen ||= new Map());
         const again = isLook(name) ? 'new' : repeatCheck(seen, key);
         let res;
-        if (again === 'stop') {
+        if (call.bounce) {
+          // Nov 11: a call that can't run as it is (a missing input, no such tool) goes back with what to fix.
+          res = { text: call.bounce };
+          this.log('tool', `${name}: not run, ${call.bounce.slice(9, 160)}`);
+        } else if (again === 'stop') {
           ctx.repeatStop = true;
           res = { text: '(Not run: this exact call came three times this turn, so the turn has stopped.)' };
           this.log('tool', `${name} asked for three times with the same input; stopped the turn`);
@@ -2514,7 +2615,8 @@ export class Brain {
           this.log('tool', `skipped a repeat of ${name}`);
           ctx.repeatSkips = (ctx.repeatSkips || 0) + 1;
         } else {
-          res = await this.runTool(name, call.function?.arguments, ctx);
+          res = early.get(call) || await this.runTool(name, call.function?.arguments, ctx);
+          if (!this.helpOff('hint') && /^Error:/.test(String(res.text))) res = { ...res, text: String(res.text) + errorHint(name, res.text) }; // Nov 11: one plain hint
           if (name === 'fetch_page') (ctx.pagesRead ||= new Set()).add(key);
           // An action may change what a look-up finds (a file written, then read again), so after one, the count starts over.
           if (doing || HAND_TOOLS.has(name)) seen.clear();
@@ -2764,16 +2866,25 @@ export class Brain {
     ];
     let final = '';
     const did = []; // what this copy did, handed back to the main conversation afterwards
+    // Nov 11 (loop-help.js): on a long job, a short "where we are" note goes last; the last step has no tools.
+    const hatAsk = String(ctx.turnText || task || '');
+    const hatView = (step) => {
+      if (this.plainLoop) return messages;
+      const note = step === maxSteps - 1 ? (this.helpOff('last') ? '' : LAST_ROUND_NOTE(this.cfg.userName || 'the user')) : this.helpOff('note') ? '' : onTrackNote({ ask: hatAsk, turn: messages.slice(1), step, max: maxSteps, who: this.cfg.userName || 'the user' });
+      return note ? [...messages, { role: 'system', content: note }] : messages;
+    };
     for (let step = 0; step < maxSteps; step++) {
       let reply = null;
+      const last = step === maxSteps - 1 && step > 0 && !this.helpOff('last');
+      const stepTools = last ? [] : this.toolSchemas(hatTools);
       if (!ctx.job?.side) this.readNotes(ctx, messages); // notes passed along by the Quick brain (meanwhile.js)
-      if (via) reply = await this.lenders.chat(via, { messages, tools: this.toolSchemas(hatTools), signal: ctx.signal, from: this.cfg.windowsName || 'Bob', kind: 'check', onToken: (t) => ctx.emit({ type: 'token', text: t }) });
+      if (via) reply = await this.lenders.chat(via, { messages: hatView(step), tools: stepTools, signal: ctx.signal, from: this.cfg.windowsName || 'Bob', kind: 'check', onToken: (t) => ctx.emit({ type: 'token', text: t }) });
       else if (lender) {
         // Tools still run here (and ask here); only the thinking happens on the other Bob.
         // 1.5.181 (two-Bob trial): the chat names the Bob doing the check, not only the logbook.
         if (step === 0) { ctx.reviewedBy = lender.name; ctx.emit({ type: 'token', text: `_${lender.name} is checking this over Bob-Net (${lender.brain})._\n\n` }); }
         try {
-          reply = await this.lenders.chat(lender, { messages, tools: this.toolSchemas(hatTools), signal: ctx.signal, from: this.cfg.windowsName || 'Bob', want: 'review', onToken: (t) => ctx.emit({ type: 'token', text: t }) });
+          reply = await this.lenders.chat(lender, { messages: hatView(step), tools: stepTools, signal: ctx.signal, from: this.cfg.windowsName || 'Bob', want: 'review', onToken: (t) => ctx.emit({ type: 'token', text: t }) });
           if (!String(reply?.content || '').trim() && !(reply?.tool_calls || []).length) throw new Error('it came back empty'); // 1.5.181: an empty check is no check
         }
         catch (e) {
@@ -2790,16 +2901,19 @@ export class Brain {
         }
       }
       reply ||= await this.chatSafe({
-        model, messages, tools: this.toolSchemas(hatTools), signal: ctx.signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
+        model, messages: hatView(step), tools: stepTools, signal: ctx.signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
         ...(CODING_HATS.has(hat) ? { task: 'coding' } : {}), // 1.5.148: Qwen's coding preset for code work
         onToken: (t) => ctx.emit({ type: 'token', text: t })
       }, { emit: ctx.emit, who: hat });
       messages.push(reply);
       final += reply.content;
       if (!reply.tool_calls) break;
-      await askTogether(this, reply.tool_calls, ctx); // 1.5.41: one card for every OK in this reply
+      this.mendCalls(reply.tool_calls, ctx); // Nov 11 (loop-help.js)
+      await askTogether(this, reply.tool_calls.filter((c) => !c.bounce), ctx); // 1.5.41: one card for every OK in this reply
+      const early = await this.lookTogether(reply.tool_calls, ctx);
       for (const call of reply.tool_calls) {
-        const res = await this.runTool(call.function?.name, call.function?.arguments, ctx);
+        let res = call.bounce ? { text: call.bounce } : early.get(call) || await this.runTool(call.function?.name, call.function?.arguments, ctx);
+        if (!this.helpOff('hint') && /^Error:/.test(String(res.text))) res = { ...res, text: String(res.text) + errorHint(call.function?.name, res.text) };
         messages.push({ role: 'tool', tool_name: call.function?.name, content: res.text });
         let a = call.function?.arguments; if (typeof a === 'string') { try { a = JSON.parse(a); } catch { a = {}; } }
         const where = a?.path || a?.url || a?.query || a?.name || '';

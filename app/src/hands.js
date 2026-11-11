@@ -17,6 +17,8 @@ import os from 'node:os';
 import { insideAny, isInside, appDir } from './config.js';
 import { HANDS, LIMITS, handOn, handOffWhy, handsSettings, cleanHands, readOnlyRoots, freeOn, limitOn, handsHere, handsOs, computerWord, handHere } from './hands-settings.js';
 import { planFiles, planCard, applyFiles, undoJob, loadJournal, handsRoots } from './hands-files.js';
+import { planSort, sortSummary } from './sort-library.js';
+import { exampleFor, TOKENS } from './sort-names.js';
 import { checkCommand, runCommand, safeEnv } from './hands-run.js';
 import { codeCopyRoot } from './self-work.js';
 import { toolPath } from './self-work-tools.js'; // "Let Bob work on repositories": his own Git and Node first in the code copy
@@ -130,6 +132,8 @@ export async function runApproved(cfg, { cmd, args = [], cwd }, { emit = () => {
 }
 
 const off = (cfg, id) => { if (!handOn(cfg, id)) throw new Error(handOffWhy(cfg, id)); };
+// Undo belongs to Files and to Sort and rename: either one on is enough.
+const offUndo = (cfg) => { if (!handOn(cfg, 'files') && !handOn(cfg, 'sort')) off(cfg, 'files'); };
 
 // The tools. brain is used for its logbook.
 export function handsTools(brain, opts = {}) {
@@ -180,19 +184,55 @@ export function handsTools(brain, opts = {}) {
     schema: fn('undo_files', 'Undo a file job (the latest, or one by its undo id). {{USER}} approves it.', { id: str('Undo id (optional; default the latest job).') }, []),
     approvalGroup: 'files',
     check({ id }) {
-      off(cfg, 'files');
+      offUndo(cfg);
       const j = id ? loadJournal(cfg).find((x) => x.id === id) : [...loadJournal(cfg)].reverse().find((x) => !x.undone);
       if (!j) throw new Error('There is no file job to undo.');
       if (j.undone) throw new Error('That job was already undone.');
       return `Undo "${j.label}" (${j.steps.length} step${j.steps.length === 1 ? '' : 's'}): moved things go back, things I made go to the Recycle Bin.`;
     },
     async run({ id }) {
-      off(cfg, 'files');
+      offUndo(cfg);
       const r = undoJob(cfg, id);
       log('hands', `undo: ${r.job.label}: ${r.done.length} done${r.failed.length ? `, ${r.failed.length} failed` : ''}`);
       return [`Undid "${r.job.label}".`, r.failed.length ? `Couldn't undo: ${r.failed.join('; ')}` : '', r.manual.length ? `These are in the Windows Recycle Bin; restore them from there: ${r.manual.join('; ')}` : ''].filter(Boolean).join('\n');
     },
     summary: ({ id }) => `undo files${id ? ' ' + id : ''}`
+  };
+
+  // Sort and rename (sort-library.js): plans moves to the user's naming rules; the Files card shows every row.
+  t.sort_files = {
+    schema: fn('sort_files', "Rename and move music, videos or photos in a folder (library, Downloads) to {{USER}}'s naming rules. Undo with undo_files.", {
+      folder: str('Full path.'),
+      kinds: list('Only these rules: music, tv, films, photos.'),
+      subfolders: { type: 'boolean', description: 'Default true.' }
+    }, ['folder']),
+    approvalGroup: 'files',
+    check(args, ctx) {
+      off(cfg, 'sort');
+      const plan = planSort(cfg, args);
+      if (!plan.rows.length) throw new Error(`Nothing to rename there${plan.fine ? `: ${sortSummary(plan)}` : ' (no files match the naming rules that are on)'}.`);
+      if (ctx) ctx.handsPlan = plan;
+      const card = planCard(plan);
+      if (plan.more) card.text += ` ${plan.more} more after this; ask again for the next lot.`;
+      return card;
+    },
+    async run(args, ctx) {
+      off(cfg, 'sort');
+      const plan = ctx?.handsPlan || planSort(cfg, args);
+      if (ctx) ctx.handsPlan = null;
+      const res = applyFiles(cfg, plan, ctx?.picked ?? null);
+      if (res.job) log('hands', `sort: ${plan.label}: ${res.done.length} done${res.failed.length ? `, ${res.failed.length} failed` : ''} (undo id ${res.job.id})`);
+      ctx?.emit?.({ type: 'files-done', job: res.job ? { id: res.job.id, label: res.job.label } : null, done: res.done.length, failed: res.failed.map((f) => ({ from: f.from, why: f.why })) });
+      const lines = [`${plan.label}: ${res.done.length} done.`];
+      if (res.failed.length) lines.push(`Not done: ${res.failed.slice(0, 20).map((f) => `${f.from} (${f.why})`).join('; ')}${res.failed.length > 20 ? `; and ${res.failed.length - 20} more` : ''}`);
+      const skipped = plan.rows.length - res.done.length - res.failed.length;
+      if (skipped) lines.push(`${skipped} left as they were (blocked or not ticked).`);
+      const extra = sortSummary(plan);
+      if (extra) lines.push(`Also: ${extra}.`);
+      if (res.job) lines.push(`Undo id: ${res.job.id} (the user can also press Undo).`);
+      return lines.join('\n');
+    },
+    summary: ({ folder }) => `sort and rename in ${folder || '?'}`
   };
 
   const runCheck = (args) => {
@@ -271,7 +311,7 @@ export function handsPrompt(cfg, { hat = null } = {}) {
     : ` Every action shows a card and waits for a click, so describe the plan briefly and call the tool; don't ask in words first.${hat ? '' : ` When a job needs two or more of these OKs, call ask_together first with every one of those steps (the exact tool and arguments), so ${who} sees the whole job on one card, then do the steps with the same arguments.`} If ${who} says no, don't try another way round.`;
   if (hat) return `\n\nHands ${who} switched on: ${on.map(([, h]) => h.label).join('; ')}.${askLine}${realLine}`;
   const secWhere = handsOs() === 'win' ? 'in Windows Security' : 'in the system\'s own security settings';
-  return `\n\nHands ${who} switched on: ${on.map(([, h]) => h.label).join('; ')}.${handOn(cfg, 'files') ? ` Files: only in ${roots.join('; ') || '(no folders ticked yet)'}. To undo a file job, call undo_files; it keeps the record, so don't answer from memory.` : ''}${handOn(cfg, 'office') ? ` Office: convert_file converts (documents with LibreOffice, sound and video with FFmpeg); read Word, Excel, PowerPoint or PDF with office_read, not read_file; office_make makes new ones; office_edit changes them (read first). It saves in ${[...roots, path.join(cfg.innDir || '', 'documents')].join('; ')}.` : ''}${handOn(cfg, 'security') ? ` Security: you are a defensive sidekick. security_check reads the PC's protection (changes nothing); inspect_file checks a file or pasted email/command without opening it; strip_metadata makes clean copies; osint_lookup checks sites, links, senders and IPs from public records; read security_tips before giving safety advice. Never switch protection off, allow or restore threats, or research private people; say how the user does those first ones ${secWhere}.` : ''}${handOn(cfg, 'apps') ? ' Apps: open with open_app, read the window with app_look, then do one step at a time with app_act using the names app_look gave you. Pass expect on a step that should change the window so your eyes check it; when app_look finds nothing readable, ask it a question with ask (a picture goes to your eyes brain) and click by place with click_at.' : ''}${browserPrompt(cfg)}${mcpPrompt(cfg)}${packsPrompt(cfg)}${makerPrompt(cfg)}${askLine}${realLine}${offLine}`;
+  return `\n\nHands ${who} switched on: ${on.map(([, h]) => h.label).join('; ')}.${handOn(cfg, 'files') ? ` Files: only in ${roots.join('; ') || '(no folders ticked yet)'}. To undo a file job, call undo_files; it keeps the record, so don't answer from memory.` : ''}${handOn(cfg, 'sort') ? ` Sort and rename: sort_files works in ${roots.join('; ') || '(no folders ticked yet)'} with ${cfg.userName || 'the user'}'s rules (${handsSettings(cfg).sortRules.filter((r) => r.on && r.pattern).map((r) => `${r.label}: ${r.pattern}${r.dest ? ` into ${r.dest}` : ''}`).join('; ') || 'none on'}). Rules are changed in Settings, not by you.` : ''}${handOn(cfg, 'office') ? ` Office: convert_file converts (documents with LibreOffice, sound and video with FFmpeg); read Word, Excel, PowerPoint or PDF with office_read, not read_file; office_make makes new ones; office_edit changes them (read first). It saves in ${[...roots, path.join(cfg.innDir || '', 'documents')].join('; ')}.` : ''}${handOn(cfg, 'security') ? ` Security: you are a defensive sidekick. security_check reads the PC's protection (changes nothing); inspect_file checks a file or pasted email/command without opening it; strip_metadata makes clean copies; osint_lookup checks sites, links, senders and IPs from public records; read security_tips before giving safety advice. Never switch protection off, allow or restore threats, or research private people; say how the user does those first ones ${secWhere}.` : ''}${handOn(cfg, 'apps') ? ' Apps: open with open_app, read the window with app_look, then do one step at a time with app_act using the names app_look gave you. Pass expect on a step that should change the window so your eyes check it; when app_look finds nothing readable, ask it a question with ask (a picture goes to your eyes brain) and click by place with click_at.' : ''}${browserPrompt(cfg)}${mcpPrompt(cfg)}${packsPrompt(cfg)}${makerPrompt(cfg)}${askLine}${realLine}${offLine}`;
 }
 
 // Hard limits the user switched off, so Bob knows what he may now do (and that nothing else changed).
@@ -290,5 +330,5 @@ export function folderCandidates(cfg) {
 }
 
 export function handsView(cfg) {
-  return { candidates: folderCandidates(cfg), settings: handsSettings(cfg), hands: handsHere(), limits: Object.entries(LIMITS).map(([id, l]) => ({ id, ...l })), readOnly: (cfg.readOnlyRoots || []).filter((f) => !(cfg.ownReadOnlyRoots || []).includes(f)), roots: handsRoots(cfg), recipes: loadRecipes(cfg), journal: loadJournal(cfg).slice(-15).reverse().map((j) => ({ id: j.id, at: j.at, label: j.label, steps: j.steps.length, undone: Boolean(j.undone) })), runs: loadRuns(cfg).slice(-15).reverse(), running: runningNow(), office: officeView(cfg), selfTools: selfToolsView(cfg), mcp: mcpView(cfg), packs: packsView(cfg), browser: browserView(cfg) };
+  return { candidates: folderCandidates(cfg), settings: handsSettings(cfg), hands: handsHere(), limits: Object.entries(LIMITS).map(([id, l]) => ({ id, ...l })), readOnly: (cfg.readOnlyRoots || []).filter((f) => !(cfg.ownReadOnlyRoots || []).includes(f)), roots: handsRoots(cfg), recipes: loadRecipes(cfg), journal: loadJournal(cfg).slice(-15).reverse().map((j) => ({ id: j.id, at: j.at, label: j.label, steps: j.steps.length, undone: Boolean(j.undone) })), runs: loadRuns(cfg).slice(-15).reverse(), running: runningNow(), office: officeView(cfg), selfTools: selfToolsView(cfg), mcp: mcpView(cfg), packs: packsView(cfg), browser: browserView(cfg), sort: { tokens: TOKENS, examples: Object.fromEntries(handsSettings(cfg).sortRules.map((r) => [r.id, exampleFor(r)])) } };
 }

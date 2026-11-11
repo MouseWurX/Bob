@@ -290,7 +290,7 @@ export function createCellar({ popOut = null } = {}) {
     let body = '';
     if (tab === 'settings') body = settingsHtml();
     else if (tab === 'style') body = stylePage.html(settings);
-    else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}` : !roles ? '<p class="muted">Loading...</p>' : eqView === 'doll' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${equipHtml(eqCtx())}` : brainsHtml({ ...eqCtx(), bobNet: data?.bobNet || [], setupAsk, setUp: setUpBrain, place: placeData, calAsk }); // 1.5.205 the Brains page comes first
+    else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}` : !roles ? '<p class="muted">Loading...</p>' : eqView === 'doll' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${equipHtml(eqCtx())}` : brainsHtml({ ...eqCtx(), bobNet: data?.bobNet || [], setupAsk, setUp: setUpBrain, place: placeData, calAsk, labScores }); // 1.5.205 the Brains page comes first
     else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], removed: data?.removed || [], bobNet: data?.bobNet || [], naughtyOn: naughtyOn(), catView, ownForm, addPage, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
     else if (tab === 'found') body = `<p class="muted">Scanned ${data.scannedAt ? new Date(data.scannedAt).toLocaleString() : 'never'}. <button data-scan>Look again</button></p>${extrasHtml() || '<p>Nothing extra found.</p>'}`;
     else if (GROUPS.some((g) => g.id === tab)) body = groupHtml(GROUPS.find((g) => g.id === tab));
@@ -582,17 +582,23 @@ export function createCellar({ popOut = null } = {}) {
 
   function housekeepingHtml() {
     const hk = settings.housekeeping || {};
-    const KINDS = [['chats', 'Chats', 'summed up first, so the topic notes and a summary stay'], ['pictures', 'Pictures and clips Bob made', ''], ['sounds', 'Sounds and music Bob made', ''], ['tasks', 'Finished tasks', 'the chats keep what was said'], ['logs', 'Logbook and update logs', '']];
+    const KINDS = [['chats', 'Chats', 'summed up first, so the topic notes and a summary stay'], ['pictures', 'Pictures and clips Bob made', ''], ['sounds', 'Sounds and music Bob made', ''], ['tasks', 'Finished tasks', 'the chats keep what was said'], ['logs', 'Logbook and update logs', ''], ['folders', 'Files in folders you added', 'always asks first']];
     const units = ['minutes', 'hours', 'days', 'weeks', 'months'];
-    return `<div class="housekeeping"><span class="tag">off unless you turn it on</span>
-       ${tip('Bob tidies up after himself while he\'s idle: he sums up the older part of long chats, files what you talked about under Topics, moves lasting facts to his memory file, and offers to clear away things that haven\'t come up for a while. Removed things go to the Recycle Bin. Pinned chats, pictures and topics are never touched, and everything he does goes in the logbook.', 'Housekeeping')}
+    const folders = hk.extraFolders || [];
+    // Nov 11: on by default, his own files only; the folders list below adds more (always "ask first").
+    const folderRows = `<h4 class="ssub">Folders you point him to ${tip('By default Bob only tidies his own files. Add a folder here, like Downloads, and he also offers old files from it in Tidy up. He always asks first for these, and they go to the Recycle Bin. System folders, your whole home folder and Bob\'s own folder can\'t be added.', 'Folders you point him to')}</h4>
+      ${folders.length ? folders.map((f) => `<div class="srow"><span class="svalue">${esc(f)}</span><span class="sact"><button type="button" class="mini" data-hkfolderrm="${esc(f)}">Remove</button></span></div>`).join('') : '<p class="muted">None yet. Bob only tidies his own files.</p>'}
+      <div class="row"><input data-hkfoldernew maxlength="400" placeholder="Full path, like C:\\Users\\you\\Downloads" aria-label="Folder for Bob to tidy" style="flex:1;min-width:12em"><button type="button" class="mini" data-hkfolderadd>Add folder</button><span class="muted hk-folder-out" aria-live="polite"></span></div>`;
+    return `<div class="housekeeping"><span class="tag">on unless you turn it off</span>
+       ${tip('Bob tidies up after himself while he\'s idle: he sums up the older part of long chats, files what you talked about under Topics, moves lasting facts to his memory file, and offers to clear away things that haven\'t come up for a while. By default he only touches his own files. Removed things go to the Recycle Bin. Pinned chats, pictures and topics are never touched, and everything he does goes in the logbook.', 'Housekeeping')}
       <label class="switch"><input type="checkbox" data-hk="enabled" ${hk.enabled ? 'checked' : ''}><span><strong>Tidy up old things by himself</strong> ${tip('Only while he\'s idle (10 minutes quiet, nothing running). He mentions old things at most once a day.', 'Tidy up old things by himself')}</span></label>
       <label class="switch"><input type="checkbox" data-hk="wakeBrain" ${hk.wakeBrain ? 'checked' : ''}><span><strong>Load a brain for it if none is loaded</strong> ${tip('Loads a brain just for tidying. Leave off while gaming.', 'Load a brain for it if none is loaded')}</span></label>
       <table class="hk-table"><thead><tr><th>What</th><th>When it hasn't come up for</th><th>Then</th></tr></thead><tbody>
       ${KINDS.map(([k, label, note]) => { const c = hk[k] || {}; return `<tr><td>${esc(label)}${note ? `<br><span class="muted">${esc(note)}</span>` : ''}</td>
         <td><input type="number" min="1" max="999" data-hkkind="${k}" data-hkfield="n" value="${esc(c.n || '')}" aria-label="${esc(label)}: how many" style="width:5em"> <select data-hkkind="${k}" data-hkfield="unit" aria-label="${esc(label)}: unit">${units.map((u) => `<option ${u === c.unit ? 'selected' : ''}>${u}</option>`).join('')}</select></td>
-        <td><select data-hkkind="${k}" data-hkfield="mode" aria-label="${esc(label)}: what then"><option value="ask" ${c.mode !== 'auto' ? 'selected' : ''}>Ask me first</option><option value="auto" ${c.mode === 'auto' ? 'selected' : ''}>Tidy automatically</option></select></td></tr>`; }).join('')}
+        <td><select data-hkkind="${k}" data-hkfield="mode" aria-label="${esc(label)}: what then"><option value="ask" ${c.mode !== 'auto' ? 'selected' : ''}>Ask me first</option>${k === 'folders' ? '' : `<option value="auto" ${c.mode === 'auto' ? 'selected' : ''}>Tidy automatically</option>`}</select></td></tr>`; }).join('')}
       </tbody></table>
+      ${folderRows}
       <div class="row"><button data-opentidy>Open Tidy up</button><button data-hkrun>Tidy up now</button><span class="muted hk-out"></span></div></div>`;
   }
 
@@ -704,7 +710,7 @@ export function createCellar({ popOut = null } = {}) {
       ${sswitch('planFirst', settings.planFirst === true, 'Show Bob\'s plan before big jobs', keep('Off unless you turn it on. Before a job with several steps, or one that changes files or runs programs, Bob shows the steps on one card and waits for your OK.'))}
       ${sswitch('howtos', settings.howtos === true, 'Let Bob learn how-tos', 'Off unless you turn it on. After a job with a few steps goes well, Bob offers to keep the steps as a how-to, and follows them next time you ask for something like it. Nothing is kept without your click. Your how-tos are in 🧰 Tools and how-tos Bob made below.')}
       ${sswitch('editOwn', settings.editOwn === true, 'Let Bob fix his own messages', 'Off unless you turn it on. When Bob gets something wrong, or a status line goes out of date, he changes his earlier message instead of sending a new one. Only his own messages, only in the chat he\'s in. The message says edited, and pressing that shows what it said first.')}
-      ${sswitch('chatRedo', settings.chatRedo !== false, 'Show Try again and Edit in the chat', 'On unless you turn it off. Try again, under Bob\'s latest answer, gets a new answer to your last message. Edit, under your messages, lets you change what you said and send it again; Bob answers from there. What was there before is kept under your message as an earlier version.')}
+      ${sswitch('chatRedo', settings.chatRedo !== false, 'Show Try again, Edit and Delete in the chat', 'On unless you turn it off. Adds them to each message\'s … menu.')}
       ${sswitch('quickNotes', settings.quickNotes === true, 'Let Bob take quick notes', 'Off unless you turn it on. Say "note: ..." or "jot this down" in any chat, here, on your phone, in Discord DMs or Telegram, and Bob writes it down at once with the date and time. Ask for your notes, or find them by a word or #tag.')}
       ${sswitch('smartNotes', settings.smartNotes === true, 'Let Bob notice what\'s worth noting', 'Off unless you turn it on. Bob also notes on his own what a chat shows is worth keeping (a decision, a number, a plan, a name, a link, an idea) and says 📝 Noted each time. He tags notes with the project you\'re on, updates a note instead of copying it, and brings up the notes that fit what you ask.')}
       ${`<div class="srow"><button type="button" data-opennotes>Open my notes</button> <span class="muted">One plain text file, one note per line. Notes Bob takes away are kept in the archive folder.</span></div>`}
@@ -1276,7 +1282,8 @@ export function createCellar({ popOut = null } = {}) {
     const y = dlg.scrollTop; draw(); dlg.scrollTop = y;
   }
   let setUpBrain = '', placeData = null; // 1.5.205 the brain whose Set up page is open, and /api/brain-place
-  const placeLoad = async () => { placeData = await api('/api/brain-place').catch(() => placeData); };
+  let labScores = null; // Nov 11: Lab scores on the Brains page (only when the Lab is on and has scored a brain)
+  const placeLoad = async () => { [placeData, labScores] = await Promise.all([api('/api/brain-place').catch(() => placeData), api('/api/lab/brain-scores').then((j) => j?.scores || null).catch(() => labScores)]); };
   const placeSave = async (model, patch) => { const cur = placeData?.brains?.[model]?.set || { mode: 'auto' }; await api('/api/settings', { brainPlace: { [model]: { ...cur, ...patch } } }); await placeLoad(); };
   // 1.5.205 Calibrate: the question before it starts ({ models, needUnload, names, error }), and a slow poll while it runs.
   let calAsk = null, calTimer = null;
@@ -1526,6 +1533,13 @@ export function createCellar({ popOut = null } = {}) {
         return;
       }
       if ('opentidy' in b.dataset) { dlg.close(); window.dispatchEvent(new Event('bob-tidy')); return; }
+      if ('hkfolderadd' in b.dataset || b.dataset.hkfolderrm) {
+        const box = dlg.querySelector('[data-hkfoldernew]');
+        const r = await api('/api/settings', { housekeeping: b.dataset.hkfolderrm ? { removeFolder: b.dataset.hkfolderrm } : { addFolder: box?.value || '' } });
+        if (r.housekeeping) settings.housekeeping = r.housekeeping;
+        if (r.hkFolderError) { const out = b.parentElement.querySelector('.hk-folder-out'); if (out) out.textContent = r.hkFolderError; return; }
+        draw(); return;
+      }
       if ('hkrun' in b.dataset) { const r = await api('/api/hk/run', {}); b.parentElement.querySelector('.hk-out').textContent = r.busy ? 'Bob is already on it.' : 'Started. Bob tells you in the chat when he\'s done; chats are summed up only with a brain loaded.'; return; }
       if (b.dataset.usevoice) { const r = await api('/api/settings', { tts: { voice: b.dataset.usevoice } }); settings.tts = { ...settings.tts, ...r.tts }; draw(); return; }
       if (b.dataset.starter) {
@@ -1940,7 +1954,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.set === 'parts3d') { const r = await api('/api/settings', { parts3d: el.checked }); settings.parts3d = r.parts3d; settings.openscadHere = r.openscadHere; el.checked = r.parts3d; flash(el, r.parts3d ? (r.openscadHere ? 'On. Ask Bob for a part and he makes it.' : 'On. Bob needs OpenSCAD too: he offers it the first time you ask for a part.') : 'Off. Bob doesn\'t make 3D parts.'); return; }
       if (el.dataset.set === 'sandboxCode') { const r = await api('/api/settings', { sandboxCode: el.checked }); settings.sandboxCode = r.sandboxCode; el.checked = r.sandboxCode; flash(el, r.sandboxWhy || (r.sandboxCode ? (r.sandboxNet ? 'On. Bob works sums out in the sandbox, with the internet switched off.' : 'On. Bob works sums out in the sandbox. This Bob can\'t switch the internet off by itself, so code is checked for it instead.') : 'Off. Bob works sums out in his head.')); return; }
       if (el.dataset.set === 'editOwn') { const r = await api('/api/settings', { editOwn: el.checked }); settings.editOwn = r.editOwn; el.checked = r.editOwn; flash(el, r.editOwn ? 'On. Bob can fix his own earlier messages.' : 'Off. Bob sends a new message for any fix.'); return; }
-      if (el.dataset.set === 'chatRedo') { const r = await api('/api/settings', { chatRedo: el.checked }); settings.chatRedo = r.chatRedo; el.checked = r.chatRedo; window.dispatchEvent(new CustomEvent('bob-chat-redo', { detail: r.chatRedo })); flash(el, r.chatRedo ? 'On. Try again and Edit show in the chat.' : 'Off. The chat shows Copy only.'); return; }
+      if (el.dataset.set === 'chatRedo') { const r = await api('/api/settings', { chatRedo: el.checked }); settings.chatRedo = r.chatRedo; el.checked = r.chatRedo; window.dispatchEvent(new CustomEvent('bob-chat-redo', { detail: r.chatRedo })); flash(el, r.chatRedo ? 'On. Try again, Edit and Delete are in each message\'s … menu.' : 'Off. The … menu has Copy only.'); return; }
       if (el.dataset.set === 'netReview') { const r = await api('/api/settings', { netReview: el.checked }); settings.netReview = r.netReview; el.checked = r.netReview; return; }
       if (el.dataset.set === 'mootBeside') { const r = await api('/api/settings', { mootBeside: el.checked }); settings.mootBeside = r.mootBeside; el.checked = r.mootBeside; return; }
       if (el.dataset.set === 'chatWhileBusy') { const r = await api('/api/settings', { chatWhileBusy: el.checked }); settings.chatWhileBusy = r.chatWhileBusy; el.checked = r.chatWhileBusy; return; }

@@ -473,7 +473,7 @@ async function loadHistory(n = 20) {
       const el = decorate(add(m.role === 'user' ? 'msg you' : 'msg bob', m.role === 'user' ? esc(m.content) + picsHtml(m.pics) : render(m.content) + mediaHtml(m.media)), m.content, m.media);
       if (m.id) el.dataset.mid = m.id;
       if (m.role !== 'user') bubbleMedia.set(el, m.media || []);
-      if (m.edited) markEdited(el, m.was);
+      if (m.edited) markEdited(el, m.was, m.editedBy);
       if (m.versions?.length) markVersions(el, m.versions);
       if (m.correction) note(m.correction, 'error');
     }
@@ -540,6 +540,7 @@ window.addEventListener('bob-mind-dock', (e) => mindTitle(e.detail.docked));
 
 // ---------- Events from the brain ----------
 let brainSoon = null;
+const shownCards = new Set(); // approval card ids already on this page
 function onEvent(ev) {
   if (ev.type === 'brain' || ev.type === 'status') { clearTimeout(brainSoon); brainSoon = setTimeout(() => brainBar.refresh(), 250); }
   if (ev.type === 'brain') return;
@@ -748,6 +749,9 @@ function onEvent(ev) {
     case 'diagram': { addMedia(ev, 'diagram'); break; } // 1.5.95 drawn by save-as.js
     case 'made': { addMade(ev); break; }
     case 'approval': {
+      // 1.5.206: a page that connects is handed the cards still waiting; one it already shows isn't added twice.
+      if (ev.id && shownCards.has(ev.id)) break;
+      if (ev.id) shownCards.add(ev.id);
       endReply(ev);
       // The reviewer asks whether to quarantine Bob (quarantine.js, opt-in).
       if (quarantineCard(ev, { add, answer: (q) => post('/api/approve', { id: ev.id, allow: q }) })) { ping('Bob\'s reviewer needs you', ev.text); layout.needsYou(); break; }
@@ -778,7 +782,9 @@ function onEvent(ev) {
       for (const b of el.querySelectorAll('button')) b.onclick = () => { el.remove(); if (b.dataset.t === 'look') tidyPage.open(); };
       break;
     }
-    case 'lab': labPage.update(ev.run); break; // 1.5.141 (the Lab's own window reads these itself)
+    case 'lab': labPage.update(ev.run); break;
+    case 'lab-queue': labPage.queueUpdate?.(ev.queue); break; // Nov 11: the Lab's job queue
+    case 'lab-recheck': note(ev.text); break; // Nov 11: a brain slipped after an engine update // 1.5.141 (the Lab's own window reads these itself)
     case 'lab-full': labPage.fullUpdate(ev.full); break; // Bring in a full-size brain
     case 'lab-diffusion': document.dispatchEvent(new CustomEvent('lab-diffusion', { detail: ev.now })); break; // Playground: Diffusion brains, live
     case 'lab-done': note(ev.ok ? `🧪 The Lab finished ${ev.name}${ev.score != null ? `: ${ev.score} out of 100 on the Lab test` : ''}. Open the Lab to see the report.` : `🧪 The Lab stopped on ${ev.name}: ${ev.error}`); break;
@@ -813,6 +819,7 @@ function onEvent(ev) {
       return;
     }
     case 'edited': editedMsg(ev); return;
+    case 'msg-edited': editedMsg(ev); return; // you changed Bob's words with the ... menu (msg-menu.js), here or in another window
     case 'asked': { // Try again and Edit: the id of the message you sent, so Edit can find it in the saved chat
       const bub = jobBubbles.get(ev.turnId);
       if (bub && ev.id) { bub.dataset.mid = ev.id; drawRedo(); }
@@ -998,12 +1005,12 @@ const rawText = new WeakMap();
 // Let Bob fix his own messages (Settings, How Bob works; src/edit-own.js): the words and things made of each bubble,
 // so a message he changes later is drawn again in place, with "edited" under it.
 const liveWords = new WeakMap(), bubbleMedia = new WeakMap();
-function markEdited(el, was) {
+function markEdited(el, was, by) {
   el.querySelector(':scope > .edited-note')?.remove();
   const box = document.createElement('div');
   box.className = 'edited-note';
-  const who = el.classList.contains('you') ? 'You' : 'Bob';
-  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="${who} changed this message. Press to see what it said first.">edited</button><div class="edited-was muted" hidden><strong>First said:</strong> ${esc(was || '')}</div>`;
+  const who = by === 'you' && el.classList.contains('bob') ? 'You changed Bob\'s words here' : `${el.classList.contains('you') ? 'You' : 'Bob'} changed this message`;
+  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="${who}. Press to see what it said first.">edited</button><div class="edited-was muted" hidden><strong>First said:</strong> ${esc(was || '')}</div>`;
   const b = box.querySelector('button'), w = box.querySelector('.edited-was');
   b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
   el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
@@ -1024,24 +1031,24 @@ function editedMsg(ev) {
     rawText.delete(el); liveWords.set(el, text);
     decorate(el, text, media);
   }
-  markEdited(el, ev.was);
+  markEdited(el, ev.was, ev.by);
   el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2500);
 }
 // ---------- Try again and Edit (Settings, How Bob works; src/redo.js). Off unless you turn it on. ----------
-// Try again sits under Bob's latest answer, Edit under each of your messages Bob has saved. Either one takes back what
+// Try again is in the ... menu of Bob's latest answer; Edit in the ... menu of each of your messages Bob has saved. Either one takes back what
 // came after, keeps it under your message as an earlier version, and sends your message (again). Hidden while Bob is busy.
 let redoOnNow = false, redoing = false, redoneId = '';
 const lastYou = () => [...log.querySelectorAll(':scope > .msg.you')].pop() || null;
-function drawRedo() {
-  for (const x of log.querySelectorAll('[data-redo], [data-edit-msg]')) x.remove();
-  if (!redoOnNow || busy || redoing) return;
-  for (const el of log.querySelectorAll(':scope > .msg.you[data-mid]')) el.querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-edit-msg title="Change what you said and send it again">Edit</button>');
+// Where Try again goes: Bob's latest answer, or your latest message while it has none. It's in that message's ... menu.
+function redoTarget() {
   const you = lastYou();
-  if (!you?.dataset.mid) return;
+  if (!you?.dataset.mid) return null;
   let answer = null;
   for (let n = you.nextElementSibling; n; n = n.nextElementSibling) if (n.matches('.msg.bob:not(.aside-msg)')) answer = n;
-  (answer || you).querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-redo title="Get a new answer to your last message">Try again</button>');
+  return answer || you;
 }
+// Try again and Edit live in the ... menu, built fresh each time it opens; an open one shuts when Bob gets busy.
+function drawRedo() { if (busy || redoing || !redoOnNow) window.dispatchEvent(new Event('bob-msg-menu-close')); }
 function versionsHtml(list) {
   const cut = (t) => { const x = String(t || ''); return esc(x.length > 1500 ? x.slice(0, 1500) + '…' : x); };
   return list.slice().reverse().map((v, i) => `<li><span class="muted">${i === 0 ? 'Latest earlier version' : `${i + 1} versions back`}${v.at ? ` · ${esc(new Date(v.at).toLocaleString())}` : ''}</span><div><strong>You:</strong> ${cut(v.text)}</div>${(v.said || []).map((m) => `<div><strong>${m.role === 'user' ? 'You' : 'Bob'}:</strong> ${cut(m.content) || (m.media?.length ? `<em>${m.media.length} thing${m.media.length === 1 ? '' : 's'} made</em>` : '')}</div>`).join('') || '<div class="muted">No answer yet.</div>'}</li>`).join('');
@@ -1104,6 +1111,125 @@ function editInPlace(el) {
 }
 window.addEventListener('bob-chat-redo', (e) => { redoOnNow = e.detail === true; drawRedo(); });
 
+// ---------- The ... menu on a message (src/msg-menu.js) ----------
+// A small ... at the top right of a message, shown while the mouse is over it (always on a touch screen, and while it
+// has keyboard focus). Copy is always there. Edit and Delete follow "Show Try again, Edit and Delete in the chat"
+// (Settings, How Bob works): Edit on your message changes it and sends it again (editInPlace above); Edit on Bob's
+// changes his words without sending anything; Delete takes yours out with Bob's answer to it, or just his answer.
+// Not while Bob is on this chat.
+const msgMenu = (() => {
+  let open = null; // { msg, btn, box }
+  const singleId = (msg) => { const id = (msg.dataset.mid || '').trim(); return id && !/\s/.test(id) ? id : ''; };
+  function close(focus = false) {
+    if (!open) return;
+    open.box.remove(); open.btn.setAttribute('aria-expanded', 'false'); open.msg.classList.remove('menu-open');
+    if (focus) open.btn.focus();
+    open = null;
+  }
+  function items(msg) {
+    const you = msg.classList.contains('you');
+    const id = you ? (msg.dataset.mid || '').trim() : singleId(msg);
+    const on = redoOnNow && id && !msg.classList.contains('aside-msg');
+    const wait = busy || redoing;
+    const why = 'Bob is still on this chat. Wait until he has finished.';
+    const list = [];
+    if (on && msg === redoTarget()) list.push(['redo', 'Try again', wait ? why : 'Get a new answer to your last message', wait]);
+    if (on) list.push([you ? 'edit-msg' : 'edit-bob', 'Edit', wait ? why : you ? 'Change what you said and send it again' : 'Change Bob\'s words. Nothing is sent.', wait]);
+    list.push(['copy-msg', 'Copy', 'Copy this message']);
+    if (on) list.push(['del-msg', 'Delete', wait ? why : you ? 'Delete this message and Bob\'s answer to it' : 'Delete this answer', wait]);
+    return list;
+  }
+  function draw(box, list) {
+    box.innerHTML = list.map(([k, label, tip, off]) => `<button type="button" role="menuitem" data-m="${k}" title="${esc(tip)}"${off ? ' aria-disabled="true"' : ''}>${esc(label)}</button>`).join('');
+    box.querySelector('button')?.focus();
+  }
+  function toggle(msg, btn) {
+    if (open?.msg === msg) return close(true);
+    close();
+    const box = document.createElement('div');
+    box.className = 'msg-menu'; box.setAttribute('role', 'menu'); box.setAttribute('aria-label', 'Message menu');
+    msg.appendChild(box);
+    open = { msg, btn, box };
+    btn.setAttribute('aria-expanded', 'true'); msg.classList.add('menu-open');
+    draw(box, items(msg));
+    box.scrollIntoView?.({ block: 'nearest' });
+  }
+  async function pick(msg, b) {
+    if (b.getAttribute('aria-disabled') === 'true') { note('Bob is still on this chat. Wait until he has finished, or press Stop first.'); return; }
+    const k = b.dataset.m, btn = open?.btn;
+    if (k === 'copy-msg') { close(true); return copyText(copyWords(msg), btn); }
+    if (k === 'redo') { close(); return redoSend(null, null); }
+    if (k === 'edit-msg') { close(); return editInPlace(msg); }
+    if (k === 'edit-bob') { close(); return editBob(msg); }
+    if (k === 'del-msg') { // asked in the menu itself, never a pop-up box
+      const you = msg.classList.contains('you');
+      open.box.innerHTML = `<p class="msg-menu-ask">${you ? 'Delete this message and Bob\'s answer to it?' : 'Delete this answer?'}${msg.querySelector('img, video, audio, .out-card') ? ' What he made stays in its folder.' : ''}</p><button type="button" role="menuitem" data-m="del-yes" class="danger">Delete</button><button type="button" role="menuitem" data-m="del-no">Keep it</button>`;
+      open.box.querySelector('[data-m="del-no"]').focus();
+      return;
+    }
+    if (k === 'del-no') return close(true);
+    if (k === 'del-yes') { close(); return deleteMsg(msg); }
+  }
+  async function deleteMsg(msg) {
+    const you = msg.classList.contains('you');
+    const ids = you ? [(msg.dataset.mid || '').trim()] : (msg.dataset.mid || '').trim().split(/\s+/).filter(Boolean);
+    for (const id of ids) {
+      redoneId = id; // the saved chat is redrawn here by hand, not again when the other windows are told
+      const r = await post('/api/chat/msg-delete', { sessionId, id }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
+      if (!r.ok) { redoneId = ''; note(r.data.error || 'Something went wrong.', 'error'); return; }
+    }
+    const gone = [msg];
+    if (you) for (let n = msg.nextElementSibling; n && !n.matches('.msg.you'); n = n.nextElementSibling) if (n.matches('.msg.bob')) gone.push(n);
+    for (const el of gone) el.remove();
+    drawRedo();
+  }
+  // Change Bob's words in place: a box with them, Save and Cancel. Esc cancels, Enter saves (Shift+Enter for a new line).
+  function editBob(el) {
+    if (el.querySelector(':scope > .edit-box')) return;
+    const id = singleId(el);
+    const live = [...replies.values()].find((r) => r.el === el);
+    const was = live ? live.text : rawText.get(el) ?? liveWords.get(el) ?? '';
+    const box = document.createElement('form');
+    box.className = 'edit-box';
+    box.innerHTML = `<label class="sr-only" for="editb-${esc(id)}">Bob's words</label><textarea id="editb-${esc(id)}" rows="5">${esc(was)}</textarea><span class="muted">Nothing is sent. Bob reads the new words from now on, and the chat shows the message as edited.</span><div class="row"><button type="submit">Save</button><button type="button" class="link" data-edit-cancel>Cancel</button></div>`;
+    el.classList.add('editing');
+    el.appendChild(box);
+    const t = box.querySelector('textarea');
+    t.focus(); t.setSelectionRange(t.value.length, t.value.length);
+    const close = () => { box.remove(); el.classList.remove('editing'); };
+    box.querySelector('[data-edit-cancel]').onclick = close;
+    t.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); close(); }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); box.requestSubmit(); }
+    });
+    box.onsubmit = async (e) => {
+      e.preventDefault();
+      const text = t.value.trim();
+      if (!text) { note('A message can\'t be changed to nothing. Use Delete to take it out instead.'); t.focus(); return; }
+      if (text === String(was).trim()) { close(); return; }
+      const r = await post('/api/chat/msg-edit', { sessionId, id, text }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
+      if (!r.ok) { note(r.data.error || 'Something went wrong.', 'error'); return; }
+      close();
+      editedMsg({ id, text: r.data.text, before: was, was: r.data.was, by: 'you' });
+    };
+  }
+  // A press inside the menu can swap its buttons (Delete asks first), so a button that's gone counts as inside.
+  document.addEventListener('click', (e) => { if (open && e.target.isConnected && !open.msg.contains(e.target)) close(); });
+  document.addEventListener('keydown', (e) => {
+    if (!open || !open.box.contains(document.activeElement)) return;
+    const all = [...open.box.querySelectorAll('button')];
+    const at = all.indexOf(document.activeElement);
+    if (e.key === 'Escape') { e.preventDefault(); close(true); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); all[(at + 1) % all.length]?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); all[(at - 1 + all.length) % all.length]?.focus(); }
+    else if (e.key === 'Home') { e.preventDefault(); all[0]?.focus(); }
+    else if (e.key === 'End') { e.preventDefault(); all[all.length - 1]?.focus(); }
+    else if (e.key === 'Tab') close();
+  });
+  window.addEventListener('bob-msg-menu-close', () => close());
+  return { toggle, pick, close };
+})();
+
 function decorate(el, text, media = []) {
   if (!el || el.querySelector(':scope > .msg-tools')) return el;
   rawText.set(el, text || '');
@@ -1113,8 +1239,8 @@ function decorate(el, text, media = []) {
   const links = [...el.querySelectorAll('a[href^="http"]')].length;
   const tools = document.createElement('div');
   tools.className = 'msg-tools';
-  tools.innerHTML = `<button type="button" class="mini" data-copy-msg title="Copy this message">Copy</button>${links ? `<button type="button" class="mini" data-copy-links title="Copy every link in this message">Copy link${links === 1 ? '' : 's'}</button>` : ''}`;
-  el.appendChild(tools);
+  el.appendChild(tools); // Try again, Edit, Copy and Delete are in the ... menu (msgMenu below)
+  el.insertAdjacentHTML('beforeend', '<button type="button" class="msg-more" data-msg-more aria-haspopup="menu" aria-expanded="false" aria-label="Message menu: Try again, Edit, Copy, Delete" title="Try again, Edit, Copy, Delete">…</button>');
   fillPeeks(el);
   const want = [...new Set([...files, ...made])];
   if (want.length && el.classList.contains('bob')) {
@@ -1134,7 +1260,7 @@ function decorate(el, text, media = []) {
 const copyWords = (msg) => (msg.querySelector('.katex') ? rawText.get(msg) : '') || plainText(msg) || rawText.get(msg) || '';
 function plainText(el) {
   const c = el.cloneNode(true);
-  for (const x of c.querySelectorAll('.msg-tools, .mini, .file-cards, .qtag')) x.remove();
+  for (const x of c.querySelectorAll('.msg-tools, .mini, .file-cards, .qtag, .msg-more, .msg-menu')) x.remove();
   return c.innerText.trim();
 }
 async function copyText(text, btn) {
@@ -1152,6 +1278,8 @@ log.addEventListener('click', async (e) => {
   const b = e.target.closest('button, a.file-link');
   if (!b || !log.contains(b)) return;
   const msg = b.closest('.msg');
+  if ('msgMore' in b.dataset) return msgMenu.toggle(msg, b);
+  if (b.closest('.msg-menu')) return msgMenu.pick(msg, b);
   if ('redo' in b.dataset) return redoSend(null, null);
   if ('editMsg' in b.dataset) return editInPlace(msg);
   if ('copyMsg' in b.dataset) return copyText(copyWords(msg), b);

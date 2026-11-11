@@ -21,6 +21,7 @@ import { loadConfig, appDir, saveSettings, saveRemote, replaceSettings, cleanPro
 import { presetsView, presetsOn, pickPreset } from './presets.js';
 import { Brain, apuHoldbackGB } from './brain.js';
 import { redo, redoOn } from './redo.js';
+import { msgMenu } from './msg-menu.js';
 import { transcribe } from './stt.js';
 import { ModelShop } from './models.js';
 import { CatalogUpdates } from './catalog-update.js';
@@ -29,7 +30,9 @@ import { checkEngine, seedBundledEngine, goBackEngine, removeEngine, brainsEngin
 import { onEngineFallback } from './engine-blocked.js';
 import { sacNoticeOnce } from './app-control.js';
 import { liveTrace } from '../public/lab-watch-math.js';
-import { cubeMap, cubeBrains, cubeShapes } from './lab-watch.js';
+import { cubeMap, cubeBrains, cubeShapes, listRecordings, startWatch } from './lab-watch.js';
+import { LabQueue } from './lab-queue.js'; // Nov 11: the Lab's job queue
+import { recheckTick, QUIET_MIN } from './lab-recheck.js'; // Nov 11: check again after engine updates
 import { EngineKeeper, keeperOn } from './engine-keeper.js';
 import { autostartOn, setAutostart } from './autostart.js';
 import { applyWindowState } from './app-icon.js';
@@ -56,7 +59,7 @@ import { thumbFor, canThumb } from './thumbs.js';
 import { homeView, homeProblem, synced, cloudWarning } from './home.js';
 import { refuseForeign } from './guard.js';
 import { search } from './search.js';
-import { hkSettings, cleanHousekeeping, KINDS, UNITS } from './housekeeping.js';
+import { hkSettings, cleanHousekeeping, cleanFolder, folderRefusal, KINDS, UNITS } from './housekeeping.js';
 import { banks as memoryBanks, recallOn } from './recall.js';
 import { handsRoute } from './hands-routes.js';
 import { ownKitView, ownKitCounts, ownKitDelete, ownKitRestore, ownKitPurge } from './own-kit.js';
@@ -178,6 +181,15 @@ if (brain.engine) {
 const shop = new ModelShop(cfg, (ev) => { broadcast(ev); if (ev?.type === 'downloads') brain.downloadsChanged(); }, brain.engine);
 const lab = new Lab(cfg, { shop, brain, broadcast }); // 1.5.141
 lab.version = VERSION.label; // 1.5.153 the foot of a saved Lab result
+// Nov 11: the Lab's job queue (lab-queue.js), its fNRI scans for My Lab, and the check after engine updates.
+lab.listScans = () => lab.brains().flatMap((b) => listRecordings(cfg, b).map((x) => ({ brain: b.name, brainId: b.id, id: x.id, name: x.name, when: x.when, at: x.at, skills: x.skills.length }))).sort((a, b) => b.at - a.at);
+lab.queue = new LabQueue(lab, {
+  starters: { challenge: (x) => lab.startChallenge(x.challenge, { unload: true }), ladder: (x) => lab.startLadder({ from: x.from, types: x.types }, { unload: true }), watch: (x) => startWatch(lab, x, { unload: true }) },
+  busy: () => brain.turns.size > 0 || brain.queue.some((j) => j.state === 'waiting') || Boolean(shop.job),
+  idle: () => Date.now() - brain.lastActivity >= QUIET_MIN * 60e3,
+  onTick: () => { try { const v = lab.engineView(); recheckTick({ lab, queue: lab.queue, mainId: cfg.models?.bob, version: v.version ? `${v.name} ${v.version}` : '', engine: v.version ? `${v.name} ${v.version}` : '', rows: lab.scores() }); } catch {} }
+});
+lab.queue.start();
 // 1.5.184 Keep engines up to date (src/engine-keeper.js): on unless switched off in Settings, Engines. Checks two
 // minutes after start and about daily; updates only while no brain is loaded on that engine and nothing is busy.
 // 1.5.203: Bob went back to the engine he had before because Windows blocked the new one: say so in chat, once.
@@ -410,6 +422,7 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
       res.write(`data: ${JSON.stringify({ type: 'status', ...brain.state })}\n\n`);
       if (isLocal) for (const c of pairing.waiting()) res.write(`data: ${JSON.stringify(c)}\n\n`); // 1.5.97: a pairing card that came in while the window was shut
+      for (const c of brain.waitingCards?.values() || []) res.write(`data: ${JSON.stringify({ ...c, replay: true })}\n\n`); // 1.5.206: OK cards made while no page was open
       clients.add(res);
       const mind = url.searchParams.get('mind') === '1';
       if (mind) mindClients.add(res);
@@ -502,6 +515,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/chat/redo') {
       const b = await body(req).catch(() => ({}));
       const r = redo(brain, String(b.sessionId || 'main'), { ...(b.id ? { id: String(b.id) } : {}), ...(b.last === true ? { last: true } : {}), ...(typeof b.text === 'string' ? { text: b.text } : {}) });
+      return send(res, r.error ? 400 : 200, r);
+    }
+    // The "..." menu on a chat message (msg-menu.js): Edit on Bob's message, Delete on any. { sessionId, id, text? }.
+    if (req.method === 'POST' && (p === '/api/chat/msg-edit' || p === '/api/chat/msg-delete')) {
+      const b = await body(req).catch(() => ({}));
+      const r = msgMenu(brain, String(b.sessionId || 'main'), p.endsWith('edit') ? 'edit' : 'delete', { id: String(b.id || ''), ...(typeof b.text === 'string' ? { text: b.text } : {}) });
       return send(res, r.error ? 400 : 200, r);
     }
     // Model shop and settings. Downloads and settings changes only from this PC, never from the phone.
@@ -959,7 +978,12 @@ const server = http.createServer(async (req, res) => {
           if (typeof b.quickOnCpu === 'boolean') { saveSettings(cfg, { quickOnCpu: b.quickOnCpu }); out.quickOnCpu = cfg.quickOnCpu === true; brain.applyBrainMode?.().catch?.(() => {}); }
           if (b.housekeeping && typeof b.housekeeping === 'object') {
             const cur = hkSettings(cfg), h = b.housekeeping, next = { ...cur };
-            if ('enabled' in h) next.enabled = h.enabled === true;
+            if ('enabled' in h) { next.enabled = h.enabled === true; next.chosen = true; } // the user's own choice now wins over the default
+            if (typeof h.addFolder === 'string') { // Nov 11: a folder the user points him to (always asks first)
+              const f = cleanFolder(h.addFolder), why = !f ? 'Type the full path of a folder, like C:\\Users\\you\\Videos or /home/you/Music.' : folderRefusal(cfg, f);
+              if (why) out.hkFolderError = why; else next.extraFolders = [...(cur.extraFolders || []), f];
+            }
+            if (typeof h.removeFolder === 'string') next.extraFolders = (cur.extraFolders || []).filter((x) => x !== h.removeFolder);
             if ('wakeBrain' in h) next.wakeBrain = h.wakeBrain === true;
             if ('embedModel' in h) next.embedModel = h.embedModel;
             for (const k of Object.keys(KINDS)) if (h[k] && typeof h[k] === 'object') next[k] = { ...cur[k], ...h[k] };

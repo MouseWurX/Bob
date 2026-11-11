@@ -11,7 +11,8 @@ import { createTurboPage } from './lab-turbo.js'; // 1.5.16x Faster: Turbo (sec 
 import { createBestPage } from './lab-best.js'; // 1.5.188 Best answers: a bigger brain judges, a smaller one learns
 import { createTeachPage } from './lab-teach.js'; // 1.5.16x Teach it: here, or as a Forge plan (sec 15.3)
 import { createDiffusionPage } from './lab-diffusion.js'; // Diffusion brains (llama-diffusion-cli)
-import { createWatchPage } from './lab-watch.js'; // fNRI: a scan of the experts lighting up, in its own window
+import { createWatchPage } from './lab-watch.js';
+import { queueBtn, queueAdd } from './lab-queue.js'; // Nov 11: the job queue // fNRI: a scan of the experts lighting up, in its own window
 
 // 1.5.16x The Playground has four pages now: the quantization ladder and the three from thinking-paths sec 15.
 export const PLAY_PAGES = [['smaller', 'Smaller'], ['longer', 'Longer'], ['faster', 'Faster'], ['teach', 'Teach it'], ['best', 'Best answers'], ['peek', 'Peek inside'], ['watch', 'fNRI'], ['diffusion', 'Diffusion brains']];
@@ -112,7 +113,7 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
       ${pro() ? `<fieldset class="lab-pro"><legend>Which sizes to make (Professional)</legend><p class="muted">All six by default. Untick the ones you don't need and the ladder is shorter and quicker.</p>${(v().ladderSteps || []).map((st) => `<label class="lab-opt"><input type="checkbox" data-playtype="${esc(st.type)}" ${!types.length || types.includes(st.type) ? 'checked' : ''}> <span>${esc(st.label)}</span></label>`).join('')}</fieldset>` : ''}
       ${plan ? `<div class="lab-check" role="status">${plan.problems.length ? `<p><strong>Before it can start:</strong></p><ul>${plan.problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : `<p><strong>Ready.</strong> The six sizes take about ${plan.diskGB} GB of disk. Delete all gives it back, and the results stay.</p>`}${plan.notes.map((n) => `<p class="muted">${esc(n)}</p>`).join('')}</div>` : ''}
       ${askUnload?.ladder ? unloadHtml() : ''}
-      <div class="row"><button type="button" class="get" data-playgo ${from && plan && !plan.problems.length && !busy() ? '' : 'disabled'}>${busy() ? 'The Lab is busy' : 'Make the ladder'}</button></div>
+      <div class="row"><button type="button" class="get" data-playgo ${from && plan && !plan.problems.length && !busy() ? '' : 'disabled'}>${busy() ? 'The Lab is busy' : 'Make the ladder'}</button>${queueBtn('ladder', Boolean(from && plan && !plan.problems.length))}</div>
       ${pmsg ? `<p class="error" role="alert">${esc(pmsg)}</p>` : ''}
       ${ladders().map(ladderHtml).join('')}
     </div>`;
@@ -143,6 +144,10 @@ export function createPlayground({ api, view, saveState, sections = [] }) {
       return r;
     }
     if (await full.click(b, load)) return true;
+    if (d.qadd === 'ladder') { // Nov 11: the job queue
+      try { await queueAdd(api, 'ladder', { from, types }, `Size ladder for ${(view()?.brains || []).find((x) => x.id === from)?.name || 'a brain'}`); from = ''; plan = null; } catch (e) { pmsg = e.message; }
+      return 'draw';
+    }
     if (!('playgo' in d || 'playunload' in d || 'playnounload' in d || d.playask || d.playaskgo || d.playdel || d.playdelgo || 'playdelno' in d)) return false;
     pmsg = '';
     if ('playnounload' in d) { askUnload = null; return 'draw'; }

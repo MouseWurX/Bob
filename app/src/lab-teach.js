@@ -23,6 +23,7 @@ import { getOwnPython, ownPythonDir } from './audio.js';
 import { ladderTexts } from './lab-playground.js';
 import { readJson, writeJson, isInsideDir, exeName, canStart, makeRoom, runJob, runTool, pageLog } from './lab-jobs.js';
 import { keyValue } from './secret-box.js';
+import { readMyTests } from './lab-mistakes.js'; // Nov 11: Teach it from my mistakes
 
 // ---- The fit rule (the card shows which row applies and why; the person can always pick rented) ----
 // Card memory -> the biggest dense brain taught here (adapter on a 4-bit base), and a mixture of experts by its total.
@@ -473,7 +474,7 @@ export async function saveTeachPlan(lab, c = {}) {
 
 export function teachView(lab) {
   const tr = trainerState(lab.cfg, hwOf(lab));
-  return { trainer: { ok: tr.ok, sizeGB: tr.sizeGB, version: tr.version, licences: tr.licences, supported: tr.supported, uv: TRAINER.uv, python: TRAINER.python, llamacpp: TRAINER.llamacpp }, fit: FIT_ROWS.map(([gb, dense, moe]) => ({ gb, dense, moe })), squeezeTypes: SQUEEZE_TYPES, perplexity: Boolean(lab.tools().perplexity?.found), brains: lab.brains().map((b) => ({ id: b.id, name: b.name })), sets: lessonSets(lab.cfg).map(({ id, name, count }) => ({ id, name, count })), runs: lab.runs.filter((r) => r.kind === 'teach').slice(-5).reverse().map((r) => lab.runView(r)), os: OS, ram: Math.round(os.totalmem() / 1024 ** 3) };
+  return { mistakes: readMyTests(lab.cfg).length, teachers: lab.brains().map((b) => ({ id: b.id, name: b.name })), trainer: { ok: tr.ok, sizeGB: tr.sizeGB, version: tr.version, licences: tr.licences, supported: tr.supported, uv: TRAINER.uv, python: TRAINER.python, llamacpp: TRAINER.llamacpp }, fit: FIT_ROWS.map(([gb, dense, moe]) => ({ gb, dense, moe })), squeezeTypes: SQUEEZE_TYPES, perplexity: Boolean(lab.tools().perplexity?.found), brains: lab.brains().map((b) => ({ id: b.id, name: b.name })), sets: lessonSets(lab.cfg).map(({ id, name, count }) => ({ id, name, count })), runs: lab.runs.filter((r) => r.kind === 'teach').slice(-5).reverse().map((r) => lab.runView(r)), os: OS, ram: Math.round(os.totalmem() / 1024 ** 3) };
 }
 
 export async function teachRoute({ req, p, isLocal, lab, b, send, res }) {

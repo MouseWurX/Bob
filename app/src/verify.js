@@ -220,7 +220,7 @@ export async function afterTool(name, args, text, ctx = {}) {
     if (code && Number(code[1]) !== 0) return fail(`it finished with exit code ${code[1]} (that usually means it failed)`);
     return { ok: true, why: code ? 'exit code 0' : 'ran', retry: false };
   }
-  if (name === 'file_hands') {
+  if (name === 'file_hands' || name === 'sort_files') {
     const done = Number((s.match(/: (\d+) done\./) || [])[1] ?? NaN);
     const notDone = /^Not done: (.+)$/m.exec(s);
     if (done === 0 && notDone) return fail(`none of it was done: ${notDone[1].slice(0, 160)}`);
@@ -259,7 +259,7 @@ const MEDIA_OF = { picture: 'image', show: 'image', video: 'video', music: 'audi
 const TOOL_OF = { diagram: 'make_diagram', picture: 'make_image', show: 'make_image', video: 'make_video', music: 'make_music', sound: 'make_sound', file: 'write_file', app: 'open_app' };
 const GROUPS_OF = { diagram: ['diagrams'], picture: ['pictures'], show: ['pictures'], video: ['pictures'], music: ['pictures'], sound: ['pictures'], file: ['documents'], app: ['apps'] };
 const WHAT = { diagram: 'a diagram', picture: 'a picture', show: 'a picture', video: 'a clip', music: 'some music', sound: 'a sound', file: 'a file saved', app: 'something done in an app' };
-const FILE_TOOLS = new Set(['write_file', 'edit_file', 'save_spreadsheet', 'file_hands', 'convert_file', 'office_make', 'office_edit', 'strip_metadata']);
+const FILE_TOOLS = new Set(['write_file', 'edit_file', 'save_spreadsheet', 'file_hands', 'sort_files', 'convert_file', 'office_make', 'office_edit', 'strip_metadata']);
 const APP_TOOLS = new Set(['open_app', 'app_act']);
 const LOOKS = new Set(['app_look', 'list_schedules', 'read_file', 'list_files', 'search_files', 'workshop_list', 'use_tools', 'recall', 'web_search', 'fetch_page', 'security_check', 'inspect_file', 'osint_lookup', 'check_exposure', 'security_tips', 'bob_help']);
 const isDoing = (n) => n in MEDIA || FILE_TOOLS.has(n) || APP_TOOLS.has(n) || ['run_command', 'run_recipe', 'schedule_job', 'change_schedule', 'undo_files'].includes(n);
@@ -280,6 +280,7 @@ export function describe(name, args = {}) {
     case 'save_spreadsheet': return `Saving the spreadsheet${args.name ? ` "${args.name}"` : ''}`;
     case 'file_hands': return FILE_JOBS[String(args.action || '').toLowerCase()] || 'The file job';
     case 'undo_files': return 'Undoing the file job';
+    case 'sort_files': return 'Sorting and renaming';
     case 'convert_file': return `Converting ${[].concat(args.paths || []).length === 1 ? base([].concat(args.paths)[0]) : 'the files'}${args.to ? ` to ${String(args.to).toUpperCase()}` : ''}`;
     case 'office_make': return `Making the ${({ writer: 'document', calc: 'spreadsheet', impress: 'presentation' })[args.kind] || 'document'}`;
     case 'office_edit': return `Changing ${base(args.path)}`;

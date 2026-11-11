@@ -34,7 +34,7 @@ const MAX_IMAGE_BYTES = 3_000_000;
 // The groups you tick. Only tools Bob has switched on right now are offered (brain.usable), so a Hand that is off
 // stays off for Claude too.
 export const DOOR_GROUPS = {
-  hands: { label: 'Bob\'s Hands', what: 'Files, programs and scripts, apps, his own browser, and Office files. Each Hand must also be on under Hands.', tools: ['file_hands', 'undo_files', 'run_command', 'run_recipe', 'open_app', 'app_look', 'app_act', 'browser_open', 'browser_read', 'browser_act', 'office_make', 'office_edit', 'convert_file', 'write_file', 'edit_file'] },
+  hands: { label: 'Bob\'s Hands', what: 'Files, programs and scripts, apps, his own browser, and Office files. Each Hand must also be on under Hands.', tools: ['file_hands', 'sort_files', 'undo_files', 'run_command', 'run_recipe', 'open_app', 'app_look', 'app_act', 'browser_open', 'browser_read', 'browser_act', 'office_make', 'office_edit', 'convert_file', 'write_file', 'edit_file'] },
   media: { label: 'Pictures, music, clips and voice', what: 'Paint a picture, make a clip, a song or a sound, or say something out loud in Bob\'s voice.', tools: ['make_image', 'make_video', 'make_music', 'make_sound', 'say_aloud'] },
   docs: { label: 'Read and search documents', what: 'Find words in your files and read documents, in the folders Bob may read.', tools: ['find_in_documents', 'read_file', 'list_folder', 'office_read', 'search_files', 'inspect_file'] },
   notes: { label: 'Notes and memory', what: 'Quick notes, the notice board, and what Bob remembers.', tools: ['take_note', 'notice_board', 'remember', 'recall_memory'] }

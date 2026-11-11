@@ -19,8 +19,13 @@ for (const [f, text] of Object.entries(built)) {
   const have = fs.existsSync(path.join(WEB_DIR, f)) ? fs.readFileSync(path.join(WEB_DIR, f), 'utf8').replace(/\r\n/g, '\n') : null;
   check(`public/phone/${f} is up to date (node android/tools/make-shared.mjs)`, have === text);
 }
-check('every script the phone page loads is copied or served', WEB_COPIED.includes('phone.js') && WEB_COPIED.includes('shared.js') && WEB_COPIED.includes('avatars.js'));
 const html = built['index.html'];
+// 1.5.206 PC check: /phone/lock.js was a 404, so the phone screen ran without its passcode lock. Every <script src>
+// must be a file in public/phone/ or one the server hands out from public/ (diagram-core.js).
+const notThere = [...html.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1])
+  .filter((f) => f !== 'diagram-core.js' && !(f in built) && !fs.existsSync(path.join(WEB_DIR, f)));
+check('every script the phone page loads is copied or served', !notThere.length && WEB_COPIED.includes('lock.js'), notThere.join(', '));
+check('the phone screen has the passcode lock, loaded before phone.js', html.indexOf('lock.js') > 0 && html.indexOf('lock.js') < html.indexOf('phone.js') && fs.existsSync(path.join(WEB_DIR, 'lock.js')));
 check('index.html: marked as the web page, with the Home Screen parts', /<html[^>]* data-web>/.test(html) && /rel="manifest" href="manifest\.webmanifest"/.test(html) && /apple-mobile-web-app-capable" content="yes"/.test(html) && /rel="apple-touch-icon"/.test(html) && /href="web\.css"/.test(html));
 check('index.html: only talks to the Bob that served it', /connect-src 'self';/.test(html) && !/connect-src 'none'/.test(html) && /default-src 'self'/.test(html) && /script-src 'self'/.test(html));
 check('index.html: the web bridge loads before anything else', html.indexOf('web-bridge.js') > 0 && html.indexOf('web-bridge.js') < html.indexOf('shared.js') && html.indexOf('shared.js') < html.indexOf('phone.js'));
@@ -64,7 +69,7 @@ try {
   check('/phone/ is the phone screen', page.status === 200 && /text\/html/.test(page.type) && /web-bridge\.js/.test(page.body), String(page.status));
   const bare = await get('/phone');
   check('/phone goes to /phone/', bare.status === 301 && bare.location === '/phone/');
-  for (const [p, type] of [['/phone/shared/icons/bob-192.png', 'image/png'], ['/phone/shared/fonts/ibm-plex-mono-latin-500-normal.woff2', 'font/woff2'], ['/phone/vendor/mermaid-LICENSE.txt', 'text/plain'], ['/phone/diagram-core.js', 'text/javascript'], ['/phone/web-bridge.js', 'text/javascript'], ['/phone/manifest.webmanifest', 'application/manifest+json']]) {
+  for (const [p, type] of [['/phone/shared/icons/bob-192.png', 'image/png'], ['/phone/shared/fonts/ibm-plex-mono-latin-500-normal.woff2', 'font/woff2'], ['/phone/vendor/mermaid-LICENSE.txt', 'text/plain'], ['/phone/diagram-core.js', 'text/javascript'], ['/phone/lock.js', 'text/javascript'], ['/phone/web-bridge.js', 'text/javascript'], ['/phone/manifest.webmanifest', 'application/manifest+json']]) {
     const r = await get(p);
     check(`${p} is served (${type})`, r.status === 200 && r.type.startsWith(type), `${r.status} ${r.type}`);
   }

@@ -1,7 +1,7 @@
 // The Hands part of Bob's API. Changing settings, recipes and Undo only work on the PC itself; Stop works from
 // anywhere Bob's window is open (stopping is always allowed).
 //   GET  /api/hands            settings, the list of Hands, folders, recipes, recent file jobs and runs, what's running
-//   POST /api/hands/settings   { enabled?, free?, limits: { <limit>: bool }?, files: { on }?, run: { on }?, folders?, timeoutMin? }
+//   POST /api/hands/settings   { enabled?, free?, limits: { <limit>: bool }?, files: { on }?, run: { on }?, folders?, timeoutMin?, sortRules? }
 //                              free = "Let Bob work without asking"; limits = the hard limits (hands-settings.js LIMITS)
 //   POST /api/hands/stop       { runId }  stop one running command
 //   POST /api/hands/stop-all   stop everything a Hand is doing, deny waiting Hand cards, all Hands off
@@ -67,6 +67,7 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
       if (Array.isArray(b.folders)) next.folders = b.folders.filter((f) => typeof f === 'string' && isDir(f)); // only folders that exist
       if (Array.isArray(b.readOnlyFolders)) next.readOnlyFolders = b.readOnlyFolders.filter((f) => typeof f === 'string' && isDir(f)); // 1.5.117
       if ('timeoutMin' in b) next.timeoutMin = b.timeoutMin;
+      if (Array.isArray(b.sortRules)) next.sortRules = b.sortRules.length ? b.sortRules : null; // Sort and rename rules; [] = back to the defaults
       if ('eyesCheck' in b) next.eyesCheck = b.eyesCheck !== false;
       const clean = cleanHands(next);
       brain.saveHands(clean);

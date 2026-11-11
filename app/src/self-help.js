@@ -49,7 +49,7 @@ export function settingsNow(cfg) {
     `Let Bob search the web: ${onOff(webOn(cfg))}`,
     `Let Bob learn how-tos: ${onOff(cfg.howtos === true)}`,
     `Let Bob fix his own messages: ${onOff(cfg.editOwn === true)}`,
-    `Show Try again and Edit in the chat: ${onOff(cfg.chatRedo !== false)}`,
+    `Show Try again, Edit and Delete in the chat: ${onOff(cfg.chatRedo !== false)}`,
     `Let Bob's Quick brain see the big job: ${onOff(cfg.quickSeesJob === true)}`,
     `Let Bob take quick notes: ${onOff(cfg.quickNotes === true)} (Let Bob notice what's worth noting: ${onOff(cfg.smartNotes === true)}); Read and search my documents: ${onOff(cfg.docTools === true)} (Search my documents by meaning: ${onOff(cfg.docMeaning === true)}); Show documents in the side panel: ${onOff(cfg.docView === true)}; Save chats as files and bring chats in: ${onOff(cfg.chatFiles === true)}; Show maths as formulas: ${onOff(cfg.mathView === true)}; Keyboard shortcuts: ${onOff(cfg.shortcuts === true)}; Pull up saved prompts with /: ${onOff(cfg.promptMenu === true)}; Let Bob work things out in a sandbox: ${onOff(cfg.sandboxCode === true)}; Assistant presets for chats: ${onOff(cfg.chatPresets === true)} (${(cfg.presetList || []).length} saved); Let Bob make 3D parts: ${onOff(cfg.parts3d === true)}; Let Bob turn pictures into 3D models: ${onOff(cfg.model3d === true)}`,
     `Let Bob work on repositories: ${onOff(cfg.selfWork?.enabled === true)} (his own app first, then ${(cfg.selfWork?.repos || []).length} of yours); Let my other Bobs help: ${onOff(cfg.selfWork?.helpers === true)}`,

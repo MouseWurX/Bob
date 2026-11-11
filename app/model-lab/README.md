@@ -16,6 +16,10 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
 3. `node count-experts.mjs` — llama-imatrix over the lessons (about 30 to 60 minutes). Report: out\experts\expert-counts-*.md,
    with the busiest 48/32/16/8 experts per layer in the .json (the cut lists for 8Bob/6Bob/4Bob/2Bob).
 
+4. `node loop-test.mjs --model <brain.gguf>` — the tool quiz through Bob's real turn loop (his toolbox, checks and retries), with
+   stand-in tools that touch nothing, plus 8 jobs that take several steps. Add `--plain` for a second run without the loop helps
+   (src/loop-help.js) to compare. `--quick` runs a quarter of the quiz. Report: out\loop-test-*.md.
+
 The scripts were first tested against a fake llama-server and a fake llama-imatrix (flow, files and parsing), then for real on the project's test machine. What they found is on the models page.
 
 Lesson results: use_tools and bob_help are Bob's own answers. The cards he shows (offer_setup, pick_session, show_plan,

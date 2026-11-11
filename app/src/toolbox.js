@@ -66,6 +66,7 @@ const WORK_GROUPS = {
 // The Hands each get their own group, only when that Hand is switched on.
 const HAND_WORDS = {
   files: /\b(move|copy|rename|zip|unzip|unpack|archive|extract|(?:clear|free) (?:up )?(?:some )?(?:disk )?space|biggest files|disk space|tidy|organi[sz]e|sort|clean ?up|downloads|undo|folder|folders)\b/i,
+  sort: /\b(sort|rename|renam\w+|organi[sz]e|tidy|naming|name (?:them|these|my|all)|librar(?:y|ies)|music (?:folder|collection)|my (?:music|songs|albums|videos|movies|films|shows|tv|episodes|photos)|downloads|output folder|undo)\b/i,
   run: /\b(run|execute|command|script|terminal|powershell|cmd|install|build|npm|python|node|git|recipe|(?:start|fire|spin|boot) (?:up )?(?:the |my |a )?(?:dev |local |web )?(?:server|app|game|project|bot)|dev server|compile)\b/i,
   schedules: /\b(schedules?|scheduled|every (?:day|morning|afternoon|evening|night|week|weekday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|month|hour|\d+)|each (?:day|morning|evening|night|week|weekday|hour)|daily|nightly|weekly|hourly|on a timer|automatically|at \d{1,2}(?::\d\d)?\s*(?:am|pm)|(?:on |every )?weekdays|(?:on |every )?weekends)\b/i,
   office: /\b(convert\w*|shrink|compress\w*|make (?:it|this|that) smaller|turn (?:it|this|that|them|these) into|save (?:it |this |that )?as|export\w*|pdf|docx?|xlsx?|pptx?|odt|ods|odp|word (?:doc\w*|file)|excel|powerpoint|libre ?office|open ?office|writer|calc|impress|slides?|presentation|slideshow|deck|spreadsheet|sheet|cells?|template|mp3|mp4|wav|webm|webp|flac|ogg|mkv|gif|jpe?g|png)\b/i,
@@ -76,6 +77,7 @@ const HAND_WORDS = {
 
 const HAND_WHAT = {
   files: 'move, copy, rename, zip, unzip, tidy files and folders, undo',
+  sort: 'sort and rename many files (music, videos, photos) to the user\'s naming rules, or from Downloads into their folders, undo',
   run: 'run commands, scripts, programs',
   schedules: 'repeat a job at set times (every morning...)',
   apps: 'open apps and click, type or press keys in them, with a look at the screen through your eyes brain',
@@ -93,6 +95,11 @@ export function groupsFor(brain) {
   g.selfwork.words = selfWorkWords(brain.cfg, g.selfwork.words);
   for (const [id, hand] of Object.entries(HANDS)) {
     g[id] = { what: HAND_WHAT[id] || `Hands, ${hand.label.toLowerCase()}`, tools: hand.tools, words: HAND_WORDS[id] || /$^/, hand: id };
+    // A shared tool (Undo) goes with this Hand's group while its own Hand is off, so it is in one group only.
+    for (const t of hand.shares || []) {
+      const owner = Object.keys(HANDS).find((h) => HANDS[h].tools.includes(t));
+      if (owner && brain.cfg && handOn(brain.cfg, id) && !handOn(brain.cfg, owner)) { g[id].tools = [...g[id].tools, t]; if (g[owner]) g[owner].tools = g[owner].tools.filter((x) => x !== t); }
+    }
     // 1.5.48: the tools Bob made himself are named in the group, so "run my csv tool" finds them.
     if (id === 'maker') Object.assign(g[id], { what: makerWhat(brain.cfg), words: makerWords(brain.cfg) });
     // The connected apps by name, so "in Blender, add a cube" finds them.
@@ -132,7 +139,7 @@ export function guessGroups(brain, text) {
 }
 
 // The chat chip when a group is added (clarity reviewer's words; Hands match their names in Settings).
-const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', parts3d: 'Using his 3D part tools', documents: 'Using his document tools', files: 'Using his file tools', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', browser: 'Using Hands: his browser', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', selfwork: 'Working on a repository', cloud: 'Using a cloud helper' };
+const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', parts3d: 'Using his 3D part tools', documents: 'Using his document tools', files: 'Using his file tools', sort: 'Using Hands: sort and rename', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', browser: 'Using Hands: his browser', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', selfwork: 'Working on a repository', cloud: 'Using a cloud helper' };
 
 export const allToolsOn = (cfg) => cfg.allTools === true;
 

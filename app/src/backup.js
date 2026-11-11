@@ -28,7 +28,7 @@ export const MIN_PASSCODE = 8;
 
 // What a backup can hold, in the order Settings lists it. Paths are inside the inn folder ('/' at the end = a folder).
 export const PARTS = [
-  { id: 'chats', label: 'Chats', what: 'Every chat, its summary and which ones are pinned.', paths: ['bob/sessions/', 'bob/chat-summaries.json', 'bob/topics.json', 'bob/housekeeping.json'] },
+  { id: 'chats', label: 'Chats', what: 'Every chat, its summary and which ones are pinned.', paths: ['bob/sessions/', 'bob/chat-summaries.json', 'bob/topics.json', 'bob/housekeeping.json', 'bob/my-tests.jsonl'] },
   { id: 'settings', label: 'Settings', what: 'Everything set in Settings, check-ins, reminders, scheduled jobs, apps you connected, his voice sample and what he calls you.', paths: ['bob/settings.json', 'saved-prompts.json', 'bob/chat-presets.json', 'bob/chat-start/', 'bob/schedules.json', 'bob/reminders.json', 'bob/checkins.json', 'bob/mcp-servers.json', 'bob/hands-recipes.json', 'bob/clan.json', 'bob/about-me.md', 'bob/backstory.md', 'bob/equip-plan.json', 'voices/'] },
   { id: 'memory', label: 'Memory', what: 'What Bob remembers about you, his how-tos, the notice board and his logbook.', paths: ['bob-memory.md', 'bob/memory-vectors.json', 'bob/howtos.json', 'notice-board.md', 'logbook.md', 'archive/'] },
   { id: 'notes', label: 'Notes and records', what: 'Quick notes and the records (ledgers) he keeps for you.', paths: ['quick-notes.md', 'ledger/'] },
@@ -44,7 +44,7 @@ export const NOT_BACKED_UP = [
   'bob/update-status.json', 'bob/update-launch-log.txt', 'bob/github-update/', 'bob/catalog-latest.json', 'bob/model-scan.json',
   'bob/tidy-backups/', 'bob/backups/', 'bob/trash/', 'bob/thumbs/', 'bob/voice-samples/', 'bob/speed-tests.json', 'bob/load-times.json',
   'bob/selftools.json', 'bob/quarantine.json', 'bob/lab/', 'bob/hands-runs.json', 'bob/hands-journal.json', 'bob/downloads.json',
-  'bob/queue.json', 'bob/electron/', 'bob/doc-index.json', 'bob/claude-door.json', 'bob/tool-packs.json', 'tool-packs/', 'bob/sd-server-args.txt', 'bob/backup-state.json', 'bob/restore-result.json',
+  'bob/queue.json', 'bob/electron/', 'bob/doc-index.json', 'bob/tool-group-vectors.json', 'bob/claude-door.json', 'bob/tool-packs.json', 'tool-packs/', 'bob/sd-server-args.txt', 'bob/backup-state.json', 'bob/restore-result.json',
   'bob/seeded-brains.json', 'bob/keys.json', 'bob/bob-net-link-keys.json', // brains seeded on a lent card (worked out again); locked secrets and Bob-Net link keys are locked to this computer (keys travel in the locked part; Bobs pair again)
   'painter/', 'references/', 'workshop/', 'own-code/', 'documents/', 'tools/_scratch/', 'restore-waiting/', 'restore-waiting.new/'
 ];

@@ -4,6 +4,7 @@
 // Bob refreshes them when he's idle (housekeeping.js asks the brain); the user can rename, merge, pin, edit
 // the note, move a message to another topic, or forget a topic. Kept in inn\bob\topics.json on this PC only.
 import fs from 'node:fs';
+import { EMBED_PREFIX_V, freshVec } from './embed-prefix.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { clip } from './util.js';
@@ -177,14 +178,17 @@ export class Topics {
   setCursor(session, value) { const d = this.load(); d.cursors[session] = value; this.save(d); }
   cursor(session) { return this.load().cursors[session] || 0; }
 
-  setVectors(vecs) { const d = this.load(); for (const t of d.topics) if (vecs[t.id]) t.vec = vecs[t.id]; this.save(d); }
+  setVectors(vecs) { const d = this.load(); for (const t of d.topics) if (vecs[t.id]) { t.vec = vecs[t.id]; t.vp = EMBED_PREFIX_V; } this.save(d); }
+  // Topics whose meaning vector is missing or was made before the search openings (embed-prefix.js).
+  staleVectors() { return this.load().topics.filter((t) => !freshVec(t)); }
 
   // The topic notes closest to what the user just said, for Bob's prompt (instead of raw old history).
   relevant(text, { vec = null, k = 3, min = 0.35 } = {}) {
     const all = this.load().topics.filter((t) => t.note || t.summary);
     const scored = all.map((t) => {
-      const s = vec && t.vec ? cosine(vec, t.vec) : overlap(text, `${t.project} ${t.name} ${t.summary} ${(t.aliases || []).join(' ')}`);
-      return { t, s: vec && t.vec ? s : s * 0.9 };
+      const byVec = vec && freshVec(t);
+      const s = byVec ? cosine(vec, t.vec) : overlap(text, `${t.project} ${t.name} ${t.summary} ${(t.aliases || []).join(' ')}`);
+      return { t, s: byVec ? s : s * 0.9 };
     }).filter((x) => x.s >= (vec ? Math.max(min, 0.5) : min)).sort((a, b) => b.s - a.s).slice(0, k);
     return scored.map(({ t }) => t);
   }
