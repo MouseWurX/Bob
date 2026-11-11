@@ -8,14 +8,15 @@ import path from 'node:path';
 import { describe, allowedFile } from './files.js';
 
 const MAX = 400;
-const MEDIA = /\.(png|jpe?g|webp|gif|mp4|webm|mov|wav|mp3|ogg|flac|m4a)$/i;
+const MEDIA = /\.(png|jpe?g|webp|gif|mp4|webm|mov|wav|mp3|ogg|flac|m4a|stl|glb)$/i;
 // The kinds the panel and show_made sort by.
-export const KINDS = ['image', 'video', 'audio', 'document', 'folder', 'file'];
+export const KINDS = ['image', 'video', 'audio', 'document', 'model', 'folder', 'file'];
 
 export function kindOf(d) {
   if (!d?.ok) return 'file';
   if (d.kind === 'text') return 'document';
   if (d.kind === 'file' && /\.(pdf|docx?|xlsx?|pptx?|odt|ods|odp|rtf)$/i.test(d.name)) return 'document';
+  if (d.kind === 'file' && /\.(stl|obj|glb)$/i.test(d.name)) return 'model'; // 3D models: the side panel's 3D viewer (public/model-core.js)
   return d.kind;
 }
 
@@ -70,7 +71,7 @@ export class Made {
     return this.load().find((x) => path.resolve(x.path).toLowerCase() === key)?.song || null;
   }
 
-  // Newest first. kind: image / video / audio / document / folder / file (or empty for all). q: words in the name.
+  // Newest first. kind: image / video / audio / document / model / folder / file (or empty for all). q: words in the name.
   list({ kind = '', q = '', limit = 60 } = {}) {
     const seen = new Set();
     const rows = [];
@@ -127,7 +128,7 @@ function view(d, x) {
   return { type: 'file', kind: kindOf(d), name: d.name, path: d.path, url: d.url, bytes: d.bytes, canOpen: d.canOpen, at: x.at, tool: x.tool || '', ...(x.song?.title ? { title: x.song.title, sound: x.song.sound } : {}) };
 }
 
-const WORDS = { picture: 'image', pictures: 'image', image: 'image', images: 'image', photo: 'image', pic: 'image', video: 'video', clip: 'video', clips: 'video', sound: 'audio', sounds: 'audio', song: 'audio', music: 'audio', audio: 'audio', document: 'document', documents: 'document', doc: 'document', spreadsheet: 'document', file: '', files: '', anything: '' };
+const WORDS = { picture: 'image', pictures: 'image', image: 'image', images: 'image', photo: 'image', pic: 'image', video: 'video', clip: 'video', clips: 'video', sound: 'audio', sounds: 'audio', song: 'audio', music: 'audio', audio: 'audio', document: 'document', documents: 'document', doc: 'document', spreadsheet: 'document', model: 'model', models: 'model', '3d': 'model', stl: 'model', part: 'model', parts: 'model', file: '', files: '', anything: '' };
 
 // show_made: call up something Bob already made, in the chat and in the side panel. Always in the core
 // tools (about 90 tokens), so "show me the last picture" works without adding a group first.
@@ -141,7 +142,7 @@ export function showMadeTool(brain) {
         parameters: {
           type: 'object',
           properties: {
-            kind: { type: 'string', enum: ['image', 'video', 'audio', 'document', 'any'], description: 'What kind (default any)' },
+            kind: { type: 'string', enum: ['image', 'video', 'audio', 'document', 'model', 'any'], description: 'What kind (default any; model = a 3D model)' },
             name: { type: 'string', description: 'Words from the file name (optional)' },
             count: { type: 'integer', description: 'How many, newest first (default 1, at most 6)' }
           },
@@ -155,11 +156,11 @@ export function showMadeTool(brain) {
       if (kind === 'any' || !KINDS.includes(kind)) kind = '';
       const count = Math.max(1, Math.min(6, Number(args.count) || 1));
       const items = brain.made.list({ kind, q: args.name || '', limit: count });
-      if (!items.length) return `Nothing like that made yet${kind ? ` (no ${kind === 'image' ? 'pictures' : kind + 's'})` : ''}${args.name ? ` with "${args.name}" in the name` : ''}. Say so plainly.`;
+      if (!items.length) return `Nothing like that made yet${kind ? ` (no ${kind === 'image' ? 'pictures' : kind === 'model' ? '3D models' : kind + 's'})` : ''}${args.name ? ` with "${args.name}" in the name` : ''}. Say so plainly.`;
       ctx?.emit?.({ type: 'made', items, show: true });
       return `Shown to ${brain.cfg.userName || 'the user'} in the chat and the side panel: ${items.map((x) => `${x.name} (${when(x.at)})`).join('; ')}. Say in one short line what it is; don't paste paths or links.`;
     },
-    summary: ({ kind, name } = {}) => `showing ${name ? `"${name}"` : { image: 'the latest picture', video: 'the latest clip', audio: 'the latest sound', document: 'the latest document' }[kind] || 'what I made'}`
+    summary: ({ kind, name } = {}) => `showing ${name ? `"${name}"` : { image: 'the latest picture', video: 'the latest clip', audio: 'the latest sound', document: 'the latest document', model: 'the latest 3D model' }[kind] || 'what I made'}`
   };
 }
 

@@ -12,7 +12,7 @@ import { isSensitive } from './tools.js';
 const OPEN_OK = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tif', '.tiff', '.wav', '.mp3', '.ogg', '.flac', '.m4a', '.mp4', '.webm', '.mov', '.mkv', '.avi',
   '.txt', '.md', '.csv', '.tsv', '.json', '.log', '.pdf', '.docx', '.xlsx', '.pptx', '.odt', '.ods', '.odp', '.rtf', '.glb', '.gltf', '.obj', '.fbx', '.stl', '.psd', '.kra', '.xcf']);
 // Files the side panel can show as text (the first part of them; never run).
-export const TEXT_EXT = new Set(['.txt', '.md', '.csv', '.tsv', '.json', '.log', '.html', '.htm', '.css', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.py', '.c', '.h', '.cpp', '.hpp', '.cs', '.rs', '.java', '.kt', '.kts', '.gradle', '.xml', '.yml', '.yaml', '.ini', '.cfg', '.toml', '.ps1', '.bat', '.cmd', '.sh', '.lua', '.gd', '.sql', '.svg', '.srt', '.vtt']);
+export const TEXT_EXT = new Set(['.txt', '.md', '.csv', '.tsv', '.json', '.log', '.html', '.htm', '.css', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.py', '.c', '.h', '.cpp', '.hpp', '.cs', '.rs', '.java', '.kt', '.kts', '.gradle', '.xml', '.yml', '.yaml', '.ini', '.cfg', '.toml', '.ps1', '.bat', '.cmd', '.sh', '.lua', '.gd', '.sql', '.svg', '.srt', '.vtt', '.scad']);
 const PEEK_MAX = 256 * 1024;
 const canOpen = (file, dir) => dir || OPEN_OK.has(path.extname(file).toLowerCase());
 

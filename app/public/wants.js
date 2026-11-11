@@ -11,6 +11,8 @@ export const WANTS = [
     label: 'Read and search your documents', note: 'Word, Excel, PowerPoint, PDF and more, in Documents, Desktop and Downloads. Nothing leaves this replicant matrix.' },
   { group: 'Everyday help', key: 'sandboxCode', setting: 'Let Bob work things out in a sandbox', where: 'How Bob works',
     label: 'Work out sums, dates and money in a sandbox', note: 'A few lines of code in a locked box that can\'t see your files, thrown away after each run, so I answer from the result instead of guessing.' },
+  { group: 'Everyday help', key: 'parts3d', setting: 'Let Bob make 3D parts', where: 'How Bob works',
+    label: 'Make 3D parts for a printer', note: 'Brackets, boxes, spacers and fixes, as STL files you can turn and zoom beside the chat. Needs OpenSCAD (free, about 30 MB).' },
   { group: 'Everyday help', key: 'webSearch', setting: 'Let Bob search the web', where: 'How Bob works',
     label: 'Search the web when a question needs it', note: 'Only the search words and page addresses go online.' },
   { group: 'How I work', key: 'planFirst', setting: 'Show Bob\'s plan before big jobs', where: 'How Bob works',

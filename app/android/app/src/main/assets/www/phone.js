@@ -196,8 +196,20 @@
     return box;
   }
 
+  // A 3D model Bob made on the computer (STL, OBJ, GLB): fetched once, then turned and zoomed here (model-core.js).
+  function modelNode(x) {
+    const box = el('div', { class: 'model-box' }, el('div', { class: 'small dim', text: 'Getting the 3D model…' }));
+    phone('net.media', { address: x.base.replace('http://', ''), path: x.url }).then(async (data) => {
+      if (!data) { box.textContent = 'Too big to show on the phone. It is on your other replicant matrix, in Made by Bob.'; return; }
+      try { await globalThis.BobModel.showModel(box, { url: data, name: x.name || 'model.stl', still: matchMedia('(prefers-reduced-motion: reduce)').matches }); }
+      catch (e) { box.textContent = `${e.message || "Couldn't show that model."} It is on your other replicant matrix, in Made by Bob.`; }
+    }).catch(() => { box.textContent = "Couldn't fetch it from your other replicant matrix."; });
+    return box;
+  }
+
   function mediaNode(x) {
     if (x.kind === 'diagram') return diagramNode(x);
+    if (x.kind === 'model') return modelNode(x);
     const holder = el('div', { class: 'small dim', text: x.kind === 'audio' ? 'Getting the song…' : 'Getting it from your other replicant matrix…' });
     phone('net.media', { address: x.base.replace('http://', ''), path: x.url }).then((data) => {
       if (!data) { holder.textContent = 'Too big to show on the phone. It is on your other replicant matrix.'; return; }
@@ -452,7 +464,7 @@
     else if (ev.type === 'diagram') { const x = { kind: 'diagram', url: ev.url, base, title: ev.title || '' }; current.media.push(x); current.node.append(mediaNode(x)); }
     else if (ev.type === 'image' || ev.type === 'video') { const x = { kind: ev.type, url: ev.url, base }; current.media.push(x); current.node.append(mediaNode(x)); }
     else if (ev.type === 'made') {
-      for (const it of ev.items || []) if (it.kind === 'audio' && it.url) { const x = { kind: 'audio', url: it.url, base }; current.media.push(x); current.node.append(mediaNode(x)); }
+      for (const it of ev.items || []) if ((it.kind === 'audio' || it.kind === 'model') && it.url) { const x = { kind: it.kind, url: it.url, base, name: it.name || '' }; current.media.push(x); current.node.append(mediaNode(x)); }
     }
     else if (ev.type === 'edited') { // Let Bob fix his own messages: the fix goes into this reply's words, or one short line
       const before = String(ev.before || '');
@@ -1397,9 +1409,9 @@ ${chatOut}
     for (const x of items) {
       const kind = x.kind === 'text' ? 'document' : x.kind || 'file';
       const name = x.title || x.name || '';
-      const icon = { image: '🖼️', video: '🎞️', audio: '🔊', document: '📄', folder: '📁' }[kind] || '📦';
+      const icon = { image: '🖼️', video: '🎞️', audio: '🔊', document: '📄', model: '🧊', folder: '📁' }[kind] || '📦';
       const pic = el('div', { class: 'chest-pic', 'aria-hidden': 'true', text: icon });
-      const tile = el('button', { class: 'chest-item', role: 'listitem', 'aria-label': `Open ${name}: ${kind === 'image' ? 'picture' : kind === 'video' ? 'clip' : kind === 'audio' ? 'sound' : kind}`, onclick: () => { chest.open = chest.open === x ? null : x; drawChestBig(body, addr); } }, pic, el('span', { class: 'chest-name', text: name }));
+      const tile = el('button', { class: 'chest-item', role: 'listitem', 'aria-label': `Open ${name}: ${kind === 'image' ? 'picture' : kind === 'video' ? 'clip' : kind === 'audio' ? 'sound' : kind === 'model' ? '3D model' : kind}`, onclick: () => { chest.open = chest.open === x ? null : x; drawChestBig(body, addr); } }, pic, el('span', { class: 'chest-name', text: name }));
       grid.append(tile);
       if (kind === 'image' || kind === 'video') {
         const thumbPath = x.url && x.url.startsWith('/api/file?') ? `/api/thumb?path=${encodeURIComponent(new URL(x.url, 'http://x').searchParams.get('path') || '')}` : `/api/thumb?path=${encodeURIComponent(x.url || '')}`;
@@ -1414,7 +1426,7 @@ ${chatOut}
     const x = chest.open; if (!x) return;
     const kind = x.kind === 'text' ? 'document' : x.kind || 'file';
     box.append(el('h3', { text: x.title || x.name || '' }));
-    if (['image', 'video', 'audio'].includes(kind) && x.url) box.append(mediaNode({ kind, url: x.url, base: `http://${addr}` }));
+    if (['image', 'video', 'audio', 'model'].includes(kind) && x.url) box.append(mediaNode({ kind, url: x.url, base: `http://${addr}`, name: x.name || '' }));
     else box.append(el('p', { class: 'help-line', text: 'I can\'t show this kind of file on the phone. It\'s in Made by Bob on your other replicant matrix.' }));
     box.scrollIntoView({ block: 'nearest' });
   }

@@ -30,6 +30,11 @@ const WORK_GROUPS = {
     tools: ['write_file', 'edit_file', 'save_spreadsheet', 'search_files', 'find_in_documents'],
     words: /\b(save|write|edit|documents?|txt|csv|xlsx|spreadsheet|excel|pdfs?|word (?:doc|file)s?|search (?:my|the|in|for)|find (?:in|where|the (?:file|doc|document|pdf))|grep|jot|text file|notes? file|(?:in|through) my (?:files|documents|docs|folders)|where did I (?:mention|write|put|say|save)|which (?:file|document|doc|pdf))\b/i
   },
+  parts3d: { // "Let Bob make 3D parts" (parts3d.js): only while it's on (offTools hides it otherwise)
+    what: 'make exact 3D parts (STL files for a 3D printer) from an OpenSCAD recipe: brackets, boxes, lids, spacers, replacement parts',
+    tools: ['make_3d_part'],
+    words: /\b(3d|3-d|stl|openscad|scad|cad|3d ?print\w*|printable|bracket|enclosure|spacer|washer|standoff|knob|hinge|gear|cog|replacement part|spare part|part for)s?\b/i
+  },
   sandbox: { // "Let Bob work things out in a sandbox" (sandbox-code.js): only while it's on (offTools hides it otherwise)
     what: 'work out sums, money, dates, unit conversions, counting and sorting exactly, by running a little code in a locked sandbox',
     tools: ['run_in_sandbox'],
@@ -118,7 +123,7 @@ export function guessGroups(brain, text) {
 }
 
 // The chat chip when a group is added (clarity reviewer's words; Hands match their names in Settings).
-const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', documents: 'Using his document tools', files: 'Using his file tools', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', browser: 'Using Hands: his browser', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', selfwork: 'Working on a repository', cloud: 'Using a cloud helper' };
+const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', parts3d: 'Using his 3D part tools', documents: 'Using his document tools', files: 'Using his file tools', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', browser: 'Using Hands: his browser', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', selfwork: 'Working on a repository', cloud: 'Using a cloud helper' };
 
 export const allToolsOn = (cfg) => cfg.allTools === true;
 

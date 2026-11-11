@@ -28,6 +28,7 @@ separate program:
 | ACE-Step 1.5 | MIT |
 | ComfyUI (optional workshop, separate install) | GPL-3.0 |
 | Ollama (optional, separate install) | MIT |
+| OpenSCAD (Let Bob make 3D parts; official build from files.openscad.org, pinned with its sha256, or one already installed) | GPL-2.0-or-later |
 | Models in the model shop | each entry in `catalog.json` lists its licence and whether commercial use is allowed |
 
 Bob leaves out models whose licences forbid commercial use where a good alternative exists (for example
