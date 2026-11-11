@@ -1454,6 +1454,42 @@ details.fold > summary .muted { font-weight: 400; font-size: 13px; }
 .gm-dice li.used { opacity: .5; text-decoration: line-through; }
 .gm-dice li.used .tag { text-decoration: none; }
 .gm-stop { border-color: var(--bad); }
+/* 1.5.206 🧩 Games: levels, Today's puzzle, new words, and the drop 2 boards */
+.gm-daily, .gm-words { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; font-size: 13px; }
+.gm-about .gm-choices + .gm-choices { margin-top: 6px; }
+.gm-note { color: var(--text); }
+.linkish { background: none !important; border: 0 !important; padding: 0 !important; min-height: 0 !important; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; }
+.gm-four { display: grid; gap: 4px; justify-content: center; }
+.gm-four-cols, .gm-four-board { display: grid; grid-template-columns: repeat(var(--cols), 44px); gap: 4px; }
+.gm-four-cols button { min-height: 32px; padding: 2px 0 !important; }
+.gm-four-board { background: #6b4f36; padding: 6px; border-radius: 10px; }
+.gm-cell { width: 44px; height: 44px; border-radius: 50%; background: var(--bg, #fff); box-shadow: inset 0 2px 3px #0005; }
+.gm-cell.you { background: #3aa564; }
+.gm-cell.bob { background: #f08a24; }
+.gm-cell.last { outline: 3px solid var(--text); outline-offset: -3px; }
+.gm-cell.win { outline: 4px solid #fff; outline-offset: -4px; }
+.gm-seas { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
+.gm-seas > div { max-width: 340px; }
+.gm-seas h4 { margin: 0 0 4px; font-size: 14px; }
+.gm-sea { display: grid; grid-template-columns: 20px repeat(var(--n), 28px); grid-auto-rows: 28px; gap: 2px; }
+.gm-sea-h { font-size: 11px; color: var(--muted); display: grid; place-items: center; }
+.gm-sq { width: 28px; height: 28px; border-radius: 4px; background: #cfe3f7; border: 1px solid #9cbfe3; display: grid; place-items: center; font-size: 14px; padding: 0 !important; min-height: 0 !important; color: #123; }
+button.gm-sq { cursor: crosshair; }
+button.gm-sq:hover, button.gm-sq:focus-visible { background: #a9cdf0; outline: 2px solid var(--accent); }
+.gm-sq.ship { background: #7d8a99; border-color: #5c6875; }
+.gm-sq.miss { background: #e9f2fb; color: #567; }
+.gm-sq.hit { background: #f08a7a; border-color: #c34; color: #fff; }
+.gm-sq.sunk { background: #9b2a2a; border-color: #6d1a1a; color: #fff; }
+.gm-fleet { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.gm-fleet li.down { text-decoration: line-through; opacity: .7; }
+.gm-cups { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 6px; }
+.gm-dicerow { display: flex; gap: 4px; font-size: 34px; line-height: 1; }
+.gm-die.hidden { font-size: 22px; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; background: var(--line); }
+.gm-hand label select { font: inherit; padding: 4px 6px; border-radius: var(--r); border: 1px solid var(--line); background: var(--card); color: var(--text); }
+.gm-q { font-size: 17px; }
+.gm-choicegrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin-bottom: 8px; }
+.gm-choicegrid button { text-align: left; min-height: 40px; }
+@media (max-width: 520px) { .gm-four-cols, .gm-four-board { grid-template-columns: repeat(var(--cols), 36px); } .gm-cell { width: 36px; height: 36px; } .gm-sea { grid-template-columns: 16px repeat(var(--n), 24px); grid-auto-rows: 24px; } .gm-sq { width: 24px; height: 24px; } }
 @media (max-width: 520px) { .gm-games li { flex-wrap: wrap; } .gm-key { min-width: 28px; } .tile { width: 34px; height: 34px; font-size: 17px; } }
 
 /* 1.5.122 The character screen: a paper doll built from parts (Style: Make your own look; Adventure: your character). */

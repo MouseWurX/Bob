@@ -1747,11 +1747,14 @@ ${chatOut}
   // ---------- 🧩 Games: small games your other Bob plays with you (the app there runs the game; the phone draws the board) ----------
   // The phone brain is never used for a game. Nothing starts until you press ▶ Start.
   const GAMES = {
-    order: ['twenty', 'hangman', 'ladder', 'letters', 'story'],
+    order: ['twenty', 'hangman', 'ladder', 'letters', 'story', 'four', 'fleet', 'liar', 'trivia'],
+    faces: ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'],
     shelves: { any: 'Any shelf', animals: 'Animals', food: 'Food and drink', house: 'Around the house', outside: 'Out of doors', jobs: 'Jobs people do', moves: 'Things that move' },
     rows: ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM']
   };
-  const gam = { v: null, msg: '', live: '', base: null, timer: null, last: '', draft: '', opts: { role: 'guess', shelf: 'any', together: false, bobStarts: false } };
+  const gam = { v: null, msg: '', live: '', base: null, timer: null, last: '', draft: '', opts: { role: 'guess', shelf: 'any', together: false, bobStarts: false, fourBob: false, liarBob: false, wild: true, withBobs: false, level: {} } };
+  // 1.5.206: what ▶ Start (or 📅 Today's puzzle) sends for a game.
+  const gamStart = (kind, daily = false) => { const o = gam.opts; return gamCall('/api/games/start', { kind, role: o.role, shelf: o.shelf, together: o.together, bobStarts: kind === 'four' ? o.fourBob : kind === 'liar' ? o.liarBob : o.bobStarts, level: o.level[kind] || 'normal', wild: o.wild, withBobs: o.withBobs, daily }); };
   const gamOpen = () => !$('games').classList.contains('hidden');
   // ---- 1.5.125 🧰 Chest: the newest things your other Bob made, as little pictures with names (his Made by Bob list).
   // The pictures come small from /api/thumb (made once on your other replicant matrix, kept there); a tap shows the thing
@@ -1845,8 +1848,13 @@ ${chatOut}
       const g = info[kind] || {};
       return el('div', { class: 'box' }, el('div', { class: 'title' }, el('span', { text: g.icon || '' }), el('span', { text: g.name || kind })),
         el('p', { class: 'help-line', text: g.what || '' }), options,
-        el('div', { class: 'btns' }, el('button', { class: 'main', text: '▶ Start', disabled: Boolean(v.refusal), onclick: () => gamCall('/api/games/start', { kind, role: o.role, shelf: o.shelf, together: o.together, bobStarts: o.bobStarts }) })));
+        (v.hasLevel || []).includes(kind) ? chips(Object.entries(v.levels || {}), o.level[kind] || 'normal', 'How hard', (id) => { o.level[kind] = id; gamDraw(); }) : null,
+        el('div', { class: 'btns' }, el('button', { class: 'main', text: '▶ Start', disabled: Boolean(v.refusal), onclick: () => gamStart(kind) }),
+          (v.hasDaily || []).includes(kind) ? el('button', { text: "📅 Today's puzzle", disabled: Boolean(v.refusal || v.daily?.[kind]?.today), onclick: () => gamStart(kind, true) }) : null),
+        (v.hasDaily || []).includes(kind) ? el('p', { class: 'help-line', text: dailyLine(v.daily?.[kind] || {}) }) : null);
     };
+    const dailyLine = (d) => `${d.today ? `${d.today === 'won' ? 'Solved today.' : 'Played today.'} A new one comes tomorrow.` : 'The same puzzle for everyone with Bob today.'}${d.streak ? ` ${d.streak} day${d.streak === 1 ? '' : 's'} in a row.` : ''}${d.best ? ` Best ${d.best}.` : ''}`;
+    const tick = (label, on, set, disabled = false) => el('label', { class: 'field' }, el('input', { type: 'checkbox', checked: on, disabled, onchange: (e) => set(e.target.checked) }), el('span', { text: ` ${label}` }));
     const shelfSel = el('select', { 'aria-label': 'Shelf', onchange: (e) => { o.shelf = e.target.value; } });
     for (const [id, n] of Object.entries(GAMES.shelves)) shelfSel.append(el('option', { value: id, selected: o.shelf === id, text: n }));
     const scores = v.scores || {}, played = GAMES.order.filter((k) => scores[k]?.played);
@@ -1858,6 +1866,11 @@ ${chatOut}
       row('ladder', chips([[false, 'You climb, I cheer'], [true, 'Climb together, turn about']], o.together, 'How to climb', (id) => { o.together = id; gamDraw(); })),
       row('letters', null),
       row('story', chips([[true, 'I open'], [false, 'You open']], o.bobStarts, 'Who opens', (id) => { o.bobStarts = id; gamDraw(); })),
+      row('four', chips([[false, 'You go first'], [true, 'I go first']], o.fourBob, 'Who goes first', (id) => { o.fourBob = id; gamDraw(); })),
+      row('fleet', null),
+      row('liar', el('div', {}, chips([[false, 'You bid first'], [true, 'I bid first']], o.liarBob, 'Who bids first', (id) => { o.liarBob = id; gamDraw(); }), tick('Ones are wild', o.wild, (x) => { o.wild = x; }))),
+      row('trivia', el('div', {}, tick('Ask the Bobs on my Bob-Net to play', o.withBobs, (x) => { o.withBobs = x; }, !v.bobNet), el('p', { class: 'help-line', text: v.bobNet ? 'Each one answers on his own replicant matrix; all he is sent is the question and the four choices.' : 'No Bobs on your Bob-Net list yet.' }))),
+      el('p', { class: 'help-line', text: 'New Hangman words and Twenty questions things from Bob are asked for on your other replicant matrix (🧩 Games there).' }),
       gam.msg ? el('p', { class: 'note bad', role: 'alert', text: gam.msg }) : null,
       played.length ? el('h3', { text: 'Scoreboard' }) : null,
       played.length ? el('table', { class: 'scores' }, el('tr', {}, ['Game', 'Played', 'You won', 'I won', 'Shared', 'Best run'].map((h) => el('th', { text: h }))),
@@ -1892,8 +1905,12 @@ ${chatOut}
         : el('button', { text: '🏁 Stop', onclick: (e) => { const t = e.currentTarget; if (!t.dataset.sure) { t.dataset.sure = '1'; t.textContent = 'Stop this game? It counts as unfinished. Tap again to stop.'; return; } gamCall('/api/games/end', {}); } })));
     const busy = v.busy ? el('p', { class: 'note', text: 'Bob is thinking…' }) : null;
     const msg = gam.msg ? el('p', { class: 'note bad', role: 'alert', text: gam.msg }) : null;
-    const controls = over ? null : el('div', { class: 'card' }, ...({ twenty: gamTwenty, hangman: gamHangman, ladder: gamLadder, letters: gamLetters, story: gamStory }[g.kind] || (() => []))(g).flat().filter(Boolean));
-    return [top, gamLog(g), busy, msg, controls];
+    const play = g.carry ? gamCarry : { twenty: gamTwenty, hangman: gamHangman, ladder: gamLadder, letters: gamLetters, story: gamStory, four: gamFour, fleet: gamFleet, liar: gamLiar, trivia: gamTrivia }[g.kind];
+    const board = { four: gamFour, fleet: gamFleet, liar: gamLiar, trivia: gamTrivia }[g.kind];
+    const controls = over ? (board ? el('div', { class: 'card' }, ...board(g).flat().filter(Boolean)) : null)
+      : el('div', { class: 'card' }, ...(play || (() => []))(g).flat().filter(Boolean));
+    const tagLine = g.daily ? el('p', { class: 'help-line', text: "📅 Today's puzzle" }) : g.level && g.level !== 'normal' ? el('p', { class: 'help-line', text: v.levels?.[g.level] || '' }) : null;
+    return [top, tagLine, gamLog(g), busy, msg, controls];
   }
   function gamTwenty(g) {
     const n = Math.min((g.asked || 0) + 1, g.max || 20);
@@ -1944,6 +1961,55 @@ ${chatOut}
     box.value = gam.draft;
     return [dice, el('p', { class: 'help-line', text: line }), mine ? box : null,
       el('div', { class: 'btns' }, mine ? el('button', { class: 'main', text: 'Add my line', onclick: () => { if (box.value.trim()) gamAct({ line: box.value.trim() }); } }) : null, el('button', { text: 'Wrap it up', onclick: () => gamAct({ end: true }) }))];
+  }
+
+  // ---- 1.5.206: a kept game, and the drop 2 boards ----
+  function gamCarry() {
+    return [el('div', { class: 'q' }, el('strong', { text: 'My move.' }), el('div', { class: 'help-line', text: 'This game was kept from last time.' })),
+      el('div', { class: 'btns' }, el('button', { class: 'main', text: 'Carry on', disabled: Boolean(gam.v.busy), onclick: () => gamAct({ carry: true }) }))];
+  }
+  function gamFour(g) {
+    const mine = g.status === 'playing' && g.turn === 'you' && !gam.v.busy;
+    const win = new Set((g.win?.cells || []).map(([r, c]) => `${r},${c}`));
+    const head = el('div', { class: 'four-cols' }, Array.from({ length: g.cols || 7 }, (_, c) => el('button', { text: String(c + 1), 'aria-label': `Drop in column ${c + 1}`, disabled: !mine || Boolean(g.board[0][c]), onclick: () => gamAct({ col: c }) })));
+    const board = el('div', { class: 'four-board', role: 'img', 'aria-label': 'The board' }, g.board.flatMap((row, r) => row.map((x, c) => el('span', { class: `four-cell ${x}${win.has(`${r},${c}`) ? ' win' : ''}` }))));
+    return [head, board, el('p', { class: 'help-line', text: g.status !== 'playing' ? 'Yours are green, mine are orange.' : `${mine ? 'Your move: tap a column.' : 'My move.'} Yours are green, mine are orange.` })];
+  }
+  function gamSea(size, cell, label, onpick) {
+    return el('div', { class: 'sea', role: 'grid', 'aria-label': label, style: `--n:${size}` }, Array.from({ length: size * size }, (_, i) => {
+      const x = cell(i), name = `${'ABCDEFGHIJ'[i % size]}${Math.floor(i / size) + 1}`;
+      return onpick && !x.shot ? el('button', { class: `sq ${x.cls}`, 'aria-label': `Fire at ${name}`, onclick: () => onpick(i) }) : el('span', { class: `sq ${x.cls}`, 'aria-label': `${name}: ${x.say}`, text: x.mark || '' });
+    }));
+  }
+  function gamFleet(g) {
+    const mine = g.status === 'playing' && g.turn === 'you' && !gam.v.busy;
+    const shipAt = new Map(); for (const s of g.mine.ships) for (const i of s.cells) shipAt.set(i, s);
+    const bob = new Map(g.mine.shots.map((x) => [x.i, x.hit])), you = new Map(g.theirs.shots.map((x) => [x.i, x.hit]));
+    const sunk = new Set(g.theirs.sunk), shown = new Set((g.theirs.ships || []).flatMap((s) => s.cells));
+    const list = (key) => el('p', { class: 'help-line', text: g.fleet.map((s) => `${s.name} (${s.size})${s[key] ? '' : ' sunk'}`).join(' · ') });
+    return [el('h3', { text: 'My sea' }), gamSea(g.size, (i) => { const shot = you.has(i); return { shot, cls: `${shot ? (you.get(i) ? 'hit' : 'miss') : ''}${sunk.has(i) ? ' sunk' : ''}${shown.has(i) && !shot ? ' ship' : ''}`, mark: shot ? (you.get(i) ? '✕' : '•') : '', say: shot ? (you.get(i) ? 'hit' : 'missed') : 'not fired at' }; }, 'My sea', mine ? (i) => gamAct({ cell: i }) : null), list('mine'),
+      el('h3', { text: 'Your sea' }), gamSea(g.size, (i) => { const s = shipAt.get(i), shot = bob.has(i); return { shot: true, cls: `${s ? 'ship' : ''}${shot ? (bob.get(i) ? ' hit' : ' miss') : ''}${s?.sunk ? ' sunk' : ''}`, mark: shot ? (bob.get(i) ? '✕' : '•') : '', say: s ? s.name : 'water' }; }, 'Your sea', null), list('yours'),
+      g.status === 'playing' && !g.fired ? el('div', { class: 'btns' }, el('button', { text: 'Shuffle my fleet', onclick: () => gamAct({ shuffle: true }) })) : null];
+  }
+  function gamLiar(g) {
+    const F = GAMES.faces, live = g.status === 'playing';
+    const dice = (list) => el('div', { class: 'dicerow' }, list.map((d) => el('span', { class: 'die', 'aria-label': String(d), text: F[d] })));
+    const next = !g.bid ? { count: Math.max(1, Math.round(g.total / 3)), face: g.wild ? 2 : 1 } : g.bid.face < 6 ? { count: g.bid.count, face: g.bid.face + 1 } : { count: Math.min(g.total, g.bid.count + 1), face: g.wild ? 2 : 1 };
+    const count = el('select', { 'aria-label': 'How many dice' }); for (let n = 1; n <= g.total; n++) count.append(el('option', { value: String(n), selected: n === next.count, text: String(n) }));
+    const face = el('select', { 'aria-label': 'Which face' }); for (let f = g.wild ? 2 : 1; f <= 6; f++) face.append(el('option', { value: String(f), selected: f === next.face, text: `${F[f]} ${f}s` }));
+    const busy = Boolean(gam.v.busy);
+    return [el('p', { class: 'help-line', text: 'Your cup' }), dice(g.yours),
+      el('p', { class: 'help-line', text: `My cup: ${g.mineCount} ${g.mineCount === 1 ? 'die' : 'dice'}` }), g.mine ? dice(g.mine) : null,
+      el('p', { class: 'q', text: g.bid ? `${g.bidBy === 'you' ? 'Your' : 'My'} bid: ${g.bid.count} × ${F[g.bid.face]} ${g.bid.face}s (${g.total} dice on the table${g.wild ? ', ones wild' : ''})` : `No bid yet. ${g.total} dice on the table${g.wild ? ', ones wild' : ''}.` }),
+      live ? el('div', { class: 'row' }, count, face) : null,
+      live ? el('div', { class: 'btns' }, el('button', { class: 'main', text: 'Bid', disabled: busy || g.turn !== 'you', onclick: () => gamAct({ count: Number(count.value), face: Number(face.value) }) }), el('button', { text: 'Liar!', disabled: busy || !(g.bid && g.bidBy === 'bob'), onclick: () => gamAct({ liar: true }) })) : null];
+  }
+  function gamTrivia(g) {
+    const scores = el('table', { class: 'scores' }, el('tr', {}, el('th', { text: 'Player' }), el('th', { text: 'Score' })), g.players.map((p) => el('tr', {}, el('td', { text: `${p.id === 'you' ? 'You' : p.name}${p.net ? ' (Bob-Net)' : ''}` }), el('td', { text: String(p.score) }))));
+    const q = g.question;
+    if (!q) return [scores];
+    return [el('div', { class: 'q' }, el('strong', { text: `Question ${g.at + 1} of ${g.of}.` }), el('div', { class: 'help-line', text: q.shelf || '' })), el('p', { text: q.q }),
+      el('div', { class: 'choices' }, q.choices.map((c, i) => el('button', { text: `${'ABCD'[i]}  ${c}`, disabled: Boolean(gam.v.busy), onclick: () => gamAct({ answer: 'ABCD'[i] }) }))), scores];
   }
 
   // ---------- Help ----------

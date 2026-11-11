@@ -68,7 +68,7 @@ export function settingsNow(cfg) {
     `Housekeeping: ${onOff(cfg.housekeeping?.enabled === true)}`,
     `Check-ins: ${checkinsNow(cfg)}`,
     `🎲 Adventure (menu page, nothing runs until a game is started): Which brain is the game master: ${cfg.adventure?.gm === 'main' ? 'Main Brain' : 'Biggest brain'}; Who plays the other Bobs: ${cfg.adventure?.players === 'gm' ? 'The game master brain' : 'Their own Bob when reachable'}; Table extras (ticked on the start card): ${(() => { const x = cfg.adventure?.extras || {}; const on = [['dice', 'Dice you can see'], ['sounds', 'Sounds'], ['voice', 'Read it aloud'], ['pictures', 'Pictures'], ['scenePics', 'A new picture every scene'], ['music', 'Music']].filter(([k]) => x[k] === true).map(([, n]) => n); return on.length ? on.join(', ') : 'none'; })()}`,
-    `🧩 Games (menu page, nothing runs until a game is started): Which brain plays games: ${cfg.games?.brain === 'main' ? 'Main Brain' : 'Quick brain'}; How often Bob chips in: ${{ some: 'Now and then', end: 'Only at the end' }[cfg.games?.talk] || 'After every move'}`,
+    `🧩 Games (menu page, nothing runs until a game is started): Which brain plays games: ${cfg.games?.brain === 'main' ? 'Main Brain' : 'Quick brain'}; How often Bob chips in: ${{ some: 'Now and then', end: 'Only at the end' }[cfg.games?.talk] || 'After every move'}; Keep an unfinished game: ${cfg.games?.keep === true ? 'On' : 'Off'}`,
     `ComfyUI: ${onOff(cfg.workshop?.enabled === true)}`,
     `Cloud helpers on: ${cloud.length ? cloud.join(', ') : 'none'}`,
     `Keep the graphics card free for quick answers: ${onOff(cfg.quickOnCpu === true)}`,

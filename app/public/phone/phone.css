@@ -222,6 +222,17 @@ label.field { display: block; margin: 10px 0 4px; font-weight: 600; }
 .board { display: flex; flex-direction: column; gap: 4px; align-items: center; margin-bottom: 8px; }
 .tiles { display: flex; gap: 4px; }
 .tile { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; font: 700 20px/1 system-ui, sans-serif; border: 1px solid var(--line); border-radius: 6px; }
+/* 1.5.206 games drop 2 */
+.four-cols, .four-board { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; max-width: 340px; margin: 0 auto; }
+.four-cols button { padding: 6px 0; }
+.four-board { background: #6b4f36; padding: 5px; border-radius: 10px; margin-top: 4px; }
+.four-cell { aspect-ratio: 1; border-radius: 50%; background: var(--bg); }
+.four-cell.you { background: #3aa564; } .four-cell.bob { background: #f08a24; } .four-cell.win { outline: 3px solid #fff; outline-offset: -3px; }
+.sea { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 2px; max-width: 340px; margin: 4px auto; }
+.sq { aspect-ratio: 1; border-radius: 3px; background: #cfe3f7; border: 1px solid #9cbfe3; padding: 0; min-height: 0; font-size: 12px; display: grid; place-items: center; color: #123; }
+.sq.ship { background: #7d8a99; } .sq.miss { background: #e9f2fb; } .sq.hit { background: #f08a7a; color: #fff; } .sq.sunk { background: #9b2a2a; color: #fff; }
+.dicerow { display: flex; gap: 4px; font-size: 32px; line-height: 1; margin-bottom: 6px; }
+.choices { display: grid; gap: 6px; } .choices button { text-align: left; }
 .tile.g { background: var(--good); color: #122; border-color: var(--good); } .tile.y { background: var(--warn); color: #221; border-color: var(--warn); } .tile.b { background: var(--raise); color: var(--dim); }
 .tile.hint { border-style: dashed; color: var(--dim); }
 .chip.die { display: inline-flex; align-items: center; min-height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; }

@@ -16,7 +16,7 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
 const seq = (...xs) => { let i = 0; return () => xs[i++ % xs.length]; };
 
 // ---- the words ----
-check('five games, each with an icon, a name and a one-line what', GAME_IDS.length === 5 && GAME_IDS.every((id) => GAMES[id].icon && GAMES[id].name && GAMES[id].what.length > 20));
+check('nine games (drop 1 and drop 2, 1.5.206), each with an icon, a name and a one-line what', GAME_IDS.length === 9 && GAME_IDS.every((id) => GAMES[id].icon && GAMES[id].name && GAMES[id].what.length > 20));
 check('the ladder list is four-letter words, no doubles, about a thousand of them', FOUR.length > 900 && new Set(FOUR).size === FOUR.length && FOUR.every((w) => /^[a-z]{4}$/.test(w)));
 check('the five-letter list is five-letter words, no doubles', FIVE.length > 700 && new Set(FIVE).size === FIVE.length && FIVE.every((w) => /^[a-z]{5}$/.test(w)));
 check('every Hangman shelf has a name and at least 25 words, lower case letters only', Object.keys(HANGMAN).every((k) => SHELVES[k] && HANGMAN[k].length >= 25 && HANGMAN[k].every((w) => /^[a-z]+$/.test(w))));
@@ -37,7 +37,7 @@ check('a story line uses a die when its noun is in the line', JSON.stringify(dic
 check('the scoreboard counts your wins, my wins, shared games and your best run', (() => { let s = {}; s = tally(s, 'hangman', 'you'); s = tally(s, 'hangman', 'you'); s = tally(s, 'hangman', 'bob'); s = tally(s, 'story', 'both'); return s.hangman.played === 3 && s.hangman.won === 2 && s.hangman.lost === 1 && s.hangman.best === 2 && s.hangman.streak === 0 && s.story.drawn === 1; })());
 
 // ---- settings and the brain ----
-check('Games settings have defaults and only known values; nothing is "on"', JSON.stringify(cleanGames({})) === '{"brain":"quick","talk":"every"}' && cleanGames({ brain: 'main', talk: 'end' }).talk === 'end' && cleanGames({ brain: 'x', talk: 'y' }).brain === 'quick' && Object.keys(TALK).length === 3);
+check('Games settings have defaults and only known values; nothing is "on"', JSON.stringify(cleanGames({})) === '{"brain":"quick","talk":"every","keep":false}' && cleanGames({ brain: 'main', talk: 'end' }).talk === 'end' && cleanGames({ brain: 'x', talk: 'y' }).brain === 'quick' && Object.keys(TALK).length === 3);
 check('the setting is saved under its own key and cleaned', SETTING_KEYS.includes('games') && (() => { const c = { settingsFile: '', agentDir: '' }; mergeSettings(c, { games: { brain: 'main', talk: 'bogus' } }); return c.games.brain === 'main' && c.games.talk === 'every'; })());
 { const q = gamesBrain({ models: { bob: 'big' } }); check('the quick brain plays, on the card, thinking off, small context', q.model === 'gemma4:e4b' && q.cpu === false && q.think === false && q.ctx === 8192);
   check('with "Keep the graphics card free for quick answers" it plays on the processor', gamesBrain({ models: { bob: 'big' }, quickOnCpu: true }).cpu === true);
@@ -78,7 +78,7 @@ function setup({ replies = [], session = 'normal', talk = 'every', fail = false 
 
 // Hangman: win
 { const { games, calls, events, cfg } = setup({ replies: ['Ooh, a T.', 'Nope.', 'There it is: OTTER. Well played.'] });
-  const v0 = games.view(); check('before Start: no game, nothing loaded, the five games and the scoreboard offered', v0.game === null && !calls.ensure.length && Object.keys(v0.games).length === 5 && v0.refusal === '');
+  const v0 = games.view(); check('before Start: no game, nothing loaded, the nine games and the scoreboard offered', v0.game === null && !calls.ensure.length && Object.keys(v0.games).length === 9 && v0.refusal === '');
   const v = await games.start({ kind: 'hangman', shelf: 'animals' });
   const g = games.game;
   check('Hangman starts with a word from the shelf, masked, seven lives, the word never in the view', g.shelf === 'animals' && HANGMAN.animals.includes(g.word) && v.game.masked.split(' ').every((c) => c === '_') && v.game.lives === LIVES && v.game.word === '' && v.game.length === g.word.length);
@@ -97,7 +97,7 @@ function setup({ replies = [], session = 'normal', talk = 'every', fail = false 
   await new Promise((res) => setTimeout(res, 5));
   check('settle after the game (lightweight rule)', calls.settle === 1);
   check('the scoreboard counts it and is saved', r.scores.hangman.won === 1 && fs.existsSync(path.join(cfg.dataDir, 'games', 'scores.json')));
-  check('the page got state events and the streamed words', events.some((e) => e.type === 'games' && e.ev === 'state') && events.some((e) => e.ev === 'token' && e.text === 'Ooh, a T.'));
+  check('the page got state events; a line made while the word is secret is never streamed (1.5.206 leak check), the end line is', events.some((e) => e.type === 'games' && e.ev === 'state') && !events.some((e) => e.ev === 'token' && e.text === 'Ooh, a T.') && events.some((e) => e.ev === 'token' && /There it is/.test(e.text)));
   check('Back to the games clears a finished game', games.close().game === null); }
 // Hangman: lose, hints cost a life, talk only at the end
 { const { games, calls } = setup({ replies: ['A clue: it swims.', 'The word was... well, you saw.'], talk: 'end' });
