@@ -11,6 +11,8 @@ import { CARDS } from './settings-map.js';
 export const WANTS = [
   { card: 'how', key: 'quickNotes', setting: 'Let Bob take quick notes', where: 'How Bob works',
     label: 'Take quick notes when you say "note:"', note: 'Saved at once with the date, in one text file.' },
+  { card: 'how', key: 'smartNotes', setting: 'Let Bob notice what\'s worth noting', where: 'How Bob works',
+    label: 'Notice what\'s worth noting by myself', note: 'Works with quick notes on.' },
   { card: 'how', key: 'docTools', setting: 'Read and search my documents', where: 'How Bob works',
     label: 'Read and search your documents', note: 'Word, Excel, PowerPoint, PDF and more. Nothing leaves this replicant matrix.' },
   { card: 'how', key: 'sandboxCode', setting: 'Let Bob work things out in a sandbox', where: 'How Bob works',
@@ -51,7 +53,6 @@ export const WANTS_ELSEWHERE = [
 // Being built: shown as plain words, never a tick. When one ships, its line moves up into WANTS or WANTS_ELSEWHERE
 // (the test fails while a line here is also a Settings switch).
 export const WANTS_SOON = [
-  { card: 'how', label: 'Notice what\'s worth noting by myself' },
   { card: 'brains', label: 'Ask a bigger Bob to check my hard answers' },
   { card: 'net', label: 'SCUT, a faster link for sharing a graphics card (experimental)' },
   { card: 'net', label: 'SUDDAR scan, to see how far away each Bob is (experimental)' },

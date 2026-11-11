@@ -38,6 +38,7 @@ ${set('Pick up where I left off after a restart', 'Off', 'Same as <strong>Pick u
 ${set('Start when you sign in to this replicant matrix', 'Off', 'Same as <strong>Launch Bob on start-up</strong>. Greyed out on Linux for now, the same as in Settings.')}
 ${set('Check for a newer me when I start', 'Off', 'Same as <strong>Check for updates when Bob starts</strong>. I only tell you; updating always takes your click.')}
 ${set('Fetch my newest brain list once a day', 'Off', 'Same as <strong>Let Bob fetch his newest brain list</strong>.')}
+${set('Notice what\'s worth noting by myself', 'Off', 'Same as <strong>Let Bob notice what\'s worth noting</strong>. It works once quick notes is on too.')}
 ${set('Use one brain for everything', 'Off', 'Same as <strong>One brain (snappier)</strong>.')}
 ${set('Read only the memories that fit each message', 'Off', 'Same as <strong>Remember only what fits</strong>.')}</dl>
 <p>The list is grouped like the cards in Settings (How Bob works, Brains and speed, My other Bobs, Online and other apps, What Bob may do, Fun, This replicant matrix), so a thing is in the same place in both.</p>
