@@ -56,7 +56,7 @@ import { thumbFor, canThumb } from './thumbs.js';
 import { homeView, homeProblem, synced, cloudWarning } from './home.js';
 import { refuseForeign } from './guard.js';
 import { search } from './search.js';
-import { hkSettings, cleanHousekeeping, KINDS, UNITS } from './housekeeping.js';
+import { hkSettings, cleanHousekeeping, cleanFolder, folderRefusal, KINDS, UNITS } from './housekeeping.js';
 import { banks as memoryBanks, recallOn } from './recall.js';
 import { handsRoute } from './hands-routes.js';
 import { ownKitView, ownKitCounts, ownKitDelete, ownKitRestore, ownKitPurge } from './own-kit.js';
@@ -947,7 +947,12 @@ const server = http.createServer(async (req, res) => {
           if (typeof b.quickOnCpu === 'boolean') { saveSettings(cfg, { quickOnCpu: b.quickOnCpu }); out.quickOnCpu = cfg.quickOnCpu === true; brain.applyBrainMode?.().catch?.(() => {}); }
           if (b.housekeeping && typeof b.housekeeping === 'object') {
             const cur = hkSettings(cfg), h = b.housekeeping, next = { ...cur };
-            if ('enabled' in h) next.enabled = h.enabled === true;
+            if ('enabled' in h) { next.enabled = h.enabled === true; next.chosen = true; } // the user's own choice now wins over the default
+            if (typeof h.addFolder === 'string') { // Nov 11: a folder the user points him to (always asks first)
+              const f = cleanFolder(h.addFolder), why = !f ? 'Type the full path of a folder, like C:\\Users\\you\\Videos or /home/you/Music.' : folderRefusal(cfg, f);
+              if (why) out.hkFolderError = why; else next.extraFolders = [...(cur.extraFolders || []), f];
+            }
+            if (typeof h.removeFolder === 'string') next.extraFolders = (cur.extraFolders || []).filter((x) => x !== h.removeFolder);
             if ('wakeBrain' in h) next.wakeBrain = h.wakeBrain === true;
             if ('embedModel' in h) next.embedModel = h.embedModel;
             for (const k of Object.keys(KINDS)) if (h[k] && typeof h[k] === 'object') next[k] = { ...cur[k], ...h[k] };

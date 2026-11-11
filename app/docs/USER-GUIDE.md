@@ -285,9 +285,9 @@ You can rename, merge, pin and drag messages between topics. One **search box** 
 
 To make Bob forget something, either use **Forget** on a topic or simply say "forget what we said about…". You always see a preview first, and you can choose to keep just the short note or remove everything.
 
-### Housekeeping (off unless you turn it on)
+### Housekeeping (on unless you turn it off)
 
-Long chats and old files pile up. Housekeeping is Bob tidying up while he's idle. It's **off by default**. When you turn it on, Bob can:
+Long chats and old files pile up. Housekeeping is Bob tidying up while he's idle. It's **on by default**, and by default it only touches **Bob's own files**. Bob can:
 
 - sum up the older part of a long chat instead of forgetting it,
 - file chats under Topics,
@@ -295,6 +295,8 @@ Long chats and old files pile up. Housekeeping is Bob tidying up while he's idle
 - find things that haven't come up for a while: old chats, pictures and sounds he made, finished tasks, old log lines and repeated notes.
 
 For each kind of thing you choose how old is "old" (from minutes to months), and whether Bob should **ask me first** (you get a list with a tick and a cross for each item) or **tidy automatically**.
+
+**Folders you point him to:** to have Bob help with one of your own folders (Downloads, say), type its full path under **Folders you point him to** and press **Add folder**. Old files from it (6 months by default) show up in Tidy up. Bob always asks first for these, never tidies them by himself, and anything cleared goes to the Recycle Bin. System folders, your whole home folder and Bob's own folder can't be added.
 
 Safety nets:
 

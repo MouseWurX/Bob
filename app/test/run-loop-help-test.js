@@ -269,10 +269,11 @@ const reset = () => { ran.length = 0; events.length = 0; seen.length = 0; slow =
   check('meaning: the question goes with the query opening', true);
   cfg.session = 'light'; // Gaming
   check('meaning: never in the Gaming session', (await brain.meaningGroups('keep my notes somewhere safe')).length === 0);
-  cfg.session = 'normal'; cfg.housekeeping = before;
+  cfg.session = 'normal'; cfg.housekeeping = { enabled: false, chosen: true }; // the user turned housekeeping off
   const off = (await brain.meaningGroups('keep my notes somewhere safe')).length === 0;
   brain.housekeeper = hkBefore;
-  check('meaning: not while the embedding model isn\'t in use anyway', off);
+  cfg.housekeeping = before;
+  check('meaning: not while the embedding model isn\'t in use anyway (housekeeping turned off, no recall)', off);
 }
 
 {

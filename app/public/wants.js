@@ -68,7 +68,7 @@ export const WANTS_ELSEWHERE = [
   { card: 'may', id: 'adv-hands', label: 'Use your files and programs (✋ Hands)' },
   { card: 'fun', id: 'adv-adventure', label: 'Run a tabletop adventure (🎲 Adventure)' },
   { card: 'fun', id: 'adv-games', label: 'Play word games (🧩 Games)' },
-  { card: 'pc', id: 'adv-housekeeping', label: 'Tidy up while I\'m idle (🧹 Housekeeping)' },
+  { card: 'pc', id: 'adv-housekeeping', label: 'Choose what I tidy while I\'m idle (🧹 Housekeeping)' },
   { card: 'pc', id: 'ev-lock', label: 'Ask for a passcode, and lock your chats (🔒 Passcode lock)' }
 ];
 
