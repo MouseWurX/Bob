@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { OS } from './platform.js'; // 1.5.171 a Mac's graphics memory is shared, so the Challenges line says so
 import { spawn } from 'node:child_process';
+import { foldGguf, foldUse } from './lab-fold.js';
 import { readGguf, brainFacts, readerFacts, writeGguf, readCounts, busiest, coverageKeep, checkKeep, isHearingTensor, isSightTensor } from './lab-gguf.js';
 import { startServer, runQuiz, PARTS } from './lab-test.js';
 import { saveSettings } from './config.js';
@@ -177,6 +178,7 @@ export function cleanRecipe(r = {}) {
   const how = ['file', 'cover'].includes(s.cut?.how) ? s.cut.how : 'busiest';
   const cut = s.cut && typeof s.cut === 'object' ? {
     how, keep: how === 'cover' && !Number(s.cut.keep) ? 0 : Math.max(1, Math.min(1024, Number(s.cut.keep) || 0)), file: typeof s.cut.file === 'string' ? s.cut.file : '',
+    ...(s.cut.fold === true ? { fold: true } : {}), // Fold instead of drop (expert merging, src/lab-fold.js)
     ...(how === 'cover' ? { cover: [0.9, 0.95, 0.99].includes(Number(s.cut.cover)) ? Number(s.cut.cover) : 0.95, strong: [...new Set([].concat(s.cut.strong || []).map((x) => String(x).slice(0, 40)))].slice(0, 30) } : {})
   } : null;
   const l = r.lessons || {};
@@ -282,6 +284,7 @@ export function planRecipe(recipe, { brain, facts, tools, outDir, skillNamesFor 
   if (s.cut?.how === 'cover' && r.lessons.kind !== 'none' && skills.length === 1) notes.push(`These lessons have one skill (${skills[0]}), so the coverage cut keeps what that one needs. A lesson set with several skills (a "job" or "skill" on each lesson) protects each of them.`);
   if (s.cut?.how === 'cover') for (const x of s.cut.strong) if (!skills.includes(x)) problems.push(`There's no skill called ${x} in these lessons.`);
   if (s.cut?.how === 'file' && !s.cut.file) problems.push('Pick the expert list file.');
+  if (s.cut?.fold && facts.experts && !facts.fullSize) problems.push(`Folding blends the experts' numbers, so it needs the full-size file (F16 or BF16), and ${brain.name}'s file is a running file (${facts.fileType}). Start from the full-size copy, or untick Fold the rest in.`);
   if (r.lessons.kind === 'file' && !r.lessons.file) problems.push('Pick the lesson file.');
   for (const [k, p] of Object.entries(tools)) if (!p.found && ((k === 'imatrix' && s.cut?.how === 'busiest') || (k === 'quantize' && s.files.length) || k === 'server')) problems.push(`${path.basename(p.path)} isn't in Bob's engine folder. Settings, Engines, Bob's own engine has it; download the engine again if it's missing.`);
 
@@ -309,7 +312,7 @@ export function planRecipe(recipe, { brain, facts, tools, outDir, skillNamesFor 
   if (s.cut) {
     const out = path.join(dir, `${slug}-${s.cut.keep || 'cover'}x.gguf`);
     const n = s.cut.keep || 'the coverage number of';
-    steps.push({ id: 'cut', label: s.cut.keep ? `Cut to ${s.cut.keep} experts per layer` : 'Cut to the experts every skill needs', cmd: `# Bob's own cutter (no command-line tool does this yet): keep ${n} of ${facts.experts} experts per layer\n#   from ${q(brain.gguf)}\n#   to   ${q(out)}${s.cut.how === 'file' ? `\n#   with the expert list ${q(s.cut.file)}` : ''}${s.cut.how === 'cover' ? `\n#   coverage rule: every skill keeps ${Math.round(s.cut.cover * 100)}% of its routing in every layer${s.cut.strong.length ? ` (99% for ${s.cut.strong.join(', ')})` : ''}, the Forge's keep.py rule` : ''}`, src: file, out });
+    steps.push({ id: 'cut', fold: s.cut.fold === true, label: (s.cut.keep ? `Cut to ${s.cut.keep} experts per layer` : 'Cut to the experts every skill needs') + (s.cut.fold ? ', folding the rest in' : ''), cmd: `# Bob's own cutter (no command-line tool does this yet): keep ${n} of ${facts.experts} experts per layer${s.cut.fold ? '\n#   fold, don\'t drop: each other expert is blended into the kept expert whose router row is most alike,\n#   neurons lined up first, each weighing what it\'s used' : ''}\n#   from ${q(brain.gguf)}\n#   to   ${q(out)}${s.cut.how === 'file' ? `\n#   with the expert list ${q(s.cut.file)}` : ''}${s.cut.how === 'cover' ? `\n#   coverage rule: every skill keeps ${Math.round(s.cut.cover * 100)}% of its routing in every layer${s.cut.strong.length ? ` (99% for ${s.cut.strong.join(', ')})` : ''}, the Forge's keep.py rule` : ''}`, src: file, out });
     file = out;
   }
   let reader = brain.mmproj;
@@ -1299,7 +1302,7 @@ export class Lab {
     const log = (t) => { try { fs.mkdirSync(p.dir, { recursive: true }); fs.appendFileSync(path.join(p.dir, 'lab.log'), `${new Date().toISOString()} ${t}\n`); } catch {} };
     const tools = this.tools();
     const fx = { ...this.defaultSteps(tools, log), ...this.stepFns };
-    let keep = null, coverage = null, tried = null, keepDone = false; const tests = {}; const skillCounts = [];
+    let keep = null, coverage = null, tried = null, keepDone = false, lastCounts = null, foldedInfo = null; const tests = {}; const skillCounts = [];
     // The keep list, worked out once (by Try it first, or by the cut): from the busiest count, an expert list, or the
     // coverage rule over every skill's count.
     const keepNow = (src) => {
@@ -1341,6 +1344,7 @@ export class Lab {
           if (!counts.filter(Boolean).length) throw new Error('llama-imatrix gave no per-expert counts. Bob\'s engine may be too old for that; update it in Settings, Engines.');
           if (s.skill) skillCounts.push({ name: s.skill, counts });
           else {
+            lastCounts = counts;
             keep = busiest(counts, p.recipe.smaller.cut.keep);
             writeJson(path.join(p.dir, `${p.slug}-keep.json`), { name: p.recipe.name, experts: p.recipe.smaller.cut.keep, layers: keep });
           }
@@ -1355,7 +1359,11 @@ export class Lab {
           if (!keepDone) keep = keepNow(s.src);
           const why = checkKeep(readGguf(s.src), keep);
           if (why) throw new Error(why);
-          await fx.cut(s, { keep, onProgress, signal });
+          // Fold instead of drop: each expert weighs what it's used. Every skill's count weighs the same (shares), as in the coverage rule.
+          const use = !s.fold ? null : skillCounts.length ? foldUse(skillCounts.map((x) => x.counts)) : lastCounts;
+          if (s.fold && !use) r.notes = [...(r.notes || []), 'There were no counts for this cut (it used an expert list), so each kept expert weighs half and the experts folded into it share the other half.'];
+          const done = await fx.cut(s, { keep, fold: s.fold, counts: use, onProgress, signal });
+          if (s.fold && done?.folded != null) { foldedInfo = { experts: done.folded, kept: done.kept }; log(`fold: ${done.folded} experts folded into the ${done.kept} kept per layer`); }
         } else if (s.id === 'reader') {
           if (s.drop === 'none') fs.copyFileSync(s.src, s.out);
           else if (s.drop !== 'all') await fx.reader(s, { signal });
@@ -1372,7 +1380,7 @@ export class Lab {
       r.files = { gguf: p.finals[0], mmproj: p.reader || null };
       r.sizeGB = round1(size(p.finals[0]) / GB);
       if (tried && !tests.compare) tests.compare = { ...tried.full, engine: 'Brain Engine' };
-      r.report = { ...(tried ? { tried: { full: tried.full.score, masked: tried.masked.score } } : {}), made: tests.test, from: tests.compare || null, sizeGB: r.sizeGB, fromGB: round1(size(brain.gguf) / GB), at: this.now(), ...(coverage ? { coverage } : {}) };
+      r.report = { ...(tried ? { tried: { full: tried.full.score, masked: tried.masked.score } } : {}), made: tests.test, from: tests.compare || null, sizeGB: r.sizeGB, fromGB: round1(size(brain.gguf) / GB), at: this.now(), ...(coverage ? { coverage } : {}), ...(foldedInfo ? { folded: foldedInfo } : {}) };
       writeJson(path.join(p.dir, 'lab-report.json'), { name: r.name, from: brain.name, recipe: p.recipe, ...r.report });
       r.stepLabel = 'Write the measurement record'; this.tell(r);
       const facts = (() => { try { return brainFacts(readGguf(p.finals[0])); } catch { return {}; } })();
@@ -1396,7 +1404,7 @@ export class Lab {
     return {
       count: (s, { recipe, brain, signal }) => run(tools.imatrix.path, ['-m', brain.gguf, '-f', s.corpus, '-o', s.counts, '-c', '4096', '--chunks', String(recipe.lessons.chunks), '--fit', 'on'], { signal, log })
         .catch((e) => { if (signal.aborted) throw e; return run(tools.imatrix.path, ['-m', brain.gguf, '-f', s.corpus, '-o', s.counts, '-c', '4096', '--chunks', String(recipe.lessons.chunks), '-ngl', '0'], { signal, log }); }),
-      cut: async (s, { keep, onProgress, signal }) => writeGguf(s.src, s.out, { keep, onProgress, signal }),
+      cut: async (s, { keep, fold, counts, onProgress, signal }) => (fold ? foldGguf(s.src, s.out, { keep, counts, onProgress, signal }) : writeGguf(s.src, s.out, { keep, onProgress, signal })),
       reader: async (s, { signal }) => writeGguf(s.src, s.out, { drop: (t) => (s.drop === 'sight' ? isSightTensor(t.name) : isHearingTensor(t.name)), set: s.drop === 'sight' ? { 'clip.has_vision_encoder': false } : { 'clip.has_audio_encoder': false }, signal }),
       imatrix: (s, { recipe, signal }) => run(tools.imatrix.path, ['-m', s.src, '-f', s.corpus, '-o', s.out, '-c', '4096', '--chunks', String(recipe.lessons.chunks), '--fit', 'on'], { signal, log })
         .catch((e) => { if (signal.aborted) throw e; return run(tools.imatrix.path, ['-m', s.src, '-f', s.corpus, '-o', s.out, '-c', '4096', '--chunks', String(recipe.lessons.chunks), '-ngl', '0'], { signal, log }); }),

@@ -578,11 +578,12 @@ PY
   [ -d "$SRC" ] || die "$NAME: source $FROM is missing"
   status cut "$NAME: keeping $KEEP of the experts in $FROM"   # "cover" = the coverage rule decides the number
   # a complete cut from an earlier run of this session is reused (a restart should not redo 14 minutes of cutting)
-  if python3 - $W/cut-$NAME $KEEP <<'PY'
+  # (a fold rung's cut only counts as finished once the fold has marked it; a half-folded cut is made again)
+  if python3 - $W/cut-$NAME $KEEP "$(plan "['rungs'][$i].get('fold',p.get('fold',False))")" <<'PY'
 import json,os,sys; d=sys.argv[1]
 try:
     cfg=json.load(open(f"{d}/config.json")); idx=json.load(open(f"{d}/model.safetensors.index.json"))
-    ok=cfg.get("bob",{}).get("experts_kept",None)==int(sys.argv[2]) and all(os.path.exists(f"{d}/{f}") for f in set(idx["weight_map"].values())) and os.path.exists(f"{d}/bob-keep.json")
+    ok=cfg.get("bob",{}).get("experts_kept",None)==int(sys.argv[2]) and all(os.path.exists(f"{d}/{f}") for f in set(idx["weight_map"].values())) and os.path.exists(f"{d}/bob-keep.json") and (("folded" in cfg.get("bob",{})) == (sys.argv[3]=="True"))
 except Exception: ok=False
 print("reusing the finished cut" if ok else "cutting"); sys.exit(0 if ok else 1)
 PY
@@ -604,6 +605,13 @@ PY
     fi
     if [ -n "$KF" ]; then echo "cutting with the keep list $KF"; python3 prune.py --src $SRC --dst $W/cut-$NAME --keep-file $IN/$KF --name $NAME || die "$NAME cut"
     else python3 prune.py --src $SRC --dst $W/cut-$NAME --counts $COUNTS --keep $KEEP --by $(cutby $COUNTS) --name $NAME || die "$NAME cut"; fi
+    # Fold instead of drop (rung or plan "fold": true): blend each dropped expert into the kept expert most like it, in
+    # place in the cut model, before the heal. Weighed by the skill counts of a coverage cut, else by the rung's counts.
+    if [ "$(plan "['rungs'][$i].get('fold',p.get('fold',False))")" = "True" ]; then
+      FOLDC="${CARGS:-}"; [ "$(plan "['rungs'][$i]['keep']")" = "cover" ] || FOLDC=""; [ -z "$FOLDC" ] && [ -f "$COUNTS" ] && FOLDC=$COUNTS
+      status cut "$NAME: folding the dropped experts into the kept ones"
+      python3 fold.py --src $SRC --cut $W/cut-$NAME --counts "$FOLDC" || die "$NAME fold"
+    fi
   fi
   status heal "$NAME: healing against the teacher"
   kernels_ready

@@ -32,7 +32,7 @@ check('a brain that already fits needs no cut', sizeFor({ ...qwen, sizeGB: 20 },
 check('a brain without experts is never cut', sizeFor({ experts: 0, sizeGB: 8, fullSize: true }, deviceBudget(deviceById('card16'))).keep === 0);
 check('this replicant matrix leaves room for the conversation', deviceBudget(deviceById('here'), 16).gb === 14.5 && deviceBudget(deviceById('here'), 8).q3 && !deviceBudget(deviceById('here'), 16).q3);
 check('the device list names real devices, not brands', DEVICES.length >= 8 && DEVICES.every((d) => !/nvidia|geforce|rtx|samsung|lenovo|legion/i.test(d.label)));
-check('seven goals, fold greyed until it is built, no ladder names', RECIPES.length === 7 && recipeById('fold').later && recipeById('fold').title === 'Fold instead of drop' && recipeById('measure').measureOnly && !/garfield|riker|bill|homer|milo|luke|calvin/i.test(JSON.stringify(RECIPES)));
+check('seven goals, fold built, no ladder names', RECIPES.length === 7 && !RECIPES.some((x) => x.later) && recipeById('fold').fold === true && recipeById('fold').title === 'Fold instead of drop' && recipeById('measure').measureOnly && !/garfield|riker|bill|homer|milo|luke|calvin/i.test(JSON.stringify(RECIPES)));
 
 // ---- the estimate ----
 const rent = rentedEstimate({ lessons: 27000, experts: 208, files: ['Q4_K_M'] });
@@ -167,8 +167,9 @@ check('without a usage map, the recipe counts the lessons skill by skill', fromL
 check('one skill of lessons says the recipe can\'t protect anything more', fromLessons.notes.some((n) => /one skill/.test(n)));
 check('tiny takes out sight only if the brain has it', !applyRecipe(lab, base, 'tiny', 'phone8', { budget: tight, sizeGB: 20 }).recipe.smaller.sight);
 check('a brain that already fits the device is not cut', applyRecipe(lab, base, 'chat', 'card24').recipe.smaller.cut === null);
-let later = ''; try { applyRecipe(lab, base, 'fold', 'card16'); } catch (e) { later = e.message; }
-check('folding is refused until it is built', /isn't built yet/.test(later));
+const folded = applyRecipe(lab, base, 'fold', 'phone8', { budget: tight, sizeGB: 20 });
+check('the fold goal fills a cut with the fold ticked, and its Forge rung says fold', folded.recipe.smaller.cut?.fold === true && folded.forge.rungs[0].fold === true && folded.notes.some((n) => /Folding|folding/.test(n)), JSON.stringify(folded.recipe.smaller.cut) + ' ' + folded.notes.join(' | '));
+check('the other goals don\'t fold', !fromLessons.recipe.smaller.cut.fold && !('fold' in fromLessons.forge.rungs[0]));
 const est = estimateFor(lab, fromLessons.recipe, { recipeId: 'everything' });
 check('the estimate has both columns for a cut, and the words', est.here && est.rented && est.words.length >= 3 && /Forge plan/.test(est.words.join(' ')) && /starts at \$0/.test(est.words.join(' ')));
 check('the printed Forge plan has its caps at 0', fromLessons.forge.hours_max === 0 && fromLessons.forge.dollars_max === 0);
@@ -213,6 +214,12 @@ check('the release note exists, with no ladder names', fs.existsSync(new URL('..
   const keepPy = read('model-lab/forge/pod/keep.py'), reapPy = read('model-lab/forge/pod/reap.py');
   check('keep.py judges by counts unless told, and REAP must be given a size', /"--by", default="counts", choices=\["counts", "reap", "mass"\]/.test(keepPy) && /does not say how many to keep/.test(keepPy));
   check('the scorer is off unless asked and never stops a count', /score=False/.test(reapPy) && /except Exception as e:[^\n]*\n\s+self\._off/.test(reapPy));
+  check('a fold rung runs fold.py after the cut, before the heal, and a half-folded cut is never reused', /get\('fold',p\.get\('fold',False\)\)"\)" = "True" \]; then[\s\S]{0,400}python3 fold\.py --src \$SRC --cut \$W\/cut-\$NAME --counts "\$FOLDC" \|\| die/.test(sh) && sh.indexOf('python3 fold.py') > sh.indexOf('python3 prune.py --src $SRC') && sh.indexOf('python3 fold.py') < sh.indexOf('python3 heal.py --model $W/cut-$NAME') && /\("folded" in cfg\.get\("bob",\{\}\)\) == \(sys\.argv\[3\]=="True"\)/.test(sh));
+  const foldPy = read('model-lab/forge/pod/fold.py'), foldJs = read('src/lab-fold.js');
+  check('the card and the Lab fold by the same rule (128 sampled weights, most alike router row, greedy line-up)', /^SAMPLE = 128$/m.test(foldPy) && /const SAMPLE = 128;/.test(foldJs) && /most alike router row/.test(foldPy) && /most alike router row/.test(foldJs));
+  const fq = HELP.find((e) => e.id === 'faq-fold'), labHelp = HELP.find((e) => e.id === 'lab-recipes');
+  check('Help explains folding honestly: where it is, what it needs, that nobody knows yet if it beats a cut', fq && /Fold the rest in/.test(fq.html) && /full-size file/.test(fq.html) && /I don't know yet/.test(fq.html) && /Not on a phone/.test(fq.html) && /Fold instead of drop/.test(labHelp.html) && /<dt>Fold \(expert merging\)<\/dt>/.test(HELP.find((e) => e.id === 'glossary').html));
+  check('nothing in the Lab still says folding isn\'t built', !/Not built yet/.test(JSON.stringify(RECIPES)) && !/isn't built yet/.test(read('public/lab-recipes-list.js')));
   const faq = HELP.find((e) => e.id === 'faq-reap'), gl = HELP.find((e) => e.id === 'glossary');
   check('Help says what REAP is and where it is used, with an FAQ and a glossary entry', faq && /count/.test(faq.html) && /"score": "reap"/.test(faq.html) && /nothing changes unless you choose it/.test(faq.html) && /<dt>REAP \(expert scoring\)<\/dt>/.test(gl.html));
 }

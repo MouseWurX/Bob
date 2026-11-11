@@ -128,6 +128,15 @@ Every Bob so far was cut by counting how often the router picks each expert. REA
 - `keep.py` and `countskills.py`, which run.sh has called since build 14, are now in this folder; they were missing from the repository.
 - Checked without a card: `keep.py` on made-up count files (each `--by`, the refusals), and the scorer against a brute-force sum on a tiny made-up model. The hook on the real model's expert module is untested until a run.
 
+## Build 21 (11 November 2026, untested on a card): fold instead of drop
+
+- A rung (or the plan) with `"fold": true` runs `pod/fold.py` straight after the cut and before the heal. It goes back to the uncut model for the experts the cut dropped and blends each into the kept expert most like it, in place in the cut model: the target is the kept expert with the most alike router row (cosine); the neurons are lined up first (greedy, the most alike pair first, on a sample of 128 in and 128 out weights each); then a weighted average, each expert weighing what it's used. A coverage rung weighs by its skill counts (every skill the same); any other rung by its counts file; with none, the kept expert weighs half. The router row is blended the same way.
+- The same rule as the Lab's `src/lab-fold.js`, which folds a full-size GGUF at home for free. The Lab's goal **Fold instead of drop** and template **Merge experts** print a rung with `fold: true`.
+- A cut that was folded is marked in its `config.json` (`bob.folded`). A restart reuses a finished cut only when that mark matches what the rung asks for, so a half-folded cut is made again.
+- Needs the experts as one tensor per layer; otherwise it stops the rung and says so (it does not quietly fall back to a plain cut, since the plan asked for a fold).
+- Checked without a card: `prune.py` then `fold.py` on a tiny made-up model (a shuffled copy folded back in leaves the expert as it was; use-weighted blend; router rows; other tensors and the number type untouched).
+- Unknown until it is tried: whether a folded and healed brain beats a dropped and healed one. The first use should make one rung both ways and compare.
+
 ## FNRI on a rented card
 
 The Lab's FNRI scan (Playground) can also be made on a rented card, for a brain too big for the home card. Nothing in the app rents a card for this yet; these are the pieces.

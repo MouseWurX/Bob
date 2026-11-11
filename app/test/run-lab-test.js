@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { foldGguf, foldWhyNot, foldWeights, foldTargets, alignNeurons } from '../src/lab-fold.js';
 import { readGguf, brainFacts, readerFacts, writeGguf, checkKeep, busiest, isHearingTensor, readCounts, coverageKeep } from '../src/lab-gguf.js';
 import { Lab, maskFor, cleanWrite, teacherLicence, lessonSets, cleanRecipe, planRecipe, labRoom, labOn, cutSizes, fitWords, mergeMadeBrains, labRoute, RUNNING_TYPES , measureRecord, sha256File, compareTable, compareCsv } from '../src/lab.js';
 import { TEMPLATES, TEMPLATE_IDS, templateById, templateWhyNot, applyTemplate } from '../public/lab-templates.js';
@@ -95,6 +96,45 @@ check('no half-written .part file is left', !fs.existsSync(cutFile + '.part'));
 check('a stopped cut leaves nothing behind', await (async () => { const ac = new AbortController(); ac.abort(); try { await writeGguf(brainFile, path.join(tmp, 'stop.gguf'), { keep, signal: ac.signal }); return false; } catch { return !fs.existsSync(path.join(tmp, 'stop.gguf')) && !fs.existsSync(path.join(tmp, 'stop.gguf.part')); } })());
 check('busiest picks the most-used experts per layer', JSON.stringify(busiest([[5, 1, 9, 0, 7, 2, 3, 8], [0, 0, 0, 1, 1, 1, 1, 0]], 4)) === JSON.stringify([[0, 2, 4, 7], [3, 4, 5, 6]]));
 
+// ---- Fold instead of drop (expert merging): a dropped expert is blended into the kept expert most like it ----
+{
+  const FE = 4, FH = 4, FI = 3;
+  const G = (a, i, h) => ((a * 7 + i * 5 + h * 3 + i * h * (a + 1)) % 11) - 5, U = (a, i, h) => ((a * 3 + i * 2 + h * 7 + i * i) % 13) - 6, D = (a, h, i) => ((a * 5 + i * 9 + h * 4 + h * i) % 7) - 3;
+  // Experts 0 and 1 are the originals. Expert 2 is expert 0 with its neurons shuffled; expert 3 is expert 1 shuffled and three times as loud.
+  const from = [0, 1, 0, 1], shuffle = [[0, 1, 2], [0, 1, 2], [2, 0, 1], [1, 2, 0]], loud = [1, 1, 1, 3];
+  const routes = [[1, 0, 0, 0], [0, 1, 0, 0], [2, 0, 0, 0.1], [0, 3, 0.1, 0]];
+  const inOf = (fn) => (x) => { const e = Math.floor(x / (FI * FH)), i = Math.floor((x % (FI * FH)) / FH), h = x % FH; return loud[e] * fn(from[e], shuffle[e][i], h); };
+  const foldFile = path.join(tmp, 'fold.gguf');
+  makeGguf(foldFile, [['general.architecture', 8, 'testmoe'], ['general.name', 8, 'Fold MoE'], ['testmoe.block_count', 4, 1], ['testmoe.expert_count', 4, FE], ['testmoe.expert_used_count', 4, 2], ['general.file_type', 4, 0]], [
+    { name: 'token_embd.weight', dims: [FH, 5], fill: (x) => x },
+    { name: 'blk.0.ffn_gate_exps.weight', dims: [FH, FI, FE], fill: inOf(G) }, { name: 'blk.0.ffn_up_exps.weight', dims: [FH, FI, FE], fill: inOf(U) },
+    { name: 'blk.0.ffn_down_exps.weight', dims: [FI, FH, FE], fill: (x) => { const e = Math.floor(x / (FI * FH)), h = Math.floor((x % (FI * FH)) / FI), i = x % FI; return loud[e] * D(from[e], h, shuffle[e][i]); } },
+    { name: 'blk.0.ffn_gate_inp.weight', dims: [FH, FE], fill: (x) => routes[Math.floor(x / FH)][x % FH] }, { name: 'blk.0.attn_q.weight', dims: [FH, FH], fill: (x) => -x }]);
+  const fg = readGguf(foldFile), foldOut = path.join(tmp, 'folded.gguf');
+  const fr = await foldGguf(foldFile, foldOut, { keep: [[0, 1]], counts: [[10, 6, 5, 2]] });
+  const fo = readGguf(foldOut);
+  const near = (a, b) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 1e-4);
+  const src = (name) => floats(fg, foldFile, name), got = (name) => floats(fo, foldOut, name);
+  check('a fold keeps the number of experts asked for and says how many it folded in', brainFacts(fo).experts === 2 && fr.folded === 2 && fr.kept === 2 && fo.tensors.find((t) => t.name === 'blk.0.ffn_down_exps.weight').dims.join() === `${FI},${FH},2`);
+  for (const part of ['gate', 'up', 'down']) {
+    const s = src(`blk.0.ffn_${part}_exps.weight`), o = got(`blk.0.ffn_${part}_exps.weight`), n = FI * FH;
+    check(`folding a shuffled copy of an expert back in leaves it as it was: the neurons were lined up (${part})`, near(o.slice(0, n), s.slice(0, n)), o.slice(0, n).join());
+    check(`each expert weighs what it's used: 6 picks and 2 picks of one three times as loud make it half as loud again (${part})`, near(o.slice(n), s.slice(n, 2 * n).map((v) => 1.5 * v)), o.slice(n).join());
+  }
+  check('the router rows are blended the same way', near(got('blk.0.ffn_gate_inp.weight'), [(10 * 1 + 5 * 2) / 15, 0, 0, (5 * 0.1) / 15, 0, (6 * 1 + 2 * 3) / 8, (2 * 0.1) / 8, 0]), got('blk.0.ffn_gate_inp.weight').join());
+  check('a fold leaves everything that isn\'t an expert alone', got('blk.0.attn_q.weight').join() === src('blk.0.attn_q.weight').join() && got('token_embd.weight').join() === src('token_embd.weight').join() && fo.meta['general.name'] === 'Fold MoE');
+  check('each dropped expert goes to the kept one its router row points most like', (() => { const t = foldTargets(Float32Array.from(routes.flat()), FE, FH, [0, 1]); return t.get(2) === 0 && t.get(3) === 1 && t.size === 2; })());
+  check('lining up finds a shuffle', alignNeurons(Float32Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1]), Float32Array.from([0, 0, 1, 1, 0, 0, 0, 1, 0]), 3, 3).join() === '1,2,0');
+  check('fold weights: by use, the kept one alone when the group was never picked, half and half with no counts', foldWeights([1, 3], [0, 6, 0, 2]).join() === '0.75,0.25' && foldWeights([1, 3], [5, 0, 5, 0]).join() === '1,0' && foldWeights([1, 3, 2], null).join() === '0.5,0.25,0.25' && foldWeights([1], null).join() === '1');
+  const noCounts = path.join(tmp, 'folded-nocounts.gguf'); await foldGguf(foldFile, noCounts, { keep: [[0, 1]] });
+  check('a fold with no counts still writes a brain (the kept expert weighs half)', near(floats(readGguf(noCounts), noCounts, 'blk.0.ffn_gate_exps.weight').slice(FI * FH), src('blk.0.ffn_gate_exps.weight').slice(FI * FH, 2 * FI * FH).map((v) => 2 * v)));
+  const running = readGguf(foldFile); running.tensors.find((t) => t.name === 'blk.0.ffn_up_exps.weight').type = 12;
+  check('a running file is refused in words: folding needs the full-size numbers', /needs the full-size file/.test(foldWhyNot(running)) && foldWhyNot(fg) === '');
+  const odd = readGguf(foldFile); odd.tensors.find((t) => t.name === 'blk.0.ffn_up_exps.weight').name = 'blk.0.ffn_up_exps.scale';
+  check('a brain whose experts have parts folding doesn\'t know is refused, not guessed at', /doesn't handle yet/.test(foldWhyNot(odd)));
+  check('a fold checks the keep list like a cut does', await foldGguf(foldFile, path.join(tmp, 'bad.gguf'), { keep: [[0]] }).then(() => false, (e) => /at least 2/.test(e.message)) && !fs.existsSync(path.join(tmp, 'bad.gguf')));
+}
+
 // A reader file holding sight and hearing: hearing taken out.
 const readerFile = path.join(tmp, 'mmproj.gguf');
 makeGguf(readerFile, [['general.architecture', 8, 'clip'], ['clip.has_vision_encoder', 7, true], ['clip.has_audio_encoder', 7, true]], [
@@ -133,7 +173,10 @@ check('fit lines use words, not ticks or brand names', !/[✓✗]|Legion|Steam|P
 
 // ---- Lab 1b: templates and Measure before making the running files ----
 check('the five methods and the two later ones are templates', ['plain-cut', 'lab-local-cut', 'coverage-cut-heal', 'train-teacher', 'outside-traces', 'merge-experts', 'layer-width-cut'].every((id) => TEMPLATE_IDS.includes(id)) && TEMPLATES.every((t) => t.title && t.help && ['here', 'rented', 'either'].includes(t.where)));
-check('rented templates are greyed out with the reason, never offered', TEMPLATES.filter((t) => t.where === 'rented').every((t) => templateWhyNot(t, facts) && !t.lab) && /rented card/.test(templateWhyNot(templateById('coverage-cut-heal'), facts)) && /Not built yet/.test(templateWhyNot(templateById('merge-experts'), facts)));
+check('rented templates are greyed out with the reason, never offered', TEMPLATES.filter((t) => t.where === 'rented').every((t) => templateWhyNot(t, facts) && !t.lab) && /rented card/.test(templateWhyNot(templateById('coverage-cut-heal'), facts)) && /Not built yet/.test(templateWhyNot(templateById('layer-width-cut'), facts)));
+check('Merge experts is built: it fills a coverage cut with the fold ticked, here, and prints a Forge rung with fold', (() => { const t = templateById('merge-experts'); const a = applyTemplate({ lessons: {}, smaller: {} }, t, { keepDefault: 4 }); return !t.later && templateWhyNot(t, facts) === '' && a.smaller.cut.how === 'cover' && a.smaller.cut.fold === true && cleanRecipe(a).smaller.cut.fold === true && t.forge.rung.fold === true; })());
+check('fold is off unless ticked, and only true counts', !('fold' in cleanRecipe({ smaller: { cut: { how: 'busiest', keep: 4 } } }).smaller.cut) && !('fold' in cleanRecipe({ smaller: { cut: { how: 'busiest', keep: 4, fold: 'yes' } } }).smaller.cut));
+{ const fp = plan({ name: 'Folded', lessons: { kind: 'chats' }, smaller: { cut: { how: 'busiest', keep: 4, fold: true } } }); const cs = fp.steps.find((x) => x.id === 'cut'); check('a fold shows in the plan: the step says so and carries the choice', fp.problems.length === 0 && cs.fold === true && /folding the rest in/.test(cs.label) && /fold, don't drop/.test(cs.cmd), fp.problems.join(' | ')); }
 check('a cutting template on an ordinary brain says why', /isn't a mixture-of-experts brain/.test(templateWhyNot(templateById('plain-cut'), { experts: 0 }, 'Plain')) && templateWhyNot(templateById('lab-local-cut'), facts) === '');
 const tpl = applyTemplate({ from: 'test-moe', name: '', lessons: { kind: 'none', chunks: 200 } }, templateById('lab-local-cut'), { keepDefault: 4, fullSize: true, brainName: 'Test MoE' });
 check('a template fills steps 2 to 5 and names the brain', tpl.template === 'lab-local-cut' && tpl.lessons.kind === 'chats' && tpl.smaller.cut.keep === 4 && tpl.smaller.files.includes('Q4_K_M') && tpl.smaller.measure === true && tpl.name === 'Test MoE Lab local cut' && tpl.from === 'test-moe');
@@ -213,6 +256,19 @@ const covLab = new Lab(cfg, { shop, room: big, steps: { count: async (s) => { fs
 await covLab.start({ name: 'Cover Test', from: 'test-moe', lessons: { kind: 'file', file: skillFile }, smaller: { cut: { how: 'cover', cover: 0.9 } }, test: { compare: false } });
 while (covLab.job) await new Promise((r) => setTimeout(r, 20));
 const cd = covLab.runs.at(-1);
+{ // a whole fold job: the same coverage cut with Fold the rest in ticked
+  let cutArgs = null;
+  const foldLab = new Lab(cfg, { shop, room: big, steps: { count: async (s) => { fs.copyFileSync(countsFile, s.counts); }, test: async () => fakeQuiz(60) } });
+  const realCut = foldLab.defaultSteps(foldLab.tools(), () => {}).cut;
+  foldLab.stepFns.cut = async (s, o) => { cutArgs = o; return realCut(s, o); };
+  await foldLab.start({ name: 'Fold Test', from: 'test-moe', lessons: { kind: 'file', file: skillFile }, smaller: { cut: { how: 'cover', cover: 0.9, fold: true } }, test: { compare: false } });
+  while (foldLab.job) await new Promise((r) => setTimeout(r, 20));
+  const fd = foldLab.runs.at(-1);
+  const E0 = 8, kept = fd.report?.folded?.kept;
+  check('a fold job writes a brain with the kept experts and reports how many were folded in', fd.state === 'done' && brainFacts(readGguf(fd.files.gguf)).experts === kept && fd.report.folded.experts === 2 * (E0 - kept) && kept === cd.report.coverage.experts, fd.error || JSON.stringify(fd.report));
+  check('the fold weighs each expert by its use, every skill the same', cutArgs.fold === true && Array.isArray(cutArgs.counts?.[0]) && Math.abs(cutArgs.counts[0].reduce((a, b) => a + b, 0) - 3) < 1e-6);
+  check('a folded brain isn\'t the plain cut: the kept experts changed', (() => { const a = readGguf(fd.files.gguf), b = readGguf(cd.files.gguf); return floats(a, fd.files.gguf, 'blk.0.ffn_up_exps.weight').join() !== floats(b, cd.files.gguf, 'blk.0.ffn_up_exps.weight').join() && floats(a, fd.files.gguf, 'blk.0.attn_q.weight').join() === floats(b, cd.files.gguf, 'blk.0.attn_q.weight').join(); })());
+}
 check('a coverage job cuts to what the skills need and reports each skill', cd.state === 'done' && cd.report.coverage?.skills.length === 3 && brainFacts(readGguf(cd.files.gguf)).experts === cd.report.coverage.experts && cd.report.coverage.experts < 8, cd.error || JSON.stringify(cd.report?.coverage));
 check('the coverage keep list names its rule and skills', (() => { const k = JSON.parse(fs.readFileSync(path.join(path.dirname(cd.files.gguf), 'cover-test-keep.json'), 'utf8')); return k.cover === 0.9 && k.skills.join() === 'coding,chat,tools' && k.layers.length === 2; })());
 check('the page heard each step', events.filter((e) => e.type === 'lab').length >= 7 && events.some((e) => e.type === 'lab-done' && e.ok));
