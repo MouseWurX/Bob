@@ -21,6 +21,7 @@ import { catalogFileFor } from './llamacpp.js';
 import { ctxLabel } from './model-ctx.js';
 import { isDoc, docText, OLD_EXT, MAX_DOC_BYTES } from './doc-text.js';
 import { docToolsOn } from './my-docs.js';
+import { codeMap, linesAround } from './code-map.js';
 
 const MAX_READ = 20000;
 // Runnable file types Bob won't write outside a project, on every platform (Windows, Mac and Linux kinds together).
@@ -240,9 +241,10 @@ export function buildTools(cfg) {
     schema: fn('read_file', "Read a text file. A long file comes in parts; each part says how to get the next.", {
       path: str('Full file path.'),
       part: { type: 'integer', description: 'Optional: which part, 1, 2, 3... Default 1.' },
-      find: str('Optional: words to look for; you get the part they are in.')
+      find: str('Optional: words to look for; you get the part they are in.'),
+      line: { type: 'integer', description: 'Optional: a line number, like one from an error. You get the lines around it.' }
     }, ['path']),
-    async run({ path: p, part, find }) {
+    async run({ path: p, part, find, line }) {
       const file = resolveUserPath(p);
       if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to read ${file}.`);
       if (isSensitive(cfg, file)) throw new Error(SECRET_MSG);
@@ -262,9 +264,28 @@ export function buildTools(cfg) {
         return '(That looks like a binary file, so I can\'t read it as text.)';
       }
       const text = buf.toString('utf8');
+      if (Number(line) > 0) return linesAround(text, line); // Nov 11: straight to an error's file:line (code-map.js)
       return pieceOf(text, { part, find }, MAX_READ, 'read_file again with the same path and');
     },
-    summary: ({ path: p, part, find }) => `read ${p}${find ? ` (looking for ${find})` : part > 1 ? ` (part ${part})` : ''}`
+    summary: ({ path: p, part, find, line }) => `read ${p}${Number(line) > 0 ? ` (around line ${line})` : find ? ` (looking for ${find})` : part > 1 ? ` (part ${part})` : ''}`
+  };
+
+  // Nov 11: the code map (code-map.js): one line per source file, so a small brain finds the right file first.
+  t.code_map = {
+    schema: fn('code_map', 'Map a codebase: one line per source file with what it is for and the main names in it. Call it first on a big project, then read only the file you need.', {
+      project: str('Optional: project name. Leave out for the main project.', { enum: Object.keys(cfg.projects || {}) }),
+      folder: str('Optional: a full folder path instead, like one folder of a big project.')
+    }, []),
+    async run({ project, folder }) {
+      const all = cfg.projects || {};
+      if (project && !all[project]) throw new Error(`Unknown project. I know: ${Object.keys(all).join(', ') || 'none yet'}`);
+      const root = folder ? resolveUserPath(folder) : all[project] || all[cfg.defaultProject] || Object.values(all)[0];
+      if (!root) throw new Error('No projects are set up yet. Give me a full folder path to map.');
+      if (!insideAny(cfg.readRoots, root) && !Object.values(all).some((r) => isInside(r, root))) throw new Error(`I'm not allowed to read ${root}.`);
+      if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) throw new Error(`There's no folder at ${root}.`);
+      return codeMap(root, { skip: (f) => isSensitive(cfg, f) });
+    },
+    summary: ({ project, folder }) => `map the code in ${folder || project || 'the main project'}`
   };
 
   t.write_file = {
