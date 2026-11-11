@@ -4,8 +4,9 @@
 // on Bob can write a few lines of JavaScript and run them, and answer from the result instead of guessing.
 // The code runs in the same sandbox as the tools Bob makes himself (selftools.js): Bob's own Node with Node's
 // permission switch on, in a fresh empty folder that is thrown away straight after. It can't read or write anything
-// outside that folder, can't start programs, has no keys in its environment, no internet (the ready-made ways in
-// are taken away and the code is checked for the rest), 20 seconds and 512 MB at most. The same plain checks as
+// outside that folder, can't start programs, has no keys in its environment, and no internet: switched off by Node where
+// this Node can (--allow-net), otherwise the ready-made ways are taken away and the code is checked for the rest
+// (a check, not a wall; Help says so), 20 seconds and 512 MB at most. The same plain checks as
 // self-made tools run first. If the sandbox doesn't hold on this computer (the probe in selftools.js), it stays off.
 // No click is asked, because nothing outside the throwaway folder can change; every run is in the logbook and the
 // code is shown with the step in the chat.

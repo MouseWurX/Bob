@@ -728,7 +728,7 @@ const server = http.createServer(async (req, res) => {
           if (typeof b.quickNotes === 'boolean') { saveSettings(cfg, { quickNotes: b.quickNotes }); out.quickNotes = cfg.quickNotes === true; if (out.quickNotes) { try { ensureNotesFile(cfg); } catch {} } } // notes.js
           if (typeof b.docTools === 'boolean') { saveSettings(cfg, { docTools: b.docTools }); out.docTools = cfg.docTools === true; if (!out.docTools) clearDocCache(); } // my-docs.js
           if (typeof b.sandboxCode === 'boolean') { // sandbox-code.js: only switched on where the sandbox holds
-            if (b.sandboxCode) { const h = await sandboxHolds(cfg); if (!h.ok) out.sandboxWhy = `The sandbox doesn't hold on this replicant matrix (${h.why}), so this stays off.`; else saveSettings(cfg, { sandboxCode: true }); }
+            if (b.sandboxCode) { const h = await sandboxHolds(cfg); if (!h.ok) out.sandboxWhy = `The sandbox doesn't hold on this replicant matrix (${h.why}), so this stays off.`; else { saveSettings(cfg, { sandboxCode: true }); out.sandboxNet = h.net === true; } }
             else saveSettings(cfg, { sandboxCode: false });
             out.sandboxCode = cfg.sandboxCode === true;
           }
