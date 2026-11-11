@@ -1,5 +1,5 @@
 diff --git a/ggml/src/ggml-rpc/ggml-rpc.cpp b/ggml/src/ggml-rpc/ggml-rpc.cpp
-index 5cf9339..3f990f4 100644
+index e4a84cb..2ec7036 100644
 --- a/ggml/src/ggml-rpc/ggml-rpc.cpp
 +++ b/ggml/src/ggml-rpc/ggml-rpc.cpp
 @@ -20,6 +20,7 @@
@@ -38,17 +38,17 @@ index 5cf9339..3f990f4 100644
  
  // Maximum number of graphs cached per device; client and server must use the same value
  // so that both sides clear their caches at the same point in the message stream
-@@ -845,7 +863,7 @@ static std::shared_ptr<uint8_t> serialize_set_tensor(const rpc_tensor & rpc_tens
- // take this path, otherwise with `rpc-server -c` every ubatch above the threshold is written
+@@ -862,7 +880,7 @@ static std::shared_ptr<uint8_t> serialize_set_tensor(const rpc_tensor & rpc_tens
  // to the cache directory and later served from there.
- static bool rpc_use_hash_cache(const ggml_tensor * tensor, size_t size) {
--    return size > HASH_THRESHOLD && tensor->buffer->usage == GGML_BACKEND_BUFFER_USAGE_WEIGHTS;
-+    return size > rpc_hash_threshold() && tensor->buffer->usage == GGML_BACKEND_BUFFER_USAGE_WEIGHTS;
+ // hashing is slow (~1 GB/s), so only do it when the server asks for tensor hashes.
+ static bool rpc_use_hash_cache(const rpc_dispatcher & dispatcher, const ggml_tensor * tensor, size_t size) {
+-    return dispatcher.get_send_tensor_hash() && size > HASH_THRESHOLD && tensor->buffer->usage == GGML_BACKEND_BUFFER_USAGE_WEIGHTS;
++    return dispatcher.get_send_tensor_hash() && size > rpc_hash_threshold() && tensor->buffer->usage == GGML_BACKEND_BUFFER_USAGE_WEIGHTS;
  }
  
  static void ggml_backend_rpc_buffer_set_tensor(ggml_backend_buffer_t buffer, ggml_tensor * tensor, const void * data, size_t offset, size_t size) {
 diff --git a/tools/rpc/rpc-server.cpp b/tools/rpc/rpc-server.cpp
-index 7cb2594..ede7ad9 100644
+index 8aeb15d..c52cb61 100644
 --- a/tools/rpc/rpc-server.cpp
 +++ b/tools/rpc/rpc-server.cpp
 @@ -1,5 +1,6 @@
@@ -65,10 +65,10 @@ index 7cb2594..ede7ad9 100644
 +#include <cstdint>
 +#include <cstdlib>
 +#include <cstring>
- #include <codecvt>
  #include <filesystem>
  #include <regex>
-@@ -91,6 +95,7 @@ struct rpc_server_params {
+ #include <stdio.h>
+@@ -81,6 +85,7 @@ struct rpc_server_params {
      bool                     use_cache   = false;
      int                      n_threads   = std::max(1U, std::thread::hardware_concurrency()/2);
      std::vector<std::string> devices;
@@ -76,7 +76,7 @@ index 7cb2594..ede7ad9 100644
  };
  
  static void print_usage(int /*argc*/, char ** argv, rpc_server_params params) {
-@@ -102,6 +107,7 @@ static void print_usage(int /*argc*/, char ** argv, rpc_server_params params) {
+@@ -92,6 +97,7 @@ static void print_usage(int /*argc*/, char ** argv, rpc_server_params params) {
      fprintf(stderr, "  -H, --host HOST                  host to bind to (default: %s)\n", params.host.c_str());
      fprintf(stderr, "  -p, --port PORT                  port to bind to (default: %d)\n", params.port);
      fprintf(stderr, "  -c, --cache                      enable local file cache\n");
@@ -84,7 +84,7 @@ index 7cb2594..ede7ad9 100644
      fprintf(stderr, "\n");
  }
  
-@@ -149,6 +155,12 @@ static bool rpc_server_params_parse(int argc, char ** argv, rpc_server_params &
+@@ -139,6 +145,12 @@ static bool rpc_server_params_parse(int argc, char ** argv, rpc_server_params &
              }
          } else if (arg == "-c" || arg == "--cache") {
              params.use_cache = true;
@@ -97,7 +97,7 @@ index 7cb2594..ede7ad9 100644
          } else if (arg == "-h" || arg == "--help") {
              print_usage(argc, argv, params);
              exit(0);
-@@ -204,6 +216,109 @@ static std::vector<ggml_backend_dev_t> get_devices(const rpc_server_params & par
+@@ -194,6 +206,109 @@ static std::vector<ggml_backend_dev_t> get_devices(const rpc_server_params & par
      return devices;
  }
  
@@ -207,7 +207,7 @@ index 7cb2594..ede7ad9 100644
  int main(int argc, char * argv[]) {
      std::setlocale(LC_NUMERIC, "C");
  
-@@ -243,6 +358,13 @@ int main(int argc, char * argv[]) {
+@@ -233,6 +348,13 @@ int main(int argc, char * argv[]) {
          }
          cache_dir_str = cache_dir_path.string();
          cache_dir = cache_dir_str.c_str();

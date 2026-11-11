@@ -204,7 +204,7 @@ function setup({ engine = 'llamacpp', checkins = {}, free = 500e9 } = {}) {
   check('every label, option, button and check on the panel is in Help', labels.length >= 5 && !gone.length, gone.join(' | '));
   check('Help has the feature, its settings, a glossary line and FAQs', ['checkins', 'settings-checkins', 'faq-checkins-games', 'faq-checkins-quiet'].every((id) => HELP.some((e) => e.id === id)) && /<dt>Check-in<\/dt>/.test(read('public/help-content.js')));
   check('Help says it starts off and never changes anything', /off unless you turn it on/.test(help) && /it only looks/.test(help));
-  check('the panel is in Settings, Show advanced settings', /\['checkins', '🔔 Check-ins'/.test(read('public/cellar.js')) && /mountCheckins\(/.test(read('public/cellar.js')));
+  check('the panel is in Settings', /\['checkins', '🔔 Check-ins'/.test(read('public/cellar.js')) && /mountCheckins\(/.test(read('public/cellar.js')));
   check('the chat shows a Check-in card for the event', /case 'checkin'/.test(read('public/app.js')));
   check('the settings inventory lists it', /\| Check-ins \| Check in on a schedule \|/.test(read('docs/SETTINGS-INVENTORY.md')));
   check('no platform-only code: no Windows paths, PowerShell or schtasks', !/powershell|schtasks|\\\\|win32/i.test(read('src/checkins.js')));

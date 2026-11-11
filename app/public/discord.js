@@ -1,4 +1,4 @@
-// Settings, Show advanced settings, Online services: "Bob on Discord" (src/discord.js). Off unless you turn it on.
+// Settings, Online services: "Bob on Discord" (src/discord.js). Off unless you turn it on.
 import { esc } from './util.js';
 
 async function api(url, data) {

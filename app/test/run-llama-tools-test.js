@@ -43,6 +43,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   const wf = read(path.join(here, '..', '..', '.github', 'workflows', 'brain-engine.yml'));
   for (const t of ['llama-bench', 'llama-gguf-split', 'ggml-rpc-server', 'llama-diffusion-cli']) ok((wf.match(new RegExp(t, 'g')) || []).length >= 4, `Brain Engine build: builds and packs ${t} (Windows and Linux)`);
   ok((wf.match(/-DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON/g) || []).length === 2, 'Brain Engine build: RPC and the examples (the diffusion runner) on, both systems');
+  ok((wf.match(/set\(BUILD_NUMBER \$\{tag#b\}\)/g) || []).length === 2, 'Brain Engine build: --version says the tag\'s build number, not "build 1" from the one-commit clone, both systems');
   const readme = read(path.join(here, '..', 'engine', 'README.md'));
   ok(/ggml-rpc-server/.test(readme) && /llama-diffusion-cli/.test(readme) && /Tailscale/.test(readme), 'Brain Engine README: lists the new tools and how the card server is kept to Tailscale');
 }

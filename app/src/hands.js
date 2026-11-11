@@ -48,7 +48,7 @@ export function stopRun(id) { const r = running.get(id); if (!r) return false; r
 // every Hand from being used, without changing Settings. held = false only works when Settings has Hands on.
 export function holdHands(brain, held) {
   const cur = handsSettings(brain.cfg);
-  if (!held && !cur.enabled) throw new Error('Hands are off in Settings. Turn them on there first (Settings, Show advanced settings, Hands).');
+  if (!held && !cur.enabled) throw new Error('Hands are off in Settings. Turn them on there first (Settings, Hands).');
   let n = 0;
   if (held) { for (const r of running.values()) { r.controller.abort(); n++; } n += brain.denyHands?.() || 0; }
   brain.saveHands(cleanHands({ ...cur, held }));
@@ -231,7 +231,7 @@ export function handsTools(brain, opts = {}) {
     async run(args, ctx) {
       off(cfg, 'run');
       const all = loadRecipes(cfg);
-      if (args.action === 'list') return all.length ? all.map((r) => `${r.name}: ${[r.cmd, ...(r.args || [])].join(' ')} (in ${r.cwd})`).join('\n') : 'No recipes saved yet. The user can save one from a command card or in Settings, Show advanced settings, Hands.';
+      if (args.action === 'list') return all.length ? all.map((r) => `${r.name}: ${[r.cmd, ...(r.args || [])].join(' ')} (in ${r.cwd})`).join('\n') : 'No recipes saved yet. The user can save one from a command card or in Settings, Hands.';
       const r = all.find((x) => x.name.toLowerCase() === String(args.name || '').toLowerCase());
       return runApproved(cfg, r, { emit: ctx?.emit, signal: ctx?.signal, log });
     },
@@ -257,7 +257,7 @@ export function handsPrompt(cfg, { hat = null } = {}) {
   const plainIds = offIds.filter(plain);
   const why = [...new Set(offIds.filter((id) => !plain(id)).map((id) => handOffWhy(cfg, id)))];
   if (plainIds.length === 1) why.push(handOffWhy(cfg, plainIds[0]));
-  else if (plainIds.length) why.push(hs.enabled ? `${Who} can turn them on in Settings, Show advanced settings, Hands.` : `Hands are off in Settings. ${Who} can turn on "Let Bob use Hands" and the Hand they want in Settings, Show advanced settings, Hands.`);
+  else if (plainIds.length) why.push(hs.enabled ? `${Who} can turn them on in Settings, Hands.` : `Hands are off in Settings. ${Who} can turn on "Let Bob use Hands" and the Hand they want in Settings, Hands.`);
   const offLine = offIds.length && !hat ? `\n\nHands that are off right now (you have no tool for them): ${offIds.map((id) => HANDS[id].label).join('; ')}. ${why.join(' ')} If asked for one of these, call offer_setup with hand:<its id> (${offIds.join(', ')}): the app shows a card that switches it on with one press, and the job carries on after. Say in one line that it's off; don't refuse without a reason or make one up.` : '';
   // Bob's backstory is a replicant in a virtual world; Hands are not. Without this he blamed a "simulated OS".
   const realLine = `\n\nNever say you did something on ${who}'s ${computerWord()} (opened, typed, clicked, moved, ran) unless a tool result in this turn says it was done. Hands act on it for real. When a Hand tool fails, tell ${who} the error it gave you, in plain words, and never blame a simulation or a virtual OS. If an earlier try in this chat failed, call the tool again instead of repeating that result: you may have been updated since.`;

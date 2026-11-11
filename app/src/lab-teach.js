@@ -52,10 +52,11 @@ export const teachDiskGB = (paramsB, { download = true } = {}) => ({ work: Math.
 
 // ---- The Trainer pack (opt-in, its own folder, removable) ----
 export const TRAINER = {
-  uv: '0.13.4', python: '3.12', llamacpp: 'b12032', sizeGB: { cuda: 7, mac: 3 },
+  uv: '0.13.4', python: '3.12', llamacpp: 'b12282', sizeGB: { cuda: 7, mac: 3 },
   packages: ['torch==2.14.1', 'transformers==5.20.2', 'peft==0.21.2', 'accelerate==1.15.0', 'safetensors==0.8.0', 'sentencepiece==0.2.2', 'protobuf', 'numpy', 'huggingface_hub'],
   cudaOnly: ['bitsandbytes==0.50.2'],
-  torchIndex: 'https://download.pytorch.org/whl/cu128',
+  torchIndex: 'https://download.pytorch.org/whl/cu130', // CUDA 13.0 builds: they know the newest NVIDIA cards (the 50-series); cu128 ones came up CPU-only there
+  cudaCheck: 'import torch, sys; sys.exit(0 if torch.cuda.is_available() else 3)',
   licences: [['uv', 'MIT or Apache-2.0'], ['Python', 'PSF'], ['PyTorch', 'BSD-3-Clause'], ['Transformers, PEFT, Accelerate', 'Apache-2.0'], ['bitsandbytes', 'MIT'], ['llama.cpp converters', 'MIT']]
 };
 export const trainerDir = (cfg) => path.join(cfg.agentDir, 'trainer');
@@ -109,6 +110,8 @@ export function blockedWords(e) {
   x.cause = e; return x;
 }
 export const guardTool = (tool) => async (...a) => { try { return await tool(...a); } catch (e) { throw blockedWords(e); } };
+export const NO_CUDA = 'The training libraries installed, but they can\'t see your NVIDIA card. Update the NVIDIA driver (Bob needs a recent one), then press Try again. Teaching rented still works.';
+const hasNvidia = async (lab) => { const g = await Promise.resolve((lab.gpuInfo || gpuInfo)()).catch(() => null); return /nvidia|geforce|rtx|quadro|tesla/i.test(g?.name || ''); };
 export async function startTrainerInstall(lab) {
   canStart(lab, { room: false });
   const st = trainerState(lab.cfg, hwOf(lab));
@@ -141,6 +144,11 @@ export async function startTrainerInstall(lab) {
     set('python', 'done'); set('libs', 'running'); progress(15);
     const cuda = hw.os !== 'mac';
     await fx.tool(uv, ['pip', 'install', '--python', py, ...(cuda ? ['--index-url', TRAINER.torchIndex, '--extra-index-url', 'https://pypi.org/simple', '--index-strategy', 'unsafe-best-match'] : []), ...TRAINER.packages, ...(cuda ? TRAINER.cudaOnly : [])], { signal, log, env, onLine: (l) => { if (/Downloading|Prepared|Installed/.test(l)) progress(Math.min(85, r.progress + 1), `Get the training libraries: ${l.trim().slice(0, 60)}`); } });
+    if (cuda && await hasNvidia(lab)) {
+      // A torch that installed fine but can't see the card would only fail hours later, mid-lesson. Check it now.
+      try { await fx.tool(py, ['-c', TRAINER.cudaCheck], { signal, log, env }); }
+      catch (e) { if (signal?.aborted) throw e; throw new Error(NO_CUDA); }
+    }
     set('libs', 'done'); set('conv', 'running');
     const src = path.join(dir, 'llama-src.tar.gz');
     await fx.download(llamaSrcUrl(), src, { signal, maxBytes: 500e6 });

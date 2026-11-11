@@ -133,7 +133,7 @@ export function rentalReady(cfg, rental, env = rentKeyEnv()) {
   if (!rental) return { ok: false, why: 'No rented brain is in its slot.' };
   const r = rentalsOf(cfg);
   const s = serviceOf(rental.service);
-  if (!r.enabled[rental.service]) return { ok: false, why: `"Let Bob hire from ${s.name}" is off (Settings, Show advanced settings, Online services).` };
+  if (!r.enabled[rental.service]) return { ok: false, why: `"Let Bob hire from ${s.name}" is off (Settings, Online services).` };
   const kname = keyEnvFor(rental, s);
   if (!kname) return { ok: false, why: 'This rental has no key variable named. Edit it in Settings, Online services.' };
   if (!env[kname]) return { ok: false, why: `No key yet: add a variable named ${kname} on this replicant matrix.` };
@@ -489,7 +489,7 @@ export class Rentals {
     const ready = rentalReady(this.cfg, rental, this.env());
     if (!ready.ok) return ready;
     const { caps, missing } = this.limits(rental);
-    if (missing.length) return { ok: false, why: `Set ${missing.join(', ')} first, in Settings, Show advanced settings, Online services (every limit starts at 0).` };
+    if (missing.length) return { ok: false, why: `Set ${missing.join(', ')} first, in Settings, Online services (every limit starts at 0).` };
     const spent = this.spent();
     if (spent + est > caps.month) return { ok: false, why: `That would pass this month's cap (${money(caps.month)}; ${money(spent)} spent so far).` };
     if (est > caps.job) return { ok: false, why: `That job could cost about ${money(est)}, more than the per-job cap (${money(caps.job)}).` };

@@ -64,7 +64,7 @@ export class Diffusion {
     if (!q) throw new Error('Type something to ask.');
     const st = STEPS.includes(Number(steps)) ? Number(steps) : 64, len = LENGTHS.includes(Number(length)) ? Number(length) : 256;
     if (this.lab.brain?.engine?.loaded) {
-      const loaded = (await this.lab.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+      const loaded = (await this.lab.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard || m.usesCard);
       if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
       if (loaded.length) await this.lab.brain.engine.unloadAll().catch(() => {});
     }

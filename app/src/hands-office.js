@@ -34,7 +34,7 @@ function full(p) {
 export function canRead(cfg, p) {
   const f = full(p);
   if (isSensitive(cfg, f)) throw new Error('That file holds keys or passwords, so it stays off-limits to me.');
-  if (!insideAny([...(cfg.readRoots || []), ...handsRoots(cfg), officeDir(cfg)], f)) throw new Error(`I'm not allowed to open files in ${path.dirname(f)}. You can tick that folder in Settings, Show advanced settings, Hands.`);
+  if (!insideAny([...(cfg.readRoots || []), ...handsRoots(cfg), officeDir(cfg)], f)) throw new Error(`I'm not allowed to open files in ${path.dirname(f)}. You can tick that folder in Settings, Hands.`);
   if (!fs.existsSync(f)) throw new Error(`There's no file at ${f}.`);
   if (fs.statSync(f).isDirectory()) throw new Error(`${f} is a folder. Give me a file.`);
   return f;
@@ -47,7 +47,7 @@ export function canWrite(cfg, p) {
   if (cfg.settingsFile && path.resolve(cfg.settingsFile) === f) throw new Error("That's my own settings file, which I can't change.");
   if (insideAny([...readOnlyRoots(cfg), appDir, cfg.dataDir].filter(Boolean), f)) throw new Error(`${f} is read-only for me.`);
   const roots = [...handsRoots(cfg), officeDir(cfg)];
-  if (!insideAny(roots, f)) throw new Error(`I can only save in: ${roots.join('; ')}. You can tick more folders in Settings, Show advanced settings, Hands.`);
+  if (!insideAny(roots, f)) throw new Error(`I can only save in: ${roots.join('; ')}. You can tick more folders in Settings, Hands.`);
   return f;
 }
 

@@ -87,7 +87,7 @@ const sourceFrom = (lab, b) => {
 
 async function needCard(lab, unload) {
   if (!lab.brain?.engine?.loaded) return null;
-  const loaded = (await lab.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard);
+  const loaded = (await lab.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard || m.usesCard);
   if (loaded.length && !unload) return { needUnload: true, names: loaded.map((m) => m.name) };
   if (loaded.length) await lab.brain.engine.unloadAll().catch(() => {});
   return null;

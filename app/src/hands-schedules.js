@@ -11,7 +11,7 @@ export const SCHEDULE_SESSION = 'schedules';
 
 const fn = (name, description, properties, required = Object.keys(properties)) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
-const off = (cfg) => { if (!handOn(cfg, 'schedules')) throw new Error(`The ${HANDS.schedules.label} Hand is switched off. ${cfg.userName || 'The user'} can turn it on in Settings, Show advanced settings, Hands.`); };
+const off = (cfg) => { if (!handOn(cfg, 'schedules')) throw new Error(`The ${HANDS.schedules.label} Hand is switched off. ${cfg.userName || 'The user'} can turn it on in Settings, Hands.`); };
 
 export function schedulesFor(brain) {
   if (!brain.schedules) brain.schedules = new Schedules(brain.cfg, { isOn: () => handOn(brain.cfg, 'schedules'), log: (k, t) => brain.log?.(k, t) });
@@ -50,7 +50,7 @@ export function scheduleTools(brain) {
     async run(args) {
       off(cfg);
       const e = S().add({ name: args.name, job: { kind: 'chat', task: String(args.task).trim().slice(0, 2000) }, when: whenFrom(args), enabled: true });
-      return `Scheduled "${e.name}" (${e.says}). Next: ${e.nextDue ? new Date(e.nextDue).toLocaleString() : 'none'}. It can be switched off or removed in Settings, Show advanced settings, Hands.`;
+      return `Scheduled "${e.name}" (${e.says}). Next: ${e.nextDue ? new Date(e.nextDue).toLocaleString() : 'none'}. It can be switched off or removed in Settings, Hands.`;
     },
     summary: ({ name }) => `schedule: ${name}`
   };

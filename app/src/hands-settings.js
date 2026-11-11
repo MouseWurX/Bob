@@ -33,7 +33,7 @@ export const HANDS = {
   },
   office: {
     label: 'Office documents and converting',
-    what: 'Converts files (Word, Excel, PowerPoint, PDF, pictures, sound, video), reads office files, and makes or changes documents, spreadsheets and slides. Every file he makes or changes is shown on a card first; he never overwrites and backs up before changing. Documents use LibreOffice (or OpenOffice) and sound and video use FFmpeg, found on your replicant matrix or got in Settings, Show advanced settings, Engines; each runs only while it has a job. He saves only in the folders ticked below, plus his own Documents folder.',
+    what: 'Converts files (Word, Excel, PowerPoint, PDF, pictures, sound, video), reads office files, and makes or changes documents, spreadsheets and slides. Every file he makes or changes is shown on a card first; he never overwrites and backs up before changing. Documents use LibreOffice (or OpenOffice) and sound and video use FFmpeg, found on your replicant matrix or got in Settings, Engines; each runs only while it has a job. He saves only in the folders ticked below, plus his own Documents folder.',
     tools: ['convert_file', 'office_read', 'office_make', 'office_edit']
   },
   security: {
@@ -125,9 +125,9 @@ export function handOffWhy(cfg, id) {
   const label = HANDS[id].label;
   if (!handHere(id)) return `The "${label}" Hand only works on ${HANDS[id].platforms.map((o) => ({ win: 'Windows', mac: 'a Mac', linux: 'Linux' })[o]).join(' and ')}, so it isn't on this replicant matrix.`;
   if (h.enabled && h.held && h[id]?.on) return `Hands are stopped with the Hands switch on the chat page. ${who} can switch them back on there.`;
-  if (!h.enabled && h[id]?.on) return `Hands are off in Settings (the "Let Bob use Hands" switch). ${who} can turn it on in Settings, Show advanced settings, Hands.`;
-  if (!h.enabled) return `Hands are off in Settings. ${who} can turn on "Let Bob use Hands" and "${label}" in Settings, Show advanced settings, Hands.`;
-  return `The "${label}" Hand is off. ${who} can turn it on in Settings, Show advanced settings, Hands.`;
+  if (!h.enabled && h[id]?.on) return `Hands are off in Settings (the "Let Bob use Hands" switch). ${who} can turn it on in Settings, Hands.`;
+  if (!h.enabled) return `Hands are off in Settings. ${who} can turn on "Let Bob use Hands" and "${label}" in Settings, Hands.`;
+  return `The "${label}" Hand is off. ${who} can turn it on in Settings, Hands.`;
 }
 
 // The tool names that belong to Hands that are off right now (brain.toolSchemas hides them; each tool checks again when run).

@@ -12,7 +12,7 @@ import { mergeSettings } from '../src/config.js';
 import { writeZip } from '../src/zip.js';
 import { docTextFrom, docText, zipEntries, rtfText, pdfText, htmlText, DOC_EXT, DocError } from '../src/doc-text.js';
 import { docToolsOn, findInDocuments, findDocsTool, LIMITS } from '../src/my-docs.js';
-import { notesOn, addNote, loadNotes, findNotes, removeNote, notesTool, notesFile, removedFile, stamp } from '../src/notes.js';
+import { notesOn, addNote, loadNotes, findNotes, removeNote, notesTool, notesFile, removedFile, stamp, smartNotesOn, tagFor, sameNote, fittingNotes, notesPrompt, NOTICED } from '../src/notes.js';
 import { sandboxOn, wrapCode, runInSandbox, sandboxTool } from '../src/sandbox-code.js';
 import { sandboxHolds } from '../src/selftools.js';
 import { buildTools } from '../src/tools.js';
@@ -193,6 +193,43 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   check('the search box finds quick notes, not the heading', found.some((h) => h.kind === 'quick' && /vet/.test(h.snippet)) && !search(cfg, { topics: { list: () => [] } }, 'oldest first').some((h) => h.kind === 'quick'));
 }
 
+// ---------- Let Bob notice what's worth noting ----------
+{
+  check('smart notes are off unless turned on, and need quick notes', !smartNotesOn({}) && !smartNotesOn({ smartNotes: true }) && smartNotesOn({ quickNotes: true, smartNotes: true }) && !smartNotesOn({ quickNotes: true, smartNotes: 'yes' }));
+  check('only true turns smart notes on when saved', mergeSettings({}, { smartNotes: 'true' }).smartNotes === false && mergeSettings({}, { smartNotes: true }).smartNotes === true);
+  const brainish = { cfg, notesProject: 'Moon Garden' };
+  const tool = notesTool(brainish);
+  cfg.quickNotes = true;
+  check('off: the tool doesn\'t offer noticed, and doesn\'t ask him to notice', !tool.schema.function.parameters.properties.noticed && !/noticed true/.test(tool.schema.function.description));
+  cfg.smartNotes = true;
+  check('on: the tool asks him to notice what\'s worth keeping and say 📝 Noted', tool.schema.function.parameters.properties.noticed && /decision, a number/.test(tool.schema.function.description) && /📝 Noted/.test(tool.schema.function.description) && /never passwords/.test(tool.schema.function.description));
+  check('a #tag from a project name', tagFor('Moon Garden') === '#MoonGarden' && tagFor('') === '');
+  const before = loadNotes(cfg).length;
+  const r1 = await tool.run({ action: 'add', text: 'The boss fight moves to level 3', noticed: true });
+  const last = loadNotes(cfg).at(-1);
+  check('a note he noticed is marked as his and tagged with the project', last.text.endsWith(`#MoonGarden ${NOTICED}`) && /📝 Noted: The boss fight moves to level 3 #MoonGarden"/.test(r1), `${last.text} | ${r1}`);
+  await tool.run({ action: 'add', text: 'idea: bigger maps #ideas' });
+  check('a note with its own #tag keeps it, and yours aren\'t marked as his', /bigger maps #ideas$/.test(loadNotes(cfg).at(-1).text));
+  const r2 = await tool.run({ action: 'add', text: 'The boss fight moves to level 4', noticed: true });
+  const all = loadNotes(cfg);
+  check('a note that says much the same replaces the old one', all.length === before + 2 && all.some((x) => /level 4/.test(x.text)) && !all.some((x) => /level 3/.test(x.text)) && /in place of the older note/.test(r2), JSON.stringify(all.map((x) => x.text)));
+  check('the old wording is kept in the removed-notes file', /replaced .*level 3/.test(fs.readFileSync(removedFile(cfg), 'utf8')));
+  check('different notes aren\'t merged', !sameNote(cfg, 'buy a new keyboard for the office'));
+  const fit = fittingNotes(cfg, 'where does the boss fight happen now?');
+  check('the notes that fit a message are found', fit.length && /level 4/.test(fit[0].text));
+  check('a #tag named in a message finds its notes', fittingNotes(cfg, 'any ideas for later?').some((x) => /#ideas/.test(x.text)));
+  check('they go in front of him only with the switch on', /From the user's quick notes/.test(notesPrompt(cfg, 'the boss fight')) && notesPrompt({ ...cfg, smartNotes: false }, 'the boss fight') === '');
+  check('nothing unrelated is put in front of him', notesPrompt(cfg, 'what is the weather like') === '');
+  const brain = read('src/brain.js');
+  check('the brain adds fitting notes to what he carries, only with smart notes on', /if \(smartNotesOn\(this\.cfg\)\) \{[\s\S]{0,400}notesPrompt\(this\.cfg, text/.test(brain));
+  const cellar = read('public/cellar.js'), server = read('src/server.js');
+  check('the switch sits under quick notes, off unless turned on', cellar.includes("settings.quickNotes ? sswitch('smartNotes', settings.smartNotes === true, 'Let Bob notice what\\'s worth noting', 'Off unless you turn it on."));
+  check('the server saves and shows it', server.includes("typeof b.smartNotes === 'boolean'") && server.includes('smartNotes: cfg.smartNotes === true'));
+  const help = HELP.find((e) => e.id === 'quick-notes').html;
+  check('Help explains noticing, filing and remembering, and the FAQ is there', /I notice/.test(help) && /I file them/.test(help) && /I remember them/.test(help) && HELP.some((e) => e.id === 'faq-notes-junk'));
+  cfg.smartNotes = false; cfg.quickNotes = false;
+}
+
 // ---------- the sandbox ----------
 {
   check('the sandbox is off unless turned on', !sandboxOn({}) && !sandboxOn({ sandboxCode: 'on' }) && sandboxOn({ sandboxCode: true }));
@@ -237,7 +274,7 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   check('the sandbox has its own group for sums and dates', g.sandbox?.tools.includes('run_in_sandbox') && g.sandbox.words.test('how many days until Christmas') && g.sandbox.words.test('calculate the average'));
   Object.assign(cfg, { quickNotes: false, docTools: false, sandboxCode: false });
   check('guests (other Bobs, Discord channels) never get them', !/take_note|find_in_documents|run_in_sandbox/.test(read('src/share-jobs.js')));
-  check('bob_help lists the three switches', /Let Bob take quick notes: off; Read and search my documents: off; Let Bob work things out in a sandbox: off/.test(settingsNow({ cloud: [] })));
+  check('bob_help lists the three switches', /Let Bob take quick notes: off \(Let Bob notice what's worth noting: off\); Read and search my documents: off; Let Bob work things out in a sandbox: off/.test(settingsNow({ cloud: [] })));
 }
 
 // ---------- settings page, server, Help ----------

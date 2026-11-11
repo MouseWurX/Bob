@@ -8,7 +8,7 @@ import { esc } from './rich.js';
 import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professional mode
 
 export function createPeek({ api, view, cutWith = () => {}, toForge = () => {} }) {
-  let brain = '', data = null, thing = 'total', question = 'Write a haiku about rain, then explain what a prime number is.', asks = [], busy = false, msg = '', askUnload = null, tally = false, showCold = false, scrub = -1, perLayer = false, compare = false;
+  let brain = '', data = null, thing = 'total', question = 'Write a haiku about rain, then explain what a prime number is.', asks = [], busy = false, msg = '', askUnload = null, tally = false, showCold = false, scrub = -1, perLayer = false, compare = false, switchAsk = null;
   const v = () => view() || {};
   const brains = () => (v().brains || []).filter((b) => b.facts?.experts);
   const cur = () => asks[asks.length - 1] || null;
@@ -75,6 +75,17 @@ export function createPeek({ api, view, cutWith = () => {}, toForge = () => {} }
         <label for="peek-scrub">Word by word</label> <input id="peek-scrub" type="range" min="-1" max="${words.length - 1}" value="${scrub}" aria-valuetext="${scrub < 0 ? 'the whole answer' : `word ${scrub + 1}: ${esc(words[scrub]?.text || '')}`}"> <span id="peek-scrub-h" role="status" class="muted">${scrub < 0 ? 'The whole answer.' : `Word ${scrub + 1} of ${words.length}: "${esc(words[scrub]?.text || '')}", ${(words[scrub]?.layers || []).reduce((a, l) => a + l.length, 0)} experts.`}</span>` : ''}
       ${compare && asks.length >= 2 ? compareHtml() : ''}</div>`;
   }
+  // 1.5.20x Turn off unused experts: only for a brain whose router has a bias (gpt-oss).
+  function switchHtml() {
+    const sw = data?.switch;
+    if (!sw?.can) return '';
+    const st = sw.state;
+    return `<div class="lab-check peek-switch"><p><strong>Turn off unused experts</strong>${st ? ` <span class="tag">${st.off.toLocaleString()} switched off</span>` : ''}</p>
+      <p class="muted">This brain's router lets me switch experts off without cutting anything: it never picks them again, in any engine, and the ones it never picks are never read. Only a few kilobytes of the file change, so it takes seconds, and Turn them all back on puts it back exactly as it was. The file stays the same size; Cut these out is what makes it smaller.</p>
+      ${switchAsk ? `<div class="setup-offer" role="alert"><strong>Bob's brain is loaded</strong><span>${esc(switchAsk.names.join(', '))} is loaded. The brain file changes, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-peekswunload>Unload it and go on</button><button type="button" class="link" data-peeksworry>Not now</button></div></div>` : ''}
+      <div class="row"><button type="button" class="get" data-peekswoff ${busy ? 'disabled' : ''}>${st ? 'Turn off these instead' : 'Turn off unused experts'}</button>${st ? `<button type="button" class="link" data-peekswon ${busy ? 'disabled' : ''}>Turn them all back on</button>` : ''}</div>
+      <p class="muted">It uses the same kept experts as Cut these out${cur() && thing === 'live' ? ', from the experts the last question lit up' : ', from the tally'}.</p></div>`;
+  }
   function compareHtml() {
     const a = asks[asks.length - 2], b = asks[asks.length - 1], pct = overlapWords(a.lit, b.lit);
     return `<div class="peek-compare"><div><p class="muted">"${esc(a.question)}"</p><canvas id="peek-map-a" aria-label="Experts the first question used"></canvas></div><div><p class="muted">"${esc(b.question)}"</p><canvas id="peek-map-b" aria-label="Experts the second question used"></canvas></div><div><p class="muted">Both</p><canvas id="peek-map-both" aria-label="Experts both questions used"></canvas></div>
@@ -86,14 +97,14 @@ export function createPeek({ api, view, cutWith = () => {}, toForge = () => {} }
     const things = d?.have ? [['total', 'Everything counted so far'], ...d.things.map((t, i) => [String(i), `${t.name}${t.source === 'peek' ? ' (Peek inside)' : ''}`]), ...(cur() ? [['live', 'The last question']] : [])] : (cur() ? [['live', 'The last question']] : []);
     return `<section class="lab-compare peek" id="lab-peek" aria-labelledby="peek-h" tabindex="-1"><h3 id="peek-h">${nameNow('Peek inside: which experts did you use for that?')}</h3>
       <p class="muted">Shows which experts a brain uses: layers across, experts down. Darker squares do more work; outlined ones did nothing. Ask it a question below to light up the experts it picks, word by word.</p>
-      <fieldset><legend>Which brain?</legend>${list.length ? `<select id="peek-brain" aria-label="Which brain"><option value="">(pick one)</option>${list.map((b) => `<option value="${esc(b.id)}" ${brain === b.id ? 'selected' : ''}>${esc(b.name)} · ${b.facts.experts} experts, ${b.facts.runLayers || b.facts.layers} layers</option>`).join('')}</select>` : '<p>There\'s no mixture-of-experts brain here to peek inside. Get one in Get models (one with "experts" or "A3B" in its name).</p>'}</fieldset>
+      <fieldset><legend>Which brain?</legend>${list.length ? `<select id="peek-brain" aria-label="Which brain"><option value="">(pick one)</option>${list.map((b) => `<option value="${esc(b.id)}" ${brain === b.id ? 'selected' : ''}>${esc(b.name)} · ${b.facts.experts} experts, ${b.facts.engineLayers || b.facts.layers} layers</option>`).join('')}</select>` : '<p>There\'s no mixture-of-experts brain here to peek inside. Get one in Get models (one with "experts" or "A3B" in its name).</p>'}</fieldset>
       ${brain && d ? `${things.length ? `<label for="peek-thing">Show</label> <select id="peek-thing">${things.map(([id, l]) => `<option value="${esc(id)}" ${thing === id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>` : ''}
         ${counts ? `<canvas id="peek-map" class="peek-map" aria-label="The expert map: layers across, experts down"></canvas>` : `<p class="muted">Nothing counted for this brain yet. Run the usage map (Make a brain, step 1, Open the usage map), or ask it a question below with Brain Engine.</p>`}
         ${d.have ? `<p class="muted">Across everything counted: ${d.cold.toLocaleString()} of ${(d.experts * d.layers).toLocaleString()} experts were never used, about ${d.coldShare}% of the brain. That's only for what <em>you</em> tested, so test widely before you cut.</p>` : ''}
         ${layerLines(counts)}
         ${d.have ? `<button type="button" class="link" data-peekcold aria-expanded="${showCold}">Show unused experts</button>${showCold ? `<ul class="tlist peek-layers">${d.perLayer.map((l) => `<li>Layer ${l.layer}: ${l.cold ? l.coldIds.join(', ') : 'none'}</li>`).join('')}</ul>` : ''}` : ''}
         ${liveHtml()}
-        ${d.have || cur() ? `<div class="row"><button type="button" class="link" data-peekcut ${busy ? 'disabled' : ''}>Cut these out</button><button type="button" class="link" data-peekforge ${d.have ? '' : 'disabled'}>Send to the Forge</button></div><p class="muted">Cut these out opens Make a brain with the unused experts ticked to drop${cur() && thing === 'live' ? ' (from the last question)' : ''}. Send to the Forge saves the same list for a Forge plan.</p>` : ''}` : ''}
+        ${d.have || cur() ? `<div class="row"><button type="button" class="link" data-peekcut ${busy ? 'disabled' : ''}>Cut these out</button><button type="button" class="link" data-peekforge ${d.have ? '' : 'disabled'}>Send to the Forge</button></div><p class="muted">Cut these out opens Make a brain with the unused experts ticked to drop${cur() && thing === 'live' ? ' (from the last question)' : ''}. Send to the Forge saves the same list for a Forge plan.</p>${switchHtml()}` : ''}` : ''}
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
     </section>`;
   }
@@ -111,13 +122,27 @@ export function createPeek({ api, view, cutWith = () => {}, toForge = () => {} }
   }
   async function click(b, redraw) {
     const d = b.dataset;
-    if (!('peekask' in d || 'peekoff' in d || 'peekclear' in d || 'peekcold' in d || 'peekcut' in d || 'peekforge' in d || 'peekunload' in d || 'peeknounload' in d || 'peekcompare' in d)) return false;
+    if (!('peekask' in d || 'peekoff' in d || 'peekclear' in d || 'peekcold' in d || 'peekcut' in d || 'peekforge' in d || 'peekunload' in d || 'peeknounload' in d || 'peekcompare' in d || 'peekswoff' in d || 'peekswon' in d || 'peekswunload' in d || 'peeksworry' in d)) return false;
     msg = '';
     if ('peekcold' in d) { showCold = !showCold; return 'draw'; }
     if ('peekclear' in d) { asks = []; thing = 'total'; scrub = -1; compare = false; return 'draw'; }
     if ('peeknounload' in d) { askUnload = null; return 'draw'; }
     if ('peekcompare' in d) { compare = !compare; return 'draw'; }
     if ('peekforge' in d) { toForge(data?.keepFile || ''); return true; }
+    if ('peeksworry' in d) { switchAsk = null; return 'draw'; }
+    if ('peekswoff' in d || 'peekswon' in d || 'peekswunload' in d) {
+      const back = 'peekswon' in d || switchAsk?.back === true;
+      try {
+        busy = true; redraw();
+        const live = cur();
+        const res = await api('/api/lab/peek/switch', { brain, back, unload: 'peekswunload' in d, ...(!back && thing === 'live' && live ? { counts: live.counts } : {}) });
+        busy = false;
+        if (res.needUnload) { switchAsk = { names: res.names, back }; return 'draw'; }
+        switchAsk = null;
+        if (data) data.switch = res.switch;
+      } catch (e) { busy = false; switchAsk = null; msg = e.message; }
+      return 'draw';
+    }
     try {
       if ('peekcut' in d) { const live = cur(); const k = await api('/api/lab/peek/keep', { brain, ...(thing === 'live' && live ? { counts: live.counts } : {}) }); cutWith({ brain, file: k.file, experts: k.experts }); return true; }
       if ('peekask' in d || 'peekoff' in d || 'peekunload' in d) {

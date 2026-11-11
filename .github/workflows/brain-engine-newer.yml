@@ -1,0 +1,111 @@
+# Once a week: is there a newer llama.cpp, and do Brain Engine's patches go on it and build? (app/engine/try-newer.sh)
+# It never builds a release and never changes Bob. When the patches go on and the Linux build passes, it opens one
+# issue, "New Brain Engine ready on llama.cpp bNNNN - rebuild it?", with the moved patches attached as a download.
+# The owner answers there (or in chat); moving Bob onto it is a normal change (app/engine/README.md).
+# A later week edits that same open issue instead of opening another, and a week when a patch needs a hand says so in
+# the same issue. The run itself stays green either way, so it never sends a failed-build email.
+name: Brain Engine newer llama.cpp check
+
+on:
+  schedule:
+    - cron: '17 9 * * 1' # Mondays
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'llama.cpp tag to try (empty = the newest)'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: brain-engine-newer
+  cancel-in-progress: true
+
+jobs:
+  try:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write # the one "new Brain Engine ready" issue
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Try the patches on the newest llama.cpp
+        id: try
+        shell: bash
+        run: |
+          set +e
+          bash app/engine/try-newer.sh "${{ inputs.tag }}" try-newer | tee try.log
+          code=${PIPESTATUS[0]}
+          set -e
+          grep '^result' try.log | sed 's/^result\.\{0,1\}\([a-z]*\)=/\1=/; s/^=/result=/' >> "$GITHUB_OUTPUT"
+          if [ "$code" != 0 ] && [ "$code" != 3 ] && [ "$code" != 4 ]; then echo "result=broken" >> "$GITHUB_OUTPUT"; fi
+      - name: Build it (Linux, the same settings as the Brain Engine build)
+        id: build
+        if: steps.try.outputs.result == 'applied'
+        continue-on-error: true
+        working-directory: try-newer/llama.cpp
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON
+          cmake --build build -j4 --target llama-server llama-bench llama-gguf-split ggml-rpc-server llama-diffusion-cli
+          cmake -B build-cv -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
+          cmake --build build-cv -j4 --target llama-cvector-generator llama-export-lora
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.try.outputs.result == 'applied'
+        with:
+          name: brain-engine-patches-${{ steps.try.outputs.new }}
+          path: try-newer/patches/
+      - name: Tell the owner (one open issue, edited each week)
+        continue-on-error: true # GitHub being busy must not turn the run red
+        if: steps.try.outputs.result == 'applied' || steps.try.outputs.result == 'needs-a-hand'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ steps.try.outputs.result }}
+          BUILT: ${{ steps.build.outcome }}
+          OLD: ${{ steps.try.outputs.old }}
+          NEW: ${{ steps.try.outputs.new }}
+          PATCH: ${{ steps.try.outputs.patch }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          label=brain-engine-newer
+          gh label create "$label" --color 5319e7 --description "Weekly check: Brain Engine on a newer llama.cpp" -R "$GITHUB_REPOSITORY" 2>/dev/null || true
+          if [ "$RESULT" = applied ] && [ "$BUILT" = success ]; then
+            title="New Brain Engine ready on llama.cpp $NEW - rebuild it?"
+            body="Brain Engine's patches go onto llama.cpp **$NEW** (Bob is on $OLD now) and the Linux build passed.
+
+          The moved patches are in the run's downloads: $RUN
+
+          Say **rebuild it** and Bob moves onto $NEW: the patches and \`bundledLlamaTag\` change, the Brain Engine build runs on Windows and Linux, then the PC test, then a Bob release with the new engine pinned. Nothing changes until then."
+          elif [ "$RESULT" = applied ]; then
+            title="Brain Engine on llama.cpp $NEW: patches go on, the build needs a hand"
+            body="Brain Engine's patches go onto llama.cpp **$NEW** (Bob is on $OLD now), but the Linux build stopped. What it said: $RUN
+
+          Nothing changes in Bob. Next week's check tries the newest llama.cpp again."
+          else
+            title="Brain Engine on llama.cpp $NEW: $PATCH needs a hand"
+            body="\`$PATCH\` doesn't go onto llama.cpp **$NEW** on its own (Bob is on $OLD now). Details: $RUN
+
+          Nothing changes in Bob. Moving it over by hand is in app/engine/README.md."
+          fi
+          body="$body
+
+          _This issue is kept up to date by the weekly Brain Engine check. Close it when you're done with it._"
+          n=$(gh issue list -R "$GITHUB_REPOSITORY" --label "$label" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$n" ]; then
+            gh issue edit "$n" -R "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          else
+            gh issue create -R "$GITHUB_REPOSITORY" --label "$label" --title "$title" --body "$body"
+          fi
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Brain Engine newer llama.cpp check"
+            echo "- Bob is on: ${{ steps.try.outputs.old }}"
+            echo "- Newest tried: ${{ steps.try.outputs.new }}"
+            echo "- Patches: ${{ steps.try.outputs.result }} ${{ steps.try.outputs.patch }}"
+            echo "- Linux build: ${{ steps.build.outcome }}"
+          } >> "$GITHUB_STEP_SUMMARY"
