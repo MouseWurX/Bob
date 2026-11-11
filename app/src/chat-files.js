@@ -197,7 +197,7 @@ export function bringIn(cfg, convs, picks, now = Date.now()) {
 // ---- Sharing a chat: a tidy page or picture to send someone ----
 // Names, folders, machine names, home network addresses and keys are taken out first, plus any words the owner adds.
 // The window shows the result before anything is saved; the picture is drawn by the window from the same words.
-// The folders of a path go; its file name stays. Windows folders may have spaces in them ("C:\Unreal Projects\...").
+// The folders of a path go; its file name stays. Windows folders may have spaces in them ("C:\My Projects\...").
 const WIN_PATH = /\b[A-Za-z]:\\(?:[^\\\n"'<>|*?:]*\\)*/g;
 const UNC_PATH = /\\\\[^\\\s"'<>|]+\\(?:[^\\\n"'<>|*?:]*\\)*/g;
 const NIX_PATH = /(?<![\w.~])(?:~|\/(?:home|Users|root|mnt|media|Volumes|storage|sdcard|data|var|opt|srv|tmp))(?:\/[^/\s"'<>|]+)*\//g;
