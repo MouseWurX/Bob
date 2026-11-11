@@ -540,6 +540,73 @@ for (const f of ['public/lab-watch-math.js', 'public/lab-watch.js', 'public/watc
   check('Help explains dials and before and after, with an FAQ and a glossary entry', /<strong>Dials: turn a part up or down\.<\/strong>/.test(help) && /<strong>Before and after\.<\/strong>/.test(help) && /id: 'faq-aifeui-dials'/.test(help) && /<dt>Dial<\/dt>/.test(help));
 }
 
+// ---- the weight map and the difference map (src/lab-weights.js): the brain file's own weights, read without an engine ----
+{
+  const { unpackRow, weightMap, changeMap, shade, planOf, sampleRows, ROWS, WEIGHTS_FORMAT } = await import('../src/lab-weights.js');
+  const { weightsFor } = await import('../src/lab-watch.js');
+  const { writeGgufFrom } = await import('../src/lab-gguf.js');
+  // one block of each packed kind, with what llama.cpp's own gguf-py unpacks it to (sum, sum of squares, first four)
+  const BLOCKS = [
+    [2, 'c22ae5f1a94106a0956a26afbccdafe562f9', 0.316772, 1.99017, [-0.158386, -0.369568, 0.0527954, -0.369568]],
+    [6, '503193c64551370e99b2d74c3427fa48d732a1df70ac', -8.4668, 80.837, [1.16211, 2.32422, -1.16211, -2.32422]],
+    [8, '7a2b59015e19a621f9bd0ccc21397c1ec795ca7748dc03d17a88934d85527357a2e6', 10.8644, 662.907, [5.19855, 0.0584106, 5.4906, 1.46027]],
+    [10, '92c58efd5185f0711ef7677a1f132a818d882195a100b28d6b236b82481bd9fe630dc3ce3be4ebcab72f45b35223479f6e794d57037e2cfde9e15a7789781e3721a557d8e5a703296dcb81db3f65cf9c4c24e72e', -161.382, 188.085, [-0.937073, -0.970642, -0.937073, -0.937073]],
+    [11, '8fc83f0bfe4363f82f4759778955f6ced681cbea7179ced2c8f814a13472ff70ce369d8385452a44f318337f08cd1e614f235d3f83bc45fee9ee0403a79be118544441317c9311f85e0429b19f7ec0e156f65a3322e791b880ee995e3f0d307d2fbaf400693a179e0d027ed4ca2b', 9.0061, 2700.43, [-0.121704, 0.121704, -0.0608521, -0.182556]],
+    [12, 'd02fff2feb6603f7b2725de11fe6ac2f88a68182869793f0aad6ded8116e3ab51681c4a374fec70a68b3e4bdc92b387987416c17ec90963ec766888ab4b80eba7c5cfd81121bea9cee1810dfd5169faf26cd7b5c30c8aba44d972299e8c7b41b9a1d2b0f180600a974d63b6332202c998e82b2522c49c4394c7d73265b6aaf61b288fbd0aecfa766616223611e764c93', 7410.36, 427592, [35.7452, 25.2472, -0.997925, 4.2511]],
+    [13, 'ac29b231b8fa197271be53a3442b128cdad72bad0f8aeef42a0b9a26d74fc78f2562b8701097a55b5510543d27ed600de3200a6749307fd37899c118819af6674394c3f7aa5f93f32c810a37ca7bf1013ccdf8ab8ab4a6039954e84cbe3b3f7f1183c3df8375c517b4e786a9aadf7488f892b12191387ad86aca56d8531c927b931fe8f16e795b9b331767e712dbe8f5331dd9917f01e64710dd3c25f4d21690a049453135550ec0193a8bed1783d53e', 5366.57, 235013, [-1.27661, 30.9822, 55.7966, 48.3523]],
+    [14, 'c944658d79a131f8130b3ea4bd2f5d95e57bd791436d840f4e6654608135bbfb885d346959a49b36402a4f3dcc489fb6511fbe09e5d72bf834e04fe028ca4991e02abd77279fedc206d2318ca8b8287a6f4b795209575d7277d456c0f6e81a0e584d730660f56bb8b588475f7066c1cd7109c5079a933ee857db751ff223726ad90697f749f7c61bd80163a8c9a356ba91d79f6d24ee3a14ebd41386d8faef6e9e6c70df41dba9aeb5301e5824b7db0e504f1d970686934768f005af0d5a23ddb465fc5a489b43e76ea3e384969be487d931', 2546.47, 2.14389e+07, [97.2173, -55.5527, -291.652, -402.757]]
+  ];
+  const near = (a, b) => Math.abs(a - b) <= 1e-4 * Math.max(1, Math.abs(b));
+  const bad = BLOCKS.filter(([t, hex, sum, sq, first]) => { const y = unpackRow(Buffer.from(hex, 'hex'), t, t >= 10 ? 256 : 32); let s = 0, q = 0; for (const v of y) { s += v; q += v * v; } return !(near(s, sum) && near(q, sq) && first.every((v, i) => near(y[i], v))); });
+  check('the weight map unpacks Q4_0, Q5_0, Q8_0 and Q2_K to Q6_K exactly as llama.cpp does', bad.length === 0, bad.map((b) => b[0]).join(','));
+  check('the rows read are spread evenly and are the same in every brain of that shape', JSON.stringify(sampleRows(16, 8, 4)) === '[17,19,21,23]' && sampleRows(0, 3).length === 3 && ROWS === 8);
+
+  // a made-up brain: 2 floors of 4 experts, each expert's numbers all (e + 1) * (floor + 1); F32 so it's exact
+  const W = 32, R = 8;
+  const make = async (file, n, val) => {
+    const tensors = [];
+    for (let L = 0; L < 2; L++) for (const k of ['gate', 'up', 'down']) {
+      const f = new Float32Array(W * R * n); for (let e = 0; e < n; e++) f.fill(val(L, e), e * W * R, (e + 1) * W * R);
+      const buf = Buffer.from(f.buffer); tensors.push({ name: `blk.${L}.ffn_${k}_exps.weight`, dims: [W, R, n], type: 0, bytes: buf.length, data: async () => buf });
+    }
+    await writeGgufFrom(file, { kvs: [{ key: 'general.architecture', type: 8, value: 'qwen3moe' }, { key: 'qwen3moe.block_count', type: 4, value: 2 }, { key: 'qwen3moe.expert_count', type: 4, value: n }], tensors });
+  };
+  const wd = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-weights-'));
+  const A = path.join(wd, 'a.gguf'), B = path.join(wd, 'b.gguf'), C = path.join(wd, 'cut-Q4_K_M.gguf');
+  await make(A, 4, (L, e) => (e + 1) * (L + 1));
+  await make(B, 4, (L, e) => (e + 1) * (L + 1) * (L === 1 && e === 2 ? 1.5 : 1));
+  await make(C, 3, (L, e) => ([0, 2, 3][e] + 1) * (L + 1)); // a cut keeping experts 0, 2 and 3
+  const shape = { kind: 'experts', experts: 4, layers: 2 };
+  const wm = await weightMap(A, shape);
+  check('the weight map is each expert\'s strength, floor by floor', wm.format === WEIGHTS_FORMAT && wm.kind === 'weights' && wm.layers.length === 2 && wm.layers.every((fl, L) => fl.every((v, e) => near(v, (e + 1) * (L + 1)))) && wm.read === 2 * 4 * 3 * ROWS);
+  const sh = shade(wm);
+  check('strength is shaded against the other experts on the same floor', sh.every((fl) => near(fl[0], 0) && near(fl[3], 1) && fl[1] < fl[2]));
+  const cm = await changeMap(B, A, shape);
+  check('the difference map finds the one expert that changed, and by how much', near(cm.layers[1][2], 0.5) && cm.layers.flat().filter((v) => v > 1e-9).length === 1 && shade(cm)[1][2] === 1 && shade(cm)[0][0] === 0);
+  const ck = await changeMap(C, A, { kind: 'experts', experts: 3, layers: 2 }, { keep: { experts: 4, layers: [[0, 2, 3], [0, 2, 3]] } });
+  check('a cut brain is lined up with the brain it came from through its keep list', ck.layers.flat().every((v) => v === 0));
+  let threw = ''; try { await changeMap(C, A, { kind: 'experts', experts: 3, layers: 2 }); } catch (e) { threw = e.message; }
+  check('two brains that aren\'t built alike are refused in plain words', /aren't built alike/.test(threw));
+  check('a brain without experts is mapped by neuron groups, like its trace', (() => { const g = { tensors: [{ name: 'blk.0.ffn_up.weight', dims: [16, 512], type: 0, offset: 0 }, { name: 'blk.0.ffn_down.weight', dims: [512, 16], type: 0, offset: 0 }] }; const p = planOf(g, { kind: 'neurons', experts: 256, layers: 1 }); return p[0].length === 256 && p[0].every((v) => v.length === 1 && v[0].rows.length === 2) && p[0][255][0].rows[1] === 511; })());
+  // the route's helper, with the keep list beside the cut brain and the map kept for a second look
+  fs.writeFileSync(path.join(wd, 'cut-keep.json'), JSON.stringify({ experts_before: 4, layers: [[0, 2, 3], [0, 2, 3]] }));
+  const brains = [{ id: 'a', name: 'Stock', gguf: A }, { id: 'c', name: 'Cut', gguf: C }];
+  const fakeLab = { cfg: { dataDir: wd }, brains: () => brains };
+  const r1 = await weightsFor(fakeLab, { brain: 'c', vs: 'a', kind: 'experts', experts: 3, layers: 2 });
+  check('the difference map of a cut brain uses the keep list beside it, and says what it compared with', r1.kind === 'change' && r1.vs === 'Stock' && r1.raw.flat().every((v) => v === 0));
+  const kept = fs.readdirSync(path.join(wd, 'lab', 'watch', 'c'));
+  const r2 = await weightsFor(fakeLab, { brain: 'c', vs: 'a', kind: 'experts', experts: 3, layers: 2 });
+  check('a map is kept beside the scans and isn\'t taken for a scan', kept.some((f) => /^weightmap-a-experts\.json$/.test(f)) && JSON.stringify(r2.raw) === JSON.stringify(r1.raw) && listRecordings({ dataDir: wd }, brains[1]).length === 0);
+  let why = ''; try { await weightsFor(fakeLab, { brain: 'a', vs: 'a', kind: 'experts', experts: 4, layers: 2 }); } catch (e) { why = e.message; }
+  let why2 = ''; try { await weightsFor(fakeLab, { brain: 'a', kind: 'heads', experts: 4, layers: 2 }); } catch (e) { why2 = e.message; }
+  check('a brain against itself, and a scan of attention heads, are turned down in plain words', /always the same as itself/.test(why) && /expert or neuron scan/.test(why2));
+  fs.rmSync(wd, { recursive: true, force: true });
+  const view = read('public/watch-view.js'), js = read('public/watch.js'), html = read('public/watch.html'), help = read('public/help-content.js'), srv = read('src/lab-watch.js');
+  check('the viewer colours by the weights on request, with a colour-blind-safe ramp and a key that says what low and high mean', /How strong each expert\\'s weights are/.test(js) && /How much each expert differs from another brain/.test(js) && /'\/api\/lab\/watch\/weights'/.test(js) && /viridis/.test(view) && /if \(key && heat\)/.test(view) && html.includes('id="watchByVs"') && /role="status"/.test(html.match(/<p id="watchBySays"[^>]*>/)[0]));
+  check('the weight maps are read only on this replicant matrix itself', srv.indexOf("'/api/lab/watch/weights'") > srv.indexOf('if (!isLocal)'));
+  check('Help explains the weight map and the difference map, with an FAQ and a glossary entry', /<strong>Weight map and difference map\.<\/strong>/.test(help) && /id: 'faq-aifeui-weights'/.test(help) && /<dt>Weight map<\/dt>/.test(help));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 fs.rmSync(tmp, { recursive: true, force: true });
 process.exit(fail ? 1 : 0);

@@ -4,6 +4,34 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.200
+
+A new Brain Engine comes with this Bob: the cube now works for brains without experts, and card sharing over Wi-Fi re-sends almost nothing on a reload. And FNRI can colour a brain by its own weights, or by what changed from another brain.
+
+### A new Brain Engine, with Bob
+
+- **Bob now points at the rebuilt Brain Engine** (same release name, brain-engine-b12032, new files). Right after you update Bob, the matching Brain Engine downloads by itself, beside the one you have. Go back in Settings, Engines puts the old one back.
+- **The cube for brains without experts (like Qwen3 4B).** The old build dropped their whole trace once a prompt was longer than one step of reading, which every real chat is. With this build the cube lights for them too. Mixture-of-experts brains were never affected.
+- **Card sharing over Wi-Fi re-sends almost nothing on a reload.** When a brain spread over another Bob's card loads a second time, only what's missing goes over the network. The first load is the same as before. The original sharing protocol is kept, and nothing else on your network is touched.
+- **On Bob 1.5.196 to 1.5.199:** they keep the Brain Engine they have. A fresh Get Brain Engine there downloads this new build, checks it against its published checksum and installs it normally. They don't try again and again.
+
+### FNRI: weight map and difference map
+
+- **Weight map.** In FNRI's viewer, **Colour by** has **How strong each expert's weights are**. Every block is coloured from dark blue (weaker than the rest of its floor) to yellow (stronger), read straight from the brain file. The glow still shows what the brain used, so you can watch thinking run over the weights.
+- **Difference map.** **How much each expert differs from another brain** colours every block by how far its weights moved from a brain you pick. Pick the one it was made from: a cut brain lines up with it through its keep list, so you see what healing changed and where.
+- Both read a few rows of every block from the files, with no engine and no graphics card, and change nothing. A big brain takes about a minute the first time. After that the map is kept beside the scans. They read Q2_K to Q8_0, F16 and BF16 files (not the IQ kinds yet), and work on expert and neuron scans. Where it works: Windows, Mac and Linux, wherever the Lab runs. Android's Bob doesn't have the Lab. Tests in `test/run-lab-watch-test.js`.
+
+### Three new switches in How Bob works (all off until you want them)
+
+- **Let Bob take quick notes.** Say "note:" anywhere you talk to me (this window, the phone, Discord DMs) and I write it down, with the date and time, in one file. **Open my notes** shows it. My search box finds notes too. A note I remove is copied to the archive first. Help: Quick notes.
+- **Read and search my documents.** I read Word, Excel, PowerPoint, OpenDocument, PDF, RTF and e-books with nothing extra installed (no LibreOffice), and find which file in Documents, Desktop or Downloads says what. Nothing leaves this replicant matrix, and secret and hidden files are skipped. A scanned PDF has no words in it; attach a page as a picture instead. Help: Read and search my documents.
+- **Let Bob work things out in a sandbox.** When you ask for a sum, I work it out exactly in a locked, empty folder with no internet, no programs and none of your files, instead of guessing. It only switches on where the sandbox really holds on this replicant matrix, and the switch says how the internet is kept out here. Help: Sandbox.
+- None of the three is offered to other Bobs or Discord channels. Tests in `test/run-desk-tools-test.js`.
+
+### Pictures
+
+- **FNRI's cube in the README:** a short recording of stock Qwen3.6-35B-A3B answering, its experts glowing in the cube.
+
 ## 1.5.199
 
 Help is tidier, and the Lab's tests and methods have their proper names.
