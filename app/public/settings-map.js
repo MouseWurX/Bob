@@ -17,7 +17,7 @@ export const CARDS = [
   { id: 'how', icon: '⚡', name: 'How Bob works', about: 'Sessions, plans, notes, start-up and check-ins.', topics: ['ev-how', 'adv-checkins'] },
   { id: 'brains', icon: '🧠', name: 'Brains and speed', about: 'Which brain does what, memory and engines.', topics: ['adv-brains', 'adv-speed', 'adv-engines'] },
   { id: 'net', icon: '🌐', name: 'My other Bobs', about: 'Bob-Net, your phone and sharing brains.', topics: ['adv-bobnet'] },
-  { id: 'online', icon: '☁', name: 'Online and other apps', about: 'Cloud helpers, Telegram, Discord, rented brains, ComfyUI.', topics: ['adv-online', 'adv-apps'] },
+  { id: 'online', icon: '☁', name: 'Online and other apps', about: 'Cloud helpers, Telegram, Discord, rented brains, ComfyUI, other apps.', topics: ['adv-online', 'adv-apps'] },
   { id: 'may', icon: '✋', name: 'What Bob may do', about: 'Files, programs, apps and the tools he made.', topics: ['adv-hands', 'ev-howtos'] },
   { id: 'fun', icon: '🎲', name: 'Fun', about: 'Adventure and games.', topics: ['adv-adventure', 'adv-games'] },
   { id: 'pc', icon: '💻', name: 'This replicant matrix', about: 'Updates, folders, tidying up and removing Bob.', topics: ['ev-pc', 'ev-projects', 'ev-home', 'ev-save', 'adv-housekeeping', 'adv-remove'] }

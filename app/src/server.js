@@ -79,6 +79,7 @@ import { saveHelpBundle, bundleBytes, revealFile } from './help-bundle.js';
 import { notesFile, ensureNotesFile } from './notes.js';
 import { clearDocCache } from './my-docs.js';
 import { sandboxHolds } from './selftools.js';
+import { makeAppsRoute, appsDoorView, saveAppsDoor } from './apps-door.js'; // Let other apps use Bob's brains (/v1)
 
 const cfg = loadConfig();
 // 1.5.76: the basic llama.cpp that comes inside Bob's download goes into his engine folder, if he has none yet.
@@ -123,6 +124,7 @@ function broadcast(ev) {
 }
 
 const brain = new Brain(cfg, broadcast);
+const appsRoute = makeAppsRoute({ brain, cfg, version: VERSION.label || String(VERSION) });
 if (cfg.engineMoved?.length) brain.log('settings', `brains now run on ${cfg.llamacpp.brainEngine !== false && brainsEngineNow(cfg) === 'brainengine' ? 'Brain Engine' : 'my own llama.cpp'} (was set to ${cfg.engineMoved.join(' and ')}; Brain Engine is the only engine for my brains now)`); // 1.5.196
 // 1.5.97 Pair with my other Bobs (src/bob-net-pair.js): find them on Tailscale, a Yes card there, passcodes swapped.
 const pairing = new Pairing(cfg, { broadcast, log: (k, t) => brain.log(k, t), version: VERSION, ownAddresses: () => tailscaleIps().map((ip) => `${ip}:${cfg.port}`), vouched: (a, t) => introductions.vouched(a, t) });
@@ -280,6 +282,9 @@ const server = http.createServer(async (req, res) => {
     if (!isLocal && !isRemote) return send(res, 403, { error: 'bad host' });
     const url = new URL(req.url, `http://${req.headers.host}`);
     const p = url.pathname;
+    // Let other apps use Bob's brains (src/apps-door.js): /v1 for VS Code, OpenCode and scripts. Off unless switched on;
+    // apps carry Bob's key instead of the phone's cookie, and come from another device only with that switch on too.
+    if (p === '/v1' || p.startsWith('/v1/')) { await appsRoute({ req, res, p, remote: isRemote }); return; }
 
     // 1.5.97 Bob-Net pairing: the other Bob doesn't know the passcode yet, so these four come before the passcode check.
     // They only reach through the open door (Tailscale only), and the passcode is handed over only after your Yes here.
@@ -494,6 +499,16 @@ const server = http.createServer(async (req, res) => {
       const r = await changeRule(cfg.port, { add: b.add !== false, exe: process.versions.electron ? process.execPath : '', home: firewallHome(cfg, remoteHome) });
       brain.log('settings', `firewall rule ${b.add !== false ? 'add' : 'remove'} (your click): ${r.ok ? 'done' : r.why}`);
       return send(res, 200, { ...r, firewall: await firewallState(cfg.port, { home: firewallHome(cfg, remoteHome) }).catch(() => null) });
+    }
+    // Let other apps use Bob's brains (Settings, Other apps). Only from this PC: the key is shown here and nowhere else.
+    if (p === '/api/apps-door' && (req.method === 'GET' || req.method === 'POST')) {
+      if (!isLocal) return send(res, 403, { error: 'The door for other apps can only be changed on this replicant matrix itself.' });
+      const view = () => ({ ...appsDoorView(cfg, { ownAddresses: [...ownTsHosts()] }), cli: path.join(appDir.replace(/app\.asar(?=$|[\\/])/, 'app.asar.unpacked'), 'installer', process.platform === 'win32' ? 'bob.cmd' : 'bob.sh') });
+      if (req.method === 'GET') return send(res, 200, view());
+      const b = await body(req);
+      const now = saveAppsDoor(cfg, b);
+      brain.log('settings', `other apps: ${now.enabled ? 'on' : 'off'}${now.network ? ', other devices too' : ''}${b.newKey === true ? ', new key' : ''}`);
+      return send(res, 200, view());
     }
     // Share brains between your Bobs (src/share-brains.js). Settings only from this PC; lending only through the phone door.
     if (p === '/api/share-brains' && (req.method === 'GET' || req.method === 'POST')) {
