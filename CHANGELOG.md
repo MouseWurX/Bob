@@ -4,6 +4,17 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.200
+
+The Lab's Trainer pack now installs on Windows with Smart App Control on.
+
+### Fixed
+
+- **Lab, Teach it: the Trainer pack no longer stops at "Get Python" on Windows.** It used to make a Python venv, and the venv's python.exe is an unsigned launcher. Smart App Control blocked it ("An Application Control policy has blocked this file", os error 4551), so Teach it and Best answers couldn't teach anything here. On Windows the trainer now runs from its own private copy of Bob's signed Python (the Python Software Foundation's package, the one Bob's voices already use), and the training libraries are installed into that copy only. Mac and Linux keep their venv as before. A Trainer pack from an older Bob on Windows shows as not installed, so press Get it once more.
+- **Plain words when Windows blocks a program:** if Smart App Control blocks anything while the trainer installs or teaches, Bob says so, changes no security setting, and points to Try again or Teach it rented. Tests in `test/run-lab-pages-test.js`.
+
+**Where it works:** the fix is for Windows. Mac and Linux are unchanged. Android and the Raspberry Pi still teach rented.
+
 ## 1.5.199
 
 Help is tidier, and the Lab's tests and methods have their proper names.

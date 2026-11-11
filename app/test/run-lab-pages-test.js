@@ -11,7 +11,7 @@ import { ggufInfo } from '../src/gguf.js';
 import { meter, fitLines, fitsAnswer, ladderSizes, keptFrom, squeezeOf, GiB, STOPS } from '../public/lab-context-math.js';
 import { haystack, found, contextView, planContext, startContext, useContext, contextSaw, forgetTurns, FORGET_FACTS } from '../src/lab-context.js';
 import { draftsFor, planTurbo, startTurbo, useTurbo, bestGuess, turboSaw, turboView } from '../src/lab-turbo.js';
-import { teachFit, SQUEEZE_TYPES, lessonsPerHour, teachDiskGB, readBrainSource, readLessonSource, planTeach, saveTeachPlan, startTeach, useTaught, trainerState, startTrainerInstall, removeTrainer, uvUrl, FIT_ROWS, TRAINER } from '../src/lab-teach.js';
+import { teachFit, SQUEEZE_TYPES, lessonsPerHour, teachDiskGB, readBrainSource, readLessonSource, planTeach, saveTeachPlan, startTeach, useTaught, trainerState, startTrainerInstall, removeTrainer, blockedWords, uvUrl, FIT_ROWS, TRAINER } from '../src/lab-teach.js';
 import { TEACH_PY, FETCH_PY } from '../src/lab-teach-script.js';
 import { pagesRoute } from '../src/lab-pages.js';
 import { LlamaCpp } from '../src/llamacpp.js';
@@ -223,7 +223,8 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
       return '';
     },
     download: async (url, out) => { fs.mkdirSync(path.dirname(out), { recursive: true }); fs.writeFileSync(out, ''); return 1; },
-    quiz: async (l, gguf) => ({ score: /before/.test(gguf) || gguf === bigFile ? 50 : 62, tps: 30 })
+    quiz: async (l, gguf) => ({ score: /before/.test(gguf) || gguf === bigFile ? 50 : 62, tps: 30 }),
+    ownPython: async () => { const d = path.join(tmp, 'own-python'); fs.mkdirSync(path.join(d, 'Lib'), { recursive: true }); fs.writeFileSync(path.join(d, 'python.exe'), 'signed'); return path.join(d, 'python.exe'); }
   });
   lab.hfFetch = async () => ({ ok: true, status: 200, json: async () => ({ cardData: { license: 'apache-2.0' }, safetensors: { total: 4.0e9 }, siblings: [{ rfilename: 'model.safetensors' }] }) });
   lab.gpuInfo = async () => ({ name: 'NVIDIA GeForce RTX 5070 Ti', vramGB: 16 });
@@ -232,7 +233,10 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
   check('the Trainer pack isn\'t here until it\'s fetched', !trainerState(cfg).ok && trainerState(cfg).dir === tr && uvUrl('win', 'x64').endsWith(`/${TRAINER.uv}/uv-x86_64-pc-windows-msvc.zip`));
   await startTrainerInstall(lab); await wait(lab);
   const irun = lab.runs[lab.runs.length - 1];
-  check('getting the Trainer pack is its own Lab job: uv, Python, the libraries (pinned), the converters', irun.state === 'done' && trainerState(cfg).ok && calls.some(([, a]) => a[0] === 'pip' && a.includes('torch==2.14.1')) && calls.some(([, a]) => a[0] === 'venv' && a.includes(TRAINER.python)), irun.error || '');
+  check('getting the Trainer pack is its own Lab job: uv, Python, the libraries (pinned), the converters', irun.state === 'done' && trainerState(cfg).ok && calls.some(([, a]) => a[0] === 'pip' && a.includes('torch==2.14.1')) && !calls.some(([, a]) => a[0] === 'venv'), irun.error || '');
+  const signedPy = path.join(tr, 'python-signed', 'python.exe');
+  check('on Windows the trainer runs from a private copy of Bob\'s own signed Python, not a venv (Smart App Control blocks the venv launcher)', trainerState(cfg).python === signedPy && fs.readFileSync(signedPy, 'utf8') === 'signed' && calls.some(([, a]) => a[0] === 'pip' && a[a.indexOf('--python') + 1] === signedPy));
+  check('a Smart App Control block is said in plain words, with no security change', /Smart App Control blocked/.test(blockedWords(new Error('An Application Control policy has blocked this file. (os error 4551)')).message) && /doesn't change Windows security/.test(blockedWords(new Error('os error 4551')).message) && blockedWords(new Error('other')).message === 'other');
   calls.length = 0;
   const res = await startTeach(lab, { name: 'Taught Big', brain: { kind: 'lab', id: 'big' }, lessons: { kind: 'set', id: 'my-set' } });
   await wait(lab);
@@ -256,6 +260,10 @@ check('speed is honest: about 2,000 lessons an hour for a 4B brain, fewer for bi
   check('a run that doesn\'t fit here won\'t start here', await startTeach(lab, { name: 'Huge', brain: { kind: 'hf', repo: 'Qwen/Qwen3-4B' }, lessons: { kind: 'set', id: 'my-set' }, where: 'rented' }).then(() => false, (e) => /goes rented/.test(e.message)));
   removeTrainer(lab);
   check('the Trainer pack can be removed, and only from its own folder', !fs.existsSync(tr) && !trainerState(cfg).ok);
+  lab.platform = () => ({ os: 'linux', arch: 'x64' }); calls.length = 0;
+  await startTrainerInstall(lab); await wait(lab);
+  check('on Linux and Mac it makes its own venv with uv\'s Python, as before', lab.runs[lab.runs.length - 1].state === 'done' && calls.some(([, a]) => a[0] === 'venv' && a.includes(TRAINER.python)) && trainerState(cfg, { os: 'linux', arch: 'x64' }).python === path.join(tr, 'venv', 'bin', 'python'), lab.runs[lab.runs.length - 1].error || '');
+  removeTrainer(lab);
 }
 
 // ---- the route ----
