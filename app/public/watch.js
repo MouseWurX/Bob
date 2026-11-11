@@ -12,7 +12,7 @@ applySavedStyle();
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const still = () => document.body.classList.contains('still') || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+const still = () => document.body.classList.contains('still');
 const view = createView($('watchCanvas'));
 const viewB = createView($('watchCanvasB')); // Before and after: the scan it's compared with, on the left
 const SPECIAL = /<\|[^|>]*\|>|<\/?think>/gi; // the chat layout's own markers, left out of the caption

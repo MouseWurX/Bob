@@ -26,6 +26,7 @@
 // here, kept like any other), with two more switches, both off: send what he makes to your DMs, and answer OK cards
 // there with Allow and Deny buttons. Anyone else who DMs the bot gets silence. No account is ever assumed.
 import fs from 'node:fs';
+import { readJsonFile } from './util.js';
 import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -95,8 +96,8 @@ export function cleanWake(w) {
 // Lives in config.json only, never in settings.json, like Telegram: nothing that can write Bob's settings file can
 // open this door. Only the Settings page on this PC calls this.
 export function saveDiscord(cfg, patch) {
-  let raw = {};
-  try { raw = JSON.parse(fs.readFileSync(cfg.configFile, 'utf8')); } catch {}
+  // 1.5.201: an unreadable config.json stops the save (it used to be taken as empty and written over, losing the rest).
+  const raw = readJsonFile(cfg.configFile);
   raw.discord = { ...(raw.discord || {}), ...patch };
   for (const k of Object.keys(raw.discord)) if (raw.discord[k] === undefined) delete raw.discord[k];
   delete raw.discord.token; // never kept here

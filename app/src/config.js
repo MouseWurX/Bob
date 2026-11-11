@@ -8,7 +8,7 @@ import { cleanHands } from './hands-settings.js';
 import { cleanPresets } from './model-family.js';
 import { cleanSelfWork, applyCodeCopy } from './self-work.js';
 import fs from 'node:fs';
-import { writeJsonAtomic } from './util.js';
+import { writeJsonAtomic, readJsonFile } from './util.js';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -52,7 +52,7 @@ export function loadConfig() {
   const file = process.env.BOB_CONFIG || path.join(sourceRoot(), 'config.json');
   // A fresh copy of the source has no config.json (it's never published): start from the example.
   if (!process.env.BOB_CONFIG && !fs.existsSync(file)) fs.copyFileSync(path.join(appDir, 'config.example.json'), file);
-  const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const cfg = readJsonFile(file);
   cfg.configFile = file;
   if (process.env.BOB_AGENT_DIR) cfg.agentDir = process.env.BOB_AGENT_DIR;
   if (process.env.BOB_OLLAMA_URL) cfg.ollamaUrl = process.env.BOB_OLLAMA_URL;
@@ -120,7 +120,7 @@ export function loadConfig() {
   }
   cfg.settingsFile = path.join(cfg.dataDir, 'settings.json');
   const hand = { engine: cfg.engine, brainEngine: cfg.llamacpp?.brainEngine }; // what config.json itself says
-  try { mergeSettings(cfg, JSON.parse(fs.readFileSync(cfg.settingsFile, 'utf8'))); } catch {}
+  try { mergeSettings(cfg, readJsonFile(cfg.settingsFile)); } catch {}
   // 1.5.196: Brain Engine is the only engine for Bob's brains (onlyBrainEngine, below). An older pick of plain llama.cpp
   // or Ollama in Settings is set aside here, after settings.json, and the program is picked again with that.
   cfg.engineMoved = onlyBrainEngine(cfg, { hand });
@@ -194,7 +194,7 @@ export const VERSION = (() => {
   } catch { return { release: '0.9', branch: '', build: 0, label: '0.9.0' }; }
 })();
 
-export const SETTING_KEYS = ['quickNotes', 'docTools', 'sandboxCode', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'apuHoldbackGB'];
+export const SETTING_KEYS = ['quickNotes', 'docTools', 'sandboxCode', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'apuHoldbackGB'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -241,6 +241,7 @@ function clean(patch) {
   if ('qwenPresets' in out) out.qwenPresets = cleanPresets(out.qwenPresets); // 1.5.148 "Choose my own word settings", off unless switched on
   if ('selfWork' in out) out.selfWork = cleanSelfWork(out.selfWork); // "Let Bob work on repositories" (self-work.js), off by default
   if ('howtos' in out) out.howtos = out.howtos === true; // 1.5.79 "Let Bob learn how-tos", off by default
+  if ('wantsAsked' in out) out.wantsAsked = out.wantsAsked === true; // the chat's one-time "Do you want me to" offer (wants.js)
   if ('editOwn' in out) out.editOwn = out.editOwn === true; // "Let Bob fix his own messages", off by default (edit-own.js)
   if ('quickNotes' in out) out.quickNotes = out.quickNotes === true; // "Let Bob take quick notes", off by default (notes.js)
   if ('docTools' in out) out.docTools = out.docTools === true; // "Read and search my documents", off by default (my-docs.js)
@@ -467,7 +468,7 @@ function applyProjects(cfg) {
 export function replaceSettings(cfg, patch) {
   const safe = clean(patch);
   let saved = {};
-  try { saved = JSON.parse(fs.readFileSync(cfg.settingsFile, 'utf8')); } catch {}
+  try { saved = readJsonFile(cfg.settingsFile); } catch {}
   for (const [k, v] of Object.entries(safe)) { saved[k] = v; cfg[k] = v; }
   writeJsonAtomic(cfg.settingsFile, saved, 2);
   applyProjects(cfg);
@@ -478,7 +479,7 @@ export function replaceSettings(cfg, patch) {
 // Let my phone in (src/phone-access.js): phone access lives in config.json only, never in settings.json, so nothing that
 // can write Bob's settings file can open the door. Only the Settings page on this PC calls this (server.js, local only).
 export function saveRemote(cfg, remote) {
-  const raw = JSON.parse(fs.readFileSync(cfg.configFile, 'utf8'));
+  const raw = readJsonFile(cfg.configFile);
   raw.remote = { ...(raw.remote || {}), ...remote };
   writeJsonAtomic(cfg.configFile, raw, 2);
   cfg.remote = raw.remote;
@@ -487,7 +488,7 @@ export function saveRemote(cfg, remote) {
 export function saveSettings(cfg, patch) {
   const safe = clean(patch);
   let saved = {};
-  try { saved = JSON.parse(fs.readFileSync(cfg.settingsFile, 'utf8')); } catch {}
+  try { saved = readJsonFile(cfg.settingsFile); } catch {}
   deepMerge(saved, safe);
   writeJsonAtomic(cfg.settingsFile, saved, 2);
   deepMerge(cfg, safe);

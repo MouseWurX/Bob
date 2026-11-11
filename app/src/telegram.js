@@ -17,6 +17,7 @@
 // What goes through Telegram's servers while it's on: your messages to the bot, Bob's replies, card texts (only
 // with the OK switch), and pictures (only with the pictures switch). Nothing else from your chats.
 import fs from 'node:fs';
+import { readJsonFile } from './util.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { rentKeyEnv } from './rental.js'; // process env, Windows user variables, or ~/.config/bob/env on Mac and Linux
@@ -38,8 +39,8 @@ export function telegramSettings(cfg) {
 // Lives in config.json only, never in settings.json, like phone access: nothing that can write Bob's settings file
 // can open this door. Only the Settings page on this PC calls this.
 export function saveTelegram(cfg, patch) {
-  let raw = {};
-  try { raw = JSON.parse(fs.readFileSync(cfg.configFile, 'utf8')); } catch {}
+  // 1.5.201: an unreadable config.json stops the save (it used to be taken as empty and written over, losing the rest).
+  const raw = readJsonFile(cfg.configFile);
   raw.telegram = { ...(raw.telegram || {}), ...patch };
   for (const k of Object.keys(raw.telegram)) if (raw.telegram[k] === undefined) delete raw.telegram[k];
   fs.writeFileSync(cfg.configFile, JSON.stringify(raw, null, 2));
