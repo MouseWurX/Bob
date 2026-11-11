@@ -19,6 +19,7 @@ import { startServer, runQuiz } from './lab-test.js';
 import { ggufInfo } from './gguf.js';
 import { gpuInfo, OS, venvPython } from './platform.js';
 import { TEACH_PY, FETCH_PY } from './lab-teach-script.js';
+import { getOwnPython, ownPythonDir } from './audio.js';
 import { ladderTexts } from './lab-playground.js';
 import { readJson, writeJson, isInsideDir, exeName, canStart, makeRoom, runJob, runTool, pageLog } from './lab-jobs.js';
 
@@ -68,10 +69,13 @@ export const uvUrl = (os_ = OS, arch = process.arch) => `https://github.com/astr
 export const llamaSrcUrl = () => `https://github.com/ggml-org/llama.cpp/archive/refs/tags/${TRAINER.llamacpp}.tar.gz`;
 // `hw` = { os, arch }: the machine, injectable so tests never read the tester's own chip (the builder's rule).
 export const hwOf = (lab) => (lab?.platform ? lab.platform() : { os: OS, arch: process.arch });
+// 1.5.200 On Windows the trainer runs from a private copy of Bob's own signed Python (the PSF's NuGet package), not
+// a venv: a venv's python.exe is an unsigned launcher, and Smart App Control blocks it (os error 4551 on the PC test).
+export const trainerPython = (dir, os_ = OS) => (os_ === 'win' ? path.join(dir, 'python-signed', 'python.exe') : venvPython(path.join(dir, 'venv'), os_));
 export function trainerState(cfg, hw = { os: OS, arch: process.arch }) {
   const dir = trainerDir(cfg);
   const rec = readJson(path.join(dir, 'trainer.json'), null);
-  const py = venvPython(path.join(dir, 'venv'));
+  const py = rec?.python ? path.join(dir, rec.python) : trainerPython(dir, hw.os);
   const ok = Boolean(rec?.ok) && fs.existsSync(py) && fs.existsSync(path.join(dir, 'llama.cpp', 'convert_hf_to_gguf.py'));
   return { ok, dir, python: py, version: rec?.version || '', at: rec?.at || 0, sizeGB: hw.os === 'mac' ? TRAINER.sizeGB.mac : TRAINER.sizeGB.cuda, licences: TRAINER.licences, supported: hw.os !== 'android' && !(hw.os === 'linux' && hw.arch === 'arm64') };
 }
@@ -97,13 +101,23 @@ async function download(url, out, { signal, onProgress = () => {}, headers = {},
 }
 const tarExe = () => (OS === 'win' ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar');
 
+// Windows Smart App Control (or another app-control policy) blocking a program shows up as os error 4551 or
+// 0xc0e90002. Bob says so in plain words and changes no security setting.
+export function blockedWords(e) {
+  if (!/\b4551\b|0xc0e90002|Application Control policy has blocked/i.test(String(e?.message || e))) return e;
+  const x = new Error('Windows Smart App Control blocked a program the trainer needs, so it stopped. Bob doesn\'t change Windows security settings. Press Try again: Windows sometimes checks a new program once. If it keeps happening, the Teach it log names the file, and Teach it rented still works.');
+  x.cause = e; return x;
+}
+export const guardTool = (tool) => async (...a) => { try { return await tool(...a); } catch (e) { throw blockedWords(e); } };
 export async function startTrainerInstall(lab) {
   canStart(lab, { room: false });
   const st = trainerState(lab.cfg, hwOf(lab));
   if (!st.supported) throw new Error('The Trainer pack doesn\'t run on this replicant matrix. Teach it rented instead.');
   const dir = st.dir, log = pageLog(lab.cfg, 'teach');
-  const fx = { download, tool: runTool, ...lab.stepFns };
-  const steps = [['uv', `Get uv ${TRAINER.uv} (it installs Python and the libraries)`], ['python', `Get Python ${TRAINER.python} in its own folder`], ['libs', 'Get the training libraries (the big part)'], ['conv', `Get llama.cpp ${TRAINER.llamacpp}'s converters`]];
+  const hw = hwOf(lab), win = hw.os === 'win';
+  const fx = { download, tool: runTool, ownPython: (o) => getOwnPython(lab.cfg, o), ...lab.stepFns };
+  fx.tool = guardTool(fx.tool);
+  const steps = [['uv', `Get uv ${TRAINER.uv} (it installs Python and the libraries)`], ['python', win ? `Copy Bob's own signed Python ${TRAINER.python} into its own folder` : `Get Python ${TRAINER.python} in its own folder`], ['libs', 'Get the training libraries (the big part)'], ['conv', `Get llama.cpp ${TRAINER.llamacpp}'s converters`]];
   return runJob(lab, { kind: 'trainer', name: 'Get the Trainer pack', steps, stopped: 'You stopped it. Start it again to carry on, or Remove it in Settings.' }, async (r, { set, signal, progress }) => {
     fs.mkdirSync(dir, { recursive: true });
     const uvDir = path.join(dir, 'uv'), env = { ...process.env, UV_CACHE_DIR: path.join(dir, 'cache'), UV_PYTHON_INSTALL_DIR: path.join(dir, 'python') };
@@ -115,10 +129,17 @@ export async function startTrainerInstall(lab) {
     const uv = findFile(uvDir, exeName('uv'));
     if (!uv) throw new Error('uv didn\'t unpack where Bob expected it.');
     set('uv', 'done'); set('python', 'running');
-    await fx.tool(uv, ['venv', '--python', TRAINER.python, path.join(dir, 'venv')], { signal, log, env });
+    const py = trainerPython(dir, hw.os);
+    if (win) {
+      // A private copy, so the libraries never land in the Python Bob's voices use; the copy keeps the PSF signature.
+      const own = await fx.ownPython({ signal });
+      const to = path.dirname(py);
+      fs.rmSync(to, { recursive: true, force: true });
+      fs.cpSync(path.dirname(own), to, { recursive: true });
+      if (!fs.existsSync(py)) throw new Error('Bob\'s own Python didn\'t copy where he expected it. Press Try again.');
+    } else await fx.tool(uv, ['venv', '--python', TRAINER.python, path.join(dir, 'venv')], { signal, log, env });
     set('python', 'done'); set('libs', 'running'); progress(15);
-    const py = venvPython(path.join(dir, 'venv'));
-    const cuda = OS !== 'mac';
+    const cuda = hw.os !== 'mac';
     await fx.tool(uv, ['pip', 'install', '--python', py, ...(cuda ? ['--index-url', TRAINER.torchIndex, '--extra-index-url', 'https://pypi.org/simple', '--index-strategy', 'unsafe-best-match'] : []), ...TRAINER.packages, ...(cuda ? TRAINER.cudaOnly : [])], { signal, log, env, onLine: (l) => { if (/Downloading|Prepared|Installed/.test(l)) progress(Math.min(85, r.progress + 1), `Get the training libraries: ${l.trim().slice(0, 60)}`); } });
     set('libs', 'done'); set('conv', 'running');
     const src = path.join(dir, 'llama-src.tar.gz');
@@ -128,7 +149,7 @@ export async function startTrainerInstall(lab) {
     await fx.tool(tarExe(), ['-xzf', src, '-C', lc, '--strip-components=1'], { signal, log });
     await fx.tool(uv, ['pip', 'install', '--python', py, path.join(lc, 'gguf-py')], { signal, log, env });
     for (const f of [arch, src]) fs.rmSync(f, { force: true });
-    writeJson(path.join(dir, 'trainer.json'), { ok: true, version: `uv ${TRAINER.uv}, Python ${TRAINER.python}, llama.cpp ${TRAINER.llamacpp}`, packages: [...TRAINER.packages, ...(cuda ? TRAINER.cudaOnly : [])], at: lab.now() });
+    writeJson(path.join(dir, 'trainer.json'), { ok: true, python: path.relative(dir, py), version: `uv ${TRAINER.uv}, Python ${TRAINER.python}, llama.cpp ${TRAINER.llamacpp}`, packages: [...TRAINER.packages, ...(cuda ? TRAINER.cudaOnly : [])], at: lab.now() });
     set('conv', 'done');
     return { trainer: trainerState(lab.cfg, hwOf(lab)) };
   });
@@ -290,6 +311,7 @@ export async function startTeach(lab, c = {}, { unload = false } = {}) {
   const tr = trainerState(lab.cfg, hwOf(lab)), log = pageLog(lab.cfg, 'teach');
   const work = path.join(labModelsDir(lab.cfg), 'teach', p.slug);
   const fx = { tool: runTool, download, quiz: quizFile, ...lab.stepFns };
+  fx.tool = guardTool(fx.tool);
   const env = { ...process.env, PYTHONIOENCODING: 'utf-8', HF_HUB_DISABLE_TELEMETRY: '1' };
   const sq = p.way === 'squeeze';
   const steps = sq

@@ -175,6 +175,8 @@ body.still .mic.on { animation: none; }
 .packlist { list-style: none; padding: 0; }
 .packlist li { padding: 4px 0; }
 .packlist input { accent-color: var(--accent); }
+.wantlist .switch input { flex: none; } /* wants.js: the tick boxes keep their size when the words wrap */
+.wants .row button { margin: 4px 6px 4px 0; }
 body.still .meter i { transition: none; }
 
 .roles { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
@@ -1621,7 +1623,6 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .mind-cube p.mind-cube-sign[hidden] { display: none; }
 @keyframes mind-cube-neon { 0%, 61%, 63%, 66%, 100% { opacity: 1; } 62%, 65% { opacity: .25; } 64% { opacity: .8; } 88% { opacity: .35; } 89% { opacity: 1; } }
 .still .mind-cube p.mind-cube-sign { animation: none; }
-@media (prefers-reduced-motion: reduce) { .mind-cube p.mind-cube-sign { animation: none; } }
 .mind-cube p { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
 /* hidden from sight only: a screen reader still reads Bob's thinking written out while the cube shows */
 .cube-view .mind-log, .cube-view .mind-empty { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }

@@ -1104,6 +1104,17 @@ async function applyCaps() {
 }
 window.addEventListener('bob-caps', applyCaps);
 
+// ---------- "Do you want me to:" (public/wants.js), offered once in the chat to a Bob that was set up before it existed ----------
+function offerWants() {
+  const el = add('suggest', `<span>New in the first-time setup: a short "Do you want me to:" list with the things I can do that stay off until you say so, like quick notes, reading your documents and fixing my own messages. Nothing changes unless you tick it.</span><button type="button" data-w="show">Show me the list</button><button type="button" class="link" data-w="no">Not now</button>`);
+  for (const b of el.querySelectorAll('button')) b.onclick = async () => {
+    el.remove();
+    await post('/api/settings', { wantsAsked: true }).catch(() => {});
+    if (b.dataset.w === 'show') cellar.open('welcome', null, { jump: 'wants' });
+    else note('OK. It\'s in Settings, Run first-time setup, whenever you want it.');
+  };
+}
+
 // ---------- Start ----------
 async function start() {
   await loadHistory(20);
@@ -1122,6 +1133,7 @@ async function start() {
   try {
     const st = await (await fetch('/api/settings')).json(); winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); autoSession = st.autoSession !== false; drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
+    if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"
     if (st.updates?.autoCheck) { const c = await (await fetch('/api/update/check')).json(); if (c.newer) note(`A newer Bob (${c.available.label}) is out${c.from === 'github' ? ' on GitHub' : ''}. Settings, This replicant matrix and updates, Check for updates.`); }
   } catch {}
   try { drawQueue(await (await fetch('/api/queue')).json()); } catch {}

@@ -13,6 +13,7 @@
 // Addresses must be Tailscale ones (100.64.0.0/10 or a *.ts.net name). Passcodes live in config.json only, like the
 // phone door's, and are never sent back to the page.
 import fs from 'node:fs';
+import { readJsonFile } from './util.js';
 import { isTailscaleIp } from './phone-access.js';
 import { homeIps, isHomeIp, sameNet } from './share-card.js';
 import { cleanCheck, checkRefusal, checkDown, CHECK_FIRST_WORD_MAX_MS } from './bob-net-check.js'; // 1.5.185
@@ -113,7 +114,7 @@ export function cleanSharePatch(cfg, b) {
 }
 
 export function saveShare(cfg, share) {
-  const raw = JSON.parse(fs.readFileSync(cfg.configFile, 'utf8'));
+  const raw = readJsonFile(cfg.configFile);
   raw.share = share;
   fs.writeFileSync(cfg.configFile, JSON.stringify(raw, null, 2));
   cfg.share = share;

@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { labDir, labModelsDir, inspect, slugOf, lessonSets } from './lab.js';
 import { startServer } from './lab-test.js';
-import { planTeach, saveTeachPlan, trainerState, hwOf, fetchBase, foldAdapter, foldFull, quizFile, readLessonSource, lessonsPerHour, TRAINER } from './lab-teach.js';
+import { planTeach, saveTeachPlan, trainerState, hwOf, fetchBase, foldAdapter, foldFull, quizFile, guardTool, readLessonSource, lessonsPerHour, TRAINER } from './lab-teach.js';
 import { TEACH_PY, FETCH_PY } from './lab-teach-script.js';
 import { watchDir, listRecordings, readRecording } from './lab-watch.js';
 import { specialise } from '../public/lab-watch-math.js';
@@ -210,6 +210,7 @@ export async function startBest(lab, c = {}, { unload = false } = {}) {
   const log = pageLog(lab.cfg, 'best'), here = p.where === 'here';
   const learner = brainOf(lab, p.learner.id), judge = brainOf(lab, p.judge.id);
   const fx = { tool: runTool, quiz: quizFile, serve: (gguf, signal) => startServer({ exe: lab.tools().server.path, gguf, signal, log }), chat: sample, ...lab.stepFns };
+  fx.tool = guardTool(fx.tool);
   const data = path.join(bestDir(lab.cfg), p.slug), work = path.join(labModelsDir(lab.cfg), 'best', p.slug);
   const targets = resolveTargets(lab, p.learner.id, c.targets).list;
   const steps = [['questions', `Read the questions (${p.questions.name})`], ['answers', `${p.learner.name} answers each ${p.answers} times`], ['judge', `${p.judge.name} judges every answer`],
