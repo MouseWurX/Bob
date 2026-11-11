@@ -41,7 +41,7 @@ export const said = (m) => String(m.role === 'user' && m.text != null ? m.text :
 
 // Messages trimmed off the recent part go to the older file instead of being lost.
 export function keepOlder(cfg, id, dropped) {
-  const keep = spoken(dropped).map((m) => ({ id: m.id, at: m.at, role: m.role, content: said(m).slice(0, 6000), ...(m.media?.length ? { media: m.media } : {}) }));
+  const keep = spoken(dropped).map((m) => ({ id: m.id, at: m.at, role: m.role, content: said(m).slice(0, 6000), ...(m.media?.length ? { media: m.media } : {}), ...(m.chatTitle ? { chatTitle: m.chatTitle, from: m.from } : {}) }));
   if (!keep.length) return;
   writeOlder(cfg, id, [...readOlder(cfg, id), ...keep].slice(-5000));
 }
@@ -60,7 +60,10 @@ export function lastTouched(cfg, id) {
   try { return fs.statSync(chatFile(cfg, id)).mtimeMs; } catch { return 0; }
 }
 
+// A chat brought in from a file keeps the title it had there (chat-files.js puts it on the first message).
 export function chatTitle(msgs) {
+  const named = msgs.find((m) => m && m.chatTitle);
+  if (named) return String(named.chatTitle).slice(0, 70);
   const first = spoken(msgs).find((m) => m.role === 'user');
   return first ? said(first).replace(/\s+/g, ' ').trim().slice(0, 70) : '(empty chat)';
 }
@@ -69,5 +72,6 @@ export function chatInfo(cfg, id, pins = []) {
   const all = wholeChat(cfg, id);
   const bytes = chatFiles(cfg, id).reduce((n, f) => n + fs.statSync(f).size, 0);
   const sum = readSummary(cfg, id);
-  return { id, title: chatTitle(all), messages: spoken(all).length, lastTouched: lastTouched(cfg, id), bytes, summary: sum?.summary || '', pinned: pins.includes(id) };
+  const from = all.find((m) => m && m.from)?.from;
+  return { id, title: chatTitle(all), ...(from ? { from } : {}), messages: spoken(all).length, lastTouched: lastTouched(cfg, id), bytes, summary: sum?.summary || '', pinned: pins.includes(id) };
 }

@@ -75,6 +75,7 @@ import { partyView, Introductions } from './bob-net-party.js';
 import { OS, features } from './platform.js';
 import { saveExport } from './diagram.js';
 import { saveAs } from './save-as.js';
+import { chatFilesOn, CHAT_FILES_OFF, FORMATS, MAX_IMPORT_BYTES, saveChat, lookAtFile, bringIn, shareChat } from './chat-files.js';
 import { saveHelpBundle, bundleBytes, revealFile } from './help-bundle.js';
 import { notesFile, ensureNotesFile } from './notes.js';
 import { clearDocCache } from './my-docs.js';
@@ -226,6 +227,16 @@ async function bigBody(req, limit = 36e6) {
   for await (const c of req) { s += c; if (s.length > limit) throw new Error('too big'); }
   return s ? JSON.parse(s) : {};
 }
+
+// A file sent as it is (Bring in chats), up to max bytes, as text.
+async function rawBody(req, max) {
+  const parts = [];
+  let n = 0;
+  for await (const c of req) { n += c.length; if (n > max) throw new Error('too big'); parts.push(c); }
+  return Buffer.concat(parts).toString('utf8');
+}
+let chatImport = null; // the file being looked at in Bring in chats: { token, convs, at }
+const safeChatId = (id) => String(id || '').replace(/[^a-zA-Z0-9-]/g, '').slice(0, 80);
 
 async function body(req) {
   let s = '';
@@ -469,7 +480,7 @@ const server = http.createServer(async (req, res) => {
     // 1.5.74: whether the core engines start (first-run step 1, and Settings, Engines).
     if (req.method === 'GET' && p === '/api/engines/check') return send(res, 200, { checks: await Promise.all(['llamacpp', 'sdcpp', 'whispercpp'].map((id) => checkEngine(cfg, id))) });
     if (req.method === 'GET' && p === '/api/settings') {
-      return send(res, 200, { apuHoldbackGB: apuHoldbackGB(cfg), autostart: autostartOn(), tray: cfg.tray !== false, lookIcon: cfg.lookIcon !== false, catalogUpdates: cfg.catalogUpdates === true, computerLab: labOn(cfg), computerLabRoom: labRoom(), qwenPresets: cleanPresets(cfg.qwenPresets), qwenDefaults: Object.fromEntries(Object.entries(QWEN_PRESETS).map(([id, p]) => [id, { label: p.label, ...qwenPreset(id) }])), trayHere: Boolean(globalThis.bobWindow), setupDone: Boolean(cfg.setupDone), wantsAsked: cfg.wantsAsked === true, look: cfg.look || null, lookText: lookText(cfg.look), personality: cleanPersonality(cfg.personality), lookComments: cfg.lookComments === true, userName: cfg.userName || '', callMe: cfg.callMe || '', windowsName: cfg.windowsName || '', engine: cfg.engine, workshop: workshopView(), catName: cfg.catName || 'Patches', version: VERSION, oneBrain: cfg.oneBrain === true, allTools: cfg.allTools === true, memoryRecall: cfg.memoryRecall === true, memoryBanks: memoryBanksView(), resumeJobs: cfg.resumeJobs === true, planFirst: cfg.planFirst === true, autoSession: autoSessionOn(cfg), gamingLock: cfg.gamingLock === true, sessionBy: cfg.sessionBy === 'bob' ? 'bob' : 'you', quickOnCpu: cfg.quickOnCpu === true, chatWhileBusy: cfg.chatWhileBusy !== false, mootBeside: cfg.mootBeside === true, netReview: cfg.netReview === true, webSearch: cfg.webSearch === true, naughtyList: cfg.naughtyList === true, howtos: cfg.howtos === true, editOwn: cfg.editOwn === true, quickNotes: cfg.quickNotes === true, smartNotes: cfg.smartNotes === true, quickNotesFile: notesFile(cfg), docTools: cfg.docTools === true, docView: cfg.docView === true, sandboxCode: cfg.sandboxCode === true, howtoCount: brain.howtos?.load().length || 0, ownKit: ownKitCounts(cfg, brain), gamingCard: gamingCard(cfg), gamingCardNow: brain.engine?.currentCard || null, pictureNoWait: cfg.pictureNoWait !== false, ...tuning(cfg), downloads: { concurrent: cfg.downloads?.concurrent === 2 ? 2 : 1, resumeOnStart: cfg.downloads?.resumeOnStart === true }, updates: { autoCheck: cfg.updates?.autoCheck === true }, engineUpdates: engineKeeper.view(), ollamaKeepAlive: keepTime(cfg), brainMode: brainMode(cfg), tts: { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice || 'am_michael', speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '', voicesFolder: path.join(cfg.innDir, 'voices') }, kokoroVoices: KOKORO_VOICES, session: currentSession(cfg), sessions: Object.entries(SESSIONS).map(([id, x]) => ({ id, ...x, ...(OS === 'mac' && x.whatMac ? { what: x.whatMac } : {}) })), sessionBrains: sessionBrains(cfg), activeModels: cfg.activeModels || {}, sessionCtx: cfg.sessionCtx || {}, brainCtxOn: cfg.brainCtxOn === true, brainCtxStretch: cfg.brainCtxStretch === true, brainCtx: cfg.brainCtx || {}, speed: speedView(), style: cfg.style || {}, painter: cfg.painter?.engine || 'comfy', platform: process.platform, os: OS, features: features(), home: cfg.agentDir, housekeeping: hkSettings(cfg), hands: handsSettings(cfg), houseStyle: cleanHouseStyle(cfg.houseStyle), projectList: Object.entries(cfg.projects || {}).filter(([, p]) => !isInside(codeCopyRoot(cfg), p)).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) })), selfWork: selfWorkNow(), defaultProject: cfg.defaultProject || '', saveDir: saveDirView() });
+      return send(res, 200, { apuHoldbackGB: apuHoldbackGB(cfg), autostart: autostartOn(), tray: cfg.tray !== false, lookIcon: cfg.lookIcon !== false, catalogUpdates: cfg.catalogUpdates === true, computerLab: labOn(cfg), computerLabRoom: labRoom(), qwenPresets: cleanPresets(cfg.qwenPresets), qwenDefaults: Object.fromEntries(Object.entries(QWEN_PRESETS).map(([id, p]) => [id, { label: p.label, ...qwenPreset(id) }])), trayHere: Boolean(globalThis.bobWindow), setupDone: Boolean(cfg.setupDone), wantsAsked: cfg.wantsAsked === true, look: cfg.look || null, lookText: lookText(cfg.look), personality: cleanPersonality(cfg.personality), lookComments: cfg.lookComments === true, userName: cfg.userName || '', callMe: cfg.callMe || '', windowsName: cfg.windowsName || '', engine: cfg.engine, workshop: workshopView(), catName: cfg.catName || 'Patches', version: VERSION, oneBrain: cfg.oneBrain === true, allTools: cfg.allTools === true, memoryRecall: cfg.memoryRecall === true, memoryBanks: memoryBanksView(), resumeJobs: cfg.resumeJobs === true, planFirst: cfg.planFirst === true, autoSession: autoSessionOn(cfg), gamingLock: cfg.gamingLock === true, sessionBy: cfg.sessionBy === 'bob' ? 'bob' : 'you', quickOnCpu: cfg.quickOnCpu === true, chatWhileBusy: cfg.chatWhileBusy !== false, mootBeside: cfg.mootBeside === true, netReview: cfg.netReview === true, webSearch: cfg.webSearch === true, naughtyList: cfg.naughtyList === true, howtos: cfg.howtos === true, editOwn: cfg.editOwn === true, quickNotes: cfg.quickNotes === true, smartNotes: cfg.smartNotes === true, quickNotesFile: notesFile(cfg), docTools: cfg.docTools === true, docView: cfg.docView === true, chatFiles: cfg.chatFiles === true, sandboxCode: cfg.sandboxCode === true, howtoCount: brain.howtos?.load().length || 0, ownKit: ownKitCounts(cfg, brain), gamingCard: gamingCard(cfg), gamingCardNow: brain.engine?.currentCard || null, pictureNoWait: cfg.pictureNoWait !== false, ...tuning(cfg), downloads: { concurrent: cfg.downloads?.concurrent === 2 ? 2 : 1, resumeOnStart: cfg.downloads?.resumeOnStart === true }, updates: { autoCheck: cfg.updates?.autoCheck === true }, engineUpdates: engineKeeper.view(), ollamaKeepAlive: keepTime(cfg), brainMode: brainMode(cfg), tts: { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice || 'am_michael', speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '', voicesFolder: path.join(cfg.innDir, 'voices') }, kokoroVoices: KOKORO_VOICES, session: currentSession(cfg), sessions: Object.entries(SESSIONS).map(([id, x]) => ({ id, ...x, ...(OS === 'mac' && x.whatMac ? { what: x.whatMac } : {}) })), sessionBrains: sessionBrains(cfg), activeModels: cfg.activeModels || {}, sessionCtx: cfg.sessionCtx || {}, brainCtxOn: cfg.brainCtxOn === true, brainCtxStretch: cfg.brainCtxStretch === true, brainCtx: cfg.brainCtx || {}, speed: speedView(), style: cfg.style || {}, painter: cfg.painter?.engine || 'comfy', platform: process.platform, os: OS, features: features(), home: cfg.agentDir, housekeeping: hkSettings(cfg), hands: handsSettings(cfg), houseStyle: cleanHouseStyle(cfg.houseStyle), projectList: Object.entries(cfg.projects || {}).filter(([, p]) => !isInside(codeCopyRoot(cfg), p)).map(([name, p]) => ({ name, path: p, missing: !fs.existsSync(p) })), selfWork: selfWorkNow(), defaultProject: cfg.defaultProject || '', saveDir: saveDirView() });
     }
     // Let my phone in (Settings, Bob-Net). Only from this PC; takes effect when Bob restarts.
     if (p === '/api/phone-access' && (req.method === 'GET' || req.method === 'POST')) {
@@ -729,6 +740,7 @@ const server = http.createServer(async (req, res) => {
           if (typeof b.quickNotes === 'boolean') { saveSettings(cfg, { quickNotes: b.quickNotes }); out.quickNotes = cfg.quickNotes === true; if (out.quickNotes) { try { ensureNotesFile(cfg); } catch {} } } // notes.js
           if (typeof b.smartNotes === 'boolean') { saveSettings(cfg, { smartNotes: b.smartNotes }); out.smartNotes = cfg.smartNotes === true; } // notes.js, only works with quick notes on
           if (typeof b.docTools === 'boolean') { saveSettings(cfg, { docTools: b.docTools }); out.docTools = cfg.docTools === true; if (!out.docTools) clearDocCache(); } // my-docs.js
+          if (typeof b.chatFiles === 'boolean') { saveSettings(cfg, { chatFiles: b.chatFiles }); out.chatFiles = cfg.chatFiles === true; if (!out.chatFiles) chatImport = null; } // chat-files.js
           if (typeof b.docView === 'boolean') { saveSettings(cfg, { docView: b.docView }); out.docView = cfg.docView === true; } // files.js docPeek, the side panel
           if (typeof b.sandboxCode === 'boolean') { // sandbox-code.js: only switched on where the sandbox holds
             if (b.sandboxCode) { const h = await sandboxHolds(cfg); if (!h.ok) out.sandboxWhy = `The sandbox doesn't hold on this replicant matrix (${h.why}), so this stays off.`; else { saveSettings(cfg, { sandboxCode: true }); out.sandboxNet = h.net === true; } }
@@ -981,6 +993,44 @@ const server = http.createServer(async (req, res) => {
     // Housekeeping, topics, past chats and search. Reading works from the phone too; changes only on the PC.
     const hk = brain.housekeeper;
     if (req.method === 'GET' && p === '/api/chats') return send(res, 200, { chats: hk.chats(), tidied: hk.summaries().slice(0, 200) });
+    // "Save chats as files and bring chats in" (chat-files.js, off unless turned on). Saving works from the phone too;
+    // bringing chats in only on this replicant matrix itself. The file is looked at first and nothing is kept until
+    // the owner ticks which chats to bring in.
+    if (req.method === 'GET' && p === '/api/chats/save') {
+      if (!chatFilesOn(cfg)) return send(res, 403, { error: CHAT_FILES_OFF });
+      const fmt = String(url.searchParams.get('as') || 'md');
+      const f = saveChat(cfg, safeChatId(url.searchParams.get('id')), FORMATS[fmt] ? fmt : 'md');
+      if (!f) return send(res, 404, { error: 'No such chat.' });
+      brain.log('chats', `saved a chat as ${f.name.split('.').pop().toUpperCase()}`);
+      return send(res, 200, f.body, f.type, { 'content-disposition': `attachment; filename="${f.name.replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(f.name)}` });
+    }
+    // Share a chat: names, folders and addresses taken out, shown to the owner before anything is saved (the window
+    // saves the page or draws the picture). Works from the phone too, like saving.
+    if (req.method === 'POST' && p === '/api/chats/share') {
+      if (!chatFilesOn(cfg)) return send(res, 403, { error: CHAT_FILES_OFF });
+      const b = await body(req);
+      const r = shareChat(cfg, safeChatId(b.id), { hide: [].concat(b.hide || []).map(String).slice(0, 50), last: Math.max(0, Math.min(5000, Number(b.last) || 0)) });
+      return r ? send(res, 200, r) : send(res, 404, { error: 'No such chat.' });
+    }
+    if (req.method === 'POST' && (p === '/api/chats/look' || p === '/api/chats/bring-in')) {
+      if (!isLocal) return send(res, 403, { error: 'Chats can only be brought in on this replicant matrix itself.' });
+      if (!chatFilesOn(cfg)) return send(res, 403, { error: CHAT_FILES_OFF });
+      if (p === '/api/chats/look') {
+        const name = String(req.headers['x-file-name'] || '').slice(0, 200);
+        let raw = '';
+        try { raw = await rawBody(req, MAX_IMPORT_BYTES); } catch { return send(res, 413, { error: 'That file is over 200 MB. Split it, or bring in the conversations.json from inside the export zip.' }); }
+        const r = lookAtFile(cfg, raw, decodeURIComponent(name));
+        if (!r.ok) { chatImport = null; return send(res, 200, r); }
+        chatImport = { token: crypto.randomUUID(), convs: r.convs, at: Date.now() };
+        return send(res, 200, { ok: true, token: chatImport.token, chats: r.chats, more: r.more });
+      }
+      const b = await body(req);
+      if (!chatImport || chatImport.token !== b.token || Date.now() - chatImport.at > 30 * 60_000) return send(res, 409, { error: 'Pick the file again (Bob only holds it for half an hour).' });
+      const r = bringIn(cfg, chatImport.convs, [].concat(b.picks || []).map(Number).filter(Number.isInteger).slice(0, MAX_CHATS));
+      chatImport = null;
+      brain.log('chats', `brought in ${r.done.length} chat${r.done.length === 1 ? '' : 's'}${r.skipped.length ? `, ${r.skipped.length} already here` : ''}`);
+      return send(res, 200, { ok: true, ...r });
+    }
     if (req.method === 'GET' && p === '/api/topics') return send(res, 200, hk.topics.list());
     if (req.method === 'GET' && p === '/api/topics/messages') {
       const t = hk.topics.get(String(url.searchParams.get('id') || ''));
