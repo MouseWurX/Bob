@@ -149,6 +149,8 @@ export function catalogFileFor(cfg, id) {
 
 // Item 2: the smallest piece (in tokens) the engine reuses from earlier in the chat after a change in the middle.
 export const CACHE_REUSE = 256;
+// Item 14: how long a reply may go quiet after its first words before the engine counts as hung (llamacpp.stallSeconds changes it).
+export const STALL_MS = 90_000;
 
 export class LlamaCpp {
   // Read fresh each time, so speed settings changed in the app apply to the next brain load.
@@ -671,11 +673,13 @@ export class LlamaCpp {
     // Off unless "Spread big brains over my other Bobs' cards" is on; none answering means it loads here like always.
     let helpers = [];
     let sizeGB = 0;
+    if (this.role !== BESIDE) this.spreadNow = false;
     if (this.spread && !noSpread && this.role !== BESIDE && !cpu && card !== 'none') {
       try { sizeGB = fs.statSync(this.resolve(model).gguf).size / 1e9; } catch {}
       helpers = await this.spread.open({ sizeGB }).catch(() => []);
       if (helpers.length) {
         args.push('--rpc', helpers.join(','), ...spreadArgs(args));
+        this.spreadNow = true; // item 14: a reply over Wi-Fi may pause longer
         const mins = Math.ceil(spreadLoadSeconds(sizeGB, this.lc.loadTimeoutSeconds || 300) / 60);
         try { this.log?.('engine', `${model}: spread over ${helpers.length} other Bob${helpers.length > 1 ? 's' : ''}' card${helpers.length > 1 ? 's' : ''} (${helpers.join(', ')}). The first time, part of the brain is sent over the network: over Wi-Fi that can take a while (I'll wait up to ${mins} min), and a network cable is much faster. Later loads only send what's missing.`); } catch {}
       }
@@ -840,7 +844,29 @@ export class LlamaCpp {
       } catch {}
     }
     if (this.noMidSystem.has(model)) messages = foldSystem(messages);
-    const res = await this.post(model, messages, tools, signal, think, task, temperature);
+    // Item 14 (Nov 11): a reply that stops sending words is stopped, not waited on until someone presses Stop. Once
+    // words are coming, a quiet spell longer than STALL_MS (twice that when the brain is spread over other Bobs' cards)
+    // means the engine hung: it is let go and the error says "terminated", so Bob loads it again and asks once more.
+    // Before the first word nothing is timed: reading a long chat can take minutes on the processor.
+    const watch = new AbortController();
+    const both = signal ? AbortSignal.any([signal, watch.signal]) : watch.signal;
+    const stallMs = (this.lc.stallSeconds > 0 ? this.lc.stallSeconds * 1000 : STALL_MS) * (this.spreadNow ? 2 : 1);
+    let timer = null;
+    const arm = () => { clearTimeout(timer); timer = setTimeout(() => watch.abort(), stallMs); timer.unref?.(); };
+    try {
+      const res = await this.post(model, messages, tools, both, think, task, temperature);
+      return await this.readReply(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver, task, temperature, onChunk: arm });
+    } catch (e) {
+      if (watch.signal.aborted && !signal?.aborted) {
+        this.log?.('engine', `${model} stopped sending words for ${Math.round(stallMs / 1000)} s; letting it go so it loads again`);
+        await this.unloadAll().catch(() => {});
+        throw new Error(`terminated: the brain stopped answering for ${Math.round(stallMs / 1000)} seconds`);
+      }
+      throw e;
+    } finally { clearTimeout(timer); }
+  }
+
+  async readReply(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver, task, temperature, onChunk }) {
     if (!res.ok) {
       // 1.5.60: the template's refusal sits deep in a long error (after the template source), so look at all of it.
       const full = await res.text();
@@ -853,7 +879,7 @@ export class LlamaCpp {
       if (MID_SYSTEM_REFUSED.test(full)) this.log?.('engine', `${model}: refused a system message even after folding (roles ${(messages || []).map((m) => (m.role || '?')[0]).join('')}, ${full.length} chars of error)`);
       throw new Error(`llama-server returned ${res.status}: ${text}`);
     }
-    return this.readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver });
+    return this.readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver, onChunk });
   }
 
   // `temperature`: an assistant preset's own (presets.js); otherwise the brain's usual word settings decide.
@@ -872,7 +898,7 @@ export class LlamaCpp {
     });
   }
 
-  async readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver }) {
+  async readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver, onChunk = () => {} }) {
     let content = '';
     let held = null; // null: not decided yet; false: streaming normally; a string: held back
     let thought = 0, traced = false; const asked = this.wantTrace?.() === true; // fNRI's small cube: was the trace asked for, and did it come
@@ -880,6 +906,7 @@ export class LlamaCpp {
     let buf = '';
     const decoder = new TextDecoder();
     for await (const chunk of res.body) {
+      onChunk(); // item 14: words are coming; the stall timer starts again
       buf += decoder.decode(chunk, { stream: true });
       let nl;
       while ((nl = buf.indexOf('\n')) >= 0) {

@@ -1,4 +1,5 @@
 // Bob's local server: serves the panel and a small API. Only listens on this PC.
+import { caseFor, saveTest } from './my-tests.js';
 import { readText, writeText, vaultOn } from './vault.js'; // 🔒 Lock my chats and memory
 import { ramNow, memGB } from './server-ram.js';
 import { cpuLoad } from './speed-stats.js';
@@ -497,6 +498,22 @@ const server = http.createServer(async (req, res) => {
     }
     // Try again and Edit (redo.js): takes back the answer (or changes your message), keeps what was there as an earlier
     // version, and says what to send. { sessionId, id?, text? }: no text is Try again; text is Edit (by id, or last: true).
+    // Item 13 "Sum up and carry on": the older part of this chat is moved aside and summed up now (brain.compactChat).
+    if (req.method === 'POST' && p === '/api/chat/compact') {
+      const b = await body(req).catch(() => ({}));
+      const r = await brain.compactChat(String(b.sessionId || 'main'));
+      return send(res, r.error ? 409 : 200, r);
+    }
+    // Item 11 "Save as a test" (my-tests.js): the Bob answer with this id and the question before it, kept as a loop-test case.
+    if (req.method === 'POST' && p === '/api/chat/save-test') {
+      if (!isLocal) return send(res, 403, { error: 'Tests can only be saved on this replicant matrix itself.' });
+      const b = await body(req).catch(() => ({}));
+      const c = caseFor(brain.session(String(b.sessionId || 'main')), String(b.id || ''), { why: typeof b.why === 'string' ? b.why : '' });
+      if (!c) return send(res, 400, { error: 'That answer is in the older part of the chat, or has no question before it.' });
+      const n = saveTest(cfg, c);
+      brain.log('lab', `saved a test from the chat: "${c.text.slice(0, 80)}" (${n} saved)`);
+      return send(res, 200, { ok: true, count: n });
+    }
     if (req.method === 'POST' && p === '/api/chat/redo') {
       const b = await body(req).catch(() => ({}));
       const r = redo(brain, String(b.sessionId || 'main'), { ...(b.id ? { id: String(b.id) } : {}), ...(b.last === true ? { last: true } : {}), ...(typeof b.text === 'string' ? { text: b.text } : {}) });

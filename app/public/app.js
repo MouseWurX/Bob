@@ -457,6 +457,7 @@ async function openChat(id, msgId) {
   sessionId = id;
   store.set('bob-session', sessionId);
   log.innerHTML = ''; stick = true;
+  drawFill(null); // item 13: the meter is for the chat it was measured in
   presetPicker.load();
   await loadHistory(40);
   const el = msgId && log.querySelector(`[data-mid="${CSS.escape(msgId)}"]`);
@@ -475,6 +476,7 @@ async function loadHistory(n = 20) {
       if (m.role !== 'user') bubbleMedia.set(el, m.media || []);
       if (m.edited) markEdited(el, m.was);
       if (m.versions?.length) markVersions(el, m.versions);
+      if (m.steps?.length) markSteps(el, m.steps);
       if (m.correction) note(m.correction, 'error');
     }
   } catch {}
@@ -682,6 +684,17 @@ function onEvent(ev) {
       scrollDown();
       break;
     }
+    case 'answer-id': { // item 11: the answer just given now has its id (Save as a test, Try again)
+      const last = [...log.querySelectorAll(':scope > .msg.bob:not(.aside-msg)')].pop();
+      if (last && !last.dataset.mid && ev.id) { last.dataset.mid = ev.id; drawRedo(); }
+      break;
+    }
+    case 'chat-fill': drawFill(ev); break; // item 13
+    case 'steps': { // item 10: How I got here, under the answer just given
+      const last = [...log.querySelectorAll(':scope > .msg.bob:not(.aside-msg)')].pop();
+      if (last && ev.list?.length) markSteps(last, ev.list);
+      break;
+    }
     case 'stuck': // item 8: he gave up on this one; offer the harder try under it
       stuckNow = true; drawRedo();
       break;
@@ -752,6 +765,14 @@ function onEvent(ev) {
     case 'made': { addMade(ev); break; }
     case 'approval': {
       endReply(ev);
+      // Item 25: a question with choices (ask_user). The pick goes back as the card's note.
+      if (ev.ask) {
+        const card = add('approval ask-card', `<p><strong>Bob asks:</strong> ${esc(ev.ask.question)}</p><div class="row">${ev.ask.choices.map((c, i) => `<button type="button" class="big" data-pick="${i}">${esc(c)}</button>`).join('')}</div><form class="row ask-other"><label class="sr-only" for="ask-${esc(ev.id)}">Something else</label><input id="ask-${esc(ev.id)}" type="text" maxlength="500" placeholder="Something else…"><button type="submit">Send</button></form>`);
+        const pick = async (words) => { if (!words) return; card.querySelector('.row').outerHTML = `<div class="done">You picked: ${esc(words)}</div>`; card.querySelector('.ask-other')?.remove(); await post('/api/approve', { id: ev.id, allow: true, note: words }); };
+        for (const b of card.querySelectorAll('[data-pick]')) b.onclick = () => pick(ev.ask.choices[Number(b.dataset.pick)]);
+        card.querySelector('.ask-other').onsubmit = (e) => { e.preventDefault(); pick(card.querySelector('.ask-other input').value.trim()); };
+        ping('Bob has a question', ev.ask.question); layout.needsYou(); break;
+      }
       // The reviewer asks whether to quarantine Bob (quarantine.js, opt-in).
       if (quarantineCard(ev, { add, answer: (q) => post('/api/approve', { id: ev.id, allow: q }) })) { ping('Bob\'s reviewer needs you', ev.text); layout.needsYou(); break; }
       // 1.5.78: Bob's plan for a big job, with its OKs on the same card (plan-card.js).
@@ -1039,7 +1060,7 @@ let redoOnNow = false, redoing = false, redoneId = '';
 let stuckNow = false;
 const lastYou = () => [...log.querySelectorAll(':scope > .msg.you')].pop() || null;
 function drawRedo() {
-  for (const x of log.querySelectorAll('[data-redo], [data-edit-msg]')) x.remove();
+  for (const x of log.querySelectorAll('[data-redo], [data-edit-msg], [data-save-test]')) x.remove();
   if (!redoOnNow || busy || redoing) return;
   for (const el of log.querySelectorAll(':scope > .msg.you[data-mid]')) el.querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-edit-msg title="Change what you said and send it again">Edit</button>');
   const you = lastYou();
@@ -1047,6 +1068,8 @@ function drawRedo() {
   let answer = null;
   for (let n = you.nextElementSibling; n; n = n.nextElementSibling) if (n.matches('.msg.bob:not(.aside-msg)')) answer = n;
   (answer || you).querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-redo title="Get a new answer to your last message">Try again</button>');
+  // Item 11: Save as a test, under Bob's latest answer (one he saved, so it has an id).
+  if (answer?.dataset.mid) answer.querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-save-test title="That answer went wrong? Keep the question as a test, so Bob\'s tests (and the Lab) learn from it">Save as a test</button>');
   if (stuckNow) (answer || you).querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-redo data-hard title="Ask again on High effort: the bigger brain works it out and a second brain checks it">Try again, thinking harder</button>');
 }
 function versionsHtml(list) {
@@ -1063,6 +1086,46 @@ function markVersions(el, list) {
   b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
   el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
 }
+// Item 10 (Nov 11): "How I got here" under a reply: each step, whether it worked, how long it took, how much came back and
+// which brain was thinking. Folded until pressed; Copy puts it on the clipboard as plain lines for a bug report.
+function stepsText(list) {
+  return list.map((x, i) => `${i + 1}. ${x.ok ? '✓' : '✗'} ${x.what || x.tool} · ${(x.ms / 1000).toFixed(1)} s · ${Number(x.chars || 0).toLocaleString()} characters back${x.brain ? ` · ${x.brain}` : ''}`).join('\n');
+}
+function markSteps(el, list) {
+  el.querySelector(':scope > .steps-note')?.remove();
+  if (!list?.length) return;
+  const box = document.createElement('div');
+  box.className = 'versions-note steps-note';
+  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="Each step Bob took for this answer. Press to see them.">How I got here (${list.length} step${list.length === 1 ? '' : 's'})</button><div hidden><ol class="steps-list">${list.map((x) => `<li>${x.ok ? '✓' : '✗'} ${esc(x.what || x.tool)} <span class="muted">· ${(x.ms / 1000).toFixed(1)} s · ${esc(Number(x.chars || 0).toLocaleString())} characters back${x.brain ? ` · ${esc(x.brain)}` : ''}</span></li>`).join('')}</ol><button type="button" class="mini" data-copy-steps>Copy</button></div>`;
+  const b = box.querySelector('button'), w = box.querySelector('div');
+  b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
+  box.querySelector('[data-copy-steps]').onclick = () => navigator.clipboard?.writeText(stepsText(list)).then(() => note('Copied the steps.')).catch(() => {});
+  el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
+}
+// Item 13 (Nov 11): how full this chat left the brain's memory, by Effort, after each reply. From 70% on, "Sum up and
+// carry on" appears: the older part is summed up and only the last few messages stay word for word.
+const kTok = (n) => (n >= 1000 ? `${Math.round(n / 1000)}K` : String(n));
+function drawFill(ev) {
+  const fillBox = $('chatFill'), fillText = $('chatFillText'), fillSum = $('chatFillSum');
+  if (!fillBox) return;
+  if (!ev?.ctx) { fillBox.hidden = true; return; }
+  const share = Math.min(1, ev.used / ev.ctx);
+  fillText.textContent = `This chat: ${kTok(ev.used)} of ${kTok(ev.ctx)} (${Math.round(share * 100)}%)`;
+  fillBox.title = 'How much of the brain\'s memory this chat filled on the last reply';
+  fillBox.classList.toggle('full', share >= 0.7);
+  fillSum.hidden = share < 0.7;
+  fillBox.hidden = false;
+}
+$('chatFillSum')?.addEventListener('click', async () => {
+  const fillSum = $('chatFillSum');
+  fillSum.disabled = true;
+  const r = await post('/api/chat/compact', { sessionId }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob.' } }));
+  fillSum.disabled = false;
+  if (!r.ok) { note(r.data.error || 'Something went wrong.', 'error'); return; }
+  note(r.data.moved ? `Summed up ${r.data.moved} older messages${r.data.summed ? '' : ' (the summary comes when Bob is idle)'}. The last ${r.data.kept} stay word for word.` : 'This chat is already short.');
+  drawFill(null);
+  log.innerHTML = ''; stick = true; await loadHistory(40);
+});
 // Take back and send again. text: the new words (Edit), or none (Try again).
 async function redoSend(id, text, level = effort.get()) {
   if (busy || redoing) { note('Bob is still on this chat. Wait until he has finished, or press Stop first.'); return; }
@@ -1159,6 +1222,7 @@ log.addEventListener('click', async (e) => {
   const b = e.target.closest('button, a.file-link');
   if (!b || !log.contains(b)) return;
   const msg = b.closest('.msg');
+  if ('saveTest' in b.dataset) { const mid = b.closest('.msg')?.dataset.mid; if (!mid) return; const r = await post('/api/chat/save-test', { sessionId, id: mid }).catch(() => ({ ok: false, data: {} })); note(r.ok ? `Saved as a test (${r.data.count} so far). The Lab's loop test runs it with the others.` : r.data?.error || 'Couldn\'t save that one.', r.ok ? '' : 'error'); if (r.ok) b.remove(); return; }
   if ('redo' in b.dataset) return redoSend(null, null, 'hard' in b.dataset ? 'high' : effort.get());
   if ('editMsg' in b.dataset) return editInPlace(msg);
   if ('copyMsg' in b.dataset) return copyText(copyWords(msg), b);

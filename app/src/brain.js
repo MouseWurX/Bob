@@ -1,5 +1,6 @@
 // Bob's brain: runs a conversation turn, picks the right model, announces swaps,
 // calls tools, asks the user for approval when needed, and keeps a logbook.
+import { isOutside, markOutside, outsideNeed, KEEPS_FOR_LATER } from './outside-text.js';
 import { readText, writeJson } from './vault.js'; // 🔒 Lock my chats and memory
 import { ownModels } from './own-models.js';
 import fs from 'node:fs';
@@ -43,7 +44,7 @@ import { selfToolsTools } from './selftools.js';
 import { Made, madePaths, showMadeTool } from './made.js';
 import { imageInfoOf, sizeLike } from './imageinfo.js';
 import { scheduleTools } from './hands-schedules.js';
-import { toolsOff, HANDS, handOn, handOffWhy, freeOn, computerWord } from './hands-settings.js';
+import { toolsOff, HANDS, handOn, handOffWhy, freeOn, computerWord, todayOn, todayKey, endOfDay } from './hands-settings.js';
 import { gate as qGate, after as qAfter, maybeAsk as qAsk, noteStrike, copyHeld } from './quarantine.js';
 import { wantsPictureEdit, recentPicture, editHint } from './intent.js';
 import { SAVE_AS, namedType, saveAs } from './save-as.js';
@@ -340,6 +341,12 @@ export function cutKeeping(text, keep, ask = '') {
   const kept = head.length + used;
   return `${head}\n(…lines further on that match the ask:)\n${picked.join('\n')}${CUT_NOTE(Math.max(0, c.length - kept))}`;
 }
+// Item 10 (Nov 11): "How I got here" under a reply: each step it took, what went in (the step's one-line summary), whether
+// it worked, how long it took, how much came back and which brain was thinking. Kept with the answer in the chat file.
+export const MAX_TRACE = 30;
+export function traceStep({ name, summary, ok, ms, text, brain }) {
+  return { tool: String(name || ''), what: String(summary || name || '').slice(0, 160), ok: Boolean(ok), ms: Math.max(0, Math.round(Number(ms) || 0)), chars: String(text ?? '').length, ...(brain ? { brain: String(brain).slice(0, 80) } : {}) };
+}
 export const TOO_LONG = /exceeds? the available context|context (size|length|window) (exceeded|is too)|maximum context length|too many tokens/i;
 
 export function staleHandErrors(msgs, turnStart) {
@@ -420,6 +427,7 @@ const CANT_NUDGE = 'You now have every tool you can use on this PC. If one of th
 const EMPTY_NUDGE = 'Your last reply was empty. You now have every tool you can use on this PC. Do what was asked: call the right tool now (for a picture, make_image), or answer in words.';
 export const EMPTY_NOTE = 'Bob didn\'t answer that one. Send it again, or put it another way.';
 const MAX_HISTORY = 40;
+export const COMPACT_KEEP = 6; // item 13: messages kept word for word after "Sum up and carry on"
 // Nov 11 (item 4): how many messages Bob reads back each turn, by how much his chat brain holds. 40 was the same for a
 // brain that holds 8K words and one that holds 128K; now a big-memory brain keeps more of the chat word for word
 // (about one message per 800 tokens of its memory, 40 at least, 240 at most). fitContext still trims if a chat overflows.
@@ -849,10 +857,29 @@ export class Brain {
     try { writeJson(this.cfg, this.sessionFile(id), msgs); } catch {} // 🔒 locked when Lock my chats and memory is on
   }
 
+  // Item 13 "Sum up and carry on": everything but the last few messages moves to the chat's older part (word for word,
+  // as when a chat passes its length), and the housekeeper sums that older part up now instead of waiting for idle.
+  // The chat Bob reads each turn gets short again, so the brain has room. Not while a job of this chat runs.
+  async compactChat(id, keep = COMPACT_KEEP) {
+    if ([...this.turns.values()].some((t) => t?.sessionId === id) || this.queue.some((j) => j.sessionId === id && j.state !== 'done')) return { error: 'Bob is still on this chat. Wait until he has finished.' };
+    const msgs = this.session(id);
+    stampMessages(msgs);
+    let cut = Math.max(0, msgs.length - keep);
+    while (cut > 0 && msgs[cut]?.role !== 'user') cut--; // start on your message, never mid tool-call
+    if (cut <= 0) return { moved: 0, kept: msgs.length };
+    const dropped = msgs.splice(0, cut);
+    try { keepOlder(this.cfg, id, dropped); } catch (e) { msgs.unshift(...dropped); return { error: `Couldn't move the older part: ${e.message}` }; }
+    this.saveSession(id);
+    this.log('chat', `summed up and carried on: ${dropped.length} older messages of chat ${id} moved to its older part`);
+    let summed = false;
+    try { summed = await this.housekeeper.summarizeOlder(id); } catch (e) { this.log('error', `summing up chat ${id}: ${e.message}`); }
+    return { moved: dropped.length, kept: msgs.length, summed };
+  }
+
   history(id) {
     return this.session(id)
       .filter((m) => (m.role === 'user' || m.role === 'assistant') && (m.content || m.media?.length || m.correction))
-      .map((m) => ({ role: m.role, id: m.id, at: m.at, ...(m.forgotten ? { forgotten: true } : {}), content: m.role === 'user' && m.text != null ? m.text : (m.content || ''), ...(m.media?.length ? { media: m.media } : {}), ...(m.correction ? { correction: m.correction } : {}), ...(m.edited ? { edited: m.edited, was: m.was ?? '' } : {}), ...(m.role === 'user' && m.versions?.length ? { versions: m.versions } : {}), pics: (m.refs || []).map((id) => this.refs.find(id)).filter(Boolean).map((r) => ({ name: r.name, url: `/refs/${r.file}` })) }));
+      .map((m) => ({ role: m.role, id: m.id, at: m.at, ...(m.forgotten ? { forgotten: true } : {}), content: m.role === 'user' && m.text != null ? m.text : (m.content || ''), ...(m.media?.length ? { media: m.media } : {}), ...(m.correction ? { correction: m.correction } : {}), ...(m.edited ? { edited: m.edited, was: m.was ?? '' } : {}), ...(m.role === 'assistant' && m.steps?.length ? { steps: m.steps } : {}), ...(m.role === 'user' && m.versions?.length ? { versions: m.versions } : {}), pics: (m.refs || []).map((id) => this.refs.find(id)).filter(Boolean).map((r) => ({ name: r.name, url: `/refs/${r.file}` })) }));
   }
 
   // Makes sure a model is in memory, telling the user first if it means a wait. Goes through the gate: the action
@@ -1044,7 +1071,7 @@ export class Brain {
     this.setState('waiting', text);
     const card = { type: 'approval', id, text, diff: need.diff, allowAll: Boolean(group) };
     if (Array.isArray(need.plan)) card.plan = need.plan;
-    if (need.command) { card.command = need.command; card.cwd = need.cwd || ''; if (need.where) card.where = String(need.where).slice(0, 120); if (need.mcp) card.mcp = need.mcp; if (need.pack) card.pack = need.pack; if (need.button) card.button = String(need.button).slice(0, 30); }
+    if (need.command) { card.command = need.command; card.cwd = need.cwd || ''; if (!need.pack && !need.mcp && todayOn(this.cfg)) card.today = true; if (need.where) card.where = String(need.where).slice(0, 120); if (need.mcp) card.mcp = need.mcp; if (need.pack) card.pack = need.pack; if (need.button) card.button = String(need.button).slice(0, 30); }
     if (hand) card.hand = true;
     if (Array.isArray(need.together)) card.together = need.together.map(({ key, ...it }) => it);
     if (need.planCard) { card.planCard = need.planCard; card.allowAll = false; }
@@ -1074,9 +1101,33 @@ export class Brain {
     }
     emit({ type: 'approval-result', id, allowed: Boolean(allowed) });
     const rowsNote = Array.isArray(need.plan) && out.picked ? ` (${out.picked.length} of ${need.plan.length} rows ticked)` : '';
-    this.log('approval', `${allowed === 'all' ? 'allowed (rest of job)' : allowed ? 'allowed' : 'denied'}: ${text}${need.command ? ` [${need.command}]` : ''}${allowed ? rowsNote : ''}`);
+    this.log('approval', `${allowed === 'today' ? 'allowed here for today' : allowed === 'all' ? 'allowed (rest of job)' : allowed ? 'allowed' : 'denied'}: ${text}${need.command ? ` [${need.command}]` : ''}${allowed ? rowsNote : ''}`);
     this.setState(prev.state === 'waiting' ? 'thinking' : prev.state, '', prev.model);
     return allowed;
+  }
+
+  // Item 25 ask_user: one question with choices on a card. Resolves with the words of the pick (or what they typed
+  // under "Something else"); nothing in 10 minutes, or Stop, and Bob carries on with his best guess.
+  async askUser({ question, choices }, ctx) {
+    const who = this.cfg.userName || 'the user';
+    const q = String(question || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    const list = [...new Set([].concat(choices || []).map((c) => String(c ?? '').replace(/\s+/g, ' ').trim().slice(0, 120)).filter(Boolean))].slice(0, 6);
+    if (!q || list.length < 2) throw new Error('ask_user needs a question and at least 2 choices.');
+    if (ctx?.job?.guest) return `Not for this job: ask ${ctx.job.guest.from} in your reply instead.`;
+    const id = crypto.randomUUID();
+    const prev = this.state;
+    this.setState('waiting', q);
+    ctx.emit({ type: 'approval', id, text: q, ask: { question: q, choices: list }, sessionId: ctx.sessionId });
+    const said = await new Promise((resolve) => {
+      const timer = setTimeout(() => done(false), APPROVAL_TIMEOUT_MS);
+      const done = (v, rows, items, note) => { clearTimeout(timer); this.approvals.delete(id); resolve(v ? String(note || '').trim().slice(0, 500) : ''); };
+      this.approvals.set(id, done);
+      ctx.signal?.addEventListener('abort', () => done(false), { once: true });
+    });
+    ctx.emit({ type: 'approval-result', id, allowed: Boolean(said) });
+    this.setState(prev.state === 'waiting' ? 'thinking' : prev.state, '', prev.model);
+    this.log('approval', said ? `asked "${q}": ${said}` : `asked "${q}": no answer`);
+    return said ? `${who} picked: ${said}` : `${who} didn't answer. Carry on with your best guess and say which you picked.`;
   }
 
   // rows: for a card with a plan, the ids of the rows the user ticked.
@@ -1085,7 +1136,7 @@ export class Brain {
   answerApproval(id, allow, rows, items, note) {
     const done = this.approvals.get(id);
     if (!done) return false;
-    done(allow === 'all' ? 'all' : Boolean(allow), Array.isArray(rows) ? rows.slice(0, 1000).map(String) : null, Array.isArray(items) ? items.slice(0, 100) : null, typeof note === 'string' ? note : '');
+    done(allow === 'all' || allow === 'today' ? allow : Boolean(allow), Array.isArray(rows) ? rows.slice(0, 1000).map(String) : null, Array.isArray(items) ? items.slice(0, 100) : null, typeof note === 'string' ? note : '');
     return true;
   }
 
@@ -1314,19 +1365,26 @@ export class Brain {
     if (house.used.length) ctx.emit({ type: 'house', text: usedLine(house.used), group: houseGroupOfTool(name) });
     try {
       ctx.picked = null;
-      if (tool.check) {
-        let need = await tool.check(args, ctx);
+      // Item 9 (outside-text.js): after a web page or file was read this turn, anything that acts shows its card.
+      const afterOutside = Boolean(ctx.outsideRead) && !this.plainLoop;
+      if (tool.check || (afterOutside && KEEPS_FOR_LATER.has(name))) {
+        let need = tool.check ? await tool.check(args, ctx) : null;
+        if (afterOutside) { const was = need; need = outsideNeed(name, need, tool.summary ? tool.summary(args) : name); if (need && !was) this.log('approval', `asking first: ${name} right after reading outside text`); }
         // "Let Claude use Bob's hands" (claude-door.js): the card names the app that asked.
         if (need && ctx.via) need = typeof need === 'string' ? `${ctx.via} (through Bob): ${need}` : { ...need, text: `${ctx.via} (through Bob): ${need.text}` };
         const group = typeof tool.approvalGroup === 'function' ? tool.approvalGroup(args) : tool.approvalGroup;
         // "Let Bob work without asking" (Settings, Hands; off by default): no card, but the hard limits in check()
         // still apply, every action still goes in the logbook and the chat, and ✋ Hands turns it off at once.
         // Tools marked alwaysAsk (cloud helpers: they cost money) still show their card.
-        if (need && !tool.alwaysAsk && !ctx.alwaysAsk && freeOn(this.cfg)) { // a call from another app always shows its card
+        if (need && !tool.alwaysAsk && !ctx.alwaysAsk && !afterOutside && freeOn(this.cfg)) { // a call from another app always shows its card
           const text = typeof need === 'string' ? need : need.text;
           this.log('approval', `done without asking: ${text}${need.command ? ` [${need.command}]` : ''}`);
           ctx.emit({ type: 'auto-approved', text, command: need.command || '', rows: Array.isArray(need.plan) ? need.plan.filter((r) => !r.blocked).length : null });
-        } else if (need && !(group && ctx.allowAll.has(group))) {
+        } else if (need && need.command && !need.pack && !need.mcp && !afterOutside && todayOn(this.cfg) && (this.todayOk?.get(todayKey(need.command, need.cwd)) || 0) > Date.now()) {
+          // Item 12: this exact command in this folder was allowed for today on an earlier card.
+          this.log('approval', `allowed for today earlier: ${need.text} [${need.command}]`);
+          ctx.emit({ type: 'allowed-earlier', text: `${need.text} (allowed here for today)` });
+        } else if (need && !(group && ctx.allowAll.has(group) && !afterOutside)) {
           // 1.5.42: already answered on the card with all of this job's OKs (together.js)?
           const earlier = (ctx.preOk || ctx.preNo) ? takeEarlier(ctx, name, args, need) : null;
           if (earlier?.no) { ctx.ledger?.action(name, args, true, 'declined'); this.log('approval', `denied on the combined card: ${typeof need === 'string' ? need : need.text}`); return { text: 'The user said no to this on the card. Do not try again; say it is fine and ask what to do instead.' }; }
@@ -1342,6 +1400,7 @@ export class Brain {
           const answer = await this.approve(unlisted ? (typeof need === 'string' ? need + unlisted : { ...need, text: need.text + unlisted }) : need, ctx.emit, ctx.signal, group, { hand, out });
           if (!answer) { ctx.ledger?.action(name, args, true, 'declined'); return { text: 'The user said no. Do not try again; say it is fine and ask what to do instead.' }; }
           if (answer === 'all' && group) ctx.allowAll.add(group);
+          if (answer === 'today' && need.command) (this.todayOk ||= new Map()).set(todayKey(need.command, need.cwd), endOfDay()); // item 12
           if (Array.isArray(need.plan)) ctx.picked = out.picked ?? null;
           }
         }
@@ -1371,11 +1430,15 @@ export class Brain {
         if (v.retry) v = { ...v, ok: false, text: v.text || `Error: ${name} was tried twice and still didn't take (${v.why || 'no proof it worked'}).` };
       }
       if (v.text) text = v.text;
+      // Item 9: what came from outside is marked as information, and the rest of the turn asks before acting.
+      if (isOutside(name) && !/^Error:/.test(text) && !this.plainLoop) { text = markOutside(name, text); ctx.outsideRead = true; }
       for (const o of v.show || []) if (o?.file) await this.deliver(ctx, o.type || 'image', o.file);
       ctx.currentTool = null;
       const ok = v.ok !== false && !/^Error:/.test(text);
       ctx.ledger?.action(name, args, ok || Boolean(v.declined), text, startedAt, v);
       this.log(ok ? 'tool' : 'error', ok ? (tool.summary ? tool.summary(args) : name) : `${name}: ${text.replace(/^Error:\s*/, '')}`);
+      // Item 10: one line per step for the reply's "How I got here".
+      ctx.trace?.push(traceStep({ name, summary: tool.summary ? (() => { try { return tool.summary(args); } catch { return name; } })() : name, ok, ms: Date.now() - startedAt, text, brain: (() => { try { return this.state?.model ? this.brainLabel(this.state.model) : ''; } catch { return ''; } })() }));
       // Files the tool saved or made (write_file, spreadsheets, Hands copies and zips...): on the Made by Bob
       // list, and a card with a preview in the chat that opens in the side panel.
       const paths = ok ? [...new Set([...(ctx.made || []), ...madePaths(name, text)])].slice(0, 6) : [];
@@ -1455,7 +1518,7 @@ export class Brain {
   // The start of every front-desk chat: the system prompt and core tools, as a turn with no tool groups sends them.
   startPrompt() {
     const loaded = new Set();
-    const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: this.now(), memory: this.memory(), user: this.cfg.userName, backstory: this.backstory(), about: this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, this.cfg.userName || 'the user') }), loaded) };
+    const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: NOW_IN_NOTE, memory: this.memory(), user: this.cfg.userName, backstory: this.backstory(), about: this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, this.cfg.userName || 'the user') }), loaded) };
     return { messages: [sys], tools: this.frontDeskTools(loaded) };
   }
 
@@ -2067,7 +2130,14 @@ export class Brain {
         }
       })
       .finally(() => {
+        // Item 10: the steps go with the answer, so "How I got here" is there after a reload too.
+        const steps = this.traces?.get(sessionId);
+        if (steps) this.traces.delete(sessionId);
+        if (steps?.length && !job?.guest) { const list = steps.slice(0, MAX_TRACE); const last = [...this.session(sessionId)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length); if (last) last.steps = list; emit({ type: 'steps', list }); }
         if (!job?.guest) this.saveSession(sessionId); // 1.5.72: a job from another Bob isn't kept as a chat here
+        if (!job?.guest) { const last = [...this.session(sessionId)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length); if (last?.id) emit({ type: 'answer-id', id: last.id }); } // item 11: Save as a test needs it
+        // Item 13: how full this chat left the brain's memory, for the meter by Effort.
+        const st = this.engine?.lastStats; if (!job?.guest && st?.used && st.ctx && st.at >= (job?.startedAt || 0)) emit({ type: 'chat-fill', used: st.used, ctx: st.ctx });
         this.gate.done(controller.signal); // the graphics card goes to the next job waiting for it
         if (job?.handoff) job.handoff = slimHandoff(job.handoff); // finished: keep what it did, drop the load-by-load steps
         // 1.5.38: carried on (or not) once; the note isn't used again. A job told to wait for a download goes back in line.
@@ -2262,7 +2332,8 @@ export class Brain {
       if (['image', 'video', 'audio'].includes(ev?.type) && ev.file && ctx?.wantType) this.autoSaveAs(ev, ctx); // 1.5.95 "a song as an mp3"
       return sent;
     };
-    const ctx = { emit: emitMade, signal, brain: this, cfg: this.cfg, allowAll: new Set(), pics, picNote, msgs, turnText: text, job, sessionId, wantsEdit, editFrom: wantsEdit ? recent : null, wantType: namedType(text), saves: [], savedAs: [] };
+    const ctx = { emit: emitMade, signal, brain: this, cfg: this.cfg, allowAll: new Set(), pics, picNote, msgs, turnText: text, job, sessionId, wantsEdit, editFrom: wantsEdit ? recent : null, wantType: namedType(text), saves: [], savedAs: [], trace: [] };
+    if (!job?.guest) (this.traces ||= new Map()).set(sessionId, ctx.trace); // item 10: How I got here
     // The ledger (handoff.js): what was asked for, every load, tool and output this turn, kept by the system.
     ctx.ledger = new Ledger({ job, expect: expectFrom(text, { pics }), save: () => this.saveQueue() });
     this.gate.track(signal, ctx.ledger);

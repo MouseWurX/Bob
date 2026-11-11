@@ -55,6 +55,7 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
       const next = { ...cur };
       if ('enabled' in b) next.enabled = b.enabled === true;
       if ('free' in b) next.free = b.free === true;
+      if ('today' in b) next.today = b.today === true; // item 12
       const limitNotes = [];
       if (b.limits && typeof b.limits === 'object') {
         next.limits = { ...cur.limits };

@@ -70,7 +70,7 @@ function browserHtml(bw, s, on) {
 export function handsApproval(ev, { add, answer }) {
   if (ev.newTool) return newToolCard(ev, { add, answer });
   if (!ev.plan && !ev.command) return null;
-  const all = ev.allowAll ? '<button type="button" class="all big">Allow the rest of this job</button>' : '';
+  const all = (ev.allowAll ? '<button type="button" class="all big">Allow the rest of this job</button>' : '') + (ev.today ? '<button type="button" class="today big" title="This exact command, in this folder, runs without a card until midnight">Allow this here for today</button>' : ''); // item 12
   let body = '';
   if (ev.plan) {
     const ok = ev.plan.filter((r) => !r.blocked);
@@ -101,13 +101,14 @@ export function handsApproval(ev, { add, answer }) {
   count();
   const go = (allow) => {
     const picked = ev.plan ? rows() : undefined;
-    card.querySelector('.row').outerHTML = `<div class="done">${allow === 'all' ? 'Allowed for the rest of this job' : allow ? (ev.plan ? `Allowed ${picked.length} of ${ev.plan.length}` : 'Allowed') : 'Denied'}</div>`;
+    card.querySelector('.row').outerHTML = `<div class="done">${allow === 'today' ? 'Allowed here for today' : allow === 'all' ? 'Allowed for the rest of this job' : allow ? (ev.plan ? `Allowed ${picked.length} of ${ev.plan.length}` : 'Allowed') : 'Denied'}</div>`;
     for (const i of card.querySelectorAll('input')) i.disabled = true;
     answer(allow, picked);
   };
   yes.onclick = () => go(true);
   card.querySelector('.no').onclick = () => go(false);
   if (ev.allowAll) card.querySelector('.all').onclick = () => go('all');
+  if (ev.today) card.querySelector('.today').onclick = () => go('today');
   return card;
 }
 
@@ -351,7 +352,8 @@ export async function mountHandsSettings(box) {
     box.innerHTML = `<span class="tag">off unless you turn them on</span>
       <p class="muted">Hands let Bob do things on this replicant matrix, not just talk about them. Each one is off until you switch it on. Even then he shows you exactly what he'll do (every file, or the exact command) and waits for your click every time, unless you turn on "Let Bob work without asking" below. "Allow the rest of this job" only covers the same kind of thing until that job ends. The hard limits below are all on to start with. He never changes his own code or settings. Everything goes in the logbook.</p>
       <label class="switch"><input type="checkbox" data-hmaster ${s.enabled ? 'checked' : ''}><span><strong>Let Bob use Hands</strong> ${tip('The master switch. Off turns every Hand below off.', 'Let Bob use Hands')}${s.enabled && s.held ? '<br><span class="warn-text">Stopped right now with the Hands switch on the chat page. Click it there to carry on.</span>' : ''}</span></label>
-      <div class="hands-free${s.free ? ' on' : ''}"><label class="switch"><input type="checkbox" data-hfree ${s.free ? 'checked' : ''}><span><strong>Let Bob work without asking</strong> <span class="tag">off unless you turn it on</span><br><span class="muted">No approval cards: he just does the job and tells you what he did. The hard limits below still apply, every action is still in the chat and the logbook, and the ✋ Hands button on the chat page stops him at once. Cloud helpers still ask, because they cost money. Scheduled jobs also run by themselves.</span>${s.free && s.enabled ? '<br><span class="warn-text">On: Bob is working without asking.</span>' : ''}</span></label>${bannerHidden() ? '<button type="button" class="link" data-hbannerback>Show the banner again</button>' : ''}</div>
+      <label class="switch"><input type="checkbox" data-htoday ${s.today ? 'checked' : ''}><span><strong>Offer "Allow this here for today"</strong> <span class="tag">off unless you turn it on</span><br><span class="muted">Command cards get one more button. Pressed, that exact command in that folder runs without a card until midnight. A different command, or anything right after Bob read a web page or file, still asks.</span></span></label>
+            <div class="hands-free${s.free ? ' on' : ''}"><label class="switch"><input type="checkbox" data-hfree ${s.free ? 'checked' : ''}><span><strong>Let Bob work without asking</strong> <span class="tag">off unless you turn it on</span><br><span class="muted">No approval cards: he just does the job and tells you what he did. The hard limits below still apply, every action is still in the chat and the logbook, and the ✋ Hands button on the chat page stops him at once. Cloud helpers still ask, because they cost money. Scheduled jobs also run by themselves.</span>${s.free && s.enabled ? '<br><span class="warn-text">On: Bob is working without asking.</span>' : ''}</span></label>${bannerHidden() ? '<button type="button" class="link" data-hbannerback>Show the banner again</button>' : ''}</div>
       ${v.hands.map((h) => `<label class="switch"><input type="checkbox" data-hand="${esc(h.id)}" ${s[h.id]?.on ? 'checked' : ''}><span><strong>${esc(h.label)}</strong> ${tip(esc(h.what || ''), h.label)}</span></label>`).join('')}
       ${officeLine(v.office, s.enabled && s.office?.on)}
       ${securityLine(s.enabled && s.security?.on)}
@@ -415,6 +417,7 @@ export async function mountHandsSettings(box) {
     try {
       if ('hmaster' in el.dataset) return await set({ enabled: el.checked }, el.checked ? 'Hands on. Now switch on the ones you want; he still asks every time.' : 'All Hands off.');
       if ('hfree' in el.dataset && el.checked) { el.checked = false; return askFree(); }
+      if ('htoday' in el.dataset) return await set({ today: el.checked }, el.checked ? 'On. Command cards offer "Allow this here for today".' : 'Off. Every command asks again.');
       if ('hfree' in el.dataset) return await set({ free: el.checked }, el.checked ? 'On. Bob works without asking now. The hard limits still apply, and ✋ Hands on the chat page stops him.' : 'Off. Bob asks before every action again.');
       if (el.dataset.hlimit) { const l = (v.limits || []).find((x) => x.id === el.dataset.hlimit); return await set({ limits: { [el.dataset.hlimit]: el.checked } }, el.checked ? `"${l?.label}" is back on.` : `"${l?.label}" is off. ${l?.off || ''}`); }
       if (el.dataset.hand) return await set({ [el.dataset.hand]: { on: el.checked } }, el.checked ? 'On. Bob still asks before every action.' : 'Off.');

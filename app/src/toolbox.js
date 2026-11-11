@@ -12,7 +12,7 @@ import { mcpWords, mcpWhat } from './mcp.js';
 import { packsWords, packsWhat } from './toolpacks.js';
 import { selfWorkWords } from './self-work.js';
 
-export const CORE = ['notice_board', 'remember', 'reminders', 'list_folder', 'read_file', 'web_search', 'fetch_page', 'bob_help', 'ask_specialist', 'show_made', 'pick_session', 'edit_my_message', 'take_note', 'offer_setup', 'use_tools'];
+export const CORE = ['notice_board', 'remember', 'reminders', 'list_folder', 'read_file', 'web_search', 'fetch_page', 'bob_help', 'ask_specialist', 'show_made', 'pick_session', 'edit_my_message', 'take_note', 'offer_setup', 'use_tools', 'ask_user'];
 
 // Groups Bob can add. `what` is what Bob reads in use_tools; `words` is the cheap pre-check on the user's message.
 const WORK_GROUPS = {
@@ -27,9 +27,9 @@ const WORK_GROUPS = {
     words: /\b(flow ?charts?|diagrams?|mind ?maps?|org(?:ani[sz]ation(?:al)?)? charts?|family trees?|decision trees?|process (?:map|chart)s?|gantt|timelines?|pie charts?|bar charts?|swim ?lanes?|wireframes?|boxes and arrows|map (?:it |this |that |them )?out|lay (?:it |this |that )?out visually|chart (?:out|how)|(?:draw|sketch|show) (?:me )?(?:how|the steps|the process|the flow)|visual(?:ly)? (?:show|map|lay)|mermaid|uml|er diagram|sequence)\b/i
   },
   documents: {
-    what: 'write or edit files, save spreadsheets, search inside files and documents, map a codebase',
-    tools: ['write_file', 'edit_file', 'save_spreadsheet', 'search_files', 'find_in_documents', 'code_map'],
-    words: /\b(save|write|edit|documents?|txt|csv|xlsx|spreadsheet|excel|pdfs?|word (?:doc|file)s?|search (?:my|the|in|for)|find (?:in|where|the (?:file|doc|document|pdf))|grep|jot|text file|notes? file|(?:in|through) my (?:files|documents|docs|folders)|where did I (?:mention|write|put|say|save)|which (?:file|document|doc|pdf))\b/i
+    what: 'write or edit files, save spreadsheets, search inside files and documents, map a codebase, see what changed (git)',
+    tools: ['write_file', 'edit_file', 'save_spreadsheet', 'search_files', 'find_in_documents', 'code_map', 'git_look'],
+    words: /\b(save|write|edit|git|commits?|diffs?|what (?:i |we )?changed|uncommitted|documents?|txt|csv|xlsx|spreadsheet|excel|pdfs?|word (?:doc|file)s?|search (?:my|the|in|for)|find (?:in|where|the (?:file|doc|document|pdf))|grep|jot|text file|notes? file|(?:in|through) my (?:files|documents|docs|folders)|where did I (?:mention|write|put|say|save)|which (?:file|document|doc|pdf))\b/i
   },
   parts3d: { // "Let Bob make 3D parts" (parts3d.js): only while it's on (offTools hides it otherwise)
     what: 'make exact 3D parts (STL files for a 3D printer) from an OpenSCAD recipe: brackets, boxes, lids, spacers, replacement parts; and turn a picture into a textured 3D model (GLB): figurines, characters, props',

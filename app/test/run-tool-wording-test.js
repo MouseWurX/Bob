@@ -26,7 +26,9 @@ check('every tool has a description', all.every((f) => f.description.trim().leng
 // Before the wording pass: all tools ~47,500 characters, the starting core ~8,800.
 // 1.5.204: seven new tools (3D model and part, tool packs x3, look_at_job, pass_note), all off until switched on,
 // took the total from 39,000 to about 42,800. Each one is still under the per-tool limits above.
-check('all tools together stay under 43,000 characters', size(all) < 43000, String(size(all)));
+// Nov 11 (the 50 improvements): git_look and ask_user are new, and edit_file, search_files, list_folder and remember
+// each gained an optional input, so the cap moved from 43,000 to 45,000.
+check('all tools together stay under 45,000 characters', size(all) < 45000, String(size(all)));
 const core = all.filter((f) => CORE.includes(f.name));
 check('the tools every chat starts with stay under 8,000 characters', size(core) < 8000, String(size(core)));
 check('no tool talks about GPU plumbing the brain can\'t act on', !all.some((f) => /steps out of the GPU/.test(f.description)));

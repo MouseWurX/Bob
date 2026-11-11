@@ -93,7 +93,8 @@ const isAbs = (p) => typeof p === 'string' && p.length < 400 && !p.includes('\0'
 // Hands that Settings has on, never switch anything on. Each Hand has { on }. folders = where the Files hand may work.
 export function cleanHands(v = {}) {
   // free = "Let Bob work without asking". Off unless the user turns it on.
-  const out = { enabled: v.enabled === true, held: v.held === true, free: v.free === true };
+  // today = item 12 (Nov 11): command cards also offer "Allow this here for today". Off unless the user turns it on.
+  const out = { enabled: v.enabled === true, held: v.held === true, free: v.free === true, today: v.today === true };
   for (const id of Object.keys(HANDS)) out[id] = { on: v[id]?.on === true };
   out.folders = [...new Set([].concat(v.folders || []).filter(isAbs))].slice(0, 30);
   out.readOnlyFolders = [...new Set([].concat(v.readOnlyFolders || []).filter(isAbs))].slice(0, 30); // 1.5.117: read-only projects added in Settings
@@ -111,6 +112,14 @@ export function handOn(cfg, id) {
   return handHere(id) && h.enabled && !h.held && h[id]?.on === true;
 }
 // Is Bob working without asking right now? Needs the master switch, the free switch, and the ✋ switch not stopped.
+// Item 12: may a command card offer "Allow this here for today"? Needs the master switch and its own switch.
+export function todayOn(cfg) {
+  const h = handsSettings(cfg);
+  return h.enabled && h.today && !h.held;
+}
+// The key for one exact command in one folder, and when "for today" ends (midnight on this replicant matrix's clock).
+export const todayKey = (command, cwd) => `${String(cwd || '')}\n${String(command || '')}`;
+export function endOfDay(now = Date.now()) { const d = new Date(now); d.setHours(24, 0, 0, 0); return d.getTime(); }
 export function freeOn(cfg) {
   const h = handsSettings(cfg);
   return h.enabled && h.free && !h.held;

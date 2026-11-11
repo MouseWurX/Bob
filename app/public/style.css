@@ -829,6 +829,10 @@ details.more > summary:hover { color: var(--accent); }
 .effort .game-btn { min-height: 40px; margin-left: 10px; position: relative; } /* 1.5.41 the 🎮 Gaming button */
 .effort .game-btn::before { content: ""; position: absolute; left: -11px; top: 6px; bottom: 6px; border-left: 1px solid var(--line); }
 .effort-hint { flex: 1 1 220px; min-width: 0; font-size: 11px; }
+/* Item 13: how full this chat is, and Sum up and carry on from 70% */
+.chat-fill { font-size: 11px; white-space: nowrap; }
+.chat-fill.full #chatFillText { font-weight: 600; }
+.steps-list { margin: 4px 0; padding-left: 20px; font-size: 12px; }
 @media (forced-colors: active) { .effort [data-effort][aria-checked="true"] { border: 2px solid Highlight; } }
 
 /* 1.5.7 the cat by Bob's picture: small antics while he's idle (no brain). Still for people who prefer less motion. */

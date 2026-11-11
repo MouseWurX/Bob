@@ -123,6 +123,8 @@
     const by = m.by === 'phone' ? '📱 Phone brain' : `🖥 ${bobName(m.by)}`;
     const node = el('div', { class: 'msg bob' }, el('div', { class: 'by', text: by }), el('div', { class: 'words', html: L.markdown(m.text) }));
     for (const x of m.media || []) node.append(mediaNode(x));
+    // Item 10: How I got here, the steps a Bob on your network took for this answer.
+    if (m.steps?.length) node.append(foldNote(`How I got here (${m.steps.length} step${m.steps.length === 1 ? '' : 's'})`, 'Each step Bob took for this answer. Tap to see them.', el('ol', { class: 'versions-list' }, m.steps.map((x) => el('li', { text: `${x.ok ? '✓' : '✗'} ${x.what || x.tool} · ${(x.ms / 1000).toFixed(1)} s${x.brain ? ` · ${x.brain}` : ''}` })))));
     node.append(replyTools(m));
     node._m = m;
     return node;
@@ -579,6 +581,7 @@
     else if (ev.type === 'error') grow(`\n\n*(${ev.text})*`);
     else if (ev.type === 'correction' || ev.type === 'busy-note' || ev.type === 'announce' || ev.type === 'aside') grow(`\n\n*${ev.text}*`);
     else if (ev.type === 'waiting-line') { if (!seenWaits.has(ev.id)) { seenWaits.add(ev.id); grow(`\n\n*${ev.text}*`); } } // 1.5.97: once per wait
+    else if (ev.type === 'steps') { if (current.msg && Array.isArray(ev.list)) current.msg.steps = ev.list.slice(0, 30); } // item 10
     else if (ev.type === 'stuck') { const c = chats.find((x) => x.id === current.chatId); if (c) c.stuck = true; } // item 8
     else if (ev.type === 'done') finish();
   }
@@ -586,6 +589,7 @@
   // A networked Bob asks for an OK. Every OK for one job is on one card, like on the PC.
   function approvalCard(base, ev) {
     if (ev.planCard) return planCard(base, ev);
+    if (ev.ask) return askCard(base, ev); // item 25
     const name = bobName(base);
     const b = bobs.find((x) => x.base === base);
     const what = ev.together ? `${ev.together.length} things for one job` : ev.mcp ? `${ev.mcp.app}: ${ev.command}` : ev.pack ? `${ev.pack.name} pack (by ${ev.pack.by}): ${ev.command}` : ev.command ? `run: ${ev.command}` : '';
@@ -597,6 +601,19 @@
       el('div', { class: 'row' },
         el('button', { class: 'main', text: ev.together ? 'Allow all' : 'Allow', onclick: () => answer(true) }),
         el('button', { text: ev.together ? 'Deny all' : 'Deny', onclick: () => answer(false) })));
+    $('chat').append(card);
+    card.scrollIntoView({ block: 'end' });
+  }
+
+  // Item 25: a networked Bob asks one question with choices; the pick goes back as the card's note.
+  function askCard(base, ev) {
+    const b = bobs.find((x) => x.base === base);
+    const send = (words) => words && phone('net.post', { address: b.address, path: '/api/approve', body: JSON.stringify({ id: ev.id, allow: true, note: words }) }).then(() => card.remove()).catch(() => toast("Couldn't reach your other replicant matrix"));
+    const other = el('input', { type: 'text', maxlength: 500, placeholder: 'Something else…', 'aria-label': 'Something else' });
+    const card = el('div', { class: 'card', 'data-approval': ev.id },
+      el('div', { class: 'q' }, el('strong', { text: `"${bobName(base)}" asks` }), el('div', { text: ev.ask.question || '' })),
+      el('div', { class: 'row' }, ...(ev.ask.choices || []).map((c) => el('button', { text: c, onclick: () => send(c) }))),
+      el('div', { class: 'row' }, other, el('button', { text: 'Send', onclick: () => send(other.value.trim()) })));
     $('chat').append(card);
     card.scrollIntoView({ block: 'end' });
   }
