@@ -1,12 +1,17 @@
 # Builds Brain Engine (app/engine/README.md): llama.cpp at bundledLlamaTag with app/engine/patches/ applied.
-# Runs when app/engine/ or this file changes, and by hand. Windows x64: the llama.dll / llama-server.exe set, to put over a COPY of the official
-# CUDA or Vulkan zip for the same tag (the card backends are separate DLLs and are not changed).
+# Runs when app/engine/ or this file changes on main or in a pull request that is ready for review, and by hand.
+# Pushes to work branches and draft pull requests run nothing, like build.yml, so a work-in-progress patch never
+# sends a failed-build e-mail: a thread checks its engine patch with its own build first (app/engine/README.md).
+# Windows x64: the llama.dll / llama-server.exe set, to put over a COPY of the official CUDA or Vulkan zip for the same tag (the card backends are separate DLLs and are not changed).
 # Linux x64: the same set for checking. Every action is pinned to a full commit SHA, like build.yml.
 name: Brain Engine
 
 on:
   push:
-    branches: [main, 'claude/**']
+    branches: [main]
+    paths: ['app/engine/**', '.github/workflows/brain-engine.yml']
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: ['app/engine/**', '.github/workflows/brain-engine.yml']
   workflow_dispatch:
     inputs:
@@ -20,6 +25,8 @@ permissions:
 
 jobs:
   windows:
+    # draft pull requests run nothing
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: windows-2025-vs2026
     permissions:
       contents: write # only used by the publish step, which runs only when asked for by hand
@@ -76,6 +83,8 @@ jobs:
         run: bash app/engine/publish.sh "$TAG" brain-engine-*-win-x64.zip
 
   linux:
+    # draft pull requests run nothing
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # only used by the publish step, which runs only when asked for by hand
