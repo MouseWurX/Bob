@@ -38,8 +38,12 @@ ${set('Learn how-tos from jobs that went well', 'Off', 'Same as <strong>Let Bob 
 ${set('Pick up where I left off after a restart', 'Off', 'Same as <strong>Pick up where Bob left off after a restart</strong>.')}
 ${set('Start when you sign in to this replicant matrix', 'Off', 'Same as <strong>Launch Bob on start-up</strong>. Greyed out on Linux for now, the same as in Settings.')}
 ${set('Check for a newer me when I start', 'Off', 'Same as <strong>Check for updates when Bob starts</strong>. I only tell you; updating always takes your click.')}
-${set('Fetch my newest brain list once a day', 'Off', 'Same as <strong>Let Bob fetch his newest brain list</strong>.')}</dl>
-<p><strong>Bigger ones, with a few choices each</strong>: using your files and programs (✋ Hands), talking to me from your phone (🌐 Bob-Net) and chatting on Discord or Telegram (☁ Online services). Those need more than one tick, so the buttons take you straight to their place in Settings.</p>
+${set('Fetch my newest brain list once a day', 'Off', 'Same as <strong>Let Bob fetch his newest brain list</strong>.')}
+${set('Use one brain for everything', 'Off', 'Same as <strong>One brain (snappier)</strong>.')}
+${set('Read only the memories that fit each message', 'Off', 'Same as <strong>Remember only what fits</strong>.')}</dl>
+<p>The list is grouped like the cards in Settings (How Bob works, Brains and speed, My other Bobs, Online and other apps, What Bob may do, Fun, This replicant matrix), so a thing is in the same place in both.</p>
+<p><strong>Buttons</strong> are for the bigger ones, which need more than one tick: Check-ins, Bob-Net, Online services, Hands, Adventure, Games and Housekeeping. A button opens that section of Settings.</p>
+<p><strong>Coming soon</strong> lines name things still being built. They can't be ticked yet, and they'll start off too.</p>
 <p>If you set me up before this list existed, I offer it once in the chat (<strong>Show me the list</strong> or <strong>Not now</strong>) and never push it again. Any time after that: Settings, <strong>Run first-time setup</strong>, and scroll past Get me ready. It works the same on Windows, Mac and Linux. On the Android app there's no Welcome: settings are changed in my own window on your replicant matrix, and the phone uses whatever you picked there.</p>` },
 
   { id: 'linux', group: 'Getting started', title: 'Bob on Linux', words: 'linux ubuntu fedora mint debian arch pop appimage chmod executable fuse libfuse2 vulkan cuda nvidia amd intel clamav trash autostart local share xdg software centre apt dnf ffmpeg libreoffice update remove uninstall sandbox replicant matrix pc computer laptop mac device machine',
