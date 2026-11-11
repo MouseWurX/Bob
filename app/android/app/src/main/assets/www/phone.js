@@ -1055,6 +1055,33 @@ ${chatOut}
     btn.disabled = false;
   });
 
+  // ---------- Back up and move: this phone's chats, memory, settings and list of Bobs, as one file ----------
+  // Nothing about passcodes or sign-ins is in it (those stay in Android's own storage): each Bob is signed in to again.
+  $('phone-backup').addEventListener('click', async () => {
+    const msg = $('backup-msg');
+    try {
+      const fname = `bob-phone-backup-${new Date().toISOString().slice(0, 16).replace(/[-T:]/g, '').replace(/^(\d{8})(\d{4})$/, '$1-$2')}.json`;
+      const text = JSON.stringify(L.phoneBackup({ settings, chats, memory, bobs, made: new Date().toISOString() }));
+      const where = await phone('media.saveData', { name: fname, mime: 'application/json', data: btoa(unescape(encodeURIComponent(text))) });
+      msg.textContent = `Saved ${fname} in Downloads (${where}): ${chats.length} chat${chats.length === 1 ? '' : 's'}. Copy it to the new phone and press Restore from a backup there.`;
+    } catch (e) { logError('backup', e.message); msg.textContent = `Couldn't save the backup: ${e.message}`; }
+  });
+  $('phone-restore').addEventListener('click', async () => {
+    const msg = $('backup-msg');
+    try {
+      const text = await phone('file.pick');
+      if (!text) { msg.textContent = 'Nothing restored: you closed the file window.'; return; }
+      const r = L.phoneRestore({ settings, chats, memory, bobs }, text);
+      if (r.error) { msg.textContent = r.error; return; }
+      Object.assign(settings, r.settings); saveSettings();
+      chats = r.chats; saveChats();
+      memory = r.memory; store.set('memory', memory);
+      bobs = r.bobs; store.set('bobs', bobs);
+      msg.textContent = `Restored ${r.added} chat${r.added === 1 ? '' : 's'}${r.newBobs ? ` and ${r.newBobs} Bob${r.newBobs === 1 ? '' : 's'} (sign in to each again)` : ''}. The phone brain is off until you switch it on.`;
+      drawChats(); drawChat();
+    } catch (e) { logError('restore', e.message); msg.textContent = `Couldn't restore: ${e.message}`; }
+  });
+
   const EFFORTS = ['low', 'medium', 'high', 'extreme'];
   $('effort').addEventListener('click', () => { settings.effort = EFFORTS[(EFFORTS.indexOf(settings.effort) + 1) % EFFORTS.length]; saveSettings(); drawWho(); });
 

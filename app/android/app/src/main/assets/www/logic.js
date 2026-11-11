@@ -144,5 +144,43 @@
     return { ok: ramTotalMB - needMB >= 2500, tight: ramTotalMB - needMB < 4000 };
   }
 
-  globalThis.BobLogic = { netAddress, bigJob, BIG_JOBS, pickAnswerer, canDo, phoneSystem, markdown, esc, chatTitle, size, fits };
+  // Back up and move: this phone's own things as one file. Never a passcode or a sign-in (those stay with Android).
+  const PHONE_BACKUP_SETTINGS = ['mode', 'phoneModel', 'freeWhenIdle', 'idleMinutes', 'readAloud', 'userName', 'theme', 'effort', 'resume'];
+  function phoneBackup({ settings = {}, chats = [], memory = '', bobs = [], made = '' } = {}) {
+    const s = {};
+    for (const k of PHONE_BACKUP_SETTINGS) if (k in settings) s[k] = settings[k];
+    return { kind: 'bob-phone-backup', format: 1, made, settings: s, chats: chats.slice(0, 200), memory: String(memory || ''), bobs: bobs.map((b) => ({ name: String(b.name || ''), address: String(b.address || ''), base: String(b.base || '') })) };
+  }
+  // Puts a phone backup into what's here: chats by id (the backup's copy wins), memory lines not here yet, Bobs not in the
+  // list yet (checked like any typed address), settings from the backup. The phone brain stays off: it downloads again.
+  function phoneRestore(here = {}, text = '') {
+    let b;
+    try { b = JSON.parse(String(text)); } catch { return { error: "That file isn't a phone backup (it isn't readable)." }; }
+    if (b?.kind === 'bob-backup') return { error: "That's a backup of Bob on a computer. Restore it there, in Settings, This replicant matrix, Back up and move." };
+    if (b?.kind !== 'bob-phone-backup') return { error: "That file isn't one of Bob's phone backups." };
+    if (Number(b.format) > 1) return { error: 'That backup was made by a newer Bob. Update this one first.' };
+    const settings = {};
+    for (const k of PHONE_BACKUP_SETTINGS) if (b.settings && k in b.settings && typeof b.settings[k] !== 'object') settings[k] = b.settings[k];
+    settings.phoneOn = false;
+    const ok = (c) => c && typeof c.id === 'string' && Array.isArray(c.msgs);
+    const theirs = [].concat(b.chats || []).filter(ok).map((c) => ({ id: c.id.slice(0, 40), title: String(c.title || 'Chat').slice(0, 120), at: Number(c.at) || 0, msgs: c.msgs.filter((m) => m && typeof m === 'object').map((m) => ({ who: m.who === 'you' ? 'you' : 'bob', text: String(m.text || ''), ...(m.by ? { by: String(m.by).slice(0, 60) } : {}) })) }));
+    const ids = new Set(theirs.map((c) => c.id));
+    const chats = [...theirs, ...[].concat(here.chats || []).filter((c) => !ids.has(c.id))].sort((x, y) => y.at - x.at).slice(0, 200);
+    const added = theirs.length;
+    const have = String(here.memory || '');
+    const lines = have.split('\n').map((l) => l.trim());
+    const extra = String(b.memory || '').split('\n').filter((l) => l.trim() && !lines.includes(l.trim()));
+    const memory = [have.trimEnd(), ...extra].filter(Boolean).join('\n');
+    const bobs = [...[].concat(here.bobs || [])];
+    let newBobs = 0;
+    for (const x of [].concat(b.bobs || [])) {
+      const base = netAddress(x?.address || x?.base || '');
+      if (!base || bobs.some((y) => y.base === base)) continue;
+      bobs.push({ name: String(x.name || 'Bob').slice(0, 60), address: String(x.address || base), base });
+      newBobs++;
+    }
+    return { settings, chats, memory, bobs, added, newBobs };
+  }
+
+  globalThis.BobLogic = { netAddress, bigJob, BIG_JOBS, pickAnswerer, canDo, phoneSystem, markdown, esc, chatTitle, size, fits, phoneBackup, phoneRestore };
 })();

@@ -310,6 +310,10 @@ Settings, **Where Bob saves things** picks the folder for the pictures, clips, s
 
 ---
 
+### Back up and move
+
+Settings, **This replicant matrix**, **Back up and move** saves one zip with your chats, settings, memory, notes, the tools Bob made and the list of things he made (not the pictures themselves, and never brains or programs: those download again). **Keys and passcodes, locked** is off unless you tick it; then your API keys, bot tokens and phone passcode go in too, locked with a passcode you type. On a new computer, install Bob, **Pick a backup…**, **Restore these** and **Restart Bob now**: the files go in as he starts, and what they replace is kept in the inn's archive folder. Phone access, Discord, Telegram, rented brains, cloud helpers, Hands, scheduled jobs and the automatic backup come back switched off. **Back up by itself** (off unless you turn it on) saves a backup to a folder every day or week and keeps the newest few, never with keys. Bob for Android has its own phone backup in its Settings.
+
 ## 8. Hands: letting Bob do things on your PC (opt-in)
 
 Hands are Bob's way of doing things for you on your PC rather than just talking about them:

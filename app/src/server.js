@@ -76,6 +76,8 @@ import { OS, features } from './platform.js';
 import { saveExport } from './diagram.js';
 import { saveAs } from './save-as.js';
 import { saveHelpBundle, bundleBytes, revealFile } from './help-bundle.js';
+import { BackupKeeper, backupView, makeBackup, readBackup, stageRestore, cleanBackup, isInsideDir, PART_IDS } from './backup.js';
+import { rentKeyEnv } from './rental.js';
 import { notesFile, ensureNotesFile } from './notes.js';
 import { clearDocCache } from './my-docs.js';
 import { sandboxHolds } from './selftools.js';
@@ -165,6 +167,9 @@ const engineKeeper = new EngineKeeper(cfg, {
   download: (id) => shop.dl.find((d) => d.id === 'engine:' + id) || null,
   say: (text) => { brain.log('settings', text); broadcast({ type: 'announce', text }); }
 }).start();
+// Back up and move (src/backup.js): the automatic backup checks once an hour and only saves with its switch on.
+const backupKeeper = new BackupKeeper(cfg, { log: (t) => brain.log('settings', t), version: VERSION.label });
+if (cfg.restored) brain.log('settings', `restore went in at start: ${cfg.restored.placed} file(s) from ${cfg.restored.from || 'a backup'}${cfg.restored.kept ? `, what they replaced is in ${cfg.restored.keptIn}` : ''}${cfg.restored.failed.length ? `, ${cfg.restored.failed.length} couldn't go in` : ''}`);
 // 1.5.137: Bob's newest brain list from GitHub, only with "Let Bob fetch his newest brain list" on: once a day, the
 // first look a minute and a half after start, and Check now in Settings. Off: the shipped list, nothing fetched.
 const listUpdates = new CatalogUpdates(cfg, { log: (k, m) => brain.log(k, m) });
@@ -791,6 +796,53 @@ const server = http.createServer(async (req, res) => {
       applyCodeCopy(cfg);
       brain.log('settings', r.ok ? `repositories: code copy of ${repo.name} ${r.already ? 'already there' : 'made'} at ${r.dir}` : `repositories: code copy of ${repo.name} not made: ${r.why}`);
       return send(res, 200, { ...r, selfWork: selfWorkNow() });
+    }
+    // Back up and move (Settings, This replicant matrix): save one zip of chats, settings, memory and notes; restore one on
+    // another computer; the automatic backup's switch. Only on this replicant matrix itself, never from a phone or another Bob.
+    if (p.startsWith('/api/backup')) {
+      if (!isLocal) return send(res, 403, { error: 'Backups are made and restored on this replicant matrix itself.' });
+      const canRestart = typeof globalThis.bobHome?.restart === 'function';
+      const view = () => backupView(cfg, backupKeeper, { canRestart, env: rentKeyEnv() });
+      if (req.method === 'GET' && p === '/api/backup') return send(res, 200, view());
+      if (req.method !== 'POST') return send(res, 404, { error: 'not found' });
+      const b = await body(req).catch(() => ({}));
+      const parts = Array.isArray(b.parts) ? b.parts.filter((x) => PART_IDS.includes(x)) : PART_IDS;
+      try {
+        if (p === '/api/backup') { // the automatic backup's settings
+          const next = cleanBackup({ ...(cfg.backup || {}), ...(b.backup || {}) });
+          if (next.folder && isInsideDir(cfg.innDir, next.folder)) return send(res, 400, { error: 'Pick a folder outside Bob\'s inn folder, so a backup never ends up inside the next one.' });
+          if (next.auto && !next.folder) return send(res, 400, { error: 'Pick a folder for the automatic backups first.' });
+          saveSettings(cfg, { backup: next });
+          brain.log('settings', `automatic backup: ${next.auto ? `on, every ${next.every}, keeps ${next.keep}` : 'off'} (your click)`);
+          return send(res, 200, view());
+        }
+        if (p === '/api/backup/browse') { const folder = await pickFolder({ purpose: 'backup' }); return send(res, 200, { folder }); }
+        if (p === '/api/backup/now') { const r = backupKeeper.tick({ force: true }); return send(res, 200, { ok: Boolean(r), file: r?.file || '', ...view() }); }
+        if (p === '/api/backup/save') {
+          const folder = await pickFolder({ purpose: 'backup' });
+          if (!folder) return send(res, 200, { ok: false, cancelled: true });
+          const r = makeBackup(cfg, { folder, parts, keys: b.keys === true, passcode: String(b.passcode || ''), env: rentKeyEnv(), version: VERSION.label });
+          brain.log('settings', `backup saved: ${path.basename(r.file)} (${r.files} files${r.keys ? `, ${r.keys} key(s) locked with a passcode` : ''}, your click)`);
+          return send(res, 200, { ok: true, file: r.file, files: r.files, bytes: r.bytes, keys: r.keys, shown: revealFile(r.file) });
+        }
+        if (p === '/api/backup/pick') {
+          const file = typeof b.file === 'string' && b.file ? b.file : await pickFile({ kind: 'backup' });
+          if (!file) return send(res, 200, { ok: false, cancelled: true });
+          return send(res, 200, { ok: true, ...readBackup(file) });
+        }
+        if (p === '/api/backup/restore') {
+          const r = await stageRestore(cfg, String(b.file || ''), { parts, keys: b.keys === true, passcode: String(b.passcode || ''), env: rentKeyEnv() });
+          brain.log('settings', `restore picked: ${r.files} file(s) wait for the next start${r.keys.restored.length ? `, ${r.keys.restored.length} key(s) put back` : ''}${r.doors ? ', Discord and Telegram details back (switched off)' : ''} (your click)`);
+          return send(res, 200, { ...r, canRestart });
+        }
+        if (p === '/api/backup/restart') {
+          if (!canRestart) return send(res, 200, { ok: false, error: 'Close Bob and start him again: the restore goes in as he starts.' });
+          brain.log('settings', 'restarting for the restore (your click)');
+          setTimeout(() => globalThis.bobHome.restart(), 600);
+          return send(res, 200, { ok: true });
+        }
+      } catch (e) { return send(res, 200, { ok: false, error: e.message }); }
+      return send(res, 404, { error: 'not found' });
     }
     if (p === '/api/help-bundle') {
       const deps = { brain, shop, checkEngine, speedHistory, capabilities };

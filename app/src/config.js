@@ -14,6 +14,8 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { exeName, onPath } from './platform.js';
 import { cleanRentals } from './rental.js'; // 1.5.127 rented brains
+import { cleanBackup } from './backup-settings.js'; // Back up and move
+import { applyWaitingRestore } from './backup-apply.js';
 
 // Where Ollama keeps its models on this PC: OLLAMA_MODELS if it's set, else Bob's own models folder if Ollama's files
 // are there (how the installer sets Ollama up), else Ollama's usual folder in the user's home (~/.ollama/models).
@@ -107,6 +109,8 @@ export function loadConfig() {
   for (const d of [cfg.innDir, cfg.dataDir, cfg.ledgerDir, cfg.painterDir, cfg.archiveDir]) {
     fs.mkdirSync(d, { recursive: true });
   }
+  // Back up and move: a restore picked in Settings waits until now, before anything below reads Bob's files.
+  try { cfg.restored = applyWaitingRestore(cfg); if (cfg.restored) console.error(`Restored ${cfg.restored.placed} file(s) from a backup${cfg.restored.failed.length ? `, ${cfg.restored.failed.length} couldn't go in` : ''}.`); } catch (e) { console.error(`The waiting restore didn't go in: ${e.message}`); }
   // Choices made in Bob's window (models, painter, voice, autostart) live in inn\bob\settings.json,
   // so config.json stays as installed. Only these keys can be changed from the window.
   // 1.5.32: an older config.json can carry llamacpp.ctx 131072 from before 1.5.19. Staging never touches config.json, so
@@ -194,7 +198,7 @@ export const VERSION = (() => {
   } catch { return { release: '0.9', branch: '', build: 0, label: '0.9.0' }; }
 })();
 
-export const SETTING_KEYS = ['smartNotes', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'apuHoldbackGB'];
+export const SETTING_KEYS = ['smartNotes', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'backup', 'apuHoldbackGB'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -231,6 +235,7 @@ function clean(patch) {
   if ('apuHoldbackGB' in out) { const v = Math.round(Number(out.apuHoldbackGB) * 2) / 2; if (Number.isFinite(v) && v >= 0 && v <= 8) out.apuHoldbackGB = v; else delete out.apuHoldbackGB; } // 1.5.181 Memory kept for Windows (built-in graphics), 0 to 8 GB
   if ('netReview' in out) out.netReview = out.netReview === true; // #30, off unless switched on
   if ('webSearch' in out) out.webSearch = out.webSearch === true;
+  if ('backup' in out) out.backup = cleanBackup(out.backup); // Back up and move: the automatic backup, off unless switched on
   if ('naughtyList' in out) out.naughtyList = out.naughtyList === true; // 1.5.132 "Show the naughty list", off unless switched on
   if ('catalogUpdates' in out) out.catalogUpdates = out.catalogUpdates === true; // 1.5.137 "Let Bob fetch his newest brain list", off unless switched on
   if ('ownModels' in out) out.ownModels = cleanOwnModels(out.ownModels); // 1.5.135 brains of your own (GGUF files on this replicant matrix)

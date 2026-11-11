@@ -21,6 +21,7 @@ import { tip, noteOrTip, stripTags, keep } from './tips.js';
 import { attributesHtml, cleanPersonality, greeting, PRESETS, DEFAULTS, isDefault } from './personality.js';
 import { esc, gb } from './util.js';
 import { wantsHtml, wantPatch, wantSaved } from './wants.js';
+import { makeBackupPanel } from './backup-panel.js';
 import { GROUPS as SET_GROUPS, CARDS as SET_CARDS, VIEW_KEY, cardOf, startView, topicFor } from './settings-map.js';
 
 const $ = (id) => document.getElementById(id);
@@ -36,6 +37,7 @@ async function api(url, data) {
 // (the Settings window itself, a phone, a blocked pop-up) Settings draws here as a page.
 export function createCellar({ popOut = null } = {}) {
   const dlg = $('cellar');
+  const backup = makeBackupPanel({ api, redraw: () => { const y = dlg.scrollTop; draw(); dlg.scrollTop = y; } }); // Back up and move
   let speedModel = '';
   let speedRuns = [];
   let rent = { services: [], rentals: [], caps: {}, running: [], leftover: [], recent: [] }; // 1.5.127 rented brains
@@ -615,6 +617,8 @@ export function createCellar({ popOut = null } = {}) {
     // 1.5.79 How-tos (closed, it shows how many and whether he learns new ones).
     // 1.5.125 Bob's home folder (closed, it shows the home folder; red when it's somewhere temporary).
     ['ev-home', '📦 Bob\'s home folder', () => { const h = homeInfo || {}; return h.tempLike ? `${settings?.home || ''} · in ${h.tempLike}: move it` : h.synced ? `${h.folder || settings?.home || ''} · a ${h.synced} folder, synced to the cloud: not recommended` : `${h.folder || settings?.home || ''}${h.modelsText ? ` · models ${h.modelsText}` : ''}`; }, () => homeHtml()],
+    // Back up and move (src/backup.js): one zip of chats, settings, memory and notes; restore it on another computer.
+    ['ev-backup', '🗄 Back up and move', () => backup.note(), () => backup.html()],
     ['ev-save', '💾 Where Bob saves things', () => { const sd = settings?.saveDir || {}; return sd.missing ? 'Picked folder not found · saving in Bob\'s own folder' : sd.custom ? sd.folder : 'Bob\'s own folder (Made by Bob)'; }, () => saveDirHtml()],
     // 1.5.144 🧰 Tools and how-tos Bob made (closed, it shows how many of each and how many wait on the shelf).
     ['ev-howtos', '🧰 Tools and how-tos Bob made', () => { const c = ownKit ? { tools: ownKit.tools.length, howtos: ownKit.howtos.length, deleted: ownKit.deleted.length } : (settings?.ownKit || { tools: 0, howtos: settings?.howtoCount || 0, deleted: 0 }); const bit = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`; return c.tools || c.howtos ? `${bit(c.tools, 'tool')} · ${bit(c.howtos, 'how-to')}${c.deleted ? ` · ${c.deleted} recently deleted` : ''}` : 'Nothing made yet'; }, () => ownKitHtml()]];
@@ -1323,6 +1327,7 @@ export function createCellar({ popOut = null } = {}) {
       if ('ownkeep' in b.dataset) { const box = b.closest('.confirm'); box.hidden = true; box.innerHTML = ''; return; }
       if (b.dataset.ownremove2) { b.disabled = true; const r = await api('/api/own-models/remove', { id: b.dataset.ownremove2 }).catch((e) => ({ error: e.message })); if (r.error) { b.closest('.confirm').innerHTML = `<p class="error">${esc(r.error)}</p>`; return; } await ownRefresh(); return; }
       if ('naughtyon' in b.dataset) { const r = await api('/api/settings', { naughtyList: true }); settings.naughtyList = r.naughtyList === true; if (settings.naughtyList) setCatView('naughty'); draw(); return; }
+      if (b.tagName === 'BUTTON' && await backup.onClick(b)) return; // Back up and move
       if (b.dataset.help && b.closest('summary')) e.preventDefault(); // a "?" in a panel heading opens Help, not the panel
       if (b.dataset.help) { window.dispatchEvent(new CustomEvent('bob-help', { detail: b.dataset.help })); return; }
       if (b.dataset.userole) {
@@ -1669,7 +1674,7 @@ export function createCellar({ popOut = null } = {}) {
   }
   // 1.5.34 Projects: "Add project" stays greyed out until a folder is filled in.
   const projAddState = () => { const b = dlg.querySelector('[data-projadd]'); if (b) b.disabled = !dlg.querySelector('#proj-path')?.value.trim(); };
-  dlg.addEventListener('input', (e) => { if (e.target.id === 'proj-path') projAddState(); if (e.target.id === 'save-path') saveDirState(); });
+  dlg.addEventListener('input', (e) => { backup.onInput(e.target); if (e.target.id === 'proj-path') projAddState(); if (e.target.id === 'save-path') saveDirState(); });
   dlg.addEventListener('input', (e) => { const k = e.target.dataset?.rentadd; if (k === 'model' || k === 'name') delete e.target.dataset.auto; }); // 1.5.137: what you type yourself stays
   dlg.addEventListener('input', (e) => { if (tab === 'style') stylePage.onInput(e.target); if (e.target.dataset?.ssearch !== undefined) { settingsQuery = e.target.value; if (settingsQuery.trim()) applyView(); else { draw(); const box = dlg.querySelector('[data-ssearch]'); box?.focus(); } } if (e.target.dataset?.dial) showDials(dialValues()); if (e.target.dataset?.holdback !== undefined) { const lab = dlg.querySelector('[data-holdbacklabel]'); if (lab) lab.textContent = `${e.target.value} GB`; } });
 
@@ -1696,6 +1701,7 @@ export function createCellar({ popOut = null } = {}) {
     if (row) { row.scrollIntoView({ block: 'center' }); flash(row, `Added. ${esc(r.added.name)} is on your list now: switch it Active and equip it like any other brain.`); }
   });
   const onChange = async (e) => {
+    if (await backup.onChange(e.target)) return; // Back up and move
     const el = e.target;
     try {
       if (el.dataset.proxy) { const side = $(el.dataset.proxy); if (side && (side.getAttribute('aria-pressed') === 'true') !== el.checked) side.click(); setTimeout(() => { el.checked = side?.getAttribute('aria-pressed') === 'true'; }, 300); return; }

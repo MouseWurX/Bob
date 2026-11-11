@@ -179,7 +179,9 @@ async function setUpHome() {
   // The brain's "Bob's home folder": a move is noted in home.json and done by this file at the next start.
   globalThis.bobHome = {
     file: homeFile(),
-    move: (to) => { writeHome({ ...readHome(), agentDir, moveTo: to }); app.relaunch(); setTimeout(() => app.quit(), 400); }
+    move: (to) => { writeHome({ ...readHome(), agentDir, moveTo: to }); app.relaunch(); setTimeout(() => app.quit(), 400); },
+    // Back up and move: a restore waits for the next start (src/backup-apply.js); this starts Bob again for it.
+    restart: () => { app.relaunch(); setTimeout(() => app.quit(), 400); }
   };
   const config = home.config || path.join(agentDir, 'config.json');
   if (!fs.existsSync(config)) fs.copyFileSync(path.join(root, 'config.example.json'), config);
