@@ -18,6 +18,7 @@ export const OUT = path.join(root, 'android/app/src/main/assets/www/shared.js');
 export const OUT_AVATARS = path.join(root, 'android/app/src/main/assets/www/avatars.js');
 export const OUT_PROMPTS = path.join(root, 'android/app/src/main/assets/www/prompt-words.js');
 export const OUT_TABLE_FX = path.join(root, 'android/app/src/main/assets/www/table-fx.js');
+export const OUT_ADV_TABLE = path.join(root, 'android/app/src/main/assets/www/adv-table.js');
 
 // One section of CORE, from its heading line up to the next blank-line-separated heading.
 function section(heading) {
@@ -85,7 +86,8 @@ export function buildPromptWords() {
 // Icons, fonts, Mermaid and diagram-core.js aren't copied: the server hands /phone/shared/, /phone/vendor/ and
 // /phone/diagram-core.js out of public/ (they're the same files).
 export const WEB_DIR = path.join(root, 'public/phone');
-export const WEB_COPIED = ['phone.js', 'phone.css', 'logic.js', 'help.js', 'shared.js', 'avatars.js'];
+// 1.5.206: table-fx.js and adv-table.js too, so the Adventure page's die, sounds, map and rules card work on iPhone.
+export const WEB_COPIED = ['phone.js', 'phone.css', 'logic.js', 'help.js', 'shared.js', 'avatars.js', 'table-fx.js', 'adv-table.js'];
 export function buildWebPhone() {
   const www = path.join(root, 'android/app/src/main/assets/www');
   const read = (f) => fs.readFileSync(path.join(www, f), 'utf8').replace(/\r\n/g, '\n');
@@ -124,7 +126,19 @@ export function buildTableFx() {
   return `// Made by android/tools/make-shared.mjs from public/table-fx.js. Don't edit.\n(function () {\n${body}\nglobalThis.BobTableFx = { ${names.join(', ')} };\n})();\n`;
 }
 
+// 1.5.206: public/adventure-table.js (the Adventure map and rules card), word for word, as globalThis.BobAdvTable.
+export function buildAdvTable() {
+  const src = fs.readFileSync(path.join(root, 'public/adventure-table.js'), 'utf8').replace(/\r\n/g, '\n');
+  if (/^import\s/m.test(src)) throw new Error('public/adventure-table.js imports something now: update make-shared.mjs');
+  const names = [...src.matchAll(/^export (?:const|function) ([A-Za-z_]\w*)/gm)].map((m) => m[1]);
+  if (!names.includes('mapSvg') || !names.includes('rulesCard')) throw new Error('public/adventure-table.js no longer exports mapSvg/rulesCard: update make-shared.mjs');
+  const body = src.replace(/^export (const|function) /gm, '$1 ');
+  return `// Made by android/tools/make-shared.mjs from public/adventure-table.js. Don't edit.\n(function () {\n${body}\nglobalThis.BobAdvTable = { ${names.join(', ')} };\n})();\n`;
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  fs.writeFileSync(OUT_ADV_TABLE, buildAdvTable());
+  console.log(`wrote ${path.relative(root, OUT_ADV_TABLE)}`);
   fs.writeFileSync(OUT, buildShared());
   console.log(`wrote ${path.relative(root, OUT)}`);
   fs.writeFileSync(OUT_AVATARS, buildAvatars());

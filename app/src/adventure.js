@@ -24,6 +24,8 @@ import { LOOK_ID_RE } from './look.js';
 import { capabilities } from './capabilities.js';
 import { ENEMIES, enemyLine, meet, listMet, forgetMet, kindOf, lookFor, enemyById } from './bestiary.js';
 import { repairJson } from './loop-help.js';
+// 1.5.206 Table rules (items 113-122): map, coins and shops, catch your breath, secret notes, riddles, difficulty, badges, sending a campaign.
+import * as T from './adventure-table.js';
 
 export const STATS = { might: 'Might', wits: 'Wits', charm: 'Charm', luck: 'Luck' };
 export const STAT_IDS = Object.keys(STATS);
@@ -84,10 +86,12 @@ export const EXTRAS = {
   voice: 'Read the story aloud',
   pictures: 'Pictures behind the story',
   scenePics: 'A new picture for every scene',
+  portraits: 'A portrait of every character', // 1.5.206: painted once, from each character's class, trait and gear
   music: 'Music'
 };
 export const EXTRA_IDS = Object.keys(EXTRAS);
 export function cleanExtras(x = {}) { const out = {}; for (const id of EXTRA_IDS) out[id] = x?.[id] === true; if (!out.pictures) out.scenePics = false; return out; }
+export { RULES, RULE_IDS, DIFFICULTY, DIFFICULTY_IDS, BADGES, RIDDLES } from './adventure-table.js';
 
 // 1.5.206 Tone, picked on the start card. Normal is how the game always played.
 export const TONES = {
@@ -233,6 +237,7 @@ export function cleanSheet(b = {}, { who = 'you', fallbackName = 'Hero' } = {}) 
     look: LOOK_ID_RE.test(String(b.look || '')) ? String(b.look) : '', // 1.5.122: the character's own look (a design from the character screen or an avatar id); never Bob's
     address: who === 'net' || b.who === 'net' ? clip(b.address, 80) : '',
     tricks: (Array.isArray(b.tricks) ? b.tricks.map((x) => clip(x, 60)) : []).filter(Boolean).slice(0, 12), // 1.5.204: tricks earned in play
+    badges: T.cleanBadges(b.badges), // 1.5.206: badges, kept with the saved character
     rerollUsed: false,
     out: b.out === true // out of the game (captured, retired, gone out in style)
   };
@@ -434,14 +439,14 @@ export function listCharacters(cfg) {
 export function cleanCharacter(b = {}) {
   const s = cleanSheet(b, { who: 'you', fallbackName: 'Hero' });
   // 1.5.204: what the character earned in play comes along (stats, hearts, tricks, spells, the list of gains).
-  const grown = b.stats || b.gains?.length || b.tricks?.length || Number(b.max) > HEARTS;
+  const grown = b.stats || b.gains?.length || b.tricks?.length || b.badges?.length || Number(b.max) > HEARTS;
   return { id: /^[a-z0-9-]{4,40}$/.test(String(b.id || '')) ? b.id : crypto.randomUUID().slice(0, 12), name: s.name, cls: s.cls, trait: s.trait, armour: s.armour, look: s.look, at: Date.now(),
-    ...(grown ? { stats: s.stats, max: s.max, gains: s.gains, tricks: s.tricks, ...(Array.isArray(b.spells) ? { spells: s.spells } : {}) } : {}) };
+    ...(grown ? { stats: s.stats, max: s.max, gains: s.gains, tricks: s.tricks, badges: s.badges, ...(Array.isArray(b.spells) ? { spells: s.spells } : {}) } : {}) };
 }
 export function saveCharacter(cfg, b) {
   // 1.5.204: saving from the start card or the You tab keeps what the character earned in play.
   const old = listCharacters(cfg).find((x) => x.id === b?.id);
-  const keep = old ? Object.fromEntries(['stats', 'max', 'gains', 'tricks', 'spells'].filter((k) => old[k] !== undefined).map((k) => [k, old[k]])) : {};
+  const keep = old ? Object.fromEntries(['stats', 'max', 'gains', 'tricks', 'spells', 'badges'].filter((k) => old[k] !== undefined).map((k) => [k, old[k]])) : {};
   const c = cleanCharacter({ ...keep, ...b });
   const list = [c, ...listCharacters(cfg).filter((x) => x.id !== c.id && x.name.toLowerCase() !== c.name.toLowerCase())].slice(0, 24);
   fs.mkdirSync(dir(cfg), { recursive: true });
@@ -459,7 +464,9 @@ export function cleanAdventure(a = {}) {
   return {
     gm: a.gm === 'main' ? 'main' : 'biggest', // which brain is the game master
     players: a.players === 'gm' ? 'gm' : 'own', // who plays the other Bobs: their own Bob when reachable, or the game master brain
-    extras: cleanExtras(a.extras) // 1.5.204: the table extras last ticked on the start card (all off until ticked)
+    extras: cleanExtras(a.extras), // 1.5.204: the table extras last ticked on the start card (all off until ticked)
+    rules: T.cleanRules(a.rules), // 1.5.206: the table rules last ticked (all off until ticked)
+    difficulty: T.cleanDifficulty(a.difficulty) // 1.5.206: Normal until picked
   };
 }
 
@@ -555,7 +562,7 @@ export class Adventure {
   extrasCan() {
     let c = {};
     try { c = capabilities(this.cfg) || {}; } catch {}
-    return { dice: true, sounds: true, voice: true, pictures: Boolean(c.pictures), scenePics: Boolean(c.pictures), music: Boolean(c.music), madeSounds: Boolean(c.sfx) };
+    return { dice: true, sounds: true, voice: true, pictures: Boolean(c.pictures), scenePics: Boolean(c.pictures), portraits: Boolean(c.pictures), music: Boolean(c.music), madeSounds: Boolean(c.sfx) };
   }
   emit(ev) { this.brain.broadcast?.({ type: 'adventure', ...ev }); }
 
@@ -572,13 +579,20 @@ export class Adventure {
     const g = this.game;
     const starts = Object.entries(STARTS).map(([id, s]) => ({ id, ...s }));
     const extras = cleanExtras(this.cfg.adventure?.extras), can = this.extrasCan();
-    if (!g) return { game: null, busy: '', saved: listGames(this.cfg), characters: listCharacters(this.cfg), met: listMet(this.cfg), enemies: ENEMIES, lastParty: lastParty(this.cfg), settings: cleanAdventure(this.cfg.adventure), refusal: refusal(this.cfg), starts, extras, can };
+    const table = { rules: T.RULES, difficulties: T.DIFFICULTY, badges: T.BADGES }; // 1.5.206: names for the page
+    if (!g) return { game: null, busy: '', ...table, saved: listGames(this.cfg), characters: listCharacters(this.cfg), met: listMet(this.cfg), enemies: ENEMIES, lastParty: lastParty(this.cfg), settings: cleanAdventure(this.cfg.adventure), refusal: refusal(this.cfg), starts, extras, can };
     return {
       game: { id: g.id, title: g.title, settingText: g.settingText, hook: g.hook || '', pace: g.pace, status: g.status, party: g.party, foes: g.foes || [], quests: g.quests || [], extras: g.extras || cleanExtras(), props: g.props || {}, prep: this.prep || null, turn: g.turn, round: g.round, scenes: g.scenes.slice(-4), sceneCount: g.scenes.length, log: g.log.slice(-40).map(({ raw, ...l }) => l), summary: g.summary, cards: g.cards, kind: g.kind, here: g.here || [], exits: g.exits || [], met: (g.met || []).slice(-30), at: g.at,
         // The second card behind each of the owner's cards, as things stand (Back on the page returns to the hand).
         second: this.waitingFor ? Object.fromEntries((g.cards || []).map((c) => [c, secondCard(c, g.party.find((x) => x.id === this.waitingFor) || g.party[0], g)]).filter(([, v]) => v)) : {},
         // 1.5.206: the odds on each card for whoever's turn it is, the tone, and the world book.
-        odds: this.waitingFor ? this.cardOdds(g) : {}, tone: g.tone || DEFAULT_TONE, keepOut: g.keepOut || '', world: g.world || {} },
+        odds: this.waitingFor ? this.cardOdds(g) : {}, tone: g.tone || DEFAULT_TONE, keepOut: g.keepOut || '', world: g.world || {},
+        // 1.5.206 Table rules: the rules ticked, difficulty, purse and shop, the map, the riddle (never its answer while open),
+        // secret notes (each page shows only its own seat's), and whether the player whose turn it is may catch their breath.
+        rules: T.cleanRules(g.rules), difficulty: T.cleanDifficulty(g.difficulty), coins: g.rules?.coins ? g.coins ?? T.START_COINS : null, shop: g.rules?.coins ? g.shop || null : null,
+        map: g.rules?.map ? g.map || null : null, riddle: g.rules?.riddles ? T.riddleView(g) : null, secrets: g.rules?.secrets ? (g.secrets || []).map(({ id, text, at }) => ({ id, text, at })) : [],
+        breath: this.waitingFor ? T.canBreathe(g, g.party.find((x) => x.id === this.waitingFor)) : false },
+      ...table,
       takeBack: this.backable ? { id: this.backable.id, left: Math.max(0, this.backable.until - this.now()) } : null,
       busy: this.busy, waitingFor: this.waitingFor, asking: this.asking || false, saved: listGames(this.cfg), starts, extras, can, characters: listCharacters(this.cfg), met: listMet(this.cfg), enemies: ENEMIES, settings: cleanAdventure(this.cfg.adventure), refusal: refusal(this.cfg)
     };
@@ -603,7 +617,7 @@ export class Adventure {
     const settingText = setting === 'own' ? clip(b.settingText, 300) || SETTINGS.fantasy.hint : setting === 'pick' ? 'your choice: surprise the table' : `${SETTINGS[setting].name}. ${SETTINGS[setting].hint}`;
     // 1.5.204: a saved character comes with what it earned last time.
     const saved = b.you?.charId ? listCharacters(this.cfg).find((c) => c.id === b.you.charId) : null;
-    const grown = saved ? Object.fromEntries(['stats', 'max', 'gains', 'tricks', 'spells'].filter((k) => saved[k] !== undefined).map((k) => [k, saved[k]])) : {};
+    const grown = saved ? Object.fromEntries(['stats', 'max', 'gains', 'tricks', 'spells', 'badges'].filter((k) => saved[k] !== undefined).map((k) => [k, saved[k]])) : {};
     const you = cleanSheet({ ...grown, ...(b.you || {}), who: 'you' }, { who: 'you', fallbackName: 'Hero' });
     // 1.5.204: friends at the table play their own turns, on a phone or on this screen.
     const friends = (Array.isArray(b.friends) ? b.friends : []).slice(0, 3).map((x, i) => cleanSheet({ ...x, who: 'friend' }, { who: 'friend', fallbackName: `Friend ${i + 1}` }));
@@ -613,9 +627,11 @@ export class Adventure {
     const names = new Set();
     for (const c of [you, ...friends, ...bobs]) { let n = c.name, k = 2; while (names.has(n.toLowerCase())) n = `${c.name} ${k++}`; c.name = n; names.add(n.toLowerCase()); }
     const extras = cleanExtras(b.extras);
-    try { saveSettings(this.cfg, { adventure: { ...cleanAdventure(this.cfg.adventure), extras } }); } catch {} // the start card remembers the ticks
+    const rules = T.cleanRules(b.rules), difficulty = T.cleanDifficulty(b.difficulty); // 1.5.206
+    try { saveSettings(this.cfg, { adventure: { ...cleanAdventure(this.cfg.adventure), extras, rules, difficulty } }); } catch {} // the start card remembers the ticks
     this.game = { id: crypto.randomUUID().slice(0, 12), title: clip(b.title, 60) || (story ? STARTS[story].name : `${you.name} and company`), setting, settingText, hook: story ? STARTS[story].hook : '',
-      tone: TONE_IDS.includes(b.tone) ? b.tone : DEFAULT_TONE, keepOut: clip(b.keepOut, 300), world: {}, pace: PACES[b.pace] ? b.pace : 'evening', status: 'playing', party: [you, ...friends, ...bobs], turn: 0, round: 1, scenes: [], log: [], summary: '', cards: null, kind: null, foes: [], quests: [], extras, props: {}, at: this.now(), started: this.now() };
+      tone: TONE_IDS.includes(b.tone) ? b.tone : DEFAULT_TONE, keepOut: clip(b.keepOut, 300), world: {}, pace: PACES[b.pace] ? b.pace : 'evening', status: 'playing', party: [you, ...friends, ...bobs], turn: 0, round: 1, scenes: [], log: [], summary: '', cards: null, kind: null, foes: [], quests: [], extras, props: {}, at: this.now(), started: this.now(),
+      rules, difficulty, coins: rules.coins ? T.START_COINS : 0, shop: null, map: null, riddle: null, secrets: [], tell: [] };
     this.save();
     this.push();
     await this.noteGmBefore(true);
@@ -629,7 +645,7 @@ export class Adventure {
     const g = loadGame(this.cfg, id);
     if (!g) throw new Error("I can't find that campaign.");
     for (const c of g.party) c.rerollUsed = false;
-    this.game = { foes: [], quests: [], props: {}, extras: cleanExtras(), world: {}, tone: DEFAULT_TONE, keepOut: '', ...g, status: 'playing', cards: null };
+    this.game = { foes: [], quests: [], props: {}, extras: cleanExtras(), world: {}, tone: DEFAULT_TONE, keepOut: '', rules: T.cleanRules(), difficulty: T.DEFAULT_DIFFICULTY, ...g, status: 'playing', cards: null };
     this.game.log.push({ who: 'app', text: 'Picking up where we left off.', at: this.now() });
     this.push();
     await this.noteGmBefore(true);
@@ -722,6 +738,7 @@ export class Adventure {
     if (seat && seat !== this.waitingFor) throw new Error(`It's ${g.party.find((c) => c.id === this.waitingFor)?.name || 'someone else'}'s turn.`);
     if (this.asking) throw new Error('One moment: the game master is answering your question.');
     if (card === 'say') { if (!clip(words, 400)) throw new Error('Say what you do first.'); }
+    else if (card === 'breath') { if (!T.canBreathe(g, g.party.find((c) => c.id === this.waitingFor))) throw new Error('Catch your breath is once a scene, and only with a heart to win back.'); } // 1.5.206
     else {
       if (!CARD_IDS.includes(card)) throw new Error('Pick one of the cards.');
       if (g.cards && !g.cards.includes(card)) throw new Error("That card doesn't fit this scene.");
@@ -816,8 +833,8 @@ export class Adventure {
 
   gmMessages(g, task) {
     const recent = g.log.filter((l) => l.who !== 'app' && l.who !== 'ooc').slice(-20).map((l) => ({ role: l.who === 'gm' ? 'assistant' : 'user', content: l.who === 'gm' ? l.raw || l.text : `${l.name}: ${l.text}${l.dice ? ` [${l.dice}]` : ''}` }));
-    const mem = memoryLines(g); // 1.5.204: enemies standing, the quest log and who they've met, so long games don't forget
-    return [{ role: 'system', content: gmSystem(g, { user: this.cfg.userName || 'the owner' }) + (g.summary ? `\n\nThe story so far: ${g.summary}` : '') + (mem ? `\n\n${mem}` : '') }, ...recent, { role: 'user', content: task }];
+    const mem = [memoryLines(g), T.tableLines(g)].filter(Boolean).join('\n'); // 1.5.204: enemies standing, the quest log and who they've met, so long games don't forget
+    return [{ role: 'system', content: gmSystem(g, { user: this.cfg.userName || 'the owner' }) + T.tableRulesText(g) + (g.summary ? `\n\nThe story so far: ${g.summary}` : '') + (mem ? `\n\n${mem}` : '') }, ...recent, { role: 'user', content: task }];
   }
 
   // One Bob player's turn: his own Bob over Bob-Net, or the game master brain in his voice.
@@ -874,7 +891,9 @@ export class Adventure {
       for (const c of g.party) c.rerollUsed = false; // the "Some" reroll comes back each scene
       if (p.kind === 'montage') for (const c of g.party) if (!c.out) c.hearts = c.max || HEARTS; // rests are free
       if (p.foes === null) g.foes = (g.foes || []).filter((f) => f.hearts > 0); // the fallen stay behind in the old scene
+      if (g.rules?.map) { const sc = g.scenes[g.scenes.length - 1]; T.mapStep(g, sc.title, sc.kind); } // 1.5.206 the map grows
     }
+    this.applyTable(g, gmMeta(raw).meta);
     this.applyFoes(g, p.foes);
     for (const [n, what] of Object.entries(p.reward || {})) this.reward(g, n, what);
     this.applyQuest(g, p.quest);
@@ -897,7 +916,7 @@ export class Adventure {
       if (was) return { ...was, hearts: Math.min(n, FOE_HEARTS), max: Math.max(was.max, n) };
       const kind = kindOf(name), e = kind.enemy ? enemyById(kind.enemy) : null;
       // 1.5.206 Fair fights: the app sets a new enemy's hearts from the game master's number and the party.
-      const start = n > 0 ? fairHearts(n, g.party || []) : 0;
+      const start = n > 0 ? T.diffHearts(fairHearts(n, g.party || []), g.difficulty, FOE_HEARTS) : 0; // 1.5.206: Easy/Normal/Hard
       const max = Math.min(FOE_HEARTS, Math.max(start, start > 0 ? 1 : e?.hearts || 1));
       return { id: crypto.createHash('sha1').update(name.toLowerCase()).digest('hex').slice(0, 10), name, type: e?.id || '', look: lookFor(name, kind), hearts: start, max, asked: n };
     });
@@ -933,9 +952,9 @@ export class Adventure {
   // What a human's character earned goes to their saved character (made if there was none), so it carries on.
   keepGrowth(g) {
     for (const c of g.party.filter(isHuman)) {
-      if (!c.gains?.length) continue;
+      if (!c.gains?.length && !c.badges?.length) continue;
       try {
-        const list = saveCharacter(this.cfg, { id: c.charId || '', name: c.name, cls: c.cls, trait: c.trait, armour: c.armour, look: c.look, stats: c.stats, max: c.max, gains: c.gains, tricks: c.tricks || [], spells: c.spells });
+        const list = saveCharacter(this.cfg, { id: c.charId || '', name: c.name, cls: c.cls, trait: c.trait, armour: c.armour, look: c.look, stats: c.stats, max: c.max, gains: c.gains, tricks: c.tricks || [], spells: c.spells, badges: c.badges || [] });
         if (!c.charId) c.charId = list[0]?.id || '';
       } catch {}
     }
@@ -976,6 +995,7 @@ export class Adventure {
   prepJobs(g) {
     const x = g.extras || {}, can = this.extrasCan();
     const jobs = [];
+    if (x.portraits && can.pictures) for (const c of g.party) jobs.push({ kind: 'portrait', key: c.id, what: `painting ${c.name}'s portrait` }); // 1.5.206
     if (x.pictures && can.pictures) for (const key of Object.keys(PROP_SCENES)) jobs.push({ kind: 'picture', key, what: `painting ${key === 'place' ? 'the scenery' : key === 'fight' ? 'a fight' : 'a meeting place'}` });
     if (x.music && can.music) for (const key of ['calm', 'fight']) jobs.push({ kind: 'music', key, what: `composing ${key === 'fight' ? 'fight' : 'exploring'} music` });
     if (x.sounds && can.madeSounds) for (const key of Object.keys(SOUNDS)) jobs.push({ kind: 'sfx', key, what: `making the ${key === 'steel' ? 'weapon' : key} sound` });
@@ -1008,7 +1028,8 @@ export class Adventure {
     let got = '';
     const ctx = { signal: ctrl.signal, pics: [], wantsEdit: false, emit: (ev) => { if ((ev.type === 'image' || ev.type === 'audio') && ev.url) got = ev.url; else if (ev.type === 'announce') this.emit({ ev: 'announce', text: ev.text }); } };
     try {
-      if (j.kind === 'picture') await this.brain.makeImage({ prompt: propPrompt(g, j.key, j.scene), width: 1024, height: 576, mode: 'new' }, ctx);
+      if (j.kind === 'portrait') { const c = g.party.find((x) => x.id === j.key); if (c) await this.brain.makeImage({ prompt: T.portraitPrompt(g, c), width: 512, height: 512, mode: 'new' }, ctx); }
+      else if (j.kind === 'picture') await this.brain.makeImage({ prompt: propPrompt(g, j.key, j.scene), width: 1024, height: 576, mode: 'new' }, ctx);
       else await this.brain.makeSound(j.kind, { prompt: soundPrompt(g, j.kind, j.key), seconds: j.kind === 'music' ? 60 : 3, title: `${g.title}: ${j.key}` }, ctx);
     } finally { outer.removeEventListener('abort', off); this.propStop = null; }
     return got;
@@ -1065,7 +1086,8 @@ export class Adventure {
             g.log.push({ who: 'you', name: actor.name, id: actor.id, text: `💬 ${words}`, said: true, at: this.now() });
           } else {
             card = got.card; pick = got.pick; flair = got.flair;
-            g.log.push({ who: 'you', name: actor.name, id: actor.id, text: `${CARDS[card].icon} ${CARDS[card].name}${pick ? ` (${pick})` : ''}${target ? ` at ${target}` : ''}${flair ? `: ${flair}` : ''}`, at: this.now() });
+            const cd = CARDS[card] || T.BREATH_CARD;
+            g.log.push({ who: 'you', name: actor.name, id: actor.id, text: `${cd.icon} ${cd.name}${pick ? ` (${pick})` : ''}${target ? ` at ${target}` : ''}${flair ? `: ${flair}` : ''}`, at: this.now() });
           }
           // 1.5.206 Take that back: a few seconds before the dice roll, in case of a misclick.
           if (this.takeBackMs > 0) {
@@ -1085,8 +1107,24 @@ export class Adventure {
           const w = await this.playerWords(actor, g);
           if (signal.aborted) return;
           words = w.text;
-          card = cardFromWords(words);
+          card = T.breathWords(words) && T.canBreathe(g, actor) ? 'breath' : cardFromWords(words); // 1.5.206
           g.log.push({ who: 'player', name: actor.name, id: actor.id, by: w.by, text: words, at: this.now() });
+        }
+        // 1.5.206 Catch your breath: no roll, one heart back, and the turn is spent.
+        if (card === 'breath') {
+          T.breathe(g, actor);
+          g.log[g.log.length - 1].dice = `one heart back (now ${actor.hearts} of ${actor.max || HEARTS})`;
+          g.turns = (g.turns || 0) + 1;
+          this.busy = 'gm'; this.push();
+          const raw = await this.gmTurn(this.gmMessages(g, `${actor.name} spends the turn catching their breath and gets one heart back (now ${actor.hearts} of ${actor.max || HEARTS}). Tell it in a line or two, then hand the turn to the next player in order.${T.takeTell(g)}`), { onToken: stream('gm') });
+          if (signal.aborted) return;
+          const p = this.applyGm(g, raw);
+          if (p.over) { await this.finish(g); return; }
+          const next = this.nextTurn(g);
+          if (!next) { await this.finish(g); return; }
+          g.cards = isHuman(next) ? (p.cards || DEFAULT_CARDS[g.kind || 'place']) : null;
+          this.save(); this.push();
+          continue;
         }
         // The dice: one roll, plot armour applied, hearts by the rules. Shown on the page before the game master speaks.
         const statId = CARDS[card].stat;
@@ -1094,7 +1132,7 @@ export class Adventure {
         const roll = { ...rollAction({ stat: actor.stats[statId], bonus, armour: actor.armour, rerollUsed: actor.rerollUsed, rnd: this.rnd }), statId };
         if (roll.rerolled) actor.rerollUsed = true;
         const fight = (g.kind === 'fight') && CARDS[card].fight !== false && card !== 'talk' && card !== 'look';
-        const lost = heartsLost(roll, { fight, armour: actor.armour, hearts: actor.hearts });
+        const lost = T.diffLost(heartsLost(roll, { fight, armour: actor.armour, hearts: actor.hearts }), roll, { fight, armour: actor.armour, hearts: actor.hearts, difficulty: g.difficulty }); // 1.5.206: Easy/Normal/Hard
         actor.hearts = Math.max(0, actor.hearts - lost);
         // 1.5.204: an attack that lands takes a heart off the enemy it was aimed at (two on a natural 20). Aimed at:
         // the enemy picked on the card, else the one named in the words, else the first one still standing.
@@ -1104,14 +1142,17 @@ export class Adventure {
           const named = (t) => { const s = String(t || '').toLowerCase(); return s ? up.find((f) => f.name.toLowerCase() === s) || up.find((f) => s.includes(f.name.toLowerCase())) : null; };
           const f = named(target) || named(pick) || named(flair) || named(words) || up[0];
           if (f) { const dmg = Math.min(f.hearts, roll.natural === 20 ? 2 : 1); f.hearts -= dmg; hit = { id: f.id, name: f.name, dmg, hearts: f.hearts, max: f.max }; }
+          if (f && !f.hearts) { this.badge(g, actor, 'firstDown'); if (T.isDragon(f)) this.badge(g, actor, 'dragon'); } // 1.5.206 badges
         }
+        if (roll.natural === 20) this.badge(g, actor, 'nat20');
+        if (lost && actor.hearts === 1) this.badge(g, actor, 'lastHeart');
         const diceText = `${roll.die}${roll.rerolled ? ' (rerolled)' : ''} + ${STATS[statId]} ${roll.stat}${bonus ? ` + ${bonus} flair` : ''} = ${roll.total}${roll.floored ? ', held up by plot armour' : ''}: ${OUTCOME_WORDS[roll.outcome]}${lost ? `, ${lost} heart${lost === 1 ? '' : 's'} lost` : ''}${hit ? `, ${hit.name} ${hit.hearts ? `loses ${hit.dmg}` : 'is down'}` : ''}`;
         g.log[g.log.length - 1].dice = diceText;
         g.log[g.log.length - 1].roll = { ...roll, card, lost, hit };
         g.turns = (g.turns || 0) + 1;
         this.emit({ ev: 'roll', who: actor.id, name: actor.name, card, roll, lost, hit, text: diceText });
         this.busy = 'gm'; this.push();
-        const raw = await this.gmTurn(this.gmMessages(g, turnPrompt({ actor, card, pick, words, flair, roll, lost, said, hit })), { onToken: stream('gm') });
+        const raw = await this.gmTurn(this.gmMessages(g, turnPrompt({ actor, card, pick, words, flair, roll, lost, said, hit }) + T.takeTell(g)), { onToken: stream('gm') });
         if (signal.aborted) return;
         const p = this.applyGm(g, raw);
         // 1.5.204: a new picture for a new scene, when that was ticked (the game master waits while it's painted).
@@ -1146,11 +1187,100 @@ export class Adventure {
       if (!choice) return;
     }
     actor.out = choice === 'style';
+    if (actor.out) this.badge(g, actor, 'style');
     if (!actor.out) actor.hearts = 1;
     g.log.push({ who: 'app', text: choice === 'style' ? `${actor.name} goes out in style.` : `${actor.name} is down, and wakes up captured. Someone had better do something about that.`, at: this.now() });
     this.busy = 'gm'; this.push();
     const raw = await this.gmTurn(this.gmMessages(g, choice === 'style' ? `${actor.name} is at zero hearts and chooses to go out in style. Give them a proper send-off in a few lines, then carry on with the rest of the party.` : `${actor.name} is at zero hearts and wakes up captured, at one heart. Tell where they are and what the party can do about it, then carry on.`), { onToken: (t) => this.emit({ ev: 'token', who: 'gm', text: t }) });
     if (!this.stop.signal.aborted) this.applyGm(g, raw);
+  }
+
+  // ---------- 1.5.206 Table rules (items 113-122) ----------
+  // What the game master's hidden line says about coins, a shop and a riddle; the app keeps and checks the rest.
+  applyTable(g, meta) {
+    if (!meta || typeof meta !== 'object') return;
+    if (g.rules?.coins) {
+      const before = g.coins ?? T.START_COINS;
+      T.applyCoins(g, T.readCoins(meta));
+      const d = (g.coins ?? T.START_COINS) - before;
+      if (d) g.log.push({ who: 'app', text: `🪙 The party ${d > 0 ? `gains ${d}` : `spends ${-d}`} coin${Math.abs(d) === 1 ? '' : 's'} (purse: ${g.coins}).`, at: this.now() });
+    }
+    if (g.rules?.riddles && (meta.riddle === 1 || meta.riddle === true) && !g.riddle?.open) {
+      const r = T.openRiddle(g, this.rnd);
+      if (r) { g.log.push({ who: 'app', text: `🧩 A riddle bars the way: ${r.ask}`, riddle: true, at: this.now() }); T.tell(g, T.riddleTell(r.ask)); }
+    }
+  }
+
+  // A badge for a character, once ever; the saved character keeps it.
+  badge(g, c, id) {
+    if (!T.award(g, c, id)) return false;
+    const b = T.BADGES[id];
+    g.log.push({ who: 'app', text: `🏅 ${c.name} earned a badge: ${b.icon} ${b.name}.`, reward: true, at: this.now() });
+    this.emit({ ev: 'reward', who: c.id, name: c.name, gain: b.name, badge: id });
+    if (isHuman(c)) this.keepGrowth(g);
+    return true;
+  }
+
+  // Whose seat a page is playing: a friend's phone says so; otherwise the owner. For things that don't use the turn.
+  seatOf(g, seat) {
+    const c = seat ? g.party.find((x) => x.id === seat && isHuman(x)) : g.party.find((x) => x.who === 'you');
+    if (!c) throw new Error("That seat isn't at this table.");
+    return c;
+  }
+
+  // Coins and shops: buy something from the shop that's open. It doesn't use the turn.
+  buy({ item, seat }) {
+    const g = this.game;
+    if (!g || g.status !== 'playing') throw new Error('Buy things during a game.');
+    const c = seat ? this.seatOf(g, seat) : g.party.find((x) => x.id === this.waitingFor && isHuman(x)) || this.seatOf(g, '');
+    const got = T.buy(g, c, item);
+    g.log.push({ who: 'app', text: `🪙 ${c.name} bought ${got.name} for ${got.price} coin${got.price === 1 ? '' : 's'} (purse: ${g.coins}).`, at: this.now() });
+    T.tell(g, `${c.name} bought ${got.name} for ${got.price} coins; it's in their pack now.`);
+    this.badge(g, c, 'shopper');
+    this.save(); this.push();
+    return this.view();
+  }
+
+  // Secret notes: a line for the game master only. It doesn't use the turn and never goes in the story log.
+  secret({ text, seat }) {
+    const g = this.game;
+    if (!g || g.status !== 'playing') throw new Error('Pass notes during a game.');
+    const c = this.seatOf(g, seat);
+    const t = T.addSecret(g, c, text);
+    T.tell(g, T.secretTell(c, t));
+    this.save(); this.push();
+    return this.view();
+  }
+
+  // Riddle rooms: a guess (or giving up). The app checks it; the game master hears how it went on the next turn.
+  riddle({ answer, giveUp = false, seat }) {
+    const g = this.game;
+    if (!g || g.status !== 'playing') throw new Error('Answer riddles during a game.');
+    const c = this.seatOf(g, seat);
+    const r = T.guessRiddle(g, answer, { giveUp });
+    if (r.right) {
+      g.log.push({ who: 'app', text: `🧩 ${c.name} answered "${clip(answer, 60)}". Right! The way opens.`, reward: true, at: this.now() });
+      T.tell(g, `${c.name} solved the riddle (the answer was "${r.answer}"). The way it barred opens now.`);
+      this.badge(g, c, 'riddle');
+    } else if (r.over) {
+      g.log.push({ who: 'app', text: `🧩 ${giveUp ? 'The party gives up' : `"${clip(answer, 60)}" isn't it, and that was the last try`}. The answer was "${r.answer}".`, at: this.now() });
+      T.tell(g, `The party couldn't solve the riddle (the answer was "${r.answer}"). The way opens anyway, at a cost of your choosing.`);
+    } else g.log.push({ who: 'app', text: `🧩 ${c.name} tried "${clip(answer, 60)}". Not that. ${T.RIDDLE_TRIES - g.riddle.tries} tr${T.RIDDLE_TRIES - g.riddle.tries === 1 ? 'y' : 'ies'} left.`, at: this.now() });
+    this.save(); this.push();
+    return this.view();
+  }
+
+  // Send a campaign to a friend's Bob: one file out, one file in (it lands under Continue a campaign).
+  exportFile(id) {
+    const g = this.game?.id === id ? this.game : loadGame(this.cfg, id);
+    return g ? { name: T.campaignFileName(g), body: JSON.stringify(T.packCampaign(g)) } : null;
+  }
+  importFile(file) {
+    const g = T.unpackCampaign(file, { cleanSheet, now: this.now() });
+    g.log.push({ who: 'app', text: 'This campaign came from a friend\'s Bob. Continue picks it up from where they left it.', at: this.now() });
+    saveGame(this.cfg, g);
+    this.push();
+    return { ...this.view(), imported: { id: g.id, title: g.title } };
   }
 
   // 1.5.206 The storybook: a picture made by Bob's painter is put inside the page, so the file stands on its own.
@@ -1210,8 +1340,24 @@ export async function adventureRoute({ req, res, p, brain, body, send, isLocal =
       res.end(html);
       return true;
     }
+    // 1.5.206 Send a campaign to a friend's Bob: /api/adventure/export/<id> downloads it as one file.
+    const ex = req.method === 'GET' && /^\/api\/adventure\/export\/([a-z0-9-]{4,40})$/.exec(p);
+    if (ex) {
+      const f = a.exportFile(ex[1]);
+      if (!f) { send(res, 404, { error: "I can't find that campaign." }); return true; }
+      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'content-disposition': `attachment; filename="${f.name}"` });
+      res.end(f.body);
+      return true;
+    }
     if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }
     const b = await body(req);
+    if (p === '/api/adventure/buy') return send(res, 200, a.buy({ item: String(b.item || ''), seat: b.seat ? String(b.seat) : '' })), true; // 1.5.206
+    if (p === '/api/adventure/secret') return send(res, 200, a.secret({ text: b.text, seat: b.seat ? String(b.seat) : '' })), true;
+    if (p === '/api/adventure/riddle') return send(res, 200, a.riddle({ answer: String(b.answer || ''), giveUp: b.giveUp === true, seat: b.seat ? String(b.seat) : '' })), true;
+    if (p === '/api/adventure/import') { // only from this replicant matrix: a file from a friend becomes a saved campaign here
+      if (!isLocal) { send(res, 403, { error: 'Campaign files can only be brought in on this replicant matrix itself.' }); return true; }
+      return send(res, 200, a.importFile(b.file)), true;
+    }
     if (p === '/api/adventure/start') return send(res, 200, await a.start(b)), true;
     if (p === '/api/adventure/continue') return send(res, 200, await a.continueGame(String(b.id || ''))), true;
     if (p === '/api/adventure/act') return send(res, 200, a.act({ card: String(b.card || ''), pick: b.pick, flair: b.flair, target: b.target, words: b.words, seat: b.seat ? String(b.seat) : '' })), true;

@@ -1369,6 +1369,25 @@ details.fold > summary .muted { font-weight: 400; font-size: 13px; }
 .adv-extras li { display: grid; gap: 2px; }
 .adv-extras li .muted { font-size: 13px; padding-left: 26px; }
 .adv-extras li.dim { opacity: .6; }
+/* 1.5.206 Adventure table rules: the map that grows, the rules card, the shop, secret notes, riddles, portraits, badges */
+.adv-mapbox, .adv-shop, .adv-riddle, .adv-note-box { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; margin-bottom: 8px; }
+.adv-map-svg { display: block; width: 100%; max-height: 320px; margin-top: 6px; color: var(--text); font: 12px var(--font); }
+.adv-map-link { stroke: var(--muted); stroke-width: 3; }
+.adv-map-stub { stroke: var(--muted); stroke-width: 2; stroke-dasharray: 4 4; }
+.adv-map-exit { fill: var(--muted); font-size: 11px; }
+.adv-map-place circle { fill: var(--card); stroke: var(--text); stroke-width: 2; }
+.adv-map-place text { fill: currentColor; }
+.adv-map-here circle { fill: var(--accent); stroke: var(--accent); }
+.adv-map-here text { font-weight: 600; }
+.adv-rules-card { border: 1px solid var(--accent); border-radius: var(--r); padding: 8px 12px; margin: 6px 0 8px; font-size: 13px; background: var(--card); }
+.adv-rules-card p { margin: 4px 0; }
+.adv-riddle input { flex: 1; min-width: 0; }
+.adv-riddle-line { color: var(--accent); }
+.adv-import input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.adv-import { position: relative; cursor: pointer; }
+.adv-import:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+img.adv-portrait { border-radius: 6px; object-fit: cover; }
+.adv-badges span { cursor: default; }
 .adv-note { margin: 10px 0 0; font-size: 13px; border-left: 3px solid var(--accent); padding-left: 8px; }
 .adv-saved li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; }
 .adv-top > div { min-width: 0; }

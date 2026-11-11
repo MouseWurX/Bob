@@ -1346,7 +1346,10 @@ ${chatOut}
   // 1.5.122: your character has a look of its own (the character screen, any body); never Bob's avatar. The
   // parts, maps and palettes are the desktop's own (avatars.js, made from public/avatars.js), drawn here on a canvas.
   const AV = globalThis.BobAvatars;
-  const advYou = { name: '', cls: 'fighter', trait: '', armour: 'some', setting: 'fantasy', settingText: '', story: '', tone: 'normal', keepOut: '', pace: 'evening', look: AV.encodeParts(AV.DEFAULT_PARTS), savedId: '' };
+  const advYou = { name: '', cls: 'fighter', trait: '', armour: 'some', setting: 'fantasy', settingText: '', story: '', tone: 'normal', keepOut: '', pace: 'evening', look: AV.encodeParts(AV.DEFAULT_PARTS), savedId: '', difficulty: '' };
+  // 1.5.206 Table rules (all off until ticked), and the table's Map, Rules card, secret note and riddle boxes.
+  adv.rules = null; adv.mapOpen = false; adv.rulesOpen = false; adv.noteOpen = false; adv.note = ''; adv.riddle = '';
+  const AT = globalThis.BobAdvTable;
   const advChar = { open: false, parts: null, delAsk: '' }; // the character screen: open, the parts being picked, "Delete <name>?" showing
   // 1.5.124 The 📖 Characters page (the bestiary): null = not open; else { tab, edit: a saved character's id or 'new', draft, ask: id awaiting delete }.
   adv.chars = null;
@@ -1543,11 +1546,14 @@ ${chatOut}
     ['voice', 'Read the story aloud', () => "The game master's words, in the phone's voice. You can also speak your turn."],
     ['pictures', 'Pictures behind the story', (can) => can.pictures ? 'Painted on your other replicant matrix before the game.' : 'Your other Bob needs a picture model first.'],
     ['scenePics', 'A new picture for every scene', (can) => can.pictures ? 'Slower: about half a minute each new scene.' : 'Your other Bob needs a picture model first.'],
+    ['portraits', 'A portrait of every character', (can) => can.pictures ? 'Painted once on your other replicant matrix, from each character\'s class, trait and gear.' : 'Your other Bob needs a picture model first.'],
     ['music', 'Music', (can) => can.music ? 'Two tunes made before the game, for exploring and for fights.' : 'Your other Bob needs the music models first.']
   ];
   function advStart() {
     const v = adv.v, saved = v?.saved || [], chars = v?.characters || [], can = v?.can || {};
     if (!adv.ex) adv.ex = { ...(v?.extras || {}) };
+    if (!adv.rules) adv.rules = { ...(v?.settings?.rules || {}) };
+    if (!advYou.difficulty) advYou.difficulty = v?.settings?.difficulty || 'normal';
     const ex = adv.ex;
     const fits = (s) => ['pick', 'own'].includes(advYou.setting) || s.setting === advYou.setting;
     const starts = (v?.starts || []).filter(fits), story = starts.find((s) => s.id === advYou.story);
@@ -1606,16 +1612,24 @@ ${chatOut}
       advSection('⏱', 'How long', advChips(ADV.paces, advYou.pace, 'How long', (id) => { advYou.pace = id; advDraw(); })),
       advSection('✨', 'Table extras',
         ADV_EXTRAS.map(([id, label, note]) => {
-          const off = (id === 'pictures' || id === 'scenePics') ? !can.pictures : id === 'music' ? !can.music : false;
+          const off = (id === 'pictures' || id === 'scenePics' || id === 'portraits') ? !can.pictures : id === 'music' ? !can.music : false;
           const dis = off || (id === 'scenePics' && !ex.pictures);
           return el('label', { class: `choice${dis ? ' dim' : ''}` }, el('input', { type: 'checkbox', checked: Boolean(ex[id] && !off), disabled: dis, onchange: (e) => { ex[id] = e.target.checked; if (id === 'pictures' && !e.target.checked) ex.scenePics = false; advDraw(); } }), el('div', {}, el('strong', { text: label }), el('p', { class: 'help-line', text: note(can) })));
         }),
-        (ex.pictures && can.pictures) || (ex.music && can.music) ? el('p', { class: 'note', text: 'Setting the table takes a few minutes on your other replicant matrix before the first scene. You can skip it.' }) : null),
+        (ex.pictures && can.pictures) || (ex.portraits && can.pictures) || (ex.music && can.music) ? el('p', { class: 'note', text: 'Setting the table takes a few minutes on your other replicant matrix before the first scene. You can skip it.' }) : null),
+      // 1.5.206 Table rules: each off until ticked, difficulty Normal until picked; your other Bob remembers the last choice.
+      advSection('📋', 'Table rules',
+        el('label', { class: 'field', text: 'How hard' }),
+        advChips(Object.fromEntries(Object.entries(v?.difficulties || {}).map(([id, d]) => [id, d.name])), advYou.difficulty, 'How hard', (id) => { advYou.difficulty = id; advDraw(); }),
+        el('p', { class: 'help-line', text: v?.difficulties?.[advYou.difficulty]?.what || '' }),
+        Object.entries(v?.rules || {}).map(([id, r]) => el('label', { class: 'choice' }, el('input', { type: 'checkbox', checked: Boolean(adv.rules[id]), onchange: (e) => { adv.rules[id] = e.target.checked; } }), el('div', {}, el('strong', { text: r.name }), el('p', { class: 'help-line', text: r.what })))),
+        el('div', { class: 'btns' }, el('button', { 'aria-expanded': String(adv.rulesOpen), text: adv.rulesOpen ? '📋 Hide the rules card' : '📋 Show the rules card', onclick: () => { adv.rulesOpen = !adv.rulesOpen; advDraw(); } })),
+        adv.rulesOpen && AT ? el('div', { html: AT.rulesCard({ rules: adv.rules, difficulty: advYou.difficulty, names: { rules: v?.rules, difficulties: v?.difficulties } }) }) : null),
       el('div', { class: 'btns' }, el('button', { class: 'main', text: '🎲 Start a new game', disabled: Boolean(v?.refusal), onclick: advStartGame })),
       el('p', { class: 'help-line', text: 'Loads the game master brain on your other replicant matrix. Pause or End lets it go again. The first turn takes longest: the game master reads the rules and the party first.' }),
       adv.msg ? el('p', { class: 'note bad', role: 'alert', text: adv.msg }) : null,
       saved.length ? advSection('📜', 'Continue a campaign',
-        el('p', { class: 'help-line', text: 'Continue starts with "Last time…": the game master reminds the table where things stand.' }),
+        el('p', { class: 'help-line', text: 'Continue starts with "Last time…": the game master reminds the table where things stand. To send a campaign to a friend, or bring one in, use 📤 and 📥 in the Adventure window on your other replicant matrix.' }),
         saved.map((s) => el('div', { class: 'box' }, el('div', { class: 'title', text: s.title }),
           el('p', { class: 'help-line', text: `${s.setting} · ${s.scenes} scene${s.scenes === 1 ? '' : 's'} · ${(s.party || []).join(', ')}${s.status === 'over' ? ' · ended' : ''}` }),
           el('div', { class: 'btns' },
@@ -1627,7 +1641,7 @@ ${chatOut}
     const bobsIn = (adv.players || []).filter((p) => advParty.get(p.address || p.name)?.ticked && p.ok !== false)
       .map((p) => { const st = advParty.get(p.address || p.name); return { who: p.who, name: p.name, address: p.address || '', armour: st.armour, cls: st.cls }; });
     e.currentTarget.disabled = true;
-    await advCall('/api/adventure/start', { setting: advYou.setting, settingText: advYou.settingText, story: advYou.story || '', tone: advYou.tone || 'normal', keepOut: advYou.keepOut || '', pace: advYou.pace, you: { name: advYou.name || 'Hero', cls: advYou.cls, trait: advYou.trait, armour: advYou.armour, look: advYou.look || '', charId: advYou.savedId || '' }, friends: adv.friends.map((f, i) => ({ name: f.name || `Friend ${i + 1}`, cls: f.cls, armour: f.armour })), bobs: bobsIn, extras: adv.ex || {} });
+    await advCall('/api/adventure/start', { setting: advYou.setting, settingText: advYou.settingText, story: advYou.story || '', tone: advYou.tone || 'normal', keepOut: advYou.keepOut || '', pace: advYou.pace, you: { name: advYou.name || 'Hero', cls: advYou.cls, trait: advYou.trait, armour: advYou.armour, look: advYou.look || '', charId: advYou.savedId || '' }, friends: adv.friends.map((f, i) => ({ name: f.name || `Friend ${i + 1}`, cls: f.cls, armour: f.armour })), bobs: bobsIn, extras: adv.ex || {}, rules: adv.rules || {}, difficulty: advYou.difficulty || 'normal' });
     adv.spoken = ''; advFx();
   }
   // ---- the table ----
@@ -1643,6 +1657,15 @@ ${chatOut}
     phone('net.media', { address: adv.base.replace('http://', ''), path: url }).then((data) => { if (data) { adv.media.set(url, data); advDraw(); } }).catch(() => {});
     return '';
   }
+  // 1.5.206 A portrait painted on your other Bob, fetched once like the backdrop.
+  function advPortrait(g, c) {
+    const url = g.props?.[`portrait:${c.id}`];
+    if (!url) return '';
+    if (adv.media.has(url)) return adv.media.get(url);
+    adv.media.set(url, '');
+    phone('net.media', { address: adv.base.replace('http://', ''), path: url }).then((data) => { if (data) { adv.media.set(url, data); advDraw(); } }).catch(() => {});
+    return '';
+  }
   function advTable(g) {
     const v = adv.v;
     const busy = v.busy === 'prep' && g.prep ? '' : v.busy === 'gm' ? '🎲 The game master is thinking…' : v.busy === 'player' ? `${g.party[g.turn]?.name || 'A Bob'} is deciding…` : '';
@@ -1651,12 +1674,14 @@ ${chatOut}
     const bg = advBackdrop(g);
     const hasSound = g.extras?.music || g.extras?.sounds || g.extras?.voice;
     const top = el('div', { class: 'box' }, el('div', { class: 'title', text: g.title }),
-      el('p', { class: 'help-line', text: `${g.settingText}${scene ? ` · Scene ${scene.n}: ${scene.title}` : ''} · round ${g.round}` }),
+      el('p', { class: 'help-line', text: `${g.settingText}${scene ? ` · Scene ${scene.n}: ${scene.title}` : ''} · round ${g.round}${g.coins !== null && g.coins !== undefined ? ` · 🪙 ${g.coins}` : ''}${g.difficulty && g.difficulty !== 'normal' ? ` · ${v.difficulties?.[g.difficulty]?.name || ''}` : ''}` }),
       el('div', { class: 'btns' },
         g.status === 'playing' ? el('button', { text: '⏸ Pause', onclick: () => { advFxStop(); advCall('/api/adventure/pause', {}); } }) : g.status === 'paused' ? el('button', { class: 'main', text: '▶ Resume', onclick: () => advCall('/api/adventure/resume', {}) }) : null,
         hasSound ? el('button', { 'aria-pressed': String(adv.hush), text: adv.hush ? '🔇 Quiet' : '🔊 Sound', onclick: () => { adv.hush = !adv.hush; if (adv.hush) advFxStop(); advDraw(); advFx(); } }) : null,
         el('button', { text: '📓 Journal', 'aria-pressed': String(adv.journal), onclick: () => { adv.journal = !adv.journal; advDraw(); } }),
         el('button', { text: '📖 Characters', onclick: () => advCharsOpen('party') }),
+        g.map ? el('button', { text: '🗺 Map', 'aria-pressed': String(adv.mapOpen), onclick: () => { adv.mapOpen = !adv.mapOpen; advDraw(); } }) : null,
+        el('button', { text: '📋 Rules', 'aria-pressed': String(adv.rulesOpen), onclick: () => { adv.rulesOpen = !adv.rulesOpen; advDraw(); } }),
         g.status === 'over' ? el('button', { text: '📕 Storybook', onclick: () => advBook(g.id) }) : null,
         el('button', { text: g.status === 'over' ? 'Close' : '🏁 End game', onclick: async (e) => { const t = e.currentTarget; if (g.status !== 'over' && !t.dataset.sure) { t.dataset.sure = '1'; t.textContent = 'End this game? It stays under Continue. Tap again to end it.'; return; } advFxStop(); await advCall('/api/adventure/end', { keep: true }); adv.players = null; advLoad(); } })),
       // 1.5.204 Play as: with friends at the table, each phone can play just its own seat.
@@ -1671,12 +1696,12 @@ ${chatOut}
         ? Object.keys(ADV.world).filter((k) => (g.world?.[k] || []).length).map((k) => el('p', { class: 'help-line', text: `${ADV.world[k]}: ${g.world[k].map((e) => (e.note ? `${e.name} (${e.note})` : e.name)).join('; ')}` }))
         : el('p', { class: 'help-line', text: 'Empty so far. The game master writes down people, places, promises and open threads as the story goes.' }),
       el('strong', { text: 'The story so far' }), el('p', { text: g.summary || 'Nothing written down yet; the game master sums things up every three scenes.' }),
-      humans.map((c) => el('p', { class: 'help-line', text: `${c.name}: Might ${c.stats.might} · Wits ${c.stats.wits} · Charm ${c.stats.charm} · Luck ${c.stats.luck}${c.items?.length ? ` · 🎒 ${c.items.join(', ')}` : ''}${c.spells?.length ? ` · ✨ ${c.spells.join(', ')}` : ''}${c.tricks?.length ? ` · 🃏 ${c.tricks.join(', ')}` : ''}${c.gains?.length ? ` · ⭐ ${c.gains.join(', ')}` : ''}` })),
+      humans.map((c) => el('p', { class: 'help-line', text: `${c.name}: Might ${c.stats.might} · Wits ${c.stats.wits} · Charm ${c.stats.charm} · Luck ${c.stats.luck}${c.items?.length ? ` · 🎒 ${c.items.join(', ')}` : ''}${c.spells?.length ? ` · ✨ ${c.spells.join(', ')}` : ''}${c.tricks?.length ? ` · 🃏 ${c.tricks.join(', ')}` : ''}${c.gains?.length ? ` · ⭐ ${c.gains.join(', ')}` : ''}${advBadges(c)}` })),
       g.scenes.length ? el('p', { class: 'help-line', text: g.scenes.map((s) => `Scene ${s.n}: ${s.title}`).join(' · ') }) : null) : null;
     const prep = g.prep ? el('div', { class: 'note adv-prep', role: 'status' }, el('span', { text: `🎨 Setting the table: ${g.prep.what || 'getting ready'} (${Math.min(g.prep.done + 1, g.prep.total)} of ${g.prep.total})` }), el('button', { text: 'Skip the rest', onclick: () => advCall('/api/adventure/skip', {}) })) : null;
     const party = el('div', { class: 'adv-party', 'aria-label': 'The party' }, g.party.map((c, i) => el('div', { class: `adv-member${i === g.turn && g.status === 'playing' ? ' turn' : ''}${c.out ? ' out' : ''}`, title: c.trait || '' },
-      advHuman(c) && c.look ? advFace(c.look, 32) : null,
-      el('strong', { text: c.name }), el('span', { class: 'dim small', text: `${c.className}${c.who === 'you' ? ' · you' : c.who === 'friend' ? ' · a friend' : ''}${c.gains?.length ? ` · ⭐${c.gains.length}` : ''}` }),
+      advPortrait(g, c) ? el('img', { class: 'adv-portrait', src: advPortrait(g, c), width: 32, height: 32, alt: '' }) : advHuman(c) && c.look ? advFace(c.look, 32) : null,
+      el('strong', { text: c.name }), el('span', { class: 'dim small', text: `${c.className}${c.who === 'you' ? ' · you' : c.who === 'friend' ? ' · a friend' : ''}${c.gains?.length ? ` · ⭐${c.gains.length}` : ''}${(c.badges || []).length ? ` · 🏅${c.badges.length}` : ''}` }),
       advHearts(c.hearts, c.max || 5, c.name),
       c.out ? el('span', { class: 'badge quiet', text: 'out' }) : i === g.turn && g.status === 'playing' ? el('span', { class: 'badge', text: 'turn' }) : null)));
     const foes = (g.foes || []).length ? el('div', { class: 'adv-party adv-foes', 'aria-label': 'Enemies' }, g.foes.map((f) => el('div', { class: `adv-member${f.hearts ? '' : ' out'}${adv.hit.has(f.id) ? ' hit' : ''}` },
@@ -1693,9 +1718,35 @@ ${chatOut}
     // 1.5.206 Take that back: a few seconds before the dice roll.
     const tb = v.takeBack && g.status === 'playing' && (!adv.seat || adv.seat === v.takeBack.id) ? el('div', { class: 'card', role: 'status' }, el('div', { class: 'q' }, el('strong', { text: 'The dice roll in a moment.' }), el('div', { class: 'help-line', text: 'Picked the wrong card?' })),
       el('div', { class: 'btns' }, el('button', { text: '↩ Take that back', onclick: () => advCall('/api/adventure/takeback', { seat: adv.seat || '' }) }), el('button', { class: 'main', text: '🎲 Roll now', onclick: () => advCall('/api/adventure/takeback', { seat: adv.seat || '', now: true }) }))) : null;
-    const wrap = el('div', { class: `adv-table${bg ? ' adv-has-bg' : ''}` }, top, journal, prep, party, foes, log, busy ? el('p', { class: 'note', text: busy }) : null, fate, tb, g.status === 'playing' ? advHand(g) : null, adv.msg ? el('p', { class: 'note bad', role: 'alert', text: adv.msg }) : null);
+    // 1.5.206 The map that grows, the rules card, the riddle, the shop and secret notes.
+    const mapBox = adv.mapOpen && g.map?.nodes?.length && AT ? el('div', { class: 'box adv-mapbox' }, el('strong', { text: '🗺 Map' }), el('p', { class: 'help-line', text: 'The ringed place is where the party is; dashed lines are the ways on.' }), el('div', { html: AT.mapSvg(g.map, { exits: g.exits || [] }) })) : null;
+    const rulesBox = adv.rulesOpen && AT ? el('div', { html: AT.rulesCard({ rules: g.rules, difficulty: g.difficulty, names: { rules: v.rules, difficulties: v.difficulties } }) }) : null;
+    const wrap = el('div', { class: `adv-table${bg ? ' adv-has-bg' : ''}` }, top, journal, mapBox, rulesBox, prep, party, foes, log, busy ? el('p', { class: 'note', text: busy }) : null, fate, tb, advRiddle(g), g.status === 'playing' ? advHand(g) : null, advShop(g), advNote(g), adv.msg ? el('p', { class: 'note bad', role: 'alert', text: adv.msg }) : null);
     if (bg) wrap.style.setProperty('--adv-bg', `url("${bg}")`);
     return [wrap];
+  }
+  // 1.5.206 Badges, the riddle, the shop and secret notes. Riddles, buying and notes don't use the turn.
+  const advBadges = (c) => { const l = (c.badges || []).map((id) => adv.v?.badges?.[id]).filter(Boolean); return l.length ? ` · 🏅 ${l.map((b) => `${b.icon} ${b.name}`).join(', ')}` : ''; };
+  function advRiddle(g) {
+    const r = g.riddle; if (!r?.open || g.status !== 'playing') return null;
+    const box = el('input', { type: 'text', maxlength: 80, 'aria-label': 'Your answer', placeholder: 'Your answer', oninput: (e) => { adv.riddle = e.target.value; } }); box.value = adv.riddle || '';
+    return el('div', { class: 'card', role: 'region', 'aria-label': 'Riddle' }, el('div', { class: 'q' }, el('strong', { text: `🧩 ${r.ask}` }), el('div', { class: 'help-line', text: `${r.left} tr${r.left === 1 ? 'y' : 'ies'} left. The app checks the answer; the game master doesn't know it.` })), box,
+      el('div', { class: 'btns' }, el('button', { class: 'main', text: 'Answer', onclick: () => { const answer = box.value.trim(); if (!answer) return; adv.riddle = ''; advCall('/api/adventure/riddle', { answer, seat: adv.seat || '' }); } }),
+        el('button', { text: 'Give up', onclick: (e) => { const t = e.currentTarget; if (!t.dataset.sure) { t.dataset.sure = '1'; t.textContent = 'Give up? Tap again: the answer is shown.'; return; } adv.riddle = ''; advCall('/api/adventure/riddle', { giveUp: true, seat: adv.seat || '' }); } })));
+  }
+  function advShop(g) {
+    if (!g.shop || g.status !== 'playing') return null;
+    return el('div', { class: 'box' }, el('strong', { text: '🪙 For sale here' }), el('p', { class: 'help-line', text: `The party has ${g.coins} coin${g.coins === 1 ? '' : 's'}. Buying doesn't use a turn.` }),
+      el('div', { class: 'adv-cards' }, Object.entries(g.shop).map(([item, price]) => el('button', { class: 'adv-card', disabled: price > g.coins, onclick: () => advCall('/api/adventure/buy', { item, seat: adv.seat || '' }) }, el('span', { text: item }), el('span', { class: 'dim small', text: `${price} coin${price === 1 ? '' : 's'}` })))));
+  }
+  function advNote(g) {
+    if (!g.rules?.secrets || g.status !== 'playing') return null;
+    const seat = adv.seat || g.party.find((c) => c.who === 'you')?.id;
+    const mine = (g.secrets || []).filter((x) => x.id === seat);
+    if (!adv.noteOpen) return el('div', { class: 'btns' }, el('button', { text: '🤫 Secret note', onclick: () => { adv.noteOpen = true; advDraw(); } }), mine.length ? el('span', { class: 'help-line', text: `Your notes: ${mine.map((x) => `“${x.text}”`).join(' · ')}` }) : null);
+    const box = el('textarea', { rows: 2, maxlength: 300, 'aria-label': 'Your secret note', placeholder: "I pocket the ring while nobody's looking.", oninput: (e) => { adv.note = e.target.value; } }); box.value = adv.note || '';
+    return el('div', { class: 'box' }, el('label', { class: 'field', text: '🤫 A secret note to the game master' }), el('p', { class: 'help-line', text: "The other players don't see it, and it doesn't use your turn." }), box,
+      el('div', { class: 'btns' }, el('button', { class: 'main', text: 'Pass the note', onclick: () => { const text = box.value.trim(); if (!text) return; adv.note = ''; adv.noteOpen = false; advCall('/api/adventure/secret', { text, seat: adv.seat || '' }); } }), el('button', { text: 'Never mind', onclick: () => { adv.noteOpen = false; advDraw(); } })));
   }
   // Your hand: the cards, a second card for the ones that need details (with ← Back), then the flair box; or say it
   // your way, or ask the game master. With Play as set, only that character's turns show here.
@@ -1726,7 +1777,8 @@ ${chatOut}
     return el('div', { class: 'card' }, el('div', { class: 'q' }, el('strong', { text: `${me?.name || 'Your'}'s turn.` }), me?.who === 'friend' ? el('span', { class: 'badge quiet', text: 'a friend' }) : null, el('div', { class: 'help-line', text: "Pick a card; the app rolls for you. Cards that don't fit this scene are left out." })),
       el('div', { class: 'adv-cards' }, (g.cards || []).map((c) => el('button', { class: `adv-card${c === 'other' ? ' other' : ''}`, onclick: () => { adv.picked = { card: c }; advDraw(); } },
         el('span', { class: 'adv-ico', text: ADV.icons[c] || '' }), el('span', { text: ADV.names[c] || c }), el('span', { class: 'dim small', text: `${ADV.stats[c] || ''}${g.second?.[c] ? ' ›' : ''}` }),
-        g.odds?.[c] ? el('span', { class: 'dim small', 'aria-label': g.odds[c].words, text: `${g.odds[c].need > 20 ? '—' : `${g.odds[c].need}+`} · ${g.odds[c].hit}%` }) : null))),
+        g.odds?.[c] ? el('span', { class: 'dim small', 'aria-label': g.odds[c].words, text: `${g.odds[c].need > 20 ? '—' : `${g.odds[c].need}+`} · ${g.odds[c].hit}%` }) : null)),
+        g.breath ? el('button', { class: 'adv-card', title: 'Spend this turn to get one heart back. Once a scene, no roll.', onclick: () => { adv.picked = { card: 'breath', done: true }; advCall('/api/adventure/act', { card: 'breath', seat: adv.seat || '' }); } }, el('span', { class: 'adv-ico', text: '🫁' }), el('span', { text: 'Catch your breath' }), el('span', { class: 'dim small', text: '+1 heart, no roll' })) : null),
       el('p', { class: 'help-line', text: 'The number on a card is what the die needs for a hit, and about how likely that is (plot armour counted in).' }),
       el('label', { class: 'field', text: 'Or say it your way' }), el('p', { class: 'help-line', text: 'Type what you do; the words decide which stat rolls.' }), say,
       el('div', { class: 'btns' },
