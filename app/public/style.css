@@ -108,6 +108,15 @@ kbd { font-family: var(--mono); font-size: 13px; padding: 1px 6px; border: 1px s
 .versions-list { margin: 4px 0 0; padding-left: 20px; border-left: 2px solid var(--line); }
 .versions-list li { margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg.editing > .msg-tools { display: none; }
+/* Pin messages (public/harness-chat.js): a pinned message has a thin accent edge as well as its 📌 Unpin button. */
+.msg.pinned { box-shadow: inset 3px 0 0 var(--accent, #6aa9ff); }
+/* The Health, weekly and crash report pages (public/harness-pages.js). */
+.harness-page .health-list > li { padding: 6px 0; }
+.harness-page .health-list > li[data-level="bad"] strong, .harness-page .health-list > li[data-level="warn"] strong { text-decoration: underline; text-underline-offset: 3px; }
+.harness-page .harness-table { border-collapse: collapse; margin: 6px 0 12px; }
+.harness-page .harness-table th, .harness-page .harness-table td { text-align: left; padding: 4px 12px 4px 0; vertical-align: top; }
+.harness-page .crash-text { white-space: pre-wrap; max-height: 50vh; overflow: auto; font-size: .85em; }
+
 .edit-box { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .edit-box textarea { width: 100%; min-height: 4.5em; box-sizing: border-box; font: inherit; resize: vertical; }
 .edit-box .row { display: flex; gap: 8px; flex-wrap: wrap; }

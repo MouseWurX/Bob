@@ -13,6 +13,7 @@ import { templateFor, samplingFor, replyTokens } from './model-family.js';
 import { gaming, LONG_CODER } from './sessions.js';
 import { gamingCard, decideCard, readCard, CARD_BUSY_PCT, CARD_MIN_FREE_MB } from './gaming-card.js';
 import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } from './tuning.js';
+import { chatPlacesOn, placesDir, placeFile, tidyPlaces } from './chat-places.js'; // Each chat keeps its place in the engine (off unless switched on)
 import { exeName } from './platform.js';
 import { Embedder } from './embedder.js';
 import { ggufInfo } from './gguf.js';
@@ -461,7 +462,7 @@ export class LlamaCpp {
       ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : num(lc.threads, '-t')),
       ...num(lc.batch, '-b'), ...num(lc.ubatch, '-ub'),
       // 1.5.24 "Get Bob ready while you type": on the processor, his reading of the instructions is kept on disk.
-      ...(cpu && tuning(this.cfg).readyWhileTyping ? ['--slot-save-path', startDir(this.cfg)] : []),
+      ...(cpu && tuning(this.cfg).readyWhileTyping ? ['--slot-save-path', startDir(this.cfg)] : chatPlacesOn(this.cfg) && this.role !== BESIDE ? ['--slot-save-path', placesDir(this.cfg)] : []), // or each chat's place (chat-places.js)
       ...(modelArgs || lc.modelArgs?.[model] || []),
       // Mixture-of-experts models: keep this many layers' experts in system RAM so the rest fits the card.
       ...(Number.isInteger(lc.nCpuMoe?.[model]) ? ['--n-cpu-moe', String(lc.nCpuMoe[model])]
@@ -539,6 +540,24 @@ export class LlamaCpp {
   async slotAction(action, filename) {
     const res = await fetch(`${this.url}/slots/0?action=${action}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ filename }), signal: AbortSignal.timeout(60000) });
     if (!res.ok) throw new Error(`slot ${action}: ${res.status}`);
+  }
+
+  // Each chat keeps its place in the engine (chat-places.js, off unless switched on): before another chat's reply, the
+  // reading the engine holds for the last chat is saved to disk, and the new chat's saved reading (if any) comes back.
+  // The engine only reuses the part of a saved reading that still matches the chat, so an edited chat is safe.
+  async switchPlace(chatId, model) {
+    if (this.role === BESIDE || !this.slotDir || this.slotDir !== placesDir(this.cfg) || this.current !== model || !this.loadedOk || !this.child || this.child.exitCode !== null) return 'none';
+    if (this.placeChat === chatId) return 'same';
+    if (await this.hasVision(model)) return 'none';
+    const ctx = this.currentCtx || this.lc.ctx || DEFAULT_CTX;
+    const was = this.placeChat;
+    this.placeChat = chatId;
+    const name = placeFile(chatId, model, ctx);
+    if (was) { await this.slotAction('save', placeFile(was, model, ctx)); tidyPlaces(this.slotDir, { keepName: [placeFile(was, model, ctx), name] }); }
+    if (!fs.existsSync(path.join(this.slotDir, name))) return was ? 'saved' : 'new';
+    await this.slotAction('restore', name);
+    try { const now = new Date(); fs.utimesSync(path.join(this.slotDir, name), now, now); } catch {}
+    return 'restored';
   }
 
   // Loads the saved reading for this brain, if there is one. Pictures-capable brains can't save one (llama-server).
@@ -681,7 +700,9 @@ export class LlamaCpp {
     try { fs.writeFileSync(path.join(this.cfg.dataDir, `llama-server${this.tag}-args.txt`), [exe, ...args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ') + '\n'); } catch {}
     let log = '';
     let full = ''; // 1.5.133: the whole output (up to 256 KB) goes to a file when a load fails; the message keeps the end
-    if (args.includes('--slot-save-path')) { try { fs.mkdirSync(startDir(this.cfg), { recursive: true }); } catch {} }
+    if (args.includes('--slot-save-path')) { try { fs.mkdirSync(args[args.indexOf('--slot-save-path') + 1] || startDir(this.cfg), { recursive: true }); } catch {} }
+    this.slotDir = args.includes('--slot-save-path') ? args[args.indexOf('--slot-save-path') + 1] : ''; // where this engine run saves readings
+    this.placeChat = null; // a fresh engine holds no chat's reading yet
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
     if (helpers.length) env = { ...env, ...scutEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
@@ -748,6 +769,8 @@ export class LlamaCpp {
     }
     started.catch(() => {}); // later exits are handled by isLoaded()
     this.loadedOk = true;
+    // Catch crashes (crash-catch.js, off unless switched on): the engine stopping by itself after the brain loaded.
+    child.once('exit', (code) => { if (this.child === child && code !== 0) { try { this.onCrash?.({ model, code, tail: log }); } catch {} } });
     this.primedHash = null;
     // A saved reading of this brain's instructions comes back in about a second instead of being read again.
     if (cpu && tuning(this.cfg).readyWhileTyping) await this.restoreStart(model, ctx);
@@ -790,6 +813,7 @@ export class LlamaCpp {
   async chat(opts) {
     const b = this.route(opts);
     if (b) return b.chat({ ...opts, beside: false, cpu: true });
+    if (opts?.chatId && chatPlacesOn(this.cfg)) await this.switchPlace(opts.chatId, opts.model).catch((e) => { try { this.log?.('engine', `couldn't swap chat places (${e.message})`); } catch {} });
     this.active++;
     this.lastUse = this.now();
     try { return await this.chatOnce(opts); } finally { this.active--; this.lastUse = this.now(); }

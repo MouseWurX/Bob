@@ -1,6 +1,7 @@
 // Bob knows his own settings (2026-11-02: "he should be aware of all of his settings so he can help someone
 // set him up"). The bob_help tool searches the same Help text the window shows (public/help-content.js) and adds
 // what is set right now, so Bob can say exactly where a switch is and whether it's on. Read-only: it changes nothing.
+import { harnessNow } from './harness.js';
 import { houseStylePrompt } from '../public/house-style.js';
 import { HELP } from '../public/help-content.js';
 import { webOn } from './web.js';
@@ -51,6 +52,7 @@ export function settingsNow(cfg) {
     `Let Bob fix his own messages: ${onOff(cfg.editOwn === true)}`,
     `Show Try again and Edit in the chat: ${onOff(cfg.chatRedo !== false)}`,
     `Let Bob's Quick brain see the big job: ${onOff(cfg.quickSeesJob === true)}`,
+    harnessNow(cfg), // items 62 to 72: crashes, safe start, undo, quiet hours, weekly, shortcut, chat extras
     `Let Bob take quick notes: ${onOff(cfg.quickNotes === true)} (Let Bob notice what's worth noting: ${onOff(cfg.smartNotes === true)}); Read and search my documents: ${onOff(cfg.docTools === true)} (Search my documents by meaning: ${onOff(cfg.docMeaning === true)}); Show documents in the side panel: ${onOff(cfg.docView === true)}; Save chats as files and bring chats in: ${onOff(cfg.chatFiles === true)}; Show maths as formulas: ${onOff(cfg.mathView === true)}; Keyboard shortcuts: ${onOff(cfg.shortcuts === true)}; Pull up saved prompts with /: ${onOff(cfg.promptMenu === true)}; Let Bob work things out in a sandbox: ${onOff(cfg.sandboxCode === true)}; Assistant presets for chats: ${onOff(cfg.chatPresets === true)} (${(cfg.presetList || []).length} saved); Let Bob make 3D parts: ${onOff(cfg.parts3d === true)}; Let Bob turn pictures into 3D models: ${onOff(cfg.model3d === true)}`,
     `Let Bob work on repositories: ${onOff(cfg.selfWork?.enabled === true)} (his own app first, then ${(cfg.selfWork?.repos || []).length} of yours); Let my other Bobs help: ${onOff(cfg.selfWork?.helpers === true)}`,
     `Session: ${currentSession(cfg).label}; Let Bob pick the session: ${onOff(cfg.autoSession !== false)}; 🎮 Gaming button (chat page): ${onOff(cfg.gamingLock === true)}`,

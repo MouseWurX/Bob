@@ -348,3 +348,21 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | Welcome, Do you want me to: | "Turn pictures into 3D models" (same switch) | off | new |
 | Settings > Engines (senses) | 3D workshop: Get (only where model3d/addons-pins.json has checked add-ons; Windows and Linux x64 with an NVIDIA card), about 22 GB with the models; Mac and ARM say to send the job to a PC Bob | not installed | new |
 | Settings > Bob-Net | Send/Take jobs: "3D models" is a new kind of job a PC Bob can take | — | new |
+
+## Health and history, Quiet hours and shortcut, Chat extras (harness items 62 to 72)
+
+| Where | Setting (key) | Default | Status |
+|---|---|---|---|
+| Settings > This replicant matrix > 🩺 Health and history | 🩺 Open the Health page (button, no switch: it only looks) | n/a | new, awaiting review |
+| same | Catch crashes (`crashCatcher`) | off | new, awaiting review |
+| same | Crash reports list: Show, Delete, Delete them all | n/a | new, awaiting review |
+| same | Offer a safe start after two crashes (`safeStart`), plus Put my switches back | off | new, awaiting review |
+| same | Keep the last 20 Settings changes (`settingsUndo`), Last Settings changes list with Put it back, Clear the list | off | new, awaiting review |
+| same | Count what Bob did each week (`weeklyReport`), 📅 What Bob did this week, Clear the counts | off | new, awaiting review |
+| Settings > How Bob works > 🌙 Quiet hours and shortcut | Quiet hours (`quietHours.on`), From / To (`quietHours.from`, `.to`) | off, 22:00 to 07:00 | new, awaiting review |
+| same | A shortcut from anywhere (`globalAsk.on`), The key (`globalAsk.key`) | off, Ctrl+Shift+Space | new, awaiting review |
+| Settings > How Bob works > 💬 Chat extras | Try from here (`tryFromHere`) | off | new, awaiting review |
+| same | Pin messages (`pinMessages`) | off | new, awaiting review |
+| same | Guest chats (`guestChat`) | off | new, awaiting review |
+| same | Each chat keeps its place in the engine (`chatPlaces`), Saved chat places count, Clear them | off | new, awaiting review |
+| Welcome, "Do you want me to:" | three buttons: Chat extras, Quiet hours and shortcut, Health and history | n/a | new, awaiting review |

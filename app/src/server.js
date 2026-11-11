@@ -98,8 +98,19 @@ import { Lock, lockOn, lockView, lockPage, OPEN_WHILE_LOCKED } from './lock.js';
 import { findOpenscad } from './parts3d.js';
 import { model3dReady } from './model3d.js';
 import { lockAtStart, secretsPatch, secretsView } from './secret-settings.js'; // 🔐 Locked secrets
+import { harnessRoute } from './harness-routes.js'; // items 62 to 72 (src/harness.js), all off unless switched on
+import { watchRuns, endRun, engineCrashed } from './crash-catch.js'; // Catch crashes, Safe start
+import { undoWatcher } from './settings-undo.js'; // Keep the last 20 Settings changes
+import { Weekly } from './weekly.js'; // Count what Bob did each week
+import { watchSettings } from './config.js';
 
 const cfg = loadConfig();
+// Catch crashes and Safe start (crash-catch.js): the "Bob is running" marker; a report of an unclean last end (switch on).
+const logTail = () => { try { const t = fs.readFileSync(cfg.logbook, 'utf8'); return t.slice(-20000); } catch { return ''; } };
+const crashState = watchRuns(cfg, { version: VERSION.label, logText: logTail });
+globalThis.bobCleanExit = () => endRun(cfg); // Bob.exe says so when it quits on purpose
+watchSettings(undoWatcher(cfg)); // Keep the last 20 Settings changes: records only while its switch is on
+const weekly = new Weekly(cfg); // Count what Bob did each week: counts only while its switch is on
 // 1.5.76: the basic llama.cpp that comes inside Bob's download goes into his engine folder, if he has none yet.
 try { if (seedBundledEngine(cfg)) console.error('Bob: set up the llama.cpp that came with him.'); } catch {}
 const publicDir = path.join(appDir, 'public');
@@ -137,12 +148,17 @@ function broadcast(ev) {
   for (const res of ev?.type === 'think' || ev?.type === 'think-start' ? mindClients : clients) res.write(data);
   if (ev?.type === 'status') { const l = ['waking', 'loading'].includes(ev.state) ? String(ev.model || '') : ''; if (l !== cubeLoading) { cubeLoading = l; if (l && cubeClients.size) cubeBrainsNow(); } } // once as a brain starts loading, not every progress line
   if (ev?.type === 'brain' && cubeClients.size) cubeBrainsNow(); // fNRI's small cube takes itself apart when its brain is let go
+  try { weekly.watch(ev, () => brain.engine?.current || ''); } catch {} // Count what Bob did each week (numbers only)
   try { telegram?.watch(ev); } catch {} // Talk to Bob on Telegram: only the Telegram chat's events, and only while it's on
   try { discord?.watch(ev); } catch {} // Bob on Discord: only Discord jobs' own events
   if (ev?.type === 'pair-done') try { introductions.soon(); } catch {} // 1.5.123: a new Bob on the list meets the others
 }
 
 const brain = new Brain(cfg, broadcast);
+if (brain.engine) brain.engine.onCrash = (x) => engineCrashed(cfg, { ...x, version: VERSION.label, logText: logTail() }); // Catch crashes
+// A shortcut from anywhere (electron/main.cjs): Bob.exe registers the key while the switch is on. Nothing in a browser.
+const applyShortcut = (g) => { try { globalThis.bobGlobalAsk?.(g, cfg.port); } catch {} };
+setTimeout(() => applyShortcut(cfg.globalAsk), 1500).unref?.();
 const appsRoute = makeAppsRoute({ brain, cfg, version: VERSION.label || String(VERSION) });
 lockAtStart(cfg, (k, t) => brain.log(k, t)); // 🔐 Locked secrets: notes from opening the box, then any plain keys from an older Bob locked away
 if (cfg.engineMoved?.length) brain.log('settings', `brains now run on ${cfg.llamacpp.brainEngine !== false && brainsEngineNow(cfg) === 'brainengine' ? 'Brain Engine' : 'plain llama.cpp'} (was set to ${cfg.engineMoved.join(' and ')}; Brain Engine is the only engine for my brains now)`); // 1.5.196
@@ -1107,6 +1123,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/checkins' && await checkinsRoute({ req, res, p, isLocal, brain, body, send })) return;
     if (p.startsWith('/api/adventure') && await adventureRoute({ req, res, p, isLocal, brain, body, send })) return; // 1.5.117 🎲 Adventure
     if (p.startsWith('/api/games') && await gamesRoute({ req, res, p, isLocal, brain, body, send })) return; // 1.5.121 🧩 Games
+    if (/^\/api\/(harness|crash|settings-undo|health|quiet|weekly|pins|chat\/try|guest)(\/|$)/.test(p) && await harnessRoute({ req, res, p, url, isLocal, cfg, brain, body, send, saveSettings, replaceSettings, weekly, crashState, applyShortcut, nameOf: friendlyName, probes: healthProbes })) return; // items 62 to 72
     if (p === '/api/prompts' && await promptsRoute({ req, res, p, isLocal, cfg, body, send, saveSettings, log: (k, t) => brain.log(k, t) })) return; // saved prompts and the / menu
     if (p === '/api/telegram' && await telegramRoute({ req, res, p, isLocal, brain, body, send })) return;
     if (p === '/api/discord' && await discordRoute({ req, res, p, isLocal, brain, body, send })) return;
@@ -1533,6 +1550,17 @@ async function brainCtxView() {
     brains.push({ model, name: friendlyName(model), jobs: labels, max, choices, room, bobPick: max ? Math.min(pick, max) : Math.min(pick, SAFE_CTX), picked: pickedCtx({ ...cfg, brainCtxOn: true }, model, max, { stretch }), guide: ctxGuide(max, pick, { gaming: labels.includes(SLOT_NAMES.gaming), stretch }) });
   }
   return { on: ctxOn(cfg), stretch: stretchOn(cfg), canStretch: anyStretch && cfg.engine === 'llamacpp', brains };
+}
+
+// The 🩺 Health page's facts (health.js): read when the page asks, nothing changed.
+async function healthProbes() {
+  const st = await Promise.race([brain.status(), new Promise((r) => setTimeout(() => r(null), 4000))]).catch(() => null);
+  const g = (await gpuNow().catch(() => null))?.gpu || null;
+  let diskFreeGB = NaN;
+  try { const s = fs.statfsSync(cfg.agentDir || cfg.innDir); diskFreeGB = Math.round((Number(s.bavail) * Number(s.bsize)) / 1e8) / 10; } catch {}
+  const bobs = brain.lenders?.bobs?.() || [];
+  const peers = await Promise.all(bobs.map((b) => Promise.race([brain.lenders.hello(b).then((h) => ({ name: b.name || b.address, ok: Boolean(h?.ok) })), new Promise((r) => setTimeout(() => r({ name: b.name || b.address, ok: false }), 2500))]).catch(() => ({ name: b.name || b.address, ok: false }))));
+  return { engineOk: st ? st.engineOk : false, engineName: brain.engineName, models: st?.models || [], chatBrain: st?.chatBrain || '', chatBrainName: friendlyName(st?.chatBrain || ''), card: g, diskFreeGB, peers, logText: logTail() };
 }
 
 // A model id by its friendly catalog name (model ids stay in Advanced).

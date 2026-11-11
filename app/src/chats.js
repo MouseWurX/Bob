@@ -13,7 +13,7 @@ export const safeId = (id) => String(id || '').replace(/[^a-zA-Z0-9-]/g, '').sli
 export const chatFile = (cfg, id) => path.join(sessionDir(cfg), safeId(id) + '.json');
 export const olderFile = (cfg, id) => path.join(sessionDir(cfg), safeId(id) + '.older.json');
 export const summaryFile = (cfg, id) => path.join(sessionDir(cfg), safeId(id) + '.summary.json');
-export const chatFiles = (cfg, id) => [chatFile(cfg, id), olderFile(cfg, id), summaryFile(cfg, id)].filter((f) => fs.existsSync(f));
+export const chatFiles = (cfg, id) => [chatFile(cfg, id), olderFile(cfg, id), summaryFile(cfg, id), path.join(sessionDir(cfg), safeId(id) + '.pins.json')].filter((f) => fs.existsSync(f)); // .pins.json: Pin messages (pins.js)
 
 // 🔒 Through the vault (src/vault.js): plain files read as before, locked ones only once the passcode was typed.
 const readJson = (f, d) => vaultRead(f, d);

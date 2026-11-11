@@ -200,18 +200,19 @@ export function buildTools(cfg) {
       action: str('add, list or cancel', { enum: ['add', 'list', 'cancel'] }),
       time: str('add: local time, YYYY-MM-DDTHH:mm.'),
       text: str('add: what to remind about.'),
-      id: str('cancel: the id from list.')
+      id: str('cancel: the id from list.'),
+      urgent: { type: 'boolean', description: 'add: true only when the user says it is urgent (it then pops up even in quiet hours).' }
     }, ['action']),
-    async run({ action, time, text, id }) {
+    async run({ action, time, text, id, urgent }) {
       const list = loadReminders(cfg);
       if (action === 'add') {
         if (!text) throw new Error('What should I remind about?');
         const at = zonedToEpoch(time, cfg.timeZone);
         if (at < Date.now() - 60000) throw new Error('That time has already passed.');
-        const r = { id: Math.random().toString(36).slice(2, 8), at, local: time, text: String(text).slice(0, 300) };
+        const r = { id: Math.random().toString(36).slice(2, 8), at, local: time, text: String(text).slice(0, 300), ...(urgent === true || urgent === 'true' ? { urgent: true } : {}) };
         list.push(r);
         saveReminders(cfg, list);
-        return `Reminder ${r.id} set for ${time}: ${r.text}`;
+        return `Reminder ${r.id} set for ${time}${r.urgent ? ' (urgent)' : ''}: ${r.text}`;
       }
       if (action === 'cancel') {
         const left = list.filter((r) => r.id !== id);

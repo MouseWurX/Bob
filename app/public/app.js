@@ -43,6 +43,7 @@ import { createPromptMenu } from './prompts.js'; // saved prompts: the / menu in
 import { diagramHtml, saveRowsHtml, setupSaveAs, watchSaveAs } from './save-as.js';
 import './math-core.js'; // Show maths as formulas: KaTeX, loaded only while the switch is on
 import { installShortcuts, listHtml as shortcutListHtml } from './shortcuts.js';
+import { createHarnessChat, quietNow } from './harness-chat.js'; // items 62 to 72: crash card, quiet hours, Pin, Try from here, Guest chat
 
 // Settings opens in its own window on a computer (minimise, maximise, close). The main window keeps
 // its left menu and Now running; what changes over there comes back on a BroadcastChannel (settings-link.js).
@@ -291,7 +292,7 @@ function badge(on) {
   try { if (on) navigator.setAppBadge && navigator.setAppBadge(); else navigator.clearAppBadge && navigator.clearAppBadge(); } catch {}
 }
 function ping(title, body) {
-  if (!document.hidden) return;
+  if (!document.hidden || quietNow()) return; // Quiet hours (off unless switched on): no pop-ups
   badge(true);
   try { if ('Notification' in window && Notification.permission === 'granted' && store.get('bob-alerts', '1') === '1') new Notification(title, { body, icon: '/icons/bob-192.png' }); } catch {}
 }
@@ -456,6 +457,7 @@ async function openChat(id, msgId) {
   if (busy) { note('Bob is busy in this chat. Open the other one when he has finished.'); return; }
   sessionId = id;
   store.set('bob-session', sessionId);
+  harnessChat?.moved(sessionId); // a guest chat left behind is let go
   log.innerHTML = ''; stick = true;
   presetPicker.load();
   await loadHistory(40);
@@ -484,10 +486,18 @@ $('newchat').onclick = () => {
   if (busy) return;
   sessionId = 'chat-' + Date.now();
   store.set('bob-session', sessionId);
+  harnessChat?.moved(sessionId);
   log.innerHTML = ''; stick = true;
   presetPicker.load({ apply: false });
   note('New conversation. Bob still remembers what\'s in his memory file and on your to-do list.');
 };
+// Items 62 to 72 (public/harness-chat.js), all off unless switched on: the crash card, quiet hours, 📌 Pin, ⑂ Try from
+// here, 👤 Guest chat, the weekly line and the ask box's Open in Bob.
+const harnessChat = createHarnessChat({
+  log, input, add, note, session: () => sessionId, open: (id) => openChat(id),
+  openSettings: (jump) => cellar.open('settings', null, jump ? { jump } : {}),
+  start: (id, line) => { if (busy) return false; if ($('cellar').open) $('cellar').close(); sessionId = id; store.set('bob-session', sessionId); harnessChat.moved(sessionId); log.innerHTML = ''; stick = true; presetPicker.load({ apply: false }); note(line); input.focus(); return true; }
+});
 
 // ---------- Downloads and installs: always visible, even with the cellar closed ----------
 const dlbar = $('dlbar');
@@ -790,6 +800,7 @@ function onEvent(ev) {
       break;
     case 'reminder':
       add('approval', `<p><strong>Reminder:</strong> ${esc(ev.text)}</p><div class="done">${esc(ev.local || '')}</div>`);
+      if (ev.quiet && !ev.urgent) break; // Quiet hours: in the chat only, unless it's urgent
       speak('Reminder: ' + ev.text);
       badge(true);
       try { if ('Notification' in window && Notification.permission === 'granted' && store.get('bob-alerts', '1') === '1') new Notification('Bob: reminder', { body: ev.text, icon: '/icons/bob-192.png', requireInteraction: true }); } catch {}
@@ -799,7 +810,7 @@ function onEvent(ev) {
       const items = ev.items || [];
       add('approval', `<p><strong>Check-in:</strong> ${items.length} thing${items.length === 1 ? '' : 's'} need${items.length === 1 ? 's' : ''} you.</p><ul>${items.map((i) => `<li><strong>${esc(i.title)}</strong>${i.detail ? ` <span class="muted">${esc(i.detail)}</span>` : ''}</li>`).join('')}</ul><div class="done">${esc(ev.at ? new Date(ev.at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '')}</div>`); // same style as Settings, Check-ins
       badge(true);
-      try { if ('Notification' in window && Notification.permission === 'granted' && store.get('bob-alerts', '1') === '1') new Notification('Bob: check-in', { body: items.map((i) => i.title).join('\n').slice(0, 300), icon: '/icons/bob-192.png' }); } catch {}
+      try { if (!quietNow() && 'Notification' in window && Notification.permission === 'granted' && store.get('bob-alerts', '1') === '1') new Notification('Bob: check-in', { body: items.map((i) => i.title).join('\n').slice(0, 300), icon: '/icons/bob-192.png' }); } catch {}
       break;
     }
     case 'error':

@@ -8,7 +8,7 @@
 //   3. otherwise %LOCALAPPDATA%\Bob, with a fresh config.json made from config.example.json.
 // On a Mac (Bob.app, the same official Electron renamed, Bob's files in Bob.app/Contents/Resources/app) step 3 is
 // ~/Library/Application Support/Bob/home, and on Linux ~/.local/share/bob (src/platform.js defaultHome).
-const { app, BrowserWindow, shell, Menu, dialog, clipboard, screen, Tray, nativeImage, Notification } = require('electron');
+const { app, BrowserWindow, shell, Menu, dialog, clipboard, screen, Tray, nativeImage, Notification, globalShortcut } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
@@ -329,6 +329,41 @@ function showBob() {
   win.show();
   win.focus();
 }
+
+// A shortcut from anywhere (Settings, How Bob works, 🌙 Quiet hours and shortcut; off unless switched on). While it's
+// on, the key opens a small ask box on top of any app (public/ask.html); the key again, or Esc, puts it away.
+// src/server.js calls this at start and whenever the switch or the key changes. Nothing is registered while it's off.
+let askKey = '', askWin = null;
+function openAsk(port) {
+  if (askWin && !askWin.isDestroyed()) { if (askWin.isVisible() && askWin.isFocused()) askWin.hide(); else { askWin.show(); askWin.focus(); } return; }
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const width = Math.min(640, area.width - 32), height = 420;
+  askWin = new BrowserWindow({
+    width, height, x: Math.round(area.x + (area.width - width) / 2), y: Math.round(area.y + area.height * 0.18),
+    title: 'Ask Bob', icon: iconFile(process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212',
+    autoHideMenuBar: true, alwaysOnTop: true, skipTaskbar: true, minimizable: false, maximizable: false, fullscreenable: false, resizable: true,
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }
+  });
+  askWin.setAlwaysOnTop(true, 'floating');
+  askWin.setMenu(null);
+  const base = `http://127.0.0.1:${port}`;
+  askWin.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url) && !url.startsWith(base)) shell.openExternal(url); return { action: 'deny' }; });
+  askWin.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(base + '/ask.html')) e.preventDefault(); });
+  askWin.on('closed', () => { askWin = null; });
+  askWin.loadURL(base + '/ask.html');
+}
+globalThis.bobGlobalAsk = (g, port) => {
+  const want = g && g.on === true && typeof g.key === 'string' ? g.key : '';
+  if (askKey && askKey !== want) { try { globalShortcut.unregister(askKey); } catch {} askKey = ''; }
+  if (!want || askKey === want) return { ok: true, key: askKey };
+  let ok = false;
+  try { ok = globalShortcut.register(want, () => openAsk(port)); } catch {}
+  if (ok) askKey = want;
+  else console.error(`Bob: couldn't take the key ${want} for the ask box (another app may use it).`);
+  return { ok, key: askKey };
+};
+globalThis.bobShow = () => showBob(); // the ask box's Open in Bob
+app.on('will-quit', () => { try { globalShortcut.unregisterAll(); } catch {} try { globalThis.bobCleanExit?.(); } catch {} });
 
 function trayImage() {
   const ic = winState.icons;

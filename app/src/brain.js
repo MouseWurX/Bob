@@ -75,6 +75,9 @@ import { selfWorkOn, readyRepos } from './self-work.js';
 import { compactMessages, charsFor } from './self-work-plan.js';
 import { HowTos, howtoTools, howtosOn, trailStep, worthOffering, howtoPrompt, usingLine } from './howtos.js';
 import { NEEDS, planFor, SetupOffers, switchFor, applySwitch, SWITCH_KEYS } from './setup-offer.js';
+import { isGuestId, GUEST_BLOCKED, GUEST_NO_MEMORY, GUEST_LOG } from './guest-chat.js'; // Guest chats (off unless switched on)
+import { pinsPrompt } from './pins.js'; // Pin messages (off unless switched on)
+import { isQuiet } from './quiet-hours.js'; // Quiet hours (off unless switched on)
 
 const MAX_STEPS = 8;
 // #57 stopgap (two-Bob trial, Test B); Bob's own #57 fix replaces these.
@@ -659,7 +662,7 @@ export class Brain {
     if (!due.length) return;
     saveReminders(this.cfg, list.filter((r) => r.at > Date.now()));
     for (const r of due) {
-      this.broadcast({ type: 'reminder', text: r.text, local: r.local });
+      this.broadcast({ type: 'reminder', text: r.text, local: r.local, ...(r.urgent ? { urgent: true } : {}), quiet: isQuiet(this.cfg) }); // Quiet hours: only urgent ones pop up and speak
       this.log('reminder', r.text);
     }
   }
@@ -782,6 +785,7 @@ export class Brain {
   sessionFile(id) { return path.join(this.sessionDir, id.replace(/[^a-zA-Z0-9-]/g, '') + '.json'); }
 
   saveSession(id) {
+    if (isGuestId(id)) return; // a guest chat is never written to disk (guest-chat.js)
     const msgs = stampMessages(this.session(id));
     // Bob reads the last 40 messages every turn. Older ones move to the chat's older file (word for word)
     // and the housekeeper sums them up when Bob is idle; they used to be dropped without a trace.
@@ -801,6 +805,9 @@ export class Brain {
     for (const m of msgs) delete m.images; // pictures stay on the shelf; Bob keeps the description
     try { writeJson(this.cfg, this.sessionFile(id), msgs); } catch {} // 🔒 locked when Lock my chats and memory is on
   }
+
+  // Leaving a guest chat: its messages go from Bob's working memory too.
+  forgetGuest(id) { if (isGuestId(id)) this.sessions.delete(id); }
 
   history(id) {
     return this.session(id)
@@ -1247,6 +1254,7 @@ export class Brain {
   async runToolNow(name, args, ctx, tool) {
     if (!tool) return { text: `Error: there is no tool called ${name}.` };
     // 1.5.72: a job from another of your Bobs only thinks, searches and makes pictures, clips, music and sounds here.
+    if (isGuestId(ctx?.sessionId) && GUEST_BLOCKED.has(name)) return { text: GUEST_NO_MEMORY }; // a guest chat keeps nothing
     if (ctx?.job?.guest && !GUEST_TOOLS.has(name)) return { text: `Not for this job: it came from ${ctx.job.guest.from}, another Bob, so here I can only think, search the web and make pictures, clips, music and sounds. Say what's left for ${ctx.job.guest.from} to do himself.` };
     // Bob on Discord (src/discord.js): only the job types the owner ticked, and never a reference picture (nothing the
     // owner made can be edited, copied or described there).
@@ -1581,7 +1589,7 @@ export class Brain {
     const drop = new Set(finished.filter((j) => (j.doneAt || j.at) < keep).map((j) => j.id));
     for (const j of finished.slice(0, Math.max(0, finished.length - 200))) drop.add(j.id);
     this.queue = this.queue.filter((j) => !drop.has(j.id));
-    try { writeJsonAtomic(this.queueFile, this.queue); } catch {}
+    try { writeJsonAtomic(this.queueFile, this.queue.filter((j) => !isGuestId(j.sessionId))); } catch {} // a guest chat's job isn't kept
     this.broadcast({ type: 'queue', jobs: this.queueView() });
   }
 
@@ -2066,7 +2074,7 @@ export class Brain {
   // 1.5.79: after a job went well, one card: save its steps as a how-to? Only with "Let Bob learn how-tos" on,
   // never for a job from another Bob, not when a how-to was followed this turn or already covers it.
   howtoAfter(sessionId, text, ctx, emit, job = null) {
-    if (!howtosOn(this.cfg) || job?.guest) return null;
+    if (!howtosOn(this.cfg) || job?.guest || isGuestId(sessionId)) return null;
     const steps = worthOffering(ctx.trail);
     if (!steps) return null;
     if (sessionId) { this.lastTrail.set(sessionId, { when: text, steps }); if (this.lastTrail.size > 50) this.lastTrail.delete(this.lastTrail.keys().next().value); }
@@ -2096,7 +2104,9 @@ export class Brain {
   // What Bob carries from earlier, instead of the whole old chat: the summary of this chat's older part,
   // and the topic notes closest to what the user just said.
   async recall(sessionId, text) {
+    if (isGuestId(sessionId)) return ''; // a guest chat reads no memory (guest-chat.js)
     const parts = [];
+    try { const pinned = pinsPrompt(this.cfg, sessionId, this.session(sessionId), this.cfg.userName || 'the user'); if (pinned) parts.push(pinned); } catch {} // Pin messages (pins.js)
     const sum = sessionId ? readSummary(this.cfg, sessionId)?.summary : '';
     if (sum) parts.push(`Earlier in this chat (summed up): ${sum}`);
     try {
@@ -2154,7 +2164,7 @@ export class Brain {
     else { msgs.push(user); if (!job?.guest) emit({ type: 'asked', id: user.id }); } // the window marks your bubble, for Edit (redo.js)
     if (job) job.rentAgain = false;
     const turnStart = again ? msgs.map((m) => m.role).lastIndexOf('user') : msgs.length - 1;
-    this.log('chat', `${this.cfg.userName || 'User'}: ${text}`);
+    this.log('chat', `${this.cfg.userName || 'User'}: ${isGuestId(sessionId) ? GUEST_LOG : text}`);
     // The turn's pictures travel with it, so a hat Bob hands the job to can see them too.
     // Every picture, clip or sound he makes goes on the Made by Bob list as it's announced.
     const emitMade = (ev) => {
@@ -2313,14 +2323,15 @@ export class Brain {
       }
       ctx.retrying = false;
       const pub = Boolean(job?.guest?.public); // Bob on Discord: no memory, about-me or backstory of the owner's
-      const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: this.now(), memory: pub ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: pub ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
+      const hush = pub || isGuestId(sessionId); // a guest chat: no memory or about-me either (guest-chat.js)
+      const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: this.now(), memory: hush ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: hush ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
       let reply = null;
       // A lender keeps the start of the chat it read last time (its prompt cache), so what changes every turn (the time,
       // the Right now line, recalled bits) goes in a short note just before the latest message, not in the instructions.
       let lentMsgs = null, lentSize = 0;
       if (borrowing) {
         const who = this.cfg.userName || 'the user';
-        const lentSys = { role: 'system', content: this.withLimits(systemPrompt({ now: 'given in the note just before the latest message', memory: pub ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: pub ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, who) }), ctx.loaded) };
+        const lentSys = { role: 'system', content: this.withLimits(systemPrompt({ now: 'given in the note just before the latest message', memory: hush ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: hush ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, who) }), ctx.loaded) };
         const hist = staleHandErrors(msgs, turnStart);
         const at = hist.findLastIndex((m) => m.role === 'user');
         const note = { role: 'system', content: `Current date and time for ${who}: ${this.now()}.${extras}${earlier ? `\n\n${earlier}` : ''}` };
@@ -2384,6 +2395,7 @@ export class Brain {
         reply = await this.chatSafe({
           model, messages: [sys, ...meanwhileNear(staleHandErrors(msgs, turnStart), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')], tools, signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
           ...(ctx.preset && ctx.preset.temperature !== null ? { temperature: ctx.preset.temperature } : {}), // a preset's own temperature
+          ...(sessionId ? { chatId: sessionId } : {}), // Each chat keeps its place in the engine (chat-places.js, off unless switched on)
           onToken: (t) => emit({ type: 'token', text: t })
         }, { emit });
       }
@@ -2759,7 +2771,7 @@ export class Brain {
     // Raw pictures only go to a brain that can see; any brain still gets the Eyes descriptions above.
     if (ctx.pics?.length && await this.engine.hasVision?.(model).catch(() => false)) userMsg.images = ctx.pics.map((r) => this.refs.base64(r));
     const messages = [
-      { role: 'system', content: this.withLimits(systemPrompt({ hat, now: this.now(), memory: this.memory(task), user: this.cfg.userName, backstory: this.backstory(), about: this.about(), copy, cat: this.cfg.catName, dials: personalityPrompt(this.cfg.personality, this.cfg.userName || 'the user') }), null, hat) + (hat !== 'reviewer' && careful(ctx.job) ? `\n\n${effortPrompt(ctx.job.effort).replaceAll('{{USER}}', this.cfg.userName || 'the user')}` : '') },
+      { role: 'system', content: this.withLimits(systemPrompt({ hat, now: this.now(), memory: isGuestId(ctx.sessionId) ? '' : this.memory(task), user: this.cfg.userName, backstory: this.backstory(), about: isGuestId(ctx.sessionId) ? '' : this.about(), copy, cat: this.cfg.catName, dials: personalityPrompt(this.cfg.personality, this.cfg.userName || 'the user') }), null, hat) + (hat !== 'reviewer' && careful(ctx.job) ? `\n\n${effortPrompt(ctx.job.effort).replaceAll('{{USER}}', this.cfg.userName || 'the user')}` : '') },
       userMsg
     ];
     let final = '';
