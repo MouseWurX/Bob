@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { brainsHtml, brainsInUse, emptyJobs, spareBrains, jobsFor, placeBarHtml, budget, brainJobs, senseSlots } from '../public/brains.js';
+import { SETUPS, setupOf, setupPlan, duoNeedsQuick, brainsHtml, brainsInUse, emptyJobs, spareBrains, jobsFor, placeBarHtml, budget, brainJobs, senseSlots } from '../public/brains.js';
 import { HELP } from '../public/help-content.js';
 
 let pass = 0, fail = 0;
@@ -57,6 +57,24 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
   check('Equip Bob opens on the Brains page unless another view was chosen', /getItem\('bob-equip-view'\) \|\| 'brains'/.test(cellar) && /brainsHtml\(\{ \.\.\.eqCtx\(\)/.test(cellar));
   check('the two menus save through the same call the doll uses', /el\.dataset\.brainjob && el\.value\) \{[^}]*await equip\(el\.value, el\.dataset\.brainjob/.test(cellar) && /el\.dataset\.jobbrain && el\.value\) \{[^}]*await equip\(el\.dataset\.jobbrain, el\.value/.test(cellar));
   check('Help has the page, in Bob\'s voice, and the glossary names it', HELP.some((h) => h.id === 'brains-page' && /I load one big brain at a time/.test(h.html)) && /<dt>Brains page<\/dt>/.test(HELP.find((h) => h.id === 'glossary').html));
+}
+// ---- setups ----
+{
+  const plan = (id, c = ctx) => setupPlan(id, c).map((x) => `${x.slot.id}=${x.value}`).sort().join();
+  check('four setups, each says what it does and who it is for', SETUPS.map((s) => s.id).join() === 'one,duo,specialists,bobs' && SETUPS.every((s) => s.does && s.who));
+  check('the setup in use is told from the jobs themselves', setupOf(ctx) === 'specialists' && setupOf({ ...ctx, roles: { ...roles, current: { bob: 'riker-28b-q3' } }, brains: {} }) === 'one' && setupOf({ ...ctx, roles: { ...roles, current: { bob: 'bobert-35b' } }, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' } }) === 'duo' && setupOf({ ...ctx, roles: { ...roles, current: {} }, brains: {} }) === '');
+  check('One brain: optional jobs come off, the main brain stays, Seeing pictures is left alone', plan('one') === 'deep=,reviewer=,small=,tinker=', plan('one'));
+  check('Quick + Big: the Deep thinker becomes the big brain for the main job too; the Quick brain is kept', plan('duo') === 'bob=bobert-35b,reviewer=,tinker=', plan('duo'));
+  check('Specialists and Across my Bobs change nothing by themselves', plan('specialists') === '' && plan('bobs') === '');
+  check('Quick + Big says when the Quick slot has no small brain of its own', !duoNeedsQuick(ctx) && duoNeedsQuick({ ...ctx, brains: { deep: 'bobert-35b' } }) && duoNeedsQuick({ ...ctx, brains: { small: 'bobert-35b', deep: 'bobert-35b' } }));
+  const html = brainsHtml(ctx);
+  check('the setups are buttons that say which is in use, in words', SETUPS.every((s) => html.includes(`data-setup="${s.id}"`)) && /data-setup="specialists" aria-pressed="true"><strong>[^<]*<\/strong> <span class="tag good">in use<\/span>/.test(html) && !/setup-ask/.test(html));
+  const ask = brainsHtml({ ...ctx, setupAsk: 'one' });
+  check('pressing one shows the list of changes first, with Apply and Cancel', /class="setup-ask"/.test(ask) && /data-setupapply="one"/.test(ask) && /<strong>Coding<\/strong>: no brain of its own \(the main brain codes\)/.test(ask) && /No brain is deleted/.test(ask), ask.slice(ask.indexOf('setup-ask'), ask.indexOf('setup-ask') + 700));
+  check('nothing to change: no Apply button', !/data-setupapply/.test(brainsHtml({ ...ctx, roles: { ...roles, current: { bob: 'riker-28b-q3' } }, brains: {}, setupAsk: 'one' })));
+  check('Across my Bobs points at the Bob-Net settings and says it is all off until turned on', /data-setupbobnet/.test(brainsHtml({ ...ctx, setupAsk: 'bobs' })) && /off until you turn it on/.test(brainsHtml({ ...ctx, setupAsk: 'bobs' })));
+  const cellar = read('public/cellar.js');
+  check('Apply saves each job through the usual call, then reloads', /for \(const c of plan\) await equipSlot\(c\.slot, c\.value\);/.test(cellar) && /jumpTo = 'adv-bobnet'/.test(cellar));
 }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

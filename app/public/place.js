@@ -53,7 +53,7 @@ export function placeFor(m, hw = {}, rooms = []) {
   if (!hw.unified && hw.vramGB && (m?.vramGB || need) <= hw.vramGB) {
     // Some brains made of experts are tested to run well on a card smaller than their file: the busy parts sit on the
     // card and the rest waits in memory. Say so, and never show more on the card than the card holds.
-    if (size <= card) return out('card', { cardGB: size });
+    if (size <= hw.vramGB) return out('card', { cardGB: size });
     const onCard = r1(Math.max(0, card - ROOM.chatGB));
     return out('memory', { cardGB: onCard, memGB: r1(size - onCard), runsWell: true, why: `Runs well here: the busy parts sit on the card (${gb(onCard)}), the rest waits in memory.` });
   }

@@ -36,6 +36,74 @@ export function spareBrains(ctx) {
 // The jobs this brain could take that it doesn't hold yet.
 export const jobsFor = (value, ctx) => brainJobs().filter((s) => equipped(s, ctx) !== value && slotTakes(s, value, ctx));
 
+// ---- Setups: how many brains Bob uses. A setup is a set of job changes offered as one list; nothing is saved until
+// the owner presses Apply, and every job stays on the page whichever setup is in use. ----
+export const SETUPS = [
+  { id: 'one', icon: '🧠', name: 'One brain', does: 'One brain does every job. No swapping, nothing else to set.', who: 'Small computers, or keeping it simple.' },
+  { id: 'duo', icon: '⚡', name: 'Quick + Big', does: 'A small brain for short answers, a big one for everything else.', who: 'One computer with a graphics card.' },
+  { id: 'specialists', icon: '🧰', name: 'Specialists', does: 'A brain of its own for any job you choose: coding, review, office.', who: 'People who tune each job.' },
+  { id: 'bobs', icon: '🌐', name: 'Across my Bobs', does: 'Brains live on different computers on your Bob-Net and help each other. Experimental.', who: 'Two or more Bobs.' }
+];
+// The jobs a setup decides. Gaming and Seeing pictures keep their own brain: only some brains can do them.
+const CORE = ['bob', 'deep', 'office', 'tinker', 'reviewer', 'ledger', 'scout', 'painter'];
+const val = (id, ctx) => equipped(allSlots().find((s) => s.id === id), ctx);
+// Which setup the jobs are in now, told from the jobs themselves (there is no separate switch to fall out of step).
+export function setupOf(ctx) {
+  const main = val('bob', ctx);
+  if (!main) return '';
+  const others = CORE.map((id) => val(id, ctx)).filter((v) => v && v !== main);
+  const quick = val('small', ctx);
+  if (!others.length) return !quick || quick === main ? 'one' : 'duo';
+  const big = val('deep', ctx);
+  if (big && quick && quick !== big && CORE.every((id) => !val(id, ctx) || val(id, ctx) === big)) return 'duo';
+  return 'specialists';
+}
+// What picking a setup would change: [{ slot, value, name }] (value '' = take it off, so the main brain does it).
+export function setupPlan(id, ctx) {
+  const slots = allSlots();
+  const name = (v) => (ctx.roles?.options?.llm || []).find((o) => o.value === v)?.label || entryOf(ctx.models || [], v)?.name || v;
+  const out = [];
+  const want = (slotId, value) => {
+    const slot = slots.find((s) => s.id === slotId);
+    if (!slot || val(slotId, ctx) === value) return;
+    if (value && !slotTakes(slot, value, ctx)) return;
+    if (!value && !slot.off && slot.how !== 'brain') return; // a job that can't go empty keeps its brain
+    out.push({ slot, value, name: value ? name(value) : '' });
+  };
+  if (id === 'one' || id === 'duo') {
+    // The big brain: the Deep thinker when there is one, otherwise the main brain.
+    const big = id === 'duo' ? val('deep', ctx) || val('bob', ctx) : val('bob', ctx);
+    if (!big) return out;
+    if (id === 'duo') want('bob', big);
+    want('deep', id === 'one' ? '' : big);
+    for (const j of ['office', 'tinker', 'reviewer', 'ledger', 'scout', 'painter']) want(j, ''); // empty = the main brain does it
+    if (id === 'one') want('small', '');
+  }
+  return out;
+}
+// Quick + Big needs a small brain in the Quick slot that isn't the big one.
+export const duoNeedsQuick = (ctx) => { const q = val('small', ctx); return !q || q === (val('deep', ctx) || val('bob', ctx)); };
+
+function setupsHtml(ctx) {
+  const now = setupOf(ctx);
+  const ask = ctx.setupAsk || '';
+  const btn = (s) => `<button type="button" class="setup-card${s.id === now ? ' on' : ''}${s.id === ask ? ' asking' : ''}" data-setup="${esc(s.id)}" aria-pressed="${s.id === now}"><strong>${s.icon} ${esc(s.name)}</strong>${s.id === now ? ' <span class="tag good">in use</span>' : ''}<br><span class="muted">${esc(s.does)}</span><br><span class="muted setup-who">For: ${esc(s.who)}</span></button>`;
+  let box = '';
+  if (ask === 'bobs') {
+    box = `<div class="setup-ask"><p>${(ctx.bobNet || []).length ? `Your Bob-Net has ${ctx.bobNet.length === 1 ? 'one other Bob' : `${ctx.bobNet.length} other Bobs`} with room to help.` : 'I don\'t see another Bob on your Bob-Net with room to help yet.'} Sharing is set up in Settings, Bob-Net: lending a card, taking jobs, and spreading a big brain over several Bobs. All of it is off until you turn it on.</p><div class="row"><button type="button" class="mini" data-setupbobnet>Open Bob-Net settings</button><button type="button" class="mini" data-setup="">Close</button></div></div>`;
+  } else if (ask === 'specialists') {
+    box = `<div class="setup-ask"><p>Nothing to apply: give any job its own brain with <strong>+ job</strong> on a brain below, or the menu beside an empty job.</p><div class="row"><button type="button" class="mini" data-setup="">Close</button></div></div>`;
+  } else if (ask) {
+    const plan = setupPlan(ask, ctx);
+    const s = SETUPS.find((x) => x.id === ask);
+    const lines = plan.map((c) => `<li>${c.slot.icon} <strong>${esc(c.slot.name)}</strong>: ${c.value ? esc(c.name) : `no brain of its own (${esc(c.slot.empty.replace(/^Empty: |^No [a-z ]+: /, '').replace(/^Uses/, 'uses'))})`}</li>`).join('');
+    const quick = ask === 'duo' && duoNeedsQuick(ctx) ? '<p class="warn-text">The Quick brain slot needs a small brain of its own for this. Pick one under Jobs with no brain of their own, or get one from the catalogue.</p>' : '';
+    box = `<div class="setup-ask" role="group" aria-label="${esc(`Change to ${s.name}`)}"><p><strong>${esc(s.name)}</strong> would change ${plan.length ? 'these jobs' : 'nothing: the jobs already match'}. No brain is deleted, and you can change any job back.</p>${lines ? `<ul>${lines}</ul>` : ''}${quick}<div class="row">${plan.length ? `<button type="button" class="get" data-setupapply="${esc(ask)}">Apply</button>` : ''}<button type="button" class="mini" data-setup="">${plan.length ? 'Cancel' : 'Close'}</button></div></div>`;
+  }
+  return `<section class="brains-panel"><h3>How my brains are split ${tipHtml('A setup changes several jobs at once. Pressing one shows the list first; nothing changes until you press Apply. Every job stays on this page whichever setup you use.', 'About setups')}</h3>
+    <div class="setup-cards">${SETUPS.map(btn).join('')}</div>${box}</section>`;
+}
+
 const hwOf = (ctx) => ({ vramGB: ctx.integrated ? 0 : ctx.vramGB || 0, ramGB: ctx.ramGB || 0, unified: Boolean(ctx.unified) });
 
 // Where a brain would sit, as a bar with words on every part (never colour alone).
@@ -113,6 +181,7 @@ export function brainsHtml(ctx) {
     ${starterHtml(ctx)}
     <div class="brains-page">
     ${budgetHtml(ctx)}
+    ${setupsHtml(ctx)}
     <section class="brains-panel"><h3>Brains in use</h3>
       ${used.length ? `<ul class="brain-list">${used.map((b) => brainRowHtml(b, ctx)).join('')}</ul>` : '<p class="muted">No brain yet. Pick one for a job below, or get one from the catalogue.</p>'}
       ${empty.length ? `<h4>Jobs with no brain of their own</h4><ul class="brain-list">${empty.map((s) => emptyJobHtml(s, ctx)).join('')}</ul>` : ''}</section>

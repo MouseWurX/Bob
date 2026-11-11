@@ -1719,3 +1719,10 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .brains-panel .kit-panel:empty { display: none; }
 .brains-panel .kit-panel { margin-top: 10px; }
 @media (max-width: 760px) { .brain-row { grid-template-columns: 1fr; } .budget-row { grid-template-columns: 70px 1fr; } .budget-row .muted { grid-column: 1 / 3; } }
+.setup-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+.setup-card { text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; color: var(--text); cursor: pointer; font: inherit; line-height: 1.35; }
+.setup-card.on { border-color: var(--good); }
+.setup-card.asking { box-shadow: var(--shadow); }
+.setup-who { font-size: 12px; }
+.setup-ask { margin-top: 10px; border: 1px solid var(--accent); border-radius: var(--r); padding: 8px 12px; }
+.setup-ask ul { margin: 6px 0; padding-left: 20px; }

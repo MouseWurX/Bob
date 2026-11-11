@@ -4,7 +4,7 @@ import { progressHtml, animateWorkers } from './progress.js';
 import { createStylePage } from './style-page.js';
 import { createSampler, sampleButton, sampleHint } from './voice-samples.js';
 import { equipHtml, allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml, readyList, readyDefaults, readyToggle, readyOrder, CHEST_SHOW } from './equip.js';
-import { brainsHtml } from './brains.js';
+import { brainsHtml, setupPlan } from './brains.js';
 import { suit as fitSuit, picksOf, unsuited, jobNames, SLOT_NAMES, canDo, packsFor } from './fit.js';
 import { catalogueHtml, familyOf, visibleModels, isNaughty, VIEWS, dayWords, rentPicks } from './catalogue.js';
 import { drawBob } from './bob-sprite.js';
@@ -255,7 +255,7 @@ export function createCellar({ popOut = null } = {}) {
     let body = '';
     if (tab === 'settings') body = settingsHtml();
     else if (tab === 'style') body = stylePage.html(settings);
-    else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}` : !roles ? '<p class="muted">Loading...</p>' : eqView === 'doll' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${equipHtml(eqCtx())}` : brainsHtml({ ...eqCtx(), bobNet: data?.bobNet || [] }); // 1.5.205 the Brains page comes first
+    else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}` : !roles ? '<p class="muted">Loading...</p>' : eqView === 'doll' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${equipHtml(eqCtx())}` : brainsHtml({ ...eqCtx(), bobNet: data?.bobNet || [], setupAsk }); // 1.5.205 the Brains page comes first
     else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], bobNet: data?.bobNet || [], naughtyOn: naughtyOn(), catView, ownForm, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
     else if (tab === 'found') body = `<p class="muted">Scanned ${data.scannedAt ? new Date(data.scannedAt).toLocaleString() : 'never'}. <button data-scan>Look again</button></p>${extrasHtml() || '<p>Nothing extra found.</p>'}`;
     else if (GROUPS.some((g) => g.id === tab)) body = groupHtml(GROUPS.find((g) => g.id === tab));
@@ -1194,6 +1194,7 @@ export function createCellar({ popOut = null } = {}) {
     try { homeInfo = await api('/api/home'); } catch (e) { homeInfo = { error: e.message, folder: settings?.home || '' }; }
     const y = dlg.scrollTop; draw(); dlg.scrollTop = y;
   }
+  let setupAsk = ''; // 1.5.205 the Brains page: the setup whose list of changes is showing
   let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-equip-view') || 'brains'; } catch { return 'brains'; } })();
   function eqCtx() {
     return { roles, models: shownModels(), brains: settings?.sessionBrains || {}, embed: roles?.current?.embed || '', selected: eqSelected, vramGB: hw?.vramGB || hw?.gpu?.vramGB || null, unified: Boolean(hw?.gpu?.unified), integrated: Boolean(hw?.gpu?.integrated), arm: hw?.board === 'arm', ramGB: hw?.ramGB || null, freeGB: hw?.freeGB ?? null, platform: settings?.platform, showUnsuited,
@@ -1435,6 +1436,15 @@ export function createCellar({ popOut = null } = {}) {
         const y = dlg.scrollTop; draw(); dlg.scrollTop = y; return;
       }
       if (b.dataset.catequip) { const y = dlg.scrollTop; await equip(b.dataset.catequip, b.dataset.catvalue, { offer: false }); dlg.scrollTop = y; return; }
+      // 1.5.205 setups on the Brains page: show the list of changes first; Apply saves them one job at a time.
+      if ('setup' in b.dataset) { setupAsk = b.dataset.setup; draw(); dlg.querySelector('.setup-ask')?.scrollIntoView({ block: 'nearest' }); return; }
+      if ('setupbobnet' in b.dataset) { setupAsk = ''; sampler.stop(); setTab('settings'); jumpTo = 'adv-bobnet'; draw(); return; }
+      if (b.dataset.setupapply) {
+        const plan = setupPlan(b.dataset.setupapply, { ...eqCtx(), bobNet: data?.bobNet || [] });
+        b.disabled = true;
+        for (const c of plan) await equipSlot(c.slot, c.value);
+        setupAsk = ''; await eqReload(); draw(); return;
+      }
       if (b.dataset.slotpick) { eqSelected = b.dataset.slotpick; draw(); dlg.querySelector('.kit-panel')?.scrollIntoView({ block: 'nearest' }); return; }
       // 1.5.125 the chest
       if ('chest' in b.dataset) { eqSelected = 'chest'; chestState = { ...chestState, loaded: false }; draw(); dlg.querySelector('.kit-panel')?.scrollIntoView({ block: 'nearest' }); loadChest(); return; }
