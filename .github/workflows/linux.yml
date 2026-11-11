@@ -208,7 +208,11 @@ jobs:
         # The real thing: apt puts it in /opt/Bob (with the sandbox helper and AppArmor profile from the package), then
         # it starts on a virtual screen, as a user would open it from the menu.
         run: |
-          sudo apt-get install -y -qq ./dist/Bob-*-linux-${{ matrix.deb }}.deb > /dev/null
+          # apt fetches the .deb's dependencies from Ubuntu's mirrors; up to 3 tries, a minute apart (a mirror or DNS hiccup).
+          for i in 1 2 3; do
+            sudo apt-get update -qq && sudo apt-get install -y -qq ./dist/Bob-*-linux-${{ matrix.deb }}.deb > /dev/null && break
+            [ "$i" -lt 3 ] && echo "Try $i failed (often a mirror hiccup); trying again in 60 seconds." && sleep 60
+          done
           test -x /opt/Bob/bob && test -f /var/lib/dpkg/info/bob.list && command -v bob
           export HOME="$RUNNER_TEMP/home-deb" && mkdir -p "$HOME" && export BOB_AGENT_DIR="$HOME/Bob"
           xvfb-run -a /opt/Bob/bob > "$RUNNER_TEMP/bob-deb.log" 2>&1 &
