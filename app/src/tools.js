@@ -13,7 +13,7 @@ import { recallOn, tagLine } from './recall.js';
 import { diagramTool } from './diagram.js';
 import { saveAsTool } from './save-as.js';
 import { isPrivateHost } from './security-web.js';
-import { selfWorkOn, hasCodeCopy, codeCopyRoot, codeCopyDir, gatherBrains, pickBigBrain, selfCtx, selfWorkParts, SELF_STEPS, repoNamed, reposOf, baseOf } from './self-work.js';
+import { selfWorkOn, hasCodeCopy, codeCopyRoot, codeCopyDir, gatherBrains, pickBigBrain, pickedMissing, selfCtx, selfWorkParts, SELF_STEPS, repoNamed, reposOf, baseOf } from './self-work.js';
 import { runManaged } from './self-work-plan.js';
 import { ownEntries } from './own-models.js';
 import { ensureTool } from './self-work-tools.js';
@@ -488,7 +488,7 @@ export function buildTools(cfg) {
   };
 
   // "Let Bob work on his own app" (self-work.js, off by default): the coding hat on the code copy (a separate copy of Bob's code),
-  // only on the biggest brain (Bobert, else stock Qwen3.6 35B) with Long memory stretched past 256K. Every edit and
+  // on the brain picked in Settings (the biggest by default: Bobert, else stock Qwen3.6 35B) with Long memory stretched past 256K. Every edit and
   // command still asks; the running Bob (his program folder and settings) stays locked.
   t.work_on_repo = {
     schema: fn('work_on_repo', "Change code in one of {{USER}}'s listed repositories, or in your own app (repository \"Bob\") when asked. Works on a code copy, never the original, and returns a branch and patch. {{USER}} approves every change.", {
@@ -503,8 +503,10 @@ export function buildTools(cfg) {
       if (!hasCodeCopy(cfg, repo)) throw new Error(`There's no code copy of ${repo.name} to work on yet. Press "Make the code copy" next to it in ${where}.`);
       if (!String(job || '').trim()) throw new Error('Say what to change.');
       const brains = gatherBrains(cfg, { own: ownEntries(cfg), catalogFile: (id) => catalogFileFor(cfg, id) });
+      const missing = pickedMissing(cfg, brains);
+      if (missing) throw new Error(`The brain picked for these jobs, ${missing.name}, isn't downloaded yet. Get it in Get models, or pick another in ${where}.`);
       const pick = pickBigBrain(cfg, brains);
-      if (!pick) throw new Error('This job only runs on my biggest brain, Bobert or Qwen3.6 35B, and neither is on this replicant matrix. Get Qwen3.6 35B-A3B in Get models, or add your Bobert file under Brains of your own.');
+      if (!pick) throw new Error(`There's no brain for this job on this replicant matrix yet. Pick one in ${where}, or get Qwen3.6 35B-A3B (the one I'd use) in Get models.`);
       const want = selfCtx(cfg);
       const got = await Promise.resolve(ctx.brain.fitCtx?.(pick.id, want, { longRun: true })).catch(() => null) || want;
       ctx.emit?.({ type: 'announce', text: `🔧 Off to the workbench: ${repo.own ? 'my own code' : repo.name}, in the copy at ${codeCopyDir(cfg, repo)}, on ${pick.name} with ${ctxLabel(got)} of memory${got < want ? ` (${ctxLabel(want)} won't fit this replicant matrix's card and RAM)` : ' (Long memory)'}. Every change shows its card.` });
