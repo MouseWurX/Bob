@@ -514,7 +514,7 @@ export class Brain {
   // ---------- Share brains (1.5.55) ----------
   borrowCase(job, pics) { return { session: currentSession(this.cfg).id, busy: this.turns.size > 1 || this.queue.some((j) => j.state === 'working' && j !== job), job, pics }; }
   borrowLikely() { return wantsBorrow(this.cfg, this.borrowCase(null, [])) && this.lenders.likely(); }
-  lenderStatus() { return this.lenders.bobs().map((b) => { const s = this.lenders.state.get(b.address); return { address: b.address, name: b.name, ok: s ? s.ok : null, why: s?.why || '', brain: s?.brain || '', device: s?.device || '', ctx: s?.ctx || 0, speed: s?.measured?.tokPerSec || s?.speed || 0, jobs: s?.jobs || [], jobsBusy: s?.jobsBusy || '' }; }); }
+  lenderStatus() { return this.lenders.bobs().map((b) => { const s = this.lenders.state.get(b.address); return { address: b.address, name: b.name, ok: s ? s.ok : null, why: s?.why || '', brain: s?.brain || '', device: s?.device || '', ctx: s?.ctx || 0, speed: s?.measured?.tokPerSec || s?.speed || 0, jobs: s?.jobs || [], jobsBusy: s?.jobsBusy || '', ms: s?.ok ? s?.ms || 0 : 0, lendCard: s?.lendCard === true, scut: s?.scut === true }; }); }
 
   // ---------- Keep Bob light (1.5.2) ----------
   // Loads the chat brain ahead of a message: someone started typing, or "Always on" wants it back after a job.

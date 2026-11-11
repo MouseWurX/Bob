@@ -1,0 +1,773 @@
+diff --git a/ggml/src/ggml-rpc/CMakeLists.txt b/ggml/src/ggml-rpc/CMakeLists.txt
+index 8976651..2c592a4 100644
+--- a/ggml/src/ggml-rpc/CMakeLists.txt
++++ b/ggml/src/ggml-rpc/CMakeLists.txt
+@@ -4,10 +4,11 @@ ggml_add_backend_library(ggml-rpc
+                          ggml-rpc.cpp
+                          log.cpp
+                          transport.cpp
++                         scut.cpp
+                         )
+ 
+ if (WIN32)
+-    target_link_libraries(ggml-rpc PRIVATE ws2_32)
++    target_link_libraries(ggml-rpc PRIVATE ws2_32 winmm)
+ endif()
+ 
+ # RDMA auto-detection: Linux RoCE/IB via libibverbs, Apple RDMA-over-Thunderbolt via librdma
+diff --git a/ggml/src/ggml-rpc/scut.cpp b/ggml/src/ggml-rpc/scut.cpp
+new file mode 100644
+index 0000000..356ab2f
+--- /dev/null
++++ b/ggml/src/ggml-rpc/scut.cpp
+@@ -0,0 +1,595 @@
++// SCUT, Brain Engine patch 0005: see scut.h for what it is and why.
++#include "scut.h"
++#include "log.h"
++
++#ifdef _WIN32
++#  define WIN32_LEAN_AND_MEAN
++#  ifndef NOMINMAX
++#     define NOMINMAX
++#  endif
++#  include <windows.h>
++#  include <winsock2.h>
++#  include <ws2tcpip.h>
++#  include <mmsystem.h>
++#  pragma comment(lib, "winmm.lib")
++typedef int socklen_compat_t;
++#  define BL_POLL WSAPoll
++#  define BL_INVALID INVALID_SOCKET
++static void bl_close(scut_fd_t s) { closesocket(s); }
++#else
++#  include <arpa/inet.h>
++#  include <sys/socket.h>
++#  include <sys/types.h>
++#  include <netinet/in.h>
++#  include <poll.h>
++#  include <unistd.h>
++#  include <fcntl.h>
++typedef socklen_t socklen_compat_t;
++#  define BL_POLL poll
++#  define BL_INVALID (-1)
++static void bl_close(scut_fd_t s) { close(s); }
++#endif
++
++#include <algorithm>
++#include <atomic>
++#include <chrono>
++#include <condition_variable>
++#include <cstdlib>
++#include <cstring>
++#include <deque>
++#include <map>
++#include <mutex>
++#include <random>
++#include <thread>
++#include <vector>
++
++namespace {
++
++using clk = std::chrono::steady_clock;
++static inline int64_t now_us() { return std::chrono::duration_cast<std::chrono::microseconds>(clk::now().time_since_epoch()).count(); }
++
++constexpr uint32_t MAGIC     = 0x54554353; // "SCUT"
++constexpr uint8_t  VERSION   = 1;
++constexpr uint16_t PKT_MAGIC = 0xB0B1;
++constexpr size_t   SEG       = 1200;       // payload per datagram: stays under a 1500-byte Wi-Fi MTU with room to spare
++constexpr size_t   MAX_QUEUE = 16384;      // segments waiting or in flight (~19 MiB); the sender waits beyond this
++constexpr size_t   RX_AHEAD  = 16384;      // out-of-order segments the receiver holds
++
++enum : uint8_t { T_DATA = 1, T_ACK = 2, T_PING = 3, T_PONG = 4, T_CLOSE = 5 };
++
++#pragma pack(push, 1)
++struct offer_t {           // what goes into conn_caps (24 bytes)
++    uint32_t magic;
++    uint8_t  version;
++    uint8_t  flags;
++    uint16_t udp_port;     // network order
++    uint64_t nonce;        // this side's half of the connection id
++    uint32_t mbps;         // this side's speed cap
++    uint32_t pad;
++};
++struct hdr_t {
++    uint16_t magic;
++    uint8_t  type;
++    uint8_t  flags;
++    uint32_t conn;
++    uint32_t seq;          // DATA: segment number; ACK: next expected; PING/PONG: probe number
++    uint32_t ts;           // sender's clock (us, low 32 bits); ACK/PONG: the echoed ts
++    uint16_t len;          // DATA: payload bytes
++    uint16_t pad;
++};
++#pragma pack(pop)
++static_assert(sizeof(offer_t) == 24, "offer_t must fill conn_caps");
++static_assert(sizeof(hdr_t) == 20, "hdr_t size");
++
++struct seg_t {
++    uint32_t seq;
++    uint16_t len;
++    bool     sent   = false;
++    bool     sacked = false;
++    int64_t  sent_at = 0;
++    int      tries   = 0;
++    uint8_t  data[SEG];
++};
++
++static uint32_t env_u32(const char * name, uint32_t def) {
++    const char * v = std::getenv(name);
++    if (!v || !*v) return def;
++    char * end = nullptr;
++    unsigned long x = std::strtoul(v, &end, 10);
++    return (end && *end == 0) ? (uint32_t) x : def;
++}
++
++} // namespace
++
++struct scut {
++    bool server = false;
++    scut_fd_t tcp = BL_INVALID;
++    scut_fd_t udp = BL_INVALID;
++    sockaddr_in  peer = {};
++    uint32_t     conn = 0;
++    uint64_t     my_nonce = 0;
++    uint32_t     cap_bps = 0;        // bytes per second, the lower of both sides' caps
++    bool         awake = true;
++
++    // test only: drop this share of outgoing datagrams (GGML_RPC_SCUT_TEST_DROP, per thousand)
++    uint32_t     test_drop = 0;
++    std::mt19937 rng{12345};
++
++    std::mutex mu;
++    std::condition_variable cv_rx, cv_tx;
++
++    // sender
++    std::deque<seg_t> q;             // from snd_una: in flight or waiting
++    uint32_t snd_una = 0;            // oldest unacked
++    uint32_t snd_next = 0;           // next segment number to make
++    seg_t    cur;                    // the segment being filled
++    bool     have_cur = false;
++    double   rate = 0;               // bytes per second now
++    double   tokens = 0;
++    int64_t  tokens_at = 0;
++    int64_t  last_loss_cut = 0;
++    int64_t  last_rate_up = 0;
++    double   srtt = 0, rttvar = 0;   // us
++    double   min_rtt = 0;            // us, the quietest round trip seen: the line with nobody queueing
++    uint64_t win_sent = 0, win_lost = 0;
++    double   win_min = 0;
++    // what the line really carries: bytes acked per round trip, the best of the last 8 busy round trips
++    uint64_t dlv_bytes = 0;
++    int64_t  dlv_start = 0;
++    bool     dlv_busy = false;
++    double   bw_ring[8] = {0};
++    int      bw_i = 0;            // the quietest round trip in this window: above min_rtt the whole window = a queue
++    int64_t  win_start = 0;
++    int      rto_backoff = 0;
++    int64_t  last_data_activity = 0;
++    int64_t  last_ping = 0;
++    uint32_t ping_seq = 0;
++
++    // receiver
++    uint32_t rcv_next = 0;
++    std::map<uint32_t, std::vector<uint8_t>> ooo;
++    std::deque<std::vector<uint8_t>> rxq;
++    size_t   rx_off = 0;             // read position in rxq.front()
++    size_t   rx_bytes = 0;
++    bool     ack_due = false;
++    uint32_t ack_ts = 0;
++    int64_t  last_heard = 0;
++
++    std::atomic<bool> dead{false}, stop{false};
++    std::thread io;
++
++    // counters, printed at the end with GGML_RPC_DEBUG
++    uint64_t n_sent = 0, n_resent = 0, n_recv = 0, n_dropped_test = 0;
++
++    ~scut() {
++        stop = true;
++        if (io.joinable()) io.join();
++        if (udp != BL_INVALID) {
++            if (conn) { hdr_t h = {}; h.magic = PKT_MAGIC; h.type = T_CLOSE; h.conn = conn; raw_send(&h, sizeof(h)); }
++            bl_close(udp);
++        }
++#ifdef _WIN32
++        if (conn) timeEndPeriod(1);
++#endif
++        if (conn) LOG_DBG("[scut] closed: %llu datagrams sent, %llu resent, %llu received; pace %.1f MB/s, round trip %.1f ms (quietest %.1f)\n", (unsigned long long) n_sent, (unsigned long long) n_resent, (unsigned long long) n_recv, rate / 1e6, srtt / 1000, min_rtt / 1000);
++    }
++
++    void raw_send(const void * p, size_t n) {
++        if (test_drop && (rng() % 1000) < test_drop) { n_dropped_test++; return; }
++        sendto(udp, (const char *) p, (int) n, 0, (const sockaddr *) &peer, sizeof(peer));
++    }
++
++    // ---- sender ----
++    double rto_us() const {
++        double r = srtt > 0 ? srtt + 4 * rttvar : 50000;
++        r = std::max(std::max(8000.0, srtt * 1.25 + 2000), std::min(250000.0, r)); // still far under TCP's 200-300 ms
++        return r * (1 << std::min(rto_backoff, 4));
++    }
++    void refill(int64_t t) {
++        if (!tokens_at) tokens_at = t;
++        tokens = std::min(burst(), tokens + rate * (t - tokens_at) / 1e6);
++        tokens_at = t;
++    }
++    double burst() const { return std::max<double>(64 * 1024, rate * 0.002); } // a word's messages go out at once
++    size_t window_bytes() const {
++        // the pace decides the speed; the window only has to be big enough not to get in its way
++        double w = rate * ((srtt > 0 ? srtt : 20000) * 2 + 30000) / 1e6;
++        return (size_t) std::max<double>(256 * 1024, std::min<double>(8.0 * 1024 * 1024, w));
++    }
++    void send_seg(seg_t & s, int64_t t) {
++        uint8_t buf[sizeof(hdr_t) + SEG];
++        hdr_t * h = (hdr_t *) buf;
++        *h = {};
++        h->magic = PKT_MAGIC; h->type = T_DATA; h->conn = conn; h->seq = s.seq; h->ts = (uint32_t) t; h->len = s.len;
++        memcpy(buf + sizeof(hdr_t), s.data, s.len);
++        raw_send(buf, sizeof(hdr_t) + s.len);
++        if (s.sent) n_resent++; else n_sent++;
++        win_sent++;
++        s.sent = true; s.sent_at = t; s.tries++;
++        tokens -= (double) (sizeof(hdr_t) + s.len);
++        last_data_activity = t;
++    }
++    // Sends what the window and the pace allow. Called with mu held, from either thread.
++    void pump(int64_t t) {
++        refill(t);
++        // first anything that needs resending: past its timer, or a hole the receiver has seen past
++        uint32_t highest_sacked = snd_una;
++        for (auto & s : q) { if (!s.sent) break; if (s.sacked) highest_sacked = s.seq; } // sent ones are a prefix
++        bool lost = false, any_timeout = false;
++        for (auto & s : q) {
++            if (!s.sent) break;
++            if (s.sacked) continue;
++            if (tokens <= 0) return;
++            bool timed_out = (double) (t - s.sent_at) > rto_us();
++            bool hole = s.seq + 2 < highest_sacked && (double) (t - s.sent_at) > std::max(2000.0, srtt * 0.5);
++            if (timed_out || hole) { if (timed_out) any_timeout = true; lost = true; win_lost++; send_seg(s, t); }
++        }
++        if (any_timeout) rto_backoff++;
++        if (lost) judge(t);
++        size_t in_flight = 0, first_unsent = 0;
++        for (auto & s : q) { if (!s.sent) break; if (!s.sacked) in_flight += s.len; first_unsent++; }
++        for (size_t i = first_unsent; i < q.size(); i++) {
++            auto & s = q[i];
++            if (tokens <= 0 || in_flight >= window_bytes()) break;
++            send_seg(s, t);
++            in_flight += s.len;
++        }
++    }
++    // Wi-Fi drops the odd packet whatever anyone does, so a few losses aren't a reason to slow down. What is: many
++    // losses in one round trip (the air is full), or the round trip growing well past its quietest (queues filling
++    // up, which is what slows everyone else down too). Then slow down, at most once per round trip.
++    void on_loss(int64_t t) { win_lost++; judge(t); }
++    void judge(int64_t t) {
++        double span = std::max(srtt, 5000.0);
++        if ((double) (t - win_start) < span) return;
++        bool crowded = win_sent >= 20 && win_lost * 20 > win_sent;                       // over 5% lost
++        bool queueing = min_rtt > 0 && win_min > min_rtt + std::max(15000.0, min_rtt);  // even the quietest one is 15 ms late
++        if ((crowded || queueing) && (double) (t - last_loss_cut) >= span) {
++            rate = std::max(1e6, rate * (crowded ? 0.7 : 0.9));
++            for (double & b : bw_ring) b = std::min(b, rate);
++            last_loss_cut = t;
++        }
++        win_start = t; win_sent = 0; win_lost = 0; win_min = 0;
++    }
++    void on_ack(const hdr_t & h, const uint8_t * body, size_t n, int64_t t) {
++        uint32_t cum = h.seq;
++        // round trip from the echoed time
++        uint32_t sample = (uint32_t) t - h.ts;
++        if (sample < 5000000) rtt_sample((double) sample);
++        bool progressed = false;
++        while (!q.empty() && q.front().sent && (int32_t) (cum - q.front().seq) > 0) { if (!q.front().sacked) dlv_bytes += q.front().len; q.pop_front(); snd_una++; progressed = true; }
++        // selective acks: up to 64 ranges [first, last] the receiver holds past the hole(s)
++        for (size_t k = 0; k + 8 <= n && k < 64 * 8; k += 8) {
++            uint32_t a, b; memcpy(&a, body + k, 4); memcpy(&b, body + k + 4, 4);
++            for (uint32_t s = a; (int32_t) (b - s) >= 0; s++) {
++                int32_t at = (int32_t) (s - snd_una);
++                if (at < 0) continue;
++                if ((size_t) at >= q.size()) break;
++                auto & sg = q[(size_t) at];
++                if (sg.sent && !sg.sacked) { sg.sacked = true; dlv_bytes += sg.len; }
++            }
++        }
++        // a backlog means the line, not Bob, set the pace this round trip: then it's a fair measure of the line
++        for (auto & sg : q) { if (!sg.sent) { dlv_busy = true; break; } }
++        double span = std::max(srtt, 5000.0);
++        if (!dlv_start) dlv_start = t;
++        if ((double) (t - dlv_start) >= span) {
++            double bw = dlv_bytes * 1e6 / (double) (t - dlv_start);
++            if (dlv_busy && bw > 0) {
++                bw_ring[bw_i++ % 8] = bw;
++                double best = 0; for (double b : bw_ring) best = std::max(best, b);
++                // a quarter above what got through, so it keeps finding out whether there's more room
++                rate = std::min((double) cap_bps, std::max(2e6, best * 1.25));
++            }
++            dlv_start = t; dlv_bytes = 0; dlv_busy = false;
++        }
++        judge(t);
++        if (progressed) {
++            rto_backoff = 0;
++            cv_tx.notify_all();
++        }
++    }
++    void rtt_sample(double r) {
++        if (r > 0 && (min_rtt <= 0 || r < min_rtt)) min_rtt = r;
++        if (r > 0 && (win_min <= 0 || r < win_min)) win_min = r;
++        if (srtt <= 0) { srtt = r; rttvar = r / 2; return; }
++        rttvar = 0.75 * rttvar + 0.25 * std::abs(srtt - r);
++        srtt = 0.875 * srtt + 0.125 * r;
++    }
++
++    // ---- receiver ----
++    void on_data(const hdr_t & h, const uint8_t * body, size_t n) {
++        if (h.len > n || h.len > SEG) return;
++        ack_due = true;
++        ack_ts = h.ts;
++        int32_t ahead = (int32_t) (h.seq - rcv_next);
++        if (ahead < 0) return;                         // already have it (the ack is resent)
++        if ((size_t) ahead >= RX_AHEAD) return;
++        if (ahead > 0) { ooo.emplace(h.seq, std::vector<uint8_t>(body, body + h.len)); return; }
++        deliver(std::vector<uint8_t>(body, body + h.len));
++        rcv_next++;
++        for (auto it = ooo.find(rcv_next); it != ooo.end(); it = ooo.find(rcv_next)) {
++            deliver(std::move(it->second));
++            ooo.erase(it);
++            rcv_next++;
++        }
++    }
++    void deliver(std::vector<uint8_t> && v) {
++        if (v.empty()) return;
++        rx_bytes += v.size();
++        rxq.push_back(std::move(v));
++        cv_rx.notify_all();
++    }
++    void send_ack() {
++        uint8_t buf[sizeof(hdr_t) + 64 * 8];
++        hdr_t * h = (hdr_t *) buf;
++        *h = {};
++        h->magic = PKT_MAGIC; h->type = T_ACK; h->conn = conn; h->seq = rcv_next; h->ts = ack_ts;
++        size_t n = 0;
++        uint32_t a = 0, b = 0; bool open = false;
++        for (auto & kv : ooo) {
++            uint32_t s = kv.first;
++            if (open && s == b + 1) { b = s; continue; }
++            if (open) { if (n == 64) break; memcpy(buf + sizeof(hdr_t) + 8 * n, &a, 4); memcpy(buf + sizeof(hdr_t) + 8 * n + 4, &b, 4); n++; }
++            a = b = s; open = true;
++        }
++        if (open && n < 64) { memcpy(buf + sizeof(hdr_t) + 8 * n, &a, 4); memcpy(buf + sizeof(hdr_t) + 8 * n + 4, &b, 4); n++; }
++        raw_send(buf, sizeof(hdr_t) + 8 * n);
++        ack_due = false;
++    }
++
++    bool tcp_closed() {
++        pollfd p = {}; p.fd = tcp; p.events = POLLIN;
++        if (BL_POLL(&p, 1, 0) <= 0) return false;
++        if (p.revents & (POLLERR | POLLHUP)) return true;
++        char c;
++        int r = ::recv(tcp, &c, 1, MSG_PEEK);
++        return r == 0 || r < 0;
++    }
++
++    void loop() {
++        std::vector<uint8_t> buf(65536);
++        int64_t last_tcp_check = 0;
++        while (!stop) {
++            int timeout_ms = 1;
++            pollfd p = {}; p.fd = udp; p.events = POLLIN;
++            int r = BL_POLL(&p, 1, timeout_ms);
++            int64_t t = now_us();
++            std::unique_lock<std::mutex> lk(mu);
++            if (r > 0 && (p.revents & POLLIN)) {
++                for (int k = 0; k < 256; k++) {
++                    sockaddr_in from = {}; socklen_compat_t fl = sizeof(from);
++#ifdef _WIN32
++                    u_long avail = 0; if (ioctlsocket(udp, FIONREAD, &avail) != 0 || avail == 0) { if (k) break; }
++                    int n = recvfrom(udp, (char *) buf.data(), (int) buf.size(), 0, (sockaddr *) &from, &fl);
++#else
++                    int n = (int) recvfrom(udp, (char *) buf.data(), buf.size(), MSG_DONTWAIT, (sockaddr *) &from, &fl);
++#endif
++                    if (n < (int) sizeof(hdr_t)) break;
++                    hdr_t h; memcpy(&h, buf.data(), sizeof(h));
++                    if (h.magic != PKT_MAGIC || h.conn != conn) continue;
++                    if (from.sin_addr.s_addr != peer.sin_addr.s_addr) continue;
++                    n_recv++;
++                    last_heard = t;
++                    const uint8_t * body = buf.data() + sizeof(hdr_t);
++                    size_t bn = (size_t) n - sizeof(hdr_t);
++                    switch (h.type) {
++                        case T_DATA: on_data(h, body, bn); last_data_activity = t; break;
++                        case T_ACK:  on_ack(h, body, bn, t); break;
++                        case T_PING: { hdr_t o = h; o.type = T_PONG; raw_send(&o, sizeof(o)); break; }
++                        case T_PONG: { uint32_t s = (uint32_t) t - h.ts; if (s < 5000000) rtt_sample((double) s); break; }
++                        case T_CLOSE: dead = true; cv_rx.notify_all(); cv_tx.notify_all(); break;
++                        default: break;
++                    }
++                }
++                if (ack_due) send_ack();
++            }
++            pump(t);
++            // keep a handheld's Wi-Fi awake while words are flowing
++            if (awake && t - last_data_activity < 3000000 && t - last_ping > 25000) {
++                hdr_t h = {}; h.magic = PKT_MAGIC; h.type = T_PING; h.conn = conn; h.seq = ping_seq++; h.ts = (uint32_t) t;
++                raw_send(&h, sizeof(h));
++                last_ping = t;
++            }
++            // the TCP line closed, or nothing heard for 20 s with data unacked: the peer is gone
++            if (t - last_tcp_check > 200000) {
++                last_tcp_check = t;
++                lk.unlock();
++                bool closed = tcp_closed();
++                lk.lock();
++                bool silent = !q.empty() && q.front().sent && t - last_heard > 20000000;
++                if (closed || silent) { dead = true; cv_rx.notify_all(); cv_tx.notify_all(); }
++            }
++        }
++    }
++
++    // ---- app side ----
++    bool queue_cur(std::unique_lock<std::mutex> & lk) {
++        cv_tx.wait(lk, [&] { return dead || q.size() < MAX_QUEUE; });
++        if (dead) return false;
++        q.push_back(cur);
++        have_cur = false;
++        return true;
++    }
++    bool send(const void * data, size_t size) {
++        const uint8_t * p = (const uint8_t *) data;
++        std::unique_lock<std::mutex> lk(mu);
++        while (size > 0) {
++            if (dead) return false;
++            if (!have_cur) { cur.seq = snd_next++; cur.len = 0; cur.sent = false; cur.sacked = false; cur.tries = 0; have_cur = true; }
++            size_t take = std::min(size, SEG - (size_t) cur.len);
++            memcpy(cur.data + cur.len, p, take);
++            cur.len += (uint16_t) take; p += take; size -= take;
++            if (cur.len == SEG) {
++                if (!queue_cur(lk)) return false;
++                if (q.size() % 64 == 0) pump(now_us()); // keep a big message moving while it's still being written
++            }
++        }
++        return !dead;
++    }
++    bool flush() {
++        std::unique_lock<std::mutex> lk(mu);
++        if (have_cur && cur.len > 0 && !queue_cur(lk)) return false;
++        pump(now_us()); // send now from this thread: no waiting for the I/O thread to wake up
++        return !dead;
++    }
++    bool recv(void * data, size_t size) {
++        uint8_t * out = (uint8_t *) data;
++        std::unique_lock<std::mutex> lk(mu);
++        while (size > 0) {
++            cv_rx.wait(lk, [&] { return dead || rx_bytes > 0; });
++            if (rx_bytes == 0) return false;
++            while (size > 0 && !rxq.empty()) {
++                auto & f = rxq.front();
++                size_t take = std::min(size, f.size() - rx_off);
++                memcpy(out, f.data() + rx_off, take);
++                out += take; size -= take; rx_off += take; rx_bytes -= take;
++                if (rx_off == f.size()) { rxq.pop_front(); rx_off = 0; }
++            }
++        }
++        return true;
++    }
++};
++
++void scut_ptr_deleter::operator()(scut * b) const { delete b; }
++
++bool scut_enabled() {
++    const char * v = std::getenv("GGML_RPC_SCUT");
++    return v && v[0] == '1';
++}
++
++bool scut_offered(const uint8_t * caps, size_t caps_size) {
++    if (caps_size < sizeof(offer_t)) return false;
++    offer_t o; memcpy(&o, caps, sizeof(o));
++    return o.magic == MAGIC && o.version == VERSION && o.udp_port != 0;
++}
++
++scut_ptr scut_prepare(scut_fd_t tcp_fd, bool server, uint8_t * caps, size_t caps_size) {
++    if (caps_size < sizeof(offer_t)) return nullptr;
++    sockaddr_in local = {}; socklen_compat_t ll = sizeof(local);
++    if (getsockname(tcp_fd, (sockaddr *) &local, &ll) != 0 || local.sin_family != AF_INET) return nullptr;
++    scut_fd_t u = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
++    if (u == BL_INVALID) return nullptr;
++    // The lending side listens on the same number as its card-sharing port (UDP), so one firewall rule covers both.
++    sockaddr_in a = local;
++    if (!server) a.sin_port = 0;
++    if (bind(u, (sockaddr *) &a, sizeof(a)) != 0) {
++        a.sin_port = 0;
++        if (bind(u, (sockaddr *) &a, sizeof(a)) != 0) { bl_close(u); return nullptr; }
++    }
++#ifdef _WIN32
++    // never block in recvfrom, and don't let a "port unreachable" from an earlier send break later reads
++    { u_long nb = 1; ioctlsocket(u, FIONBIO, &nb); }
++    { BOOL off = FALSE; DWORD got = 0; WSAIoctl(u, _WSAIOW(IOC_VENDOR, 12) /* SIO_UDP_CONNRESET */, &off, sizeof(off), nullptr, 0, &got, nullptr, nullptr); }
++#endif
++    int big = 4 * 1024 * 1024;
++    setsockopt(u, SOL_SOCKET, SO_RCVBUF, (const char *) &big, sizeof(big));
++    setsockopt(u, SOL_SOCKET, SO_SNDBUF, (const char *) &big, sizeof(big));
++    sockaddr_in bound = {}; socklen_compat_t bl = sizeof(bound);
++    getsockname(u, (sockaddr *) &bound, &bl);
++    scut_ptr b(new scut());
++    b->server = server;
++    b->tcp = tcp_fd;
++    b->udp = u;
++    std::random_device rd;
++    b->my_nonce = ((uint64_t) rd() << 32) ^ rd() ^ (uint64_t) now_us();
++    offer_t o = {};
++    o.magic = MAGIC; o.version = VERSION; o.udp_port = bound.sin_port; o.nonce = b->my_nonce;
++    // behind a relay (Bob's gate passes UDP on its own port to this one), the offer names the relay's port
++    if (server) { uint32_t pp = env_u32("GGML_RPC_SCUT_PUBLIC_PORT", 0); if (pp > 0 && pp < 65536) o.udp_port = htons((uint16_t) pp); }
++    o.mbps = env_u32("GGML_RPC_SCUT_MBPS", 300);
++    memcpy(caps, &o, sizeof(o));
++    LOG_DBG("[scut] offered on udp port %d\n", ntohs(bound.sin_port));
++    return b;
++}
++
++static bool read_byte_with_pings(scut * b, uint8_t & out, int timeout_ms) {
++    // the server answers the client's probes until the client's decision arrives on the TCP line
++    std::vector<uint8_t> buf(2048);
++    int64_t end = now_us() + (int64_t) timeout_ms * 1000;
++    while (now_us() < end) {
++        pollfd p[2] = {};
++        p[0].fd = b->tcp; p[0].events = POLLIN;
++        p[1].fd = b->udp; p[1].events = POLLIN;
++        int r = BL_POLL(p, 2, 50);
++        if (r < 0) return false;
++        if (p[1].revents & POLLIN) {
++            sockaddr_in from = {}; socklen_compat_t fl = sizeof(from);
++            int n = (int) recvfrom(b->udp, (char *) buf.data(), (int) buf.size(), 0, (sockaddr *) &from, &fl);
++            if (n >= (int) sizeof(hdr_t)) {
++                hdr_t h; memcpy(&h, buf.data(), sizeof(h));
++                if (h.magic == PKT_MAGIC && h.type == T_PING && h.conn == b->conn && from.sin_addr.s_addr == b->peer.sin_addr.s_addr) {
++                    b->peer.sin_port = from.sin_port; // answer where it really came from
++                    hdr_t o = h; o.type = T_PONG;
++                    sendto(b->udp, (const char *) &o, sizeof(o), 0, (const sockaddr *) &b->peer, sizeof(b->peer));
++                }
++            }
++        }
++        if (p[0].revents & (POLLIN | POLLHUP | POLLERR)) {
++            int n = recv(b->tcp, (char *) &out, 1, 0);
++            return n == 1;
++        }
++    }
++    return false;
++}
++
++bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size) {
++    if (!b || !scut_offered(remote_caps, caps_size)) return false;
++    offer_t ro; memcpy(&ro, remote_caps, sizeof(ro));
++    sockaddr_in tpeer = {}; socklen_compat_t pl = sizeof(tpeer);
++    if (getpeername(b->tcp, (sockaddr *) &tpeer, &pl) != 0) return false;
++    b->peer = tpeer;
++    b->peer.sin_port = ro.udp_port;
++    if (!b->server) { uint32_t tp = env_u32("GGML_RPC_SCUT_TEST_UDP_PORT", 0); if (tp) b->peer.sin_port = htons((uint16_t) tp); } // tests: through a fake Wi-Fi
++    uint64_t c = (b->server ? (ro.nonce ^ (b->my_nonce * 31)) : (b->my_nonce ^ (ro.nonce * 31)));
++    b->conn = (uint32_t) (c ^ (c >> 32)) | 1u;
++    uint32_t mine = env_u32("GGML_RPC_SCUT_MBPS", 300);
++    uint32_t mbps = std::max<uint32_t>(1, std::min(mine ? mine : 300, ro.mbps ? ro.mbps : 300));
++    b->cap_bps = mbps * 125000u;
++    b->rate = std::min<double>(b->cap_bps, 12.5e6); // start at 100 Mbit/s and grow while nothing is lost
++    b->awake = env_u32("GGML_RPC_SCUT_AWAKE", 1) != 0;
++    b->test_drop = env_u32("GGML_RPC_SCUT_TEST_DROP", 0);
++    b->rng.seed((uint32_t) b->my_nonce);
++
++    uint8_t yes = 0;
++    if (!b->server) {
++        // SUDDAR: probe the UDP path and time it, up to 10 tries 100 ms apart
++        std::vector<uint8_t> buf(2048);
++        for (int i = 0; i < 10 && !yes; i++) {
++            hdr_t h = {}; h.magic = PKT_MAGIC; h.type = T_PING; h.conn = b->conn; h.seq = (uint32_t) i; h.ts = (uint32_t) now_us();
++            sendto(b->udp, (const char *) &h, sizeof(h), 0, (const sockaddr *) &b->peer, sizeof(b->peer));
++            int64_t end = now_us() + 100000;
++            while (now_us() < end && !yes) {
++                pollfd p = {}; p.fd = b->udp; p.events = POLLIN;
++                if (BL_POLL(&p, 1, 20) <= 0) continue;
++                sockaddr_in from = {}; socklen_compat_t fl = sizeof(from);
++                int n = (int) recvfrom(b->udp, (char *) buf.data(), (int) buf.size(), 0, (sockaddr *) &from, &fl);
++                if (n < (int) sizeof(hdr_t)) continue;
++                hdr_t r; memcpy(&r, buf.data(), sizeof(r));
++                if (r.magic == PKT_MAGIC && r.type == T_PONG && r.conn == b->conn && from.sin_addr.s_addr == b->peer.sin_addr.s_addr) {
++                    b->peer.sin_port = from.sin_port;
++                    uint32_t s = (uint32_t) now_us() - r.ts; b->rtt_sample((double) s);
++                    yes = 1;
++                }
++            }
++        }
++        if (send(b->tcp, (const char *) &yes, 1, 0) != 1) return false;
++    } else {
++        if (!read_byte_with_pings(b, yes, 3000)) return false;
++    }
++    if (!yes) {
++        LOG_WARN("[scut] the UDP path didn't answer (a firewall?), staying on TCP\n");
++        return false;
++    }
++#ifdef _WIN32
++    timeBeginPeriod(1); // 1 ms timers while the link is up
++#endif
++    b->last_heard = b->last_data_activity = now_us();
++    b->io = std::thread([b] { b->loop(); });
++    LOG_INFO("[scut] SCUT on: udp %s:%d, cap %u Mbit/s, round trip %.1f ms\n", inet_ntoa(b->peer.sin_addr), ntohs(b->peer.sin_port), mbps, b->srtt / 1000.0);
++    return true;
++}
++
++bool scut_send(scut * b, const void * data, size_t size) { return b->send(data, size); }
++bool scut_flush(scut * b) { return b->flush(); }
++bool scut_recv(scut * b, void * data, size_t size) { return b->recv(data, size); }
+diff --git a/ggml/src/ggml-rpc/scut.h b/ggml/src/ggml-rpc/scut.h
+new file mode 100644
+index 0000000..2605d65
+--- /dev/null
++++ b/ggml/src/ggml-rpc/scut.h
+@@ -0,0 +1,46 @@
++#pragma once
++// SCUT: Bob's own transport for card sharing over home Wi-Fi (Brain Engine patch 0005).
++//
++// Opt-in (GGML_RPC_SCUT=1 on both machines), agreed in the HELLO handshake through conn_caps, and the original TCP
++// protocol is used whenever either side doesn't offer it or the UDP path doesn't answer. The RPC commands themselves
++// are unchanged: SCUT only replaces how the bytes travel.
++//   - one datagram train per message instead of one TCP send per field (a word's ~11 small commands go out as a few
++//     packets, not ~30), and nothing waits for an ack before sending;
++//   - a lost packet is resent after a few milliseconds (measured round trip), not after TCP's 200-300 ms timeout;
++//   - only what's missing is resent (selective acks);
++//   - it paces itself: a speed cap (GGML_RPC_SCUT_MBPS, default 300) and it slows down when packets are lost, so
++//     it never floods the home network;
++//   - while words are flowing it can send a tiny "stay awake" ping every 25 ms so a handheld's Wi-Fi doesn't doze
++//     between words (GGML_RPC_SCUT_AWAKE=0 turns that off).
++// The TCP connection stays open beside it, as the "are you still there" line.
++
++#include <cstddef>
++#include <cstdint>
++#include <memory>
++
++#ifdef _WIN32
++#  include <winsock2.h>
++typedef SOCKET scut_fd_t;
++#else
++typedef int scut_fd_t;
++#endif
++
++struct scut;
++
++struct scut_ptr_deleter { void operator()(scut * b) const; };
++typedef std::unique_ptr<scut, scut_ptr_deleter> scut_ptr;
++
++// Whether this machine offers SCUT (GGML_RPC_SCUT=1).
++bool scut_enabled();
++// Opens the UDP side next to an accepted (server) or connected (client) TCP socket and writes the offer into caps
++// (RPC_CONN_CAPS_SIZE bytes). Returns null (caps left as they were) when it can't.
++scut_ptr scut_prepare(scut_fd_t tcp_fd, bool server, uint8_t * caps, size_t caps_size);
++// Whether the peer's caps carry a SCUT offer.
++bool scut_offered(const uint8_t * caps, size_t caps_size);
++// Both sides call this after the HELLO answer is on the wire. The client probes the UDP path and tells the server
++// over TCP whether to switch; both return the same answer. false = stay on TCP.
++bool scut_activate(scut * b, const uint8_t * remote_caps, size_t caps_size);
++
++bool scut_send(scut * b, const void * data, size_t size);
++bool scut_flush(scut * b);
++bool scut_recv(scut * b, void * data, size_t size);
+diff --git a/ggml/src/ggml-rpc/transport.cpp b/ggml/src/ggml-rpc/transport.cpp
+index d5670f3..fede64c 100644
+--- a/ggml/src/ggml-rpc/transport.cpp
++++ b/ggml/src/ggml-rpc/transport.cpp
+@@ -1,5 +1,6 @@
+ #include "transport.h"
+ #include "log.h"
++#include "scut.h"
+ 
+ #ifdef _WIN32
+ #  define WIN32_LEAN_AND_MEAN
+@@ -153,9 +154,14 @@ struct socket_t::impl {
+ #endif // GGML_RPC_RDMA
+     bool     use_rdma;
+     sockfd_t fd;
++    // Brain Engine 0005: SCUT (scut.h)
++    bool        is_server = false;
++    bool        use_bl = false;
++    scut_ptr bl;
+ };
+ 
+ socket_t::impl::~impl() {
++    bl.reset(); // before the TCP line closes
+ #ifdef GGML_RPC_RDMA
+     rdma.reset();
+ #endif // GGML_RPC_RDMA
+@@ -537,6 +543,9 @@ bool socket_t::impl::rdma_recv(void * data, size_t size) {
+ #endif // GGML_RPC_RDMA
+ 
+ bool socket_t::impl::send_data(const void * data, size_t size) {
++    if (use_bl) {
++        return scut_send(bl.get(), data, size);
++    }
+     LOG_DBG3("[%s] transport: %s, size: %s\n", __func__, use_rdma ? "RDMA" : "TCP", rpc_log_format_size(size).c_str());
+ #ifdef GGML_RPC_RDMA_APPLE
+     if (use_rdma) {
+@@ -562,6 +571,9 @@ bool socket_t::impl::send_data(const void * data, size_t size) {
+ }
+ 
+ bool socket_t::impl::recv_data(void * data, size_t size) {
++    if (use_bl) {
++        return scut_recv(bl.get(), data, size);
++    }
+     LOG_DBG3("[%s] transport: %s, size: %s\n", __func__, use_rdma ? "RDMA" : "TCP", rpc_log_format_size(size).c_str());
+ #ifdef GGML_RPC_RDMA_APPLE
+     if (use_rdma) {
+@@ -618,9 +630,26 @@ void socket_t::impl::get_caps(uint8_t * local_caps) {
+     }
+ #  endif
+ #endif // GGML_RPC_RDMA
++    // SCUT only where nothing else took the caps (no RDMA here)
++    bool taken = false;
++    for (size_t i = 0; i < RPC_CONN_CAPS_SIZE; i++) {
++        taken |= local_caps[i] != 0;
++    }
++    if (!taken && scut_enabled()) {
++        bl = scut_prepare(fd, is_server, local_caps, RPC_CONN_CAPS_SIZE);
++    }
+ }
+ 
+ void socket_t::impl::update_caps(const uint8_t * remote_caps) {
++    if (bl) {
++        if (scut_offered(remote_caps, RPC_CONN_CAPS_SIZE)) {
++            use_bl = scut_activate(bl.get(), remote_caps, RPC_CONN_CAPS_SIZE);
++        }
++        if (!use_bl) {
++            bl.reset();
++        }
++        return;
++    }
+ #ifdef GGML_RPC_RDMA
+     // a peer that has no RDMA advertises all-zero caps and takes no further part
+     // in the negotiation, so drop to TCP without reporting a failure
+@@ -654,6 +683,9 @@ void socket_t::impl::update_caps(const uint8_t * remote_caps) {
+ }
+ 
+ bool socket_t::impl::flush() {
++    if (use_bl) {
++        return scut_flush(bl.get());
++    }
+ #ifdef GGML_RPC_RDMA_APPLE
+     if (use_rdma) {
+         return rdma->flush();
+@@ -689,7 +721,7 @@ void socket_t::update_caps(const uint8_t * remote_caps) {
+ }
+ 
+ const char * socket_t::transport_name() const {
+-    return pimpl->use_rdma ? "RDMA" : "TCP";
++    return pimpl->use_bl ? "SCUT" : pimpl->use_rdma ? "RDMA" : "TCP";
+ }
+ 
+ static bool is_valid_fd(sockfd_t sockfd) {
+@@ -723,7 +755,9 @@ socket_ptr socket_t::accept() {
+         return nullptr;
+     }
+     LOG_DBG("[%s] accepted client connection\n", __func__);
+-    return socket_ptr(new socket_t(std::make_unique<impl>(client_socket_fd)));
++    auto im = std::make_unique<impl>(client_socket_fd);
++    im->is_server = true;
++    return socket_ptr(new socket_t(std::move(im)));
+ }
+ 
+ socket_ptr socket_t::create_server(const char * host, int port) {

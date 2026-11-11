@@ -65,7 +65,7 @@ import { gatherFacts, tipsFrom } from './pc-check.js';
 import { speedTest, speedHistory } from './speed-test.js';
 import { trainerState } from './lab-teach.js'; // 1.5.16x the Lab's Trainer pack, shown in Settings so it can be removed
 import { phoneView, cleanPhonePatch, findAddresses, newPasscode, isTailscaleIp } from './phone-access.js';
-import { firewallState, changeRule, firewallHome } from './firewall.js';
+import { firewallState, changeRule, firewallHome, firewallUdp } from './firewall.js';
 import { shareView, cleanSharePatch, saveShare, lendChat, lendRefusal, reviewRefusal, helloFor, bobNetRooms } from './share-brains.js';
 import { lendCardRoute, homeIps, isHomeIp, sameNet } from './share-card.js'; // Bob-Net: Lend my graphics card
 import { checkHello } from './bob-net-check.js'; // 1.5.185 a bigger Bob checks the harder jobs
@@ -475,7 +475,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/phone-access' && (req.method === 'GET' || req.method === 'POST')) {
       if (!isLocal) return send(res, 403, { error: 'Phone access can only be changed on this replicant matrix itself.' });
       const found = await findAddresses(cfg.port);
-      if (req.method === 'GET') return send(res, 200, { ...phoneView(cfg), found, live: remoteLive(), firewall: await firewallState(cfg.port, { home: firewallHome(cfg, remoteHome) }).catch(() => null) });
+      if (req.method === 'GET') return send(res, 200, { ...phoneView(cfg), found, live: remoteLive(), firewall: await firewallState(cfg.port, { home: firewallHome(cfg, remoteHome), udp: firewallUdp(cfg) }).catch(() => null) });
       const b = await body(req);
       let made = '';
       if (b.newPasscode === true) { made = newPasscode(); b.passcode = made; }
@@ -485,15 +485,15 @@ const server = http.createServer(async (req, res) => {
       saveRemote(cfg, out.remote);
       brain.log('settings', `phone access: ${out.remote.enabled ? 'on' : 'off'}${out.remote.homeNet ? ', home network too' : ''}, ${out.remote.hosts.length} address(es)${made || 'passcode' in b ? ', new passcode' : ''}`);
       applyRemote(); // 1.5.94: opens (or closes) the door now, no restart
-      return send(res, 200, { ...phoneView(cfg), found, live: remoteLive(), passcode: made || undefined, restart: false, firewall: await firewallState(cfg.port, { home: firewallHome(cfg, remoteHome) }).catch(() => null) });
+      return send(res, 200, { ...phoneView(cfg), found, live: remoteLive(), passcode: made || undefined, restart: false, firewall: await firewallState(cfg.port, { home: firewallHome(cfg, remoteHome), udp: firewallUdp(cfg) }).catch(() => null) });
     }
     // 1.5.94: "Let Tailscale through the firewall" (Windows asks once) and "Remove the firewall rule".
     if (p === '/api/phone-access/firewall' && req.method === 'POST') {
       if (!isLocal) return send(res, 403, { error: 'The firewall can only be changed on this replicant matrix itself.' });
       const b = await body(req);
-      const r = await changeRule(cfg.port, { add: b.add !== false, exe: process.versions.electron ? process.execPath : '', home: firewallHome(cfg, remoteHome) });
+      const r = await changeRule(cfg.port, { add: b.add !== false, exe: process.versions.electron ? process.execPath : '', home: firewallHome(cfg, remoteHome), udp: firewallUdp(cfg) });
       brain.log('settings', `firewall rule ${b.add !== false ? 'add' : 'remove'} (your click): ${r.ok ? 'done' : r.why}`);
-      return send(res, 200, { ...r, firewall: await firewallState(cfg.port, { home: firewallHome(cfg, remoteHome) }).catch(() => null) });
+      return send(res, 200, { ...r, firewall: await firewallState(cfg.port, { home: firewallHome(cfg, remoteHome), udp: firewallUdp(cfg) }).catch(() => null) });
     }
     // Share brains between your Bobs (src/share-brains.js). Settings only from this PC; lending only through the phone door.
     if (p === '/api/share-brains' && (req.method === 'GET' || req.method === 'POST')) {
