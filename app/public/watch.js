@@ -14,6 +14,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const still = () => document.body.classList.contains('still');
 const view = createView($('watchCanvas'));
+let monoPicked = false; // One colour: only the person's own pick is passed on; otherwise each block uses the theme's colour
 const viewB = createView($('watchCanvasB')); // Before and after: the scan it's compared with, on the left
 const SPECIAL = /<\|[^|>]*\|>|<\/?think>/gi; // the chat layout's own markers, left out of the caption
 
@@ -251,7 +252,7 @@ let cmpSync = '';
 function cmpFollow() {
   const g = view.get(), st = JSON.stringify([g, [...hidden].map(String), $('watchMono').getAttribute('aria-checked'), $('watchMonoColour').value, $('watchMark').value]);
   if (st === cmpSync) return; cmpSync = st;
-  viewB.set({ ...g, hidden, mono: $('watchMono').getAttribute('aria-checked') === 'true', monoColour: $('watchMonoColour').value, mark: $('watchMark').value, paths: $('watchPaths').getAttribute('aria-checked') === 'true' });
+  viewB.set({ ...g, hidden, mono: $('watchMono').getAttribute('aria-checked') === 'true', monoColour: monoPicked ? $('watchMonoColour').value : '', mark: $('watchMark').value, paths: $('watchPaths').getAttribute('aria-checked') === 'true' });
 }
 function litForB(i, frac) {
   const out = [], cur = frames[i]; if (!cur || !cmp) return out;
@@ -513,8 +514,9 @@ $('watchMono').onclick = (ev) => { const on = ev.currentTarget.getAttribute('ari
 $('watchLoad').innerHTML = LOAD_STYLES.map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
 { let s = 'random'; try { s = loadStyle(localStorage.getItem('bob-fnri-load')); } catch {} $('watchLoad').value = s; view.set({ load: s }); }
 $('watchLoad').onchange = (ev) => { const s = loadStyle(ev.target.value); view.set({ load: s }); try { localStorage.setItem('bob-fnri-load', s); } catch {} if (rec) loadIn(); };
-$('watchMonoColour').oninput = (ev) => { view.set({ monoColour: ev.target.value }); try { localStorage.setItem('bob-watch-mono-colour', ev.target.value); } catch {} need = true; };
-try { const c = localStorage.getItem('bob-watch-mono-colour'); if (/^#[0-9a-f]{6}$/i.test(c || '')) { $('watchMonoColour').value = c; view.set({ monoColour: c }); } if (localStorage.getItem('bob-watch-mono') === '1') { flip($('watchMono'), true); view.set({ mono: true }); $('watchMonoColourBox').hidden = false; } } catch {}
+$('watchMonoColour').oninput = (ev) => { monoPicked = true; view.set({ monoColour: ev.target.value }); try { localStorage.setItem('bob-watch-mono-colour', ev.target.value); } catch {} need = true; };
+$('watchMonoColour').value = view.oneColour(); // the theme's colour (Moondust: #03666d) until the person picks one
+try { const c = localStorage.getItem('bob-watch-mono-colour'); if (/^#[0-9a-f]{6}$/i.test(c || '')) { monoPicked = true; $('watchMonoColour').value = c; view.set({ monoColour: c }); } if (localStorage.getItem('bob-watch-mono') === '1') { flip($('watchMono'), true); view.set({ mono: true }); $('watchMonoColourBox').hidden = false; } } catch {}
 $('watchPaths').onclick = (ev) => { const on = ev.currentTarget.getAttribute('aria-checked') !== 'true'; flip(ev.currentTarget, on); view.set({ paths: on }); need = true; };
 $('watchPlay').onclick = () => setPlaying(!playing);
 const step = (d) => { setPlaying(false); seek(Math.floor(t) + d); };

@@ -66,7 +66,7 @@ const HULL = { bg: '#1b1f22', panel: '#252a2e', card: '#31373c', you: '#4a4238',
 
 export const PRESETS = [
   { id: 'inn', name: 'Bob\'s Inn', group: 'Bob', what: 'Warm tavern browns. Bob\'s original.', colors: { bg: '#1d1510', panel: '#2b1d14', card: '#3a281b', you: '#34465a', line: '#5a4030', text: '#f3e7d3', muted: '#c7b296', accent: '#e7a64a', onAccent: '#2b1d14', good: '#7fbf7a', warn: '#e7a64a', bad: '#e07a6a', spriteBg: '#4a3220' } },
-  { id: 'moondust', name: 'Moondust', group: 'Worlds', what: 'Quiet grey, no colour cast. The one Bob starts with.', colors: mh(SLATE) },
+  { id: 'moondust', name: 'Moondust', group: 'Worlds', what: 'Quiet grey, no colour cast. The one Bob starts with.', colors: mh(SLATE), cube: '#03666d' },
   { id: 'nightside', name: 'Nightside', group: 'Worlds', what: 'The dark side of a world from orbit: near-black with city-glow blue. Easiest on the eyes at night.', colors: mh(MIDNIGHT) },
   { id: 'otterbend', name: 'Otterbend', group: 'Worlds', what: 'Deep forest green, like a riverbank under the trees.', colors: mh(MH.dark, { warnBg: '#3A2E12', dangerBg: '#3A1A1A', goodBg: '#123022' }) },
   { id: 'rivercoil', name: 'Rivercoil', group: 'Worlds', what: 'Steel blue-green with a river-blue accent: a river that winds round a whole world.', colors: COIL },
@@ -119,6 +119,8 @@ const VAR = { onAccent: 'on-accent', spriteBg: 'sprite-bg', dangerBg: 'danger-bg
 export function applyTheme(t, root = document.documentElement) {
   const c = fullColors(t);
   for (const [k, v] of Object.entries(c)) root.style.setProperty(`--${VAR[k] || k}`, v);
+  // the colour the FNRI cube's One colour starts with, when the theme has one and the person hasn't picked their own
+  if (HEX.test(t.cube || '')) root.style.setProperty('--cube', t.cube); else root.style.removeProperty('--cube');
   root.style.setProperty('--font', (FONTS[t.font] || FONTS.system).css);
   root.style.setProperty('--r', `${Number.isFinite(t.radius) ? t.radius : 8}px`);
   root.style.setProperty('--shadow', t.flat ? '0 0 0 1px var(--accent) inset' : '0 0 0 2px var(--accent) inset');

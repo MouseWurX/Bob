@@ -60,7 +60,9 @@ export function createView(canvas, { still = false } = {}) {
   let hidden = new Set(); // skill indexes, plus 'never' and 'grey'
   let staticCanvas = null, dirty = true, geom = null;
   let monoColour = ''; // the colour One colour uses, when the person picked one
-  const oneColour = () => monoColour || lookOf(0)[0];
+  // the person's pick first, then the theme's own (Moondust: #03666d), then the first skill colour
+  const themeColour = () => { try { const c = getComputedStyle(document.documentElement).getPropertyValue('--cube').trim(); return /^#[0-9a-f]{6}$/i.test(c) ? c : ''; } catch { return ''; } };
+  const oneColour = () => monoColour || themeColour() || lookOf(0)[0];
   let floorsNow = null; // Floors only: how hard each floor works for the word being read (0..1 each), or null
   let heat = null; // Weight map / difference map: { vals: [[0..1 or null]], low, high } colours every block by it instead of by skill
   let mono = false; // One colour: every expert the same colour, so only what lights up stands out
@@ -333,5 +335,5 @@ export function createView(canvas, { still = false } = {}) {
   }
 
   const setFloors = (a) => { floorsNow = Array.isArray(a) ? a : null; }; // every frame, so it doesn't redraw the block
-  return { setData, set, get, cubeGap, draw, sweep, loading: () => reveal < 1, setFloors, pick, setCaption, resize, layout: () => lay, still: () => still };
+  return { setData, set, get, oneColour, cubeGap, draw, sweep, loading: () => reveal < 1, setFloors, pick, setCaption, resize, layout: () => lay, still: () => still };
 }

@@ -37,7 +37,8 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   const showOne = () => { view.set({ mono: one || !look }); if (mono) { mono.textContent = one ? 'Skill colours' : 'One colour'; mono.hidden = !look || !showDetails; } if (colourBox) colourBox.hidden = !(one || !look) || !rec || !showDetails; if (loadBox) loadBox.hidden = !showDetails; if (key && look) key.classList.toggle('off', one); };
   // the one colour is the person's to pick (it is also the colour of a brain with no scan yet), and it is remembered
   const keepC = (c) => { if (/^#[0-9a-f]{6}$/i.test(c || '')) { view.set({ monoColour: c }); if (colour) colour.value = c; return true; } return false; };
-  try { keepC(localStorage.getItem('bob-cube-colour')); } catch {}
+  let picked = false; try { picked = keepC(localStorage.getItem('bob-cube-colour')); } catch {}
+  if (!picked && colour) colour.value = view.oneColour(); // the theme's colour (Moondust: #03666d) until the person picks one
   if (colour) colour.oninput = () => { if (keepC(colour.value)) { try { localStorage.setItem('bob-cube-colour', colour.value); } catch {} if (rec) view.draw(lit()); } };
   // Hide details: only the picture stays (the colour choices go with the details). The words are still there for a screen reader.
   const showD = () => { says.classList.toggle('sr-only', !showDetails); if (key) key.classList.toggle('sr-only', !showDetails); if (details) { details.textContent = showDetails ? 'Hide details' : 'Show details'; } showOne(); };

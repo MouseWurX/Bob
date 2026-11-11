@@ -58,5 +58,15 @@ check('Help names the new groups and the default', /Moondust/.test(HELP.find((h)
   const sp = fs.readFileSync(new URL('../public/style-page.js', import.meta.url), 'utf8');
   check('Style page: "Follow Windows" only on Windows, "Follow the system" elsewhere', /settings\.platform === 'win32' \? 'Follow Windows' : 'Follow the system'/.test(sp));
 }
+// 1.5.202: on Moondust, the cube's One colour starts as #03666d (RGB 3, 102, 109) until the person picks their own
+{
+  const wv = read('public/watch-view.js'), mc = read('public/mind-cube.js'), wj = read('public/watch.js'), th = read('public/themes.js');
+  check('Moondust gives the One colour #03666d', findTheme('moondust')?.cube === '#03666d' && findTheme('slate')?.cube === '#03666d');
+  check('the theme sets --cube, and clears it on a theme without one', /setProperty\('--cube', t\.cube\)/.test(th) && /removeProperty\('--cube'\)/.test(th));
+  check('the person\'s own pick always wins over the theme', /monoColour \|\| themeColour\(\) \|\| lookOf\(0\)\[0\]/.test(wv));
+  check('the colour boxes show the theme colour until a pick is saved', /if \(!picked && colour\) colour\.value = view\.oneColour\(\)/.test(mc) && /\$\('watchMonoColour'\)\.value = view\.oneColour\(\)/.test(wj));
+  check('the second block only gets a colour the person picked', /monoColour: monoPicked \? \$\('watchMonoColour'\)\.value : ''/.test(wj));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
