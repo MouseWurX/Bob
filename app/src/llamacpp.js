@@ -16,6 +16,7 @@ import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } 
 import { exeName } from './platform.js';
 import { Embedder } from './embedder.js';
 import { ggufInfo } from './gguf.js';
+import { placeArgs } from './brain-place.js';
 import { selfWorkOn } from './self-work.js';
 import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes } from './model-ctx.js';
 
@@ -224,6 +225,12 @@ export class LlamaCpp {
   catalogFile(id) { return catalogFileFor(this.cfg, id); }
 
   // 1.5.87: the longest context a model was made for, from its GGUF header, so nothing asks for more (null: unknown).
+  // 1.5.205 What the Brains page needs to offer a by-hand placement: how many layers the file has. null when this
+  // engine can't find the file (then the page keeps the control locked and says why).
+  placeInfo(model) {
+    try { const layers = ggufInfo(this.resolve(model).gguf)?.shape?.layers || 0; return layers ? { layers } : null; } catch { return null; }
+  }
+
   async maxCtx(model) {
     try { return ggufInfo(this.resolve(model).gguf)?.ctxTrain || null; } catch { return null; }
   }
@@ -455,7 +462,9 @@ export class LlamaCpp {
       ...(cpu && tuning(this.cfg).readyWhileTyping ? ['--slot-save-path', startDir(this.cfg)] : []),
       ...(modelArgs || lc.modelArgs?.[model] || []),
       // Mixture-of-experts models: keep this many layers' experts in system RAM so the rest fits the card.
-      ...(Number.isInteger(lc.nCpuMoe?.[model]) ? ['--n-cpu-moe', String(lc.nCpuMoe[model])] : [])
+      ...(Number.isInteger(lc.nCpuMoe?.[model]) ? ['--n-cpu-moe', String(lc.nCpuMoe[model])]
+        // 1.5.205: set by hand on the Brains page (brain-place.js). The config file's own number, above, wins.
+        : placeArgs(this.cfg, model, { cpu, layers: ggufInfo(gguf)?.shape?.layers || 0 }))
     ];
     // --fit: llama.cpp places layers to fit the card's free memory right now (other apps included), which
     // beat a fixed --n-cpu-moe on a 16 GB card. Used unless a placement is pinned by hand or fit is off.

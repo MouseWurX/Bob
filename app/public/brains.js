@@ -3,7 +3,7 @@
 // and the plain list are one press away. Pure HTML builders, no DOM: cellar.js handles the clicks, and saving a job
 // goes through the same calls the doll uses. Nothing is equipped or downloaded without the owner.
 import { SLOTS, allSlots, equipped, entryOf, slotTakes, isActive, tipHtml, kitHtml, starterHtml } from './equip.js';
-import { placeFor, sizeLine, placeWord } from './place.js';
+import { placeFor, sizeLine, placeWord, hasExperts } from './place.js';
 import { esc, gb } from './util.js';
 
 // The jobs a brain can hold (every thinking slot; the rented brain is its own thing).
@@ -153,7 +153,45 @@ function brainRowHtml(b, ctx) {
   const trial = b.entry?.trial ? '<span class="tag">Not tried yet</span>' : '';
   return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name"><strong>${esc(b.name)}</strong> ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span></div>
     <div class="brain-jobs">${chips}${jobSelect(b.value, jobsFor(b.value, ctx), `Give ${b.name} another job`)}</div>
-    <div class="brain-place">${placeBarHtml(b.entry, ctx)}</div></li>`;
+    <div class="brain-place">${placeBarHtml(b.entry, ctx)}<div class="brain-act"><span class="muted">${handOn(b.value, ctx) ? 'By hand' : 'Auto'}</span><button type="button" class="mini" data-brainsetup="${esc(b.value)}" aria-label="Set up ${esc(b.name)}">Set up</button></div></div></li>`;
+}
+
+// ---- Set up: one brain's own page. Its jobs, and where it sits (Auto, or by hand for a brain made of experts). ----
+// ctx.place = what the server knows (/api/brain-place): { brains: { "<model>": { layers, set: { mode, cpuMoe }, pinned } } }.
+const placeOf = (value, ctx) => ctx.place?.brains?.[value] || null;
+const handOn = (value, ctx) => placeOf(value, ctx)?.set?.mode === 'hand';
+// Why this brain can't be set by hand, or '' when it can. The control stays on the page either way, locked, with this.
+export function handLock(b, ctx) {
+  const p = placeOf(b.value, ctx);
+  if (!ctx.place) return 'Reading this brain\'s file…';
+  if (!p?.layers) return 'My built-in engine doesn\'t run this brain, so its own engine decides where it sits.';
+  if (!b.entry) return 'Not in my list, so I don\'t know whether it has experts to move.';
+  if (!hasExperts(b.entry)) return 'This brain has no experts to move. Auto already puts as much of it on the card as fits.';
+  if (p.pinned) return 'A number in the settings file (llamacpp.nCpuMoe) is in charge of this brain. Remove it there to set it here.';
+  return '';
+}
+export function setUpHtml(b, ctx) {
+  const p = placeOf(b.value, ctx);
+  const set = p?.set || { mode: 'auto' };
+  const layers = p?.layers || 0;
+  const lock = handLock(b, ctx);
+  const n = Number.isInteger(set.cpuMoe) ? Math.min(set.cpuMoe, layers || set.cpuMoe) : 0;
+  const hand = set.mode === 'hand';
+  const chips = b.jobs.map((s) => `<span class="job-chip" title="${esc(s.does)}">${s.icon} ${esc(s.name)}${s.off ? `<button type="button" class="chip-x" data-unequip="${esc(s.id)}" aria-label="Take ${esc(b.name)} off ${esc(s.name)}">✕</button>` : ''}</span>`).join('');
+  const seg = (mode, label) => `<button type="button" class="seg-btn${(mode === 'hand') === hand ? ' on' : ''}" data-placemode="${mode}" data-model="${esc(b.value)}" aria-pressed="${(mode === 'hand') === hand}" ${mode === 'hand' && lock ? 'disabled' : ''}>${label}</button>`;
+  const dis = lock ? 'disabled' : '';
+  return `<p><button type="button" class="link" data-brainsetup="">← All brains</button></p>
+    <div class="brains-page">
+    <section class="brains-panel"><h3>${esc(b.name)}</h3><p class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}${layers ? ` · ${layers} layers` : ''}${b.entry && hasExperts(b.entry) ? ' · made of experts' : ''}</p>
+      <h4>Jobs</h4><div class="brain-jobs">${chips || '<span class="muted">No job yet.</span>'}${jobSelect(b.value, jobsFor(b.value, ctx), `Give ${b.name} another job`)}</div></section>
+    <section class="brains-panel"><h3>Where it sits ${tipHtml('Auto: my engine looks at the free room on the card each time this brain loads and fits as much as it can. By hand: you say how many layers keep their experts in memory instead; fewer in memory is faster until the card is full, and then much slower. A change takes effect the next time this brain loads.', 'About where a brain sits')}</h3>
+      <div class="seg" role="group" aria-label="Where ${esc(b.name)} sits">${seg('auto', 'Auto')}${seg('hand', 'By hand')}</div>
+      <div class="brain-place wide">${placeBarHtml(b.entry, ctx)}${hand ? `<span class="muted place-why">By hand: ${n} of ${layers} layers keep their experts in memory. The bar shows what Auto would start from.</span>` : ''}</div>
+      <div class="num-row"><label for="place-moe"><strong>Layers that keep their experts in memory</strong><br><span class="muted">0 puts everything on the card. More frees the card and is slower.</span></label>
+        <input type="range" id="place-moe" min="0" max="${layers || 1}" step="1" value="${n}" data-placemoe="${esc(b.value)}" ${dis} aria-describedby="place-lock">
+        <input type="number" min="0" max="${layers || 1}" step="1" value="${n}" data-placemoenum="${esc(b.value)}" ${dis} aria-label="Layers that keep their experts in memory, as a number" inputmode="numeric"><span class="muted">of ${layers || '?'}</span></div>
+      <p class="muted" id="place-lock">${lock ? `🔒 ${esc(lock)}` : hand ? 'In use. Takes effect the next time this brain loads.' : 'Set the number any time; it is used once you switch to By hand.'}</p></section>
+    </div>`;
 }
 
 function emptyJobHtml(slot, ctx) {
@@ -174,6 +212,8 @@ function senseRowHtml(slot, ctx) {
 
 export function brainsHtml(ctx) {
   const used = brainsInUse(ctx), empty = emptyJobs(ctx), spare = spareBrains(ctx);
+  const one = ctx.setUp ? used.find((b) => b.value === ctx.setUp) : null;
+  if (one) return setUpHtml(one, ctx);
   const sel = senseSlots().find((s) => s.id === ctx.selected) || null;
   const word = placeWord('card', hwOf(ctx));
   return `<div class="equip-top"><p class="muted">Each brain, the jobs it does, and where it sits on this replicant matrix. ${tipHtml(`One brain doing several jobs is faster: I only swap brains when a job needs a different one. "${word}" is quickest; a brain that spills into memory or the drive still runs, slower.`, 'How the Brains page works')} <button type="button" class="mini help-link" data-help="brains-page" aria-label="Help: the Brains page">? Help</button></p>

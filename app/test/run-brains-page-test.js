@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SETUPS, setupOf, setupPlan, duoNeedsQuick, brainsHtml, brainsInUse, emptyJobs, spareBrains, jobsFor, placeBarHtml, budget, brainJobs, senseSlots } from '../public/brains.js';
+import { setUpHtml, handLock, SETUPS, setupOf, setupPlan, duoNeedsQuick, brainsHtml, brainsInUse, emptyJobs, spareBrains, jobsFor, placeBarHtml, budget, brainJobs, senseSlots } from '../public/brains.js';
 import { HELP } from '../public/help-content.js';
 
 let pass = 0, fail = 0;
@@ -57,6 +57,24 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
   check('Equip Bob opens on the Brains page unless another view was chosen', /getItem\('bob-equip-view'\) \|\| 'brains'/.test(cellar) && /brainsHtml\(\{ \.\.\.eqCtx\(\)/.test(cellar));
   check('the two menus save through the same call the doll uses', /el\.dataset\.brainjob && el\.value\) \{[^}]*await equip\(el\.value, el\.dataset\.brainjob/.test(cellar) && /el\.dataset\.jobbrain && el\.value\) \{[^}]*await equip\(el\.dataset\.jobbrain, el\.value/.test(cellar));
   check('Help has the page, in Bob\'s voice, and the glossary names it', HELP.some((h) => h.id === 'brains-page' && /I load one big brain at a time/.test(h.html)) && /<dt>Brains page<\/dt>/.test(HELP.find((h) => h.id === 'glossary').html));
+}
+// ---- Set up: one brain's own page ----
+{
+  const place = { engine: 'llamacpp', brains: { 'bobert-35b': { layers: 40, set: { mode: 'auto', cpuMoe: 12 }, pinned: false }, 'riker-28b-q3': { layers: 40, set: { mode: 'hand', cpuMoe: 6 }, pinned: false }, 'gemma4-e4b': { layers: null, set: { mode: 'auto' }, pinned: false } } };
+  const c = { ...ctx, place };
+  const used = brainsInUse(c);
+  const b = (id) => used.find((x) => x.value === id);
+  check('every brain row has a Set up button and says Auto or By hand in words', /data-brainsetup="bobert-35b" aria-label="Set up [^"]+">Set up/.test(brainsHtml(c)) && /<span class="muted">By hand<\/span><button type="button" class="mini" data-brainsetup="riker-28b-q3"/.test(brainsHtml(c)));
+  const page = brainsHtml({ ...c, setUp: 'bobert-35b' });
+  check('Set up opens that brain alone, with a way back, its jobs and + job', /data-brainsetup="">← All brains/.test(page) && /<h3>35Bob Bobert<\/h3>/.test(page) && /40 layers · made of experts/.test(page) && /data-unequip="tinker"/.test(page) && /data-brainjob="bobert-35b"/.test(page) && !/Senses and tools/.test(page));
+  check('Auto and By hand are two buttons that say which is on', /data-placemode="auto" data-model="bobert-35b" aria-pressed="true"/.test(page) && /data-placemode="hand" data-model="bobert-35b" aria-pressed="false" >By hand/.test(page));
+  check('the slider and the number box carry the same value and limits, and can be set while still on Auto', /type="range" id="place-moe" min="0" max="40" step="1" value="12" data-placemoe="bobert-35b"  aria-describedby/.test(page) && /type="number" min="0" max="40" step="1" value="12" data-placemoenum="bobert-35b" /.test(page) && /used once you switch to By hand/.test(page) && !/disabled/.test(page), page.slice(page.indexOf('num-row'), page.indexOf('num-row') + 900));
+  check('By hand says it is in use and when it takes effect', /By hand: 6 of 40 layers keep their experts in memory/.test(brainsHtml({ ...c, setUp: 'riker-28b-q3' })) && /Takes effect the next time this brain loads/.test(brainsHtml({ ...c, setUp: 'riker-28b-q3' })));
+  const e4b = brainsHtml({ ...c, setUp: 'gemma4-e4b' });
+  check('a brain that can\'t be set by hand keeps the controls on the page, locked, with the reason', /data-placemoe="gemma4-e4b" disabled/.test(e4b) && /data-placemode="hand"[^>]*disabled/.test(e4b) && /🔒 My built-in engine doesn/.test(e4b));
+  check('the reasons: no experts, a number in the settings file, not read yet', /no experts to move/.test(handLock({ value: 'x', entry: { id: 'x', name: 'Plain 8B' } }, { place: { brains: { x: { layers: 30, set: {} } } } })) && /settings file/.test(handLock(b('bobert-35b'), { place: { brains: { 'bobert-35b': { layers: 40, set: {}, pinned: true } } } })) && /Reading/.test(handLock(b('bobert-35b'), {})) && handLock(b('bobert-35b'), c) === '');
+  const cellar = read('public/cellar.js');
+  check('the slider and the number box stay in step while moving, and save one brain at a time', /if \(d\.placemoe\) \{ const n = dlg\.querySelector\('\[data-placemoenum\]'\); if \(n\) n\.value = e\.target\.value; \}/.test(cellar) && /brainPlace: \{ \[model\]: \{ \.\.\.cur, \.\.\.patch \} \}/.test(cellar));
 }
 // ---- setups ----
 {

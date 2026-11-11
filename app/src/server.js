@@ -447,6 +447,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/roles') return send(res, 200, await shop.roles());
     // 1.5.87: each equipped brain, the most it was made for, Bob's pick and the size picked by hand (Settings > Brains).
     if (req.method === 'GET' && p === '/api/brain-ctx') return send(res, 200, await brainCtxView());
+    if (req.method === 'GET' && p === '/api/brain-place') return send(res, 200, brainPlaceView()); // 1.5.205
     // What an Ollama model can do (completion, vision, audio, tools, thinking), for Equip Bob's "also use it for".
     if (req.method === 'GET' && p === '/api/models/caps') {
       const name = String(url.searchParams.get('name') || '');
@@ -695,6 +696,8 @@ const server = http.createServer(async (req, res) => {
           if (typeof b.brainCtxOn === 'boolean') { saveSettings(cfg, { brainCtxOn: b.brainCtxOn }); out.brainCtxOn = cfg.brainCtxOn === true; }
           if (typeof b.brainCtxStretch === 'boolean') { saveSettings(cfg, { brainCtxStretch: b.brainCtxStretch }); out.brainCtxStretch = cfg.brainCtxStretch === true; }
           if (b.brainCtx && typeof b.brainCtx === 'object') { saveSettings(cfg, { brainCtx: b.brainCtx }); out.brainCtx = cfg.brainCtx || {}; }
+          // 1.5.205 where one brain sits, by hand. One brain at a time is merged in; it takes effect the next time that brain loads.
+          if (b.brainPlace && typeof b.brainPlace === 'object' && !Array.isArray(b.brainPlace)) { saveSettings(cfg, { brainPlace: { ...(cfg.brainPlace || {}), ...b.brainPlace } }); out.brainPlace = cfg.brainPlace || {}; }
           // "Free memory when Bob is idle" (chat page) and "Free memory after Bob has been quiet for" (Advanced) are one
           // setting: Never there is the switch off here. The time is kept while the switch is off, for when it's on again.
           if (typeof b.ollamaKeepAlive === 'string') {
@@ -1172,6 +1175,18 @@ function selfWorkNow() {
   let brains = [];
   try { brains = gatherBrains(cfg, { own: ownEntries(cfg), catalogFile: (id) => catalogFileFor(cfg, id) }); } catch {}
   return { ...selfWorkView(cfg, brains), bobNet: brain.lenders?.bobs?.().length || 0 };
+}
+
+// 1.5.205 For the Brains page's Set up: each brain in use, how many layers its file has (null when the built-in
+// engine doesn't run it), and what was set by hand. Reading it changes nothing.
+function brainPlaceView() {
+  const models = new Set([...Object.values(cfg.models || {}), ...Object.values(sessionBrains(cfg) || {})].filter((m) => typeof m === 'string' && m));
+  const brains = {};
+  for (const model of models) {
+    const info = cfg.engine === 'llamacpp' ? brain.engine?.placeInfo?.(model) || null : null;
+    brains[model] = { layers: info?.layers || null, set: cfg.brainPlace?.[model] || { mode: 'auto' }, pinned: Number.isInteger(cfg.llamacpp?.nCpuMoe?.[model]) };
+  }
+  return { engine: cfg.engine || '', brains };
 }
 
 async function brainCtxView() {
