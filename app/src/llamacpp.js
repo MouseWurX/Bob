@@ -1,6 +1,7 @@
 // Bob's own engine: runs llama.cpp's llama-server.exe himself, one model at a time.
 // Same interface as the Ollama client, so the brain doesn't care which engine is in use.
 // Models are found by Ollama name in Ollama's model folder (no duplicate downloads), or set by path in config.
+import { learnPer, promptChars, perFor } from './token-count.js';
 import { replyStats } from './speed-stats.js';
 import fs from 'node:fs';
 import { commandLineOf } from './util.js';
@@ -146,11 +147,15 @@ export function catalogFileFor(cfg, id) {
   } catch { return null; }
 }
 
+// Item 2: the smallest piece (in tokens) the engine reuses from earlier in the chat after a change in the middle.
+export const CACHE_REUSE = 256;
+
 export class LlamaCpp {
   // Read fresh each time, so speed settings changed in the app apply to the next brain load.
   get lc() { return this.cfg.llamacpp || {}; }
 
   constructor(cfg, { role = 'main' } = {}) {
+    this.perToken = {}; // Nov 11 (item 3): characters per token, per brain, learned from the engine's own counts
     this.cfg = cfg;
     this.role = role;
     this.tag = role === BESIDE ? '-beside' : '';
@@ -281,6 +286,9 @@ export class LlamaCpp {
     if (!gguf) throw new Error(`${model} has no model file in its manifest.`);
     return { gguf, mmproj: blob('projector') };
   }
+
+  // Item 3: how many characters make one token for this brain (3 until a reply has taught Bob better).
+  charsPerToken(model) { return perFor(this.perToken, model); }
 
   async health() {
     try { return (await fetch(this.url + '/health', { signal: AbortSignal.timeout(2000) })).ok; } catch { return false; }
@@ -487,6 +495,10 @@ export class LlamaCpp {
     else if (!cpu && this.buildNo() >= 12032 && !args.some((a) => ['-nr', '--no-repack', '--repack'].includes(a)) && args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a)) && this.biggerThanMemory(gguf)) args.push('--no-repack');
     // 1.5.19: one conversation at a time, so it gets the whole context (more slots split it into small pieces).
     if (!args.some((a) => ['-np', '--parallel'].includes(a))) args.push('-np', '1');
+    // Nov 11 (item 2): when an old tool result in the middle of a chat gets shortened, the engine moves the rest of what it
+    // already read into place instead of reading it all again (llama.cpp's KV shifting; b4500 and newer). Brains that
+    // can't (some memory layouts, picture readers) are switched back by the engine itself, with a line in its log.
+    if (this.buildNo() >= 4500 && !args.includes('--cache-reuse')) args.push('--cache-reuse', String(CACHE_REUSE));
     args.push(...this.templateArgs(model, gguf, args));
     // Speculative decoding: a small "draft" model guesses ahead and the big one checks, often 1.5-2x faster.
     // 1.5.16x Turbo per brain (the Lab's Turbo page, Settings): wins over the one draft for every brain. The brain's own
@@ -881,6 +893,8 @@ export class LlamaCpp {
         if (ev.error) throw new Error('llama-server: ' + (ev.error.message || JSON.stringify(ev.error)));
         // 1.5.30: llama-server puts the reply's timings on its last chunk; kept for Now running.
         if (ev.expert_trace && this.onTrace) { traced = true; try { this.onTrace(ev.expert_trace, model); } catch (e) { this.log?.('engine', `fNRI cube: couldn't read ${model}'s trace: ${e.message}`); } }
+        // Nov 11 (item 3): the engine's own count of what it read teaches Bob how many characters make a token for this brain.
+        if (ev.timings) { const n = (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0); const k = this.current || model; const per = learnPer(this.perToken[k], promptChars(messages, tools), n); if (per) this.perToken[k] = per; }
         if (ev.timings) this.lastStats = replyStats({ model: this.current || model, messages, promptTokens: (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0), outTokens: ev.timings.predicted_n, tokPerSec: ev.timings.predicted_per_second, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX }) || this.lastStats;
         const d = ev.choices?.[0]?.delta || {};
         if (budget && d.reasoning_content && ++thought > budget && !content) onOver(); // stop.over marks it, so real errors aren't retried

@@ -155,6 +155,8 @@
     const answer = [...nodes].reverse().find((n) => n._m.who === 'bob' && nodes.indexOf(n) > nodes.indexOf(you));
     you.querySelector('.tools')?.append(el('button', { class: 'redo-btn', text: 'Edit', title: 'Change what you said and send it again', onclick: () => editBox(you) }));
     (answer || you).querySelector('.tools')?.append(el('button', { class: 'redo-btn', text: 'Try again', title: 'Get a new answer to your last message', onclick: () => redo() }));
+    // Nov 11 (item 8): after a Bob on your network gave up, the harder try: the same message on High effort.
+    if (chat.stuck && answer?._m?.by && answer._m.by !== 'phone') answer.querySelector('.tools')?.append(el('button', { class: 'redo-btn', text: 'Try again, thinking harder', title: 'Ask again on High effort: the bigger brain works it out and a second brain checks it', onclick: () => redo(null, 'high') }));
   }
   function editBox(node) {
     if (node.querySelector('.edit-box')) return;
@@ -169,8 +171,9 @@
     t.focus();
   }
   // text: the new words (Edit), or none (Try again).
-  function redo(text = null) {
+  function redo(text = null, effortNow = null) {
     const c = chat;
+    c.stuck = false;
     if (!c || chatBusy(c)) return toast('Bob is still on this chat. Wait until he has finished, or tap Stop first.');
     const at = c.msgs.map((m) => m.who).lastIndexOf('you');
     if (at < 0) return;
@@ -185,7 +188,7 @@
     // The same answerer as last time when it's still there (so it can take its answer back); otherwise whoever answers now.
     let to = by === 'phone' ? (phoneReady() ? 'phone' : null) : by && liveBobs().some((b) => b.base === by) ? by : null;
     if (!to) { const a = answerer(L.bigJob(words)); if (a.kind === 'none') return note(nobodyWhy(a.why), true); to = a.kind === 'net' ? a.bob.base : 'phone'; }
-    queue.push({ chatId: c.id, text: words, to, ...(to === by && to !== 'phone' ? { redo: text != null ? 'edit' : 'again' } : {}) });
+    queue.push({ chatId: c.id, text: words, to, ...(effortNow ? { effort: effortNow } : {}), ...(to === by && to !== 'phone' ? { redo: text != null ? 'edit' : 'again' } : {}) });
     pump();
   }
 
@@ -409,6 +412,7 @@
       to = a.kind === 'net' ? a.bob.base : 'phone';
     }
     addMsg({ who: 'you', text });
+    chat.stuck = false;
     queue.push({ chatId: chat.id, text, to });
     pump();
   }
@@ -431,7 +435,7 @@
     const c = chats.find((x) => x.id === job.chatId);
     if (!c) return pump();
     if (job.to === 'phone') return askPhone(c, job.text);
-    return askNet(c, job.text, job.to, job.photo, job.redo);
+    return askNet(c, job.text, job.to, job.photo, job.redo, job.effort);
   }
 
   function finish() {
@@ -519,7 +523,7 @@
   }
 
   // ---------- Bobs on the network ----------
-  function askNet(c, text, base, withPhoto = false, redoKind = null) {
+  function askNet(c, text, base, withPhoto = false, redoKind = null, effortNow = null) {
     current = startReply(c, 'net', base, text);
     current.base = base;
     const b = bobs.find((x) => x.base === base);
@@ -536,7 +540,7 @@
     const takeBack = () => !redoKind ? Promise.resolve(null) : phone('net.post', { address: b.address, path: '/api/chat/redo', body: JSON.stringify({ sessionId: `phone-${c.id}`, last: true, ...(redoKind === 'edit' ? { text } : {}) }) })
       .then((r) => { if (r.status === 200) return redoKind; if (r.status === 404 || /is off|no message of yours|older part/.test(shortError(r.body))) return null; throw Object.assign(new Error(shortError(r.body)), { said: true }); });
     upload.then((refs) => (pick === null ? refs : phone('net.post', { address: b.address, path: '/api/presets/pick', body: JSON.stringify({ sessionId: `phone-${c.id}`, id: pick }) }).catch(() => null).then(() => { presets.key = null; return refs; })))
-      .then((refs) => takeBack().then((again) => phone('net.post', { address: b.address, path: '/api/chat', body: JSON.stringify({ sessionId: `phone-${c.id}`, text, effort: settings.effort, ...(refs.length ? { refs } : {}), ...(again ? { redo: again } : {}) }) })))
+      .then((refs) => takeBack().then((again) => phone('net.post', { address: b.address, path: '/api/chat', body: JSON.stringify({ sessionId: `phone-${c.id}`, text, effort: effortNow || settings.effort, ...(refs.length ? { refs } : {}), ...(again ? { redo: again } : {}) }) })))
       .then((r) => {
         if (r.status === 401) { live[base].signedIn = false; grow(`*("${b.name}" wants the passcode again. It's under Bob-Net.)*`); finish(); drawWho(); }
         else if (r.status >= 400) { grow(`*("${b.name}" said no: ${shortError(r.body)})*`); finish(); }
@@ -575,6 +579,7 @@
     else if (ev.type === 'error') grow(`\n\n*(${ev.text})*`);
     else if (ev.type === 'correction' || ev.type === 'busy-note' || ev.type === 'announce' || ev.type === 'aside') grow(`\n\n*${ev.text}*`);
     else if (ev.type === 'waiting-line') { if (!seenWaits.has(ev.id)) { seenWaits.add(ev.id); grow(`\n\n*${ev.text}*`); } } // 1.5.97: once per wait
+    else if (ev.type === 'stuck') { const c = chats.find((x) => x.id === current.chatId); if (c) c.stuck = true; } // item 8
     else if (ev.type === 'done') finish();
   }
 

@@ -682,6 +682,9 @@ function onEvent(ev) {
       scrollDown();
       break;
     }
+    case 'stuck': // item 8: he gave up on this one; offer the harder try under it
+      stuckNow = true; drawRedo();
+      break;
     case 'announce':
       endReply(ev);
       note(ev.text, 'announce');
@@ -1031,6 +1034,9 @@ function editedMsg(ev) {
 // Try again sits under Bob's latest answer, Edit under each of your messages Bob has saved. Either one takes back what
 // came after, keeps it under your message as an earlier version, and sends your message (again). Hidden while Bob is busy.
 let redoOnNow = false, redoing = false, redoneId = '';
+// Nov 11 (item 8): after Bob gives up (the same call three times), Try again also comes as "Try again, thinking harder":
+// the same message on High effort, so the big brain drafts it and the reviewer checks it.
+let stuckNow = false;
 const lastYou = () => [...log.querySelectorAll(':scope > .msg.you')].pop() || null;
 function drawRedo() {
   for (const x of log.querySelectorAll('[data-redo], [data-edit-msg]')) x.remove();
@@ -1041,6 +1047,7 @@ function drawRedo() {
   let answer = null;
   for (let n = you.nextElementSibling; n; n = n.nextElementSibling) if (n.matches('.msg.bob:not(.aside-msg)')) answer = n;
   (answer || you).querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-redo title="Get a new answer to your last message">Try again</button>');
+  if (stuckNow) (answer || you).querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-redo data-hard title="Ask again on High effort: the bigger brain works it out and a second brain checks it">Try again, thinking harder</button>');
 }
 function versionsHtml(list) {
   const cut = (t) => { const x = String(t || ''); return esc(x.length > 1500 ? x.slice(0, 1500) + '…' : x); };
@@ -1057,7 +1064,7 @@ function markVersions(el, list) {
   el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
 }
 // Take back and send again. text: the new words (Edit), or none (Try again).
-async function redoSend(id, text) {
+async function redoSend(id, text, level = effort.get()) {
   if (busy || redoing) { note('Bob is still on this chat. Wait until he has finished, or press Stop first.'); return; }
   redoing = true; drawRedo();
   try {
@@ -1067,7 +1074,7 @@ async function redoSend(id, text) {
     log.innerHTML = ''; stick = true;
     await loadHistory(40);
     const bubble = log.querySelector(`.msg.you[data-mid="${CSS.escape(r.data.id)}"]`);
-    const level = effort.get();
+    stuckNow = false;
     const s = await post('/api/chat', { sessionId, text: r.data.text, redo: r.data.edited ? 'edit' : 'again', effort: level, ...(rentSwitch.on() ? { rent: true } : {}) }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
     if (!s.ok) { note(s.data.error || 'Something went wrong.', 'error'); return; }
     if (bubble) { jobBubbles.set(s.data.jobId, bubble); bubble.insertAdjacentHTML('beforeend', `<span class="qtag">${s.data.ahead ? `queued, ${s.data.ahead} ahead` : 'queued'}</span>`); }
@@ -1152,7 +1159,7 @@ log.addEventListener('click', async (e) => {
   const b = e.target.closest('button, a.file-link');
   if (!b || !log.contains(b)) return;
   const msg = b.closest('.msg');
-  if ('redo' in b.dataset) return redoSend(null, null);
+  if ('redo' in b.dataset) return redoSend(null, null, 'hard' in b.dataset ? 'high' : effort.get());
   if ('editMsg' in b.dataset) return editInPlace(msg);
   if ('copyMsg' in b.dataset) return copyText(copyWords(msg), b);
   if ('copyLinks' in b.dataset) return copyText([...new Set([...msg.querySelectorAll('a[href^="http"]')].map((a) => a.href))].join('\n'), b);
@@ -1204,6 +1211,7 @@ $('composer').onsubmit = async (e) => {
   input.value = '';
   pending = [];
   drawTray();
+  stuckNow = false;
   const level = effort.get();
   const r = await post('/api/chat', { sessionId, text, refs: pics.map((p) => p.id), effort: level, ...(rentSwitch.on() ? { rent: true } : {}) }).catch(() => ({ ok: false, data: { error: 'Can\'t reach Bob\'s brain. Is it running?' } }));
   const tag = bubble.querySelector('.qtag');

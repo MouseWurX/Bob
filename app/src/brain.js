@@ -79,6 +79,10 @@ import { HowTos, howtoTools, howtosOn, trailStep, worthOffering, howtoPrompt, us
 import { NEEDS, planFor, SetupOffers, switchFor, applySwitch, SWITCH_KEYS } from './setup-offer.js';
 
 const MAX_STEPS = 8;
+// Nov 11 (item 5): bigger jobs get more steps. Low effort (the usual chat) keeps 8; Medium, High and Extreme get more
+// room before the last step (no tools, answer with what he has). The "where we are" note keeps a long job on track.
+export const STEPS_BY_EFFORT = { low: 8, medium: 12, high: 16, extreme: 24 };
+export const loopSteps = (effort) => STEPS_BY_EFFORT[cleanEffort(effort)] || MAX_STEPS;
 // #57 stopgap (two-Bob trial, Test B); Bob's own #57 fix replaces these.
 export const MAX_CALLS_PER_REPLY = 6;
 export const REPEATS_THEN_ANSWER = 3;
@@ -281,26 +285,60 @@ export function besideOk(brain, job, lane) {
 // memory, and llama-server refused the whole request. Before each request the tool results are shortened, oldest
 // first, until the chat fits in about three quarters of the brain's memory (the rest is room for the answer).
 // The saved chat keeps them whole; only what's sent this time is shortened.
+// Item 1 (Nov 11): the instructions say where the time is; the time itself is in the note before the latest message.
+export const NOW_IN_NOTE = 'given in the note just before the latest message';
 export const CUT_NOTE = (n) => `\n(${n} more characters were cut here so the chat fits in the brain's memory. Answer from what is here if you can.)`;
-export function fitContext(messages, ctx, tools, share = 0.75) {
+// per: characters per token for this brain (item 3, Nov 11: learned from the engine's own counts; 3 is the old guess).
+export function fitContext(messages, ctx, tools, share = 0.75, per = 3) {
   if (!(Number(ctx) > 0) || !Array.isArray(messages)) return messages;
-  const size = (m) => Math.ceil(String(m.content ?? '').length / 3) + (m.images?.length || 0) * 800 + (m.tool_calls ? Math.ceil(JSON.stringify(m.tool_calls).length / 3) : 0) + 8;
-  const budget = Math.floor(ctx * share) - (tools ? Math.ceil(JSON.stringify(tools).length / 3) : 0);
+  if (!(Number(per) > 0)) per = 3;
+  const size = (m) => Math.ceil(String(m.content ?? '').length / per) + (m.images?.length || 0) * 800 + (m.tool_calls ? Math.ceil(JSON.stringify(m.tool_calls).length / per) : 0) + 8;
+  const budget = Math.floor(ctx * share) - (tools ? Math.ceil(JSON.stringify(tools).length / per) : 0);
   let total = messages.reduce((a, m) => a + size(m), 0);
   if (total <= budget) return messages;
   const out = messages.slice();
   const tool = out.map((m, i) => (m.role === 'tool' ? i : -1)).filter((i) => i >= 0);
+  const lastAsk = [...messages].reverse().find((m) => m.role === 'user');
+  const ask = String(lastAsk?.text ?? lastAsk?.content ?? '');
   for (const keep of [1500, 400, 120]) {
     for (const i of tool) {
       if (total <= budget) return out;
       const c = String(out[i].content ?? '');
       if (c.length <= keep + 200) continue;
       total -= size(out[i]);
-      out[i] = { ...out[i], content: c.slice(0, keep) + CUT_NOTE(c.length - keep) };
+      out[i] = { ...out[i], content: cutKeeping(c, keep, ask) };
       total += size(out[i]);
     }
   }
   return out;
+}
+// Nov 11 (item 7): a long tool result used to keep only its top, so an answer near the bottom (the error at the end of a
+// build log, the one matching row in a big file) was cut. Now the top half of the room is the start, and the rest is the
+// lines that share words with the ask, in their order, then the note saying how much was cut.
+const ASK_SKIP = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'what', 'from', 'have', 'does', 'into', 'about', 'your', 'you', 'can', 'are', 'how', 'why', 'when', 'where', 'which', 'there', 'please', 'tell', 'show', 'find', 'look']);
+export function askWords(ask) {
+  return [...new Set(String(ask || '').toLowerCase().match(/[\p{L}\p{N}_.-]{3,}/gu) || [])].filter((w) => !ASK_SKIP.has(w)).slice(0, 24);
+}
+export function cutKeeping(text, keep, ask = '') {
+  const c = String(text ?? '');
+  if (c.length <= keep) return c;
+  const words = askWords(ask);
+  if (!words.length || keep < 200) return c.slice(0, keep) + CUT_NOTE(c.length - keep);
+  const head = c.slice(0, Math.floor(keep / 2));
+  const room = keep - head.length;
+  const rest = c.slice(head.length).split('\n');
+  const picked = [];
+  let used = 0;
+  for (const line of rest) {
+    const l = line.toLowerCase();
+    if (!words.some((w) => l.includes(w))) continue;
+    const bit = line.length > 400 ? line.slice(0, 400) + '…' : line;
+    if (used + bit.length + 1 > room) break;
+    picked.push(bit); used += bit.length + 1;
+  }
+  if (!picked.length) return c.slice(0, keep) + CUT_NOTE(c.length - keep);
+  const kept = head.length + used;
+  return `${head}\n(…lines further on that match the ask:)\n${picked.join('\n')}${CUT_NOTE(Math.max(0, c.length - kept))}`;
 }
 export const TOO_LONG = /exceeds? the available context|context (size|length|window) (exceeded|is too)|maximum context length|too many tokens/i;
 
@@ -382,6 +420,11 @@ const CANT_NUDGE = 'You now have every tool you can use on this PC. If one of th
 const EMPTY_NUDGE = 'Your last reply was empty. You now have every tool you can use on this PC. Do what was asked: call the right tool now (for a picture, make_image), or answer in words.';
 export const EMPTY_NOTE = 'Bob didn\'t answer that one. Send it again, or put it another way.';
 const MAX_HISTORY = 40;
+// Nov 11 (item 4): how many messages Bob reads back each turn, by how much his chat brain holds. 40 was the same for a
+// brain that holds 8K words and one that holds 128K; now a big-memory brain keeps more of the chat word for word
+// (about one message per 800 tokens of its memory, 40 at least, 240 at most). fitContext still trims if a chat overflows.
+export const HISTORY_PER = 800, HISTORY_MAX = 240;
+export const historyKeep = (ctx) => Math.min(HISTORY_MAX, Math.max(MAX_HISTORY, Math.floor((Number(ctx) || 0) / HISTORY_PER)));
 const MORE_SECONDS = 10; // how long "Make another picture?" waits
 const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -785,19 +828,21 @@ export class Brain {
 
   saveSession(id) {
     const msgs = stampMessages(this.session(id));
-    // Bob reads the last 40 messages every turn. Older ones move to the chat's older file (word for word)
+    // Bob reads the last 40 messages every turn (more for a big-memory brain: historyKeep). Older ones move to the chat's older file (word for word)
     // and the housekeeper sums them up when Bob is idle; they used to be dropped without a trace.
     const dropped = [];
     const lastUser = msgs.map((m) => m.role).lastIndexOf('user');
-    if (lastUser >= 0 && msgs.length - lastUser > MAX_HISTORY) {
+    let brainCtxNow = 0; try { brainCtxNow = Number(chatBrain(this.cfg)?.ctx) || 0; } catch {}
+    const keep = historyKeep(brainCtxNow);
+    if (lastUser >= 0 && msgs.length - lastUser > keep) {
       // One turn longer than the whole window (a runaway tool loop): trimming from the front would drop the
       // question too and leave an empty chat. Keep the question and what was said; the tool steps go to the older file.
       const turn = msgs.slice(lastUser + 1);
-      const said = turn.filter((m) => m.role === 'assistant' && !m.tool_calls?.length && (String(m.content || '').trim() || m.media?.length || m.correction)).slice(-(MAX_HISTORY - 1));
+      const said = turn.filter((m) => m.role === 'assistant' && !m.tool_calls?.length && (String(m.content || '').trim() || m.media?.length || m.correction)).slice(-(keep - 1));
       dropped.push(...msgs.slice(0, lastUser), ...turn.filter((m) => !said.includes(m)));
       msgs.splice(0, msgs.length, msgs[lastUser], ...said);
     }
-    while (msgs.length > MAX_HISTORY) dropped.push(msgs.shift());
+    while (msgs.length > keep) dropped.push(msgs.shift());
     while (msgs.length && msgs[0].role !== 'user') dropped.push(msgs.shift()); // never start mid tool-call
     if (dropped.length) { try { keepOlder(this.cfg, id, dropped); } catch {} }
     for (const m of msgs) delete m.images; // pictures stay on the shelf; Bob keeps the description
@@ -956,13 +1001,14 @@ export class Brain {
     // 1.5.53: while a "Bob's thinking" window is open, his thinking streams to it, a few times a second (never saved).
     const mind = emit && this.mindWatchers?.() ? thinkStream(emit, who, opts.model) : null;
     if (mind) opts = { ...opts, onThink: mind.push };
-    const fitted = fitContext(opts.messages, opts.ctx, opts.tools);
+    const per = this.engine?.charsPerToken?.(opts.model) || 3; // item 3: the brain's own figure once known
+    const fitted = fitContext(opts.messages, opts.ctx, opts.tools, 0.75, per);
     if (fitted !== opts.messages) { this.log('chat', `shortened tool results so the chat fits in ${opts.model}'s memory (${opts.ctx} tokens)`); opts = { ...opts, messages: fitted }; }
     try { return await this.chatRetry(opts, { emit, who }); }
     catch (e) {
       // Still too long (the guess at token counts was low): once more, with every tool result cut harder.
       if (opts.signal?.aborted || !TOO_LONG.test(String(e?.message)) || !(Number(opts.ctx) > 0)) throw e;
-      const tighter = fitContext(opts.messages, opts.ctx, opts.tools, 0.4);
+      const tighter = fitContext(opts.messages, opts.ctx, opts.tools, 0.4, per);
       if (tighter === opts.messages) throw e;
       this.log('chat', `the brain said the chat was too long (${String(e.message).slice(0, 120)}); cut the tool results harder and asked again`);
       return await this.chatRetry({ ...opts, messages: tighter }, { emit, who });
@@ -2363,16 +2409,17 @@ export class Brain {
 
     // Nov 11 (loop-help.js): what the brain sees each step: old results as one line once the chat is long, and on a
     // long job a short "where we are" note last. The last step has no tools, so he answers instead of running out.
+    const maxSteps = this.plainLoop || job?.guest ? MAX_STEPS : loopSteps(job?.effort);
     const loopView = (list, step) => {
       if (this.plainLoop) return list;
       const { list: out, tidied } = tidyOld(list, turnStart, brainCtx);
       if (tidied && !ctx.tidySaid) { ctx.tidySaid = true; this.log('chat', `the chat is long: ${tidied} older tool results set aside as one line each`); }
       const who = this.cfg.userName || 'the user';
-      const note = ctx.lastRound ? LAST_ROUND_NOTE(who) : onTrackNote({ ask: text, turn: out.slice(turnStart), step, max: MAX_STEPS, who });
+      const note = ctx.lastRound ? LAST_ROUND_NOTE(who) : onTrackNote({ ask: text, turn: out.slice(turnStart), step, max: maxSteps, who });
       return note ? [...out, { role: 'system', content: note }] : out;
     };
-    for (let step = 0; step < MAX_STEPS; step++) {
-      if (step === MAX_STEPS - 1 && !this.plainLoop && !ctx.noTools && msgs.slice(turnStart).some((m) => m.role === 'tool')) { ctx.noTools = true; ctx.lastRound = true; this.log('tool', 'the last step: no more tools, so he answers with what he has'); }
+    for (let step = 0; step < maxSteps; step++) {
+      if (step === maxSteps - 1 && !this.plainLoop && !ctx.noTools && msgs.slice(turnStart).some((m) => m.role === 'tool')) { ctx.noTools = true; ctx.lastRound = true; this.log('tool', 'the last step: no more tools, so he answers with what he has'); }
       const tools = ctx.noTools ? [] : guestTools(job, this.withWatchTools(this.frontDeskTools(ctx.loaded), job)); // #57 stopgap: after repeats, answer
       // The big brain reads notes passed along to it at the start of each step, and its chat says so.
       if (!job?.side) this.readNotes(ctx, msgs);
@@ -2386,16 +2433,20 @@ export class Brain {
       ctx.retrying = false;
       const pub = Boolean(job?.guest?.public); // Bob on Discord: no memory, about-me or backstory of the owner's
       const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: this.now(), memory: pub ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: pub ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
+      // Nov 11 (item 1): what changes every turn (the time, the Right now line, recalled bits) goes in a short note just
+      // before the latest message, not in the instructions. The time changed every minute and the RAM line every turn,
+      // so the engine threw away the whole chat it had already read and read it again; now it keeps it (its prompt cache).
+      const steadySys = { role: 'system', content: this.withLimits(systemPrompt({ now: NOW_IN_NOTE, memory: pub ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: pub ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) };
+      const turnNote = `Current date and time for ${pub ? 'the owner' : this.cfg.userName || 'the user'}: ${this.now()}.${extras}${earlier ? `\n\n${earlier}` : ''}`;
       let reply = null;
       // A lender keeps the start of the chat it read last time (its prompt cache), so what changes every turn (the time,
       // the Right now line, recalled bits) goes in a short note just before the latest message, not in the instructions.
       let lentMsgs = null, lentSize = 0;
       if (borrowing) {
-        const who = this.cfg.userName || 'the user';
-        const lentSys = { role: 'system', content: this.withLimits(systemPrompt({ now: 'given in the note just before the latest message', memory: pub ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: pub ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, who) }), ctx.loaded) };
+        const lentSys = steadySys;
         const hist = loopView(staleHandErrors(msgs, turnStart), step);
         const at = hist.findLastIndex((m) => m.role === 'user');
-        const note = { role: 'system', content: `Current date and time for ${who}: ${this.now()}.${extras}${earlier ? `\n\n${earlier}` : ''}` };
+        const note = { role: 'system', content: turnNote };
         lentMsgs = at < 0 ? [lentSys, ...hist, note] : [lentSys, ...hist.slice(0, at), note, ...hist.slice(at)];
         lentSize = roughTokens({ messages: lentMsgs, tools });
         if (!lender) {
@@ -2454,7 +2505,7 @@ export class Brain {
         model = (await this.ensureModel(model, emit, signal, 'bob', { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}) })) || model;
         this.setState('thinking', '', model);
         reply = await this.chatSafe({
-          model, messages: [sys, ...meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')], tools, signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
+          model, messages: this.plainLoop ? [sys, ...meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')] : [steadySys, ...meanwhileNear(meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), turnNote), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')], tools, signal, cpu, think, ctx: brainCtx, ...(beside ? { beside: true } : {}),
           ...(ctx.preset && ctx.preset.temperature !== null ? { temperature: ctx.preset.temperature } : {}), // a preset's own temperature
           onToken: (t) => emit({ type: 'token', text: t })
         }, { emit });
@@ -2638,6 +2689,7 @@ export class Brain {
       if (ctx.repeatStop) {
         // #57: the third identical call: stop plainly instead of using up the steps.
         emit({ type: 'token', text: `\n\n${REPEAT_STOP_LINE}` });
+        if (!job?.guest && cleanEffort(job?.effort) !== 'high' && cleanEffort(job?.effort) !== 'extreme') emit({ type: 'stuck' }); // item 8: Try again, thinking harder
         msgs.push({ role: 'assistant', content: REPEAT_STOP_LINE });
         this.keepGroups(sessionId, used);
         return;
