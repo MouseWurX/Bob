@@ -35,6 +35,9 @@ const s2 = emptyScores(); addTrace(s2, { ...trace(), layers: [null, ...trace().l
 check('a layer with no router stays all on', keepLists(s2, 0.5)[0] === null && keepLists(s2, 0.5)[1].length === 4);
 const s3 = emptyScores(); const t3 = trace(); delete t3.mass; addTrace(s3, t3);
 check('no mass from the engine: falls back to counts', s3.hasMass === false && priority(s3, 'mass')[0][0] === 0);
+{ const s4 = emptyScores();
+  const ok = addTrace(s4, { kind: 'experts', n_expert: 4, n_expert_used: 2, rows: [{ t: 'a', e: [[0, 1], null] }, { t: 'b', e: [[1, 3], [2, 3]] }] });
+  check('an engine without the mass patch that sends only per-word rows still counts picks', ok && JSON.stringify(s4.layers) === '[[1,2,0,1],[0,0,1,1]]' && s4.hasMass === false && s4.tokens === 2, JSON.stringify(s4.layers)); }
 const steps = [{ share: 1, pct: 70 }, { share: 0.75, pct: 69 }, { share: 0.5, pct: 68.5 }, { share: 0.35, pct: 60 }];
 check('smallest share within the margin', smallestGood(steps, 2).share === 0.5);
 check('a tighter margin keeps more', smallestGood(steps, 1).share === 0.75);

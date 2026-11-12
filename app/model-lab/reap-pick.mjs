@@ -8,7 +8,10 @@ export function emptyScores() { return { experts: 0, used: 0, layers: [], mass: 
 // Adds one answer's expert_trace (Brain Engine 0002 plus the mass patch). A trace without mass still counts picks.
 export function addTrace(s, tr) {
   if (!tr || tr.kind && tr.kind !== 'experts') return false;
-  const E = Number(tr.n_expert) || s.experts, layers = tr.layers;
+  let layers = tr.layers;
+  // 12 Nov: older engines (no expert-mass patch) may send only the per-word rows ({t, e: [[ids] per layer]}): count those
+  if (!Array.isArray(layers) && Array.isArray(tr.rows)) layers = countRows(tr.rows, Number(tr.n_expert) || s.experts);
+  const E = Number(tr.n_expert) || s.experts || (layers ? Math.max(0, ...layers.map((r) => (Array.isArray(r) ? r.length : 0))) : 0);
   if (!E || !Array.isArray(layers)) return false;
   s.experts = E; s.used = Number(tr.n_expert_used) || s.used;
   if (!Array.isArray(tr.mass)) s.hasMass = false;
@@ -22,6 +25,16 @@ export function addTrace(s, tr) {
   });
   s.lessons++; s.tokens += Array.isArray(tr.rows) ? tr.rows.length : 0;
   return true;
+}
+
+// Per-layer pick counts from a trace's per-word rows: rows[i].e[l] = the experts word i went to in layer l.
+export function countRows(rows, E = 0) {
+  const n = E || 1 + Math.max(-1, ...rows.flatMap((r) => (r?.e || []).flatMap((ids) => (Array.isArray(ids) ? ids : []))));
+  const L = Math.max(0, ...rows.map((r) => (Array.isArray(r?.e) ? r.e.length : 0)));
+  if (!n || !L) return null;
+  const out = Array.from({ length: L }, () => null);
+  for (const r of rows) (r?.e || []).forEach((ids, l) => { if (!Array.isArray(ids)) return; out[l] ||= new Array(n).fill(0); for (const id of ids) if (id >= 0 && id < n) out[l][id]++; });
+  return out;
 }
 
 // One score per expert per layer. mass = its whole push over the lessons (busy and strong both count);
