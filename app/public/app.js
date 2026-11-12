@@ -7,6 +7,7 @@ import { startI18n, followSaved } from './i18n.js';
 startI18n();
 import { startSwap, sceneLabel } from './brain-swap.js';
 import { createVoice } from './voice.js';
+import { createTalk } from './talk.js'; // 🗣 Talk with Bob (1.5.210, off unless turned on)
 import { createReader } from './read-aloud.js'; // Read documents aloud (item 136, off unless turned on)
 import { createCellar } from './cellar.js';
 import { watchLock } from './lock-settings.js';
@@ -363,10 +364,12 @@ let ownVoice = false;
 const sayQueue = []; // [{ text, bob }]
 let saying = false;
 let stopSaying = null; // stops the clip playing now
-const voiceNet = { talkOver: false, netVoices: false };
+const voiceNet = { talkOver: false, netVoices: false, talk: false, talkWay: 'own' };
+let talk = null; // 🗣 Talk with Bob (public/talk.js)
 let reader = null; // Read documents aloud (public/read-aloud.js)
-async function readVoiceNet() { try { const s = await (await fetch('/api/settings')).json(); voiceNet.talkOver = s.talkOver === true; voiceNet.netVoices = s.netVoices === true; reader?.setOn(s.readDocs === true); } catch {} }
+async function readVoiceNet() { try { const s = await (await fetch('/api/settings')).json(); voiceNet.talkOver = s.talkOver === true; voiceNet.netVoices = s.netVoices === true; voiceNet.talk = s.talkWithBob === true; voiceNet.talkWay = s.talkWay || 'own'; reader?.setOn(s.readDocs === true); syncTalk(); } catch {} }
 window.addEventListener('focus', readVoiceNet);
+window.addEventListener('bob-voice-net', readVoiceNet);
 // A pitch from a Bob's name, for this computer's own voices (Bob's own Kokoro voice gets a whole other voice instead).
 function pitchFor(name) { let h = 2166136261; for (const c of String(name || '').toLowerCase()) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; } return name ? [0.8, 0.88, 0.95, 1.08, 1.16, 1.25][h % 6] : 1; }
 function talking(on) { try { voice?.speaking(on); } catch {} }
@@ -411,6 +414,7 @@ function browserSpeak(text, bob = '') {
 // Read aloud skips stage directions like *yawns* and just says the words.
 const sayAside = (t) => String(t).replace(/\*[^*]+\*\s*/g, '').trim();
 function speak(text, bob = '') {
+  if (text && talk?.open) { talk.say(text); return; } // in a talk, everything he says goes through it, short
   if (!speakOn || !text) return;
   if (ownVoice) { sayQueue.push({ text, bob }); sayNext(); } else browserSpeak(text, bob);
 }
@@ -747,6 +751,7 @@ function onEvent(ev) {
     }
     case 'busy-note': // 1.5.37: your message waits behind a picture, song or clip; Bob says so at once
       note(ev.text, 'announce');
+      talk?.say(ev.text); // in a talk, he says it too
       scrollDown();
       return;
     case 'reply-break': // Answer messages mid-job: the job's next words go in a new bubble, under the quick reply
@@ -1014,7 +1019,9 @@ function onEvent(ev) {
       setBusy(running.size > 0);
       if (rep?.media?.length) life.react('proud'); else if (finished) life.react('done');
       const by = borrowedBy.get(ev.turnId) || ''; borrowedBy.delete(ev.turnId);
-      if (finished) { speak(finished, by); if (aside) speak(sayAside(aside)); ping('Bob replied', finished.slice(0, 120)); }
+      if (talk?.open) talk.say(finished || '', { answer: true }); // 🗣 Talk with Bob: the short version, aloud
+      else if (finished) { speak(finished, by); if (aside) speak(sayAside(aside)); }
+      if (finished) ping('Bob replied', finished.slice(0, 120));
       break;
     }
   }
@@ -1622,6 +1629,51 @@ const voice = createVoice({
   onBarge: () => { hush(); statusEl.textContent = 'Listening...'; }
 });
 reader = createReader({ hush, ownVoice: () => ownVoice, onTalk: (on) => talking(on) });
+
+// 🗣 Talk with Bob (1.5.210; Settings, Voice details, off unless turned on): a live, hands-free talk. What you say goes
+// in as an ordinary message and the reply comes back short, out loud; the brain is told nothing about it.
+let canHear = false;
+const talkBtn = $('talkBtn');
+function syncTalk() { if (talkBtn) talkBtn.hidden = !(voiceNet.talk && (canHear || voiceNet.talkWay === 'xai')); if (talkBtn?.hidden && talk?.open) talk.end(); }
+function sayInWindow(text) {
+  return new Promise((res) => {
+    if (!('speechSynthesis' in window)) return res();
+    const u = new SpeechSynthesisUtterance(text);
+    const all = speechSynthesis.getVoices();
+    const v = (winVoiceName && all.find((x) => x.name === winVoiceName)) || all.find((x) => /en-(CA|US|GB)/.test(x.lang) && /male|david|guy|george|ryan/i.test(x.name));
+    if (v) u.voice = v;
+    u.onend = res; u.onerror = res;
+    speechSynthesis.speak(u);
+  });
+}
+talk = createTalk({
+  bar: $('talkBar'), button: talkBtn,
+  hear: async (wav) => {
+    const r = await fetch('/api/talk/hear', { method: 'POST', headers: { 'content-type': 'audio/wav', 'x-bob': '1' }, body: wav });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'I couldn\'t hear that.');
+    return j;
+  },
+  say: async (text) => {
+    const r = await fetch('/api/talk/say', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ text }) });
+    if (!r.ok) throw new Error('no voice');
+    return { blob: await r.blob(), fellBack: r.headers.get('x-bob-fell-back') === '1' };
+  },
+  fallbackSay: sayInWindow,
+  send: (text) => {
+    const draft = input.value; // what you were typing stays in the box
+    input.value = text;
+    $('composer').requestSubmit();
+    input.value = draft;
+    return true;
+  },
+  onOpen: (on) => {
+    hush(); // no reading aloud on top of the talk
+    if (wakeOn) voice.setWake(!on).catch(() => {}); // the "Hey Bob" listener rests while you talk
+    life.react(on ? 'heard' : 'done');
+  },
+  note: (msg, kind) => note(msg, kind)
+});
 readVoiceNet();
 micBtn.onclick = () => voice.push().catch((e) => note('I can\'t use the microphone: ' + e.message, 'error'));
 const syncEar = () => setToggle(earBtn, wakeOn, wakeOn ? 'Listening for "Hey Bob" (click to stop)' : 'Listen for "Hey Bob" while this window is open');
@@ -1640,6 +1692,7 @@ async function applyCaps() {
   try {
     const c = await (await fetch('/api/capabilities')).json();
     ownVoice = Boolean(c.voice);
+    canHear = Boolean(c.hearing); syncTalk();
     $('mic').hidden = !c.hearing;
     $('ear').hidden = !c.hearing;
     if (!c.hearing && wakeOn) { voice.setWake(false); }

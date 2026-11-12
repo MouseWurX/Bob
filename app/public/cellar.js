@@ -1101,6 +1101,20 @@ export function createCellar({ popOut = null } = {}) {
     return `<div class="net-voices">${names.map((n) => `<label class="pick-inline"><span>${esc(n)}</span><select data-netvoice="${esc(n)}" aria-label="Voice for ${esc(n)}"><option value="auto">Bob picks one from his name</option>${(settings.kokoroVoices || []).map(([id, label]) => `<option value="${esc(id)}" ${map[n] === id ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>`).join('')}</div>`;
   }
 
+  // 🗣 Talk with Bob's online extra (src/talk.js): xAI's hearing and voice, off unless picked. Always shown.
+  function talkCloudHtml() {
+    const way = settings.talkCloud === 'xai' ? 'xai' : 'off';
+    const voices = settings.xaiVoices || [['eve', 'Eve'], ['ara', 'Ara'], ['rex', 'Rex']];
+    return `<div class="talk-cloud">
+      <label class="pick-inline"><span><strong>Online hearing and voice</strong> ${tip('Off unless you pick xAI. xAI\'s hearing and voice for Talk with Bob, instead of mine. It needs your own xAI key, which xAI charges for, and it sends your voice and my words to xAI over the internet. My thinking, memory and tools stay right here. If xAI doesn\'t answer, I carry on with my own hearing and voice.', 'Online hearing and voice')}</span>
+        <select data-talkset="talkCloud" aria-label="Online hearing and voice"><option value="off" ${way === 'off' ? 'selected' : ''}>Off: my own, on this replicant matrix</option><option value="xai" ${way === 'xai' ? 'selected' : ''}>xAI (online, needs a paid key)</option></select></label>
+      <label class="pick-inline"><span><strong>xAI voice</strong></span><select data-talkset="talkCloudVoice" aria-label="xAI voice">${voices.map(([id, name]) => `<option value="${esc(id)}" ${settings.talkCloudVoice === id ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></label>
+      <div class="row wrap"><label class="pick-inline"><span><strong>xAI key</strong> <span class="muted">${settings.talkKeyFound ? 'saved, locked away' : 'none yet'}</span></span><input type="password" data-talkkey autocomplete="off" spellcheck="false" placeholder="${settings.talkKeyFound ? 'Paste a new key to replace it' : 'Paste your xAI key'}" aria-label="xAI key"></label>
+        <button type="button" class="mini" data-talkkeysave>Save key</button>${settings.talkKeyFound ? '<button type="button" class="mini link" data-talkkeyforget>Forget the key</button>' : ''}</div>
+      ${way === 'xai' && !settings.talkKeyFound ? '<p class="muted">xAI is picked but there\'s no key yet, so I use my own hearing and voice.</p>' : ''}
+    </div>`;
+  }
+
   function voiceDetailsHtml() {
     const pressed = (id) => document.getElementById(id)?.getAttribute('aria-pressed') === 'true';
     const prox = (id, label, note) => `<label class="switch"><input type="checkbox" data-proxy="${id}" ${pressed(id) ? 'checked' : ''}><span><strong>${label}</strong> ${tip(note, label)}</span></label>`;
@@ -1108,6 +1122,8 @@ export function createCellar({ popOut = null } = {}) {
       ${prox('ear', 'Listen for "Hey Bob"', 'Only while this window is open. Same as Listen in the left menu.')}
       ${prox('speak', 'Read replies aloud', 'Same as Read aloud in the left menu.')}
       ${sswitch('talkOver', settings.talkOver === true, 'Talk over Bob', 'Off unless you turn it on. While Bob reads aloud, the microphone stays open: start speaking and he stops and listens. "Stop" on its own just stops him; anything else is sent as your next message. Headphones work best, so he doesn\'t hear himself. Only while this window is open.')}
+      ${sswitch('talkWithBob', settings.talkWithBob === true, 'Talk with Bob', 'Off unless you turn it on. Adds 🗣 next to the 🎙: press it and just talk, hands-free. Each time you pause, what you said goes to Bob, and he says a short answer out loud (the whole answer is in the chat). Talk while he speaks and he stops and listens. Say "goodbye" or press ✕ to end. Uses my own hearing and voice, here, for free.')}
+      ${talkCloudHtml()}
       ${sswitch('readDocs', settings.readDocs === true, 'Read documents aloud', 'Off unless you turn it on. A document in the side panel gets 🔊 Read aloud: Play, Pause, Back, Next and a speed, in Bob\'s voice (or this computer\'s voice). He remembers where you stopped in each document, on this computer.')}
       ${sswitch('netVoices', settings.netVoices === true, 'A voice per Bob', 'Off unless you turn it on. A reply another of your Bobs thought (a borrowed brain) is read aloud in his own voice, so you can hear who\'s talking. Pick each Bob\'s voice below, or leave it to Bob, who picks one from his name. Needs the Kokoro voice; with another voice every Bob sounds the same.')}
       ${netVoicesHtml()}
@@ -1173,7 +1189,7 @@ export function createCellar({ popOut = null } = {}) {
       ${sswitch('allTools', settings.allTools, 'Give Bob all his tools at once', 'Sends every tool with each message, which leaves less room for the chat. Leave off to keep chats light.')}`],
     ['house', '🖋 House style', 'house style defaults default length mood genre music picture style shape clip video sound effects morning time evening night times of day', () => `<p class="muted">Your defaults for music, pictures, clips, sound effects and times of day live on Equip Bob, next to each slot.</p><button type="button" data-gohouse>Open House style on Equip Bob</button>`],
     ['presets', '🎭 Assistant presets', 'assistant presets preset per chat instructions system prompt persona character role brain effort temperature tools talking only', () => '<div class="presets-box"></div>'],
-    ['voice', '🔊 Voice details', 'kokoro chatterbox speed hey bob read aloud listen talk over interrupt stop barge in read documents aloud a voice per bob voices bob-net', () => voiceDetailsHtml()],
+    ['voice', '🔊 Voice details', 'kokoro chatterbox speed hey bob read aloud listen talk over interrupt stop barge in talk with bob hands-free hands free conversation xai grok online voice read documents aloud a voice per bob voices bob-net', () => voiceDetailsHtml()],
     ['look', '🌓 Look & feel', 'theme editor now running layout', () => lookExtrasHtml()],
     ['speed', '⚡ Speed & memory', 'speed memory free memory quiet keep alive unload idle graphics card quick answers processor pictures without waiting ready while you type games go first picture settings gaming graphics card borrow automatic never always remember only what fits memory banks recall speed test engine extras guess ahead copying load the next brain early laptop mode battery new graphics card speed history chart', () => speedMemoryHtml()],
     ['engines', '⚙ Engines', 'engine engines brain engine lab engine gear update updates go back remove check all ollama llama.cpp downloads newer build tested build fit to free graphics memory speculative decoding draft flags threads batch tell me what engine updates change plain words', () => enginesHtml()],
@@ -1552,6 +1568,16 @@ export function createCellar({ popOut = null } = {}) {
     try {
       if ((tab === 'style' || (tab === 'settings' && (b.dataset.motion || b.dataset.nowneed))) && mode === 'shop' && await stylePage.onClick(b, settings)) return;
       if (b.dataset.sampleEngine) { sampler.play(b); return; }
+      if ('talkkeysave' in b.dataset || 'talkkeyforget' in b.dataset) { // 🗣 Talk with Bob's xAI key, kept in the locked store
+        const box = b.closest('.talk-cloud');
+        const key = box?.querySelector('[data-talkkey]')?.value.trim() || '';
+        if ('talkkeysave' in b.dataset && !key) { flash(b, 'Paste the key first.'); return; }
+        const r = await api('/api/talk', 'talkkeyforget' in b.dataset ? { forgetXaiKey: true } : { xaiKey: key });
+        Object.assign(settings, r);
+        if (box) box.outerHTML = talkCloudHtml();
+        window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: {} }));
+        return;
+      }
       if (b.dataset.turboremove) { const r = await api('/api/settings', { speed: { turbo: { [b.dataset.turboremove]: null } } }); settings.speed = r.speed; const box = b.closest('div')?.parentElement; flash(box || b, 'Turbo removed for that brain.'); b.closest('.row')?.remove(); return; } // 1.5.16x
       if ('trainerremove' in b.dataset) { // 1.5.167: in-page confirm, same words as the Lab's Teach it page
         const p = b.parentElement; if (p.querySelector('[data-trainerremovego]')) return;
@@ -2143,6 +2169,17 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.set === 'model3d') { const r = await api('/api/settings', { model3d: el.checked }); settings.model3d = r.model3d; settings.model3dHere = r.model3dHere; el.checked = r.model3d; flash(el, r.model3d ? (r.model3dHere ? 'On. Ask Bob for a 3D model of anything.' : 'On. Bob needs the 3D workshop too: he offers it the first time you ask.') : 'Off. Bob doesn\'t make 3D models from pictures.'); return; }
       if (el.dataset.set === 'parts3d') { const r = await api('/api/settings', { parts3d: el.checked }); settings.parts3d = r.parts3d; settings.openscadHere = r.openscadHere; el.checked = r.parts3d; flash(el, r.parts3d ? (r.openscadHere ? 'On. Ask Bob for a part and he makes it.' : 'On. Bob needs OpenSCAD too: he offers it the first time you ask for a part.') : 'Off. Bob doesn\'t make 3D parts.'); return; }
       if (el.dataset.set === 'sandboxCode') { const r = await api('/api/settings', { sandboxCode: el.checked }); settings.sandboxCode = r.sandboxCode; el.checked = r.sandboxCode; flash(el, r.sandboxWhy || (r.sandboxCode ? (r.sandboxNet ? 'On. Bob works sums out in the sandbox, with the internet switched off.' : 'On. Bob works sums out in the sandbox. This Bob can\'t switch the internet off by itself, so code is checked for it instead.') : 'Off. Bob works sums out in his head.')); return; }
+      // 🗣 Talk with Bob (1.5.210): its switch and online extra, saved through /api/talk.
+      if (el.dataset.set === 'talkWithBob' || el.dataset.talkset) {
+        const k = el.dataset.set || el.dataset.talkset;
+        const r = await api('/api/talk', { [k]: k === 'talkWithBob' ? el.checked : el.value });
+        Object.assign(settings, r);
+        if (k === 'talkWithBob') el.checked = r.talkWithBob === true;
+        window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: {} }));
+        flash(el, k === 'talkWithBob' ? (r.talkWithBob ? 'On. Press 🗣 next to the 🎙 to talk.' : 'Off.') : k === 'talkCloud' ? (r.talkCloud === 'xai' ? (r.talkKeyFound ? 'xAI hears and speaks in talks now. That sends your voice online.' : 'xAI picked. Paste your key below; until then I use my own.') : 'Off. My own hearing and voice.') : 'Saved.');
+        const box = el.closest('.talk-cloud'); if (box && k === 'talkCloud') box.outerHTML = talkCloudHtml();
+        return;
+      }
       // Voice, phone and Bob-Net (items 133 to 142): plain switches, off unless turned on.
       if (['talkOver', 'readDocs', 'netVoices', 'carryIn', 'phoneGlance'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k] === true; window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: { [k]: r[k] === true } })); flash(el, r[k] ? 'On.' : 'Off.'); return; }
       if (el.dataset.netvoice) { const r = await api('/api/settings', { netVoiceMap: { [el.dataset.netvoice]: el.value } }); settings.netVoiceMap = r.netVoiceMap || {}; window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: {} })); flash(el, 'Saved.'); return; }

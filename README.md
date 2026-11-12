@@ -78,7 +78,7 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 | 🎲 **Adventure table rules** | A map that grows, portraits, coins and shops, riddle rooms, Easy to Hard, and campaigns you can send to a friend. |
 | 🧪 **More Lab** | A blind taste test that ranks brains, Save to Lab from the chat, before and after Teach it, and recipe files to share. |
 | ⚡ **Engine and speed** | Load the next brain early, a speed history chart, laptop mode on battery, and a chat memory type for each brain. |
-| 🗣 **Voice and phone** | Talk over Bob while he reads aloud, have documents read aloud, and carry a chat on to another Bob. On Android: Share to Bob, a home-screen widget and hands-free. |
+| 🗣 **Voice and phone** | Talk with Bob hands-free (short spoken answers, cut in any time), talk over Bob while he reads aloud, have documents read aloud, and carry a chat on to another Bob. On Android: Share to Bob, a home-screen widget and hands-free. |
 
 Every new switch is off until you turn it on.
 

@@ -226,6 +226,7 @@ globalThis.BobHelp = {
       id: 'hands-free', title: 'Hands-free',
       html: `<p>Menu, <strong>Hands-free</strong>. A big-button page for when your hands are busy (cooking, the workshop, walking): tap <strong>🎙 Talk</strong>, say what you want, and I answer out loud, whatever Read replies aloud is set to.</p>
 <ul><li><strong>Listen again after Bob answers</strong> (on in Hands-free): when I finish talking, I listen for your next words by myself, so a whole conversation needs one tap. Turn it off to tap Talk each time.</li>
+<li><strong>Short answers out loud</strong> (off unless you turn it on): I say only the first sentence or two, then "The rest is in the chat." Same as Talk with Bob on the computer.</li>
 <li><strong>■ Stop</strong> stops me talking or thinking. <strong>🔁 Say it again</strong> repeats my last answer.</li>
 <li>Say "stop" to stop me mid-sentence (Talk over Bob works here too, if it's on).</li></ul>
 <p>Leaving the page (Back) stops the listening. Nothing new switches on.</p>`

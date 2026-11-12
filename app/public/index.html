@@ -94,8 +94,10 @@
     <span id="chatFill" class="muted chat-fill" hidden><span id="chatFillText"></span> <button id="chatFillSum" type="button" class="link mini" hidden title="Bob sums up the older part of this chat and keeps only the last few messages word for word, so the brain has room again">Sum up and carry on</button></span>
     <span id="effortHint" class="muted effort-hint" aria-live="polite"></span>
   </div>
+  <div id="talkBar" class="talk-bar" role="region" aria-label="Talk with Bob" hidden></div>
   <form id="composer" class="composer">
     <button id="mic" type="button" class="mic" title="Talk to Bob: click, speak, then pause">🎙</button>
+    <button id="talkBtn" type="button" class="mic talk-btn" title="Talk with Bob: a hands-free talk. Just talk, and he answers out loud" aria-label="Talk with Bob" aria-pressed="false" hidden>🗣</button>
     <button id="attach" type="button" class="mic" title="Attach a picture (or paste or drop one)">📎</button>
     <input id="attachFile" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
     <textarea id="input" rows="2" placeholder="Tell Bob what you need..." autocomplete="off"></textarea>

@@ -179,6 +179,26 @@ textarea {
 @keyframes pulse { 50% { opacity: .6; } }
 body.still .mic.on { animation: none; }
 
+/* 🗣 Talk with Bob (1.5.210, public/talk.js): a bar above the message box while a hands-free talk is open. The dot
+   breathes while he listens, ripples while he talks and spins slowly while he thinks; still with reduced motion. */
+.talk-btn[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.talk-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 14px; background: var(--panel); border-top: 1px solid var(--line, rgba(127,127,127,.3)); }
+.talk-bar[hidden] { display: none; }
+.talk-dot { width: 22px; height: 22px; flex: none; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 var(--accent); }
+.talk-bar[data-state="listening"] .talk-dot { animation: talk-breathe 2.4s ease-in-out infinite; }
+.talk-bar[data-state="talking"] .talk-dot { animation: talk-ripple 1s ease-out infinite; }
+.talk-bar[data-state="hearing"] .talk-dot, .talk-bar[data-state="thinking"] .talk-dot, .talk-bar[data-state="working"] .talk-dot { background: conic-gradient(var(--accent) 0 70%, transparent 70%); animation: talk-spin 1.6s linear infinite; }
+.talk-bar[data-state="paused"] .talk-dot, .talk-bar[data-state="starting"] .talk-dot { opacity: .45; }
+.talk-words { display: flex; flex-direction: column; min-width: 0; flex: 1 1 200px; }
+.talk-said { overflow-wrap: anywhere; }
+.talk-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+.talk-buttons button { min-height: 36px; }
+@keyframes talk-breathe { 50% { transform: scale(.8); opacity: .7; } }
+@keyframes talk-ripple { 0% { box-shadow: 0 0 0 0 var(--accent); } 100% { box-shadow: 0 0 0 10px transparent; } }
+@keyframes talk-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .talk-bar .talk-dot { animation: none !important; } }
+body.still .talk-bar .talk-dot { animation: none !important; }
+
 .chips { display: flex; gap: 6px; padding: 8px 14px 0; overflow-x: auto; background: var(--panel); }
 .chips button { white-space: nowrap; padding: 4px 10px; font-size: 13px; border-radius: 999px; color: var(--muted); }
 .chips button:hover { color: var(--text); border-color: var(--accent); }
