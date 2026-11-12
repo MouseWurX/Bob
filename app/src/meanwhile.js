@@ -47,13 +47,14 @@ export class JobWatch {
   think(job, text) { const w = this.for(job); if (!w) return; w.thinking = (w.thinking + String(text || '')).slice(-THINK_KEEP); }
 
   // pass_note: a note for the big brain. Returns { ok } or { error }.
-  note(text, { now = Date.now() } = {}) {
+  // direct: typed in the job's own chat (Settings, Jobs, Steer him mid-job), not passed along by the Quick brain.
+  note(text, { now = Date.now(), direct = false } = {}) {
     const w = this.job;
     if (!w) return { error: 'No job is running on the big brain right now, so there is nobody to pass a note to.' };
     const t = clip(text, NOTE_MAX);
     if (!t) return { error: 'The note is empty.' };
     if (w.notes.length >= NOTES_MAX) return { error: `${NOTES_MAX} notes are already waiting for the big brain's next step. Say that, and offer to pass this one along after.` };
-    w.notes.push({ text: t, at: now });
+    w.notes.push({ text: t, at: now, ...(direct ? { direct: true } : {}) });
     return { ok: true, title: w.title };
   }
   // The big brain's next step takes the notes waiting for it (each once).
@@ -88,7 +89,7 @@ export function jobDetail(w, { thinkingOn = false, now = Date.now() } = {}) {
 }
 
 // 3. How a note reaches the big brain at its next step.
-export const noteForBig = (notes, who) => `${notes.length === 1 ? 'A note' : 'Notes'} from ${who}, passed along by your Quick brain while you work:\n${notes.map((n) => `- "${n.text}"`).join('\n')}\nTake it into account from this step on. A note is not an order to stop: only ${who} stops or pauses a job, with the Stop button.`;
+export const noteForBig = (notes, who) => `${notes.length === 1 ? 'A note' : 'Notes'} from ${who}, ${notes.every((n) => n.direct) ? 'typed in the chat' : 'passed along by your Quick brain'} while you work:\n${notes.map((n) => `- "${n.text}"`).join('\n')}\nTake it into account from this step on. A note is not an order to stop: only ${who} stops or pauses a job, with the Stop button.`;
 // The job gave its answer before its next step: the note goes in once more, and the big brain says what changes.
 export const noteAfterAnswer = (notes, who) => `${noteForBig(notes, who)}\nYour answer above is already shown to ${who}. If the note changes it, do or say what changes now; if not, say in one line that you saw it.`;
 // The job ended (stopped, failed, or a second note came after the last step) with a note nobody read.
