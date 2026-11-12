@@ -1,0 +1,79 @@
+{
+  "run": "riker-experts",
+  "note": "12 Nov: Riker (28Bob) Q4 at 8, 9, 10, 11, 12 and 13 experts per word, same card, same two tests as bench-three-bobs (the owner asked for it on 11 Nov; the home run was stopped after 8 to free the PC). The same file is served six times with --override-kv qwen35moe.expert_used_count=int:N. No teacher, no lessons, no drive. Cheapest 48 GB cards first. About 3 h on an A40, about $2; caps 4 h / $6. Speeds are the card's own (server timings), so they compare across counts but not with the owner's 5070 Ti.",
+  "benchmark_only": true,
+  "teacher": "Qwen/Qwen3.6-35B-A3B",
+  "counts": "expert-counts-2026-11-04T23-23-19.json",
+  "lessons": "out/lessons",
+  "gpus": [
+    "NVIDIA A40",
+    "NVIDIA RTX A6000",
+    "NVIDIA L40S",
+    "NVIDIA RTX 6000 Ada Generation"
+  ],
+  "step_up": [
+    "NVIDIA A100 80GB PCIe",
+    "NVIDIA H100 80GB HBM3"
+  ],
+  "step_up_note": "a benchmark only: any card with room for a 20 GB file will do, the list is cheapest first",
+  "volume_wait_minutes": 15,
+  "disk_gb": 140,
+  "general_tokens": 0,
+  "rungs": [],
+  "hours_max": 4,
+  "dollars_max": 6,
+  "rent_minutes": 60,
+  "download_quants": [],
+  "benchmark": {
+    "note": "same two tests as bench-three-bobs; benchmark_only takes hf: files only, so each count downloads Riker again (about 2 min each, 17.5 GB; six copies fit the 140 GB disk)",
+    "hours_each": 0.75,
+    "models": [
+      {
+        "name": "28Bob-e8",
+        "nickname": "Riker",
+        "file": "hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf",
+        "quant": "Q4_K_M",
+        "extra": "--override-kv qwen35moe.expert_used_count=int:8"
+      },
+      {
+        "name": "28Bob-e9",
+        "nickname": "Riker",
+        "file": "hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf",
+        "quant": "Q4_K_M",
+        "extra": "--override-kv qwen35moe.expert_used_count=int:9"
+      },
+      {
+        "name": "28Bob-e10",
+        "nickname": "Riker",
+        "file": "hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf",
+        "quant": "Q4_K_M",
+        "extra": "--override-kv qwen35moe.expert_used_count=int:10"
+      },
+      {
+        "name": "28Bob-e11",
+        "nickname": "Riker",
+        "file": "hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf",
+        "quant": "Q4_K_M",
+        "extra": "--override-kv qwen35moe.expert_used_count=int:11"
+      },
+      {
+        "name": "28Bob-e12",
+        "nickname": "Riker",
+        "file": "hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf",
+        "quant": "Q4_K_M",
+        "extra": "--override-kv qwen35moe.expert_used_count=int:12"
+      },
+      {
+        "name": "28Bob-e13",
+        "nickname": "Riker",
+        "file": "hf:MouseWurX/28Bob-Riker:28Bob-Q4_K_M.gguf",
+        "quant": "Q4_K_M",
+        "extra": "--override-kv qwen35moe.expert_used_count=int:13"
+      }
+    ],
+    "commands": [
+      "node experts-test.mjs --url {{url}} --counts 8 --out {{out}}",
+      "node tool-score.mjs --url {{url}} --models \"{{name}}=served\" --no-think --lessons {{lessons}} --out {{out}}"
+    ]
+  }
+}
