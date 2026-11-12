@@ -62,7 +62,9 @@ fake('app_act', [new Error('Windows refused: x'), new Error('Windows refused: y'
 m = await turn('type it in notepad', [call(['app_act', { window: 'notepad', action: 'type', text: 'a' }]), call(['app_act', { window: 'notepad', action: 'type', text: 'b' }])]);
 const [r1, r2] = toolResults(m);
 check('after a failure Bob is asked to try ONE other way and say which worked', r1.includes(ALT_ROUTE_NUDGE('Sam').trim()) && /try ONE other way now/.test(r1) && /which way worked, or say plainly that neither did/.test(r1));
-check('…and the tools for the other routes are added (documents, the Hands that are on)', seen.at(-1).names.includes('write_file') && seen.at(-1).names.includes('app_act'));
+check('…and the tools for the other routes are added (documents, the Hands that are on)', seen[1].names.includes('write_file') && seen[1].names.includes('app_act'));
+// Reliability 159: two rounds where every call failed: the next round has no tools, so he says what failed.
+check('…and after the other way fails too, no more tools', seen.length === 3 && seen[2].names.length === 0, seen.map((x) => x.names.length).join());
 check('after the second failure he is told to stop and say plainly what failed', /You already tried another way this turn\. Stop here/.test(r2) && !/try ONE other way/.test(r2));
 fake('app_look', [new Error('That window has closed.')]);
 m = await turn('look at notepad', [call(['app_look', { window: 'notepad' }])]);

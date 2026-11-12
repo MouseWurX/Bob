@@ -370,7 +370,7 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 |---|---|---|---|
 | Settings > Jobs | Steer Bob mid-job: "Type in the chat while I work on a job there, and I read it before my next step instead of after the whole job." | Off | new |
 | Settings > Jobs | Show Stop after this step: "A softer button beside Stop: the step running now finishes and keeps its result, then I tell you what I did and what's left." | Off | new |
-| Settings > Jobs | Give each job a time limit: "A bar shows the time left. When it runs out, a card asks whether to give me more; with no answer in 2 minutes I wrap up." | Off | new |
+| Settings > Jobs | Give each job a time limit: "A bar shows the time left. When it runs out, a card asks whether to give me more; with no answer in 2 minutes I wrap up." The minutes also set the always-on safety net: "This also stops any work that runs past it, switch on or off, so I never run away." | Off | new |
 | Settings > Jobs | Time limit: "5, 10, 15, 20, 30, 45 or 60 minutes" | 10 minutes | new |
 | Settings > Jobs | Show a receipt after each job: "Files changed, commands run and pages read, each with Open or Undo. Undo works for a week, while the file still holds what I wrote." | Off | new |
 | Settings > Jobs | Run the tests after code edits: "In a project with tests, I run them after changing its code and fix what fails before I say done. The command still asks you first." | Off | new |

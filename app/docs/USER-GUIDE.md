@@ -275,7 +275,7 @@ Settings, Jobs (under How Bob works) has eleven switches. Each works by itself a
 
 - **Steer Bob mid-job:** type in the chat while he works and he reads it before his next step.
 - **Show Stop after this step:** a softer Stop. The running step finishes and keeps its result, then he answers.
-- **Give each job a time limit** (5 to 60 minutes, 10 to start): a bar shows the time left, and a card asks whether to give him more.
+- **Give each job a time limit** (5 to 60 minutes, 10 to start): a bar shows the time left, and a card asks whether to give him more. The minutes are also his always-on safety net: with the switch off, any work that runs past them wraps up and says what's done.
 - **Show a receipt after each job:** files changed, commands run and pages read, with Open and Undo (Undo lasts a week).
 - **Run the tests after code edits:** npm test, cargo test, go test or pytest, before he says done. The command still asks you first.
 - **Ask one question before a vague big job:** a pick-one card when a big ask could mean two things.

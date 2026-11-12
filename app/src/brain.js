@@ -84,6 +84,7 @@ import { saidNotDone, pendingLine } from './said-done.js'; // 1.5.207: said but 
 import { isGuestId, GUEST_BLOCKED, GUEST_NO_MEMORY, GUEST_LOG } from './guest-chat.js'; // Guest chats (off unless switched on)
 import { pinsPrompt } from './pins.js'; // Pin messages (off unless switched on)
 import { isQuiet } from './quiet-hours.js'; // Quiet hours (off unless switched on)
+import { nudgeOk, spendNudge, Progress, wrapUp, CALLS_PER_TURN, CAP_SKIP, droppedNote, outOfStepsLine, noteWait, waitedFor, pastCeiling, ceilingMs, ceilingMins, stage, carriedBudget, keepBudget } from './loop-guard.js'; // Reliability 151-164, always on
 
 const MAX_STEPS = 8;
 // Nov 11 (item 5): bigger jobs get more steps. Low effort (the usual chat) keeps 8; Medium, High and Extreme get more
@@ -104,6 +105,16 @@ export function repeatCheck(seen, key) {
   if (!e) { seen.set(key, { count: 1, text: '' }); return 'new'; }
   e.count++;
   return e.count >= 3 ? 'stop' : 'repeat';
+}
+// Reliability 160: a short plain record of the turn's calls, for the ending when the steps run out.
+function trailOf(ctx, name, args, text, doing, tools = {}) {
+  const t = (ctx.trailSay ||= { done: [], failed: [], looked: 0 });
+  const bad = /^Error:/.test(String(text));
+  if (!doing && !bad) { t.looked++; return; }
+  let a = args; if (typeof a === 'string') { try { a = JSON.parse(a); } catch { a = {}; } }
+  let say = name; try { say = tools[name]?.summary ? tools[name].summary(a || {}) || name : name; } catch {}
+  if (bad) t.failed.push(say);
+  else if (!/said no|Not done/i.test(String(text))) t.done.push(say);
 }
 export const ANSWER_NOW_NUDGE = 'You have called the same tools with the same input several times; the results will not change. Answer now from the results above, with no more tool calls. Say plainly what you found and what you could not find.';
 
@@ -1104,12 +1115,14 @@ export class Brain {
     emit(card);
     if (hand) this.handApprovals.add(id);
     let picked = null, steps = null, note = '';
+    const waitFrom = Date.now(); // Reliability 163: time on a card doesn't count toward the turn's ceiling
     const allowed = await new Promise((resolve) => {
       const timer = setTimeout(() => done(false), APPROVAL_TIMEOUT_MS); // through done(), so the card leaves the list too
       const done = (v, rows, items, said) => { clearTimeout(timer); this.approvals.delete(id); this.waitingCards?.delete(id); this.handApprovals.delete(id); picked = rows ?? null; steps = items ?? null; note = typeof said === 'string' ? said.slice(0, 500) : ''; resolve(v); };
       this.approvals.set(id, done);
       signal.addEventListener('abort', () => done(false), { once: true });
     });
+    noteWait(signal, Date.now() - waitFrom);
     if (Array.isArray(need.together) || need.planCard) {
       const ns = new Set((need.together || []).map((i) => i.n));
       const items = Array.isArray(steps) && ns.size ? steps.filter((p) => ns.has(Number(p?.n))).map((p) => ({ n: Number(p.n), rows: Array.isArray(p.rows) ? p.rows.map(String) : undefined })) : null;
@@ -1143,12 +1156,14 @@ export class Brain {
     const prev = this.state;
     this.setState('waiting', q);
     ctx.emit({ type: 'approval', id, text: q, ask: { question: q, choices: list }, sessionId: ctx.sessionId });
+    const waitFrom = Date.now(); // Reliability 163
     const said = await new Promise((resolve) => {
       const timer = setTimeout(() => done(false), APPROVAL_TIMEOUT_MS);
       const done = (v, rows, items, note) => { clearTimeout(timer); this.approvals.delete(id); resolve(v ? String(note || '').trim().slice(0, 500) : ''); };
       this.approvals.set(id, done);
       ctx.signal?.addEventListener('abort', () => done(false), { once: true });
     });
+    noteWait(ctx.signal, Date.now() - waitFrom);
     ctx.emit({ type: 'approval-result', id, allowed: Boolean(said) });
     this.setState(prev.state === 'waiting' ? 'thinking' : prev.state, '', prev.model);
     this.log('approval', said ? `asked "${q}": ${said}` : `asked "${q}": no answer`);
@@ -2539,7 +2554,18 @@ export class Brain {
 
     // Nov 11 (loop-help.js): what the brain sees each step: old results as one line once the chat is long, and on a
     // long job a short "where we are" note last. The last step has no tools, so he answers instead of running out.
-    const maxSteps = this.plainLoop || job?.guest ? MAX_STEPS : loopSteps(job?.effort);
+    // Reliability 164: a job that runs again (session switch, rented-brain card, Gaming, restart) carries on with the
+    // steps, sends-back and calls it has left, instead of a whole new budget each time.
+    const carried = carriedBudget(job, this.plainLoop || job?.guest ? MAX_STEPS : loopSteps(job?.effort));
+    const maxSteps = carried.maxSteps;
+    Object.assign(ctx, { carriedSteps: carried.steps, nudges: carried.nudges, callsRun: carried.calls, turnStartedAt: Date.now(), progress: new Progress() });
+    if (carried.steps) this.log('loop', `carrying on: ${carried.steps} steps used before, ${maxSteps} left`);
+    const log = (k, t) => this.log(k, t);
+    const whoFor = () => this.cfg.userName || 'the user';
+    // Reliability 152 + 153: a send-back costs from the turn's small budget, not a job step.
+    const nudged = () => { spendNudge(ctx); step--; };
+    const timeCardOwns = Boolean(job && !job.side && !job.guest && this.cfg.jobHelps?.timeLimit === true);
+    let step = 0;
     const loopView = (list, step) => {
       if (this.plainLoop) return list;
       const { list: out, tidied } = this.helpOff('tidy') ? { list, tidied: 0 } : tidyOld(list, turnStart, brainCtx);
@@ -2550,13 +2576,19 @@ export class Brain {
     };
     // Jobs, One question before a vague big job (job-helps.js): a hint to ask once with ask_user before starting.
     if (!again) { const ask = askFirstNote(this, ctx, text); if (ask) msgs.push({ role: 'system', content: ask, hidden: true }); }
-    for (let step = 0; step < maxSteps; step++) {
+    for (step = 0; step < maxSteps; step++) {
+      keepBudget(job, ctx, step + 1);
+      stage(ctx, 'reading', step, log);
+      // Reliability 161: an always-on ceiling per turn (card waits don't count), apart from the opt-in job time limit.
+      // It uses the job time limit's minutes; when that switch is on for this job, its own card (which can give more
+      // time) is in charge instead.
+      if (!ctx.lastRound && !ctx.noTools && step > 0 && !timeCardOwns && pastCeiling(ctx.turnStartedAt, signal, Date.now(), ceilingMs(this.cfg))) wrapUp(ctx, msgs, 'time', whoFor(), log, ceilingMins(this.cfg));
       // Jobs (job-helps.js): "Stop after this step" pressed, or the job's time limit used up: no more tools, he wraps up.
       if (!ctx.lastRound && step > 0) {
         const who = this.cfg.userName || 'the user';
         if (job?.stopAfter && !ctx.softStopped) { ctx.softStopped = true; ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: SOFT_STOP_NOTE(who), hidden: true }); emit({ type: 'announce', text: SOFT_STOP_LINE }); }
-        else if (await timeCheck(this, ctx) === 'wrap') { ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: TIME_UP_NOTE(who, cleanJobHelps(this.cfg.jobHelps).minutes), hidden: true }); }
-      } else if (step === 0) await timeCheck(this, ctx);
+        else if (await timeCheck(this, ctx, { now: () => Date.now() - waitedFor(signal) }) === 'wrap') { ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: TIME_UP_NOTE(who, cleanJobHelps(this.cfg.jobHelps).minutes), hidden: true }); }
+      } else if (step === 0) await timeCheck(this, ctx, { now: () => Date.now() - waitedFor(signal) });
       if (step === maxSteps - 1 && !this.helpOff('last') && !ctx.noTools && msgs.slice(turnStart).some((m) => m.role === 'tool')) { ctx.noTools = true; ctx.lastRound = true; this.log('tool', 'the last step: no more tools, so he answers with what he has'); }
       const tools = ctx.noTools ? [] : guestTools(job, this.withWatchTools(this.frontDeskTools(ctx.loaded), job)); // #57 stopgap: after repeats, answer
       // The big brain reads notes passed along to it at the start of each step, and its chat says so.
@@ -2656,6 +2688,13 @@ export class Brain {
       }
       // He's seen the new look once; that's enough.
       if (this.cfg.lookChange) { try { saveSettings(this.cfg, { lookChange: null }); } catch {} this.cfg.lookChange = null; }
+      // Reliability 154-161: a round with no tools offered (a wrap-up, the last step) runs no calls, even if the brain
+      // writes some anyway; he answers with what he said, or the record's plain ending.
+      if (ctx.noTools && reply?.tool_calls?.length) {
+        this.log('loop', `no tools this round, so ${reply.tool_calls.length} call${reply.tool_calls.length === 1 ? '' : 's'} he asked for did not run`);
+        reply = { ...reply, tool_calls: undefined };
+        if (!String(reply.content || '').trim()) { reply.content = outOfStepsLine({ ...(ctx.trailSay || {}), lead: 'I stopped there.' }); emit({ type: 'token', text: reply.content }); }
+      }
       msgs.push(reply);
       // Nov 11 (loop-help.js): what goes into each call is checked against the tool, and mended where that's sure.
       if (reply.tool_calls?.length) this.mendCalls(reply.tool_calls, ctx);
@@ -2670,38 +2709,47 @@ export class Brain {
         // Shown by the app as its own note line under the reply (not as Bob's words), and kept with the reply for reloads.
         emit({ type: 'correction', text: CLAIM_CORRECTION });
         reply.correction = CLAIM_CORRECTION;
-        msgs.push({ role: 'system', content: CLAIM_NUDGE, hidden: true }); ctx.retrying = true;
-        this.log('honesty', 'Bob claimed a PC action with no tool result; corrected and asked to retry');
         noteStrike(this, ctx, 'claims', 'said he did something on this replicant matrix that no tool did');
-        await qAsk(this, ctx);
-        continue;
+        if (nudgeOk(ctx)) {
+          msgs.push({ role: 'system', content: CLAIM_NUDGE, hidden: true }); ctx.retrying = true;
+          this.log('honesty', 'Bob claimed a PC action with no tool result; corrected and asked to retry');
+          await qAsk(this, ctx);
+          nudged(); continue;
+        }
+        this.log('honesty', 'Bob claimed a PC action with no tool result; corrected (no send-back left this turn)');
       }
       if (!reply.tool_calls && !ctx.observeChecked && !msgs.slice(turnStart).some((m) => m.role === 'tool') && claimsObservation(reply.content)) {
         // Said he noticed or checked something on the PC with no tool behind it: flag it, and one go to answer from real things.
         ctx.observeChecked = true;
         emit({ type: 'correction', text: OBSERVE_CORRECTION });
         reply.correction = OBSERVE_CORRECTION;
-        msgs.push({ role: 'system', content: OBSERVE_NUDGE.replaceAll('{{USER}}', this.cfg.userName || 'the user'), hidden: true }); ctx.retrying = true;
-        this.log('honesty', 'Bob described an observation with no tool result; corrected and asked to answer again');
         noteStrike(this, ctx, 'claims', 'described something on this replicant matrix with no tool behind it');
-        await qAsk(this, ctx);
-        continue;
+        if (nudgeOk(ctx)) {
+          msgs.push({ role: 'system', content: OBSERVE_NUDGE.replaceAll('{{USER}}', this.cfg.userName || 'the user'), hidden: true }); ctx.retrying = true;
+          this.log('honesty', 'Bob described an observation with no tool result; corrected and asked to answer again');
+          await qAsk(this, ctx);
+          nudged(); continue;
+        }
+        this.log('honesty', 'Bob described an observation with no tool result; corrected (no send-back left this turn)');
       }
       if (job?.side && meanwhileOn(this.cfg) && !reply.tool_calls && !ctx.jobGuessChecked && !msgs.slice(turnStart).some((m) => m.role === 'tool' && m.tool_name === 'look_at_job') && claimsJobGuess(reply.content)) {
         // Let Bob's Quick brain see the big job: "it's 80% done" or "about 5 minutes left" has nothing behind it.
         ctx.jobGuessChecked = true;
         emit({ type: 'correction', text: JOB_GUESS_CORRECTION });
         reply.correction = JOB_GUESS_CORRECTION;
-        msgs.push({ role: 'system', content: JOB_GUESS_NUDGE, hidden: true }); ctx.retrying = true;
-        this.log('honesty', 'the Quick brain guessed how far along the big job is; corrected and asked to answer again');
         noteStrike(this, ctx, 'claims', 'guessed how far along the big job was');
-        await qAsk(this, ctx);
-        continue;
+        if (nudgeOk(ctx)) {
+          msgs.push({ role: 'system', content: JOB_GUESS_NUDGE, hidden: true }); ctx.retrying = true;
+          this.log('honesty', 'the Quick brain guessed how far along the big job is; corrected and asked to answer again');
+          await qAsk(this, ctx);
+          nudged(); continue;
+        }
       }
       // "I can't..." with groups still not added: add them all and give him one more go (router test fix).
       const empty = !reply.tool_calls && !String(reply.content || '').trim();
       if (!reply.tool_calls && !empty) this.checkSaid(ctx, reply); // 1.5.207: said but not done, before any retry
-      if (!reply.tool_calls && !ctx.cantRetried && saysCant(reply.content)) {
+      if (!reply.tool_calls) stage(ctx, 'checking', step, log);
+      if (!reply.tool_calls && !ctx.cantRetried && nudgeOk(ctx) && saysCant(reply.content)) {
         // 1.5.65: web search is on and a link is there (this message or a recent one): open it and give him one more go.
         const u = webLinks && !ctx.linkOpened && String(reply.content || '').trim() ? (findLinks(text, 1)[0] || earlierLink()) : null;
         if (u) {
@@ -2709,7 +2757,7 @@ export class Brain {
           await openLink(u, 'Bob said he could not; opened the link and asked again');
           msgs.push({ role: 'system', content: LINK_NUDGE, hidden: true }); ctx.retrying = true;
           emit({ type: 'token', text: '\n\n' });
-          continue;
+          nudged(); continue;
         }
         const missing = allToolsOn(this.cfg) ? [] : Object.keys(groupsFor(this)).filter((g) => !ctx.loaded.has(g));
         // An empty reply always gets its one more go, even with every tool already there.
@@ -2721,7 +2769,7 @@ export class Brain {
           msgs.push({ role: 'system', content: empty ? EMPTY_NUDGE : CANT_NUDGE, hidden: true }); ctx.retrying = true;
           this.log('toolbox', empty ? 'Bob gave an empty reply; added every tool group and asked again' : 'Bob said he could not; added every tool group and asked again');
           emit({ type: 'token', text: '\n\n' });
-          continue;
+          nudged(); continue;
         }
       }
       if (empty) {
@@ -2734,23 +2782,23 @@ export class Brain {
           msgs.push({ role: 'assistant', content: '', correction: EMPTY_NOTE });
         }
         this.log('toolbox', 'Bob gave an empty reply twice');
-      } else if (!reply.tool_calls && this.checkTurn(ctx, reply, true)) { ctx.retrying = true; continue; } // asked for something that didn't happen: one more go
+      } else if (!reply.tool_calls && this.checkTurn(ctx, reply, nudgeOk(ctx))) { ctx.retrying = true; nudged(); continue; } // asked for something that didn't happen: one more go
       // Let Bob's Quick brain see the big job: a note that came while the big brain was writing its answer (no next step)
       // still reaches it, once: it says what changes, or that it saw it (PC test 1.5.203: the note never arrived).
       // Nov 11 (loop-help.js): "I'll look that up." and nothing ran: one nudge to really do it.
-      if (!reply.tool_calls && !empty && !this.helpOff('promise') && !ctx.promiseChecked && !ctx.noTools && promisesAction(reply.content)) {
+      if (!reply.tool_calls && !empty && !this.helpOff('promise') && !ctx.promiseChecked && !ctx.noTools && nudgeOk(ctx) && promisesAction(reply.content)) {
         ctx.promiseChecked = true;
         msgs.push({ role: 'system', content: PROMISE_NUDGE, hidden: true }); ctx.retrying = true;
         this.log('honesty', PROMISE_LOG);
         emit({ type: 'token', text: '\n\n' });
-        continue;
+        nudged(); continue;
       }
       if (!reply.tool_calls && !job?.side && !ctx.noteRedo && this.watch.for(job)?.notes.length) { ctx.noteRedo = true; this.readNotes(ctx, msgs, noteAfterAnswer); continue; }
-      if (!reply.tool_calls && !ctx.noTools) { // Jobs, Run the tests after code edits (job-helps.js): before he says done
+      if (!reply.tool_calls && !ctx.noTools && nudgeOk(ctx)) { // Jobs, Run the tests after code edits (job-helps.js): before he says done
         const tests = testsNudge(this, ctx);
-        if (tests) { const g = groupOf(this, 'run_command'); if (g) ctx.loaded.add(g); msgs.push({ role: 'system', content: tests, hidden: true }); ctx.retrying = true; emit({ type: 'token', text: '\n\n' }); continue; }
+        if (tests) { const g = groupOf(this, 'run_command'); if (g) ctx.loaded.add(g); msgs.push({ role: 'system', content: tests, hidden: true }); ctx.retrying = true; emit({ type: 'token', text: '\n\n' }); nudged(); continue; }
       }
-      if (!reply.tool_calls) { this.checkSaid(ctx, reply); afterAnswer(this, ctx, reply); this.keepGroups(sessionId, used); return; }
+      if (!reply.tool_calls) { stage(ctx, 'answering', step, log); this.checkSaid(ctx, reply); afterAnswer(this, ctx, reply); this.keepGroups(sessionId, used); return; }
       let ended = false;
       ctx.painted = null; // what the painter made in this round (for the quick hand-back below)
       // 1.5.78: "Show Bob's plan before big jobs": a big job waits for its plan card (plan.js).
@@ -2758,14 +2806,24 @@ export class Brain {
       if (held) {
         for (const call of reply.tool_calls) msgs.push({ role: 'tool', tool_name: call.function?.name, content: held.hold });
         ctx.retrying = true;
+        if ((ctx.planHolds = (ctx.planHolds || 0) + 1) <= 2) step--; // Reliability 163: a plan card's wait isn't a step
         continue;
       }
       // #57 stopgap (two-Bob trial, Test B: about 650 repeat page reads in a minute): at most 6 tool calls run from one reply.
-      if (reply.tool_calls.length > MAX_CALLS_PER_REPLY) { this.log('tool', `one reply asked for ${reply.tool_calls.length} tool calls; ran the first ${MAX_CALLS_PER_REPLY}`); reply.tool_calls = reply.tool_calls.slice(0, MAX_CALLS_PER_REPLY); }
-      await askTogether(this, reply.tool_calls.filter((c) => !c.bounce), ctx); // 1.5.41: two or more OKs in this reply go on one card
-      const early = await this.lookTogether(reply.tool_calls, ctx); // Nov 11: look-ups in one reply run side by side
+      // Reliability 158: the calls past that are named back to him in one line, so he doesn't think they ran.
+      let dropped = [];
+      if (reply.tool_calls.length > MAX_CALLS_PER_REPLY) { this.log('tool', `one reply asked for ${reply.tool_calls.length} tool calls; ran the first ${MAX_CALLS_PER_REPLY}`); dropped = reply.tool_calls.slice(MAX_CALLS_PER_REPLY); reply.tool_calls = reply.tool_calls.slice(0, MAX_CALLS_PER_REPLY); }
+      stage(ctx, 'acting', step, log, `${reply.tool_calls.length} call${reply.tool_calls.length === 1 ? '' : 's'}`);
+      const round = { ran: 0, fresh: 0, failed: 0 };
+      // Reliability 157: calls past the turn's ceiling are marked first, so neither the shared card nor the side-by-side
+      // look-ups run them.
+      { let room = CALLS_PER_TURN - (ctx.callsRun || 0); for (const c of reply.tool_calls) if (!c.bounce && room-- <= 0) c.capped = true; }
+      await askTogether(this, reply.tool_calls.filter((c) => !c.bounce && !c.capped), ctx); // 1.5.41: two or more OKs in this reply go on one card
+      const early = await this.lookTogether(reply.tool_calls.filter((c) => !c.capped), ctx); // Nov 11: look-ups in one reply run side by side
       for (const call of reply.tool_calls) {
         const name = call.function?.name;
+        // Reliability 151: Stop is checked before every call, not only when a tool notices it.
+        if (signal?.aborted) throw new Error('Stopped.');
         // 1.5.41: once Bob has picked a new session, the rest of this round waits for it (the job runs again there).
         if (ctx.switchTo) { msgs.push({ role: 'tool', tool_name: name, content: '(Not done yet: you are switching session first.)' }); continue; }
         if (ctx.repeatStop) { msgs.push({ role: 'tool', tool_name: name, content: '(Not run: the turn stopped after the same call came three times.)' }); continue; }
@@ -2777,11 +2835,15 @@ export class Brain {
         // #57: looks (app_look, list_schedules) can change between calls, so they are never counted as repeats.
         const seen = (ctx.callsSeen ||= new Map());
         const again = isLook(name) ? 'new' : repeatCheck(seen, key);
-        let res;
+        let res, ranIt = false;
         if (call.bounce) {
           // Nov 11: a call that can't run as it is (a missing input, no such tool) goes back with what to fix.
           res = { text: call.bounce };
           this.log('tool', `${name}: not run, ${call.bounce.slice(9, 160)}`);
+        } else if (call.capped || (ctx.callsRun || 0) >= CALLS_PER_TURN) {
+          // Reliability 157: a ceiling on calls per turn, not just per reply.
+          ctx.capHit = true;
+          res = { text: CAP_SKIP };
         } else if (again === 'stop') {
           ctx.repeatStop = true;
           res = { text: '(Not run: this exact call came three times this turn, so the turn has stopped.)' };
@@ -2803,6 +2865,14 @@ export class Brain {
           ctx.repeatSkips = (ctx.repeatSkips || 0) + 1;
         } else {
           res = early.get(call) || await this.runTool(name, call.function?.arguments, ctx);
+          // Reliability 154-156 + 159: what this call added. The same call giving the same words again, even with an
+          // action in between, counts as a repeat (the count no longer starts over after every action).
+          ctx.callsRun = (ctx.callsRun || 0) + 1; round.ran++; ranIt = true;
+          const was = ctx.progress.record(key, res.text);
+          if (was === 'new') round.fresh++;
+          if (/^Error:/.test(String(res.text))) round.failed++;
+          if (was === 'same' && !isLook(name)) { ctx.repeatSkips = (ctx.repeatSkips || 0) + 1; this.log('tool', `${name} gave the same result as before`); }
+          trailOf(ctx, name, call.function?.arguments, res.text, doing, this.tools);
           if (!this.helpOff('hint') && /^Error:/.test(String(res.text))) res = { ...res, text: String(res.text) + errorHint(name, res.text) }; // Nov 11: one plain hint
           if (name === 'fetch_page') (ctx.pagesRead ||= new Set()).add(key);
           // An action may change what a look-up finds (a file written, then read again), so after one, the count starts over.
@@ -2824,6 +2894,7 @@ export class Brain {
             ctx.lastDoing = { key, text: res.text };
           }
         }
+        if (!ranIt) ctx.progress.skipped(key); // not run, but a loop through it still shows (155)
         if (name === 'use_tools') { let a = call.function?.arguments; if (typeof a === 'string') { try { a = JSON.parse(a); } catch { a = {}; } } const id = String(a?.group || '').toLowerCase().trim(); if (ctx.loaded.has(id)) used.add(id); }
         msgs.push({ role: 'tool', tool_name: name, content: res.text });
         if (howtosOn(this.cfg)) { // 1.5.79: the job's steps, in case it's worth a how-to
@@ -2837,6 +2908,7 @@ export class Brain {
         if (ctx.switchTo && !ended) { ended = true; emit({ type: 'announce', text: switchLine(ctx.switchTo.id, ctx.switchTo.why) }); } // 1.5.41: the job runs again in the new session
       }
       flushNoes(ctx, msgs); // Jobs: a "no" goes into the chat after the round's results, so it lasts the whole chat
+      if (dropped.length) msgs.push({ role: 'system', content: droppedNote(dropped, MAX_CALLS_PER_REPLY), hidden: true }); // 158
       if (ctx.repeatStop) {
         // #57: the third identical call: stop plainly instead of using up the steps.
         emit({ type: 'token', text: `\n\n${REPEAT_STOP_LINE}` });
@@ -2850,6 +2922,9 @@ export class Brain {
         msgs.push({ role: 'system', content: ANSWER_NOW_NUDGE, hidden: true });
         this.log('tool', `${ctx.repeatSkips} repeat calls skipped this turn; the next round has no tools, so he answers`);
       }
+      // Reliability 154, 155, 157, 159: no progress, going back and forth, too many calls, or every call failing twice:
+      // the next round has no tools, with one line saying why.
+      if (!ctx.noTools) { const why = ctx.capHit ? 'calls' : ctx.progress.round(round); if (why) wrapUp(ctx, msgs, why, whoFor(), log); }
       // 1.5.20: a picture or clip that was all the user asked for is shown with a short line, instead of loading the
       // brain back onto the card (6 s for the quick brain, 20-30 s for a big one) just to say "here it is".
       // The quick brain then loads again in the background once the turn lets go of the card (settle).
@@ -2883,7 +2958,11 @@ export class Brain {
       emit({ type: 'token', text: '\n\n' });
     }
     this.keepGroups(sessionId, used);
-    emit({ type: 'token', text: '\n\n(I went round in circles there. Could you say that another way?)' });
+    // Reliability 160: the steps ran out. Say what the record shows was done and what wasn't, not a fixed line.
+    const ending = outOfStepsLine(ctx.trailSay || {});
+    this.log('loop', `out of steps after ${maxSteps}; ended with what was done`);
+    emit({ type: 'token', text: `\n\n${ending}` });
+    msgs.push({ role: 'assistant', content: ending });
   }
 
   // What a hat gets besides the task: the conversation so far (newest kept whole, older trimmed to fit),
@@ -3065,7 +3144,12 @@ export class Brain {
     };
     for (let step = 0; step < maxSteps; step++) {
       let reply = null;
-      const last = step === maxSteps - 1 && step > 0 && !this.helpOff('last');
+      // Reliability 161: the safety net covers a helper's steps too (the turn's clock, card waits aside): past the job
+      // time limit, this step is his last, with no tools.
+      // With the job time limit switched on, its own end (which its card can push back) is the line instead.
+      const late = step > 0 && Boolean(ctx.turnStartedAt) && (ctx.timeEnds ? Date.now() - waitedFor(ctx.signal) >= ctx.timeEnds : pastCeiling(ctx.turnStartedAt, ctx.signal, Date.now(), ceilingMs(this.cfg)));
+      if (late && !ctx.hatLateSaid) { ctx.hatLateSaid = true; this.log('loop', `${hat}: the job reached its time limit (the safety net); this step is the last`); }
+      const last = (step === maxSteps - 1 && step > 0 && !this.helpOff('last')) || late;
       const stepTools = last ? [] : this.toolSchemas(hatTools);
       if (!ctx.job?.side) this.readNotes(ctx, messages); // notes passed along by the Quick brain (meanwhile.js)
       if (via) reply = await this.lenders.chat(via, { messages: hatView(step), tools: stepTools, signal: ctx.signal, from: this.cfg.windowsName || 'Bob', kind: 'check', onToken: (t) => ctx.emit({ type: 'token', text: t }) });
@@ -3097,11 +3181,12 @@ export class Brain {
       }, { emit: ctx.emit, who: hat });
       messages.push(reply);
       final += reply.content;
-      if (!reply.tool_calls) break;
+      if (!reply.tool_calls || late) break;
       this.mendCalls(reply.tool_calls, ctx); // Nov 11 (loop-help.js)
       await askTogether(this, reply.tool_calls.filter((c) => !c.bounce), ctx); // 1.5.41: one card for every OK in this reply
       const early = await this.lookTogether(reply.tool_calls, ctx);
       for (const call of reply.tool_calls) {
+        if (ctx.signal?.aborted) throw new Error('Stopped.'); // Reliability 151: Stop is checked before every call
         let res = call.bounce ? { text: call.bounce } : early.get(call) || await this.runTool(call.function?.name, call.function?.arguments, ctx);
         if (!this.helpOff('hint') && /^Error:/.test(String(res.text))) res = { ...res, text: String(res.text) + errorHint(call.function?.name, res.text) };
         messages.push({ role: 'tool', tool_name: call.function?.name, content: res.text });
