@@ -27,6 +27,7 @@ import { limitOn, readOnlyRoots, handOn, handOffWhy, handsSettings } from './han
 import { safeEnv, launchPlan, killTree, checkCommand, textProblem } from './hands-run.js';
 import { exeName } from './platform.js';
 import { theBox, lockOn, sealCopy, openCopy, BoxStuck, ensureBox } from './secret-box.js';
+import { backoffMs, pause } from './retry.js'; // item 194
 
 const WIN = process.platform === 'win32';
 export const IDLE_MS = 5 * 60_000; // a server Bob started stops after 5 minutes unused
@@ -307,7 +308,7 @@ class Conn {
     const r = await fetch(this.s.url, { method: 'POST', headers: this.headers(), body: JSON.stringify(msg), signal });
     const sid = r.headers.get('mcp-session-id');
     if (sid) this.session = sid;
-    if (r.status === 404 && this.session && msg.method !== 'initialize') throw new Error('The app forgot this connection (it restarted?). Try again.');
+    if (r.status === 404 && this.session && msg.method !== 'initialize') throw Object.assign(new Error('The app forgot this connection (it restarted?). Try again.'), { code: 'mcp_session_lost' }); // item 194: the call never ran there
     if (!r.ok && r.status !== 202) throw new Error(`The app answered ${r.status}${r.status === 405 || r.status === 404 ? ' (is that the right address? Bob speaks the newer "Streamable HTTP" kind)' : ''}.`);
     return r;
   }
@@ -574,10 +575,23 @@ export function mcpTools(brain, { track } = {}) {
     return s;
   };
   // The app's full tool list, from the app itself (cached on the connection while it runs).
-  const toolsOf = async (s, signal) => {
+  const toolsOnce = async (s, signal) => {
     const conn = await connect(cfg, s, deps);
     if (!conn.tools) { conn.tools = await listTools(conn, { signal }); remember(cfg, s.id, { tools: conn.tools.map(brief), checked: Date.now(), error: '' }); }
     return { conn, tools: conn.tools };
+  };
+  // Item 194: the app restarted (it forgot the connection, or the connection closed): connect afresh and ask once more,
+  // after a short wait with a bit of randomness. Only for reading its tool list, or a call the app never ran.
+  const lost = (e) => e?.code === 'mcp_session_lost' || /connection is closed|forgot this connection|ECONNRESET|socket hang up/i.test(String(e?.message));
+  const toolsOf = async (s, signal) => {
+    try { return await toolsOnce(s, signal); }
+    catch (e) {
+      if (signal?.aborted || !lost(e)) throw e;
+      log('hands', `connected app ${s.name}: ${e.message}; connecting again`);
+      stopServer(s.id);
+      await pause(backoffMs(0, { base: 1000 }), signal);
+      return toolsOnce(s, signal);
+    }
   };
   const parseInputs = (v) => {
     if (v === undefined || v === null || v === '') return {};
@@ -667,7 +681,17 @@ export function mcpTools(brain, { track } = {}) {
       if (why) throw new Error(`That's refused: ${why}`); // checked again right before it runs
       log('hands', `connected app ${s.name}: ${name} ${JSON.stringify(inputs).slice(0, 300)}`);
       const timeoutMs = handsSettings(cfg).timeoutMin * 60_000;
-      const r = await conn.request('tools/call', { name, arguments: inputs }, { timeoutMs, signal: ctx?.signal });
+      let r;
+      try { r = await conn.request('tools/call', { name, arguments: inputs }, { timeoutMs, signal: ctx?.signal }); }
+      catch (e) {
+        // Item 194: the app forgot the connection, so this call never ran there: connect afresh and send it once more.
+        if (ctx?.signal?.aborted || e?.code !== 'mcp_session_lost') throw e;
+        log('hands', `connected app ${s.name} forgot the connection; connecting again and sending ${name} once more`);
+        stopServer(s.id);
+        await pause(backoffMs(0, { base: 1000 }), ctx?.signal);
+        const again = await toolsOnce(s, ctx?.signal);
+        r = await again.conn.request('tools/call', { name, arguments: inputs }, { timeoutMs, signal: ctx?.signal });
+      }
       touch(s.id);
       const saved = [];
       const text = resultText(cfg, s, name, r, saved);

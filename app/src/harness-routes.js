@@ -97,7 +97,7 @@ export async function harnessRoute(ctx) {
   }
 
   // ---- The Health page
-  if (p === '/api/health' && GET) { send(res, 200, healthChecks({ ...(await probes()), crashes: listReports(cfg).filter((r) => !r.seen).length })); return true; }
+  if (p === '/api/health' && GET) { send(res, 200, healthChecks({ ...(await probes()), crashes: listReports(cfg).filter((r) => !r.seen).length, toolErrors: (() => { try { return brain?.errorTally?.view?.() || []; } catch { return []; } })() })); return true; }
   if (p === '/api/health' && POST) {
     if (!local()) return true;
     const { fix } = await read();
@@ -109,7 +109,7 @@ export async function harnessRoute(ctx) {
       brain.broadcast?.({ type: 'brain' });
     }
     log(`health page: ${fix} (your click)`);
-    send(res, 200, { ok: true, ...healthChecks({ ...(await probes()), crashes: listReports(cfg).filter((r) => !r.seen).length }) });
+    send(res, 200, { ok: true, ...healthChecks({ ...(await probes()), crashes: listReports(cfg).filter((r) => !r.seen).length, toolErrors: (() => { try { return brain?.errorTally?.view?.() || []; } catch { return []; } })() }) });
     return true;
   }
 

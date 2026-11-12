@@ -16,6 +16,7 @@ import { gpuInfo, cpuName, specLine, shownRamGB, OS } from './platform.js';
 import { packFor } from '../public/fit.js';
 import { allSlots, slotValue } from '../public/equip.js';
 import { mergeMadeBrains } from './lab.js'; // 1.5.141
+import { jitter } from './retry.js'; // item 194
 
 const MODEL_EXT = new Set(['.gguf', '.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.sft']);
 const SKIP = new Set(['node_modules', '.git', '__pycache__', 'site-packages', 'venv', '.venv', 'env', 'cache', '.cache', 'Lib', 'include', 'temp', 'tmp', 'logs', 'blobs']);
@@ -494,7 +495,7 @@ export class ModelShop {
           d.error = String(e.message || e).slice(0, 300);
           // Network hiccups get two more tries, after 15 s and 1 min. A damaged file or a missing link doesn't.
           const hopeless = /checksum|is missing the|still missing|isn't one of those|different size on the website|changed on the website|no checksum|Not enough disk|No such|redirected|won't install|Python|Smart App Control|Hugging Face account|link .* is broken/i.test(d.error);
-          if (!hopeless && d.tries < 3) { d.state = 'queued'; d.retryAt = Date.now() + (d.tries === 1 ? 15e3 : 60e3); pub.phase = 'retrying'; pub.error = `${d.error} Trying again in ${d.tries === 1 ? '15 seconds' : 'a minute'}.`; }
+          if (!hopeless && d.tries < 3) { d.state = 'queued'; d.retryAt = Date.now() + jitter(d.tries === 1 ? 15e3 : 60e3); pub.phase = 'retrying'; pub.error = `${d.error} Trying again in ${d.tries === 1 ? '15 seconds' : 'a minute'}.`; }
           else { d.state = 'failed'; d.doneAt = Date.now(); pub.phase = 'failed'; pub.error = d.error; }
         }
         tick();

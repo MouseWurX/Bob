@@ -1629,8 +1629,9 @@ function applyRemote() {
 }
 setInterval(() => { if (remoteOn && !startedWide) applyRemote(); }, 60_000).unref();
 // One bad request or background job must never take Bob down: log it and keep serving.
-process.on('unhandledRejection', (e) => { console.error('Unhandled:', e); try { brain.log('error', String(e && e.stack || e).slice(0, 500)); } catch {} });
-process.on('uncaughtException', (e) => { console.error('Uncaught:', e); try { brain.log('error', String(e && e.stack || e).slice(0, 500)); } catch {} });
+// Item 203: logged with the real cause, and a job it left on Working is marked failed and its chat told (brain.onUncaught).
+process.on('unhandledRejection', (e) => { console.error('Unhandled:', e); try { brain.log('error', String(e && e.stack || e).slice(0, 500)); brain.onUncaught?.(e); } catch {} });
+process.on('uncaughtException', (e) => { console.error('Uncaught:', e); try { brain.log('error', String(e && e.stack || e).slice(0, 500)); brain.onUncaught?.(e); } catch {} });
 
 
 // 1.5.87: the equipped brains for "How much each brain keeps in mind": one row per model file, with the jobs it does.

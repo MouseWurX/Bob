@@ -245,6 +245,7 @@ async function ask(brain, ctx) {
   // Let him carry on: this job's limits double so the same thing doesn't stop him again straight away.
   q.ease *= 2;
   if (t.trigger === 'said_no') q.denied.clear();
+  if (t.trigger === 'failing') ctx.strikes = null; // reliability item 200: you said carry on, so tools set aside get another go
   if (t.trigger === 'claims') brain.qClaims = [];
   if (t.trigger === 'runaway') brain.qRecent = [];
   brain.log('quarantine', `${user === 'you' ? 'The user' : user} let ${name} carry on (${why})`);

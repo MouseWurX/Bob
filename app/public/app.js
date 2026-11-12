@@ -727,6 +727,16 @@ function onEvent(ev) {
       scrollDown();
       break;
     }
+    case 'token-undo': { // item 193: a retry went another way; the words that differ are taken back
+      const r = replies.get(ev.turnId || '-');
+      const n = Math.max(0, Number(ev.chars) || 0);
+      if (r && n) { r.text = r.text.slice(0, Math.max(0, r.text.length - n)); drawReply(r); }
+      break;
+    }
+    case 'retry-note': // item 193: the brain dropped out and is loading again; a line, not words in the answer
+      note(ev.text, 'announce');
+      scrollDown();
+      break;
     case 'answer-id': { // item 11: the answer just given now has its id (Save as a test, Try again)
       const last = [...log.querySelectorAll(':scope > .msg.bob:not(.aside-msg)')].pop();
       if (last && !last.dataset.mid && ev.id) { last.dataset.mid = ev.id; drawRedo(); }

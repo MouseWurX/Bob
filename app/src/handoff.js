@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import { sameModel } from './brain-mode.js';
 import { gaming } from './sessions.js';
 import { describe } from './verify.js';
+import { jitter } from './retry.js';
 
 const sleep = (ms, signal) => new Promise((resolve, reject) => {
   if (!ms) return resolve();
@@ -288,7 +289,7 @@ export class Gate {
             this.brain.log?.('handoff', `letting the second brain (${this.engine.beside.current}) off the card before trying ${m} again`);
             await this.engine.dropBeside?.().catch?.(() => {});
           }
-          await sleep(this.delays[attempt - 1], signal);
+          await sleep(jitter(this.delays[attempt - 1]), signal); // item 194: a bit of randomness in each wait
           st?.done();
         }
         // The painter lets go first (it may still hold the card from the last picture), unless both fit.
@@ -404,7 +405,7 @@ export async function withRetry(fn, { tries = 2, wait = 3000, signal, onRetry, r
       last = e;
       if (signal?.aborted || e.code === 'stopped' || /^Stopped\.$/.test(e.message) || i === tries - 1 || !(await retryable(e))) throw e; // 1.5.113: retryable may be async
       onRetry?.(e, i);
-      await sleep(wait, signal);
+      await sleep(jitter(wait * 2 ** i), signal); // item 194: longer each time, with a bit of randomness
     }
   }
   throw last;

@@ -26,6 +26,7 @@ import { GIT_LOOKS, gitArgs, runGit, gitAnswer } from './git-look.js';
 import { mainText, docKind, parseDdg, parseMojeek, resultLines, WEB_TIMEOUT_MS, MAX_DOC_DOWNLOAD } from './page-text.js';
 import { docToolsOn } from './my-docs.js';
 import { codeMap, linesAround } from './code-map.js';
+import { backoffMs, engineFailKind, pause } from './retry.js'; // item 194
 
 const MAX_READ = 20000;
 // Runnable file types Bob won't write outside a project, on every platform (Windows, Mac and Linux kinds together).
@@ -42,6 +43,23 @@ async function readBytes(res, max) {
   return Buffer.concat(parts).subarray(0, max);
 }
 export const webSignal = (signal, ms = WEB_TIMEOUT_MS) => (signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms));
+// Item 194: a look-up that failed for a reason a second try can fix (the connection dropped, or the site said 429, 502,
+// 503 or 504) goes once more, after a short wait with a bit of randomness (or the site's own Retry-After, up to 5 s).
+// A time-out isn't tried again: it already waited long enough. Only for reading (GET), never for anything that acts.
+export async function fetchRetry(url, opts = {}, signal, { fetchImpl = (...a) => fetch(...a), waitMs = () => backoffMs(0, { base: 1500 }) } = {}) {
+  for (let i = 0; ; i++) {
+    let r;
+    try { r = await fetchImpl(url, { ...opts, signal: webSignal(signal) }); }
+    catch (e) { if (signal?.aborted || i > 0 || e?.name === 'TimeoutError' || engineFailKind(e) !== 'dropped') throw e; await pause(waitMs(), signal); continue; }
+    if (i === 0 && [429, 502, 503, 504].includes(r.status)) {
+      const after = Number(r.headers?.get?.('retry-after'));
+      try { await r.body?.cancel?.(); } catch {}
+      await pause(Number.isFinite(after) && after > 0 ? Math.min(5000, after * 1000) : waitMs(), signal);
+      continue;
+    }
+    return r;
+  }
+}
 async function readCapped(res, max) {
   const parts = []; let n = 0;
   for await (const chunk of res.body || []) { parts.push(chunk); n += chunk.length; if (n >= max) break; }
@@ -463,12 +481,12 @@ export function buildTools(cfg) {
       // nothing (it changed, or it turned Bob away), Mojeek is asked instead, and the answer says so.
       let list = [], why = '';
       try {
-        const res = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query) + (df ? `&df=${df}` : ''), { headers: UA, signal: webSignal(signal) });
+        const res = await fetchRetry('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query) + (df ? `&df=${df}` : ''), { headers: UA }, signal);
         if (res.ok) list = parseDdg(await res.text()); else why = `DuckDuckGo answered ${res.status}`;
       } catch (e) { if (signal?.aborted) throw e; why = e.name === 'TimeoutError' ? 'DuckDuckGo took too long' : `DuckDuckGo: ${e.message}`; }
       if (list.length) return resultLines(list);
       try {
-        const res = await fetch('https://www.mojeek.com/search?q=' + encodeURIComponent(query), { headers: UA, signal: webSignal(signal) });
+        const res = await fetchRetry('https://www.mojeek.com/search?q=' + encodeURIComponent(query), { headers: UA }, signal);
         if (res.ok) list = parseMojeek(await res.text());
       } catch (e) { if (signal?.aborted) throw e; }
       if (list.length) return `(From Mojeek: ${why || 'DuckDuckGo found nothing'}${df ? '; no date filter there' : ''}.)\n${resultLines(list)}`;
@@ -489,7 +507,7 @@ export function buildTools(cfg) {
       for (let hop = 0; ; hop++) {
         if (!/^https?:$/.test(u.protocol)) throw new Error('Only http and https links.');
         if (isPrivateHost(u.hostname)) throw new Error('I don\'t open addresses on the home network.');
-        res = await fetch(u, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' }, redirect: 'manual', signal: webSignal(signal) });
+        res = await fetchRetry(u, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' }, redirect: 'manual' }, signal);
         const next = res.status >= 300 && res.status < 400 && res.headers.get('location');
         if (!next) break;
         if (hop >= 5) throw new Error('That link redirects too many times.');

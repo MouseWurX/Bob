@@ -632,6 +632,7 @@
     if (!mine) return;
     if (ev.type === 'start') current.turnId = ev.turnId;
     else if (ev.type === 'token') grow(ev.text || '');
+    else if (ev.type === 'token-undo') { const n = Math.max(0, Number(ev.chars) || 0); if (n) { current.text = current.text.slice(0, Math.max(0, current.text.length - n)); grow(''); } } // item 193
     else if (ev.type === 'diagram') { const x = { kind: 'diagram', url: ev.url, base, title: ev.title || '' }; current.media.push(x); current.node.append(mediaNode(x)); }
     else if (ev.type === 'image' || ev.type === 'video') { const x = { kind: ev.type, url: ev.url, base }; current.media.push(x); current.node.append(mediaNode(x)); }
     else if (ev.type === 'made') {

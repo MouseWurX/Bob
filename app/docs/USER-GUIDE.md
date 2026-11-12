@@ -269,6 +269,19 @@ Small brains often pick the right tool and then get what goes into it wrong. Bob
 - Once a chat fills half his memory, tool results from earlier messages become one line each.
 - While the embedding model is in use anyway (Topics or Remember only what fits), the tools a message means are added, not only the ones its words name.
 
+### When something fails: errors and retries (always on)
+
+These are fixes, so there's no switch, and none of them adds anything to what Bob's brain reads at the start of a job.
+
+- A brain that drops out mid-answer is loaded again; the words already shown stay and aren't shown twice.
+- Retries wait a little longer each time, with a bit of randomness (engine, web look-ups, connected apps, other Bobs). "Busy" (503) waits and asks again; "out of memory" reloads the brain.
+- An OK card nobody answered in 10 minutes isn't a no: the job waits in Tasks, and Carry on asks again.
+- An action is only tried again after the app checks it didn't half-happen.
+- Tool errors come in plain words with what to try next. A check that breaks is logged as a broken check.
+- The same tool failing twice in a row in a job is set aside for the rest of it. A brain that keeps failing hands the job to the next brain that fits, once. Another Bob that fails twice isn't asked for an hour. A rented brain that fails hands back once, and the record says the answer came from here.
+- An uncaught error marks the job it left on Working as failed, and the chat says so. Side jobs (memory, notes, how-tos) never break a reply.
+- The Health page shows tools failing today against their usual day, and the logbook keeps each error's first cause.
+
 ### Jobs: how Bob works through a job (off unless you turn them on)
 
 Settings, Jobs (under How Bob works) has eleven switches. Each works by itself and starts off.

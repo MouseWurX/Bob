@@ -166,7 +166,10 @@ export async function afterTool(name, args, text, ctx = {}) {
   };
   if (!s.trim()) return fail(`${name} gave back nothing, so it can't be told whether it ran`, { retry: true, text: `Error: ${name} gave back nothing at all, so the app can't tell whether it ran. Don't say it worked.` });
   if (/^The user said no\b/.test(s)) return { ok: true, declined: true, why: 'declined', retry: false };
-  if (/^Error:/.test(s)) return fail(plainWhy(s), { retry: TRANSIENT.test(s) && !PERMANENT.test(s) });
+  // Item 198: when the tool's own error had a code (ENOENT, ETIMEDOUT...), that decides whether a second go can help;
+  // the words are only read when there was no code.
+  const known = ctx.toolError?.code ? ctx.toolError : null;
+  if (/^Error:/.test(s)) return fail(plainWhy(s), { retry: known ? Boolean(known.transient) : TRANSIENT.test(s) && !PERMANENT.test(s) });
 
   if (name in MEDIA) {
     if (/^Didn'?t paint\b/.test(s)) return { ok: true, info: true, why: 'nothing painted on purpose', retry: false };
