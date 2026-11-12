@@ -1,6 +1,7 @@
 // llama.cpp's helper programs in Bob: finding them, gguf-split (brains in parts), llama-bench (the standard speed
 // test), ggml-rpc-server (Bob-Net: lend my graphics card / spread big brains) and llama-diffusion-cli (diffusion
 // brains). Nothing here runs a real program or reads the real computer: tools, folders, networks and processes are fakes.
+import { labText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -111,7 +112,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   ok(!r.ok && /isn't here/.test(r.error), 'bench: no tool, said plainly');
   const m = mergeScores({ speed: { tps: 50 } }, { name: 'B', packs: {}, when: '2026-11-09', bench: b });
   ok(m.speed.tps === 50 && m.speed.bench.read === 1834.6 && m.speed.bench.when === '2026-11-09', 'bench: kept on the scoreboard beside the Challenges speed');
-  const lab = read(path.join(here, '..', 'src', 'lab.js'));
+  const lab = labText();
   ok(/const bench = c\.bench === true/.test(lab), 'bench: off unless ticked');
 }
 

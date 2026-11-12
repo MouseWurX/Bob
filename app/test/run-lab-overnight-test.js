@@ -1,6 +1,7 @@
 // The Lab, items 27 to 34 of "50 ways to make Bob better" (Nov 11): the real entry test, the job queue, the wobble,
 // Lab scores on the Brains page, the check after engine updates, Teach it from my mistakes, fNRI scans in My Lab, and
 // the Forge pointing at Make a brain. Everything runs on fakes and a throwaway folder: no brain, engine or card.
+import { labText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -65,7 +66,7 @@ check('the wobble is half the gap between the lowest and highest run', wobbleOf(
   const row = scoreboard([{ id: 'test-brain', ...again }])[0];
   check('a wobble run keeps the score and adds ± beside it; a later run keeps the ±', row.scores.quiz === 70 && row.wobble.quiz === 4 && row.brainId === 'tb');
   check('the page shows "70 ± 4" and says what ± means', /withWobble = \(r, id\)/.test(read('public/lab.js')) && /± is the wobble from three runs/.test(read('public/lab.js')));
-  check('the wobble tick sends wobble: true, and the server runs three times above temperature 0', /data-chwobble/.test(read('public/lab.js')) && /WOBBLE_RUNS = 3, WOBBLE_TEMP = 0\.7/.test(read('src/lab.js')));
+  check('the wobble tick sends wobble: true, and the server runs three times above temperature 0', /data-chwobble/.test(read('public/lab.js')) && /WOBBLE_RUNS = 3, WOBBLE_TEMP = 0\.7/.test(labText()));
   // ---- 30 Lab scores on the Brains page ----
   const scores = brainScores([{ id: 'test-brain', ...again }, { id: 'old', brain: { name: 'Old Name' }, packs: { tools: { score: 40, v: 1 } } }], [{ id: 'tb', name: 'Test Brain' }, { id: 'on', name: 'Old Name' }]);
   check('Brains page scores: tool skill from the real-tools part, coding from Code it, speed here', scores.tb.tools === 75 && scores.tb.coding === 80 && scores.tb.tps === 41);
@@ -180,7 +181,7 @@ check('the wobble is half the gap between the lowest and highest run', wobbleOf(
   check('My Lab has an fNRI scans shelf that opens fNRI', SHELVES.some((s) => s.id === 'scans' && s.to.join() === 'inside,watch'));
   const rows = shelfRows({ scans: [{ brain: 'Riker', name: 'Coding and tools', skills: 4, when: '2026-11-11' }] });
   check('each scan shows its brain, name, skills and day, no path', rows.scans[0][0] === 'Riker: Coding and tools' && rows.scans[0][1] === '4 skills · 2026-11-11' && /fNRI scans/.test(mineHtml({ scans: [] })));
-  check('the server lists every brain\'s scans for the page', /lab\.listScans = \(\) =>/.test(read('src/server.js')) && /scans: this\.listScans \? this\.listScans\(\) : \[\]/.test(read('src/lab.js')));
+  check('the server lists every brain\'s scans for the page', /lab\.listScans = \(\) =>/.test(read('src/server.js')) && /scans: this\.listScans \? this\.listScans\(\) : \[\]/.test(labText()));
 }
 
 // ---- 34 The Forge points at Make a brain ----
