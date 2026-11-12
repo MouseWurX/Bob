@@ -26,6 +26,12 @@ const tag = o.tag ? String(o.tag).replace(/[\r\n]+/g, ' ').trim().slice(0, 80) :
 if (remoteUrl) process.env.LAB_REMOTE = '1'; else checkFree(o);
 const parallel = Math.max(1, Number(o.parallel) || 1);
 const kit = await loadBob(L.bob);
+// 12 Nov (later): the idea writer is told what Bob's tools can really do, so it doesn't invent jobs no tool covers (calendar events...)
+const TOOLBOX = (() => { try { return Object.entries(kit.groups()).map(([k, g]) => `${k} (${g.what || (g.tools || []).join(', ')})`).join('; '); } catch { return ''; } })();
+const toolboxNote = TOOLBOX ? ` Only ask for things this assistant can really do: its basic tools (list and read files, web search, open a web page, reminders, a notice board, memory) plus ${TOOLBOX}. Nothing else (no calendar app, no email sending, no phone calls).` : '';
+// and, for jobs where the message should carry everything, the teacher (only) is reminded to act on it rather than ask again
+const ACT_JOBS = new Set(['precise', 'missed', 'agent', 'twins', 'recover', 'codefix', 'research', 'files', 'office', 'run', 'schedules', 'web', 'pictures', 'reminders', 'security', 'apps']);
+const ACT_NUDGE = 'Act on the details the person already gave (names, paths, times, amounts) with the right tool; do not ask again for anything that is already in the message.';
 const dir = path.join(L.out, o.dir ? String(o.dir).replace(/[^\w.-]/g, '') : 'lessons'); fs.mkdirSync(dir, { recursive: true });
 const F = { ideas: path.join(dir, 'ideas.jsonl'), lessons: path.join(dir, 'lessons.jsonl'), sets: path.join(dir, 'toolsets.json') };
 const until = Number(o.hours) > 0 ? Date.now() + Number(o.hours) * 3600e3 : Infinity;
@@ -119,7 +125,7 @@ for (const [job, what, w] of JOBS2) {
     const style = STYLES[tries % STYLES.length];
     const angle = job === 'coding' ? ` Focus this batch on ${CODE_ANGLES[tries % CODE_ANGLES.length]}. Each message is 2 to 4 sentences and names the language and what they are building, with enough detail (or pasted code) to answer properly.` : job === 'science' ? ` Focus this batch on ${SCI_ANGLES[tries % SCI_ANGLES.length]}.` : job === 'languages' ? ` This batch all in ${['French (Canada)', 'Spanish', 'German', 'Ukrainian', 'Tagalog', 'Punjabi', 'French', 'Portuguese'][tries % 8]}.` : job === 'formats' ? ` Each message must state the exact output shape it wants.`  : job === 'twins' ? ` Write them as pairs, one right after the other: first the message where a tool is needed (with the concrete thing pasted, named or attached), then the plain-knowledge question on the same topic. Vary the topics: files, the web, security, office documents, reminders, code, apps.` : job === 'codefix' ? ` Each message includes the broken code or the exact error output or a failing test, and says what it should do.`: '';
     try {
-      const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `Write 25 different messages a person might type to their desktop AI assistant about: ${what}.${angle} Make them ${style}. Each one different in topic and wording. Make them real and specific, the way a person with an actual task types: concrete file names, numbers, places, times or pasted snippets where they fit, not generic examples. Mix easy and tricky ones, including a few where the right move is less obvious. Use neutral or no names. Reply with only a JSON array of strings.` }], max: 2500, temperature: 1.0 });
+      const { msg } = await chat(srv.url, { messages: [{ role: 'user', content: `Write 25 different messages a person might type to their desktop AI assistant about: ${what}.${angle} Make them ${style}. Each one different in topic and wording. Make them real and specific, the way a person with an actual task types: concrete file names, numbers, places, times or pasted snippets where they fit, not generic examples. Mix easy and tricky ones, including a few where the right move is less obvious. Use neutral or no names.${toolboxNote}${job === 'clarify' || job === 'default' ? '' : ' Each message gives every detail needed (names, paths, times, amounts), so the assistant can act at once without asking.'} Reply with only a JSON array of strings.` }], max: 2500, temperature: 1.0 });
       const arr = JSON.parse((msg.content || '').match(/\[[\s\S]*\]/)?.[0] || '[]');
       for (const t of arr) add(job, t);
     } catch (e) { console.log(`ideas ${job}: ${e.message.slice(0, 80)}`); }
@@ -173,7 +179,9 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
     const t0 = toolsFor(loaded); const t = dropTools.size ? { ...t0, tools: (t0.tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)), system: String(t0.system || '').split('\n').filter((ln) => ![...dropTools].some((d) => ln.includes(d))).join('\n') } : t0; // dropped tools leave the offer AND the prompt text
     const sys = tag ? `${t.system}\n\n${tag}` : t.system;
     const set = setKey(sys, t.tools);
-    const { msg, finish } = await chat(srv.url, { messages: [{ role: 'system', content: persona ? `${sys}\n\n${persona}` : sys }, ...live], tools: t.tools, think, max: (think ? 6000 : 3000) * room });
+    // teacher-only additions (persona, act nudge) go to the server but never into the saved prompt or the set key
+    const teacherOnly = [persona, ACT_JOBS.has(idea.job) ? ACT_NUDGE : ''].filter(Boolean).join('\n\n');
+    const { msg, finish } = await chat(srv.url, { messages: [{ role: 'system', content: teacherOnly ? `${sys}\n\n${teacherOnly}` : sys }, ...live], tools: t.tools, think, max: (think ? 6000 : 3000) * room });
     if (finish === 'length') throw new Error('ran out of room');
     const a = { role: 'assistant', content: msg.content || '', ...(msg.reasoning_content ? { reasoning: msg.reasoning_content } : {}), ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}), set };
     saved.push(a); live.push({ role: 'assistant', content: a.content, ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) });
