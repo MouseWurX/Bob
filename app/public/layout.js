@@ -210,15 +210,10 @@ export function createLayout({ post, openTasks, openDownloads }) {
   let cubeOn = store.get('bob-mind-cube', '1') === '1', cube = null, cubeOk = true; // the cube is how thinking shows to begin with; the text is the other choice
   function cubeListen() {
     cubeBtn.setAttribute('aria-checked', String(cubeOn)); cubeBtn.querySelector('.st').textContent = cubeOn ? 'On' : 'Off';
-<<<<<<< HEAD
-    const on = cubeOn && docked && seen('mind') && !document.hidden;
-    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails'), load: $('mindCubeLoad'), unload: $('mindCubeUnload'), loadBox: $('mindCubeLoadBox'), spin: $('mindCubeSpin'), lines: $('mindCubeLines'), linesBox: $('mindCubeLinesBox') }, { onWhy: (why) => { cubeOk = !why; cubeListen(); }, still: () => body.classList.contains('still'), live: () => cubeLive });
-=======
     // 1.5.209: with the cube as Bob's picture (Style), his brain shows once, in the corner; here the written thinking shows
     const shown = cubeOn && globalThis.bobCubeAvatarOn !== true;
-    const on = shown && docked && !body.classList.contains('right-hidden') && !document.hidden;
+    const on = shown && docked && seen('mind') && !document.hidden;
     if (shown && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails'), load: $('mindCubeLoad'), unload: $('mindCubeUnload'), loadBox: $('mindCubeLoadBox'), spin: $('mindCubeSpin'), lines: $('mindCubeLines'), linesBox: $('mindCubeLinesBox') }, { onWhy: (why) => { cubeOk = !why; cubeListen(); }, still: () => body.classList.contains('still'), live: () => cubeLive, lamp: () => globalThis.bobCubeAvatarOn !== true }); // the lamplight follows this cube unless the corner one is Bob's picture
->>>>>>> dddef3b4e3e30c12f5aee6e437204a44d554eb2c
     // with the cube showing, the written thinking steps aside; it comes back when the cube is off or can't work here
     $('mindDockBody').classList.toggle('cube-view', shown && cubeOk);
     if (!cube) return;
