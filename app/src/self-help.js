@@ -1,9 +1,11 @@
 // Bob knows his own settings (2026-11-02: "he should be aware of all of his settings so he can help someone
 // set him up"). The bob_help tool searches the same Help text the window shows (public/help-content.js) and adds
 // what is set right now, so Bob can say exactly where a switch is and whether it's on. Read-only: it changes nothing.
+import { harnessNow } from './harness.js';
 import { houseStylePrompt } from '../public/house-style.js';
 import { HELP } from '../public/help-content.js';
 import { webOn } from './web.js';
+import { jobHelpsNow } from './job-helps.js';
 import { currentSession } from './sessions.js';
 import { gamingCard } from './gaming-card.js';
 import { brainMode } from './brain-mode.js';
@@ -51,7 +53,10 @@ export function settingsNow(cfg) {
     `Let Bob fix his own messages: ${onOff(cfg.editOwn === true)}`,
     `Show Try again, Edit and Delete in the chat: ${onOff(cfg.chatRedo !== false)}`,
     `Let Bob's Quick brain see the big job: ${onOff(cfg.quickSeesJob === true)}`,
+    `Engine extras (Speed & memory): Guess ahead by copying from the chat: ${onOff(cfg.copyGuess === true)}; Load the next brain early: ${onOff(cfg.preloadNext === true)}; Laptop mode: ${onOff(cfg.laptopMode === true)}; Test a new graphics card by itself: ${onOff(cfg.newCardTest === true)}; Keep a speed history: ${onOff(cfg.speedLog === true)}; Tell me what engine updates change (Engines): ${onOff(cfg.engineNotes === true)}; Chat memory type picked for ${Object.values(cfg.brainMemType || {}).filter((t) => t !== 'standard').length} brain(s), the rest Standard`,
+    harnessNow(cfg), // items 62 to 72: crashes, safe start, undo, quiet hours, weekly, shortcut, chat extras
     `Let Bob take quick notes: ${onOff(cfg.quickNotes === true)} (Let Bob notice what's worth noting: ${onOff(cfg.smartNotes === true)}); Read and search my documents: ${onOff(cfg.docTools === true)} (Search my documents by meaning: ${onOff(cfg.docMeaning === true)}); Show documents in the side panel: ${onOff(cfg.docView === true)}; Save chats as files and bring chats in: ${onOff(cfg.chatFiles === true)}; Show maths as formulas: ${onOff(cfg.mathView === true)}; Keyboard shortcuts: ${onOff(cfg.shortcuts === true)}; Pull up saved prompts with /: ${onOff(cfg.promptMenu === true)}; Let Bob work things out in a sandbox: ${onOff(cfg.sandboxCode === true)}; Assistant presets for chats: ${onOff(cfg.chatPresets === true)} (${(cfg.presetList || []).length} saved); Let Bob make 3D parts: ${onOff(cfg.parts3d === true)}; Let Bob turn pictures into 3D models: ${onOff(cfg.model3d === true)}`,
+    `Text size: ${cfg.textSize || 100}%; Easier-to-read font: ${onOff(cfg.readableFont === true)}; Show a today card when Bob opens: ${onOff(cfg.todayCard === true)}${cfg.todayPlace ? ' (weather for the place typed)' : ''}; Focus timer: ${onOff(cfg.focusTimer === true)}; Keep a spending sheet from receipts: ${onOff(cfg.receipts === true)}; Show what's new after an update: ${onOff(cfg.updateTour === true)}; Show a dot on the tray icon: ${onOff(cfg.trayDot === true)}; Profiles for other people: ${onOff(cfg.profilesOn === true)}`,
     `Let Bob work on repositories: ${onOff(cfg.selfWork?.enabled === true)} (his own app first, then ${(cfg.selfWork?.repos || []).length} of yours); Let my other Bobs help: ${onOff(cfg.selfWork?.helpers === true)}`,
     `Session: ${currentSession(cfg).label}; Let Bob pick the session: ${onOff(cfg.autoSession !== false)}; 🎮 Gaming button (chat page): ${onOff(cfg.gamingLock === true)}`,
     `Free memory when Bob is idle: ${onOff(brainMode(cfg) !== 'always')}`,
@@ -61,14 +66,15 @@ export function settingsNow(cfg) {
     `Check for updates when Bob starts: ${onOff(cfg.updates?.autoCheck === true)}`,
     `Keep engines up to date: ${onOff(cfg.engineUpdates?.auto !== false)}`,
     `Show Bob's plan before big jobs: ${onOff(cfg.planFirst === true)}`,
+    jobHelpsNow(cfg),
     `Pick up where Bob left off after a restart: ${onOff(cfg.resumeJobs === true)}; Carry on unfinished downloads when Bob starts: ${onOff(cfg.downloads?.resumeOnStart === true || cfg.resumeJobs === true)}`,
     `Bob's engine: ${cfg.engine === 'ollama' ? 'Ollama' : "Brain Engine, Bob's own"}`,
     `Voice: ${cfg.tts?.provider || 'Windows voice'}`,
     `Hands: ${hands}${h.enabled ? `; Let Bob work without asking ${onOff(h.free)}` : ''}`,
     `Housekeeping: ${onOff(cfg.housekeeping?.enabled === true)}`,
     `Check-ins: ${checkinsNow(cfg)}`,
-    `🎲 Adventure (menu page, nothing runs until a game is started): Which brain is the game master: ${cfg.adventure?.gm === 'main' ? 'Main Brain' : 'Biggest brain'}; Who plays the other Bobs: ${cfg.adventure?.players === 'gm' ? 'The game master brain' : 'Their own Bob when reachable'}; Table extras (ticked on the start card): ${(() => { const x = cfg.adventure?.extras || {}; const on = [['dice', 'Dice you can see'], ['sounds', 'Sounds'], ['voice', 'Read it aloud'], ['pictures', 'Pictures'], ['scenePics', 'A new picture every scene'], ['music', 'Music']].filter(([k]) => x[k] === true).map(([, n]) => n); return on.length ? on.join(', ') : 'none'; })()}`,
-    `🧩 Games (menu page, nothing runs until a game is started): Which brain plays games: ${cfg.games?.brain === 'main' ? 'Main Brain' : 'Quick brain'}; How often Bob chips in: ${{ some: 'Now and then', end: 'Only at the end' }[cfg.games?.talk] || 'After every move'}`,
+    `🎲 Adventure (menu page, nothing runs until a game is started): Which brain is the game master: ${cfg.adventure?.gm === 'main' ? 'Main Brain' : 'Biggest brain'}; Who plays the other Bobs: ${cfg.adventure?.players === 'gm' ? 'The game master brain' : 'Their own Bob when reachable'}; Table extras (ticked on the start card): ${(() => { const x = cfg.adventure?.extras || {}; const on = [['dice', 'Dice you can see'], ['sounds', 'Sounds'], ['voice', 'Read it aloud'], ['pictures', 'Pictures'], ['scenePics', 'A new picture every scene'], ['portraits', 'Portraits'], ['music', 'Music']].filter(([k]) => x[k] === true).map(([, n]) => n); return on.length ? on.join(', ') : 'none'; })()}; Table rules (ticked on the start card): ${(() => { const r = cfg.adventure?.rules || {}; const on = [['map', 'A map that grows'], ['coins', 'Coins and shops'], ['breath', 'Catch your breath'], ['secrets', 'Secret notes'], ['riddles', 'Riddle rooms'], ['badges', 'Badges']].filter(([k]) => r[k] === true).map(([, n]) => n); return on.length ? on.join(', ') : 'none'; })()}; How hard: ${{ easy: 'Easy', hard: 'Hard' }[cfg.adventure?.difficulty] || 'Normal'}`,
+    `🧩 Games (menu page, nothing runs until a game is started): Which brain plays games: ${cfg.games?.brain === 'main' ? 'Main Brain' : 'Quick brain'}; How often Bob chips in: ${{ some: 'Now and then', end: 'Only at the end' }[cfg.games?.talk] || 'After every move'}; Keep an unfinished game: ${cfg.games?.keep === true ? 'On' : 'Off'}; Kid mode: ${cfg.games?.kid === true ? 'On' : 'Off'}`,
     `ComfyUI: ${onOff(cfg.workshop?.enabled === true)}`,
     `Cloud helpers on: ${cloud.length ? cloud.join(', ') : 'none'}`,
     `Keep the graphics card free for quick answers: ${onOff(cfg.quickOnCpu === true)}`,

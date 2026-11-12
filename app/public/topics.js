@@ -18,7 +18,7 @@ export function createTopics({ api, openChat }) {
   // picking: what's in the file being brought in { token, chats, more, name }; sharing: { id, hide, last, data } while
   // the Share preview is up.
   let filesOn = false, picking = null, sharing = null;
-  const FROM = { chatgpt: 'ChatGPT', claude: 'Claude', openwebui: 'Open WebUI', bob: 'a saved chat', transcript: 'a transcript' };
+  const FROM = { chatgpt: 'ChatGPT', claude: 'Claude', openwebui: 'Open WebUI', bob: 'a saved chat', transcript: 'a transcript', 'bob-net': 'another of your Bobs' };
 
   async function load() {
     try { topics = await api('/api/topics'); } catch (e) { topics = []; msg = e.message; }
@@ -97,13 +97,19 @@ export function createTopics({ api, openChat }) {
     draw();
   }
 
+  // Carry on on another Bob (src/carry.js): pick one of your Bobs and the chat's words go to him. He needs
+  // "Take chats from my other Bobs" on. The chat stays here too.
+  let netBobs = [], carrying = null; // carrying: { id, msg }
+  const carryHtml = () => `<div class="row wrap chat-carry" role="group" aria-label="Carry on on another Bob"><label class="pick-inline"><span>Carry on on</span><select data-carryto aria-label="Which of your Bobs">${netBobs.map((x) => `<option value="${esc(x.address)}">${esc(x.name)}</option>`).join('')}</select></label><button type="button" class="mini get" data-carrygo>Send it over</button><button type="button" class="mini" data-carrycancel>Cancel</button>${carrying?.msg ? `<span class="muted" role="status">${esc(carrying.msg)}</span>` : ''}</div>`;
+
   async function chatsHtml() {
+    try { netBobs = (await api('/api/bob-net/carry-out')).bobs || []; } catch { netBobs = []; }
     let d = { chats: [], tidied: [] };
     try { d = await api('/api/chats'); } catch {}
     try { filesOn = (await api('/api/settings')).chatFiles === true; } catch {}
     if (sharing && filesOn) return shareHtml();
     return `${bringInHtml()}<ol class="chat-list">${d.chats.map((c) => `<li data-chat="${esc(c.id)}"><div><strong>${esc(c.title)}</strong>${c.from ? ` <span class="tag">from ${esc(FROM[c.from] || c.from)}</span>` : ''}<br><span class="muted">${c.messages} messages · last talked ${esc(day(c.lastTouched))}</span>${c.summary ? `<br><span class="muted">${esc(c.summary.slice(0, 200))}</span>` : ''}${filesOn ? `<br>${saveRow(c.id)}` : ''}</div>
-        <span class="row"><button type="button" class="mini" data-openchat>Open</button>${filesOn ? '<button type="button" class="mini" data-share title="A tidy page or picture to send someone, with names and folders taken out">Share…</button>' : ''}<button type="button" class="mini" data-cpin aria-pressed="${c.pinned}">${c.pinned ? '★ Pinned' : '☆ Pin'}</button></span></li>`).join('') || '<li class="muted">No chats yet.</li>'}</ol>
+        <span class="row"><button type="button" class="mini" data-openchat>Open</button>${filesOn ? '<button type="button" class="mini" data-share title="A tidy page or picture to send someone, with names and folders taken out">Share…</button>' : ''}<button type="button" class="mini" data-cpin aria-pressed="${c.pinned}">${c.pinned ? '★ Pinned' : '☆ Pin'}</button>${netBobs.length ? '<button type="button" class="mini" data-carry title="Move this chat to another of your Bobs and keep going there">Carry on on…</button>' : ''}</span>${carrying?.id === c.id ? carryHtml(c) : ''}</li>`).join('') || '<li class="muted">No chats yet.</li>'}</ol>
       ${d.tidied.length ? `<h3>Tidied away</h3><p class="muted">These chats went to the Recycle Bin; their summaries stay here.</p><ol class="chat-list">${d.tidied.map((s) => `<li><div><strong>${esc(s.title)}</strong> <span class="muted">${esc(day(s.from))} to ${esc(day(s.to))}</span><br>${esc(s.summary)}</div></li>`).join('')}</ol>` : ''}`;
   }
 
@@ -191,6 +197,15 @@ export function createTopics({ api, openChat }) {
       b.disabled = true;
       try { const r = await api('/api/chats/bring-in', { token: picking.token, picks }); msg = `Brought in ${r.done.length} chat${r.done.length === 1 ? '' : 's'}${r.skipped.length ? ` (${r.skipped.length} already here)` : ''}. They're below, with the date they were last talked about.`; } catch (err) { msg = err.message; }
       picking = null;
+      return draw();
+    }
+    if ('carry' in b.dataset) { carrying = { id: b.closest('[data-chat]').dataset.chat, msg: '' }; return draw(); }
+    if ('carrycancel' in b.dataset) { carrying = null; return draw(); }
+    if ('carrygo' in b.dataset && carrying) {
+      const to = body.querySelector('[data-carryto]')?.value;
+      b.disabled = true;
+      try { const r = await api('/api/bob-net/carry-out', { sessionId: carrying.id, address: to }); carrying = null; msg = `Sent ${r.messages} message${r.messages === 1 ? '' : 's'} to ${r.to}. Open Past chats there to carry on; the chat stays here too.`; }
+      catch (err) { carrying.msg = err.message; }
       return draw();
     }
     if ('cpin' in b.dataset) { const sid = b.closest('[data-chat]').dataset.chat; await act('/api/pin', { kind: 'chats', id: sid, pinned: b.getAttribute('aria-pressed') !== 'true' }); return; }

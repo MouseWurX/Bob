@@ -70,13 +70,16 @@ export function memoryRepeats(text) {
 // offered in Tidy up (never tidied by himself), and go to the Recycle Bin. Some folders are refused outright.
 const SYSTEM_DIR = /^(?:[a-z]:[\\/](?:windows|program files(?: \(x86\))?|programdata)|\/(?:bin|boot|dev|etc|lib|lib32|lib64|proc|run|sbin|sys|usr|var|opt|snap|system|library|applications|private))(?:[\\/]|$)/i;
 export function folderRefusal(cfg, f, { home = cfg.userHome || os.homedir(), exists = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } } } = {}) {
-  if (SYSTEM_DIR.test(f)) return 'That is a system folder. Bob leaves those alone.';
+  // 1.5.207: Bob's own folders and the home folder are checked first, and a folder inside home is never a system
+  // folder. On a Mac, home or Bob's folders can sit under /var (/var/folders, /private/var): the Mac build's tests
+  // failed when every folder there was called a system folder.
   const same = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
   if (home && same(f, home)) return 'That is your whole home folder. Pick a folder inside it, like Downloads.';
   for (const own of [cfg.agentDir, cfg.dataDir, cfg.innDir].filter(Boolean)) {
     if (isInside(f, own) || same(f, own)) return 'That folder holds Bob himself. Pick one that doesn\'t.';
     if (isInside(own, f)) return 'That is one of Bob\'s own folders. He already looks after it.';
   }
+  if (SYSTEM_DIR.test(f) && !(home && isInside(home, f))) return 'That is a system folder. Bob leaves those alone.';
   if (!exists(f)) return 'I can\'t find that folder.';
   return '';
 }
@@ -421,7 +424,7 @@ export class Housekeeper {
     return summary;
   }
 
-  get summariesFile() { return path.join(this.cfg.dataDir, 'chat-summaries.json'); }
+  get summariesFile() { return path.join(this.cfg.profileDir || this.cfg.dataDir, 'chat-summaries.json'); } // 👥 a profile's own (profiles.js)
   summaries() { try { return JSON.parse(fs.readFileSync(this.summariesFile, 'utf8')); } catch { return []; } }
 
   // The chat moments a topic came from, for the Topics page (newest first).
@@ -573,6 +576,7 @@ export class Housekeeper {
 
   async tick({ force = false } = {}) {
     if (vaultOn(this.cfg) && !hasKey()) return { skipped: true, locked: true }; // 🔒 chats are locked until the passcode is typed
+    if (this.cfg.profileNow) return { skipped: true, profile: true }; // 👥 housekeeping only tidies the owner's things (profiles.js)
     if (recallOn(this.cfg) && (force || this.idle()) && !this.working) { try { await this.fillMemoryVectors(); } catch {} }
     if (docMeaningOn(this.cfg) && (force || this.idle()) && !this.working) { try { await this.fillDocIndex(); } catch {} }
     if ((this.settings.enabled || recallOn(this.cfg)) && (force || this.idle()) && !this.working) { try { await this.refreshOldVectors(); } catch {} }

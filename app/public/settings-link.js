@@ -7,7 +7,7 @@ export const WINDOW_SIZE = 'popup,width=1040,height=780';
 
 // What the Settings page announces that the main window acts on.
 export const RELAY = ['bob-auto-session', 'bob-brain-mode', 'bob-voice', 'bob-lab-switch', 'bob-web', 'bob-caps', 'bob-rent-slot',
-  'bob-quarantine', 'bob-door', 'bob-update-started', 'bob-tidy', 'bob-ask', 'bob-downloads', 'bob-chat-redo'];
+  'bob-quarantine', 'bob-door', 'bob-update-started', 'bob-tidy', 'bob-ask', 'bob-downloads', 'bob-chat-redo', 'bob-harness'];
 
 export const message = (name, detail) => ({ from: 'settings-window', name, detail: detail === undefined ? null : detail });
 

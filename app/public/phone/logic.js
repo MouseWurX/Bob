@@ -189,5 +189,105 @@
     return { settings, chats, memory, bobs, added, newBobs };
   }
 
-  globalThis.BobLogic = { netAddress, bigJob, BIG_JOBS, pickAnswerer, canDo, phoneSystem, markdown, esc, chatTitle, size, fits, phoneBackup, phoneRestore };
+  // ---------- Voice, phone and Bob-Net (items 133 to 142; every switch starts off) ----------
+
+  // "Hey Bob" at the start of what was heard: strips it and says whether it was there. Same rule as desktop
+  // Bob's public/voice.js, so the phone and the computer wake on the same words.
+  function wakeWord(text) {
+    const t = String(text || '');
+    const m = t.match(/^\W*(?:(?:hey|hi|ok|okay|yo)\W+)?bob\b\W*/i);
+    return m ? { woke: true, rest: t.slice(m[0].length).trim() } : { woke: false, rest: t };
+  }
+
+  // Talk over him: what you said while he was reading aloud. "Stop" (and friends) on its own only stops him;
+  // anything longer stops him and is sent as your next message.
+  function talkOver(text) {
+    const t = String(text || '').trim();
+    if (!t) return { stop: false, send: '' };
+    if (/^\W*(?:(?:ok(?:ay)?|bob|please)\W+)*(?:stop|quiet|hush|shush|enough|that'?s enough|be quiet|pause)(?:\W+(?:please|bob|now|it))*\W*$/i.test(t)) return { stop: true, send: '' };
+    return { stop: true, send: wakeWord(t).rest || t };
+  }
+
+  // Talk over Bob without headphones: the phone may hear his own voice from its speaker. Words that are mostly in
+  // what he's reading right now are taken as his echo, not you.
+  function selfEcho(heard, saying) {
+    const words = (t) => String(t || '').toLowerCase().match(/[a-z0-9']+/g) || [];
+    const h = words(heard);
+    if (!h.length) return true;
+    const said = new Set(words(saying));
+    return h.filter((w) => said.has(w)).length / h.length >= 0.6;
+  }
+
+  // A voice per Bob: each Bob gets his own pitch and pace from his name, so you can hear who's talking. The same
+  // name always gets the same voice; the phone brain keeps the phone's normal voice.
+  function voiceFor(name) {
+    const n = String(name || '').trim().toLowerCase();
+    if (!n) return { pitch: 1, rate: 1 };
+    let h = 2166136261;
+    for (const c of n) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; }
+    const PITCH = [0.8, 0.88, 0.95, 1.08, 1.16, 1.25];
+    const RATE = [0.94, 1, 1.06];
+    return { pitch: PITCH[h % PITCH.length], rate: RATE[(h >>> 8) % RATE.length] };
+  }
+
+  // Read a document aloud: the words cut into pieces of whole sentences (at most `max` characters), so play,
+  // pause and "where you left off" can go by piece. Code blocks and links are skipped like Read aloud does.
+  function readPieces(text, max = 400) {
+    const plain = String(text || '').replace(/```[\s\S]*?```/g, ' (code) ').replace(/https?:\/\/\S+/g, 'a link').replace(/[*_#>|`~]/g, '').replace(/\r/g, '');
+    const out = [];
+    for (const para of plain.split(/\n\s*\n/)) {
+      const words = para.replace(/\s+/g, ' ').trim();
+      if (!words) continue;
+      const sentences = words.match(/[^.!?]+(?:[.!?]+["')\]]*|$)\s*/g) || [words];
+      let cur = '';
+      for (let s of sentences) {
+        s = s.trim();
+        while (s.length > max) { const cut = s.lastIndexOf(' ', max) > max / 2 ? s.lastIndexOf(' ', max) : max; if (cur) { out.push(cur); cur = ''; } out.push(s.slice(0, cut).trim()); s = s.slice(cut).trim(); }
+        if (!s) continue;
+        if (cur && cur.length + 1 + s.length > max) { out.push(cur); cur = s; } else cur = cur ? `${cur} ${s}` : s;
+      }
+      if (cur) out.push(cur);
+    }
+    return out;
+  }
+
+  // Low-data mode: 'off' (the starting position), 'mobile' (only on mobile data) or 'always'.
+  function lowData(setting, metered) {
+    return setting === 'always' || (setting === 'mobile' && metered === true);
+  }
+
+  // Your Bobs on the phone: one Bob's glance (GET /api/bob-net/glance) as plain words for the panel.
+  function glanceWords(g) {
+    if (!g || typeof g !== 'object') return { state: "Can't reach right now", heat: '', jobs: [], brain: '', reminder: '' };
+    const c = g.card || null;
+    const t = Number(c?.tempC);
+    const heat = Number.isFinite(t) && t > 0 ? `${Math.round(t)} °C, ${t >= 83 ? 'hot' : t >= 70 ? 'warm' : 'cool'}` : '';
+    const mem = c && c.totalMB > 0 ? `${(c.usedMB / 1024).toFixed(1)} of ${(c.totalMB / 1024).toFixed(1)} GB in use` : '';
+    const jobs = [].concat(g.jobs || []).slice(0, 8).map((j) => `${String(j.what || 'A job').slice(0, 80)}${j.state === 'waiting' ? ' (waiting)' : ''}`);
+    return {
+      state: g.gaming ? 'Up, gaming' : g.busy ? 'Up, busy' : 'Up, ready',
+      heat, mem, card: String(c?.name || ''),
+      brain: String(g.brain || ''),
+      jobs,
+      reminder: g.nextReminder?.text ? `${String(g.nextReminder.local || '')}: ${String(g.nextReminder.text).slice(0, 120)}`.replace(/^: /, '') : ''
+    };
+  }
+
+  // Carry on on another Bob: a phone chat as the messages that Bob keeps (POST /api/bob-net/carry). Only what you
+  // and Bob said, the last 80, each at most 6,000 characters.
+  function carryMsgs(chat) {
+    return [].concat(chat?.msgs || []).filter((m) => (m.who === 'you' || m.who === 'bob') && String(m.text || '').trim())
+      .slice(-80).map((m) => ({ role: m.who === 'you' ? 'user' : 'assistant', content: String(m.text).slice(0, 6000) }));
+  }
+
+  // Share to Bob: what another app shared, as words for the message box.
+  function shareWords(s) {
+    if (!s || typeof s !== 'object') return '';
+    const subject = String(s.subject || '').trim().slice(0, 200);
+    const text = String(s.text || '').trim().slice(0, 20000);
+    const file = s.file && s.file.text != null ? `${s.file.name ? `${String(s.file.name).slice(0, 120)}:\n` : ''}\`\`\`\n${String(s.file.text).slice(0, 20000)}\n\`\`\`` : '';
+    return [subject && !text.startsWith(subject) ? subject : '', text, file].filter(Boolean).join('\n\n');
+  }
+
+  globalThis.BobLogic = { netAddress, bigJob, BIG_JOBS, pickAnswerer, canDo, phoneSystem, markdown, esc, chatTitle, size, fits, phoneBackup, phoneRestore, wakeWord, talkOver, selfEcho, voiceFor, readPieces, lowData, glanceWords, carryMsgs, shareWords };
 })();
