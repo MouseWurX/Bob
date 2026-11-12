@@ -2,7 +2,7 @@
 
 This is the guide to what Brain Engine changes in llama.cpp, where each change hooks in, and what to re-check when moving to a newer llama.cpp. [README.md](README.md) says what each patch is for and how to build and move it. This page is the "where and how" for whoever does the rebase.
 
-Brain Engine 4 is llama.cpp **b12282** plus the first six patches below (0007 and 0008 are for the next build), about +2,160/-13 lines across 21 files. Only 0004, 0005 and 0006 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
+Brain Engine 4 is llama.cpp **b12282** plus the first six patches below (0007 and later are for the next builds; 0008 is scut-live in 1.5.210), about +2,160/-13 lines across 21 files. Only 0004, 0005 and 0006 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
 
 Bob's own code map lists these patches too: one line each, with the files they change, the lines they add and take out, and the main names they add.
 
@@ -98,7 +98,7 @@ Then run `engine/try-newer.sh <tag>`. Every patch must go on, and the Linux buil
 - `tools/server/server-context.cpp`: `server_expert_trace` remembers how far the pieces sent so far reach (`sent_tag`, `sent_out`, `sent_rows`, reset in `clear()`). `send_partial_response()` fills `expert_trace_part` from the new `expert_trace_part(slot)`, which builds the rows since the last piece the same way `expert_trace_end()` builds all of them, and waits for the next piece when a layer is behind. Only on top of 0002.
 - `tools/server/server-task.cpp`: the piece goes into the plain and the chat-stream JSON of a partial result.
 
-### 0008-expert-mass: how much each expert really wrote (REAP)
+### 0009-expert-mass: how much each expert really wrote (REAP)
 - **Upstream files:** `tools/server/server-context.cpp`, `tools/server/server-task.h`, `tools/server/server-schema.cpp`. Server only; no ggml or card backend change. Sits on top of 0002's expert trace.
 - **Hooks:**
   - New request field `expert_trace_mass` (with `expert_trace`). The trace's eval callback also reads each layer's `ffn_moe_weighted-<layer>` node (w · f(x)) and adds up the L2 norm of every picked expert's row.
