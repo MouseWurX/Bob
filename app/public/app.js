@@ -38,6 +38,7 @@ import { createCatAntics } from './cat-antics.js';
 import { createBubbles } from './say-bubbles.js';
 import { createBobLife } from './bob-life.js';
 import { createViewer, outCard, fillPeeks } from './viewer.js';
+import { createThinkBubbles } from './think-bubble.js'; // 1.5.210: the thinking bubble above the answer
 import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
 import { createPromptMenu } from './prompts.js'; // saved prompts: the / menu in the message box
@@ -249,6 +250,31 @@ function addMade(ev) {
   viewer.made(ev.items, { show: ev.show === true });
 }
 function endReply(ev) { replies.delete(ev?.turnId || '-'); }
+
+// 1.5.210 The thinking bubble (public/think-bubble.js): while Bob works, his steps, drafts and fixes go in one folded
+// bubble above the answer; the chat bubble gets only the finished answer, whole. Settings, Bob himself, "Thinking
+// bubble above answers" (on unless turned off); off, the chat is as it was.
+let thinkOn = true, catName = 'Patches';
+const stillNow = () => document.body.classList.contains('still') || Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+function showAnswer(ev, text, extra = {}) {
+  const r = ensureReply(ev);
+  r.text = String(text || '');
+  if (r.text.trim() || r.media.length) { drawReply(r); log.append(r.el); } // under the cards that came while he worked
+  if (extra.checked) checkedNote(r.el, extra.checked);
+  if (extra.correction) note(extra.correction, 'error');
+}
+// The moot's minutes, folded under the answer it checked.
+function checkedNote(el, minutes) {
+  el.querySelector(':scope > .checked-note')?.remove();
+  const box = document.createElement('div');
+  box.className = 'versions-note checked-note';
+  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false">🛰 Checked by a second look</button><div hidden>${render(String(minutes))}</div>`;
+  const b = box.querySelector('button'), w = box.querySelector('div');
+  b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
+  el.insertBefore(box, el.querySelector(':scope > .msg-tools'));
+}
+window.addEventListener('bob-think-bubble', (e) => { thinkOn = e.detail !== false; }); // Settings, from this window
+const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () => thinkOn, still: stillNow, cat: () => catName, openMind: () => $('mindBtn')?.click() });
 
 // ---------- Status, badge, notifications ----------
 const STATUS_TEXT = {
@@ -495,7 +521,26 @@ async function openChat(id, msgId) {
 async function loadHistory(n = 20) {
   try {
     const h = await (await fetch('/api/history?session=' + encodeURIComponent(sessionId))).json();
+    // 1.5.210: what he wrote on the way to an answer (steps) goes in one folded thinking bubble above that answer,
+    // even the moot's check that came after it.
+    const shown = [], held = [];
+    let askedAt = 0, endAt = 0;
+    const flush = () => { if (held.length) shown.push({ bubble: held.splice(0), ms: askedAt && endAt > askedAt ? endAt - askedAt : 0 }); };
     for (const m of h.slice(-n)) {
+      if (m.role === 'user') { flush(); askedAt = m.at || 0; endAt = 0; shown.push(m); continue; }
+      endAt = Math.max(endAt, m.at || 0);
+      if (m.step && thinkOn) { held.push(m); continue; }
+      shown.push(m);
+    }
+    flush();
+    // A bubble goes above the first answer of its turn.
+    for (let k = shown.length - 1; k >= 0; k--) {
+      if (!shown[k].bubble) continue;
+      let at = k; while (at > 0 && shown[at - 1].role && shown[at - 1].role !== 'user') at--;
+      if (at !== k) { const [b] = shown.splice(k, 1); shown.splice(at, 0, b); }
+    }
+    for (const m of shown) {
+      if (m.bubble) { thinkBubbles.saved(m.bubble, m.ms); continue; }
       if (m.forgotten) { if (m.role === 'user') note(m.content); continue; }
       // A reply with no words and nothing made shows only its note, never an empty bubble.
       if (m.role !== 'user' && !String(m.content || '').trim() && !m.media?.length) { if (m.correction) note(m.correction, 'error'); continue; }
@@ -597,6 +642,7 @@ function onEvent(ev) {
   if (onHandsEvent(ev, { add, scrollDown, note })) return;
   if (jobHelps.event(ev)) return; // Settings, Jobs: the time bar and the receipt card
   if (everyday?.event(ev)) return; // ⏱ Focus done
+  if (!elsewhere && thinkBubbles.take(ev)) { scrollDown(); return; } // 1.5.210: steps, drafts and fixes go in the thinking bubble
   switch (ev.type) {
     case 'queue':
       drawQueue(ev.jobs || []);
@@ -1612,7 +1658,7 @@ installShortcuts({
 });
 
 async function start() {
-  try { const st = await (await fetch('/api/settings')).json(); shortcutsOn = st.shortcuts === true; applyReading(st); readingKeep = { textSize: st.textSize, readableFont: st.readableFont }; await applyMath(st.mathView === true); } catch {}
+  try { const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; catName = st.catName || catName; shortcutsOn = st.shortcuts === true; applyReading(st); readingKeep = { textSize: st.textSize, readableFont: st.readableFont }; await applyMath(st.mathView === true); } catch {}
   await loadHistory(20);
   let cat = 'Patches';
   try { cat = (await (await fetch('/api/settings')).json()).catName || cat; } catch {}
@@ -1627,7 +1673,7 @@ async function start() {
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
   try {
-    const st = await (await fetch('/api/settings')).json(); winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
+    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"
     everyday = startEveryday({ add, note, settings: st, version: st.version?.label || '' }); // 🗓 today card, tour, ⏱ Focus, tray dot (each only when on)

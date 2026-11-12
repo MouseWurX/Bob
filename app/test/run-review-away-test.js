@@ -133,7 +133,7 @@ const mb3 = mootBrain();
 const q3 = await run(mb3, 'short', async () => ({ name: 'Handheld', brain: 'b' }));
 check('short chit-chat is never checked, and nothing is said about it', mb3.calls.length === 0 && !q3.out.trim());
 const brainSrc = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8');
-check('High and Extreme keep their own moot; the quick look is only the else branch, behind the switch', /if \(careful\(job\) && out\.ctx && !signal\?\.aborted\) await runMoot[^\n]*\n[^\n]*\n\s*else if \(out\.ctx && !signal\?\.aborted && this\.cfg\.netReview === true\)/.test(brainSrc));
+check('High and Extreme keep their own moot; the quick look is only the else branch, behind the switch', /if \(careful\(job\) && out\.ctx && !signal\?\.aborted\) (?:mooted = )?await runMoot[^\n]*\n[^\n]*\n\s*else if \(out\.ctx && !signal\?\.aborted && this\.cfg\.netReview === true\)/.test(brainSrc));
 check('a quick look that fails never falls back to a swap here', /if \(noLocal\) \{[^\n]*couldn't finish the second look/.test(brainSrc));
 const qb = { cfg: { netReview: true, models: { reviewer: 'r' }, share: { borrow: { on: true, bobs: [go] } } }, engine: { resolve: () => null }, lenders: { pickForReview: async (o) => ({ min: o.minGB }) }, reviewFloor: Brain.prototype.reviewFloor };
 check('the quick look needs its switch', (await Brain.prototype.quickReviewer.call({ ...qb, cfg: { ...qb.cfg, netReview: false } }, {}, [])) === null);

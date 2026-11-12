@@ -419,7 +419,7 @@ export class Lenders {
     const sig = signal ? AbortSignal.any([signal, quiet.signal]) : quiet.signal;
     let timer = setTimeout(() => quiet.abort(), this.firstWordMs);
     const kick = () => { clearTimeout(timer); timer = setTimeout(() => quiet.abort(), this.quietMs); };
-    const plain = messages.map((m) => { const { images, hidden, correction, ...rest } = m; return rest; });
+    const plain = messages.map((m) => { const { images, hidden, correction, step, showText, ...rest } = m; return rest; });
     this.hold(bob.address, 24 * 3600 * 1000); // while it thinks; released below
     this.live.set(bob.address, 'thinking');
     const t0 = this.now();

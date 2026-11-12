@@ -2142,3 +2142,40 @@ html.readable-font code, html.readable-font pre, html.readable-font kbd { font-f
 .people-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
 .everyday-box .spend-box, .everyday-box .people-box { margin: 0 0 10px 0; }
 .approval.today-card, .approval.tour, .approval.focus-done { background: var(--card); border-color: var(--line); }
+
+/* 1.5.210 The thinking bubble (think-bubble.js): folded above Bob's answer; press to see the steps, drafts and fixes. */
+.think { align-self: flex-start; max-width: 92%; border: 1px dashed var(--line); border-radius: calc(var(--r) * 1.25); background: color-mix(in srgb, var(--card) 55%, transparent); font-size: .9em; }
+.think.open { border-style: solid; }
+.think.needs { border: 1px solid var(--warn); }
+.think-head { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 6px 10px; background: none; border: 0; color: var(--muted); text-align: left; cursor: pointer; font: inherit; }
+.think.needs .think-head { color: var(--warn); font-weight: 600; }
+.think-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: calc(var(--r) * 1.25); }
+.think-line { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.think-line.swap { animation: think-swap .45s ease-out; }
+@keyframes think-swap { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.think-time { font-variant-numeric: tabular-nums; opacity: .75; }
+.think-spark { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); flex: none; }
+.think.live .think-spark { animation: think-pulse 1.6s ease-in-out infinite; }
+.think.needs .think-spark { background: var(--warn); }
+.think.finished .think-spark { opacity: .5; }
+@keyframes think-pulse { 0%, 100% { opacity: .35; transform: scale(.75); } 50% { opacity: 1; transform: scale(1.15); } }
+.think-dots { display: inline-flex; gap: 3px; margin-left: auto; flex: none; }
+.think-dots i, .think-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.d-done { background: var(--accent); }
+.d-failed { background: var(--bad); }
+.d-waiting { background: var(--warn); }
+.d-note { background: var(--muted); }
+.d-draft { background: transparent; box-shadow: 0 0 0 1.5px var(--muted) inset; }
+.think-caret { flex: none; transition: transform .15s; }
+.think.open .think-caret { transform: rotate(90deg); }
+.think-body { padding: 0 10px 8px; }
+.think-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
+.think-row { display: flex; gap: 8px; align-items: baseline; color: var(--text); }
+.think-row.note { color: var(--muted); }
+.think-row .think-dot { position: relative; top: -1px; }
+.think-draft { display: block; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); border-left: 2px solid var(--line); padding-left: 8px; max-height: 9em; overflow-y: auto; }
+.think-foot { margin-top: 6px; }
+.think-empty { margin: 0; }
+body.still .think *, .think.finished * { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .think * { animation: none !important; transition: none !important; } }
+@media (max-width: 600px) { .think { max-width: 100%; } .think-dots i:nth-child(n+9) { display: none; } }

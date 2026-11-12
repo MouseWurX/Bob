@@ -341,6 +341,7 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | Where | Setting / text | Default | Status |
 |---|---|---|---|
 | Settings > Everyday > How Bob works | Show Try again, Edit and Delete in the chat: "On unless you turn it off. Adds them to each message's … menu." | on (owner's exception to opt-in) | new |
+| Settings > Everyday > How Bob works | Thinking bubble above answers: "On unless you turn it off. While Bob works, one small folded bubble above his answer shows what he's up to; press it to see every step, draft and fix. The answer under it is only his finished answer, whole." | on (owner asked for it, 1.5.210) | new |
 | Chat page > under Bob's latest answer | "Try again" (button; title "Get a new answer to your last message"). Hidden while Bob is on that chat. | — | new |
 | Chat page > under your messages | "Edit" (button; title "Change what you said and send it again"). Opens a box with "Send again" and "Cancel"; on an earlier message: "Bob answers from here. What came after this message is kept under it as an earlier version." | — | new |
 | Chat page > under a message with earlier versions | "1 earlier version" / "N earlier versions" (button; title "What was there before Try again or Edit. Press to see it."). Pressed: each version with "You:" and "Bob:" lines. Your changed message says "edited" (title "You changed this message. Press to see what it said first."). | — | new |

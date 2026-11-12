@@ -20,6 +20,7 @@ import { personalityPrompt, cleanPersonality } from '../public/personality.js';
 import { catPrompt, catMoment, catTurn } from '../public/patches.js';
 import { sleepyAfterReply, sleepySwitch, SLEEPY_SESSION } from '../public/sleepy.js';
 import { cleanEffort, careful, bigThinker, draftBrain, hatBrain, effortPrompt, mootOpening, runMoot, phasedWork, reviewBrain } from './moot.js';
+import { pickAnswer } from './clean-answer.js'; // 1.5.210: the chat shows only the finished answer (display only)
 import { brainBillions, wantsBorrowedCheck, pickChecker, checkDown, checkingOnLine, checkBackLine } from './bob-net-check.js'; // 1.5.185
 import { saveSettings, outputDirs, findOutput } from './config.js';
 import { paint, paintingAvailable, stepsFor } from './painter.js';
@@ -918,7 +919,7 @@ export class Brain {
   history(id) {
     return this.session(id)
       .filter((m) => (m.role === 'user' || m.role === 'assistant') && (m.content || m.media?.length || m.correction))
-      .map((m) => ({ role: m.role, id: m.id, at: m.at, ...(m.forgotten ? { forgotten: true } : {}), content: m.role === 'user' && m.text != null ? m.text : (m.content || ''), ...(m.media?.length ? { media: m.media } : {}), ...(m.correction ? { correction: m.correction } : {}), ...(m.edited ? { edited: m.edited, was: m.was ?? '', ...(m.editedBy === 'you' ? { editedBy: 'you' } : {}) } : {}), ...(m.role === 'assistant' && m.steps?.length ? { steps: m.steps } : {}), ...(m.role === 'user' && m.versions?.length ? { versions: m.versions } : {}), pics: (m.refs || []).map((id) => this.refs.find(id)).filter(Boolean).map((r) => ({ name: r.name, url: `/refs/${r.file}` })) }));
+      .map((m) => ({ role: m.role, id: m.id, at: m.at, ...(m.forgotten ? { forgotten: true } : {}), content: m.role === 'user' && m.text != null ? m.text : (m.showText || m.content || ''), ...(m.step ? { step: true } : {}), ...(m.media?.length ? { media: m.media } : {}), ...(m.correction ? { correction: m.correction } : {}), ...(m.edited ? { edited: m.edited, was: m.was ?? '', ...(m.editedBy === 'you' ? { editedBy: 'you' } : {}) } : {}), ...(m.role === 'assistant' && m.steps?.length ? { steps: m.steps } : {}), ...(m.role === 'user' && m.versions?.length ? { versions: m.versions } : {}), pics: (m.refs || []).map((id) => this.refs.find(id)).filter(Boolean).map((r) => ({ name: r.name, url: `/refs/${r.file}` })) }));
   }
 
   // Makes sure a model is in memory, telling the user first if it means a wait. Goes through the gate: the action
@@ -2210,9 +2211,9 @@ export class Brain {
         // Item 10: the steps go with the answer, so "How I got here" is there after a reload too.
         const steps = this.traces?.get(sessionId);
         if (steps) this.traces.delete(sessionId);
-        if (steps?.length && !job?.guest) { const list = steps.slice(0, MAX_TRACE); const last = [...this.session(sessionId)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length); if (last) last.steps = list; emit({ type: 'steps', list }); }
+        if (steps?.length && !job?.guest) { const list = steps.slice(0, MAX_TRACE); const last = [...this.session(sessionId)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length && !m.step); if (last) last.steps = list; emit({ type: 'steps', list }); }
         if (!job?.guest) this.saveSession(sessionId); // 1.5.72: a job from another Bob isn't kept as a chat here
-        if (!job?.guest) { const last = [...this.session(sessionId)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length); if (last?.id) emit({ type: 'answer-id', id: last.id }); } // item 11: Save as a test needs it
+        if (!job?.guest) { const last = [...this.session(sessionId)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length && !m.step); if (last?.id) emit({ type: 'answer-id', id: last.id }); } // item 11: Save as a test needs it
         // Item 13: how full this chat left the brain's memory, for the meter by Effort.
         const st = this.engine?.lastStats; if (!job?.guest && st?.used && st.ctx && st.at >= (job?.startedAt || 0)) emit({ type: 'chat-fill', used: st.used, ctx: st.ctx });
         this.gate.done(controller.signal); // the graphics card goes to the next job waiting for it
@@ -2278,6 +2279,7 @@ export class Brain {
     const media = [];
     const out = {};
     let rough = false; // an error or correction note this turn: no how-to card
+    let mooted = null; // the moot's rounds, when one ran (for the answer the chat shows)
     const keep = (ev) => {
       if (['error', 'correction', 'held', 'waiting'].includes(ev?.type)) rough = true;
       if (['image', 'video', 'audio', 'diagram'].includes(ev.type) && typeof ev.url === 'string' && ev.url.startsWith('/images/')) {
@@ -2293,18 +2295,22 @@ export class Brain {
       // High and Extreme effort: Bob calls a moot. The draft comes first (runOn), then his reviewer copy checks it.
       if (careful(job)) emit({ type: 'announce', text: mootOpening(this.cfg, job.effort, base) });
       await this.runOn(msgs, text, keep, signal, pics, job, sessionId, out);
-      if (careful(job) && out.ctx && !signal?.aborted) await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx });
+      if (careful(job) && out.ctx && !signal?.aborted) mooted = await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx });
       // #30: Low and Medium, opt-in: a quick second look from a paired Bob when one is free. None free: no check, no swap.
-      else if (out.ctx && !signal?.aborted && this.cfg.netReview === true) await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx, quick: () => this.quickReviewer(job, pics) });
+      else if (out.ctx && !signal?.aborted && this.cfg.netReview === true) mooted = await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx, quick: () => this.quickReviewer(job, pics) });
       if (out.ctx && !signal?.aborted && !rough) this.howtoAfter(sessionId, text, out.ctx, keep, job);
     }
     finally {
+      // 1.5.210: which message the chat shows as the answer; the rest of what he wrote is marked as steps (clean-answer.js).
+      const shown = pickAnswer(msgs.slice(base), mooted?.rounds);
       if (media.length) {
         const added = msgs.slice(base);
-        let reply = [...added].reverse().find((m) => m.role === 'assistant' && !m.tool_calls);
+        let reply = shown.final || [...added].reverse().find((m) => m.role === 'assistant' && !m.tool_calls);
         if (!reply) { reply = { role: 'assistant', content: '' }; msgs.push(reply); }
         reply.media = [...(reply.media || []), ...media].slice(0, 24);
       }
+      // The thinking bubble (public/think-bubble.js) puts this in the chat as the answer, whole.
+      emit({ type: 'final', text: shown.text, ...(shown.final?.correction ? { correction: shown.final.correction } : {}), ...(shown.checked ? { checked: shown.checked } : {}) });
       shared.push(...msgs.slice(base));
     }
   }
