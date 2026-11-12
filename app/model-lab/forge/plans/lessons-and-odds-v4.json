@@ -7,9 +7,7 @@
  "gpus": [
   "NVIDIA H200"
  ],
- "step_up": [
-  "NVIDIA B200"
- ],
+ "step_up": [],
  "max_len": 16384,
  "top": 32,
  "general_tokens": 0,
@@ -80,7 +78,7 @@
   },
   {
    "jobs": "agent",
-   "think": "half",
+   "think": "all",
    "dir": "lessons-agent",
    "count": 800,
    "parallel": 24,
@@ -138,7 +136,7 @@
   },
   {
    "jobs": "recover",
-   "think": "half",
+   "think": "all",
    "dir": "lessons-recover-2",
    "count": 500,
    "parallel": 24,
@@ -201,6 +199,93 @@
    "count": 400,
    "parallel": 24,
    "hours": 0.5,
+   "min": 50,
+   "review": true,
+   "avoid": [
+    "out/lessons",
+    "out/lessons-codefix",
+    "out/lessons-recover",
+    "out/lessons-clarify",
+    "out/lessons-newtool",
+    "out/lessons-selfcheck",
+    "out/lessons-research",
+    "out/lessons-understand",
+    "out/lessons-formats",
+    "out/lessons-reasoning",
+    "out/lessons-coding",
+    "out/lessons-coding-2",
+    "out/lessons-notes",
+    "out/lessons-selfhelp",
+    "out/lessons-gamemaster",
+    "out/lessons-refusals",
+    "out/lessons-languages"
+   ]
+  },
+  {
+   "jobs": "twins",
+   "think": "half",
+   "dir": "lessons-twins",
+   "count": 400,
+   "parallel": 24,
+   "hours": 0.4,
+   "min": 50,
+   "review": true,
+   "avoid": [
+    "out/lessons",
+    "out/lessons-codefix",
+    "out/lessons-recover",
+    "out/lessons-clarify",
+    "out/lessons-newtool",
+    "out/lessons-selfcheck",
+    "out/lessons-research",
+    "out/lessons-understand",
+    "out/lessons-formats",
+    "out/lessons-reasoning",
+    "out/lessons-coding",
+    "out/lessons-coding-2",
+    "out/lessons-notes",
+    "out/lessons-selfhelp",
+    "out/lessons-gamemaster",
+    "out/lessons-refusals",
+    "out/lessons-languages"
+   ]
+  },
+  {
+   "jobs": "missed",
+   "think": "half",
+   "dir": "lessons-missed",
+   "count": 400,
+   "parallel": 24,
+   "hours": 0.4,
+   "min": 50,
+   "review": true,
+   "avoid": [
+    "out/lessons",
+    "out/lessons-codefix",
+    "out/lessons-recover",
+    "out/lessons-clarify",
+    "out/lessons-newtool",
+    "out/lessons-selfcheck",
+    "out/lessons-research",
+    "out/lessons-understand",
+    "out/lessons-formats",
+    "out/lessons-reasoning",
+    "out/lessons-coding",
+    "out/lessons-coding-2",
+    "out/lessons-notes",
+    "out/lessons-selfhelp",
+    "out/lessons-gamemaster",
+    "out/lessons-refusals",
+    "out/lessons-languages"
+   ]
+  },
+  {
+   "jobs": "default",
+   "think": "half",
+   "dir": "lessons-default",
+   "count": 300,
+   "parallel": 24,
+   "hours": 0.35,
    "min": 50,
    "review": true,
    "avoid": [
@@ -361,7 +446,7 @@
   "models": [],
   "note": "Nothing is uploaded from the card: the new lessons and their odds come to the PC, are scrubbed, deduplicated and checked there, and go to Hugging Face only on the owner's word."
  },
- "note": "12 Nov, the owner: new lessons written with sharper prompts (aimed at what every Bob got wrong in the 12 Nov benchmark: tools on plain chat, exact arguments, long jobs; plus code fixing, recovering, clarifying, research), each graded by the teacher (--review, failures kept apart in rejected.jsonl) and never repeating a request already in a lesson folder (--avoid). Then the trained Qwen (Bobert, the same teacher as the 24,158 lessons already scored on 10 Nov) scores ONLY these new lessons: the base lesson set (out/lessons-none) is empty, so the odds cover just what was missing. About 5 h writing + 1 h odds on an H200, caps 8 h / $45. | 12 Nov, the owner: lesson sets for the four Famous styles in the Lab's thinking paths (Sherlock Fable-like, Watson Opus-like, Vulcan GPT-like, Raider DeepSeek-like), 400 each, thinking on for every turn so tool turns carry the style too. Taught as a switch: the saved lessons carry only 'Think: <name>' in the system prompt; the style text (forge/plans/think-*.txt) is shown to the teacher only. Written by Bob's own teacher, never from those models' answers.",
+ "note": "12 Nov, the owner: new lessons written with sharper prompts (aimed at what every Bob got wrong in the 12 Nov benchmark: tools on plain chat, exact arguments, long jobs; plus code fixing, recovering, clarifying, research), each graded by the teacher (--review, failures kept apart in rejected.jsonl) and never repeating a request already in a lesson folder (--avoid). Then the trained Qwen (Bobert, the same teacher as the 24,158 lessons already scored on 10 Nov) scores ONLY these new lessons: the base lesson set (out/lessons-none) is empty, so the odds cover just what was missing. About 5 h writing + 1 h odds on an H200, caps 8 h / $45. | 12 Nov, the owner: lesson sets for the four Famous styles in the Lab's thinking paths (Sherlock Fable-like, Watson Opus-like, Vulcan GPT-like, Raider DeepSeek-like), 400 each, thinking on for every turn so tool turns carry the style too. Taught as a switch: the saved lessons carry only 'Think: <name>' in the system prompt; the style text (forge/plans/think-*.txt) is shown to the teacher only. Written by Bob's own teacher, never from those models' answers. | 12 Nov (later): plus twins (tool / no-tool pairs on one topic), missed (the plain requests the benchmark showed Bob gets wrong) and default (vague asks with one sensible default: do it and say which); agent and recover now think on every turn. 7,000 lessons, H200 only (no B200 step-up) so the run stays inside $70, about 10.5 h.",
  "volume_new": false,
  "data_centers": [
   "AP-JP-1"
