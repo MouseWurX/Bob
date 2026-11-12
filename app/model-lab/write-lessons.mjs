@@ -173,7 +173,7 @@ async function one(idea, think, room = 1) { // room 2 = a second try with twice 
     const t0 = toolsFor(loaded); const t = dropTools.size ? { ...t0, tools: (t0.tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)), system: String(t0.system || '').split('\n').filter((ln) => ![...dropTools].some((d) => ln.includes(d))).join('\n') } : t0; // dropped tools leave the offer AND the prompt text
     const sys = tag ? `${t.system}\n\n${tag}` : t.system;
     const set = setKey(sys, t.tools);
-    const { msg, finish } = await chat(srv.url, { messages: [{ role: 'system', content: persona ? `${sys}\n\n${persona}` : sys }, ...live], tools: t.tools, think, max: (think ? 6000 : 2000) * room });
+    const { msg, finish } = await chat(srv.url, { messages: [{ role: 'system', content: persona ? `${sys}\n\n${persona}` : sys }, ...live], tools: t.tools, think, max: (think ? 6000 : 3000) * room });
     if (finish === 'length') throw new Error('ran out of room');
     const a = { role: 'assistant', content: msg.content || '', ...(msg.reasoning_content ? { reasoning: msg.reasoning_content } : {}), ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}), set };
     saved.push(a); live.push({ role: 'assistant', content: a.content, ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) });
