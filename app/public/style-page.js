@@ -130,7 +130,16 @@ export function createStylePage({ api, redraw, flash }) {
   async function onClick(b, settings) {
     const style = settings.style || {};
     if (b.dataset.motion) { await save(settings, { motion: b.dataset.motion }); redraw(); return true; }
-    if (b.dataset.uilook) { await save(settings, { look: b.dataset.uilook }); redraw(); return true; }
+    if (b.dataset.uilook) {
+      await save(settings, { look: b.dataset.uilook });
+      // Lamplight is the chat in a dark room: Now running tucks away (Ctrl+J or its button brings it back), and the
+      // cube becomes Bob's picture unless you've already picked one. Both stay yours to change.
+      if (b.dataset.uilook === 'lamplight') {
+        if (!document.body.classList.contains('right-hidden')) document.getElementById('hideRight')?.click();
+        if (!settings.style?.avatar && typeof window.setAvatarCube === 'function') window.setAvatarCube(true);
+      }
+      redraw(); return true;
+    }
     if (b.dataset.nowneed) { await save(settings, { openNowOnNeed: b.dataset.nowneed === '1' }); redraw(); return true; }
     if (b.dataset.theme) { draft = null; await save(settings, { theme: b.dataset.theme }); redraw(); return true; }
     if (b.dataset.look) { const r = await api('/api/settings', { look: b.dataset.look }); setLook(b.dataset.look); settings.look = b.dataset.look; if (r.lookText) settings.lookText = r.lookText; redraw(); return true; }

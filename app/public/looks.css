@@ -157,3 +157,54 @@ body.look-lamplight.theme-light .composer { box-shadow: 0 12px 30px -20px #0004;
 /* Lamplight: Bob's porthole cube in the corner is the lamp (its own size rules live in mind.css / style.css) */
 body.look-lamplight .side-top .mind-cube.bob-cube.porthole .port { width: 46px; height: 46px; }
 @media (max-width: 640px) { body.look-lamplight .side-top .mind-cube.bob-cube.porthole .port { width: 40px; height: 40px; } }
+
+/* ---------- Lamplight layout (computer and wide windows) ----------
+   One quiet bar across the top: Bob's cube and status on the left, the pages as plain text tabs, then the
+   tools as small icons on the right. The chat gets the whole width below, centred. Now running is still there:
+   it opens over the right edge with the Now running button or Ctrl+J. Every button stays on screen. */
+@media (min-width: 641px) {
+  body.look-lamplight .app { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; grid-template-rows: auto minmax(0, 1fr); }
+  body.look-lamplight .side { grid-column: 1 / -1; width: auto; height: auto; flex-direction: row; align-items: center; gap: 2px; padding: var(--s3) var(--s5); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+  body.look-lamplight .side::-webkit-scrollbar { display: none; }
+  body.look-lamplight .side-top { display: flex; align-items: center; gap: var(--s3); padding: 0; margin-right: var(--s6); flex: none; }
+  body.look-lamplight .side-top #bob { width: 40px; height: 40px; border-radius: 50%; }
+  body.look-lamplight .side .who { min-width: 0; max-width: 220px; }
+  body.look-lamplight .side .name { font-size: var(--t-md); font-weight: 600; }
+  body.look-lamplight .side .status { height: auto; -webkit-line-clamp: 1; white-space: nowrap; display: block; }
+  body.look-lamplight #foldLeft, body.look-lamplight .side .nav-head, body.look-lamplight .side .nav-item .short { display: none; }
+  /* pages: text tabs, the current one underlined with light */
+  body.look-lamplight .side .nav-item { width: auto; flex: none; padding: var(--s2) var(--s3); border-radius: 8px; font-size: 14px; }
+  body.look-lamplight .side .nav-item .lbl { overflow: visible; }
+  body.look-lamplight .side :is(#chatBtn, #tasksBtn, #topicsBtn, #madeBtn, #shelfBtn, #adventureBtn, #gamesBtn, #labBtn) .ico { display: none; }
+  body.look-lamplight .side .nav-item.on { box-shadow: none; }
+  body.look-lamplight .side .nav-item.on .lbl { position: relative; }
+  body.look-lamplight .side .nav-item.on .lbl::after { content: ""; position: absolute; left: 0; right: 0; bottom: -8px; height: 2px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+  /* tools: small icons pushed to the right, named on hover and for screen readers (aria-label) */
+  body.look-lamplight .side .side-fill { flex: 1; min-width: var(--s4); min-height: 0; order: 2; }
+  body.look-lamplight .side :is(#chatBtn, #tasksBtn, #topicsBtn, #madeBtn, #shelfBtn, #adventureBtn, #gamesBtn, #labBtn), body.look-lamplight .side-top { order: 1; }
+  body.look-lamplight .side :is(#newchat, #cellarBtn, #dlBtn, #tidyBtn, #settingsBtn, #styleBtn, #helpBtn, #ear, #speak, #notify), body.look-lamplight .side .session-wrap { order: 3; }
+  body.look-lamplight .side :is(#newchat, #cellarBtn, #dlBtn, #tidyBtn, #settingsBtn, #styleBtn, #helpBtn, #ear, #speak, #notify) { width: 36px; height: 36px; padding: 0; justify-content: center; margin: 0; border: 0; }
+  body.look-lamplight .side :is(#newchat, #cellarBtn, #dlBtn, #tidyBtn, #settingsBtn, #styleBtn, #helpBtn, #ear, #speak, #notify) :is(.lbl, .st) { display: none; }
+  body.look-lamplight .side :is(#ear, #speak, #notify)[aria-pressed="true"] .ico { color: var(--accent); }
+  body.look-lamplight .side #newchat { order: 3; color: var(--accent); }
+  body.look-lamplight .side .session-wrap { flex: none; padding: 0 0 0 var(--s2); }
+  body.look-lamplight .side .session-wrap .lbl { display: none; }
+  body.look-lamplight .side .session { width: auto; }
+  body.look-lamplight .side .nav-item .badge { position: absolute; top: 0; right: 0; }
+  /* the chat below: the bar's page name is already lit above, so the header row goes quiet */
+  body.look-lamplight .mid { grid-column: 1; grid-row: 2; }
+  body.look-lamplight .ctx { padding: 0 max(var(--s5), calc((100% - 760px) / 2)); min-height: 40px; }
+  body.look-lamplight .ctx-title { display: none; }
+  /* Now running opens over the right edge instead of squeezing the chat */
+  body.look-lamplight .now { position: fixed; top: 64px; right: var(--s3); bottom: var(--s3); z-index: 20; border-radius: 16px; background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--line); backdrop-filter: blur(12px); box-shadow: 0 30px 60px -30px #000; }
+  body.look-lamplight #grab { display: none; }
+}
+/* less on screen: the version line and the starter prompts step back (the prompts come back when the box is empty and focused) */
+body.look-lamplight .ver { display: none; }
+body.look-lamplight .chips { display: none; }
+body.look-lamplight .composer:focus-within ~ .chips, body.look-lamplight .mid:has(#input:placeholder-shown:focus) .chips { display: flex; }
+body.look-lamplight .effort { font-size: var(--t-xs); }
+body.look-lamplight .effort .effort-btn { min-height: 32px; min-width: 0; }
+body.look-lamplight .effort .brain-switch { min-height: 32px; }
+@media (min-width: 641px) { body.look-lamplight .side .session-wrap > .ico { display: none; } }
+@media (max-width: 640px) { body.look-lamplight .effort { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 var(--s3); } body.look-lamplight .effort-lbl { display: none; } body.look-lamplight .composer { margin: 0 var(--s3) var(--s3); } }

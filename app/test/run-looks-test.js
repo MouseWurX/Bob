@@ -33,6 +33,10 @@ for (const f of ['public/index.html', 'public/settings.html']) check(`${f} loads
 const page = read('public/style-page.js');
 check('the Style page has the Look picker', page.includes('data-uilook') && page.includes('role="radiogroup" aria-label="Look"'));
 
+check('Lamplight puts the menu across the top on a computer, phones keep the bottom bar', /@media \(min-width: 641px\) \{\s*body\.look-lamplight \.app \{ display: grid/.test(css) && /body\.look-lamplight \.side \{ grid-column: 1 \/ -1/.test(css));
+check('every tool in the top bar keeps its name for screen readers', ['newchat', 'cellarBtn', 'dlBtn', 'tidyBtn', 'settingsBtn', 'styleBtn', 'helpBtn', 'ear', 'speak', 'notify'].every((id) => new RegExp(`id="${id}"[^>]*aria-label="[^"]+"`).test(read('public/index.html'))));
+check('picking Lamplight tucks Now running away and offers the cube, without forcing either', page.includes("getElementById('hideRight')?.click()") && page.includes('!settings.style?.avatar'));
+
 // ---- Help, glossary, FAQ ----
 const help = (id) => HELP.find((e) => e.id === id)?.html || '';
 check('Style Help explains the three looks', ['Classic', 'Lamplight', 'Terminal'].every((w) => help('style').includes(w)));
