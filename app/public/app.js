@@ -447,10 +447,12 @@ window.addEventListener('bob-ask', (e) => { const t = String(e.detail || '').sli
 // Click Bob (or press Enter on him) to open Equip Bob.
 bobCanvas.tabIndex = 0;
 bobCanvas.setAttribute('role', 'button');
-bobCanvas.title = 'Equip Bob: his models, attributes and look';
-bobCanvas.setAttribute('aria-label', 'Bob. Open Equip Bob');
-bobCanvas.addEventListener('click', () => cellar.open('shop', 'roles'));
-bobCanvas.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cellar.open('shop', 'roles'); } });
+bobCanvas.title = 'Settings, Brains: which brain does what';
+bobCanvas.setAttribute('aria-label', 'Bob. Open Settings, Brains');
+// 1.5.207 Bob's picture opens Settings, Brains (the Brains page), not the old Equip Bob doll.
+const openBrains = () => cellar.open('settings', null, { jump: 'adv-brains' });
+bobCanvas.addEventListener('click', openBrains);
+bobCanvas.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openBrains(); } });
 // A past chat from Topics or search: switch to it and show its recent part (older parts are summed up).
 async function openChat(id, msgId) {
   if (busy) { note('Bob is busy in this chat. Open the other one when he has finished.'); return; }

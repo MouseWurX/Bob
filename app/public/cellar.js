@@ -4,7 +4,7 @@ import { progressHtml, animateWorkers } from './progress.js';
 import { createStylePage } from './style-page.js';
 import { createSampler, sampleButton, sampleHint } from './voice-samples.js';
 import { equipHtml, allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml, readyList, readyDefaults, readyToggle, readyOrder, CHEST_SHOW, SPLITS, splitPicks } from './equip.js';
-import { brainsHtml, setupPlan, canCalibrate, brainsInUse } from './brains.js';
+import { brainsHtml, setupPlan, canCalibrate, brainsInUse, listTopHtml, listRowHtml, listSetUpHtml } from './brains.js';
 import { hasExperts } from './place.js';
 import { suit as fitSuit, picksOf, unsuited, jobNames, SLOT_NAMES, canDo, packsFor } from './fit.js';
 import { catalogueHtml, pagePickHtml, familyOf, visibleModels, isNaughty, VIEWS, dayWords, rentPicks } from './catalogue.js';
@@ -290,7 +290,7 @@ export function createCellar({ popOut = null } = {}) {
     let body = '';
     if (tab === 'settings') body = settingsHtml();
     else if (tab === 'style') body = stylePage.html(settings);
-    else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}` : !roles ? '<p class="muted">Loading...</p>' : eqView === 'doll' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${equipHtml(eqCtx())}` : brainsHtml({ ...eqCtx(), bobNet: data?.bobNet || [], setupAsk, setUp: setUpBrain, place: placeData, calAsk, labScores }); // 1.5.205 the Brains page comes first
+    else if (tab === 'roles') body = eqView === 'list' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}` : !roles ? '<p class="muted">Loading...</p>' : eqView === 'doll' ? `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${equipHtml(eqCtx())}` : brainsHtml(brainsCtx()); // 1.5.205 the Brains page comes first
     else if (tab === 'catalogue') body = roles ? catalogueHtml({ ...eqCtx(), models: data?.models || [], removed: data?.removed || [], bobNet: data?.bobNet || [], naughtyOn: naughtyOn(), catView, ownForm, addPage, action: catAction, focus: catFocus }) : '<p class="muted">Loading...</p>'; // 1.5.56; 1.5.132 the catalogue gets every entry and sorts the naughty ones itself
     else if (tab === 'found') body = `<p class="muted">Scanned ${data.scannedAt ? new Date(data.scannedAt).toLocaleString() : 'never'}. <button data-scan>Look again</button></p>${extrasHtml() || '<p>Nothing extra found.</p>'}`;
     else if (GROUPS.some((g) => g.id === tab)) body = groupHtml(GROUPS.find((g) => g.id === tab));
@@ -301,8 +301,18 @@ export function createCellar({ popOut = null } = {}) {
     return `${bar}<div class="pane">${body}</div>`;
   }
 
+  // 1.5.207 Settings, Brains opens on the Brains page (the owner's ask): each brain, its jobs, Set up and Calibrate.
+  // The plain list of menus is one link away, as on Equip Bob.
+  const brainsCtx = (more = {}) => ({ ...eqCtx(), bobNet: data?.bobNet || [], setupAsk, setUp: setUpBrain, place: placeData, calAsk, labScores, ...more });
+  function brainsPanelHtml() {
+    if (eqView === 'list') return `<p><button type="button" class="link" data-eqview="brains">Back to the Brains page</button></p>${rolesHtml()}`;
+    if (!roles) return '<p class="muted">Loading...</p>';
+    return brainsHtml(brainsCtx({ inSettings: true }));
+  }
   function rolesHtml() {
     if (!roles) return '<p class="muted">Loading...</p>';
+    const setUpPage = listSetUpHtml(brainsCtx()); // 1.5.207 Set up opens from the list too
+    if (setUpPage) return setUpPage;
     // 1.5.56: only active models that can do the job are listed (the Brain catalogue's Active switches); what's picked
     // now always stays. Get more opens the catalogue at that job.
     const listFor = (kind, job, cur) => (roles.options[kind] || []).filter((o) => o.value === cur || ((kind !== 'llm' || canDo(job, { entry: entryOf(data.models, o.value), name: o.value, caps: o.caps }))
@@ -319,6 +329,7 @@ export function createCellar({ popOut = null } = {}) {
       return [...groups].map(([f, os]) => (f ? `<optgroup label="${esc(f)}">${os.map(one).join('')}</optgroup>` : os.map(one).join(''))).join('');
     };
     const getMore = (job) => `<button type="button" class="mini get-more-btn" data-catjob="${esc(job)}">📚 Get more</button>`;
+    const bx = brainsCtx();
     const row = (j) => {
       const cur = roles.current[j.id] || '';
       const opts = listFor(j.kind, j.id, cur);
@@ -329,11 +340,12 @@ export function createCellar({ popOut = null } = {}) {
           ${has || !cur ? '' : `<option value="${esc(cur)}" selected>${esc(entryOf(data.models, cur)?.name || cur)} (not downloaded)</option>`}
           ${cur ? '' : '<option value="" selected>Pick one</option>'}
           ${optsHtml(list, cur, j.kind)}
-        </select>${getMore(j.id)}${j.id === 'speech' && cur ? nestedVoiceHtml() : ''}${!cur && opts.length && j.kind !== 'llm' ? `<div class="ready-hint"><span class="tag good">On this replicant matrix, not assigned yet</span> <button data-userole="${esc(j.id)}" data-value="${esc(opts[0].value)}">Use ${esc(opts[0].label)}</button></div>` : ''}</td></tr>`;
+        </select>${getMore(j.id)}${j.kind === 'llm' ? listRowHtml(cur, { ...bx, rowId: j.id }) : ''}${j.id === 'speech' && cur ? nestedVoiceHtml() : ''}${!cur && opts.length && j.kind !== 'llm' ? `<div class="ready-hint"><span class="tag good">On this replicant matrix, not assigned yet</span> <button data-userole="${esc(j.id)}" data-value="${esc(opts[0].value)}">Use ${esc(opts[0].label)}</button></div>` : ''}</td></tr>`;
     };
     const thinkers = roles.jobs.filter((j) => j.kind === 'llm');
     const makers = roles.jobs.filter((j) => j.kind !== 'llm');
     return `<p class="muted">Pick which brain thinks for each job, and which model makes the pictures, clips and hearing. ${tipHtml('Using one brain for several jobs is faster; a different brain means a short swap (the brain machine), usually 10 to 20 seconds.', 'About swaps')} Only active models are listed: the <button type="button" class="link" data-tab="catalogue">📚 Brain catalogue</button> has every model, sorted by job.</p>
+      ${listTopHtml(bx)}
       <h3>Thinking (writes, plans, codes, writes prompts)</h3><table class="roles">${thinkers.map(row).join('')}</table>
       <h3>Making (does the actual work)</h3><table class="roles">${makers.map(row).join('')}</table>
       ${fold('Session brains', [['small', 'Quick'], ['gaming', 'Gaming'], ['deep', 'Deep thinking'], ['coding', 'Coding'], ['office', 'Office']].map(([k, l]) => `${l}: ${settings.sessionBrains?.[k] ? (entryOf(data.models, settings.sessionBrains[k])?.name || settings.sessionBrains[k]) : 'Bob\'s pick'}`).join(', '), `<p class="muted">Pick a session from the menu next to Bob's name. Each one keeps a set of brains that fit in your graphics card together, so there are no swaps. Art runs the small brain on the processor so the painter keeps the card.</p>
@@ -1025,7 +1037,7 @@ export function createCellar({ popOut = null } = {}) {
   // 1.5.98: old panel ids (Help links, cards, remembered open panels) land on the new panels.
   const ADV_MOVED = { 'adv-connections': 'adv-bobnet' };
   const ADV = [
-    ['brains', '🧠 Brains', 'model roles session brains context thinking making reviewer beside moot keep chatting busy quick brain see big job meanwhile note all tools at once', () => rolesHtml() + `
+    ['brains', '🧠 Brains', 'model roles session brains context thinking making reviewer beside moot keep chatting busy quick brain see big job meanwhile note all tools at once', () => brainsPanelHtml() + `
       ${sswitch('mootBeside', settings.mootBeside === true, 'Let the reviewer sit beside Bob\'s main brain', keep('Off to start with. At High and Extreme effort the reviewer normally swaps in for Bob\'s main brain. On: if there\'s room, it loads beside it instead (on the processor if the card is full, which is slower), so Bob carries on straight after the check. With no room, a paired Bob can check over Bob-Net if Borrow a brain is on. Not in the Gaming session.'))}
       ${sswitch('netReview', settings.netReview === true, 'Ask my other Bobs for a quick second look', keep('Off to start with. At Low and Medium effort there\'s normally no review. On (with Borrow a brain on): a free Bob on Bob-Net with a big enough Review brain checks Bob\'s longer replies once. If none is free, there\'s no check. Chit-chat is never checked.'))}
       ${sswitch('chatWhileBusy', settings.chatWhileBusy !== false, 'Keep chatting while Bob is busy', keep('While Bob makes a picture, clip, song or sound, or works on a long job, his small brain (Qwen3 4B, if downloaded) answers plain chat beside it, if there\'s free memory. On the processor, replies can take up to half a minute to start. Messages with a picture, or at Medium effort and up, still wait. Off: every message waits for the job.'))}
@@ -1227,7 +1239,7 @@ export function createCellar({ popOut = null } = {}) {
     const bar = dlg.querySelector('.cellar-tabs'); dlg.style.setProperty('--cellar-tabs-h', (bar ? bar.offsetHeight : 0) + 'px');
     if (mode === 'shop' && tab === 'settings') applyView();
     if (houseFocus) { const d = dlg.querySelector(`#house-${houseFocus}`); if (d) { d.open = true; d.scrollIntoView({ block: 'center' }); d.querySelector('input, select')?.focus(); houseFocus = null; } }
-    if (jumpTo) { const el = dlg.querySelector('#sub-' + CSS.escape(ADV_MOVED[jumpTo] || jumpTo)); jumpTo = ''; const top = el?.closest(TOP_PANELS); if (top) showTopic(top.dataset.panel); if (el?.tagName === 'DETAILS') el.open = true; if (el && el === top && view === 'advanced') dlg.scrollTop = 0; else el?.scrollIntoView({ block: 'start' }); }
+    if (jumpTo) { const el = dlg.querySelector('#sub-' + CSS.escape(ADV_MOVED[jumpTo] || jumpTo)); jumpTo = ''; const top = el?.closest(TOP_PANELS); if (top) showTopic(top.dataset.panel); if (el?.tagName === 'DETAILS') { el.open = true; if (el.dataset.panel) openPanels.add(el.dataset.panel); } if (el && el === top && view === 'advanced') dlg.scrollTop = 0; else el?.scrollIntoView({ block: 'start' }); }
     if (mode !== 'shop' || tab !== 'settings') lastTab = mode === 'shop' ? tab : lastTab;
   }
 
@@ -1293,7 +1305,7 @@ export function createCellar({ popOut = null } = {}) {
       await placeLoad();
       const on = placeData?.job?.state === 'running';
       if (!on) { clearInterval(calTimer); calTimer = null; }
-      if (dlg.open !== false && mode === 'shop' && tab === 'roles' && eqView === 'brains' && !dlg.querySelector('select:focus, input:focus')) draw();
+      if (dlg.open !== false && mode === 'shop' && ((tab === 'roles' && eqView !== 'doll') || tab === 'settings') && !dlg.querySelector('select:focus, input:focus, textarea:focus')) draw();
     }, 2500);
   };
   const calStart = async (unload) => {
@@ -1308,7 +1320,7 @@ export function createCellar({ popOut = null } = {}) {
     await placeLoad(); calWatch();
   };
   let setupAsk = ''; // 1.5.205 the Brains page: the setup whose list of changes is showing
-  let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-equip-view') || 'brains'; } catch { return 'brains'; } })();
+  let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-brains-view') || 'brains'; } catch { return 'brains'; } })();
   function eqCtx() {
     return { roles, models: shownModels(), brains: settings?.sessionBrains || {}, embed: roles?.current?.embed || '', selected: eqSelected, vramGB: hw?.vramGB || hw?.gpu?.vramGB || null, unified: Boolean(hw?.gpu?.unified), integrated: Boolean(hw?.gpu?.integrated), arm: hw?.board === 'arm', ramGB: hw?.ramGB || null, freeGB: hw?.freeGB ?? null, platform: settings?.platform, showUnsuited,
       famOpen, packs: data?.packs || [], packId: starterPack, picks: starterPicks, engines: data?.engines || [], starterOpen,
@@ -1659,7 +1671,7 @@ export function createCellar({ popOut = null } = {}) {
       if ('homego' in b.dataset) { if (!homeAsk) return; b.disabled = true; b.textContent = 'Moving…'; const r = await api('/api/home', { folder: homeAsk.folder, confirm: true }); if (!r.ok) { homeError(r.error || 'Couldn\'t move.'); b.disabled = false; b.textContent = homeAsk?.pickedCloud ? 'Move there anyway' : 'Yes, move everything'; } return; }
       if (b.dataset.equip && b.tagName === 'BUTTON') { await equip(eqSelected, b.dataset.equip); return; }
       if (b.dataset.unequip) { const sl = allSlots().find((s) => s.id === b.dataset.unequip); await equip(sl.id, sl.off === 'windows' ? 'windows' : '', { offer: false }); return; }
-      if (b.dataset.eqview) { eqView = b.dataset.eqview; try { localStorage.setItem('bob-equip-view', eqView); } catch {} draw(); return; }
+      if (b.dataset.eqview) { eqView = b.dataset.eqview; try { localStorage.setItem('bob-brains-view', eqView); } catch {} draw(); return; }
       if ('alsono' in b.dataset) { b.closest('.also').remove(); return; }
       if ('alsogo' in b.dataset) {
         const picks = [...b.closest('.also').querySelectorAll('input[data-also]:checked')];

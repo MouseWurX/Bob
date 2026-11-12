@@ -73,7 +73,7 @@ check('the wobble is half the gap between the lowest and highest run', wobbleOf(
   const line = labLine({ value: 'tb', entry: { id: 'tb' } }, { labScores: scores });
   check('the Brains page line reads in plain words', line === 'Lab: tools 75 · coding 80 · 41 words a second here (2026-11-12)', line);
   check('no line when the Lab has no scores for that brain', labLine({ value: 'x', entry: { id: 'x' } }, { labScores: scores }) === '' && labLine({ value: 'x' }, {}) === '');
-  check('the Brains page asks for them and passes them in', /api\('\/api\/lab\/brain-scores'\)/.test(read('public/cellar.js')) && /calAsk, labScores \}/.test(read('public/cellar.js')));
+  check('the Brains page asks for them and passes them in', /api\('\/api\/lab\/brain-scores'\)/.test(read('public/cellar.js')) && /calAsk, labScores, \.\.\.more \}/.test(read('public/cellar.js')));
   // ---- 31 Check again after engine updates ----
   check('a drop bigger than luck is said; a small one isn\'t', /went from 70 to 60/.test(dropLine('Riker', { score: 70, tps: 100 }, { score: 60, tps: 100 }, 'Brain Engine 4')) && dropLine('Riker', { score: 70, tps: 100 }, { score: 67, tps: 95 }) === '');
   check('the measured wobble widens what counts as luck', dropLine('Riker', { score: 70, wobble: 8 }, { score: 63 }) === '');

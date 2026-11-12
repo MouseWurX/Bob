@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { setUpHtml, handLock, SETUPS, setupOf, setupPlan, duoNeedsQuick, brainsHtml, brainsInUse, emptyJobs, spareBrains, jobsFor, placeBarHtml, budget, brainJobs, senseSlots } from '../public/brains.js';
+import { setUpHtml, handLock, SETUPS, setupOf, setupPlan, duoNeedsQuick, brainsHtml, brainsInUse, emptyJobs, spareBrains, jobsFor, placeBarHtml, budget, brainJobs, senseSlots, listTopHtml, listRowHtml, listSetUpHtml } from '../public/brains.js';
 import { HELP } from '../public/help-content.js';
 import { readyList, readyDefaults, readyOrder, SPLITS, splitPicks } from '../public/equip.js';
 
@@ -55,9 +55,28 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
 }
 {
   const cellar = read('public/cellar.js');
-  check('Equip Bob opens on the Brains page unless another view was chosen', /getItem\('bob-equip-view'\) \|\| 'brains'/.test(cellar) && /brainsHtml\(\{ \.\.\.eqCtx\(\)/.test(cellar));
+  check('Equip Bob opens on the Brains page unless another view was chosen', /getItem\('bob-brains-view'\) \|\| 'brains'/.test(cellar) && /brainsHtml\(brainsCtx\(\)\)/.test(cellar));
   check('the two menus save through the same call the doll uses', /el\.dataset\.brainjob && el\.value\) \{[^}]*await equip\(el\.value, el\.dataset\.brainjob/.test(cellar) && /el\.dataset\.jobbrain && el\.value\) \{[^}]*await equip\(el\.dataset\.jobbrain, el\.value/.test(cellar));
   check('Help has the page, in Bob\'s voice, and the glossary names it', HELP.some((h) => h.id === 'brains-page' && /I load one big brain at a time/.test(h.html)) && /<dt>Brains page<\/dt>/.test(HELP.find((h) => h.id === 'glossary').html));
+}
+// ---- 1.5.207: the Brains page lives in Settings, Brains, and the plain list has the same tools ----
+{
+  const cellar = read('public/cellar.js'), app = read('public/app.js');
+  const place = { engineHere: true, brains: { 'bobert-35b': { layers: 41, set: { mode: 'hand', cpuMoe: 16 } }, 'riker-28b-q3': { layers: 0, set: { mode: 'auto' } } } };
+  const c = { ...ctx, place };
+  const top = listTopHtml(c);
+  check('the plain list has the setups and Calibrate all on top', SETUPS.every((s) => top.includes(`data-setup="${s.id}"`)) && /data-calibrate="\*"/.test(top));
+  const rowHtml = listRowHtml('bobert-35b', { ...c, rowId: 'tinker' });
+  check('a job with a brain shows where it sits, By hand or Auto, Calibrate and Set up', /place-bar/.test(rowHtml) && /By hand/.test(rowHtml) && /data-calibrate="bobert-35b"/.test(rowHtml) && /data-brainsetup="bobert-35b"/.test(rowHtml));
+  const locked = listRowHtml('riker-28b-q3', { ...c, rowId: 'bob' });
+  check('a brain that cannot be calibrated keeps the button, locked, with the reason', /data-calibrate="riker-28b-q3" disabled[^>]*title="[^"]+"/.test(locked) && /data-brainsetup="riker-28b-q3"/.test(locked));
+  check('a job with no brain shows no tools, and two jobs on one brain get their own ids', listRowHtml('', c) === '' && listRowHtml('bobert-35b', { ...c, rowId: 'reviewer' }).includes('id="brain-bobert-35b-reviewer"'));
+  check('Set up opens from the list: that brain\'s page, or nothing when none is open', /Where it sits/.test(listSetUpHtml({ ...c, setUp: 'bobert-35b' })) && listSetUpHtml(c) === '' && listSetUpHtml({ ...c, setUp: 'nope' }) === '');
+  check('the list in cellar.js uses them', /listSetUpHtml\(brainsCtx\(\)\)/.test(cellar) && /\$\{listTopHtml\(bx\)\}/.test(cellar) && /listRowHtml\(cur, \{ \.\.\.bx, rowId: j\.id \}\)/.test(cellar));
+  check('Settings, Brains opens on the Brains page', /\['brains', '🧠 Brains', [^\n]*\(\) => brainsPanelHtml\(\) \+/.test(cellar) && /brainsHtml\(brainsCtx\(\{ inSettings: true \}\)\)/.test(cellar));
+  check('in Settings the page offers the plain list, not the paper doll', !/data-eqview="doll"/.test(brainsHtml({ ...ctx, inSettings: true })) && /data-eqview="list"/.test(brainsHtml({ ...ctx, inSettings: true })));
+  check('Bob\'s picture opens Settings, Brains', /cellar\.open\('settings', null, \{ jump: 'adv-brains' \}\)/.test(app) && !/cellar\.open\('shop', 'roles'\)[^\n]*bobCanvas/.test(app));
+  check('Help says where the page is', /Settings, Brains/.test(HELP.find((h) => h.id === 'brains-page').html) && /brains-page/.test(HELP.find((h) => h.id === 'settings-brains').html));
 }
 // ---- first-time setup: How should I split my brains? ----
 {
