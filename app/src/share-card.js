@@ -96,9 +96,10 @@ export const isHomeIp = (a) => { const q = quad(plainIp(a)); return Boolean(q &&
 export const sameNet = (a, b, mask) => { const x = quad(plainIp(a)), y = quad(plainIp(b)), m = quad(mask); return Boolean(x && y && m && (num(x) & num(m)) === (num(y) & num(m))); };
 // This machine's own home-network addresses: [{ address, netmask }].
 export const homeIps = (ifaces = os.networkInterfaces()) => { const out = []; for (const list of Object.values(ifaces)) for (const n of list || []) if (n.family === 'IPv4' && !n.internal && isHomeIp(n.address)) out.push({ address: n.address, netmask: n.netmask || '255.255.255.0' }); return out; };
-// Mine and theirs on the same home network: { host (mine), peer (theirs) }, or null.
+// Mine and theirs on the same home network: { host (mine), peer (theirs) }, or null. The asker lists his addresses
+// quickest path first (Lenders.learnNear timed them), so his order decides when more than one network is shared.
 export function pickHome(mine, theirs) {
-  for (const m of mine || []) for (const t of theirs || []) if (isHomeIp(t) && sameNet(m.address, t, m.netmask)) return { host: m.address, peer: plainIp(t) };
+  for (const t of theirs || []) for (const m of mine || []) if (isHomeIp(t) && sameNet(m.address, t, m.netmask)) return { host: m.address, peer: plainIp(t) };
   return null;
 }
 export const homeFirst = (cfg) => cfg.share?.homeNet !== false; // on unless switched off (it only matters with the card lent or spread)
@@ -320,7 +321,9 @@ export class CardBorrower {
     for (const [addr, until] of this.down) if (until > this.now()) { const b = (this.lenders?.bobs?.() || []).find((x) => x.address === addr); if (b) skipped.push(`${b.name} (a load with that card failed a few minutes ago)`); }
     const tries = await Promise.all(bobs.map(async (bob) => {
       try {
-        const home = this.homeDown.get(bob.address) > this.now() ? [] : mine.map((m) => m.address);
+        // My addresses, the one on the quickest path to this Bob first (a cable before Wi-Fi), so he opens the gate there.
+        const quick = this.lenders?.nearMine?.get(bob.address) || [];
+        const home = this.homeDown.get(bob.address) > this.now() ? [] : [...mine.map((m) => m.address)].sort((a, b) => (quick.indexOf(a) + 1 || 99) - (quick.indexOf(b) + 1 || 99));
         const seal = scutSealOn(this.cfg) ? sealAsk(this.cfg, bob.address) : null;
         const r = await this.lenders.call(bob, '/api/lend/card', { method: 'POST', body: { action: 'open', from: this.name(), home, ...(brain ? { brain } : {}), ...(seal ? { seal } : {}) }, timeout: brain ? SEED_MS + 15000 : 8000 });
         const j = await r.json().catch(() => ({}));

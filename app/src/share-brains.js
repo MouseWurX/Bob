@@ -12,7 +12,7 @@
 // (a quick chat beside a big job counts).
 // Addresses must be Tailscale ones (100.64.0.0/10 or a *.ts.net name). Passcodes live in config.json only, like the
 // phone door's, and are never sent back to the page.
-import { cleanWifiWas } from './wifi-tune.js';
+import { cleanWifiWas, tcpTrip } from './wifi-tune.js';
 import fs from 'node:fs';
 import { readJsonFile } from './util.js';
 import { isTailscaleIp } from './phone-access.js';
@@ -263,11 +263,14 @@ export function wantsBorrow(cfg, { session, busy, job, pics }) {
 }
 
 export class Lenders {
-  constructor(cfg, { fetchFn = globalThis.fetch, now = Date.now, firstWordMs = FIRST_WORD_MS, quietMs = QUIET_MS, firstWordMaxMs = FIRST_WORD_MAX_MS, reviewWaitMs = REVIEW_WAIT_MS, home = homeIps, checkFirstWordMaxMs = CHECK_FIRST_WORD_MAX_MS } = {}) {
+  constructor(cfg, { fetchFn = globalThis.fetch, now = Date.now, firstWordMs = FIRST_WORD_MS, quietMs = QUIET_MS, firstWordMaxMs = FIRST_WORD_MAX_MS, reviewWaitMs = REVIEW_WAIT_MS, home = homeIps, checkFirstWordMaxMs = CHECK_FIRST_WORD_MAX_MS, trip = tcpTrip } = {}) {
     this.checkFirstWordMaxMs = checkFirstWordMaxMs;
     this.cfg = cfg; this.fetch = fetchFn; this.now = now; this.firstWordMs = firstWordMs; this.quietMs = quietMs; this.firstWordMaxMs = firstWordMaxMs; this.reviewWaitMs = reviewWaitMs; this.home = home;
     // Also over the home network: address -> his door on our home network (from his hello), and when it last failed.
     this.near = new Map(); this.nearDown = new Map();
+    // Two Bobs can share more than one network (Wi-Fi and a cable between them): the quickest is used. nearMine: address ->
+    // this Bob's own addresses on the shared networks, quickest first; nearTimed: when that was last timed.
+    this.trip = trip; this.nearMine = new Map(); this.nearTimed = new Map();
     this.cookies = new Map(); // address -> bob_auth cookie (memory only)
     this.state = new Map(); // address -> { ok, at, brain, why }
     // 1.5.72: Bobs thinking for us right now (address -> held until), so two replies at once go to two different Bobs.
@@ -291,10 +294,28 @@ export class Lenders {
   // His door on our home network, when he said he has one there and it hasn't failed lately; else ''.
   nearOf(bob) { const a = this.near.get(bob.address); return a && !(this.nearDown.get(bob.address) > this.now()) ? a : ''; }
   // From his hello: keep only an address on our own home network (never a public one, never another network).
-  learnNear(bob, list) {
+  // When more than one of his addresses is on a network of ours (Wi-Fi, and a cable too), each is timed (a few
+  // hellos to his door, the quickest counts) and the quickest path wins. Timed again when the list changes, or after
+  // five minutes. One shared network: nothing is timed.
+  async learnNear(bob, list) {
     const mine = this.home();
-    const pick = (Array.isArray(list) ? list : []).map((x) => String(x)).find((x) => { const m = x.match(/^([\d.]+):(\d{1,5})$/); return m && isHomeIp(m[1]) && mine.some((h) => sameNet(h.address, m[1], h.netmask)); });
-    if (pick) this.near.set(bob.address, pick); else this.near.delete(bob.address);
+    let found = (Array.isArray(list) ? list : []).map((x) => String(x)).map((x) => {
+      const m = x.match(/^([\d.]+):(\d{1,5})$/), h = m && isHomeIp(m[1]) ? mine.find((q) => sameNet(q.address, m[1], q.netmask)) : null;
+      return h ? { at: x, host: m[1], port: Number(m[2]), mine: h.address } : null;
+    }).filter(Boolean);
+    if (!found.length) { this.near.delete(bob.address); this.nearMine.delete(bob.address); return; }
+    if (found.length > 1) {
+      const key = found.map((f) => f.at).join(' '), was = this.nearTimed.get(bob.address);
+      let order = was && was.key === key && this.now() - was.at < 5 * 60000 ? was.order : null;
+      if (!order) {
+        const ms = await Promise.all(found.map(async (f) => { let best = Infinity; for (let i = 0; i < 3; i++) { const t = await this.trip({ host: f.host, port: f.port }, 400).catch(() => null); if (t === null) break; best = Math.min(best, t); } return best; }));
+        order = found.map((f, i) => ({ at: f.at, ms: ms[i], i })).sort((a, b) => a.ms - b.ms || a.i - b.i).map((x) => x.at);
+        this.nearTimed.set(bob.address, { key, at: this.now(), order });
+      }
+      found = order.map((at) => found.find((f) => f.at === at));
+    }
+    this.near.set(bob.address, found[0].at);
+    this.nearMine.set(bob.address, [...new Set(found.map((f) => f.mine))]);
   }
 
   async call(bob, path, { method = 'GET', body, signal, timeout = HELLO_MS } = {}) {
@@ -350,7 +371,7 @@ export class Lenders {
       // 1.5.72: what this Bob says he can do. ctx: his quick brain's room; speed: words a second he's seen lately;
       // jobs: whole jobs he takes (only with "Take jobs from my other Bobs" on there), and how busy his queue is.
       if (r.ok) Object.assign(out, cleanAbilities(j), { ms });
-      if (r.ok) this.learnNear(bob, j.home);
+      if (r.ok) await this.learnNear(bob, j.home);
     } catch (e) { out = { ok: false, why: /passcode|tries/.test(e.message) ? e.message : 'not reachable' }; }
     const seen = this.state.get(bob.address);
     if (seen?.measured) out.measured = seen.measured; // what we timed ourselves outlives a hello
