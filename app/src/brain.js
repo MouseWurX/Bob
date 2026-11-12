@@ -1594,12 +1594,18 @@ export class Brain {
     noteNo(this, ctx, name, args, res?.text); // Jobs: Remember a "no" for the whole chat
     if (watched) this.watch.result(ctx.job, res?.text);
     // 1.5.95: a file type named in the ask is saved before the tool's answer goes back, so Bob can say so.
-    if (ctx?.saves?.length) {
-      await Promise.allSettled(ctx.saves.splice(0));
-      if (ctx.savedAs?.length && res && typeof res.text === 'string') res.text += ` Also saved as ${ctx.savedAs.splice(0).join(', ')}, as asked (the original is kept too).`;
-    }
+    await this.savesInto(ctx, res);
     qAfter(this, name, args, res.text, ctx, tool);
     recordCall(this.cfg, name === 'use_my_tool' && args.name ? `use_my_tool:${args.name}` : name, args, res?.text, ctx); // "Let Bob learn from his tools" (tool-learn.js)
+    return res;
+  }
+
+  // 1.5.95: a file type named in the ask is saved before the tool's answer goes back, so Bob can say so. Called after
+  // the tool and again just before its answer goes to the brain (1.5.209: a save that started late still gets named).
+  async savesInto(ctx, res) {
+    if (!ctx?.saves) return res;
+    while (ctx.saves.length) await Promise.allSettled(ctx.saves.splice(0));
+    if (ctx.savedAs?.length && res) res.text = `${res.text ?? ''} Also saved as ${ctx.savedAs.splice(0).join(', ')}, as asked (the original is kept too).`;
     return res;
   }
 
@@ -3473,6 +3479,7 @@ export class Brain {
         }
         if (!ranIt) ctx.progress.skipped(key); // not run, but a loop through it still shows (155)
         if (name === 'use_tools') { let a = call.function?.arguments; if (typeof a === 'string') { try { a = JSON.parse(a); } catch { a = {}; } } const id = String(a?.group || '').toLowerCase().trim(); if (ctx.loaded.has(id)) used.add(id); }
+        if (ctx.saves?.length || ctx.savedAs?.length) res = await this.savesInto(ctx, { ...res });
         msgs.push(toolMessage(call, res.text, call.bounce ? false : res.ok)); // item 165: the result names its call
         if (howtosOn(this.cfg)) { // 1.5.79: the job's steps, in case it's worth a how-to
           let a = call.function?.arguments; if (typeof a === 'string') { try { a = JSON.parse(a); } catch { a = {}; } }

@@ -11,6 +11,18 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
 {
   const fake = (out, ok = true) => async () => ({ ok, out, err: '' });
   // 1.5.208 (the replicant matrix test): the rule only opened TCP 7777 and 50052, and SCUT needs UDP 50052 too.
+  {
+    // 1.5.209 (the Go): Windows' own "bob.exe" program rule, UDP, came back in the same answer; only Bob's rule counts.
+    const dash = '-'.repeat(70);
+    const out = `\r\nRule Name:                            ${RULE}\r\n${dash}\r\nEnabled:                              Yes\r\nLocalPort:                            7777,50052\r\nRemoteIP:                             100.64.0.0/255.192.0.0,LocalSubnet\r\nProtocol:                             TCP\r\n\r\nRule Name:                            bob.exe\r\n${dash}\r\nEnabled:                              Yes\r\nLocalPort:                            Any\r\nProtocol:                             UDP\r\nProgram:                              C:\\Bob\\bob.exe\r\nOk.\r\n`;
+    const go = await firewallState(7777, { os_: 'win', home: true, run: fake(out) });
+    check("another rule's UDP (Windows' bob.exe rule) doesn't make Bob's TCP-only rule current: Bring up to date shows", go.behind === true && go.ruleHere === false, JSON.stringify(go));
+    const both = out.replace('Ok.', `\r\nRule Name:                            ${RULE}\r\n${dash}\r\nLocalPort:                            50052\r\nRemoteIP:                             100.64.0.0/255.192.0.0,LocalSubnet\r\nProtocol:                             UDP\r\nOk.`);
+    const ok2 = await firewallState(7777, { os_: 'win', home: true, run: fake(both) });
+    check("…and with Bob's own UDP half on 50052, it's current", ok2.ruleHere === true && ok2.behind === false, JSON.stringify(ok2));
+    const other = await firewallState(7777, { os_: 'win', run: fake(`\r\nRule Name:                            bob.exe\r\n${dash}\r\nLocalPort:                            7777\r\nProtocol:                             UDP\r\n`) });
+    check('a rule with another name on the same port is not Bob\'s rule', other.ruleHere === false && other.behind === false);
+  }
   check('the rule always has the UDP half for the card port (SCUT), whatever the switches', /-Protocol UDP -LocalPort 50052/.test(ruleScript(7777)) && firewallUdp({}) && firewallUdp({ share: { lendCard: true } }) && firewallUdp({ share: { scut: true } }));
   check('…only for the card port: Bob\'s own port stays TCP', !/-Protocol UDP -LocalPort 7777/.test(ruleScript(7777)));
   {

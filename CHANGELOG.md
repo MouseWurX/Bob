@@ -4,6 +4,17 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.209
+
+A quick one for the firewall.
+
+### Fixed
+
+- **Bring up to date shows when the firewall rule has no UDP half.** In 1.5.208 my check read every rule Windows gave back, so Windows' own rule for my program (UDP, any port) made my TCP-only rule look current, and SCUT stayed on TCP. Now only my own rule counts: it needs UDP on the card port (50052) itself. On a computer that still has the old rule, Settings shows **Bring up to date**; press it and OK Windows' prompt.
+- **"A song as an MP3" says the MP3 too, every time.** The extra copy I keep in the type you named is now always named in what I'm told, even when the save starts a moment late, so I can tell you about it.
+
+**Where it works:** the firewall fix is Windows only; Mac and Linux are unchanged (macOS asks by itself; on Linux the line to run already has the UDP part). The MP3 fix is everywhere.
+
 ## 1.5.208
 
 A steadier one: a hundred reliability fixes that are always on and add nothing to what my brain reads at the start of a job, answers to your messages between the steps of a long job, the cube following my brain's whole life, a Brains page inside Settings, more memory and document switches, and fourteen small tools. Every new switch is off until you turn it on, except Answer messages between steps.

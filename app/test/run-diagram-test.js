@@ -109,7 +109,7 @@ check('FFmpeg is a thing Bob can offer to set up', NEEDS.ffmpeg?.engine === 'ffm
   await brain.run('s1', 'make me a song about cats as an mp3', (e) => evs.push(e), new AbortController().signal, []);
   const mp3 = evs.find((e) => e.type === 'made')?.items?.[0];
   check('"a song as an mp3": the MP3 is made too, without a card', mp3?.name === '2026-11-04-tune.mp3' && fs.existsSync(made.replace(/\.wav$/, '.mp3')));
-  check('...and Bob is told, so he can say so', seenTools.flat().some((t) => /Also saved as 2026-11-04-tune\.mp3/.test(t)));
+  check('...and Bob is told, so he can say so', seenTools.flat().some((t) => /Also saved as 2026-11-04-tune\.mp3/.test(String(t))), JSON.stringify({ seenTools, evs: evs.map((e) => e.type), calls: seenTools.length }).slice(0, 1500));
   evs.length = 0;
   script = [call('make_diagram', { title: 'Cats', mermaid: 'flowchart TD\nA[Cat]-->B[Nap]' })];
   await brain.run('s2', 'draw me a flowchart of a cat\'s day', (e) => evs.push(e), new AbortController().signal, []);
