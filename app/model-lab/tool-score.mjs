@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { opts, locate, startServer, chat, stamp, readJsonl, moeShape, AGENT } from './common.mjs';
+import { opts, locate, startServer, chat, stamp, readJsonl, appendJsonl, moeShape, AGENT } from './common.mjs';
 
 const o = opts({ ctx: 16384 });
 if (o.url) process.env.LAB_URL = String(o.url);   // build 18: score a brain served elsewhere (the Forge's card); --models "label=served"
@@ -66,6 +66,7 @@ async function score(m) {
   const srv = await startServer({ server: L.server, model: m.file, mmproj: null, ctx: Number(o.ctx), extra: [...extra, ...(o.experts && shape.key ? ['--override-kv', `${shape.key}=int:${o.experts}`] : [])], logFile: path.join(L.out, 'llama-server-lab.log') });
   const r = { name: m.name, file: m.file, toolTurns: 0, rightTool: 0, rightArgs: 0, noToolTurns: 0, rightNoTool: 0, errors: 0, tps: [], misses: [] };
   const t0 = Date.now();
+  const keepFile = path.join(L.out, `answers-${String(m.name).replace(/[^\w.-]/g, '_')}-${stamp()}.jsonl`);
   try {
     let done = 0;
     for (const l of lessons) {
@@ -76,9 +77,13 @@ async function score(m) {
         const wantCalls = (want.tool_calls || []).map((c) => ({ name: c.function.name, args: parseArgs(c.function.arguments) }));
         const think = o['no-think'] ? false : Boolean(l.think);
         let msg, timings;
-        try { ({ msg, timings } = await chat(srv.url, { messages: h.messages, tools: h.tools, think, max: think ? 6000 : 1500, temperature: 0 })); }
+        // 12 Nov (the owner's rule): every benchmark keeps its data. Each answer is saved with the brain's odds (its top 5 words
+        // at every step) unless --no-odds; the file sits next to the report and can be published or used as training data.
+        let logprobs = null;
+        try { ({ msg, timings, logprobs } = await chat(srv.url, { messages: h.messages, tools: h.tools, think, max: think ? 6000 : 1500, temperature: 0, ...(o['no-odds'] ? {} : { logprobs: true, top_logprobs: 5 }) })); }
         catch (e) { r.errors++; r.misses.push(`${l.idea}/${k}: error ${e.message.slice(0, 80)}`); continue; }
         if (timings?.predicted_per_second) r.tps.push(timings.predicted_per_second);
+        try { appendJsonl(keepFile, { brain: m.name, idea: l.idea, turn: k, think, answer: { content: msg.content || '', reasoning: msg.reasoning_content || undefined, tool_calls: msg.tool_calls || undefined }, ...(logprobs ? { odds: (logprobs.content || []).map((x) => ({ t: x.token, p: x.logprob, top: (x.top_logprobs || []).map((y) => [y.token, y.logprob]) })) } : {}) }); } catch {}
         const got = (msg.tool_calls || []).map((c) => ({ name: c.function?.name, args: parseArgs(c.function?.arguments) }));
         if (!wantCalls.length) {
           r.noToolTurns++;

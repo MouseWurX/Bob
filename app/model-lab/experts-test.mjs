@@ -52,12 +52,22 @@ function runCode(text, name, test) {
   try { const box = {}; vm.createContext(box); vm.runInContext(`${code}\n;globalThis.__f = ${name};`, box, { timeout: 2000 }); return Boolean(test(box.__f)); } catch { return false; }
 }
 
+// 12 Nov (the owner's rule): every benchmark keeps its data: each answer with the brain's odds (top 5 words per step), next to the report.
+const ODDS = o['no-odds'] ? {} : { logprobs: true, top_logprobs: 5 };
+let keepFile = null;
+const keep = (kind, q, res, extra = {}) => {
+  try {
+    keepFile ||= path.join(L.out, `answers-quiz-${String(process.env.LAB_MODEL_NAME || shape.name).replace(/[^\w.-]/g, '_')}-${stamp()}.jsonl`);
+    fs.appendFileSync(keepFile, JSON.stringify({ kind, q, bob: bobVersion || undefined, ...extra, answer: { content: res.msg.content || '', tool_calls: res.msg.tool_calls || undefined }, ...(res.logprobs ? { odds: (res.logprobs.content || []).map((x) => ({ t: x.token, p: x.logprob, top: (x.top_logprobs || []).map((y) => [y.token, y.logprob]) })) } : {}) }) + '\n');
+  } catch {}
+};
 async function quiz(url) {
   const r = { tool: 0, toolN: toolSet.length, fact: 0, factN: FACTS.length, code: 0, codeN: CODE.length, tps: [], misses: [], startTokens: 0, answerMs: [], cant: 0 };
   for (const p of toolSet) {
     try {
       const t0 = Date.now();
-      const { msg, timings, usage } = await chat(url, { messages: [{ role: 'system', content: system }, { role: 'user', content: p.text }], tools, max: 512 });
+      const res = await chat(url, { messages: [{ role: 'system', content: system }, { role: 'user', content: p.text }], tools, max: 512, ...ODDS }); keep('tool', p.text, res, { group: p.group });
+      const { msg, timings, usage } = res;
       r.answerMs.push(Date.now() - t0);
       // 12 Nov: the size of Bob's front desk (system prompt + tools + one short request), and false "I can't" answers to plain tool requests
       if (!r.startTokens) r.startTokens = usage.prompt_tokens || timings.prompt_n || 0;
@@ -70,13 +80,15 @@ async function quiz(url) {
   }
   for (const [q, re] of FACTS) {
     try {
-      const { msg } = await chat(url, { messages: [{ role: 'user', content: q }], max: 64, temperature: 0 });
+      const res = await chat(url, { messages: [{ role: 'user', content: q }], max: 64, temperature: 0, ...ODDS }); keep('fact', q, res);
+      const { msg } = res;
       if (re.test(msg.content || '')) r.fact++; else r.misses.push(`fact "${q}" -> ${(msg.content || '').slice(0, 60)}`);
     } catch (e) { r.misses.push(`fact "${q}" -> error ${e.message.slice(0, 80)}`); } // 11 Nov: one failed request no longer loses the whole report
   }
   for (const [q, name, test] of CODE) {
     try {
-      const { msg, timings } = await chat(url, { messages: [{ role: 'user', content: q }], max: 600, temperature: 0 });
+      const res = await chat(url, { messages: [{ role: 'user', content: q }], max: 600, temperature: 0, ...ODDS }); keep('code', q, res);
+      const { msg, timings } = res;
       if (timings.predicted_per_second) r.tps.push(timings.predicted_per_second);
       if (runCode(msg.content || '', name, test)) r.code++; else r.misses.push(`code ${name} failed`);
     } catch (e) { r.misses.push(`code ${name} -> error ${e.message.slice(0, 80)}`); }
