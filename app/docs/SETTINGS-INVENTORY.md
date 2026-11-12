@@ -314,6 +314,7 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 
 | Where | What it says | Default | Notes |
 | --- | --- | --- | --- |
+| Settings > Everyday > How Bob works | Better tool calling: "On unless you turn it off. Before a tool runs, Bob checks the call and mends sure slips…" (Nov 12: the loop helps from 1.5.206, now with a switch) | On | Off = the loop as before 1.5.206. |
 | Settings > Everyday > How Bob works | Let Bob learn from his tools: "Off unless you turn it on. When a tool fails and then works, Bob keeps one line on what fixed it and reads it next time. He also counts what works and what fails, and offers to fix a tool that keeps failing. It all stays on this replicant matrix." | Off | While on: the scorecard (tool, ✓ wins, ✗ misses, "keeps failing") and **Forget what he learned**. Also on the Welcome's "Do you want me to:" list. |
 
 ## Added with Let Bob's Quick brain see the big job

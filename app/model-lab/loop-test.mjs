@@ -32,6 +32,7 @@ const brain = kit.brain;
 const plain = Boolean(o.plain);
 const offList = o.off ? String(o.off).split(',').map((x) => x.trim()).filter(Boolean) : [];
 brain.cfg.loopHelpOff = plain ? true : offList.length ? offList : false;
+brain.cfg.toolHelp = !plain; // the Settings switch "Better tool calling" (on unless turned off); --plain runs without it
 if (o.think) brain.cfg.loopHelpOn = ['think'];
 let jobLog = [];
 { const was = brain.log.bind(brain); brain.log = (...a) => { jobLog.push(a.map(String).join(': ').slice(0, 200)); return was(...a); }; }

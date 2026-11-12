@@ -310,5 +310,15 @@ const reset = () => { ran.length = 0; events.length = 0; seen.length = 0; slow =
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
+{
+  // Nov 12 (the owner): "Better tool calling" is on by default, with a Settings switch to turn it off.
+  const was = cfg.toolHelp; delete cfg.toolHelp;
+  check('on by default', brain.plainLoop === false && brain.helpOff('mend') === false);
+  cfg.toolHelp = false;
+  check('switched off: the loop works the old way', brain.plainLoop === true && brain.helpOff('mend') === true);
+  if (was === undefined) delete cfg.toolHelp; else cfg.toolHelp = was;
+  const cellar = fs.readFileSync(new URL('../public/cellar.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  check('the switch is in Settings, on unless turned off', /sswitch\('toolHelp', settings\.toolHelp !== false, 'Better tool calling', 'On unless you turn it off\./.test(cellar));
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

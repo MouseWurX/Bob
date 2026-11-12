@@ -1547,8 +1547,10 @@ export class Brain {
   // compares with and without them); it is not a setting and nothing in Bob's window changes it.
   // 1.5.206 PC check: loopHelpOff can also be a list of help names, so the loop test can switch one off at a time
   // (model-lab/loop-test.mjs --off think,note): mend, together, meaning, tidy, note, last, think, promise, near, hint.
-  get plainLoop() { return this.cfg?.loopHelpOff === true; }
-  helpOff(name) { const o = this.cfg?.loopHelpOff; return o === true || (Array.isArray(o) && o.includes(name)); }
+  // Nov 12 (the owner): ON by default, with a Settings switch to turn them off, "Better tool calling" (cfg.toolHelp).
+  // Off, Bob's loop works the way it did before Nov 11. The embedding-openings fix stays on either way (it's a bug fix).
+  get plainLoop() { return this.cfg?.toolHelp === false || this.cfg?.loopHelpOff === true; }
+  helpOff(name) { const o = this.cfg?.loopHelpOff; return this.cfg?.toolHelp === false || o === true || (Array.isArray(o) && o.includes(name)); }
 
   // Nov 11 (loop-help.js): check each call against its tool before it runs. Sure fixes are made (mended JSON, a field
   // under another name, "5" for 5, "Week" for "week"); a call still missing what it needs gets call.bounce, the
