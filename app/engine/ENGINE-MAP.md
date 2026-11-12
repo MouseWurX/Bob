@@ -2,7 +2,7 @@
 
 This is the guide to what Brain Engine changes in llama.cpp, where each change hooks in, and what to re-check when moving to a newer llama.cpp. [README.md](README.md) says what each patch is for and how to build and move it. This page is the "where and how" for whoever does the rebase.
 
-Brain Engine 4 is llama.cpp **b12282** plus the first six patches below (0007 is for the next build), about +2,160/-13 lines across 21 files. Only 0004, 0005 and 0006 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
+Brain Engine 5 (named 5b12282) is llama.cpp **b12282** plus the seven patches below (Brain Engine 4 had the first six), about +2,160/-13 lines across 21 files. Only 0004, 0005 and 0006 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
 
 Bob's own code map lists these patches too: one line each, with the files they change, the lines they add and take out, and the main names they add.
 
