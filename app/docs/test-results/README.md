@@ -14,6 +14,7 @@ Your numbers will differ on other hardware. Small samples are noted in each file
 
 | Date | Result |
 |---|---|
+| 2026-11-12 | [SCUT against plain TCP: one brain over two Bobs on weak Wi-Fi](2026-11-12-scut-vs-tcp-over-wifi.md) |
 | 2026-11-10 | [Bob-Net retest: both directions](2026-11-10-bob-net-retest.md) |
 | 2026-11-04 | [Bob-Net: first live run between two replicant matrices](2026-11-04-bob-net-first-live-run.md) |
 | 2026-11-04 | [Engine check: every engine and brain](2026-11-04-engine-check.md) |

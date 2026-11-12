@@ -277,7 +277,7 @@ Put Bob on your PC, laptop, handheld and phone, and they find each other on your
 <img src="app/docs/screens/phone.png" width="240" align="right" alt="Bob for Android: the phone asks the PC's Bob for a wireframe fox and gets it back">
 
 - **Pool graphics cards and memory.** A brain too big for one computer is spread over your Bobs' cards and memory. One bigger than all of that can still run from a fast SSD.
-- **Fast where it counts.** The first load sends the brain once; later loads send only what's missing. A brain that fits on one computer stays there, because that beats any network.
+- **Fast where it counts.** The first load sends the brain once; later loads send only what's missing. A brain that fits on one computer stays there, because that beats any network. With **SCUT** turned on (experimental), a brain spread over two Bobs on weak home Wi-Fi wrote 17.5 tokens a second against 3.5 to 4.8 over plain TCP: [the measurements](app/docs/test-results/2026-11-12-scut-vs-tcp-over-wifi.md).
 - **Bobs working in concert.** Borrow a bigger Bob's brain for a reply, send a job to whichever Bob is free, or have a bigger Bob check a handheld's harder work.
 - **The phone app** talks to the Bob on your PC, and can run a small brain on the phone itself.
 - **Adventures together:** your other Bobs join the party in the tabletop game.

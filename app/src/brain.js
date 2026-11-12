@@ -87,7 +87,7 @@ import { meetingTool } from './meeting-notes.js';
 import { compareTool } from './compare-files.js';
 import { parts3dOn, parts3dTool } from './parts3d.js';
 import { model3dOn, model3dTool } from './model3d.js';
-import { autoSessionOn, pickSessionTool, autoSessionPrompt, switchLine, switchedNote, idleSession, cardBusy, IDLE_CHECK_MS } from './auto-session.js';
+import { autoSessionOn, pickSessionTool, autoSessionPrompt, switchLine, switchedNote, idleSession, cardBusy, whoseCard, IDLE_CHECK_MS } from './auto-session.js';
 import { readCard } from './gaming-card.js';
 import { Lenders, wantsBorrow, roughTokens } from './share-brains.js';
 import { CardLender, CardBorrower } from './share-card.js'; // Bob-Net: lend my graphics card / spread big brains
@@ -1548,8 +1548,11 @@ export class Brain {
   async idleCheck() {
     if (this.turns.size || this.waking || this.switching || this.morePictures || this.queue.some((j) => j.state === 'working' || (j.state === 'waiting' && !waitsForGaming(this.cfg, j)))) return this.armIdleCheck();
     if (Date.now() - (this.lastActivity || 0) < IDLE_CHECK_MS(this.cfg) - 1000) return this.armIdleCheck();
-    const busy = cardBusy(await (this.readCard || readCard)().catch(() => null));
-    const want = idleSession(this.cfg, busy);
+    const raw = cardBusy(await (this.readCard || readCard)().catch(() => null));
+    // Bob's own brain on the card, or his card lent to another Bob: that load is his, not a game's.
+    const mine = raw === true && (Boolean(this.cardLender?.child) || Boolean((await this.engine?.loaded?.().catch(() => []))?.some((m) => m.usesCard || m.onCard)));
+    const busy = whoseCard(raw, { mine, others: mine ? (await (this.readCardUse || readCardUse)().catch(() => null))?.others : null });
+    const want = idleSession(this.cfg, busy, { stay: mine && busy === null });
     if (want && !this.turns.size) await this.autoSwitch(want, 'idle');
     else this.armIdleCheck();
   }
