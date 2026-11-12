@@ -95,7 +95,7 @@ Then run `engine/try-newer.sh <tag>`. Every patch must go on, and the Linux buil
 
 - `tools/server/server-task.h`: `expert_trace_stream` in the request params; `expert_trace_part` (json, null unless asked) on a streamed partial result.
 - `tools/server/server-schema.cpp`: the `expert_trace_stream` field.
-- `tools/server/server-context.cpp`: `server_expert_trace` remembers how far the pieces sent so far reach (`sent_tag`, `sent_out`, `sent_rows`, reset in `clear()`). `send_partial_response()` fills `expert_trace_part` from the new `expert_trace_part(slot)`, which builds the rows since the last piece the same way `expert_trace_end()` builds all of them, and waits for the next piece when a layer is behind. Only on top of 0002.
+- `tools/server/server-context.cpp`: `server_expert_trace` remembers how far the pieces sent so far reach (`sent_tag`, `sent_out`, `sent_rows`, reset in `clear()`). `send_partial_response()` fills `expert_trace_part` from the new `expert_trace_part(slot)`, which builds the rows since the last piece the same way `expert_trace_end()` builds all of them, and waits for the next piece when a layer is behind. Running counts (`seen_tag`, `seen_out`, `seen_prompt`) keep each piece's cost the same at any context length, and a piece carries at most `part_max_rows` (64) rows: a long prompt arrives as one piece, so only its end is sent and `from` says where it starts (the full trace at the end is unchanged). Only on top of 0002.
 - `tools/server/server-task.cpp`: the piece goes into the plain and the chat-stream JSON of a partial result.
 
 ## What's not covered yet
