@@ -69,6 +69,11 @@ wheel() {
     sed -i 's/\.data_ptr<T>()/.template data_ptr<T>()/g' "$dir/flex_gemm/kernels/cuda/spconv/sparse_neighbor_map.cu"
     grep -q 'template data_ptr<T>' "$dir/flex_gemm/kernels/cuda/spconv/sparse_neighbor_map.cu"
   fi
+  if [ "$name" = o_voxel ]; then
+    # 1e-6d and 0.0d are a gcc-only way to write a double; Visual Studio wants plain 1e-6 and 0.0
+    sed -i -E 's/\b(1e-6|0\.0)d\b/\1/g' "$dir/src/convert/flexible_dual_grid.cpp"
+    if grep -qE '\b(1e-6|0\.0)d\b' "$dir/src/convert/flexible_dual_grid.cpp"; then echo "o-voxel patch didn't take"; exit 1; fi
+  fi
   echo "::group::building $name"
   "$py" -m pip wheel --no-build-isolation --no-deps -w "$out" "$dir"
   echo "::endgroup::"
