@@ -1,6 +1,7 @@
 // Talk with Bob (1.5.210, UX plan item 12): a live, hands-free talk on Bob's own hearing and voice, with xAI's online
 // hearing and voice as an opt-in extra. Everything starts off, nothing is added to what the brain reads, and xAI is
 // only ever a fake here: nothing goes online, no microphone is opened, nothing is spoken.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -107,7 +108,7 @@ const noKey = () => '', aKey = (n) => (n === XAI_KEY ? 'xai-test' : '');
 // ---- never in the brain's way ----
 {
   const brainFiles = ['src/brain.js', 'src/prompt.js', 'src/mid-job.js', 'src/meanwhile.js'].filter((f) => fs.existsSync(path.join(here, '..', f)));
-  check('the brain is never told about the talk', brainFiles.every((f) => !/talkWithBob|talk-core|Talk with Bob|shortSay/.test(read(f))));
+  check('the brain is never told about the talk', brainFiles.every((f) => !/talkWithBob|talk-core|Talk with Bob|shortSay/.test(f === 'src/brain.js' ? brainText() : read(f))));
   const app = read('public/app.js');
   check('a talk sends an ordinary message, through the message box', /send: \(text\) => \{[\s\S]{0,200}requestSubmit\(\)/.test(app));
   check('the screen lines are fixed words, not sent anywhere', Object.values(TALK_LINES).every((l) => typeof l === 'string' && l.length < 80));

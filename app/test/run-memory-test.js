@@ -1,5 +1,6 @@
 // 1.5.3: Bob shows RAM as well as graphics memory: in the brain label (how each brain splits between the card
 // and system memory) and in Now running (graphics card and RAM meters, the brain by its friendly name).
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import { Brain } from '../src/brain.js';
 import { ramNow } from '../src/server-ram.js';
@@ -46,7 +47,7 @@ check('model ids stay out of Now running (friendly name only)', /m\.label \|\| m
   s = await status([{ name: 'gemma4:e4b', size: 5.8e9, vram: 5.8e9, split: true }]);
   const smiGB = Math.round(5.8e9 / 1048576 / 102.4) / 10; // what nvidia-smi would say for the same bytes
   check('the brain label and the card meter count the same bytes as the same number', s.gb === smiGB, `${s.gb} vs ${smiGB}`);
-  check('ram meter uses the same unit', /memGB\(total - free\)/.test(read('src/server-ram.js')) && /const gb = memGB/.test(read('src/brain.js')));
+  check('ram meter uses the same unit', /memGB\(total - free\)/.test(read('src/server-ram.js')) && /const gb = memGB/.test(brainText()));
   s = await status([{ name: 'gemma4:e4b', size: 6 * GB, vram: 0, split: false }]);
   check('llama.cpp without a per-process figure is marked as an estimate', s.models[0].estimate === true);
   s = await status([{ name: 'gemma4:e4b', size: 6 * GB, vram: 6 * GB, split: true }]);

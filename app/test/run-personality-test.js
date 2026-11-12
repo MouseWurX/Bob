@@ -1,5 +1,6 @@
 // 1.3.0: Bob knows his look and reacts once when it changes; personality dials (default = Bob as he was);
 // the Attributes panel; clicking Bob opens Equip Bob.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -54,7 +55,7 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   check('copies at work get the dials but not the look note', !/"Bot"/.test(hat) && /pun engine/.test(hat));
   check('default Bob\'s prompt is unchanged apart from the look', systemPrompt({ now: 'n', user: 'Sam' }) === systemPrompt({ now: 'n', user: 'Sam', dials: personalityPrompt(DEFAULTS, 'Sam') }));
   check('his quick take on every kind of look', ['sysop', 'bot', 'holo', 'cyber', 'innkeeper', 'm-1', 'f-2', 'alien-3', 'robot-4', 'pc-5', 'odd-6'].every((id) => bobTake(id).length > 10) && bobTake('zzz') === bobTake('sysop'));
-  const brain = read('src/brain.js');
+  const brain = brainText();
   check('the change note is cleared after his first reply', /if \(this\.cfg\.lookChange\) \{ try \{ saveSettings\(this\.cfg, \{ lookChange: null \}\)/.test(brain) && /look: lookPrompt\(this\.cfg\)/.test(brain));
 }
 

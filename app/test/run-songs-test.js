@@ -1,6 +1,6 @@
 // 1.5.41: songs show in the chat with Bob's song player (title, bars of the song's shape, lyrics), and
 // Settings > Where Bob saves things picks the folder for pictures, clips, songs and sounds.
-import { serverText } from './source-text.js';
+import { serverText, brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -94,7 +94,7 @@ function wav(file, { rate = 8000, channels = 2, bits = 16, float = false, second
   check('arrow keys jump 5 seconds, Space plays or pauses', /ArrowRight: 5/.test(sp) && /e\.key === ' '/.test(sp));
   check('the chat wires the player once and keeps song cards while words stream in', /wireSongs\(\);/.test(app) && /r\.el\.insertBefore\(tpl\.content, keep\)/.test(app));
   check('the side panel plays a song in the big player', /songCard\(\{ url, name: t\.name, path: t\.path \}, \{ big: true \}\)/.test(viewer));
-  check('the song arrives with its title in the chat and in the saved reply', /title: ev\.song\.title, sound: ev\.song\.sound/.test(app) && /title: ev\.song\.title, sound: ev\.song\.sound/.test(read('src/brain.js')));
+  check('the song arrives with its title in the chat and in the saved reply', /title: ev\.song\.title, sound: ev\.song\.sound/.test(app) && /title: ev\.song\.title, sound: ev\.song\.sound/.test(brainText()));
   check('the server answers /api/song with the shape and what the list knows', /p === '\/api\/song'/.test(serverText()) && /wavePeaks\(d\.path/.test(serverText()));
   check('make_music can take a title', /title: str\('Optional: 2 to 5 words/.test(read('src/tools.js')));
 }

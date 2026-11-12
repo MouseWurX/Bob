@@ -1,6 +1,7 @@
 // 1.5.210 (the owner, Nov 12): the thinking bubble above the answer, and the chat showing only the finished answer.
 // Display only: the brain's messages stay as they were (only window fields are added), and nothing is added to what
 // the brain is sent.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import { pickAnswer } from '../src/clean-answer.js';
 import { PUNS, took, doneLine, punAt } from '../public/think-bubble.js';
@@ -63,7 +64,7 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
 
 // ---- wiring ----
 {
-  const brain = read('src/brain.js'), app = read('public/app.js'), bubble = read('public/think-bubble.js'), css = read('public/style.css');
+  const brain = brainText(), app = read('public/app.js'), bubble = read('public/think-bubble.js'), css = read('public/style.css');
   check('the run says which message is the answer', /const shown = pickAnswer\(msgs\.slice\(base\), mooted\?\.rounds\)/.test(brain) && /emit\(\{ type: 'final', text: shown\.text/.test(brain));
   check('"How I got here" and the answer id go on the answer, not a step', (brain.match(/!m\.tool_calls\?\.length && !m\.step\)/g) || []).length >= 2);
   check('history marks steps and shows a corrected answer', /m\.showText \|\| m\.content/.test(brain) && /m\.step \? \{ step: true \}/.test(brain));

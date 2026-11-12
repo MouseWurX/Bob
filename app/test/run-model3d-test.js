@@ -2,6 +2,7 @@
 // the add-on pins and where they may come from, the 3D workshop engine entry, its setup steps (with a fake uv,
 // Python and downloader: nothing is downloaded or run), the make_3d_model tool, Bob-Net jobs, the GitHub build,
 // and the settings, Help, FAQ and glossary. Every file is made up in a temporary folder.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -161,7 +162,7 @@ fs.mkdirSync(cfg.painterDir, { recursive: true });
   check('a missing picture is a clear error', /^Error: I can't find the picture/.test(await t.run({ picture: 'nope.png' }, {})));
   const desc = t.schema.function.description;
   check('the tool says to paint one plain-background picture first', /make one first with the picture tool/.test(desc) && /plain/.test(desc));
-  const brainSrc = read('src/brain.js');
+  const brainSrc = brainText();
   check('hidden while the setting is off', /!model3dOn\(this\.cfg\) && 'make_3d_model'/.test(brainSrc));
   check('in the 3D toolbox group', /tools: \['make_3d_part', 'make_3d_model'\]/.test(read('src/toolbox.js')));
 }

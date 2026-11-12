@@ -1,6 +1,7 @@
 // 🗓 Everyday helpers (items 143 to 150): text size, easier-to-read font, profiles, today card, focus timer,
 // receipts, the tour after an update and the tray dot. Everything starts off; private things stay locked on disk;
 // nothing here reads the real computer or goes online (the weather gets a fake fetch, the box a test keeper).
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -136,7 +137,7 @@ const fresh = () => { const d = fs.mkdtempSync(path.join(tmp, 'inn-')); const da
   cfg.receipts = false;
   check('with the switch off the tool says where it is', !receiptsOn(cfg) && /Everyday helpers/.test(await tool.run({ action: 'list' })));
   check('the tool is short', JSON.stringify(tool.schema).length < 900);
-  const brain = read('src/brain.js'), box = read('src/toolbox.js');
+  const brain = brainText(), box = read('src/toolbox.js');
   check('the tool is hidden while the switch is off', brain.includes("!receiptsOn(this.cfg) && 'spending_sheet'"));
   check('the word "receipt" brings the tool in', /spending: \{[\s\S]{0,300}tools: \['spending_sheet'\][\s\S]{0,80}receipts\?/.test(box));
   check('the sheet is never in a backup (its key belongs to this computer)', NOT_BACKED_UP.includes('bob/spending.json'));

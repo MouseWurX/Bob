@@ -1,5 +1,6 @@
 // The link log (src/link-log.js, Brain Engine patch 0008): the engine's [link] and [scut] lines are kept in a file in
 // Bob's data folder and the short ones go to the logbook; nothing else does. Nothing here reads the real computer.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -60,7 +61,7 @@ const OLD = '[scut] SCUT on: udp ' + H + ':50052, cap 100 Mbit/s, round trip 3.0
   ok(/new LinkLog\(this\.cfg, \{ who: 'borrowed card'/.test(lc) && /link\?\.feed\(d\)/.test(lc), 'the borrowing Bob reads his engine\'s link lines');
   ok(/new LinkLog\(this\.cfg, \{ who: 'lent card'/.test(sc) && /link\.feed\(d\)/.test(sc), 'the lending Bob reads his card server\'s link lines');
   ok(/if \(over\) return;\s+if \(signal\?\.aborted\)/.test(lc) && /if \(over\) return;\s+saveFail\('took too long to load'\)/.test(lc), 'the "still loading over Bob-Net" watch ends when the load is over');
-  const brain = read('src', 'brain.js');
+  const brain = brainText();
   ok(!/bob-net-link/.test(brain), 'the link log never goes into what the brain reads');
   const patch = read('engine', 'patches', '0008-scut-live.patch');
   ok(/\[link\] %s over %s/.test(patch) && /GGML_RPC_STATS/.test(patch) && /not SCUT: /.test(patch), 'the engine patch writes the link lines, with the reason SCUT isn\'t used');

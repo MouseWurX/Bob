@@ -1,6 +1,7 @@
 // "Let Bob work on his own app" (src/self-work.js): off by default; Bob works on a separate copy of his code (never the
 // running Bob, whose folder and settings stay locked), only on Bobert or stock Qwen3.6 35B, with Long memory (YaRN)
 // stretched past 256K for that job. No real git, network, graphics card or folders: everything is passed in as a fake.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -187,7 +188,7 @@ check('remixes and smaller brains don\'t', !['qwen3.6-35b-a3b-heretic', 'qwen3.6
   check('inside a task, older tool results are cut once it nears the brain\'s memory', cut > 0 && msgs.reduce((n, m) => n + m.content.length, 0) <= 30000 && msgs[2].content.includes('set aside to save memory'));
   check('...the newest results, the task and the brain\'s own words are kept whole', msgs[11].content.length === 5000 && msgs[1].content === 'U' && msgs[12].content.length === 3000 && msgs[0].content.length === 50);
   check('...and nothing is cut while it fits', compactMessages([{ role: 'tool', content: 'x'.repeat(100) }], 1000) === 0 && charsFor(524288) > charsFor(262144));
-  check('brain.js cuts inside repository jobs only', /if \(compact\) compactMessages\(messages, charsFor\(brainCtx\)\)/.test(read('src/brain.js')) && /compact: force\?\.longRun === true/.test(read('src/brain.js')));
+  check('brain.js cuts inside repository jobs only', /if \(compact\) compactMessages\(messages, charsFor\(brainCtx\)\)/.test(brainText()) && /compact: force\?\.longRun === true/.test(brainText()));
 }
 
 // ---------- A whole managed job, with a fake brain and fake Bobs ----------
@@ -313,7 +314,7 @@ check('remixes and smaller brains don\'t', !['qwen3.6-35b-a3b-heretic', 'qwen3.6
   check('"work on the repo" too', guessGroups(brain, 'can you add tests to the guard repo').includes('selfwork'));
   const off = { cfg, usable: () => false };
   check('no group while it\'s off', !guessGroups(off, 'fix your own code').includes('selfwork'));
-  const src = read('src/brain.js');
+  const src = brainText();
   check('the tool is hidden unless the switch is on and a code copy is made', /!\(selfWorkOn\(this\.cfg\) && readyRepos\(this\.cfg\)\.length\) && 'work_on_repo'/.test(src));
   const tools = read('src/tools.js');
   check('new files in the code copy still show their card (the rest of the inn doesn\'t)', /!isInside\(codeCopyRoot\(cfg\), file\)\) return false/.test(tools));

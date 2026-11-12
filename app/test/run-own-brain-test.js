@@ -1,6 +1,7 @@
 // 1.5.131: the bracket after a model Bob downloaded himself never says "Bob's own engine" (which read as "Bob's own
 // brain" on every stock Qwen and Gemma). 1.5.137: and no longer "downloaded by Bob" either: no bracket at all. "Bob's own brain" is kept for catalogue entries marked
 // madeByBob: true; 1.5.169 ships the first ones (28Bob Riker).
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import { fileLabel, isMadeByBob, MADE_BY_BOB, YOUR_OWN_FILE } from '../src/models.js';
 import { HELP } from '../public/help-content.js';
@@ -26,7 +27,7 @@ check('no catalogue model carries a Bob name', catalog.models.every((m) => !/\bb
 const models = read('src/models.js');
 check('roles() builds the bracket through fileLabel, nowhere else', (models.match(/fileLabel\(m, st\.located\.gguf\)/g) || []).length >= 2 && !/\$\{m\.name\} \(Bob's own engine\)/.test(models));
 check('the words live in one place, and "downloaded by Bob" is gone', models.includes("MADE_BY_BOB = \"Bob's own brain\"") && !/downloaded by Bob'/.test(models));
-check('1.5.137: Now running adds no "(Bob\'s downloaded copy)" or "(Bob\'s own copy)" bracket', !/\(Bob's downloaded copy\)/.test(read('src/brain.js')) && !/\(Bob's own copy\)/.test(read('src/brain.js')));
+check('1.5.137: Now running adds no "(Bob\'s downloaded copy)" or "(Bob\'s own copy)" bracket', !/\(Bob's downloaded copy\)/.test(brainText()) && !/\(Bob's own copy\)/.test(brainText()));
 check('the engine log says the same', /running from Bob's downloaded copy/.test(read('src/llamacpp.js')) && !/running from Bob's own copy \(/.test(read('src/llamacpp.js')));
 
 // Nothing on the window or the phone side writes the tag by hand.

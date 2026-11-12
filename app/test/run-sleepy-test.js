@@ -1,4 +1,5 @@
 // Tests the Gaming-session sleepy asides: scripted, rare, never two in a row, tied to the Outlook dial.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { SLEEPY, SLEEPY_ENTER, SLEEPY_LEAVE, SLEEPY_SESSION, sleepyGap, sleepyAfterReply, sleepySwitch } from '../public/sleepy.js';
@@ -41,7 +42,7 @@ check('Terse: no switch lines either', sleepySwitch(sw, 'normal', 'light', { len
 
 // Wiring: the brain sends asides only in Gaming, after a finished reply; the page shows them apart from the reply
 // (not saved, not copied) and Read aloud skips the *stage directions*.
-const brain = read('../src/brain.js');
+const brain = brainText();
 check('brain checks the session before an aside', /currentSession\(this\.cfg\)\.id === SLEEPY_SESSION/.test(brain));
 check('brain only after a reply that finished', /if \(ok && !flagged && !controller\.signal\.aborted && \(!job \|\| job\.state === 'done'\)/.test(brain));
 check('error and correction notes block the aside', /\['error', 'correction', 'held', 'waiting'\]\.includes\(ev\.type\)\) flagged = true/.test(brain));

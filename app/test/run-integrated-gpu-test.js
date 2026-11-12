@@ -1,6 +1,7 @@
 // 1.5.71: graphics built into the processor (like the Radeon 780M in a Legion Go's Z1 Extreme) are seen, shown as
 // memory shared with graphics, and get a brains-only starter set. A separate card, or a desktop chip's tiny built-in
 // graphics, still counts as no graphics card. 1.5.79: the set paints too.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import { pickIntegrated, integratedGpu, sharedGraphicsGB, gpuInfo, apuGraphicsGB, parseApuJson, apuMemory, specLine, APU_HEADROOM_GB } from '../src/platform.js';
 import { apuRoom, APU_NO_ROOM, apuHoldbackGB } from '../src/brain.js';
@@ -122,7 +123,7 @@ r = await apuRoom({ ...fakeBrain(), cfg: {} }, 'qwen', 32768, { freeMem: 1 * GB 
 check('a real graphics card: untouched (the card has its own memory)', r.ok && r.ctx === 32768);
 r = await apuRoom({ ...fakeBrain(), gate: { brainBytes: () => undefined } }, 'qwen', 32768, { freeMem: 1 * GB });
 check('a brain whose size is unknown goes the old way', r.ok && !r.shortened);
-const brainSrc = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8');
+const brainSrc = brainText();
 check('the guard sits in fitCtx (shorten), ensureModel (refuse, in chat) and wake (stay quiet)', /const room = await apuRoom\(this, model, fit\);/.test(brainSrc) && /throw new Error\(room\.line\)/.test(brainSrc) && /not waking \$\{model\}: too little RAM/.test(brainSrc));
 
 // ---- 1.5.133: the set-aside counts (Legion Go: every brain was refused with 8 GB set aside) ----

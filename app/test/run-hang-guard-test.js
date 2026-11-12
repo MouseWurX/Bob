@@ -1,5 +1,6 @@
 // Timeouts and hangs (reliability items 208-217, src/hang-guard.js): always on. Plain checks first, then the engine
 // with a scripted llama-server (fetch is faked: nothing here reaches a real engine, card or network).
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -52,7 +53,7 @@ check('210 the cut-call line is one line and names the tool', !CUT_CALL('write_f
   const v = await raceTimeout(Promise.resolve(5), 10_000, 0);
   check('215 raceTimeout gives the answer and doesn\'t wait', v === 5 && Date.now() - t0 < 1000);
   check('215 raceTimeout falls back', (await raceTimeout(new Promise(() => {}), 20, 'late')) === 'late');
-  check('215 the brain uses raceTimeout, not bare Promise.race timers', !/Promise\.race\(\[[^\]]*setTimeout/.test(src('brain.js')));
+  check('215 the brain uses raceTimeout, not bare Promise.race timers', !/Promise\.race\(\[[^\]]*setTimeout/.test(brainText()));
 }
 
 // ---------- 216: long loads ----------
@@ -77,7 +78,7 @@ check('216 never past the hard limit', loadDeadline(200, 300).soft === 300);
   check('217/215 the card timer goes in the turn\'s bag', bag.close() === 1);
   await wait(60);
   check('217/215 and is cleared with it', !f2);
-  check('217 approval and ask_user cards use it', (src('brain.js').match(/awakeTimeout\(\(\) => (?:\{ out\.timedOut = true; )?done\(false\)(?:; \})?, (?:this\.approvalMs \|\| )?APPROVAL_TIMEOUT_MS/g) || []).length === 2);
+  check('217 approval and ask_user cards use it', (brainText().match(/awakeTimeout\(\(\) => (?:\{ out\.timedOut = true; )?done\(false\)(?:; \})?, (?:this\.approvalMs \|\| )?APPROVAL_TIMEOUT_MS/g) || []).length === 2);
 }
 
 // ---------- 212: deadlines ----------
@@ -230,7 +231,7 @@ globalThis.fetch = realFetch;
 
 // ---------- nothing added to what the brain reads at the start ----------
 {
-  const b = src('brain.js');
+  const b = brainText();
   check('no new start-of-job words: the notes go only where a check fires', !/CUT_REPLY_NOTE[^\n]*role: 'system'/.test(b) && !/hang-guard[^\n]*system prompt/i.test(b));
 }
 

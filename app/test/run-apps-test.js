@@ -2,6 +2,7 @@
 // password managers and prompts, password fields, Bob's own window), keys Bob may press, the "Bob is driving"
 // bar only while acting, taking over with the mouse or Esc, and Stop everything ending the helper.
 // Uses test/mock-apps-driver.js in place of installer\bob-apps.ps1.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -266,7 +267,7 @@ if (process.platform !== 'win32') check('off Windows the real helper says it nee
   check('other tools and this turn are left alone', v[2].content === 'Error: offline' && staleHandErrors([{ role: 'tool', tool_name: 'app_act', content: 'Error: x' }], 0)[0].content === 'Error: x');
   check('a claim of a PC action is spotted ("I\'ve opened Notepad")', claimsPcAction("I've opened Notepad for you.") && claimsPcAction('I typed hello into the document.') && claimsPcAction('I have successfully launched the app') && claimsPcAction('I moved the file to Downloads'));
   check('ordinary talk and stories are not', !claimsPcAction('I opened my heart to the idea.') && !claimsPcAction('Shall I open Notepad?') && !claimsPcAction('Once upon a time a knight opened the gate.') && !claimsPcAction('I can open apps for you once Hands are on.'));
-  const b = fs.readFileSync(path.join(here, '..', 'src', 'brain.js'), 'utf8');
+  const b = brainText();
   check('a claim with no Hands tool done this turn gets a visible correction and one chance to really do it', /if \(!reply\.tool_calls && !ctx\.handsDid && !ctx\.claimChecked && claimsPcAction\(reply\.content\)\)/.test(b) && /emit\(\{ type: 'correction', text: CLAIM_CORRECTION \}\)/.test(b) && /reply\.correction = CLAIM_CORRECTION/.test(b) && /continue;/.test(b) && CLAIM_CORRECTION === 'Nothing was actually done on this replicant matrix in that reply. Bob said he did, but no action ran.');
   check('the nudge stays out of the chat the user sees', /role: 'system', content: CLAIM_NUDGE, hidden: true/.test(b) && /\.filter\(\(m\) => \(m\.role === 'user' \|\| m\.role === 'assistant'\)/.test(b));
   check('the brain sees history through the stale-error filter', /messages: \[sys, \.\.\.(?:loopView\()?staleHandErrors\(msgs, turnStart\)(?:, step\))?\]/.test(b));

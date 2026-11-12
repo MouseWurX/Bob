@@ -2,6 +2,7 @@
 // turn's record in code: "I did X" needs a step that did X, numbers, quotes and links need a result that holds them,
 // switches said to be on must be on, in English, French and Spanish. Corrections fold the replaced words away, go on
 // the job's record and add up to a per-brain honesty score. Nothing is added to what the brain reads at the start.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -140,7 +141,7 @@ check('189 a switch that is on is left alone', saidNotDone('The sandbox is now o
   check('190 a correction with no second try stays', markReplaced(last) === 0 && !last[0].replaced);
   const app = read('public/app.js');
   check('190 the window folds replaced replies, live and after a reload', /function markReplaced\(el\)/.test(app) && /if \(m\.replaced\) markReplaced\(el\)/.test(app) && /correctedBubbles\.set/.test(app));
-  check('190 the saved chat keeps the mark', /\.\.\.\(m\.replaced \? \{ replaced: true \} : \{\}\)/.test(read('src/brain.js')));
+  check('190 the saved chat keeps the mark', /\.\.\.\(m\.replaced \? \{ replaced: true \} : \{\}\)/.test(brainText()));
   check('190 the phone replaces the corrected words too', /current\.corrected = \{ at: current\.text\.length \}/.test(read('android/app/src/main/assets/www/phone.js')));
 }
 
@@ -176,7 +177,7 @@ check('189 a switch that is on is left alone', saidNotDone('The sandbox is now o
 
 // ---- wiring, and nothing added to the start of a job
 {
-  const src = read('src/brain.js');
+  const src = brainText();
   check('the record check runs on the final answer', /this\.checkSaid\(ctx, reply\); this\.checkRecord\(ctx, reply\);/.test(src));
   check('corrections are collected in run() and handed on after the turn', /corrections\.push\(\{ text: String\(ev\.text\)/.test(src) && /this\.honestAfter\?\.\(msgs\.slice\(base\), corrections, out\.ctx, job, signal\)/.test(src));
   check('the edit is read just before it runs', /ctx\.editBefore = name === 'edit_file' \? fileBefore\(args\) : null/.test(src));

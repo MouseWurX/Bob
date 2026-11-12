@@ -1,5 +1,6 @@
 // Saving safely and starting clean (reliability items 229-240): src/saving.js, src/turn-changes.js, src/job-home.js and
 // where they're wired in. Everything happens in a temp folder; nothing reads the real computer.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -64,7 +65,7 @@ const mkCfg = (name) => {
   check('230 a step that changes files saves at once (a restart must know it started)', saves === 2);
   l.action('write_file', { path: 'C:/a.txt' }, true, 'Saved');
   check('230 and again when it is done', saves === 3);
-  const src = read('../src/brain.js');
+  const src = brainText();
   check('230 the brain saves the list at most once a second for the rest', /saveQueueSoon\(ms = QUEUE_SAVE_MS\)/.test(src) && /QUEUE_SAVE_MS = 1000/.test(src) && /save: \(now\) => \(now \? this\.saveQueue\(\) : this\.saveQueueSoon\(\)\)/.test(src));
   check('230 closing Bob saves what is waiting', /process\.on\('exit', \(\) => \{ try \{ brain\.flushQueue\(\)/.test(read('../src/server.js')));
 }
@@ -142,7 +143,7 @@ const mkCfg = (name) => {
   const rc = mkCfg('rem');
   fs.writeFileSync(path.join(rc.dataDir, 'reminders.json'), 'garbage');
   check('233 reminders that won\'t read are set aside, not read as none and saved over', loadReminders(rc, { log: () => {} }).length === 0 && fs.readdirSync(rc.dataDir).some((n) => n.startsWith('reminders.json.broken-')));
-  check('233 the queue reads through it', /readSaved\(this\.queueFile, \[\], \{ check: Array\.isArray/.test(read('../src/brain.js')));
+  check('233 the queue reads through it', /readSaved\(this\.queueFile, \[\], \{ check: Array\.isArray/.test(brainText()));
   check('233 so does settings.json at start', /readSaved\(cfg\.settingsFile, \{\}/.test(read('../src/config.js')));
 }
 
@@ -183,7 +184,7 @@ const mkCfg = (name) => {
   check('236 a job keeps its chat id, the chat\'s name, the folder and the project', h.chat === 'chat-7' && h.title === 'Plan the garden' && h.folder === cfg.painterDir && h.project === 'Garden' && h.profile === '');
   check('236 a job runs while its own person has Bob open', homeOpen(cfg, { home: h }) && homeOpen(cfg, {}));
   check('236 another person\'s job waits for them (its answer never lands in someone else\'s chats)', !homeOpen({ ...cfg, profileNow: 'abc123abc123' }, { home: h }) && homeOpen({ ...cfg, profileNow: 'abc123abc123' }, { home: { ...h, profile: 'abc123abc123' } }));
-  const src = read('../src/brain.js');
+  const src = brainText();
   check('236 every new job gets its home, and the queue waits for it', /home: jobHome\(this\.cfg, sessionId/.test(src) && /if \(!homeOpen\(this\.cfg, job\)\)/.test(src) && /home: home && !guest \? \{ title/.test(src));
 }
 
@@ -238,7 +239,7 @@ const mkCfg = (name) => {
   fs.utimesSync(cfg.dataDir, new Date(), new Date());
   await inTurn({ ...scope, askId: 'ask-11', tool: 'write_file' }, () => tools.write_file.run({ path: old, content: 'x' }));
   check('238 a turn\'s Undo lasts a week', pruneTurns(cfg, { now: Date.now() + 8 * 864e5 }) === 1);
-  const src = read('../src/brain.js'), srv = read('../src/server.js'), app = read('../public/app.js');
+  const src = brainText(), srv = read('../src/server.js'), app = read('../public/app.js');
   check('238 every tool of a turn runs inside it (not other Bobs\' or bots\' jobs)', /(?:inChangeTurn|inTurn)\(scope, async/.test(src) && /ctx\?\.askId && !ctx\.job\?\.guest/.test(src) && /askId: \(again \? lastUser\?\.id : user\.id\)/.test(src));
   check('238 the … menu on your message has Undo changes, asked first', /'undo-turn', 'Undo changes'/.test(app) && /data-m="undo-yes"/.test(app) && /\/api\/turn-undo/.test(srv) && /\/api\/turn-changes/.test(srv));
 }

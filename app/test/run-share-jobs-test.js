@@ -1,7 +1,7 @@
 // Share jobs with my other Bobs (src/share-jobs.js) and the smarter pick (src/share-brains.js, 1.5.72): what a job
 // needs, when it leaves, who gets it, and a real round trip over HTTP: a picture job sent to another Bob, his OK card
 // answered here, the file copied back, the chat kept here.
-import { serverText } from './source-text.js';
+import { serverText, brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -216,7 +216,7 @@ laptopCan = { pictures: true };
 // Wiring: the hello and the job pick only promise music when the music models are really there; the phone names the Bob
 // that has a chart it couldn't get, and shows the chart's text when it can't draw it; the Chest follows a moved folder.
 const src = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
-check('hello and the pick say music only with the models there', /jobCan\(\)\s*\{[^\n]*aceMissingFiles/.test(src('src/brain.js')) && /can: this\.jobCan\(\)/.test(src('src/brain.js')) && /can: brain\.jobCan\(\)/.test(serverText()));
+check('hello and the pick say music only with the models there', /jobCan\(\)\s*\{[^\n]*aceMissingFiles/.test(brainText()) && /can: this\.jobCan\(\)/.test(brainText()) && /can: brain\.jobCan\(\)/.test(serverText()));
 check('the phone never says "your other replicant matrix" about a lost chart', !/It's on your other replicant matrix/.test(src('android/app/src/main/assets/www/phone.js')) && /Couldn't get this diagram from \$\{who\}/.test(src('android/app/src/main/assets/www/phone.js')) && /class: 'diagram-text', text/.test(src('android/app/src/main/assets/www/phone.js')));
 check("the Chest lists what the door hands out, even in a moved folder", /x\.path\.startsWith\(inn\) \|\| servable\(x\)/.test(serverText()));
 

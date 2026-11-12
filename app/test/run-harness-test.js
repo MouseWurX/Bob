@@ -1,6 +1,7 @@
 // Harness items 62 to 72 (src/harness.js): Catch crashes, Safe start, Settings undo, the Health page, Quiet hours,
 // chat places, the weekly page, the shortcut from anywhere, Try from here, Pin messages, Guest chats.
 // Everything here runs on a fake Bob folder in a temp dir: nothing reads this replicant matrix's own settings.
+import { brainText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -212,7 +213,7 @@ check('Bob\'s settings readout names them', /Quiet hours/.test(harnessNow({})) &
   for (const m of many.slice(0, MAX_PINS)) pin(cfg, 'chat-2', many, m.id);
   check(`no more than ${MAX_PINS} a chat`, pin(cfg, 'chat-2', many, 'p' + MAX_PINS).ok === false);
   check('deleting a chat takes its pins', /\.pins\.json/.test(read('src/chats.js')));
-  check('the brain adds the pins to its note', /pinsPrompt\(/.test(read('src/brain.js')));
+  check('the brain adds the pins to its note', /pinsPrompt\(/.test(brainText()));
 }
 
 // ---------- Try from here ----------
@@ -240,7 +241,7 @@ check('Bob\'s settings readout names them', /Quiet hours/.test(harnessNow({})) &
 {
   check('guest ids are recognised, others are not', isGuestId('guest-abc123') && !isGuestId('chat-1') && !isGuestId('guest-../x') && isGuest('guest-abc') && !isGuest('ask-box'));
   check('remembering and noting are blocked in a guest chat', ['remember', 'take_note', 'save_howto'].every((t) => GUEST_BLOCKED.has(t)));
-  const brain = read('src/brain.js');
+  const brain = brainText();
   check('a guest chat is never saved', /saveSession[\s\S]{0,200}isGuestId\(/.test(brain));
   check('memory and about-me are hidden in a guest chat', /const hush = pub \|\| isGuestId\(sessionId\)/.test(brain));
   check('guest jobs are not written to the queue', /isGuestId/.test(brain.slice(brain.indexOf('saveQueue'))));
