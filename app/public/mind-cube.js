@@ -92,7 +92,10 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     lampNow += (want - lampNow) * Math.min(1, dt * (st === 'unloading' ? 1.5 : 3)); // eases, never jumps
     try { document.documentElement.style.setProperty('--cube-light', lampNow.toFixed(3)); } catch {}
   }
-  const fog = createFog(fogCanvas, { colour: () => view.oneColour(), still, onLight: glint, onFrame: lampTick });
+  const toHex = (c) => { const m = /rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i.exec(c || ''); return m ? '#' + [m[1], m[2], m[3]].map((v) => (+v).toString(16).padStart(2, '0')).join('') : String(c || '').trim(); };
+  let roomAt = 0, roomNow = '';
+  const room = () => { const t = performance.now(); if (t - roomAt > 1000) { roomAt = t; try { roomNow = toHex(getComputedStyle(document.body).getPropertyValue('--bg')); } catch {} } return roomNow; }; // the theme's background, read once a second
+  const fog = createFog(fogCanvas, { colour: () => view.oneColour(), room, still, onLight: glint, onFrame: lampTick });
   const ripple = () => { if (still()) return; port.classList.remove('ripple'); void port.offsetWidth; port.classList.add('ripple'); setTimeout(() => port.classList.remove('ripple'), 1300); };
   view.set({ glow: 0.6, glass: 0.3, edges: true }); // edges: a faint outline, so it reads as a cube. Glow: bright enough to see the experts in use, still short of the white flash (above 0.6)
   view.set({ fog: true, fogLight: (c, s, x, y) => fog.light(c, s, x, y) }); // see-through, so the fog shows behind; the firing lights it

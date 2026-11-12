@@ -38,7 +38,8 @@ const hex = (c) => { const m = /^#([0-9a-f]{6})$/i.exec(String(c || '').trim());
 
 // canvas: the fog's own canvas, behind the cube's. colour(): the fog's tint (the cube's colour). still(): animations off.
 // onLight(colour, strength): told each time the firing lights the fog (the porthole's rim catches the colour).
-export function createFog(canvas, { colour = () => '#1fa7b2', still = () => false, seed = 7, onLight = null, onFrame = null } = {}) { // onFrame(dt): once per fog frame (the lamplight rides on it)
+// room(): the theme's background, which tints the room itself (a dark theme a dark room, a light theme a pale misty one).
+export function createFog(canvas, { colour = () => '#1fa7b2', room: roomColour = () => '#14181c', still = () => false, seed = 7, onLight = null, onFrame = null } = {}) { // onFrame(dt): once per fog frame (the lamplight rides on it)
   const rnd = seeded(seed);
   const A = noiseMap(NOISE_PX, 5, rnd), B = noiseMap(NOISE_PX, 3, rnd);
   const ctx = canvas.getContext('2d');
@@ -47,7 +48,8 @@ export function createFog(canvas, { colour = () => '#1fa7b2', still = () => fals
   let on = false, timer = 0, t = 0, last = 0;
   let glow = 0, glowRgb = [255, 255, 255], gx = 0.5, gy = 0.5; // the light from the firing: how strong, what colour, where
   function paint() {
-    const tint = hex(colour()) || [31, 167, 178];
+    const tint = hex(colour()) || [31, 167, 178], bg = hex(roomColour()) || [20, 24, 28];
+    const rb = bg.map((v) => v * 0.6), mist = rb.map((v) => (255 - v) * 0.18); // the room a shade darker than the page, the fog lighter than the room
     const d = img.data, n = FOG_PX, c = n / 2, R = n / 2;
     // A drifts slowly one way at a large size, B faster the other way at a smaller size; together they interfere
     const ax = t * 0.9, ay = t * 0.35, bx = -t * 1.6, by = t * 0.8;
@@ -59,9 +61,9 @@ export function createFog(canvas, { colour = () => '#1fa7b2', still = () => fals
       const lx = x / n - gx, ly = y / n - gy, lit = glow * Math.exp(-(lx * lx + ly * ly) * 6) * (0.4 + f); // lit fog, where the firing is
       const base = 0.10 + 0.32 * f * room;
       const i = (y * n + x) * 4;
-      d[i] = Math.min(255, 14 + tint[0] * base * 0.55 + 40 * f * room + glowRgb[0] * lit);
-      d[i + 1] = Math.min(255, 16 + tint[1] * base * 0.55 + 44 * f * room + glowRgb[1] * lit);
-      d[i + 2] = Math.min(255, 20 + tint[2] * base * 0.55 + 48 * f * room + glowRgb[2] * lit);
+      d[i] = Math.min(255, rb[0] + tint[0] * base * 0.55 + mist[0] * f * room + glowRgb[0] * lit);
+      d[i + 1] = Math.min(255, rb[1] + tint[1] * base * 0.55 + mist[1] * f * room + glowRgb[1] * lit);
+      d[i + 2] = Math.min(255, rb[2] + tint[2] * base * 0.55 + mist[2] * f * room + glowRgb[2] * lit);
       d[i + 3] = 255;
     }
     ctx.putImageData(img, 0, 0);
