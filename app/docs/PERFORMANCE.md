@@ -251,6 +251,31 @@ These are all **off until you turn them on** (Settings, Speed & memory). Bob nev
 
 ---
 
+## What the brain cube's Real experts costs
+
+The fNRI cube's **Real experts** switch lights the cube with the experts Bob actually picks. Measured 12 November on the test replicant matrix: a 16 GB RTX 5070 Ti, Riker (28Bob, a 208-expert mixture-of-experts brain, 40 layers, 8 experts per word), Brain Engine 5 on llama.cpp b12282 with Bob's usual engine flags. Each run wrote 300 words with nothing else running, 3 runs per mode, taken in turn after one warm-up.
+
+| Riker, short prompt | Words a second | Change |
+|---|---|---|
+| Real experts off | 122.7 (124.0 / 122.3 / 121.7) | none |
+| Real experts on, shown after the answer (Brain Engine 4 and 5) | 99.2 (97.8 / 98.8 / 100.9) | -19.2% |
+| Real experts on, shown live as Bob writes (Brain Engine 5) | 100.7 (100.4 / 101.1 / 100.6) | -17.9% |
+
+| Other cases | Off | On | Change |
+|---|---|---|---|
+| Riker, 39,675-word prompt, writing | 99.2 | 82.9 | -16.4% |
+| Riker, 39,675-word prompt, reading the prompt | 3,052 | 2,990 | -2% |
+| Qwen3 4B (no experts; the cube shows groups of neurons) | 204.5 | 154.0 | -24.7% |
+
+- **The cost is in collecting the picks, not in showing them live.** Brain Engine 5 stopped the graphics card after every layer to copy that layer's picks out: 40 stops per word. Sending the picks while Bob writes costs nothing measurable on top of that.
+- **A long chat costs no more than a short one.** Our first live version sent a long prompt's whole trace in one piece (5 MB at 128,000 words); now each piece carries at most the last 64 words, which is all the cube shows. Checked on a test build at 32,000 and 128,000 words of prompt: no slower than the trace alone.
+- **Turning it off gives every bit back** (121.9, 98.3 and 209.1 words a second right after closing the cube). With the switch off, or the cube hidden, Bob never asks for the picks.
+- **The first word isn't held up:** 92 to 99 ms in every mode on a short prompt, and 0.27 s later on the 39,675-word prompt.
+- **Brain Engine 6** keeps every layer's picks on the card until the word is done and copies them all at once, so the card stops once per word instead of 40 times. On a test build the picks are identical, row for row. Its speed on a real card hasn't been measured yet, and we'll add it here. Brains without experts still stop at every layer.
+- **What we guessed first, and got wrong:** from a run on a processor we predicted under 1%. The processor run had no graphics card to wait on, so it couldn't show the real cost. Measure on the real thing.
+
+Not measured yet: the laptop, the Legion Go and the Raspberry Pi.
+
 ## Measure it yourself
 
 - **Test Bob's speed** (about a minute): Bob frees his brain, wakes it as if you'd started typing, and times the load, the first word, the full answer and a second reply. Your last 6 results are kept in a table along with the switches that were on, so you can test, change one thing, and test again.

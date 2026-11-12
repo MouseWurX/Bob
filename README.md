@@ -291,6 +291,7 @@ Put Bob on your PC, laptop, handheld and phone, and they find each other on your
 | Graphics memory Bob holds while idle | **None.** The brain unloads, and big models load only for the job that needs them. |
 | 🎮 Gaming session, first word of a reply | **0.1 seconds** with the brain loaded, on the processor, with the graphics card left to your game. |
 | Context on a 16 GB card | **256K tokens**, and up to 1M with Long memory. |
+| 🧊 The cube's **Real experts** (live brain picks) | **Free when off** (the glow alone costs nothing). On: **about a fifth** of the word speed on Brain Engine 5 (Riker on a 5070 Ti, 122.7 down to 99.2 words a second), whether shown live or after the answer, and no more for long chats. Brain Engine 6 reads the picks once per word instead of 40 times; [the numbers](app/docs/PERFORMANCE.md#what-the-brain-cubes-real-experts-costs). |
 
 Pictures and big jobs wait in Tasks while you play, and **Let games go first** has Bob use fewer processor cores. The measurements are in [How Bob stays fast and light](app/docs/PERFORMANCE.md).
 
