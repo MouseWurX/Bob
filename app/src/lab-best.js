@@ -82,7 +82,7 @@ export function checkAnswer(answer, key) {
 export function judgeMessages(q, answers, { key = '' } = {}) {
   const ask = q.messages.map((m) => `${m.role === 'user' ? 'Question' : m.role === 'assistant' ? 'Earlier answer' : 'Instructions'}: ${m.content}`).join('\n\n');
   return [
-    { role: 'system', content: 'You grade answers. Score each answer from 0 to 10 for how correct, complete and clear it is for the question. A wrong answer scores low however well it is written; length is not a virtue. Reply with only JSON: {"scores": [n, n, ...]}, one score per answer, in order.' },
+    { role: 'system', content: 'You grade answers. Judge each answer on its own against the question (and the known good answer, if one is given), never against the other answers. Use this scale: 10 = fully correct and clear; 7 = correct with a small slip (a wrong tense, a loose word, a step skipped); 4 = partly right; 1 = wrong; 0 = no answer. Two answers that are equally correct get the same score, however differently they are worded. A wrong answer scores low however well it is written; length is not a virtue. Reply with only JSON: {"scores": [n, n, ...]}, one score per answer, in order.' },
     { role: 'user', content: `${ask}\n\n${key ? `A known good answer, for reference:\n${key}\n\n` : ''}${answers.map((a, i) => `Answer ${i + 1}:\n${a}`).join('\n\n')}\n\nScore all ${answers.length} answers.` }
   ];
 }
@@ -94,6 +94,17 @@ export function parseScores(text, n) {
   if (!list) { const nums = (t.match(/-?\d+(?:\.\d+)?/g) || []).map(Number); if (nums.length >= n) list = nums.slice(0, n); }
   if (!list || list.length < n || list.slice(0, n).some((x) => !Number.isFinite(x))) return null;
   return list.slice(0, n).map((x) => Math.max(0, Math.min(10, x)));
+}
+// 1.5.211 A steadier judge (the PC trial saw a small judge give one right answer 10 and another 0): answers that are
+// the same word for word are judged once and share a score, and a list is judged twice, in order and reversed, and the
+// two scores are averaged, so where an answer sits in the list matters less. ask(list) -> scores or null.
+export async function steadyScores(ask, list) {
+  const norm = (a) => String(a || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const uniq = [], at = list.map((a) => { const k = norm(a); let i = uniq.findIndex((u) => norm(u) === k); if (i < 0) { uniq.push(a); i = uniq.length - 1; } return i; });
+  const one = await ask(uniq);
+  const two = uniq.length > 1 ? await ask([...uniq].reverse()).then((x) => x && x.reverse()) : null;
+  const both = one && two ? one.map((x, i) => Math.round(((x + two[i]) / 2) * 10) / 10) : one || two;
+  return both ? at.map((i) => both[i]) : null;
 }
 // Which answer is taught, and which pair counts.
 export function pick(scores) {
@@ -219,6 +230,7 @@ export async function startBest(lab, c = {}, { unload = false } = {}) {
     ...(here ? [['teach', `Teach ${p.way === 'pairs' ? 'the better-or-worse pairs' : p.way === 'both' ? 'the best answers, then the pairs' : 'the best answers'}${p.teachHours ? ` (about ${p.teachHours} h)` : ''}`], ['fold', 'Fold it into a new brain file'], ['after', 'Ask the held-back questions again, and the Quick quiz']] : [['plan', 'Save the best answers as a Forge plan']])];
   return runJob(lab, { kind: 'best', name: p.name, from: learner.id, fromName: learner.name, steps, stopped: 'You stopped it. The answers and scores so far are kept in the Lab\'s folder; nothing was put into Bob.' }, async (r, { set, signal, progress }) => {
     r.slug = `best-${p.slug}`;
+    r.origin = p._teach?.brain?.repo || '';
     fs.mkdirSync(data, { recursive: true });
     set('questions', 'running');
     let qfile = p._teach.lessons.file;
@@ -249,7 +261,7 @@ export async function startBest(lab, c = {}, { unload = false } = {}) {
     let checked = 0, judged = 0, unreadable = 0, rescued = 0, heldScore = 0, heldN = 0;
     const score = async (url, q, list) => {
       if (p.key && q.key && checkable(q.key)) { checked++; return list.map((a) => checkAnswer(a, q.key)); }
-      const s = parseScores(await fx.chat(url, judgeMessages(q, list, { key: p.key ? q.key.slice(0, 2000) : '' }), { temperature: 0, maxTokens: 120, signal }), list.length);
+      const s = await steadyScores(async (l) => parseScores(await fx.chat(url, judgeMessages(q, l, { key: p.key ? q.key.slice(0, 2000) : '' }), { temperature: 0, maxTokens: 120, signal }), l.length), list);
       if (s) judged++; else unreadable++;
       return s;
     };
@@ -356,7 +368,7 @@ export function useBest(lab, runId) {
   const out = lab.use(runId);
   const file = path.join(labDir(lab.cfg), 'made.json'), list = readJson(file, []);
   const e = list.find((m) => m.id === `lab-${r.slug}`);
-  if (e) { e.madeHere = true; e.lessons = r.report?.lessons || []; e.what = `Taught here from ${r.fromName}'s own best answers, judged by ${r.report?.judgeName || 'a bigger brain'}. ${e.what || ''}`.trim(); writeJson(file, list); }
+  if (e) { e.madeHere = true; e.origin = r.origin || ''; e.lessons = r.report?.lessons || []; e.what = `Taught here from ${r.fromName}'s own best answers, judged by ${r.report?.judgeName || 'a bigger brain'}. ${e.what || ''}`.trim(); writeJson(file, list); }
   return out;
 }
 

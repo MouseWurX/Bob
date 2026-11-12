@@ -7,7 +7,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { Lab } from '../src/lab.js';
-import { readQuestions, holdBack, checkable, checkAnswer, judgeMessages, parseScores, pick, cleanTargets, resolveTargets, planBest, startBest, useBest, bestView, bestParts, listTargetFiles, GOOD, HOLD } from '../src/lab-best.js';
+import { readQuestions, holdBack, checkable, checkAnswer, judgeMessages, parseScores, steadyScores, pick, cleanTargets, resolveTargets, planBest, startBest, useBest, bestView, bestParts, listTargetFiles, GOOD, HOLD } from '../src/lab-best.js';
 import { TEACH_PY } from '../src/lab-teach-script.js';
 import { pagesRoute } from '../src/lab-pages.js';
 import { PLAY_PAGES } from '../public/lab-playground.js';
@@ -148,6 +148,14 @@ fs.mkdirSync(path.dirname(py), { recursive: true }); fs.writeFileSync(py, ''); f
   check('no learner or no judge asks for one', /brain that learns/.test((await planBest(lab, { ...base, learner: '' })).problems.join(' ')) && /brain that judges/.test((await planBest(lab, { ...base, judge: '' })).problems.join(' ')));
   const v = bestView(lab);
   check('the view lists the brains with their sizes, the lesson sets and the choices', v.brains.find((b) => b.id === 'big').paramsB === 30 && v.sets.some((s) => s.id === 'maths') && v.answers.join() === '2,4,8' && v.limits.includes(200));
+}
+
+{
+  const seen = [];
+  const ask = async (l) => { seen.push(l.join('|')); return l.map((a, i) => (i === 0 ? 10 : 0)); }; // a judge that favours whatever comes first
+  const s = await steadyScores(ask, ['Paris.', 'paris.  ', 'Lyon.']);
+  check('the judge is steadier: the same answer twice shares one score, and order is evened out by judging twice, reversed', s[0] === s[1] && seen.length === 2 && seen[0] === 'Paris.|Lyon.' && seen[1] === 'Lyon.|Paris.' && s[0] === 5 && s[2] === 5);
+  check('the judge is told to score answers on their own, with a scale, and equal answers equally', /on its own/.test(judgeMessages({ messages: [{ role: 'user', content: 'q' }] }, ['a'])[0].content) && /equally correct get the same score/.test(judgeMessages({ messages: [{ role: 'user', content: 'q' }] }, ['a'])[0].content));
 }
 
 // ---- the job, here: best of its own, then both with parts-only ----
