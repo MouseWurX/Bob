@@ -203,21 +203,24 @@ export function createLayout({ post, openTasks, openDownloads }) {
   let cubeLive = store.get('bob-cube-live', '0') === '1';
   const drawLive = () => { if (!liveBtn) return; liveBtn.setAttribute('aria-checked', String(cubeLive)); liveBtn.querySelector('.st').textContent = cubeLive ? 'On' : 'Off'; };
   drawLive();
-  if (liveBtn) liveBtn.onclick = () => { cubeLive = !cubeLive; store.set('bob-cube-live', cubeLive ? '1' : '0'); drawLive(); cubeOk = true; if (cube) cube.relive(); cubeListen(); };
+  if (liveBtn) liveBtn.onclick = () => { cubeLive = !cubeLive; store.set('bob-cube-live', cubeLive ? '1' : '0'); drawLive(); cubeOk = true; if (cube) cube.relive(); cubeListen(); window.dispatchEvent(new CustomEvent('bob-cube-live')); }; // the cube avatar (app.js) follows it too
   let cubeOn = store.get('bob-mind-cube', '1') === '1', cube = null, cubeOk = true; // the cube is how thinking shows to begin with; the text is the other choice
   function cubeListen() {
     cubeBtn.setAttribute('aria-checked', String(cubeOn)); cubeBtn.querySelector('.st').textContent = cubeOn ? 'On' : 'Off';
-    const on = cubeOn && docked && !body.classList.contains('right-hidden') && !document.hidden;
-    if (cubeOn && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails'), load: $('mindCubeLoad'), unload: $('mindCubeUnload'), loadBox: $('mindCubeLoadBox'), spin: $('mindCubeSpin'), lines: $('mindCubeLines'), linesBox: $('mindCubeLinesBox') }, { onWhy: (why) => { cubeOk = !why; cubeListen(); }, still: () => body.classList.contains('still'), live: () => cubeLive });
+    // 1.5.209: with the cube as Bob's picture (Style), his brain shows once, in the corner; here the written thinking shows
+    const shown = cubeOn && globalThis.bobCubeAvatarOn !== true;
+    const on = shown && docked && !body.classList.contains('right-hidden') && !document.hidden;
+    if (shown && !cube) cube = createMindCube({ box: $('mindCubeBox'), canvas: $('mindCubeCanvas'), says: $('mindCubeSays'), open: $('mindCubeOpen'), key: $('mindCubeKey'), mono: $('mindCubeMono'), colour: $('mindCubeColour'), colourBox: $('mindCubeColourBox'), details: $('mindCubeDetails'), load: $('mindCubeLoad'), unload: $('mindCubeUnload'), loadBox: $('mindCubeLoadBox'), spin: $('mindCubeSpin'), lines: $('mindCubeLines'), linesBox: $('mindCubeLinesBox') }, { onWhy: (why) => { cubeOk = !why; cubeListen(); }, still: () => body.classList.contains('still'), live: () => cubeLive, lamp: () => globalThis.bobCubeAvatarOn !== true }); // the lamplight follows this cube unless the corner one is Bob's picture
     // with the cube showing, the written thinking steps aside; it comes back when the cube is off or can't work here
-    $('mindDockBody').classList.toggle('cube-view', cubeOn && cubeOk);
+    $('mindDockBody').classList.toggle('cube-view', shown && cubeOk);
     if (!cube) return;
     if (on) cube.connect(); else cube.disconnect();
-    if (!cubeOn) cube.hide();
+    if (!shown) cube.hide();
   }
   cubeBtn.onclick = () => { cubeOn = !cubeOn; store.set('bob-mind-cube', cubeOn ? '1' : '0'); cubeListen(); };
   document.addEventListener('visibilitychange', cubeListen);
   window.addEventListener('bob-mind-dock', cubeListen);
+  window.addEventListener('bob-avatar-shown', cubeListen);
   cubeListen();
   drawDock();
 

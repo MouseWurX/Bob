@@ -66,9 +66,9 @@ check('Help names the new groups and the default', /Moondust/.test(HELP.find((h)
   check('every theme sets --cube: its own cube colour, else its accent', /setProperty\('--cube', HEX\.test\(t\.cube \|\| ''\) \? t\.cube : c\.accent\)/.test(th));
   check('only Moondust overrides its accent for the cube', PRESETS.filter((x) => x.cube).map((x) => x.id).join() === 'moondust');
   const ix = read('public/index.html'), wh = read('public/watch.html');
-  check('the thinking cube turns by default, at the slowest speed, and never while animations are off', /const SPIN = 0\.05;/.test(mc) && /let turning = true; try \{ turning = localStorage\.getItem\('bob-cube-spin'\) !== '0'/.test(mc) && /still\(\) \|\| \(!rec && !shell\)/.test(mc) && /min="0\.05"/.test(wh.match(/id="watchSpinSpeed"[^>]*/)?.[0] || ''));
+  check('the thinking cube turns by default, at the slowest speed, and never while animations are off', /const SPIN = 0\.05;/.test(mc) && /let turning = !avatar; try \{ if \(!avatar\) turning = localStorage\.getItem\('bob-cube-spin'\) !== '0'/.test(mc) && /still\(\) \|\| \(!rec && !shell\)/.test(mc) && /min="0\.05"/.test(wh.match(/id="watchSpinSpeed"[^>]*/)?.[0] || ''));
   check('a brightness slider for the lines, in the thinking pane and the big viewer, shared', /id="mindCubeLines"/.test(ix) && /id="watchLines"/.test(wh) && /bob-fnri-lines/.test(mc) && /bob-fnri-lines/.test(wj));
-  check('the lines are drawn plainly in the theme\'s text colour, much brighter than before', /ctx\.globalAlpha = 0\.7 \* lines; ctx\.strokeStyle = k\.text/.test(wv) && !/Math\.min\(0\.08, 0\.045/.test(wv));
+  check('the lines are drawn plainly in the theme\'s text colour, much brighter than before', /ctx\.globalAlpha = 0\.7 \* lines \* \(fog \? [^;]+\); ctx\.strokeStyle = k\.text/.test(wv) && !/Math\.min\(0\.08, 0\.045/.test(wv));
   check('the person\'s own pick always wins over the theme', /monoColour \|\| themeColour\(\) \|\| lookOf\(0\)\[0\]/.test(wv));
   check('the colour boxes show the theme colour until a pick is saved', /const tint = \(\) => \{ if \(ownColour\) return; if \(colour\) colour\.value = view\.oneColour\(\); \}/.test(mc) && /\$\('watchMonoColour'\)\.value = view\.oneColour\(\)/.test(wj));
   check('the second block only gets a colour the person picked', /monoColour: monoPicked \? \$\('watchMonoColour'\)\.value : ''/.test(wj));

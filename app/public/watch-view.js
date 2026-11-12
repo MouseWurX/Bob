@@ -36,9 +36,18 @@ export function layoutOf(rec, parts) {
   const core = side * side;
   const W = sideOf(E + core) + ((sideOf(E + core) - side) % 2 ? 1 : 0); // so the square sits dead centre
   const D = Math.ceil((E + core) / W) + ((Math.ceil((E + core) / W) - side) % 2 ? 1 : 0);
-  const x0 = (W - side) / 2, z0 = (D - side) / 2;
+  // No grey core, and the experts don't fill the last rows (128 experts on a 12 by 12 floor leave 16 holes): the holes
+  // become a grey block dead centre instead (4 by 4 there, 2 by 2 for 60 or 32), so the cube is whole.
+  let fw = side, fd = side, fill = false;
+  const holes = W * D - E - core;
+  if (!core && holes > 0) {
+    let best = null;
+    for (let a = 2; a <= W; a += 2) { if (holes % a) continue; const b = holes / a; if (b > D || (W - a) % 2 || (D - b) % 2) continue; if (!best || Math.abs(a - b) < Math.abs(best[0] - best[1])) best = [a, b]; }
+    if (best) { [fw, fd] = best; fill = true; }
+  }
+  const x0 = (W - fw) / 2, z0 = (D - fd) / 2;
   const coreCells = [];
-  for (let z = 0; z < side; z++) for (let x = 0; x < side; x++) coreCells.push((z0 + z) * W + x0 + x);
+  for (let z = 0; z < fd; z++) for (let x = 0; x < fw; x++) coreCells.push((z0 + z) * W + x0 + x);
   const isCore = new Set(coreCells);
   const expertCell = []; // expert number -> cell
   for (let i = 0; i < W * D && expertCell.length < E; i++) if (!isCore.has(i)) expertCell.push(i);
@@ -50,10 +59,16 @@ export function layoutOf(rec, parts) {
   const base = Math.min(baseWant, baseMax);
   const baseFloors = Math.ceil(base / (W * D));
   const expertShare = parts?.layers?.length ? (() => { let ex = 0, all = parts.outside || 0; for (const p of parts.layers) { ex += p.experts; all += p.experts + p.other; } return all ? ex / all : 0; })() : 0;
-  return { E, L, W, D, grey, core, expertCell, cellExpert, coreRank, base, baseFloors, baseCapped: baseWant > baseMax, expertShare };
+  return { E, L, W, D, grey, core, fill, expertCell, cellExpert, coreRank, base, baseFloors, baseCapped: baseWant > baseMax, expertShare };
 }
 
-export function createView(canvas, { still = false } = {}) {
+// Two colours mixed (a share t of b), for the fog. Takes #rgb, #rrggbb or rgb(); anything else gives a back unchanged.
+export function mixHex(a, b, t) {
+  const rgb = (c) => { c = String(c || '').trim(); let m = /^#([0-9a-f]{3})$/i.exec(c); if (m) return [...m[1]].map((x) => parseInt(x + x, 16)); m = /^#([0-9a-f]{6})$/i.exec(c); if (m) return [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)); m = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i.exec(c); return m ? [+m[1], +m[2], +m[3]] : null; };
+  const x = rgb(a), y = rgb(b); if (!x || !y) return a;
+  return '#' + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, '0')).join('');
+}
+export function createView(canvas, { still = false, min = [240, 200] } = {}) { // min: the smallest drawing size (Bob's cube avatar draws at its own 56 px, which costs far less)
   const ctx = canvas.getContext('2d');
   let rec = null, sp = null, lay = null;
   let yaw = -0.62, tilt = 0.5, gap = 0.9, zoom = 1, fast = false;
@@ -73,6 +88,10 @@ export function createView(canvas, { still = false } = {}) {
   // Load in and load out: `reveal` runs 0..1 and a voxel is drawn once it has passed that voxel's place in the order
   // (lab-watch-math.js loadOrder). 1 = the whole block, which is also where it rests.
   let edges = false; // a faint line along the block's twelve edges
+  // fog: the block seen through a round porthole into a foggy room (public/fog.js draws the room on its own canvas
+  // behind this one): this canvas stays see-through, and the experts as they fire light the fog (soft 2D glows here,
+  // and fogLight tells the room where and in what colour)
+  let fog = false, fogLight = null;
   let reveal = 1, order = null, orderIn = null, orderOut = null, load = 'vase', unload = 'drain', going = 1, seed = 1, sweepRaf = 0, sweepEnd = null;
   const reorder = () => { const box = lay ? { W: lay.W, D: lay.D, floors: lay.L + lay.baseFloors, seed } : null; orderIn = box ? loadOrder(load, box) : null; orderOut = box ? loadOrder(unload, box) : null; order = going === 1 ? orderIn : orderOut; };
   const shown = (floor, i) => reveal >= 1 || (order ? order[floor * lay.W * lay.D + i] < reveal : false);
@@ -96,14 +115,14 @@ export function createView(canvas, { still = false } = {}) {
     });
   }
   function setData(r, s, parts) { rec = r; sp = s; lay = layoutOf(r, parts); dirty = true; picked = null; reorder(); }
-  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'lines') lines = Math.max(0, Math.min(1, Number(v) || 0)); else if (k === 'key') key = v !== false; else if (k === 'dials') { dials = v && v.size ? v : null; } else if (k === 'load') { load = loadStyle(v); reorder(); } else if (k === 'unload') { unload = unloadStyle(v); reorder(); } else if (k === 'reveal') { reveal = Math.max(0, Math.min(1, v)); } else if (k === 'mono') mono = v === true; else if (k === 'edges') edges = v === true; else if (k === 'heat') heat = v && Array.isArray(v.vals) ? v : null; else if (k === 'monoColour') monoColour = /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v) : ''; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
+  const set = (o) => { for (const [k, v] of Object.entries(o)) { if (k === 'yaw') yaw = v; else if (k === 'tilt') tilt = Math.max(0.12, Math.min(1.35, v)); else if (k === 'gap') gap = v; else if (k === 'zoom') zoom = Math.max(0.4, Math.min(6, v)); else if (k === 'hidden') hidden = v; else if (k === 'fast') fast = v; else if (k === 'paths') paths = v; else if (k === 'lines') lines = Math.max(0, Math.min(1, Number(v) || 0)); else if (k === 'key') key = v !== false; else if (k === 'dials') { dials = v && v.size ? v : null; } else if (k === 'load') { load = loadStyle(v); reorder(); } else if (k === 'unload') { unload = unloadStyle(v); reorder(); } else if (k === 'reveal') { reveal = Math.max(0, Math.min(1, v)); } else if (k === 'mono') mono = v === true; else if (k === 'edges') edges = v === true; else if (k === 'fog') fog = v === true; else if (k === 'fogLight') fogLight = typeof v === 'function' ? v : null; else if (k === 'heat') heat = v && Array.isArray(v.vals) ? v : null; else if (k === 'monoColour') monoColour = /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v) : ''; else if (k === 'picked') picked = v; else if (k === 'off') off = v; else if (k === 'solid') solid = v; else if (k === 'mark') mark = ['glow', 'outline', 'both'].includes(v) ? v : 'glow'; else if (k === 'glow') glow = Math.max(0, Math.min(1.5, Number(v) || 0)); else if (k === 'glass') glass = Math.max(0, Math.min(0.85, Number(v) || 0)); } dirty = true; };
   const get = () => ({ yaw, tilt, gap, zoom, glass, glow, lines });
   // the gap between floors that makes the whole block as tall as it is wide: a cube
   const cubeGap = () => (lay ? Math.max(0.2, Math.min(5, Math.max(lay.W, lay.D) / Math.max(1, lay.L + lay.baseFloors))) : 0.9);
 
   function resize() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = Math.max(240, Math.round(canvas.clientWidth)), h = Math.max(200, Math.round(canvas.clientHeight));
+    const w = Math.max(min[0], Math.round(canvas.clientWidth)), h = Math.max(min[1], Math.round(canvas.clientHeight));
     if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); dirty = true; }
   }
 
@@ -157,12 +176,35 @@ export function createView(canvas, { still = false } = {}) {
     return { color: lookOf(top)[0], alpha: (0.28 + 0.72 * Math.min(1, sp.strength[l][e] * 1.6)) * (solid.get(top) ?? 1), even }; // solid: each skill's own opacity
   }
 
+  // The fog lit by the firing: one soft glow per colour, at the middle of that colour's lit experts, as strong as how many fired
+  function fogLit(lit) {
+    const g = geom, by = new Map();
+    for (const f of lit.slice(-TRAIL)) {
+      const a = Math.max(0, 1 - f.age); if (a <= 0.02) continue;
+      for (let l = 0; l < lay.L; l++) for (const e of f.e[l] || []) {
+        const top = sp.top[l][e]; if (top >= 0 && hidden.has(top)) continue;
+        const color = mono ? oneColour() : top >= 0 ? lookOf(top)[0] : '#ffffff';
+        const [cx, cz] = expertXY(e), [x, y] = g.P(cx, floorY(l), cz);
+        const b = by.get(color) || { x: 0, y: 0, n: 0 }; b.x += x * a; b.y += y * a; b.n += a; by.set(color, b);
+      }
+    }
+    const R = Math.min(canvas.width, canvas.height) * 0.42, total = [...by.values()].reduce((t, b) => t + b.n, 0) || 1;
+    let top = null; for (const [color, b] of by) if (!top || b.n > top[1].n) top = [color, b];
+    if (top && fogLight) { try { fogLight(top[0], Math.min(0.8, 0.25 + top[1].n / 60), top[1].x / top[1].n / canvas.width, top[1].y / top[1].n / canvas.height); } catch {} }
+    for (const [color, b] of by) {
+      const x = b.x / b.n, y = b.y / b.n, k = Math.min(1, b.n / 24) * Math.max(0.35, b.n / total);
+      const rg = ctx.createRadialGradient(x, y, 0, x, y, R * (0.6 + 0.6 * Math.min(1, b.n / 40)));
+      rg.addColorStop(0, color); rg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = 0.45 * k * Math.max(0.4, glow); ctx.fillStyle = rg; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+
   function drawStatic() {
     const g = geom = geometry();
     if (!staticCanvas) staticCanvas = document.createElement('canvas');
     staticCanvas.width = canvas.width; staticCanvas.height = canvas.height;
     const c = staticCanvas.getContext('2d'), k = css();
-    c.fillStyle = k.bg; c.fillRect(0, 0, canvas.width, canvas.height);
+    if (fog) c.clearRect(0, 0, canvas.width, canvas.height); else { c.fillStyle = k.bg; c.fillRect(0, 0, canvas.width, canvas.height); }
     const { W, D, L, grey, base, baseFloors, cellExpert, coreRank } = lay;
     const full = !fast && g.s > 3;
     const voxel = (x, y, color, alpha, outline) => {
@@ -214,7 +256,7 @@ export function createView(canvas, { still = false } = {}) {
             if (g.s > 6) { c.strokeStyle = dial > 1 ? k.bg : k.text; c.lineWidth = Math.max(1, g.s * 0.07); c.beginPath(); c.moveTo(x - g.s * 0.14, y); c.lineTo(x + g.s * 0.14, y); if (dial > 1) { c.moveTo(x, y - g.s * 0.09); c.lineTo(x, y + g.s * 0.09); } c.stroke(); }
             c.globalAlpha = 1;
           }
-        } else if (coreRank[i] >= 0 && grey[l] > 0 && !hidden.has('grey')) {
+        } else if (coreRank[i] >= 0 && (grey[l] > 0 || lay.fill) && !hidden.has('grey')) {
           const [x, y] = g.P(cx, floorY(l), cz);
           voxel(x, y, GREY, solid.get('grey') ?? 1);
           wave(l + baseFloors, i, x, y, null);
@@ -234,6 +276,7 @@ export function createView(canvas, { still = false } = {}) {
     if (dirty || !staticCanvas) drawStatic();
     const g = geom, k = css();
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+    if (fog) ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(staticCanvas, 0, 0);
     if (edges && reveal > 0) { // the block's own edges, very faint, so it reads as a cube (the small cube asks for them)
       const { W, D } = lay, y0 = 0.5 - Math.min(0.34, gap * 0.45), y1 = (g.floors - 1) * gap + 0.5, xs = [0.1, W - 0.1], zs = [0.1, D - 0.1];
@@ -283,13 +326,14 @@ export function createView(canvas, { still = false } = {}) {
         }
         if (now && paths && lines > 0 && prev && pts.length && prev.length) { // drawn plainly in the theme's text colour, so they show on light themes too
           const was = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'source-over';
-          ctx.globalAlpha = 0.7 * lines; ctx.strokeStyle = k.text; ctx.lineWidth = Math.max(1, g.s * (0.04 + 0.06 * lines));
+          ctx.globalAlpha = 0.7 * lines * (fog ? 0.2 + 0.8 * l / Math.max(1, lay.L - 1) : 1); ctx.strokeStyle = k.text; // in the porthole the signal brightens as it climbs the floors ctx.lineWidth = Math.max(1, g.s * (0.04 + 0.06 * lines));
           ctx.beginPath(); for (const p of prev) for (const q of pts) { ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); } ctx.stroke();
           ctx.globalCompositeOperation = was;
         }
         if (pts.length) prev = pts;
       }
     });
+    if (fog) fogLit(lit);
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     if (outlined.length) { // Outline: the voxel's own edge drawn bright in its colour, with a thin light rim so it reads on any colour
       for (const [x, y, color] of outlined) { ctx.lineWidth = Math.max(2, g.s * 0.16); ctx.strokeStyle = color; face(ctx, g, x, y); ctx.stroke(); ctx.lineWidth = Math.max(1, g.s * 0.05); ctx.strokeStyle = k.text; ctx.stroke(); }
@@ -360,5 +404,5 @@ export function createView(canvas, { still = false } = {}) {
   }
 
   const setFloors = (a) => { floorsNow = Array.isArray(a) ? a : null; }; // every frame, so it doesn't redraw the block
-  return { setData, set, get, oneColour, cubeGap, draw, sweep, loading: () => reveal < 1, setFloors, pick, setCaption, resize, layout: () => lay, still: () => still };
+  return { setData, set, get, oneColour, cubeGap, draw, sweep, loading: () => reveal < 1, reveal: () => reveal, setFloors, pick, setCaption, resize, layout: () => lay, still: () => still };
 }
