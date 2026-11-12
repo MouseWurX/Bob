@@ -1,6 +1,6 @@
 {
   "run": "reap-gpt-oss-small",
-  "note": "12 Nov, follow-up to reap-gpt-oss-120b: how far down the official GPT-OSS 120B goes with experts switched off (no file cut, no retraining), next to the official GPT-OSS 20B as the yardstick (same size, trained at that size). The 120B reuses reap-gpt-oss-120b's REAP scores (no re-scoring) and steps down to 35/32/25/16% of each layer's 128 experts (32% is about 38B, 16% about 20B); its full score from that run is the reference. The 20B gets its own REAP calibration at 100/75/50/35/25%. All judged on the held-out chats. About 3.5 h, about $6-7; caps 4.5 h / $9. Needs reap-gpt-oss-120b's out folder on this PC.",
+  "note": "12 Nov, follow-up to reap-gpt-oss-120b: how far down the official GPT-OSS 120B goes with experts switched off (no file cut, no retraining), next to the official GPT-OSS 20B as the yardstick (same size, trained at that size). The 120B reuses reap-gpt-oss-120b's REAP scores (no re-scoring) and steps down to 75/50/35/32/25/16% (75 and 50 were lost in the first run) of each layer's 128 experts (32% is about 38B, 16% about 20B); its full score from that run is the reference. The 20B gets its own REAP calibration at 100/75/50/35/25%. All judged on the held-out chats. About 4 h, about $7-8; caps 5 h / $10. Needs reap-gpt-oss-120b's out folder on this PC.",
   "benchmark_only": true,
   "teacher": "Qwen/Qwen3.6-35B-A3B",
   "counts": "expert-counts-2026-11-04T23-23-19.json",
@@ -19,13 +19,13 @@
   "disk_gb": 120,
   "general_tokens": 0,
   "rungs": [],
-  "hours_max": 4.5,
-  "dollars_max": 9,
+  "hours_max": 5,
+  "dollars_max": 10,
   "rent_minutes": 60,
   "download_quants": [],
   "benchmark": {
     "note": "the quiz runs are minutes apart, so their time-stamped reports don't collide; reap-calibrate puts the mask back to all-on before the pod moves to the next brain",
-    "hours_each": 2.5,
+    "hours_each": 3,
     "models": [
       {
         "name": "gpt-oss-120b",
@@ -35,7 +35,7 @@
         "ctx": 32768,
         "extra": "",
         "commands": [
-          "node reap-calibrate.mjs --url {{url}} --lessons {{lessons}} --out {{out}}/calibrate --scores \"out/bench/reap-gpt-oss-120b/gpt-oss-120b/calibrate/scores.json\" --steps 0.35,0.32,0.25,0.16 --no-think"
+          "node reap-calibrate.mjs --url {{url}} --lessons {{lessons}} --out {{out}}/calibrate --scores \"out/bench/reap-gpt-oss-120b/gpt-oss-120b/calibrate/scores.json\" --steps 0.75,0.5,0.35,0.32,0.25,0.16 --no-think"
         ]
       },
       {

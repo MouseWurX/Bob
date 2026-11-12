@@ -31,9 +31,18 @@ const out = o.out ? String(o.out) : path.join(L.out, 'calibrate', stamp());
 fs.mkdirSync(out, { recursive: true });
 const lessonsDir = o.lessons || [path.join(L.out, 'lessons'), path.join(AGENT, 'bob-model-lab', 'out', 'lessons')].find((d) => fs.existsSync(path.join(d, 'toolsets.json'))) || path.join(L.out, 'lessons');
 const headers = { 'content-type': 'application/json', ...(process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {}) };
-const post = async (p, body, ms = 15 * 60_000) => {
-  const r = await fetch(url + p, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
-  const t = await r.text(); if (!r.ok) throw new Error(`${p} ${r.status}: ${t.slice(0, 300)}`); return JSON.parse(t || '{}');
+// 12 Nov: retried with a growing wait (a rented card's proxy dropped one /expert-mask call and the whole run ended there)
+const post = async (p, body, ms = 15 * 60_000, tries = 5) => {
+  for (let i = 1; ; i++) {
+    try {
+      const r = await fetch(url + p, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
+      const t = await r.text(); if (!r.ok) throw new Error(`${p} ${r.status}: ${t.slice(0, 300)}`); return JSON.parse(t || '{}');
+    } catch (e) {
+      if (i >= tries) throw e;
+      console.log(`  ${p}: ${String(e.message).slice(0, 120)}; trying again (${i}/${tries - 1})`);
+      await new Promise((r) => setTimeout(r, 5000 * i));
+    }
+  }
 };
 
 // The same held-out split as tool-score and the Forge (pod/data.py): score on the rest, judge on these.
@@ -86,7 +95,8 @@ const steps = [];
 for (const share of String(o.steps).split(',').map(Number).filter((x) => x > 0 && x <= 1).sort((a, b) => b - a)) {
   const keep = keepLists(s, share, by), n = keep.find(Boolean)?.length || s.experts;
   const label = `keep-${Math.round(share * 100)}`;
-  await post('/expert-mask', { keep: share === 1 ? null : keep }, 60_000);
+  try { await post('/expert-mask', { keep: share === 1 ? null : keep }, 60_000); }
+  catch (e) { console.log(`  ${label}: the expert switch didn't answer (${String(e.message).slice(0, 120)}); step skipped`); steps.push({ share, kept: n, total: null, of: null, pct: null, tps: null, ok: false }); continue; }
   fs.writeFileSync(path.join(out, `${label}.json`), JSON.stringify({ share, by, keep }));
   console.log(`\n--- ${label}: ${n} of ${s.experts} experts in each layer ---`);
   const dir = path.join(out, label); fs.mkdirSync(dir, { recursive: true });
