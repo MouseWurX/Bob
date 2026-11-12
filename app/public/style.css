@@ -824,6 +824,13 @@ details.more > summary:hover { color: var(--accent); }
 .help-entry dt { font-weight: 700; margin-top: 6px; }
 .help-entry dd { margin: 0 0 4px 0; }
 .help-entry a { color: var(--accent); }
+/* 1.5.210: questions and small pages folded into their main page */
+.help-entry h4 { margin: 12px 0 4px; font-size: .95em; }
+.help-subs { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.help-sub { border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; scroll-margin-top: 8px; }
+.help-sub > summary { cursor: pointer; padding: 6px 0; font-weight: 600; }
+.help-sub > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.help-sub[open] { padding-bottom: 8px; }
 #help { width: min(1000px, 96vw); }
 @media (max-width: 700px) { .help-cols { grid-template-columns: 1fr; } .help-toc { position: static; } }
 .fit-picks { margin: 4px 0; padding-left: 18px; font-size: 14px; }

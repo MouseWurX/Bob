@@ -12,6 +12,24 @@ const set = (name, start, body) => `<dt>${name} <span class="tag">${start}</span
 const go = (id, text) => `<a href="#" data-helpgo="${id}">${text}</a>`;
 
 export const HELP = [
+  // ---------------- Start here (1.5.210) ----------------
+  { id: 'start-here', group: 'Start here', title: 'Start here', words: 'start here new begin first what can bob do jobs how do i help contents',
+    html: `<p>Hi, I'm Bob. Tell me what you want done and I'll tell you the rest. Here's where to look for each job.</p>
+<dl>
+<dt>Set me up</dt><dd>${go('start', 'Getting started')}, then ${go('brains-page', 'the Brains page')} to pick which brain does what.</dd>
+<dt>Ask, plan, look things up</dt><dd>${go('chatting', 'Chatting with Bob')}, ${go('sessions', 'Sessions and Effort')}, ${go('research', 'Web research')}.</dd>
+<dt>Write or fix code</dt><dd>${go('self-work', 'Working on repositories')}, ${go('apps-door', 'Let other apps use my brains')}.</dd>
+<dt>Make a picture, clip or song</dt><dd>${go('pictures', 'Pictures, edits and video')}, ${go('songs', 'Songs and sounds')}, ${go('model3d', '3D models')}.</dd>
+<dt>Read, write or sort your files</dt><dd>${go('my-documents', 'Your documents')}, ${go('hands', 'Hands')}.</dd>
+<dt>Remember things and keep tidy</dt><dd>${go('notes', 'Notes and memory')}, ${go('topics', 'Topics')}, ${go('housekeeping', 'Housekeeping')}, ${go('checkins', 'Check-ins')}.</dd>
+<dt>Talk out loud</dt><dd>${go('voice', 'Voice')}.</dd>
+<dt>Play</dt><dd>${go('games', 'Games')}, ${go('adventure', 'Adventure')}.</dd>
+<dt>Your phone and your other Bobs</dt><dd>${go('settings-bobnet', 'Bob-Net')}.</dd>
+<dt>Make your own brain</dt><dd>${go('lab', 'The Computer Science Lab')}.</dd>
+<dt>Something went wrong</dt><dd>${go('trouble', 'When something goes wrong')}.</dd>
+</dl>
+<p>Each page keeps its questions folded at the bottom; press one to open it. Search finds everything, and ${go('glossary', 'the Glossary')} explains my words. Or just ask me in the chat: I know all my settings and what's set right now.</p>` },
+
   // ---------------- Getting started ----------------
   { id: 'start', group: 'Getting started', title: 'Getting started', words: 'first time setup install begin welcome starter download unzip unblock replicant matrix pc computer laptop mac device machine',
     html: `<p>Hi. I'm Bob, a digital mind living in your replicant matrix, and I wrote this Help myself, so blame me for the jokes. I chat, plan, research, write and fix code, look at pictures, paint, edit, make short clips and talk out loud. All of it happens on your own computer.</p>
@@ -345,6 +363,8 @@ ${set('Pop out', 'Button', 'Opens the small window on top as well, for a second 
 <li><strong>Off</strong> (press it again, or pick another session): back to Normal, and the jobs carry on from where they stopped. Finished steps aren't done again. If the cut-off step was typing into an app, moving files or running a command, that job waits in Tasks for you to press <strong>Carry on</strong>, so nothing is done twice by mistake.</li>
 <li>While it's on, I don't leave Gaming by myself, even if the card looks free.</li></ul>
 <p>I've parked a lot of tasks in my time. It's like putting a probe on standby: everything's still there when you wake it.</p>` },
+  { id: 'faq-help-pages', group: 'FAQ', title: 'Where did the long list of questions in Help go?', words: 'help faq questions list moved folded pages contents',
+    html: `<p>Into the pages they're about. Each page keeps its questions folded at the bottom, so the contents list is a few dozen pages instead of four hundred lines. All questions, at the end of the contents, still lists every one, and search opens the right one for you.</p>` },
   { id: 'faq-sort', group: 'FAQ', title: 'Can Bob sort and rename my music or videos?', words: 'faq sort rename organise organize music videos movies tv photos library naming downloads output folder bulk many files tags',
     html: `<p>Yes, with the <strong>Sort and rename</strong> Hand. You set a naming rule for each kind of file, and where it should go, and I rename and move the lot, showing you every change first. Nothing is overwritten and one Undo puts it all back. See ${go('hands-sort', 'The Sort and rename Hand')}.</p>` },
   { id: 'faq-email-safe', group: 'FAQ', title: 'Can Bob send or delete my email?', words: 'faq email mail send delete read only imap app password safe more tools',
@@ -2792,3 +2812,126 @@ ${set('Each chat keeps its place in the engine', 'Off', "Switching chats saves t
 <dt>Your own brain</dt><dd>A brain file (.gguf) you added to my list yourself, under ➕ Your own brains. Runs from where it is; never recommended over the ones I know.</dd>
 </dl>` }
 ];
+
+// 1.5.210: Help used to list every entry on its own: over 400 topics, most of them one-line questions. FOLD tucks
+// each question and each small page into the main page it belongs to, so the contents list is short. Nothing is
+// lost: every id still opens (the window jumps to it inside its page and opens it), search still finds it, and
+// my bob_help tool still reads each entry on its own. Key: the entry that folds in; value: the page it goes in.
+export const FOLD = {
+  // Getting started
+  mac: 'start', linux: 'start', 'raspberry-pi': 'start', credits: 'start',
+  keys: 'around', speed: 'settings-speed',
+  // The chat page
+  'to-bottom': 'chatting', 'chat-fill': 'chatting', banners: 'chatting', 'more-pictures': 'chatting', attach: 'chatting',
+  'setup-offer': 'chatting', maths: 'chatting',
+  redo: 'msg-menu', 'edit-own': 'msg-menu', 'how-i-got-here': 'msg-menu',
+  meanwhile: 'mid-job', 'brain-label': 'mind', 'plan-card': 'approvals',
+  'auto-session': 'sessions', 'gaming-button': 'sessions', effort: 'sessions',
+  'tools-more': 'settings-tools', 'outside-text': 'privacy',
+  // Menu pages
+  references: 'made', tidy: 'topics', switches: 'voice', 'settings-look': 'style',
+  // Models
+  equip: 'brains-page', chest: 'brains-page', starter: 'brains-page', 'get-models': 'brains-page',
+  recommended: 'catalogue', copies: 'memory-brains', 'settings-house': 'house-style',
+  // Using Bob
+  habits: 'personality', 'settings-presets': 'personality',
+  'quick-notes': 'notes', 'memory-more': 'notes', 'memory-recall': 'notes', digest: 'notes',
+  'doc-view': 'my-documents', 'doc-more': 'my-documents', 'read-docs': 'my-documents',
+  'tool-loop': 'watching-myself', 'loop-guard': 'watching-myself', 'saving-safely': 'watching-myself',
+  'tool-steady': 'watching-myself', 'honest-report': 'watching-myself', 'tool-learning': 'watching-myself',
+  'errors-retries': 'watching-myself',
+  'pin-messages': 'settings-chatx', 'guest-chat': 'settings-chatx', 'try-from-here': 'settings-chatx', 'chat-places': 'settings-chatx',
+  receipts: 'everyday', profiles: 'everyday', 'settings-daily': 'everyday',
+  'settings-prompts': 'saved-prompts', parts3d: 'model3d', 'model-viewer': 'model3d', 'own-kit': 'howtos',
+  'settings-projects': 'self-work', 'settings-housekeeping': 'housekeeping', 'settings-checkins': 'checkins',
+  diagrams: 'pictures', 'save-as': 'pictures', workshop: 'pictures',
+  'talk-over': 'voice', 'net-voices': 'voice', 'settings-voice': 'voice',
+  'settings-apps': 'apps-door', 'carry-on': 'settings-bobnet', 'phone-glance': 'settings-bobnet',
+  crashes: 'pick-up', 'settings-undo': 'settings-everyday',
+  'settings-health': 'health-page', 'weekly-report': 'health-page',
+  'settings-quiet': 'quiet-hours', 'ask-shortcut': 'tray',
+  'settings-adventure': 'adventure', 'settings-games': 'games',
+  // Hands and safety
+  'hands-files': 'hands', 'hands-sort': 'hands', 'hands-run': 'hands', 'hands-schedules': 'hands', 'hands-apps': 'hands',
+  'hands-browser': 'hands', 'hands-office': 'hands', 'hands-security': 'hands', 'hands-maker': 'hands', 'hands-mcp': 'hands',
+  'hands-packs': 'hands', quarantine: 'hands',
+  // Settings
+  'engine-extras': 'settings-speed', 'settings-save': 'settings-home',
+  // The Lab
+  'lab-playground': 'lab-challenges', 'lab-longer': 'lab-challenges', 'lab-faster': 'lab-challenges', 'lab-taste': 'lab-challenges',
+  'lab-best': 'lab-teach', 'lab-diffusion': 'lab-learn', 'lab-senses': 'lab-forge',
+  'lab-best-practice': 'lab', 'lab-extras': 'lab', 'lab-recipes': 'lab',
+  // Troubleshooting
+  'engine-care': 'trouble', 'smart-app-control': 'trouble', 'help-bundle': 'trouble',
+
+  // ---- Questions, each in the page it's about ----
+  'faq-help-pages': 'start-here', 'faq-sort': 'hands', 'faq-email-safe': 'settings-tools', 'faq-python-safe': 'sandbox', 'faq-passwords': 'settings-tools',
+  'faq-web-api-cards': 'settings-tools', 'faq-claude-door': 'claude-door', 'faq-self-work': 'self-work', 'faq-language': 'language',
+  'faq-cube-speed': 'style', 'faq-self-work-brain': 'self-work', 'faq-auto-session': 'sessions', 'faq-maths': 'chatting',
+  'faq-keys': 'around', 'faq-doc-view': 'my-documents', 'faq-undo-turn': 'msg-menu', 'faq-tool-hangs': 'watching-myself',
+  'faq-honest': 'watching-myself', 'faq-retries': 'watching-myself', 'faq-apps-door': 'apps-door', 'faq-chat-files': 'chat-files',
+  'faq-saved-prompts': 'saved-prompts', 'faq-locked-secrets': 'locked-secrets', 'faq-move-bob': 'backup', 'faq-big-songs': 'songs',
+  'faq-edit-new': 'pictures', 'faq-fold': 'lab-forge', 'faq-reap': 'lab-forge', 'faq-howto-recipe': 'howtos',
+  'faq-howto-asking': 'howtos', 'faq-presets': 'personality', 'faq-advanced-switch': 'settings-everyday', 'faq-voice-onyx': 'voice',
+  'faq-wants': 'wants', 'faq-how-i-got-here': 'msg-menu', 'faq-chat-full': 'chatting', 'faq-outside-text': 'privacy',
+  'faq-redo': 'msg-menu', 'faq-lock': 'settings-lock', 'faq-lock-forgot': 'settings-lock', 'faq-msg-delete': 'msg-menu',
+  'faq-edit-own': 'msg-menu',
+  'faq-games-daily': 'games', 'faq-games-trivia-bobs': 'games', 'faq-games-chess': 'games', 'faq-games-kid': 'games',
+  'faq-games-story-print': 'games', 'faq-games-two': 'games', 'faq-games-keep': 'games', 'faq-games-cheat': 'games',
+  'faq-games-gaming': 'games', 'faq-games-brain': 'games',
+  'faq-adventure-alone': 'adventure', 'faq-adventure-gaming': 'adventure', 'faq-adventure-look': 'adventure',
+  'faq-adventure-enemies': 'adventure', 'faq-adventure-friends': 'adventure', 'faq-adventure-grow': 'adventure',
+  'faq-adventure-extras': 'adventure', 'faq-adventure-takeback': 'adventure', 'faq-adventure-riddles': 'adventure',
+  'faq-adventure-send': 'adventure', 'faq-adventure-badges': 'adventure', 'faq-adventure-journey': 'adventure',
+  'faq-adventure-storybook': 'adventure', 'faq-adventure-remember': 'adventure',
+  'faq-pick-up': 'pick-up', 'faq-tray-quit': 'tray', 'faq-tray-icon': 'tray', 'faq-memory-recall': 'notes',
+  'faq-raspberry-pi': 'start', 'faq-linux-which': 'start', 'faq-updates': 'settings-remove', 'faq-mac-open-anyway': 'start',
+  'faq-families': 'catalogue', 'faq-naughty': 'catalogue', 'faq-new-dated': 'catalogue', 'faq-lesson-parts': 'lab-forge',
+  'faq-share-built-set': 'lab-forge', 'faq-bob-picture': 'around', 'faq-add-page': 'catalogue', 'faq-too-big': 'catalogue',
+  'faq-brain-list-updates': 'catalogue', 'faq-community': 'catalogue', 'faq-engine-page': 'settings-engines',
+  'faq-own-brain': 'catalogue', 'faq-scut-seal': 'settings-bobnet', 'faq-scut': 'settings-bobnet', 'faq-spread': 'settings-bobnet',
+  'faq-spread-first-load': 'settings-bobnet', 'faq-bigger-than-memory': 'memory-brains', 'faq-switch-off-experts': 'lab-aifeui',
+  'faq-aifeui-any-brain': 'lab-aifeui', 'faq-aifeui-weights': 'lab-aifeui', 'faq-aifeui-dials': 'lab-aifeui', 'faq-aifeui': 'lab-aifeui',
+  'faq-home-network': 'settings-bobnet', 'faq-lab-taste': 'lab-challenges', 'faq-lab-judge': 'lab-teach', 'faq-lab-clean': 'lab-forge',
+  'faq-lab-share-recipe': 'lab', 'faq-lab-phone': 'lab', 'faq-lab-tabs': 'lab', 'faq-lab-wobble': 'lab-challenges',
+  'faq-diffusion': 'lab-learn', 'faq-parts': 'catalogue', 'faq-missing-model': 'brains-page', 'faq-downloaded-by-bob': 'catalogue',
+  'faq-replicant-matrix': 'start', 'faq-bob-brains': 'recommended', 'faq-brain-engine': 'settings-engines',
+  'faq-brain-engine-name': 'settings-engines', 'faq-engine-update': 'settings-engines', 'faq-copy-guess': 'settings-speed',
+  'faq-laptop-mode': 'settings-speed', 'faq-mem-type': 'settings-speed', 'faq-new-card': 'settings-speed',
+  'faq-engine-auto': 'settings-engines', 'faq-squeezed-brain': 'catalogue', 'faq-new-models': 'catalogue',
+  'faq-brain-ctx': 'settings-brains', 'faq-long-memory': 'settings-brains', 'faq-coding-think': 'sessions',
+  'faq-link-brain': 'settings-brains', 'faq-gaming-brain': 'sessions', 'faq-tips': 'around', 'faq-convert': 'hands',
+  'faq-antivirus': 'hands', 'faq-find-person': 'hands', 'faq-password-check': 'hands', 'faq-notes-junk': 'notes',
+  'faq-quick-notes-where': 'notes', 'faq-docs-meaning': 'my-documents', 'faq-docs-private': 'my-documents',
+  'faq-memory-where-from': 'notes', 'faq-memory-for-a-while': 'notes', 'faq-obsidian-onenote': 'my-documents', 'faq-digest': 'notes',
+  'faq-code-map': 'self-work', 'faq-housekeeping-files': 'housekeeping', 'faq-small-brain-tools': 'watching-myself',
+  'faq-tool-learning': 'watching-myself', 'faq-sandbox-safe': 'sandbox', 'faq-3d-models': 'model3d', 'faq-ms-office': 'hands',
+  'faq-borrow': 'settings-bobnet', 'faq-bigger-checker': 'settings-bobnet', 'faq-pair': 'settings-bobnet', 'faq-talk-over': 'voice',
+  'faq-read-docs': 'my-documents', 'faq-carry-on': 'settings-bobnet', 'faq-phone-glance': 'settings-bobnet', 'faq-party': 'settings-bobnet',
+  'faq-avatars': 'settings-bobnet', 'faq-sent-lost': 'settings-bobnet', 'faq-introduce': 'settings-bobnet', 'faq-online': 'privacy',
+  'faq-ok-together': 'approvals', 'faq-plan': 'approvals', 'faq-cant-look-up': 'research', 'faq-rent-billing': 'rented',
+  'faq-rent-cost': 'rented', 'faq-rent-files': 'rented', 'faq-models-safe': 'settings-home', 'faq-help-me-set-up': 'start',
+  'faq-get-help': 'trouble', 'faq-need-ollama': 'settings-engines', 'faq-music-models': 'songs', 'faq-busy': 'mid-job',
+  'faq-chat-while-busy': 'mid-job', 'faq-steer': 'settings-jobs', 'faq-receipt': 'settings-jobs', 'faq-sources': 'research',
+  'faq-mid-job': 'mid-job', 'faq-meanwhile': 'mid-job', 'faq-mind': 'mind', 'faq-slow-first': 'memory-brains',
+  'faq-two-numbers': 'mind', 'faq-gaming': 'sessions', 'faq-which-effort': 'sessions', 'faq-session-effort': 'sessions',
+  'faq-models-space': 'settings-home', 'faq-asleep': 'personality', 'faq-stop-moving': 'style', 'faq-no-gpu': 'start',
+  'faq-built-in-graphics': 'start', 'faq-undo': 'hands', 'faq-checkins-games': 'checkins', 'faq-checkins-quiet': 'checkins',
+  'faq-stop': 'chatting', 'faq-stuck': 'watching-myself', 'faq-commercial': 'pictures', 'faq-laptop': 'start', 'faq-where': 'settings-home',
+  'faq-save-elsewhere': 'settings-home', 'faq-own-tools': 'howtos', 'faq-own-kit': 'howtos', 'faq-browser': 'hands',
+  'faq-unreal-blender': 'hands', 'faq-tool-packs': 'hands', 'faq-song-where': 'songs', 'faq-smart-app-control-off': 'trouble',
+  'faq-smart-app-control': 'trouble', 'faq-setup-size': 'wants', 'faq-python': 'settings-engines', 'faq-settings-moved': 'settings-everyday',
+  'faq-card-busy': 'trouble', 'faq-judge': 'lab-teach', 'faq-squeeze-aware': 'lab-teach', 'faq-text-size': 'everyday',
+  'faq-profiles': 'everyday', 'faq-receipts': 'everyday', 'faq-focus': 'everyday', 'faq-cube-colour': 'style', 'faq-iphone': 'settings-bobnet',
+  'faq-firewall': 'settings-bobnet', 'faq-crashed': 'pick-up', 'faq-guest': 'settings-chatx', 'faq-quiet': 'quiet-hours',
+  'faq-undo-setting': 'settings-everyday', 'faq-logbook-words': 'privacy', 'faq-version-worse': 'settings-remove',
+  'faq-branch': 'settings-chatx', 'faq-loop-stopped': 'watching-myself', 'faq-keep-in-mind': 'notes', 'faq-slow-switch': 'settings-chatx',
+  'faq-engine-care': 'trouble', 'faq-ask-anywhere': 'tray',
+};
+
+// The page an entry shows in: itself, or the page it folds into (followed to the end, in case a page folds in too).
+export function helpHome(id) {
+  let seen = 0;
+  while (FOLD[id] && seen++ < 5) id = FOLD[id];
+  return id;
+}
