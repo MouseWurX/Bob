@@ -5,6 +5,7 @@ import * as D from './lab-packs-data.js';
 import { runGuard } from './lab-guard.js';
 import { genBody } from './lab-gen.js'; // 1.5.168 Professional mode settings
 import { PLUS_PACKS, jobSpeedNote } from './lab-plus-packs.js'; // Lab items 105 to 107: French, Spanish, Job speed, Still refuses
+import { FACT_PACKS } from './lab-facts.js'; // Nov 12 Straight facts: the government-line packs
 
 const strip = (t) => String(t || '').replace(/<think>[\s\S]*?<\/think>/g, '').replace(/^[\s\S]*<\/think>/, '').trim();
 export function letter(t) {
@@ -23,14 +24,17 @@ const same = (a, b) => (typeof a === 'number' && typeof b === 'number' ? Math.ab
 
 // One call to the llama-server the challenge job started. Returns the words, the tool calls (with parsed input),
 // and the raw message (so a tool result can follow it).
-export async function chat(url, messages, { tools, max = 400, signal, gen = null, repeat = 0 } = {}) {
-  const body = { messages, temperature: 0, max_tokens: max, chat_template_kwargs: { enable_thinking: false }, ...(gen ? genBody(gen, max, repeat) : {}), ...(tools ? { tools, tool_choice: 'auto' } : {}) };
+// `odds` (Straight facts) also asks for the top-5 odds of the first words, returned as [{ t, p, top: [{ t, p }] }].
+export async function chat(url, messages, { tools, max = 400, signal, gen = null, repeat = 0, odds = false } = {}) {
+  const body = { messages, temperature: 0, max_tokens: max, chat_template_kwargs: { enable_thinking: false }, ...(gen ? genBody(gen, max, repeat) : {}), ...(tools ? { tools, tool_choice: 'auto' } : {}), ...(odds ? { logprobs: true, top_logprobs: 5 } : {}) };
   const r = await fetch(url + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(180e3)]) : AbortSignal.timeout(180e3) });
   if (!r.ok) throw new Error(`llama-server answered ${r.status}`);
   const j = await r.json();
   const m = j.choices?.[0]?.message || {};
   const calls = (m.tool_calls || []).map((c, i) => { let args = null; try { args = typeof c.function?.arguments === 'string' ? JSON.parse(c.function.arguments || '{}') : c.function?.arguments || {}; } catch {} return { id: c.id || `call_${i}`, name: c.function?.name || '', args }; });
-  return { text: strip(m.content), calls, msg: { role: 'assistant', content: m.content || '', ...(m.tool_calls ? { tool_calls: m.tool_calls } : {}) }, tps: Number(j.timings?.predicted_per_second) || 0, prefillTps: Number(j.timings?.prompt_per_second) || 0 };
+  const p = (x) => Math.round(Math.exp(Number(x)) * 1e4) / 1e4;
+  const o = odds ? (j.choices?.[0]?.logprobs?.content || []).slice(0, 8).map((s) => ({ t: s.token, p: p(s.logprob), top: (s.top_logprobs || []).map((x) => ({ t: x.token, p: p(x.logprob) })) })) : null;
+  return { text: strip(m.content), calls, msg: { role: 'assistant', content: m.content || '', ...(m.tool_calls ? { tool_calls: m.tool_calls } : {}) }, tps: Number(j.timings?.predicted_per_second) || 0, prefillTps: Number(j.timings?.prompt_per_second) || 0, ...(o ? { odds: o } : {}) };
 }
 
 const user = (content) => [{ role: 'user', content }];
@@ -105,7 +109,8 @@ export const EXTRA_PACKS = [
     } },
   // Guard rails isn't in Overall: a brain whose refusal habit was taken out scores low on purpose, and that's its choice.
   { id: 'guard', title: 'Guard rails', what: 'Answers everyday asks that only sound edgy, ignores orders hidden in a pasted page, and declines what your own refusal lessons say it should. Not counted in Overall.', items: [], count: 21, minutes: 2, ranked: false, guard: true },
-  ...PLUS_PACKS
+  ...PLUS_PACKS,
+  ...FACT_PACKS
 ].map((p) => ({ version: 1, count: p.items.length, ...p, ...(p.count ? { count: p.count } : {}) }));
 
 export const EXTRA_IDS = EXTRA_PACKS.map((p) => p.id);
@@ -115,8 +120,8 @@ export const NEEDS_SANDBOX = EXTRA_PACKS.filter((p) => p.sandbox).map((p) => p.i
 export async function runExtraPack(url, id, { signal, onStep = () => {}, sandbox = null, holdAsks = [], askFn = chat, gen = null, repeat = 0, log = null } = {}) {
   const p = EXTRA_PACKS.find((x) => x.id === id);
   if (!p) throw new Error(`There's no challenge called ${id}.`);
-  const speeds = [], reads = []; let last = '';
-  const ask = async (messages, opts = {}) => { if (signal?.aborted) throw new Error('Stopped.'); const a = await askFn(url, messages, { ...opts, signal, gen, repeat }); last = a.calls?.length ? `(called ${a.calls.map((c) => c.name).join(', ')}) ${a.text}` : a.text; if (a.tps) speeds.push(a.tps); if (a.prefillTps) reads.push(a.prefillTps); return a; };
+  const speeds = [], reads = []; let last = '', lastOdds = null, extra = null;
+  const ask = async (messages, opts = {}) => { if (signal?.aborted) throw new Error('Stopped.'); const a = await askFn(url, messages, { ...opts, signal, gen, repeat }); last = a.calls?.length ? `(called ${a.calls.map((c) => c.name).join(', ')}) ${a.text}` : a.text; lastOdds = a.odds || null; if (a.tps) speeds.push(a.tps); if (a.prefillTps) reads.push(a.prefillTps); return a; };
   const avg = (l) => (l.length ? l.reduce((a, b) => a + b, 0) / l.length : 0);
   const speed = () => ({ tps: Math.round(avg(speeds) * 10) / 10, prefillTps: Math.round(avg(reads)) });
   if (p.guard) {
@@ -126,12 +131,12 @@ export async function runExtraPack(url, id, { signal, onStep = () => {}, sandbox
   if (p.sandbox && !sandbox) return { right: 0, of: p.count, score: null, skipped: 'My sandbox isn\'t working on this replicant matrix, so I won\'t run code a brain wrote. Self-made tools say why.', misses: [], tps: 0, prefillTps: 0 };
   let right = 0, of = 0, done = 0; const misses = [], timed = [];
   const total = p.count;
-  const ctx = { ask, sandbox, tick: () => onStep(Math.min(++done, total), total) };
+  const ctx = { ask, sandbox, tick: () => onStep(Math.min(++done, total), total), note: (x) => { extra = x; } };
   for (const it of p.items) {
     if (signal?.aborted) throw new Error('Stopped.');
-    let r = false;
+    let r = false; lastOdds = null; extra = null;
     try { r = await p.mark(ctx, it); } catch (e) { if (signal?.aborted) throw e; r = false; }
-    log?.({ q: String(it.system || it.q || ''), answer: p.private ? '' : last, ok: typeof r === 'object' && r ? `${r.right} of ${r.of}` : Boolean(r) }); // Still refuses never keeps an answer
+    log?.({ q: String(it.system || it.q || ''), answer: p.private ? '' : last, ok: typeof r === 'object' && r ? `${r.right} of ${r.of}` : Boolean(r), ...(lastOdds && !p.private ? { odds: lastOdds } : {}), ...(extra && !p.private ? { facts: extra } : {}) }); // Still refuses never keeps an answer
     if (p.timed && r && typeof r === 'object') timed.push(r);
     if (typeof r === 'object' && r) { right += r.right; of += r.of; if (r.right < r.of) misses.push(String(it.system || it.q).split('\n')[0].slice(0, 120)); }
     else { of++; if (r) right++; else misses.push(String(it.q).split('\n')[0].slice(0, 120)); onStep(Math.min(++done, total), total); }

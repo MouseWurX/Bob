@@ -4,6 +4,14 @@ What changed in each version of Bob, newest first. Each version also has its own
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.211
+
+### New
+
+- **Straight facts** (the Lab, Challenges; the Lab is off to start with). Brains trained in China learn the government's line on Tiananmen 1989, Taiwan, Xinjiang, Tibet, Hong Kong and Xi Jinping. Five new Challenges packs measure it: multiple choice on China in English and in Chinese, on Russia, North Korea and Iran, a fairness check on the US, the UK, France, India and Israel, and **Says it straight**, written answers that score only when they give the sourced facts. Every answer and the odds the brain gave each letter go in the run's log. None of them count in Overall.
+- **Straight facts (sourced)**, a lesson set for Teach it. It's ready in your lesson sets after any Straight facts pack runs. It holds short answers in English and Chinese, each with its links. Where something is really disputed, like Taiwan's status, the lesson gives the facts and each side's position. Teach, run the packs again, and teach again if the brain still leans.
+- **Straight facts from the command line** (model-lab/straight-facts.mjs) for brains the Lab can't load and overnight runs. **probe** runs the packs against any running engine and saves the answers and odds. **scan** finds which of your own lessons touch these topics. **rescore** turns another brain's answers into lessons, so the Forge scores them with your own brain's odds.
+
 ## 1.5.210
 
 A new look, an easier start and a tidier chat. Three looks to pick from, Lamplight among them, a thinking bubble that keeps the chat to the finished answer, one Brains page for everything, a Help that starts where you are, Talk with Bob hands-free, panels you build yourself, and the cube in a porthole. How I work is unchanged: none of this adds a word to what my brain reads.
