@@ -55,7 +55,30 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 
 ## What's new
 
-**In 1.5.204 to 1.5.206:**
+**In 1.5.207:**
+
+| | |
+|---|---|
+| 🧭 **Journey** | Adventure as an old console game. Walk a tile map, open chests, talk to the village and fight turn-based battles. No brain needed. |
+| 🧩 **Eleven more games** | Chess, Sudoku, a daily mini crossword, Four in a row, Hidden fleet, Liar's dice, Trivia night and more. Easy, Normal or Hard, two players on one screen, and a puzzle of the day. |
+| 🔁 **Jobs you can steer** | Steer Bob mid-job, stop after this step, set a time limit, and get a receipt with Open and Undo. **How I got here** under each answer lists the tools he used. |
+| 🛠 **Steadier work, better tools** | Replies start sooner. Bob asks one question on a card when he needs to, reads PDF and Office links, and looks at git history. If he says something is done when it isn't, a note puts it right. |
+| 🩺 **Health and history** | Crash catching with a safe start, the last 20 Settings changes with Put it back, a Health page with fix buttons, quiet hours, and a shortcut from anywhere. |
+| 🗓 **Everyday helpers** | A today card, a focus timer, a spending sheet from receipt photos, profiles for a shared computer, bigger text and an easier-to-read font. |
+| 🎲 **Adventure table rules** | A map that grows, portraits, coins and shops, riddle rooms, Easy to Hard, and campaigns you can send to a friend. |
+| 🧪 **More Lab** | A blind taste test that ranks brains, Save to Lab from the chat, before and after Teach it, and recipe files to share. |
+| ⚡ **Engine and speed** | Load the next brain early, a speed history chart, laptop mode on battery, and a chat memory type for each brain. |
+| 🗣 **Voice and phone** | Talk over Bob while he reads aloud, have documents read aloud, and carry a chat on to another Bob. On Android: Share to Bob, a home-screen widget and hands-free. |
+
+Every new switch is off until you turn it on.
+
+<p align="center">
+  <img src="app/docs/screens/journey.png" width="460" alt="Journey: a pixel-art village on a tile map, the hero in the square among villagers, a message box reading Welcome to the Brindle Vale, and hearts for the hero and Bob below">
+  <br><b>Journey.</b> Arrow keys walk, Enter talks, opens chests and swings.
+</p>
+
+<details>
+<summary><b>Earlier:</b> 1.5.204 to 1.5.206, and before</summary>
 
 | | |
 |---|---|
@@ -72,9 +95,11 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 | ⚡ **Brain Engine 4** | SCUT packets between your Bobs are signed and scrambled, and a lost packet is rebuilt at once. SCUT is still experimental. |
 | 🌍 **More places, more languages** | Screens in French and Spanish. Bob on the iPhone Home Screen. A .deb and a Flatpak for Linux. |
 
-Most new things start switched off. Housekeeping is now on: it touches only Bob's own files unless you add folders, and it always asks first.
+Housekeeping is now on: it touches only Bob's own files unless you add folders, and it always asks first.
 
 **Before that:** documents beside the chat · notes that take themselves · Settings in its own window, Simple or Advanced · the "Do you want me to:" list · **SCUT** and **SUDDAR** for Bobs sharing a brain over Wi-Fi · Onyx, Bob's recommended voice.
+
+</details>
 
 The [changelog](CHANGELOG.md) has every release.
 
@@ -93,7 +118,7 @@ The [changelog](CHANGELOG.md) has every release.
 - **Remember:** Topics, notes and memory banks keep what matters between chats. Exact sums are worked out in a locked sandbox, not guessed.
 - **Lots of context:** 256K tokens (about 195,000 words) on a 16 GB card, and up to 1M with Long memory.
 - **A character:** eleven personality dials, 133 avatars, a cat named Patches, and opinions about your code.
-- **Play:** a tabletop adventure with enemies, a quest log, a world book and friends at the table, plus five word games.
+- **Play:** a tabletop adventure with enemies, a quest log, a world book and friends at the table, Journey on a tile map, and sixteen games from hangman to chess.
 - **Works with your other tools (opt-in):** other apps use Bob's brains through an OpenAI-style address, and Claude can use Bob's Hands.
 - **Yours to keep:** a passcode lock, backups that move Bob to another computer, and screens in English, French or Spanish.
 - **Big brains when you want them:** rent one for a single job from a service you have an account with. Off to start, with spending limits that start at $0.
@@ -105,8 +130,8 @@ The [changelog](CHANGELOG.md) has every release.
 |---|---|
 | ![Settings, Simple: eight cards such as Bob himself, How Bob works and Brains and speed](app/docs/screens/settings.png) | ![Settings, Advanced: every section in a side list, with Bob himself open](app/docs/screens/settings-advanced.png) |
 | **Settings, Simple:** eight cards. | **Settings, Advanced:** every section, with search. |
-| ![Do you want me to: tick boxes for quick notes, reading documents, the sandbox and more](app/docs/screens/do-you-want.png) | ![Games: twenty questions, hangman, word ladder, five letters and story dice](app/docs/screens/games.png) |
-| **"Do you want me to:"** Everything optional, in one list. | **Games:** five word games that run on a small brain. |
+| ![Do you want me to: tick boxes for quick notes, reading documents, the sandbox and more](app/docs/screens/do-you-want.png) | ![Games: twenty questions, hangman and word ladder, each with its choices, Easy to Hard and Today's puzzle](app/docs/screens/games.png) |
+| **"Do you want me to:"** Everything optional, in one list. | **Games:** sixteen, from twenty questions to chess. The app checks every move. |
 | ![The bestiary: goblins, skeletons, wolves and friends with hearts and a line from Bob](app/docs/screens/bestiary.png) | ![Style: themes such as Moondust, Nightside and Otterbend](app/docs/screens/style.png) |
 | **The bestiary:** the usual suspects, drawn as they appear. | **Style:** themes named after worlds, or build your own. |
 | ![Help, written by Bob: a search box, topics on the left, Getting started on the right](app/docs/screens/help.png) | ![Starting an adventure: panels for the story and its tone, your character, who plays, how long and table extras](app/docs/screens/adventure-start.png) |
@@ -124,7 +149,7 @@ Most AI apps are for talking to a model or for building one. Bob does both. **�
 |---|---|
 | **Make a brain** | Starts with one question: **What do you want to do?** Make it smaller, cut experts, take out sight or hearing, just test, or everything step by step. Each job shows only the steps it needs, and **Use in Bob** only appears after the test. |
 | **Teach** | **Teach it** teaches a brain a lesson set, here if it fits your card. **Best answers** has a bigger brain judge a smaller one's answers, then teaches it its best. |
-| **Test** | **Challenges** are short tests out of 100, with a scoreboard by size. **Smaller**, **Longer** and **Faster** show how small, how long and how fast a brain can go. A queue runs Challenges, Smaller and fNRI scans one after another overnight. |
+| **Test** | **Challenges** are short tests out of 100, with a scoreboard by size. **Smaller**, **Longer** and **Faster** show how small, how long and how fast a brain can go. **Taste test** ranks brains by the answers you prefer, names hidden. A queue runs Challenges, Smaller and fNRI scans one after another overnight. |
 | **Look inside** | **Peek inside** shows which experts your work uses. **fNRI** scans a brain while it answers and plays it back in 3D. |
 | **Learn** | Hands-on cards on how a brain works, run on the brain Bob has loaded. |
 | **Forge** | Every way to make a brain, side by side: smaller, cut, mixed, stacked, or taught back on a rented card. |
