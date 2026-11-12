@@ -3,7 +3,7 @@
 import { LOOKS, LOOK_ID, setLook, drawBob } from './bob-sprite.js';
 import { tip } from './tips.js';
 import { AVATAR_GROUPS, avatar } from './avatars.js';
-import { PRESETS, TOKENS, FONTS, DEFAULT_THEME, themeId, findTheme, resolve, fullColors, applyStyle, applyTheme, swatch, isLight } from './themes.js';
+import { LOOK_IDS, lookId, PRESETS, TOKENS, FONTS, DEFAULT_THEME, themeId, findTheme, resolve, fullColors, applyStyle, applyTheme, swatch, isLight } from './themes.js';
 import { esc } from './util.js';
 import { characterHtml, mountCharacter, BOB_BODIES, partsOf } from './character.js';
 
@@ -52,6 +52,22 @@ export function createStylePage({ api, redraw, flash }) {
       }).join('')}</div>`;
   }
 
+  // 1.5.210: Bob's three looks. Each picker card is a tiny drawing of the chat in that look.
+  const LOOK_TEXT = {
+    classic: ['Classic', 'How I\'ve always looked, tidied up. Menu on the left, Now running on the right.'],
+    lamplight: ['Lamplight', 'A dark room lit by my cube. The glow pulses slowly when I rest and flickers while I think.'],
+    terminal: ['Terminal', 'Plain text. you> and bob> lines, [x] switches. Everything still works.']
+  };
+  function lookMini(id) {
+    return id === 'terminal' ? '<span class="look-mini terminal" aria-hidden="true"><span>hi</span><span>hello</span><span>&gt; _</span></span>'
+      : `<span class="look-mini ${id}" aria-hidden="true"><i class="y"></i><i class="b"></i><i class="c"></i></span>`;
+  }
+  function looksHtml(style) {
+    const on = lookId(style);
+    return `<div><strong>Look</strong> ${tip('The shape of everything: spacing, corners, bubbles and motion. Your theme picks the colours, so every theme works with every look.', 'Look')}
+      <div class="look-pick" role="radiogroup" aria-label="Look">${LOOK_IDS.map((id) => `<button role="radio" aria-checked="${id === on}" data-uilook="${id}">${lookMini(id)}<span><strong>${LOOK_TEXT[id][0]}</strong><br><small>${esc(LOOK_TEXT[id][1])}</small></span></button>`).join('')}</div></div>`;
+  }
+
   function html(settings) {
     const style = settings.style || {};
     const groups = [['Bob', 'Bob'], ['Worlds', 'Worlds and places'], ['Access', 'High contrast'], ['MouseWurX', 'From the MouseWurX website']];
@@ -59,6 +75,7 @@ export function createStylePage({ api, redraw, flash }) {
     const motion = style.motion || 'on';
     const opt = (key, val, label, on) => `<button role="radio" aria-checked="${on}" aria-pressed="${on}" data-${key}="${val}">${label}</button>`;
     return `<section class="settings">
+      ${looksHtml(style)}
       <div><strong>Animations</strong> ${tip(`Bob breathes and blinks, the download Bobs hop, the brain machine runs. Remote Desktop usually turns Windows' animation effects off, so "On" ignores that.`, 'Animations')}
         <div class="ttabs" role="radiogroup" aria-label="Animations">${opt('motion', 'on', 'On', motion === 'on')}${opt('motion', 'system', settings.platform === 'win32' ? 'Follow Windows' : 'Follow the system', motion === 'system')}${opt('motion', 'off', 'Off', motion === 'off')}</div></div>
       <div><strong>Layout</strong> ${tip(`The menu on the left folds to icons with ‹ or Ctrl+B. The Now running panel on the right hides with Hide or Ctrl+J, and you can drag its edge to make it wider. Bob remembers how you leave them.`, 'Layout')}
@@ -113,6 +130,16 @@ export function createStylePage({ api, redraw, flash }) {
   async function onClick(b, settings) {
     const style = settings.style || {};
     if (b.dataset.motion) { await save(settings, { motion: b.dataset.motion }); redraw(); return true; }
+    if (b.dataset.uilook) {
+      await save(settings, { look: b.dataset.uilook });
+      // Lamplight is the chat in a dark room: Now running tucks away (Ctrl+J or its button brings it back), and the
+      // cube becomes Bob's picture unless you've already picked one. Both stay yours to change.
+      if (b.dataset.uilook === 'lamplight') {
+        if (!document.body.classList.contains('right-hidden')) document.getElementById('hideRight')?.click();
+        if (!settings.style?.avatar && typeof window.setAvatarCube === 'function') window.setAvatarCube(true);
+      }
+      redraw(); return true;
+    }
     if (b.dataset.nowneed) { await save(settings, { openNowOnNeed: b.dataset.nowneed === '1' }); redraw(); return true; }
     if (b.dataset.theme) { draft = null; await save(settings, { theme: b.dataset.theme }); redraw(); return true; }
     if (b.dataset.look) { const r = await api('/api/settings', { look: b.dataset.look }); setLook(b.dataset.look); settings.look = b.dataset.look; if (r.lookText) settings.lookText = r.lookText; redraw(); return true; }

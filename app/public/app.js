@@ -44,6 +44,9 @@ import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
 import { createPromptMenu } from './prompts.js'; // saved prompts: the / menu in the message box
 import { createBobMenu } from './bob-menu.js'; // 1.5.207 the small menu on Bob's picture
+import { createFind } from './find.js'; // 1.5.210 Lamplight: Find anything (Ctrl+K)
+import { CARDS } from './settings-map.js';
+import { HELP } from './help-content.js';
 import { diagramHtml, saveRowsHtml, setupSaveAs, watchSaveAs } from './save-as.js';
 import './math-core.js'; // Show maths as formulas: KaTeX, loaded only while the switch is on
 import { installShortcuts, listHtml as shortcutListHtml } from './shortcuts.js';
@@ -507,12 +510,41 @@ bobCanvas.tabIndex = 0;
 bobCanvas.setAttribute('role', 'button');
 bobCanvas.title = 'Bob: what I\'m doing, my brain, and my settings';
 bobCanvas.setAttribute('aria-label', 'Bob. Open my menu');
-createBobMenu({
+// 1.5.210 Lamplight: the top bar keeps only Bob, the pages and Find anything; the rest of the menu sits here.
+// Each line presses the very button it stands for, so nothing behaves differently.
+const lamp = () => document.body.classList.contains('look-lamplight');
+const LAMP_TOOLS = [['settingsBtn', '⚙', 'Settings'], ['dlBtn', '⬇', 'Downloads'], ['tidyBtn', '🧹', 'Tidy up'], ['shelfBtn', '🖼', 'References'], ['helpBtn', '❔', 'Help'], ['ear', '🎙', 'Listen for "Hey Bob"'], ['speak', '🔊', 'Read aloud'], ['notify', '🔔', 'Alerts']];
+const lampTools = () => (lamp() ? LAMP_TOOLS.filter(([id]) => $(id) && !$(id).hidden).map(([id, icon, label]) => ({ id, icon, label, st: $(id).querySelector('.st')?.textContent || '' })) : []);
+const bobMenu = createBobMenu({
   anchor: bobCanvas,
+  getTools: lampTools,
+  pickTool: (id) => $(id)?.click(),
+  getSession: () => (lamp() && sessionSel.options.length ? { value: sessionSel.value, options: [...sessionSel.options].map((o) => ({ value: o.value, label: o.textContent })) } : null),
+  pickSession: (v) => { sessionSel.value = v; sessionSel.dispatchEvent(new Event('change', { bubbles: true })); },
   doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'roles') },
   getStatus: async () => (await fetch('/api/status')).json(),
   getNames: async () => Object.fromEntries((((await (await fetch('/api/roles')).json()).options || {}).llm || []).map((o) => [o.value, o.label])),
   saidNow: () => statusEl.title || statusEl.textContent
+});
+// The fNRI cube avatar (when it is on) opens the same menu.
+document.addEventListener('click', (e) => { const c = e.target.closest?.('#bobCubeBox'); if (c && e.target !== bobCanvas) bobMenu.toggle(c); });
+// 1.5.210 Find anything: every page, menu tool, Settings card and Help topic by name, plus your chats.
+const PAGE_BTNS = ['chatBtn', 'tasksBtn', 'topicsBtn', 'madeBtn', 'adventureBtn', 'gamesBtn', 'labBtn', 'shelfBtn', 'cellarBtn', 'dlBtn', 'tidyBtn', 'settingsBtn', 'styleBtn', 'helpBtn', 'newchat'];
+const findBox = createFind({
+  items: () => [
+    ...PAGE_BTNS.filter((id) => $(id) && !$(id).hidden).map((id) => ({ label: $(id).getAttribute('aria-label') || id, kind: ['settingsBtn', 'styleBtn', 'helpBtn', 'dlBtn', 'tidyBtn', 'cellarBtn', 'newchat'].includes(id) ? 'Tool' : 'Page', words: $(id).title, run: () => $(id).click() })),
+    ...['ear', 'speak', 'notify'].filter((id) => $(id)).map((id) => ({ label: $(id).getAttribute('aria-label'), kind: 'Tool', words: $(id).title, run: () => $(id).click() })),
+    ...CARDS.map((c) => ({ label: c.name, kind: 'Settings', words: c.about, run: () => cellar.open('settings', null, { jump: c.topics[0] }) })),
+    ...HELP.map((h) => ({ label: h.title, kind: 'Help', words: h.words, run: () => helpPage.open(h.id) }))
+  ],
+  searchChats: async (q) => { await topicsPage.open(); const box = $('topics-q'); if (box) { box.value = q; box.dispatchEvent(new Event('input', { bubbles: true })); } }
+});
+$('findBtn').onclick = () => findBox.open();
+// Ctrl+K (Cmd+K on a Mac) always opens it in Lamplight, even with Keyboard shortcuts off: it's the button's own key.
+document.addEventListener('keydown', (e) => {
+  if (!lamp() || shortcutsOn || e.key.toLowerCase() !== 'k' || !(isMac ? e.metaKey : e.ctrlKey) || e.altKey || e.shiftKey) return;
+  if (document.querySelector('dialog[open]')) return;
+  e.preventDefault(); findBox.open();
 });
 // A past chat from Topics or search: switch to it and show its recent part (older parts are summed up).
 async function openChat(id, msgId) {
@@ -1698,7 +1730,7 @@ installShortcuts({
   act: (id) => {
     if (id === 'newChat') { if (busy) return false; if ($('cellar').open) $('cellar').close(); $('newchat').click(); input.focus(); }
     else if (id === 'stop') { if (stopBtn.hidden) return false; stopBtn.click(); }
-    else if (id === 'search') topicsPage.open();
+    else if (id === 'search') { if (lamp()) findBox.open(); else topicsPage.open(); } // Lamplight: Find anything
     else if (id === 'session') { sessionSel.focus(); try { sessionSel.showPicker(); } catch {} }
     else if (id === 'focus') input.focus();
     else if (id === 'lastMsg') {

@@ -1,0 +1,240 @@
+/* 1.5.210: Bob's three looks (Style > Look). They change shapes, spacing, type and motion only: colours still come
+   from the theme (themes.js), so every theme works in every look, light and dark. themes.js puts one class on
+   <body>: look-classic (the default, close to how Bob always looked, tidied), look-lamplight or look-terminal.
+   Nothing here changes what Bob does, how fast he works or what the brain is sent. */
+
+/* ---------- Shared: one type scale and one spacing grid ---------- */
+:root {
+  --t-xs: 12px; --t-sm: 13px; --t-md: 15px; --t-lg: 18px; --t-xl: 22px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+
+/* ---------- Classic: today's Bob, tidied ---------- */
+body.look-classic .log { padding: var(--s4) var(--s5); gap: var(--s3); }
+body.look-classic .msg { padding: var(--s3) var(--s4); border-radius: calc(var(--r) * 1.25); }
+body.look-classic .chips button { border-color: transparent; background: var(--card); }
+
+/* ---------- Lamplight: a dark room lit by Bob's cube ---------- */
+/* The page sits a shade deeper than the theme's own background. A single glow layer spreads from Bob's
+   picture in the top-left corner. Its opacity is --cube-light, which the cube that holds the lamp sets on
+   <html> as it draws (mind-cube.js: rest about .18 on a slow pulse, brighter as cells light while thinking,
+   capped at .62, near .04 unloading or with no brain). No script of our own, nothing redrawn: the graphics
+   card only fades one layer. Without a cube (or with animations off) it sits at a steady .3. */
+body.look-lamplight { --r: 12px; --deep: color-mix(in srgb, var(--bg) 72%, #000); background: var(--deep); }
+body.look-lamplight::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(1100px 760px at 60px 40px, color-mix(in srgb, var(--cube, var(--accent)) 40%, transparent), color-mix(in srgb, var(--cube, var(--accent)) 10%, transparent) 40%, transparent 72%);
+  opacity: var(--cube-light, .3); will-change: opacity; }
+body.look-lamplight.still::before { opacity: .3; }
+body.look-lamplight .app { position: relative; z-index: 1; background: transparent; }
+body.look-lamplight :where(.side, .mid, .now, .ctx, .chips, .effort, .composer, .cellar.page, .cellar.page .cellar-head, .cellar .cellar-tabs) { background: transparent; border-color: transparent; }
+body.look-lamplight .grab { background: none; }
+
+/* menu: quiet text, the current page lit */
+body.look-lamplight .nav-item, body.look-lamplight .nav-new { border-radius: 10px; padding: var(--s2) var(--s3); font-size: var(--t-md); gap: var(--s3); }
+body.look-lamplight .nav-item:not(.on) { color: var(--muted); }
+body.look-lamplight .nav-item:hover { background: color-mix(in srgb, var(--text) 5%, transparent); color: var(--text); }
+body.look-lamplight .nav-item.on { background: none; color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
+body.look-lamplight .nav-item.on .ico { color: var(--accent); filter: drop-shadow(0 0 6px var(--accent)); }
+body.look-lamplight .nav-new { background: transparent; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); margin-bottom: var(--s3); }
+body.look-lamplight .nav-head { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; padding: var(--s4) var(--s3) var(--s1); }
+body.look-lamplight .side .status { font-family: var(--mono); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+
+/* one button style: no outline, a faint fill on hover */
+body.look-lamplight :is(.brain-switch, .brain-pill, .effort-btn, .now-toggle, .chips button, .mic) { border-color: transparent; background: transparent; border-radius: 10px; }
+body.look-lamplight :is(.brain-switch, .brain-pill, .effort-btn, .now-toggle, .chips button, .mic):hover { background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); }
+body.look-lamplight .effort .web-btn::before, body.look-lamplight .effort .game-btn::before { display: none; }
+body.look-lamplight .cellar button { border-radius: 10px; }
+
+/* chat: your messages in a dark raised bubble, Bob's answers as plain text on a lit dot */
+body.look-lamplight .log { padding: var(--s6) max(var(--s5), calc((100% - 760px) / 2)); gap: var(--s6); }
+body.look-lamplight .msg.you { padding: 10px var(--s4); border-radius: 16px 16px 4px 16px; max-width: 80%; background: color-mix(in srgb, var(--panel) 80%, transparent); border: 1px solid var(--line); }
+body.look-lamplight .msg.bob { background: transparent; padding: 0 0 0 var(--s5); max-width: 100%; }
+body.look-lamplight .msg.bob::before { content: ""; position: absolute; left: 2px; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+body.look-lamplight .msg.bob.aside-msg::before { background: var(--muted); box-shadow: none; }
+body.look-lamplight .msg.bob.aside-msg { border: 0; }
+body.look-lamplight .msg.bob code { background: none; padding: 0; color: var(--accent); }
+body.look-lamplight .msg.bob pre { border-radius: 10px; background: color-mix(in srgb, #000 35%, transparent); }
+body.look-lamplight .msg.bob > .msg-more { background: var(--panel); }
+
+/* typing box: one dark card that floats over the glow */
+body.look-lamplight .effort { margin: 0 max(var(--s4), calc((100% - 760px) / 2)); padding: var(--s2) var(--s3) 0; background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line); border-bottom: 0; border-radius: 18px 18px 0 0; }
+body.look-lamplight .composer { margin: 0 max(var(--s4), calc((100% - 760px) / 2)) var(--s4); padding: var(--s2) var(--s3) var(--s3); background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 18px 18px; box-shadow: 0 20px 50px -24px #000; }
+body.look-lamplight .effort[hidden] + .composer { border-top: 1px solid var(--line); border-radius: 18px; }
+body.look-lamplight #input { border: 0; background: transparent; font-size: var(--t-md); }
+body.look-lamplight #input:focus-visible { outline: none; }
+body.look-lamplight .composer:focus-within { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+body.look-lamplight .send { border-radius: 11px; padding: var(--s2) var(--s4); box-shadow: 0 0 18px -4px var(--accent); }
+body.look-lamplight .chips { padding: var(--s2) max(var(--s4), calc((100% - 760px) / 2)); }
+
+/* Now running: quiet headings, no boxes */
+body.look-lamplight .now { padding: var(--s4); gap: var(--s2); }
+body.look-lamplight .now-sec { font-family: var(--mono); font-weight: 400; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+
+/* gentle motion, none when animations are off or the system asks for less */
+body.look-lamplight :is(.nav-item, .brain-switch, .brain-pill, .effort-btn, .chips button, .mic, .send, .cellar button) { transition: background-color .15s var(--ease), color .15s var(--ease); }
+body.look-lamplight .log > .msg { animation: look-rise .22s var(--ease) both; }
+@keyframes look-rise { from { opacity: 0; transform: translateY(6px); } }
+body.look-lamplight.still .log > .msg, body.look-lamplight.still :is(.nav-item, .brain-switch, .brain-pill, .effort-btn, .chips button, .mic, .send, .cellar button) { animation: none; transition: none; }
+@media (prefers-reduced-motion: reduce) { body.look-lamplight .log > .msg { animation: none; } }
+
+/* ---------- Terminal: plain text, every feature still there ---------- */
+body.look-terminal { --r: 0px; --font: Consolas, "Cascadia Mono", "DejaVu Sans Mono", "Liberation Mono", monospace; font-family: var(--font); }
+body.look-terminal * { box-shadow: none !important; text-shadow: none !important; }
+body.look-terminal :is(button, input, select, textarea) { font-family: var(--font); }
+body.look-terminal .side, body.look-terminal .ctx, body.look-terminal .now, body.look-terminal .chips, body.look-terminal .effort, body.look-terminal .composer { background: var(--bg); }
+body.look-terminal .nav-item.on { background: transparent; color: var(--accent); }
+body.look-terminal .nav-item.on .lbl::before { content: "> "; }
+body.look-terminal .nav-head::before { content: "# "; }
+body.look-terminal .nav-new { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+body.look-terminal .ctx-title::before { content: "~/"; color: var(--muted); font-weight: 400; }
+
+/* switches read as [x] and [ ] */
+body.look-terminal .brain-switch, body.look-terminal .brain-pill { border-color: transparent; background: none; padding-left: var(--s1); padding-right: var(--s1); }
+body.look-terminal .brain-switch .st, body.look-terminal .nav-item .st { background: none; padding: 0; color: var(--muted); letter-spacing: 0; }
+body.look-terminal .brain-switch[role="switch"] .lbl::before { content: "[ ] "; color: var(--muted); }
+body.look-terminal .brain-switch[role="switch"][aria-checked="true"] .lbl::before { content: "[x] "; color: var(--accent); }
+body.look-terminal .brain-switch[aria-checked="true"] .st, body.look-terminal .nav-item[aria-pressed="true"] .st { background: none; color: var(--accent); }
+body.look-terminal .brain-switch.hands-btn[data-on="true"] .st { background: none; color: var(--good); }
+body.look-terminal .brain-switch.free-btn[data-free="true"] { outline: 0; }
+body.look-terminal .brain-switch.free-btn[data-free="true"] .st { background: none; color: var(--warn); }
+body.look-terminal .brain-switch.hands-btn[data-state="stopped"] .st { background: none; color: var(--bad); }
+body.look-terminal .brain-pill::before { border-radius: 0; }
+body.look-terminal .effort-btn, body.look-terminal .now-toggle, body.look-terminal .chips button { border-radius: 0; background: none; }
+body.look-terminal .chips button::before { content: "$ "; color: var(--accent); }
+body.look-terminal .effort .web-btn::before, body.look-terminal .effort .game-btn::before { border-left-style: dotted; }
+
+/* chat: you> and bob> lines, no bubbles */
+body.look-terminal .log { gap: var(--s3); padding: var(--s4) var(--s5); }
+body.look-terminal .msg { max-width: 100%; align-self: stretch; padding: 0; background: transparent; border-radius: 0; }
+body.look-terminal .msg.you::before { content: "you> "; color: var(--accent); font-weight: 700; }
+body.look-terminal .msg.bob:not(.aside-msg)::before { content: "bob> "; color: var(--good); font-weight: 700; }
+body.look-terminal .msg.bob.aside-msg { border: 0; border-left: 2px solid var(--line); padding-left: var(--s3); }
+body.look-terminal .msg.bob code { background: none; padding: 0; color: var(--warn); }
+body.look-terminal .msg.bob pre { background: none; border: 1px solid var(--line); }
+body.look-terminal .msg img { border-radius: 0; }
+body.look-terminal .msg-more { border-radius: 0; }
+
+/* typing box: a prompt line */
+body.look-terminal .composer { border-top: 1px solid var(--line); }
+body.look-terminal #input { border-radius: 0; background: var(--bg); }
+body.look-terminal .send { background: none; color: var(--accent); border: 1px solid var(--accent); }
+body.look-terminal .send::after { content: " \23CE"; }
+body.look-terminal .mic { background: none; }
+
+/* pages and panels */
+body.look-terminal .cellar button { background: none; }
+body.look-terminal .cellar button.get { background: none; color: var(--accent); border-color: var(--accent); }
+body.look-terminal .now-sec::before { content: "# "; color: var(--muted); }
+body.look-terminal .themes button[aria-checked="true"], body.look-terminal .ttabs button[aria-pressed="true"] { outline: 1px solid var(--accent); }
+
+/* ---------- The Look picker on the Style page ---------- */
+.look-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--s2); margin: var(--s2) 0; }
+.look-pick button { display: grid; gap: var(--s2); text-align: left; padding: var(--s2); }
+.look-pick button[aria-checked="true"] { border-color: var(--accent); box-shadow: var(--shadow); }
+.look-pick small { color: var(--muted); font-size: var(--t-xs); }
+.look-mini { display: grid; gap: 4px; height: 64px; padding: 6px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+.look-mini i { display: block; height: 10px; }
+.look-mini .y { justify-self: end; width: 55%; background: var(--you); }
+.look-mini .b { width: 80%; background: var(--card); }
+.look-mini .c { margin-top: auto; height: 14px; background: var(--card); border: 1px solid var(--line); }
+.look-mini.classic { border-radius: 6px; } .look-mini.classic i { border-radius: 4px; }
+.look-mini.lamplight { border-radius: 10px; border-color: transparent; background: radial-gradient(90px 60px at 8px 6px, color-mix(in srgb, var(--accent) 35%, transparent), transparent 75%), color-mix(in srgb, var(--bg) 72%, #000); }
+.look-mini.lamplight .y { border-radius: 8px 8px 3px 8px; background: var(--panel); border: 1px solid var(--line); }
+.look-mini.lamplight .b { background: var(--muted); opacity: .45; height: 6px; border-radius: 3px; }
+.look-mini.lamplight .c { border-radius: 8px; background: var(--panel); }
+.look-mini.terminal { border-radius: 0; font: 10px/1.2 Consolas, "DejaVu Sans Mono", monospace; color: var(--text); gap: 2px; }
+.look-mini.terminal span:nth-child(1)::before { content: "you> "; color: var(--accent); }
+.look-mini.terminal span:nth-child(2)::before { content: "bob> "; color: var(--good); }
+.look-mini.terminal span:nth-child(3) { margin-top: auto; color: var(--accent); }
+
+/* Lamplight on a light theme: no darkening, a softer glow */
+body.look-lamplight.theme-light { --deep: var(--bg); }
+body.look-lamplight.theme-light::before { filter: saturate(.8); opacity: calc(var(--cube-light, .3) * .6); }
+body.look-lamplight.theme-light.still::before { opacity: .18; }
+body.look-lamplight.theme-light .composer { box-shadow: 0 12px 30px -20px #0004; }
+
+/* Lamplight: Bob's porthole cube in the corner is the lamp (its own size rules live in mind.css / style.css) */
+body.look-lamplight .side-top .mind-cube.bob-cube.porthole .port { width: 46px; height: 46px; }
+@media (max-width: 640px) { body.look-lamplight .side-top .mind-cube.bob-cube.porthole .port { width: 40px; height: 40px; } }
+
+/* ---------- Lamplight layout (computer and wide windows) ----------
+   One quiet bar across the top: Bob's cube and status on the left, the pages as plain text tabs, then the
+   tools as small icons on the right. The chat gets the whole width below, centred. Now running is still there:
+   it opens over the right edge with the Now running button or Ctrl+J. Every button stays on screen. */
+@media (min-width: 641px) {
+  body.look-lamplight .app { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; grid-template-rows: auto minmax(0, 1fr); }
+  body.look-lamplight .side { grid-column: 1 / -1; width: auto; height: auto; flex-direction: row; align-items: center; gap: 2px; padding: var(--s3) var(--s5); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+  body.look-lamplight .side::-webkit-scrollbar { display: none; }
+  body.look-lamplight .side-top { display: flex; align-items: center; gap: var(--s3); padding: 0; margin-right: var(--s6); flex: none; }
+  body.look-lamplight .side-top #bob { width: 40px; height: 40px; border-radius: 50%; }
+  body.look-lamplight .side .who { min-width: 0; max-width: 220px; }
+  body.look-lamplight .side .name { font-size: var(--t-md); font-weight: 600; }
+  body.look-lamplight .side .status { height: auto; -webkit-line-clamp: 1; white-space: nowrap; display: block; }
+  body.look-lamplight #foldLeft, body.look-lamplight .side .nav-head, body.look-lamplight .side .nav-item .short { display: none; }
+  /* pages: text tabs, the current one underlined with light */
+  body.look-lamplight .side .nav-item { width: auto; flex: none; padding: var(--s2) var(--s3); border-radius: 8px; font-size: 14px; }
+  body.look-lamplight .side .nav-item .lbl { overflow: visible; }
+  body.look-lamplight .side :is(#chatBtn, #tasksBtn, #topicsBtn, #madeBtn, #shelfBtn, #adventureBtn, #gamesBtn, #labBtn) .ico { display: none; }
+  body.look-lamplight .side .nav-item.on { box-shadow: none; }
+  body.look-lamplight .side .nav-item.on .lbl { position: relative; }
+  body.look-lamplight .side .nav-item.on .lbl::after { content: ""; position: absolute; left: 0; right: 0; bottom: -8px; height: 2px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+  /* the rest of the menu moves into Bob's menu (click the cube) and Find anything; only New chat and Find stay up here */
+  body.look-lamplight .side .side-fill { flex: 1; min-width: var(--s4); min-height: 0; order: 2; }
+  body.look-lamplight .side :is(#chatBtn, #tasksBtn, #topicsBtn, #madeBtn, #adventureBtn, #gamesBtn, #labBtn), body.look-lamplight .side-top { order: 1; }
+  body.look-lamplight .side :is(#cellarBtn, #dlBtn, #tidyBtn, #settingsBtn, #styleBtn, #helpBtn, #ear, #speak, #notify, #shelfBtn), body.look-lamplight .side .session-wrap { display: none; }
+  body.look-lamplight .side #newchat { order: 3; width: 36px; height: 36px; padding: 0; justify-content: center; margin: 0 0 0 var(--s2); border: 0; color: var(--accent); }
+  body.look-lamplight .side #newchat :is(.lbl, .short) { display: none; }
+  body.look-lamplight .side #findBtn { display: flex; order: 3; width: auto; gap: var(--s2); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: var(--s1) var(--s3); }
+  body.look-lamplight .side #findBtn .ico { display: block; width: 16px; height: 16px; }
+  body.look-lamplight .side #findBtn:hover { color: var(--text); }
+  body.look-lamplight .side .nav-item .badge { position: absolute; top: 0; right: 0; }
+  /* the chat below: the bar's page name is already lit above, so the header row goes quiet */
+  body.look-lamplight .mid { grid-column: 1; grid-row: 2; }
+  /* the status line: the chat's old header row (brain, Hands, Stop Hands, downloads, Now running) sits under the typing box */
+  body.look-lamplight .ctx { order: 99; padding: 0 max(var(--s5), calc((100% - 760px) / 2)) var(--s2); min-height: 32px; border: 0; background: none; font: var(--t-xs)/1.4 ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; color: var(--muted); }
+  body.look-lamplight .ctx .brain-pill { font: inherit; background: none; border: 0; box-shadow: none; padding: var(--s1) 0; color: inherit; }
+  body.look-lamplight .ctx .brain-pop { top: auto; bottom: calc(100% + 4px); font-family: system-ui, sans-serif; }
+  body.look-lamplight .ctx #handsQuick { color: var(--bad, #e5484d); border: 1px solid currentColor; background: none; min-height: 28px; }
+  body.look-lamplight .ctx #foldRight { width: auto; padding: var(--s1) var(--s2); font: inherit; color: inherit; border: 0; background: none; }
+  body.look-lamplight .ctx #foldRight .lbl { display: inline; }
+  body.look-lamplight .ctx #foldRight:hover { color: var(--text); }
+  body.look-lamplight .ctx-title { display: none; }
+  /* Now running opens over the right edge instead of squeezing the chat */
+  body.look-lamplight .now { position: fixed; top: 64px; right: var(--s3); bottom: var(--s3); z-index: 20; border-radius: 16px; background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--line); backdrop-filter: blur(12px); box-shadow: 0 30px 60px -30px #000; }
+  body.look-lamplight #grab { display: none; }
+}
+/* less on screen: the version line and the starter prompts step back (the prompts come back when the box is empty and focused) */
+body.look-lamplight .ver { display: none; }
+body.look-lamplight .chips { display: none; }
+body.look-lamplight .composer:focus-within ~ .chips, body.look-lamplight .mid:has(#input:placeholder-shown:focus) .chips { display: flex; }
+body.look-lamplight .effort { font-size: var(--t-xs); }
+body.look-lamplight .effort .effort-btn { min-height: 32px; min-width: 0; }
+body.look-lamplight .effort .brain-switch { min-height: 32px; }
+@media (min-width: 641px) { body.look-lamplight .side .session-wrap > .ico { display: none; } }
+@media (max-width: 640px) { body.look-lamplight .effort { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 var(--s3); } body.look-lamplight .effort-lbl { display: none; } body.look-lamplight .composer { margin: 0 var(--s3) var(--s3); } }
+
+/* 1.5.210 Find anything (Ctrl+K) and the menu tools in Bob's menu. The Find button only shows in Lamplight. */
+#findBtn { display: none; }
+.find-key { font: var(--t-xs)/1 ui-monospace, Menlo, Consolas, monospace; opacity: .7; }
+.find-dlg { width: min(560px, calc(100vw - 32px)); margin: 12vh auto auto; padding: var(--s3); border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--text); box-shadow: 0 30px 80px -20px #000; }
+.find-dlg::backdrop { background: rgb(0 0 0 / .5); }
+.find-q { width: 100%; box-sizing: border-box; font-size: var(--t-md); padding: var(--s3); border: 0; border-bottom: 1px solid var(--line); background: none; color: inherit; outline: none; }
+.find-list { list-style: none; margin: var(--s2) 0 0; padding: 0; max-height: 50vh; overflow-y: auto; }
+.find-list li { display: flex; justify-content: space-between; gap: var(--s3); padding: var(--s2) var(--s3); border-radius: 8px; cursor: pointer; font-size: var(--t-sm); }
+.find-list li small { color: var(--muted); }
+.find-list li[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent); outline: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); }
+.find-foot { margin: var(--s2) var(--s3) 0; font-size: var(--t-xs); }
+.bob-menu-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-top: var(--s2); padding-top: var(--s2); border-top: 1px solid var(--line); }
+.bob-menu-tool { text-align: left; padding: var(--s2); border: 0; background: none; color: inherit; border-radius: 8px; font-size: var(--t-sm); cursor: pointer; }
+.bob-menu-tool:hover, .bob-menu-tool:focus-visible { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.bob-menu-session { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); font-size: var(--t-sm); }
+@media (prefers-reduced-motion: no-preference) { .find-dlg[open] { animation: find-in .16s var(--ease); } }
+@keyframes find-in { from { opacity: 0; transform: translateY(-6px); } }
+body.still .find-dlg[open] { animation: none; }
+/* Lamplight: Effort, Gaming and Web are quiet words in the typing box; a lit word means on (the switch's role and state still say so to screen readers) */
+body.look-lamplight .effort .brain-switch, body.look-lamplight .effort .effort-btn { border: 0; background: none; box-shadow: none; color: var(--muted); padding: var(--s1) var(--s2); }
+body.look-lamplight .effort .brain-switch .st { display: none; }
+body.look-lamplight .effort .brain-switch[aria-checked="true"], body.look-lamplight .effort .brain-switch[aria-pressed="true"] { color: var(--accent); text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent); }
+/* Lamplight: the version sits at the end of the status line's row, on wide screens */
+@media (min-width: 1200px) { body.look-lamplight .ver { display: block; position: fixed; right: var(--s5); bottom: var(--s3); padding: 0; border: 0; background: none; font: var(--t-xs)/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--muted); opacity: .7; } }
