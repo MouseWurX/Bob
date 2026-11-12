@@ -18,8 +18,9 @@ const GB = 1024 ** 3;
 const job = (id, state, extra = {}) => ({ id, text: `job ${id}`, state, at: Date.now(), sessionId: 's', kind: 'chat', ...extra });
 const now = Date.now();
 const fakeBrain = (over = {}) => ({
+// Answer messages between steps (mid-job.js) is on by default and replaces the second brain beside text jobs; these checks are for it switched off.
   waitOver() {}, // 1.5.111: pump takes the ⏳ line away when a job starts
-  cfg: { session: 'normal', engine: 'llamacpp', chatWhileBusy: true, models: { small: 'small:4b', bob: 'big:26b' } },
+  cfg: { session: 'normal', engine: 'llamacpp', chatWhileBusy: true, answerMidJob: false, models: { small: 'small:4b', bob: 'big:26b' } },
   engine: { besideServer() {}, current: 'big:26b', currentCpu: false, resolve: () => ({ gguf: '/x' }) },
   gate: { brainBytes: () => 6 * GB },
   state: { state: 'thinking' },
@@ -236,7 +237,7 @@ try {
 {
   const files = { 'small:4b': '/f/e4b', 'qwen3-4b': '/f/instruct' };
   const mk = (over = {}) => ({
-    cfg: { session: 'normal', engine: 'llamacpp', chatWhileBusy: true, models: { small: 'small:4b', bob: 'big:26b' }, sessionBrains: { small: 'small:4b', gaming: 'qwen3-4b' } },
+    cfg: { session: 'normal', engine: 'llamacpp', chatWhileBusy: true, answerMidJob: false, models: { small: 'small:4b', bob: 'big:26b' }, sessionBrains: { small: 'small:4b', gaming: 'qwen3-4b' } },
     engine: { besideServer() {}, resolve: (m) => (files[m] ? { gguf: files[m] } : (() => { throw new Error('no file'); })()), besidePlace: async () => 'none', besideLoaded: () => false, loaded: async () => [{ name: 'small:4b' }], preload: async (m, sig, o) => { mk.loads.push([m, o]); } },
     gate: { brainBytes: () => 5 * GB }, turns: new Map([['talk', {}]]), queue: [], log() {}, brainLabel: (m) => `Brain (${m === 'qwen3-4b' ? 'Qwen3 4B Instruct' : m})`,
     ...over

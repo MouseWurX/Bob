@@ -56,6 +56,7 @@ import { expectFrom, verifyOutput, afterTool, afterTurn } from './verify.js';
 import { brainMode, chatBrain, holdsChatBrain, bigSession, isBobs, sameModel, sleepAfterText, bigGraceMs, msText } from './brain-mode.js';
 import { WEB_TOOLS, WEB_OFF, webOn, webPrompt, linkPrompt, findLinks, refersToLink, linkTurn } from './web.js';
 import { editOwnOn, editOwnTool } from './edit-own.js';
+import { midJobOn, midJobFits, sortMessage, replyTag, maybeTag, jobLine, quickPrompt, quickHistory, waitingFor, ACK_AFTER_MS, ACK_LINE, QUEUED_LINE, WAITS_LINE } from './mid-job.js';
 import { JobWatch, meanwhileOn, meanwhileLine, watchTools, WATCH_TOOLS, noteForBig, noteGotLine, noteAfterAnswer, noteMissedLine, asksAboutJob, NO_JOB_LINE, noteAsk, statusLine, noteQueuedLine, claimsJobGuess, JOB_GUESS_CORRECTION, JOB_GUESS_NUDGE } from './meanwhile.js';
 import { REDO_NOTE, EDIT_NOTE } from './redo.js';
 import { steerNote, SOFT_STOP_NOTE, SOFT_STOP_LINE, TIME_UP_NOTE, timeCheck, receiptBefore, receiptAfter, testsNudge, askFirstNote, noteNo, flushNoes, cachedLook, keepLook, jobHelpsPrompt, afterAnswer, cleanJobHelps } from './job-helps.js'; // Settings, Jobs (items 51-61)
@@ -241,6 +242,7 @@ function besideBytes(brain, model, ctx) {
 export function besideBigOk(brain, job, { freeMem = freeMemNow(), now = Date.now() } = {}) {
   const cfg = brain.cfg || {};
   if (cfg.chatWhileBusy === false || !job || job.kind !== 'chat' || job.noBeside) return false;
+  if (midJobOn(cfg)) return false; // Answer messages mid-job (mid-job.js): the loaded brain answers between steps instead
   if (job.refs?.length || (job.effort && job.effort !== 'low')) return false;
   if (cfg.engine !== 'llamacpp' || typeof brain.engine?.besideServer !== 'function') return false;
   if (currentSession(cfg).id === 'light') return false; // Gaming: the processor is the game's
@@ -260,7 +262,7 @@ export function besideBigOk(brain, job, { freeMem = freeMemNow(), now = Date.now
 // loads on the second server, on the processor, instead of swapping the main brain out, when there's room in RAM.
 // A chat waiting behind a job that isn't big yet goes beside it once the job has run BIG_AFTER_MS: one pump then.
 export function besideLater(brain, now = Date.now()) {
-  if (brain.bigTimer || brain.cfg?.chatWhileBusy === false || brain.cfg?.engine !== 'llamacpp' || brain.turns?.has(SIDE_LANE)) return null;
+  if (brain.bigTimer || brain.cfg?.chatWhileBusy === false || midJobOn(brain.cfg) || brain.cfg?.engine !== 'llamacpp' || brain.turns?.has(SIDE_LANE)) return null;
   const main = mainJob(brain);
   if (!main?.startedAt || !brain.queue.some((j) => j.state === 'waiting' && j.kind === 'chat' && !j.noBeside)) return null;
   const due = main.startedAt + BIG_AFTER_MS - now;
@@ -969,6 +971,7 @@ export class Brain {
   async keepTalker(model, opts = {}, emit = () => {}, { freeMem = freeMemNow(), signal = null } = {}) {
     const cfg = this.cfg;
     if (cfg.chatWhileBusy === false || cfg.engine !== 'llamacpp' || typeof this.engine.besideServer !== 'function') return false;
+    if (midJobOn(cfg)) return false; // Answer messages mid-job: no second brain kept beside a text job
     if (currentSession(cfg).id === 'light' || opts.cpu) return false; // Gaming, or a brain on the processor (two would fight)
     const talker = talkerModel(this);
     if (!talker || !model || isTalker(this, model) || !runnable(this, talker)) return false;
@@ -1652,6 +1655,97 @@ export class Brain {
     return { jobId: null, turnId: null, ahead: 0, answered: answer };
   }
 
+  // ---- Answer messages mid-job (mid-job.js) ----
+  // At a step boundary of the job in the main lane: each message that came in meanwhile is sorted and handled, oldest
+  // first, on the brain that's already loaded. The job's own messages (msgs) are never touched, so it resumes exactly.
+  async midJobTurn(ctx, { model, cpu, brainCtx, signal, emit }) {
+    const job = ctx.job;
+    const list = waitingFor(this.queue, job);
+    if (!list.length || signal?.aborted) return 0;
+    const t0 = Date.now();
+    let n = 0;
+    for (const q of list) {
+      if (signal?.aborted || q.state !== 'waiting' || q.midJob !== job.id) continue;
+      const sameChat = q.sessionId === job.sessionId;
+      let kind = sortMessage(q.text, { sameChat });
+      if (kind === '' || kind === 'answer') kind = await this.quickReply(q, job, { model, cpu, brainCtx, signal, unsure: kind === '', sameChat });
+      if (kind === 'answer') { n++; continue; }
+      if (kind === 'stop') {
+        job.stopAfter = true; // the loop's own Stop after this step takes it from here, and says so in the job's chat
+        this.midJobRecord(q, job, null);
+        this.log('jobs', 'a "stop" typed during the job: stopping after this step');
+      } else if (kind === 'change' && sameChat && !this.watch.note(q.text, { direct: true }).error) {
+        this.midJobRecord(q, job, null); // the job reads it at this same step (readNotes), and its chat says so
+        this.log('jobs', 'a message typed during the job was added to the job');
+      } else {
+        // New work (or it couldn't be answered now): it waits in Tasks and runs after this job, as before.
+        q.midJob = undefined;
+        if (!signal?.aborted && kind !== 'aborted') this.broadcast({ type: 'busy-note', sessionId: q.sessionId, jobId: q.id, text: kind === 'failed' ? WAITS_LINE : QUEUED_LINE(job.text) });
+        this.saveQueue();
+        continue;
+      }
+      n++;
+    }
+    const paused = Date.now() - t0;
+    if (n) {
+      if (ctx.timeEnds) { ctx.timeEnds += paused; emit({ type: 'job-clock', startedAt: job.startedAt, endsAt: ctx.timeEnds }); } // Jobs, time limit: quick replies don't count
+      ctx.midJobMs = (ctx.midJobMs || 0) + paused; // the safety net (#167 loop-guard.js) leaves this out too: noteWait(signal, paused)
+      if (job.startedAt) job.pausedMs = (job.pausedMs || 0) + paused;
+      emit({ type: 'reply-break' }); // the job's next words start a new bubble, under the quick reply
+      this.setState('thinking', '', model);
+      this.log('jobs', `answered ${n} message${n === 1 ? '' : 's'} between steps (${Math.round(paused / 100) / 10} s), then carried on`);
+    }
+    return n;
+  }
+
+  // A message handled mid-job goes in its chat (with the reply, if any) and is done in Tasks.
+  midJobRecord(q, job, answer) {
+    const sess = this.session(q.sessionId);
+    const u = { role: 'user', content: q.text, at: q.at || Date.now(), id: newMsgId(), midJob: job.id };
+    sess.push(u, ...(answer ? [answer] : []));
+    q.state = 'done'; q.doneAt = Date.now(); q.midJob = undefined;
+    this.saveSession(q.sessionId);
+    this.saveQueue();
+  }
+
+  // The quick reply: its own small context (the message, one line about the job, the last few turns of that chat), no
+  // tools, on the loaded brain. Returns 'answer', 'task', 'change', 'failed' or 'aborted'.
+  async quickReply(q, job, { model, cpu, brainCtx, signal, unsure = false, sameChat = false }) {
+    const sid = q.sessionId;
+    const who = this.cfg.userName || 'the user';
+    const out = (ev) => this.broadcast({ ...ev, turnId: q.id, sessionId: sid });
+    const lang = this.cfg.language && this.cfg.language !== 'en' ? this.cfg.language : '';
+    const messages = [
+      { role: 'system', content: quickPrompt({ who, line: jobLine(this.watch.for(job)), unsure, sameChat, language: lang }) },
+      ...quickHistory(this.session(sid)),
+      { role: 'user', content: q.text }
+    ];
+    q.state = 'working'; q.startedAt = Date.now();
+    this.setState('thinking', 'Answering your message between steps', model);
+    out({ type: 'start', text: String(q.text).slice(0, 140) });
+    let buf = '', open = false;
+    const onToken = (t) => { if (open) return out({ type: 'token', text: t }); buf += t; if (maybeTag(buf)) return; open = true; out({ type: 'token', text: buf }); };
+    let reply;
+    try {
+      reply = await this.chatSafe({ model, messages, tools: [], signal, cpu, think: false, ctx: brainCtx, chatId: `${job.sessionId}~quick`, onToken }, { emit: out });
+    } catch (e) {
+      q.state = 'waiting';
+      out({ type: 'done' });
+      if (signal?.aborted) { q.midJob = undefined; return 'aborted'; }
+      this.log('jobs', `couldn't answer a message between steps (${e.message}); it waits for the job`);
+      return 'failed';
+    }
+    const text = String(reply?.content || '').trim();
+    const tag = replyTag(text);
+    if (tag || !text) { q.state = 'waiting'; out({ type: 'done' }); return tag === 'change' && sameChat ? 'change' : tag ? 'task' : 'failed'; }
+    if (!open) out({ type: 'token', text });
+    const answer = { role: 'assistant', content: text, at: Date.now(), id: newMsgId(), midJob: job.id };
+    out({ type: 'said', id: answer.id });
+    this.midJobRecord(q, job, answer);
+    out({ type: 'done' });
+    return 'answer';
+  }
+
   // Let Bob's Quick brain see the big job (meanwhile.js): notes passed along for this job go in before its next step.
   readNotes(ctx, msgs, say = noteForBig) {
     const notes = ctx?.job ? this.watch?.takeNotes(ctx.job) : [];
@@ -1879,6 +1973,14 @@ export class Brain {
     this.housekeeper?.pause(); // anything the housekeeper was asking the brain gives way at once
     this.endMore(null, 'new job'); // a new message answers "Make another picture?"; the job loads what it needs
     const job = { id: crypto.randomUUID(), sessionId, text, refs: [].concat(attach || []).slice(0, 4), state: 'waiting', at: Date.now(), kind: extra.kind || Brain.guessKind(text, [].concat(attach || []).length > 0), effort: cleanEffort(effort), ...(extra.guest ? { guest: extra.guest } : {}), ...(extra.rent ? { rent: true } : {}), ...(extra.redo === 'again' || extra.redo === 'edit' ? { redo: extra.redo } : {}) }; // 1.5.127 rent: the 🏗 switch on the chat page
+    // Answer messages mid-job (mid-job.js): a message that comes in while a job runs on the loaded brain is taken at
+    // the job's next step boundary. A long step: a one-liner at once, so it never looks ignored.
+    const main = mainJob(this);
+    if (main && laneOf(this.cfg, job) === 'talk' && midJobFits(this.cfg, main, extra, attach)) {
+      job.midJob = main.id;
+      const t = setTimeout(() => { if (job.state === 'waiting' && job.midJob && !job.queuedLine) this.broadcast({ type: 'busy-note', sessionId, jobId: job.id, text: ACK_LINE }); }, ACK_AFTER_MS);
+      t.unref?.();
+    }
     this.queue.push(job);
     this.saveQueue();
     if (isGuestId(sessionId)) { const gw = (this.guestWords ||= new Map()); gw.set(job.id, String(text)); while (gw.size > 20) gw.delete(gw.keys().next().value); } // kept in memory only, never written
@@ -2305,7 +2407,12 @@ export class Brain {
         if (!reply) { reply = { role: 'assistant', content: '' }; msgs.push(reply); }
         reply.media = [...(reply.media || []), ...media].slice(0, 24);
       }
-      shared.push(...msgs.slice(base));
+      // Answer messages mid-job: quick replies given during this job are already in the chat; the job's own question
+      // goes before them, so the chat reads in the order things were said.
+      const added = msgs.slice(base);
+      const firstQuick = job ? shared.findIndex((m) => m.midJob === job.id) : -1;
+      if (firstQuick >= 0 && added[0]?.role === 'user') shared.splice(firstQuick, 0, added.shift());
+      shared.push(...added);
     }
   }
 
@@ -2575,6 +2682,8 @@ export class Brain {
     // Jobs, One question before a vague big job (job-helps.js): a hint to ask once with ask_user before starting.
     if (!again) { const ask = askFirstNote(this, ctx, text); if (ask) msgs.push({ role: 'system', content: ask, hidden: true }); }
     for (let step = 0; step < maxSteps; step++) {
+      // Answer messages mid-job (mid-job.js): messages that came in during the last step come first, then the job goes on.
+      if (step > 0 && !job?.side && !job?.guest && !lender && !rented && midJobOn(this.cfg)) await this.midJobTurn(ctx, { model, cpu, brainCtx, signal, emit });
       // Jobs (job-helps.js): "Stop after this step" pressed, or the job's time limit used up: no more tools, he wraps up.
       if (!ctx.lastRound && step > 0) {
         const who = this.cfg.userName || 'the user';

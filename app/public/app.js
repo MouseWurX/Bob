@@ -702,6 +702,9 @@ function onEvent(ev) {
       note(ev.text, 'announce');
       scrollDown();
       return;
+    case 'reply-break': // Answer messages mid-job: the job's next words go in a new bubble, under the quick reply
+      endReply(ev);
+      return;
     case 'start':
       endReply(ev);
       running.add(ev.turnId);
