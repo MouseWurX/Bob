@@ -648,6 +648,7 @@ const server = http.createServer(async (req, res) => {
     // 1.5.87: each equipped brain, the most it was made for, Bob's pick and the size picked by hand (Settings > Brains).
     if (req.method === 'GET' && p === '/api/brain-ctx') return send(res, 200, await brainCtxView());
     if (req.method === 'GET' && p === '/api/brain-place') return send(res, 200, brainPlaceView()); // 1.5.205
+    if (req.method === 'GET' && p === '/api/honesty') return send(res, 200, { scores: brain.honesty?.view() || {} }); // Nov 12, item 192: for the Brains page, read-only
     // 1.5.205 Calibrate: time a brain a few ways and recommend one. Started only from this replicant matrix itself.
     if (req.method === 'POST' && p.startsWith('/api/brain-place/')) {
       if (!isLocal) return send(res, 403, { error: 'Calibrating can only be started on this replicant matrix itself for now.' });

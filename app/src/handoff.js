@@ -54,7 +54,7 @@ const clip = (x, n = 200) => String(x ?? '').replace(/\s+/g, ' ').slice(0, n);
 export class Ledger {
   constructor({ job = null, expect = null, save = () => {} } = {}) {
     this.job = job; this.expect = expect; this.save = save;
-    this.steps = []; this.outputs = []; this.actions = []; this.nudged = 0; this.reply = '';
+    this.steps = []; this.outputs = []; this.actions = []; this.corrections = []; this.nudged = 0; this.reply = '';
     this.current = null; // 1.5.38: the tool running right now, so a restart knows which step was cut off
     this.persist();
   }
@@ -77,8 +77,10 @@ export class Ledger {
     this.actions.push({ name, args: clip(typeof args === 'string' ? args : JSON.stringify(args || {}), 300), ok, text: clip(text, 300), at, ...keep });
     this.persist();
   }
+  // Item 191 (Nov 12): a correction the app put under an answer, kept with the job (what, which kind, whose answer).
+  correction(text, kind = 'other', brain = '') { this.corrections.push({ text: clip(text, 200), kind, brain: clip(brain, 120), at: Date.now() }); if (this.corrections.length > 12) this.corrections.shift(); this.persist(); }
   // The part that's saved with the job (queue file): small, and enough for a restart to see what was done.
-  view() { return { expect: this.expect, steps: this.steps.slice(-30), outputs: this.outputs.slice(-24), actions: this.actions.slice(-40), current: this.current }; }
+  view() { return { expect: this.expect, steps: this.steps.slice(-30), outputs: this.outputs.slice(-24), actions: this.actions.slice(-40), current: this.current, ...(this.corrections.length ? { corrections: this.corrections.slice(-12) } : {}) }; }
   persist() { if (this.job) { this.job.handoff = this.view(); try { this.save(); } catch {} } }
 }
 
@@ -86,7 +88,7 @@ export class Ledger {
 // holds up to 200 jobs and is written on every step of the running one.
 export function slimHandoff(h) {
   if (!h) return h;
-  return { expect: h.expect || null, outputs: (h.outputs || []).slice(-12).map(({ type, file, tool }) => ({ type, file, tool })), actions: (h.actions || []).slice(-12).map(({ name, ok, at }) => ({ name, ok, at })) };
+  return { expect: h.expect || null, outputs: (h.outputs || []).slice(-12).map(({ type, file, tool }) => ({ type, file, tool })), actions: (h.actions || []).slice(-12).map(({ name, ok, at }) => ({ name, ok, at })), ...(h.corrections?.length ? { corrections: h.corrections.slice(-6).map(({ text, kind, brain, at }) => ({ text, kind, brain, at })) } : {}) };
 }
 
 // Tools that change something outside Bob's own chat (a restart must not redo these blindly).

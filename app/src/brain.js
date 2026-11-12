@@ -81,6 +81,8 @@ import { fixCalls, errorHint, promisesAction, PROMISE_NUDGE, PROMISE_LOG, nearKe
 import { HowTos, howtoTools, howtosOn, trailStep, worthOffering, howtoPrompt, usingLine } from './howtos.js';
 import { NEEDS, planFor, SetupOffers, switchFor, applySwitch, SWITCH_KEYS } from './setup-offer.js';
 import { saidNotDone, pendingLine } from './said-done.js'; // 1.5.207: said but not done, checked after the reply
+import { checkRecord, claimsPcActionFrEs, moreSwitchesOff } from './honest.js'; // Nov 12: honest reporting (items 181-192), always on
+import { HonestyScores, markReplaced, correctionStep } from './honesty-score.js';
 import { isGuestId, GUEST_BLOCKED, GUEST_NO_MEMORY, GUEST_LOG } from './guest-chat.js'; // Guest chats (off unless switched on)
 import { pinsPrompt } from './pins.js'; // Pin messages (off unless switched on)
 import { isQuiet } from './quiet-hours.js'; // Quiet hours (off unless switched on)
@@ -350,6 +352,16 @@ export function cutKeeping(text, keep, ask = '') {
 // Item 10 (Nov 11): "How I got here" under a reply: each step it took, what went in (the step's one-line summary), whether
 // it worked, how long it took, how much came back and which brain was thinking. Kept with the answer in the chat file.
 export const MAX_TRACE = 30;
+// Item 183 (Nov 12): the file as it was just before an edit (up to 8 MB), so verify.js can check what the edit made.
+export function fileBefore(args) {
+  try {
+    const a = typeof args === 'string' ? JSON.parse(args) : (args || {});
+    if (!a.path || typeof a.path !== 'string' || !path.isAbsolute(a.path)) return null;
+    const file = path.resolve(a.path);
+    if (fs.statSync(file).size > 8e6) return null;
+    return { file, body: fs.readFileSync(file, 'utf8') };
+  } catch { return null; }
+}
 export function traceStep({ name, summary, ok, ms, text, brain }) {
   return { tool: String(name || ''), what: String(summary || name || '').slice(0, 160), ok: Boolean(ok), ms: Math.max(0, Math.round(Number(ms) || 0)), chars: String(text ?? '').length, ...(brain ? { brain: String(brain).slice(0, 80) } : {}) };
 }
@@ -362,6 +374,7 @@ export function staleHandErrors(msgs, turnStart) {
 }
 // "I've opened Notepad" with no Hands tool done this turn.
 export function claimsPcAction(text) {
+  if (claimsPcActionFrEs(text)) return true; // item 182: French and Spanish too
   return /\bI(?:'ve| have|)\s+(?:just\s+|now\s+|already\s+|successfully\s+)?(?:opened|launched|started|typed|clicked|pressed|moved|copied|renamed|zipped|unzipped|ran|deleted|saved|closed)\b[^.!?\n]{0,60}\b(?:notepad|paint|app|application|window|program|file|folder|script|command|document|tab|\w+\.\w{2,4}|it for you)/i.test(String(text || ''));
 }
 // 1.5.11: "I was just observing a subtle loop in the file handle caching" with no tool run this turn: a made-up observation.
@@ -576,6 +589,7 @@ export class Brain {
       run: ({ what }, ctx) => this.offerSetup(String(what || ''), ctx),
       summary: ({ what }) => `offer to set up: ${what}`
     };
+    this.honesty = new HonestyScores(cfg); // Nov 12, item 192: answers and corrections per brain, for the Brains page
     this.made = new Made(cfg); // Made by Bob (made.js): everything he made, for the side panel and show_made
     this.tools.show_made = showMadeTool(this);
     this.stickyGroups = new Map(); // chat id -> Map(group -> messages left)
@@ -904,7 +918,7 @@ export class Brain {
   history(id) {
     return this.session(id)
       .filter((m) => (m.role === 'user' || m.role === 'assistant') && (m.content || m.media?.length || m.correction))
-      .map((m) => ({ role: m.role, id: m.id, at: m.at, ...(m.forgotten ? { forgotten: true } : {}), content: m.role === 'user' && m.text != null ? m.text : (m.content || ''), ...(m.media?.length ? { media: m.media } : {}), ...(m.correction ? { correction: m.correction } : {}), ...(m.edited ? { edited: m.edited, was: m.was ?? '', ...(m.editedBy === 'you' ? { editedBy: 'you' } : {}) } : {}), ...(m.role === 'assistant' && m.steps?.length ? { steps: m.steps } : {}), ...(m.role === 'user' && m.versions?.length ? { versions: m.versions } : {}), pics: (m.refs || []).map((id) => this.refs.find(id)).filter(Boolean).map((r) => ({ name: r.name, url: `/refs/${r.file}` })) }));
+      .map((m) => ({ role: m.role, id: m.id, at: m.at, ...(m.forgotten ? { forgotten: true } : {}), content: m.role === 'user' && m.text != null ? m.text : (m.content || ''), ...(m.media?.length ? { media: m.media } : {}), ...(m.correction ? { correction: m.correction } : {}), ...(m.replaced ? { replaced: true } : {}), ...(m.edited ? { edited: m.edited, was: m.was ?? '', ...(m.editedBy === 'you' ? { editedBy: 'you' } : {}) } : {}), ...(m.role === 'assistant' && m.steps?.length ? { steps: m.steps } : {}), ...(m.role === 'user' && m.versions?.length ? { versions: m.versions } : {}), pics: (m.refs || []).map((id) => this.refs.find(id)).filter(Boolean).map((r) => ({ name: r.name, url: `/refs/${r.file}` })) }));
   }
 
   // Makes sure a model is in memory, telling the user first if it means a wait. Goes through the gate: the action
@@ -1439,6 +1453,7 @@ export class Brain {
       ctx.currentTool = name;
       ctx.made = null;
       ctx.ledger?.begin?.(name, args); // 1.5.38: so a restart knows this step was cut off
+      ctx.editBefore = name === 'edit_file' ? fileBefore(args) : null; // item 183: what the file was, to check the edit
       let text;
       ctx.offeredNow = false;
       try { text = String(await tool.run(args, ctx)); }
@@ -1460,6 +1475,9 @@ export class Brain {
         if (v.retry) v = { ...v, ok: false, text: v.text || `Error: ${name} was tried twice and still didn't take (${v.why || 'no proof it worked'}).` };
       }
       if (v.text) text = v.text;
+      // Items 186-188: the turn's results in full (the ledger keeps 300 characters), so numbers, quotes and links in
+      // the answer can be checked against them. In memory only, at most about 400,000 characters a turn.
+      if (!/^Error:/.test(text)) { const seen = (ctx.seen ||= []); if (seen.reduce((n, x) => n + x.length, 0) < 4e5) seen.push(String(text).slice(0, 1e5)); }
       // Item 9: what came from outside is marked as information, and the rest of the turn asks before acting.
       if (isOutside(name) && !/^Error:/.test(text) && !this.plainLoop) { text = markOutside(name, text); ctx.outsideRead = true; }
       for (const o of v.show || []) if (o?.file) await this.deliver(ctx, o.type || 'image', o.file);
@@ -1502,7 +1520,7 @@ export class Brain {
     if (v.nudge && again && !ctx.ledger.nudged) {
       ctx.ledger.nudged++;
       // A claim with nothing behind it is corrected at once, as well as the second go.
-      if (v.note) { ctx.emit({ type: 'correction', text: v.note }); if (reply) reply.correction = reply.correction ? `${reply.correction} ${v.note}` : v.note; }
+      if (v.note) { ctx.emit({ type: 'correction', text: v.note, ...(v.strike ? { kind: 'claims' } : {}) }); if (reply) reply.correction = reply.correction ? `${reply.correction} ${v.note}` : v.note; }
       for (const g of v.groups || []) if (groupsFor(this)[g]) ctx.loaded.add(g);
       ctx.msgs.push({ role: 'system', content: v.nudge, hidden: true });
       ctx.ledger.step('retry', { what: 'turn', why: v.nudge }).done();
@@ -1512,7 +1530,7 @@ export class Brain {
     }
     const note = v.note || ''; // a nudge with no second go left: the caller's own note (or the hat's answer) stands
     if (note) {
-      ctx.emit({ type: 'correction', text: note });
+      ctx.emit({ type: 'correction', text: note, ...(v.strike ? { kind: 'claims' } : {}) });
       if (reply) reply.correction = reply.correction ? `${reply.correction} ${note}` : note;
       ctx.ledger.step('note', { what: note }).done();
       ctx.ledger.noted = true;
@@ -1938,11 +1956,30 @@ export class Brain {
     if (!reply || reply.correction || ctx.saidChecked) return;
     ctx.saidChecked = true;
     let v = null;
-    try { v = saidNotDone(reply.content, { actions: ctx.ledger?.actions || [], off: this.switchesOff(), pending: this.pendingSwitches() }); } catch {}
+    try { v = saidNotDone(reply.content, { actions: ctx.ledger?.actions || [], off: [...this.switchesOff(), ...moreSwitchesOff(this.cfg)], pending: this.pendingSwitches() }); } catch {}
     if (!v) return;
-    ctx.emit?.({ type: 'correction', text: v.note });
+    ctx.emit?.({ type: 'correction', text: v.note, kind: v.kind === 'switch' ? 'setting' : v.kind });
     reply.correction = v.note;
     this.log('honesty', `said but not done (${v.kind}): ${v.note}`);
+  }
+  // Nov 12 (honest.js, items 181 and 186-188, always on): the final answer against the turn's record. Each "I did X"
+  // needs a step that did X; counts and sizes, quotes and web links need a result (or the chat) that holds them.
+  // One short note under the answer when something is off; nothing is added to what the brain reads.
+  checkRecord(ctx, reply) {
+    if (!reply || reply.correction || ctx.recordChecked || ctx.job?.guest) return;
+    ctx.recordChecked = true;
+    let v = null;
+    try {
+      const actions = [...(ctx.job?.before || []).map((a) => ({ ...a, ok: true })), ...(ctx.ledger?.actions || [])];
+      const chat = (ctx.msgs || []).filter((m) => m && m !== reply && (m.role === 'user' || m.role === 'tool')).slice(-40).map((m) => String(m.text ?? m.content ?? ''));
+      v = checkRecord(reply.content, { actions, seen: ctx.seen || [], chat });
+    } catch (e) { this.log('honesty', `the record check broke: ${e.message}`); }
+    if (!v) return;
+    const note = v.notes.join(' ');
+    ctx.emit?.({ type: 'correction', text: note, kind: v.kinds[0] });
+    reply.correction = note;
+    this.log('honesty', `answer checked against the record (${v.kinds.join(', ')}): ${note}`);
+    if (v.strike) { try { noteStrike(this, ctx, 'claims', 'said he did something no step did'); } catch {} }
   }
   offerNeeded() {
     let can = {};
@@ -2258,8 +2295,10 @@ export class Brain {
     const media = [];
     const out = {};
     let rough = false; // an error or correction note this turn: no how-to card
+    const corrections = []; // Nov 12 (items 190-192): this turn's corrections, for its record and the honesty score
     const keep = (ev) => {
       if (['error', 'correction', 'held', 'waiting'].includes(ev?.type)) rough = true;
+      if (ev?.type === 'correction' && ev.text) corrections.push({ text: String(ev.text), kind: ev.kind || ([CLAIM_CORRECTION, OBSERVE_CORRECTION, JOB_GUESS_CORRECTION].includes(ev.text) ? 'claims' : ''), brain: out.ctx?.replyModel || this.state?.model || '' });
       if (['image', 'video', 'audio', 'diagram'].includes(ev.type) && typeof ev.url === 'string' && ev.url.startsWith('/images/')) {
         if (media.some((m) => m.url === ev.url)) return; // delivered once already
         media.push({ type: ev.type, url: ev.url, name: path.basename(decodeURIComponent(ev.url.slice(8))), ...(ev.song?.title ? { title: ev.song.title, sound: ev.song.sound } : {}), ...(ev.type === 'diagram' ? { title: String(ev.title || ''), ...(ev.format ? { format: ev.format } : {}) } : {}) });
@@ -2279,6 +2318,7 @@ export class Brain {
       if (out.ctx && !signal?.aborted && !rough) this.howtoAfter(sessionId, text, out.ctx, keep, job);
     }
     finally {
+      try { this.honestAfter?.(msgs.slice(base), corrections, out.ctx, job, signal); } catch (e) { try { this.log?.('honesty', `the record of corrections broke: ${e.message}`); } catch {} }
       if (media.length) {
         const added = msgs.slice(base);
         let reply = [...added].reverse().find((m) => m.role === 'assistant' && !m.tool_calls);
@@ -2287,6 +2327,22 @@ export class Brain {
       }
       shared.push(...msgs.slice(base));
     }
+  }
+
+  // Nov 12 (honesty-score.js, items 190-192, always on): after a turn, a reply that was corrected and tried again is
+  // marked replaced (the window folds it away); each correction goes on the job's record and in "How I got here";
+  // and the brain that answered gets its answer counted, with or without a correction, for the Brains page.
+  honestAfter(added, corrections, ctx, job, signal) {
+    markReplaced(added);
+    if (!ctx || job?.guest) return;
+    for (const c of corrections.slice(0, 6)) {
+      const label = (() => { try { return c.brain ? this.brainLabel(c.brain) : ''; } catch { return ''; } })();
+      ctx.trace?.push(correctionStep(c.text, c.kind || 'other', label));
+      ctx.ledger?.correction?.(c.text, c.kind || 'other', c.brain);
+    }
+    const kinds = corrections.filter((c) => c.kind).map((c) => c.kind);
+    const answered = added.some((m) => m.role === 'assistant' && !m.tool_calls?.length && String(m.content || '').trim());
+    if (ctx.replyModel && answered && !signal?.aborted) this.honesty?.record(ctx.replyModel, kinds);
   }
 
   // 1.5.79: after a job went well, one card: save its steps as a how-to? Only with "Let Bob learn how-tos" on,
@@ -2657,6 +2713,7 @@ export class Brain {
       // He's seen the new look once; that's enough.
       if (this.cfg.lookChange) { try { saveSettings(this.cfg, { lookChange: null }); } catch {} this.cfg.lookChange = null; }
       msgs.push(reply);
+      if (!lender) ctx.replyModel = model; // item 192: whose answer this is, for the honesty score
       // Nov 11 (loop-help.js): what goes into each call is checked against the tool, and mended where that's sure.
       if (reply.tool_calls?.length) this.mendCalls(reply.tool_calls, ctx);
       // What he just said gets its id now, so the window can find the bubble: for the "..." menu on it (Edit, Delete;
@@ -2750,7 +2807,7 @@ export class Brain {
         const tests = testsNudge(this, ctx);
         if (tests) { const g = groupOf(this, 'run_command'); if (g) ctx.loaded.add(g); msgs.push({ role: 'system', content: tests, hidden: true }); ctx.retrying = true; emit({ type: 'token', text: '\n\n' }); continue; }
       }
-      if (!reply.tool_calls) { this.checkSaid(ctx, reply); afterAnswer(this, ctx, reply); this.keepGroups(sessionId, used); return; }
+      if (!reply.tool_calls) { this.checkSaid(ctx, reply); this.checkRecord(ctx, reply); afterAnswer(this, ctx, reply); this.keepGroups(sessionId, used); return; }
       let ended = false;
       ctx.painted = null; // what the painter made in this round (for the quick hand-back below)
       // 1.5.78: "Show Bob's plan before big jobs": a big job waits for its plan card (plan.js).

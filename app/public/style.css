@@ -866,6 +866,10 @@ details.more > summary:hover { color: var(--accent); }
 .chat-fill { font-size: 11px; white-space: nowrap; }
 .chat-fill.full #chatFillText { font-weight: 600; }
 .steps-list { margin: 4px 0; padding-left: 20px; font-size: 12px; }
+/* Nov 12, items 190-191: a corrected reply that was tried again folds away; corrections show in How I got here */
+.msg.replaced > .replaced-toggle { display: block; opacity: .8; }
+.msg.replaced > .replaced-body { opacity: .6; text-decoration: line-through; text-decoration-thickness: 1px; }
+.steps-list .step-correction { font-weight: 600; }
 @media (forced-colors: active) { .effort [data-effort][aria-checked="true"] { border: 2px solid Highlight; } }
 
 /* 1.5.7 the cat by Bob's picture: small antics while he's idle (no brain). Still for people who prefer less motion. */

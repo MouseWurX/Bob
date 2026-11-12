@@ -248,7 +248,31 @@ function addMade(ev) {
   if (fresh.length) { r.media.push(...fresh.map((x) => ({ type: 'file', kind: x.kind, url: x.url, name: x.name, path: x.path }))); drawReply(r); scrollDown(); }
   viewer.made(ev.items, { show: ev.show === true });
 }
-function endReply(ev) { replies.delete(ev?.turnId || '-'); }
+function endReply(ev) {
+  // Item 190 (Nov 12): a correction ends the bubble; if Bob then tries again in this turn, these words get folded
+  // away as replaced (see 'token').
+  const rep = ev?.type === 'correction' ? replies.get(ev.turnId || '-') : null;
+  if (rep?.el && String(rep.text || '').trim()) correctedBubbles.set(ev.turnId || '-', rep.el);
+  replies.delete(ev?.turnId || '-');
+}
+// Item 190 (Nov 12): a reply the app corrected and Bob then answered again folds away as "replaced", so the wrong
+// words aren't left above the right ones. One press shows them again. Live (correctedBubbles) and after a reload.
+const correctedBubbles = new Map();
+function markReplaced(el) {
+  if (!el || el.classList.contains('replaced')) return;
+  el.classList.add('replaced');
+  const keepTools = el.querySelector(':scope > .msg-tools');
+  const box = document.createElement('div');
+  box.className = 'replaced-body';
+  box.hidden = true;
+  for (const n of [...el.childNodes]) if (n !== keepTools) box.appendChild(n);
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'link mini replaced-toggle'; b.setAttribute('aria-expanded', 'false');
+  b.textContent = 'Bob\'s first try, replaced by the answer below (show it)';
+  b.onclick = () => { box.hidden = !box.hidden; b.setAttribute('aria-expanded', String(!box.hidden)); b.textContent = box.hidden ? 'Bob\'s first try, replaced by the answer below (show it)' : 'Bob\'s first try, replaced by the answer below (hide it)'; };
+  el.insertBefore(box, keepTools || null);
+  el.insertBefore(b, box);
+}
 
 // ---------- Status, badge, notifications ----------
 const STATUS_TEXT = {
@@ -505,6 +529,7 @@ async function loadHistory(n = 20) {
       if (m.edited) markEdited(el, m.was, m.editedBy);
       if (m.versions?.length) markVersions(el, m.versions);
       if (m.steps?.length) markSteps(el, m.steps);
+      if (m.replaced) markReplaced(el); // item 190: a corrected reply that was tried again
       if (m.correction) note(m.correction, 'error');
     }
   } catch {}
@@ -720,6 +745,8 @@ function onEvent(ev) {
       return;
     case 'token': {
       if (!replies.has(ev.turnId || '-') && !ev.text.trim()) break;
+      // Item 190: the first new words after a correction in this turn: the corrected reply above is replaced.
+      if (ev.text.trim() && correctedBubbles.has(ev.turnId || '-')) { markReplaced(correctedBubbles.get(ev.turnId || '-')); correctedBubbles.delete(ev.turnId || '-'); }
       const r = ensureReply(ev);
       r.text += ev.text;
       drawReply(r);
@@ -927,6 +954,7 @@ function onEvent(ev) {
       break;
     }
     case 'done': {
+      correctedBubbles.delete(ev.turnId || '-'); // item 190: a correction with no second try stays as it is
       const rep = replies.get(ev.turnId || '-');
       const finished = rep?.text;
       // Never leave an empty Bob bubble (nothing said, nothing made).
@@ -1159,14 +1187,14 @@ function markVersions(el, list) {
 // Item 10 (Nov 11): "How I got here" under a reply: each step, whether it worked, how long it took, how much came back and
 // which brain was thinking. Folded until pressed; Copy puts it on the clipboard as plain lines for a bug report.
 function stepsText(list) {
-  return list.map((x, i) => `${i + 1}. ${x.ok ? '✓' : '✗'} ${x.what || x.tool} · ${(x.ms / 1000).toFixed(1)} s · ${Number(x.chars || 0).toLocaleString()} characters back${x.brain ? ` · ${x.brain}` : ''}`).join('\n');
+  return list.map((x, i) => (x.correction ? `${i + 1}. ⚠ ${x.what || 'Corrected'}${x.brain ? ` · ${x.brain}` : ''}` : `${i + 1}. ${x.ok ? '✓' : '✗'} ${x.what || x.tool} · ${(x.ms / 1000).toFixed(1)} s · ${Number(x.chars || 0).toLocaleString()} characters back${x.brain ? ` · ${x.brain}` : ''}`)).join('\n');
 }
 function markSteps(el, list) {
   el.querySelector(':scope > .steps-note')?.remove();
   if (!list?.length) return;
   const box = document.createElement('div');
   box.className = 'versions-note steps-note';
-  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="Each step Bob took for this answer. Press to see them.">How I got here (${list.length} step${list.length === 1 ? '' : 's'})</button><div hidden><ol class="steps-list">${list.map((x) => `<li>${x.ok ? '✓' : '✗'} ${esc(x.what || x.tool)} <span class="muted">· ${(x.ms / 1000).toFixed(1)} s · ${esc(Number(x.chars || 0).toLocaleString())} characters back${x.brain ? ` · ${esc(x.brain)}` : ''}</span></li>`).join('')}</ol><button type="button" class="mini" data-copy-steps>Copy</button></div>`;
+  box.innerHTML = `<button type="button" class="link mini" aria-expanded="false" title="Each step Bob took for this answer. Press to see them.">How I got here (${list.length} step${list.length === 1 ? '' : 's'})</button><div hidden><ol class="steps-list">${list.map((x) => (x.correction ? `<li class="step-correction">⚠ ${esc(x.what || 'Corrected')}${x.brain ? ` <span class="muted">· ${esc(x.brain)}</span>` : ''}</li>` : `<li>${x.ok ? '✓' : '✗'} ${esc(x.what || x.tool)} <span class="muted">· ${(x.ms / 1000).toFixed(1)} s · ${esc(Number(x.chars || 0).toLocaleString())} characters back${x.brain ? ` · ${esc(x.brain)}` : ''}</span></li>`)).join('')}</ol><button type="button" class="mini" data-copy-steps>Copy</button></div>`;
   const b = box.querySelector('button'), w = box.querySelector('div');
   b.onclick = () => { w.hidden = !w.hidden; b.setAttribute('aria-expanded', String(!w.hidden)); };
   box.querySelector('[data-copy-steps]').onclick = () => navigator.clipboard?.writeText(stepsText(list)).then(() => note('Copied the steps.')).catch(() => {});
