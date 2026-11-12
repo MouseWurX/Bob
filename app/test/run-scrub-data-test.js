@@ -35,6 +35,8 @@ check('the server\'s own odds shape too', !/zor|vik/i.test(JSON.stringify(S([{ t
 
 { const k = scrubber({ user: 'zorv', keep: ['zorvy'] });
   check('an ordinary word that holds the name stays ("keep:")', scrubValue('a zorvy hinge, zorv.txt, Zorv', k) === 'a zorvy hinge, you.txt, you', scrubValue('a zorvy hinge, zorv.txt, Zorv', k)); }
+check('"many users" or a "Users" line in a listing before a written-out line break is not a folder', findLeaks('shared across many users\\n- Heavy work and 12. Users\\n13. Windows', mk()).length === 0 && S('many users\\n- ok') === 'many users\\n- ok', S('many users\\n- ok'));
+check('real folders after it are still caught', findLeaks('E:\\Users\\nick\\x /home/nora/y', mk()).length > 0);
 check('a cut-off name after a user folder (grader notes clipped at 160)', S('see E:\\Users\\zo\u2026') === 'see E:\\Users\\you');
 const sc = mk();
 check('the check finds a name split over tokens', findLeaks(odds, sc).some((l) => /odds joined/.test(l)));
