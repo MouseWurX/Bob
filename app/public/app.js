@@ -584,7 +584,7 @@ const findBox = createFind({
   items: () => [
     ...PAGE_BTNS.filter((id) => $(id) && !$(id).hidden).map((id) => ({ label: $(id).getAttribute('aria-label') || id, kind: ['settingsBtn', 'styleBtn', 'helpBtn', 'dlBtn', 'tidyBtn', 'cellarBtn', 'newchat'].includes(id) ? 'Tool' : 'Page', words: $(id).title, run: () => $(id).click() })),
     ...['ear', 'speak', 'notify'].filter((id) => $(id)).map((id) => ({ label: $(id).getAttribute('aria-label'), kind: 'Tool', words: $(id).title, run: () => $(id).click() })),
-    ...CARDS.map((c) => ({ label: c.name, kind: 'Settings', words: c.about, run: () => cellar.open('settings', null, { jump: c.topics[0] }) })),
+    ...CARDS.map((c) => ({ label: c.name, kind: 'Settings', words: `${c.about} ${c.words || ''}`, run: () => cellar.open('settings', null, { jump: c.topics[0] }) })),
     ...HELP.map((h) => ({ label: h.title, kind: 'Help', words: h.words, run: () => helpPage.open(h.id) }))
   ],
   searchChats: async (q) => { await topicsPage.open(); const box = $('topics-q'); if (box) { box.value = q; box.dispatchEvent(new Event('input', { bubbles: true })); } }

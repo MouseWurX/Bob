@@ -43,6 +43,7 @@ check('picking Lamplight tucks Now running away and offers the cube, without for
 const r = rankFind([{ label: 'Downloads', kind: 'Tool' }, { label: 'Tasks', kind: 'Page' }, { label: 'Brains and speed', kind: 'Settings', words: 'memory engines' }, { label: 'Style', kind: 'Help', words: 'glow' }], 'engine');
 check('Find anything finds a Settings card by the words inside it', r.length === 1 && r[0].label === 'Brains and speed');
 check('Find anything with nothing typed lists the pages and tools', rankFind([{ label: 'Tasks', kind: 'Page' }, { label: 'Style', kind: 'Help' }], '').map((i) => i.label).join() === 'Tasks');
+check('a Help topic found only by its search words still shows', rankFind([{ label: 'My Bobs are on Wi-Fi. How do I get them on the best band?', kind: 'Help', words: 'wifi calibrate' }], 'calibrate').length === 1);
 check('a page beats a Help topic of the same name', rankFind([{ label: 'Tasks', kind: 'Help' }, { label: 'Tasks', kind: 'Page' }], 'tasks')[0].kind === 'Page');
 const menu = bobMenuHtml({ loaded: [] }, { tools: [{ id: 'settingsBtn', icon: '⚙', label: 'Settings' }, { id: 'speak', icon: '🔊', label: 'Read aloud', st: 'On' }], session: { value: 'b', options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B<' }] } });
 check("Bob's menu carries the tools, each pressing its own button", menu.includes('data-bobtool="settingsBtn"') && menu.includes('data-bobtool="speak"') && menu.includes('>On<'));
