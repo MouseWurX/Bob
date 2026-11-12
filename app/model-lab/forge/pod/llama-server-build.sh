@@ -39,7 +39,10 @@ fi
 if [ ! -d $L/vendor ]; then echo "still missing vendor/ for $TAG; the server source is incomplete, not building"; touch $W/llama-server-failed; exit 1; fi
 if [ -n "$PATCHES" ]; then
   # A fresh copy of the source for Brain Engine, so the llama tools built from $L in the background are left alone
-  rm -rf $W/llama-be && cp -a $L $W/llama-be && L=$W/llama-be && B=$L/build-cuda/bin
+  # 12 Nov: cp -r, not cp -a (a rented drive that refuses to keep permissions made cp -a fail, so the patches went on the shared tree)
+  rm -rf $W/llama-be; cp -r --no-preserve=mode,ownership $L $W/llama-be 2>/dev/null || cp -r $L $W/llama-be
+  [ -f $W/llama-be/CMakeLists.txt ] || { echo "couldn't copy the llama.cpp source for Brain Engine"; touch $W/llama-server-failed; exit 1; }
+  L=$W/llama-be; B=$L/build-cuda/bin; rm -rf $L/build-cuda
   command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; } >/dev/null 2>&1
   for u in $PATCHES; do
     f=$W/$(basename $u); curl -fsSL "$u" -o "$f" || { echo "couldn't fetch $u"; touch $W/llama-server-failed; exit 1; }
@@ -56,8 +59,11 @@ echo "building CUDA llama-server (tag $TAG, sm_$ARCH); nvcc: $(command -v nvcc |
 # avoids both the static-lib configure bug and any tag where the server lives under examples/ rather than tools/.
 ( cd $L && cmake -B build-cuda -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=$ARCH -DLLAMA_CURL=OFF > $CL 2>&1 \
   && cmake --build build-cuda --target llama-server -j $(nproc) >> $CL 2>&1 )
-if [ -x $B/llama-server ] && run_ok; then
-  if [ -n "$PATCHES" ]; then rm -rf $W/llama.cpp/build-cuda; mkdir -p $W/llama.cpp/build-cuda; cp -a $B $W/llama.cpp/build-cuda/bin; B=$W/llama.cpp/build-cuda/bin; fi   # where run.sh serves from
+SERVE=$W/llama.cpp/build-cuda/bin   # where run.sh serves from
+if [ -x $B/llama-server ] && run_ok && [ "$B" != "$SERVE" ]; then
+  rm -rf $W/llama.cpp/build-cuda; mkdir -p $SERVE; cp -r $B/. $SERVE/; B=$SERVE
+fi
+if [ -x $SERVE/llama-server ] && [ "$B" = "$SERVE" ] && run_ok; then
   echo "$PATCHES" > $W/llama.cpp/.bob-patches
   echo "CUDA llama-server ready (sm_$ARCH)${PATCHES:+, Brain Engine}"; touch $W/llama-server-ready
 else
