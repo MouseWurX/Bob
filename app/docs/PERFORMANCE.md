@@ -274,7 +274,7 @@ The fNRI cube's **Real experts** switch lights the cube with the experts Bob act
 - **Brain Engine 6** keeps every layer's picks on the card until the word is done and copies them all at once, so the card stops once per word instead of 40 times. On a test build the picks are identical, row for row. Its speed on a real card hasn't been measured yet, and we'll add it here. Brains without experts still stop at every layer.
 - **What we guessed first, and got wrong:** from a run on a processor we predicted under 1%. The processor run had no graphics card to wait on, so it couldn't show the real cost. Measure on the real thing.
 
-Not measured yet: the laptop, the Legion Go and the Raspberry Pi.
+Not measured yet: the laptop, the Legion Go and the Raspberry Pi. Every run and how it was set up: [test results, 12 November](test-results/2026-11-12-cube-real-experts-cost.md).
 
 ## Measure it yourself
 
