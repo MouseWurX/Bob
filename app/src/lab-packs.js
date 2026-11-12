@@ -4,6 +4,7 @@
 import * as D from './lab-packs-data.js';
 import { runGuard } from './lab-guard.js';
 import { genBody } from './lab-gen.js'; // 1.5.168 Professional mode settings
+import { PLUS_PACKS, jobSpeedNote } from './lab-plus-packs.js'; // Lab items 105 to 107: French, Spanish, Job speed, Still refuses
 
 const strip = (t) => String(t || '').replace(/<think>[\s\S]*?<\/think>/g, '').replace(/^[\s\S]*<\/think>/, '').trim();
 export function letter(t) {
@@ -103,7 +104,8 @@ export const EXTRA_PACKS = [
       return it.done(s);
     } },
   // Guard rails isn't in Overall: a brain whose refusal habit was taken out scores low on purpose, and that's its choice.
-  { id: 'guard', title: 'Guard rails', what: 'Answers everyday asks that only sound edgy, ignores orders hidden in a pasted page, and declines what your own refusal lessons say it should. Not counted in Overall.', items: [], count: 21, minutes: 2, ranked: false, guard: true }
+  { id: 'guard', title: 'Guard rails', what: 'Answers everyday asks that only sound edgy, ignores orders hidden in a pasted page, and declines what your own refusal lessons say it should. Not counted in Overall.', items: [], count: 21, minutes: 2, ranked: false, guard: true },
+  ...PLUS_PACKS
 ].map((p) => ({ version: 1, count: p.items.length, ...p, ...(p.count ? { count: p.count } : {}) }));
 
 export const EXTRA_IDS = EXTRA_PACKS.map((p) => p.id);
@@ -122,16 +124,17 @@ export async function runExtraPack(url, id, { signal, onStep = () => {}, sandbox
     return { ...g, ...speed(), ...(holdAsks.length ? {} : { note: 'Held the line wasn\'t run: there are no refusal lessons on this replicant matrix yet. Save some from the sandbox below, or write a lesson set with the refusals skill.' }) };
   }
   if (p.sandbox && !sandbox) return { right: 0, of: p.count, score: null, skipped: 'My sandbox isn\'t working on this replicant matrix, so I won\'t run code a brain wrote. Self-made tools say why.', misses: [], tps: 0, prefillTps: 0 };
-  let right = 0, of = 0, done = 0; const misses = [];
+  let right = 0, of = 0, done = 0; const misses = [], timed = [];
   const total = p.count;
   const ctx = { ask, sandbox, tick: () => onStep(Math.min(++done, total), total) };
   for (const it of p.items) {
     if (signal?.aborted) throw new Error('Stopped.');
     let r = false;
     try { r = await p.mark(ctx, it); } catch (e) { if (signal?.aborted) throw e; r = false; }
-    log?.({ q: String(it.system || it.q || ''), answer: last, ok: typeof r === 'object' && r ? `${r.right} of ${r.of}` : Boolean(r) });
+    log?.({ q: String(it.system || it.q || ''), answer: p.private ? '' : last, ok: typeof r === 'object' && r ? `${r.right} of ${r.of}` : Boolean(r) }); // Still refuses never keeps an answer
+    if (p.timed && r && typeof r === 'object') timed.push(r);
     if (typeof r === 'object' && r) { right += r.right; of += r.of; if (r.right < r.of) misses.push(String(it.system || it.q).split('\n')[0].slice(0, 120)); }
     else { of++; if (r) right++; else misses.push(String(it.q).split('\n')[0].slice(0, 120)); onStep(Math.min(++done, total), total); }
   }
-  return { right, of, score: of ? Math.round((100 * right) / of) : null, misses, ...speed() };
+  return { right, of, score: of ? Math.round((100 * right) / of) : null, misses, ...speed(), ...(p.timed ? jobSpeedNote(timed) : {}) };
 }

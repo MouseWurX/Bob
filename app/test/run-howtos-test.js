@@ -64,7 +64,8 @@ clearInterval(brain.reminderTimer);
 brain.ensureModel = async () => {}; brain.fitCtx = async () => 8192;
 const seen = [];
 let script = [];
-brain.engine = { chat: async ({ tools, messages }) => { seen.push({ names: tools.map((t) => t.function.name), sys: messages[0].content }); return script.shift() || { role: 'assistant', content: 'Done.' }; }, unloadAll: async () => {}, isLoaded: async () => true };
+// Item 1 (Nov 11): the turn's changing lines ride in a note before the latest message, so read every system message.
+brain.engine = { chat: async ({ tools, messages }) => { seen.push({ names: tools.map((t) => t.function.name), sys: messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n') }); return script.shift() || { role: 'assistant', content: 'Done.' }; }, unloadAll: async () => {}, isLoaded: async () => true };
 const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls: [{ function: { name, arguments: args } }] });
 // Three steps that need no OK card: list a folder, read a file, list another folder (use_tools in between isn't a step).
 const job3 = () => [call('list_folder', { path: innDir }), call('read_file', { path: path.join(innDir, 'note.txt') }), call('use_tools', { group: 'documents' }), call('list_folder', { path: dataDir })];

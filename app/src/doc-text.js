@@ -379,8 +379,9 @@ export function pdfText(buf) {
   }
   const text = tidy(pages.join('\n\n'));
   const letters = (text.match(/[\p{L}\p{N}\s.,;:!?'"()-]/gu) || []).length;
-  if (text.replace(/\s/g, '').length < 20) throw new DocError(`I found no words in that PDF. It's probably a scan (pictures of pages): attach a page as a picture and an eyes brain can read it.`);
-  if (letters / text.length < 0.7) throw new DocError(`That PDF keeps its words in a way I can't untangle without help. ${OFFICE_HINT}`);
+  // 1.5.207 PC check: the W3C test file says only "Dummy PDF file" and was called a scan. A few real words are kept.
+  if (!/[\p{L}\p{N}]{2,}/u.test(text)) throw new DocError(`I found no words in that PDF. It's probably a scan (pictures of pages): attach a page as a picture and an eyes brain can read it.`);
+  if (text.length >= 20 && letters / text.length < 0.7) throw new DocError(`That PDF keeps its words in a way I can't untangle without help. ${OFFICE_HINT}`);
   return text;
 }
 

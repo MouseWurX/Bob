@@ -4,23 +4,23 @@
 
 // Advanced: the side list, top to bottom.
 export const GROUPS = [
-  ['Bob', ['ev-bob', 'ev-how', 'adv-prompts', 'adv-voice', 'adv-look', 'adv-house', 'adv-presets', 'adv-checkins']],
+  ['Bob', ['ev-bob', 'ev-how', 'adv-jobs', 'adv-prompts', 'adv-chatx', 'adv-quiet', 'adv-daily', 'adv-voice', 'adv-look', 'adv-house', 'adv-presets', 'adv-checkins']],
   ['Brains', ['adv-brains', 'adv-speed', 'adv-engines']],
   ['Connections', ['adv-bobnet', 'adv-online', 'adv-apps']],
   ['What Bob may do', ['adv-hands', 'ev-howtos', 'adv-adventure', 'adv-games']],
-  ['This replicant matrix', ['ev-pc', 'ev-lock', 'ev-projects', 'ev-home', 'ev-secrets', 'ev-save', 'ev-backup', 'adv-housekeeping', 'adv-remove']]
+  ['This replicant matrix', ['ev-pc', 'adv-health', 'ev-lock', 'ev-projects', 'ev-home', 'ev-secrets', 'ev-save', 'ev-backup', 'adv-housekeeping', 'adv-remove']]
 ];
 
 // Simple: the cards. `about` says what's inside, in a few plain words.
 export const CARDS = [
   { id: 'bob', icon: '🙂', name: 'Bob himself', about: 'Voice, look, theme, house style and presets.', topics: ['ev-bob', 'adv-voice', 'adv-look', 'adv-house', 'adv-presets'] },
-  { id: 'how', icon: '⚡', name: 'How Bob works', about: 'Sessions, plans, notes, saved prompts, start-up and check-ins.', topics: ['ev-how', 'adv-prompts', 'adv-checkins'] },
+  { id: 'how', icon: '⚡', name: 'How Bob works', about: 'Sessions, plans, notes, jobs, saved prompts, start-up, check-ins.', topics: ['ev-how', 'adv-jobs', 'adv-prompts', 'adv-chatx', 'adv-quiet', 'adv-daily', 'adv-checkins'] },
   { id: 'brains', icon: '🧠', name: 'Brains and speed', about: 'Which brain does what, memory and engines.', topics: ['adv-brains', 'adv-speed', 'adv-engines'] },
   { id: 'net', icon: '🌐', name: 'My other Bobs', about: 'Bob-Net, your phone and sharing brains.', topics: ['adv-bobnet'] },
   { id: 'online', icon: '☁', name: 'Online and other apps', about: 'Cloud helpers, chat bots, rented brains, ComfyUI, other apps, Claude.', topics: ['adv-online', 'adv-apps'] },
   { id: 'may', icon: '✋', name: 'What Bob may do', about: 'Files, programs, apps and the tools he made.', topics: ['adv-hands', 'ev-howtos'] },
   { id: 'fun', icon: '🎲', name: 'Fun', about: 'Adventure and games.', topics: ['adv-adventure', 'adv-games'] },
-  { id: 'pc', icon: '💻', name: 'This replicant matrix', about: 'Updates, passcode, secrets, folders, backups, tidying, removing Bob.', topics: ['ev-pc', 'ev-lock', 'ev-projects', 'ev-home', 'ev-secrets', 'ev-save', 'ev-backup', 'adv-housekeeping', 'adv-remove'] }
+  { id: 'pc', icon: '💻', name: 'This replicant matrix', about: 'Updates, passcode, secrets, folders, backups, tidying, removing Bob.', topics: ['ev-pc', 'adv-health', 'ev-lock', 'ev-projects', 'ev-home', 'ev-secrets', 'ev-save', 'ev-backup', 'adv-housekeeping', 'adv-remove'] }
 ];
 
 export const VIEW_KEY = 'bob-settings-view';

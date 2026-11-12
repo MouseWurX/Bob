@@ -146,7 +146,7 @@ check("a page that won't open gives the browser's reason and says not to claim i
 const nC = cards().length;
 const r1 = await fake.runTool('browser_read', {}, ctx());
 check('reading needs no card (the page is already in Bob\'s window)', cards().length === nC);
-check('it lists where Bob can type first, with the search box named', /^Page: "Example" \(example\.com\)\nhttps:\/\/example\.com\/\nYou can type in: 2 \(field "Search this site", a search box\); 4 \(field "Email address"\)/.test(r1.text), r1.text.slice(0, 200));
+check('it lists where Bob can type first, with the search box named', /^(\[Outside text starts[^\n]*\n)?Page: "Example" \(example\.com\)\nhttps:\/\/example\.com\/\nYou can type in: 2 \(field "Search this site", a search box\); 4 \(field "Email address"\)/.test(r1.text), r1.text.slice(0, 200));
 check('every usable thing is numbered with its kind, and password and file pickers are marked', /\n2\. field "Search this site" \(search box: you can type here\)/.test(r1.text) && /\n5\. field "Password" \(password field: never typed in\)/.test(r1.text) && /\n8\. file "Choose file" \(file picker: not used\)/.test(r1.text) && /\n7\. select "Colour" = "Red" options: "Red", "Green", "Blue"/.test(r1.text) && /\n10\. checkbox "Remember me" \(not ticked\)/.test(r1.text) && /\n9\. link "Downloads" -> https:\/\/example\.com\/downloads/.test(r1.text));
 check('a long page comes in parts, with the exact next call', /Page text:\nWelcome to Example\./.test(r1.text) && /\[Part 1 of 3: characters 1 to 15,000/.test(r1.text) && /call browser_read again with part: 2/.test(r1.text), r1.text.slice(-300));
 const r2 = await fake.runTool('browser_read', { part: 3 }, ctx());
