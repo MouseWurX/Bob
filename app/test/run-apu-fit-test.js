@@ -153,6 +153,7 @@ check(spreadArgs(['--fit', 'on'], [4000, 0]).join(' ') === `--fit-target 4000,${
 }
 const llSrc = read('src/llamacpp.js');
 check(/spreadArgs\(args, this\.spread\?\.fitTargets\?\.\(\) \|\| null\)/.test(llSrc), 'a spread load uses the lent cards\' own room');
+check(!/throw new Error\(room\.line\)/.test(brainSrc) && !/throw new Error\(ownRefused\.line\)/.test(brainSrc) && !/not waking \$\{model\}: too little RAM/.test(brainSrc), 'the estimate never refuses a load, a wake or a job on built-in graphics: Bob tries, and steps down on a real out-of-memory');
 const help = read('public/help-content.js');
 check(/id: 'faq-apu-memory'/.test(help) && /<dt>Graphics share<\/dt>/.test(help), 'Help: an FAQ and a glossary entry');
 

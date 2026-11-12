@@ -123,7 +123,7 @@ check('a real graphics card: untouched (the card has its own memory)', r.ok && r
 r = await apuRoom({ ...fakeBrain(), gate: { brainBytes: () => undefined } }, 'qwen', 32768, { freeMem: 1 * GB });
 check('a brain whose size is unknown goes the old way', r.ok && !r.shortened);
 const brainSrc = fs.readFileSync(new URL('../src/brain.js', import.meta.url), 'utf8');
-check('the guard sits in fitCtx (shorten), ensureModel (refuse, in chat) and wake (stay quiet)', /const room = await apuRoom\(this, model, fit\);/.test(brainSrc) && /throw new Error\(room\.line\)/.test(brainSrc) && /not waking \$\{model\}: too little RAM/.test(brainSrc));
+check('Nov 12: the guard never stops or shortens a load from the estimate (fitCtx, ensureModel, wake only log it; a real out-of-memory steps down)', /const room = await apuRoom\(this, model, fit\);/.test(brainSrc) && !/throw new Error\(room\.line\)/.test(brainSrc) && !/not waking \$\{model\}: too little RAM/.test(brainSrc) && /loading \$\{model\} anyway: the estimate says/.test(brainSrc) && /waking \$\{model\} anyway/.test(brainSrc) && /keeping \$\{model\}'s \$\{fit\} chat memory/.test(brainSrc));
 
 // ---- 1.5.133: the set-aside counts (Legion Go: every brain was refused with 8 GB set aside) ----
 const goBrain = (reserved, size) => ({ cfg: { sharedGraphics: true, reservedGraphicsGB: reserved }, gate: { brainBytes: (m, { ctx }) => size * GB + Math.min(ctx || 32768, 131072) * 60 * 1024 }, engine: { loaded: async () => [] } });
@@ -138,7 +138,7 @@ r = await apuRoom(goBrain(8, 8), 'big', 32768, { freeMem: 1.1 * GB });
 check('a 10 GB brain on an 8 GB set-aside with little RAM free: shortened or refused, never a crash', (!r.ok && r.line) || (r.ok && r.shortened), JSON.stringify(r));
 r = await apuRoom(goBrain(8, 8), 'big', 32768, { freeMem: 12 * GB });
 check('the same brain with RAM free beyond the set-aside: loads', r.ok && !r.shortened, JSON.stringify(r));
-check('borrow on refusal: my own brain not fitting asks a paired Bob first, and only refuses when none is free', /if \(!room\.ok\) \{ ownRefused = room; borrowing = true;/.test(brainSrc) && /if \(ownRefused\) \{[^}]*throw new Error\(ownRefused\.line\)/.test(brainSrc));
+check('borrow first: my own brain not fitting asks a paired Bob first; with none free it tries its own anyway (Nov 12)', /if \(!room\.ok\) \{ ownRefused = room; borrowing = true;/.test(brainSrc) && /if \(ownRefused\) this\.log\('borrow', 'no other Bob is free; trying my own brain anyway/.test(brainSrc) && !/throw new Error\(ownRefused\.line\)/.test(brainSrc));
 
 // ---- 1.5.181: "Memory kept for Windows" is a setting (two-Bob trial: the Legion Go on Auto, 6.6 of 15.2 GB free) ----
 const autoGo = (size, extra = {}) => ({ cfg: { sharedGraphics: true, reservedGraphicsGB: 0.5, ...extra }, gate: { brainBytes: (m, { ctx }) => size * GB + Math.min(ctx || 32768, 131072) * 60 * 1024 }, engine: { loaded: async () => [] } });

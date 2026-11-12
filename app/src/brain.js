@@ -59,7 +59,7 @@ import { SAVE_AS, namedType, saveAs } from './save-as.js';
 import { recordCall, learnedLine, loadLearning, toolLearnOn } from './tool-learn.js';
 import { CORE, groupsFor, groupOf, guessGroups, allToolsOn, useToolsTool, fillUseTools, tidySchema, STICKY_TURNS, toolboxPrompt, saysCant, onlyGroups } from './toolbox.js';
 import { presetFor, presetGroups, presetBrain, presetPrompt, LimitedGroups } from './presets.js';
-import { apuHoldbackGB, apuKeepBytes } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
+import { apuHoldbackGB } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
 import { memoryFailure } from './engine-care.js';
 import { backoffMs, carryOnTokens, causeLine, engineFailKind, pause, toolErrorText, ToolStrikes, STRIKES, STRIKE_NOTE, STRUCK_OUT, fixOffer, ErrorTally, sideJob, halfDone, badAddress } from './retry.js'; // reliability items 193-207, always on
 import { Gate, Ledger, safeToResume, interruptedNote, withRetry, slimHandoff, carryOnPlan, carryOnLine, finishedSteps, MAX_AUTO_RESUMES, isBareOk, NOTHING_TO_OK, NOTHING_TO_OK_BUSY, queuedLine, plainDoing } from './handoff.js';
@@ -212,7 +212,7 @@ export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loade
   // and only what spills past it is checked against free RAM less Windows's share. On Auto the set-aside is tiny and the
   // sum is the same as before. The brain being dropped frees its set-aside part and gives back only what it spilled.
   const carve = Math.max(0, (Number(brain.cfg.reservedGraphicsGB) || 0) * GB - APU_CARVE_MARGIN_GB * GB);
-  const ram = freeMem + Math.max(0, dropping - carve) - apuKeepBytes(brain.cfg);
+  const ram = freeMem + Math.max(0, dropping - carve) - apuHoldbackGB(brain.cfg) * GB; // the owner's setting only; the 1 GB floor (apuKeepBytes) is for placing the brain, never a block
   const room = carve + Math.max(0, ram);
   // RAM short of Windows's share still leaves the set-aside. On the processor the set-aside doesn't help.
   const fits = (n) => Math.max(0, n.card - carve) <= Math.max(0, ram) || n.cpu <= ram;
@@ -715,7 +715,9 @@ export class Brain {
     clearTimeout(this.graceTimer);
     this.waking = (async () => {
       const ctx = await this.fitCtx(model, want);
-      if (!(await apuRoom(this, model, ctx)).ok) { this.log('model', `not waking ${model}: too little RAM to spare on built-in graphics`); return false; }
+      // Nov 12 (the owner: "u dont even let him try"): on built-in graphics the estimate never stops a load; the engine
+      // places the brain where it fits and steps down only on a real out-of-memory (apu-fit.js).
+      { const r = await apuRoom(this, model, ctx); if (!r.ok) this.log('model', `waking ${model} anyway: the estimate says ~${r.needGB} GB against ~${r.roomGB} GB free; if it runs out, it loads again with less`); }
       let loaded = false;
       try { loaded = await this.engine.isLoaded(model, { cpu, ctx }); } catch { return false; }
       if (loaded) { this.engine.touch?.(model, { cpu, ctx })?.catch?.(() => {}); return false; }
@@ -1034,9 +1036,11 @@ export class Brain {
     clearTimeout(this.graceTimer);
     if (!opts.beside && !opts.noTalker) await this.keepTalker(model, opts, emit, { signal });
     if (!signal) { try { await this.engine.isLoaded(model, opts); } catch (e) { throw new Error(`I can't reach my engine, ${this.engineName} (${e.message}).`); } }
-    // 1.5.126: built-in graphics share Windows's RAM: no load that would leave Windows short (apuRoom).
+    // 1.5.126: built-in graphics share Windows's RAM (apuRoom). Nov 12 (the owner: "u dont even let him try"): the
+    // estimate is only a logbook line now. The engine places the brain where it fits, tries it, and on a real
+    // out-of-memory loads it again with less on the graphics, then a shorter chat memory (apu-fit.js).
     const room = await apuRoom(this, model, opts.ctx, opts.minCtx ? { minCtx: opts.minCtx } : undefined);
-    if (!room.ok) { this.log('model', `not loading ${model}: needs ~${room.needGB} GB, room ~${room.roomGB} GB keeping ${apuHoldbackGB(this.cfg)} GB for Windows`); throw new Error(room.line); }
+    if (!room.ok) this.log('model', `loading ${model} anyway: the estimate says ~${room.needGB} GB against ~${room.roomGB} GB free keeping ${apuHoldbackGB(this.cfg)} GB for Windows; if it runs out, it loads again with less`);
     const name = BRAIN_NAMES[who] || who;
     const used = await this.gate.need({ id: 'brain', model, opts }, {
       signal, emit, who,
@@ -1450,9 +1454,11 @@ export class Brain {
     if (!want) return null;
     const fit = max ? Math.min(pick && pick > max ? pick : max, want) : want;
     // 1.5.126: on built-in graphics, shorter still when the RAM says so (apuRoom above).
+    // Nov 12: not shortened from the estimate any more: the chat memory picked is tried, and only a real
+    // out-of-memory makes it shorter (apu-fit.js). The estimate stays in the logbook.
     const room = await apuRoom(this, model, fit);
-    if (room.shortened) this.log('model', `shortened ${model}'s chat memory to ${room.ctx} to keep ${apuHoldbackGB(this.cfg)} GB for Windows (needs ~${room.needGB} GB, room ~${room.roomGB} GB)`);
-    return room.ok ? room.ctx : fit;
+    if (room.shortened || !room.ok) this.log('model', `keeping ${model}'s ${fit} chat memory: the estimate says ~${room.needGB} GB against ~${room.roomGB} GB free; if it runs out, it loads again with less`);
+    return fit;
   }
 
   get turn() { return this.turns.values().next().value || null; }
@@ -3229,7 +3235,7 @@ export class Brain {
           if (lender) { tried.push(lender.address); emit({ type: 'borrow', action: 'start', name: lender.name, brain: lender.brain, device: lender.device }); }
           else {
             borrowing = false; // nobody free with room: this Bob thinks it, quietly (nothing went wrong)
-            if (ownRefused) { this.log('borrow', 'no other Bob is free, and my own brain does not fit'); throw new Error(ownRefused.line); }
+            if (ownRefused) this.log('borrow', 'no other Bob is free; trying my own brain anyway (if it runs out of memory it loads again with less)');
             const small = this.lenders.tooBigFor(lentSize);
             this.log('borrow', small.length ? `this chat is too long for ${small.join(', ')} (about ${lentSize} tokens); thinking it myself` : 'none of my other Bobs is free; thinking it myself');
           }
