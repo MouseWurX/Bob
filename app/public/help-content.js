@@ -2992,7 +2992,7 @@ export const FOLD = {
   'faq-adventure-alone': 'adventure', 'faq-adventure-gaming': 'adventure', 'faq-adventure-look': 'adventure',
   'faq-adventure-enemies': 'adventure', 'faq-adventure-friends': 'adventure', 'faq-adventure-grow': 'adventure',
   'faq-adventure-extras': 'adventure', 'faq-adventure-takeback': 'adventure', 'faq-adventure-riddles': 'adventure',
-  'faq-adventure-send': 'adventure', 'faq-adventure-badges': 'adventure', 'faq-adventure-journey': 'adventure',
+  'faq-adventure-send': 'adventure', 'faq-adventure-badges': 'adventure', 'faq-adventure-journey': 'adventure', 'faq-journey-fight-anyone': 'adventure', 'faq-journey-magic': 'adventure', 'faq-journey-classes': 'adventure',
   'faq-adventure-storybook': 'adventure', 'faq-adventure-remember': 'adventure',
   'faq-pick-up': 'pick-up', 'faq-tray-quit': 'tray', 'faq-tray-icon': 'tray', 'faq-memory-recall': 'notes',
   'faq-raspberry-pi': 'start', 'faq-linux-which': 'start', 'faq-updates': 'settings-remove', 'faq-mac-open-anyway': 'start',
