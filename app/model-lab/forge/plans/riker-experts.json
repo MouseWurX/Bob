@@ -1,6 +1,6 @@
 {
   "run": "riker-experts",
-  "note": "12 Nov: Riker (28Bob) Q4 at 8, 9, 10, 11, 12 and 13 experts per word, same card, same two tests as bench-three-bobs (the owner asked for it on 11 Nov; the home run was stopped after 8 to free the PC). The same file is served six times with --override-kv qwen35moe.expert_used_count=int:N. No teacher, no lessons, no drive. Cheapest 48 GB cards first. About 3 h on an A40, about $2; caps 4 h / $6. Speeds are the card's own (server timings), so they compare across counts but not with the owner's 5070 Ti.",
+  "note": "12 Nov: Riker (28Bob) Q4 at 8, 9, 10, 11, 12 and 13 experts per word, same card, same two tests as bench-three-bobs (the owner asked for it on 11 Nov; the home run was stopped after 8 to free the PC). The same file is served six times with --override-kv qwen35moe.expert_used_count=int:N. No teacher, no lessons, no drive. Cheapest 48 GB cards first. About 3 h on an A40, about $2; caps 4 h / $6. Speeds are the card's own (server timings), so they compare across counts but not with the owner's 5070 Ti. 12 Nov, later: the quick quiz runs twice per count, with Bob 1.5.207's and then 1.5.208's real prompt and tools (same brain, same questions), as the before/after for 1.5.208; each report names its Bob version. About 3.5 h, about $2.25.",
   "benchmark_only": true,
   "teacher": "Qwen/Qwen3.6-35B-A3B",
   "counts": "expert-counts-2026-11-04T23-23-19.json",
@@ -20,7 +20,7 @@
   "disk_gb": 140,
   "general_tokens": 0,
   "rungs": [],
-  "hours_max": 4,
+  "hours_max": 4.5,
   "dollars_max": 6,
   "rent_minutes": 60,
   "download_quants": [],
@@ -72,7 +72,8 @@
       }
     ],
     "commands": [
-      "node experts-test.mjs --url {{url}} --counts 8 --out {{out}}",
+      "node experts-test.mjs --bob \"C:\\Unreal Projects\\bob-test 207c\\app\" --url {{url}} --counts 8 --out {{out}}",
+      "node experts-test.mjs --bob \"C:\\Unreal Projects\\bob-test 208\\app\" --url {{url}} --counts 8 --out {{out}}",
       "node tool-score.mjs --url {{url}} --models \"{{name}}=served\" --no-think --lessons {{lessons}} --out {{out}}"
     ]
   }
