@@ -31,8 +31,8 @@ function kv(key, type, value) {
   else { v = Buffer.alloc(4); v.writeUInt32LE(value); }
   return Buffer.concat([h, v]);
 }
-function makeGguf(file, kvs, padBytes = 0) {
-  const t = { name: 'token_embd.weight', dims: [4, 4] };
+function makeGguf(file, kvs, padBytes = 0, tname = 'token_embd.weight') {
+  const t = { name: tname, dims: [4, 4] };
   const parts = [Buffer.alloc(24)]; parts[0].write('GGUF', 0, 'latin1'); parts[0].writeUInt32LE(3, 4); parts[0].writeBigUInt64LE(1n, 8); parts[0].writeBigUInt64LE(BigInt(kvs.length), 16);
   for (const [k, ty, v] of kvs) parts.push(kv(k, ty, v));
   const n = Buffer.from(t.name); const b = Buffer.alloc(8 + n.length + 4 + 16 + 12);
@@ -45,7 +45,8 @@ const shape = (arch, ctx) => [['general.architecture', 8, arch], [`${arch}.conte
 const bigFile = path.join(tmp, 'big.gguf'), smallFile = path.join(tmp, 'small.gguf'), mtpFile = path.join(tmp, 'mtp.gguf'), lonely = path.join(tmp, 'lonely.gguf');
 makeGguf(bigFile, [...shape('qwen3', 40960), ['general.name', 8, 'Big'], ['general.base_model.0.repo_url', 8, 'https://huggingface.co/Qwen/Qwen3-8B']], 9000);
 makeGguf(smallFile, [...shape('qwen3', 40960), ['general.name', 8, 'Small']], 100);
-makeGguf(mtpFile, [...shape('qwen35moe', 262144), ['qwen35moe.nextn_predict_layers', 4, 1]], 500);
+makeGguf(mtpFile, [...shape('qwen35moe', 262144), ['qwen35moe.nextn_predict_layers', 4, 1]], 500, 'blk.3.nextn.eh_proj.weight');
+const noGuesser = path.join(tmp, 'no-guesser.gguf'); makeGguf(noGuesser, [...shape('qwen35moe', 262144), ['qwen35moe.nextn_predict_layers', 4, 1]], 500); // 1.5.207: the header says so, the tensors aren't there
 makeGguf(lonely, [...shape('llama', 8192)], 50);
 
 // ---- the Lab, with a made-up catalogue and engine folder ----
@@ -86,6 +87,7 @@ const per = 4 * 8 * 256; // 4 layers x 8 heads x (128 + 128)
 }
 
 // ---- the brain file's own facts ----
+check('a header that says nextn but has no guesser tensors is no guesser (Engine 4 crashed on Riker)', ggufInfo(noGuesser).mtp === 0 && ggufInfo(noGuesser).mtpInHeader === 1);
 check('Bob reads whether a brain carries its own guesser, and where its full weights are', ggufInfo(mtpFile).mtp === 1 && ggufInfo(smallFile).mtp === 0 && ggufInfo(bigFile).origin === 'https://huggingface.co/Qwen/Qwen3-8B');
 
 // ---- the long-context job, fake engine ----
@@ -129,18 +131,18 @@ check('Bob reads whether a brain carries its own guesser, and where its full wei
   const seen = [];
   const tlab = mk({
     serve: async (o) => { seen.push(o); return { url: 'http://fake', where: 'card', stop: () => {} }; },
-    chat: async () => { const o = seen[seen.length - 1]; const n = Number(o.args[o.args.indexOf('--draft-max') + 1]) || 0; return { text: 'def avg(): pass', timings: { predicted_per_second: n ? (n === 8 ? 70 : 40 + n) : 40, ...(n ? { draft_n: 100, draft_n_accepted: 100 - n * 5 } : {}) } }; }
+    chat: async () => { const o = seen[seen.length - 1]; const n = Number(o.args[o.args.indexOf('--spec-draft-n-max') + 1]) || 0; return { text: 'def avg(): pass', timings: { predicted_per_second: n ? (n === 8 ? 70 : 40 + n) : 40, ...(n ? { draft_n: 100, draft_n_accepted: 100 - n * 5 } : {}) } }; }
   });
   await startTurbo(tlab, { brain: 'big', draft: 'small', guess: [2, 8, 16] }); await wait(tlab);
   const run = tlab.runs[tlab.runs.length - 1];
   const rec = run.report?.turbo;
-  check('Try it runs Off then each guess length, with the draft brain', run.state === 'done' && seen.length === 4 && seen[0].args.length === 0 && seen[1].args.join(' ').includes(`-md ${smallFile} --draft-max 2`) && seen[1].cpuOk === false, run.error || '');
+  check('Try it runs Off then each guess length, with the draft brain', run.state === 'done' && seen.length === 4 && seen[0].args.length === 0 && seen[1].args.join(' ').includes(`-md ${smallFile} --spec-draft-n-max 2`) && seen[1].cpuOk === false, run.error || '');
   check('each row has words a second, the accept rate and whether the words were the same', rec.rows.length === 4 && rec.rows[0].accept === null && rec.rows[1].accept === 90 && rec.rows.every((r) => r.same));
   check('the best length is picked, and the line explains why more isn\'t always faster', rec.best.guess === 8 && /1\.75x/.test(run.report.saw) && /isn't always faster/.test(run.report.saw), run.report.saw);
   check('no gain is said plainly', bestGuess([{ guess: 0, tps: 40 }, { guess: 4, tps: 40.5 }]) === null && /didn't make/.test(turboSaw({ brain: { name: 'X' }, rows: [{ guess: 0, tps: 40, same: true }], best: null })));
   seen.length = 0;
   await startTurbo(tlab, { brain: 'mtp', guesser: 'own', guess: [4] }); await wait(tlab);
-  check('a brain with its own guesser runs with --spec-type draft-mtp and nothing else loaded', seen[1].args.join(' ') === '--spec-type draft-mtp --draft-max 4');
+  check('a brain with its own guesser runs with --spec-type draft-mtp and nothing else loaded', seen[1].args.join(' ') === '--spec-type draft-mtp --spec-draft-n-max 4');
   const u = useTurbo(tlab, { brain: 'big', draft: 'small', guess: 8 });
   check('Use this in Bob saves that brain\'s Turbo row (a name, never a path)', cfg.llamacpp.turbo.big.on === true && cfg.llamacpp.turbo.big.draft === 'small' && cfg.llamacpp.turbo.big.max === 8 && /Turbo is on for Big/.test(u.line));
   saveSettings(cfg, { llamacpp: { turbo: { evil: { on: true, draft: 'C:\\x\\y.gguf' }, self: { on: true, draft: 'self' } } } });
@@ -149,7 +151,7 @@ check('Bob reads whether a brain carries its own guesser, and where its full wei
   clearInterval(e.idleTimer);
   e.resolve = (m) => ({ gguf: files[m] || bigFile });
   const ab = e.buildArgs('big').join(' '), am = e.buildArgs('mtp').join(' '), ao = e.buildArgs('lonely').join(' ');
-  check('Bob\'s engine gets the per-brain Turbo, the built-in guesser, or the old one-draft setting', ab.includes(`-md ${smallFile} --draft-max 8 --draft-min 0 -ngld 99`) && am.includes('--spec-type draft-mtp --draft-max 4') && !am.includes('-md') && ao.includes(`-md ${smallFile} --draft-max 16`), `${ab} | ${am} | ${ao}`);
+  check('Bob\'s engine gets the per-brain Turbo, the built-in guesser, or the old one-draft setting', ab.includes(`-md ${smallFile} --spec-draft-n-max 8 --spec-draft-n-min 0 -ngld 99`) && am.includes('--spec-type draft-mtp --spec-draft-n-max 4') && !am.includes('-md') && ao.includes(`-md ${smallFile} --spec-draft-n-max 16`), `${ab} | ${am} | ${ao}`);
   useTurbo(tlab, { brain: 'big', off: true });
   check('Turbo can be switched off again for one brain', !cfg.llamacpp.turbo.big);
 }

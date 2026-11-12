@@ -10,6 +10,7 @@
 //
 // node loop-test.mjs --model C:\...\28Bob-Riker-Q4_K_M.gguf [--plain] [--quick] [--jobs 40] [--ctx 32768] [--port 8094]
 // node loop-test.mjs --url http://127.0.0.1:8094 ...   (a llama-server that is already running)
+// --mine <Bob's data folder>\my-tests.jsonl adds the answers saved with "Save as a test" in the chat (item 11)
 // --off think,note  switches only the named helps off (mend, together, meaning, tidy, note, last, promise, near, hint),
 //                   to find which one helps or costs. --think makes every retry think (off in Bob since 1.5.206).
 // Jobs that end without words are listed in the report with the logbook lines from that job.
@@ -32,6 +33,7 @@ const brain = kit.brain;
 const plain = Boolean(o.plain);
 const offList = o.off ? String(o.off).split(',').map((x) => x.trim()).filter(Boolean) : [];
 brain.cfg.loopHelpOff = plain ? true : offList.length ? offList : false;
+brain.cfg.toolHelp = !plain; // the Settings switch "Better tool calling" (on unless turned off); --plain runs without it
 if (o.think) brain.cfg.loopHelpOn = ['think'];
 let jobLog = [];
 { const was = brain.log.bind(brain); brain.log = (...a) => { jobLog.push(a.map(String).join(': ').slice(0, 200)); return was(...a); }; }
@@ -43,6 +45,14 @@ let jobs = (kit.phrasings || []).filter((p) => p.group && !p.pic && !p.recent).m
 if (o.quick) jobs = jobs.filter((_, i) => i % 4 === 0);
 if (o.jobs) jobs = jobs.slice(0, Number(o.jobs));
 jobs.push(...MULTI);
+// Nov 11 (item 11): the answers you saved with "Save as a test" in the chat (Bob's data folder, my-tests.jsonl).
+if (o.mine) {
+  const file = String(o.mine);
+  const mine = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('\n').filter((l) => l.trim()).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((c) => c?.text);
+  jobs.push(...mine.map((c) => ({ job: 'mine', text: c.text, group: null, need: Array.isArray(c.need) ? c.need : [] })));
+  console.log(`+ ${mine.length} of your saved tests from ${file}`);
+}
+
 
 // ---- fake tools: fixed results, a couple of failures on purpose ----
 const runs = [];

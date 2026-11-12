@@ -18,6 +18,7 @@ import { createPeek } from './lab-peek.js'; // 1.5.164 Playground: Peek inside
 import { homeReportHtml } from './lab-home-ways.js'; // 1.5.164 the Forge's home ways' lines in the runs list
 import { goBtn, goWhere } from './lab-go.js'; // a button on every "get one in Get models" message
 import { queueHtml, queueClick, queueBtn, queueAdd } from './lab-queue.js'; // Nov 11: the job queue
+import { createPlus } from './lab-plus.js'; // Lab items 101 to 112: Taste test, Run again, Before and after, Safety check, recipe files, clean repeats, Lab extras
 import { mineHtml } from './lab-mine.js'; // My Lab: what this Lab has made and measured, in one list
 
 const $ = (id) => document.getElementById(id);
@@ -25,8 +26,8 @@ const $ = (id) => document.getElementById(id);
 // learning how brains work, rented runs, and My Lab (what you've made so far).
 const TABS = [['make', 'Make a brain'], ['teach', 'Teach'], ['test', 'Test'], ['inside', 'Look inside'], ['learn', 'Learn'], ['forge', 'Forge'], ['mine', 'My Lab']];
 // The pages under a tab. 'challenges' and 'learn' are drawn here; the rest are the Playground's pages (public/lab-playground.js).
-const SUBS = { teach: ['teach', 'best'], test: ['challenges', 'smaller', 'longer', 'faster'], inside: ['peek', 'watch'], learn: ['learn', 'diffusion'] };
-const SUB_LABEL = { challenges: 'Challenges', learn: 'Experiments', ...Object.fromEntries(PLAY_PAGES) };
+const SUBS = { teach: ['teach', 'best'], test: ['challenges', 'taste', 'smaller', 'longer', 'faster'], inside: ['peek', 'watch'], learn: ['learn', 'diffusion'] };
+const SUB_LABEL = { challenges: 'Challenges', taste: 'Taste test', learn: 'Experiments', ...Object.fromEntries(PLAY_PAGES) };
 const STEPS = [['brain', '1 Pick a brain'], ['lessons', '2 Lessons'], ['smaller', '3 Make it smaller'], ['where', '4 Where it runs'], ['test', '5 Test and use']];
 // One job at a time (the owner asked that every module can be done on its own). Each job shows only the steps and the
 // parts of step 3 it needs; Everything is the five steps as they were. The recipe is the same shape either way.
@@ -51,7 +52,7 @@ const MODE_NOTES = {
 };
 const TYPE_NOTE = { Q4_K_M: 'Q4 (recommended)', Q5_K_M: 'Q5', Q6_K: 'Q6', Q8_0: 'Q8', Q3_K_M: 'Q3 (only for brains meant for 8 GB or less)' };
 // Show the wobble (Nov 11): "71 ± 4" when three runs were made, else just the score.
-const withWobble = (r, id) => (r.scores[id] == null ? '-' : r.wobble?.[id] != null ? `${r.scores[id]} ± ${r.wobble[id]}` : r.scores[id]);
+const withWobble = (r, id) => (r.scores[id] == null ? '-' : id === 'jobspeed' && r.jobSec != null ? `${r.jobSec} s (${r.scores[id]} right)` : r.wobble?.[id] != null ? `${r.scores[id]} ± ${r.wobble[id]}` : r.scores[id]); // Job speed shows its seconds
 const PARTS = { general: 'General knowledge', tools: 'Picking the right tool', coding: 'Coding', following: 'Following instructions' };
 
 // `go(where)` opens Get models, Settings (Engines) or the chat for the "take me there" buttons. `page`: the Lab fills its
@@ -64,7 +65,8 @@ export function createLab({ api, note, go, page = false }) {
   const sub = { teach: 'teach', test: 'challenges', inside: 'peek', learn: 'learn' }; // the page showing under each tab
   const isCh = () => tab === 'test' && sub.test === 'challenges';
   const isLearn = () => tab === 'learn' && sub.learn === 'learn';
-  const isPlay = () => Boolean(SUBS[tab]) && !isCh() && !isLearn(); // one of the Playground's pages is showing
+  const isTaste = () => tab === 'test' && sub.test === 'taste'; // Lab item 101, drawn by public/lab-plus.js
+  const isPlay = () => Boolean(SUBS[tab]) && !isCh() && !isLearn() && !isTaste(); // one of the Playground's pages is showing
   // Show a tab, and a page under it if one is named; a Playground page reads its lists the first time.
   async function show(t, s = '') {
     if (!TABS.some(([id]) => id === t)) return;
@@ -109,12 +111,19 @@ export function createLab({ api, note, go, page = false }) {
   document.addEventListener('lab-page-ready', () => { if (isPlay() && dlg.open) draw(); }); // 1.5.167 Longer, Faster, Teach it
   const pg = createPlayground({ api, view: () => view, saveState, sections: [pk] });
   const rc = createRecipes({ api, recipe: r, view: () => view, replan: () => replan(), draw: () => draw() });
+  // Lab items 101 to 112 (public/lab-plus.js). Run again fills Make a brain or Challenges with the old job's settings.
+  const plus = createPlus({ api, view: () => view, draw: () => draw(), note, body, hooks: {
+    reload: () => load().then(() => draw()),
+    setRecipe: async (x) => { Object.assign(r, JSON.parse(JSON.stringify(x)), { from: view.brains.some((b) => b.id === x.from) ? x.from : '' }); tab = 'make'; job = 'full'; step = 'brain'; await replan(); $('lab-tab-make')?.focus(); },
+    setChallenge: async (c) => { ch.from = view.brains.some((b) => b.id === c.from) ? c.from : ''; ch.packs = [...c.packs]; ch.bench = c.bench === true; await show('test', 'challenges'); $('lab-tab-test')?.focus(); }
+  } });
   const brain = () => view?.brains.find((b) => b.id === r.from);
   const running = () => view?.runs.find((x) => x.state === 'running');
 
   async function load() {
     try { view = await api('/api/lab'); } catch (e) { msg = e.message; }
     try { measures = (await api('/api/lab/measures')).measures || []; picked = picked.filter((id) => measures.some((m) => m.id === id)); } catch { measures = []; }
+    await plus.load();
     await replan();
   }
   async function replan() {
@@ -175,6 +184,7 @@ export function createLab({ api, note, go, page = false }) {
       ${writeHtml()}
       ${buildHtml()}
       ${setsHtml()}
+      ${plus.cleanHtml()}
       ${later('Save the teacher\'s guesses', 'Saves the teacher\'s top 32 guesses for each word, not just its answer. A brain learns far more that way.')}
     </fieldset>`;
   }
@@ -373,7 +383,7 @@ export function createLab({ api, note, go, page = false }) {
       ${homeReportHtml(x)}
       ${x.report?.tried && x.kind !== 'refusals-try' ? `<br><span class="muted">Tried first on Brain Engine: ${x.report.tried.masked} with only the kept experts, ${x.report.tried.full} with all of them.</span>` : ''}
       ${x.report?.made ? `<table class="lab-report"><caption class="muted">Lab test (out of 100)</caption><tr><th scope="col"></th><th scope="col">${esc(x.name)}</th>${x.report.from ? `<th scope="col">${esc(x.from)}</th>` : ''}</tr>${Object.keys(PARTS).map((k) => `<tr><th scope="row">${esc(PARTS[k])}</th><td>${x.report.made.parts[k]?.score ?? '-'}</td>${x.report.from ? `<td>${x.report.from.parts[k]?.score ?? '-'}</td>` : ''}</tr>`).join('')}<tr><th scope="row">All</th><td>${x.report.made.score}</td>${x.report.from ? `<td>${x.report.from.score}</td>` : ''}</tr><tr><th scope="row">Size</th><td>${x.report.sizeGB} GB</td>${x.report.from ? `<td>${x.report.fromGB} GB</td>` : ''}</tr><tr><th scope="row">Words a second</th><td>${x.report.made.tps || '-'}</td>${x.report.from ? `<td>${x.report.from.tps || '-'}</td>` : ''}</tr></table>
-        ${x.used ? '<span class="muted">In Bob, under Get models.</span>' : `<button type="button" class="get" data-use="${esc(x.id)}">Use in Bob</button>`}` : ''}</li>`).join('')}</ul></section>`;
+        ${x.used ? '<span class="muted">In Bob, under Get models.</span>' : `<button type="button" class="get" data-use="${esc(x.id)}">Use in Bob</button>`}` : ''}${plus.runExtras(x)}</li>`).join('')}</ul></section>`;
   }
 
   const PACK_COLS = () => (view?.packs || []).map((p) => [p.id, p.title]);
@@ -459,8 +469,9 @@ export function createLab({ api, note, go, page = false }) {
     const modeRow = `<div class="lab-top"><div class="lab-mode" role="radiogroup" aria-label="How much to show"><button type="button" class="lab-chip${pro ? '' : ' on'}" role="radio" aria-checked="${!pro}" data-labmode="simple">Keep it simple</button><button type="button" class="lab-chip${pro ? ' on' : ''}" role="radio" aria-checked="${pro}" data-labmode="pro">Professional</button></div><span class="muted lab-mode-note">${esc(MODE_NOTES[tab] || '')}</span>
       <div class="lab-engine"><label class="pick-inline"><span>Lab engine</span><select data-labengine aria-label="Lab engine">${[['', 'Same as Bob\'s brains'], ['brainengine', 'Brain Engine'], ['llamacpp', 'llama.cpp']].map(([v, l]) => `<option value="${v}" ${v === (en.pick || '') ? 'selected' : ''} ${v === 'brainengine' && !en.brainEngineHere ? 'disabled' : ''}>${l}${v === 'brainengine' && !en.brainEngineHere ? ' (not here yet)' : ''}</option>`).join('')}</select></label>${en.found ? (en.version ? `<span class="muted">${esc(en.version)}</span>` : '') : `<span class="muted">None found yet.</span>${goBtn('engines', 'Get one')}`}</div></div>`;
     const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}</div>${modeRow}`;
-    if (tab === 'mine') { body.innerHTML = `<div class="lab">${tabs}${mineHtml(view)}</div>`; return; }
+    if (tab === 'mine') { body.innerHTML = `<div class="lab">${tabs}${mineHtml(view)}${plus.switchesHtml()}</div>`; return; }
     if (isLearn()) { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-learn" role="tabpanel" aria-labelledby="lab-tab-learn">${subNav()}<div id="lab-learn-box"></div></div></div>`; learn.mount($('lab-learn-box')); return; }
+    if (isTaste()) { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-test" role="tabpanel" aria-labelledby="lab-tab-test">${subNav()}${plus.tasteHtml()}${runsHtml()}</div></div>`; return; }
     if (isCh()) { body.innerHTML = `<div class="lab">${tabs}${challengesHtml()}</div>`; return; }
     if (tab === 'forge') { body.innerHTML = `<div class="lab">${tabs}${fg.html(`<details class="lab-fold" data-fold="senses" ${folds.senses ? 'open' : ''}><summary>Add sight or hearing to a brain</summary>${sn.html()}</details>`)}</div>`; return; }
     if (isPlay()) { body.innerHTML = `<div class="lab">${tabs}${pg.html(runsHtml(), subNav(), tab)}</div>`; pg.mounted(); return; }
@@ -470,6 +481,7 @@ export function createLab({ api, note, go, page = false }) {
     body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-make" role="tabpanel" aria-labelledby="lab-tab-make">
       <p class="muted">Make a new brain from one you have.</p>
       ${view.recipes.length ? `<p><label>Start from a saved recipe <select id="lab-recipe"><option value="">(none)</option>${view.recipes.map((x, n) => `<option value="${n}">${esc(x.name)}</option>`).join('')}</select></label></p>` : ''}
+      ${plus.againHtml(r)}${plus.recipeHtml()}
       ${runsHtml()}
       ${jobsHtml()}
       ${!job ? '' : `${hasPart('cut') ? `<details class="lab-fold" data-fold="fill" ${folds.fill || r.template || rc.recipeId ? 'open' : ''}><summary>Fill the steps for me: start from a goal or a template</summary>${rc.galleryHtml()}${templateHtml()}</details>` : ''}
@@ -495,6 +507,7 @@ export function createLab({ api, note, go, page = false }) {
     const el = e.target; msg = '';
     if ('labengine' in el.dataset) { try { view.engine = await api('/api/lab/engine', { engine: el.value }); } catch (err) { msg = err.message; } await replan(); $('lab-body')?.querySelector('[data-labengine]')?.focus(); return; } // 1.5.17x
     if (isLearn()) return; // the Learn experiments listen for themselves
+    { const f = await plus.change(el); if (f) { if (f === 'draw') { draw(); $(el.id)?.focus(); } return; } } // Lab items 101 to 112
     { const f = await sn.change(el); if (f) { if (f === 'draw') { draw(); $(el.id)?.focus(); } return; } }
     { const f = await fg.change(el); if (f) { draw(); $(el.id)?.focus(); return; } }
     if (isPlay() && await pg.change(el)) return draw();
@@ -614,6 +627,7 @@ export function createLab({ api, note, go, page = false }) {
       } catch (err) { msg = err.message; }
       return load();
     }
+    { const f = await plus.click(b); if (f === 'draw') { const keep = b.id; draw(); if (keep) $(keep)?.focus(); return; } if (f) return; } // Lab items 101 to 112
     { const f = await sn.click(b); if (f === 'draw') return draw(); if (f) return; }
     { const f = await fg.click(b); if (f === 'draw') return draw(); if (f) return; }
     if (isPlay()) { const p = await pg.click(b, load); if (p === 'draw') return draw(); if (p) return; }
@@ -686,6 +700,6 @@ export function createLab({ api, note, go, page = false }) {
     // Progress from the Lab job (the server's 'lab' events).
     fullUpdate(full) { if (!view) return; view.full = full; if (dlg.open) draw(); if (full?.state === 'done' || full?.state === 'failed') load(); }, // Bring in a full-size brain: progress, then the lists again
     queueUpdate(q) { if (!view || !q) return; view.queue = q; if (dlg.open) draw(); },
-    update(run) { if (!view) return; rc.runUpdate(run); const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if ((run.kind === 'challenge' || run.kind?.startsWith('ladder') || ['mix', 'stack', 'refusals', 'refusals-try'].includes(run.kind)) && run.state !== 'running') { load(); return; } if (isLearn()) return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
+    update(run) { if (!view) return; rc.runUpdate(run); const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if (plus.kinds.includes(run.kind) && run.state !== 'running') { plus.runDone(run).then(() => load()).then(() => { if (dlg.open) draw(); }); return; } if ((run.kind === 'challenge' || run.kind?.startsWith('ladder') || ['mix', 'stack', 'refusals', 'refusals-try'].includes(run.kind)) && run.state !== 'running') { load(); return; } if (isLearn()) return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
   };
 }

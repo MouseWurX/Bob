@@ -9,6 +9,7 @@
   <link rel="apple-touch-icon" href="/icons/bob-192.png">
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/mind.css">
+  <link rel="stylesheet" href="/journey.css">
 </head>
 <body>
   <div id="bubbles" class="bubbles" aria-hidden="true"><div id="bobBubble" class="say-bubble bob-say" hidden><span class="bubble-text"></span><button type="button" class="bubble-x" tabindex="-1" title="Close (Esc)">✕</button></div><div id="catBubble" class="say-bubble cat-say" hidden><span class="bubble-text"></span><button type="button" class="bubble-x" tabindex="-1" title="Close (Esc)">✕</button></div></div>
@@ -88,7 +89,9 @@
     <label id="presetPick" class="brain-switch preset-pick" hidden><span class="lbl">🎭 Preset</span> <select id="presetSel" aria-label="Assistant preset for this chat"></select></label>
     <button id="gameBtn" type="button" class="brain-switch game-btn" role="switch" aria-checked="false"><span class="lbl">🎮 Gaming</span><span class="st" id="gameBtnSt">Off</span></button>
     <button id="webBtn" type="button" class="brain-switch web-btn" role="switch" aria-checked="false"><span class="lbl">🌐 Web search</span><span class="st" id="webBtnSt">Off</span></button>
+    <span id="focusPick" class="focus-pick" hidden><button id="focusBtn" type="button" class="brain-switch focus-btn" role="switch" aria-checked="false" aria-expanded="false" title="⏱ Focus: Bob keeps his check-ins, reminders and notes to himself until the time is up, then says how it went. Press again to stop early."><span class="lbl">⏱ Focus</span><span class="st" id="focusBtnSt">Off</span></button></span>
     <button id="rentBtn" type="button" class="brain-switch rent-btn" role="switch" aria-checked="false" hidden><span class="lbl">🏗 Rented brain</span><span class="st" id="rentBtnSt">Off</span></button>
+    <span id="chatFill" class="muted chat-fill" hidden><span id="chatFillText"></span> <button id="chatFillSum" type="button" class="link mini" hidden title="Bob sums up the older part of this chat and keeps only the last few messages word for word, so the brain has room again">Sum up and carry on</button></span>
     <span id="effortHint" class="muted effort-hint" aria-live="polite"></span>
   </div>
   <form id="composer" class="composer">

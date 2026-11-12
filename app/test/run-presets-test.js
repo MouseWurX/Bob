@@ -95,7 +95,7 @@ const quiet = cleanPreset({ id: 'pa1a1a1a1', name: 'Just talk', tools: 'none', b
   clearInterval(brain.reminderTimer);
   brain.ensureModel = async (m) => m; brain.fitCtx = async () => 8192; brain.recall = async () => '';
   const seen = [];
-  brain.engine = { chat: async (opts) => { seen.push({ model: opts.model, temperature: opts.temperature, names: (opts.tools || []).map((t) => t.function.name), sys: opts.messages[0].content }); return { role: 'assistant', content: 'done' }; },
+  brain.engine = { chat: async (opts) => { seen.push({ model: opts.model, temperature: opts.temperature, names: (opts.tools || []).map((t) => t.function.name), sys: opts.messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n') }); return { role: 'assistant', content: 'done' }; },
     unloadAll: async () => [], loaded: async () => [], unload: async () => [], isLoaded: async () => true };
   const run = async (chat, text, effort = 'low') => { const { jobId } = brain.enqueue(chat, text, [], effort); await until(() => ['done', 'failed'].includes(brain.queue.find((j) => j.id === jobId)?.state)); return seen.at(-1); };
 

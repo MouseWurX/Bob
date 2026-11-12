@@ -8,7 +8,7 @@
 //   3. otherwise %LOCALAPPDATA%\Bob, with a fresh config.json made from config.example.json.
 // On a Mac (Bob.app, the same official Electron renamed, Bob's files in Bob.app/Contents/Resources/app) step 3 is
 // ~/Library/Application Support/Bob/home, and on Linux ~/.local/share/bob (src/platform.js defaultHome).
-const { app, BrowserWindow, shell, Menu, dialog, clipboard, screen, Tray, nativeImage, Notification } = require('electron');
+const { app, BrowserWindow, shell, Menu, dialog, clipboard, screen, Tray, nativeImage, Notification, globalShortcut } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
@@ -247,7 +247,9 @@ globalThis.bobLoginItem = loginItem(app);
 globalThis.bobShell = {
   openPath: (f) => shell.openPath(f),
   showItemInFolder: (f) => shell.showItemInFolder(f),
-  copy: (text) => clipboard.writeText(String(text))
+  copy: (text) => clipboard.writeText(String(text)),
+  // Settings, Jobs, Clickable file:line links: only an editor's own address (vscode://, cursor://, vscodium://).
+  openUrl: (url) => (/^(?:vscode|cursor|vscodium):\/\/file\//.test(String(url)) ? shell.openExternal(String(url)) : null)
 };
 // 1.5.125: small pictures for the chest and Made by Bob (src/thumbs.js), shrunk by Electron's own image code,
 // so no image library and no model is needed. PNG bytes, the longer side `size` pixels, or null.
@@ -330,8 +332,46 @@ function showBob() {
   win.focus();
 }
 
+// A shortcut from anywhere (Settings, How Bob works, 🌙 Quiet hours and shortcut; off unless switched on). While it's
+// on, the key opens a small ask box on top of any app (public/ask.html); the key again, or Esc, puts it away.
+// src/server.js calls this at start and whenever the switch or the key changes. Nothing is registered while it's off.
+let askKey = '', askWin = null;
+function openAsk(port) {
+  if (askWin && !askWin.isDestroyed()) { if (askWin.isVisible() && askWin.isFocused()) askWin.hide(); else { askWin.show(); askWin.focus(); } return; }
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const width = Math.min(640, area.width - 32), height = 420;
+  askWin = new BrowserWindow({
+    width, height, x: Math.round(area.x + (area.width - width) / 2), y: Math.round(area.y + area.height * 0.18),
+    title: 'Ask Bob', icon: iconFile(process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212',
+    autoHideMenuBar: true, alwaysOnTop: true, skipTaskbar: true, minimizable: false, maximizable: false, fullscreenable: false, resizable: true,
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false }
+  });
+  askWin.setAlwaysOnTop(true, 'floating');
+  askWin.setMenu(null);
+  const base = `http://127.0.0.1:${port}`;
+  askWin.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url) && !url.startsWith(base)) shell.openExternal(url); return { action: 'deny' }; });
+  askWin.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(base + '/ask.html')) e.preventDefault(); });
+  askWin.on('closed', () => { askWin = null; });
+  askWin.loadURL(base + '/ask.html');
+}
+globalThis.bobGlobalAsk = (g, port) => {
+  const want = g && g.on === true && typeof g.key === 'string' ? g.key : '';
+  if (askKey && askKey !== want) { try { globalShortcut.unregister(askKey); } catch {} askKey = ''; }
+  if (!want || askKey === want) return { ok: true, key: askKey };
+  let ok = false;
+  try { ok = globalShortcut.register(want, () => openAsk(port)); } catch {}
+  if (ok) askKey = want;
+  else console.error(`Bob: couldn't take the key ${want} for the ask box (another app may use it).`);
+  return { ok, key: askKey };
+};
+globalThis.bobShow = () => showBob(); // the ask box's Open in Bob
+app.on('will-quit', () => { try { globalShortcut.unregisterAll(); } catch {} try { globalThis.bobCleanExit?.(); } catch {} });
+
+// 150 "Show a dot on the tray icon" (off by default): while something waits for you, the tray picture has a dot;
+// Windows also puts it on the taskbar button, and a Mac shows a dot on the Dock icon.
+const dotted = () => Boolean(winState.trayDot && winState.dot && winState.dotIcons);
 function trayImage() {
-  const ic = winState.icons;
+  const ic = dotted() ? winState.dotIcons : winState.icons;
   if (ic) {
     if (process.platform === 'linux') return nativeImage.createFromBuffer(ic[32]);
     const img = nativeImage.createEmpty();
@@ -366,10 +406,12 @@ function refreshWindowBits() {
         tray.setContextMenu(trayMenu());
         tray.on('click', showBob); // Windows and Linux: a click opens him (Mac shows the menu)
       } else tray.setImage(trayImage());
-      tray.setToolTip(MAC ? 'Bob' : 'Bob: click to open him, right-click to quit him');
+      tray.setToolTip(dotted() ? 'Bob: something is ready or needs you' : MAC ? 'Bob' : 'Bob: click to open him, right-click to quit him');
     } else if (tray) { tray.destroy(); tray = null; }
     if (MAC) { if (app.dock) app.dock.setIcon(bigImage()); }
     else if (win) win.setIcon(winState.icons ? bigImage() : iconFile(process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'));
+    if (MAC && app.dock) app.dock.setBadge(dotted() ? '•' : '');
+    if (process.platform === 'win32' && win) win.setOverlayIcon(dotted() ? nativeImage.createFromBuffer(winState.dotIcons.badge) : null, dotted() ? 'Something is ready or needs you' : '');
   } catch (e) { console.error('Bob: tray or icon', e.message); }
 }
 globalThis.bobWindow = { apply: (s) => { winState = { ...winState, ...s }; refreshWindowBits(); } };

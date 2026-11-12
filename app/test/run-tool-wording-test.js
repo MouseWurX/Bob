@@ -26,10 +26,15 @@ check('every tool has a description', all.every((f) => f.description.trim().leng
 // Before the wording pass: all tools ~47,500 characters, the starting core ~8,800.
 // 1.5.204: seven new tools (3D model and part, tool packs x3, look_at_job, pass_note), all off until switched on,
 // took the total from 39,000 to about 42,800. Each one is still under the per-tool limits above.
-// Sort and rename (sort_files, off until switched on) adds about 430.
-check('all tools together stay under 43,500 characters', size(all) < 43500, String(size(all)));
+// Nov 11 (the 50 improvements): git_look and ask_user are new, and edit_file, search_files, list_folder and remember
+// each gained an optional input, so the cap moved from 43,000 to 45,000. Sort and rename (sort_files, off until
+// switched on) adds about 430 more, and the Everyday helpers' spending_sheet (off until switched on, and hidden
+// while off) about 640.
+check('all tools together stay under 46,200 characters', size(all) < 46200, String(size(all)));
 const core = all.filter((f) => CORE.includes(f.name));
-check('the tools every chat starts with stay under 8,000 characters', size(core) < 8000, String(size(core)));
+// 1.5.207: reminders gained urgent (quiet hours) and offer_setup's list grew with the new opt-in switches; the
+// descriptions were trimmed to make room, and the cap moved from 8,000 to 8,100.
+check('the tools every chat starts with stay under 8,100 characters', size(core) < 8100, String(size(core)));
 check('no tool talks about GPU plumbing the brain can\'t act on', !all.some((f) => /steps out of the GPU/.test(f.description)));
 
 // "Let Bob learn from his tools": the line he kept is on the tool he is handed, and runTool keeps it.

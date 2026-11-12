@@ -128,6 +128,8 @@ export async function drawDoc(stage, t, { isActive = () => true, onTurnedOn = ()
   if (!j) { stage.innerHTML = '<p class="muted">I couldn\'t read that file. It may have moved.</p>'; return; }
   j.path = t.path;
   stage.innerHTML = docHtml(j, { pages: canShowPdf() });
+  // Read documents aloud (public/read-aloud.js, off unless turned on) puts its player above the words.
+  if (j.text && !j.off) { try { window.dispatchEvent(new CustomEvent('bob-doc-shown', { detail: { stage, path: t.path, name: j.name || t.name || '', text: j.text } })); } catch {} }
   stage.onclick = async (e) => {
     const on = e.target.closest('[data-docview-on]');
     if (on) {
