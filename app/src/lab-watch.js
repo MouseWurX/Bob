@@ -1,4 +1,4 @@
-// 🧪 Computer Science Lab, Playground: FNRI. A recording of which experts a mixture-of-experts brain picks,
+// 🧪 Computer Science Lab, Playground: fNRI. A recording of which experts a mixture-of-experts brain picks,
 // word by word, while it answers a few simple questions for each skill; the viewer window (public/watch.html) plays
 // it as a 3D block of voxels, one floor per layer, coloured by the skill each expert leans to, glowing as it is used.
 //   The questions are plain data below, so anyone can read them. A few per skill is enough to see the pattern; it is
@@ -567,7 +567,7 @@ export function cubeShapes(lab, models, friendly = (n) => n) {
     const brain = lab.brains().find((b) => b.id === model || base(b.gguf) === base(model) || b.name === label);
     let f = null; try { f = brain ? inspect(brain) : null; } catch {}
     if (!f?.layers) continue;
-    out.push({ label, experts: f.experts || CUBE_GROUPS, layers: f.layers, kind: f.experts ? 'experts' : 'neurons' });
+    out.push({ label, experts: f.experts || CUBE_GROUPS, layers: f.layers, kind: f.experts ? 'experts' : 'neurons', used: Number(f.used) || 0 }); // used: how many experts a word picks, for the cube's made-up glow
   }
   return out;
 }

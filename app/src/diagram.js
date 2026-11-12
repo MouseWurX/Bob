@@ -90,13 +90,13 @@ export function diagramTool() {
       type: 'function',
       function: {
         name: 'make_diagram',
-        description: 'Draw a flowchart or other diagram (steps of a process, decisions, a mind map, a timeline, an org chart, a sequence of messages, a project plan, a pie chart) in the chat. Write it in Mermaid. To change one you drew, call this again with the whole changed diagram.',
+        description: 'Draw a flowchart or other diagram in the chat, in Mermaid. To change one, send the whole changed diagram again.',
         parameters: {
           type: 'object',
           properties: {
             title: { type: 'string', description: 'A short title, 2 to 6 words.' },
-            mermaid: { type: 'string', description: 'The diagram in Mermaid, starting with its type: "flowchart TD" (top to bottom; LR for left to right), sequenceDiagram, mindmap, timeline, gantt, pie, classDiagram, erDiagram, stateDiagram-v2. Put labels with brackets or punctuation in quotes: A["Start (here)"].' },
-            format: { type: 'string', enum: Object.keys(FORMATS), description: 'Only when {{USER}} named a file type (png, svg or pdf). Leave it out otherwise: a Save as card lets them pick.' }
+            mermaid: { type: 'string', description: 'Mermaid, starting with its type: "flowchart TD" (or LR), sequenceDiagram, mindmap, timeline, gantt, pie, classDiagram, erDiagram, stateDiagram-v2. Quote labels that have brackets or punctuation: A["Start (here)"].' },
+            format: { type: 'string', enum: Object.keys(FORMATS), description: 'Only if {{USER}} named png, svg or pdf.' }
           },
           required: ['mermaid']
         }

@@ -14,6 +14,7 @@ import { keyEnv } from './cloud.js';
 import { LlamaCpp, cleanHarmony, textCalls, TEXT_CALL_START, MAX_REPLY_TOKENS } from './llamacpp.js';
 import { tidySchema } from './toolbox.js';
 import { parseJson } from './util.js';
+import { savedKey } from './secret-box.js';
 
 export const RENT_PREFIX = 'bob-rental-'; // every machine Bob starts is named this way, so he only ever stops his own
 
@@ -67,7 +68,7 @@ export function rentKeyEnv(base = keyEnv(), file = envFileVars()) {
   const mode = process.env.BOB_RENT_KEYS;
   if (mode === 'off') return {};
   if (mode === 'env') return { ...process.env };
-  return new Proxy(base, { get(target, k) { if (typeof k !== 'string') return undefined; return target[k] || file[k] || undefined; } });
+  return new Proxy(base, { get(target, k) { if (typeof k !== 'string') return undefined; return target[k] || file[k] || (KEY_NAME_RE.test(k) && savedKey(k)) || undefined; } });
 }
 export const KEY_NAME_RE = /^[A-Z][A-Z0-9_]{2,63}$/;
 export function keyEnvFor(rental, service = serviceOf(rental?.service)) {

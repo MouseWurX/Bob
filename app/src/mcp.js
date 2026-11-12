@@ -26,6 +26,7 @@ import { isSensitive } from './tools.js';
 import { limitOn, readOnlyRoots, handOn, handOffWhy, handsSettings } from './hands-settings.js';
 import { safeEnv, launchPlan, killTree, checkCommand, textProblem } from './hands-run.js';
 import { exeName } from './platform.js';
+import { theBox, lockOn, sealCopy, openCopy, BoxStuck, ensureBox } from './secret-box.js';
 
 const WIN = process.platform === 'win32';
 export const IDLE_MS = 5 * 60_000; // a server Bob started stops after 5 minutes unused
@@ -73,12 +74,18 @@ export function cleanServer(s = {}) {
 export function loadServers(cfg) {
   try {
     const j = JSON.parse(fs.readFileSync(file(cfg), 'utf8'));
-    return (Array.isArray(j?.servers) ? j.servers : []).map(cleanServer).slice(0, MAX_SERVERS);
+    // 🔐 the env values (often keys) are kept locked on disk (src/secret-box.js) and opened here.
+    return (Array.isArray(j?.servers) ? j.servers : []).map((s) => (s && s.env && typeof s.env === 'object' ? { ...s, env: openCopy(s.env, ensureBox(cfg), { all: true }) } : s)).map(cleanServer).slice(0, MAX_SERVERS);
   } catch { return []; }
 }
-function saveServers(cfg, list) {
+export function saveServers(cfg, list) {
   fs.mkdirSync(cfg.dataDir, { recursive: true });
-  writeJsonAtomic(file(cfg), { servers: list.slice(0, MAX_SERVERS) });
+  // Each app's env values locked (the box stuck: the save stops rather than writing a key down plain).
+  const servers = list.slice(0, MAX_SERVERS);
+  if (lockOn(cfg)) ensureBox(cfg);
+  const locked = lockOn(cfg) && Object.keys(servers.reduce((a, x) => ({ ...a, ...(x.env || {}) }), {})).length;
+  if (locked && !theBox().ready) throw new BoxStuck(theBox().label || 'no key');
+  writeJsonAtomic(file(cfg), { servers: locked ? servers.map((x) => ({ ...x, env: sealCopy(x.env || {}, theBox(), { all: true }) })) : servers });
   return list;
 }
 const uniqueId = (list, id) => { let n = 2, out = id; while (list.some((s) => s.id === out)) out = `${id}-${n++}`; return out; };
@@ -581,9 +588,9 @@ export function mcpTools(brain, { track } = {}) {
 
   const t = {};
   t.mcp_tools = {
-    schema: fn('mcp_tools', 'See the tools a connected app offers (Unreal Engine, Blender and so on, through MCP) and the inputs each one takes. Call it before mcp_use. Without app: lists the connected apps.', {
+    schema: fn('mcp_tools', 'List the tools a connected app offers (Blender, Unreal and so on) and their inputs. Call it before mcp_use. No app = list the connected apps.', {
       app: str('The connected app, by name (optional).'),
-      find: str('Optional: a few words to narrow the list, like "material" or "spawn".')
+      find: str('Optional: words to narrow the list, like "material".')
     }, []),
     async run(args, ctx) {
       off();
@@ -610,10 +617,10 @@ export function mcpTools(brain, { track } = {}) {
   };
 
   t.mcp_use = {
-    schema: fn('mcp_use', 'Use one tool of a connected app (from mcp_tools): the app, the exact tool name, and its inputs as an object. {{USER}} sees it on a card first.', {
+    schema: fn('mcp_use', 'Use one tool of a connected app, with its inputs. {{USER}} sees a card first.', {
       app: str('The connected app, by name.'),
       tool: str('The exact tool name, as mcp_tools listed it.'),
-      inputs: { type: 'object', description: 'The tool\'s inputs, like {"name": "Cube"}. Leave out if it takes none.' },
+      inputs: { type: 'object', description: 'Its inputs, like {"name": "Cube"}. Leave out if none.' },
       why: str('One short line: what this is for.')
     }, ['app', 'tool']),
     // "Allow the rest of this job" covers the same tool in the same app, except tools that run code or delete things:
@@ -670,4 +677,14 @@ export function mcpTools(brain, { track } = {}) {
     summary: ({ app, tool }) => `${app || 'app'}: ${tool || '?'}`.slice(0, 100)
   };
   return t;
+}
+
+// 🔐 At start: an older Bob kept these env values plain. Lock them in place (once; nothing changes when none are plain).
+export function lockServerKeys(cfg) {
+  if (!lockOn(cfg) || !theBox().ready) return 0;
+  let raw;
+  try { raw = JSON.parse(fs.readFileSync(file(cfg), 'utf8')); } catch { return 0; }
+  const plain = (Array.isArray(raw?.servers) ? raw.servers : []).reduce((n, s) => n + Object.values(s?.env || {}).filter((v) => typeof v === 'string' && v && !v.startsWith('bobsecret1:')).length, 0);
+  if (plain) saveServers(cfg, loadServers(cfg));
+  return plain;
 }

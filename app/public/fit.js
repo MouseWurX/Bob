@@ -3,6 +3,7 @@
 //   canDo:  can this model do that job at all? If not, it isn't listed for that job anywhere.
 //   suit:   does it run well on this PC (graphics card, RAM, disk)? ok, slow, no or blocked, with a plain reason.
 //   pickFor: which model is Bob's pick for that job on this PC? (scored for brains; the starter set otherwise)
+import { placeFor } from './place.js';
 import { gb } from './util.js';
 
 export const SLOT_NAMES = { bob: 'Brain', small: 'Quick brain', gaming: 'Gaming', deep: 'Deep thinking', tinker: 'Coding', reviewer: 'Review', eyes: 'Seeing pictures', embed: 'Memory (finding past chats)', voice: 'Hearing you', speech: 'Voice', image: 'Painter', edit: 'Picture editor', video: 'Video', music: 'Music', sfx: 'Sound effects', ledger: 'Spreadsheets', scout: 'Research', painter: 'Prompt writer', office: 'Office', phone: 'Phone' };
@@ -93,6 +94,9 @@ export function tooBigEverywhere(m, hw = {}, rooms = [], platform = '') {
   if (!m?.jobs || !m.vramGB || m.own || m.status?.state === 'installed' || m.status?.state === 'partial') return false;
   const here = suit(m, { vramGB: hw.vramGB, ramGB: hw.ramGB, arm: hw.arm }, platform);
   if (here.level !== 'no' || here.squeezed) return false;
+  // 1.5.205: the card alone no longer decides. A brain that runs with the rest in memory, or (made of experts) partly
+  // read from the drive, or with another Bob lending a hand, stays in the list and says how it runs (place.js).
+  if (hw.ramGB && placeFor(m, hw, rooms).where !== 'rent') return false;
   return !(rooms || []).some((r) => { const s = suit(m, r); return s.level !== 'no' || s.squeezed; });
 }
 

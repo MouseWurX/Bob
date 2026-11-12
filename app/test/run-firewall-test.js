@@ -1,11 +1,25 @@
 // 1.5.94 "Let my other replicant matrices in" with no manual steps: Bob listens on Tailscale without a restart, and
 // on Windows offers one firewall rule (one Windows prompt), scoped to Tailscale addresses and Bob's port.
 import fs from 'node:fs';
-import { RULE, TAILSCALE_RANGE, CARD_PORT, MARK, ruleScript, removeScript, encode, firewallState, changeRule, firewallHome } from '../src/firewall.js';
+import { RULE, TAILSCALE_RANGE, CARD_PORT, MARK, ruleScript, removeScript, encode, firewallState, changeRule, firewallHome, firewallUdp } from '../src/firewall.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
 const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+
+// ---------- SCUT: the lent card's gate on UDP too ----------
+{
+  const fake = (out, ok = true) => async () => ({ ok, out, err: '' });
+  check('SCUT off: the rule stays TCP only', !ruleScript(7777).includes('-Protocol UDP') && !firewallUdp({ share: { lendCard: true } }) && !firewallUdp({ share: { scut: true } }));
+  const u = ruleScript(7777, '', { udp: true });
+  check('SCUT on with a lent card: a UDP half for the card port only, under the same name (Remove takes both)', firewallUdp({ share: { lendCard: true, scut: true } }) && /-Protocol UDP -LocalPort 50052 -RemoteAddress 100\.64\.0\.0\/10 /.test(u) && (u.match(new RegExp(`-DisplayName '${RULE.replace(/[()]/g, '\\$&')}'`, 'g')) || []).length === 3);
+  let st = await firewallState(7777, { os_: 'win', udp: true, run: fake(`Rule Name: ${RULE}\nLocalPort: 7777,50052\nProtocol: TCP\n`) });
+  check('SCUT on, the rule without UDP is offered again', st.behind && !st.ruleHere);
+  st = await firewallState(7777, { os_: 'win', udp: true, run: fake(`Rule Name: ${RULE}\nLocalPort: 7777,50052\nProtocol: TCP\nRule Name: ${RULE}\nLocalPort: 50052\nProtocol: UDP\n`) });
+  check('...and with it, the rule is there', st.ruleHere && !st.behind);
+  st = await firewallState(7777, { os_: 'linux', udp: true, run: async (f, a) => ({ ok: a.includes('ufw'), out: '', err: '' }) });
+  check('Linux with ufw: the line to run adds UDP for the card port', /50052 proto udp/.test(st.line));
+}
 
 // ---------- The rule itself ----------
 {

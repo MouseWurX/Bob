@@ -1,5 +1,6 @@
 // Bob's tools. Each tool has a JSON schema for the model, an optional approval check,
 // and a run function. Anything risky goes through approval; the inn folder is Bob's own space.
+import { appendText } from './vault.js'; // 🔒 Lock my chats and memory
 import fs from 'node:fs';
 import path from 'node:path';
 import { isInside, insideAny, appDir, findOutput } from './config.js';
@@ -13,7 +14,7 @@ import { recallOn, tagLine } from './recall.js';
 import { diagramTool } from './diagram.js';
 import { saveAsTool } from './save-as.js';
 import { isPrivateHost } from './security-web.js';
-import { selfWorkOn, hasCodeCopy, codeCopyRoot, codeCopyDir, gatherBrains, pickBigBrain, selfCtx, selfWorkParts, SELF_STEPS, repoNamed, reposOf, baseOf } from './self-work.js';
+import { selfWorkOn, hasCodeCopy, codeCopyRoot, codeCopyDir, gatherBrains, pickBigBrain, pickedMissing, selfCtx, selfWorkParts, SELF_STEPS, repoNamed, reposOf, baseOf } from './self-work.js';
 import { runManaged } from './self-work-plan.js';
 import { ownEntries } from './own-models.js';
 import { ensureTool } from './self-work-tools.js';
@@ -21,6 +22,7 @@ import { catalogFileFor } from './llamacpp.js';
 import { ctxLabel } from './model-ctx.js';
 import { isDoc, docText, OLD_EXT, MAX_DOC_BYTES } from './doc-text.js';
 import { docToolsOn } from './my-docs.js';
+import { codeMap, linesAround } from './code-map.js';
 
 const MAX_READ = 20000;
 // Runnable file types Bob won't write outside a project, on every platform (Windows, Mac and Linux kinds together).
@@ -67,8 +69,11 @@ const SECRET_NAME = /^(local\.properties|keystore\.properties|google-services\.j
 const SECRET_EXT = new Set(['.jks', '.keystore', '.p12', '.pfx', '.pem', '.key', '.db', '.sqlite', '.sqlite3', '.kdbx']);
 // Bob's own config is always off-limits; the rest only while the "Keep secret files private" hard limit is on.
 export function isSensitive(cfg, file) {
-  const own = [path.join(appDir, 'config.json'), process.env.BOB_CONFIG].filter(Boolean);
+  // Bob-Net link keys (sealed SCUT packets, src/scut-seal.js) are always off-limits, like config.json.
+  const own = [path.join(appDir, 'config.json'), process.env.BOB_CONFIG, cfg?.dataDir ? path.join(cfg.dataDir, 'bob-net-link-keys.json') : ''].filter(Boolean);
   if (own.some((f) => isInside(f, file))) return true;
+  // 🔐 Bob's locked store and the box that opens it (src/secret-box.js): always off-limits, like his config.
+  if (cfg.dataDir && path.resolve(path.dirname(file)) === path.resolve(cfg.dataDir) && /^(keys\.json|secret-box(\..*)?\.json|mcp-servers\.json)$/i.test(path.basename(file))) return true;
   if (!limitOn(cfg, 'secrets')) return false;
   const base = path.basename(file);
   if (SECRET_NAME.test(base) || SECRET_EXT.has(path.extname(base).toLowerCase())) return true;
@@ -148,9 +153,9 @@ export function buildTools(cfg) {
   const t = {};
 
   t.notice_board = {
-    schema: fn('notice_board', "Read or rewrite {{USER}}'s notice board (to-do quest log). To change it, read it first, then write the whole new board.", {
+    schema: fn('notice_board', "Read or rewrite {{USER}}'s notice board (their to-do list). To change it, read it first, then write the whole board.", {
       action: str('read or write', { enum: ['read', 'write'] }),
-      content: str('The complete new board in Markdown (only for write).')
+      content: str('write: the whole new board, in Markdown.')
     }, ['action']),
     async run({ action, content }) {
       const file = cfg.noticeBoard;
@@ -175,7 +180,7 @@ export function buildTools(cfg) {
     // is only offered then, so the tool costs nothing extra while the setting is off).
     get schema() {
       const banks = recallOn(cfg) ? Object.keys(cfg.projects || {}) : [];
-      return fn('remember', 'Save a lasting fact about {{USER}} (a preference, a plan, a detail that will matter later). Never secrets or passwords.', {
+      return fn('remember', 'Save a lasting fact about {{USER}}, like a preference or a plan. Never secrets or passwords.', {
         fact: str('One short sentence.'),
         ...(recallOn(cfg) ? { project: str(`Only for a fact about one project: its name${banks.length ? ` (${banks.join(', ')})` : ''}. Leave out for anything general.`) } : {})
       }, ['fact']);
@@ -184,18 +189,18 @@ export function buildTools(cfg) {
       if (!fact) throw new Error('Nothing to remember.');
       const clean = String(fact).replace(/\s+/g, ' ').trim();
       const line = `- ${recallOn(cfg) ? tagLine(`${clean} (${today(cfg)})`, project) : `${clean} (${today(cfg)})`}\n`;
-      fs.appendFileSync(cfg.memoryFile, line);
+      appendText(cfg, cfg.memoryFile, line);
       return recallOn(cfg) && project ? `Remembered, in the ${String(project).replace(/[\][]/g, '').trim()} memory bank.` : 'Remembered.';
     },
     summary: ({ fact, project }) => `remember: ${String(fact).slice(0, 80)}${project ? ` (${project})` : ''}`
   };
 
   t.reminders = {
-    schema: fn('reminders', "Set, list or cancel reminders. Bob pops up and taps {{USER}} on the shoulder at the time (while the PC is on).", {
+    schema: fn('reminders', "Set, list or cancel a reminder. Bob pops up at the time, while the PC is on.", {
       action: str('add, list or cancel', { enum: ['add', 'list', 'cancel'] }),
-      time: str('For add: local time as YYYY-MM-DDTHH:mm ({{USER}}\'s time zone).'),
-      text: str('For add: what to remind about.'),
-      id: str('For cancel: the reminder id from list.')
+      time: str('add: local time, YYYY-MM-DDTHH:mm.'),
+      text: str('add: what to remind about.'),
+      id: str('cancel: the id from list.')
     }, ['action']),
     async run({ action, time, text, id }) {
       const list = loadReminders(cfg);
@@ -220,7 +225,7 @@ export function buildTools(cfg) {
   };
 
   t.list_folder = {
-    schema: fn('list_folder', "List the files in a folder on {{USER}}'s PC. {{USER}}'s home folder here is {{HOME}}; never guess another.", { path: str('Full folder path.') }),
+    schema: fn('list_folder', "List the files in a folder. {{USER}}'s home folder is {{HOME}}; never guess another.", { path: str('Full folder path.') }),
     async run({ path: p }) {
       const dir = resolveUserPath(p);
       if (!insideAny(cfg.readRoots, dir)) throw new Error(`I'm not allowed to look in ${dir}. Allowed: ${cfg.readRoots.join('; ')}`);
@@ -237,12 +242,13 @@ export function buildTools(cfg) {
   };
 
   t.read_file = {
-    schema: fn('read_file', "Read a text file on {{USER}}'s PC. A long file comes in parts: the end of each part says how to read the next.", {
+    schema: fn('read_file', "Read a text file. A long file comes in parts; each part says how to get the next.", {
       path: str('Full file path.'),
-      part: { type: 'integer', description: 'Optional: which part of a long file, 1, 2, 3 ... Default 1.' },
-      find: str('Optional: a word or phrase to look for. You get the part it is in.')
+      part: { type: 'integer', description: 'Optional: which part, 1, 2, 3... Default 1.' },
+      find: str('Optional: words to look for; you get the part they are in.'),
+      line: { type: 'integer', description: 'Optional: a line number, like one from an error. You get the lines around it.' }
     }, ['path']),
-    async run({ path: p, part, find }) {
+    async run({ path: p, part, find, line }) {
       const file = resolveUserPath(p);
       if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to read ${file}.`);
       if (isSensitive(cfg, file)) throw new Error(SECRET_MSG);
@@ -262,13 +268,32 @@ export function buildTools(cfg) {
         return '(That looks like a binary file, so I can\'t read it as text.)';
       }
       const text = buf.toString('utf8');
+      if (Number(line) > 0) return linesAround(text, line); // Nov 11: straight to an error's file:line (code-map.js)
       return pieceOf(text, { part, find }, MAX_READ, 'read_file again with the same path and');
     },
-    summary: ({ path: p, part, find }) => `read ${p}${find ? ` (looking for ${find})` : part > 1 ? ` (part ${part})` : ''}`
+    summary: ({ path: p, part, find, line }) => `read ${p}${Number(line) > 0 ? ` (around line ${line})` : find ? ` (looking for ${find})` : part > 1 ? ` (part ${part})` : ''}`
+  };
+
+  // Nov 11: the code map (code-map.js): one line per source file, so a small brain finds the right file first.
+  t.code_map = {
+    schema: fn('code_map', 'Map a codebase: one line per source file with what it is for and the main names in it. Call it first on a big project, then read only the file you need.', {
+      project: str('Optional: project name. Leave out for the main project.', { enum: Object.keys(cfg.projects || {}) }),
+      folder: str('Optional: a full folder path instead, like one folder of a big project.')
+    }, []),
+    async run({ project, folder }) {
+      const all = cfg.projects || {};
+      if (project && !all[project]) throw new Error(`Unknown project. I know: ${Object.keys(all).join(', ') || 'none yet'}`);
+      const root = folder ? resolveUserPath(folder) : all[project] || all[cfg.defaultProject] || Object.values(all)[0];
+      if (!root) throw new Error('No projects are set up yet. Give me a full folder path to map.');
+      if (!insideAny(cfg.readRoots, root) && !Object.values(all).some((r) => isInside(r, root))) throw new Error(`I'm not allowed to read ${root}.`);
+      if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) throw new Error(`There's no folder at ${root}.`);
+      return codeMap(root, { skip: (f) => isSensitive(cfg, f) });
+    },
+    summary: ({ project, folder }) => `map the code in ${folder || project || 'the main project'}`
   };
 
   t.write_file = {
-    schema: fn('write_file', "Create or overwrite a text file on {{USER}}'s PC. New files inside the inn folder need no approval; anything else asks {{USER}} first.", {
+    schema: fn('write_file', "Create or overwrite a text file. New files in the inn folder need no OK; anything else asks {{USER}} first.", {
       path: str('Full file path.'),
       content: str('The full file contents.')
     }),
@@ -311,15 +336,15 @@ export function buildTools(cfg) {
 
   // Bob knows his own settings and features (self-help.js): the same Help text as the window, plus what's set now.
   t.bob_help = {
-    schema: fn('bob_help', "Look up how you (Bob) work: your settings, switches, pages and features, where each one is, and what is set right now. Use it whenever {{USER}} asks about setting you up, changing a setting, or what a feature does, and give the exact place to press. Your own features and words (Bob-Net, the Lab, FNRI, the Forge, the moot, sessions, Hands) are explained here: look here first, before searching files or the web.", {
-      topic: str('What to look up, in plain words, for example "web search switch" or "gaming session".')
+    schema: fn('bob_help', "Look up how you (Bob) work: your settings, switches, pages and features, where each is and what is set now. When {{USER}} asks about a setting, a feature or one of your own words (Bob-Net, the Lab, fNRI, the Forge, the moot, sessions, Hands), look here first, before searching files or the web, and name the exact place to press.", {
+      topic: str('What to look up, like "web search switch".')
     }),
     async run({ topic }) { return bobHelp(cfg, String(topic || '')); },
     summary: ({ topic }) => `Help: ${topic || 'settings'}`
   };
 
   t.web_search = {
-    schema: fn('web_search', 'Search the web (DuckDuckGo). Returns titles, links and snippets. Operators work: "exact phrase", -leaveout, site:example.com, filetype:pdf, intitle:word, OR.', { query: str('Search words, with operators if they help.'), when: str('Optional: only results from the past day, week, month or year.', { enum: ['day', 'week', 'month', 'year'] }) }, ['query']),
+    schema: fn('web_search', 'Search the web. Returns titles, links and snippets. Operators work: "exact phrase", -word, site:, filetype:, intitle:, OR.', { query: str('Search words.'), when: str('Optional: only the past day, week, month or year.', { enum: ['day', 'week', 'month', 'year'] }) }, ['query']),
     async run({ query, when }, { signal }) {
       const df = { day: 'd', week: 'w', month: 'm', year: 'y' }[String(when || '').toLowerCase()];
       const res = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query) + (df ? `&df=${df}` : ''), {
@@ -342,10 +367,10 @@ export function buildTools(cfg) {
   };
 
   t.fetch_page = {
-    schema: fn('fetch_page', 'Read a web page as text. A long page comes in parts: the end of each part says how to read the next. Code and raw GitHub files come as they are.', {
+    schema: fn('fetch_page', 'Read a web page as text. A long page comes in parts; each part says how to get the next.', {
       url: str('http or https link.'),
-      part: { type: 'integer', description: 'Optional: which part of a long page, 1, 2, 3 ... Default 1.' },
-      find: str('Optional: a word or phrase to look for, like a setting or function name. You get the part it is in.')
+      part: { type: 'integer', description: 'Optional: which part, 1, 2, 3... Default 1.' },
+      find: str('Optional: words to look for; you get the part they are in.')
     }, ['url']),
     async run({ url, part, find }, { signal }) {
       // Redirects are followed by hand so every hop gets the same home-network check as the first address.
@@ -369,52 +394,52 @@ export function buildTools(cfg) {
   };
 
   t.make_image = {
-    schema: fn('make_image', "Paint a picture on {{USER}}'s PC. The chat brain steps out of the GPU while it paints.", {
-      prompt: str('A new picture: the full image prompt. An edit (with a reference): a short instruction saying only what to change, like "Replace his hard hat with a silver tiara and his coveralls with a pink gown". Don\'t describe the whole picture again, or it gets repainted.'),
-      width: { type: 'integer', description: 'Width in pixels, default 1024. Leave out for edits: they keep the picture\'s own shape.' },
-      height: { type: 'integer', description: 'Height in pixels, default 1024. Leave out for edits.' },
-      reference: { type: 'array', items: { type: 'string' }, description: 'Optional: pictures to edit or paint from. Up to 4. Names from the shelf or attached in chat, "last" for the newest picture you made, or a painted file name (like 2026-11-02-ab12cd34.png).' },
-      mode: str('With a reference: keep_look = edit it or keep its look (same character or scene; needs a picture-edit model) (default); start_from = rework the reference picture itself (the look can drift). new = paint something new even though a picture is attached.', { enum: ['keep_look', 'start_from', 'new'] }),
-      strength: { type: 'number', description: 'start_from only: how much may change, 0.1 (barely) to 0.95 (almost all). Default 0.6.' }
+    schema: fn('make_image', "Paint a picture, or change one (give a reference).", {
+      prompt: str('New picture: the full prompt. Edit: only what to change, like "Swap his hard hat for a silver tiara". Don\'t describe the whole picture again, or it gets repainted.'),
+      width: { type: 'integer', description: 'Default 1024. Leave out for edits.' },
+      height: { type: 'integer', description: 'Default 1024. Leave out for edits.' },
+      reference: { type: 'array', items: { type: 'string' }, description: 'Optional: up to 4 pictures to edit or paint from: a shelf or attached name, "last" (your newest) or a painted file name.' },
+      mode: str('With a reference: keep_look = edit it, same character or scene (default); start_from = rework the picture itself (the look can drift); new = paint something new anyway.', { enum: ['keep_look', 'start_from', 'new'] }),
+      strength: { type: 'number', description: 'start_from only: how much changes, 0.1 to 0.95. Default 0.6.' }
     }, ['prompt']),
     async run(args, ctx) { return ctx.brain.makeImage(args, ctx); },
     summary: ({ prompt }) => `image: ${String(prompt).slice(0, 80)}`
   };
 
   t.make_video = {
-    schema: fn('make_video', "Make a short video clip on {{USER}}'s PC (slow: minutes). The chat brain steps out of the GPU while it films.", {
-      prompt: str('The full video prompt: subject, motion, camera, style.'),
-      seconds: { type: 'integer', description: 'Length in seconds, 1 to 5, default 2.' },
-      width: { type: 'integer', description: 'Width in pixels, default 832.' },
-      height: { type: 'integer', description: 'Height in pixels, default 480.' },
-      reference: { type: 'array', items: { type: 'string' }, description: 'Optional: a reference picture name; the clip starts from that picture.' }
+    schema: fn('make_video', "Make a short video clip (takes minutes).", {
+      prompt: str('Subject, motion, camera, style.'),
+      seconds: { type: 'integer', description: '1 to 5, default 2.' },
+      width: { type: 'integer', description: 'Default 832.' },
+      height: { type: 'integer', description: 'Default 480.' },
+      reference: { type: 'array', items: { type: 'string' }, description: 'Optional: a picture name to start from.' }
     }, ['prompt']),
     async run(args, ctx) { return ctx.brain.makeVideo(args, ctx); },
     summary: ({ prompt }) => `video: ${String(prompt).slice(0, 80)}`
   };
 
   t.make_music = {
-    schema: fn('make_music', "Make a piece of music on {{USER}}'s PC with the audio workshop (a few minutes). The chat brain steps out of the GPU while it plays.", {
-      prompt: str('Style tags: genre, mood, instruments, tempo. Like "chiptune, upbeat, 140 bpm, square lead". If {{USER}} gave no style, pick one that fits and say what you picked.'),
-      lyrics: str('Optional lyrics with [verse] and [chorus] markers. Leave empty for instrumental.'),
-      seconds: { type: 'integer', description: 'Length in seconds, 10 to 240, default 30.' },
-      title: str('Optional: a short song title, 2 to 5 words, shown on its player. Make one up if {{USER}} gave none.')
+    schema: fn('make_music', "Make a piece of music (takes a few minutes).", {
+      prompt: str('Style tags: genre, mood, instruments, tempo, like "chiptune, upbeat, 140 bpm". No style given? Pick one and say which.'),
+      lyrics: str('Optional, with [verse] and [chorus]. Empty = instrumental.'),
+      seconds: { type: 'integer', description: '10 to 240, default 30.' },
+      title: str('Optional: 2 to 5 words. Make one up if none given.')
     }, ['prompt']),
     async run(args, ctx) { return ctx.brain.makeSound('music', args, ctx); },
     summary: ({ prompt }) => `music: ${String(prompt).slice(0, 80)}`
   };
 
   t.make_sound = {
-    schema: fn('make_sound', 'Make a short sound effect on {{USER}}\'s PC with the audio workshop.', {
+    schema: fn('make_sound', 'Make a short sound effect.', {
       prompt: str('What it sounds like: "heavy wooden door creaking open in a stone hall".'),
-      seconds: { type: 'integer', description: 'Length in seconds, 1 to 20, default 5.' }
+      seconds: { type: 'integer', description: '1 to 20, default 5.' }
     }, ['prompt']),
     async run(args, ctx) { return ctx.brain.makeSound('sfx', args, ctx); },
     summary: ({ prompt }) => `sound: ${String(prompt).slice(0, 80)}`
   };
 
   t.workshop_list = {
-    schema: fn('workshop_list', 'List the ComfyUI workflows in the advanced workshop: what each one makes and whether it takes reference pictures.', {}),
+    schema: fn('workshop_list', 'List the ComfyUI workflows: what each makes and if it takes reference pictures.', {}),
     async run() {
       const all = listWorkflows(cfg);
       if (!all.length) return `No workflows yet. The user can put ComfyUI "Export (API)" files in ${workshopDir(cfg)}.`;
@@ -424,7 +449,7 @@ export function buildTools(cfg) {
   };
 
   t.workshop_run = {
-    schema: fn('workshop_run', 'Run a ComfyUI workflow from the advanced workshop. Use only when Bob\'s own painter can\'t do the job, or when {{USER}} names a workflow.', {
+    schema: fn('workshop_run', 'Run a ComfyUI workflow. Only when your own painter can\'t do it, or {{USER}} names one.', {
       workflow: str('Workflow name from workshop_list.'),
       prompt: str('The prompt to put in its prompt box.'),
       negative: str('Optional negative prompt.'),
@@ -435,9 +460,9 @@ export function buildTools(cfg) {
   };
 
   t.save_reference = {
-    schema: fn('save_reference', "Put a picture on the reference shelf so it can be used again by name: one Bob painted (give its file name) or one attached in chat (give its current name).", {
-      picture: str('The painted file name (like 2026-11-01-ab12cd34.png) or the attached picture\'s name.'),
-      name: str('Short name to use later, like "Captain Mira" or "Harbour at dusk".'),
+    schema: fn('save_reference', "Put a picture on the reference shelf to reuse by name: one you painted or one attached in chat.", {
+      picture: str('The painted file name or the attached picture\'s name.'),
+      name: str('Short name, like "Captain Mira".'),
       kind: str('What it is.', { enum: ['character', 'scene', 'style', 'object'] }),
       notes: str('Optional: anything to remember about it.')
     }, ['picture', 'name', 'kind']),
@@ -457,9 +482,9 @@ export function buildTools(cfg) {
   };
 
   t.ask_specialist = {
-    schema: fn('ask_specialist', "Put on a different hat (and brain) for a focused job. The answer goes straight to {{USER}}.", {
-      hat: str('tinker = coding, including fixing a crash, error or bug in a project, ledger = data and spreadsheets, scout = web research with sources, painter = image/video prompts, reviewer = careful second look', { enum: Object.keys(HATS) }),
-      task: str('Everything the job needs: the request and any details or pasted text from the chat. Pass it on as it is; the workbench finds files itself, so don\'t ask for paths or line numbers first.')
+    schema: fn('ask_specialist', "Hand a focused job to a specialist hat with its own brain. The answer goes straight to {{USER}}.", {
+      hat: str('tinker = code, bugs and crashes; ledger = data and spreadsheets; scout = web research with sources; painter = picture and video prompts; reviewer = a careful second look', { enum: Object.keys(HATS) }),
+      task: str('The whole job: the request plus any details or pasted text, as given. The workbench finds files itself; don\'t ask for paths first.')
     }),
     async run({ hat, task }, ctx) { return ctx.brain.runHat(hat, task, ctx); },
     summary: ({ hat }) => `hat: ${hat}`,
@@ -467,12 +492,12 @@ export function buildTools(cfg) {
   };
 
   // "Let Bob work on his own app" (self-work.js, off by default): the coding hat on the code copy (a separate copy of Bob's code),
-  // only on the biggest brain (Bobert, else stock Qwen3.6 35B) with Long memory stretched past 256K. Every edit and
+  // on the brain picked in Settings (the biggest by default: Bobert, else stock Qwen3.6 35B) with Long memory stretched past 256K. Every edit and
   // command still asks; the running Bob (his program folder and settings) stays locked.
   t.work_on_repo = {
-    schema: fn('work_on_repo', "Change code in one of the repositories {{USER}} listed for you (Settings, \"Let Bob work on repositories\"), or in your own app (Bob's code: the repository \"Bob\") when {{USER}} asks you to work on yourself. The job runs at your workbench on that repository's code copy, never the original or the Bob that's running, and comes back as a git branch and a patch for {{USER}} to look over. {{USER}} approves every change.", {
-      repo: str('Which repository, by its name in the list ("Bob" for your own app).'),
-      job: str('What {{USER}} wants changed, in their words, with any details from the chat.')
+    schema: fn('work_on_repo', "Change code in one of {{USER}}'s listed repositories, or in your own app (repository \"Bob\") when asked. Works on a code copy, never the original, and returns a branch and patch. {{USER}} approves every change.", {
+      repo: str('Repository name ("Bob" for your own app).'),
+      job: str('What to change, in {{USER}}\'s words, with details from the chat.')
     }, ['job']),
     async run({ repo: which, job }, ctx) {
       const where = 'Settings, How Bob works, "Let Bob work on repositories"';
@@ -481,12 +506,14 @@ export function buildTools(cfg) {
       if (!repo) throw new Error(`I don't have a repository called "${which}". The list: ${reposOf(cfg).map((r) => r.name).join(', ')}. Add one in ${where}.`);
       if (!hasCodeCopy(cfg, repo)) throw new Error(`There's no code copy of ${repo.name} to work on yet. Press "Make the code copy" next to it in ${where}.`);
       if (!String(job || '').trim()) throw new Error('Say what to change.');
-      const brains = gatherBrains(cfg, { own: ownEntries(cfg), catalogFile: (id) => catalogFileFor(cfg, id) });
+      const brains = gatherBrains(cfg, { own: ownEntries(cfg), catalog: ctx.brain?.shop?.catalog?.models, catalogFile: (id) => catalogFileFor(cfg, id) });
+      const missing = pickedMissing(cfg, brains);
       const pick = pickBigBrain(cfg, brains);
-      if (!pick) throw new Error('This job only runs on my biggest brain, Bobert or Qwen3.6 35B, and neither is on this replicant matrix. Get Qwen3.6 35B-A3B in Get models, or add your Bobert file under Brains of your own.');
+      if (missing && !pick) throw new Error(`The brain picked for these jobs, ${missing.name}, isn't downloaded yet. Get it in Get models, or pick another in ${where}.`);
+      if (!pick) throw new Error(`There's no brain for this job on this replicant matrix yet. Pick one in ${where}, or get Qwen3.6 35B-A3B (the one I'd use) in Get models.`);
       const want = selfCtx(cfg);
       const got = await Promise.resolve(ctx.brain.fitCtx?.(pick.id, want, { longRun: true })).catch(() => null) || want;
-      ctx.emit?.({ type: 'announce', text: `🔧 Off to the workbench: ${repo.own ? 'my own code' : repo.name}, in the copy at ${codeCopyDir(cfg, repo)}, on ${pick.name} with ${ctxLabel(got)} of memory${got < want ? ` (${ctxLabel(want)} won't fit this replicant matrix's card and RAM)` : ' (Long memory)'}. Every change shows its card.` });
+      ctx.emit?.({ type: 'announce', text: `🔧 Off to the workbench: ${repo.own ? 'my own code' : repo.name}, in the copy at ${codeCopyDir(cfg, repo)}, on ${pick.name}${missing ? ` (${missing.name}, the one picked, isn't downloaded yet)` : ''} with ${ctxLabel(got)} of memory${got < want ? ` (${ctxLabel(want)} won't fit this replicant matrix's card and RAM)` : ' (Long memory)'}. Every change shows its card.` });
       // The owner's ask: Git and Node.js 20+ fetched when they're missing (his own copies, in his folder only).
       // Node only for Bob himself and repositories with a package.json.
       const runOn = handOn(cfg, 'run');
@@ -527,9 +554,9 @@ export function buildTools(cfg) {
   t.search_files = {
     // 1.5.32: project is optional. Brains kept asking "which project?" when the user didn't say; now leaving it out
     // searches every project (results say which file each hit is in).
-    schema: fn('search_files', "Search the text inside {{USER}}'s project source files. Returns matching lines with file and line number. If {{USER}} didn't name a project, leave project out: it searches all of them.", {
-      project: str('Project name (optional; leave out to search every project)', { enum: Object.keys(cfg.projects || {}) }),
-      text: str('Text to look for (case-insensitive).')
+    schema: fn('search_files', "Search the text in {{USER}}'s project source files. Returns matching lines with file and line number.", {
+      project: str('Optional: project name. Leave out unless {{USER}} named one: it searches all.', { enum: Object.keys(cfg.projects || {}) }),
+      text: str('Text to look for.')
     }, ['text']),
     async run({ project, text }) {
       const all = cfg.projects || {};
@@ -566,9 +593,9 @@ export function buildTools(cfg) {
   };
 
   t.edit_file = {
-    schema: fn('edit_file', "Change part of a file: replace one exact piece of text with new text. The find text must appear exactly once (include a few surrounding lines to make it unique). {{USER}} approves each change.", {
+    schema: fn('edit_file', "Replace one exact piece of text in a file. find must appear exactly once (add nearby lines to make it unique). {{USER}} approves each change.", {
       path: str('Full file path.'),
-      find: str('The exact existing text to replace, copied from the file.'),
+      find: str('The exact text, copied from the file.'),
       replace: str('The new text.')
     }),
     approvalGroup: 'edit',
@@ -599,9 +626,9 @@ export function buildTools(cfg) {
   // Always defined; Bob only sees it when a cloud helper is switched on and has a key (see brain.toolSchemas).
   {
     t.ask_cloud = {
-      schema: fn('ask_cloud', 'Hand one self-contained job to a paid cloud AI helper (a sub-agent). Costs money and sends the task off the PC, so {{USER}} approves each time. Only for jobs too big for the local brains, or when {{USER}} asks.', {
+      schema: fn('ask_cloud', 'Hand one job to a paid cloud helper. Costs money and leaves the PC, so {{USER}} approves each time. Only for jobs too big for the local brains, or when asked.', {
         provider: str('Which helper (id)'),
-        task: str('The full job, self-contained. Include everything the helper needs; it cannot see files or this chat.')
+        task: str('The whole job. The helper can\'t see files or this chat.')
       }),
       check({ provider, task }) {
         const c = cloudProviders(cfg).find((x) => x.id === provider || x.name === provider);
@@ -624,8 +651,8 @@ export function buildTools(cfg) {
   // 1.5.127 Rented brains: Bob asks for the rented brain in his slot. The tool only shows the Hire it card; nothing is
   // spent until the owner presses it, and then the whole job runs again on the rented brain (brain.answerRent).
   t.hire_brain = {
-    schema: fn('hire_brain', 'Ask {{USER}} to run this job on the rented brain (a big brain hired from an online service, in the Rented brain slot). Shows a card with the cost; nothing is hired until they press it. Only when the job is too big for the brains on this replicant matrix (a very long chat or file, a model that is not here), or when {{USER}} asks for it.', {
-      why: str('One short line: why this job needs the rented brain')
+    schema: fn('hire_brain', 'Offer to run this job on a rented online brain. Shows a card with the cost; nothing is hired until {{USER}} presses it. Only when the job is too big for the brains here, or when asked.', {
+      why: str('One short line: why.')
     }, []),
     async run({ why }, ctx) {
       const r = ctx.brain?.offerRent?.(ctx, { why: String(why || '').slice(0, 200) });

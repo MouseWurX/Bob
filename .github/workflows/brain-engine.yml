@@ -9,14 +9,14 @@ name: Brain Engine
 on:
   push:
     branches: [main]
-    paths: ['app/engine/**', '.github/workflows/brain-engine.yml']
+    paths: ['app/engine/**', '!app/engine/**/*.md', '.github/workflows/brain-engine.yml'] # docs alone (README, ENGINE-MAP) build nothing
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths: ['app/engine/**', '.github/workflows/brain-engine.yml']
+    paths: ['app/engine/**', '!app/engine/**/*.md', '.github/workflows/brain-engine.yml'] # docs alone (README, ENGINE-MAP) build nothing
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Also put the two files on a test pre-release (brain-engine-<tag>), for Get models, Engines'
+        description: 'Also put the two files on a test pre-release (brain-engine-v<brainEngineVersion>), for Get models, Engines'
         type: boolean
         default: false
 
@@ -37,6 +37,8 @@ jobs:
         run: |
           tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
           echo "TAG=$tag" >> "$GITHUB_ENV"
+          # Brain Engine's own version number names the release and the files (brain-engine-v3-win-x64.zip); TAG stays the llama.cpp it's built on.
+          echo "BEV=v$(node -p "require('./app/package.json').bob.brainEngineVersion")" >> "$GITHUB_ENV"
           git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
           # A one-commit clone counts "build 1"; say the tag's number instead, so --version reads like llama.cpp's own builds.
           sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
@@ -60,7 +62,7 @@ jobs:
       - name: Pack (llama and server files, and the card-sharing backend; never the card backends)
         shell: bash
         run: |
-          out=brain-engine-$TAG-win-x64
+          out=brain-engine-$BEV-win-x64
           mkdir "$out"
           cd llama.cpp/build/bin/Release
           cp llama-server.exe $(ls *.dll | grep -v '^ggml') "../../../../$out/"
@@ -72,7 +74,30 @@ jobs:
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
           cp app/engine/README.md "$out/README-Brain-Engine.md"
           ls -la "$out"
-          7z a "$out.zip" "./$out/*"
+      # Smart App Control (app/docs/SIGNING.md): off until the owner's Microsoft Artifact Signing account is set up.
+      # Then: variable ARTIFACT_SIGNING_ENABLED = true, ARTIFACT_SIGNING_ENDPOINT, ARTIFACT_SIGNING_ACCOUNT,
+      # ARTIFACT_SIGNING_PROFILE, AZURE_TENANT_ID, AZURE_CLIENT_ID, and the secret AZURE_CLIENT_SECRET.
+      - name: Sign every program file (Microsoft Artifact Signing)
+        if: ${{ vars.ARTIFACT_SIGNING_ENABLED == 'true' }}
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\brain-engine-${{ env.BEV }}-win-x64
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: List unsigned files (Smart App Control; fails only once REQUIRE_SIGNED is "true")
+        shell: bash
+        run: node app/installer/check-signed.js "brain-engine-$BEV-win-x64" --summary "$GITHUB_STEP_SUMMARY" ${{ vars.REQUIRE_SIGNED == 'true' && '--require' || '' }}
+      - name: Zip
+        shell: bash
+        run: 7z a "brain-engine-$BEV-win-x64.zip" "./brain-engine-$BEV-win-x64/*"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: brain-engine-win-x64
@@ -82,7 +107,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash app/engine/publish.sh "$TAG" brain-engine-*-win-x64.zip
+        run: bash app/engine/publish.sh "$BEV" "$TAG" brain-engine-*-win-x64.zip
 
   linux:
     # draft pull requests run nothing
@@ -96,6 +121,8 @@ jobs:
         run: |
           tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
           echo "TAG=$tag" >> "$GITHUB_ENV"
+          # Brain Engine's own version number names the release and the files (brain-engine-v3-win-x64.zip); TAG stays the llama.cpp it's built on.
+          echo "BEV=v$(node -p "require('./app/package.json').bob.brainEngineVersion")" >> "$GITHUB_ENV"
           git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
           # A one-commit clone counts "build 1"; say the tag's number instead, so --version reads like llama.cpp's own builds.
           sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
@@ -110,7 +137,7 @@ jobs:
           cmake --build build-cv -j4 --target llama-cvector-generator llama-export-lora
       - name: Pack
         run: |
-          out=brain-engine-$TAG-linux-x64
+          out=brain-engine-$BEV-linux-x64
           mkdir "$out"
           cp llama.cpp/build/bin/llama-server llama.cpp/build/bin/llama-bench llama.cpp/build/bin/llama-gguf-split llama.cpp/build/bin/ggml-rpc-server llama.cpp/build/bin/llama-diffusion-cli llama.cpp/build-cv/bin/llama-cvector-generator llama.cpp/build-cv/bin/llama-export-lora $(ls llama.cpp/build/bin/*.so* | grep -v '/libggml') llama.cpp/build/bin/libggml-rpc.so* "$out/"
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
@@ -124,4 +151,4 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash app/engine/publish.sh "$TAG" brain-engine-*-linux-x64.tar.gz
+        run: bash app/engine/publish.sh "$BEV" "$TAG" brain-engine-*-linux-x64.tar.gz

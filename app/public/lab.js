@@ -13,12 +13,20 @@ import { createForge } from './lab-forge.js'; // 1.5.159 the Forge tab
 import { createGuard, packGroups, guardPartsLine, packMinutesLine } from './lab-guard.js';
 import { createPro } from './lab-pro.js'; // 1.5.168 Simple / Professional // 1.5.164 Guard rails sandbox and grouped packs
 import { createSenses } from './lab-senses.js'; // Give it eyes / Give it ears, a card in the Forge tab
-import { createPlayground } from './lab-playground.js'; // 1.5.156 Playground: the quantization ladder
+import { createPlayground, PLAY_PAGES } from './lab-playground.js'; // 1.5.156 Playground: the quantization ladder
 import { createPeek } from './lab-peek.js'; // 1.5.164 Playground: Peek inside
 import { homeReportHtml } from './lab-home-ways.js'; // 1.5.164 the Forge's home ways' lines in the runs list
+import { goBtn, goWhere } from './lab-go.js'; // a button on every "get one in Get models" message
+import { queueHtml, queueClick, queueBtn, queueAdd } from './lab-queue.js'; // Nov 11: the job queue
+import { mineHtml } from './lab-mine.js'; // My Lab: what this Lab has made and measured, in one list
 
 const $ = (id) => document.getElementById(id);
-const TABS = [['make', 'Make a brain'], ['forge', 'Forge'], ['learn', 'Learn'], ['challenges', 'Challenges'], ['playground', 'Playground']];
+// The tabs are sorted by what you're doing. Each thing lives on one tab: making, teaching, testing, looking inside,
+// learning how brains work, rented runs, and My Lab (what you've made so far).
+const TABS = [['make', 'Make a brain'], ['teach', 'Teach'], ['test', 'Test'], ['inside', 'Look inside'], ['learn', 'Learn'], ['forge', 'Forge'], ['mine', 'My Lab']];
+// The pages under a tab. 'challenges' and 'learn' are drawn here; the rest are the Playground's pages (public/lab-playground.js).
+const SUBS = { teach: ['teach', 'best'], test: ['challenges', 'smaller', 'longer', 'faster'], inside: ['peek', 'watch'], learn: ['learn', 'diffusion'] };
+const SUB_LABEL = { challenges: 'Challenges', learn: 'Experiments', ...Object.fromEntries(PLAY_PAGES) };
 const STEPS = [['brain', '1 Pick a brain'], ['lessons', '2 Lessons'], ['smaller', '3 Make it smaller'], ['where', '4 Where it runs'], ['test', '5 Test and use']];
 // One job at a time (the owner asked that every module can be done on its own). Each job shows only the steps and the
 // parts of step 3 it needs; Everything is the five steps as they were. The recipe is the same shape either way.
@@ -31,21 +39,40 @@ const JOBS = [
   // The sixth card is a Forge way, not a Make a brain job: it opens the Forge tab with that way unfolded, same as pressing Use this way there.
   { id: 'refusals', title: 'Take out the refusal habit', what: 'Stops a brain saying no by reflex. The refusals you keep stay. Free, on the Forge tab.', steps: [], parts: [], forge: 'refusals' },
 ];
-// What the switch changes on each tab, said right beside it, so Professional never looks like a button that does nothing.
+// What Professional adds on each tab, said beside the switch in one short line, so it never looks like a button that does nothing.
 const MODE_NOTES = {
-  make: { simple: 'Plain words. Professional gives each job and step its proper name, like quantization or expert pruning; Show the recipe has the exact commands.', pro: 'Each job and step leads with its proper name, plain words in brackets. Show the recipe has the exact commands.' },
-  forge: { simple: 'The New Forge run form keeps to the usual choices. Professional adds which skills to protect, the running files to make, how the brain is taught back, and each way\'s proper name.', pro: 'Each way leads with its proper name. The New Forge run form shows every control: skills to protect, running files, teaching back.' },
-  learn: { simple: 'This tab is the same in both modes.', pro: 'This tab is the same in both modes.' },
-  challenges: { simple: 'Tick, run, read the score. Professional adds run settings, the question log, your own challenge packs, Guard rails in detail, every challenge as a column, and the kind of test each one is.', pro: 'Each challenge leads with the kind of test it is ("-style" means written like that benchmark, not the benchmark). Run settings, the question log, your own challenge packs and Guard rails in detail are below; the scoreboard can show every challenge as a column.' },
-  playground: { simple: 'The ladder makes all six sizes. Professional lets you pick which sizes, and gives each page its proper name.', pro: 'Each page leads with its proper name. On Smaller, pick which sizes the ladder makes.' },
+  make: 'Professional adds the proper name of each job and step, like quantization or expert pruning.',
+  teach: 'Professional adds each page\'s proper name.',
+  test: 'Professional adds run settings, the question log, your own packs, and a pick of sizes on Smaller.',
+  inside: 'Professional adds each page\'s proper name.',
+  learn: 'The same in both modes.',
+  forge: 'Professional adds skills to protect, running files, teaching back and proper names.',
+  mine: 'The same in both modes.',
 };
 const TYPE_NOTE = { Q4_K_M: 'Q4 (recommended)', Q5_K_M: 'Q5', Q6_K: 'Q6', Q8_0: 'Q8', Q3_K_M: 'Q3 (only for brains meant for 8 GB or less)' };
+// Show the wobble (Nov 11): "71 ± 4" when three runs were made, else just the score.
+const withWobble = (r, id) => (r.scores[id] == null ? '-' : r.wobble?.[id] != null ? `${r.scores[id]} ± ${r.wobble[id]}` : r.scores[id]);
 const PARTS = { general: 'General knowledge', tools: 'Picking the right tool', coding: 'Coding', following: 'Following instructions' };
 
-export function createLab({ api, note }) {
+// `go(where)` opens Get models, Settings (Engines) or the chat for the "take me there" buttons. `page`: the Lab fills its
+// own window (public/lab.html) instead of opening as a box over the chat.
+export function createLab({ api, note, go, page = false }) {
   const dlg = $('lab'), body = $('lab-body');
   $('lab-close').onclick = () => dlg.close();
   let view = null, step = 'brain', plan = null, showRecipe = false, msg = '', askUnload = null, tab = 'make', job = '';
+  const folds = { fill: false, senses: false }; // which fold-away parts are open, kept across redraws
+  const sub = { teach: 'teach', test: 'challenges', inside: 'peek', learn: 'learn' }; // the page showing under each tab
+  const isCh = () => tab === 'test' && sub.test === 'challenges';
+  const isLearn = () => tab === 'learn' && sub.learn === 'learn';
+  const isPlay = () => Boolean(SUBS[tab]) && !isCh() && !isLearn(); // one of the Playground's pages is showing
+  // Show a tab, and a page under it if one is named; a Playground page reads its lists the first time.
+  async function show(t, s = '') {
+    if (!TABS.some(([id]) => id === t)) return;
+    tab = t; if (s && SUBS[t]?.includes(s)) sub[t] = s;
+    if (isPlay()) await pg.go(sub[tab]);
+    draw();
+  }
+  const subNav = () => `<div class="lab-tabs lab-subtabs" role="tablist" aria-label="${esc(TABS.find(([id]) => id === tab)?.[1] || 'Lab')} pages">${SUBS[tab].map((id) => `<button type="button" role="tab" id="play-page-${id}" class="lab-tab${sub[tab] === id ? ' on' : ''}" aria-selected="${sub[tab] === id}" tabindex="${sub[tab] === id ? 0 : -1}" data-playpage="${id}">${esc(SUB_LABEL[id])}</button>`).join('')}</div>`;
   const jobOf = () => JOBS.find((j) => j.id === job) || null;
   const nm = (label) => labName(label, view?.mode === 'pro'); // Professional: the proper name first, plain words after
   setLabMode(() => view?.mode === 'pro');
@@ -60,8 +87,9 @@ export function createLab({ api, note }) {
   }
   const jobsHtml = () => `<fieldset class="lab-jobs"><legend>What do you want to do?</legend><p class="muted">Each job shows only the steps it needs.</p><div class="lab-cards">${JOBS.map((j) => `<button type="button" class="lab-card${job === j.id ? ' on' : ''}" data-job="${j.id}" aria-pressed="${job === j.id}"><strong>${nm(j.title)}</strong><span class="muted">${esc(j.what)}</span></button>`).join('')}</div></fieldset>`;
   const learn = createLearn({ api, info: () => view, saves: () => saves });
+  const chBody = () => ({ from: ch.from, packs: ch.packs, ...(ch.bench && view.benchHere ? { bench: true } : {}), ...(ch.wobble ? { wobble: true } : {}), ...(view.mode === 'pro' ? { gen: px.gen() } : {}) });
   // 1.5.153 Challenges: which brain, which packs, the scoreboard's sort, and the Save panels (one per result).
-  const ch = { from: '', packs: ['quiz', 'reasoning', 'sums', 'rules', 'tools', 'code'], bench: false, sort: 'name', down: false, by: 'class', kind: 'all', here: false, fits: false, wide: false }; // 1.5.162 the board by class of model
+  const ch = { from: '', packs: ['quiz', 'reasoning', 'sums', 'rules', 'tools', 'code'], bench: false, wobble: false, sort: 'name', down: false, by: 'class', kind: 'all', here: false, fits: false, wide: false }; // 1.5.162 the board by class of model
   const saves = {};
   const saveState = (k) => (saves[k] ||= { open: false, format: 'png', hardware: false, saved: '', error: '' });
   let measures = [], picked = [], table = null, saved = '';
@@ -77,8 +105,8 @@ export function createLab({ api, note }) {
   const px = createPro({ api, view: () => view }); // 1.5.168
   const sn = createSenses({ api, draw: () => { if (tab === 'forge') draw(); } });
   // 1.5.164 Peek inside: Cut these out opens Make a brain, step 3, with the keep file; Send to the Forge opens the Forge tab (the file is in its keep-file list).
-  const pk = createPeek({ api, view: () => view, cutWith: async ({ brain: id, file, experts }) => { r.from = id; const b = brain(); if (!r.name && b) r.name = `${b.name} Lab`; r.template = ''; r.smaller = { sight: false, hearing: false, cut: { how: 'file', file, keep: experts, cover: 0.95, strong: [] }, files: [], measure: false, try: false, tryStop: true }; tab = 'make'; step = 'smaller'; await replan(); $('lab-tab-make')?.focus(); }, toForge: () => { tab = 'forge'; fg.reload().then(() => draw()); draw(); $('lab-tab-forge')?.focus(); } });
-  document.addEventListener('lab-page-ready', () => { if (tab === 'playground' && dlg.open) draw(); }); // 1.5.167 Longer, Faster, Teach it
+  const pk = createPeek({ api, view: () => view, cutWith: async ({ brain: id, file, experts }) => { r.from = id; const b = brain(); if (!r.name && b) r.name = `${b.name} Lab`; r.template = ''; r.smaller = { sight: false, hearing: false, cut: { how: 'file', file, keep: experts, cover: 0.95, strong: [] }, files: [], measure: false, try: false, tryStop: true }; tab = 'make'; job = 'cut'; step = 'smaller'; await replan(); $('lab-tab-make')?.focus(); }, toForge: () => { tab = 'forge'; fg.reload().then(() => draw()); draw(); $('lab-tab-forge')?.focus(); } });
+  document.addEventListener('lab-page-ready', () => { if (isPlay() && dlg.open) draw(); }); // 1.5.167 Longer, Faster, Teach it
   const pg = createPlayground({ api, view: () => view, saveState, sections: [pk] });
   const rc = createRecipes({ api, recipe: r, view: () => view, replan: () => replan(), draw: () => draw() });
   const brain = () => view?.brains.find((b) => b.id === r.from);
@@ -122,7 +150,7 @@ export function createLab({ api, note }) {
   }
 
   function brainStep() {
-    if (!view.brains.length) return '<p>There are no brains on this replicant matrix the Lab can work with yet. Get one in Get models first (any brain that runs on Bob\'s own engine).</p>';
+    if (!view.brains.length) return '<p>There are no brains on this replicant matrix the Lab can work with yet. Get one in Get models first (any brain that runs on Bob\'s own engine).' + goBtn('models') + '</p>';
     return `<fieldset><legend>Which brain do you want to start from?</legend>${view.brains.map((b) => {
       const f = b.facts;
       if (!f) return radio('from', b.id, false, b.name, '', b.error || 'Bob couldn\'t read its file.');
@@ -295,7 +323,7 @@ export function createLab({ api, note }) {
         <fieldset><legend>How many experts to keep per layer</legend>${cut.how === 'cover' ? radio('keep', 'auto', !cut.keep, 'As many as the skills need (recommended)', 'Bob works it out. The report says how many he kept.') : ''}${cutSizes.map((c) => radio('keep', String(c.keep), cut.keep === c.keep, `${c.keep} experts · about ${c.gb} GB`, c.fit)).join('')}
         <label class="lab-opt"><input type="radio" name="keep" value="custom" ${!cut.keep || cutSizes.some((c) => c.keep === cut.keep) ? '' : 'checked'}> <span><strong>Custom</strong> <input id="lab-keep-n" type="number" min="${f.used || 1}" max="${(f.experts || 2) - 1}" value="${cut.keep || ''}" aria-label="Experts to keep per layer"></span></label></fieldset>
         ${box('fold', cut.fold === true, 'Fold the rest in, instead of dropping them', 'Blends each dropped expert into the kept one most like it, so some of what it knew stays. Slower than a plain cut; still needs retraining after.', f.fullSize === false ? `Needs the full-size file (F16 or BF16); ${b?.name || 'this brain'}'s is a running file.` : '')}
-        ${box('try', s.try, 'Try it first, before cutting', `Tests ${b?.name || 'the brain'} with only the kept experts turned on, so you see the score before anything is cut.`, view.brainEngine ? '' : 'Needs Brain Engine, Bob\'s Lab engine (a version of llama.cpp that can switch experts off). Get it in Settings > Engines: Brain Engine.')}
+        ${box('try', s.try, 'Try it first, before cutting', `Tests ${b?.name || 'the brain'} with only the kept experts turned on, so you see the score before anything is cut.`, view.brainEngine ? '' : 'Needs Brain Engine, Bob\'s own engine (it can switch experts off). Get it in Settings > Engines: Brain Engine.')}
         ${s.try ? `<div class="lab-sub">${box('tryStop', s.tryStop, 'Stop if it scores more than 10 points lower on the Lab test', 'Then nothing is cut, and you can keep more experts or protect more skills.')}</div>` : ''}
       </div>` : ''}
       ${!hasPart('later') ? '' : later('Layer cut (Experimental)', 'Removes the least-used layers.')}
@@ -331,15 +359,15 @@ export function createLab({ api, note }) {
   }
 
   function runsHtml() {
-    if (!view.runs.length) return '';
-    return `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.kind === 'write' ? `lessons, taught by ${esc(x.from)}` : x.kind === 'challenge' ? 'challenges' : x.kind === 'ladder' ? 'quantization ladder' : x.kind === 'ladder-ask' ? 'same question, every size' : x.kind === 'watch' ? 'a scan of its experts' : x.kind === 'mix' ? `a mix of ${esc(x.from)}` : x.kind === 'stack' ? `stacked layers of ${esc(x.from)}` : x.kind === 'refusals' ? `${esc(x.from)} with the refusal habit taken out` : x.kind === 'refusals-try' ? 'try it first, nothing written' : x.kind === 'build' || x.kind === 'sample' ? `${x.kind === 'sample' ? 'sample lessons' : 'lessons'} from your files, taught by ${esc(x.from)}` : `from ${esc(x.from)}`} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
+    if (!view.runs.length) return queueHtml(view.queue);
+    return queueHtml(view.queue) + `<section class="lab-runs"><h3>Lab jobs</h3><ul class="tlist">${view.runs.map((x) => `<li><strong>${esc(x.name)}</strong> <span class="muted">${x.kind === 'write' ? `lessons, taught by ${esc(x.from)}` : x.kind === 'challenge' ? 'challenges' : x.kind === 'ladder' ? 'quantization ladder' : x.kind === 'ladder-ask' ? 'same question, every size' : x.kind === 'watch' ? 'a scan of its experts' : x.kind === 'mix' ? `a mix of ${esc(x.from)}` : x.kind === 'stack' ? `stacked layers of ${esc(x.from)}` : x.kind === 'refusals' ? `${esc(x.from)} with the refusal habit taken out` : x.kind === 'refusals-try' ? 'try it first, nothing written' : x.kind === 'build' || x.kind === 'sample' ? `${x.kind === 'sample' ? 'sample lessons' : 'lessons'} from your files, taught by ${esc(x.from)}` : `from ${esc(x.from)}`} · ${x.state === 'running' ? `${esc(x.stepLabel || '')}${x.progress ? `, ${x.progress}%` : ''}` : x.state === 'done' ? `done${x.sizeGB ? `, ${x.sizeGB} GB` : ''}` : esc(x.state)}</span>
       ${x.state === 'running' ? ' <button type="button" class="link" data-stop>Stop</button>' : ''}
       ${x.state === 'failed' || x.state === 'stopped' ? `<br><span class="muted">${esc(x.error || '')}</span>` : ''}
       ${(x.notes || []).map((n) => `<br><span class="muted">${esc(n)}</span>`).join('')}
       ${x.kind === 'write' && x.report ? `<br><span class="muted">${x.report.lessons} lessons written in ${x.report.minutes} minutes. Pick it in step 2, under A lesson set I wrote or built here.</span>` : ''}
       ${x.kind === 'build' && x.report ? `<br><span class="muted">${x.report.lessons} lessons built in ${x.report.minutes} minutes${x.report.held ? `, ${x.report.held} passages held back` : ''}. Pick it in step 2, under A lesson set I wrote or built here, or open it under Sets built from your files.</span>` : ''}
       ${x.kind === 'sample' && x.report ? `<br><span class="muted">${x.report.lessons} sample lessons in ${x.report.minutes} minutes${x.report.held ? `, ${x.report.held} passages held back` : ''}. They're under Build a new set from my files, in step 2.</span>` : ''}
-      ${x.kind === 'challenge' && x.report ? `<table class="lab-report"><caption class="muted">Challenges (out of 100)</caption><tr><th scope="col">Challenge</th><th scope="col">Score</th><th scope="col">Right</th></tr>${x.report.challenges.map((c) => `<tr><th scope="row">${esc(c.title)}</th><td>${c.score ?? '-'}</td><td>${c.skipped ? esc(c.skipped) : `${c.right} of ${c.of}`}${c.parts ? `<br><span class="muted">${esc(guardPartsLine(c.parts))}</span>` : ''}${c.note ? `<br><span class="muted">${esc(c.note)}</span>` : ''}</td></tr>`).join('')}</table>${x.report.bench ? `<p class="muted">${esc(x.report.bench.line || `The standard speed test didn't finish: ${x.report.bench.error || ''}`)}</p>` : ''}${view.mode === 'pro' ? px.reportExtraHtml(x) : ''}${saveHtml(x.id, saveState(x.id), view.hardware)}` : ''}
+      ${x.kind === 'challenge' && x.report ? `<table class="lab-report"><caption class="muted">Challenges (out of 100)</caption><tr><th scope="col">Challenge</th><th scope="col">Score</th><th scope="col">Right</th></tr>${x.report.challenges.map((c) => `<tr><th scope="row">${esc(c.title)}</th><td>${c.score ?? '-'}${c.wobble != null ? ` ± ${c.wobble}` : ''}</td><td>${c.skipped ? esc(c.skipped) : `${c.right} of ${c.of}`}${c.parts ? `<br><span class="muted">${esc(guardPartsLine(c.parts))}</span>` : ''}${c.note ? `<br><span class="muted">${esc(c.note)}</span>` : ''}</td></tr>`).join('')}</table>${x.report.bench ? `<p class="muted">${esc(x.report.bench.line || `The standard speed test didn't finish: ${x.report.bench.error || ''}`)}</p>` : ''}${view.mode === 'pro' ? px.reportExtraHtml(x) : ''}${saveHtml(x.id, saveState(x.id), view.hardware)}` : ''}
       ${x.report?.folded ? `<p class="muted">Folded, not dropped: ${Number(x.report.folded.experts)} experts were blended into the ${Number(x.report.folded.kept)} kept per layer. It hasn't been taught back yet, so test it beside a plain cut at the same size.</p>` : ''}
       ${x.report?.coverage ? `<table class="lab-report"><caption class="muted">Coverage cut: kept ${x.report.coverage.experts} of ${x.report.coverage.of} experts per layer</caption><tr><th scope="col">Skill</th><th scope="col">Kept, on average</th><th scope="col">Worst layer</th></tr>${x.report.coverage.skills.map((k) => `<tr><th scope="row">${esc(k.name)}</th><td>${k.average}%</td><td>${k.worst}% (layer ${k.worstLayer})</td></tr>`).join('')}</table>` : ''}
       ${homeReportHtml(x)}
@@ -364,7 +392,7 @@ export function createLab({ api, note }) {
     const key = ch.sort, val = (r) => (key === 'name' ? r.name.toLowerCase() : key === 'size' ? r.sizeGB ?? -1 : key === 'speed' ? r.tps ?? -1 : key === '__more' ? moreOf(r)?.mean ?? -1 : r.scores[key] ?? -1);
     rows.sort((a, b) => { const x = val(a), y = val(b); const c = x < y ? -1 : x > y ? 1 : 0; return ch.down ? -c : c; });
     const head = ['Brain', ...cols.map(([, t]) => t), 'Size', 'Words a second'];
-    return { title: 'Lab scoreboard', head, rows: rows.map((r) => [r.name, ...cols.map(([id]) => (id === '__more' ? (moreOf(r) ? `${moreOf(r).mean} (${moreOf(r).n} of ${moreOf(r).of})` : '-') : r.scores[id] ?? '-')), r.sizeGB ? `${r.sizeGB} GB` : '-', r.tps ?? '-']), note: 'Scores out of 100, temperature 0, thinking off. Only comparable with other scores from the same replicant matrix.' };
+    return { title: 'Lab scoreboard', head, rows: rows.map((r) => [r.name, ...cols.map(([id]) => (id === '__more' ? (moreOf(r) ? `${moreOf(r).mean} (${moreOf(r).n} of ${moreOf(r).of})` : '-') : withWobble(r, id))), r.sizeGB ? `${r.sizeGB} GB` : '-', r.tps ?? '-']), note: 'Scores out of 100, temperature 0, thinking off. ± is the wobble from three runs: a gap smaller than it may be luck. Only comparable with other scores from the same replicant matrix.' };
   }
   // 1.5.161 The local leaderboard: brains ranked inside classes of models by their total weights, not by graphics card.
   const wts = (r) => (r.paramsB ? `${r.paramsB}B${r.moe && r.activeB ? `, ${r.activeB}B at work` : ''}` : '-');
@@ -372,12 +400,12 @@ export function createLab({ api, note }) {
   function classTable() { // the same boards, for Save: one table with the class in its own column
     const name = Object.fromEntries((view.classes || []).map((c) => [c.id, c.label]));
     const rows = boardRows().sort((a, b) => (view.classes || []).findIndex((c) => c.id === a.cls) - (view.classes || []).findIndex((c) => c.id === b.cls) || order(a, b));
-    return { title: 'Lab leaderboard by class', head: ['Class', 'Brain', 'Overall', 'Weights', 'Quant', 'Size', 'Words a second', ...PACK_COLS().map(([, t]) => t)], rows: rows.map((r) => [name[r.cls] || 'Not placed yet', r.name, r.overall ?? '-', wts(r), r.quant || '-', r.sizeGB ? `${r.sizeGB} GB` : '-', r.bench ? `${r.tps ?? '-'} (standard: reads ${r.bench.read ?? '-'}, writes ${r.bench.write ?? '-'})` : r.tps ?? '-', ...PACK_COLS().map(([id]) => (r.scores[id] == null ? '-' : r.old.includes(id) ? `${r.scores[id]} (older test)` : r.scores[id]))]), note: 'Classes by total weights. Overall = average of every challenge, run with the current version of each test; brains that haven\'t run them all sit below the ones that have. Scores out of 100, temperature 0, thinking off. Only comparable with other scores from the same replicant matrix.' };
+    return { title: 'Lab leaderboard by class', head: ['Class', 'Brain', 'Overall', 'Weights', 'Quant', 'Size', 'Words a second', ...PACK_COLS().map(([, t]) => t)], rows: rows.map((r) => [name[r.cls] || 'Not placed yet', r.name, r.overall ?? '-', wts(r), r.quant || '-', r.sizeGB ? `${r.sizeGB} GB` : '-', r.bench ? `${r.tps ?? '-'} (standard: reads ${r.bench.read ?? '-'}, writes ${r.bench.write ?? '-'})` : r.tps ?? '-', ...PACK_COLS().map(([id]) => (r.scores[id] == null ? '-' : r.old.includes(id) ? `${r.scores[id]} (older test)` : withWobble(r, id)))]), note: 'Classes by total weights. Overall = average of every challenge, run with the current version of each test; brains that haven\'t run them all sit below the ones that have. Scores out of 100, temperature 0, thinking off. Only comparable with other scores from the same replicant matrix.' };
   }
   const order = (a, b) => Number(Boolean(b.all)) - Number(Boolean(a.all)) || (b.overall ?? -1) - (a.overall ?? -1) || (b.tps ?? 0) - (a.tps ?? 0) || (a.sizeGB ?? 0) - (b.sizeGB ?? 0);
   function classTables() {
     const rows = boardRows(), classes = [...(view.classes || []), { id: '', label: 'Not placed yet', hint: 'Scored before classes. Run any challenge on it again to place it.' }];
-    const cell = (r, id) => { const v = r.scores[id]; if (v == null) return '<td>-</td>'; return r.old.includes(id) ? `<td class="muted"><s>${v}</s><span class="sr-only"> (older test, not counted)</span></td>` : `<td>${v}</td>`; };
+    const cell = (r, id) => { const v = r.scores[id]; if (v == null) return '<td>-</td>'; return r.old.includes(id) ? `<td class="muted"><s>${v}</s><span class="sr-only"> (older test, not counted)</span></td>` : `<td>${esc(String(withWobble(r, id)))}</td>`; };
     const out = classes.map((c) => {
       const list = rows.filter((r) => r.cls === c.id).sort(order); // ran them all first, then overall, speed, smaller file
       if (!list.length) return '';
@@ -401,17 +429,21 @@ export function createLab({ api, note }) {
       <tr>${sortBtn('name', 'Brain')}${showCols().map(([id, title]) => sortBtn(id, title)).join('')}${sortBtn('size', 'Size')}${sortBtn('speed', 'Words a second')}</tr>
       ${t.rows.map((r) => `<tr><th scope="row">${esc(r[0])}</th>${r.slice(1).map((c) => `<td>${esc(String(c))}</td>`).join('')}</tr>`).join('')}</table>
       ${saveHtml('board', saveState('board'), view.hardware)}`;
-    return `<div id="lab-page-challenges" role="tabpanel" aria-labelledby="lab-tab-challenges">
+    return `<div id="lab-page-test" role="tabpanel" aria-labelledby="lab-tab-test">${subNav()}
       <p class="muted">Short tests, scored out of 100. The same brain always gets the same score. Compare scores here only: they aren't the numbers in papers.</p>
       ${runsHtml()}
-      <fieldset><legend>Which brain?</legend>${brains.length ? brains.map((b) => radio('chfrom', b.id, ch.from === b.id, `${b.name}${b.madeInLab ? ' (made in the Lab)' : ''}`, `${b.facts.sizeGB} GB. ${b.fit}`)).join('') : '<p>There are no brains here the Lab can run yet. Get one in Get models first.</p>'}</fieldset>
+      <fieldset><legend>Which brain?</legend>${brains.length ? brains.map((b) => radio('chfrom', b.id, ch.from === b.id, `${b.name}${b.madeInLab ? ' (made in the Lab)' : ''}`, `${b.facts.sizeGB} GB. ${b.fit}`)).join('') : '<p>There are no brains here the Lab can run yet. Get one in Get models first.' + goBtn('models') + '</p>'}</fieldset>
       ${packGroups(view.packs).map((grp) => `<fieldset><legend>${esc(grp.label)}</legend>${grp.packs.map((p) => `<label class="lab-opt"><input type="checkbox" data-pack="${esc(p.id)}" ${ch.packs.includes(p.id) ? 'checked' : ''}> <span><strong>${nm(p.title)}</strong> <span class="muted">· ${p.count} questions · ${esc(packMinutesLine(p.minutes, view.cardGB, view.sharedMemory))}</span><br><span class="muted">${esc(p.what)}</span></span></label>`).join('')}</fieldset>`).join('')}
       ${askUnload?.challenge ? `<div class="setup-offer" role="alert"><strong>Bob's brain is on the graphics card</strong><span>${esc(askUnload.join(', '))} is loaded. The challenges need the card, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-unload>Unload it and start</button><button type="button" class="link" data-nounload>Not now</button></div></div>` : ''}
       ${view.mode === 'pro' ? px.myPacksHtml(ch.packs) + px.settingsHtml() : ''}
-      <label class="lab-opt"><input type="checkbox" data-chbench ${ch.bench ? 'checked' : ''} ${view.benchHere ? '' : 'disabled'}> <span><strong>${nm('Add the standard speed test')}</strong> <span class="muted">· about 1 to 3 minutes · off unless ticked</span><br><span class="muted">${view.benchHere ? 'llama-bench, the speed test other people post: how fast the brain reads 512 words and writes 128. Your numbers can be compared with theirs for the same card.' : 'llama-bench isn\'t here. It comes with the built-in engine and with Brain Engine (Settings > Engines).'}</span></span></label>
-      <div class="row"><button type="button" class="get" data-chgo ${ch.from && ch.packs.length && !busy ? '' : 'disabled'}>${busy ? 'The Lab is busy' : 'Run the challenges'}</button></div>
+      <label class="lab-opt"><input type="checkbox" data-chwobble ${ch.wobble ? 'checked' : ''}> <span><strong>Show the wobble</strong> <span class="muted">· three times as long · off unless ticked</span><br><span class="muted">Runs each challenge three times and shows ± beside the score, so a small win isn't taken for a real one. These runs don't change the scoreboard's scores, only its ±.</span></span></label>
+      <label class="lab-opt"><input type="checkbox" data-chbench ${ch.bench ? 'checked' : ''} ${view.benchHere ? '' : 'disabled'}> <span><strong>${nm('Add the standard speed test')}</strong> <span class="muted">· about 1 to 3 minutes · off unless ticked</span><br><span class="muted">${view.benchHere ? 'llama-bench, the speed test other people post: how fast the brain reads 512 words and writes 128. Your numbers can be compared with theirs for the same card.' : 'llama-bench isn\'t here. It comes with the built-in engine and with Brain Engine (Settings, Engines).'}</span></span></label>
+      <div class="row"><button type="button" class="get" data-chgo ${ch.from && ch.packs.length && !busy ? '' : 'disabled'}>${busy ? 'The Lab is busy' : 'Run the challenges'}</button>${queueBtn('challenge', Boolean(ch.from && ch.packs.length))}</div>
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
       <section class="lab-compare"><h3>Scoreboard</h3>${board}</section>
+      <section class="lab-recheck" aria-labelledby="lab-recheck-h"><h3 id="lab-recheck-h">After engine updates</h3>
+        <label class="lab-opt"><input type="checkbox" data-recheck ${view.recheck?.on ? 'checked' : ''}> <span><strong>Check my main brain after engine updates</strong> <span class="muted">· off unless ticked</span><br><span class="muted">When the engine updates, I run the Lab test on my main brain once I've been quiet for 10 minutes, and tell you if its score or speed dropped.</span></span></label>
+        ${view.recheck?.last ? `<p class="muted">Last check (${esc(view.recheck.last.when)}, ${esc(view.recheck.last.engine || 'engine update')}): ${view.recheck.last.after ? `${esc(view.recheck.last.name)} ${view.recheck.last.before ? `${view.recheck.last.before.score} → ` : ''}${view.recheck.last.after.score} on the Lab test${view.recheck.last.after.tps ? `, ${view.recheck.last.after.tps} words a second` : ''}. ${view.recheck.last.warn ? 'It slipped.' : 'No real drop.'}` : esc(view.recheck.last.note || '')}</p>` : ''}</section>
       ${gd.html()}
     </div>`;
   }
@@ -422,25 +454,25 @@ export function createLab({ api, note }) {
     // 1.5.168 Keep it simple / Professional: one switch for the whole Lab. Simple shows what most people need; Professional
     // shows every control a tab has. Saved in settings, so it's the same next time and on every tab.
     const pro = view.mode === 'pro';
-    const modeRow = `<div class="lab-mode" role="radiogroup" aria-label="How much to show"><button type="button" class="lab-chip${pro ? '' : ' on'}" role="radio" aria-checked="${!pro}" data-labmode="simple">Keep it simple</button><button type="button" class="lab-chip${pro ? ' on' : ''}" role="radio" aria-checked="${pro}" data-labmode="pro">Professional</button><span class="muted">${MODE_NOTES[tab]?.[pro ? 'pro' : 'simple'] || ''}</span></div>`;
-    // 1.5.17x The Lab's engine, on every tab: which one it makes, tests and runs brains with (also in Settings > Engines).
+    // One line under the tabs: the mode switch, what Professional adds here, and the Lab's engine (also in Settings, Engines).
     const en = view.engine || {};
-    const engineRow = `<div class="lab-engine row"><label class="pick-inline"><span>Lab engine</span><select data-labengine aria-label="Lab engine">${[['', 'Same as Bob\'s brains'], ['brainengine', 'Brain Engine'], ['llamacpp', 'llama.cpp']].map(([v, l]) => `<option value="${v}" ${v === (en.pick || '') ? 'selected' : ''} ${v === 'brainengine' && !en.brainEngineHere ? 'disabled' : ''}>${l}${v === 'brainengine' && !en.brainEngineHere ? ' (not here yet)' : ''}</option>`).join('')}</select></label><span class="muted">${en.found ? `Working with ${esc(en.name || 'llama.cpp')}${en.version ? ` (${esc(en.version)})` : ''}.` : 'No engine found yet: get one in Settings, Engines.'}</span></div>`;
-    const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}</div>${modeRow}${engineRow}`;
-    if (tab === 'learn') { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-learn" role="tabpanel" aria-labelledby="lab-tab-learn"></div></div>`; learn.mount($('lab-page-learn')); return; }
-    if (tab === 'challenges') { body.innerHTML = `<div class="lab">${tabs}${challengesHtml()}</div>`; return; }
-    if (tab === 'forge') { body.innerHTML = `<div class="lab">${tabs}${fg.html(sn.html())}</div>`; return; }
-    if (tab === 'playground') { body.innerHTML = `<div class="lab">${tabs}${pg.html(runsHtml())}</div>`; pg.mounted(); return; }
+    const modeRow = `<div class="lab-top"><div class="lab-mode" role="radiogroup" aria-label="How much to show"><button type="button" class="lab-chip${pro ? '' : ' on'}" role="radio" aria-checked="${!pro}" data-labmode="simple">Keep it simple</button><button type="button" class="lab-chip${pro ? ' on' : ''}" role="radio" aria-checked="${pro}" data-labmode="pro">Professional</button></div><span class="muted lab-mode-note">${esc(MODE_NOTES[tab] || '')}</span>
+      <div class="lab-engine"><label class="pick-inline"><span>Lab engine</span><select data-labengine aria-label="Lab engine">${[['', 'Same as Bob\'s brains'], ['brainengine', 'Brain Engine'], ['llamacpp', 'llama.cpp']].map(([v, l]) => `<option value="${v}" ${v === (en.pick || '') ? 'selected' : ''} ${v === 'brainengine' && !en.brainEngineHere ? 'disabled' : ''}>${l}${v === 'brainengine' && !en.brainEngineHere ? ' (not here yet)' : ''}</option>`).join('')}</select></label>${en.found ? (en.version ? `<span class="muted">${esc(en.version)}</span>` : '') : `<span class="muted">None found yet.</span>${goBtn('engines', 'Get one')}`}</div></div>`;
+    const tabs = `<div class="lab-tabs" role="tablist" aria-label="Lab pages">${TABS.map(([id, label]) => `<button type="button" role="tab" id="lab-tab-${id}" class="lab-tab${tab === id ? ' on' : ''}" aria-selected="${tab === id}" aria-controls="lab-page-${id}" tabindex="${tab === id ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}</div>${modeRow}`;
+    if (tab === 'mine') { body.innerHTML = `<div class="lab">${tabs}${mineHtml(view)}</div>`; return; }
+    if (isLearn()) { body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-learn" role="tabpanel" aria-labelledby="lab-tab-learn">${subNav()}<div id="lab-learn-box"></div></div></div>`; learn.mount($('lab-learn-box')); return; }
+    if (isCh()) { body.innerHTML = `<div class="lab">${tabs}${challengesHtml()}</div>`; return; }
+    if (tab === 'forge') { body.innerHTML = `<div class="lab">${tabs}${fg.html(`<details class="lab-fold" data-fold="senses" ${folds.senses ? 'open' : ''}><summary>Add sight or hearing to a brain</summary>${sn.html()}</details>`)}</div>`; return; }
+    if (isPlay()) { body.innerHTML = `<div class="lab">${tabs}${pg.html(runsHtml(), subNav(), tab)}</div>`; pg.mounted(); return; }
     const i = steps().findIndex(([id]) => id === step);
     const html = { brain: brainStep, lessons: lessonsStep, smaller: smallerStep, where: whereStep, test: testStep }[step]();
     const busy = running();
     body.innerHTML = `<div class="lab">${tabs}<div id="lab-page-make" role="tabpanel" aria-labelledby="lab-tab-make">
-      <p class="muted">Make a new brain from one you have. Show the recipe gives the exact commands.</p>
+      <p class="muted">Make a new brain from one you have.</p>
       ${view.recipes.length ? `<p><label>Start from a saved recipe <select id="lab-recipe"><option value="">(none)</option>${view.recipes.map((x, n) => `<option value="${n}">${esc(x.name)}</option>`).join('')}</select></label></p>` : ''}
       ${runsHtml()}
-      ${rc.galleryHtml()}
       ${jobsHtml()}
-      ${!job ? '' : `${hasPart('cut') ? templateHtml() : ''}
+      ${!job ? '' : `${hasPart('cut') ? `<details class="lab-fold" data-fold="fill" ${folds.fill || r.template || rc.recipeId ? 'open' : ''}><summary>Fill the steps for me: start from a goal or a template</summary>${rc.galleryHtml()}${templateHtml()}</details>` : ''}
       <nav class="lab-steps" aria-label="Lab steps"><ol>${steps().map(([id, label], n) => `<li><button type="button" class="lab-step${id === step ? ' on' : ''}" id="lab-step-${id}" data-step="${id}" ${id === step ? 'aria-current="step"' : ''} ${n > 0 && !r.from ? 'disabled' : ''}>${n + 1} ${esc(label.replace(/^\d+ /, ''))}</button></li>`).join('')}</ol></nav>
       <div class="lab-panel" id="lab-panel">${html}</div>
       ${plan ? `<div class="lab-check" role="status">${plan.problems.length ? `<p><strong>Before it can start:</strong></p><ul>${plan.problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : `<p><strong>Ready.</strong> ${plan.steps.length} steps: ${plan.steps.map((s) => esc(s.label)).join(', ')}.</p>`}${plan.notes.map((n) => `<p class="muted">${esc(n)}</p>`).join('')}</div>` : ''}
@@ -455,21 +487,23 @@ export function createLab({ api, note }) {
       ${showRecipe ? `<div class="lab-recipe"><pre tabindex="0">${esc(plan?.text || 'Pick a brain first.')}</pre><button type="button" class="link" data-copy>Copy</button></div>` : ''}
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}`}
       ${compareHtml()}
-      ${rc.usageHtml()}
+      ${job && hasPart('cut') ? rc.usageHtml() : ''}
     </div></div>`;
   }
 
   body.addEventListener('change', async (e) => {
     const el = e.target; msg = '';
     if ('labengine' in el.dataset) { try { view.engine = await api('/api/lab/engine', { engine: el.value }); } catch (err) { msg = err.message; } await replan(); $('lab-body')?.querySelector('[data-labengine]')?.focus(); return; } // 1.5.17x
-    if (tab === 'learn') return; // the Learn tab listens for itself
+    if (isLearn()) return; // the Learn experiments listen for themselves
     { const f = await sn.change(el); if (f) { if (f === 'draw') { draw(); $(el.id)?.focus(); } return; } }
     { const f = await fg.change(el); if (f) { draw(); $(el.id)?.focus(); return; } }
-    if (await pg.change(el)) return draw();
-    if (tab === 'challenges') { const r = await px.change(el); if (r === 'draw') { draw(); $(el.id)?.focus(); return; } if (r) return; } // 1.5.168
-    if (tab === 'challenges' && gd.change(el)) return; // 1.5.164 the Guard rails sandbox keeps its own words
+    if (isPlay() && await pg.change(el)) return draw();
+    if (isCh()) { const r = await px.change(el); if (r === 'draw') { draw(); $(el.id)?.focus(); return; } if (r) return; } // 1.5.168
+    if (isCh() && gd.change(el)) return; // 1.5.164 the Guard rails sandbox keeps its own words
     if (el.name === 'chfrom') { ch.from = el.value; return draw(); }
     if ('chbench' in el.dataset) { ch.bench = el.checked; return draw(); }
+    if ('chwobble' in el.dataset) { ch.wobble = el.checked; return draw(); }
+    if ('recheck' in el.dataset) { try { view.recheck = await api('/api/lab/recheck', { on: el.checked }); } catch (err) { msg = err.message; } return draw(); }
     if (el.dataset.pack) { const k = el.dataset.pack; ch.packs = el.checked ? [...new Set([...ch.packs, k])] : ch.packs.filter((x) => x !== k); return draw(); }
     if (el.dataset.savefmt) { saveState(el.dataset.savefmt).format = el.value; return draw(); }
     if (el.dataset.savehw) { saveState(el.dataset.savehw).hardware = el.checked; return draw(); }
@@ -520,14 +554,17 @@ export function createLab({ api, note }) {
     }
     await replan();
   });
+  body.addEventListener('toggle', (e) => { const k = e.target.dataset?.fold; if (k in folds) folds[k] = e.target.open; }, true);
   body.addEventListener('keydown', (e) => { // left and right move between the tabs, as tabs should
     if (!e.target.matches?.('[role=tab]') || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
-    const ids = TABS.map(([id]) => id), n = ids.indexOf(tab);
-    tab = e.key === 'Home' ? ids[0] : e.key === 'End' ? ids[ids.length - 1] : ids[(n + (e.key === 'ArrowRight' ? 1 : ids.length - 1)) % ids.length];
-    e.preventDefault(); draw(); $(`lab-tab-${tab}`)?.focus();
+    const inner = Boolean(e.target.dataset.playpage) && Boolean(SUBS[tab]); // the row of pages under a tab moves on its own
+    const ids = inner ? SUBS[tab] : TABS.map(([id]) => id), n = ids.indexOf(inner ? sub[tab] : tab);
+    const to = e.key === 'Home' ? ids[0] : e.key === 'End' ? ids[ids.length - 1] : ids[(n + (e.key === 'ArrowRight' ? 1 : ids.length - 1)) % ids.length];
+    e.preventDefault();
+    show(inner ? tab : to, inner ? to : '').then(() => $(inner ? `play-page-${to}` : `lab-tab-${to}`)?.focus());
   });
   body.addEventListener('input', (e) => { // the slider and its number box move together
-    if (pg.input(e.target)) return;
+    if (isPlay() && pg.input(e.target)) return;
     if (gd.input(e.target)) return; // 1.5.164
     if (px.input(e.target)) return; // 1.5.168
     if (fg.input(e.target, () => draw())) return; // 1.5.164
@@ -541,8 +578,19 @@ export function createLab({ api, note }) {
   body.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return;
     msg = '';
-    if (b.dataset.tab) { tab = b.dataset.tab; draw(); $(`lab-tab-${tab}`)?.focus(); return; }
-    if (tab === 'learn' && !b.dataset.tab) return;
+    if (b.dataset.tab) { await show(b.dataset.tab); $(`lab-tab-${tab}`)?.focus(); return; }
+    if (b.dataset.labgo) { const w = goWhere(b.dataset.labgo); if (w) go?.(w); return; } // "Open Get models" and friends
+    if (b.dataset.playpage && SUBS[tab]?.includes(b.dataset.playpage)) { await show(tab, b.dataset.playpage); $(`play-page-${sub[tab]}`)?.focus(); return; }
+    { // Nov 11: the job queue's own buttons, on any page
+      let nq = null; try { nq = await queueClick(b, api); } catch (err) { msg = err.message; return draw(); }
+      if (nq) { view.queue = nq; return draw(); }
+    }
+    if (b.dataset.qadd === 'challenge') {
+      try { const name = view.brains.find((x) => x.id === ch.from)?.name || 'a brain'; view.queue = await queueAdd(api, 'challenge', { challenge: chBody() }, `Challenges for ${name}${ch.wobble ? ' (wobble)' : ''}`); } catch (err) { msg = err.message; }
+      return draw();
+    }
+    if (b.dataset.minego) { const [t, p] = b.dataset.minego.split(':'); await show(t, p); $(`lab-tab-${tab}`)?.focus(); return; }
+    if (isLearn()) return;
     if (b.dataset.boardby) { ch.by = b.dataset.boardby; draw(); body.querySelector(`[data-boardby="${ch.by}"]`)?.focus(); return; }
     if (b.dataset.boardkind) { ch.kind = b.dataset.boardkind; draw(); body.querySelector(`[data-boardkind="${ch.kind}"]`)?.focus(); return; }
     if ('boardhere' in b.dataset) { ch.here = !ch.here; draw(); body.querySelector('[data-boardhere]')?.focus(); return; }
@@ -560,7 +608,7 @@ export function createLab({ api, note }) {
     }
     if ('chgo' in b.dataset || (askUnload?.challenge && 'unload' in b.dataset)) {
       try {
-        const res = await api('/api/lab/challenge', { challenge: { from: ch.from, packs: ch.packs, ...(ch.bench && view.benchHere ? { bench: true } : {}), ...(view.mode === 'pro' ? { gen: px.gen() } : {}) }, unload: 'unload' in b.dataset });
+        const res = await api('/api/lab/challenge', { challenge: chBody(), unload: 'unload' in b.dataset });
         if (res.needUnload) { askUnload = Object.assign(res.names, { challenge: true }); return draw(); }
         askUnload = null;
       } catch (err) { msg = err.message; }
@@ -568,7 +616,7 @@ export function createLab({ api, note }) {
     }
     { const f = await sn.click(b); if (f === 'draw') return draw(); if (f) return; }
     { const f = await fg.click(b); if (f === 'draw') return draw(); if (f) return; }
-    { const p = await pg.click(b, load); if (p === 'draw') return draw(); if (p) return; }
+    if (isPlay()) { const p = await pg.click(b, load); if (p === 'draw') return draw(); if (p) return; }
     { const r = await px.click(b, load); if (r === 'draw') { const keep = b.id || ''; draw(); if (keep) $(keep)?.focus(); return; } if (r) return; }
     { const g = await gd.click(b); if (g === 'draw') { const f = b.dataset.guard; draw(); $(f === 'send' ? 'lab-guard-say' : f === 'open' ? 'lab-guard-system' : f === 'save' ? 'lab-guard-want' : 'lab-guard-h')?.focus(); return; } if (g) return; }
     if (await rc.click(b)) return;
@@ -633,9 +681,11 @@ export function createLab({ api, note }) {
   });
 
   return {
-    async open() { dlg.showModal(); draw(); await load(); },
+    async open() { if (!dlg.open) { if (page) dlg.show(); else dlg.showModal(); } draw(); await load(); },
+    close() { if (dlg.open) dlg.close(); },
     // Progress from the Lab job (the server's 'lab' events).
     fullUpdate(full) { if (!view) return; view.full = full; if (dlg.open) draw(); if (full?.state === 'done' || full?.state === 'failed') load(); }, // Bring in a full-size brain: progress, then the lists again
-    update(run) { if (!view) return; rc.runUpdate(run); const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if ((run.kind === 'challenge' || run.kind?.startsWith('ladder') || ['mix', 'stack', 'refusals', 'refusals-try'].includes(run.kind)) && run.state !== 'running') { load(); return; } if (tab === 'learn') return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
+    queueUpdate(q) { if (!view || !q) return; view.queue = q; if (dlg.open) draw(); },
+    update(run) { if (!view) return; rc.runUpdate(run); const i = view.runs.findIndex((x) => x.id === run.id); if (i >= 0) view.runs[i] = run; else view.runs.unshift(run); if ((run.kind === 'challenge' || run.kind?.startsWith('ladder') || ['mix', 'stack', 'refusals', 'refusals-try'].includes(run.kind)) && run.state !== 'running') { load(); return; } if (isLearn()) return; if (dlg.open && !body.contains(document.activeElement)) draw(); else if (dlg.open) { const live = body.querySelector('.lab-runs'); if (live) live.outerHTML = runsHtml(); } }
   };
 }

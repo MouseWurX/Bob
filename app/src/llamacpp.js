@@ -16,8 +16,11 @@ import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } 
 import { exeName } from './platform.js';
 import { Embedder } from './embedder.js';
 import { ggufInfo } from './gguf.js';
+import { placeArgs } from './brain-place.js';
 import { selfWorkOn } from './self-work.js';
 import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes } from './model-ctx.js';
+import { scutEnv } from './share-card.js'; // SCUT, the fast link to lent cards
+import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 
 // 1.5.19: the context a brain gets when nothing else picks one. 32K fits a 26B brain on a 16 GB card.
 
@@ -85,7 +88,7 @@ export function keepAliveMs(cfg) {
 // sees the card (CUDA_VISIBLE_DEVICES=-1). Never in Gaming. Below normal priority, half the cores, and let go as soon as
 // nothing needs it. A call goes to it when its options carry beside: true.
 export const BESIDE = 'beside';
-// 1.5.189 Spreading a brain over another Bob's lent card (src/share-card.js). PC test Nov 10: Riker Q4 npc -> a
+// 1.5.189 Spreading a brain over another Bob's lent card (src/share-card.js). PC test Nov 10: Riker Q4 big PC -> a
 // handheld over Wi-Fi moved 2.63 GB at about 6.6 MB/s, then failed at 413 s because --fit filled the lent card and left
 // no room for its working memory (a 387 MiB compute buffer at -ub 2048). So a spread load keeps more room free on
 // every card (--fit-target, MiB), works in smaller steps (-ub), and waits by the brain's size, not a fixed 5 minutes.
@@ -179,7 +182,7 @@ export class LlamaCpp {
       this.beside.resolve = (m) => this.resolve(m); // same model files (tests replace resolve on the main engine)
       this.beside.catalogFile = (id) => this.catalogFile(id);
       this.beside.main = this; // so a card reader set on the main engine (tests) also counts for the second server
-      // FNRI's small cube: a brain answering on the second server is traced too, and told to the same cube
+      // fNRI's small cube: a brain answering on the second server is traced too, and told to the same cube
       this.beside.wantTrace = () => this.wantTrace?.() || false; this.beside.onTrace = (raw, model) => this.onTrace?.(raw, model);
       // 1.5.53: the brain hears when a second brain joins or leaves (chat page: second-brain events, Bob's head grows).
       this.beside.changed = (ev) => { try { this.onBeside?.(ev); } catch {} };
@@ -224,6 +227,12 @@ export class LlamaCpp {
   catalogFile(id) { return catalogFileFor(this.cfg, id); }
 
   // 1.5.87: the longest context a model was made for, from its GGUF header, so nothing asks for more (null: unknown).
+  // 1.5.205 What the Brains page needs to offer a by-hand placement: how many layers the file has. null when this
+  // engine can't find the file (then the page keeps the control locked and says why).
+  placeInfo(model) {
+    try { const layers = ggufInfo(this.resolve(model).gguf)?.shape?.layers || 0; return layers ? { layers } : null; } catch { return null; }
+  }
+
   async maxCtx(model) {
     try { return ggufInfo(this.resolve(model).gguf)?.ctxTrain || null; } catch { return null; }
   }
@@ -455,7 +464,9 @@ export class LlamaCpp {
       ...(cpu && tuning(this.cfg).readyWhileTyping ? ['--slot-save-path', startDir(this.cfg)] : []),
       ...(modelArgs || lc.modelArgs?.[model] || []),
       // Mixture-of-experts models: keep this many layers' experts in system RAM so the rest fits the card.
-      ...(Number.isInteger(lc.nCpuMoe?.[model]) ? ['--n-cpu-moe', String(lc.nCpuMoe[model])] : [])
+      ...(Number.isInteger(lc.nCpuMoe?.[model]) ? ['--n-cpu-moe', String(lc.nCpuMoe[model])]
+        // 1.5.205: set by hand on the Brains page (brain-place.js). The config file's own number, above, wins.
+        : placeArgs(this.cfg, model, { cpu, layers: ggufInfo(gguf)?.shape?.layers || 0 }))
     ];
     // --fit: llama.cpp places layers to fit the card's free memory right now (other apps included), which
     // beat a fixed --n-cpu-moe on a 16 GB card. Used unless a placement is pinned by hand or fit is off.
@@ -649,8 +660,9 @@ export class LlamaCpp {
     let helpers = [];
     let sizeGB = 0;
     if (this.spread && !noSpread && this.role !== BESIDE && !cpu && card !== 'none') {
-      try { sizeGB = fs.statSync(this.resolve(model).gguf).size / 1e9; } catch {}
-      helpers = await this.spread.open({ sizeGB }).catch(() => []);
+      let file = '';
+      try { file = this.resolve(model).gguf; sizeGB = fs.statSync(file).size / 1e9; } catch {}
+      helpers = await this.spread.open({ sizeGB, file }).catch(() => []);
       if (helpers.length) {
         args.push('--rpc', helpers.join(','), ...spreadArgs(args));
         const mins = Math.ceil(spreadLoadSeconds(sizeGB, this.lc.loadTimeoutSeconds || 300) / 60);
@@ -670,8 +682,10 @@ export class LlamaCpp {
     let log = '';
     let full = ''; // 1.5.133: the whole output (up to 256 KB) goes to a file when a load fails; the message keeps the end
     if (args.includes('--slot-save-path')) { try { fs.mkdirSync(startDir(this.cfg), { recursive: true }); } catch {} }
-    const env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
-    const child = spawn(exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
+    let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
+    if (helpers.length) env = { ...env, ...scutEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
+    // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
+    const child = safeSpawn(spawn, exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
     // 1.5.24 "Let games go first": on the processor, the engine yields to games (below normal priority).
     if (this.role === BESIDE || (cpu && cpuPlan(this.cfg)?.lowPriority)) { try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {} }
     const keep = (d) => { log = (log + d).slice(-4000); if (full.length < LOAD_LOG_MAX) full += d; };
@@ -686,7 +700,13 @@ export class LlamaCpp {
       try { this.log?.('engine', `${model}: ${why}; full llama-server output saved to ${path.basename(failFile)}`); } catch {}
     };
     const started = new Promise((_, reject) => {
-      child.once('error', (e) => reject(new Error(`Couldn't start llama-server (${e.message}). Check llamacpp.exe in config.json.`)));
+      child.once('error', (e) => {
+        // 1.5.203: a new engine Windows won't run (or one that won't start right after an update): back to the build
+        // kept from before, once, and load again on that one.
+        const back = fallBackIfBlocked(this.cfg, exe, e);
+        if (back) { const err = new Error(back.say); err.fellBack = back; return reject(err); }
+        reject(new Error(`Couldn't start llama-server (${e.message}). Check llamacpp.exe in config.json.`));
+      });
       child.once('exit', (code) => { if (this.child === child && this.current === model && !this.loadedOk) saveFail(`stopped while loading (code ${code})`); reject(new Error(`llama-server stopped while loading ${model} (code ${code}). Last output: ${log.slice(-600)}`)); });
     });
     this.child = child;
@@ -719,6 +739,10 @@ export class LlamaCpp {
       if (helpers.length && !signal?.aborted) {
         try { this.log?.('engine', `${model}: spreading over Bob-Net didn't work, so I'm loading it here instead`); } catch {}
         return this.preload(model, signal, { ctx, cpu, beside, reserveMB, place, noSpread: true });
+      }
+      if (e.fellBack && !signal?.aborted) {
+        try { this.log?.('engine', e.message); } catch {}
+        return this.preload(model, signal, { ctx, cpu, beside, reserveMB, place, noSpread });
       }
       throw e;
     }
@@ -788,7 +812,7 @@ export class LlamaCpp {
     } finally { opts.signal?.removeEventListener?.('abort', onAbort); }
   }
 
-  async chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver, task }) {
+  async chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver, task, temperature }) {
     // 1.5.52: a brain whose template refused a mid-chat system note gets them folded in from then on (foldSystem).
     this.noMidSystem ||= new Set();
     // 1.5.60: ask the loaded brain's chat template up front, so a template that refuses mid-chat system notes is
@@ -805,7 +829,7 @@ export class LlamaCpp {
       } catch {}
     }
     if (this.noMidSystem.has(model)) messages = foldSystem(messages);
-    const res = await this.post(model, messages, tools, signal, think, task);
+    const res = await this.post(model, messages, tools, signal, think, task, temperature);
     if (!res.ok) {
       // 1.5.60: the template's refusal sits deep in a long error (after the template source), so look at all of it.
       const full = await res.text();
@@ -813,7 +837,7 @@ export class LlamaCpp {
       if (!this.noMidSystem.has(model) && MID_SYSTEM_REFUSED.test(full)) {
         this.noMidSystem.add(model);
         this.log?.('engine', `${model}: its chat template only takes a system message first, so Bob's notes go in as user notes from now on`);
-        return this.chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver, task });
+        return this.chatStream({ model, messages, tools, signal, onToken, onThink, think, budget, onOver, task, temperature });
       }
       if (MID_SYSTEM_REFUSED.test(full)) this.log?.('engine', `${model}: refused a system message even after folding (roles ${(messages || []).map((m) => (m.role || '?')[0]).join('')}, ${full.length} chars of error)`);
       throw new Error(`llama-server returned ${res.status}: ${text}`);
@@ -821,15 +845,17 @@ export class LlamaCpp {
     return this.readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver });
   }
 
-  post(model, messages, tools, signal, think, task) {
+  // `temperature`: an assistant preset's own (presets.js); otherwise the brain's usual word settings decide.
+  post(model, messages, tools, signal, think, task, temperature) {
     return fetch(this.url + '/v1/chat/completions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, max_tokens: replyTokens(this.current === model ? this.currentCtx : null, MAX_REPLY_TOKENS), // 1.5.148: less on a small context. 1.5.26: no empty enums (llama.cpp rejects them)
         ...this.sampling(model, { tools: !!tools?.length, think, task }),
+        ...(Number.isFinite(temperature) ? { temperature } : {}),
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
         ...(think === false ? { chat_template_kwargs: { enable_thinking: false } } : {}),
-        // FNRI's small cube in Bob's thinking: only while someone has it open, and only Brain Engine answers it
+        // fNRI's small cube in Bob's thinking: only while someone has it open, and only Brain Engine answers it
         ...(this.wantTrace?.() ? { expert_trace: true } : {}) }),
       signal
     });
@@ -838,7 +864,7 @@ export class LlamaCpp {
   async readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver }) {
     let content = '';
     let held = null; // null: not decided yet; false: streaming normally; a string: held back
-    let thought = 0, traced = false; const asked = this.wantTrace?.() === true; // FNRI's small cube: was the trace asked for, and did it come
+    let thought = 0, traced = false; const asked = this.wantTrace?.() === true; // fNRI's small cube: was the trace asked for, and did it come
     const calls = [];
     let buf = '';
     const decoder = new TextDecoder();
@@ -852,10 +878,10 @@ export class LlamaCpp {
         const data = line.slice(5).trim();
         if (data === '[DONE]') continue;
         const ev = parseJson(data);
-        if (!ev) { if (asked && data.includes('"expert_trace"')) this.log?.('engine', `FNRI cube: ${model}'s trace came back unreadable (${data.length.toLocaleString()} characters)`); continue; } // a cut or odd line from the server: skip it rather than lose the whole reply
+        if (!ev) { if (asked && data.includes('"expert_trace"')) this.log?.('engine', `fNRI cube: ${model}'s trace came back unreadable (${data.length.toLocaleString()} characters)`); continue; } // a cut or odd line from the server: skip it rather than lose the whole reply
         if (ev.error) throw new Error('llama-server: ' + (ev.error.message || JSON.stringify(ev.error)));
         // 1.5.30: llama-server puts the reply's timings on its last chunk; kept for Now running.
-        if (ev.expert_trace && this.onTrace) { traced = true; try { this.onTrace(ev.expert_trace, model); } catch (e) { this.log?.('engine', `FNRI cube: couldn't read ${model}'s trace: ${e.message}`); } }
+        if (ev.expert_trace && this.onTrace) { traced = true; try { this.onTrace(ev.expert_trace, model); } catch (e) { this.log?.('engine', `fNRI cube: couldn't read ${model}'s trace: ${e.message}`); } }
         if (ev.timings) this.lastStats = replyStats({ model: this.current || model, messages, promptTokens: (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0), outTokens: ev.timings.predicted_n, tokPerSec: ev.timings.predicted_per_second, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX }) || this.lastStats;
         const d = ev.choices?.[0]?.delta || {};
         if (budget && d.reasoning_content && ++thought > budget && !content) onOver(); // stop.over marks it, so real errors aren't retried
@@ -877,11 +903,12 @@ export class LlamaCpp {
         }
       }
     }
-    if (asked && !traced) this.log?.('engine', `FNRI cube: ${model} answered without an expert trace (an older Brain Engine, or not Brain Engine)`);
+    if (asked && !traced) this.log?.('engine', `fNRI cube: ${model} answered without an expert trace (an older Brain Engine, or not Brain Engine)`);
     const tool_calls = calls.filter(Boolean).map((c) => {
-      let args = {};
-      try { args = c.args ? JSON.parse(c.args) : {}; } catch { args = {}; }
-      return { function: { name: c.name, arguments: args } };
+      let args = {}, raw;
+      try { args = c.args ? JSON.parse(c.args) : {}; } catch { args = {}; raw = c.args; }
+      // Nov 11: broken JSON is kept as written, so the call can be mended before it runs (loop-help.js).
+      return { function: { name: c.name, arguments: args, ...(raw !== undefined ? { raw } : {}) } };
     });
     if (!tool_calls.length && tools?.length) {
       const names = new Set(tools.map((t) => t.function?.name).filter(Boolean));

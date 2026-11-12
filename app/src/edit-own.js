@@ -65,11 +65,11 @@ export function applyEdit(msgs, args = {}, now = Date.now()) {
 }
 
 export const EDIT_SCHEMA = fn('edit_my_message',
-  'Change the words of one of your own earlier messages in this chat, instead of sending a new message about it: to fix a mistake, or to bring a status line up to date. Only your messages. The chat marks it edited and keeps what it said first. Use find and replace for a few words, or text for the whole new message.', {
-    back: { type: 'integer', description: 'Which message: 1 is your latest message before this one, 2 the one before that. Leave out to search your recent messages for find.' },
-    find: str('Exact words in that message to change.'),
-    replace: str('The new words that go in place of find (empty takes them out).'),
-    text: str('Instead of find and replace: the whole new message.')
+  'Change one of your own earlier messages instead of sending a new one: to fix a mistake or update a status line. The chat marks it edited. Use find and replace for a few words, or text for the whole message.', {
+    back: { type: 'integer', description: 'Which: 1 = your latest before this, 2 = the one before. Leave out to search recent ones for find.' },
+    find: str('The exact words to change.'),
+    replace: str('The new words (empty removes them).'),
+    text: str('Or: the whole new message.')
   }, []);
 
 // The tool, as brain.js keeps it (this.tools.edit_my_message). ctx.msgs is the chat Bob is in, so it only ever reaches that chat.

@@ -12,7 +12,7 @@ import java.net.URLEncoder
 // Talks to a Bob on your network (desktop Bob with "Let my other devices in" on), over Tailscale only.
 // Desktop Bob checks the same things on his side: the Tailscale range, his address list, the passcode cookie,
 // the x-bob header and a JSON content type. The passcode is used once to log in and is never stored;
-// only the login cookie desktop Bob hands back is kept (in the app's private storage).
+// only the login cookie desktop Bob hands back is kept (in the app's private storage, locked with SecretBox).
 class NetBob(context: Context) {
     private val prefs = context.getSharedPreferences("netbob", Context.MODE_PRIVATE)
 
@@ -50,7 +50,12 @@ class NetBob(context: Context) {
 
     data class Reply(val status: Int, val body: String, val type: String = "")
 
-    private fun cookie(base: String): String? = prefs.getString("cookie:$base", null)
+    // 🔐 The cookie is kept locked (SecretBox, Android Keystore). One an older app kept plain is locked when read.
+    private fun cookie(base: String): String? {
+        val kept = prefs.getString("cookie:$base", null) ?: return null
+        if (!SecretBox.isLocked(kept)) prefs.edit().putString("cookie:$base", SecretBox.seal(kept)).apply()
+        return SecretBox.open(kept)
+    }
 
     fun signedIn(base: String) = cookie(base) != null
 
@@ -80,7 +85,7 @@ class NetBob(context: Context) {
             .firstOrNull { it.startsWith("bob_auth=") }
         c.disconnect()
         return when {
-            status == 303 && set != null -> { prefs.edit().putString("cookie:$base", set.substringBefore(';')).apply(); "ok" }
+            status == 303 && set != null -> { prefs.edit().putString("cookie:$base", SecretBox.seal(set.substringBefore(';'))).apply(); "ok" }
             // Phone access is off on that Bob, or this address isn't on his list: he refuses before asking.
             status == 403 -> "not-let-in"
             status == 429 -> "busy"

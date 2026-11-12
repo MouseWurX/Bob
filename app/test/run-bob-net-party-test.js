@@ -24,6 +24,31 @@ check('hello carries the name and the pass-along switch', hello.name === 'desk' 
 const ab = cleanAbilities({ ...hello, name: 'de<sk>' });
 check('…and the asker keeps both, cleaned', ab.passAlong === true && ab.hisName === 'desk');
 
+// ---------- Show avatars (the avatars on the Bob-Net list) ----------
+{
+  const mk = (look) => helloFor({ cfg: { look, share: {} }, queue: [] }, { why: '', quick: null, can: {}, version: '1.5.205', label: () => '', name: 'desk' });
+  check('hello carries this Bob\'s look', mk('robot-3').look === 'robot-3' && mk('c:ab1.2').look === 'c:ab1.2');
+  check('…and no look when none is picked, or a bad one', !('look' in mk(undefined)) && !('look' in mk('<script>')) && !('look' in mk('x'.repeat(200))));
+  check('the asker keeps a real look id only', cleanAbilities({ look: 'f-12' }).look === 'f-12' && !('look' in cleanAbilities({ look: 'robot-3"><img src=x>' })) && !('look' in cleanAbilities({ look: 42 })) && !('look' in cleanAbilities({})));
+  const L = new Lenders({ share: { borrow: { on: true, bobs: [{ name: 'Go', address: '100.101.1.2:7777', passcode: '12345678' }, { name: 'Phone', address: '100.101.1.3:7777', passcode: '12345678' }] } } }, { now: () => 5000 });
+  let up = true;
+  L.call = async (b) => { if (!up) throw new Error('nope'); return { ok: true, status: 200, json: async () => (b.name === 'Go' ? { lend: true, brain: 'Gemma', device: 'computer', look: 'alien-4' } : { lend: true, brain: 'phone brain', device: 'phone' }) }; };
+  await L.hello(L.bobs()[0]); await L.hello(L.bobs()[1]);
+  check('a hello remembers his look', L.state.get('100.101.1.2:7777').look === 'alien-4' && !L.state.get('100.101.1.3:7777').look);
+  up = false;
+  await L.hello(L.bobs()[0], { force: true });
+  check('…and keeps it while he\'s not reachable', L.state.get('100.101.1.2:7777').ok === false && L.state.get('100.101.1.2:7777').look === 'alien-4');
+  const v = partyView({ cfg: { look: 'm-7', share: { borrow: { on: true, bobs: L.bobs() } }, remote: { enabled: true, passcode: '12345678' } }, lenders: L, queue: [] });
+  check('the party gives each Bob\'s look, and this Bob\'s own', v.here.look === 'm-7' && v.bobs.find((b) => b.name === 'Go').look === 'alien-4' && v.bobs.find((b) => b.name === 'Phone').look === '');
+  check('…and no look for this Bob with none picked', partyView({ cfg: { share: { lend: true } }, lenders: null, queue: [] }).here.look === '');
+  const html = read('public/index.html'), lay = read('public/layout.js');
+  check('Show avatars is a switch in the Bob-Net section, off to begin with', /id="nowNetAvatars"[^>]*role="switch"[^>]*aria-checked="false"/.test(html) && html.indexOf('id="nowNetAvatars"') > html.indexOf('id="nowNet"') && html.indexOf('id="nowNetAvatars"') < html.indexOf('id="nowNetList"'));
+  check('…remembered per window, off unless switched on', /store\.get\('bob-net-avatars', '0'\) === '1'/.test(lay));
+  check('…avatars are drawn with the avatar painter, named for screen readers', /drawBob\(c, cv\.width, \{\}, cv\.dataset\.look\)/.test(lay) && /aria-label="\$\{esc\(name\)\}'s avatar"/.test(lay));
+  const help = read('public/help-content.js');
+  check('…with Help, a glossary line and an FAQ', help.includes("id: 'faq-avatars'") && help.includes('<dt>Show avatars</dt>') && /Show avatars<\/strong>, just under the heading/.test(help));
+}
+
 // ---------- the party reading ----------
 {
   const L = new Lenders({ share: { borrow: { on: true, bobs: [{ name: 'Go', address: '100.101.1.2:7777' }, { name: 'Phone', address: '100.101.1.3:7777' }, { name: 'Laptop', address: '100.101.1.4:7777' }] } } }, { now: () => 1000000 });

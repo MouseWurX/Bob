@@ -3,6 +3,13 @@
 @font-face { font-family: 'Plex'; src: url('shared/fonts/ibm-plex-mono-latin-700-normal.woff2') format('woff2'); font-weight: 700; }
 
 :root {
+  /* Moondust, the theme Bob starts with on every system: the desktop's Moondust colours, with button edges a shade
+     lighter and the green kept for "good" so both show up on a small screen */
+  --bg: #121212; --panel: #1c1c1c; --raise: #262626; --line: #3a3a3a;
+  --text: #e4e4e4; --dim: #9a9a9a; --accent: #4fb3bf; --on-accent: #121212;
+  --you: #2a464a; --good: #7fc77f; --warn: #d9a23e; --bad: #e0685a; --phone: #8fb7e8;
+}
+:root[data-theme="inn"] {
   --bg: #1d1510; --panel: #2b1d14; --raise: #3a281c; --line: #5a4030;
   --text: #f3e7d3; --dim: #c2ad92; --accent: #e7a64a; --on-accent: #2b1d14;
   --you: #4a3322; --good: #7fc77f; --warn: #f0c060; --bad: #ef7d6b; --phone: #8fb7e8;
@@ -54,8 +61,23 @@ header .bob img { width: 32px; height: 32px; border-radius: 8px; }
 .msg.you { align-self: flex-end; background: var(--you); border-bottom-right-radius: 4px; white-space: pre-wrap; }
 .msg.bob { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
 .msg .by { font-size: 12px; color: var(--dim); margin-bottom: 4px; display: flex; gap: 6px; align-items: center; }
-.msg .tools { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-.msg .tools button { min-height: 36px; font-size: 14px; padding: 0 10px; }
+.msg { position: relative; }
+/* The ... menu at the top right of a message: Try again, Edit, Copy, Delete (always shown; phones have no mouse-over) */
+.msg .msg-more { position: absolute; top: -12px; right: 6px; min-width: 36px; min-height: 28px; padding: 0 8px; font-size: 16px; line-height: 1; color: var(--dim); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+.msg.you .msg-more { background: var(--you); }
+.msg-menu { position: absolute; top: 18px; right: 6px; z-index: 20; display: flex; flex-direction: column; min-width: 150px; max-width: 260px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 6px 20px #00000066; white-space: normal; }
+.msg-menu button { text-align: left; min-height: 44px; padding: 0 12px; background: transparent; border: 0; border-radius: 8px; font-size: 15px; }
+.msg-menu button:active { background: var(--line); }
+.msg-menu button.danger { color: #e06c75; font-weight: 600; }
+.msg-menu-ask { margin: 6px 10px; font-size: 14px; }
+.fold-note { margin-top: 6px; font-size: 14px; }
+.fold-note > button { min-height: 36px; padding: 0 4px; text-decoration: underline; }
+.versions-list { margin: 4px 0 0; padding-left: 20px; opacity: .85; }
+.versions-list li { margin: 6px 0; }
+.edit-box { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.edit-box textarea { width: 100%; box-sizing: border-box; font: inherit; min-height: 4.5em; }
+.edit-box .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.edit-box button { min-height: 36px; }
 .msg img, .msg video { max-width: 100%; border-radius: 8px; margin-top: 6px; display: block; }
 .msg audio { width: 100%; margin-top: 6px; }
 .note { align-self: center; max-width: 92%; font-size: 14px; color: var(--dim); text-align: center; padding: 4px 8px; }
@@ -63,6 +85,17 @@ header .bob img { width: 32px; height: 32px; border-radius: 8px; }
 .typing::after { content: '▍'; animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .typing::after { animation: none; } }
+.to-bottom-dock { position: relative; height: 0; z-index: 5; }
+.to-bottom { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 48px; height: 48px; padding: 0 14px; border-radius: 24px; background: var(--panel); color: var(--text); box-shadow: 0 2px 10px rgb(0 0 0 / .35); }
+.to-bottom.hidden { display: none; }
+.to-bottom .tb-arrow { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.to-bottom .tb-dots { display: none; gap: 4px; }
+.to-bottom.working .tb-dots { display: inline-flex; }
+.to-bottom .tb-dots i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: tb-breathe 3.2s ease-in-out infinite; }
+.to-bottom .tb-dots i:nth-child(2) { animation-delay: .35s; }
+.to-bottom .tb-dots i:nth-child(3) { animation-delay: .7s; }
+@keyframes tb-breathe { 0%, 100% { opacity: .3; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.1); } }
+@media (prefers-reduced-motion: reduce) { .to-bottom .tb-dots i { animation: none; opacity: .8; } }
 
 /* Cards in the chat: send to another Bob, OK cards */
 .card { align-self: stretch; background: var(--raise); border: 1px solid var(--accent); border-radius: 14px; padding: 12px; }
@@ -75,6 +108,8 @@ header .bob img { width: 32px; height: 32px; border-radius: 8px; }
 footer { padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--line); }
 #status { font-size: 13px; color: var(--dim); min-height: 18px; padding: 0 4px 6px; display: flex; gap: 10px; align-items: center; }
 #status .effort { margin-left: auto; min-height: 30px; font-size: 13px; padding: 0 10px; border-radius: 999px; }
+#status #preset + .effort { margin-left: 6px; }
+#status #preset { max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .compose { display: flex; gap: 8px; align-items: flex-end; }
 .photo-chip { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .photo-chip img { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; }
@@ -163,11 +198,14 @@ label.field { display: block; margin: 10px 0 4px; font-weight: 600; }
 .tabs button[aria-selected="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
 .adv-char { display: flex; gap: 12px; align-items: flex-start; } .adv-char-words { flex: 1; min-width: 0; } .adv-char-words .btns { margin-top: 6px; }
 .adv-noface { width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; font-size: 32px; }
-.adv-party { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 10px; }
-.adv-member { flex: none; min-width: 120px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+/* 1.5.204: the party and the enemies wrap into rows that fit the screen; nothing hangs off the right edge. */
+.adv-party { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.adv-member { min-width: 0; overflow-wrap: anywhere; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
 .adv-member.turn { border-color: var(--accent); } .adv-member.out { opacity: .55; }
-.adv-hearts { color: var(--bad); letter-spacing: 1px; }
+.adv-hearts { color: var(--bad); letter-spacing: 1px; overflow-wrap: anywhere; }
+.adv-prep { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .adv-log { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+.adv-book { width: 100%; height: 70vh; border: 1px solid var(--line, #8884); border-radius: 8px; background: #fff; } /* 1.5.206 the storybook */
 .adv-gm, .adv-turn, .adv-live { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; overflow-wrap: anywhere; }
 .adv-turn.you { background: var(--you); border-color: transparent; }
 .adv-live { border-style: dashed; }
@@ -203,8 +241,44 @@ label.field { display: block; margin: 10px 0 4px; font-weight: 600; }
 .chest-pic { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: var(--raise); display: flex; align-items: center; justify-content: center; font-size: 32px; }
 .chest-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #chest-big img, #chest-big video { max-width: 100%; border-radius: 8px; }
+.msg .math-block { display: block; overflow-x: auto; overflow-y: hidden; padding: 4px 0; text-align: center; }
+.msg code.math-bad { color: var(--bad, #e07a6a); }
+/* Saved prompts: the "/" menu above the message box, and Settings, Saved prompts */
+.prompt-menu { max-height: 40vh; overflow-y: auto; margin-bottom: 8px; background: var(--raise); border: 1px solid var(--line); border-radius: 14px; }
+.prompt-menu button { display: block; width: 100%; min-height: 48px; text-align: left; padding: 8px 12px; border: 0; border-radius: 0; background: none; }
+.prompt-menu button + button { border-top: 1px solid var(--line); }
+.prompt-menu button small { display: block; opacity: .75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prompt-menu p { margin: 8px 12px; }
+.prompt-row { padding: 8px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.prompt-form input, .prompt-form textarea { width: 100%; margin-top: 4px; }
+/* 🔒 Passcode lock */
+.lock-screen { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: grid; place-items: center; padding: 16px; }
+.lock-screen form { background: var(--panel); border-radius: 12px; padding: 20px; display: grid; gap: 10px; width: min(340px, 100%); box-sizing: border-box; }
+.lock-screen button { min-height: 44px; }
+.lock-warn { color: var(--bad); }
+.lock-ask { border: 1px solid var(--bad); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+input[type="number"] { min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); padding: 8px 12px; width: 8em; }
 
 /* 3D models (model-core.js) */
 .model-box { margin: 6px 0; }
 .model-canvas { width: 100%; height: 300px; display: block; border-radius: 10px; background: radial-gradient(circle at 50% 40%, #3a281b, #1d1510); touch-action: none; }
 .model-info { margin: 4px 0 0; font-size: 12px; opacity: 0.75; }
+
+/* 1.5.204 Adventure: sections like the PC's, the enemies, the quest log, the picture behind the story, the die. */
+.adv-sec { margin-bottom: 12px; } .adv-sec-h { margin: 0 0 8px; font-size: 16px; }
+.adv-hook { font-style: italic; } .adv-gains { color: var(--accent); }
+.adv-foes .adv-member { border-color: var(--bad); }
+.adv-member.hit { animation: adv-hit .6s ease-out; }
+@keyframes adv-hit { 0%, 100% { transform: none; } 25% { transform: translateX(-4px); } 50% { transform: translateX(4px); } 75% { transform: translateX(-2px); } }
+.adv-ooc { border-style: dashed; } .adv-reward { color: var(--accent); font-weight: 700; }
+.adv-quests { list-style: none; padding: 0; margin: 4px 0 10px; }
+.adv-table { position: relative; isolation: isolate; }
+.adv-table.adv-has-bg::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--adv-bg) center / cover no-repeat; opacity: .16; pointer-events: none; }
+.fx-die { position: fixed; left: 50%; top: 40%; z-index: 50; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 6px; pointer-events: none; transition: opacity .3s; }
+.fx-die .fx-face { width: 88px; height: 88px; display: grid; place-items: center; font-size: 32px; font-weight: 800; color: var(--text); background: var(--panel); border: 3px solid var(--accent); clip-path: polygon(50% 0, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%); animation: fx-tumble .14s linear infinite; }
+.fx-die.landed .fx-face, .fx-die.still .fx-face { animation: none; }
+.fx-die .fx-word { font-weight: 800; padding: 2px 10px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); opacity: 0; } .fx-die.landed .fx-word { opacity: 1; }
+.fx-die.hit .fx-face { border-color: var(--good, var(--accent)); } .fx-die.miss .fx-face { border-color: var(--bad); }
+.fx-die.nat20 .fx-face { box-shadow: 0 0 24px var(--accent); } .fx-die.gone { opacity: 0; }
+@keyframes fx-tumble { from { transform: rotate(0); } to { transform: rotate(60deg); } }
+@media (prefers-reduced-motion: reduce) { .fx-die .fx-face, .adv-member.hit { animation: none; } }

@@ -15,10 +15,12 @@
 </header>
 
 <main id="chat" aria-live="polite"></main>
+<div class="to-bottom-dock"><button id="to-bottom" class="to-bottom hidden" aria-label="Go to the newest message"><span class="tb-dots" aria-hidden="true"><i></i><i></i><i></i></span><svg class="tb-arrow" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v13M6 12l6 6 6-6"/></svg></button></div>
 
 <footer>
-  <div id="status"><span id="status-text"></span><button class="effort hidden" id="effort" aria-label="Effort"></button></div>
+  <div id="status"><span id="status-text"></span><button class="effort hidden" id="preset" aria-label="Assistant preset for this chat"></button><button class="effort hidden" id="effort" aria-label="Effort"></button></div>
   <div class="photo-chip hidden" id="photo-chip"><img id="photo-preview" alt="The photo you picked"><span>Photo for Bob to work on</span><button class="plain" id="photo-drop" aria-label="Remove the photo">✕</button></div>
+  <div class="prompt-menu hidden" id="prompt-menu" role="listbox" aria-label="Saved prompts"></div>
   <div class="compose">
     <button id="mic" aria-label="Talk to Bob">🎙</button>
     <button id="photo" aria-label="Add a photo">📎</button>
@@ -27,6 +29,9 @@
   </div>
 </footer>
 
+<section class="lock-screen hidden" id="lock-screen" aria-label="Bob is locked"><form id="lock-form"><h2>🔒 Bob is locked</h2>
+  <label class="field" for="lock-code">Passcode</label><input type="password" id="lock-code" autocomplete="current-password" required>
+  <p class="lock-warn" id="lock-wrong" role="alert"></p><button type="submit">Open Bob</button><p class="help-line" id="lock-note"></p></form></section>
 <section class="panel hidden" id="menu"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Menu</h2></div><div class="body">
   <button data-go="new"><span class="ico">✚</span>New chat</button>
   <button data-go="chats"><span class="ico">🗂</span>Past chats</button>
@@ -109,16 +114,39 @@
   <h3>Voice</h3>
   <label class="switch"><div class="words"><strong>Read replies aloud</strong><p class="help-line">Uses your phone's own voice. Off to start with.</p></div><span class="pill"><input type="checkbox" id="read-aloud"><span></span></span></label>
   <h3>Look</h3>
+  <label class="switch"><div class="words"><strong>Show maths as formulas</strong><p class="help-line">Maths in replies shows as real formulas instead of code. Drawn on the phone. Off to start with.</p></div><span class="pill"><input type="checkbox" id="math-view"><span></span></span></label>
   <label class="field" for="theme">Theme</label>
-  <select id="theme"><option value="inn">Bob's Inn (dark)</option><option value="light">Light</option><option value="phone">Follow the phone</option></select>
+  <select id="theme"><option value="moondust">Moondust (dark)</option><option value="inn">Bob's Inn (dark)</option><option value="light">Light</option><option value="phone">Follow the phone</option></select>
+  <h3>🔒 Passcode lock</h3>
+  <p class="help-line">Off to start with. Anyone holding this phone can open Bob and read your chats. A passcode stops that.</p>
+  <div id="lock-current-row"><label class="field" for="lock-current">Passcode you have now (once you have one)</label><input type="password" id="lock-current" autocomplete="current-password"></div>
+  <label class="field" for="lock-new">New passcode (4 or more characters)</label><input type="password" id="lock-new" autocomplete="new-password">
+  <label class="field" for="lock-again">Same again</label><input type="password" id="lock-again" autocomplete="new-password">
+  <div class="btns"><button id="lock-save">Save passcode</button></div>
+  <label class="switch"><div class="words"><strong>Ask for a passcode to open Bob</strong><p class="help-line">Bob shows a passcode screen first, each time he opens.</p></div><span class="pill"><input type="checkbox" id="lock-on"><span></span></span></label>
+  <label class="field" for="lock-idle">Lock again after this many minutes of nothing (0: only when Bob opens)</label><input type="number" id="lock-idle" min="0" max="1440" step="1">
+  <label class="switch"><div class="words"><strong>Lock my chats and memory</strong><p class="help-line">This phone's chats and Bob's memory are kept scrambled, opened by the passcode.</p><p class="help-line lock-warn" id="lock-warn"></p></div><span class="pill"><input type="checkbox" id="lock-enc"><span></span></span></label>
+  <div class="lock-ask hidden" id="lock-ask" role="alertdialog" aria-label="Lock my chats and memory?"><p><strong>Lock your chats and memory now?</strong> Write the passcode down somewhere safe first: a lost passcode means lost chats.</p><div class="btns"><button id="lock-enc-yes">Yes, lock them</button><button id="lock-enc-no">Not now</button></div></div>
+  <div class="btns"><button id="lock-now">🔒 Lock Bob now</button></div>
+  <p class="help-line" id="lock-msg" role="status"></p>
   <h3>Tools and how-tos Bob made</h3>
   <p class="help-line">What a Bob on your Bob-Net made for himself: the tools he wrote and the how-tos he kept. Delete what you don't want him to have; it waits 30 days under Recently deleted, where Put back brings it back.</p>
   <div id="own-kit"></div>
   <p class="help-line" id="own-kit-msg" role="status"></p>
+  <h3>Saved prompts</h3>
+  <label class="switch"><div class="words"><strong>Pull up saved prompts with /</strong><p class="help-line">Type / at the start of the message box and tap a saved prompt. Its words go in the box for you to finish and send. Words in {curly brackets} are blanks: Next blank picks each one to type over. Off to start with.</p></div><span class="pill"><input type="checkbox" id="prompt-on"><span></span></span></label>
+  <div id="prompt-list"></div>
+  <p class="help-line" id="prompt-msg" role="status"></p>
+  <h3>Back up and move</h3>
+  <div class="btns"><button id="phone-backup">Save a backup of this phone</button><button id="phone-restore">Restore from a backup</button></div>
+  <p class="help-line">One file with this phone's chats, what Bob remembers here, these settings and your list of Bobs, saved to Downloads/Bob. Restore it on a new phone. No passcodes or keys are in it: sign in to each Bob again. Your other Bobs have their own backup, in their Settings.</p>
+  <p class="help-line" id="backup-msg" role="status"></p>
   <h3>When I'm not working right</h3>
   <div class="btns"><button id="help-bundle">Save a help bundle</button></div>
   <p class="help-line">Saves one file with Bob's logs, the last chats, errors and this replicant matrix's facts, scrubbed of passcodes, keys and your name, so an agent or a person can work out what's wrong. Nothing is sent anywhere: it saves to this phone's Downloads.</p>
   <p class="help-line" id="bundle-msg" role="status"></p>
+  <h3>In the chat</h3>
+  <label class="switch"><div class="words"><strong>Show Try again, Edit and Delete in the chat</strong><p class="help-line">On unless you turn it off. Adds them to each message's … menu.</p></div><span class="pill"><input type="checkbox" id="redo"><span></span></span></label>
   <h3>After Bob is closed</h3>
   <label class="switch"><div class="words"><strong>Pick up where Bob left off</strong><p class="help-line">If Android closes Bob in the middle of a phone-brain reply, he asks again when you come back. Off to start with.</p></div><span class="pill"><input type="checkbox" id="resume"><span></span></span></label>
 </div></section>
@@ -130,9 +158,13 @@
 
 <script src="shared.js"></script>
 <script src="avatars.js"></script>
+<script src="prompt-words.js"></script>
+<script src="table-fx.js"></script>
 <script src="logic.js"></script>
 <script src="help.js"></script>
 <script src="diagram-core.js"></script>
+<script src="math-core.js"></script>
+<script src="lock.js"></script>
 <script src="model-core.js"></script>
 <script src="phone.js"></script>
 </body>

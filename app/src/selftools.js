@@ -33,6 +33,7 @@ import { textProblem, killTree } from './hands-run.js';
 import { recycle } from './recycle.js';
 import { reviewBrain } from './moot.js';
 import { copyName } from './clan.js';
+import { toolLearnOn, loadLearning, learnedLine } from './tool-learn.js';
 
 const WIN = process.platform === 'win32';
 export const MAX_TOOLS = 30;
@@ -62,7 +63,7 @@ function saveApproved(cfg, all) {
 }
 
 // Every file in a tool's folder that counts (not its work folder), with its sha256.
-function hashFiles(dir) {
+export function hashFiles(dir) {
   const out = {};
   const walk = (d, rel = '') => {
     let list = [];
@@ -77,7 +78,7 @@ function hashFiles(dir) {
   walk(dir);
   return out;
 }
-const sameHashes = (a = {}, b = {}) => { const ka = Object.keys(a).sort(), kb2 = Object.keys(b).sort(); return ka.length === kb2.length && ka.every((k, i) => k === kb2[i] && a[k] === b[k]); };
+export const sameHashes = (a = {}, b = {}) => { const ka = Object.keys(a).sort(), kb2 = Object.keys(b).sort(); return ka.length === kb2.length && ka.every((k, i) => k === kb2[i] && a[k] === b[k]); };
 
 function readSpec(dir) {
   try { return JSON.parse(fs.readFileSync(path.join(dir, 'tool.json'), 'utf8')); } catch { return null; }
@@ -96,7 +97,7 @@ export function listTools(cfg, { deleted = false } = {}) {
     else if (!sameHashes(hashFiles(dir), a.hashes)) state = 'changed';
     let bytes = 0;
     try { for (const f of Object.keys(a.hashes || {})) bytes += fs.statSync(path.join(dir, f)).size; } catch {}
-    return { name, what: spec?.what || a.what || '', inputs: spec?.inputs || {}, reads: a.reads || [], writes: a.writes || [], internet: Boolean(a.internet), downloads: (a.downloads || []).length, at: a.at, lastUsed: a.lastUsed || 0, bytes, state, dir, ...(a.deleted ? { deleted: a.deleted, goneAt: a.deleted + KEEP_DELETED_MS } : {}) };
+    return { name, what: spec?.what || a.what || '', when: spec?.when || '', example: spec?.test || null, inputs: spec?.inputs || {}, reads: a.reads || [], writes: a.writes || [], internet: Boolean(a.internet), downloads: (a.downloads || []).length, at: a.at, lastUsed: a.lastUsed || 0, bytes, state, dir, ...(a.deleted ? { deleted: a.deleted, goneAt: a.deleted + KEEP_DELETED_MS } : {}) };
   }).sort((x, y) => x.name.localeCompare(y.name));
 }
 export const usableTools = (cfg) => listTools(cfg).filter((t) => t.state === 'on');
@@ -228,8 +229,10 @@ export function cleanSpec(cfg, a = {}) {
   }
   const test = asObj(a.test);
   if (!test || typeof test !== 'object' || Array.isArray(test)) problems.push('test must be a sample input (an object), so the tool can be tried before it is added.');
+  // Nov 11: "use me when", so Bob (and the list) knows when the tool fits. Older tools have none.
+  const when = String(a.when || '').replace(/\s+/g, ' ').trim().replace(/^(?:use (?:it|me|this)\s+)?when\s+/i, '').slice(0, 200);
   const timeoutSec = Math.min(300, Math.max(5, Math.round(Number(a.timeoutSec) || 60)));
-  return { spec: { name, what, inputs, reads, writes, internet, downloads, test: test || {}, timeoutSec }, problems };
+  return { spec: { name, what, inputs, reads, writes, internet, downloads, test: test || {}, timeoutSec, ...(when ? { when } : {}) }, problems };
 }
 
 // ---------------------------------------------------------------- the sandbox
@@ -253,7 +256,8 @@ function sandboxEnv(work) {
 
 // Runs a tool's code in the sandbox. dir = the tool's folder (tool.mjs, files\, work\). Resolves
 // { ok, out, error, blocked, timedOut, log } and never throws for the tool's own failure.
-export function runSandboxed({ dir, input = {}, reads = [], writes = [], internet = false, timeoutSec = 60, signal } = {}) {
+// file: the code file inside dir to run (tool.mjs for the tools Bob made; a tool pack names its own, toolpacks.js).
+export function runSandboxed({ dir, file: codeFile = 'tool.mjs', input = {}, reads = [], writes = [], internet = false, timeoutSec = 60, signal } = {}) {
   // Real paths only: on a Mac the temp folder (/var/folders/...) goes through the link /var -> /private/var, and
   // following that link to load the tool is itself a read the sandbox refuses (it stopped "FileSystemRead: /var").
   const real = (f) => { try { return fs.realpathSync(f); } catch { return f; } };
@@ -271,7 +275,7 @@ export function runSandboxed({ dir, input = {}, reads = [], writes = [], interne
     const args = ['--permission', `--allow-fs-read=${runner}`, `--allow-fs-read=${dir}`, ...[...reads, ...writes].map((f) => `--allow-fs-read=${f}`),
       `--allow-fs-write=${work}`, ...writes.map((f) => `--allow-fs-write=${f}`), '--max-old-space-size=512', '--disable-proto=throw'];
     if (internet && netGuard()) args.push('--allow-net');
-    args.push(runner, path.join(dir, 'tool.mjs'), inFile, outFile, internet ? '1' : '0');
+    args.push(runner, path.join(dir, ...String(codeFile).split('/')), inFile, outFile, internet ? '1' : '0');
     let log = '', timedOut = false, done = false, child;
     const finish = (r) => {
       if (done) return; done = true;
@@ -528,17 +532,18 @@ export function selfToolsTools(brain) {
   const t = {};
 
   t.make_tool = {
-    schema: fn('make_tool', "Make yourself a new tool when none of yours fits a job. Write plain JavaScript (an ES module using only Node's built-in parts: fs, path, crypto, zlib...; no packages, no require, no child_process) that does `export async function run(input, { workDir, filesDir }) { ... return 'answer'; }`. It runs in a sandbox: it may read its own folder and the folders in reads, and write its work folder and the folders in writes. A test run and your reviewer check it, then {{USER}} OKs it on one card. Making it again with the same name replaces it.", {
+    schema: fn('make_tool', "Make yourself a new tool when none of yours fits. Write an ES module using only Node's built-in parts (no packages, require or child_process) that does `export async function run(input, { workDir, filesDir }) { ... return 'answer'; }`. In its sandbox it reads its own folder and reads, and writes its work folder and writes. A test, your reviewer and {{USER}}'s OK come first. The same name replaces it.", {
       name: str('Short name, lower case with _, like csv_to_json.'),
       what: str('One plain line: what it does.'),
+      when: str('One line: when to use it, like "{{USER}} gives a CSV and wants JSON".'),
       inputs: { type: 'object', description: 'Its inputs: { "name": { "type": "string|number|boolean", "description": "..." } }.' },
       code: str('The whole tool.mjs.'),
       test: { type: 'object', description: 'A sample input to try it with before it is added.' },
-      reads: { type: 'array', items: { type: 'string' }, description: 'Full paths of folders it needs to read (only folders ticked for Hands). Leave empty if none.' },
-      writes: { type: 'array', items: { type: 'string' }, description: 'Full paths of folders it needs to save in (only folders ticked for Hands). Leave empty if none.' },
+      reads: { type: 'array', items: { type: 'string' }, description: 'Folders it reads (only ones ticked for Hands). Empty if none.' },
+      writes: { type: 'array', items: { type: 'string' }, description: 'Folders it saves in (only ones ticked for Hands). Empty if none.' },
       internet: { type: 'boolean', description: 'true only if it must fetch things from the internet.' },
-      downloads: { type: 'array', items: { type: 'object' }, description: 'Files it needs, each { url, sha256, bytes, file }, pinned to one exact version. They go in its files folder.' }
-    }, ['name', 'what', 'inputs', 'code', 'test']),
+      downloads: { type: 'array', items: { type: 'object' }, description: 'Files it needs, each { url, sha256, bytes, file }, pinned to one version.' }
+    }, ['name', 'what', 'when', 'inputs', 'code', 'test']),
     alone: true, // its card is its own, never part of an "all together" card: it needs its own check first
     async check(args, ctx = {}) {
       off(cfg);
@@ -603,8 +608,9 @@ export function selfToolsTools(brain) {
     get schema() {
       let mine = [], shelf = [];
       try { mine = usableTools(cfg); shelf = listTools(cfg, { deleted: true }).map((x) => x.name); } catch {}
-      const list = mine.map((x) => `${x.name}: ${x.what} (inputs: ${Object.entries(x.inputs).map(([k, v]) => `${k} ${v.type}`).join(', ') || 'none'})`).join('; ');
-      return fn('use_my_tool', `Run one of the tools you made. ${list ? `Yours: ${list}.` : 'You have none yet.'}${shelf.length ? ` Deleted (on the Recently deleted shelf; ask ${cfg.userName || 'the user'} to put one back, never make it again): ${shelf.join(', ')}.` : ''}`, {
+      const learned = toolLearnOn(cfg) ? loadLearning(cfg) : null; // tool notes and scorecard (tool-learn.js)
+      const list = mine.map((x) => `${x.name}: ${x.what}${x.when ? ` Use when ${x.when.replace(/[.\s]+$/, '')}.` : ''} Inputs: ${Object.entries(x.inputs).map(([k, v]) => `${k} ${v.type}`).join(', ') || 'none'}${x.example && Object.keys(x.example).length ? `, like ${JSON.stringify(x.example).slice(0, 120)}` : ''}.${learned ? learnedLine(cfg, `use_my_tool:${x.name}`, learned, { made: true }) : ''}`).join(' | ');
+      return fn('use_my_tool', `Run one of the tools you made. ${list ? `Yours: ${list}` : 'You have none yet.'}${shelf.length ? ` Deleted (on the Recently deleted shelf; ask ${cfg.userName || 'the user'} to put one back, never make it again): ${shelf.join(', ')}.` : ''}`, {
         name: str('The tool\'s name.', mine.length || shelf.length ? { enum: [...mine.map((x) => x.name), ...shelf] } : {}),
         input: { type: 'object', description: 'Its inputs.' }
       }, ['name']);
@@ -633,7 +639,7 @@ export function selfToolsTools(brain) {
   };
 
   t.my_tools = {
-    schema: fn('my_tools', 'List the tools you made, or turn one off or delete one ({{USER}} OKs a delete; it can be put back for 30 days).', {
+    schema: fn('my_tools', 'List the tools you made, turn one off, or delete one ({{USER}} OKs a delete; it can come back for 30 days).', {
       action: str('What to do', { enum: ['list', 'off', 'remove'] }),
       name: str('The tool (for off and remove).')
     }, ['action']),
@@ -651,7 +657,9 @@ export function selfToolsTools(brain) {
       const all = listTools(cfg);
       if (!all.length) return 'No tools made yet.';
       const st = { on: 'on', off: 'turned off', changed: 'off: its files changed since the OK', missing: 'its folder is gone' };
-      return all.map((x) => `${x.name}: ${x.what} [${st[x.state]}; reads ${x.reads.join('; ') || 'its own folder'}; changes ${x.writes.join('; ') || 'nothing outside it'}; internet ${x.internet ? 'yes' : 'no'}]`).join('\n');
+      const sc = toolLearnOn(cfg) ? loadLearning(cfg).tools : {};
+      const score = (n) => { const t = sc[`use_my_tool:${n}`]; return t ? `; worked ${t.wins}, failed ${t.misses}` : ''; };
+      return all.map((x) => `${x.name}: ${x.what}${x.when ? ` Use when ${x.when}` : ''} [${st[x.state]}${score(x.name)}; reads ${x.reads.join('; ') || 'its own folder'}; changes ${x.writes.join('; ') || 'nothing outside it'}; internet ${x.internet ? 'yes' : 'no'}]`).join('\n');
     },
     summary: ({ action, name }) => `his own tools: ${action}${name ? ' ' + name : ''}`
   };

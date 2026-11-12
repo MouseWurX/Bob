@@ -121,13 +121,14 @@ const summary = (tool, args) => { try { return tool?.summary ? String(tool.summa
 
 // What he did, in plain words for the card ("Ran npm test: failed (exit 1)"), not tool names.
 const VERBS = { convert_file: 'Converted', office_make: 'Made', office_edit: 'Changed', office_read: 'Read', strip_metadata: 'Cleaned', defender_scan: 'Defender:', inspect_file: 'Inspected', security_check: 'Checked', osint_lookup: 'Looked up', check_exposure: 'Checked exposure:', security_tips: 'Read notes on', run_command: 'Ran', run_recipe: 'Ran the recipe', edit_file: 'Changed', write_file: 'Wrote', save_spreadsheet: 'Saved the spreadsheet',
-  file_hands: 'Files:', undo_files: 'Undid file job', open_app: 'Opened', app_look: 'Looked at', app_act: 'In an app:', read_file: 'Read', list_folder: 'Looked in',
+  file_hands: 'Files:', sort_files: 'Sorted and renamed in', undo_files: 'Undid file job', open_app: 'Opened', app_look: 'Looked at', app_act: 'In an app:', read_file: 'Read', list_folder: 'Looked in',
   search_files: 'Searched', web_search: 'Searched the web for', fetch_page: 'Read the page', schedule_job: 'Made the schedule', change_schedule: 'Changed a schedule' };
 const short = (x, n = 70) => { const t = String(x ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
 function what(name, args = {}) {
   const a = args || {};
   const thing = name === 'run_command' ? [a.cmd, ...[].concat(a.args || [])].join(' ')
     : name === 'file_hands' ? `${a.action || ''} ${[].concat(a.paths || []).length} item(s)`
+    : name === 'sort_files' ? a.folder || ''
     : name === 'app_act' ? `${a.action || ''}${a.name ? ` "${a.name}"` : ''}${a.window ? ` in ${a.window}` : ''}`
     : a.path || a.url || a.query || a.name || a.window || a.text || '';
   return short(`${VERBS[name] || name.replace(/_/g, ' ')} ${thing}`.trim(), 80);

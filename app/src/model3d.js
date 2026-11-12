@@ -215,7 +215,7 @@ export function model3dTool(brain, { make = makeModel3d, ready = model3dReady, f
       type: 'function',
       function: {
         name: 'make_3d_model',
-        description: 'Turn a picture into a textured 3D model (a GLB file) with TRELLIS.2: figurines, characters, creatures, props, furniture, anything with a natural shape. It shows in a 3D viewer in the chat. Use a picture of ONE object, whole, on a plain background. If there is no such picture yet, make one first with the picture tool (say "one object, full view, plain white background"), then call this with it. Takes 1 to 5 minutes. For exact parts with measurements use make_3d_part instead.',
+        description: 'Turn a picture of one object into a textured 3D model (GLB) with TRELLIS.2: figurines, creatures, props, furniture, natural shapes. Shows in a 3D viewer. The picture: ONE whole object on a plain background; make one first with the picture tool if needed. Takes 1 to 5 minutes. For exact parts with measurements use make_3d_part.',
         parameters: {
           type: 'object',
           properties: {

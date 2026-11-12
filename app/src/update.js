@@ -43,7 +43,7 @@ export function checkUpdate() {
     current, available, newer, source: source || null,
     canRun: process.platform === 'win32' && Boolean(script && fs.existsSync(script)),
     // A Mac or Linux Bob is a download, not a build: the new version comes from the same page as the first one.
-    why: process.platform === 'darwin' ? 'On a Mac, Bob updates by downloading the newest Bob for Mac from github.com/MouseWurX/Bob/releases and replacing the old one in Applications. Your chats, settings and models stay where they are.' : process.platform !== 'win32' ? 'On Linux, Bob updates by downloading the newest Bob AppImage from github.com/MouseWurX/Bob/releases and putting it in place of the old one (if you turned on "Launch Bob on start-up", switch it off and on once so it points at the new file). Your chats, settings and models stay where they are.' : !source ? 'Bob doesn\'t know which folder he was built from. Run Install Bob.cmd from the new source folder once.' : ''
+    why: process.platform === 'darwin' ? 'On a Mac, Bob updates by downloading the newest Bob for Mac from github.com/MouseWurX/Bob/releases and replacing the old one in Applications. Your chats, settings and models stay where they are.' : process.platform !== 'win32' ? 'On Linux, Bob updates himself from github.com/MouseWurX/Bob/releases when he runs as the AppImage, the .deb or the Flatpak (Check for updates, then Update Bob). Run from source, download one of those from the releases page. Your chats, settings and models stay where they are.' : !source ? 'Bob doesn\'t know which folder he was built from. Run Install Bob.cmd from the new source folder once.' : ''
   };
 }
 
@@ -92,7 +92,7 @@ export async function checkAll(opts = {}) {
   const useGithub = ghNewer && (!srcNewer || compareVersions(gh.label, local.available?.label) > 0);
   const github = gh && { label: gh.label, page: gh.page, file: gh.asset?.name || '', sizeMB: gh.asset ? Math.round(gh.asset.size / 1e6) : 0, newer: ghNewer, why: gh.why };
   if (useGithub) {
-    const can = selfUpdate(opts.env, opts.platform, opts.execPath, 'electron' in opts ? opts.electron : process.versions.electron);
+    const can = selfUpdate(opts.env, opts.platform, opts.execPath, 'electron' in opts ? opts.electron : process.versions.electron, opts.exists);
     const why = gh.why || (can.ok ? '' : can.why);
     return { ...local, from: 'github', available: { label: gh.label }, sourceLabel: local.available?.label || '', newer: true, canRun: !why, why, github, githubError };
   }

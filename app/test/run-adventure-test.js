@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { rollAction, heartsLost, flairBonus, outcomeOf, cleanSheet, cardFromWords, parseGm, secondCard, gmSystem, turnPrompt, playerSystem, cleanAdventure, gmBrain, refusal, Adventure, adventureRoute, listGames, loadGame, CARDS, CLASSES, ARMOUR, STAT_POINTS, statPoints, HEARTS, DEFAULT_CARDS } from '../src/adventure.js';
+import { rollAction, heartsLost, flairBonus, outcomeOf, cleanSheet, cardFromWords, parseGm, secondCard, gmSystem, turnPrompt, playerSystem, cleanAdventure, gmBrain, refusal, Adventure, adventureRoute, listGames, loadGame, CARDS, CLASSES, ARMOUR, STAT_POINTS, statPoints, HEARTS, DEFAULT_CARDS, STARTS, START_IDS, SETTINGS, cleanExtras, memoryLines, recapPrompt, isHuman, MAX_HEARTS, listCharacters, gmMeta, odds, oddsWords, fairHearts, storybookHtml, worldLines, TONES, LINE_AGAIN, deleteGame } from '../src/adventure.js';
 import { HELP } from '../public/help-content.js';
 import { plainText, settingsNow } from '../src/self-help.js';
 import { SETTING_KEYS, mergeSettings } from '../src/config.js';
@@ -48,8 +48,8 @@ check('every card rolls one of the four stats', Object.values(CARDS).every((c) =
   // 1.5.120: a brain with thinking off dropped the closing >>> and added a stray } on every turn (PC live game).
   { const r = parseGm('You step in.\n\n<<<{"cards":["attack","talk"],"kind":"fight","next":"Sam","scene":1,"title":"The Gilded Goblet","here":["a guard"],"exits":[],"give":{},"take":{},"teach":{}}}');
     check('a missing >>> and an extra } still parse, and nothing of the line reaches the narration', r.narration === 'You step in.' && r.kind === 'fight' && r.title === 'The Gilded Goblet' && JSON.stringify(r.cards) === '["attack","talk","other"]' && r.newScene === true);
-    const r2 = parseGm('Words.<<<{"kind":"talk"');
-    check('a line that never parses is still cut out of the narration', r2.narration === 'Words.' && r2.kind === null && r2.cards === null); }
+    const r2 = parseGm('Words.<<<{"kind": talk fight ,, nope');
+    check('a line that never parses is still cut out of the narration, and marked broken', r2.narration === 'Words.' && r2.kind === null && r2.cards === null && r2.broken === true); }
 }
 { const game = { settingText: 'Classic fantasy', pace: 'evening', party: [cleanSheet({ name: 'Wren', cls: 'rogue' }, { who: 'you' }), cleanSheet({ name: 'Bobert', cls: 'wizard', who: 'bob' }, { who: 'bob' })] };
   const sys = gmSystem(game, { user: 'Sam' });
@@ -64,14 +64,15 @@ check('every card rolls one of the four stats', Object.values(CARDS).every((c) =
 }
 
 // ---- settings: defaults, nothing on ----
-check('Adventure settings have defaults and only known values', JSON.stringify(cleanAdventure({})) === '{"gm":"biggest","players":"own"}' && cleanAdventure({ gm: 'main', players: 'gm' }).gm === 'main' && cleanAdventure({ gm: 'x', players: 'y' }).players === 'own');
+check('Adventure settings have defaults and only known values', JSON.stringify(cleanAdventure({})) === '{"gm":"biggest","players":"own","extras":{"dice":false,"sounds":false,"voice":false,"pictures":false,"scenePics":false,"music":false}}' && cleanAdventure({ gm: 'main', players: 'gm' }).gm === 'main' && cleanAdventure({ gm: 'x', players: 'y' }).players === 'own');
+check('table extras are kept when saved, and only known ticks', (() => { const c = { settingsFile: '', agentDir: '' }; mergeSettings(c, { adventure: { extras: { music: true, scenePics: true, bogus: true } } }); return c.adventure.extras.music === true && c.adventure.extras.scenePics === false && !('bogus' in c.adventure.extras); })());
 check('the setting is saved under its own key and cleaned', SETTING_KEYS.includes('adventure') && (() => { const c = { settingsFile: '', agentDir: '' }; mergeSettings(c, { adventure: { gm: 'main', players: 'bogus' } }); return c.adventure.gm === 'main' && c.adventure.players === 'own'; })());
 check('the game master is the Deep thinking brain when picked, else the main Brain, on the card, thinking off (1.5.120: speed)', gmBrain({ sessionBrains: { deep: 'big' }, models: { bob: 'main' } }).model === 'big' && gmBrain({ models: { bob: 'main' } }).model === 'main' && gmBrain({ adventure: { gm: 'main' }, sessionBrains: { deep: 'big' }, models: { bob: 'main' } }).model === 'main' && gmBrain({ models: { bob: 'main' } }).cpu === false && gmBrain({ models: { bob: 'main' } }).think === false);
 check('refused in the Gaming session, and with no brain equipped', /Gaming/.test(refusal({ session: 'light', models: { bob: 'main' } })) && /Equip a Brain/.test(refusal({ session: 'normal', models: {} })) && refusal({ session: 'normal', models: { bob: 'main' } }) === '');
-check('Bob can say the Adventure settings', /Adventure/.test(settingsNow({ cfg: {} }.cfg)) && /Biggest brain/.test(settingsNow({})) && /Their own Bob/.test(settingsNow({})));
+check('Bob can say the Adventure settings', /Adventure/.test(settingsNow({ cfg: {} }.cfg)) && /Biggest brain/.test(settingsNow({})) && /Their own Bob/.test(settingsNow({})) && /Table extras \(ticked on the start card\): none/.test(settingsNow({})) && /Table extras[^;]*: Dice you can see, Music/.test(settingsNow({ adventure: { extras: { dice: true, music: true } } })));
 
 // ---- the game loop with a fake brain ----
-function setup({ lenderOk = true, lenderFails = false } = {}) {
+function setup({ lenderOk = true, lenderFails = false, lenderHangs = false, takeBackMs = 0, netTimeoutMs = 45000 } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-adv-'));
   const cfg = { dataDir: tmp, agentDir: tmp, settingsFile: path.join(tmp, 'settings.json'), session: 'normal', userName: 'Sam', models: { bob: 'main' }, sessionBrains: { deep: 'big' }, share: { borrow: { bobs: [{ address: '100.64.0.9:7777', name: 'Bob on the Go', passcode: 'x' }] } } };
   const calls = { ensure: [], chat: [], lend: [], done: 0, settle: 0, unload: [] };
@@ -96,10 +97,10 @@ function setup({ lenderOk = true, lenderFails = false } = {}) {
     lenders: {
       bobs: () => cfg.share.borrow.bobs,
       hello: async (b) => ({ ok: lenderOk, why: lenderOk ? '' : 'not reachable', device: 'handheld' }),
-      chat: async (b, { messages, onToken }) => { calls.lend.push(messages); if (lenderFails) throw new Error('too slow'); const t = 'I shout a greeting and wave my lute.'; onToken?.(t); return { content: t }; }
+      chat: async (b, { messages, onToken }) => { calls.lend.push(messages); if (lenderHangs) return new Promise(() => {}); if (lenderFails) throw new Error('too slow'); const t = 'I shout a greeting and wave my lute.'; onToken?.(t); return { content: t }; }
     }
   };
-  const a = new Adventure(brain, { rnd: fixed(12, 12, 12, 12, 12, 12, 12, 12, 12, 12) });
+  const a = new Adventure(brain, { rnd: fixed(12, 12, 12, 12, 12, 12, 12, 12, 12, 12), takeBackMs, netTimeoutMs });
   return { a, brain, cfg, calls, events, tmp, setGm: (r) => { gmReplies = r; } };
 }
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
@@ -254,7 +255,7 @@ function statusSetup() {
     chatSafe(o) { return new Promise((_, rej) => o.signal.addEventListener('abort', () => rej(new Error('aborted')))); },
   };
   brain.setState = brain.setState.bind(brain);
-  const a = new Adventure(brain, { rnd: fixed(12) });
+  const a = new Adventure(brain, { rnd: fixed(12), takeBackMs: 0 });
   return { a, brain, calls };
 }
 const startOpts = { setting: 'fantasy', pace: 'short', you: { name: 'Sam' }, bobs: [{ who: 'bob', name: 'Bobert' }] };
@@ -305,6 +306,228 @@ for (const busy of ['turn', 'waking', 'queued']) {
   check('status: a new game started right after End keeps Thinking while it runs (the End reset does not clobber it)', brain.state.state === 'thinking', `(now ${brain.state.state})`);
   await again;
   await a.end({ keep: false });
+}
+
+// ---- 1.5.204: the Adventure upgrade (enemies' hearts, rewards, quests, your own words, Ask, friends, starts, extras) ----
+check('8 ready-made starts, each with a known setting, a name and a hook', START_IDS.length === 8 && START_IDS.every((id) => SETTINGS[STARTS[id].setting] && STARTS[id].name && STARTS[id].hook.length > 20));
+check('table extras are all off unless ticked, and scene pictures need pictures', JSON.stringify(Object.values(cleanExtras({}))) === '[false,false,false,false,false,false]' && cleanExtras({ scenePics: true }).scenePics === false && cleanExtras({ pictures: true, scenePics: true }).scenePics === true && cleanExtras({ dice: 'yes' }).dice === false);
+{ const p = parseGm('Two goblins!<<<{"kind":"fight","foes":{"Goblin":2,"Goblin boss":4,"Dragon":99},"reward":{"Sam":"might"},"quest":{"add":["Find the bell"],"done":"Get out of the cellar"}}>>>');
+  check('parseGm: enemies and their hearts (a silly number is dropped), a reward, and the quest log', p.foes.Goblin === 2 && p.foes['Goblin boss'] === 4 && !('Dragon' in p.foes) && p.reward.Sam === 'might' && p.quest.add[0] === 'Find the bell' && p.quest.done[0] === 'Get out of the cellar');
+  check('parseGm: no foes said means "not said" (null), not "no enemies"', parseGm('Quiet.<<<{"kind":"place"}>>>').foes === null && JSON.stringify(parseGm('Quiet.<<<{"foes":{}}>>>').foes) === '{}');
+}
+check('memoryLines: the game master is reminded of enemies standing, the quest log and who was met', (() => { const m = memoryLines({ foes: [{ name: 'Goblin', hearts: 1, max: 2 }, { name: 'Rat', hearts: 0, max: 1 }], quests: [{ text: 'Find the bell', done: false }, { text: 'Escape', done: true }], met: [{ name: 'the miller' }] }); return /Goblin 1\/2/.test(m) && !/Rat/.test(m) && /still open: Find the bell/.test(m) && /done: Escape/.test(m) && /the miller/.test(m); })());
+check('"Last time...": the recap asks for a reminder and keeps the scene', /Last time\.\.\./.test(recapPrompt({}, { name: 'Sam' })) && /question for Sam/.test(recapPrompt({}, { name: 'Sam' })) && /scene: 0/.test(recapPrompt({}, {})));
+{ const actor = { name: 'Sam', who: 'you', hearts: 5 };
+  check('turnPrompt: your own words are passed on as words, and a hit on an enemy is told', /says what they do: "I leap"/.test(turnPrompt({ actor, card: 'attack', words: 'I leap', said: true })) && /Goblin takes 1 heart \(now 1 of 2\)/.test(turnPrompt({ actor, card: 'attack', hit: { name: 'Goblin', dmg: 1, hearts: 1, max: 2 } })));
+}
+{ const f = cleanSheet({ name: 'Juno', cls: 'bard', who: 'friend', max: 7, hearts: 9 }, { who: 'friend' });
+  check('a friend is a human player, with more hearts if they earned them (never more than the most)', f.who === 'friend' && isHuman(f) && !isHuman({ who: 'bob' }) && f.max === 7 && f.hearts === 7 && cleanSheet({ max: 40 }).max === HEARTS && cleanSheet({ max: MAX_HEARTS }).max === MAX_HEARTS);
+}
+{ const { a, cfg, calls, setGm } = setup();
+  setGm(['Goblins in the mill!<<<{"cards":["attack","talk"],"kind":"fight","next":"Sam","scene":1,"title":"The mill","foes":{"Goblin":3},"quest":{"add":["Find the miller\'s daughter"]}}>>>']);
+  await a.start({ story: 'miller', pace: 'short', you: { name: 'Sam', cls: 'cleric', armour: 'some' }, friends: [{ name: 'Juno', cls: 'bard' }], extras: { pictures: true, music: true } });
+  await until(() => a.waitingFor);
+  let v = a.view();
+  const sam = v.game.party[0], juno = v.game.party[1];
+  check('a ready-made start brings its setting and hook, and a friend sits at the table with a face', a.game.setting === STARTS.miller.setting && v.game.hook === STARTS.miller.hook && juno.who === 'friend' && juno.name === 'Juno' && juno.look && v.game.party.length === 2);
+  check('the hook reaches the game master', calls.chat.some((c) => c.messages[0].content.includes(STARTS.miller.hook)));
+  check("extras that can't be made here are left out, with a note (and nothing was painted)", v.game.log.some((l) => /Left out: pictures .* music/.test(l.text)) && cfg.adventure.extras.pictures === true);
+  check('the enemy is on the table with fair hearts (3 asked, a party of two with Some armour: 2), and the quest log has started', v.game.foes.length === 1 && v.game.foes[0].name === 'Goblin' && v.game.foes[0].hearts === 2 && v.game.foes[0].asked === 3 && v.game.quests[0].text === "Find the miller's daughter" && !v.game.quests[0].done);
+  let e = ''; try { a.act({ card: 'attack', seat: juno.id }); } catch (x) { e = x.message; }
+  check("a friend's screen can't play someone else's turn", /Sam's turn/.test(e));
+  e = ''; try { a.act({ card: 'say', words: '   ' }); } catch (x) { e = x.message; }
+  check('Say it your way needs words', /Say what you do first/.test(e));
+  setGm(['The goblin is asleep on its feet. (This answer is not a turn.)']);
+  a.ask({ q: 'Is the goblin tired?' });
+  check('Ask the game master: the table waits while it answers', a.view().asking === true);
+  e = ''; try { a.act({ card: 'attack' }); } catch (x) { e = x.message; }
+  check('no turn while a question is being answered', /answering your question/.test(e));
+  await until(() => !a.asking);
+  v = a.view();
+  const ooc = v.game.log.find((l) => l.who === 'ooc');
+  check("the answer is kept in the log, out of character, and it's still your turn", ooc && ooc.q === 'Is the goblin tired?' && /asleep/.test(ooc.text) && v.waitingFor === sam.id);
+  check('a question is never fed back to the game master as story', (() => { const before = calls.chat.length; return a.gmMessages(a.game, 'x').every((m) => !/asleep on its feet/.test(m.content)) && before === calls.chat.length; })());
+  setGm(['You cut it down!<<<{"kind":"fight","next":"Juno","foes":{"Goblin":1},"reward":{"Sam":"might"},"quest":{"done":["Find the miller\'s daughter"]}}>>>', 'Juno sings.<<<{"kind":"fight","next":"Sam","foes":{"Goblin":0}}>>>']);
+  const mightBefore = sam.stats.might;
+  a.act({ card: 'attack', target: 'Goblin', pick: 'Sword' });
+  await until(() => a.waitingFor === juno.id);
+  v = a.view();
+  const hit = v.game.log.find((l) => l.who === 'you' && l.roll)?.roll?.hit;
+  check('an attack that lands takes a heart off the enemy it was aimed at', hit && hit.name === 'Goblin' && hit.dmg === 1 && hit.hearts === 1 && calls.chat.some((c) => /Goblin takes 1 heart \(now 1 of 2\)/.test(c.messages.at(-1).content)));
+  check('a reward: +1 Might, shown in the log and on the sheet', v.game.party[0].stats.might === mightBefore + 1 && v.game.party[0].gains.includes('+1 Might') && v.game.log.some((l) => l.reward && /Sam earned \+1 Might/.test(l.text)));
+  check('what Sam earned is kept with a saved character, for the next game', listCharacters(cfg).some((c) => c.name === 'Sam' && c.gains?.includes('+1 Might') && c.stats.might === mightBefore + 1));
+  check('one reward per character per scene', a.reward(a.game, 'Sam', 'heart') === '' && a.game.party[0].max === HEARTS);
+  check('the quest is ticked off', v.game.quests[0].done === true);
+  check("then it's the friend's turn, on the same table", v.waitingFor === juno.id && v.game.cards?.length > 0);
+  a.act({ card: 'say', words: 'I sing a rousing song at the goblin', seat: juno.id });
+  await until(() => a.waitingFor === sam.id);
+  v = a.view();
+  const said = v.game.log.find((l) => l.said);
+  check("a friend's own words are logged and rolled like a card", said && said.name === 'Juno' && /💬 I sing/.test(said.text) && said.roll && said.roll.statId);
+  check('an enemy at zero hearts is shown as down', v.game.foes[0].hearts === 0);
+  check('Skip the rest is harmless when nothing is being made', a.skipPrep().game.id === v.game.id);
+  await a.end({ keep: false });
+}
+{ const { a } = setup();
+  const g = { party: [cleanSheet({ name: 'Ox', cls: 'fighter' }, { who: 'bob' })], scenes: [{ title: 'x' }], log: [] };
+  check('a reward to a stat already at 5 becomes one more heart', a.reward(g, 'Ox', 'might') === 'one more heart' && g.party[0].max === HEARTS + 1 && g.party[0].stats.might === 5);
+  g.scenes.push({ title: 'y' });
+  check('a trick reward is kept as a trick', a.reward(g, 'Ox', 'trick: Shield bash') === 'the trick Shield bash' && g.party[0].tricks.includes('Shield bash'));
+}
+
+// ---- 1.5.206: items 35 to 42 ----
+// 35 The game master's notes survive a broken line.
+{ const m = gmMeta('Words.<<<{kind: "fight", "next": "Sam", "hearts": {"Sam": -1},}');
+  check('a broken hidden line is mended with the loop repair (no quotes on a key, a stray comma, no closing brace)', m.repaired === true && m.meta.kind === 'fight' && m.meta.hearts.Sam === -1);
+  check('a line that is fine is left as it is', gmMeta('x<<<{"kind":"talk"}>>>').meta.kind === 'talk' && !gmMeta('x<<<{"kind":"talk"}>>>').repaired);
+  check('asking for the line again names every key', ['cards', 'hearts', 'kind', 'next', 'scene', 'foes', 'quest', 'world'].every((k) => LINE_AGAIN.includes(k))); }
+{ const { a, calls, setGm } = setup();
+  setGm(['The gate looms.<<<{"cards": [attack talk', '<<<{"cards":["attack","talk"],"kind":"fight","next":"Sam","scene":1,"title":"The gate","foes":{"Troll":3},"hearts":{"Sam":-1}}>>>']);
+  await a.start({ you: { name: 'Sam', armour: 'some' }, bobs: [{ who: 'bob', name: 'Bobert' }, { who: 'bob', name: 'Pip' }] });
+  await until(() => a.waitingFor);
+  const v = a.view();
+  check('when the line is still broken the game master is asked once for just the line', calls.chat.filter((c) => c.messages.at(-1).content === LINE_AGAIN).length === 1 && calls.chat.find((c) => c.messages.at(-1).content === LINE_AGAIN).messages.at(-2).content === 'The gate looms.');
+  check('and the hearts, scene and enemies from it are kept, the narration untouched', v.game.party[0].hearts === HEARTS - 1 && v.game.scenes[0].title === 'The gate' && v.game.foes[0].name === 'Troll' && v.game.log[0].text === 'The gate looms.' && JSON.stringify(v.game.cards) === '["attack","talk","other"]');
+  await a.end({ keep: false });
+}
+// 36 The world book.
+{ const p = parseGm('x<<<{"world":{"people":{"Mara":"innkeeper, owes us"},"places":["The mill: burned down"],"threads":{"The stranger":"paid in old coins"},"drop":["Nobody"]}}>>>');
+  check('the world book comes through: people, places (also as "Name: note"), threads, drop', p.world.people.Mara === 'innkeeper, owes us' && p.world.places['The mill'] === 'burned down' && p.world.threads['The stranger'] && p.world.drop[0] === 'Nobody');
+  const { a } = setup();
+  const g = { party: [], scenes: [{ title: 'The inn' }], log: [], world: {} };
+  a.applyWorld(g, p.world);
+  a.applyWorld(g, parseGm('x<<<{"world":{"people":{"mara":"now a friend"},"promises":{"Mara":"a free room"},"drop":["The stranger"]}}>>>').world);
+  check('a name already there gets its new note, drop takes it out, the scene is kept', g.world.people.length === 1 && g.world.people[0].note === 'now a friend' && g.world.people[0].scene === 'The inn' && g.world.threads.length === 0 && g.world.promises[0].note === 'a free room');
+  const mem = memoryLines(g);
+  check('the game master reads the world book every turn', /World book/.test(mem) && /People: Mara \(now a friend\)/.test(mem) && /Promises: Mara \(a free room\)/.test(mem) && worldLines({}) === '');
+  check('and is told to keep it', /Keep the world book with world/.test(gmSystem({ settingText: 'x', pace: 'short', party: [cleanSheet({ name: 'Sam' })] })));
+}
+// 37 Odds on the cards.
+{ check('odds: Might 4, no armour, needs 11 or more: about 50% (75% at least at a cost)', JSON.stringify(odds(4, { armour: 'none' })) === '{"need":11,"costNeed":6,"hit":50,"any":75}' && oddsWords(odds(4, { armour: 'none' })) === 'needs 11 or more, about 50%');
+  check("odds count plot armour: Some's reroll raises the chance, Legendary never misses", odds(2, { armour: 'some' }).hit > odds(2, { armour: 'none' }).hit && odds(1, { armour: 'legendary' }).any === 100 && odds(2, { armour: 'some', rerollUsed: true }).hit === odds(2, { armour: 'none' }).hit);
+  const { a, setGm } = setup();
+  setGm(['Hi.<<<{"cards":["attack","talk"],"kind":"talk","next":"Sam"}>>>']);
+  await a.start({ you: { name: 'Sam', cls: 'fighter', armour: 'none' }, bobs: [{ who: 'bob', name: 'Bobert' }] });
+  await until(() => a.waitingFor);
+  const o = a.view().game.odds;
+  check("the page gets the odds for each card in the hand, from the character's stat", o.attack.need === 10 && o.attack.hit === 55 && o.attack.words === 'needs 10 or more, about 55%' && o.talk.need === 13 && o.other);
+  await a.end({ keep: false });
+}
+// 38 Take that back.
+{ const { a, calls, setGm } = setup({ takeBackMs: 400 });
+  setGm(['Hi.<<<{"cards":["attack","talk"],"kind":"talk","next":"Sam"}>>>', 'Ok.<<<{"kind":"talk","next":"Bobert"}>>>']);
+  await a.start({ you: { name: 'Sam' }, bobs: [{ who: 'bob', name: 'Bobert' }] });
+  await until(() => a.waitingFor);
+  a.act({ card: 'attack' });
+  await until(() => a.view().takeBack);
+  let v = a.view();
+  check('after a card, "Take that back" is on offer for a few seconds before the dice roll', v.takeBack && v.takeBack.id === v.game.party[0].id && v.takeBack.left > 0 && !v.game.log.some((l) => l.roll));
+  let late = ''; try { a.act({ card: 'talk' }); } catch (e) { late = e.message; }
+  check('a second card meanwhile is refused with a plain line', /Take that back first/.test(late));
+  const before = calls.chat.length;
+  a.takeBack({});
+  await until(() => a.waitingFor);
+  v = a.view();
+  check('taken back: no roll, no game master turn, and it is the same turn again', v.waitingFor === v.game.party[0].id && calls.chat.length === before && !v.game.log.some((l) => l.roll) && v.game.log.some((l) => /took that back/.test(l.text)) && !v.game.log.some((l) => /Attack/.test(l.text)));
+  a.act({ card: 'talk' });
+  await until(() => a.view().takeBack);
+  a.takeBack({ now: true });
+  await until(() => a.view().game.log.some((l) => l.roll));
+  check('"Roll now" rolls straight away', a.view().game.log.some((l) => l.roll && l.roll.card === 'talk'));
+  let gone = ''; try { a.takeBack({}); } catch (e) { gone = e.message; }
+  check('after the roll it is too late', /Too late/.test(gone));
+  await a.end({ keep: false });
+}
+// 39 A time limit on Bob-Net players.
+{ const { a, events, setGm } = setup({ lenderHangs: true, netTimeoutMs: 60 });
+  setGm(['Go.<<<{"cards":["attack"],"kind":"fight","next":"Sam"}>>>', 'Ok.<<<{"kind":"fight","next":"Bob on the Go"}>>>', 'Ok.<<<{"kind":"fight","next":"Sam","cards":["attack"]}>>>']);
+  await a.start({ you: { name: 'Sam' }, bobs: [{ who: 'net', name: 'Bob on the Go', address: '100.64.0.9:7777' }] });
+  await until(() => a.waitingFor); a.act({ card: 'attack' });
+  check('a frozen Bob-Net player is played by the game master after the time limit, and the page is told', await until(() => a.view().game.round === 2) && a.view().game.log.find((l) => l.who === 'player')?.by === 'gm' && events.some((e) => e.ev === 'standin' && /took longer than/.test(e.text)));
+  await a.end({ keep: false });
+}
+// 40 Tone and a keep-out list.
+{ const game = { settingText: 'x', pace: 'short', tone: 'cosy', keepOut: 'spiders, drowning', party: [cleanSheet({ name: 'Sam' }), cleanSheet({ name: 'Bobert', who: 'bob' }, { who: 'bob' })] };
+  check('the game master gets the tone and the keep-out list', gmSystem(game).includes(TONES.cosy.what) && /Keep these out of the story entirely, the table asked: spiders, drowning/.test(gmSystem(game)));
+  check('so do the Bob players', /keep these out of the story: spiders, drowning/.test(playerSystem(game.party[1], game)));
+  check('no keep-out list, no line; no tone, Normal', !/Keep these out/.test(gmSystem({ ...game, keepOut: '', tone: undefined })) && gmSystem({ ...game, tone: undefined }).includes(TONES.normal.what));
+  const { a } = setup();
+  await a.start({ tone: 'grim', keepOut: 'x'.repeat(500), you: { name: 'Sam' }, bobs: [{ who: 'bob', name: 'Bobert' }] });
+  check('the start card sets them (cleaned, Normal for anything unknown)', a.game.tone === 'grim' && a.game.keepOut.length === 300 && a.view().game.tone === 'grim');
+  await a.end({ keep: false });
+  await a.start({ tone: 'gory', you: { name: 'Sam' }, bobs: [{ who: 'bob', name: 'Bobert' }] });
+  check('an unknown tone is Normal', a.game.tone === 'normal');
+  await a.end({ keep: false });
+  // 1.5.206 PC check: Riker brought spiders in twice with the keep-out list saved.
+  { const { keepOutTerms, keepOutRe, dropKeepOut } = await import('../src/adventure.js');
+    const re = keepOutRe(keepOutTerms('spiders, drowning'));
+    check('keep-out words match their forms', ['A spider drops', 'cobweb and spiderwebs', 'the drowned man'].every((x) => re.test(x)) && !re.test('a quiet inn'));
+    check('the sentences that name one can be taken out', dropKeepOut('The cave is warm. A spider waits. You smile!', re) === 'The cave is warm. You smile!');
+    const g2 = setup().a;
+    await g2.start({ tone: 'cosy', keepOut: 'spiders', you: { name: 'Sam' }, bobs: [{ who: 'bob', name: 'Bobert' }] });
+    const sent = [], shown = [];
+    let n = 0;
+    g2.gm = async (messages, { onToken } = {}) => { sent.push(messages); n++; const t = n === 1 ? 'A huge spider drops from the beams. <<<{"cards":["attack"]}>>>' : 'The beams creak, and a moth flutters past. <<<{"cards":["attack"]}>>>'; if (onToken) for (const w of t.split(/(?=\s)/)) { if (w.includes('<<<')) break; onToken(w); } return t; };
+    const raw = await g2.gmTurn(g2.gmMessages(g2.game, 'Go on.'), { onToken: (t) => shown.push(t) });
+    check('the latest message carries the keep-out rule too', /Table rule: leave out spiders completely/.test(sent[0].at(-1).content));
+    check('a turn that names a kept-out thing is written again', n === 2 && /moth/.test(raw) && !/spider/i.test(raw) && /<<<\{"cards"/.test(raw), raw);
+    check('the streamed words never show the kept-out word', !/spider/i.test(shown.join('')) && shown.join('').includes('…'), shown.join(''));
+    n = 5; g2.gm = async () => 'A spider waits. The door opens. <<<{"cards":["attack"]}>>>';
+    const raw2 = await g2.gmTurn(g2.gmMessages(g2.game, 'Go on.'));
+    check('still there after asking again: those sentences are taken out, the hidden line kept', raw2.startsWith('The door opens.') && /<<<\{"cards"/.test(raw2), raw2);
+    await g2.end({ keep: false });
+  }
+}
+// 41 Fair fights.
+{ const p = (n, armour = 'some') => Array.from({ length: n }, () => ({ armour }));
+  check('fair fights: three with Some armour get what the game master asked', fairHearts(2, p(3)) === 2 && fairHearts(4, p(3)) === 4);
+  check('a bigger party meets tougher enemies, a smaller one gentler', fairHearts(3, p(6)) === 6 && fairHearts(3, p(1)) === 1);
+  check('less plot armour, gentler enemies; more, tougher; never past 12 or under 1', fairHearts(5, p(3, 'none')) === 4 && fairHearts(5, p(3, 'legendary')) === 7 && fairHearts(12, p(6, 'legendary')) === 12 && fairHearts(1, p(1, 'none')) === 1 && fairHearts(0, p(3)) === 0);
+  check('the game master is told the app sets new enemies\' hearts', /the app sets its real hearts to suit the party/.test(gmSystem({ settingText: 'x', pace: 'short', party: [cleanSheet({ name: 'Sam' })] })));
+}
+// 42 The storybook.
+{ const g = { id: 'abcd1234', title: 'The <Mill>', settingText: 'Classic fantasy', status: 'over', started: Date.UTC(2026, 10, 11), party: [cleanSheet({ name: 'Sam', gains: ['+1 Might'] })], scenes: [{ n: 1, title: 'The gate', at: 10, pic: '/images/gate.png' }, { n: 2, title: 'The hall', at: 30, kind: 'talk' }],
+    log: [{ who: 'gm', text: 'The gate **looms**.', at: 10 }, { who: 'you', name: 'Sam', text: '⚔ Attack', dice: '12 + Might 5 = 17: a hit', at: 20 }, { who: 'ooc', q: 'secret?', text: 'A secret answer', at: 21 }, { who: 'app', text: 'Paused.', at: 22 }, { who: 'app', text: '⭐ Sam earned +1 Might.', reward: true, at: 23 }, { who: 'gm', text: 'Inside, <script>.', at: 30 }], quests: [{ text: 'Find the miller', done: true }] };
+  const html = storybookHtml(g, { pic: (u) => (u === '/images/gate.png' ? 'data:image/png;base64,AAAA' : '') });
+  check('the storybook tells the story scene by scene, with the pictures inside the page', /<h2>Scene 1: The gate<\/h2><figure><img src="data:image\/png;base64,AAAA"/.test(html) && html.indexOf('Scene 1') < html.indexOf('looms') && html.indexOf('looms') < html.indexOf('Scene 2') && /<strong>looms<\/strong>/.test(html));
+  check('turns, dice and rewards are in; questions out of character and app notes are out', /Sam<\/strong>: ⚔ Attack/.test(html) && /17: a hit/.test(html) && /Sam earned \+1 Might/.test(html) && !/secret/.test(html) && !/Paused/.test(html));
+  check('everything is escaped, and it ends "The end."', /The &lt;Mill&gt;/.test(html) && /&lt;script&gt;/.test(html) && !/<script/.test(html) && /The end\./.test(html) && /☑ Find the miller/.test(html) && /2026-11-11/.test(html));
+  const { a, cfg, setGm } = setup();
+  fs.mkdirSync(path.join(cfg.dataDir, 'pics'), { recursive: true }); cfg.painterDir = path.join(cfg.dataDir, 'pics');
+  fs.writeFileSync(path.join(cfg.painterDir, 'gate.png'), Buffer.from([137, 80, 78, 71]));
+  check('a picture from the painter is put inside the page; anything else is left out', a.picData('/images/gate.png') === 'data:image/png;base64,iVBORw==' && a.picData('/images/..%2F..%2Fsecret.png') === '' && a.picData('https://example.com/x.png') === '');
+  setGm(['Hi.<<<{"cards":["attack"],"kind":"fight","next":"Sam","scene":1,"title":"The only scene"}>>>', 'Fin.<<<{"kind":"end"}>>>']);
+  await a.start({ you: { name: 'Sam' }, bobs: [{ who: 'bob', name: 'Bobert' }] });
+  await until(() => a.waitingFor); a.act({ card: 'attack' });
+  await until(() => a.game?.status === 'over');
+  const id = a.game.id, file = path.join(cfg.dataDir, 'adventures', `${id}-storybook.html`);
+  check('at the end of a game its storybook is saved beside the campaign', fs.existsSync(file) && /Fin\./.test(fs.readFileSync(file, 'utf8')) && a.game.log.some((l) => /storybook is ready/.test(l.text)));
+  const res = () => ({ head: null, body: '', writeHead(c, h) { this.code = c; this.head = h; }, end(b) { this.body = b; } });
+  const send = (r, code, b) => { r.code = code; r.json = b; };
+  let r = res(); await adventureRoute({ req: { method: 'GET' }, res: r, p: `/api/adventure/storybook/${id}`, brain: a.brain, body: async () => ({}), send });
+  check('GET the storybook: the page, with a Save a copy link', r.code === 200 && /text\/html/.test(r.head['content-type']) && /Fin\./.test(r.body) && r.body.includes(`/api/adventure/storybook/${id}/save`) && !r.head['content-disposition']);
+  r = res(); await adventureRoute({ req: { method: 'GET' }, res: r, p: `/api/adventure/storybook/${id}/save`, brain: a.brain, body: async () => ({}), send });
+  check('…/save: the same page as a file to keep, named after the game, with no save link inside', r.code === 200 && /attachment; filename=".*\.html"/.test(r.head['content-disposition']) && !r.body.includes('/save'));
+  r = res(); await adventureRoute({ req: { method: 'GET' }, res: r, p: '/api/adventure/storybook/nope1234', brain: a.brain, body: async () => ({}), send });
+  check('a storybook for no campaign is a plain 404', r.code === 404);
+  r = res(); await adventureRoute({ req: { method: 'POST' }, res: r, p: '/api/adventure/takeback', brain: a.brain, body: async () => ({}), send });
+  check('Take that back with nothing to take back is a plain 409', r.code === 409 && /Too late/.test(r.json.error));
+  await a.end({ keep: true });
+  deleteGame(cfg, id);
+  check('deleting a campaign deletes its storybook too', !fs.existsSync(file));
+}
+
+// Help, glossary, FAQ and both pages for items 35 to 42.
+{ const t = plainText(HELP.find((e) => e.id === 'adventure').html);
+  check('Help covers tone, odds, take back, fair fights, the world book, the time limit and the storybook', /Cosy/.test(t) && /Keep out of the story/.test(t) && /11\+ · 50%/.test(t) && /Take that back/.test(t) && /Roll now/.test(t) && /Fair fights/.test(t) && /World book/.test(t) && /45 seconds/.test(t) && /Storybook/.test(t) && /Save a copy/.test(t));
+  check('FAQ: take back, keep the story', ['faq-adventure-takeback', 'faq-adventure-storybook'].every((id) => HELP.some((e) => e.id === id)));
+  const gl = HELP.map((e) => e.html).join('');
+  check('the glossary has Odds, Storybook and World book', /<dt>Odds \(on Adventure cards\)<\/dt>/.test(gl) && /<dt>Storybook<\/dt>/.test(gl) && /<dt>World book<\/dt>/.test(gl));
+  const page = fs.readFileSync(new URL('../public/adventure.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  check('the desktop page: tone, keep out, odds, take back, roll now, world book, storybook', /data-tone=/.test(page) && /data-keep-out/.test(page) && /adv-odds/.test(page) && /data-take-back/.test(page) && /data-roll-now/.test(page) && /World book/.test(page) && /\/api\/adventure\/storybook\//.test(page));
+  const ph = fs.readFileSync(new URL('../android/app/src/main/assets/www/phone.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const phHelp = fs.readFileSync(new URL('../android/app/src/main/assets/www/help.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  check('the phone page has them too, with its own Help', /tone: advYou\.tone/.test(ph) && /keepOut: advYou\.keepOut/.test(ph) && /g\.odds\?\.\[c\]/.test(ph) && /\/api\/adventure\/takeback/.test(ph) && /World book/.test(ph) && /advBook\(/.test(ph) && /Take that back/.test(phHelp) && /Storybook/.test(phHelp));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

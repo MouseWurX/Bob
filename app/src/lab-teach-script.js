@@ -6,7 +6,7 @@
 // It prints "progress <done> <total>", "loss <n>", "skipped <n>" and "done <n>" for the Lab to show.
 // 1.5.188 for the Best answers page: --lessons is optional, --pairs <jsonl> ({"messages", "chosen", "rejected"}) adds
 // a better/worse pairs pass (DPO: lean toward the better answer, measured against the brain as it was before the pass),
-// and --targets <json> ({"targets": [{kind: expert|head|attn|ffn, layer, index}]}, FNRI's shape) puts the adapter only
+// and --targets <json> ({"targets": [{kind: expert|head|attn|ffn, layer, index}]}, fNRI's shape) puts the adapter only
 // on those parts; everything else stays frozen. It prints "targets <modules> <fell back>" and "pairs <n>".
 export const TEACH_PY = String.raw`
 import argparse, json, math, os, random, sys, time
@@ -511,7 +511,7 @@ if __name__ == '__main__':
 `;
 
 // Downloads a Hugging Face brain's weights (only the files a trainer needs) with the huggingface_hub the pack
-// installs. The token, when there is one, comes from the environment (HF_TOKEN), never from Bob's files.
+// installs. The token, when there is one, comes from the environment (HF_TOKEN), or from Settings, Locked secrets, handed over as HF_TOKEN.
 export const FETCH_PY = String.raw`
 import sys
 from huggingface_hub import snapshot_download

@@ -2,13 +2,17 @@
 // show, and tells the main window what changed over a BroadcastChannel, so the chat, the left menu and Now running
 // keep up without a reload. Nothing here talks to the internet.
 import { applySavedStyle } from './themes.js';
+import { startI18n } from './i18n.js';
 import { createCellar } from './cellar.js';
+import { watchLock } from './lock-settings.js';
 import { createHelp } from './help.js';
 import { installTips } from './tips.js';
 import { CHANNEL, RELAY, jumpFromHash, message } from './settings-link.js';
 
 applySavedStyle();
+startI18n();
 installTips();
+watchLock(); // 🔒 back to the lock screen once Bob locks
 
 const chan = 'BroadcastChannel' in window ? new BroadcastChannel(CHANNEL) : null;
 const tell = (name, detail) => { try { chan?.postMessage(message(name, detail)); } catch {} };

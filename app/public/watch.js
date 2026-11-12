@@ -1,12 +1,12 @@
-// 🧪 FNRI: the viewer window. Plays an expert recording (public/lab-watch-math.js has the format) as a 3D
+// 🧪 fNRI: the viewer window. Plays an expert recording (public/lab-watch-math.js has the format) as a 3D
 // block of voxels (public/watch-view.js): one floor for each layer, experts coloured by the skill they lean to,
 // around a grey core of the parts that are not experts, glowing as the brain reads each word. Tick boxes show or
 // hide each skill's experts; three zoom levels (the whole brain, one floor, one expert); Save as a video.
 // Its own window, so it can sit beside the Lab or a chat. The Lab opens it with ?brain=<id>&rec=<id>; it can also
 // open a recording file by itself (one made on another Bob, or on a rented card), with the Lab off.
 import { applySavedStyle } from './themes.js';
-import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind, cutOf, cutEffect, keepList, setColour, resetColours, COVERS, cutSteps, findPatterns, PATTERN_CHOICES, PATTERN_DEFAULT, hasFloors, floorScale, floorsAt, LOAD_STYLES, loadStyle, cleanDials, skillDials, dialWords, dialScale, dialKey, compareScans, compareWords, movedBlocks, targetsOf, pairUp, pairWords, videoName } from './lab-watch-math.js';
-const LOAD_IN_MS = 2200, LOAD_OUT_MS = 900;
+import { NAME, cleanRecording, specialise, timeline, inWords, expertDetail, lookOf, LEANS, partOf, PART_LABEL, say as inKind, cutOf, cutEffect, keepList, setColour, resetColours, COVERS, cutSteps, findPatterns, PATTERN_CHOICES, PATTERN_DEFAULT, hasFloors, floorScale, floorsAt, LOAD_STYLES, loadStyle, UNLOAD_STYLES, unloadStyle, cleanDials, skillDials, dialWords, dialScale, dialKey, compareScans, compareWords, movedBlocks, targetsOf, pairUp, pairWords, videoName } from './lab-watch-math.js';
+const LOAD_IN_MS = 2200, LOAD_OUT_MS = 900, DRAIN_OUT_MS = 1800; // Drain takes longer, so the water can be seen going down
 import { createView, GREY } from './watch-view.js';
 applySavedStyle();
 
@@ -14,6 +14,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const still = () => document.body.classList.contains('still');
 const view = createView($('watchCanvas'));
+let monoPicked = false; // One colour: only the person's own pick is passed on; otherwise each block uses the theme's colour
 const viewB = createView($('watchCanvasB')); // Before and after: the scan it's compared with, on the left
 const SPECIAL = /<\|[^|>]*\|>|<\/?think>/gi; // the chat layout's own markers, left out of the caption
 
@@ -85,9 +86,10 @@ $('watchFloors').onclick = (ev) => { floorsOn = !floorsOn; flipSw(ev.currentTarg
 let loadGen = 0;
 function load(j) {
   const gen = ++loadGen;
-  if (rec && !still() && !view.loading()) { view.sweep(0, LOAD_OUT_MS).then(() => { if (gen === loadGen) loadNow(j); }); return; }
+  if (rec && !still() && !view.loading()) { view.sweep(0, outMs()).then(() => { if (gen === loadGen) loadNow(j); }); return; }
   loadNow(j);
 }
+function outMs() { return $('watchUnload').value === 'drain' ? DRAIN_OUT_MS : LOAD_OUT_MS; }
 function loadIn() { view.set({ reveal: 0 }); view.sweep(1, LOAD_IN_MS, still()).then(() => { need = true; }); }
 function loadNow(j) {
   base = rec = cleanRecording(j); patternsOn = false; parts = j.parts && Array.isArray(j.parts.layers) ? j.parts : null;
@@ -251,7 +253,7 @@ let cmpSync = '';
 function cmpFollow() {
   const g = view.get(), st = JSON.stringify([g, [...hidden].map(String), $('watchMono').getAttribute('aria-checked'), $('watchMonoColour').value, $('watchMark').value]);
   if (st === cmpSync) return; cmpSync = st;
-  viewB.set({ ...g, hidden, mono: $('watchMono').getAttribute('aria-checked') === 'true', monoColour: $('watchMonoColour').value, mark: $('watchMark').value, paths: $('watchPaths').getAttribute('aria-checked') === 'true' });
+  viewB.set({ ...g, hidden, mono: $('watchMono').getAttribute('aria-checked') === 'true', monoColour: monoPicked ? $('watchMonoColour').value : '', mark: $('watchMark').value, paths: $('watchPaths').getAttribute('aria-checked') === 'true', edges: $('watchEdges').getAttribute('aria-checked') === 'true' });
 }
 function litForB(i, frac) {
   const out = [], cur = frames[i]; if (!cur || !cmp) return out;
@@ -484,7 +486,7 @@ $('watchRescan').onclick = async () => {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
     if (j.needUnload) { setAsk(true); say(`${(j.names || []).join(', ') || 'Bob\'s brain'} is on the graphics card, and the scan needs it. Press Unload Bob's brain and scan again to start. It loads again the next time you chat.`); return; }
-    setAsk(false); say('The new scan has started. It asks the same questions with those experts switched off, and shows up on the Lab\'s FNRI page when it\'s done.');
+    setAsk(false); say('The new scan has started. It asks the same questions with those experts switched off, and shows up on the Lab\'s fNRI page when it\'s done.');
   } catch (e) { say(`Bob couldn't start that scan: ${e.message}`); }
 };
 $('watchAll').onclick = () => { hidden = new Set(); view.set({ hidden }); skillsHtml(); cutHtml(); if (mode === 'floor') floorHtml(); need = true; };
@@ -511,10 +513,19 @@ const FACES = { corner: [-0.62, 0.5], front: [0, 0.12], side: [Math.PI / 2, 0.12
 $('watchFace').onchange = (ev) => { const v = FACES[ev.target.value]; if (!v) return; if (spin) { spin = false; flip($('watchSpin'), false); } if (still()) { view.set({ yaw: v[0], tilt: v[1] }); } else { const g = view.get(); const turns = Math.round((g.yaw - v[0]) / (2 * Math.PI)); aim = { yaw: v[0] + turns * 2 * Math.PI, tilt: v[1] }; } need = true; ev.target.value = ''; };
 $('watchMono').onclick = (ev) => { const on = ev.currentTarget.getAttribute('aria-checked') !== 'true'; flip(ev.currentTarget, on); view.set({ mono: on }); $('watchMonoColourBox').hidden = !on; try { localStorage.setItem('bob-watch-mono', on ? '1' : '0'); } catch {} need = true; };
 $('watchLoad').innerHTML = LOAD_STYLES.map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
-{ let s = 'random'; try { s = loadStyle(localStorage.getItem('bob-fnri-load')); } catch {} $('watchLoad').value = s; view.set({ load: s }); }
+{ let s = 'vase'; try { s = loadStyle(localStorage.getItem('bob-fnri-load')); } catch {} $('watchLoad').value = s; view.set({ load: s }); }
 $('watchLoad').onchange = (ev) => { const s = loadStyle(ev.target.value); view.set({ load: s }); try { localStorage.setItem('bob-fnri-load', s); } catch {} if (rec) loadIn(); };
-$('watchMonoColour').oninput = (ev) => { view.set({ monoColour: ev.target.value }); try { localStorage.setItem('bob-watch-mono-colour', ev.target.value); } catch {} need = true; };
-try { const c = localStorage.getItem('bob-watch-mono-colour'); if (/^#[0-9a-f]{6}$/i.test(c || '')) { $('watchMonoColour').value = c; view.set({ monoColour: c }); } if (localStorage.getItem('bob-watch-mono') === '1') { flip($('watchMono'), true); view.set({ mono: true }); $('watchMonoColourBox').hidden = false; } } catch {}
+$('watchUnload').innerHTML = UNLOAD_STYLES.map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
+{ let s = 'drain'; try { s = unloadStyle(localStorage.getItem('bob-fnri-unload')); } catch {} $('watchUnload').value = s; view.set({ unload: s }); }
+$('watchUnload').onchange = (ev) => { const s = unloadStyle(ev.target.value); view.set({ unload: s }); try { localStorage.setItem('bob-fnri-unload', s); } catch {} if (rec && !still()) view.sweep(0, outMs()).then(() => { if (rec) loadIn(); }); };
+{ let on = false; try { on = localStorage.getItem('bob-fnri-edges') === '1'; } catch {} flip($('watchEdges'), on); view.set({ edges: on }); }
+$('watchEdges').onclick = (ev) => { const on = ev.currentTarget.getAttribute('aria-checked') !== 'true'; flip(ev.currentTarget, on); view.set({ edges: on }); try { localStorage.setItem('bob-fnri-edges', on ? '1' : '0'); } catch {} need = true; };
+$('watchMonoColour').oninput = (ev) => { monoPicked = true; view.set({ monoColour: ev.target.value }); try { localStorage.setItem('bob-watch-mono-colour', ev.target.value); } catch {} need = true; };
+$('watchMonoColour').value = view.oneColour(); // the theme's colour (Moondust: #03666d) until the person picks one
+try { const c = localStorage.getItem('bob-watch-mono-colour'); if (/^#[0-9a-f]{6}$/i.test(c || '')) { monoPicked = true; $('watchMonoColour').value = c; view.set({ monoColour: c }); } if (localStorage.getItem('bob-watch-mono') === '1') { flip($('watchMono'), true); view.set({ mono: true }); $('watchMonoColourBox').hidden = false; } } catch {}
+// how bright the lines are: the person's pick, shared with the thinking cube
+{ let v = 0.5; try { const s = localStorage.getItem('bob-fnri-lines'); if (s !== null && Number.isFinite(Number(s))) v = Math.max(0, Math.min(1, Number(s))); } catch {} $('watchLines').value = String(v); view.set({ lines: v }); }
+$('watchLines').oninput = (ev) => { view.set({ lines: Number(ev.target.value) }); try { localStorage.setItem('bob-fnri-lines', String(ev.target.value)); } catch {} need = true; };
 $('watchPaths').onclick = (ev) => { const on = ev.currentTarget.getAttribute('aria-checked') !== 'true'; flip(ev.currentTarget, on); view.set({ paths: on }); need = true; };
 $('watchPlay').onclick = () => setPlaying(!playing);
 const step = (d) => { setPlaying(false); seek(Math.floor(t) + d); };

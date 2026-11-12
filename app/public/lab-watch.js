@@ -1,4 +1,4 @@
-// 🧪 Computer Science Lab, Playground: FNRI (Functional Neural Response Imager). A scan of a mixture-of-experts
+// 🧪 Computer Science Lab, Playground: fNRI (Functional Neural Response Imager). A scan of a mixture-of-experts
 // brain at work: Bob asks it a few simple questions for each skill on Brain Engine and records which experts every
 // layer picked for every word. The viewer (public/watch.html, its own window so it can sit beside the Lab or a chat)
 // plays the scan as a 3D block of voxels: a floor for each layer, experts coloured by the skill they lean to around
@@ -6,6 +6,8 @@
 // skills, starts the scan (src/lab-watch.js) and lists the scans made; the Playground places it.
 import { esc } from './rich.js';
 import { NAME, LONG_NAME } from './lab-watch-math.js';
+import { queueBtn, queueAdd } from './lab-queue.js'; // Nov 11: the job queue
+import { goBtn } from './lab-go.js'; // a button to where the message points
 
 export function openViewer(brain = '', rec = '') {
   const q = brain && rec ? `?brain=${encodeURIComponent(brain)}&rec=${encodeURIComponent(rec)}` : '';
@@ -37,7 +39,7 @@ export function createWatchPage({ api }) {
     const over = Math.max(0, v.skills.filter((s) => picked.has(s.id)).length + (ownName.trim() && ownQs.trim() ? 1 : 0) - (v.maxSkills || 16));
     return `<h3>${esc(NAME)}: watch a brain's experts light up</h3>
       <p class="muted">${esc(LONG_NAME)}, a scan of a brain at work. Bob asks it a few questions per skill and shows which experts it used, as a 3D block: one floor per layer, each expert coloured by the skill that used it most. Press Play to watch it light up word by word. Brains with no experts show their busiest neurons instead.</p>
-      <fieldset><legend>Which brain?</legend>${v.brains.length ? `<select id="watch-brain" aria-label="Which brain"><option value="">(pick one)</option>${v.brains.map((b) => `<option value="${esc(b.id)}" ${brain === b.id ? 'selected' : ''}>${esc(b.name)} · ${b.experts ? `${b.experts} experts` : 'no experts: neuron groups'}, ${b.engineLayers || b.layers} layers</option>`).join('')}</select>` : '<p>There\'s no brain here to scan yet. Get one in Get models.</p>'}</fieldset>
+      <fieldset><legend>Which brain?</legend>${v.brains.length ? `<select id="watch-brain" aria-label="Which brain"><option value="">(pick one)</option>${v.brains.map((b) => `<option value="${esc(b.id)}" ${brain === b.id ? 'selected' : ''}>${esc(b.name)} · ${b.experts ? `${b.experts} experts` : 'no experts: neuron groups'}, ${b.engineLayers || b.layers} layers</option>`).join('')}</select>` : '<p>There\'s no brain here to scan yet. Get one in Get models.' + goBtn('models') + '</p>'}</fieldset>
       ${brain && bv ? (bv.live?.ok ? `
       <fieldset><legend>Skills to ask about</legend>${v.skills.map((s) => `<label class="lab-opt"><input type="checkbox" data-watchskill="${esc(s.id)}" ${picked.has(s.id) ? 'checked' : ''}> <span><strong>${esc(s.label)}</strong><br><span class="muted">Like: ${esc(s.questions[0])}</span></span></label>`).join('')}
         <button type="button" class="link" data-watchqs aria-expanded="${showQs}">Show every question</button>
@@ -50,7 +52,7 @@ export function createWatchPage({ api }) {
         <label for="watch-own-qs">Its questions, one on each line (up to ${v.ownMax})</label><textarea id="watch-own-qs" rows="3" maxlength="2000">${esc(ownQs)}</textarea></details>
       <p class="muted">${n} question${n === 1 ? '' : 's'}, about ${think ? v.wordsThink : v.words} words of answer each. I load the brain once on Brain Engine and ask them one at a time, so it takes a few minutes. While it reports its experts the brain writes slower than usual. More questions give a steadier picture.</p>
       ${askUnload ? `<div class="setup-offer" role="alert"><strong>Bob's brain is on the graphics card</strong><span>${esc(askUnload.join(', '))} is loaded. The scan needs the card, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-watchgo="unload">Unload it and start</button><button type="button" class="link" data-watchnounload>Not now</button></div></div>` : ''}
-      <div class="row"><button type="button" class="get" data-watchgo ${n && !over ? '' : 'disabled'} ${over ? 'aria-describedby="watch-over"' : ''}>Start the scan</button></div>${over ? `<p id="watch-over" class="error" role="alert">A scan holds up to ${v.maxSkills} skills, so each keeps its own colour. Untick ${over}.</p>` : ''}`
+      <div class="row"><button type="button" class="get" data-watchgo ${n && !over ? '' : 'disabled'} ${over ? 'aria-describedby="watch-over"' : ''}>Start the scan</button>${queueBtn('watch', Boolean(n && !over))}</div>${over ? `<p id="watch-over" class="error" role="alert">A scan holds up to ${v.maxSkills} skills, so each keeps its own colour. Untick ${over}.</p>` : ''}`
         : `<div class="lab-check" aria-disabled="true"><p><strong>Scan this brain</strong> <span class="lab-later">Not yet</span></p><p class="muted">${esc(bv.live?.why || '')}</p></div>`) : ''}
       ${brain && !bv && reading ? '<p class="muted" role="status">Reading this brain…</p>' : ''}
       ${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}
@@ -83,6 +85,11 @@ export function createWatchPage({ api }) {
     if ('watchopen' in d) { if (!openViewer(d.watchopen ? brain : '', d.watchopen)) msg = 'The viewer window was blocked. Allow pop-ups for Bob\'s page, then press it again.'; return 'draw'; }
     if (d.watchdel) { confirmDel = confirmDel === d.watchdel ? '' : d.watchdel; return 'draw'; }
     if (d.watchdelgo) { msg = ''; try { await api('/api/lab/watch/delete', { brain, id: d.watchdelgo }); } catch (e) { msg = e.message; } confirmDel = ''; return 'load'; }
+    if (d.qadd === 'watch') { // Nov 11: the job queue
+      msg = '';
+      try { await queueAdd(api, 'watch', { brain, skills: [...picked], per, think, what, own: { name: ownName, questions: ownQs } }, `${NAME} scan of ${(v?.brains || []).find((x) => x.id === brain)?.name || 'a brain'}`); } catch (e) { msg = e.message; }
+      return 'draw';
+    }
     if ('watchgo' in d) {
       msg = '';
       try { const r = await api('/api/lab/watch/start', { brain, skills: [...picked], per, think, what, own: { name: ownName, questions: ownQs }, unload: d.watchgo === 'unload' }); askUnload = r.needUnload ? r.names : null; } catch (e) { msg = e.message; }

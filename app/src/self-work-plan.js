@@ -19,7 +19,7 @@ export const NOTES_MAX = 24000; // characters (~6K tokens); past this the notes 
 export const NOTES_TARGET = 9000;
 export const MAX_TASKS = 12;
 export const TASK_STEPS = 40;
-export const READ_TOOLS = ['list_folder', 'read_file', 'search_files', 'web_search', 'fetch_page'];
+export const READ_TOOLS = ['list_folder', 'code_map', 'read_file', 'search_files', 'web_search', 'fetch_page'];
 export const helpersOn = (cfg) => cfg?.selfWork?.helpers === true;
 
 export const notesDir = (cfg, repo) => path.join(codeCopyRoot(cfg), 'notes', repo.id);
@@ -123,12 +123,13 @@ export function compactMessages(messages, maxChars, { keep = 6, stub = 400 } = {
 export const charsFor = (ctxTokens) => Math.floor((Number(ctxTokens) || 32768) * 3 * 0.7);
 
 // ---- Helpers on Bob-Net ----
-// Your other Bobs that answer right now with a big brain (the owner: Bobert or Qwen 35B only), free, and not this one.
-export async function pickHelpers(lenders, { max = 3 } = {}) {
+// Your other Bobs that answer right now with a big brain (the owner: Bobert or Qwen 35B), or the same brain picked for
+// these jobs here (the owner, 2026-11-11: any brain can be picked), free, and not this one.
+export async function pickHelpers(lenders, { max = 3, same = '' } = {}) {
   if (!lenders?.bobs) return [];
   const list = lenders.bobs().filter((b) => !lenders.busyHere(b.address));
   const seen = await Promise.all(list.map((b) => lenders.hello(b).catch(() => ({ ok: false }))));
-  const out = list.map((bob, i) => ({ ...bob, brain: seen[i]?.brain || '', ok: seen[i]?.ok })).filter((b) => b.ok && bigBrainOk(b.brain)).slice(0, max);
+  const out = list.map((bob, i) => ({ ...bob, brain: seen[i]?.brain || '', ok: seen[i]?.ok })).filter((b) => b.ok && (bigBrainOk(b.brain) || (same && b.brain === same))).slice(0, max);
   for (const b of out) lenders.hold(b.address, 60_000);
   return out;
 }
@@ -185,7 +186,7 @@ export async function runManaged(brain, ctx, { cfg, repo, job, brief, setup = ''
 
   // Research first: on helpers (at the same time) when allowed, the rest here.
   const research = tasks.filter((t) => t.kind === 'research');
-  const helpers = research.length && helpersOn(cfg) ? await pickHelpers(brain.lenders, { max: research.length }) : [];
+  const helpers = research.length && helpersOn(cfg) ? await pickHelpers(brain.lenders, { max: research.length, same: force?.model || '' }) : [];
   const away = research.slice(0, helpers.length).map((t, i) => {
     t.state = 'in progress'; t.by = helpers[i].name;
     ctx.emit?.({ type: 'announce', text: `🛰 ${helpers[i].name} takes task ${t.n} (${t.title}) on Bob-Net. He only reads, and the reading happens here.` });

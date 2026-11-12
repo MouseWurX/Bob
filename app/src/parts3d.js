@@ -144,12 +144,12 @@ export function parts3dTool(brain, { find = findOpenscad, make = makeStl, versio
       type: 'function',
       function: {
         name: 'make_3d_part',
-        description: 'Make an exact 3D part (an STL file for a 3D printer or any 3D app) from an OpenSCAD recipe: brackets, boxes, lids, spacers, knobs, clips, replacement parts, simple models. Sizes are in millimetres. It shows in a 3D viewer in the chat. To change a part you made, call this again with the whole changed recipe. Not for faces, animals or other organic shapes.',
+        description: 'Make an exact 3D part (STL, for a 3D printer) from an OpenSCAD recipe: brackets, boxes, lids, spacers, clips, replacement parts. Sizes in millimetres. Shows in a 3D viewer. To change a part, call again with the whole changed recipe. Not for organic shapes.',
         parameters: {
           type: 'object',
           properties: {
             title: { type: 'string', description: 'A short name for the part, 2 to 6 words.' },
-            scad: { type: 'string', description: 'The whole OpenSCAD recipe. Use cube, cylinder, sphere, polygon, linear_extrude, rotate_extrude, translate, rotate, union, difference, intersection, hull, minkowski, modules and for loops. Put measurements in variables at the top. Use $fn = 64 for round parts. No import, surface, include or use.' }
+            scad: { type: 'string', description: 'The whole OpenSCAD recipe: cube, cylinder, sphere, polygon, extrudes, transforms, union/difference/intersection, hull, modules, for loops. Measurements in variables at the top; $fn = 64 for round parts. No import, surface, include or use.' }
           },
           required: ['scad']
         }

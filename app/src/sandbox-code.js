@@ -56,9 +56,9 @@ export async function runInSandbox(cfg, code, input = {}, { signal, holds = sand
 export function sandboxTool(brain) {
   const cfg = brain.cfg;
   return {
-    schema: fn('run_in_sandbox', 'Work something out exactly by running a few lines of JavaScript in a locked sandbox: sums, money, dates, unit conversions, counting, sorting, checking a pattern. Write the body of a function that returns the answer; console.log shows too. Only Node\'s own built-in parts; no files outside its own folder, no internet, no programs, 20 seconds.', {
-      code: { type: 'string', description: 'JavaScript: the body of async function run(input), ending in return. Example: const days = (new Date("2026-12-25") - new Date("2026-11-11")) / 864e5; return days;' },
-      input: { type: 'object', description: 'Optional: data for the code, read as input (a list or table {{USER}} gave you).' }
+    schema: fn('run_in_sandbox', 'Work something out exactly with a few lines of JavaScript in a locked sandbox: sums, money, dates, units, counting, sorting, patterns. No files, internet or programs; 20 seconds.', {
+      code: { type: 'string', description: 'The body of async function run(input), ending in return. Like: return (new Date("2026-12-25") - new Date("2026-11-11")) / 864e5;' },
+      input: { type: 'object', description: 'Optional: data the code reads as input.' }
     }, ['code']),
     async run({ code, input }, ctx = {}) {
       if (!sandboxOn(cfg)) return 'The sandbox is off. It\'s in Settings, How Bob works: "Let Bob work things out in a sandbox".';

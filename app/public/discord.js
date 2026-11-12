@@ -25,7 +25,6 @@ export async function mountDiscord(box) {
   let v, msg = '';
   const sw = (key, label, note, on, disabled = false) => `<label class="switch"><input type="checkbox" data-dc="${key}" ${on ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span><strong>${label}</strong><br><span class="muted">${note}</span></span></label>`;
   const draw = () => {
-    const off = !v.enabled;
     box.innerHTML = `<strong>Bob on Discord</strong> <span class="tag">off unless you turn it on</span>
       ${sw('enabled', 'Bob on Discord', 'Bob joins your Discord server as a bot and answers in the channels you list. Messages that call him and his replies pass through Discord\'s servers while this is on. He never shows your files or anything he made for you there.', v.enabled)}
       ${v.enabled || v.dmEnabled ? `<p class="muted" role="status">${esc(STATUS[v.status] || v.status)}${v.botName ? ` Your bot: <strong>${esc(v.botName)}</strong>` : ''}</p>` : ''}
@@ -33,29 +32,29 @@ export async function mountDiscord(box) {
         <input id="dc-token" type="password" autocomplete="off" spellcheck="false" placeholder="Paste the bot token" data-dc-token-in>
         <button type="button" data-dc-token>Save token</button></div>
       <div class="row"><label for="dc-wake"><strong>Wake phrase</strong></label>
-        <input id="dc-wake" type="text" maxlength="100" value="${esc(v.wake)}" data-dc-wake ${off ? 'disabled' : ''}>
+        <input id="dc-wake" type="text" maxlength="100" value="${esc(v.wake)}" data-dc-wake>
         <span class="muted">The <code>*</code> is what he reads as the job: <code>hey bob*</code> makes "hey bob draw a cat" into "draw a cat".</span></div>
-      ${sw('caseSensitive', 'Match capital letters exactly', 'Off: "Hey Bob", "HEY BOB" and "hey bob" all work. On: only the phrase as you typed it.', v.caseSensitive, off)}
+      ${sw('caseSensitive', 'Match capital letters exactly', 'Off: "Hey Bob", "HEY BOB" and "hey bob" all work. On: only the phrase as you typed it.', v.caseSensitive)}
       <div class="row"><label for="dc-channels"><strong>Channels Bob answers in</strong></label>
-        <textarea id="dc-channels" rows="2" placeholder="Channel IDs, one per line" data-dc-list="channels" ${off ? 'disabled' : ''}>${esc(v.channels.join('\n'))}</textarea>
+        <textarea id="dc-channels" rows="2" placeholder="Channel IDs, one per line" data-dc-list="channels">${esc(v.channels.join('\n'))}</textarea>
         <span class="muted">${v.channels.length ? '' : 'None yet, so he answers nowhere. '}Right-click a channel in Discord, Copy Channel ID (turn on Developer Mode in Discord\'s Advanced settings first).</span></div>
       <div class="row"><label for="dc-people"><strong>Only these people</strong></label>
-        <textarea id="dc-people" rows="2" placeholder="User IDs, one per line (empty: everyone in those channels)" data-dc-list="people" ${off ? 'disabled' : ''}>${esc(v.people.join('\n'))}</textarea></div>
-      <fieldset class="row" ${off ? 'disabled' : ''}><legend><strong>Jobs Bob takes on Discord</strong></legend>
+        <textarea id="dc-people" rows="2" placeholder="User IDs, one per line (empty: everyone in those channels)" data-dc-list="people">${esc(v.people.join('\n'))}</textarea></div>
+      <fieldset class="row"><legend><strong>Jobs Bob takes on Discord</strong></legend>
         ${v.jobTypes.map((t) => `<label><input type="checkbox" data-dc-job="${t.id}" ${v.jobs[t.id] ? 'checked' : ''}> ${esc(t.label)}</label>`).join(' ')}</fieldset>
-      ${sw('share', 'Share what Bob makes for Discord', 'Pictures, clips, songs and sounds made for a Discord request go to that channel as files. Off: he says he made it, and it stays in Made by Bob here. Only ever what was asked for there, never anything older or made for you.', v.share, off)}
+      ${sw('share', 'Share what Bob makes for Discord', 'Pictures, clips, songs and sounds made for a Discord request go to that channel as files. Off: he says he made it, and it stays in Made by Bob here. Only ever what was asked for there, never anything older or made for you.', v.share)}
       <hr><strong>Your private Bob in Discord DMs</strong>
       ${sw('dmEnabled', 'Talk to Bob in my Discord DMs', 'Your own account only. Your DMs to the bot get the full Bob, like his window, and land in a Discord chat here. Anyone else who DMs him gets silence. Your messages and his replies, including anything he tells you from your files or what he remembers about you, pass through Discord\'s servers while this is on.', v.dmEnabled)}
-      ${v.dmEnabled ? `<div class="row"><strong>Your Discord account</strong> <span class="muted">${v.paired ? `Paired with <strong>${esc(v.ownerName || 'your account')}</strong>.` : v.pairCode ? `DM <code>${esc(v.pairCode)}</code> to your bot within 15 minutes.` : v.pairLocked ? 'Someone sent your bot 5 wrong codes, so that code was thrown away. Press New code.' : 'Not paired yet.'}</span>
-        ${v.paired ? '<button type="button" data-dc-forget>Forget my Discord account</button>' : '<button type="button" data-dc-code>New code</button>'}</div>
+      ${`<div class="row"><strong>Your Discord account</strong> <span class="muted">${v.paired ? `Paired with <strong>${esc(v.ownerName || 'your account')}</strong>.` : v.pairCode ? `DM <code>${esc(v.pairCode)}</code> to your bot within 15 minutes.` : v.pairLocked ? 'Someone sent your bot 5 wrong codes, so that code was thrown away. Press New code.' : v.dmEnabled ? 'Not paired yet.' : 'Not paired yet. A code works once Talk to Bob in my Discord DMs is on.'}</span>
+        ${v.paired ? '<button type="button" data-dc-forget>Forget my Discord account</button>' : `<button type="button" data-dc-code ${v.dmEnabled ? '' : 'disabled'}>New code</button>`}</div>
       ${v.paired ? '' : `<div class="row"><label for="dc-owner"><strong>Or type your Discord user ID</strong></label>
         <input id="dc-owner" type="text" maxlength="22" autocomplete="off" spellcheck="false" placeholder="Your user ID (digits)" data-dc-owner-in>
         <button type="button" data-dc-owner>Save account</button>
-        <span class="muted">In Discord, turn on Developer Mode, then right-click your name and Copy User ID. You and the bot need to share a server.</span></div>`}` : ''}
-      ${sw('dmPictures', 'Send what Bob makes to my DMs', 'Pictures, clips, songs and sounds Bob makes for your DM chat go there as files. Off: he says where to find them.', v.dmPictures, !v.dmEnabled)}
-      ${sw('dmApprove', 'Answer Bob\'s OK cards in my Discord DMs', 'OK cards from your DM chat get Allow and Deny buttons there. Off: Bob says a card is waiting on this replicant matrix. Hard limits still hold either way.', v.dmApprove, !v.dmEnabled)}
+        <span class="muted">In Discord, turn on Developer Mode, then right-click your name and Copy User ID. You and the bot need to share a server.</span></div>`}`}
+      ${sw('dmPictures', 'Send what Bob makes to my DMs', 'Pictures, clips, songs and sounds Bob makes for your DM chat go there as files. Off: he says where to find them.', v.dmPictures)}
+      ${sw('dmApprove', 'Answer Bob\'s OK cards in my Discord DMs', 'OK cards from your DM chat get Allow and Deny buttons there. Off: Bob says a card is waiting on this replicant matrix. Hard limits still hold either way.', v.dmApprove)}
       ${msg ? `<p class="muted" role="status">${esc(msg)}</p>` : ''}
-      <details class="more"><summary>How to set it up</summary><p class="muted">1. Open the Discord Developer Portal (discord.com/developers/applications), New Application, give it a name.<br>2. On the <strong>Bot</strong> page: Reset Token, copy it, paste it above and press Save token. Turn on <strong>Message Content Intent</strong> on the same page.<br>3. On <strong>OAuth2</strong>, URL Generator: tick <em>bot</em>, then <em>View Channels</em>, <em>Send Messages</em>, <em>Read Message History</em> and <em>Attach Files</em>. Open the link it makes and add the bot to your server.<br>4. For a public bot: add the channel IDs above, then turn on <strong>Bob on Discord</strong>. For your private Bob: turn on <strong>Talk to Bob in my Discord DMs</strong> and DM the code to your bot, or type your user ID.<br>The token goes into your Windows user variables as <code>${esc(v.tokenEnv)}</code> (on Mac and Linux, <code>~/.config/bob/env</code>); Bob never shows it. Always a bot, never your own Discord account. Bob talks to Discord himself, so no door opens on this replicant matrix. Discord jobs can't touch your files, folders, programs, memory or Hands, and wait in Tasks like any other job.</p></details>`;
+      <details class="more"><summary>How to set it up</summary><p class="muted">1. Open the Discord Developer Portal (discord.com/developers/applications), New Application, give it a name.<br>2. On the <strong>Bot</strong> page: Reset Token, copy it, paste it above and press Save token. Turn on <strong>Message Content Intent</strong> on the same page.<br>3. On <strong>OAuth2</strong>, URL Generator: tick <em>bot</em>, then <em>View Channels</em>, <em>Send Messages</em>, <em>Read Message History</em> and <em>Attach Files</em>. Open the link it makes and add the bot to your server.<br>4. For a public bot: add the channel IDs above, then turn on <strong>Bob on Discord</strong>. For your private Bob: turn on <strong>Talk to Bob in my Discord DMs</strong> and DM the code to your bot, or type your user ID.<br>The token goes into Bob's locked store (Settings, This replicant matrix, Locked secrets), scrambled with a key your computer keeps; Bob never shows it. Always a bot, never your own Discord account. Bob talks to Discord himself, so no door opens on this replicant matrix. Discord jobs can't touch your files, folders, programs, memory or Hands, and wait in Tasks like any other job.</p></details>`;
   };
   const load = async () => { v = await api('/api/discord'); draw(); };
   const change = async (patch) => {

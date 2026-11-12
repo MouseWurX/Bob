@@ -130,7 +130,7 @@ export function shownKit(slot, ctx) {
   return { shown, hidden: all.length - shown.length };
 }
 
-function kitHtml(slot, ctx) {
+export function kitHtml(slot, ctx) {
   if (!slot) return '<p class="muted">Pick a slot around Bob to see what fits it.</p>';
   if (slot.how === 'rent') return rentKitHtml(slot, ctx); // 1.5.127
   const cur = equipped(slot, ctx);
@@ -399,12 +399,26 @@ export function readyList({ pack, models = [], engines = [], hw = {}, mainEmpty 
   return [...eng, ...rows];
 }
 // The recommended ticks (what isn't here yet and is recommended; not what the window says won't suit this machine).
-export const readyDefaults = (rows) => {
-  const picks = new Set(rows.filter((r) => r.kind === 'model' && r.rec && !r.here && !r.blocked && !r.warn).map((r) => r.id));
+export const readyDefaults = (rows, keep = () => true) => {
+  const picks = new Set(rows.filter((r) => r.kind === 'model' && r.rec && !r.here && !r.blocked && !r.warn && keep(r)).map((r) => r.id));
   // The core programs, and the ones a ticked model runs on.
   for (const r of rows) if (r.kind === 'engine' && !r.here && ((r.core ?? CORE_ENGINES.includes(r.id.slice(7))) || rows.some((m) => picks.has(m.id) && (m.needs || []).includes(r.id)))) picks.add(r.id);
   return picks;
 };
+// 1.5.205 "How should I split my brains?" on the first-time screen: the same list with fewer brains ticked.
+// specialists = the recommended ticks as they always were. one = only the main brain. duo = the main brain, the Quick
+// brain and the Deep thinker. Pictures, clips, voices and the rest are not brains and keep their ticks.
+export const SPLITS = [
+  { id: 'one', name: 'One brain', does: 'One brain does every job. The smallest download.' },
+  { id: 'duo', name: 'Quick + Big', does: 'A small brain for short answers, a big one for the rest.' },
+  { id: 'specialists', name: 'Specialists', does: 'My full pick: a brain suited to each job.' },
+  { id: 'bobs', name: 'Across my Bobs', does: 'Brains on several replicant matrices helping each other.', lock: 'Set this up once two of your Bobs are on the Bob-Net: Settings, Bob-Net.' }
+];
+const BRAIN_CATS = ['chat', 'coding', 'vision'];
+export function splitPicks(rows, split = 'specialists') {
+  const want = split === 'one' ? ['bob'] : split === 'duo' ? ['bob', 'small', 'deep'] : null;
+  return readyDefaults(rows, (r) => !want || !BRAIN_CATS.includes(r.category) || (r.slots || []).some((id) => want.includes(id)));
+}
 // Ticking a model ticks the programs it runs on.
 export function readyToggle(rows, picks, id, on) {
   const next = new Set(picks);

@@ -177,3 +177,25 @@ export function unzip(zipFile, destDir) {
   }
   return { files, bytes, skipped };
 }
+
+// One entry's bytes (a small file, such as a backup's own list), or null when the zip has no entry by that name.
+// The same checks as unzip: a damaged or oversized entry throws.
+export function readZipEntry(zipFile, name, { maxBytes = 64 * 1024 ** 2 } = {}) {
+  const { entries } = readZipList(zipFile);
+  const e = entries.find((x) => x.name === name && !x.dir && !x.link);
+  if (!e) return null;
+  if (e.usize > maxBytes) throw new Error(`${name} in that zip is bigger than Bob reads.`);
+  const fd = fs.openSync(zipFile, 'r');
+  try {
+    const head = Buffer.alloc(30);
+    fs.readSync(fd, head, 0, 30, e.at);
+    if (head.readUInt32LE(0) !== 0x04034b50) throw new Error('That zip file is damaged.');
+    const comp = Buffer.alloc(e.csize);
+    fs.readSync(fd, comp, 0, e.csize, e.at + 30 + head.readUInt16LE(26) + head.readUInt16LE(28));
+    let data;
+    try { data = e.method === 8 ? zlib.inflateRawSync(comp, { maxOutputLength: Math.max(1, e.usize) }) : comp; }
+    catch { throw new Error(`${name} in that zip is damaged.`); }
+    if (data.length !== e.usize || crc32(data) !== e.crc) throw new Error(`${name} in that zip is damaged (its check doesn't match).`);
+    return data;
+  } finally { fs.closeSync(fd); }
+}

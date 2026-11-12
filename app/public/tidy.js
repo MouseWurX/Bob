@@ -5,7 +5,7 @@ import { tip } from './tips.js';
 
 const $ = (id) => document.getElementById(id);
 const ACTION = { summarize: 'Sum up, then to the Recycle Bin', delete: 'To the Recycle Bin', forget: 'Forget the chat parts (note stays)' };
-const KIND_LABEL = { chats: 'Chats', pictures: 'Pictures and clips', sounds: 'Sounds', tasks: 'Finished tasks', logs: 'Logs', topics: 'Topics set to fade', spare: 'Spare copies' };
+const KIND_LABEL = { chats: 'Chats', pictures: 'Pictures and clips', sounds: 'Sounds', tasks: 'Finished tasks', logs: 'Logs', topics: 'Topics set to fade', spare: 'Spare copies', folders: 'Files in folders you added' };
 
 export function createTidy({ api, onCount }) {
   const dlg = $('tidy'), body = $('tidy-body');

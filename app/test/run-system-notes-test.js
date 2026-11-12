@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 // 1.5.52: brains whose chat template only takes a system message first (Qwen 3.8 on Bob's engine) used to fail with
 // "500 ... System message must be at the beginning" as soon as Bob added a note mid-chat. Now the notes are folded in.
 import { LlamaCpp, foldSystem, MID_SYSTEM_REFUSED } from '../src/llamacpp.js';
@@ -16,6 +17,18 @@ check('a mid-chat note joins the user turn next to it, marked as Bob\'s own', f[
 check('roles still alternate (no two user turns in a row)', f.every((m, i) => i === 0 || !(m.role === 'user' && f[i - 1].role === 'user')));
 check('a note after the last user turn is folded into it', /go on\n\n\[Note from Bob's own system\] Thinking time is up/.test(f.at(-1).content) && f.at(-1).role === 'user');
 check('a chat with no mid-chat notes is unchanged', JSON.stringify(foldSystem(chat.slice(0, 3))) === JSON.stringify([{ role: 'system', content: 'You are Bob.\n\nMemory notes.' }, chat[2]]));
+check('the "must be first" wording is recognised too (Riker, PC check 1.5.206)', MID_SYSTEM_REFUSED.test("raise_exception('System message must be first')"));
+{ // a loop turn as Bob sends it: tool rounds, then the "where we are" note last
+  const turn = [{ role: 'system', content: 'You are Bob.' }, { role: 'user', content: 'find the moon size and save it' },
+    { role: 'assistant', content: '', tool_calls: [{ function: { name: 'web_search', arguments: {} } }] }, { role: 'tool', tool_name: 'web_search', content: 'moon 3,474 km' },
+    { role: 'assistant', content: '', tool_calls: [{ function: { name: 'write_file', arguments: {} } }] }, { role: 'tool', tool_name: 'write_file', content: 'saved' },
+    { role: 'system', content: 'Where we are (written by the app, step 3 of 12).' }];
+  const strictOk = (ms) => ms.every((m, i) => m.role !== 'system' || i === 0);
+  const ft = foldSystem(turn);
+  check('a system-first template takes a folded loop turn, with the where-we-are note as a user note', strictOk(ft) && !strictOk(turn) && ft.at(-1).role === 'user' && /^\[Note from Bob's own system\] Where we are/.test(ft.at(-1).content) && ft.length === turn.length);
+}
+const loopTest = fs.readFileSync(new URL('../model-lab/loop-test.mjs', import.meta.url), 'utf8');
+check('the loop test folds notes the way Bob\'s engine does', /foldSystem\(q\.messages\)/.test(loopTest) && /MID_SYSTEM_REFUSED\.test\(full\)/.test(loopTest));
 check('the exact llama-server error is recognised', MID_SYSTEM_REFUSED.test("Value is not callable: raise_exception('System message must be at the beginning.')"));
 
 // Through the engine: a mock llama-server whose template refuses mid-chat system messages.

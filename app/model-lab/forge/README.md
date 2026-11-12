@@ -104,7 +104,7 @@ deletes the pod, and the loss is the time spent (a few dollars).
 ## Build 17 (8 November 2026, untested on a card)
 
 - **Train the teacher.** `plan.train_teacher` ({name, nickname, hours, experts, epochs}) trains the full teacher on every lesson by plain next-word training (heal.py with alpha 0 and no odds file) before anything else, keeps the result on the volume as `bobs/<name>/model` plus its adapter, exports its GGUF files and brain cards, and makes it the teacher for the odds and the cuts. The lesson-set key includes the trained teacher's adapter hash, so stock-teacher scores and trained-teacher scores never mix. A later plan names him with `teacher_model: "bobs/35Bob/model"`.
-- **Hugging Face from the card, by the owner's rules.** `plan.publish` ({user, private, odds, models}). Every GGUF and card is kept on the volume (`bobs/<name>/gguf/`); `download_quants` names which quant files come down to the PC (the rest stay on the drive and the watcher skips them). `odds: true` uploads the teacher scores as a private dataset (`<user>/bob-odds/<key>/`). A Bob is uploaded only when the owner has tested him at home and listed his name in `models` (then the next run uploads him from the volume with a generated model card, private). The token is read from `forge/hf-token.txt` (one line, gitignored) or `HF_TOKEN` on the PC and sent to the pod as `in/hf-token`; it is never in a plan, a log or the repo. `export.py --pending` holds the file list back until the files are marked.
+- **Hugging Face from the card, by the owner's rules.** `plan.publish` ({user, private, odds, models}). Every GGUF and card is kept on the volume (`bobs/<name>/gguf/`); `download_quants` names which quant files come down to the PC (the rest stay on the drive and the watcher skips them). `odds: true` uploads the teacher scores as a private dataset (`<user>/bob-odds/<key>/`). A Bob is uploaded only when the owner has tested him at home and listed his name in `models` (then the next run uploads him from the volume with a generated model card, private). The token is read from `HF_TOKEN`, or `forge/hf-token.txt` (one line, gitignored), which the Forge locks on first read into `forge/hf-token.locked` (Windows DPAPI, this account only; gitignored), and sent to the pod as `in/hf-token`; it is never in a plan, a log or the repo. `export.py --pending` holds the file list back until the files are marked.
 
 ## Build 18 (8 November 2026, untested on a card)
 
@@ -137,9 +137,9 @@ Every Bob so far was cut by counting how often the router picks each expert. REA
 - Checked without a card: `prune.py` then `fold.py` on a tiny made-up model (a shuffled copy folded back in leaves the expert as it was; use-weighted blend; router rows; other tensors and the number type untouched).
 - Unknown until it is tried: whether a folded and healed brain beats a dropped and healed one. The first use should make one rung both ways and compare.
 
-## FNRI on a rented card
+## fNRI on a rented card
 
-The Lab's FNRI scan (Playground) can also be made on a rented card, for a brain too big for the home card. Nothing in the app rents a card for this yet; these are the pieces.
+The Lab's fNRI scan (Playground) can also be made on a rented card, for a brain too big for the home card. Nothing in the app rents a card for this yet; these are the pieces.
 
 - `node model-lab/forge/aifeui-bundle.mjs --brain hf:<repo>:<file.gguf> --out <folder>` packs one folder: the questions (`aifeui-plan.json`), the card scripts (`pod/`), Brain Engine as patches (`engine-patches/`) and Bob's viewer (`viewer/`). It rents and uploads nothing.
 - On the card, with that folder as `/workspace/in`: `bash /workspace/in/pod/aifeui.sh`.

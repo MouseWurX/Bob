@@ -9,6 +9,10 @@ Two promises run through everything Bob does:
 - **Nothing leaves your PC unless you say so.** Bob only goes online to download something you picked, to search the web if you turned on **Let Bob search the web**, to use a cloud helper you switched on yourself, or to run a job on a rented brain you hired with a card (see Optional extras).
 - **Nothing extra is switched on until you switch it on.** Anything optional starts off. Bob may suggest something, but you decide.
 
+![Bob's window: the menu on the left, the chat in the middle, and Now running on the right](screenshot.png)
+
+**Contents:** [Getting started](#1-getting-started) · [Finding your way around](#2-finding-your-way-around) · [Equip Bob](#3-equip-bob-choosing-his-models) · [Personality](#4-bobs-personality) · [Sessions](#5-sessions-matching-bob-to-what-youre-doing) · [Memory](#6-topics-and-housekeeping-bobs-memory) · [Pictures and video](#7-pictures-edits-and-video) · [Hands](#8-hands-letting-bob-do-things-on-your-pc-opt-in) · [Voice](#9-voice) · [Optional extras](#10-optional-extras-all-off-until-you-turn-them-on) · [The Lab](#11-the-computer-science-lab) · [Updating and removing](#12-updating-and-removing-bob) · [Troubleshooting](#13-when-something-goes-wrong) · [Glossary](#glossary)
+
 ---
 
 ## 1. Getting started
@@ -23,6 +27,11 @@ Two promises run through everything Bob does:
 
 You can close Bob while things download. Unfinished downloads wait, paused, and carry on when you press Resume.
 
+| | |
+|---|---|
+| ![Get me ready: the programs and models Bob suggests, each with a tick box](screens/get-bob-ready.png) | ![Do you want me to: every switch that starts off, in one list](screens/do-you-want.png) |
+| **Get me ready:** one list, one button. | **Do you want me to:** tick what you'd like switched on. |
+
 ### What do I need?
 
 - Windows 10 or 11 (64-bit). Bob also runs on a Mac with Apple Silicon (below), on 64-bit Linux and a Raspberry Pi, and as a phone app on Android: the [README](../../README.md#getting-bob) has the steps for each.
@@ -35,10 +44,10 @@ You can close Bob while things download. Unfinished downloads wait, paused, and 
 Bob runs on Macs with Apple Silicon (M1 and newer), using the Mac's graphics (Metal).
 
 1. Download `Bob-<version>-mac-arm64.zip` from the releases page, open it, and drag **Bob** into Applications.
-2. The first time, macOS says it can't check Bob (official Mac builds are ad-hoc signed: sealed so macOS can tell if a file was changed, but not with a paid Apple developer account, and that won't change). Open **System Settings > Privacy & Security**, scroll down and click **Open Anyway** next to Bob. Once only.
+2. The first time, macOS says it can't check Bob (official Mac builds are ad-hoc signed: sealed so macOS can tell if a file was changed, but not with a paid Apple Developer ID). Open **System Settings > Privacy & Security**, scroll down and click **Open Anyway** next to Bob. Once only. A copy signed with a Developer ID and notarized by Apple skips this; the switch for that is built in and off ([SIGNING-MAC.md](SIGNING-MAC.md)).
 3. Bob keeps his things in `~/Library/Application Support/Bob/home`.
 
-On a Mac, llama.cpp and stable-diffusion.cpp download as usual. whisper.cpp and Piper have no Mac builds Bob can use (hear through Ollama or a cloud helper; speak with Kokoro voices). Install FFmpeg (Homebrew) and LibreOffice yourself and Bob finds them. The Apps Hand, Defender scans, the Gaming card switch, Windows Task Scheduler and Check this replicant matrix are hidden; the Security Hand checks the firewall, FileVault, Gatekeeper, System Integrity Protection, login items and listening programs instead. **Update Bob** works as on Windows: it fetches the newest Mac zip from GitHub, checks it, and swaps it in on restart. To remove him, drag him to the Bin (and the folder above, if you want everything gone).
+On a Mac, brains run on plain llama.cpp (Brain Engine has no Mac build yet), and it and stable-diffusion.cpp download as usual. whisper.cpp and Piper have no Mac builds Bob can use (hear through Ollama or a cloud helper; speak with Kokoro voices). Install FFmpeg (Homebrew) and LibreOffice yourself and Bob finds them. The Apps Hand, Defender scans, the Gaming card switch, Windows Task Scheduler and Check this replicant matrix are hidden; the Security Hand checks the firewall, FileVault, Gatekeeper, System Integrity Protection, login items and listening programs instead. **Update Bob** works as on Windows: it fetches the newest Mac zip from GitHub, checks it, and swaps it in on restart. To remove him, drag him to the Bin (and the folder above, if you want everything gone).
 
 ## 2. Finding your way around
 
@@ -58,13 +67,22 @@ Handy things in the chat:
 - 📎 attaches a picture, and 🎙 lets you talk instead of typing.
 - You can send as many messages as you like. Each one becomes a task, and Bob works through them in order. None get lost.
 
+![A chat about a garden budget, with the spreadsheet open in the side panel](screens/documents.png)
+
+*A file Bob mentions gets a card. **View** opens it in the side panel; with **Show documents in the side panel** on, that includes Word, Excel, PowerPoint and PDF files.*
+
 ### Settings, Get models and Style
 
 These open as a page in the middle of the window, in place of the chat. **← Back to chat** (or Esc, or Chat in the menu) takes you back. A bar along the top of the page, which stays put while you scroll, jumps between Equip Bob, the model pages, Style and Settings, so clicking Bob's picture gets you everywhere too.
 
 - **Get models:** Equip Bob, the model shops (Voice & conversation, Coding, Seeing pictures, Pictures & video) and **On this PC**.
 - **Settings** starts as one short page showing what's set now: Bob's voice (with **Play sample** and **Change**), his look, the colours, animations, the cat's name, one brain, launch on start-up, Projects, **Where Bob saves things**, **Let Bob search the web**, **Show Bob's plan before big jobs** and checking for updates (off unless you turn them on), and the version, graphics card and disk space, with **Check for updates**, **Run first-time setup**, **Save a help bundle** and **Check this replicant matrix**.
-- **Simple or Advanced:** a toggle at the top swaps two layouts of the same settings. **Simple** shows eight cards; press one to open its sections. **Advanced** lists every section down the side. A search box finds a setting in both. On a computer, Settings opens in its own window (minimise, maximise, close); on a phone it's a page. The sections: Brains (model roles, session brains, context), House style, Voice details, Look & feel, Speed & memory, Engines, Bob-Net (your phone and your other Bobs), Online services (cloud helpers, Telegram), Other apps (ComfyUI), Hands, Housekeeping, Check-ins and Remove Bob. Longer explanations fold behind **More**.
+- **Simple or Advanced:** a toggle at the top swaps two layouts of the same settings. **Simple** shows eight cards; press one to open its sections. **Advanced** lists every section down the side. A search box finds a setting in both. On a computer, Settings opens in its own window (minimise, maximise, close); on a phone it's a page. The sections: Brains (model roles, session brains, context), House style, Voice details, Look & feel, Speed & memory, Engines, Bob-Net (your phone and your other Bobs), Online services (cloud helpers, Telegram), Other apps (ComfyUI, other apps using Bob's brains), Hands, Housekeeping, Check-ins and Remove Bob. Longer explanations fold behind **More**.
+
+| | |
+|---|---|
+| ![Settings, Simple: eight cards](screens/settings.png) | ![Settings, Advanced: every section down the side](screens/settings-advanced.png) |
+| **Simple** | **Advanced** |
 
 ---
 
@@ -79,6 +97,8 @@ These open as a page in the middle of the window, in place of the chat. **← Ba
 Bob uses different AI **models** for different jobs, the way a person might use a different tool for each task. **Equip Bob** shows them like a character sheet in a game: a picture of Bob with a slot for each job.
 
 **To open it**, click Bob's picture (or click **Get models** in the left menu: it opens on Equip Bob).
+
+![Equip Bob: Bob in the middle, with a slot for every job around him](screens/equip-bob.png)
 
 ### The slots
 
@@ -201,6 +221,10 @@ As you move a dial, Bob's **greeting** changes so you can hear the difference ri
 
 Bob also knows what he looks like. Change his look under **Style** and he'll comment on it, once.
 
+### Assistant presets: a different Bob per chat
+
+Switch on **Assistant presets for chats** (Settings, Bob himself, 🎭 Assistant presets; off unless you turn it on) to save presets: a name, your own instructions, a brain from Bob's slots, a starting effort, a temperature and which tools he may use (as usual, only the groups you tick, or talking only). Pick one for the chat you're in from **🎭 Preset** next to Effort, or with the 🎭 button in Bob for Android. A chat with no preset is plain Bob, and a preset never switches on a tool or Hand that is off.
+
 ---
 
 ## 5. Sessions: matching Bob to what you're doing
@@ -232,6 +256,18 @@ High and Extreme end with **moot minutes**: who checked what, and what's still o
 
 **💭 Bob's thinking**, at the top of the chat, opens a small window that stays on top of your other windows. It shows, live: what Bob is doing, which brains he holds and where (graphics card or processor), his thinking as it streams (his copies too, so you can watch a moot), brain loads and swaps, each tool step and the notes he keeps for himself. Low effort replies skip thinking, so there you mostly see steps. Bob only sends his thinking along while the window is open, and nothing in it is saved.
 
+### How Bob keeps his tool calls on track (always on)
+
+Small brains often pick the right tool and then get what goes into it wrong. Bob's app checks every step, with no extra brain and no wait:
+
+- Before a tool runs, what Bob put into it is checked against what the tool needs. Sure mistakes are mended (broken brackets, a field under another name, "5" for 5). A call still missing something doesn't run; Bob gets one line saying what to send, and an example the second time.
+- After an error, Bob gets one plain hint on what usually works.
+- "I'll look that up" with no tool run gets one nudge to really do it, and a retry thinks it through on a long coding brain.
+- The same search in other words isn't run twice. Several look-ups in one reply run side by side.
+- On a job with several steps, a short note reminds Bob of your words, what came back and how many steps are left. The last step has no tools, so he always says what he found.
+- Once a chat fills half his memory, tool results from earlier messages become one line each.
+- While the embedding model is in use anyway (Topics or Remember only what fits), the tools a message means are added, not only the ones its words name.
+
 ---
 
 ## 6. Topics and housekeeping: Bob's memory
@@ -249,9 +285,9 @@ You can rename, merge, pin and drag messages between topics. One **search box** 
 
 To make Bob forget something, either use **Forget** on a topic or simply say "forget what we said about…". You always see a preview first, and you can choose to keep just the short note or remove everything.
 
-### Housekeeping (off unless you turn it on)
+### Housekeeping (on unless you turn it off)
 
-Long chats and old files pile up. Housekeeping is Bob tidying up while he's idle. It's **off by default**. When you turn it on, Bob can:
+Long chats and old files pile up. Housekeeping is Bob tidying up while he's idle. It's **on by default**, and by default it only touches **Bob's own files**. Bob can:
 
 - sum up the older part of a long chat instead of forgetting it,
 - file chats under Topics,
@@ -259,6 +295,8 @@ Long chats and old files pile up. Housekeeping is Bob tidying up while he's idle
 - find things that haven't come up for a while: old chats, pictures and sounds he made, finished tasks, old log lines and repeated notes.
 
 For each kind of thing you choose how old is "old" (from minutes to months), and whether Bob should **ask me first** (you get a list with a tick and a cross for each item) or **tidy automatically**.
+
+**Folders you point him to:** to have Bob help with one of your own folders (Downloads, say), type its full path under **Folders you point him to** and press **Add folder**. Old files from it (6 months by default) show up in Tidy up. Bob always asks first for these, never tidies them by himself, and anything cleared goes to the Recycle Bin. System folders, your whole home folder and Bob's own folder can't be added.
 
 Safety nets:
 
@@ -310,11 +348,16 @@ Settings, **Where Bob saves things** picks the folder for the pictures, clips, s
 
 ---
 
+### Back up and move
+
+Settings, **This replicant matrix**, **Back up and move** saves one zip with your chats, settings, memory, notes, the tools Bob made and the list of things he made (not the pictures themselves, and never brains or programs: those download again). **Keys and passcodes, locked** is off unless you tick it; then your API keys, bot tokens and phone passcode go in too, locked with a passcode you type. On a new computer, install Bob, **Pick a backup…**, **Restore these** and **Restart Bob now**: the files go in as he starts, and what they replace is kept in the inn's archive folder. Phone access, Discord, Telegram, rented brains, cloud helpers, Hands, scheduled jobs and the automatic backup come back switched off. **Back up by itself** (off unless you turn it on) saves a backup to a folder every day or week and keeps the newest few, never with keys. Bob for Android has its own phone backup in its Settings.
+
 ## 8. Hands: letting Bob do things on your PC (opt-in)
 
 Hands are Bob's way of doing things for you on your PC rather than just talking about them:
 
 - **Files:** zip and unzip, move, copy, rename, and tidy folders like Downloads.
+- **Sort and rename:** rename and move a whole music, video or photo collection to your own naming rules, or send new files from Downloads or an output folder into your library.
 - **Run:** run a program, command or script you've approved.
 - **Schedules:** do a job at a set time.
 - **Apps:** click and type in another program for you, and, with a vision brain in his "Seeing pictures" slot, check each step by looking at a picture of the window (and click by place in apps that don't name their buttons).
@@ -322,6 +365,19 @@ Hands are Bob's way of doing things for you on your PC rather than just talking 
 - **Office documents and converting:** convert files (Word, Excel, PowerPoint and OpenDocument to and from each other or to PDF; pictures; sound; video), read office files, make new documents, spreadsheets and slides, and change them (fill cells, add rows and slides, replace text, fill a template).
 - **Security and privacy:** check the PC's protection, explain Defender alerts and start scans, look at suspicious downloads, scripts and emails without opening them, find and remove hidden details (like GPS in photos) before sharing, and check whether a website, link or sender is genuine from public records.
 - **Connected apps (MCP):** work inside Unreal Engine, Blender and other apps that offer their tools through an MCP add-on.
+- **Tool packs from other people:** use tools and jobs someone else made for Bob, from a folder or .zip you add.
+
+### Sort and rename
+
+Ask things like "sort my music folder" or "put my downloads where they belong".
+
+- Settings → Hands: switch on **Sort and rename** and tick the folders Bob may work in.
+- **Sort and rename: naming rules** (same page) has one rule per kind of file: the file types it takes, which ones (any, only TV episodes, or not TV episodes), the **New name**, and **Send to**. A "/" makes folders and words in curly brackets fill in from the file: `{artist}/{album}/{track} {title}` gives `Queen/A Night at the Opera/11 Bohemian Rhapsody.mp3`. Each rule shows an example. **Words you can use in a name** lists them all.
+- Empty **Send to** sorts in place. A folder there moves that kind of file into it (it must be a ticked folder), so Downloads can feed your Music or Videos folder.
+- Starting rules: Music (`{albumartist}/{album}/{track} {title}`), TV episodes (`{show}/Season {season}/{show} - S{season}E{episode}`) and Films (`{title} ({year})/{title} ({year})`) are on; Photos (`{year}/{year}-{month}/{date} {name}`) is off. **Back to the starting rules** restores them.
+- Bob reads song tags (MP3, FLAC, Ogg, Opus, M4A), TV tags in MP4 files, S01E02 or 1x02 in names, a film's year, and the date a photo was taken; an untagged song is named from its file name and its Artist/Album folders. Subtitles and lyrics with the same name go along.
+- The card lists every rename with a tick. Nothing is overwritten, files still downloading are skipped, and a card holds up to 1,000 files (ask again for the next lot). Emptied folders are removed; **Undo** puts everything back, folders too.
+- Windows, Mac and Linux. On Bob for Android you approve the card; the files and the rules stay on the replicant matrix Bob runs on.
 
 ### Use a browser
 
@@ -344,6 +400,16 @@ Apps with an MCP add-on (Unreal Engine and Blender have them) can offer Bob thei
 - While **Don't send anything out** is on, Bob only talks to apps on this computer (localhost / 127.0.0.1).
 - Works the same on Windows, Mac and Linux. The phone app shows the same cards for jobs sent from the phone; the apps themselves run on the PC.
 
+### Tool packs from other people
+
+A tool pack is a folder (or a .zip of one) that someone else made: a `bob-pack.json` file plus a little plain JavaScript. It gives Bob new tools and jobs without changing his code. How to make one: [TOOL-PACKS.md](TOOL-PACKS.md).
+
+- Settings → Hands → **Tool packs**: type the full path of the folder or .zip and press **Add pack**. Bob checks it first and says exactly why if it can't be added (programs inside, code that starts programs or reaches the internet without saying so, missing files).
+- Every pack comes in switched off. Look at what each tool may do (**Show code**), then switch the pack on, and the **Tool packs from other people** Hand above it.
+- Tools run in Bob's sandbox, only see the files on their card (each in a folder ticked for Hands, under the hard limits), and **always ask**, even with "Let Bob work without asking" on. A job is written steps Bob follows with his own Hands, each asking as usual.
+- If a pack's files change after you add it, it switches off until you add it again. **Remove** sends it to the Recycle Bin.
+- Windows, Mac and Linux, wherever the sandbox holds. From the phone app, packs run on the PC and the cards show on the phone; packs are added on the PC.
+
 ### Office documents and converting
 
 Ask things like "turn report.docx into a PDF", "what's in budget.xlsx?", "make a 5-slide deck about the game", "set B4 to 1300 in budget.xlsx", "make this song an mp3" or "turn the clip into a GIF".
@@ -354,6 +420,10 @@ Ask things like "turn report.docx into a PDF", "what's in budget.xlsx?", "make a
 - Every file Bob makes or changes is on a card first, one row each (a new document in his own Documents folder, which shows in Made by Bob under Documents, needs no OK). Nothing is overwritten (report-2.pdf), conversions never change the original, and a file changed in place is backed up first.
 - He saves only in the folders ticked for Hands, plus his own Documents folder. LibreOffice runs hidden with Bob's own settings, never runs macros in the files, and closes when the job is done; so does FFmpeg.
 - He can't turn a PDF back into a good Word file, because the layout breaks. He can read its words and make a new Word document from them instead.
+
+### Locked secrets
+
+On to start with (Settings, This replicant matrix, **🔐 Locked secrets**). Every passcode, bot token and key Bob saves is kept scrambled (AES-256-GCM): the phone-access passcode, your other Bobs' passcodes, door keys in config.json, the Discord bot token, the keys in Apps Bob can use, and any key saved in the panel. The key that unscrambles them is kept by the computer for your account: Windows DPAPI, the Mac Keychain, the Linux Secret Service (GNOME Keyring, KWallet), or a key file only your account can read in `~/.config/bob` when none of those answers. On Android, the Android Keystore. Plain secrets from an older Bob (including the old `BOB_DISCORD_TOKEN` user variable and the lines in `~/.config/bob/env`) are locked the first time he starts. If the box can't be opened (Bob's folder copied from another computer), saved secrets read as empty and are never written over; **Start a new locked box** starts again.
 
 ### Security and privacy
 
@@ -388,7 +458,7 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 
 ## 9. Voice
 
-- **Read aloud:** Bob can speak his replies. Kokoro is the recommended voice (22 voices, runs on the processor). Every voice has a **Play** button with a short sample (the same line in each voice) that works before you download anything.
+- **Read aloud:** Bob can speak his replies. Kokoro is the recommended voice (22 voices, runs on the processor), and inside it Onyx (deep and calm) is the recommended voice: Bob uses it until you pick another, and it is marked ★ Recommended in the list. Every voice has a **Play** button with a short sample (the same line in each voice) that works before you download anything.
 - **Talk to Bob:** with the Hearing you slot filled, use 🎙 or say "Hey Bob" hands-free (if you turn that on).
 
 ---
@@ -401,23 +471,30 @@ Even without Hands, Bob **asks before doing anything outside his own folder**.
 - **Show the naughty list**: other people's uncensored remixes of Qwen and Gemma brains, on the Naughty list side of the Brain catalogue (see [The Brain catalogue](#the-brain-catalogue)). Off: hidden everywhere.
 - **Let Bob learn how-tos**: after a job with a few steps goes well, Bob offers one card to keep the steps as a how-to, and follows them next time you ask for something like it. Nothing is kept until you press **Save how-to**. Edit or delete them in Settings, **📒 How-tos**. A how-to is plain text: Hands still ask for your OK as usual. They stay on your PC.
 - **Let Bob fix his own messages**: when Bob gets something wrong, or a status line goes out of date, he changes his earlier message instead of sending a new one. Only his own messages, only in the chat he's in. The message says **edited**; press it to see what it said first.
+- **Let Bob's Quick brain see the big job** (Settings, Brains; off unless you turn it on, needs **Keep chatting while Bob is busy**): when Bob chats beside a long job, his Quick brain knows what the big brain is on, how long it has run and how its last step went. Ask, and it shows the steps so far, or passes the big brain a note it reads at its next step. It never guesses how long is left, and stopping a job stays your Stop button.
+- **Show Try again, Edit and Delete in the chat** (on unless you turn it off): adds them to the **…** menu at the top right of each message (with **Copy**). **Try again** (Bob's latest answer) gets a new answer. **Edit** on yours changes it and sends it again; on Bob's it fixes his words without sending anything. **Delete** takes your message out with Bob's answer to it, or one answer of his. Try again and Edit keep the old version; Delete doesn't.
 - **Let Bob take quick notes**: say "note: ..." in any chat (the window, the phone app, Discord DMs, Telegram) and Bob writes it down with the date and time in one plain text file, `quick-notes.md` in his inn folder. Ask for your notes, or find them by a word or #tag. **Open my notes** opens the file. Notes he takes away are copied to the archive folder first.
 - **Read and search my documents**: Bob reads Word, Excel, PowerPoint, OpenDocument, PDF, e-book and Rich Text files with nothing extra installed, and searches inside them for words, in the folders he may read (Documents, Desktop and Downloads). Nothing leaves your computer and nothing is kept on disk. Old .doc, .xls and .ppt files need the Office documents Hand; a scanned PDF needs its pages attached as pictures.
+- **Let Bob learn from his tools**: when a tool fails and then works, Bob keeps one line on what fixed it and reads it next time. He also counts what works and what fails for each tool, and offers to fix one that keeps failing. The scorecard shows under the switch, with **Forget what he learned**. Off unless you turn it on; it all stays on your computer.
+- **Search my documents by meaning**: off unless you turn it on, and works with the switch above on. A search also finds files that mean what you asked in other words. While idle (never in the Gaming session) Bob makes an index with the Memory slot's embedding model: file names and numbers, never the words, kept on your computer and deleted when you turn it off.
+- **Pull up saved prompts with /** (Settings, How Bob works, 📝 Saved prompts): save the things you ask often, then type `/` at the start of the message box to pick one. Its words go in the box, never sent by themselves. Blanks in curly brackets like `{file}` are typed over (Tab goes to the next; in Bob's own window a file blank gets a 📂 Pick a file button), and `{date}`, `{time}` and `{day}` fill themselves in. The list is `saved-prompts.json` in Bob's home folder. The Android app keeps its own list under Settings, Saved prompts.
 - **Let Bob work things out in a sandbox**: for sums, dates, money and counting, Bob runs a few lines of JavaScript in a locked, empty folder that's thrown away after each run (no files outside it, no programs, code that goes online refused, 20 seconds), and answers from the result. The switch only turns on where the lock holds.
 - **Let Bob make 3D parts**: ask for a bracket, a box, a spacer or a replacement part and Bob writes it as an OpenSCAD recipe in millimetres, and OpenSCAD (free, about 30 MB, from Settings, Engines or already installed) makes an STL file for a 3D printer. Recipes can't read other files, start programs or go online. The part shows in the side panel's 3D viewer, which also opens any STL, OBJ or GLB file: drag to turn, scroll to zoom, double-click to reset.
 - **Let Bob turn pictures into 3D models**: ask for a figurine, a creature or a prop and Bob paints a picture of it (or uses yours), then TRELLIS.2 turns it into a textured GLB model in the 3D viewer, in 1 to 5 minutes. Needs an NVIDIA graphics card (16 GB is best) and the 3D workshop from Settings, Engines (about 22 GB). Its add-ons are compiled by GitHub for Bob, never on your computer. Meta's DINOv3 picture reader comes as an exact ungated copy with Meta's licence (free, also for work; no military or weapons uses). On a Mac or with an AMD or Intel card, send the job to a PC Bob over Bob-Net.
 - **Launch on start-up**: Bob opens when Windows starts.
 - **Cloud helpers**: hand a very big job to a paid online AI, using your own key. Bob asks you each time, because it costs money and sends that job off your PC.
-- **Rented brains** (Settings, Online services): hire a big brain for one job from a service you have an account with. Three kinds: pay per answer (OpenRouter, Together AI, Lambda, or any address plus key), RunPod serverless (per second, switches itself off) and a machine by the minute (RunPod, Vast.ai, Lambda; Bob starts and stops it, and it carries a timer so it stops on its own too). Set the **Spending limits** first: every one starts at $0 and nothing can be hired until they're set. Switch on **Let Bob hire from** a service (the first time, a card says what leaves your PC), add a rental (service plus model, and a card size for machines), and put it in the **🏗 Rented brain** slot on Equip Bob. Then use the **🏗 Rented brain** switch under the chat, or wait for Bob to offer it when a chat outgrows his brains here. Every hire starts from a **Hire it (about $…)** card that says the cost and exactly what leaves your PC: the chat of that job, the files you attached, Bob's instructions and what he remembers about you. His tools still run on your PC. Keys are environment variables Bob only reads (Mac and Linux: also `~/.config/bob/env`). Tasks shows the job as **Rented**; the Settings panel shows **Machines running** with **Stop everything now**. Bob's cost figures are estimates; the service's billing page is the real bill.
+- **Rented brains** (Settings, Online services): hire a big brain for one job from a service you have an account with. Three kinds: pay per answer (OpenRouter, Together AI, Lambda, or any address plus key), RunPod serverless (per second, switches itself off) and a machine by the minute (RunPod, Vast.ai, Lambda; Bob starts and stops it, and it carries a timer so it stops on its own too). Set the **Spending limits** first: every one starts at $0 and nothing can be hired until they're set. Switch on **Let Bob hire from** a service (the first time, a card says what leaves your PC), add a rental (service plus model, and a card size for machines), and put it in the **🏗 Rented brain** slot on Equip Bob. Then use the **🏗 Rented brain** switch under the chat, or wait for Bob to offer it when a chat outgrows his brains here. Every hire starts from a **Hire it (about $…)** card that says the cost and exactly what leaves your PC: the chat of that job, the files you attached, Bob's instructions and what he remembers about you. His tools still run on your PC. Keys are environment variables, or keys saved in Settings, This replicant matrix, **Locked secrets** (kept scrambled). Tasks shows the job as **Rented**; the Settings panel shows **Machines running** with **Stop everything now**. Bob's cost figures are estimates; the service's billing page is the real bill.
   - **Pick a brain from Bob's list** (top of Add a rental): the really big brains no home computer can run (DeepSeek, GLM-5, Kimi, Mistral Large and more) and the catalogue brains too big for your Bobs. For a machine Bob fills in the model and card size; for pay per answer press **Find it on this service** and Bob looks it up on that service's own list (its switch must be on). He never sets more than one card himself.
 - **Music and sound effects**: extra downloads for the audio tools.
 - **Extra voices.**
 - **Advanced workshop**: if you use ComfyUI, Bob can run its workflows for you.
+- **Let other apps use Bob's brains** (Settings, Other apps; off): coding and chat apps (VS Code with Continue, OpenCode, your own scripts) use Bob's brains through the OpenAI-compatible address `http://localhost:7777/v1`, with the key Bob makes (**Key for other apps**: Show, Copy, New key). Use the brain `bob` for his chat brain, or a name from `/v1/models`. Chats (streamed or not, with tool calls the app runs itself), embeddings and the brain list. **Let apps on my other devices in too** (off) lets apps on your Tailscale devices in through Bob-Net's door, with the same key. Web pages are always refused; the words are never saved or logged. Apps take turns for the graphics card with Bob's own jobs; in Gaming only `bob` answers, on the processor. The command line: `bob ask "question"` (piped text is added), `bob status`, `bob models` (Windows: `bob.cmd` in Bob's installer folder, using the Node inside Bob.exe; Mac, Linux, Pi: `bob.sh`, Node 20). Bob for Android doesn't open this door itself.
 - **Let my other replicant matrices in** (Settings, Bob-Net; off): Bob for Android, or your phone's browser, talks to Bob over Tailscale with a passcode. Turn it on (the first time, it makes a passcode and shows it once), then add the address it shows to the phone. It works straight away, no restart (Bob listens on this replicant matrix's Tailscale addresses only, and picks Tailscale up within a minute if it connects later). On Windows, press **Let Tailscale through the firewall**: one Windows prompt adds the rule "Bob (Tailscale only)" for Bob's port, from Tailscale addresses (100.64.0.0/10) only; It also switches off any rule that blocks Bob's own program (Windows makes one if Cancel was clicked on its earlier question). **Remove the firewall rule** takes the rule away and switches those back on. On Linux with ufw or firewalld, Bob shows the one line to run. Only Tailscale addresses get in.
 - **Check for updates when Bob starts.** Updating always waits for your click.
 - **Choose my own word settings** (Settings, Engines, How Qwen brains pick their words; off): Qwen3.6 brains, and Bob's own brains made from them, use Qwen's recommended settings for each mode: thinking it through (temperature 1.0, top P 0.95, top K 20), thinking through code (0.6, 0.95, 20) and quick replies (0.7, 0.8, 20, presence penalty 1.5). Switch this on to type your own numbers; **Back to Qwen's** resets one set. A reply can be up to 32,768 tokens, or half the brain's memory on a small replicant matrix.
 - **🧍 Make your own look** (Style, under Bob's look, and **Change his look** under the doll on Equip Bob): a character screen that builds Bob's avatar from parts (body: Man, Robot or Alien; build; hair style and colour; skin; beard; glasses; outfit and colour; armour; weapon; shield) with a live preview. **Wear this** makes it his look; it blinks and talks like every other look and shows under **Your own design**.
-- **🎲 Adventure** (menu page): a tabletop role-playing game with Bob as game master and a party of you plus your other Bobs. Nothing runs until you press **Start a new game**; the game master brain (Deep thinking, or the main Brain) loads for the game and is let go on Pause or End. One start card: setting, your character (with a look of its own from the character screen, any body, and **Save this character** for next time; Bob's avatar is never changed by the game), who plays (a Bob on your Bob-Net plays himself over there; a copy of Bob is played by the game master brain), how long, and **📖 Characters** (the bestiary: You = saved heroes, Party, Met = everyone the game master names, drawn as they appear, Enemies = the usual dozen with their hearts; the character screen also has monster bodies), and plot armour per character (None, Some, Lots, Legendary). Everyone has a turn in order. On your turn you get action cards (only the ones that fit), some with a second card (attacks your kit allows, your spells, your items, who's here, the ways out) and a Back button, then an optional line of flair. The app rolls d20 + a stat for every action: 15+ hits, 10-14 hits at a cost, under 10 misses. Loose rules: four stats, hearts not hit points, no inventory weight, no spell slots, no initiative; travel is one montage line. Campaigns are saved in their own files and continue from the start card. Not in the Gaming session.
+- **🎲 Adventure** (menu page): a tabletop role-playing game with Bob as game master and a party of you plus your other Bobs. Nothing runs until you press **Start a new game**; the game master brain (Deep thinking, or the main Brain) loads for the game and is let go on Pause or End. One start card: setting, your character (with a look of its own from the character screen, any body, and **Save this character** for next time; Bob's avatar is never changed by the game), who plays (a Bob on your Bob-Net plays himself over there; a copy of Bob is played by the game master brain), how long, and **📖 Characters** (the bestiary: You = saved heroes, Party, Met = everyone the game master names, drawn as they appear, Enemies = the usual dozen with their hearts; the character screen also has monster bodies), and plot armour per character (None, Some, Lots, Legendary). Everyone has a turn in order. On your turn you get action cards (only the ones that fit), some with a second card (attacks your kit allows, your spells, your items, who's here, the ways out) and a Back button, then an optional line of flair. The app rolls d20 + a stat for every action: 15+ hits, 10-14 hits at a cost, under 10 misses. Loose rules: four stats, hearts not hit points, no inventory weight, no spell slots, no initiative; travel is one montage line. Campaigns are saved in their own files and continue from the start card, opening with a short "Last time..." reminder. Not in the Gaming session.
+  - **Since 1.5.204:** the start card is in panels like Settings. **Tonight's story** offers eight ready-made openings or Make one up. **➕ Add a friend** (up to three) seats real people with their own turns, on this screen or from Bob for Android (**This phone plays** picks their character). Enemies sit on the table with their hearts; an attack that lands takes one off the enemy you **Aim at** (two on a natural 20). The game master may reward a character (a stat point, one more heart up to eight, a trick or a spell; once a scene), and your character keeps it for next game. **📓 Journal** opens on the quest log. **💬 Say it your way** (typed, or 🎤 Speak it) replaces the cards when you like; **❓ Ask** puts an out-of-character question to the game master without using your turn. **🧰 Table extras**, all off until ticked: dice you can see, sounds, reading aloud, pictures, a picture every scene, and music (pictures and music need their models from Get models, and are made before the game; **Skip the rest** starts sooner). 🔊 / 🔇 hushes everything.
 - **🧩 Games** (menu page): five small games Bob plays with you. The app runs the game and Bob only talks, so they play well on his quick brain, in the Gaming session (on the Gaming brain, on the processor) and on the phone. **Twenty questions** (either way round: the app picks the secret when it's Bob's, and checks your guess), **Hangman** (a word from a shelf you pick, seven lives, a Hint costs a life), **Word ladder** (four-letter words, one letter a step, every rung a real word; Hint, Back a rung, or climb together turn about), **Five letters** (a five-letter word in six tries, letters coloured green, yellow, grey; a Hint costs a try) and **Story dice** (six picture dice, a line each until every die is in; Wrap it up ends it, Bob writes the last line and a title). Nothing runs until you press **▶ Start**; the brain is let go when a game ends. A scoreboard counts wins per game. Settings (🧩 Games): Which brain plays games (Quick brain) and How often Bob chips in (After every move).
 
 ---
@@ -430,7 +507,7 @@ Bob is an assistant you use every day and a workbench for the brains he runs on,
 
 Under the tabs, **Keep it simple** or **Professional** is one switch for the whole Lab: simple shows the usual choices with Bob's defaults filled in, Professional shows every control a tab has, and leads each job, way, page and challenge with its proper name (quantization, expert pruning, abliteration, speculative decoding, ARC-style and so on), with the plain words after it in brackets. The same switch is in Settings, How Bob works, Brains, as **Lab: Professional mode**.
 
-The Lab has five tabs:
+The Lab has seven tabs:
 
 - **Make a brain** starts by asking what you want to do (Make it smaller, Cut experts, Take out sight or hearing, Just test a brain, Everything, or Take out the refusal habit, which opens the Forge tab), then walks you through only the steps that job needs, with tick boxes instead of command-line flags. Everything is all five:
   1. **Pick a brain** you already have.
@@ -439,16 +516,18 @@ The Lab has five tabs:
   4. **Where it runs**: this replicant matrix, for free.
   5. **Test and use**: the Lab test runs on the new brain and the one it came from, and **Use in Bob** only appears after it. **Compare** puts tested brains side by side and saves the table as CSV or JSON.
 
-  Or start from a goal (Everything smaller, Coding helper, Everyday chat and more) and Bob fills in the steps. **Show the recipe** shows the exact commands, so you can learn them or run them yourself.
+  Pick a job first (Make it smaller, Cut experts and so on); a job that cuts experts has **Fill the steps for me**, where a goal (Everything smaller, Coding helper, Everyday chat and more) fills in the steps. **Show the recipe** shows the exact commands, so you can learn them or run them yourself.
 - **Forge**: every way of making a new brain, side by side, each with where it runs and what works best. Making a brain smaller, cutting experts, mixing two brains and stacking layers run here for free. Teaching a cut brain back needs a rented graphics card: the Forge writes the plan, and you start each run yourself. Under **Lessons to teach**, every lesson set is broken into parts by what it teaches, where it came from and whether it shows its thinking: **Pick its parts** leaves parts out, and a set's thinking can be taught as its own thinking path ("Think: name"). **Add a lesson set to the Lab** brings in a .jsonl or .json set from your replicant matrix or Hugging Face and breaks it up the same way.
-- **Learn**: short cards about how a brain works (what a token is, how the next word is picked, what temperature does), run on the brain Bob has loaded right now. If none is loaded, say anything to Bob in the chat first. Nothing here changes how he answers, and nothing is saved.
-- **Challenges**: short tests out of 100 for any brain you have, and a scoreboard that ranks brains against others of their own size.
-- **Playground**: **Smaller** makes one brain in six sizes and shows where it starts to slip; **Peek inside** shows which experts your work uses; **FNRI** scans a brain while it answers a few questions for each skill and plays it back in its own window as a 3D block of voxels, a floor for each layer, coloured by skill and glowing as the experts are used (tick boxes hide skills, three zoom levels, Save as a video); **Longer**, **Faster** and **Teach it** try longer chats, faster settings and a short round of teaching.
+- **Learn**: **Experiments** are short cards about how a brain works (what a token is, how the next word is picked, what temperature does), run on the brain Bob has loaded right now. If none is loaded, say anything to Bob in the chat first. Nothing here changes how he answers, and nothing is saved. **Diffusion brains** tries a brain that writes a whole answer at once.
+- **Test**: **Challenges** are short tests out of 100 for any brain you have, with a scoreboard that ranks brains against others of their own size. **Smaller** makes one brain in six sizes and shows where it starts to slip; **Longer** and **Faster** try longer chats and faster settings.
+- **Teach**: **Teach it** teaches a brain a lesson set, here if it fits your card; **Best answers** has a bigger brain judge a smaller one's answers and teaches it its best.
+- **Look inside**: **Peek inside** shows which experts your work uses; **fNRI** scans a brain while it answers a few questions for each skill and plays it back in its own window as a 3D block of voxels, a floor for each layer, coloured by skill and glowing as the experts are used (tick boxes hide skills, three zoom levels, Save as a video).
+- **My Lab**: one list of what the Lab has made and measured (brains, scores, size ladders, lesson sets, saved recipes, recent jobs), each with a button to its page.
 
 | | |
 |---|---|
-| ![The Forge tab](screens/lab-forge.png) | ![The Learn tab](screens/lab-learn.png) |
-| ![The Challenges tab](screens/lab-challenges.png) | ![The Playground tab](screens/lab-playground.png) |
+| ![The Teach tab](screens/lab-teach.png) | ![The Test tab on Challenges](screens/lab-test.png) |
+| ![The Forge tab](screens/lab-forge.png) | ![The My Lab tab](screens/lab-my-lab.png) |
 
 Lab jobs need a replicant matrix with at least 12 GB of memory; a smaller one still shows the Lab and can start jobs on a bigger Bob on your Bob-Net. The phone app has no Lab. Every tab has its own page in Help, The Computer Science Lab.
 

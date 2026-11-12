@@ -36,7 +36,7 @@ http.createServer(async (req, res) => {
     const j = JSON.parse(body);
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     const send = (delta) => res.write(`data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`);
-    const msgs = j.messages, last = msgs.at(-1);
+    const msgs = j.messages, last = [...msgs].reverse().find((m) => m.role !== 'system') || msgs.at(-1); // Nov 11: Bob's "where we are" note can come last
     const lastUser = [...msgs].reverse().find((m) => m.role === 'user')?.content || '';
     // Every tool message must answer a tool call id from the assistant message before it.
     const ids = new Set(msgs.flatMap((m) => (m.tool_calls || []).map((t) => t.id)));

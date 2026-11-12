@@ -1,5 +1,6 @@
 // One search box over everything Bob keeps: chats (old parts too), chat summaries, topics, the pictures and
 // sounds he made, and the notes (memory file, about-me, notice board, quick notes). Plain word matching, on this PC only.
+import { readText } from './vault.js'; // 🔒 Lock my chats and memory
 import fs from 'node:fs';
 import path from 'node:path';
 import { chatIds, wholeChat, spoken, said, chatTitle, readSummary } from './chats.js';
@@ -37,7 +38,7 @@ export function search(cfg, { topics, summaries = [] }, q) {
   const notes = [['memory', cfg.memoryFile, "Bob's memory"], ['about', path.join(cfg.dataDir, 'about-me.md'), 'About you'], ['board', cfg.noticeBoard, 'Notice board'], ['quick', path.join(cfg.innDir || '', 'quick-notes.md'), 'Quick notes']];
   for (const [kind, f, label] of notes) {
     let text = '';
-    try { text = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    try { text = readText(f); } catch { continue; }
     for (const line of text.split('\n')) if (line.trim() && !(kind === 'quick' && !/^- /.test(line)) && hits(line, ts)) out.push({ type: 'note', kind, title: label, snippet: snippet(line, ts), at: 0 });
   }
   const rank = { topic: 0, summary: 1, note: 2, chat: 3, removed: 4, file: 5 };

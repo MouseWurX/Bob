@@ -29,6 +29,7 @@
 import crypto from 'node:crypto';
 import { doorOpen, cleanAddress } from './share-brains.js';
 import { myName, PAIR, ASK_FOR_MS } from './bob-net-pair.js';
+import { LOOK_ID_RE } from './look.js';
 
 const HOUR = 3600e3, DAY = 24 * HOUR;
 const clean = (s, n = 40) => String(s || '').replace(/[\u0000-\u001f<>"'`]/g, '').trim().slice(0, n);
@@ -51,13 +52,14 @@ export function partyView(brain, { now = Date.now } = {}) {
       name: b.name, address: b.address, device: st.device || '', ok: st.ok === undefined ? null : st.ok, why: st.why || '', brain: st.brain || '',
       ctx: st.ctx || 0, speed: st.measured?.tokPerSec || st.speed || 0, jobs: st.jobs || [], jobsBusy: st.jobsBusy || '', queue: st.queue || 0,
       thinking: L.live?.get(b.address) === 'thinking', doing: away.get(b.address) || '',
+      look: LOOK_ID_RE.test(String(st.look || '')) ? st.look : '', // his avatar, from his hello ('' from a phone or an older Bob)
       lastUsed: st.measured?.lastUsed || 0, passAlong: st.passAlong === true, checkedAt: st.at || 0
     };
   });
   return {
     on: bobs.length > 0 || s.lend === true || s.takeJobs === true,
     at: now(),
-    here: { name: myName(), door, lend: s.lend === true && door, takeJobs: s.takeJobs === true && door, passAlong: s.passAlong === true, lending: brain.lending ? { for: brain.lending.for, since: brain.lending.since } : null, guests },
+    here: { name: myName(), look: LOOK_ID_RE.test(String(cfg.look || '')) ? cfg.look : '', door, lend: s.lend === true && door, takeJobs: s.takeJobs === true && door, passAlong: s.passAlong === true, lending: brain.lending ? { for: brain.lending.for, since: brain.lending.since } : null, guests },
     bobs
   };
 }

@@ -4,7 +4,7 @@
 // - "Better and worse pairs": it learns to lean toward the better answer of each pair (preference training, DPO).
 // - Both: the best answers first, then the pairs.
 // "Teach only these parts" puts the adapter only on the experts, layers or
-// heads that an FNRI recording shows the skill uses, or that a parts list saved from the FNRI viewer names; the rest of
+// heads that an fNRI recording shows the skill uses, or that a parts list saved from the fNRI viewer names; the rest of
 // the brain stays frozen. Questions with a short exact answer (a number, a word) are marked by a checker, not the judge.
 // Some questions are held back: never taught, asked before and after, so the result is honest.
 // Answering and judging always run here (they're just chats). Teaching runs here when the brain fits the card (the
@@ -29,7 +29,7 @@ export const GOOD = 6;      // out of 10: a best answer below this isn't taught
 export const GAP = 2;       // points between the better and the worse answer for a pair to count
 export const HOLD = { share: 0.1, min: 5, max: 40 };
 export const MAX_TARGETS = 20000;
-export const TARGETS_FORMAT = 'bob-fnri-targets'; // the FNRI viewer's "Use these for training" files (src/lab-watch.js)
+export const TARGETS_FORMAT = 'bob-fnri-targets'; // the fNRI viewer's "Use these for training" files (src/lab-watch.js)
 const ANSWER_TOKENS = 400, TEMP = 0.8;
 export const bestDir = (cfg) => path.join(labDir(cfg), 'best');
 
@@ -101,7 +101,7 @@ export function pick(scores) {
   return { best: hi, worst: lo, bestScore: scores[hi], worstScore: scores[lo], good: scores[hi] >= GOOD, pair: hi !== lo && scores[hi] - scores[lo] >= GAP && scores[hi] >= GOOD };
 }
 
-// ---- Parts to teach: FNRI's saved lists, or a skill's experts from a recording ----
+// ---- Parts to teach: fNRI's saved lists, or a skill's experts from a recording ----
 const brainOf = (lab, id) => lab.brains().find((b) => b.id === String(id || ''));
 const targetsFolder = (cfg, brain) => path.join(watchDir(cfg), slugOf(brain.id || brain.name));
 export function listTargetFiles(cfg, brain) {
@@ -136,12 +136,12 @@ export function resolveTargets(lab, learnerId, t = {}) {
   }
   if (t.kind === 'skill') {
     const rec = readRecording(lab, { brain: brain.id, id: String(t.recording || '') });
-    if (rec.brain.kind && rec.brain.kind !== 'experts') throw new Error('That scan shows heads or neurons, not experts. Save a parts list from it in FNRI and pick that.');
+    if (rec.brain.kind && rec.brain.kind !== 'experts') throw new Error('That scan shows heads or neurons, not experts. Save a parts list from it in fNRI and pick that.');
     const s = rec.skills.findIndex((x) => x.id === String(t.skill || ''));
     if (s < 0) throw new Error('That skill isn\'t in the scan.');
     const sp = specialise(rec), list = [];
     sp.top.forEach((row, layer) => row.forEach((top, index) => { if (top === s) list.push({ kind: 'expert', layer, index }); }));
-    if (!list.length) throw new Error(`No expert leans to ${rec.skills[s].label} in that scan. Ask it more of that skill's questions in FNRI first.`);
+    if (!list.length) throw new Error(`No expert leans to ${rec.skills[s].label} in that scan. Ask it more of that skill's questions in fNRI first.`);
     return { list: cleanTargets(list, shape), label: `the experts that lean to ${rec.skills[s].label}` };
   }
   throw new Error('Pick which parts to teach.');
@@ -363,7 +363,7 @@ export function bestView(lab) {
   const brains = lab.brains().map((b) => { let f = null; try { f = inspect(b); } catch {} return { id: b.id, name: b.name, family: b.family || '', paramsB: f?.paramsB || 0, sizeGB: f?.sizeGB || 0, experts: f?.experts || 0, layers: f?.layers || 0 }; });
   return { trainer: { ok: tr.ok, supported: tr.supported, sizeGB: tr.sizeGB, uv: TRAINER.uv }, brains, sets: lessonSets(lab.cfg).map(({ id, name, count }) => ({ id, name, count })), answers: ANSWERS, answersDefault: ANSWERS_DEFAULT, limits: LIMITS, limitDefault: LIMIT_DEFAULT, good: GOOD, gap: GAP, runs: lab.runs.filter((r) => r.kind === 'best').slice(-5).reverse().map((r) => lab.runView(r)) };
 }
-// What FNRI has for one brain: its scans (with their skills) and the parts lists saved from the viewer.
+// What fNRI has for one brain: its scans (with their skills) and the parts lists saved from the viewer.
 export function bestParts(lab, brainId) {
   const brain = brainOf(lab, brainId); if (!brain) return { recordings: [], lists: [] };
   const recs = listRecordings(lab.cfg, brain).slice(0, 12).map((r) => { let skills = []; try { skills = readRecording(lab, { brain: brain.id, id: r.id }).skills; } catch {} return { id: r.id, name: r.name, when: r.when, skills }; });

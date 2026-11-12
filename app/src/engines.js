@@ -11,6 +11,7 @@ import { OS, exeName, onPath } from './platform.js';
 import { unzip } from './zip.js';
 import { brainEngineBuilt } from './config.js';
 import { fileURLToPath } from 'node:url';
+import { tryEngine, noteBlocked, clearBlocked } from './app-control.js';
 import { findOpenscad, openscadPins, openscadAllowed } from './parts3d.js';
 import { setupModel3d, model3dReady, model3dWhy } from './model3d.js';
 
@@ -29,6 +30,9 @@ const scadWhy = (key) => (scadPinFor(key) ? undefined : `OpenSCAD isn't pinned t
 const PIPER_ARM64_SHA = 'fea0fd2d87c54dbc7078d0f878289f404bd4d6eea6e7444a77835d1537ab88eb';
 // 1.5.83: the llama.cpp release every speed test and brain race used (package.json bob.bundledLlamaTag, also the one
 // bundled in the download). Get and Get Bob ready install this one; "Check for a newer build" can still fetch the newest.
+// Brain Engine has its own version numbers (1.5.203: Brain Engine 3, built on llama.cpp bundledLlamaTag); Bob downloads
+// the release his pin names (bob.brainEngine.tag). Builds from before then were named after their llama.cpp tag.
+const PIN_TAG = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.brainEngine?.tag || ''; } catch { return ''; } })();
 export const TESTED_LLAMA = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.bundledLlamaTag || ''; } catch { return ''; } })();
 // LibreOffice comes from The Document Foundation's own archive, not GitHub.
 const TDF_HOSTS = [/^downloadarchive\.documentfoundation\.org$/, /^download\.documentfoundation\.org$/];
@@ -57,11 +61,11 @@ export const ENGINES = [
     // same tag (base), in its own folder: Bob's built-in llama.cpp is never touched. 1.5.169: the default engine for
     // brains, listed for everyone (not only while the Lab is on). When it's here Bob runs his brains on it
     // (config.js pickLlamaExe); Settings, Engines can switch back to plain llama.cpp.
-    id: 'brainengine', name: 'Brain Engine', what: 'Bob\'s default engine for brains: his own fork of llama.cpp, made to give him more room to work with brains (it can switch experts off without reloading, for the Lab). Based on llama.cpp, not an official build. When it\'s here, Bob runs his brains on it. It has its own folder, so the built-in llama.cpp stays as it is.',
-    repo: 'MouseWurX/Bob', tag: TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : '', base: 'llamacpp', dir: 'brain-engine', exe: 'llama-server.exe',
+    id: 'brainengine', name: 'Brain Engine', what: 'Bob\'s own engine for brains, made to give him more room to work with them (it can switch experts off without reloading, for the Lab). Built on the open-source llama.cpp, not an official llama.cpp build. When it\'s here, Bob runs his brains on it. It has its own folder, so the plain llama.cpp that came with Bob stays as it is.',
+    repo: 'MouseWurX/Bob', tag: PIN_TAG || (TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : ''), base: 'llamacpp', dir: 'brain-engine', exe: 'llama-server.exe',
     nvidia: [], other: [/^brain-engine-.*-win-x64\.zip$/], runtime: () => null,
     mac: { unavailable: 'Brain Engine has no Mac build yet.' },
-    linux: { tag: TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : '', other: [/^brain-engine-.*-linux-x64\.tar\.gz$/] },
+    linux: { tag: PIN_TAG || (TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : ''), other: [/^brain-engine-.*-linux-x64\.tar\.gz$/] },
     linuxArm64: { unavailable: 'Brain Engine has no ARM Linux build yet.' }
   },
   {
@@ -271,6 +275,13 @@ export function isNewer(mark, rel, asset) {
 export const sharedDir = (e) => ENGINES.filter((x) => x.dir === e.dir).length > 1;
 // The build kept from before the last update, for Go back.
 export const previousDir = (cfg, e) => path.join(cfg.agentDir, e.dir + '.previous');
+// 1.5.203: a new build Windows wouldn't run, that Bob went back from by himself (engine-blocked.js). Kept until Try
+// again (Go back) is pressed, so he doesn't try it on every load and the update doesn't fetch it again.
+export const BLOCKED_FILE = 'engine-blocked.json';
+export function engineBlocked(cfg, id) {
+  try { const r = JSON.parse(fs.readFileSync(path.join(cfg.agentDir, BLOCKED_FILE), 'utf8')); return r && r.engine && (!id || r.engine === id) ? r : null; } catch { return null; }
+}
+export const clearEngineBlocked = (cfg) => { try { fs.rmSync(path.join(cfg.agentDir, BLOCKED_FILE), { force: true }); } catch {} };
 // Where each engine sits on the Engines page.
 export const ENGINE_GROUP = { brainengine: 'thinking', llamacpp: 'thinking', sdcpp: 'senses', whispercpp: 'senses', audio: 'senses', piper: 'voices', kokoro: 'voices', chatterbox: 'voices', uv: 'helpers', ffmpeg: 'helpers', libreoffice: 'helpers', openscad: 'helpers', model3d: 'senses' };
 // Put a freshly unpacked build (stage) in the engine's place in one step. The build that was there moves to
@@ -293,6 +304,20 @@ export function engineWhole(stage, e, old = null) {
 }
 export const NOT_WHOLE = (name, why) => `The new ${name} download isn't a whole engine (${why}), so I kept the one you have. Nothing changed.`;
 
+// 1.5.204 Smart App Control (app-control.js): a new llama.cpp-family build is tried in its side folder before it takes
+// the old one's place. If Windows stops it, or it can't see the graphics card the old one could, the old one stays,
+// the build is remembered (so it isn't fetched again by itself) and the reason comes back in plain words.
+// Tests swap the trial for a fake with setEngineTrial.
+let engineTrial = tryEngine;
+export const setEngineTrial = (f) => { engineTrial = f || tryEngine; };
+export async function trialOrKeep(cfg, e, stage, folder, mark) {
+  const t = await engineTrial(stage, e, { old: fs.existsSync(folder) ? folder : null });
+  if (t?.ok !== false) { clearBlocked(cfg, e.id); return; }
+  fs.rmSync(stage, { recursive: true, force: true });
+  noteBlocked(cfg, e.id, mark, t.why);
+  const err = new Error(t.words); err.blocked = t.why; throw err;
+}
+
 export function swapIn(folder, stage, { keep = true } = {}) {
   const prev = folder + '.previous';
   if (fs.existsSync(folder)) {
@@ -307,7 +332,7 @@ export function swapIn(folder, stage, { keep = true } = {}) {
 // NVIDIA build with its CUDA runtime (other builds are smaller); the rest follow each engine's own "About" text.
 export const ENGINE_GB = { llamacpp: 0.6, brainengine: 0.7, sdcpp: 0.5, whispercpp: 0.1, piper: 0.1, audio: 12, kokoro: 0.1, chatterbox: 4, ffmpeg: 0.1, libreoffice: 0.35, openscad: 0.03, model3d: 22 };
 export function engineStatus(cfg) {
-  return ENGINES.filter((e0) => !e0.labOnly || cfg.computerLab !== false).map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install && !e.anyOS), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.pinned || e.sha256 || (e.tag && !e.base)), tested: e.tested || null, group: ENGINE_GROUP[e.id] || 'helpers', canSwap: !sharedDir(e) && !e.install && !e.after, previous: !sharedDir(e) ? (installedMarker(cfg, e, previousDir(cfg, e))?.version || (fs.existsSync(previousDir(cfg, e)) ? 'the one before' : null)) : null, own: !sharedDir(e) && !e.install && fs.existsSync(path.join(cfg.agentDir, e.dir)) && !e.found?.(cfg), found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir), incomplete: (() => { const h = !sharedDir(e) && cfg.agentDir ? incompleteUpdate(cfg, e) : null; return h ? { missing: h.missing, what: partsText(h.missing), version: h.mark?.version || '' } : null; })() }));
+  return ENGINES.filter((e0) => !e0.labOnly || cfg.computerLab !== false).map((e0) => engineFor(e0)).map((e) => ({ id: e.id, name: e.name, what: e.what, sizeGB: ENGINE_GB[e.id] ?? 0.1, available: !e.unavailable && !(OS !== 'win' && e.install && !e.anyOS), note: e.unavailable || '', installed: e.ready ? Boolean(e.ready(cfg)) : Boolean(engineExe(cfg, e)), bundled: e.id === 'llamacpp' && bundledEngine(cfg), version: installedVersion(cfg, e) || e.version?.(cfg) || null, pinned: Boolean(e.pinned || e.sha256 || (e.tag && !e.base)), tested: e.tested || null, basedOn: e.base ? installedMarker(cfg, e)?.base || null : null, group: ENGINE_GROUP[e.id] || 'helpers', canSwap: !sharedDir(e) && !e.install && !e.after, previous: !sharedDir(e) ? (installedMarker(cfg, e, previousDir(cfg, e))?.version || (fs.existsSync(previousDir(cfg, e)) ? 'the one before' : null)) : null, own: !sharedDir(e) && !e.install && fs.existsSync(path.join(cfg.agentDir, e.dir)) && !e.found?.(cfg), found: e.found?.(cfg) || '', pin: e.id === 'libreoffice' ? (PIN.libreoffice?.version || '') : e.id === 'ffmpeg' ? (PIN.ffmpeg?.tag || '') : '', folder: path.join(cfg.agentDir, e.dir), blocked: (() => { const b = engineBlocked(cfg, e.id); return b ? { version: b.version || '', windows: b.windows === true, manual: b.manual === true } : null; })(), incomplete: (() => { const h = !sharedDir(e) && cfg.agentDir ? incompleteUpdate(cfg, e) : null; return h ? { missing: h.missing, what: partsText(h.missing), version: h.mark?.version || '' } : null; })() }));
 }
 // 1.5.17x Engines rework: which engine runs the brains now, which one is picked for next time, and the Lab's.
 export function engineChoices(cfg) {
@@ -580,6 +605,7 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
   fs.rmSync(incompleteDir(cfg, e), { recursive: true, force: true });
   if (replacing) {
     try { fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify(mark, null, 2)); } catch {}
+    await trialOrKeep(cfg, e, stage, folder, mark);
     try { swapIn(folder, stage); }
     catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Press Unload everything (or wait for the brain to go idle), then Try again.`); }
   }
@@ -589,6 +615,7 @@ export async function installEngine(cfg, id, { nvidia, pub, signal, tick, tag, n
   const sdCli = path.join(folder, exeName('sd-cli', e.os)), sdOld = path.join(folder, exeName('sd', e.os));
   if (e.id === 'sdcpp' && !fs.existsSync(sdCli) && fs.existsSync(sdOld)) fs.copyFileSync(sdOld, sdCli);
   try { fs.writeFileSync(path.join(folder, `bob-${e.id}.json`), JSON.stringify({ version: rel.tag_name, asset: asset.name, print: assetPrint(asset), at: new Date().toISOString() }, null, 2)); } catch {}
+  if (engineBlocked(cfg, e.id)?.manual) clearEngineBlocked(cfg); // 1.5.204: a build fetched by hand ends a Go back hold
   return { version: rel.tag_name, asset: asset.name };
 }
 
@@ -630,6 +657,7 @@ async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
   if (missing.length) holdIncomplete(cfg, e, stage, missing, mark);
   fs.writeFileSync(path.join(stage, `bob-${e.id}.json`), JSON.stringify(mark, null, 2));
   fs.rmSync(incompleteDir(cfg, e), { recursive: true, force: true });
+  await trialOrKeep(cfg, e, stage, folder, mark);
   try { swapIn(folder, stage); }
   catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Wait for the Lab job to finish (or press Unload everything), then try again.`); }
   return { version: own.rel.tag_name, asset: own.asset.name };
@@ -672,6 +700,7 @@ export async function fetchMissing(cfg, id, { nvidia, pub, signal, tick, find = 
   }
   fs.writeFileSync(path.join(dir, `bob-${e.id}.json`), JSON.stringify({ ...held.mark, at: new Date().toISOString() }, null, 2));
   const folder = path.join(cfg.agentDir, e.dir);
+  await trialOrKeep(cfg, e, dir, folder, held.mark);
   try { swapIn(folder, dir); }
   catch (err) { throw new Error(`${e.name} is in use right now (${err.code || err.message}). Press Unload everything, then press Download the missing files again.`); }
   fs.rmSync(path.join(folder, 'bob-incomplete.json'), { force: true });
@@ -731,6 +760,7 @@ export function goBackEngine(cfg, id) {
   if (sharedDir(e)) throw new Error(`${e.name} shares its folder with other engines, so it has no build to go back to.`);
   const folder = path.join(cfg.agentDir, e.dir), prev = previousDir(cfg, e), tmp = folder + '.swap';
   if (!fs.existsSync(prev)) throw new Error(`There's no earlier ${e.name} build kept on this replicant matrix.`);
+  const before = installedMarker(cfg, e);
   fs.rmSync(tmp, { recursive: true, force: true });
   try {
     if (fs.existsSync(folder)) fs.renameSync(folder, tmp);
@@ -739,6 +769,14 @@ export function goBackEngine(cfg, id) {
   } catch (err) {
     if (!fs.existsSync(folder) && fs.existsSync(tmp)) { try { fs.renameSync(tmp, folder); } catch {} }
     throw new Error(`${e.name} is in use right now (${err.code || err.message}). Press Unload everything, then try again.`);
+  }
+  if (engineBlocked(cfg, id)) clearEngineBlocked(cfg); // Try again: the blocked build is back in, and gets another go
+  else {
+    // 1.5.204: Go back pressed by hand holds: the build left is not fetched again (at the next start, or by the daily
+    // check) until Try again, a build fetched by hand, or a new Brain Engine pin in a new Bob.
+    const now = installedMarker(cfg, e);
+    const rec = { engine: id, version: before?.version || '', print: before?.print || '', previous: now?.version || '', windows: false, manual: true, why: 'Went back by hand in Settings, Engines.', at: new Date().toISOString() };
+    try { fs.writeFileSync(path.join(cfg.agentDir, BLOCKED_FILE), JSON.stringify(rec, null, 2)); } catch {}
   }
   return { version: installedMarker(cfg, e)?.version || null, previous: installedMarker(cfg, e, prev)?.version || null };
 }

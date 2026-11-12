@@ -1,7 +1,7 @@
 // Lab 2c, the lesson builder: turns the owner's own files into passages a teacher can make lessons from.
 // Documents (plain text, Markdown, web pages here; Word, OpenDocument, RTF, e-books and PDFs through the Office Hand's
 // reader) become passages of 300 to 600 words cut at paragraph breaks. Chat logs (Bob's own sessions, another
-// assistant's conversations.json export, or a "Name: line" transcript) become exchanges: what the person said and
+// assistant's export from ChatGPT, Claude or Open WebUI, or a "Name: line" transcript) become exchanges: what the person said and
 // what was answered. Files are read in place and never copied; nothing here touches the network.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -121,34 +121,107 @@ export function parseBob(json) {
   if (!msgs || !msgs.some((m) => m && (m.role === 'user' || m.role === 'assistant'))) return null;
   return pairUp(msgs.filter((m) => m && (m.role === 'user' || m.role === 'assistant') && !m.tool_calls).map((m) => ({ role: m.role, text: clean(m.role === 'user' && m.text != null ? m.text : textOf(m.content)), up: m.rating === 'up' || m.thumbs === 'up' || m.good === true })), 'bob');
 }
+// Each export's conversations, one at a time: { title, at (ms), id, turns:[{role, text, at}] }. The lesson builder
+// pairs the turns up; "Bring in chats" (chat-files.js) keeps each conversation as a chat of its own.
+const ms = (t) => { if (t == null || t === '') return 0; if (typeof t === 'number') return t < 1e12 ? Math.round(t * 1000) : t; const d = Date.parse(t); return Number.isFinite(d) ? d : 0; };
 // ChatGPT's export: conversations.json, each conversation a `mapping` tree of nodes with message.author.role and parts.
+// The branch you last saw (current_node back to the top) when the export says which it was; otherwise every node by time.
+export function chatGptTurns(c) {
+  if (!c?.mapping) return [];
+  let nodes = [];
+  if (c.current_node && c.mapping[c.current_node]) {
+    const seen = new Set();
+    for (let id = c.current_node; id && c.mapping[id] && !seen.has(id); id = c.mapping[id].parent) { seen.add(id); nodes.unshift(c.mapping[id]); }
+  } else nodes = Object.values(c.mapping).sort((a, b) => (a?.message?.create_time || 0) - (b?.message?.create_time || 0));
+  return nodes.filter((n) => n?.message?.author?.role && n.message.content && !n.message.metadata?.is_visually_hidden_from_conversation)
+    .map((n) => ({ role: n.message.author.role, at: ms(n.message.create_time), text: clean((n.message.content.parts || []).map((p) => typeof p === 'string' ? p : p?.text || '').join('\n') || n.message.content.text || '') }))
+    .filter((t) => (t.role === 'user' || t.role === 'assistant') && t.text);
+}
 export function parseChatGpt(json) {
   const convs = Array.isArray(json) ? json : json?.mapping ? [json] : null;
   if (!convs || !convs.some((c) => c && c.mapping)) return null;
-  const out = [];
-  for (const c of convs) {
-    if (!c?.mapping) continue;
-    const nodes = Object.values(c.mapping).filter((n) => n?.message?.author?.role && n.message.content);
-    nodes.sort((a, b) => (a.message.create_time || 0) - (b.message.create_time || 0));
-    const turns = nodes.map((n) => ({ role: n.message.author.role, text: clean((n.message.content.parts || []).map((p) => typeof p === 'string' ? p : p?.text || '').join('\n') || n.message.content.text || '') })).filter((t) => (t.role === 'user' || t.role === 'assistant') && t.text);
-    out.push(...pairUp(turns, 'other'));
-  }
-  return out;
+  return convs.flatMap((c) => pairUp(chatGptTurns(c), 'other'));
 }
 // Claude's export: conversations.json, each with chat_messages [{sender: human|assistant, text}].
+export function claudeTurns(c) {
+  if (!Array.isArray(c?.chat_messages)) return [];
+  return c.chat_messages.map((m) => ({ role: m.sender === 'human' ? 'user' : m.sender === 'assistant' ? 'assistant' : '', at: ms(m.created_at), text: clean(m.text || textOf((m.content || []).filter?.((x) => !x?.type || x.type === 'text') ?? m.content)) })).filter((t) => t.role && t.text);
+}
 export function parseClaude(json) {
   const convs = Array.isArray(json) ? json : json?.chat_messages ? [json] : null;
   if (!convs || !convs.some((c) => c && Array.isArray(c.chat_messages))) return null;
-  const out = [];
-  for (const c of convs) {
-    if (!Array.isArray(c?.chat_messages)) continue;
-    const turns = c.chat_messages.map((m) => ({ role: m.sender === 'human' ? 'user' : m.sender === 'assistant' ? 'assistant' : '', text: clean(m.text || textOf(m.content)) })).filter((t) => t.role && t.text);
-    out.push(...pairUp(turns, 'other'));
+  return convs.flatMap((c) => pairUp(claudeTurns(c), 'other'));
+}
+// Open WebUI's export (Export chats): a list of { title, chat: { messages, history: { messages, currentId } } }.
+// The branch you last saw (currentId back to the top) when there is one; otherwise the messages list as it is.
+const owChat = (c) => (c?.chat && typeof c.chat === 'object' ? c.chat : c);
+const isOpenWebUi = (c) => { const x = owChat(c); return Boolean(x && (x.history?.messages || (c?.chat && Array.isArray(x.messages)))); };
+export function openWebUiTurns(c) {
+  const x = owChat(c);
+  let list = [];
+  const h = x?.history;
+  if (h?.messages && h.currentId && h.messages[h.currentId]) {
+    const seen = new Set();
+    for (let id = h.currentId; id && h.messages[id] && !seen.has(id); id = h.messages[id].parentId) { seen.add(id); list.unshift(h.messages[id]); }
+  } else if (Array.isArray(x?.messages)) list = x.messages;
+  return list.map((m) => ({ role: m?.role, at: ms(m?.timestamp), text: clean(textOf(m?.content)) })).filter((t) => (t.role === 'user' || t.role === 'assistant') && t.text);
+}
+export function parseOpenWebUi(json) {
+  const convs = Array.isArray(json) ? json : json && typeof json === 'object' ? [json] : null;
+  if (!convs || !convs.some(isOpenWebUi)) return null;
+  return convs.filter(isOpenWebUi).flatMap((c) => pairUp(openWebUiTurns(c), 'other'));
+}
+// Every conversation in a file, kept apart, with where it came from. null when it isn't a chat Bob knows.
+export function conversationsOf(raw, file = '') {
+  const fromJson = (j) => {
+    const list = Array.isArray(j) ? j : [j];
+    if (list.some((c) => c && c.mapping)) return list.filter((c) => c?.mapping).map((c) => ({ source: 'chatgpt', id: String(c.conversation_id || c.id || ''), title: String(c.title || ''), at: ms(c.create_time), turns: chatGptTurns(c) }));
+    if (list.some((c) => c && Array.isArray(c.chat_messages))) return list.filter((c) => Array.isArray(c?.chat_messages)).map((c) => ({ source: 'claude', id: String(c.uuid || ''), title: String(c.name || ''), at: ms(c.created_at), turns: claudeTurns(c) }));
+    if (j && !Array.isArray(j) && j.bob === 'chat' && Array.isArray(j.messages)) return [{ source: 'bob', id: String(j.id || ''), title: String(j.title || ''), at: ms(j.started), turns: bobTurns(j.messages) }];
+    if (list.some(isOpenWebUi)) return list.filter(isOpenWebUi).map((c) => ({ source: 'openwebui', id: String(c.id || owChat(c).id || ''), title: String(c.title || owChat(c).title || ''), at: ms(c.created_at), turns: openWebUiTurns(c) }));
+    const turns = bobTurns(Array.isArray(j) ? j : j?.messages);
+    return turns.length ? [{ source: 'bob', id: '', title: String(j?.title || ''), at: 0, turns }] : [];
+  };
+  let out = [];
+  if (/\.jsonl$/i.test(file)) {
+    for (const line of String(raw).split(/\r?\n/)) { if (!line.trim()) continue; try { out.push(...fromJson(JSON.parse(line))); } catch {} }
+  } else {
+    let j = null; try { j = JSON.parse(String(raw).replace(/^\uFEFF/, '')); } catch {}
+    if (j && typeof j === 'object') out = fromJson(j);
+    else {
+      const md = bobMarkdownTurns(raw);
+      if (md) out = [md];
+      else { const t = transcriptTurns(raw); if (t) out = [{ source: 'transcript', id: '', title: '', at: 0, turns: t }]; }
+    }
   }
-  return out;
+  out = out.filter((c) => c.turns.length);
+  return out.length ? out : null;
+}
+// Bob's own session messages (or the "Save as JSON" file's): what was said, no tool turns.
+export function bobTurns(msgs) {
+  if (!Array.isArray(msgs)) return [];
+  return msgs.filter((m) => m && (m.role === 'user' || m.role === 'assistant') && !m.tool_calls && !m.forgotten)
+    .map((m) => ({ role: m.role, at: ms(m.at), text: clean(m.role === 'user' && m.text != null ? m.text : textOf(m.content)) })).filter((t) => t.text);
+}
+// A chat Bob saved as Markdown: "# Title", then "### You · date" and "### Bob · date" headings, each message under its own.
+export function bobMarkdownTurns(raw) {
+  const text = String(raw || '').replace(/\r\n/g, '\n');
+  const re = /^### (You|Bob)(?: · (.+))?$/gm;
+  const heads = [...text.matchAll(re)];
+  if (heads.length < 2) return null;
+  const title = (text.match(/^# (.+)$/m) || [])[1] || '';
+  const turns = heads.map((h, i) => {
+    const body = text.slice(h.index + h[0].length, i + 1 < heads.length ? heads[i + 1].index : text.length).replace(/\n---\s*$/, '');
+    return { role: h[1] === 'You' ? 'user' : 'assistant', at: ms(h[2]), text: clean(body) };
+  }).filter((t) => t.text);
+  return turns.length ? { source: 'bob', id: '', title: title.trim(), at: 0, turns } : null;
 }
 // A plain transcript: most lines look like "Name: words". The first speaker is the person, the second the assistant.
 export function parseTranscript(text) {
+  const t = transcriptTurns(text);
+  return t ? pairUp(t, 'other') : null;
+}
+function transcriptTurns(text) {
   const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
   const re = /^(?:\[[^\]]{1,40}\]\s*)?([A-Za-z][\w .'-]{0,30}):\s+(.*)$/;
   const tagged = lines.filter((l) => l.trim()).map((l) => l.match(re));
@@ -162,7 +235,7 @@ export function parseTranscript(text) {
   }
   if (names.length < 2) return null;
   const [person, assistant] = names;
-  return pairUp(turns.filter((t) => t.who === person || t.who === assistant).map((t) => ({ role: t.who === person ? 'user' : 'assistant', text: clean(t.text) })), 'other');
+  return turns.filter((t) => t.who === person || t.who === assistant).map((t) => ({ role: t.who === person ? 'user' : 'assistant', text: clean(t.text) }));
 }
 // user, assistant, user, assistant ... into exchanges. A run of the same role is joined.
 function pairUp(turns, who) {
@@ -178,11 +251,11 @@ function pairUp(turns, who) {
 export function parseChat(raw, file = '') {
   if (/\.jsonl$/i.test(file)) { // one chat per line, any of the shapes
     const out = [];
-    for (const line of String(raw).split(/\r?\n/)) { if (!line.trim()) continue; let j; try { j = JSON.parse(line); } catch { continue; } const r = parseBob(j) || parseChatGpt(j) || parseClaude(j); if (r) out.push(...r); }
+    for (const line of String(raw).split(/\r?\n/)) { if (!line.trim()) continue; let j; try { j = JSON.parse(line); } catch { continue; } const r = parseChatGpt(j) || parseClaude(j) || parseOpenWebUi(j) || parseBob(j); if (r) out.push(...r); }
     return out.length ? out : null;
   }
   let j = null; try { j = JSON.parse(raw); } catch {}
-  if (j) return parseChatGpt(j) || parseClaude(j) || parseBob(j);
+  if (j) return parseChatGpt(j) || parseClaude(j) || parseOpenWebUi(j) || parseBob(j);
   return parseTranscript(raw);
 }
 
@@ -203,7 +276,7 @@ export async function readFile(file, { cfg = null, office = undefined, signal, r
   if (base.kind === 'chat') {
     let raw; try { raw = readText(file); } catch { return { ...base, skipped: 'could not be read' }; }
     const ex = parseChat(raw, file);
-    return ex?.length ? { ...base, exchanges: ex } : { ...base, kind: 'other', skipped: 'not a chat log Bob knows (ChatGPT or Claude export, Bob session, or Name: lines)' }; // counted as other, not as a chat log
+    return ex?.length ? { ...base, exchanges: ex } : { ...base, kind: 'other', skipped: 'not a chat log Bob knows (ChatGPT, Claude or Open WebUI export, Bob session, or Name: lines)' }; // counted as other, not as a chat log
   }
   if (base.kind === 'office') {
     const off = office === undefined ? (cfg ? findOffice(cfg) : null) : office;

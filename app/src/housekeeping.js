@@ -1,4 +1,4 @@
-// Bob the housekeeper. Off unless the user turns it on (Settings, Housekeeping).
+// Bob the housekeeper. On unless the user turns it off (Settings, Housekeeping; on by default since Nov 11).
 // When on, and only while Bob is idle, he:
 //   - sums up the older part of long chats (instead of forgetting it) and moves lasting facts to his memory file,
 //   - sorts what was said into topics (topics.js), so old chats can go while "where we landed" stays,
@@ -7,17 +7,22 @@
 // Each kind has its own age limit and its own mode: "ask me" (the default) or "tidy automatically" (opt-in).
 // Asking means a list with a tick and a cross per item; nothing goes without that click, unless the user chose
 // automatic for that kind. Everything removed goes to the Recycle Bin (recycle.js). Pinned chats, pictures
-// and topics are never touched. Every action goes in the logbook. Only Bob's own folders are touched.
+// and topics are never touched. Every action goes in the logbook. By default only Bob's own folders are touched;
+// folders the user adds (extraFolders) are offered too, always "ask first", never tidied by himself.
+import { readText, writeText, appendText, vaultOn, hasKey } from './vault.js'; // 🔒 Lock my chats and memory
 import fs from 'node:fs';
 import path from 'node:path';
-import { appDir, findOutput } from './config.js';
-import { UNITS, KINDS, ageMs, cleanHousekeeping, hkSettings } from './hk-settings.js';
-export { UNITS, KINDS, ageMs, cleanHousekeeping, hkSettings };
+import { appDir, findOutput, isInside } from './config.js';
+import os from 'node:os';
+import { UNITS, KINDS, ageMs, cleanHousekeeping, cleanFolder, hkSettings } from './hk-settings.js';
+export { UNITS, KINDS, ageMs, cleanHousekeeping, cleanFolder, hkSettings };
 import { recycle, backupToBin, mayRecycle } from './recycle.js';
 import { Topics, normName, topicText } from './topics.js';
 import { Embedder } from './embedder.js';
+import { asDoc, embedModel, vecKey, freshVec } from './embed-prefix.js';
 import { recallOn, parseMemory, MemoryVectors } from './recall.js';
 import { gaming } from './sessions.js';
+import { DocIndex, docMeaningOn, queryVector } from './doc-index.js';
 import { catalogFileFor } from './llamacpp.js';
 import {
   chatIds, chatInfo, chatFiles, wholeChat, readChat, readOlder, writeChat, writeOlder, readSummary, writeSummary,
@@ -60,6 +65,42 @@ export function memoryRepeats(text) {
   return { repeats: n, text: kept.join('\n') };
 }
 
+// ---------- Folders the user points him to (Nov 11) ----------
+// By default housekeeping only touches Bob's own files. The user can add folders; old files in them are only ever
+// offered in Tidy up (never tidied by himself), and go to the Recycle Bin. Some folders are refused outright.
+const SYSTEM_DIR = /^(?:[a-z]:[\\/](?:windows|program files(?: \(x86\))?|programdata)|\/(?:bin|boot|dev|etc|lib|lib32|lib64|proc|run|sbin|sys|usr|var|opt|snap|system|library|applications|private))(?:[\\/]|$)/i;
+export function folderRefusal(cfg, f, { home = cfg.userHome || os.homedir(), exists = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } } } = {}) {
+  if (SYSTEM_DIR.test(f)) return 'That is a system folder. Bob leaves those alone.';
+  const same = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+  if (home && same(f, home)) return 'That is your whole home folder. Pick a folder inside it, like Downloads.';
+  for (const own of [cfg.agentDir, cfg.dataDir, cfg.innDir].filter(Boolean)) {
+    if (isInside(f, own) || same(f, own)) return 'That folder holds Bob himself. Pick one that doesn\'t.';
+    if (isInside(own, f)) return 'That is one of Bob\'s own folders. He already looks after it.';
+  }
+  if (!exists(f)) return 'I can\'t find that folder.';
+  return '';
+}
+
+// Old files in the added folders, oldest first. Hidden files and folders are skipped; the walk stops at a sensible size.
+export function oldFolderFiles(folders, cutoff, { maxFiles = 300, maxSeen = 20000, maxDepth = 6 } = {}) {
+  const out = [];
+  let seen = 0;
+  const walk = (dir, depth, root) => {
+    if (depth > maxDepth || seen > maxSeen) return;
+    let list = [];
+    try { list = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const d of list) {
+      if (++seen > maxSeen) return;
+      if (d.name.startsWith('.') || /^(desktop\.ini|thumbs\.db)$/i.test(d.name)) continue;
+      const full = path.join(dir, d.name);
+      if (d.isDirectory()) walk(full, depth + 1, root);
+      else if (d.isFile()) { const t = mtime(full); if (t && t < cutoff) out.push({ file: full, root, touched: t }); }
+    }
+  };
+  for (const f of folders) walk(f, 0, f);
+  return out.sort((a, b) => a.touched - b.touched).slice(0, maxFiles);
+}
+
 export class Housekeeper {
   constructor(cfg, brain) {
     this.cfg = cfg;
@@ -77,7 +118,7 @@ export class Housekeeper {
 
   stop() { clearInterval(this.timer); this.pause(); }
   // The user is back: anything the housekeeper is asking the brain stops at once.
-  pause() { this.controller?.abort(); }
+  pause() { this.controller?.abort(); this.docStop?.abort(); }
 
   get settings() { return hkSettings(this.cfg); }
   state() {
@@ -147,11 +188,18 @@ export class Housekeeper {
       add({ key: `topic:${t.id}`, kind: 'topics', ref: t.id, label: `${t.project ? t.project + ' > ' : ''}${t.name}`, detail: `you asked Bob to forget it after ${t.fade.n} ${t.fade.unit} unused; the note stays`, bytes: 0, touched: t.lastSeen || 0, actions: ['forget'], def: 'forget' });
     }
 
+    // Files in folders the user added (Nov 11): only these folders, only ever "ask first".
+    if (hk.extraFolders?.length) {
+      for (const x of oldFolderFiles(hk.extraFolders, now - ageMs(hk.folders))) {
+        add({ key: `folder:${x.file}`, kind: 'folders', label: path.relative(x.root, x.file) || path.basename(x.file), detail: `in ${x.root}, last changed ${dateOf(x.touched)}`, bytes: sizeOf(x.file), touched: x.touched, actions: ['delete'], def: 'delete', paths: [x.file] });
+      }
+    }
+
     // Spare copies: always asked about, never tidied automatically.
     // 1.5.7: the cached Electron download is never offered any more. "Double-click to build Bob" reuses it, and without
     // it a rebuild has to download about 150 MB again (and fails offline). spareElectron() stays for anyone who wants it.
     try {
-      const { repeats } = memoryRepeats(fs.readFileSync(cfg.memoryFile, 'utf8'));
+      const { repeats } = memoryRepeats(readText(cfg.memoryFile));
       if (repeats) add({ key: 'memory-repeats', kind: 'spare', label: `${repeats} repeated line${repeats === 1 ? '' : 's'} in Bob's memory file`, detail: 'the first copy of each stays', bytes: 0, touched: mtime(cfg.memoryFile), actions: ['delete'], def: 'delete' });
     } catch {}
 
@@ -246,10 +294,10 @@ export class Housekeeper {
       return `${lines.length} old logbook lines (to the Recycle Bin as ${path.basename(old)})`;
     }
     if (it.key === 'memory-repeats') {
-      const text = fs.readFileSync(cfg.memoryFile, 'utf8');
+      const text = readText(cfg.memoryFile);
       const { repeats, text: tidy } = memoryRepeats(text);
       backupMemory(cfg);
-      fs.writeFileSync(cfg.memoryFile, tidy);
+      writeText(cfg, cfg.memoryFile, tidy);
       return `${repeats} repeated memory lines (the old memory file is in the Recycle Bin)`;
     }
     if (it.kind === 'topics') { this.forget(it.ref, { mode: 'note' }); return `the chat parts of "${it.label}" (its note stays)`; }
@@ -294,11 +342,11 @@ export class Housekeeper {
     const list = [].concat(facts || []).map((f) => String(f).replace(/\s+/g, ' ').trim()).filter((f) => f.length > 3 && f.length < 300).slice(0, 8);
     if (!list.length) return 0;
     let text = '';
-    try { text = fs.readFileSync(this.cfg.memoryFile, 'utf8'); } catch {}
+    try { text = readText(this.cfg.memoryFile); } catch {}
     const have = new Set(text.split('\n').map(memKey).filter(Boolean));
     const day = dateOf(Date.now());
     const add = list.filter((f) => { const k = memKey(f); if (have.has(k)) return false; have.add(k); return true; }).map((f) => `- ${f} (${day})${topic ? ` [topic: ${topic.replace(/[\][]/g, '')}]` : ''}${project && recallOn(this.cfg) ? ` [project: ${String(project).replace(/[\][]/g, '').slice(0, 60)}]` : ''}\n`);
-    if (add.length) fs.appendFileSync(this.cfg.memoryFile, (text && !text.endsWith('\n') ? '\n' : '') + add.join(''));
+    if (add.length) appendText(this.cfg, this.cfg.memoryFile, (text && !text.endsWith('\n') ? '\n' : '') + add.join(''));
     return add.length;
   }
 
@@ -331,13 +379,13 @@ export class Housekeeper {
     const groups = (Array.isArray(r.topics) ? r.topics : []).map((g) => ({ ...g, pics: [].concat(g.msgIds || []).flatMap((x) => media[x] || []) }));
     // Embeddings catch "art direction" vs "art style"; without them, names are matched.
     let vecs = null;
-    if (groups.length) vecs = await this.embed(groups.map((g) => `${g.project || ''} > ${g.name}: ${g.summary || ''}`));
+    if (groups.length) vecs = await this.embed(groups.map((g) => asDoc(embedModel(this.cfg), `${g.project || ''} > ${g.name}: ${g.summary || ''}`)));
     const touched = this.topics.absorb(id, groups.map((g, i) => ({ ...g, vec: vecs?.[i] })), {
       at,
       match: (g, topics) => {
         if (!g.vec) return null;
         let best = null, score = 0.86;
-        for (const t of topics) { if (!t.vec) continue; const s = cosineLocal(g.vec, t.vec); if (s > score) { score = s; best = t; } }
+        for (const t of topics) { if (!freshVec(t)) continue; const s = cosineLocal(g.vec, t.vec); if (s > score) { score = s; best = t; } }
         return best;
       }
     });
@@ -349,9 +397,9 @@ export class Housekeeper {
   }
 
   async refreshVectors() {
-    const need = this.topics.load().topics.filter((t) => !t.vec);
+    const need = this.topics.staleVectors().slice(0, 64);
     if (!need.length) return;
-    const vecs = await this.embed(need.map(topicText));
+    const vecs = await this.embed(need.map((t) => asDoc(embedModel(this.cfg), topicText(t))));
     if (vecs) this.topics.setVectors(Object.fromEntries(need.map((t, i) => [t.id, vecs[i]])));
   }
 
@@ -406,7 +454,7 @@ export class Housekeeper {
     const others = new Set(this.topics.load().topics.filter((x) => x.id !== id).flatMap((x) => x.pics || []));
     const onlyHere = [...pics, ...(t.pics || [])].filter((u, i, a) => a.indexOf(u) === i && !others.has(u) && /^\/images\//.test(u));
     let memory = [];
-    try { memory = fs.readFileSync(this.cfg.memoryFile, 'utf8').split('\n').filter((l) => tagOf(l) === normName(t.name)); } catch {}
+    try { memory = readText(this.cfg.memoryFile).split('\n').filter((l) => tagOf(l) === normName(t.name)); } catch {}
     return { topic: { id: t.id, name: t.name, project: t.project, note: t.note, pinned: t.pinned }, mode, chats, messages: chats.reduce((n, c) => n + c.count, 0), pictures: onlyHere, memory: mode === 'all' ? memory : [], keepsNote: mode !== 'all' };
   }
 
@@ -419,9 +467,9 @@ export class Housekeeper {
     for (const s of t.spans || []) n += this.redact(s.session, new Set(s.msgIds), t.name);
     if (mode === 'all') {
       try {
-        const text = fs.readFileSync(this.cfg.memoryFile, 'utf8');
+        const text = readText(this.cfg.memoryFile);
         const kept = text.split('\n').filter((l) => tagOf(l) !== normName(t.name));
-        if (kept.length !== text.split('\n').length) { backupMemory(this.cfg); fs.writeFileSync(this.cfg.memoryFile, kept.join('\n')); }
+        if (kept.length !== text.split('\n').length) { backupMemory(this.cfg); writeText(this.cfg, this.cfg.memoryFile, kept.join('\n')); }
       } catch {}
       this.topics.remove(id);
     } else {
@@ -479,14 +527,55 @@ export class Housekeeper {
   async fillMemoryVectors() {
     if (!recallOn(this.cfg) || gaming(this.cfg)) return 0;
     let text = '';
-    try { text = fs.readFileSync(this.cfg.memoryFile, 'utf8'); } catch { return 0; }
-    const model = this.cfg.housekeeping?.embedModel || 'nomic-embed-text';
+    try { text = readText(this.cfg.memoryFile); } catch { return 0; }
+    const model = embedModel(this.cfg);
     this.memVecs ||= new MemoryVectors(this.cfg);
-    return this.memVecs.fill(parseMemory(text), (texts) => this.embed(texts), model);
+    return this.memVecs.fill(parseMemory(text), (texts) => this.embed(texts.map((t) => asDoc(model, t))), vecKey(model));
   }
 
+  // Nov 11: vectors made before the search openings (embed-prefix.js) are made again while Bob is idle, a batch at a
+  // time: topics, and how-tos. Until then those are matched by words. Never in the Gaming session.
+  async refreshOldVectors() {
+    if (gaming(this.cfg)) return 0;
+    let n = 0;
+    if (this.topics.staleVectors().some((t) => t.note || t.summary)) { await this.refreshVectors(); n++; }
+    const how = this.brain?.howtos;
+    const stale = how?.staleVectors?.().slice(0, 32) || [];
+    if (stale.length) {
+      const v = await this.embed(stale.map((r) => asDoc(embedModel(this.cfg), `${r.name}. ${r.when}`)));
+      if (v) stale.forEach((r, i) => { if (v[i]) how.setVec(r.id, v[i]); });
+      n++;
+    }
+    return n;
+  }
+
+  // Search my documents by meaning (doc-index.js): new and changed documents get their meaning numbers while Bob
+  // is idle, a batch at a time, never in the Gaming session. Works with housekeeping off.
+  docRoots() { return (this.cfg.readRoots || []).filter((r) => r !== this.cfg.innDir); }
+  async fillDocIndex() {
+    if (!docMeaningOn(this.cfg) || gaming(this.cfg)) return null;
+    this.docIndex ||= new DocIndex(this.cfg);
+    const model = this.cfg.housekeeping?.embedModel || 'nomic-embed-text';
+    const r = await this.docIndex.fill(this.docRoots(), (texts) => this.embed(texts), model, { signal: (this.docStop = new AbortController()).signal });
+    if (r.added || r.dropped) this.log(`document index: ${r.added} read, ${r.dropped} gone${r.left ? `, ${r.left} still to do` : ''}`);
+    return r;
+  }
+  // The files that mean what q means: [{ file, at, len, score }], or null when it can't (no model, Gaming session, empty).
+  async docsByMeaning(q, roots) {
+    if (!docMeaningOn(this.cfg) || gaming(this.cfg)) return null;
+    this.docIndex ||= new DocIndex(this.cfg);
+    if (!this.docIndex.view().pieces) return null;
+    const v = await queryVector(this, q, this.docIndex.load().model);
+    return v ? this.docIndex.search(v, { roots: roots || this.docRoots() }) : null;
+  }
+  docIndexView() { return docMeaningOn(this.cfg) ? (this.docIndex ||= new DocIndex(this.cfg)).view() : null; }
+  forgetDocIndex() { this.docStop?.abort(); (this.docIndex ||= new DocIndex(this.cfg)).clear(); }
+
   async tick({ force = false } = {}) {
+    if (vaultOn(this.cfg) && !hasKey()) return { skipped: true, locked: true }; // 🔒 chats are locked until the passcode is typed
     if (recallOn(this.cfg) && (force || this.idle()) && !this.working) { try { await this.fillMemoryVectors(); } catch {} }
+    if (docMeaningOn(this.cfg) && (force || this.idle()) && !this.working) { try { await this.fillDocIndex(); } catch {} }
+    if ((this.settings.enabled || recallOn(this.cfg)) && (force || this.idle()) && !this.working) { try { await this.refreshOldVectors(); } catch {} }
     const hk = this.settings;
     if (!force && (!hk.enabled || !this.idle())) return { skipped: true };
     if (this.working) return { busy: true };
@@ -506,7 +595,7 @@ export class Housekeeper {
       const st = this.state();
       if (force || Date.now() - st.lastScan > SCAN_EVERY) {
         const items = this.scan();
-        const auto = items.filter((i) => hk[i.kind]?.mode === 'auto' && hk.enabled);
+        const auto = items.filter((i) => hk[i.kind]?.mode === 'auto' && hk.enabled && i.kind !== 'folders'); // added folders: always ask
         if (auto.length) did.auto = (await this.tidy(auto.map((i) => ({ key: i.key, action: i.def })), { auto: true })).filter((r) => r.done && r.done !== 'kept').length;
         did.ask = this.items.length;
         const s2 = this.state();
@@ -541,7 +630,7 @@ export function forgetTopicTool(brain) {
       type: 'function',
       function: {
         name: 'forget_topic',
-        description: 'Forget what was said about a topic when {{USER}} asks ("forget what we said about X"). {{USER}} always sees a preview and decides. mode "note" (default) forgets the chat parts but keeps the short topic note; "all" also forgets the note and the memory lines filed under it.',
+        description: 'Forget what was said about a topic, when {{USER}} asks. {{USER}} sees a preview and decides. mode note (default) keeps the short topic note; all forgets that too.',
         parameters: { type: 'object', properties: { topic: { type: 'string', description: 'The topic, in the user\'s words.' }, mode: { type: 'string', enum: ['note', 'all'] } }, required: ['topic'] }
       }
     },

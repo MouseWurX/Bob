@@ -81,7 +81,7 @@ const readJsonl = (f) => { try { return fs.readFileSync(f, 'utf8').split(/\r?\n/
 const h = (s) => crypto.createHash('md5').update(s).digest('hex');
 
 // Writes `count` lessons over `skills` into `out` (lessons.jsonl) with `ideas.jsonl` beside it. kit = throwawayBob().
-export async function writeLessons({ url, out, skills, count, think = 'half', kit, chatFn = chat, onProgress = () => {}, shouldStop = () => false }) {
+export async function writeLessons({ url, out, skills, count, think = 'half', ideasOnly = false, kit, chatFn = chat, onProgress = () => {}, shouldStop = () => false }) {
   const picked = LESSON_SKILLS.filter((s) => skills.includes(s.id));
   if (!picked.length) throw new Error('Pick at least one skill.');
   fs.mkdirSync(path.dirname(out), { recursive: true });
@@ -89,8 +89,9 @@ export async function writeLessons({ url, out, skills, count, think = 'half', ki
   const ideas = readJsonl(ideasFile);
   const seen = new Set(ideas.map((i) => i.text.toLowerCase()));
   const add = (skill, text) => { const t = String(text || '').trim(); if (PLACEHOLDER.test(t) || t.length < 2 || t.length > 800 || seen.has(t.toLowerCase())) return; seen.add(t.toLowerCase()); const i = { id: `i${ideas.length}`, skill, text: t }; ideas.push(i); fs.appendFileSync(ideasFile, JSON.stringify(i) + '\n'); };
-  // Stage 1: what people say, in batches of 25 per skill, until each skill has its share.
-  for (const s of picked) {
+  // Stage 1: what people say, in batches of 25 per skill, until each skill has its share. ideasOnly (Teach it from my
+  // mistakes): the ideas are already there, the person's own saved asks, so none are made up.
+  for (const s of ideasOnly ? [] : picked) {
     const want = Math.ceil(count / picked.length);
     let tries = 0;
     while (ideas.filter((i) => i.skill === s.id).length < want && tries++ < Math.ceil(want / 10) + 5) {
