@@ -116,6 +116,8 @@ fs.writeFileSync(path.join(docs, 'Report.pdf'), makePdf());
   let why = '';
   try { pdfText(scan); } catch (err) { why = err.message; }
   check('a PDF with no words says it is probably a scan and how to read it', /no words/.test(why) && /picture/.test(why), why);
+  const dummy = Buffer.from('%PDF-1.4\n1 0 obj << /Length 44 >>\nstream\nBT /F1 12 Tf 72 712 Td (Dummy PDF file) Tj ET\nendstream\nendobj\n%%EOF', 'latin1');
+  check('a PDF with only a few words is read, not called a scan (the W3C test file)', pdfText(dummy) === 'Dummy PDF file');
   try { docTextFrom(Buffer.from('x'), 'doc'); why = ''; } catch (err) { why = err.message; }
   check('an old .doc points at the Office documents Hand', /Office documents Hand/.test(why), why);
   try { zipEntries(Buffer.from('not a zip at all, sorry, not one bit')); why = ''; } catch (err) { why = err instanceof DocError ? err.message : ''; }

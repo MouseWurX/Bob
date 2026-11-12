@@ -213,7 +213,7 @@ export class Ollama {
         if (msg.content) { content += msg.content; onToken && onToken(msg.content); }
         if (msg.tool_calls) toolCalls.push(...msg.tool_calls);
         // 1.5.30: the last line carries the reply's numbers; kept for Now running (no extra work for Ollama).
-        if (ev.done) this.lastStats = replyStats({ model, messages, promptTokens: ev.prompt_eval_count, outTokens: ev.eval_count, tokPerSec: ev.eval_duration ? ev.eval_count / (ev.eval_duration / 1e9) : 0, ctx: ctx || this.ctxOf?.[model] }) || this.lastStats;
+        if (ev.done) this.lastStats = ((st) => { if (st) { try { this.onStats?.(st); } catch {} } return st; })(replyStats({ model, messages, promptTokens: ev.prompt_eval_count, outTokens: ev.eval_count, tokPerSec: ev.eval_duration ? ev.eval_count / (ev.eval_duration / 1e9) : 0, ctx: ctx || this.ctxOf?.[model] })) || this.lastStats; // 96 Speed history hears each reply
       }
     }
     return { role: 'assistant', content, tool_calls: toolCalls.length ? toolCalls : undefined };

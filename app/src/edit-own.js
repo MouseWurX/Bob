@@ -65,7 +65,7 @@ export function applyEdit(msgs, args = {}, now = Date.now()) {
 }
 
 export const EDIT_SCHEMA = fn('edit_my_message',
-  'Change one of your own earlier messages instead of sending a new one: to fix a mistake or update a status line. The chat marks it edited. Use find and replace for a few words, or text for the whole message.', {
+  'Change one of your earlier messages instead of sending a new one (fix a mistake, update a status); it shows as edited. find and replace for a few words, or text for all of it.', {
     back: { type: 'integer', description: 'Which: 1 = your latest before this, 2 = the one before. Leave out to search recent ones for find.' },
     find: str('The exact words to change.'),
     replace: str('The new words (empty removes them).'),
