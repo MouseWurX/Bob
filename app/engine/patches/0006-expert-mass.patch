@@ -1,0 +1,185 @@
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 1457f9a..e972033 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -162,6 +162,11 @@ struct server_expert_trace {
+     struct tag { int32_t id_slot; llama_token token; bool is_prompt; bool output; };
+     std::vector<tag> tags; // per submitted token
+     std::vector<int32_t> buf;
++    // with mass: per layer, the size (L2 norm) of each picked expert's router-weighted output ("ffn_moe_weighted-<layer>",
++    // [n_embd, n_used, n_tokens]), in the same order as cols, so a token's picks and their sizes line up
++    bool mass = false;
++    bool mass_bad = false; // this brain's router weights don't scale the experts' outputs (llama4 weighs the input)
++    std::vector<std::vector<float>> norms;
+     // a brain without experts: the same trace over groups of neighbouring neurons. Each layer's hidden neurons
+     // (after the activation) are cut into n_group equal runs, and the N_NEURON_USED busiest runs (mean square)
+     // are reported for every token, busiest first.
+@@ -191,6 +196,8 @@ struct server_expert_trace {
+         n_ff = 0;
+         cols.assign(n_layer, {});
+         acts.assign(n_layer, {});
++        norms.assign(n_layer, {});
++        mass_bad = false;
+         n_cols.assign(n_layer, 0);
+         at_pass.assign(n_layer, -1);
+         pass    = 0;
+@@ -274,6 +281,37 @@ struct server_expert_trace {
+         return true;
+     }
+ 
++    // the picked experts' router-weighted outputs of one layer for the tokens of this ubatch, right after their picks
++    bool eval_mass(struct ggml_tensor * t, int il) {
++        if (mass_bad || bad) {
++            return true;
++        }
++        if (t->src[0] != nullptr && t->src[0]->op == GGML_OP_REPEAT) {
++            mass_bad = true; // the weights went onto the input (llama4), so this node is not an expert's output
++            return true;
++        }
++        const int64_t n = t->ne[0], k = t->ne[1], n_tok = t->ne[2];
++        if (n_tok == 0) {
++            return true;
++        }
++        if (il < 0 || il >= (int) cols.size() || t->type != GGML_TYPE_F32 || !ggml_is_contiguous(t) || t->ne[3] != 1 ||
++                k != n_used || (int64_t) norms[il].size() + k*n_tok != (int64_t) cols[il].size()) {
++            mass_bad = true;
++            return true;
++        }
++        fbuf.resize(n*k*n_tok);
++        ggml_backend_tensor_get(t, fbuf.data(), 0, fbuf.size()*sizeof(float));
++        for (int64_t i = 0; i < k*n_tok; i++) {
++            const float * v = fbuf.data() + i*n;
++            double sum = 0.0;
++            for (int64_t j = 0; j < n; j++) {
++                sum += (double) v[j]*v[j];
++            }
++            norms[il].push_back((float) std::sqrt(sum));
++        }
++        return true;
++    }
++
+     static bool cb_eval(struct ggml_tensor * t, bool ask, void * user_data) {
+         auto * tr = (server_expert_trace *) user_data;
+         if (tr->neurons || tr->heads) {
+@@ -289,6 +327,15 @@ struct server_expert_trace {
+             std::lock_guard<std::mutex> lock(tr->mutex);
+             return tr->on ? tr->eval_neurons(t, il) : true;
+         }
++        static const char wname[] = "ffn_moe_weighted-";
++        // (the per-expert views of the node, which carry its name, are left alone)
++        if (tr->mass && t->view_src == nullptr && strncmp(t->name, wname, sizeof(wname) - 1) == 0) {
++            if (ask) {
++                return tr->on;
++            }
++            std::lock_guard<std::mutex> lock(tr->mutex);
++            return tr->on ? tr->eval_mass(t, atoi(t->name + sizeof(wname) - 1)) : true;
++        }
+         static const char prefix[] = "ffn_moe_topk-";
+         if (strncmp(t->name, prefix, sizeof(prefix) - 1) != 0) {
+             return ask ? false : true;
+@@ -5065,6 +5112,7 @@ private:
+             etrace.heads   = want && slot.task->params.expert_trace_heads;
+             etrace.n_head  = llama_model_n_head(model_tgt);
+             etrace.neurons = !etrace.heads && llama_model_n_expert(model_tgt) <= 0;
++            etrace.mass    = want && !etrace.heads && !etrace.neurons && slot.task->params.expert_trace_mass;
+             etrace.clear(want ? llama_model_n_layer(model_tgt) : 0);
+         }
+         if (want) {
+@@ -5107,6 +5155,22 @@ private:
+             if (ok && n_layer_seen > 0) {
+                 const int32_t k = etrace.n_used;
+                 json rows = json::array();
++                // for experts: how often each layer picked each expert for this slot's tokens ("layers"), and with
++                // mass the sum of those picks' weighted output sizes ("mass"), in the shape the Forge writes
++                const bool experts = !etrace.neurons && !etrace.heads;
++                const int32_t n_exp = llama_model_n_expert(model_tgt);
++                bool with_mass = experts && etrace.mass && !etrace.mass_bad;
++                for (size_t il = 0; with_mass && il < etrace.cols.size(); il++) {
++                    with_mass = etrace.norms[il].size() == etrace.cols[il].size();
++                }
++                std::vector<std::vector<int64_t>> picks(etrace.cols.size());
++                std::vector<std::vector<double>>  msum(etrace.cols.size());
++                for (size_t il = 0; experts && il < etrace.cols.size(); il++) {
++                    if (etrace.n_cols[il] != 0) {
++                        picks[il].assign(n_exp, 0);
++                        msum[il].assign(n_exp, 0.0);
++                    }
++                }
+                 int32_t n_prompt = 0;
+                 size_t i_output = 0; // index among the tokens with an output
+                 for (size_t i = 0; i < etrace.tags.size(); i++) {
+@@ -5130,6 +5194,17 @@ private:
+                         const size_t at = outputs_only[il] ? i_out : i;
+                         const auto b = etrace.cols[il].begin() + at*k;
+                         e.push_back(std::vector<int32_t>(b, b + k));
++                        if (experts) {
++                            for (int32_t j = 0; j < k; j++) {
++                                const int32_t id = b[j];
++                                if (id >= 0 && id < n_exp) {
++                                    picks[il][id]++;
++                                    if (with_mass) {
++                                        msum[il][id] += etrace.norms[il][at*k + j];
++                                    }
++                                }
++                            }
++                        }
+                         if (with_acts) {
+                             a.push_back(at < etrace.acts[il].size() ? etrace.acts[il][at] : 0.0f);
+                         }
+@@ -5154,6 +5229,30 @@ private:
+                     {"rows",          std::move(rows)},
+                     {"last",          n_gen > 0 && slot.sampled != LLAMA_TOKEN_NULL ? common_token_to_piece(ctx_tgt, slot.sampled, true) : std::string()},
+                 };
++                if (experts) {
++                    json layers = json::array(), mass = json::array();
++                    for (size_t il = 0; il < picks.size(); il++) {
++                        if (picks[il].empty()) {
++                            layers.push_back(nullptr);
++                            mass.push_back(nullptr);
++                            continue;
++                        }
++                        layers.push_back(picks[il]);
++                        json m = json::array();
++                        for (double v : msum[il]) {
++                            m.push_back(std::round(v*1e6)/1e6);
++                        }
++                        mass.push_back(std::move(m));
++                    }
++                    out["experts"] = n_exp;
++                    out["layers"]  = std::move(layers);
++                    if (etrace.mass) {
++                        out["mass"] = with_mass ? std::move(mass) : json(nullptr);
++                        if (!with_mass) {
++                            out["mass_why"] = etrace.mass_bad ? "this brain weighs what goes into its experts, not what comes out, so there is no mass to add up" : "a layer's sizes didn't line up with its picks";
++                        }
++                    }
++                }
+             }
+         }
+         if (!expert_trace_wanted(&slot)) {
+diff --git a/tools/server/server-schema.cpp b/tools/server/server-schema.cpp
+index 419574b..ee5ac4c 100644
+--- a/tools/server/server-schema.cpp
++++ b/tools/server/server-schema.cpp
+@@ -42,6 +42,9 @@ std::vector<std::unique_ptr<field>> make_llama_cmpl_schema(const common_params &
+     add((new field_bool("expert_trace_heads", params.expert_trace_heads))
+         ->set_desc("Brain Engine: with `expert_trace`, report the busiest attention heads of every layer (kind `heads`) instead of experts or neuron groups. Works for any model"));
+ 
++    add((new field_bool("expert_trace_mass", params.expert_trace_mass))
++        ->set_desc("Brain Engine: with `expert_trace` on a mixture-of-experts model, also return `mass`: for every layer and expert, the sum over its picks of the router weight times the size (L2 norm) of what the expert wrote (REAP; mass / picks is the REAP score)"));
++
+     add((new field_bool("return_progress", params.return_progress))
+         ->set_desc("Include prompt processing progress events in stream mode"));
+ 
+diff --git a/tools/server/server-task.h b/tools/server/server-task.h
+index 616c20a..3ce6dc8 100644
+--- a/tools/server/server-task.h
++++ b/tools/server/server-task.h
+@@ -83,6 +83,7 @@ struct task_params {
+     bool return_tokens   = false;
+     bool expert_trace    = false; // Brain Engine: report which experts every layer picked for every token
+     bool expert_trace_heads = false; // Brain Engine: with expert_trace, report the busiest attention heads instead
++    bool expert_trace_mass  = false; // Brain Engine: with expert_trace, also add up each expert's router-weighted output size (REAP)
+     bool return_progress = false;
+ 
+     int32_t sse_ping_interval = 30; // seconds between SSE comment pings while the stream stays silent, -1 disables
